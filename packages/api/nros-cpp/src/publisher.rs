@@ -202,6 +202,25 @@ pub unsafe extern "C" fn nros_cpp_publisher_publish_streamed(
 /// Phase 124.A.7 — loan a writable slot of `requested_len` bytes from
 /// the publisher's outbound buffer.
 ///
+/// # AVAILABILITY — read this before calling
+///
+/// This symbol exists **only** in a nano-ros built with the `lending`
+/// cargo feature, and **no shipped configuration enables it**: the
+/// string `lending` appears zero times under `cmake/` and `zephyr/`,
+/// `nros-rmw-zenoh-staticlib` declares no forwarder for it, and the only
+/// crate in the tree that turns it on is the `nros-tests` harness.
+///
+/// Its presence in this header is therefore **not evidence that it can
+/// be linked.** cbindgen emits every declaration unconditionally here,
+/// by deliberate repo-wide policy, so a `#[cfg]`-gated Rust symbol still
+/// appears. `nros/publisher.hpp`'s `Publisher::loan()` calls it with no
+/// guard of its own, so against a default build the failure surfaces at
+/// LINK as an undefined symbol, not at the call site.
+///
+/// The supported zero-copy surface is `publish_streamed` and its receive
+/// twin `process_raw_in_place`: no feature, no token, no arena, no size
+/// ceiling. See issue 0814.
+///
 /// On success, `*out_buf` points at `*out_cap` writable bytes the
 /// caller fills in place. Pass `*out_token` back to
 /// `nros_cpp_publisher_commit` (to send) or
@@ -250,6 +269,9 @@ pub unsafe extern "C" fn nros_cpp_publisher_loan(
 
 /// Phase 124.A.7 — commit a previously loaned slot.
 ///
+/// **Availability:** `lending`-only, and no shipped build enables it —
+/// see `nros_cpp_publisher_loan`. Issue 0814.
+///
 /// # Safety
 /// `storage` must be the publisher the token was loaned from. `token`
 /// must come from a matching `nros_cpp_publisher_loan` and must not be
@@ -275,6 +297,9 @@ pub unsafe extern "C" fn nros_cpp_publisher_commit(
 }
 
 /// Phase 124.A.7 — abandon a previously loaned slot.
+///
+/// **Availability:** `lending`-only, and no shipped build enables it —
+/// see `nros_cpp_publisher_loan`. Issue 0814.
 ///
 /// # Safety
 /// `storage` must be the publisher the token was loaned from. `token`

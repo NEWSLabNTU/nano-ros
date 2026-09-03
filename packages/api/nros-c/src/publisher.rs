@@ -527,6 +527,27 @@ pub unsafe extern "C" fn nros_publisher_assert_liveliness(
 /// Phase 124.A.6 — loan a writable slot from the publisher's outbound
 /// buffer (zero-copy publish path).
 ///
+/// # AVAILABILITY — read this before calling
+///
+/// This symbol exists **only** in a nano-ros built with the `lending`
+/// cargo feature, and **no shipped configuration enables it**: the
+/// string `lending` appears zero times under `cmake/` and `zephyr/`,
+/// `nros-rmw-zenoh-staticlib` — the crate every C/C++ and RTOS image
+/// links — declares no forwarder for it, and the only crate in the tree
+/// that turns it on is the `nros-tests` test harness.
+///
+/// Its presence in this header is therefore **not evidence that it can
+/// be linked.** cbindgen emits every declaration unconditionally here,
+/// by deliberate repo-wide policy (`packages/api/nros-c/cbindgen.toml`
+/// `[defines]`, empty on purpose), so a `#[cfg]`-gated Rust symbol still
+/// appears. Calling this against a default build compiles and then fails
+/// at LINK with an undefined symbol.
+///
+/// The supported zero-copy surface is `nros_publisher_publish_streamed`
+/// and its receive twin `process_raw_in_place`: no feature, no token, no
+/// arena, no size ceiling, and the XRCE and zenoh backends fill them
+/// natively while all three NULL the loan trio. See issue 0814.
+///
 /// On success, `*out_buf` points at `*out_cap` writable bytes the
 /// caller fills in place. Pass `*out_token` back to
 /// [`nros_publisher_commit`] (to send) or [`nros_publisher_discard`]
@@ -611,6 +632,9 @@ pub unsafe extern "C" fn nros_publisher_loan(
 /// Phase 124.A.6 — commit a previously-loaned slot. Sends the slot's
 /// `actual_len` bytes via the active backend.
 ///
+/// **Availability:** `lending`-only, and no shipped build enables it —
+/// see `nros_publisher_loan`. Issue 0814.
+///
 /// `token` MUST come from a prior `nros_publisher_loan` on the SAME
 /// publisher; consuming it (commit OR discard) is mandatory.
 ///
@@ -641,6 +665,9 @@ pub unsafe extern "C" fn nros_publisher_commit(
 }
 
 /// Phase 124.A.6 — abandon a previously-loaned slot without sending.
+///
+/// **Availability:** `lending`-only, and no shipped build enables it —
+/// see `nros_publisher_loan`. Issue 0814.
 ///
 /// `token` MUST come from a prior `nros_publisher_loan` on the SAME
 /// publisher; consuming it (commit OR discard) is mandatory.

@@ -743,6 +743,9 @@ pub unsafe extern "C" fn nros_cpp_subscription_try_recv_raw_with_attachment(
 
 /// Phase 124.A.7 — borrow the next message in place.
 ///
+/// **Availability:** `lending`-only, and no shipped build enables it —
+/// see `nros_cpp_publisher_loan`. Issue 0814.
+///
 /// On success, `*out_buf` points at `*out_len` bytes (read-only) until
 /// the caller calls `nros_cpp_subscription_release(storage, token)`.
 ///
@@ -790,6 +793,9 @@ pub unsafe extern "C" fn nros_cpp_subscription_borrow(
 }
 
 /// Phase 124.A.7 — release a previously borrowed view.
+///
+/// **Availability:** `lending`-only, and no shipped build enables it —
+/// see `nros_cpp_publisher_loan`. Issue 0814.
 ///
 /// # Safety
 /// `storage` must be the subscription the token was borrowed from.
