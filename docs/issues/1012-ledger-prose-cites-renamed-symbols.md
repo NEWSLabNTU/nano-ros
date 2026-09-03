@@ -1,6 +1,6 @@
 ---
 id: 1012
-title: "Parity-ledger `why` prose names symbols a rename retired — 18 rows describe
+title: "Parity-ledger `why` prose names symbols a rename retired — 15 rows describe
   current state using dead spellings, and nothing checks it"
 status: open
 type: bug
@@ -13,7 +13,7 @@ related: [phase-379, issue-0826]
 The parity ledger's `why` field is prose, and it names our own symbols in
 backticks. When a rename lands in the code, the prose does not move with it.
 
-Eighteen rows currently describe the *current* state of the tree using a
+Fifteen rows currently describe the *current* state of the tree using a
 spelling that no longer exists. All eighteen were retired by phase-379's own
 rename rows, so the ledger is stale against renames the ledger itself recorded:
 
@@ -21,9 +21,9 @@ rename rows, so the ledger is stale against renames the ledger itself recorded:
 | --- | --- | ---: |
 | `is_server_ready` | deleted (issue 1008) | 2 |
 | `server_available` | `service_is_ready` | 5 |
-| `try_recv` / `try_recv_raw` | `take` / `take_raw` | 4 |
-| `SubscriberOptions` | `SubscriptionOptions` | 4 |
-| `QosSettings` | `QoSProfile` | 3 |
+| `try_recv` / `try_recv_raw` | `take` / `take_raw` | 5 |
+| `SubscriberOptions` / `SubscriberHandle` | `SubscriptionOptions` / `SubscriptionHandle` | 2 |
+| `send_reply` | `send_response` | 1 |
 
 `server_available` is the worst of them: five `graph` rows cite it as the
 precedent for a *shape*, so a reader following the citation finds nothing and
@@ -31,7 +31,7 @@ cannot tell whether the precedent was renamed or was never real.
 
 ## What is NOT in scope
 
-Another eighteen rows also name retired spellings and are **correct** to: a
+Another twenty-one rows also name retired spellings and are **correct** to: a
 deprecated-alias row exists precisely to document the old name, and a row
 recording `LANDED`/`DELETED` history must state what it replaced. Any fix that
 sweeps on the spelling alone breaks those. The distinguishing property is
@@ -48,6 +48,18 @@ symbol while the sentence above it named the dead one.
 
 Found while authoring `provides`: two independent passes each hit rows whose
 prose named a symbol that could not be grepped.
+
+## The detector is itself evidence for option 2 below
+
+The first scan for this issue reported eighteen, not fifteen. Three of the
+difference were rows an agent had just corrected, whose new prose names the dead
+spelling *inside a dated `CORRECTED` note* — a legitimately historical mention
+the detector had no marker for. So a heuristic written specifically to find this
+class, by someone holding the whole context, still misclassified 3 of 18 on its
+first run, in the direction of false alarm.
+
+That is the argument against option 3: the audit is not reliable even when
+someone is looking straight at it.
 
 ## Direction
 
