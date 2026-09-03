@@ -29,12 +29,29 @@ fn main() {
     // Bumping to 30 s covers the common slow-Zephyr action window; fast
     // services on POSIX still return in milliseconds so the wider cap
     // only matters when something is genuinely slow.
+    // phase-400 W6 — the `[knobs.zenoh.limits]` rungs. `None` when no lane named
+    // a platform, and the builtins below then stand.
+    let limits = nros_platform_config::platform_config::BuildRungs::from_build_env()
+        .map(|r| r.zenoh_limit_rungs())
+        .unwrap_or_default();
+    // NOT a ladder knob, deliberately: this value is read HERE and in
+    // `nros-build-helpers`'s C emitter, because two artifacts embed it (a Rust
+    // const and a C define). `check-knob-single-reader` allows a migrated knob
+    // exactly one reader, and that invariant is what stops the pair drifting —
+    // so migrating this one needs the two readers to share a single resolution
+    // point first, which is a change to where the value is EMITTED, not to the
+    // ladder.
     let service_timeout_ms: usize = env_usize("NROS_SERVICE_TIMEOUT_MS", 30_000);
-    let keyexpr_string_size: usize = env_usize("NROS_KEYEXPR_STRING_SIZE", 256);
+    let keyexpr_string_size: usize =
+        env_usize_rung("NROS_KEYEXPR_STRING_SIZE", limits.keyexpr_string_size, 256);
     // Phase 124.D.3.c — SPSC ring depth per subscriber. Default 4
     // keeps the static-RAM bump small (4 × SUBSCRIBER_BUFFER_SIZE
     // per subscriber); raise for burst-heavy topics. Must be ≥ 1.
-    let ring_depth: usize = env_usize_min("ZPICO_SUBSCRIBER_RING_DEPTH", 4, 1);
+    let ring_depth: usize = env_usize_min(
+        "ZPICO_SUBSCRIBER_RING_DEPTH",
+        limits.subscriber_ring_depth.unwrap_or(4),
+        1,
+    );
     // Phase 231 (RFC-0038) — size-class receive buffers. `SUBSCRIBER_BUFFER_SIZE`
     // above is the `small` class slot size; the `large` class is for big
     // messages (images, point clouds). A subscription routes to `large` when its
@@ -181,4 +198,14 @@ fn env_usize(name: &str, default: usize) -> usize {
             .and_then(|v| v.parse().ok())
             .unwrap_or(default),
     }
+}
+
+/// phase-400 W6 — env, then the platform/board rung, then the builtin.
+///
+/// A thin sibling of `env_usize` rather than a change to it: the other callers
+/// of that helper are knobs with no tenant, and giving them a rung parameter
+/// they always pass `None` for would say the ladder reaches further than it
+/// does.
+fn env_usize_rung(name: &str, rung: Option<usize>, default: usize) -> usize {
+    env_usize(name, rung.unwrap_or(default))
 }

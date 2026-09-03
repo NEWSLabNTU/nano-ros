@@ -21,9 +21,9 @@ moves with it.
 
 | pool | bytes at default | formula | declared in |
 | --- | ---: | --- | --- |
-| `LARGE_PAYLOADS` | 131,072 | `ZPICO_MAX_LARGE_SUBSCRIBERS * ZPICO_SUBSCRIBER_RING_DEPTH * ZPICO_SUBSCRIBER_LARGE_SIZE` | `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs:200` |
+| `LARGE_PAYLOADS` | — (knob `ZPICO_SUBSCRIBER_RING_DEPTH` has a computed default) | `ZPICO_MAX_LARGE_SUBSCRIBERS * ZPICO_SUBSCRIBER_RING_DEPTH * ZPICO_SUBSCRIBER_LARGE_SIZE` | `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs:200` |
 | `SLOTS` | 8,192 | `NROS_RMW_SUBSCRIBER_SLOTS * 1024` | `packages/rmw/cffi/src/rust_adapter.rs:111` |
-| `SMALL_PAYLOADS` | 32,768 | `ZPICO_MAX_SUBSCRIBERS * ZPICO_SUBSCRIBER_RING_DEPTH * ZPICO_SUBSCRIBER_BUFFER_SIZE` | `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs:199` |
+| `SMALL_PAYLOADS` | — (knob `ZPICO_SUBSCRIBER_RING_DEPTH` has a computed default) | `ZPICO_MAX_SUBSCRIBERS * ZPICO_SUBSCRIBER_RING_DEPTH * ZPICO_SUBSCRIBER_BUFFER_SIZE` | `packages/rmw/zenoh/nros-rmw-zenoh/src/shim/subscriber.rs:199` |
 
 ## Every sizing knob
 
@@ -38,10 +38,10 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `NROS_EXECUTOR_MAX_NODES` | 4 | `packages/core/nros-node` |
 | `NROS_EXECUTOR_MAX_SC` | 8 | `packages/core/nros-node` |
 | `NROS_EXECUTOR_MAX_SHUTDOWN_CBS` | 2 | `packages/core/nros-node` |
-| `NROS_FREERTOS_APP_STACK_KB` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:851` | `packages/tooling/nros-platform-config` |
-| `NROS_FREERTOS_HEAP_KB` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:850` | `packages/tooling/nros-platform-config` |
-| `NROS_KEYEXPR_STRING_SIZE` | 256 | `packages/rmw/zenoh/nros-rmw-zenoh` |
-| `NROS_LET_BUFFER_SIZE` | 512 | `packages/tooling/nros-build-helpers` |
+| `NROS_FREERTOS_APP_STACK_KB` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:893` | `packages/tooling/nros-platform-config` |
+| `NROS_FREERTOS_HEAP_KB` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:892` | `packages/tooling/nros-platform-config` |
+| `NROS_KEYEXPR_STRING_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:1061` | `packages/tooling/nros-platform-config` |
+| `NROS_LET_BUFFER_SIZE` | computed — see `packages/tooling/nros-build-helpers/src/c.rs:116` | `packages/tooling/nros-build-helpers` |
 | `NROS_MAX_ARRAY_LEN` | 32 | `packages/core/nros-params` |
 | `NROS_MAX_BYTE_ARRAY_LEN` | 256 | `packages/core/nros-params` |
 | `NROS_MAX_PARAMETERS` | 32 | `packages/core/nros-params` |
@@ -64,13 +64,14 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `NROS_SMOLTCP_SOCKET_TIMEOUT_MS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:67` | `packages/drivers/net/nros-smoltcp` |
 | `NROS_SUBSCRIBER_BUFFER_SIZE` | computed — see `packages/core/nros-node/build.rs:171` | `packages/core/nros-node` |
 | `NROS_SUBSCRIPTION_BUFFER_SIZE` | 1024 | `packages/core/nros-node` |
-| `NROS_XRCE_STREAM_HISTORY` | computed — see `packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs:259` | `packages/rmw/xrce/nros-rmw-xrce-cffi` |
-| `NROS_ZEPHYR_HEAP_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:849` | `packages/tooling/nros-platform-config` |
-| `ZPICO_BATCH_MULTICAST_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:977` | `packages/tooling/nros-platform-config` |
-| `ZPICO_BATCH_UNICAST_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:976` | `packages/tooling/nros-platform-config` |
-| `ZPICO_FRAG_MAX_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:978` | `packages/tooling/nros-platform-config` |
-| `ZPICO_GET_POLL_INTERVAL_MS` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:980` | `packages/tooling/nros-platform-config` |
-| `ZPICO_GET_REPLY_BUF_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:979` | `packages/tooling/nros-platform-config` |
+| `NROS_XRCE_CUSTOM_TRANSPORT_MTU` | computed — see `packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs:406` | `packages/rmw/xrce/nros-rmw-xrce-cffi` |
+| `NROS_XRCE_STREAM_HISTORY` | computed — see `packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs:264` | `packages/rmw/xrce/nros-rmw-xrce-cffi` |
+| `NROS_ZEPHYR_HEAP_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:891` | `packages/tooling/nros-platform-config` |
+| `ZPICO_BATCH_MULTICAST_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:1081` | `packages/tooling/nros-platform-config` |
+| `ZPICO_BATCH_UNICAST_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:1080` | `packages/tooling/nros-platform-config` |
+| `ZPICO_FRAG_MAX_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:1082` | `packages/tooling/nros-platform-config` |
+| `ZPICO_GET_POLL_INTERVAL_MS` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:1084` | `packages/tooling/nros-platform-config` |
+| `ZPICO_GET_REPLY_BUF_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:1083` | `packages/tooling/nros-platform-config` |
 | `ZPICO_LEASE_TASK_PRIORITY` | 16 | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_MAX_LARGE_SUBSCRIBERS` | 2 | `packages/rmw/zenoh/nros-rmw-zenoh` |
 | `ZPICO_MAX_LIVELINESS` | 16 | `packages/rmw/zenoh/nros-zpico-build` |
@@ -84,5 +85,5 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `ZPICO_SERVICE_BUFFER_SIZE` | 1024 | `packages/rmw/zenoh/nros-rmw-zenoh` |
 | `ZPICO_SUBSCRIBER_BUFFER_SIZE` | 1024 | `packages/rmw/zenoh/nros-rmw-zenoh` |
 | `ZPICO_SUBSCRIBER_LARGE_SIZE` | 16384 | `packages/rmw/zenoh/nros-rmw-zenoh` |
-| `ZPICO_SUBSCRIBER_RING_DEPTH` | 4 | `packages/rmw/zenoh/nros-rmw-zenoh` |
+| `ZPICO_SUBSCRIBER_RING_DEPTH` | computed — see `packages/rmw/zenoh/nros-rmw-zenoh/build.rs:50` | `packages/rmw/zenoh/nros-rmw-zenoh` |
 | `ZPICO_SUBSCRIBER_SIZE_THRESHOLD` | 2048 | `packages/rmw/zenoh/nros-rmw-zenoh` |

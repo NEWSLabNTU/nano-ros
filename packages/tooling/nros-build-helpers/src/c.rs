@@ -105,7 +105,21 @@ fn generate_config(
     let message_buffer_size = dep_usize("DEP_NROS_NODE_RX_BUF_SIZE");
 
     // --- C API knobs (nros-c only, not shared with nros-node) ---
-    let let_buffer_size = env_usize("NROS_LET_BUFFER_SIZE", 512);
+    // phase-400 W6 — the `[knobs.runtime]` rungs for the LET buffer.
+    //
+    // `NROS_SERVICE_TIMEOUT_MS` below is deliberately NOT on the ladder: it is
+    // read here and in `nros-rmw-zenoh/build.rs` because two artifacts embed
+    // it, and a migrated knob may have exactly one reader
+    // (`check-knob-single-reader`). Migrating it means giving the pair one
+    // emission point first.
+    let rungs = nros_platform_config::platform_config::BuildRungs::from_build_env();
+    let let_buffer_size = env_usize(
+        "NROS_LET_BUFFER_SIZE",
+        rungs
+            .as_ref()
+            .and_then(|r| r.runtime_rungs().let_buffer_size)
+            .unwrap_or(512),
+    );
     // Phase 192.4 — default service-client RPC timeout. Read the same env var
     // and use the same default (30000) as the zenoh backend
     // (`nros-rmw-zenoh/build.rs`) so the two paths agree.

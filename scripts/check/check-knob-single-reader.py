@@ -100,6 +100,15 @@ OWNERS: dict[str, str] = {
     "ZPICO_FRAG_MAX_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
     "ZPICO_GET_REPLY_BUF_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
     "ZPICO_GET_POLL_INTERVAL_MS": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    # The zenoh limits + xrce tenants, and the LET buffer (phase-400 W6).
+    # `NROS_SERVICE_TIMEOUT_MS` is NOT here: it has two readers by design (a
+    # Rust const and a C define), and this gate's one-reader rule is what keeps
+    # them equal. Migrating it needs a single emission point first.
+    "NROS_KEYEXPR_STRING_SIZE": "packages/rmw/zenoh/nros-rmw-zenoh/build.rs",
+    "ZPICO_SUBSCRIBER_RING_DEPTH": "packages/rmw/zenoh/nros-rmw-zenoh/build.rs",
+    "NROS_XRCE_CUSTOM_TRANSPORT_MTU": "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs",
+    "NROS_XRCE_STREAM_HISTORY": "packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs",
+    "NROS_LET_BUFFER_SIZE": "packages/tooling/nros-build-helpers/src/c.rs",
     "NROS_TRANSPORT_KIND": "packages/boards/nros-board-common/src/platform_config.rs",
     "NROS_TRANSPORT_ENDPOINT": "packages/boards/nros-board-common/src/platform_config.rs",
     "ZPICO_TX_BATCH": "packages/boards/nros-board-common/src/platform_config.rs",

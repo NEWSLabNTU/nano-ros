@@ -174,6 +174,9 @@ pub struct Knobs {
     /// phase-400 W6 — the component-runtime tenant. See [`RuntimeKnobs`].
     #[serde(default)]
     pub runtime: RuntimeKnobs,
+    /// phase-400 W6 — the XRCE transport tenant. See [`XrceKnobs`].
+    #[serde(default)]
+    pub xrce: XrceKnobs,
     /// phase-400 W3 / RFC-0086 D1 — the transport tenant.
     ///
     /// The first knob that crosses all three descriptor axes: the backend knows
@@ -422,6 +425,37 @@ impl BuildRungs {
         }
     }
 
+    /// The `[knobs.xrce]` RUNGS for this build. See [`Self::rmw_rungs`].
+    pub fn xrce_rungs(&self) -> XrceKnobs {
+        let plat = self.tree.platform_xrce_rungs(&self.platform);
+        let plat = self.or_builtin_rungs("xrce", plat);
+        let b = self
+            .board
+            .as_ref()
+            .map(|f| f.knobs.xrce.clone())
+            .unwrap_or_default();
+        XrceKnobs {
+            custom_transport_mtu: b.custom_transport_mtu.or(plat.custom_transport_mtu),
+            stream_history: b.stream_history.or(plat.stream_history),
+        }
+    }
+
+    /// The `[knobs.zenoh.limits]` RUNGS for this build. See [`Self::rmw_rungs`].
+    pub fn zenoh_limit_rungs(&self) -> ZenohLimitKnobs {
+        let plat = self.tree.platform_zenoh_limit_rungs(&self.platform);
+        let plat = self.or_builtin_rungs("zenoh.limits", plat);
+        let b = self
+            .board
+            .as_ref()
+            .map(|f| f.knobs.zenoh.limits.clone())
+            .unwrap_or_default();
+        ZenohLimitKnobs {
+            keyexpr_string_size: b.keyexpr_string_size.or(plat.keyexpr_string_size),
+            service_timeout_ms: b.service_timeout_ms.or(plat.service_timeout_ms),
+            subscriber_ring_depth: b.subscriber_ring_depth.or(plat.subscriber_ring_depth),
+        }
+    }
+
     /// The `[knobs.zenoh.wire]` RUNGS for this build — platform merged with
     /// board, board winning. See [`Self::rmw_rungs`].
     pub fn wire_rungs(&self) -> WireKnobs {
@@ -456,6 +490,7 @@ impl BuildRungs {
             component_slot_bytes: b.component_slot_bytes.or(plat.component_slot_bytes),
             max_class_instances: b.max_class_instances.or(plat.max_class_instances),
             max_cell_entities: b.max_cell_entities.or(plat.max_cell_entities),
+            let_buffer_size: b.let_buffer_size.or(plat.let_buffer_size),
         }
     }
 
@@ -655,6 +690,11 @@ pub struct RuntimeKnobs {
     pub max_class_instances: Option<usize>,
     #[serde(default)]
     pub max_cell_entities: Option<usize>,
+    /// The logical-execution-time staging buffer, read by
+    /// `nros-build-helpers`'s C emitter. Grouped here because LET is an
+    /// execution-model buffer, not a wire or transport size.
+    #[serde(default)]
+    pub let_buffer_size: Option<usize>,
 }
 
 /// Every runtime knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
@@ -663,6 +703,7 @@ pub const RUNTIME_KNOBS: &[&str] = &[
     "component_slot_bytes",
     "max_class_instances",
     "max_cell_entities",
+    "let_buffer_size",
 ];
 
 /// The env front-end for a runtime knob — the EXISTING names, verbatim.
@@ -672,6 +713,7 @@ pub fn runtime_env_key(knob: &str) -> &'static str {
         "component_slot_bytes" => "NROS_RUNTIME_COMPONENT_SLOT_BYTES",
         "max_class_instances" => "NROS_RUNTIME_MAX_CLASS_INSTANCES",
         "max_cell_entities" => "NROS_RUNTIME_MAX_CELL_ENTITIES",
+        "let_buffer_size" => "NROS_LET_BUFFER_SIZE",
         other => panic!("unknown runtime knob `{other}`"),
     }
 }
@@ -943,6 +985,9 @@ pub struct ZenohKnobs {
     /// the wire itself, which no campaign derives.
     #[serde(default)]
     pub wire: WireKnobs,
+    /// phase-400 W6 — zenoh runtime limits. See [`ZenohLimitKnobs`].
+    #[serde(default)]
+    pub limits: ZenohLimitKnobs,
 }
 
 /// phase-400 W6 — the zenoh WIRE sizes, read by `nros-zpico-build`.
@@ -959,6 +1004,65 @@ pub struct WireKnobs {
     pub get_reply_buf_size: Option<usize>,
     #[serde(default)]
     pub get_poll_interval_ms: Option<usize>,
+}
+
+/// phase-400 W6 — the XRCE transport tenant, read by `nros-rmw-xrce-cffi`.
+///
+/// The MTU is a TRANSPORT fact (a serial link's frame budget differs from
+/// UDP's) and the stream history is the reliable-stream depth the agent
+/// negotiates against. Both are per-platform in practice and were env-only.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct XrceKnobs {
+    #[serde(default)]
+    pub custom_transport_mtu: Option<usize>,
+    #[serde(default)]
+    pub stream_history: Option<usize>,
+}
+
+/// Every XRCE knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
+pub const XRCE_KNOBS: &[&str] = &["custom_transport_mtu", "stream_history"];
+
+/// The env front-end for an XRCE knob — the EXISTING names, verbatim.
+pub fn xrce_env_key(knob: &str) -> &'static str {
+    match knob {
+        "custom_transport_mtu" => "NROS_XRCE_CUSTOM_TRANSPORT_MTU",
+        "stream_history" => "NROS_XRCE_STREAM_HISTORY",
+        other => panic!("unknown xrce knob `{other}`"),
+    }
+}
+
+/// phase-400 W6 — zenoh RUNTIME limits, read by `nros-rmw-zenoh`.
+///
+/// Separate from [`WireKnobs`] on purpose: those size the WIRE (batching,
+/// fragmentation), these bound what a session holds — the key-expression
+/// string, the default RPC timeout, and the per-subscriber SPSC ring.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ZenohLimitKnobs {
+    #[serde(default)]
+    pub keyexpr_string_size: Option<usize>,
+    #[serde(default)]
+    pub service_timeout_ms: Option<usize>,
+    #[serde(default)]
+    pub subscriber_ring_depth: Option<usize>,
+}
+
+/// Every zenoh limit knob, in a stable order.
+pub const ZENOH_LIMIT_KNOBS: &[&str] = &[
+    "keyexpr_string_size",
+    "service_timeout_ms",
+    "subscriber_ring_depth",
+];
+
+/// The env front-end for a zenoh limit knob — the EXISTING names, verbatim.
+pub fn zenoh_limit_env_key(knob: &str) -> &'static str {
+    match knob {
+        "keyexpr_string_size" => "NROS_KEYEXPR_STRING_SIZE",
+        "service_timeout_ms" => "NROS_SERVICE_TIMEOUT_MS",
+        "subscriber_ring_depth" => "ZPICO_SUBSCRIBER_RING_DEPTH",
+        other => panic!("unknown zenoh limit knob `{other}`"),
+    }
 }
 
 /// Every wire knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
@@ -1599,6 +1703,7 @@ impl PlatformsTree {
                 (&mut out.component_slot_bytes, r.component_slot_bytes),
                 (&mut out.max_class_instances, r.max_class_instances),
                 (&mut out.max_cell_entities, r.max_cell_entities),
+                (&mut out.let_buffer_size, r.let_buffer_size),
             ] {
                 if src.is_some() {
                     *dst = src;
@@ -1677,6 +1782,54 @@ impl PlatformsTree {
         Ok(out)
     }
 
+    fn platform_xrce_knobs(&self, name: &str) -> Result<XrceKnobs, ConfigError> {
+        let chain = self.chain(name)?;
+        let mut out = XrceKnobs::default();
+        for file in chain.iter().rev() {
+            let x = &file.knobs.xrce;
+            for (dst, src) in [
+                (&mut out.custom_transport_mtu, x.custom_transport_mtu),
+                (&mut out.stream_history, x.stream_history),
+            ] {
+                if src.is_some() {
+                    *dst = src;
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// The `[knobs.xrce]` rungs for a platform, inherits chain applied.
+    pub fn platform_xrce_rungs(&self, platform: &str) -> Result<XrceKnobs, ConfigError> {
+        self.platform_xrce_knobs(platform)
+    }
+
+    fn platform_zenoh_limit_knobs(&self, name: &str) -> Result<ZenohLimitKnobs, ConfigError> {
+        let chain = self.chain(name)?;
+        let mut out = ZenohLimitKnobs::default();
+        for file in chain.iter().rev() {
+            let z = &file.knobs.zenoh.limits;
+            for (dst, src) in [
+                (&mut out.keyexpr_string_size, z.keyexpr_string_size),
+                (&mut out.service_timeout_ms, z.service_timeout_ms),
+                (&mut out.subscriber_ring_depth, z.subscriber_ring_depth),
+            ] {
+                if src.is_some() {
+                    *dst = src;
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// The `[knobs.zenoh.limits]` rungs for a platform, inherits chain applied.
+    pub fn platform_zenoh_limit_rungs(
+        &self,
+        platform: &str,
+    ) -> Result<ZenohLimitKnobs, ConfigError> {
+        self.platform_zenoh_limit_knobs(platform)
+    }
+
     /// The `[knobs.zenoh.wire]` rungs for a platform, inherits chain applied.
     pub fn platform_wire_rungs(&self, platform: &str) -> Result<WireKnobs, ConfigError> {
         self.platform_wire_knobs(platform)
@@ -1701,6 +1854,7 @@ impl PlatformsTree {
             "component_slot_bytes" => k.component_slot_bytes,
             "max_class_instances" => k.max_class_instances,
             "max_cell_entities" => k.max_cell_entities,
+            "let_buffer_size" => k.let_buffer_size,
             _ => None,
         };
         let mut out = Vec::new();

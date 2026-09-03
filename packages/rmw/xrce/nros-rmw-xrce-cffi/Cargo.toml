@@ -57,6 +57,8 @@ host-only-reason = "XRCE C FFI surface, built per-platform by cmake"
 nros-rmw-cffi = { version = "0.5.0", path = "../../cffi", default-features = false }
 
 [build-dependencies]
+# phase-400 W6 — the ladder rungs, from the LEAF crate.
+nros-platform-config = { path = "../../../tooling/nros-platform-config" }
 cc = "1"
 # issue 0383 — strict C diagnostics (implicit-function-declaration,
 # int-conversion) as ERRORS at every `cc::Build` below. One shared spelling.

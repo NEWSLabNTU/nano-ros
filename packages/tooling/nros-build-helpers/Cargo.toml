@@ -37,6 +37,9 @@ default = []
 cbindgen-drift-check = ["dep:cbindgen"]
 
 [dependencies]
+# phase-400 W6 — the ladder rungs. A regular dependency, not a build one:
+# this crate IS the helper a build script calls.
+nros-platform-config = { path = "../nros-platform-config" }
 cbindgen = { workspace = true, optional = true }
 cc = "1"
 # issue 0383 — strict C diagnostics (implicit-function-declaration,
@@ -55,3 +58,4 @@ nros-sizes-build = { workspace = true }
 
 [lints]
 workspace = true
+
