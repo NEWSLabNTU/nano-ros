@@ -45,8 +45,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: false
-      - name: Verify this runner's labels are true
-        run: ./scripts/ci/runner-doctor.sh nros-qemu,nros-sdk-zephyr,nros-big
       # A lane answers two questions with different answers: which fixtures must
       # be FRESH (its cell cover) and which must EXIST (a property of the run).
       # `lane=tier2` is the build tier 2's run requires — see #482 / phase-340 W3.
@@ -62,6 +60,36 @@ jobs:
         run: |
           source ./activate.sh
           just setup tier2
+
+      # AFTER `setup`, not before — phase-413 W2.
+      #
+      # A runner that lies about its labels wins jobs it cannot run, and the red
+      # lands on the author's change looking like a code failure. That is why
+      # this exists. But it ran FIRST, and one thing it asserts is not a
+      # property of the host at all:
+      #
+      #   runner-doctor.sh checks `$root/build/qemu/bin/qemu-system-arm` FIRST —
+      #   "the project-local patched build is the PRIMARY path (phase-143) … a
+      #   host with it needs nothing from the system" — and falls back to the
+      #   system qemu only when that is absent.
+      #
+      # `build/qemu` is inside the CHECKOUT, and `just setup tier2` creates it:
+      # the tier-2 preset includes the `qemu` module, whose `setup` ends in
+      # `just qemu setup-qemu`. So the check ran one step too early, found no
+      # patched binary, fell back to the system qemu — 6.2 on this runner — and
+      # failed the `>= 7.2` the RTOS multi-instance cells need. Every run of
+      # this workflow died at step 2 having provisioned nothing:
+      #
+      #   [MISSING] qemu-system-arm is 6.2 — the RTOS multi-instance cells need >= 7.2
+      #   runner-doctor: FAIL — at least one label claims something this host does not have.
+      #
+      # It was reported as a host needing `runner-provision.sh nros-qemu`. It is
+      # a workflow asking the host for something the next step provides.
+      #
+      # Fail-fast is not lost: a genuinely mislabeled runner still fails here,
+      # and `setup` would have failed on it first anyway.
+      - name: Verify this runner's labels are true
+        run: ./scripts/ci/runner-doctor.sh nros-qemu,nros-sdk-zephyr,nros-big
       # `just ci matrix`, NOT `just test tier2`. phase-411 W4 briefly used the
       # latter and that was a COVERAGE REGRESSION caught by
       # check-tier-has-ci-owner: the tier recipe is `_lane-gate` + `check` +
