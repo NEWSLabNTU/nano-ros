@@ -309,3 +309,62 @@ native cargo path has no such carrier, so a derivation consumed by
 `nros_cargo_build.cmake` leaves every `cargo`-built image — every native example,
 every fixture this repo tests against — at crate defaults. Same knob, same
 derived number, no way in.
+
+
+## What the derivation is WORTH here — measured A/B, 2026-09-01
+
+The sections above say the derivation cannot reach a cargo-built image. This is
+what it would recover if it could. Same leaf, same profile, same target dir, one
+variable:
+
+```
+cd examples/native/rust/talker
+cargo build --profile nros-relwithdebinfo                       # default
+ZPICO_MAX_QUERYABLES=0 ZPICO_MAX_LARGE_SUBSCRIBERS=0 \
+    cargo build --profile nros-relwithdebinfo                   # honest
+```
+
+| symbol | default | knobs at 0 | delta |
+| --- | ---: | ---: | ---: |
+| RAM attributed to symbols | 415,469 | 136,293 | **-279,176** |
+| `SERVICE_BUFFERS` | 144,128 | 0 | -144,128 |
+| `LARGE_PAYLOADS` | 131,072 | 0 | -131,072 |
+| `g_sessions` | 90,136 | 86,168 | -3,968 |
+| `SMALL_PAYLOADS` | 32,768 | 32,768 | — |
+
+**67.2% of this image's attributed static RAM, from two environment
+variables.** The default build reproduces the fixture's 415,469 to the byte, so
+the leaf and fixture paths agree and the comparison is sound.
+
+Both zeroes are TRUE of this image, not chosen for effect: a talker declares one
+publisher, no service and no subscription. `ZPICO_MAX_QUERYABLES = 0` is what
+phase-412 derives for exactly this shape; `ZPICO_MAX_LARGE_SUBSCRIBERS = 0` is
+what `NROS_DERIVED_MAX_LARGE_SUBSCRIBERS` derives from a type set with nothing
+over the small-class ceiling.
+
+Note `g_sessions` moves too. It is not one of the two pools this issue names —
+it carries the C shim's per-session queryable table, which
+`cmd/entity_facts.rs` already documents as a second consumer of
+`ZPICO_MAX_QUERYABLES`. So the knob is worth 3,968 B more than the pool
+arithmetic alone predicts.
+
+## Deliberately NOT fixed here
+
+Two fixes were available and both were declined, with reasons:
+
+* **Hand-set the knobs in each native example's `.cargo/config.toml`.** It
+  would work and the numbers would be true. It is also twenty hand-picked
+  numbers of exactly the kind phase-412 exists to delete, planted in the demos
+  people copy from. A number that is correct today and unaudited tomorrow is
+  the thing this campaign keeps finding.
+* **Build a second derivation path for cargo.** phase-412 owns the carrier
+  question, and the sizes-header mirror class (0088 -> 0114 -> 0122 -> 0123 ->
+  0245 -> 0268) is what two implementations of one derivation produce. The
+  right move is one carrier that both CMake and cargo consume, and that is a
+  design decision for the phase, not a second mechanism bolted on from an
+  issue.
+
+What this issue now hands phase-412 is the number: the carrier is worth 279 KB
+on the smallest possible image, and a standalone leaf has no model to derive
+FROM, so "state the knob" may be the only honest answer for the examples even
+after the carrier exists.
