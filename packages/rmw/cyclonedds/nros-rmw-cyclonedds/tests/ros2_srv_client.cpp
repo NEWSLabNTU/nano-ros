@@ -117,7 +117,30 @@ int main() {
     put_le64(req + 12, 31);
     uint8_t rep[64] = {};
     size_t n = 0;
-    rmw_ret_t call_rc = call_blocking(&cli, req, sizeof(req), rep, sizeof(rep), &n);
+
+    // Issue 0969 — `NROS_ROUNDTRIP_ITERS` repeats the CALL so the client half of
+    // the service data path can be priced by slope, the same method and the same
+    // variable name `data_roundtrip.cpp` uses.
+    //
+    // Why here and not only in `service_roundtrip.cpp`: that harness puts client
+    // and server in ONE process, so Cyclone can hand the sample to the local
+    // reader by reference and the write path may never serialise. A number
+    // measured there can therefore under-report what a real deployment pays.
+    // This binary talks to a SEPARATE server process, which is the case a
+    // control loop actually runs.
+    //
+    // Default 1, so the interop test this binary exists for is unchanged.
+    long iters = 1;
+    if (const char *e = std::getenv("NROS_ROUNDTRIP_ITERS")) {
+        const long parsed = std::strtol(e, nullptr, 10);
+        if (parsed > 0) iters = parsed;
+    }
+    rmw_ret_t call_rc = NROS_RMW_RET_OK;
+    for (long it = 0; it < iters; ++it) {
+        n = 0;
+        call_rc = call_blocking(&cli, req, sizeof(req), rep, sizeof(rep), &n);
+        if (call_rc != NROS_RMW_RET_OK || n == 0) break;
+    }
     if (call_rc != NROS_RMW_RET_OK || n == 0) {
         std::fprintf(stderr, "call_blocking failed rc=%d len=%zu\n", (int) call_rc, n);
         g_vt->destroy_client(&cli);
