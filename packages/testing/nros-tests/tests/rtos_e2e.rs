@@ -967,9 +967,22 @@ fn test_rtos_action_e2e(
     let goal_accepted = client_out.contains("Goal accepted");
     let completed = client_out.contains(nros_tests::output::ACTION_RESULT_PREFIX);
 
+    // Issue 0870 — a failure here is now ANSWERABLE from the output above, and
+    // said so, because for weeks it was not: NuttX had no `printk` arm so every
+    // shim diagnostic compiled away, and retries reported the cell FLAKY so
+    // nobody read the one run that had anything to say.
     assert!(
         goal_accepted && completed,
-        "{} {} action E2E failed: accepted={}, completed={}",
+        "{} {} action E2E failed: accepted={}, completed={}\n\
+         \n\
+         If the client never reached `Sending goal`, construction failed. Read \
+         the client output above for `action client: <which> failed` and for \
+         zenoh-pico's raw code (`zpico: z_declare_subscriber (ring) failed: <n>` \
+         / `z_liveliness_declare_token failed: <n>`). THE QUESTION IT ANSWERS: \
+         did ALL SIX network operations fail (5 liveliness declares + the \
+         feedback subscriber -- the session's declare/TX path is dead), or ONLY \
+         the subscriber (a subscriber-specific fault)? That distinction is \
+         issue 0870's whole remaining unknown.",
         platform,
         lang,
         goal_accepted,

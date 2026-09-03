@@ -534,7 +534,32 @@ retries = 1
 filter = "binary(rtos_e2e) and test(Platform__Nuttx)"
 test-group = "qemu-nuttx"
 slow-timeout = { period = "120s", terminate-after = 3 }
-retries = 2
+# Issue 0870 — NO RETRIES, and this is a policy statement rather than a tuning
+# choice. These cells exist to show an RTOS meeting its obligations, including
+# under load; that is the property being tested. A cell that fails once and
+# passes on the third attempt has NOT demonstrated it — it has demonstrated
+# that the guarantee is probabilistic, which is the failure. Retrying converts
+# that finding into a green.
+#
+# It cost this: 0870 (nuttx C++ `create_action_client` -> -100) failed roughly
+# two runs in three for weeks and was reported FLAKY, so it passed CI on its
+# third try and nobody looked. Meanwhile the one instrument that would explain
+# it did not exist — NuttX had no `printk` arm, so every shim diagnostic
+# compiled away. Both halves are fixed now: the diagnostics are linked in
+# (verified by `strings`), `rtos_e2e.rs:963-965` already prints server and
+# client output on every run, and a failure will name which of the four
+# declarations failed plus zenoh-pico's raw return code.
+#
+# So a red here is INFORMATION, not noise. If concurrency is what makes a cell
+# fail, the fix is the test-group and port routing above — configuring the
+# concurrency correctly — not re-rolling the dice.
+#
+# The other three RTOS e2e overrides still carry `retries = 2`
+# (Platform__Freertos, Platform__Threadx*, ThreadxLinux). They mask the same
+# class and are deliberately left for a separate decision: issue 0968 records
+# ~12 unreproduced tier-2 e2e failures, so flipping all four at once would
+# produce a wall of red that obscures rather than reveals.
+retries = 0
 
 # ThreadX QEMU RISC-V — allocator window 9400+. Match only the RV64 rtos_e2e
 # slice, not `ThreadxLinux`, by using the trailing-underscore-free

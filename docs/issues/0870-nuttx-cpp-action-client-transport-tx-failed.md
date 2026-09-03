@@ -315,3 +315,45 @@ A failing run. Since it will not fail on demand here, the cheapest honest option
 is to leave the instrumentation in place and catch it in a sweep — the cell is
 reported FLAKY by nextest retries, so the CI history already knows when it fails
 even though no one has read a failing run since the diagnostics landed.
+
+## 2026-09-04 — policy: NO RETRIES on this cell
+
+Owner decision, and it reframes what the cell is for. These e2e cells exist to
+show an RTOS meeting its obligations **including under load** — that is the
+property under test. A cell that fails once and passes on the third attempt has
+not demonstrated it; it has demonstrated that the guarantee is PROBABILISTIC,
+which is the failure. Retrying converts that finding into a green.
+
+`retries = 2` -> `retries = 0` for `binary(rtos_e2e) and test(Platform__Nuttx)`.
+
+That retry is what kept this issue unreadable for weeks: the cell failed roughly
+two runs in three, was reported FLAKY, passed CI on its third try, and nobody
+looked. Both halves of the blindness are now gone:
+
+* the shim diagnostics are linked in (verified by `strings`, absent from the
+  Aug-21 binaries) — the NuttX `printk` arm exists now;
+* `rtos_e2e.rs` already prints server boot, server post-boot and client output
+  on EVERY run, so a failure carries them;
+* the action assertion now names the question its own output answers.
+
+**A red here is information, not noise.** And if concurrency is what makes a
+cell fail, the fix is the `test-group` and port routing — configuring the
+concurrency correctly — not re-rolling the dice.
+
+### What a failing run will now settle
+
+The one remaining unknown: **six of six, or one of six?** Construction performs
+five liveliness declares plus the feedback subscriber. If all six failed, the
+session's declare/TX path is dead at that moment and `ConnectionFailed` was
+accidentally the right family. If only the subscriber failed, it is
+subscriber-specific and zenoh-pico's raw code names it. Nobody has ever seen
+that, because nobody has read a failing run since the diagnostics landed.
+
+### Deliberately NOT done
+
+The other three RTOS e2e overrides still carry `retries = 2`:
+`Platform__Freertos`, `Platform__Threadx*`, `ThreadxLinux`. They mask the same
+class and the same argument applies to them, but issue 0968 records ~12
+unreproduced tier-2 e2e failures — flipping all four at once produces a wall of
+red that obscures rather than reveals. Extending this is a one-line change per
+override and a separate decision, not a rediscovery.
