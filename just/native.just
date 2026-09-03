@@ -163,8 +163,34 @@ build-fixtures: build-fixture-rust build-fixture-extras build-workspace-fixtures
     @echo "Native test fixtures built."
 
 # Build native workspace fixtures from examples/fixtures.toml.
+#
+# CODEGEN FIRST — phase-413 W2, and it is issue 0992 in a second place.
+#
+# A workspace entry reaches its RMW, its ROS edition and its CAPABILITY features
+# only through the `generated/nros-selection/<entry>` facade that `nros sync`
+# writes. Without it `nros build` emits the Entry with none of them — and only
+# WARNS, because an unsynced workspace is a state it is documented to tolerate:
+#
+#   nros build: warning: no selection facade at …/generated/nros-selection/… —
+#   building `native_rust_qos` without its RMW, ROS edition and capability
+#   features. Run `nros sync` first if this Entry needs them (issue 0937).
+#
+# `host-tests` called this recipe directly and ran NO codegen step anywhere in
+# the job, so the facades never existed there. The features workspace declares
+# `features = ["param_services", "lifecycle"]`, so every entry compiled without
+# them and the build died in const eval, hundreds of lines away, naming neither
+# sync nor the facade:
+#
+#   error[E0080]: evaluation panicked: this system declares `[param_services]`
+#   but this `nros` build does not carry the `param-services` feature
+#
+# 0992 put codegen in `just build`; this recipe is reachable WITHOUT it, which
+# is the same gap one call site over. `_codegen` is idempotent and ~9 s warm, so
+# paying it here costs little and removes the whole class for every caller
+# rather than for the one workflow that tripped over it.
 [group("examples")]
 build-workspace-fixtures:
+    @just _codegen
     bash scripts/build/workspace-fixtures-build.sh linux
 
 # Build every native Rust test fixture from the SSOT manifest
