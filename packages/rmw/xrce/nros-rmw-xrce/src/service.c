@@ -194,6 +194,9 @@ rmw_ret_t xrce_service_create(const rmw_node_t* node, const rmw_service_type_sup
                                   st->input_reliable, &delivery);
     (void)uxr_run_session_time(&st->session, XRCE_SESSION_FLUSH_TIMEOUT_MS);
 
+    /* Issue 0847 — this entity now holds a pointer into the session state, so
+     * the session may not free itself until this handle is gone. */
+    xrce_session_entity_attach(st);
     out->backend_data = ss;
     return NROS_RMW_RET_OK;
 }
@@ -209,14 +212,24 @@ rmw_ret_t xrce_service_destroy(rmw_service_t* server) {
         ss->slot->active = false;
         ss->slot->req_count = 0;
     }
-    /* Phase 376 W5 — see xrce_publisher_destroy: fire-and-forget by design,
-     * so a buffering failure is the only verdict this frame can have. */
-    uint16_t req = uxr_buffer_delete_entity(&st->session, st->output_reliable, ss->replier_oid);
-    (void)uxr_run_session_time(&st->session, 0);
+    /* Issue 0847 — a CLOSED session has already deleted the uxr session and shut
+     * the transport, so the agent dropped this entity with it. Reading
+     * `st->session` here is the use-after-free itself, so the check comes first.
+     * Skipping is not a failure: this is the supported teardown order. */
+    rmw_ret_t ret = NROS_RMW_RET_OK;
+    if (!xrce_session_is_closed(st)) {
+        /* Phase 376 W5 — see xrce_publisher_destroy: fire-and-forget by design,
+         * so a buffering failure is the only verdict this frame can have. */
+        uint16_t req = uxr_buffer_delete_entity(&st->session, st->output_reliable, ss->replier_oid);
+        (void)uxr_run_session_time(&st->session, 0);
+        ret = req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
+    }
 
     nros_xrce_free(ss);
     server->backend_data = NULL;
-    return req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
+    /* LAST — this may free `st`. Nothing may touch it afterwards. */
+    xrce_session_entity_detach(st);
+    return ret;
 }
 
 /* Issue 0773 — the length-or-status shape is retired here too.
@@ -620,6 +633,9 @@ rmw_ret_t xrce_client_create(const rmw_node_t* node, const rmw_service_type_supp
                                   st->input_reliable, &delivery);
     (void)uxr_run_session_time(&st->session, XRCE_SESSION_FLUSH_TIMEOUT_MS);
 
+    /* Issue 0847 — this entity now holds a pointer into the session state, so
+     * the session may not free itself until this handle is gone. */
+    xrce_session_entity_attach(st);
     out->backend_data = cs;
     return NROS_RMW_RET_OK;
 }
@@ -635,13 +651,23 @@ rmw_ret_t xrce_client_destroy(rmw_client_t* client) {
         cs->slot->active = false;
         cs->slot->has_reply = false;
     }
-    /* Phase 376 W5 — see xrce_publisher_destroy: fire-and-forget by design,
-     * so a buffering failure is the only verdict this frame can have. */
-    uint16_t req = uxr_buffer_delete_entity(&st->session, st->output_reliable, cs->requester_oid);
-    (void)uxr_run_session_time(&st->session, 0);
+    /* Issue 0847 — a CLOSED session has already deleted the uxr session and shut
+     * the transport, so the agent dropped this entity with it. Reading
+     * `st->session` here is the use-after-free itself, so the check comes first.
+     * Skipping is not a failure: this is the supported teardown order. */
+    rmw_ret_t ret = NROS_RMW_RET_OK;
+    if (!xrce_session_is_closed(st)) {
+        /* Phase 376 W5 — see xrce_publisher_destroy: fire-and-forget by design,
+         * so a buffering failure is the only verdict this frame can have. */
+        uint16_t req = uxr_buffer_delete_entity(&st->session, st->output_reliable, cs->requester_oid);
+        (void)uxr_run_session_time(&st->session, 0);
+        ret = req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
+    }
 
     nros_xrce_free(cs);
     client->backend_data = NULL;
-    return req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
+    /* LAST — this may free `st`. Nothing may touch it afterwards. */
+    xrce_session_entity_detach(st);
+    return ret;
 }
 

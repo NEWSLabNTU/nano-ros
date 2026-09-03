@@ -301,6 +301,37 @@ struct xrce_session_state {
     xrce_subscriber_slot subscriber_slots[XRCE_MAX_SUBSCRIBERS];
     xrce_service_server_slot service_server_slots[XRCE_MAX_SERVICE_SERVERS];
     xrce_service_client_slot service_client_slots[XRCE_MAX_SERVICE_CLIENTS];
+
+    /* Issue 0847 — how many entity handles still point HERE, and whether
+     * `xrce_session_destroy` has already run.
+     *
+     * Every entity state (`xrce_publisher_state` and the three beside it)
+     * holds a raw `xrce_session_state_t*`. `executor.close()` destroys the
+     * session, and a publisher still alive in the caller's scope then runs its
+     * own destructor and dereferences freed memory -- a plain use-after-free
+     * across the C ABI, and the ordering the bench binaries and the docs both
+     * show. It reproduced as SIGSEGV at every payload size.
+     *
+     * Two fields, no new pools. A pool was the other candidate: nulling each
+     * live entity's back-pointer at close needs the session to ENUMERATE its
+     * entities, and the slot tables above cover subscribers, service servers
+     * and service clients but NOT publishers -- so that shape needs a fourth
+     * static pool, on the backend whose whole campaign right now is removing
+     * static RAM nobody can price (phase-392).
+     *
+     * Cyclone is immune to this and the difference is instructive: it stores
+     * `dds_entity_t` HANDLES, which the library validates, so `dds_delete`
+     * after its participant is gone returns an error instead of faulting. A
+     * raw pointer cannot be validated once freed, so the memory has to outlive
+     * the pointer instead.
+     *
+     * NOT thread-safe, deliberately and consistently with the rest of this
+     * struct: XRCE is poll-based and single-threaded per session -- the
+     * executor drives it. If that ever changes, this counter needs the same
+     * protection as `next_entity_id` and the slot pools, which have none
+     * either. */
+    size_t live_entities;
+    bool session_closed;
 };
 
 typedef struct xrce_session_state xrce_session_state_t;
@@ -333,6 +364,34 @@ typedef struct xrce_service_client_state {
 } xrce_service_client_state;
 
 /* ---- Helpers -------------------------------------------------------- */
+
+/* ---- Issue 0847: entity/session lifetime ------------------------------ */
+
+/* Register one entity against the session. Call at the single SUCCESS point of
+ * a creator -- not where `session_state` is assigned, because several creators
+ * fail after that assignment and free their own state, which would leave the
+ * count high forever and leak the session. */
+void xrce_session_entity_attach(xrce_session_state_t* st);
+
+/* Has `xrce_session_destroy` already run? A destructor MUST check this before
+ * touching `st->session` or `st->output_reliable`: after close, the uxr session
+ * is deleted and the transport is shut, so the agent has already dropped every
+ * entity and a DELETE_ENTITY has nowhere to go. Call BEFORE detaching -- detach
+ * may free `st`. */
+bool xrce_session_is_closed(const xrce_session_state_t* st);
+
+/* Mark the session closed and free its state IF no entity still points at it.
+ * Split out of `xrce_session_destroy` so the lifetime decision is testable
+ * without a transport: `uxr_delete_session` waits on a session status and
+ * faults without one, and this bug is about WHEN the state is freed, not about
+ * the wire. */
+void xrce_session_mark_closed(xrce_session_state_t* st);
+
+/* Unregister one entity. Frees the session state when it was the last one and
+ * the session is already closed -- so the memory outlives the pointers into it
+ * without the session needing to know who they are. Never touch `st` after
+ * this returns. */
+void xrce_session_entity_detach(xrce_session_state_t* st);
 
 /* Allocate the next entity id of the given type. Mirrors the Rust
  * impl's `alloc_entity_id`. */
