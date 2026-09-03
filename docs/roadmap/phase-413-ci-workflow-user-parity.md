@@ -210,6 +210,39 @@ Questions the RFC has to answer, none of which have obvious answers:
 Deliverable for W6 is **an RFC in `docs/design/`**, not code. Only once it is
 `Draft` and reviewed does an implementation work item get opened.
 
+## W7 — DESIGN: scope the arena-budget walk (issue 1001)
+
+Found while doing W1, and it is the fast line's own promise at stake.
+
+`check fast` is BUILDLESS and SOURCE-FREE, ~23 s, and the `pre-push` hook runs
+it alone. `check-action-client-arena-budget` walks the ENTIRE repository — its
+call site passes `roots = [ROOT]`, and `PRUNE` covers neither cargo `target*/`
+nor `zephyr-workspace/` nor `tmp/`.
+
+The cost is **I/O, not CPU**, which is why it went unnoticed: the same
+traversal is 0.6 s warm and over 60 s cold, and the whole gate is 3.4 s warm but
+did not finish in 600 s on a host whose page cache another build had evicted.
+Cold is exactly the case a contributor hits, because `check fast` is often the
+first thing in a session to touch these trees.
+
+**Two fixes were tried and are wrong; issue 1001 records both so they are not
+repeated.** Moving it to the build tier is refused by `check-gate-visibility`
+for a good reason (a gate no pull request runs rots — issue 0981), and it skips
+cleanly with no artifacts, which is that gate's own test for belonging on the
+fast line. Pruning non-`out` siblings under `build/<pkg>-<hash>/` looked
+provably free and silently dropped 159 of 410 findings, because the predicate
+also matches the top-level `build/` shared cargo group dirs from phase-340.
+
+So this is **design work, not a patch**: scoping `roots` to discovered cargo
+target dirs without losing an image, and deciding whether a gate that reads
+untracked artifacts can honour a "buildless and source-free" claim at all —
+`check-lane-contracts` asserts that claim today and it is already false for this
+gate. Issue 1001 carries the four open questions.
+
+**Whoever takes it: capture `--verbose` before and after and diff.** The gate
+prints the same shape while examining a smaller set, so a smoke test cannot see
+a regression — that is how attempt 2 passed inspection.
+
 ## Acceptance for the phase
 
 * One spelling of the l3 lane, running once per change (W1).
@@ -220,6 +253,8 @@ Deliverable for W6 is **an RFC in `docs/design/`**, not code. Only once it is
 * Every job body is `just setup <scope>` + one command (W5).
 * An RFC for `package.xml`-driven provisioning, reviewed, with an implementation
   work item opened against it (W6).
+* The arena-budget walk scoped, or a recorded decision that its cold cost is
+  accepted and the fast line's claim amended to match (W7).
 
 ## What the audit found working, and this phase must not undo
 
