@@ -44,12 +44,12 @@ remedy() {
   nano-ros does not create this venv. Either of these makes one:
 
       uv venv --python 3.12 "$VENV"
-      "$VENV/bin/python" -m pip install west pyelftools PyYAML pykwalify packaging
+      "$VENV/bin/python" -m pip install west pyelftools PyYAML pykwalify packaging jsonschema
 
   or, with a python3.12 already on PATH:
 
       python3.12 -m venv "$VENV"
-      "$VENV/bin/python" -m pip install west pyelftools PyYAML pykwalify packaging
+      "$VENV/bin/python" -m pip install west pyelftools PyYAML pykwalify packaging jsonschema
 
   4.4 builds run west THROUGH it:
       $VENV/bin/python -m west build ...    (or prepend $VENV/bin to PATH)

@@ -73,6 +73,15 @@ GROUPS = {
             ("yaml", "PyYAML"),
             ("pykwalify", "pykwalify"),
             ("packaging", "packaging"),
+            # Zephyr 4.4 validates module `zephyr/module.yml` against a JSON
+            # schema during CMake configure. Absent, west stops with
+            # `Missing jsonschema dependency` and the build never starts — which
+            # is how the nightly's `zephyr copy-out check (4.4)` and
+            # `zephyr ci-both` cells died before compiling anything. 3.7 does
+            # not import it, so this group grew a member the older line does not
+            # need; that is the group's own rule — it lists what OUR lanes
+            # import, and one of them now imports this.
+            ("jsonschema", "jsonschema"),
         ],
     ),
     "west": (
