@@ -57,7 +57,31 @@ consequences that are not obvious:
   rounded up to 4 (`rosidl_codegen::bounds::transport_framed`).
 
 **Still round-tripping:** `src/service.cpp`, which is why `sertype_min.{hpp,cpp}`
-still exists. Blocked, and not on effort — see
+still exists.
+
+It was "blocked, and not on effort" on #0976 — nothing could observe whether the
+five CDR-reshaping adapters produce ROS 2's bytes, so converting the path risked
+breaking a wire format with no witness. **That blocker is lifted in one
+direction**: `6ec8c4d21` added `ros2_action_e2e.rs`, a stock `ros2 action
+send_goal` against the nano-ros action server, and it passes.
+
+The remaining work is effort, not a blocker. And the WRITE-side adapters turn
+out to have nothing to protect: instrumenting both branches of `write_typed` and
+running the Rust, C and C++ action clients against a stock ROS 2 server shows
+`strip_goal_id_len_at` and `strip_nested_cdr_at` DECLINING in all three, with
+identical decline counts — three independent producers agreeing the corrections
+have nothing left to correct. The runtime already emits the fixed `octet[16]`
+(publisher.cpp's 233.6 note). So
+[#0969](../issues/0969-cyclone-take-cdr-round-trip.md)'s expectation that
+converting this path would DELETE these adapters rather than preserve them is
+measured on the write side.
+
+What is still open is the TAKE side and the test surface:
+`take_fibonacci_get_result_response_wire` fires only when nano-ros is the client
+taking a result, and no automated test exercises either it or the write-side
+strips — the action witness (`ros2_action_e2e.rs`) runs the server direction
+only, and the measurement above was an instrumented run rather than a registered
+test. See
 [#0976](../issues/0976-service-action-adapters-tested-only-against-ourselves.md).
 
 ## Phase 108 status events: NULL slots
@@ -261,7 +285,10 @@ per-message cost as a slope. The claim that "the smoke tests don't measure
 allocation pressure" is no longer true, which is why it is no longer here.
 
 **Still allocating per message:** `src/service.cpp` — three sites, one per
-request and two per reply. See
+request and two per reply. The take side is
+[#0969](../issues/0969-cyclone-take-cdr-round-trip.md)'s third site
+(`take_typed_wire`, which re-encodes XCDR1 native-endian — a correctness
+question, not only a cost one); the witness situation is
 [#0976](../issues/0976-service-action-adapters-tested-only-against-ourselves.md).
 
 ## Boards
