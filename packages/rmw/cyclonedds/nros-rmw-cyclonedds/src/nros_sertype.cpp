@@ -19,17 +19,35 @@
 // `<stdio.h>`, as `descriptors.cpp` does.
 #include <stdio.h>
 
+// Issue 0997 — the freestanding-conforming subset ONLY.
+//
+// The threadx-riscv64 board compiles this target with
+// `-ffreestanding -nostdinc++ -isystem .../nros-board-threadx-qemu-riscv64/cxx-compat`,
+// and that shim deliberately carries exactly the headers a freestanding C++
+// implementation must provide: cstdarg cstddef cstdint cstdio cstdlib cstring
+// initializer_list new type_traits utility. `<memory>` and `<string>` are not
+// in it and cannot be, since both need an allocator and a hosted library.
+//
+// Every sibling TU in this target already lives inside that subset
+// (`publisher.cpp`, `subscriber.cpp`, `sertype_min.cpp` use only
+// cstdlib/cstdint/cstring/new). This one reached for `<memory>` and `<string>`
+// and broke the riscv64 build the moment it joined the cmake target — the same
+// class as issue 0112, and the comment about `<cstdio>` twenty lines below shows
+// the freestanding hazard was already known here for a different header.
 #include <cstring>
-#include <memory>
 #include <new>
-#include <string>
 
 namespace nros_rmw_cyclonedds {
 
 namespace {
 
+
 struct NrosSertype : ddsi_sertype {
-    std::string type_name;
+    // Issue 0997 — the descriptor's `m_typename` is a static string in generated
+    // code, and Cyclone copies the name into its own `ddsi_sertype` during
+    // `ddsi_sertype_init_flags`. Nothing here needs to OWN it, so a pointer
+    // does the same work inside the freestanding subset.
+    const char* type_name = nullptr;
 };
 
 struct NrosSerdata : ddsi_serdata {
@@ -44,6 +62,34 @@ struct NrosSerdata : ddsi_serdata {
     NrosSerdata(const NrosSerdata&) = delete;
     NrosSerdata& operator=(const NrosSerdata&) = delete;
 };
+
+// Issue 0997 — `std::unique_ptr` in the freestanding subset.
+//
+// Stands in for the three `std::unique_ptr<NrosSerdata>` uses below and does
+// only what they used: own-or-release around a `new (std::nothrow)`. Not a
+// general smart pointer, and deliberately not one — the board's cxx-compat
+// shim is the freestanding header set, not a partial libstdc++, and growing a
+// local `<memory>` would be the second spelling of a standard header.
+class SerdataOwner {
+  public:
+    explicit SerdataOwner(NrosSerdata* p) : p_(p) {}
+    ~SerdataOwner() { delete p_; }
+    SerdataOwner(const SerdataOwner&) = delete;
+    SerdataOwner& operator=(const SerdataOwner&) = delete;
+
+    NrosSerdata* get() const { return p_; }
+    NrosSerdata* operator->() const { return p_; }
+    NrosSerdata* release() {
+        NrosSerdata* t = p_;
+        p_ = nullptr;
+        return t;
+    }
+    explicit operator bool() const { return p_ != nullptr; }
+
+  private:
+    NrosSerdata* p_;
+};
+
 
 /// Give @p d a zeroed buffer for `n` bytes of CDR.
 ///
@@ -100,7 +146,7 @@ void serdata_free(struct ddsi_serdata* dcmn) {
 struct ddsi_serdata* serdata_from_ser(const struct ddsi_sertype* type,
                                       enum ddsi_serdata_kind kind,
                                       const struct nn_rdata* fragchain, size_t size) {
-    auto d = std::unique_ptr<NrosSerdata>(new (std::nothrow) NrosSerdata(type, kind));
+    SerdataOwner d(new (std::nothrow) NrosSerdata(type, kind));
     if (!d || !serdata_alloc(d.get(), size)) {
         return nullptr;
     }
@@ -132,7 +178,7 @@ struct ddsi_serdata* serdata_from_ser(const struct ddsi_sertype* type,
 struct ddsi_serdata* serdata_from_ser_iov(const struct ddsi_sertype* type,
                                           enum ddsi_serdata_kind kind, ddsrt_msg_iovlen_t niov,
                                           const ddsrt_iovec_t* iov, size_t size) {
-    auto d = std::unique_ptr<NrosSerdata>(new (std::nothrow) NrosSerdata(type, kind));
+    SerdataOwner d(new (std::nothrow) NrosSerdata(type, kind));
     if (!d || !serdata_alloc(d.get(), size)) {
         return nullptr;
     }
@@ -158,7 +204,7 @@ struct ddsi_serdata* serdata_from_keyhash(const struct ddsi_sertype* /*type*/,
 
 struct ddsi_serdata* serdata_from_sample(const struct ddsi_sertype* type,
                                          enum ddsi_serdata_kind kind, const void* sample) {
-    auto d = std::unique_ptr<NrosSerdata>(new (std::nothrow) NrosSerdata(type, kind));
+    SerdataOwner d(new (std::nothrow) NrosSerdata(type, kind));
     if (!d) {
         return nullptr;
     }
@@ -332,7 +378,7 @@ void sertype_free_samples(const struct ddsi_sertype* /*d*/, void** ptrs, size_t 
 bool sertype_equal(const struct ddsi_sertype* acmn, const struct ddsi_sertype* bcmn) {
     const auto* a = static_cast<const NrosSertype*>(acmn);
     const auto* b = static_cast<const NrosSertype*>(bcmn);
-    return a->type_name == b->type_name;
+    return std::strcmp(a->type_name, b->type_name) == 0;
 }
 
 uint32_t sertype_hash(const struct ddsi_sertype* tpcmn) {
@@ -340,8 +386,8 @@ uint32_t sertype_hash(const struct ddsi_sertype* tpcmn) {
     // FNV-1a over the type name. The name is the whole identity of this type —
     // there is no typesupport to fold in — so it is what the hash must cover.
     uint32_t h = 2166136261u;
-    for (char c : tp->type_name) {
-        h ^= static_cast<uint8_t>(c);
+    for (const char* p = tp->type_name; *p != '\0'; ++p) {
+        h ^= static_cast<uint8_t>(*p);
         h *= 16777619u;
     }
     return h;
@@ -389,7 +435,7 @@ struct ddsi_sertype* create_nros_sertype(const dds_topic_descriptor_t* desc) {
         return nullptr;
     }
     st->type_name = desc->m_typename;
-    ddsi_sertype_init_flags(static_cast<struct ddsi_sertype*>(st), st->type_name.c_str(),
+    ddsi_sertype_init_flags(static_cast<struct ddsi_sertype*>(st), st->type_name,
                             &nros_sertype_ops, &nros_serdata_ops,
                             DDSI_SERTYPE_FLAG_TOPICKIND_NO_KEY);
     return static_cast<struct ddsi_sertype*>(st);
