@@ -129,8 +129,27 @@ Each is an existing issue. The item is "close it"; the issue holds the evidence.
   short-circuited on file existence and never called the script that decides —
   so any host that had ever published an agent kept the skewed one. This host
   still carried the pre-mitigation wrapper nine days later. Fixed.
-  The 1-in-13 intermittency is still unexplained. Next step is one packet
-  capture, which fifteen sections of that issue never took.
+  **RE-MEASURED 2026-09-03 on a genuinely zero-skew agent (Fast-DDS 2.6.12 /
+  Fast-CDR 1.0.29, the same library FILES as the ROS peer, verified by `ldd`):
+  the failure SURVIVES.** 66 runs, `--retries 0`, 64 pass / 2 fail — batch A
+  alone 14 of 15, the same order as the historical rate. So 0741 cannot be
+  closed as "the mitigation was never applied"; it was not applied, and
+  applying it does not fix this.
+  **My own inference above is REFUTED.** In the failing run the Agent never
+  received the DDS request and never wrote a DDS reply — `read_fn=0`,
+  `write=0`, complete trace, truncation excluded. It did not mis-slice the
+  SampleIdentity; it did nothing. The question changes shape: the request never
+  reached the Agent AND something else wrote a 28-byte sample on the reply
+  topic. That is an endpoint-matching/discovery anomaly, not a serialization
+  one.
+  **Also fixed here: the only non-root instrument was compiled out.**
+  `build.sh` passed the logger profile OFF at both sites, so
+  `NROS_XRCE_AGENT_VERBOSE` was silently inert against the agent the mitigation
+  publishes. Now selectable, recorded in the stamp so it rebuilds, derived at
+  file scope so both build paths see it, and the test side says what an empty
+  log means.
+  Next is a DDS capture (needs root, unavailable here): the writer GUID of the
+  28-byte sample decides Agent-framing versus foreign peer.
 
 ## Acceptance
 

@@ -62,6 +62,19 @@ impl XrceAgent {
         let verbose = std::env::var_os("NROS_XRCE_AGENT_VERBOSE").is_some();
         if verbose {
             agent_args.push("-v6".into());
+            // Issue 0741 — `-v6` is inert unless the agent was BUILT with its
+            // logger profile on, and `scripts/xrce-agent/build.sh` defaults it
+            // OFF because tracing is not free. Say so HERE, at the moment the
+            // flag is used, because the failure mode is an EMPTY log, which
+            // reads as "the agent had nothing to say" rather than "this binary
+            // cannot say anything". That misreading cost 0741 its only
+            // non-root instrument for weeks.
+            eprintln!(
+                "[xrce-agent] -v6 requested. If the log is EMPTY, this agent was \
+                 built without its logger profile: rebuild with \
+                 `NROS_XRCE_AGENT_LOGGER=1 just xrce setup` (the stamp records \
+                 the choice, so it will actually rebuild)."
+            );
         }
         cmd.args(&agent_args);
         // Opt-in log capture into the unified dir (test-logs/fixtures/) — enabled

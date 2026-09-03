@@ -54,6 +54,29 @@ nros_ros_fastdds_prefix() {
     return 1
 }
 
+# Issue 0741 — the logger profile is a BUILD choice, and it is derived HERE, at
+# file scope, because BOTH build paths below need it: the ROS-paired one and the
+# bundled fallback. Deriving it inside the paired branch left the fallback's
+# `-DUAGENT_LOGGER_PROFILE=` expanding to NOTHING, which is the unresolved-knob
+# shape CLAUDE.md warns about -- a flag that reaches the compiler empty.
+#
+# Building with the agent's logger profile off compiles its tracing out
+# entirely, which made `NROS_XRCE_AGENT_VERBOSE` / `NROS_TEST_LOGS` SILENTLY
+# INERT against the very agent this script publishes: the harness passed `-v6`,
+# the agent emitted nothing, and an empty log read as "the agent had nothing to
+# say" rather than "this binary cannot say anything". That cost issue 0741 its
+# only non-root instrument for weeks, on the one question fifteen sections of it
+# never managed to answer.
+#
+# Default stays off: tracing is not free and every normal run wants the quiet
+# build. `NROS_XRCE_AGENT_LOGGER=1` turns it on, and the value is in the STAMP,
+# so flipping it REBUILDS instead of silently reusing the other flavour -- which
+# is the half a plain env read would get wrong.
+logger_profile="OFF"
+if [ -n "${NROS_XRCE_AGENT_LOGGER:-}" ] && [ "${NROS_XRCE_AGENT_LOGGER}" != "0" ]; then
+    logger_profile="ON"
+fi
+
 if ros_prefix="$(nros_ros_fastdds_prefix)"; then
     if ls "$ros_prefix"/lib/libfastcdr.so.2* >/dev/null 2>&1; then
         agent_ref="v2.4.3"
@@ -62,9 +85,9 @@ if ros_prefix="$(nros_ros_fastdds_prefix)"; then
     fi
     PAIRED_DIR="$BUILD_DIR/ros-paired"
     stamp="$PAIRED_DIR/.stamp"
-    want="$agent_ref $ros_prefix"
+    want="$agent_ref $ros_prefix logger=$logger_profile"
     if [ -x "$BUILD_DIR/MicroXRCEAgent" ] && [ -f "$stamp" ]         && [ "$(cat "$stamp" 2>/dev/null)" = "$want" ]; then
-        echo "ROS-paired Micro-XRCE-DDS Agent up to date ($agent_ref against $ros_prefix)"
+        echo "ROS-paired Micro-XRCE-DDS Agent up to date ($agent_ref against $ros_prefix, logger=$logger_profile)"
         exit 0
     fi
     echo "Building ROS-paired Micro-XRCE-DDS Agent $agent_ref against $ros_prefix ..."
@@ -79,7 +102,7 @@ if ros_prefix="$(nros_ros_fastdds_prefix)"; then
         git clone --depth 1 --branch "$agent_ref"             https://github.com/eProsima/Micro-XRCE-DDS-Agent "$src"         || { echo "clone failed (offline?) — falling back to the bundled agent" >&2; src=""; }
     fi
     if [ -n "$src" ] && [ -f "$src/CMakeLists.txt" ]; then
-        cmake -S "$src" -B "$PAIRED_DIR/build" -DCMAKE_BUILD_TYPE=Release             -DUAGENT_BUILD_EXECUTABLE=ON             -DUAGENT_USE_SYSTEM_FASTDDS=ON -DUAGENT_USE_SYSTEM_FASTCDR=ON             -DUAGENT_P2P_PROFILE=OFF -DUAGENT_LOGGER_PROFILE=OFF             -DUAGENT_SOCKETCAN_PROFILE=OFF >/dev/null
+        cmake -S "$src" -B "$PAIRED_DIR/build" -DCMAKE_BUILD_TYPE=Release             -DUAGENT_BUILD_EXECUTABLE=ON             -DUAGENT_USE_SYSTEM_FASTDDS=ON -DUAGENT_USE_SYSTEM_FASTCDR=ON             -DUAGENT_P2P_PROFILE=OFF -DUAGENT_LOGGER_PROFILE=$logger_profile             -DUAGENT_SOCKETCAN_PROFILE=OFF >/dev/null
         cmake --build "$PAIRED_DIR/build" --parallel "$(nproc 2>/dev/null || echo 4)"
         # Wrapper (not a copy): the binary links the ROS install's libs; keep
         # them reachable even when the caller forgot to source the env.
@@ -89,7 +112,7 @@ if ros_prefix="$(nros_ros_fastdds_prefix)"; then
         chmod 0755 "$tmp"
         mv -f "$tmp" "$BUILD_DIR/MicroXRCEAgent"
         printf '%s' "$want" > "$stamp"
-        echo "Published ROS-paired agent: $BUILD_DIR/MicroXRCEAgent ($agent_ref, zero Fast-DDS skew)"
+        echo "Published ROS-paired agent: $BUILD_DIR/MicroXRCEAgent ($agent_ref, zero Fast-DDS skew, logger=$logger_profile)"
         exit 0
     fi
 fi
@@ -149,7 +172,7 @@ cd "$BUILD_DIR"
 cmake "$AGENT_SRC" \
     -DUAGENT_BUILD_EXECUTABLE=ON \
     -DUAGENT_P2P_PROFILE=OFF \
-    -DUAGENT_LOGGER_PROFILE=OFF \
+    -DUAGENT_LOGGER_PROFILE=$logger_profile \
     -DCMAKE_BUILD_TYPE=Release
 
 cmake --build . --parallel "$(nproc 2>/dev/null || echo 4)"

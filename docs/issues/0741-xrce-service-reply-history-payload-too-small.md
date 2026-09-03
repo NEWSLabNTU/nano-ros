@@ -1117,3 +1117,108 @@ a failing run: if our XRCE `WRITE_DATA` payload is 32 bytes and the DDS reply
 sample is 28, the Agent framed it wrong and the surplus 16 will match the tail
 of the SampleIdentity we sent; if the 28-byte sample's writer GUID is not the
 Agent's participant, it is a foreign peer and the fix is domain isolation.
+
+## 2026-09-03 re-measured on a ZERO-SKEW agent: the failure SURVIVES
+
+**0741 cannot be closed as "the mitigation was never applied."** It was not
+applied — and applying it does not fix this.
+
+### The pairing, verified rather than assumed
+
+| | before (85-byte wrapper -> SDK store) | after `just xrce setup` | ROS peer |
+| --- | --- | --- | --- |
+| Fast-DDS | 2.14.6 | **2.6.12** | 2.6.12 |
+| Fast-CDR | 2.2.7 | **1.0.29** | 1.0.29 |
+
+`ldd` on both the executable and `libmicroxrcedds_agent.so`: same library FILES
+as `/opt/ros/humble`, same major, same build. Zero skew. Bus clean before and
+after all 66 runs — no orphans.
+
+### Counts, `--retries 0`
+
+| batch | runs | pass | fail |
+| --- | ---: | ---: | ---: |
+| A (paired, as shipped) | 15 | 14 | **1** |
+| B (paired + logger, stopped at first fail) | 6 | 5 | **1** |
+| C (paired + logger) | 45 | 45 | 0 |
+| **total** | **66** | **64** | **2** |
+
+Batch A alone clears the >=13 bar: 14 of 15. Observed ~1 in 33, the same order
+as the historical ~1 in 13. Failing runs are byte-identical to the historical
+symptom, and the fingerprint line now truthfully reads `built against the
+sourced ROS (no Fast-DDS skew)`.
+
+### MY OWN INFERENCE IS REFUTED
+
+The W5 section above inferred that the Agent consumed only 8 of the 24-byte
+SampleIdentity and leaked 16 into the DDS payload. **It did not. In the failing
+run the Agent never received the DDS request and never wrote a DDS reply at
+all.**
+
+Failing trace (37 lines): session opened, participant created, replier created,
+client `READ_DATA` sent — then NOTHING for ~8 s. `read_fn=0`, `write=0`. The
+client's 28-into-15 error is timestamped ~1.43 s AFTER the agent's last line.
+
+Passing trace (52 lines), for contrast:
+`Replier.cpp read_fn [==>> DDS <<==] len: 40` (24 identity + 16 request) ->
+forwarded 52 XRCE -> client replies 44 XRCE (12 + 24 + 8) ->
+`Replier.cpp write [** <<DDS>> **] len: 32`, split 24/8 correctly -> 4+8=12,
+under the 15-byte limit.
+
+Truncation excluded: SIGKILLing the agent after two lines still leaves all bytes
+on disk (the sink flushes per message) and neither log is a multiple of 4096.
+The failing trace is COMPLETE, not cut off.
+
+So the `28 = 4 + 24` arithmetic still fits the story — but **this Agent did not
+perform it**. The remaining question changes shape: the client's request never
+reached the Agent's request reader, AND something wrote a 28-byte sample on the
+reply topic that the Agent did not write. That reads as an
+**endpoint-matching/discovery anomaly, not a serialization one**.
+
+Who wrote the sample is UNKNOWN. The bus snapshot shows only
+`/add_two_ints_server`, but a bare Agent participant is not a ROS node and would
+not appear there, so that snapshot cannot exclude a foreign DDS participant.
+
+### FIXED here: the only non-root instrument was compiled out
+
+`scripts/xrce-agent/build.sh` passed `-DUAGENT_LOGGER_PROFILE=OFF` at BOTH build
+sites, so the agent it publishes emits nothing for `-v6`.
+`NROS_XRCE_AGENT_VERBOSE` and `NROS_TEST_LOGS` were **silently inert against the
+very agent the mitigation ships** — the harness passed the flag, the agent said
+nothing, and an empty log read as "nothing to report" rather than "this binary
+cannot report". `config.hpp` line 31 read `/* #undef UAGENT_LOGGER_PROFILE */`.
+
+The traces quoted above only exist because a logger-enabled agent was built by
+hand for the experiment. That should not have been necessary.
+
+Now: `NROS_XRCE_AGENT_LOGGER=1` selects it, the value is in the STAMP so
+flipping it REBUILDS rather than silently reusing the other flavour, and the
+derivation sits at file scope so BOTH build paths see it — deriving it inside
+the paired branch left the fallback expanding to an EMPTY `-D`, which is the
+unresolved-knob shape CLAUDE.md warns about. Verified: `config.hpp` flips
+between `#define` and `#undef`, and the default OFF build is idempotent.
+
+The test side no longer lies either: requesting `-v6` now prints what an empty
+log would mean and names the rebuild.
+
+### Also noted, not fixed
+
+`forwarding_wrapper_target` (`xrce_agent.rs`) is coupled to the paired wrapper's
+TEXT — it returns `None` today only because the exec line starts with
+`LD_LIBRARY_PATH=`. If `build.sh` ever emits a bare `exec "..."`, provenance
+flips to `SdkStore` and the resolver hands back the inner binary directly,
+bypassing the `LD_LIBRARY_PATH` the wrapper exists to set. That is issue 0774's
+class, one seam over.
+
+### Next
+
+A DDS capture on a failing run answers it in one field: **the writer GUID of the
+28-byte sample.** Agent's participant -> the Agent framed it wrong despite
+logging nothing; anything else -> foreign peer, and the fix is domain isolation.
+`tshark`/`dumpcap` are absent here and `tcpdump` has no capabilities, so this
+needs root and was not attempted.
+
+Non-root alternative worth trying first: force the client's reply reader to
+`PREALLOCATED_WITH_REALLOC` via `FASTRTPS_DEFAULT_PROFILES_FILE` +
+`RMW_FASTRTPS_USE_QOS_FROM_XML=1`, so the sample is accepted and its CONTENT
+becomes visible. Caveat: it changes the client's QoS and may mask the failure.
