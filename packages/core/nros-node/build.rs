@@ -138,11 +138,92 @@ fn main() {
     let action_client_entry = ACTION_CLIENT_SERVICES * ACTION_CLIENT_PER_SERVICE
         + ACTION_CLIENT_FEEDBACK_SUBS * rx_buf_size
         + ACTION_CLIENT_SUB_OVERHEAD;
-    let pubsub_entry = PUBSUB_SUB_BUFS * rx_buf_size + PUBSUB_ENTRY_OVERHEAD;
-    let derived_arena = (action_clients * action_client_entry
-        + max_cbs.saturating_sub(action_clients) * pubsub_entry
-        + ARENA_BASE_OVERHEAD)
-        .max(ARENA_FLOOR);
+    // phase-403 step 3 -- a SUBSCRIPTION's arena buffer is sized by what it
+    // RECEIVES, which is not the knob this term used.
+    //
+    // `NROS_SUBSCRIPTION_BUFFER_SIZE` is also `DEFAULT_TX_BUF` and every raw
+    // entity's default buffer, so it is derived over the whole LINKED closure
+    // -- a type this image only publishes still has to fit. The arena's
+    // receive region is not that: `register_subscription_buffered_*` sizes it
+    // from the type's own bound, and the SUBSCRIBER payload class is the
+    // maximum over subscribed types, so it is a tight upper bound for every
+    // subscription and the closure figure is not.
+    //
+    // On the reference island that is 880 against 1496, and the difference is
+    // 3 * 616 per subscription -- 18,480 bytes over ten of them, which is why
+    // that image's hand-set 40,960 sits BELOW the modelled 52,304.
+    //
+    // Falls back to the closure knob when the payload class is absent, which
+    // is larger and therefore the safe direction.
+    // NOT WIRED YET, and the fallback is deliberate. The receive class is
+    // resolved into the cargo env as `ZPICO_SUBSCRIBER_BUFFER_SIZE` -- a
+    // BACKEND name, which this backend-agnostic crate must not read -- so
+    // `NROS_SUBSCRIBER_BUFFER_SIZE` is absent here and this falls back to the
+    // closure knob. Measured on the reference island: the arena derives 52,304
+    // against a hand-set 40,960, and the whole 11,344-byte difference is this
+    // term using 1,496 where the receive class is 880.
+    //
+    // Giving it a backend-agnostic spelling is a DESIGN choice with two bad
+    // options -- have this crate read a ZPICO_ name, or resolve one value
+    // under two names and invite the drift that three separate double
+    // resolutions have already caused in this file's sibling. It is named in
+    // phase-403 step 3 rather than guessed at here.
+    let rx_recv_size = env_usize("NROS_SUBSCRIBER_BUFFER_SIZE", rx_buf_size);
+    let pubsub_entry = PUBSUB_SUB_BUFS * rx_recv_size + PUBSUB_ENTRY_OVERHEAD;
+
+    // phase-403 step 3 -- SUM OVER WHAT THE IMAGE DECLARES, when it declares.
+    //
+    // The arithmetic below this comment charges EVERY callback slot at the
+    // pub/sub entry size. That is a worst case over `max_cbs`, and on an image
+    // that declares its entities it is wrong in a measurable direction: a
+    // TIMER claims 32 bytes of arena (measured, `report_arena_costs`) and this
+    // model bills it `3 * rx_buf + 512` -- 5,000 bytes at the reference
+    // island's derived rx_buf of 1,496. Ten subscriptions and four timers cost
+    // 72,048 modelled against ~50,000 actually claimed, which is why that
+    // image pins the knob by hand.
+    //
+    // So when phase-403 W9's entity inventory reaches this lane, the sum runs
+    // per KIND instead. Absence is not zero: a count that is missing means
+    // "nobody declared", and the whole per-kind path is skipped rather than
+    // summing zeros into a too-small arena.
+    //
+    // TIMER_ENTRY is measured, not modelled. `report_arena_costs` reports 32
+    // on x86_64; entry structs hold pointers, so this is rounded UP to a
+    // pointer-generous 64 rather than pinned to the host figure -- the one
+    // direction that cannot under-size a 32-bit target.
+    const TIMER_ENTRY: usize = 64;
+    let declared_subs = env_opt_usize("NROS_ENTITY_COUNT_SUBSCRIPTION");
+    let declared_timers = env_opt_usize("NROS_ENTITY_COUNT_TIMER");
+    let declared_services = env_opt_usize("NROS_ENTITY_COUNT_SERVICE_SERVER");
+    let declared_action_clients = env_opt_usize("NROS_ENTITY_COUNT_ACTION_CLIENT");
+    let declared_action_servers = env_opt_usize("NROS_ENTITY_COUNT_ACTION_SERVER");
+
+    let derived_arena = match (
+        declared_subs,
+        declared_timers,
+        declared_services,
+        declared_action_clients,
+        declared_action_servers,
+    ) {
+        (Some(subs), Some(timers), Some(services), Some(acl), Some(asv)) => {
+            // A service server carries a request AND a reply buffer, so it is
+            // billed at the pub/sub entry plus one more buffer rather than
+            // being folded into the pub/sub term.
+            let service_entry = pubsub_entry + rx_buf_size;
+            (subs * pubsub_entry
+                + timers * TIMER_ENTRY
+                + services * service_entry
+                + (acl + asv) * action_client_entry
+                + ARENA_BASE_OVERHEAD)
+                .max(ARENA_FLOOR)
+        }
+        // Nobody declared, or declared only partly: keep the pre-step-3
+        // arithmetic byte for byte, so no existing image moves.
+        _ => (action_clients * action_client_entry
+            + max_cbs.saturating_sub(action_clients) * pubsub_entry
+            + ARENA_BASE_OVERHEAD)
+            .max(ARENA_FLOOR),
+    };
     // `0` is the Kconfig SENTINEL for "derive it" (zephyr/Kconfig:
     // NROS_EXECUTOR_ARENA_SIZE, "0 = derive"), and it has to be honoured HERE,
     // where the value is consumed.
@@ -251,6 +332,27 @@ fn rung_value(
         "param_service_buffer_size" => rungs.param_service_buffer_size,
         _ => None,
     }
+}
+
+/// A DECLARED entity count, or `None` when nobody declared one.
+///
+/// phase-403 step 3. Deliberately NOT `env_usize` with a default: absence and
+/// zero are different answers here. `Some(0)` means "this image declares no
+/// timers"; `None` means "no entity inventory reached this lane", and summing
+/// a missing count as zero would produce an arena too small for entities that
+/// exist. The caller therefore requires EVERY count before using the per-kind
+/// sum, and otherwise keeps the pre-step-3 worst case.
+///
+/// Reads the same two places `env_usize` does and in the same order, so an
+/// operator override still wins: the cargo env, then `$DOTCONFIG` (issue 0460
+/// -- knobs reach the Zephyr Rust lane only through the dotconfig, because
+/// `set(ENV{...})` at configure time does not survive into the cargo build).
+fn env_opt_usize(name: &str) -> Option<usize> {
+    println!("cargo:rerun-if-env-changed={name}");
+    if let Some(v) = std::env::var(name).ok().and_then(|v| v.trim().parse().ok()) {
+        return Some(v);
+    }
+    nros_zephyr_build::dotconfig_usize(&format!("CONFIG_{name}"))
 }
 
 /// One executor knob: env → Kconfig → board → platform → built-in default.
