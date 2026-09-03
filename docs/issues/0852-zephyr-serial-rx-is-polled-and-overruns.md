@@ -330,3 +330,137 @@ Diagnosed with counters in `.bss` read over SWD, because RTT kills the session
 (issue 0913). Those counters also refuted the ring-overflow theory outright:
 high-water 19 bytes of 1024, zero drops, while 145 bytes arrived in total and the
 reader timed out 75 times.
+
+---
+
+# REOPENED 2026-09-04 — the fix landed, had no effect, and made it worse
+
+The status above says the priority "is honoured at all three sites that dropped
+it". It is honoured at none of them on Zephyr. Every fact below was verified
+directly in this checkout.
+
+## The mechanism is a STRUCT TYPE CONFUSION, not a discarded attribute
+
+zenoh-pico dispatches `ZENOH_ZEPHYR` **before** `ZENOH_GENERIC`
+(`system/common/platform.h:37` vs `:55`), so Zephyr gets
+`system/platform/zephyr.h:39`:
+
+```c
+typedef pthread_attr_t z_task_attr_t;
+```
+
+not the generic header's `typedef nros_platform_task_attr_t z_task_attr_t`. But
+`zephyr/nros_zenoh_zephyr_system.c:58` casts that pointer straight through:
+
+```c
+return nros_platform_task_init((void *)task, (void *)attr, fun, arg)
+```
+
+The layouts do not match, and the read is out of bounds:
+
+| | 32-bit | 64-bit |
+| --- | ---: | ---: |
+| `struct pthread_attr` = `{void *stack; uint32_t details[2];}` | **12 B** | **16 B** |
+| offset of `nros_platform_task_attr_t::priority` (after `name`, `stack_bytes`, `stack_mem`) | **12** | **24** |
+
+So `priority` is read from **past the end of the object** on both.
+
+## Why this is a REGRESSION, not merely an unfixed bug
+
+`pthread_attr_init` leaves `stack = NULL` unless `CONFIG_DYNAMIC_THREAD_STACK_SIZE`
+is set, and no built image sets it. The bytes at the priority offset are the
+adjacent `lease_task_attr.stack`, i.e. zero. So:
+
+```
+a->priority == 0  ->  band 0  ->  sched_get_priority_min(SCHED_RR) = 0
+                  ->  POSIX_TO_ZEPHYR_PRIORITY(0, SCHED_RR) = 15 - 0 - 1 = 14
+```
+
+Measured against `zephyr-workspace/build-rust-talker-zenoh/zephyr/.config`:
+`CONFIG_NUM_PREEMPT_PRIORITIES=15`, `CONFIG_MAIN_THREAD_PRIORITY=0`.
+
+**Transport at 14 — the least urgent preemptible slot. Executor at 0 — the most
+urgent.** Before the fix the read task merely TIED with the executor. The fix
+moved it to the bottom of the band. `a->name` reads the same NULL, so the thread
+naming added in the same commit is inert too.
+
+## The tell was already written down, and Zephyr was left off the list
+
+`zpico.c:1642` guards the correct assignment with
+
+```c
+#if defined(ZENOH_NUTTX) || defined(ZENOH_LINUX) || defined(ZENOH_MACOS)
+```
+
+and its own comment describes this exact hazard — "*Pointing at
+`read_task_attr` handed it a `pthread_attr_t`, whose bytes at the `priority`
+offset are 0 whatever was...*". That is issue 0803. It was fixed for three
+platforms and Zephyr was omitted — the one platform whose `z_task_attr_t`
+genuinely IS a `pthread_attr_t`, and therefore the only one where the bug is
+guaranteed rather than incidental.
+
+## Two normalised bands meet in one scheduler — issue 0623, one platform over
+
+Fixing the pointer alone is NOT enough:
+
+* `zpico_posix_set_priority` (`zpico.c:1311`) maps a **0-31** band.
+* `nros_zephyr_native_priority` (`platform.c:473`) maps a **0-255** band
+  (`NROS_PLATFORM_PRIORITY_MAX`).
+
+The Kconfig default is `16`, documented "normalized 0-31". Through the 255-wide
+map that is `(16*14)/255 = 0` — still the bottom slot. The two spellings must be
+unified to one band in the same change, or the fix reproduces the defect.
+
+## The static gate certifies a function whose output is discarded
+
+`packages/boards/zephyr/nros-board.toml` declares `derived = "zephyr"`, so
+`scripts/lib/priority_plan.py:resolve_zephyr_plan` models
+`zpico_posix_set_priority` — the function filling the `pthread_attr_t` nobody
+reads. `check-tier-priority-plan-image` is therefore green about a band no image
+ever had, while `examples/workspaces/realtime-c/.../system.toml` authors
+`tiers.high.zephyr = 9` against that fiction. **The declared ordering is exactly
+inverted from reality and no gate can see it.** Zephyr also has no sibling of
+FreeRTOS's `report_tiers_above_transport` (`nros-board-freertos/src/entry.rs:838`),
+which is the boot-time check that cannot be fooled by dead code.
+
+## Retracted / corrected from the text above
+
+* "Landed (steps 1 and 2)" — there was a FOURTH site (`zpico.c:1642`) and it was
+  not touched. Net effect is a regression.
+* The root-cause citations (`zpico.c:1431`/`:1443`) name the **Linux/NuttX/macOS**
+  arm, not Zephyr's. Reading them as Zephyr's is what produced the bad cast.
+* "`nros_zephyr_task_create_prio` — the native SCHED_FIFO priority"
+  (`nros_platform_zephyr_shims.c:481`) contradicts its own code, which uses
+  `SCHED_RR` (`:534`).
+* The timing arithmetic assumes `CONFIG_TIMESLICE_SIZE=20` and
+  `CONFIG_MAIN_THREAD_PRIORITY=5`. Neither appears in this repo; all sampled
+  images have `TIMESLICE_SIZE=0`, `MAIN_THREAD_PRIORITY=0`. The 20 ms / 230-byte
+  figure is true of an out-of-tree board only, and the issue does not say so.
+* The title still describes the PRE-fix state ("inherits the executor's
+  priority"). Post-fix it is worse than inheritance.
+* **Stands:** choosing `SCHED_RR` over `SCHED_FIFO` (on Zephyr `SCHED_FIFO`
+  selects the cooperative band). That reasoning is correct and should survive
+  any rewrite.
+
+## Adjacent, unlinked, still a live bug on the fork
+
+zenoh-pico's own `src/system/zephyr/system.c:158` also drops a non-NULL `attr`.
+`nros_rmw_zenoh.cmake` adds only `network.c`/`isotp.c` by name, so it is not
+linked here — but anyone who does compile it gets the same class.
+
+## What a fix must include
+
+1. Point Zephyr at the `nros_platform_task_attr_t` (add `ZENOH_ZEPHYR` to the
+   `:1642` guard), and delete `zpico_posix_set_priority`'s Zephyr arm rather
+   than leaving a second spelling of a scale beside it — that is how 0623
+   happened.
+2. Do the same for the **tx-flush** task (`zpico.c:1739`), which is live
+   whenever `CONFIG_NROS_ZENOH_TX_BATCH` is on. Same class, same commit.
+3. Unify the band to 0-255 in Kconfig, and STATE the ordering. Transport above
+   the app is what `[board.priority_plan]` already declares and what FreeRTOS
+   ships (app 3 / transport 4); the reverse starves the RX drain (0623). Note
+   `CONFIG_MAIN_THREAD_PRIORITY=0` leaves no room above it.
+4. Re-point `resolve_zephyr_plan` at `nros_zephyr_native_priority`, or the gate
+   keeps certifying the deleted map.
+5. A `_Static_assert` in the shim that the cast is sound. It fails today, which
+   is the point.
