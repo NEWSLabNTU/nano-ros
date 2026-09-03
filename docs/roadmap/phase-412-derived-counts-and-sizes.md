@@ -218,3 +218,15 @@ has configured at least twice, and W1's acceptance test must state which.
 
 Anything in this phase that adds a knob derived from the entity inventory
 inherits that lag. It is worth fixing before W1 multiplies it by six.
+
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0991](../issues/0991-a-clean-build-of-an-entity-declaring-image-does-not-link.md) | a clean build of an entity-declaring image derives the WRONG payload basis and does not link |
+

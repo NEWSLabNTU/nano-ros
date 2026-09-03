@@ -650,3 +650,17 @@ repo keeps re-learning.
   each pair and writes the ledger row.
 * `--show all` prints matching rows too, which is the fastest way to check
   whether a name you are about to add already correlates.
+
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0783](../issues/0783-rust-facade-hides-the-error-vocabulary.md) | `RclReturnCode` exists and is unreachable, and RFC-0036 documents a Rust surface we do not export |
+| [#0784](../issues/0784-nros-facade-node-surface-is-three-audiences.md) | `nros::` publishes three different audiences under one namespace — parity is unreadable until the surface is separable |
+| [#0829](../issues/0829-two-system-default-qos-presets-disagree-on-depth.md) | two `SYSTEM_DEFAULT` QoS presets ship under one meaning and disagree on it |
+

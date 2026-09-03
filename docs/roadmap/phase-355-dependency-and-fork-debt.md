@@ -145,3 +145,15 @@ the lockfiles:
 * **No fork rebase as part of this phase.** W2 decides what to upstream; the
   mechanical rebase is separate work under the vendored-fork branch workflow in
   CLAUDE.md (fork branch pushed FIRST, then the superproject pointer).
+
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0910](../issues/0910-zenoh-pico-1-10-migration.md) | migrating to zenoh-pico 1.10: the serial layer moved and `config.h` is no longer generated the same way — carried-fork debt coming due |
+

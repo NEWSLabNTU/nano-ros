@@ -1148,3 +1148,16 @@ of what the mechanism WOULD save, on a leaf where the mechanism does not run.
 Nothing in this wave should be quoted as a shipped saving until the `mixed` case
 is explained and a before/after `mem-report` exists.
 
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0852](../issues/0852-zephyr-serial-rx-is-polled-and-overruns.md) | the zenoh read task inherits the executor's priority on Zephyr |
+| [#0880](../issues/0880-tcm-unused-while-sram-exhausted.md) | 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted |
+| [#0969](../issues/0969-cyclone-take-cdr-round-trip.md) | the Cyclone RMW deserializes every received sample and re-serializes it, so `try_recv_raw` costs a full round trip |
+

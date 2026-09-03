@@ -403,3 +403,17 @@ producer question. The `EnvRung` asymmetry noted there belongs in RFC-0045.
 store-vs-wire mismatch (`MAX_ARRAY_LEN=32` against wire 64) is issue 0323's live
 behaviour. Streaming makes it moot for the handlers; unification does **not**
 remove it.
+
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0793](../issues/0793-c-params-declared-via-legacy-store-invisible-to-ros2.md) | C ships two disjoint parameter stores; this phase must say which one survives |
+| [#0794](../issues/0794-baked-boot-config-is-one-field-deep-in-c.md) | the baked boot config carries four fields and the C/C++ emitter sets one |
+| [#0865](../issues/0865-no-example-registers-parameter-services.md) | parameter services are implemented and tested but undiscoverable: no docs, no example. A store nobody can find is not a store |
+

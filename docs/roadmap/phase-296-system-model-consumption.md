@@ -1117,3 +1117,15 @@ swap its entries, rebuild its fixtures, run its e2e), so each step stays
 green. When the R3 deprecation warning fires in zero fixture builds, R4's
 code removal (require `--model`, delete the `launch` arm + `launch_synth`)
 becomes a mergeable, test-green change.
+
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0760](../issues/0760-ingress-declaration-schema-belongs-to-ros-launch-manifest.md) | RFC-0074's `ingress` declaration is a ros-launch-manifest schema change, not a nano-ros one — it gates what the model can carry |
+

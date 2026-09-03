@@ -850,3 +850,17 @@ probes have already passed that gate vacuously at `symbols read: 1`.
 - Whether `heap` survives as a storage mode at all. Payload buffers staying
   static means no payload field needs it; the question is whether infrastructure
   use justifies keeping a mode nobody applies to messages.
+
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0816](../issues/0816-no-alloc-claimed-but-unenforced.md) | the book promises no-alloc integrations and nothing checks the linked image |
+| [#0827](../issues/0827-unused-rmw-pools-dominate-static-ram.md) | static RAM is a property of the RMW, not of the node |
+| [#0857](../issues/0857-cell-registry-inline-capacity-heap-regression.md) | ComponentCell's inline registries cost worst-case x biggest-payload heap per component |
+

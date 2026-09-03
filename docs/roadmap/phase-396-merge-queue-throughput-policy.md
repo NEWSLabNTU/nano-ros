@@ -204,3 +204,17 @@ then green again with W1 restored. 17 self-test assertions, on the normal path.
 - [Merge queue best practices — Graphite](https://graphite.com/guides/merge-queue-best-practices)
 - [GitHub Merge Queue in 2026 — Tenki](https://tenki.cloud/blog/github-merge-queue-setup)
 - [Pre and post-merge tests using a merge queue — Aviator](https://www.aviator.co/blog/pre-and-post-merge-tests-using-a-merge-queue/)
+
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0871](../issues/0871-ci-check-build-asserts-fixtures-it-never-builds.md) | every PR red on a fixture CI never builds, and `main` cannot see it because the required gate does not run on push |
+| [#0872](../issues/0872-pr-arm-example-check-needs-nros-sync.md) | the PR/nightly check arm has never run to completion — each fix exposes the next environment gap. The pattern this phase keeps meeting |
+| [#0874](../issues/0874-sccache-ghac-v1-sunset-breaks-every-rustc.md) | sccache 0.8.2 speaks a GitHub cache API that no longer exists, so the compile tier pays full cost on every run |
+

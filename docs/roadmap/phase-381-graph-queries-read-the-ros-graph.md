@@ -282,3 +282,15 @@ that there is no other thread to do the work.
 the lifecycle state machine over the wire while the node's own code cannot read
 it in-process in any language. The table is already `const`. That is a local
 accessor, not a graph query, and could land any time.
+
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0788](../issues/0788-api-verbs-disagree-across-our-three-languages.md) | the same API verb is spelled differently in our C, C++ and Rust — the sweep this phase's lane choice depends on |
+

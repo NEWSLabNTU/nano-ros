@@ -445,3 +445,17 @@ debt this uncovered.
 * **Not touching #532** (platform clock resolution). Phase 352 is COMPLETE and
   its title claims exactly that scope; #532 should be checked for staleness
   against it rather than re-planned here.
+
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0902](../issues/0902-action-goal-completion-is-variable.md) | action goals complete between 20 % and 90 % of the time on the same build — a load-dependent success rate, which is this phase's subject |
+| [#0913](../issues/0913-the-debugger-is-not-a-passive-instrument.md) | attaching pyocd RTT kills the zenoh session: the debugger perturbs the thing being measured |
+| [#0917](../issues/0917-an536-fragmented-sample-never-syncs.md) | the emulated LAN9118 RX FIFO cannot hold an 8-fragment RTPS burst — an overrun with a known cause |
+

@@ -1314,3 +1314,15 @@ at all: seven `std`-gated `nros-node` tests that no lane ran, one of which had
 NEVER passed (issue 0577), and the extra-session wake install that was `std`-only
 on the dynamic path with no no_std multi-RMW test to catch it. Budget for that
 rather than treating each as a surprise.
+
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0736](../issues/0736-realtime-tiers-timer-overrun-red-on-main.md) | `realtime_tiers` nuttx-arm/rust: the fast tier outruns the slow one. Mentioned in passing here; making it a work item so it has an owner |
+

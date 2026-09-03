@@ -410,3 +410,18 @@ prints the assertion; wiring `sched_dims_applied_e2e` to run it is the next step
 * **Not chasing flakes.** Full-sweep QEMU lanes flake under load (287-W7), and a
   solo red can be a stale-build artifact (issue 0268). That is a known,
   documented confounder, not this phase's subject.
+
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0820](../issues/0820-riscv-nuttx-c-talker-no-runtime-delivery.md) | a NuttX e2e that failed on a MUSEUM BINARY — the seam had no freshness probe, so the run reported on a tree that no longer existed |
+| [#0835](../issues/0835-fixture-staleness-probe-families-restale-each-other.md) | the cmake and rust fixture families re-stale each other, so a sweep can never be simultaneously fresh |
+| [#0930](../issues/0930-built-qemu-can-be-stale-against-its-pin.md) | the built QEMU can be older than the commit `third-party/qemu/qemu` pins, and nothing says so — every timing number is then about an unknown binary |
+| [#0968](../issues/0968-tier2-runtime-failures-unreproduced.md) | tier 2 has ~12 runtime e2e failures on main, UNREPRODUCED: nobody has run the tier in a long time, which is this phase's subject one tier up |
+
