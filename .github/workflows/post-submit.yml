@@ -43,7 +43,32 @@ concurrency:
   # Superseding is correct HERE and wrong in the queue: post-submit asks "is
   # main good NOW", so a newer commit's answer subsumes an older one's.
   group: post-submit-${{ github.ref }}
-  cancel-in-progress: true
+  # ...but supersede the PENDING run, never the RUNNING one — phase-413.
+  #
+  # MEASURED 2026-09-03: 10 of the last 30 runs of this lane were CANCELLED.
+  # `dep-chain` is 158 s and merges through a batching queue sometimes arrive
+  # inside that, so the header's own class — "a lane that always cancels looks
+  # busy while reporting nothing" — still bit the lane phase-410 left behind.
+  #
+  # `cancel-in-progress: false` is NOT "let them all pile up". GitHub keeps at
+  # most one run in progress per group and ONE pending: when a run is queued
+  # behind an in-progress one, any PREVIOUSLY pending run in the same group is
+  # cancelled. So this setting is a debounce, and it changes WHICH run is
+  # discarded — the pending one, which has consumed no runner, instead of the
+  # in-flight one, which has already spent its minutes and is thrown away with
+  # nothing to show.
+  #
+  # The cost is honest and small: the verdict in flight is for a slightly older
+  # commit, and the newest pending run covers the newest one. A cancelled run
+  # gives NO verdict at all, which is the failure mode this repo keeps meeting
+  # (issue 0996: four of six lanes carrying no signal). Trading a little
+  # freshness for a verdict that exists is the right way round for a lane whose
+  # whole job is to bound how far a regression travels.
+  #
+  # `cancel-in-progress: true` stays right where a run is SHORT relative to the
+  # merge interval, or where an operator asked for the newest answer on demand
+  # (`build-wide.yml`, dispatch-only since W1).
+  cancel-in-progress: false
 
 permissions:
   contents: read
