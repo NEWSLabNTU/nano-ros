@@ -1,6 +1,6 @@
 ---
 id: 1004
-title: "an536 boot hang is a LIVELOCK in handle_xevents: an ACKNACK event re-armed to an absolute past time is extracted forever, holding the event-queue lock"
+title: "an536 boot failures on this host were HOST LOAD, not a code regression — and the measurements taken during them should not be trusted"
 status: open
 area: [rmw, platform, embedded]
 severity: high
@@ -130,7 +130,74 @@ one counter read that did complete (`nros_dbg_spdp_unknown_guid = 0`,
 It also means the an536 delivery numbers taken today cannot be trusted as a
 before/after of anything, which is recorded in #0997 for the same reason.
 
-## ROOT CAUSE — an overdue event the loop can never drain
+## RETRACTED 2026-09-04 — the variable was host load, and it was never checked
+
+Two eight-boot runs, same tree, same pin, back to back:
+
+| build | result |
+| --- | --- |
+| with the ACKNACK fix below | 1 pass / 7 fail |
+| unmodified | **0 pass / 8 fail** |
+
+The unmodified tree is the same one that booted repeatedly and completed a
+seven-size delivery sweep the same morning. At that failure rate 1/8 against 0/8
+is noise: the fix neither helped nor hurt, and nothing here distinguishes them.
+
+Then the machine was finally looked at:
+
+```
+load average: 24.93, 13.48, 9.77      (rising)
+%CPU  COMMAND
+ 371  CarlaUE4-Linux-                 ~3.7 cores
+99.9  FVP_BaseR_AEMv8                 a second ARM emulator
+```
+
+Memory was fine (40 GB available) and none of the load was leftover processes
+from this investigation. A CARLA simulator and an FVP model — other work on a
+shared box.
+
+QEMU emulating a Cortex-R52 with a FreeRTOS tick and lwIP timeouts is acutely
+timing-sensitive. Under this load, timing-dependent boot paths fail. That one
+fact accounts for every confusing observation in this issue:
+
+* **The "regression" between pins.** There was none. `2b03606ca` passed in the
+  morning and failed in the afternoon; the load rose across the day.
+* **Tracing "helping".** Semihosted logging slows the guest and moves the timing
+  window. This issue already called that a Heisenbug without drawing the
+  conclusion.
+* **The worsening rate** — ~1 in 3, then 7/8, then 8/8 — tracks the load curve,
+  not any code change.
+* **The three signatures** (stack overflow, `create_subscription` TransportError,
+  silent hang) are three ways a timing-skewed boot can fail, not three faces of
+  one defect.
+
+**The methodological failure is the useful part.** Across this investigation the
+controlled variables were: the pin, island tracing, local instrumentation, the
+codegen caps, and the C++ standard. `uptime` was never run. Every conclusion
+about *when* the an536 image works was therefore drawn against an uncontrolled
+confounder, and the earlier "3-attempt predicate" that retracted the bracket was
+itself measured under the same contamination.
+
+**Any an536 timing measurement in this issue, in
+[#0997](0997-island-announces-spdp-once-then-lease-expires.md), and in the
+autoware-safety-island delivery sweeps from the same period should be re-taken on
+a quiet host before being cited.** A `uptime` reading belongs beside every
+future number.
+
+### What survives the retraction
+
+The **ACKNACK livelock is real and load-independent**, because it was read out of
+guest memory rather than inferred from timing: `tsched` pinned at
+2,171,000,000 ns across two reads 200 s apart while `xTickCount` advanced from
+140 s to 344 s, the value reproducible from config as
+`t_last_nack + nack_delay`, and `AANR_SUPPRESSED_NACK` being the only case in
+`make_and_resched_acknack` that re-arms without first setting
+`t_last_nack = tnow`. That is a genuine upstream defect and is written up below.
+
+What does NOT survive is the claim that it causes the boot failures. It was
+fixed, and the boots did not improve.
+
+## The ACKNACK livelock (real, but NOT the cause of the boot failures)
 
 Caught a hang under the gdb stub and read the event queue. Connection health was
 verified first (a live `xTickCount`, no `packet error` / `vMustReplyEmpty` in the
