@@ -15,11 +15,16 @@ phase-403 W6 exports every type's derived bound and W8 gave it a reader. That
 answers "how big is `nav_msgs/Odometry`". It cannot answer "does this image
 subscribe to it", and three consumers need the second question:
 
-| consumer | needs | status |
-| --- | --- | --- |
-| zenoh payload classes | the sizes actually RECEIVED | derives over the linked closure instead, which is an over-approximation |
-| `NROS_EXECUTOR_MAX_CBS` | total handle count | hand-counted; a grep gave 17 when the answer was 33 |
-| `NROS_EXECUTOR_ARENA_SIZE` | entities that will occupy slots | six bisections against a board |
+| consumer | needs | status at filing | status 2026-09-03 |
+| --- | --- | --- | --- |
+| zenoh payload classes | the sizes actually RECEIVED | derived over the linked closure — an over-approximation | **DERIVED.** `NROS_MESSAGE_BOUNDS_BASIS subscribed` joins against `NROS_ENTITY_SUBSCRIBED_TYPES` (`cmake/NanoRosMessageBounds.cmake:526-566`, refusal at `:754-768`) — landed `36622cadd`, phase-403 |
+| `NROS_EXECUTOR_MAX_CBS` | total handle count | hand-counted; a grep gave 17 when the answer was 33 | **DERIVED** via `NROS_DERIVED_EXECUTOR_MAX_CBS` (`cmake/NanoRosEntityInventory.cmake:240`) — landed `afeab01d5`. See the count correction below: 33 was the ENTITY count; 14 are publishers claiming no slot, so the slot demand is **19** |
+| `NROS_EXECUTOR_ARENA_SIZE` | entities that will occupy slots | six bisections against a board | **STILL A FORMULA.** 0900 narrowed the worst case (`NROS_DERIVED_EXECUTOR_ACTION_CLIENTS`), but the arena needs the per-subscription `(depth+1)*bound` and the entity record carries no QoS depth (`cmake/NanoRosEntityInventory.cmake:52-58`). Owned by phase-403 steps 2 and 3, in flight |
+
+**Two of the three are done.** This table said otherwise for three days while
+`changelog.d/0965.feat.md` sat in the tree recording the opposite — a
+HIGH-severity issue whose text overstates what is broken misdirects as surely as
+one that understates it. The issue stays open for the arena alone.
 
 ## Measured cost of the missing half
 
