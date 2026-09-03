@@ -374,10 +374,27 @@ install = "cmake --build build --parallel $(nproc) --target install"
 # only (not hosted) — `just esp32 setup` → `nros setup --tool esp32-qemu`.
 [tool.esp32-qemu]
 version = "esp-develop-nros1"
-# Source-built (no dist): these are BUILD deps of qemu's meson configure —
-# found undeclared when the configure died on glib-2.0 (phase-327 W4 applied
-# to source recipes; probed BEFORE the build so the failure names packages).
-system = ["libglib2-dev", "libpixman-dev", "libgcrypt-dev"]
+# Source-built (no dist): the first three are BUILD deps of qemu's meson
+# configure — found undeclared when the configure died on glib-2.0 (phase-327 W4
+# applied to source recipes; probed BEFORE the build so the failure names
+# packages).
+#
+# The rest are RUNTIME sonames the built binary links unconditionally, found by
+# `check-dist-runtime-deps` against a source build of this very recipe. Each was
+# already a `[prereq.*]` key; only this list was missing them, which is the
+# hand-authored half issue 0926 named. They are core (zlib, pcre2, selinux,
+# tinfo, openssl via glib and qemu's block layer), not optional backends, so
+# they hold for any build of this recipe on any host.
+system = [
+    "libglib2-dev",
+    "libpixman-dev",
+    "libgcrypt-dev",
+    "libssl3",
+    "libpcre2",
+    "libselinux1",
+    "libtinfo6",
+    "libz1",
+]
 upstream = "esp-develop"
 [tool.esp32-qemu.source]
 git = "https://github.com/espressif/qemu"
