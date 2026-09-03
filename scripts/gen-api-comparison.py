@@ -30,10 +30,12 @@ Usage:
 import argparse
 import collections
 import datetime
+import difflib
 import html
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -92,22 +94,94 @@ def state(row):
 
 
 # ---------------------------------------------------------------- signatures
+# Both sides spell the same concept differently BY CONSTRUCTION -- `rcl_node_t`
+# against `nros_node_t`, `rclcpp::QoS` against `nros::QoS`. Diffing raw type
+# strings would therefore mark every argument of every row as changed, which is
+# the same as marking none: the column would carry no information at all.
+#
+# So the diff runs on types with the vendor rename normalised away. What
+# survives is a real difference -- `rmw_qos_profile_t` against `nros_qos_t`
+# stays flagged, because a profile struct and a flat QoS word ARE different
+# shapes, and that is exactly what a reader needs to see.
+VENDOR_PREFIX = re.compile(r"\b(rmw|rcl|rclc|rcutils|rosidl|nros)_")
+NAMESPACE = re.compile(r"\b(rclcpp|rclrs|nros|std)::")
+QUALIFIERS = re.compile(r"\b(const|struct|enum|class|typename|mut)\b")
+
+
+def norm_type(text):
+    text = QUALIFIERS.sub(" ", text or "")
+    text = NAMESPACE.sub("", VENDOR_PREFIX.sub("", text))
+    return re.sub(r"\s+", "", text).lower()
+
+
+def param_text(param):
+    """Type plus name. The NAME is kept even though the diff ignores it: it is
+    the only place a reader learns what the argument MEANS, and `size_t` twice
+    in a row is not a signature anyone can act on."""
+    name = param.get("name")
+    return ((param.get("type") or "") + (" " + name if name else "")).strip()
+
+
+def diff_params(theirs, ours):
+    """Per-argument (display, flag) for each side; flag is "", "del" or "add".
+
+    A sequence diff, not a zip: an argument DROPPED from the middle would
+    otherwise mis-align every argument after it and report the whole tail as
+    changed.
+    """
+    tn = [norm_type(p.get("type")) for p in theirs]
+    on = [norm_type(p.get("type")) for p in ours]
+    tflag = [""] * len(tn)
+    oflag = [""] * len(on)
+    matcher = difflib.SequenceMatcher(None, tn, on, autojunk=False)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag in ("delete", "replace"):
+            for i in range(i1, i2):
+                tflag[i] = "del"
+        if tag in ("insert", "replace"):
+            for j in range(j1, j2):
+                oflag[j] = "add"
+    return ([[param_text(p), f] for p, f in zip(theirs, tflag)],
+            [[param_text(p), f] for p, f in zip(ours, oflag)])
+
+
+def overload_params(item):
+    ovs = (item or {}).get("overloads") or []
+    return (ovs[0].get("params") or []) if ovs else []
+
+
+def side(item, flags):
+    """One signature cell: {r: ret, n: name, p: [[text, flag]], k: kind, x: n}.
+
+    `p` absent means the item is not callable -- a type, alias, const or trait --
+    and the cell renders as the name alone rather than an empty parameter list.
+    """
+    if not item:
+        return None
+    cell = {"n": item.get("qual") or item.get("key") or "", "k": item.get("kind") or ""}
+    ovs = item.get("overloads") or []
+    if ovs:
+        cell["r"] = ovs[0].get("ret") or ""
+        cell["p"] = flags
+        if len(ovs) > 1:
+            cell["x"] = len(ovs) - 1
+    return cell
+
+
 def sig(item):
-    """One line, from the parsed record. Rendered from params/ret, not prose."""
+    """Flat one-line signature. Kept for the self-test and for callers that want
+    plain text; the page renders from the structured cell instead."""
     if not item:
         return ""
     qual = item.get("qual") or item.get("key") or ""
-    overloads = item.get("overloads")
+    overloads = item.get("overloads") or []
     if not overloads:
         kind = item.get("kind") or ""
         if kind in ("type", "alias", "enum", "struct", "const", "trait"):
             return ("%s %s" % (kind, qual)).strip()
         return qual
     first = overloads[0]
-    params = ", ".join(
-        ((p.get("type") or "") + (" " + p["name"] if p.get("name") else "")).strip()
-        for p in first.get("params", [])
-    )
+    params = ", ".join(param_text(p) for p in first.get("params", []))
     extra = ""
     if len(overloads) > 1:
         n = len(overloads) - 1
@@ -218,21 +292,20 @@ def collect(langs):
                     "theirs": theirs,
                 }
                 rec["s"] = state(rec)
+                tflags, oflags = diff_params(overload_params(theirs),
+                                            overload_params(ours))
+                tcell, ocell = side(theirs, tflags), side(ours, oflags)
                 recs.append({
                     "k": r["key"],
                     "s": rec["s"],
                     "b": r["bucket"],
                     "v": rec["verdict"],
-                    "og": sig(ours),
-                    "tg": sig(theirs),
-                    "oq": (ours or {}).get("qual") or "",
-                    "tq": (theirs or {}).get("qual") or "",
-                    "kind": (ours or theirs or {}).get("kind") or "",
+                    "T": tcell,
+                    "O": ocell,
+                    "ren": 1 if rec["s"] == "renamed" else 0,
                     "w": rec["why"],
                     "p": rec["provides"],
                     "i": 1 if inherited else 0,
-                    "no": max(len((ours or {}).get("overloads") or []),
-                              len((theirs or {}).get("overloads") or [])),
                     "g": (TOPIC_TITLE.get(topic, topic) if lang == "c"
                           else owner(r["key"])),
                     "sec": ("" if lang == "c"
@@ -341,6 +414,38 @@ def self_test():
     check("+1 overload */" in sig({"qual": "f", "overloads": [
         {"params": [], "ret": "int"}, {"params": [], "ret": "int"}]}),
         "overload count not reported")
+
+    # the vendor rename must NOT read as an argument difference -- otherwise
+    # every row diffs on every argument, which is the same as diffing on none
+    check(norm_type("rcl_node_t *") == norm_type("nros_node_t *"),
+          "the vendor prefix survived normalisation")
+    check(norm_type("const rcl_subscription_t *") == norm_type("struct nros_subscription_t *"),
+          "qualifiers or `struct` survived normalisation")
+    check(norm_type("rclcpp::QoS") == norm_type("nros::QoS"), "namespace not normalised")
+    # ...but a genuinely different shape must stay flagged
+    check(norm_type("rmw_qos_profile_t") != norm_type("nros_qos_t"),
+          "normalisation erased a real type difference")
+
+    # a dropped MIDDLE argument must not mis-align the tail
+    tf, of = diff_params(
+        [{"type": "rcl_node_t *", "name": "node"},
+         {"type": "rcl_allocator_t", "name": "alloc"},
+         {"type": "size_t", "name": "n"}],
+        [{"type": "nros_node_t *", "name": "node"},
+         {"type": "size_t", "name": "n"}])
+    check([f for _, f in tf] == ["", "del", ""], "middle drop mis-aligned: %r" % tf)
+    check([f for _, f in of] == ["", ""], "our side wrongly flagged: %r" % of)
+
+    # an argument only WE take is an addition, on our side alone
+    tf, of = diff_params([{"type": "rcl_node_t *"}],
+                         [{"type": "nros_node_t *"}, {"type": "nros_qos_t"}])
+    check([f for _, f in tf] == [""], "upstream flagged for our addition")
+    check([f for _, f in of] == ["", "add"], "addition not flagged: %r" % of)
+
+    # a non-callable item renders as a name, not as an empty argument list
+    cell = side({"qual": "nros::QoS", "kind": "type"}, [])
+    check("p" not in cell, "a type rendered with a parameter list")
+    check(side(None, []) is None, "a missing side did not render as absent")
 
     # every state has a glyph, so the page is legible without colour
     check(len({g for _, _, g in STATES}) >= 4, "states are not glyph-distinguishable")

@@ -11,9 +11,120 @@ let query = "";
 
 const esc = s => String(s == null ? "" : s)
   .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-// ledger prose is written with `backticks`; render them as code, escaping first
+// ledger prose is authored with `backticks`; escape first, then mark up
 const prose = s => esc(s).replace(/`([^`]+)`/g, (_, c) => "<code>" + c + "</code>");
-const tag = s => '<span class="tag ' + s + '"><span>' + GLYPH[s] + "</span>" + LABEL[s] + "</span>";
+
+/* Format A, the RMW reference's shape: return type on its own line, then the
+   name, then ONE ARGUMENT PER LINE. Collapsed to a single line at zero or one
+   argument, where the vertical form buys nothing. The two signature cells stay
+   line-for-line comparable, which is why the status chip heads the reason
+   column instead of sitting in the nano-ros cell. */
+function cellHTML(cell, renamed) {
+  if (!cell) return '<div class="nosig">— none</div>';
+  const nm = '<span class="fn' + (renamed ? " ren" : "") + '">' + esc(cell.n) + "</span>";
+  if (!cell.p) {
+    const k = cell.k ? '<span class="kind">' + esc(cell.k) + "</span> " : "";
+    return "<pre>" + k + nm + "</pre>";
+  }
+  const ret = cell.r ? '<span class="ret">' + esc(cell.r) + "</span>\n" : "";
+  const arg = ([txt, flag]) =>
+    '<span class="ty' + (flag ? " " + flag : "") + '">' + esc(txt) + "</span>";
+  let body;
+  if (!cell.p.length) body = nm + '<span class="pu">(</span><span class="ty">void</span><span class="pu">)</span>';
+  else if (cell.p.length === 1) body = nm + '<span class="pu">(</span>' + arg(cell.p[0]) + '<span class="pu">)</span>';
+  else body = nm + '<span class="pu">(</span>\n' +
+       cell.p.map(p => "  " + arg(p)).join('<span class="pu">,</span>\n') +
+       '\n<span class="pu">)</span>';
+  const more = cell.x ? '\n<span class="pu">/* +' + cell.x +
+    " overload" + (cell.x === 1 ? "" : "s") + " */</span>" : "";
+  return "<pre>" + ret + body + more + "</pre>";
+}
+
+function searchText(r) {
+  if (r._s === undefined) {
+    const bits = [r.k, r.w];
+    [r.T, r.O].forEach(c => {
+      if (!c) return;
+      bits.push(c.n, c.r || "");
+      (c.p || []).forEach(p => bits.push(p[0]));
+    });
+    (r.p || []).forEach(x => bits.push(x));
+    r._s = bits.join(" ").toLowerCase();
+  }
+  return r._s;
+}
+
+function match(r) {
+  if (!on.has(r.s)) return false;
+  return !query || searchText(r).includes(query.toLowerCase());
+}
+
+function rowHTML(r) {
+  let why = "";
+  why += '<div class="st s-' + r.s + '">' + GLYPH[r.s] + " " + LABEL[r.s] + "</div>";
+  if (r.p && r.p.length) {
+    why += '<div class="answers">' +
+      r.p.map(x => '<div class="ans"><code>' + esc(x) + "</code></div>").join("") + "</div>";
+  }
+  if (r.w) why += '<div class="wtext">' + prose(r.w) + "</div>";
+  return "<tr" + (r.i ? ' class="inh"' : "") + ">" +
+    '<td class="c" data-lbl="ROS 2">' + cellHTML(r.T, false) + "</td>" +
+    '<td class="c" data-lbl="nano-ros">' + cellHTML(r.O, !!r.ren) + "</td>" +
+    '<td class="why">' + why + "</td></tr>";
+}
+
+function groupBlock(gname, rows) {
+  const states = [...new Set(rows.map(r => r.s))];
+  const uniform = states.length === 1;
+  const withWhy = rows.filter(r => r.w && !r.i);
+  let h = '<details class="grp"' + (rows.length <= 6 ? " open" : "") + ">";
+  h += "<summary>";
+  h += '<span class="gname">' + esc(gname) + "</span>";
+  h += '<span class="gmeta">' + rows.length + (rows.length === 1 ? " item" : " items") + "</span>";
+  h += '<span class="gchips">' + STATES.filter(s => states.includes(s[0])).map(s =>
+        '<span class="tag ' + s[0] + '">' + s[2] + " " + s[1] +
+        (uniform ? "" : " " + rows.filter(r => r.s === s[0]).length) + "</span>").join("") +
+       "</span></summary>";
+  // a whole group that shares one verdict states its reason ONCE, rather than
+  // repeating it down every member row
+  if (uniform && withWhy.length) {
+    h += '<p class="uniform"><em>All ' + rows.length + " " + LABEL[states[0]] + ".</em> " +
+         prose(withWhy[0].w) + "</p>";
+  }
+  h += '<div class="tablewrap"><table><colgroup><col class="k1"><col class="k2"><col class="k3"></colgroup>' +
+       "<thead><tr><th>ROS 2</th><th>nano-ros</th><th>verdict &amp; reason</th></tr></thead><tbody>" +
+       rows.map(rowHTML).join("") + "</tbody></table></div>";
+  return h + "</details>";
+}
+
+function render() {
+  const rows = DATA.rows.filter(match);
+  document.getElementById("shown").textContent = rows.length;
+  const host = document.getElementById("body");
+  if (!rows.length) { host.innerHTML = '<p class="empty-note">No items match this filter.</p>'; return; }
+  let h = "";
+  const push = (map, key, r) => { if (!map.has(key)) map.set(key, []); map.get(key).push(r); };
+  if (DATA.layout === "flat") {
+    const by = new Map();
+    rows.forEach(r => push(by, r.g, r));
+    [...by.keys()].sort().forEach(g => { h += groupBlock(g, by.get(g)); });
+  } else {
+    const secs = new Map();
+    rows.forEach(r => {
+      if (!secs.has(r.sec)) secs.set(r.sec, new Map());
+      push(secs.get(r.sec), r.g, r);
+    });
+    const total = m => [...m.values()].reduce((n, v) => n + v.length, 0);
+    [...secs.keys()].sort((a, b) => total(secs.get(b)) - total(secs.get(a))).forEach(sec => {
+      const m = secs.get(sec);
+      h += '<section class="aud"><h2>' + esc(sec) +
+           '<span class="c">' + total(m) + " items · " + m.size + " groups</span></h2>";
+      [...m.keys()].sort().forEach(g => { h += groupBlock(g, m.get(g)); });
+      h += "</section>";
+    });
+  }
+  host.innerHTML = h;
+}
 
 function buildChips() {
   const host = document.getElementById("chips");
@@ -35,100 +146,10 @@ function buildChips() {
   });
 }
 
-function match(r) {
-  if (!on.has(r.s)) return false;
-  if (!query) return true;
-  const q = query.toLowerCase();
-  return (r.k + " " + r.oq + " " + r.tq + " " + r.og + " " + r.tg + " " + r.w).toLowerCase().includes(q);
-}
-
-function rowHTML(r, showOwner) {
-  const name = showOwner ? esc(r.k)
-    : esc(r.k.includes("::") ? r.k.split("::").slice(1).join("::") : r.k);
-  let h = '<div class="row">';
-  h += '<div class="rname">' + name +
-       (r.kind ? '<span class="rkind">' + esc(r.kind) + "</span>" : "") +
-       (r.no > 1 ? '<span class="rkind">' + r.no + " overloads</span>" : "") + "</div>";
-  h += '<div class="rtags">' + tag(r.s) + "</div>";
-  if (r.tg || r.og) {
-    h += '<div class="sigs">';
-    h += '<div class="sig' + (r.tg ? "" : " empty") + '"><span class="lbl">ROS 2</span>' +
-         (r.tg ? esc(r.tg) : "— no counterpart") + "</div>";
-    h += '<div class="sig' + (r.og ? "" : " empty") + '"><span class="lbl">nano-ros</span>' +
-         (r.og ? esc(r.og) : "— not implemented") + "</div>";
-    h += "</div>";
-  }
-  if (r.p && r.p.length) {
-    h += '<div class="prov-list"><span class="arrow">provided by →</span>' +
-         r.p.map(x => "<code>" + esc(x) + "</code>").join("") + "</div>";
-  }
-  if (r.w) h += '<div class="why">' + prose(r.w) + "</div>";
-  return h + "</div>";
-}
-
-function groupBlock(gname, rows, showOwner) {
-  const states = [...new Set(rows.map(r => r.s))];
-  const uniform = states.length === 1;
-  const withWhy = rows.filter(r => r.w && !r.i);
-  let h = '<details class="grp"' + (rows.length <= 6 ? " open" : "") + ">";
-  h += "<summary>";
-  h += '<span class="gname">' + esc(gname) + "</span>";
-  h += '<span class="gmeta">' + rows.length + (rows.length === 1 ? " item" : " items") + "</span>";
-  h += '<span class="gchips">' +
-       STATES.filter(s => states.includes(s[0]))
-             .map(s => tag(s[0]) + (uniform ? "" :
-                  '<span class="gmeta">' + rows.filter(r => r.s === s[0]).length + "</span>")).join("") +
-       "</span>";
-  h += "</summary>";
-  // group-level reason: stated once when the whole type shares one verdict
-  if (uniform && withWhy.length) {
-    h += '<p class="uniform"><em>All ' + rows.length + " " +
-         LABEL[states[0]] + ".</em> " + prose(withWhy[0].w) + "</p>";
-  }
-  h += '<div class="rows">' + rows.map(r => rowHTML(r, showOwner)).join("") + "</div>";
-  return h + "</details>";
-}
-
-function render() {
-  const rows = DATA.rows.filter(match);
-  document.getElementById("shown").textContent = rows.length;
-  const host = document.getElementById("body");
-  if (!rows.length) {
-    host.innerHTML = '<p class="empty-note">No items match this filter.</p>'; return;
-  }
-  let h = "";
-  if (DATA.layout === "flat") {
-    const by = new Map();
-    rows.forEach(r => { (by.get(r.g) || by.set(r.g, []).get(r.g)).push(r); });
-    [...by.keys()].sort().forEach(g => { h += groupBlock(g, by.get(g), true); });
-  } else {
-    const secs = new Map();
-    rows.forEach(r => {
-      if (!secs.has(r.sec)) secs.set(r.sec, new Map());
-      const m = secs.get(r.sec);
-      (m.get(r.g) || m.set(r.g, []).get(r.g)).push(r);
-    });
-    const order = [...secs.keys()].sort((a, b) => {
-      const ca = [...secs.get(a).values()].reduce((n, v) => n + v.length, 0);
-      const cb = [...secs.get(b).values()].reduce((n, v) => n + v.length, 0);
-      return cb - ca;
-    });
-    order.forEach(sec => {
-      const m = secs.get(sec);
-      const n = [...m.values()].reduce((a, v) => a + v.length, 0);
-      h += '<section class="aud"><h2>' + esc(sec) +
-           '<span class="c">' + n + " items · " + m.size + " groups</span></h2>";
-      [...m.keys()].sort().forEach(g => { h += groupBlock(g, m.get(g), false); });
-      h += "</section>";
-    });
-  }
-  host.innerHTML = h;
-}
-
 buildChips();
 document.getElementById("q").addEventListener("input", e => { query = e.target.value; render(); });
 document.getElementById("expand").addEventListener("click", () => {
-  const any = !document.querySelector(".grp:not([open])");
-  document.querySelectorAll(".grp").forEach(d => { d.open = !any; });
+  const allOpen = !document.querySelector(".grp:not([open])");
+  document.querySelectorAll(".grp").forEach(d => { d.open = !allOpen; });
 });
 render();

@@ -12,6 +12,10 @@
   --fn:        light-dark(#0550ae,#79c0ff);
   --ty:        light-dark(#116329,#7ee787);
   --ret:       light-dark(#8250df,#d2a8ff);
+  --pu:        light-dark(#8b8b9a,#8b8b9a);
+  --del:       light-dark(#cf222e,#ff7b72);  --delbg: light-dark(#ffebe9,#3d1c1f);
+  --add:       light-dark(#0a7d33,#56d364);  --addbg: light-dark(#e6ffec,#12301c);
+  --renbg:     light-dark(#fff8c5,#3a3018);
   --same-f:    light-dark(#0a7d33,#56d364);  --same-b:    light-dark(#e6ffec,#12301c);
   --reshaped-f:light-dark(#0550ae,#79c0ff);  --reshaped-b:light-dark(#ddf4ff,#0d2a45);
   --renamed-f: light-dark(#9a6700,#e3b341);  --renamed-b: light-dark(#fff8c5,#3a3018);
@@ -131,45 +135,74 @@ section.aud > h2 .c{font-variant-numeric:tabular-nums;letter-spacing:0;text-tran
 }
 .uniform em{color:var(--fg);font-style:normal}
 
-/* ---- rows ---- */
-.rows{margin:0 0 10px}
-.row{
-  border-top:1px solid var(--line);padding:9px 4px 9px 22px;
-  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 14px;align-items:start;
+/* ---- the comparison table ----
+   `table-layout:fixed` so the two signature columns stay the same width down
+   the whole page: format-A signatures are only comparable line-for-line if the
+   lines do not move. The status chip heads the REASON column for the same
+   reason -- putting it in the nano-ros cell would offset that side by one row. */
+.tablewrap{border:1px solid var(--line);border-radius:9px;overflow:hidden;margin:0 0 14px 22px;overflow-x:auto}
+table{table-layout:fixed;width:100%;border-collapse:collapse;margin:0}
+col.k1,col.k2{width:29%}
+col.k3{width:42%}
+th{
+  font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;
+  text-align:left;padding:8px 12px;background:var(--surface2);color:var(--faint);
+  border:none;font-weight:600;
 }
-.row:first-child{border-top:1px solid var(--line)}
-.rname{font-family:var(--mono);font-size:13px;color:var(--fn);word-break:break-word}
-.rname .own{color:var(--faint)}
-.rkind{font-family:var(--mono);font-size:11px;color:var(--faint);margin-left:8px}
-.sigs{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:0;
-      border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-top:5px}
-.sig{padding:8px 11px;font-family:var(--mono);font-size:12px;line-height:1.6;overflow-x:auto;
-     background:var(--surface);white-space:pre}
-.sig + .sig{border-left:1px solid var(--line)}
-.sig .lbl{
-  display:block;font-size:10px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--faint);margin-bottom:4px;white-space:normal;
+td{padding:11px 12px;border:none;border-top:1px solid var(--line);vertical-align:top}
+tbody tr:first-child td{border-top:1px solid var(--line2)}
+td.c{background:var(--surface)}
+td.why{font-size:12.5px;color:var(--muted)}
+tr.inh td.why .wtext{opacity:.72}
+pre{
+  margin:0;padding:0;background:none;border:none;color:var(--fg);
+  font:12.5px/1.55 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;
 }
-.sig.empty{color:var(--faint);background:var(--surface2)}
-.why{grid-column:1/-1;font-size:13.5px;color:var(--muted);max-width:96ch;margin-top:4px}
-.why code{font-family:var(--mono);font-size:12px;background:var(--surface2);padding:1px 5px;border-radius:4px;color:var(--fg)}
-.prov-list{grid-column:1/-1;margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-.prov-list .arrow{font-family:var(--mono);font-size:12px;color:var(--remapped-f)}
-.prov-list code{
-  font-family:var(--mono);font-size:12px;background:var(--remapped-b);color:var(--remapped-f);
-  padding:2px 8px;border-radius:6px;
+.ret{color:var(--ret)}
+.fn{color:var(--fn);font-weight:600}
+.ty{color:var(--ty)}
+.pu{color:var(--pu)}
+.kind{color:var(--faint)}
+/* per-argument diff, computed on types with the vendor rename normalised away */
+.del{background:var(--delbg);color:var(--del);border-radius:3px;padding:0 .18em}
+.add{background:var(--addbg);color:var(--add);border-radius:3px;padding:0 .18em}
+.ren{background:var(--renbg);border-radius:3px;padding:0 .18em}
+.nosig{font-family:var(--mono);font-size:12.5px;color:var(--faint)}
+.st{
+  font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;margin:0 0 7px;
 }
-.rtags{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+.st.s-same{color:var(--same-f)}
+.st.s-reshaped{color:var(--reshaped-f)}
+.st.s-renamed{color:var(--renamed-f)}
+.st.s-remapped{color:var(--remapped-f)}
+.st.s-rejected{color:var(--rejected-f)}
+.st.s-missing{color:var(--missing-f)}
+.st.s-ours{color:var(--ours-f)}
+.answers{margin:0 0 8px}
+.ans{padding:1px 0 1px 15px;position:relative;font-size:12px}
+.ans:before{content:"\2192";position:absolute;left:0;color:var(--remapped-f)}
+.ans code,.why code{
+  font-family:var(--mono);font-size:11.5px;background:var(--surface2);
+  padding:1px 5px;border-radius:4px;color:var(--fg);
+}
+.ans code{background:var(--remapped-b);color:var(--remapped-f)}
 .empty-note{padding:26px 4px;color:var(--faint);font-family:var(--mono);font-size:13px}
 footer{margin-top:60px;padding-top:22px;border-top:1px solid var(--line);
        color:var(--faint);font-size:12.5px;max-width:88ch}
 footer code{font-family:var(--mono);font-size:12px}
-@media (max-width:760px){
-  .wrap{padding:0 16px 90px}
-  .sigs{grid-template-columns:1fr}
-  .sig + .sig{border-left:0;border-top:1px solid var(--line)}
-  .row{grid-template-columns:1fr}
-  .rtags{justify-content:flex-start}
+/* Narrow screens: the three-column comparison cannot survive, so the table
+   becomes stacked blocks with the column name as a label. */
+@media (max-width:820px){
+  .tablewrap{margin-left:0;border-radius:8px}
+  thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  table,tbody,tr,td{display:block;width:auto}
+  tr{border-top:1px solid var(--line2);padding:4px 0}
+  td{border-top:none;padding:8px 12px}
+  td.c:before{
+    content:attr(data-lbl);display:block;font-family:var(--mono);font-size:10px;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:5px;
+  }
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 :focus-visible{outline:2px solid var(--fn);outline-offset:2px}
