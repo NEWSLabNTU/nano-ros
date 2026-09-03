@@ -139,6 +139,30 @@ while IFS=$'\t' read -r path new_sha; do
 
     moved=$((moved + 1))
 
+    # A rebased fork patch line is deliberately not a descendant of the old pin,
+    # and the only bypass used to be an environment variable NOTHING IN CI CAN
+    # SET -- so a correct pin passed locally and could never pass the merge
+    # queue. An allowlist row names the exact path and both shas, so it expires
+    # as soon as either moves; the variable stays for the interactive case.
+    #
+    # This runs BEFORE the object-availability checks below, deliberately. After
+    # a force-push the OLD commit is no longer reachable from the branch, so a
+    # CI clone cannot fetch it however deep it digs, and the comparison that
+    # needs it can never run -- `CANNOT VERIFY`, not `DIVERGED`. A row is a
+    # human asserting the relationship, which is exactly the evidence that the
+    # unreachable object would have provided, so requiring both is requiring the
+    # impossible.
+    if [ -f "$exceptions_file" ] \
+       && grep -qE "^[[:space:]]*${path}[[:space:]]+${old_sha}[[:space:]]+${new_sha}[[:space:]]" \
+                "$exceptions_file"; then
+        reason="$(grep -E "^[[:space:]]*${path}[[:space:]]+${old_sha}[[:space:]]+${new_sha}[[:space:]]" \
+                       "$exceptions_file" | head -1 | cut -d' ' -f4-)"
+        echo "submodule-pins: $path — non-fast-forward ALLOWED by" >&2
+        echo "  ${exceptions_file}: ${reason}" >&2
+        allowed=$((allowed + 1))
+        continue
+    fi
+
     if [ ! -e "$path/.git" ]; then
         echo "submodule-pins: CANNOT VERIFY $path" >&2
         echo "    the pin moved ${old_sha:0:12} -> ${new_sha:0:12} but the submodule is not" >&2
@@ -187,21 +211,6 @@ while IFS=$'\t' read -r path new_sha; do
         continue  # fast-forward: the sanctioned move
     fi
 
-    # A rebased fork patch line is deliberately not a descendant of the old pin,
-    # and the only bypass used to be an environment variable NOTHING IN CI CAN
-    # SET -- so a correct pin passed locally and could never pass the merge
-    # queue. An allowlist row names the exact path and both shas, so it expires
-    # as soon as either moves; the variable stays for the interactive case.
-    if [ -f "$exceptions_file" ] \
-       && grep -qE "^[[:space:]]*${path}[[:space:]]+${old_sha}[[:space:]]+${new_sha}[[:space:]]" \
-                "$exceptions_file"; then
-        reason="$(grep -E "^[[:space:]]*${path}[[:space:]]+${old_sha}[[:space:]]+${new_sha}[[:space:]]" \
-                       "$exceptions_file" | head -1 | cut -d' ' -f4-)"
-        echo "submodule-pins: $path — non-fast-forward ALLOWED by" >&2
-        echo "  ${exceptions_file}: ${reason}" >&2
-        allowed=$((allowed + 1))
-        continue
-    fi
 
     # Not an ancestor. Say WHICH kind of wrong it is — a rewind and a fork need
     # different fixes, and the diff looks identical for both.
