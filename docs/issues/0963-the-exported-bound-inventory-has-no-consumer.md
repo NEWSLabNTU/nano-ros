@@ -89,10 +89,17 @@ definitions, so no amount of wiring fixes them.
 
 **So the next action is not "wire a consumer".** It is one of:
 
-* **bound them** in `nros-codegen.toml` (RFC-0033 `cap`), which runs into
-  [issue 0962](0962-nested-bounded-sequences-cost-the-product-of-their-caps.md):
-  a bound over nested bounded sequences is the PRODUCT of the caps, so a uniform
-  cap does not terminate at a usable number;
+* **bound them** in `nros-codegen.toml` (RFC-0033 `cap`). This bullet used to
+  say the option "runs into [issue 0962]" — that it is blocked because nested
+  bounded sequences cost the PRODUCT of their caps. **0962 is resolved and was
+  never the blocker this implies** (2026-09-04): a UNIFORM cap indeed does not
+  terminate, but a uniform cap was never the remedy. phase-403 W7b landed a
+  diagnostic that names the worst nesting chain and its factors, and capping ONE
+  level of that chain divides the whole product. 0962's pathological case is
+  `visualization_msgs` nesting five deep; the types blocking THIS issue are the
+  `example_interfaces` `*MultiArray` family, `String`, `WString` and
+  `action_msgs/GoalStatusArray`, which nest one or two levels. See
+  [archived/0962](archived/0962-nested-bounded-sequences-cost-the-product-of-their-caps.md);
 * **narrow the closure**, so an image pays only for the types it actually links
   rather than everything `example_interfaces` ships — the `mixed` workspace uses
   a handful of these and the closure carries all sixteen;
