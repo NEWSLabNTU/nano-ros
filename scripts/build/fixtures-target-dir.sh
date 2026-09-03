@@ -298,6 +298,48 @@ nros_fixture_row_artifact_dir() {
     fi
 }
 
+# nros_fixture_row_artifact_dir_by_id <row-id> <platform>
+#
+# WHERE the row with this id actually landed, with the row's OWN cargo args and
+# env — read from the manifest, not supplied by the caller.
+#
+# Issue 1025. `nros_fixture_row_artifact_dir` made the FORMULA single; its
+# INPUTS were still derived twice, and that is where the two sides diverged.
+# The group key is a function of (platform, cargo args, env), so a consumer that
+# passes `"" ""` for two of the three asks a different question with the same
+# function and gets an answer that is wrong exactly when a row has a variant:
+#
+#   producer  nros_fixture_group_slug qemu-esp32-baremetal "" "ZPICO_MAX_QUERYABLES=2"
+#             -> qemu-esp32-baremetal-4118800323
+#   consumer  nros_fixture_group_slug qemu-esp32-baremetal "" ""
+#             -> qemu-esp32-baremetal
+#
+# That is what stopped every ESP32 QEMU flash image from being packed the moment
+# those rows gained an `env` (41a7d8de7). The manifest is the one place the
+# row's args and env are written, so the fix is to read them there rather than
+# to spell them a third time at the call site.
+#
+# A packer names the ROW it is packing — an id it already has, since the build
+# loop above it passes the same id to `fixtures-build.sh --id`. Anything that
+# post-processes a fixture artifact should call THIS, not the four-argument
+# form; the four-argument form remains for callers that genuinely hold the
+# row's args and env already (the build itself).
+nros_fixture_row_artifact_dir_by_id() {
+    local row_id="$1" platform="$2"
+    local record dir envstr args
+    record="$(python3 scripts/build/fixtures-manifest.py list --id "$row_id")" || return 1
+    # Exactly one row, or the id is not an id. Refuse rather than take the
+    # first: a prefix that matched two rows would pack one row's ELF under
+    # another row's name, silently.
+    if [ "$(printf '%s\n' "$record" | grep -c .)" != "1" ]; then
+        printf 'nros_fixture_row_artifact_dir_by_id: %s matched %s manifest row(s), expected 1\n' \
+            "$row_id" "$(printf '%s\n' "$record" | grep -c .)" >&2
+        return 1
+    fi
+    IFS=$'\x1f' read -r dir envstr args <<< "$record"
+    nros_fixture_row_artifact_dir "$dir" "$platform" "$args" "$envstr"
+}
+
 # nros_example_build_target_dir_flag <leaf-dir> [<platform>]
 #
 # issue 0635 — the `--target-dir` for a walk that builds example leaves for

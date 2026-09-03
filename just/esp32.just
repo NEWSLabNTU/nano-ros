@@ -136,8 +136,16 @@ build-qemu:
         # live under `build/cargo-fixtures/<group>/`; the helper returns the
         # leaf's own `target/` for any platform that has not migrated, so this
         # line is correct on both sides of a migration.
-        artifact_dir="$(nros_fixture_row_artifact_dir \
-            "examples/qemu-esp32-baremetal/rust/$ex" qemu-esp32-baremetal "" "")"
+        #
+        # Issue 1025 — BY ROW ID, not by leaf-plus-two-empty-strings. The group
+        # key is a function of (platform, cargo args, env); this used to pass
+        # `"" ""` for the last two, so the moment these rows gained
+        # `env = { ZPICO_MAX_QUERYABLES = "2" }` the build wrote
+        # `qemu-esp32-baremetal-4118800323` and this line kept reading
+        # `qemu-esp32-baremetal`. No flash image could be packed at all. The id
+        # is the same one passed to `fixtures-build.sh --id` four lines up.
+        artifact_dir="$(nros_fixture_row_artifact_dir_by_id \
+            "qemu-esp32-baremetal-$ex" qemu-esp32-baremetal)"
         elf="$artifact_dir/riscv32imc-unknown-none-elf/$target_profile_dir/$elf_name"
         out="$esp32_qemu_dir/esp32-qemu-$ex.bin"
         # Issue 0439 — the build loop above is lane-narrowable, so under a lane
@@ -190,8 +198,11 @@ build-logging-smoke:
     echo "Creating logging-smoke-esp32-qemu flash image..."
     fixture=packages/testing/nros-tests/bins/logging-smoke-esp32-qemu
     # Same migration-aware derivation as `build-qemu` — this row is
-    # `qemu-esp32-baremetal` too, so it moved with the platform.
-    artifact_dir="$(nros_fixture_row_artifact_dir "$fixture" qemu-esp32-baremetal "" "")"
+    # `qemu-esp32-baremetal` too, so it moved with the platform. Issue 1025:
+    # by ROW ID, because this row carries `env` as well and the two-empty-string
+    # form derives a group dir the build never wrote to.
+    artifact_dir="$(nros_fixture_row_artifact_dir_by_id \
+        qemu-esp32-baremetal-logging-smoke qemu-esp32-baremetal)"
     elf="$artifact_dir/riscv32imc-unknown-none-elf/$target_profile_dir/logging-smoke-esp32-qemu"
     bin="$elf.bin"
     # Issue 0439 — same shape as `build-qemu` above: a lane-narrowable `--id`
