@@ -244,3 +244,16 @@ the Rust ports through the generator rather than by hand.
 * **No out-of-tree ports are known**, so the `attr` break has no external cost
   today; `attr_init` is what keeps later additions source-compatible if that
   stops being true.
+
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0758](../issues/0758-platform-sntp-epoch-source.md) | no platform wall-clock epoch source, so embedded consumers hand-roll one — the ABI does not state a fact it owns |
+| [#0954](../issues/0954-nuttx-fallback-sizes-header-has-no-gate.md) | the committed NuttX fallback sizes header is a hand-maintained twin with no gate, and went stale. A size the platform should state, restated by hand |
+

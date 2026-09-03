@@ -872,3 +872,19 @@ Stated so this is falsifiable rather than a one-way door:
 - If batch reds are more often flakes than defects, W5 failed; stop batching.
 - If the self-hosted runner becomes a single point of failure for landing,
   move L3 back to hosted and accept a narrower L3.
+
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0895](../issues/0895-format-walks-unbuilt-colcon-workspace-leaves.md) | `just format` is red or green depending on whether a migrated colcon workspace has been BUILT |
+| [#0925](../issues/0925-box-sync-copies-generated-manifests.md) | `ros2-box-sync.sh` copies the GENERATED workspace manifests, so the box and the host disagree |
+| [#0957](../issues/0957-format-blocked-by-unexcluded-workspace-leaf.md) | `just format` fails whole-tree — a workspace leaf is in neither the root members nor the excludes |
+| [#0986](../issues/0986-pre-push-hook-corrupts-the-repo-it-guards.md) | the pre-push hook writes into the repository it is guarding |
+| [#0988](../issues/0988-hook-scripts-never-exercised-under-a-hook-environment.md) | no gate runs a hook the way git runs it — with `GIT_DIR` set — so a hook can pass every check and still fail in git's hands |
+

@@ -161,3 +161,17 @@ phase-376 (issue 0800), it caught issue 0785's enclave grouping, and it caught
 `set_log_severity`, which shipped with a slot, a dispatcher and stub tests and
 no backend body for two phases. Before claiming any symbol here, run
 `check-rmw-slot-producers` and look at which column it lands in.
+
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0970](../issues/0970-cyclone-rmw-should-own-its-sertype.md) | the Cyclone backend borrows Cyclone's generated sertype instead of registering its own — the contract gap behind the CDR round trip |
+| [#0971](../issues/0971-take-sequence-cannot-say-why-it-stopped.md) | `take_sequence` cannot say why a drain stopped, and its two implementations disagree about it |
+| [#0976](../issues/0976-service-action-adapters-tested-only-against-ourselves.md) | five action adapters in the Cyclone service path reshape the CDR to match ROS 2, exercised only by nano-ros talking to itself. This is the VERIFICATION remainder W3 names |
+

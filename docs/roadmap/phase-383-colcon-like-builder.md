@@ -872,3 +872,21 @@ migration.
 - **The phase is large.** W1–W7 is a builder; W8–W10 is a migration. If it must
   be cut, W1–W3 plus W8.a is a coherent shippable subset (Rust workspaces only,
   proven against a hostile tree); W4–W7 then follow per language.
+
+## Issues homed here (survey 2026-09-03)
+Every open issue was checked for a home phase; these had none, or were
+mentioned here only in passing. A mention is not an owner — an issue with
+no work item is an issue nobody is accountable for, which is the same shape
+as a gate sitting in a lane no CI job runs. Each row is a work item: the issue
+holds the evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0798](../issues/0798-c-freertos-entry-hardcodes-board-while-root-routes-s32z270.md) | `examples/workspaces/c`'s root routes `s32z270-freertos` to an entry that cannot serve it |
+| [#0809](../issues/0809-two-walks-honour-different-nros-ignore-spellings.md) | `provider_scan` honours `NROS_IGNORE` while `nros-pkg-index` does not — two discovery paths, one vocabulary |
+| [#0831](../issues/0831-per-image-rmw-is-inert-on-the-cargo-driver.md) | `[image.<id>].rmw` configures nothing on the cargo driver, so a declared RMW is silently inert |
+| [#0849](../issues/0849-nros-sync-bakes-the-invocation-path-spelling.md) | `nros sync` bakes the invocation's path SPELLING into every leaf patch, so a moved checkout resolves wrong |
+| [#0914](../issues/0914-resolver-shipped-pair-untested.md) | nothing exercises the SHIPPED resolver + `pyexec` pair, so a resolver that cannot load is indistinguishable from one that works |
+| [#0939](../issues/0939-probe-links-node-name-not-component-lib.md) | the metadata probe links the node NAME, which is not a target |
+| [#0953](../issues/0953-pyexec-panic-crosses-c-abi.md) | a panic in the Python half crosses `extern "C"` and ABORTS the resolver — the builder's own subprocess boundary |
+
