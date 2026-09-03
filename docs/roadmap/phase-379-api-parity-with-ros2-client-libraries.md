@@ -619,6 +619,183 @@ Gated by `check-api-parity`: `prelude ⊆ {non-extension} ∪ ALLOWED_EXTENSIONS
 Without the gate the rule decays into a comment, which is the failure mode this
 repo keeps re-learning.
 
+## W6 — the three verb decisions, settled 2026-09-03
+
+Three rows blocked the `try_recv`/`take`, readiness and goal-count families —
+about a third of the remaining work. All three are settled, and they share one
+root cause worth stating first:
+
+> **Upstream separates "did the check work" from "what is the answer". Every one
+> of our divergences here is a place where we collapsed those two channels into
+> one value.**
+
+`rcl` does this explicitly. From `rcl/graph.h:829`, on
+`rcl_service_server_is_available(node, client, bool *is_available)`:
+
+> `RCL_RET_OK` if the check was made successfully **(regardless of the service
+> readiness)**
+
+Return code = did it work. Out-param = the answer. rclcpp then collapses to a
+bare `bool` and moves the error to **exceptions** — confirmed by its sibling
+`Subscription::take`, which documents `\throws any rcl errors from rcl_take`.
+
+RFC-0018 forbids exceptions (RTOS portability), so rclcpp's collapse is not
+available to us. That is not a divergence to argue for — it is the reason we
+must keep upstream's two channels, in a carrier that works without unwinding.
+
+### Decision 1 — `try_recv` becomes `take`; the squatter is deleted
+
+`Subscription::try_recv(M&) -> Result` and `rclcpp::Subscription::take(M&,
+MessageInfo&) -> bool` are THE SAME OPERATION: non-blocking, consuming. Ours
+already carries `success` / `TryAgain` / `NotInitialized` / `Error` in a
+`Result` where rclcpp carries `bool` + a throw. So the rename is semantic
+parity, not a cosmetic move, and `try_recv` is Rust-channel vocabulary that
+reads as a different contract to a ROS 2 user.
+
+**The blocker was a name squatter with the opposite contract.**
+`PollingSubscription::take(M& out) -> bool` drains to the newest sample and
+returns *"true if any value has ever been received (cached-or-new)"* — NON
+consuming, retained-latest. A ported node writing the idiomatic drain loop
+
+```cpp
+while (sub.take(msg)) { process(msg); }
+```
+
+terminates under rclcpp and **spins forever on one stale sample** under ours.
+Same name, same signature, no compile error.
+
+It yields: it is a convenience duplicating `take_data()`, and it has **zero real
+callers** (one compile test) against 5 for the faithful Autoware mirrors
+`take_data()` / `take_new_data()` (issue 0278), which stay.
+
+### Decision 2 — `service_is_ready`, returning `Expected<bool>`
+
+The ledger asked to merge three spellings into `service_is_ready`. It is right
+about the NAME and wrong about the DIRECTION: the tri-state is not ours to drop,
+it is rcl's design.
+
+| ours | shape | disposition |
+| --- | --- | --- |
+| `ClientTrait::server_available() -> Result<bool, E>` | exactly rcl's two channels | **keep**, rename to `service_is_ready` |
+| `ClientTrait::is_server_ready() -> bool`, default `true` | rclcpp's collapse WITHOUT exceptions | **delete** |
+| `nros_client_server_available(c, int32_t *out)` | rcl's shape, `-1` inside the out-param | keep, drop the `-1` |
+| `nros_client_service_is_ready(c) -> bool` | the collapse | **delete** |
+
+`is_server_ready`'s default of `true` tells a backend that cannot answer (XRCE
+has no participant enumeration) that the server is ready. That is an optimistic
+lie, and rclcpp only earns its bare `bool` by throwing.
+
+**The carrier, and the general rule.** `nros::Expected<T>` already exists
+(`result.hpp:198`), is NOT gated behind `NROS_CPP_STD`, stores inline and
+allocates nothing:
+
+```cpp
+Expected<bool> service_is_ready() const;
+//  ok(true)                      -> a server is discovered
+//  ok(false)                     -> none yet
+//  error(ErrorCode::Unsupported) -> the backend cannot answer
+```
+
+So, stated once rather than per site — **an RFC-0036 amendment**:
+
+> Wherever rclcpp returns `T` and throws, nano-ros returns `nros::Expected<T>`.
+> Rust returns `Result<T, E>`. C keeps rcl's literal shape,
+> `nros_ret_t f(args…, T *out)`.
+
+This formalises existing practice (`Node::make() -> Expected<Node>`) rather than
+inventing a convention. It also removes the `int32_t *out` carrying `-1`, which
+duplicates in the out-param what the return code already says.
+
+### Decision 3 — the action goal-count pair takes rcl's shape
+
+Upstream ships no count function; the nearest is
+`rcl_action_server_get_goal_handles(server, ***handles, size_t *num_goals) ->
+rcl_ret_t` — enumeration, count as a by-product, **the same two channels**.
+
+Ours ships two, tier-disjoint, each collapsing errors into the answer:
+
+* `..._get_active_goal_count(server) -> size_t` — callback tier
+  (`STATE_INITIALIZED`, executor arena). Returns **0** on error, so "error" and
+  "no goals" are indistinguishable.
+* `..._active_goal_count_raw(server) -> int32_t` — polling tier
+  (`STATE_POLLING`, `PollingServerCore`). **Negative** = error code.
+
+Zero callers of either. Both collapse; neither matches upstream. So:
+
+```c
+nros_ret_t nros_action_server_get_active_goal_count(
+    struct nros_action_server_t *server, size_t *out);
+```
+
+One function, branching on `state` internally to serve both tiers. Resolves the
+duplicate AND both bad error channels in one move. `get_` stays — it is the C
+convention here (49 `nros_*_get_*` functions), and W5 group A deliberately ADDED
+it to C (`nros_lifecycle_get_state` -> `..._get_current_state`).
+
+## W7 — migration order
+
+The ledger's 95 remaining `rename` verdicts are not 95 units of work. Measured
+2026-09-03:
+
+| class | rows | |
+| --- | ---: | --- |
+| landed, row never collapsed | 29 | bookkeeping, no code |
+| genuinely open | ~34 | |
+| deprecated aliases awaiting retirement | 24 | **last** |
+| blocked on a decision | 8 | settled by W6 |
+
+Do them in this order. It is not arbitrary: each step shrinks the input to the
+next, and the last step is irreversible for out-of-tree consumers.
+
+**Step 1 — collapse the landed rows (no code).** 29 rows report bucket `same`
+while still carrying verdict `rename`; find them with
+
+```
+python3 scripts/api-parity.py --show same | grep -E 'rename\s+same'
+```
+
+The campaign's own convention is that a paired row COLLAPSES on landing: the
+ours-only half is deleted and the retained row keeps the history with a dated
+note. These never collapsed. They break nothing — the gate is green — but they
+inflate the work list and mislead the next reader about what is left.
+
+**Step 2 — execute W6's three decisions.** In dependency order:
+
+1. Delete `PollingSubscription::take()` (frees the name).
+2. `try_recv` -> `take` across C, C++ and Rust, plus `try_recv_raw` ->
+   `take_serialized`, `try_recv_request` -> `take_request`,
+   `try_recv_reply_raw` -> `take_response_raw`. This is the big one and it
+   unblocks the ~32 rows in `service` and `pubsub` that defer to `c:take`.
+3. `service_is_ready` returning `Expected<bool>` / `Result<bool, E>` /
+   `nros_ret_t + bool *out`; delete the two collapsing spellings.
+4. The goal-count merge.
+
+Deprecated forwarders per the settled policy: `NROS_DEPRECATED_MSG` static
+inline for C, `[[deprecated("…")]]` for C++, and NOTHING for Rust trait methods
+— a rename there breaks implementors rather than callers, and a compile error is
+what a backend author wants.
+
+**Step 3 — the remaining open rows**, which are mostly `param`, `pubsub`,
+`service` and `timer` leftovers once step 2 lands.
+
+**Step 4 — retire the deprecated aliases, as ONE batch, last.** By then the set
+is: the `nros_param_*` family (25 forwarders), the service reply verbs, the
+QoS `*_raw()` / `*_ms()` accessors, `BoardConfig::zenoh_locator` and
+`ThreadxConfig::zenoh_locator` (two, not one — the row names only the first),
+and the five `with_zenoh_locator()` builders.
+
+Retirement is the only irreversible step for an out-of-tree consumer, so it
+happens once, deliberately, with a changelog entry — not opportunistically as
+each rename lands. Two things to carry into it:
+
+* **C cannot portably deprecate a `typedef`** (MSVC rejects the attribute,
+  `[[deprecated]]` is C23), so the four renamed C TYPES have plain aliases that
+  compile without warning. They will disappear silently for anyone who never
+  rebuilt. Say so in the changelog.
+* `ThreadxConfig::zenoh_locator`'s alias is WEAKER than it looks: a defaulted
+  trait method's OVERRIDE is no longer consulted, so an out-of-tree board that
+  overrode it is silently ignored rather than warned.
+
 ## Acceptance
 
 * W1: `scripts/api-parity.py --self-test` green; the report above reproduces on
@@ -630,6 +807,10 @@ repo keeps re-learning.
 * W4: every C `differs` row carries a verdict; RFC-0036 gains the ones that are
   divergences.
 * W5: an RFC recording the rclrs target version and the facade's export policy.
+* W6: the three verb decisions recorded above, with RFC-0036 carrying the
+  `Expected<T>` rule so it is stated once rather than per site.
+* W7: `--show same | grep 'rename same'` returns nothing (step 1 complete), and
+  the deprecated set is retired in a single commit with a changelog entry.
 
 ## Notes for whoever picks this up
 
