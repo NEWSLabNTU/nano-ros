@@ -82,5 +82,6 @@ fails if this block drifts.
 - **#0988** (tooling) — No gate runs a hook the way git runs it — with `GIT_DIR` set — so a script that corrupts the caller's repository passes every check See `0988-*`.
 - **#0991** (cmake) — A clean build of an entity-declaring image derives the WRONG payload basis and does not link See `0991-*`.
 - **#0997** ([rmw, platform, embedded]) — The timed-event tree empties itself on FreeRTOS: the SPDP resend is scheduled, never lands in the queue, and every peer expires the participant's lease See `0997-*`.
+- **#1000** ([rmw, third-party]) — Vendored Cyclone: `handle_xevk_spdp`'s early returns orphan the PERIODIC spdp event — it leaves the heap, is never re-armed, and the participant goes silent forever See `1000-*`.
 
 <!-- END GENERATED open-issue list -->
