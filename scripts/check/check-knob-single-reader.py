@@ -91,6 +91,15 @@ OWNERS: dict[str, str] = {
     "NROS_RUNTIME_COMPONENT_SLOT_BYTES": "packages/api/nros/build.rs",
     "NROS_RUNTIME_MAX_CLASS_INSTANCES": "packages/api/nros/build.rs",
     "NROS_RUNTIME_MAX_CELL_ENTITIES": "packages/api/nros/build.rs",
+    # The zenoh WIRE tenant (phase-400 W6). The two transport-band PRIORITIES
+    # are deliberately absent: `ZPICO_READ_TASK_PRIORITY` mirrors a C `#define`
+    # and `FreertosScheduling` already carries a per-board `zenoh_read_priority`
+    # in raw FreeRTOS units, so a rung would be a THIRD path to one number.
+    "ZPICO_BATCH_UNICAST_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    "ZPICO_BATCH_MULTICAST_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    "ZPICO_FRAG_MAX_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    "ZPICO_GET_REPLY_BUF_SIZE": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
+    "ZPICO_GET_POLL_INTERVAL_MS": "packages/rmw/zenoh/nros-zpico-build/src/runner.rs",
     "NROS_TRANSPORT_KIND": "packages/boards/nros-board-common/src/platform_config.rs",
     "NROS_TRANSPORT_ENDPOINT": "packages/boards/nros-board-common/src/platform_config.rs",
     "ZPICO_TX_BATCH": "packages/boards/nros-board-common/src/platform_config.rs",

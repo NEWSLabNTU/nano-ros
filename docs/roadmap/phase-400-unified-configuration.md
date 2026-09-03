@@ -1,7 +1,7 @@
 # Phase 400 — the unified config system: build it, migrate onto it, retire the rest
 
 **Status (2026-09-04): W1-W5, W7 and W8 done; W6's `executor`, `transport`,
-`zenoh.tx`, `memory`, `params`, `rmw`, `net` and `runtime` tenants done, its remaining tenants
+`zenoh.tx`, `memory`, `params`, `rmw`, `net`, `runtime` and `zenoh.wire` tenants done, its remaining tenants
 outstanding.** Design is
 [RFC-0086](../design/0086-unified-configuration-transport-tenant-and-coupling.md),
 which amends RFC-0049 (Stable) and adopts RFC-0071 D8. Nothing here proposes a
@@ -340,6 +340,39 @@ census fix below), and its largest families are:
 | platform heap / stack | 3 | `NROS_ZEPHYR_HEAP_SIZE`, `NROS_FREERTOS_HEAP_KB`, `NROS_FREERTOS_APP_STACK_KB`. Genuine platform facts with no derivation candidate — **the clearest W6 tenant left.** |
 | `ZPICO_*` remainder | 7 | wire batch, fragmentation, reply staging, two transport-band priorities |
 | singletons | 4 | keyexpr bound, LET buffer, service timeout, XRCE MTU |
+
+### The `zenoh.wire` tenant — done, and the two priorities left out
+
+Five wire sizes — the unicast and multicast batch buffers, the fragmentation
+ceiling, the get-reply staging block and its poll interval — now resolve through
+the ladder as `[knobs.zenoh.wire]`, beside the existing `[knobs.zenoh.tx]`.
+
+This does NOT contradict "the zenoh tenant is not W6's" above. That re-scope was
+about the entity CAPS and pools — `ZPICO_MAX_QUERYABLES`, `ZPICO_MAX_SESSIONS`,
+`SERVICE_BUFFERS` — which phase-392 is deciding the shape of. These five are
+sizes of the wire itself, and the same re-scope listed them as W6's remainder.
+
+**The two transport-band priorities are deliberately NOT here.**
+`ZPICO_READ_TASK_PRIORITY` and `ZPICO_LEASE_TASK_PRIORITY` look like the rest of
+the family and are not: the build script's defaults MIRROR the `#define`
+fallbacks in `zpico-sys/c/zpico/zpico.c`, and `FreertosScheduling` already
+carries a per-board `zenoh_read_priority` / `zenoh_lease_priority` in raw
+FreeRTOS units. A ladder rung would be a THIRD path to one number, which is the
+drift `check-knob-single-reader` exists to prevent. Their real question is
+ORDERING against the app tiers (issue 0623), which is a policy the board already
+expresses — not a size a platform defaults.
+
+The builtins stay the CALLER's: `nros-zpico-build` computes a batch and
+fragmentation size from the platform's transport before any descriptor is read,
+so `resolve_wire` takes them as its `defaults` and applies the rungs above them.
+
+Verification note, stated plainly: the resolver is pinned by a unit test over
+all four rungs. The build script's half is five straight-line assignments
+mirroring the tx trio two lines above them, and it is NOT verified by an
+emitted-artifact probe — the header it writes is produced inside example build
+trees, and every probe I wrote observed the wrong tree.
+
+Backlog after this: **10**, from 15.
 
 ### The `runtime` tenant — done
 
