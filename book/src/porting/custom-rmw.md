@@ -274,9 +274,15 @@ static rmw_ret_t my_create_publisher(
         const rmw_publisher_options_t *options,  /* hints (tx_express); NULL = defaults */
         rmw_publisher_t *out) {
     /* Runtime has already filled out->topic_name / type_name / qos.
-     * Backend writes out->backend_data with its publisher handle and
-     * may set out->can_loan_messages = true to advertise the
-     * loan_publish / commit_publish primitive. */
+     * Backend writes out->backend_data with its publisher handle.
+     *
+     * Do NOT write out->can_loan_messages: the runtime DERIVES it from
+     * whether your vtable fills borrow_loaned_message, and overwrites
+     * whatever you put there (issue 0814). You advertise the
+     * loan_publish / commit_publish primitive by IMPLEMENTING it, which
+     * is the one statement that cannot disagree with itself. To refuse a
+     * loan for one particular publisher, return RMW_RET_UNSUPPORTED from
+     * borrow_loaned_message. */
 }
 static void           my_destroy_publisher(rmw_publisher_t *publisher) { /* ... */ }
 static rmw_ret_t my_publish_raw(rmw_publisher_t *publisher,

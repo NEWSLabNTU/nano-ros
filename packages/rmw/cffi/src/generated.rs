@@ -236,7 +236,7 @@ pub struct rmw_node_t {
     #[doc = " Opaque backend state. NULL until `create_node` succeeds."]
     pub backend_data: *mut core::ffi::c_void,
 }
-#[doc = " Publisher entity.\n\n Created by `vtable->create_publisher`; destroyed by\n `vtable->destroy_publisher`. The runtime owns the storage; the\n runtime fills `topic_name` / `type_name` / `qos` before the\n create call. The backend writes `can_loan_messages` and\n `backend_data`.\n\n `can_loan_messages` matches upstream `rmw_publisher_t`'s field of\n the same name — `true` means the backend exposes the\n `loan_publish` / `commit_publish` primitive (Phase 99). The\n runtime reads it once at create time and picks the publish path\n accordingly; no per-call probe."]
+#[doc = " Publisher entity.\n\n Created by `vtable->create_publisher`; destroyed by\n `vtable->destroy_publisher`. The runtime owns the storage; the\n runtime fills `topic_name` / `type_name` / `qos` before the\n create call. The backend writes `backend_data`.\n\n `can_loan_messages` matches upstream `rmw_publisher_t`'s field of\n the same name — `true` means the backend exposes the\n `loan_publish` / `commit_publish` primitive (Phase 99).\n\n **The runtime DERIVES it; a backend does not write it** (issue 0814).\n Its value is exactly `vtable->borrow_loaned_message != NULL`, because\n that is the same fact, and a fact with two spellings drifts — this one\n had drifted in both directions at once. Anything a backend writes here\n is overwritten.\n\n This paragraph used to read \"the runtime reads it once at create time\n and picks the publish path accordingly; no per-call probe\". That was\n never true: nothing has ever branched on the field, and the publish\n path is chosen per call from `vtable->borrow_loaned_message` itself.\n\n To refuse a loan for a PARTICULAR entity, return\n `RMW_RET_UNSUPPORTED` from `borrow_loaned_message`. The per-entity\n answer belongs on the call, which the runtime consults; not on this\n flag, which it does not."]
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rmw_publisher_t {
@@ -246,7 +246,7 @@ pub struct rmw_publisher_t {
     pub type_name: *const core::ffi::c_char,
     #[doc = " QoS subset honoured by this publisher."]
     pub qos: rmw_qos_profile_t,
-    #[doc = " Backend exposes loan_publish / commit_publish (Phase 99)."]
+    #[doc = " Backend exposes loan_publish / commit_publish (Phase 99).\n  DERIVED by the runtime from `vtable->borrow_loaned_message`;\n  a backend's write is overwritten (issue 0814)."]
     pub can_loan_messages: bool,
     #[doc = " Reserved for future fields; must be zero."]
     pub _reserved: [u8; 7usize],
@@ -263,7 +263,7 @@ pub struct rmw_subscription_t {
     pub type_name: *const core::ffi::c_char,
     #[doc = " QoS subset honoured by this subscription."]
     pub qos: rmw_qos_profile_t,
-    #[doc = " Backend exposes loan_recv / release_recv (Phase 99)."]
+    #[doc = " Backend exposes loan_recv / release_recv (Phase 99).\n  DERIVED by the runtime from `vtable->take_loaned_message`;\n  a backend's write is overwritten (issue 0814)."]
     pub can_loan_messages: bool,
     #[doc = " Reserved for future fields; must be zero."]
     pub _reserved: [u8; 7usize],
@@ -354,7 +354,7 @@ pub struct nros_rmw_vtable_t {
     pub drive_io: ::core::option::Option<
         unsafe extern "C" fn(session: *mut rmw_session_t, timeout_ms: i32) -> rmw_ret_t,
     >,
-    #[doc = " Create a publisher. The runtime fills `out->topic_name`,\n  `out->type_name`, `out->qos` before this call; the backend\n  writes `out->backend_data` and `out->can_loan_messages`.\n  `options` carries transport hints (phase-301: moved out of the\n  QoS struct); NULL = all defaults."]
+    #[doc = " Create a publisher. The runtime fills `out->topic_name`,\n  `out->type_name`, `out->qos` before this call; the backend\n  writes `out->backend_data`. `out->can_loan_messages` is DERIVED\n  by the runtime, not written here (issue 0814).\n  `options` carries transport hints (phase-301: moved out of the\n  QoS struct); NULL = all defaults."]
     pub create_publisher: ::core::option::Option<
         unsafe extern "C" fn(
             node: *const rmw_node_t,

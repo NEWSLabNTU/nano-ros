@@ -41,8 +41,9 @@ extern "C" {
  * (`rmw_session_t`, `rmw_publisher_t`, `rmw_subscription_t`,
  * `rmw_service_t`, `rmw_client_t`). Each
  * `create_*` call receives a runtime-allocated, zero-initialised struct
- * via the `out` pointer; the backend writes its `backend_data` (and
- * `can_loan_messages` for pub/sub) into it. The runtime fills the metadata
+ * via the `out` pointer; the backend writes its `backend_data` into it.
+ * (It does NOT write `can_loan_messages`: the runtime derives that from
+ * the loan slots — issue 0814.) The runtime fills the metadata
  * fields (`topic_name`, `type_name`, `qos`) before calling
  * `create_*`; the backend reads them through the same struct.
  *
@@ -217,7 +218,8 @@ typedef struct nros_rmw_vtable_t {
     /* ---- Publisher ---- */
     /** Create a publisher. The runtime fills `out->topic_name`,
      *  `out->type_name`, `out->qos` before this call; the backend
-     *  writes `out->backend_data` and `out->can_loan_messages`.
+     *  writes `out->backend_data`. `out->can_loan_messages` is DERIVED
+     *  by the runtime, not written here (issue 0814).
      *  `options` carries transport hints (phase-301: moved out of the
      *  QoS struct); NULL = all defaults. */
     rmw_ret_t (*create_publisher)(const rmw_node_t *node,

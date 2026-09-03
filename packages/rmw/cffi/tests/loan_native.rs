@@ -64,7 +64,12 @@ unsafe extern "C" fn ln_create_publisher(
 ) -> NrosRmwRet {
     unsafe {
         (*out).backend_data = 0x5EEDusize as *mut c_void;
-        (*out).can_loan_messages = true;
+        // issue 0814 — deliberately FALSE while `VTABLE` fills
+        // `borrow_loaned_message`. This models the zenoh case exactly: its
+        // publishers are created by `RustBackendAdapter`'s generic
+        // trampoline, which writes only `backend_data`, so the field keeps
+        // the runtime's pre-zero even though the backend's loans work.
+        (*out).can_loan_messages = false;
     }
     NROS_RMW_RET_OK
 }
@@ -269,6 +274,35 @@ fn open_session() -> nros_rmw_cffi::CffiSession {
         properties: &[],
     };
     CffiRmw::open_with_rmw("ln_native", &cfg).expect("open")
+}
+
+/// issue 0814 — a backend that CAN loan advertises that it can, even when
+/// it never wrote the flag.
+///
+/// `ln_create_publisher` writes `can_loan_messages = false` while `VTABLE`
+/// fills `borrow_loaned_message`, which is the zenoh shape: the Rust
+/// adapter's generic trampoline writes only `backend_data`, so the field
+/// keeps the runtime's pre-zero. Before the fix the runtime believed the
+/// zero, and the one backend in the tree whose loans actually work reported
+/// that it could not loan.
+#[test]
+fn a_filled_loan_slot_advertises_itself() {
+    let mut session = open_session();
+    let topic = TopicInfo::new("/ln_flag", "std_msgs/msg/Int32", "RIHS01_ln");
+    let publisher = session
+        .create_publisher(&topic, QoSProfile::default())
+        .expect("create publisher");
+
+    assert!(
+        publisher.can_loan_messages(),
+        "the vtable fills borrow_loaned_message, so this publisher CAN loan; \
+         reporting otherwise is what made a lending zenoh build advertise \
+         `false` while its loans worked"
+    );
+
+    // And the advertisement is not decorative: the loan it promises works.
+    let slot = publisher.try_lend_slot(8).expect("try_lend_slot");
+    assert!(slot.is_some(), "advertised loan must actually be servable");
 }
 
 #[test]

@@ -159,9 +159,9 @@ without changing struct size or the offset of any field after
 `backend_data`. Backends and runtime keep these bytes zero.
 
 **Storage ownership.** The runtime allocates the entity-struct shell;
-the backend writes its `backend_data` (plus `can_loan_messages` for
-publisher / subscriber entities) into the runtime-supplied
-out-parameter at `create_*` time. The backend never `malloc`s a
+the backend writes its `backend_data` into the runtime-supplied
+out-parameter at `create_*` time (`can_loan_messages` is derived by the
+runtime — see below). The backend never `malloc`s a
 struct shell — embedded targets cannot afford a per-entity heap
 allocation. `destroy_*` releases only the backend's `backend_data`;
 the shell stays valid until the runtime drops its owner.
@@ -176,11 +176,18 @@ the shell stays valid until the runtime drops its owner.
   compile-time (see [Section 1](#1-plugin-loading-vs-compile-time-backend));
   there's no plugin loader to dispatch through, so no need to
   identify which backend owns a struct.
-- **`can_loan_messages` matches upstream.** Same bool, same name,
-  same semantics — `true` if the backend exposes the loan
-  primitive (the CDR-byte zero-copy loan path). The runtime reads
-  it once at create time and dispatches the publish path with no
-  per-call branch.
+- **`can_loan_messages` matches upstream in shape, but the runtime
+  DERIVES it** (issue 0814). Same bool, same name, same meaning —
+  `true` if the backend exposes the loan primitive (the CDR-byte
+  zero-copy loan path) — except that a backend does not write it. Its
+  value is exactly `vtable->borrow_loaned_message != NULL`, because that
+  is the same fact stated twice, and the two spellings had drifted in
+  both directions: nothing outside a test ever wrote `true` (so a zenoh
+  build whose loans worked advertised that it could not loan), while a
+  backend writing `true` with a NULL slot was believed. This paragraph
+  used to claim the runtime "dispatches the publish path with no
+  per-call branch" from the flag; it never did — dispatch reads the
+  vtable slot on every call.
 - **`depth: uint16_t`.** Upstream uses 32-bit; embedded queue depths
   are 1–100, the 16-bit width saves 2 bytes × N entities.
 - **Explicit `_reserved[N]` bytes.** Upstream uses an embedded
