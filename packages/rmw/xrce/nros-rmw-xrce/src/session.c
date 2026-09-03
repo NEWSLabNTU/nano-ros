@@ -477,6 +477,36 @@ rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain
     return NROS_RMW_RET_OK;
 }
 
+/* ---- Issue 0847: entity/session lifetime ------------------------------
+ *
+ * See the long note on `live_entities` in `internal.h` for why this is a
+ * refcount rather than a back-pointer sweep. */
+
+void xrce_session_entity_attach(xrce_session_state_t* st) {
+    if (st == NULL) {
+        return;
+    }
+    st->live_entities++;
+}
+
+bool xrce_session_is_closed(const xrce_session_state_t* st) {
+    return st == NULL ? true : st->session_closed;
+}
+
+void xrce_session_entity_detach(xrce_session_state_t* st) {
+    if (st == NULL) {
+        return;
+    }
+    if (st->live_entities > 0) {
+        st->live_entities--;
+    }
+    /* The last entity out of a CLOSED session turns off the lights. An open
+     * session keeps its state: entities come and go while it runs. */
+    if (st->session_closed && st->live_entities == 0) {
+        nros_xrce_free(st);
+    }
+}
+
 rmw_ret_t xrce_session_destroy(rmw_session_t* session) {
     if (session == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
@@ -491,9 +521,37 @@ rmw_ret_t xrce_session_destroy(rmw_session_t* session) {
      * UDP through the same surface to match xrce-sys's legacy
      * shape. Close once, regardless of `use_custom_transport`. */
     uxr_close_custom_transport(&st->custom);
-    nros_xrce_free(st);
+
+    /* Issue 0847 — the lifetime decision, separated from the uxr teardown
+     * above so it is reachable by a test. `uxr_delete_session` needs a live
+     * transport (it waits on a session status and faults without one), and the
+     * bug this fixes has nothing to do with the wire: it is about WHEN the
+     * state is freed. `xrce_session_mark_closed` is the function that decides,
+     * and it is the one `tests/entity_lifetime.c` drives. */
     session->backend_data = NULL;
+    xrce_session_mark_closed(st);
     return NROS_RMW_RET_OK;
+}
+
+void xrce_session_mark_closed(xrce_session_state_t* st) {
+    if (st == NULL) {
+        return;
+    }
+    /* Issue 0847 — the session is CLOSED here, but it is only FREED once the
+     * last entity handle pointing at it is gone. Freeing unconditionally is
+     * what made an ordinary teardown order (close, then entities drop at end
+     * of scope) a use-after-free.
+     *
+     * The handles are still valid objects afterwards: their destructors run
+     * normally, see `session_closed`, skip the agent-side DELETE_ENTITY that
+     * now has nowhere to go, and free themselves. The last one frees this.
+     *
+     * A deferred free is NOT an error: it is the supported ordering, not a
+     * mistake by the caller. */
+    st->session_closed = true;
+    if (st->live_entities == 0) {
+        nros_xrce_free(st);
+    }
 }
 
 rmw_ret_t xrce_session_drive_io(rmw_session_t* session, int32_t timeout_ms) {

@@ -99,6 +99,9 @@ rmw_ret_t xrce_publisher_create(const rmw_node_t* node,
     }
 
     ps->datawriter_oid = dw_oid;
+    /* Issue 0847 — this entity now holds a pointer into the session state, so
+     * the session may not free itself until this handle is gone. */
+    xrce_session_entity_attach(st);
     out->backend_data = ps;
     out->can_loan_messages = false;
     return NROS_RMW_RET_OK;
@@ -116,13 +119,29 @@ rmw_ret_t xrce_publisher_destroy(rmw_publisher_t *publisher) {
      * agent acks), so the only failure this frame can see is a request that
      * would not BUFFER. That is worth reporting; the agent's own verdict is
      * not available at any price this path is willing to pay. */
-    uint16_t req = uxr_buffer_delete_entity(&st->session, st->output_reliable,
-                                            ps->datawriter_oid);
-    (void)uxr_run_session_time(&st->session, 0);
+    /* Issue 0847 — a CLOSED session has already deleted the uxr session and shut
+     * the transport, so the agent dropped this entity with it and there is
+     * nowhere for a DELETE_ENTITY to go. Reading `st->session` here is the
+     * use-after-free itself, so the check comes first and the request is not
+     * attempted. Skipping is not a failure: this is the supported teardown
+     * order, so it returns OK. */
+    rmw_ret_t ret = NROS_RMW_RET_OK;
+    if (!xrce_session_is_closed(st)) {
+        /* Phase 376 W5 — the slot reports now, but XRCE cannot know. The delete
+         * is deliberately fire-and-forget (close-time teardown must not block on
+         * agent acks), so the only failure this frame can see is a request that
+         * would not BUFFER. That is worth reporting; the agent's own verdict is
+         * not available at any price this path is willing to pay. */
+        uint16_t req = uxr_buffer_delete_entity(&st->session, st->output_reliable, ps->datawriter_oid);
+        (void)uxr_run_session_time(&st->session, 0);
+        ret = req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
+    }
 
     nros_xrce_free(ps);
     publisher->backend_data = NULL;
-    return req == UXR_INVALID_REQUEST_ID ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
+    /* LAST — this may free `st`. Nothing may touch it afterwards. */
+    xrce_session_entity_detach(st);
+    return ret;
 }
 
 rmw_ret_t xrce_publisher_publish_raw(const rmw_publisher_t *publisher,
