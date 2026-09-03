@@ -1920,6 +1920,7 @@ version = "0.5.0"
 dependencies = [
  "nros-platform-api",
  "nros-platform-cffi",
+ "nros-platform-config",
  "nros-platform-esp32-qemu",
  "nros-platform-mps2-an385",
  "nros-platform-stm32f4",

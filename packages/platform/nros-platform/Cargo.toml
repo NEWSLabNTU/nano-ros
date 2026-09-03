@@ -204,6 +204,10 @@ nros-platform-esp32-qemu = { version = "0.4.0", path = "../../platform/nros-plat
 workspace = true
 
 [build-dependencies]
+# phase-400 W6 — the `[knobs.memory]` rungs, from the LEAF ladder crate. This
+# dependency was impossible before the reader was extracted: `nros-board-common`
+# reaches back to this crate.
+nros-platform-config = { path = "../../tooling/nros-platform-config" }
 # issue 0460 — the shared Kconfig-via-$DOTCONFIG knob fallback. A Zephyr RUST
 # image inherits none of the cmake `set(ENV{...})` knob exports, so a bare
 # environment read compiles the crate default whatever Kconfig says. Needed
