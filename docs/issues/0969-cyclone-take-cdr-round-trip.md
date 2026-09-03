@@ -589,3 +589,56 @@ an issue, and this campaign has enough of those already.
 
 Both are real work. Neither is a five-minute follow-up to this measurement, which
 is why this section says "not measured" instead of estimating.
+
+## The CPU cost: MEASURED — the first option above, built
+
+`tests/codec_bench.cpp` is that harness: no poll loop, no network, no DDS
+entities. It builds a wire buffer, then times a `memcpy` (the new path's whole
+per-message payload work) against `dds_istream_init` + `dds_stream_read_sample`
++ `dds_ostream_init` + `dds_stream_write_sample` (the pair `take_typed_wire`
+ran on every reply). 50,000 iterations per point; run-to-run spread is roughly
+10-15%, so read these as two significant figures.
+
+| reply payload | memcpy (new) | decode+encode (old) | removed |
+| --- | --- | --- | --- |
+| 36 B | 0.8 ns | 46.3 ns | **45.5 ns** (60x) |
+| 1,028 B | 8.0 ns | 56.5 ns | **48.5 ns** (7.0x) |
+| 8,028 B | 47.4 ns | 130.3 ns | **82.9 ns** (2.7x) |
+| 16,028 B | 75.9 ns | 252.1 ns | **176.2 ns** (3.3x)
+
+The shape: a **~46 ns fixed floor** the old path paid on every reply regardless
+of size — that is the per-message cost this change removes outright — plus a
+size-dependent term. Both paths grow with payload, so the *ratio* falls as the
+message gets bigger while the *absolute* saving rises.
+
+Put beside the byte curve measured above, the two do not point the same way and
+the difference is the whole point: allocation **bytes** favour the old path
+below the ~6 KB crossover, while CPU favours the new path at **every** size
+measured. A decision that reads only one of the two curves gets a different
+answer depending on which one it happened to read.
+
+### Three artifacts this harness produced before it produced a number
+
+Each looked like a result. None was. Worth the space, because a bench that is
+wrong is worse than no bench — it answers confidently.
+
+1. **Hand-written CDR decoded nothing.** Laying the buffer out by hand — length
+   then elements — gave `_length = 0` at every size, so the "decode" cost was
+   the constant cost of bailing on a malformed buffer, and the sweep came out
+   flat (~47 ns at both 8 KB and 16 KB). Fixed by having the codec **serialise
+   its own input** rather than guessing at DHEADERs, alignment and
+   extensibility.
+2. **The sequence is not at sample offset 0.** A reply sample is
+   `cdds_request_header_t` (client GUID + sequence number, 16 B) followed by the
+   payload struct. Seeding at offset 0 writes into the header: the payload stays
+   zeroed (20 B serialised for any length) *and* the verification read the
+   seeded values straight back out of the decoded header, so the check passed on
+   a sample carrying no elements. A check reading the same wrong offset as the
+   seed cannot fail.
+3. **A verification that reads a length is not a verification.** Artifact 2
+   passed the `_length` check while the serialised size stayed 20 B for every
+   requested length. The size and the length disagreeing is what exposed it —
+   one number could not.
+
+The check now prints the decoded length at every point and every run above shows
+it matching. Timings collected before it matched were discarded, not adjusted.

@@ -218,7 +218,7 @@ if(NROS_RMW_CYCLONEDDS_MSG_TO_IDL)
     nros_rmw_cyclonedds_generate_from_msg(_addtwoints_sources
         PKG_NAME nros_test
         PKG_DIR  "${CMAKE_CURRENT_SOURCE_DIR}/types/nros_test"
-        INTERFACES srv/AddTwoInts.srv
+        INTERFACES srv/AddTwoInts.srv srv/SumSeq.srv
     )
 else()
     set(_addtwoints_sources "")
@@ -249,6 +249,33 @@ if(_addtwoints_sources)
 
     # Phase 117.7 service request/reply data round-trip — Phase
     # 117.X.3 reshapes wire to include cdds_request_header_t.
+    # Issue 0969 — the codec in isolation. NOT a ctest: it is a measuring
+    # instrument, and a bench with a pass/fail verdict becomes a flaky test on a
+    # loaded machine. Build it, run it by hand, read ns/msg.
+    add_executable(nros_rmw_cyclonedds_codec_bench
+        codec_bench.cpp
+        ${_addtwoints_sources}
+    )
+    target_link_libraries(nros_rmw_cyclonedds_codec_bench
+        PRIVATE
+            nros_rmw_cyclonedds
+            pthread
+    )
+    target_include_directories(nros_rmw_cyclonedds_codec_bench
+        PRIVATE
+            ${NROS_RMW_CFFI_DIR}
+    )
+    # The bench calls the cdrstream helpers directly, so it needs the same
+    # semi-internal ddsi/ddsrt roots `sertype_min.hpp` compiles against — the
+    # backend has them PRIVATE, so they do not propagate here.
+    if(NROS_CYCLONEDDS_PROVENANCE STREQUAL "source")
+        target_include_directories(nros_rmw_cyclonedds_codec_bench PRIVATE
+            "${CYCLONEDDS_SOURCE_DIR}/src/core/ddsi/include"
+            "${CYCLONEDDS_SOURCE_DIR}/src/core/ddsc/include"
+            "${CYCLONEDDS_SOURCE_DIR}/src/ddsrt/include"
+            "${NROS_CYCLONEDDS_SOURCE_BUILD_DIR}/src/ddsrt/include")
+    endif()
+
     add_executable(nros_rmw_cyclonedds_service_roundtrip
         service_roundtrip.cpp
         ${_addtwoints_sources}
