@@ -373,6 +373,7 @@ dependencies = [
  "nros-node",
  "nros-params",
  "nros-platform",
+ "nros-platform-config",
  "nros-rmw",
  "nros-serdes",
  "nros-zephyr-build",
