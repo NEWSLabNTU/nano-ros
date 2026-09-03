@@ -7,7 +7,7 @@ type: bug
 area: ci
 severity: high
 found: 2026-09-02
-related: [issue-0993, issue-0981, issue-0952]
+related: [issue-0872, issue-0993, issue-0981, issue-0952]
 ---
 
 ## Symptom
@@ -115,6 +115,20 @@ measurement.
 `source-gates` is also the lane's cost pole at 496 s. That number is untouched
 by this, and it is the one that decides whether the lane can ever gate a pull
 request (issue 0993).
+
+## Prior art: `sched-dim-arms` is 0872 row 5, again
+
+Issue 0872's table already carries this gate:
+
+> | 5 | `check-sched-dim-arms` | probes that `arm-none-eabi-gcc` EXISTS; the
+>   container's has no newlib, so every arm failed on `<string.h>` |
+
+Same gate, same class — a probe narrower than the requirement — and a different
+symptom, because the earlier fix widened the *compiler* probe and left the
+*sources* probe checking a directory instead of the header. The class survived
+its own fix, one level over. That is worth more than either fix: this gate has
+now been narrowed-then-widened twice, and the third time will be whichever input
+neither probe checks.
 
 ## Acceptance
 
