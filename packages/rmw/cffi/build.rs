@@ -14,10 +14,19 @@
 //!    `nros-rmw-cffi` that vendor it without a C toolchain on the
 //!    build host aren't forced through the cc invocation.
 
+use nros_board_common::platform_config::{BuildRungs, RmwKnobs};
+
 fn main() {
-    emit_max_backends();
+    // phase-400 W6 — the platform/board rungs for `[knobs.rmw]`, resolved once.
+    // `None` when no lane named a platform, which is every out-of-tree consumer
+    // and every plain `cargo build` here; the builtins then stand.
+    let rungs = BuildRungs::from_build_env()
+        .map(|r| r.rmw_rungs())
+        .unwrap_or_default();
+
+    emit_max_backends(&rungs);
     emit_subscriber_slots();
-    emit_message_info_slots();
+    emit_message_info_slots(&rungs);
     maybe_build_c_stub();
 }
 
@@ -34,12 +43,16 @@ fn main() {
 /// an unparseable value as absent and falls through to the default. The RANGE
 /// checks below are kept, since they are the ones that catch a plausible-looking
 /// wrong number.
-fn knob(name: &str, default: usize) -> usize {
-    nros_zephyr_build::knob_usize(name, &format!("CONFIG_{name}"), default)
+/// phase-400 W6 — `rung` is the platform/board answer from `[knobs.rmw]`, and
+/// it sits between the Kconfig rung and the crate builtin. Passing it as
+/// `knob_usize`'s default is what places it there: env and `$DOTCONFIG` still
+/// win above it, and the builtin only applies when no descriptor said anything.
+fn knob(name: &str, rung: Option<usize>, default: usize) -> usize {
+    nros_zephyr_build::knob_usize(name, &format!("CONFIG_{name}"), rung.unwrap_or(default))
 }
 
-fn emit_max_backends() {
-    let parsed = knob("NROS_RMW_MAX_BACKENDS", 8);
+fn emit_max_backends(rungs: &RmwKnobs) {
+    let parsed = knob("NROS_RMW_MAX_BACKENDS", rungs.max_backends, 8);
 
     if !(1..=64).contains(&parsed) {
         panic!(
@@ -54,7 +67,7 @@ fn emit_max_backends() {
     // Phase 376 W5/B1 — distinct `(name, namespace)` pairs one session hosts.
     // Default 4, matching `nros-node`'s `NROS_EXECUTOR_MAX_NODES`: the shim
     // cannot see more nodes than the executor will register.
-    let nodes = knob("NROS_RMW_MAX_NODES", 4);
+    let nodes = knob("NROS_RMW_MAX_NODES", rungs.max_nodes, 4);
     if !(1..=64).contains(&nodes) {
         panic!(
             "NROS_RMW_MAX_NODES={nodes} out of range [1, 64]. Bump \
@@ -71,7 +84,11 @@ fn emit_max_backends() {
 /// the fifth `create_subscription` returned BAD_ALLOC, which the
 /// executor then surfaced as an opaque `SubscriberCreationFailed`.
 fn emit_subscriber_slots() {
-    let parsed = knob("NROS_RMW_SUBSCRIBER_SLOTS", 8);
+    // NO ladder rung, deliberately: phase-412 W1 derives this from the
+    // entity inventory (`COUNT_SUBSCRIPTION`). Two campaigns resolving one
+    // knob is the drift issue 0938 cost, so this one keeps env -> Kconfig ->
+    // builtin and takes its platform answer from the derivation instead.
+    let parsed = knob("NROS_RMW_SUBSCRIBER_SLOTS", None, 8);
 
     if !(1..=128).contains(&parsed) {
         panic!(
@@ -91,8 +108,8 @@ fn emit_subscriber_slots() {
 /// never used: measured 3,136 bytes of live BTCM on the Orin SPE at 4
 /// subscribers. The table is keyed by backend handle, so the useful bound is
 /// the session's subscription count, not a fixed 64.
-fn emit_message_info_slots() {
-    let parsed = knob("NROS_RMW_MESSAGE_INFO_SLOTS", 64);
+fn emit_message_info_slots(rungs: &RmwKnobs) {
+    let parsed = knob("NROS_RMW_MESSAGE_INFO_SLOTS", rungs.message_info_slots, 64);
 
     if !(1..=256).contains(&parsed) {
         panic!(

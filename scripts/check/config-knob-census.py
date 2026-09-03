@@ -44,7 +44,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # only ever rises is enforceable where a count that "should fall" is not: an
 # env name legitimately SURVIVES migration as the front-end, so the env rows are
 # reported, never gated. Raise this when a tenant lands.
-LADDER_FLOOR = 20
+LADDER_FLOOR = 23
 
 # Every build-script env name, and WHAT IT IS. An unclassified name FAILS the
 # gate rather than landing in a bucket by heuristic — the first version of this
@@ -183,10 +183,15 @@ KNOB_CLASS = {
     # overflow; the dependency-weight audit names the RMW cap as a knob cmake
     # never resolves). Both are arguments FOR a board rung, the same shape the
     # ASI consumer's `NROS_MAX_PARAMETERS=256` had.
-    "NROS_RMW_MAX_BACKENDS": ("sizing", "static pool; candidate rmw tenant"),
-    "NROS_RMW_MAX_NODES": ("sizing", "static pool; candidate rmw tenant"),
-    "NROS_RMW_SUBSCRIBER_SLOTS": ("sizing", "static pool; candidate rmw tenant"),
-    "NROS_RMW_MESSAGE_INFO_SLOTS": ("sizing", "static pool; candidate rmw tenant"),
+    # A RUNTIME trace toggle, not a build-time size — presence-tested with
+    # `var_os` in `cffi/src/lib.rs`, never parsed. It became visible to this
+    # census only when `nros-rmw-cffi` gained a `build-helpers` dependency and
+    # its sources entered the scan; it configures nothing about the image.
+    "NROS_RMW_TRACE_OPEN": ("infra", "runtime trace toggle, not a size"),
+    "NROS_RMW_MAX_BACKENDS": ("ladder", "rmw tenant"),
+    "NROS_RMW_MAX_NODES": ("ladder", "rmw tenant"),
+    "NROS_RMW_SUBSCRIBER_SLOTS": ("derived", "phase-412 W1 — COUNT_SUBSCRIPTION"),
+    "NROS_RMW_MESSAGE_INFO_SLOTS": ("ladder", "rmw tenant"),
     "NROS_SMOLTCP_MAX_SOCKETS": ("sizing", "driver pool; candidate net tenant"),
     "NROS_SMOLTCP_MAX_UDP_SOCKETS": ("sizing", "driver pool; candidate net tenant"),
     "NROS_SMOLTCP_BUFFER_SIZE": ("sizing", "driver buffer; candidate net tenant"),
@@ -246,6 +251,7 @@ def ladder_knobs():
         "TransportKnobs",
         "MemoryKnobs",
         "ParamKnobs",
+        "RmwKnobs",
     ):
         fields = _struct_fields(src, struct)
         if fields:

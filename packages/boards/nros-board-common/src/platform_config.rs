@@ -165,6 +165,9 @@ pub struct Knobs {
     /// phase-400 W6 — the parameter-storage tenant.
     #[serde(default)]
     pub params: ParamKnobs,
+    /// phase-400 W6 — the RMW static-pool tenant. See [`RmwKnobs`].
+    #[serde(default)]
+    pub rmw: RmwKnobs,
     /// phase-400 W3 / RFC-0086 D1 — the transport tenant.
     ///
     /// The first knob that crosses all three descriptor axes: the backend knows
@@ -413,6 +416,27 @@ impl BuildRungs {
         }
     }
 
+    /// The `[knobs.rmw]` RUNGS for this build — platform merged with board,
+    /// board winning — with no env rung and no defaults.
+    ///
+    /// Same shape as [`Self::param_rungs`]: the consuming build script composes
+    /// env -> Kconfig -> these -> its own builtin, and keeps its RANGE checks,
+    /// which are a property of the array it carves and not of the ladder.
+    pub fn rmw_rungs(&self) -> RmwKnobs {
+        let plat = self.tree.platform_rmw_rungs(&self.platform);
+        let plat = self.or_builtin_rungs("rmw", plat);
+        let b = self
+            .board
+            .as_ref()
+            .map(|f| f.knobs.rmw.clone())
+            .unwrap_or_default();
+        RmwKnobs {
+            max_backends: b.max_backends.or(plat.max_backends),
+            max_nodes: b.max_nodes.or(plat.max_nodes),
+            message_info_slots: b.message_info_slots.or(plat.message_info_slots),
+        }
+    }
+
     /// The memory tenant for this build, over the full ladder.
     pub fn memory(&self, defaults: &[(&'static str, usize)]) -> Vec<(&'static str, ResolvedUsize)> {
         let plat = self.tree.platform_memory_rungs(&self.platform);
@@ -488,6 +512,42 @@ pub struct ParamKnobs {
     pub max_array_len: Option<usize>,
     #[serde(default)]
     pub max_byte_array_len: Option<usize>,
+}
+
+/// phase-400 W6 — the RMW static-pool tenant.
+///
+/// Three fixed-size arrays the CFFI registry and node table are carved from,
+/// read by `packages/rmw/cffi/build.rs`. They are a PLATFORM fact: an embedded
+/// image links one backend and runs a handful of nodes, a host build links
+/// several and may run many, and until now the only way to say so was an env
+/// var on the shell that happened to run the build.
+///
+/// `NROS_RMW_SUBSCRIBER_SLOTS` is deliberately NOT here. It sits in the same
+/// build script and looks identical, but phase-412 W1 derives it from the
+/// entity inventory (`COUNT_SUBSCRIPTION`), and a knob two campaigns resolve is
+/// the drift issue 0938 cost. Checked before writing this rather than after.
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RmwKnobs {
+    #[serde(default)]
+    pub max_backends: Option<usize>,
+    #[serde(default)]
+    pub max_nodes: Option<usize>,
+    #[serde(default)]
+    pub message_info_slots: Option<usize>,
+}
+
+/// Every RMW knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
+pub const RMW_KNOBS: &[&str] = &["max_backends", "max_nodes", "message_info_slots"];
+
+/// The env front-end for an RMW knob — the EXISTING names, verbatim.
+pub fn rmw_env_key(knob: &str) -> &'static str {
+    match knob {
+        "max_backends" => "NROS_RMW_MAX_BACKENDS",
+        "max_nodes" => "NROS_RMW_MAX_NODES",
+        "message_info_slots" => "NROS_RMW_MESSAGE_INFO_SLOTS",
+        other => panic!("unknown rmw knob `{other}`"),
+    }
 }
 
 /// Every parameter knob, in a stable order. Same reason as [`EXECUTOR_KNOBS`].
@@ -1279,8 +1339,76 @@ impl PlatformsTree {
 
     /// The `[knobs.params]` rungs, without resolution — for a build script that
     /// owns the defaults and its own env/Kconfig front-end.
+    fn platform_rmw_knobs(&self, name: &str) -> Result<RmwKnobs, ConfigError> {
+        let chain = self.chain(name)?;
+        let mut out = RmwKnobs::default();
+        for file in chain.iter().rev() {
+            let r = &file.knobs.rmw;
+            for (dst, src) in [
+                (&mut out.max_backends, r.max_backends),
+                (&mut out.max_nodes, r.max_nodes),
+                (&mut out.message_info_slots, r.message_info_slots),
+            ] {
+                if src.is_some() {
+                    *dst = src;
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// The `[knobs.rmw]` rungs for a platform, inherits chain applied.
+    pub fn platform_rmw_rungs(&self, platform: &str) -> Result<RmwKnobs, ConfigError> {
+        self.platform_rmw_knobs(platform)
+    }
+
     pub fn platform_param_rungs(&self, platform: &str) -> Result<ParamKnobs, ConfigError> {
         self.platform_param_knobs(platform)
+    }
+
+    /// phase-400 W6 — resolve the RMW tenant over the RFC-0049 ladder.
+    ///
+    /// Mirrors [`Self::resolve_params`]; the build script keeps its own range
+    /// checks, which belong to the array it carves rather than to the ladder.
+    pub fn resolve_rmw(
+        &self,
+        platform: &str,
+        board: Option<&RmwKnobs>,
+        env: &dyn Fn(&str) -> Option<String>,
+        defaults: &[(&'static str, usize)],
+    ) -> Result<Vec<(&'static str, ResolvedUsize)>, ConfigError> {
+        let plat = self.platform_rmw_knobs(platform)?;
+        let pick = |k: &RmwKnobs, name: &str| match name {
+            "max_backends" => k.max_backends,
+            "max_nodes" => k.max_nodes,
+            "message_info_slots" => k.message_info_slots,
+            _ => None,
+        };
+        let mut out = Vec::new();
+        for (name, builtin) in defaults {
+            let (mut value, mut source) =
+                match (board.and_then(|b| pick(b, name)), pick(&plat, name)) {
+                    (Some(v), _) => (v, KnobSource::Board),
+                    (None, Some(v)) => (v, KnobSource::Platform),
+                    (None, None) => (*builtin, KnobSource::Builtin),
+                };
+            let env_key = rmw_env_key(name);
+            if let Some(raw) = env(env_key)
+                && let Ok(n) = raw.trim().parse::<usize>()
+            {
+                value = n;
+                source = KnobSource::Env;
+            }
+            out.push((
+                *name,
+                ResolvedUsize {
+                    value,
+                    source,
+                    env_key,
+                },
+            ));
+        }
+        Ok(out)
     }
 
     /// phase-400 W6 — resolve the parameter tenant over the RFC-0049 ladder.
