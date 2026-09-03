@@ -704,6 +704,28 @@ jobs:
 
       # Aspirational umbrella-decoupling guard — EXPECTED TO FAIL until the
       # Phase 104.A migration completes. Advisory only. (Build tier, non-push.)
+      # NOT ON `pull_request`, deliberately — "PR cheap, batch thorough".
+      #
+      # phase-395 (197eef4fa) narrowed this from `github.event_name != 'push'`,
+      # which DID include pull requests, to the list below. The paragraph that
+      # follows predates that change and described the wider set; it is kept for
+      # the fixture reasoning, which still holds, but read the CONDITION for
+      # what runs. A comment that outlived its code is what sent phase-413 W4
+      # looking for a regression that was never there — and it is the same shape
+      # as `build-wide.yml`'s "WHY push(main) AND NOT the merge queue", which was
+      # false the day it was written (issue 0996).
+      #
+      # Cost, measured 2026-09-03 across three merge-group runs: 3:30, 3:17,
+      # 3:22. Per batch that is cheap; per PR push, on a queue that batches, it
+      # is the difference the phase-395 split exists to make.
+      #
+      # CONSEQUENCE, and it is worth stating where someone will read it: a green
+      # required `CI` on a pull request does NOT mean the unit tests passed. It
+      # means the source gates and the compile smoke held. Nothing broken lands
+      # — the queue runs them before merging — but the feedback arrives as a
+      # queue ejection (`queue-notify.yml` comments on the PR) rather than on the
+      # PR itself. `just ci gate` locally is the same lane, sooner.
+      #
       # Phase-395 W4 — this job already runs `check-fast` (push) and `check`
       # (PR). Adding `test-unit` makes the PR gate exactly L1, the lane an agent
       # is told to run before pushing (CLAUDE.md, AGENTS.md).
