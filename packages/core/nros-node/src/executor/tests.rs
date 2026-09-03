@@ -5501,3 +5501,185 @@ fn a_deferred_goal_reaches_the_accepted_callback_exactly_once() {
         "still only the first goal"
     );
 }
+
+// ====================================================================
+// Phase 403 step 3 -- the ARENA COST OF ONE ENTITY, MEASURED
+//
+// Step 3 derives the arena as a sum over what the entity inventory says
+// the image creates, so it needs a per-kind cost. These MEASURE it:
+// `arena_alloc` is a BUMP allocator, so an `arena_used()` delta across
+// exactly one registration IS that entity's arena footprint, including
+// alignment padding at the region boundary and the trailing buffer that
+// `arena_alloc_with_trailing` places after the entry.
+//
+// Measured, never modelled. A table derived by reading `size_of` on the
+// entry structs would agree with the allocator right up until an
+// alignment or a trailing term moved, and this campaign has produced six
+// mechanisms that were arithmetically right and did not reach the thing
+// they sized. The derivation must be checked against what the allocator
+// ACTUALLY claims, which is what these deltas are.
+//
+// WHY THIS MATTERS MORE THAN THE OTHER KNOBS. An under-sized arena halts
+// DURING entity creation, before the first spin, so issue 0900's advisory
+// never prints. `MAX_CBS` fails at registration with `ExecutorFull` and
+// `MAX_NODES` with `NodeTableFull`, both naming their knob; the arena is
+// the one number whose failure mode cannot report itself. So its inputs
+// are measured before anything derives from them.
+// ====================================================================
+
+/// The arena cost of one TIMER, which carries no payload buffer and so is
+/// the floor every other kind is measured against.
+fn arena_cost_timer(executor: &mut Executor<'_>) -> usize {
+    let before = executor.arena_used();
+    executor
+        .register_timer(TimerDuration::from_millis(1000), || {})
+        .expect("timer registration must succeed");
+    executor.arena_used() - before
+}
+
+/// The arena cost of one SERVICE SERVER. A service carries TWO payload
+/// buffers (request and reply), so it is the kind whose cost is least
+/// predictable from a subscription's.
+fn arena_cost_service(executor: &mut Executor<'_>, name: &str) -> usize {
+    let before = executor.arena_used();
+    executor
+        .register_service_sized::<TestService, _, 512, 512>(name, |req: &TestServiceRequest| {
+            TestServiceReply { sum: req.a }
+        })
+        .expect("service registration must succeed");
+    executor.arena_used() - before
+}
+
+#[test]
+fn a_service_server_costs_a_measurable_and_constant_arena_slice() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let first = arena_cost_service(&mut executor, "/svc_a");
+    assert!(
+        first > 0,
+        "a service server must claim arena; a zero delta means the probe is \
+         not measuring the allocation it names"
+    );
+    let second = arena_cost_service(&mut executor, "/svc_b");
+    assert_eq!(
+        first, second,
+        "two service servers must cost the same; step 3 sums a per-kind \
+         constant over the declared count, which is only valid if it IS \
+         constant"
+    );
+}
+
+#[test]
+fn an_unbounded_subscription_costs_more_than_a_bounded_one() {
+    // Measured 2316 bounded against 5356 unbounded on x86_64 -- 2.3x. This is
+    // why step 3 must REFUSE when a subscribed type is unbounded rather than
+    // budgeting the fallback: the fallback is the expensive arm, so an image
+    // that silently took it would be sized for a number nobody chose.
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let nid = executor
+        .node_builder("bounded_vs_not")
+        .build()
+        .expect("node");
+    let bounded = arena_delta(&mut executor, nid, "/b", qos_with_depth(1), true);
+    let unbounded = arena_delta(&mut executor, nid, "/u", qos_with_depth(1), false);
+    assert!(
+        unbounded > bounded,
+        "the unbounded fallback must cost MORE than a derived bound \
+         (got {unbounded} vs {bounded}); if it were cheaper, refusing to \
+         derive would be the conservative choice and it is not"
+    );
+}
+
+/// The per-kind arena cost table, as a MEASUREMENT PROBE.
+///
+///     cargo test -p nros-node --features std --lib report_arena_costs -- --ignored
+///
+/// Reports through `panic!` rather than `println!` deliberately: this crate is
+/// `#![no_std]`, `std::println!` is banned in its `src/` (issue 0589 -- it
+/// SIGSEGVs a Zephyr native_sim image), and the panic payload is the one
+/// output channel that needs no stdio. `#[ignore]` because it is a tool for a
+/// human, not a verdict; the assertions below are the verdicts and they run
+/// every time.
+///
+/// HOST NUMBERS. The entry structs hold pointers, so a 32-bit target's table
+/// differs. Step 3 must compute per target and may never copy these.
+///
+/// Measured 2026-09-03, x86_64:
+///     timer=32  sub_d1=2316  sub_d10=2504  sub_unbounded=5356
+///     service_512_512=3496  per_depth=20
+///
+/// The d1->d10 delta of 188 does NOT match
+/// `(depth + 1) * bound + (depth + 1) * 8` exactly for any plausible bound of
+/// `TestMsg` (a bound of 12 predicts 180), so the region carries alignment or
+/// padding terms that formula omits. That gap is the whole reason step 3
+/// derives against THIS probe rather than against the formula.
+#[test]
+#[ignore = "measurement probe: run with --ignored to read the table"]
+fn report_arena_costs() {
+    // One executor PER measurement. The default MAX_CBS is 4, and this probe
+    // registers more entities than that -- the first version died with
+    // `ExecutorFull`, which is the knob naming itself and is exactly the
+    // failure mode the arena does NOT have. A bump allocator's deltas are
+    // independent, so per-kind executors measure the same thing.
+    let timer = {
+        let mut e: Executor = executor_with_clock(MockSession::new());
+        arena_cost_timer(&mut e)
+    };
+    let (d1, d10, unb) = {
+        let mut e: Executor = executor_with_clock(MockSession::new());
+        let nid = e.node_builder("arena_report").build().expect("node");
+        let a = arena_delta(&mut e, nid, "/r1", qos_with_depth(1), true);
+        let b = arena_delta(&mut e, nid, "/r10", qos_with_depth(10), true);
+        let c = arena_delta(&mut e, nid, "/ru", qos_with_depth(1), false);
+        (a, b, c)
+    };
+    let svc = {
+        let mut e: Executor = executor_with_clock(MockSession::new());
+        arena_cost_service(&mut e, "/rsvc")
+    };
+    panic!(
+        "ARENA timer={timer} sub_d1={d1} sub_d10={d10} sub_unbounded={unb} \
+         service_512_512={svc} per_depth={}",
+        (d10 as isize - d1 as isize) / 9
+    );
+}
+
+#[test]
+fn a_timer_costs_a_measurable_and_depth_independent_arena_slice() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let first = arena_cost_timer(&mut executor);
+    assert!(
+        first > 0,
+        "a timer must claim arena; a zero delta means the probe is not \
+         measuring the allocation it names"
+    );
+
+    // A second timer costs the same: the per-kind cost is a CONSTANT the
+    // derivation may multiply by a declared count. If this ever differs,
+    // the arena is not a straight sum and step 3's premise is wrong.
+    let second = arena_cost_timer(&mut executor);
+    assert_eq!(
+        first, second,
+        "two timers must cost the same; step 3 sums a per-kind constant \
+         over the declared count, which is only valid if it IS constant"
+    );
+}
+
+#[test]
+fn a_subscriptions_arena_cost_scales_with_declared_depth() {
+    // The whole reason step 2 had to land first. Depth is a MULTIPLIER on
+    // the bound -- `buffered_region_size(depth, bound)` is
+    // `(depth + 1) * bound + (depth + 1) * 8` -- so a derivation that
+    // ignores it is wrong by up to 10x, in whichever direction hurts.
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let nid = executor.node_builder("arena_probe").build().expect("node");
+
+    let d1 = arena_delta(&mut executor, nid, "/d1", qos_with_depth(1), true);
+    let d10 = arena_delta(&mut executor, nid, "/d10", qos_with_depth(10), true);
+
+    assert!(
+        d10 > d1,
+        "depth 10 must claim more arena than depth 1 (got {d10} vs {d1}); \
+         if these are equal the buffered region is not depth-scaled and \
+         the arena cannot be derived from a declared depth"
+    );
+}
