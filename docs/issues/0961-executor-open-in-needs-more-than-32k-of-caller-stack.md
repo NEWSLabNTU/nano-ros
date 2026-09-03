@@ -151,8 +151,19 @@ Measured on the host, not inferred:
 
 Two things this did NOT do, and they are why the issue stays open:
 
-1. **The board has not booted it.** `MAIN_STACK_SIZE` on `mr_canhubk3/s32k344`
-   is the acceptance, and it needs the part.
+1. ~~**The board has not booted it.**~~ **MET 2026-08-31, recorded here
+   2026-09-03.** phase-409 carved the remaining members and the island entry
+   boots on `mr_canhubk3/s32k344` at `CONFIG_MAIN_STACK_SIZE=16384` — half the
+   32768 that was previously the smallest workable value
+   ([phase-409](../roadmap/phase-409-executor-inline-storage.md), Acceptance 3;
+   superproject commit `8d586b2`). Measured on the same two frames this issue
+   names: `Executor::open_in` 16000 → 2244 and `nros_cpp_init` 15104 → 1396,
+   so 31104 bytes of prologue on that call chain became 3640.
+
+   This criterion was written before that landed and stayed unticked for three
+   days, which is the failure mode this repo keeps recording in the other
+   direction: a HIGH-severity issue whose text overstates what is still broken
+   is as misleading as one that understates it.
 2. **Nothing STATES the number yet.** The boot-time check this issue asks for --
    a gate naming the main-thread stack an image requires, the way the heap gate
    names the arena -- is not written. The requirement is smaller now; it is still
