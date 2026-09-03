@@ -218,11 +218,26 @@ Running the client directly is what produced the table above.
 Licensed: deleting the two write-side strips, and the `type_ends_with` branches
 that call them.
 
-NOT licensed yet: the same claim for the C and C++ action paths. This measured
-the RUST runtime. `nros-c`/`nros-cpp` action entries reach `write_typed` through
-the same C ABI but serialize through their own generated code, and nothing here
-observed them. The same probe against a C/C++ action entry is the remaining
-check, and it is cheap now that the witness exists.
+### The C and C++ paths agree — all three languages measured
+
+The gap named above is closed. Same probe, same stock ROS 2 server, the
+`build-cyclonedds` action clients of each language:
+
+| client | `strip_goal_id_len_at` | `strip_nested_cdr_at` | result |
+| --- | --- | --- | --- |
+| Rust | declined x2 | declined | `[0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]` |
+| C | declined x2 | declined | same |
+| C++ | declined x2 | declined | same |
+
+Identical in all three, including the decline COUNTS — two goal-id sites
+(`_SendGoal_Request_` and `_GetResult_Request_`) and one nested-header site. The
+C and C++ entries serialize through their own generated code and reach
+`write_typed` through the C ABI, so this is three independent producers agreeing
+that neither correction has anything to correct.
+
+**The deletion is now licensed for the write path in every language nano-ros
+ships**, which is what the ROS 2-compatibility-belongs-to-nano-ros call asks for:
+the correction lives at the serializer, and the backend copy is dead.
 
 Also untouched: the three RECEIVE-side adapters
 (`take_fibonacci_get_result_response_wire` and the two `_SendGoal_*` /
