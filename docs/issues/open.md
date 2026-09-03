@@ -82,5 +82,6 @@ fails if this block drifts.
 - **#1009** (testing, ci) — Our DDS interop tests share a bus with the whole LAN, so a foreign peer on another host can fail them — and `ROS_LOCALHOST_ONLY=1` alone does NOT fix it See `1009-*`.
 - **#1013** (testing) — `test_rtos_pubsub_e2e` SIGKILLs its talker after ~12 publishes, so the cell exercises twelve seconds of a free-running publisher See `1013-*`.
 - **#1003** (codegen, api, rmw) — The generated C++ entry never passes a session name, so every C++ image registers with the XRCE agent as `node` See `1003-*`.
+- **#1003** (build, codegen, testing) — Zephyr images are compiled from SIX-WEEK-OLD generated entries — the entry is never regenerated when the emitter changes See `1003-*`.
 
 <!-- END GENERATED open-issue list -->
