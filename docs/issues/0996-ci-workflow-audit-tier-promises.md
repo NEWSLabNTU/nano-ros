@@ -179,6 +179,13 @@ Worth recording, because it is the part that works and should not be undone:
 * `report-interlock-coverage.sh` turns "this self-hosted lane did not run" into
   a stated outcome instead of silence — the fix for the no-verdict class.
 
+## Where the work is tracked
+
+phase-413 (`docs/roadmap/phase-413-ci-workflow-user-parity.md`) carries the work
+items. W6 — `package.xml` as the dependency SSoT — is DESIGN, not
+implementation: it changes what a `package.xml` means here, so its deliverable
+is an RFC, and no code should be written against it first.
+
 ## Order to fix
 
 1. Land 0992, then delete `queue.yml`'s four hand-rolled sync steps and decide

@@ -1,0 +1,236 @@
+# Phase 413 — make CI run the process a user runs
+
+**Status (2026-09-03). Opened from the workflow audit in issue 0996.** The
+workflows are meant to read as a transcript of a user session: `just setup
+<scope>`, then one command a developer can type (phase-411 W4). Six of eleven
+still hand-roll the middle. The audit measured what that costs, and the cost is
+not tidiness — it is a lane that passes in the merge queue and fails after the
+merge, on the same commit, running the same recipe.
+
+## The finding that orders this phase
+
+`just ci matrix build` dispatches to `_matrix-build`, whose body is `l3`. So
+`queue.yml` (`just ci l3`, on `merge_group`) and `build-wide.yml` (`just ci
+matrix build`, on `push` to main) run the **same recipe on the same runner
+labels**. Their verdicts on the same four commits, minutes apart:
+
+| commit | queue.yml | build-wide.yml |
+| --- | --- | --- |
+| `36c306405` | success 16:25:49 | **failure** 16:26:23 |
+| `da0344af1` | success 17:02:18 | **failure** 16:43:26 |
+| `ad5a8ecf9` | success 17:06:55 | **failure** 17:22:19 |
+| `d2a8955c5` | success 01:23:54 | **failure** 17:27:51 |
+
+The code is identical. The difference is that `queue.yml` carries four
+hand-rolled steps — `setup-cli`, `setup-launch-resolve`, `nros sync` on the rust
+workspace, and a loop syncing the three leaves L3 builds — which `build-wide.yml`
+does not, because it trusts `just setup tier2` and the build verb.
+
+**The boilerplate is load-bearing.** It is not clutter around a working system;
+it is what hides issue 0992 from the queue while the post-merge lane burns. That
+is the general shape this phase is about: every hand-rolled step in a workflow is
+a claim that the toolchain cannot do the thing itself, and each one that is true
+is a defect nobody is looking at.
+
+## The state to fix from
+
+| workflow | last 5 conclusions | shape |
+| --- | --- | --- |
+| `gate.yml` | green (the required `CI`) | — |
+| `post-submit.yml` | success ×4, cancelled | — |
+| `build-wide.yml` | failure ×4 | `just setup tier2` + one command |
+| `run-matrix.yml` | failure ×2 | `just setup tier2` + one command |
+| `nightly.yml` | failure ×4 | mixed |
+| `host-tests.yml` | failure ×4, cancelled | 5 provisioning steps hand-rolled |
+
+Four of six verification lanes carry no signal. CLAUDE.md names the class: *"A
+uniformly-red lane has NO signal capacity: a regression landing in it looks
+exactly like yesterday's failure."* Until a lane is green once, nothing it says
+counts, so **W2 gates most of the rest of this phase** — there is no way to prove
+a conversion did not break something in a lane that was already red.
+
+---
+
+## W1 — collapse the duplicated `l3` lane
+
+Blocked on issue 0992 (PR #208) landing; that is what lets `build-wide` provision
+through the verb instead of by hand.
+
+Then: delete `queue.yml`'s four sync steps, and **decide whether this lane runs
+in the queue or after it — once, not both.** Today the same self-hosted lane is
+paid for twice per change, and a gate that already passed in the queue cannot
+fail differently after the merge unless the two spellings have diverged. Which is
+exactly what happened.
+
+Recommendation: keep it on `merge_group` (a gate belongs before the merge, not
+after) and retire `build-wide.yml`, or reduce it to the scheduled/dispatch entry
+point it also serves. Whichever way, one spelling.
+
+Acceptance: `grep -c 'nros sync' .github/workflows/queue.yml` is 0; exactly one
+workflow runs the l3 lane; a full change cycle shows the lane running once.
+
+## W2 — get each red lane green, in dependency order
+
+Not a conversion task — a debugging one, and it comes first because no
+conversion can be verified in a lane that is already red.
+
+1. **`host-tests`** — dies in *Build workspace fixtures*. This is the honest
+   failure: the step `exit 1`s instead of laundering into a skip, which is the
+   policy working. Fix the fixture build.
+2. **`run-matrix`** — tier-2 run depth, one step, exit 1 with no further
+   detail in the log summary. Needs a real diagnosis before it can be trusted.
+3. **`nightly`** — failure ×4. `just nightly-triage` classifies by which STEP
+   failed and flags cells red across a window; use it rather than reading runs.
+4. **`build-wide`** — expected to go green with W1/0992; if it does not, its
+   remaining failure is now visible rather than buried under the include
+   preflight.
+
+Acceptance: each lane green at least once, and the date recorded here. A lane
+that cannot be made green is a finding, not a skip — file it.
+
+## W3 — a gate: no workflow installs what the index already declares
+
+`nros setup --system` resolves the `[prereq.*]` closure for the detected package
+manager (RFC-0062 / phase-327). Measured on a dev host: 38 present, 5 missing, 3
+unprobed. The mechanism works. Yet:
+
+| site | installs | already declared |
+| --- | --- | --- |
+| `docs.yml` | `doxygen`, `graphviz` | **both** |
+| `nightly.yml` | `clang`, `libclang-dev` | **both** |
+| `gate.yml` colcon-parity | ROS apt repo, `ros-humble-ros-base`, `colcon`, curl-installs `just` | `colcon` yes; ROS no |
+
+`[prereq.doxygen]`'s own `why` field reads *"found undeclared by
+check-sysdep-remedies"* — so a gate already exists for the index-side gap. **The
+reverse is unchecked**: nothing stops a workflow apt-installing what the index
+knows. That asymmetry is why these three survived.
+
+Two halves:
+
+* **The gate.** A workflow `run:` block may not `apt-get install` / `pip install`
+  a package name the index declares. Self-testing, on the fast line. It must skip
+  comment lines and heredoc bodies, for the reason `check-workflow-repo-env`
+  documents: a gate that cannot tell a command from a sentence about a command is
+  worse than no gate.
+* **The conversions.** `docs.yml` and `nightly.yml`'s clang step become
+  `nros setup --system --sudo` (or a narrower `--tool`). colcon-parity becomes
+  `container: ghcr.io/newslabntu/nano-ros-ci:humble` — `images.yml` builds that
+  image and describes it as *"ROS 2 Humble + host tools, the base `container:`
+  for the check / …"*, and **only `nightly.yml` uses it today**. A ROS desktop
+  stack is installed by apt on every colcon-parity run for want of one line.
+
+Acceptance: the gate reproduces each of the three sites before the fix and passes
+after; no workflow apt-installs an indexed package.
+
+## W4 — decide what the required check promises on a pull request
+
+`test-unit` does not run on `pull_request` — only on `merge_group`, `schedule`
+and `workflow_dispatch`. So a PR shows a green required `CI` having never run a
+unit test; they run first in the merge queue.
+
+Nothing broken lands, because the queue is the real gate and `queue-notify.yml`
+exists to comment on ejections. But CLAUDE.md states the required context *is*
+`check-fast` + `test-unit` + `check-cli-tests`, which is true only in the queue.
+Either the trigger list gains `pull_request` (cost: unit tests on every push to
+every PR) or the doc stops claiming it. **Pick one and write down why** — the
+value of this line is that a contributor can predict what green means.
+
+Acceptance: the doc and the trigger list agree, and the reasoning is recorded
+next to whichever moved.
+
+## W5 — one scope vocabulary
+
+phase-411 W4: a CI job is `just setup <scope>` then one command a developer can
+type. Three lanes do this; three do not.
+
+| workflow | provisioning | work |
+| --- | --- | --- |
+| `build-wide` | `just setup tier2` | `just ci matrix build` |
+| `run-matrix` | `just setup tier2` | `just ci matrix` |
+| `nightly` (matrix) | `just setup tier2-nightly` | `just ci matrix-nightly` |
+| `host-tests` | `nros setup --source` ×6, `--tool` ×3, `provision-zenohd`, `setup-launch-resolve` | `just native build-fixture-rust-core`, `just native build-workspace-fixtures`, `just ci tier1` |
+| `queue` | 4 hand-rolled steps (W1) | `just ci l3` |
+| `nightly` (platform) | `just <plat> setup` + 6 more steps | `just <plat> test` |
+
+`nightly.yml` also repeats a 22-line *"Build nros CLI from packages/cli/"* block
+verbatim in four jobs.
+
+The conversion is only safe once the target verbs actually provision what the
+lane needs — which is what 0992's `_setup-common` starts and what W3 finishes for
+OS packages. Two provisioning verbs are still unreachable from `just setup`:
+`just ci provision-zenohd` and (before 0992) `setup-launch-resolve`. Absorb the
+first.
+
+Acceptance: every job body is `just setup <scope>` plus one command; the repeated
+CLI-build block exists once; `just ci provision-zenohd` is reachable from
+`just setup`.
+
+## W6 — DESIGN REQUIRED: `package.xml` as the dependency SSoT (rosdep parity)
+
+**This one is not an implementation task and must not be started as one.** It
+changes what a `package.xml` means in this repo, so it needs an RFC first.
+
+The intent is the rosdep experience: dependencies are written in `package.xml`,
+the tool scans the packages, and installs accordingly. The two halves do not
+meet today:
+
+* **406 tracked `package.xml` files.** Their entire dependency vocabulary is ROS
+  message and build-tool keys — `std_msgs` (177), `example_interfaces` (106),
+  `ament_cmake` (19), `rosidl_default_*` (27), plus workspace-local node
+  packages. **Not one names a system dependency.**
+* Those declarations are consumed **only by codegen** — which msg packages to
+  generate. No provisioning path reads them.
+* Provisioning reads `nros-sdk-index.toml`: `[prereq.*]`, `[rust.*]`,
+  `[python.*]`, `[source.*]`, `[tool.*]`. Hand-maintained and repo-global.
+
+So a `package.xml` cannot express "this package needs libssl-dev", and there is
+no `nros setup <workspace>` that walks a workspace's manifests and resolves their
+closure. The nearest thing, `nros setup --build-sources`, provisions a
+repo-global union from the index — not a per-workspace scan.
+
+Questions the RFC has to answer, none of which have obvious answers:
+
+1. **What is the key namespace?** rosdep keys are a curated global database
+   (`libssl-dev` → per-distro package names). Do we adopt rosdep keys, our own
+   `[prereq.*]` names, or accept both? A `package.xml` that only our tool can
+   read is a divergence from ROS, which is the thing the analogy exists to avoid.
+2. **Who owns the mapping?** Today `[prereq.*]` carries `apt`/`dnf`/`pacman`/
+   `brew` plus a `check` probe. That is a rosdep rules file in TOML. Does the
+   index stay the mapping and `package.xml` become the *declaration*, or do we
+   consume the real rosdep database where present?
+3. **What about the 406 existing files?** They declare message deps that must
+   keep meaning what they mean to codegen. A second meaning for the same tag is
+   how a file ends up with two readers that disagree.
+4. **Scope resolution.** `nros setup <workspace>` implies a workspace scope for
+   provisioning, which the phase-411 scope vocabulary does not currently have —
+   its scopes are platforms and lanes.
+5. **Does this subsume `--build-sources`?** If a workspace's manifests can state
+   their own needs, the repo-global union is a fallback, not the SSoT.
+
+Deliverable for W6 is **an RFC in `docs/design/`**, not code. Only once it is
+`Draft` and reviewed does an implementation work item get opened.
+
+## Acceptance for the phase
+
+* One spelling of the l3 lane, running once per change (W1).
+* Every verification lane green at least once, with the date recorded (W2).
+* A gate that fails when a workflow installs an indexed package, plus the three
+  conversions (W3).
+* The required check's promise and its trigger list agree (W4).
+* Every job body is `just setup <scope>` + one command (W5).
+* An RFC for `package.xml`-driven provisioning, reviewed, with an implementation
+  work item opened against it (W6).
+
+## What the audit found working, and this phase must not undo
+
+Recorded because a cleanup pass is exactly where these get deleted by accident:
+
+* `host-tests`' fixture steps `exit 1` on failure. The comment above them records
+  the ten runs where a green step sat over a failed build.
+* `gate.yml`'s `ci-ok` refuses a vacuous pass: a skipped `check` is accepted only
+  for a `pull_request` that `changes` proved touched no code; any other skip is a
+  hard failure.
+* `report-interlock-coverage.sh` turns "this self-hosted lane did not run" into a
+  stated outcome instead of silence.
+* `check-ci-no-verb-fallback` forbids one `just` verb falling back to another
+  with `||` — the shell spelling of skip-and-report-success.
