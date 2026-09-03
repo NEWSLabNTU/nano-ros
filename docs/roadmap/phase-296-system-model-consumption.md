@@ -1,10 +1,27 @@
 # Phase 296 — SystemModel consumption: bake the model into embedded images
 
-**Status.** IN PROGRESS — but LAST RECORDED 2026-07-23, so treat the figures
-below as stale until re-audited. W1–W4 + W3b.1–.5 landed (2026-07-20) incl. the
-cross-runtime parity fixture; the R2/R4 migration was mid-flight with a holdout
-inventory of **17 CMake + 7 Rust** entries. Migration state for C/C++ lives in
-the CMake `LAUNCH`/`MODEL` keyword, not the source.
+**Status (2026-09-04). W1-W4 + W3b.1-.5 LANDED; W5 design-only; the R2/R4
+migration is SUPERSEDED, not unfinished — phase-330 W7 reversed its direction.**
+
+The 2026-07-23 line below reported "**17 CMake + 7 Rust** holdouts" and read as
+migration debt for six weeks. It is not debt, and re-counting it is the wrong
+repair. Its classifier counts entries whose non-comment lines still carry
+`LAUNCH "…"` / `launch = "…"`, because R4's target was to move every entry ONTO
+`MODEL`/`model =`. [phase-330](phase-330-system-model-as-build-artifact.md) W7
+— *"Input-addressed entries: `launch =` replaces `model =`"* (2026-08-03) —
+reversed exactly that: entries name their INPUT, SystemModels are build
+artifacts, and `model =`/`MODEL` are now DEPRECATED expert overrides (CLAUDE.md
+states this rule). phase-330 W7's own text names "the `nros::main!(launch = …)`
+form that phase-296 R4 removed".
+
+So the holdouts became the REQUIRED form. Measured 2026-09-04 on anchored
+patterns (an unanchored grep matches this doc's own prose, which is how the
+first re-count went wrong): **0** real `MODEL` keywords and **0** real
+`nros::main!(model = …)` invocations in `examples/`, against 13 `LAUNCH` and 23
+`launch =`. The tree is fully on phase-330's form.
+
+Read every R2/R4 section below as HISTORY of a direction that was abandoned.
+W5 remains design-only, and its prereqs (a) and (b) are done.
 
 Implements RFC-0050 (consumer half) + RFC-0052 (the RTOS mapper).
 Producer side is DONE (play_launch phase 43: `resolve` emits the model,

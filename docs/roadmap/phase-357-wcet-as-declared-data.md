@@ -1,7 +1,22 @@
 # Phase 357 — WCET as declared data: making derived scheduling mean something
 
-**Status (2026-08-18). W3 DONE; W1's RFC LANDED (RFC-0078) with its type/validator
-still to come; W2 blocked behind that.** [phase-356](phase-356-test-evidence-and-measurement-trust.md)
+**Status (2026-09-04). W3 DONE; W1 DONE — RFC-0078 landed AND its type and
+validator are in the tree; W2 is the only open strand, and it is blocked on
+model INPUTS rather than on W1.** The 2026-08-18 line said the type and
+validator were "still to come" and W2 was "blocked behind that"; both halves
+were overtaken. `packages/core/nros-orchestration-ir/src/wcet.rs` carries
+`WcetProfile`, its `clock_hz` field and the validator (including the
+`clock_hz is 0` rejection and the cycles-to-milliseconds conversion), so W2 is
+not waiting on W1 for anything.
+
+W2's two remaining derivations and their real blockers are stated below and are
+unchanged: `placement` needs an interference model on top of `SchedCaps.n_cores`
+(which now EXISTS), and `non_preempt` needs per-callback priorities within a
+tier, which is a MODEL change scoped in issue 0259. Note the inputs those would
+consume are still SYNTHETIC — RFC-0078's worked example says so, because QEMU
+cannot measure cycles and there is no hardware lane.
+
+**Previously (2026-08-18):** [phase-356](phase-356-test-evidence-and-measurement-trust.md)
 W2 landed the artifact (#403 resolved), which was the only thing holding W1.
 Three orchestration issues that are one dependency chain, not three tasks.
 
