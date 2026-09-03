@@ -270,7 +270,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         // ---- stage 3 ----------------------------------------------------
         // Before anything is generated or compiled: a missing prerequisite
         // fails HERE, naming the command that fixes it (RFC-0065 D2).
-        let missing = crate::builder::preflight::check(descriptor, &root);
+        let missing = crate::builder::preflight::check(descriptor, &root, nano_ros_root.as_deref());
         if !missing.is_empty() {
             eyre::bail!("{}", crate::builder::preflight::report(&missing));
         }

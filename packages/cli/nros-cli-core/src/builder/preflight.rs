@@ -45,13 +45,13 @@ pub struct Missing {
 /// things one build at a time is three round trips, and D2's promise is that
 /// stage 3 tells you everything before anything compiles.
 #[must_use]
-pub fn check(board: &BoardDescriptor, root: &Path) -> Vec<Missing> {
+pub fn check(board: &BoardDescriptor, root: &Path, nano_ros_root: Option<&Path>) -> Vec<Missing> {
     let mut out = Vec::new();
 
     // The rustc target triple. A cross board that pins one needs it installed,
     // and `cargo build --target` fails deep in the build otherwise.
     if let Some(target) = board.target.as_deref() {
-        match target_provisioning(root, target) {
+        match target_provisioning(nano_ros_root, target) {
             // A prebuilt `rust-std` exists, so "is it installed" is the right
             // question and `rustup target add` is the answer.
             Provisioning::Rustup => {
@@ -121,8 +121,20 @@ enum Provisioning {
     BuildStd,
 }
 
-fn target_provisioning(root: &Path, target: &str) -> Provisioning {
-    let Ok(text) = std::fs::read_to_string(root.join("config/rust-targets.txt")) else {
+fn target_provisioning(nano_ros_root: Option<&Path>, target: &str) -> Provisioning {
+    // The NANO-ROS CHECKOUT, not the workspace root — `config/rust-targets.txt`
+    // lives in this repository, and a user's workspace has no such file.
+    //
+    // The first version of this read it from the workspace root, which is what
+    // `preflight::check` is otherwise given. It therefore found nothing, fell
+    // back to `Rustup`, and changed NOTHING: the nightly's `nuttx` cell failed
+    // on the identical `rustup target add armv7a-nuttx-eabihf` line after the
+    // "fix" landed. The local check that was supposed to catch that passed for
+    // an unrelated reason, so the wrong root shipped.
+    let Some(repo) = nano_ros_root else {
+        return Provisioning::Rustup;
+    };
+    let Ok(text) = std::fs::read_to_string(repo.join("config/rust-targets.txt")) else {
         return Provisioning::Rustup;
     };
     for line in text.lines() {
@@ -223,7 +235,7 @@ mod tests {
     #[test]
     fn a_board_with_no_pinned_target_needs_no_rust_target() {
         let tmp = tempfile::tempdir().unwrap();
-        let m = check(&board(""), tmp.path());
+        let m = check(&board(""), tmp.path(), None);
         assert!(!m.iter().any(|m| m.what.contains("Rust target")), "{m:?}");
     }
 
@@ -247,19 +259,19 @@ mod tests {
             .expect("the repo's rust-targets list");
 
         assert_eq!(
-            target_provisioning(root, "armv7a-nuttx-eabihf"),
+            target_provisioning(Some(root), "armv7a-nuttx-eabihf"),
             Provisioning::BuildStd,
             "a NuttX target is build-std; demanding `rustup target add` for it \
              names a command that cannot succeed"
         );
         assert_eq!(
-            target_provisioning(root, "thumbv7m-none-eabi"),
+            target_provisioning(Some(root), "thumbv7m-none-eabi"),
             Provisioning::Rustup,
             "a target with a prebuilt rust-std keeps the rustup check"
         );
         // A triple nobody declared falls back to the pre-existing behaviour.
         assert_eq!(
-            target_provisioning(root, "nros-not-a-declared-triple"),
+            target_provisioning(Some(root), "nros-not-a-declared-triple"),
             Provisioning::Rustup
         );
     }
@@ -270,7 +282,7 @@ mod tests {
         // A triple no host has installed, and which is not a real target — so
         // this cannot pass by accident on a well-provisioned machine.
         let b = board("target = \"nros-not-a-real-triple\"\n");
-        let m = check(&b, tmp.path());
+        let m = check(&b, tmp.path(), None);
         if rust_target_installed("nros-not-a-real-triple") {
             // No rustup on this host: the check reports installed by design
             // (see `rust_target_installed`), so there is nothing to assert.
@@ -284,13 +296,56 @@ mod tests {
         assert_eq!(hit.remedy, "rustup target add nros-not-a-real-triple");
     }
 
+    /// A `build-std` board is not told to `rustup target add` — through
+    /// `check()`, with the REAL checkout.
+    ///
+    /// The unit test on `target_provisioning` alone was not enough, and this is
+    /// the test that would have caught what shipped: the classifier was right
+    /// and the ROOT handed to it was wrong. `check()` receives the WORKSPACE
+    /// root, `config/rust-targets.txt` lives in the nano-ros CHECKOUT, so the
+    /// lookup found nothing, fell back to `Rustup`, and the nightly's `nuttx`
+    /// cell failed on the same `rustup target add armv7a-nuttx-eabihf` line the
+    /// fix was supposed to remove.
+    ///
+    /// I "verified" that version with a `nros build --dry-run` that passed for
+    /// an unrelated reason. A passing command is not a passing assertion.
+    #[test]
+    fn a_build_std_board_is_never_told_to_rustup_target_add() {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .find(|p| p.join("config/rust-targets.txt").is_file())
+            .expect("the repo's rust-targets list");
+        let ws = tempfile::tempdir().unwrap();
+        let b = board("target = \"armv7a-nuttx-eabihf\"\n");
+
+        let m = check(&b, ws.path(), Some(repo));
+        assert!(
+            !m.iter().any(|m| m.remedy.starts_with("rustup target add")),
+            "a build-std target has nothing to install; reported: {:?}",
+            m.iter().map(|m| &m.remedy).collect::<Vec<_>>()
+        );
+
+        // ...and with NO checkout to read the list from, the old conservative
+        // behaviour stands rather than a silent pass.
+        let blind = check(&b, ws.path(), None);
+        if !rust_target_installed("armv7a-nuttx-eabihf") {
+            assert!(
+                blind
+                    .iter()
+                    .any(|m| m.remedy.starts_with("rustup target add")),
+                "without the list this cannot be classified, and preflight must \
+                 not invent a pass"
+            );
+        }
+    }
+
     #[test]
     fn an_unsynced_workspace_is_told_to_sync() {
         // issue 0463 — without this the failure is a cargo manifest-PARSE error
         // four frames deep that never names `nros sync`.
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join("src/talker_pkg")).unwrap();
-        let m = check(&board(""), tmp.path());
+        let m = check(&board(""), tmp.path(), None);
         let hit = m
             .iter()
             .find(|m| m.remedy == "nros sync")
@@ -303,7 +358,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join("src/talker_pkg")).unwrap();
         std::fs::create_dir_all(tmp.path().join("build/nros")).unwrap();
-        let m = check(&board(""), tmp.path());
+        let m = check(&board(""), tmp.path(), None);
         assert!(m.iter().all(|m| m.remedy != "nros sync"), "{m:?}");
     }
 
@@ -315,7 +370,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join("src/actuator_pkg")).unwrap();
         std::fs::create_dir_all(tmp.path().join("generated/std_msgs")).unwrap();
-        let m = check(&board(""), tmp.path());
+        let m = check(&board(""), tmp.path(), None);
         assert!(
             m.iter().all(|m| m.remedy != "nros sync"),
             "generated/ is sync output too: {m:?}"
