@@ -496,7 +496,7 @@ be treated as provisional until a lineage-scoped sampler runs on a quiet box.
 Two measurement bugs, one root cause: **sampling by name instead of by
 lineage.** The earlier `pgrep -f` self-match was the same mistake in a different
 costume. Standing rule now recorded in
-[phase-371](../roadmap/phase-371-build-cpu-utilization.md): scope samplers by
+[phase-371](../roadmap/archived/phase-371-build-cpu-utilization.md): scope samplers by
 process tree, and check what else is running before trusting an absolute number.
 
 What survives, because it does not depend on live process sampling:
@@ -906,7 +906,7 @@ helped. The pooled launcher built for this issue works and is kept opt-in
 out to defeat cargo's shared target directory.
 
 Full accounting, including six retractions and the four durable lessons, is in
-[phase-371](../roadmap/phase-371-build-cpu-utilization.md)'s CLOSING SUMMARY.
+[phase-371](../roadmap/archived/phase-371-build-cpu-utilization.md)'s CLOSING SUMMARY.
 
 What came out of it and stays: the `nros_grep_q` error/non-match class and its
 ratchet gate, issue 0721's traversal fixes (>300 s -> 3 s on one gate), two

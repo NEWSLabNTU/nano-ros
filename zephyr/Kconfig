@@ -628,7 +628,7 @@ config NROS_ZENOH_LINK_ISOTP
       Requires a CAN controller (CONFIG_CAN) on the board. Zephyr marks
       CONFIG_ISOTP [EXPERIMENTAL]; its own conformance and
       implementation suites pass on native_sim, with the STmin cases
-      skipped -- see docs/roadmap/phase-394-can-unicast-for-zenoh-pico.md.
+      skipped -- see docs/roadmap/archived/phase-394-can-unicast-for-zenoh-pico.md.
       Maps to Z_FEATURE_LINK_ISOTP.
 
 config NROS_ZENOH_LINK_WS
