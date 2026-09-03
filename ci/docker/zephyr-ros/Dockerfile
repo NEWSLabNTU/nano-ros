@@ -131,7 +131,8 @@ RUN pip3 install --no-cache-dir \
         PyYAML==6.0.2 \
         pykwalify==1.8.0 \
         packaging==24.2 \
-    && python3 -c 'import west, elftools, yaml, pykwalify, packaging' \
+        jsonschema==4.23.0 \
+    && python3 -c 'import west, elftools, yaml, pykwalify, packaging, jsonschema' \
     && west --version
 
 # uv (Python 3.12 for the Zephyr 4.4 line) + just (recipe runner). Both via
