@@ -168,6 +168,7 @@ fast-serial: \
     feature-contract \
     feature-set-ssot \
     ffi-struct-mirrors \
+    fixture-artifact-dir-inputs \
     fixture-binary-names \
     fixture-groups \
     fixture-id-guard \
@@ -4029,6 +4030,15 @@ rmw-descriptors:
 [private]
 serdes-descriptors:
     @python3 scripts/check-serdes-descriptors.py
+
+# Issue 1025 -- a packer must not invent the row's cargo args or env. The shared
+# cargo group key is a function of (platform, args, env); a consumer supplying
+# two of the three gets a directory the build never wrote to, and only once that
+# row gains a variant. Silent until then, which is how every ESP32 QEMU flash
+# image stopped being packable without a single lane going red.
+[group("check")]
+fixture-artifact-dir-inputs:
+    @python3 scripts/check-fixture-artifact-dir-inputs.py
 
 [private]
 fixture-groups:

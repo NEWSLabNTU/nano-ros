@@ -1,7 +1,7 @@
 ---
 id: 1025
 title: "ESP32 flash images can never be built: the packer asks for the group dir with the row's env stripped, so it looks in a directory the build stopped using"
-status: open
+status: resolved
 area: build, testing
 severity: high
 found: 2026-09-04
@@ -129,3 +129,53 @@ tests' failures. Confirming it means fixing this, rebuilding, and re-running the
 five. Recorded that way deliberately — 0968 exists because four issues were
 filed here from a sweep and all four retracted, two carrying confident wrong
 root causes.
+
+
+## RESOLVED 2026-09-04
+
+**`nros_fixture_row_artifact_dir_by_id <row-id> <platform>`** — the row's args
+and env come from the manifest, which is the one place they are written. The
+four-argument form stays for callers that genuinely hold them (the build
+itself). Both ESP32 packers now name the row id they are packing, which is the
+same id the build loop above each already passes to `fixtures-build.sh --id`.
+
+**Acceptance is the build, as the helper's own docstring demands:**
+
+```
+$ just esp32 build-qemu
+  build/esp32-qemu/esp32-qemu-talker.bin      Image successfully saved!
+  build/esp32-qemu/esp32-qemu-listener.bin    Image successfully saved!
+$ just esp32 build-logging-smoke
+  …/logging-smoke-esp32-qemu.bin              Image successfully saved!
+```
+
+### The class, swept — and two of the five flags were the GATE being wrong
+
+`check-fixture-artifact-dir-inputs` (fast line) forbids a packer of a
+lane-built artifact from supplying empty args or env on a shared platform. Its
+first version flagged six sites. Only the two ESP32 ones were defects.
+
+The other four — `freertos`, `nuttx`, `qemu-arm-baremetal`, `threadx-linux`,
+`threadx-riscv64` run-example recipes — **build the artifact themselves**, and
+pass the very same empty arguments to `nros_fixture_target_dir_flag`. Their two
+halves therefore agree with each other: they write and read the same unhashed
+dir. Measured, not assumed — `nuttx` and `threadx-riscv64` DO diverge from the
+fixture lane's key (`nuttx-2965781523` vs `nuttx`), which is what makes them look
+like defects, and they are not, because nothing in those recipes reads what the
+lane built.
+
+Shipping that first version would have reported a five-site bug that does not
+exist. The gate now exempts a call whose recipe also calls
+`nros_fixture_target_dir_flag` — a gate wider than the rule it enforces is issue
+0196's audit finding, and this one was about to repeat it.
+
+**Mutation-tested on the normal path**, per `check-gate-selftests`: the gate
+runs three controls every time — the real 1025 defect (must flag), the by-id fix
+(must not), and a self-consistent build-it-yourself recipe (must not). The third
+is what pins the narrowing, so a future edit cannot quietly widen it back.
+
+### What it does NOT establish
+
+Whether the five esp32 tests in [issue 0968](0968-tier2-runtime-failures-unreproduced.md)
+pass now. They could not run at all before this; that they CAN run is not the
+same as their passing, and running them is 0968's work.
