@@ -97,6 +97,10 @@ button.mini{
   background:var(--surface);color:var(--muted);border:1px solid var(--line2);
 }
 button.mini:hover{color:var(--fg);border-color:var(--fg)}
+button.mini[data-on="1"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+/* a name we rewrote for display is marked, so the view can never be mistaken
+   for a claim about what the symbol is actually called */
+.fn.aliased{border-bottom:1px dotted currentColor}
 
 /* ---- sections & groups ---- */
 section.aud{margin:34px 0 0}
