@@ -266,7 +266,10 @@ Also untouched: the three RECEIVE-side adapters
 (`take_fibonacci_get_result_response_wire` and the two `_SendGoal_*` /
 `_GetResult_Request_` memcpy branches). Those are a different question — issue
 0969 argues a `dds_takecdr` rewrite removes the need for them rather than
-correcting them.
+correcting them. **That rewrite has since landed, and its cost is measured**: the
+decode+encode it removes was a ~46 ns floor per message (176 ns at 16 KB), while
+the allocation count it was also expected to cut did not move. See 0969's
+"The CPU cost: MEASURED" section.
 
 ## Not to be confused with
 
