@@ -1035,3 +1035,85 @@ shell script is not silently reinterpreted.
    agent's type registration and the client is an innocent bystander.
 3. Compare the agent binaries by content, not by path.
 
+
+## phase-414 W5 (2026-09-03): the routing verdict, and the title is inverted
+
+**Stays in phase-414. NOT phase-303.** The phase said to move it if the cause
+turned out to be encoding. It is not: this is wire FRAMING of the request/reply
+mapping, outside our serializer — not XCDR2/extensibility (phase-303's class,
+which is parked and concerns our own message types' DHEADER).
+
+**This issue's central premise is refuted.** It reads:
+
+> 15 bytes is not a plausible `AddTwoInts_Response` … so the reader was created
+> against a type whose advertised max size is wrong
+
+15 is exactly right. `rmw_fastrtps` computes `m_typeSize = align4(4 + data_size)`
+= 12, and Fast-DDS sizes reader history as `payloadMaxSize = m_typeSize + 3` =
+**15**. Confirmed independently by five environments whose clients accept the
+reply and print `sum=8`, which is only possible if the correct reply is <= 15
+bytes. **Nothing on the receiving side is undersized — the sample is oversized
+by 16 bytes.** The title says "payload too small"; it should say the reply is
+too big.
+
+### Where the 16 bytes come from — MEASURED up to the agent, INFERRED across it
+
+nano-ros cannot produce a 28-byte reply. The chain, all read:
+
+* `service-server/src/lib.rs:52` -> `ctx.reply::<AddTwoIntsResponse, 64>()`
+* `nros/src/node.rs:1956` — serialize with a 4-byte CDR header, len = **12**
+* `nros-node/src/executor/arena.rs:2561` — `send_response(seq, &buf[..12])`
+* `xrce/src/service.c:376` — strip the 4-byte header, body = **8**
+* `micro-xrce-dds-client .../write_access.c:50` — prefix a **24-byte
+  SampleIdentity**, so the XRCE wire payload is 24 + 8 = **32**
+
+The Agent must strip that 24-byte prefix into `related_sample_identity` and
+publish 8 bytes; its `TopicPubSubType` adds the 4-byte encapsulation. Correct
+output = **12**. Observed = **28**, and `28 = 4 + 24`: the Agent forwarded 24
+bytes of body where it should have forwarded 8, consuming only 8 of the
+SampleIdentity and leaking the other 16 into the DDS payload. (This issue's own
+`4 + 16 + 8` decomposition is the same 16 bytes.)
+
+That is INFERENCE across the agent boundary — `third-party/xrce/agent` is
+uninitialised here, so `FastDDSReplier::write` was not read. It fits the one
+intervention that ever flipped a red host green: rebuilding the agent against
+the sourced ROS's Fast-CDR.
+
+**Not fixed by 0819**, though every reproduction here predates it. 0819
+(`446ba0643` / `8a220ec76`, both 2026-08-27) is a receive-side fragment-boundary
+defect with a cliff at the 4096-byte MTU; this exchange is 12-36 bytes, one
+fragment. Different class. Still worth re-measuring on current main — the last
+data is over a week old.
+
+### FIXED here: this issue's own mitigation was unreachable
+
+`ca224e271` (2026-08-24) added the fix — build the agent against the sourced
+ROS's Fast-CDR — and `scripts/xrce-agent/build.sh` keys its stamp on
+`"$agent_ref $ros_prefix"` correctly. But `just xrce setup` short-circuited on
+`[ -x "$adir/MicroXRCEAgent" ]` and never called it, so **any host that had ever
+published an agent kept the skewed one**. A file-existence test cannot see a ROS
+prefix change.
+
+MEASURED on this host: `build/xrce-agent/MicroXRCEAgent` is the 85-byte
+pre-mitigation wrapper dated Aug 23, forwarding to a store agent with Fast-DDS
+2.14.6 / Fast-CDR 2.2.7, against `/opt/ros/humble`'s 2.6.12 / 1.0.29. The exact
+skew the mitigation exists to remove, still live, nine days after it landed.
+
+The recipe now always delegates. Same shape as the rest of this session: a
+mechanism that was correct and unreachable from the path a real user takes.
+
+### Still open
+
+The **1-in-13 intermittency** is unexplained by either candidate cause, exactly
+as this issue keeps concluding. A second candidate — a foreign CycloneDDS-mapped
+`/add_two_ints` server on the same domain, which would also produce `4 + 16 + 8`
+— is rated lower: a foreign writer's refused sample would not stop our own valid
+12-byte reply from being accepted.
+
+**Next, and it is one packet capture** — the question this issue has never
+asked. Pre-checks first (seconds): confirm the agent is no longer the 85-byte
+wrapper, and that no orphaned `add_two_ints_server` is on the bus. Then capture
+a failing run: if our XRCE `WRITE_DATA` payload is 32 bytes and the DDS reply
+sample is 28, the Agent framed it wrong and the surplus 16 will match the tail
+of the SampleIdentity we sent; if the 28-byte sample's writer GUID is not the
+Agent's participant, it is a foreign peer and the fix is domain isolation.

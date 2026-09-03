@@ -1,10 +1,20 @@
 # Phase 414 — RTOS runtime correctness: the e2e failures that reproduce SOLO
 
-**Status (2026-09-03). Opened as a HOME, not as a plan.** Five open issues had
-no phase that could hold them, and the survey that found that is the whole
-reason this doc exists — an issue with no home is an issue nobody is
-accountable for, the same shape as a gate that sits in a lane no CI job runs.
-No work item here has been started.
+**Status (2026-09-03). W2 and W4 CLOSED, W3 advanced, W1 rediagnosed.** Opened
+as a HOME, not as a plan: five open issues had no phase that could hold them,
+and the survey that found that is the whole reason this doc exists — an issue
+with no home is an issue nobody is accountable for, the same shape as a gate
+that sits in a lane no CI job runs.
+
+**The phase's central question is answered: W2 and W3 do NOT share a cause.**
+The phase does not shrink; but W2 turned out to be fixed already and W3's real
+blocker is one layer below where three diagnoses had been aimed.
+
+**Two of the five were not defects in the state the issues described them in.**
+W2 was fixed on 2026-08-28 and never closed. W1's evidence predates the fix for
+issue 0906 by one day. That is a second instance of this phase's own premise:
+an issue with no owner does not merely sit, it goes STALE, and a stale issue
+costs more than an open one because it is read as current.
 
 ## Why these five are one phase, and why the two neighbours could not take them
 
@@ -29,29 +39,84 @@ with a stable reproduction and no owner.
 Each is an existing issue. The item is "close it"; the issue holds the evidence.
 
 * **W1 — [issue 0877](../issues/0877-freertos-pubsub-passes-by-hand-fails-under-harness.md),
-  FreeRTOS pubsub delivers NOTHING under the test.** The most severe: a
-  transport that hand-delivers and then delivers nothing at all. Start here —
-  a platform that cannot pass its own pubsub e2e makes every other FreeRTOS
-  result unreadable.
-* **W2 — [issue 0867](../issues/0867-nuttx-c-action-goal-send-times-out.md),
-  `test_rtos_action_e2e` nuttx/C fails 3/3 SOLO.** Explicitly not the load
-  flake; three of three alone.
+  FreeRTOS pubsub delivers NOTHING under the test. REDIAGNOSED, not yet
+  closed.** The issue's evidence is dated 2026-08-29; issue **0906** (every
+  zenoh-pico session dropping every ~20 s because `Z_TRANSPORT_LEASE` was 10 s
+  against a 30 s router keep-alive) was fixed on 2026-08-30, and its own
+  reproduction is this exact FreeRTOS image pair, measured 19 heard of 77
+  before and 77 of 77 after.
+  **MEASURED: every built FreeRTOS fixture in the tree still bakes
+  `Z_TRANSPORT_LEASE 10000` while the source says 60000** — museum binaries
+  carrying precisely the defect 0906 fixed. Worse, the staleness probe cannot
+  see it: the constant lives in `nros-zpico-build`, a build-script DEPENDENCY
+  crate that never appears in `zpico-sys`'s recorded `cargo:rerun-if-changed`
+  set, so the probe reports FRESH. That probe gap is issue-0196 class and
+  wants its own issue.
+  A second, harness-side defect is real regardless: `wait_for_output` KILLS the
+  talker 15 s in (`rtos_e2e.rs:729`, `qemu.rs:448`) — it is a run-to-completion
+  wait aimed at a free-running 1 Hz publisher — and 20 s settle + 15 s life +
+  30 s listener wait is the reported ~65 s exactly. The service and action
+  shapes use `collect_until` and let the server live, which is why they pass on
+  the same host.
+  **Next: rebuild the FreeRTOS pubsub fixtures, confirm the bake reads 60000,
+  re-run the cell.** Do not trust a FRESH verdict from the probe here.
+  The `queue.c:1673` assert this issue also records is **issue 0899, already
+  resolved** — the same 0906 session churn one layer down.
+* **W2 — [issue 0867](../issues/archived/0867-nuttx-c-action-goal-send-times-out.md).
+  CLOSED — it was fixed before this phase opened.** `bb0631e5f` (2026-08-28)
+  landed `start_server_then_client`; the issue was simply never closed. Cause
+  was harness ordering, not the image: `start_pair` launched both NuttX
+  instances at once, keyed on the PLATFORM — right for pub/sub, wrong for
+  request/response where the client asks ONCE. 3/3 failing at 72-92 s ->
+  passing at 16.2 s.
 * **W3 — [issue 0870](../issues/0870-nuttx-cpp-action-client-transport-tx-failed.md),
-  NuttX C++ `create_action_client` fails.** Likely shares a cause with W2 —
-  same platform, same entity family, different language binding. Do them
-  adjacently and say whether the cause was shared; if it was, that is one fix
-  and the phase shrinks.
-* **W4 — [issue 0847](../issues/0847-xrce-entity-drop-after-session-close.md), an XRCE
-  publisher outliving `executor.close()` segfaults in its own Drop.** A
-  lifetime/ordering defect, not a transport one. It is the only one here whose
-  fix is likely in our own Rust rather than in a vendored stack.
+  NuttX C++ `create_action_client` fails. OPEN, and no longer blind.**
+  **NOT shared with W2**, structurally: W2's fix covers all three languages
+  (`rtos_e2e.rs:922`), so C++ has been starting after the server's banner all
+  along and still fails ~2 in 3 — and the failure points differ, W2 at
+  `send_goal` after the declarations succeeded, this one INSIDE them.
+  Landed here: **NuttX had no `printk` arm in `zpico.c`**, so every shim
+  diagnostic compiled away, including the two that name this fault. Fixed.
+  Killed by measurement: the queryable-capacity and TX-buffer leads the issue
+  was carrying — both leaves' shim constants are byte-identical and
+  `ZPICO_MAX_QUERYABLES` is **32, not 8**.
+  Why C++ and not C is still unexplained, and the issue now says so rather
+  than offering a fourth guess. The next FAILING run names the declaration and
+  prints zenoh-pico's raw code at zero extra cost.
+* **W4 — [issue 0847](../issues/archived/0847-xrce-entity-drop-after-session-close.md).
+  CLOSED.** The fix is a refcount (`live_entities` + `session_closed`), applied
+  to all four entity destructors, with each checking `xrce_session_is_closed`
+  before touching the session. The two shapes the issue left open were both
+  rejected for stated reasons: the binding side protects Rust callers only on a
+  C ABI, and the back-pointer sweep needs a fourth static pool because the
+  session has slot tables for everything EXCEPT publishers — the entity the
+  crash was reported on — on the backend whose current campaign is removing
+  unpriced static RAM.
+  Cyclone is immune because it stores validatable HANDLES, not pointers; that
+  contrast is what settled the shape.
+  Gated by `tests/entity_lifetime.c` under `just check rmw-xrce`, asserting the
+  EXIT STATUS as the issue required, and mutation-checked.
 * **W5 — [issue 0741](../issues/0741-xrce-service-reply-history-payload-too-small.md),
   `test_xrce_service_ros2_client` fails on main — Fast-DDS refuses the
-  request.** INTEROP with a real ROS 2 peer, so it may belong with
-  [phase-303](phase-303-xcdr2-interop.md) instead; it sits here because it is
-  an XRCE service failure like W4's neighbourhood and because 303 is about
-  XCDR2 encoding specifically. **Move it if the cause turns out to be
-  encoding.**
+  request.** INTEROP with a real ROS 2 peer.
+  **ROUTING DECIDED: it STAYS here. Not encoding, so not phase-303.** The
+  defect is wire FRAMING of the request/reply mapping, outside our serializer —
+  not XCDR2/extensibility, which is 303's class and is parked besides.
+  The issue's own premise is refuted: 15 bytes is the CORRECT reader history
+  size for `AddTwoInts_Response` (`align4(4+8)` + 3), confirmed by five
+  environments that accept the reply. The sample is oversized by 16, not the
+  buffer undersized — the title is inverted.
+  `28 = 4 + 24`: the Agent appears to consume only 8 of the 24-byte
+  SampleIdentity our client prefixes and leak the other 16 into the DDS
+  payload. MEASURED up to the agent boundary; INFERRED across it, since
+  `third-party/xrce/agent` is uninitialised here.
+  **Landed here: this issue's own mitigation was unreachable.** `ca224e271`
+  built the agent against the sourced ROS's Fast-CDR, but `just xrce setup`
+  short-circuited on file existence and never called the script that decides —
+  so any host that had ever published an agent kept the skewed one. This host
+  still carried the pre-mitigation wrapper nine days later. Fixed.
+  The 1-in-13 intermittency is still unexplained. Next step is one packet
+  capture, which fifteen sections of that issue never took.
 
 ## Acceptance
 
@@ -59,6 +124,32 @@ Each is an existing issue. The item is "close it"; the issue holds the evidence.
   the reason recorded.
 * For W2/W3, an explicit statement of whether the cause was shared — that
   answer is worth more than either fix.
+
+**Progress 2026-09-03.** W2 and W4 closed; W5's routing decided (stays);
+W1 and W3 rediagnosed with their standing guesses killed by measurement.
+
+The shared-cause answer: **NO.** W2 was harness ordering and is already fixed;
+W3 fails inside construction, before any interaction with the server exists, so
+server ordering cannot reach it. The phase does not shrink.
+
+**What this phase actually found, and it was not in any of the five issues.**
+Three of the five were unreadable rather than unfixed:
+
+* W2 was fixed on 2026-08-28 and nobody closed it.
+* W1's evidence predates issue 0906's fix by one day, and every built FreeRTOS
+  fixture still bakes the pre-fix `Z_TRANSPORT_LEASE 10000` while the source
+  says 60000 — with a staleness probe that reports FRESH, because the constant
+  lives in a build-script DEPENDENCY crate that never enters
+  `cargo:rerun-if-changed`.
+* W3 could not be read at all: NuttX had no `printk` arm, so every shim
+  diagnostic compiled away.
+* W5's own mitigation had been unreachable for nine days behind a
+  file-existence short-circuit.
+
+The phase opened on the premise that an issue with no owner is an issue nobody
+is accountable for. The sharper version, measured here: it goes STALE, and a
+stale issue costs MORE than an open one, because it is read as current and its
+recorded guesses get re-run.
 
 ## What this phase deliberately does NOT do
 
