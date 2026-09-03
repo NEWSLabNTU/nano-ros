@@ -77,6 +77,7 @@ fails if this block drifts.
 - **#1000** ([rmw, third-party]) — Vendored Cyclone: `handle_xevk_spdp`'s early returns orphan the PERIODIC spdp event — it leaves the heap, is never re-armed, and the participant goes silent forever See `1000-*`.
 - **#1001** (tooling, ci) — `check-action-client-arena-budget` walks the whole repo, so `check fast` costs minutes on a cold page cache — the pre-push gate is where that is felt See `1001-*`.
 - **#1002** (cmake) — A derived knob converges after THREE configures, not the two 0991 documents See `1002-*`.
+- **#1004** ([rmw, platform, embedded]) — an536 boot failures on this host were HOST LOAD, not a code regression — and the measurements taken during them should not be trusted See `1004-*`.
 - **#1005** (testing, build) — A zenoh constant that lives in `nros-zpico-build` is invisible to the fixture staleness probe, so a fixture baked before a fix reports FRESH See `1005-*`.
 - **#1006** (tooling, build) — esp32-qemu's configure does not disable the backends it never uses, so its runtime dependency set is a property of the machine that built it See `1006-*`.
 - **#1007** (testing, build) — `just nuttx build-fixtures-arm` can leave every arm cell unrunnable, and the remedy it prints is the command that just short-circuited See `1007-*`.
@@ -88,8 +89,5 @@ fails if this block drifts.
 - **#1020** (docs, api) — The C++ parity lane measures the NATIVE API against rclcpp and cannot see `rclcpp_compat.hpp` — 589 lines whose entire purpose is the thing being measured See `1020-*`.
 - **#1023** (rmw, build) — `nros_sertype.cpp` includes `<memory>` and `<string>`, so cyclonedds cannot compile for a freestanding target See `1023-*`.
 - **#1025** (build, testing) — ESP32 flash images can never be built: the packer asks for the group dir with the row's env stripped, so it looks in a directory the build stopped using See `1025-*`.
-- **#1004** ([rmw, platform, embedded]) — an536 island stopped booting reliably at pin d2a8955c5: `create_subscription` returns TransportError, sometimes preceded by a stack overflow See `1004-*`.
-- **#1004** ([rmw, platform, embedded]) — an536 island hangs nondeterministically at controller construction — three signatures, both pins, no bracket See `1004-*`.
-- **#1004** ([rmw, platform, embedded]) — an536 boot hang is a LIVELOCK in handle_xevents: an ACKNACK event re-armed to an absolute past time is extracted forever, holding the event-queue lock See `1004-*`.
 
 <!-- END GENERATED open-issue list -->
