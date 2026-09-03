@@ -1,0 +1,28 @@
+# Sanctioned NON-fast-forward submodule pin moves.
+#
+# `scripts/ci/submodule-pins-check.sh` allows exactly one shape by default: a
+# fast-forward. That is right almost always -- a pin that moves any other way
+# silently unships whatever the skipped commits fixed, and `-Subproject commit
+# <hex>` is two hex strings no reviewer can order by eye.
+#
+# But it is not right ALWAYS, and the gate had no way to say so. When a vendored
+# fork's patch line is REBASED onto a new upstream release -- the documented
+# workflow for these submodules -- the new tip is deliberately not a descendant
+# of the old one. The only bypass was `NROS_ALLOW_SUBMODULE_REWIND=1`, an
+# environment variable, and NOTHING IN CI CAN SET ONE: no workflow references it,
+# and adding it to a workflow step would disable the gate for every future pin
+# rather than for this one. So a correctly-rebased patch line could pass the gate
+# locally and could never pass it in the merge queue.
+#
+# A row here is narrower than that variable in every direction: it names the
+# exact path and the exact two shas, so it expires the moment either pin moves
+# again, and it carries a reason with a tracked id. Same shape as the RMW
+# api-parity ledger's `gap` rows -- a real exception is written down with an
+# owner, never tolerated by a flag whose scope is "everything".
+#
+# Format, whitespace-separated:
+#   <submodule-path> <old-sha> <new-sha> <reason>
+#
+# Full 40-char shas: a prefix would let an unrelated future commit match.
+
+packages/rmw/zenoh/zpico-sys/zenoh-pico fa7ad0f5b3f6054788ee2de520871c961989ba6b fb50388ecd545b0d058274cdbf35bf9d19742a51 phase-415: the patch line was REBASED from zenoh-pico 1.7.2 onto 1.8.0 (the zenoh ROS Humble ships), so the new tip is not a descendant of the old. Every patch is carried -- verified by tree comparison against backup/nano-ros-1.7.2-20260903, whose only difference is src/collections/seqnumber.c, which UPSTREAM deleted in 67fe16c0.
