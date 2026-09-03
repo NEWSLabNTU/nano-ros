@@ -73,7 +73,14 @@ int main() {
     }
 
     const auto deadline = std::chrono::steady_clock::now() +
-                          std::chrono::seconds(30);
+                          std::chrono::seconds(600);
+    long iters = 1;
+    if (const char *e = std::getenv("NROS_ROUNDTRIP_ITERS")) {
+        const long parsed = std::strtol(e, nullptr, 10);
+        if (parsed > 0) iters = parsed;
+    }
+    long served = 0;
+
     while (std::chrono::steady_clock::now() < deadline) {
         bool has_r = false;
         /* Phase 376 W3.d step A — flag out, status returned. */
@@ -100,9 +107,16 @@ int main() {
                             static_cast<long long>(b),
                             static_cast<long long>(a + b));
                 std::fflush(stdout);
-                g_vt->destroy_service(&srv);
-                (void) g_vt->destroy_session(&s);
-                return 0;
+                // Issue 0969 — serve `NROS_ROUNDTRIP_ITERS` requests, not one,
+                // so a client measuring its data path by slope has a peer for
+                // every iteration. Default 1 keeps the interop test's meaning:
+                // one call, one reply, exit.
+                if (++served >= iters) {
+                    g_vt->destroy_service(&srv);
+                    (void) g_vt->destroy_session(&s);
+                    return 0;
+                }
+                continue;
             }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(20));

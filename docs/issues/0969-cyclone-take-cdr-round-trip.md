@@ -346,3 +346,69 @@ a regression is the shape this repo keeps retracting.
    (`tests/data_roundtrip.cpp`, `NROS_ROUNDTRIP_ITERS`) — the message path went
    9.93 → 2.00 allocations/message and this path still carries three sites, one
    per request and two per reply.
+
+## The allocation measurement, done 2026-09-03 — and it is a NULL RESULT
+
+Step 3 of the order above said "re-run the allocation harness". Done, both ways,
+and the answer corrects something I wrote when the migration landed.
+
+`service_roundtrip.cpp` and the `ros2_srv_{client,server}` pair gained
+`NROS_ROUNDTRIP_ITERS`, the same knob and the same slope method
+`data_roundtrip.cpp` uses — deliberately the same, because a service number
+measured a different way would not be comparable to the message path's
+9.93 -> 2.00.
+
+**Single process (client and server in one, the loopback case):**
+
+| | iters=1 | iters=200 | per exchange |
+| --- | ---: | ---: | ---: |
+| before the migration | 1,200 | 1,996 | **4.00** |
+| after | 1,178 | 1,974 | **4.00** |
+
+**Two processes (the case a control loop actually runs), CLIENT half only:**
+
+| | iters=1 | iters=200 | per exchange |
+| --- | ---: | ---: | ---: |
+| before | 1,445 | 2,269 | **4.14** |
+| after | 1,429 | 2,255 | **4.15** |
+
+**The migration did not change measured per-exchange allocations.** Not in
+loopback, not across processes.
+
+### What that corrects
+
+The commit that landed the sertype migration said "per-message allocation is
+otherwise off the service and action data path". That is NOT supported. What was
+measured then was `check-rmw-alloc-sites` going 2 -> 1 — a count of SOURCE
+SITES, not of runtime allocations. Letting a static ledger stand in for a runtime
+number is the substitution this campaign catches elsewhere, and it happened here.
+
+What the migration did do, and these still hold:
+
+* removed a decode and an encode per message on the service path (structural,
+  visible in the source);
+* removed one steady-state allocation SITE, gated;
+* removed five per-type adapters that existed only to work around the round trip.
+
+What it did not do is reduce the allocation COUNT.
+
+### The loopback harness under-reports, which is worth keeping
+
+The two-process CLIENT HALF ALONE costs 4.15, while the single-process run
+measuring BOTH halves costs 4.00. So a same-process harness prices roughly half
+of what a deployment pays — Cyclone can hand a sample to a local reader by
+reference, and the write path may never fully serialise. Any future service or
+action number should come from the two-process pair.
+
+Note the message path's 9.93 -> 2.00 was itself a single-process measurement, so
+it carries the same caveat about absolute value. It is still good evidence that
+the METHOD detects real change: the same harness style that moved by 7.93 there
+moves by 0.01 here, so this null result is not the instrument failing to see.
+
+### Not explained
+
+4.00-4.15 per exchange is fewer than the old path's sites predict (a typed sample
+and an ostream on each of request and reply, plus serdata). Something is either
+absorbing those or they are not on the measured path. Recorded as an open
+question rather than guessed at — the number is what it is, and the explanation
+is a separate piece of work.
