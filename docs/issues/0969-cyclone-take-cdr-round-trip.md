@@ -218,3 +218,106 @@ in [#0917](0917-an536-fragmented-sample-never-syncs.md). That cliff is the
 LAN9118's RX FIFO capacity and has nothing to do with serialisation. What should
 move on that lane is per-message CPU and allocation, so the rate below the cliff
 and the jitter — an an536 measurement still owed.
+
+## The third site, mapped — 2026-09-03
+
+Read end to end and written down rather than converted. Everything below is
+either quoted from the tree or marked as unverified; the one assumption that
+decides whether the conversion is a half-hour job or a redesign is named at the
+bottom.
+
+### The conversion, concretely
+
+`take_typed_wire` (`src/service.cpp:671`) mirrors what `subscription_take`
+(`src/subscriber.cpp:236-268`) already does:
+
+```cpp
+struct ddsi_serdata* d = nullptr;
+dds_sample_info_t si[1];
+for (;;) {                                   // skip invalid_data, as the
+    dds_return_t taken =                     // converted subscriber does
+        dds_takecdr(reader, &d, 1, si, DDS_ANY_STATE);
+    if (taken < 0)  return wire_status(NROS_RMW_RET_ERROR);
+    if (taken == 0) return wire_status(NROS_RMW_RET_NO_DATA);
+    if (si[0].valid_data) break;
+    ddsi_serdata_unref(d);
+    d = nullptr;
+}
+const uint32_t total = ddsi_serdata_size(d);  // counts the 4-byte CDRHeader
+if (out_cap < total) { ddsi_serdata_unref(d); return wire_status(NROS_RMW_RET_BUFFER_TOO_SMALL); }
+ddsi_serdata_to_ser(d, 0, total, out_buf);    // header + payload, wire form
+ddsi_serdata_unref(d);
+return static_cast<int32_t>(total);
+```
+
+That deletes, in one move:
+
+* the `dds_ostream_init(&os, 0, 1 /*xcdr1*/)` + `dds_stream_write_sample` pair
+  (`:689-691`) — the re-encode this issue is named for, and the reason the path
+  emits **XCDR1 native-endian** rather than the peer's own representation. That
+  is a correctness question, not only a cost one: the endianness bytes at
+  `:701-707` are written from the HOST's `__BYTE_ORDER__`, so the bytes handed
+  to `split_wire_header` are re-labelled rather than passed through;
+* the `_SendGoal_*` / `_GetResult_Request_` memcpy fallback (`:692-714`), which
+  exists only because `dds_stream_write_sample` returns false for those types;
+* the `Fibonacci_GetResult_Response_` special case (`:682-687` calling
+  `take_fibonacci_get_result_response_wire` at `:503`), which exists only
+  because `dds_stream_read_sample` **crashes** on that type. A serdata take
+  never enters either function.
+
+### Two things that check out
+
+**`split_wire_header` is transparent to this.** It already takes *wire* CDR —
+encap, then the 8-byte request header, then user fields (`:585-604`) — and it is
+called on `take_typed_wire`'s output at `:1022` (server request) and `:1412`
+(client reply). A serdata take hands it the peer's bytes in the same shape the
+reserialiser was reconstructing, so the strip logic is unaffected.
+
+**The write-side half of the adapter hypothesis is now measured.** The
+2026-09-03 section above guessed that converting this path would DELETE 0976's
+adapters rather than have to preserve them. For the write side that is no longer
+a guess: instrumenting both branches of `write_typed` and running the Rust, C
+and C++ action clients against a stock ROS 2 server shows `strip_goal_id_len_at`
+and `strip_nested_cdr_at` declining in all three with identical counts.
+
+### The assumption that has to be checked first
+
+`subscriber.cpp` creates its topic with `dds_create_topic_sertype`
+(`subscriber.cpp:164`). `service.cpp` creates its with `dds_create_topic(desc)`
+(`:946-947`, `:1221-1222`) and allocates a `SertypeMin` alongside (`:976-977`,
+`:1248-1249`).
+
+**Whether `dds_takecdr` yields usable serdata on a reader whose topic came from
+a descriptor rather than a sertype is NOT verified here.** It is the kind of
+thing that ought to work — serdata is Cyclone's internal representation either
+way, and this issue's own argument for the receive path is that `dds_takecdr`
+takes no sertype — but "ought to" is what this file exists to distrust. 0970's
+step 4, checking this path's request/reply handling against upstream's
+`cdds_request_wrapper_t`, is recorded as undone and is the same question from
+the other side.
+
+If it holds, the conversion is the block above plus deleting three helpers. If
+it does not, the topics must move to `dds_create_topic_sertype` first — which is
+0970's service half, a larger change, and the reason `sertype_min.{hpp,cpp}`
+still exists.
+
+### Why it was not converted here
+
+Blast radius is services AND actions, and the direction with no automated test
+is exactly the one the deleted helpers serve:
+`take_fibonacci_get_result_response_wire` fires only when nano-ros is the CLIENT
+taking a result (`:1412`), and the action witness (`ros2_action_e2e.rs`) runs
+the server direction only. A rewrite of this path with no test that would catch
+a regression is the shape this repo keeps retracting.
+
+### Order for whoever takes it
+
+1. Answer the `dds_takecdr`-on-a-desc-topic question — a throwaway assertion in
+   `tests/` is enough, and it decides which of the two changes this is.
+2. Land the client-direction witness 0976 asks for (nros action client against a
+   stock `ros2` action server), so the three deletions have something watching
+   them.
+3. Convert, delete the three helpers, and re-run the allocation harness
+   (`tests/data_roundtrip.cpp`, `NROS_ROUNDTRIP_ITERS`) — the message path went
+   9.93 → 2.00 allocations/message and this path still carries three sites, one
+   per request and two per reply.
