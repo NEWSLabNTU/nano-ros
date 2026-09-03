@@ -213,3 +213,76 @@ for a different reason than "no entity inventory exists": both need the two
 inventories JOINED per subscription -- W8's per-type size against W9's
 per-entity list. A total from either half alone is the same plausible wrong
 number, so the join is its own work.
+
+
+## The join landed — and "narrow the closure" is still unreachable, by ORDERING (2026-09-04)
+
+Items 2 and 3 above are marked "both need the two inventories JOINED". **That
+join exists**: `_nros_bounds_join_subscribed` in `NanoRosMessageBounds.cmake`,
+phase-403 step 1, with `NROS_MESSAGE_BOUNDS_BASIS` reading `subscribed` or
+`closure`. And `examples/workspaces/cpp` now declares `ENTITIES` (issue 0965),
+so for the first time there is an image that can drive it.
+
+It does not lift this issue's blocker, and the reason is ordering rather than
+data. Driving the reader directly over that image's fragments, both ways:
+
+| basis | entity inventory | result |
+| --- | --- | --- |
+| closure | absent | `refused` — 16 unbounded types in the closure |
+| subscribed | present, `std_msgs/msg/Int32` only | **`refused`, identically** |
+
+`NROS_MESSAGE_BOUNDS_BASIS` comes back EMPTY in the second run, which is the
+tell: the join never executed. `nros_derive_message_bound_knobs` evaluates the
+closure-wide open-type check and `return()`s at
+`NanoRosMessageBounds.cmake:481`; the join is called at :512.
+
+So an image whose every SUBSCRIBED type is bounded still refuses, because
+something it merely links is not. That is exactly this issue's second remedy —
+"narrow the closure, so an image pays only for the types it actually links
+rather than everything `example_interfaces` ships" — being unavailable through
+the mechanism built to provide it.
+
+**It is not a simple reorder, and the module is not wrong today.** Its header
+states the rule deliberately ("it names a type that is `unbounded`/`unresolved`
+-> the whole derivation already refused"), and the two knob families genuinely
+differ: the take buffer `NROS_SUBSCRIPTION_BUFFER_SIZE` is also `DEFAULT_TX_BUF`
+and every raw entity's default, so a type the image only PUBLISHES must fit it,
+and it must keep refusing on the closure. Only the three payload-class knobs are
+a fact about subscriptions.
+
+### The fix, scoped
+
+1. Run the join BEFORE the closure-wide refusal.
+2. On a closure that has open types: refuse the take buffer as today, but
+   publish the payload classes if the join derived them. The output format
+   already carries `NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS` separately — it is only
+   written inside the `derived` branch.
+3. Check the consumer: `nros_cargo_build.cmake` gates on the OVERALL status, so
+   a "take buffer refused, payload classes derived" answer needs the consumer to
+   read the payload status too, or it will ignore values that are present.
+
+Not done here. It changes a documented refusal contract on a path whose failure
+mode is a silent `BufferTooSmall`, and it needs the consumer change in the same
+commit.
+
+### What IS done: the join no longer trusts an invariant it cannot see
+
+The join reads `NROS_MESSAGE_BOUND_<t>_RX` without ever checking `_STATE`. It is
+safe **only** because the closure refusal above it guarantees every type is
+bounded — an invariant that lives thirty lines away, in the block step 1 above
+proposes to move. The first person to make the payload classes derivable on an
+image with an unbounded closure type removes the guard without knowing it was
+one, and the failure is a payload class sized from a blank `_RX`.
+
+So the join now checks boundedness itself and refuses naming the offending type,
+distinct from the "not in the inventory" refusal beside it (a type this tree
+cannot bound is a different problem from one it has never heard of).
+
+**It cannot fire through the public entry point today** — that is the point of
+it — so it is tested by calling the join directly: case O in
+`tests/cmake-message-bounds-tests.sh`, one assertion that a fully bounded
+subscribed set still derives and two that an unbounded one refuses and names the
+type. A check that has never executed is indistinguishable from one that does
+not work, and the first version of this test passed for the wrong reason: the
+join iterates `TYPE_COUNTS`, not `TYPES`, so a fixture listing the unbounded type
+in only the latter never visited it.

@@ -843,6 +843,62 @@ if ! grep -q "set(NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE 1496)" "$T/n4-knobs.cmak
 fi
 
 # ---------------------------------------------------------------------------
+log_header "O -- the join refuses a subscribed type that carries no bound"
+# ---------------------------------------------------------------------------
+#
+# issue 0963. This guard CANNOT fire through `nros_derive_message_bound_knobs`
+# today: the closure-wide open-type check returns before the join runs, and the
+# subscribed set is a subset of the closure. It is tested by calling the join
+# DIRECTLY, because a check that has never executed is indistinguishable from
+# one that does not work -- and the thing that makes this one reachable is
+# exactly the change 0963 asks for (deriving the payload classes on an image
+# whose closure has an unbounded type it never receives).
+cat > "$T/o-join.cmake" <<EOF
+include("$MODULE")
+set(NROS_MESSAGE_BOUND_std_msgs_msg_Int32_STATE "bounded")
+set(NROS_MESSAGE_BOUND_std_msgs_msg_Int32_RX 12)
+set(NROS_MESSAGE_BOUND_demo_msg_Open_STATE "unbounded")
+set(NROS_MESSAGE_BOUND_demo_msg_Open_RX "")
+_nros_bounds_join_subscribed("\${FRAG}" 2048 b st why cnt small ltypes lmax lcount)
+message(STATUS "basis=\${b} status=\${st} why=\${why}")
+EOF
+# The join iterates TYPE_COUNTS (it needs each type's count), NOT TYPES -- so a
+# fixture that lists a type only in TYPES is never visited and the case passes
+# for the wrong reason. It did, on the first run of this test.
+_o_frag() {
+    {
+        printf 'set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 3)\n'
+        printf 'set(NROS_ENTITY_INVENTORY_STATUS "derived")\n'
+        printf 'set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS "resolved")\n'
+        printf 'set(NROS_ENTITY_SUBSCRIBED_TYPES "%s")\n' "$1"
+        printf 'set(NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS "%s")\n' "$2"
+        printf 'set(NROS_ENTITY_SUBSCRIBED_ENTITY_COUNT 1)\n'
+    } > "$3"
+}
+_o_frag "std_msgs/msg/Int32" "std_msgs/msg/Int32=1" "$T/o-ok.cmake"
+_o_frag "std_msgs/msg/Int32;demo/msg/Open" \
+        "std_msgs/msg/Int32=1;demo/msg/Open=1" "$T/o-bad.cmake"
+
+_o_out=$(cmake -DFRAG="$T/o-ok.cmake" -P "$T/o-join.cmake" 2>&1)
+if ! printf '%s' "$_o_out" | grep -q "status=derived"; then
+    fail "O: every subscribed type is bounded and the join still refused:"
+    printf '%s\n' "$_o_out"
+fi
+check
+_o_out=$(cmake -DFRAG="$T/o-bad.cmake" -P "$T/o-join.cmake" 2>&1)
+if ! printf '%s' "$_o_out" | grep -q "status=refused"; then
+    fail "O: a subscribed type with no bound did NOT refuse -- a payload class \
+would be sized from a blank _RX:"
+    printf '%s\n' "$_o_out"
+fi
+check
+if ! printf '%s' "$_o_out" | grep -q "demo/msg/Open"; then
+    fail "O: the refusal does not name the offending type:"
+    printf '%s\n' "$_o_out"
+fi
+check
+
+# ---------------------------------------------------------------------------
 log_header "Summary"
 if [ "$FAILURES" -eq 0 ]; then
     log_success "$CHECKS assertions held"
