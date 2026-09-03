@@ -1,7 +1,8 @@
 # Known Issues
 
 > **Moved.** Issue tracking now lives in [`docs/issues/`](issues/) — one file
-> per issue. See [`docs/issues/open.md`](issues/open.md) for the index, and
+> per issue. The index is generated, not committed — run
+> `python3 scripts/gen-issue-index.py` to write `docs/issues/open.md`. See
 > [`README.md`](issues/README.md) for the conventions.
 
 The old single-file `#N` entries map to `docs/issues/NNNN-*` with the **same

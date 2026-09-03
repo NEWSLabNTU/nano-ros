@@ -2018,8 +2018,15 @@ emitter-just-spelling:
 [private]
 issue-index:
     @python3 scripts/gen-issue-index.py --self-test
+    # `docs/issues/open.md` is a gitignored ARTIFACT since 2026-09-03, so there
+    # is no committed copy to compare against and `--check` has nothing to be
+    # stale against. REGENERATE, then verify — which is the stronger order
+    # anyway: `check-issue-index.sh` derives the file list INDEPENDENTLY and
+    # compares it to the rows, so the two computations still have to agree. What
+    # is gone is only the drift class that existed because the list was
+    # committed and hand-editable.
+    @python3 scripts/gen-issue-index.py
     @bash scripts/check-issue-index.sh
-    @python3 scripts/gen-issue-index.py --check
 
 # Issue 0498 — a sync-owned file a CONCURRENT process reads must be written
 # temp + `rename(2)`, never `fs::write` (which truncates to zero, then fills).

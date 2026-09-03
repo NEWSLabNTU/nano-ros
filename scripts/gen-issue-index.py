@@ -45,6 +45,30 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INDEX = os.path.join(ROOT, "docs", "issues", "open.md")
 
+# The authored preamble, used when the file does not exist yet. It is here
+# rather than in the file because the file is generated end to end now: there is
+# no committed copy to read a header out of.
+HEADER = """# Open issues
+
+Generated from the issue files — do not hand-edit, and do not commit. This file
+is GITIGNORED: `scripts/gen-issue-index.py` writes it, `just check issue-index`
+regenerates and verifies it, and nothing tracks it.
+
+It used to be committed with `merge=union` (issue 0884), so two agents filing
+issues concurrently would both land instead of colliding. That works locally and
+NOT where it mattered: GitHub computes mergeability and rebases queue entries
+SERVER-SIDE, where `.gitattributes` merge drivers do not run — measured
+2026-09-03, a branch that rebased clean locally reported CONFLICTING on GitHub.
+A generated file that every issue-touching PR edits was still a per-PR conflict
+site, which is issue 0883's original complaint.
+
+Untracked removes the class rather than mitigating it: there is nothing to
+conflict on, and nothing to drift.
+
+<!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->
+<!-- END GENERATED open-issue list -->
+"""
+
 BEGIN = "<!-- BEGIN GENERATED open-issue list — scripts/gen-issue-index.py -->"
 END = "<!-- END GENERATED open-issue list -->"
 
@@ -200,8 +224,15 @@ def main():
     rows = open_issues()
     block = render(rows)
 
-    with open(INDEX, encoding="utf8") as fh:
-        text = fh.read()
+    # The file is a BUILD ARTIFACT (gitignored) since the `merge=union`
+    # mitigation was retired — see HEADER below and the module docstring. A
+    # fresh clone therefore has no `open.md` at all, and regenerating one is the
+    # normal path, not an error.
+    try:
+        with open(INDEX, encoding="utf8") as fh:
+            text = fh.read()
+    except FileNotFoundError:
+        text = HEADER
 
     if BEGIN in text and END in text:
         start = text.index(BEGIN)

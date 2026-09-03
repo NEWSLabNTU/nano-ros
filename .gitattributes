@@ -1,7 +1,5 @@
 
 # issue 0884 — the open-issue index is 100% generated and append-heavy.
-# Union merge lets two agents file issues concurrently without a conflict;
-# `scripts/gen-issue-index.py` re-sorts and `check-issue-index` verifies, so a
-# union that interleaves or duplicates is normalised on the next run rather
-# than shipped. NEVER apply this to an authored file — see docs/issues/README.md.
-docs/issues/open.md merge=union
+# (docs/issues/open.md carried `merge=union` here until 2026-09-03. The file is
+# now GITIGNORED — see .gitignore — because the driver does not run on GitHub's
+# server-side merge/rebase, which is the only place the conflict mattered.)
