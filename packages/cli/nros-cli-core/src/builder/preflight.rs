@@ -28,7 +28,7 @@
 
 use std::path::Path;
 
-use crate::orchestration::board_descriptor::BoardDescriptor;
+use crate::orchestration::board_descriptor::{BoardDescriptor, Toolchain};
 
 /// A missing prerequisite, with the command that installs it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,15 +48,49 @@ pub struct Missing {
 pub fn check(board: &BoardDescriptor, root: &Path) -> Vec<Missing> {
     let mut out = Vec::new();
 
-    // The rustc target triple. A cross board that pins one needs it installed,
+    // The rustc target triple. A cross board that pins one needs it available,
     // and `cargo build --target` fails deep in the build otherwise.
-    if let Some(target) = board.target.as_deref()
-        && !rust_target_installed(target)
-    {
-        out.push(Missing {
-            what: format!("Rust target `{target}` (board `{}`)", board.names[0]),
-            remedy: format!("rustup target add {target}"),
-        });
+    //
+    // WHICH prerequisite depends on the board's toolchain, and conflating them
+    // was issue 0999. A `build-std` target is Tier 3 or custom-JSON: rustc does
+    // not DISTRIBUTE it, so `rustup target list --installed` can never name it
+    // and `rustup target add` can never install it. The old check asked rustup
+    // and then printed that command, so every nuttx build failed preflight on
+    // every host with a remedy that cannot work — `config/rust-targets.txt`
+    // marks the target `build-std` and `scripts/lib/rust-targets.sh` says of
+    // that column, in as many words, "nothing to install".
+    //
+    // The descriptor already carries the distinction, so this reads it rather
+    // than growing a second idea of which targets exist (issue 0833's rule,
+    // which is why the target LIST is data in the first place).
+    if let Some(target) = board.target.as_deref() {
+        match board.toolchain {
+            // Prebuilt target: rustup both knows it and can install it.
+            Toolchain::Stable => {
+                if !rust_target_installed(target) {
+                    out.push(Missing {
+                        what: format!("Rust target `{target}` (board `{}`)", board.names[0]),
+                        remedy: format!("rustup target add {target}"),
+                    });
+                }
+            }
+            // `-Z build-std` compiles core/alloc from source, so the
+            // prerequisite is the SOURCE, not a distributed target.
+            Toolchain::Nightly => {
+                if !rust_src_installed() {
+                    out.push(Missing {
+                        what: format!(
+                            "`rust-src` for `-Z build-std` (board `{}`, target `{target}`)",
+                            board.names[0]
+                        ),
+                        remedy: String::from("rustup component add rust-src"),
+                    });
+                }
+            }
+            // The espup toolchain ships its own target and its own rustc; a
+            // rustup query about either answers about the wrong toolchain.
+            Toolchain::Esp => {}
+        }
     }
 
     // A workspace that has never been synced has no generated message crates,
@@ -87,6 +121,26 @@ pub fn check(board: &BoardDescriptor, root: &Path) -> Vec<Missing> {
 /// a nix shell), this reports installed and lets the build speak for itself.
 /// Preflight exists to give a better message than the compiler, never to refuse
 /// a build the compiler would have accepted.
+/// Is the `rust-src` component present? That is what `-Z build-std` needs.
+///
+/// Same failure posture as [`rust_target_installed`]: if rustup cannot be asked,
+/// assume yes. A preflight that blocks a build because it could not run its own
+/// probe is worse than one that lets the real error speak.
+fn rust_src_installed() -> bool {
+    let Ok(out) = std::process::Command::new("rustup")
+        .args(["component", "list", "--installed"])
+        .output()
+    else {
+        return true;
+    };
+    if !out.status.success() {
+        return true;
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .any(|l| l.trim().starts_with("rust-src"))
+}
+
 fn rust_target_installed(target: &str) -> bool {
     let Ok(out) = std::process::Command::new("rustup")
         .args(["target", "list", "--installed"])
@@ -128,9 +182,13 @@ mod tests {
     }
 
     fn board(extra: &str) -> BoardDescriptor {
+        board_with_toolchain("stable", extra)
+    }
+
+    fn board_with_toolchain(toolchain: &str, extra: &str) -> BoardDescriptor {
         let src = format!(
             "[[board]]\nnames = [\"testboard\"]\nplatform = \"freertos\"\n\
-             toolchain = \"stable\"\nplatform_feature = \"platform-freertos\"\n\
+             toolchain = \"{toolchain}\"\nplatform_feature = \"platform-freertos\"\n\
              link_kind = \"none\"\nentry_kind = \"board-run\"\n{extra}"
         );
         let f: BoardFile = toml::from_str(&src).expect("parse");
@@ -166,6 +224,32 @@ mod tests {
             .find(|m| m.what.contains("Rust target"))
             .expect("must report the missing target");
         assert_eq!(hit.remedy, "rustup target add nros-not-a-real-triple");
+    }
+
+    #[test]
+    fn a_build_std_board_is_not_told_to_rustup_target_add() {
+        // Issue 0999 — the regression. A `build-std` target is Tier 3 or
+        // custom-JSON: rustc does not DISTRIBUTE it, so `rustup target list
+        // --installed` can never name it and `rustup target add` can never
+        // install it. The old check asked rustup anyway and printed that
+        // command, so EVERY nuttx build failed preflight on EVERY host with a
+        // remedy that cannot work.
+        //
+        // `armv7a-nuttx-eabihf` is the real one, and `config/rust-targets.txt`
+        // marks it `build-std`. Boards that need it declare `toolchain =
+        // "nightly"`, which is what this reads.
+        let tmp = tempfile::tempdir().unwrap();
+        let b = board_with_toolchain("nightly", "target = \"armv7a-nuttx-eabihf\"\n");
+        let m = check(&b, tmp.path());
+        assert!(
+            !m.iter().any(|m| m.remedy.starts_with("rustup target add")),
+            "a build-std target must never be reported as rustup-installable: {m:?}"
+        );
+        // It may still want `rust-src`, and if it does the remedy must be the
+        // one that works.
+        for hit in m.iter().filter(|m| m.what.contains("rust-src")) {
+            assert_eq!(hit.remedy, "rustup component add rust-src");
+        }
     }
 
     #[test]
