@@ -83,3 +83,43 @@ next person at a dead end.
    `stat -c '%y'` on the artifact against `git log -1 --format=%ci`, per the
    0859-0862 rule.
 4. File per cause, once reproduced. Not before.
+
+## Step 1 attempted 2026-09-04 — and it found TWO build failures before any test ran
+
+`just build-test-fixtures lane=tier2` on `a1c6d0d22`. Seven of eight modules
+built (zephyr, native, qemu, freertos, nuttx, threadx_linux). The other two are
+new findings, both COMPILE/BUILD failures rather than runtime ones, and both are
+this issue's own thesis arriving one stage earlier than it predicted:
+
+* **[#1023](1023-sertype-hosted-includes-break-freestanding.md)** —
+  `threadx_riscv64` cannot compile `nros_sertype.cpp`: it includes `<memory>`
+  and `<string>` and the target is freestanding. The file is new in issue 0970's
+  commit, and `examples/fixtures.toml:3146` declares the coordinate, so this is
+  a supported cell that has been unbuildable since it landed.
+* **[#1025](1025-esp32-flash-image-consumer-drops-the-row-variant.md)** — ESP32
+  QEMU flash images cannot be packed. The ELF builds fine; the packer looks in
+  `build/cargo-fixtures/qemu-esp32-baremetal/` while the build writes to
+  `qemu-esp32-baremetal-4118800323`, because the packer asks
+  `nros_fixture_row_artifact_dir` for the group dir with the row's env stripped
+  (`"" ""`). Live since `41a7d8de7` on 2026-08-31 — hours before this issue was
+  filed.
+
+**1025 bears directly on this issue's list and does not close any of it.** Five
+of the twelve are esp32 and all five need a flash image that cannot be produced.
+That is a plausible single cause for the whole esp32 cluster; it is NOT
+established as their cause, because what was reproduced is the BUILD failing,
+not those tests failing for that reason. Establishing it means fixing 1025,
+rebuilding, and re-running the five. Written this way on purpose — 0859-0862
+were four issues filed from a sweep in this repo and all four retracted, two
+carrying confident wrong root causes.
+
+**Status of the twelve: still unreproduced.** The seven non-esp32 ones
+(qemu-rtic 1, threadx_linux 3, zephyr xrce-cpp 3) have their modules built and
+are ready to run; the five esp32 ones are blocked on 1025.
+
+**Method note for whoever continues.** Run each candidate SOLO, not in a sweep —
+CLAUDE.md's rule for QEMU reds, and this issue's list came out of a sweep. And
+`cargo nextest` reports a `nros_tests::skip!` panic as a FAILURE while a filter
+matching nothing exits 0, so a re-run needs four verdicts (pass / fail /
+skipped-precondition / not-found), not two. A two-verdict harness would report
+an unmet precondition as a regression and a renamed test as a pass.
