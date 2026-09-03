@@ -207,3 +207,62 @@ Being explicit about that ratio matters: a gate that claims to state THE number
 while checking a third of it is the shape this campaign keeps finding — a value
 that reads as applied and is not. Either it says "necessary minimum" in its own
 message, or it waits for a measured frame budget.
+
+## The "state the number" check, IMPLEMENTED (2026-09-04)
+
+Built to the scope above, including its caveat: the check says "necessary
+minimum" in its own message rather than claiming to be the requirement.
+
+**The probe.** `nros::sizes` gains `EXECUTOR_VALUE_SIZE = size_of::<Executor>()`
+beside the existing `EXECUTOR_SIZE = size_of::<ExecutorInlineStorage>()`. They
+are far apart, which is the reason the section above refused to reuse the
+existing one — read out of a freshly built host rlib:
+
+| symbol | bytes |
+| --- | --- |
+| `EXECUTOR_SIZE` (value + carved backing) | 89,816 |
+| `EXECUTOR_VALUE_SIZE` (what a stack pays) | **1,552** |
+
+Reusing `EXECUTOR_SIZE` would have overstated the stack requirement by ~58x, and
+on a 320 KiB part that overstatement is a build error refusing an image that
+fits.
+
+**What is emitted**, by both header producers (`nros-build-helpers::{c,cpp}`)
+and both `nros-c` templates:
+
+```c
+#define NROS_EXECUTOR_SIZE           89816
+#define NROS_EXECUTOR_VALUE_SIZE     1552
+#define NROS_EXECUTOR_MAIN_STACK_MIN 3104
+```
+
+**Where the check sits.** In the generated header, so it lands in the CALLER's
+translation unit — which is what this issue's "cannot go inside `open_in`"
+finding requires, since the overflow happens in that function's prologue. It is
+`#if defined(CONFIG_MAIN_STACK_SIZE) && CONFIG_MAIN_STACK_SIZE <
+NROS_EXECUTOR_MAIN_STACK_MIN` → `#error`, so it is present exactly where Zephyr
+force-includes `autoconf.h` and simply absent elsewhere rather than wrong.
+`NROS_STACK_MIN_ACKNOWLEDGE` opts out for an image that builds its executor off
+the main thread, where the number is about a stack this header cannot see.
+
+**Mutation-tested, not assumed** — the three cases, compiled:
+
+| `CONFIG_MAIN_STACK_SIZE` | expected | result |
+| --- | --- | --- |
+| 2048 | fail | `#error` fires, naming the number |
+| 16384 (the tree's real minimum) | pass | clean |
+| 2048 + `NROS_STACK_MIN_ACKNOWLEDGE` | pass | clean |
+
+**Would it have caught the original?** Yes, and the arithmetic is worth stating
+rather than asserting. The bisect at the top of this issue overflowed at 16384.
+That was BEFORE phase-409, when the executor value was ~16 KiB — so the floor
+this check computes would have been ~32 KiB, and 16384 would have failed to
+compile with a message naming the number. At today's post-phase-409 sizes the
+floor is 3104 and every in-tree image (minimum 16384) passes, so the check is
+silent on the current tree and armed against a regression in `MAX_CBS`,
+`MAX_NODES`, or anything else that grows the value.
+
+**What this still does NOT do.** The board has not booted it — item 1 of the two
+above is unchanged and needs the part. And the floor remains roughly a third of
+the true frame cost, by this issue's own x86_64 measurement; it is a necessary
+condition and its message says so in those words.

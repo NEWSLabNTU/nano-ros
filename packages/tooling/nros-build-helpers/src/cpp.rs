@@ -104,6 +104,12 @@ fn generate_config(
     // corruption, so the overhead is 16.
     const CPP_CONTEXT_OVERHEAD: usize = 16;
     let probe_executor_pre = probed.get("EXECUTOR_SIZE").copied().unwrap_or(0) as usize;
+    // issue 0961 — the bare `Executor` value, which is what a caller's stack
+    // pays. Deliberately NOT `EXECUTOR_SIZE`: that one includes the carved
+    // backing, which never lands on a stack, and on a 320 KiB part the
+    // overstatement would refuse an image that fits.
+    let probe_executor_value = probed.get("EXECUTOR_VALUE_SIZE").copied().unwrap_or(0) as usize;
+    let executor_stack_min = probe_executor_value.saturating_mul(2);
     if probe_executor_pre == 0 {
         println!(
             "cargo:warning=nros-cpp: EXECUTOR_SIZE probe returned 0 — \
@@ -274,6 +280,52 @@ fn generate_config(
 #define NROS_CPP_ACTION_CLIENT_STORAGE_SIZE {exact_action_client}
 
 #define NROS_EXECUTOR_SIZE {exact_executor}
+#define NROS_EXECUTOR_VALUE_SIZE {probe_executor_value}
+#define NROS_EXECUTOR_MAIN_STACK_MIN {executor_stack_min}
+
+/* The check itself. Zephyr force-includes autoconf.h, so CONFIG_MAIN_STACK_SIZE
+ * is visible here; on a host or an RTOS that has no such knob the guard is
+ * simply absent rather than wrong.
+ *
+ * Compile-time and in the CALLER's translation unit, which is where it has to
+ * be: the overflow happens in Executor::open_in's PROLOGUE (`sub sp, ...`
+ * before the first statement), so a check written inside open_in or
+ * nros_cpp_init runs after the stack it is guarding has already been claimed.
+ *
+ * NROS_STACK_MIN_ACKNOWLEDGE opts out for an image that builds its executor on
+ * a thread other than main -- the number is then about that thread's stack, and
+ * this header cannot see it.
+ */
+#if defined(CONFIG_MAIN_STACK_SIZE) && !defined(NROS_STACK_MIN_ACKNOWLEDGE)
+#if CONFIG_MAIN_STACK_SIZE < NROS_EXECUTOR_MAIN_STACK_MIN
+#error \"nros: CONFIG_MAIN_STACK_SIZE is below the executor's necessary minimum \\
+(NROS_EXECUTOR_MAIN_STACK_MIN = 2 x NROS_EXECUTOR_VALUE_SIZE). The executor value \\
+is built in Executor::open_in's frame and moved again through nros_cpp_init, so \\
+main needs at least that much before either function does any work -- and MORE, \\
+since both frames hold other locals. Raise CONFIG_MAIN_STACK_SIZE, lower \\
+NROS_EXECUTOR_MAX_CBS / NROS_MAX_NODES (both scale the executor value), or define \\
+NROS_STACK_MIN_ACKNOWLEDGE if this image builds its executor off the main thread.\"
+#endif
+#endif
+
+
+/* issue 0961 — the executor's STACK cost, which is a different number from
+ * NROS_EXECUTOR_SIZE above and must not be confused with it.
+ *
+ * NROS_EXECUTOR_SIZE is the value PLUS its carved backing: what the caller's
+ * opaque buffer must hold, wherever the caller put it (.bss for a static
+ * holder). NROS_EXECUTOR_VALUE_SIZE is the bare value, and that is what lands
+ * on a stack: Executor::open_in builds one in its frame and returns it by
+ * value, then nros_cpp_init holds the returned value before writing it into
+ * the caller's storage. One value, moved twice -- hence the 2x below.
+ *
+ * NROS_EXECUTOR_MAIN_STACK_MIN is a NECESSARY condition, not a sufficient one.
+ * Both frames hold locals besides the executor, so the real requirement is
+ * larger -- measured on x86_64 after phase-409, the two frames were 3368 and
+ * 1816 bytes against a 1016-byte value, so this floor is roughly a third of
+ * the true cost. An image that satisfies it may still overflow; an image that
+ * violates it cannot boot.
+ */
 #define NROS_GUARD_CONDITION_SIZE {exact_guard}
 #define NROS_PUBLISHER_SIZE {exact_publisher}
 #define NROS_SUBSCRIBER_SIZE {exact_subscriber}
@@ -376,6 +428,52 @@ static const unsigned char *const nros__cpp_config_variant_anchor =
 #define NROS_EXECUTOR_STORAGE_SIZE {exec_storage_c}
 
 #define NROS_EXECUTOR_SIZE {exact_executor}
+#define NROS_EXECUTOR_VALUE_SIZE {probe_executor_value}
+#define NROS_EXECUTOR_MAIN_STACK_MIN {executor_stack_min}
+
+/* The check itself. Zephyr force-includes autoconf.h, so CONFIG_MAIN_STACK_SIZE
+ * is visible here; on a host or an RTOS that has no such knob the guard is
+ * simply absent rather than wrong.
+ *
+ * Compile-time and in the CALLER's translation unit, which is where it has to
+ * be: the overflow happens in Executor::open_in's PROLOGUE (`sub sp, ...`
+ * before the first statement), so a check written inside open_in or
+ * nros_cpp_init runs after the stack it is guarding has already been claimed.
+ *
+ * NROS_STACK_MIN_ACKNOWLEDGE opts out for an image that builds its executor on
+ * a thread other than main -- the number is then about that thread's stack, and
+ * this header cannot see it.
+ */
+#if defined(CONFIG_MAIN_STACK_SIZE) && !defined(NROS_STACK_MIN_ACKNOWLEDGE)
+#if CONFIG_MAIN_STACK_SIZE < NROS_EXECUTOR_MAIN_STACK_MIN
+#error \"nros: CONFIG_MAIN_STACK_SIZE is below the executor's necessary minimum \\
+(NROS_EXECUTOR_MAIN_STACK_MIN = 2 x NROS_EXECUTOR_VALUE_SIZE). The executor value \\
+is built in Executor::open_in's frame and moved again through nros_cpp_init, so \\
+main needs at least that much before either function does any work -- and MORE, \\
+since both frames hold other locals. Raise CONFIG_MAIN_STACK_SIZE, lower \\
+NROS_EXECUTOR_MAX_CBS / NROS_MAX_NODES (both scale the executor value), or define \\
+NROS_STACK_MIN_ACKNOWLEDGE if this image builds its executor off the main thread.\"
+#endif
+#endif
+
+
+/* issue 0961 — the executor's STACK cost, which is a different number from
+ * NROS_EXECUTOR_SIZE above and must not be confused with it.
+ *
+ * NROS_EXECUTOR_SIZE is the value PLUS its carved backing: what the caller's
+ * opaque buffer must hold, wherever the caller put it (.bss for a static
+ * holder). NROS_EXECUTOR_VALUE_SIZE is the bare value, and that is what lands
+ * on a stack: Executor::open_in builds one in its frame and returns it by
+ * value, then nros_cpp_init holds the returned value before writing it into
+ * the caller's storage. One value, moved twice -- hence the 2x below.
+ *
+ * NROS_EXECUTOR_MAIN_STACK_MIN is a NECESSARY condition, not a sufficient one.
+ * Both frames hold locals besides the executor, so the real requirement is
+ * larger -- measured on x86_64 after phase-409, the two frames were 3368 and
+ * 1816 bytes against a 1016-byte value, so this floor is roughly a third of
+ * the true cost. An image that satisfies it may still overflow; an image that
+ * violates it cannot boot.
+ */
 #define NROS_GUARD_CONDITION_SIZE {exact_guard}
 #define NROS_PUBLISHER_SIZE {exact_publisher}
 #define NROS_SUBSCRIBER_SIZE {exact_subscriber}

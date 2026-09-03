@@ -92,6 +92,21 @@ mod rmw_sizes {
     // header AND the per-entry storage backing carved from the same buffer, so it
     // must be sized for the combined `#[repr(C)]` layout, not bare `Executor`.
     export_size!(pub EXECUTOR_SIZE       = nros_node::ExecutorInlineStorage);
+
+    // issue 0961 — the STACK requirement is a different number from the one
+    // above, and reusing that one would overstate it. `EXECUTOR_SIZE` is the
+    // executor value PLUS its carved backing, which is what the caller's
+    // `_opaque` buffer must hold; the backing lives wherever the caller put
+    // that buffer (`.bss` for a static holder) and never lands on the stack.
+    // What lands on the stack is the bare value: `open_in` builds one in its
+    // frame and returns it, and `nros_cpp_init` holds the returned value
+    // before writing it into the caller's storage — the same value, moved
+    // twice, which is why the check derived from this is `2 x`.
+    //
+    // On a 320 KiB part the overstatement would be a build error refusing an
+    // image that fits, so the two numbers stay separate rather than one being
+    // reused for both jobs.
+    export_size!(pub EXECUTOR_VALUE_SIZE = nros_node::Executor<'static>);
     export_size!(pub GUARD_CONDITION_SIZE = nros_node::GuardCondition);
     export_size!(pub LIFECYCLE_CTX_SIZE  = nros_node::lifecycle::LifecyclePollingNodeCtx);
     // Phase 91.C: nros-c's `ActionServerInternal` embeds this nros-node
