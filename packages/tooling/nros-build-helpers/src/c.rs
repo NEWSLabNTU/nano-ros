@@ -147,6 +147,11 @@ fn generate_config(
              rlib."
         );
     }
+    // issue 0961 — see the note this emits into the header: the STACK cost is
+    // the bare value, not the value-plus-backing `probe_executor` above.
+    let probe_executor_value = probed.get("EXECUTOR_VALUE_SIZE").copied().unwrap_or(0) as usize;
+    let executor_stack_min = probe_executor_value.saturating_mul(2);
+
     let executor_storage_bytes = probe_executor.max(8);
     let executor_opaque_u64s = executor_storage_bytes.div_ceil(8);
 
@@ -282,6 +287,8 @@ fn generate_config(
             &executor_storage_bytes.to_string(),
         )
         .replace("@PROBE_EXECUTOR@", &probe_executor.to_string())
+        .replace("@PROBE_EXECUTOR_VALUE@", &probe_executor_value.to_string())
+        .replace("@EXECUTOR_STACK_MIN@", &executor_stack_min.to_string())
         .replace("@PROBE_GUARD@", &probe_guard.to_string())
         .replace("@PROBE_PUBLISHER@", &probe_publisher.to_string())
         .replace("@PROBE_SUBSCRIBER@", &probe_subscriber.to_string())
@@ -340,6 +347,8 @@ fn generate_config(
             &exact_executor_storage.to_string(),
         )
         .replace("@PROBE_EXECUTOR@", &probe_executor.to_string())
+        .replace("@PROBE_EXECUTOR_VALUE@", &probe_executor_value.to_string())
+        .replace("@EXECUTOR_STACK_MIN@", &executor_stack_min.to_string())
         .replace("@PROBE_GUARD@", &probe_guard.to_string())
         .replace("@PROBE_PUBLISHER@", &probe_publisher.to_string())
         .replace("@PROBE_SUBSCRIBER@", &probe_subscriber.to_string())
@@ -388,9 +397,10 @@ fn generate_config(
     // workspace — same sizes, different rmw-feature spellings — agree on
     // the anchor by construction. The human-readable NROS_CONFIG_VARIANT
     // string keeps the feature slug for debugging.
-    let sizes: [(&str, usize); 21] = [
+    let sizes: [(&str, usize); 22] = [
         ("EXACT_EXECUTOR_STORAGE", exact_executor_storage),
         ("PROBE_EXECUTOR", probe_executor),
+        ("PROBE_EXECUTOR_VALUE", probe_executor_value),
         ("PROBE_GUARD", probe_guard),
         ("PROBE_PUBLISHER", probe_publisher),
         ("PROBE_SUBSCRIBER", probe_subscriber),
