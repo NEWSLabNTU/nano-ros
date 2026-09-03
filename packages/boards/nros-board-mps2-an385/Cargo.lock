@@ -306,6 +306,7 @@ dependencies = [
  "nros-node",
  "nros-params",
  "nros-platform",
+ "nros-platform-config",
  "nros-rmw",
  "nros-rmw-cffi",
  "nros-serdes",

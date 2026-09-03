@@ -44,7 +44,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # only ever rises is enforceable where a count that "should fall" is not: an
 # env name legitimately SURVIVES migration as the front-end, so the env rows are
 # reported, never gated. Raise this when a tenant lands.
-LADDER_FLOOR = 28
+LADDER_FLOOR = 32
 
 # Every build-script env name, and WHAT IT IS. An unclassified name FAILS the
 # gate rather than landing in a bucket by heuristic — the first version of this
@@ -88,10 +88,10 @@ KNOB_CLASS = {
     "NROS_MAX_STRING_VALUE_LEN": ("ladder", "params tenant"),
     "NROS_MAX_PARAM_NAME_LEN": ("ladder", "params tenant"),
     "NROS_MAX_PARAMETERS": ("ladder", "params tenant"),
-    "NROS_RUNTIME_COMPONENT_SLOT_BYTES": ("sizing", "component cap"),
-    "NROS_RUNTIME_MAX_CELL_ENTITIES": ("sizing", "component cap"),
-    "NROS_RUNTIME_MAX_CLASS_INSTANCES": ("sizing", "component cap"),
-    "NROS_RUNTIME_MAX_COMPONENTS": ("sizing", "component cap"),
+    "NROS_RUNTIME_COMPONENT_SLOT_BYTES": ("ladder", "runtime tenant"),
+    "NROS_RUNTIME_MAX_CELL_ENTITIES": ("ladder", "runtime tenant"),
+    "NROS_RUNTIME_MAX_CLASS_INSTANCES": ("ladder", "runtime tenant"),
+    "NROS_RUNTIME_MAX_COMPONENTS": ("ladder", "runtime tenant"),
     "NROS_ZEPHYR_HEAP_SIZE": ("sizing", "BLOCKED: the ladder crate depends on nros-platform, so the rungs are a cycle away. Kconfig already serves the rung on Zephyr"),
     "NROS_FREERTOS_HEAP_KB": ("ladder", "memory tenant; KiB front-end over a bytes rung"),
     "NROS_FREERTOS_APP_STACK_KB": ("ladder", "memory tenant; KiB front-end over a bytes rung"),
@@ -258,6 +258,7 @@ def ladder_knobs():
         "ParamKnobs",
         "RmwKnobs",
         "NetKnobs",
+        "RuntimeKnobs",
     ):
         fields = _struct_fields(src, struct)
         if fields:
