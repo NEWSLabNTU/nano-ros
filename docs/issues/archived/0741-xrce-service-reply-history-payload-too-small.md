@@ -2,7 +2,7 @@
 id: 741
 title: "`test_xrce_service_ros2_client` fails on main — Fast-DDS refuses the
   28-byte reply into a 15-byte history payload"
-status: open
+status: resolved
 type: bug
 area: rmw, testing
 related: [issue-0736, issue-0776]
@@ -1222,3 +1222,88 @@ Non-root alternative worth trying first: force the client's reply reader to
 `PREALLOCATED_WITH_REALLOC` via `FASTRTPS_DEFAULT_PROFILES_FILE` +
 `RMW_FASTRTPS_USE_QOS_FROM_XML=1`, so the sample is accepted and its CONTENT
 becomes visible. Caveat: it changes the client's QoS and may mask the failure.
+
+## RESOLVED 2026-09-03 — the 28-byte sample is a FOREIGN peer's, on another host
+
+**It was never our defect.** Not the agent pin, not Fast-CDR skew, not type
+registration, not the missing size advertisement, not the reply framing. The
+15-byte reader history is correct, our reply is 12 bytes, and the 28-byte
+sample comes from a machine this repo does not run on.
+
+### The repro this issue never had, and it uses none of our code
+
+    $ ROS_DOMAIN_ID=1 ros2 service call /add_two_ints \
+        example_interfaces/srv/AddTwoInts "{a: 5, b: 3}"
+    [RTPS_READER_HISTORY Error] Change payload size of '28' bytes is larger than
+    the history payload size of '15' bytes and cannot be resized.
+
+3 of 3 on re-verification here, 5 of 5 in the original measurement. **No
+nano-ros process, no XRCE agent, nothing of ours running.** Domain 9 is empty
+and is the control.
+
+### The writer, identified
+
+A CycloneDDS `add_two_ints_server` on **`arm-a100` = 10.2.15.142** (this host is
+10.2.15.118), squatting **35 ROS domains** including 1-5. Writer GUID
+`0110ba9bee88c773100c4688.00001503` — `0110` is the Cyclone vendor id — peer
+`10.2.15.142:52724`, topic `rr/add_two_intsReply`, payload 28 B:
+
+    00010000 | 0500000000000000 0300000000000000 0000000000000000
+
+That is the **rmw_cyclonedds** request/reply mapping `[client GUID 8][seq 8]
+[response 8]`. The Cyclone server read our Fast-DDS request — which carries only
+`a=5, b=3` in the payload, with the identity in inline QoS `PID 0x800f
+RELATED_SAMPLE_IDENTITY` — as its own header, hence `guid=5, seq=3, sum=0`. The
+two service mappings are not interoperable. Bytes measured; that reading
+inferred.
+
+Captured without root: `tshark`/`dumpcap` are absent and `tcpdump` has no
+capabilities, so an `LD_PRELOAD` interposer on `sendto`/`recvfrom` logged the
+RTPS datagrams instead, plus a passive SPDP scanner that binds the discovery
+multicast ports and sends nothing.
+
+### It also explains the intermittency — which was never randomness
+
+Request-side, from the wire: a PASSING run writes the request to BOTH
+`127.0.0.1:7661` (our Agent) and `10.2.15.142:58782`. A FAILING run writes it
+**only** to the foreign peer. That is the `read_fn=0 / write=0` agent trace from
+the section above, confirmed from outside the agent.
+
+`wait_for_service` is satisfied by whichever server is seen first; when our
+Agent's replier is not yet matched at request-write time (RELIABLE + VOLATILE),
+only the foreign reader gets it.
+
+And the "1 fail then 45 green" shape has a mechanism: `dds_bus_snapshot` ran
+`ros2 node list` etc. WITHOUT `--no-daemon`, so every failing run left a ros2
+daemon on that domain, `domain_discovery_port_busy` read the port as busy, and
+the next run stepped to the NEXT domain — walking the test off the poisoned
+domains onto domain 9, which has no foreign peer and can never fail. A
+reproduction of that walk went 1 -> 5 -> 9 exactly.
+
+**So every measurement in this issue, mine included, was taken on a bus whose
+occupants nobody had enumerated.**
+
+### What is being FIXED, and what is not
+
+Fixed here: `dds_bus_snapshot` now passes `--no-daemon` like its three siblings,
+so a failing run stops walking itself off the evidence. Necessary, not
+sufficient — that probe could not have caught this anyway, because `ros2 service
+list` collapses a service to one NAME however many servers offer it, so the
+"SECOND `/add_two_ints`" its own comment hopes for never appears as a row.
+
+Filed as **issue 1009**: our interop bus is not isolated from the LAN, and
+`ROS_LOCALHOST_ONLY=1` alone is measured NOT to fix it — 0 of 15, because the
+XRCE Agent is a bare Fast-DDS application and ignores the variable, so the two
+sides stop discovering each other. A `FASTRTPS_DEFAULT_PROFILES_FILE` with an
+`interfaceWhiteList` of `127.0.0.1`, exported for BOTH processes, is measured at
+15 of 15 on a poisoned domain.
+
+Not covered: the 35 orphans on `arm-a100`, which need access to that host.
+
+### For the record, the wrong diagnoses this issue accumulated
+
+Five, including one of mine. The reply-framing story (`28 = 4 + 24`, the Agent
+mis-slicing a SampleIdentity) was mine, and it was refuted twice — first by the
+agent trace showing it wrote nothing, then by this, showing it was never asked
+to. Every one of the five was reached by reading code and return codes. The
+thing that settled it was asking who else was on the wire.
