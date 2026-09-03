@@ -368,3 +368,73 @@ What this issue now hands phase-412 is the number: the carrier is worth 279 KB
 on the smallest possible image, and a standalone leaf has no model to derive
 FROM, so "state the knob" may be the only honest answer for the examples even
 after the carrier exists.
+
+## Re-measured 2026-09-04, after phase-412 W1 — unchanged to the byte
+
+W1 landed 2026-09-03 and moved these exact knobs, so the A/B above was re-run
+rather than trusted (the 0859-0862 rule: a measurement is about the tree its
+artifacts were built from).
+
+| | 2026-09-01 | 2026-09-04 (HEAD 9ba86845d) |
+| --- | ---: | ---: |
+| stock | 415,469 | **415,469** |
+| both knobs at 0 | 136,293 | **136,293** |
+
+Byte-identical on both halves. W1 did not reach this path, which is what the
+section above predicted and is now measured rather than argued.
+
+## The carrier EXISTS, and it is the one `nros sync` already writes (2026-09-04)
+
+The handoff above said a leaf "has no model to derive FROM" and left the carrier
+open. Two findings narrow it a long way, and one of them contradicts the
+pessimism.
+
+**1. `.cargo/config.toml`'s `[env]` reaches the pools. Measured, not assumed.**
+Same leaf, same profile, nothing in the shell environment, no CMake anywhere:
+
+```
+[env]
+ZPICO_MAX_QUERYABLES = "0"
+ZPICO_MAX_LARGE_SUBSCRIBERS = "0"
+```
+
+| build | RAM attributed to symbols |
+| --- | ---: |
+| stock `.cargo/config.toml` | 415,469 |
+| + the `[env]` block above | **136,293** |
+
+Exactly the env-var figure, through a file. Sequenced stock -> instrumented from
+a clean rebuild with the variables explicitly UNSET in the shell (`env -u`),
+because the first attempt reused the earlier env-var build and finished in 0.7 s
+— a cached result that would have "confirmed" the carrier without testing it.
+
+> Note for anyone re-running the A/B: the `cd examples/native/rust/talker &&
+> cargo build` in this issue's own "Reproduce" section writes a leaf `target/`,
+> which `check-example-leaf-target-dirs` refuses (phase-340 P2 gave every
+> fixture a shared per-coordinate group dir, and a bare leaf build predates
+> that). It is genuine residue, not a false positive — `rm -rf` it when done.
+
+**2. Why the value MUST come from outside the cargo graph — an ordering
+argument, not a preference.** The pools are sized in `nros-rmw-zenoh`'s build
+script. That crate is a DEPENDENCY of the leaf. The entities are declared in the
+leaf's own `src/lib.rs` (`node.create_publisher_for_topic::<StringMsg>`). So the
+crate that must know the counts is compiled BEFORE the crate whose source states
+them, and no leaf-side derivation — build script, proc macro, manifest metadata
+read at the wrong time — can reach backwards across that edge. `nros ws
+entity-inventory` cannot help either: it reads the `nros-metadata.json` a CMake
+configure writes, and a cargo leaf runs no configure.
+
+**What that does to this issue's two declined fixes.** The first one — "hand-set
+the knobs in each example's `.cargo/config.toml`" — was declined for being twenty
+hand-picked numbers. That objection stands, but it was aimed at the wrong half:
+the LOCATION was right and only the AUTHORSHIP was wrong. `nros sync` already
+generates leaf `.cargo/` content and already keeps the generated part in a
+gitignored sidecar, separate from the authored part (issues 0457/0463). A derived
+`[env]` block belongs in exactly that sidecar — generated, regenerable, never
+committed, and never hand-picked.
+
+So what phase-412 has to build is smaller than "a second derivation path": one
+derivation, published into a carrier that already exists on both sides. The open
+question is no longer WHERE the number goes, it is what a cargo leaf derives
+FROM — and that is a question about where entities are declared, not about
+transport.

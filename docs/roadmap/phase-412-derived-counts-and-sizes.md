@@ -319,6 +319,40 @@ configured — though a number read off a build dir of unknown history still
 should be re-measured, since the numbers already recorded above were taken under
 the old rule.
 
+## W5 — the cargo carrier, scoped by measurement (issue 0827, 2026-09-04)
+
+Every knob this phase derives reaches CMake-configured images only. A
+cargo-built leaf — every native example, every fixture this repo tests against —
+takes crate defaults, and on the smallest possible image that is **279,176 bytes,
+67.2% of its attributed static RAM** (issue 0827, re-measured at HEAD and
+byte-identical to its 2026-09-01 figures).
+
+Two things are settled, both measured rather than argued:
+
+* **The transport works.** `.cargo/config.toml`'s `[env]` reaches the pool
+  build scripts: 415,469 -> 136,293 bytes on `examples/native/rust/talker` with
+  nothing in the shell environment and no CMake. So this is not "build a second
+  derivation path" — it is publishing the existing derivation into a carrier
+  that already exists.
+* **The value cannot be derived inside the cargo graph.** `nros-rmw-zenoh` is a
+  DEPENDENCY of the leaf and is compiled before it; the entities are declared in
+  the leaf's own `src/lib.rs`. Nothing leaf-side can reach backwards across that
+  edge, and `nros ws entity-inventory` reads a `nros-metadata.json` that only a
+  CMake configure writes.
+
+The place to write it is the gitignored `nros sync` sidecar, not the tracked
+`.cargo/config.toml` — same split as `[patch.crates-io]` (issues 0457/0463):
+generated content is regenerable and uncommitted, authored content is tracked.
+Hand-setting the numbers in each example was declined by 0827 and stays
+declined; the objection is to the AUTHORSHIP, not the location.
+
+**What is NOT settled, and is the actual W5 question:** what a standalone leaf
+derives FROM. A CMake image answers it with `nano_ros_node_register(... ENTITIES
+…)`; a cargo leaf states its entities in executable Rust, which is not readable
+at the time the number is needed. Answering that is a design decision — declare
+entities somewhere sync can read, or accept a stated knob for standalone leaves
+— and it is this phase's to make.
+
 ## Issues homed here (survey 2026-09-03)
 Every open issue was checked for a home phase; these had none, or were
 mentioned here only in passing. A mention is not an owner — an issue with
