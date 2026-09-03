@@ -805,7 +805,15 @@ jobs:
       - name: Add ROS 2 apt repo
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl gnupg lsb-release
+          # `curl` dropped: it is preinstalled on the GitHub runner AND
+          # declared by `[prereq.curl]`, so naming it here was the index's fact
+          # restated in a second place (phase-413 W3). `gnupg` and
+          # `lsb-release` stay literal on purpose — they exist only to ADD the
+          # third-party ROS apt source below, and RFC-0062's providers are
+          # system / sdk / source / submodule, none of which can express "add
+          # this apt repository first". Indexing them would claim the index
+          # provisions something it cannot.
+          sudo apt-get install -y gnupg lsb-release
           sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
           echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu jammy main" \
             | sudo tee /etc/apt/sources.list.d/ros2.list >/dev/null
