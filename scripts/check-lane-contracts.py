@@ -66,8 +66,10 @@ LANES = {
     "ci::gate": "compile + unit, NO fixture build (CLAUDE.md)",
     # BUILD depth over the tier-2 breadth. Same affordability shape as the gate
     # — it must not resolve a fixture — for a different reason: it is the
-    # MANDATORY per-merge lane (build-wide.yml), so a fixture dependency here
-    # would make every merge pay a fixture build.
+    # per-merge lane, run by `queue.yml` on `merge_group`, so a fixture
+    # dependency here would make every merge pay a fixture build. (It used to
+    # name build-wide.yml, which ran the SAME recipe on push to main until
+    # phase-413 W1 collapsed the duplicate; that file is dispatch-only now.)
     "ci::_matrix-build": "cross build + link, NO fixture build (phase-410)",
     "check::fast": "buildless and source-only",
 }

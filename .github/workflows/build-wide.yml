@@ -13,25 +13,51 @@
 # "It compiles and links for every target" is the regression that hurts most and
 # costs least to catch. That is this lane.
 #
-# WHY push(main) AND NOT the merge queue
+# WHY THIS IS `workflow_dispatch` ONLY — phase-413 W1
 #
-# The queue's budget is the required `CI` context, deliberately cheap so ten
-# agents can land (phase-395). This runs AFTER a merge, where its job is to
-# bound how far a link regression travels — one commit, not one nightly.
+# This file used to run on `push` to main, and its header carried a "WHY
+# push(main) AND NOT the merge queue" rationale. That rationale was FALSE the
+# day it was written: `queue.yml`'s `l3` job already ran this exact lane on
+# `merge_group`. `just ci matrix build` dispatches to `_matrix-build`, whose
+# body is `l3` — the same recipe, on the same runner labels. Two phases added
+# it independently (395 W7 there, 410 W2 here) and neither saw the other.
 #
-# WHY cancel-in-progress IS correct here and is NOT correct for run-depth
+# The duplication was not free. The two jobs provisioned DIFFERENTLY, in
+# opposite directions: this one ran `just setup tier2` and no codegen, the
+# queue job ran codegen by hand and leaned on the runner's baked SDKs. So the
+# same recipe reported success in the queue and failure here, on the same four
+# commits, minutes apart (issue 0996):
 #
-# A newer commit's answer subsumes an older one's, and at well under a minute this run
-# FINISHES before the next merge arrives. A 20-minute run-depth lane under the
-# same setting starves: with ten agents landing through a queue that batches
-# four, each merge cancels the last and the tier completes never — a lane that
-# always cancels looks busy while reporting nothing. Run depth is on a clock,
-# in the `run-*` workflows.
+#   36c306405  queue success 16:25:49   build-wide FAILURE 16:26:23
+#   da0344af1  queue success 17:02:18   build-wide FAILURE 16:43:26
+#   ad5a8ecf9  queue success 17:06:55   build-wide FAILURE 17:22:19
+#   d2a8955c5  queue success 01:23:54   build-wide FAILURE 17:27:51
+#
+# A post-merge lane that is red for a day reports nothing: a regression landing
+# in it looks exactly like yesterday's failure. Worse, this lane gates nothing
+# by construction — the merge has already happened — and `CI` is the only
+# REQUIRED context, so the queue copy does not gate either. Two runs of an
+# ungating lane, one of them permanently red.
+#
+# So the lane lives in `queue.yml` alone: it runs BEFORE the merge, it is
+# measured at 27-46 s which the queue can afford, and `queue-notify.yml`
+# watches that workflow, so a failure comments on the pull request instead of
+# sitting in the Actions tab.
+#
+# What survives here is the on-demand entry point. The self-hosted runner is
+# the only place most people can cross-build every target, so `workflow_
+# dispatch` keeps that reachable without opening a pull request.
+#
+# CANCEL-IN-PROGRESS, on a dispatch-only lane
+#
+# Kept: two dispatches of the same ref mean the operator wants the newer
+# answer. The original note explained why this setting is right for build depth
+# and wrong for run depth — a 20-minute run-depth lane under the same setting
+# starves, because each merge cancels the last and the tier completes never.
+# That reasoning still governs the `run-*` workflows, which are on a clock.
 name: build-wide
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
