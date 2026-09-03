@@ -260,3 +260,59 @@ asi_rx_steer    612        612
 Confirm the guest is still running before believing that — gdb halts the target
 on attach, and a failed resume produces the same frozen numbers for an entirely
 different reason. Here the island's log kept advancing across the reads.
+
+---
+
+# CORRECTION 2026-09-04 — two of the observations above are not evidence
+
+A full audit of the vendored fork's timed-event handlers (see
+[#1000](1000-spdp-periodic-event-orphaned-by-handler-early-return.md), whose own
+proposed fix was found unsafe and is corrected there) retracts two claims made
+above. Both were read as corroborating anomalies; neither is one.
+
+## RETRACTED — "`oldest == NULL` while `newest != NULL`" is not an inconsistency
+
+The text above calls this "a singly-linked list with a tail and no head". It is
+the documented drained state. The field is declared:
+
+```c
+/* src/core/ddsi/src/q_xevent.c:149 */
+/* undefined if ..._oldest == NULL */
+```
+
+and `getnext_from_non_timed_xmit_list` (`q_xevent.c:260-274`) deliberately never
+clears `newest`. **Every** drained non-timed list looks exactly like this. It is
+a stale pointer by design, so it corroborates nothing and should not have been
+presented beside the empty-tree reading.
+
+## RETRACTED — the `resched_xevent_if_earlier` lost-update theory cannot happen here
+
+The text above names it "the mechanism to look at first", on the grounds that it
+re-arms ONLY when the new time is earlier. On the post-fire path it always
+re-arms: `handle_xevents` stamps `xev->tsched.v = DDS_NEVER` (`INT64_MAX`) at
+`q_xevent.c:1232` *before* calling the handler, so any finite reschedule
+satisfies `tsched.v < ev->tsched.v` and the insert happens (`:400-408`).
+
+The only way that comparison no-ops is a concurrent `delete_xevent` having set
+`TSCHED_DELETE`, which is the documented and intended behaviour
+(`q_xevent.c:394-398`). So this is not a lost update and not the first thing to
+look at.
+
+## What the empty tree actually implies
+
+Still open, and now better constrained. #1000's SPDP orphaning **cannot alone**
+produce `xevents = {roots = 0x0}`: `handle_xevk_pmd_update` reschedules
+unconditionally (`q_xevent.c:1097`) on a finite lease, and the lease is the
+default 10 s. An empty tree needs SPDP **and** PMD orphaned together, which
+means the participant became **un-findable in the entity index** while the
+application was still running.
+
+That is the thing to hunt, and it is upstream of both handlers. The next run
+should therefore add a `GVLOGDISC` to `handle_xevk_pmd_update:1073-1075` — which
+today returns with **no logging at all** — alongside the two SPDP lines #1000
+names. Two "unknown guid" lines within ~8 s of each other confirms it.
+
+Also worth suspicion on timing alone: the submodule tip `d97a71e` is
+"ddsrt: one funnel heap for every port". If neither handler logs and no further
+`xmit spdp` appears, the loss is at INSERT time and `ddsrt/src/fibheap.c` is
+where to look, not the handlers.
