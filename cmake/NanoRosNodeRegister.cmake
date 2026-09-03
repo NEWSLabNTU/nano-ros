@@ -71,6 +71,12 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
 # `NanoRosVerbs.cmake` is `include_guard(GLOBAL)`, so this is idempotent and
 # costs nothing on the find_package path.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosVerbs.cmake")
+# phase-403 step 2 -- `nros_entity_inventory_metadata_file()`, so the declared
+# QoS header below reads the same `nros-metadata.json` the knob lane does.
+# Included at FILE scope, never from inside a function: with
+# `include_guard(GLOBAL)` a file-scope `set()` that lands in a function frame
+# is gone when the frame pops and never comes back.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntityInventory.cmake")
 
 if(DEFINED _NROS_NODE_REGISTER_INCLUDED)
     return()
@@ -1048,6 +1054,119 @@ function(nano_ros_node_register)
 \"callback_groups\": [${_cbgs_json}]${_entities_field}}")
     set_property(GLOBAL APPEND_STRING PROPERTY NROS_COMPONENTS_JSON "${_entry}")
     _nros_metadata_emit()
+
+    # phase-403 step 2 — carry the declared `@depth=` to the COMPILER.
+    if(DEFINED _NRC_ENTITIES)
+        _nros_emit_declared_qos_header("${_NRC_NAME}" "${_lib}" "${_nrc_lang}")
+    endif()
+endfunction()
+
+# _nros_emit_declared_qos_header(<component> <target> <lang>)
+#
+# phase-403 step 2 — render this component's declared QoS depths as a C++
+# header and put it on its own library's include path, so `NROS_SUBSCRIBE` can
+# static_assert the QoS at a call site against the `@depth=` the register call
+# beside it declared.
+#
+# =============================================================================
+# Why PER COMPONENT, and why HERE
+# =============================================================================
+#
+# The knob half of this inventory is composed image-wide by `nano_ros_entry()`,
+# because `NROS_EXECUTOR_MAX_CBS` sizes ONE executor. The DEPTH table is not
+# that shape. It answers a question a single translation unit asks about its own
+# call sites, and there are two reasons that makes per-component the right unit:
+#
+#   * ORDERING. `nano_ros_entry()` runs after every register call, which is
+#     after this target's include path is already set. A table written there
+#     would reach a component's TUs one configure late — the same lag the
+#     payload-class join lives with, but here it would mean a check that
+#     silently does not run on the configure that changed the declaration.
+#   * KEYS. The table is keyed `(type, topic)`. Two components in one image may
+#     legitimately subscribe to the same topic at different depths, and an
+#     image-wide table would have to pick one.
+#
+# The CLI still owns the grammar and the rendering — `--component` narrows the
+# metadata that was just written to this one row. Nothing is parsed in cmake.
+#
+# =============================================================================
+# ABSENT IS THE NORMAL CASE
+# =============================================================================
+#
+# No `ENTITIES`, no CLI, a RUST or INTERFACE target, a component that declares
+# no depth: no header is written, `nros/declared_qos.hpp` finds none, the table
+# is empty and every call site compiles exactly as it did before. A missing
+# table means "nobody declared", never "declared zero" — which is why this
+# function is silent on every one of those paths rather than warning: an image
+# that has not opted in is not an image in error.
+function(_nros_emit_declared_qos_header _component _target _lang)
+    # A Rust component has no C++ call site to check, and a target that is not
+    # a real library has no include path to put a header on.
+    if(_lang STREQUAL "RUST")
+        return()
+    endif()
+    if(NOT TARGET ${_target})
+        return()
+    endif()
+    get_target_property(_nrq_type ${_target} TYPE)
+    if(_nrq_type STREQUAL "INTERFACE_LIBRARY")
+        return()
+    endif()
+    nros_resolve_cli(_nrq_cli OPTIONAL CONTEXT "nano_ros_node_register(ENTITIES @depth=)")
+    if(NOT _nrq_cli OR NOT EXISTS "${_nrq_cli}")
+        # Same rule the knob lane holds: no CLI is a refusal, never a guess.
+        return()
+    endif()
+    # ONE spelling of the metadata path, shared with the knob lane that also
+    # reads it. A second one here is how a producer and a consumer of the same
+    # file quietly stop meeting.
+    nros_entity_inventory_metadata_file(_nrq_metadata)
+    if(NOT EXISTS "${_nrq_metadata}")
+        return()
+    endif()
+
+    # One dir per component, and the `nros/` level is what makes the include
+    # spelling `<nros/nros_declared_qos_generated.h>` — the same shape the
+    # per-build sizes headers use, so nothing here needs a new convention.
+    set(_nrq_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-declared-qos/${_component}")
+    set(_nrq_hdr "${_nrq_dir}/nros/nros_declared_qos_generated.h")
+    file(MAKE_DIRECTORY "${_nrq_dir}/nros")
+    execute_process(
+        COMMAND "${_nrq_cli}" ws entity-inventory
+                --metadata "${_nrq_metadata}"
+                --component "${PROJECT_NAME}::${_component}"
+                --output-header "${_nrq_hdr}"
+        OUTPUT_VARIABLE _nrq_out
+        ERROR_VARIABLE _nrq_err
+        RESULT_VARIABLE _nrq_rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _nrq_rc EQUAL 0)
+        # A broken declaration is fatal and names the component, exactly as the
+        # image-wide lane makes it fatal. The difference from "no CLI" above is
+        # the difference between "you have not declared" and "what you declared
+        # is wrong", and they license different actions.
+        message(FATAL_ERROR
+            "nros: could not render the declared QoS depths of "
+            "${PROJECT_NAME}::${_component}.\n"
+            "  ${_nrq_err}\n"
+            "  Usually the `ENTITIES` argument of that nano_ros_node_register() is "
+            "malformed -- an unknown kind, an unknown `@attr=`, a `@depth=0`.\n"
+            "  FATAL and not skipped on purpose: a component whose table is missing "
+            "compiles with every declared-depth check disabled, which looks exactly "
+            "like a component whose depths all agree.")
+    endif()
+    if(NOT EXISTS "${_nrq_hdr}")
+        return()
+    endif()
+
+    # PRIVATE: this table describes THIS component's call sites. A consumer that
+    # links the component must not inherit it, or its own NROS_SUBSCRIBE calls
+    # would be checked against somebody else's declaration.
+    target_include_directories(${_target} PRIVATE "${_nrq_dir}")
+    # The CLI writes write-if-changed, so re-running it on every configure does
+    # not re-arm a rebuild; this edge is what makes an EDITED declaration reach
+    # the next compile.
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_nrq_hdr}")
 endfunction()
 
 # (The 212.N.6 `nano_ros_application` and 213.B.1 `nano_ros_component_register`
