@@ -269,33 +269,26 @@ function(_nros_load_derived_entity_inventory)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_knobs}")
     nros_reconfigure_settle("${_knobs}")
     include("${_knobs}")
-    foreach(_v
-        NROS_ENTITY_INVENTORY_STATUS
-        NROS_ENTITY_INVENTORY_REASON
-        NROS_ENTITY_INVENTORY_ENTITY_TOTAL
-        NROS_DERIVED_EXECUTOR_MAX_CBS
-        NROS_DERIVED_EXECUTOR_ACTION_CLIENTS
-        # phase-412 W1. This list is a WHITELIST: a symbol the fragment sets
-        # but this loop does not name is loaded here and then dies at the
-        # function boundary, so the knob silently falls to rung 4. That cost a
-        # shipped under-size -- the pools derived 10/14/0 and the zenoh session
-        # was built with 8/8/8, which is 8 subscriber slots for 10
-        # subscriptions and fails at RUNTIME, not at link.
-        NROS_DERIVED_MAX_SUBSCRIBERS
-        NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
-        NROS_DERIVED_MAX_PUBLISHERS
-        NROS_DERIVED_MAX_QUERYABLES
-        NROS_DERIVED_EXECUTOR_MAX_NODES
-        # phase-403 step 3 -- the per-kind COUNTS, for the arena sum. Third
-        # time this whitelist has dropped a symbol the fragment publishes: it
-        # is a NAMED list, so anything not spelled here loads and then dies at
-        # the function boundary, silently, and the consumer falls back to a
-        # default that looks deliberate.
-        NROS_ENTITY_COUNT_SUBSCRIPTION
-        NROS_ENTITY_COUNT_TIMER
-        NROS_ENTITY_COUNT_SERVICE_SERVER
-        NROS_ENTITY_COUNT_ACTION_CLIENT
-        NROS_ENTITY_COUNT_ACTION_SERVER)
+
+    # Re-export EVERY name the fragment sets, read from the fragment itself.
+    #
+    # This was a hand-maintained WHITELIST and it dropped a symbol three times:
+    # phase-412 W1's four session pools (the image derived 10/14/0 and the
+    # zenoh session was built 8/8/8 -- eight subscriber slots for ten
+    # subscriptions, a RUNTIME failure), W2's MAX_NODES, and phase-403 step 3's
+    # five per-kind counts. Each time the symbol loaded here, died at the
+    # function boundary, and the consumer fell back to a default that looked
+    # deliberate. `include()` inside a function keeps its `set()`s in THIS
+    # frame, which is the whole reason a re-export is needed at all.
+    #
+    # The fragment is GENERATED and every line it emits is `set(<NAME> ...)`,
+    # so the set of names is a property of the file rather than of anyone's
+    # memory. Parsing it cannot fall behind a producer that adds a name; a list
+    # can, and did, three times.
+    file(READ "${_knobs}" _frag_text)
+    string(REGEX MATCHALL "set\\(([A-Za-z_][A-Za-z0-9_]*)" _frag_sets "${_frag_text}")
+    foreach(_hit IN LISTS _frag_sets)
+        string(REGEX REPLACE "^set\\(" "" _v "${_hit}")
         if(DEFINED ${_v})
             set(${_v} "${${_v}}" PARENT_SCOPE)
         endif()
