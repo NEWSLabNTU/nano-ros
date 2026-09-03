@@ -50,13 +50,41 @@ pub fn check(board: &BoardDescriptor, root: &Path) -> Vec<Missing> {
 
     // The rustc target triple. A cross board that pins one needs it installed,
     // and `cargo build --target` fails deep in the build otherwise.
-    if let Some(target) = board.target.as_deref()
-        && !rust_target_installed(target)
-    {
-        out.push(Missing {
-            what: format!("Rust target `{target}` (board `{}`)", board.names[0]),
-            remedy: format!("rustup target add {target}"),
-        });
+    if let Some(target) = board.target.as_deref() {
+        match target_provisioning(root, target) {
+            // A prebuilt `rust-std` exists, so "is it installed" is the right
+            // question and `rustup target add` is the answer.
+            Provisioning::Rustup => {
+                if !rust_target_installed(target) {
+                    out.push(Missing {
+                        what: format!("Rust target `{target}` (board `{}`)", board.names[0]),
+                        remedy: format!("rustup target add {target}"),
+                    });
+                }
+            }
+            // Tier 3 / custom JSON: there is NOTHING to install, and this used
+            // to say `rustup target add armv7a-nuttx-eabihf` — a command that
+            // cannot succeed. `config/rust-targets.txt` says so in as many
+            // words: "There is nothing to install, so neither the installer nor
+            // the doctor touches these rows."
+            //
+            // It cost the nightly's `nuttx` and `esp32` cells, which failed
+            // preflight before compiling anything, with a remedy that would
+            // have failed too. The requirement these targets DO have is the
+            // `rust-src` component, because the leaf builds them with
+            // `-Zbuild-std`.
+            Provisioning::BuildStd => {
+                if !rust_component_installed("rust-src") {
+                    out.push(Missing {
+                        what: format!(
+                            "`rust-src` for build-std target `{target}` (board `{}`)",
+                            board.names[0]
+                        ),
+                        remedy: "rustup component add rust-src".to_string(),
+                    });
+                }
+            }
+        }
     }
 
     // A workspace that has never been synced has no generated message crates,
@@ -79,6 +107,57 @@ pub fn check(board: &BoardDescriptor, root: &Path) -> Vec<Missing> {
     }
 
     out
+}
+
+/// How `config/rust-targets.txt` says a triple is provided.
+///
+/// Column 2 of the ONE list (issue 0833). Unknown or unreadable ⇒ `Rustup`,
+/// which is the pre-existing behaviour: a triple nobody declared is more likely
+/// a normal target than a custom JSON one, and preflight must never refuse a
+/// build the compiler would have accepted.
+#[derive(Debug, PartialEq, Eq)]
+enum Provisioning {
+    Rustup,
+    BuildStd,
+}
+
+fn target_provisioning(root: &Path, target: &str) -> Provisioning {
+    let Ok(text) = std::fs::read_to_string(root.join("config/rust-targets.txt")) else {
+        return Provisioning::Rustup;
+    };
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut cols = line.split_whitespace();
+        if cols.next() == Some(target) {
+            return match cols.next() {
+                Some("build-std") => Provisioning::BuildStd,
+                _ => Provisioning::Rustup,
+            };
+        }
+    }
+    Provisioning::Rustup
+}
+
+/// Whether `rustup` reports a COMPONENT as installed.
+///
+/// Same false-negative-is-safe rule as [`rust_target_installed`]: no rustup ⇒
+/// report installed and let the build speak.
+fn rust_component_installed(component: &str) -> bool {
+    let Ok(out) = std::process::Command::new("rustup")
+        .args(["component", "list", "--installed"])
+        .output()
+    else {
+        return true;
+    };
+    if !out.status.success() {
+        return true;
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .any(|l| l.trim() == component || l.trim().starts_with(&format!("{component}-")))
 }
 
 /// Whether `rustup` reports `target` as installed.
@@ -146,6 +225,43 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let m = check(&board(""), tmp.path());
         assert!(!m.iter().any(|m| m.what.contains("Rust target")), "{m:?}");
+    }
+
+    /// A `build-std` target must NOT be reported as an uninstallable rustup one.
+    ///
+    /// `config/rust-targets.txt` marks `armv7a-nuttx-eabihf` and
+    /// `riscv32imac-unknown-nuttx-elf` as `build-std`: Tier 3, no prebuilt
+    /// `rust-std`, provided by `-Zbuild-std` from the leaf. Preflight demanded
+    /// `rustup target add` for them anyway — a prerequisite that can never be
+    /// satisfied — and the nightly's `nuttx` and `esp32` cells died at stage 3
+    /// with a remedy that would also have failed.
+    ///
+    /// Reads the REAL list rather than a fixture: the point of issue 0833's one
+    /// list is that a second copy drifts, and a test asserting against its own
+    /// private copy would be exactly that.
+    #[test]
+    fn the_provisioning_column_decides_which_prerequisite_is_checked() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .find(|p| p.join("config/rust-targets.txt").is_file())
+            .expect("the repo's rust-targets list");
+
+        assert_eq!(
+            target_provisioning(root, "armv7a-nuttx-eabihf"),
+            Provisioning::BuildStd,
+            "a NuttX target is build-std; demanding `rustup target add` for it \
+             names a command that cannot succeed"
+        );
+        assert_eq!(
+            target_provisioning(root, "thumbv7m-none-eabi"),
+            Provisioning::Rustup,
+            "a target with a prebuilt rust-std keeps the rustup check"
+        );
+        // A triple nobody declared falls back to the pre-existing behaviour.
+        assert_eq!(
+            target_provisioning(root, "nros-not-a-declared-triple"),
+            Provisioning::Rustup
+        );
     }
 
     #[test]
