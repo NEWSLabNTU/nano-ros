@@ -135,8 +135,21 @@ work around.
     cyclonedds steady-state sites   2 -> 1
 
 The survivor is `serdata_alloc`, the one copy a caller-owns-the-buffer contract
-cannot avoid. Per-message allocation on the service and action data path is
-otherwise gone.
+cannot avoid.
+
+**Read that as what it is: a count of allocation SOURCE SITES, not of runtime
+allocations.** This section first went on to say per-message allocation was
+"otherwise gone" from the service and action data path. The ledger does not
+support that claim and the runtime measurement contradicts it — see
+[#0969](../0969-cyclone-take-cdr-round-trip.md), where the allocation COUNT comes
+out unchanged before and after, and the BYTES cross over at ~6 KB rather than
+falling. A site disappearing from a ledger is not a call disappearing at runtime.
+
+**What the change does remove at runtime, measured** (bench in
+`tests/codec_bench.cpp`, numbers in 0969): the decode+encode pair, worth a
+**~46 ns floor per message** at any size and 176 ns at a 16 KB payload, against
+a `memcpy` of 0.8-76 ns over the same range. That is the win this migration
+actually buys, and unlike the byte curve it holds at every payload size.
 
 `check-rmw-alloc-sites` is what caught the leftovers: it failed with "DECLARED
 names a steady-state site that is gone", which is how `write_fibonacci_get_result_
