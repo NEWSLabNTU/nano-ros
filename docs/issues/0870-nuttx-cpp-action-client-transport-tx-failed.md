@@ -357,3 +357,123 @@ class and the same argument applies to them, but issue 0968 records ~12
 unreproduced tier-2 e2e failures — flipping all four at once produces a wall of
 red that obscures rather than reveals. Extending this is a one-line change per
 override and a separate decision, not a rediscovery.
+
+---
+
+# CORRECTION 2026-09-04 — the capacity lead was never possible, and the instrumentation is not in this tree
+
+## My "the instrumentation is absent" claim was WRONG — the fixture was stale
+
+An earlier draft of this section asserted, from `strings` on
+`examples/qemu-arm-nuttx/cpp/action-client/build-zenoh/cpp_action_client`, that
+the four diagnostics were not linked and that the standing plan was therefore
+false. **Retracted.** The binary is dated 2026-08-27 03:55; the diagnostics
+landed on 2026-09-03 (`action.rs:1266` has
+`"action client: feedback subscription failed: {:?}"` in the source right now).
+`strings` was reading a week-old artifact.
+
+That is precisely the trap CLAUDE.md records from issues 0859-0862 — four ghost
+issues filed from a sweep whose fixtures predated the fix — and the remedy it
+prescribes is the one I skipped: `stat -c '%y' <artifact>` against
+`git log -1 --format=%ci` of the code being blamed, BEFORE drawing a conclusion.
+
+What survives, and is worth keeping as a standing check rather than a finding:
+**`strings` the artifact you are about to run, not the tree you are reading.**
+A stale fixture makes an armed diagnostic invisible, which is the same
+observation as an unarmed one.
+
+## Pool exhaustion cannot produce this error code — the lead was structurally impossible
+
+The issue retired the capacity hypothesis by measuring that the pools are big
+enough. The stronger reason is that **no exhaustion anywhere in the path can
+arrive as `Generic`**, so the lead was dead regardless of what the constants
+say — and stays dead for any future NuttX build:
+
+| exhausted pool | code it returns | file:line |
+| --- | --- | --- |
+| zpico subscriber slots | `ZPICO_ERR_FULL` (-6) | `zpico.c:2236` |
+| liveliness slots | `ZPICO_ERR_FULL` | `zpico.c:2681` |
+| Rust subscriber index | `TransportError::SubscriberCreationFailed` | `subscriber.rs:674` |
+| payload block | `TransportError::SubscriberCreationFailed` | `subscriber.rs:682` |
+
+The observed code is `ZpicoError::Generic` (-1), and at the only site that can
+produce it during construction (`zpico.c:2267`) it means exactly one thing:
+**`z_declare_subscriber()` itself returned < 0.**
+
+Inside zenoh-pico, `_z_register_subscriber` (`net/primitives.c:210-251`) has
+four failure exits: keyexpr declaration, sync-group notifier, registration OOM
+(`-78`), and `_z_send_declare` -> `_Z_ERR_TRANSPORT_TX_FAILED` (`-100`). OOM is
+implausible on 126 MB, and the C image carries MORE `.bss` (549,456 vs 540,976)
+without failing. That leaves the TX exit.
+
+## Entity accounting, corrected
+
+An action **client** opens **four** entities, not "three services plus feedback
+and status": there is no client-side status subscription
+(`action.rs:1128-1270`). The two publishers belong to the **server**
+(`action.rs:679-685`). That is a real divergence from `rclcpp_action` and worth
+knowing, but it is not this bug.
+
+Construction performs **seven** network ops in the C++ shape, not six: two node
+liveliness tokens (`session.rs:445` at open, plus `session.rs:862` from
+`ensure_node_liveliness`, because the entity's node name differs from
+`primary_node_name`) + four entity tokens + one subscriber declare. The
+"6-of-6 versus 1-of-6" framing is really 7-of-7 versus 1-of-7 — small, but it
+changes what a diagnostic must print to answer the question.
+
+## Split out, not buried: the queryable budget is an accident
+
+`ZPICO_MAX_QUERYABLES = 32` on NuttX is reported here as a fact. It is correct,
+and it is not a choice: `runner.rs:246` tests `target_os != "none"`, and NuttX
+reports `target_os = "nuttx"`, so an RTOS takes the budget written for Linux.
+Measured cost in this very image: **142,336 B of `.bss`** with zero queryables
+declared. Filed as [#1028](1028-nuttx-classified-hosted-takes-linux-queryable-budget.md).
+
+## The client-side analogue of 0460 exists, but not at construction
+
+`pending_gets[ZPICO_MAX_PENDING_GETS]` is 4 slots (`zpico.c:460`) **shared**
+between service gets and liveliness gets (`zpico.c:3270` says so). An action
+client holds three service clients that can each park a standing discovery get,
+plus `wait_for_action_server`, plus `send_goal`'s 500 ms resend loop which
+allocates a new slot per generation (`shim/service.rs:759-766` documents
+overflowing 4). Genuine latent risk on the RUNTIME path, plausibly relevant to
+#0867 — **not reachable at construction**, so it does not explain this issue.
+
+## Still unexplained: why C++ and not C
+
+Checked and found nothing that survives. Both images link the **same**
+`zpico-sys` artifact (`zpico-sys-ec52ae90a97507ef`), so every shim constant and
+every zenoh-pico `#define` is provably identical. Both pool symbols are
+byte-identical. Neither carries param or lifecycle services. Both open in
+`SessionMode::Client`. The one structural difference — C opens through
+`open_session` with an empty namespace and the session name, C++ through
+`Executor::open_in` with the resolved node name and namespace — only changes
+which node token is declared, and every liveliness declare is `.ok()`-swallowed.
+
+**No fourth story is offered.** Three have been burned; the next step is
+evidence, not another hypothesis.
+
+## Fix direction: stop collapsing the error, do not raise a limit
+
+Nothing is being exhausted, so nothing should be raised. The remaining defect
+in the chain is that `zpico.c` discards zenoh-pico's return code at six declare
+sites (`:2106`, `:2154`, `:2210`, `:2267`, `:2320`, `:2695`), and
+`subscriber.rs:725` then relabels the survivor as `ConnectionFailed` — which is
+what pointed the first two diagnoses at the router. Nothing about that call is a
+connection: the session is open and a DECLARE failed.
+
+Add `ZPICO_ERR_TX` / `ZPICO_ERR_NOMEM` (the bands do not overlap, so one shared
+`_zpico_map_zerr` helper suffices — a second spelling is how six sites come to
+disagree), mirror them in `ZpicoError`, and return
+`SubscriberCreationFailed` at `subscriber.rs:725` like the two exhaustion arms
+above it already do. Then `-11` vs `-12` vs `-1` splits the remaining
+hypothesis space in one run, which is the question this issue has been unable
+to ask for four rounds. RAM cost: none.
+
+## Confirmed sound
+
+`nros_log` **does** reach the NuttX console in a C/C++ image —
+`nros-board-nuttx-qemu/src/entry.rs:50` calls `init_default()` inside
+`nsh_main` before `main`, and `nsh_main` is in the built ELF. Without that the
+four `nros_error!` calls would sit in the pre-init ring and never print. The
+plan is sound; only the binaries are wrong.
