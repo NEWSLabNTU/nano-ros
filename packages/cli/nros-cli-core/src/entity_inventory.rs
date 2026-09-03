@@ -848,12 +848,37 @@ impl EntityInventory {
         // multipliers held beside the calls that decide them. Reading the raw
         // count would size every action-carrying image short.
         let n = |tag: &str| per_kind.get(tag).copied().unwrap_or(0);
-        let max_subscribers = n(EntityKind::Subscription.tag())
-            + n(EntityKind::ActionClient.tag()) * ACTION_CLIENT_SUBSCRIPTIONS;
-        let max_publishers = n(EntityKind::Publisher.tag())
-            + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_PUBLISHERS;
-        let max_queryables = n(EntityKind::ServiceServer.tag())
-            + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_QUERYABLES;
+        let floor1 = |v: usize| v.max(1);
+        let max_subscribers = floor1(
+            n(EntityKind::Subscription.tag())
+                + n(EntityKind::ActionClient.tag()) * ACTION_CLIENT_SUBSCRIPTIONS,
+        );
+        let max_publishers = floor1(
+            n(EntityKind::Publisher.tag())
+                + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_PUBLISHERS,
+        );
+        // Issue 1015 -- FLOOR OF ONE on any pool that backs a fixed C array.
+        //
+        // phase-403's rule is that a derived value carries NO headroom: it is
+        // exactly the declared demand, so the running image checks its own
+        // declaration. That is right for a table the executor INDEXES, where
+        // registering past the end returns `ExecutorFull` and names the knob.
+        //
+        // It is wrong here. These three size C arrays in `zpico.c`
+        // (`queryable_entry_t queryables[ZPICO_MAX_QUERYABLES]` and its
+        // siblings), and a zero-length array is not a smaller pool -- it is a
+        // different kind of object, and it is not the last member of that
+        // struct. Measured on the reference island, which declares no service
+        // servers and so derived exactly 0: the board transmitted NOTHING in
+        // 15 seconds, no panic, no log, core in WFI. The same image with the
+        // pool at 4 transmitted 110 bytes. Every gate was green either way,
+        // because 0 was derived correctly and delivered faithfully.
+        //
+        // One slot costs a handful of bytes. A zero costs the whole image.
+        let max_queryables = floor1(
+            n(EntityKind::ServiceServer.tag())
+                + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_QUERYABLES,
+        );
         let max_nodes = self.components().len();
 
         Derivation::Derived(Box::new(DerivedEntityKnobs {
