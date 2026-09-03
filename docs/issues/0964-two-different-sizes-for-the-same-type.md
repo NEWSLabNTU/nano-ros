@@ -166,3 +166,56 @@ not exist, so a flip had exactly one remedy and it was a `.msg` edit. The flip
 itself stays a product decision — the `unbounded` arm of `detail::buffer_bounds`
 is the one line it turns on, and the compile test PINS today's answer so making
 it is a deliberate edit and not a drift.
+
+
+## The bytes, measured 2026-09-04 — the delta issue 0896 closed without
+
+[Issue 0896](archived/0896-c-cpp-subscriptions-never-state-a-buffer-hint.md)
+closed on "the mechanism being correct, not on a measured saving", and said what
+was missing: the C++ receive buffers are STACK, so `just mem-report` cannot see
+them and "whoever wants the bytes needs two different instruments". This is one
+of them — read from the emitted constants rather than from any image, because
+the constant is what sizes the buffer.
+
+Both numbers are in every generated C++ header (`SERIALIZED_SIZE_MAX`, the
+estimate; `RX_MAX_SERIALIZED_SIZE`, the derived bound), so the comparison needs
+no build. Over the 52 distinct stock types paired from this tree's generated
+trees (`std_msgs`, `geometry_msgs`, `action_msgs`, `example_interfaces`,
+`builtin_interfaces`):
+
+| | bytes |
+| --- | ---: |
+| estimate, summed over the 52 types | 11,498 |
+| derived bound, same 52 | **2,264** |
+| difference | **9,234** |
+
+**Read that as per-buffer capacity, not as any image's saving.** It is the sum
+of what one buffer of each type would reserve; an image pays it once per type
+per receive site it instantiates, of which there are 13. The per-type figures
+are what a reader can act on:
+
+| type | estimate | derived | per buffer |
+| --- | ---: | ---: | ---: |
+| `action_msgs/GoalInfo` | 1,028 | 40 | −988 |
+| `geometry_msgs/Twist` | 1,028 | 64 | −964 |
+| `geometry_msgs/Wrench`, `Accel` | 1,028 | 64 | −964 |
+| `geometry_msgs/Pose`, `Transform` | 1,028 | 72 | −956 |
+| `geometry_msgs/TwistWithCovariance` | 1,056 | 356 | −700 |
+
+The `Twist` row is 0896's own spot-check ("`geometry_msgs/Twist` reading 1028
+against a derived 64"), reproduced here from a different direction, which is why
+this extraction is trustworthy at all — it agrees with a number nobody derived
+it from.
+
+**The split: 40 of 52 over-state, 10 agree, 2 under-state.** The direction
+matters more than the magnitude, and 0896 says why: an over-estimate wastes
+stack, an under-estimate sizes a buffer that truncates. Both under-states here
+are `Empty` (`std_msgs` and `example_interfaces`), estimate 4 against a derived
+8 — the 4-byte CDR encapsulation plus the one padded dummy byte ROS 2 emits for
+a memberless message. Harmless in practice, since nothing reads an `Empty`
+payload, but it is the estimate being wrong in the dangerous direction on the
+simplest type in the corpus, which is a fair summary of why it was replaced.
+
+Not measured: an image delta. That still needs the second instrument 0896 named
+— these are stack frames, and the number of live buffers depends on which of the
+13 sites an image instantiates.
