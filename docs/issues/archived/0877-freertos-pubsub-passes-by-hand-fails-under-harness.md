@@ -2,10 +2,10 @@
 id: 877
 title: "FreeRTOS pubsub delivers by hand and delivers NOTHING under the test
   harness — and the talker trips a FreeRTOS queue assert"
-status: open
+status: resolved
 type: bug
 area: testing, boards
-related: [issue-0891, issue-0830, issue-0387, issue-0906, issue-0899, issue-1005]
+related: [issue-0891, issue-0830, issue-0387, issue-0906, issue-0899, issue-1005, issue-1013]
 ---
 
 ## Symptom
@@ -238,3 +238,44 @@ this is not being closed on "it passes now" — that is precisely the reasoning
 that let the stale-binary story stand. It stays open pending either a bisect
 across the Aug-20..Sep-3 range or a decision that a green cell with an
 unattributed fix is acceptable to close.
+
+## CLOSED 2026-09-04 — accepted green, with the cause UNATTRIBUTED
+
+Owner decision, and the reason it is a decision rather than a conclusion: the
+symptom is gone and reproducibly so, but **nothing here identifies what fixed
+it**.
+
+What is established:
+
+* The cell passes 9 of 9, three languages, `--retries 0`, 12 published / 12
+  heard, ~35 s each.
+* The fixtures that produced this report were baked 2026-08-20 and the staleness
+  probe called them FRESH (issue 1005).
+* It is **not** issue 0906. The counterfactual — rebuild with the old 10 s lease
+  — also passes 6 of 6.
+
+What is NOT established, and is being accepted as unknown rather than quietly
+dropped: **which change between 2026-08-20 and 2026-09-03 actually fixed it.**
+The best untested candidate is `7cb213c43` (lan9118 RX driven from the
+interrupt rather than a 5 ms poll), which fits "delivers by hand, nothing under
+the harness". Nobody bisected the range.
+
+### What that costs, stated plainly
+
+If the real fix is later reverted or refactored, this symptom returns and this
+issue will not be the thing that catches it — because the cell that would notice
+is bounded (issue 1013) and the probe that would notice is blind (issue 1005).
+Closing this is a judgement that the residual risk is acceptable, not a claim
+that the risk is zero.
+
+### The two findings that outlive it, filed so they do not close with it
+
+* **Issue 1013** — the cell SIGKILLs its talker after ~12 publishes, so it can
+  never see anything with a period beyond ~12 s of session life. That is what
+  makes 0906 invisible to it.
+* **Issue 1005** — the staleness probe cannot see a constant that lives in a
+  build-script dependency crate. Together these leave `Z_TRANSPORT_LEASE`
+  unprotected in both directions.
+
+Reopen if the symptom returns; the bisect over Aug 20 -> Sep 3 is the first
+thing to do if it does.

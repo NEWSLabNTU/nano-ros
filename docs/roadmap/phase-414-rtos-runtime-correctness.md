@@ -38,7 +38,7 @@ with a stable reproduction and no owner.
 
 Each is an existing issue. The item is "close it"; the issue holds the evidence.
 
-* **W1 — [issue 0877](../issues/0877-freertos-pubsub-passes-by-hand-fails-under-harness.md),
+* **W1 — [issue 0877](../issues/archived/0877-freertos-pubsub-passes-by-hand-fails-under-harness.md),
   FreeRTOS pubsub delivers NOTHING under the test. REDIAGNOSED, not yet
   closed.** The issue's evidence is dated 2026-08-29; issue **0906** (every
   zenoh-pico session dropping every ~20 s because `Z_TRANSPORT_LEASE` was 10 s
@@ -71,8 +71,11 @@ Each is an existing issue. The item is "close it"; the issue holds the evidence.
   hand, nothing under the harness").
   **Corollary that outlives the issue: this cell can never regression-test
   0906**, and nothing else currently does.
-  NOT closed on "it passes now" — that is the reasoning that let the
-  stale-binary story stand in the first place.
+  **CLOSED 2026-09-04, accepted green with the cause UNATTRIBUTED** — an
+  owner decision, not a conclusion. The residual risk is stated in the issue:
+  if the real fix is later reverted, this symptom returns and neither the cell
+  (bounded, issue 1013) nor the probe (blind, issue 1005) will catch it. The
+  bisect over Aug 20 -> Sep 3 is the first thing to do if it does.
   The `queue.c:1673` assert this issue also records is **issue 0899, already
   resolved** — the same 0906 session churn one layer down.
 * **W2 — [issue 0867](../issues/archived/0867-nuttx-c-action-goal-send-times-out.md).
