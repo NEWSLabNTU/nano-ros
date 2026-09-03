@@ -72,22 +72,30 @@ static FREERTOS_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// locator is how a test stops noticing that a fixture moved, which is #393's
 /// shape and the reason build, probe and resolver have to move together.
 ///
-/// Goes through [`super::require_prebuilt_binary_fresh`], so the leaf path is
-/// rewritten onto the row's shared cargo group when the platform is migrated
-/// (phase-340 B2/B3) — callers never spell the group dir.
+/// Goes through the row-keyed chokepoint
+/// [`super::require_prebuilt_row_binary_fresh`], so the artifact ROOT (leaf or
+/// shared cargo group) and the PROFILE both come from the manifest row —
+/// callers never spell the group dir and never name a profile constant.
 pub fn require_entry_binary(name: &str) -> TestResult<PathBuf> {
     build_rust_example(name, name)
 }
+
+/// The target triple these fixtures are built for. The row authors it too
+/// (`target = "thumbv7m-none-eabi"`), but `GroupRow` does not carry it, so this
+/// is the one component of the relative path that is still spelled here — the
+/// artifact root and the profile are asked, not assumed (issue 1027).
+const FREERTOS_QEMU_TARGET: &str = "thumbv7m-none-eabi";
 
 fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     // Issue #181 — the role crates are lib-only Component pkgs since 212.L
     // (same as NuttX, see nuttx.rs `require_entry_binary`): the runnable
     // firmware is the sibling `<role>-entry` image `build-examples` prebuilds
-    // at --release. The old path probed a `qemu-freertos-<role>` bin the role
-    // crate can no longer produce, so the lane looked permanently unbuilt.
+    // at the FreeRTOS-QEMU carve-out. The old path probed a
+    // `qemu-freertos-<role>` bin the role crate can no longer produce, so the
+    // lane looked permanently unbuilt.
     let _ = binary_name;
-    let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-arm-freertos/rust/{}", name));
+    let dir_rel = format!("examples/qemu-arm-freertos/rust/{name}");
+    let example_dir = project_root().join(&dir_rel);
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -97,16 +105,24 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     }
 
     // phase-338 W2 — collapsed package, short `[[bin]]` name (native convention).
-    let bin = name.to_string();
-    // phase-336 — the carve-out profile these Entry demos are prebuilt at (the
-    // emulated Cortex-M3 misses zenoh-pico's handshake window below it). Same
-    // constant the `just freertos build-fixtures` recipe uses, so the locator
-    // cannot look somewhere the builder never wrote.
-    let profile_dir = nros_cargo_profile::target_dir(nros_cargo_profile::FREERTOS_QEMU_PROFILE);
-    let binary_path = example_dir.join(format!("target/thumbv7m-none-eabi/{profile_dir}/{bin}"));
+    let bin = name;
+    // Issue 1027 — the row, not a literal. `<leaf>/target/…` was correct only
+    // for as long as `freertos` stayed out of `NROS_FIXTURE_SHARED_PLATFORMS`;
+    // it is in that list today and the artifacts are under
+    // `build/cargo-fixtures/freertos/`, so this site was one root redirect away
+    // from the NuttX failure and reached the right file only because it spelled
+    // the carve-out profile directly. Both halves now come from the row:
+    // `row_resolved_dir` (inside the chokepoint) for the root,
+    // `row_profile_dir` for the carve-out the emulated Cortex-M3 needs (it
+    // misses zenoh-pico's handshake window below it).
+    let row = crate::fixtures::groups::select_sole_row(&dir_rel)?;
+    let rel = PathBuf::from(format!(
+        "{FREERTOS_QEMU_TARGET}/{}/{bin}",
+        super::row_profile_dir(row)
+    ));
 
     // Tests must not compile fixtures — run `just build-test-fixtures` first.
-    super::require_prebuilt_binary_fresh(&binary_path)
+    super::require_prebuilt_row_binary_fresh(row, &rel)
 }
 
 pub fn build_freertos_talker() -> TestResult<&'static Path> {
