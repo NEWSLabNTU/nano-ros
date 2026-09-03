@@ -2761,9 +2761,9 @@ impl nros_rmw::SlotLending for CffiPublisher {
             // Phase 124.A.3 — backend doesn't natively lend; allocate
             // a staging buffer and stash it in `token` so commit can
             // memcpy → publish_raw and discard / Drop can reclaim.
-            // Requires `alloc` for the dynamic staging; no_std-no_alloc
-            // builds return None and let the caller fall back to a
-            // non-loan path.
+            // Requires `alloc` for the dynamic staging; without it there
+            // is no staging to hand out and the answer is PERMANENT — see
+            // the `not(alloc)` arm below.
             #[cfg(feature = "alloc")]
             {
                 let mut staging = alloc::boxed::Box::new(ArenaStaging {
@@ -2787,8 +2787,30 @@ impl nros_rmw::SlotLending for CffiPublisher {
             }
             #[cfg(not(feature = "alloc"))]
             {
+                // issue 0814 — this arm used to return `Ok(None)`, which every
+                // caller above reads as "no slot RIGHT NOW, retry":
+                // `EmbeddedRawPublisher::try_loan` maps it to
+                // `LoanError::WouldBlock`, `loan_with_timeout` then spins the
+                // executor until its whole budget is gone, and `LoanFuture`
+                // returns `Pending` after a self-wake — a hot loop that never
+                // resolves. But the condition is a COMPILE-TIME fact about this
+                // image (no `alloc`) and a STATIC fact about this publisher
+                // (its vtable has no `borrow_loaned_message`); neither can
+                // change while the publisher lives, so no amount of retrying
+                // will ever clear it. A permanent condition must not present as
+                // a transient one.
+                //
+                // `Unsupported` rather than `LoanNotSupported`: the latter's
+                // own doc bundles "or the loan slot is currently in use", which
+                // is exactly the transient reading this arm must not offer.
+                //
+                // What a caller should do on seeing it: stop asking for a loan
+                // on this publisher and take a non-loan path — `publish_raw`,
+                // or better `publish_streamed`, which needs no token, no arena
+                // and no heap, and which the XRCE and zenoh backends fill
+                // natively.
                 let _ = len;
-                return Ok(None);
+                return Err(TransportError::Unsupported);
             }
         };
         let view = NrosRmwPublisher {
