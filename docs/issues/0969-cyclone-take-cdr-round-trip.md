@@ -92,6 +92,14 @@ reads the CDR the serdata is already holding.
 full encode. On a Cortex-R safety MCU this sits directly in the receive path of a
 control loop.
 
+> **Now measured** (`tests/codec_bench.cpp`, section "The CPU cost: MEASURED"
+> below). The decode+encode pair costs a **~46 ns floor on every message**
+> regardless of size, rising to 176 ns at a 16 KB payload; the new path's whole
+> per-message payload work is a `memcpy` at 0.8-76 ns over the same range. The
+> allocations are the NULL RESULT below — count unchanged, bytes crossing over
+> at ~6 KB. So of the three costs asserted here, the CPU one is real at every
+> size and the allocation one is a trade, not a win.
+
 **Real-time bound.** [phase 391](../roadmap/phase-391-allocation-unification-and-tier-model.md) argues
 the heap holds infrastructure while payload buffers stay static, and derives a
 Robson bound from that. Every Cyclone take allocates a *payload-sized* block, and
