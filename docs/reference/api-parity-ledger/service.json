@@ -340,11 +340,11 @@
   },
   "cpp:Client::call_polling_sized": {
     "verdict": "extension",
-    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR \u2014 a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
+    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR — a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
   },
   "cpp:Client::call_sized": {
     "verdict": "extension",
-    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR \u2014 a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
+    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR — a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
   },
   "cpp:Client::clear_on_new_response_callback": {
     "verdict": "divergence",
@@ -436,15 +436,15 @@
   },
   "cpp:Client::send_request_sized": {
     "verdict": "extension",
-    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR \u2014 a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
-  },
-  "cpp:Client::server_available": {
-    "verdict": "rename",
-    "why": "the ours-only half of `cpp:Client::service_is_ready`."
+    "why": "phase-408 / issue 0964. The `_sized` twin of the call above it: the caller states the receive capacity instead of the message type deriving it. rclcpp has no counterpart because it has an ALLOCATOR — a receive buffer there grows, so no caller ever names a capacity. Here the buffer is a fixed stack array and the number decides whether a sample fits or is truncated, so a type with no derived bound needs a way for its caller to say what it can afford. Without these, moving the receive buffers off the estimate would have had exactly one remedy (bound the type); now it has two."
   },
   "cpp:Client::service_is_ready": {
     "verdict": "rename",
-    "why": "ours is `Client::server_available` in C++ and `nros_client_server_available` / `nros_client_service_is_ready` in C -- which ships BOTH spellings. rclrs and rclcpp say `service_is_ready`. Phase 379 W5."
+    "why": "LANDED 2026-09-03 (phase-379 W6 decision 2). The name is rclcpp's; the SHAPE is rcl's -- `rcl_service_server_is_available` returns OK \"regardless of the service readiness\" and carries the answer in an out-param, so the return code says whether the CHECK worked. rclcpp collapses that to `bool` and throws; RFC-0018 forbids exceptions, so C++ returns `Expected<bool>`, Rust `Result<bool, E>`, C keeps rcl's out-param (RFC-0036). ours is `Client::server_available` in C++ and `nros_client_server_available` / `nros_client_service_is_ready` in C -- which ships BOTH spellings. rclrs and rclcpp say `service_is_ready`. Phase 379 W5.",
+    "rename": {
+      "to": "service_is_ready",
+      "status": "landed"
+    }
   },
   "cpp:Client::set_on_new_response_callback": {
     "verdict": "divergence",
@@ -712,7 +712,11 @@
   },
   "rust:Client::service_is_ready": {
     "verdict": "rename",
-    "why": "see `cpp:Client::service_is_ready`; ours is `ClientTrait::is_server_ready`."
+    "why": "LANDED 2026-09-03 (phase-379 W6 decision 2). The name is rclcpp's; the SHAPE is rcl's -- `rcl_service_server_is_available` returns OK \"regardless of the service readiness\" and carries the answer in an out-param, so the return code says whether the CHECK worked. rclcpp collapses that to `bool` and throws; RFC-0018 forbids exceptions, so C++ returns `Expected<bool>`, Rust `Result<bool, E>`, C keeps rcl's out-param (RFC-0036). see `cpp:Client::service_is_ready`; ours is `ClientTrait::is_server_ready`.",
+    "rename": {
+      "to": "service_is_ready",
+      "status": "landed"
+    }
   },
   "rust:Client::service_name": {
     "verdict": "gap",
@@ -751,8 +755,8 @@
     "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint."
   },
   "rust:ClientTrait::is_server_ready": {
-    "verdict": "rename",
-    "why": "the ours-only half of `rust:Client::service_is_ready`."
+    "verdict": "declined",
+    "why": "DELETED 2026-09-03 (phase-379 W6 decision 2) -- this was the collapse WITHOUT the exception channel that makes it safe upstream. Its trait default was `true` and only zenoh overrode it, so every cffi-backed image (cyclonedds, XRCE, uORB) answered \"ready\" without asking: `wait_for_service` returned `Ok(true)` immediately, never waiting. Issue 1008. the ours-only half of `rust:Client::service_is_ready`."
   },
   "rust:ClientTrait::poll_server_discovery": {
     "verdict": "extension",
@@ -770,16 +774,6 @@
     "verdict": "divergence",
     "why": "the RMW SEAM, one layer below the user API -- what a backend implements, not what a node calls. rclrs has no equivalent because rcl is its only backend. Exported from `nros::` alongside the user API, which is issue 0784's complaint. The raw form; see the pubsub stage's `c:publish_raw`."
   },
-  "rust:ClientTrait::server_available": {
-    "verdict": "rename",
-    "why": "a THIRD spelling of the same predicate, in the same trait as `is_server_ready`. See `cpp:Client::service_is_ready`.",
-    "rename": {
-      "to": null,
-      "category": "B",
-      "status": "blocked-needs-decision",
-      "blocker": "MERGING DELETES A TRI-STATE -- verified against the source 2026-08-26; NOT EXECUTED. `ClientTrait::server_available` (packages/core/nros-rmw/src/traits.rs:2426) returns `Result<bool, Self::Error>` and DEFAULTS to `Err(TransportError::Unsupported)`; `ClientTrait::is_server_ready` (same trait, :2404) returns plain `bool` and defaults to `true`. The doc comment on `server_available` names the distinction as deliberate, in those words: `is_server_ready` 'collapses \"don't know\" and \"no server\" into the same false answer'. The split is load-bearing, not decorative: the zenoh backend overrides BOTH (rmw/zenoh/nros-rmw-zenoh/src/shim/service.rs:979 and :983), while XRCE cannot answer at all (micro-XRCE-DDS-Client has no participant enumeration) and is the reason the `Err` arm exists. The same three states are carried through to C as `int32_t *out` -- 1 visible / 0 none yet / -1 backend cannot answer (nros_generated.h:5717) -- beside a SEPARATE `bool nros_client_service_is_ready` (:5752). And the tri-state has a caller: `handles.rs:2183-2195` uses it to gate the FIRST request so a startup-ordering race does not surface as a request-side timeout, which needs 'cannot answer' distinguishable from 'no'. So this is not one predicate wearing two names. Folding `server_available` into `service_is_ready` requires, in the same edit, deleting or renaming `is_server_ready`, and deciding what the merged name does with the 'cannot answer' arm -- rclcpp and rclrs have no tri-state to map onto, so ROS 2 supplies no answer to copy. THE CHOICE A HUMAN HAS TO MAKE: (a) fold, and say which arm loses (collapse `Err` to `false`, losing the startup gate; or to `true`, losing the 'no server' signal); or (b) keep both, rename only the boolean one to `service_is_ready`, and re-verdict THIS row `divergence` documenting the pair -- which is what the C API already ships and what `rust:EmbeddedServiceClient::server_available` is already verdicted. The NAME question is easy; the SEMANTIC one is the blocker, and it is not the ledger's to settle."
-    }
-  },
   "rust:ClientTrait::start_server_discovery": {
     "verdict": "extension",
     "why": "see `rust:ClientTrait::poll_server_discovery`."
@@ -793,10 +787,6 @@
     "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
   "rust:EmbeddedServiceClient::reset_in_flight": {
-    "verdict": "divergence",
-    "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
-  },
-  "rust:EmbeddedServiceClient::server_available": {
     "verdict": "divergence",
     "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
@@ -950,7 +940,7 @@
   },
   "rust:QoSProfile::parameter_services_default": {
     "verdict": "gap",
-    "why": "ROS 2 gives the parameter services their own profile \u2014 `rmw_qos_profile_parameters`: KEEP_LAST(1000), RELIABLE, VOLATILE. CORRECTION (2026-08-25): an earlier version of this row said transient-local, 'so a late-joining tool still sees declared parameters'. That was wrong -- upstream is VOLATILE, verified against `/opt/ros/humble/include/rmw/rmw/qos_profiles.h`. The real difference is the DEPTH: 1000 against the generic services profile's 10, which matters when a tool sets many parameters at once. Our services registered on `services_default()` until issue 0793 wired `parameters_default()`; the preset itself is still not exposed by name in every language."
+    "why": "ROS 2 gives the parameter services their own profile — `rmw_qos_profile_parameters`: KEEP_LAST(1000), RELIABLE, VOLATILE. CORRECTION (2026-08-25): an earlier version of this row said transient-local, 'so a late-joining tool still sees declared parameters'. That was wrong -- upstream is VOLATILE, verified against `/opt/ros/humble/include/rmw/rmw/qos_profiles.h`. The real difference is the DEPTH: 1000 against the generic services profile's 10, which matters when a tool sets many parameters at once. Our services registered on `services_default()` until issue 0793 wired `parameters_default()`; the preset itself is still not exposed by name in every language."
   },
   "rust:RawServiceCallback": {
     "verdict": "divergence",
@@ -1123,5 +1113,14 @@
   "rust:rmw_request_id_t": {
     "verdict": "divergence",
     "why": "see `rust:RequestId`."
+  },
+  "cpp:Client::server_available": {
+    "verdict": "extension",
+    "why": "DEPRECATED ALIAS, phase-379 W6 decision 2 (2026-09-03). The live spelling is `Client::service_is_ready()`, returning `Expected<bool>`; this survives as a `[[deprecated]]` forwarder preserving the old `int` tri-state exactly (1 ready / 0 not yet / -1 cannot answer) so an out-of-tree caller keeps compiling with a diagnostic naming its replacement. It is replaced rather than kept because that `int` cannot separate a FAILED CALL from an UNSUPPORTED BACKEND -- both were `-1` -- which is the distinction rcl carries in its return code and `Expected<bool>` restores. Retired with the rest of the deprecated set in W7 step 4.",
+    "rename": {
+      "from": "server_available",
+      "to": "service_is_ready",
+      "status": "landed"
+    }
   }
 }

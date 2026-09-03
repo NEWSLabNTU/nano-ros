@@ -2786,19 +2786,16 @@ pub trait ClientTrait {
         Ok(Some(true))
     }
 
-    /// Synchronous, non-blocking check of whether a matching server is
-    /// currently visible.
+    /// Whether a matching service server is currently discoverable.
     ///
-    /// Mirrors `rclcpp::ClientBase::service_is_ready`. Backends that lack
-    /// discovery should keep the default `true` so existing call sites
-    /// don't regress.
-    ///
-    /// Default impl: always `true`.
-    fn is_server_ready(&self) -> bool {
-        true
-    }
-
-    /// Phase 124.C.1 — graph-aware server-availability probe.
+    /// Mirrors `rclcpp::ClientBase::service_is_ready` — the NAME is upstream's.
+    /// The SHAPE is `rcl`'s: `rcl_service_server_is_available(node, client,
+    /// bool *is_available)` returns `RCL_RET_OK` "if the check was made
+    /// successfully (regardless of the service readiness)", i.e. the return
+    /// code says whether the CHECK worked and the out-param carries the ANSWER.
+    /// rclcpp collapses that to a bare `bool` and moves the error to
+    /// exceptions; RFC-0018 forbids exceptions, so `Result<bool, _>` is how the
+    /// same contract is expressed here (phase-379 W6, RFC-0036).
     ///
     /// Returns `Ok(true)` if at least one matching server has been
     /// discovered, `Ok(false)` if none yet, or `Err(_)` if the
@@ -2816,7 +2813,7 @@ pub trait ClientTrait {
     /// Default impl: `Err(TransportError::Unsupported)` — backends
     /// that support graph introspection (zenoh queryable interest,
     /// DDS built-in topic readers) opt in by overriding.
-    fn server_available(&self) -> Result<bool, Self::Error>
+    fn service_is_ready(&self) -> Result<bool, Self::Error>
     where
         Self::Error: From<TransportError>,
     {

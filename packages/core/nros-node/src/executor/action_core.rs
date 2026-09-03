@@ -1135,9 +1135,15 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
 
     /// Latched "is server visible" snapshot. See
     /// `ActionClient::action_server_is_ready` for the semantic.
+    ///
+    /// phase-379 W6 / issue 1008 — `Err` (the backend cannot answer) reports
+    /// NOT ready. The deleted `is_server_ready` defaulted to `true`, so an
+    /// image whose backend has no discovery claimed the server was up.
+    /// Answering `false` makes a caller wait; answering `true` makes it send
+    /// into the void.
     pub fn is_server_ready(&self) -> bool {
         use nros_rmw::ClientTrait;
-        self.send_goal_client.is_server_ready()
+        matches!(self.send_goal_client.service_is_ready(), Ok(true))
     }
 
     /// Create a new action client core from the raw transport handles.

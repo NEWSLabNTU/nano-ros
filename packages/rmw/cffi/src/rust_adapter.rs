@@ -1324,7 +1324,7 @@ unsafe extern "C" fn service_server_is_available_trampoline<R: RustBackend>(
     let Some(c) = (unsafe { client_mut::<R::Client>(client) }) else {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     };
-    match ClientTrait::server_available(c) {
+    match ClientTrait::service_is_ready(c) {
         Ok(available) => {
             // SAFETY: checked non-null above; the caller owns a `bool`.
             unsafe { *out_available = available };

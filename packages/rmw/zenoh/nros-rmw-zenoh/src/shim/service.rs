@@ -1031,11 +1031,13 @@ impl ClientTrait for ZenohServiceClient {
         }
     }
 
-    fn is_server_ready(&self) -> bool {
-        self.server_seen
-    }
+    // phase-379 W6 — the `is_server_ready` override was deleted with the trait
+    // method. It returned `self.server_seen`, which is exactly what
+    // `service_is_ready` below already reports, so nothing is lost: zenoh was
+    // the ONLY backend that implemented the bool form honestly, and every other
+    // one inherited a default of `true` (issue 1008).
 
-    fn server_available(&self) -> Result<bool, TransportError> {
+    fn service_is_ready(&self) -> Result<bool, TransportError> {
         // Phase 124.C.2 — zenoh-pico tracks matched queryables via the
         // session's liveliness subscription. `server_seen` already
         // reflects "at least one matching queryable advertised", which
