@@ -5,7 +5,7 @@ title: "Static RAM is a property of the RMW, not of the node — a talker reserv
 status: open
 type: performance
 area: rmw
-related: [phase-392, phase-391, issue-0815, issue-0739]
+related: [phase-392, phase-391, phase-412, issue-0815, issue-0739]
 ---
 
 ## Problem
@@ -234,3 +234,78 @@ its first run.
 
 The sizing itself. Wants its own work item — it is the W5 restructuring one
 layer down, and should not be smuggled in beside a comment fix.
+
+
+## Re-measured 2026-09-01 — the claim HOLDS, and the derivation does not reach here
+
+Rebuilt the native fixtures against current HEAD (`just build-test-fixtures
+lane=native`) and re-ran `just mem-report` on the zenoh talker, because this
+issue's numbers were three days old and the pool knobs had moved under them
+(phase-403 W4 removed the `.max(1)` floor; `NanoRosMessageBounds.cmake` gained
+`NROS_DERIVED_MAX_LARGE_SUBSCRIBERS`).
+
+`build/cargo-fixtures/linux-3263301353/nros-relwithdebinfo/talker`, built
+03:31 on 2026-09-01:
+
+```
+RAM attributed to symbols:       415,469 bytes
+       144,128   33.3%  nros_rmw_zenoh::shim::service::SERVICE_BUFFERS
+       131,072   30.3%  nros_rmw_zenoh::shim::subscriber::LARGE_PAYLOADS
+        90,136   20.8%  g_sessions
+        32,768    7.6%  nros_rmw_zenoh::shim::subscriber::SMALL_PAYLOADS
+```
+
+**144,128 + 131,072 = 275,200, byte-identical to the 2026-08-29 figures**, on a
+talker with one publisher, no subscription, no service. The two pools it cannot
+reach are unchanged.
+
+The share fell (80% -> 64%) only because the total GREW, 345,379 -> 415,469, and
+`g_sessions` at 90,136 is most of that growth. Not investigated here; noted so
+the next reader does not mistake a smaller percentage for progress.
+
+## Why the mechanism landed and the bytes did not
+
+Both halves of the fix this issue asked for now exist:
+
+* `ZPICO_MAX_LARGE_SUBSCRIBERS = 0` is legal (phase-403 W4 removed the
+  `.max(1)` floor, so "no large class" is expressible rather than silently
+  rounded to one block);
+* `cmake/NanoRosMessageBounds.cmake` derives `NROS_DERIVED_MAX_LARGE_SUBSCRIBERS`
+  from the type set and treats a count of zero as an ANSWER.
+
+**Neither reaches this image.** `LARGE_PAYLOADS` still agrees exactly with
+`ZPICO_MAX_LARGE_SUBSCRIBERS * RING_DEPTH * LARGE_SIZE` at crate defaults,
+because the derivation is published by CMake and consumed by
+`zephyr/cmake/nros_cargo_build.cmake`'s `_nros_resolve_derivable_knob` — and a
+native cargo fixture never goes through CMake at all. The knob is read by
+`nros-rmw-zenoh/build.rs` from the ENVIRONMENT, and on this path nothing sets
+it.
+
+That is this repo's recurring shape, and [phase 412](../roadmap/phase-412-derived-counts-and-sizes.md)
+names it in its own opening: *a mechanism that is correct, tested, and
+unreachable from a real build* — `rx_buffer_hint` sizing nothing (0896), the
+bound inventory with no reader (0963), a cap that could not reach codegen
+(#152).
+
+## Ownership — this issue's implementation belongs to phase-412, not here
+
+phase-412 is the campaign for exactly this, and it has already solved the part
+that made this issue hard. The obvious wiring, `MAX_QUERYABLES =
+COUNT_SERVICE_SERVER`, is WRONG: a declared action is one entity costing several
+session slots (`action server -> 3 queryables + 2 publishers`, `action client ->
+1 subscription`), so the raw per-kind count under-sizes every image with an
+action. Its multipliers now live beside the calls that decide them, held by
+`check-infra-queryable-counts`. It also deliberately does NOT count
+`PARAM_SERVICE_QUERYABLES` (6) and `LIFECYCLE_SERVICE_QUERYABLES` (5), because a
+feature enables those and the inventory cannot see it — which is the eleven-slot
+trap issue 0460 already cost a phase.
+
+Measured there on the island: `NROS_MAX_QUERYABLES` 4 -> 0 and **-17,170 bytes**,
+RAM headroom 0.87% -> 4.76%.
+
+**What this measurement adds that the island audit could not see:** phase-412
+came from a Zephyr board, where every knob arrives through CMake and Kconfig. The
+native cargo path has no such carrier, so a derivation consumed by
+`nros_cargo_build.cmake` leaves every `cargo`-built image — every native example,
+every fixture this repo tests against — at crate defaults. Same knob, same
+derived number, no way in.
