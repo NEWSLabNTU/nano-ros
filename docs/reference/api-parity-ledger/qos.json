@@ -527,21 +527,9 @@
     "verdict": "divergence",
     "why": "runtime QoS OVERRIDES -- the launch-declared per-entity QoS a node applies at startup (RFC-0046). rclcpp's equivalent is `qos_overriding_options`, which negotiates at create time; ours are applied from the resolved SystemModel because there is nothing to negotiate with. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
-  "rust:QoSDurabilityPolicy": {
-    "verdict": "rename",
-    "why": "ours is `QosDurabilityPolicy` -- one letter, `QoS` vs `Qos`. OUR LANGUAGES DISAGREE about the capitalisation of one word. ROS 2 writes `QoS` everywhere -- `rclrs::QoSProfile`, `rclcpp::QoS` -- and so does our C++ (`nros::QoS`, qos.hpp). Our Rust writes `Qos`: `QosSettings`, `QosHistoryPolicy`, `QosReliabilityPolicy`, `QosDurabilityPolicy`, `QosLivelinessPolicy`, `QosPolicyMask`, `QosOverride`. Nothing platform-shaped is behind it and it costs the drop-in claim on every one of them, so the Rust side is what should change. The mismatch is already doing damage beyond the API: `scripts/api_parity/topics.py`'s qos pattern is case-SENSITIVE `QoS|qos`, so our own `Qos*` members match neither branch and roughly twenty-five `QosSettings::*` rows are filed under `other` instead of here. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSDurabilityPolicy`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosDurabilityPolicy` was deleted; the text above records the state BEFORE the rename and is kept as history."
-  },
   "rust:QoSDuration": {
     "verdict": "divergence",
     "why": "rclrs models every QoS duration as a tri-state enum -- `SystemDefault` (let the middleware pick), `Infinite`, `Custom(Duration)`. Ours is a plain `u32` of milliseconds with `0` as the infinite sentinel (`deadline_ms`, `lifespan_ms`, `liveliness_lease_ms`, identically in `nros_qos_t` and `nros::QoS`). `SystemDefault` is the arm that cannot exist: RFC-0036 fixes the profile at COMPILE time against a backend linked at build time, so there is nothing to defer the choice to and nothing that could tell you afterwards what it chose. The `Infinite`/`Custom` split collapses into the sentinel, which costs the ability to express a genuinely zero window -- for deadline, lifespan and lease alike, zero and infinite both mean \"do not enforce\", so nothing is actually lost. The millisecond UNIT is the timer stage's rename (`rust:QoSProfile::deadline_duration`); this row is about the shape."
-  },
-  "rust:QoSHistoryPolicy": {
-    "verdict": "rename",
-    "why": "ours is `QosHistoryPolicy` -- one letter, `QoS` vs `Qos`. OUR LANGUAGES DISAGREE about the capitalisation of one word. ROS 2 writes `QoS` everywhere -- `rclrs::QoSProfile`, `rclcpp::QoS` -- and so does our C++ (`nros::QoS`, qos.hpp). Our Rust writes `Qos`: `QosSettings`, `QosHistoryPolicy`, `QosReliabilityPolicy`, `QosDurabilityPolicy`, `QosLivelinessPolicy`, `QosPolicyMask`, `QosOverride`. Nothing platform-shaped is behind it and it costs the drop-in claim on every one of them, so the Rust side is what should change. The mismatch is already doing damage beyond the API: `scripts/api_parity/topics.py`'s qos pattern is case-SENSITIVE `QoS|qos`, so our own `Qos*` members match neither branch and roughly twenty-five `QosSettings::*` rows are filed under `other` instead of here. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSHistoryPolicy`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosHistoryPolicy` was deleted; the text above records the state BEFORE the rename and is kept as history."
-  },
-  "rust:QoSLivelinessPolicy": {
-    "verdict": "rename",
-    "why": "ours is `QosLivelinessPolicy` -- one letter, `QoS` vs `Qos`. OUR LANGUAGES DISAGREE about the capitalisation of one word. ROS 2 writes `QoS` everywhere -- `rclrs::QoSProfile`, `rclcpp::QoS` -- and so does our C++ (`nros::QoS`, qos.hpp). Our Rust writes `Qos`: `QosSettings`, `QosHistoryPolicy`, `QosReliabilityPolicy`, `QosDurabilityPolicy`, `QosLivelinessPolicy`, `QosPolicyMask`, `QosOverride`. Nothing platform-shaped is behind it and it costs the drop-in claim on every one of them, so the Rust side is what should change. The mismatch is already doing damage beyond the API: `scripts/api_parity/topics.py`'s qos pattern is case-SENSITIVE `QoS|qos`, so our own `Qos*` members match neither branch and roughly twenty-five `QosSettings::*` rows are filed under `other` instead of here. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSLivelinessPolicy`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosLivelinessPolicy` was deleted; the text above records the state BEFORE the rename and is kept as history."
   },
   "rust:QoSOverride": {
     "verdict": "extension",
@@ -567,10 +555,6 @@
     "verdict": "extension",
     "why": "see `rust:QoSPolicyMask`."
   },
-  "rust:QoSProfile": {
-    "verdict": "rename",
-    "why": "ours is `QosSettings` -- both the type's WORD (`Settings` vs `Profile`) and the capitalisation differ, and neither has a reason. OUR LANGUAGES DISAGREE about the capitalisation of one word. ROS 2 writes `QoS` everywhere -- `rclrs::QoSProfile`, `rclcpp::QoS` -- and so does our C++ (`nros::QoS`, qos.hpp). Our Rust writes `Qos`: `QosSettings`, `QosHistoryPolicy`, `QosReliabilityPolicy`, `QosDurabilityPolicy`, `QosLivelinessPolicy`, `QosPolicyMask`, `QosOverride`. Nothing platform-shaped is behind it and it costs the drop-in claim on every one of them, so the Rust side is what should change. The mismatch is already doing damage beyond the API: `scripts/api_parity/topics.py`'s qos pattern is case-SENSITIVE `QoS|qos`, so our own `Qos*` members match neither branch and roughly twenty-five `QosSettings::*` rows are filed under `other` instead of here. The ours-only half is `rust:QosSettings`; it is not in this shard because the same case-sensitivity puts it in `other`. The service and timer stages already deferred here (`rust:QoSProfile::services_default`, `rust:QosSettings::clock_default`); this row settles it. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSProfile`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosSettings` was deleted; the text above records the state BEFORE the rename and is kept as history."
-  },
   "rust:QoSProfile::apply_override_codes": {
     "verdict": "extension",
     "why": "the same fold over the primitive wire form a baked table travels in (issue 0303), which is what the C and C++ ABIs carry. See `rust:QoSOverride`."
@@ -582,10 +566,6 @@
   "rust:QoSProfile::apply_overrides": {
     "verdict": "extension",
     "why": "the fold itself, at `create_publisher`/`create_subscription` time. See `rust:QoSOverride`."
-  },
-  "rust:QoSProfile::best_effort": {
-    "verdict": "rename",
-    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::best_effort`, which topics.py files under `other` -- also explained in that row. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSProfile::best_effort`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosSettings::best_effort` was deleted; the text above records the state BEFORE the rename and is kept as history."
   },
   "rust:QoSProfile::depth": {
     "verdict": "extension",
@@ -603,14 +583,6 @@
     "verdict": "extension",
     "why": "`depth` narrowed to the `uint8_t` the C ABI and the backend handle tables carry, saturating at 255. rclrs keeps one `u32` because rcl takes a `size_t`; ours needs the narrowed read because the value crosses a `repr(C)` boundary into a fixed-width field. The doc comment says \"for backwards compatibility\", which is not a reason -- worth a look in W5."
   },
-  "rust:QoSProfile::keep_all": {
-    "verdict": "rename",
-    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::keep_all`, which topics.py files under `other` -- also explained in that row. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSProfile::keep_all`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosSettings::keep_all` was deleted; the text above records the state BEFORE the rename and is kept as history."
-  },
-  "rust:QoSProfile::keep_last": {
-    "verdict": "rename",
-    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::keep_last`, which topics.py files under `other` -- also explained in that row. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSProfile::keep_last`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosSettings::keep_last` was deleted; the text above records the state BEFORE the rename and is kept as history."
-  },
   "rust:QoSProfile::new": {
     "verdict": "extension",
     "why": "a `const fn` returning `QOS_PROFILE_DEFAULT`, so a profile can be built in a `static` / `const` initialiser. That is what compile-time QoS (RFC-0036/0045) needs: the entity's profile is baked, not assembled at runtime. rclrs builds a `QoSProfile` through the `*_default()` constructors or `Default`."
@@ -623,29 +595,9 @@
     "verdict": "extension",
     "why": "see `rust:QoSProfile::depth`."
   },
-  "rust:QoSProfile::reliable": {
-    "verdict": "rename",
-    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::reliable`, which topics.py files under `other` -- also explained in that row. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSProfile::reliable`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosSettings::reliable` was deleted; the text above records the state BEFORE the rename and is kept as history."
-  },
   "rust:QoSProfile::required_policies": {
     "verdict": "extension",
     "why": "backend-compatibility validation. Backends differ in which QoS policies they can honour at all -- zenoh-pico enforces no DEADLINE or LIFESPAN, XRCE none of the extended set -- so an entity requesting one the active backend cannot keep fails SYNCHRONOUSLY at create time with `TransportError::IncompatibleQos`, never a silent downgrade. ROS 2 answers the same question at runtime instead, through RxO matching and a QOS_INCOMPATIBLE event on the entity; both halves of that need dynamic discovery and the QoS event surface, and we have neither (see the qos stage's `c:get_zero_initialized_event`). `required_policies` reports what a profile asks for, `validate_against` checks it against what the session advertises."
-  },
-  "rust:QoSProfile::sensor_data_default": {
-    "verdict": "rename",
-    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::sensor_data_default`, which topics.py files under `other` -- also explained in that row. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSProfile::sensor_data_default`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosSettings::sensor_data_default` was deleted; the text above records the state BEFORE the rename and is kept as history."
-  },
-  "rust:QoSProfile::system_default": {
-    "verdict": "rename",
-    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::system_default`, which topics.py files under `other` -- also explained in that row. Note the semantics do not carry over intact: `rmw_qos_profile_system_default` means \"leave every policy for the middleware to decide\", and there is no middleware here to defer to -- the backend is linked at build time and the profile is fixed at compile time (RFC-0036). Our `system_default` is a concrete RELIABLE + VOLATILE + KEEP_LAST(1) value, and our policy enums carry no `SystemDefault` or `Unknown` discriminant on purpose. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSProfile::system_default`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosSettings::system_default` was deleted; the text above records the state BEFORE the rename and is kept as history."
-  },
-  "rust:QoSProfile::topics_default": {
-    "verdict": "rename",
-    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::topics_default`, which topics.py files under `other` -- also explained in that row. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSProfile::topics_default`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosSettings::topics_default` was deleted; the text above records the state BEFORE the rename and is kept as history."
-  },
-  "rust:QoSProfile::transient_local": {
-    "verdict": "rename",
-    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::transient_local`, which topics.py files under `other` -- also explained in that row. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSProfile::transient_local`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosSettings::transient_local` was deleted; the text above records the state BEFORE the rename and is kept as history."
   },
   "rust:QoSProfile::tx_express": {
     "verdict": "extension",
@@ -654,14 +606,6 @@
   "rust:QoSProfile::validate_against": {
     "verdict": "extension",
     "why": "see `rust:QoSProfile::required_policies`."
-  },
-  "rust:QoSProfile::volatile": {
-    "verdict": "rename",
-    "why": "exists on ours under exactly this member name; only the owning TYPE is spelled differently (`QosSettings` vs `QoSProfile`). See `rust:QoSProfile` for the rename. The ours-only half is `rust:QosSettings::volatile`, which topics.py files under `other` -- also explained in that row. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSProfile::volatile`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosSettings::volatile` was deleted; the text above records the state BEFORE the rename and is kept as history."
-  },
-  "rust:QoSReliabilityPolicy": {
-    "verdict": "rename",
-    "why": "ours is `QosReliabilityPolicy` -- one letter, `QoS` vs `Qos`. OUR LANGUAGES DISAGREE about the capitalisation of one word. ROS 2 writes `QoS` everywhere -- `rclrs::QoSProfile`, `rclcpp::QoS` -- and so does our C++ (`nros::QoS`, qos.hpp). Our Rust writes `Qos`: `QosSettings`, `QosHistoryPolicy`, `QosReliabilityPolicy`, `QosDurabilityPolicy`, `QosLivelinessPolicy`, `QosPolicyMask`, `QosOverride`. Nothing platform-shaped is behind it and it costs the drop-in claim on every one of them, so the Rust side is what should change. The mismatch is already doing damage beyond the API: `scripts/api_parity/topics.py`'s qos pattern is case-SENSITIVE `QoS|qos`, so our own `Qos*` members match neither branch and roughly twenty-five `QosSettings::*` rows are filed under `other` instead of here. RESOLVED 2026-08-27 (phase-379 W5): the Rust rename landed -- ours now spells this `QoSReliabilityPolicy`, so ours and theirs share one key and the pair collapsed to `same`. The ours-only half `rust:QosReliabilityPolicy` was deleted; the text above records the state BEFORE the rename and is kept as history."
   },
   "rust:Session::next_deadline_ms": {
     "verdict": "extension",
