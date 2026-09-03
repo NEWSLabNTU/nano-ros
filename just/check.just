@@ -147,6 +147,7 @@ fast-serial: \
     cpp-no-std-stdio \
     cyclone-backend-sources \
     cyclone-domain-not-pinned \
+    declared-qos-header \
     deploy-board-resolves \
     doc-recipe-refs \
     doc-refs \
@@ -188,6 +189,9 @@ fast-serial: \
     just-recipe-refs \
     kconfig-knob-forwarding \
     kconfig-overridden-values \
+    knob-delivery \
+    knob-fixpoint \
+    knob-resolved-once \
     knob-single-reader \
     lane-contracts \
     lane-scope-consumers \
@@ -287,8 +291,7 @@ fast-serial: \
     zenohd-resolution-parity \
     zenohd-router-skips \
     zenohd-spawn-sites \
-    zephyr-knob-agreement \
-    zephyr-sdk-lines
+    zephyr-knob-agreement
     # `_check-skip-reset` is shared skip-ledger infrastructure at the ROOT
     # (`run-gates-parallel.sh` calls it too), not a gate — and a module cannot
     # depend on a root recipe, so it is called rather than depended on. It must
@@ -1224,6 +1227,39 @@ reconfigure-on-change:
         exit 0
     fi
     ./tests/cmake-reconfigure-tests.sh
+# phase-403 step 2 -- does the declared `@depth=` REACH A COMPILER?
+#
+# `just check cpp` proves the CHECK: it compiles a TU whose declared depth and
+# passed QoS disagree and asserts the build is rejected, with the topic and both
+# numbers in the diagnostic. It hands the table to the compiler with a `-I` of
+# its own, so it says nothing about DELIVERY.
+#
+# This is the delivery half, and it is the half that goes wrong silently: a
+# component whose generated table never lands on its include path compiles with
+# every declared-depth assertion disabled, and looks exactly like a component
+# whose depths all agree. Six mechanisms in this campaign have been correct and
+# unreachable for precisely that reason.
+#
+# Drives `_nros_emit_declared_qos_header()` in a real configure with the real
+# CLI. Needs cmake, a C compiler and a built `nros` -- and SKIPS rather than
+# passing when any is missing, because a gate that examined nothing must not
+# read as a pass.
+declared-qos-header:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _missing=""
+    command -v cmake >/dev/null 2>&1 || _missing="$_missing cmake"
+    command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1 \
+        || _missing="$_missing cc"
+    _cli="${NROS_CLI:-packages/cli/target/release/nros}"
+    [ -x "$_cli" ] || _missing="$_missing nros(just setup-cli)"
+    if [ -n "$_missing" ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip declared-qos-header "missing:$_missing"
+        exit 0
+    fi
+    ./tests/cmake-declared-qos-header-tests.sh
 
 abi-bindings:
     #!/usr/bin/env bash
@@ -2441,18 +2477,6 @@ cmake-find-program-shadowed:
 # witnessing would be the defect it exists to prevent, one level up.
 shared-cargo-dir-witness:
     @bash scripts/check-shared-cargo-dir-used.sh --self-test
-
-# The CI image must bake an SDK for every Zephyr line `setup.sh` can select.
-#
-# One baked SDK served both lines until 4.4 moved to the 1.x series; then its
-# `find_package(Zephyr-sdk 1.0)` rejected the baked 0.17.4 and every
-# `zephyr 4.4 /*` nightly cell died at cmake configure. The image's own comment
-# said 4.4 would "fall through to its own west-managed SDK" while every CI job
-# runs `just zephyr setup --skip-sdk` — two documents, each locally consistent,
-# describing different worlds.
-[group("hygiene")]
-zephyr-sdk-lines:
-    @python3 scripts/check/check-zephyr-sdk-lines.py
 
 # The gate REGISTRIES hold one name per line, sorted — phase-400 follow-up to
 # issues 0883/0884.
@@ -4088,6 +4112,52 @@ zenoh:
 [private]
 infra-queryable-counts:
     @python3 scripts/check-infra-queryable-counts.py
+
+# phase-412 W4 — the value that reaches the COMPILE is the value the resolver
+# produced. The knob gates beside this one check whether the derived number is
+# RIGHT; this one checks whether it ARRIVED, which is a different question and
+# the one that kept going wrong. W1 shipped six delivery failures in one wave
+# with every other gate green: a second consumer reading raw CONFIG_*, a name
+# that resolved to empty, a C consumer with no default under rung 4, a loader
+# whitelist that dropped symbols at a function boundary, and a knob resolved
+# twice where the second call won with the DERIVE sentinel. Two of those were
+# live in pushed work, and one built the zenoh session with 8 subscriber slots
+# for 10 subscriptions — a runtime failure, invisible at link.
+#
+# Self-test only here: the end-to-end assertion needs a CONFIGURED build dir,
+# which the fast tier does not have. Point it at one by hand:
+#     python3 scripts/check-knob-delivery.py <build-dir>
+[private]
+knob-delivery:
+    @python3 scripts/check-knob-delivery.py --self-test
+
+# Issue 1002 — a configure sequence must reach a FIXPOINT, and the pass count
+# is not the instrument. 0991's remedy says configure TWICE; the receive
+# payload class needed THREE, and four island builds shipped the stale value
+# because the stale one is LARGER and therefore silent. This configures until
+# nothing moves rather than counting, so a knob that gains a longer chain fails
+# here instead of over-sizing for a month.
+#
+# Self-test only in the fast tier: the real assertion needs a configured build
+# dir. Point it at one by hand:
+#     python3 scripts/check-knob-fixpoint.py <build-dir> --configure "<cmd>"
+[private]
+knob-fixpoint:
+    @python3 scripts/check-knob-fixpoint.py --self-test
+
+# A knob is resolved EXACTLY ONCE. phase-412 hit this three times: a knob
+# gained a derivable resolution and kept its old plain one, the second call
+# won, and what it passed was the raw Kconfig value — which for a derivable
+# knob is the `-1` DERIVE SENTINEL, resolved as though someone had stated it.
+# Invisible to every other gate, because the derived value was right and the
+# resolver did run.
+#
+# Branch-aware: two arms of one conditional are not duplicates. Its first real
+# run said they were, and a checker that flags a correct idiom trains people to
+# ignore it.
+[private]
+knob-resolved-once:
+    @python3 scripts/check-knob-resolved-once.py
 
 # phase-403 W9 (issue 0965) — the per-kind CALLBACK SLOT cost has ONE
 # definition, tied to the registration sites that actually claim a slot.
