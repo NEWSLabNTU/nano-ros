@@ -18,6 +18,14 @@
 # It needs cmake + ninja and NOTHING else -- no compiler (`project(... NONE)`),
 # no nano-ros build, no SDK, no codegen. Two seconds.
 #
+# NOTHING HERE MAY DEPEND ON THE CLOCK OR ON HOST SPEED. The probe projects
+# declare `cmake_minimum_required(VERSION 3.20)` and must behave identically on
+# every cmake at or above it: `string(TIMESTAMP ... "%f")` is a cmake >= 3.23
+# feature that DEGRADES SILENTLY to second granularity below, which made case E
+# pass on cmake 4.3 and fail on an older one -- a green that depended on the
+# reviewer's toolchain. Anything that must differ between two passes uses a
+# cache counter.
+#
 # WHAT IS ASSERTED:
 #
 #   A. THE BUG. Without the mechanism -- `CMAKE_CONFIGURE_DEPENDS` plus a write
@@ -134,8 +142,23 @@ nros_reconfigure_snapshot("\${_frag}" _before)
 if(_mode STREQUAL "identical")
     file(WRITE "\${_frag}" "set(ANSWER placeholder)\n")
 elseif(_mode STREQUAL "never-settles")
-    string(TIMESTAMP _uniq "%s%f")
-    file(WRITE "\${_frag}" "set(ANSWER moving_\${_uniq})\n")
+    # DETERMINISTIC non-convergence -- a counter in the cache, never a clock.
+    # This used string(TIMESTAMP) with a %f microsecond field, which needs
+    # cmake 3.23 or newer. Below that it does not error, it silently gives
+    # SECOND granularity, so two re-configures inside one second write
+    # IDENTICAL bytes: the producer that must look non-convergent looks
+    # convergent, nothing arms the second pass, the bound is never reached and
+    # case E fails on its own assertion. A test for a bound must not depend on
+    # how fast the host is, nor on which cmake the reviewer happens to run.
+    #
+    # NOTE this block is inside an UNQUOTED heredoc, so backticks and bare $
+    # are shell-expanded. Write no backticks here.
+    if(NOT DEFINED NROS_PROBE_SEQ)
+        set(NROS_PROBE_SEQ 0 CACHE INTERNAL "probe: configures so far")
+    endif()
+    math(EXPR _seq "\${NROS_PROBE_SEQ} + 1")
+    set(NROS_PROBE_SEQ "\${_seq}" CACHE INTERNAL "probe: configures so far")
+    file(WRITE "\${_frag}" "set(ANSWER moving_\${_seq})\n")
 else()
     file(WRITE "\${_frag}" "set(ANSWER real)\n")
 endif()
