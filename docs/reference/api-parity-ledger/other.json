@@ -215,6 +215,10 @@
     "verdict": "declined",
     "why": "see `cpp:add_will_overflow`."
   },
+  "cpp:declared_depth": {
+    "verdict": "extension",
+    "why": "the declared depth for `(type, topic)`, or `DECLARED_DEPTH_UNDECLARED`. `constexpr`, so it answers inside a `static_assert` when the topic is a string literal -- which is every call site in this tree -- and an ordinary call for the boot-time fallback in `ComponentNode::create_subscription` when the topic is only known at run time. One implementation, two evaluation times. It reads the build-time table a component's own declaration emits (phase-403 step 2), so a subscription that passes a QoS disagreeing with the declaration is rejected where it is written rather than at run time. rclcpp has no counterpart: there a depth is a runtime argument to `create_subscription` and nothing records what the component declared, so nothing can compare the two. The mechanism exists because a receive buffer is sized from the declared depth (phase-403), and a number the image sizes memory from must be checkable at the point it is stated."
+  },
   "cpp:get_c_string": {
     "verdict": "divergence",
     "why": "rclcpp's `std::string` -> `const char*` adapter, which exists because rclcpp's API takes `std::string` and rcl takes `const char*`. Our C++ has no such boundary: `nros-cpp` is freestanding with `-fno-exceptions` (RFC-0018) and gates every `<string>` include on `NROS_CPP_STD` (issue 0112), so the API takes `const char*` throughout and there is nothing to adapt."
