@@ -1,7 +1,7 @@
 fn main() {
     // issue 0682 — the peer-mode build input (`just test-zpico-peer`).
     println!("cargo:rerun-if-env-changed=ZPICO_MULTICAST_TRANSPORT");
-    println!("cargo:rerun-if-env-changed=ZPICO_SUBSCRIBER_BUFFER_SIZE");
+    println!("cargo:rerun-if-env-changed=NROS_SUBSCRIBER_BUFFER_SIZE");
     println!("cargo:rerun-if-env-changed=ZPICO_SERVICE_BUFFER_SIZE");
     println!("cargo:rerun-if-env-changed=NROS_SERVICE_TIMEOUT_MS");
     println!("cargo:rerun-if-env-changed=NROS_KEYEXPR_STRING_SIZE");
@@ -17,7 +17,7 @@ fn main() {
     // (also 1024). If you change one, change the other — they share the
     // wire-format expectation. Both can be overridden independently via
     // their respective env vars.
-    let sub_size: usize = env_usize("ZPICO_SUBSCRIBER_BUFFER_SIZE", 1024);
+    let sub_size: usize = env_usize("NROS_SUBSCRIBER_BUFFER_SIZE", 1024);
     let svc_size: usize = env_usize("ZPICO_SERVICE_BUFFER_SIZE", 1024);
     // Phase 160.C.2 — bumped 10_000 → 30_000. The original 10 s default
     // was too short for slow zenoh-pico flushes on Zephyr/NSOS where
@@ -69,7 +69,7 @@ fn main() {
     // (`SlotLending`). This was a bare `const` in `shim/publisher.rs`, so its
     // 1 KiB ceiling was neither raisable by a consumer nor visible to
     // `scripts/gen-pool-inventory.py`. It is the publisher-side twin of
-    // `ZPICO_SUBSCRIBER_BUFFER_SIZE` and shares its default. The arena is
+    // `NROS_SUBSCRIBER_BUFFER_SIZE` and shares its default. The arena is
     // per-publisher, so the cost is `ZPICO_MAX_PUBLISHERS` × this — priced in
     // the inventory via the `nros-pool:` annotation beside `LendArena`.
     let publisher_tx_size: usize = env_usize("ZPICO_PUBLISHER_TX_BUFFER_SIZE", 1024);
@@ -79,7 +79,7 @@ fn main() {
     std::fs::write(
         &path,
         format!(
-            "/// Subscriber buffer size (set via ZPICO_SUBSCRIBER_BUFFER_SIZE, default 1024).\n\
+            "/// Subscriber buffer size (set via NROS_SUBSCRIBER_BUFFER_SIZE, default 1024).\n\
              pub const SUBSCRIBER_BUFFER_SIZE: usize = {sub_size};\n\
              /// Service request buffer size (set via ZPICO_SERVICE_BUFFER_SIZE, default 1024).\n\
              pub const SERVICE_BUFFER_SIZE: usize = {svc_size};\n\
@@ -124,7 +124,7 @@ fn main() {
 /// reached the C lane and silently did not reach this crate.
 const KCONFIG_KNOBS: &[(&str, &str)] = &[
     (
-        "ZPICO_SUBSCRIBER_BUFFER_SIZE",
+        "NROS_SUBSCRIBER_BUFFER_SIZE",
         "CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE",
     ),
     (
