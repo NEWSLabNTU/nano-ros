@@ -405,10 +405,46 @@ it carries the same caveat about absolute value. It is still good evidence that
 the METHOD detects real change: the same harness style that moved by 7.93 there
 moves by 0.01 here, so this null result is not the instrument failing to see.
 
-### Not explained
+### EXPLAINED, by DHAT — the harness payload is too small to show the defect
 
-4.00-4.15 per exchange is fewer than the old path's sites predict (a typed sample
-and an ostream on each of request and reply, plus serdata). Something is either
-absorbing those or they are not on the measured path. Recorded as an open
-question rather than guessed at — the number is what it is, and the explanation
-is a separate piece of work.
+`valgrind --tool=dhat` at both counts, differenced, attributes every growing
+allocation:
+
+| allocation | before | after |
+| --- | ---: | ---: |
+| our typed sample, write path (`maybe_flush_request`) | 1.01 | — |
+| our typed sample, take path (`take_typed_wire`) | 1.01 | — |
+| our serdata x2 (`serdata_from_sample` / `serdata_from_ser`) | — | 2.02 |
+| Cyclone `ddsrt_malloc` payload x2 | 1.99 | 2.02 |
+| **total** | **4.01** | **4.15** |
+
+**The migration SUBSTITUTED allocations rather than removing them.** Before, we
+allocated a typed sample per direction and Cyclone allocated the serdata; after,
+we allocate the serdata and there is no typed sample. One for one.
+
+**And the count was never going to move on THIS payload.** The prediction that
+the old path cost more assumed the `dds_ostream_t` allocated separately from the
+typed sample. It does not, for a small message: `dds_ostream_init(&os, 0, ...)`
+starts empty and the first write allocates once — for a 12-byte `AddTwoInts`
+reply it never reallocs, so the entire re-encode costs ONE allocation, the same
+one the new path spends on a serdata.
+
+That is what this issue already recorded about the message path, read from the
+other end: **9.93 was NON-INTEGRAL because the ostream grew by realloc, so its
+allocation count depended on the sample.** A 12-byte reply produces no growth, so
+it produces no delta. The harness exchanges `req[20]` and `reply[12]`, sizes
+chosen for an interop assertion rather than for this measurement.
+
+So the honest statement is narrower than either "no saving" or "a saving":
+
+* on a SMALL fixed-size type the migration is allocation-neutral (measured);
+* the saving the round-trip removal buys lives in the REALLOC TAIL, which appears
+  only once a payload outgrows the ostream's first block — the regime where the
+  message path measured 9.93 and where the count stops being an integer;
+* what it removes unconditionally is a decode and an encode of CPU work, plus the
+  per-type adapters. Those hold at any payload size.
+
+**Next measurement**: the same slope with a large, variable-length reply — a
+sequence long enough to force ostream growth. That is where a service-path number
+comparable to 9.93 -> 2.00 would come from, and this harness's payload cannot
+produce one.
