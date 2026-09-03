@@ -22,26 +22,52 @@ fn main() {
     // to 4 (3 RTPS sockets/participant — default-unicast + metatraffic-unicast
     // + metatraffic-multicast — plus one spare) without anyone setting an env.
     let rtps = env::var_os("CARGO_FEATURE_RTPS").is_some();
-    let max_sockets = env_usize_compat("NROS_SMOLTCP_MAX_SOCKETS", "ZPICO_SMOLTCP_MAX_SOCKETS", 1);
+
+    // phase-400 W6 — the `[knobs.net]` platform/board rungs, resolved once.
+    // `None` when no lane named a platform (every out-of-tree consumer and every
+    // plain `cargo build`), and the builtins below then stand.
+    //
+    // Each rung is passed as `env_usize_compat`'s DEFAULT, which is what puts it
+    // in the right place on the ladder: `NROS_SMOLTCP_*` and its deprecated
+    // `ZPICO_SMOLTCP_*` alias still win above it, and a builtin applies only
+    // where no descriptor said anything.
+    //
+    // This crate reads the ladder from `nros-platform-config` rather than
+    // `nros-board-common`: the board crate reaches back here through
+    // `nros-platform -> nros-platform-esp32-qemu -> nros-smoltcp`, and cargo
+    // counts that as a cycle. The reader was moved to a leaf crate FOR this
+    // tenant.
+    let rungs = nros_platform_config::platform_config::BuildRungs::from_build_env()
+        .map(|r| r.net_rungs())
+        .unwrap_or_default();
+
+    let max_sockets = env_usize_compat(
+        "NROS_SMOLTCP_MAX_SOCKETS",
+        "ZPICO_SMOLTCP_MAX_SOCKETS",
+        rungs.max_sockets.unwrap_or(1),
+    );
+    // The builtin here is FEATURE-derived, and a rung outranks it: a board that
+    // names the knob has said something specific, while `rtps` is a default good
+    // enough for a board that has not.
     let max_udp_sockets = env_usize_compat(
         "NROS_SMOLTCP_MAX_UDP_SOCKETS",
         "ZPICO_SMOLTCP_MAX_UDP_SOCKETS",
-        if rtps { 4 } else { 1 },
+        rungs.max_udp_sockets.unwrap_or(if rtps { 4 } else { 1 }),
     );
     let buffer_size = env_usize_compat(
         "NROS_SMOLTCP_BUFFER_SIZE",
         "ZPICO_SMOLTCP_BUFFER_SIZE",
-        2048,
+        rungs.buffer_size.unwrap_or(2048),
     );
     let connect_timeout_ms = env_usize_compat(
         "NROS_SMOLTCP_CONNECT_TIMEOUT_MS",
         "ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS",
-        30_000,
+        rungs.connect_timeout_ms.unwrap_or(30_000),
     );
     let socket_timeout_ms = env_usize_compat(
         "NROS_SMOLTCP_SOCKET_TIMEOUT_MS",
         "ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS",
-        10_000,
+        rungs.socket_timeout_ms.unwrap_or(10_000),
     );
 
     if max_sockets > 4 {
