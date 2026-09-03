@@ -85,7 +85,7 @@ which the list above omits.
 | cluster | tests | signature |
 | --- | ---: | --- |
 | threadx-linux cyclone | 4 | client starts, service created; **roundtrip produces no calls/requests** |
-| zephyr XRCE C++ | 3 | **no delivery at all** — 0 samples / no reply / no result |
+| zephyr XRCE | **9** | two sub-signatures — see the correction below; the list above names only 3 |
 | esp32 | 4 | image boots, ethernet up, reaches `entering spin loop` — **never creates entities** |
 | qemu rtic | 1 | `service client never logged a service result` |
 
@@ -126,6 +126,58 @@ hypotheses died the same way and are worth recording so nobody re-runs them:
 stdout buffering (wrong — `service-server/src/main.c:102` already sets
 `_IOLBF`, and a plain pipe yields the same 496 bytes) and a mis-set
 `LD_LIBRARY_PATH` in issue 0774's shape (wrong — it runs fine with the test's).
+
+### Correction: the zephyr XRCE cluster is NINE cases, not three
+
+The list above names `case_{21,24,27}` — the C++ pubsub/service/action. Running
+the whole matrix on 2026-09-03 shows **all nine fail**, in every language:
+
+```
+cases 19-27 = (rust, c, cpp) x (pubsub, service, action)
+6 tests run: 0 passed, 6 failed          <- the rust and C columns
+3 tests run: 0 passed, 3 failed          <- the C++ column
+```
+
+I reached for "only the C++ column fails" as a discriminator because that is the
+shape of the list above. It is the shape of the LIST, not of the tree. Running
+the controls is what corrected it, and this issue exists because that step keeps
+getting skipped.
+
+**Two sub-signatures, and they cut across language rather than along it:**
+
+| workload | signature |
+| --- | --- |
+| action (rust, c) | **fails at BOOT** — `Executor::open failed: Transport(BadAlloc)`, `run_components failed rc=-6`, and on rust `ZEPHYR FATAL ERROR 4: Kernel panic on CPU 0` |
+| pubsub, service (all three) | boots, then **no delivery** — 0 samples / no reply |
+
+`Transport(BadAlloc)` is a `nros_rmw::TransportError` raised while opening the
+executor, and action is the heaviest workload by entity count. That is a LEAD
+worth following — CLAUDE.md records the neighbouring shapes (the picolibc
+`CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE` default of 16 KB against an executor
+backing that needs ~75 KB; issue 0460's queryable-slot exhaustion) — but it is
+not a diagnosis and nothing here claims one.
+
+### A real defect found on the way, which is NOT the cluster's cause
+
+The generated zephyr C++ entry never passes a session name:
+
+```cpp
+::nros::create_node(__nros_node, "talker");                       // node name: correct
+::nros::board::ZephyrBoard::run_components(&__nros_entry_setup);  // session name: absent
+```
+
+`main.hpp:361` and `:366` are delegating overloads that hard-code `"node"`, so a
+C++ talker and a C++ listener both register with the agent as `"node"`. The
+C++ pubsub cell's own note predicts exactly that — *"needs distinct XRCE
+session_names per cpp process (shared-key hash collided as one client)"* — and
+the doc comment at `main.hpp:331` says the generated entry passes the boot-config
+node name, which it does not.
+
+That is a genuine defect and worth its own issue. It CANNOT be this cluster's
+cause: the rust and C cases fail the same way and do not go through that path.
+Recording it here so the next reader does not rediscover it and mistake it for
+the answer, which is what nearly happened.
+
 
 ### Still NOT diagnosed
 
