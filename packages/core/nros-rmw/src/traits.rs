@@ -1967,12 +1967,36 @@ pub trait Subscription {
         let mut count = 0;
         for i in 0..limit {
             let slot = &mut buf[i * per_msg_cap..(i + 1) * per_msg_cap];
-            match self.try_recv_raw(slot)? {
-                Some(len) => {
+            // Issue 0971 — NOT `try_recv_raw(slot)?`. The `?` propagates the
+            // error and DISCARDS `count`, which is precisely what the doc
+            // comment above forbids ("Partial drains MUST report the count, not
+            // error out") and what `c3af8c1d1` removed from the two concrete
+            // implementations. A backend that does not override this body got
+            // the original defect back through the default.
+            //
+            // The shape is the one that fix established: a drain that has
+            // already taken messages reports the COUNT, and the error is
+            // delivered by the NEXT call — the caller sees every message it was
+            // handed, then the reason the drain stopped. With nothing taken
+            // there is no count to protect, so the error goes out immediately.
+            //
+            // Parking is per-implementation state, which a default body has no
+            // place to keep. So it does the half it can do correctly: it
+            // returns the partial count and lets the error surface on the
+            // caller's next `try_recv_raw`, which is where an unconsumed
+            // backend error still sits.
+            match self.try_recv_raw(slot) {
+                Ok(Some(len)) => {
                     out_lens[i] = len;
                     count += 1;
                 }
-                None => break,
+                Ok(None) => break,
+                Err(e) => {
+                    if count == 0 {
+                        return Err(e);
+                    }
+                    break;
+                }
             }
         }
         Ok(count)
@@ -2684,6 +2708,73 @@ pub trait Rmw {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Issue 0971 — the DEFAULT `try_recv_sequence` body must report a partial
+    /// count rather than discard it, which is what its own doc comment says and
+    /// what `?` did not do.
+    ///
+    /// This is the default's negative control: a backend that takes two
+    /// messages and then errors must hand the caller those two. Before the fix
+    /// the `?` threw them away and the caller could not tell two messages had
+    /// been consumed — they were gone from the queue and absent from the
+    /// result.
+    mod try_recv_sequence_default {
+        use super::*;
+
+        #[derive(Debug, PartialEq)]
+        struct Boom;
+
+        /// Yields `n` one-byte messages, then errors forever.
+        struct ThenErrors {
+            left: usize,
+        }
+
+        impl Subscription for ThenErrors {
+            type Error = Boom;
+
+            fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
+                if self.left == 0 {
+                    return Err(Boom);
+                }
+                self.left -= 1;
+                buf[0] = 0xAB;
+                Ok(Some(1))
+            }
+
+            fn deserialization_error(&self) -> Self::Error {
+                Boom
+            }
+        }
+
+        #[test]
+        fn a_partial_drain_reports_its_count_instead_of_the_error() {
+            let mut sub = ThenErrors { left: 2 };
+            let mut buf = [0u8; 4 * 8];
+            let mut lens = [0usize; 4];
+
+            // Two messages are available, the third call errors.
+            let got = sub.try_recv_sequence(&mut buf, 8, 4, &mut lens);
+
+            assert_eq!(
+                got,
+                Ok(2),
+                "a drain that took messages must report them; `?` discarded the \
+                 count and the caller lost two consumed messages"
+            );
+            assert_eq!(&lens[..2], &[1, 1]);
+        }
+
+        #[test]
+        fn an_error_with_nothing_taken_is_returned_immediately() {
+            let mut sub = ThenErrors { left: 0 };
+            let mut buf = [0u8; 4 * 8];
+            let mut lens = [0usize; 4];
+
+            // No count to protect, so the caller should see the error itself
+            // rather than an ambiguous `Ok(0)`.
+            assert_eq!(sub.try_recv_sequence(&mut buf, 8, 4, &mut lens), Err(Boom));
+        }
+    }
 
     #[test]
     fn test_topic_info() {
