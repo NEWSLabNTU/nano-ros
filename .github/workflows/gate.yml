@@ -665,9 +665,23 @@ jobs:
       # nothing about artifact preconditions — the helper was already built in
       # that tree. CI had no such tree and failed with
       # `nros-launch-resolve not built at … — run just setup-launch-resolve`.
-      - name: Build nros-launch-resolve (cli-tests' plan pipeline shells out to it)
+      # Two steps need it, on DISJOINT events, so the condition is the union of
+      # theirs: `just check cli-tests` on pull_request/merge_group, and
+      # `just generate-bindings` on schedule/workflow_dispatch — that one runs
+      # `nros sync`, which refuses to resolve a SystemModel without the
+      # resolver beside the `nros` binary.
+      #
+      # It was built for the first pair only, so every scheduled run since
+      # 2026-09-01 died in `generate-bindings` with "1 SystemModel(s) need
+      # resolving but `nros-launch-resolve` is not next to the `nros` binary".
+      # Same shape `check-lane-contracts` exists to forbid — a step resolving an
+      # artifact its own job never builds — but that gate only reaches
+      # merge-gating lanes, and its predicate is one level down (a RECIPE
+      # resolving an unbuilt stamp, not a STEP narrower than its consumers), so
+      # nothing watched this. Issue 1030 carries the gap.
+      - name: Build nros-launch-resolve (cli-tests and generate-bindings both shell out to it)
         if: >-
-          ${{ contains(fromJSON('["pull_request","merge_group"]'), github.event_name)
+          ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name)
               && !cancelled() }}
         run: |
           source ./activate.sh
