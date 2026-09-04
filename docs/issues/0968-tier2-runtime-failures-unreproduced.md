@@ -323,3 +323,54 @@ processes from manual debugging, which held the interface and produced the same
 after killing every stray. A red you caused reads exactly like a red that was
 already there — the per-cell `heap=` / `zeth=` counts above are recorded so the
 next reader can tell them apart without taking anyone's word.
+## The esp32 marker: every STATIC hypothesis is now closed (2026-09-04)
+
+Adding a `println!` beside the `log::info!` was the plan. It did not survive
+contact, and what it turned up is worth more than the probe would have been.
+
+**Reachability was already proved, so the probe was the wrong instrument.**
+`Application setup complete` prints only when the run-plan closure returns
+`Ok(())`, and the `log::info!` sits INSIDE `register()` before that `Ok`.
+Execution demonstrably reaches and passes the line. The question was never "is
+it reached" but "why is the record dropped", and a `println!` next to it answers
+the first.
+
+**Five hypotheses, all closed:**
+
+| hypothesis | verdict |
+| --- | --- |
+| execution never reaches the line | closed — see above |
+| no logger installed | closed — `init_logger(LevelFilter::Info)` in `init_hardware`, which ran (its own prints are in the output) |
+| compile-time level stripping | closed — no `max_level_*` / `release_max_level_*` feature; resolved features `[]` / `["std"]` |
+| two `log` facades | closed — GREP ARTIFACT (`log v[0-9.]+` matched `nros-log v0.5.0`); there is one `log`, 0.4.33 |
+| esp-println built without `log-04` | closed — the resolved features for this image include `log-04` |
+
+So: one facade, logger installed on it at `Info`, macros compiled in, line
+reached, and no record on a console the same image's `println!` reaches. Nothing
+further is answerable from the dependency graph.
+
+### A separate fact the attempt produced, and it reinforces issue 1025
+
+**The listener does not LINK without its manifest row's env.** A bare
+`cargo build` of the leaf fails at:
+
+```
+rust-lld: error: .../stack.x:11: unable to move location counter (0x3fccf734)
+          backward to 0x3fcce400 for section '.stack'
+```
+
+With `ZPICO_MAX_QUERYABLES=2` — the value `env` on its `[[fixture]]` row
+supplies — it links. The image sits close enough to its RAM ceiling that the
+row's env is load-bearing for the LINK, not merely for size. That is the same
+env whose absence from the packer's group-key computation was issue 1025, and it
+is why probing this image by adding code is awkward: two `println!` string
+literals and an `esp-println` dependency were enough to push it back over.
+
+### What the next attempt should do
+
+Probe WITHOUT growing the image: replace the `log::info!` with a direct write
+through a path the image already links (the board registers a platform writer at
+`nros-platform-esp32-qemu/src/lib.rs:87`, reached via
+`PlatformLog::write`), rather than adding a print beside it. That needs a dep
+the example does not currently have, so it is a temporary edit to the leaf's
+manifest — build it with the row's env, and revert both.
