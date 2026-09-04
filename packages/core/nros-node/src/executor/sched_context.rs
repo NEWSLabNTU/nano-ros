@@ -837,7 +837,10 @@ mod exec_high_water_tests {
         let mut st = SporadicState::new(10_000, 20_000);
         st.consume(700);
         st.consume(450);
-        assert_eq!(st.max_exec_us, 700, "no overrun occurred, yet 700 is the evidence");
+        assert_eq!(
+            st.max_exec_us, 700,
+            "no overrun occurred, yet 700 is the evidence"
+        );
     }
 
     #[test]
@@ -872,7 +875,10 @@ mod exec_high_water_tests {
         st.record_overrun(7);
         st.clear_overrun_stats();
         assert_eq!(st.max_exec_us(), 0);
-        assert_eq!(st.last_overrun_us.load(portable_atomic::Ordering::Relaxed), 0);
+        assert_eq!(
+            st.last_overrun_us.load(portable_atomic::Ordering::Relaxed),
+            0
+        );
         assert_eq!(st.overrun_count.load(portable_atomic::Ordering::Relaxed), 0);
     }
 }
