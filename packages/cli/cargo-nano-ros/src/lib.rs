@@ -55,6 +55,16 @@ pub mod package_xml;
 pub mod provider_scan;
 pub mod rmw_resolver;
 pub mod scaffold;
+/// The `nros-serdes.toml` descriptor and the derivations that make it almost
+/// empty (phase-421 W4, RFC-0088 D6 / RFC-0087 D4).
+///
+/// `include!`d by `build.rs` as well as compiled here, so that the table in
+/// `OUT_DIR` and the out-of-repo selection path share ONE parser. Its own file
+/// header carries the rest of the rationale — as plain `//` comments rather
+/// than `//!`, because an inner doc comment cannot appear mid-file in the
+/// build script that includes it.
+pub mod serdes_descriptor;
+pub mod serdes_resolver;
 pub mod workflow;
 pub mod workspace_scaffold;
 
