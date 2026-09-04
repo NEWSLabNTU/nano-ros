@@ -119,6 +119,37 @@ if [ $? -eq 0 ]; then
     exit 1
 fi
 
+# issue 0883's class, one file over — `docs/issues/README.md`'s "Recently
+# resolved" digests are a per-PR CONFLICT SITE.
+#
+# Every entry is prepended at the same offset in one shared authored file, so
+# two agents resolving issues on the same day conflict by construction. That is
+# what `open.md` was until it was untracked, and this file cannot take the same
+# fix: `open.md` is generated, so a clone can rebuild it; these digests are
+# prose nothing can regenerate.
+#
+# So the block is FROZEN at its current size and the count is a ratchet. The
+# digest for a newly resolved issue belongs in `archived/<id>-*.md`, which is
+# where the fuller record already lives, and the list is read with
+# `just issues --all --status resolved` — generated from the files, so it cannot
+# drift.
+#
+# Ratchet, not zero: deleting the 327 existing digests would destroy history for
+# a conflict that only future appends cause.
+frozen_digests=327
+have_digests="$(grep -c '^Recently resolved' docs/issues/README.md || true)"
+if [ "${have_digests:-0}" -gt "$frozen_digests" ]; then
+    echo "check-issue-index: docs/issues/README.md has $have_digests 'Recently" >&2
+    echo "  resolved' digests, above the frozen $frozen_digests." >&2
+    echo "  That block is a per-PR conflict site: every entry is prepended at the" >&2
+    echo "  same place in one shared file, so two agents resolving issues on the" >&2
+    echo "  same day conflict by construction (issue 0883's class)." >&2
+    echo "  Put the digest in \`docs/issues/archived/<id>-*.md\` instead — the" >&2
+    echo "  fuller record is already there — and read the list with:" >&2
+    echo "      just issues --all --status resolved" >&2
+    exit 1
+fi
+
 # phase-395 W1 — the open list is GENERATED (scripts/gen-issue-index.py) and its
 # rows are list items, `- **#NNNN** (area) — title`. Accept the optional bullet
 # so this convention check keeps working against the generated block; the
