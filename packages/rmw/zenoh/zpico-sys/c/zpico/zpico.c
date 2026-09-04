@@ -1307,50 +1307,17 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
  * reportable. Writing a second, Linux-flavoured copy of this would be the
  * two-spellings failure issue 0623 already charged the tree for. */
 
-static void zpico_posix_set_priority(pthread_attr_t* attr, uint32_t normalized) {
-#if !defined(CONFIG_PREEMPT_ENABLED)
-    /* No preemptive priorities to place a task on. */
-    (void)attr;
-    (void)normalized;
-    return;
-#else
-    const int policy = SCHED_RR;
-    /* The SCHED_RR range, WITHOUT calling `sched_get_priority_{min,max}`.
-     *
-     * Those live in Zephyr's `lib/posix/options/sched.c`, gated on
-     * `CONFIG_POSIX_PRIORITY_SCHEDULING` — an EXPERIMENTAL symbol that is off
-     * by default. Calling them linked fine on native_sim, which resolves them
-     * from the HOST libc, and failed on every other board:
-     *
-     *     undefined reference to `sched_get_priority_min'
-     *
-     * caught by the tier-2 sweep on cortex-m (mps2_an385) after a native_sim
-     * build had "verified" the change. Requiring an experimental Kconfig just
-     * to read two constants would also have made the knob silently do nothing
-     * on boards that lacked it — the exact failure issue 0626 is about.
-     *
-     * These are the values those functions return, from
-     * `lib/posix/options/pthread_sched.h`: min is 0 for any valid policy, and
-     * max is `CONFIG_NUM_PREEMPT_PRIORITIES - 1` for SCHED_RR/SCHED_OTHER. */
-    const int lo = 0;
-    const int hi = CONFIG_NUM_PREEMPT_PRIORITIES - 1;
-    if (hi < lo) {
-        return; /* No usable range: leave the attr at its defaults. */
-    }
-    uint32_t n = normalized > 31u ? 31u : normalized;
-    /* Round-to-nearest across the band, same shape as the FreeRTOS map. */
-    const int span = hi - lo;
-    const int mapped = lo + (int)(((uint32_t)span * n * 2u + 31u) / 62u);
-
-    struct sched_param param;
-    memset(&param, 0, sizeof(param));
-    param.sched_priority = mapped;
-    /* Without EXPLICIT_SCHED the two calls below are silently ignored. */
-    (void)pthread_attr_setinheritsched(attr, PTHREAD_EXPLICIT_SCHED);
-    (void)pthread_attr_setschedpolicy(attr, policy);
-    (void)pthread_attr_setschedparam(attr, &param);
-#endif /* CONFIG_PREEMPT_ENABLED */
-}
+/* issue 0852 — `zpico_posix_set_priority` DELETED, not left beside the new path.
+ *
+ * It mapped a private 0-31 band onto SCHED_RR and wrote it into a
+ * `pthread_attr_t` that no Zephyr code path ever read. Two things made keeping
+ * it actively harmful rather than merely dead: a second normalised scale in the
+ * same scheduler is issue 0623 verbatim, and
+ * `scripts/lib/priority_plan.py:resolve_zephyr_plan` MODELLED THIS FUNCTION —
+ * so `check-tier-priority-plan-image` certified a band no image ever had while
+ * `realtime-c`'s `system.toml` authored tier values against that fiction.
+ * The band now has exactly one spelling: `NROS_PLATFORM_PRIORITY_MAX`, mapped
+ * by `nros_zephyr_native_priority`. */
 #endif /* ZENOH_ZEPHYR */
 
 /* issue 0765 — OUTSIDE the ZENOH_ZEPHYR block below.
@@ -1497,15 +1464,46 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
     // IGNORED and the new thread silently takes the creator's. A scheduling
     // attribute that is quietly dropped is the failure this issue is about, so
     // it must not be reintroduced one layer down.
-#if defined(CONFIG_POSIX_PRIORITY_SCHEDULING)
-    zpico_posix_set_priority(&g_default_read_task_attr, read_priority);
-    zpico_posix_set_priority(&g_default_lease_task_attr, lease_priority);
-#else
-    /* No POSIX scheduling option in this image — see the note on
-     * `zpico_posix_set_priority`. Stack size only, as before issue 0626. */
-    (void)read_priority;
-    (void)lease_priority;
-#endif
+    /* issue 0852 — fill the struct the Zephyr port actually READS.
+     *
+     * This used to call `zpico_posix_set_priority` on `g_default_read_task_attr`,
+     * a `pthread_attr_t`. Nothing ever read it. `_z_task_init` on this port
+     * (`zephyr/nros_zenoh_zephyr_system.c`) forwards `task_attributes` to
+     * `nros_platform_task_init`, which reads an `nros_platform_task_attr_t` —
+     * and `zephyr.h` typedefs `z_task_attr_t` to `pthread_attr_t`, so the two
+     * are different types and the cast read past the end of a 12-byte object.
+     * The bytes there are zero, so the transport was born at band 0: SCHED_RR
+     * 0, k_thread 14 — the LEAST urgent preemptible slot, under an executor at
+     * 0. Before that "fix" it merely tied with the executor.
+     *
+     * This is issue 0803 one platform over: that issue fixed exactly this cast
+     * for NuttX/Linux/macOS and left Zephyr off the guard list — the one
+     * platform whose `z_task_attr_t` genuinely IS a `pthread_attr_t`, so the
+     * only one where the bug was guaranteed rather than incidental.
+     *
+     * BAND, not `NROS_PLATFORM_PRIORITY_RAW`: `nros_zephyr_native_priority`
+     * maps `0..NROS_PLATFORM_PRIORITY_MAX` onto whatever `SCHED_RR` reports for
+     * THIS image, which is the point of the normalised band. The old 0-31
+     * scale is gone rather than left beside this one — two normalised scales
+     * meeting in one scheduler is issue 0623 verbatim, and a 16 authored
+     * against 0-31 maps to 0 through the 255-wide one, i.e. the bottom slot
+     * again. */
+    nros_platform_task_attr_init(&g_default_read_nros_attr);
+    nros_platform_task_attr_init(&g_default_lease_nros_attr);
+    if (read_priority != 0u) {
+        g_default_read_nros_attr.priority = (int32_t)read_priority;
+    }
+    if (lease_priority != 0u) {
+        g_default_lease_nros_attr.priority = (int32_t)lease_priority;
+    }
+    g_default_read_nros_attr.name = "zpico_read";
+    g_default_lease_nros_attr.name = "zpico_lease";
+    if (read_stack_bytes != 0u) {
+        g_default_read_nros_attr.stack_bytes = read_stack_bytes;
+    }
+    if (lease_stack_bytes != 0u) {
+        g_default_lease_nros_attr.stack_bytes = lease_stack_bytes;
+    }
 #else
     // issue 0765 / 0775 — Linux, macOS AND NuttX place the transport here.
     //
@@ -1668,7 +1666,10 @@ int32_t zpico_open(zpico_session_t* session) {
     s->lease_task_attr = g_default_lease_task_attr;
     s->read_task_opts = g_default_read_task_opts;
     s->lease_task_opts = g_default_lease_task_opts;
-#if defined(ZENOH_NUTTX) || defined(ZENOH_LINUX) || defined(ZENOH_MACOS)
+#if defined(ZENOH_NUTTX) || defined(ZENOH_LINUX) || defined(ZENOH_MACOS) ||                        \
+    defined(ZENOH_ZEPHYR)
+    /* issue 0852 — ZENOH_ZEPHYR joins this list. It was the platform the cast
+     * below was guaranteed to break on, and it was the one left out. */
     /* issue 0803 — point at the per-session `nros_platform_task_attr_t`, which
      * is what `platform_aliases.c`'s `_z_task_init` forwards to
      * `nros_platform_task_init`. Pointing at `read_task_attr` handed it a

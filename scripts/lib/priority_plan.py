@@ -182,14 +182,31 @@ def _dotconfig_ints(path):
     return out
 
 
+NROS_PLATFORM_PRIORITY_MAX = 255
+
+
 def zpico_band_to_posix(band, num_preempt):
-    """The band -> POSIX half, mirroring `zpico_posix_set_priority`."""
+    """The band -> POSIX half, mirroring `nros_zephyr_native_priority`.
+
+    issue 0852 — this used to mirror `zpico_posix_set_priority`, a 0-31 map
+    that wrote into a `pthread_attr_t` NOTHING ON ZEPHYR EVER READ. So this
+    gate certified a band no image ever had, while `realtime-c`'s `system.toml`
+    authored tier values against that fiction and the declared ordering was in
+    fact inverted. A static gate that models dead code cannot see the bug it
+    exists to catch; that function is now deleted and this mirrors the live one
+    (`nros-platform-zephyr/src/platform.c:nros_zephyr_native_priority`):
+
+        want = lo + band * (hi - lo) // NROS_PLATFORM_PRIORITY_MAX
+
+    truncating, and clamped to [lo, hi] — the platform ABI's 0-255 band, not a
+    private 0-31 one.
+    """
     lo, hi = 0, num_preempt - 1
     if hi < lo:
         return None
-    n = min(max(band, 0), ZPICO_BAND_MAX)
-    span = hi - lo
-    return lo + (span * n * 2 + 31) // 62
+    n = min(max(band, 0), NROS_PLATFORM_PRIORITY_MAX)
+    want = lo + (n * (hi - lo)) // NROS_PLATFORM_PRIORITY_MAX
+    return min(max(want, lo), hi)
 
 
 def posix_rr_to_kthread(posix_prio, num_preempt):
@@ -213,8 +230,8 @@ def resolve_zephyr_plan(dotconfig):
     if num_preempt is None:
         return {"error": "CONFIG_NUM_PREEMPT_PRIORITIES absent — not a Zephyr .config?"}
 
-    # Both gates must be on, or `zpico_posix_set_priority` returns without
-    # touching the attr and the tasks inherit (zpico.c + issue 0766).
+    # Both gates must be on, or `nros_zephyr_native_priority` returns -1 and
+    # the tasks inherit their creator (platform.c + issue 0766).
     if not (has("CONFIG_POSIX_PRIORITY_SCHEDULING") and has("CONFIG_PREEMPT_ENABLED")):
         return {
             "unapplied": "CONFIG_POSIX_PRIORITY_SCHEDULING and/or "
@@ -227,7 +244,8 @@ def resolve_zephyr_plan(dotconfig):
     bands = {}
     for name, key in (("read", "CONFIG_NROS_ZENOH_READ_PRIORITY"),
                       ("lease", "CONFIG_NROS_ZENOH_LEASE_PRIORITY")):
-        band = cfg.get(key, 16)  # zpico.c's own default
+        # issue 0852 — Kconfig's default on the 0-255 band, not the old 0-31 16.
+        band = cfg.get(key, 200)
         posix = zpico_band_to_posix(band, num_preempt)
         bands[name] = {"band": band, "posix": posix,
                        "kthread": posix_rr_to_kthread(posix, num_preempt)}

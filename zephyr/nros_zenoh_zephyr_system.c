@@ -47,6 +47,26 @@ int nros_zephyr_task_create(pthread_t *thread,
  * `zpico_set_task_config`. The priority reached this line and stopped, so the
  * zenoh READ task was born inheriting the executor's priority and the polled
  * serial RX lost a full timeslice to it on every `k_yield()`. */
+/* issue 0852 — WHY THERE IS NO `_Static_assert` HERE, which is itself the point.
+ *
+ * The cast below is sound only while `zpico.c` points `task_attributes` at an
+ * `nros_platform_task_attr_t`. `zephyr.h` typedefs `z_task_attr_t` to
+ * `pthread_attr_t`, so nothing in the type system says so — and for two phases
+ * it was not true: the read took `priority` from offset 12 of a 12-byte object
+ * and every Zephyr transport task ran at the least-urgent preemptible slot.
+ *
+ * The obvious guard, `_Static_assert(sizeof(z_task_attr_t) >=
+ * sizeof(nros_platform_task_attr_t))`, CANNOT be used: it is false by
+ * construction and always will be. `z_task_attr_t` IS `pthread_attr_t` here
+ * (12 bytes on 32-bit, 16 on 64-bit) against the nros attr's 20 / 32. What the
+ * fix changed is which OBJECT the pointer refers to, not the type — so the
+ * property that needs asserting is about a value, and C has no way to say it
+ * at compile time.
+ *
+ * The invariant is therefore held by ONE code path instead: `zpico.c` has a
+ * single `ZENOH_ZEPHYR` arm that fills `g_default_*_nros_attr` and a single
+ * assignment that points `task_attributes` at it, in the same guard list as
+ * NuttX/Linux/macOS. Anyone adding a second arm must read this. */
 z_result_t _z_task_init(_z_task_t *task,
                         z_task_attr_t *attr,
                         void *(*fun)(void *),
