@@ -374,11 +374,11 @@ pub extern "C" fn rcl_get_zero_initialized_node() -> nros_node_t {
 /// a **WARNING**, not an error, even under `-Wall -Wextra`, so a reorder alone
 /// is silent-by-default for out-of-tree callers who do not build with our
 /// flags. Renaming makes a stale call fail on the IDENTIFIER, which C does
-/// diagnose fatally. `nros_node_init` therefore survives only as an
-/// `NROS_DEPRECATED_MSG` `static inline` in `<nros/node.h>` that names each
-/// parameter and forwards in the OLD order — never a macro, which would
-/// forward positionally and silently build a node with its name in the
-/// support slot.
+/// diagnose fatally, and that is the whole guard now: phase-417 stage 6 step B
+/// retired the `nros_node_init` forwarder, so the old identifier resolves to
+/// nothing. While it existed it was a `static inline` naming each parameter
+/// and never a macro, because a macro would have forwarded positionally and
+/// silently built a node with its name in the support slot.
 ///
 /// Equivalent to building a [`nros_node_options_t`] via
 /// [`rcl_node_get_default_options`], copying `namespace_` into its
@@ -729,7 +729,10 @@ unsafe fn write_cstr_out(s: &str, out: *mut c_char, out_size: usize) -> nros_ret
     if s.len() + 1 > out_size {
         return NROS_RET_FULL;
     }
-    let dst = unsafe { core::slice::from_raw_parts_mut(out, s.len() + 1) };
+    // As `u8`, not `c_char`: the latter is `i8` on x86_64/aarch64-linux and
+    // `u8` elsewhere, so copying `s.as_bytes()` into it compiles on only one of
+    // the two. The bytes written are identical either way.
+    let dst = unsafe { core::slice::from_raw_parts_mut(out.cast::<u8>(), s.len() + 1) };
     dst[..s.len()].copy_from_slice(s.as_bytes());
     dst[s.len()] = 0;
     NROS_RET_OK

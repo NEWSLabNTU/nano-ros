@@ -314,9 +314,10 @@ pub unsafe extern "C" fn nros_service_init_with_qos(
 /// 2026-09-04: a rosidl typesupport's members are its contract, including a
 /// `func` dispatcher we do not have.
 ///
-/// The deprecated six-argument `nros_service_init` survives as an
-/// `NROS_DEPRECATED_MSG` `static inline` in `<nros/service.h>` forwarding to
-/// [`nros_service_init_with_qos`], so old behaviour is preserved exactly.
+/// The six-argument `nros_service_init` is GONE (phase-417 stage 6 step B
+/// retired it). Its behaviour is not: [`nros_service_init_with_qos`] takes the
+/// same six arguments, so a caller who needs the old shape names that
+/// instead.
 ///
 /// # Safety
 /// All non-NULL pointers must be valid + the node initialized.
@@ -850,7 +851,10 @@ unsafe fn bounded_cstr(ptr: *const c_char, max: usize) -> &'static [u8] {
     while len < max && *ptr.add(len) != 0 {
         len += 1;
     }
-    core::slice::from_raw_parts(ptr, len)
+    // `c_char` is `i8` on x86_64/aarch64-linux and `u8` on some targets, so the
+    // pointer must be re-cast rather than assumed: `from_raw_parts::<u8>` on a
+    // `*const c_char` compiles on exactly one of them.
+    core::slice::from_raw_parts(ptr.cast::<u8>(), len)
 }
 
 /// Report a typed service/client glue failure as an `ERROR` log record.
@@ -2220,13 +2224,14 @@ mod verification {
         // NULL service
         assert_eq!(
             unsafe {
-                nros_service_init(
+                nros_service_init_with_qos(
                     ptr::null_mut(),
                     &node,
                     &type_info,
                     svc_name.as_ptr() as *const core::ffi::c_char,
                     Some(dummy_callback),
                     ptr::null_mut(),
+                    ptr::null(),
                 )
             },
             NROS_RET_INVALID_ARGUMENT,
@@ -2236,13 +2241,14 @@ mod verification {
         let mut svc = rcl_get_zero_initialized_service();
         assert_eq!(
             unsafe {
-                nros_service_init(
+                nros_service_init_with_qos(
                     &mut svc,
                     ptr::null(),
                     &type_info,
                     svc_name.as_ptr() as *const core::ffi::c_char,
                     Some(dummy_callback),
                     ptr::null_mut(),
+                    ptr::null(),
                 )
             },
             NROS_RET_INVALID_ARGUMENT,
@@ -2252,13 +2258,14 @@ mod verification {
         let mut svc = rcl_get_zero_initialized_service();
         assert_eq!(
             unsafe {
-                nros_service_init(
+                nros_service_init_with_qos(
                     &mut svc,
                     &node,
                     ptr::null(),
                     svc_name.as_ptr() as *const core::ffi::c_char,
                     Some(dummy_callback),
                     ptr::null_mut(),
+                    ptr::null(),
                 )
             },
             NROS_RET_INVALID_ARGUMENT,
@@ -2268,13 +2275,14 @@ mod verification {
         let mut svc = rcl_get_zero_initialized_service();
         assert_eq!(
             unsafe {
-                nros_service_init(
+                nros_service_init_with_qos(
                     &mut svc,
                     &node,
                     &type_info,
                     ptr::null(),
                     Some(dummy_callback),
                     ptr::null_mut(),
+                    ptr::null(),
                 )
             },
             NROS_RET_INVALID_ARGUMENT,
@@ -2341,13 +2349,14 @@ mod verification {
         let mut svc = rcl_get_zero_initialized_service();
         assert_eq!(
             unsafe {
-                nros_service_init(
+                nros_service_init_with_qos(
                     &mut svc,
                     &node,
                     &type_info,
                     svc_name.as_ptr() as *const core::ffi::c_char,
                     None,
                     ptr::null_mut(),
+                    ptr::null(),
                 )
             },
             NROS_RET_INVALID_ARGUMENT,
@@ -2365,13 +2374,14 @@ mod verification {
         let mut svc = rcl_get_zero_initialized_service();
         assert_eq!(
             unsafe {
-                nros_service_init(
+                nros_service_init_with_qos(
                     &mut svc,
                     &node,
                     &type_info,
                     svc_name.as_ptr() as *const core::ffi::c_char,
                     Some(dummy_callback),
                     ptr::null_mut(),
+                    ptr::null(),
                 )
             },
             NROS_RET_NOT_INIT,
@@ -2415,13 +2425,14 @@ mod verification {
         let mut svc = rcl_get_zero_initialized_service();
         // First init succeeds (metadata only)
         let ret = unsafe {
-            nros_service_init(
+            nros_service_init_with_qos(
                 &mut svc,
                 &node,
                 &type_info,
                 svc_name.as_ptr() as *const core::ffi::c_char,
                 Some(dummy_callback),
                 ptr::null_mut(),
+                ptr::null(),
             )
         };
         assert_eq!(ret, NROS_RET_OK);
@@ -2429,13 +2440,14 @@ mod verification {
         // Second init → BAD_SEQUENCE
         assert_eq!(
             unsafe {
-                nros_service_init(
+                nros_service_init_with_qos(
                     &mut svc,
                     &node,
                     &type_info,
                     svc_name.as_ptr() as *const core::ffi::c_char,
                     Some(dummy_callback),
                     ptr::null_mut(),
+                    ptr::null(),
                 )
             },
             NROS_RET_BAD_SEQUENCE,
