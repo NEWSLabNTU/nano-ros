@@ -60,6 +60,28 @@ Assert the artifacts, not the exit code: the recipe's own history is of exiting
 guard exists). The check is that `build/esp32-qemu/esp32-qemu-{talker,listener}
 .bin` exist and are non-empty afterwards.
 
+## Direction: this recipe should move onto RFC-0062 provisioning
+
+Adding a lane is the interim step, not the destination. The recipe currently
+hand-rolls its own dependency resolution — six `command -v` probes across
+`just/esp32.just` for `espflash` and `qemu-system-riscv32`, each with its own
+message and its own opinion about whether a miss is fatal (issue 0486 already
+had to convert one from a warn-and-continue into a failure, precisely because a
+skip read as green).
+
+RFC-0062 is the SSoT for exactly this: `[prereq.*]`, one declaration namespace
+over four providers, rosdep no longer consulted (phase-327 / phase-398 landed
+it; phase-404 carries amendment 2, where the provider is chosen by what the tool
+DOES and every resolution reports its provider). `[tool.esp32-qemu]` already
+declares its build deps there — issue 1038 wired that up — so the recipe is the
+part that has not moved.
+
+Doing so replaces the six probes with a declaration, and gives the lane a
+provisioning step that fails with a reason instead of a recipe that decides for
+itself what to do about a missing tool. Sequence it after the lane exists: the
+lane is what proves the move did not break the recipe, and adding a lane to an
+unprovisioned recipe is how a "skip" becomes the CI answer.
+
 ## The general shape, worth stating once
 
 A user-facing recipe whose output is also produced by a second, test-internal
