@@ -252,6 +252,7 @@ fast-serial: \
     rmw-slot-producers \
     rmw-slot-table \
     rmw-vtable-order \
+    roadmap-claims \
     roadmap-status \
     ros-env-spelling \
     runner-doctor-sdk-resolution \
@@ -2201,6 +2202,16 @@ rmw-api-comparison:
 [private]
 peer-sweep-lanes:
     @bash scripts/check-peer-sweep-lanes.sh
+
+# phase-419 W2 — an active phase must not contradict its own body. Sibling of
+# `roadmap-status`, which asserts a status EXISTS and deliberately stops there
+# ("staleness of the CONTENT is a human call"). That is right for supersession
+# and wrong for a header that says "nothing landed" over ticked work items —
+# the document contradicts ITSELF, and no judgment is involved. Ratcheted;
+# the judgment half is phase-419 W3, a report and never a gate.
+[private]
+roadmap-claims:
+    @python3 scripts/check-roadmap-claims.py
 
 # Every ACTIVE roadmap phase carries a findable status line; a finished one
 # belongs in `docs/roadmap/archived/`. A one-off pass does not hold — four
