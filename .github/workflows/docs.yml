@@ -45,10 +45,31 @@ jobs:
         # now deps the nros-pkg-index / nros-launch-parser leaf crates, not the
         # whole CLI), so no ros-launch-resolve submodule init is needed here.
 
+      # phase-422 W2 — the VERSION comes from the index, which is the pin.
+      # This said `mdbook-version: "latest"`, a second and unpinned mechanism
+      # for the tool `[tool.mdbook]` pins: the book could build against a
+      # different mdBook than any contributor runs, and a breaking upstream
+      # release would land here with no commit.
+      #
+      # The action still does the download — resolving through
+      # `nros setup --tool mdbook` would mean building the CLI in a docs-only
+      # job, which is a real cost for no extra correctness once the version is
+      # read from the same place.
+      - name: Resolve the pinned mdBook version from the index
+        id: mdbook_pin
+        run: |
+          # awk, not a heredoc: a heredoc terminator must sit at column 0, and
+          # column 0 inside a YAML `run:` block is parsed as SYNTAX. Verified
+          # the heredoc form fails ("unexpected EOF") before choosing this.
+          ver="$(awk '/^\[tool\.mdbook\]/{f=1;next} /^\[/{f=0} f && /^version[[:space:]]*=/{gsub(/[^0-9.]/,"",$0); print; exit}' nros-sdk-index.toml)"
+          [ -n "$ver" ] || { echo "could not read [tool.mdbook] version from the index" >&2; exit 1; }
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "mdBook pinned at $ver (nros-sdk-index.toml)"
+
       - name: Install mdbook
         uses: peaceiris/actions-mdbook@v2
         with:
-          mdbook-version: "latest"
+          mdbook-version: ${{ steps.mdbook_pin.outputs.version }}
 
       - name: Install mdbook-mermaid
         run: |
