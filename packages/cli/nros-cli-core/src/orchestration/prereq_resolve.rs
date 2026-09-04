@@ -348,6 +348,24 @@ mod tests {
         );
     }
 
+    /// phase-422 W8 — a key's ROLE decides whether a package.xml may name it.
+    /// `infra` (emulators, cross toolchains, probes) RESOLVES on the prereq
+    /// rung, so the ladder alone cannot tell the category error from a
+    /// legitimate dependency; the caller has to consult the role. This pins the
+    /// rung's part of that contract: an infra key still classifies as `Prereq`,
+    /// which is what makes the refusal a SEPARATE decision with its own remedy
+    /// ("declare the deploy target") rather than an "unresolved" error whose
+    /// advice would be to add an index entry — the wrong fix.
+    #[test]
+    fn an_infra_key_still_resolves_on_the_prereq_rung() {
+        let empty = BTreeSet::new();
+        let keys = set(&["qemu-system-arm"]);
+        assert_eq!(
+            classify("qemu-system-arm", &empty, &empty, &keys, &empty, &empty),
+            Resolution::Prereq,
+        );
+    }
+
     /// The rung this exists for: no ambient ROS, and a package declaring the
     /// buildtool its own `<build_type>` implies still resolves.
     ///
