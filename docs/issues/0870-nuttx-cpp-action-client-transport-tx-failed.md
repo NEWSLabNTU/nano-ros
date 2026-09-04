@@ -477,3 +477,70 @@ to ask for four rounds. RAM cost: none.
 `nsh_main` before `main`, and `nsh_main` is in the built ELF. Without that the
 four `nros_error!` calls would sit in the pre-init ring and never print. The
 plan is sound; only the binaries are wrong.
+
+
+## 2026-09-04 — A/B against the OLD zenoh-pico pin: the pin advance is NOT the cause
+
+The standing theory — mine, written into a phase-414 report the same day — was
+that the failure died with the zenoh-pico pin bumps of 2026-08-31 (#0899, the
+lease task freeing the transport under the publisher; #0906, every session
+dropped and rebuilt on a ~20 s lease beat), because the last failing artifact
+was built 2026-08-30. That attribution was by TIMELINE and MECHANISM, with the
+bisect explicitly not done. **It is now done, and it refutes the theory.**
+
+Method: `git -C packages/rmw/zenoh/zpico-sys/zenoh-pico checkout a6affe8e61e5`
+— the pin immediately BEFORE `107002a0c` ("bump to the nano-ros patch line
+carrying the #0899 and #0906 fixes") — then `just nuttx build-fixtures-arm`, then
+the cell with `--retries 0`. The rebuild is real, not a museum binary: the
+resolved artifact `examples/qemu-arm-nuttx/cpp/action-client/build-zenoh/
+cpp_action_client` is dated 2026-09-04 10:33, after the checkout.
+
+**Result: 7 runs, 7 PASS, 0 FAIL.** At this issue's own 2-in-3 failure rate that
+is p = (1/3)^7 ≈ 0.0005.
+
+So the failure mode was ALREADY GONE before the pin moved. Whatever fixed it is
+something else, and the search should not start from zenoh-pico.
+
+One confounder, stated because it bounds the claim: this build pairs the OLD
+zenoh-pico with the CURRENT harness, whereas the historical failures had both
+old. That does not rescue the pin theory (the pin is the variable under test and
+it made no difference), but it does leave "some harness change" alive as a
+candidate — except that this issue already records the cell failing ~2 in 3
+AFTER the #0867 ordering fix landed, which was the main harness change.
+
+## 2026-09-04 — the C-vs-C++ asymmetry is REAL but roughly half the figure on file
+
+This issue records "**C: 3/3 PASS at 26.4-27.2 s. C++: 44-50 s**" as "the first
+evidence of any kind about the asymmetry". That comparison mixed a COLD C++ run
+with WARM C runs.
+
+Measured here, same host, same session, same build, all `--retries 0`:
+
+| cell | first run | subsequent |
+| --- | --- | --- |
+| C++ | **45.3 s** | 25.5, 26.2, 25.8, 28.7, 25.5 s |
+| C | — | 18.2, 16.9, 16.8 s |
+
+Two separate effects were being read as one:
+
+* **Cold start costs ~19 s** on the first run of a cell (45.3 vs ~26). That is
+  not a language property; it is page cache and QEMU warm-up.
+* **C++ really is slower than C**, by ~9 s (≈1.5x), not ~20 s.
+
+The absolute numbers differ from the earlier session's (that host measured C at
+26-27 s, this one at 17), so cross-session comparison of these figures is not
+sound — which is exactly how the cold/warm mix went unnoticed. Only the
+within-session gap should be quoted.
+
+**Why this matters beyond tidiness:** if cold runs cost ~19 s more, and the
+historical failures were disproportionately first runs, then a deadline-shaped
+fault would preferentially strike cold — which is a testable mechanism for a
+"2 in 3" rate that nobody has been able to reproduce warm. That is a hypothesis,
+not a finding; it is written here as the next thing to test, not as a cause.
+
+### Still open, unchanged
+
+Nobody has yet read a FAILING run since the diagnostics landed, so the six-of-six
+question (do all five liveliness declares plus the feedback subscriber fail, or
+only the subscriber?) is still unanswered. With retries now at 0 on this cell,
+CI will produce one eventually.
