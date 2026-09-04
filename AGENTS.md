@@ -721,6 +721,14 @@ and verified.
   does not run in GitHub's server-side merge or rebase, which is the only place
   the conflict mattered. Renumber only your own files. Stash-wrap local-only files
   (`packages/rmw/zenoh/zpico-sys/c/include/zpico.h`-style) around every rebase.
+- **Resolving an issue: the digest goes in `archived/<id>-*.md`, not in
+  `docs/issues/README.md`.** That file's "Recently resolved" block is frozen and
+  ratcheted by `check-issue-index`. Every entry was prepended at the same offset
+  in one shared authored file, so two agents resolving issues on the same day
+  conflicted by construction — issue 0883's class, one file over, except this
+  one cannot be fixed by generating it because the digests are prose. Read the
+  list with `just issues --all --status resolved`, which is derived from the
+  files and so cannot drift.
 - **Write full logs of background builds/tests to files** and grep afterwards;
   `cmd | tail -N` swallows the mid-log error that explains the failure.
 - **`pkill -f <pattern>` matches your OWN wrapper shell** when the pattern
