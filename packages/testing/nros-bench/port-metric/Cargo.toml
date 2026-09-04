@@ -1,0 +1,22 @@
+[workspace]
+
+[package]
+name = "nros-port-metric-bench"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "port-metric"
+path = "src/main.rs"
+
+[dependencies]
+# The platform ABI is the whole subject: this bench times the primitives
+# every port must provide, not the middleware built on them.
+nros-platform-api = { path = "../../../../packages/platform/nros-platform-api" }
+# POSIX C symbols for the host runner. A target runner swaps this for its
+# own port and keeps `bench.rs` untouched.
+nros-platform-cffi = { path = "../../../../packages/platform/nros-platform-cffi", features = [
+    "posix-c-port",
+] }
