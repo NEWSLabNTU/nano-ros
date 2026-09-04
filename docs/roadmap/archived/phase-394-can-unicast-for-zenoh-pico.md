@@ -2,6 +2,9 @@
 
 **Status (2026-08-27). COMPLETE — all eight waves done, on `vcan0`.**
 
+Archived 2026-09-03. Section 13 is a later postscript: what changed upstream
+after the archive, and a port campaign that turned out to be unnecessary.
+
 Implements [RFC-0083](../design/0083-can-unicast-over-isotp.md), the zenoh-pico
 half. A nano-ros node and a ROS 2 node exchange **services, actions, action
 cancellation and parameters** across a CAN bus, in both roles.
@@ -710,7 +713,7 @@ Upstream is done and in review:
 | [eclipse-zenoh/zenoh#2757](https://github.com/eclipse-zenoh/zenoh/pull/2757) | the two link crates |
 | [eclipse-zenoh/zenoh-pico#1298](https://github.com/eclipse-zenoh/zenoh-pico/pull/1298) | the same pair for zenoh-pico |
 | [eclipse-zenoh/zenoh-c#1322](https://github.com/eclipse-zenoh/zenoh-c/pull/1322) | feature passthroughs; waits on zenoh#2757 |
-| [SimonCahill/isotp-c#75](https://github.com/SimonCahill/isotp-c/pull/75) | `ISO_TP_NO_FORMATTED_ERRORS`, to retire the vendoring fork |
+| [SimonCahill/isotp-c#75](https://github.com/SimonCahill/isotp-c/pull/75) | `ISO_TP_NO_FORMATTED_ERRORS` -- **merged 2026-09-01**, released as `v1.9.1` |
 
 rmw_zenoh is held until zenoh#2757 lands.
 ---
@@ -724,8 +727,8 @@ is the set to build against today.
 
 | repo | `feat/can-links` (upstream main) | `feat/can-links-ros` (ROS stable) |
 | --- | --- | --- |
-| `jerry73204/zenoh` | `80ff24441` -- on main, 1.10.0 | `a84e9c0c8` -- on 1.8.0 |
-| `jerry73204/zenoh-pico` | `cb486dbf` -- on upstream main | `9ab534b5` -- on release/1.8.0 |
+| `jerry73204/zenoh` | `0e01c8af3` -- on main, 1.10.0 | `5d9a41bef` -- on 1.8.0 |
+| `jerry73204/zenoh-pico` | `5acb9bdb` -- on upstream main | `35a02ced` -- on release/1.8.0 |
 | `jerry73204/zenoh-c` | `67f9b1dc` -- on main | `1bc04fd6` -- on `05bd370`, the commit rmw_zenoh pins |
 | `jerry73204/rmw_zenoh` | `019f058` -- on rolling | `0346674` -- on humble |
 
@@ -734,7 +737,7 @@ reviewed and taken without the ISO-TP one. The first adds no ISO-TP files at
 all. Every commit is authored `jerry73204 <jerry73204@gmail.com>` and carries a
 `Signed-off-by`, which the Eclipse ECA check requires.
 
-`jerry73204/zenoh-pico`'s **`nano-ros`** branch (`dac320e3`) is separate from
+`jerry73204/zenoh-pico`'s **`nano-ros`** branch (`c5853157`) is separate from
 both and is what this repository's submodule tracks. The two `feat/can-links*`
 branches are PORTS of the same work onto clean upstream bases; nothing moved off
 `nano-ros`.
@@ -783,3 +786,62 @@ the zenoh dependency rather than `[patch]`ing it. A patch section leaves the
 original git source for cargo to resolve, and zenoh-c's build script invokes the
 opaque-types sub-build with `--offline`, where resolving a branch from a cached
 checkout fails outright.
+
+---
+
+## 13. After the archive -- the nano-ros port that was already done
+
+**2026-09-04.** Two things happened after this phase was archived, and the
+record above was wrong about both.
+
+### The port campaign turned out to be a no-op
+
+The plan was to cherry-pick `feat/can-links-ros` onto `nano-ros` so the
+submodule branch could fast-forward. Checking first showed there was nothing to
+pick: the two are **parallel ports of the same work**, not one ahead of the
+other. Both descend from `2bd54691`; `nano-ros` carries 59 commits above it and
+`feat/can-links-ros` carries 2, because every change in this campaign went to
+both branches as it was made.
+
+Feature parity, checked item by item: the `stmin`/`bs` config keys, the kernel
+`CAN_ISOTP_RECV_FC` path, the vendored refusal, the Zephyr per-link
+`isotp_fc_opts`, the isotp-c fork guard, the `can_start` fix, and the CAN link
+itself. All present on both.
+
+Picking would have conflicted on every hunk over the two differences that exist
+**on purpose**: `nano-ros` keeps its `RFC-0083 / phase-394` references where the
+upstream port replaces them with the ZettaScale contributors line, and
+`nano-ros` carries fork-only serial code that `release/1.8.0` lays out
+differently. Resolving would have meant taking the `nano-ros` side every time
+and landing exactly where it already was.
+
+So the campaign closed on a one-line submodule bump instead,
+[nano-ros#70](https://github.com/NEWSLabNTU/nano-ros/pull/70), merged
+2026-08-30: `dac320e3..e0832729`, picking up the ISO-TP flow control commit.
+
+The lesson is not about CAN. Two long-lived branches that receive the same
+change independently look like they need reconciling and do not; the check that
+settles it is a feature-by-feature comparison, not a commit count.
+
+### isotp-c took the flag upstream
+
+[SimonCahill/isotp-c#75](https://github.com/SimonCahill/isotp-c/pull/75) was
+approved and **merged on 2026-09-01**, then released as **`v1.9.1`**, whose
+notes read "snprintf dep is now optional". The maintainer asked for a
+contributors entry and a minor version bump and squashed it in.
+
+That retires the fork. At `v1.9.1` five of the six vendored files are
+byte-identical to upstream, and the sixth is `isotp_config.h`, which differs
+only by the deliberate `ISO_TP_USER_SEND_CAN_ARG` enable that upstream
+designates as the configuration point. So `third_party/isotp-c/VENDOR.md` can
+point back at `SimonCahill/isotp-c` at `v1.9.1` and stop naming a personal
+fork -- a one-file change, and the objection a zenoh-pico reviewer would most
+likely raise against
+[#1298](https://github.com/eclipse-zenoh/zenoh-pico/pull/1298).
+
+### Still open
+
+The three Eclipse PRs are unreviewed. Both zenoh and zenoh-pico need a
+`new feature` label before `Generate / main` will pass, which needs a
+maintainer. Tier 3 hardware remains the only substantive engineering left: see
+section 11, and `scripts/can/arbitration-check.sh`.
