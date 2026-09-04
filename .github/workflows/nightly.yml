@@ -305,6 +305,37 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         uses: ./.github/actions/setup-nros-cli
+      # phase-413 W3 — provision the repo's declared `[prereq.*]` closure.
+      #
+      # `nros setup --system --sudo` resolves what the INDEX declares for the
+      # detected package manager and installs it. Not an `apt-get` line, for the
+      # reason W3 exists: a package name written in YAML is the copy nobody
+      # updates when the index moves.
+      #
+      # The one that matters here is `ros-humble-rmw-zenoh-cpp`. The CI image
+      # carries NO zenoh packages — `FROM ros:humble-ros-base`, and its only ROS
+      # apt entry is `example-interfaces` — so `zenohd_unavailable_reason()`
+      # fails `require_e2e()` and the `freertos` and `threadx_linux` cells skip
+      # ALL 9 e2e cases on a precondition, which `_check-skip-budget` then
+      # reports as "this lane verified nothing" (issue 1038, confirmed by
+      # querying a built image: no `rmw_zenohd`, no `libzenohc*`, sole RMW is
+      # fastrtps).
+      #
+      # Installing it does NOT reintroduce issue 0774. That trap is a router
+      # resolving against a `libzenohc.so` it was not built with, because this
+      # image sets `AMENT_PREFIX_PATH`/`LD_LIBRARY_PATH` as a STATIC `ENV`
+      # snapshot that will not name `<prefix>/opt/zenoh_cpp_vendor/lib`. The
+      # harness pins the pairing itself — `zenohd_router.rs`'s
+      # `paired_zenoh_library_dir` prepends the router's OWN lib dir to
+      # `LD_LIBRARY_PATH` for the process it spawns — so a harness-started
+      # router is correct regardless of the image's env. A router started BY
+      # HAND in that container still is not; that is 0774's remaining edge and
+      # is not what these lanes do.
+      - name: Provision the declared system closure (phase-413 W3)
+        run: |
+          source ./activate.sh
+          nros setup --system --sudo
+
       # issue 1038 — provision `[tool.esp32-qemu]`'s declared BUILD deps before
       # the lane asks for the tool.
       #
