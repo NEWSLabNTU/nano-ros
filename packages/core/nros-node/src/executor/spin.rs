@@ -1419,6 +1419,17 @@ pub struct Executor<'s> {
     /// timer header, and for the same reason: a maximum that has not moved
     /// is the fault already reported, not a new one.
     pub(crate) jitter_reported_us: u64,
+    /// Declared minimum stack headroom in bytes for the thread this executor
+    /// spins on; `0` (default) disables the rule.
+    ///
+    /// An executor-level install rather than a contract field, because the
+    /// bound cannot be derived from anything already declared -- see
+    /// `check_stack_headroom`. The entry that spawned the thread is the one
+    /// that knows what it gave it, so that is where the number comes from.
+    pub(crate) min_stack_headroom_bytes: usize,
+    /// Lowest headroom already reported, so the rule fires on new lows only.
+    /// `usize::MAX` = nothing reported yet.
+    pub(crate) stack_headroom_reported: usize,
     /// The pacing quantum the spin loop was last driven at, in microseconds.
     /// This is the bound the jitter rule judges against -- the caller's own
     /// declared cadence, so nothing further has to be declared.
@@ -1591,6 +1602,8 @@ impl<'s> Executor<'s> {
             max_release_jitter_us: 0,
             last_spin_entry_us: None,
             jitter_reported_us: 0,
+            min_stack_headroom_bytes: 0,
+            stack_headroom_reported: usize::MAX,
             spin_nominal_us: 0,
             late_wakes: 0,
             total_wakes: 0,
@@ -2377,6 +2390,49 @@ impl<'s> Executor<'s> {
     /// activation is a contract failure for any declared period. It runs
     /// on the same tick so violations land in the same ring the entry
     /// glue drains.
+    /// Declare the minimum stack headroom this executor's thread must keep,
+    /// in bytes. `0` (the default) disables the `stack-headroom-runtime`
+    /// rule.
+    ///
+    /// Set by the entry that spawned the thread, because it is the only
+    /// party that knows what stack it handed over: the executor never sees
+    /// `stack_bytes`, and no portable query returns a task's total stack, so
+    /// neither an absolute floor nor a percentage can be inferred here.
+    pub fn set_min_stack_headroom_bytes(&mut self, bytes: usize) {
+        self.min_stack_headroom_bytes = bytes;
+    }
+
+    /// Report a spin thread that has come closer to the end of its stack
+    /// than `set_min_stack_headroom_bytes` allows.
+    ///
+    /// Runs on the same tick as the other rules and feeds the same ring.
+    /// Costs one platform query per tick, and nothing at all when no minimum
+    /// was declared.
+    fn check_stack_headroom_rule(&mut self) {
+        if self.min_stack_headroom_bytes == 0 {
+            return;
+        }
+        let unused = nros_platform_api::task::stack_unused_bytes();
+        // 0 means the port does not instrument stacks, not that the stack is
+        // full. Reporting a violation there would be a fault invented from an
+        // absence of data.
+        if unused == 0 {
+            return;
+        }
+        if let Some(v) = super::monitor::check_stack_headroom(
+            unused,
+            self.min_stack_headroom_bytes,
+            &mut self.stack_headroom_reported,
+        ) {
+            if self.report_violations {
+                super::monitor::log_violation(&v);
+            }
+            if self.monitor_violations.push(v).is_err() {
+                self.monitor_violations_dropped = self.monitor_violations_dropped.saturating_add(1);
+            }
+        }
+    }
+
     /// Issue #515 — report a spin wake a whole period late.
     ///
     /// Runs on the same tick as `check_timer_overruns` and feeds the same
@@ -6826,6 +6882,7 @@ impl<'s> Executor<'s> {
         // to wait for the next spin to say so.
         self.check_timer_overruns();
         self.check_release_jitter_rule();
+        self.check_stack_headroom_rule();
 
         // Process parameter services (outside the arena)
         #[cfg(feature = "param-services")]
