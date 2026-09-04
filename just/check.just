@@ -171,6 +171,7 @@ fast-serial: \
     declared-qos-header \
     default-gates-run-somewhere \
     deploy-board-resolves \
+    derived-descriptor-fields \
     doc-recipe-refs \
     doc-refs \
     emitter-just-spelling \
@@ -1849,6 +1850,17 @@ default-gates-run-somewhere:
     @python3 scripts/check-default-gates-run-somewhere.py
 
 # `nros sync` skips the leaf with a count instead of a name. Buildless.
+# RFC-0087 D4 / phase-420 W5 — a descriptor carries only what no convention can
+# produce, so a field it DOES state must equal the value convention derives.
+# Six of eleven rmw fields were convention written longhand; five are now gone
+# and this keeps the rest honest. A ratchet: `crate` is grandfathered for
+# `nros-rmw-xrce`, which ships no Cargo.toml and names a sibling — the
+# measurement that showed D4's own table was wrong about `crate` being
+# derivable. Buildless, ~0.2 s.
+[private]
+derived-descriptor-fields:
+    @python3 scripts/check-derived-descriptor-fields.py
+
 [private]
 deploy-board-resolves:
     @python3 scripts/check-deploy-board-resolves.py

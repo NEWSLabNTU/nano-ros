@@ -190,7 +190,23 @@ Derived by convention, never authored in a new descriptor:
 | cmake value | the canonical name |
 | C define token | `UPPER(name)` |
 | cffi feature | `<cargo_feature>-cffi` |
-| crate | the package's `Cargo.toml` |
+
+**Amended 2026-09-04 from implementation (phase-420 W5): `crate` is NOT
+derivable, and this table said it was.** "The package's `Cargo.toml`" holds for
+one and a half of the four RMW backends. `nros-rmw-xrce` ships **no
+`Cargo.toml`** at all and its `[rmw.provides.cargo].crate` names a *sibling*
+(`nros-rmw-xrce-cffi`); `nros-rmw-cyclonedds` states `sys_crate =
+"cyclonedds-sys"`, also not its own. A convention with exceptions is not a
+convention, so `crate` stays authored and xrce is the derivation ratchet's one
+grandfathered row.
+
+**Names are derivable per family, not universally.** They come from the
+announcement for `rmw` and `serdes`. They cannot for `board`:
+`nros-board-nuttx-qemu` declares **two** `[[board]]` entries and announces seven
+names in one flat list, and `<nano_ros_provides>` carries no boundary that could
+attribute a name to an entry. `board` therefore stays a *named* family, and the
+FAMILIES shape phase-421 W4 introduced (`extract=None` meaning "nameless") is
+per family rather than a migration every family completes.
 
 **A stated derivable field must equal its derived value** — a ratchet, so the
 existing rmw/board/platform descriptors are grandfathered where history forces a
@@ -300,6 +316,11 @@ semantics, over the topological order `provider_scan` already computes.
 
 ## Changelog
 
+- 2026-09-04 — D4 amended from implementation (phase-420 W5): `crate` is not
+  derivable (xrce ships no `Cargo.toml` and names a sibling; cyclonedds names a
+  sys crate), and `names` is derivable per family — `board` cannot, because one
+  package declares two board entries and announces seven names with no boundary
+  between them.
 - 2026-09-04 — initial draft. Folds the packaging discussion: one recognition
   rule, `nros_cmake`/`nros_cargo`, three export tags with `<nano_ros_uses>` as
   the general consumption form, derived descriptor fields, vendor packages as
