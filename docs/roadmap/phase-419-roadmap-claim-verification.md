@@ -14,8 +14,9 @@ R2 remains, with its cost measured.**
   three as-landed claims that have since drifted) and phase-325 (W0-W2 landed
   on the very date its status says "Not started", and its blocker — issue 0362
   — is resolved and archived, so W3 was never actually blocked). Baseline 4 →
-  2. The remaining two, 230 and 275, are corrected in an open PR and their
-  lines delete when it lands — the ratchet will say so.
+  2 → **0**: 230 and 275 landed in #322, the ratchet reported both as "no
+  longer offend", and the lines were deleted. The gate now enforces ZERO, so
+  the next contradiction is a hard failure rather than a baseline row.
 * **W2 R2 NOT done, and the reason is measured**: extending
   `check-ci-doc-workflow-refs` means giving it a baseline it does not have, for
   20 references most of which are legitimate history. Reported by W3 instead.
