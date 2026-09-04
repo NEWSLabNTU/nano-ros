@@ -1,6 +1,22 @@
 # Phase 325 — uORB interop: direct, and bridged to any RMW
 
-**Status (2026-07-31): Draft.** Not started.
+**Status (2026-09-04). W0, W1 and W2 LANDED 2026-07-31; W3's GATE PASSED the
+same day; W3.1-W3.4 remain — and are NO LONGER BLOCKED.**
+
+The 2026-07-31 line read "Draft. Not started." while 14 of this phase's 18 boxes
+were ticked and W0/W1/W2 each carry a RESULT section dated that same day. The
+doc already said so five lines down, in `**Blocked on:**` — "for W3 only; W0-W2
+are done" — so the contradiction was between two lines of one header block, and
+a reader who stopped at the status got the wrong answer.
+
+**The blocker is gone too.** `**Blocked on:** issue 0362 (no C++ `px4_msgs`
+codegen)` — issue 0362 is `status: resolved` and archived. W3 has been blocked
+on paper since July against an issue that was fixed; nothing was waiting on
+anything. Whoever picks W3 up should start from W3's own GATE PASSED note
+(two backends in one PX4 module, `rc=0`, zero undefined) rather than from the
+blocker.
+
+**Previously (2026-07-31): Draft.** Not started.
 **Implements:** RFC-0026 (example layout), RFC-0048 (cmake consumption).
 **Successor to:** [phase-316](phase-316-example-tree-axes.md) W4, which carried
 the decisions but not the work — scoping showed W4 is a phase, not a work item.

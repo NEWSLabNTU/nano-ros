@@ -1,6 +1,30 @@
 # Phase 292 — ASI reference-consumer revisit: FVP entry parity, consumer-wall intake, S32Z board
 
-**Status (2026-07-16). Draft.** · Counterpart of ASI `docs/roadmap/
+**Status (2026-09-04). W1, W3 and W4 LANDED 2026-07-17 — the day AFTER the
+"Draft" line below was written, which is why it never moved. W2.a is a STANDING
+intake item and stays open by design. Three as-landed claims have since drifted
+and are corrected inline.**
+
+W1 records "both waves green, one configure each"; W3.a and W4.a are ticked with
+results. 17 of 18 boxes are ticked, and the one that is not — W2.a, "each wall
+ASI's pin bump surfaces gets a repro" — is open-ended by construction rather
+than outstanding.
+
+Measured 2026-09-04, three things the as-landed text names no longer resolve:
+
+* `examples/workspaces/ws-realtime-cpp-fvp/` is GONE. phase-331 W3 retired the
+  themed `ws-*` directories (CLAUDE.md: "the themed `ws-*` dirs are GONE ...
+  don't reintroduce one"), so W1.a's fixture moved with them.
+* The S32Z board crate is `packages/boards/nros-board-s32z270-freertos`, not
+  the `nros-board-s32z270dc2-r52` W3.a names.
+* `just zephyr build-s32z-board-import` does not exist. `build-fvp-ws-entry`
+  and `build-fvp-all` still do.
+
+Left as the record of what was done rather than rewritten, because the finding
+IS the drift: a phase whose status stopped at "Draft" is also a phase nobody
+re-read when the tree moved under its fixtures.
+
+**Previously (2026-07-16). Draft.** · Counterpart of ASI `docs/roadmap/
 phase-3-modern-nano-ros-migration.md` (autoware-safety-island, `nano-ros`
 branch) · Touches phase-215 (board import), 217 (FVP lane), 236 (ASI is the
 named reference consumer), 287 (ament verbs on zephyr).
