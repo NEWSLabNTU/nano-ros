@@ -14,6 +14,16 @@
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
 
+  <!--
+    phase-420 W9 — the vendor package this backend is built on, reached by
+    PACKAGE NAME rather than by a path. `zpico_sys` owns the zenoh-pico gitlink,
+    compiles it, and exports the result over `links = "zpico"`; this package is
+    the provider that consumes it. Cargo already states the same edge as a path
+    dep, and `provider_scan` ignores a `<depend>` naming a package outside the
+    scanned set, so this is a declaration, not a new build edge.
+  -->
+  <depend>zpico_sys</depend>
+
   <export>
     <!--
       Provision, NOT consumption. `<nano_ros rmw="zenoh"/>` in a leaf package
