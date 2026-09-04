@@ -1,7 +1,7 @@
 ---
 id: 1063
 title: "`netstack` is declared by users, validated against the board, emitted as `NROS_NETSTACK` — and read by nothing"
-status: open
+status: resolved
 type: bug
 area: build, config
 severity: medium
@@ -10,6 +10,43 @@ related: [0941, 0940, 0949, 0842, phase-349, phase-351, phase-206]
 ---
 
 # A user-facing knob whose value reaches no build
+
+## RESOLVED 2026-09-05 — option B, and the deciding evidence was not the count
+
+The emission is gone; the validation stays.
+
+The reason I first gave was that the choice is degenerate — no board declares
+more than one netstack, so the emitted value is always `supported_netstacks[0]`.
+True, but weak: it invites "then add a consumer when a board declares two."
+
+**The deciding fact is that the only plausible consumer already knows.** A
+netstack is selected by a per-board cmake file —
+`cmake/board/nano-ros-board-riscv64-qemu.cmake:240` calls
+`nros_threadx_build_netstack_netxduo(...)` unconditionally — and a file that is
+already per-board does not need an environment variable to tell it which stack
+it uses. Even a board with two stacks would branch inside its own file.
+
+**The validation half is live and was kept**, which the original filing got
+right for the wrong reason. `NanoRosBoardFacts.cmake:126-129` matches on the
+error text and turns it into a configure `FATAL_ERROR`, so `resolve_netstack`
+is load-bearing even though its Ok value is now discarded.
+
+That discard created a new hazard: nothing would stop a later edit deleting the
+call. `an_unsupported_netstack_fails_the_resolution` is what refuses it, and its
+doc comment now says so. Verified by negative control — with the call removed
+that test FAILS while every other test in the module still passes, which is
+exactly the trap it exists to close.
+
+The four tests that asserted the emission now assert its ABSENCE, so re-adding
+`NROS_NETSTACK` without a reader fails.
+
+**Not done, deliberately:** option C (refusing the user-facing `netstack` key).
+Twelve site-config blocks use it, it is harmless once validated, and it is
+phase-351's decision rather than this issue's.
+
+**On issue 0941:** it used a missing `NROS_NETSTACK` as one symptom that board
+facts were undelivered. `NROS_BOARD` and `NROS_BOARD_TOML` carry the identical
+signal and remain, so 0941 loses nothing it cannot get from those two.
 
 ## The chain, and where it stops
 

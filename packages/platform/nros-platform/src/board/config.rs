@@ -60,42 +60,18 @@ pub trait BoardConfig {
     }
 }
 
-/// Phase 173.5 — mutable transport knobs a board `Config` exposes on the
-/// `NanoRosOwned` net-stack path: the board owns smoltcp/lwIP/NetX, so the
-/// IP / baud value lands in the board `Config` rather than an RTOS config
-/// fragment. Boards whose net stack is owned by the RTOS (`RtosOwned`:
-/// Zephyr / NuttX) do **not** impl this — their IP lands in the emitted
-/// config fragment instead.
-///
-/// Both methods keep a no-op default so a board overrides only the knob it
-/// actually has (a serial-only board ignores `set_ipv4`; an ethernet-only
-/// board ignores `set_baudrate`).
-///
-/// **nano-ros does not model NICs, MAC addresses or WiFi credentials**
-/// (phase-206 W5). `set_mac` / `set_gateway` / `set_ssid` / `set_password` /
-/// `set_interfaces` are gone: the device is up before ROS exists, so it is
-/// the board's (or the RTOS's) job, and anything the *middleware* binds to is
-/// configured in the middleware's own language — CycloneDDS XML
-/// (`<General><Interfaces>`), a zenoh config's `listen`/`connect`. A
-/// nano-ros-owned vocabulary for either would need a resolver, a gate and a
-/// per-platform story only Linux can satisfy. The emitter for all five was
-/// deleted with the standalone-package pipeline in `11a00b0f8`; the seams
-/// outlived it with zero call sites.
-///
-/// **The two survivors have no callers either, and that is UNRESOLVED.** They
-/// are kept because they are not dead in the same sense: five boards implement
-/// `set_ipv4` (threadx-linux, threadx-qemu-riscv64, freertos, mps2-an385,
-/// esp32-qemu) and two implement `set_baudrate` (mps2-an385, esp32-qemu) with
-/// real bodies. Boards doing work nobody asks for is a different defect from a
-/// dead seam, and deciding it means deciding who writes a `NanoRosOwned`
-/// board's IP now that the generator is gone — not a NIC-vocabulary question.
-/// Do not read the absence of callers here as "safe to delete": measure the
-/// board impls first.
-pub trait BoardTransportConfig {
-    /// Static IPv4 address + prefix length for the board's ethernet
-    /// stack. Boards without a `prefix` field ignore that argument.
-    fn set_ipv4(&mut self, _addr: [u8; 4], _prefix: u8) {}
-
-    /// Serial line rate for the board's UART transport.
-    fn set_baudrate(&mut self, _baud: u32) {}
-}
+// `BoardTransportConfig` was removed here (issue 1064). It carried
+// `set_ipv4` / `set_baudrate` — five and two real board implementations, and
+// ZERO callers: its only writer was the orchestration generator deleted with
+// the standalone-package pipeline in `11a00b0f8` (#202).
+//
+// The live path is the DEPLOY OVERLAY, and it is strictly better: `DeployOverlay`
+// carries `ip`, `gateway`, `netmask`, `locator`, `domain_id` and `transport`
+// (a superset — `gateway` is what the removed `set_gateway` was for), it is
+// applied by `BoardEntry::run_with_deploy`, and it is actually READ —
+// `nros-board-common/src/base_config.rs` does it for the whole family, and
+// esp32-qemu, mps2-an385 and nuttx-qemu read it directly.
+//
+// So this was not a seam awaiting a caller; it was the dead twin of a live one.
+// Same finding as phase-206 W4 (issue 1067) one layer over: the discoverable
+// contract and the executed contract were different things.
