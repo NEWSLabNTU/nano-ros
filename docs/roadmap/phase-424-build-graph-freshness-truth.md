@@ -25,7 +25,10 @@ symmetrical, which is what makes the grouping useful rather than tidy:
   cost is unbounded rather than one wasted build.
 * **Converges, but not when anyone reads it** — 1002's derived knob needs THREE
   configures where 0991 documented two, so the first two answers are wrong and
-  nothing says so.
+  nothing says so. RESOLVED 2026-09-05: three is correct and ninja runs all
+  three, so a `west build` is right; the docs were one short and the BOUND was
+  counting arms over the build dir's lifetime, which made a directory stop
+  converging after two declaration edits.
 * **No edge at all** — 1018's codegen change invalidates every consumer's
   generated interfaces with only a manual step connecting them.
 
@@ -41,7 +44,7 @@ they all rest on is built on build-system internals nobody supports.
 | [#0820](../issues/0820-riscv-nuttx-c-talker-no-runtime-delivery.md) | cmake seam | passes after `rm -rf` on unmodified sources — no rebuild edge |
 | [#0835](../issues/0835-fixture-staleness-probe-families-restale-each-other.md) | fixtures | the cmake and rust families re-stale each other — **oscillation fixed + gated 2026-09-04**; open for the duplicated ThreadX corrosion group, which is wasted disk, not staleness |
 | [#0945](../issues/0945-shared-cargo-dir-rests-on-unsupported-build-internals.md) | cargo | the shared-cargo-dir campaign rests on five unsupported build-system assumptions |
-| [#1002](../issues/1002-a-derived-knob-needs-three-configures-not-two.md) | cmake | a derived knob converges after three configures, not the two 0991 documented |
+| [#1002](../issues/archived/1002-a-derived-knob-needs-three-configures-not-two.md) | cmake | RESOLVED — three is the chain's depth, not a defect; the defect was a bound counting the build dir's lifetime |
 | [#1018](../issues/1018-a-codegen-change-invalidates-generated-interfaces-and-only-a-manual-step-connects-them.md) | codegen | a codegen change invalidates every consumer, connected only by a manual step |
 | [#1046](../issues/1046-px4-stale-tree-guard-checks-a-surviving-directory.md) | px4 | the stale-tree guard asserts a DIRECTORY that outlives the build that linked it |
 | [#1050](../issues/1050-px4-demo-links-whatever-archive-was-built-last.md) | px4 | links whatever `libnros_cpp.a` was built last |

@@ -141,9 +141,19 @@ its readers ran; run cmake again before this build proceeds":
 * `nros_reconfigure_settle` clears that date at the first reader of the next
   pass. This is what makes it terminate: measured at **100** re-configures
   without it, **exactly 1** with it.
+
+  **Corrected by issue 1002.** "Exactly 1" is true of the single-producer probe
+  it was measured on. This tree's producers are a CHAIN -- the entity inventory
+  feeds the payload-class join, whose output the knob resolver reads -- so a
+  clean build dir takes TWO extra configures, three in all, before the derived
+  size reaches the compile. Ninja runs them all, so the build is correct; what
+  was wrong was every instruction that said "configure again" in the singular,
+  and the bound below, which counted arms over the build dir's LIFETIME and so
+  ran out after two declaration edits.
 * Two bounds, because a mechanism that can re-run the configure must not be able
   to do it forever: `NROS_RECONFIGURE_MAX_PASSES` (3) stops a non-convergent
-  producer with a WARNING naming the knob, and `NROS_RECONFIGURE_FUTURE_SECONDS`
+  producer with a WARNING naming the knob (issue 1002 made it count
+  CONSECUTIVE arms; as landed here it counted the build dir's lifetime), and `NROS_RECONFIGURE_FUTURE_SECONDS`
   (120) must exceed the remainder of the configure — too small degrades to the
   OLD behaviour, never to a wrong answer.
 

@@ -739,12 +739,19 @@ function(_nros_bounds_join_subscribed _frag _ceiling
             "nros: the entity inventory has not been composed in this build dir "
             "yet, so the payload classes derive over the LINKED CLOSURE this "
             "pass -- an over-approximation.\n"
-            "  This is expected on a CLEAN build dir and resolves itself: the "
-            "fragment is written at the end of this configure and the NEXT "
-            "configure derives over the SUBSCRIBED set instead.\n"
+            "  This is expected on a CLEAN build dir and resolves itself "
+            "inside this build: the fragment is written at the end of this "
+            "configure, the NEXT configure derives over the SUBSCRIBED set, "
+            "and the one AFTER that is the first whose readers -- the knob "
+            "resolver in `find_package(Zephyr)`, which runs before either "
+            "producer -- hand the derived class to the compile. Three "
+            "configures, because the chain is two producers deep; ninja runs "
+            "them all before the build proceeds (issue 1002).\n"
             "  If this image is memory-tight, that first over-approximation can "
-            "fail to LINK (issue 0991). Configure again before reading a link "
-            "error as a sizing problem.")
+            "fail to LINK (issue 0991). What must not happen is reading a size "
+            "or a link error out of a HAND-driven configure that stopped at "
+            "two -- the fragment is right by then and the delivered value is "
+            "still one pass behind it.")
     endif()
     if(NOT NROS_ENTITY_INVENTORY_STATUS STREQUAL "derived")
         set(${_o_basis} "closure" PARENT_SCOPE)

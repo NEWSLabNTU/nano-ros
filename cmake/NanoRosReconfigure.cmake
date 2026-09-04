@@ -52,16 +52,52 @@
 # The future date is cleared by the first reader of the next pass
 # (`nros_reconfigure_settle`), which is what makes this terminate: with the date
 # cleared, `build.ninja` is written afterwards and is newer again. Measured on
-# the same probe: exactly ONE extra configure, then the build proceeds with the
-# fresh answer.
+# a single-producer probe: exactly ONE extra configure, then the build proceeds
+# with the fresh answer.
+#
+# =============================================================================
+# HOW MANY EXTRA CONFIGURES -- it is the CHAIN's depth, not a constant
+# =============================================================================
+#
+# "Exactly one" is true of ONE producer feeding ONE reader. It is not the
+# number this tree gets, because its producers form a chain: the entity
+# inventory (written last, by `nano_ros_entry()`) is an INPUT to the
+# message-bound sizes (written mid-configure, by `nros_find_interfaces()`),
+# which are in turn read first of all, by `nros_resolve_knobs()` inside
+# `find_package(Zephyr)`. Each link costs one pass, so the value DELIVERED to
+# the build settles on the THIRD configure:
+#
+#   | pass | entity fragment | bounds fragment | value the readers got |
+#   | ---- | --------------- | --------------- | --------------------- |
+#   |  1   | placeholder     | closure  (1496) | nothing derived       |
+#   |  2   | real            | subscribed (880)| 1496  <- still stale  |
+#   |  3   | real            | subscribed (880)| 880   <- settled      |
+#
+# Issue 1002 measured that and read it as a defect in this mechanism. It is
+# not: ninja re-runs cmake until `build.ninja` stops being stale, so all three
+# passes happen inside ONE `west build` and the build compiles at 880. What was
+# wrong was the DOCUMENTATION -- three call sites said "configure again", which
+# is right for one link and one short for two -- and what is a defect is the
+# bound below, which was counting the wrong thing.
+#
+# The rule, so the next producer does not re-derive it: a fragment needs one
+# arm per producer UPSTREAM of it in the chain, and the number of configures is
+# one more than the longest such chain. Case H of
+# `tests/cmake-reconfigure-tests.sh` measures it rather than restating it, so a
+# third producer moves a number in a test instead of in folklore.
 #
 # Two bounds, because a mechanism that can re-run the configure must not be
 # able to re-run it forever:
 #
-#   * `NROS_RECONFIGURE_MAX_PASSES` (default 3) caps how many times ONE
-#     fragment may arm a re-configure in one build dir. Past that the answer is
-#     not converging, which is a bug in the producer, and the module says so and
-#     stops rather than looping.
+#   * `NROS_RECONFIGURE_MAX_PASSES` (default 3) caps how many CONSECUTIVE times
+#     ONE fragment may arm a re-configure. Past that the answer is not
+#     converging, which is a bug in the producer, and the module says so and
+#     stops rather than looping. CONSECUTIVE is issue 1002's other half: the
+#     counter lives in the cache, so it used to accumulate over the build dir's
+#     whole LIFETIME, and a clean build of the chain above spends 2 of the 3
+#     before anyone edits anything. The count is reset by the first pass in
+#     which the producer writes what the readers already had -- that pass IS
+#     the fixpoint, and a producer that never reaches one still hits the bound.
 #   * `NROS_RECONFIGURE_FUTURE_SECONDS` (default 120) is how far ahead the
 #     fragment is dated. It has to exceed the REMAINDER of the configure, since
 #     that is when `build.ninja` lands. Too small and this degrades to the
@@ -94,15 +130,20 @@ include_guard(GLOBAL)
 set(NROS_RECONFIGURE_FUTURE_SECONDS 120 CACHE STRING
     "issue 0991: how far ahead a changed nano-ros fragment is dated so ninja re-runs cmake. Must exceed the remainder of the configure; too small only means the lag does not close.")
 set(NROS_RECONFIGURE_MAX_PASSES 3 CACHE STRING
-    "issue 0991: how many times ONE fragment may force a re-configure in this build dir before nano-ros calls it non-convergent and stops.")
+    "issue 0991/1002: how many CONSECUTIVE times ONE fragment may force a re-configure before nano-ros calls it non-convergent and stops. Reset by the first pass in which that fragment settles, so it bounds one convergence episode and not the build dir's lifetime.")
 mark_as_advanced(NROS_RECONFIGURE_FUTURE_SECONDS NROS_RECONFIGURE_MAX_PASSES)
 
 # _nros_reconfigure_key(<path> <out_var>)
 #
 # A cache-variable-safe name for one fragment. The counter lives in the CACHE
-# rather than in a file beside the fragment, because the cache is already the
-# thing whose lifetime is "this build dir" -- which is exactly the scope the
-# bound is about, and a `rm -rf build` resets it the way a user expects.
+# rather than in a file beside the fragment, because the cache is the one place
+# a value survives from one configure to the NEXT, which is what counting
+# passes requires -- and a `rm -rf build` clears it the way a user expects.
+#
+# Issue 1002: "survives to the next configure" is not the same as "survives
+# forever", and reading the cache's lifetime as the bound's SCOPE was the
+# defect. `nros_reconfigure_on_change` unsets this key the moment the fragment
+# settles; see the note there.
 function(_nros_reconfigure_key _path _out_var)
     get_filename_component(_name "${_path}" NAME_WE)
     string(REGEX REPLACE "[^A-Za-z0-9]" "_" _name "${_name}")
@@ -159,12 +200,35 @@ function(nros_reconfigure_on_change _path _before)
         set(_label "${_path}")
     endif()
 
+    _nros_reconfigure_key("${_path}" _key)
+
     nros_reconfigure_snapshot("${_path}" _after)
     if(_after STREQUAL _before)
+        # SETTLED. The producer wrote what this pass's readers had already
+        # consumed, so this convergence episode is over -- and the counter goes
+        # back to zero.
+        #
+        # Issue 1002. This reset is the whole difference between counting
+        # CONSECUTIVE arms and counting arms over the build dir's LIFETIME, and
+        # the cache made it the latter by default. Measured on the real
+        # entity -> bounds chain: a clean build dir spends 2 of the 3 allowed
+        # arms just converging, the FIRST declaration edit spends the third, and
+        # from the SECOND edit on the bound is exhausted forever -- every later
+        # edit warns and ships the previous answer. That is not a hypothetical
+        # tail case, it is two edits in one build dir, and the direction it
+        # fails in is not fixed: an edit that makes the image receive a LARGER
+        # type leaves it sized for the smaller one, which is the unsafe half of
+        # issue 0991 rather than its safe over-approximation.
+        #
+        # The bound exists to stop a producer whose answer NEVER settles, which
+        # is a property of one episode. Nothing about a build dir that converged
+        # yesterday should shrink the budget of a build today.
+        if(DEFINED ${_key})
+            unset(${_key} CACHE)
+        endif()
         return()
     endif()
 
-    _nros_reconfigure_key("${_path}" _key)
     set(_passes "${${_key}}")
     if(NOT _passes)
         set(_passes 0)

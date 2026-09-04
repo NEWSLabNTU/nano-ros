@@ -217,6 +217,21 @@ set(NROS_KNOB_DERIVE_SENTINEL -1)
 # same build, and builds at the derived ones. It is never SILENT: the status
 # line below says which of the two happened, and the re-configure announces
 # itself.
+#
+# Issue 1002 -- and "re-configures" is PLURAL on a clean build dir, because the
+# producers are a chain rather than one file. This loader reads the message-
+# bound sizes; those are derived from the ENTITY inventory, which is written
+# later still. So the answer that reaches HERE settles on the third configure:
+#
+#   pass 1  entity=placeholder  ->  sizes derived over the linked CLOSURE
+#   pass 2  entity=real         ->  sizes re-derived over the SUBSCRIBED set
+#   pass 3                          this loader finally reads them
+#
+# Ninja runs all three before the build starts, so a `west build` on a clean
+# dir is correct. A HAND-driven `cmake -S -B` sequence that stops after two is
+# not, and it looks correct: the fragment on disk already states the derived
+# size while `NROS_RESOLVED_*` in the cache still holds the closure one. That
+# is measured by case H of `tests/cmake-reconfigure-tests.sh`.
 function(_nros_load_derived_message_bounds)
     nros_message_bounds_knobs_file(_knobs)
     if(NOT EXISTS "${_knobs}")
