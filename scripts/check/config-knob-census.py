@@ -65,13 +65,6 @@ LADDER_FLOOR = 42
 #            census did, by ~40%.
 KNOB_CLASS = {
     # --- ladder (phase-400 W6) ---
-    "NROS_EXECUTOR_MAX_CBS": ("ladder", "executor tenant"),
-    "NROS_EXECUTOR_MAX_SC": ("ladder", "executor tenant"),
-    "NROS_EXECUTOR_MAX_NODES": ("ladder", "executor tenant"),
-    "NROS_EXECUTOR_MAX_SHUTDOWN_CBS": ("ladder", "executor tenant"),
-    "NROS_EXECUTOR_ACTION_CLIENTS": ("ladder", "executor tenant"),
-    "NROS_EXECUTOR_ARENA_SIZE": ("ladder", "executor tenant; 0 = derive"),
-    "NROS_PARAM_SERVICE_BUFFER_SIZE": ("ladder", "executor tenant"),
     # --- derived: the message type should size these ---
     "NROS_SUBSCRIPTION_BUFFER_SIZE": (
         "derived",
@@ -83,21 +76,7 @@ KNOB_CLASS = {
     "ZPICO_SUBSCRIBER_SIZE_THRESHOLD": ("derived", "SMALL_CLASS_CEILING (phase-403)"),
     "ZPICO_PUBLISHER_TX_BUFFER_SIZE": ("derived", "TX half of the same split"),
     # --- sizing: the backlog ---
-    "NROS_MAX_ARRAY_LEN": ("ladder", "params tenant"),
-    "NROS_MAX_BYTE_ARRAY_LEN": ("ladder", "params tenant"),
-    "NROS_MAX_STRING_VALUE_LEN": ("ladder", "params tenant"),
-    "NROS_MAX_PARAM_NAME_LEN": ("ladder", "params tenant"),
-    "NROS_MAX_PARAMETERS": ("ladder", "params tenant"),
-    "NROS_RUNTIME_COMPONENT_SLOT_BYTES": ("ladder", "runtime tenant"),
-    "NROS_RUNTIME_MAX_CELL_ENTITIES": ("ladder", "runtime tenant"),
-    "NROS_RUNTIME_MAX_CLASS_INSTANCES": ("ladder", "runtime tenant"),
-    "NROS_RUNTIME_MAX_COMPONENTS": ("ladder", "runtime tenant"),
-    "NROS_ZEPHYR_HEAP_SIZE": ("ladder", "memory tenant — unblocked when the reader moved to a leaf crate"),
-    "NROS_FREERTOS_HEAP_KB": ("ladder", "memory tenant; KiB front-end over a bytes rung"),
-    "NROS_FREERTOS_APP_STACK_KB": ("ladder", "memory tenant; KiB front-end over a bytes rung"),
-    "NROS_KEYEXPR_STRING_SIZE": ("ladder", "zenoh.limits tenant"),
     "NROS_SERVICE_TIMEOUT_MS": ("sizing", "a timeout, not a size, but the same ladder shape. TWO readers (zenoh build + the C emitter), so it needs one emission point before a rung"),
-    "NROS_XRCE_CUSTOM_TRANSPORT_MTU": ("ladder", "xrce tenant"),
     "ZPICO_MAX_LARGE_SUBSCRIBERS": ("derived", "pool cardinality; multiplies LARGE_PAYLOADS, phase-392"),
     "ZPICO_SERVICE_BUFFER_SIZE": ("derived", "SERVICE_BUFFERS is MAX_SESSIONS x MAX_QUERYABLES; phase-392"),
     # --- infra: not knobs ---
@@ -112,9 +91,6 @@ KNOB_CLASS = {
     "NROS_TRACE": ("infra", "debug flag"),
     "NROS_ZEPHYR_WORKSPACE": ("infra", "path"),
     # --- ladder: the zenoh tx tenant (phase-282), read in the build HELPER ---
-    "ZPICO_TX_BATCH": ("ladder", "zenoh.tx tenant"),
-    "ZPICO_TX_SPLIT_LOCK": ("ladder", "zenoh.tx tenant"),
-    "ZPICO_TX_BATCH_FLUSH_MS": ("ladder", "zenoh.tx tenant"),
     # --- sizing: the zenoh-pico entity caps and buffers. The largest single
     # --- family left, and the one the phase doc calls "the per-entity caps".
     "ZPICO_MAX_PUBLISHERS": ("derived", "entity cap; phase-392 is deciding whether it is derived from the declaration"),
@@ -123,14 +99,8 @@ KNOB_CLASS = {
     "ZPICO_MAX_SESSIONS": ("derived", "phase-392 poses it explicitly: joins the model, or stays a knob and that phase says so"),
     "ZPICO_MAX_LIVELINESS": ("derived", "entity cap; phase-392"),
     "ZPICO_MAX_PENDING_GETS": ("derived", "entity cap; phase-392"),
-    "ZPICO_BATCH_UNICAST_SIZE": ("ladder", "zenoh.wire tenant"),
-    "ZPICO_BATCH_MULTICAST_SIZE": ("ladder", "zenoh.wire tenant"),
-    "ZPICO_FRAG_MAX_SIZE": ("ladder", "zenoh.wire tenant"),
-    "ZPICO_GET_REPLY_BUF_SIZE": ("ladder", "zenoh.wire tenant"),
-    "ZPICO_GET_POLL_INTERVAL_MS": ("ladder", "zenoh.wire tenant"),
     "ZPICO_READ_TASK_PRIORITY": ("sizing", "transport-band priority (issue 0623)"),
     "ZPICO_LEASE_TASK_PRIORITY": ("sizing", "transport-band priority (issue 0623)"),
-    "NROS_LET_BUFFER_SIZE": ("ladder", "runtime tenant"),
     # --- infra ---
     "NROS_DECLARED_INFRA_QUERYABLES": ("infra", "a COUNT the resolver passes down, not a knob"),
     "NROS_DECLARED_SERVICE_SERVERS": ("infra", "a COUNT the resolver passes down, not a knob"),
@@ -147,8 +117,6 @@ KNOB_CLASS = {
         "already DERIVED from the SystemModel (msg=1/srv=2/action=8+3, next_pow2) "
         "and forwarded; the env is the override, not the source",
     ),
-    "NROS_TRANSPORT_KIND": ("ladder", "transport tenant front-end"),
-    "NROS_TRANSPORT_ENDPOINT": ("ladder", "transport tenant front-end"),
     "NROS_ENTRY_SPIN_MS": ("sizing", "entry spin period; a duration, same ladder shape"),
     # --- infra: pointers, flags and orchestration inputs ---
     "NROS_BOARD_TOML": ("infra", "the ladder's own board rung pointer"),
@@ -203,17 +171,7 @@ KNOB_CLASS = {
     # census only when `nros-rmw-cffi` gained a `build-helpers` dependency and
     # its sources entered the scan; it configures nothing about the image.
     "NROS_RMW_TRACE_OPEN": ("infra", "runtime trace toggle, not a size"),
-    "NROS_RMW_MAX_BACKENDS": ("ladder", "rmw tenant"),
-    "NROS_RMW_MAX_NODES": ("ladder", "rmw tenant"),
     "NROS_RMW_SUBSCRIBER_SLOTS": ("derived", "phase-412 W1 — COUNT_SUBSCRIPTION"),
-    "NROS_RMW_MESSAGE_INFO_SLOTS": ("ladder", "rmw tenant"),
-    "NROS_SMOLTCP_MAX_SOCKETS": ("ladder", "net tenant"),
-    "NROS_SMOLTCP_MAX_UDP_SOCKETS": ("ladder", "net tenant"),
-    "NROS_SMOLTCP_BUFFER_SIZE": ("ladder", "net tenant"),
-    "NROS_SMOLTCP_SOCKET_TIMEOUT_MS": ("ladder", "net tenant"),
-    "NROS_SMOLTCP_CONNECT_TIMEOUT_MS": ("ladder", "net tenant"),
-    "NROS_XRCE_STREAM_HISTORY": ("ladder", "xrce tenant"),
-    "ZPICO_SUBSCRIBER_RING_DEPTH": ("ladder", "zenoh.limits tenant"),
     "NROS_EXTRA_BOARD_PATH": ("infra", "extra board search roots"),
     "NROS_HOME": ("infra", "path"),
     "NROS_MODEL_DIR": ("infra", "path"),
@@ -254,6 +212,54 @@ def _struct_fields(src, struct):
         return []
     body = re.sub(r"(?m)^\s*(///|//).*$", "", m.group(1))
     return sorted(set(re.findall(r"(?m)^\s*pub ([a-z_][a-z0-9_]*)\s*:", body)))
+
+
+# issue 0883's class, in a gate's own table — `KNOB_CLASS` was a per-PR conflict
+# site. Three of eleven DIRTY pull requests on 2026-09-04 conflicted here and
+# nowhere else, because it is one sorted dict that every knob change edits, and
+# a phase-400 W6 migration flips entries from `sizing` to `ladder` by hand.
+#
+# A migration now edits ZERO lines of it: whether the ladder maps a knob is READ
+# from the ladder's own source, which is the thing being changed anyway.
+#
+# Deliberately NOT the whole classification. "the ladder maps this env name" and
+# "this knob is migrated" are different facts, and conflating them would hide
+# remaining work: `NROS_SERVICE_TIMEOUT_MS` is mapped and NOT migrated — it has
+# two readers, so `check-knob-single-reader` refuses it — and deriving its class
+# from the mapping alone would silently move it out of the "still to migrate"
+# count. Those cases are named in `LADDER_MAPPED_NOT_MIGRATED`, which is short,
+# shrinks as they land, and is the only hand-kept part left.
+LADDER_MAPPED_NOT_MIGRATED = {
+    # Mapped by the ladder, still read in two places (zenoh build + the C
+    # emitter), so it needs one emission point before it can claim a rung.
+    "NROS_SERVICE_TIMEOUT_MS",
+    # Mapped, but `nros-node`'s build script still reads the env directly.
+    "NROS_SUBSCRIPTION_BUFFER_SIZE",
+}
+
+
+def ladder_env_keys():
+    """Env names the ladder READS, from `platform_config.rs` itself.
+
+    Three idioms, all in that one file: a match arm mapping a struct field to
+    its env name, a direct `env("...")`, and `flag("...", default)` for a bool.
+    The `#[cfg(test)]` module is cut first — its fixtures name knobs that the
+    production reader does not, and counting those would classify a knob as
+    laddered because a UNIT TEST mentioned it.
+    """
+    src = read(os.path.join(ROOT, "packages/tooling/nros-platform-config/src/platform_config.rs"))
+    cut = src.find("#[cfg(test)]")
+    if cut > 0:
+        src = src[:cut]
+    src = re.sub(r"(?m)^\s*///.*$", "", src)
+    out = set()
+    for pat in (
+        r'=>\s*"((?:NROS|ZPICO)_[A-Z0-9_]+)"',
+        r'\benv\(\s*"((?:NROS|ZPICO)_[A-Z0-9_]+)"',
+        r'\bflag\(\s*"((?:NROS|ZPICO)_[A-Z0-9_]+)"',
+    ):
+        out |= set(re.findall(pat, src))
+    return out
 
 
 def ladder_knobs():
@@ -453,6 +459,36 @@ def self_test() -> None:
     fields = _struct_fields(src, "TxKnobs")
     assert fields == ["batch"], f"selftest: ladder counter read {fields!r}"
 
+    # The ladder-mapping reader: three idioms, and NOTHING from the test module.
+    # Counting a test fixture would classify a knob as laddered because a unit
+    # test mentioned it — the failure that makes a derived fact worse than a
+    # hand-kept one.
+    src = (
+        '        "field" => "NROS_FROM_MATCH_ARM",\n'
+        '        env("NROS_FROM_ENV_CALL")\n'
+        '        flag("ZPICO_FROM_FLAG_CALL", BUILTIN)\n'
+        '        /// env("NROS_IN_A_DOC_COMMENT")\n'
+        '#[cfg(test)]\n'
+        '        env("NROS_ONLY_IN_TESTS")\n'
+    )
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        sub = os.path.join(d, "packages/tooling/nros-platform-config/src")
+        os.makedirs(sub)
+        with open(os.path.join(sub, "platform_config.rs"), "w") as fh:
+            fh.write(src)
+        global ROOT
+        real, ROOT = ROOT, d
+        try:
+            got = ladder_env_keys()
+        finally:
+            ROOT = real
+    assert got == {
+        "NROS_FROM_MATCH_ARM",
+        "NROS_FROM_ENV_CALL",
+        "ZPICO_FROM_FLAG_CALL",
+    }, f"selftest: ladder-mapping reader got {sorted(got)!r}"
+
 
 def main() -> int:
     self_test()
@@ -463,9 +499,32 @@ def main() -> int:
     zpico_env = build_script_env("ZPICO")
 
     seen = sorted(nros_env | zpico_env)
+    mapped = ladder_env_keys()
+
+    # The table must not restate what the ladder source already says. This is
+    # the half that stops `KNOB_CLASS` being a conflict site: a migration edits
+    # the ladder and nothing here.
+    restated = sorted(
+        n for n, c in KNOB_CLASS.items()
+        if c[0] == "ladder" and n in mapped
+    )
+    if restated:
+        print("config-knob-census: KNOB_CLASS restates the ladder for "
+              f"{len(restated)} knob(s):")
+        for n in restated:
+            print(f"    {n}")
+        print("  Whether the ladder maps a knob is read from")
+        print("  packages/tooling/nros-platform-config/src/platform_config.rs.")
+        print("  Delete these lines — a migration should edit the ladder, not this")
+        print("  table, which is why three of eleven dirty PRs conflicted here.")
+        return 1
+
     by_class = {}
     unclassified = []
     for n in seen:
+        if n in mapped and n not in LADDER_MAPPED_NOT_MIGRATED:
+            by_class.setdefault("ladder", []).append(n)
+            continue
         cls = KNOB_CLASS.get(n)
         if cls is None:
             unclassified.append(n)
