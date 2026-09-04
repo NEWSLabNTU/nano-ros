@@ -1,10 +1,12 @@
 # phase-422 — provisioning has one path, and CI walks it
 
-**Status (2026-09-04). Open. W1–W3 are mechanical and independent; W4 needs a
-small dispatcher change first; W5 is the ratchet that keeps the rest from
-regrowing. Two gates already landed as part of phase-413 and are listed here as
-prior art, not as work: `check-preconditions-provisioned` (#387) and
-`check-workflow-setup-spelling` (#397).**
+**Status (2026-09-05). In progress. DONE: W1 (duplicate producers retired),
+W3's dispatcher half (argument passthrough), W5 (the ratchet — four gates),
+W6 (the scope verb reports the system closure), W7's gate half. IN FLIGHT:
+W2's mdbook/verus half, W4, W7's additive board entries. OPEN BY DECISION: W8
+(the refusal, report -> warn -> error), W3's prose sweep, and W7's true
+unification — the index namespace is what users type while the cmake namespace
+is what the build uses, and neither is obviously the one to keep.**
 
 Implements the provisioning half of RFC-0014 and finishes what phase-413 W5
 started. Prior phases: 413 (CI workflow user parity), 398 (`package.xml`
@@ -71,7 +73,19 @@ missing prerequisite fails the run at the first gate that needs it.
 
 ## Work items
 
-### W1 — retire the duplicate producers
+### W1 — retire the duplicate producers — DONE
+
+**Decided and landed.** Both are forwarders to `nros setup --tool <name>`. The
+index path was verified working BEFORE anything was retired
+(`present 0.6.1-nros1 (skip)`, `--check` -> `[OK]`).
+
+Retiring them exposed the drift immediately: corrosion's two pins AGREED
+(`CORROSION_VERSION` = the index's `upstream`), but play_launch_parser's did
+NOT — a git SHA against `0.1.0-nros1` — so forwarding made `just doctor` call a
+correctly installed tool MISSING. The doctor now asks the CLI rather than
+comparing a second constant, and `PLAY_LAUNCH_PARSER_VERSION` is deleted.
+
+Original text:
 
 `install-corrosion` and `install-play-launch-parser` become forwarders to
 `nros setup --tool <name>`, or are deleted and their callers changed. The
@@ -93,17 +107,42 @@ version, a download, a checksum and a `smoke` command, like the other 16.
 `scripts/setup-mdbook.sh`, `scripts/mdbook-checksums.txt` and
 `scripts/setup-verus.sh` are deleted, not left as dead alternates.
 
-Care: `clang-format` is provisioned from a **pip wheel** chosen for the host
-platform, which is not the tarball shape the index uses. Either the index grows
-a wheel source kind, or clang-format keeps its recipe and is documented as a
-deliberate exception with the reason. Decide before implementing — do not force
-a shape that then needs a second exception.
+**DECIDED (2026-09-05): split this item.**
+
+The index ALREADY expresses per-host artifacts — `dist.linux-x86_64 = { url,
+sha256 }`, as `[tool.qemu]` and `[tool.arm-none-eabi-gcc]` do. So the question
+was never "can the index do this", it was "which of these three fit that
+shape".
+
+* **mdbook and verus fit it exactly** — plain release tarballs, no new
+  machinery. `scripts/setup-verus.sh` additionally resolves "latest" through
+  the GitHub releases API, a moving target the index replaces with a pin.
+  DOING THIS NOW.
+* **clang-format does not.** It is a pip wheel whose binary sits at
+  `clang_format/data/bin/clang-format` inside a zip, so it needs the index to
+  unzip and know an inner path — new machinery for exactly one consumer. It
+  KEEPS its recipe as a documented exception until a second wheel-shaped tool
+  appears. One exception with a stated reason beats index machinery serving one
+  caller.
 
 **Acceptance.** `scripts/setup-mdbook.sh` and `scripts/setup-verus.sh` no longer
 exist as bespoke downloaders. Every remaining bespoke installer is listed in this doc
 with a reason.
 
-### W3 — retire the old spelling everywhere
+### W3 — retire the old spelling everywhere — dispatcher half DONE
+
+**Landed.** `just setup <scope>` takes a variadic tail and forwards it, so
+`just setup zephyr --skip-sdk` works and the exemption can go.
+
+The subtlety, found by testing rather than assuming: `just` fills positional
+parameters IN ORDER, so the flag binds to `tier`, not to the variadic tail. A
+tier is never a flag, so it is re-homed — rather than making a user write
+`just setup zephyr "" --skip-sdk`.
+
+Remaining: the prose sweep (book/, AGENTS.md, CLAUDE.md still teach the module
+spelling).
+
+Original text:
 
 `check-workflow-setup-spelling` (#397) forbids `just <scope> setup` in
 workflows and carries exactly one exemption: the nightly zephyr jobs, which pass
@@ -172,8 +211,13 @@ by validating before printing a command, which is honest but is a workaround.
 Same for `deploy=`: `threadx` is not a scope, it splits into `threadx_linux` /
 `threadx_riscv64`.
 
-Decide which namespace is canonical, map the other onto it, and gate that they
-agree. This is the two-vocabularies class this repo keeps paying for — the
+**DECIDED (2026-09-05): additive first, unification deferred.** Add the missing
+`[board.*]` entries so every exported board is ALSO an index key — no renames,
+and it makes `nros setup <board>` work for all five instead of one. True
+unification (picking one canonical spelling and renaming through 90+
+package.xml files) stays open, because the index namespace is what USERS type
+while the cmake namespace is what the BUILD uses, and neither is obviously the
+one to keep. This is the two-vocabularies class this repo keeps paying for — the
 `native`/`posix`/`linux` collapse, `[system.*]` vs `[prereq.*]`, the module vs
 dispatcher setup spelling.
 
