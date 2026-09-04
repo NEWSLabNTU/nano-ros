@@ -33,7 +33,6 @@ CORROSION_VERSION := "v0.6.1"
 #
 # The version is the SUBMODULE COMMIT, so the stamp invalidates exactly when the
 # pin moves.
-PLAY_LAUNCH_PARSER_VERSION := "838ce948551f8ba263648fbb7eeb572cec9d5950"
 
 # Workspace module — host-agnostic dev environment setup.
 #
@@ -111,121 +110,29 @@ build-codegen:
 install-corrosion:
     #!/usr/bin/env bash
     set -euo pipefail
-    want="{{CORROSION_VERSION}}"
-    # Honour NROS_HOME: the ROS distrobox points it at its own store, and a
-    # binary installed into the HOST store is invisible to activate.sh there
-    # (it reads ${NROS_HOME:-$HOME/.nros}). Issue 0400 family.
-    # phase-365 W5 — install into the VERSIONED prefix, the same one
-    # `nros setup --tool corrosion` writes and every consumer now constructs.
+    # phase-422 W1 — FORWARDER. This recipe used to be a second PRODUCER: its
+    # own download, its own `.installed-version` stamp, writing the same
+    # versioned prefix `nros setup --tool corrosion` writes.
     #
-    # This recipe used to install into the unversioned `<store>/sdk/corrosion`,
-    # so the store had TWO layouts from two producers. That flat prefix is what
-    # actually caused issue 0625: `cmake-prefix.sh` globbed
-    # `<store>/corrosion/*/`, which matched the flat install's `lib/` and
-    # `share/` subdirectories — not versions at all — and under `sort -Vr` a
-    # pure-alpha name sorts BEFORE the numeric ones, so it led the prefix path
-    # and won 155 of 183 resolutions.
+    # Two producers for one prefix is issue 0500's failure mode: the store
+    # accumulates, prefixes resolve newest-first, and BOTH paths print success —
+    # so a stale Corrosion shadowed the pin that had just been installed and
+    # `mixed` could not link. A second producer is not a convenience, it is a
+    # second answer to "which version is installed?".
     #
-    # `nros sdk-path` is the single constructor (phase-365 W2); asking it here
-    # means the installer and the consumers cannot disagree about where the
-    # tool lives.
-    prefix="$(nros sdk-path corrosion 2>/dev/null || true)"
-    if [ -z "$prefix" ]; then
-        echo "[corrosion] cannot resolve the pinned install path — is \`nros\` on PATH?" >&2
-        echo "            (source ./activate.sh, or use \`nros setup --tool corrosion\`)" >&2
-        exit 1
-    fi
-    stamp="$prefix/.installed-version"
-    if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$want" ]; then
-        echo "[corrosion] $want already installed ($prefix)"
-        exit 0
-    fi
-    mkdir -p "$prefix"
-    tmp="$(mktemp -d)"
-    trap 'rm -rf "$tmp"' EXIT
-    echo "[corrosion] cloning $want..."
-    git clone --depth=1 --branch "$want" https://github.com/corrosion-rs/corrosion.git "$tmp/src"
-    echo "[corrosion] configuring..."
-    # nros-cmake-prefix-exempt: this IS the Corrosion build — putting an
-    # installed Corrosion on its prefix path would be circular.
-    cmake -S "$tmp/src" -B "$tmp/build" \
-        -DCMAKE_INSTALL_PREFIX="$prefix" \
-        -DCORROSION_BUILD_TESTS=OFF >/dev/null
-    echo "[corrosion] building..."
-    cmake --build "$tmp/build" >/dev/null
-    echo "[corrosion] installing to $prefix..."
-    cmake --install "$tmp/build" >/dev/null
-    echo "$want" > "$stamp"
-    echo "[corrosion] installed $want at $prefix"
-    echo "[corrosion] consumers should pass CMAKE_PREFIX_PATH=$prefix or set it globally."
+    # The index is the pin (`[tool.corrosion] upstream`), and the CLI stamps the
+    # same upstream tag this recipe used to, so the doctor's comparison is
+    # unchanged.
+    nros setup --tool corrosion
 
-# Install play_launch_parser into `~/.nros/sdk/play_launch_parser/`.
-# The Phase 212.L.6 launch-graph resolver in `nros plan` /
-# `nros codegen-system` shells out to this binary for both synth (a
-# Component pkg without a launch file) and multi-launch resolution
-# (`<pkg>.launch.xml` > `system.launch.xml` precedence). Lives under
-# `~/.nros/sdk/` (not third-party/) because it's a per-developer
-# install consumed via PATH, not a repo-relative tool. Idempotent:
-# skips when the pinned SHA is already installed. Pinned to a SHA on
-# `main` (no upstream tags). Matches `[tool.play_launch_parser]` in
-# `nros-sdk-index.toml` so the just-recipe and `nros setup --tool` land
-# the same revision. `.envrc` adds `~/.nros/sdk/play_launch_parser/bin`
-# to PATH so the L.6 gate tests' `play_launch_parser_available()` probe
-# (`Command::new("play_launch_parser").arg("--help")`) finds it.
 [group("setup")]
 install-play-launch-parser:
     #!/usr/bin/env bash
     set -euo pipefail
-    want="{{PLAY_LAUNCH_PARSER_VERSION}}"
-    # `nros sdk-path` is the single constructor (phase-365 W2), so the installer
-    # and every consumer cannot disagree about where the tool lives.
-    #
-    # This was the LAST hand-joined store path, left that way by phase-365 W3b
-    # for a real reason: this tool installs UNVERSIONED (`<store>/<tool>/`), and
-    # at the time `sdk-path` constructed only the VERSIONED shape, so converting
-    # the reader alone would have pointed it at a directory the installer never
-    # writes — the exact break W5 hit and reverted. Issue 0628 taught the
-    # constructor both layouts, so the reader can be converted without moving
-    # the installer first.
-    prefix="$(nros sdk-path play_launch_parser 2>/dev/null || true)"
-    if [ -z "$prefix" ]; then
-        echo "[play_launch_parser] cannot resolve the pinned install path — is \`nros\` on PATH?" >&2
-        echo "                     (source ./activate.sh, or use \`nros setup --tool play_launch_parser\`)" >&2
-        exit 1
-    fi
-    stamp="$prefix/.installed-version"
-    if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$want" ]; then
-        echo "[play_launch_parser] $want already installed ($prefix)"
-        exit 0
-    fi
-    mkdir -p "$prefix"
-    # Built from the in-tree SUBMODULE, not cloned. Two reasons, and the second
-    # is the one that matters:
-    #   * the standalone repo is ARCHIVED, so a provisioning step that clones it
-    #     depends on a dead source;
-    #   * the LIBRARY half is already path-dep'd from this submodule by
-    #     `nros-launch-resolve`, so cloning the binary from elsewhere gave one
-    #     component two independent pins with nothing keeping them in step.
-    # No network fetch either, which is why this now works on a CI runner that
-    # checks out the submodule but never sources `activate.sh`.
-    src="{{justfile_directory()}}/packages/cli/third-party/play_launch/src/ros-launch-resolve/parser/crates/play_launch_parser"
-    if [ ! -f "$src/Cargo.toml" ]; then
-        echo "[play_launch_parser] submodule not initialised — expected $src" >&2
-        echo "                     git submodule update --init packages/cli/third-party/play_launch" >&2
-        exit 1
-    fi
-    echo "[play_launch_parser] building from the submodule ($want)..."
-    cargo install --path "$src" --root "$prefix" --locked >/dev/null
-    echo "$want" > "$stamp"
-    echo "[play_launch_parser] installed $want at $prefix"
-    echo "[play_launch_parser] ensure $prefix/bin is on PATH (direnv .envrc does this)."
+    # phase-422 W1 — FORWARDER, for the reason on `install-corrosion` above.
+    # `[tool.play_launch_parser]` in the index is the pin.
+    nros setup --tool play_launch_parser
 
-# Install sccache (shared compiler cache) into the SDK store via the index
-# (issue #74). The justfile's `RUSTC_WRAPPER` + the zephyr fixture CMake launcher
-# auto-use it once on PATH (activate.{sh,fish} adds the store bin) — ~46% faster
-# host / ~22% embedded clean rebuilds (docs/development/build-ux-audit.md).
-# Non-fatal: sccache only speeds builds, so a failed source build warns rather
-# than aborting setup. Skipped when sccache is already on PATH.
 [group("setup")]
 install-sccache:
     #!/usr/bin/env bash
@@ -395,18 +302,23 @@ doctor:
     plp_stamp="$plp_prefix/.installed-version"
     plp_bin="$plp_prefix/bin/play_launch_parser"
     plp_install_ok=0
-    if [ -f "$plp_stamp" ] && [ "$(cat "$plp_stamp" 2>/dev/null)" = "{{PLAY_LAUNCH_PARSER_VERSION}}" ] && [ -x "$plp_bin" ]; then
+    # phase-422 W1 — ask the INDEX, not a second constant. This compared the
+    # stamp to `PLAY_LAUNCH_PARSER_VERSION` (a git SHA) while the index pins
+    # `0.1.0-nros1`; the two producers never agreed, so retiring the recipe's
+    # own installer made the doctor report a correctly installed tool MISSING.
+    # One pin, and the CLI owns the comparison.
+    if nros setup --tool play_launch_parser --check >/dev/null 2>&1 && [ -x "$plp_bin" ]; then
         plp_install_ok=1
     fi
     if [ $plp_install_ok -eq 1 ] && command -v play_launch_parser >/dev/null 2>&1; then
-        echo "  [OK] play_launch_parser {{PLAY_LAUNCH_PARSER_VERSION}} (~/.nros/sdk/play_launch_parser)"
+        echo "  [OK] play_launch_parser (index pin) (~/.nros/sdk/play_launch_parser)"
     elif [ $plp_install_ok -eq 1 ]; then
         echo "  [PATH] play_launch_parser installed at ~/.nros/sdk/play_launch_parser/bin/ but not on PATH —"
         echo "         run: source ./activate.sh  (or direnv allow / source ./activate.fish)"
         echo "         (Phase 220.J — agent driver scripts MUST source activate.sh before any just <plat> build)"
         fail=1
     else
-        echo "  [MISSING] play_launch_parser {{PLAY_LAUNCH_PARSER_VERSION}} (run: just workspace install-play-launch-parser)"
+        echo "  [MISSING] play_launch_parser (run: just workspace install-play-launch-parser)"
         fail=1
     fi
 

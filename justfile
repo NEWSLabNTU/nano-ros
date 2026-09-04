@@ -3848,11 +3848,22 @@ regenerate-bindings: clean-bindings generate-bindings
 #
 # Print setup choices with no args; otherwise run a tier or focused setup.
 [group("setup")]
-setup target="" tier="":
+setup target="" tier="" *extra:
     #!/usr/bin/env bash
     set -e
     chosen_tier="{{tier}}"
     target="{{target}}"
+    extra_args="{{ extra }}"
+    # phase-422 W3 — `just` fills positional parameters in order, so
+    # `just setup zephyr --skip-sdk` binds the flag to `tier`, not to the
+    # variadic tail. A tier is never a flag, so re-home it rather than making
+    # the user write `just setup zephyr "" --skip-sdk`.
+    case "$chosen_tier" in
+        -*)
+            extra_args="$chosen_tier $extra_args"
+            chosen_tier=""
+            ;;
+    esac
     if [[ -z "$target" && -z "$chosen_tier" ]]; then
         printf '%s\n' \
           "nano-ros setup choices:" \
@@ -3915,7 +3926,7 @@ setup target="" tier="":
             # they do have `setup`, and `just setup workspace` predates 407.
             workspace | verification | rmw_zenoh)
                 just _setup-common
-                exec just "$target" setup
+                exec just "$target" setup $extra_args
                 ;;
             *)
                 # shellcheck source=scripts/build/scope.sh
@@ -3925,7 +3936,7 @@ setup target="" tier="":
                     # Focused platform setup may still shell `nros setup …`;
                     # provision the CLI + resolver first so the binaries exist.
                     just _setup-common
-                    exec just "$target" setup
+                    exec just "$target" setup $extra_args
                 fi
                 # phase-411 W4 — a PRESET provisions the set it names.
                 #
