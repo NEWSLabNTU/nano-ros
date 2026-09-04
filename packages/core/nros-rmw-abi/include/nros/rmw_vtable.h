@@ -890,12 +890,30 @@ typedef struct nros_rmw_vtable_t {
 
     /** Upstream `rmw_get_serialization_format`.
      *
-     *  RESERVED, and NULL in every backend. As above, the "runtime answers
-     *  `cdr`" fallback this doc used to promise does not exist in code.
+     *  The backend's wire encoding, as its cross-image identity STRING
+     *  (RFC-0088 D2: the `u8` discriminant is assigned per image and means
+     *  nothing outside it; the name is what two images can agree on). Static
+     *  for the life of the image, like the identifier above.
      *
-     *  Every backend here speaks CDR, nothing asks, and no divergence is
-     *  possible to guard against — so a body would be parity shape with no
-     *  reader. It becomes real work the day a backend speaks something else. */
+     *  PRODUCED by every backend since phase-421 W2. It was reserved until
+     *  then for a stated reason — "every backend here speaks CDR, nothing
+     *  asks, so a body would be parity shape with no reader" — and both halves
+     *  of that reason have since stopped being true. uORB's wire is the PX4
+     *  struct verbatim (RFC-0011), so it answers `"uorb"` where every other
+     *  backend answers `"cdr"`; and `nros_rmw_cffi_register_named` admits
+     *  several backends in one image, so a bridge has two sessions whose
+     *  formats differ and one compile-time constant cannot describe both.
+     *  `CffiSession::serialization_format` is the reader.
+     *
+     *  This is the ONLY per-session answer. `nros_node::IMAGE_SERIALIZATION_
+     *  FORMAT` and the generated `NROS_SERIALIZATION_FORMAT` macro are
+     *  compile-time constants and are meaningful only in a single-backend
+     *  image; ask the slot whenever the image links more than one.
+     *
+     *  NULL slot: the runtime answers NULL — it does NOT guess `"cdr"`. A
+     *  backend that does not declare its format has not told anyone what it
+     *  speaks, and inventing an answer is how the identifier slot's doc came
+     *  to promise a fallback nobody had written (corrected phase-393 W2). */
     const char *(*get_serialization_format)(void);
 
     /** Upstream `rmw_feature_supported`.

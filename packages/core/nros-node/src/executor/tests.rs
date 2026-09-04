@@ -112,6 +112,7 @@ impl RosMessage for TestMsg {
 // now required by `MessageForRmw` on EVERY backend, because that is where
 // a subscription's build-time size bound comes from.
 impl nros_serdes::schema::Message for TestMsg {
+    type Format = nros_serdes::format::Cdr;
     const TYPE_NAME: &'static str = "test/msg/TestMsg";
     const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
         name: "data",
@@ -168,6 +169,7 @@ impl RosMessage for UnboundedTestMsg {
 }
 
 impl nros_serdes::schema::Message for UnboundedTestMsg {
+    type Format = nros_serdes::format::Cdr;
     const TYPE_NAME: &'static str = "test/msg/UnboundedTestMsg";
     const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
         name: "data",
@@ -365,6 +367,7 @@ fn an_unbounded_type_yields_no_receive_buffer_size() {
 struct OddBoundTestMsg;
 
 impl nros_serdes::schema::Message for OddBoundTestMsg {
+    type Format = nros_serdes::format::Cdr;
     const TYPE_NAME: &'static str = "test/msg/OddBoundTestMsg";
     const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
         name: "data",
@@ -1839,6 +1842,7 @@ impl RosMessage for TestGoal {
 // now required by `MessageForRmw` on EVERY backend, because that is where
 // a subscription's build-time size bound comes from.
 impl nros_serdes::schema::Message for TestGoal {
+    type Format = nros_serdes::format::Cdr;
     const TYPE_NAME: &'static str = "test/action/TestAction_Goal";
     const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
         name: "order",
@@ -1875,6 +1879,7 @@ impl RosMessage for TestResult {
 // now required by `MessageForRmw` on EVERY backend, because that is where
 // a subscription's build-time size bound comes from.
 impl nros_serdes::schema::Message for TestResult {
+    type Format = nros_serdes::format::Cdr;
     const TYPE_NAME: &'static str = "test/action/TestAction_Result";
     const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
         name: "value",
@@ -1911,6 +1916,7 @@ impl RosMessage for TestFeedback {
 // now required by `MessageForRmw` on EVERY backend, because that is where
 // a subscription's build-time size bound comes from.
 impl nros_serdes::schema::Message for TestFeedback {
+    type Format = nros_serdes::format::Cdr;
     const TYPE_NAME: &'static str = "test/action/TestAction_Feedback";
     const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
         name: "progress",
@@ -3156,6 +3162,7 @@ impl RosMessage for TestServiceRequest {
 // now required by `MessageForRmw` on EVERY backend, because that is where
 // a subscription's build-time size bound comes from.
 impl nros_serdes::schema::Message for TestServiceRequest {
+    type Format = nros_serdes::format::Cdr;
     const TYPE_NAME: &'static str = "test/srv/TestService_Request";
     const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
         name: "a",
@@ -3187,6 +3194,7 @@ impl RosMessage for TestServiceReply {
 // now required by `MessageForRmw` on EVERY backend, because that is where
 // a subscription's build-time size bound comes from.
 impl nros_serdes::schema::Message for TestServiceReply {
+    type Format = nros_serdes::format::Cdr;
     const TYPE_NAME: &'static str = "test/srv/TestService_Reply";
     const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
         name: "sum",

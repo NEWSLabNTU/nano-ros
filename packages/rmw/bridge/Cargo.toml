@@ -29,7 +29,7 @@ alloc = ["nros-node/alloc"]
 # Phase 128.G — TOML-driven entrypoint. Reads `nros.toml` and builds
 # an Executor + Nodes + bridges from the manifest. Pulls `toml` +
 # `serde`; requires `std` because both crates do.
-config = ["dep:toml", "dep:serde", "dep:nros-rmw", "dep:nros-serdes"]
+config = ["dep:toml", "dep:serde", "dep:nros-rmw"]
 # Phase 128.F.5 — C/C++ bridge ABI. Emits `nros_init_multi`,
 # `nros_pubsub_bridge_*` symbols matching `<nros/bridge.h>`. Requires
 # `alloc` (every entity handle is boxed).
@@ -52,7 +52,11 @@ nros-rmw-cffi = { workspace = true, optional = true }
 # data-driven bridge stages a `dds_topic_descriptor_t` from the field schema
 # carried in `nros-bridge.toml` via `nros_rmw::register_type_descriptor`.
 nros-rmw = { workspace = true, default-features = false, optional = true }
-nros-serdes = { workspace = true, default-features = false, optional = true }
+# RFC-0088 / phase-421 W3 — NOT optional. `SerializationFormatId` is in the
+# signature of `PubSubBridge::new`'s error, so it is part of the crate's
+# unconditional public API, not a config-only detail. `default-features = false`
+# keeps it `no_std`.
+nros-serdes = { workspace = true, default-features = false }
 toml = { version = "0.9", default-features = false, features = ["parse", "serde"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 

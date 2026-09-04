@@ -104,6 +104,21 @@ impl<'a> NodeHandle<'a> {
         &self.name
     }
 
+    /// RFC-0088 — the serialization format this node's entities speak.
+    ///
+    /// The counterpart to ROS 2's `rmw_get_serialization_format()`, asked of
+    /// the node rather than the process: an `Executor::open_multi` image holds
+    /// two sessions and has no single answer, which is the case the reserved
+    /// vtable slot was cut for.
+    ///
+    /// A single-backend image already knows this at compile time — see
+    /// [`crate::session::IMAGE_SERIALIZATION_FORMAT`], which is what the
+    /// entity-creation assertions compare against. Use this accessor when the
+    /// answer must be a value: a bridge, a diagnostic, a tool.
+    pub fn serialization_format(&self) -> &'static str {
+        nros_rmw::Session::serialization_format(&*self.session)
+    }
+
     /// Phase 88.12 — return the [`nros_log::Logger`] keyed on the
     /// node name.
     ///
@@ -221,6 +236,10 @@ impl<'a> NodeHandle<'a> {
         topic_name: &str,
         qos: QoSProfile,
     ) -> Result<EmbeddedPublisher<M>, NodeError> {
+        // RFC-0088 / phase-421 W1 — the message's declared format must be the
+        // one the linked backend speaks. Universal: the const lives on
+        // `RosMessage`, which `MessageForRmw` requires under every backend.
+        crate::format_check::assert_message_format::<M>();
         // Phase 212.K.7.6.b — under `rmw-cyclonedds`, ensure the runtime
         // type-descriptor exists before the cffi vtable creates the
         // entity. No-op for other RMWs.
@@ -350,6 +369,10 @@ impl<'a> NodeHandle<'a> {
         topic_name: &str,
         qos: QoSProfile,
     ) -> Result<Subscription<M, RX_BUF>, NodeError> {
+        // RFC-0088 / phase-421 W1 — the message's declared format must be the
+        // one the linked backend speaks. Universal: the const lives on
+        // `RosMessage`, which `MessageForRmw` requires under every backend.
+        crate::format_check::assert_message_format::<M>();
         // Phase 212.K.7.6.b — see `create_publisher_with_qos`.
         register_type::<M>()?;
         // Phase 211.H — apply plan qos_overrides (subscription side) before validate.
@@ -2529,6 +2552,7 @@ mod builder_tests {
     // now required by `MessageForRmw` on EVERY backend, because that is where
     // a subscription's build-time size bound comes from.
     impl nros_serdes::schema::Message for TestMsg {
+        type Format = nros_serdes::format::Cdr;
         const TYPE_NAME: &'static str = "test/msg/TestMsg";
         const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
             name: "data",

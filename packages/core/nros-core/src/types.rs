@@ -9,6 +9,26 @@
 /// Identifies a ROS message type by its DDS type name and RIHS hash.
 /// All message types implement `Serialize` and `Deserialize`.
 pub trait RosMessage: Sized + nros_serdes::Serialize + nros_serdes::Deserialize {
+    /// RFC-0088 — the serialization format this message's bytes are in.
+    ///
+    /// **Defaulted, on purpose.** A required associated type here would force a
+    /// line onto every hand-written message in every user crate, which is the
+    /// decision phase-380 W4 already made and reverted once: tightening the
+    /// message contract to serve a build assertion broke
+    /// `examples/native/rust/custom-msg`, the documented hand-written-message
+    /// pattern. A defaulted const costs existing implementors nothing and still
+    /// answers at compile time, which is all the assertion needs.
+    ///
+    /// It lives on `RosMessage` rather than `nros_serdes::schema::Message`
+    /// because only this trait is universal: `MessageForRmw` requires a schema
+    /// only under `cfg(rmw_needs_type_descriptors)` (Cyclone), so a check keyed
+    /// on the schema would be absent under zenoh and XRCE — and absent under
+    /// uORB, which is the one backend the check exists for.
+    ///
+    /// Codegen emits an override only for a non-CDR format.
+    const SERIALIZATION_FORMAT_ID: nros_serdes::format::SerializationFormatId =
+        nros_serdes::format::SerializationFormatId::Cdr;
+
     /// Full ROS type name in DDS format
     ///
     /// Example: `"std_msgs::msg::dds_::String_"`

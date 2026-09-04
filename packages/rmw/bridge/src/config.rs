@@ -64,6 +64,10 @@ pub enum ConfigError {
     OpenSession(String),
     BuildNode(String),
     BuildEntity(String),
+    /// RFC-0088 D3 / phase-421 W3 — the two sides of a `[[bridge]]` do not
+    /// agree on a serialization format, and the entry named no converter.
+    /// The string names the config source and both formats.
+    FormatMismatch(String),
 }
 
 impl fmt::Display for ConfigError {
@@ -75,6 +79,7 @@ impl fmt::Display for ConfigError {
             ConfigError::OpenSession(s) => write!(f, "open_multi failed: {s}"),
             ConfigError::BuildNode(s) => write!(f, "create_node_on failed: {s}"),
             ConfigError::BuildEntity(s) => write!(f, "create entity failed: {s}"),
+            ConfigError::FormatMismatch(s) => write!(f, "bridge serialization format: {s}"),
         }
     }
 }
@@ -125,6 +130,15 @@ struct BridgeCfg {
     /// needs (it round-trips through the descriptor's own `m_size` buffer).
     #[serde(default)]
     fields: Vec<FieldCfg>,
+    // RFC-0088 D3 — TODO(phase-421 W4): an optional `converter = "<name>"` key.
+    //
+    // Deliberately absent, not forgotten. A name can only become a
+    // `&'static dyn SerializationFormatConverter` once something maps names to
+    // converters, and that registry is the `serdes` provider family in W4.
+    // Accepting the key now would resolve it to nothing — the same unchecked
+    // claim W3 exists to delete. Until W4 lands, a cross-format bridge is built
+    // in source with `PubSubBridge::with_converter`, and this file's error says
+    // so by name.
 }
 
 /// One `{ name, type }` entry of a [`BridgeCfg::fields`] schema. `type` is the
@@ -242,7 +256,9 @@ fn stage_descriptor(b: &BridgeCfg) -> Result<(), ConfigError> {
 pub fn run_from_config(path: impl AsRef<Path>) -> Result<(), ConfigError> {
     let raw = fs::read_to_string(path.as_ref())
         .map_err(|e| ConfigError::Io(format!("{}: {e}", path.as_ref().display())))?;
-    run_from_config_str(&raw)
+    // phase-421 W3 — carry the path so a wiring error can NAME the file the
+    // user has to edit. `run_from_config_str` has no path to carry.
+    run_from_config_source(&raw, &format!("{}", path.as_ref().display()))
 }
 
 /// phase-267 W1c/C4 — run a bridge from the config CONTENTS (not a file path).
@@ -252,6 +268,16 @@ pub fn run_from_config(path: impl AsRef<Path>) -> Result<(), ConfigError> {
 /// file path to get wrong) and hands the contents here. Identical wiring to
 /// [`run_from_config`]; only the source differs.
 pub fn run_from_config_str(raw: &str) -> Result<(), ConfigError> {
+    run_from_config_source(raw, EMBEDDED_CONFIG_SOURCE)
+}
+
+/// Label used for a config whose bytes were baked in by `nros::main!` and so
+/// have no path on disk. Appears in diagnostics where a file name would.
+const EMBEDDED_CONFIG_SOURCE: &str = "<nros-bridge.toml baked by nros::main!>";
+
+/// Shared body of [`run_from_config`] and [`run_from_config_str`]. `source`
+/// names where `raw` came from, for diagnostics only.
+fn run_from_config_source(raw: &str, source: &str) -> Result<(), ConfigError> {
     let mut cfg: ConfigFile =
         toml::from_str(raw).map_err(|e| ConfigError::Parse(format!("{e}")))?;
     apply_node_env_overrides(&mut cfg.node);
@@ -345,7 +371,14 @@ pub fn run_from_config_str(raw: &str) -> Result<(), ConfigError> {
         // backend name string. Config-driven entrypoint is one-shot
         // per process; the leak is O(bridges) and bounded.
         let origin: &'static str = Box::leak(src_rmw.to_string().into_boxed_str());
-        bridges.push(Box::new(PubSubBridge::new(sub, pubr, origin)));
+        // RFC-0088 D3 / phase-421 W3 — the bridge forwards bytes untouched, so
+        // it refuses when the two sides do not agree on what those bytes are.
+        // Re-word the crate error into one that names the FILE, because the
+        // user's next action is editing that file.
+        let bridge = PubSubBridge::new(sub, pubr, origin).map_err(|e| {
+            ConfigError::FormatMismatch(bridge_format_error(source, b, src_rmw, dst_rmw, &e))
+        })?;
+        bridges.push(Box::new(bridge));
     }
 
     // Spin loop: drive each bridge once per executor tick. The
@@ -362,6 +395,24 @@ pub fn run_from_config_str(raw: &str) -> Result<(), ConfigError> {
             let _ = b.pump();
         }
     }
+}
+
+/// Render a [`crate::BridgeError`] into a config-level message: which file,
+/// which `[[bridge]]`, which two backends, and both format names. phase-421 W3.
+fn bridge_format_error(
+    source: &str,
+    b: &BridgeCfg,
+    src_rmw: &str,
+    dst_rmw: &str,
+    e: &crate::BridgeError,
+) -> String {
+    format!(
+        "{source}: [[bridge]] type = {:?} from {}:{} ({src_rmw}) to {}:{} ({dst_rmw}): {e}. \
+         A cross-format bridge must name a converter; build it in source with \
+         PubSubBridge::with_converter (a `converter = \"…\"` config key lands with the \
+         `serdes` provider family, phase-421 W4).",
+        b.type_name, b.from.node, b.from.topic, b.to.node, b.to.topic,
+    )
 }
 
 fn node_rmw<'a>(nodes: &'a [NodeCfg], name: &str) -> Result<&'a str, ConfigError> {
@@ -441,7 +492,9 @@ trait PumpableBridge {
     fn pump(&mut self) -> Result<usize, nros_node::NodeError>;
 }
 
-impl<const RX: usize, const TX: usize> PumpableBridge for PubSubBridge<RX, TX> {
+impl<const RX: usize, const TX: usize, const CV: usize> PumpableBridge
+    for PubSubBridge<RX, TX, CV>
+{
     fn pump(&mut self) -> Result<usize, nros_node::NodeError> {
         PubSubBridge::pump(self)
     }

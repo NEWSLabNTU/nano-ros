@@ -182,7 +182,9 @@ trait PumpableBridge {
     fn pump_with_stats(&mut self) -> crate::PumpStats;
 }
 
-impl<const RX: usize, const TX: usize> PumpableBridge for PubSubBridge<RX, TX> {
+impl<const RX: usize, const TX: usize, const CV: usize> PumpableBridge
+    for PubSubBridge<RX, TX, CV>
+{
     fn pump(&mut self) -> usize {
         PubSubBridge::pump(self).unwrap_or(0)
     }
@@ -291,8 +293,23 @@ pub unsafe extern "C" fn nros_pubsub_bridge_create(
         Box::leak(String::from(origin).into_boxed_str())
     };
 
+    // RFC-0088 D3 / phase-421 W3 — a two-backend image is the one place where
+    // the two sides can disagree about what the forwarded bytes mean. Refuse
+    // here, naming both formats: the C caller only gets a return code, so the
+    // log line is the whole diagnosis.
+    let inner = match PubSubBridge::new(sub, pubr, origin_static) {
+        Ok(b) => b,
+        Err(e) => {
+            nros_log::nros_error!(
+                nros_log::get_logger("nros_rmw_bridge"),
+                "nros_pubsub_bridge_create: {}",
+                e
+            );
+            return NROS_RMW_RET_ERROR;
+        }
+    };
     let bridge = Box::new(BridgeBox {
-        bridge: Box::new(PubSubBridge::new(sub, pubr, origin_static)),
+        bridge: Box::new(inner),
     });
     unsafe { *out = Box::into_raw(bridge) as *mut core::ffi::c_void };
     NROS_RMW_RET_OK

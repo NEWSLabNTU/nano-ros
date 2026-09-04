@@ -109,6 +109,12 @@ typedef struct {
  *
  * Returns `NROS_RMW_RET_OK` on success and writes the bridge handle
  * to `*out`.
+ *
+ * RFC-0088 D3 — returns `NROS_RMW_RET_ERROR` when the two sides speak
+ * different serialization formats. The bytes are forwarded untouched, so
+ * bridging a uORB session to a CDR one would hand each side the other's
+ * encoding; construction refuses instead. The log line on the
+ * `nros_rmw_bridge` channel names both formats.
  */
 int32_t nros_pubsub_bridge_create(nros_executor_handle_t exec, const nros_bridge_endpoint_t* src,
                                   const nros_bridge_endpoint_t* dst, const char* type_name,
