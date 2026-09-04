@@ -173,6 +173,7 @@ fast-serial: \
     fixture-binary-names \
     fixture-groups \
     fixture-id-guard \
+    fixture-staleness-probes \
     fixture-stamp-honesty \
     fixtures-manifest \
     flake-quarantine \
@@ -1933,6 +1934,37 @@ ci-no-fixture-tolerance:
 [private]
 fixture-stamp-honesty:
     @python3 scripts/check-fixture-stamp-honesty.py
+
+# Issue 0835 — a fixture staleness probe decides from the ARTIFACT's BYTES, not
+# from whether the build did work. Corrosion's cargo step is an always-dirty
+# edge and the phase-340 cargo groups evict rows nobody touched, so an
+# activity-keyed probe reports work on EVERY run forever: it reported the same
+# 17 cmake cells + 23 rust rows stale on a tree whose `lane=all` build had just
+# gone green, which is what failed ~190 tests on every `just ci matrix`.
+#
+# Fixed in 2fa1ed09f with nothing guarding it. This runs the REAL probe scripts
+# against a two-file cmake cell and a one-binary cargo leaf, and carries its own
+# negative control: the pre-fix decision rules are re-applied to the same trees
+# and must FIRE.
+fixture-staleness-probes:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _missing=""
+    for _t in cmake ninja cargo cc; do
+        command -v "$_t" >/dev/null 2>&1 || _missing="$_missing $_t"
+    done
+    # The probe asks the CLI for the platform's cargo profile, so the leaf
+    # cannot be built without it — and a missing CLI would surface as every case
+    # failing on `profile ... is not defined`, which reads as a probe defect.
+    _cli="${NROS_CLI:-packages/cli/target/release/nros}"
+    [ -x "$_cli" ] || _missing="$_missing nros(just setup-cli)"
+    if [ -n "$_missing" ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip fixture-staleness-probes "missing:$_missing"
+        exit 0
+    fi
+    ./tests/fixture-staleness-probe-tests.sh
 
 # Every CI job gated on a `vars.*` interlock must have a job that reports
 # whether it ran. A skipped job does not colour its run, so post-submit reported
