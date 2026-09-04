@@ -430,14 +430,36 @@ config NROS_ZENOH_LEASE_FACTOR
       peer with a short lease of its own.
 
 config NROS_ZENOH_READ_PRIORITY
-    int "zenoh-pico read task priority (normalized 0-31)"
-    default 16
+    int "zenoh-pico read task priority (normalised band, 0-255)"
+    default 200
     help
-      Scheduling priority of the zenoh-pico READ task, on the normalized band
-      shared with the platform ABI: 0 = least urgent, 31 = most urgent
-      (phase-364 W5). The shim maps it onto whatever
-      sched_get_priority_min/max report for SCHED_RR, which depends on this
-      build's CONFIG_NUM_PREEMPT_PRIORITIES.
+      Scheduling priority of the zenoh-pico READ task, on the platform ABI's
+      normalised band: 0 = least urgent, NROS_PLATFORM_PRIORITY_MAX (255) =
+      most urgent (phase-364 W5). nros_zephyr_native_priority maps it onto
+      whatever sched_get_priority_min/max report for SCHED_RR in THIS image,
+      which depends on CONFIG_NUM_PREEMPT_PRIORITIES.
+
+      issue 0852 — THE SCALE CHANGED, AND THE OLD VALUES DO NOT CARRY OVER.
+      This was documented "normalized 0-31" with a default of 16, and mapped by
+      a second, private conversion (zpico_posix_set_priority) that wrote into a
+      pthread_attr_t nothing on this platform ever read. Two normalised bands
+      meeting in one scheduler is issue 0623 verbatim: a 16 authored against
+      0-31 is (16*14)/255 = 0 through the real map — the LEAST urgent slot,
+      which is exactly where every Zephyr transport task has been running.
+      The private scale and its conversion are deleted; this band is the only
+      one left.
+
+      Why 200: on a CONFIG_NUM_PREEMPT_PRIORITIES=15 image it maps to SCHED_RR
+      10, i.e. k_thread 4 — ABOVE the tier pool ([8,14] in
+      [board.priority_plan]) and below the main thread. That ordering is
+      CHOSEN, not inherited: it is what the board's priority plan already
+      declares, and what FreeRTOS ships (app 3 / transport 4). The reverse
+      starves the RX drain and stalls publishers on retransmission timeouts
+      (issue 0623). Both orderings are legitimate; choosing by accident is the
+      bug this issue was.
+
+      The number is IMAGE-DERIVED (issue 0766): re-resolve it against your
+      own .config rather than assuming k_thread 4.
 
       Before issue 0626 this was not settable at all on Zephyr: the shim's
       POSIX branch configured only the stack size, carrying a comment about
@@ -445,16 +467,14 @@ config NROS_ZENOH_READ_PRIORITY
       transport tasks ran at whatever default applied and issue 0506's
       question (what preempts the RT tiers under load?) could not be asked.
 
-      The default 16 preserves the historic value from the only platform that
-      already stated one (the FreeRTOS board's zenoh_read_priority). Raising
-      it above your RT tiers means transport preempts control; lowering it
-      below means a busy tier can starve the RX drain, which stalls publishers
-      on retransmission timeouts. Both are real failure modes with real cost —
-      see issues 0506 and 0623 before changing it.
+      Raising it above your RT tiers means transport preempts control;
+      lowering it below means a busy tier can starve the RX drain, which
+      stalls publishers on retransmission timeouts. Both are real failure
+      modes with real cost — see issues 0506 and 0623 before changing it.
 
 config NROS_ZENOH_LEASE_PRIORITY
-    int "zenoh-pico lease task priority (normalized 0-31)"
-    default 16
+    int "zenoh-pico lease task priority (normalised band, 0-255)"
+    default 200
     help
       As NROS_ZENOH_READ_PRIORITY, for the lease (keep-alive) task. The lease
       task is light but latency-sensitive: if it cannot run, the session's
