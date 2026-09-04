@@ -542,6 +542,9 @@ pub fn graceful_kill_process_group(handle: &mut Child) {
 pub struct ManagedProcess {
     handle: Child,
     name: String,
+    /// The exact command this process was started with — see
+    /// [`ManagedProcess::command_line`].
+    cmdline: String,
 }
 
 impl ManagedProcess {
@@ -561,11 +564,16 @@ impl ManagedProcess {
         cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
+        let cmdline = crate::qemu::render_command(&cmd);
         let handle = cmd
             .spawn()
             .map_err(|e| TestError::ProcessFailed(format!("Failed to spawn {}: {}", name, e)))?;
 
-        Ok(Self { handle, name })
+        Ok(Self {
+            handle,
+            name,
+            cmdline,
+        })
     }
 
     /// Spawn a process from a Command builder
@@ -578,16 +586,34 @@ impl ManagedProcess {
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut command);
+        let cmdline = crate::qemu::render_command(&command);
         let handle = command
             .spawn()
             .map_err(|e| TestError::ProcessFailed(format!("Failed to spawn {}: {}", name, e)))?;
 
-        Ok(Self { handle, name })
+        Ok(Self {
+            handle,
+            name,
+            cmdline,
+        })
     }
 
     /// Get the process name
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// The command line this process was started with, pasteable into a shell.
+    ///
+    /// Issue 0877 — the sibling of [`crate::qemu::QemuProcess::command_line`],
+    /// and it exists for the same reason: an e2e failure message that says only
+    /// "0 messages received" sends the next reader off to reconstruct the run
+    /// by hand, and a reconstruction is only evidence if it starts the same
+    /// programs. The e2e lanes run with `--failure-output never`, so the record
+    /// has to be inside the assertion text.
+    #[must_use]
+    pub fn command_line(&self) -> &str {
+        &self.cmdline
     }
 
     /// Check if process is still running

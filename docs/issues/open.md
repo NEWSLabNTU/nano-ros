@@ -85,5 +85,6 @@ fails if this block drifts.
 - **#1013** (testing) — `test_rtos_pubsub_e2e` SIGKILLs its talker after ~12 publishes, so the cell exercises twelve seconds of a free-running publisher See `1013-*`.
 - **#1016** (testing, zephyr, ci) — `lane=tier2` does not build the zephyr rust/c west leaves, so their cells report as failures that are really skips See `1016-*`.
 - **#1017** (codegen, api, testing) — Nothing stops a CMake entry template from dropping the session name again (issue 1003 has no gate) See `1017-*`.
+- **#1024** (testing, rmw-xrce) — `NROS_XRCE_AGENT_VERBOSE` passes `-v6` to an Agent built with the logger compiled OUT, so the knob is silently inert See `1024-*`.
 
 <!-- END GENERATED open-issue list -->
