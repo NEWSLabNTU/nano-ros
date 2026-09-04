@@ -887,6 +887,35 @@ static void query_handler(z_loaned_query_t* query, void* arg) {
     // Call user callback
     entry->callback(keyexpr_str, keyexpr_len, payload_data, payload_len, entry->ctx);
 
+    /* issue 0902 — RECLAIM a slot the callback declined.
+     *
+     * The clone above happens BEFORE the callback runs, and the slot is
+     * released in only three places: the `memset` at session open, queryable
+     * teardown, and a fully successful `zpico_query_reply`. So a query that is
+     * cloned and then dropped by the callback holds its slot for the life of
+     * the queryable.
+     *
+     * The callback drops queries on two ordinary paths, and BOTH are hot:
+     * an empty payload — which the Rust side documents as "liveliness probes
+     * that zenoh-pico delivers through the same queryable callback as real
+     * service requests" — and a full request ring. Neither is an error, and
+     * both arrive on an idle link, so the four slots drain with ELAPSED TIME
+     * rather than with traffic. Once they are gone `reply_seq` is -1 for
+     * every later query, `zpico_query_reply` returns ZPICO_ERR_INVALID, and
+     * the caller discards it: a goal is accepted, executed, and never
+     * answered. The state is absorbing — nothing re-arms.
+     *
+     * `zpico_queryable_take_reply_seq` now CLEARS the seq as its name always
+     * claimed, so a still-set value here means the callback never asked for
+     * it, which means nobody holds this query and nobody will reply to it.
+     * Drop it. A callback that DID take the seq keeps its slot for the
+     * deferred reply, which is what the mechanism is for. */
+    if (reply_seq >= 0 && s->last_reply_seq[idx] >= 0) {
+        z_query_drop(z_query_move(&s->stored_queries[idx][reply_seq]));
+        s->stored_query_valid[idx][reply_seq] = false;
+        s->last_reply_seq[idx] = -1;
+    }
+
     // Clean up slice
     if (payload_data != NULL) {
         z_slice_drop(z_slice_move(&payload_slice));
@@ -3915,7 +3944,14 @@ int64_t zpico_queryable_take_reply_seq(zpico_session_t* session, int32_t queryab
     if (queryable_handle < 0 || queryable_handle >= ZPICO_MAX_QUERYABLES) {
         return -1;
     }
-    return s->last_reply_seq[queryable_handle];
+    /* issue 0902 — a real TAKE. The name always said so; the function used to
+     * be a pure read, which left the caller's decision invisible to
+     * `query_handler` and made a declined query indistinguishable from a
+     * deferred one. Clearing it is the claim: whatever is still set when the
+     * callback returns belongs to nobody. */
+    int64_t seq = s->last_reply_seq[queryable_handle];
+    s->last_reply_seq[queryable_handle] = -1;
+    return seq;
 }
 
 // ============================================================================
