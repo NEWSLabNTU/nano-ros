@@ -252,8 +252,14 @@ if(_addtwoints_sources)
     # Issue 0969 — the codec in isolation. NOT a ctest: it is a measuring
     # instrument, and a bench with a pass/fail verdict becomes a flaky test on a
     # loaded machine. Build it, run it by hand, read ns/msg.
+    # `sertype_min.{hpp,cpp}` lives HERE, not in src/, since issue 0976 retired
+    # its last production user. It reconstructs the CDR round trip this bench
+    # exists to price, so it is a measurement fixture for a path the backend no
+    # longer takes — keeping it beside the bench says that, and stops it being
+    # read as live code.
     add_executable(nros_rmw_cyclonedds_codec_bench
         codec_bench.cpp
+        sertype_min.cpp
         ${_addtwoints_sources}
     )
     target_link_libraries(nros_rmw_cyclonedds_codec_bench
