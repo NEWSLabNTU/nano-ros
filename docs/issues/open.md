@@ -88,6 +88,7 @@ fails if this block drifts.
 - **#1028** ([rmw, memory, build]) — NuttX is classified `hosted` because its `target_os` is not `\"none\"`, so it takes the Linux 32-queryable budget: 142,336 B of `.bss` in an image with zero queryables See `1028-*`.
 - **#1029** (ci, testing) — The Zephyr dual-line nightly has its own 05:00 cron and every scheduled run SKIPS it, so the lane it exists to watch has produced no verdict for days See `1029-*`.
 - **#1034** (testing, tooling) — The provisioned QEMU 11 spends ~19.6 s materialising a NuttX image's `.bss` before the guest runs, and that stall is the whole C-vs-C++ asymmetry in issue 0870 See `1034-*`.
+- **#1035** ([rmw, third-party, embedded]) — zenoh-pico 1.8.0 does not compile on NuttX: `#if ... == true` is not an integer constant expression where `true` is `(bool)1` See `1035-*`.
 - **#1038** (ci, build, testing) — nightly triage (phase-413 W2.3): three of six cell failures are one class — the platform job builds a lane whose prerequisites its own setup never installs; none is a product regression See `1038-*`.
 - **#1043** (ci, tooling) — `check-submodule-pins` fails CLOSED on any submodule CI does not initialise, so a whole class of pin bump could never pass the required lane See `1043-*`.
 - **#1044** (testing) — The run-to-completion wait class is not finished: an eighth site, four bridge callers with an unstated horizon, and an assertion that counts re-opens instead of rating them See `1044-*`.
