@@ -24,6 +24,9 @@ dists with `$ORIGIN` rpath so a declared dependency disappears instead
 **Amends:** RFC-0014 (`nros setup` toolchain management) — extends its index
 from two dependency classes to all of them; changes no existing `[tool.*]` /
 `[source.*]` semantics.
+**Amended:** 2026-09-04 (amendment 3) — who may NAME a key, and a
+package's own buildtool resolves without ROS; vendor layout may source from the
+submodule.
 **Amended:** 2026-08-30 (amendment 2) — the provider is chosen by what the
 tool DOES, `check` gains a version constraint, and every resolution reports
 its provider; tracked by phase-404, no code yet.
@@ -355,6 +358,113 @@ Shipping a dist we did not need costs bytes and a re-cut nobody reads. Using a
 system copy we should have pinned costs a build that differs per host and fails
 somewhere else entirely — which is the failure this repository has paid for most
 often. When the evidence is ambiguous, pin.
+
+
+## Amendment 3 (2026-09-04) — who may NAME a key, and who satisfies a buildtool
+
+Two questions this RFC had not separated: what a key *is* (settled — one
+namespace, four providers) and **who is allowed to name it from a
+`package.xml`**. Measuring the tree made the gap concrete.
+
+### The measurement
+
+407 `package.xml` files declare 65 distinct dependency tokens. Of the 46
+`[prereq.*]` keys, **exactly three are ever named by a package.xml**: `cargo`,
+`cmake`, `nros`. The other 43 are provisioning facts that no package's CONTENT
+depends on, in five groups:
+
+| group | n | example | what ROS 2 does with it |
+| --- | --- | --- | --- |
+| runtime closure of a dist we ship | 11 | `libssl3` | never hand-declared; comes with the binary package |
+| build tooling | 16 | `ninja`, `doxygen` | `buildtool_depend` / `doc_depend` — belongs, if a package needs it |
+| cross toolchains, emulators, probes | 7 | `qemu-system-arm` | outside rosdep entirely (sysroots, containers) |
+| vendored source trees | 6 | `zenoh-pico` | a `*_vendor` PACKAGE, not a key |
+| ROS binary package | 1 | `ros-rmw-zenoh-cpp` | plain `<depend>` |
+
+`<depend>qemu-system-arm</depend>` resolves silently today. It should not: QEMU
+runs the test lane, it is not a dependency of any package's content, and
+resolving it teaches the wrong model.
+
+### DECIDED — a package's own buildtool needs no provider
+
+`<buildtool_depend>ament_cmake</buildtool_depend>` on a package whose
+`<build_type>` IS `ament_cmake` is a tautology: if that builder is building it,
+the buildtool is present. `Resolution::SelfBuildtool` resolves exactly that,
+and it is **off-ROS safe** — which the alternatives were not.
+
+The alternatives were rejected on evidence, not taste:
+
+* **Rely on the ROS rung.** `ros_packages()` reads `AMENT_PREFIX_PATH` and
+  returns empty when ROS is not sourced, which is the normal state for an
+  embedded-only contributor. Declaring the buildtool would then hard-fail
+  `nros build` for a dependency satisfied by definition.
+* **Add `[prereq.ament_cargo]` with `apt = [...]`.** Fiction: `ament_cargo` and
+  `cargo-ros2` are served by this repo's own
+  `packages/cli/colcon-cargo-ros2` colcon extension. No apt package provides
+  them, and an index row claiming otherwise is a lie a user would act on.
+
+Two properties make the rung safe rather than a blanket exemption. It sits
+**last**, below the ROS rung, so a real provider still wins and gets reported —
+that is the answer a user can act on. And it is **conservative**: a name
+qualifies only if EVERY package.xml declaring it has a build type implying it,
+so one package declaring `ament_cmake` while built another way keeps the name on
+the normal ladder.
+
+The build-type mapping is nearly total, which is why inference is worth having:
+**345 of 367 packages declare a `<build_type>` and NOT the matching
+buildtool**, and the only declarations that are not inferable are
+`rosidl_default_generators` (10 message packages) and `cargo-ros2` (1) — which
+is exactly what a human should still write by hand. The nano-ros build types
+(`ament_nros`, `nros_entry`, `nros_cargo`, `nros_bringup`) map to `nros`: they
+are served by this repo's builders and have no upstream buildtool to name.
+
+### DECIDED — a vendor package may take its source from the submodule
+
+The ROS answer for a vendored tree is a `*_vendor` package: a real
+`package.xml` plus CMake that fetches and builds pinned upstream source. Adopting
+the LAYOUT is compatible with keeping the submodule as the SOURCE:
+
+```cmake
+ExternalProject_Add(zenoh_pico
+  SOURCE_DIR   "${NROS_ZENOH_PICO_DIR}"   # no GIT_REPOSITORY, no GIT_TAG
+  BINARY_DIR   "${CMAKE_CURRENT_BINARY_DIR}/zenoh_pico-build")
+```
+
+The decisive property is **one pin, not two**. A `GIT_TAG` in CMake is a second
+pin that can drift from the gitlink, and the gitlink is the one
+`check-submodule-pins` (forward-only), the pre-push hook and
+`diff.submodule=log` already guard — protections built after a zenoh-pico pin
+silently rewound over a Zephyr build fix for seven hours. Cloning the submodule
+shallowly also works, but needs a `GIT_TAG` to clone *to*, so it reintroduces
+the second pin for no gain: the submodule is already a local checkout at the
+right commit.
+
+Prototyped and verified: configures clean, an uninitialised submodule fails with
+the `git submodule update --init` remedy rather than a downstream error, and the
+submodule working tree stays clean because `BINARY_DIR` is out of tree.
+
+### What this amendment does NOT decide
+
+* **Whether `[prereq.*]` gains a `role` field** (`package` / `workspace` /
+  `infra` / `vendor`) and whether the resolver REFUSES a package.xml that names
+  a non-`package` key. This is the fix for `<depend>qemu-system-arm</depend>`
+  resolving silently. It is a user-visible error where none exists today, so it
+  wants agreement before implementation.
+* **Whether the 11 runtime-closure keys move under their owning `[tool.*]`.**
+  `libssl3`'s own `why` already says "runtime dep of the cyclonedds,
+  xrce-agent dist(s)" — it is a property of those tarballs, not of the
+  workspace. Mechanical, but it changes the index shape, and issue 0928's
+  `$ORIGIN` re-cut may delete the need entirely. Sequence matters.
+* **Whether the 345 missing `<buildtool_depend>` declarations get swept in.**
+  Now UNBLOCKED by the rung above, and mechanically derivable from
+  `<build_type>`. Still a 345-file diff whose only benefit is rosdep parity for
+  consumers who run rosdep — which this project deliberately does not.
+* **Which vendored trees adopt the vendor-package layout.** The hybrid works;
+  whether six submodules should each grow a `package.xml` is a cost question,
+  not a correctness one. A downstream consumer wanting `zenoh_pico_vendor`
+  WITHOUT our submodule layout would need a `GIT_REPOSITORY` fallback — and
+  that path has two pins again, so it should be decided, not defaulted into.
+
 
 ## Problem
 
