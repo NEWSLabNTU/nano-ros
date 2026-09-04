@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""A workflow must provision with `just setup <scope>`, not `just <scope> setup`.
+"""Provision with `just setup <scope>`, not `just <scope> setup` -- in workflows
+AND in the prose that teaches a reader what to type.
 
 The two spellings look interchangeable and are not:
 
@@ -20,15 +21,27 @@ the same class from the other direction and cost three CI rounds to unpick.
 facts. This asserts that workflows INVOKE the form which runs them. Neither
 implies the other.
 
-EXEMPTIONS carry a reason and are checked in both directions: an exemption that
-matches nothing is deleted, because a stale allow-list is how a gate quietly
-stops covering what it names.
+PROSE is the second arm (phase-422 W3). 64 occurrences across 38 files taught
+the module spelling, so a reader who copied the book got a broken provisioning
+-- the same defect as the workflow half, one surface over. The scanned surface
+is INSTRUCTIONAL prose only, and the exclusions below are the whole reason this
+arm is usable rather than noise: `docs/roadmap/`, `docs/issues/` and
+`docs/research/` are the three RECORD series. They narrate what a command DID
+at a time ("`just esp32 setup` tolerates that failure by design"), so a rewrite
+falsifies the record, and new entries there will legitimately keep quoting the
+module spelling. Gating them would produce a steady false-positive stream and
+teach people to add exemptions reflexively.
+
+Both arms share one exemption discipline: an entry carries a reason and is
+checked in BOTH directions -- an exemption that matches nothing is deleted,
+because a stale allow-list is how a gate quietly stops covering what it names.
 
 Run:  python3 scripts/check-workflow-setup-spelling.py [--self-test]
 """
 
 import os
 import re
+import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -48,6 +61,50 @@ WORKFLOWS = os.path.join(ROOT, ".github", "workflows")
 # preference: "this lane provisions the host facts itself" is not one, because
 # nothing checks that claim.
 EXEMPT = {}
+
+# --- prose arm ---------------------------------------------------------------
+
+# Instructional prose: files a reader copies commands out of. `book/` is the
+# user-facing manual, `AGENTS.md`/`CLAUDE.md` are the agent-facing one, the
+# `docs/` subtrees named here are living reference (RFCs are explicitly living
+# documents in this repo's convention), and a README is instructional wherever
+# it sits.
+DOC_FILES = ("AGENTS.md", "CLAUDE.md")
+DOC_DIRS = (
+    "book",
+    "docs/design",
+    "docs/development",
+    "docs/guides",
+    "docs/reference",
+    "docs/release",
+)
+# Every README.md outside a pruned subtree is scanned too.
+README_NAME = "README.md"
+
+# Subtrees never scanned, and why. These are the RECORD series -- build output
+# and vendored trees need no entry, because the candidate set is `git ls-files`
+# (untracked paths and submodule contents never appear).
+PRUNE_DIRS = {
+    "docs/roadmap": "phase docs record work at a time, module spelling included",
+    "docs/issues": "issue prose quotes what the module recipe did; the ledger is history",
+    "docs/research": "dated snapshots -- rewriting one falsifies its measurement",
+    "third-party": "vendored",
+}
+
+# (path, exact stripped line) -> reason. Keyed on the LINE TEXT, not the line
+# number, so an unrelated edit above it does not silently move the exemption
+# onto a different line. Checked in both directions.
+DOC_EXEMPT = {
+    (
+        "docs/development/zephyr-version-support.md",
+        "`NROS_ZEPHYR_VERSION=4.4 just zephyr setup` exited 0 and produced a",
+    ): (
+        "Past-tense incident report: this run happened, with this spelling, and "
+        "produced a workspace that could not build Cortex-M. Converting it would "
+        "assert a run that never occurred. The step's INSTRUCTIONS above it use "
+        "the dispatcher."
+    ),
+}
 
 
 def scope_tokens():
@@ -92,6 +149,72 @@ def offenders(text, scopes):
     return out
 
 
+def _doc_pattern(scopes):
+    # `(?![-\w])` is load-bearing and the workflow arm above does not need it:
+    # prose is full of `just qemu setup-qemu` / `just qemu setup-network`, which
+    # are DIFFERENT verbs (thin `nros setup --tool` callers) and must not be
+    # flagged. A bare `\b` matches them, because `p` -> `-` is a word boundary.
+    return re.compile(r"just (%s) setup(?![-\w])" % "|".join(sorted(scopes)))
+
+
+def doc_offenders(text, scopes):
+    """[(lineno, line)] for `just <scope> setup` in prose, wraps included.
+
+    Prose does NOT skip `#` lines: in markdown those are headings, and inside a
+    fenced block they are shell comments that teach just as loudly as the
+    command below them.
+
+    A doc line wraps where a workflow line does not, and the wrap hides the
+    call from a single-line grep -- `docs/reference/zephyr-armv8r-setup.md`
+    carried `just zephyr\\nsetup` for exactly that reason. So each line is also
+    matched joined to its successor, and a match is attributed to the line its
+    FIRST character falls in, which is what keeps the two passes from
+    double-reporting.
+    """
+    pat = _doc_pattern(scopes)
+    lines = text.split("\n")
+    out = []
+    for i, raw in enumerate(lines, 1):
+        head = raw.strip()
+        nxt = lines[i].strip() if i < len(lines) else ""
+        joined = (head + " " + nxt) if nxt else head
+        for m in pat.finditer(joined):
+            if m.start() >= len(head):
+                continue  # belongs to the next line; reported on its own pass
+            out.append((i, head, m.group(0)))
+    return out
+
+
+def doc_paths():
+    """Every instructional-prose file, with pruned subtrees skipped.
+
+    The candidate set comes from `git ls-files`, not a filesystem walk: prose
+    that is not committed cannot teach anyone, and an index lookup cannot wander
+    into `build/`, `target/` or a provisioned `zephyr-workspace/` the way a walk
+    can. `check-no-tracked-file-find` requires this, and it is right to.
+    """
+    out = subprocess.run(
+        ["git", "-C", ROOT, "ls-files", "-z"],
+        capture_output=True,
+        check=True,
+    ).stdout.decode("utf8")
+    prune = tuple(PRUNE_DIRS)
+    found = []
+    for rel in out.split("\0"):
+        if not rel:
+            continue
+        if any(rel == p or rel.startswith(p + "/") for p in prune):
+            continue
+        base = rel.rsplit("/", 1)[-1]
+        if rel in DOC_FILES:
+            found.append(rel)
+            continue
+        in_doc_dir = any(rel.startswith(d + "/") for d in DOC_DIRS)
+        if base == README_NAME or (in_doc_dir and rel.endswith(".md")):
+            found.append(rel)
+    return sorted(set(found))
+
+
 def self_test():
     scopes = {"zephyr", "freertos"}
     t = "\n".join(
@@ -108,6 +231,40 @@ def self_test():
     assert [g[0] for g in got] == [2, 4, 6], got
     assert got[0][2] == "just zephyr setup --skip-sdk", got[0]
     assert got[1][2] == "just freertos setup", got[1]
+
+    # --- prose arm ---
+    scopes = {"zephyr", "freertos", "qemu"}
+    d = "\n".join(
+        [
+            "Run `just zephyr setup` to provision.",        # 1  offender
+            "The dispatcher is `just setup zephyr`.",        # 2  fine
+            "`just qemu setup-qemu` is a different verb.",   # 3  fine, NOT setup
+            "`just qemu setup-network` needs sudo.",         # 4  fine
+            "# just freertos setup in a heading still counts",  # 5  offender
+            "before `just zephyr",                           # 6  offender (wrap)
+            "setup` produces a workspace.",                  # 7  the wrap's tail
+            "`just workspace setup` is not a platform scope.",  # 8  fine
+        ]
+    )
+    got = doc_offenders(d, scopes)
+    assert [g[0] for g in got] == [1, 5, 6], got
+    assert got[2][2] == "just zephyr setup", got[2]
+
+    # A wrap must not be double-counted from the tail line's own pass.
+    assert len(doc_offenders("just zephyr\nsetup", scopes)) == 1
+
+    # The pruned record series really are pruned, and the instructional ones
+    # really are scanned -- a scan set that silently narrows is the failure
+    # this whole gate exists to prevent.
+    paths = doc_paths()
+    assert "book/src/getting-started/zephyr.md" in paths, "book not scanned"
+    assert "AGENTS.md" in paths, "AGENTS.md not scanned"
+    assert "examples/README.md" in paths, "READMEs not scanned"
+    assert not any(p.startswith("docs/roadmap/") for p in paths), "roadmap scanned"
+    assert not any(p.startswith("docs/issues/") for p in paths), "issues scanned"
+    assert not any(p.startswith("docs/research/") for p in paths), "research scanned"
+    assert not any(p.startswith("third-party/") for p in paths), "vendored scanned"
+
     sys.stdout.write("check-workflow-setup-spelling self-test: OK\n")
 
 
@@ -154,6 +311,46 @@ def main():
                 "    what it claims to." % call
             )
 
+    # --- prose arm ---
+    paths = doc_paths()
+    if not paths:
+        sys.stderr.write(
+            "error: the prose arm resolved ZERO files. It would then pass\n"
+            "vacuously; check DOC_DIRS / PRUNE_DIRS against the tree.\n"
+        )
+        return 1
+
+    doc_seen_exempt = set()
+    for rel in paths:
+        try:
+            with open(os.path.join(ROOT, rel), encoding="utf8") as fh:
+                text = fh.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for lineno, line, call in doc_offenders(text, scopes):
+            key = (rel, line)
+            if key in DOC_EXEMPT:
+                doc_seen_exempt.add(key)
+                continue
+            problems.append(
+                "%s:%d TEACHES the module spelling\n"
+                "      %s\n"
+                "    A reader who copies `%s` gets the module recipe and none of\n"
+                "    `_setup-common` — no cross Rust targets, no pinned corrosion,\n"
+                "    no CLI, no resolver, no clang-format.\n"
+                "    Write:  just setup <scope>   (it takes flags: `just setup zephyr --force`)\n"
+                "    If the line RECORDS what a command did, exempt it in\n"
+                "    DOC_EXEMPT with the reason." % (rel, lineno, line, call)
+            )
+
+    for key in DOC_EXEMPT:
+        if key not in doc_seen_exempt:
+            problems.append(
+                "STALE prose exemption %r matches no line in that file.\n"
+                "    Delete it — an allow-list checked one way stops covering\n"
+                "    what it claims to." % (key,)
+            )
+
     if problems:
         sys.stderr.write("check-workflow-setup-spelling: %d problem(s)\n\n" % len(problems))
         for p in problems:
@@ -161,8 +358,9 @@ def main():
         return 1
 
     sys.stdout.write(
-        "check-workflow-setup-spelling: OK — %d scope(s), %d exemption(s) all live.\n"
-        % (len(scopes), len(EXEMPT))
+        "check-workflow-setup-spelling: OK — %d scope(s); workflows: %d exemption(s); "
+        "prose: %d file(s), %d exemption(s); all live.\n"
+        % (len(scopes), len(EXEMPT), len(paths), len(DOC_EXEMPT))
     )
     return 0
 

@@ -194,7 +194,7 @@ Tests XRCE-DDS backend via Micro-XRCE-DDS Agent (14 tests):
 - Serial listener startup
 - Serial talker → listener communication (via socat PTY pair)
 
-**Requirements:** Micro-XRCE-DDS Agent (`just xrce setup`), `socat` (for serial tests)
+**Requirements:** Micro-XRCE-DDS Agent (`just setup xrce`), `socat` (for serial tests)
 
 ```bash
 just test-xrce          # Run all XRCE tests
@@ -284,12 +284,12 @@ sudo apt install ros-humble-rmw-zenoh-cpp
 ```
 
 ### XRCE-DDS Tests
-- Micro-XRCE-DDS Agent (`just xrce setup`)
+- Micro-XRCE-DDS Agent (`just setup xrce`)
 - `socat` (for serial transport tests)
 
 ```bash
 # Build XRCE Agent (one-time)
-just xrce setup
+just setup xrce
 
 # Install socat (for serial tests)
 sudo apt install socat
@@ -497,7 +497,7 @@ Tests that require ROS 2 or XRCE Agent will gracefully skip if prerequisites are
 - Verify rmw_zenoh: `ros2 pkg list | grep rmw_zenoh`
 
 ### XRCE tests skip
-- Build XRCE Agent: `just xrce setup`
+- Build XRCE Agent: `just setup xrce`
 - Check Agent binary: `ls build/xrce-agent/MicroXRCEAgent`
 - Check socat installed: `socat -V` (needed for serial transport tests)
 - Kill stale agents: `pkill -f MicroXRCEAgent`

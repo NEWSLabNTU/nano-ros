@@ -403,7 +403,7 @@ manifest may place Zephyr anywhere.
 
 **So: keep both, and state the division.** `ZEPHYR_BASE` is the build's input;
 `NROS_ZEPHYR_WORKSPACE` is setup's. `nros build` reads the second only as a
-convenience rung, so a user who ran `just zephyr setup` does not have to export
+convenience rung, so a user who ran `just setup zephyr` does not have to export
 the first as well. That is the whole of the overlap, and it buys one less thing
 to remember rather than a second source of truth.
 

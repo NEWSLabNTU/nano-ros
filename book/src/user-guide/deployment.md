@@ -92,7 +92,7 @@ Zephyr deployment uses `west`:
 
 ```bash
 nros setup zephyr --rmw zenoh
-# **Contributors (in-tree checkout):** `just zephyr setup` creates
+# **Contributors (in-tree checkout):** `just setup zephyr` creates
 # zephyr-workspace/ (west init + SDK) — then:
 source zephyr-workspace/env.sh      # in-tree workspace layout
 west build -b native_sim/native/64 nros/examples/zephyr/rust/talker

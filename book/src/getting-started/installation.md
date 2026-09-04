@@ -466,7 +466,7 @@ for how the bundle number is chosen.
 
 Contributors clone the repo and drive everything through `just`. The
 `just` setup recipes are thin wrappers over the same `nros setup` index —
-`just <module> setup` calls `nros setup <board>` under the hood, so the
+`just setup <module>` calls `nros setup <board>` under the hood, so the
 toolchains a contributor gets are identical to a user's.
 
 ```bash
@@ -486,9 +486,9 @@ just doctor tier=all
 Provision one module:
 
 ```bash
-just freertos setup           # → nros setup qemu-arm-freertos
-just nuttx setup              # → nros setup qemu-arm-nuttx
-just threadx_linux setup      # → nros setup threadx-linux
+just setup freertos           # → nros setup qemu-arm-freertos
+just setup nuttx              # → nros setup qemu-arm-nuttx
+just setup threadx_linux      # → nros setup threadx-linux
 ```
 
 ## Docker environment (contributors)

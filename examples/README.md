@@ -300,7 +300,7 @@ cd examples/native/rust/listener && cargo run     # terminal 3
 ### QEMU bare-metal Cortex-M3 (MPS2-AN385)
 
 ```bash
-just qemu setup
+just setup qemu
 just qemu build
 just qemu talker      # spawns QEMU + nros-rs-talker
 ```
@@ -308,7 +308,7 @@ just qemu talker      # spawns QEMU + nros-rs-talker
 ### Zephyr (native_sim) C + Cyclone DDS
 
 ```bash
-just zephyr setup
+just setup zephyr
 source ~/nano-ros-workspace/env.sh
 west build -b native_sim/native/64 nano-ros/examples/zephyr/c/talker \
   -- -DCONF_FILE="prj.conf;prj-cyclonedds.conf"

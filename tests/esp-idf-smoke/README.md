@@ -10,7 +10,7 @@ is required.
 ESP-IDF must be installed via:
 
 ```bash
-just esp_idf setup
+just setup esp_idf
 ```
 
 (opt-in — not pulled by top-level `just setup`, which uses esp-hal

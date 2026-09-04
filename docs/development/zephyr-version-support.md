@@ -78,11 +78,11 @@ upstream them so the carried set shrinks per release (see phase 199.4).
 
 ## How patches are applied (per-line dispatch)
 
-`just zephyr setup` runs a **version-dispatched** patch set — no inline
+`just setup zephyr` runs a **version-dispatched** patch set — no inline
 `if version = …` branching in the recipe:
 
 ```
-just zephyr setup           # → bash scripts/zephyr/patches/${NROS_ZEPHYR_VERSION}.sh "$WORKSPACE"
+just setup zephyr           # → bash scripts/zephyr/patches/${NROS_ZEPHYR_VERSION}.sh "$WORKSPACE"
 ```
 
 Each line's patch sequence lives in `scripts/zephyr/patches/<line>.sh`
@@ -121,7 +121,7 @@ Each line's patch sequence lives in `scripts/zephyr/patches/<line>.sh`
    `zephyr/SDK_VERSION` and fails loudly instead.
 6. **Add a CI line.** Extend the Zephyr jobs in `.github/workflows/nightly.yml`
    with the new line.
-7. **Provision sources via `nros`.** `just zephyr setup` provisions
+7. **Provision sources via `nros`.** `just setup zephyr` provisions
    `zenoh-pico` / `cyclonedds-src` / `px4-rs` via `nros setup --source`
    (index-driven; the canonical path — no hand `git submodule update`).
 

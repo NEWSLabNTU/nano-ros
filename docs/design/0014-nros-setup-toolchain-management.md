@@ -374,7 +374,7 @@ build). A downstream Zephyr app that imports a nano-ros **board crate** via
 `nano_ros_use_board(<name>)` (Phase 215) with an `import:false` west manifest
 gets the board *config* but NOT nano-ros's *toolchain provisioning* — so its
 build walls at Kconfig (`RUST_SUPPORTED=n`, missing cyclonedds, POSIX symbol
-drift). `just zephyr setup` does this provisioning for nano-ros's own tree, but
+drift). `just setup zephyr` does this provisioning for nano-ros's own tree, but
 it is not exposed for a consumer's tree.
 
 **Surface:** `nros setup board <name> --zephyr-workspace <dir>`. It reads the
@@ -383,7 +383,7 @@ extended: `zephyr_line`, `requires_rust`, `rust_targets`, `rmw_source`) and,
 against the *consumer's* zephyr workspace `<dir>`:
 
 1. fetches the board's RMW source — `nros setup --source <rmw_source>`
-   (index-driven, the same `[tool.*]` / `[source.*]` entries `just zephyr setup`
+   (index-driven, the same `[tool.*]` / `[source.*]` entries `just setup zephyr`
    uses; cyclonedds prebuilt-or-source);
 2. applies `scripts/zephyr/patches/<zephyr_line>.sh <dir>` — the patch scripts
    **already take the workspace dir as `$1`**, so no new machinery;

@@ -53,7 +53,7 @@ my_app/                                  # your application
 Wire the shell into your NuttX apps tree. Easiest path:
 
 ```bash
-just nuttx setup        # contributor helper: stages the shell +
+just setup nuttx        # contributor helper: stages the shell +
                         # example apps into $NUTTX_APPS_DIR/external/
                         # (delegates to `nros setup qemu-arm-nuttx`
                         # for the toolchain/SDK provisioning)

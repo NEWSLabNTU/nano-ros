@@ -34,8 +34,8 @@ Or use `just setup` which installs Rust targets automatically.
 Download ThreadX, NetX Duo, and the Linux simulation samples:
 
 ```bash
-just threadx_linux setup     # Linux simulation SDK
-just threadx_riscv64 setup   # QEMU RISC-V SDK
+just setup threadx_linux     # Linux simulation SDK
+just setup threadx_riscv64   # QEMU RISC-V SDK
 ```
 
 This shallow-clones:

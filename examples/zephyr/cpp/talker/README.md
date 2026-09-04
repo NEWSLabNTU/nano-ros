@@ -17,7 +17,7 @@ carrier** generates the entry:
 
 ## Build
 
-From the repo root (Zephyr workspace provisioned via `just zephyr setup`):
+From the repo root (Zephyr workspace provisioned via `just setup zephyr`):
 
 ```sh
 just zephyr build-one cpp/talker zenoh          # native_sim/native/64 default

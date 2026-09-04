@@ -10,7 +10,7 @@ in the repo.
 
 Downstream consumers of a packaged nano-ros release pull a pinned
 version through their RTOS's package manager (the rest of this
-doc). They never invoke `just esp_idf setup` / `just px4 setup`
+doc). They never invoke `just setup esp_idf` / `just setup px4`
 themselves — the RTOS toolchain handles the SDK install. The
 [`just setup` tier system](../development/sdk-tiers.md) (Phase 142)
 applies to **local development** of nano-ros itself, not to

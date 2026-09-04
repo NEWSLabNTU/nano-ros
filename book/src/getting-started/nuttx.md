@@ -58,7 +58,7 @@ source ./activate.sh        # OR: direnv allow / source ./activate.fish
 nros setup qemu-arm-nuttx --rmw zenoh
 ```
 
-As a contributor, `just nuttx setup` remains available and now
+As a contributor, `just setup nuttx` remains available and now
 delegates to `nros setup qemu-arm-nuttx` for the toolchain/SDK
 provisioning while also staging the external apps.
 

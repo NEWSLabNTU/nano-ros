@@ -8,7 +8,7 @@ No-RTOS Rust examples (cortex-m-rt / RTIC) with smoltcp networking, run under
 
 ```sh
 source ./activate.sh
-just qemu setup               # nros setup qemu-arm-baremetal --rmw zenoh
+just setup qemu               # nros setup qemu-arm-baremetal --rmw zenoh
                               # + micro-cdr/micro-xrce sources + zenoh-pico + QEMU
 source setup.bash             # newlib arm-none-eabi-gcc 13.2 on PATH
 ```

@@ -84,7 +84,7 @@ This provisions:
 - The in-tree workspace at `zephyr-workspace/` (gitignored; auto-detects legacy `../nano-ros-workspace/`), with nros symlinked in
 - Rust embedded targets
 
-> **Contributors:** the in-tree `just zephyr setup` recipe still works and now
+> **Contributors:** the in-tree `just setup zephyr` recipe still works and now
 > delegates to `nros setup zephyr` under the hood.
 
 The RMW host daemon must be **running** before any example: `zenohd` for zenoh,

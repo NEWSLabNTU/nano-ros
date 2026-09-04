@@ -610,7 +610,7 @@ and bare-metal lanes (`nros-tests/src/qemu.rs:242`), and Zephyr is the cheapest
 family in the tier-2 build (~200 s against FreeRTOS's ~1370 s).
 
 **SETTLED (phase-337 W2.a, 2026-08-04): `mps2/an385` via `smsc911x`.** Measured
-against the Zephyr 3.7 checkout `just zephyr setup` provisions, which is the
+against the Zephyr 3.7 checkout `just setup zephyr` provisions, which is the
 checkout this RFC said the question needed:
 
 - `boards/arm/mps2/mps2_an385.dts` already carries an ENABLED

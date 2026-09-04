@@ -27,7 +27,7 @@ above.
 ## Running it
 
 ```sh
-just px4 setup          # once — clones/pins PX4-Autopilot
+just setup px4          # once — clones/pins PX4-Autopilot
 just px4 build-sitl-cpp # builds SITL with this dir as EXTERNAL_MODULES_LOCATION
 ```
 

@@ -25,7 +25,7 @@ Or use `just setup` which installs Rust targets automatically.
 Download the FreeRTOS kernel and lwIP:
 
 ```bash
-just freertos setup
+just setup freertos
 ```
 
 This shallow-clones:

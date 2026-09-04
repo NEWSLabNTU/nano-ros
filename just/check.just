@@ -1053,6 +1053,14 @@ config-knob-census:
 #
 # The sibling of `check-preconditions-provisioned`: that one asks whether setup
 # PROVIDES the facts, this asks whether workflows INVOKE the form that runs them.
+#
+# phase-422 W3 added a second arm over PROSE — book/, AGENTS.md, CLAUDE.md, the
+# living `docs/` subtrees and every README — because 64 occurrences across 38
+# files taught the module spelling to readers. The three RECORD series
+# (`docs/roadmap/`, `docs/issues/`, `docs/research/`) are deliberately NOT
+# scanned: they narrate what a command DID at a time, so gating them would be a
+# steady false-positive stream. The recipe keeps its `workflow-` name because
+# the workflow arm is still the one a red usually means.
 [group("checks")]
 workflow-setup-spelling:
     @python3 scripts/check-workflow-setup-spelling.py

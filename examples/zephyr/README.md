@@ -7,7 +7,7 @@ C, C++ and Rust examples built with `west`. Just module: **`zephyr`**
 
 ```sh
 source ./activate.sh
-just zephyr setup             # west workspace (large download) + sources + patches
+just setup zephyr             # west workspace (large download) + sources + patches
 ```
 
 Rust examples additionally need ROS 2 sourced (`source /opt/ros/<distro>/setup.bash`)
