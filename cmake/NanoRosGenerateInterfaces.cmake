@@ -484,6 +484,12 @@ function(nros_generate_interfaces target)
       # `_nros_resolve_rust_target` in NanoRosCodegenCore.cmake.
       _nros_resolve_rust_target(_ffi_rust_target)
       set(_ffi_lib "${_ffi_target_dir}/${_ffi_rust_target}/${_NROS_FFI_DIR}/libnano_ros_cpp_ffi_${target}.a")
+      # issue 0820 — cargo writes its dep-info beside the artifact, same
+      # basename, `.d`. The two spellings move together like the profile and
+      # the output path above: a `.d` derived from anything but `_ffi_lib`
+      # would name a file cargo never wrote, and ninja tolerates a missing
+      # depfile silently — which is the failure this edge exists to end.
+      string(REGEX REPLACE "\\.a$" ".d" _ffi_dep_file "${_ffi_lib}")
 
       file(MAKE_DIRECTORY "${_ffi_crate_src}")
 
@@ -582,10 +588,19 @@ function(nros_generate_interfaces target)
       if(NOT _NROS_FFI_ENV STREQUAL "")
         set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV} ${NROS_BOARD_FACTS_ENV})
       endif()
+      # issue 0820 — DEPENDS names the crate's OWN files and nothing else, so
+      # this archive had no edge on the nano-ros Rust it compiles in. Cargo's
+      # dep-info lists `packages/core/nros-serdes/src/{cdr,lib,...}.rs` for
+      # exactly this artifact (measured), and a hand-written DEPENDS is a
+      # standing approximation of a graph cargo already computes exactly.
+      # Without it, editing the CDR serializer left every generated message
+      # staticlib holding the previous build's code, with a fresh mtime — the
+      # museum-archive shape 0820 hit one seam over, on NuttX.
       add_custom_command(
         OUTPUT "${_ffi_lib}"
         COMMAND ${_ffi_env} cargo ${_ffi_cargo_prefix} ${_ffi_cargo_args}
         DEPENDS ${_generated_rs_files} "${_ffi_crate_dir}/Cargo.toml" "${_ffi_crate_src}/lib.rs"
+        DEPFILE "${_ffi_dep_file}"
         WORKING_DIRECTORY "${_ffi_crate_dir}"
         COMMENT "Building Rust FFI glue for ${target} C++ bindings"
         VERBATIM

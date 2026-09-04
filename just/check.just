@@ -140,6 +140,7 @@ fast-serial: \
     capability-flavour-guards \
     capability-slot-counts \
     cargo-config-tracked \
+    cargo-custom-command-depfile \
     cargo-locked \
     cargo-profile-mirror \
     cargo-target-spelling \
@@ -4437,6 +4438,27 @@ artifact-identity-budget:
 [private]
 cargo-target-spelling:
     @bash packages/testing/nros-tests/tests/cargo_target_spelling.sh
+
+# issue 0820 — a cmake custom command that RUNS cargo must carry a `DEPFILE`.
+#
+# `add_custom_command(OUTPUT ...)` rebuilds only when an input it NAMES is newer
+# than the output, and cargo's inputs are a graph over the workspace. Every
+# hand-written `DEPENDS` here approximated that graph and every one of them was
+# wrong the same way — it named the crate's own files and no nano-ros Rust — so
+# the artifact came out NEWER than its sources holding older code, and nothing
+# in the graph could notice. That is the museum binary 0820 reported, and it is
+# indistinguishable from a runtime bug until someone wipes the directory.
+#
+# Cargo already writes the exact answer beside the artifact (`<artifact>.d`,
+# Makefile format), which is the shape `DEPFILE` consumes. Three commands in
+# this tree run cargo; two of them had no depfile when this gate landed, and
+# both survived the issue's own 2026-09-01 sweep because that sweep classified
+# FILES ("codegen") rather than commands. Hence a per-command predicate.
+#
+# Buildless — pure source analysis over the tracked cmake files, milliseconds.
+[private]
+cargo-custom-command-depfile:
+    @python3 scripts/check-cargo-custom-command-depfile.py
 
 # issue 0516 — a COMMENTED-OUT element in a package.xml must not read as a
 # declaration. cmake has no XML parser, so every reader here regexes raw text;

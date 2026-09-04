@@ -1,13 +1,120 @@
 ---
 id: 820
-title: "`c_riscv_nuttx_e2e` failed on a MUSEUM BINARY — the NuttX seam had no
-  dependency edge on the Rust world, and hardcoded `--release` past a
-  miscompile carve-out"
-status: open
+title: "`c_riscv_nuttx_e2e` failed on a MUSEUM BINARY — a cmake custom command
+  ran `cargo` with no rebuild edge on the Rust world it compiles"
+status: resolved
 type: bug
 area: cmake, testing
-related: [issue-0475, issue-0445, issue-0196, issue-0805]
+related: [issue-0475, issue-0445, issue-0196, issue-0805, phase-424]
+resolved_in: "6d363f5cc (NuttX seam) + this commit (the other two cargo commands + the gate)"
 ---
+
+## What was wrong
+
+`c_riscv_nuttx_talker_delivers_cross_process` failed at its full 90 s timeout
+and passed in 3.5 s after `rm -rf examples/qemu-riscv-nuttx/c/talker/build-zenoh`
+on UNMODIFIED sources. Per issue 0475's rule that is a missing dependency edge,
+and it was: `add_custom_command(OUTPUT ...)` rebuilds only when an input it
+NAMES is newer than the output, and cargo's inputs are a graph over the whole
+workspace. Every hand-written `DEPENDS` in this tree approximated that graph,
+and every one was wrong the same way — it named the crate's own files and no
+nano-ros Rust at all. The artifact came out NEWER than its sources holding
+older code, and nothing in the graph could notice.
+
+Cargo already publishes the exact answer: a Makefile-format dep-info file
+beside the artifact (`<artifact>.d`, absolute paths, one target), which is
+precisely what cmake's `DEPFILE` consumes. A missing depfile is a warning, not
+an error, so the edge is safe from the first configure.
+
+## Fixed, in three commands and one gate
+
+| site | what it built | state |
+| --- | --- | --- |
+| `packages/api/nros-c/cmake/nros-nuttx.cmake` | the NuttX kernel ELF | fixed 2026-08-27 (`6d363f5cc`), with the hardcoded `--release` replaced by the `nuttx-rust` carve-out in the same commit — the two move together, because the OUTPUT path spells the profile dir |
+| `cmake/NanoRosGenerateInterfaces.cmake` | the generated message C++ FFI staticlib | fixed here |
+| `zephyr/cmake/nros_generate_interfaces.cmake` | the same, Zephyr lane | fixed here |
+
+Gate: `just check cargo-custom-command-depfile`
+(`scripts/check-cargo-custom-command-depfile.py`, fast line, buildless) — an
+`add_custom_command` whose COMMAND runs the `cargo` program must carry a
+`DEPFILE`. It does NOT flag `add_custom_target(... COMMAND cargo ...)` (no
+output, always runs) nor the three commands that merely mention a cargo-shaped
+path or target name.
+
+## The sweep this issue got wrong, and why the gate exists
+
+The 2026-09-01 sweep here concluded NuttX was "one-of-a-kind" and declined to
+write a gate, on the reasoning that one instance cannot support a rule. Both
+halves were wrong, from the same mistake: the sweep matched FILES containing
+both `add_custom_command` and `cargo`, and then classified each file by what it
+mostly does. Both generators were in its output, labelled "codegen" — and both
+contain a codegen command (legitimately no depfile) AND a `cargo build` command
+(which needs one). The predicate has to be per-COMMAND. It cannot be applied by
+eye over a 700-line cmake module, which is what makes it a gate rather than
+three fixes.
+
+Measured with `git ls-files '*.cmake' '*CMakeLists.txt'` + paren-balanced block
+extraction, COMMAND sections only: three cargo commands, two without a depfile.
+
+## Evidence, established WITHOUT a wipe
+
+The NuttX seam, on the existing build dir (hard-linked to scratch; nothing in
+the shared tree was built or wiped). Another agent had edited
+`packages/core/nros-serdes/src/lib.rs` at 21:34 against an ELF built at 02:47,
+so the touch was performed by the world:
+
+| graph | `ninja -n -d explain nros-nuttx-ffi-out/nros-nuttx-ffi` |
+| --- | --- |
+| as shipped (`DEPFILE`) | `output … older than most recent input packages/core/nros-serdes/src/lib.rs` → rebuilds |
+| same graph, `depfile`/`deps` stripped | nothing to do — the museum binary |
+
+The generated-interfaces seam, on a native `cpp/talker` configured and built
+from the fixed tree:
+
+* `ninja -t query …/libnano_ros_cpp_ffi_std_msgs.a` before the fix: inputs are
+  the generated `.rs`, `Cargo.toml`, `src/lib.rs`. Cargo's own `.d` for that
+  same archive lists nine `packages/core/nros-serdes/src/*.rs`.
+* After: 72 deps recorded, 9 of them nros-serdes. Touching
+  `nros-serdes/src/cdr.rs` explains the rebuild by that exact file; the same
+  graph with `depfile`/`deps` stripped says `ninja: no work to do`.
+* A real content change (`NROS_0820_EDGE_PROBE` appended to
+  `nros-serdes/src/lib.rs`) moved the archive `46177a22…` → `43d1ed8c…` and the
+  symbol is in it — an incremental build, no wipe.
+
+## Notes for whoever meets this class again
+
+* **An mtime freshness check cannot detect the class it is invoked against.** A
+  museum binary is NEWER than its sources while holding older code — there is no
+  edge, so nothing moves the mtime. An earlier revision of this issue argued
+  "not a stale fixture" from mtimes and built a whole wrong root cause on it (a
+  "domain mismatch", a comparison to issue 0801, a suspected sentinel bug). The
+  sentinel ambiguity is real and lives on as [[issue-0972]]; it is not what
+  broke this test.
+* **An ABSENT signal is not evidence until the instrument is shown to work.**
+  Four readings here nearly produced wrong root causes: `nros_log` output goes
+  nowhere on this image (no sink installed), a probe string absent from the ELF
+  IS the museum binary (`strings <elf> | grep`), with no router running
+  `nros_support_init` returns -4 so entity creation is never reached, and an
+  `#[allow(dead_code)] const` probe is eliminated before it reaches the binary
+  (use `#[used]` + `#[unsafe(no_mangle)]`).
+* **`--release` is not a neutral default on NuttX.** `NUTTX_RUST_PROFILE` is
+  `nros-minsizerel` because at `lto = "off"` a cross-CGU miscompile corrupts
+  std's `lang_start` closure and the image reboots before `main` with no
+  console output (phase-177.8.c). Cargo's built-in `release` IS `lto = off`.
+* **A residual, not fixed here:** cargo's dep-info does not list `Cargo.lock`,
+  so a lockfile-only dependency bump does not retrigger these commands. It is
+  cargo's own granularity and corrosion shares it; nothing here depends on it
+  today, and widening the watch set is exactly what phase-424 warns against.
+
+## The record this issue accumulated while open
+
+Everything below is the issue as it stood before this commit, kept whole
+rather than summarised — including the `READ FIRST` section another
+session added on 2026-09-05, which records that the 2026-08-27 depfile fix
+was silently neutralised by issue 0805 for six days and re-fixed by
+retargeting the depfile. That is a different defect in the same seam from
+the two commands this commit gives an edge to, and it is not restated
+above.
 
 ## READ FIRST — the 2026-08-27 fix was live for six days (phase-424, 2026-09-05)
 
