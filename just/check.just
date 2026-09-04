@@ -258,6 +258,7 @@ fast-serial: \
     platform-provider-features \
     pool-inventory \
     posix-platform-purity \
+    preconditions-provisioned \
     prelude-tiers \
     prereq-roles \
     profile-board-mirror \
@@ -2567,6 +2568,18 @@ board-vocabulary:
 [group("checks")]
 prereq-roles:
     @python3 scripts/check-prereq-roles.py
+
+# Every tier precondition must have a provisioner, and it must be reachable
+# from `just setup <scope>`. `check-tier-preconditions` asserts host facts;
+# `_setup-common` provisions them; nothing kept the two lists in agreement, so
+# the gaps surfaced one 40-minute CI run at a time (issue: host-tests tier1 ->
+# three unmet preconditions -> then clang-format one layer deeper).
+#
+# Classifies each precondition as setup / build / manual and checks the map in
+# BOTH directions, because a map checked one way drifts silently.
+[group("checks")]
+preconditions-provisioned:
+    @python3 scripts/check-preconditions-provisioned.py
 
 [group("checks")]
 kconfig-overridden-values:
