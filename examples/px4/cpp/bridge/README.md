@@ -53,9 +53,26 @@ Getting here fixed five real defects — see
 ## Build + run
 
 ```sh
-just px4 build-bridge-example                      # debug_key_value, jazzy
-just px4 build-bridge-example topics=vehicle_status  # a different topic
+just px4 build-bridge-example                       # debug_key_value, jazzy, zenoh
+just px4 build-bridge-example vehicle_status        # a different topic
+just px4 build-bridge-example debug_key_value humble  # a different ROS edition
+
+# phase-325 W3.3 — the OUTWARD backend. An env var, not an argument (below).
+NROS_PX4_BRIDGE_RMW=xrce just px4 build-bridge-example
 ```
+
+**The arguments are POSITIONAL.** `just` has no named-argument syntax, so the
+`topics=vehicle_status` this block used to show bound the literal string
+`"topics=vehicle_status"` to the first parameter and the build died with
+
+```
+Error: px4 message `topics=vehicle_status` not found under .../msg
+```
+
+naming the message rather than the mistake. Measured 2026-09-04. The outward
+backend is an env var for the same reason — it has to reach the cargo feature,
+the `BACKENDS` list and the session-spec name, and a fourth positional that
+silently swallows a typo is worse than an exported value.
 
 Then in the PX4 shell:
 

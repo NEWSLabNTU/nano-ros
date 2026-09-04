@@ -41,7 +41,7 @@ if(DEFINED NROS_PX4_BRIDGE_FFI_ARCHIVE AND NOT "${NROS_PX4_BRIDGE_FFI_ARCHIVE}" 
 elseif(NOT "$ENV{NROS_PX4_BRIDGE_FFI_ARCHIVE}" STREQUAL "")
     set(_ffi_a "$ENV{NROS_PX4_BRIDGE_FFI_ARCHIVE}")
 else()
-    set(_ffi_a "${CMAKE_CURRENT_LIST_DIR}/../../../ffi/target/release/libnros_px4_bridge_ffi.a")
+    set(_ffi_a "${CMAKE_CURRENT_LIST_DIR}/../../../ffi/target-bridge-ffi/release/libnros_px4_bridge_ffi.a")
 endif()
 
 if(NOT EXISTS "${_ffi_a}")
@@ -54,6 +54,58 @@ if(NOT EXISTS "${_ffi_a}")
         "or just run:  just px4 build-bridge-example")
 endif()
 
+# phase-325 W3.3 — the OUTWARD backend, selectable.
+#
+# W3.2's rule is that the outward backend is a build-time CHOICE, not a
+# directory axis. It was neither until now: `NrosUorbBridge.cpp` guards
+# `NROS_BRIDGE_RMW` with `#ifndef` and defaults it to "zenoh", and NOTHING in
+# cmake ever defined it — so the choice existed in the source and could not be
+# made from outside. One backend does not demonstrate selection; it
+# demonstrates a hardcoded bridge with extra ceremony (W3.3).
+#
+# Two things must agree and are driven from the SAME value:
+#   * `BACKENDS uorb <rmw>` — drives the generated `nros_app_register_backends()`
+#     call, so the backend is REGISTERED.
+#   * `-DNROS_BRIDGE_RMW="<rmw>"` — the name the module hands to
+#     `NrosCppSessionSpec`, so the right session is SELECTED by name rather
+#     than by registration order.
+#
+# They are separate mechanisms, and the two halves fail differently:
+#   * BACKENDS vs the ARCHIVE is already guarded — `nros_px4_add_module` runs an
+#     `llvm-nm --defined-only` precheck for `nros_rmw_<name>_register` and
+#     FATAL_ERRORs with the exact cargo command (NanoRosPx4Module.cmake:329).
+#     When llvm-nm is absent it says so and the link catches it ~10 min later.
+#   * BACKENDS vs the NAME in the session spec is NOT guarded by anything.
+#     Registering zenoh while asking for "xrce" by name opens nothing and
+#     surfaces as a transport failure, which reads as a dead network rather
+#     than a wiring mistake. Driving both from one value is what removes it.
+#
+# The cargo half is NOT here. A networked backend is compiled into
+# libnros_cpp.a by `--features rmw-<rmw>-cffi`, which `just px4
+# build-bridge-example rmw=<rmw>` passes; this file only names it. That split is
+# deliberate (the archive is built before cmake runs) and is why the recipe
+# exports the same value it builds with.
+if(DEFINED NROS_PX4_BRIDGE_RMW AND NOT "${NROS_PX4_BRIDGE_RMW}" STREQUAL "")
+    set(_rmw "${NROS_PX4_BRIDGE_RMW}")
+elseif(NOT "$ENV{NROS_PX4_BRIDGE_RMW}" STREQUAL "")
+    set(_rmw "$ENV{NROS_PX4_BRIDGE_RMW}")
+else()
+    set(_rmw "zenoh")
+endif()
+
+# `nros_px4_add_module` already rejects an unknown BACKENDS entry
+# (NanoRosPx4Module.cmake:226). This fires EARLIER and names the variable the
+# caller actually set, so a typo in `rmw=` reads as a typo in `rmw=` rather than
+# as an unknown backend several frames down.
+if(NOT _rmw MATCHES "^(zenoh|xrce|cyclonedds)$")
+    message(FATAL_ERROR
+        "nros_uorb_bridge: NROS_PX4_BRIDGE_RMW is '${_rmw}', which is not a\n"
+        "networked backend this module can select. Use one of: zenoh xrce cyclonedds\n"
+        "(uorb is the INWARD side and is always registered).\n"
+        "Set it with:  just px4 build-bridge-example rmw=<name>")
+endif()
+message(STATUS "nros_uorb_bridge: outward backend = ${_rmw}")
+
 nros_px4_add_module(
 	MODULE   modules__nros_uorb_bridge
 	MAIN     nros_uorb_bridge
@@ -63,7 +115,7 @@ nros_px4_add_module(
 	# uorb = inward (in-firmware, zero-copy). zenoh = outward; a networked
 	# backend contributes no sources here — it is compiled INTO libnros_cpp.a by
 	# `--features rmw-zenoh-cffi`, and this list only drives the register call.
-	BACKENDS uorb zenoh
+	BACKENDS uorb ${_rmw}
 	# `<nros/bridge.hpp>` (MultiExecutor) is gated on NROS_CPP_STD rather than
 	# __STDC_HOSTED__ on purpose (issue 0332: a hosted compiler can be run
 	# -nostdinc++ against a minimal libcpp with no <string>/<vector>). PX4 SITL is
@@ -77,5 +129,17 @@ nros_px4_add_module(
 # The generated headers' Rust bodies. PUBLIC so it propagates to the final PX4
 # link, matching how the helper attaches the nano-ros archives.
 if(TARGET modules__nros_uorb_bridge)
+    # phase-325 W3.3 — the outward backend's NAME, as a proper definition.
+    #
+    # NOT via `COMPILE_FLAGS`: that property is a raw string appended to the
+    # command line, so the quotes needed around a string macro have to survive
+    # cmake, the generator and the shell. Passing
+    # `-DNROS_BRIDGE_RMW="\"${_rmw}\""` there produced `""zenoh""` and g++
+    # rejected it with
+    #     error: unable to find string literal operator 'operator""zenoh'
+    # ten minutes into a SITL build. `target_compile_definitions` quotes the
+    # value itself, which is what it is for.
+    target_compile_definitions(modules__nros_uorb_bridge PRIVATE
+        NROS_BRIDGE_RMW="${_rmw}")
     target_link_libraries(modules__nros_uorb_bridge PUBLIC "${_ffi_a}")
 endif()
