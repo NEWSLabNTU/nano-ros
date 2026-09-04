@@ -21,6 +21,15 @@ fn main() {
     // this presence cfg.
     println!("cargo:rustc-check-cfg=cfg(rmw_needs_type_descriptors)");
 
+    // The boot self-report (`src/boot_report.rs`) is OPT-IN, so an image that
+    // does not ask for it is byte-identical to one built before it existed.
+    // Set NROS_BOOT_REPORT=1 (Zephyr: CONFIG_NROS_BOOT_REPORT=y) to enable.
+    println!("cargo:rustc-check-cfg=cfg(nros_boot_report)");
+    println!("cargo:rerun-if-env-changed=NROS_BOOT_REPORT");
+    if env::var("NROS_BOOT_REPORT").is_ok_and(|v| !v.is_empty() && v != "0" && v != "n") {
+        println!("cargo:rustc-cfg=nros_boot_report");
+    }
+
     // Emit `has_rmw` when an RMW seam is compiled in.
     //
     // phase-347 W1 — this used to test four features:

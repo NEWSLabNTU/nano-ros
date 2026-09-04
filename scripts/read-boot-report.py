@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+"""Decode the nano-ros boot self-report out of a target memory dump.
+
+phase-412. The image writes a fixed record about itself into RAM
+(`packages/core/nros-node/src/boot_report.rs`); this reads it back after the
+core has been halted. See that module for WHY the record is not a log stream:
+the failure it exists to catch halts the board during entity creation, before
+any advisory can print, on a board whose console UART is not wired.
+
+Two inputs, and the ELF is not optional: the record's address is resolved from
+the image's own symbol table rather than hard-coded, so a relinked image cannot
+be read at a stale address and silently decode as garbage.
+
+    pyocd commander -t s32k344 -c halt -c "savemem ADDR LEN report.bin"
+    python3 scripts/read-boot-report.py build/zephyr/zephyr.elf report.bin
+
+`--addr-only` prints the address and length for that savemem line, so the two
+steps can be scripted without anyone copying a hex number by hand:
+
+    read $(python3 scripts/read-boot-report.py --addr-only build/zephyr/zephyr.elf)
+"""
+
+from __future__ import annotations
+
+import argparse
+import struct
+import subprocess
+import sys
+from pathlib import Path
+
+SYMBOL = "NROS_BOOT_REPORT"
+
+# "NRSR". Must match boot_report.rs MAGIC.
+MAGIC = 0x4E525352
+# Layout this script knows how to decode. Must match boot_report.rs VERSION.
+KNOWN_VERSION = 1
+
+# Field order, matching `BootReport` and `Snapshot` in boot_report.rs. Every
+# field is a u32; the record is all `AtomicU32`, which is repr(transparent).
+FIELDS = (
+    "magic",
+    "version",
+    "struct_size",
+    "stage",
+    "arena_size",
+    "max_cbs",
+    "max_sc",
+    "max_nodes",
+    "default_rx_buf_size",
+    "arena_capacity",
+    "arena_used",
+    "alloc_count",
+    "last_alloc_size",
+    "failed_alloc_size",
+    "failed_alloc_shortfall",
+)
+
+STAGES = {
+    0: "Untouched -- the image never reached boot_report::init()",
+    1: "ReportReady -- record stamped; executor not constructed",
+    2: "ExecutorReady -- arena bound",
+    3: "RegisteringEntities -- entity creation begun, NOT finished",
+    4: "EntitiesReady -- every declared entity registered",
+    5: "FirstSpin -- registration complete and spinning",
+}
+
+
+def resolve_symbol(elf: Path) -> tuple[int, int]:
+    """Address and size of the record, from the ELF's symbol table.
+
+    `nm` rather than a parser, because every toolchain that produced one of
+    these images ships one, and the alternative is another dependency on the
+    host side of a debugging tool.
+    """
+    for tool in ("nm", "arm-zephyr-eabi-nm", "arm-none-eabi-nm", "llvm-nm"):
+        try:
+            out = subprocess.run(
+                [tool, "-S", "--defined-only", str(elf)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except FileNotFoundError:
+            continue
+        if out.returncode != 0:
+            continue
+        for line in out.stdout.splitlines():
+            parts = line.split()
+            # "<addr> <size> <type> <name>" -- the size column is why -S.
+            if len(parts) == 4 and parts[3] == SYMBOL:
+                return int(parts[0], 16), int(parts[1], 16)
+        # The tool worked and the symbol is not there. Say so rather than
+        # trying the next tool and blaming its absence.
+        raise SystemExit(
+            f"{elf}: no `{SYMBOL}` symbol.\n"
+            "The image was built WITHOUT the boot report. Rebuild with\n"
+            "  NROS_BOOT_REPORT=1        (Zephyr: CONFIG_NROS_BOOT_REPORT=y)"
+        )
+    raise SystemExit("no usable `nm` found (tried nm, arm-zephyr-eabi-nm, llvm-nm)")
+
+
+def decode(blob: bytes) -> dict[str, int]:
+    want = len(FIELDS) * 4
+    if len(blob) < want:
+        raise SystemExit(
+            f"dump is {len(blob)} bytes, need at least {want} for one record"
+        )
+    values = struct.unpack_from(f"<{len(FIELDS)}I", blob, 0)
+    return dict(zip(FIELDS, values, strict=True))
+
+
+def report(rec: dict[str, int]) -> int:
+    """Print the record. Returns the process exit code."""
+    if rec["magic"] != MAGIC:
+        print(
+            f"NO RECORD: magic is 0x{rec['magic']:08x}, expected 0x{MAGIC:08x}.\n"
+            "\n"
+            "The magic is written LAST by boot_report::init(), so this means the\n"
+            "image did not get as far as constructing an Executor -- not that the\n"
+            "dump is at the wrong address, which the ELF lookup already ruled out.\n"
+            "An image that halted even earlier than that is itself the finding.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if rec["version"] != KNOWN_VERSION:
+        print(
+            f"record version {rec['version']}, this script decodes {KNOWN_VERSION}.\n"
+            "Refusing to decode rather than misreading it -- update this script.",
+            file=sys.stderr,
+        )
+        return 2
+
+    expect = len(FIELDS) * 4
+    if rec["struct_size"] != expect:
+        print(
+            f"record says {rec['struct_size']} bytes, this script expects {expect}.\n"
+            "Same version, different layout: one side changed a field without\n"
+            "bumping VERSION.",
+            file=sys.stderr,
+        )
+        return 2
+
+    stage = rec["stage"]
+    print(f"stage      {stage}  {STAGES.get(stage, 'UNKNOWN -- newer image than this script')}")
+    print()
+    print("compiled in (compare against what the build believed it delivered):")
+    print(f"  NROS_EXECUTOR_ARENA_SIZE      {rec['arena_size']}")
+    print(f"  NROS_EXECUTOR_MAX_CBS         {rec['max_cbs']}")
+    print(f"  NROS_EXECUTOR_MAX_SC          {rec['max_sc']}")
+    print(f"  NROS_EXECUTOR_MAX_NODES       {rec['max_nodes']}")
+    print(f"  NROS_SUBSCRIPTION_BUFFER_SIZE {rec['default_rx_buf_size']}")
+    print()
+    print("measured on the board:")
+    cap = rec["arena_capacity"]
+    used = rec["arena_used"]
+    print(f"  arena capacity                {cap}")
+    print(f"  arena used                    {used}", end="")
+    if cap:
+        print(f"   ({100.0 * used / cap:.1f}%)")
+    else:
+        print()
+    print(f"  arena allocations             {rec['alloc_count']}")
+    print(f"  last allocation               {rec['last_alloc_size']} bytes")
+
+    if cap and cap != rec["arena_size"]:
+        print()
+        print(
+            f"  NOTE: the executor was handed {cap} bytes but the image compiled\n"
+            f"  {rec['arena_size']}. Both are legitimate -- the arena's placement is the\n"
+            "  caller's choice (issue 0900) -- but size against the one in use."
+        )
+
+    if rec["failed_alloc_size"]:
+        print()
+        print(
+            f"ARENA EXHAUSTED: an allocation of {rec['failed_alloc_size']} bytes did not fit,\n"
+            f"short by {rec['failed_alloc_shortfall']} bytes.\n"
+            "\n"
+            f"  set NROS_EXECUTOR_ARENA_SIZE >= {cap + rec['failed_alloc_shortfall']}\n"
+            "  (Zephyr: CONFIG_NROS_EXECUTOR_ARENA_SIZE)\n"
+            "\n"
+            "That is the FIRST failure, which is the one that explains the boot;\n"
+            "later allocations may also have failed as a consequence."
+        )
+        return 1
+
+    if stage < 4:
+        print()
+        print(
+            "Registration did NOT complete, and the arena is not why.\n"
+            "Look for a pool count instead: a full pool fails at registration\n"
+            "with ExecutorFull rather than in the arena."
+        )
+        return 1
+
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description="Decode the nano-ros boot self-report out of a target memory dump."
+    )
+    ap.add_argument("elf", type=Path, help="the image the board is running")
+    ap.add_argument("dump", type=Path, nargs="?", help="memory dumped from the target")
+    ap.add_argument(
+        "--addr-only",
+        action="store_true",
+        help="print '<addr> <len>' for a pyocd savemem line, and exit",
+    )
+    args = ap.parse_args()
+
+    if not args.elf.is_file():
+        raise SystemExit(f"{args.elf}: not a file")
+
+    addr, size = resolve_symbol(args.elf)
+    if args.addr_only:
+        print(f"0x{addr:08x} {size}")
+        return 0
+
+    if args.dump is None:
+        ap.error("a dump is required unless --addr-only is given")
+    if not args.dump.is_file():
+        raise SystemExit(f"{args.dump}: not a file")
+
+    return report(decode(args.dump.read_bytes()))
+
+
+if __name__ == "__main__":
+    sys.exit(main())
