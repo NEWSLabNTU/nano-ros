@@ -70,7 +70,7 @@ import sys
 RECENT_WINDOW_SECS = 6 * 60 * 60
 
 
-def load_units(target_dir: pathlib.Path, all_units: bool = False):
+def load_units(target_dir: pathlib.Path, all_units: bool = False, schema: dict = None):
     """Every unit cargo built, as (side, crate, requires) triples.
 
     `side` is "host" or "target", read from cargo's own `compile_kind`.
@@ -78,7 +78,21 @@ def load_units(target_dir: pathlib.Path, all_units: bool = False):
     By default only units from the tree's most recent build are returned; pass
     `all_units` to include stale ones, which is a historical view and must not be
     quoted as a property of the current build.
+
+    `schema`, when given, is filled with what the PARSE actually found:
+    `records` (json objects read), `with_deps` and `with_compile_kind` (how many
+    carried each key this tool reads). Issue 0945 item 3 — cargo's `.fingerprint`
+    format carries no stability guarantee, and every key here is read with
+    `.get(..., default)`, so a rename does not raise: `deps` gone means every
+    crate looks like a build root and `--exclusive-to` answers "nothing leaves",
+    which is plausible, optimistic and wrong in exactly the direction the failed
+    estimates in this file's header were wrong. The caller refuses rather than
+    printing it.
     """
+    if schema is not None:
+        schema.setdefault("records", 0)
+        schema.setdefault("with_deps", 0)
+        schema.setdefault("with_compile_kind", 0)
     units = []
     stale = 0
     # Bounded globs, NOT `**`: a populated target dir holds hundreds of thousands
@@ -108,6 +122,10 @@ def load_units(target_dir: pathlib.Path, all_units: bool = False):
                     continue
                 if not isinstance(data, dict):
                     continue
+                if schema is not None:
+                    schema["records"] += 1
+                    schema["with_deps"] += "deps" in data
+                    schema["with_compile_kind"] += "compile_kind" in data
                 side = "host" if data.get("compile_kind") in (0, None) else "target"
                 requires = {d[1] for d in data.get("deps", []) if len(d) > 1}
                 # A crate's own build script is an internal edge, not a dependency.
@@ -134,6 +152,41 @@ def load_units(target_dir: pathlib.Path, all_units: bool = False):
             )
         units = keep
     return [(s, c, r) for s, c, r, _ in units]
+
+
+def schema_complaint(schema):
+    """The reason this parse cannot be trusted, or None.
+
+    Issue 0945 item 3. Both keys are present in EVERY record cargo writes today —
+    measured across `lib-*`, `build-script-build*` and `run-build-script-*` in a
+    populated tree, all carrying the identical key set — so "records were read
+    and none carried this key" is a rename, not a legitimate shape.
+
+    This is the honest version of the mitigation issue 0945 claimed for these
+    tools. `--self-test` did NOT cover it: it feeds `requirer_map` a hand-written
+    `units` list and never touches the parser, so a schema change left the
+    self-test green and the answer wrong.
+    """
+    if not schema or not schema.get("records"):
+        return None
+    if not schema["with_deps"]:
+        return (f"{schema['records']} fingerprint record(s) read and NOT ONE carried a "
+                "`deps` key.\n"
+                "      cargo's .fingerprint format is private and undocumented (issue 0945 "
+                "item 3);\n"
+                "      a rename here does not raise — every crate would read as a build root "
+                "and\n"
+                "      `--exclusive-to` would answer \"nothing leaves\". That answer is "
+                "plausible,\n"
+                "      optimistic, and wrong, which is the failure this tool exists to "
+                "prevent.")
+    if not schema["with_compile_kind"]:
+        return (f"{schema['records']} fingerprint record(s) read and NOT ONE carried a "
+                "`compile_kind` key.\n"
+                "      Host and target units would all be labelled \"host\" and the two "
+                "graphs conflated —\n"
+                "      the same class of error as the path-based guess this tool replaced.")
+    return None
 
 
 def requirer_map(units):
@@ -174,7 +227,7 @@ def exclusive_to(reqmap, roots):
     return dropped - roots
 
 
-def self_test() -> int:
+def self_test(quiet: bool = False) -> int:
     """Prove the fixpoint on a graph whose right answer is known by hand.
 
     The repo's gate-selftest convention (see `gen-issue-index.py --self-test`):
@@ -223,15 +276,61 @@ def self_test() -> int:
     if m2.get("nros_pkg_index") != {"nros_macros"}:
         failures.append(f"name normalisation: {dict(m2)}")
 
+    # Issue 0945 item 3 — the PARSER, not just the fixpoint.
+    #
+    # Everything above feeds `requirer_map` a hand-written `units` list, so it
+    # cannot see a `.fingerprint` schema change at all. That is why 0945's claim
+    # that "--self-test surfaces a schema change" was false for this tool. These
+    # two cases read a real on-disk tree and then MUTATE the key cargo owns: the
+    # healthy shape must be reported, and the renamed shape must be REFUSED
+    # rather than answered.
+    import contextlib
+    import io
+    import tempfile
+
+    def _tree(root, keyname="deps", kindkey="compile_kind"):
+        d = pathlib.Path(root) / "trip" / "prof" / ".fingerprint" / "app-0a605463647b4af3"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "lib-app.json").write_text(json.dumps({
+            kindkey: 0, keyname: [[1, "serde", False, 2]],
+        }))
+        e = pathlib.Path(root) / "trip" / "prof" / ".fingerprint" / "serde-0b605463647b4af3"
+        e.mkdir(parents=True, exist_ok=True)
+        (e / "lib-serde.json").write_text(json.dumps({kindkey: 0, keyname: []}))
+        return pathlib.Path(root)
+
+    with tempfile.TemporaryDirectory() as root, \
+            contextlib.redirect_stdout(io.StringIO()):
+        rc = main([str(_tree(root))], run_selftest=False)
+        if rc != 0:
+            failures.append(f"healthy fingerprint tree was refused (rc={rc})")
+    with tempfile.TemporaryDirectory() as root, \
+            contextlib.redirect_stderr(io.StringIO()) as refusal:
+        rc = main([str(_tree(root, keyname="dependencies"))], run_selftest=False)
+        if "deps" not in refusal.getvalue():
+            failures.append("the refusal does not name the key that went missing")
+        if rc != 2:
+            failures.append(
+                f"`deps` renamed and the tool still answered (rc={rc}) — a schema "
+                "change must be INCONCLUSIVE, not a plausible empty graph")
+    with tempfile.TemporaryDirectory() as root, \
+            contextlib.redirect_stderr(io.StringIO()):
+        rc = main([str(_tree(root, kindkey="kind"))], run_selftest=False)
+        if rc != 2:
+            failures.append(
+                f"`compile_kind` renamed and the tool still answered (rc={rc}) — host "
+                "and target would be conflated")
+
     for f in failures:
         print(f"[FAIL] {f}", file=sys.stderr)
     if failures:
         return 1
-    print("nros-leaf-graph --self-test: OK (4 checks, incl. the contested-crate case)")
+    if not quiet:
+        print("nros-leaf-graph --self-test: OK (7 checks — 4 fixpoint, 3 fingerprint-schema)")
     return 0
 
 
-def main() -> int:
+def main(argv=None, run_selftest=True) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("target_dir", type=pathlib.Path, nargs="?")
     ap.add_argument("--self-test", action="store_true",
@@ -243,7 +342,7 @@ def main() -> int:
     ap.add_argument("--all-units", action="store_true",
                     help="include stale fingerprint records (historical view; "
                          "they report dependencies the current build does not have)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     if args.self_test:
         return self_test()
@@ -253,9 +352,27 @@ def main() -> int:
         print(f"[FAIL] no such target dir: {args.target_dir}", file=sys.stderr)
         return 2
 
-    units = load_units(args.target_dir, all_units=args.all_units)
+    # The negative control runs on the NORMAL path, not only behind a flag
+    # (`check-gate-selftests`' rule, and the right one here): what it proves is
+    # that the schema refusal below is still wired, and the moment that matters
+    # is the moment someone is about to quote a number out of this tool. Issue
+    # 0945 item 3 — the previous shape ran only under `--self-test`, which
+    # nothing invoked. ~10 ms, in-process.
+    if run_selftest and self_test(quiet=True) != 0:
+        print("[FAIL] nros-leaf-graph: own selftest failed — not reporting a graph.",
+              file=sys.stderr)
+        return 1
+
+    schema = {}
+    units = load_units(args.target_dir, all_units=args.all_units, schema=schema)
     if not units:
         print(f"[FAIL] no .fingerprint units under {args.target_dir} — was anything built there?",
+              file=sys.stderr)
+        return 2
+    complaint = schema_complaint(schema)
+    if complaint:
+        print(f"[INCONCLUSIVE] {complaint}\n"
+              "      Nothing is reported, because a wrong number here is worse than none.",
               file=sys.stderr)
         return 2
     reqmap = requirer_map(units)

@@ -99,7 +99,7 @@ def newest_record(tree):
     return best
 
 
-def records(tree):
+def records(tree, schema=None):
     """{unit: (env {var: val}, paths frozenset)} for one build tree.
 
     Only units live in the tree's LAST build (see `_live_units`); a stale orphan
@@ -128,6 +128,10 @@ def records(tree):
                     env[d["var"]] = d.get("val")
                 if p := e.get("RerunIfChanged"):
                     paths |= set(p.get("paths", []))
+            if schema is not None:
+                schema["records"] = schema.get("records", 0) + 1
+                if env or paths:
+                    schema["with_entries"] = schema.get("with_entries", 0) + 1
             out[unit] = (env, frozenset(paths))
     return out
 
@@ -155,7 +159,7 @@ def compare(trees):
     return findings
 
 
-def self_test():
+def self_test(quiet=False):
     """The two divergences, and the case that must NOT be reported.
 
     Encoded as a test because the interesting predicate is "same unit, different
@@ -163,13 +167,16 @@ def self_test():
     instead — which is normal (feature variants) and would make the tool cry wolf
     on every build.
     """
+    import contextlib
+    import io
     import tempfile
 
-    def write(root, tree, unit, env, paths):
+    def write(root, tree, unit, env, paths, envkey="RerunIfEnvChanged",
+             pathkey="RerunIfChanged"):
         d = os.path.join(root, tree, "trip", "prof", ".fingerprint", unit)
         os.makedirs(d, exist_ok=True)
-        local = [{"RerunIfEnvChanged": {"var": k, "val": v}} for k, v in env.items()]
-        local.append({"RerunIfChanged": {"output": "x", "paths": list(paths)}})
+        local = [{envkey: {"var": k, "val": v}} for k, v in env.items()]
+        local.append({pathkey: {"output": "x", "paths": list(paths)}})
         with open(os.path.join(d, RUN), "w", encoding="utf-8") as fh:
             json.dump({"local": local}, fh)
 
@@ -203,24 +210,89 @@ def self_test():
     with tempfile.TemporaryDirectory() as root:
         write(root, "a", "only-in-a", {"K": "4"}, ["/s/x.rs"])
         write(root, "b", "only-in-b", {"K": "4"}, ["/s/x.rs"])
-        rc = main([os.path.join(root, "a"), os.path.join(root, "b")])
+        with contextlib.redirect_stderr(io.StringIO()):
+            rc = main([os.path.join(root, "a"), os.path.join(root, "b")], run_selftest=False)
     assert rc == 2, f"comparing zero shared units must be INCONCLUSIVE, got rc={rc}"
-    print("nros-shared-dir-churn: self-test OK (5 cases: identical, env, paths, feature-variants, vacuity)")
+
+    # Issue 0945 item 3 — the SCHEMA guard. Two trees whose records are identical
+    # and readable must certify; rename the keys cargo owns and the same two trees
+    # must become INCONCLUSIVE rather than "safe to collapse". Without this the
+    # self-test writes the same names it reads and is blind to a cargo rename,
+    # which is the mitigation 0945 credited these tools with and they did not have.
+    with tempfile.TemporaryDirectory() as root:
+        write(root, "a", "pkg-1", {"K": "4"}, ["/s/x.rs"])
+        write(root, "b", "pkg-1", {"K": "4"}, ["/s/x.rs"])
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = main([os.path.join(root, "a"), os.path.join(root, "b")], run_selftest=False)
+    assert rc == 0, f"identical readable trees must certify, got rc={rc}"
+
+    with tempfile.TemporaryDirectory() as root:
+        write(root, "a", "pkg-1", {"K": "4"}, ["/s/x.rs"],
+              envkey="RerunIfEnvironmentChanged", pathkey="RerunIfPathChanged")
+        write(root, "b", "pkg-1", {"K": "4"}, ["/s/x.rs"],
+              envkey="RerunIfEnvironmentChanged", pathkey="RerunIfPathChanged")
+        with contextlib.redirect_stderr(io.StringIO()) as refusal:
+            rc = main([os.path.join(root, "a"), os.path.join(root, "b")], run_selftest=False)
+    assert "RerunIfEnvChanged" in refusal.getvalue(), \
+        "the refusal must name the key it could not find"
+    assert rc == 2, (
+        f"a renamed .fingerprint schema still certified sharing (rc={rc}) — an "
+        "unparsed record set reads as 'every unit agrees'")
+
+    if not quiet:
+        print("nros-shared-dir-churn: self-test OK (7 cases: identical, env, paths, "
+              "feature-variants, vacuity, readable-certifies, renamed-schema-refuses)")
 
 
-def main(argv):
+def main(argv, run_selftest=True):
     if "--self-test" in argv:
         self_test()
         return 0
+    # The negative control runs on the NORMAL path, not only behind a flag
+    # (`check-gate-selftests`' rule). This tool's output sentence is "safe to
+    # collapse onto one --target-dir"; the moment to prove its parser and its
+    # schema refusal are still wired is the moment before it says that, not a
+    # `--self-test` nobody invokes. Issue 0945 item 3. ~50 ms, in-process.
+    if run_selftest:
+        self_test(quiet=True)
     trees = [a for a in argv if not a.startswith("-")]
     if len(trees) < 2:
         print(__doc__.strip().splitlines()[0], file=sys.stderr)
         print("\nneed at least two build trees to compare", file=sys.stderr)
         return 2
     findings = compare(trees)
-    seen = {t: records(t) for t in trees}
+    schema = {}
+    seen = {t: records(t, schema) for t in trees}
     counts = collections.Counter(u for r in seen.values() for u in r)
     shared = sum(1 for u, n in counts.items() if n > 1)
+
+    # Issue 0945 item 3 — never certify on an unparsed schema either.
+    #
+    # `local` and its `RerunIfEnvChanged` / `RerunIfChanged` entries are cargo's
+    # private on-disk format, read here with `.get(..., default)`. A rename does
+    # not raise: every unit parses to an EMPTY env dict and an EMPTY path set,
+    # every unit therefore agrees with every other, `findings` is empty, and the
+    # tool prints "safe to collapse onto one --target-dir" — the most dangerous
+    # sentence it can say, on evidence it did not read.
+    #
+    # `Precalculated` entries are normal and carry neither key (measured: 14 of
+    # 125 records in the freertos tree, 16 of 72 in qemu-arm-baremetal), so the
+    # predicate is "not ONE record in ANY tree yielded an entry", not "some
+    # record yielded none".
+    #
+    # This is what 0945 assumed `--self-test` already provided. It did not: the
+    # self-test writes the same key names it reads, so it pins the parser against
+    # itself and stays green through a rename.
+    if schema.get("records") and not schema.get("with_entries"):
+        print(
+            f"nros-shared-dir-churn: INCONCLUSIVE — {schema['records']} build-script "
+            "record(s) read and NOT ONE\n"
+            "yielded a RerunIfEnvChanged or RerunIfChanged entry. Cargo's .fingerprint\n"
+            "format is private; a renamed key reads as \"every unit agrees\", which is\n"
+            "indistinguishable from a clean result and would certify sharing on nothing.",
+            file=sys.stderr,
+        )
+        return 2
 
     # Never certify on nothing. A tool that prints OK when it compared zero units
     # is the vacuous-pass shape this repo gates against elsewhere
