@@ -23,7 +23,7 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 | --- | --- |
 | Finalized whole-system design | [docs/design/ARCHITECTURE.md](docs/design/ARCHITECTURE.md) |
 | A specific design decision (stable vs evolving) | [docs/design/](docs/design/README.md) — numbered RFCs |
-| A known bug / limitation / tech-debt (troubleshooting) | [docs/issues/](docs/issues/README.md) — numbered issues (open) + `archived/`. Query with `just issues [--area X] [--id N] [text]` (~20 ms, offline); the generated list is `open.md`, `merge=union` so concurrent filings never conflict (issue 0884) |
+| A known bug / limitation / tech-debt (troubleshooting) | [docs/issues/](docs/issues/README.md) — numbered issues (open) + `archived/`. Query with `just issues [--area X] [--id N] [text]` (~20 ms, offline); the generated list is `open.md`, a GITIGNORED build artifact so concurrent filings never conflict — never `git add` it (issues 0883/0884) |
 | Build / test / SDK tiers / jobserver / zephyr versions | [AGENTS.md](AGENTS.md) + [docs/development/](docs/development/) + `just/*.just` |
 | Dev utilities (towncrier, clang-format) | `just dev-tools [--install]` — checks the interpreter you chose and installs the repo's OWN tools into it; never creates a venv, never touches build groups (issue 0885) |
 | Long-form practices + pitfalls (cmake, tests, multi-session) | AGENTS.md “Practices & Pitfalls” (this file keeps the one-liners) |

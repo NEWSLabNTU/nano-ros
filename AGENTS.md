@@ -714,9 +714,12 @@ and verified.
 
 - **Parallel agent sessions push to `main` concurrently.** `git fetch` + check
   `origin/main`'s highest issue id (including `archived/`) immediately before
-  filing a `docs/issues/` entry. The generated list is `docs/issues/open.md` and is
-  `merge=union` (issue 0884), so two agents filing concurrently no longer conflict
-  (merge both sides, renumber only your own files). Stash-wrap local-only files
+  filing a `docs/issues/` entry. The generated list is `docs/issues/open.md`, a
+  GITIGNORED build artifact (issues 0883/0884), so two agents filing concurrently
+  no longer conflict — regenerate it with `python3 scripts/gen-issue-index.py`
+  and NEVER `git add` it. `merge=union` was tried first and retired: the driver
+  does not run in GitHub's server-side merge or rebase, which is the only place
+  the conflict mattered. Renumber only your own files. Stash-wrap local-only files
   (`packages/rmw/zenoh/zpico-sys/c/include/zpico.h`-style) around every rebase.
 - **Write full logs of background builds/tests to files** and grep afterwards;
   `cmd | tail -N` swallows the mid-log error that explains the failure.
