@@ -642,6 +642,50 @@ fn env_usize(name: &str, default: usize) -> usize {
 /// (builtin < platform toml < board toml < env) instead of raw env reads,
 /// so the platform default (e.g. zephyr batch-on) reaches the ABI-gating
 /// `Z_FEATURE_*` header while an explicit env `0` still wins.
+/// Every `nros-platform.toml` that EXISTS under the platform search path.
+///
+/// Issue 1039 follow-up. This used to reconstruct the path as
+/// `root/<platform-name>/nros-platform.toml`, which is not the layout: a
+/// platform package directory is `nros-platform-<name>`, so
+/// `packages/platform/nuttx/nros-platform.toml` never existed and the
+/// `is_file()` filter dropped it. The manifests under `config/<name>/` matched
+/// and were watched; every manifest under `packages/platform/` was NOT.
+///
+/// The consequence is worse than a missed rebuild, because it is silent: an
+/// edit to `packages/platform/nros-platform-nuttx/nros-platform.toml` changed
+/// nothing until something unrelated forced the build script to re-run. An
+/// experiment on platform defines then measures the OLD defines and reads as a
+/// refuted hypothesis. That happened while diagnosing issue 1039 and cost a
+/// wrong conclusion, which is the same shape as every other staleness defect
+/// here: a stale input that reports as a result.
+///
+/// Enumerating directories rather than reconstructing names also removes the
+/// dependence on a name matching its directory at all — the thing that broke.
+/// Watching a manifest that exists but is SHADOWED by a higher-priority root is
+/// deliberate and harmless: it costs an occasional rebuild and cannot miss one.
+///
+/// Still only paths that EXIST (issue 0966): cargo treats a missing
+/// `rerun-if-changed` input as permanently dirty, which silently rebuilds
+/// `zpico-sys` and everything above it on every invocation.
+fn platform_manifests_to_watch(roots: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for root in roots {
+        let Ok(entries) = std::fs::read_dir(root) else {
+            continue; // a missing root is normal for a search PATH
+        };
+        let mut found: Vec<PathBuf> = entries
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.is_dir())
+            .map(|d| d.join(platform_config::PLATFORM_CONFIG_FILENAME))
+            .filter(|m| m.is_file())
+            .collect();
+        found.sort();
+        out.append(&mut found);
+    }
+    out
+}
+
 fn generate_config_header(
     out_dir: &Path,
     link: &LinkFeatures,
@@ -786,15 +830,8 @@ pub fn run() {
             // new platform descriptor is a deliberate act that comes with other
             // edits. `PlatformsTree` does not record which root each name was
             // loaded from; if it ever does, watch exactly those instead.
-            for root in &platform_search_path {
-                for name in tree.names() {
-                    let manifest = root
-                        .join(name)
-                        .join(platform_config::PLATFORM_CONFIG_FILENAME);
-                    if manifest.is_file() {
-                        println!("cargo:rerun-if-changed={}", manifest.display());
-                    }
-                }
+            for manifest in platform_manifests_to_watch(&platform_search_path) {
+                println!("cargo:rerun-if-changed={}", manifest.display());
             }
             let m = tree.as_platform_manifest();
             (m, Some(tree))
@@ -2471,4 +2508,86 @@ fn generate_embedded_version_header(zenoh_pico_src: &Path, include_dir: &Path) {
     let header = crate::embedded_version_header(&version, template);
 
     std::fs::write(include_dir.join("zenoh-pico.h"), header).unwrap();
+}
+
+#[cfg(test)]
+mod platform_watch_tests {
+    use super::platform_manifests_to_watch;
+    use std::path::PathBuf;
+
+    /// A unique scratch dir, without a `tempfile` dev-dependency: adding one
+    /// would move `Cargo.lock`, and a lockfile moves only when a dev means it.
+    fn scratch(tag: &str) -> PathBuf {
+        let d =
+            std::env::temp_dir().join(format!("nros-platform-watch-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn write_manifest(dir: &PathBuf) -> PathBuf {
+        std::fs::create_dir_all(dir).unwrap();
+        let m = dir.join("nros-platform.toml");
+        std::fs::write(&m, "[platform.nuttx]\n").unwrap();
+        m
+    }
+
+    /// The layout that was being missed: a platform PACKAGE directory is
+    /// `nros-platform-<name>`, not `<name>`. Reconstructing
+    /// `root/<name>/nros-platform.toml` produced a path that never existed, so
+    /// the `is_file()` filter silently dropped every manifest under
+    /// `packages/platform/` — and editing one changed nothing until an
+    /// unrelated rebuild.
+    #[test]
+    fn a_platform_package_dir_is_watched_though_not_named_for_the_platform() {
+        let root = scratch("pkg");
+
+        // The shape that broke: directory name != platform name.
+        let pkg = write_manifest(&root.join("nros-platform-nuttx"));
+        // The shape that already worked, kept so the fix is not a swap.
+        let cfg = write_manifest(&root.join("nuttx"));
+        // No manifest: must NOT be watched — cargo treats a missing
+        // `rerun-if-changed` input as permanently dirty (issue 0966).
+        std::fs::create_dir_all(root.join("nros-platform-empty")).unwrap();
+
+        let watched = platform_manifests_to_watch(std::slice::from_ref(&root));
+        assert!(
+            watched.contains(&pkg),
+            "the `nros-platform-<name>` manifest must be watched — the case the \
+             old reconstruction missed. got: {watched:?}"
+        );
+        assert!(watched.contains(&cfg), "got: {watched:?}");
+        assert_eq!(watched.len(), 2, "only manifests that EXIST: {watched:?}");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A search PATH may name roots that are absent; normal, must not panic.
+    #[test]
+    fn a_missing_search_root_is_skipped() {
+        let root = scratch("absent");
+        let gone = root.join("not-here");
+        assert!(platform_manifests_to_watch(std::slice::from_ref(&gone)).is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Documents the old bug directly: the reconstructed path does not exist
+    /// for a package directory, which is why the watch was silent.
+    #[test]
+    fn the_old_reconstruction_would_have_found_nothing() {
+        let root = scratch("recon");
+        write_manifest(&root.join("nros-platform-nuttx"));
+
+        let reconstructed = root.join("nuttx").join("nros-platform.toml");
+        assert!(
+            !reconstructed.is_file(),
+            "if this exists, the regression this test documents is gone"
+        );
+        assert_eq!(
+            platform_manifests_to_watch(std::slice::from_ref(&root)).len(),
+            1
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
