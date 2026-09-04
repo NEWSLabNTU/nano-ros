@@ -60,7 +60,6 @@ docs/roadmap/phase-211-proof-carrying-code.md	verify-proofs
 docs/roadmap/phase-215-board-crate-as-importable-unit.md	zephyr
 docs/roadmap/phase-217-arm-fvp-local-runtime.md	zephyr
 docs/roadmap/phase-236-cpp-entry-embedded-runtime.md	zephyr
-docs/roadmap/phase-275-276-branch-notes.md	zephyr
 docs/roadmap/phase-292-asi-reference-consumer-revisit.md	zephyr
 docs/roadmap/phase-375-board-tier-policy-and-onboarding-cost.md	board-new
 docs/roadmap/phase-395-dev-workflow-migration.md	ci-l2
