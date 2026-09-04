@@ -111,6 +111,7 @@ fast-serial: \
     board-facts-delivery \
     board-manifest-drift \
     board-tiers \
+    board-vocabulary \
     book-links \
     book-no-just \
     box-sync-covers-tracked-source \
@@ -2457,6 +2458,14 @@ ci-image-python-deps:
 # The Rust field defaults to `unclassified` so it could land incrementally;
 # without this gate a new key inherits that default and `nros setup --workspace`
 # reports a toolchain as a content dependency — the conflation `role` removes.
+# phase-422 W7 — every `deploy=`/`board=` a package.xml exports must resolve.
+# `nros setup --workspace` turns those values into a provisioning command, so a
+# value meaning nothing becomes a remedy that fails. Five namespaces exist for
+# the concept; this does not unify them, it stops a value in none of them.
+[group("checks")]
+board-vocabulary:
+    @python3 scripts/check-board-vocabulary.py
+
 [group("checks")]
 prereq-roles:
     @python3 scripts/check-prereq-roles.py
