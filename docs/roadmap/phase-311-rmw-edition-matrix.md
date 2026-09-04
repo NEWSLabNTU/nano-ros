@@ -13,7 +13,22 @@ feature) + regenerating msgs per edition; NO zenoh bump. Only jazzy ships
 `rmw_zenoh_cpp` (iron/humble skip the lane loudly). Completes phase-304
 W4-remaining (the nano↔jazzy zenoh wire lane). Version divergence → future work.
 
-The zenoh lane (W2/W5) is blocked on a version gap the source check
+> **SUPERSEDED by this doc's own status line — kept because the reasoning is
+> the useful part.** The paragraph below says the zenoh lane is BLOCKED and the
+> delivered matrix excludes zenoh; the status line two paragraphs up says W5
+> landed, zenoh (jazzy) is 6/6, and the version gap was a red herring. The
+> status line is the true one, and it was written LATER on the same day — this
+> paragraph is the pre-W5 framing that never got struck. It is a worked example
+> of the "reversed premise" class phase-419 W3 names: a confident blocker,
+> refuted by the measurement it asked for, still reading as live.
+>
+> Two of its facts have also expired since. zpico no longer pins zenoh-pico
+> **1.7.2** — phase-415 moved the patch line to **1.8.0** on 2026-09-04 — and
+> **#0291 did not close by a version bump**; W5 closed it by proving the wire is
+> proto `0x09` on both sides, which is why no bump was needed for interop.
+
+*Pre-W5 framing, 2026-07-27, refuted the same day:* The zenoh lane (W2/W5) is
+blocked on a version gap the source check
 surfaced: zpico pins zenoh **1.7.2** / vendored rmw_zenoh **1.7.1**, but a stock
 jazzy `rmw_zenoh_cpp` is **1.11.2** — a 4-minor-version gap, near-certainly
 wire-incompatible. Building the pinned-1.7.1 overlay would test a *non-default*
