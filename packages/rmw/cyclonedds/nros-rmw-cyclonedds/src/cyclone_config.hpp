@@ -158,6 +158,16 @@ constexpr const char* kEmbeddedCycloneConfig =
     "</Threads>"
     "</Domain>"
     "</CycloneDDS>";
+#else
+// phase-206 W2 — hosted POSIX and plain Zephyr bake no baseline, and that is
+// the correct answer for them: Cyclone's own loader reads `CYCLONEDDS_URI`
+// there, which is the ROS 2 experience.
+//
+// The symbol still has to EXIST, because a bringup shipping `rmw/cyclonedds.xml`
+// now makes the hosted path compose too (see `session.cpp`). An empty string is
+// the honest value — `compose_cyclone_config` skips empty fragments, so hosted
+// composes exactly what the user wrote and nothing else.
+constexpr const char* kEmbeddedCycloneConfig = "";
 #endif // NROS_RMW_CYCLONEDDS_HAVE_BASELINE
 
 /// Upper bound on the composed config string.

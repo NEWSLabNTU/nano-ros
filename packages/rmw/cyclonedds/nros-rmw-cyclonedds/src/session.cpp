@@ -12,6 +12,7 @@
 // peer list lands in 117.6 once pub/sub needs network tuning.
 
 #include "internal.hpp"
+#include "user_config.hpp"  // phase-206 W2 — the bringup's own Cyclone XML
 
 #include "cyclone_config.hpp"  // phase-206 W1 — baked baseline + source composition
 
@@ -186,7 +187,26 @@ rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t dom
         return NROS_RMW_RET_BAD_ALLOC;
     }
 
+// phase-206 W2 — the guard gained `has_user_cyclone_config()`.
+//
+// The three platforms below create the domain because they have no other way in.
+// HOSTED POSIX and plain Zephyr deliberately do not: Cyclone's own loader reads
+// `CYCLONEDDS_URI`, which is exactly the ROS 2 experience, and intercepting it
+// would take that away.
+//
+// But a bringup that SHIPS `rmw/cyclonedds.xml` has stated a config for every
+// target it builds, and a file that silently applies on the RTOS and not on the
+// host is worse than no file: the acceptance for this work item is that the
+// same bytes take effect on both. So a baked config — and only a baked config —
+// makes the hosted path create the domain too. An image with no bringup config
+// keeps the old hosted behaviour byte for byte.
 #if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX) || defined(CONFIG_BOARD_NATIVE_SIM)
+#  define NROS_CYC_COMPOSE_DOMAIN 1
+#else
+#  define NROS_CYC_COMPOSE_DOMAIN 0
+#endif
+
+if (NROS_CYC_COMPOSE_DOMAIN || has_user_cyclone_config()) {
     // Phase 192.4 — honor a user-supplied CYCLONEDDS_URI (inline XML or
     // `file://` ref) so the baked embedded runtime profile (buffer/stack
     // sizes, MaxAutoParticipantIndex, the 127.0.0.1 peer) is overridable
@@ -224,15 +244,22 @@ rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t dom
     // `env_lookup`, not `::getenv` — a cross libc's `<cstdlib>` aliases only
     // a subset of the C names into `std::`, and which subset differs per libc
     // (see `service.cpp`'s `env_u64`).
-    const char* frags[3] = {kEmbeddedCycloneConfig, kKconfigCycloneConfig,
-                            env_lookup("CYCLONEDDS_URI")};
+    // ORDER IS PRECEDENCE, lowest first (see `cyclone_config.hpp`): the baked
+    // baseline, then the Kconfig blob, then the BRINGUP's own file, then the
+    // environment. The bringup outranks Kconfig because it is the thing the
+    // user authored for this system; the environment outranks the bringup
+    // because that is how a ROS 2 user overrides a shipped config at run time
+    // without rebuilding, and taking that away would be the opposite of this
+    // phase's goal.
+    const char* frags[4] = {kEmbeddedCycloneConfig, kKconfigCycloneConfig,
+                            kUserCycloneConfig, env_lookup("CYCLONEDDS_URI")};
     // Static, not a local: `session_create` runs on the app task, and 4 KiB of
     // stack is a real ask on an RTOS whose Cyclone threads are hand-sized just
     // above. Cyclone copies the string (`ddsrt_strdup` in `ddsi_config_init`),
     // so it need not outlive this call — and session creation is a startup
     // path reached from one thread, which is what makes a shared buffer safe.
     static char cyc_config[kCycloneConfigMax];
-    if (!compose_cyclone_config(cyc_config, sizeof(cyc_config), frags, 3)) {
+    if (!compose_cyclone_config(cyc_config, sizeof(cyc_config), frags, 4)) {
         // Fail loud. A truncated config is unterminated XML, and Cyclone would
         // report it as a parse error against a string the user never wrote.
         NROS_CYC_TRACE("session_create: baked + override config exceeds %u bytes",
@@ -248,7 +275,7 @@ rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t dom
     if (domain > 0) {
         state->domain = domain;
     }
-#endif
+}  // NROS_CYC_COMPOSE_DOMAIN || has_user_cyclone_config()
 
     /* issue 0808 — honour `localhost_only`, so the field is a real control
      * rather than a carried value nobody reads (which the issue calls an inert

@@ -1,0 +1,17 @@
+<!-- phase-206 W2 fixture — a user's own CycloneDDS config, exactly as they
+     would write it for ROS 2. Multi-homing is the <Interfaces> element here;
+     nano-ros has no feature for it and needs none. -->
+<CycloneDDS>
+  <Domain Id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface address="127.0.0.1" priority="default" multicast="false"/>
+      </Interfaces>
+      <AllowMulticast>false</AllowMulticast>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <Peers><Peer Address="127.0.0.1"/></Peers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>

@@ -720,3 +720,43 @@ add_test(
 )
 set_tests_properties(nros_rmw_cyclonedds_config_compose PROPERTIES
     ENVIRONMENT "${_nros_rmw_test_env}")
+
+# phase-206 W2 — the bringup's own config is baked and reaches the backend.
+#
+# The test drives the REAL generator (`nros_bake_rmw_user_config`) against a
+# fixture laid out exactly as a bringup would be — `<bringup>/rmw/cyclonedds.xml`
+# — so a change to the generator's output shape fails here rather than only on
+# an embedded image nobody builds locally.
+include(${CMAKE_CURRENT_SOURCE_DIR}/../../../../../cmake/NanoRosRmwUserConfig.cmake)
+set(_w2_bringup ${CMAKE_CURRENT_BINARY_DIR}/w2_bringup)
+file(MAKE_DIRECTORY ${_w2_bringup}/rmw)
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/fixtures/bringup_cyclonedds.xml
+    ${_w2_bringup}/rmw/cyclonedds.xml
+    COPYONLY)
+nros_bake_rmw_user_config(
+    BRINGUP ${_w2_bringup}
+    BACKEND cyclonedds
+    OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/w2_gen
+    RESULT  _w2_header)
+if(NOT _w2_header)
+    message(FATAL_ERROR
+        "phase-206 W2: the bake produced no header for a fixture that exists — "
+        "the test would then assert against an empty config and pass vacuously.")
+endif()
+
+add_executable(nros_rmw_cyclonedds_user_config cyclone_user_config.cpp)
+target_link_libraries(nros_rmw_cyclonedds_user_config PRIVATE nros_rmw_cyclonedds)
+target_include_directories(nros_rmw_cyclonedds_user_config
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${CMAKE_CURRENT_BINARY_DIR}/w2_gen   # the generated header goes FIRST-class
+        ${NROS_RMW_CFFI_DIR}
+)
+# The fixture path, so the test compares the baked bytes against the file they
+# came from rather than against a copy of itself.
+target_compile_definitions(nros_rmw_cyclonedds_user_config
+    PRIVATE NROS_W2_FIXTURE_PATH="${_w2_bringup}/rmw/cyclonedds.xml")
+add_test(NAME nros_rmw_cyclonedds_user_config COMMAND nros_rmw_cyclonedds_user_config)
+set_tests_properties(nros_rmw_cyclonedds_user_config PROPERTIES
+    ENVIRONMENT "${_nros_rmw_test_env}")
