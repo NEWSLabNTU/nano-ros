@@ -2096,3 +2096,113 @@ pub fn dds_bus_snapshot(distro: &str, domain_id: u8) -> String {
     }
     s
 }
+
+/// Is `service` ALREADY advertised on `domain_id`, before this test starts
+/// anything?
+///
+/// Issue 0741 — the precondition five sessions of that investigation assumed
+/// and nobody checked. A ROS 2 service is not owned by the node that names it:
+/// any participant on the domain advertising the same name and type is a peer
+/// the client may talk to instead, and on this bus that is not a fair coin —
+/// whoever answers first wins.
+///
+/// The check is meaningful only BEFORE the node under test comes up, because
+/// `ros2 service list` cannot say WHOSE endpoint it found (Humble has no
+/// `ros2 service info`). Called at that moment the answer is unambiguous:
+/// anything present is foreign.
+///
+/// `None` when the probe could not run at all — a probe that cannot see must
+/// not invent, the same rule [`dds_bus_snapshot`] follows.
+pub fn service_present_on_domain(distro: &str, domain_id: u8, service: &str) -> Option<bool> {
+    let env = ros2_env_setup_dds_with_domain(distro, domain_id);
+    let out = std::process::Command::new("bash")
+        .args([
+            "-c",
+            &format!("{env} && timeout 10 ros2 service list 2>/dev/null"),
+        ])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let body = String::from_utf8_lossy(&out.stdout);
+    Some(body.lines().any(|l| l.trim() == service))
+}
+
+/// Recognise the cross-RMW service-framing collision in a ROS 2 client's output,
+/// and say what it is.
+///
+/// Issue 0741, root cause. `rmw_cyclonedds_cpp` and `rmw_fastrtps_cpp` do not
+/// frame ROS 2 service replies the same way and are NOT interoperable for
+/// services:
+///
+/// * `rmw_cyclonedds_cpp` inlines a 16-byte request header
+///   (`[client_guid:8][seq:8]`) in the reply PAYLOAD — so an
+///   `AddTwoInts_Response` is `4` encapsulation + `16` header + `8` sum = **28**
+///   bytes. nano-ros's own Cyclone backend mirrors that framing deliberately
+///   (`build_wire_with_header`, `packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/service.cpp`).
+/// * `rmw_fastrtps_cpp` carries the same correlation in the RTPS inline QoS
+///   (`related_sample_identity`), so its reply payload is `4 + 8` = **12** bytes.
+///   The type is BOUNDED, which makes rmw_fastrtps choose
+///   `PREALLOCATED_MEMORY_MODE`, and Fast-DDS sizes the reader history at
+///   `m_typeSize + 3` = **15**. Preallocated means strict: a larger sample is
+///   refused rather than resized.
+///
+/// So a Fast-DDS service client that discovers a Cyclone reply writer refuses a
+/// 28-byte change into a 15-byte history, and neither side is wrong. Verified as
+/// a control with no nano-ros and no XRCE agent in the picture: a stock
+/// `rmw_cyclonedds_cpp` `demo_nodes_cpp add_two_ints_server` plus a stock
+/// `rmw_fastrtps_cpp` `ros2 service call` on one domain reproduces the message
+/// byte for byte.
+///
+/// Which is why this must never be reported as an XRCE, encoding or type
+/// registration defect: the numbers do not come from nano-ros's XRCE path at
+/// all. Both were reasoned about for weeks.
+pub fn cross_rmw_service_framing_note(client_output: &str) -> Option<String> {
+    if !(client_output.contains("RTPS_READER_HISTORY")
+        && client_output.contains("cannot be resized"))
+    {
+        return None;
+    }
+    Some(
+        "--- issue 0741: this is a CROSS-RMW collision, not an XRCE defect ---\n\
+         `RTPS_READER_HISTORY … cannot be resized` on a service reply means this\n\
+         rmw_fastrtps client received a reply framed by rmw_cyclonedds_cpp:\n\
+         cyclone inlines a 16-byte request header in the reply PAYLOAD (28 bytes\n\
+         for AddTwoInts_Response), fastrtps carries it in inline QoS (12 bytes)\n\
+         and preallocates a 15-byte history for the bounded type. The two RMWs\n\
+         are not service-interoperable.\n\
+         So a FOREIGN Cyclone `/add_two_ints` server is on this ROS domain — an\n\
+         orphan from an earlier run (issue 0659/0707's class) or a concurrent\n\
+         Cyclone fixture. Check `pgrep -a add_two_ints_server` and the bus\n\
+         snapshot below; nothing in the XRCE path computes either number.\n"
+            .to_string(),
+    )
+}
+
+#[cfg(test)]
+mod cross_rmw_note_tests {
+    /// The signature must be recognised, and nothing else must be.
+    #[test]
+    fn recognises_only_the_history_refusal() {
+        let red = "requester: making request: …\n[RTPS_READER_HISTORY Error] Change payload \
+                   size of '28' bytes is larger than the history payload size of '15' bytes \
+                   and cannot be resized.";
+        let note = super::cross_rmw_service_framing_note(red)
+            .expect("the 28-into-15 refusal must be recognised");
+        assert!(
+            note.contains("CROSS-RMW"),
+            "note must name the cause: {note}"
+        );
+        assert!(
+            super::cross_rmw_service_framing_note("response:\nAddTwoInts_Response(sum=8)")
+                .is_none(),
+            "a passing run must produce no note"
+        );
+        assert!(
+            super::cross_rmw_service_framing_note("[RTPS_READER_HISTORY Error] something else")
+                .is_none(),
+            "the marker alone is not the signature — the refusal is"
+        );
+    }
+}

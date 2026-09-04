@@ -258,6 +258,39 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
     let addr = agent.addr();
     let domain_id = unique_ros_domain_id();
 
+    // issue 0741 — the precondition this test never stated: nobody else may be
+    // serving `/add_two_ints` on this domain.
+    //
+    // A ROS 2 service name is not owned by the node that declares it. If a
+    // second server holds it, the client may talk to THAT one, and if that one
+    // speaks `rmw_cyclonedds_cpp` the reply is framed differently enough that
+    // Fast-DDS refuses it outright — see `cross_rmw_service_framing_note`. That
+    // is the entire content of issue 0741, and it read for weeks as an XRCE
+    // type-registration defect because the failure was attributed to the only
+    // server the test knew about.
+    //
+    // Checked HERE, before the fixture starts, because that is the one moment
+    // the answer is unambiguous: `ros2 service list` cannot say whose endpoint
+    // it found (Humble has no `ros2 service info`), so anything present now is
+    // foreign by construction.
+    //
+    // `skip!`, not `assert!`: a poisoned bus cannot answer the question this
+    // test asks, and calling that an interop regression is what produced four
+    // retracted diagnoses. `None` (probe could not run) proceeds — a probe that
+    // cannot see must not invent.
+    if nros_tests::ros2::service_present_on_domain(DEFAULT_ROS_DISTRO, domain_id, "/add_two_ints")
+        == Some(true)
+    {
+        drop(agent);
+        nros_tests::skip!(
+            "issue 0741 — `/add_two_ints` is ALREADY served on ROS domain {domain_id} by a peer \
+             this test did not start, so the reply the ROS 2 client receives is not necessarily \
+             ours. Kill the orphan (`pgrep -a add_two_ints_server`) and re-run; a Cyclone one \
+             makes this test fail with a `RTPS_READER_HISTORY … cannot be resized` that has \
+             nothing to do with XRCE."
+        );
+    }
+
     // Start XRCE service server
     eprintln!("Starting XRCE service server...");
     let mut server_cmd = Command::new(&xrce_service_server_binary);
@@ -356,10 +389,19 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
     // client whose server never came up is a DIFFERENT failure from "no reply"
     // out of a server that was listening, and only one of them is the interop
     // regression this assert names.
+    //
+    // issue 0741 — but say WHICH failure this is before naming a regression.
+    // The `RTPS_READER_HISTORY … cannot be resized` signature is provably not an
+    // XRCE defect (a stock Cyclone server and a stock Fast-DDS client reproduce
+    // it with no nano-ros in the picture), and the old message asserted it was
+    // one. That sentence is what five sessions of this issue were spent chasing.
+    let cross_rmw =
+        nros_tests::ros2::cross_rmw_service_framing_note(&ros2_output).unwrap_or_default();
     assert!(
         has_sum && has_correct_value,
         "ROS 2 service client did not get sum=8 from the nano-ros XRCE service \
          server — XRCE-DDS service interop regression (233.6).\n\
+         {cross_rmw}\
          --- server startup ---\n{server_startup}\n\
          --- ros2 client output ---\n{ros2_output}\n\
          {bus}{env}",
