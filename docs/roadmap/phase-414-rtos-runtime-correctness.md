@@ -213,7 +213,7 @@ issue had been deferring became affordable on the emulator the harness actually
 resolves: **150 / 150 idle and 60 / 60 under load average 33**, `--retries 0`,
 which with the earlier batches is 274 consecutive passes. Two bounds are stated
 in the issue rather than glossed: the images carry zenoh-pico 1.7.2 because
-issue 1047 makes main's 1.8.0 pin fail to compile for NuttX at all, and the
+issue 1035 makes main's 1.8.0 pin fail to compile for NuttX at all, and the
 `.bss` fix moved every address, so this is a THIRD build regime and not a longer
 run of the second — which is the same objection W3 itself raised against reading
 the previous batch as a delta.
