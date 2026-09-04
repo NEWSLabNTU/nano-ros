@@ -1268,8 +1268,37 @@ pub struct Executor<'s> {
     // was std-gated; W10 split that impl, so the field joins `wake_flag` on
     // `alloc` — the allocator is the real requirement, and without this a no_std
     // executor had no halt flag at all and so could not be stopped.
+    //
+    // phase-417 W4.c — the STORAGE is now cfg-dual and the CANCEL STATE is
+    // ungated. The `Arc` is what needed the allocator, not the bit: an
+    // `AtomicBool` is a `core` type. A core-only image still could not be
+    // stopped, which is why `cancel()` / `is_halted()` were unreachable from the
+    // C API in a no-alloc build and the C shim had to keep its own
+    // `nros_executor_state_t` answer to "am I spinning". There is exactly ONE
+    // storage in either flavour — `Arc<AtomicBool>` derefs to `&AtomicBool`, so
+    // every read and write below spells the same thing — because two flags for
+    // one state is the drift RFC-0019 exists to prevent.
     #[cfg(feature = "alloc")]
     pub(crate) halt_flag: portable_atomic_util::Arc<portable_atomic::AtomicBool>,
+    #[cfg(not(feature = "alloc"))]
+    pub(crate) halt_flag: portable_atomic::AtomicBool,
+    /// phase-417 W4.c — is a spin loop RUNNING right now?
+    ///
+    /// A DIFFERENT question from [`Executor::is_halted`], which answers "has a
+    /// cancel been REQUESTED". `cancel()` returns before the loop has observed
+    /// it, so between the two calls `is_halted()` is already true while
+    /// `is_spinning()` is still true as well; the second is what tells a caller
+    /// the loop has actually left.
+    ///
+    /// Set by every loop that owns its own iteration — [`Executor::spin_blocking`],
+    /// [`Executor::spin_period`], the `open_threaded` worker, and the C / C++ API
+    /// loops via [`Executor::spin_scope`]. Never by `spin_once`: one poll is not
+    /// a spin, and a caller driving `spin_once` from its own `while` is asking
+    /// the executor a question the executor cannot answer.
+    ///
+    /// Plain inline `AtomicBool`, not an `Arc`: nothing hands this flag out, so
+    /// it needs no allocator and reaches `core`-only images.
+    pub(crate) spinning: portable_atomic::AtomicBool,
     /// Phase 104.C.6 — shared executor wake flag. Any source of work
     /// (foreign thread handing off a callback, signal handler, future
     /// per-session vtable wake hook) sets this; `spin_once` swaps it to
@@ -1538,6 +1567,9 @@ impl<'s> Executor<'s> {
             },
             #[cfg(feature = "alloc")]
             halt_flag: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false)),
+            #[cfg(not(feature = "alloc"))]
+            halt_flag: portable_atomic::AtomicBool::new(false),
+            spinning: portable_atomic::AtomicBool::new(false),
             #[cfg(feature = "alloc")]
             wake_flag: portable_atomic_util::Arc::new(portable_atomic::AtomicBool::new(false)),
             #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
@@ -7543,6 +7575,135 @@ impl<'s> Executor<'s> {
 }
 
 // ============================================================================
+// Executor lifecycle — cancel / is_spinning (phase-417 W4.c)
+// ============================================================================
+
+impl<'s> Executor<'s> {
+    /// Request the executor to stop spinning — `rclcpp::Executor::cancel`.
+    ///
+    /// # ADOPT-BOUNDED (RFC-0087)
+    ///
+    /// `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY,
+    /// so it returns BEFORE spinning has actually stopped;
+    /// [`is_spinning()`](Self::is_spinning) is the observable that tells you
+    /// when it has. rclcpp makes the same promise in the same shape, but the
+    /// boundary here is one `spin_once` timeout wide (a backend's `drive_io`
+    /// blocks up to the poll interval), so "next boundary" is a duration a
+    /// caller can measure rather than an implementation detail. The wake flag
+    /// below shortens it; it does not remove it.
+    ///
+    /// Nothing here tears down the session: an executor that has been cancelled
+    /// is still initialised, still owns its entities, and can be spun again.
+    /// Teardown is a different verb (`fini` / `shutdown`), and collapsing the
+    /// two costs a full discovery round on every mode change.
+    ///
+    /// Safe to call from another thread or a signal handler.
+    ///
+    /// Also raises the Phase 104.C.6 wake flag so a `spin_once` already blocked
+    /// inside a backend's `drive_io` falls through to the cancel check on its
+    /// next loop iteration instead of waiting out its full `timeout_ms` first.
+    pub fn cancel(&self) {
+        self.halt_flag
+            .store(true, core::sync::atomic::Ordering::SeqCst);
+        // The wake flag is the `Arc` half and still needs an allocator. A
+        // core-only image simply waits out the poll interval, which is the
+        // bounded behaviour the envelope above already promises.
+        #[cfg(feature = "alloc")]
+        self.wake_flag
+            .store(true, core::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Deprecated spelling of [`cancel()`](Self::cancel) — phase-417 W4.c.
+    ///
+    /// `cancel` is ROS 2's name for this (`rclcpp::Executor::cancel`,
+    /// `rclpy.executors.Executor.cancel`) and is now the primary. `halt` was our
+    /// own vocabulary and stays as a forwarder so out-of-tree callers keep
+    /// compiling; it holds no state of its own.
+    #[deprecated(
+        since = "0.5.0",
+        note = "renamed to `cancel()` to match `rclcpp::Executor::cancel` (phase-417 W4.c)"
+    )]
+    pub fn halt(&self) {
+        self.cancel();
+    }
+
+    /// Has a [`cancel()`](Self::cancel) been REQUESTED?
+    ///
+    /// Not the same question as [`is_spinning()`](Self::is_spinning), and both
+    /// are kept because both have callers:
+    ///
+    /// * `is_halted()` — "someone asked this executor to stop." True the instant
+    ///   `cancel()` returns, and it stays true until the next spin loop clears
+    ///   it on entry. This is the flag a hand-rolled `while !exec.is_halted()`
+    ///   loop polls, which is what a BSP that drives `spin_once` itself writes.
+    /// * `is_spinning()` — "a spin loop is running right now." Answers the other
+    ///   half of the envelope: whether the cancel has been ACTED on yet.
+    ///
+    /// The two are true together for as long as one poll takes, which is exactly
+    /// the window the ADOPT-BOUNDED envelope on `cancel()` describes. Neither is
+    /// derivable from the other: an executor that was never spun is neither
+    /// halted nor spinning, and one cancelled mid-poll is both.
+    ///
+    /// The name is the pre-rename spelling and is deliberately NOT deprecated —
+    /// `cancel`'s rclcpp pair is a `spinning` observable, not an
+    /// `is_cancel_requested` one, so there is no ROS 2 name to adopt here and a
+    /// third spelling would buy nothing.
+    pub fn is_halted(&self) -> bool {
+        self.halt_flag.load(core::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Is a spin loop running on this executor right now?
+    ///
+    /// rclcpp spells this `Executor::is_spinning()`. True between the entry and
+    /// the exit of [`spin_blocking`](Self::spin_blocking),
+    /// [`spin_period`](Self::spin_period), the `open_threaded` worker loop, and
+    /// the C / C++ API loops — every construct that owns its own iteration.
+    ///
+    /// A bare `spin_once` does NOT set it: one poll is not a spin, and a caller
+    /// running its own `while` around `spin_once` is the one who knows it is
+    /// looping. Such a caller can say so with
+    /// [`enter_spin_loop`](Self::enter_spin_loop).
+    ///
+    /// See [`is_halted()`](Self::is_halted) for why this is a different question
+    /// from "was cancel requested".
+    pub fn is_spinning(&self) -> bool {
+        self.spinning.load(core::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Declare that the caller is entering a spin loop it drives itself.
+    ///
+    /// The seam the C and C++ APIs use so their loops answer
+    /// [`is_spinning()`](Self::is_spinning) without keeping a flag of their own
+    /// (RFC-0019: ergonomics may live in the wrapper, state may not). Also
+    /// CLEARS any pending cancel, matching what `spin_blocking` does on entry:
+    /// a cancel requested before a spin started is not a cancel of THIS spin.
+    ///
+    /// Pair it with [`exit_spin_loop`](Self::exit_spin_loop) on EVERY exit path,
+    /// `break` and early `return` alike — a loop that leaves without it reports
+    /// `is_spinning() == true` forever. It is a method pair rather than an RAII
+    /// guard on purpose: a guard would have to borrow the executor for the whole
+    /// loop, and every caller needs `&mut` inside the body to poll.
+    ///
+    /// Takes `&self` (the flags are atomics), so the borrow ends at the call.
+    pub fn enter_spin_loop(&self) {
+        self.halt_flag
+            .store(false, core::sync::atomic::Ordering::SeqCst);
+        self.spinning
+            .store(true, core::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// End the scope opened by [`enter_spin_loop`](Self::enter_spin_loop).
+    ///
+    /// Idempotent. Leaves the cancel flag alone: "someone asked me to stop" is
+    /// the caller's answer to keep or clear, and clearing it here would lose the
+    /// reason the loop exited.
+    pub fn exit_spin_loop(&self) {
+        self.spinning
+            .store(false, core::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+// ============================================================================
 // std-gated spin and halt methods
 // ============================================================================
 
@@ -7618,8 +7779,12 @@ impl<'s> Executor<'s> {
         let timeout_us = opts.timeout.map(|d| d.as_micros() as u64);
         let mut total_callbacks = 0usize;
 
-        self.halt_flag
-            .store(false, core::sync::atomic::Ordering::SeqCst);
+        // phase-417 W4.c — clears the cancel flag AND raises `is_spinning`. The
+        // clear is the pre-existing behaviour (a cancel requested before this
+        // spin is not a cancel of this spin); the raise is what lets a peer
+        // thread see that its `cancel()` has not been acted on yet. Every exit
+        // below is a `break` to the single tail, which is where the scope ends.
+        self.enter_spin_loop();
 
         loop {
             if self.halt_flag.load(core::sync::atomic::Ordering::SeqCst) {
@@ -7646,6 +7811,7 @@ impl<'s> Executor<'s> {
             }
         }
 
+        self.exit_spin_loop();
         Ok(())
     }
 
@@ -7700,8 +7866,6 @@ impl<'s> Executor<'s> {
     /// executor.spin_period(core::time::Duration::from_millis(10))?;
     /// ```
     pub fn spin_period(&mut self, period: core::time::Duration) -> Result<(), NodeError> {
-        self.halt_flag
-            .store(false, core::sync::atomic::Ordering::SeqCst);
         let period_us = period.as_micros().min(u64::MAX as u128) as u64;
         // Absolute next-deadline in the executor's own clock. issue 0709 — the
         // sibling of `spin_blocking`'s guard above: with no clock there is no
@@ -7717,6 +7881,11 @@ impl<'s> Executor<'s> {
             );
             return Err(NodeError::NotInitialized);
         };
+        // phase-417 W4.c — after the clock guard, not before it: a call that
+        // returns an error never spun, and must not report that it did. (This
+        // also moved the cancel-flag clear past the guard, which is the same
+        // correction.)
+        self.enter_spin_loop();
         let mut next_us = Some(start_us + period_us);
 
         loop {
@@ -7739,6 +7908,7 @@ impl<'s> Executor<'s> {
                 next_us = Some(next + period_us);
             }
         }
+        self.exit_spin_loop();
         Ok(())
     }
 }
@@ -7826,28 +7996,6 @@ impl<'s> Executor<'s> {
             task: Some(task),
             halt,
         }
-    }
-
-    /// Request the executor to stop spinning.
-    ///
-    /// Sets a flag that causes [`spin_blocking()`](Self::spin_blocking) or
-    /// [`spin_period()`](Self::spin_period) to exit on the next iteration.
-    /// Safe to call from another thread or signal handler.
-    ///
-    /// Also raises the Phase 104.C.6 wake flag so a `spin_once` already
-    /// blocked inside a backend's `drive_io` falls through to the halt
-    /// check on its next loop iteration instead of waiting out its full
-    /// `timeout_ms` first.
-    pub fn halt(&self) {
-        self.halt_flag
-            .store(true, core::sync::atomic::Ordering::SeqCst);
-        self.wake_flag
-            .store(true, core::sync::atomic::Ordering::SeqCst);
-    }
-
-    /// Check if halt has been requested.
-    pub fn is_halted(&self) -> bool {
-        self.halt_flag.load(core::sync::atomic::Ordering::SeqCst)
     }
 
     /// Phase 104.C.6 — wake the executor from another thread / ISR /
@@ -7988,9 +8136,18 @@ unsafe extern "C" fn threaded_spin_trampoline(
     // reported but not propagated — a runtime that fails to lift to SCHED_FIFO
     // still spins correctly at SCHED_OTHER (just without RT guarantees).
     let _ = (ctx.apply_policy)(ctx.policy);
+    // phase-417 W4.c — this loop owns its own iteration, so it is a spin and
+    // must say so. NOT `enter_spin_loop()`: that clears the cancel flag, and
+    // `open_threaded` hands the caller a `ThreadHandle` whose `halt()` may
+    // already have fired before this task was scheduled. Raising `is_spinning`
+    // without touching the cancel bit is the honest report here.
+    ctx.executor
+        .spinning
+        .store(true, core::sync::atomic::Ordering::SeqCst);
     while !ctx.executor.is_halted() {
         ctx.executor.spin_once(ctx.spin_period);
     }
+    ctx.executor.exit_spin_loop();
     core::ptr::null_mut()
 }
 
@@ -8517,5 +8674,231 @@ pub(crate) fn default_clock_us_fn() -> Option<fn() -> u64> {
     #[cfg(not(feature = "rmw-cffi"))]
     {
         None
+    }
+}
+
+// ============================================================================
+// phase-417 W4.c — cancel / is_spinning
+// ============================================================================
+//
+// Same gate as `executor::tests`, exactly: `ConcreteSession` is `MockSession`
+// only while no rmw-* feature is unified in (see `executor/mod.rs`). No `std`
+// gate — `cfg(test)` already means a hosted harness, and adding one would be a
+// census site phase-359 is spending effort removing.
+#[cfg(all(test, not(feature = "rmw-cffi")))]
+mod cancel_tests {
+    use super::Executor;
+    use crate::{executor::types::ExecutorConfig, mock::MockSession};
+
+    /// The core has no default clock and says so (issue 0709), so a test that
+    /// measures elapsed time brings its own — the same seam a board uses.
+    fn test_clock_us() -> u64 {
+        use std::{sync::OnceLock, time::Instant};
+        static EPOCH: OnceLock<Instant> = OnceLock::new();
+        EPOCH.get_or_init(Instant::now).elapsed().as_micros() as u64
+    }
+
+    fn executor() -> Executor<'static> {
+        let cfg = ExecutorConfig::default().clock_us(test_clock_us);
+        Executor::from_session_with(MockSession::new(), &cfg)
+    }
+
+    /// A fresh executor is neither cancelled nor spinning — the two questions
+    /// are independent, and this is the state where both answers are `false`.
+    #[test]
+    fn a_fresh_executor_is_neither_cancelled_nor_spinning() {
+        let exec = executor();
+        assert!(!exec.is_halted(), "nothing has asked it to stop");
+        assert!(!exec.is_spinning(), "no spin loop is running");
+    }
+
+    /// `cancel()` raises the request bit without starting or stopping anything.
+    #[test]
+    fn cancel_requests_without_spinning() {
+        let exec = executor();
+        exec.cancel();
+        assert!(exec.is_halted(), "cancel() must be observable immediately");
+        assert!(
+            !exec.is_spinning(),
+            "cancel() must not make a non-spinning executor claim to spin"
+        );
+    }
+
+    /// The deprecated forwarder must reach the SAME bit — a second flag behind
+    /// the old name is exactly the drift RFC-0019 forbids.
+    #[test]
+    #[allow(deprecated)]
+    fn halt_forwards_onto_cancel() {
+        let exec = executor();
+        exec.halt();
+        assert!(
+            exec.is_halted(),
+            "`halt()` must set the flag `cancel()` sets, not one of its own"
+        );
+    }
+
+    /// The load-bearing one: `cancel()` from a peer thread TERMINATES a running
+    /// `spin_blocking`, `is_spinning()` is true while the loop runs, and false
+    /// once it has returned.
+    ///
+    /// The peer asserts `is_spinning()` from OUTSIDE the spinning thread, which
+    /// is the whole point of the observable — it is what a signal handler or a
+    /// supervisor sees.
+    #[test]
+    fn cancel_terminates_a_spin_and_is_spinning_tracks_it() {
+        use std::{
+            sync::{
+                Arc,
+                atomic::{AtomicBool, Ordering},
+            },
+            thread,
+            time::{Duration, Instant},
+        };
+
+        let mut exec = executor();
+        assert!(!exec.is_spinning());
+
+        // `Executor` is not `Sync`, so the peer thread cannot hold a reference
+        // to it. It observes and drives through the two flag handles instead —
+        // which is the supported cross-thread surface (`halt_flag()`), and
+        // keeps this test on the same seam a signal handler uses.
+        let cancel_bit = exec.halt_flag();
+        let saw_spinning = Arc::new(AtomicBool::new(false));
+        let saw_spinning_peer = Arc::clone(&saw_spinning);
+
+        let peer = thread::spawn(move || {
+            // Give the loop time to enter. Bounded, and the assertion below is
+            // on what was OBSERVED, so a slow host cannot turn this green by
+            // accident — it fails instead.
+            thread::sleep(Duration::from_millis(50));
+            saw_spinning_peer.store(true, Ordering::SeqCst);
+            cancel_bit.store(true, Ordering::SeqCst);
+        });
+
+        let started = Instant::now();
+        exec.spin_blocking(crate::executor::types::SpinOptions::default())
+            .expect("an untimed spin_blocking runs until cancelled");
+        let elapsed = started.elapsed();
+
+        peer.join().expect("peer thread must not panic");
+
+        assert!(
+            saw_spinning.load(Ordering::SeqCst),
+            "the peer must have run before spin_blocking returned"
+        );
+        assert!(
+            !exec.is_spinning(),
+            "is_spinning() must be false once the loop has returned"
+        );
+        assert!(
+            exec.is_halted(),
+            "the cancel request survives the loop it ended"
+        );
+        // LOWER bound too: a spin that never waited would prove nothing about
+        // termination. The peer sleeps 50 ms before cancelling.
+        assert!(
+            elapsed >= Duration::from_millis(40),
+            "spin_blocking returned in {elapsed:?} — it cannot have spun"
+        );
+        // ...and an UPPER bound, because "terminated" is the claim: without the
+        // cancel check this loop never returns and the test would hang rather
+        // than fail. 10 s is far past any scheduling noise.
+        assert!(
+            elapsed < Duration::from_secs(10),
+            "spin_blocking took {elapsed:?} to observe the cancel"
+        );
+    }
+
+    /// `is_spinning()` is true from INSIDE the loop. Read from a timer callback,
+    /// which is the only place the executor is genuinely mid-spin, and asserted
+    /// after the loop so a callback that never fired cannot pass silently.
+    #[test]
+    fn is_spinning_is_true_inside_the_loop() {
+        use std::time::Duration;
+
+        let mut exec = executor();
+        // `only_next` runs exactly one iteration, so this is a single poll
+        // inside a spin scope — bounded, no thread, no clock dependency beyond
+        // the one the fixture installs.
+        assert!(!exec.is_spinning());
+        exec.spin_blocking(crate::executor::types::SpinOptions::spin_once())
+            .expect("a single-iteration spin must succeed");
+        assert!(
+            !exec.is_spinning(),
+            "the scope must close when the loop returns"
+        );
+
+        // The inside-the-loop reading needs a second thread to do it, because
+        // the spinning thread is blocked in the loop and `Executor` is `!Sync`
+        // so no `&Executor` may cross. What crosses is a pointer to the one
+        // atomic, which is the same thing the C and C++ APIs hold: they observe
+        // `is_spinning` through a raw executor handle, and that is the case this
+        // flag exists to serve.
+        struct FlagPtr(*const portable_atomic::AtomicBool);
+        // SAFETY: the pointee is an `AtomicBool`, which is `Sync`; the only
+        // operation performed through it is a relaxed-or-stronger load. The
+        // executor outlives the thread — `peer.join()` below happens before
+        // `exec` is dropped at the end of the test.
+        unsafe impl Send for FlagPtr {}
+
+        let cancel_bit = exec.halt_flag();
+        let observed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let spinning_bit_seen = std::sync::Arc::clone(&observed);
+        let flag = FlagPtr(&exec.spinning as *const portable_atomic::AtomicBool);
+        let peer = std::thread::spawn(move || {
+            let flag = flag;
+            for _ in 0..500 {
+                // SAFETY: see the `unsafe impl Send` above.
+                if unsafe { &*flag.0 }.load(core::sync::atomic::Ordering::SeqCst) {
+                    spinning_bit_seen.store(true, std::sync::atomic::Ordering::SeqCst);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            cancel_bit.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+
+        exec.spin_blocking(crate::executor::types::SpinOptions::default())
+            .expect("an untimed spin_blocking runs until cancelled");
+        peer.join().expect("peer thread must not panic");
+
+        assert!(
+            observed.load(std::sync::atomic::Ordering::SeqCst),
+            "is_spinning() must read true while spin_blocking is running"
+        );
+    }
+
+    /// `spin_period` maintains the same scope, and a period this build cannot
+    /// pace is an error that must NOT leave the executor claiming to spin.
+    #[test]
+    fn spin_period_with_no_clock_leaves_is_spinning_false() {
+        let mut exec = executor();
+        exec.clock_us_fn = None;
+        let err = exec
+            .spin_period(core::time::Duration::from_millis(10))
+            .expect_err("a period with no clock must fail (issue 0709)");
+        assert_eq!(err, crate::NodeError::NotInitialized);
+        assert!(
+            !exec.is_spinning(),
+            "a spin that never started must not report that it did"
+        );
+    }
+
+    /// Entering a spin CLEARS a stale cancel: a cancel requested before this
+    /// spin is not a cancel of this spin. Documents the ADOPT-BOUNDED envelope's
+    /// one sharp edge.
+    #[test]
+    fn entering_a_spin_clears_a_stale_cancel() {
+        let exec = executor();
+        exec.cancel();
+        assert!(exec.is_halted());
+        exec.enter_spin_loop();
+        assert!(
+            !exec.is_halted(),
+            "a cancel raised before the loop started must not end it instantly"
+        );
+        assert!(exec.is_spinning());
+        exec.exit_spin_loop();
+        assert!(!exec.is_spinning());
     }
 }

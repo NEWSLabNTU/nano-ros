@@ -509,5 +509,29 @@
   "cpp:Node::serialization_format": {
     "verdict": "extension",
     "why": "phase-421 W2 (landed 2026-09-04). Ours-only, and there is no upstream name to align to: neither the recorded rclcpp nor rclc surface contains the string \"serialization\" at all. It cannot: in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and not a question a node is asked. Here it IS a question — RFC-0088 makes the format a provider (`nros_serdes::format`, `SerializationFormatId`), a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD (`error[E0080]` from the `const {}` check). The accessor is how a program reads back which one it got. Answers from the single image constant today; the runtime path only becomes reachable when a bridge image links two backends (phase-421 W3, recorded as not yet reachable). C++ spelling: `Node::serialization_format()` (`nros-cpp/include/nros/node.hpp:245`), forwarding to the C entry point."
+  },
+  "cpp:Node::initialized": {
+    "verdict": "extension",
+    "why": "phase-417 stage 0 — a member of the compat shim's own `rclcpp::Node`, visible since issue 1020 admitted that header. Ours-only by construction: it is the shim's machinery (`pump` drives the shim's callbacks, `nros_node` reaches the wrapped node, `parameters` is the escape hatch to the node-owned store), not a name rclcpp declares."
+  },
+  "cpp:Node::nros_node": {
+    "verdict": "extension",
+    "why": "phase-417 stage 0 — a member of the compat shim's own `rclcpp::Node`, visible since issue 1020 admitted that header. Ours-only by construction: it is the shim's machinery (`pump` drives the shim's callbacks, `nros_node` reaches the wrapped node, `parameters` is the escape hatch to the node-owned store), not a name rclcpp declares."
+  },
+  "cpp:Node::pump": {
+    "verdict": "extension",
+    "why": "phase-417 stage 0 — a member of the compat shim's own `rclcpp::Node`, visible since issue 1020 admitted that header. Ours-only by construction: it is the shim's machinery (`pump` drives the shim's callbacks, `nros_node` reaches the wrapped node, `parameters` is the escape hatch to the node-owned store), not a name rclcpp declares."
+  },
+  "cpp:NodeOptions::allocator": {
+    "verdict": "declined",
+    "why": "phase-417 stage 0 — visible only because `rclcpp_compat.hpp` is now a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not. These specific ones are REFUSED LOUDLY (RFC-0087 W3.f): each stored its argument in a private field that nothing read and returned `*this`, so the idiomatic chained call compiled and configured nothing. They are `= delete` overloads now, sharing one diagnostic -- a refusal is per-CONCEPT, not per-symbol."
+  },
+  "cpp:NodeOptions::context": {
+    "verdict": "declined",
+    "why": "phase-417 stage 0 — visible only because `rclcpp_compat.hpp` is now a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not. These specific ones are REFUSED LOUDLY (RFC-0087 W3.f): each stored its argument in a private field that nothing read and returned `*this`, so the idiomatic chained call compiled and configured nothing. They are `= delete` overloads now, sharing one diagnostic -- a refusal is per-CONCEPT, not per-symbol."
+  },
+  "cpp:NodeOptions::get_rcl_node_options": {
+    "verdict": "declined",
+    "why": "phase-417 stage 0 — visible only because `rclcpp_compat.hpp` is now a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not. These specific ones are REFUSED LOUDLY (RFC-0087 W3.f): each stored its argument in a private field that nothing read and returned `*this`, so the idiomatic chained call compiled and configured nothing. They are `= delete` overloads now, sharing one diagnostic -- a refusal is per-CONCEPT, not per-symbol."
   }
 }
