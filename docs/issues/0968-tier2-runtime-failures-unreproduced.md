@@ -194,3 +194,68 @@ and a plausible cause, and that is a hypothesis, not a result.
 2. **Unequal time budgets.** The control ran 25 s and the first threadx attempt
    20 s, so "the client never completes" was not comparable until the 75 s run
    made it so.
+
+
+## The zephyr xrce-cpp cluster, DIAGNOSED 2026-09-04 (3 of the 12)
+
+`case_{21,24,27}_xrce_cpp_{pubsub,service,action}_e2e`. The image says why, in
+its own boot output:
+
+```
+*** Booting Zephyr OS build v3.7.0 ***
+nros: HEAP EXHAUSTED: request 427968 bytes, arena 66048 bytes
+      (raise CONFIG_NROS_ZEPHYR_HEAP_SIZE / NROS_ZEPHYR_HEAP_SIZE)
+```
+
+**All three, byte-identical** — same request, same arena. The test then reports
+"listener received 0 sample(s)" and blames XRCE session-name collisions, which
+is a stale hint from Phase 96.1: nothing was ever received because the image
+never finished booting.
+
+That the request does NOT vary across pubsub / service / action is the useful
+part: it is a STATIC, knob-derived allocation, not a function of what the image
+wires up.
+
+From the built image's own `.config`:
+
+```
+CONFIG_NROS_ZEPHYR_HEAP_SIZE   65536      (the reported arena is 66048)
+CONFIG_NROS_EXECUTOR_ARENA_SIZE    0      (the DERIVE sentinel)
+CONFIG_NROS_EXECUTOR_MAX_CBS       4
+CONFIG_NROS_EXECUTOR_ACTION_CLIENTS 4     (the worst case — issue 0900's subject)
+```
+
+**NOT established: what composes the 427,968.** The derived executor arena at
+those knobs is 74,240 (measured for issue 0900), so the arena is a SIXTH of the
+request and the rest is unaccounted. Deriving `ACTION_CLIENTS` would take the
+arena to 16,384 and save 57,856 — real, and not enough on its own. Anyone
+continuing should attribute the remaining ~350 KB before changing a knob;
+raising `NROS_ZEPHYR_HEAP_SIZE` until it boots would hide the question this
+campaign exists to ask.
+
+## `test_qemu_rtic_service_e2e`, NARROWED not solved (1 of the 12)
+
+The firmware reports its own failure:
+
+```
+[ERROR] nros: zpico Session -> ConnectionFailed (the two are indistinguishable downstream)
+[ERROR] nros: RMW session open failed — ConnectionFailed
+```
+
+So the bare-metal server boots, brings up LAN9118 and smoltcp, gets its IP, and
+then cannot open a zenoh session.
+
+**The obvious cause is ruled out.** The test starts its own router
+(`ZenohRouter::start_slirp`) and asserts the port is reachable before booting
+any firmware — that assertion PASSED, since the run reaches "Starting RTIC
+service server QEMU...". And the ports agree: `BAREMETAL.zenohd_port_for(Service,
+Rust)` is 10210, and the firmware's `Cargo.toml` bakes
+`locator = "tcp/10.0.2.2:10210"`. No mismatch.
+
+So the router is listening on the host and the guest is dialling the right
+gateway and port, and the connection still fails. The next suspect is
+[issue 0774](0774-*): the router is ROS's `rmw_zenohd`, which loads whatever
+`libzenohc.so` the loader finds and SEGVs mid-startup when the pairing is wrong
+— a router that binds, satisfies `wait_for_port`, and is gone by the time
+firmware connects would produce exactly this. Checking that means watching the
+router process across the firmware boot, which this stopped short of.
