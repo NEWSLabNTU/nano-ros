@@ -181,6 +181,26 @@ while (ok && cursor && cursor[0]) {
 Every comma-separated token parses into the **same `cfgst`**. Upstream's own
 tests rely on it (`"${CYCLONEDDS_URI}${CYCLONEDDS_URI:+,}<Discovery>…"`).
 
+**And multi-homing is already expressible in Cyclone's own schema**, which is
+the fact the whole rescope rests on. `src/core/ddsi/include/dds/ddsi/ddsi_cfgelems.h:79-88`,
+in the same pinned 0.10.5 tree:
+
+```c
+static struct cfgelem interfaces_cfgelems[] = {
+  GROUP("NetworkInterface", NULL, network_interface_attributes, INT_MAX,
+    MEMBER(network_interfaces), ...
+```
+
+`INT_MAX` is the multiplicity — **an unbounded `<NetworkInterface>` list**, each
+carrying `name` / `address` / `autodetermine` / `priority`. The `<Interfaces>`
+group's own description says it: *"Multiple interfaces can be specified with an
+assigned priority. The list in use will be sorted by priority."* (`:139-146`).
+
+So the entire feature phase-206 originally set out to build already exists,
+fully, in the config language of the backend that has to implement it. nano-ros
+does not need to express it, lower it, or resolve it — only to stop discarding
+the user's config and to carry the bytes to the parser.
+
 ### Defect 2 — zenoh: there is no user config surface off hosted-Rust
 
 Two independent cut points:
