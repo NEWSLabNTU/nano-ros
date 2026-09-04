@@ -903,6 +903,78 @@ test-unit verbose="":
     just _check-skip-budget
     echo "All failures were [SKIPPED] preconditions — treating as pass."
 
+# Run an ARBITRARY nextest filter with honest skip accounting (issue 1016).
+#
+# `nros_tests::skip!` panics with `[SKIPPED]`, and nextest has no native skip —
+# so a bare `cargo nextest run -E ...` reports every unmet precondition as a
+# FAILURE. The summary line for "six cells were never built" is then
+# character-for-character the summary line for "six cells ran and failed":
+#
+#     Summary [295.800s] 9 tests run: 0 passed, 9 failed, 45 skipped
+#
+# `test-all` and `test-integration` already rewrite those to `<skipped>` before
+# tallying, but both carry a FIXED filter, so anyone running a subset by hand
+# got the raw count. That is not hypothetical: it produced a wrong reading in
+# issue 0968 — six of nine zephyr cells reported as failures when they were
+# out-of-lane skips, and only the panic frame distinguished them.
+#
+#     just test-select 'test(/example_e2e::case_(19|2[0-7])_xrce_/)'
+#     just test-select 'binary(rtos_e2e) and test(Platform__Nuttx)'
+#
+# Deliberately NOT calling `_check-skip-budget`: that guard exists so a full
+# sweep cannot report green having run nothing, and its budget is a property of
+# the sweep. A filtered run may legitimately skip everything it selected (every
+# cell out of lane is the normal case), so applying it here would fail correct
+# runs. The skip REASONS are printed instead — read them.
+test-select filter verbose="":
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    source scripts/test/nextest-profile.sh
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    args=(-E '{{filter}}')
+    if [ -n "{{verbose}}" ]; then args+=(--no-capture); fi
+    nros_nextest_junit_reset
+    set +e
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+    rc=$?
+    set -e
+    junit="$(nros_nextest_junit_path)"
+    just _rewrite-skipped-junit "$junit" || true
+    [ $rc -eq 0 ] && exit 0
+    # Same refusal as `test-all`: a build/setup failure emits no junit cases and
+    # would otherwise tally as "0 real failures" (issue #29).
+    # Exit 4 is nextest's "no tests to run" — the filter matched nothing. That
+    # is a distinct failure from a broken build and deserves its own sentence:
+    # a filter selecting nothing is the hazard phase-373 names, because it looks
+    # exactly like a lane with nothing to do.
+    if [ "$rc" -eq 4 ]; then
+        echo "ERROR: the filter selected NO tests — nothing ran."
+        echo "       '{{filter}}' matched none of the test names in this tree."
+        echo "       This is not a pass. Check the expression against \`cargo nextest list\`."
+        exit 1
+    fi
+    if [ "$rc" -ne 100 ] || [ ! -f "$junit" ]; then
+        echo "ERROR: nextest build/setup failed (nextest exit $rc) — not a [SKIPPED] precondition."
+        exit 1
+    fi
+    real="$(just _count-real-failures "$junit")"
+    just _test-summary "$junit" || true
+    if [ "$real" -ne 0 ]; then
+        echo "ERROR: $real real (non-[SKIPPED]) test failure(s):"
+        just _name-real-failures "$junit" || true
+        exit 1
+    fi
+    # Say the number outright. `_test-summary` counts `<failure>` elements, and
+    # the rewrite has just turned these into `<skipped>` — so it correctly
+    # reports "Real failures: 0 / 0", which on its own reads as "nothing
+    # happened" rather than "nine cells declined to run".
+    skipped="$(grep -c '<skipped' "$junit" 2>/dev/null || echo 0)"
+    echo "All failures were [SKIPPED] preconditions — treating as pass."
+    echo "  $skipped selected test(s) SKIPPED, 0 ran. A filtered run that skips"
+    echo "  everything is legitimate (out-of-lane is the normal case) — but it is"
+    echo "  NOT evidence about the code. Reasons are in the [SKIPPED] lines above."
+
 # nros-tests integration tests, skipping heavy cross-compile / QEMU groups.
 # Filters mirror the `test` recipe's `-E` predicate, just scoped to
 # `package(nros-tests)` so the workspace unit tests aren't re-run.
