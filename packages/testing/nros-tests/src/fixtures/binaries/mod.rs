@@ -822,7 +822,7 @@ pub(crate) fn require_prebuilt_row_binary_fresh(
              (or set NROS_SKIP_FIXTURE_CHECK=1 if you built it another way).",
         ));
     }
-    staleness::record_fresh(&resolved);
+    staleness::record_fresh(&resolved).map_err(TestError::BuildFailed)?;
     // phase-395 W10 — shadow-mode cache observation, OFF unless
     // `NROS_FIXTURE_CACHE_SHADOW` is set. It records; it cannot skip anything,
     // it cannot serve anything, and it cannot fail this resolution. This arm
@@ -859,7 +859,7 @@ pub(crate) fn require_prebuilt_binary_fresh(binary_path: &Path) -> TestResult<Pa
              (or set NROS_SKIP_FIXTURE_CHECK=1 if you built it another way).",
         ));
     }
-    staleness::record_fresh(binary_path);
+    staleness::record_fresh(binary_path).map_err(TestError::BuildFailed)?;
     // phase-395 W10 — shadow-mode cache observation, OFF unless
     // `NROS_FIXTURE_CACHE_SHADOW` is set. It records; it cannot skip anything,
     // it cannot serve anything, and it cannot fail this resolution.
@@ -1606,7 +1606,7 @@ pub(crate) fn require_prebuilt_binary_fresh_cmake(binary_path: &Path) -> TestRes
              (or set NROS_SKIP_FIXTURE_CHECK=1 if you built it another way).",
         ));
     }
-    staleness::record_fresh(binary_path);
+    staleness::record_fresh(binary_path).map_err(TestError::BuildFailed)?;
     // phase-395 W10 — shadow-mode cache observation, OFF unless
     // `NROS_FIXTURE_CACHE_SHADOW` is set. It records; it cannot skip anything,
     // it cannot serve anything, and it cannot fail this resolution.
@@ -1795,7 +1795,7 @@ pub(crate) fn require_prebuilt_binary_fresh_zephyr(
         ));
     }
 
-    staleness::record_fresh(zephyr_exe);
+    staleness::record_fresh(zephyr_exe).map_err(TestError::BuildFailed)?;
     Ok(resolved)
 }
 
@@ -6705,7 +6705,7 @@ mod tests {
         )
         .unwrap();
 
-        staleness::record_fresh(&bin);
+        staleness::record_fresh(&bin).expect("self-test probe is not degraded");
         let first = require_prebuilt_binary_fresh(&bin).unwrap_err().to_string();
         assert!(
             first.contains("probe:") && first.contains("examined 2"),
@@ -6743,7 +6743,7 @@ mod tests {
             "the count measures non-running, not age — a cell that ran must reset: {after}"
         );
 
-        staleness::record_fresh(&bin);
+        staleness::record_fresh(&bin).expect("self-test probe is not degraded");
         let _ = fs::remove_dir_all(&dir);
     }
     /// phase-353 W2 direction (3) — the DEP-INFO arm must be content-aware too.
@@ -6981,5 +6981,81 @@ mod tests {
         );
 
         fs::remove_dir_all(&tmp).unwrap();
+    }
+    /// issue 1045 — the leaf-`target/` literals still in this file are correct
+    /// only because their platforms have no profile CARVE-OUT.
+    ///
+    /// Issue 1027 fixed the NuttX and FreeRTOS locators, which spelled a leaf
+    /// `target/<triple>/<profile>/` path and got the profile wrong: the artifact
+    /// root redirect in `require_prebuilt_binary` had already worked, and only
+    /// the profile component was stale. FreeRTOS was green purely because it
+    /// happened to spell the carve-out directly.
+    ///
+    /// Three such literals remain here — `qemu-rs-test` (qemu-arm-baremetal),
+    /// `contract-monitor-*` (linux) and the esp32 examples
+    /// (qemu-esp32-baremetal) — and all three resolve today, VERIFIED on disk:
+    /// each artifact sits under the shared group dir at the AMBIENT profile,
+    /// which is what `cargo_target_profile_dir()` spells.
+    ///
+    /// They are one carve-out away from issue 1027. `platform_profile` returns
+    /// `Some` for exactly `freertos`, `nuttx` and `nuttx-riscv`; the day someone
+    /// adds a fourth for one of these three platforms, the literal silently
+    /// names a directory nothing writes and the resolver reports `not prebuilt`
+    /// on a freshly built tree. This test is the tripwire for that day, and it
+    /// names the sites so the fix has somewhere to start.
+    #[test]
+    fn the_leaf_profile_literals_only_work_because_their_platforms_have_no_carve_out() {
+        for (platform, site) in [
+            (
+                "qemu-arm-baremetal",
+                "build_qemu_test — target/thumbv7m-none-eabi/<profile>/qemu-rs-test",
+            ),
+            (
+                "linux",
+                "build_contract_monitor_bin — target/<profile>/<bin>",
+            ),
+            (
+                "qemu-esp32-baremetal",
+                "esp32 examples — target/riscv32imc-unknown-none-elf/<profile>/<bin>",
+            ),
+        ] {
+            assert!(
+                nros_cargo_profile::platform_profile(platform).is_none(),
+                "`{platform}` has gained a profile carve-out, so the leaf literal in \
+                 `{site}` now names a directory nothing writes — this is issue 1027 at \
+                 a new site. Resolve it through the manifest row instead: \
+                 `groups::select_sole_row` for the artifact ROOT and `row_profile_dir` \
+                 for the PROFILE, as `nuttx.rs` and `freertos.rs` already do."
+            );
+        }
+    }
+
+    /// The carve-out set itself, so the tripwire above cannot quietly stop
+    /// covering anything (issue 0196's rule: check that the gate still covers
+    /// the rule it enforces).
+    #[test]
+    fn only_freertos_and_nuttx_carve_out_a_profile() {
+        let carved: Vec<&str> = [
+            "freertos",
+            "nuttx",
+            "nuttx-riscv",
+            "linux",
+            "qemu-arm-baremetal",
+            "qemu-esp32-baremetal",
+            "threadx-linux",
+            "threadx-riscv64",
+            "zephyr",
+        ]
+        .into_iter()
+        .filter(|p| nros_cargo_profile::platform_profile(p).is_some())
+        .collect();
+        assert_eq!(
+            carved,
+            vec!["freertos", "nuttx", "nuttx-riscv"],
+            "the set of platforms with a profile carve-out changed. Every leaf \
+             `target/<triple>/<profile>/` literal in this file assumes the AMBIENT \
+             profile, so a new carve-out needs its resolver moved onto the row route \
+             first (issues 1027, 1045)."
+        );
     }
 }
