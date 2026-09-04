@@ -749,6 +749,19 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `nros_fixture_row_artifact_dir_by_id <row-id>`. Gate: `check-fixture-artifact-dir-inputs`
   (a packer of a lane-built artifact must derive its row's args and env from the manifest, not
   supply them); acceptance is still a BUILD, never a gate.
+
+- **A CONFIGURE-time emitter has no `DEPENDS` to carry its tool — put the tool in
+  `CMAKE_CONFIGURE_DEPENDS` (issue 1018).** `execute_process()` has already run by
+  the time ninja decides anything, so the freshness of anything it emits reduces to
+  *does a configure happen*. Four sites emit at configure time and #182 registered
+  the CLI at exactly one of them, inline; the Zephyr interfaces generator's own
+  `IS_NEWER_THAN` predicate on the tool was therefore unreachable on an incremental
+  build (measured: `build-rust-talker-zenoh`'s `RERUN_CMAKE` edge, 3592 inputs, none
+  under `packages/cli`), so a single-example Zephyr image kept museum generated code
+  after a `nros` rebuild. One spelling now: `nros_codegen_tool_reconfigure()`, gated
+  by `check-codegen-tool-reconfigure`. The BUILD-time lane is fine — its
+  `add_custom_command` names the tool in `DEPENDS`, and `restat = 1` plus codegen's
+  write-if-changed keep an emitter-identical rebuild from cascading.
 - **A lib reached through a raw `-Wl,...` link FLAG gets no rebuild edge (issue 0475)** — CMake cannot
   see a file inside a flag string, and `add_dependencies()` only adds build ORDER, which ninja renders
   `||` (order-only): "must exist before linking", never "relink when it changes". The RMW backends are

@@ -52,7 +52,7 @@ they all rest on is built on build-system internals nobody supports.
 | [#0835](../issues/0835-fixture-staleness-probe-families-restale-each-other.md) | fixtures | the cmake and rust families re-stale each other — **oscillation fixed + gated 2026-09-04**; open for the duplicated ThreadX corrosion group, which is wasted disk, not staleness |
 | [#0945](../issues/archived/0945-shared-cargo-dir-rests-on-unsupported-build-internals.md) | cargo | ~~the shared-cargo-dir campaign rests on five unsupported build-system assumptions~~ **RESOLVED** — six, classified, one gap named |
 | [#1002](../issues/archived/1002-a-derived-knob-needs-three-configures-not-two.md) | cmake | RESOLVED — three is the chain's depth, not a defect; the defect was a bound counting the build dir's lifetime |
-| [#1018](../issues/1018-a-codegen-change-invalidates-generated-interfaces-and-only-a-manual-step-connects-them.md) | codegen | a codegen change invalidates every consumer, connected only by a manual step |
+| [#1018](../issues/1018-a-codegen-change-invalidates-generated-interfaces-and-only-a-manual-step-connects-them.md) | codegen | ~~a codegen change invalidates every consumer~~ the configure-time half is closed; **open** for the stale-CLI refusal |
 | [#1046](../issues/archived/1046-px4-stale-tree-guard-checks-a-surviving-directory.md) | px4 | RESOLVED 2026-09-05 — the guard asserted a DIRECTORY that outlives the build that linked it; it asserts `bin/px4`'s CONTENT now, and the three "not covered" sweeps came back empty |
 | [#1050](../issues/1050-px4-demo-links-whatever-archive-was-built-last.md) | px4 | links whatever `libnros_cpp.a` was built last — the recipe (1) and the configure-time guard (2) are fixed; open for (3), `nros::init()` taking slot 0 |
 | [#1056](../issues/archived/1056-session-churn-window-too-short-for-start-skew.md) | test window | ~~a check that can pass on the build it exists to reject~~ **RESOLVED** — it can, and no affordable window fixes it |
@@ -124,9 +124,21 @@ dressed as a self-healing WARNING. Measured today: 116 of 117 rust rows find an
 artifact, 120 of 120 cmake cells do, and exactly one row
 (`packages/testing/qemu-smoltcp-bridge`) is on the silent fallback right now. The
 remedy is specified in the issue — a `DEGRADED\t` line beside the existing
-`FAILED\t` bucket, widening no watch set — and deliberately not landed: it needs
-a built fixture tree to verify, and unverified shell in the freshness gate is the
-defect this phase exists to remove.
+`FAILED\t` bucket, widening no watch set — and **LANDED 2026-09-05** — deferred here
+for a day for want of a way to verify it. Both fallback branches announce
+themselves, `check-fixtures-stale.sh` buckets and counts them as a WARNING, and
+the COUNT is the signal: one is expected, more means a layout moved. Gated by
+case **E** of `check-fixture-staleness-probes`, which builds a library-only cargo
+leaf — the real shape, since that is why `qemu-smoltcp-bridge` is on the fallback
+— and is mutation-verified. Cases A–D all have the artifact PRESENT, so none of
+them reached this branch.
+
+One defect surfaced in the writing, and it would not have failed loudly: a
+degrading probe prints its marker line AND, if the fallback fires, the stale
+line, while `check-fixtures-stale.sh` reads probe output through `mapfile` or
+through one `$( )` capture depending on whether GNU `parallel` is installed — so
+bucketing without re-splitting would have classified the pair **differently
+depending on a tool being present on the machine**.
 
 **The register's biggest item is not the one it named.** Item 4's stated risk (a
 future cargo target-dir GC) has never fired; the side channel having no OWNER has,
@@ -170,3 +182,62 @@ The free alternative is recorded and declined with a reason: dropping
 `MAX_ROUTER_SESSIONS` to 2 buys the same `L <= 18 s` for no wall clock, but needs
 a healthy-count measurement on all twelve cells first, and a flaky cell is worse
 than four seconds of lease band.
+
+## Narrowed: #1018, the codegen chain (2026-09-05)
+
+**The reported defect was a false STOP; measuring it found a false FRESH one
+layer over, and that is what got fixed.**
+
+The issue said the staleness refusal "is the ONLY thing holding the chain".
+Measured, it is not: the BUILD-time generator's codegen command has carried
+`DEPENDS … ${_NANO_ROS_CODEGEN_TOOL}` since 2026-05-23, and touching the binary
+in a minimal consumer re-runs codegen — then, thanks to `restat = 1` plus
+codegen's write-if-changed, settles with nothing downstream rebuilt. (My first
+hypothesis was that this edge would leave the command permanently dirty. Running
+it refuted that; the cost of an emitter-identical `setup-cli` is one codegen run
+per package, not a cascade.)
+
+What has no edge is the CONFIGURE-time emitters, because `execute_process()`
+cannot have one: their freshness is the question *does a configure happen*.
+Four sites emit at configure time and **one** registered the tool — the
+`nano_ros_entry()` site, inline, from issue #182. The Zephyr interfaces
+generator carries the correct `IS_NEWER_THAN` predicate and it is unreachable on
+an incremental build: measured, `build-rust-talker-zenoh`'s `RERUN_CMAKE` edge
+has 3592 inputs and none under `packages/cli`. No `examples/zephyr/**`
+CMakeLists calls `nano_ros_entry()`, so every single-example Zephyr C/C++ image
+keeps museum generated code after a `nros` rebuild.
+
+**Is this #0820's shape? No.** #0820's remedy is a `DEPFILE` on a `cargo` custom
+command — a command that IS in the build graph, missing the file that lists its
+inputs. Here the producer (`just setup-cli`) is deliberately not in the graph at
+all, and the consumer half runs before the graph exists. The `DEPFILE` answer
+does not apply; `CMAKE_CONFIGURE_DEPENDS` is the only edge a configure-time
+emitter can carry.
+
+**Remedy:** `nros_codegen_tool_reconfigure()` in `NanoRosCodegenCore.cmake`, one
+spelling at all four sites, gated by `check-codegen-tool-reconfigure` (fast
+line, 15 self-test cases on the normal path, mutation-verified at each site and
+red on `origin/main` for all four).
+
+**Widening cost: zero, measured.** Of 7 Zephyr build dirs here, the 3 that reach
+a configure-time emitter already carry the CLI as a configure dependency; the
+other 4 reach no emitter and the registration is at the emitter's call site.
+#0835's re-staling is untouched.
+
+**What the phase's fingerprint budget bought here — a refusal.** The obvious
+narrowing is to key on `nros codegen-fingerprint` (41 binaries → 9 fingerprints;
+78 % of rebuilds would cost nothing). It is wrong for three of the four sites:
+the corpus covers the message/service/action emitters and NOT `codegen entry`
+or `codegen-system`, so those two would report FRESH for a real emitter change.
+And a configure cannot write its own configure input, so a fingerprint-keyed
+file needs a producer on the CLI-build event first. Recorded in #1018 as the
+follow-up rather than done badly.
+
+**Still open in #1018:** the stale-CLI refusal itself. Measured: appending a
+comment to `packages/cli/nros-cli-core/src/cmd/doctor.rs` — a file that cannot
+change one emitted byte — makes every consumer `nros codegen` refuse. Narrowing
+that watch set is rejected for now with the reason written down (the emitters
+reach through `cargo-nano-ros`/`nros-cli-core`, so a crate-level closure is
+nearly the whole closure and would not have excluded that file; and 0604
+measured a hand-rolled closure wrong in both directions at once).
+

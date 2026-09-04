@@ -93,6 +93,11 @@ nros_resolve_cli(NROS_EXECUTABLE OPTIONAL CONTEXT "integrations/nano-ros")
 
 if(NROS_EXECUTABLE AND EXISTS "${_nros_bringup_dir}/system.toml")
     file(MAKE_DIRECTORY "${_nros_system_out}")
+    # issue 1018 — same rule as the Zephyr bake: the emitted `system_config.h`
+    # is compiled into the image, so a rebuilt `nros` must re-run this
+    # configure. Doubly so here, because the failure below is SOFT: without the
+    # reconfigure a stale bake is not merely kept, it is kept silently.
+    nros_codegen_tool_reconfigure("${NROS_EXECUTABLE}")
     # Configure-time bake. If the running CLI lacks `codegen-system`
     # (Phase 212.E not yet shipped in this nros-cli), this fails soft
     # so the shim still configures.

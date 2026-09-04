@@ -159,6 +159,7 @@ fast-serial: \
     cmake-support-library \
     codegen-invocation \
     codegen-size-bound-golden \
+    codegen-tool-reconfigure \
     config-header-single-writer \
     config-knob-census \
     config-surface \
@@ -998,6 +999,16 @@ embedded-feature-unification:
 [private]
 codegen-invocation:
     @scripts/ci/codegen-invocation-check.sh
+
+# A configure-time emitter must make a rebuilt `nros` re-run its configure
+# (issue 1018). The build-time generator says so in `DEPENDS`; `execute_process`
+# cannot, so the tool goes in `CMAKE_CONFIGURE_DEPENDS` via
+# `nros_codegen_tool_reconfigure()`. #182 registered it at ONE of four sites,
+# inline, so the other three kept museum generated code after a `just setup-cli`
+# unless the image also happened to call `nano_ros_entry()`.
+[group("checks")]
+codegen-tool-reconfigure:
+    @python3 scripts/check-codegen-tool-reconfigure.py
 
 # String-convention guards (forbidden org / retired-tool refs in user surfaces).
 # The `check.yml` step (SSoT).

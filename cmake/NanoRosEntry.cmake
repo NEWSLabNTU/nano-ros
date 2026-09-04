@@ -933,10 +933,11 @@ function(_nros_entry_invoke_codegen)
     # reads the toolchain dep graph and is equally blind to the tool). Depend
     # on the CLI binary itself: its mtime change → cmake re-configure →
     # `nros codegen entry` re-runs.
-    if(EXISTS "${_nros_bin}")
-        set_property(DIRECTORY APPEND PROPERTY
-            CMAKE_CONFIGURE_DEPENDS "${_nros_bin}")
-    endif()
+    #
+    # issue 1018 — this WAS four lines of `set_property` here, and it was the
+    # only configure-time emitter in the tree that had them. Same rule, shared
+    # spelling, so the sibling emitters cannot drift back out of it.
+    nros_codegen_tool_reconfigure("${_nros_bin}")
 
     # CONFIGURE_DEPENDS from the depfile so any change to the launch
     # XML, any package.xml the pkg-index walked, or the bringup's

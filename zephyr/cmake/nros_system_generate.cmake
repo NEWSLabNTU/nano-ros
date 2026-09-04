@@ -163,6 +163,12 @@ function(nros_system_generate bringup_pkg)
     else()
         get_filename_component(_workspace "${_bringup_dir}" DIRECTORY)
     endif()
+    # issue 1018 — `codegen-system` writes `system_config.h`, which is compiled
+    # into the image, so the bake outlives the configure that produced it. This
+    # runs unconditionally per configure, which means its freshness is entirely
+    # the question of whether a configure happens at all.
+    nros_codegen_tool_reconfigure("${_nros_cli}")
+
     execute_process(
         COMMAND "${_nros_cli}" codegen-system
                 --workspace "${_workspace}"
