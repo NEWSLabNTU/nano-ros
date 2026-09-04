@@ -973,6 +973,57 @@ packages = ["arm-fvp"]
 platform = "zephyr" # west + zephyr-sdk toolchain, provisioned outside the index
 packages = []
 
+# --- the CMAKE board vocabulary, as index keys (phase-422 W7) ---------------
+#
+# A board has TWO spellings in this tree and they are not the same word:
+#
+#   * the INDEX key — `examples/<dir>` / the board-crate name, which is what
+#     `nros setup <board>` looks up (`resolve_packages`, an exact-key lookup
+#     with no guessing);
+#   * the CMAKE board id — `NANO_ROS_BOARD=<name>` → `cmake/board/
+#     nano-ros-board-<name>.cmake`, which is what a `package.xml` deploy export
+#     carries: `<nano_ros deploy="…" board="…" rmw="…"/>`.
+#
+# Measured 2026-09-05: the five `board=` values authored across `examples/`
+# are `mps2-an385-freertos`, `nuttx-qemu-arm`, `nuttx-qemu-riscv`,
+# `riscv64-qemu`, `threadx-linux`. Only the LAST was an index key — the one
+# where the two vocabularies happen to agree — so `nros setup <board>` with
+# the value a user READS OFF THEIR OWN `package.xml` failed for four of five,
+# with "unknown board" listing names that appear nowhere in their manifest.
+#
+# These four are the same physical boards as their counterparts above, under
+# the cmake spelling; each mirrors its counterpart's package set EXACTLY, and
+# the pairing is asserted by `check-board-vocabulary`. This is a DUPLICATE,
+# not an alias, because `BoardEntry` is `deny_unknown_fields` and has no alias
+# key — giving the index one is a CLI schema change, which this additive step
+# deliberately is not. When that lands, these four collapse into `aliases =`
+# on the entries above and this block goes away; until then, EDIT BOTH.
+
+# = [board.qemu-arm-freertos] (examples/qemu-arm-freertos)
+[board.mps2-an385-freertos]
+arch = "cortex-m3"
+platform = "freertos"
+packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
+
+# = [board.qemu-arm-nuttx] (examples/qemu-arm-nuttx)
+[board.nuttx-qemu-arm]
+arch = "cortex-a7"
+platform = "nuttx"
+packages = ["arm-none-eabi-gcc", "qemu", "nuttx-libc", "nuttx-kernel", "nuttx-apps"]
+
+# = [board.qemu-riscv-nuttx] (examples/qemu-riscv-nuttx); genromfs because the
+# rv-virt board bakes an etc/ ROMFS at export time and arm's config does not.
+[board.nuttx-qemu-riscv]
+arch = "riscv32"
+platform = "nuttx"
+packages = ["riscv-none-elf-gcc", "qemu", "genromfs", "nuttx-libc", "nuttx-kernel", "nuttx-apps"]
+
+# = [board.qemu-riscv64-threadx] (examples/qemu-riscv64-threadx)
+[board.riscv64-qemu]
+arch = "riscv64"
+platform = "threadx"
+packages = ["riscv-none-elf-gcc", "qemu", "threadx", "threadx-netxduo"]
+
 # NOTE (197.4 → phase-327): index sections are rejected-unknown by whatever
 # `nros` parses them, so adding a section IS a CLI schema change. phase-327 W1
 # (RFC-0062) added [system.*]/[rust.*]/[python.*] below together with the

@@ -154,7 +154,7 @@ def main():
         )
         return 1
 
-    bad_board, bad_deploy = {}, {}
+    bad_board, bad_deploy, not_index = {}, {}, {}
     seen_board, seen_deploy = {}, {}
     for f in files:
         try:
@@ -179,9 +179,34 @@ def main():
                 and board not in fixtures
             ):
                 bad_board.setdefault(board, f)
+            # SECOND, STRICTER assertion (phase-422 W7). The check above is an OR
+            # over five namespaces, and `cmake/board/*.cmake` alone satisfies
+            # every value — so it passed both before and after the index entries
+            # were added, and never tested the property W7 exists to create.
+            # Measured A/B, not assumed: identical OK line either way.
+            #
+            # `[board.*]` is the namespace `nros setup <board>` looks up, with an
+            # exact-key lookup and no fallback. A board that resolves only in the
+            # cmake namespace is one an out-of-tree user cannot provision — which
+            # was true of four of five.
+            elif board not in idx:
+                not_index.setdefault(board, f)
 
-    if bad_board or bad_deploy:
-        sys.stderr.write("check-board-vocabulary: %d problem(s)\n\n" % (len(bad_board) + len(bad_deploy)))
+    if bad_board or bad_deploy or not_index:
+        sys.stderr.write(
+            "check-board-vocabulary: %d problem(s)\n\n"
+            % (len(bad_board) + len(bad_deploy) + len(not_index))
+        )
+        for b, f in sorted(not_index.items()):
+            sys.stderr.write(
+                "  - board=%r (%s) resolves, but NOT as an index `[board.*]` key.\n"
+                "      That is the namespace `nros setup <board>` looks up (exact key,\n"
+                "      no fallback), so an out-of-tree user cannot provision it — they\n"
+                "      have no justfile to fall back on.\n"
+                "      Add `[board.%s]` to nros-sdk-index.toml mirroring the equivalent\n"
+                "      entry. Adding it is ADDITIVE; renaming is not, and is not asked\n"
+                "      for here.\n\n" % (b, f, b)
+            )
         for d, f in sorted(bad_deploy.items()):
             sys.stderr.write(
                 "  - deploy=%r (%s) is not a scope and no scope starts with %r.\n"
@@ -200,7 +225,7 @@ def main():
 
     sys.stdout.write(
         "check-board-vocabulary: OK — %d deploy value(s), %d board value(s); "
-        "each resolves (cmake %d / index %d / crate %d / fixture %d).\n"
+        "each resolves AND is an index key (cmake %d / index %d / crate %d / fixture %d).\n"
         % (
             len(seen_deploy),
             len(seen_board),
