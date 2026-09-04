@@ -1,13 +1,34 @@
 ---
 rfc: 0013
 title: "Custom-board provisioning — out-of-tree boards self-describe their deps"
-status: Stable
+status: Superseded
 since: 2026-05
-last-reviewed: 2026-05
+last-reviewed: 2026-09
 implements-tracked-by: []
 supersedes: []
-superseded-by: null
+superseded-by: [0087, 0062]
 ---
+
+> **SUPERSEDED 2026-09-04 by RFC-0087 + RFC-0062.** This RFC answers "how does a
+> board crate tell `nros setup` what to provision?" — a question RFC-0087
+> **deletes** rather than answers. There, *"a package is a directory containing
+> `package.xml`, and nothing else identifies one"*, and *"there is no builtin
+> road"*: a board is an ordinary package, its dependencies are its `<depend>`
+> entries, and `provider_scan` finds an out-of-tree one the same way it finds
+> `packages/boards/*`. Nothing needs to learn a board-specific descriptor
+> because nothing is looking one up.
+>
+> | what this RFC proposed | where it went |
+> | --- | --- |
+> | `[[board.source]]` / `[[board.tool]]` / `[[board.gated]]` in `nros-board.toml` | RFC-0087 (`<depend>` + `provider_scan`); external trees become **vendor packages**, phase-420 W8 |
+> | a `cargo_install` tool kind | RFC-0062 `[prereq.*]` — one key namespace, ordered `providers` |
+> | out-of-tree discovery / `--board-manifest` | phase-420 W6 — `[workspace] package_paths` + `NROS_PACKAGE_PATH`, shadowing **reported** |
+> | a board scaffolder | **shipped** as `nros new board <name>` (phase-290 W4.b) |
+>
+> Kept in place rather than deleted: the real-board survey and the simulated
+> walkthrough below are the evidence for what a third-party board actually
+> needs, and RFC-0087 inherits that requirement without restating it. Read this
+> for the problem, not for the mechanism. Tracked by [phase-201](../roadmap/archived/phase-201-custom-board-provisioning.md), archived unstarted.
 
 # Custom-board provisioning — out-of-tree boards self-describe their deps
 

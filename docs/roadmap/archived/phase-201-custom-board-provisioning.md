@@ -4,7 +4,43 @@
 `nros-board.toml` so `nros setup <custom-board>` provisions them out-of-tree —
 without an entry in the maintainer-owned central `nros-sdk-index.toml`.
 
-**Status.** Deferred (proposed 2026-05-29). Design complete; implementation
+**Status (2026-09-04). SUPERSEDED — archived unstarted.** Deferred as proposed
+2026-05-29 and never picked up; in the 97 days since, the architecture moved
+underneath it and the question this phase exists to answer no longer has a place
+to be asked.
+
+**RFC-0087 deletes the lookup rather than extending it.** This phase's whole
+shape is "on a central-index MISS, fall back to reading the board crate" — one
+more branch in a resolver. RFC-0087's premise is that there is no resolver to
+branch: *"a package is a directory containing `package.xml`, and nothing else
+identifies one"*, and *"there is no builtin road"*. A user's board is found by
+`provider_scan` exactly as `packages/boards/*` are, and its dependencies are its
+`<depend>` entries. Nothing has to miss first.
+
+Every work item has a successor, verified against `main` 2026-09-04:
+
+| item | successor |
+| --- | --- |
+| **201.1** dep schema + resolver branch | RFC-0087 (`<depend>` + `provider_scan`); external trees become **vendor packages** reached by package name — phase-420 **W8**, which deletes the `[source.*]` row in the same commit |
+| **201.2** `cargo_install` tool kind | RFC-0062 **`[prereq.*]`** — one key namespace over four providers, ordered `providers` list. (Note the name: nano-ros builds its own rosdep-shaped thing; rosdep itself is deliberately no longer consulted, and the fallback was deleted.) |
+| **201.3** out-of-tree discovery / `--board-manifest` | phase-420 **W6** — `[workspace] package_paths` in `nros.toml` + `NROS_PACKAGE_PATH`, nano-ros tree first, shadowing **reported** by `nros ws packages` rather than silently won |
+| **201.4** `nros new --board` scaffolder | **SHIPPED**, by phase-290 W4.b — `nros new board <name>` (`cmd/new.rs:36`). Not by this phase |
+| **201.5** fresh-machine acceptance lane | phase-420 W6 / W8 acceptance |
+
+**The premise is still literally true, which is why this needs saying out loud.**
+`resolve_packages` (`packages/cli/nros-cli-core/src/cmd/setup.rs:1067`) still
+bails with *"Add a `[board.<name>]` entry to `nros-sdk-index.toml`"*. Anyone
+reading only the code would conclude this phase is still the answer. It is not:
+the gap closes when boards stop being things the index knows about.
+
+**And one narrow instance already shipped, in the direction this phase wanted.**
+`nros setup board <name> --zephyr-workspace` reads the board's own provisioning
+contract (`board.cmake`) out of the crate directory rather than the index
+(phase-215.J.2, `setup.rs:429-467`). That is 201.1's shape, board-scoped and
+Zephyr-only — evidence that the pull was real, not that this phase should be
+revived.
+
+*Original status, 2026-05-29:* Deferred. Design complete; implementation
 parked. Pick up after the active Phase 200 line.
 
 **Priority.** P3 — no nano-ros-internal board needs it; it's the enabler for
@@ -16,7 +52,10 @@ index kinds; builds consume nros-store tools), Phase 197.5 (nros-0.3.1 index sch
 + the deny-unknown-fields lesson — schema additions must be released).
 
 **Design.** Full exploration + real-board survey + simulated walkthrough in
-[`docs/design/0013-custom-board-provisioning.md`](../design/0013-custom-board-provisioning.md).
+[`docs/design/0013-custom-board-provisioning.md`](../design/0013-custom-board-provisioning.md)
+— **also marked Superseded (2026-09-04)**, and kept for the survey rather than
+the mechanism: it is the evidence for what a third-party board actually needs,
+which RFC-0087 inherits without restating.
 Builds on [`docs/design/0012-board-bsp-integration-architecture.md`](../design/0012-board-bsp-integration-architecture.md)
 (the build-side / overlay-crate model).
 

@@ -74,7 +74,7 @@ Each RFC carries frontmatter: `rfc`, `title`, `status`, `since`, `last-reviewed`
 | RFC | Doc | Status | One-liner |
 | --- | --- | --- | --- |
 | 0012 | [board-bsp-integration-architecture](0012-board-bsp-integration-architecture.md) | Stable | vendor BSP × board × SDK-variant integration shape |
-| 0013 | [custom-board-provisioning](0013-custom-board-provisioning.md) | Stable | out-of-tree boards self-describe deps to `nros setup` |
+| 0013 | [custom-board-provisioning](0013-custom-board-provisioning.md) | Superseded by RFC-0087 / RFC-0062 | out-of-tree boards self-describe deps to `nros setup` — the question is deleted rather than answered: under RFC-0087 a board is an ordinary `package.xml` package and there is no index lookup to extend |
 | 0014 | [nros-setup-toolchain-management](0014-nros-setup-toolchain-management.md) | Stable | `nros setup` as single toolchain entrypoint |
 | 0015 | [rtos-orchestration](0015-rtos-orchestration.md) | Stable | launch tree + manifest codegen across RTOSes |
 | 0016 | [rtos-scheduling-features](0016-rtos-scheduling-features.md) | Stable | per-RTOS scheduling feature survey |

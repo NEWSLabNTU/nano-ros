@@ -315,6 +315,11 @@ Three ways not to add an entry, in increasing cost:
    Precedent exists in a sibling verb: `nros setup board <name>
    --zephyr-workspace` already reads the *board package's* provisioning contract
    rather than the index.
+   **Both superseded 2026-09-04** (phase-201 archived unstarted, RFC-0013 marked
+   Superseded): RFC-0087 makes a board an ordinary `package.xml` package whose
+   deps are its `<depend>` entries, so there is no index lookup left to extend
+   and no board-specific descriptor to read. The `--zephyr-workspace` precedent
+   still stands as evidence the pull was real — it is that shape, board-scoped.
 
 **Proposed fix:** re-key the table as `[profile.<arch>-<ecosystem>]` and make
 `[board.*]` an optional alias pointing at a profile. One `cortex-m-freertos`
@@ -933,7 +938,7 @@ vendor reads. Fix regardless of everything else here.
 | Keep low-tier boards in-tree | phase-320 W3.d | Do not relocate anything; shells add nothing to relocate |
 | Tier is metadata, not layout | phase-320 W3 | No tier or vendor directories |
 | Board crate merges 27 → 19 | phase-322 (deferred) | Orthogonal |
-| Out-of-tree boards self-describe deps | RFC-0013 / phase-201 (deferred) | The revival case |
+| Out-of-tree boards self-describe deps | RFC-0087 / phase-420 W6+W8 (RFC-0013 + phase-201 superseded 2026-09-04) | The revival case — answered generally, not per-board |
 
 ## Sequencing
 
