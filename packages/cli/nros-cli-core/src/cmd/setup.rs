@@ -120,6 +120,10 @@ pub struct Args {
 
     /// With `--system`: EXECUTE the composed native install command (which
     /// invokes sudo where the manager needs it) instead of printing it.
+    ///
+    /// issue 1038 — ALSO applies to `--tool`: a tool declaring its own
+    /// `[tool.<name>] system = [..]` build deps installs them instead of
+    /// bailing with a line for a human to copy.
     #[arg(long, requires = "system", conflicts_with = "check")]
     pub sudo: bool,
 }
@@ -224,7 +228,13 @@ pub fn run(args: Args) -> Result<()> {
     }
 
     if let Some(tool) = args.tool.as_deref() {
-        return install_single_tool(&index, tool, args.prefix.as_deref(), args.dry_run);
+        return install_single_tool(
+            &index,
+            tool,
+            args.prefix.as_deref(),
+            args.dry_run,
+            args.sudo,
+        );
     }
 
     if !args.sources.is_empty() {
@@ -628,6 +638,7 @@ fn install_single_tool(
     name: &str,
     prefix_override: Option<&Path>,
     dry_run: bool,
+    run_sudo: bool,
 ) -> Result<()> {
     let host = host_key();
     let tool = index
@@ -678,13 +689,48 @@ fn install_single_tool(
         let hint = detect_package_manager()
             .map(|mgr| native_install_command(mgr, &compose_packages(&entries, mgr)))
             .unwrap_or_else(|| "<no supported package manager detected>".to_string());
-        bail!(
-            "nros setup --tool {name}: needs {} system package(s) this host is \
-             missing: {}.\n  Install with:  {hint}\n  \
-             (declared as [tool.{name}] system = [..]; probes via [system.*].check)",
-            missing_sys.len(),
-            missing_sys.join(", "),
-        );
+        // issue 1038 — `--sudo` INSTALLS them, exactly as it does for
+        // `--system`. Without this the flag reached only the global
+        // `[system.*]` closure, so a tool whose deps live in its own
+        // `[tool.<name>] system = [..]` could be DIAGNOSED and never
+        // provisioned: `esp32-qemu` needs glib/pixman/gcrypt for qemu's meson
+        // build, they are declared in the index, and the only way to act on
+        // that was for a human to copy the printed line. A workflow's remaining
+        // option was to `apt-get install` them itself — which is the
+        // index-restating that phase-413 W3 exists to forbid.
+        //
+        // Default is unchanged and stays safe for a developer tree: without
+        // `--sudo` this still bails with the command to run, because installing
+        // system packages behind someone's back is not a thing a build tool
+        // should do uninvited.
+        if run_sudo {
+            let Some(mgr) = detect_package_manager() else {
+                bail!(
+                    "nros setup --tool {name} --sudo: {} system package(s) missing ({}) \
+                     and no supported package manager detected",
+                    missing_sys.len(),
+                    missing_sys.join(", "),
+                );
+            };
+            let cmd = native_install_command(mgr, &compose_packages(&entries, mgr));
+            println!("nros setup --tool {name} --sudo: running:\n  {cmd}");
+            let status = std::process::Command::new("sh")
+                .args(["-c", &cmd])
+                .status()
+                .wrap_err("spawn the native package manager")?;
+            if !status.success() {
+                bail!("system package install for [tool.{name}] failed ({status})");
+            }
+        } else {
+            bail!(
+                "nros setup --tool {name}: needs {} system package(s) this host is \
+                 missing: {}.\n  Install with:  {hint}\n  \
+                 (or re-run with --sudo)\n  \
+                 (declared as [tool.{name}] system = [..]; probes via [system.*].check)",
+                missing_sys.len(),
+                missing_sys.join(", "),
+            );
+        }
     }
     match action {
         InstallAction::Present => {}

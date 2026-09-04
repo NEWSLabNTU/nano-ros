@@ -92,9 +92,13 @@ conversion can be verified in a lane that is already red.
    | --- | --- | --- |
    | `nuttx` | `riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)` | this wave |
    | `threadx_riscv64` | cargo manifest-parse: missing `include` of the generated `nros-patch.toml` (issue 0463) | this wave |
-   | `esp32` | `esp32-qemu` source build needs `libglib2-dev`, `libpixman-dev`, `libgcrypt-dev` | **W3** |
+   | `esp32` | RED is issue 1025 (#303); the missing `libglib2-dev`/`libpixman-dev`/`libgcrypt-dev` are a separate COVERAGE hole | **W3** |
 
-   `esp32` is W3's conversion unapplied rather than a missing mechanism: the
+   `esp32` needed a correction after the fact: its RED is issue 1025 (the flash
+   packer looking in a directory the build stopped using, PR #303), NOT the
+   packages — `just esp32 setup` tolerates that failure by design, so it costs
+   the e2e SKIP rather than the build. The package half is still W3's
+   conversion unapplied rather than a missing mechanism: the
    index declares all three as `[prereq.*]` AND in `[tool.esp32-qemu]`'s own
    `system = [...]`, so `nros setup --system` already resolves them. Checked
    against the gate as IMPLEMENTED (`check-workflow-indexed-apt.py`), not as
