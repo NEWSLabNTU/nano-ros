@@ -5683,3 +5683,50 @@ fn a_subscriptions_arena_cost_scales_with_declared_depth() {
          the arena cannot be derived from a declared depth"
     );
 }
+
+/// Issue #515's audit is STATIC: it warns when a declared period is not a
+/// multiple of the spin period, and says in its own comment that "the jitter
+/// stays invisible until someone measures cadence on target". These cover the
+/// measurement that makes it visible.
+#[test]
+fn release_jitter_starts_empty_and_clears() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    assert_eq!(
+        executor.release_jitter(),
+        (0, 0, 0),
+        "nothing has been measured yet, so it must report nothing rather than \
+         a confident zero-jitter"
+    );
+    executor.clear_release_jitter_stats();
+    assert_eq!(executor.release_jitter(), (0, 0, 0));
+}
+
+/// `spin_period` must actually COUNT its wakes. Before this, `next_us` and
+/// `now_us()` were both in hand every cycle and the difference was discarded,
+/// so a loop that never met its period looked identical to one that always did.
+#[test]
+fn spin_period_counts_its_wakes_and_keeps_late_within_total() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let flag = executor.halt_flag();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        flag.store(true, portable_atomic::Ordering::SeqCst);
+    });
+    executor
+        .spin_period(core::time::Duration::from_millis(2))
+        .expect("a clock is installed, so spin_period must run");
+
+    let (max_us, late, total) = executor.release_jitter();
+    assert!(total > 0, "the loop ran, so wakes must have been counted");
+    assert!(
+        late <= total,
+        "late wakes ({late}) cannot exceed total wakes ({total})"
+    );
+    // Deliberately NOT asserting max_us > 0: a host that always meets a 2 ms
+    // period is a legitimate outcome, and a test that demanded lateness would
+    // fail on the machine behaving best.
+    assert!(
+        max_us == 0 || late > 0,
+        "a non-zero maximum ({max_us} us) with zero late wakes is contradictory"
+    );
+}
