@@ -366,7 +366,26 @@ def load_ledger():
             continue
         shard_topic = name[: -len(".json")]
         with open(os.path.join(LEDGER_DIR, name)) as fh:
-            raw = json.load(fh)
+            text = fh.read()
+        # A DUPLICATE KEY is silently survivable and therefore dangerous: JSON
+        # parsers keep the last occurrence, so a second row for the same symbol
+        # discards the first author's verdict and reasoning with no error
+        # anywhere. It happens because two sessions classify the same symbol
+        # independently and git merges both -- they land in different regions of
+        # the file, so there is no textual conflict to notice. `other.json`
+        # carried `cpp:declared_depth` twice on 2026-09-04 for exactly that
+        # reason; both said `extension`, which is luck, not a guarantee.
+        pairs = json.loads(text, object_pairs_hook=lambda p: p)
+        seen = set()
+        for key, _ in pairs:
+            if key in seen:
+                raise SystemExit(
+                    f"api-parity: {name} defines {key!r} more than once. JSON keeps the "
+                    f"LAST, so the other row's verdict is being discarded silently. "
+                    f"Merge them into one row -- do not delete either reason."
+                )
+            seen.add(key)
+        raw = dict(pairs)
         for key, value in raw.items():
             if key.startswith("_"):
                 continue
