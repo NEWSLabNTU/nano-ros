@@ -19,7 +19,12 @@ rebuild knows what the artifact was built from* — and the failures are
 symmetrical, which is what makes the grouping useful rather than tidy:
 
 * **False FRESH** hands the test a museum binary, and the run reports on code
-  that is not in the tree. Issues 0820 and 1050.
+  that is not in the tree. Issues 0820 and 1050. **1050 turned out NOT to be a
+  missing edge** (measured 2026-09-05): `bin/px4` carries a real `|` dependency
+  on `libnros_cpp.a`, so it relinks when the archive moves. Nothing decided
+  WHICH archive should be there — a different failure, one the build graph
+  cannot express, and the remedy was a configure-time assertion rather than an
+  edge or a wider watch set.
 * **False STALE** hands the developer a rebuild they did not earn, and the ones
   here are not merely slow: 0835's two families re-stale *each other*, so the
   cost is unbounded rather than one wasted build.
@@ -46,8 +51,8 @@ they all rest on is built on build-system internals nobody supports.
 | [#0945](../issues/0945-shared-cargo-dir-rests-on-unsupported-build-internals.md) | cargo | the shared-cargo-dir campaign rests on five unsupported build-system assumptions |
 | [#1002](../issues/archived/1002-a-derived-knob-needs-three-configures-not-two.md) | cmake | RESOLVED — three is the chain's depth, not a defect; the defect was a bound counting the build dir's lifetime |
 | [#1018](../issues/1018-a-codegen-change-invalidates-generated-interfaces-and-only-a-manual-step-connects-them.md) | codegen | a codegen change invalidates every consumer, connected only by a manual step |
-| [#1046](../issues/1046-px4-stale-tree-guard-checks-a-surviving-directory.md) | px4 | the stale-tree guard asserts a DIRECTORY that outlives the build that linked it |
-| [#1050](../issues/1050-px4-demo-links-whatever-archive-was-built-last.md) | px4 | links whatever `libnros_cpp.a` was built last |
+| [#1046](../issues/archived/1046-px4-stale-tree-guard-checks-a-surviving-directory.md) | px4 | RESOLVED 2026-09-05 — the guard asserted a DIRECTORY that outlives the build that linked it; it asserts `bin/px4`'s CONTENT now, and the three "not covered" sweeps came back empty |
+| [#1050](../issues/1050-px4-demo-links-whatever-archive-was-built-last.md) | px4 | links whatever `libnros_cpp.a` was built last — the recipe (1) and the configure-time guard (2) are fixed; open for (3), `nros::init()` taking slot 0 |
 | [#1056](../issues/1056-session-churn-window-too-short-for-start-skew.md) | test window | a check that can pass on the build it exists to reject |
 
 #1056 is here rather than with the RTOS work because its defect is the same

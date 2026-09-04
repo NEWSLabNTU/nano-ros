@@ -95,6 +95,33 @@ _nros_px4_resolve_archive(_NROS_PX4_PLATFORM_A NROS_PLATFORM_ARCHIVE NROS_PLATFO
     "${NANO_ROS_ROOT}/build/nros-platform-posix/libnros_platform_posix.a"
     "cmake -S ${NANO_ROS_ROOT}/packages/platform/nros-platform-posix -B ${NANO_ROS_ROOT}/build/nros-platform-posix && cmake --build ${NANO_ROS_ROOT}/build/nros-platform-posix")
 
+# The NETWORKED backends this helper knows, in ONE place. Three sites read it —
+# the BACKENDS dispatch, the unknown-backend error, and the archive precheck
+# below — and when it was spelled out at each, the precheck's copy is the one
+# that would have been forgotten.
+set(_NROS_PX4_NETWORKED_BACKENDS zenoh xrce cyclonedds)
+
+# Does ${_nm_out} (llvm-nm --defined-only output) define nros_rmw_<backend>_register?
+#
+# Bounded on both sides rather than a bare substring, because the archive also
+# carries Rust-mangled names that CONTAIN the C one's prefix — measured on a
+# `rmw-zenoh-cffi` archive:
+#
+#   nros_rmw_zenoh_register                                    <- the C symbol
+#   _RNvNtCs..._14nros_rmw_zenoh13cffi_register8register       <- not it
+#   _RNvNvNtCs..._14nros_rmw_zenoh13cffi_register1__32___nros_rmw_backend_auto_register
+#
+# One predicate for BOTH directions of the check below: a presence test and an
+# absence test that disagree about what "defines" means is how a guard ends up
+# right in one direction and blind in the other.
+function(_nros_px4_archive_defines_backend OUT_VAR NM_OUT BACKEND)
+    if("\n${NM_OUT}\n" MATCHES "[^A-Za-z0-9_]nros_rmw_${BACKEND}_register[^A-Za-z0-9_]")
+        set(${OUT_VAR} TRUE PARENT_SCOPE)
+    else()
+        set(${OUT_VAR} FALSE PARENT_SCOPE)
+    endif()
+endfunction()
+
 # nros-cpp / nros-c live under packages/api (phase-321 moved them there from
 # packages/core); the ABI headers stayed in packages/core. Validated below rather
 # than trusted: the W1 probe declared its symbols by hand instead of including
@@ -205,7 +232,7 @@ function(nros_px4_add_module)
                     ${_uorb}/src/callback_default.cpp
                     ${_uorb}/src/px4_callback_glue.cpp)
             set(_needs_work_queue TRUE)
-        elseif(_b MATCHES "^(zenoh|xrce|cyclonedds)$")
+        elseif(_b IN_LIST _NROS_PX4_NETWORKED_BACKENDS)
             # A NETWORKED backend contributes nothing at the cmake layer: it is
             # compiled INTO libnros_cpp.a by the cargo feature
             # `rmw-<name>-cffi`, which also pulls in `rmw-cffi` (the seam uORB
@@ -224,8 +251,8 @@ function(nros_px4_add_module)
         else()
             message(FATAL_ERROR
                 "nros_px4_add_module: BACKENDS '${_b}' is not a backend this "
-                "helper knows. In-firmware: uorb. Networked: zenoh, xrce, "
-                "cyclonedds.")
+                "helper knows. In-firmware: uorb. Networked: "
+                "${_NROS_PX4_NETWORKED_BACKENDS}.")
         endif()
     endforeach()
 
@@ -313,39 +340,101 @@ function(nros_px4_add_module)
     #
     # So: locate llvm-nm through rustc's own sysroot, and if it is not there,
     # SKIP the check rather than guess. The link error remains the backstop.
-    if(_networked_backends)
-        execute_process(COMMAND rustc --print sysroot
-            OUTPUT_VARIABLE _rustc_sysroot OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET RESULT_VARIABLE _sysroot_rc)
-        set(_llvm_nm "")
-        if(_sysroot_rc EQUAL 0)
-            file(GLOB _llvm_nm_candidates
-                "${_rustc_sysroot}/lib/rustlib/*/bin/llvm-nm")
-            if(_llvm_nm_candidates)
-                list(GET _llvm_nm_candidates 0 _llvm_nm)
-            endif()
+    #
+    # Issue 1050 — the check runs for EVERY module, not only for one that named a
+    # networked backend, and it checks BOTH directions.
+    #
+    # It used to sit behind `if(_networked_backends)`, which is exactly the set of
+    # modules the bug cannot happen to. The uORB demo declares `BACKENDS uorb`, so
+    # the whole block was skipped for it — and a uORB-only module linking a
+    # zenoh-carrying archive is the failure: on hosted POSIX the backend's
+    # `.init_array` ctor registers zenoh BEFORE main, hence before the generated
+    # `nros_app_register_backends()`, zenoh takes slot 0, `nros::init()` opens the
+    # default slot, dials tcp/127.0.0.1:7447, finds nothing, and the module dies
+    # with `nros::init() failed` -> PX4_ERROR -> shell status 255.
+    #
+    # So `BACKENDS` did not mean what it reads as. It read "this image registers
+    # uorb"; what it named was "this image ALSO registers uorb". The absence half
+    # below is what makes the keyword an assertion instead of a hint, and it is
+    # the same defect shape as issue 1046 one layer up: a guard whose predicate
+    # cannot observe the case its own message describes.
+    #
+    # `just px4 build-sitl-example` now builds the archive it links, which fixes
+    # the RECIPE. This fixes the SEAM: a hand-run
+    # `make px4_sitl_default EXTERNAL_MODULES_LOCATION=...` against an archive
+    # someone else's recipe left behind is caught here, at configure time,
+    # instead of at `nros_uorb_demo start`.
+    #
+    # Cost: one extra `llvm-nm --defined-only` per configure for a uORB-only
+    # module. Measured 0.012 s on the 26 MB archive. It hashes nothing and
+    # watches nothing, so it re-stales nothing (phase-424's constraint).
+    execute_process(COMMAND rustc --print sysroot
+        OUTPUT_VARIABLE _rustc_sysroot OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET RESULT_VARIABLE _sysroot_rc)
+    set(_llvm_nm "")
+    if(_sysroot_rc EQUAL 0)
+        file(GLOB _llvm_nm_candidates
+            "${_rustc_sysroot}/lib/rustlib/*/bin/llvm-nm")
+        if(_llvm_nm_candidates)
+            list(GET _llvm_nm_candidates 0 _llvm_nm)
         endif()
+    endif()
 
-        if(_llvm_nm)
-            execute_process(COMMAND "${_llvm_nm}" --defined-only "${_NROS_PX4_CPP_A}"
-                OUTPUT_VARIABLE _nm_out ERROR_QUIET)
-            foreach(_nb IN LISTS _networked_backends)
-                if(NOT _nm_out MATCHES "nros_rmw_${_nb}_register")
-                    message(FATAL_ERROR
-                        "nros_px4_add_module: BACKENDS lists '${_nb}', but\n"
-                        "    ${_NROS_PX4_CPP_A}\n"
-                        "does not define nros_rmw_${_nb}_register. Rebuild it "
-                        "with that backend:\n"
-                        "    cargo build -p nros-cpp --no-default-features "
-                        "--features std,rmw-${_nb}-cffi --release")
-                endif()
-            endforeach()
-        else()
-            message(STATUS
-                "nros_px4_add_module: llvm-nm not found via rustc sysroot; "
-                "skipping the backend-symbol precheck (the link will still catch "
-                "a mismatched archive, ~10 min later).")
-        endif()
+    if(_llvm_nm)
+        execute_process(COMMAND "${_llvm_nm}" --defined-only "${_NROS_PX4_CPP_A}"
+            OUTPUT_VARIABLE _nm_out ERROR_QUIET)
+
+        # (a) every DECLARED networked backend must be in the archive, or the
+        #     link dies on nros_rmw_<name>_register ~10 minutes from now.
+        foreach(_nb IN LISTS _networked_backends)
+            _nros_px4_archive_defines_backend(_has "${_nm_out}" "${_nb}")
+            if(NOT _has)
+                message(FATAL_ERROR
+                    "nros_px4_add_module: BACKENDS lists '${_nb}', but\n"
+                    "    ${_NROS_PX4_CPP_A}\n"
+                    "does not define nros_rmw_${_nb}_register. Rebuild it "
+                    "with that backend:\n"
+                    "    cargo build -p nros-cpp --no-default-features "
+                    "--features std,rmw-${_nb}-cffi --release")
+            endif()
+        endforeach()
+
+        # (b) and no UNDECLARED one may be, because it registers itself first.
+        foreach(_nb IN LISTS _NROS_PX4_NETWORKED_BACKENDS)
+            if(_nb IN_LIST _networked_backends)
+                continue()
+            endif()
+            _nros_px4_archive_defines_backend(_has "${_nm_out}" "${_nb}")
+            if(_has)
+                string(REPLACE ";" " " _declared "${NPX_BACKENDS}")
+                message(FATAL_ERROR
+                    "nros_px4_add_module: ${NPX_MODULE} declares BACKENDS "
+                    "'${_declared}', but\n"
+                    "    ${_NROS_PX4_CPP_A}\n"
+                    "defines nros_rmw_${_nb}_register — a backend this module did "
+                    "not ask for.\n"
+                    "That archive was left by another build (e.g. `just px4 "
+                    "build-bridge-example`). On hosted POSIX the '${_nb}' backend "
+                    "registers itself from an .init_array ctor BEFORE main, so it "
+                    "takes RMW slot 0 ahead of this module's generated "
+                    "nros_app_register_backends(), nros::init() opens IT, and the "
+                    "module fails at startup with `nros::init() failed` (issue "
+                    "1050).\n"
+                    "Rebuild the archive for THIS module:\n"
+                    "    cargo build -p nros-cpp --no-default-features "
+                    "--features std,rmw-cffi,platform-posix --release\n"
+                    "or, from the repo root, just:\n"
+                    "    just px4 build-sitl-example\n"
+                    "To link a different archive on purpose, point at it with "
+                    "-DNROS_CPP_ARCHIVE=<path> / NROS_CPP_ARCHIVE=<path>.")
+            endif()
+        endforeach()
+    else()
+        message(STATUS
+            "nros_px4_add_module: llvm-nm not found via rustc sysroot; "
+            "skipping the backend-symbol precheck (the link will still catch "
+            "a mismatched archive, ~10 min later; an UNDECLARED backend in the "
+            "archive links fine and fails at runtime — issue 1050).")
     endif()
 
     # PUBLIC so the archives propagate to the final px4 link. px4_add_module

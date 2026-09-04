@@ -6,7 +6,9 @@ type: bug
 area: build, testing
 severity: high
 found: 2026-09-04
-related: [1046, 0436, phase-325, 0616]
+# defects (1) and (2) are fixed; (3) — `nros::init()` takes slot 0 — is why
+# this stays open.
+related: [1046, 0436, phase-325, 0616, phase-424]
 ---
 
 # Same source, same recipe, same command — different result
@@ -103,19 +105,103 @@ guard survived:
    — `Executor::open_with_rmw("uorb", …)` exists, but the C++ one-liner the
    examples use does not reach it.
 
-Only (1) is fixed here. (2) and (3) are design questions: (2) would mean either
-suppressing the ctor path when a stub is generated, or making `BACKENDS` an
-assertion rather than a hint; (3) would mean the examples naming their backend.
-Both change behaviour for every consumer, so they want an owner and a decision,
-not a drive-by.
+## (2) FIXED 2026-09-05 — `BACKENDS` is an assertion now, taking the cheaper of
+## the two options the paragraph below offered
 
-## Not covered
+The choice was "suppress the ctor path when a stub is generated" or "make
+`BACKENDS` an assertion rather than a hint". The first changes runtime behaviour
+for every consumer; the second is a configure-time check. Took the second.
 
-* Whether `build-sitl-cpp` (the register-check gate) has the same exposure. Its
-  comments quote the `cargo build -p nros-cpp --features std,rmw-cffi` command,
-  but whether the recipe RUNS it was not checked.
-* Whether any non-PX4 lane links `libnros_cpp.a` ambiently the same way.
-* Whether the 1046 guard should also assert the archive's feature variant. It
-  currently answers "is this module linked", not "was it linked against the
-  right archive" — a strictly harder question, and arguably the anchor symbol
-  already answers it at link time.
+**The precheck already existed and was blind in exactly the direction that
+matters.** `nros_px4_add_module` ran its `llvm-nm` check inside
+`if(_networked_backends)` — the set of modules this bug CANNOT happen to — and
+inside it only asked "is every DECLARED backend present". The uORB demo declares
+`BACKENDS uorb`, so the whole block was skipped for it. That is issue 1046's
+shape one layer up: a guard whose predicate cannot observe the case its own
+message describes.
+
+So the check now runs for EVERY module and asks both directions:
+
+* (a) every declared networked backend is in the archive (unchanged);
+* (b) **no undeclared one is**, because on hosted POSIX it registers itself
+      first and takes slot 0.
+
+Measured, through the real `nros_px4_add_module` with a stub `px4_add_module`:
+
+| module `BACKENDS` | archive | before | after |
+| --- | --- | --- | --- |
+| `uorb` | zenoh-carrying (the bug) | configure OK, dies at `start` | **FATAL, names the rebuild** |
+| `uorb` | `rmw-cffi` only | OK | OK |
+| `uorb zenoh` | `rmw-cffi` only | FATAL (missing) | FATAL (missing) |
+| `uorb zenoh` | zenoh-carrying (bridge) | OK | OK |
+
+The discriminator is the unmangled C symbol `nros_rmw_<b>_register`, matched on
+word boundaries because the same archive carries Rust-mangled names that contain
+its prefix (`_RNvNtCs..._14nros_rmw_zenoh13cffi_register8register`) — a bare
+substring test would read those as a definition. One predicate serves both
+directions, so presence and absence cannot drift apart.
+
+**Cost, against phase-424's constraint:** one extra `llvm-nm --defined-only` per
+configure for a uORB-only module, **measured 0.012 s** on the 26 MB archive. It
+hashes nothing and watches nothing, so it widens no watch set and re-stales
+nothing — issue 0835's budget is untouched by construction, not by measurement.
+
+This is also what makes the (1) fix hold at the SEAM rather than only in the
+recipe. `just px4 build-sitl-example` builds the archive it links, which is
+right, but a hand-run `make px4_sitl_default EXTERNAL_MODULES_LOCATION=...`
+against an archive some other recipe left behind bypasses it entirely — and
+that state is present on this host right now: the ambient
+`target/release/libnros_cpp.a` defines `nros_rmw_zenoh_register`.
+
+## (3) is the one still open
+
+`nros::init()` takes slot 0, so *which* backend a module gets is still decided
+by registration order rather than by the module. (2)'s fix removes the way that
+order goes wrong by accident; it does not give a C++ one-liner any way to NAME
+its backend. `Executor::open_with_rmw("uorb", …)` exists and the examples'
+`nros::init()` does not reach it. That is a consumer-facing API decision and
+still wants an owner.
+
+## Three separable defects (original framing, kept)
+
+Only (1) was fixed at filing. (2) is fixed above. (3) remains.
+
+## Not covered — swept 2026-09-05
+
+* **`build-sitl-cpp` has NO exposure.** Its root,
+  `packages/testing/nros-px4-register-check`, calls `px4_add_module` directly —
+  not `nros_px4_add_module` — and links no nano-ros archive: it compiles the
+  uORB backend's sources inline and its only Rust seam is the weak
+  `register_fallback.c`. So there is no ambient archive for it to inherit. (The
+  `cargo build -p nros-cpp --features std,rmw-cffi` command this issue thought
+  was quoted in `build-sitl-cpp`'s comments is in fact quoted in
+  `build-sitl-example`'s prereq block and in `NanoRosPx4Module.cmake`'s header —
+  that claim in the original text was wrong.)
+* **No non-PX4 lane links `libnros_cpp.a` ambiently.**
+  `${NANO_ROS_ROOT}/target/release/libnros_cpp.a` as a path is named in exactly
+  one place in the tree, `integrations/px4/NanoRosPx4Module.cmake:86`. Every
+  other consumer reaches the umbrella through Corrosion/cmake, which builds it
+  per configure.
+* **The 1046 guard should NOT also assert the feature variant.** The anchor
+  symbol `nros_cpp_config_variant_...` already makes a header/archive mismatch a
+  LINK error, which this issue's own repro shows firing; and the archive check
+  above now catches the backend half at CONFIGURE time, which is earlier than
+  either. A third copy in the test would be a fourth spelling of the same fact.
+
+## NOT the issue-0475 class — checked
+
+`libnros_cpp.a` is not reached through a raw `-Wl,` flag: the helper passes it
+to `target_link_libraries(${NPX_MODULE} PUBLIC <absolute path>)`, and CMake does
+create a file-level edge for an absolute-path link item. Confirmed in the real
+build graph — it is under `|` (implicit), not `||` (order-only):
+
+```
+$ ninja -C build/px4_sitl_default -t query bin/px4 | grep -i nros
+    | external_modules/modules/nros_uorb_bridge/libmodules__nros_uorb_bridge.a
+    | .../target/release/libnros_cpp.a
+    | .../build/nros-platform-posix/libnros_platform_posix.a
+    | .../examples/px4/cpp/bridge/ffi/target/release/libnros_px4_bridge_ffi.a
+```
+
+So `bin/px4` DOES relink when the archive changes. The defect was never a
+missing edge — it was that nothing decided WHICH archive should be there.
