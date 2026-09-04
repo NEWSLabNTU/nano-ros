@@ -323,6 +323,67 @@ processes from manual debugging, which held the interface and produced the same
 after killing every stray. A red you caused reads exactly like a red that was
 already there — the per-cell `heap=` / `zeth=` counts above are recorded so the
 next reader can tell them apart without taking anyone's word.
+## The esp32 cluster, NARROWED (2026-09-04) — the entity exists; its marker does not print
+
+Four of the five still fail after issue 1025 made their images buildable. This
+narrows what is wrong and, more usefully, rules three things out.
+
+### The subscription IS created
+
+The listener's output ends with:
+
+```
+Application setup complete — entering spin loop.
+```
+
+That line means the run-plan closure returned `Ok(())`. The subscription is made
+inside `register()` with `?`, so a failure there would propagate and this line
+could not print. **The entity exists.** What is missing is the NEXT line,
+
+```rust
+log::info!("Subscriber created for topic: /chatter");
+```
+
+which is what the test greps for. So the shape is CLAUDE.md's documented pitfall
+— "if a test times out, FIRST diff the grep pattern against what the fixture
+actually prints" — and not, as it appears, an image that fails to subscribe.
+
+### Three hypotheses ELIMINATED
+
+* **No logger installed.** One is: `nros-board-esp32-qemu/src/node.rs:363` calls
+  `esp_println::logger::init_logger(log::LevelFilter::Info)` inside
+  `init_hardware`, and that function demonstrably ran — its own prints
+  (`Initializing OpenETH`, `IP: 10.0.2.51/24`) are in the output.
+* **Compile-time level stripping.** No `release_max_level_*` or `max_level_*`
+  feature is enabled anywhere; the resolved features are `[]` / `["std"]` and
+  the feature tree shows only `log feature "default"`. The macros are compiled
+  in.
+* **Two `log` facades, so `set_logger` served the wrong one.** WRONG, and it was
+  a GREP ARTIFACT: the pattern `log v[0-9.]+` matched **`nros-log v0.5.0`**.
+  There is exactly one `log` crate in the target graph (0.4.33), and it is the
+  same one the example binds and the same one esp-println installs into. Anyone
+  re-deriving this from `cargo tree` should anchor the match.
+
+### So what is NOT established
+
+Why a `log::info!` record, on a facade with a logger installed at `Info`, does
+not reach a console that the same image's `println!` reaches. That is the
+question, and reasoning from the dependency graph has now produced three wrong
+answers.
+
+The next step is the method that worked for the threadx cluster: run the image
+under QEMU directly, add a `println!` beside the `log::info!`, and see which one
+appears. That distinguishes "the record is dropped" from "the record is emitted
+somewhere the capture does not read" in one run, where the graph cannot.
+
+### The other three, unchanged
+
+`test_esp32_to_native` (no `Publishing:`), `test_native_to_esp32` (listener
+"failed to start") and `test_esp32_workspace_entry_e2e` (never reaches
+`Application setup complete`) are not claimed to share this cause. The first two
+plausibly do — they grep for the same kind of marker — and the third does not,
+since it fails BEFORE the line that proves setup succeeded.
+
 ## The esp32 marker: every STATIC hypothesis is now closed (2026-09-04)
 
 Adding a `println!` beside the `log::info!` was the plan. It did not survive
