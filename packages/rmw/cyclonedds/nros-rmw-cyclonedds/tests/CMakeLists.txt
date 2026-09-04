@@ -645,3 +645,45 @@ else()
         "no in-build `ddsc` target, so cyclone's internal addrset headers are not "
         "reachable (issue 0496 regression cover is NOT running in this configuration)")
 endif()
+
+# Issue 1011 — the ONLY C++11 translation unit in the tree, deliberately.
+#
+# The Zephyr lane builds this backend with `-std=c++11`, where a class carrying
+# default member initialisers is not an aggregate (C++14 relaxed that). Two such
+# initialisers on `NrosCdrBlob` broke `NrosCdrBlob{data, len}` in publisher.cpp
+# and service.cpp, failing six zephyr cyclonedds leaves while every other lane —
+# all C++14 or later — stayed green.
+#
+# Pinning C++11 here is the whole point: nothing else in a normal `just check`
+# compiles this header at that standard, so without this target a re-added
+# initialiser is invisible until a Zephyr fixture build fails. Header-only, so
+# it links the backend only to inherit CycloneDDS' include dirs — the header
+# pulls in `dds/dds.h`, so it is not standalone.
+#
+# Only THIS target is C++11; the backend it links stays on its own standard,
+# which is the point: the test proves the header is consumable at C++11 without
+# dragging the rest of the tree back to it.
+add_executable(nros_rmw_cyclonedds_sertype_sample_cxx11 sertype_sample_cxx11.cpp)
+set_target_properties(nros_rmw_cyclonedds_sertype_sample_cxx11 PROPERTIES
+    CXX_STANDARD 11
+    CXX_STANDARD_REQUIRED ON
+    CXX_EXTENSIONS OFF)
+target_link_libraries(nros_rmw_cyclonedds_sertype_sample_cxx11
+    PRIVATE nros_rmw_cyclonedds)
+target_include_directories(nros_rmw_cyclonedds_sertype_sample_cxx11
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+# `nros_sertype.hpp` reaches INTERNAL Cyclone headers (`dds/ddsi/ddsi_sertype.h`),
+# which the backend adds PRIVATE — so they do not propagate to a consumer and
+# have to be mirrored here. Same condition the backend guards them with.
+if(NROS_CYCLONEDDS_PROVENANCE STREQUAL "source")
+    target_include_directories(nros_rmw_cyclonedds_sertype_sample_cxx11 PRIVATE
+        "${CYCLONEDDS_SOURCE_DIR}/src/core/ddsi/include"
+        "${CYCLONEDDS_SOURCE_DIR}/src/core/ddsc/include"
+        "${CYCLONEDDS_SOURCE_DIR}/src/ddsrt/include"
+        "${NROS_CYCLONEDDS_SOURCE_BUILD_DIR}/src/ddsrt/include")
+endif()
+
+add_test(
+    NAME nros_rmw_cyclonedds_sertype_sample_cxx11
+    COMMAND nros_rmw_cyclonedds_sertype_sample_cxx11
+)
