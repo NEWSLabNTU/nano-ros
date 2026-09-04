@@ -92,6 +92,13 @@ build-examples:
     # shellcheck source=scripts/build/lane-skip.sh
     source scripts/build/lane-skip.sh
     source scripts/build/cargo.sh
+    # issue 1038 — the central `nros-patch.toml` this lane's Rust leaves
+    # `include`, made EXPLICIT. This lane already got the file, but only as a
+    # side effect of `workspace-fixtures-build.sh` running `nros sync` somewhere
+    # earlier; `threadx-riscv64` had no such neighbour and died at manifest
+    # parse. An inherited artifact is a working lane, not a declared dependency.
+    # Idempotent — a process spawn when the file is already current.
+    nros_ensure_central_patch
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     if [ ! -d "$NUTTX_DIR/include" ]; then
         nros_lane_skip_note nuttx "Skipping NuttX QEMU examples (NuttX not found). Run: just nuttx setup"
