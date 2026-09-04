@@ -178,10 +178,29 @@ if [ -z "$toolchain_cache_dir" ]; then
     toolchain_cache_dir="$nros_root/build/zephyr-cache/ToolchainCapabilityDatabase"
 fi
 if [ -z "$make_bin" ]; then
-    make_bin="$(nros sdk-path make)/bin/make"
-    if [ ! -x "$make_bin" ]; then
-        make_bin="$(command -v make)"
+    # `nros` is NOT on PATH in every lane that emits records, and this mode is a
+    # pure emitter that never runs make -- it only names it in the signature.
+    # `gate.yml` builds the CLI only on pull_request/merge_group/schedule/
+    # dispatch, so on a `push` there is no `nros`, and an unguarded call exits
+    # 127 under `set -e` and takes the whole gate with it. That is what
+    # `check-fixtures-manifest` and `check-kconfig-overridden-values` did on
+    # EVERY push to main, from 2026-08-31 (321642a20, which introduced this
+    # resolution) until 2026-09-05 -- a uniformly red lane, which is the one
+    # state that cannot report a regression.
+    #
+    # The guarded shape is not new: `check-tier-preconditions.sh` resolves the
+    # same tool the same way and already carries the `command -v` test. This is
+    # its unguarded sibling.
+    _sdk_make=""
+    if command -v nros >/dev/null 2>&1; then
+        _sdk_make="$(nros sdk-path make 2>/dev/null || true)"
     fi
+    if [ -n "$_sdk_make" ] && [ -x "$_sdk_make/bin/make" ]; then
+        make_bin="$_sdk_make/bin/make"
+    else
+        make_bin="$(command -v make || true)"
+    fi
+    unset _sdk_make
 fi
 
 log_dir="$nros_root/build/zephyr-fixtures"
