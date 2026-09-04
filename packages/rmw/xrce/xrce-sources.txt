@@ -1,0 +1,164 @@
+# The XRCE backend's source list — the ONE list. Issue 1068.
+#
+# One vendored tree, two compilers. `nros-rmw-xrce-cffi/build.rs` compiles
+# micro-XRCE-DDS-Client + micro-CDR + the K.2 backend TUs with cc-rs for the
+# Rust lane; `nros-rmw-xrce/CMakeLists.txt` compiles the same set for the
+# C/C++ lane. Until this file existed, each lane held its own hand-copied
+# copy of the list and a COMMENT asserted they stayed in lockstep.
+#
+# They did not. `build.rs` honoured `NROS_LINK_IP=0` (phase-204.7 — the knob a
+# serial-only node uses to shed the IP link) and dropped
+# `profile/transport/ip/udp/udp_transport{,_posix}.c`; the CMakeLists compiled
+# them unconditionally. So the knob worked from Rust and silently did nothing
+# from C or C++, and the failure was not a build error — it was a larger image
+# than the user asked for, carrying an IP transport they had deliberately
+# removed. Worse, the comment asserting the lockstep named
+# `packages/rmw/xrce/xrce-sys/build.rs`, a file phase-321 W1.d DELETED, so the
+# invariant pointed at nothing for two phases.
+#
+# Same remedy class as `check-ffi-struct-mirrors` and the sizes-header family:
+# a hand-mirrored thing drifts on append, so derive it once instead. Correcting
+# the CMake list to match today's `build.rs` would have restored the mirror and
+# left the next append to drift again.
+#
+# FORMAT
+#
+# Line-oriented, `#` comments, blank lines ignored, whitespace-separated
+# columns — the shape `config/rust-targets.txt` and `packages/cli/
+# cli-source-dirs.txt` already use, chosen because it is the only shape both
+# consumers can read: CMake has no TOML parser (`file(STRINGS)` is what it has)
+# and the Rust side must not gain a dependency (`cargo` is `--locked`-shimmed).
+#
+# Two record types:
+#
+#   group <name> <condition>
+#       Declares a selectable group and the condition under which a lane
+#       compiles it. THE CONDITION IS PART OF THE FACT, not a consumer's
+#       business — a manifest that listed files without saying which are
+#       conditional would just move the drift one file over. A lane supplies a
+#       boolean for each condition TOKEN and never decides which group it
+#       applies to.
+#
+#   src <group> <tree> <path>
+#       One source file. <tree> is one of:
+#
+#           uxr        packages/rmw/xrce/xrce-sys/micro-xrce-dds-client/src/c
+#           ucdr       packages/rmw/xrce/xrce-sys/micro-cdr/src/c
+#           backend    packages/rmw/xrce/nros-rmw-xrce/src
+#
+#       <path> is relative to that root.
+#
+# CONDITION TOKENS
+#
+#   always      Compiled by every lane, every target.
+#   posix       Needs a POSIX libc. `util/time.c` calls `clock_gettime` /
+#               `nanosleep`; `transport_posix_{udp,serial}.c` need
+#               <sys/socket.h> / <termios.h>. Embedded targets supply their own
+#               time and transport through the registry.
+#   posix_ip    POSIX **and** the IP link is wanted: `NROS_LINK_IP` unset or
+#               non-zero. `udp_transport{,_posix}.c` open `socket(AF_INET, …)`
+#               directly. Embedded XRCE already excludes IP (custom transport),
+#               which is why this rides on `posix`.
+#
+# Tokens use `_` rather than `+` or `-` because CMake interpolates them into a
+# variable name (`_xrce_cond_${cond}`).
+#
+# HOW EACH LANE ANSWERS THEM
+#
+#   build.rs        always → true
+#                   posix  → `is_posix` (from CARGO_CFG_TARGET_OS)
+#                   posix_ip → `is_posix && ip`
+#
+#   CMakeLists.txt  always → TRUE
+#                   posix  → TRUE. This is NOT the same defect as the IP one:
+#                            the CMake project is POSIX-only BY CONSTRUCTION —
+#                            it FATAL_ERRORs without an `nros_platform_posix`
+#                            target, defines `_POSIX_C_SOURCE=200809L`
+#                            unconditionally, and configures
+#                            `UCLIENT_PLATFORM_POSIX TRUE` with no fanout. It
+#                            has no notion of a non-POSIX target to disagree
+#                            about, so the two lanes select the same files.
+#                            The condition is spelled out anyway so the notion
+#                            now exists by name and a future cross-compiling
+#                            CMake lane has one line to change.
+#                   posix_ip → the `NROS_LINK_IP` cache/env knob. THIS is the
+#                            behaviour issue 1068 fixed.
+#
+# Gate: `just check xrce-source-manifest`
+#       (scripts/check-xrce-source-manifest.py) — fails if either lane holds a
+#       source path of its own, or if the two lanes do not answer the same set
+#       of condition tokens.
+
+# ---- groups ----------------------------------------------------------------
+
+group backend_core       always
+group backend_posix      posix
+group ucdr               always
+group uxr_session        always
+group uxr_stream         always
+group uxr_serialization  always
+group uxr_misc           always
+group uxr_posix_time     posix
+group uxr_ip_udp         posix_ip
+
+# ---- the K.2 backend TUs (in-repo) -----------------------------------------
+
+src backend_core       backend  vtable.c
+src backend_core       backend  session.c
+src backend_core       backend  publisher.c
+src backend_core       backend  subscriber.c
+src backend_core       backend  service.c
+src backend_core       backend  transport_custom.c
+# Phase 129.NET.3 — platform-agnostic UDP over `nros_platform_udp_*`. Compiles
+# on every target as long as the consumer links a platform provider.
+src backend_core       backend  transport_nros_udp.c
+# Phase 129.D.2 — `uxr_millis` / `uxr_nanos`, carved out of the retired
+# `xrce-platform-shim` crate.
+src backend_core       backend  platform_aliases.c
+
+# Phase 118 — these define `xrce_posix_{udp,serial}_init`. Kept alongside
+# `transport_nros_udp` for callers that still resolve the older symbols.
+src backend_posix      backend  transport_posix_udp.c
+src backend_posix      backend  transport_posix_serial.c
+
+# ---- micro-CDR --------------------------------------------------------------
+
+src ucdr               ucdr     common.c
+src ucdr               ucdr     types/basic.c
+src ucdr               ucdr     types/array.c
+src ucdr               ucdr     types/sequence.c
+src ucdr               ucdr     types/string.c
+
+# ---- micro-XRCE-DDS-Client --------------------------------------------------
+
+src uxr_session        uxr      core/session/session.c
+src uxr_session        uxr      core/session/session_info.c
+src uxr_session        uxr      core/session/submessage.c
+src uxr_session        uxr      core/session/object_id.c
+src uxr_session        uxr      core/session/common_create_entities.c
+src uxr_session        uxr      core/session/create_entities_bin.c
+src uxr_session        uxr      core/session/create_entities_ref.c
+src uxr_session        uxr      core/session/create_entities_xml.c
+src uxr_session        uxr      core/session/read_access.c
+src uxr_session        uxr      core/session/write_access.c
+
+src uxr_stream         uxr      core/session/stream/input_best_effort_stream.c
+src uxr_stream         uxr      core/session/stream/input_reliable_stream.c
+src uxr_stream         uxr      core/session/stream/output_best_effort_stream.c
+src uxr_stream         uxr      core/session/stream/output_reliable_stream.c
+src uxr_stream         uxr      core/session/stream/stream_storage.c
+src uxr_stream         uxr      core/session/stream/stream_id.c
+src uxr_stream         uxr      core/session/stream/seq_num.c
+
+src uxr_serialization  uxr      core/serialization/xrce_types.c
+src uxr_serialization  uxr      core/serialization/xrce_header.c
+src uxr_serialization  uxr      core/serialization/xrce_subheader.c
+
+src uxr_misc           uxr      util/ping.c
+src uxr_misc           uxr      profile/transport/custom/custom_transport.c
+src uxr_misc           uxr      profile/transport/stream_framing/stream_framing_protocol.c
+
+src uxr_posix_time     uxr      util/time.c
+
+src uxr_ip_udp         uxr      profile/transport/ip/udp/udp_transport.c
+src uxr_ip_udp         uxr      profile/transport/ip/udp/udp_transport_posix.c

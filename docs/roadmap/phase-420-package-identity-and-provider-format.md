@@ -187,7 +187,13 @@ is one road.
       `nros-rmw-xrce-cffi/build.rs` honours `NROS_LINK_IP=0` (phase-204.7) and
       drops `udp_transport{,_posix}.c`; `nros-rmw-xrce/CMakeLists.txt` compiles
       them unconditionally, so the CMake lane cannot build a serial-only XRCE
-      node. And the vendored VERSION is restated by hand in four places, only one of
+      node. **FIXED 2026-09-05 (issue 1068, archived).** The two lists became
+      one — `packages/rmw/xrce/xrce-sources.txt`, with the conditionals carried
+      as named groups so a lane supplies only a boolean per token and never
+      decides which files a token covers. Neither lane names a `.c` any more,
+      and `check-xrce-source-manifest` asserts that plus token agreement in
+      BOTH directions, because a token only one lane answers is this same
+      defect one conditional over. And the vendored VERSION is restated by hand in four places, only one of
       which agrees with the tree it describes: the client gitlink is upstream **v3.0.1**
       (`bdfa2809` = "Release v3.0.1") and micro-CDR is **v2.0.2**, while
       `nros-rmw-xrce-cffi/build.rs:359-383` bakes `2.4.1` (wrong) and `2.0.2`

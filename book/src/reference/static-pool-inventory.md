@@ -64,8 +64,8 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `NROS_SMOLTCP_SOCKET_TIMEOUT_MS` | computed — see `packages/drivers/net/nros-smoltcp/build.rs:67` | `packages/drivers/net/nros-smoltcp` |
 | `NROS_SUBSCRIBER_BUFFER_SIZE` | computed — see `packages/core/nros-node/build.rs:171` | `packages/core/nros-node` **(conflicting defaults — see below)** |
 | `NROS_SUBSCRIPTION_BUFFER_SIZE` | 1024 | `packages/core/nros-node` |
-| `NROS_XRCE_CUSTOM_TRANSPORT_MTU` | computed — see `packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs:433` | `packages/rmw/xrce/nros-rmw-xrce-cffi` |
-| `NROS_XRCE_STREAM_HISTORY` | computed — see `packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs:264` | `packages/rmw/xrce/nros-rmw-xrce-cffi` |
+| `NROS_XRCE_CUSTOM_TRANSPORT_MTU` | computed — see `packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs:409` | `packages/rmw/xrce/nros-rmw-xrce-cffi` |
+| `NROS_XRCE_STREAM_HISTORY` | computed — see `packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs:240` | `packages/rmw/xrce/nros-rmw-xrce-cffi` |
 | `NROS_ZEPHYR_HEAP_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:891` | `packages/tooling/nros-platform-config` |
 | `ZPICO_BATCH_MULTICAST_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:1081` | `packages/tooling/nros-platform-config` |
 | `ZPICO_BATCH_UNICAST_SIZE` | computed — see `packages/tooling/nros-platform-config/src/platform_config.rs:1080` | `packages/tooling/nros-platform-config` |

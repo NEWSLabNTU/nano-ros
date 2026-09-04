@@ -5,16 +5,20 @@
 //! into a single static archive, then exposes the
 //! `nros_rmw_xrce_register` symbol to the Rust side via `extern "C"`.
 //!
-//! phase-321 W1.d — this build script is now the SOLE Rust-side owner of the
-//! source list. It used to say "mirrors `packages/rmw/xrce/xrce-sys/build.rs` …
-//! keep both lists in lockstep", i.e. it was a maintained duplicate of a build
-//! script belonging to a crate with zero dependents, excluded from every
-//! workspace build. That crate is deleted; only the DIRECTORY survives, because
-//! it hosts the micro-XRCE-DDS-Client and micro-CDR submodules that this script
-//! and `nros-rmw-xrce/CMakeLists.txt` both compile from.
+//! Issue 1068 — this script OWNS NO SOURCE LIST. The set of C files compiled
+//! here is read from `packages/rmw/xrce/xrce-sources.txt`, and
+//! `nros-rmw-xrce/CMakeLists.txt` (the C/C++ consumers' entry point) reads the
+//! same file. There used to be two hand-copied lists held together by a
+//! comment; they drifted, and the drift was silent — `NROS_LINK_IP=0` dropped
+//! `udp_transport{,_posix}.c` on this side and not on the CMake side, so a
+//! serial-only XRCE node could not be built from C or C++ and the symptom was
+//! a bigger image rather than an error. Adding a source file to only one lane
+//! is now impossible: neither lane names one.
 //!
-//! One mirror remains and is real: a new source file added here must also land
-//! in `nros-rmw-xrce/CMakeLists.txt`, which is the C/C++ consumers' entry point.
+//! phase-321 W1.d — the old comment named `packages/rmw/xrce/xrce-sys/build.rs`
+//! as the mirror; that crate is deleted and only the DIRECTORY survives,
+//! because it hosts the micro-XRCE-DDS-Client and micro-CDR submodules both
+//! lanes compile from.
 
 use std::{env, fs, path::PathBuf};
 
@@ -157,94 +161,66 @@ fn main() {
         build.define("_POSIX_C_SOURCE", Some("200809L"));
     }
 
-    // K.2 backend TUs. Source-of-truth list — must stay in lockstep
-    // with `nros-rmw-xrce/CMakeLists.txt`.
-    let mut backend_tus = vec![
-        "vtable",
-        "session",
-        "publisher",
-        "subscriber",
-        "service",
-        "transport_custom",
-        // Phase 129.NET.3 — platform-agnostic UDP via
-        // `nros_platform_udp_*`. Compiles on every target as long
-        // as the consumer links a platform-provider library that
-        // satisfies the symbols. Supersedes `transport_posix_udp`
-        // / `transport_zephyr_udp`.
-        "transport_nros_udp",
-        // Phase 129.D.2 — `uxr_millis` / `uxr_nanos` carved out
-        // of the retired `xrce-platform-shim` crate.
-        "platform_aliases",
-    ];
-    // Phase 118 — `transport_posix_{udp,serial}.c` define
-    // `xrce_posix_{udp,serial}_init`. The TUs only build where
-    // `<sys/socket.h>` / `<termios.h>` are available; embedded
-    // targets must inject their own custom transport instead.
-    // Kept alongside `transport_nros_udp` for one cycle so callers
-    // that still resolve `xrce_posix_udp_init` keep working.
-    if is_posix {
-        backend_tus.push("transport_posix_udp");
-        backend_tus.push("transport_posix_serial");
-    }
-    for name in &backend_tus {
-        build.file(xrce_c.join(format!("src/{name}.c")));
-    }
+    // Issue 1068 — the source list is DERIVED, not mirrored. Both this build
+    // script and `nros-rmw-xrce/CMakeLists.txt` read
+    // `packages/rmw/xrce/xrce-sources.txt`; neither holds a source path of its
+    // own. See that file's header for the format and for why the conditions
+    // live there rather than here.
+    let manifest_path = workspace.join("packages/rmw/xrce/xrce-sources.txt");
+    println!("cargo:rerun-if-changed={}", manifest_path.display());
+    let manifest = SourceManifest::read(&manifest_path);
 
-    // Micro-CDR (5 files).
-    let ucdr_src = microcdr.join("src/c");
-    build.file(ucdr_src.join("common.c"));
-    for name in &["basic", "array", "sequence", "string"] {
-        build.file(ucdr_src.join(format!("types/{name}.c")));
-    }
+    // NROS-XRCE-CONDITIONS-BEGIN — the boolean this lane supplies for each
+    // condition token. `check-xrce-source-manifest` asserts the CMake lane
+    // answers exactly this token set, and that it is exactly the set the
+    // manifest uses; the manifest, not this match, decides which files a token
+    // covers.
+    let condition = |token: &str| -> bool {
+        match token {
+            "always" => true,
+            // `util/time.c` calls `clock_gettime` / `nanosleep`;
+            // `transport_posix_{udp,serial}.c` need <sys/socket.h> /
+            // <termios.h>. Embedded targets supply their own time and
+            // transport through the registry.
+            "posix" => is_posix,
+            // Phase 204.7 — `NROS_LINK_IP=0` sheds the IP link on a
+            // serial-only node. Embedded XRCE already excludes IP.
+            "posix_ip" => is_posix && ip,
+            other => panic!(
+                "nros-rmw-xrce-cffi: {} uses condition token `{other}`, which this build \
+                 script does not answer. Add an arm here AND in \
+                 nros-rmw-xrce/CMakeLists.txt — a token only one lane answers is issue 1068 \
+                 again.",
+                manifest_path.display()
+            ),
+        }
+    };
+    // NROS-XRCE-CONDITIONS-END
 
-    // micro-XRCE-DDS-Client core.
-    let uxr_src = microxrce.join("src/c");
-    let session_dir = uxr_src.join("core/session");
-    for name in &[
-        "session",
-        "session_info",
-        "submessage",
-        "object_id",
-        "common_create_entities",
-        "create_entities_bin",
-        "create_entities_ref",
-        "create_entities_xml",
-        "read_access",
-        "write_access",
-    ] {
-        build.file(session_dir.join(format!("{name}.c")));
-    }
-    let stream_dir = session_dir.join("stream");
-    for name in &[
-        "input_best_effort_stream",
-        "input_reliable_stream",
-        "output_best_effort_stream",
-        "output_reliable_stream",
-        "stream_storage",
-        "stream_id",
-        "seq_num",
-    ] {
-        build.file(stream_dir.join(format!("{name}.c")));
-    }
-    let ser_dir = uxr_src.join("core/serialization");
-    for name in &["xrce_types", "xrce_header", "xrce_subheader"] {
-        build.file(ser_dir.join(format!("{name}.c")));
-    }
-    build.file(uxr_src.join("util/ping.c"));
-    build.file(uxr_src.join("profile/transport/custom/custom_transport.c"));
-    build.file(uxr_src.join("profile/transport/stream_framing/stream_framing_protocol.c"));
+    let tree_root = |tree: &str| -> PathBuf {
+        match tree {
+            "uxr" => microxrce.join("src/c"),
+            "ucdr" => microcdr.join("src/c"),
+            "backend" => xrce_c.join("src"),
+            other => panic!(
+                "nros-rmw-xrce-cffi: {} names unknown source tree `{other}`",
+                manifest_path.display()
+            ),
+        }
+    };
 
-    // POSIX-only TUs. `util/time.c` calls `clock_gettime` /
-    // `nanosleep`. `udp_transport.c` + `udp_transport_posix.c`
-    // open `socket(AF_INET, …)` directly. Embedded targets supply
-    // their own time + transport via the registry.
-    if is_posix {
-        build.file(uxr_src.join("util/time.c"));
-        if ip {
-            build.file(uxr_src.join("profile/transport/ip/udp/udp_transport.c"));
-            build.file(uxr_src.join("profile/transport/ip/udp/udp_transport_posix.c"));
+    let mut compiled = 0usize;
+    for row in &manifest.rows {
+        if condition(manifest.condition_of(&row.group, &manifest_path)) {
+            build.file(tree_root(&row.tree).join(&row.path));
+            compiled += 1;
         }
     }
+    assert!(
+        compiled > 0,
+        "nros-rmw-xrce-cffi: {} selected no sources — manifest or condition drift",
+        manifest_path.display()
+    );
 
     if is_embedded {
         // Tell `<uxr/client/config_internal.h>` not to require the
@@ -544,4 +520,87 @@ fn knob(env_name: &str) -> Option<String> {
         return Some(v);
     }
     nros_zephyr_build::dotconfig_usize(&format!("CONFIG_{env_name}")).map(|v| v.to_string())
+}
+
+/// One `src <group> <tree> <path>` record from the shared source manifest.
+struct SourceRow {
+    group: String,
+    tree: String,
+    path: String,
+}
+
+/// `packages/rmw/xrce/xrce-sources.txt`, parsed — issue 1068.
+///
+/// The list of C files this backend compiles used to exist TWICE: here and in
+/// `nros-rmw-xrce/CMakeLists.txt`, with a comment asserting they stayed in
+/// lockstep. They did not — `NROS_LINK_IP=0` dropped the UDP transports on this
+/// side and not on the CMake side, so a serial-only XRCE node could not be
+/// built from C or C++. The list is now read from one file by both lanes.
+///
+/// The format is deliberately line-oriented and dependency-free: CMake reads
+/// the same file with `file(STRINGS)`, and `cargo` is `--locked`-shimmed here,
+/// so a TOML crate is not available to a build script that must also work from
+/// a bare clone.
+struct SourceManifest {
+    /// group name → condition token, in declaration order.
+    groups: Vec<(String, String)>,
+    rows: Vec<SourceRow>,
+}
+
+impl SourceManifest {
+    fn read(path: &std::path::Path) -> Self {
+        let text = fs::read_to_string(path).unwrap_or_else(|e| {
+            panic!(
+                "nros-rmw-xrce-cffi: cannot read the shared XRCE source manifest {} ({e}). It is \
+                 tracked in-repo; a missing one means the checkout is incomplete.",
+                path.display()
+            )
+        });
+        let mut groups: Vec<(String, String)> = Vec::new();
+        let mut rows = Vec::new();
+        for (n, raw) in text.lines().enumerate() {
+            let line = raw.split('#').next().unwrap_or("").trim();
+            if line.is_empty() {
+                continue;
+            }
+            let f: Vec<&str> = line.split_whitespace().collect();
+            match f.as_slice() {
+                ["group", name, cond] => {
+                    if groups.iter().any(|(g, _)| g == name) {
+                        panic!(
+                            "{}:{}: group `{name}` declared twice",
+                            path.display(),
+                            n + 1
+                        );
+                    }
+                    groups.push(((*name).to_string(), (*cond).to_string()));
+                }
+                ["src", group, tree, rel] => rows.push(SourceRow {
+                    group: (*group).to_string(),
+                    tree: (*tree).to_string(),
+                    path: (*rel).to_string(),
+                }),
+                _ => panic!(
+                    "{}:{}: expected `group <name> <condition>` or `src <group> <tree> <path>`, \
+                     got `{line}`",
+                    path.display(),
+                    n + 1
+                ),
+            }
+        }
+        Self { groups, rows }
+    }
+
+    fn condition_of<'a>(&'a self, group: &str, path: &std::path::Path) -> &'a str {
+        self.groups
+            .iter()
+            .find(|(g, _)| g == group)
+            .map(|(_, c)| c.as_str())
+            .unwrap_or_else(|| {
+                panic!(
+                    "{}: source names group `{group}`, which no `group` line declares",
+                    path.display()
+                )
+            })
+    }
 }
