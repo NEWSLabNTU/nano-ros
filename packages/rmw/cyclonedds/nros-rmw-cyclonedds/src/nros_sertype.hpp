@@ -51,9 +51,25 @@ namespace nros_rmw_cyclonedds {
 ///
 /// `dds_write(writer, &blob)` reaches `from_sample`, which copies the span into
 /// a serdata. The span only has to outlive that call.
+///
+/// **No default member initialisers, deliberately (issue 1011).** A class with
+/// NSDMIs is not an aggregate in C++11 -- C++14 relaxed exactly that rule -- and
+/// the Zephyr lane compiles this TU with `-std=c++11`. With `{nullptr}` / `{0}`
+/// here, `NrosCdrBlob{data, len}` stops being aggregate initialisation there and
+/// the compiler looks for a two-argument constructor that does not exist:
+///
+///     publisher.cpp:287: error: no matching function for call to
+///       'nros_rmw_cyclonedds::NrosCdrBlob::NrosCdrBlob(<brace-enclosed initializer list>)'
+///
+/// Every use site either brace-initialises both members or casts from `void*`;
+/// nothing default-constructs one, so the initialisers bought nothing and cost
+/// the whole Zephyr Cyclone lane. Keeping them out also keeps the type
+/// trivially default-constructible on top of trivially copyable, which is what
+/// `sertype_zero_samples` / `sertype_realloc_samples` rely on when they `memset`
+/// and `dds_realloc` this as raw storage.
 struct NrosCdrBlob {
-    const uint8_t* data{nullptr};
-    size_t size{0};
+    const uint8_t* data;
+    size_t size;
 };
 
 /// Build a sertype for @p desc's type name, to be handed to
