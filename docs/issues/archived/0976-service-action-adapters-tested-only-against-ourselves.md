@@ -1,10 +1,11 @@
 ---
 id: 976
 title: "Five action adapters in the Cyclone service path reshape the CDR to match ROS 2, and the only thing that exercises them is nano-ros talking to itself"
-status: open
+status: resolved
 area: [rmw, testing]
 severity: high
 related: [0970, 0969, 0234, phase-171]
+resolved_in: "6bde42cf9, 41195b84f, 431bbdeaf, and the sertype_min retirement"
 ---
 
 # The bytes they exist to correct are the one thing nothing checks
@@ -277,3 +278,34 @@ the allocation count it was also expected to cut did not move. See 0969's
 migration itself. RESOLVED 2026-09-03: this issue's witnesses are what unblocked
 its service half, and that half then removed the three receive-side adapters
 listed at the top of this issue. Both halves are on `main`.
+
+## Resolved 2026-09-04 — all five adapters are gone, and so is the builder
+
+The five per-type CDR adapters this issue named no longer exist:
+
+* `strip_goal_id_len_at` and `strip_nested_cdr_at` were deleted in `6bde42cf9` —
+  nano-ros already emits correct bytes, so there was nothing to correct.
+* the `_SendGoal_*` / `_GetResult_Request_` memcpy branch and
+  `write_fibonacci_get_result_response` went with the round trip
+  (`41195b84f`, `431bbdeaf`): `service.cpp` now registers its own sertype and
+  takes the wire CDR out of the serdata, so no stream runs and neither has
+  anything to work around.
+* `take_fibonacci_get_result_response_wire` went with its receive-side twin.
+
+The only mentions left in `service.cpp` are the comment recording why they were
+there.
+
+**This issue's premise turned out to be the wrong worry.** It argued the
+adapters could not be migrated because nothing could tell whether the migration
+broke the wire format, and asked for a ROS 2 action interop test as the
+unblocker. That test was written (`6ec8c4d21`) — and the adapters then proved
+unnecessary rather than merely testable: the bytes nano-ros emits were already
+correct, so two of the five were correcting nothing at all.
+
+Finally, `sertype_min.{hpp,cpp}` has no production user left and moves to
+`tests/`, beside `codec_bench.cpp` — the one thing that still wants it, because
+it reconstructs the retired round trip in order to price it. Keeping it there
+says what it now is: a measurement fixture for a path the backend does not take.
+`ServiceState` / `ClientState` each carried two `SertypeMin*` that were
+allocated and deleted and never read, which is two descriptor-copy allocations
+per service and per client, for nothing.

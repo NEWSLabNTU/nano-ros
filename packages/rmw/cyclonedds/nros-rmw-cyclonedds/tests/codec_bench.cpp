@@ -30,7 +30,7 @@
 #include <dds/ddsi/ddsi_cdrstream.h>
 #include <dds/ddsrt/heap.h>
 
-#include "../src/sertype_min.hpp"
+#include "sertype_min.hpp"
 
 extern "C" const dds_topic_descriptor_t nros_test_srv_dds__SumSeq_Response__desc;
 

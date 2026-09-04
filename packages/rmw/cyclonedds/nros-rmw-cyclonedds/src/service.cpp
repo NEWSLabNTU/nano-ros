@@ -50,7 +50,6 @@
 
 #include "descriptors.hpp"
 #include "qos.hpp"
-#include "sertype_min.hpp"
 #include "topic_prefix.hpp"
 
 #include <dds/dds.h>
@@ -286,8 +285,6 @@ struct ServerState {
     dds_entity_t writer{0};
     const dds_topic_descriptor_t* req_desc{nullptr};
     const dds_topic_descriptor_t* rep_desc{nullptr};
-    SertypeMin* req_st{nullptr};
-    SertypeMin* rep_st{nullptr};
     RequestSlot slots[kRequestSlots];
 };
 
@@ -298,8 +295,6 @@ struct ClientState {
     dds_entity_t reader{0};
     const dds_topic_descriptor_t* req_desc{nullptr};
     const dds_topic_descriptor_t* rep_desc{nullptr};
-    SertypeMin* req_st{nullptr};
-    SertypeMin* rep_st{nullptr};
     uint64_t my_guid{0};
     ServiceAtomicI64 next_seq{0};
     // Issue 0778 — the sequence ids this client is waiting on. Was a single
@@ -508,19 +503,16 @@ rmw_ret_t write_typed(dds_entity_t writer, const dds_topic_descriptor_t* desc,
     return (r == DDS_RETCODE_OK) ? NROS_RMW_RET_OK : NROS_RMW_RET_ERROR;
 }
 
-// Take a typed sample, reserialise via dds_stream_write_sample, and
-// hand back the resulting wire CDR (with 4-byte encap prepended).
-// Caller-owned scratch buf must be ≥ 8 + desc->m_size + extras.
+// Take the wire CDR straight out of the serdata. Issue 0969.
 //
 // Returns wire byte count, NROS_RMW_RET_NO_DATA, or negative error.
-// Take the wire CDR straight out of the serdata. Issue 0969.
 //
 // This used to `dds_take` a typed sample, then re-serialise it through a
 // `dds_ostream_t` and copy THAT out — a full decode plus a full encode plus two
 // heap allocations, per take, to hand back bytes that were already on the wire.
-// `sertype_min.hpp` recorded the raw-CDR path as blocked on Cyclone exposing
-// `dds_writer_lookup_serdatatype`; that blocker is real for PUBLISH and does not
-// exist here. `dds_takecdr` needs only a reader entity, and the reader already
+// The retired `sertype_min` builder recorded the raw-CDR path as blocked on
+// Cyclone exposing `dds_writer_lookup_serdatatype`; that blocker was real for
+// PUBLISH and never existed here. `dds_takecdr` needs only a reader entity, and the reader already
 // owns its sertype from `dds_create_topic(desc)`.
 //
 // `ddsi_serdata_size` counts the 4-byte `CDRHeader` and `to_ser` copies from
@@ -808,18 +800,6 @@ rmw_ret_t service_create(const rmw_node_t* node, const rmw_service_type_support_
         return NROS_RMW_RET_ERROR;
     }
 
-    state->req_st = new (std::nothrow) SertypeMin(req_desc);
-    state->rep_st = new (std::nothrow) SertypeMin(rep_desc);
-    if (state->req_st == nullptr || state->rep_st == nullptr) {
-        delete state->req_st;
-        delete state->rep_st;
-        (void)dds_delete(state->reader);
-        (void)dds_delete(state->writer);
-        (void)dds_delete(state->request_topic);
-        (void)dds_delete(state->reply_topic);
-        delete state;
-        return NROS_RMW_RET_BAD_ALLOC;
-    }
 
     out->backend_data = state;
     // Phase 177.36 — register both endpoints with the node graph (server:
@@ -839,8 +819,6 @@ rmw_ret_t service_destroy(rmw_service_t* server) {
     if (state->writer > 0 && dds_delete(state->writer) < 0) rc = DDS_RETCODE_ERROR;
     if (state->request_topic > 0 && dds_delete(state->request_topic) < 0) rc = DDS_RETCODE_ERROR;
     if (state->reply_topic > 0 && dds_delete(state->reply_topic) < 0) rc = DDS_RETCODE_ERROR;
-    delete state->req_st;
-    delete state->rep_st;
     delete state;
     server->backend_data = nullptr;
     return rc < 0 ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
@@ -1094,18 +1072,6 @@ rmw_ret_t client_create(const rmw_node_t* node, const rmw_service_type_support_t
         return NROS_RMW_RET_ERROR;
     }
 
-    state->req_st = new (std::nothrow) SertypeMin(req_desc);
-    state->rep_st = new (std::nothrow) SertypeMin(rep_desc);
-    if (state->req_st == nullptr || state->rep_st == nullptr) {
-        delete state->req_st;
-        delete state->rep_st;
-        (void)dds_delete(state->writer);
-        (void)dds_delete(state->reader);
-        (void)dds_delete(state->request_topic);
-        (void)dds_delete(state->reply_topic);
-        delete state;
-        return NROS_RMW_RET_BAD_ALLOC;
-    }
 
     // Use the lower 8 bytes of the writer's RTPS GUID as the client
     // identity. Falls back to a random 64-bit value if dds_get_guid
@@ -1139,8 +1105,6 @@ rmw_ret_t client_destroy(rmw_client_t* client) {
     if (state->reader > 0 && dds_delete(state->reader) < 0) rc = DDS_RETCODE_ERROR;
     if (state->request_topic > 0 && dds_delete(state->request_topic) < 0) rc = DDS_RETCODE_ERROR;
     if (state->reply_topic > 0 && dds_delete(state->reply_topic) < 0) rc = DDS_RETCODE_ERROR;
-    delete state->req_st;
-    delete state->rep_st;
     delete state;
     client->backend_data = nullptr;
     return rc < 0 ? NROS_RMW_RET_ERROR : NROS_RMW_RET_OK;
