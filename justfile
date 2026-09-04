@@ -575,6 +575,22 @@ shared-dir-churn dirs:
 phase-new slug="":
     @scripts/reserve-phase-id.sh {{slug}}
 
+# Two RFC-0087s existed on 2026-09-04 — `package-identity-and-provider-format`
+# and `ros2-api-adoption-and-the-compile-or-conform-rule`, four hours apart,
+# neither session able to see the other. RFCs were the last of the three
+# numbered series still numbered by reading the directory.
+#
+# ALWAYS, for every new RFC: unlike a phase number, an RFC id is unique per
+# DOCUMENT and gated, so a collision is a hard red. It is also the most
+# expensive to unwind — the number is cited in prose tree-wide (104 files at the
+# 0087 collision) and a stale citation resolves to the other RFC instead of
+# failing.
+#
+# Reserve the next free RFC number atomically across parallel sessions.
+[group("docs")]
+rfc-new slug="":
+    @scripts/reserve-rfc-id.sh {{slug}}
+
 # Phase 378 W1 — move every `ros-launch-manifest` pin to one tag, atomically.
 #
 # Four manifests across TWO workspaces pin this crate. Bumping a subset does not
