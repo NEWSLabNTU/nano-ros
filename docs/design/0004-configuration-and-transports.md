@@ -3,7 +3,7 @@ rfc: 0004
 title: "Configuration model: language-agnostic config across single-node and workspace"
 status: Stable
 since: 2026-05
-last-reviewed: 2026-06
+last-reviewed: 2026-09
 implements-tracked-by: [phase-212, phase-227]
 supersedes: []
 superseded-by: null
@@ -288,7 +288,12 @@ Per-kind field rules (validated by `PlanBuildOptions::validate_transports`):
 | all | `id`, `rmw`, `locator` |
 
 The `id` makes a transport first-class and addressable, and disambiguates two
-transports that share an `rmw`. `interfaces` (a list) multi-homes one session
+transports that share an `rmw`.
+
+> **AMENDED 2026-09-04 — `interface` / `interfaces` are RETRACTED.** See the
+> amendment below. The rest of this section stands; those two fields do not.
+
+*Retracted text:* `interfaces` (a list) multi-homes one session
 over several NICs (one merged discovery graph) — distinct from two `[[transport]]`
 entries (two *separate* sessions).
 
@@ -303,8 +308,105 @@ entries (two *separate* sessions).
 
 A–C bind by `rmw`; only D (two separate sessions of the same backend,
 intentionally not merged) needs `create_node_on`-by-`id` (Phase 172.K.5).
-Multi-homing maps per backend (zenoh → listen/connect per NIC + scouting
+
+> **AMENDED 2026-09-04.** Cases **B** and **C** are retracted along with the
+> `interfaces` field; **A** and **D** stand unchanged. The per-backend mapping
+> sentence below is retracted in full — see the amendment.
+
+*Retracted text:* Multi-homing maps per backend (zenoh → listen/connect per NIC + scouting
 interface; Cyclone → `<Interfaces>`; Fast DDS → whitelist).
+
+## Amendment (2026-09-04) — the middleware's configuration is the middleware's own
+
+**Retracts:** the `interface` / `interfaces` transport fields, cases **B** and
+**C** of the two-axes table, and the per-backend multi-homing mapping.
+**Tracked by:** [phase-206](../roadmap/phase-206-multi-homing-transport-interfaces.md).
+**Sibling reading:** RFC-0087 (a package is a `package.xml`) applies the same
+"do not invent a second vocabulary" move to provider identity.
+
+### The principle
+
+> **nano-ros transports the user's backend config VERBATIM; it does not
+> re-model it.** The board brings the devices up before ROS exists; the
+> middleware is configured in the middleware's own language, parsed by the
+> middleware's own parser.
+
+This is what ROS 2 does, and it is why a ROS 2 user never writes an interface
+list into a node: they set `CYCLONEDDS_URI`, or hand zenoh a config, naming an
+IP or a device. The application code knows nothing about NICs.
+
+### Why the retracted design could not work
+
+`interfaces = ["eth0", "eth1"]` requires nano-ros to own a second vocabulary for
+NICs, and there is no vocabulary that spans the targets:
+
+| platform | how a NIC is named |
+| --- | --- |
+| POSIX | `getifaddrs` / `ifa_name` — real names, resolved at run time by the HOST |
+| Zephyr | `net_if_get_default()` — **cannot be named at all** |
+| smoltcp | exactly one `Interface`, **no names** |
+| lwIP / FreeRTOS / esp-idf / ThreadX | the platform `iface` argument is accepted and ignored; the ports say so in their own source |
+
+A portable declaration naming `eth0` is issue 0623's shape one layer up — a
+value authored in one vocabulary and resolved in another, with nothing checking
+they agree. Every fix for that needs a resolver, a gate, and a per-platform
+story only Linux can satisfy.
+
+### The feature already exists, in the backend
+
+Measured 2026-09-04 in the CycloneDDS we link (`third-party/dds/cyclonedds`,
+0.10.5, `src/core/ddsi/include/dds/ddsi/ddsi_cfgelems.h:79-88`):
+
+```c
+GROUP("NetworkInterface", NULL, network_interface_attributes, INT_MAX,
+  MEMBER(network_interfaces), ...
+```
+
+`INT_MAX` multiplicity — an unbounded `<NetworkInterface>` list, each with
+`name` / `address` / `autodetermine` / `priority`, and the group's own
+description: *"Multiple interfaces can be specified with an assigned priority.
+The list in use will be sorted by priority."* Multi-homing is therefore not a
+nano-ros feature at all; it is an element in a config the user writes.
+
+### What each backend's "own language" IS — and it differs
+
+The verbatim unit is **not the same shape for both backends**, because the
+backends are not the same shape. This is the part most likely to be
+mis-generalised, so it is written down:
+
+| backend | native config surface | how nano-ros carries it |
+| --- | --- | --- |
+| **CycloneDDS** | an XML **document**, and `dds_create_domain` parses inline XML itself (`ddsrt_xmlp_new_string`) | hand the file's bytes over as one comma token; **nano-ros parses no XML** |
+| **zenoh-pico** | **no document format exists** — the API is `z_config_default` / `zp_config_insert(config, uint8_t key, const char *value)` over ~23 numbered keys | a flat `key = value` list whose key NAMES are upstream's; each pair goes to `zp_config_insert` |
+
+**Cyclone composes; nano-ros must stop replacing.** `dds_create_domain` accepts
+a comma-separated list of sources and merges every token into one `cfgst`
+(`ddsi_config.c:2538-2570`). nano-ros selects exactly one with a three-way
+ternary, so a user config **silently discards the baked baseline** — including
+`<Threads>` stack sizes that are load-bearing on FreeRTOS and ThreadX.
+
+**zenoh-pico's lack of a config file is a position, not a gap.** Upstream's
+manual defines three categories and names run-time options — `zp_config_insert`
+— as *"the primary configuration method"*. JSON5/YAML config files are
+documented for **`zenohd`**, the router; the zenoh-pico manual does not mention
+a file format at all. **nano-ros must not add a JSON5 parser**: that would mean
+owning a parser for a format its own backend does not speak, which is this
+amendment's mistake wearing a friendlier hat.
+
+### Consequences for this RFC's model
+
+* `[[transport]]` keeps `id`, `rmw`, `locator`, and the device fields that name
+  hardware (`device`, `baudrate`, `ip`, `mac`, `gateway`, `ssid`, `password`).
+  It does **not** grow transport tuning: `system.toml` says what the system
+  IS — nodes, topics, capabilities — and the middleware's tuning lives in the
+  middleware's own config. That is the ROS 2 split.
+* `Executor::open_multi([SessionSpec…])` stays exactly as it is: one session per
+  spec, **segregate**, which is phase-172 K.5. There is no "merge" primitive to
+  build, because merging NICs is something Cyclone does inside one participant
+  when its config says so.
+* `rmw_session_options_t` does not grow a list field. It is
+  `{u8 localhost_only; u8 _reserved[7]; const char *enclave;}` and nothing in
+  the tree passes it non-NULL; config does not need it.
 
 ### Runtime mapping & binding
 
