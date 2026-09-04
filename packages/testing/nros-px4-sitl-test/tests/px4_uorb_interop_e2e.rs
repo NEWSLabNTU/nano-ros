@@ -23,7 +23,7 @@
 //! runs it. A missing or wrong-module build fails LOUDLY with the command to fix
 //! it — never a silent skip.
 
-use std::{env, path::PathBuf, time::Duration};
+use std::{env, fs, path::PathBuf, time::Duration};
 
 use px4_sitl_tests::Px4Sitl;
 
@@ -62,16 +62,49 @@ fn prebuilt_sitl_dir() -> PathBuf {
         bin.display()
     );
 
-    let module_dir = build_dir.join("external_modules/modules/nros_uorb_demo");
+    // Issue 1046 — assert on the BINARY's contents, not on the module directory.
+    //
+    // The directory check this replaced could not observe the case its own
+    // message describes. `external_modules/modules/<name>/` and the
+    // `bin/px4-<name>` shim both SURVIVE across builds; only the last root's
+    // modules are linked into `bin/px4`. Measured 2026-09-04 on a tree whose
+    // last build was `just px4 build-bridge-example`:
+    //
+    //     module            module dir   shim      in bin/px4
+    //     nros_uorb_demo    present      present   0
+    //     nros_uorb_bridge  present      present   8
+    //
+    // So the guard passed on exactly the tree it exists to reject, and the test
+    // then died at `nros_uorb_demo start` — the confusing failure the guard was
+    // written to replace. It checked an artifact that outlives the thing it
+    // proxies for, which is issue 0196's class one input over.
+    //
+    // A byte scan, not `strings`: no subprocess, no PATH dependency, and it is
+    // milliseconds on the ~59 MB binary. The needle is the module's COMMAND
+    // name, which is what `nros_uorb_demo start` resolves and therefore the
+    // thing whose absence is the actual failure.
+    const MODULE: &str = "nros_uorb_demo";
+    let linked = fs::read(&bin)
+        .map(|bytes| {
+            bytes
+                .windows(MODULE.len())
+                .any(|w| w == MODULE.as_bytes())
+        })
+        .unwrap_or(false);
     assert!(
-        module_dir.is_dir(),
-        "SITL tree at {} was built WITHOUT the uORB interop example \
-         (no {}).\n\
+        linked,
+        "SITL tree at {} was built WITHOUT the uORB interop example: {} does \
+         not contain `{}`.\n\
          PX4 takes one EXTERNAL_MODULES_LOCATION per build and they share this \
-         build dir, so another root (e.g. `just px4 build-sitl-cpp`) built last.\n\
+         build dir, so another root (e.g. `just px4 build-sitl-cpp` or \
+         `build-bridge-example`) built last. Its module DIRECTORY and \
+         `bin/px4-{}` shim survive that, so neither is evidence the module is \
+         linked (issue 1046).\n\
          Rebuild with:\n    just px4 build-sitl-example",
         build_dir.display(),
-        module_dir.display()
+        bin.display(),
+        MODULE,
+        MODULE
     );
 
     build_dir
