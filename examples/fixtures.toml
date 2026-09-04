@@ -3191,7 +3191,7 @@ skip_probe = true
 # failure named. These three build through `just esp32 build-qemu` and kept
 # overflowing — by 8,644 B in `esp32_qemu_talker` — which is the "fix the CLASS,
 # not the reported site" rule applied a row too narrowly the first time.
-env = { ZPICO_MAX_QUERYABLES = "2" }
+env = { ZPICO_MAX_QUERYABLES = "2", ZPICO_MAX_SUBSCRIBERS = "1" }
 
 [[fixture]]
 id = "qemu-esp32-baremetal-listener"
