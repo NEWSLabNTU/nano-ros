@@ -432,6 +432,15 @@
     "verdict": "declined",
     "why": "time-jump notification: rcl lets a caller register for a callback when the clock steps (simulation reset, NTP correction) with a threshold controlling which jumps qualify. Ours has no notification at all. On a device the case that matters -- a monotonic clock stepping -- does not happen, and the simulator case now has ROS time in every language (issue 0789) with no notification asked for: a simulator writes the time and the nodes read it."
   },
+  "cpp:Node::create_timer": {
+    "verdict": "divergence",
+    "why": "phase-425 W4. The clock-taking timer as a NODE MEMBER: `Result create_timer(Timer& out, const Clock& clock, uint64_t period_ms, nros_cpp_timer_callback_t, void* ctx)` (`node.hpp:557`). Same verb as ROS 2 and the same meaning — bare `create_timer` is the form that takes a clock — but rclcpp humble offers it only as the FREE `rclcpp::create_timer`, whose two overloads take either a `NodeT` or a `shared_ptr<NodeBaseInterface> + shared_ptr<NodeTimersInterface>` pair. We have neither: RFC-0002 puts one executor per RTOS task and there is no interface-fragment layer, so the node IS the receiver. The free form exists too (`cpp:create_timer`, `std_compat.hpp`, `NROS_CPP_STD` only — it takes a `std::function` and a `std::chrono::duration`).\n\nNOT a `rename`: the name follows the receiver, and the receiver is the difference — the same reading the graph stage's `Executor::get_node_names` family records. NOT an `extension` either: ROS 2 has this capability, we did not invent it.\n\n`uint64_t period_ms` rather than a `std::chrono::duration` for the reason the whole family gives: a freestanding build has no `<chrono>`. Later ROS 2 distributions add `rclcpp::Node::create_timer` proper; when the recorded surface moves off humble, re-read this row — the receiver argument may stop being needed.",
+    "rename": {
+      "category": "B",
+      "status": "not-a-rename",
+      "resolution": "Not a rename: this is the name rclcpp uses for exactly this meaning. The name became available when W1 moved our wall timer off it."
+    }
+  },
   "cpp:Node::create_timer_in": {
     "verdict": "extension",
     "why": "see the pubsub stage's `cpp:Node::create_publisher_in`."
@@ -590,12 +599,12 @@
     "why": "RFC-0043's component seam for timers, and the most-written member of the family: every C++ example workspace and the `nros new` scaffold contains `::nros::bind_timer<Talker, &Talker::on_tick>(node, timer_, 500, this)`. It binds a component MEMBER `void C::tick()` as the timer callback by identity, with a compile-time trampoline and the component pointer as `ctx`, writing the timer into caller-owned storage. rclcpp's `create_wall_timer(period, std::bind(&Talker::on_tick, this))` allocates a `std::function`; there is no allocator here. See `cpp:bind_subscription` for the family and `cpp:ComponentNode::create_timer` for the RFC-0044 tier that wraps it."
   },
   "cpp:create_timer": {
-    "verdict": "gap",
-    "why": "RE-VERDICTED 2026-09-05 (phase-425 W1), rename -> gap. This row used to record the ours-only half of a name pair; after W1 renamed our free function to `create_wall_timer`, the bare name is THEIRS-only and it names something we do not have: rclcpp's `create_timer(node, clock, period, cb, group)` — both overloads take a `Clock::SharedPtr`, which is the whole point of the spelling.\n\nA gap, not `declined`: phase-425 W4 is to build it. A timer driven by a `NROS_CLOCK_ROS_TIME` clock is what makes bag replay and simulation work, and the clock type already exists (`clock.hpp`, issue 0789) — what is missing is a timer that consults it (every timer today accumulates the executor's monotonic spin delta, `arena.rs:1717`) and a `/clock` source to drive it.",
+    "verdict": "divergence",
+    "why": "RE-VERDICTED 2026-09-05 (phase-425 W4), gap -> divergence: the gap W1 opened is closed. `nros::create_timer(Node&, Timer&, const Clock&, std::chrono::milliseconds, std::function<void()>)` exists at `std_compat.hpp:83`, the clock-taking counterpart of `nros::create_wall_timer` beside it, and the report now matches it under the systematic `no-shared-ptr` rule.\n\nWhat differs is shape, and it is the same constraint the whole C++ timer family carries: a caller-owned `Timer&` instead of a returned `shared_ptr` (no allocator), and a `Node&` instead of rclcpp's `NodeT` / `shared_ptr<NodeBaseInterface> + shared_ptr<NodeTimersInterface>` pair — RFC-0002 puts one executor per RTOS task and there is no interface-fragment layer to pass.\n\nThe CAPABILITY is what mattered, and it is real rather than nominal: a `NROS_CLOCK_ROS_TIME` clock makes the timer advance with `/clock`, so it stops while a simulator is paused and tracks a bag's replay rate (`executor::arena::TimerClockSource`).",
     "rename": {
       "category": "B",
       "status": "not-a-rename",
-      "resolution": "Not a rename any more. W1 moved OUR name off this key; what is left is a theirs-only capability, tracked as a gap against phase-425 W4."
+      "resolution": "Not a rename. W1 moved our name off this key and W4 put the CAPABILITY back under it, which is the outcome the gap asked for."
     }
   },
   "cpp:create_timer_oneshot": {
@@ -734,6 +743,10 @@
   "rust:Executor::register_timer_oneshot": {
     "verdict": "divergence",
     "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:Executor::register_timer_on_clock": {
+    "verdict": "divergence",
+    "why": "phase-425 W4, and the sibling of `rust:Executor::register_timer` — same receiver argument, same verdict. rclrs expresses the clock choice as a per-site OPTION (`IntoTimerOptions::{steady_time, system_time, node_time, clock}`, all `declined` above) on `Node::create_timer_repeating`; ours is a second registrar on the EXECUTOR, because RFC-0002 puts one executor per RTOS task and it owns the entity arena the timer lives in.\n\nTwo entry points rather than one defaulted parameter, deliberately: `register_timer` consumes the spin delta the executor already measured and costs nothing, while this one READS a clock on every poll of the timer. On a target where that is a platform call, the difference is worth being visible at the call site rather than hidden behind a default.\n\n`TimerClockSource::{Steady, Ros, System}` is the argument; a `Ros` timer follows `/clock` when a source is active and reads system time when none is, the same fallback `rclcpp::Clock` has."
   },
   "rust:Executor::reset_timer": {
     "verdict": "divergence",

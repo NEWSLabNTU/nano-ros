@@ -71,6 +71,35 @@ inline Result create_wall_timer(Node& node, Timer& out, std::chrono::millisecond
     return r;
 }
 
+/// Create a repeating timer on a CLOCK, with a std::function callback —
+/// `rclcpp::create_timer(node, clock, period, callback)` (phase-425 W4).
+///
+/// The clock-taking counterpart of `create_wall_timer` above: a
+/// `NROS_CLOCK_ROS_TIME` clock makes the timer follow `/clock`, so it pauses
+/// with the simulator and tracks a bag's replay rate.
+///
+/// Same ownership rules as `create_wall_timer`: the closure lives with the
+/// Timer and is freed on destruction.
+///
+/// @param node      The parent node.
+/// @param out       Receives the initialized timer.
+/// @param clock     The clock that advances the timer.
+/// @param period    Timer period, ON THAT CLOCK.
+/// @param callback  Callable invoked on each tick.
+/// @return Result indicating success or failure.
+inline Result create_timer(Node& node, Timer& out, const Clock& clock,
+                           std::chrono::milliseconds period, std::function<void()> callback) {
+    auto fn =
+        std::unique_ptr<std::function<void()>>(new std::function<void()>(std::move(callback)));
+    auto* raw = fn.get();
+    Result r = node.create_timer(out, clock, static_cast<uint64_t>(period.count()),
+                                 detail::std_function_trampoline, raw);
+    if (r.ok()) {
+        out.attach_std_closure(std::move(fn));
+    }
+    return r;
+}
+
 /// Create a one-shot timer with a std::function callback.
 ///
 /// Same ownership rules as `create_wall_timer`: the closure lives with the

@@ -1934,6 +1934,36 @@ nros_cpp_ret_t nros_cpp_timer_create(void *executor_handle,
                                      size_t *out_handle_id);
 
 /**
+ * Create a repeating timer driven by a CLOCK — phase-425 W4, the shape rclcpp
+ * spells `create_timer(node, clock, period, cb)`.
+ *
+ * `nros_cpp_timer_create` is the WALL timer: it advances with the executor's
+ * monotonic spin delta and no simulator can slow it down. This one advances
+ * with `clock_type`, so a `NROS_CLOCK_ROS_TIME` timer follows `/clock` — it
+ * stops while the simulator is paused, and it tracks a bag's replay rate.
+ *
+ * With no `/clock` source installed, a ROS-time timer reads system time, the
+ * same fallback `rclcpp::Clock` has.
+ *
+ * # Parameters
+ * * `executor_handle` — Executor handle from `nros_cpp_init()`.
+ * * `clock_type` — Which clock advances the timer.
+ * * `period_ms` — Timer period in milliseconds, ON THAT CLOCK.
+ * * `callback` — Function called when the timer fires.
+ * * `context` — User context passed to the callback.
+ * * `out_handle_id` — Receives the timer handle ID for cancel/reset.
+ *
+ * # Safety
+ * `executor_handle` and `out_handle_id` must be valid pointers.
+ */
+nros_cpp_ret_t nros_cpp_timer_create_on_clock(void *executor_handle,
+                                              uint8_t clock_type,
+                                              uint64_t period_ms,
+                                              nros_cpp_timer_callback_t callback,
+                                              void *context,
+                                              size_t *out_handle_id);
+
+/**
  * Create a one-shot timer and register it with the executor.
  *
  * The timer fires once after `delay_ms` milliseconds during `spin_once()`.

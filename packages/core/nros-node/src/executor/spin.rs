@@ -20,12 +20,12 @@ use super::{
         BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientCallbackEntry,
         ServiceClientRawArenaEntry, ServiceClientSendHeader, SrvEntry, SrvRawEntry,
         SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry, SubBufferedRawInfoCEntry,
-        SubBufferedRawInfoEntry, SubBufferedViewEntry, SubInfoEntry, SubInplaceEntry, TimerEntry,
-        TimerHeader, TimerOverrunPolicy, TraceName, always_ready, buffered_region_size, drop_entry,
-        guard_has_data, guard_try_process, no_pre_sample, service_client_callback_try_process,
-        service_client_raw_try_process, srv_has_data, srv_raw_has_data, srv_raw_try_process,
-        srv_try_process, sub_buffered_has_data, sub_buffered_raw_c_has_data,
-        sub_buffered_raw_c_try_process, sub_buffered_raw_has_data,
+        SubBufferedRawInfoEntry, SubBufferedViewEntry, SubInfoEntry, SubInplaceEntry,
+        TimerClockSource, TimerEntry, TimerHeader, TimerOverrunPolicy, TraceName, always_ready,
+        buffered_region_size, drop_entry, guard_has_data, guard_try_process, no_pre_sample,
+        service_client_callback_try_process, service_client_raw_try_process, srv_has_data,
+        srv_raw_has_data, srv_raw_try_process, srv_try_process, sub_buffered_has_data,
+        sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process, sub_buffered_raw_has_data,
         sub_buffered_raw_info_c_has_data, sub_buffered_raw_info_c_try_process,
         sub_buffered_raw_info_has_data, sub_buffered_raw_info_try_process,
         sub_buffered_raw_try_process, sub_buffered_try_process, sub_buffered_view_has_data,
@@ -4942,6 +4942,72 @@ impl<'s> Executor<'s> {
                     fired: false,
                     cancelled: false,
                     overrun_policy: TimerOverrunPolicy::default(),
+                    clock_source: TimerClockSource::Steady,
+                    last_clock_ns: 0,
+                    callback,
+                },
+            );
+        }
+
+        let meta = CallbackMeta {
+            offset,
+            kind: EntryKind::Timer,
+            try_process: timer_try_process::<F>,
+            has_data: always_ready,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::Always,
+            drop_fn: drop_entry::<TimerEntry<F>>,
+        };
+        self.emplace_entry(slot, meta, TraceName::TimerPeriod(period.as_micros()));
+        Ok(HandleId(slot))
+    }
+
+    /// Register a repeating timer driven by a CLOCK rather than by the spin
+    /// delta — phase-425 W4, the shape rclcpp spells
+    /// `create_timer(node, clock, period, cb)`.
+    ///
+    /// [`register_timer`](Self::register_timer) is the wall timer: it consumes
+    /// the executor's monotonic spin delta and no simulator can slow it down.
+    /// This one reads `source` on every poll and advances by the difference, so
+    /// a [`TimerClockSource::Ros`] timer follows `/clock` — it stops while the
+    /// simulator is paused, halves with a bag replayed at 0.5x, and restarts
+    /// its period on a backwards jump instead of stalling for the length of it.
+    ///
+    /// With no `/clock` source installed, a `Ros` timer reads system time and
+    /// behaves like a wall timer with NTP steps, which is the same fallback
+    /// `rclcpp::Clock` has: a node written for simulation still runs standalone.
+    pub fn register_timer_on_clock<F>(
+        &mut self,
+        period: TimerDuration,
+        source: TimerClockSource,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        let slot = self.next_entry_slot()?;
+        let offset = self.arena_alloc::<TimerEntry<F>>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut TimerEntry<F>;
+            core::ptr::write(
+                entry_ptr,
+                TimerEntry {
+                    period_us: period.as_micros(),
+                    elapsed_us: 0,
+                    overruns: 0,
+                    overruns_reported: 0,
+                    oneshot: false,
+                    fired: false,
+                    cancelled: false,
+                    overrun_policy: TimerOverrunPolicy::default(),
+                    clock_source: source,
+                    // Seeded HERE rather than on the first poll: a zero would
+                    // make the first delta the whole epoch, which `Skip` would
+                    // then coalesce into one immediate activation and `CatchUp`
+                    // into a replay burst of ~10^9 periods.
+                    last_clock_ns: source.now_ns(),
                     callback,
                 },
             );
@@ -4988,6 +5054,8 @@ impl<'s> Executor<'s> {
                     fired: false,
                     cancelled: false,
                     overrun_policy: TimerOverrunPolicy::default(),
+                    clock_source: TimerClockSource::Steady,
+                    last_clock_ns: 0,
                     callback,
                 },
             );
@@ -5041,6 +5109,8 @@ impl<'s> Executor<'s> {
                     fired: false,
                     cancelled: false,
                     overrun_policy: TimerOverrunPolicy::default(),
+                    clock_source: TimerClockSource::Steady,
+                    last_clock_ns: 0,
                     callback,
                 },
             );
