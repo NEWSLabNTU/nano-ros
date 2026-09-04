@@ -7,7 +7,7 @@ C, C++ and Rust examples on the NuttX RTOS, run under QEMU. Just module:
 
 ```sh
 source ./activate.sh          # exports NUTTX_DIR / NUTTX_APPS_DIR
-just nuttx setup              # = nros setup qemu-arm-nuttx + host deps + apps staging
+just setup nuttx              # = nros setup qemu-arm-nuttx + host deps + apps staging
 ```
 
 `nros setup` provisions the NuttX kernel/apps source submodules — no manual

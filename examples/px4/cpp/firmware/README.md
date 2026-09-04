@@ -23,7 +23,7 @@ happen here.
 ## Running it
 
 ```sh
-just px4 setup                 # once
+just setup px4                 # once
 just px4 build-sitl-example    # SITL with this dir as EXTERNAL_MODULES_LOCATION
 ```
 

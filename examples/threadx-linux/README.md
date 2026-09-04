@@ -8,7 +8,7 @@ process using the NSOS host-kernel sockets shim — no QEMU. Just module:
 
 ```sh
 source ./activate.sh          # exports THREADX_DIR / NETX_DIR
-just threadx_linux setup      # = nros setup threadx-linux + host deps
+just setup threadx_linux      # = nros setup threadx-linux + host deps
 ```
 
 ## RMW selection

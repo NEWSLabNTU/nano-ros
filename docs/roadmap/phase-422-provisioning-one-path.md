@@ -1,10 +1,11 @@
 # phase-422 — provisioning has one path, and CI walks it
 
 **Status (2026-09-05). In progress. DONE: W1 (duplicate producers retired),
-W3's dispatcher half (argument passthrough), W5 (the ratchet — four gates),
-W6 (the scope verb reports the system closure), W7's gate half. IN FLIGHT:
-W2's mdbook/verus half, W4, W7's additive board entries. OPEN BY DECISION: W8
-(the refusal, report -> warn -> error), W3's prose sweep, and W7's true
+W3 in full (dispatcher passthrough, the workflow sweep, and the prose sweep
+with its ratchet arm), W5 (the ratchet — four gates), W6 (the scope verb
+reports the system closure), W7's gate half. IN FLIGHT: W2's mdbook/verus half,
+W4, W7's additive board entries. OPEN BY DECISION: W8
+(the refusal, report -> warn -> error) and W7's true
 unification — the index namespace is what users type while the cmake namespace
 is what the build uses, and neither is obviously the one to keep.**
 
@@ -129,7 +130,7 @@ shape".
 exist as bespoke downloaders. Every remaining bespoke installer is listed in this doc
 with a reason.
 
-### W3 — retire the old spelling everywhere — workflow half DONE
+### W3 — retire the old spelling everywhere — DONE
 
 **Landed.** `just setup <scope>` takes a variadic tail and forwards it, so
 `just setup zephyr --skip-sdk` works and the exemption can go.
@@ -142,8 +143,47 @@ tier is never a flag, so it is re-homed — rather than making a user write
 The workflow half landed with W4 below: no workflow uses the module spelling and
 `check-workflow-setup-spelling`'s exemption list is empty.
 
-Remaining: the prose sweep (book/, AGENTS.md, CLAUDE.md still teach the module
-spelling). The gate reads `.github/workflows/` only, so prose is unratcheted.
+**The prose half landed too.** 64 occurrences across 38 files became
+`just setup <scope>`: `book/` (17), the living `docs/` subtrees — guides,
+reference, development, design, release (25) — and every instructional README
+under `examples/`, `packages/`, `tests/`, `scripts/` (22). The swap is
+word-for-word the same length, so comment columns in fenced blocks did not move.
+
+**What was deliberately NOT converted, because the module spelling is what the
+line MEANS.** Three record series narrate what a command DID at a time, and
+rewriting them falsifies the record rather than fixing a reader's copy-paste:
+
+| left alone | why |
+| --- | --- |
+| `docs/roadmap/archived/**`, `docs/issues/archived/**` | historical record |
+| `docs/roadmap/**` (196, 215, 413, 414, book-audit, and this doc) | phase docs record work at a time; #1038 and #413's `just esp32 setup` lines are claims about the MODULE recipe specifically, which is the defect they name |
+| `docs/issues/**` | the ledger's "Recently resolved" entries and #1038's diagnosis are past tense; `docs/issues/README.md` is also the merge-queue conflict path (0883/0884), so it is not touched for cosmetics |
+| `docs/research/**` | dated snapshots (2026-05-04, 2026-05-25) that COUNT the commands as they were, against a workspace layout since retired |
+| `docs/development/zephyr-version-support.md:117` | `NROS_ZEPHYR_VERSION=4.4 just zephyr setup` exited 0 on a workspace that could not build Cortex-M. That run happened with that spelling; the step's instructions above it are converted |
+| `packages/testing/nros-tests/fixtures/board_import_fvp/CMakeLists.txt:12` | out of the prose scope, and touching a fixture source re-stales fixtures for no reader benefit |
+| `just qemu setup-qemu`, `just qemu setup-network`, `just zenohd setup` | different verbs — thin `nros setup --tool` callers — not the module `setup` recipe |
+
+**The ratchet.** `check-workflow-setup-spelling` grew a PROSE arm over `book/`,
+`AGENTS.md`, `CLAUDE.md`, `docs/{design,development,guides,reference,release}/`
+and every README outside vendored/build trees — 576 tracked files. The three
+record series are pruned by path with the reason stated in `PRUNE_DIRS`, which
+is what keeps the arm usable: gating them would produce a steady false-positive
+stream, since new issue and phase prose will legitimately keep quoting the
+module spelling. Scoped that way the sweep left exactly ONE prose exemption,
+keyed on `(path, exact line text)` — not a line number, which moves — and
+checked in both directions.
+
+Two things the prose arm does that the workflow arm does not, both because a
+doc is not a YAML file: it does NOT skip `#` lines (in markdown those are
+headings, and inside a fence they are shell comments that teach just as loudly),
+and it matches ACROSS a line wrap. The wrap is not hypothetical —
+`docs/reference/zephyr-armv8r-setup.md` carried `` `just zephyr\nsetup` `` and
+a single-line grep could not see it. It also needs a `(?![-\w])` the workflow
+arm never needed, because `\b` matches `just qemu setup-qemu`.
+
+Mutation-tested in four directions: reverting one conversion fails it, a
+line-wrapped module spelling fails it, an exemption matching nothing fails it,
+and pruning `book/` from the scan set fails the self-test.
 
 Original text:
 
@@ -158,7 +198,9 @@ A reader who copies `just zephyr setup` out of the book gets the module recipe
 and none of `_setup-common`.
 
 **Acceptance.** The exemption list in `check-workflow-setup-spelling` is empty.
-No prose in the repo teaches the module spelling.
+No INSTRUCTIONAL prose teaches the module spelling — amended from "no prose in
+the repo", which was the wrong target: the record series must keep it to stay
+true, and a gate that demanded otherwise would be one nobody could keep green.
 
 ### W4 — the nightly zephyr jobs walk the user path — DONE
 

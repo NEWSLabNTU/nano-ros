@@ -129,7 +129,7 @@ nano-ros's own zephyr talker has a matching recipe for the canonical
 To completely recreate the in-tree Zephyr workspace:
 
 ```bash
-just zephyr setup --force
+just setup zephyr --force
 ```
 
 ## Arm FVP
@@ -216,7 +216,7 @@ needs no `just cyclonedds` pre-step; the consumer build self-provisions
 Cyclone from source.
 
 ```bash
-just cyclonedds setup       # build Cyclone DDS from third-party/dds/cyclonedds (tag 0.10.5)
+just setup cyclonedds       # build Cyclone DDS from third-party/dds/cyclonedds (tag 0.10.5)
 just cyclonedds build-rmw   # build packages/rmw/cyclonedds/nros-rmw-cyclonedds
 just cyclonedds test        # run the CTest harness
 ```

@@ -1,6 +1,6 @@
 # Zephyr per-line patch sets (Phase 199.3)
 
-`just zephyr setup` applies a **version-dispatched** patch set:
+`just setup zephyr` applies a **version-dispatched** patch set:
 
 ```
 scripts/zephyr/patches/<NROS_ZEPHYR_VERSION>.sh   # e.g. 3.7.sh, 4.4.sh
@@ -26,7 +26,7 @@ The recipe runs `bash scripts/zephyr/patches/${NROS_ZEPHYR_VERSION}.sh
 
 - One positional arg: the Zephyr workspace dir.
 - `cd`s to the repo root (works regardless of caller cwd).
-- Every patch must be **idempotent** (`just zephyr setup` re-runs them).
+- Every patch must be **idempotent** (`just setup zephyr` re-runs them).
 - Most patches edit Zephyr *internals* (native_sim/NSOS — not stable APIs); these
   are the churn Phase 199 tracks for upstreaming. As fixes land upstream, drop
   the corresponding line so the carried set shrinks per release.

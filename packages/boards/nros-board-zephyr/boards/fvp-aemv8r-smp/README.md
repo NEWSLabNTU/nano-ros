@@ -7,7 +7,7 @@ DDS RMW backend on the Autoware safety-island stack.
 ## Build
 
 ```sh
-just zephyr setup       # one-time: workspace + SDK + zephyr-lang-rust
+just setup zephyr       # one-time: workspace + SDK + zephyr-lang-rust
 west build \
     -b fvp_baser_aemv8r/fvp_aemv8r_aarch64/smp \
     -d build-fvp \

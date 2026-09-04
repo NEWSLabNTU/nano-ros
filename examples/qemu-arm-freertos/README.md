@@ -8,7 +8,7 @@ C, C++ and Rust examples on FreeRTOS + lwIP, run under
 
 ```sh
 source ./activate.sh          # exports FREERTOS_DIR + FREERTOS_PORT (GCC/ARM_CM3)
-just freertos setup           # = nros setup qemu-arm-freertos + host deps
+just setup freertos           # = nros setup qemu-arm-freertos + host deps
 ```
 
 ## RMW selection
@@ -47,4 +47,4 @@ shape); the underscore naming is an interim exception (RFC-0026, phase-275).
   task stack; too small manifests as lwIP "Invalid mbox" (see
   `docs/reference/platform-implementation-notes.md`).
 - Build skips with a clear message if `$FREERTOS_DIR/include` is missing —
-  run `just freertos setup`.
+  run `just setup freertos`.

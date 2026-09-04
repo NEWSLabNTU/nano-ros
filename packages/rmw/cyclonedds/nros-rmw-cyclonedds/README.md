@@ -55,7 +55,7 @@ the platform budget includes Cyclone DDS's hosted runtime and heap.
 
 ```bash
 # Cyclone DDS itself must already be built + installed:
-just cyclonedds setup
+just setup cyclonedds
 
 # Then this backend:
 cmake -S . -B build \

@@ -7,7 +7,7 @@ the Espressif QEMU fork. Just module: **`esp32`** (`just/esp32.just`).
 
 ```sh
 source ./activate.sh
-just esp32 setup              # nros setup qemu-esp32-baremetal (+ optional esp32-qemu tool)
+just setup esp32              # nros setup qemu-esp32-baremetal (+ optional esp32-qemu tool)
 ```
 
 The build uses rustup + `-Z build-std` (no separate toolchain package); the

@@ -8,20 +8,20 @@ will support in Phase 117.10 / 117.11:
 | `fvp_baser_aemv8r_smp`         | AArch64 ARMv8-R, SMP      | `aarch64-zephyr-elf` | ARM Base RevC AEMv8R FVP simulator |
 | `s32z270dc2_rtu0_r52@D`        | AArch32 ARMv8-R Cortex-R52 | `arm-zephyr-eabi`    | NXP S32Z270 evaluation board |
 
-This page covers the **manual steps** required before `just zephyr
-setup` produces a workspace that can build for these boards. The
+This page covers the **manual steps** required before `just setup
+zephyr` produces a workspace that can build for these boards. The
 out-of-tree FVP simulator and NXP-licensed board files cannot be
 auto-fetched by the setup script.
 
 ## 1. Install the AArch64 toolchain
 
-The default `just zephyr setup` line in
+The default `just setup zephyr` line in
 `scripts/zephyr/setup.sh` installs `x86_64-zephyr-elf` and
 `arm-zephyr-eabi`. Phase 117.10 needs `aarch64-zephyr-elf` too.
 
 ```bash
-# Forwards through `just zephyr setup *ARGS` to scripts/zephyr/setup.sh.
-just zephyr setup --phase-117
+# The dispatcher forwards its tail to scripts/zephyr/setup.sh.
+just setup zephyr --phase-117
 ```
 
 This adds `-t aarch64-zephyr-elf` to the SDK installer's target
@@ -33,7 +33,7 @@ installed targets).
 To add a different target ad-hoc:
 
 ```bash
-just zephyr setup --target=mips-zephyr-elf
+just setup zephyr --target=mips-zephyr-elf
 ```
 
 `--target` is repeatable.
@@ -117,10 +117,10 @@ west build -b s32z270dc2_rtu0_r52@D \
 - **`zephyr-sdk` directory exists but the new toolchain isn't
   there.** Older nano-ros workspaces installed the SDK before
   `--phase-117` was a flag. The SDK installer is idempotent — re-
-  running `just zephyr setup --phase-117 --skip-sdk` won't fix
+  running `just setup zephyr --phase-117 --skip-sdk` won't fix
   it because `--skip-sdk` short-circuits the SDK step. Either
   delete `scripts/zephyr/sdk/zephyr-sdk-<version>/` and re-run
-  `just zephyr setup --phase-117`, or invoke the SDK's setup
+  `just setup zephyr --phase-117`, or invoke the SDK's setup
   script directly:
 
   ```bash

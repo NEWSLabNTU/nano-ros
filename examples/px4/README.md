@@ -8,7 +8,7 @@ the **transport case**, not an RMW): in-firmware **uORB** modules (C++) and an
 
 ```sh
 source ./activate.sh
-just px4 setup                # nros setup --source px4-rs --source px4-autopilot
+just setup px4                # nros setup --source px4-rs --source px4-autopilot
                               # + PX4's ~50 own sub-submodules + python build deps
 ```
 

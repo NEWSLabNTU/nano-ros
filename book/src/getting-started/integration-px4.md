@@ -19,7 +19,7 @@ their copy.
 checks:
 
 ```bash
-just setup px4              # equivalent to: just px4 setup
+just setup px4              # `_setup-common` + the px4 module recipe
 just px4 doctor
 ```
 

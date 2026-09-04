@@ -175,7 +175,7 @@ Run `just qemu help` for more options.
 ## Zephyr Setup
 
 ```bash
-just zephyr setup   # Initialize workspace + create symlink
+just setup zephyr   # Initialize workspace + create symlink
 just zephyr test    # Run zenoh tests (native_sim uses NSOS on host loopback)
 just zephyr test-xrce
 ```

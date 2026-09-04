@@ -52,7 +52,7 @@ let dst = cmake::Config::new(&zenoh_pico_build)
 
 **Zephyr builds**: edit
 `modules/lib/zenoh-pico/include/zenoh-pico/config.h` as shown below.
-(Contributors working in the nano-ros checkout: `just zephyr setup`
+(Contributors working in the nano-ros checkout: `just setup zephyr`
 applies the same patch to the in-tree workspace automatically.)
 
 Manually edit `modules/lib/zenoh-pico/include/zenoh-pico/config.h`:

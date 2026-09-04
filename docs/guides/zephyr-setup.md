@@ -55,7 +55,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ## Step 1: Initialize Workspace (One-Time)
 
 ```bash
-just zephyr setup
+just setup zephyr
 ```
 
 This recipe automatically:
@@ -71,8 +71,8 @@ This recipe automatically:
 
 **Options:**
 ```bash
-just zephyr setup --skip-sdk    # Skip SDK download/install
-just zephyr setup --force       # Recreate existing workspace
+just setup zephyr --skip-sdk    # Skip SDK download/install
+just setup zephyr --force       # Recreate existing workspace
 ```
 
 ## Step 2: Networking
@@ -335,5 +335,5 @@ west update
 To completely recreate the workspace:
 
 ```bash
-just zephyr setup --force
+just setup zephyr --force
 ```

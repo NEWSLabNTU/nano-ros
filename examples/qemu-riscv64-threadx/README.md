@@ -8,7 +8,7 @@ under `qemu-system-riscv64`. Just module: **`threadx_riscv64`**
 
 ```sh
 source ./activate.sh          # exports THREADX_DIR / NETX_DIR
-just threadx_riscv64 setup    # = nros setup qemu-riscv64-threadx + host deps
+just setup threadx_riscv64    # = nros setup qemu-riscv64-threadx + host deps
 ```
 
 ## RMW selection
