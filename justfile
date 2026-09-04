@@ -3929,6 +3929,13 @@ _setup-common:
     # `rustup target add` is a no-op when the target is present.
     just workspace rust-targets
     just workspace install-corrosion
+    # `check fast` runs `c-fmt`/`cpp-fmt`, and EVERY tier runs `check fast`, so
+    # clang-format is a host fact every tier asserts — the same argument as the
+    # two above. Without it host-tests' `just ci tier1` reached the gate and
+    # died on "clang-format not found" after ~40 minutes of fixture builds.
+    # Idempotent: the recipe version-checks `build/clang-format/bin/clang-format`
+    # and exits early. Project-local, no install.
+    just setup-clang-format
 
 # Focused platform setup. Equivalent to `just <platform> setup`.
 [group("setup")]
