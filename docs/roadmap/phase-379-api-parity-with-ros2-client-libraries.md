@@ -910,3 +910,28 @@ holds the evidence, the item is *close it*.
 | [#0784](../issues/0784-nros-facade-node-surface-is-three-audiences.md) | `nros::` publishes three different audiences under one namespace — parity is unreadable until the surface is separable |
 | [#0829](../issues/0829-two-system-default-qos-presets-disagree-on-depth.md) | two `SYSTEM_DEFAULT` QoS presets ship under one meaning and disagree on it |
 
+
+## Adopted issues (2026-09-04) — four parity defects with no phase
+
+Four open issues describe the gap between what this phase claims and what a
+ported node gets. They had no home; they belong here because each is a place the
+parity CLAIM and the parity MEASUREMENT disagree.
+
+* **[#1008](../issues/1008-wait-for-service-never-waits.md)** — `wait_for_service`
+  returns `Ok(true)` immediately on every real backend. The API is present and
+  the behaviour is not, which is the exact failure mode a parity ledger exists to
+  catch and did not.
+* **[#1019](../issues/1019-rclcpp-compat-log-macros-discard-output.md)** — every
+  `RCLCPP_*` log call in a ported C++ node is discarded on embedded targets. A
+  port that compiles and says nothing.
+* **[#1020](../issues/1020-parity-cpp-lane-cannot-see-the-compat-shim.md)** — the
+  C++ parity lane measures the NATIVE API against rclcpp and cannot see the
+  compat shim, so the number it reports is about the wrong surface.
+* **[#1012](../issues/1012-ledger-prose-cites-renamed-symbols.md)** — 15 ledger
+  rows describe symbols a rename retired. The ledger is the artifact this phase
+  reasons from, so prose that names dead symbols is a measurement error, not a
+  typo.
+
+#1020 and #1012 are the same problem as #1008 one level up: the instrument is
+what is wrong, so every number taken with it needs re-reading before it is used
+to close anything.

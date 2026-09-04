@@ -138,3 +138,13 @@ is one road.
 
 Install prefixes and a sourced `setup.sh`; per-package isolated builds for
 in-tree packages; a Python plugin ABI; rosdep. RFC-0087 D8 records why for each.
+
+
+## Adopted issue (2026-09-04)
+
+* **[#1054](../issues/1054-provider-scan-prunes-the-nano-ros-root.md)** —
+  `provider_scan` reads `.nros-ignore` on the root it was handed, so scanning the
+  nano-ros tree finds nothing. The marker's own header (issue 0621) says it
+  prunes a tree from any walk that starts ABOVE it; honouring it at the root
+  inverts that. Provider discovery is this phase's subject, and a scan that
+  returns an empty set silently is the worst shape it can take.
