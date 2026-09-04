@@ -61,6 +61,13 @@
 #define NROS_CPP_DOMAIN_ID_INHERIT UINT32_MAX
 
 /**
+ * Image-local discriminant of the linked backend's serialization format
+ * (`nros_serdes::format::SerializationFormatId`). RFC-0088 D2 — image-local:
+ * never persist it, never compare it across images.
+ */
+#define NROS_CPP_SERIALIZATION_FORMAT_ID 1
+
+/**
  * `nros::SchedClass` mirror. Phase 110.B.
  */
 enum nros_cpp_sched_class_t

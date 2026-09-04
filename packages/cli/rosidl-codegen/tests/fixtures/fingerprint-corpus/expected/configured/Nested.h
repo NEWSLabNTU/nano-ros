@@ -26,6 +26,21 @@ typedef struct fingerprint_corpus_msg_nested {
     struct { uint32_t size; struct fingerprint_corpus_msg_shapes data[64]; } many;
 } fingerprint_corpus_msg_nested;
 
+/// RFC-0088 D5 — the serialization format this type is encoded in, as the
+/// image-local `nros_serdes::format::SerializationFormatId` discriminant.
+///
+/// This pack emits a CDR serializer (fingerprint_corpus_msg_nested_serialize writes a CDR
+/// encapsulation header), so the answer is a property of the GENERATOR, not a
+/// value copied from a backend: what this header contains IS CDR.
+#define NROS_MSG_FORMAT_ID_fingerprint_corpus_msg_nested NROS_SERIALIZATION_FORMAT_ID_CDR
+
+/* One image links one backend and one backend speaks one encoding (RFC-0088),
+   so a message this image cannot encode is a build error rather than a runtime
+   surprise on the wire. NROS_SERIALIZATION_FORMAT_ID comes in via
+   <nros/types.h> above; a bridge image, which links two backends and has no
+   single answer, must not reach it at all (check-format-macro-scope). */
+NROS_ASSERT_MESSAGE_FORMAT(NROS_MSG_FORMAT_ID_fingerprint_corpus_msg_nested, "fingerprint-corpus/Nested");
+
 /// Get the ROS type name for Nested
 static inline const char* fingerprint_corpus_msg_nested_get_type_name(void) {
     return "fingerprint-corpus::msg::dds_::Nested_";

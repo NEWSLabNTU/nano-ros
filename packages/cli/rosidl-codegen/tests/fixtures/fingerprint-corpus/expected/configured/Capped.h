@@ -26,6 +26,21 @@ typedef struct fingerprint_corpus_msg_capped {
     struct { uint32_t size; char data[4][8]; } tags;
 } fingerprint_corpus_msg_capped;
 
+/// RFC-0088 D5 — the serialization format this type is encoded in, as the
+/// image-local `nros_serdes::format::SerializationFormatId` discriminant.
+///
+/// This pack emits a CDR serializer (fingerprint_corpus_msg_capped_serialize writes a CDR
+/// encapsulation header), so the answer is a property of the GENERATOR, not a
+/// value copied from a backend: what this header contains IS CDR.
+#define NROS_MSG_FORMAT_ID_fingerprint_corpus_msg_capped NROS_SERIALIZATION_FORMAT_ID_CDR
+
+/* One image links one backend and one backend speaks one encoding (RFC-0088),
+   so a message this image cannot encode is a build error rather than a runtime
+   surprise on the wire. NROS_SERIALIZATION_FORMAT_ID comes in via
+   <nros/types.h> above; a bridge image, which links two backends and has no
+   single answer, must not reach it at all (check-format-macro-scope). */
+NROS_ASSERT_MESSAGE_FORMAT(NROS_MSG_FORMAT_ID_fingerprint_corpus_msg_capped, "fingerprint-corpus/Capped");
+
 /// Get the ROS type name for Capped
 static inline const char* fingerprint_corpus_msg_capped_get_type_name(void) {
     return "fingerprint-corpus::msg::dds_::Capped_";

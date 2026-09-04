@@ -15,6 +15,7 @@
 #include "nros/heap_sequence.hpp"
 #include "nros/heap_string.hpp"
 #include "nros/size_bound.hpp"
+#include "nros/serialization_format.hpp"
 
 // FFI declarations
 extern "C" {
@@ -106,5 +107,23 @@ struct Capped {
 // the struct-member `<Msg>::<NAME>` above, which matches rosidl C++).
 
 }} // namespace fingerprint_corpus::msg
+
+// RFC-0088 D5 — state this type's serialization format.
+//
+// `nros::format_of<M>` defaults to CDR (the C++ mirror of the defaulted
+// `nros_core::RosMessage::SERIALIZATION_FORMAT_ID`), so this specialization
+// changes no answer today. It is emitted anyway because a generated type should
+// STATE its format rather than inherit one: this pack emits a CDR serializer,
+// which is a fact about the GENERATOR, and a future non-CDR pack specializes the
+// same slot instead of silently riding the default.
+//
+// `nros::Node::create_publisher` / `create_subscription` static_assert on this
+// against the format the linked backend speaks — one image, one backend, one
+// encoding.
+namespace nros {
+template <> struct format_of<::fingerprint_corpus::msg::Capped> {
+    static constexpr SerializationFormat value = SerializationFormat::Cdr;
+};
+} // namespace nros
 
 #endif // FINGERPRINT_CORPUS_MSG_CAPPED_HPP

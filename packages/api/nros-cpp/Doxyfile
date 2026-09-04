@@ -24,6 +24,7 @@ INPUT                  = include/nros/nros.hpp \
                          include/nros/qos.hpp \
                          include/nros/result.hpp \
                          include/nros/config.hpp \
+                         include/nros/serialization_format.hpp \
                          include/nros/span.hpp \
                          include/nros/fixed_string.hpp \
                          include/nros/fixed_sequence.hpp \

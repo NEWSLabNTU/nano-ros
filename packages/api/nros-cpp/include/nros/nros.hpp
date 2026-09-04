@@ -32,6 +32,8 @@
 #include "nros/options.hpp"
 #include "nros/future.hpp"
 #include "nros/stream.hpp"
+// RFC-0088 D5 — nros::SerializationFormat / format_of<M> / linked_format().
+#include "nros/serialization_format.hpp"
 // Phase 84.G8: node.hpp no longer pulls in the heavy entity headers —
 // each entity header carries its own out-of-line `Node::create_X<>()`
 // template definition. The umbrella pulls in every entity explicitly so
