@@ -64,7 +64,47 @@ def matches(pattern, path):
     return re.search(r"(^|/)" + rx + tail, path) is not None
 
 
+def self_test():
+    """Run on the NORMAL path — a negative control nobody runs is a comment.
+
+    The cases are the two mistakes this checker has actually made, not invented
+    ones. Its first version stripped the trailing `/` from every pattern, so a
+    directory-only rule matched FILES: it reported `build-all.mk` and 30 book
+    pages as lost, which are exactly the files the sync script's second fix
+    rescued. A gate that cries wolf about the previous fix is worse than no gate.
+    """
+    cases = [
+        # (pattern, path, should_match)
+        # directory-only must NOT match a file with that prefix
+        ("build-*/", "build-all.mk", False),
+        ("build-*/", "book/src/internals/build-system.md", False),
+        # ... but MUST match a file inside such a directory
+        ("build-*/", "packages/cli/build-support/submodule_watch.rs", True),
+        ("build/", "packages/cli/build/out.o", True),
+        # anchored patterns bind at the root only
+        ("/tmp/", "tmp/x.sh", True),
+        ("/tmp/", "packages/tmp/x.sh", False),
+        # a non-directory pattern still matches a file
+        ("target-*/", "examples/a/target-zenoh/bin", True),
+    ]
+    bad = 0
+    for pattern, path, want in cases:
+        got = matches(pattern, path)
+        if got != want:
+            print(
+                f"self-test FAILED: {pattern!r} vs {path!r} -> {got}, want {want}",
+                file=sys.stderr,
+            )
+            bad += 1
+    if bad:
+        return False
+    print(f"check-box-sync-covers-tracked-source self-test: OK ({len(cases)} shape(s))")
+    return True
+
+
 def main() -> int:
+    if not self_test():
+        return 1
     tracked = subprocess.run(
         ["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True
     ).stdout.split()
