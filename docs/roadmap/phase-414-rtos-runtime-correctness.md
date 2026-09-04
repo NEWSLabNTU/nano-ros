@@ -258,3 +258,28 @@ recorded guesses get re-run.
 
 It does not add tests, lanes or gates. Every one of these already has a failing
 test; the problem is that nothing was accountable for making them pass.
+
+
+## Adopted issues (2026-09-04) — three more that reproduce on an RTOS
+
+This phase opened as a home for five runtime failures with no owner. Three more
+were filed since and had none either. They meet the same admission test: the
+image builds, links and boots, and then does the wrong thing.
+
+* **[#0997](../issues/0997-island-announces-spdp-once-then-lease-expires.md)** —
+  the timed-event tree empties itself on FreeRTOS: the SPDP resend is scheduled
+  and never lands. Same platform and layer as W1.
+* **[#1004](../issues/1004-an536-image-fails-to-boot-transport-error.md)** — the
+  an536 boot failures on this host were HOST LOAD, not a code regression. Kept
+  rather than closed because the retraction is the finding: it is the third time
+  a load artefact was filed as a defect here, and the phase's own W1 and W5 are
+  two of the others.
+* **[#0968](../issues/0968-tier2-runtime-failures-unreproduced.md)** — tier 2
+  has ~12 runtime e2e failures on main, unreproduced. This one is the phase's
+  admission test applied at scale: *reproduces solo* is what makes a failure
+  worth an owner, and nobody has run the tier to find out which of the twelve do.
+
+**Read #1004 before diagnosing any of them.** Its retraction, and the four
+retracted issues CLAUDE.md records from a sweep whose fixtures predated the fix,
+are the standing reason to check artifact mtimes against the code being blamed
+before writing a cause down.

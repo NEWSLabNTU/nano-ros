@@ -309,3 +309,28 @@ Recorded because a cleanup pass is exactly where these get deleted by accident:
   stated outcome instead of silence.
 * `check-ci-no-verb-fallback` forbids one `just` verb falling back to another
   with `||` — the shell spelling of skip-and-report-success.
+
+
+## Adopted issues (2026-09-04) — gates that exist and cannot run
+
+Three open issues had no phase and belong to this one's premise from the other
+direction: this phase asks whether CI runs the process a user runs, and these
+are three places where a check CANNOT run at all, so its verdict is neither
+true nor false.
+
+* **[#1040](../issues/1040-gating-lanes-that-report-nothing-accumulate-reds.md)**
+  — `check-api-parity` runs in NO workflow and `check-build` only on dispatch.
+  A lane that reports nothing accumulates reds nobody sees.
+* **[#1043](../issues/1043-pin-gate-cannot-verify-uninitialised-submodule.md)**
+  — `check-submodule-pins` fails CLOSED on any submodule CI does not initialise,
+  so a whole class of pin bump could never pass the required lane. The workflow
+  half is fixed; the gate's message still reads as author error in CI, and
+  `check-lane-contracts` covers fixture stamps but not submodule object stores.
+* **[#0930](../issues/0930-built-qemu-can-be-stale-against-its-pin.md)** — the
+  built QEMU can be older than the commit `third-party/qemu/qemu` pins, and
+  nothing says so. Provisioning that silently disagrees with the pin is the same
+  failure one layer down.
+
+They are one class: **a gate whose result is unavailable is not a gate**, and
+this repo has now hit it four separate times (the `declared-qos-header` recipe
+lost in a rebase, `check-test-scripts-have-callers`'s own subject, and these).

@@ -175,3 +175,21 @@ holds the evidence, the item is *close it*.
 | [#0971](../issues/0971-take-sequence-cannot-say-why-it-stopped.md) | `take_sequence` cannot say why a drain stopped, and its two implementations disagree about it |
 | [#0976](../issues/0976-service-action-adapters-tested-only-against-ourselves.md) | five action adapters in the Cyclone service path reshape the CDR to match ROS 2, exercised only by nano-ros talking to itself. This is the VERIFICATION remainder W3 names |
 
+
+## Adopted issues (2026-09-04) — a backend that does not build in a shipped configuration
+
+Two open issues had no phase and are the same statement: a backend must compile
+in the configurations the platform layer actually selects, and neither of these
+does.
+
+* **[#1023](../issues/1023-sertype-hosted-includes-break-freestanding.md)** —
+  `nros_sertype.cpp` includes `<memory>` and `<string>` unconditionally, so
+  cyclonedds cannot compile freestanding. Archived issue 0112's class at a new
+  site, with the sibling TU in the same directory already carrying the lesson.
+* **[#1021](../issues/1021-zenoh-pico-1-8-0-matching-off-build-break.md)** —
+  zenoh-pico 1.8.0 does not compile with `Z_FEATURE_MATCHING=0`, which is
+  exactly what nano-ros passes on Zephyr. Upstream's, carried on our patch line.
+
+They sit here rather than with the platform work because the contract they break
+is the RMW's: *the backend builds for every platform that declares it*. A
+configuration nobody can build is a contract nobody can check.

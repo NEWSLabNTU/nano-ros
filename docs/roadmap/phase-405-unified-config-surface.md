@@ -290,3 +290,13 @@ only reading the symbol caught it. **Before deleting anything in W1, read the
 declaration and find its effect**, including `select`, application code, and
 documentation that teaches it. The generator narrows where to look; it does not
 decide.
+
+
+## Adopted issue (2026-09-04)
+
+* **[#0941](../issues/0941-board-facts-soft-failure-hides-unreachable-site-config.md)**
+  — `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is
+  never reported. The issue names W6 of this phase as the CLASS fix for the
+  twelve instances and then says what W6 does not change: a consumer that asks
+  for facts about a board it cannot resolve still gets silence rather than an
+  error. Filed with no phase; it belongs to the surface W6 is cleaning.

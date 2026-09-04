@@ -1189,3 +1189,15 @@ holds the evidence, the item is *close it*.
 | [#0969](../issues/0969-cyclone-take-cdr-round-trip.md) | the Cyclone RMW deserializes every received sample and re-serializes it, so `take_serialized` costs a full round trip |
 | [#0969](../issues/0969-cyclone-take-cdr-round-trip.md) | the Cyclone RMW deserializes every received sample and re-serializes it, so `try_recv_raw` costs a full round trip. **Round trip removed; cost measured** — ~46 ns/message floor (176 ns at 16 KB). The allocation saving this row assumed did NOT appear: count unchanged, bytes a crossover at ~6 KB. Remaining: the third site, per 0976 |
 
+
+## Adopted issue (2026-09-04)
+
+* **[#1028](../issues/1028-nuttx-classified-hosted-takes-linux-queryable-budget.md)**
+  — NuttX is classified `hosted` because its `target_os` is not `"none"`, so
+  `runner.rs` picks the 32-slot queryable budget meant for a host. MEASURED on an
+  image with ZERO queryables: `SERVICE_BUFFERS` is 142,336 B of `.bss` against
+  35,584 B at the embedded budget — **106,752 B** wasted. Harmless on qemu-virt,
+  not harmless on a real part, which is this phase's whole subject.
+
+  It arrived as a by-product of an issue-0870 investigation and was filed
+  separately rather than buried in a killed lead. That is why it had no phase.
