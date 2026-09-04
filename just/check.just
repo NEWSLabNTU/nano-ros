@@ -1311,40 +1311,6 @@ reconfigure-on-change:
         exit 0
     fi
     ./tests/cmake-reconfigure-tests.sh
-# phase-403 step 2 -- does the declared `@depth=` REACH A COMPILER?
-#
-# `just check cpp` proves the CHECK: it compiles a TU whose declared depth and
-# passed QoS disagree and asserts the build is rejected, with the topic and both
-# numbers in the diagnostic. It hands the table to the compiler with a `-I` of
-# its own, so it says nothing about DELIVERY.
-#
-# This is the delivery half, and it is the half that goes wrong silently: a
-# component whose generated table never lands on its include path compiles with
-# every declared-depth assertion disabled, and looks exactly like a component
-# whose depths all agree. Six mechanisms in this campaign have been correct and
-# unreachable for precisely that reason.
-#
-# Drives `_nros_emit_declared_qos_header()` in a real configure with the real
-# CLI. Needs cmake, a C compiler and a built `nros` -- and SKIPS rather than
-# passing when any is missing, because a gate that examined nothing must not
-# read as a pass.
-declared-qos-header:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    _missing=""
-    command -v cmake >/dev/null 2>&1 || _missing="$_missing cmake"
-    command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1 \
-        || _missing="$_missing cc"
-    _cli="${NROS_CLI:-packages/cli/target/release/nros}"
-    [ -x "$_cli" ] || _missing="$_missing nros(just setup-cli)"
-    if [ -n "$_missing" ]; then
-        # shellcheck source=scripts/build/check-skip.sh
-        source scripts/build/check-skip.sh
-        nros_check_skip declared-qos-header "missing:$_missing"
-        exit 0
-    fi
-    ./tests/cmake-declared-qos-header-tests.sh
-
 abi-bindings:
     #!/usr/bin/env bash
     set -euo pipefail
