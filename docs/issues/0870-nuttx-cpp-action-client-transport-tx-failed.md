@@ -477,3 +477,82 @@ to ask for four rounds. RAM cost: none.
 `nsh_main` before `main`, and `nsh_main` is in the built ELF. Without that the
 four `nros_error!` calls would sit in the pre-init ring and never print. The
 plan is sound; only the binaries are wrong.
+
+**Corroborated 2026-09-04 from a second session, on freshly rebuilt fixtures:**
+`strings` on `cpp_action_client` and `c_action_client` (both rebuilt 10:38 that
+day) finds all four diagnostics, 1 occurrence each. So the retraction above is
+right and the standing plan holds — the diagnostics ARE armed in a current
+build. The section heading still says otherwise; the body is what to believe.
+
+## 2026-09-04 — the C-vs-C++ asymmetry is EXPLAINED, and it is not about C++
+
+This issue's most recent measurement — "**C: 3/3 PASS at 26.4-27.2 s. C++:
+44-50 s.** The C++ image takes ~20 s longer for the same action round trip …
+the first evidence of any kind about the asymmetry" — has a cause, and it is
+the EMULATOR, not the binding. Filed as **issue 1034**; the part that matters
+here is that this lead is dead.
+
+The harness resolves `qemu_system_arm_path()` to the `nros setup` store build
+(`~/.nros/sdk/qemu/11.0.0-nros2`) in preference to `PATH`. On that build, a
+NuttX arm image whose `.bss` is folded into the same `PT_LOAD` as its `.data`
+takes **~19.6 s of CPU-bound emulator work before the guest's first console
+byte**; on the distro `qemu-system-arm` 6.2.0 the same image starts in 0.05 s.
+The correlation with program-header shape is exact across all 19 NuttX arm
+images in the tree, and the stall is linear in the zero-fill size.
+
+Instrumented cell timings on this tree:
+
+    nuttx C   action: server banner 20.14 s | client collect  3.51 s | cell 26.1 s
+    nuttx C++ action: server banner 19.94 s | client collect 23.10 s | cell 45.7 s
+
+Both servers pay the stall. `c/action-client` does NOT (it is one of two C
+images linked with `.bss` in its own segment); `cpp/action-client` does. So the
+C cell pays it once and the C++ cell twice, and **the entire ~20 s "asymmetry"
+is one emulator stall**. With the stall gone — hand-run on QEMU 6.2.0, router
+up, server first — the C++ client completes goal → accept → feedback → result in
+**2.2 s**, and there is no asymmetry left to explain.
+
+`c/action-client` and `c/action-server` differ by 16 bytes of `.bss`, and one
+stalls while the other does not, so nothing about the C++ toolchain, the C++
+binding or the declaration burst is implicated by the timing.
+
+### What this does and does not settle
+
+* **Settled, and removed as a lead:** the "C++ is slower for the same round
+  trip" measurement. It measured the emulator. Any future C-vs-C++ story must
+  not cite it.
+* **NOT settled:** the `-100` / `Generic → ConnectionFailed` failure itself.
+  Nothing here reproduces it, and no mechanism connecting the stall to the
+  failure is offered — that would be a fifth guess, and this issue has already
+  burned four.
+* **Worth knowing for the next experiment:** this issue records that the fault
+  "is timing-sensitive and moves with image CONTENT". Issue 1034 is a mechanism
+  by which 16 bytes of image content move timing by 20 seconds. So an experiment
+  that compares two builds is comparing two emulation regimes unless the
+  `PT_LOAD` shape is checked first (`arm-none-eabi-readelf -l <image> |
+  grep '^  LOAD'`), and a hand-run reproduction is not comparable to a cell
+  unless it uses the same emulator binary — the two differ by 400x here.
+
+### The reproduction attempt is now ~10x cheaper, and it was spent
+
+Issue 1034's finding is directly useful here: with `QEMU_SYSTEM_ARM=/usr/bin/
+qemu-system-arm` the cell runs in **4.7 s instead of 46 s**, because it skips two
+~19.6 s emulator stalls. So the "run it many times and wait for a failure"
+strategy — which this issue chose in September as "the cheapest honest option" —
+costs a tenth of what it did.
+
+Spent immediately, `--retries 0`:
+
+| batch | condition | result |
+| --- | --- | --- |
+| 24 runs | idle host, QEMU 6.2.0 | 24/24 PASS, 4.6-4.8 s each |
+| 12 runs | 32 busy loops, load avg 22 | 12/12 PASS |
+
+With the 28 runs already recorded, that is **64 consecutive passes**. The
+reported 2-in-3 rate does not hold for any build or emulator measured here.
+
+**Stated bound:** these 36 runs are on the DISTRO emulator, which is not the one
+CI or a default `just` invocation uses, so they do not extend the store-QEMU
+evidence — they extend the evidence that the C++ image itself completes the
+round trip. That is deliberate: a cheap batch on a different emulator is worth
+more than no batch, provided nobody later reads it as the same experiment.

@@ -91,5 +91,6 @@ fails if this block drifts.
 - **#1023** (rmw, build) — `nros_sertype.cpp` includes `<memory>` and `<string>`, so cyclonedds cannot compile for a freestanding target See `1023-*`.
 - **#1025** (build, testing) — ESP32 flash images can never be built: the packer asks for the group dir with the row's env stripped, so it looks in a directory the build stopped using See `1025-*`.
 - **#1028** ([rmw, memory, build]) — NuttX is classified `hosted` because its `target_os` is not `\"none\"`, so it takes the Linux 32-queryable budget: 142,336 B of `.bss` in an image with zero queryables See `1028-*`.
+- **#1034** (testing, tooling) — The provisioned QEMU 11 spends ~19.6 s materialising a NuttX image's `.bss` before the guest runs, and that stall is the whole C-vs-C++ asymmetry in issue 0870 See `1034-*`.
 
 <!-- END GENERATED open-issue list -->

@@ -1,6 +1,6 @@
 # Phase 414 — RTOS runtime correctness: the e2e failures that reproduce SOLO
 
-**Status (2026-09-03). W2 and W4 CLOSED, W3 advanced, W1 rediagnosed.** Opened
+**Status (2026-09-04). W1/W2/W4/W5 CLOSED. W3 is the only item left, and its timing lead is withdrawn (issue 1034).** Opened
 as a HOME, not as a plan: five open issues had no phase that could hold them,
 and the survey that found that is the whole reason this doc exists — an issue
 with no home is an issue nobody is accountable for, the same shape as a gate
@@ -113,6 +113,22 @@ Each is an existing issue. The item is "close it"; the issue holds the evidence.
   Also: the Aug-21 binaries in this tree predate the Aug-29 instrumentation that
   produced this issue's quoted output, so "it passes now" is not a delta against
   "it failed then" — different images, not diffable.
+  **2026-09-04: the asymmetry is EXPLAINED and withdrawn as a lead — issue
+  1034.** It measured the EMULATOR. The harness prefers the `nros setup` store
+  QEMU (`11.0.0-nros2`) over `PATH`, and on that build a NuttX arm image whose
+  `.bss` shares a `PT_LOAD` with its `.data` burns **~19.6 s of CPU before the
+  guest's first console byte**; on the distro QEMU 6.2.0 it starts in 0.05 s.
+  Correlation with program-header shape is exact over all 19 NuttX arm images,
+  and the cost is linear in the zero-fill size (~31 KB/s). Instrumented: both
+  action SERVERS stall, `cpp/action-client` stalls, `c/action-client` does not —
+  so the C cell pays one stall (26.1 s) and the C++ cell two (45.7 s), and the
+  difference IS the stall. Hand-run on 6.2.0 the C++ round trip is **2.2 s**.
+  `c/action-client` and `c/action-server` differ by 16 bytes of `.bss`.
+  The `-100` failure is UNTOUCHED by this — no mechanism connecting stall to
+  failure is offered. What changes is method: this issue says the fault "moves
+  with image CONTENT", and 1034 is a way 16 bytes of content move timing by 20 s,
+  so a two-build comparison must check the `PT_LOAD` shape, and a hand-run is not
+  comparable to a cell unless it runs the same emulator binary.
 * **W4 — [issue 0847](../issues/archived/0847-xrce-entity-drop-after-session-close.md).
   CLOSED.** The fix is a refcount (`live_entities` + `session_closed`), applied
   to all four entity destructors, with each checking `xrce_session_is_closed`
@@ -126,6 +142,10 @@ Each is an existing issue. The item is "close it"; the issue holds the evidence.
   contrast is what settled the shape.
   Gated by `tests/entity_lifetime.c` under `just check rmw-xrce`, asserting the
   EXIT STATUS as the issue required, and mutation-checked.
+* **W5 — [issue 0741](../issues/archived/0741-xrce-service-reply-history-payload-too-small.md),
+  RESOLVED 2026-09-03 — the 28-byte sample is a FOREIGN peer's, on another
+  host.** Everything below is the investigation that got there, kept because
+  four of its steps were dead ends worth not repeating.
 * **W5 — [issue 0741](../issues/0741-xrce-service-reply-history-payload-too-small.md),
   `test_xrce_service_ros2_client` fails on main — Fast-DDS refuses the
   request.** INTEROP with a real ROS 2 peer.
@@ -176,6 +196,16 @@ Each is an existing issue. The item is "close it"; the issue holds the evidence.
 
 **Progress 2026-09-03.** W2 and W4 closed; W5's routing decided (stays);
 W1 and W3 rediagnosed with their standing guesses killed by measurement.
+
+**Progress 2026-09-04. W5 is CLOSED** — issue 0741 resolved: the 28-byte sample
+on the reply topic belongs to a FOREIGN peer on another host, which is also what
+issue 1009 fixed (the interop bus is now pinned to loopback on both sides). The
+inference this phase recorded about the Agent mis-slicing a SampleIdentity stays
+refuted; the sample was never ours to explain.
+
+**W3 is the phase's only open item.** Its C-vs-C++ asymmetry is now explained
+and withdrawn (issue 1034, above); its `-100` failure still needs a failing run,
+and the instrumentation for that is armed and linked.
 
 The shared-cause answer: **NO.** W2 was harness ordering and is already fixed;
 W3 fails inside construction, before any interaction with the server exists, so
