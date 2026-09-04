@@ -17,6 +17,18 @@ pub const DEFAULT_ROS_DISTRO: &str = "humble";
 /// a caller can compare its own wait against it instead of guessing.
 pub const DEFAULT_ECHO_WINDOW: Duration = Duration::from_secs(10);
 
+/// How long a `ros2 topic pub` peer lives when the caller does not say
+/// (issue 1044) — the same horizon as [`DEFAULT_ECHO_WINDOW`] one role over.
+///
+/// A publisher's `timeout --foreground` is its LIFETIME too: it stops
+/// publishing when this expires, so a subscriber-side wait longer than this
+/// window is waiting on a peer that has already gone. Named for the same reason
+/// the echo window is — so the two numbers can be compared instead of guessed.
+///
+/// [`Ros2Process::topic_pub`] deliberately uses a longer 45 s window and says so
+/// at its own call site; this constant is the DDS/Cyclone family's default.
+pub const DEFAULT_PUB_WINDOW: Duration = Duration::from_secs(10);
+
 /// phase-304 W4 — is a specific ROS 2 distro installed under `/opt/ros/<distro>`?
 /// Distro-parametric so an edition lane (RFC-0056) can require iron/jazzy/rolling
 /// and `skip!` when absent, instead of everything assuming humble. Returns false
@@ -1266,6 +1278,10 @@ rclpy.spin(node)
     /// * `reliability` - QoS reliability ("reliable" or "best_effort")
     /// * `locator` - Zenoh locator (e.g., "tcp/127.0.0.1:7447")
     /// * `distro` - ROS distro (e.g., "humble")
+    ///
+    /// Lives for [`DEFAULT_ECHO_WINDOW`] — the subscriber's whole lifetime, not
+    /// a safety net (issue 1044), and buffered until exit like its
+    /// `Ros2DdsProcess` siblings.
     pub fn topic_echo_with_qos(
         topic: &str,
         msg_type: &str,
@@ -1274,8 +1290,9 @@ rclpy.spin(node)
         distro: &str,
     ) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
+        let secs = DEFAULT_ECHO_WINDOW.as_secs().max(1);
         let cmd = format!(
-            "{env_setup} && timeout --foreground 10 ros2 topic echo {topic} {msg_type} --qos-reliability {reliability}"
+            "{env_setup} && timeout --foreground {secs} ros2 topic echo {topic} {msg_type} --qos-reliability {reliability}"
         );
 
         Self::spawn_bash(
@@ -1305,8 +1322,9 @@ rclpy.spin(node)
         distro: &str,
     ) -> TestResult<Self> {
         let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
+        let secs = DEFAULT_PUB_WINDOW.as_secs().max(1);
         let cmd = format!(
-            "{env_setup} && timeout --foreground 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability {reliability}"
+            "{env_setup} && timeout --foreground {secs} ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability {reliability}"
         );
 
         Self::spawn_bash(
@@ -1443,6 +1461,18 @@ impl Ros2DdsProcess {
     }
 
     /// Start a ROS 2 DDS topic echo subscriber on a specific ROS domain.
+    ///
+    /// Lives for [`DEFAULT_ECHO_WINDOW`], and that window is this subscriber's
+    /// whole LIFETIME rather than a safety net — issue 1044. A caller whose own
+    /// wait is longer than it gets a truncated transcript and a failure that
+    /// reads like "no delivery"; a caller whose wait is shorter is fine.
+    ///
+    /// Unlike [`Ros2Process::topic_echo_for`] this one does NOT set
+    /// `PYTHONUNBUFFERED=1`, so the timeout is also the FLUSH: `ros2 topic echo`
+    /// is a Python entry point and its `print`s sit in a block buffer until the
+    /// process exits. Every caller therefore drains to completion, which is why
+    /// the window is not a parameter here — making it one without unbuffering
+    /// would let a caller ask for a wait that can never produce output.
     pub fn topic_echo_with_domain(
         topic: &str,
         msg_type: &str,
@@ -1450,8 +1480,9 @@ impl Ros2DdsProcess {
         domain_id: u8,
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
+        let secs = DEFAULT_ECHO_WINDOW.as_secs().max(1);
         let cmd = format!(
-            "{env_setup} && timeout --foreground 10 ros2 topic echo {topic} {msg_type} --qos-reliability reliable"
+            "{env_setup} && timeout --foreground {secs} ros2 topic echo {topic} {msg_type} --qos-reliability reliable"
         );
         Self::spawn_bash(&cmd, format!("ros2-dds topic echo {topic}"))
     }
@@ -1484,8 +1515,9 @@ impl Ros2DdsProcess {
         domain_id: u8,
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_dds_with_domain(distro, domain_id);
+        let secs = DEFAULT_PUB_WINDOW.as_secs().max(1);
         let cmd = format!(
-            "{env_setup} && timeout --foreground 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
+            "{env_setup} && timeout --foreground {secs} ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
         );
         Self::spawn_bash(&cmd, format!("ros2-dds topic pub {topic}"))
     }
@@ -1526,6 +1558,9 @@ impl Ros2DdsProcess {
     // RTPS to nano-ros's CycloneDDS backend on a shared ROS_DOMAIN_ID. ---
 
     /// CycloneDDS topic echo subscriber on a specific ROS domain.
+    ///
+    /// Same [`DEFAULT_ECHO_WINDOW`] lifetime and the same buffered-until-exit
+    /// behaviour as [`Self::topic_echo_with_domain`] — see its note (issue 1044).
     pub fn topic_echo_cyclonedds_with_domain(
         topic: &str,
         msg_type: &str,
@@ -1533,8 +1568,9 @@ impl Ros2DdsProcess {
         domain_id: u8,
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
+        let secs = DEFAULT_ECHO_WINDOW.as_secs().max(1);
         let cmd = format!(
-            "{env_setup} && timeout --foreground 10 ros2 topic echo {topic} {msg_type} --qos-reliability reliable"
+            "{env_setup} && timeout --foreground {secs} ros2 topic echo {topic} {msg_type} --qos-reliability reliable"
         );
         Self::spawn_bash(&cmd, format!("ros2-cyclone topic echo {topic}"))
     }
@@ -1549,8 +1585,9 @@ impl Ros2DdsProcess {
         domain_id: u8,
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
+        let secs = DEFAULT_PUB_WINDOW.as_secs().max(1);
         let cmd = format!(
-            "{env_setup} && timeout --foreground 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
+            "{env_setup} && timeout --foreground {secs} ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
         );
         Self::spawn_bash(&cmd, format!("ros2-cyclone topic pub {topic}"))
     }

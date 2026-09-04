@@ -380,6 +380,23 @@ pub const ROS2_ACTION_SERVER_READY: &str = "SERVER READY";
 /// `Result of add_two_ints: 5`).
 pub const SERVICE_RESULT_PREFIX: &str = "Result of add_two_ints:";
 
+/// What a service client prints when a call fails and it will retry
+/// (issue 1044 — moved here from a file-local `const` in `tests/services.rs`).
+///
+/// There are TWO of these because the example groups word it differently, and a
+/// test that greps the wrong one waits out its whole budget against a client
+/// that is reporting the failure perfectly well. This is the RUST wording,
+/// shared verbatim by the `qemu-arm-nuttx`, `qemu-arm-freertos` and
+/// `threadx-linux` copies.
+pub const SERVICE_CALL_FAILED_MARKER: &str = "Service call failed, retrying:";
+
+/// The C and C++ groups' wording of [`SERVICE_CALL_FAILED_MARKER`]
+/// (`"Service call failed with error %d"`, so only the prefix is stable).
+///
+/// Verified across all six C/C++ service-client copies; no test greps it yet,
+/// and it is here so the next one does not invent a third spelling.
+pub const SERVICE_CALL_FAILED_MARKER_C: &str = "Service call failed with error";
+
 /// The exact service client result line for `sum`
 /// (`"Result of add_two_ints: N"`).
 pub fn service_result_line(sum: impl std::fmt::Display) -> String {

@@ -737,6 +737,44 @@ const ROUTER_SESSION_LOG_FILTER: &str = "zenoh_transport=debug";
 /// platform whose bring-up re-dials); a lapse on a TIMER cannot hide under it,
 /// because a lease of `L` costs one re-open per node per `2L` and issue 0906's
 /// 10 s lease measured FIVE in this cell's window.
+///
+/// # The blind spot, stated (issue 1044)
+///
+/// This is a COUNT, and the thing it stands in for is a RATE. Work the
+/// arithmetic: a client lease `L < 30 s` cannot hear the router's 30 s
+/// keep-alive, so each node re-dials every `2L`, and in a `W`-second window each
+/// contributes about `floor(W / 2L)` re-opens on top of its first session.
+///
+/// At `W = 60`:
+///
+/// | lease | re-opens per node | sessions | verdict |
+/// | ---: | ---: | ---: | --- |
+/// | 10 s | 3 | ~8 (5 measured) | fails |
+/// | 20 s | 1 | 4 | fails |
+/// | 29 s | 1 | 4 | fails |
+/// | >= 30 s | 0 | 2 | passes, correctly |
+///
+/// So the band is covered on paper — but only because BOTH nodes lapse inside
+/// the window. They do not start together: the listener is launched after the
+/// talker's readiness banner, so for a lease near the top of the band one node's
+/// single lapse can fall past the window's end, giving 3 sessions and a PASS on
+/// a build that is broken. The exposure is to start SKEW, not to the lease.
+///
+/// Two ways to close it, neither taken here:
+///
+/// * a longer `W` — at 120 s every lease under 30 s produces at least two
+///   re-opens per node, so skew cannot hide one. It doubles the cell.
+/// * counting per NODE instead of in aggregate, which would let the slack be
+///   "one re-open EACH" and make skew irrelevant. **Not available**: the client
+///   zid is regenerated on every session open — `zpico.c`'s
+///   `zpico_next_session_zid_counter()` mixes a monotonic counter and the clock
+///   into it — so the router log cannot tell one node re-dialling twice from two
+///   nodes dialling once, and grouping by zid would read as more nodes rather
+///   than more sessions.
+///
+/// The gaps between consecutive opens are printed on both paths below, so a
+/// human reading a run can see the period even where the count cannot assert on
+/// it: evenly spaced opens are a lapse, one late outlier is a drop.
 const MAX_ROUTER_SESSIONS: usize = 3;
 
 /// Turn on the router's accept log for this test process.
@@ -752,6 +790,41 @@ fn enable_router_session_log() {
         // SAFETY: single-threaded, once, at the top of the test.
         unsafe { std::env::set_var("ZENOHD_LOG", ROUTER_SESSION_LOG_FILTER) };
     }
+}
+
+/// Seconds between consecutive `ROUTER_SESSION_MARKER` lines, rendered for a
+/// human (issue 1044).
+///
+/// The count assertion below cannot separate "one node re-dialled on a timer"
+/// from "a link dropped once" — see [`MAX_ROUTER_SESSIONS`] — but the SPACING
+/// can: a lapse repeats every `2 x lease`, a drop happens once. This is a
+/// DIAGNOSTIC and never an assertion: it parses `HH:MM:SS` out of the router's
+/// third-party log lines, which is exactly the kind of text RFC-0075 says we do
+/// not control, so a parse miss must cost information and not a verdict.
+fn session_open_spacing(log: &str) -> String {
+    let secs: Vec<f64> = log
+        .lines()
+        .filter(|l| l.contains(ROUTER_SESSION_MARKER))
+        .filter_map(|l| {
+            let t = l.split('T').nth(1)?;
+            let mut parts = t.split(':');
+            let h: f64 = parts.next()?.parse().ok()?;
+            let m: f64 = parts.next()?.parse().ok()?;
+            let rest = parts.next()?;
+            let s: f64 = rest
+                .get(..rest.find(|c: char| !c.is_ascii_digit() && c != '.')?)?
+                .parse()
+                .ok()?;
+            Some(h * 3600.0 + m * 60.0 + s)
+        })
+        .collect();
+    if secs.len() < 2 {
+        return "n/a (fewer than two parsable timestamps)".to_string();
+    }
+    secs.windows(2)
+        .map(|w| format!("{:.1}s", w[1] - w[0]))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// The pub/sub cell's SECOND question: did the two nodes hold ONE session each,
@@ -787,8 +860,12 @@ fn assert_no_session_churn(platform: Platform, lang: Lang, port: u16, window: Du
     });
     let sessions = count_pattern(&log, ROUTER_SESSION_MARKER);
     eprintln!(
-        "[{} {}] router sessions opened: {} (max {})",
-        platform, lang, sessions, MAX_ROUTER_SESSIONS
+        "[{} {}] router sessions opened: {} (max {}); gaps between opens: {}",
+        platform,
+        lang,
+        sessions,
+        MAX_ROUTER_SESSIONS,
+        session_open_spacing(&log)
     );
     assert!(
         sessions >= 2,
@@ -813,10 +890,15 @@ fn assert_no_session_churn(platform: Platform, lang: Lang, port: u16, window: Du
          `Z_TRANSPORT_LEASE_MS` in `packages/rmw/zenoh/nros-zpico-build/src/lib.rs` \
          (60_000) and what the leaf actually BAKED — issue 1005: the staleness probe does \
          not watch that constant, so a stale image can carry an old value. Sessions:\n{}",
-        log.lines()
-            .filter(|l| l.contains(ROUTER_SESSION_MARKER))
-            .collect::<Vec<_>>()
-            .join("\n"),
+        format!(
+            "{}\n\nGaps between opens: {} — evenly spaced means a lease lapsing on a \
+             timer (the period is 2 x lease); one outlier means a single dropped link.",
+            log.lines()
+                .filter(|l| l.contains(ROUTER_SESSION_MARKER))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            session_open_spacing(&log)
+        ),
     );
 }
 
