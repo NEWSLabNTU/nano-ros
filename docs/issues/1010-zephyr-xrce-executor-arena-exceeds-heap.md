@@ -1,7 +1,7 @@
 ---
 id: 1010
-title: "The derived executor arena is one allocation ~6x larger than the heap it
-  comes from, so every zephyr XRCE example dies at boot"
+title: "Every zephyr XRCE example dies at boot on a ~330-428 KB single
+  allocation — NOT the executor arena (see the 2026-09-04 correction)"
 status: open
 type: bug
 area: zephyr, platform, examples
@@ -88,3 +88,80 @@ other direction; this is the same complaint one level up.
       build fails naming both numbers.
 * [ ] The nine `example_e2e` XRCE cells boot.
 * [ ] 0968's zephyr section is re-measured against images that boot.
+
+## CORRECTION 2026-09-04 — the executor arena is NOT the allocation that fails
+
+This issue's title and diagnosis are wrong, and the fix they imply would have
+broken three passing cells. Both are retracted here, with the measurements.
+
+### What this issue claimed
+
+That `Executor::open` asks for the DERIVED EXECUTOR ARENA as one block, that the
+block is ~6x the `NROS_ZEPHYR_HEAP_SIZE` arena it comes from, and that the fix is
+a build-time comparison of the two — "an image whose arena cannot hold its
+executor should fail to LINK, not at boot".
+
+I implemented exactly that: a check in `nros-node`'s build script comparing the
+derived `ARENA_SIZE` against `CONFIG_NROS_ZEPHYR_HEAP_SIZE`, panicking with both
+numbers. It works — it fires end to end on a real build. It is also wrong, and
+it is not committed.
+
+### Measured, and it refutes the premise twice
+
+`build-cpp-talker-zenoh` and `build-cpp-talker-xrce` carry BYTE-IDENTICAL
+executor and heap knobs (`CONFIG_NROS_EXECUTOR_MAX_CBS=16`,
+`CONFIG_NROS_ZEPHYR_HEAP_SIZE=65536`, `CONFIG_NROS_EXECUTOR_ARENA_SIZE=0`), and
+running the derivation against each `.config`:
+
+| image | derived `ARENA_SIZE` | heap | runtime |
+| --- | --- | --- | --- |
+| zenoh cpp talker | **74240** | 65536 | **passes** (`case_0{1,2,3}_zenoh_*_pubsub_e2e`, 3/3) |
+| xrce cpp talker | **74240** | 65536 | dies: `HEAP EXHAUSTED: request 329648` |
+
+Two independent refutations:
+
+1. **`arena > heap` is not fatal.** 74240 exceeds 65536 on the zenoh image, which
+   passes. The comparison predicts nothing, and a gate built on it fails working
+   images — which is what mine would have done to those three cells.
+2. **The arena cannot explain the failure.** It is the SAME size for both RMWs,
+   and only XRCE dies. 329648 is not 74240, so the block that exhausts the heap
+   is not the arena.
+
+### What is actually true
+
+The fatal allocation is **RMW-specific and still unidentified**. The two configs
+differ only in RMW knobs (`NROS_BATCH_UNICAST_SIZE`, `NROS_FRAG_MAX_SIZE`,
+`NROS_GRAPH_CACHE_SIZE`, … on the zenoh side; the XRCE set on the other), and no
+single knob is anywhere near 329648 — so it is a composite the XRCE path
+requests during `Executor::open`.
+
+The workload dependence recorded above still holds and is now the useful clue:
+329648 for pubsub, 423808/427952 for service and action. Whatever it is scales
+with entity count on the XRCE side.
+
+### Where to start, and where NOT to
+
+Start at what the XRCE transport allocates during `Executor::open` — not at the
+arena derivation, and not at `NROS_EXECUTOR_*`. The RMW is the only differing
+variable in a controlled A/B.
+
+Do not re-implement the arena-vs-heap gate. It is written, it works, and it is
+wrong; this section exists so the next person does not spend the afternoon
+rediscovering that.
+
+### Method note
+
+The gate looked right, fired correctly on a synthetic config, and produced a
+clean error message. What killed it was asking whether it would fail images that
+currently PASS — one command, before committing anything. The three zenoh cells
+answered it.
+
+(Also worth knowing for the next gate: a `#[cfg(test)]` module inside `build.rs`
+is never compiled by `cargo test`. The tests I wrote there would have been dead
+code; they had to move to `nros-zephyr-build` to run at all.)
+
+## Revised acceptance
+
+* [ ] Identify the XRCE-side allocation that requests ~330-428 KB, by workload.
+* [ ] The nine zephyr XRCE cells boot.
+* [ ] ~~A link-time gate comparing executor arena to heap~~ — refuted above.
