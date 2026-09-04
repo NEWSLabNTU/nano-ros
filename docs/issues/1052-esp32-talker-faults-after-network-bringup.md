@@ -857,3 +857,41 @@ Cause established and demonstrated both directions. Remaining work is the fix
 ladder above — and item 1, the `.stack` floor gate, is the one that matters: this
 image shipped with an 18 KB stack against a comment budgeting ~67 KB, and nothing
 said a word.
+
+
+## Both images now clear the floor on what they DECLARE (2026-09-04)
+
+The listener was carried as recorded debt when the gate landed. It is fixed, and
+the table is empty:
+
+| image | declares | before | after |
+| --- | --- | ---: | ---: |
+| `esp32_qemu_talker` | 1 pub, 1 timer | 18,572 B | **49,148 B** |
+| `esp32_qemu_listener` | 1 sub | 22,060 B | **52,636 B** |
+
+Both against a 32,768 B floor; `DEBT` in `check-stack-floor.py` is now empty.
+
+The listener declared exactly one subscription and paid a budget of 8
+(`SMALL_PAYLOADS`, 32 KB), plus `SERVICE_BUFFERS` for services it never declares.
+Setting `ZPICO_MAX_SUBSCRIBERS = "1"` returns 30,576 B of stack. Verified at
+runtime, not only at link: it boots, logs `Subscriber created for topic:
+/chatter`, and takes no fault — a budget of 1 is enough for a leaf that declares
+1.
+
+The gate proved itself on the way through. Raising the listener tripped
+`EXCEEDS its recorded debt of 22,060 B` and refused the build until the entry was
+deleted, which is what a ceiling-that-may-only-fall is for: an improvement is not
+allowed to sit quietly in a table that says the image is broken.
+
+### The hand-maintenance is now issue 1061
+
+Three rows in `fixtures.toml` now restate, by hand and in another file, what
+`register` already says. `entity_inventory.rs` computes exactly these numbers but
+publishes them only as CMake variables, and these leaves are pure-cargo — so they
+take `zpico-sys`'s compiled-in defaults no matter what they declare. Filed as
+**1061**; the queryable half of the same table was already applied "a row too
+narrowly the first time", which is that failure mode having happened once.
+
+`check-stack-floor.py` bounds the damage in the meantime: a leaf that gains an
+entity without gaining budget fails at build time instead of becoming a wild jump
+at runtime.

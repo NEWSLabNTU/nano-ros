@@ -3209,7 +3209,12 @@ platform = "qemu-esp32-baremetal"
 lang = "rust"
 dir = "examples/qemu-esp32-baremetal/rust/listener"
 skip_probe = true
-env = { ZPICO_MAX_QUERYABLES = "2" }  # see the talker row above
+# ZPICO_MAX_SUBSCRIBERS: issue 1052, see the talker row. This leaf declares
+# exactly ONE subscription and no publishers/services/actions, but the default
+# budget of 8 links SMALL_PAYLOADS at 32 KB. `.bss` is subtracted from the stack
+# on this board, so that budget was 28 KB of stack the image could not spend.
+# 1 is what it declares, and the gate below is what keeps it honest.
+env = { ZPICO_MAX_QUERYABLES = "2", ZPICO_MAX_SUBSCRIBERS = "1" }
 
 [[fixture]]
 id = "qemu-esp32-baremetal-logging-smoke"
