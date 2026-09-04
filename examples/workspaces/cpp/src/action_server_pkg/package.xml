@@ -6,5 +6,5 @@
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
   <depend>example_interfaces</depend>
-  <export><build_type>cmake</build_type></export>
+  <export><build_type>nros_cmake</build_type></export>
 </package>

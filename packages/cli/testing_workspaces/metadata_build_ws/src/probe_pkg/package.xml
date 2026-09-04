@@ -6,4 +6,7 @@
   <maintainer email="dev@example.com">nano-ros</maintainer>
   <license>Apache-2.0</license>
   <buildtool_depend>ament_cargo</buildtool_depend>
+  <export>
+    <build_type>nros_cargo</build_type>
+  </export>
 </package>

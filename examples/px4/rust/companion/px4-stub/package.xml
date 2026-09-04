@@ -13,6 +13,6 @@
        [patch.crates-io] row pins it to generated/px4_msgs. -->
 
   <export>
-    <build_type>ament_cargo</build_type>
+    <build_type>nros_cargo</build_type>
   </export>
 </package>

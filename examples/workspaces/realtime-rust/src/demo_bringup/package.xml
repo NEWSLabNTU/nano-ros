@@ -5,4 +5,7 @@
   <description>Phase 228.G fixture multi-tier bringup</description>
   <maintainer email="dev@example.com">dev</maintainer>
   <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
 </package>

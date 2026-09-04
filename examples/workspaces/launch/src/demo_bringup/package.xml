@@ -5,4 +5,7 @@
   <description>phase-263 B5 advanced-launch bringup</description>
   <maintainer email="dev@example.com">dev</maintainer>
   <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cargo</build_type>
+  </export>
 </package>

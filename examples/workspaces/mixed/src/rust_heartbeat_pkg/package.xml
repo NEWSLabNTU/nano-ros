@@ -7,4 +7,7 @@
   <license>Apache-2.0</license>
   <buildtool_depend>cargo</buildtool_depend>
   <depend>nros</depend>
+  <export>
+    <build_type>nros_cmake</build_type>
+  </export>
 </package>

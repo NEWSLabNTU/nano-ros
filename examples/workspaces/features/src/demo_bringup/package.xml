@@ -7,6 +7,6 @@
   <license>Apache-2.0</license>
   <exec_depend>c_param_talker_pkg</exec_depend>
   <export>
-    <build_type>cmake</build_type>
+    <build_type>nros_cmake</build_type>
   </export>
 </package>

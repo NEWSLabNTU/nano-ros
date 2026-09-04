@@ -10,6 +10,6 @@
   <depend>example_interfaces</depend>
 
   <export>
-    <build_type>ament_cargo</build_type>
+    <build_type>nros_cmake</build_type>
   </export>
 </package>
