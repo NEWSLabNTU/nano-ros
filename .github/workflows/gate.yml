@@ -406,11 +406,28 @@ jobs:
       # this saves 79 s of a ~5 min gate, and `check-fast` is buildless and
       # source-free by construction (its CLI-touching gates skip gracefully
       # when the CLI is absent).
+      # BOTH target dirs — phase-413.
+      #
+      # `nros-launch-resolve` is its OWN cargo workspace (deliberately: the
+      # justfile comment says its dependency graph stays separate from the main
+      # CLI's), so it builds into `packages/cli/nros-launch-resolve/target` and
+      # this cache — pointed only at `packages/cli/target` — never saw it. It
+      # was recompiled from scratch on every merge group.
+      #
+      # MEASURED on run 33834957224, a successful `merge_group` gate totalling
+      # 20.4 min: "Build nros-launch-resolve" was 2.22 min of it, 11%, spent
+      # rebuilding something whose sources had not changed. It exists solely so
+      # `check cli-tests` can shell out to it.
+      #
+      # The key already hashes `packages/cli/**`, which covers this crate's
+      # sources, so a change to it still invalidates the entry.
       - name: Cache CLI build (compile tier)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
         uses: actions/cache@v4
         with:
-          path: packages/cli/target
+          path: |
+            packages/cli/target
+            packages/cli/nros-launch-resolve/target
           key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
           restore-keys: |
             nros-cli-${{ runner.os }}-
