@@ -135,9 +135,67 @@ fn drain_into<R: Read>(src: &mut R, buffer: &mut [u8], dst: &mut String) -> bool
 /// ```
 pub struct QemuProcess {
     handle: Child,
+    /// The exact command this process was started with — see
+    /// [`QemuProcess::command_line`].
+    cmdline: String,
+}
+
+/// Render a spawned command as a line a human can paste into a shell.
+///
+/// Issue 0877 — "run it by hand with the harness's own QEMU arguments" is only
+/// a valid experiment if the hand run uses the harness's own QEMU BINARY, and
+/// nothing here ever said which one that is. [`qemu_system_arm_path`] prefers
+/// `build/qemu/bin/qemu-system-arm` (our LAN9118 flow-control patch, issues
+/// 0830 / 0917) over the `qemu-system-arm` a shell resolves from `$PATH`, so
+/// copying the ARGUMENTS alone silently swaps the emulated NIC's RX flow
+/// control for a different implementation — the one component a delivery
+/// failure is most likely to be about. Recording the resolved program next to
+/// its arguments makes the two runs comparable.
+///
+/// Quoting is the conservative kind: anything outside a known-safe set is
+/// single-quoted, so the line is pasteable rather than merely readable.
+pub(crate) fn render_command(cmd: &Command) -> String {
+    fn quote(word: &str) -> String {
+        let safe = |c: char| c.is_ascii_alphanumeric() || "_-./=:,@%+".contains(c);
+        if !word.is_empty() && word.chars().all(safe) {
+            word.to_string()
+        } else {
+            format!("'{}'", word.replace('\'', r"'\''"))
+        }
+    }
+    let mut out = quote(&cmd.get_program().to_string_lossy());
+    for arg in cmd.get_args() {
+        out.push(' ');
+        out.push_str(&quote(&arg.to_string_lossy()));
+    }
+    out
 }
 
 impl QemuProcess {
+    /// Spawn `cmd`, recording the exact command line for failure messages.
+    ///
+    /// THE one spawn point for every `start_*` builder in this file, so a new
+    /// builder cannot forget to record what it ran (issue 0877).
+    fn spawn(mut cmd: Command) -> TestResult<Self> {
+        let cmdline = render_command(&cmd);
+        let handle = cmd.spawn()?;
+        Ok(Self { handle, cmdline })
+    }
+
+    /// The command line this QEMU was started with, pasteable into a shell.
+    ///
+    /// Assertion messages that report "the guest did nothing" must carry this:
+    /// the RTOS lanes run under `--failure-output never` (see the `just
+    /// <platform> test` recipes), so anything printed with `eprintln!` is
+    /// discarded and only the panic text survives. Issue 0877 is what that
+    /// costs — a report whose central experiment was a hand run that could not
+    /// have used the same emulator, with nothing in the failure output to say
+    /// so.
+    #[must_use]
+    pub fn command_line(&self) -> &str {
+        &self.cmdline
+    }
+
     /// Start QEMU Cortex-M3 emulator with semihosting
     ///
     /// Uses the LM3S6965EVB machine which supports semihosting output.
@@ -171,9 +229,7 @@ impl QemuProcess {
         .stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
-
-        Ok(Self { handle })
+        Self::spawn(cmd)
     }
 
     /// Start QEMU with MPS2-AN385 machine (Cortex-M3 + LAN9118 Ethernet)
@@ -209,9 +265,7 @@ impl QemuProcess {
         .stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
-
-        Ok(Self { handle })
+        Self::spawn(cmd)
     }
 
     /// Start QEMU with MPS2-AN385 machine + LAN9118 slirp networking
@@ -260,9 +314,7 @@ impl QemuProcess {
         .stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
-
-        Ok(Self { handle })
+        Self::spawn(cmd)
     }
 
     /// phase-263 C2b — MPS2-AN385 + LAN9118 slirp, with the user-net configured to the
@@ -304,9 +356,7 @@ impl QemuProcess {
         .stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
-
-        Ok(Self { handle })
+        Self::spawn(cmd)
     }
 
     /// Start QEMU with MPS2-AN385 machine + LAN9118 mcast-socket
@@ -354,9 +404,7 @@ impl QemuProcess {
         .stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
-
-        Ok(Self { handle })
+        Self::spawn(cmd)
     }
 
     /// Start QEMU with MPS2-AN385 machine + external serial device
@@ -405,9 +453,7 @@ impl QemuProcess {
         .stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
-
-        Ok(Self { handle })
+        Self::spawn(cmd)
     }
 
     /// Wait for QEMU to produce output and exit
@@ -751,9 +797,7 @@ impl QemuProcess {
         .stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
-
-        Ok(Self { handle })
+        Self::spawn(cmd)
     }
 
     /// Phase 127.B.5 — QEMU 7.2+ `-netdev dgram,local.type=unix,…`
@@ -815,9 +859,7 @@ impl QemuProcess {
         .stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
-
-        Ok(Self { handle })
+        Self::spawn(cmd)
     }
 
     pub fn start_nuttx_virt(binary: &Path, networking: bool) -> TestResult<Self> {
@@ -864,9 +906,7 @@ impl QemuProcess {
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
-
-        Ok(Self { handle })
+        Self::spawn(cmd)
     }
 
     /// #165 — boot a riscv32 rv-virt NuttX kernel image (the riscv sibling of
@@ -912,9 +952,7 @@ impl QemuProcess {
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
-
-        Ok(Self { handle })
+        Self::spawn(cmd)
     }
 
     /// Start QEMU with RISC-V 64-bit virt machine + virtio-net slirp networking
@@ -972,9 +1010,7 @@ impl QemuProcess {
         .stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
-
-        Ok(Self { handle })
+        Self::spawn(cmd)
     }
 
     /// Phase 127.B.5 — QEMU 7.2+ `-netdev dgram,local.type=unix,…`
@@ -1023,9 +1059,7 @@ impl QemuProcess {
         .stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
-
-        Ok(Self { handle })
+        Self::spawn(cmd)
     }
 
     pub fn start_riscv64_virt(binary: &Path, peer_index: u8) -> TestResult<Self> {
@@ -1063,9 +1097,7 @@ impl QemuProcess {
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(unix)]
         set_new_process_group(&mut cmd);
-        let handle = cmd.spawn()?;
-
-        Ok(Self { handle })
+        Self::spawn(cmd)
     }
 }
 
@@ -1356,5 +1388,45 @@ mod tests {
         let (passed, failed) = parse_test_results("");
         assert_eq!(passed, 0);
         assert_eq!(failed, 0);
+    }
+
+    /// Issue 0877 — the recorded line must name the RESOLVED program, because
+    /// that is the half a hand run gets wrong. Asserting only on the arguments
+    /// would reproduce the mistake the record exists to prevent.
+    #[test]
+    fn recorded_command_names_the_resolved_program_not_the_bare_name() {
+        let mut cmd = qemu_system_arm_cmd();
+        cmd.args(["-machine", "mps2-an385"]);
+        let rendered = render_command(&cmd);
+        let resolved = qemu_system_arm_path();
+        let resolved = resolved.to_string_lossy();
+        assert!(
+            rendered.starts_with(resolved.as_ref()),
+            "recorded line must start with the resolved program `{resolved}`, got: {rendered}"
+        );
+        assert!(rendered.ends_with("-machine mps2-an385"), "{rendered}");
+    }
+
+    /// A pasteable line, not merely a readable one: anything a shell would
+    /// re-interpret has to come back quoted.
+    #[test]
+    fn recorded_command_quotes_arguments_a_shell_would_split() {
+        let mut cmd = Command::new("/usr/bin/qemu-system-arm");
+        cmd.args([
+            "-nic",
+            "user,model=lan9118,net=192.0.3.0/24,host=192.0.3.1",
+            "-semihosting-config",
+            "enable=on,target=native",
+            "-append",
+            "two words",
+        ]);
+        let rendered = render_command(&cmd);
+        // Commas, slashes and `=` are safe — quoting them would make the line
+        // harder to read for no gain.
+        assert!(
+            rendered.contains("-nic user,model=lan9118,net=192.0.3.0/24,host=192.0.3.1"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("'two words'"), "{rendered}");
     }
 }

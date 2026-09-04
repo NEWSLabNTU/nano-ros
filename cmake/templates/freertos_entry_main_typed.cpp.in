@@ -85,7 +85,7 @@ extern "C" int nros_app_main(int /*argc*/, char** /*argv*/) {
 #endif
     // Baked connect locator (QEMU slirp host = 10.0.2.2). Empty string →
     // backend discovery default.
-    return ::nros::board::FreertosBoard::run_components("@NROS_ENTRY_LOCATOR@", &__nros_entry_setup);
+    return ::nros::board::FreertosBoard::run_components("@NROS_ENTRY_LOCATOR@", "@NROS_ENTRY_NODE_NAME@", &__nros_entry_setup);
 }
 
 // FreeRTOS app entry: the board `startup.c` `app_task_entry` calls `app_main()`

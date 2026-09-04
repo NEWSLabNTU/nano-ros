@@ -148,6 +148,25 @@ fn router_command(overrides: &[String]) -> TestResult<std::process::Command> {
     Ok(cmd)
 }
 
+/// The router binary and the config override it was handed, on one line.
+///
+/// `rmw_zenohd` takes no argv, so the argument list a `Command` carries says
+/// nothing; the whole configuration is `ZENOH_CONFIG_OVERRIDE`. Rendering both
+/// is what makes a hand-started router comparable to this one (issue 0877).
+fn describe_router(cmd: &std::process::Command) -> String {
+    let overrides = cmd
+        .get_envs()
+        .find(|(k, _)| *k == std::ffi::OsStr::new("ZENOH_CONFIG_OVERRIDE"))
+        .and_then(|(_, v)| v)
+        .map(|v| v.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    format!(
+        "ZENOH_CONFIG_OVERRIDE='{}' {}",
+        overrides,
+        cmd.get_program().to_string_lossy()
+    )
+}
+
 fn wait_for_router_ready(handle: &mut Child, locator: &str, port: u16) -> TestResult<()> {
     let start = Instant::now();
     let timeout = Duration::from_secs(10);
@@ -205,6 +224,9 @@ pub struct ZenohRouter {
     handle: Child,
     port: u16,
     tls: bool,
+    /// The router binary + config override this fixture actually started —
+    /// see [`ZenohRouter::launch_line`].
+    launch: String,
     /// Issue 0470 — held for the router's lifetime so no other fixture is
     /// handed this port. `None` when the caller named the port itself.
     _lease: Option<crate::port_lease::PortLease>,
@@ -273,6 +295,7 @@ impl ZenohRouter {
         }
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
+        let launch = describe_router(&cmd);
         let mut handle = cmd.spawn()?;
 
         // Wait for zenohd to be ready (TCP port accepting connections)
@@ -283,6 +306,7 @@ impl ZenohRouter {
             handle,
             port,
             tls: false,
+            launch,
             _lease: None,
         })
     }
@@ -318,6 +342,7 @@ impl ZenohRouter {
         }
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
+        let launch = describe_router(&cmd);
         let mut handle = cmd.spawn()?;
 
         // Serial listeners don't have a TCP port to probe, so wait a bit
@@ -343,6 +368,7 @@ impl ZenohRouter {
             handle,
             port: 0,
             tls: false,
+            launch,
             _lease: None,
         })
     }
@@ -401,6 +427,7 @@ impl ZenohRouter {
         cmd.stdout(Stdio::null()).stderr(Stdio::piped());
         #[cfg(unix)]
         crate::process::set_new_process_group(&mut cmd);
+        let launch = describe_router(&cmd);
         let mut handle = cmd.spawn()?;
 
         // Readiness probes the loopback IPv4 address: the dual-stack listener
@@ -412,6 +439,7 @@ impl ZenohRouter {
             handle,
             port,
             tls: true,
+            launch,
             _lease: None,
         })
     }
@@ -453,6 +481,20 @@ impl ZenohRouter {
     /// Get the port number
     pub fn port(&self) -> u16 {
         self.port
+    }
+
+    /// How this router was actually started — binary plus the
+    /// `ZENOH_CONFIG_OVERRIDE` it was given.
+    ///
+    /// Issue 0877, same reason as [`crate::qemu::QemuProcess::command_line`]:
+    /// a report whose reasoning rests on "I ran the same thing by hand" needs
+    /// the harness to say what "the same thing" WAS. The router is the half
+    /// nobody writes down — `rmw_zenohd` takes no argv, so a hand run looks
+    /// identical while reading a different config, and which `libzenohc.so` it
+    /// loads is the loader's decision, not the path's (issue 0774).
+    #[must_use]
+    pub fn launch_line(&self) -> &str {
+        &self.launch
     }
 
     /// Check if the router is still running

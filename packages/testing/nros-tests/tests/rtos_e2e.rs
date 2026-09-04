@@ -159,6 +159,28 @@ impl RtosProcess {
             RtosProcess::Managed(p) => kill_process_group(p.handle_mut()),
         }
     }
+
+    /// How this node was actually started, for the failure message.
+    ///
+    /// Issue 0877 — the report that "the same two images DELIVER when run by
+    /// hand … with the harness's own QEMU arguments" concluded from that
+    /// experiment that the images and the transport were fine and the harness
+    /// was at fault. The arguments were the harness's; the BINARY was not.
+    /// `qemu_system_arm_path` prefers `build/qemu/bin/qemu-system-arm` — our
+    /// LAN9118 flow-control patch (issues 0830 / 0917) — over the
+    /// `qemu-system-arm` a shell finds on `$PATH`, and on the host that filed
+    /// 0877 those were QEMU 11.0.0-patched and QEMU 9.0.2-stock. The hand run
+    /// changed the emulated NIC's RX flow control, which is exactly the layer a
+    /// "nothing was delivered" symptom lives in.
+    ///
+    /// These lanes run with `--failure-output never`, so this has to be IN the
+    /// assertion text; an `eprintln!` at spawn time is discarded.
+    fn command_line(&self) -> String {
+        match self {
+            RtosProcess::Qemu(p) => p.command_line().to_string(),
+            RtosProcess::Managed(p) => p.command_line().to_string(),
+        }
+    }
 }
 
 // =============================================================================
@@ -616,7 +638,7 @@ fn start_server_then_client(
 ) -> TestResult<(RtosProcess, String, RtosProcess)> {
     let mut server = platform.start_process(server_bin, 0, server_name, lang)?;
     let server_boot = server.collect_until(ready_marker, boot_budget(platform));
-    ensure_ready(&server_boot, ready_marker, platform);
+    ensure_ready(&server_boot, ready_marker, platform, &server.command_line());
     let client = platform.start_process(client_bin, 1, client_name, lang)?;
     Ok((server, server_boot, client))
 }
@@ -902,7 +924,7 @@ fn assert_no_session_churn(platform: Platform, lang: Lang, port: u16, window: Du
     );
 }
 
-fn ensure_ready(output: &str, readiness_pattern: &str, platform: Platform) {
+fn ensure_ready(output: &str, readiness_pattern: &str, platform: Platform, cmdline: &str) {
     if output.contains(readiness_pattern) {
         return;
     }
@@ -924,9 +946,10 @@ fn ensure_ready(output: &str, readiness_pattern: &str, platform: Platform) {
         ""
     };
     panic!(
-        "{} E2E failed — readiness pattern '{}' not observed.\nOutput so far (truncated):\n{}{}",
+        "{} E2E failed — readiness pattern '{}' not observed.\nStarted with:\n  {}\nOutput so far (truncated):\n{}{}",
         platform,
         readiness_pattern,
+        cmdline,
         &output[..output.len().min(2048)],
         hint
     );
@@ -1029,7 +1052,12 @@ fn test_rtos_pubsub_e2e(
         _ => "Waiting for messages",
     };
     let listener_boot = listener.collect_until(ready_marker, boot_budget(platform));
-    ensure_ready(&listener_boot, ready_marker, platform);
+    ensure_ready(
+        &listener_boot,
+        ready_marker,
+        platform,
+        &listener.command_line(),
+    );
 
     // ⚠️ The talker is FREE-RUNNING and nothing here may cut it short. ⚠️
     //
@@ -1074,7 +1102,9 @@ fn test_rtos_pubsub_e2e(
         nros_tests::output::TALKER_PAYLOAD_PREFIX,
         PUBSUB_MIN_SAMPLES,
         Duration::from_secs(5),
-    );
+    ); // Capture BEFORE the kills — `command_line` borrows the live process.
+    let talker_cmd = talker.command_line();
+    let listener_cmd = listener.command_line();
 
     talker.kill();
     listener.kill();
@@ -1100,7 +1130,18 @@ fn test_rtos_pubsub_e2e(
          (talker printed {} publish lines) within {:?}.\n\
          {} samples at 1 Hz is {} SECONDS of session life: a shortfall means \
          delivery stopped part-way, which is what a session that expires looks \
-         like from here (issue 0906/1013). Listener output:\n{}",
+         like from here (issue 0906/1013).\n\
+         Router:   {} (listening on port {})\n\
+         Talker:   {}\n\
+         Listener: {}\n\
+         issue 0877 — to reproduce by hand, paste those three lines VERBATIM. \
+         The program in them is not necessarily the `qemu-system-arm` your \
+         shell resolves: `qemu_system_arm_path` prefers the patched build under \
+         `build/qemu/bin/`, whose LAN9118 model carries our RX flow-control \
+         patch (issues 0830 / 0917). Substituting the system QEMU changes the \
+         emulated NIC's receive path, which is the layer a no-delivery symptom \
+         lives in.\n\
+         Listener output:\n{}",
         platform,
         lang,
         received,
@@ -1109,6 +1150,10 @@ fn test_rtos_pubsub_e2e(
         listener_window,
         PUBSUB_MIN_SAMPLES,
         PUBSUB_MIN_SAMPLES,
+        zenohd.launch_line(),
+        zenohd.port(),
+        talker_cmd,
+        listener_cmd,
         full_listener,
     );
     // Delivery is only half of it — see this function's header for why a build
@@ -1142,7 +1187,7 @@ fn test_rtos_service_e2e(
 
     let (server_bin, client_bin) = build_pair(platform, lang, Variant::Service);
 
-    let _zenohd = platform
+    let zenohd = platform
         .zenoh_router_start(Variant::Service, lang)
         .expect("Failed to start zenohd");
 
@@ -1196,6 +1241,10 @@ fn test_rtos_service_e2e(
     let client_out =
         client.collect_until(nros_tests::output::SERVICE_RESULT_PREFIX, client_timeout);
 
+    // issue 0877 — capture the launch lines while the processes are alive.
+    let server_cmd = server.command_line();
+    let client_cmd = client.command_line();
+
     server.kill();
     client.kill();
 
@@ -1207,10 +1256,20 @@ fn test_rtos_service_e2e(
 
     assert!(
         response_count >= 1,
-        "{} {} service E2E failed — got {} responses (expected >= 1)",
+        "{} {} service E2E failed — got {} responses (expected >= 1).\n\
+         Router: {} (listening on port {})\n\
+         Server: {}\n\
+         Client: {}\n\
+         issue 0877 — reproduce by pasting those lines VERBATIM; the QEMU in \
+         them is the one this harness resolved, which is not necessarily the \
+         one on your `$PATH`.",
         platform,
         lang,
         response_count,
+        zenohd.launch_line(),
+        zenohd.port(),
+        server_cmd,
+        client_cmd,
     );
     eprintln!(
         "[PASS] {} {} service E2E: {} responses",
@@ -1259,7 +1318,7 @@ fn test_rtos_action_e2e(
 
     let (server_bin, client_bin) = build_pair(platform, lang, Variant::Action);
 
-    let _zenohd = platform
+    let zenohd = platform
         .zenoh_router_start(Variant::Action, lang)
         .expect("Failed to start zenohd");
 
@@ -1316,6 +1375,10 @@ fn test_rtos_action_e2e(
         .wait_for_output(Duration::from_secs(2))
         .unwrap_or_default();
 
+    // issue 0877 — capture the launch lines while the processes are alive.
+    let server_cmd = server.command_line();
+    let client_cmd = client.command_line();
+
     server.kill();
     client.kill();
 
@@ -1341,11 +1404,22 @@ fn test_rtos_action_e2e(
          did ALL SIX network operations fail (5 liveliness declares + the \
          feedback subscriber -- the session's declare/TX path is dead), or ONLY \
          the subscriber (a subscriber-specific fault)? That distinction is \
-         issue 0870's whole remaining unknown.",
+         issue 0870's whole remaining unknown.\n\
+         \n\
+         Router: {} (listening on port {})\n\
+         Server: {}\n\
+         Client: {}\n\
+         issue 0877 — reproduce by pasting those lines VERBATIM; the QEMU in \
+         them is the one this harness resolved, which is not necessarily the \
+         one on your `$PATH`.",
         platform,
         lang,
         goal_accepted,
-        completed
+        completed,
+        zenohd.launch_line(),
+        zenohd.port(),
+        server_cmd,
+        client_cmd
     );
     eprintln!(
         "[PASS] {} {} action E2E: accepted={}, completed={}",

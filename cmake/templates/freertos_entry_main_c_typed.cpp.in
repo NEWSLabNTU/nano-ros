@@ -38,7 +38,7 @@ extern "C" int nros_app_main(int /*argc*/, char** /*argv*/) {
 #ifdef NROS_FREERTOS_ENTRY_DEBUG
     ::std::printf("[freertos-c] nros_app_main reached (typed @NROS_ENTRY_PKG_SYM@)\n");
 #endif
-    return ::nros::board::FreertosBoard::run_components("@NROS_ENTRY_LOCATOR@", &__nros_entry_setup);
+    return ::nros::board::FreertosBoard::run_components("@NROS_ENTRY_LOCATOR@", "@NROS_ENTRY_NODE_NAME@", &__nros_entry_setup);
 }
 
 NROS_APP_MAIN_REGISTER_VOID();

@@ -77,5 +77,5 @@ static int32_t __nros_entry_setup() {
 
 int main(void) {
     return static_cast<int>(
-        ::nros::board::ZephyrBoard::run_components(&__nros_entry_setup));
+        ::nros::board::ZephyrBoard::run_components(NROS_ENTRY_LOCATOR, "@NROS_ENTRY_NODE_NAME@", &__nros_entry_setup));
 }
