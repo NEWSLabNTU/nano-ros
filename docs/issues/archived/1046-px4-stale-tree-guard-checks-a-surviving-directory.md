@@ -1,11 +1,13 @@
 ---
 id: 1046
 title: "The PX4 SITL stale-tree guard asserts a module DIRECTORY, which outlives the build that linked it — so it passes on exactly the tree it exists to reject"
-status: open
+status: resolved
 type: bug
 area: testing
 severity: medium
 found: 2026-09-04
+resolved: 2026-09-05
+resolved_in: 0a47f949a (guard) + the sweep below
 related: [phase-325, 0196, 0445, 0859]
 ---
 
@@ -114,14 +116,57 @@ enough to turn a confusing runtime failure into the message that already exists.
 
 **Keep the existing message.** It is right. Only the predicate is wrong.
 
-## Not covered
+## The three "not covered" items, now swept (2026-09-05)
 
-* Whether `px4_xrce_e2e.rs` has the same shape. It guards
-  `path.join("Tools").is_dir()` (`:42`), which is a *tree* check rather than a
-  built-module check, so it is probably a different question — unverified.
-* Whether anything else in the tree proxies "was X built into this artifact" by
-  a directory test. Not swept.
-* The `bin/px4-<mod>` shims surviving is itself worth a look: a shim for a module
-  that is not in the binary is a second stale artifact, and it may be what makes
-  the runtime failure read as "command exists but does nothing" rather than
-  "command not found". Not investigated.
+Re-measured on the same host. The fix in `0a47f949a` still rejects the stale
+tree — run against the build dir as it stands today (last built from
+`build-bridge-example`):
+
+```
+$ cd packages/testing/nros-px4-sitl-test
+$ PX4_AUTOPILOT_DIR=.../PX4-Autopilot cargo test --test px4_uorb_interop_e2e
+SITL tree at .../build/px4_sitl_default was built WITHOUT the uORB interop
+example: .../bin/px4 does not contain `nros_uorb_demo`.
+...
+test result: FAILED. 0 passed; 1 failed; finished in 0.04s
+```
+
+and the table it keys on still holds — `strings -a bin/px4 | grep -c <name>`:
+
+| module | module dir | `bin/px4-<mod>` shim | occurrences in `bin/px4` |
+| --- | --- | --- | ---: |
+| `nros_uorb_demo` | present | **absent** | 0 |
+| `nros_uorb_bridge` | present | present | 8 |
+
+**One number in the original table does not reproduce: the demo's shim is now
+absent.** So the shims are *not* reliably stale — PX4 cleans some of them. That
+makes the third item below a non-finding rather than a second stale artifact:
+the shim is inconsistent, which is a reason not to key a guard on it, and the
+guard no longer does. The module DIRECTORY, which is the half the guard used to
+key on, does survive — that claim reproduces exactly.
+
+* **`px4_xrce_e2e.rs` — different question, confirmed.** Its
+  `path.join("Tools").is_dir()` (`:42`) asks "is this a PX4 checkout", which is
+  what it says and is correct for it. It needs no built-module guard because it
+  BUILDS SITL itself (`build_vanilla_sitl()`, `:50`). That is worth its own
+  look for two unrelated reasons — it is a `make` inside a test (CLAUDE.md's
+  "no compilation inside tests"), and PX4's `cmake-cache-check` only compares
+  options it was PASSED, so a `make px4_sitl_default` with no
+  `EXTERNAL_MODULES_LOCATION` reconfigures nothing and inherits the cached one,
+  i.e. "vanilla" is not vanilla. Neither affects this issue: an extra module in
+  the tree does not break the XRCE path. Not filed here.
+* **Nothing else proxies "was X built into this artifact" by a directory test.**
+  Swept the whole PX4 seam: `nros_px4_add_module` has exactly three callers
+  (`examples/px4/cpp/firmware`, `examples/px4/cpp/bridge`,
+  `integrations/px4/module-template`), and the only other consumer of a built
+  nano-ros artifact in this area, `packages/testing/nros-px4-register-check`,
+  calls `px4_add_module` directly and links no nano-ros archive at all.
+* **The surviving shim: see above** — it does not reliably survive, so there is
+  nothing to chase.
+
+## The class this belongs to also existed one layer up — see #1050
+
+The same "a guard whose predicate cannot observe the case its own message
+describes" shape sat in `nros_px4_add_module`'s archive precheck, which ran only
+`if(_networked_backends)` — i.e. never for the uORB-only module the bug happens
+to. Fixed with this issue's sweep; recorded in #1050.
