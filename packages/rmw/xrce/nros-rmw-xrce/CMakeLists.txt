@@ -43,8 +43,8 @@ endif()
 # rather than going through the upstream CMakeLists' add_subdirectory
 # / find_package machinery. The upstream client's `find_package(microcdr
 # REQUIRED CONFIG)` requires a separate install step that buys nothing
-# in our in-tree case; xrce-sys's `build.rs` already proved the
-# inline-compile approach (same source list mirrored below).
+# in our in-tree case; the inline-compile approach was proven by the
+# Rust lane first (same source list mirrored below).
 set(MICROXRCEDDS_CLIENT_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/../xrce-sys/micro-xrce-dds-client"
     CACHE PATH "Path to vendored micro-xrce-dds-client checkout")
@@ -53,7 +53,7 @@ set(MICROCDR_DIR
     CACHE PATH "Path to vendored micro-cdr checkout")
 
 # Generate `<uxr/client/config.h>` from the upstream template. Values
-# match xrce-sys's `posix_compat = true, mtu = 4096` defaults; further
+# match the Rust lane's `posix_compat = true, mtu = 4096` defaults; further
 # tuning lands when 115.K.2.5 flips the C backend on under
 # `-DNROS_C_RMW=xrce`.
 set(NROS_RMW_XRCE_C_PROJECT_VERSION_MAJOR 2)
@@ -118,10 +118,28 @@ configure_file(
     "${CMAKE_CURRENT_BINARY_DIR}/ucdr_generated/ucdr/config.h"
     @ONLY)
 
-# Source lists mirror packages/rmw/xrce/xrce-sys/build.rs (proven
-# working set). Keeping these in lockstep is a 115.K.2 invariant —
-# if the Rust build.rs adds a file, this CMakeLists must add it too,
-# and vice versa.
+# Source lists mirror packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs
+# (proven working set). Keeping these in lockstep is a 115.K.2
+# invariant — if that build.rs adds a file, this CMakeLists must add
+# it too, and vice versa.
+#
+# phase-420 W9 surveyed the mirror and found two things worth writing
+# down. First, this comment named `packages/rmw/xrce/xrce-sys/build.rs`
+# until now: a file phase-321 W1.d DELETED along with the crate that
+# owned it. The invariant was pointed at a ghost, so "keep them in
+# lockstep" named a file nobody could open. The live counterpart is the
+# path above.
+#
+# Second, the two lists have already diverged in one place. `build.rs`
+# honours `NROS_LINK_IP=0` (phase-204.7) and drops
+# `profile/transport/ip/udp/udp_transport{,_posix}.c`; this file compiles
+# them unconditionally, so the CMake lane cannot build a serial-only XRCE
+# node. That is not a source-list typo, it is what a hand-maintained
+# mirror does. The structural fix is ONE vendor build with ONE source list
+# that both lanes consume — RFC-0087 D5's shape, recorded as W9's
+# remaining work in docs/roadmap/phase-420-package-identity-and-provider-
+# format.md. Until that lands, a source added on either side must be added
+# on the other, by hand.
 set(_uxr_session_src
     core/session/session.c
     core/session/session_info.c
@@ -242,7 +260,7 @@ endif()
 target_compile_definitions(nros_rmw_xrce PRIVATE
     # POSIX feature gate — `time.c` calls `clock_gettime`, which
     # only resolves under `_POSIX_C_SOURCE >= 199309L`. Match
-    # xrce-sys's build environment.
+    # the Rust lane's build environment.
     _POSIX_C_SOURCE=200809L
     _DEFAULT_SOURCE
 )

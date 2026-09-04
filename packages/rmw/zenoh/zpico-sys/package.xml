@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>zpico_sys</name>
+  <version>0.0.0</version>
+  <description>
+    The zenoh-pico VENDOR package (RFC-0087 D5, phase-420 W9): it owns the
+    upstream tree, builds it, and exports the result. ROS 2 would spell this
+    `zenoh_pico_vendor`; the name here is the crate's (`zpico-sys`) because two
+    spellings of one identity drift, and `&lt;depend&gt;` resolves against this
+    name while cargo resolves against the crate.
+
+    What it vendors: `zenoh-pico/`, a gitlink onto the `nano-ros` patch branch
+    of jerry73204/zenoh-pico, plus `mbedtls/` for the TLS link. What it exports:
+    the compiled zenoh-pico + shim archive on the normal cargo link, and the
+    probed sizes over `links = "zpico"` as `DEP_ZPICO_*` — D5's cargo channel,
+    already live, not something this file adds.
+
+    **Its fetch is a submodule, and that is the finished shape, not a step
+    toward `FetchContent`.** D5's worked example is `URL` + `URL_HASH`, which
+    cannot carry a patch line: this tree IS patched, the patches live in the
+    fork's git history rather than a `patches/` dir (the same choice recorded
+    for the qemu fork in `.gitmodules`), and a tarball has nowhere to put them.
+    The remaining option, `GIT_TAG &lt;full sha&gt;` against our own fork, is the
+    identical pointer with `check-submodule-pins` removed — phase-420 W8's
+    argument for why it converted no row. A gitlink is the strongest of the
+    three pin forms, so the vendor package keeps it.
+
+    This file adds identity and nothing else. It does not change how the source
+    arrives, what is built, or what is linked.
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <!--
+      Cargo-built and nano-ros-owned: the build script compiles the upstream C
+      for six platforms against our platform ABI, which no stock colcon build
+      can do. No `<nano_ros_provides>` — this package is not a provider of any
+      kind. It is an ordinary package whose build happens to fetch (RFC-0087 D5:
+      "a vendor package is not a kind at all"). The provider that consumes it is
+      the sibling `nros_rmw_zenoh`.
+    -->
+    <build_type>nros_cargo</build_type>
+  </export>
+</package>
