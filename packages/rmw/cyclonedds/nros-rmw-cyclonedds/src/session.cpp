@@ -13,6 +13,8 @@
 
 #include "internal.hpp"
 
+#include "cyclone_config.hpp"  // phase-206 W1 — baked baseline + source composition
+
 #include <dds/dds.h>
 
 #include "graph.hpp"  // Phase 177.36 — ros_discovery_info node graph
@@ -84,105 +86,6 @@ void free_session_state(SessionState* state) {
     delete state;
 #endif
 }
-
-#if defined(NROS_PLATFORM_FREERTOS) || defined(NROS_PLATFORM_THREADX) || defined(CONFIG_BOARD_NATIVE_SIM)
-constexpr const char* kEmbeddedCycloneConfig =
-    "<CycloneDDS>"
-    "<Domain Id=\"any\">"
-    "<General>"
-#if defined(NROS_PLATFORM_FREERTOS)
-    // Issue 0888 — say it, rather than inheriting Cyclone default.
-    //
-    // FreeRTOS was the one platform arm with no AllowMulticast at all, so
-    // it fell through to the default (multicast for data as well as
-    // discovery) while its two siblings each state a policy. That is a
-    // silent difference, not a considered one: an image built here
-    // advertises multicast data locators, and whether that is what anyone
-    // wanted depended on a default nobody wrote down.
-    //
-    // The platform is fully capable of multicast — LWIP_IGMP is on, the
-    // netif carries NETIF_FLAG_IGMP, the LAN9118 driver enables MCPAS, and
-    // SPDP discovery over 239.255.0.1 demonstrably works. So this is a
-    // choice, not a limitation: discovery multicast, data unicast, which
-    // is what the ThreadX arm below settled on for the same reasons and
-    // what a ROS 2 peer configured for an embedded island typically sets
-    // on its own side.
-    "<AllowMulticast>spdp</AllowMulticast>"
-#elif defined(NROS_PLATFORM_THREADX)
-    // Phase 177.26 — SPDP multicast discovery over NetX Duo. NetX enables
-    // IGMPv2 (`nx_igmp_enable`) and virtio-net accepts all multicast on RX;
-    // peers discover via the default DDSI multicast group, data unicast.
-    "<AllowMulticast>spdp</AllowMulticast>"
-#elif defined(CONFIG_BOARD_NATIVE_SIM)
-    // Phase 180 — native_sim (NSOS). Multicast breaks cyclone's select-based
-    // socket waitset here (the multicast RX fd select()s as failed), so
-    // disable it and discover via unicast SPDP to 127.0.0.1 (Peers, below).
-    "<AllowMulticast>false</AllowMulticast>"
-#endif
-    "</General>"
-#if defined(CONFIG_BOARD_NATIVE_SIM)
-    // Unicast SPDP to localhost (numeric IP — NSOS getaddrinfo can't resolve
-    // the name). Widen the participant-index scan so the talker reaches the
-    // listener even when host-port collisions bump it to a higher index.
-    "<Discovery>"
-    "<ParticipantIndex>auto</ParticipantIndex>"
-    "<MaxAutoParticipantIndex>20</MaxAutoParticipantIndex>"
-    "<Peers><Peer Address=\"127.0.0.1\"/></Peers>"
-    "</Discovery>"
-#endif
-    "<Sizing>"
-    "<ReceiveBufferSize>64 KiB</ReceiveBufferSize>"
-    "<ReceiveBufferChunkSize>16 KiB</ReceiveBufferChunkSize>"
-    "</Sizing>"
-    // One receive thread, not per-socket ones. The split exists to shave
-    // latency on a host with cores to spare; here it costs two threads that
-    // cannot be given a stack (see the Threads block below), on a platform
-    // whose default thread stack is 1 KiB.
-    "<Internal>"
-    "<MultipleReceiveThreads>false</MultipleReceiveThreads>"
-    "</Internal>"
-    // Thread stacks. ddsrt's FreeRTOS port defaults a thread to
-    // configMINIMAL_STACK_SIZE (256 words = 1 KiB here), which is not a stack
-    // any Cyclone worker can run in: `recvUC` overflowed on the first real
-    // ROS payload (a 13 KiB Autoware trajectory) with
-    // `*** STACK OVERFLOW: recvUC ***`, and — because the overflow lands in
-    // the adjacent heap — the SAME image also failed at create_subscription
-    // with a bad-free heap_4 assert when it booted into an already-populated
-    // graph. Small fixed-size samples never reached the depth, which is why
-    // the Int32 examples pass and only a real ROS peer surfaces it.
-    // Naming a thread here is the ONLY way to size it: Cyclone has no
-    // global default stack setting.
-    "<Threads>"
-    "<Thread Name=\"dq.builtins\">"
-    "<StackSize>64 KiB</StackSize>"
-    "</Thread>"
-    // Receive path: reads a fragment, reassembles, deserializes.
-    //
-    // Only "recv" is nameable. With MultipleReceiveThreads enabled Cyclone
-    // splits reception into per-socket "recvUC"/"recvMC" threads, and those
-    // names are NOT configurable — `check_thread_properties` validates against
-    // a fixed list and rejects them ("unknown thread"), which fails the whole
-    // config and takes the participant with it. So the split is disabled just
-    // below, leaving one receive thread that this entry actually sizes.
-    "<Thread Name=\"recv\">"
-    "<StackSize>64 KiB</StackSize>"
-    "</Thread>"
-    // User-data delivery — where the application's own types are built.
-    "<Thread Name=\"dq.user\">"
-    "<StackSize>64 KiB</StackSize>"
-    "</Thread>"
-    // Timed events and GC do less, but the 1 KiB default is below what any
-    // of them can safely use.
-    "<Thread Name=\"tev\">"
-    "<StackSize>16 KiB</StackSize>"
-    "</Thread>"
-    "<Thread Name=\"gc\">"
-    "<StackSize>16 KiB</StackSize>"
-    "</Thread>"
-    "</Threads>"
-    "</Domain>"
-    "</CycloneDDS>";
-#endif
 
 } // namespace
 
@@ -287,30 +190,56 @@ rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t dom
     // Phase 192.4 — honor a user-supplied CYCLONEDDS_URI (inline XML or
     // `file://` ref) so the baked embedded runtime profile (buffer/stack
     // sizes, MaxAutoParticipantIndex, the 127.0.0.1 peer) is overridable
-    // without recompiling. Falls back to the built-in profile when unset
-    // (FreeRTOS/ThreadX have no env, so getenv returns null there — and
-    // native_sim's picolibc getenv sees no host environment either, issue
-    // 0367). The hosted POSIX path below creates the participant directly
-    // and already honors CYCLONEDDS_URI via Cyclone's own config loader.
+    // without recompiling. FreeRTOS/ThreadX have no env, so `env_lookup`
+    // returns null there — and native_sim's picolibc getenv sees no host
+    // environment either (issue 0367). The hosted POSIX path below creates
+    // the participant directly and already honors CYCLONEDDS_URI via
+    // Cyclone's own config loader.
     //
-    // Issue 0367 — between the env var and the baked profile sits the
-    // Kconfig knob: a non-empty CONFIG_NROS_CYCLONE_CONFIG_XML (declared
-    // in zephyr/Kconfig since phase 117, consumed nowhere until now) is
-    // the compile-time override for targets where no environment exists.
-    // Kconfig strings can't carry escaped double quotes comfortably —
-    // use single-quoted XML attributes (Address='127.0.0.1') in the blob.
+    // Issue 0367 — beside the env var sits the Kconfig knob: a non-empty
+    // CONFIG_NROS_CYCLONE_CONFIG_XML (declared in zephyr/Kconfig since
+    // phase 117, consumed nowhere until then) is the compile-time override
+    // for targets where no environment exists. Kconfig strings can't carry
+    // escaped double quotes comfortably — use single-quoted XML attributes
+    // (Address='127.0.0.1') in the blob.
 #if defined(CONFIG_NROS_CYCLONE_CONFIG_XML)
     constexpr const char* kKconfigCycloneConfig = CONFIG_NROS_CYCLONE_CONFIG_XML;
 #else
     constexpr const char* kKconfigCycloneConfig = "";
 #endif
-    // `::getenv` — a cross libc's `<cstdlib>` aliases only a subset of the C
-    // names into `std::`, and which subset differs per libc (see
-    // `service.cpp`'s `env_u64`).
-    const char* user_uri = env_lookup("CYCLONEDDS_URI");
-    const char* cyc_config = (user_uri != nullptr && user_uri[0] != '\0') ? user_uri
-                             : (kKconfigCycloneConfig[0] != '\0')         ? kKconfigCycloneConfig
-                                                                          : kEmbeddedCycloneConfig;
+    // phase-206 W1 — COMPOSE the three sources; do not choose between them.
+    //
+    // This was a three-way ternary, so naming ANY override discarded the
+    // whole baked baseline — the `<Threads>` stack sizes above all, which
+    // exist because a 1 KiB ddsrt default overflows `recv` on the first real
+    // ROS payload. "Point me at a different peer" silently meant "and
+    // reinstate that overflow".
+    //
+    // Cyclone splits this string on commas and parses every token into ONE
+    // config, later tokens overriding earlier ones — so handing it all three
+    // in increasing precedence is both the fix and the whole of it. See
+    // `cyclone_config.hpp` for the parser evidence and for the one exception
+    // (`<Thread>` is a list element, so it appends rather than overrides).
+    //
+    // `env_lookup`, not `::getenv` — a cross libc's `<cstdlib>` aliases only
+    // a subset of the C names into `std::`, and which subset differs per libc
+    // (see `service.cpp`'s `env_u64`).
+    const char* frags[3] = {kEmbeddedCycloneConfig, kKconfigCycloneConfig,
+                            env_lookup("CYCLONEDDS_URI")};
+    // Static, not a local: `session_create` runs on the app task, and 4 KiB of
+    // stack is a real ask on an RTOS whose Cyclone threads are hand-sized just
+    // above. Cyclone copies the string (`ddsrt_strdup` in `ddsi_config_init`),
+    // so it need not outlive this call — and session creation is a startup
+    // path reached from one thread, which is what makes a shared buffer safe.
+    static char cyc_config[kCycloneConfigMax];
+    if (!compose_cyclone_config(cyc_config, sizeof(cyc_config), frags, 3)) {
+        // Fail loud. A truncated config is unterminated XML, and Cyclone would
+        // report it as a parse error against a string the user never wrote.
+        NROS_CYC_TRACE("session_create: baked + override config exceeds %u bytes",
+                       static_cast<unsigned>(kCycloneConfigMax));
+        free_session_state(state);
+        return NROS_RMW_RET_ERROR;
+    }
     dds_entity_t domain = dds_create_domain(domain_id, cyc_config);
     if (domain < 0 && domain != DDS_RETCODE_PRECONDITION_NOT_MET) {
         free_session_state(state);
