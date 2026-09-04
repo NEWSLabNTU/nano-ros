@@ -90,9 +90,21 @@ fn emit_subscriber_slots() {
     // builtin and takes its platform answer from the derivation instead.
     let parsed = knob("NROS_RMW_SUBSCRIBER_SLOTS", None, 8);
 
-    if !(1..=128).contains(&parsed) {
+    // issue 1033 — ZERO is in range. A pub-only image derives 0 subscriptions
+    // from the entity inventory, and 0 slots is the honest answer: `[T; 0]` is
+    // ordinary Rust (no zero-length-array question as in C), and the only
+    // access is `for index in 0..SLOT_COUNT`, which at 0 does not run.
+    //
+    // The floor was 1 while the derivation could never produce 0 — every image
+    // refused for want of a declaration, so the knob fell to its default of 8
+    // and the bound was never exercised. Making the derivation reachable turned
+    // that latent disagreement into a build failure on the zephyr cpp talker,
+    // which is the first image ever to derive 0 here. Refusing it would clamp,
+    // and clamping is what issue 0827 forbids: it "reserved the memory anyway
+    // while reading as though the knob had been honoured".
+    if !(0..=128).contains(&parsed) {
         panic!(
-            "NROS_RMW_SUBSCRIBER_SLOTS={parsed} out of range [1, 128]. Each \
+            "NROS_RMW_SUBSCRIBER_SLOTS={parsed} out of range [0, 128]. Each \
              slot is a 1 KiB static; bump the upper bound only with the \
              memory budget in hand."
         );
