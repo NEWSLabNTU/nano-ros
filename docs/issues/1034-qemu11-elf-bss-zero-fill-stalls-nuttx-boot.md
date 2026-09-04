@@ -142,3 +142,103 @@ line introduced.
 
     # the discriminator
     arm-none-eabi-readelf -l <image> | grep '^  LOAD'
+
+---
+
+## FIXED 2026-09-04 — direction 1, in the NuttX fork's board linker script
+
+**Landing is blocked on one push.** The change is a commit on the `nuttx` fork's
+`nano-ros` branch (`aea00d73`, on top of the pinned `c3fa5dfb`, forward-only).
+Per AGENTS.md the agent does not push fork remotes, so the commit is local and
+the superproject pin cannot advance until a maintainer pushes it. Everything
+below is measured against that commit applied.
+
+### The change
+
+`boards/arm/qemu/qemu-armv7a/scripts/dramboot.ld`:
+
+```
+-  .bss : {
++  .bss ALIGN(ADDR(.noinit) + SIZEOF(.noinit) + 1, 16) :
++       AT (LOADADDR(.noinit) + SIZEOF(.noinit)) {
+```
+
+Both halves are load-bearing:
+
+* the **ALIGN** forces `.bss`'s VMA off the end of the preceding section. `ld`
+  opens a new segment only when the next section's VMA is not contiguous, and
+  the `+ 1` before rounding makes that unconditional — an already-aligned
+  `.data` still moves. Cost: at most 15 bytes of RAM.
+* the **AT** keeps `.bss`'s LMA on the ROM run. Without it `ld` assigns
+  `LMA == VMA` in RAM, which splits the segment correctly and **breaks the
+  image** (see below).
+
+The result is byte-for-byte the layout the two naturally-split images already
+had: three `PT_LOAD`s, `.bss` at `p_filesz == 0` with an LMA in flash.
+
+### Measured
+
+All twelve NuttX arm C/C++ images, on `11.0.0-nros2`:
+
+| | before | after |
+| --- | --- | --- |
+| `PT_LOAD` count | 2 (ten images), 3 (two) | **3 (all twelve)** |
+| time to first console byte | 19.5–20.1 s (ten), 0.05 s (two) | **0.05–0.10 s (all twelve)** |
+
+`rtos_e2e`, the six NuttX C/C++ cells, `--retries 0`, same host, back to back:
+
+| cell | before | after |
+| --- | ---: | ---: |
+| action C | 25.7 s | 6.0 s |
+| action C++ | 45.7 s | 4.8 s |
+| pubsub C | 81.4 s | 61.1 s |
+| pubsub C++ | 79.6 s | 60.6 s |
+| service C | 20.9 s | 0.7 s |
+| service C++ | 41.3 s | 0.8 s |
+| **wall clock** | **294.8 s** | **134.1 s** |
+
+**6 of 6 passed before and after** — this is a latency change, not a behaviour
+change. The pubsub cells stay near 61 s because that is their deliberate
+60-sample window, which no longer has ~20 s of emulator stall in front of it.
+
+### Two variants that were wrong, and are worth not re-trying
+
+* **`. = . + 16;` between `.noinit` and `.bss` does nothing.** Both sections are
+  placed with `> RAM`, and a region-assigned output section takes its address
+  from the region's allocation pointer, so the bare dot assignment is ignored.
+  Verified in the generated script — the text was present and `.bss` still
+  started at `.data`'s end.
+* **`AT > RAM`, and an explicit ALIGN with no AT, both split the segment and
+  both break the image.** The image boots and prints its banner, then fails at
+  session open with `zpico Session -> ConnectionFailed`. Confirmed as an A/B
+  against a control built from the pristine script on the same tree, with a
+  working router, control re-run afterwards to rule out drift. The shift size is
+  not the variable: a 16-byte move fails exactly like a 0x250 one. The variable
+  is the LMA — flash works, RAM does not.
+
+  **Why an LMA in RAM breaks the network stack is NOT explained.** Nothing in
+  the boot path should read `.bss`'s load address. Recorded rather than guessed
+  at; anyone changing this section again should treat it as a live hazard.
+
+### Found on the way: two linker scripts, two sources, one link
+
+`nros-nuttx-ffi` preprocesses `$NUTTX_DIR/boards/arm/qemu/qemu-armv7a/scripts/
+dramboot.ld` — the LIVE tree — while `nros-board-nuttx-qemu` preprocesses
+`nros-nuttx-export-<arch>/scripts/dramboot.ld` — the SNAPSHOT. Both emit a
+`dramboot.ld` into their own `OUT_DIR`; only the `nros-nuttx-ffi` one reaches
+the link. Editing the snapshot alone therefore changes nothing while looking
+like it should, which cost a build cycle here. phase-339's rule is that
+consumers link the snapshot, so the `nros-nuttx-ffi` path is the odd one out.
+Not fixed here — it is a separate change with its own blast radius.
+
+### Still open in this issue
+
+The mechanism section above is still INFERRED: `third-party/qemu/qemu` is not
+initialised, so `hw/core/loader.c` was not read, and no stock upstream QEMU 11
+was available to say whether this is upstream behaviour or something our patch
+line introduced. The fix does not depend on that answer — it removes the
+zero-fill rather than changing how it is performed — but the answer is still
+worth having, because any other board whose `.data` is `AT > ROM` has the same
+exposure.
+
+Direction 3 (print which emulator resolved) is also not done.
