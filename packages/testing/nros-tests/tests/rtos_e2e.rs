@@ -900,6 +900,15 @@ fn assert_no_session_churn(platform: Platform, lang: Lang, port: u16, window: Du
          file. Log: {}",
         log_path.display(),
     );
+    // Bound before the assertion rather than formatted inside it: a `format!`
+    // among another format's arguments is `clippy::format_in_format_args`, and
+    // the lane that catches it (`check test-targets`) runs on no merge-gating
+    // event, so it landed on main and sat there.
+    let session_lines = log
+        .lines()
+        .filter(|l| l.contains(ROUTER_SESSION_MARKER))
+        .collect::<Vec<_>>()
+        .join("\n");
     assert!(
         sessions <= MAX_ROUTER_SESSIONS,
         "{platform} {lang} pubsub E2E: the router opened {sessions} sessions in {window:?} \
@@ -911,16 +920,12 @@ fn assert_no_session_churn(platform: Platform, lang: Lang, port: u16, window: Du
          is fast now, which is exactly why the count is what this asserts on. Check \
          `Z_TRANSPORT_LEASE_MS` in `packages/rmw/zenoh/nros-zpico-build/src/lib.rs` \
          (60_000) and what the leaf actually BAKED — issue 1005: the staleness probe does \
-         not watch that constant, so a stale image can carry an old value. Sessions:\n{}",
-        format!(
-            "{}\n\nGaps between opens: {} — evenly spaced means a lease lapsing on a \
-             timer (the period is 2 x lease); one outlier means a single dropped link.",
-            log.lines()
-                .filter(|l| l.contains(ROUTER_SESSION_MARKER))
-                .collect::<Vec<_>>()
-                .join("\n"),
-            session_open_spacing(&log)
-        ),
+         not watch that constant, so a stale image can carry an old value.\n\n\
+         Sessions:\n{}\n\nGaps between opens: {} — evenly spaced means a lease \
+         lapsing on a timer (the period is 2 x lease); one outlier means a single \
+         dropped link.",
+        session_lines,
+        session_open_spacing(&log),
     );
 }
 
