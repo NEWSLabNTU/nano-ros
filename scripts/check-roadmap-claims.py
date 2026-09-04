@@ -60,7 +60,6 @@ are findings for a person to work, not debt to hide.
 
 import os
 import re
-import subprocess
 import sys
 import tempfile
 

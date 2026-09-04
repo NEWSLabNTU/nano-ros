@@ -54,7 +54,6 @@ import argparse
 import datetime
 import os
 import re
-import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -189,7 +188,7 @@ def audit(max_age_days):
 
 
 def main(argv):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0])
     ap.add_argument("--max-age-days", type=int, default=60)
     ap.add_argument("--markdown", action="store_true", help="emit a report body")
     args = ap.parse_args(argv[1:])
