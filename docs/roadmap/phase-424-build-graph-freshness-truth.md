@@ -1,14 +1,19 @@
 # Phase 424 — does the build graph tell the truth about what needs rebuilding?
 
-**Status (2026-09-05).** Enabling work done; #0945 and #1056 resolved and
-archived; five issues untouched. 0835 — the one every other fix has to be checked
-against — has been re-measured, its remaining scope narrowed to a disk-waste
-defect, and the property that ended its oscillation is now gated by `just check
-fixture-staleness-probes`. #0945 and #1056 both closed by DERIVATION rather than
-by widening a watch set, so the phase's own constraint held without being paid
-for. What the phase adds beyond that is the constraint in "What this phase must
-not do", which is the part that would otherwise be rediscovered per issue — and
-which is now backed by numbers rather than by a warning.
+**Status (2026-09-05).** **Six of eight closed and archived** — #0820 (a cargo
+custom command with no `DEPFILE`), #0835 (the probe families' oscillation, plus
+the six leaves that misreported their own platform), #0945 (the assumption
+register), #1002 (three configures is the chain's depth, not a defect), #1046
+(the PX4 stale-tree guard) and #1056 (the session-churn window). **Two remain
+open on their second halves**: #1018 for the stale-CLI refusal, and #1050 for
+defect (3), `nros::init()` taking slot 0.
+
+Worth carrying up, because it is this phase's own thesis holding: #0945, #1050
+and #1056 all closed by DERIVATION or by a configure-time assertion rather than
+by widening a watch set, so the constraint in "What this phase must not do" was
+never paid for. And three of the eight turned out to be a real defect whose
+stated MECHANISM was wrong (#1018, #1050, #1056) — in each case the priced fix
+would have bought nothing.
 
 **Opened 2026-09-04 as a HOME.** Eight open issues say the same thing from
 different layers: something in this tree reports FRESH when it is not, or STALE
@@ -251,3 +256,51 @@ reach through `cargo-nano-ros`/`nros-cli-core`, so a crate-level closure is
 nearly the whole closure and would not have excluded that file; and 0604
 measured a hand-rolled closure wrong in both directions at once).
 
+## Resolved: the PX4 pair (2026-09-04)
+
+The two were one shape, and treating them as one is what found the third site.
+#1050 is a FALSE FRESH — the link succeeds against the wrong input. #1046 is a
+guard that cannot detect it. The remedy for both is the same sentence: **a check
+must assert something that cannot outlive the build it reports on.** A directory
+can. A file's CONTENT cannot.
+
+**What was already on `main` when this started.** Both issue docs carried a
+"FIXED" section while `status: open`, and both fixes had landed (`0a47f949a`,
+`0364c5405`): the test guard now scans `bin/px4` for the module's command name,
+and `build-sitl-example` builds the archive it links. Verified as ancestors of
+`origin/main` rather than assumed from the prose.
+
+**What was left, and it was live.** The class sweep of the PX4 integration found
+`NanoRosPx4Module.cmake` guarding the per-build generated headers with
+`IS_DIRECTORY` — 1046's predicate verbatim, one layer down, in the build system
+rather than in a test. Measured in the shared checkout with no build running:
+the C++ generated header present and naming a *zenoh* variant, and
+`target/release/libnros_cpp.a` absent entirely. Both checks passed.
+
+`integrations/px4/NanoRosArchivePairing.cmake` now pairs content against content:
+the variant symbol is read OUT of the header (not recomputed — a second
+derivation of a slug is the class `row_coord()` records) and the archive must
+define it. That is exactly issue 0360's anchor condition, moved from LINK time
+(~1100 targets into a ten-minute build) to configure time, where the message can
+name the cargo command.
+
+**Was this issue 0475's `LINK_DEPENDS` again? No — checked, and the answer is
+no.** 0475's mechanism is a library reached through a raw `-Wl,` flag, which
+CMake cannot see, so no edge exists. Here the archives reach the link as absolute
+paths in `target_link_libraries()`, which CMake does resolve to a file-level
+dependency. **Inferred, not measured** — no PX4 build was run — but the mechanism
+differs from 0475 in the way that matters, so `LINK_DEPENDS` would have been
+answering a question that was not being asked. The real defect was never a
+missing edge; it was that *two independently-produced files had no assertion that
+they agreed*, which no edge expresses.
+
+**What this did not do:** it widened no watch set, so #0835's re-staling is
+untouched by construction. The phase's own constraint held without needing to be
+paid for.
+
+**Boundary.** `third-party/px4/PX4-Autopilot` is an empty, uninitialised gitlink
+on this host, so no PX4 build was run and nothing was verified through
+`make px4_sitl_default`. The cmake predicate is measured against real
+`libnros_cpp.a` artifacts and real generated headers, in both directions; its
+behaviour *inside a PX4 configure* is inferred from it sitting at file scope in a
+module every PX4 root includes.
