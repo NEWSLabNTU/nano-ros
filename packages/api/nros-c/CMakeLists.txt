@@ -100,10 +100,41 @@ nros_resolve_cargo_profile()
 # make (board="", caps="x") and (board="x", caps="") hash IDENTICALLY — two
 # different configurations sharing one directory, which is precisely the defect
 # being fixed. A label keeps every field non-empty and positional.
+#
+# issue 0835 — the first field is the resolved FEATURE SET, not
+# `platform=${NANO_ROS_PLATFORM}`. `NANO_ROS_PLATFORM` carries two meanings at
+# once: a platform FAMILY for cmake dispatch and a platform VARIANT for tier
+# selection, and this directory only ever cared about the second. Keying on the
+# label hashed a cmake-dispatch detail that merely CORRELATES with the artifacts.
+#
+# Measured before the change, on one board, from the `.key` files themselves:
+#
+#   platform=threadx         |rmw=zenoh     |board=riscv64-qemu|…
+#   platform=threadx_riscv64 |rmw=zenoh     |board=riscv64-qemu|…
+#   platform=threadx         |rmw=cyclonedds|board=riscv64-qemu|…
+#   platform=threadx_riscv64 |rmw=cyclonedds|board=riscv64-qemu|…
+#
+# — four groups differing in nothing but the label, where two would do, because
+# `NanoRosFeatureSet.cmake` resolves BOTH spellings to `alloc platform-threadx`
+# on this board (`threadx` takes its `_cross` arm; riscv64-qemu IS cross).
+# ThreadX was the only platform that split: freertos has one group, native's four
+# and threadx-linux's two differ by `rmw` or `caps`, which are real.
+#
+# The label is safe to drop because it is not load-bearing for CARGO, checked
+# rather than assumed: `NANO_ROS_PLATFORM` reaches no cargo environment and no
+# build script reads it. It stays load-bearing for cmake dispatch, where five
+# sites key on the exact string — this changes what the DIRECTORY is keyed on,
+# not what the variable means.
+#
+# Sorted, because a key must not depend on the order the features happened to be
+# appended in.
 if(COMMAND nros_share_corrosion_cargo_dir)
     string(REPLACE ";" "," _caps_flat "${_caps}")
+    set(_features_key ${_features})
+    list(SORT _features_key)
+    string(REPLACE ";" "," _features_flat "${_features_key}")
     nros_share_corrosion_cargo_dir(KEY
-        "platform=${NANO_ROS_PLATFORM}"
+        "features=${_features_flat}"
         "rmw=${NANO_ROS_RMW}"
         "board=${NANO_ROS_BOARD}"
         "caps=${_caps_flat}"

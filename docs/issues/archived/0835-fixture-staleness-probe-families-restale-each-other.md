@@ -3,7 +3,7 @@ id: 835
 title: "The cmake and rust fixture families re-stale each other, so
   `check-fixtures-stale` never reaches a fixed point and `just ci-matrix` fails
   ~190 tests on every run"
-status: open
+status: resolved
 type: bug
 area: testing
 related: [issue-0828, issue-0196, issue-0466, phase-344, phase-340]
@@ -342,3 +342,53 @@ The two candidate fixes, for whoever takes it:
 grep -rn 'inputsig' scripts/test/*.sh scripts/build/*.sh | head
 grep -rn 'nros_fixture_target_dir_flag\|cargo-fixtures' scripts/
 ```
+
+
+## RESIDUAL CLOSED 2026-09-05 — the cargo dir keys on the resolved feature set
+
+The oscillation half was fixed and gated 2026-09-04. This closes the remainder:
+the duplicated ThreadX corrosion groups, which were wasted disk rather than
+staleness.
+
+Done as this issue recommended — `packages/api/nros-c/CMakeLists.txt`'s key field
+`platform=${NANO_ROS_PLATFORM}` becomes `features=<sorted resolved set>`.
+
+**The duplication, re-measured from the `.key` files themselves before the
+change:**
+
+    036d16e80e45  platform=threadx         |rmw=zenoh     |board=riscv64-qemu|caps=|release|riscv64gc-…
+    89bb1118ba8f  platform=threadx_riscv64 |rmw=zenoh     |board=riscv64-qemu|caps=|release|riscv64gc-…
+    591f35a52a72  platform=threadx         |rmw=cyclonedds|board=riscv64-qemu|caps=|release|riscv64gc-…
+    4ec5af25ffb6  platform=threadx_riscv64 |rmw=cyclonedds|board=riscv64-qemu|caps=|release|riscv64gc-…
+
+Four groups differing in nothing but the label. The survey holds: freertos has
+one group, native's four and threadx-linux's two differ by `rmw` or `caps`,
+which are real.
+
+**That the two spellings resolve identically is now measured, not read.** Driving
+the real `nros_feature_set` for this board:
+
+    threadx          ->  features=alloc,cffi-zenoh-cffi,platform-threadx,ros-humble
+    threadx_riscv64  ->  features=alloc,cffi-zenoh-cffi,platform-threadx,ros-humble
+
+so each pair collapses to one group: 4 -> 2 on this board.
+
+**Dropping the label is safe because it is not load-bearing for CARGO, checked
+rather than assumed.** `NANO_ROS_PLATFORM` reaches no cargo environment and no
+build script reads it — the only references outside cmake are two tests
+asserting that cmake sets it. It stays load-bearing for cmake dispatch, where
+five sites key on the exact string; this changes what the DIRECTORY is keyed on,
+not what the variable means.
+
+The key is SORTED, because it must not depend on the order features happened to
+be appended in.
+
+**Cost, as this issue priced it:** every existing group hash changes, so the
+first build after this lands rebuilds the corrosion cargo dirs once. The old
+group directories are not removed by this change — they are inert and will be
+reclaimed by whatever prunes build output, which is the disk-waste half of this
+issue arriving one more time before it goes away.
+
+**Not run:** no cross build was performed. The merge is established by driving
+the real feature-set function and by the `.key` files above, not by observing two
+leaves land in one directory.
