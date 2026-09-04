@@ -252,9 +252,27 @@ fn walk_packages(
         return Ok(());
     }
 
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        if IGNORE_MARKERS.iter().any(|m| dir.join(m).exists()) {
+    // `(dir, depth)` — depth exists ONLY to exempt the root from the ignore
+    // markers, matching `nros_pkg_index::build_pkg_index`, whose walkdir filter
+    // returns `true` for `entry.depth() == 0` before any marker is read.
+    //
+    // issue 1054 — this walk checked the markers on every directory it popped,
+    // the root included, so `scan_roots(&[<nano-ros root>])` returned ZERO
+    // packages: the repository root carries its own `.nros-ignore` (issue
+    // 0621), whose header states the opposite contract in as many words — it
+    // "prunes the whole tree from any walk that starts ABOVE it" and "does NOT
+    // affect nano-ros's own discovery". `nros-pkg-index` honoured that; issue
+    // 0809 taught this walk the `.nros-ignore` SPELLING and did not carry the
+    // depth-0 exemption that makes the spelling safe. Two walks over one marker
+    // vocabulary must not mean two different things.
+    //
+    // The rule, stated positively: a marker prunes DESCENDANTS, never the root
+    // the caller named. A caller that hands us a directory has already decided
+    // to scan it, and a marker inside it cannot overrule that decision — it is
+    // addressed to walks from above.
+    let mut stack = vec![(root.to_path_buf(), 0usize)];
+    while let Some((dir, depth)) = stack.pop() {
+        if depth > 0 && IGNORE_MARKERS.iter().any(|m| dir.join(m).exists()) {
             continue;
         }
 
@@ -299,7 +317,7 @@ fn walk_packages(
             if name.starts_with('.') || is_pruned_dir(name.as_ref()) {
                 continue;
             }
-            stack.push(path);
+            stack.push((path, depth + 1));
         }
     }
     Ok(())
@@ -926,6 +944,126 @@ mod tests {
                 "`{marker}` must stop the walk descending"
             );
         }
+    }
+
+    /// issue 1054 — a marker on the root the caller NAMED does not prune it.
+    ///
+    /// This is the depth-0 exemption `nros_pkg_index::build_pkg_index` has had
+    /// since issue 0621 (`entry.depth() == 0` returns true before any marker is
+    /// read), and which issue 0809 did not carry across when it taught this
+    /// walk the `.nros-ignore` spelling. The concrete casualty: the nano-ros
+    /// repository root carries `.nros-ignore`, so `scan_roots(&[<nano-ros
+    /// root>])` — root 0 of `default_search_path` — reported ZERO packages and
+    /// therefore zero providers of EVERY family, silently.
+    ///
+    /// A caller that hands this walk a directory has already decided to scan
+    /// it; the marker is addressed to walks that start ABOVE it, which is what
+    /// `.nros-ignore`'s own header says in as many words.
+    #[test]
+    fn the_root_is_scanned_despite_its_own_ignore_marker() {
+        for marker in IGNORE_MARKERS {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path();
+            write(&root.join(marker), "");
+            write(
+                &root.join("packages/rmw/zenoh/package.xml"),
+                &provider_xml("nros_rmw_zenoh", "rmw", "zenoh"),
+            );
+            write(&root.join("src/plain/package.xml"), &plain_xml("plain"));
+
+            let r = scan_root(root, 0).unwrap();
+            assert_eq!(
+                r.packages_seen(),
+                2,
+                "`{marker}` on the root must not stop the walk that STARTS there"
+            );
+            let names: Vec<_> = r.providers.iter().map(|p| p.package.as_str()).collect();
+            assert_eq!(names, vec!["nros_rmw_zenoh"]);
+        }
+    }
+
+    /// The other half of the same rule: exempting the root exempts ONLY the
+    /// root. A marker one level down still prunes, so the exemption cannot be
+    /// mistaken for "the markers are advisory".
+    #[test]
+    fn a_marker_below_the_root_still_prunes_even_when_the_root_has_one_too() {
+        for marker in IGNORE_MARKERS {
+            let tmp = tempfile::tempdir().unwrap();
+            let root = tmp.path();
+            // The root carries a marker AND so does a nested subtree: the first
+            // is exempt, the second is not.
+            write(&root.join(".nros-ignore"), "");
+            write(&root.join("vendored").join(marker), "");
+            write(
+                &root.join("vendored/nano-ros/packages/rmw/zenoh/package.xml"),
+                &provider_xml("vendored_rmw", "rmw", "vendored"),
+            );
+            write(
+                &root.join("src/real/package.xml"),
+                &provider_xml("real", "rmw", "real"),
+            );
+
+            let r = scan_root(root, 0).unwrap();
+            let names: Vec<_> = r.providers.iter().map(|p| p.package.as_str()).collect();
+            assert_eq!(
+                names,
+                vec!["real"],
+                "`{marker}` at depth 1 must still prune its subtree"
+            );
+            assert_eq!(
+                r.packages_seen(),
+                1,
+                "the pruned package.xml was never parsed"
+            );
+        }
+    }
+
+    /// issue 0621, the case the marker file exists FOR: a consumer vendors
+    /// nano-ros as a subdirectory and scans their own root. nano-ros's 272+
+    /// packages are not part of their graph, and the marker is what keeps them
+    /// out. The depth-0 exemption must not weaken this — here the walk starts
+    /// ABOVE the marker, which is exactly when it bites.
+    #[test]
+    fn a_vendored_nano_ros_is_pruned_when_the_walk_starts_above_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let consumer = tmp.path();
+        write(
+            &consumer.join("src/my_app/package.xml"),
+            &plain_xml("my_app"),
+        );
+        // The vendored tree, with its own marker at its root — the shape the
+        // real repository has.
+        write(&consumer.join("nano-ros/.nros-ignore"), "vendored\n");
+        for dup in ["templates/a", "templates/b"] {
+            write(
+                &consumer
+                    .join("nano-ros/examples")
+                    .join(dup)
+                    .join("src/demo_bringup/package.xml"),
+                &plain_xml("demo_bringup"),
+            );
+        }
+        write(
+            &consumer.join("nano-ros/packages/rmw/zenoh/package.xml"),
+            &provider_xml("nros_rmw_zenoh", "rmw", "zenoh"),
+        );
+
+        let (pkgs, scan) = scan_workspace_packages(consumer).unwrap();
+        let names: Vec<_> = pkgs.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["my_app"],
+            "the vendored tree must stay out of the consumer's package graph"
+        );
+        assert_eq!(scan.packages_seen(), 1);
+
+        // …and scanning the vendored tree DIRECTLY still finds everything in
+        // it. Same marker, same tree, different starting point: that asymmetry
+        // is the whole contract.
+        let inner = scan_root(&consumer.join("nano-ros"), 0).unwrap();
+        assert_eq!(inner.packages_seen(), 3);
+        let inner_names: Vec<_> = inner.providers.iter().map(|p| p.package.as_str()).collect();
+        assert_eq!(inner_names, vec!["nros_rmw_zenoh"]);
     }
 
     /// A malformed package.xml is reported without taking the scan down with
