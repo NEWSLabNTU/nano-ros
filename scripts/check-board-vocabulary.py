@@ -112,6 +112,59 @@ def cmake_boards(root):
     return out
 
 
+def board_entries(root):
+    """{key: {arch, platform, packages}} for every `[board.*]`, plus its `# =` pair.
+
+    A deliberately small parser: these entries are three scalar/array fields and
+    a section header, and pulling in a TOML dependency to read them would be the
+    larger change (the same reasoning `prereq_resolve::depend_names` records).
+    """
+    try:
+        with open(os.path.join(root, "nros-sdk-index.toml"), encoding="utf8") as fh:
+            text = fh.read()
+    except OSError:
+        return {}
+    out, pair = {}, {}
+    cur = None
+    pending_pair = None
+    for line in text.split("\n"):
+        st = line.strip()
+        m = re.match(r"^#\s*=\s*\[board\.([a-z0-9._-]+)\]", st)
+        if m:
+            pending_pair = m.group(1)
+            continue
+        h = re.match(r"^\[board\.([a-z0-9._-]+)\]$", st)
+        if h:
+            cur = h.group(1)
+            out[cur] = {}
+            if pending_pair:
+                pair[cur] = pending_pair
+                pending_pair = None
+            continue
+        if st.startswith("["):
+            cur = None
+            pending_pair = None
+            continue
+        if cur is None or st.startswith("#") or "=" not in st:
+            continue
+        k, _, v = st.partition("=")
+        k, v = k.strip(), v.strip()
+        if k in ("arch", "platform"):
+            # Take the QUOTED value, never the rest of the line. These entries
+            # carry trailing comments (`platform = "nuttx" # NuttX kernel/apps
+            # are submodule SDKs`), and reading the raw remainder made this gate
+            # report two IDENTICAL pairs as diverged — a false positive that
+            # would have sent someone "fixing" correct data.
+            q = re.match(r'"([^"]*)"', v)
+            out[cur][k] = q.group(1) if q else v.split("#", 1)[0].strip().strip('"')
+        elif k == "packages":
+            # Same hazard: only read inside the brackets, so a trailing comment
+            # containing a quoted word cannot be mistaken for a package.
+            arr = v.split("]", 1)[0]
+            out[cur][k] = re.findall(r'"([^"]+)"', arr)
+    return out, pair
+
+
 def scopes(root):
     try:
         with open(os.path.join(root, "scripts", "build", "scope.sh"), encoding="utf8") as fh:
@@ -155,6 +208,32 @@ def main():
         return 1
 
     bad_board, bad_deploy, not_index = {}, {}, {}
+
+    # phase-422 W7 — the DUPLICATE-PAIR assertion. The index carries four
+    # entries that duplicate a counterpart under the other spelling, marked
+    # `# = [board.X]`, and its comment told readers to EDIT BOTH while claiming
+    # this gate asserted the pairing. It did not: it only ever regexed section
+    # NAMES. That is the issue-0196 class — a gate credited with a rule wider
+    # than the one it enforces — so the assertion is added rather than the claim
+    # softened.
+    #
+    # Driven off the `# =` markers, so a pair opts IN by being marked. The
+    # `native`/`posix` entries are byte-identical and deliberately NOT a pair
+    # (CLAUDE.md: they answer ROLE vs REACH, and `check-host-platform-vocabulary`
+    # enforces the distinction) — they carry no marker and are correctly ignored.
+    entries, pairs = board_entries(ROOT)
+    mismatched = {}
+    for key, counterpart in sorted(pairs.items()):
+        if counterpart not in entries:
+            mismatched[key] = "names `[board.%s]`, which does not exist" % counterpart
+            continue
+        a, b = entries.get(key, {}), entries[counterpart]
+        diffs = [f for f in ("arch", "platform", "packages") if a.get(f) != b.get(f)]
+        if diffs:
+            mismatched[key] = "diverged from `[board.%s]` in: %s" % (
+                counterpart,
+                ", ".join(diffs),
+            )
     seen_board, seen_deploy = {}, {}
     for f in files:
         try:
@@ -192,6 +271,19 @@ def main():
             elif board not in idx:
                 not_index.setdefault(board, f)
 
+    if mismatched:
+        sys.stderr.write("check-board-vocabulary: %d mirror problem(s)\n\n" % len(mismatched))
+        for k, why in sorted(mismatched.items()):
+            sys.stderr.write(
+                "  - [board.%s] %s.\n"
+                "      The two are the same physical board under two spellings and the\n"
+                "      index says EDIT BOTH. Until an alias key exists they must stay\n"
+                "      identical, or `nros setup` provisions differently depending on\n"
+                "      which name the user happened to read off their package.xml.\n\n"
+                % (k, why)
+            )
+        return 1
+
     if bad_board or bad_deploy or not_index:
         sys.stderr.write(
             "check-board-vocabulary: %d problem(s)\n\n"
@@ -225,10 +317,12 @@ def main():
 
     sys.stdout.write(
         "check-board-vocabulary: OK — %d deploy value(s), %d board value(s); "
-        "each resolves AND is an index key (cmake %d / index %d / crate %d / fixture %d).\n"
+        "each resolves AND is an index key; %d mirrored pair(s) identical "
+        "(cmake %d / index %d / crate %d / fixture %d).\n"
         % (
             len(seen_deploy),
             len(seen_board),
+            len(pairs),
             len(cmakeb),
             len(idx),
             len(crates),
