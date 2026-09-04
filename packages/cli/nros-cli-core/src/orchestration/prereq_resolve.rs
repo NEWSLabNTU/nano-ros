@@ -50,6 +50,15 @@ pub enum Resolution {
     Prereq,
     /// Provided by the ambient ROS install (the ament index).
     RosPackage,
+    /// The declaring package's OWN buildtool, named by its `<build_type>`.
+    ///
+    /// `<buildtool_depend>ament_cmake</buildtool_depend>` on a package whose
+    /// build type IS `ament_cmake` is a tautology: if that builder is building
+    /// it, the buildtool is present. rosdep wants the declaration anyway, so
+    /// the tree should carry it — but resolving it must not require an ambient
+    /// ROS, or an embedded-only contributor with no `AMENT_PREFIX_PATH` gets a
+    /// hard error for a dependency that is satisfied by definition.
+    SelfBuildtool,
     /// Nothing claims it.
     Unknown,
 }
@@ -96,6 +105,7 @@ pub fn classify(
     generated: &BTreeSet<String>,
     prereq_keys: &BTreeSet<String>,
     ros: &BTreeSet<String>,
+    self_buildtools: &BTreeSet<String>,
 ) -> Resolution {
     if workspace_packages.contains(name) {
         Resolution::WorkspacePackage
@@ -105,6 +115,11 @@ pub fn classify(
         Resolution::Prereq
     } else if ros.contains(name) {
         Resolution::RosPackage
+    } else if self_buildtools.contains(name) {
+        // LAST, deliberately. An ambient ROS or a `[prereq.*]` key is a real
+        // provider and should win; this rung exists so the absence of both is
+        // not an error for a dependency the builder satisfies by definition.
+        Resolution::SelfBuildtool
     } else {
         Resolution::Unknown
     }
@@ -176,6 +191,97 @@ pub fn depend_names(xml: &str) -> Vec<String> {
     out
 }
 
+/// `<build_type>` -> the buildtool package that build type implies.
+///
+/// Measured on this tree: 345 of 367 packages declare a `<build_type>` and NOT
+/// the matching `<buildtool_depend>`, and the only buildtool declarations that
+/// are NOT inferable this way are `rosidl_default_generators` (10 message
+/// packages) and `cargo-ros2` (1). So the mapping is nearly total, and what it
+/// cannot infer is exactly what a human should still write by hand.
+///
+/// The nano-ros build types map to `nros`: they are served by this repo's own
+/// builders, so there is no upstream buildtool package to name. `ament_cargo`
+/// and `cargo-ros2` are served by the in-tree `packages/cli/colcon-cargo-ros2`
+/// colcon extension — also not apt-installable, which is why inventing
+/// `[prereq.*]` rows with `apt = ["ros-humble-..."]` for them would be fiction.
+#[must_use]
+pub fn buildtool_for_build_type(build_type: &str) -> Option<&'static str> {
+    Some(match build_type {
+        "ament_cmake" => "ament_cmake",
+        "ament_cargo" => "ament_cargo",
+        "cmake" => "cmake",
+        "cargo" => "cargo",
+        "ament_nros" | "nros_entry" | "nros_cargo" | "nros_bringup" => "nros",
+        _ => return None,
+    })
+}
+
+/// The `<build_type>` a `package.xml` exports, if it declares one.
+#[must_use]
+pub fn build_type(xml: &str) -> Option<String> {
+    let i = xml.find("<build_type>")? + "<build_type>".len();
+    let rest = xml.get(i..)?;
+    let end = rest.find("</build_type>")?;
+    Some(rest[..end].trim().to_string())
+}
+
+/// Buildtool names that every declaring package satisfies by its own build type.
+///
+/// Deliberately conservative: a name qualifies only if EVERY `package.xml` that
+/// declares it has a build type implying it. One package declaring
+/// `ament_cmake` while being built some other way keeps the name on the normal
+/// ladder, where an ambient ROS or a `[prereq.*]` key still has to claim it.
+#[must_use]
+pub fn self_satisfied_buildtools(ws_root: &Path) -> BTreeSet<String> {
+    let mut implied: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+    for (_path, text) in package_xml_files(ws_root) {
+        let own = build_type(&text).and_then(|bt| buildtool_for_build_type(&bt));
+        for dep in depend_names(&text) {
+            if buildtool_for_build_type(&dep).is_some() || dep == "nros" {
+                let e = implied.entry(dep.clone()).or_insert((0, 0));
+                e.1 += 1;
+                if own == Some(dep.as_str()) {
+                    e.0 += 1;
+                }
+            }
+        }
+    }
+    implied
+        .into_iter()
+        .filter(|(_n, (ok, total))| *total > 0 && ok == total)
+        .map(|(n, _)| n)
+        .collect()
+}
+
+/// Every `package.xml` under a workspace, as (path, text).
+fn package_xml_files(ws_root: &Path) -> Vec<(std::path::PathBuf, String)> {
+    let mut out = Vec::new();
+    let mut stack = vec![ws_root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            let name = e.file_name().to_string_lossy().into_owned();
+            if p.is_dir() {
+                if !matches!(
+                    name.as_str(),
+                    "build" | "target" | ".git" | "external" | "third-party" | "node_modules"
+                ) && !name.starts_with("target-")
+                {
+                    stack.push(p);
+                }
+            } else if name == "package.xml"
+                && let Ok(text) = std::fs::read_to_string(&p)
+            {
+                out.push((p, text));
+            }
+        }
+    }
+    out
+}
+
 /// The name of a `package.xml`'s own package.
 #[must_use]
 pub fn package_name(xml: &str) -> Option<String> {
@@ -201,7 +307,8 @@ mod tests {
         let msgs = set(&["std_msgs"]);
         let keys = set(&["libslirp"]);
         let ros = set(&["ament_cmake"]);
-        let c = |n: &str| classify(n, &ws, &msgs, &keys, &ros);
+        let bt = BTreeSet::new();
+        let c = |n: &str| classify(n, &ws, &msgs, &keys, &ros, &bt);
 
         assert_eq!(c("talker_pkg"), Resolution::WorkspacePackage);
         assert_eq!(c("std_msgs"), Resolution::GeneratedMessage);
@@ -218,7 +325,14 @@ mod tests {
     fn a_generated_message_outranks_a_prereq_key_of_the_same_name() {
         let both = set(&["std_msgs"]);
         assert_eq!(
-            classify("std_msgs", &BTreeSet::new(), &both, &both, &BTreeSet::new()),
+            classify(
+                "std_msgs",
+                &BTreeSet::new(),
+                &both,
+                &both,
+                &BTreeSet::new(),
+                &BTreeSet::new()
+            ),
             Resolution::GeneratedMessage,
         );
     }
@@ -229,9 +343,67 @@ mod tests {
     fn a_workspace_package_outranks_every_other_rung() {
         let all = set(&["talker_pkg"]);
         assert_eq!(
-            classify("talker_pkg", &all, &all, &all, &all),
+            classify("talker_pkg", &all, &all, &all, &all, &all),
             Resolution::WorkspacePackage,
         );
+    }
+
+    /// The rung this exists for: no ambient ROS, and a package declaring the
+    /// buildtool its own `<build_type>` implies still resolves.
+    ///
+    /// Without it, adding the `<buildtool_depend>` rosdep expects would hard-fail
+    /// `nros build` on every host with no `AMENT_PREFIX_PATH` — which is every
+    /// embedded-only contributor.
+    #[test]
+    fn a_packages_own_buildtool_resolves_without_ros() {
+        let empty = BTreeSet::new();
+        let bt = set(&["ament_cmake"]);
+        assert_eq!(
+            classify("ament_cmake", &empty, &empty, &empty, &empty, &bt),
+            Resolution::SelfBuildtool,
+        );
+        // and it is still UNKNOWN when nothing implies it
+        assert_eq!(
+            classify("ament_cmake", &empty, &empty, &empty, &empty, &empty),
+            Resolution::Unknown,
+        );
+    }
+
+    /// A real provider outranks the tautology: if ROS supplies `ament_cmake`,
+    /// say so, because that is the truthful answer and the one a user can act on.
+    #[test]
+    fn an_ambient_ros_outranks_the_self_buildtool_rung() {
+        let s = set(&["ament_cmake"]);
+        assert_eq!(
+            classify(
+                "ament_cmake",
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+                &BTreeSet::new(),
+                &s,
+                &s
+            ),
+            Resolution::RosPackage,
+        );
+    }
+
+    /// The mapping is per build type, and nano-ros's own builders resolve to
+    /// `nros` — they have no upstream buildtool package to name.
+    #[test]
+    fn build_type_implies_its_buildtool() {
+        assert_eq!(buildtool_for_build_type("ament_cmake"), Some("ament_cmake"));
+        assert_eq!(buildtool_for_build_type("cmake"), Some("cmake"));
+        assert_eq!(buildtool_for_build_type("nros_entry"), Some("nros"));
+        assert_eq!(buildtool_for_build_type("ament_cargo"), Some("ament_cargo"));
+        // Not every build type implies one; an unknown type must not be guessed.
+        assert_eq!(buildtool_for_build_type("colcon_lunar_module"), None);
+    }
+
+    #[test]
+    fn build_type_is_read_from_the_export_block() {
+        let xml = "<package><export><build_type>ament_cmake</build_type></export></package>";
+        assert_eq!(build_type(xml).as_deref(), Some("ament_cmake"));
+        assert_eq!(build_type("<package/>"), None);
     }
 
     /// All four depend spellings, and the closing tag must not be mistaken for

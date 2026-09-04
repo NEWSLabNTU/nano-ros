@@ -2019,10 +2019,16 @@ fn check_declared_depends(
         .unwrap_or_default();
 
     let ros = pr::ros_packages();
+    // Off-ROS safety: a package's own buildtool is satisfied by the builder that
+    // is building it. Without this, adding the `<buildtool_depend>` that rosdep
+    // expects would hard-fail every host with no `AMENT_PREFIX_PATH`.
+    let self_buildtools = pr::self_satisfied_buildtools(root);
 
     let mut unresolved: Vec<pr::Unresolved> = Vec::new();
     for (name, files) in &declared {
-        if pr::classify(name, &ws, &generated, &prereq_keys, &ros) == pr::Resolution::Unknown {
+        if pr::classify(name, &ws, &generated, &prereq_keys, &ros, &self_buildtools)
+            == pr::Resolution::Unknown
+        {
             unresolved.push(pr::Unresolved {
                 name: name.clone(),
                 declared_by: files.clone(),

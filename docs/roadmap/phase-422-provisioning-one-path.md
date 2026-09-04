@@ -39,7 +39,7 @@ it is tidying, not a correctness fix.
 **2. Installers that never reached the index at all.** `clang-format` (pip
 wheel download, `scripts/`-side logic), `mdbook` (`scripts/setup-mdbook.sh` +
 a hand-maintained `scripts/mdbook-checksums.txt`), `verus`
-(`scripts/setup-verus.sh`). Each re-implements what the index already does for
+(`scripts/setup-verus.sh`, reached by `just verify-verus`). Each re-implements what the index already does for
 16 other tools: pinned version, download, checksum, install prefix, smoke
 check. None of them can be asked "are you at the pin?" the way
 `nros setup --tool X --check` can.
@@ -83,8 +83,8 @@ Care: `_setup-common` calls `just workspace install-corrosion` today (landed in
 `just setup <scope>`, or `check-preconditions-provisioned` fails — which is the
 gate doing its job.
 
-**Acceptance.** No tool has two installers. `grep -c 'version' ` for each tool
-finds exactly one pin. `just check preconditions-provisioned` stays green.
+**Acceptance.** No tool has two installers. Each tool has exactly one pin.
+`check-preconditions-provisioned` (#387) stays green.
 
 ### W2 — move the bespoke installers into the index
 
@@ -99,8 +99,8 @@ a wheel source kind, or clang-format keeps its recipe and is documented as a
 deliberate exception with the reason. Decide before implementing — do not force
 a shape that then needs a second exception.
 
-**Acceptance.** `just setup-mdbook` and `just setup-verus` no longer exist as
-bespoke downloaders. Every remaining bespoke installer is listed in this doc
+**Acceptance.** `scripts/setup-mdbook.sh` and `scripts/setup-verus.sh` no longer
+exist as bespoke downloaders. Every remaining bespoke installer is listed in this doc
 with a reason.
 
 ### W3 — retire the old spelling everywhere
