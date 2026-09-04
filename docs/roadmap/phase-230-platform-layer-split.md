@@ -10,7 +10,41 @@ per-RMW bridge, and add a lint that keeps the boundary from re-rotting.
 The unified allocation funnel also yields the true heap stats that
 [issue 0006](../issues/0006-rtos-dual-heap.md) needs.
 
-**Status:** Planned
+**Status (2026-09-04). NOT "Planned" — Wave 0 and Wave 3 are marked DONE in
+this doc, the lint is on the fast line, and every scalar service Wave 2 names is
+in the shipped ABI.** The one-word status has been wrong for long enough that
+the phase reads as unstarted work; what is actually left is two items this doc
+already labels follow-ups.
+
+Measured against the tree today, not inferred:
+
+* `packages/platform/nros-platform-cffi/src/generated.rs` exports **98**
+  `nros_platform_*` symbols, including everything 230.2.1 asks for —
+  `sleep_ms`/`sleep_us`/`sleep_s`, `clock_ms`/`clock_ns`/`clock_resolution_ns`,
+  `yield_now`, `random_fill`/`random_u*` — plus 230.1.6's heap stats
+  (`heap_total_bytes`, `heap_used_bytes`).
+* The lint 230.0.2 specified EXISTS and is enforced:
+  `scripts/check-no-direct-kernel-alloc.sh`, wired at `just/check.just:208` in
+  the **fast** list, so it runs on every push rather than on request.
+* The stated defect is gone. `grep` for `pvPortMalloc` / `k_malloc` /
+  `tx_byte_allocate` across the zpico C shim returns NOTHING; the goal text
+  below still describes them as bypassing the ABI "on every RTOS".
+* [issue 0006](../issues/archived/0006-rtos-dual-heap.md) — the accurate heap
+  accounting this phase said it would unblock — is `status: resolved` and
+  archived.
+* [phase-391](phase-391-allocation-unification-and-tier-model.md) reports
+  "W1-W5 landed; the tier is real and gated", covering the same allocation
+  ground from the tier side.
+
+**Deliberately NOT claimed:** that 230.1.1-230.1.6 are individually complete.
+Their ✅ marks are absent and what is measured above is the ABI SURFACE, which
+is weaker evidence than a per-item check (a fork guard or an init-order
+contract does not show up as a symbol). They are left unmarked rather than
+promoted on a surface reading.
+
+What remains, and it is what the doc already calls it: the two unchecked
+follow-up boxes — Z5 (promote to the canonical platform ABI) and 1b.3 (the
+public accessor behind the C/C++ API).
 
 **Priority:** Medium — architecture/tech-debt. Design is locked (RFC-0034);
 no new public API. Unblocks accurate embedded heap accounting and a
