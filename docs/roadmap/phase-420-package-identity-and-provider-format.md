@@ -1,6 +1,6 @@
 # Phase 420 — package identity and the provider format
 
-**Status (2026-09-04). Planning.** No work item started. Implements
+**Status (2026-09-04). W1 landed; W2–W9 open.** Implements
 [RFC-0087](../design/0087-package-identity-and-provider-format.md). Sequenced
 with [phase-421](phase-421-serialization-format-provider.md), which implements
 RFC-0088 and needs **W1 of this phase only** — the rest of this phase can land
@@ -36,17 +36,27 @@ is one road.
 
 ## Work items
 
-- [ ] **W1 — `<nano_ros_uses kind= name=/>` and one parser for three tags.**
+- [x] **W1 — `<nano_ros_uses kind= name=/>` and one parser for three tags.** (landed 2026-09-04)
       Add the general consumption form; define `board=` / `rmw=` on the bare
       `<nano_ros …/>` tag as sugar for it; leave `deploy=` an attribute, because
       it names a `[deploy.*]` block and is not a provider kind. Implement the
       shared rule set once (must sit inside `<export>`, non-empty `kind`/`name`,
       comments stripped) and have both the Rust parser and
       `NanoRosPackageXml.cmake` consume that one implementation.
-      **Acceptance:** a package selecting a provider of a family that has no
-      bespoke attribute builds with no change to either parser; the two
-      reader-confusion tests still pass, plus a new one asserting sugar and
-      general form resolve identically. **This is what phase-421 W4 needs.**
+      **Acceptance, met:** a package selecting `kind="serdes"` resolves in both
+      readers with no new attribute in either; the two reader-confusion tests
+      still pass; `the_sugar_and_the_general_form_resolve_identically` asserts
+      the equivalence in Rust and `check-package-xml-uses` asserts it in cmake.
+      **This is what phase-421 W4 needs.**
+
+      Landed as: one `read_announcement` helper serving both announcement tags
+      in `package_xml.rs` (the two readers that confused the directions each
+      implemented the rule separately — one match arm cannot disagree with
+      itself); `PackageXml::{uses, deploy}` with `uses_of_kind()`;
+      `NANO_ROS_EXPORT_USES_<KIND>` plus `NANO_ROS_EXPORT_USES_KINDS` in
+      `NanoRosPackageXml.cmake`, fed by both spellings; and a buildless
+      `cmake -P` gate. `deploy=` stays an attribute in both, and a
+      `<nano_ros_uses kind="deploy" …/>` is not invented to carry it.
 
 - [ ] **W2 — `nros_cmake` / `nros_cargo` build types.** Teach the reader both old
       and new, mapping `ament_cargo|ament_nros → nros_cargo` with a deprecation
