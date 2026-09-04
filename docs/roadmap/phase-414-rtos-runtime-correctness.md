@@ -207,6 +207,22 @@ refuted; the sample was never ours to explain.
 and withdrawn (issue 1034, above); its `-100` failure still needs a failing run,
 and the instrumentation for that is armed and linked.
 
+**Progress 2026-09-04, and W3 is now a DECISION rather than an experiment.**
+Issue 1034's `.bss` fix cut this cell from 45.7 s to 4.8 s, so the sweep this
+issue had been deferring became affordable on the emulator the harness actually
+resolves: **150 / 150 idle and 60 / 60 under load average 33**, `--retries 0`,
+which with the earlier batches is 274 consecutive passes. Two bounds are stated
+in the issue rather than glossed: the images carry zenoh-pico 1.7.2 because
+issue 1047 makes main's 1.8.0 pin fail to compile for NuttX at all, and the
+`.bss` fix moved every address, so this is a THIRD build regime and not a longer
+run of the second — which is the same objection W3 itself raised against reading
+the previous batch as a delta.
+
+Every cheap avenue is spent: instrumentation armed and linkage-verified,
+`retries = 0` in place so a red is a red, and a sweep now costing minutes.
+Closing it means accepting green with the cause unattributed, exactly as W1 was
+closed — an owner call, not a conclusion, and deliberately not taken here.
+
 The shared-cause answer: **NO.** W2 was harness ordering and is already fixed;
 W3 fails inside construction, before any interaction with the server exists, so
 server ordering cannot reach it. The phase does not shrink.
