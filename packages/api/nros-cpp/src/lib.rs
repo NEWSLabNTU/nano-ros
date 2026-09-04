@@ -3671,6 +3671,14 @@ pub const NROS_CPP_SERIALIZATION_FORMAT_ID: u8 = 1;
 /// `nros::linked_format_name()` derives the name from the discriminant.
 pub const NROS_CPP_SERIALIZATION_FORMAT: &str = "cdr";
 
+// GATED on `rmw-cffi`, for the same reason and by the same rule as the sibling
+// block in `nros-c/src/constants.rs` — this is the SECOND site of that defect,
+// and the first fix landed only on the one the error message named.
+// `nros_node::session` is `#[cfg(any(has_rmw, test))]`, `has_rmw` is exactly
+// nros-node's `rmw-cffi` feature, and nros-cpp's own `rmw-cffi` forwards to it
+// (`nros/rmw-cffi` + `nros-c/rmw-cffi`). Ungated, the block named a module that
+// exists in no RMW-less combo, so the crate failed to COMPILE there.
+#[cfg(feature = "rmw-cffi")]
 const _: () = {
     assert!(
         NROS_CPP_SERIALIZATION_FORMAT_ID
