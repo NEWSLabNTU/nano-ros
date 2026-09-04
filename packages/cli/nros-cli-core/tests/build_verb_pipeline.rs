@@ -28,6 +28,20 @@ fn write(path: &Path, body: &str) {
     std::fs::write(path, body).unwrap();
 }
 
+/// A `package.xml` declaring `<depend>` on each of `depends`.
+fn pkg_xml_needing(name: &str, depends: &[&str]) -> String {
+    let deps: String = depends
+        .iter()
+        .map(|d| format!("<depend>{d}</depend>\n"))
+        .collect();
+    format!(
+        "<?xml version=\"1.0\"?>\n<package format=\"3\">\n<name>{name}</name>\n\
+         <version>0.0.0</version>\n<description>t</description>\n\
+         <maintainer email=\"a@b.c\">m</maintainer>\n<license>Apache-2.0</license>\n\
+         {deps}</package>\n"
+    )
+}
+
 fn pkg_xml(name: &str) -> String {
     format!(
         "<?xml version=\"1.0\"?>\n<package format=\"3\">\n<name>{name}</name>\n\
@@ -95,6 +109,11 @@ fn fixture(dir: &Path) {
 }
 
 fn args(ws: &Path, images: &[&str]) -> Args {
+    selected_args(ws, images, &[], &[])
+}
+
+/// [`args`], narrowed by the phase-420 W7 selection verbs.
+fn selected_args(ws: &Path, images: &[&str], select: &[&str], up_to: &[&str]) -> Args {
     Args {
         images: images.iter().map(|s| (*s).to_string()).collect(),
         workspace: Some(ws.to_path_buf()),
@@ -105,6 +124,8 @@ fn args(ws: &Path, images: &[&str]) -> Args {
         all: false,
         dry_run: true,
         offline: false,
+        packages_select: select.iter().map(|s| (*s).to_string()).collect(),
+        packages_up_to: up_to.iter().map(|s| (*s).to_string()).collect(),
         native_args: Vec::new(),
     }
 }
@@ -751,4 +772,164 @@ fn a_missing_framework_names_how_to_supply_it() {
     };
     assert!(err.contains("--nano-ros-path"), "{err}");
     assert!(err.contains("NROS_REPO_DIR"), "{err}");
+}
+
+// ---- phase-420 W7 — the selection verbs, end to end (RFC-0087 D7) --------
+
+/// Two extra packages on top of [`fixture`]: `app_pkg` depending on
+/// `talker_pkg`, and an unrelated `other_pkg`. The closure of `app_pkg` is
+/// therefore `{app_pkg, talker_pkg}` — everything else in the workspace is
+/// outside it, which is what "and nothing more" is measured against.
+fn selection_fixture(dir: &Path) {
+    fixture(dir);
+    write(
+        &dir.join("src/app_pkg/package.xml"),
+        &pkg_xml_needing("app_pkg", &["talker_pkg"]),
+    );
+    write(
+        &dir.join("src/app_pkg/Cargo.toml"),
+        "[package]\nname = \"app_pkg\"\nversion = \"0.0.0\"\n",
+    );
+    write(
+        &dir.join("src/other_pkg/package.xml"),
+        &pkg_xml("other_pkg"),
+    );
+    write(
+        &dir.join("src/other_pkg/Cargo.toml"),
+        "[package]\nname = \"other_pkg\"\nversion = \"0.0.0\"\n",
+    );
+    // The tracked root is what `cargo_root::ensure` refuses to clobber, so a
+    // selection could not be observed through it. Delete it and let stage 4
+    // generate one, which is RFC-0065 D13's end state anyway.
+    std::fs::remove_file(dir.join("Cargo.toml")).unwrap();
+}
+
+/// The wave's acceptance line: `--packages-up-to <pkg>` builds the package and
+/// its dependencies and NOTHING else.
+///
+/// Measured on the generated cargo root, because that is where "what this build
+/// contains" is written down for the cargo driver.
+#[test]
+fn up_to_narrows_the_generated_cargo_root_to_the_closure() {
+    let tmp = tempfile::tempdir().unwrap();
+    selection_fixture(tmp.path());
+
+    let plans =
+        plan_builds(&selected_args(tmp.path(), &["native"], &[], &["app_pkg"])).expect("resolves");
+    assert_eq!(plans[0].driver, Driver::Cargo);
+
+    let body = std::fs::read_to_string(tmp.path().join("Cargo.toml")).unwrap();
+    assert!(body.starts_with("# GENERATED"), "{body}");
+    assert!(
+        body.contains("\"src/app_pkg\""),
+        "the named package: {body}"
+    );
+    assert!(
+        body.contains("\"src/talker_pkg\""),
+        "its dependency: {body}"
+    );
+    assert!(
+        !body.contains("\"src/other_pkg\""),
+        "and nothing else — other_pkg is outside the closure: {body}"
+    );
+    assert!(
+        !body.contains("\"src/helper\""),
+        "the cargo-only helper is outside the closure too: {body}"
+    );
+}
+
+/// The same narrowing, seen by the OTHER driver. cmake's root is the one place
+/// where being listed and being built are the same thing, so this is where the
+/// selection has to hold if it holds anywhere.
+#[test]
+fn a_selection_narrows_the_generated_cmake_root() {
+    let tmp = tempfile::tempdir().unwrap();
+    selection_fixture(tmp.path());
+    // Cross languages so cmake wins (RFC-0024 §6.3).
+    write(
+        &tmp.path().join("src/talker_pkg/CMakeLists.txt"),
+        "# c pkg\n",
+    );
+    write(
+        &tmp.path().join("src/other_pkg/CMakeLists.txt"),
+        "# c pkg\n",
+    );
+
+    let plans =
+        plan_builds(&selected_args(tmp.path(), &["native"], &[], &["app_pkg"])).expect("resolves");
+    assert_eq!(plans[0].driver, Driver::CMake);
+
+    let body =
+        std::fs::read_to_string(tmp.path().join("build/posix-zenoh-linux/CMakeLists.txt")).unwrap();
+    assert!(body.contains("talker_pkg"), "{body}");
+    assert!(
+        !body.contains("other_pkg"),
+        "a package outside the closure must not be a subdirectory of the \
+         generated root: {body}"
+    );
+}
+
+/// A select of one package builds one package.
+#[test]
+fn select_of_one_leaf_package_narrows_to_exactly_it() {
+    let tmp = tempfile::tempdir().unwrap();
+    selection_fixture(tmp.path());
+
+    plan_builds(&selected_args(
+        tmp.path(),
+        &["native"],
+        &["talker_pkg"],
+        &[],
+    ))
+    .expect("resolves");
+
+    let body = std::fs::read_to_string(tmp.path().join("Cargo.toml")).unwrap();
+    assert!(body.contains("\"src/talker_pkg\""), "{body}");
+    for absent in ["\"src/app_pkg\"", "\"src/other_pkg\"", "\"src/helper\""] {
+        assert!(!body.contains(absent), "{absent} must be gone: {body}");
+    }
+}
+
+/// The images a workspace declares are a property of the WORKSPACE, not of the
+/// selection. A narrowing that excludes the bringup package must still resolve
+/// the image it declared — otherwise `--packages-select` would answer with
+/// "this workspace declares no `[image.*]`", an error about the wrong thing.
+#[test]
+fn a_selection_that_excludes_the_bringup_still_resolves_its_image() {
+    let tmp = tempfile::tempdir().unwrap();
+    selection_fixture(tmp.path());
+
+    let plans = plan_builds(&selected_args(
+        tmp.path(),
+        &["native"],
+        &["talker_pkg"],
+        &[],
+    ))
+    .expect("the image is declared by the workspace, not by the selection");
+    assert_eq!(plans[0].qualified, "demo_bringup:native");
+}
+
+/// An incomplete `--packages-select` is refused BEFORE anything is generated.
+///
+/// The decision this wave made and colcon's does not survive: colcon lets this
+/// through because the dropped dependency is in the install prefix. There is no
+/// install prefix here (RFC-0087 D8), so the package would simply be missing
+/// from the root about to be written.
+#[test]
+fn an_incomplete_selection_is_refused_before_a_root_is_written() {
+    let tmp = tempfile::tempdir().unwrap();
+    selection_fixture(tmp.path());
+
+    let e = plan_builds(&selected_args(tmp.path(), &["native"], &["app_pkg"], &[]))
+        .expect_err("app_pkg needs talker_pkg");
+    let msg = format!("{e:#}");
+    assert!(msg.contains("app_pkg needs talker_pkg"), "{msg}");
+    assert!(
+        msg.contains("--packages-up-to app_pkg"),
+        "offers the fix: {msg}"
+    );
+    assert!(
+        !tmp.path().join("Cargo.toml").exists(),
+        "nothing may be generated for a selection that cannot build"
+    );
 }

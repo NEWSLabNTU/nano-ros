@@ -73,6 +73,33 @@ pub struct Args {
     #[arg(long)]
     pub offline: bool,
 
+    /// Build only these packages — no dependencies, no dependents
+    /// (RFC-0087 D7, phase-420 W7).
+    ///
+    /// colcon's flag, with colcon's meaning, and two deliberate divergences
+    /// documented on `builder::discover::select`: a name matching no package is
+    /// an ERROR here rather than a warning, and a selection that drops a
+    /// package another selected package depends on is REFUSED rather than left
+    /// to resolve against an install prefix nano-ros does not have.
+    ///
+    /// The selection narrows what the build CONTAINS — the generated cargo
+    /// root's member list and the generated CMake root's subdirectories. It
+    /// does not narrow which images exist: an image is declared by a bringup's
+    /// `system.toml`, which is a property of the workspace, not of the
+    /// selection, so `nros build native --packages-select talker_pkg` still
+    /// means the `native` image, built from a narrowed workspace.
+    #[arg(long, value_name = "PKG", num_args = 1..)]
+    pub packages_select: Vec<String>,
+
+    /// Build these packages and everything they depend on, transitively, and
+    /// nothing else (RFC-0087 D7, phase-420 W7).
+    ///
+    /// Composes with `--packages-select` as an INTERSECTION, which is colcon's
+    /// composition too: each flag deselects independently, so adding one can
+    /// only ever narrow the build.
+    #[arg(long, value_name = "PKG", num_args = 1..)]
+    pub packages_up_to: Vec<String>,
+
     /// Arguments after `--` go to the native tool verbatim.
     #[arg(last = true)]
     pub native_args: Vec<String>,
@@ -157,7 +184,29 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     }
 
     // ---- stage 2 --------------------------------------------------------
+    // Images come from the FULL workspace, before any selection: an image is
+    // declared by a bringup's `system.toml` and is a property of the workspace,
+    // exactly as the generated cargo root's member list is. A selection that
+    // happened to drop a bringup package must not make its images cease to
+    // exist — that would answer `--packages-select` with "this workspace
+    // declares no `[image.*]`", an error about the wrong thing.
     let bringups = collect_images(&found.packages)?;
+
+    // ---- stage 1b — the selection verbs (RFC-0087 D7, phase-420 W7) -----
+    //
+    // Filters the topological order stage 1 already computed; it does not sort
+    // again. `all_packages` keeps the unnarrowed set, because
+    // `check_declared_depends` walks the whole tree itself and would read a
+    // deliberately-dropped package as an unresolved `<depend>`.
+    let all_packages = found.packages.clone();
+    let found = discover::select(
+        &found,
+        &discover::Selection {
+            select: args.packages_select.clone(),
+            up_to: args.packages_up_to.clone(),
+        },
+    )
+    .map_err(|e| eyre::eyre!("{e}"))?;
 
     let requested: Vec<String> = if args.all {
         plan::all_images(&bringups)
@@ -183,7 +232,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     // Runs once per invocation, before anything is generated, because an
     // undeclared prerequisite is cheapest to report before a toolchain is
     // touched (RFC-0065 D2's reasoning, applied to dependencies).
-    check_declared_depends(&root, &found.packages, nano_ros_root.as_deref())?;
+    check_declared_depends(&root, &all_packages, nano_ros_root.as_deref())?;
 
     // The workspace's OWN packages can carry board descriptors, so a board is
     // declared where everything else about this workspace is declared.
@@ -2425,5 +2474,139 @@ mod zephyr_workspace_flag_tests {
         let empty = tmp.path().join("empty");
         std::fs::create_dir_all(&empty).unwrap();
         assert_eq!(zephyr_base_with(Some(&empty), None, None, tmp.path()), None);
+    }
+}
+
+/// phase-420 W7 — the selection verbs, asserted where they are WIRED.
+///
+/// `builder::discover` unit-tests the filter itself. These assert the two
+/// things a unit test of a pure function cannot: that clap spells the flags the
+/// way colcon does, and that `plan_builds` actually applies them. This crate
+/// has shipped a lint with four passing unit tests and no production caller
+/// before (`deprecation_wiring_tests`, below), which is why the wiring gets its
+/// own assertions rather than being assumed.
+#[cfg(test)]
+mod selection_wiring_tests {
+    use super::*;
+    use clap::Parser;
+
+    fn args_for(root: &std::path::Path, select: &[&str], up_to: &[&str]) -> Args {
+        Args {
+            images: Vec::new(),
+            workspace: Some(root.to_path_buf()),
+            nano_ros_path: None,
+            zephyr_workspace: None,
+            all: false,
+            dry_run: true,
+            offline: true,
+            packages_select: select.iter().map(|s| (*s).to_string()).collect(),
+            packages_up_to: up_to.iter().map(|s| (*s).to_string()).collect(),
+            native_args: Vec::new(),
+        }
+    }
+
+    fn pkg(root: &std::path::Path, name: &str, depends: &[&str]) {
+        let dir = root.join("src").join(name);
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let deps: String = depends
+            .iter()
+            .map(|d| format!("  <depend>{d}</depend>\n"))
+            .collect();
+        std::fs::write(
+            dir.join("package.xml"),
+            format!(
+                "<?xml version=\"1.0\"?>\n<package format=\"3\">\n  \
+                 <name>{name}</name>\n  <version>0.0.0</version>\n  \
+                 <description>t</description>\n  \
+                 <maintainer email=\"a@b.c\">m</maintainer>\n  \
+                 <license>Apache-2.0</license>\n{deps}</package>\n"
+            ),
+        )
+        .expect("write package.xml");
+    }
+
+    /// colcon's spelling, and both flags taking several names.
+    #[test]
+    fn the_flags_parse_with_colcons_spelling() {
+        let a = Args::try_parse_from([
+            "build",
+            "--packages-select",
+            "talker_pkg",
+            "msgs_pkg",
+            "--packages-up-to",
+            "entry",
+        ])
+        .expect("parses");
+        assert_eq!(a.packages_select, vec!["talker_pkg", "msgs_pkg"]);
+        assert_eq!(a.packages_up_to, vec!["entry"]);
+        assert!(a.images.is_empty(), "no image was named: {:?}", a.images);
+    }
+
+    /// A selection composes with the flags the verb already has — here the
+    /// positional image, which must not be swallowed by the multi-valued flag.
+    #[test]
+    fn an_image_argument_survives_beside_a_selection() {
+        let a = Args::try_parse_from(["build", "--packages-up-to", "entry", "--", "-j4"])
+            .expect("parses");
+        assert_eq!(a.packages_up_to, vec!["entry"]);
+        assert_eq!(a.native_args, vec!["-j4"]);
+
+        let b = Args::try_parse_from(["build", "native", "--packages-select", "talker_pkg"])
+            .expect("parses");
+        assert_eq!(b.images, vec!["native"]);
+        assert_eq!(b.packages_select, vec!["talker_pkg"]);
+    }
+
+    /// The wiring: an unknown name must be refused by `plan_builds` itself.
+    ///
+    /// It is also refused EARLY — before the board catalog, which needs a
+    /// nano-ros checkout this temp workspace does not have. If the selection
+    /// ran later, this test would see "no nano-ros checkout found" instead, so
+    /// the assertion doubles as the ordering check.
+    #[test]
+    fn plan_builds_refuses_an_unknown_selected_package() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        pkg(tmp.path(), "talker_pkg", &[]);
+        pkg(tmp.path(), "msgs_pkg", &[]);
+
+        let e = plan_builds(&args_for(tmp.path(), &["talkr_pkg"], &[]))
+            .expect_err("an unknown package must not be warned past");
+        let msg = format!("{e:#}");
+        assert!(msg.contains("no such package"), "{msg}");
+        assert!(msg.contains("talker_pkg"), "lists what exists: {msg}");
+    }
+
+    /// The other wiring direction: an incomplete `--packages-select` is refused
+    /// by `plan_builds`, not left to fail later as a missing artifact.
+    #[test]
+    fn plan_builds_refuses_a_selection_that_drops_a_dependency() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        pkg(tmp.path(), "entry", &["talker_pkg"]);
+        pkg(tmp.path(), "talker_pkg", &[]);
+
+        let e = plan_builds(&args_for(tmp.path(), &["entry"], &[]))
+            .expect_err("an open selection must not build");
+        let msg = format!("{e:#}");
+        assert!(msg.contains("entry needs talker_pkg"), "{msg}");
+        assert!(msg.contains("--packages-up-to entry"), "{msg}");
+    }
+
+    /// And a well-formed selection is NOT refused here — it passes stage 1b and
+    /// fails later, on the image, which is a different message. Without this,
+    /// the two tests above would pass on a `select` that refused everything.
+    #[test]
+    fn a_closed_selection_passes_stage_1b() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        pkg(tmp.path(), "entry", &["talker_pkg"]);
+        pkg(tmp.path(), "talker_pkg", &[]);
+
+        let e = plan_builds(&args_for(tmp.path(), &[], &["entry"]))
+            .expect_err("this workspace declares no image");
+        let msg = format!("{e:#}");
+        assert!(
+            !msg.contains("no such package") && !msg.contains("needs talker_pkg"),
+            "the selection is closed and must not be the complaint: {msg}"
+        );
+        assert!(msg.contains("[image.*]"), "{msg}");
     }
 }
