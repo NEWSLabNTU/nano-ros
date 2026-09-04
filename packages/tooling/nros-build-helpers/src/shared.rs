@@ -613,6 +613,31 @@ pub fn write_header_if_absent_or_verify(relative: &[&str], contents: &str, label
     let Some(dest) = target_dir_path(relative) else {
         return;
     };
+    // The edge that makes this function's self-healing REACHABLE.
+    //
+    // This header is a build-script byproduct that nothing declares as an
+    // input, so cargo's freshness never considered it: delete it and the crate
+    // is still up to date, the script does not run, and the header does not
+    // come back. `drop_stamp_without_header`'s doc already describes that state
+    // ("cargo considers the crate up to date, so the byproduct is not
+    // re-emitted") and says this function "already self-heals an absent header
+    // when it RUNS" — the missing half was making it run.
+    //
+    // Cost of not having it, measured on gate.yml's scheduled lane: three
+    // `cxx-syntax` snippets failed every night with the committed stub's
+    // `#error` and `*_OPAQUE_U64S was not declared`, because the generation
+    // step's `cargo build` was up to date and emitted nothing.
+    //
+    // Same shape as the `rerun-if-changed` on the cbindgen output above, and as
+    // issue 0475 one layer down: a file with no edge is a file the build cannot
+    // notice. No rebuild loop — the writers below are conditional, so a steady
+    // state rewrites neither file and the mtimes stay behind the script's own
+    // output stamp.
+    println!("cargo:rerun-if-changed={}", dest.display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        dest.with_extension("h.stamp").display()
+    );
     // Sidecar rather than a `#define` inside the header: the two writers build
     // `contents` from different sources (nros-c from a `.template`, nros-cpp
     // from an inline string), so a stamp define would have to be added to both
@@ -688,6 +713,11 @@ pub fn drop_stamp_without_header(relative: &[&str]) {
         return;
     };
     let stamp_path = dest.with_extension("h.stamp");
+    // Same edge as the writer's. A declining run must watch these too, or the
+    // build that would START emitting them (a later run whose probe finally
+    // yields sizes) is one cargo considers unnecessary.
+    println!("cargo:rerun-if-changed={}", dest.display());
+    println!("cargo:rerun-if-changed={}", stamp_path.display());
     if !dest.exists() && stamp_path.exists() {
         // Best-effort: a build script must not fail because a cleanup could
         // not run. The gate (`check-orphan-generated-stamp`) still catches the

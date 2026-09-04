@@ -665,9 +665,35 @@ if command -v "${CXX:-c++}" >/dev/null 2>&1; then
     # build is `no_std` and dies on `#[panic_handler]` / "unwinding panics are
     # not supported without std". It failed into the `|| echo` below, which
     # loses the headers silently — the exact shape issue 0464 is about.
+    #
+    # The RMW backend is load-bearing, not decoration. Both build scripts get
+    # their sizes from `probe_nros_sizes`, which builds `nros` with the features
+    # this command resolves; with no backend selected the probe returns
+    # `EXECUTOR_SIZE = 0` and BOTH scripts then decline to write the header at
+    # all ("no RMW backend means no executor sizes to ship"). The build still
+    # exits 0, so the `|| echo` below never fires, and the three snippets that
+    # reach `nros.hpp` fail against the committed stub:
+    #
+    #   nros_config_generated.h:37:2: error: #error "must be supplied per-build"
+    #   polling_action_server.hpp:231:44: error: NROS_CPP_RAW_ACTION_SERVER_OPAQUE_U64S was not declared
+    #
+    # That was every scheduled run's `rclcpp_node_options`,
+    # `subscription_with_info` and `spin_until_future_complete`. It read as a
+    # CI-only fault and was not: on a developer machine the headers are left
+    # over from some other build that DID select a backend, so the lane passes
+    # on residue. Issue 1031.
     ( cd "$repo_root" && cargo build -q -p nros-cpp -p nros-c \
-        --features nros-cpp/std,nros-c/std,nros-cpp/ros-humble ) \
+        --features nros-cpp/std,nros-c/std,nros-cpp/ros-humble,nros-cpp/rmw-zenoh-cffi ) \
         || echo "cxx-syntax: config-header generation build failed (snippets needing them will skip)" >&2
+    # A build that exits 0 having written nothing is the case the `||` above
+    # cannot see. Say so — the snippets fail either way, but their error is
+    # `#error "must be supplied per-build"` twenty frames into a header, which
+    # names the stub rather than the step that was supposed to replace it.
+    for _h in target/nros-cpp-generated/nros/nros_cpp_config_generated.h \
+              target/nros-c-generated/nros/nros_config_generated.h; do
+        [ -f "$repo_root/$_h" ] || echo "cxx-syntax: config-header generation produced NO $_h \
+(the build succeeded) — snippets including it will fail against the committed stub" >&2
+    done
     while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
         [ -n "$id" ] || continue
         run_fixture "$out_root/$id" "$id" "$builder" cxx_syntax_check "$id"
