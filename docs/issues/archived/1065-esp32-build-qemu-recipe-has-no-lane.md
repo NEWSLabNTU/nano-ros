@@ -1,7 +1,7 @@
 ---
 id: 1065
-title: "`just esp32 build-qemu` is run by no lane, so it can be wholly broken with every test green"
-status: open
+title: "RETRACTED — `just esp32 build-qemu` does have a lane; the premise was a truncated grep"
+status: wontfix
 area: testing
 severity: medium
 related: [1025, 0196, 0883]
@@ -89,3 +89,68 @@ path has no coverage from those tests, however green they are. The test proves
 the SECOND path. Any recipe the book or `just --list` offers a human should have
 one lane that invokes it the way a human would — otherwise its correctness is
 asserted only by the last person who happened to run it.
+
+
+---
+
+# RETRACTED (2026-09-05). The premise is false.
+
+`just esp32 build-qemu` **is** run by a lane, and that lane **did** report issue
+1025, loudly, every night.
+
+## What I got wrong, and how
+
+`just/esp32.just:241` reads:
+
+```
+build-fixtures: build-qemu build-logging-smoke
+```
+
+and `build-all: build build-examples build-fixtures`, which is what
+`nightly.yml`'s `Build (${{ matrix.plat }})` step runs on the schedule path. So
+the chain `build-all -> build-fixtures -> build-qemu` has always existed.
+
+I missed it because the grep I based this issue on ended in `| head -10`, and
+that line was the eleventh. Everything downstream followed from a truncated
+command whose truncation I never checked — the same shape as the
+`nm ... 2>/dev/null | grep -c` probe earlier in this same investigation, where a
+command that could not answer was read as an answer.
+
+## The claim that should have caught it
+
+I wrote that 1025 "stayed that way through many green CI runs". I did not look at
+a single run. They were not green. From the 2026-09-04 scheduled nightly, job
+`esp32`, step `Build (esp32)`:
+
+```
+ERROR: /__w/nano-ros/nano-ros/build/cargo-fixtures/qemu-esp32-baremetal/
+       riscv32imc-unknown-none-elf/nros-relwithdebinfo/esp32_qemu_talker is
+       missing, and nothing narrowed this build.
+error: recipe `build-qemu` failed with exit code 1
+```
+
+That is issue 1025, named exactly, by the lane this issue says does not exist.
+The workflow even carries a comment saying so: *"NOT the cause of this cell's RED
+— that is issue 1025 (#303)"*. The evidence was in the repo I was editing.
+
+## What survives
+
+One change, kept and landed separately: `build-qemu` now asserts its OUTPUT
+rather than espflash's exit code. That stands on its own — the recipe's history
+is of exiting 0 while producing nothing (issue 0181), and the existing guard
+covers only a missing INPUT.
+
+## What is actually worth pursuing
+
+The esp32 cell is red across every run in the scanned window (`just
+nightly-triage`: *"red across all 3 scanned run(s)"*). That is the real
+signal-capacity problem CLAUDE.md describes — a uniformly red lane cannot
+report a NEW regression, because the new one looks like yesterday's. With #303
+merged, the next nightly should show whether anything else is behind it; the log
+also carries `nros setup --tool esp32-qemu: needs 3 system package(s) this host
+is missing: libglib2-dev, libpixman-dev, libgcrypt-dev`, whose `[prereq.*]`
+declarations are CORRECT (`apt = ["libglib2.0-dev"]` etc.), so that is a
+provisioning question and not a naming one.
+
+File that against the measured state after a green-or-not nightly, rather than
+inheriting this issue's guesses.

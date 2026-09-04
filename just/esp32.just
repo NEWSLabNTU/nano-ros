@@ -178,6 +178,15 @@ build-qemu:
             exit 1
         fi
         espflash save-image --chip esp32c3 --flash-size 4mb --merge "$elf" "$out"
+        # Issue 1065 — assert the ARTIFACT, not the exit code. This recipe's own
+        # history is of exiting 0 while producing nothing (#181: espflash opening
+        # a nonexistent path while the lane went green), and the guard above only
+        # covers a missing INPUT. A packer that writes no output, or an empty
+        # one, is the same lie one step later.
+        if [ ! -s "$out" ]; then
+            echo "ERROR: espflash exited 0 but $out is missing or empty." >&2
+            exit 1
+        fi
         echo "  $out"
     done
     echo "ESP32 QEMU examples built!"
