@@ -98,32 +98,19 @@ jobs:
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
-      - name: Provision workspace sources via nros
+      # phase-413 W5 — the scope verb, same as the integration job below.
+      # `just setup native` expands to `nros setup --build-sources` and
+      # `just ci provision-zenohd`, which is exactly what this job spelled out,
+      # plus the CLI/resolver and the host facts every tier asserts.
+      #
+      # It also fetches qemu and the XRCE agent, which the unit tests do not
+      # use. That is the price of one vocabulary: a job body is
+      # `just setup <scope>` plus one command, and both are prebuilt tarball
+      # fetches from the index rather than source builds.
+      - name: just setup native
         run: |
           source ./activate.sh
-          nros setup --source px4-rs --source zenoh-pico --source mbedtls \
-                     --source micro-cdr --source micro-xrce-dds-client \
-                     --source cyclonedds-src
-
-      # The workspace unit suite includes nros-rmw-zenoh's `status_events_matrix`,
-      # which opens a client-mode session against a local zenohd.
-      #
-      # `just zenohd setup` used to build the VENDORED router. RFC-0075 /
-      # phase-362 deleted it (`build/zenohd/` is gone) and the router became
-      # ROS's own `rmw_zenohd`, but this step was left behind. The top-level
-      # recipe is `zenohd locator="tcp/..."`, so `setup` was being passed as a
-      # LOCATOR — the step could not have worked, and host-tests has been red on
-      # it. `check-just-recipe-refs` did not catch it because it reads
-      # `just/*.just` and never `.github/workflows/`.
-      #
-      # Install the router ROS itself ships. If it is unavailable the zenoh
-      # lanes SKIP and announce it (`check-zenohd-router-skips` enforces that
-      # they can), which is a worse result than running them but a far better
-      # one than a job that always fails.
-      - name: just ci provision-zenohd
-        run: |
-          source ./activate.sh
-          just ci provision-zenohd
+          just setup native
 
       - name: just test-unit
         run: |
