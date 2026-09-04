@@ -5,6 +5,11 @@ members = [
     "packages/api/nros",
     "packages/core/nros-core",
     "packages/core/nros-serdes",
+    # phase-421 W5 — the schema-driven reference serdes provider. A path dep of
+    # a member inside the workspace dir is a member anyway; listed because every
+    # other crate here is, and an implicit member is the kind of thing a reader
+    # concludes is missing.
+    "packages/core/nros-serdes-packed",
     "packages/core/nros-macros",
     "packages/core/nros-params",
     "packages/core/nros-rmw",

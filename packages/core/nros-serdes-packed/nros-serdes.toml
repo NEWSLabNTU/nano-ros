@@ -1,0 +1,24 @@
+# nano-ros serialization-format descriptor — RFC-0088 D6, phase-421 W5.
+#
+# The provider announces its NAME in `package.xml`; this file carries only the
+# two facts no convention can derive (RFC-0087 D4).
+[serdes]
+
+# The strategy this provider exists to demonstrate: ONE implementation over the
+# `&'static [Field]` schema codegen already emits, covering every message with
+# no codegen work (RFC-0088 D7). Contrast `nros-serdes/nros-serdes.toml`, which
+# is `"codegen"` because CDR gets a per-type serializer emitted for it.
+impl = "schema"
+
+# Image-local discriminant (RFC-0088 D2). **This number means nothing outside
+# the image that assigned it** — the NAME is what crosses an image boundary.
+#
+# 3 is the next free value after the two `SerializationFormatId` reserves
+# (1 = cdr, 2 = uorb). `check-serdes-descriptors` S3 tolerates a value the enum
+# does not name — it constrains descriptors that USE a reserved name or value,
+# and never demands one exist — so this provider needs no edit to `format.rs`.
+# It does NOT get a `SerializationFormatId` variant, and that is the honest
+# reading of D2: a variant would assert `packed` is an in-tree wire format that
+# a backend speaks, and no backend speaks it. `SchemaSerializer::FORMAT_ID` is a
+# raw `u8` for exactly this reason.
+format_id = 3

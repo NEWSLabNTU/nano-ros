@@ -1,0 +1,23 @@
+[package]
+name = "nros-serdes-packed"
+version.workspace = true
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Reference schema-driven serialization provider for nano-ros (RFC-0088 D7)"
+authors.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+readme = "README.md"
+keywords = ["ros2", "serialization", "no-std", "embedded"]
+categories = ["embedded", "no-std", "encoding"]
+
+[dependencies]
+# The ONLY dependency, and that is the point: a schema-driven provider needs
+# the walk and the schema, and nothing else. No codegen plugin, no per-message
+# generated code, no third-party codec.
+nros-serdes = { path = "../nros-serdes" }
+
+[lints]
+workspace = true

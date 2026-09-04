@@ -1,6 +1,6 @@
 # Phase 421 — serialization format as a compile-time provider
 
-**Status (2026-09-04). W1–W4 landed; W5–W6 open.**
+**Status (2026-09-04). W1–W5 landed; W6 open.**
 Implements [RFC-0088](../design/0088-serialization-format-is-a-compile-time-provider.md).
 Depends on **[phase-420](phase-420-package-identity-and-provider-format.md) W1
 only** (the `<nano_ros_uses>` general consumption tag) — and only from W4 onward;
@@ -92,15 +92,46 @@ The mechanism is compile-time, not runtime: ROS 2 uses format strings because
         the fix changes discovery for every family and belongs in its own
         change.
 
-- [ ] **W5 — the schema-driven strategy, with a reference provider.**
-      `SchemaSerializer` over the `&'static [Field]` schema codegen already
-      emits. Ship one in-tree non-CDR reference provider so the path has a test
-      subject that is not uORB (uORB's wire is a struct, so it cannot exercise a
-      schema walk).
-      **Acceptance:** the reference format round-trips every message in
-      `packages/interfaces/*` through the schema walk with no generated code, and
-      a native matrix cell covers it. **No new matrix coordinate** — one cell, not
-      an axis (RFC-0088 non-goals).
+- [x] **W5 — the schema-driven strategy, with a reference provider.**
+      (landed 2026-09-04) `nros_serdes::walk` carries `SchemaSerializer` plus the
+      reusable walk (`SchemaSink` / `SchemaSource`, `encode_from_cdr` /
+      `decode_to_cdr`). `packages/core/nros-serdes-packed/` is the reference
+      provider: family `serdes`, `impl = "schema"`, `format_id = 3`,
+      `<build_type>nros_cargo</build_type>`.
+      **Acceptance, met with one signature amendment (below).** All 76 committed
+      generated messages in `packages/interfaces/*` round-trip through the walk
+      in BOTH CDR encodings — 152 (type, encoding) pairs, zero refusals, zero
+      failures — using nothing but `&'static [Field]`
+      (`nros-tests/tests/schema_serializer_round_trip.rs`). `corpus_is_exhaustive`
+      re-counts `impl ::nros_serdes::Message` out of the sources at run time, so a
+      message added later cannot sit outside the sweep. **No matrix cell was
+      added** — see "What landed differently".
+
+      Three findings recorded rather than worked around:
+
+      - **D7's `*const u8` signature cannot be implemented over today's schema.**
+        A `String` member's host type is `heapless::String<N>` and the schema
+        carries no `N` (`FieldType::String` is the IDL type, and
+        `BoundedString(n)` is the IDL bound, a different number); `heapless`'
+        containers are `repr(Rust)`, so their interior layout is not a fact this
+        crate may assume; and `NestedType` records no SIZE, so an
+        `Array(N, Nested(..))` has no stride. `Field::offset` is sound — it only
+        reaches the START of a container. The message side of both methods is
+        therefore a `CdrReader` / `CdrWriter`, which makes `impl = "schema"` a
+        **transcoder** strategy in v1 and is why the walk lives in `nros-serdes`
+        rather than in each provider. Full reasoning in `walk.rs`'s module docs.
+      - **A second parameter, `type_name`.** A `&'static [Field]` slice has no
+        name — `Message::TYPE_NAME` is a separate const and nested members carry
+        theirs in `NestedType` — so without it the top-level struct is the one
+        node a self-describing format cannot name.
+        `serialize_message::<M>` / `deserialize_message::<M>` supply both from a
+        type.
+      - **`wstring` reaches `SchemaError::Unsupported`, by name.** Not a limit of
+        the walk: `CdrReader` / `CdrWriter` have no wide-string primitive in
+        either direction, so there is nothing to transcode from. No message in
+        `packages/interfaces/*` has one, so the sweep refuses nothing today — and
+        the test treats a refusal as a FAILURE rather than a skip, so the first
+        one that appears is read rather than tolerated.
 
 - [ ] **W6 — C and C++ assert at compile time.** `NROS_SERIALIZATION_FORMAT_ID` /
       `NROS_SERIALIZATION_FORMAT` in the generated config; a per-message
@@ -136,6 +167,35 @@ The mechanism is compile-time, not runtime: ROS 2 uses format strings because
   from the single image constant, so `PubSubBridge::new` cannot fail in a real
   image until a bridge image links two backends. The error rendering is tested;
   the end-to-end case waits on W4/W5.
+
+- **W5 amended D7's signature and added no matrix cell.** The `*const u8`
+  message pointer is not usable over today's schema (three measured reasons,
+  above), so `SchemaSerializer` pivots on the CDR byte stream. And a
+  `matrix::CELLS` row is FIXTURE-BACKED — `matrix_fixture_coverage.rs` G1–G4
+  require a matching `examples/fixtures.toml` row — so a cell means an image.
+  There is nothing yet to put in one: no backend declares `packed`, so the image
+  would link a provider nothing calls, and the cell would answer "does dead code
+  link" rather than "does the format work". The coordinate the walk varies over
+  is the MESSAGE SHAPE, not platform × language × rmw × kind, and the sweep
+  covers all 76 of those on the host with no fixture — so it runs in
+  `just ci gate`'s `test-unit`, on every merge-queue batch, at no matrix cost.
+  This is the RFC-0088 non-goal honoured rather than dodged: the axis stays at
+  four, and a cell is the right answer only once a backend SPEAKS a second
+  format (the uORB bridge, phase-325), which is where W3's runtime path becomes
+  reachable too.
+- **The reference format is `packed`, and it is a test vehicle, not interop.**
+  Little-endian, no alignment padding, `u32` byte-length strings with no NUL, no
+  DHEADER, `u32`-counted sequences. Every one of those differs from CDR
+  deliberately: a walk that inherits CDR's padding, its `len + 1` string prefix,
+  or its per-struct DHEADER fails the round trip instead of passing by
+  coincidence. Nothing else speaks `packed` and nothing should.
+- **`packed` gets no `SerializationFormatId` variant, on purpose.**
+  `check-serdes-descriptors` S3 tolerates a `format_id` the enum does not name —
+  it constrains descriptors that USE a reserved name or value and never demands
+  one exist — so `format.rs` needed no edit. A variant would assert `packed` is a
+  wire a BACKEND speaks, and none does. `SchemaSerializer::FORMAT_ID` is a raw
+  `u8` for exactly that reason, which is also what RFC-0088 D2 says an
+  image-local discriminant is.
 
 ## Sequencing
 

@@ -9,6 +9,6 @@
   <exec_depend>talker_pkg</exec_depend>
   <exec_depend>listener_pkg</exec_depend>
   <export>
-    <build_type>nros_bringup</build_type>
+    <build_type>nros_cargo</build_type>
   </export>
 </package>
