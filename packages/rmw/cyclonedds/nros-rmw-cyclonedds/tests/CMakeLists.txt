@@ -693,3 +693,30 @@ add_test(
     NAME nros_rmw_cyclonedds_sertype_sample_cxx11
     COMMAND nros_rmw_cyclonedds_sertype_sample_cxx11
 )
+
+# phase-206 W1 — an override must not cost the baked baseline.
+#
+# Composes `cyclone_config.hpp`'s baseline with a user fragment that states only
+# <Discovery>, brings a domain up on it, and reads the RESOLVED settings back out
+# of Cyclone's own config dump. Carries its own negative control (the user
+# fragment alone, which is what the old three-way ternary passed), so the
+# assertions cannot be satisfied by Cyclone's defaults.
+#
+# Defines NROS_RMW_CYCLONEDDS_TEST_BASELINE via the source, so the host build
+# composes the REAL baseline string rather than a copy that could drift from it.
+add_executable(nros_rmw_cyclonedds_config_compose cyclone_config_compose.cpp)
+target_link_libraries(nros_rmw_cyclonedds_config_compose
+    PRIVATE
+        nros_rmw_cyclonedds
+)
+target_include_directories(nros_rmw_cyclonedds_config_compose
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${NROS_RMW_CFFI_DIR}
+)
+add_test(
+    NAME nros_rmw_cyclonedds_config_compose
+    COMMAND nros_rmw_cyclonedds_config_compose
+)
+set_tests_properties(nros_rmw_cyclonedds_config_compose PROPERTIES
+    ENVIRONMENT "${_nros_rmw_test_env}")
