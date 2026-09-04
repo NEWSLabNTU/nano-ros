@@ -4,10 +4,11 @@ title: "The shared-cargo-dir campaign rests on five unsupported build-system
   internals — a Corrosion path formula, an unstable cargo flag, cargo's private
   `.fingerprint` format, a side channel inside cargo's target dir, and an
   undocumented depfile location"
-status: open
+status: resolved
 type: tech-debt
 area: build
-related: [issue-0805, issue-0616, issue-0499, issue-0834, issue-0112]
+resolved: 2026-09-05
+related: [issue-1031, issue-0805, issue-0616, issue-0499, issue-0834, issue-0112]
 ---
 
 ## Symptom
@@ -184,3 +185,64 @@ version exposure.
    not an afternoon.
 3. **#2** only if the NuttX lane's nightly pin is ever revisited.
 4. **#3** and **#5** are acceptable as-is: both fail loudly, neither gates CI.
+
+
+## CLOSED 2026-09-05 — accepted risk, each item re-verified against the tree
+
+Closed under phase-424's acceptance: *"0945's five assumptions are either
+supported by something we can point at, or written down as accepted risk with
+what would break if each fails."* Nothing here is fixed by closing it; what
+changes is that the register has been CHECKED rather than remembered, and each
+item now carries how its failure would be DETECTED, which is the property
+phase-424 is actually about.
+
+| # | assumption | verified 2026-09-05 | how a failure surfaces |
+| --- | --- | --- | --- |
+| 1 | Corrosion path formula | `scripts/check-shared-cargo-dir-used.sh` present; 5 call sites of `nros_assert_shared_cargo_dir_used` in `NanoRosCorrosion.cmake` | **WITNESSED** — build-time assert on the RESULT, not the formula |
+| 2 | `--artifact-dir` unstable flag | still passed by `packages/api/nros-c/cmake/nros-nuttx.cmake` | **LOUD** — cargo rejects an unknown flag; the NuttX lane fails at the copy |
+| 3 | cargo `.fingerprint` parsing | both parsers carry `--self-test`; **0** references from `just/check.just` | **CONTAINED** — a schema change fails the self-test, and no gate consumes them, so a wrong number can mislead a person but cannot make CI lie |
+| 4 | headers as a side channel in cargo's target dir | OUT_DIR emission present (`cpp.rs`, `scripts/build/cargo-out-dir-headers.py`), but **13 readers still on the side channel** | **SILENT — and it has now happened**, see below |
+| 5 | probe depfile location | `probe_depfile` tries both spellings; `emit_probe_watches` PANICS naming the file when neither exists; pinned by `probe_depfile_found_beside_and_uplifted` | **LOUD** |
+
+Item 5's mitigation is stated in this issue as "the lookup … PANICS", which reads
+as if `probe_depfile` panics. It does not — it returns `Option`; the panic is one
+frame up in `emit_probe_watches`. The behaviour is what was claimed, the location
+is not, and following the caller is what settled it.
+
+### Item 4 is no longer hypothetical
+
+This register predicted the shape: *"share the target dir and the second image
+takes a cache hit, the build script never re-runs, and the directory the
+consumers were pointed at is never written."* Issue **1031** (2026-09-04) is that
+outcome arriving by a different route — the size probe returned `EXECUTOR_SIZE =
+0`, both build scripts took their documented early return, and neither header was
+written. Every consequence the register names followed: the build exited 0, the
+consumers reached the committed stub, and three `cxx-syntax` snippets failed
+every scheduled run against `#error "must be supplied per-build"` while the step
+that was supposed to produce the headers reported nothing wrong.
+
+Two things that fell out of it belong here:
+
+* The side channel had **no dependency edge at all**. Deleting a header did not
+  bring it back, because cargo held the crate fresh and never re-ran the script —
+  the artifact is inside cargo's tree and unmanaged by it, which is exactly this
+  item. 1031 added `cargo:rerun-if-changed` on the header and its stamp, so
+  cargo now reports `Dirty … the file … is missing` and regenerates. That is a
+  partial mitigation of item 4, not a migration.
+* On a developer tree the side channel is normally populated by some OTHER build,
+  so the lane passes on residue and the failure looks CI-only. That is the
+  property that makes this item's risk silent rather than loud.
+
+### Why closing rather than keeping it open
+
+Its purpose was to record an exposure reviewed once, so the review would not have
+to be reconstructed from commit messages. That purpose is served, and it is now
+served with a verification date and a detection column. A register left open
+accumulates the appearance of unfinished work without anyone owning a next step.
+
+**Re-review trigger is a version bump, not a calendar**: a Corrosion upgrade
+(item 1, and it PREDATES phase-400), a cargo release that touches `.fingerprint`
+or target-dir GC (items 3 and 4), or the NuttX crate leaving its nightly pin
+(item 2). Item 4 also closes properly on its own terms the day the 13 readers
+above reach zero — that is a migration with a countable finish line, and it is
+the only one of the five that has one.
