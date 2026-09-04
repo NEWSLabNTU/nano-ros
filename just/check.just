@@ -328,6 +328,7 @@ fast-serial: \
     zenohd-router-skips \
     zenohd-spawn-sites \
     zephyr-knob-agreement \
+    zpico-config-keys \
     _gate-list-end
     # `_check-skip-reset` is shared skip-ledger infrastructure at the ROOT
     # (`run-gates-parallel.sh` calls it too), not a gate — and a module cannot
@@ -2031,6 +2032,31 @@ box-sync-covers-tracked-source:
 [private]
 zenoh-config-template:
     @python3 scripts/check-zenoh-config-template.py
+
+# phase-206 W3 — the zpico run-time config-key table vs zenoh-pico's config.h.
+#
+# `zp_config_insert(config, Z_CONFIG_<X>_KEY, value)` is zenoh-pico's PRIMARY
+# configuration method and its only one — the pico client has no config-file
+# format (JSON5/YAML belongs to `zenohd`). So the name -> key map in `zpico.c`
+# is the entire configuration surface, and it was a HAND-WRITTEN closed list
+# covering 10 of the 23 keys upstream defines, with the other 13 unreachable
+# and an unknown name silently dropped. The list is derived from config.h now;
+# this gate is what keeps it derived across an upstream bump.
+#
+# Skips rather than fails when the zenoh-pico submodule is absent: `check-fast`
+# must stay green on a pristine detached worktree (issue 0650).
+[private]
+zpico-config-keys:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -f packages/rmw/zenoh/zpico-sys/zenoh-pico/include/zenoh-pico/config.h ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip zpico-config-keys \
+            "zenoh-pico submodule not checked out (git submodule update --init packages/rmw/zenoh/zpico-sys/zenoh-pico)"
+        exit 0
+    fi
+    python3 scripts/gen-zpico-config-keys.py --check
 
 # The sibling of `check-submodule-pins`: that one asks whether a pin moved the
 # right DIRECTION, this one asks whether the commit it names exists anywhere a

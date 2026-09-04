@@ -179,6 +179,15 @@ rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t dom
     if (out == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
+    // phase-206 W3 — a property this backend cannot honour is REFUSED, not
+    // dropped. `mode` and `localhost_only` are hints a backend without the
+    // concept may ignore; a configuration PROPERTY is not, because a silently
+    // dropped one is indistinguishable from one that took effect. Cyclone's
+    // own run-time configuration arrives as CYCLONEDDS_URI (see below), not
+    // through this list; when the two are joined this becomes a lookup.
+    if (options != nullptr && options->property_count != 0) {
+        return NROS_RMW_RET_UNSUPPORTED;
+    }
 
     NROS_CYC_TRACE("session_create: domain=%u entering", domain_id);
     auto* state = alloc_session_state();

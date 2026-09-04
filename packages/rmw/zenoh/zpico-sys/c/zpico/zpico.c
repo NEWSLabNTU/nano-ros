@@ -12,6 +12,7 @@
 #include <zenoh-pico.h>
 #include <zenoh-pico/session/query.h>
 #include <zenoh-pico/api/olv_macros.h>
+#include "zpico_config_keys.h"
 /* Phase 154 — `nros_platform_socket_get_fd` accessor for the
  * `get_session_fd` helper (used by ThreadX-Linux's
  * `select`-driven read-task wakeup path). Replaces the
@@ -99,6 +100,14 @@ static void _threadx_printk(const char* fmt, ...) {
 #define printk(...) printf(__VA_ARGS__)
 #elif defined(ZPICO_SMOLTCP) || defined(ZPICO_SERIAL)
 #define printk(...) // No libc printf on bare-metal
+#elif defined(ZENOH_LINUX) || defined(ZENOH_MACOS)
+// Same hole issue 0870 found on NuttX, one arm over: the hosted POSIX build
+// defines ZENOH_LINUX (or ZENOH_MACOS) and NONE of the arms above, so it fell
+// to the no-op below and every diagnostic in this TU compiled away on the one
+// platform where a developer is most likely to be reading them. A host has
+// full stdio; there is no reason for it to be the quietest target in the tree.
+#include <stdio.h>
+#define printk(...) printf(__VA_ARGS__)
 #else
 #define printk(...) // No-op on other platforms
 #endif
@@ -1227,39 +1236,63 @@ int32_t zpico_init_with_config(zpico_session_t* session, const char* locator, co
         }
     }
 
-    // Apply additional properties
+    /* Apply additional properties.
+     *
+     * The name -> `Z_CONFIG_*_KEY` map is DERIVED from zenoh-pico's own
+     * config.h (`scripts/gen-zpico-config-keys.py` -> `zpico_config_keys.h`),
+     * not hand-written here. The hand-written version covered 10 of the 23
+     * keys upstream defines; a closed list drifts on every upstream bump and
+     * nothing notices, because the old `else` branch dropped an unmapped key
+     * without a word.
+     *
+     * Three refusals, all loud, all `ZPICO_ERR_CONFIG` so the session does not
+     * open with a configuration the caller believes it asked for:
+     *   - a NULL key or value,
+     *   - a name no `Z_CONFIG_*_KEY` matches (the only place a typo can be
+     *     caught: zenoh-pico's keys are a bare numbered enum with no schema
+     *     validation of its own),
+     *   - a TLS key on a build without `Z_FEATURE_LINK_TLS`, which would
+     *     otherwise be accepted into the config map and never read.
+     *
+     * Two of the 23 keys also arrive as dedicated arguments, and the ORDER
+     * around this loop decides what that means. `mode` is inserted above, and
+     * `zp_config_insert` REPLACES for every key but one — so a `mode` property
+     * wins over the `mode` argument. `connect` is inserted below (after the
+     * link properties, so TLS endpoint parsing can see the root CA), and it is
+     * the one key upstream inserts with `_z_str_intmap_insert_push` — so a
+     * `connect` property ADDS an endpoint rather than being overwritten by the
+     * locator, which is how a caller states more than one. */
     for (size_t i = 0; i < num_properties; i++) {
         if (properties[i].key == NULL || properties[i].value == NULL) {
-            continue;
+            printk("[zpico] session config: property %u has a NULL %s\n", (unsigned)i,
+                   properties[i].key == NULL ? "key" : "value");
+            return ZPICO_ERR_CONFIG;
         }
 
-        uint8_t config_key;
-        if (strcmp(properties[i].key, "multicast_scouting") == 0) {
-            config_key = Z_CONFIG_MULTICAST_SCOUTING_KEY;
-        } else if (strcmp(properties[i].key, "scouting_timeout_ms") == 0) {
-            config_key = Z_CONFIG_SCOUTING_TIMEOUT_KEY;
-        } else if (strcmp(properties[i].key, "multicast_locator") == 0) {
-            config_key = Z_CONFIG_MULTICAST_LOCATOR_KEY;
-        } else if (strcmp(properties[i].key, "listen") == 0) {
-            config_key = Z_CONFIG_LISTEN_KEY;
-        } else if (strcmp(properties[i].key, "add_timestamp") == 0) {
-            config_key = Z_CONFIG_ADD_TIMESTAMP_KEY;
-        } else if (strcmp(properties[i].key, "session_zid") == 0) {
-            config_key = Z_CONFIG_SESSION_ZID_KEY;
-#if Z_FEATURE_LINK_TLS == 1
-        } else if (strcmp(properties[i].key, "root_ca_certificate") == 0) {
-            config_key = Z_CONFIG_TLS_ROOT_CA_CERTIFICATE_KEY;
-        } else if (strcmp(properties[i].key, "root_ca_certificate_base64") == 0) {
-            config_key = Z_CONFIG_TLS_ROOT_CA_CERTIFICATE_BASE64_KEY;
-        } else if (strcmp(properties[i].key, "verify_name_on_connect") == 0) {
-            config_key = Z_CONFIG_TLS_VERIFY_NAME_ON_CONNECT_KEY;
+        const zpico_config_key_entry* entry = NULL;
+        for (size_t k = 0; k < ZPICO_CONFIG_KEY_COUNT; k++) {
+            if (strcmp(properties[i].key, ZPICO_CONFIG_KEYS[k].name) == 0) {
+                entry = &ZPICO_CONFIG_KEYS[k];
+                break;
+            }
+        }
+        if (entry == NULL) {
+            printk("[zpico] session config: unknown key '%s' — zenoh-pico defines no such "
+                   "run-time option (see zpico_config_keys.h for the %u accepted names)\n",
+                   properties[i].key, (unsigned)ZPICO_CONFIG_KEY_COUNT);
+            return ZPICO_ERR_CONFIG;
+        }
+#if Z_FEATURE_LINK_TLS != 1
+        if (entry->needs_tls) {
+            printk("[zpico] session config: key '%s' needs a zenoh-pico built with "
+                   "Z_FEATURE_LINK_TLS; this build has none\n",
+                   properties[i].key);
+            return ZPICO_ERR_CONFIG;
+        }
 #endif
-        } else {
-            // Unknown key — silently ignore
-            continue;
-        }
 
-        if (zp_config_insert(z_config_loan_mut(&s->config), config_key, properties[i].value) < 0) {
+        if (zp_config_insert(z_config_loan_mut(&s->config), entry->key, properties[i].value) < 0) {
+            printk("[zpico] session config: zenoh-pico refused key '%s'\n", properties[i].key);
             return ZPICO_ERR_CONFIG;
         }
     }

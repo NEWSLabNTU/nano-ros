@@ -180,7 +180,15 @@ pub struct rmw_network_flow_endpoint_t {
     pub dscp: u8,
     pub internet_address: [core::ffi::c_char; 48usize],
 }
-#[doc = " Publisher creation options — the home for publisher-side transport\n hints (upstream: `rmw_publisher_options_t`). Passed as a NULLable\n trailing param to `create_publisher`; NULL = all defaults.\n/\n/**\n Session creation options — the home for init-time context that\n `create_session`'s flat argument list cannot grow without another ABI break\n (issue 0808). Passed as a NULLable trailing param; NULL = all defaults.\n\n The carrier question 0808 opened had two candidates: encode this behind the\n locator string, or take one options struct. The struct wins on precedent —\n `rmw_publisher_options_t` and `rmw_subscription_options_t` already solved\n exactly this problem for entities, with the same NULLable-trailing-param\n shape — and on cost: parsing config out of a locator means every backend\n reimplements a parser, which is code size on a target plus a new class of\n silent misparse. One break, then the struct grows.\n\n Of Humble's eight `rmw_init_options_t` fields this carries the two that were\n GAPS (issue 0785). `domain_id` stays a named argument because every backend\n needs it; `security_options` remains declined on the target (a DDS-SROS2\n keystore path, and there is neither a filesystem nor a security plugin\n where this ABI runs); `allocator`, `instance_id`, `impl` and\n `implementation_identifier` are answered elsewhere or declined ABI-wide."]
+#[doc = " Publisher creation options — the home for publisher-side transport\n hints (upstream: `rmw_publisher_options_t`). Passed as a NULLable\n trailing param to `create_publisher`; NULL = all defaults.\n/\n/**\n Session creation options — the home for init-time context that\n `create_session`'s flat argument list cannot grow without another ABI break\n (issue 0808). Passed as a NULLable trailing param; NULL = all defaults.\n\n The carrier question 0808 opened had two candidates: encode this behind the\n locator string, or take one options struct. The struct wins on precedent —\n `rmw_publisher_options_t` and `rmw_subscription_options_t` already solved\n exactly this problem for entities, with the same NULLable-trailing-param\n shape — and on cost: parsing config out of a locator means every backend\n reimplements a parser, which is code size on a target plus a new class of\n silent misparse. One break, then the struct grows.\n\n Of Humble's eight `rmw_init_options_t` fields this carries the two that were\n GAPS (issue 0785). `domain_id` stays a named argument because every backend\n needs it; `security_options` remains declined on the target (a DDS-SROS2\n keystore path, and there is neither a filesystem nor a security plugin\n where this ABI runs); `allocator`, `instance_id`, `impl` and\n `implementation_identifier` are answered elsewhere or declined ABI-wide.\n/\n/**\n One backend-specific session configuration property.\n\n The counterpart of `RmwConfig::properties` on the Rust side, which every\n backend already accepts and which — until phase-206 W3 — NO non-Rust caller\n could reach: the cffi adapter built `properties: &[]` and threw the options\n pointer away, so a C or C++ entry could state no transport configuration at\n all, on any platform.\n\n Backend-specific by design. For zenoh this is zenoh-pico's run-time option\n set — `zp_config_insert(config, Z_CONFIG_<X>_KEY, value)`, which upstream\n calls \"the primary configuration method\" and which has no file format for\n the pico client — with the accepted names derived from zenoh-pico's own\n `config.h` (`zpico_config_keys.h`). A backend that does not recognise a name\n MUST fail the session rather than drop it: a silently ignored configuration\n line is indistinguishable from one that took effect.\n\n Both strings are NUL-terminated and BORROWED for the duration of the\n `create_session` call."]
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct rmw_session_property_t {
+    #[doc = "< Property name; never NULL."]
+    pub key: *const core::ffi::c_char,
+    #[doc = "< Property value; never NULL."]
+    pub value: *const core::ffi::c_char,
+}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct rmw_session_options_t {
@@ -190,6 +198,10 @@ pub struct rmw_session_options_t {
     pub _reserved: [u8; 7usize],
     #[doc = " The security enclave this session belongs to, or NULL.\n\n  Borrowed for the duration of the call. Carried so\n  `rmw_get_node_names_with_enclaves` stops being a HOLLOW grouping: the\n  visitor's `enclave` argument was structurally always NULL because\n  nothing in this ABI accepted one (issue 0785). A backend that does not\n  track enclaves still reports NULL, which is now a fact about the\n  backend rather than about the seam."]
     pub enclave: *const core::ffi::c_char,
+    #[doc = " Backend-specific configuration properties, or NULL.\n\n  Borrowed for the duration of the call, as is every string they point\n  at. `property_count` must be 0 when this is NULL, and must not exceed\n  `RMW_SESSION_MAX_PROPERTIES`; a violation is\n  `RMW_RET_INVALID_ARGUMENT`, not a truncation."]
+    pub properties: *const rmw_session_property_t,
+    #[doc = "< Number of entries in `properties`."]
+    pub property_count: usize,
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -901,6 +913,7 @@ pub const NROS_RMW_HISTORY_UNKNOWN: i32 = 3;
 pub const RMW_GID_STORAGE_SIZE: i32 = 24;
 pub const RMW_INET_ADDRSTRLEN: i32 = 48;
 pub const NROS_RMW_DURATION_INFINITE_MS: i64 = 4294967295;
+pub const RMW_SESSION_MAX_PROPERTIES: i32 = 16;
 pub const NROS_RMW_VISITOR_DEFINED: i32 = 1;
 #[doc = " Borrow-shaped union the backend supplies to the registered\n  callback. The `kind` argument selects which member is valid."]
 #[repr(C)]
