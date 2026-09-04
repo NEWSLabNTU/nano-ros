@@ -1050,8 +1050,8 @@
     "why": "a fn-pointer, not a boxed closure; see `cpp:TimerCallbackType`."
   },
   "rust:TimerClock": {
-    "verdict": "divergence",
-    "why": "**rclrs 0.7.0 CONVERGED ON OUR SHAPE.** 0.5.1 had one `create_timer`; 0.7.0 has `create_timer_inert` / `create_timer_oneshot` / `create_timer_repeating` -- the same three modes our `TimerMode` carries, arrived at independently. Ours are a mode SET ON an entity in the static table (`set_inert`, `set_oneshot`, `set_repeating`) because a static table cannot grow a timer at runtime and re-arming is how a one-shot is reused; rclrs constructs one per mode. Same model, different placement -- so this is no longer the divergence the 0.5.1 comparison recorded, and W5 should consider matching the verb."
+    "verdict": "declined",
+    "why": "CORRECTED 2026-09-04. The previous `why` was a verbatim copy of `rust:Node::create_timer_repeating`'s — byte-identical text about rclrs 0.7.0 converging on our three timer MODES, which says nothing about this item. A rename sweep or a paste left one row describing another.\n\n`TimerClock` is rclrs's PER-TIMER CLOCK SELECTOR — an enum of `SteadyTime` / `SystemTime` / `NodeTime` / `Clock` (`rclrs/src/timer/timer_options.rs`). Theirs-only, and DECLINED for the reason `c:timer_clock` already gives: our timers are created on the executor's clock and cannot be created on another. Every timer bottoms out in the platform monotonic counter (`executor/spin.rs:8418-8427` -> `nros_platform_clock_ns`), and there is no per-timer clock parameter anywhere in the API.\n\nRe-verdicted from `divergence`, which by `_doc` must name a PLATFORM CONSTRAINT; this is a theirs-only axis we chose not to mirror, which is what `declined` is for.\n\nWorth keeping visible: this row is the clearest evidence that ROS 2 treats \"which clock drives this timer\" as a first-class axis — the argument that decides `cpp:Node::create_wall_timer`. It was buried under text about something else."
   },
   "rust:TimerClock::is_node_time": {
     "verdict": "divergence",
