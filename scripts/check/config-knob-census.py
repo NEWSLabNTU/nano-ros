@@ -91,6 +91,7 @@ KNOB_CLASS = {
     # "unresolved" hatch would make one variable mean two different
     # judgements, and a user silencing one would silence the other.
     "NROS_ALLOW_INFRA_DEPS": ("infra", "policy flag"),
+    "NROS_BOOT_REPORT": ("infra", "diagnostic toggle; a bool, so it has no rung"),
     "NROS_BUILD_ROOT": ("infra", "path"),
     "NROS_CARGO_FLAGS": ("infra", "the --locked shim"),
     "NROS_LINK_IP": ("infra", "link toggle"),

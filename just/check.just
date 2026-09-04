@@ -131,6 +131,7 @@ fast-serial: \
     board-vocabulary \
     book-links \
     book-no-just \
+    boot-report-layout \
     box-sync-covers-tracked-source \
     build-profile-literals \
     build-root \
@@ -601,7 +602,14 @@ codegen-size-bound-golden:
 # correct one, and stamped it with a new mtime — so ninja found the mirror's
 # OUTPUT newer than its trigger and skipped the command that would have fixed
 # it. A repair for drift that caused drift and suppressed its own fix.
-#
+
+# phase-412 -- the boot self-report is decoded POSITIONALLY out of a memory
+# dump, so a field reordered on one side and not the other does not fail: it
+# decodes, and prints an arena size that is really a callback count.
+[private]
+boot-report-layout:
+    @python3 scripts/check-boot-report-layout.py
+
 # Static, no build. The whole 0088 -> 0114 -> 0122 -> 0123 -> 0245 -> 0268 ->
 # 0978 -> 0985 family is one shape: two ways to answer "which bytes are the
 # current sizes header".

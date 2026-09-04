@@ -1503,6 +1503,15 @@ impl<'s> Executor<'s> {
         if let Some(slot0) = sched_contexts.first_mut() {
             *slot0 = Some(super::sched_context::SchedContext::default());
         }
+        // phase-412 -- stamp the self-report before anything can fail. `init`
+        // is idempotent, so an image with two executors need not decide which
+        // one owns the record, and `note_arena_capacity` records the slice this
+        // executor was actually handed rather than the compiled constant: the
+        // arena's placement is the caller's choice (issue 0900), so the two can
+        // legitimately differ and the difference is worth seeing.
+        crate::boot_report::init();
+        crate::boot_report::note_arena_capacity(arena.len());
+        crate::boot_report::checkpoint(crate::boot_report::Stage::ExecutorReady);
         Self {
             // `assemble` is reached from session-only entry points that have no
             // config, so 0 is the floor rather than a choice; `open_in` and any
@@ -3953,9 +3962,11 @@ impl<'s> Executor<'s> {
                 self.arena_used,
                 self.arena.len(),
             );
+            crate::boot_report::note_alloc_failed(size, new_used - self.arena.len());
             return Err(NodeError::BufferTooSmall);
         }
         self.arena_used = new_used;
+        crate::boot_report::note_alloc(size, new_used);
         Ok(aligned_offset)
     }
 
@@ -3975,9 +3986,24 @@ impl<'s> Executor<'s> {
             (entry_offset + entry_size).next_multiple_of(core::mem::align_of::<u64>());
         let new_used = trailing_offset + trailing_bytes;
         if new_used > self.arena.len() {
+            // This path reported NOTHING until phase-412's self-report went in,
+            // while its sibling `arena_alloc` has named the knob since issue
+            // 0900. Half of arena exhaustion was therefore silent -- and it is
+            // the half carrying buffered subscriptions and action entries,
+            // which is what an island image actually allocates.
+            super::arena::report_arena_exhausted(
+                new_used - self.arena.len(),
+                self.arena_used,
+                self.arena.len(),
+            );
+            crate::boot_report::note_alloc_failed(
+                new_used - entry_offset,
+                new_used - self.arena.len(),
+            );
             return Err(NodeError::BufferTooSmall);
         }
         self.arena_used = new_used;
+        crate::boot_report::note_alloc(new_used - entry_offset, new_used);
         Ok((entry_offset, trailing_offset))
     }
 
@@ -6024,6 +6050,11 @@ impl<'s> Executor<'s> {
         // registered. First spin rather than "end of registration", because
         // there is no such point: an app may register lazily.
         super::arena::maybe_report_arena_headroom(self.arena_used, self.arena.len());
+
+        // phase-412 -- the same moment, recorded where a board with no log sink
+        // can still be asked. Reaching this stage is the positive result the
+        // advisory above cannot deliver on the island: registration completed.
+        crate::boot_report::checkpoint(crate::boot_report::Stage::FirstSpin);
 
         // Phase 110.0 — cap against the backend's next internal-event
         // deadline (lease keepalive, heartbeat, ACK-NACK timeout, ...).
