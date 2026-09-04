@@ -1410,6 +1410,10 @@ pub struct Executor<'s> {
     /// skips the sleep and discards the difference. That difference is the
     /// jitter.
     pub(crate) max_release_jitter_us: u64,
+    /// Clock reading at the previous `spin_once` entry, for the interval the
+    /// jitter is measured over. `None` until the first spin, and reset by
+    /// `clear_release_jitter_stats` so a window starts clean.
+    pub(crate) last_spin_entry_us: Option<u64>,
     /// Wakes that were already past their nominal deadline, and wakes total.
     ///
     /// The maximum alone cannot distinguish one bad wake from a loop that is
@@ -1576,6 +1580,7 @@ impl<'s> Executor<'s> {
             spin_quantization_checked: false,
             monitor_violations_dropped: 0,
             max_release_jitter_us: 0,
+            last_spin_entry_us: None,
             late_wakes: 0,
             total_wakes: 0,
             report_violations: true,
@@ -2139,7 +2144,36 @@ impl<'s> Executor<'s> {
     /// W3b.5 — install the `DeadlineAction::Fault` hook. Without one a
     /// fault-class deadline miss panics (watchdog-visible stop on
     /// embedded targets).
-    /// Release-jitter statistics from `spin_period`: worst lateness in
+    /// Record one `spin_once` entry against the caller's intended cadence.
+    ///
+    /// Late is `(now - last_entry) - timeout`, clamped at zero: arriving early
+    /// is not jitter, it is a poll that had nothing to wait for. A zero
+    /// timeout claims no cadence and is skipped entirely, which keeps
+    /// `Future::wait`-style busy spins out of the statistic.
+    fn record_release_jitter(&mut self, timeout: core::time::Duration) {
+        let nominal_us = timeout.as_micros().min(u64::MAX as u128) as u64;
+        if nominal_us == 0 {
+            return;
+        }
+        let Some(now) = self.now_us() else {
+            return;
+        };
+        if let Some(last) = self.last_spin_entry_us {
+            let interval = now.saturating_sub(last);
+            self.total_wakes = self.total_wakes.saturating_add(1);
+            if let Some(late) = interval.checked_sub(nominal_us)
+                && late > 0
+            {
+                self.late_wakes = self.late_wakes.saturating_add(1);
+                if late > self.max_release_jitter_us {
+                    self.max_release_jitter_us = late;
+                }
+            }
+        }
+        self.last_spin_entry_us = Some(now);
+    }
+
+    /// Release-jitter statistics from the spin loop: worst lateness in
     /// microseconds, the number of wakes that were already late, and the
     /// number of wakes total.
     ///
@@ -2164,6 +2198,7 @@ impl<'s> Executor<'s> {
         self.max_release_jitter_us = 0;
         self.late_wakes = 0;
         self.total_wakes = 0;
+        self.last_spin_entry_us = None;
     }
 
     pub fn set_fault_handler(&mut self, f: fn(&super::monitor::Violation)) {
@@ -5877,6 +5912,24 @@ impl<'s> Executor<'s> {
     pub fn spin_once(&mut self, timeout: core::time::Duration) -> SpinOnceResult {
         let timeout_ms = timeout.as_millis().min(i32::MAX as u128) as i32;
 
+        // Release jitter, measured HERE rather than in `spin_period`, because
+        // this is the function every driver goes through.
+        //
+        // The first version instrumented `spin_period` only, and that was the
+        // same mistake issue 0736 records one layer down: a measurement placed
+        // on a path no shipped image takes. `nros-cpp`'s tier trampoline paces
+        // itself with a `spin_once` loop at `spin_period_us` (see its
+        // `run_components` docs, step 4), so `spin_period` is not what the C++
+        // entry -- and therefore not what the Zephyr lane -- actually calls.
+        // The field recorded zero forever while claiming to measure cadence.
+        //
+        // `timeout` is the caller's intended pacing quantum: `spin_period`
+        // passes its period, and the tier loop passes `spin_period_us`. A wake
+        // that arrives later than that is late by the difference, which is the
+        // `cyclictest` quantity. A zero timeout means "poll, no cadence
+        // claimed", so it is not judged.
+        self.record_release_jitter(timeout);
+
         // issue 0900 — one-shot advisory when the arena is far larger than what
         // registered. First spin rather than "end of registration", because
         // there is no such point: an app may register lazily.
@@ -7639,25 +7692,13 @@ impl<'s> Executor<'s> {
             self.spin_once(period);
 
             if let Some(next) = next_us {
-                if let Some(now) = self.now_us() {
-                    self.total_wakes = self.total_wakes.saturating_add(1);
-                    if now < next {
-                        platform_sleep(core::time::Duration::from_micros(next - now));
-                    } else {
-                        // Already past the nominal deadline: there is no sleep
-                        // to take, and `now - next` is the release jitter. The
-                        // loop used to skip straight to the accumulate below,
-                        // which is why lateness was invisible -- drift
-                        // compensation HIDES it, by design. Rate is preserved
-                        // and no activation is dropped, so no existing rule
-                        // fires; the cadence is simply wrong in a way nothing
-                        // reported.
-                        let late = now - next;
-                        self.late_wakes = self.late_wakes.saturating_add(1);
-                        if late > self.max_release_jitter_us {
-                            self.max_release_jitter_us = late;
-                        }
-                    }
+                // Jitter is recorded in `spin_once` above, which this loop
+                // calls every iteration -- counting it here as well would
+                // double every wake on this one driver.
+                if let Some(now) = self.now_us()
+                    && now < next
+                {
+                    platform_sleep(core::time::Duration::from_micros(next - now));
                 }
                 // Accumulate to prevent drift (not = now + period)
                 next_us = Some(next + period_us);
