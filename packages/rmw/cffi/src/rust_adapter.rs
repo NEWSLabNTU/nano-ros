@@ -50,11 +50,11 @@ use nros_rmw::{
 };
 
 use crate::{
-    EMPTY_VTABLE, NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK, NROS_RMW_RET_UNSUPPORTED,
-    NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwNode, NrosRmwPublisher,
-    NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession, NrosRmwSessionOptions,
-    NrosRmwSubscription, NrosRmwVtable, event_kind_from_c, ret_from_error, rmw_publisher_options_t,
-    rmw_subscription_options_t,
+    EMPTY_VTABLE, MAX_SESSION_PROPERTIES, NROS_RMW_RET_INVALID_ARGUMENT, NROS_RMW_RET_OK,
+    NROS_RMW_RET_UNSUPPORTED, NrosRmwClient, NrosRmwEventCallback, NrosRmwEventKind, NrosRmwNode,
+    NrosRmwPublisher, NrosRmwQos, NrosRmwRet, NrosRmwService, NrosRmwSession,
+    NrosRmwSessionOptions, NrosRmwSubscription, NrosRmwVtable, event_kind_from_c, ret_from_error,
+    rmw_publisher_options_t, rmw_subscription_options_t,
 };
 // phase-381 W3 — the endpoint-info slots marshal the generated ABI types
 // directly. Imported from `generated` rather than re-exported through the crate
@@ -239,6 +239,62 @@ unsafe fn cstr_to_str<'a>(ptr: *const core::ffi::c_char) -> &'a str {
     }
     let slice = unsafe { core::slice::from_raw_parts(ptr, len) };
     core::str::from_utf8(slice).unwrap_or("")
+}
+
+/// Borrow a NUL-terminated C string as `&str`, distinguishing "absent" and
+/// "not text" from "empty" — which [`cstr_to_str`] deliberately does not.
+///
+/// `cstr_to_str` collapses NULL and invalid UTF-8 into `""` because its
+/// callers (node names, topic names) treat an unusable name as an absent one.
+/// A configuration property cannot: an empty key is not a key, and a value the
+/// backend cannot read must be reported, not passed on as `""`.
+unsafe fn cstr_to_str_strict<'a>(ptr: *const core::ffi::c_char) -> Option<&'a str> {
+    if ptr.is_null() {
+        return None;
+    }
+    let bytes = ptr.cast::<u8>();
+    let mut len = 0usize;
+    while len < 4096 && unsafe { *bytes.add(len) } != 0 {
+        len += 1;
+    }
+    if len == 0 {
+        return None;
+    }
+    let slice = unsafe { core::slice::from_raw_parts(bytes, len) };
+    core::str::from_utf8(slice).ok()
+}
+
+/// Copy `options->properties` into `out`, returning how many entries were
+/// written, or the `NrosRmwRet` to fail the session with.
+///
+/// # Safety
+/// `options`, when non-NULL, must point at a valid `rmw_session_options_t`
+/// whose `properties` array holds `property_count` valid entries.
+unsafe fn collect_session_properties<'a>(
+    options: *const NrosRmwSessionOptions,
+    out: &mut [(&'a str, &'a str); MAX_SESSION_PROPERTIES],
+) -> Result<usize, NrosRmwRet> {
+    if options.is_null() {
+        return Ok(0);
+    }
+    let opts = unsafe { &*options };
+    let count = opts.property_count;
+    if count == 0 {
+        return Ok(0);
+    }
+    if opts.properties.is_null() || count > MAX_SESSION_PROPERTIES {
+        return Err(NROS_RMW_RET_INVALID_ARGUMENT);
+    }
+    for (i, slot) in out.iter_mut().enumerate().take(count) {
+        let entry = unsafe { &*opts.properties.add(i) };
+        let (Some(key), Some(value)) = (unsafe { cstr_to_str_strict(entry.key) }, unsafe {
+            cstr_to_str_strict(entry.value)
+        }) else {
+            return Err(NROS_RMW_RET_INVALID_ARGUMENT);
+        };
+        *slot = (key, value);
+    }
+    Ok(count)
 }
 
 /// Convert the cffi QoS view back into a `nros_rmw::QoSProfile`. The
@@ -501,10 +557,25 @@ unsafe extern "C" fn create_session_trampoline<R: RustBackend>(
     if out.is_null() {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
-    // issue 0808 — a Rust backend states no session options yet. Accepted and
-    // ignored rather than rejected: the contract for this argument is the same
-    // as for `mode`, a backend that cannot honour it must IGNORE it.
-    let _ = options;
+    // phase-206 W3 — marshal the caller's session properties into the slice
+    // `RmwConfig` takes. This used to read `let _ = options;` with
+    // `properties: &[]` hard-coded, which made every backend-specific
+    // transport setting unreachable from C and C++: the Rust trait had carried
+    // `properties` since it existed, and only a hosted Rust caller building an
+    // `RmwConfig` by hand could fill it.
+    //
+    // Refused rather than truncated (each is INVALID_ARGUMENT):
+    //   - `property_count > 0` with a NULL `properties` pointer,
+    //   - more than `RMW_SESSION_MAX_PROPERTIES` entries,
+    //   - a NULL, empty, or non-UTF-8 key or value.
+    // Dropping any of these silently is the failure this work item exists to
+    // remove; a caller that cannot see its configuration was ignored debugs
+    // the transport instead of the typo.
+    let mut prop_buf: [(&str, &str); MAX_SESSION_PROPERTIES] = [("", ""); MAX_SESSION_PROPERTIES];
+    let prop_count = match unsafe { collect_session_properties(options, &mut prop_buf) } {
+        Ok(n) => n,
+        Err(ret) => return ret,
+    };
     let cfg = RmwConfig {
         locator: unsafe { cstr_to_str(locator) },
         mode: if mode == 0 {
@@ -515,7 +586,7 @@ unsafe extern "C" fn create_session_trampoline<R: RustBackend>(
         domain_id,
         node_name: unsafe { cstr_to_str(node_name) },
         namespace: "",
-        properties: &[],
+        properties: &prop_buf[..prop_count],
     };
     let factory = R::factory();
     match factory.open(&cfg) {

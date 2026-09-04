@@ -589,6 +589,41 @@ typedef void (*rmw_content_filter_visit_fn)(void *ctx,
  * where this ABI runs); `allocator`, `instance_id`, `impl` and
  * `implementation_identifier` are answered elsewhere or declined ABI-wide.
  */
+/**
+ * One backend-specific session configuration property.
+ *
+ * The counterpart of `RmwConfig::properties` on the Rust side, which every
+ * backend already accepts and which — until phase-206 W3 — NO non-Rust caller
+ * could reach: the cffi adapter built `properties: &[]` and threw the options
+ * pointer away, so a C or C++ entry could state no transport configuration at
+ * all, on any platform.
+ *
+ * Backend-specific by design. For zenoh this is zenoh-pico's run-time option
+ * set — `zp_config_insert(config, Z_CONFIG_<X>_KEY, value)`, which upstream
+ * calls "the primary configuration method" and which has no file format for
+ * the pico client — with the accepted names derived from zenoh-pico's own
+ * `config.h` (`zpico_config_keys.h`). A backend that does not recognise a name
+ * MUST fail the session rather than drop it: a silently ignored configuration
+ * line is indistinguishable from one that took effect.
+ *
+ * Both strings are NUL-terminated and BORROWED for the duration of the
+ * `create_session` call.
+ */
+typedef struct rmw_session_property_t {
+    const char *key;   /**< Property name; never NULL. */
+    const char *value; /**< Property value; never NULL. */
+} rmw_session_property_t;
+
+/** Upper bound on `rmw_session_options_t::property_count`.
+ *
+ *  The seam marshals the properties through a stack array, so it needs a
+ *  bound; 16 is chosen to clear the largest configuration anyone can actually
+ *  state at once (zenoh-pico defines 23 run-time keys, but `mode` and
+ *  `connect` arrive as dedicated `create_session` arguments and the 13 TLS
+ *  keys split into a listen-side and a connect-side set — a full mTLS client
+ *  is ~10). A caller that exceeds it is REFUSED, never truncated. */
+#define RMW_SESSION_MAX_PROPERTIES 16
+
 typedef struct rmw_session_options_t {
     /** Restrict discovery to this host. Upstream `rmw_localhost_only_t`,
      *  narrowed to a flag: 0 = the system default, non-zero = localhost only.
@@ -606,6 +641,14 @@ typedef struct rmw_session_options_t {
      *  track enclaves still reports NULL, which is now a fact about the
      *  backend rather than about the seam. */
     const char *enclave;
+    /** Backend-specific configuration properties, or NULL.
+     *
+     *  Borrowed for the duration of the call, as is every string they point
+     *  at. `property_count` must be 0 when this is NULL, and must not exceed
+     *  `RMW_SESSION_MAX_PROPERTIES`; a violation is
+     *  `RMW_RET_INVALID_ARGUMENT`, not a truncation. */
+    const rmw_session_property_t *properties;
+    size_t property_count; /**< Number of entries in `properties`. */
 } rmw_session_options_t;
 
 typedef struct rmw_publisher_options_t {

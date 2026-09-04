@@ -343,10 +343,19 @@ static const char* locator_serial_path(const char* locator) {
 rmw_ret_t xrce_session_create(const char* locator, uint8_t mode, uint32_t domain_id,
                                  const char* node_name,
                                  const rmw_session_options_t* options, rmw_session_t* out) {
-    (void)options; /* XRCE has no discovery to restrict and no enclave. */
+    /* XRCE has no discovery to restrict and no enclave. */
     (void)mode;
     if (out == NULL || node_name == NULL) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    /* phase-206 W3 — a property this backend cannot honour is REFUSED, not
+     * dropped. `mode` and `localhost_only` are hints a backend without the
+     * concept may ignore; a configuration PROPERTY is not, because a silently
+     * dropped one is indistinguishable from one that took effect and the
+     * caller has no other way to find out. XRCE has no run-time option set of
+     * its own yet; when it grows one, this becomes a lookup. */
+    if (options != NULL && options->property_count != 0) {
+        return NROS_RMW_RET_UNSUPPORTED;
     }
     if (out->backend_data != NULL) {
         return NROS_RMW_RET_ERROR;

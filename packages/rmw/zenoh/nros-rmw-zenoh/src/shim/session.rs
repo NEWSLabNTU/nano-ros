@@ -347,13 +347,40 @@ impl ZenohSession {
 
         let mut prop_count = 0usize;
 
-        // Copy explicit properties from config
-        for i in 0..config.properties.len().min(MAX_SESSION_PROPERTIES) {
+        // Copy explicit properties from config.
+        //
+        // phase-206 W3 — both of the drops that used to live here are errors
+        // now. The loop bound was `.min(MAX_SESSION_PROPERTIES)`, so a ninth
+        // property vanished, and an over-long key or value `continue`d. Either
+        // way the session opened and reported success while running a
+        // configuration the caller never asked for — which is the whole class
+        // this work item is about: a configuration line that is silently
+        // dropped is indistinguishable from one that took effect, so the next
+        // person debugs the transport rather than the input.
+        if config.properties.len() > MAX_SESSION_PROPERTIES {
+            nros_log::nros_error!(
+                nros_log::get_logger("nros_rmw_zenoh"),
+                "session config: {} properties supplied, this build carries at most {} \
+                 (raise MAX_SESSION_PROPERTIES in nros-rmw-zenoh's shim; it is a stack \
+                 array, so the embedded cap is deliberately small)",
+                config.properties.len(),
+                MAX_SESSION_PROPERTIES
+            );
+            return Err(TransportError::InvalidArgument);
+        }
+        for i in 0..config.properties.len() {
             let (key, value) = config.properties[i];
             let key_bytes = key.as_bytes();
             let val_bytes = value.as_bytes();
             if key_bytes.len() >= CONFIG_PROPERTY_SIZE || val_bytes.len() >= CONFIG_PROPERTY_SIZE {
-                continue; // Skip oversized properties
+                nros_log::nros_error!(
+                    nros_log::get_logger("nros_rmw_zenoh"),
+                    "session config: property '{}' does not fit this build's {}-byte \
+                     key/value buffer",
+                    key,
+                    CONFIG_PROPERTY_SIZE
+                );
+                return Err(TransportError::InvalidArgument);
             }
             key_bufs[prop_count][..key_bytes.len()].copy_from_slice(key_bytes);
             key_bufs[prop_count][key_bytes.len()] = 0;
@@ -384,23 +411,40 @@ impl ZenohSession {
             for &(env_name, prop_key) in env_mappings {
                 if let Ok(val) = std::env::var(env_name) {
                     let already_set = config.properties.iter().any(|(k, _)| *k == prop_key);
-                    if !already_set && prop_count < MAX_SESSION_PROPERTIES {
-                        let key_bytes = prop_key.as_bytes();
-                        let val_bytes = val.as_bytes();
-                        if key_bytes.len() < CONFIG_PROPERTY_SIZE
-                            && val_bytes.len() < CONFIG_PROPERTY_SIZE
-                        {
-                            key_bufs[prop_count][..key_bytes.len()].copy_from_slice(key_bytes);
-                            key_bufs[prop_count][key_bytes.len()] = 0;
-                            val_bufs[prop_count][..val_bytes.len()].copy_from_slice(val_bytes);
-                            val_bufs[prop_count][val_bytes.len()] = 0;
-                            c_props[prop_count] = crate::zpico::zpico_property_t {
-                                key: key_bufs[prop_count].as_ptr().cast(),
-                                value: val_bufs[prop_count].as_ptr().cast(),
-                            };
-                            prop_count += 1;
-                        }
+                    if already_set {
+                        continue;
                     }
+                    // phase-206 W3 — an env var the caller set and this build
+                    // cannot carry is an error, not a shrug. It used to fall
+                    // off the end of the array (or off the end of the buffer)
+                    // in silence, which reads exactly like "the variable had
+                    // no effect on this backend".
+                    let key_bytes = prop_key.as_bytes();
+                    let val_bytes = val.as_bytes();
+                    if prop_count >= MAX_SESSION_PROPERTIES
+                        || key_bytes.len() >= CONFIG_PROPERTY_SIZE
+                        || val_bytes.len() >= CONFIG_PROPERTY_SIZE
+                    {
+                        nros_log::nros_error!(
+                            nros_log::get_logger("nros_rmw_zenoh"),
+                            "session config: {} could not be applied — {} properties already \
+                             set (max {}) or the value exceeds {} bytes",
+                            env_name,
+                            prop_count,
+                            MAX_SESSION_PROPERTIES,
+                            CONFIG_PROPERTY_SIZE
+                        );
+                        return Err(TransportError::InvalidArgument);
+                    }
+                    key_bufs[prop_count][..key_bytes.len()].copy_from_slice(key_bytes);
+                    key_bufs[prop_count][key_bytes.len()] = 0;
+                    val_bufs[prop_count][..val_bytes.len()].copy_from_slice(val_bytes);
+                    val_bufs[prop_count][val_bytes.len()] = 0;
+                    c_props[prop_count] = crate::zpico::zpico_property_t {
+                        key: key_bufs[prop_count].as_ptr().cast(),
+                        value: val_bufs[prop_count].as_ptr().cast(),
+                    };
+                    prop_count += 1;
                 }
             }
         }

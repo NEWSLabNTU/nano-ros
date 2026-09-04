@@ -1492,6 +1492,12 @@ const NAME_BUF_LEN: usize = 256;
 /// be longer, and four nodes of two 256-byte buffers would put 2 KiB of mostly
 /// zeroes in every session on an MCU.
 const NODE_NAME_BUF_LEN: usize = 64;
+/// Per-string bound for a marshalled session property. 256 so a TLS
+/// certificate PATH fits; anything longer is refused rather than truncated.
+const SESSION_PROPERTY_BUF_LEN: usize = 256;
+/// `usize` spelling of the header's `RMW_SESSION_MAX_PROPERTIES` (RFC-0054:
+/// the header is the SSoT; bindgen emits it as `i32`).
+const MAX_SESSION_PROPERTIES: usize = generated::RMW_SESSION_MAX_PROPERTIES as usize;
 
 const HASH_BUF_LEN: usize = 128;
 
@@ -1824,7 +1830,102 @@ impl CffiSession {
         node_name: &str,
     ) -> Result<Self, TransportError> {
         let vtable = get_vtable()?;
-        Self::open_with_vtable(vtable, locator, mode, domain_id, node_name)
+        Self::open_with_vtable(
+            vtable,
+            locator,
+            mode,
+            domain_id,
+            node_name,
+            core::ptr::null(),
+        )
+    }
+
+    /// phase-206 W3 — open a session carrying backend-specific configuration
+    /// properties (`RmwConfig::properties` across the C seam).
+    ///
+    /// This is the rung that was missing. `RmwConfig` has carried
+    /// `properties` since it existed and every Rust backend reads them, but
+    /// nothing between the runtime and the vtable passed them on: this
+    /// function's non-properties sibling handed `create_session` a NULL
+    /// options pointer, and the Rust-backend adapter on the far side built
+    /// `properties: &[]` unconditionally. So the only way to set a zenoh
+    /// `listen` endpoint, a TLS certificate or a scouting timeout was to build
+    /// an `RmwConfig` by hand in hosted Rust — a C or C++ image could state
+    /// none of it, on any platform.
+    ///
+    /// Refused, never truncated: more than `RMW_SESSION_MAX_PROPERTIES`
+    /// entries, an empty key or value, or either longer than
+    /// `SESSION_PROPERTY_BUF_LEN`. All are `TransportError::InvalidArgument`.
+    pub fn open_with_properties(
+        locator: &str,
+        mode: u8,
+        domain_id: u32,
+        node_name: &str,
+        properties: &[(&str, &str)],
+    ) -> Result<Self, TransportError> {
+        let vtable = get_vtable()?;
+        if properties.is_empty() {
+            return Self::open_with_vtable(
+                vtable,
+                locator,
+                mode,
+                domain_id,
+                node_name,
+                core::ptr::null(),
+            );
+        }
+        Self::open_marshalling_properties(vtable, locator, mode, domain_id, node_name, properties)
+    }
+
+    /// The property-carrying half of [`open_with_properties`], kept in its own
+    /// never-inlined frame so the marshalling buffers (up to
+    /// `RMW_SESSION_MAX_PROPERTIES` × 2 × `SESSION_PROPERTY_BUF_LEN`) are only
+    /// on the stack of a call that actually has properties to carry. An MCU
+    /// image that configures nothing pays nothing.
+    #[inline(never)]
+    fn open_marshalling_properties(
+        vtable: &'static NrosRmwVtable,
+        locator: &str,
+        mode: u8,
+        domain_id: u32,
+        node_name: &str,
+        properties: &[(&str, &str)],
+    ) -> Result<Self, TransportError> {
+        if properties.len() > MAX_SESSION_PROPERTIES {
+            return Err(TransportError::InvalidArgument);
+        }
+        let mut key_bufs = [[0u8; SESSION_PROPERTY_BUF_LEN]; MAX_SESSION_PROPERTIES];
+        let mut val_bufs = [[0u8; SESSION_PROPERTY_BUF_LEN]; MAX_SESSION_PROPERTIES];
+        let mut entries = [rmw_session_property_t {
+            key: core::ptr::null(),
+            value: core::ptr::null(),
+        }; MAX_SESSION_PROPERTIES];
+        for (i, (key, value)) in properties.iter().enumerate() {
+            // Empty or over-long is REFUSED. `to_c_str` truncates, which for a
+            // name is a wrong-but-visible entity and for a TLS certificate
+            // path is a session that fails somewhere unrelated.
+            if key.is_empty()
+                || value.is_empty()
+                || key.len() >= SESSION_PROPERTY_BUF_LEN
+                || value.len() >= SESSION_PROPERTY_BUF_LEN
+            {
+                return Err(TransportError::InvalidArgument);
+            }
+            key_bufs[i][..key.len()].copy_from_slice(key.as_bytes());
+            val_bufs[i][..value.len()].copy_from_slice(value.as_bytes());
+            entries[i] = rmw_session_property_t {
+                key: key_bufs[i].as_ptr().cast(),
+                value: val_bufs[i].as_ptr().cast(),
+            };
+        }
+        let options = NrosRmwSessionOptions {
+            localhost_only: 0,
+            _reserved: [0u8; 7],
+            enclave: core::ptr::null(),
+            properties: entries.as_ptr(),
+            property_count: properties.len(),
+        };
+        Self::open_with_vtable(vtable, locator, mode, domain_id, node_name, &options)
     }
 
     /// Phase 104.C.1 — open a new session against a named backend.
@@ -1852,7 +1953,48 @@ impl CffiSession {
         }
         // SAFETY: registry-issued pointer; valid for the program's lifetime.
         let vtable = unsafe { &*raw };
-        Self::open_with_vtable(vtable, locator, mode, domain_id, node_name)
+        Self::open_with_vtable(
+            vtable,
+            locator,
+            mode,
+            domain_id,
+            node_name,
+            core::ptr::null(),
+        )
+    }
+
+    /// [`open_named`](Self::open_named) carrying backend-specific
+    /// configuration properties — see [`open_with_properties`](Self::open_with_properties).
+    pub fn open_named_with_properties(
+        rmw_name: &str,
+        locator: &str,
+        mode: u8,
+        domain_id: u32,
+        node_name: &str,
+        properties: &[(&str, &str)],
+    ) -> Result<Self, TransportError> {
+        let mut name_buf = [0u8; BACKEND_NAME_MAX];
+        if rmw_name.len() >= BACKEND_NAME_MAX {
+            return Err(TransportError::InvalidArgument);
+        }
+        name_buf[..rmw_name.len()].copy_from_slice(rmw_name.as_bytes());
+        let raw = unsafe { nros_rmw_cffi_lookup(name_buf.as_ptr() as *const _) };
+        if raw.is_null() {
+            return Err(TransportError::InvalidArgument);
+        }
+        // SAFETY: registry-issued pointer; valid for the program's lifetime.
+        let vtable = unsafe { &*raw };
+        if properties.is_empty() {
+            return Self::open_with_vtable(
+                vtable,
+                locator,
+                mode,
+                domain_id,
+                node_name,
+                core::ptr::null(),
+            );
+        }
+        Self::open_marshalling_properties(vtable, locator, mode, domain_id, node_name, properties)
     }
 
     fn open_with_vtable(
@@ -1861,6 +2003,7 @@ impl CffiSession {
         mode: u8,
         domain_id: u32,
         node_name: &str,
+        options: *const NrosRmwSessionOptions,
     ) -> Result<Self, TransportError> {
         let mut loc_buf = [0u8; NAME_BUF_LEN];
         let loc_ptr = to_c_str(locator, &mut loc_buf);
@@ -1886,11 +2029,12 @@ impl CffiSession {
                 mode,
                 domain_id,
                 session.node_name_buf.as_ptr().cast(),
-                // issue 0808 — NULL is "every default". The runtime has no
-                // session options to state yet; a caller that does reaches the
-                // backend through this argument rather than through a locator
-                // it would have to parse.
-                core::ptr::null(),
+                // issue 0808 — NULL is "every default"; phase-206 W3 made this
+                // a real argument. A caller reaches the backend's own
+                // configuration through this struct rather than through a
+                // locator it would have to parse
+                // ([`open_with_properties`](Self::open_with_properties)).
+                options,
                 &mut view,
             )
         };
@@ -4106,7 +4250,17 @@ impl nros_rmw::Rmw for CffiRmw {
                 generated::nros_rmw_session_mode_t::NROS_RMW_SESSION_MODE_PEER as u8
             }
         };
-        CffiSession::open(config.locator, mode, config.domain_id, config.node_name)
+        // phase-206 W3 — forward `config.properties` instead of dropping it.
+        // This was the outbound half of the same silence the cffi adapter had
+        // on the inbound side: the trait handed us properties, and the seam
+        // threw them away without a word.
+        CffiSession::open_with_properties(
+            config.locator,
+            mode,
+            config.domain_id,
+            config.node_name,
+            config.properties,
+        )
     }
 }
 
@@ -4122,12 +4276,13 @@ impl CffiRmw {
             nros_rmw::SessionMode::Client => 0u8,
             nros_rmw::SessionMode::Peer => 1u8,
         };
-        CffiSession::open_named(
+        CffiSession::open_named_with_properties(
             rmw_name,
             config.locator,
             mode,
             config.domain_id,
             config.node_name,
+            config.properties,
         )
     }
 }
