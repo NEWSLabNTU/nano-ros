@@ -272,6 +272,7 @@ fast-serial: \
     provider-announcements \
     provider-index \
     ps-zombie-blind \
+    px4-archive-header-pairing \
     python \
     readiness-marker-literals \
     reconfigure-on-change \
@@ -2643,6 +2644,19 @@ gate-selftests:
 [private]
 ps-zombie-blind:
     @bash scripts/check-ps-zombie-blind.sh
+
+# A PX4 module compiles against a per-build generated header and links a
+# separately-built `libnros_cpp.a`. The two are independent files that each
+# outlive the build that wrote them, so nothing made them agree — issue 1050's
+# link wall (`undefined reference to nros_cpp_config_variant_...`) is that
+# disagreement, found ~1100 targets into a ten-minute build. Issue 1046 is why
+# the guard is on CONTENT: the predicate it replaced asserted a DIRECTORY, which
+# survives the build it stood for, so it passed on exactly the tree it existed to
+# reject. This gate runs the real cmake predicate against fixtures in BOTH
+# directions; a guard nobody has seen fail is the bug it is guarding against.
+[private]
+px4-archive-header-pairing:
+    @bash scripts/check-px4-archive-header-pairing.sh
 
 # A CI doc must not cite a workflow file that does not exist. Same class as
 # `check-just-recipe-refs`: a reference that silently stops resolving, in a

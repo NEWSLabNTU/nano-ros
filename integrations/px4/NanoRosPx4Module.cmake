@@ -163,6 +163,66 @@ foreach(_inc IN LISTS _NROS_PX4_INCLUDES)
     endif()
 endforeach()
 
+# --- The generated headers must PAIR with the archive -----------------------
+#
+# The loop above asks a directory question, which is the right question for the
+# four SOURCE include dirs (does this package still live here?) and the WRONG one
+# for the two generated dirs. Issue 1046: `IS_DIRECTORY` cannot tell *present*
+# from *current*, and a generated dir outlives every build that wrote into it.
+# Measured in the shared checkout on 2026-09-04, with no build running:
+# `target/nros-cpp-generated/nros/nros_cpp_config_generated.h` present and
+# naming a zenoh variant, `target/release/libnros_cpp.a` absent. Both include
+# dirs passed the loop above.
+#
+# Issue 1050's link failure is exactly this pair disagreeing:
+#     undefined reference to `nros_cpp_config_variant_alloc_env_platform_posix_
+#         rmw_cffi_rmw_zenoh_cffi_ros_humble_std'
+# i.e. the module compiled against a header describing an archive it was not
+# linked against. That is the anchor doing its job at LINK time, ~1100 targets
+# in. Below it is the same fact, at configure time, naming the command.
+#
+# The archive path is overridable (`NROS_CPP_ARCHIVE`) and the header path is
+# not — it is derived from NANO_ROS_ROOT — so an override silently un-pairs
+# them. That hole is permanent by construction and is the main thing this catches
+# that a recipe fix cannot: `just px4 build-sitl-example` now builds the archive
+# it links (issue 1050), but it can only speak for the DEFAULT path.
+include(${CMAKE_CURRENT_LIST_DIR}/NanoRosArchivePairing.cmake)
+
+# ONE hint for both calls, and it names BOTH feature sets on purpose. The header
+# and the archive are the same cargo byproduct, so the fix is always "rebuild the
+# umbrella" — but WHICH features depends on the module, and a hint that named only
+# the uORB set would send a bridge developer to the command that breaks their
+# link (issue 0436: `bridge` is what puts nros_init_multi / nros_pubsub_bridge_*
+# in, and `rmw-<net>-cffi` is what makes the outward backend exist at all). At
+# file scope BACKENDS is not yet known, so the hint says both rather than
+# guessing one.
+set(_NROS_PX4_REBUILD_HINT
+    "cargo build -p nros-cpp --no-default-features --features std,rmw-cffi,platform-posix --release\n"
+    "    (a uORB->RMW BRIDGE module instead wants: --features std,rmw-<zenoh|xrce|cyclonedds>-cffi,bridge,platform-posix)\n"
+    "    Whichever you run, it rewrites the header and the archive together -- that is the point.")
+
+nros_assert_archive_pairs_with_header(
+    ARCHIVE       "${_NROS_PX4_CPP_A}"
+    HEADER        "${NANO_ROS_ROOT}/target/nros-cpp-generated/nros/nros_cpp_config_generated.h"
+    SYMBOL_PREFIX "nros_cpp_config_variant_"
+    LABEL         "nros_cpp_config_generated.h"
+    BUILD_HINT    "${_NROS_PX4_REBUILD_HINT}")
+
+# The C header rides in the same archive: nros-cpp bundles nros-c as an rlib and
+# force-links its whole `#[no_mangle]` surface, so `libnros_cpp.a` carries BOTH
+# stamps. Measured on a freshly built archive — `nros_config_variant_sz_*` 2
+# occurrences, `nros_cpp_config_variant_*` 3. Checking only the C++ one would be
+# the issue-0196 shape (coverage narrower than the rule): a PX4 module including
+# `<nros/init.h>` gets the C sizes from this header, and they can disagree on
+# their own — the C stamp is a SIZE HASH (`sz_<hash>`), not a feature slug, so it
+# moves for reasons the C++ slug does not see.
+nros_assert_archive_pairs_with_header(
+    ARCHIVE       "${_NROS_PX4_CPP_A}"
+    HEADER        "${NANO_ROS_ROOT}/target/nros-c-generated/nros/nros_config_generated.h"
+    SYMBOL_PREFIX "nros_config_variant_"
+    LABEL         "nros_config_generated.h"
+    BUILD_HINT    "${_NROS_PX4_REBUILD_HINT}")
+
 # ---------------------------------------------------------------------------
 # nros_px4_add_module(MODULE <t> MAIN <m> [BACKENDS <rmw>...] <px4_add_module args>)
 # ---------------------------------------------------------------------------

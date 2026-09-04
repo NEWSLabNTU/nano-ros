@@ -112,6 +112,101 @@ The choice was "suppress the ctor path when a stub is generated" or "make
 `BACKENDS` an assertion rather than a hint". The first changes runtime behaviour
 for every consumer; the second is a configure-time check. Took the second.
 
+* Whether `build-sitl-cpp` (the register-check gate) has the same exposure. Its
+  comments quote the `cargo build -p nros-cpp --features std,rmw-cffi` command,
+  but whether the recipe RUNS it was not checked.
+* Whether any non-PX4 lane links `libnros_cpp.a` ambiently the same way.
+* Whether the 1046 guard should also assert the archive's feature variant. It
+  currently answers "is this module linked", not "was it linked against the
+  right archive" — a strictly harder question, and arguably the anchor symbol
+  already answers it at link time.
+
+## Defect 1's other half — 2026-09-04, phase-424
+
+The recipe fix above makes `build-sitl-example` build the archive it links. That
+closes the DEFAULT path and cannot close the general one, because the archive
+path is overridable (`NROS_CPP_ARCHIVE` / `-DNROS_CPP_ARCHIVE=`) and the
+generated-header path is not — it is derived from `NANO_ROS_ROOT`. An override
+therefore un-pairs them by construction, and no recipe can speak for that.
+
+So the pairing is now asserted where the link is decided, in
+`integrations/px4/NanoRosArchivePairing.cmake`: the variant symbol is read out of
+the header and the archive must define it. This is the same condition the issue
+0360 anchor enforces at LINK time — the `undefined reference to
+nros_cpp_config_variant_..._rmw_zenoh_cffi_...` recorded above — evaluated at
+CONFIGURE time instead, where the message can name the cargo command. That trade
+is already `_nros_px4_resolve_archive`'s stated policy; this extends it from
+"does the archive exist" to "is it the right one". Detail, the `nm` trap, and the
+mutation checks are in issue 1046.
+
+**Reproduced against the fix, from the failing state.** Two real cargo
+invocations, paired crosswise:
+
+    cargo build -p nros-cpp --features std,rmw-cffi,platform-posix   -> A
+        variant nros_cpp_config_variant_alloc_env_platform_posix_rmw_cffi_std
+    cargo build -p nros-cpp --features std,rmw-cffi                  -> B
+        variant nros_cpp_config_variant_alloc_env_rmw_cffi_std
+
+    header B + archive B  -> PASS
+    header A + archive B  -> FAIL: "the generated header and the archive are
+                                    from DIFFERENT builds", naming both variants
+    header A + archive A  -> PASS
+
+## The three "not covered" questions, answered
+
+1. **Does `build-sitl-cpp` have the same exposure? No — measured.** It points
+   `EXTERNAL_MODULES_LOCATION` at `packages/testing/nros-px4-register-check`,
+   which calls raw `px4_add_module()`, not `nros_px4_add_module()`, and grep finds
+   no reference to `libnros_cpp`, `nros_px4_add_module` or `NanoRosPx4Module` in
+   that tree at all. It compiles the uORB backend's C++ sources INLINE and links
+   `src/register_fallback.c`'s weak `nros_rmw_cffi_register`. It consumes no
+   nano-ros archive, so there is nothing for it to be ambient about. Its comments
+   quoting the cargo command are stale prose, not a dependency.
+
+2. **Does any non-PX4 lane link `libnros_cpp.a` ambiently? Not swept, and not
+   claimed.** Every user of `nros_px4_add_module` is enumerated — the bridge, the
+   demo, and `integrations/px4/module-template` — and all three now go through the
+   pairing check. The other consumers of that archive (zephyr, nuttx, threadx,
+   the cmake entry path) reach it through Corrosion or an explicit build rule
+   rather than a bare path, which is a different mechanism; nobody checked whether
+   any of them can un-pair a generated header the same way.
+
+3. **Should the guard also assert the archive's feature VARIANT? It now does, and
+   that is a strictly stronger question than the one issue 1046 answered.**
+   1046's guard answers "is this module linked into `bin/px4`"; the pairing
+   answers "was it compiled against the archive it is linked to". They are
+   different failures at different layers — 1046's fires after a PX4 build
+   succeeded with the wrong root, this one before a PX4 build starts — and
+   neither subsumes the other. The suggestion that the anchor already answers it
+   is right about the FACT and wrong about the COST: the anchor answers it ~1100
+   targets into a ten-minute build, in a message that names a mangled variant and
+   no command.
+
+Defects **(2)** `.init_array` racing the explicit stub and **(3)** `nros::init()`
+taking slot 0 are untouched. Both change behaviour for every consumer and still
+want an owner.
+
+## Not verified
+
+**No PX4 build was run.** `third-party/px4/PX4-Autopilot` is an empty,
+uninitialised gitlink on this host (`git submodule status` reports the leading
+`-`), so nothing here passed through a real `make px4_sitl_default`. What is
+measured is the cmake predicate against real `libnros_cpp.a` artifacts and real
+generated headers; what is inferred is that it fires in the same place during a
+PX4 configure, which follows from it sitting at file scope in a module every PX4
+root includes, but was not observed.
+
+## Status: STAYS OPEN, narrowed
+
+Defect **(1)** is closed in both halves — the recipe builds the archive it links,
+and the configure asserts the pair agrees even when the path is overridden.
+Defects **(2)** and **(3)** are untouched, and no other issue covers them, so
+this one remains their home rather than being resolved out from under them.
+Deliberately not spun out into a new issue: neither is a bug with a fix waiting,
+they are decisions about what `BACKENDS` and `nros::init()` mean on a hosted
+target, and splitting them would scatter the reasoning that makes them one
+question.
+
 **The precheck already existed and was blind in exactly the direction that
 matters.** `nros_px4_add_module` ran its `llvm-nm` check inside
 `if(_networked_backends)` — the set of modules this bug CANNOT happen to — and

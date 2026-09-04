@@ -7,8 +7,8 @@ area: testing
 severity: medium
 found: 2026-09-04
 resolved: 2026-09-05
-resolved_in: 0a47f949a (guard) + the sweep below
-related: [phase-325, 0196, 0445, 0859]
+resolved_in: 0a47f949a (guard) + phase-424 (the archive/header pairing)
+related: [phase-325, phase-424, 0196, 0360, 0445, 0859, 1050]
 ---
 
 # A guard that diagnoses the problem in prose and cannot detect it
@@ -117,6 +117,112 @@ enough to turn a confusing runtime failure into the message that already exists.
 **Keep the existing message.** It is right. Only the predicate is wrong.
 
 ## The three "not covered" items, now swept (2026-09-05)
+
+* Whether `px4_xrce_e2e.rs` has the same shape. It guards
+  `path.join("Tools").is_dir()` (`:42`), which is a *tree* check rather than a
+  built-module check, so it is probably a different question — unverified.
+* Whether anything else in the tree proxies "was X built into this artifact" by
+  a directory test. Not swept.
+* The `bin/px4-<mod>` shims surviving is itself worth a look: a shim for a module
+  that is not in the binary is a second stale artifact, and it may be what makes
+  the runtime failure read as "command exists but does nothing" rather than
+  "command not found". Not investigated.
+
+## The sweep — 2026-09-04, phase-424
+
+The test guard was the reported site. The rule is *a check must assert something
+that cannot outlive the build it reports on*, so the question is where else this
+tree proxies "was X built from Y" by a survivor. Swept the PX4 integration:
+
+| site | predicate | verdict |
+| --- | --- | --- |
+| `px4_uorb_interop_e2e.rs:65` module dir | `is_dir()` | the reported site; fixed above |
+| `NanoRosPx4Module.cmake` generated-header dirs | `IS_DIRECTORY` | **same defect, fixed now** |
+| `NanoRosPx4Module.cmake` archive resolve | `EXISTS` on the `.a` | insufficient but not wrong — see below |
+| `px4_xrce_e2e.rs:42` `Tools/` | `is_dir()` | **not this class.** It asks "is the PX4 tree checked out", and a source tree is exactly the thing a directory test is right for. No build artifact stands behind it |
+| `nros-px4-register-check` | — | links no nano-ros archive at all (raw `px4_add_module`, uORB sources compiled inline + a weak register fallback), so it has no artifact to be stale against |
+
+**The second row is the same bug, one layer down, and it was live.** Measured in
+the shared checkout with no build running:
+
+    target/nros-cpp-generated/nros/nros_cpp_config_generated.h   PRESENT
+        (naming nros_cpp_config_variant_..._rmw_zenoh_cffi_...)
+    target/release/libnros_cpp.a                                 ABSENT
+
+The header outlived its archive completely, and both `IS_DIRECTORY` checks
+passed. That header carries storage SIZES, so the pairing it stands for is the
+0268 silent-overflow class, and the only thing catching a mismatch was the issue
+0360 anchor firing at LINK time — ~1100 targets and ten minutes in.
+
+### Fix: pair CONTENT against CONTENT
+
+`integrations/px4/NanoRosArchivePairing.cmake` reads the variant symbol *out of*
+the header (rather than recomputing the slug — a second derivation is the class
+`row_coord()` records) and asserts the archive defines it. Neither side can
+outlive the other's build without it firing. It is exactly the anchor's
+condition, evaluated at configure time instead of at link.
+
+Both generated headers are checked, not just the C++ one: the C stamp is a SIZE
+HASH (`sz_<hash>`) and the C++ one a feature slug, and they move independently.
+Measured — rebuilding `nros-cpp` from `std,rmw-cffi,platform-posix` to
+`std,rmw-cffi` moved the C++ slug (`..._platform_posix_rmw_cffi_std` →
+`..._rmw_cffi_std`) and left the C hash at `sz_cf866c9020e05fd0`. Checking one
+would have been coverage narrower than the rule, which is issue 0196.
+
+### The `nm` trap, re-measured on this host
+
+This issue's own warning held, and it is worth the second data point because it
+is what makes the byte scan non-negotiable:
+
+| tool | occurrences of `nros_cpp_config_variant_*` in a freshly built `libnros_cpp.a` |
+| --- | ---: |
+| system `nm --defined-only` | **0** |
+| `<rustc sysroot>/…/llvm-nm --defined-only` | 1 |
+| byte scan (`grep -ac`) | 3 |
+
+    bfd plugin: LLVM gold plugin has failed to create LTO module:
+      Opaque pointers are only supported in -opaque-pointers mode
+      (Producer: 'LLVM22.1.6-rust-1.97.1-stable' Reader: 'LLVM 14.0.0')
+    nm: nros_cpp-….rcgu.o: no symbols
+
+System `nm` reports absence it cannot observe, and does not fail while doing it.
+The pairing check uses `file(STRINGS)` — no binutils, no PATH, no toolchain
+agreement. Cost on the 25 MB archive: **0.004 s** on a hit (`LIMIT_COUNT 1`
+short-circuits), **0.243 s** on a miss (full scan). The gate forbids reaching for
+`nm` here, because the mistake is invisible at the call site.
+
+### Mutation-checked, on real artifacts
+
+Two real archives from two real cargo invocations, then paired crosswise:
+
+    header B + archive B                -> PASS (0.005 s)
+    header A + archive B  (issue 1050)  -> FAIL, naming both variants
+    header A + archive A                -> PASS
+
+`just check px4-archive-header-pairing` runs the real cmake predicate against
+fixtures in both directions on every invocation — 11 cases, 0.12 s, no PX4 tree
+and no cargo build. Six exercise the predicate (match, mismatch, **surviving
+generated dir with no header — this issue verbatim**, stampless header, missing
+archive, header path that is a directory); five exercise the wiring rule,
+including a control that prose describing the rule does not trip it.
+
+That control is not decoration. The gate's first draft banned `IS_DIRECTORY` near
+a generated path and went red on its own fix — the comment explaining the rule
+contains both words. Left in, it would have taught the next person that
+documenting the reasoning breaks the build. The rule was also simply the wrong
+one: that loop is correct for the four SOURCE include dirs and merely
+insufficient for the generated ones, so what makes them safe is the pairing
+assertion existing beside it, not the loop's absence.
+
+## Still not covered
+
+* **No PX4 build was run.** `third-party/px4/PX4-Autopilot` is an empty,
+  uninitialised gitlink on this host, so nothing here was verified through a real
+  `make px4_sitl_default`. The cmake predicate is measured against real
+  nano-ros artifacts; its *placement* inside a PX4 configure is not.
+* The `bin/px4-<mod>` shims surviving (noted above) is still uninvestigated.
+* Whether any non-PX4 lane pairs a generated header with an ambient archive the
+  same way. The PX4 integration is swept; the rest of the tree is not.
 
 Re-measured on the same host. The fix in `0a47f949a` still rejects the stale
 tree — run against the build dir as it stands today (last built from
