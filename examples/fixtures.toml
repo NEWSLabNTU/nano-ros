@@ -3181,27 +3181,12 @@ platform = "qemu-esp32-baremetal"
 lang = "rust"
 dir = "examples/qemu-esp32-baremetal/rust/talker"
 skip_probe = true
-# ZPICO_MAX_QUERYABLES: same cause as `workspace-rust-esp32` above, one row
-# over. These are talker/listener images — the listener says so itself ("no
-# publishers/services/actions") — so the undeclared embedded budget of 8 buys
-# SERVICE_BUFFERS (`ZPICO_MAX_SESSIONS * ZPICO_MAX_QUERYABLES`) for services
-# the image does not have, and that is what overflows DRAM.
-#
-# The first fix set this on the workspace row ONLY, because that was the row the
-# failure named. These three build through `just esp32 build-qemu` and kept
-# overflowing — by 8,644 B in `esp32_qemu_talker` — which is the "fix the CLASS,
-# not the reported site" rule applied a row too narrowly the first time.
-#
-# ZPICO_MAX_SUBSCRIBERS: issue 1052, the same class one entity kind over. This
-# is a talker — it declares no subscriptions — but the default budget still
-# links SMALL_PAYLOADS at `ZPICO_MAX_SUBSCRIBERS * ring depth * buffer size`.
-# On this board `.bss` is subtracted from the stack (link.x fills DRAM up to
-# `_stack_start`, `.bss` grows up from below), so those 28 KB came straight out
-# of the stack: 18,572 B against node.rs's ~67 KB budget, and the image faulted
-# with `sp` outside the stack, inside `nros_smoltcp::TCP_RX_BUFFER_0`. Setting
-# it to 1 restores 30,576 B of stack and the fault stops. Gated now by
-# `scripts/check-stack-floor.py`, run per row by `fixtures-build.sh`.
-env = { ZPICO_MAX_QUERYABLES = "2", ZPICO_MAX_SUBSCRIBERS = "1" }
+# Entity budgets are NOT here any more (issue 1052). They live in each leaf's
+# own `.cargo/config.toml [env]`, beside the declarations they are derived from
+# and beside `ZPICO_SUBSCRIBER_LARGE_SIZE`, which was already there for exactly
+# this reason. Stating them here bound them to the FIXTURE build: an example is
+# a standalone copy-out project, and this one did not link on its own — `.bss`
+# overflowed DRAM by 11,184 B. Deriving them rather than stating them is 1061.
 
 [[fixture]]
 id = "qemu-esp32-baremetal-listener"
@@ -3209,12 +3194,7 @@ platform = "qemu-esp32-baremetal"
 lang = "rust"
 dir = "examples/qemu-esp32-baremetal/rust/listener"
 skip_probe = true
-# ZPICO_MAX_SUBSCRIBERS: issue 1052, see the talker row. This leaf declares
-# exactly ONE subscription and no publishers/services/actions, but the default
-# budget of 8 links SMALL_PAYLOADS at 32 KB. `.bss` is subtracted from the stack
-# on this board, so that budget was 28 KB of stack the image could not spend.
-# 1 is what it declares, and the gate below is what keeps it honest.
-env = { ZPICO_MAX_QUERYABLES = "2", ZPICO_MAX_SUBSCRIBERS = "1" }
+# Budgets live in the leaf config — see the talker row above.
 
 [[fixture]]
 id = "qemu-esp32-baremetal-logging-smoke"
@@ -3222,7 +3202,7 @@ platform = "qemu-esp32-baremetal"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/logging-smoke-esp32-qemu"
 skip_probe = true
-env = { ZPICO_MAX_QUERYABLES = "2" }  # see the talker row above
+# Budgets live in the leaf config — see the talker row above.
 
 # =============================================================================
 # Compile-check lane (phase-319 W2, issue 0351) — built by
