@@ -1,9 +1,12 @@
 # Phase 314 — one feature-set SSoT for every language
 
-**Status (2026-07-28): W1–W5 landed; issue 0311 closes. ONE acceptance item
-open** — the Rust path still hand-lists capability features (see Acceptance). Fixes issue 0311. Unblocks multi-edition ROS
-support and image-level selectable capabilities (`param-services`,
-`lifecycle-services`, `safety-e2e`).
+**Status (2026-09-04): COMPLETE.** W1–W5 landed 2026-07-28 and issue 0311
+closed then; the last acceptance item — the Rust path hand-listing capability
+features — was closed by **phase-315 W1/W2**, and the "Known deviation" below by
+**phase-323 W2**. Both landed before 2026-08-01; this doc simply never recorded
+it. Verified against `main` 2026-09-04, see the two entries for the evidence.
+Fixes issue 0311. Unblocks multi-edition ROS support and image-level selectable
+capabilities (`param-services`, `lifecycle-services`, `safety-e2e`).
 
 ## Problem
 
@@ -224,10 +227,27 @@ recording: a gate whose heuristics are wrong teaches people to ignore it.
 - [x] Exactly one feature-list computation, with the threadx board split intact.
 - [x] No Rust leaf names a `ros-*` feature; the scaffold does not emit one
       (`scaffold_rust` already takes the edition as a parameter). *(gate-enforced)*
-- [ ] A capability declared in `system.toml` enables its feature on the C, C++
-      **and Rust** paths alike.
-      **C and C++ done. Rust: the silent-failure half is closed, the
-      derivation half is not.** A Rust entry still hand-lists
+- [x] A capability declared in `system.toml` enables its feature on the C, C++
+      **and Rust** paths alike. **CLOSED by phase-315 W1/W2** (verified on
+      `main` 2026-09-04). `nros sync` generates a selection facade crate per
+      entry, and `orchestration/facade.rs:204-223` walks
+      `capability_resolver::CAPABILITIES`, testing each against
+      `sys.capability_enabled(cap.declared)` — the declaration in `system.toml`
+      is what puts `param-services` on the entry's `nros` dep, through cargo
+      feature unification. The entries stopped restating it: the two params
+      entries name the facade and no capability
+      (`examples/workspaces/features/src/zephyr_rust_params_entry/Cargo.toml`,
+      whose comment says so — "This entry names none of them: the declaration is
+      the SSoT"). The one remaining hand-list is the NODE pkg
+      (`rust_param_talker_pkg`), and it is deliberate and documented in place:
+      `ctx.parameter::<T>()` is gated on the feature, so the node declares it to
+      compile standalone rather than only when an Entry unifies it in. That is
+      the same "reason to stay written down" resolution phase-315's last
+      acceptance item uses for its three surviving paths.
+
+      *Original wording, kept because it is the record of what was true on
+      2026-07-28:* C and C++ done; Rust's silent-failure half closed, the
+      derivation half not. A Rust entry still hand-listed
       `param-services` in its own `Cargo.toml`
       (`examples/workspaces/ws-params-rust/src/native_entry`), so declaring
       `[param_services]` in `system.toml` does not enable the cargo feature —
@@ -255,12 +275,20 @@ recording: a gate whose heuristics are wrong teaches people to ignore it.
 - [x] A gate in `just check` fails when the paths disagree.
 - [x] Issue 0311 closes.
 
-## Known deviation
+## Known deviation — RESOLVED by phase-323 W2
 
-The `posix` special case is KEPT rather than removed. On hosted builds
-`param-services` / `lifecycle-services` stay always-on, because the C++ executor
-headers call the gated C entry points and an example using them must link
-whether or not the system declared the axis. It is now a SUPERSET of the
-declared set rather than the only source, so nothing regresses — but the
-original acceptance wording ("the posix-only special case is gone") is not met.
-Removing it needs every hosted example audited first.
+**Resolved 2026-07-31, recorded here 2026-09-04.** phase-323 W2 is titled
+"delete the `posix` always-on" and did exactly that; `main` carries no
+unconditional capability append, and `cmake/NanoRosRuntimeCrate.cmake:226-234`
+now carries the removal's reasoning in place of the code. The audit this
+deviation said was needed ahead of removal is phase-323's own W2 measurement
+round.
+
+*What the deviation said, kept as the record:* the `posix` special case was
+KEPT rather than removed. On hosted builds `param-services` /
+`lifecycle-services` stayed always-on, because the C++ executor headers call
+the gated C entry points and an example using them must link whether or not the
+system declared the axis. It was a SUPERSET of the declared set rather than the
+only source, so nothing regressed — but the original acceptance wording ("the
+posix-only special case is gone") was not met, and removing it needed every
+hosted example audited first.

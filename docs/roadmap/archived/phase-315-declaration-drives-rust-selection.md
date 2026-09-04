@@ -1,6 +1,10 @@
 # Phase 315 — `system.toml` drives Rust selection too
 
-**Status (2026-07-30): W1, W2, W3, W5 landed and verified; W4 has ONE open decision.** Finishes what phase-314 started: the RMW, the
+**Status (2026-09-04): COMPLETE.** W1, W2, W3, W5 landed and verified
+2026-07-30; W4's one open decision — the `posix` always-on — was taken by
+**phase-323 W2** on 2026-07-31, whose workstream is titled "delete the `posix`
+always-on". This doc never recorded it. Verified against `main` 2026-09-04, see
+the acceptance item for the evidence. Finishes what phase-314 started: the RMW, the
 ROS edition and the capability list are declared once, in `system.toml`, for
 **every** language. Closes phase-314's last open acceptance item and retires the
 hand-written Rust selection it was working around.
@@ -351,8 +355,8 @@ scoped to the deps the facade owns, with comments stripped.
       `--no-default-features`** — verified on `examples/native/rust/talker`, and
       verified in the negative: restoring the old default reproduces
       `error: ros-{humble,iron,jazzy} are mutually exclusive`.
-- [ ] **Retired paths removed, or their reason to stay written down** — 3 of 4
-      resolved, all by evidence rather than inspection:
+- [x] **Retired paths removed, or their reason to stay written down** — all
+      four resolved, all by evidence rather than inspection:
       - `PARAM_SERVICES_ENABLED` **stays** — the facade only covers workspace
         entries; a standalone entry has no `system.toml`, so the assert remains
         the only guard there.
@@ -360,12 +364,33 @@ scoped to the deps the facade owns, with comments stripped.
         in `examples/native/{c,cpp}/safety-listener`. It is the standalone
         capability selector, the C/C++ twin of W3's Rust edition selector.
       - the zephyr local `default` **stays**, per the exception above.
-      - **OPEN:** the `posix` always-on `param_services lifecycle` in
-        `NanoRosRuntimeCrate.cmake`. 9 workspaces declare a capability; ~26
-        receive these two without asking. The 9 that need them already declare
-        them, so it looks removable — but the failure mode is a capability
-        silently missing from an image, not a build error, so it needs a fixture
-        sweep to decide. That sweep is the blocker.
+      - the `posix` always-on `param_services lifecycle` in
+        `NanoRosRuntimeCrate.cmake` is **REMOVED** — by phase-323 W2
+        (2026-07-31, "delete the `posix` always-on"), not by this phase.
+        Confirmed on `main` 2026-09-04: no unconditional capability append
+        survives, and `cmake/NanoRosRuntimeCrate.cmake:226-234` carries the
+        removal's reasoning where the code used to be — *"posix used to get
+        `param_services` + `lifecycle` unconditionally … W1 made
+        `nano_ros_workspace()` resolve the axes from `SYSTEM` before the import,
+        so the declaration now arrives on its own and this can go."*
+
+        The blocker named here — "the failure mode is a capability silently
+        missing from an image, not a build error, so it needs a fixture sweep to
+        decide" — was dissolved rather than paid: phase-323 W4 gated it, and the
+        failure is no longer silent in either direction. A system that declares
+        `[param_services]` against an entry that lacks the feature is a
+        const-eval panic from `nros::main!`
+        (`nros-macros/src/main_macro.rs:1228`, phase-314's guard), and a missing
+        facade is now fatal at `nros build` rather than a warning
+        (`nros-cli-core/src/cmd/build.rs`, phase-413 W2). phase-323 did run the
+        measurement round this item asked for — "All measured on real
+        workspaces, with the posix always-on removed".
+
+        *Original wording, kept as the record of what was true on 2026-07-30:*
+        OPEN. 9 workspaces declare a capability; ~26 received these two without
+        asking. The 9 that need them already declare them, so it looked
+        removable — but the failure mode was a capability silently missing from
+        an image, not a build error, so it needed a fixture sweep to decide.
 - [x] **The gate rejects an entry that restates a declared axis** — W5 rule 5,
       brace-balanced over facade-owned dep specs, comments stripped.
 
