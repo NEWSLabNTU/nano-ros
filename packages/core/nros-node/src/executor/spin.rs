@@ -1390,6 +1390,33 @@ pub struct Executor<'s> {
     /// Saturating. Without this a never-drained (or slowly-drained)
     /// image silently reports a stale prefix of its faults.
     pub(crate) monitor_violations_dropped: u32,
+    /// Release jitter: worst observed lateness of a `spin_period` wake
+    /// against its own nominal schedule, in microseconds.
+    ///
+    /// Issue #515 added a STATIC audit for one cause of cadence error --
+    /// a period that is not a multiple of the spin period. Nothing measured
+    /// the actual release instants, and `audit_spin_quantization` says so in
+    /// as many words: "the rate is preserved and no activation is dropped,
+    /// so every runtime rule is (correctly) silent -- the jitter stays
+    /// invisible until someone measures cadence on target."
+    ///
+    /// This is that measurement, and it is the one `cyclictest` exists to
+    /// report: the deviation between a timer's programmed wake-up and the
+    /// instant the task actually resumed, whose MAXIMUM is the figure of
+    /// merit for a real-time system.
+    ///
+    /// `spin_period` already holds both numbers -- `next_us` is the nominal
+    /// deadline and `now_us()` the actual -- and when the loop is late it
+    /// skips the sleep and discards the difference. That difference is the
+    /// jitter.
+    pub(crate) max_release_jitter_us: u64,
+    /// Wakes that were already past their nominal deadline, and wakes total.
+    ///
+    /// The maximum alone cannot distinguish one bad wake from a loop that is
+    /// late every single cycle, and those are different faults: the first is
+    /// a glitch, the second means the period cannot be met at all.
+    pub(crate) late_wakes: u32,
+    pub(crate) total_wakes: u32,
     /// Issue #514 — log every violation as it is detected. On by
     /// default: each rule pushed verdicts into a ring that nothing
     /// consumed in a real image, so a violated contract and a met one
@@ -1548,6 +1575,9 @@ impl<'s> Executor<'s> {
             fault_fn: None,
             spin_quantization_checked: false,
             monitor_violations_dropped: 0,
+            max_release_jitter_us: 0,
+            late_wakes: 0,
+            total_wakes: 0,
             report_violations: true,
             monitor_violations,
             // Issue 0790 — both phase tables start empty. An image that
@@ -2109,6 +2139,33 @@ impl<'s> Executor<'s> {
     /// W3b.5 — install the `DeadlineAction::Fault` hook. Without one a
     /// fault-class deadline miss panics (watchdog-visible stop on
     /// embedded targets).
+    /// Release-jitter statistics from `spin_period`: worst lateness in
+    /// microseconds, the number of wakes that were already late, and the
+    /// number of wakes total.
+    ///
+    /// The maximum is the figure of merit, and the ratio is what tells the
+    /// two failures apart: one late wake in ten thousand is a glitch, ten
+    /// thousand in ten thousand means the period cannot be met at all.
+    ///
+    /// Zero on a build with no clock -- `spin_period` refuses to run at all
+    /// there (issue 0709), so there is nothing to have measured.
+    pub fn release_jitter(&self) -> (u64, u32, u32) {
+        (
+            self.max_release_jitter_us,
+            self.late_wakes,
+            self.total_wakes,
+        )
+    }
+
+    /// Reset the release-jitter statistics. For monitoring code that logs
+    /// and clears per window, so a single early outlier does not pin the
+    /// maximum for the life of the process.
+    pub fn clear_release_jitter_stats(&mut self) {
+        self.max_release_jitter_us = 0;
+        self.late_wakes = 0;
+        self.total_wakes = 0;
+    }
+
     pub fn set_fault_handler(&mut self, f: fn(&super::monitor::Violation)) {
         self.fault_fn = Some(f);
     }
@@ -7569,10 +7626,25 @@ impl<'s> Executor<'s> {
             self.spin_once(period);
 
             if let Some(next) = next_us {
-                if let Some(now) = self.now_us()
-                    && now < next
-                {
-                    platform_sleep(core::time::Duration::from_micros(next - now));
+                if let Some(now) = self.now_us() {
+                    self.total_wakes = self.total_wakes.saturating_add(1);
+                    if now < next {
+                        platform_sleep(core::time::Duration::from_micros(next - now));
+                    } else {
+                        // Already past the nominal deadline: there is no sleep
+                        // to take, and `now - next` is the release jitter. The
+                        // loop used to skip straight to the accumulate below,
+                        // which is why lateness was invisible -- drift
+                        // compensation HIDES it, by design. Rate is preserved
+                        // and no activation is dropped, so no existing rule
+                        // fires; the cadence is simply wrong in a way nothing
+                        // reported.
+                        let late = now - next;
+                        self.late_wakes = self.late_wakes.saturating_add(1);
+                        if late > self.max_release_jitter_us {
+                            self.max_release_jitter_us = late;
+                        }
+                    }
                 }
                 // Accumulate to prevent drift (not = now + period)
                 next_us = Some(next + period_us);
