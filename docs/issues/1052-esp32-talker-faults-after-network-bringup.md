@@ -171,3 +171,56 @@ stored and later called on this target. That is a direction, NOT a diagnosis.
    too.
 3. ~~Bisect `register()`~~ — done, and it is none of it (table above).
 4. ~~Suspect memory pressure~~ — refuted above.
+   `llvm-addr2line` should.
+2. Bisect `register()`: publisher only, then timer only. The fault is before
+   `Application setup complete`, so it is inside those three calls.
+3. Note that zenoh-pico is pinned 1.7.2 (issue 0291) and the esp32 image is the
+   RAM-tightest in the tree — a corrupted pointer here may be an overflow of
+   something sized by a knob rather than a logic bug.
+
+
+## The fault is on the CONNECTED path (2026-09-04)
+
+Found by accident while setting up gdb, and it is the sharpest cut yet.
+
+Under the gdbstub the talker did NOT fault. It printed:
+
+```
+[ERROR] nros: zpico Session -> ConnectionFailed
+Executor::open failed: Transport(ConnectionFailed)
+```
+
+The reason was environmental — the router had failed to start with
+`libzenohc.so: cannot open shared object file`, which is
+[issue 0774](0774-*) exactly (`rmw_zenohd` resolves but does not run without the
+paired library on `LD_LIBRARY_PATH`). But the accident is the datum:
+
+| router | session | fault |
+| --- | --- | ---: |
+| up (every earlier run) | connected — `ConnectionFailed` count 0 | **1** |
+| down (the gdb run) | `ConnectionFailed` | **0** |
+
+Every run that faulted has ZERO `ConnectionFailed` lines; the run that could not
+connect did not fault. **The talker reaches the fault only when its zenoh
+session establishes.** With no peer it fails `Executor::open` cleanly and stops,
+like any node would.
+
+### Why that matters for the earlier cuts
+
+The variants with an EMPTY `register` still faulted — and now we know they also
+connected. So the fault is in the post-connect path, reached before
+`Application setup complete`, and it does not need a publisher, a timer or a
+callback to exist. That is consistent with every cut so far and narrows where to
+look: between session establishment and the return of the run-plan closure.
+
+It also explains the listener contrast better than "the listener is fine": in the
+control runs the listener logged `ConnectionFailed` repeatedly, i.e. it was on
+the UNCONNECTED path throughout. **The two leaves have not yet been compared with
+both connected**, and that comparison is now the first thing to do — it may show
+the listener faults too, which would move this off "talker-specific" entirely.
+
+### Consequence for anyone reproducing
+
+Start the router and CONFIRM it is serving before drawing any conclusion from an
+esp32 run. `just esp32 zenohd` can exit 127 on the libzenohc pairing and leave
+you measuring the unconnected path, which looks like "no fault" and is not.
