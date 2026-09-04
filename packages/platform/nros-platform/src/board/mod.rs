@@ -57,7 +57,7 @@ pub mod rtic_entry;
 pub mod runtime;
 pub mod tier;
 
-pub use config::{BoardConfig, BoardTransportConfig};
+pub use config::BoardConfig;
 pub use dispatch::DispatchStrategy;
 pub use embassy_entry::EmbassyBoardEntry;
 pub use entry::{BoardEntry, DeployOverlay};

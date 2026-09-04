@@ -464,9 +464,3 @@ fn parse_u32(s: &str) -> Option<u32> {
 // (NanoRosOwned: this board owns the bundled lwIP stack). lwIP stores a
 // dotted netmask, so the prefix is expanded; no UART field ⇒ baudrate
 // keeps the trait's no-op default.
-impl nros_platform::BoardTransportConfig for Config {
-    fn set_ipv4(&mut self, addr: [u8; 4], prefix: u8) {
-        self.base.ip = addr;
-        self.base.netmask = netmask_from_prefix(prefix);
-    }
-}

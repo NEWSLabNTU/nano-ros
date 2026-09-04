@@ -1,7 +1,7 @@
 ---
 id: 1064
 title: "`set_ipv4` and `set_baudrate` have real bodies on seven boards and no caller anywhere — who writes a board's IP now the generator is gone?"
-status: open
+status: resolved
 type: bug
 area: build, platform
 severity: medium
@@ -10,6 +10,48 @@ related: [1063, phase-206, phase-349, 0202]
 ---
 
 # Five boards implement a setter nothing calls
+
+## RESOLVED 2026-09-05 — measured, then deleted whole
+
+The open question was whether `set_ipv4`'s five bodies and the deploy-overlay
+path write the same fields. **They do not — the overlay is a strict superset**,
+which settles it:
+
+```rust
+fn set_ipv4(&mut self, addr: [u8;4], prefix: u8) {   // freertos, the real one
+    self.base.ip = addr;
+    self.base.netmask = netmask_from_prefix(prefix);
+}
+
+pub struct DeployOverlay {
+    ip, gateway, netmask, locator, domain_id, transport   // all Option<…>
+}
+```
+
+It carries `gateway` as well — which is what the already-removed `set_gateway`
+was for — and unlike the setters it is **read**: `nros-board-common/src/base_config.rs:102`
+for the whole family, plus esp32-qemu, mps2-an385, its RTIC variant and
+nuttx-qemu directly. Ten crates implement `run_with_deploy`.
+
+So `BoardTransportConfig` was not a seam awaiting a caller. It was the **dead
+twin of a live path**, and the live one is better. The trait, its two remaining
+methods and all five board impls are removed.
+
+`set_baudrate` was checked separately rather than assumed: both impls
+(mps2-an385, esp32-qemu) are `#[cfg(feature = "serial")]` and only overwrite a
+`Config` default of `115200`, which remains. Deleting the setter changes no
+image. It does leave serial baud settable only by editing the board `Config` —
+the deploy overlay has no baudrate field — but that gap existed already; the
+setter merely implied an override that nothing invoked.
+
+**On the breaking change:** the trait was public API, so an out-of-tree board
+could implement it. Its impl does nothing today, so what breaks is code that
+compiled and never ran — arguably the kinder failure.
+
+Together with phase-206 W4 (issue 1067) this finishes the same finding from both
+ends: the discoverable board contract and the executed one were different
+things, and the executed one — `BoardEntry::run` plus the deploy overlay — is
+now the only one.
 
 ## The measurement
 

@@ -237,13 +237,22 @@ fn resolve_one(
 
     // W4 — the netstack, validated against the board's declared domain. An
     // unsupported pair fails HERE, at the seam that knows both halves, rather
-    // than as a link error inside a stack nobody selected.
-    if let Some(stack) = descriptor
+    // than as a link error inside a stack nobody selected. The FATAL_ERROR a
+    // caller sees comes from `NanoRosBoardFacts.cmake`, which matches on this
+    // error's text — so the call below is load-bearing even though its Ok value
+    // is discarded.
+    //
+    // Issue 1063 — the RESOLVED VALUE is deliberately NOT emitted. It used to
+    // become `NROS_NETSTACK`, which nothing ever read: the only plausible
+    // consumer is a per-board cmake file, and those pick their stack directly
+    // (`cmake/board/nano-ros-board-riscv64-qemu.cmake` calls
+    // `nros_threadx_build_netstack_netxduo` unconditionally) because a file
+    // that is already per-board knows its own netstack. Emitting a value with
+    // no reader is the declared-but-unread shape phase-349 named; the
+    // validation is the half that does work, so it is the half that stays.
+    descriptor
         .resolve_netstack(site.netstack.as_deref())
-        .map_err(|e| eyre!("{e}"))?
-    {
-        out.insert("NROS_NETSTACK".into(), stack.to_string());
-    }
+        .map_err(|e| eyre!("{e}"))?;
 
     for (name, raw) in &site.sdk {
         let r = site.interpolate(raw, &site_section, origin, env)?;
@@ -668,7 +677,12 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
             facts.get("NROS_BOARD").map(String::as_str),
             Some("mps2-an385-freertos")
         );
-        assert_eq!(facts.get("NROS_NETSTACK").map(String::as_str), Some("lwip"));
+        assert_eq!(
+            facts.get("NROS_NETSTACK"),
+            None,
+            "issue 1063 — the netstack is VALIDATED, never emitted: nothing read \
+             it, and a per-board cmake file already knows its own stack"
+        );
         assert_eq!(
             facts.get("NROS_SDK_FREERTOS").map(String::as_str),
             Some("/opt/freertos")
@@ -688,6 +702,16 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
     /// W4's domain is enforced at THIS seam — the one place that holds the
     /// board descriptor and the deploy's request at the same time.
     #[test]
+    /// Issue 1063 made this test load-bearing in a way it was not before.
+    ///
+    /// The `NROS_NETSTACK` emission is gone, so `resolve_netstack`'s Ok value is
+    /// now unused — which means a future edit could delete the CALL and every
+    /// other test in this module would still pass. This one would not. It is
+    /// what keeps the validation alive.
+    ///
+    /// The message wording is also a contract, not a nicety:
+    /// `NanoRosBoardFacts.cmake` matches on "does not support netstack" /
+    /// "supported_netstacks" to turn this into a configure FATAL_ERROR.
     fn an_unsupported_netstack_fails_the_resolution() {
         let ws = ws_with(&FREERTOS_WS.replace("\"lwip\"", "\"netxduo\""));
         let err = resolve(ws.path(), &repo_root(), None, None, &|_| None)
@@ -731,7 +755,12 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
             &env,
         )
         .expect("agreeing duplicates resolve");
-        assert_eq!(facts.get("NROS_NETSTACK").map(String::as_str), Some("lwip"));
+        assert_eq!(
+            facts.get("NROS_NETSTACK"),
+            None,
+            "issue 1063 — the netstack is VALIDATED, never emitted: nothing read \
+             it, and a per-board cmake file already knows its own stack"
+        );
     }
 
     /// …and DISAGREEING duplicates are no longer REFUSED — they are
@@ -828,7 +857,12 @@ sdk = { freertos = "/opt/freertos", lwip = "/opt/lwip" }
             facts.get("NROS_BOARD").map(String::as_str),
             Some("mps2-an385-freertos")
         );
-        assert_eq!(facts.get("NROS_NETSTACK").map(String::as_str), Some("lwip"));
+        assert_eq!(
+            facts.get("NROS_NETSTACK"),
+            None,
+            "issue 1063 — the netstack is VALIDATED, never emitted: nothing read \
+             it, and a per-board cmake file already knows its own stack"
+        );
         // And both selectors reach it.
         assert!(resolve(ws.path(), &repo_root(), Some("fw"), None, &|_| None).is_ok());
         assert!(
@@ -950,7 +984,12 @@ sdk = { freertos = "/opt/freertos" }
         );
         let facts = resolve(ws.path(), &repo_root(), None, None, &|_| None)
             .expect("the `freertos` key names the same board as the directory spelling");
-        assert_eq!(facts.get("NROS_NETSTACK").map(String::as_str), Some("lwip"));
+        assert_eq!(
+            facts.get("NROS_NETSTACK"),
+            None,
+            "issue 1063 — the netstack is VALIDATED, never emitted: nothing read \
+             it, and a per-board cmake file already knows its own stack"
+        );
         assert_eq!(
             facts.get("NROS_SDK_FREERTOS").map(String::as_str),
             Some("/opt/freertos")

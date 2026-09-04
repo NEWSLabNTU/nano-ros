@@ -1206,11 +1206,9 @@ pub const fn __rx_bound<M: nros_serdes::schema::Message>() -> Option<usize> {
 }
 
 // Phase 173.5 — board config traits. `BoardConfig` (read locator /
-// domain) + `BoardTransportConfig` (the generator writes nros.toml
-// `[[transport]]` IP / baud into a NanoRosOwned board `Config`).
-// Named `BoardTransportConfig` to avoid colliding with the
-// transport-layer `TransportConfig` already re-exported above.
-pub use nros_platform::{BoardConfig, BoardTransportConfig};
+// domain). `BoardTransportConfig` was removed with its dead
+// setters (issue 1064); the live path is the deploy overlay.
+pub use nros_platform::BoardConfig;
 
 // Phase 216.A.1 — `DispatchStrategy` enum. User-visible at
 // `nros::DispatchStrategy`; the canonical home is `nros_platform::

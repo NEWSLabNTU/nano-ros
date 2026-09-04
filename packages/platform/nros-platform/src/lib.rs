@@ -31,15 +31,15 @@ mod board;
 mod resolve;
 
 // Phase 212.N.1 — the Board trait family lives in `board/` (was a
-// flat `board.rs`); `BoardConfig` + `BoardTransportConfig` stay at
+// flat `board.rs`); `BoardConfig` stays at
 // the crate root for back-compat. New 212.N consumers reach the
 // full surface (`Board`, `BoardInit`, `BoardEntry`, …) through
 // `nros_platform::board::*`.
 pub use board::{
-    Board, BoardConfig, BoardEntry, BoardExit, BoardInit, BoardPrint, BoardTransportConfig,
-    DeployOverlay, DispatchStrategy, EmbassyBoardEntry, NodeDispatchRuntime, NullNodeRuntime,
-    PriorityDirection, RticBoardEntry, RuntimeCtx, RuntimeError, SignaledCallback, TierSpec,
-    TierSpinGap, boot_tier_index, freertos_priority_for, posix_nice_for, threadx_priority_for,
+    Board, BoardConfig, BoardEntry, BoardExit, BoardInit, BoardPrint, DeployOverlay,
+    DispatchStrategy, EmbassyBoardEntry, NodeDispatchRuntime, NullNodeRuntime, PriorityDirection,
+    RticBoardEntry, RuntimeCtx, RuntimeError, SignaledCallback, TierSpec, TierSpinGap,
+    boot_tier_index, freertos_priority_for, posix_nice_for, threadx_priority_for,
 };
 // Phase 313 W1 (issue #0243) — the deprecated `NodeRuntime` crate-root alias is
 // removed; consumers use `NodeDispatchRuntime`.
