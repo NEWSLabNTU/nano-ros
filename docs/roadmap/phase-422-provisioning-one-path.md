@@ -144,6 +144,53 @@ comparison; forwarding to `nros setup --tool X` is fine.
 gate. Both directions checked — a gate row naming a tool the index dropped
 fails too.
 
+### W6 — the bootstrap actually pulls the system closure
+
+Measured: 24 of the 46 `[prereq.*]` keys have no explicit consumer, nothing in
+the repo INSTALLS via `--system`, and `just setup <scope>` never reaches it. On
+a developer host that is 5 missing packages (`libgcrypt-dev`, `libpixman-dev`,
+`make`, `ninja`, `openocd`) that no documented command installs.
+
+The fix is NOT "run `--system --sudo` from setup": composing the command and
+running it are deliberately separate (RFC-0062), and a provisioning verb that
+sudo-installs behind the user's back is worse than the gap. What is missing is
+that `just setup <scope>` never even PRINTS the closure, so the user is not
+told. Make the scope verb report missing system prerequisites with the composed
+command, the way `nros setup --system` already does.
+
+**Acceptance.** `just setup <scope>` on a host missing a `role = package` or
+`role = workspace` key names it and prints the install command. Nothing is
+installed without an explicit `--sudo`.
+
+### W7 — one board vocabulary
+
+`board=` in a `package.xml` export and `[board.*]` in the index are two
+namespaces that do not line up: of five boards declared across `examples/`,
+only `threadx-linux` is an index key. `nros setup --workspace` works around it
+by validating before printing a command, which is honest but is a workaround.
+
+Same for `deploy=`: `threadx` is not a scope, it splits into `threadx_linux` /
+`threadx_riscv64`.
+
+Decide which namespace is canonical, map the other onto it, and gate that they
+agree. This is the two-vocabularies class this repo keeps paying for — the
+`native`/`posix`/`linux` collapse, `[system.*]` vs `[prereq.*]`, the module vs
+dispatcher setup spelling.
+
+**Acceptance.** A gate asserts every `board=` in a package.xml export resolves
+to an index board (or to a documented alias), and every `deploy=` resolves to a
+scope.
+
+### W8 — refuse a wrong-role dependency
+
+Deferred by decision, not oversight. `<depend>qemu-system-arm</depend>` resolves
+silently today; `nros setup --workspace` reports it as a category error without
+failing. Turning it into a hard error breaks a working tree, so it needs a
+deprecation window: report -> warn -> error.
+
+**Acceptance.** A package.xml naming a `role = infra` key fails resolution, and
+the error names the deploy target it should have come from instead.
+
 ## Non-goals
 
 - **Not** replacing the CI image's baked tooling. The image is a cache; the
