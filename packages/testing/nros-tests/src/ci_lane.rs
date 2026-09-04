@@ -414,6 +414,53 @@ mod tests {
     use super::*;
     use std::collections::BTreeSet;
 
+    /// The text of one `just` recipe: its header line plus every indented or blank
+    /// line under it (issue 1057).
+    ///
+    /// Stops at the first column-0 non-blank line — including a comment, which is
+    /// where the NEXT recipe's doc block starts. Running past it would let a
+    /// neighbouring recipe's prose satisfy or break an assertion, and the tier
+    /// recipes document each other constantly.
+    fn recipe_body(text: &str, name: &str) -> Option<String> {
+        let mut lines = text.lines().skip_while(|l| {
+            !(l.starts_with(name) && l[name.len()..].starts_with([':', ' ']) && l.contains(':'))
+        });
+        let header = lines.next()?;
+        let mut body = String::from(header);
+        for l in lines {
+            if !l.is_empty() && !l.starts_with([' ', '\t']) {
+                break;
+            }
+            body.push('\n');
+            body.push_str(l);
+        }
+        Some(body)
+    }
+
+    /// Private recipes a body delegates to, e.g. `just ci::_matrix-run` (issue 1057).
+    ///
+    /// Only `_`-prefixed names: a tier delegating to another PUBLIC tier is a
+    /// different relationship (the ladder, checked elsewhere), while a private
+    /// delegate is an implementation split of the same recipe and carries the same
+    /// obligations.
+    fn delegated_recipes(body: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        for (_, rest) in body
+            .match_indices("just ")
+            .map(|(i, m)| (i, &body[i + m.len()..]))
+        {
+            let token: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':'))
+                .collect();
+            let name = token.rsplit("::").next().unwrap_or_default();
+            if name.starts_with('_') && !out.iter().any(|n| n == name) {
+                out.push(name.to_string());
+            }
+        }
+        out
+    }
+
     fn axis_values(cells: &[&'static Cell], a: Axis) -> BTreeSet<String> {
         cells.iter().map(|c| value(c, a)).collect()
     }
@@ -554,6 +601,64 @@ mod tests {
     /// declaration: the declaration is only worth something if the thing that
     /// runs obeys it, and `ci_tier_ladder_matches_justfile_recipes` set the
     /// precedent that the justfile is a checked consumer of this ladder.
+    /// issue 1057 — the extraction itself, because its blind spot is what went
+    /// wrong.
+    ///
+    /// `recipes_run_the_scope_their_lane_declares` read only the NAMED recipe.
+    /// When phase-413 turned the tiers into dispatchers, the exports it asserts
+    /// on moved into a private delegate and the assertion started measuring a
+    /// `case` statement. It went red on main and stayed there, invisible to every
+    /// pull request because `check-fast` runs no unit tests.
+    ///
+    /// So the delegation-following is itself covered, on a synthetic justfile
+    /// rather than the real one: a test whose only evidence is the tree it runs
+    /// in goes green the moment that tree changes shape again.
+    #[test]
+    fn a_dispatching_recipe_is_read_through_to_its_private_delegate() {
+        let text = "\
+tier depth=\"run\":
+    #!/usr/bin/env bash
+    case \"{{ depth }}\" in
+        run)   just ci::_tier-run ;;
+        build) just ci::_tier-build ;;
+    esac
+
+[private]
+_tier-run:
+    #!/usr/bin/env bash
+    NROS_TEST_COORDS=\"$coords\" just check
+
+[private]
+_tier-build:
+    #!/usr/bin/env bash
+    echo build
+";
+        let body = recipe_body(text, "tier").expect("the dispatcher");
+        assert!(
+            !body.contains("NROS_TEST_COORDS="),
+            "the dispatcher's own body must NOT carry the export, or this fixture \
+             is not reproducing the shape that broke"
+        );
+
+        let delegates = delegated_recipes(&body);
+        assert_eq!(
+            delegates,
+            vec!["_tier-run".to_string(), "_tier-build".to_string()],
+            "both private delegates must be found, and only the private ones"
+        );
+
+        let inner = recipe_body(text, "_tier-run").expect("the delegate");
+        assert!(
+            inner.contains("NROS_TEST_COORDS="),
+            "reading through to the delegate is the whole point; got:\n{inner}"
+        );
+        assert!(
+            !inner.contains("echo build"),
+            "a recipe body must stop at the next column-0 line, or one delegate's \
+             text satisfies an assertion about another"
+        );
+    }
+
     #[test]
     fn recipes_run_the_scope_their_lane_declares() {
         use crate::buckets::CiTier;
@@ -571,25 +676,30 @@ mod tests {
             let Some((text, name)) = tier.justfile_source() else {
                 continue;
             };
-            // The recipe body: from the `<name>:`/`<name> <args>:` line to the
-            // next line at column 0 that is not blank and not indented.
-            let mut lines = text.lines().skip_while(|l| {
-                !(l.starts_with(name) && l[name.len()..].starts_with([':', ' ']) && l.contains(':'))
-            });
-            let header = lines.next().unwrap_or_else(|| {
-                panic!("justfile has no `{recipe}` recipe (gated by ci_tier_ladder_matches_justfile_recipes)")
-            });
-            // Stop at the first column-0 non-blank line — including a comment,
-            // which is where the NEXT recipe's doc block starts. Running past it
-            // would let a neighbouring recipe's prose satisfy (or break) this
-            // assertion, and the tier recipes document each other constantly.
-            let mut body = String::from(header);
-            for l in lines {
-                if !l.is_empty() && !l.starts_with([' ', '\t']) {
-                    break;
+            let Some(mut body) = recipe_body(&text, name) else {
+                panic!(
+                    "justfile has no `{recipe}` recipe (gated by ci_tier_ladder_matches_justfile_recipes)"
+                )
+            };
+
+            // issue 1057 — follow a DISPATCHING recipe to the body that runs.
+            //
+            // phase-413 gave the tiers a `depth` argument, so `matrix` became a
+            // `case` that delegates to the private `_matrix-run` /
+            // `_matrix-build`, and the exports this test asserts on moved with
+            // it. Reading only the named recipe then measured a dispatcher and
+            // reported the lane as narrowing nothing — a RED that no pull
+            // request can see, because `check-fast` runs no unit tests, and that
+            // therefore fails in the merge queue instead.
+            //
+            // One level deep, deliberately: a dispatcher that delegates to a
+            // dispatcher is a shape nothing here has and one this assertion
+            // should not quietly accept.
+            for delegate in delegated_recipes(&body) {
+                if let Some(inner) = recipe_body(&text, &delegate) {
+                    body.push('\n');
+                    body.push_str(&inner);
                 }
-                body.push('\n');
-                body.push_str(l);
             }
 
             let scope = lane.run_scope();

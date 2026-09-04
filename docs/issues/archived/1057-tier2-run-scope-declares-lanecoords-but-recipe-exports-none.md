@@ -2,7 +2,7 @@
 id: 1057
 title: "`ci_lane` unit test is RED on main: tier 2 declares `RunScope::LaneCoords`
   and `just ci matrix` no longer exports `NROS_TEST_COORDS`"
-status: open
+status: resolved
 type: bug
 area: ci, testing
 severity: high
@@ -59,3 +59,49 @@ owner and a written cause-so-far, not to guess which.
 `cargo nextest run -p nros-tests --lib -E 'test(recipes_run_the_scope_their_lane_declares)'`
 passes on `main`, and the assertion still fails if the export is removed from
 whichever recipe now carries it.
+
+## Fixed 2026-09-04 — the test was reading a dispatcher
+
+The recipe was never wrong. `_matrix-run` exports both
+`NROS_FIXTURE_LANE=tier2` and `NROS_TEST_COORDS="$coords"`, from the same
+`nros_lane_coords_file tier2` the build and the staleness gate use — the one
+computation reaching all three that issue 0368 F8 set up.
+
+What broke is the ASSERTION. It extracts the named recipe's body and stops at the
+next column-0 line; phase-413 turned the tiers into dispatchers, so `matrix` is
+now a `case` on `depth` that delegates, and the exports moved one recipe over.
+The test was measuring a `case` statement and correctly reporting that it
+narrowed nothing.
+
+`recipes_run_the_scope_their_lane_declares` now follows a dispatcher into the
+private recipes it delegates to, and checks the union. Two helpers carry it:
+
+* `recipe_body` — the extraction, lifted out of the test body so it can be
+  tested on its own;
+* `delegated_recipes` — `_`-prefixed names only. A tier delegating to another
+  PUBLIC tier is the ladder, checked elsewhere; a private delegate is an
+  implementation split of the same recipe and inherits its obligations.
+
+One level deep, deliberately: a dispatcher that delegates to a dispatcher is a
+shape nothing here has and one this assertion should not quietly accept.
+
+**Mutation-checked.** Removing `NROS_TEST_COORDS` from `_matrix-run` makes the
+test fail again, so the assertion still bites through the indirection rather than
+having been satisfied by reading more text.
+
+**And the blind spot is now covered.** `a_dispatching_recipe_is_read_through_to_
+its_private_delegate` exercises the extraction on a SYNTHETIC justfile — a test
+whose only evidence is the tree it runs in goes green the moment that tree
+changes shape again, which is exactly how this went red and stayed red.
+
+## What made it expensive, and it is not the bug
+
+The red was invisible where anyone would look. `just check fast` runs no unit
+tests, so neither `check-fast` nor any other required `pull_request` context
+could see it; `test-unit` runs on `merge_group`, so it failed in the queue, where
+an ejection is how you hear about it. That split is deliberate and documented
+(CLAUDE.md's "PR cheap, batch thorough"), and the cost it accepts is exactly this
+shape: a red only the queue can see is a red nobody is looking at.
+
+Found by running `nros-tests --lib` while verifying unrelated work, not by the
+lane that owns it.
