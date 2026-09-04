@@ -477,6 +477,40 @@ jobs:
       # Only submodules that are initialised AND actually missing their
       # baseline commit are touched, so the cost lands on the one repo whose
       # pin moved rather than on every clone.
+      # An UNINITIALISED submodule whose pin moved is the same trap one step
+      # earlier, and it is the one that bites hardest: this job initialises
+      # exactly `packages/cli/third-party/play_launch`, so a bump to any OTHER
+      # submodule reaches the gate with no object store to read and fails
+      # `CANNOT VERIFY ... not initialised here`. That is unconditional — no
+      # amount of pushing, rebasing or re-running clears it, because nothing
+      # in the lane was ever going to provide the objects. Measured on the
+      # nuttx `.bss` pin bump (issue 1034), which could not pass CI at all
+      # while passing `just check fast` locally, where the submodule exists.
+      #
+      # `--filter=tree:0`: the gate needs COMMITS (for `merge-base
+      # --is-ancestor`) and nothing else, so trees and blobs stay on the
+      # server. Not `--depth`, for the reason spelled out above — a shallow
+      # commit is grafted as a root and destroys the connectivity the check
+      # is about. Only submodules whose pin actually MOVED are touched, so a
+      # PR that moves none pays nothing.
+      - name: Init submodules whose pin moved (commits only)
+        run: |
+          base="${GITHUB_BASE_REF:-main}"
+          git ls-tree -r "origin/$base" \
+            | awk '$2 == "commit" { print $4 "\t" $3 }' \
+            | while IFS=$'\t' read -r path base_sha; do
+                [ -n "$path" ] || continue
+                head_sha="$(git ls-tree -r HEAD -- "$path" \
+                            | awk '$2 == "commit" { print $3 }')"
+                [ -n "$head_sha" ] || continue
+                [ "$head_sha" != "$base_sha" ] || continue
+                [ ! -e "$path/.git" ] || continue
+                echo "  pin moved in $path (${base_sha:0:12} -> ${head_sha:0:12}); initialising"
+                git submodule update --init --filter=tree:0 "$path" \
+                  || git submodule update --init "$path" \
+                  || true
+              done
+
       - name: Fetch submodule history for check-submodule-pins
         run: |
           base="${GITHUB_BASE_REF:-main}"
