@@ -1,9 +1,12 @@
 # Phase 424 — does the build graph tell the truth about what needs rebuilding?
 
-**Status (2026-09-04).** Not started — opened as a HOME for eight issues that
-had none. Nothing here is in progress; what the phase adds today is the
-constraint in "What this phase must not do", which is the part that would
-otherwise be rediscovered per issue.
+**Status (2026-09-04).** Enabling work done, seven issues untouched. 0835 — the
+one every other fix has to be checked against — has been re-measured, its
+remaining scope narrowed to a disk-waste defect, and the property that ended its
+oscillation is now gated by `just check fixture-staleness-probes`. The rest of
+the phase is not started. What it adds beyond that is the constraint in "What
+this phase must not do", which is the part that would otherwise be rediscovered
+per issue — and which is now backed by numbers rather than by a warning.
 
 **Opened 2026-09-04 as a HOME.** Eight open issues say the same thing from
 different layers: something in this tree reports FRESH when it is not, or STALE
@@ -36,7 +39,7 @@ they all rest on is built on build-system internals nobody supports.
 | issue | layer | shape |
 | --- | --- | --- |
 | [#0820](../issues/0820-riscv-nuttx-c-talker-no-runtime-delivery.md) | cmake seam | passes after `rm -rf` on unmodified sources — no rebuild edge |
-| [#0835](../issues/0835-fixture-staleness-probe-families-restale-each-other.md) | fixtures | the cmake and rust families re-stale each other |
+| [#0835](../issues/0835-fixture-staleness-probe-families-restale-each-other.md) | fixtures | the cmake and rust families re-stale each other — **oscillation fixed + gated 2026-09-04**; open for the duplicated ThreadX corrosion group, which is wasted disk, not staleness |
 | [#0945](../issues/0945-shared-cargo-dir-rests-on-unsupported-build-internals.md) | cargo | the shared-cargo-dir campaign rests on five unsupported build-system assumptions |
 | [#1002](../issues/1002-a-derived-knob-needs-three-configures-not-two.md) | cmake | a derived knob converges after three configures, not the two 0991 documented |
 | [#1018](../issues/1018-a-codegen-change-invalidates-generated-interfaces-and-only-a-manual-step-connects-them.md) | codegen | a codegen change invalidates every consumer, connected only by a manual step |
@@ -55,6 +58,25 @@ invites, and it is how the two families came to re-stale each other. Issue 1045
 just landed the other half of the same lesson: a probe that examined NOTHING
 reported FRESH across the whole cross-compiled tree, and the fix was to make the
 degradation VISIBLE rather than to watch more.
+
+**The measurement now exists, so "measuring 0835" is a command rather than a
+project** (2026-09-04). The numbers are in issue 0835 under "Measured
+2026-09-04"; the short version a widening has to answer to:
+
+* The 237 cmake + cargo rows are **differential** — their verdict is "did my
+  artifact's bytes move", so they have no watch set and no widening can reach
+  them. `just check fixture-staleness-probes` (2.2 s, on the fast line) holds
+  them there, with the pre-fix rules as its own negative control.
+* The 134 `.inputsig` rows are the ones with a watch set, and today it contains
+  **zero build output** — 568 + 243 tracked files across the signature dirs with
+  0 untracked-and-unignored, and 792 dep-closure paths with 0. That is what a
+  widening must not change.
+* The cost of a widening is arithmetic: `(rows that gain the path) x (how often
+  the path moves)`. A tracked source path is free until edited; a path a build
+  WRITES is unbounded, and is how 0835 happened.
+* A new input hashed into all 134 rows must key on what the tool EMITS, not on
+  its binary — measured 41 distinct `nros` binaries against 9 distinct codegen
+  fingerprints, i.e. 78 % of CLI rebuilds re-staling nothing.
 
 ## Acceptance
 

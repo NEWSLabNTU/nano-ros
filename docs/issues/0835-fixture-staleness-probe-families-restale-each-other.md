@@ -9,7 +9,144 @@ area: testing
 related: [issue-0828, issue-0196, issue-0466, phase-344, phase-340]
 ---
 
-## Problem
+## Measured 2026-09-04 (phase-424) — the oscillation is GONE and now GATED; the budget
+
+Phase-424 needs 0835's numbers as the budget its other seven issues are checked
+against ("a fix that widens a watch set must show 0835 did not get worse, in the
+same commit"), so this is the re-measurement. Everything below is measured
+unless labelled otherwise.
+
+### 1. There are FOUR probe families, not two, and they use TWO mechanisms
+
+`scripts/check-fixtures-stale.sh` runs four probes over 371 manifest rows:
+
+| family | rows | verdict is a function of |
+| --- | --- | --- |
+| cmake c / cpp | 61 + 59 | md5 of the cell build dir's top-level executables, BEFORE and AFTER `cmake --build` |
+| cargo | 117 | md5 of the row's OWN binaries under its group `--target-dir`, before and after `cargo build` |
+| workspace | 94 | `.inputsig`: a signature over a declared input set |
+| compile-check | 40 | `.inputsig`: same shape |
+
+The first two are **differential** — since 2fa1ed09f they have no watch set at
+all. Their verdict is "did my artifact's bytes move", so no widening anywhere
+can reach them, and family B may rebuild, evict, relink or re-date anything
+family A reads without A firing. That is the structural reason the title's
+oscillation is over, and it is why the budget below is about the OTHER 134 rows.
+
+### 2. The differential probes reach a fixed point — measured against the real scripts
+
+`tests/fixture-staleness-probe-tests.sh` (added by this commit, 2.2 s, on the
+fast line as `just check fixture-staleness-probes`) drives the production probe
+scripts against a two-file cmake cell whose always-dirty custom command
+recompiles and relinks on every build — Corrosion's shape with no Rust in it —
+and a one-binary cargo leaf in a phase-340-style group dir:
+
+```
+                                       pre-2fa1ed09f rule   today
+cmake, unchanged tree, 3 runs               3/3 STALE        0/3
+cargo, unit re-runs, bytes identical        3/3 STALE        0/3
+cross-family: the cmake build dates the
+  cargo row's source forward, 3 rounds      3/3 STALE        0/3
+real source edit (both families)            reported         reported, once
+```
+
+The pre-fix rules are re-applied to the same trees inside the test as its
+NEGATIVE CONTROL, so a probe silently broken into never reporting anything fails
+it. Both mutations were run: reverting either script to its `2fa1ed09f^` version
+fails the file (7 of 19 checks for the cmake half, 4 of 19 for the cargo half).
+
+### 3. The `.inputsig` watch sets contain ZERO build output
+
+Measured on a fully-built checkout (every one of these dirs has build trees; all
+of them gitignored):
+
+| enumeration | files | untracked-and-unignored |
+| --- | --- | --- |
+| 14 workspace fixture dirs (94 rows) | 568 tracked | **0** |
+| 23 compile-check dirs (40 rows) | 243 tracked | **0** |
+| dep-closure union over 38 built dirs | 792 distinct in-repo paths | 7 |
+
+The 7 are 6 zenoh-pico submodule sources (tracked in the nested repo, kept
+deliberately — `git check-ignore` refuses to answer inside a submodule) and
+`packages/cli/third-party/play_launch/.git`, a gitfile whose content is a
+constant. None is build output.
+
+Both halves of a signature already use ONE policy for "is this build output?" —
+git's ignore rules — which is what keeps this at zero.
+
+### 4. The one genuinely shared input, and how much of its cost is inherent
+
+`tool:nros` — the codegen fingerprint — is in all 134 `.inputsig` signatures, so
+when it moves it re-stales every one of them. Measured on this host's cache:
+
+    41 distinct `nros` binaries  ->  9 distinct codegen fingerprints
+
+so 32 of 41 CLI rebuilds (78 %) re-staled nothing. The 9 that did are real: the
+emitter's output changed. This is the phase-318 W1 fix working, and it is the
+model for the budget below — key on what a tool EMITS, not on the tool.
+
+It still over-approximates: a workspace row that runs no codegen hashes the
+fingerprint anyway. That is a deliberate fail-safe and is the only known
+spurious term.
+
+### 5. THE BUDGET, stated for the other seven issues
+
+* **Differential families (237 rows): spurious re-staling is 0, structurally.**
+  There is no watch set. A fix elsewhere cannot make this worse. It CAN make it
+  worse by changing the decision rule back to an activity signal — that is what
+  the new gate refuses.
+* **`.inputsig` families (134 rows): spurious re-staling is 0 today**, and stays
+  0 while every path a signature hashes is one git does not ignore and no build
+  writes. The cost of a proposed widening is arithmetic, not judgement:
+  `(rows whose signature gains the path) x (how often the path moves)`.
+  - a tracked source path: 0 until someone edits it — free;
+  - a path some build WRITES: unbounded, and it is exactly how this issue
+    happened. Nothing in the tree may hash one.
+* **The shared-tool term is the one to watch.** A new input hashed into all 134
+  rows costs 134 rebuilds every time it moves, so it must be keyed on what the
+  thing EMITS, the way `codegen-fingerprint` is. Anything keyed on a binary hash
+  re-stales 134 rows per `just setup-cli` — measured as the 41-vs-9 gap above.
+
+Re-run the arithmetic with:
+
+```sh
+just check fixture-staleness-probes                    # the fixed point, 2.2 s
+git ls-files --others --exclude-standard -- <sig-dir>  # must be empty
+for f in .nros-cache/codegen-fingerprint/*; do cat "$f"; echo; done | sort -u | wc -l
+```
+
+### The two ways the differential families could still come back
+
+Stated because "structurally impossible" is only true given two things, and both
+are held elsewhere rather than by the probe:
+
+1. **Artifact-name collisions inside one cargo group.** Cargo uplifts the final
+   artifact to an UNHASHED name, so two rows in one group producing the same
+   binary name would overwrite each other and each would see the other's bytes.
+   That is phase-340's A1 precondition, gated by `check-fixture-groups` (fast
+   line) at 0 collisions. If that gate is ever narrowed, this issue returns.
+2. **A non-reproducible build.** The probe assumes a rebuild of unchanged inputs
+   produces identical bytes. Verified for the synthetic leaf here and measured
+   on the real fixtures by 2fa1ed09f. A toolchain or flag that embeds something
+   varying (a timestamp, a temp path) would make the affected rows permanently
+   STALE with nothing to fix — and it would look exactly like this issue.
+
+### What is NOT fixed, and why it was left
+
+The duplicated `threadx-riscv64` corrosion group (below, 2026-08-31) is still
+real: the `set(NANO_ROS_PLATFORM threadx)` hardcode is present in all six
+`examples/qemu-riscv64-threadx/rust/*/CMakeLists.txt`. But it is **wasted disk
+and CPU, not staleness** — after 2fa1ed09f a duplicated group cannot make a
+probe fire, because it cannot change a row's artifact bytes. It could not be
+re-measured here: this host's `build/corrosion-cargo/` currently holds no
+`threadx-riscv64` root at all (7 groups over 5 platforms, and every key text is
+a real configuration difference — verified by reading the `.key` files).
+
+Choosing between the two candidate fixes below re-keys EVERY corrosion cargo
+directory on every platform, i.e. schedules a one-time full rebuild. That is the
+phase owner's call, and deliberately not slipped in here.
+
+## Problem (as filed — the oscillation below is FIXED; see the measurement above)
 
 `scripts/check-fixtures-stale.sh` probes two families in order: cmake cells
 first, then rust fixtures. Each family "self-heals" — it rebuilds what it finds
