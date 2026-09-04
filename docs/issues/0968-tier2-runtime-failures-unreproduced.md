@@ -374,3 +374,45 @@ through a path the image already links (the board registers a platform writer at
 `PlatformLog::write`), rather than adding a print beside it. That needs a dep
 the example does not currently have, so it is a temporary edit to the leaf's
 manifest — build it with the row's env, and revert both.
+
+
+## The esp32 marker, ANSWERED by probe (2026-09-04) — filed as issue 1048
+
+The probe ran, through the path the board already exports, and the answer is
+unambiguous. A `println!` on EACH side of the `log::info!`, image built with its
+row's env, QEMU with a zenoh router up:
+
+```
+PROBE-A
+PROBE-B
+
+Application setup complete — entering spin loop.
+```
+
+**Both probes print; the `log::info!` between them prints nothing.** No
+`log`-crate output appears anywhere in the boot. The subscription exists and the
+line announcing it is dropped by the facade — so the cell greps for a marker the
+image is structurally unable to emit, and reports a messaging failure for a
+logging defect.
+
+Filed as [issue 1048](1048-esp32-log-records-are-silently-dropped.md) with the
+five closed hypotheses and the one remaining candidate (`log::set_logger`
+succeeds at most once per process, and this image has two log paths racing for
+the facade — the board registers a platform writer immediately above its
+`init_logger` call).
+
+That accounts for `test_esp32_talker_listener_e2e`. `test_esp32_to_native` and
+`test_native_to_esp32` grep for markers of the same kind and plausibly share it,
+unverified. `test_esp32_workspace_entry_e2e` does NOT — it fails before
+`Application setup complete`.
+
+### Two notes on getting there
+
+* The first standalone run failed at `Executor::open failed:
+  Transport(ConnectionFailed)` because no router was up — not comparable to the
+  test, which starts one. Worth knowing before reading a solo esp32 run as a
+  result.
+* The leaf does not LINK without `ZPICO_MAX_QUERYABLES=2` from its `[[fixture]]`
+  row, so a probe must be built with that env and must not grow the image; the
+  board's re-exported `esp_println` is what makes a dependency-free probe
+  possible.
