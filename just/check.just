@@ -223,6 +223,7 @@ fast-serial: \
     opaque-storage-guards \
     orphan-generated-stamp \
     package-xml-comments \
+    package-xml-uses \
     path-env-fingerprints \
     peer-sweep-lanes \
     platform-abi-mirror \
@@ -4170,6 +4171,15 @@ provider-index:
 [private]
 package-xml-comments:
     @bash packages/testing/nros-tests/tests/package_xml_comment_stripping.sh
+
+# RFC-0087 D3 / phase-420 W1 — `<nano_ros_uses kind= name=/>` and the
+# `<nano_ros deploy= board= rmw=/>` sugar must mean the same thing to the cmake
+# reader, and `deploy=` must NOT become a selection (it names a system.toml
+# block, not a provider). Divergence between the two spellings would be
+# invisible: both still configure, against different values. Buildless.
+[private]
+package-xml-uses:
+    @bash packages/testing/nros-tests/tests/package_xml_uses_general_form.sh
 
 # issue 0762 — a killed build launcher must take its whole subtree with it.
 # Drives real process trees and asserts on `ps`: the orphan bug is silent by
