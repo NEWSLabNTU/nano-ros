@@ -107,6 +107,31 @@ None of the three was caught by reading. All three were caught by building the
 real object with the real flags, which is the only oracle for a target this host
 cannot otherwise exercise.
 
+## Landed as issue 1014's spelling, not this one
+
+The same defect was diagnosed independently and fixed on `main` under
+[issue 1014] before this branch merged. Both fixes drop `<memory>` and
+`<string>`; they differ in the two replacements, and `main`'s is what the tree
+carries:
+
+| | this branch | landed (issue 1014) |
+| --- | --- | --- |
+| owning pointer | `SerdataOwner`, `NrosSerdata`-specific | `OwnPtr<T>`, a template |
+| type name | `const char* type_name` added to `NrosSertype` | no member; reads `ddsi_sertype::type_name`, Cyclone's own strdup'd copy |
+
+The second difference is the substantive one. `ddsi_sertype_init_flags` already
+copies the name into the base, so a member here is a second pointer to a string
+the base object also holds. `NrosSertype` stays an empty derived struct.
+
+The code change from this branch was therefore dropped in the rebase and the
+landed version kept. Everything below still describes what was measured on the
+board, and the two spellings are equivalent on the point this issue is about:
+the TU compiles inside the freestanding subset either way.
+
+The `-std=c++14` copy-initialisation trap in mistake 2 below is NOT specific to
+this spelling -- the landed `OwnPtr` hit it too and is direct-initialised at all
+three call sites for the same reason.
+
 ## A confound I introduced, stated so nobody mines it
 
 The tier-2 build that found this was still RUNNING when I began editing the
