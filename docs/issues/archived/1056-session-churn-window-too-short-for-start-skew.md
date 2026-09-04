@@ -1,121 +1,188 @@
 ---
 id: 1056
-title: "`assert_no_session_churn` can PASS on a broken lease, because start skew
-  can push one node's only lapse past the 60 s window"
+title: "`assert_no_session_churn` can PASS on a broken lease — but not because of
+  start skew, and lengthening the window does not fix it"
 status: resolved
 type: bug
 area: testing
 severity: medium
 found: 2026-09-04
 resolved: 2026-09-05
-related: [issue-1044, issue-1013, issue-0906]
+related: [issue-1044, issue-1013, issue-0906, phase-424]
 ---
 
-## The hole
+## The hole as filed
 
-`MAX_ROUTER_SESSIONS = 3` stands in for a rate with a count, and issue 1044
-recorded the arithmetic in its doc rather than closing it. A client lease
+`MAX_ROUTER_SESSIONS = 3` stands in for a rate with a count. A client lease
 `L < 30 s` cannot hear the router's 30 s keep-alive, so each node re-dials every
-`2L`. In a 60 s window that is one re-open per node, two nodes, four sessions —
-over the limit, correctly.
+`2L`; in a 60 s window that is one re-open per node, two nodes, four sessions —
+over the limit. That holds only if BOTH nodes lapse inside the window, and they
+do not start together, so the later node's only lapse could land past the
+window's end and leave 3 sessions and a PASS on a broken build.
 
-That holds only if BOTH nodes lapse inside the window. They do not start
-together: the listener is launched after the talker's readiness banner. For a
-lease near the top of the band (say 29 s, lapsing at 58 s) the later node's only
-lapse can land past the window's end, leaving **3 sessions and a PASS on a build
-that is broken**.
+**Direction proposed:** lengthen the window to ~120 s, so every lease under 30 s
+produces at least two re-opens per node. Cost: roughly doubles the pub/sub cell.
 
-The exposure is to start SKEW, not to the lease value, which is why it is not
-visible in the lease table: every lease in the band is "covered" on paper.
+## RESOLVED 2026-09-05 — the hole is real, the mechanism is not, and the fix
+## does not deliver
 
-## Why the obvious fix is unavailable
+The arithmetic was re-derived from `_zp_unicast_lease_task`
+(zenoh-pico `src/transport/unicast/lease.c:219-279`) and checked against every
+measurement available on this host. Three of the four load-bearing claims are
+wrong, and the fourth — that a broken build can pass — is right for a reason that
+no affordable window closes.
 
-Counting per NODE would make skew irrelevant — the slack becomes "one re-open
-each" and one node re-dialling twice is caught however the other behaves. It
-cannot be done from the router log: **the client zid is regenerated on every
-session open.** `zpico.c`'s `zpico_next_session_zid_counter()` mixes a monotonic
-counter and the clock into the zid, so two opens by one node carry two different
-identities and grouping by zid reads as more NODES rather than more sessions.
-(Measured by reading the generator, not inferred from the log.)
+### 1. One node lapses, not two
 
-## Direction
+The lease task wakes every `lease` ms and closes only if `_received` was false
+for that whole window; ANY inbound frame sets it. The LISTENER is fed a 1 Hz
+sample stream by the router, so its check windows always contain traffic and it
+never lapses. The TALKER hears nothing back but keep-alives. Our own fork's
+`config.h` says it in one line: *"a pure publisher hears nothing back and closes
+at 2 x Z_TRANSPORT_LEASE"*.
 
-**Lengthen the window to ~120 s.** At that length every lease under 30 s produces
-at least two re-opens per node, so no amount of skew can hide one, and the count
-becomes sufficient again. The cost is real and is the whole reason it was not
-just done: `PUBSUB_MIN_SAMPLES` is 60 at 1 Hz, so this roughly doubles the
-pub/sub cell — currently ~61 s per language per platform.
+So `sessions = 2 + talker lapses`, not `2 + lapses(A) + lapses(B)`.
 
-Worth pricing against the alternative before spending it: a delivery assertion
-cannot substitute (issue 1013 measured a 10 s lease delivering 60/60, because the
-reopen now completes in ~15 ms), so the session count is the only signal there
-is, and a signal that can be skewed into silence is the thing being bought back.
+**The evidence was already in the doc comment and had been noticed without being
+chased.** The per-node table predicted ~8 sessions for issue 0906's 10 s lease
+and the cell measured **5**; the discrepancy was written down as
+`~8 (5 measured)`. One node gives `2 + floor(60 / 20) = 5` exactly.
+
+### 2. The lapse period is `2L` only while `2L < 30 s`
+
+The check window is `L` wide; `rmw_zenohd` speaks every 30 s. The session dies at
+the end of the first `L`-window that no keep-alive lands in — a beat between `L`
+and 30, which runs away as `L -> 30`. Simulated from the loop above:
+
+| lease | first close | ratio to L |
+| ---: | ---: | ---: |
+| 10 s | 20.0 s | 2 |
+| 14 s | 28.0 s | 2 |
+| 15 s | 45.0 s | 3 |
+| 18 s | 54.0 s | 3 |
+| 20 s | 80.0 s | 4 |
+| 24 s | 144.0 s | 6 |
+| 29 s | **899.0 s** | 31 |
+| 29.9 s | **9000 s** | 301 |
+| >= 30 s | never | — |
+
+So the acceptance as filed — *"a build with `Z_TRANSPORT_LEASE_MS` anywhere in
+`(0, 30_000)` fails this cell regardless of how far apart the two nodes start"* —
+**is not reachable by any affordable window**. Every `L < 30 s` does close
+eventually, so the acceptance is not impossible in principle — it is unpayable:
+covering `L = 29.9 s` needs two lapses at 9000 s each, five hours per cell,
+twelve cells.
+
+### 3. Start skew is not the exposure
+
+Both nodes must participate for all `PUBSUB_MIN_SAMPLES` samples — the talker
+publishes all 60, the listener hears all 60 — so each one's observed session life
+is at least that span WHATEVER the skew. Skew lengthens the EARLIER node's life
+and leaves the later one alone.
+
+Measured across the nine `test-logs/fixtures/zenohd-*.log` router logs on this
+host (2026-09-04):
+
+| log | router span | session opens, relative | sessions |
+| --- | ---: | --- | ---: |
+| 7800 | 82.0 s | 2.05 s, 22.04 s | 2 |
+| 7900 | 82.2 s | 2.10 s, 21.99 s | 2 |
+| 8000 | 82.1 s | 2.11 s, 22.14 s | 2 |
+| 8200 | 65.5 s | 5.28 s, 5.28 s | 2 |
+| 8300 | 60.6 s | 0.07 s, 0.07 s | 2 |
+| 8400 | 60.6 s | 0.06 s, 0.06 s | 2 |
+| 9000 | 61.4 s | 0.00 s, 1.00 s | 2 |
+| 9100 | 61.5 s | 0.00 s, 1.00 s | 2 |
+| 9200 | 61.5 s | 0.00 s, 1.00 s | 2 |
+
+Skew ranges 0.00 s to 20.0 s, and the later node is alive ~60 s in every one
+(82.0 - 22.04 = 60.0). The span grows with the skew; the later node's life does
+not shrink. Exactly 2 sessions in 9 of 9, on the shipped 60 s lease.
+
+### 4. What the cell DOES cover, and what a longer window would buy
+
+Failing needs 2 lapses (the slack is one), all from the talker, whose life is
+~60 s. So the covered band is `2 x first_close(L) <= 60`, i.e. **`L <= 14 s`**.
+
+| talker life | added cell time | band covered |
+| ---: | ---: | --- |
+| 60 s (today) | — | `L <= 14 s` |
+| 90 s | +30 s x 12 cells = +6 min | `L <= 15 s` |
+| 120 s (as filed) | +60 s x 12 = +12 min | `L <= 18 s` |
+| 180 s | +120 s x 12 = +24 min | `L <= 22 s` |
+| 300 s | +240 s x 12 = +48 min | `L <= 24 s` |
+
+Doubling the cell moves the frontier by four seconds of lease. What is actually
+shipped is 60 s (ours) and **10 s** — zenoh-pico's own upstream default
+(`CMakeLists.txt:245`, `config.h:53`), which is both issue 0906's value and what
+a regression here would revert to. That is inside the covered band with margin:
+5 sessions against a limit of 3.
+
+### Decision: the window is NOT lengthened
+
+Paying 12 minutes of suite time to move the frontier from 14 s to 18 s, for lease
+values nobody has ever shipped, is a bad trade — and the benefit the issue priced
+it against (covering all of `(0, 30_000)`) does not exist.
+
+**What landed instead**, in `packages/testing/nros-tests/tests/rtos_e2e.rs`:
+
+* the `MAX_ROUTER_SESSIONS` doc comment now carries the derivation above,
+  replacing the per-node `2L` table that predicted 8 where 5 was measured;
+* `PUBSUB_MIN_SAMPLES`'s "the lease values split cleanly" paragraph is corrected
+  — the middle of the band is a beat, not a clean split;
+* the assertion message no longer claims "any client lease under 30 s lapses
+  deterministically";
+* a new `COVERED_LEASE_SECS = 14` is PRINTED on every run, so a PASS states its
+  own scope (issue 0445's rule, one layer down): *"this count can fail a lease of
+  <= 14 s, and nothing above it"*. A verdict that does not report its scope cannot
+  be caught having the wrong one, which is how this survived.
+
+### The cheap alternative, priced and declined
+
+Dropping `MAX_ROUTER_SESSIONS` from 3 to 2 needs only ONE lapse, which buys
+`L <= 18 s` for **no wall clock at all** — the same band as doubling the cell,
+free. Not taken: the slack exists for a single genuine re-dial, nine healthy runs
+on an unknown subset of the twelve cells is not enough evidence to retire it on
+all four platforms, and turning this cell flaky is worse than the four seconds of
+lease band it buys. Whoever wants it should first measure the healthy session
+count on all twelve cells across a few runs; if it is 2 every time, the change is
+one constant.
+
+### Still unavailable, as filed
+
+Counting per NODE would make the slack "one re-open each". The client zid is
+regenerated on every session open — `zpico.c`'s
+`zpico_next_session_zid_counter()` mixes a monotonic counter and the clock into
+it — so grouping the router log by zid reads as more NODES rather than more
+sessions. Unchanged, and confirmed by reading the generator.
+
+## Appendix — the model, so the table can be re-derived
+
+```python
+def first_close(lease_s, ka=30.0, horizon=100000.0):
+    """Seconds from session open to the first close, per
+    `_zp_unicast_lease_task`: wake every `lease`, consume `_received` if set,
+    otherwise close. The handshake sets it at t=0; an idle router sets it every
+    `ka` seconds."""
+    received, t, k = True, 0.0, 0
+    while t < horizon:
+        prev, k = t, k + 1
+        t = k * lease_s
+        if int(t // ka) - int(prev // ka) > 0:
+            received = True
+        if received:
+            received = False
+        else:
+            return t
+    return None
+```
+
+`first_close(10) == 20.0`, matching issue 0906's measured ~20 s and the cell's
+measured 5 sessions (`2 + floor(60 / 20)`). Sessions in a talker life `D` are
+`2 + floor(D / first_close(L))`; the cell fails when that exceeds
+`MAX_ROUTER_SESSIONS`.
 
 ## Not a regression
 
-Nothing here is newly broken — this is the standing accuracy of a check that has
-always been a count. It is filed because issue 1044 established the bound
-precisely enough to act on, and a test that can pass on a build it exists to
-reject should not live only in a doc comment.
-
-## Acceptance
-
-A build with `Z_TRANSPORT_LEASE_MS` anywhere in `(0, 30_000)` fails this cell
-regardless of how far apart the two nodes start.
-
-
-## RESOLVED 2026-09-05 — and the mechanism above is WRONG in two places
-
-Fixed by `PUBSUB_MIN_SAMPLES` 60 -> 70, with each `pubsub_window` arm raised
-+10 s to keep its headroom. But the reasoning that produced the 120 s proposal
-does not survive reading the cell, and the corrections are the useful part.
-
-**1. The listener is spawned FIRST, not after the talker.** `rtos_e2e.rs` starts
-the listener, sleeps `stabilization_delay()` — 20 s on freertos / nuttx /
-threadx_riscv64, 1 s on threadx-linux — and only then starts the talker. So the
-LATER node is the talker. The skew runs the other way, and it gives the earlier
-node EXTRA observation rather than robbing the later one.
-
-**2. There is no fixed window for skew to push a lapse past.** The run ends when
-`collect_until_count` sees the LISTENER's Nth sample, and those samples cannot
-arrive until the talker is up and publishing. So the later node always gets
-~N seconds of its own uptime whatever the skew is. `pubsub_window` is the
-TIMEOUT on that collection, not the length of the observation.
-
-Both halves of "start skew can push one node's only lapse past the window's end"
-therefore fail: the node it names is the early one, and the end it names is not
-fixed.
-
-**What is real is the MARGIN, at the top of the band.** The talker's uptime at
-the assertion is ~N seconds; its first lapse is at `2L`, which for `L -> 30 s`
-is `-> 59.8 s`. Against 60 samples that is a **sub-second** margin, and missing
-it drops the count to 3 — a PASS on a build this cell exists to reject. That is
-the same conclusion the issue reached, reached correctly.
-
-    lease L    sessions@60    sessions@70    (limit 3)
-        5          16             18
-       10           9              9
-       20           5              5
-       25           4              4
-       29           4              4
-     29.9           4              4
-    healthy L=60:   2 sessions, passes correctly at both
-
-The table is the point: the verdict does not change, the MARGIN does — 0.2 s
-becomes 10.2 s, about 17 % of the lapse period, against a lapse that is
-timer-driven and jitters in milliseconds.
-
-**Cost.** +10 s per cell, 12 cells, ~2 minutes total — against the ~12 minutes
-the 120 s direction would have cost. What 120 s buys beyond this is a SECOND
-lapse per node, i.e. tolerance of missing one entirely; no mechanism on record
-misses a timer by ten seconds, so that is margin nobody has priced a need for.
-
-**Not run here.** The cell needs QEMU and built fixtures; this change is
-justified by the arithmetic above and compile-checked (`cargo check --test
-rtos_e2e`). The acceptance — every `L` in `(0, 30_000)` fails the cell — is a
-property of the count, and the count is unchanged; what was bought is the margin
-that makes it observable.
-
-**The per-NODE counting section stands unchanged.** The zid really is
-regenerated per session (`zpico_next_session_zid_counter`), so grouping by zid
-still reads as more nodes rather than more sessions. Nothing here needed it.
+Nothing here was newly broken. What is now different is that the cell's coverage
+is derived rather than asserted, and it says so at runtime.

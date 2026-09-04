@@ -692,31 +692,23 @@ fn boot_budget(platform: Platform) -> Duration {
 /// `keep_alive: 2`, i.e. an idle router speaks every **30 s**. zenoh-pico takes
 /// `min(peer_lease, Z_TRANSPORT_LEASE)`. So the lease values split cleanly:
 ///
-/// * `L >= 30 s` — the router is heard before the deadline; the session holds
-///   indefinitely. The shipped 60 s is in this set.
-/// * `L < 30 s` — it cannot be heard in time, and the session closes at
-///   `2L < 60 s`. Issue 0906's 10 s is in this set.
+/// * `L >= 30 s` — every `L`-wide check window contains a keep-alive; the
+///   session holds indefinitely. The shipped 60 s is in this set.
+/// * `2L < 30 s`, i.e. `L < 15 s` — the second window contains none and the
+///   session closes at `2L`. Issue 0906's 10 s is in this set, and so is
+///   zenoh-pico's own upstream default, which is what a regression here would
+///   revert to.
 ///
-/// 60 samples was exactly the frontier between those two for DELIVERY: every
-/// client-lease configuration that cannot hold a session fails on delivery, and
-/// none that can hold one is asked to prove more. A shorter window readmits part
-/// of the broken half (a 40 s window passes any `L >= 20 s`).
-///
-/// **70, not 60, because a second assertion now shares this window** (issue
-/// 1056). `assert_no_session_churn` needs each node to be up for longer than one
-/// lapse period, and the worst case in the broken band is `L -> 30 s`, lapsing
-/// at `2L -> 59.8 s`. Against 60 samples the later node's uptime is ~60 s, so
-/// that lapse sits under a SUB-SECOND margin: miss it and the count is 3, which
-/// is a PASS on a build this cell exists to reject. 70 gives ~10 s of margin —
-/// about 17 % of the lapse period, against a lapse that is timer-driven and so
-/// jitters in milliseconds.
-///
-/// Priced deliberately: +10 s per cell (12 cells, ~2 min total) against the
-/// +60 s per cell (~12 min) that issue 1056 first proposed, and it buys the same
-/// acceptance. What the 120 s version buys beyond this is a SECOND lapse per
-/// node, i.e. tolerance of missing one entirely; there is no mechanism on record
-/// that misses a timer by ten seconds, so that is margin nobody has priced a
-/// need for.
+/// **Corrected (issue 1056): the middle is not a clean split.** For
+/// `15 s <= L < 30 s` the first close is neither `2L` nor never — it is the end
+/// of the first `L`-window that no 30 s keep-alive lands in, which is a beat
+/// between `L` and 30 and runs away as `L -> 30`: 45 s at `L = 15`, 80 s at 20,
+/// **899 s at 29**, 9000 s at 29.9. The table at [`MAX_ROUTER_SESSIONS`] has the
+/// numbers. So 60 samples is the frontier for the DETERMINISTIC half of the
+/// broken set (`L <= 14 s`), not for all of it, and no affordable sample count
+/// reaches the top of the band — 120 samples buys `L <= 18 s`, 180 buys
+/// `L <= 22 s`. A shorter window would readmit part of what IS covered (a 40 s
+/// window passes any `L >= 10 s`); a longer one buys leases nobody ships.
 ///
 /// **The bound this does NOT cover, stated:** a defect whose first symptom is
 /// beyond 60 s of session life stays invisible here — the shipped 60 s lease's
@@ -780,44 +772,81 @@ const ROUTER_SESSION_LOG_FILTER: &str = "zenoh_transport=debug";
 /// because a lease of `L` costs one re-open per node per `2L` and issue 0906's
 /// 10 s lease measured FIVE in this cell's window.
 ///
-/// # The blind spot, stated (issue 1044)
+/// # What this count actually covers, and what it does not (issues 1044, 1056)
 ///
-/// This is a COUNT, and the thing it stands in for is a RATE. Work the
-/// arithmetic: a client lease `L < 30 s` cannot hear the router's 30 s
-/// keep-alive, so each node re-dials every `2L`, and in a `W`-second window each
-/// contributes about `floor(W / 2L)` re-opens on top of its first session.
+/// This is a COUNT and the thing it stands in for is a RATE, so the band it
+/// separates has to be derived rather than assumed. The derivation below
+/// REPLACES the "each node re-dials every `2 x lease`" table that stood here:
+/// that table predicted **8** sessions for issue 0906's 10 s lease where the
+/// cell measured **5**, and the discrepancy was recorded without being chased.
+/// Chasing it is what produced this.
 ///
-/// At `W = 60`:
+/// **One node lapses, not two.** `_zp_unicast_lease_task`
+/// (zenoh-pico `src/transport/unicast/lease.c`) wakes every `lease` ms and
+/// closes only if `_received` was false for that whole window; any inbound frame
+/// sets it. The LISTENER is fed a 1 Hz sample stream by the router, so its
+/// windows always contain traffic and it never lapses. The TALKER hears nothing
+/// back but keep-alives — our fork's own `config.h` says so: *"a pure publisher
+/// hears nothing back and closes at 2 x Z_TRANSPORT_LEASE"*. So
+/// `sessions = 2 + talker lapses`, and 0906's five is `2 + floor(60 / 20)`
+/// exactly.
 ///
-/// | lease | re-opens per node | sessions | verdict |
+/// **The lapse period is `2L` only while `2L < 30 s`.** The check window is `L`
+/// wide and `rmw_zenohd` speaks every 30 s (`lease: 60000, keep_alive: 2`), so
+/// the session dies at the end of the first `L`-window that no keep-alive falls
+/// into. That is a beat between `L` and 30, and it diverges as `L -> 30`:
+///
+/// | lease | first close | sessions in a 60 s talker life | verdict |
 /// | ---: | ---: | ---: | --- |
-/// | 10 s | 3 | ~8 (5 measured) | fails |
-/// | 20 s | 1 | 4 | fails |
-/// | 29 s | 1 | 4 | fails |
-/// | >= 30 s | 0 | 2 | passes, correctly |
+/// | 10 s | 20 s | 5 (measured) | fails |
+/// | 14 s | 28 s | 4 | fails |
+/// | 15 s | 45 s | 3 | passes — inside the slack |
+/// | 20 s | 80 s | 2 | passes |
+/// | 29 s | 899 s | 2 | passes |
+/// | 29.9 s | 8999 s | 2 | passes |
+/// | >= 30 s | never | 2 | passes, correctly |
 ///
-/// So the band is covered on paper — but only because BOTH nodes lapse inside
-/// the window. They do not start together: the listener is launched after the
-/// talker's readiness banner, so for a lease near the top of the band one node's
-/// single lapse can fall past the window's end, giving 3 sessions and a PASS on
-/// a build that is broken. The exposure is to start SKEW, not to the lease.
+/// **So the covered band is `L <= 14 s`, and no AFFORDABLE window reaches 30 s.**
+/// (Every `L < 30` closes eventually, so a long enough window would see it — at
+/// `L = 29.9` that is two closes of 9000 s each, five hours per cell.)
+/// Issue 1056 proposed doubling the cell to 120 s to cover all of `(0, 30_000)`;
+/// the arithmetic does not support it. A 120 s talker life moves the band to
+/// `L <= 18 s` and a 180 s one to `L <= 22 s` — 12 and 24 extra minutes across
+/// the twelve cells, for leases nobody has ever shipped. What IS shipped
+/// is 60 s (here) and 10 s (zenoh-pico's own default, and 0906's regression),
+/// and the cell separates those with margin.
 ///
-/// Two ways to close it, neither taken here:
+/// **Start skew is not the exposure.** Both nodes must participate for all
+/// [`PUBSUB_MIN_SAMPLES`] samples, so each one's observed life is at least that
+/// span whatever the skew; the skew lengthens the EARLIER node's life and leaves
+/// the later one alone. Measured across nine stored router logs: opens 0.00 s to
+/// 20.0 s apart, router span 60.6-82.2 s, later node alive ~60 s in every one,
+/// and exactly 2 sessions in all nine.
 ///
-/// * a longer `W` — at 120 s every lease under 30 s produces at least two
-///   re-opens per node, so skew cannot hide one. It doubles the cell.
-/// * counting per NODE instead of in aggregate, which would let the slack be
-///   "one re-open EACH" and make skew irrelevant. **Not available**: the client
-///   zid is regenerated on every session open — `zpico.c`'s
-///   `zpico_next_session_zid_counter()` mixes a monotonic counter and the clock
-///   into it — so the router log cannot tell one node re-dialling twice from two
-///   nodes dialling once, and grouping by zid would read as more nodes rather
-///   than more sessions.
+/// **The slack of one is what costs the 15-18 s band.** Dropping
+/// `MAX_ROUTER_SESSIONS` to 2 would buy `L <= 18 s` for no wall clock at all,
+/// since it only needs ONE lapse. Not taken: the slack is there for a single
+/// genuine re-dial, nine healthy runs is not enough evidence to retire it on all
+/// four platforms, and turning this cell flaky is worse than the band it buys.
+///
+/// **Per-NODE counting would make the slack "one re-open each" and is still not
+/// available**: the client zid is regenerated on every session open —
+/// `zpico.c`'s `zpico_next_session_zid_counter()` mixes a monotonic counter and
+/// the clock into it — so grouping the router log by zid reads as more NODES
+/// rather than more sessions.
 ///
 /// The gaps between consecutive opens are printed on both paths below, so a
 /// human reading a run can see the period even where the count cannot assert on
 /// it: evenly spaced opens are a lapse, one late outlier is a drop.
 const MAX_ROUTER_SESSIONS: usize = 3;
+
+/// The largest `Z_TRANSPORT_LEASE_MS` this cell can still fail, in seconds.
+///
+/// Derived at [`MAX_ROUTER_SESSIONS`] from the talker's ~60 s life, the router's
+/// 30 s keep-alive cadence and the one-slot slack. Printed on every run so a
+/// PASS says what it proved: leases above this are NOT covered here, and no
+/// affordable window covers the top of the band.
+const COVERED_LEASE_SECS: u32 = 14;
 
 /// Turn on the router's accept log for this test process.
 ///
@@ -901,13 +930,21 @@ fn assert_no_session_churn(platform: Platform, lang: Lang, port: u16, window: Du
         )
     });
     let sessions = count_pattern(&log, ROUTER_SESSION_MARKER);
+    // Say what this verdict covers, not just what it counted (issue 1056; the
+    // same rule as issue 0445 one layer up — a check that does not report its
+    // own scope cannot be caught having the wrong one). A PASS here means "no
+    // lease at or below COVERED_LEASE_SECS", never "the lease is healthy": the
+    // band above it is unreachable from a count, at any window length.
     eprintln!(
-        "[{} {}] router sessions opened: {} (max {}); gaps between opens: {}",
+        "[{} {}] router sessions opened: {} (max {}); gaps between opens: {}; \
+         this count can fail a lease of <= {} s, and nothing above it \
+         (see MAX_ROUTER_SESSIONS)",
         platform,
         lang,
         sessions,
         MAX_ROUTER_SESSIONS,
-        session_open_spacing(&log)
+        session_open_spacing(&log),
+        COVERED_LEASE_SECS,
     );
     assert!(
         sessions >= 2,
@@ -933,17 +970,21 @@ fn assert_no_session_churn(platform: Platform, lang: Lang, port: u16, window: Du
         sessions <= MAX_ROUTER_SESSIONS,
         "{platform} {lang} pubsub E2E: the router opened {sessions} sessions in {window:?} \
          for TWO nodes — they are re-dialling on a timer, not holding one session each.\n\
-         That is issue 0906's signature: zenoh-pico closes a session after 2 x \
-         `Z_TRANSPORT_LEASE` of silence, and `rmw_zenohd` speaks only every 30 s \
-         (`lease: 60000, keep_alive: 2`), so any client lease under 30 s lapses \
-         deterministically. Note delivery can look PERFECT while this fails — the reopen \
+         That is issue 0906's signature: zenoh-pico's lease task closes a session at the \
+         end of the first `Z_TRANSPORT_LEASE`-wide window with nothing received, and \
+         `rmw_zenohd` speaks only every 30 s (`lease: 60000, keep_alive: 2`), so a client \
+         lease under 15 s lapses deterministically at 2 x lease (issue 1056 — above 15 s \
+         it is a beat against the 30 s cadence and this count stops seeing it, which is \
+         why a PASS here is scoped, not clean). Note delivery can look PERFECT while this \
+         fails — the reopen \
          is fast now, which is exactly why the count is what this asserts on. Check \
          `Z_TRANSPORT_LEASE_MS` in `packages/rmw/zenoh/nros-zpico-build/src/lib.rs` \
          (60_000) and what the leaf actually BAKED — issue 1005: the staleness probe does \
          not watch that constant, so a stale image can carry an old value.\n\n\
          Sessions:\n{}\n\nGaps between opens: {} — evenly spaced means a lease \
-         lapsing on a timer (the period is 2 x lease); one outlier means a single \
-         dropped link.",
+         lapsing on a timer (the period is 2 x lease while 2 x lease < 30 s, and a \
+         longer beat against the router's keep-alive above that); one outlier means \
+         a single dropped link.",
         session_lines,
         session_open_spacing(&log),
     );
