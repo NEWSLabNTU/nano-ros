@@ -296,6 +296,7 @@ fast-serial: \
     workspace-build-output \
     workspace-fmt \
     workspace-order \
+    box-sync-covers-tracked-source \
     zenoh-config-template \
     zenohd-flag-invocations \
     zenohd-resolution-parity \
@@ -1915,6 +1916,16 @@ submodule-pins:
 # template could not express. Phase 415 made generation lossless; this keeps it
 # so. Same shape as RFC-0054's committed bindgen output plus
 # `check-abi-bindings`. Offline: no cmake, no configure.
+# `ros2-box-sync.sh` excludes build-output directories by NAME, and the tree has
+# tracked SOURCE whose names match. That collision has eaten tracked files FOUR
+# times, each found as a build failure inside the box naming something else —
+# most recently `packages/cli/build-support/`, which left the box unable to
+# compile `nros` at all. Anchoring fixed one instance and directory-only
+# patterns fixed another; neither fixed the class.
+[private]
+box-sync-covers-tracked-source:
+    @python3 scripts/check-box-sync-covers-tracked-source.py
+
 [private]
 zenoh-config-template:
     @python3 scripts/check-zenoh-config-template.py

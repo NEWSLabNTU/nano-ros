@@ -109,6 +109,27 @@ exclusions=(
     --exclude 'target/'
     --exclude 'target-*/'
     --exclude 'build/'
+    # issue 1046 — `build-*/` is a BUILD-OUTPUT pattern and `packages/cli/
+    # build-support/` is tracked SOURCE. Excluding it left the box unable to
+    # compile `nros` at all:
+    #
+    #   error: couldn't read `nros-cli-core/../build-support/submodule_watch.rs`
+    #
+    # This is the FOURTH time this rule has eaten tracked source. The comment
+    # above records the first three and the fix each time — anchor it, then make
+    # every pattern end in `/` so it matches directories only. Both were right
+    # and neither was sufficient: a tracked directory whose NAME begins with
+    # `build-` still matches a directory-only pattern.
+    #
+    # Re-included AHEAD of the exclusion, the same way `/zephyr-workspace/**/
+    # build/***` is above — rsync takes the first matching rule. There is
+    # exactly one such directory in the tree today:
+    #
+    #   git ls-files | grep -oE '(^|/)build-[^/]+/' | sort -u
+    #
+    # `check-box-sync-covers-tracked-source` runs that sweep so a second one
+    # cannot be added silently.
+    --include '/packages/cli/build-support/***'
     --exclude 'build-*/'
     # issue 0925 — the GENERATED workspace manifests, which NAME the `build/`
     # members the rule above excludes.
