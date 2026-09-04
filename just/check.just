@@ -149,6 +149,7 @@ fast-serial: \
     cyclone-backend-sources \
     cyclone-domain-not-pinned \
     declared-qos-header \
+    default-gates-run-somewhere \
     deploy-board-resolves \
     doc-recipe-refs \
     doc-refs \
@@ -1787,6 +1788,17 @@ board-cargo-config-applied:
 [private]
 generated-schema-coverage:
     @python3 scripts/check-generated-schema-coverage.py
+
+# issue 1040 — `check-api-parity` sat in `just check`'s DEFAULT list and ran in
+# NO workflow at all: not pull_request, not merge_group, not nightly, not
+# dispatch. Its reds were therefore invisible between local full-tier runs, and
+# three landed on main in a single day alongside four others.
+#
+# The bar is a DAILY signal, not a blocking one — `check-build` is
+# schedule/dispatch-only for good reason and must stay that way.
+[private]
+default-gates-run-somewhere:
+    @python3 scripts/check-default-gates-run-somewhere.py
 
 # `nros sync` skips the leaf with a count instead of a name. Buildless.
 [private]

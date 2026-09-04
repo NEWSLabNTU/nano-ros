@@ -787,12 +787,27 @@ jobs:
       # `borrowed-e2e` since at least 2026-09-01 with nobody noticing, which is
       # issue 0993's whole thesis arriving on schedule. Filed separately; a lane
       # cannot start gating pull requests while it is already red.
-      - name: just check build + no_std (nightly / manual only)
+      - name: just check build + no_std + api-parity (nightly / manual only)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
           source ./activate.sh
           just check build
           just check no-std
+          # issue 1040 — `check-api-parity` ran in NO workflow at all. Not on
+          # pull_request, not on merge_group, not nightly, not on dispatch:
+          # `grep -rl api-parity .github/workflows/` returned nothing. It
+          # existed only as a local recipe, so an unclassified row was invisible
+          # until somebody happened to run the full tier — and three landed on
+          # main on 2026-09-04 alone.
+          #
+          # It belongs HERE and not on the merge gate: it re-extracts our own
+          # surface with clang and nightly rustdoc, which is why it is not on
+          # the fast line. Making it required is what deadlocked the queue when
+          # `check-build` was required with prerequisites no CI job builds
+          # (`check-lane-contracts` now forbids that shape). A daily signal on
+          # the lane that already has one costs nothing extra and is the whole
+          # gap.
+          just check api-parity
 
       # Aspirational umbrella-decoupling guard — EXPECTED TO FAIL until the
       # Phase 104.A migration completes. Advisory only. (Build tier, non-push.)
