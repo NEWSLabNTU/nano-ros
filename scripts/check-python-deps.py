@@ -112,7 +112,7 @@ GROUPS = {
         ],
     ),
     "sdk-tools": (
-        "scripts/sdk/verify-index.py on Python older than 3.11 (needs tomllib)",
+        "scripts/sdk/{verify-index,check-qemu-source-features}.py on Python older than 3.11 (needs tomllib)",
         [("tomllib", "tomli")],
     ),
     # issue 0885 — the DEV utilities: tools a contributor runs, not a build.

@@ -3022,10 +3022,17 @@ no-std:
 
 # Verify nros-sdk-index.toml + the QEMU configure flags
 # (the `sdk-index` job in .github/workflows/gate.yml). Buildless + fast.
+#
+# The third one is issue 1006: a qemu recipe with no `dist` is source-built by
+# EVERY user, so a backend it leaves auto-detected makes the runtime dependency
+# set a property of that user's machine. `check-dist-runtime-deps` can only see
+# that after a provision (and CI never provisions esp32-qemu), so the static
+# half lives here.
 [group("ci")]
 sdk-index:
     python3 scripts/sdk/verify-index.py nros-sdk-index.toml
     ./scripts/sdk/check-qemu-configure.sh
+    python3 scripts/sdk/check-qemu-source-features.py nros-sdk-index.toml
 
 # #310 — gate the in-tree cli sub-workspace's rustfmt-cleanliness (it is outside
 # the root workspace that `check-workspace`'s `cargo fmt --check` covers).

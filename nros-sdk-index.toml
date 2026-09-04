@@ -379,12 +379,21 @@ version = "esp-develop-nros1"
 # applied to source recipes; probed BEFORE the build so the failure names
 # packages).
 #
-# The rest are RUNTIME sonames the built binary links unconditionally, found by
+# The rest are RUNTIME sonames the built binary linked, found by
 # `check-dist-runtime-deps` against a source build of this very recipe. Each was
 # already a `[prereq.*]` key; only this list was missing them, which is the
-# hand-authored half issue 0926 named. They are core (zlib, pcre2, selinux,
-# tinfo, openssl via glib and qemu's block layer), not optional backends, so
-# they hold for any build of this recipe on any host.
+# hand-authored half issue 0926 named.
+#
+# They were called core, and three of them are NOT — read off the fork's own
+# `meson.build` at the pinned tag (issue 1006). Unconditional: `zlib`
+# (`dependency('zlib', required: true)`) and `pcre2` (glib's transitive).
+# `selinux` and curses -> `libtinfo` are AUTO-DETECTED features like every other
+# backend, and qemu links no openssl anywhere in `meson.build` at all — `libssl3`
+# arrived through libcurl/libssh, which the `configure` below now disables BY
+# NAME. So those three are expected to leave the closure on the next rebuild.
+# They stay declared until one happens: `check-dist-runtime-deps` checks
+# COVERAGE, not minimality, so an over-declaration is safe, while deleting them
+# without a re-measure would be a guess.
 system = [
     "libglib2-dev",
     "libpixman-dev",
@@ -411,7 +420,43 @@ ref = "esp-develop-9.2.2-20260417"
 # alternative (patching upstream C in a vendored fork we do not maintain) is
 # strictly worse. `[tool.qemu]` does not need it — it is 11.0.0 and normally
 # arrives as a prebuilt `dist`.
-configure = "./configure --target-list=riscv32-softmmu --prefix={prefix} --enable-gcrypt --enable-slirp --disable-werror --disable-strip --disable-user --disable-capstone --disable-vnc --disable-gtk --disable-sdl --disable-docs"
+#
+# issue 1006 — THE REST OF THIS LINE IS A LINK-SURFACE PIN, not taste. qemu's
+# configure AUTO-DETECTS every optional backend: a feature whose `--enable-`/
+# `--disable-` is not passed stays `auto`, so `dependency(..., required:
+# get_option(<f>))` resolves against whatever dev headers the BUILD HOST happens
+# to carry and the binary links them. This recipe is source-built with NO dist —
+# every user runs it — so an unpinned feature makes the runtime dependency set a
+# property of the machine rather than of the recipe. Measured:
+# `check-dist-runtime-deps` against a source build here found 69 sonames no
+# `[prereq.*]` declares (audio, X11, curl/ssh/usb/dbus), which is exactly why
+# DECLARING them would have recorded one host's accident as a contract.
+#
+# What is left reachable is what `-M esp32c3 -icount 3 -nographic -drive
+# file=...,if=mtd,format=raw -nic user,model=open_eth` needs (the invocation in
+# `scripts/esp32/launch-esp32c3.sh` and `nros-tests/src/esp32.rs`): TCG, the raw
+# block layer, slirp, and gcrypt for the fork's secure-boot crypto. The rest is
+# off BY NAME, in groups: UI, audio, host-device passthrough, network/format
+# block drivers, TLS, and the remaining host libraries.
+#
+# NOT `--audio-drv-list=` on its own, which is the fix the issue prescribed and
+# which the tag REFUTES: `audio/meson.build` builds a module for every driver
+# whose dependency `.found()`, not for the ones named in `audio_drv_list`, so an
+# empty list only changes `CONFIG_AUDIO_DRIVERS` and leaves libasound/libpulse
+# (and libpulse's libsndfile/FLAC/vorbis/ogg/X11 tail) linked. The per-driver
+# `--disable-alsa --disable-pa ...` is what cuts them, and with all of them off
+# the default list resolves to empty anyway, so the list flag buys nothing.
+#
+# Every flag token here is ACCEPTED BY THIS TAG — checked against the fork's own
+# generated `scripts/meson-buildoptions.sh` and configure's case list at
+# `esp-develop-9.2.2-20260417`, where an unrecognised option is `ERROR: unknown
+# option`, a hard configure failure. What the resulting closure actually is
+# stays UNMEASURED until someone runs `nros setup --tool esp32-qemu` and re-runs
+# `check-dist-runtime-deps` (this recipe was not rebuilt to land the pin).
+#
+# Left auto DELIBERATELY: fdt (the riscv boards require it), pixman, zlib
+# (`required: true`), and the slirp/gcrypt pair enabled above.
+configure = "./configure --target-list=riscv32-softmmu --prefix={prefix} --enable-gcrypt --enable-slirp --disable-werror --disable-strip --disable-user --disable-capstone --disable-docs --disable-tools --disable-guest-agent --disable-gtk --disable-vnc --disable-sdl --disable-sdl-image --disable-curses --disable-spice --disable-spice-protocol --disable-dbus-display --disable-opengl --disable-virglrenderer --disable-png --disable-vte --disable-xkbcommon --disable-alsa --disable-pa --disable-jack --disable-oss --disable-sndio --disable-pipewire --disable-libusb --disable-usb-redir --disable-smartcard --disable-u2f --disable-canokey --disable-brlapi --disable-libudev --disable-mpath --disable-curl --disable-libssh --disable-rbd --disable-glusterfs --disable-libiscsi --disable-libnfs --disable-blkio --disable-fuse --disable-gnutls --disable-seccomp --disable-cap-ng --disable-attr --disable-virtfs --disable-numa --disable-selinux --disable-libdw --disable-libcbor --disable-libkeyutils --disable-auth-pam --disable-vde --disable-af-xdp --disable-bpf --disable-linux-aio --disable-linux-io-uring --disable-libpmem --disable-libdaxctl --disable-zstd --disable-lzo --disable-snappy --disable-bzip2 --disable-lzfse"
 install = "ninja -C build -j$(nproc) && ninja -C build install"
 
 # issue 0486 — espflash packs an ELF into the ESP32 flash image the QEMU runner
