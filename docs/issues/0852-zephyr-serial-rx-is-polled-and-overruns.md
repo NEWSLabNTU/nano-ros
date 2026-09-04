@@ -464,3 +464,47 @@ linked here — but anyone who does compile it gets the same class.
    keeps certifying the deleted map.
 5. A `_Static_assert` in the shim that the cast is sound. It fails today, which
    is the point.
+
+## Deployment note — a Kconfig DEFAULT does not reach an already-configured build
+
+Found while verifying the fix, and it cost an hour. Changing
+`NROS_ZENOH_READ_PRIORITY`'s default in `zephyr/Kconfig` from 16 to 200 left
+every existing `zephyr-workspace/build-*` image on **16**, and
+`cmake <build-dir>` did **not** move it: Zephyr's `.config` is STICKY (it keeps
+`.config.old` beside it and treats the saved value as authoritative). So a
+re-configure — normally the sanctioned escape hatch for a bad generated build
+file — is not enough here.
+
+The targeted re-derive is to delete the generated config and let Kconfig
+rebuild it:
+
+```bash
+find zephyr-workspace -maxdepth 3 -path "*/zephyr/.config*" -delete
+just zephyr build-rust-examples
+```
+
+That is not a wipe: build dirs, objects and caches are untouched, and only the
+generated file that is the problem is removed. Afterwards:
+
+```
+CONFIG_NROS_ZENOH_READ_PRIORITY=200
+[ok] build-rust-talker-zenoh: transport [4, 4], pool [5, 14] — 8 pin(s)
+tier-priority-plan-image: OK (48 pin-check(s) over 6 image(s))
+```
+
+**CI is unaffected** — it configures from scratch — so this is a local-tree
+hazard only, and exactly the kind that makes a fix look inert when it is not.
+
+### The gate had to be made able to FAIL before it could confirm anything
+
+The sequence is the argument for the fix, and it is worth keeping:
+
+| | transport | tiers | `check-tier-priority-plan-image` |
+| --- | --- | --- | --- |
+| before | k_thread **14** (bottom) | 9, 10 | **OK** — modelled the dead function |
+| corrected gate, stale `.config` | 14 | 9, 10 | **FAILED** — inversion finally visible |
+| after the fix | **4** | 9, 10 | **OK**, and truthfully |
+
+The middle row matters most: a gate that models code nobody runs cannot fail,
+and a gate that cannot fail cannot confirm. It caught the real inversion in the
+first run where it was capable of seeing one.
