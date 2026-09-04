@@ -179,6 +179,58 @@ stored and later called on this target. That is a direction, NOT a diagnosis.
    something sized by a knob rather than a logic bug.
 
 
+## Resolved with the RISC-V toolchain (2026-09-04) — and the ASCII lead is WEAKENED
+
+`riscv32-esp-elf-addr2line` (esp-13.2.0, in `~/.espressif`) on the talker ELF.
+
+**`0x42051d70`, the only backtrace frame:**
+
+```
+.L0
+esp-hal-1.0.0/src/exception_handler/mod.rs:92
+```
+
+That is the exception handler ITSELF. There is no frame beneath it, because
+`ra` was corrupted along with `pc` — so the backtrace cannot name the caller,
+and step 1 of the previous plan is exhausted rather than pending.
+
+**`0x732f7264` is not a constant in the image.** Searched the whole file:
+
+| pattern | occurrences |
+| --- | ---: |
+| bytes `64 72 2f 73` (the value, little-endian) | 0 |
+| the text `s/rd` | 0 |
+| the text `dr/s` | 0 |
+
+So the value is ASSEMBLED AT RUNTIME, not loaded from a stored pointer or a
+literal. It also resolves to nothing (`??:0`) and lies outside every `LOAD`
+segment — the image maps `0x4038xxxx`, `0x3fc8xxxx` and `0x3c00xxxx`, nowhere
+near `0x732f7264`.
+
+### Correcting my own lead
+
+This issue opened by calling the ASCII reading "the whole lead". That was
+overstated, and the check above is what shows it: nothing in the image contains
+those bytes in either order. All four bytes of `0x732f7264` land in printable
+ASCII, but that happens by chance about 1.9% of the time, and one 4-byte
+coincidence is not evidence of a string. **Treat "the PC is a string" as
+unproven.**
+
+What survives from the earlier work is the stronger, measured fact: the value is
+IDENTICAL across three builds with different layouts, so whatever produces it is
+deterministic — but it is computed, not fetched from a constant.
+
+### What would actually move this
+
+* **A hardware watchpoint / single-step under `riscv32-esp-elf-gdb`** (also
+  installed here, in `~/.espressif/tools/riscv32-esp-elf-gdb`), attached to
+  QEMU's gdbstub. That is the instrument this needs: it can stop at the faulting
+  instruction with the register file intact and show what computed the value,
+  which static inspection cannot.
+* Everything reachable by reading the image or bisecting the source has now been
+  tried: seven single-variable images, a control on the other leaf, three
+  memory-pressure points, and both address lookups.
+
 ## The fault is on the CONNECTED path (2026-09-04)
 
 Found by accident while setting up gdb, and it is the sharpest cut yet.
