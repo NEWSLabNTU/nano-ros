@@ -190,23 +190,7 @@ Derived by convention, never authored in a new descriptor:
 | cmake value | the canonical name |
 | C define token | `UPPER(name)` |
 | cffi feature | `<cargo_feature>-cffi` |
-
-**Amended 2026-09-04 from implementation (phase-420 W5): `crate` is NOT
-derivable, and this table said it was.** "The package's `Cargo.toml`" holds for
-one and a half of the four RMW backends. `nros-rmw-xrce` ships **no
-`Cargo.toml`** at all and its `[rmw.provides.cargo].crate` names a *sibling*
-(`nros-rmw-xrce-cffi`); `nros-rmw-cyclonedds` states `sys_crate =
-"cyclonedds-sys"`, also not its own. A convention with exceptions is not a
-convention, so `crate` stays authored and xrce is the derivation ratchet's one
-grandfathered row.
-
-**Names are derivable per family, not universally.** They come from the
-announcement for `rmw` and `serdes`. They cannot for `board`:
-`nros-board-nuttx-qemu` declares **two** `[[board]]` entries and announces seven
-names in one flat list, and `<nano_ros_provides>` carries no boundary that could
-attribute a name to an entry. `board` therefore stays a *named* family, and the
-FAMILIES shape phase-421 W4 introduced (`extract=None` meaning "nameless") is
-per family rather than a migration every family completes.
+| crate | the package's `Cargo.toml` |
 
 **A stated derivable field must equal its derived value** — a ratchet, so the
 existing rmw/board/platform descriptors are grandfathered where history forces a
@@ -251,6 +235,12 @@ silently took it.
 **Invariant:** a fetch without a digest is the same defect as an unpinned
 submodule. Every `FetchContent_Declare` / `ExternalProject_Add` in a discovered
 package carries `URL_HASH`, and any build script that downloads verifies one.
+For a git fetch the digest is `GIT_TAG <commit>` — never a tag or a branch, both
+of which are refs on a server we do not control, so upstream can change which
+tree we build with no local diff (issue 1060). Keep the tag beside it, in a
+comment or an index key, because it is what a human reads; and resolve the
+commit with `git ls-remote <repo> refs/tags/<tag>`, taking the peeled `^{}` line
+when there is one — an annotated tag's own sha is not a commit.
 
 ### D6 — The search path is an ordered list of roots
 
@@ -291,7 +281,30 @@ semantics, over the topological order `provider_scan` already computes.
   makes the user-facing story testable: any gap in the provider path now breaks
   our own build.
 - `nros build` remains offline. A vendor package needs network on its first
-  configure; a shared `FETCHCONTENT_BASE_DIR` makes that once per host.
+  configure, and that is once per HOST, not once per build directory — the
+  shared cache landed with issue 1060 and lives at `$NROS_HOME/fetch` (default
+  `~/.nros/fetch`, the sibling of the SDK store), overridable with
+  `-DNROS_FETCH_CACHE=<dir>` or `NROS_FETCH_CACHE` in the environment and
+  disabled with `OFF`; an unwritable location falls back to `<build>/_deps` with
+  a message rather than failing. `cmake/NanoRosCorrosion.cmake` is the worked
+  example.
+
+  The mechanism is NOT a shared `FETCHCONTENT_BASE_DIR`, which is what this
+  paragraph used to say. Measured: that variable moves all three of a
+  dependency's directories, and the shared subbuild dir records the GENERATOR
+  that populated it, so the second build tree on a different generator gets
+  `CMake step for <dep> failed` — a hard error, not a slow path. What is shared
+  is `SOURCE_DIR` + `SUBBUILD_DIR` (they must move together: ExternalProject's
+  clone step keys on a stamp in the subbuild and `rm -rf`s the source before
+  cloning, so a per-build subbuild destroys a shared source on every new build
+  dir), while `BINARY_DIR` stays local — it is the `add_subdirectory` binary
+  dir, and sharing it would be issue 0616 one layer over. Once the cache holds
+  the pinned commit, `FETCHCONTENT_SOURCE_DIR_<uc>` — the per-dependency form of
+  "do not download" — short-circuits population entirely: proven by configuring
+  in a network namespace with no route, and again with `GIT_REPOSITORY` pointing
+  at a path that does not exist. The project-wide
+  `FETCHCONTENT_FULLY_DISCONNECTED` is deliberately not set; a provider has no
+  business disconnecting its parent project's other dependencies.
 - The serdes family (RFC-0088) costs one `FAMILIES` row and one descriptor
   schema, because this RFC did the general work.
 
@@ -316,11 +329,6 @@ semantics, over the topological order `provider_scan` already computes.
 
 ## Changelog
 
-- 2026-09-04 — D4 amended from implementation (phase-420 W5): `crate` is not
-  derivable (xrce ships no `Cargo.toml` and names a sibling; cyclonedds names a
-  sys crate), and `names` is derivable per family — `board` cannot, because one
-  package declares two board entries and announces seven names with no boundary
-  between them.
 - 2026-09-04 — initial draft. Folds the packaging discussion: one recognition
   rule, `nros_cmake`/`nros_cargo`, three export tags with `<nano_ros_uses>` as
   the general consumption form, derived descriptor fields, vendor packages as
