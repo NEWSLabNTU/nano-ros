@@ -4,5 +4,3 @@
 # the line.
 docs/roadmap/phase-230-platform-layer-split.md	R1
 docs/roadmap/phase-275-276-branch-notes.md	R4
-docs/roadmap/phase-292-asi-reference-consumer-revisit.md	R1
-docs/roadmap/phase-325-uorb-interop-and-bridge.md	R1

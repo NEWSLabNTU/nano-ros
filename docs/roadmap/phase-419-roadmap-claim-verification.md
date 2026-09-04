@@ -9,9 +9,13 @@ R2 remains, with its cost measured.**
   NEITHER — 20 dead workflow references across 8 phases, 11 of them in
   phase-196 alone. R1, R3 and R4: not covered by anything.
 * **W2 done for R1, R3, R4** — `scripts/check-roadmap-claims.py`, fast line,
-  self-testing, ratcheted. Four findings baselined: 230 and 275 (already
-  corrected in an open PR, so their lines delete when it lands — the ratchet
-  will say so), and **292 and 325, which are live and unworked**.
+  self-testing, ratcheted. Four findings baselined and **two already worked**:
+  phase-292 (W1/W3/W4 landed the day after its "Draft" line was written, plus
+  three as-landed claims that have since drifted) and phase-325 (W0-W2 landed
+  on the very date its status says "Not started", and its blocker — issue 0362
+  — is resolved and archived, so W3 was never actually blocked). Baseline 4 →
+  2. The remaining two, 230 and 275, are corrected in an open PR and their
+  lines delete when it lands — the ratchet will say so.
 * **W2 R2 NOT done, and the reason is measured**: extending
   `check-ci-doc-workflow-refs` means giving it a baseline it does not have, for
   20 references most of which are legitimate history. Reported by W3 instead.
