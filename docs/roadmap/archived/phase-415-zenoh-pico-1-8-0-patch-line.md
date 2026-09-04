@@ -1,7 +1,22 @@
 # Phase 415 — the zenoh-pico patch line moves to 1.8.0
 
-**Status (2026-09-04). DONE.** `nano-ros` is 1.8.0 + 65 of our commits,
+**Status (2026-09-04). DONE — and re-verified against the remote the same day,
+which is what archives it.** `nano-ros` is 1.8.0 + 65 of our commits,
 individually preserved; the superproject pin moves with it.
+
+Every acceptance item below is observable from outside this doc, so it was
+checked rather than taken on the doc's word:
+
+| claim | how it reads today |
+| --- | --- |
+| the pin moved | `main` pins `c58531578`, whose `version.txt` is **1.8.0** (was 1.7.2) |
+| the branch is the line | `git ls-remote` — `refs/heads/nano-ros` **is** `c58531578`, tip and pin identical |
+| the branch is declared | `.gitmodules` records `branch = nano-ros` |
+| recovery ref survives | `refs/heads/backup/nano-ros-1.7.2-20260903` = `fa7ad0f5b`, on the remote |
+
+Note for anyone whose checkout still reads 1.7.2: `fa7ad0f5b` is that backup
+ref, and a working tree left on it builds the OLD line while `main` pins the
+new one. `git submodule update packages/rmw/zenoh/zpico-sys/zenoh-pico`.
 
 **The 2026-09-03 survey below was WRONG, and the correction is the useful part
 of this doc.** It reported an orphan line with no upstream ancestry, a keyexpr
