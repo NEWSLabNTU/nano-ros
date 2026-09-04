@@ -131,3 +131,47 @@ esp32-c3 board is just the one in this tree that does.
 `Application setup complete` and so is not this. The other two
 (`test_esp32_to_native`, `test_native_to_esp32`) grep for markers of the same
 kind and plausibly are, but that is unverified.
+
+
+## FIXED 2026-09-04 — and it took TWO changes, not one
+
+`[INFO] nros: Subscriber created for topic: /chatter` prints. It did not before,
+and neither did any other log record on this board.
+
+Both of these had to change; either alone leaves the console silent:
+
+1. **The `log` facade is unusable here** (the root cause above). Left in place
+   for boards that have atomics; the markers moved off it.
+2. **`nros_log` was no better off.** Nothing ever called `nros_log::init`, so
+   `dispatch_to_sinks` found a null sink list and HELD every record in the early
+   buffer for a board that never spoke. The board now installs
+   `nros_platform_cffi::log::PlatformSink` — where issue 0710 moved it from
+   `nros_log::sinks` — which speaks the platform ABI to the fn-pointer writer
+   `register_log_writer` already installed.
+
+The second one nearly shipped as a non-fix: routing the markers to `nros_log`
+alone moved them from one silent path to another, and the build looked fine. What
+caught it was `nm` on the ELF — `nros_platform_log_write` absent, so the sink was
+not compiled in at all.
+
+The three markers now emit through `nros_log::nros_info!`, reached via
+`nros_board_esp32_qemu::nros_log` rather than a new dependency on each leaf,
+because examples are standalone copy-out projects (RFC-0026) and already depend
+on the board.
+
+### Confirmed by the harness, not just by hand
+
+`test_esp32_talker_listener_e2e` previously died waiting for the LISTENER's
+`Subscriber created for topic:`. It now gets past that wait and fails later, on
+the TALKER's `Publishing:`. The listener half of the marker problem is closed.
+
+### What this exposed: the talker does not finish setup
+
+Run alone with a router up, the talker boots, brings up its network, prints
+`Ethernet ready.` — and stops. No `Application setup complete`, no `Publishing:`.
+The listener, same board and same build, gets all the way through.
+
+That is a SEPARATE defect from this issue, and it was invisible while the log
+silence hid where the image stopped. It is what remains of
+`test_esp32_talker_listener_e2e` and `test_esp32_to_native`, and it should be
+filed on its own once someone has looked at where the talker's setup stops.
