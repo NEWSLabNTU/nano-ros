@@ -20,6 +20,8 @@ NROS_REPO_ROOT="$repo_root"
 source "$script_dir/build-root.sh"
 # shellcheck source=scripts/build/source-manifest.sh
 source "$script_dir/source-manifest.sh"
+# shellcheck source=scripts/build/codegen-fingerprint.sh
+source "$script_dir/codegen-fingerprint.sh"
 
 IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$record"
 [ -n "$id" ] && [ -n "$builder" ] || {
@@ -37,17 +39,11 @@ IFS=$'\x1f' read -r id builder dir _pkg _mdir _target _profiles _output <<< "$re
     # Same fingerprint ladder phase-318 W1 established for the workspace lane:
     # prefer what the tool EMITS (stable across unrelated rebuilds), fall back to
     # the binary hash, never to "assume fresh".
-    nros_bin="$repo_root/packages/cli/target/release/nros"
-    if [ -x "$nros_bin" ]; then
-        bin_hash="$(sha256sum "$nros_bin" | awk '{print $1}')"
-        cache="$repo_root/.nros-cache/codegen-fingerprint/$bin_hash"
-        if [ -r "$cache" ]; then
-            fp="$(cat "$cache")"
-        elif fp="$("$nros_bin" codegen-fingerprint 2>/dev/null)" && [ -n "$fp" ]; then
-            mkdir -p "$(dirname "$cache")" && printf '%s' "$fp" > "$cache" || true
-        else
-            fp="$bin_hash"
-        fi
+    # The ladder itself lives in `codegen-fingerprint.sh` (issue 1018) — this
+    # lane and the workspace lane had a copy each, already drifted on the cache
+    # test (`-r` here, `-s` there) and on the fallback spelling. Same signature
+    # bytes: this lane's fallback carries no prefix, so it passes none.
+    if fp="$(nros_codegen_fingerprint "$repo_root")"; then
         printf 'tool:nros\0%s\0' "$fp"
     else
         printf 'tool:nros-absent\0'

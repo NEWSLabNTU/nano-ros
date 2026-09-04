@@ -186,3 +186,121 @@ the remaining work.
 * `integrations/platformio/nros_codegen.py` runs `codegen-system` per build with
   no stamping and a soft failure. PlatformIO has no reconfigure model for the
   cmake helper to hook, so it is out of this fix's reach and stays a known gap.
+
+## FOURTH SITE CLOSED 2026-09-05 (phase-424) — the `generated/` regeneration stamp had no edge at all
+
+The survey above is right about the three cmake consumers. There is a FOURTH
+place in the chain, on the shell side rather than in cmake, and it had no edge
+at all.
+
+### The place with NO edge: the Rust `generated/` tree
+
+`scripts/build/codegen-stamp.sh` decides whether a leaf's cached `generated/`
+survives, and its whole watch set was one file:
+
+```
+$ sed -n '/_codegen_stamp_sources/,/^}/p' scripts/build/codegen-stamp.sh
+packages/core/nros-core/src/action.rs
+```
+
+That answers "has the SHAPE the generated code must fit changed?" and never
+"has the code that GENERATES it changed?". Its own header even said so — *"Hard
+constraint (CLAUDE.md): we do not touch nros-cli's codegen logic"* — a rule from
+when the CLI was a submodule.
+
+Measured against three real CLI builds in one worktree:
+
+| CLI change | binary sha256 | `codegen-fingerprint` | stamp (old rule) |
+| --- | --- | --- | --- |
+| baseline | `255516c0…` | `080aec7d…` | `ec4700ee…` |
+| `packs/c/message.h.jinja` edited | `285098cb…` | `c763d69d…` | `ec4700ee…` **unmoved** |
+| `cmd/doctor.rs` string edited | `35591e2a…` | `080aec7d…` | `ec4700ee…` |
+
+A real emitter edit moved what the tool emits and the stamp did not notice.
+
+Nine of the ten call sites re-run `nros sync` unconditionally, so there the stamp
+only governs the removal of files codegen stopped emitting. The tenth is
+`just/zephyr-ci.just:170`, the one whose sync is CONDITIONAL:
+
+```sh
+if [ FORCE ] || ! nros_pkg_sync_stamp_fresh "$pkg" "$stamp" || [ ! -d "$dir/generated" ]; then
+```
+
+Force, a changed `package.xml`, or an absent `generated/`. Edit an emitter and
+none of the three fire, the stamp does not drift, `generated/` is not wiped, and
+every Zephyr Rust leaf compiles message crates the PREVIOUS CLI emitted. That is
+this issue's title, in the lane where it bites.
+
+### The fix
+
+`nros_codegen_stamp_compute` now also hashes `nros codegen-fingerprint`, in the
+same `tool:nros\0<fp>\0` encoding the two `.inputsig` lanes use.
+
+**Keyed on what the tool EMITS, which is phase-424's constraint and not a
+detail.** Measured on this host 2026-09-05: **168 distinct `nros` binaries
+against 11 distinct codegen fingerprints**. A binary-keyed stamp — this issue's
+own option (2), "stamp the generated output with the CLI's source hash" — would
+wipe and re-sync every leaf on the 157 rebuilds that emit identical code, and
+the CLI *source stamp* would be worse again: it moves for an edit to
+`cmd/doctor.rs` and for a `play_launch` submodule pin bump.
+
+The ladder that resolves the fingerprint had been written twice
+(`workspace-fixture-signature.sh`, `compile-check-signature.sh`) and had already
+drifted (`-s` vs `-r` on the cache, `binary:$hash` vs `$hash` on the fallback).
+A third copy was the wrong move, so it is now one helper,
+`scripts/build/codegen-fingerprint.sh`, with the fallback prefix as a parameter
+— both existing callers keep their exact signature bytes (verified: 110
+workspace + 40 compile-check records, 0 differing).
+
+Gate: `just check codegen-stamp-inputs` (`tests/codegen-stamp-tests.sh`, on the
+fast line). It asserts BOTH halves, because each alone has a trivial wrong
+implementation, and both mutations were run:
+
+* delete the fingerprint term → cases B and E fail (this issue, reintroduced);
+* substitute `sha256sum` of the binary → case C fails (phase-424's constraint,
+  violated).
+
+Its negative control re-applies the pre-fix rule to the same trees and requires
+it to stay blind.
+
+`check-export-f-closure` covers the make-leaf hazard the new helper creates:
+removing `nros_codegen_fingerprint` from `fixtures-build.sh`'s `export -f` list
+makes that gate fail by name.
+
+### 0835 budget
+
+Unchanged, and it must be said precisely: **no `.inputsig` signature moved.**
+Every row was recomputed with HEAD's scripts and with the refactored ones and
+compared — 110 workspace records and 40 compile-check records, **0 differing**
+(0835 counted 94 + 40; the manifest has grown since). The watch set gains no
+path and hashes no build output. The cost this fix does add lands on
+`generated/` wipes, and it is bounded by the fingerprint's movement rate
+(11 in 168) rather than the binary's.
+
+One-time cost: the stamp's input set changed, so every existing
+`<leaf>/generated/.codegen-stamp` mismatches once and each leaf re-syncs on its
+next build. `nros sync` materialises crates without compiling, and nine of the
+ten call sites were re-syncing on every build already.
+
+### Why THIS site keys on the fingerprint and the cmake sites key on the binary
+
+The two answers look contradictory and are not — read them against
+"Why the key is the binary and not `nros codegen-fingerprint`" above, whose two
+objections are both about the CMAKE sites specifically:
+
+1. *the corpus covers the message/service/action emitters only.* That is exactly
+   what this stamp governs — `nros sync` materialising a leaf's `generated/`
+   message crates. It governs no `codegen entry` and no `codegen-system` output,
+   so the corpus is not short for it.
+2. *a configure cannot write its own configure input.* This is not a configure
+   input. `nros_codegen_stamp_compute` runs in the shell, before `nros sync`, on
+   the same event that would rebuild the CLI — there is no ordering hazard to
+   design around.
+
+So the conservative binary key stays right for the four configure sites, and the
+emit key is right here. One issue, two sites, two correct answers; recorded
+together so the next reader does not "unify" them.
+
+The item under "Still open" is unaffected: the stale-CLI refusal's watch set is
+still the whole CLI closure, and narrowing it is still rejected for the reasons
+given there.
