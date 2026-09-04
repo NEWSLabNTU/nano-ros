@@ -943,10 +943,24 @@ config NROS_XRCE_TRANSPORT_MTU
 
 config NROS_XRCE_MAX_SUBSCRIBERS
     int "Maximum concurrent subscribers"
-    default 8
+    default -1
     help
       Maximum number of concurrent XRCE subscribers.
       Maps to XRCE_MAX_SUBSCRIBERS.
+
+      -1 means DERIVE: take the count from the image's entity inventory
+      (`nano_ros_node_register(... ENTITIES ...)`), the same
+      NROS_DERIVED_MAX_SUBSCRIBERS the zenoh pools use, so an action-carrying
+      image gets its action-client subscriptions counted too.
+
+      An image whose inventory refuses -- any component that declared no
+      ENTITIES -- falls through to the crate default of 8, which is what every
+      image did before issue 1033. Stating a number here still wins over both.
+
+      This is worth deriving: a slot is XRCE_SUBSCRIBER_RING_DEPTH x
+      XRCE_BUFFER_SIZE (32 x 1024) plus bookkeeping, so eight of them are
+      266,368 bytes of the session struct -- 86% of it on a one-subscriber
+      image, allocated from the Zephyr heap in a single request.
 
 config NROS_XRCE_MAX_SERVICE_SERVERS
     int "Maximum concurrent service servers"

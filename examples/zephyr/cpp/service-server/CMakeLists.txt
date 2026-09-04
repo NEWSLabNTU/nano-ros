@@ -46,4 +46,9 @@ nros_components_register_node(add_two_ints_server_lib
     PLUGIN zephyr_cpp_service_server::AddTwoIntsServer
     EXECUTABLE add_two_ints_server
     SHAPE configure
-    TYPED)
+    TYPED
+    # issue 1033 — what this image CREATES, read off its own source.
+    # The XRCE subscriber cap derives from this; absence means "nobody
+    # said" and the image keeps the 8-slot default.
+    ENTITIES
+             service_server:example_interfaces/srv/AddTwoInts:/add_two_ints)

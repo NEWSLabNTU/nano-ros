@@ -34,4 +34,10 @@ nros_components_register_node(fibonacci_action_server_lib
     PLUGIN zephyr_cpp_action_server::FibonacciServer
     EXECUTABLE fibonacci_action_server
     SHAPE configure
-    TYPED)
+    TYPED
+    # issue 1033 — what this image CREATES, read off its own source.
+    # The XRCE subscriber cap derives from this; absence means "nobody
+    # said" and the image keeps the 8-slot default.
+    ENTITIES
+             action_server:example_interfaces/action/Fibonacci:/fibonacci
+             timer)
