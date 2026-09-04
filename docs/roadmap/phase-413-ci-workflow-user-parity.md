@@ -81,6 +81,35 @@ conversion can be verified in a lane that is already red.
    detail in the log summary. Needs a real diagnosis before it can be trusted.
 3. **`nightly`** — failure ×4. `just nightly-triage` classifies by which STEP
    failed and flags cells red across a window; use it rather than reading runs.
+
+   **Triaged 2026-09-04 against run `33831829557`** (dispatched deliberately —
+   the scheduled run predated #245 and its `nuttx` cell was reproducing a fixed
+   bug, which is the issue-0859 trap). Six failing jobs, **zero product
+   regressions**; details in issue 1038. Three are one class — the job builds a
+   lane whose prerequisites its own `setup` never installs:
+
+   | cell | first thing it reached | owner |
+   | --- | --- | --- |
+   | `nuttx` | `riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)` | this wave |
+   | `threadx_riscv64` | cargo manifest-parse: missing `include` of the generated `nros-patch.toml` (issue 0463) | this wave |
+   | `esp32` | `esp32-qemu` source build needs `libglib2-dev`, `libpixman-dev`, `libgcrypt-dev` | **W3** |
+
+   `esp32` is W3's conversion unapplied rather than a missing mechanism: the
+   index declares all three as `[prereq.*]` AND in `[tool.esp32-qemu]`'s own
+   `system = [...]`, so `nros setup --system` already resolves them. Checked
+   against the gate as IMPLEMENTED (`check-workflow-indexed-apt.py`), not as
+   specified: it matches `apt(-get)? install` lines naming a `[prereq.*].apt`
+   package, which is duplication and is the right rule — but this site installs
+   nothing at all, so the gate is silent here by construction. Whether W3's
+   acceptance should also cover OMISSION is a decision for this wave's owner.
+
+   The other three cells are not conversions: `freertos` and `threadx_linux`
+   report `Real failures: 0 / 0` with all 9 e2e cases skipped on one shared
+   precondition (`_check-skip-budget` correctly refusing to call that a pass),
+   and `tier 2 nightly` is runner state (three fixture families missing
+   `.inputsig`). The `freertos`/`threadx_linux` skip reason is TRUNCATED in both
+   the log and the junit, so the cause is a hypothesis, not a diagnosis — see
+   1038 before acting on it.
 4. **`build-wide`** — expected to go green with W1/0992; if it does not, its
    remaining failure is now visible rather than buried under the include
    preflight.
