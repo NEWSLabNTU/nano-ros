@@ -578,7 +578,7 @@ the last 210 alone have probability (1/3)^210.
 ### Two bounds, and the second one matters
 
 * The images were built with zenoh-pico pinned at **1.7.2** (`fa7ad0f5`), not
-  main's 1.8.0, because **issue 1047** makes every NuttX zenoh fixture fail to
+  main's 1.8.0, because **issue 1035** makes every NuttX zenoh fixture fail to
   compile on main — `#if X == true` against NuttX's cast-valued `stdbool.h`. That
   is the same pin every earlier measurement in this issue used, so these runs are
   comparable with the issue's history rather than with today's `main`.
@@ -607,7 +607,7 @@ now can, where retries used to hide it.
 ### The one observer that could settle this is itself down
 
 Checked before proposing any disposition: the nightly `nuttx` platform cell is
-**red across all three runs in the window, for issue 1047** — the zenoh-pico
+**red across all three runs in the window, for issue 1035** — the zenoh-pico
 1.8.0 / NuttX `stdbool.h` preprocessor break, identical error text in CI run
 `33847619657`. It fails at BUILD, so it never reaches a cell.
 
@@ -617,7 +617,13 @@ pin; CI has not successfully run this cell since the zenoh-pico pin moved. So
 to be caught by, and closing this issue on a green tripwire would be closing it
 on a tripwire that cannot fire.
 
-**Order matters: fix 1047 first.** It restores the only observer, and then this
+The fix already exists and is queued: `a1c741db` on the zenoh-pico fork's
+`nano-ros` branch compares against `1` instead of `true`, with `c5853157` behind
+it for a second NuttX guard, and PR #345 carries the pin bump. So the observer
+comes back on its own; what this issue must not do is close before it does.
+
+**Order matters: land issue 1035's fix first** (PR #345, queued). It restores
+the only observer, and then this
 issue resolves itself either way — the nightly stays green and this closes with
 a tripwire that actually works, or it goes red and hands over the failing run
 that four rounds of investigation have been unable to produce on demand.
