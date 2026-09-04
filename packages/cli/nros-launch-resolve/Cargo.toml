@@ -44,5 +44,8 @@ path = "src/main.rs"
 ros-launch-resolve = { path = "../third-party/play_launch/src/ros-launch-resolve/resolve", default-features = false }
 clap = { version = "4", features = ["derive"] }
 eyre = "0.6"
-play_launch_parser = { path = "../third-party/play_launch/src/ros-launch-resolve/parser/crates/play_launch_parser" }
+# `default-features = false` drops the upstream `cli` feature: `clap` and
+# `env_logger` (and its `env_filter`/`regex`/`jiff` tree) exist only for
+# `play_launch_parser`'s own binary, which this crate never runs.
+play_launch_parser = { path = "../third-party/play_launch/src/ros-launch-resolve/parser/crates/play_launch_parser", default-features = false }
 serde_json = "1"
