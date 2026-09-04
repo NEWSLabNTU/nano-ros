@@ -160,8 +160,12 @@ endfunction()
 # pinning 0.6.1-nros1: 155 resolutions of 0.5.1 against 28 of 0.6.1 (issue 0625).
 #
 # Empty output means the CLI could not answer (not on PATH, or no such tool);
-# the caller falls through to FetchContent, which is the offline-hostile but
-# correct-version path.
+# the caller falls through to FetchContent — the correct-version path, and since
+# issue 1060 offline after its first run on the host: it fetches a COMMIT (not a
+# tag) into the shared cache at `$NROS_HOME/fetch`, and every later build dir
+# reuses that without touching the network. Still the fallback, not the
+# supported path — the SDK store's `dist` assets are sha256-verified, a git
+# clone is not.
 function(_nros_corrosion_store_dir out_var)
     set(${out_var} "" PARENT_SCOPE)
     # Issue 0754 — prefer the CLI the build was HANDED (`-D_NANO_ROS_
@@ -224,22 +228,160 @@ function(_nros_corrosion_store_dir out_var)
     endif()
 endfunction()
 
-# The FetchContent fallback tag. Read from `nros-sdk-index.toml`'s
-# `[tool.corrosion] upstream = "vX.Y.Z"` so the pin is not copied a third time
-# into cmake — the index and `just/workspace.just`'s `CORROSION_VERSION` are the
-# two spellings a provisioning run already uses. The literal below is the
-# fallback for a consumer who vendored `cmake/` without the index.
-function(_nros_corrosion_pin out_var)
-    set(_pin "v0.6.1")
+# The FetchContent fallback pin — a COMMIT, with the tag beside it (issue 1060).
+#
+# A tag is a ref on a server we do not control. If upstream retags, this build
+# switches to a different tree and NO FILE HERE CHANGES — no diff, no review, no
+# gate. So `GIT_TAG` below carries the digest. The tag stays because it is what a
+# human reads, what `nros-sdk-index.toml` records, and what
+# `just/workspace.just`'s `CORROSION_VERSION` and `nros setup --tool corrosion`
+# both clone by.
+#
+# The commit was resolved honestly:
+#
+#   git ls-remote https://github.com/corrosion-rs/corrosion refs/tags/v0.6.1
+#   1499b14e4906a2890f5cee1547c8848db261753d  refs/tags/v0.6.1
+#
+# There is NO peeled `refs/tags/v0.6.1^{}` line, which is `ls-remote` saying the
+# tag is LIGHTWEIGHT — the ref is the commit, not a tag object wrapping one.
+# Confirmed rather than assumed: `git cat-file -t 1499b14e…` answers `commit`,
+# and that commit is "Prepare v0.6.1 release (#656)", 2026-01-17. Had it been an
+# annotated tag, the tag object's own sha here would make CMake check out
+# something that is not a commit.
+#
+# WHY THE COMMIT LIVES HERE AND THE TAG LIVES IN THE INDEX. The natural home for
+# both is `[tool.corrosion]` in `nros-sdk-index.toml`, one line apart. That table
+# deserialises into `ToolPackage`, which is
+# `#[serde(deny_unknown_fields)]`
+# (`packages/cli/nros-cli-core/src/orchestration/sdk_index.rs`), so an extra key
+# fails EVERY `SdkIndex::load` — `nros setup`, `nros doctor`, the metadata build
+# — and adding it means a schema change in a crate this module does not own.
+# The two halves still cannot drift silently: a checkout whose index names a
+# DIFFERENT tag than the commit below is a configure FATAL_ERROR, which is the
+# same "both move together or neither does" a single table would have bought.
+# And when the schema does grow `upstream_commit`, the index becomes the SSoT
+# with no change here — the reader below already prefers it.
+function(_nros_corrosion_pin out_commit out_tag)
+    set(_tag "v0.6.1")
+    set(_commit "1499b14e4906a2890f5cee1547c8848db261753d")
     set(_index "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../nros-sdk-index.toml")
     if(EXISTS "${_index}")
         file(READ "${_index}" _index_raw)
         # `[tool.corrosion]` … `upstream = "v0.6.1"`, up to the next section head.
         if(_index_raw MATCHES "\\[tool\\.corrosion\\][^[]*upstream[ \t]*=[ \t]*\"([^\"]+)\"")
-            set(_pin "${CMAKE_MATCH_1}")
+            set(_index_tag "${CMAKE_MATCH_1}")
+            if(_index_raw MATCHES
+                    "\\[tool\\.corrosion\\][^[]*upstream_commit[ \t]*=[ \t]*\"([0-9a-fA-F]+)\"")
+                # The index carries both — it is the SSoT and the literals above
+                # are only the vendored-without-index fallback.
+                set(_tag "${_index_tag}")
+                set(_commit "${CMAKE_MATCH_1}")
+            elseif(NOT "${_index_tag}" STREQUAL "${_tag}")
+                message(FATAL_ERROR
+                    "nano-ros: the Corrosion pin is half-applied. "
+                    "${_index} says `upstream = \"${_index_tag}\"`, this module "
+                    "pins ${_tag} = ${_commit}.\n"
+                    "  A tag alone is not a pin (issue 1060), so both move "
+                    "together: resolve the new tag with\n"
+                    "    git ls-remote https://github.com/corrosion-rs/corrosion "
+                    "refs/tags/${_index_tag}\n"
+                    "  (take the peeled `^{}` line if there is one — that is the "
+                    "commit; the bare line would be the tag object) and update "
+                    "`_nros_corrosion_pin()` in this file.")
+            endif()
         endif()
     endif()
-    set(${out_var} "${_pin}" PARENT_SCOPE)
+    set(${out_commit} "${_commit}" PARENT_SCOPE)
+    set(${out_tag} "${_tag}" PARENT_SCOPE)
+endfunction()
+
+# --------------------------------------------------------------------------
+# The host-level FetchContent cache (RFC-0087 D5, issue 1060).
+#
+# CMake's default `FETCHCONTENT_BASE_DIR` is `<build>/_deps`, so a fetch is once
+# per BUILD DIRECTORY. Issue 0500 measured 159 build dirs in one checkout each
+# carrying their own resolved Corrosion (139 on 0.5.1, 20 on 0.6.1). A shared
+# cache makes it once per HOST.
+#
+# WHERE. `$NROS_HOME/fetch`, default `~/.nros/fetch` — the sibling of the SDK
+# store `$NROS_HOME/sdk` that `_nros_corrosion_store()` above already reads.
+# `$NROS_HOME` is this tree's one convention for host-level state that outlives a
+# checkout and is shared by every build dir in it (the SDK store, `bin/`), and a
+# resolved upstream source tree is exactly that. A per-repo cache would still be
+# N clones for N checkouts and would need a `.gitignore` row; the store keeps the
+# worktree clean.
+#
+# OVERRIDE. `-DNROS_FETCH_CACHE=<dir>` (cache variable) beats `NROS_FETCH_CACHE`
+# in the environment, which beats `$NROS_HOME/fetch`. `OFF`/`0`/`NO`/empty turns
+# sharing off and restores CMake's per-build `<build>/_deps`. A location that
+# cannot be created or written is NOT fatal: it says so and falls back to the
+# same per-build default, because an unwritable `$HOME` is a legitimate CI shape
+# and a cache is an optimisation, never a requirement.
+function(_nros_corrosion_fetch_cache out_var)
+    set(${out_var} "" PARENT_SCOPE)
+    if(DEFINED NROS_FETCH_CACHE)
+        set(_dir "${NROS_FETCH_CACHE}")
+    elseif(DEFINED ENV{NROS_FETCH_CACHE})
+        set(_dir "$ENV{NROS_FETCH_CACHE}")
+    elseif(DEFINED ENV{NROS_HOME})
+        set(_dir "$ENV{NROS_HOME}/fetch")
+    elseif(DEFINED ENV{HOME})
+        set(_dir "$ENV{HOME}/.nros/fetch")
+    else()
+        return()
+    endif()
+    if(NOT _dir OR _dir STREQUAL "OFF" OR _dir STREQUAL "0" OR _dir STREQUAL "NO")
+        message(STATUS "nano-ros: shared fetch cache disabled — Corrosion will "
+                       "be fetched into this build dir's _deps")
+        return()
+    endif()
+    # Ask, do not assume. `file(MAKE_DIRECTORY)` and `file(TOUCH)` are FATAL on
+    # failure, which would turn "no writable HOME" into a dead configure; the
+    # `cmake -E` forms report a status instead.
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E make_directory "${_dir}"
+                    RESULT_VARIABLE _rc OUTPUT_QUIET ERROR_QUIET)
+    if(NOT _rc EQUAL 0)
+        message(STATUS "nano-ros: fetch cache ${_dir} is not creatable — using "
+                       "this build dir's _deps instead")
+        return()
+    endif()
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E touch "${_dir}/.nros-writable"
+                    RESULT_VARIABLE _rc OUTPUT_QUIET ERROR_QUIET)
+    if(NOT _rc EQUAL 0)
+        message(STATUS "nano-ros: fetch cache ${_dir} is not writable — using "
+                       "this build dir's _deps instead")
+        return()
+    endif()
+    set(${out_var} "${_dir}" PARENT_SCOPE)
+endfunction()
+
+# Is the cache already holding the PINNED commit? Three answers, because the
+# third is the one a version bump produces and it must not be confused with the
+# second: `empty` (nothing there), `pinned` (the commit we want — reusable
+# offline), `stale` (some other commit, from a pin that has since moved).
+#
+# The check is a digest comparison, not "a directory exists". That is the point
+# of pinning a commit at all: the cache is the one copy every build dir in the
+# host shares, so "which tree is this" has to be answerable without the network.
+function(_nros_corrosion_cache_state cache commit out_state)
+    set(_src "${cache}/corrosion-src")
+    if(NOT EXISTS "${_src}/CMakeLists.txt")
+        set(${out_state} "empty" PARENT_SCOPE)
+        return()
+    endif()
+    find_package(Git QUIET)
+    if(NOT GIT_EXECUTABLE)
+        set(${out_state} "stale" PARENT_SCOPE)
+        return()
+    endif()
+    execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${_src}" rev-parse HEAD
+                    OUTPUT_VARIABLE _head OUTPUT_STRIP_TRAILING_WHITESPACE
+                    RESULT_VARIABLE _rc ERROR_QUIET)
+    if(_rc EQUAL 0 AND "${_head}" STREQUAL "${commit}")
+        set(${out_state} "pinned" PARENT_SCOPE)
+    else()
+        set(${out_state} "stale" PARENT_SCOPE)
+    endif()
 endfunction()
 
 # Record the resolution where any directory scope can read it. CACHE INTERNAL
@@ -636,21 +778,103 @@ macro(nros_resolve_corrosion)
             _nros_corrosion_remember("SDK store" "${Corrosion_VERSION}" "${Corrosion_DIR}")
             nros_report_corrosion("SDK store" "${Corrosion_VERSION}" "${Corrosion_DIR}")
         else()
-            _nros_corrosion_pin(_nros_corrosion_tag)
-            message(STATUS
-                "nano-ros: Corrosion not provisioned — fetching ${_nros_corrosion_tag} "
-                "from git. Install it offline-safe with:  nros setup --tool corrosion")
+            _nros_corrosion_pin(_nros_corrosion_commit _nros_corrosion_tag)
+            _nros_corrosion_fetch_cache(_nros_corrosion_cache)
+            set(_nros_corrosion_fetch_args "")
+            set(_nros_corrosion_fetch_origin "FetchContent")
+            if(_nros_corrosion_cache)
+                _nros_corrosion_cache_state("${_nros_corrosion_cache}"
+                                            "${_nros_corrosion_commit}"
+                                            _nros_corrosion_cache_state_v)
+                if(_nros_corrosion_cache_state_v STREQUAL "stale")
+                    # The pin moved (or something else wrote here). Clear BOTH
+                    # halves: the download stamps live in the subbuild dir, so a
+                    # source dir removed without them is never re-cloned.
+                    message(STATUS
+                        "nano-ros: fetch cache holds a Corrosion that is not "
+                        "${_nros_corrosion_tag} (${_nros_corrosion_commit}) — repopulating")
+                    file(REMOVE_RECURSE "${_nros_corrosion_cache}/corrosion-src"
+                                        "${_nros_corrosion_cache}/corrosion-subbuild")
+                    set(_nros_corrosion_cache_state_v "empty")
+                endif()
+                # What is shared, and what is deliberately not — both measured,
+                # not assumed:
+                #
+                #  * SOURCE_DIR and SUBBUILD_DIR are shared, and they move
+                #    together. ExternalProject's clone step keys on a stamp in
+                #    the SUBBUILD dir and `rm -rf`s the source before cloning
+                #    (`ExternalProject.cmake`, gitclone script). A shared source
+                #    with a per-build subbuild would therefore re-clone — and
+                #    destroy — the cache on every new build dir.
+                #  * BINARY_DIR stays local. It is the `add_subdirectory` binary
+                #    dir: two build trees sharing it overwrite each other's
+                #    generated rules, and anything Corrosion compiles there
+                #    (`CORROSION_NATIVE_TOOLING`) would be one artifact serving
+                #    two toolchains — issue 0616 one layer over.
+                list(APPEND _nros_corrosion_fetch_args
+                    SOURCE_DIR   "${_nros_corrosion_cache}/corrosion-src"
+                    SUBBUILD_DIR "${_nros_corrosion_cache}/corrosion-subbuild"
+                    BINARY_DIR   "${CMAKE_CURRENT_BINARY_DIR}/_deps/corrosion-build")
+                if(_nros_corrosion_cache_state_v STREQUAL "pinned")
+                    # `FETCHCONTENT_SOURCE_DIR_<uc>` is the DOCUMENTED
+                    # per-dependency form of "do not download": the populate step
+                    # is skipped whole, no subbuild is configured, and the
+                    # network is not touched. Proven by configuring against this
+                    # cache with `GIT_REPOSITORY` pointing at a path that does
+                    # not exist — the configure succeeds.
+                    #
+                    # The global `FETCHCONTENT_FULLY_DISCONNECTED` would do the
+                    # same thing project-wide, and is deliberately NOT set: this
+                    # module has no business disconnecting a parent project's
+                    # other dependencies. The per-dependency form also sidesteps
+                    # a hazard the global one keeps — a shared subbuild dir
+                    # records the GENERATOR that populated it, so a second build
+                    # tree on a different generator hard-fails ("CMake step for
+                    # corrosion failed"). Skipping the subbuild skips that too.
+                    set(FETCHCONTENT_SOURCE_DIR_CORROSION
+                        "${_nros_corrosion_cache}/corrosion-src")
+                    set(_nros_corrosion_fetch_origin "FetchContent (host cache)")
+                    message(STATUS
+                        "nano-ros: Corrosion not provisioned — reusing the host fetch cache "
+                        "at ${_nros_corrosion_cache}/corrosion-src (${_nros_corrosion_tag}, "
+                        "no network). Install it offline-safe with:  nros setup --tool corrosion")
+                else()
+                    set(_nros_corrosion_fetch_origin "FetchContent (host cache, populated)")
+                    message(STATUS
+                        "nano-ros: Corrosion not provisioned — fetching ${_nros_corrosion_tag} "
+                        "(${_nros_corrosion_commit}) from git into the host fetch cache at "
+                        "${_nros_corrosion_cache}. Later build dirs reuse it offline. "
+                        "Install it offline-safe with:  nros setup --tool corrosion")
+                endif()
+            else()
+                message(STATUS
+                    "nano-ros: Corrosion not provisioned — fetching ${_nros_corrosion_tag} "
+                    "(${_nros_corrosion_commit}) from git into this build dir. "
+                    "Install it offline-safe with:  nros setup --tool corrosion")
+            endif()
             include(FetchContent)
+            # GIT_TAG is the DIGEST, never the tag (issue 1060) — a tag is a ref
+            # on someone else's server, so a retag would move this build with no
+            # local diff. The human-readable `${_nros_corrosion_tag}` is what the
+            # messages and the report line carry.
             FetchContent_Declare(Corrosion
                 GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
-                GIT_TAG        ${_nros_corrosion_tag}
+                GIT_TAG        ${_nros_corrosion_commit}
+                ${_nros_corrosion_fetch_args}
             )
             FetchContent_MakeAvailable(Corrosion)
-            _nros_corrosion_remember("FetchContent" "${_nros_corrosion_tag}"
+            _nros_corrosion_remember("${_nros_corrosion_fetch_origin}"
+                                     "${_nros_corrosion_tag}"
                                      "${corrosion_SOURCE_DIR}")
-            nros_report_corrosion("FetchContent" "${_nros_corrosion_tag}"
+            nros_report_corrosion("${_nros_corrosion_fetch_origin}"
+                                  "${_nros_corrosion_tag}"
                                   "${corrosion_SOURCE_DIR}")
             unset(_nros_corrosion_tag)
+            unset(_nros_corrosion_commit)
+            unset(_nros_corrosion_cache)
+            unset(_nros_corrosion_cache_state_v)
+            unset(_nros_corrosion_fetch_args)
+            unset(_nros_corrosion_fetch_origin)
         endif()
         set(NROS_CORROSION_REPORTED ON)
         unset(_nros_corrosion_candidates)
