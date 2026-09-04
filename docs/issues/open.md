@@ -92,5 +92,6 @@ fails if this block drifts.
 - **#1043** (ci, tooling) — `check-submodule-pins` fails CLOSED on any submodule CI does not initialise, so a whole class of pin bump could never pass the required lane See `1043-*`.
 - **#1044** (testing) — The run-to-completion wait class is not finished: an eighth site, four bridge callers with an unstated horizon, and an assertion that counts re-opens instead of rating them See `1044-*`.
 - **#1045** (testing, build) — Two unswept corners of fixture resolution: the Zephyr and ThreadX locators, and a staleness probe that announces its own degradation only on the STALE path See `1045-*`.
+- **#1047** (rmw, third-party, build) — zenoh-pico 1.8.0 tests a macro with `#if X == true`, which NuttX's `stdbool.h` cannot evaluate — every NuttX zenoh fixture fails to build on main See `1047-*`.
 
 <!-- END GENERATED open-issue list -->
