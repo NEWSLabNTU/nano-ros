@@ -443,13 +443,59 @@ Prototyped and verified: configures clean, an uninitialised submodule fails with
 the `git submodule update --init` remedy rather than a downstream error, and the
 submodule working tree stays clean because `BINARY_DIR` is out of tree.
 
+### DECIDED — `role`, and a consumer for it in the same change
+
+`[prereq.*]` gains `role`: `package` / `workspace` / `infra` / `vendor`. All 46
+keys carry one (11 / 11 / 19 / 5), and `check-prereq-roles` keeps them carrying
+it — the Rust field defaults to `unclassified` so it could land incrementally,
+and without the gate a new key inherits that default silently.
+
+Role landed WITH its consumer, deliberately. A classification nothing reads is
+another authored map waiting to drift, which is the failure this RFC keeps
+meeting. The consumer is `nros setup --workspace <path>`: it reads the three
+things a tree already states — `<depend>` (content),
+`<build_type>`/`<buildtool_depend>` (builder), and
+`<export><nano_ros deploy=.. board=.. rmw=../>` (target) — and reports what to
+provision. That deploy export is not new: 90+ packages carry it, and
+`build.rs`, `doctor.rs` and `workspace.rs` all read it while `setup.rs` alone
+ignored it.
+
+**REFUSING a wrong-role dep is deferred**, on purpose. `<depend>qemu-system-arm
+</depend>` still resolves; `--workspace` REPORTS it as a category error without
+failing. Turning it into an error breaks someone's working tree, so it wants a
+deprecation window rather than a flag day.
+
+### Measured while building it — three findings this RFC should carry
+
+**1. 24 of the 46 keys have no explicit consumer.** Nothing in the index and no
+recipe references them; they are reachable only if a user happens to run the
+blanket `nros setup --system`. They are not marginal: `cmake`, `ninja`, `make`,
+`cargo`, `nros`, `python3-*`, `gnu-parallel`, and every cross toolchain.
+
+**2. Nothing in the repo INSTALLS via `--system`.** Five recipes name it only
+inside an error message; `just workspace apt-packages` PRINTS the command (by
+design — composing it is the tool's job, running it is the user's), and
+`just setup <scope>` never reaches even that. Simulated on a developer host: 38
+present, 5 missing, 3 unprobed, and `just setup native` pulls none of the five.
+So the documented bootstrap does not provision the system closure, and a user
+discovers it when a build fails.
+
+**3. `board=` in a package.xml export is NOT the `[board.*]` key namespace.**
+Of the five boards declared across this repo's examples, only `threadx-linux`
+is an index key — `nros setup mps2-an385-freertos` and three others would fail.
+Nor is a `deploy=` value always a scope: `threadx` splits into `threadx_linux`
+and `threadx_riscv64` by board. Both were caught by SIMULATING the new command
+rather than reasoning about it, and both would have shipped as remedies that
+fail for the out-of-tree user this mode exists for. `--workspace` now validates
+against the index and `scripts/build/scope.sh` before printing any command.
+
+Finding 3 is a two-vocabularies defect of the same class this RFC exists to
+delete, one layer out: the same concept spelled two ways in two files, with
+nothing asserting they agree.
+
 ### What this amendment does NOT decide
 
-* **Whether `[prereq.*]` gains a `role` field** (`package` / `workspace` /
-  `infra` / `vendor`) and whether the resolver REFUSES a package.xml that names
-  a non-`package` key. This is the fix for `<depend>qemu-system-arm</depend>`
-  resolving silently. It is a user-visible error where none exists today, so it
-  wants agreement before implementation.
+* **When the refusal lands**, and what the deprecation window looks like.
 * **Whether the 11 runtime-closure keys move under their owning `[tool.*]`.**
   `libssl3`'s own `why` already says "runtime dep of the cyclonedds,
   xrce-agent dist(s)" — it is a property of those tarballs, not of the
