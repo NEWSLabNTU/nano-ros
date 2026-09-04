@@ -3191,6 +3191,16 @@ skip_probe = true
 # failure named. These three build through `just esp32 build-qemu` and kept
 # overflowing — by 8,644 B in `esp32_qemu_talker` — which is the "fix the CLASS,
 # not the reported site" rule applied a row too narrowly the first time.
+#
+# ZPICO_MAX_SUBSCRIBERS: issue 1052, the same class one entity kind over. This
+# is a talker — it declares no subscriptions — but the default budget still
+# links SMALL_PAYLOADS at `ZPICO_MAX_SUBSCRIBERS * ring depth * buffer size`.
+# On this board `.bss` is subtracted from the stack (link.x fills DRAM up to
+# `_stack_start`, `.bss` grows up from below), so those 28 KB came straight out
+# of the stack: 18,572 B against node.rs's ~67 KB budget, and the image faulted
+# with `sp` outside the stack, inside `nros_smoltcp::TCP_RX_BUFFER_0`. Setting
+# it to 1 restores 30,576 B of stack and the fault stops. Gated now by
+# `scripts/check-stack-floor.py`, run per row by `fixtures-build.sh`.
 env = { ZPICO_MAX_QUERYABLES = "2", ZPICO_MAX_SUBSCRIBERS = "1" }
 
 [[fixture]]
