@@ -106,6 +106,21 @@ pub enum NrosConfigError {
         #[source]
         source: crate::orchestration::rmw_resolver::UnknownRmw,
     },
+
+    /// phase-420 W6 — a root `nros.toml` exists but is not readable TOML.
+    ///
+    /// Its own error rather than falling through to `NrosTomlNotSupported`: a
+    /// typo in a search-path file would otherwise be answered with a migration
+    /// instruction for a surface the author never used, which is a message
+    /// aimed at the wrong problem.
+    #[error("parse {path:?}: {source}")]
+    NrosTomlParse {
+        path: PathBuf,
+        // Boxed for the same reason as `BringupSystemTomlParse` — clippy
+        // `result_large_err`.
+        #[source]
+        source: Box<toml::de::Error>,
+    },
 }
 
 /// Phase 212.B `NrosConfig` — every nros-relevant fact derived from a
@@ -212,9 +227,11 @@ impl NrosConfig {
     /// 5. A member with no `[package.metadata.nros]` AND a sibling
     ///    `system.toml` becomes a bringup pkg (loaded into [`SystemToml`]).
     pub fn from_cargo_metadata(workspace_root: &Path) -> Result<Self, NrosConfigError> {
-        // 1 — clean-break rejection of the old root nros.toml.
+        // 1 — clean-break rejection of the old root nros.toml, narrowed by
+        // phase-420 W6 to the files it was aimed at. See
+        // `nros_toml_is_search_path_only`.
         let root_nros_toml = workspace_root.join("nros.toml");
-        if root_nros_toml.exists() {
+        if root_nros_toml.exists() && !nros_toml_is_search_path_only(&root_nros_toml)? {
             return Err(NrosConfigError::NrosTomlNotSupported {
                 path: root_nros_toml,
             });
@@ -398,6 +415,106 @@ impl NrosConfig {
             bringup_packages,
         })
     }
+}
+
+// ---------------------------------------------------------------------------
+// The provider search path — phase-420 W6 (RFC-0087 D6)
+// ---------------------------------------------------------------------------
+
+/// `<ws>/nros.toml`, as far as the search path is concerned.
+///
+/// Deliberately NOT `deny_unknown_fields`: this reader answers one question and
+/// must not become a second validator of a file whose ownership sits elsewhere.
+/// What the file is ALLOWED to contain is decided by
+/// [`nros_toml_is_search_path_only`], in one place.
+#[derive(Debug, Default, Deserialize)]
+struct NrosTomlSearchPath {
+    #[serde(default)]
+    workspace: NrosTomlWorkspaceTable,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct NrosTomlWorkspaceTable {
+    #[serde(default)]
+    package_paths: Vec<String>,
+}
+
+/// `[workspace] package_paths` from `<ws>/nros.toml`, in authored order.
+///
+/// Empty when the file is absent, which is the common case — a workspace that
+/// configures no extra roots gets the two-root default and never has to own a
+/// file to say so.
+///
+/// **Read directly rather than through `cargo metadata`.** The search path is
+/// needed by `nros ws providers`, by `nros sync` and by a cmake configure, on
+/// C/C++ workspaces that have no `Cargo.toml` at all; routing it through
+/// `NrosConfig` would make "which roots do I scan" cost a `cargo metadata`
+/// subprocess and answer nothing for half the workspaces that ask.
+pub fn workspace_package_paths(workspace_root: &Path) -> Result<Vec<String>, NrosConfigError> {
+    let path = workspace_root.join("nros.toml");
+    let Some(parsed) = read_nros_toml_search_path(&path)? else {
+        return Ok(Vec::new());
+    };
+    Ok(parsed.workspace.package_paths)
+}
+
+/// Parse the search-path view of a root `nros.toml`. `Ok(None)` ⇒ no such file.
+fn read_nros_toml_search_path(path: &Path) -> Result<Option<NrosTomlSearchPath>, NrosConfigError> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        // Unreadable is treated as absent on purpose: this is a lookup on the
+        // way to a scan, and a permissions problem on an optional file must not
+        // take down a build that would otherwise resolve every provider from
+        // the default roots.
+        Err(_) => return Ok(None),
+    };
+    let parsed: NrosTomlSearchPath =
+        toml::from_str(&text).map_err(|source| NrosConfigError::NrosTomlParse {
+            path: path.to_path_buf(),
+            source: Box::new(source),
+        })?;
+    Ok(Some(parsed))
+}
+
+/// Does this `nros.toml` carry ONLY the phase-420 W6 search-path surface?
+///
+/// **Why the Phase 212.I rejection is narrowed rather than lifted.** That
+/// rejection exists so a pre-212 `nros.toml` — which carried the whole system
+/// definition, `[system]` and `[deploy.*]` and a `[workspace] default` — cannot
+/// be silently ignored by a loader that no longer reads it. RFC-0087 D6 then
+/// spells the search path `[workspace] package_paths` in that same file, and a
+/// blanket rejection would make the RFC's own example unusable in any cargo
+/// workspace: the user writes the documented key and every `nros plan`,
+/// `nros codegen-system` and `nros config` refuses the workspace, quoting a
+/// migration for a surface they never had.
+///
+/// So the rule is narrowed to exactly the shape it was aimed at: a file whose
+/// only top-level table is `[workspace]` and whose only key there is
+/// `package_paths` is the new surface and is accepted; anything else — a
+/// `[system]`, a `[deploy.*]`, or the legacy `[workspace] default` sitting
+/// beside it — is still the old file and still gets the migration pointer. No
+/// legacy file can pass, because none of them consists of that key alone.
+fn nros_toml_is_search_path_only(path: &Path) -> Result<bool, NrosConfigError> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        // Unreadable: fall back to the pre-W6 answer. A file we cannot read is
+        // not one we may declare harmless.
+        Err(_) => return Ok(false),
+    };
+    let table: toml::Table =
+        toml::from_str(&text).map_err(|source| NrosConfigError::NrosTomlParse {
+            path: path.to_path_buf(),
+            source: Box::new(source),
+        })?;
+    // EXACTLY `[workspace] package_paths`, nothing more and nothing less. The
+    // "nothing less" half matters: a bare `[workspace]` with no keys declares
+    // no search path, so it is a legacy file's remnant rather than the new
+    // surface, and accepting it would silence the migration pointer for a file
+    // that still needs one.
+    let Some(workspace) = table.get("workspace").and_then(|v| v.as_table()) else {
+        return Ok(false);
+    };
+    Ok(table.len() == 1 && workspace.len() == 1 && workspace.contains_key("package_paths"))
 }
 
 // ---------------------------------------------------------------------------
@@ -917,6 +1034,112 @@ target = "x86_64-unknown-linux-gnu"
             msg.contains("Phase 212.B") || msg.contains("phase-212"),
             "diagnostic must point at the phase doc: {msg}"
         );
+    }
+
+    // -----------------------------------------------------------------
+    // `[workspace] package_paths` — phase-420 W6 (RFC-0087 D6)
+    // -----------------------------------------------------------------
+
+    /// The key is read in authored order, and the values are returned VERBATIM.
+    /// Resolution (`~`, relative-to-workspace, canonicalization) belongs to
+    /// `provider_scan::build_search_path`, which is the one place it happens for
+    /// both this source and `NROS_PACKAGE_PATH`.
+    #[test]
+    fn package_paths_are_read_in_authored_order_and_verbatim() {
+        let dir = scratch_dir("package_paths_are_read_in_authored_order_and_verbatim");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("nros.toml"),
+            "[workspace]\npackage_paths = [\"src\", \"~/nros-packages\", \"/opt/nros/packages\"]\n",
+        )
+        .unwrap();
+
+        let paths = workspace_package_paths(&dir).expect("reads the key");
+        assert_eq!(paths, vec!["src", "~/nros-packages", "/opt/nros/packages"]);
+    }
+
+    /// No file, or a file without the key, is the common case: a workspace that
+    /// configures no extra roots gets the two-root default and never has to own
+    /// a file to say so.
+    #[test]
+    fn a_workspace_with_no_nros_toml_configures_no_extra_roots() {
+        let dir = scratch_dir("a_workspace_with_no_nros_toml_configures_no_extra_roots");
+        fs::create_dir_all(&dir).unwrap();
+        assert_eq!(workspace_package_paths(&dir).unwrap(), Vec::<String>::new());
+
+        fs::write(dir.join("nros.toml"), "[workspace]\npackage_paths = []\n").unwrap();
+        assert_eq!(workspace_package_paths(&dir).unwrap(), Vec::<String>::new());
+    }
+
+    /// A malformed file gets its OWN error rather than the migration pointer:
+    /// a typo in a search path answered with "run `nros migrate workspace`" is
+    /// a message aimed at a problem the author does not have.
+    #[test]
+    fn a_malformed_nros_toml_names_the_parse_error_not_the_migration() {
+        let dir = scratch_dir("a_malformed_nros_toml_names_the_parse_error_not_the_migration");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("nros.toml"), "[workspace\npackage_paths = [\n").unwrap();
+
+        let err = workspace_package_paths(&dir).expect_err("must not silently read nothing");
+        match &err {
+            NrosConfigError::NrosTomlParse { path, .. } => {
+                assert_eq!(path, &dir.join("nros.toml"));
+            }
+            other => panic!("expected NrosTomlParse, got {other:?}"),
+        }
+    }
+
+    /// phase-420 W6 narrowed the Phase 212.I rejection instead of lifting it.
+    ///
+    /// RFC-0087 D6 spells the search path `[workspace] package_paths` in
+    /// `nros.toml`, and the blanket rejection would have made the RFC's own
+    /// example unusable in any cargo workspace — the user writes the documented
+    /// key and `nros plan` / `nros codegen-system` / `nros config` all refuse
+    /// the workspace, quoting a migration for a surface they never had. So a
+    /// file consisting of exactly that key is accepted; everything else is
+    /// still the old file and still gets the pointer, which
+    /// `nros_toml_at_root_rejected_with_migration_pointer` holds down from the
+    /// other side.
+    #[test]
+    fn a_search_path_only_nros_toml_does_not_trip_the_212_rejection() {
+        let dir = scratch_dir("a_search_path_only_nros_toml_does_not_trip_the_212_rejection");
+        write_minimal_workspace(&dir);
+        fs::write(
+            dir.join("nros.toml"),
+            "[workspace]\npackage_paths = [\"/opt/nros/packages\"]\n",
+        )
+        .unwrap();
+
+        let cfg = NrosConfig::from_cargo_metadata(&dir)
+            .expect("a search-path-only nros.toml must not refuse the workspace");
+        assert!(cfg.component_packages.contains_key("talker_pkg"));
+        assert_eq!(
+            workspace_package_paths(&dir).unwrap(),
+            vec!["/opt/nros/packages"],
+        );
+    }
+
+    /// And the narrowing is NARROW: a legacy key sitting beside the new one is
+    /// still the old file. Every pre-212 `nros.toml` carries `[system]`,
+    /// `[deploy.*]` or `[workspace] default`, so none of them can pass.
+    #[test]
+    fn a_legacy_key_beside_package_paths_is_still_rejected() {
+        for legacy in [
+            "[workspace]\npackage_paths = [\"x\"]\ndefault = \"native\"\n",
+            "[workspace]\npackage_paths = [\"x\"]\n\n[system]\nrmw = \"zenoh\"\n",
+            "[workspace]\npackage_paths = [\"x\"]\n\n[deploy.native]\nkind = \"self\"\n",
+        ] {
+            let dir = scratch_dir("a_legacy_key_beside_package_paths_is_still_rejected");
+            write_minimal_workspace(&dir);
+            fs::write(dir.join("nros.toml"), legacy).unwrap();
+
+            let err = NrosConfig::from_cargo_metadata(&dir)
+                .expect_err("a legacy surface must still get the migration pointer");
+            assert!(
+                matches!(err, NrosConfigError::NrosTomlNotSupported { .. }),
+                "expected NrosTomlNotSupported for {legacy:?}, got {err:?}",
+            );
+        }
     }
 
     /// 212.B.2 — single-component-shape `[package.metadata.nros.component]`

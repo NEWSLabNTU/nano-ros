@@ -27,6 +27,7 @@
 //! the chicken-egg motivation for a pre-cargo sync step).
 
 use crate::atomic_file::atomic_write;
+use cargo_nano_ros::provider_scan;
 use clap::{Args as ClapArgs, Subcommand, ValueEnum};
 use eyre::{Result, WrapErr, bail, eyre};
 use rosidl_bindgen::ament::Package;
@@ -153,7 +154,13 @@ pub enum Sub {
 
     /// phase-348 W1 — list packages that announce a provision
     /// (`<export><nano_ros_provides kind="rmw" name="zenoh"/></export>`),
-    /// across the search path: the nano-ros tree, then this workspace.
+    /// across the search path.
+    ///
+    /// phase-420 W6 — the search path is an ordered list of roots, and this is
+    /// where you read it: the nano-ros tree, this workspace, then
+    /// `[workspace] package_paths` from `<ws>/nros.toml`, then
+    /// `NROS_PACKAGE_PATH`. Each root prints with its origin, a MISSING marker
+    /// when it is not a directory, and each provision prints what it shadows.
     ///
     /// Source-time discovery: nano-ros builds per-target static objects for
     /// RTOS targets with no dynamic linking, so there is no install step for
@@ -203,6 +210,9 @@ pub struct OrderArgs {
 #[derive(Debug, ClapArgs)]
 pub struct ProvidersArgs {
     /// Workspace to scan as the second search root. Defaults to the cwd.
+    ///
+    /// Also the directory `<ws>/nros.toml` is read from, and the directory a
+    /// relative `package_paths` / `NROS_PACKAGE_PATH` entry resolves against.
     #[arg(long)]
     pub workspace: Option<PathBuf>,
 
@@ -572,13 +582,74 @@ pub fn provider_index_path(ws_root: &Path) -> PathBuf {
 /// Resolve the search path the way `nros ws providers` does, so the index sync
 /// writes is the index that command would read. One implementation, or the two
 /// disagree about roots and every read is rejected as "built for other roots".
-pub fn provider_search_path(workspace: &Path) -> Vec<PathBuf> {
+///
+/// phase-420 W6 — this is now four sources, not two: the nano-ros tree, the
+/// workspace, `[workspace] package_paths` from `<ws>/nros.toml`, and
+/// `NROS_PACKAGE_PATH`. Composition and precedence live in
+/// [`provider_scan::build_search_path`]; the only thing done HERE is reading
+/// the two ambient sources, so that function stays a pure one and every test of
+/// it can name its inputs.
+pub fn provider_search_path(workspace: &Path) -> Result<provider_scan::SearchPath> {
     let nano_ros_root = crate::abi_guard::find_monorepo_root(workspace).or_else(|| {
         let exe = std::env::current_exe().ok()?;
         let exe = exe.canonicalize().unwrap_or(exe);
         crate::abi_guard::find_monorepo_root(&exe)
     });
-    cargo_nano_ros::provider_scan::default_search_path(nano_ros_root.as_deref(), workspace)
+    provider_search_path_with(nano_ros_root.as_deref(), workspace)
+}
+
+/// [`provider_search_path`] with the nano-ros root already decided — the shape
+/// `--nano-ros-root` and `nros sync` need, and the one place the config file and
+/// the environment are read.
+fn provider_search_path_with(
+    nano_ros_root: Option<&Path>,
+    workspace: &Path,
+) -> Result<provider_scan::SearchPath> {
+    let package_paths = crate::orchestration::nros_config::workspace_package_paths(workspace)
+        .wrap_err_with(|| {
+            format!(
+                "reading [workspace] package_paths from {}",
+                workspace.join("nros.toml").display()
+            )
+        })?;
+    let env = std::env::var(provider_scan::PACKAGE_PATH_ENV).ok();
+    Ok(provider_scan::build_search_path(
+        nano_ros_root,
+        workspace,
+        &package_paths,
+        env.as_deref(),
+    ))
+}
+
+/// Print every configured root that is not a directory, once, on stderr.
+///
+/// RFC-0087 D6's decided middle: a missing root is neither a silent skip nor
+/// fatal. Fatal is wrong because the default path's own workspace entry is
+/// legitimately absent and a porter's `NROS_PACKAGE_PATH` may name a tree that
+/// exists on only some machines — making it fatal would refuse `nros sync` on
+/// this monorepo. Silent is wrong because nobody types a path they did not mean
+/// to exist, so its absence is a typo or a moved tree, and that is precisely the
+/// "why is my provider not found" hour this wave exists to end.
+///
+/// The default roots are exempt (see `RootOrigin::warns_when_missing`), so this
+/// prints nothing at all on an unconfigured workspace.
+fn warn_missing_roots(path: &provider_scan::SearchPath) {
+    for root in path.missing() {
+        match &root.as_written {
+            Some(written) => eprintln!(
+                "warning: provider search root {} ({}, written `{written}`) is not a \
+                 directory — nothing was scanned there",
+                root.path.display(),
+                root.origin.label(),
+            ),
+            None => eprintln!(
+                "warning: provider search root {} ({}) is not a directory — nothing \
+                 was scanned there",
+                root.path.display(),
+                root.origin.label(),
+            ),
+        }
+    }
 }
 
 /// The provider search roots for one `nros sync`, honouring the colcon-style
@@ -595,22 +666,32 @@ fn provider_roots_for_sync(
     ws_root: &Path,
     base_paths: &[PathBuf],
     nano_ros_root: Option<&Path>,
-) -> Vec<PathBuf> {
+) -> Result<provider_scan::SearchPath> {
     if !base_paths.is_empty() {
-        return base_paths.to_vec();
+        // `--base-paths` REPLACES, so nothing else contributes — not the
+        // config file, not the environment. That is the deliberate difference
+        // from `NROS_PACKAGE_PATH`, which only ever appends: a flag is typed
+        // per invocation, an exported variable is not. See
+        // `provider_scan::build_search_path`.
+        return Ok(provider_scan::SearchPath::from_base_paths(base_paths));
     }
-    if let Some(root) = nano_ros_root {
-        return cargo_nano_ros::provider_scan::default_search_path(Some(root), ws_root);
+    match nano_ros_root {
+        Some(root) => provider_search_path_with(Some(root), ws_root),
+        None => provider_search_path(ws_root),
     }
-    provider_search_path(ws_root)
 }
 
 /// Refresh `<ws>/build/nros/providers.json` over an explicit root list. Warns
 /// rather than failing — see the call site in `run_sync`.
-fn write_provider_index_with(ws_root: &Path, roots: &[PathBuf], verbose: bool) {
+fn write_provider_index_with(
+    ws_root: &Path,
+    search_path: &provider_scan::SearchPath,
+    verbose: bool,
+) {
     use cargo_nano_ros::provider_scan;
 
-    let roots = roots.to_vec();
+    warn_missing_roots(search_path);
+    let roots = search_path.paths();
     let path = provider_index_path(ws_root);
     let scan = match provider_scan::scan_roots(&roots) {
         Ok(s) => s,
@@ -659,13 +740,19 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
     // fallback, and `nros sync` calls the SAME function: an index written
     // against a different root list is rejected on read, so two spellings of
     // "which roots" would make every cached read fail.
-    let roots = match args.nano_ros_root {
+    let search_path = match args.nano_ros_root {
         Some(r) => {
             let r = r.canonicalize().unwrap_or(r);
-            provider_scan::default_search_path(Some(&r), &workspace)
+            provider_search_path_with(Some(&r), &workspace)?
         }
-        None => provider_search_path(&workspace),
+        None => provider_search_path(&workspace)?,
     };
+    // phase-420 W6 — before anything is reported ABOUT the roots, report the
+    // roots that are not there. A configured root that silently contributes
+    // nothing is indistinguishable in every listing below from one that
+    // genuinely holds no providers.
+    warn_missing_roots(&search_path);
+    let roots = search_path.paths();
 
     // --check-index rescans and compares; it never prints a listing, because
     // its answer is "current" or "here is exactly what moved".
@@ -757,21 +844,34 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
         })?;
         let r =
             provider_scan::resolve_unique(&result, kind, name).map_err(|e| eyre::eyre!("{e}"))?;
+        // The root's ORIGIN, not only its index: "root[3] won" is unactionable
+        // until you know whether root 3 came from the repository's `nros.toml`
+        // or from a variable exported in this shell — those have different
+        // fixes, and only one of them is visible in a diff.
+        let origin = |i: usize| {
+            search_path
+                .roots
+                .get(i)
+                .map(|r| r.origin.label())
+                .unwrap_or("?")
+        };
         println!(
-            "{kind}:{name} -> {}  [{}]  root[{}]",
+            "{kind}:{name} -> {}  [{}]  root[{}] ({})",
             r.winner.dir.display(),
             r.winner.package,
-            r.winner.root_index
+            r.winner.root_index,
+            origin(r.winner.root_index),
         );
         // Shadowing is a legitimate workflow, so it is reported rather than
         // rejected — but never silently, because a user's overlay quietly
         // losing is the failure that costs an afternoon.
         for s in &r.shadowed {
             println!(
-                "  shadows  {}  [{}]  root[{}]",
+                "  shadows  {}  [{}]  root[{}] ({})",
                 s.dir.display(),
                 s.package,
-                s.root_index
+                s.root_index,
+                origin(s.root_index),
             );
         }
         return Ok(());
@@ -794,6 +894,16 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
         None => true,
     };
 
+    // phase-420 W6 — computed over the WHOLE scan, then filtered by `--kind`
+    // when rendering. Computing it over the filtered set instead would let
+    // `--kind rmw` report a board collision as if it were not there, which is
+    // the "a narrower question got a different answer" shape `--lines` already
+    // documents one branch up.
+    let shadowed: Vec<provider_scan::Shadowing> = provider_scan::shadowing(&result)
+        .into_iter()
+        .filter(|s| kind.is_none_or(|k| s.kind == k))
+        .collect();
+
     if args.json {
         let rows: Vec<serde_json::Value> = result
             .providers
@@ -814,17 +924,76 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
+                // `roots` keeps its shape — a flat array of paths, indexable by
+                // the `root_index` every other surface prints. The provenance
+                // is ADDED beside it rather than folded into it, so a consumer
+                // reading `roots[i]` today still reads a path tomorrow.
                 "roots": roots,
+                "search_path": search_path.roots.iter().map(|r| serde_json::json!({
+                    "path": r.path,
+                    "origin": r.origin.label(),
+                    "exists": r.exists,
+                    "as_written": r.as_written,
+                })).collect::<Vec<_>>(),
                 "packages_seen": result.packages_seen(),
                 "providers": rows,
+                "shadowing": shadowed.iter().map(|s| serde_json::json!({
+                    "kind": s.kind,
+                    "name": s.name,
+                    "same_root_tie": s.same_root_tie,
+                    "winner": {"package": s.winner.package, "dir": s.winner.dir,
+                               "root": s.winner.root_index},
+                    "shadowed": s.shadowed.iter().map(|p| serde_json::json!({
+                        "package": p.package, "dir": p.dir, "root": p.root_index,
+                    })).collect::<Vec<_>>(),
+                })).collect::<Vec<_>>(),
             }))?
         );
         return Ok(());
     }
 
-    for (i, root) in roots.iter().enumerate() {
-        println!("root[{i}] {}", root.display());
+    print!(
+        "{}",
+        render_provider_listing(&search_path, &result, kind, &shadowed)
+    );
+    Ok(())
+}
+
+/// The human-readable `nros ws providers` table.
+///
+/// Split out from [`run_providers`] so the shadowing report is TESTABLE. It is
+/// the surface RFC-0087 D6 specifies ("prints each package's kind, the root it
+/// came from, and what it hid"), and a report nothing asserts on is a report
+/// that quietly stops reporting — which is the failure this whole wave is
+/// about.
+fn render_provider_listing(
+    search_path: &provider_scan::SearchPath,
+    result: &provider_scan::ScanResult,
+    kind: Option<&str>,
+    shadowed: &[provider_scan::Shadowing],
+) -> String {
+    use std::fmt::Write as _;
+
+    let matching = |p: &&provider_scan::ProviderPackage| match kind {
+        Some(k) => p.provides.iter().any(|pr| pr.kind == k),
+        None => true,
+    };
+    let mut out = String::new();
+
+    for (i, root) in search_path.roots.iter().enumerate() {
+        let _ = writeln!(
+            out,
+            "root[{i}] {path}  ({origin}){missing}",
+            path = root.path.display(),
+            origin = root.origin.label(),
+            missing = if root.exists {
+                ""
+            } else {
+                "  MISSING — nothing scanned"
+            },
+        );
     }
+
     let mut listed = 0usize;
     for p in result.providers.iter().filter(matching) {
         for pr in p
@@ -832,26 +1001,100 @@ fn run_providers(args: ProvidersArgs) -> Result<()> {
             .iter()
             .filter(|pr| kind.is_none_or(|k| pr.kind == k))
         {
-            println!(
-                "  {kind:<9} {name:<18} {pkg:<22} root[{root}] {dir}",
+            // RFC-0087 D6 — "each package's kind, the root it came from, and
+            // what it hid". The first two were already here; the third is what
+            // separates a search PATH from a pile, and it is printed on the row
+            // the reader is already looking at rather than in a section they
+            // would have to know to scroll to.
+            let contest = shadowed
+                .iter()
+                .find(|s| s.kind == pr.kind && s.name == pr.name);
+            let _ = writeln!(
+                out,
+                "  {kind:<9} {name:<18} {pkg:<22} root[{root}] {dir}{note}",
                 kind = pr.kind,
                 name = pr.name,
                 pkg = p.package,
                 root = p.root_index,
                 dir = p.dir.display(),
+                // Named on the loser's own row too: a reader scanning the flat
+                // list must not take a row that will never be selected for one
+                // that will. A TIE marks every row it involves, the
+                // highest-precedence one included — there is no winner among
+                // them, so singling one out would name a selection that will
+                // not happen.
+                note = match contest {
+                    Some(s) if s.same_root_tie => "  (AMBIGUOUS — see below)".to_string(),
+                    Some(s) if s.winner.dir != p.dir =>
+                        format!("  (shadowed by root[{}])", s.winner.root_index),
+                    _ => String::new(),
+                },
             );
+            // What this one hid, on the winner's row.
+            if let Some(s) = contest.filter(|s| s.winner.dir == p.dir && !s.same_root_tie) {
+                for hidden in &s.shadowed {
+                    let _ = writeln!(
+                        out,
+                        "      shadows  {pkg:<22} root[{root}] {dir}",
+                        pkg = hidden.package,
+                        root = hidden.root_index,
+                        dir = hidden.dir.display(),
+                    );
+                }
+            }
             listed += 1;
         }
     }
+
     // The denominator matters: "0 providers" from a scan that saw 200 packages
     // is a migration in progress, while "0 providers" from one that saw 0 is a
     // search path pointing somewhere wrong. Without this they look identical.
-    println!(
+    let _ = writeln!(
+        out,
         "{listed} provision(s) from {} package(s) with an export, {} package(s) scanned",
         result.providers.iter().filter(matching).count(),
         result.packages_seen(),
     );
-    Ok(())
+
+    // A count, not a repetition of the rows: the rows above already name every
+    // loser, and the number exists so a reader who was not looking for
+    // shadowing still learns that some happened.
+    let (ties, overlays): (Vec<_>, Vec<_>) = shadowed.iter().partition(|s| s.same_root_tie);
+    if !overlays.is_empty() {
+        let _ = writeln!(
+            out,
+            "{n} contested provision(s), {hidden} package(s) shadowed: a LATER search \
+             root overlays an earlier one, and every loser is named on the winner's row.",
+            n = overlays.len(),
+            hidden = overlays.iter().map(|s| s.shadowed.len()).sum::<usize>()
+        );
+    }
+    // Ambiguity is not shadowing and must not be counted as it: there is no
+    // winner to name, and a build that asks for one of these by name gets
+    // `ResolveError::Ambiguous` rather than a provider.
+    //
+    // Reported as a FACT, not as a defect. Some families are legitimately
+    // claimed twice in one root and separated by their descriptor — `board`
+    // `threadx` is claimed by `nros-board-threadx-linux` and
+    // `nros-board-threadx-qemu-riscv64`, and `provider_scan::candidates`
+    // exists for exactly that (phase-348 W2's finding: a flat "two packages,
+    // one name is an error" rule would reject a shipping arrangement). So this
+    // says what is true of a by-NAME lookup and does not prescribe a rename
+    // that would be wrong advice for half the cases it prints on.
+    for s in ties {
+        let _ = writeln!(
+            out,
+            "AMBIGUOUS {kind}:{name} — claimed by {n} packages in root[{root}], which \
+             has no internal precedence, so `--resolve {kind}:{name}` refuses. A caller \
+             with its own discriminator (a board descriptor's `target_contains`) still \
+             resolves it; anything else needs one of them renamed or moved to another root.",
+            kind = s.kind,
+            name = s.name,
+            n = s.shadowed.len() + 1,
+            root = s.winner.root_index,
+        );
+    }
+    out
 }
 
 // =============================================================================
@@ -2421,7 +2664,7 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
     } else {
         write_provider_index_with(
             &ws_root,
-            &provider_roots_for_sync(&ws_root, &base_paths, nano_ros_root.as_deref()),
+            &provider_roots_for_sync(&ws_root, &base_paths, nano_ros_root.as_deref())?,
             args.verbose,
         );
     }
@@ -7147,5 +7390,217 @@ class = "plain_pkg::Talker"
 name = "plain"
 "#;
         assert!(check(sys, "meta:\n  version: 1\n").is_ok());
+    }
+}
+
+// =============================================================================
+// The search path and its shadowing report — phase-420 W6 (RFC-0087 D6)
+// =============================================================================
+
+#[cfg(test)]
+mod search_path_tests {
+    use super::*;
+    use std::fs;
+
+    fn provider_xml(name: &str, kind: &str, provides: &str) -> String {
+        format!(
+            r#"<?xml version="1.0"?>
+<package format="3">
+  <name>{name}</name>
+  <version>0.0.0</version>
+  <export>
+    <nano_ros_provides kind="{kind}" name="{provides}"/>
+  </export>
+</package>"#
+        )
+    }
+
+    fn write_provider(dir: &Path, name: &str, kind: &str, provides: &str) {
+        fs::create_dir_all(dir).unwrap();
+        fs::write(dir.join("package.xml"), provider_xml(name, kind, provides)).unwrap();
+    }
+
+    /// The whole path assembled the way the COMMAND assembles it, from a real
+    /// `nros.toml` on disk: a third root, neither the nano-ros tree nor the
+    /// workspace, is searched and its provider is selected by name.
+    ///
+    /// This is the wave's acceptance criterion, and the thing
+    /// `serdes_resolver::tests::a_provider_in_the_user_workspace_reaches_the_default_search_path`
+    /// deliberately could not reach — it proved the TWO-root case and said so.
+    #[test]
+    fn a_provider_in_a_third_configured_root_is_selected_by_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let nano_ros = tmp.path().join("nano-ros");
+        let workspace = tmp.path().join("robot_ws");
+        let third = tmp.path().join("elsewhere/nros-packages");
+        fs::create_dir_all(&nano_ros).unwrap();
+        fs::create_dir_all(&workspace).unwrap();
+        write_provider(&third.join("acme_rmw"), "acme_rmw", "rmw", "acme");
+        fs::write(
+            workspace.join("nros.toml"),
+            format!("[workspace]\npackage_paths = [\"{}\"]\n", third.display()),
+        )
+        .unwrap();
+
+        let path = provider_search_path_with(Some(&nano_ros), &workspace)
+            .expect("the search path assembles");
+        assert_eq!(
+            path.roots.iter().map(|r| r.origin).collect::<Vec<_>>(),
+            vec![
+                provider_scan::RootOrigin::NanoRosTree,
+                provider_scan::RootOrigin::Workspace,
+                provider_scan::RootOrigin::PackagePaths,
+            ],
+            "{:?}",
+            path.roots,
+        );
+
+        let scan = provider_scan::scan_roots(&path.paths()).unwrap();
+        let r = provider_scan::resolve_unique(&scan, "rmw", "acme")
+            .expect("the out-of-repo provider resolves by name");
+        assert_eq!(r.winner.package, "acme_rmw");
+        assert_eq!(r.winner.root_index, 2);
+    }
+
+    /// Order decides a cross-root collision, end to end through the config
+    /// file: the LATER root wins, and the loser is still in the scan so the
+    /// report can name it.
+    #[test]
+    fn order_decides_a_cross_root_collision_through_the_config_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("ws");
+        let first = tmp.path().join("first");
+        let second = tmp.path().join("second");
+        fs::create_dir_all(&workspace).unwrap();
+        write_provider(&first.join("p"), "from_first", "serdes", "flatbuf");
+        write_provider(&second.join("p"), "from_second", "serdes", "flatbuf");
+        fs::write(
+            workspace.join("nros.toml"),
+            format!(
+                "[workspace]\npackage_paths = [\"{}\", \"{}\"]\n",
+                first.display(),
+                second.display()
+            ),
+        )
+        .unwrap();
+
+        let path = provider_search_path_with(None, &workspace).unwrap();
+        let scan = provider_scan::scan_roots(&path.paths()).unwrap();
+        let r = provider_scan::resolve_unique(&scan, "serdes", "flatbuf").unwrap();
+        assert_eq!(r.winner.package, "from_second", "the later root wins");
+        assert_eq!(
+            r.shadowed
+                .iter()
+                .map(|p| p.package.as_str())
+                .collect::<Vec<_>>(),
+            vec!["from_first"],
+        );
+    }
+
+    /// The report NAMES the hidden provider — on the winner's row, and again on
+    /// the loser's own row so a reader scanning the flat list is not misled
+    /// into using one that will never be selected.
+    #[test]
+    fn the_listing_names_the_provider_that_was_hidden() {
+        let tmp = tempfile::tempdir().unwrap();
+        let under = tmp.path().join("underlay");
+        let over = tmp.path().join("overlay");
+        write_provider(&under.join("shipped"), "shipped_zenoh", "rmw", "zenoh");
+        write_provider(&over.join("patched"), "patched_zenoh", "rmw", "zenoh");
+
+        let path = provider_scan::SearchPath::from_base_paths(&[under.clone(), over.clone()]);
+        let scan = provider_scan::scan_roots(&path.paths()).unwrap();
+        let shadowed = provider_scan::shadowing(&scan);
+        let text = render_provider_listing(&path, &scan, None, &shadowed);
+
+        assert!(
+            text.contains("shadows  shipped_zenoh"),
+            "the winner's row must say what it hid:\n{text}"
+        );
+        assert!(
+            text.contains("shadowed by root[1]"),
+            "and the loser's own row must say it lost, and to which root:\n{text}"
+        );
+        assert!(
+            text.contains("1 contested provision(s), 1 package(s) shadowed"),
+            "a reader who was not looking for shadowing still learns it happened:\n{text}"
+        );
+        assert!(
+            !text.contains("AMBIGUOUS"),
+            "a cross-root collision RESOLVES; only a same-root one is ambiguous:\n{text}"
+        );
+    }
+
+    /// A same-root collision is reported as AMBIGUOUS rather than counted as
+    /// shadowing: there is no winner to name, and `resolve_unique` refuses.
+    #[test]
+    fn a_same_root_collision_is_listed_as_ambiguous() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join("one_root");
+        write_provider(&root.join("a"), "acme_a", "rmw", "acme");
+        write_provider(&root.join("b"), "acme_b", "rmw", "acme");
+
+        let path = provider_scan::SearchPath::from_base_paths(&[root]);
+        let scan = provider_scan::scan_roots(&path.paths()).unwrap();
+        let shadowed = provider_scan::shadowing(&scan);
+        let text = render_provider_listing(&path, &scan, None, &shadowed);
+
+        assert!(text.contains("AMBIGUOUS rmw:acme"), "{text}");
+        assert_eq!(
+            text.matches("(AMBIGUOUS — see below)").count(),
+            2,
+            "BOTH rows of a tie are marked — there is no winner among them, so \
+             singling one out would name a selection that will not happen:\n{text}"
+        );
+        assert!(
+            !text.contains("Rename one"),
+            "the message must not prescribe a rename: `board` `threadx` is \
+             legitimately claimed twice in one root and separated by its \
+             descriptor (phase-348 W2):\n{text}"
+        );
+        assert!(
+            !text.contains("contested provision(s)"),
+            "ambiguity is not shadowing — counting it as such would promise a \
+             winner the build will refuse:\n{text}"
+        );
+    }
+
+    /// A root that does not exist is REPORTED and not fatal. The listing marks
+    /// it MISSING in place, keeping its index, so the reader can see that the
+    /// root they configured contributed nothing — as distinct from being a root
+    /// that holds no providers.
+    #[test]
+    fn a_nonexistent_configured_root_is_marked_missing_and_is_not_fatal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("ws");
+        let real = tmp.path().join("real");
+        fs::create_dir_all(&workspace).unwrap();
+        write_provider(&real.join("p"), "real_rmw", "rmw", "acme");
+        fs::write(
+            workspace.join("nros.toml"),
+            format!(
+                "[workspace]\npackage_paths = [\"{}/gone\", \"{}\"]\n",
+                tmp.path().display(),
+                real.display()
+            ),
+        )
+        .unwrap();
+
+        let path = provider_search_path_with(None, &workspace)
+            .expect("a missing root must not fail the assembly");
+        assert_eq!(path.missing().len(), 1, "{:?}", path.roots);
+
+        let scan = provider_scan::scan_roots(&path.paths())
+            .expect("a missing root must not fail the scan");
+        assert!(
+            provider_scan::resolve_unique(&scan, "rmw", "acme").is_ok(),
+            "the roots that ARE there still answer"
+        );
+
+        let text = render_provider_listing(&path, &scan, None, &provider_scan::shadowing(&scan));
+        assert!(
+            text.contains("MISSING — nothing scanned"),
+            "a configured root that contributed nothing must say so:\n{text}"
+        );
     }
 }
