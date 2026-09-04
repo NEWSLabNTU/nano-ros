@@ -259,3 +259,67 @@ gateway and port, and the connection still fails. The next suspect is
 — a router that binds, satisfies `wait_for_port`, and is gone by the time
 firmware connects would produce exactly this. Checking that means watching the
 router process across the firmware boot, which this stopped short of.
+
+
+## The zephyr xrce-cpp cluster: cause FIXED, cells still red for a DIFFERENT reason (2026-09-04)
+
+The heap exhaustion diagnosed above is fixed (issues 0968/1033). The three cells
+still fail, and the honest reading is that fixing one cause exposed the next.
+
+### The allocation, measured per image
+
+`sizeof(xrce_session_state_t)` after the MTU fix, the derivable-ladder wiring
+and admitting a zero cap, against a 66,048-byte arena:
+
+| image | before | after |
+| --- | ---: | ---: |
+| talker | 427,968 | **25,792** |
+| service-client | 427,968 | **25,792** |
+| service-server | 427,968 | **30,176** |
+| action-server | 427,968 | **38,944** |
+| listener | 427,968 | **59,088** |
+| action-client | 427,968 | **59,088** |
+
+All six fit. Re-running the three cells: **`HEAP EXHAUSTED` appears zero times**
+in all three, where it was the first thing every image printed.
+
+### They now fail on `zeth`, which was always missing and previously MASKED
+
+```
+<err> eth_posix: Cannot create zeth (-1)
+```
+
+`zeth` is the TAP device Zephyr's native_sim networking needs, created by
+`net-setup.sh` as root. **This host has no `zeth` interface at all** — checked
+against `/sys/class/net`.
+
+It is not a regression, and the progression shows why it was invisible:
+
+| image's session struct | `Cannot create zeth` | `HEAP EXHAUSTED` |
+| ---: | ---: | ---: |
+| 427,968 (original) | 0 | 1 |
+| 76,624 (partly fixed) | 1 | 1 |
+| 59,088 (fits) | 1 | **0** |
+
+At 427,968 the image died in the allocation BEFORE it reached network setup, so
+the missing TAP never printed. Each fix advanced it to the next unmet
+precondition. That ordering is why this issue's original sample looked like "the
+server did not start": it stopped earlier than anyone was looking.
+
+### So what these cells prove, and what they do not
+
+* **Proved:** the heap cause is real and fixed. Zero exhaustions, six images
+  under budget, from a declaration the tree was already capturing and throwing
+  away.
+* **Not proved:** that the cells pass. They cannot on this host — the TAP device
+  needs root, which an agent does not take. A host with `net-setup.sh` run is
+  what closes them.
+
+### A caution for whoever re-runs this
+
+The FIRST re-run of these cells was contaminated by six leftover `zephyr.exe`
+processes from manual debugging, which held the interface and produced the same
+`Cannot create zeth` line. Those verdicts were discarded and the cells re-run
+after killing every stray. A red you caused reads exactly like a red that was
+already there — the per-cell `heap=` / `zeth=` counts above are recorded so the
+next reader can tell them apart without taking anyone's word.
