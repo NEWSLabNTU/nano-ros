@@ -703,10 +703,79 @@ pub fn record_stale(binary: &Path) -> StaleHistory {
     entry
 }
 
+/// Whether a FRESH verdict rests on a probe that actually measured something,
+/// and the line to print when it does not (issue 1045).
+///
+/// [`probe_accounting`] is rendered only inside a STALE message, so a degraded
+/// probe was invisible in exactly the direction that matters: on the fresh path
+/// "examined 0 inputs" and "examined 2286 inputs" read identically, and both
+/// read as a pass. That asymmetry is what let issue 1005's symlink defect run
+/// across the whole cross-compiled tree — `zpico_recorded_inputs` returned
+/// **0 entries** for every FreeRTOS / NuttX / ThreadX fixture, so the probe
+/// silently ran the hand-authored bootstrap walk its own doc comment calls
+/// unreachable, and every verdict it produced was FRESH.
+///
+/// Two shapes count as degraded, and they are different failures:
+///
+/// * `examined == 0` — the probe compared NOTHING. A fresh verdict here is not
+///   evidence of anything; it is the absence of a measurement.
+/// * `UNMEASURED` — an arm could not read the input set the BUILD recorded and
+///   fell back to a hand-authored list. That one fails safe (over-broad, so it
+///   errs toward a false STALE), but it still means the verdict describes a
+///   different input set than the one that was built.
+///
+/// Returns `None` when the probe measured normally, so a healthy run stays
+/// silent. Split out from the printing so it can be tested without capturing
+/// stderr.
+pub fn fresh_verdict_warning() -> Option<String> {
+    let examined = EXAMINED.with(Cell::get);
+    let unmeasured = UNMEASURED.with(Cell::get);
+    if examined > 0 && !unmeasured {
+        return None;
+    }
+    let why = if examined == 0 {
+        "it compared NOTHING"
+    } else {
+        "it could not read the input set the build recorded"
+    };
+    Some(format!(
+        "[nros-tests] WARNING: fixture reported FRESH by a DEGRADED probe — {why}. \
+         probe: {}. A fresh verdict from this probe is the absence of a measurement, \
+         not evidence the binary is current; re-read it before trusting a green \
+         (issues 1005, 1045). Set NROS_STRICT_STALENESS_PROBE=1 to make this a failure.",
+        probe_accounting()
+    ))
+}
+
 /// Clear the coordinate's stale run — it resolved fresh, so it is about to
 /// produce a runtime result.
-pub fn record_fresh(binary: &Path) {
+///
+/// Also the one place a FRESH verdict is announced, so it is where a degraded
+/// probe has to say so (issue 1045). Putting it here rather than at the four
+/// `require_*_fresh` entry points is deliberate: every one of them ends in this
+/// call, and a rule that lives at the choke point cannot be forgotten by the
+/// fifth (issue 0196's shape).
+pub fn record_fresh(binary: &Path) -> Result<(), String> {
     let _ = fs::remove_file(ledger_path(binary));
+    let Some(warning) = fresh_verdict_warning() else {
+        return Ok(());
+    };
+    let detail = format!("{warning}\n  binary: {}", binary.display());
+    if strict_probe() {
+        return Err(detail);
+    }
+    eprintln!("{detail}");
+    Ok(())
+}
+
+/// Whether a degraded probe should FAIL rather than warn.
+///
+/// Off by default: making it fatal today would break every arm that has no
+/// recorded input set, which is a much larger change than making the
+/// degradation visible. The knob exists so a lane can opt in once the arms are
+/// clean, which is how this stops being permanent.
+pub fn strict_probe() -> bool {
+    std::env::var_os("NROS_STRICT_STALENESS_PROBE").is_some()
 }
 
 fn parse_entry(s: &str) -> Option<(u32, u64)> {
@@ -827,7 +896,7 @@ mod tests {
     #[test]
     fn a_fresh_resolution_clears_the_not_run_run() {
         let key = project_root().join("target/nros-fixture-staleness-selftest/bin-a");
-        record_fresh(&key);
+        let _ = record_fresh(&key);
         assert_eq!(record_stale(&key).consecutive, 1);
         assert_eq!(record_stale(&key).consecutive, 2);
         let second = record_stale(&key);
@@ -837,26 +906,77 @@ mod tests {
             "a coordinate stale three runs running must say so: {}",
             second.note()
         );
-        record_fresh(&key);
+        let _ = record_fresh(&key);
         assert_eq!(
             record_stale(&key).consecutive,
             1,
             "running the fixture must reset the count, else the counter measures \
              age rather than non-running"
         );
-        record_fresh(&key);
+        let _ = record_fresh(&key);
     }
 
     #[test]
     fn a_single_stale_verdict_stays_quiet() {
         let key = project_root().join("target/nros-fixture-staleness-selftest/bin-b");
-        record_fresh(&key);
+        let _ = record_fresh(&key);
         let first = record_stale(&key);
         assert_eq!(first.consecutive, 1);
         assert!(
             first.note().is_empty(),
             "stale-since-your-last-edit is the normal case and must not shout"
         );
-        record_fresh(&key);
+        let _ = record_fresh(&key);
+    }
+
+    /// issue 1045 — a FRESH verdict from a probe that measured nothing must SAY so.
+    ///
+    /// The negative control is the point: a healthy probe stays silent, so the
+    /// warning cannot become background noise that a reader learns to skip.
+    #[test]
+    fn a_degraded_probe_announces_itself_on_the_fresh_path() {
+        begin_probe();
+        assert!(
+            fresh_verdict_warning().is_some(),
+            "a probe that examined ZERO inputs reported fresh without complaint — \
+             that is issue 1005's symlink defect made invisible again"
+        );
+        assert!(
+            fresh_verdict_warning()
+                .unwrap()
+                .contains("compared NOTHING"),
+            "the warning must name WHICH degradation happened"
+        );
+    }
+
+    #[test]
+    fn an_unmeasured_input_set_announces_itself_even_when_candidates_were_seen() {
+        begin_probe();
+        // A hand-authored fallback DOES examine candidates, so `examined > 0`
+        // alone would miss it — the two degradations are different failures.
+        let seen = project_root().join("target/nros-1045-probe/some-input.rs");
+        note_candidate(&seen);
+        note_unmeasured_input_set();
+        let warning = fresh_verdict_warning().expect("an unmeasured input set is degraded");
+        assert!(
+            warning.contains("could not read the input set"),
+            "got: {warning}"
+        );
+        assert!(
+            warning.contains("INPUT SET UNMEASURED"),
+            "the accounting line must travel with the warning; got: {warning}"
+        );
+    }
+
+    #[test]
+    fn a_measured_probe_says_nothing() {
+        begin_probe();
+        let seen = project_root().join("target/nros-1045-probe/measured-input.rs");
+        note_candidate(&seen);
+        assert!(
+            fresh_verdict_warning().is_none(),
+            "a probe that measured normally must stay silent, or the warning \
+             becomes noise and stops being read"
+        );
     }
 }
