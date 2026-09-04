@@ -15,6 +15,7 @@
   <license>Apache-2.0</license>
 
   <export>
+    <build_type>nros_cargo</build_type>
     <!--
       Provision, NOT consumption. `<nano_ros rmw="zenoh"/>` in a leaf package
       means "build me against zenoh"; this means "I am zenoh". Both names are

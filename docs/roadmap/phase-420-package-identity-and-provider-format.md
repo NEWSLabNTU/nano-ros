@@ -1,6 +1,6 @@
 # Phase 420 — package identity and the provider format
 
-**Status (2026-09-04). W1–W2 landed; W3–W9 open.** Implements
+**Status (2026-09-04). W1–W3 landed; W4–W9 open.** Implements
 [RFC-0087](../design/0087-package-identity-and-provider-format.md). Sequenced
 with [phase-421](phase-421-serialization-format-provider.md), which implements
 RFC-0088 and needs **W1 of this phase only** — the rest of this phase can land
@@ -102,12 +102,89 @@ is one road.
       package becomes unbuildable by colcon. `ament_nros` is safe to move
       whenever — no colcon extension ever registered it.
 
-- [ ] **W3 — rewrite the nano-ros-owned packages.** Mechanical: entries, boards,
-      RMW / platform providers, bringups. `packages/interfaces/*` and user
+- [x] **W3 — rewrite the nano-ros-owned packages.** (landed 2026-09-04) Entries,
+      boards, RMW / platform providers, bringups. `packages/interfaces/*` and user
       message packages are **untouched** — they are ROS 2 packages. `ament_nros`,
       `nros_entry` and `nros_bringup` fold into the pair and declare no role.
-      **Acceptance:** `check-build-type-spelling` green with the old spellings
-      removed from the allowed set for those classes; `just ci gate` green.
+      **Acceptance, met:** 371 `package.xml` rewritten (202 `nros_cmake`, 168
+      `nros_cargo`, one held — below); the baseline shrank **301 → 1**;
+      `check-build-type-spelling`, `check-package-xml-comments`,
+      `check-package-xml-uses` and `check-provider-announcements` green.
+
+      **The value follows the package's BUILD SYSTEM, not its old spelling** —
+      the mapping table in `build_type.rs` / `NanoRosPackageXml.cmake`
+      canonicalises a legacy *string*; it does not decide a *package*. Order of
+      evidence used, per package: a bringup's declared images → the driver
+      `plan::driver_for` picks; a descriptor-only provider → the path its
+      contribution actually reaches an image by; otherwise `CMakeLists.txt`
+      before `Cargo.toml`, because a package carrying both is CMake-rooted with
+      the crate imported through corrosion.
+
+      Consequences worth recording, because each inverts the obvious guess:
+
+      - **19 Rust packages became `nros_cmake`** — the twelve Zephyr Rust
+        leaves and six ThreadX ones, plus `mixed/src/rust_heartbeat_pkg`. Each
+        carries a `CMakeLists.txt`; `west`/`cmake` is the build root and the
+        crate is a staticlib it imports. Cargo is downstream of CMake there,
+        not the entry point.
+      - **7 bringups became `nros_cargo`**, including six that said
+        `ament_cmake`. A bringup owns no build file at all; it generates a
+        cargo root OR a cmake root per image, and an all-Rust, non-Zephyr
+        workspace only ever takes the cargo one. Where a bringup's images span
+        both drivers (`workspaces/rust`, `workspaces/realtime-rust`,
+        `workspaces/mixed`, `workspaces/cpp`, …) **cmake wins**, for the reason
+        `driver_for` gives: corrosion makes cargo consumable from cmake and
+        nothing makes cmake consumable from cargo.
+      - **One correction to W2's `ament_nros` note.** W2 recorded that all five
+        `ament_nros` uses were cmake-side, "three are bringups that generate a
+        CMake root". Measured per package, `multi_pkg_workspace_nuttx/src/demo_bringup`
+        is not: its workspace is all-Rust, `driver_for("nuttx", false)` is
+        `Driver::Cargo`, and the NuttX `apps/external` shim's `context::` rule
+        shells `NROS_CARGO_BUILD`. It is `nros_cargo`. The four others are
+        `nros_cmake` as W2 said. The *table's* `ament_nros → nros_cmake` row is
+        unaffected — it canonicalises a retired string for a reader, and the
+        sweep answers a different question.
+      - **The three `ambiguous` packages W2 left to W3**, each decided on which
+        half a consumer can actually use:
+        `examples/native/c/custom-msg` → **`nros_cmake`** (application wins: it
+        calls `nano_ros_add_executable`, and its messages come from
+        `nano_ros_generate_interfaces`, not `rosidl_generate_interfaces`, so no
+        ROS 2 node can consume them — the interface half is local to the
+        example); `examples/native/rust/custom-msg` → **`nros_cargo`** (same
+        shape, cargo-rooted); `nros-tests/bins/ros-edition-pose-pub` →
+        **`nros_cargo`** (a `geometry_msgs` publisher fixture with no `msg/`,
+        `srv/` or `action/` dir at all — its
+        `<member_of_group>rosidl_interface_packages</member_of_group>` claims
+        an interface it does not ship, and should be deleted separately).
+      - **73 packages that said plain `cmake` / `cargo` were swept too.** D2's
+        standalone-example exception does not reach them: they are workspace
+        members that `find_package(nano_ros REQUIRED)` and call
+        `nano_ros_auto_add_library` / `nros_components_register_node`. Plain
+        `cmake` is the same false claim as `ament_cmake`, only quieter — stock
+        colcon *does* register a `ros.cmake` task, so it attempts the build and
+        fails at `find_package`, which is exactly the attempt-instead-of-refusal
+        D2 exists to end.
+
+      **Two standalone port templates keep plain `cmake`, deliberately** —
+      `examples/templates/cpp-port-minimal-publisher` and
+      `examples/templates/rclcpp-compat-smoke`. Both are verbatim stock ROS 2
+      `ament_cmake_auto` packages whose whole subject is the size of the delta;
+      making them declare a nano-ros build type would edit the thing being
+      demonstrated. This is D2's standalone arm, used as written.
+
+      **The one baseline row that remains is W4's, not a residue of judgement.**
+      `examples/templates/local-msg-package/src/rust_consumer` is discovered by
+      the `colcon build examples/templates/local-msg-package/src/` CI job and by
+      `just colcon-parity`. On the CI runner (stock colcon, no
+      `colcon-cargo-ros2`) it is already skipped with a warning, so nothing
+      there changes either way; on a developer host *with* the extension it is
+      built today by `ros.ament_cargo`, and rewriting it before W4 re-keys the
+      entry points to `ros.nros_cargo` would silently stop building it. It moves
+      in W4's commit, and the baseline empties there.
+
+      **Deliberately not moved:** the scaffolder emitters
+      (`emit_package_xml.rs`, `new_system.rs`, `scaffold.rs`), for the same
+      reason — a freshly scaffolded package must stay colcon-buildable until W4.
 
 - [ ] **W4 — re-key the colcon extension.** Entry points become
       `ros.nros_cmake` / `ros.nros_cargo`; the 30 `ros.nros.<lang>.<platform>`
@@ -116,6 +193,15 @@ is one road.
       **Acceptance:** `colcon build` on a workspace of nano-ros packages selects
       `NrosBuildTask`; the same workspace under a stock colcon reports unknown
       build type rather than attempting an install.
+
+      **W3 left three things for this wave to move, in this wave's commit:**
+      `examples/templates/local-msg-package/src/rust_consumer/package.xml`
+      (`ament_cargo` → `nros_cargo`), which is what empties
+      `scripts/build-type-spelling-baseline.json` to zero; the scaffolder
+      emitters `emit_package_xml.rs` / `new_system.rs` / `scaffold.rs`; and this
+      doc's status line. All three are the same hazard — a package that declares
+      `nros_*` before the entry points exist is skipped by colcon with a warning,
+      not refused loudly, so the regression is quiet.
 
 - [ ] **W5 — descriptor derivation.** Derive names (from the announcement),
       cargo feature, cmake value, C define token, cffi feature and crate.
@@ -162,9 +248,10 @@ is one road.
 
 ## Risks
 
-- **W3 touches ~170 files.** Mechanical, but it is exactly the kind of sweep that
-  hides one semantic change. Keep the rewrite and any behavioural change in
-  separate commits.
+- **W3 touched 371 files** (the estimate said ~170; the gap is the 73 plain
+  `cmake`/`cargo` workspace members and the 34 packages that declared nothing).
+  Mechanical, but it is exactly the kind of sweep that hides one semantic
+  change. Kept the rewrite and any behavioural change in separate commits.
 - **W9 moves pins.** The cyclonedds and zenoh-pico pins are decisions, not lags;
   the wave must not become an excuse to bump them.
 - **W4 changes what a stock colcon does with our packages.** That is the intent,

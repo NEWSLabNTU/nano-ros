@@ -15,6 +15,6 @@
   <depend>builtin_interfaces</depend>
 
   <export>
-    <build_type>ament_cargo</build_type>
+    <build_type>nros_cargo</build_type>
   </export>
 </package>

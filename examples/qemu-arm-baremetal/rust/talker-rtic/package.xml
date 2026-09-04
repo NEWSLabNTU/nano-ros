@@ -7,6 +7,6 @@
   <license>MIT OR Apache-2.0</license>
   <depend>std_msgs</depend>
   <export>
-    <build_type>ament_cargo</build_type>
+    <build_type>nros_cargo</build_type>
   </export>
 </package>

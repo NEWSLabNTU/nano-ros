@@ -20,6 +20,7 @@
   <license>Apache-2.0</license>
 
   <export>
+    <build_type>nros_cmake</build_type>
     <!--
       Provision, NOT consumption: this package IS a board. Must equal the
       descriptor's declared names, canonical first — `check-provider-announcements.py`

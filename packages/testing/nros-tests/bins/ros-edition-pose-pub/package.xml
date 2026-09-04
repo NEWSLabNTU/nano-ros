@@ -12,4 +12,7 @@
   <member_of_group>rosidl_interface_packages</member_of_group>
 
   <depend>geometry_msgs</depend>
+  <export>
+    <build_type>nros_cargo</build_type>
+  </export>
 </package>

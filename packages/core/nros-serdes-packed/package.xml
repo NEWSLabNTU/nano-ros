@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_serdes_packed</name>
+  <version>0.0.0</version>
+  <description>
+    The reference schema-driven serialization provider (RFC-0088 D7,
+    phase-421 W5).
+
+    `packed` is a TEST VEHICLE, not an interop claim. Nothing else speaks it:
+    it exists so the `impl = "schema"` path has a subject that actually
+    exercises the schema walk. uORB cannot serve — its wire is the PX4 struct
+    verbatim (RFC-0011), so a uORB "serializer" walks nothing — and CDR cannot
+    either, because CDR is the `impl = "codegen"` case this strategy is the
+    alternative to.
+
+    The wire is deliberately the simplest thing that is still DIFFERENT from
+    CDR in every structural way a walk could get wrong: little-endian with no
+    alignment padding, a u32 length prefix on strings and sequences, no NUL
+    terminator, and no DHEADER. A transcode that got any of those wrong would
+    not round-trip.
+
+    See src/lib.rs for the wire spec.
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>nros_serdes</depend>
+
+  <export>
+    <build_type>nros_cargo</build_type>
+    <!--
+      Provision (RFC-0087 D3): this package IS the `packed` serializer. A
+      consumer selects it with `<nano_ros_uses kind="serdes" name="packed"/>`
+      or `[image.<t>] serdes = "packed"`.
+
+      `impl` and `format_id` are in the sibling nros-serdes.toml, because
+      neither can be derived from the name.
+    -->
+    <nano_ros_provides kind="serdes" name="packed"/>
+  </export>
+</package>
