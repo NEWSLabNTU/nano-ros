@@ -18,7 +18,16 @@ record-only:
   follow-up"). The register sequence is dispatched but instantiates
   nothing.
 
-**Status.** Proposed (2026-06-11). Driven by Autoware Safety Island
+**Status (2026-09-04). NOT "Proposed" — 7 of its 12 checkboxes are ticked and
+13 items carry a DONE/LANDED marker; 5 boxes remain.** The C++ entry surface
+this phase describes as a gap now exists in the tree: `NROS_MAIN` is documented
+and implemented in `packages/api/nros-cpp/include/nros/main.hpp`, and
+`nano_ros_entry(...)` appears in 9 example `CMakeLists.txt`.
+
+Not re-verified item by item, so the 5 open boxes stand as written — this
+corrects the HEADER, which said the whole phase was unstarted.
+
+**Previously.** Proposed (2026-06-11). Driven by Autoware Safety Island
 (ASI) as the reference embedded consumer — ASI already has a *working*
 imperative Zephyr + Cyclone runtime (`actuation_module`'s
 `common/node` shim over `nros::Node` + direct `create_publisher` /
