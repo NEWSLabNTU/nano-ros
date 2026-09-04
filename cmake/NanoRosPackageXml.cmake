@@ -62,6 +62,87 @@ function(nros_read_package_xml_body path out_var)
 endfunction()
 
 # ---------------------------------------------------------------------------
+# RFC-0087 D2 / phase-420 W2 — the `<build_type>` vocabulary.
+#
+# A nano-ros-owned package declares `nros_cargo` / `nros_cmake` rather than
+# borrowing ament's spelling, so a stock `colcon build` refuses firmware
+# instead of trying to install it. The tree is not rewritten until W3, so this
+# reader must understand BOTH spellings and resolve them to one build path —
+# a reader that learned the new spelling by forgetting the old one would break
+# 282 packages on the day it landed.
+#
+# `_NROS_BUILD_TYPE_MAP` is `<raw>=<canonical>`; `_NROS_BUILD_TYPE_RETIRED`
+# lists the spellings with no legitimate use in ANY class. The identical rows
+# live in `packages/cli/nros-cli-core/src/build_type.rs`, and
+# `scripts/check-build-type-spelling.py` parses both and refuses a
+# disagreement. Two readers of one rule, implemented separately, is what put
+# the reader bugs in this file's header there; two readers of one TABLE, with a
+# gate comparing them, is the shape that does not rot.
+#
+# CACHE INTERNAL, not a plain `set()`: a module `include()`d from inside a
+# function loses its normal variables when the frame pops (the `_NROS_ENTRY_DIR`
+# pattern; 287-W6 broke every freertos workspace member exactly this way).
+# ---------------------------------------------------------------------------
+set(_NROS_BUILD_TYPE_MAP
+    "nros_cargo=nros_cargo"
+    "nros_cmake=nros_cmake"
+    "ament_cargo=nros_cargo"
+    "ament_cmake=nros_cmake"
+    "cargo=nros_cargo"
+    "cmake=nros_cmake"
+    "ament_nros=nros_cmake"
+    "nros_entry=nros_cargo"
+    "nros_bringup=nros_cmake"
+    CACHE INTERNAL "RFC-0087 D2: raw <build_type> spelling -> canonical spelling")
+set(_NROS_BUILD_TYPE_RETIRED
+    "ament_nros"
+    "nros_entry"
+    "nros_bringup"
+    CACHE INTERNAL "RFC-0087 D2: <build_type> spellings that no class may keep")
+
+# ---------------------------------------------------------------------------
+# nros_canonical_build_type(<raw> <package_xml> <out_var>)
+#
+# Resolve a `<build_type>` body to its RFC-0087 D2 spelling, warning when the
+# authored spelling is retired.
+#
+# An UNKNOWN value leaves <out_var> empty and is NOT an error: `ament_python`
+# and friends are valid ROS 2 build types that simply are not ours, and a
+# reader that hard-errors on one cannot be run over a mixed workspace.
+# Refusing an unknown value INSIDE this repository is
+# `check-build-type-spelling`'s job, where the rule can also see the package's
+# class — which a string cannot.
+#
+# The warning is DEPRECATION (shown by default, unlike AUTHOR_WARNING) and it
+# names the file, because all three retired spellings live in test fixtures:
+# "some package uses ament_nros" sends the reader grepping 406 package.xml.
+# ---------------------------------------------------------------------------
+function(nros_canonical_build_type raw package_xml out_var)
+    string(STRIP "${raw}" _raw)
+    set(${out_var} "" PARENT_SCOPE)
+    if(_raw STREQUAL "")
+        return()
+    endif()
+    foreach(_row IN LISTS _NROS_BUILD_TYPE_MAP)
+        if(_row MATCHES "^([^=]+)=(.+)$" AND CMAKE_MATCH_1 STREQUAL _raw)
+            set(${out_var} "${CMAKE_MATCH_2}" PARENT_SCOPE)
+            # `list(FIND)` rather than `if(… IN_LIST …)`: IN_LIST needs CMP0057,
+            # which is unset under `cmake -P` (no cmake_minimum_required), and
+            # the buildless gates drive this reader in exactly that mode.
+            list(FIND _NROS_BUILD_TYPE_RETIRED "${_raw}" _retired_at)
+            if(NOT _retired_at EQUAL -1)
+                message(DEPRECATION
+                    "${package_xml}: <build_type>${_raw}</build_type> is retired "
+                    "(RFC-0087 D2) — write <build_type>${CMAKE_MATCH_2}</build_type>. "
+                    "It is read as `${CMAKE_MATCH_2}` meanwhile, so nothing breaks "
+                    "today; phase-420 W3 removes the spelling.")
+            endif()
+            return()
+        endif()
+    endforeach()
+endfunction()
+
+# ---------------------------------------------------------------------------
 # nano_ros_read_package_export([PACKAGE_XML <path>])
 #
 # Parse a package.xml's consumption exports (default
@@ -72,6 +153,13 @@ endfunction()
 #   NANO_ROS_EXPORT_FOUND    — TRUE iff a <nano_ros …/> element was present
 #   NANO_ROS_EXPORT_USES_KINDS      — every selected family, declaration order
 #   NANO_ROS_EXPORT_USES_<KIND>     — the name selected for that family
+#   NANO_ROS_EXPORT_BUILD_TYPE      — <build_type> in RFC-0087 D2 spelling, or ""
+#   NANO_ROS_EXPORT_BUILD_TYPE_RAW  — <build_type> exactly as authored, or ""
+#
+# Both build-type variables, because they answer different questions: the
+# canonical one is what a consumer branches on, the raw one is what a
+# diagnostic has to quote back for the user to find the line. An unrecognised
+# value leaves the canonical empty while the raw still reports it.
 #
 # RFC-0087 D3 / phase-420 W1 — two spellings, one meaning:
 #
@@ -103,11 +191,33 @@ function(nano_ros_read_package_export)
     set(NANO_ROS_EXPORT_RMW    "" PARENT_SCOPE)
     set(NANO_ROS_EXPORT_FOUND  FALSE PARENT_SCOPE)
     set(NANO_ROS_EXPORT_USES_KINDS "" PARENT_SCOPE)
+    set(NANO_ROS_EXPORT_BUILD_TYPE "" PARENT_SCOPE)
+    set(NANO_ROS_EXPORT_BUILD_TYPE_RAW "" PARENT_SCOPE)
 
     if(NOT EXISTS "${_NRP_PACKAGE_XML}")
         return()
     endif()
     nros_read_package_xml_body("${_NRP_PACKAGE_XML}" _body)
+
+    # RFC-0087 D2 / phase-420 W2. MATCHALL rather than MATCH: catkin_pkg's
+    # `Package.get_build_type()` raises `InvalidPackage` on a second
+    # <build_type>, so a file with two of them is already unbuildable by every
+    # ROS reader — picking the first here would be this reader inventing a
+    # meaning for a file nothing else accepts.
+    string(REGEX MATCHALL "<build_type>[^<]*</build_type>" _bts "${_body}")
+    list(LENGTH _bts _bt_count)
+    if(_bt_count GREATER 1)
+        message(FATAL_ERROR
+            "${_NRP_PACKAGE_XML}: ${_bt_count} <build_type> elements — only one is "
+            "permitted (catkin_pkg raises InvalidPackage on the second)")
+    elseif(_bt_count EQUAL 1)
+        list(GET _bts 0 _bt)
+        string(REGEX REPLACE "^<build_type>(.*)</build_type>$" "\\1" _bt "${_bt}")
+        string(STRIP "${_bt}" _bt)
+        set(NANO_ROS_EXPORT_BUILD_TYPE_RAW "${_bt}" PARENT_SCOPE)
+        nros_canonical_build_type("${_bt}" "${_NRP_PACKAGE_XML}" _bt_canon)
+        set(NANO_ROS_EXPORT_BUILD_TYPE "${_bt_canon}" PARENT_SCOPE)
+    endif()
 
     set(_kinds "")
 

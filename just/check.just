@@ -116,6 +116,7 @@ fast-serial: \
     build-profile-literals \
     build-root \
     build-rs-rerun-paths \
+    build-type-spelling \
     c-fmt \
     capability-flavour-guards \
     capability-slot-counts \
@@ -3976,6 +3977,21 @@ skip-marker-matching:
 # above it recompile on every invocation, silently and forever. Found in
 # `packages/rmw/cffi/build.rs`, which sits under every image. Self-tests its own
 # checker on every run.
+# RFC-0087 D2 / phase-420 W2 — the `<build_type>` vocabulary AND the class
+# boundary it exists for: a provider, board, entry or bringup may not claim an
+# ament build type (a stock colcon would try to install firmware into a prefix),
+# and an interface package may not claim a nano-ros one (a ROS 2 node consumes
+# its output). Classification is from EVIDENCE — provisions, a sibling
+# system.toml, an nros dep, an image-building cmake verb — never a hand list.
+#
+# A ratchet over scripts/build-type-spelling-baseline.json, because the tree is
+# not migrated yet: 301 rows today, which phase-420 W3 empties. A NEW package
+# binds immediately, and swapping one violating spelling for another is a new
+# violation rather than a grandfathered one. Buildless, ~0.2 s.
+[private]
+build-type-spelling:
+    @python3 scripts/check-build-type-spelling.py
+
 [private]
 build-rs-rerun-paths:
     @python3 scripts/check-build-rs-rerun-paths.py
