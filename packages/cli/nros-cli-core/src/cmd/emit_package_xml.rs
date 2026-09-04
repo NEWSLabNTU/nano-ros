@@ -174,6 +174,11 @@ fn render_component(cargo_toml: &Path) -> Result<String> {
         .build_type
         .clone()
         .unwrap_or_else(|| DEFAULT_BUILD_TYPE_COMPONENT.into());
+    // RFC-0087 D2 / phase-420 W2 — an authored `build_type` is passed through
+    // verbatim (choosing the right spelling for a package's CLASS is W3's job,
+    // not a renderer's), but a RETIRED spelling is wrong for every class, and
+    // this is the one place the tree learns which `Cargo.toml` wrote it.
+    crate::build_type::warn_if_retired(cargo_toml, &build_type);
     let maintainer = ament.maintainer.clone();
 
     Ok(render_xml(RenderInputs {

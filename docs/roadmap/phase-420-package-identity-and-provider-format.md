@@ -1,6 +1,6 @@
 # Phase 420 — package identity and the provider format
 
-**Status (2026-09-04). W1 landed; W2–W9 open.** Implements
+**Status (2026-09-04). W1–W2 landed; W3–W9 open.** Implements
 [RFC-0087](../design/0087-package-identity-and-provider-format.md). Sequenced
 with [phase-421](phase-421-serialization-format-provider.md), which implements
 RFC-0088 and needs **W1 of this phase only** — the rest of this phase can land
@@ -58,13 +58,49 @@ is one road.
       `cmake -P` gate. `deploy=` stays an attribute in both, and a
       `<nano_ros_uses kind="deploy" …/>` is not invented to carry it.
 
-- [ ] **W2 — `nros_cmake` / `nros_cargo` build types.** Teach the reader both old
+- [x] **W2 — `nros_cmake` / `nros_cargo` build types.** (landed 2026-09-04) Teach the reader both old
       and new, mapping `ament_cargo|ament_nros → nros_cargo` with a deprecation
       warning that names the file. Add `check-build-type-spelling`: the allowed
       set, plus RFC-0087 D2's class boundary — a provider, board or entry may not
       declare `ament_*`; an interface package may not declare `nros_*`.
-      **Acceptance:** the gate fails on a package that crosses the boundary in
-      either direction, and passes on the tree as it stands after W3.
+      **Acceptance, met** (as a ratchet — the tree is not migrated until W3):
+      the gate fails on a package that crosses the boundary in either direction,
+      each rule watched failing on a constructed input.
+
+      **The survey contradicted this item's premise: NOTHING read
+      `<build_type>`.** Not `package_xml.rs`, not `NanoRosPackageXml.cmake`, not
+      `nros-cli-core` — which only WRITES it. So "teach the readers both
+      spellings" was really "give the readers a reader", and this wave adds one
+      to cmake and one to `nros-cli-core`. It sharpens the Motivation's defect 2:
+      colcon keys on a build type nothing declares, and no other consumer reads
+      the field either.
+
+      Three decisions worth carrying forward:
+
+      - `ament_nros` maps to **`nros_cmake`, not `nros_cargo`** as this doc
+        first said. All five in-tree uses are cmake-side — two carry a
+        `CMakeLists.txt`, three are bringups that generate a CMake root.
+      - **Only the three RETIRED spellings warn.** A deprecation on
+        `ament_cargo` would fire on 148 in-tree packages and on every legitimate
+        interface package, training people to ignore it before W3 can act.
+        Whether `ament_cargo` is wrong depends on the package's CLASS, which is
+        the gate's question, not a string's.
+      - The gate grew a fourth rule, `owned-declares-nothing`: 34 owned packages
+        (including all 21 providers) declare no `<build_type>` at all, and
+        `catkin_pkg` then reports `catkin` — the same false ament-family claim,
+        made by omission.
+
+      Classification is from evidence, and `nros_generate_interfaces` is
+      deliberately NOT ownership evidence: a message package calls it, and
+      counting it would classify every user interface package as firmware. The
+      gate cross-checks the two build-type tables against each other (S0) rather
+      than being a third copy of the vocabulary.
+
+      **Ordering hazard for W3/W4:** the scaffolder emitters
+      (`emit_package_xml.rs`, `new_system.rs`, `scaffold.rs`) must not move to
+      `nros_*` before W4 re-keys `colcon-cargo-ros2`, or a freshly scaffolded
+      package becomes unbuildable by colcon. `ament_nros` is safe to move
+      whenever — no colcon extension ever registered it.
 
 - [ ] **W3 — rewrite the nano-ros-owned packages.** Mechanical: entries, boards,
       RMW / platform providers, bringups. `packages/interfaces/*` and user

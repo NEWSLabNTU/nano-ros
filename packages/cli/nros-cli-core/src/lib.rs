@@ -18,6 +18,13 @@ pub mod builder;
 // using it and died mid-sweep on a half-written read.
 pub mod atomic_file;
 pub mod build_output;
+// RFC-0087 D2 / phase-420 W2 — the `<build_type>` vocabulary. Old spellings and
+// new resolve to one build path here, so a reader taught `nros_cargo` does not
+// stop understanding the 157 `ament_cargo` packages that W3 has not rewritten
+// yet. The table is cross-checked against `cmake/NanoRosPackageXml.cmake` by
+// `check-build-type-spelling`, because three readers of one rule is how the
+// rmw parity map came to disagree with the vtable by 25 symbols.
+pub mod build_type;
 pub mod cmd;
 // phase-403 W9 (issue 0965) — the ENTITY inventory: WHICH entities an image
 // creates, the half the BOUND inventory (which prices a TYPE) cannot answer.
