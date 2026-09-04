@@ -2,7 +2,7 @@
 id: 1035
 title: "zenoh-pico 1.8.0 does not compile on NuttX: `#if ... == true` is not an
   integer constant expression where `true` is `(bool)1`"
-status: open
+status: resolved
 type: bug
 area: [rmw, third-party, embedded]
 related: [1021, phase-415, 0910]
@@ -89,3 +89,23 @@ workaround and does not fork behaviour by platform.
 3. **Does the NuttX lane run anywhere that gates?** If a NuttX build had been on
    a merge-gating lane, PR #299 could not have landed broken. It is not, and
    that is the reason this reached main rather than a review lapse.
+
+## Verified on main, 2026-09-04
+
+Confirmed rather than assumed from the merge. `main` at `fa7d09073`, zenoh-pico
+pinned at `c5853157`:
+
+* `just nuttx build-fixtures-arm` — clean, all twelve arm rows.
+* The six NuttX C/C++ `rtos_e2e` cells — **6 / 6 PASS**, 134.6 s wall.
+* `test_rtos_action_e2e` NuttX C++, `--retries 0`, 100 runs — **100 / 100**.
+
+**The half worth recording is the observability one.** While this stood, the
+nightly `nuttx` platform cell was red for it on every run in the window (CI run
+`33847619657` carries the same `stdbool.h:79:25` error), so the lane had no
+signal capacity at all — anything else landing in NuttX looked exactly like
+yesterday's failure. That is the shape issue 0876 rode in on, and it is why this
+was worth more than "a build break": it took the only observer offline for
+issue 0870, whose entire remaining plan is to catch a failing run in a sweep.
+
+A duplicate of this issue was filed the same day (id 1047, from a session that
+had not found this one) and retired without reaching `main`.

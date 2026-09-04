@@ -223,6 +223,13 @@ Every cheap avenue is spent: instrumentation armed and linkage-verified,
 Closing it means accepting green with the cause unattributed, exactly as W1 was
 closed — an owner call, not a conclusion, and deliberately not taken here.
 
+**Both bounds are now discharged.** Issue 1035's fix landed, so `main` builds
+NuttX again and the nightly observer is restored; re-measured on `main` with the
+shipped zenoh-pico pin: 6/6 NuttX C/C++ cells, and **100 / 100** on this cell.
+That is 374 consecutive passes over three build regimes and two emulators, none
+of which produced a failing run to read. Nothing further is measurable; the call
+is the owner's.
+
 The shared-cause answer: **NO.** W2 was harness ordering and is already fixed;
 W3 fails inside construction, before any interaction with the server exists, so
 server ordering cannot reach it. The phase does not shrink.

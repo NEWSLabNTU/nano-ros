@@ -627,3 +627,25 @@ the only observer, and then this
 issue resolves itself either way — the nightly stays green and this closes with
 a tripwire that actually works, or it goes red and hands over the failing run
 that four rounds of investigation have been unable to produce on demand.
+
+### 2026-09-04, later — the observer is back, and 100 more runs on the REAL pin
+
+Issue 1035's fix landed (PR #345: `a1c741db` compares against `1` instead of
+`true`, plus `c5853157`), so `main` builds NuttX zenoh images again. Verified on
+`main` at `fa7d09073` with the pinned zenoh-pico `c5853157`, rather than assumed:
+
+* `just nuttx build-fixtures-arm` — clean.
+* All six NuttX C/C++ `rtos_e2e` cells — **6 / 6 PASS**, 134.6 s wall.
+* This cell, `--retries 0`, store QEMU `11.0.0-nros2`, idle host —
+  **100 / 100 PASS** at ~4.8 s each.
+
+That closes the bound the previous batch had to state. The 210 runs above were
+on the 1.7.2 pin because main could not compile; these 100 are on the pin main
+actually ships, with the `.bss` fix and the shim diagnostics both in the image.
+
+**So the disposition question is now clean.** The observer is restored, the
+tripwire can fire, and 374 consecutive passes across three build regimes and two
+emulators have produced nothing to read. What is left is the owner call this
+issue has been waiting for: close it as green-with-cause-unattributed, the way
+W1 was closed, and accept that if the real fix is later reverted this cell going
+red is what says so.
