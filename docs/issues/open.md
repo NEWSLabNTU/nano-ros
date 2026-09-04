@@ -96,5 +96,6 @@ fails if this block drifts.
 - **#1034** (testing, tooling) — The provisioned QEMU 11 spends ~19.6 s materialising a NuttX image's `.bss` before the guest runs, and that stall is the whole C-vs-C++ asymmetry in issue 0870 See `1034-*`.
 - **#1038** (ci, build, testing) — nightly triage (phase-413 W2.3): three of six cell failures are one class — the platform job builds a lane whose prerequisites its own setup never installs; none is a product regression See `1038-*`.
 - **#1043** (ci, tooling) — `check-submodule-pins` fails CLOSED on any submodule CI does not initialise, so a whole class of pin bump could never pass the required lane See `1043-*`.
+- **#1046** (testing) — The PX4 SITL stale-tree guard asserts a module DIRECTORY, which outlives the build that linked it — so it passes on exactly the tree it exists to reject See `1046-*`.
 
 <!-- END GENERATED open-issue list -->
