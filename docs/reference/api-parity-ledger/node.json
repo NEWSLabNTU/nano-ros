@@ -501,5 +501,13 @@
   "rust:register_node": {
     "verdict": "extension",
     "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+  },
+  "c:node_get_serialization_format": {
+    "verdict": "extension",
+    "why": "phase-421 W2 (landed 2026-09-04). Ours-only, and there is no upstream name to align to: neither the recorded rclcpp nor rclc surface contains the string \"serialization\" at all. It cannot: in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and not a question a node is asked. Here it IS a question — RFC-0088 makes the format a provider (`nros_serdes::format`, `SerializationFormatId`), a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD (`error[E0080]` from the `const {}` check). The accessor is how a program reads back which one it got. Answers from the single image constant today; the runtime path only becomes reachable when a bridge image links two backends (phase-421 W3, recorded as not yet reachable). C spelling: `nros_node_get_serialization_format()` (`nros_generated.h:5372`, cbindgen output)."
+  },
+  "cpp:Node::serialization_format": {
+    "verdict": "extension",
+    "why": "phase-421 W2 (landed 2026-09-04). Ours-only, and there is no upstream name to align to: neither the recorded rclcpp nor rclc surface contains the string \"serialization\" at all. It cannot: in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and not a question a node is asked. Here it IS a question — RFC-0088 makes the format a provider (`nros_serdes::format`, `SerializationFormatId`), a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD (`error[E0080]` from the `const {}` check). The accessor is how a program reads back which one it got. Answers from the single image constant today; the runtime path only becomes reachable when a bridge image links two backends (phase-421 W3, recorded as not yet reachable). C++ spelling: `Node::serialization_format()` (`nros-cpp/include/nros/node.hpp:245`), forwarding to the C entry point."
   }
 }
