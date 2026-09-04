@@ -114,6 +114,36 @@ def required_producers(recipes, reached):
     return out
 
 
+def ordered_setup_requirements(recipes):
+    """{recipe: {setup-X}} — "X must run before this", per the JUSTFILE's own
+    dependency lists (issue 1030).
+
+    `just` runs a recipe's dependencies in order, so
+
+        _codegen: setup-launch-resolve generate-bindings _require-leaf-includes
+
+    states that `generate-bindings` needs `setup-launch-resolve` first. That is
+    a declaration someone wrote for their own reasons, which makes it a
+    CROSS-CHECK rather than a table this gate maintains and lets rot — the
+    distinction the `rmw-api-parity` map got wrong.
+
+    Complements `required_producers`, which reads a recipe's hard-failing
+    remediation TEXT. Neither subsumes the other: `generate-bindings` fails
+    inside `nros sync`, a Rust binary whose message no recipe body contains, so
+    only the ordering sees it; a recipe that hard-fails without appearing in any
+    wrapper is only seen by the text rule.
+    """
+    out = {}
+    for spec in recipes.values():
+        deps = spec.get("deps", [])
+        for i, d in enumerate(deps):
+            if not d.startswith("setup-"):
+                continue
+            for later in deps[i + 1:]:
+                out.setdefault(later, set()).add(d)
+    return out
+
+
 def workflow_jobs():
     """[(workflow, job, [just recipes the job runs], [producers it runs])].
 
@@ -138,6 +168,7 @@ def workflow_jobs():
                                    re.M))
         job, recipes = None, []
         step_if = ""
+        if_indent = None
         in_jobs = False
         for line in lines:
             if line.startswith("jobs:"):
@@ -150,6 +181,7 @@ def workflow_jobs():
                 if job:
                     out.append((fn, job, recipes))
                 job, recipes, step_if = m.group(1), [], ""
+                if_indent = None
                 continue
             # A new step resets the guard; `if:` inside a step sets it. Steps
             # are the granularity that matters — one job runs `check-fast` on
@@ -158,8 +190,37 @@ def workflow_jobs():
             if re.match(r"^\s*- (name|uses|run):", line):
                 if re.match(r"^\s*- (name|uses):", line):
                     step_if = ""
-            if re.match(r"^\s+if:", line):
+                    if_indent = None
+            # A FOLDED guard carries its events on the following lines:
+            #
+            #     if: >-
+            #       ${{ contains(fromJSON('["pull_request","merge_group"]'), ...
+            #
+            # Reading only the `if:` line finds no event name in it, so
+            # `_events_of` returned "every event the workflow declares". For the
+            # tier rules that over-includes, which their doc calls the safe
+            # direction; for the producer-coverage rule (issue 1030) it is the
+            # UNSAFE one — a producer credited with every event covers every
+            # consumer, and the rule can never fire. It could not see the very
+            # step whose guard was too narrow.
+            #
+            # So keep appending while the block is more-indented than the `if:`
+            # key and has not started another mapping key.
+            m_if = re.match(r"^(\s+)if:", line)
+            if m_if:
                 step_if = line
+                if_indent = len(m_if.group(1))
+            elif step_if and if_indent is not None:
+                stripped = line.strip()
+                indent = len(line) - len(line.lstrip())
+                if (stripped
+                        and indent > if_indent
+                        and not re.match(r"^(name|uses|run|with|env|shell|id|"
+                                         r"continue-on-error|timeout-minutes):",
+                                         stripped)):
+                    step_if += "\n" + line
+                else:
+                    if_indent = None
             # Only `run:` shell counts. A step NAMED "just check build + no_std"
             # is a label, and reading it as an invocation attributed the recipe
             # to every event the workflow has — which is precisely the
@@ -580,6 +641,42 @@ def main():
     # established nobody is watching). Recording them is the point: a new one
     # fails, and refreshing the baseline is a deliberate act.
     ci_findings = []
+
+    # issue 1030 — a PROVISIONING step narrower than what consumes it.
+    #
+    # Separate loop, before the tier rules, because it differs from them twice
+    # over and both differences are why the defect it catches went unseen for
+    # four days:
+    #
+    #  * It is EVENT-LEVEL. The tier rules ask "does the job run the producer",
+    #    and gate.yml's `check` job does — on `pull_request`/`merge_group`. On
+    #    `schedule` that step is skipped while two steps needing it still run,
+    #    so a presence test answers yes and the lane dies anyway.
+    #  * It is not restricted to `GATING_EVENTS`. That restriction is a stated
+    #    severity call for the tier rules and stands. It does not apply here: a
+    #    step that cannot run AT ALL on its own event is broken on every event
+    #    it claims, and the scheduled gate was red four consecutive nights
+    #    proving it.
+    #
+    # It also runs on jobs that DO build artifacts — the `if producers` exemption
+    # below is about a job being allowed to resolve what it builds, which says
+    # nothing about whether it builds it on the right events.
+    ordered = ordered_setup_requirements(recipes_map)
+    for wf, job, recipes, _producers in workflow_jobs():
+        ran_on = {}
+        for name, events in recipes:
+            if name.startswith("setup-"):
+                ran_on.setdefault(name, set()).update(events)
+        for recipe, events in sorted({(r, tuple(sorted(e))) for r, e in recipes}):
+            for need in sorted(ordered.get(recipe, ())):
+                gap = sorted(set(events) - ran_on.get(need, set()))
+                if gap:
+                    ci_findings.append(
+                        f"{wf}:{job} runs `just {recipe}` on {','.join(gap)} "
+                        f"without `just {need}`, which the justfile orders before "
+                        f"it — widen that step's `if:` to cover these events"
+                    )
+
     for wf, job, recipes, producers in workflow_jobs():
         if producers:
             continue  # the job builds artifacts; it may resolve them
@@ -666,10 +763,21 @@ def main():
         for _rec, ev in {(a, tuple(sorted(b))) for a, b in r}
         if set(ev) & GATING_EVENTS
     )
+    # Say what the producer rule EXAMINED, not just that it passed. A rule that
+    # covers nothing prints the same "OK" as one that covers everything, and
+    # this gate's own history is a green summary next to an uncovered lane.
+    ordered_now = ordered_setup_requirements(recipes_map)
+    covered = sum(
+        1 for _w, _j, r, _p in workflow_jobs()
+        for rec, _ev in {(a, tuple(sorted(b))) for a, b in r}
+        if rec in ordered_now
+    )
     print(
         f"check-lane-contracts OK — {checked} test target(s) across "
         f"{len(LANES)} affordability tier(s) and {gating} merge-gating CI "
-        f"lane invocation(s); none resolves an artifact its job does not build."
+        f"lane invocation(s); none resolves an artifact its job does not build. "
+        f"{covered} step invocation(s) on any event carry a justfile-ordered "
+        f"`setup-*` precondition; each runs where its producer does."
     )
     return 0
 
@@ -777,6 +885,31 @@ def selftest(verbose=False):
     advisory = {"r": {"deps": [], "body": ["    echo 'hint: just generate-bindings'"]}}
     chk("an ADVISORY mention with no failure path is not a precondition",
         required_producers(advisory, ["r"]) == {})
+
+    # issue 1030 — the justfile's dependency ORDER as a second declaration
+    # source, and the folded `if:` that hid the step it applies to.
+    chk("a setup-* ordered before a recipe is that recipe's precondition",
+        ordered_setup_requirements(
+            {"_codegen": {"deps": ["setup-launch-resolve", "generate-bindings"],
+                          "body": []}}
+        ) == {"generate-bindings": {"setup-launch-resolve"}})
+    chk("a setup-* ordered AFTER a recipe is not its precondition",
+        ordered_setup_requirements(
+            {"w": {"deps": ["generate-bindings", "setup-launch-resolve"], "body": []}}
+        ) == {})
+    chk("a wrapper with no setup-* declares nothing",
+        ordered_setup_requirements({"w": {"deps": ["a", "b"], "body": []}}) == {})
+    # The scanner bug that made the rule unable to fire: a folded guard's events
+    # live on the CONTINUATION lines, and reading only the `if:` line credited
+    # the step with every event the workflow has.
+    folded = ("      - name: p\n"
+              "        if: >-\n"
+              "          ${{ contains(fromJSON('[\"pull_request\"]'), github.event_name)\n"
+              "              && !cancelled() }}\n"
+              "        run: just setup-launch-resolve\n")
+    chk("a folded `if:` keeps the events on its continuation lines",
+        _events_of(folded.split("if:")[1].split("run:")[0],
+                   {"pull_request", "schedule"}) == {"pull_request"})
 
     # Event attribution decides required-vs-nightly, which is the whole severity
     # split. A step's `if:` wins over the workflow's event list.
