@@ -48,7 +48,7 @@
 //!
 //! RFC-0043/0044 components create their entities in CONSTRUCTORS, at runtime.
 //! The registration macros (`NROS_SUBSCRIBE`, `create_publisher`,
-//! `NROS_CREATE_TIMER`) do know the kind and the type `M` -- but anything they
+//! `NROS_CREATE_WALL_TIMER`) do know the kind and the type `M` -- but anything they
 //! emit is a LINK-SECTION fact, and it exists only after linking. The numbers
 //! this inventory feeds are `const` sizes compiled INTO `nros-node`, which is
 //! built before a single component TU is compiled. A link-section manifest can

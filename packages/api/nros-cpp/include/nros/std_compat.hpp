@@ -58,13 +58,13 @@ inline void std_function_trampoline(void* context) {
 /// @param period    Timer period.
 /// @param callback  Callable invoked on each tick.
 /// @return Result indicating success or failure.
-inline Result create_timer(Node& node, Timer& out, std::chrono::milliseconds period,
-                           std::function<void()> callback) {
+inline Result create_wall_timer(Node& node, Timer& out, std::chrono::milliseconds period,
+                                std::function<void()> callback) {
     auto fn =
         std::unique_ptr<std::function<void()>>(new std::function<void()>(std::move(callback)));
     auto* raw = fn.get();
-    Result r = node.create_timer(out, static_cast<uint64_t>(period.count()),
-                                 detail::std_function_trampoline, raw);
+    Result r = node.create_wall_timer(out, static_cast<uint64_t>(period.count()),
+                                      detail::std_function_trampoline, raw);
     if (r.ok()) {
         out.attach_std_closure(std::move(fn));
     }
@@ -73,7 +73,7 @@ inline Result create_timer(Node& node, Timer& out, std::chrono::milliseconds per
 
 /// Create a one-shot timer with a std::function callback.
 ///
-/// Same ownership rules as `create_timer`: the closure lives with the
+/// Same ownership rules as `create_wall_timer`: the closure lives with the
 /// Timer and is freed on destruction.
 inline Result create_timer_oneshot(Node& node, Timer& out, std::chrono::milliseconds delay,
                                    std::function<void()> callback) {
@@ -90,7 +90,7 @@ inline Result create_timer_oneshot(Node& node, Timer& out, std::chrono::millisec
 
 /// Create a guard condition with a std::function callback.
 ///
-/// Same ownership rules as `create_timer`.
+/// Same ownership rules as `create_wall_timer`.
 inline Result create_guard_condition(Node& node, GuardCondition& out,
                                      std::function<void()> callback) {
     auto fn =

@@ -19,7 +19,7 @@
 ///   public:
 ///     explicit Talker(nros::NodeHandle h) : nros::ComponentNode(h, "talker") {
 ///         pub_ = create_publisher<Int32>("/chatter");           // sets ok()=false on fail
-///         create_timer<Talker, &Talker::on_tick>(500);          // typed member timer
+///         create_wall_timer<Talker, &Talker::on_tick>(500);          // typed member timer
 ///     }
 ///     void on_tick() { Int32 m; m.data = count_++; pub_.publish(m); }
 /// };
@@ -124,7 +124,7 @@ inline void operator delete[](void*, void*) noexcept {}
 #endif
 
 /// Max timers a single `ComponentNode` may own via the storage-less
-/// `create_timer` members. `nros::Timer`'s dtor cancels its timer, so a timer
+/// `create_wall_timer` members. `nros::Timer`'s dtor cancels its timer, so a timer
 /// created in the ctor must outlive the call — `ComponentNode` parks them in a
 /// fixed-capacity inline pool (no heap). Bump if a node needs more; override by
 /// defining `NROS_COMPONENT_MAX_TIMERS` before including this header.
@@ -384,17 +384,17 @@ class ComponentNode {
     /// component's inline pool (its dtor cancels the timer, so it must outlive
     /// the call). Aborts on failure or pool exhaustion. `C` is the derived type.
     ///
-    /// Call as `create_timer<Self, &Self::tick>(period_ms)`, or use
-    /// `NROS_CREATE_TIMER(period_ms, tick)` inside the derived ctor.
-    template <class C, void (C::*Method)()> void create_timer(uint64_t period_ms) {
+    /// Call as `create_wall_timer<Self, &Self::tick>(period_ms)`, or use
+    /// `NROS_CREATE_WALL_TIMER(period_ms, tick)` inside the derived ctor.
+    template <class C, void (C::*Method)()> void create_wall_timer(uint64_t period_ms) {
         if (timer_count_ >= NROS_COMPONENT_MAX_TIMERS) {
-            set_error("create_timer (timer pool exhausted)", -1);
+            set_error("create_wall_timer (timer pool exhausted)", -1);
             return;
         }
         Timer& slot = timers_[timer_count_];
         Result r = bind_timer<C, Method>(node_, slot, period_ms, static_cast<C*>(this));
         if (!r.ok()) {
-            set_error("create_timer", r.raw());
+            set_error("create_wall_timer", r.raw());
             return;
         }
         ++timer_count_;
@@ -403,15 +403,15 @@ class ComponentNode {
     /// Create a repeating timer from a plain C callback + ctx (the escape hatch
     /// for non-member tick handlers). Parked in the inline pool. Sets `ok()=false`
     /// on failure.
-    void create_timer(uint64_t period_ms, nros_cpp_timer_callback_t callback,
-                      void* context = nullptr) {
+    void create_wall_timer(uint64_t period_ms, nros_cpp_timer_callback_t callback,
+                           void* context = nullptr) {
         if (timer_count_ >= NROS_COMPONENT_MAX_TIMERS) {
-            set_error("create_timer (timer pool exhausted)", -1);
+            set_error("create_wall_timer (timer pool exhausted)", -1);
             return;
         }
-        Result r = node_.create_timer(timers_[timer_count_], period_ms, callback, context);
+        Result r = node_.create_wall_timer(timers_[timer_count_], period_ms, callback, context);
         if (!r.ok()) {
-            set_error("create_timer", r.raw());
+            set_error("create_wall_timer", r.raw());
             return;
         }
         ++timer_count_;
@@ -432,7 +432,7 @@ class ComponentNode {
 
     /// Create a **typed member** repeating timer **in** a callback group (RFC-0047).
     ///
-    /// Like `create_timer<C, Method>` but associates the timer with `group` so
+    /// Like `create_wall_timer<C, Method>` but associates the timer with `group` so
     /// the executor binds it to the group's SchedContext.
     ///
     /// Call as `create_timer_in<Self, &Self::tick>(group, period_ms)`.
@@ -831,9 +831,9 @@ constexpr ::nros::QoS qos_from_declared_depth(int declared) {
 
 /// Inside a `ComponentNode` ctor: create a repeating timer calling
 /// `void Self::method()` every `period_ms`. Derives `Self` from `this`.
-#define NROS_CREATE_TIMER(period_ms, method)                                                       \
-    this->template create_timer<::nros::detail::strip_ref<decltype(*this)>::type,                  \
-                                &::nros::detail::strip_ref<decltype(*this)>::type::method>(        \
+#define NROS_CREATE_WALL_TIMER(period_ms, method)                                                  \
+    this->template create_wall_timer<::nros::detail::strip_ref<decltype(*this)>::type,             \
+                                     &::nros::detail::strip_ref<decltype(*this)>::type::method>(   \
         (period_ms))
 
 // -- NROS_COMPONENT(Class) ---------------------------------------------------

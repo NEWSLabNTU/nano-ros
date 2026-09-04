@@ -34,7 +34,7 @@ namespace nros {
 /// void on_timer(void* ctx) { /* periodic work */ }
 ///
 /// nros::Timer timer;
-/// NROS_TRY(node.create_timer(timer, 1000, on_timer));  // 1000ms period
+/// NROS_TRY(node.create_wall_timer(timer, 1000, on_timer));  // 1000ms period
 /// // timer fires during nros::spin_once()
 /// timer.cancel();
 /// timer.reset();  // restart from zero
@@ -104,7 +104,7 @@ class Timer {
     }
 
     /// Default constructor — creates an uninitialized timer.
-    /// Use `Node::create_timer()` to initialize.
+    /// Use `Node::create_wall_timer()` to initialize.
     Timer() : executor_(nullptr), handle_id_(0), initialized_(false) {}
 
 #ifdef NROS_CPP_STD

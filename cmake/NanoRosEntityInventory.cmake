@@ -24,7 +24,7 @@
 #
 # It is AUTHOR-STATED, and the reason is timing rather than taste. RFC-0043/0044
 # components wire themselves in CONSTRUCTORS; `NROS_SUBSCRIBE` /
-# `create_publisher` / `NROS_CREATE_TIMER` do know the kind and the type `M`,
+# `create_publisher` / `NROS_CREATE_WALL_TIMER` do know the kind and the type `M`,
 # and a descriptor emitted from them would name every entity -- but that
 # descriptor is a LINK-SECTION fact and exists only after linking, while
 # `NROS_EXECUTOR_MAX_CBS` is a `const` compiled into `nros-node` before a single
