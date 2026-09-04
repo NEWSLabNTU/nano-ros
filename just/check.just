@@ -113,6 +113,7 @@ fast-serial: \
     board-tiers \
     book-links \
     book-no-just \
+    box-sync-covers-tracked-source \
     build-profile-literals \
     build-root \
     build-rs-rerun-paths \
@@ -296,7 +297,6 @@ fast-serial: \
     workspace-build-output \
     workspace-fmt \
     workspace-order \
-    box-sync-covers-tracked-source \
     zenoh-config-template \
     zenohd-flag-invocations \
     zenohd-resolution-parity \

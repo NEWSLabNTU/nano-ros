@@ -649,3 +649,77 @@ emulators have produced nothing to read. What is left is the owner call this
 issue has been waiting for: close it as green-with-cause-unattributed, the way
 W1 was closed, and accept that if the real fix is later reverted this cell going
 red is what says so.
+
+---
+
+# 2026-09-04 — DOES NOT REPRODUCE, 9/9, in the ROS distrobox
+
+First run of this cell against a real router since the diagnostics landed. It
+passes, and it keeps passing.
+
+```
+PASS  test_rtos_action_e2e::platform_2_Platform__Nuttx::lang_3_Lang__Cpp  (5.873s)
+  [PASS] nuttx cpp action E2E: accepted=true, completed=true
+```
+
+Then eight consecutive repeats of the same cell, alone:
+
+```
+run 1..8: pass=1   (8/8)
+```
+
+**9/9 including the first.** The symptom above is "fails its first two attempts
+and passes the third"; that shape did not occur once.
+
+The sibling languages pass too, on the same tree and router — Rust 49.1 s,
+C 11.4 s, C++ **5.9 s**. The C++ cell was the FASTEST of the three, which is not
+what a construction failure that retries into success looks like.
+
+## What was actually under test
+
+Everything built in the ROS distrobox on its own tree
+(CLAUDE.md: box in play ⇒ every job in the box), so no host artifact is
+involved:
+
+* `cpp_action_client`, 864,736 B, built 21:45 in the box — it did not exist
+  twenty minutes before the run;
+* the four `nros_error!` diagnostics VERIFIED PRESENT by `strings` before
+  running, not assumed;
+* `nros`, `nros-launch-resolve` and corrosion all rebuilt in the box, into the
+  box's own SDK store (`~/.nros-box`);
+* the router is ROS Humble's own `rmw_zenohd`, resolved through
+  `AMENT_PREFIX_PATH` per RFC-0075 rather than a hand-set path.
+
+## What this does and does not establish
+
+**Does:** the cell is green today, repeatably, on a freshly built tree with a
+real router. Since main removed `retries = 2` from this cell, a red here is now
+information — and there is no red.
+
+**Does not:** prove the defect is gone. Nine runs on one host cannot refute an
+intermittent failure whose original report is two-in-three. The honest reading
+is that the environment differs from the one that produced the symptom, and
+several things landed today that plausibly bear on it:
+
+* **#1035** — zenoh-pico 1.8.0 did not compile on NuttX at all (two upstream
+  breaks). Whatever this cell was doing before, it was doing it on 1.7.2.
+* **#0902** — a declined query kept its reply slot for ever, and a failed reply
+  stranded one too. Four exhausted slots make a queryable answer nothing.
+* **#0852** — every Zephyr transport task ran at the least-urgent priority.
+  NuttX is not Zephyr, but the same `zpico.c` arm was audited.
+
+## What would settle it
+
+Not more repeats here. Either:
+
+1. **Run it under the load the original report had.** The symptom was recorded
+   "alone on an idle host (load 0.53)" — but the retry that masked it lived in
+   the full-sweep lane, where 32-way parallelism is the norm. Run the cell
+   inside a full `just ci matrix` rather than solo.
+2. **Bisect against the pre-#1035 tree.** If the cell is green on today's main
+   and red on last week's, the difference names the fix. That is cheap now that
+   the box can build NuttX at all — which it could not this morning.
+
+Until one of those runs, this issue should stay OPEN with this evidence
+attached, not closed on nine green runs. A "does not reproduce" is a
+measurement, not a diagnosis.
