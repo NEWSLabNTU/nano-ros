@@ -556,3 +556,50 @@ CI or a default `just` invocation uses, so they do not extend the store-QEMU
 evidence — they extend the evidence that the C++ image itself completes the
 round trip. That is deliberate: a cheap batch on a different emulator is worth
 more than no batch, provided nobody later reads it as the same experiment.
+
+## 2026-09-04 — 210 more runs on the CI emulator, all green. Disposition is now an owner call.
+
+Issue 1034's `.bss` fix made this cell cost **4.8 s** instead of 45.7 s, so the
+"leave the instrumentation in and catch it in a sweep" plan became affordable in
+the configuration that matters — the `nros setup` store QEMU the harness
+actually resolves, not the distro one the earlier cheap batch used.
+
+`--retries 0`, `test_rtos_action_e2e` NuttX C++ only, one cell per process:
+
+| batch | condition | result |
+| --- | --- | --- |
+| 150 runs | idle host, store QEMU `11.0.0-nros2` | **150 / 150 PASS** |
+| 60 runs | 32 busy loops, load average ~33 | **60 / 60 PASS** |
+
+With the batches already recorded here, that is **274 consecutive passes** across
+two emulators, idle and loaded. At the originally reported ~2-in-3 failure rate
+the last 210 alone have probability (1/3)^210.
+
+### Two bounds, and the second one matters
+
+* The images were built with zenoh-pico pinned at **1.7.2** (`fa7ad0f5`), not
+  main's 1.8.0, because **issue 1047** makes every NuttX zenoh fixture fail to
+  compile on main — `#if X == true` against NuttX's cast-valued `stdbool.h`. That
+  is the same pin every earlier measurement in this issue used, so these runs are
+  comparable with the issue's history rather than with today's `main`.
+* **The `.bss` fix changed the image layout**, and this issue's own record says
+  the fault "is timing-sensitive and moves with image CONTENT". Splitting `.bss`
+  into its own `PT_LOAD` moves every subsequent address. So this is a *third*
+  distinct build regime, not a longer run of the second — the same objection this
+  issue raised against reading the September 3 batch as a delta. It is stated
+  rather than argued around: 210 passes say the current build does not fail, and
+  say nothing about why an earlier one did.
+
+### What is left, and it is a decision rather than an experiment
+
+Every cheap avenue is spent. The instrumentation is armed and verified by
+linkage, `retries = 0` is in place so a red is a red, and the cell is now fast
+enough that a sweep costs minutes. Nothing further can be learned without a
+failing run, and no build measured in the last two days produces one.
+
+The parallel is W1, which the owner closed as "accepted green with the cause
+UNATTRIBUTED" and a stated residual risk. The same disposition is available here
+and is not taken unilaterally: **closing this needs an owner's call**, and the
+residual risk to accept is that if the real cause is later reverted, the symptom
+returns and the only thing that will catch it is this cell going red — which it
+now can, where retries used to hide it.
