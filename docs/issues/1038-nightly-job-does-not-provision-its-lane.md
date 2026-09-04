@@ -141,13 +141,47 @@ question to answer, not this issue's.
   platforms share is `zenohd_unavailable_reason()`. Both jobs do
   `source /opt/ros/humble/setup.bash`.
 
-  **UNCONFIRMED**: the leading hypothesis is that the humble CI image lacks
-  `ros-humble-rmw-zenoh-cpp` — RFC-0075 says we ship no router, and
-  `rmw_zenohd` is invisible to `command -v` even when installed. Settle it by
-  checking the image for that package, or by running the cell with
-  `NROS_RMW_ZENOHD` set. Every other `require_e2e` branch for these two names
-  env or directories the build step already proved present. This is filed as a
-  hypothesis, not a diagnosis.
+  **CONFIRMED 2026-09-04** — the image has NO zenoh packages at all. The
+  hypothesis was that it lacks `ros-humble-rmw-zenoh-cpp`; it does, and the
+  chain is now closed rather than merely plausible:
+
+  * `ci/docker/ci-base/Dockerfile` builds `FROM ros:humble-ros-base`, which does
+    not carry that package, and its apt list adds `ros-humble-example-interfaces`
+    and nothing else ROS-side.
+  * Queried a built image (`nros-ci-test:humble`, 2026-08-28, from this
+    Dockerfile): `dpkg -l | grep -i zenoh` returns NOTHING. The only RMW
+    implementation present is `ros-humble-rmw-fastrtps-cpp`.
+    `/opt/ros/humble/lib/rmw_zenoh_cpp/` does not exist, and a `find` over
+    `/opt/ros` for `rmw_zenohd` or `libzenohc*` returns nothing.
+
+  So: no router -> `zenohd_unavailable_reason()` returns `Some` ->
+  `require_e2e()` fails -> all 9 cases `skip!` -> `_check-skip-budget` reports
+  "this lane verified nothing". Every language and variant, both platforms,
+  which is the uniformity that pointed at a shared precondition rather than a
+  code fault.
+
+  (Scope of the check: the Dockerfile is the SSoT for what the image contains,
+  and a local build of it agrees. The PUBLISHED `ghcr.io/newslabntu/nano-ros-ci:humble`
+  was not pulled — 5.7 GB — so the claim rests on the recipe plus a build of it,
+  not on the exact published layer.)
+
+  **The fix is TWO changes, not one, and the Dockerfile already predicts the
+  second.** Installing `ros-humble-rmw-zenoh-cpp` makes the router RESOLVE but
+  not necessarily RUN. That image sets `AMENT_PREFIX_PATH` / `LD_LIBRARY_PATH`
+  as static `ENV` — a snapshot of what sourcing `setup.bash` produced for the
+  CURRENT package set — instead of sourcing it. `rmw_zenoh_cpp` installs into
+  `<prefix>/opt/zenoh_cpp_vendor/lib`, which that snapshot does not name, and a
+  router paired with the wrong `libzenohc.so` SEGVs mid-startup rather than
+  failing to load. That is issue 0774 exactly, and the Dockerfile's own comment
+  names it: *"a ROS package that installs to a DIFFERENT prefix ... would need
+  this block updated -- `ros-humble-rmw-zenoh-cpp` adding
+  `<prefix>/opt/zenoh_cpp_vendor/lib` to `LD_LIBRARY_PATH` is the case issue
+  0774 is about. Re-run the capture command above after changing the ROS package
+  set rather than assuming."*
+
+  Read in hindsight, that comment was the tell: it names the package
+  HYPOTHETICALLY, as something that WOULD need handling — which is only how you
+  write it when the package is not installed.
 
   Worth noting separately: a skip message that carries the remedy is useless if
   the transport truncates it. Both artifacts cut it at the colon.
