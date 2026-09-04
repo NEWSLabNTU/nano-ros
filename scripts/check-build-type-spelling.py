@@ -308,8 +308,11 @@ def tracked_package_xmls():
 
 
 def walk_package_xmls(root):
+    # walk-ok: a temp tree has no git index to consult.
     return sorted(
-        str(p.relative_to(root)) for p in Path(root).rglob("package.xml") if p.is_file()
+        str(p.relative_to(root))
+        for p in Path(root).rglob("package.xml")  # walk-ok: see above
+        if p.is_file()
     )
 
 
