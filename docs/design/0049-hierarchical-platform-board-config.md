@@ -106,8 +106,12 @@ Per RFC-0004's rule this is a **fixed, short precedence ladder, not an open
 merge**. The chain is explicit: the app names its board (deploy key, as
 today) → the board toml names its platform → the loader follows that
 two-hop chain. Out-of-tree board/platform directories resolve through the
-existing RFC-0014 / phase-201 board-provisioning mechanism — no second
-resolver, no cross-package walk-ups.
+existing RFC-0014 board-provisioning mechanism — no second resolver, no
+cross-package walk-ups. (This named phase-201 as the out-of-tree half; that
+phase was archived unstarted 2026-09-04 and the resolution moves to phase-420
+W6's search path — `[workspace] package_paths` + `NROS_PACKAGE_PATH`. The
+"no second resolver" rule is what survives, and W6 honours it: one search
+path for every package kind, not a board-specific fallback.)
 
 Resolved values are emitted into the one generated config header /
 `-D` set the shim build already produces, preserving the issue-0135
@@ -200,7 +204,9 @@ for non-express topics.
   RFC is the BUILD-time sibling and does not touch `system.toml`).
 - RFC-0042 (`nros-board.toml` board descriptor + `[board.capabilities]` —
   this RFC extends that file, not a new one).
-- RFC-0014 / phase-201 (out-of-tree board/platform dir resolution).
+- RFC-0014 (out-of-tree board/platform dir resolution). Was RFC-0014 /
+  phase-201; phase-201 archived unstarted 2026-09-04, superseded by RFC-0087 —
+  the search path is phase-420 W6.
 - RFC-0033 (config-file precedent: `deny_unknown_fields`, deep-merge
   mechanics, discovery — note codegen capacity config remains its own
   file/system; message capacities are app-scoped, not platform-scoped).
@@ -219,7 +225,10 @@ for non-express topics.
    via the `NROS_BOARD_TOML` env hook (works from any lane that can set
    an env var, which all cmake lanes do); automatic export from the
    phase-201 registry is deferred until an in-tree board carries a
-   `[knobs]` delta.
+   `[knobs]` delta. **There is no phase-201 registry and there will not be**
+   (archived unstarted 2026-09-04): under RFC-0087 a board is an ordinary
+   package, so the automatic export, if it is ever wanted, comes off
+   phase-420 W6's search path. The env hook is unaffected.
 
 ## Changelog
 
