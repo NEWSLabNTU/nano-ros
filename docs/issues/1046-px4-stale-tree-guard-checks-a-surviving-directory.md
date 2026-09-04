@@ -65,7 +65,37 @@ reports on never ran — and the 0859-0862 shape, where a stale artifact produce
 a confident wrong answer. The distinguishing feature in all of them is a check
 that cannot tell *present* from *current*.
 
-## Direction
+## FIXED 2026-09-04 — and verified in both directions
+
+`px4_uorb_interop_e2e.rs` now scans `bin/px4` for the module's command name.
+
+* **Rejects the stale tree.** On the tree that exposed this (last built from
+  `build-bridge-example`), the guard fails in **0.04 s** with the message naming
+  the binary and the reason — where the old directory check PASSED and the test
+  went on to die at `nros_uorb_demo start`.
+* **Passes a correct tree.** After `just px4 build-sitl-example` (9 occurrences
+  of `nros_uorb_demo` in `bin/px4`), the guard passes and the test proceeds to
+  boot SITL. Its later failure at `nros_uorb_demo start: status 255` is a
+  runtime matter and outside this guard's contract.
+
+**A byte scan, not `nm`, and that choice turned out to be load-bearing.** While
+verifying this, `nm --defined-only` reported ZERO `nros_cpp_` symbols in a
+freshly built `libnros_cpp.a` that in fact contained them — the system binutils
+(LLVM 14) cannot read rust 1.96's LLVM 22 objects and says `no symbols` for
+every Rust CGU:
+
+    nm: nros_cpp-….rcgu.o: no symbols
+    bfd plugin: LLVM gold plugin has failed to create LTO module:
+      Opaque pointers are only supported in -opaque-pointers mode
+      (Producer: 'LLVM22.1.2-rust-1.96.0-stable' Reader: 'LLVM 14.0.0')
+
+A byte scan found the same symbol 5 times. So a guard written with `nm` would
+have been a new instance of this very issue — a check that reports absence it
+cannot observe. `integrations/px4/NanoRosPx4Module.cmake` already knew: it
+resolves `llvm-nm` through `rustc --print sysroot` rather than trusting the
+system one.
+
+## Original direction (kept — this is what was done)
 
 **Assert on binary CONTENT, not directory presence.** The cheapest form is what
 measured it above — the module's command name appears in `bin/px4`:
