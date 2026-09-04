@@ -45,21 +45,16 @@ pub mod config_patcher;
 // `nros codegen cyclonedds-descriptors` verb (K.4) still emits
 // host-side descriptor C and lives in `nros-cli-core`.
 pub mod dependency_parser;
+// RFC-0087 D4 / phase-420 W5 — the convention half of a provider descriptor
+// (names from the announcement, cargo feature, cmake value, C define token,
+// cffi feature). `build.rs` shares this exact file via `#[path]`, so the
+// generator and the library cannot be two spellings of one rule.
+pub mod derived_descriptor;
 pub mod package_discovery;
 pub mod package_xml;
 pub mod provider_scan;
 pub mod rmw_resolver;
 pub mod scaffold;
-/// The `nros-serdes.toml` descriptor and the derivations that make it almost
-/// empty (phase-421 W4, RFC-0088 D6 / RFC-0087 D4).
-///
-/// `include!`d by `build.rs` as well as compiled here, so that the table in
-/// `OUT_DIR` and the out-of-repo selection path share ONE parser. Its own file
-/// header carries the rest of the rationale — as plain `//` comments rather
-/// than `//!`, because an inner doc comment cannot appear mid-file in the
-/// build script that includes it.
-pub mod serdes_descriptor;
-pub mod serdes_resolver;
 pub mod workflow;
 pub mod workspace_scaffold;
 

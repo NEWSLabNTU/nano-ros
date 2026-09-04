@@ -7,11 +7,19 @@
 # and `check-rmw-descriptors` asserts this file agrees with them row for row.
 # W3 inverts that — the descriptor becomes the source and the closed lists go.
 [rmw]
-names = ["zenoh", "rmw-zenoh", "rmw-zenoh-cffi"]
-cargo_feature = "rmw-zenoh"        # the BOARD crate's feature (RFC-0031, phase-248 C5b)
-cmake_value = "zenoh"
-c_define_token = "ZENOH"
-cffi_feature = "rmw-zenoh-cffi"
+# phase-420 W5 / RFC-0087 D4 — this table used to open with five more lines:
+#
+#   names = [...]            the `<nano_ros_provides>` announcements, restated
+#   cargo_feature = "..."    `<kind>-<name>`
+#   cmake_value = "..."      the canonical name
+#   c_define_token = "..."   `UPPER(name)`
+#   cffi_feature = "..."     `<cargo_feature>-cffi`
+#
+# All five are DERIVED now (`cargo-nano-ros/src/derived_descriptor.rs`, shared
+# by `build.rs` and the library). The names come from `package.xml`, which is
+# the only place a provider should spell them; the other four are convention.
+# `check-derived-descriptor-fields` refuses a restatement that disagrees, and
+# `build.rs` panics on one too.
 
 # The C++ define `nros-cpp` puts on its INTERFACE for this backend. Spellings
 # are INCONSISTENT across backends by history (`_CFFI` on two, bare on two) and

@@ -11,14 +11,31 @@ around green.
 
 It now checks what can still go wrong once there is a single source:
 
-  S1  every descriptor has the fields the generators read, and no empty ones
-      that would silently lower to nothing;
-  S2  no two descriptors claim the same name (ambiguous resolution);
-  S3  the canonical name is the FIRST entry of `names`, because that is what
-      `declared` becomes and what error messages list;
+  S1  every descriptor has the NON-DERIVABLE fields the generators read, and
+      no empty ones that would silently lower to nothing;
+  S2  no two backends claim the same name (ambiguous resolution);
   S4  a descriptor exists for every backend directory that looks like one, so
       adding a backend and forgetting the descriptor fails here rather than at
       a consumer's link.
+
+phase-420 W5 (RFC-0087 D4) retired two of the original five rules, because
+what they guarded stopped being writable:
+
+  * S1 checked `cargo_feature` / `cmake_value` / `c_define_token` /
+    `cffi_feature` were present and non-empty. All four are DERIVED now
+    (`cargo-nano-ros/src/derived_descriptor.rs`), so requiring them would
+    require the duplication the wave deleted. `cpp_define` is what is left —
+    the one lowering convention cannot produce, since the spellings are
+    inconsistent across backends by history and consumers `#if` on them.
+  * S3 asserted the canonical name was `names[0]`. `names` is gone from the
+    descriptors; `build.rs` takes the FIRST `<nano_ros_provides>` announcement
+    as canonical, so "the canonical name is the first one" is now structural
+    rather than checkable.
+
+**Names are read from the `package.xml` announcements here too**, for the same
+reason: after W5 that is where they live. `check-provider-announcements` A2n
+refuses a descriptor that restates them, so S2 cannot be looking at a stale
+second copy.
 
 Agreement between a descriptor and its `package.xml` provisions (phase-348) was
 briefly S5 here. It moved to `scripts/check-provider-announcements.py` when
@@ -34,6 +51,7 @@ failure.
 
 import glob
 import os
+import re
 import sys
 
 try:
@@ -43,9 +61,33 @@ except ModuleNotFoundError:  # 3.10 backport, same spelling as the sibling gates
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Fields the generators read. An empty value lowers to nothing silently, so an
-# empty string is as much a failure as a missing key.
-REQUIRED = ["cargo_feature", "cmake_value", "c_define_token", "cffi_feature", "cpp_define"]
+# Fields the generators read that convention CANNOT produce. An empty value
+# lowers to nothing silently, so an empty string is as much a failure as a
+# missing key. (The four derivable ones left this list in phase-420 W5; the
+# gate for those is `check-derived-descriptor-fields`, which asserts a
+# RESTATEMENT equals its derived value rather than asserting presence.)
+REQUIRED = ["cpp_define"]
+
+PROVIDES_RE = re.compile(r'<nano_ros_provides\s+kind="rmw"\s+name="([^"]+)"\s*/?>')
+# An XML comment body cannot contain `--`, so this matches one exactly. The
+# strip is not optional (issue 0516): every backend package.xml documents the
+# tag in a comment above the real one.
+COMMENT_RE = re.compile(r"<!--([^-]|-[^-])*-->")
+
+
+def announced_names(desc_path):
+    """The backend's names, from the `package.xml` beside its descriptor.
+
+    Empty when the package.xml is absent, which is not an error here: an
+    unmigrated provider is simply not discoverable while its existing build
+    path keeps working (the same allowance `check-provider-announcements`
+    makes).
+    """
+    pkg_xml = os.path.join(os.path.dirname(desc_path), "package.xml")
+    if not os.path.exists(pkg_xml):
+        return []
+    with open(pkg_xml, encoding="utf-8") as fh:
+        return PROVIDES_RE.findall(COMMENT_RE.sub("", fh.read()))
 
 
 def main():
@@ -72,24 +114,19 @@ def main():
             problems.append(f"{rel}: no [rmw] table")
             continue
 
-        names = rmw.get("names") or []
+        names = announced_names(path)
         if not names:
-            problems.append(f"{rel}: [rmw].names is empty — nothing could resolve to it")
+            problems.append(
+                f"{rel}: the package.xml beside it announces no "
+                f'<nano_ros_provides kind="rmw"/> — nothing could resolve to it '
+                f"(phase-420 W5: the announcement is where a backend's names live)"
+            )
             continue
 
         # S1
         for field in REQUIRED:
             if not rmw.get(field):
                 problems.append(f"{rel}: [rmw].{field} is missing or empty")
-
-        # S3 — the canonical name is names[0]; a bare name that is not first
-        # means `declared` would be an alias, and error messages would list it.
-        canonical = names[0]
-        if rmw.get("cmake_value") and rmw["cmake_value"] != canonical:
-            problems.append(
-                f"{rel}: cmake_value {rmw['cmake_value']!r} != names[0] {canonical!r} — "
-                f"the canonical name must be the first entry"
-            )
 
         # S2
         for n in names:

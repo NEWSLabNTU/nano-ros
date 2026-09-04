@@ -9,28 +9,19 @@ them.
 
   A1  a package.xml sitting beside a descriptor announces provisions of that
       kind — otherwise it is invisible to the scan while looking migrated;
-  A2  its provision names equal the descriptor's declared names EXACTLY and in
-      order, canonical first, since names[0] is what error messages list;
-  A3  for a family whose descriptors carry no names at all, the announced names
-      are UNIQUE across the family — see "Two shapes of family" below.
+  A2  for a NAMED family, its provision names equal the descriptor's declared
+      names EXACTLY and in order, canonical first, since names[0] is what
+      error messages list;
+  A2n for a NAMELESS family, the descriptor declares no names at all — the
+      announcement is the only spelling (RFC-0087 D4).
 
-**Two shapes of family, and A2 exists only for one of them.** `rmw`, `board` and
-`platform` predate RFC-0087 D4: their descriptors repeat the provider's names, so
-there are two spellings of one fact and A2 is what keeps them equal. D4 removed
-`names` from NEW descriptors — a descriptor now carries only what no convention
-can produce, and the announcement is the ONLY place a name is written. For such a
-family A2 has nothing to compare against and cannot be written honestly, so the
-row declares `extract=None` and the check becomes A1 + A3: the descriptor must
-still be announced (or it is invisible to the scan), and since the announcement
-is the sole spelling, the one thing that can still go wrong is two providers
-claiming one name.
-
-Do NOT "fix" a nameless family back into an A2 comparison by adding `names` to
-its descriptor: that re-creates the second spelling D4 deleted, and A2 would then
-be checking the descriptor against a copy of itself — the cannot-fail gate
-`check-rmw-descriptors` retired its own S-checks over (see its docstring).
-Equally, do not delete A2 from the three families that DO have `names`; their
-duplication is real and unchecked otherwise.
+**A2 and A2n are the same rule seen from two sides.** A family is nameless
+once its readers DERIVE the names from the announcement instead of reading
+them out of the descriptor; then a `names` key in a descriptor is not a
+duplicate to be compared, it is a duplicate that nothing reads — worse than a
+disagreement, because it can be edited with no effect. A2n refuses it, so the
+rule "the announcement is the only spelling" keeps a gate after the comparison
+it used to have stops existing.
 
 **One gate for every family, not one per family.** This started as S5 inside
 `check-rmw-descriptors.py`, covering rmw alone. Extending the rule to boards by
@@ -59,19 +50,31 @@ except ModuleNotFoundError:  # 3.10 backport, same spelling as the sibling gates
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# kind -> (descriptor glob, how to pull the declared names out of it — or None
-# for a family whose descriptors carry no names, see A3 above).
+# kind -> (descriptor glob, how to pull the declared names out of it).
 #
-# The two families disagree in shape and that is not an accident: an rmw
+# `extract=None` means a NAMELESS family: its readers derive the names from the
+# `<nano_ros_provides>` announcements, so the descriptor must not declare any
+# (A2n). Everything else about the row is unchanged — A1 still applies, because
+# a provider that announces nothing is invisible to the scan whatever its
+# descriptor says.
+#
+# The named families disagree in shape and that is not an accident: an rmw
 # descriptor is ONE backend (`[rmw]`), while a board descriptor is an ARRAY
 # (`[[board]]`) because one package can ship several boards — nros-board-nuttx-qemu
 # declares both the ARM and RISC-V variants, disambiguated by `target_contains`.
 # So the board reader flattens entries in declaration order.
 FAMILIES = {
-    "rmw": (
-        "packages/rmw/*/*/nros-rmw.toml",
-        lambda d: list(d.get("rmw", {}).get("names", [])),
-    ),
+    # phase-420 W5 — rmw went NAMELESS. `cargo-nano-ros/build.rs` reads the
+    # announcements (via `derived_descriptor::announced_names`) and derives the
+    # rest of the lowering from names[0], so `[rmw].names` is deleted from all
+    # four descriptors. A2 has nothing left to compare; A2n keeps it that way.
+    "rmw": ("packages/rmw/*/*/nros-rmw.toml", None),
+    # Board is still NAMED, and phase-420 W5 measured why rather than assuming:
+    # `nros-board-nuttx-qemu` declares TWO `[[board]]` entries and announces
+    # seven names in one flat list, so the announcement cannot say which four
+    # belong to the ARM variant and which three to the RISC-V one. Deriving
+    # per-entry names needs a boundary the tag has no way to carry. The board
+    # reader also lives in `nros-cli-core`, not here.
     "board": (
         "packages/boards/*/nros-board.toml",
         lambda d: [n for b in d.get("board", []) for n in b.get("names", [])],
@@ -85,16 +88,13 @@ FAMILIES = {
         "config/*/nros-platform.toml",
         lambda d: list(d.get("names", [])),
     ),
-    # phase-421 W4 / RFC-0088 D6. The first family born after RFC-0087 D4, so
-    # its descriptor has NO `names` key and never will: `nros-serdes.toml`
-    # carries `impl` and `format_id`, the two facts no convention can derive,
-    # and the `<nano_ros_provides>` announcement is the name. `None` selects
-    # A1 + A3 instead of A1 + A2 (see the module docstring).
-    #
-    # Everything serdes-SPECIFIC — descriptor well-formedness, the `format_id`
-    # discriminant, and the descriptor a package announcing `serdes` must have —
-    # lives in `scripts/check-serdes-descriptors.py`, the same split that keeps
-    # this gate one gate for every family rather than one per family.
+    # phase-421 W4 / RFC-0088 D6 — the first family BORN nameless, where rmw was
+    # made nameless afterwards by W5. `nros-serdes.toml` carries `impl` and
+    # `format_id`, the two facts no convention can derive, and the announcement
+    # is the name. Everything serdes-SPECIFIC — descriptor well-formedness, the
+    # `format_id` discriminant, and the descriptor a package announcing `serdes`
+    # must have — lives in `scripts/check-serdes-descriptors.py`, the split that
+    # keeps this gate one gate for every family rather than one per family.
     "serdes": ("packages/*/*/nros-serdes.toml", None),
 }
 
@@ -114,11 +114,36 @@ def declared_provisions(path, kind):
     return re.findall(PROVIDES_RE.format(kind=kind), body)
 
 
+def restated_names(data):
+    """Every `names` key anywhere in a descriptor, flattened.
+
+    A nameless family's descriptor must declare none, and the search is over
+    the WHOLE document rather than one known table: the two live shapes put
+    `names` in `[rmw]`, in `[[board]]` entries and at top level
+    (`nros-platform.toml`), and a rule that only looked where today's families
+    happen to keep it would pass the next family's restatement.
+    """
+    out = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == "names" and isinstance(v, list):
+                    out.extend(v)
+                else:
+                    walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(data)
+    return out
+
+
 def main():
     problems = []
     checked = 0
     announced = 0
-    claimed = {}  # (kind, name) -> package.xml that announced it (A3)
 
     for kind, (pattern, extract) in sorted(FAMILIES.items()):
         paths = sorted(glob.glob(os.path.join(ROOT, pattern)))
@@ -146,7 +171,18 @@ def main():
                     problems.append(f"{desc_rel}: not valid TOML: {e}")
                     continue
             names = None if extract is None else extract(data)
-            if extract is not None and not names:
+            if extract is None:
+                # A2n — the announcement is the only spelling.
+                restated = restated_names(data)
+                if restated:
+                    problems.append(
+                        f"{desc_rel}: declares names {restated} in a NAMELESS "
+                        f"family — {kind} names come from the "
+                        f'<nano_ros_provides kind="{kind}"/> announcements and '
+                        f"nothing reads this key, so it can drift with no "
+                        f"symptom. Delete it (RFC-0087 D4)"
+                    )
+            elif not names:
                 problems.append(
                     f"{desc_rel}: declares no names — nothing could resolve to it"
                 )
@@ -155,28 +191,12 @@ def main():
             found = declared_provisions(pkg_xml, kind)
             announced += len(found)
             if not found:
-                # A1 — true for both shapes of family.
                 problems.append(
                     f'{rel}: sits beside a {kind} descriptor but announces no '
                     f'<nano_ros_provides kind="{kind}"/> — it would be invisible '
                     f"to the phase-348 scan"
                 )
-            elif names is None:
-                # A3 — a nameless-descriptor family (RFC-0087 D4). There is no
-                # second spelling to compare against, so the only failure left
-                # is two providers answering to one name.
-                for n in found:
-                    prior = claimed.get((kind, n))
-                    if prior is not None and prior != rel:
-                        problems.append(
-                            f"{rel}: announces {kind} name {n!r}, already announced "
-                            f"by {prior} — a name resolves to one provider, and "
-                            f"for this family the announcement is the ONLY place "
-                            f"it is written"
-                        )
-                    claimed[(kind, n)] = rel
-            elif found != names:
-                # A2 — a family whose descriptor repeats the names.
+            elif names is not None and found != names:
                 problems.append(
                     f"{rel}: provides {found} but {desc_rel} declares {names} — "
                     f"discovery and resolution must claim the same names, "
@@ -189,13 +209,12 @@ def main():
             sys.stderr.write(f"  {p}\n")
         return 1
 
-    nameless = sum(1 for _, e in FAMILIES.values() if e is None)
+    nameless = sorted(k for k, (_, e) in FAMILIES.items() if e is None)
     print(
         f"provider announcements: OK ({checked} migrated provider(s) across "
         f"{len(FAMILIES)} famil(ies), {announced} name(s) announced; "
-        f"{len(FAMILIES) - nameless} famil(ies) matched name-for-name against "
-        f"their descriptor, {nameless} nameless-descriptor famil(ies) checked "
-        f"for announcement + uniqueness)"
+        f"named families match their descriptor, nameless "
+        f"({', '.join(nameless) or 'none'}) restate nothing)"
     )
     return 0
 
