@@ -56,12 +56,21 @@ fn full_goal_table_rejects_rather_than_acknowledging(
     let mut server = ManagedProcess::spawn_command(server_cmd, "action-server-concurrent")
         .expect("Failed to start concurrent action server");
 
-    if server
-        .wait_for_output_pattern("Waiting for action", Duration::from_secs(10))
-        .is_err()
-        && !server.is_running()
-    {
-        panic!("concurrent action server exited before the client started");
+    // issue 1044 — a readiness check that tolerates "no banner, still running"
+    // tolerates a HUNG server, which is the state this pair fails worst on: the
+    // client then sends six goals into nothing and the test reports a wrong
+    // summary rather than an unready server. `wait_for_output_pattern` does not
+    // kill on timeout, so the banner's absence is an independent fact and can be
+    // required on its own; `is_running` is kept only to say WHICH of the two
+    // failures happened.
+    let server_boot = server.collect_until("Waiting for action", Duration::from_secs(10));
+    if !server_boot.contains("Waiting for action") {
+        panic!(
+            "concurrent action server never printed its readiness banner within 10s \
+             (still running: {}). Server output:\n{}",
+            server.is_running(),
+            server_boot
+        );
     }
 
     let mut client_cmd = Command::new(&action_client_multigoal_binary);
@@ -70,11 +79,25 @@ fn full_goal_table_rejects_rather_than_acknowledging(
     let mut client = ManagedProcess::spawn_command(client_cmd, "action-client-multigoal")
         .expect("Failed to start multi-goal action client");
 
-    // The client sends all six goals then prints one summary line.
-    let out = client
-        .wait_for_output_pattern(MULTIGOAL_SUMMARY_PREFIX, Duration::from_secs(60))
-        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
-        .unwrap_or_default();
+    // The client sends all six goals then prints one summary line, so a
+    // run-to-completion wait is the right SHAPE here — unlike issue 1026's six
+    // sites, this one is not aimed at a free-running node.
+    //
+    // issue 1044 — what was wrong was the failure path. The old spelling was
+    // `wait_for_output_pattern(...).or_else(|_| wait_for_all_output(2s))
+    // .unwrap_or_default()`: on timeout the strict call returns `Err` with the
+    // whole 60 s transcript inside the error's MESSAGE, `or_else` discarded it
+    // and re-read a client that had already been drained, and
+    // `unwrap_or_default()` turned a second failure into `""`. So the panic
+    // below — whose entire job is to show what the client printed — could report
+    // an empty string about a client that had printed sixty seconds of output.
+    // That is issue 0471's shape: the path carrying the evidence was not the
+    // path that reported.
+    //
+    // `collect_until` is the lenient sibling: it returns what it read whether or
+    // not the pattern showed up, so the assertion and the evidence travel
+    // together.
+    let out = client.collect_until(MULTIGOAL_SUMMARY_PREFIX, Duration::from_secs(60));
 
     let summary = out
         .lines()

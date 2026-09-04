@@ -35,9 +35,11 @@ use std::{path::PathBuf, process::Command, time::Duration};
 /// (`!client.is_running()`) then made it true by construction, because the
 /// `wait_for_all_output` fallback had just killed the process.
 ///
-/// Not in `nros_tests::output` only because this wave owns one file; promoting
-/// it there (beside `SERVICE_RESULT_PREFIX`) is the right follow-up.
-const SERVICE_CALL_FAILED_MARKER: &str = "Service call failed, retrying:";
+/// Promoted to `nros_tests::output` by issue 1044, beside `SERVICE_RESULT_PREFIX`
+/// and its C/C++ twin — CLAUDE.md's rule is that a test grep names a constant,
+/// never a literal, precisely so a reworded example breaks the build instead of
+/// silently turning a wait into a timeout.
+use nros_tests::output::SERVICE_CALL_FAILED_MARKER;
 
 /// How many consecutive failures prove the client is RETRYING rather than
 /// reporting once and wedging. At the measured 1 Hz this is reached in ~3 s.
