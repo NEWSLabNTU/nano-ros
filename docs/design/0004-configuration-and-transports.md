@@ -268,7 +268,6 @@ mac     = "02:00:00:00:00:01"
 gateway = "10.0.2.2"
 rmw     = "zenoh"
 locator = "tcp/10.0.2.2:7447"
-# interfaces = ["eth0", "eth1"]  # multi-homing: ONE session spans both NICs
 
 [[transport]]
 id       = "bus"
@@ -282,44 +281,45 @@ Per-kind field rules (validated by `PlanBuildOptions::validate_transports`):
 
 | kind | fields |
 |------|--------|
-| `ethernet` | `ip` (CIDR), `mac`, `gateway`, `interface`/`interfaces` |
-| `wifi` | `ip` (optional/static), `ssid`, `password`, `interface`/`interfaces` |
+| `ethernet` | `ip` (CIDR), `mac`, `gateway` |
+| `wifi` | `ip` (optional/static), `ssid`, `password` |
 | `serial` / `can` | `device`, `baudrate` |
 | all | `id`, `rmw`, `locator` |
 
 The `id` makes a transport first-class and addressable, and disambiguates two
 transports that share an `rmw`.
 
-> **AMENDED 2026-09-04 — `interface` / `interfaces` are RETRACTED.** See the
-> amendment below. The rest of this section stands; those two fields do not.
+### No NIC axis: nano-ros does not model interfaces
 
-*Retracted text:* `interfaces` (a list) multi-homes one session
-over several NICs (one merged discovery graph) — distinct from two `[[transport]]`
-entries (two *separate* sessions).
+An earlier revision of this document gave `ethernet`/`wifi` an `interfaces` list
+("multi-homing": one session spanning several NICs) and a two-axis taxonomy built
+on it. **That vocabulary is deleted (phase-206 W5)** and nothing replaces it.
 
-### Two axes: interfaces-per-transport × transports-per-rmw
+Devices are the board's job and are up before ROS exists; what the *middleware*
+binds to belongs in the middleware's own configuration — CycloneDDS
+`<General><Interfaces>` via `CYCLONEDDS_URI`, a zenoh config's `listen`/`connect`
+endpoints plus `scouting/multicast/interface`. A nano-ros-owned NIC name would
+need a resolver, a gate and a per-platform story that only Linux can satisfy, in
+exchange for re-spelling a setting both backends already accept.
 
-| Case | transports | rmw | interfaces / transport | node binding |
-|------|-----------|-----|------------------------|--------------|
-| **A. cross-RMW bridge** | N | **distinct** per node | 1 each | by `rmw` |
-| **B. single node, multi-homed** | 1 | one | **list** | implicit |
-| **C. cross-RMW bridge, multi-homed** | N | distinct | **list** each | by `rmw` |
-| **D. segregated same-rmw** | N | **same** | 1+ each, not merged | by `id` (K.5 runtime) |
+The list was never lowered to anything: it parsed, validated, reached the IR and
+was written into `<bake>/nros-plan.json`, and no consumer ever read it. Its board
+seam, `BoardTransportConfig::set_interfaces`, was a no-op default with zero
+overrides. The remaining axis is the one that always did work — **N
+`[[transport]]` entries = N separate sessions**, bound per node by `rmw` (or by
+`id` for two same-backend sessions deliberately not merged).
 
-A–C bind by `rmw`; only D (two separate sessions of the same backend,
-intentionally not merged) needs `create_node_on`-by-`id` (Phase 172.K.5).
-
-> **AMENDED 2026-09-04.** Cases **B** and **C** are retracted along with the
-> `interfaces` field; **A** and **D** stand unchanged. The per-backend mapping
-> sentence below is retracted in full — see the amendment.
-
-*Retracted text:* Multi-homing maps per backend (zenoh → listen/connect per NIC + scouting
-interface; Cyclone → `<Interfaces>`; Fast DDS → whitelist).
+The upstream `ros-launch-manifest` schema still carries `TransportBlock.interfaces`,
+so the key can still arrive from a `system.toml`. `plan_transports` refuses it,
+naming the backend config above; the plan schema rejects it outright
+(`deny_unknown_fields`).
 
 ## Amendment (2026-09-04) — the middleware's configuration is the middleware's own
 
-**Retracts:** the `interface` / `interfaces` transport fields, cases **B** and
-**C** of the two-axes table, and the per-backend multi-homing mapping.
+**Retracts:** the `interface` / `interfaces` transport fields, the two-axes
+taxonomy that was built on them (replaced above by §"No NIC axis"), and the
+per-backend multi-homing mapping. The surviving axis — N `[[transport]]`
+entries = N separate sessions, bound by `rmw` or by `id` — is stated there.
 **Tracked by:** [phase-206](../roadmap/phase-206-multi-homing-transport-interfaces.md).
 **Sibling reading:** RFC-0087 (a package is a `package.xml`) applies the same
 "do not invent a second vocabulary" move to provider identity.

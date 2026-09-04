@@ -1446,6 +1446,18 @@ pub fn plan_transports(
                  (ethernet | wifi | serial | can)"
             ),
         };
+        // phase-206 W5 — `TransportBlock.interfaces` lives in the UPSTREAM
+        // `ros-launch-manifest` schema, which we do not own, so the key can
+        // still arrive from a `system.toml`. nano-ros has no NIC vocabulary to
+        // lower it into any more; refuse it here rather than dropping it
+        // silently, which is strictly worse than the no-op it used to be.
+        if !t.interfaces.is_empty() {
+            bail!(
+                "SystemModel transport '{}': {}",
+                t.id.as_deref().unwrap_or(&t.kind),
+                crate::orchestration::plan::RETIRED_INTERFACES_REMEDY
+            );
+        }
         out.push(PlanTransport {
             kind,
             id: t.id.clone(),
@@ -1454,7 +1466,6 @@ pub fn plan_transports(
             password: t.password.clone(),
             mac: t.mac.clone(),
             gateway: t.gateway.clone(),
-            interfaces: t.interfaces.clone(),
             device: t.device.clone(),
             baudrate: t.baudrate,
             rmw: t.rmw.clone(),
@@ -1488,6 +1499,26 @@ mod transport_tests {
 
         m.execution.transports[0].kind = "carrier-pigeon".to_string();
         assert!(plan_transports(&m).is_err());
+    }
+
+    /// phase-206 W5 — the upstream schema still HAS `interfaces`, so the only
+    /// thing under our control is what we do when it arrives. Refuse, naming
+    /// the backend config that does own NIC binding; the pre-W5 behaviour was
+    /// to copy it into a plan nothing read.
+    #[test]
+    fn a_transport_naming_interfaces_is_refused_with_the_backend_remedy() {
+        let mut m = SystemModel::default();
+        m.execution.transports.push(Transport {
+            kind: "ethernet".to_string(),
+            id: Some("eth0".to_string()),
+            interfaces: vec!["eth0".to_string(), "eth1".to_string()],
+            ..Default::default()
+        });
+        let err = plan_transports(&m)
+            .expect_err("an `interfaces` list must fail the bake")
+            .to_string();
+        assert!(err.contains("eth0"), "names the transport: {err}");
+        assert!(err.contains("CYCLONEDDS_URI"), "names the remedy: {err}");
     }
 }
 

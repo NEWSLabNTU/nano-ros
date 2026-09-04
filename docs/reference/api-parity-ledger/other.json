@@ -289,33 +289,13 @@
   },
   "rust:BoardTransportConfig": {
     "verdict": "extension",
-    "why": "the trait a BOARD crate implements so the orchestration generator can write `nros.toml` `[[transport]]` values -- static IPv4, MAC, gateway, baud rate, WiFi SSID/password, NIC list -- into the board's own `Config` (RFC-0049). Every method has a default empty body because a board ignores what it has not got: a wired board ignores `set_ssid`, a board with a fused MAC ignores `set_mac`. rclrs has nothing equivalent because a hosted node inherits an already-configured network stack. Named `BoardTransportConfig` to avoid colliding with the transport-layer `rust:TransportConfig`. Its sibling `BoardConfig` is in the boot stage; the taxonomy split them because only one of the two contains the string `BoardConfig`."
+    "why": "the trait a BOARD crate implements so a static IPv4 address or a serial line rate can be written into the board's own `Config` on the `NanoRosOwned` net-stack path (RFC-0049), where the board -- not the RTOS -- owns smoltcp/lwIP/NetX. Both methods have a default empty body because a board ignores the knob it has not got: a serial-only board ignores `set_ipv4`, an ethernet-only board ignores `set_baudrate`. rclrs has nothing equivalent because a hosted node inherits an already-configured network stack. Named `BoardTransportConfig` to avoid colliding with the transport-layer `rust:TransportConfig`. Its sibling `BoardConfig` is in the boot stage; the taxonomy split them because only one of the two contains the string `BoardConfig`. Historical note: this trait also carried `set_mac`/`set_gateway`/`set_ssid`/`set_password`/`set_interfaces`, written by an orchestration generator that was deleted in `11a00b0f8`; phase-206 W5 deleted the five orphaned seams with it, and nano-ros models neither NICs nor WiFi credentials -- the device is up before ROS exists, and what the middleware binds to is configured in the middleware's own language."
   },
   "rust:BoardTransportConfig::set_baudrate": {
     "verdict": "extension",
     "why": "see `rust:BoardTransportConfig`."
   },
-  "rust:BoardTransportConfig::set_gateway": {
-    "verdict": "extension",
-    "why": "see `rust:BoardTransportConfig`."
-  },
-  "rust:BoardTransportConfig::set_interfaces": {
-    "verdict": "extension",
-    "why": "see `rust:BoardTransportConfig`."
-  },
   "rust:BoardTransportConfig::set_ipv4": {
-    "verdict": "extension",
-    "why": "see `rust:BoardTransportConfig`."
-  },
-  "rust:BoardTransportConfig::set_mac": {
-    "verdict": "extension",
-    "why": "see `rust:BoardTransportConfig`."
-  },
-  "rust:BoardTransportConfig::set_password": {
-    "verdict": "extension",
-    "why": "see `rust:BoardTransportConfig`."
-  },
-  "rust:BoardTransportConfig::set_ssid": {
     "verdict": "extension",
     "why": "see `rust:BoardTransportConfig`."
   },
