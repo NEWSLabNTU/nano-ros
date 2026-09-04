@@ -2552,7 +2552,6 @@ mod builder_tests {
     // now required by `MessageForRmw` on EVERY backend, because that is where
     // a subscription's build-time size bound comes from.
     impl nros_serdes::schema::Message for TestMsg {
-        type Format = nros_serdes::format::Cdr;
         const TYPE_NAME: &'static str = "test/msg/TestMsg";
         const FIELDS: &'static [nros_serdes::schema::Field] = &[nros_serdes::schema::Field {
             name: "data",
