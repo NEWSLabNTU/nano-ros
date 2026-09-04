@@ -139,7 +139,7 @@ pub const MAX_VIOLATIONS: usize = 8;
 pub struct Violation {
     /// `"rate-hierarchy-runtime"` | `"max-age-runtime"` |
     /// `"max-latency-runtime"` | `"deadline-miss-runtime"` |
-    /// `"timer-overrun-runtime"`.
+    /// `"timer-overrun-runtime"` | `"release-jitter-runtime"`.
     pub rule: &'static str,
     /// Violating endpoint ref (from the spec's `fqn`; the SC name for
     /// deadline misses).
@@ -480,6 +480,93 @@ pub(crate) fn check_timer_overrun(
         measured: dropped,
         declared: tolerated,
     })
+}
+
+/// Issue #515 — report a spin wake that arrived so late the cadence it
+/// claims cannot have been met.
+///
+/// Like `check_timer_overrun` and unlike the rate/age/latency rules, this
+/// needs no baked spec table. The bound is the spin period ITSELF: the
+/// caller passes it to `spin_once` as the pacing quantum, it is what
+/// `system.toml` declares as `spin_period_us`, and a wake later than a full
+/// period past its predecessor means an activation's worth of cadence was
+/// lost. That is a contract failure for any declared period, so there is
+/// nothing further to declare.
+///
+/// The tolerance is one whole period rather than zero, and deliberately so.
+/// Sub-period lateness is ordinary scheduling noise -- on the measured FVP
+/// lane the executor is late on a large fraction of wakes while still
+/// holding its rate -- and a rule that fired on each one would report a
+/// healthy system as broken thousands of times a second. What is NOT
+/// ordinary is being a full period late, because by then the wake that
+/// should have happened in between never did.
+///
+/// `max_jitter_us` is the executor's high-water since the last check and
+/// `last_reported` the value at the previous one, so the verdict is on the
+/// delta -- the same shape as the overrun counter, and for the same reason:
+/// a maximum that has not moved is not a new fault.
+pub(crate) fn check_release_jitter(
+    max_jitter_us: u64,
+    last_reported: &mut u64,
+    period_us: u64,
+) -> Option<Violation> {
+    if period_us == 0 || max_jitter_us <= *last_reported {
+        return None;
+    }
+    *last_reported = max_jitter_us;
+    if max_jitter_us < period_us {
+        return None;
+    }
+    Some(Violation {
+        rule: "release-jitter-runtime",
+        // Same stand-in as the timer and deadline rules: the spin loop is
+        // not an endpoint and carries no fqn at this altitude.
+        fqn: "spin",
+        measured: max_jitter_us.min(u32::MAX as u64) as u32,
+        declared: period_us.min(u32::MAX as u64) as u32,
+    })
+}
+
+#[cfg(test)]
+mod release_jitter_rule_tests {
+    use super::*;
+
+    /// Sub-period lateness is noise, not a violation -- otherwise a
+    /// healthy-but-jittery loop reports thousands of faults a second.
+    #[test]
+    fn tolerates_lateness_within_one_period() {
+        let mut last = 0;
+        assert!(check_release_jitter(4_000, &mut last, 5_000).is_none());
+        assert_eq!(last, 4_000, "still recorded, so the next delta is honest");
+    }
+
+    /// A full period late means the wake that belonged in between never
+    /// happened.
+    #[test]
+    fn reports_a_wake_a_whole_period_late() {
+        let mut last = 0;
+        let v = check_release_jitter(5_000, &mut last, 5_000).expect("one period late reports");
+        assert_eq!(v.rule, "release-jitter-runtime");
+        assert_eq!(v.measured, 5_000);
+        assert_eq!(v.declared, 5_000);
+    }
+
+    /// The verdict is on the DELTA. A high-water that has not moved is the
+    /// same fault already reported, not a new one.
+    #[test]
+    fn an_unchanged_maximum_is_not_a_new_fault() {
+        let mut last = 0;
+        assert!(check_release_jitter(9_000, &mut last, 5_000).is_some());
+        assert!(check_release_jitter(9_000, &mut last, 5_000).is_none());
+        assert!(check_release_jitter(12_000, &mut last, 5_000).is_some());
+    }
+
+    /// No declared period means no cadence to be late for.
+    #[test]
+    fn a_zero_period_declares_nothing() {
+        let mut last = 0;
+        assert!(check_release_jitter(1_000_000, &mut last, 0).is_none());
+    }
 }
 
 #[cfg(test)]
