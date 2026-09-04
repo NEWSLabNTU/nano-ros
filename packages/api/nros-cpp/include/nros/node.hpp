@@ -537,9 +537,49 @@ class Node {
     Result create_polling_subscription(PollingSubscription<M>& out, const char* topic,
                                        const QoS& qos = QoS::default_profile());
 
-    /// Create a repeating timer.
+    /// Create a repeating timer on a CLOCK — `rclcpp::create_timer(node, clock,
+    /// period, callback)`, phase-425 W4.
     ///
-    /// The callback fires during `spin_once()` at the specified period.
+    /// `create_wall_timer` is the steady one: it advances with the executor's
+    /// monotonic spin delta, so no simulator can slow it down. This one advances
+    /// with `clock`, which is what a node in a simulation or a bag replay wants:
+    /// a `NROS_CLOCK_ROS_TIME` timer stops while `/clock` is paused, tracks the
+    /// replay rate, and restarts its period on a backwards jump rather than
+    /// stalling for the length of it.
+    ///
+    /// With no `/clock` source installed a ROS-time clock reads system time, the
+    /// same fallback `rclcpp::Clock` has — a node written for simulation still
+    /// runs standalone.
+    ///
+    /// The node's own clock (`get_clock()`) is ROS time, as in rclcpp, so
+    /// `node.create_timer(t, *node.get_clock(), 100, on_tick)` is the usual
+    /// call.
+    ///
+    /// @param out        Receives the initialized timer.
+    /// @param clock      The clock that advances the timer.
+    /// @param period_ms  Timer period in milliseconds, ON THAT CLOCK.
+    /// @param callback   C function pointer invoked on each tick.
+    /// @param context    User context passed to the callback (may be nullptr).
+    Result create_timer(Timer& out, const Clock& clock, uint64_t period_ms,
+                        nros_cpp_timer_callback_t callback, void* context = nullptr) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        size_t handle_id = 0;
+        nros_cpp_ret_t ret = nros_cpp_timer_create_on_clock(
+            executor_handle_, static_cast<uint8_t>(clock.get_clock_type()), period_ms, callback,
+            context, &handle_id);
+        if (ret == 0) {
+            out.executor_ = executor_handle_;
+            out.handle_id_ = handle_id;
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Create a repeating WALL timer — `rclcpp::Node::create_wall_timer`.
+    ///
+    /// The callback fires during `spin_once()` at the specified period, measured
+    /// on the platform's monotonic clock. For a timer that follows simulated
+    /// time, see `create_timer` above.
     ///
     /// @param out        Receives the initialized timer.
     /// @param period_ms  Timer period in milliseconds.

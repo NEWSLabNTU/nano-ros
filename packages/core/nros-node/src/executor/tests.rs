@@ -1720,6 +1720,103 @@ fn test_add_timer_and_fire() {
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
 
+/// phase-425 W4 — a `TimerClockSource::Ros` timer follows the SIMULATED clock,
+/// and a wall timer on the same executor does not.
+///
+/// One test rather than four, deliberately: the ROS-time override is
+/// process-global (one simulated clock per image, as in Rust rclrs), so four
+/// tests would race each other inside the one test binary. It clears the
+/// override on the way out for the same reason.
+#[test]
+fn ros_time_timer_follows_the_simulated_clock() {
+    use nros_core::clock::Clock;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    const MS: i64 = 1_000_000;
+
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    // A simulator is publishing /clock: t = 10 s.
+    Clock::set_ros_time_override(10_000 * MS);
+
+    let ros_ticks = std::sync::Arc::new(AtomicUsize::new(0));
+    let wall_ticks = std::sync::Arc::new(AtomicUsize::new(0));
+    let r = ros_ticks.clone();
+    let w = wall_ticks.clone();
+
+    executor
+        .register_timer_on_clock(
+            TimerDuration::from_millis(100),
+            super::arena::TimerClockSource::Ros,
+            move || {
+                r.fetch_add(1, Ordering::SeqCst);
+            },
+        )
+        .unwrap();
+    executor
+        .register_timer(TimerDuration::from_millis(100), move || {
+            w.fetch_add(1, Ordering::SeqCst);
+        })
+        .unwrap();
+
+    // 1. PAUSED. Real time passes; simulated time does not. The wall timer
+    //    fires and the ROS timer must not -- this is the whole point.
+    for _ in 0..3 {
+        let _ = elapse_then_spin_once(&mut executor, 120);
+    }
+    assert_eq!(
+        ros_ticks.load(Ordering::SeqCst),
+        0,
+        "a ROS-time timer fired while the simulator was paused: 360 ms of REAL \
+         time passed and /clock did not move, so no period elapsed"
+    );
+    assert!(
+        wall_ticks.load(Ordering::SeqCst) >= 3,
+        "the wall timer on the same executor must be unaffected by the pause \
+         (that is what makes it the right clock for a watchdog); fired {} times",
+        wall_ticks.load(Ordering::SeqCst)
+    );
+
+    // 2. RATE. Simulated time advances 100 ms per spin while only ~10 ms of real
+    //    time passes: four ROS activations, and the wall timer stays behind.
+    let wall_before = wall_ticks.load(Ordering::SeqCst);
+    for i in 1..=4 {
+        Clock::set_ros_time_override(10_000 * MS + i * 100 * MS);
+        let _ = elapse_then_spin_once(&mut executor, 10);
+    }
+    assert_eq!(
+        ros_ticks.load(Ordering::SeqCst),
+        4,
+        "four 100 ms steps of simulated time on a 100 ms ROS timer must be four \
+         activations -- the timer tracks /clock, not the executor's spin delta"
+    );
+    assert!(
+        wall_ticks.load(Ordering::SeqCst) - wall_before <= 1,
+        "~40 ms of real time cannot be four activations of a 100 ms wall timer"
+    );
+
+    // 3. BACKWARDS JUMP -- a bag looping, or a simulator reset. The period
+    //    restarts; the timer must not stall for the length of the jump.
+    Clock::set_ros_time_override(1_000 * MS); // back 9.4 s
+    let _ = elapse_then_spin_once(&mut executor, 1);
+    assert_eq!(
+        ros_ticks.load(Ordering::SeqCst),
+        4,
+        "a backwards jump is not an elapsed period"
+    );
+    Clock::set_ros_time_override(1_100 * MS); // one period past the new origin
+    let _ = elapse_then_spin_once(&mut executor, 1);
+    assert_eq!(
+        ros_ticks.load(Ordering::SeqCst),
+        5,
+        "after a backwards jump the NEXT period must fire on schedule; a timer \
+         that accumulated the negative delta would stay dead for 9.4 s"
+    );
+
+    Clock::clear_ros_time_override();
+}
+
 #[test]
 fn test_timer_repeats() {
     let session = MockSession::new();

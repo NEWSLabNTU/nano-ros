@@ -214,6 +214,48 @@ pub enum TimerOverrunPolicy {
     CatchUp,
 }
 
+/// Which clock advances a timer (phase-425 W4, RFC-0075-adjacent: this is the
+/// distinction rclcpp draws between `create_wall_timer` and `create_timer`).
+///
+/// The default is [`Steady`](Self::Steady) and it is the only source that costs
+/// nothing: it consumes the spin delta the executor already measured. The other
+/// two READ a clock on every poll of the timer, which is one relaxed atomic load
+/// plus whatever the platform's time call costs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum TimerClockSource {
+    /// The executor's monotonic spin delta — a WALL timer in rclcpp's sense.
+    /// Unaffected by `/clock`: a paused simulator does not pause it, which is
+    /// exactly what a watchdog or a transport keep-alive wants.
+    #[default]
+    Steady = 0,
+    /// `ClockType::RosTime`: simulated time when a `/clock` source is active,
+    /// and system time when none is (the same fallback `rclcpp::Clock` has, so
+    /// a node built for simulation still runs standalone).
+    Ros = 1,
+    /// `ClockType::SystemTime`: the wall clock, NTP steps and all. Present
+    /// because rclrs offers it (`TimerClock::SystemTime`); a timer that must
+    /// not jump wants `Steady`.
+    System = 2,
+}
+
+impl TimerClockSource {
+    /// The `nros_core` clock this source reads, or `None` for [`Steady`](Self::Steady),
+    /// which reads no clock at all.
+    pub(crate) fn clock(self) -> Option<nros_core::clock::Clock> {
+        match self {
+            TimerClockSource::Steady => None,
+            TimerClockSource::Ros => Some(nros_core::clock::Clock::ros_time()),
+            TimerClockSource::System => Some(nros_core::clock::Clock::system()),
+        }
+    }
+
+    /// The clock's current reading in nanoseconds, or 0 for [`Steady`](Self::Steady).
+    pub(crate) fn now_ns(self) -> i64 {
+        self.clock().map(|c| c.now().to_nanos()).unwrap_or(0)
+    }
+}
+
 /// Concrete timer entry stored in the arena.
 ///
 /// The first fields (up to `callback`) share layout with [`TimerHeader`],
@@ -234,6 +276,12 @@ pub(crate) struct TimerEntry<F> {
     pub(crate) fired: bool,
     pub(crate) cancelled: bool,
     pub(crate) overrun_policy: TimerOverrunPolicy,
+    /// Which clock advances `elapsed_us` (phase-425 W4). `Steady` consumes the
+    /// executor's spin delta; the others read their clock in `try_process`.
+    pub(crate) clock_source: TimerClockSource,
+    /// Last reading of `clock_source`, in nanoseconds. Meaningless — and never
+    /// read — while `clock_source` is `Steady`.
+    pub(crate) last_clock_ns: i64,
     pub(crate) callback: F,
 }
 
@@ -252,6 +300,8 @@ pub(crate) struct TimerHeader {
     pub(crate) fired: bool,
     pub(crate) cancelled: bool,
     pub(crate) overrun_policy: TimerOverrunPolicy,
+    pub(crate) clock_source: TimerClockSource,
+    pub(crate) last_clock_ns: i64,
 }
 
 /// Concrete action server entry stored in the arena.
@@ -1714,6 +1764,34 @@ where
         return Ok(false);
     }
 
+    // phase-425 W4 — which clock advanced, and by how much. `Steady` is the
+    // executor's spin delta, unchanged and free. The other two READ their clock
+    // and diff against the last reading, which is what makes a paused simulator
+    // pause the timer: `/clock` stops advancing, so the delta is zero.
+    let delta_us = match entry.clock_source {
+        TimerClockSource::Steady => delta_us,
+        source => {
+            let now_ns = source.now_ns();
+            let step_ns = now_ns - entry.last_clock_ns;
+            entry.last_clock_ns = now_ns;
+            if step_ns < 0 {
+                // A BACKWARDS jump — a bag looping, a simulator reset, an NTP
+                // step. Restart the period rather than stalling the timer for
+                // the length of the jump, which is what accumulating a negative
+                // delta would amount to. rclcpp gets here through a jump
+                // callback; we need the behaviour, not (yet) the callback
+                // surface (`c:clock_add_jump_callback` stays declined).
+                entry.elapsed_us = 0;
+                return Ok(false);
+            }
+            // A FORWARD jump is deliberately NOT special-cased: it lands in
+            // `elapsed_us` as a backlog, and the overrun policy below is the
+            // documented mechanism for deciding whether a backlog replays
+            // (`CatchUp`) or coalesces (`Skip`).
+            (step_ns as u64) / 1_000
+        }
+    };
+
     entry.elapsed_us = entry.elapsed_us.saturating_add(delta_us);
 
     if entry.elapsed_us >= entry.period_us {
@@ -3172,6 +3250,8 @@ mod timer_overrun_tests {
             fired: false,
             cancelled: false,
             overrun_policy: policy,
+            clock_source: TimerClockSource::Steady,
+            last_clock_ns: 0,
             callback: || {},
         }
     }
@@ -3248,6 +3328,8 @@ mod timer_overrun_tests {
             fired: false,
             cancelled: false,
             overrun_policy: TimerOverrunPolicy::Skip,
+            clock_source: TimerClockSource::Steady,
+            last_clock_ns: 0,
             callback: || {},
         };
         assert!(step(&mut t, 205));

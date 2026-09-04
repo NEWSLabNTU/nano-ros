@@ -72,6 +72,92 @@ pub unsafe extern "C" fn nros_cpp_timer_create(
     }
 }
 
+/// Create a repeating timer driven by a CLOCK — phase-425 W4, the shape rclcpp
+/// spells `create_timer(node, clock, period, cb)`.
+///
+/// `nros_cpp_timer_create` is the WALL timer: it advances with the executor's
+/// monotonic spin delta and no simulator can slow it down. This one advances
+/// with `clock_type`, so a `NROS_CLOCK_ROS_TIME` timer follows `/clock` — it
+/// stops while the simulator is paused, and it tracks a bag's replay rate.
+///
+/// With no `/clock` source installed, a ROS-time timer reads system time, the
+/// same fallback `rclcpp::Clock` has.
+///
+/// # Parameters
+/// * `executor_handle` — Executor handle from `nros_cpp_init()`.
+/// * `clock_type` — Which clock advances the timer.
+/// * `period_ms` — Timer period in milliseconds, ON THAT CLOCK.
+/// * `callback` — Function called when the timer fires.
+/// * `context` — User context passed to the callback.
+/// * `out_handle_id` — Receives the timer handle ID for cancel/reset.
+///
+/// # Safety
+/// `executor_handle` and `out_handle_id` must be valid pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_timer_create_on_clock(
+    executor_handle: *mut c_void,
+    clock_type: u8,
+    period_ms: u64,
+    callback: nros_cpp_timer_callback_t,
+    context: *mut c_void,
+    out_handle_id: *mut usize,
+) -> nros_cpp_ret_t {
+    use nros_c::nros_clock_type_t as Ct;
+    use nros_node::executor::TimerClockSource;
+
+    if out_handle_id.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    // `u8` and not `nros_clock_type_t`, deliberately: `nros_cpp_ffi.h` is
+    // generated with `no_includes`, so a parameter typed with nros-c's enum
+    // would name a type the header does not declare and every TU that includes
+    // it without `nros/clock.h` fails to compile (action_client.hpp did). C++
+    // converts the unscoped enum implicitly, so `clock.get_clock_type()` still
+    // passes without a cast at the call site.
+    //
+    // An UNINITIALIZED clock is rejected rather than defaulted: a timer created
+    // on a clock the caller never initialised would silently be a wall timer,
+    // which is the exact confusion phase-425 exists to remove. An out-of-range
+    // value is rejected for the same reason — the widening cannot be UB here,
+    // unlike a transmute into the enum.
+    let source = match clock_type {
+        x if x == Ct::NROS_CLOCK_STEADY_TIME as u8 => TimerClockSource::Steady,
+        x if x == Ct::NROS_CLOCK_ROS_TIME as u8 => TimerClockSource::Ros,
+        x if x == Ct::NROS_CLOCK_SYSTEM_TIME as u8 => TimerClockSource::System,
+        _ => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+
+    let cb = match callback {
+        Some(cb) => cb,
+        None => return NROS_CPP_RET_INVALID_ARGUMENT,
+    };
+
+    let Some(ctx) = (unsafe { cpp_ctx_checked(executor_handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let c_context = context;
+
+    let wrapper = move || unsafe {
+        cb(c_context);
+    };
+
+    match ctx.executor.register_timer_on_clock(
+        TimerDuration::from_millis(period_ms),
+        source,
+        wrapper,
+    ) {
+        Ok(handle_id) => {
+            unsafe {
+                *out_handle_id = handle_id.0;
+            }
+            crate::metadata_hooks::on_timer_create(period_ms);
+            NROS_CPP_RET_OK
+        }
+        Err(_) => NROS_CPP_RET_FULL,
+    }
+}
+
 /// Create a one-shot timer and register it with the executor.
 ///
 /// The timer fires once after `delay_ms` milliseconds during `spin_once()`.
