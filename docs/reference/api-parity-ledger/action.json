@@ -784,7 +784,9 @@
     "rename": {
       "from": "is_server_ready",
       "to": "action_server_is_ready",
-      "category": "A"
+      "category": "A",
+      "status": "settled-pending-owner",
+      "resolution": "Target settled 2026-08-27, unexecuted — and THE BLOCKER THIS ROW RECORDED IS GONE, verified 2026-09-04. It said the body forwards to `ClientTrait::is_server_ready`, \"the trait method whose own naming is BLOCKED at `rust:ClientTrait::server_available`\". That trait method was deleted 2026-09-03 (phase-379 W6 decision 2 / issue 1008); the tri-state question landed as `ClientTrait::service_is_ready -> Result<bool, _>` (`traits.rs:2849`) and the body today is `matches!(self.send_goal_client.service_is_ready(), Ok(true))` (`action_core.rs:1144`). Nothing waits on a decision.\n\nThe edit is the definition plus three callers — `nros-c/src/action/client.rs:348`, `:428`, `nros-cpp/src/action.rs:1001`. The caller lines the row cited (`handles.rs:2180`, `:2825`) no longer exist.\n\nNOTE what `rename` means here: BOTH halves are ours-only (rclrs 0.7.0's `ActionClientState` ships no readiness predicate at all), so this records that our own two Rust spellings disagree — issue 0788 — not that we differ from rclrs. The ledger uses the word in both senses without distinguishing them."
     }
   },
   "rust:ActionClientHandle": {

@@ -98,7 +98,14 @@
   },
   "c:publish_serialized_message": {
     "verdict": "rename",
-    "why": "ROS 2 says SERIALIZED for the pre-CDR byte form; ours is `nros_publish_raw`. This row became the SOLE owner of that decision on 2026-09-03: the receive half (`c:take_serialized_message`) landed with phase-379 W6 decision 1, which renamed `try_recv_raw` -> `take_serialized`, so publish is the only side still saying RAW. One word, used consistently on both sides, and ours is the one that has to move. (Symbol spelling corrected 2026-08-26 (phase-379 W5): this row said `nros_cpp_publisher_publish_raw`; the C++ FFI symbol is `nros_cpp_publish_raw`.)"
+    "why": "ROS 2 says SERIALIZED for the pre-CDR byte form; ours is `nros_publish_raw`. This row became the SOLE owner of that decision on 2026-09-03: the receive half (`c:take_serialized_message`) landed with phase-379 W6 decision 1, which renamed `try_recv_raw` -> `take_serialized`, so publish is the only side still saying RAW. One word, used consistently on both sides, and ours is the one that has to move. (Symbol spelling corrected 2026-08-26 (phase-379 W5): this row said `nros_cpp_publisher_publish_raw`; the C++ FFI symbol is `nros_cpp_publish_raw`.)",
+    "rename": {
+      "from": "nros_publish_raw / Publisher::publish_raw / publish_raw",
+      "to": "nros_publish_serialized / Publisher::publish_serialized / publish_serialized",
+      "status": "settled-pending-owner",
+      "category": "B",
+      "resolution": "Target settled 2026-09-03 alongside the RECEIVE half, which did land: `nros_subscription_take_serialized` (`nros_generated.h:6459`) with `try_recv_raw` surviving as a `NROS_DEPRECATED_MSG` forwarder. This is the transmit half, unexecuted.\n\nThe `nros_`/`rcl_` prefix is NOT the difference — `normalize()` strips both symmetrically, so the keys reduce to `publish_raw` vs `publish_serialized_message`; `_message` and the module prefix stay dropped per `c:take_serialized_message`'s declined precedent.\n\nScope is wider than this C row implies: three ours-only halves are already rowed (`c:publish_raw`, `cpp:Publisher::publish_raw`, `rust:Publisher::publish_raw`), plus the `nros_cpp_publish_raw` FFI symbol and the C message template, which emits `return nros_publish_raw(...)` in generated code. Confirm the exact target symbol before executing — the row names the word `serialized` but never the symbol."
+    }
   },
   "c:publisher_can_loan_messages": {
     "verdict": "gap",
@@ -507,8 +514,12 @@
     "why": "rclcpp's type-erased base, which the correlator normally folds onto `Publisher`. This row is the CONSTRUCTOR, which has no counterpart because ours is not constructed by a subclass."
   },
   "cpp:Publisher::borrow_loaned_message": {
-    "verdict": "rename",
-    "why": "ours is `Publisher::loan`. In C++ both sides return a typed RAII handle (`Expected<Loan>` against `LoanedMessage<T>`), so unlike the C API there is no shape difference here to justify the different verb. Phase 379 W5; see `c:borrow_loaned_message` for the shape argument that does apply to C."
+    "verdict": "divergence",
+    "why": "RE-VERDICTED 2026-09-04 from `rename`. The row argued that \"in C++ both sides return a typed RAII handle … so unlike the C API there is no shape difference here to justify the different verb\". The word TYPED is false, and it was the whole argument.\n\nrclcpp's `borrow_loaned_message()` takes NO arguments and returns `LoanedMessage<T>` whose `get()` yields `MessageT&`. Ours is `Expected<Loan> loan(size_t requested_len)` (`publisher.hpp:171`) over a byte span: `uint8_t* data()` (`:121`), `Result commit(size_t actual_len)` (`:128`). A byte token sized by an explicit caller-supplied length is precisely the shape this row said applies only to C — and `cpp:LoanedMessage` in this same file already says so (\"Ours is `Publisher::Loan`\"), as do all four C and Rust loan rows, which carry `divergence`. Two rows described one object and disagreed about whether it was typed.\n\nThe constraint is RFC-0010 D7 and issue 0814: the lent slot is `len` BYTES because CDR length is not known before encoding, and upstream's loan carries a `rosidl_message_type_support_t*` that this ABI declines. Giving a byte token rclcpp's typed name would be a worse divergence than the verb is.",
+    "rename": {
+      "status": "not-a-rename",
+      "resolution": "Re-verdicted 2026-09-04; the premise was wrong. Note the symbol is not even linkable in a default build — `nros_cpp_publisher_loan` is `#[cfg(feature = \"lending\")]` while cbindgen emits it unconditionally (issue 0814)."
+    }
   },
   "cpp:Publisher::can_loan_messages": {
     "verdict": "gap",
@@ -1220,8 +1231,12 @@
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:Node::create_subscription": {
-    "verdict": "rename",
-    "why": "SATISFIED 2026-08-26 — ours now carries this name. the theirs-only half of the node stage's `rust:Node::create_subscriber` rename -- rclrs, rclcpp, rclc and our own C and C++ all say SUBSCRIPTION. Phase 379 W5."
+    "verdict": "divergence",
+    "why": "RE-VERDICTED 2026-09-04 from `rename`. The row's own text said \"SATISFIED 2026-08-26 — ours now carries this name\", so it asserted a naming divergence its own prose denied. Verified: ours is `Node::create_subscription<M>` (`nros-node/src/node.rs:280`) and rclrs spells it the same. The rename landed on the node stage; the row was re-keyed to the new name and the `rename` verdict travelled with it.\n\nWhat the report still sees is the SIGNATURE, one parameter: rclrs binds the callback at creation and returns an owned `Subscription<T>`; our standalone node is a declaration registry over `heapless` fixed tables with no session and nowhere to put a callback, so it takes options only and returns an index. The clean control is the twin `Node::create_publisher` — identical but for the callback parameter — which correlates and has no row at all.\n\nThe old text also pointed at `rust:Node::create_subscriber`, a key that exists in no shard.",
+    "rename": {
+      "status": "not-a-rename",
+      "resolution": "Re-verdicted 2026-09-04: both sides already spell it `create_subscription`."
+    }
   },
   "rust:Node::get_publishers_info_by_topic": {
     "verdict": "gap",
@@ -1576,8 +1591,12 @@
     "why": "part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
   },
   "rust:SubscriptionHandle": {
-    "verdict": "rename",
-    "why": "Renamed 2026-08-26 (phase-379 W5): Rust now says `subscription`, matching rclrs, rclcpp, rclc and our own C and C++. The whole cluster moved together — the verb, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info` and `SubscriberHandle` — because renaming a verb and leaving its option and handle types behind is the half-fix this ledger keeps recording. NOTE: the target name already existed as an ASSOCIATED TYPE on the RMW `Session` trait (`<S as Session>::SubscriptionHandle`) — the backend's subscription object, not the standalone node's handle. They do not collide (no module names both, checked before renaming), but the two `SubscriptionHandle`s in this tree are unrelated. LANDED 2026-08-26 (phase-379 W5). Rust now spells this `subscription`, matching rclrs, rclcpp, rclc and our own C (`nros_subscription_init`) and C++ (`Node::create_subscription`). The whole cluster moved together — `create_subscriber`, `SubscriberOptions`, `subscriber_count`, `subscriber_topic_info`, `SubscriberHandle` — because renaming the verb and leaving its options/handle types behind is the half-fix this ledger keeps recording. NOTE for a future reader: the target name already existed as an ASSOCIATED TYPE on the RMW `Session` trait (`<S as Session>::SubscriptionHandle`), which is a different concept — the backend's subscription object, not the standalone node's handle. They do not collide (no module names both, checked), but the two `SubscriptionHandle`s in this tree are unrelated. OUR LANGUAGES DISAGREE, and it is the same word the node stage already flagged: rclrs, rclcpp and rclc all say SUBSCRIPTION, and so do our own C (`nros_subscription_init`) and C++ (`Node::create_subscription`). This is the standalone (non-component) node's handle type and it moves with `rust:Node::create_subscriber` / `SubscriberOptions` / `subscriber_count` -- see that row in the node stage. `SubscriptionHandle`. Nothing about an RTOS asks for the shorter word. Phase 379 W5. (Consumers outside `nros-node`: none -- it is re-exported from `nros::` and unused, so the rename is free today.)"
+    "verdict": "divergence",
+    "why": "RE-VERDICTED 2026-09-04 from `rename`; the rename LANDED and the verdict rode along to the new key. `SubscriberHandle` exists nowhere in the tree as a type — the sole surviving hit is the enum variant `NodeError::InvalidSubscriberHandle` (`node.rs:53`), which is not report-keyed and so no gate can see it. Ours is `pub struct SubscriptionHandle<M>` (`nros-node/src/subscriber.rs:10`).\n\nrclrs has NO `SubscriptionHandle` at all; its analogue is `Subscription<T> = Arc<SubscriptionState<T>>`. So this is an ours-only item, and the right verdict is the one its sibling `rust:PublisherHandle` already carries: rclrs's handle IS the rcl handle, ours is a Copy index into the executor's static entity table.\n\nResidue the cluster left behind, recorded because nothing gates it: `NodeError::MaxSubscribersReached` and `::InvalidSubscriberHandle` are public variants of a public enum still spelling `subscriber`, as is the module file `subscriber.rs`.",
+    "rename": {
+      "status": "landed",
+      "resolution": "Landed 2026-08-26 with the subscriber->subscription cluster (phase-379 W5). Re-verdicted `divergence` 2026-09-04 because the row kept asserting that an already-correct name should change."
+    }
   },
   "rust:SubscriptionOptions::qos": {
     "verdict": "extension",
