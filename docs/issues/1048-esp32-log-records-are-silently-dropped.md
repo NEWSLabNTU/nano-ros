@@ -172,6 +172,8 @@ Run alone with a router up, the talker boots, brings up its network, prints
 The listener, same board and same build, gets all the way through.
 
 That is a SEPARATE defect from this issue, and it was invisible while the log
-silence hid where the image stopped. It is what remains of
-`test_esp32_talker_listener_e2e` and `test_esp32_to_native`, and it should be
-filed on its own once someone has looked at where the talker's setup stops.
+silence hid where the image stopped. Filed as
+[issue 1052](1052-esp32-talker-faults-after-network-bringup.md): an
+`Instruction access fault` whose `mepc` and `ra` are printable ASCII from
+source-path strings, i.e. a corrupted code pointer. It is what remains of
+`test_esp32_talker_listener_e2e` and `test_esp32_to_native`.
