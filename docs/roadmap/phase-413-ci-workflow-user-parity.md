@@ -107,9 +107,20 @@ conversion can be verified in a lane that is already red.
    report `Real failures: 0 / 0` with all 9 e2e cases skipped on one shared
    precondition (`_check-skip-budget` correctly refusing to call that a pass),
    and `tier 2 nightly` is runner state (three fixture families missing
-   `.inputsig`). The `freertos`/`threadx_linux` skip reason is TRUNCATED in both
-   the log and the junit, so the cause is a hypothesis, not a diagnosis — see
-   1038 before acting on it.
+   `.inputsig`).
+
+   The `freertos`/`threadx_linux` cause is **CONFIRMED** (2026-09-04): the CI
+   image carries NO zenoh packages — `FROM ros:humble-ros-base` plus an apt list
+   whose only ROS entry is `example-interfaces`; a built image has no
+   `rmw_zenoh_cpp` prefix, no `rmw_zenohd`, no `libzenohc*`, and
+   `rmw-fastrtps-cpp` as its sole RMW. No router, so
+   `zenohd_unavailable_reason()` fails `require_e2e()` and all 9 cases skip.
+   **Fixing it takes TWO changes**: install `ros-humble-rmw-zenoh-cpp`, AND
+   re-capture the image's static `AMENT_PREFIX_PATH`/`LD_LIBRARY_PATH` `ENV`
+   block, which will not name `<prefix>/opt/zenoh_cpp_vendor/lib` — a router
+   paired with the wrong `libzenohc.so` SEGVs mid-startup (issue 0774). The
+   Dockerfile's own comment already says to re-run its capture command after
+   changing the ROS package set. Detail in issue 1038.
 4. **`build-wide`** — expected to go green with W1/0992; if it does not, its
    remaining failure is now visible rather than buried under the include
    preflight.
