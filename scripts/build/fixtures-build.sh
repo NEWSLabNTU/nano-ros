@@ -382,7 +382,49 @@ else
           if [ -n "$envstr" ]; then export $envstr; fi
           if [ -n "$facts" ]; then export $facts; fi
           cargo build $cargo_profile_args $args $tdir_flag --quiet )
+        # Issue 1052 — assert the stack floor HERE, on the row that was just
+        # linked, because this is the only place the artifact's directory is
+        # known correctly: `$tdir_flag` comes from the row's own `$args` and
+        # `$envstr`, so it names where cargo actually wrote. (The esp32 pack
+        # loop invents empty args for the same lookup and reads a directory
+        # nothing writes — issue 1025.)
+        #
+        # Boards whose stack is the LINKER LEFTOVER after `.bss` only. On those
+        # there is no runtime overflow guard: a static that grows takes the
+        # stack directly and the image dies later as a wild jump somewhere
+        # unrelated. node.rs has asked for this check since issue 0190; a
+        # comment cannot run on a schedule, and the talker shipped at 18,572 B
+        # against a ~67 KB budget.
+        case "$platform" in
+            qemu-esp32-baremetal)
+                nros_fixture_check_stack_floor "$platform" "$args" "$envstr"
+                ;;
+        esac
     }
+    # Locate every ELF the row just produced and put it through the floor
+    # check. A row that resolves no artifact directory, or whose directory
+    # holds no executable, FAILS: this runs only for boards that were named
+    # above, so "nothing to check" means the lookup broke, not that the row is
+    # exempt. Silence is the failure mode this whole gate exists to end.
+    nros_fixture_check_stack_floor() {
+        local platform="$1" args="$2" envstr="$3"
+        local adir
+        adir="$(nros_fixture_row_artifact_dir "$dir" "$platform" "$args" "$envstr")"
+        if [ -z "$adir" ] || [ ! -d "$adir" ]; then
+            echo "ERROR: $dir — no artifact dir resolved for the stack-floor check" >&2
+            echo "       (platform=$platform). Refusing to skip it silently." >&2
+            return 1
+        fi
+        # `--row`: the script resolves THIS leaf's binary names from its own
+        # Cargo.toml and checks only those. phase-340 group dirs are SHARED —
+        # several rows build into one dir, and it also keeps binaries from
+        # earlier env combinations that no row produces any more. A glob would
+        # check other rows' artifacts: during development it failed the
+        # listener's build over a stale talker ELF from before the fix under
+        # test.
+        python3 "$NROS_REPO_ROOT/scripts/check-stack-floor.py" --row "$dir" "$adir"
+    }
+    export -f nros_fixture_check_stack_floor
     export -f nros_fixture_build_one
 
     # issue 0649 — sync each row DIRECTORY once, in the parent, before the rows

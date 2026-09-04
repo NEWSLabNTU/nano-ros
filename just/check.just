@@ -3028,6 +3028,23 @@ no-alloc-image:
     @python3 scripts/check-no-alloc-image.py --selftest
     @python3 scripts/check-no-alloc-image.py --claims
 
+# Issue 1052 — the ESP32 stack is the LINKER LEFTOVER after `.bss`
+# (`_stack_start - _stack_end`), so every byte a static gains is a byte the
+# stack loses, and there is no runtime overflow guard on the target: the image
+# writes frames into `.bss` and dies later as a wild jump somewhere unrelated.
+# `nros-board-esp32-qemu/src/node.rs` has instructed "check `.stack` after
+# changing ANY large static" since issue 0190; a comment cannot be run on a
+# schedule, and the talker duly shipped with 18,572 B against a ~67 KB budget.
+#
+# Only the artifact-free half runs here — the real per-image assertion lives in
+# `just esp32 build-qemu`, on the ELF that step just linked. Resolving a built
+# image from a `check` lane would need a fixture (banned) or would skip when
+# absent, and a skip is exactly the silence this gate exists to end.
+[private]
+stack-floor:
+    @python3 scripts/check-stack-floor.py --selftest
+    @python3 scripts/check-stack-floor.py --claims
+
 # The per-RMW capability page is derived from the two C vtables + the zenoh
 # shim's trait overrides. Prose versions of this table drifted in BOTH
 # directions (cyclone services documented unsupported after service.cpp landed;
