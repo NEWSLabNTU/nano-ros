@@ -1,0 +1,69 @@
+---
+id: 1065
+title: "`just esp32 build-qemu` is run by no lane, so it can be wholly broken with every test green"
+status: open
+area: testing
+severity: medium
+related: [1025, 0196, 0883]
+---
+
+## What
+
+`just esp32 build-qemu` is the documented way to produce the ESP32 QEMU flash
+images, and **nothing in CI runs it**. Grepping the whole tree for callers finds
+only `just docker build-qemu` (a different recipe, in the Docker module) and
+prose references.
+
+The ESP32 e2e tests do not use it. `packages/testing/nros-tests/tests/
+esp32_emulator.rs` resolves the ELF through the fixture resolver and packs its
+own image:
+
+```rust
+let elf = build_esp32_qemu_talker().expect("Failed to build esp32-qemu-talker");
+let flash_image = nros_tests::build_dir(nros_tests::kind::ESP32_QEMU, &[])
+    .join("esp32-qemu-talker.bin");
+create_esp32_flash_image(elf, &flash_image).expect("Failed to create flash image");
+```
+
+So the tests exercise a SECOND packing path that happens to be correct, and the
+recipe a human is told to run is exercised by nobody.
+
+## Evidence that this is not theoretical
+
+Issue 1025: the recipe's ELF lookup passed `"" ""` for the row's cargo args and
+env, so it read `build/cargo-fixtures/qemu-esp32-baremetal/` while the build
+wrote `qemu-esp32-baremetal-4118800323`. **No flash image could be packed at
+all**, and it stayed that way through many green CI runs, because the only
+consumer of the broken path is a person at a terminal.
+
+It also hid a second time: on a developer machine that had built those rows
+before they gained an `env`, a stale ELF sits at the bare path and the recipe
+works. The failure is invisible in CI (never run) and intermittent locally
+(depends on build residue) — issue 0828's shape exactly.
+
+## Why the nightly does not cover it
+
+`nightly.yml` has an `esp32` path filter and an esp32 lane module, so ESP32 looks
+covered. It is — for the MATRIX, which builds fixtures through
+`build-test-fixtures` and tests through the resolver. Neither route calls this
+recipe. "The platform is covered" and "this recipe is covered" are different
+claims, and only the first is true.
+
+## Fix
+
+Run it. It needs no ROS, no SDK beyond the esp32 toolchain the lane already
+provisions, and it is a build, so it belongs wherever the ESP32 compile work
+already happens — the nightly esp32 module, gated on the same path filter.
+
+Assert the artifacts, not the exit code: the recipe's own history is of exiting
+0 while producing nothing (issue #181, which is why the "ERROR: … is missing"
+guard exists). The check is that `build/esp32-qemu/esp32-qemu-{talker,listener}
+.bin` exist and are non-empty afterwards.
+
+## The general shape, worth stating once
+
+A user-facing recipe whose output is also produced by a second, test-internal
+path has no coverage from those tests, however green they are. The test proves
+the SECOND path. Any recipe the book or `just --list` offers a human should have
+one lane that invokes it the way a human would — otherwise its correctness is
+asserted only by the last person who happened to run it.
