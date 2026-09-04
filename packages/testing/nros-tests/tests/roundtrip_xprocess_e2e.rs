@@ -485,3 +485,97 @@ fn run_cell(pcell: &MCell) {
         }
     }
 }
+
+// =============================================================================
+// Issue 1017 — two template-built entries must register DISTINCT names
+// =============================================================================
+
+/// The behavioural half of issue 1003, which the static gates cannot reach.
+///
+/// `check-entry-session-name` proves two things about the SOURCES: every
+/// generated `run_components` call passes a session name, and every
+/// `NanoRosNodeRegister.cmake` site takes that name from the node. Neither can
+/// prove what actually happens on the wire — a defect anywhere below CMake (in
+/// the substitution, the boot config, or the transport's key derivation) would
+/// leave both files correct and both images sharing a name.
+///
+/// That was issue 1003 exactly: ten templates called
+/// `run_components(&__nros_entry_setup)`, every image registered as `"node"`,
+/// and a talker and a listener hashed to ONE client key. The C++ pubsub cell's
+/// own note had predicted it ("shared-key hash collided as one client") without
+/// anything asserting it.
+///
+/// So this asserts the consequence rather than the form: two entries built from
+/// the same templates, in the same workspace and language, must appear in the
+/// graph under their OWN names. Under the 1003 bug the observed set is
+/// `{"node"}` and both `contains` below fail.
+///
+/// `add_server` / `add_client` come from `service_server_pkg` /
+/// `service_client_pkg` via `@NROS_ENTRY_NODE_NAME@`; they are the two entries
+/// `native_c_service` already runs together, so this needs no new fixture.
+#[test]
+fn two_template_built_entries_register_distinct_names() {
+    let server = build_native_workspace_c_service_server_entry()
+        .unwrap_or_else(|e| nros_tests::skip!("service-server entry not prebuilt: {e:?}"))
+        .to_path_buf();
+    let client = build_native_workspace_c_service_client_entry()
+        .unwrap_or_else(|e| nros_tests::skip!("service-client entry not prebuilt: {e:?}"))
+        .to_path_buf();
+    let probe = nros_tests::fixtures::build_graph_probe()
+        .unwrap_or_else(|e| nros_tests::skip!("graph-probe not prebuilt: {e:?}"));
+
+    let router = ZenohRouter::start_unique()
+        .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start: {e}"));
+    let locator = router.locator();
+
+    // Both must be LIVE while the probe polls: the graph is what the router can
+    // see now, not a record of what once connected.
+    let _server = spawn_c_entry(&server, "add_server", &locator);
+    let _client = spawn_c_entry(&client, "add_client", &locator);
+
+    // `GRAPH_PROBE_EXPECT_NODE` makes an EMPTY graph a failure rather than a
+    // quiet pass — the distinction issue 0903 turned on. The name set below is
+    // then read from the same run.
+    let out = Command::new(probe)
+        .env("NROS_LOCATOR", &locator)
+        .env("GRAPH_PROBE_TIMEOUT_MS", "20000")
+        .output()
+        .expect("run graph-probe");
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let seen: std::collections::BTreeSet<String> = text
+        .lines()
+        .filter_map(|l| l.strip_prefix("GRAPH_NODE "))
+        // `GRAPH_NODE <namespace>|<name>` — e.g. `/|add_server`. Only the NAME
+        // is compared: the collision this guards against is in the name.
+        .map(|n| n.trim().rsplit('|').next().unwrap_or(n).trim().to_string())
+        .collect();
+
+    // NOT asserted on the probe's exit status. `graph-probe` also audits every
+    // graph slot against a scenario of its own — a talker on `/chatter`, a
+    // service matching `GRAPH_PROBE_EXPECT_NODE` — and exits non-zero when
+    // those are absent. A service pair is a different scenario, so its status
+    // reports on something this test is not about. The assertions below carry
+    // the "empty graph is a failure" guarantee instead: an unpopulated graph
+    // has neither name.
+    for want in ["add_server", "add_client"] {
+        assert!(
+            seen.iter()
+                .any(|n| n == want || n.ends_with(&format!("/{want}"))),
+            "issue 1017: `{want}` is not in the graph. Two entries built from the \
+             SAME templates must register under their OWN names — under issue \
+             1003 both registered as `node` and collided on one client key. \
+             Saw {seen:?}\n{text}"
+        );
+    }
+    assert!(
+        seen.len() >= 2,
+        "issue 1017: the two entries collapsed to {} name(s): {seen:?}. That is \
+         the 1003 collision, observed rather than inferred.\n{text}",
+        seen.len()
+    );
+}
