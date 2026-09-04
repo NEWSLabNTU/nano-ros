@@ -60,9 +60,21 @@ claim, and neither is ours to arbitrate).
 * **Every** NuttX zenoh image — C, C++ and Rust, all twelve arm fixtures —
   cannot be built from `main`. `just nuttx build-fixtures-arm` is the documented
   entry point and it fails at the first row.
-* CI does not build fixtures, so nothing red on `main` announces it. It bites
-  the next person who tries to run a NuttX cell, and it presents as an
-  incomprehensible `redefinition` cascade rather than as a pin problem.
+* **The nightly `nuttx` cell is red for exactly this, in CI, on every run in the
+  window.** Corrects an earlier claim in this file that "CI does not build
+  fixtures, so nothing red announces it" — the nightly platform lane does build
+  them, and run `33847619657` (2026-09-04T07:11) carries the identical
+  `stdbool.h:79:25: error: missing binary operator before token "1"` under
+  `/__w/nano-ros/nano-ros/`. `just nightly-triage` reports `nuttx` red across all
+  three scanned runs.
+* **So the observer is down, not merely the build.** A cell red for every run in
+  the window has no signal capacity — CLAUDE.md's own words: "a regression
+  landing in it looks exactly like yesterday's failure". Everything the NuttX
+  lane would otherwise report is currently invisible, including issue 0870's
+  intermittent `-100`, whose whole remaining plan is "catch a failing run in a
+  sweep".
+* It bites the next person who tries to run a NuttX cell locally, and presents as
+  an incomprehensible `redefinition` cascade rather than as a pin problem.
 * The pin moved to 1.8.0 (`aefd6775e deps(zenoh-pico): the patch line moves to
   1.8.0`) while **PR #299, the phase-415 port, is still open**. So the version
   bump landed ahead of the port that makes it work, and this is one of the
