@@ -320,10 +320,17 @@ jobs:
       # appropriate; the default still refuses and prints the command, which is
       # the right behaviour on a developer's machine.
       #
-      # NOT the cause of this cell's RED — that is issue 1025 (#303), where the
-      # flash packer looks in a directory the build stopped using. This step
-      # stops the ESP32 e2e from SKIPPING for want of a QEMU that knows
-      # `esp32c3`, which is a coverage hole that reads as green.
+      # This step stops the ESP32 e2e from SKIPPING for want of a QEMU that
+      # knows `esp32c3`, which is a coverage hole that reads as green.
+      #
+      # It could never have done that until now: `--sudo` carried
+      # `requires = "system"` in clap, so this exact line exited 2 on a usage
+      # error before installing anything, and every step after it was skipped —
+      # including `Build (esp32)`. The comment that used to sit here said the
+      # cell's red was issue 1025 and not this step; with 1025 fixed (#303) the
+      # red simply moved here, which is how the contradiction surfaced. The
+      # `--tool ... --sudo` form the help text has promised since issue 1038 is
+      # reachable as of this branch.
       - name: Provision esp32-qemu's declared system deps (issue 1038)
         if: matrix.plat == 'esp32'
         run: |

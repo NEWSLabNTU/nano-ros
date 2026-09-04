@@ -145,7 +145,14 @@ pub struct Args {
     /// issue 1038 — ALSO applies to `--tool`: a tool declaring its own
     /// `[tool.<name>] system = [..]` build deps installs them instead of
     /// bailing with a line for a human to copy.
-    #[arg(long, requires = "system", conflicts_with = "check")]
+    ///
+    /// NOT `requires = "system"`. It was, and that made the `--tool` half above
+    /// UNREACHABLE: the implementation for it has existed since issue 1038 and
+    /// the parser rejected every invocation that could reach it, so
+    /// `nros setup --tool esp32-qemu --sudo` exited 2 on a clap usage error
+    /// while the doc comment promised it worked. Validated below instead, where
+    /// the message can say which of the two flags is missing.
+    #[arg(long, conflicts_with = "check")]
     pub sudo: bool,
 }
 
@@ -221,6 +228,16 @@ pub fn run(args: Args) -> Result<()> {
     if let Some(ws) = args.workspace_scan.clone() {
         let root = args.index.parent().map(std::path::Path::to_path_buf);
         return run_workspace_scan(&index, &ws, root.as_deref());
+    }
+    // `--sudo` means "execute the install", and there are exactly two things it
+    // can install: the `[system.*]` closure (`--system`) or a tool's own
+    // `[tool.<name>] system = [..]` build deps (`--tool`). Alone it names no
+    // target. Checked here rather than as `requires = "system"` on the arg,
+    // which is what made the `--tool` form unreachable (issue 1038).
+    if args.sudo && !args.system && args.tool.is_none() {
+        bail!(
+            "`--sudo` executes an install and needs to know WHAT to install.\n               --system --sudo   the `[system.*]` OS-package closure\n               --tool <name> --sudo   that tool's own `[tool.<name>] system = [..]` build deps"
+        );
     }
     if args.system {
         // The index lives AT the repo root, so its parent is the base a
@@ -2911,5 +2928,43 @@ mod workspace_scan_tests {
     #[test]
     fn no_export_yields_no_target() {
         assert!(deploy_targets("<package><name>x</name></package>").is_empty());
+    }
+
+    /// Issue 1038's `--tool <name> --sudo` must PARSE.
+    ///
+    /// It did not, for as long as the feature existed: `--sudo` carried
+    /// `requires = "system"`, so clap rejected the one spelling that reaches
+    /// the `--tool` install path — exit 2 on a usage error, while the flag's
+    /// own doc comment promised the form worked. The nightly esp32 lane ran
+    /// this exact line and skipped every step after it.
+    ///
+    /// A parse-level test, because the defect was parse-level: the install code
+    /// underneath was correct and unreachable, so no test of THAT could have
+    /// failed.
+    #[test]
+    fn sudo_parses_with_tool_as_well_as_system() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Cli {
+            #[command(flatten)]
+            args: Args,
+        }
+
+        let tool = Cli::try_parse_from(["nros", "--tool", "esp32-qemu", "--sudo"])
+            .expect("`--tool <name> --sudo` must parse (issue 1038)");
+        assert!(tool.args.sudo);
+        assert_eq!(tool.args.tool.as_deref(), Some("esp32-qemu"));
+
+        let system = Cli::try_parse_from(["nros", "--system", "--sudo"])
+            .expect("`--system --sudo` must parse");
+        assert!(system.args.sudo && system.args.system);
+
+        // Still mutually exclusive with `--check`: one reports, the other acts.
+        assert!(Cli::try_parse_from(["nros", "--system", "--sudo", "--check"]).is_err());
+
+        // `--sudo` alone parses now — it is rejected in `run()` with a message
+        // naming both valid forms, which a clap `requires` cannot express.
+        assert!(Cli::try_parse_from(["nros", "--sudo"]).is_ok());
     }
 }
