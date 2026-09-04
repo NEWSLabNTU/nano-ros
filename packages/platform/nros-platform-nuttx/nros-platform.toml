@@ -19,7 +19,7 @@ names = ["nuttx"]
 ip_stack = true    # posix sockets, named in [build]
 
 [build.zenoh]
-defines = ["ZENOH_GENERIC", "ZENOH_NUTTX"]
+defines = ["ZENOH_GENERIC", "ZENOH_NUTTX", "ZENOH_LINUX"]
 defines_kv = { ZENOH_DEBUG = "0", Z_FEATURE_MULTI_THREAD = "1", Z_CONFIG_SOCKET_TIMEOUT = "5000" }
 include = ["system/common"]
 # Phase 156 Sub-bug B (NuttX) — `system/common/platform.h` routes
