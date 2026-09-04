@@ -153,6 +153,7 @@ fast-serial: \
     emitter-just-spelling \
     entity-inventory-knobs \
     entity-slot-costs \
+    entry-session-name \
     example-fmt \
     example-leaf-build-dirs \
     example-leaf-target-dirs \
@@ -1295,6 +1296,21 @@ workspace-build-output:
 [private]
 cc-build-policy:
     @bash scripts/check-cc-build-policy.sh
+
+# Issue 1003 / 1017 — every emitted `run_components` call must NAME a session.
+#
+# Ten CMake entry templates passed only the setup fn, which binds the overload
+# that hard-codes `"node"`. Every image built through `nano_ros_add_node` then
+# registered under that name, and the XRCE client key derives from it — a talker
+# and a listener hashed to ONE client. It survived from 2026-06-13 to 2026-09-03
+# with a CORRECT sibling producer beside it (`emit_cpp.rs` has passed the
+# boot-config name since 2026-06-27): two spellings of one fact, uncompared.
+#
+# The check covers BOTH producers, and deliberately does NOT know the per-board
+# overload sets — encoding those here would make this a third authored copy,
+# which is the defect it guards. See the script's header.
+entry-session-name:
+    @python3 scripts/check-entry-session-name.py
 
 # Issue 0160 — hand-mirrored FFI structs (component.h vs cbindgen's
 # nros_cpp_ffi.h) must not drift on append (the #131 stale-mirror ABI class).

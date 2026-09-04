@@ -82,11 +82,15 @@ fails if this block drifts.
 - **#1007** (testing, build) — `just nuttx build-fixtures-arm` can leave every arm cell unrunnable, and the remedy it prints is the command that just short-circuited See `1007-*`.
 - **#1008** (api, rmw) — `wait_for_service` returns `Ok(true)` immediately on every real backend — its fast path calls `is_server_ready()`, whose trait default is `true` and which only zenoh overrides See `1008-*`.
 - **#1009** (testing, ci) — Our DDS interop tests share a bus with the whole LAN, so a foreign peer on another host can fail them — and `ROS_LOCALHOST_ONLY=1` alone does NOT fix it See `1009-*`.
+- **#1010** (zephyr, platform, examples) — The derived executor arena is one allocation ~6x larger than the heap it comes from, so every zephyr XRCE example dies at boot See `1010-*`.
+- **#1011** (rmw-cyclonedds, zephyr) — `publisher.cpp` brace-initializes a struct with default member initializers, which is not an aggregate under the Zephyr lane's `-std=c++11` See `1011-*`.
 - **#1012** (docs, api) — Parity-ledger `why` prose names symbols a rename retired — 15 rows describe current state using dead spellings, and nothing checks it See `1012-*`.
 - **#1013** (testing) — `test_rtos_pubsub_e2e` SIGKILLs its talker after ~12 publishes, so the cell exercises twelve seconds of a free-running publisher See `1013-*`.
+- **#1016** (testing, zephyr, ci) — `lane=tier2` does not build the zephyr rust/c west leaves, so their cells report as failures that are really skips See `1016-*`.
 - **#1019** (api, docs) — Every `RCLCPP_*` log call in a ported C++ node is discarded on embedded, and `RCLCPP_*_STREAM` drops its message on every target See `1019-*`.
 - **#1020** (docs, api) — The C++ parity lane measures the NATIVE API against rclcpp and cannot see `rclcpp_compat.hpp` — 589 lines whose entire purpose is the thing being measured See `1020-*`.
 - **#1023** (rmw, build) — `nros_sertype.cpp` includes `<memory>` and `<string>`, so cyclonedds cannot compile for a freestanding target See `1023-*`.
+- **#1024** (testing, rmw-xrce) — `NROS_XRCE_AGENT_VERBOSE` passes `-v6` to an Agent built with the logger compiled OUT, so the knob is silently inert See `1024-*`.
 - **#1025** (build, testing) — ESP32 flash images can never be built: the packer asks for the group dir with the row's env stripped, so it looks in a directory the build stopped using See `1025-*`.
 
 <!-- END GENERATED open-issue list -->
