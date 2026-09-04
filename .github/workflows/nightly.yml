@@ -54,7 +54,7 @@ permissions:
 
 env:
   # Zephyr jobs build only the zenoh examples — skip the heavy Micro-XRCE-DDS
-  # Agent (Fast-DDS superbuild) `just zephyr setup` builds for XRCE runtime tests.
+  # Agent (Fast-DDS superbuild) `just setup zephyr` builds for XRCE runtime tests.
   NROS_ZEPHYR_SKIP_XRCE_AGENT: "1"
 
 jobs:
@@ -554,10 +554,6 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         uses: ./.github/actions/setup-nros-cli
-      - name: Provision Zephyr sources via nros
-        run: |
-          source ./activate.sh
-          nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
       # The image registered the SDK CMake package as root; the container runs
       # with HOME=/github/home → re-register for this HOME (4.4's FindZephyr-sdk
@@ -565,7 +561,7 @@ jobs:
       - name: Register the baked Zephyr SDK for this HOME
         run: /opt/zephyr-sdk/setup.sh -c
 
-      # Issue 0078 — container host-disk headroom before `just zephyr setup`
+      # Issue 0078 — container host-disk headroom before `just setup zephyr`
       # (west update + pip). Option A (requirements-base.txt only) dropped
       # spsdk-mcu-link, but 4.4's base.txt still pulls `reuse` + compliance deps
       # and the ~14 GB disk is borderline — some cells tip at pip (78 MB free).
@@ -594,10 +590,23 @@ jobs:
                   || echo "  (clippy add failed for $tc — non-fatal)"
           done
 
+      # The DISPATCHER spelling, not `just zephyr setup`. Only `just setup
+      # <scope>` runs `_setup-common`, which provisions the host facts every
+      # tier asserts (cross Rust targets, pinned corrosion, the CLI, the
+      # resolver, clang-format); the module spelling skips all of it silently.
+      # The flag reaches the module recipe unchanged — phase-422 W3 gave the
+      # dispatcher a variadic tail and re-homes a leading-dash value that `just`
+      # bound to `tier`, so `just setup zephyr --skip-sdk` execs
+      # `just zephyr setup --skip-sdk`.
+      #
+      # This also subsumes the "Provision Zephyr sources via nros" step that
+      # used to sit above: `just/zephyr-setup.just`'s `setup` opens with the
+      # same `nros setup --source zenoh-pico --source cyclonedds-src --source
+      # px4-rs`, plus an explicit `--index`, before it touches the workspace.
       - name: Set up Zephyr ${{ matrix.line }} workspace
         run: |
           source ./activate.sh
-          just zephyr setup --skip-sdk
+          just setup zephyr --skip-sdk
 
       # zephyr-sys' build.rs runs bindgen over Zephyr headers — needs libclang.so
       # AND clang's resource-dir headers. Rust cells only (C/C++ cells skip).
@@ -648,15 +657,11 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         uses: ./.github/actions/setup-nros-cli
-      - name: Provision Zephyr sources via nros
-        run: |
-          source ./activate.sh
-          nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
       - name: Register the baked Zephyr SDK for this HOME
         run: /opt/zephyr-sdk/setup.sh -c
 
-      # Issue 0078 — container host-disk headroom before `just zephyr setup`
+      # Issue 0078 — container host-disk headroom before `just setup zephyr`
       # (west update + pip). Option A (requirements-base.txt only) dropped
       # spsdk-mcu-link, but 4.4's base.txt still pulls `reuse` + compliance deps
       # and the ~14 GB disk is borderline — some cells tip at pip (78 MB free).
@@ -673,15 +678,18 @@ jobs:
       - name: rustup set profile minimal (avoid clippy-preview conflict)
         run: rustup set profile minimal
 
+      # DISPATCHER spelling — see the zephyr-example-matrix job for why. It also
+      # subsumes the "Provision Zephyr sources via nros" step that used to sit
+      # above: the module recipe opens with that same `nros setup --source …`.
       - name: Set up Zephyr 3.7 workspace
         run: |
           source ./activate.sh
-          NROS_ZEPHYR_VERSION=3.7 just zephyr setup --skip-sdk
+          NROS_ZEPHYR_VERSION=3.7 just setup zephyr --skip-sdk
 
       - name: Set up Zephyr 4.4 workspace
         run: |
           source ./activate.sh
-          NROS_ZEPHYR_VERSION=4.4 just zephyr setup --skip-sdk
+          NROS_ZEPHYR_VERSION=4.4 just setup zephyr --skip-sdk
 
       - name: Dual-line build (c/talker zenoh)
         run: |
@@ -723,15 +731,11 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         uses: ./.github/actions/setup-nros-cli
-      - name: Provision Zephyr sources via nros
-        run: |
-          source ./activate.sh
-          nros setup --source zenoh-pico --source cyclonedds-src --source px4-rs
 
       - name: Register the baked Zephyr SDK for this HOME
         run: /opt/zephyr-sdk/setup.sh -c
 
-      # Issue 0078 — container host-disk headroom before `just zephyr setup`
+      # Issue 0078 — container host-disk headroom before `just setup zephyr`
       # (west update + pip). Option A (requirements-base.txt only) dropped
       # spsdk-mcu-link, but 4.4's base.txt still pulls `reuse` + compliance deps
       # and the ~14 GB disk is borderline — some cells tip at pip (78 MB free).
@@ -748,10 +752,13 @@ jobs:
       - name: rustup set profile minimal (avoid clippy-preview conflict)
         run: rustup set profile minimal
 
+      # DISPATCHER spelling — see the zephyr-example-matrix job for why. It also
+      # subsumes the "Provision Zephyr sources via nros" step that used to sit
+      # above: the module recipe opens with that same `nros setup --source …`.
       - name: Set up Zephyr 4.4 workspace
         run: |
           source ./activate.sh
-          NROS_ZEPHYR_VERSION=4.4 just zephyr setup --skip-sdk
+          NROS_ZEPHYR_VERSION=4.4 just setup zephyr --skip-sdk
 
       - name: Copy-out build check
         run: |

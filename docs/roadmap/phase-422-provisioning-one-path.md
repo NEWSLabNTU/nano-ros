@@ -129,7 +129,7 @@ shape".
 exist as bespoke downloaders. Every remaining bespoke installer is listed in this doc
 with a reason.
 
-### W3 — retire the old spelling everywhere — dispatcher half DONE
+### W3 — retire the old spelling everywhere — workflow half DONE
 
 **Landed.** `just setup <scope>` takes a variadic tail and forwards it, so
 `just setup zephyr --skip-sdk` works and the exemption can go.
@@ -139,8 +139,11 @@ parameters IN ORDER, so the flag binds to `tier`, not to the variadic tail. A
 tier is never a flag, so it is re-homed — rather than making a user write
 `just setup zephyr "" --skip-sdk`.
 
+The workflow half landed with W4 below: no workflow uses the module spelling and
+`check-workflow-setup-spelling`'s exemption list is empty.
+
 Remaining: the prose sweep (book/, AGENTS.md, CLAUDE.md still teach the module
-spelling).
+spelling). The gate reads `.github/workflows/` only, so prose is unratcheted.
 
 Original text:
 
@@ -157,14 +160,47 @@ and none of `_setup-common`.
 **Acceptance.** The exemption list in `check-workflow-setup-spelling` is empty.
 No prose in the repo teaches the module spelling.
 
-### W4 — the nightly zephyr jobs walk the user path
+### W4 — the nightly zephyr jobs walk the user path — DONE
 
-Blocked on W3's dispatcher change. Once `just setup zephyr --skip-sdk` exists,
-the four zephyr jobs collapse from ~6 provisioning steps each to the scope verb
-plus one command, matching every other lane.
+**Landed.** All four module-spelling call sites in `nightly.yml` are the
+dispatcher now — one in `zephyr-example-matrix`, two in
+`zephyr-dual-line-summary` (3.7 and 4.4), one in `zephyr-copy-out`. Three jobs,
+four sites; W3's text said "four zephyr jobs" and there are three. The
+`NROS_ZEPHYR_VERSION=` prefixes are unchanged: they are shell env on the
+command, and the dispatcher passes them through to the module recipe by
+inheriting them.
 
-**Acceptance.** Every job body in `.github/workflows/` is
-`just setup <scope>` plus one command, or is listed here with a reason.
+The flag path was PROVEN, not assumed, because the re-homing rule is new. `just
+--dry-run setup zephyr --skip-sdk` shows `just` binding `target=zephyr`,
+`tier=--skip-sdk`, `extra=""`; running that interpolated script with a `just`
+shim on `PATH` prints exactly two invocations, `[_setup-common]` then
+`[zephyr] [setup] [--skip-sdk]`; and `just --dry-run zephyr setup --skip-sdk`
+shows `ARGS="--skip-sdk"` reaching `./scripts/zephyr/setup.sh $ARGS`. The
+no-flag and two-flag shapes were checked the same way.
+
+`check-workflow-setup-spelling`'s `EXEMPT` is now empty, and both of its
+directions were re-mutated after the change: reverting one conversion fails it,
+and adding an exemption that matches nothing fails it.
+
+**One step removed per job, and only one.** The "Provision Zephyr sources via
+nros" step (`nros setup --source zenoh-pico --source cyclonedds-src --source
+px4-rs`) is the first thing `just/zephyr-setup.just`'s `setup` does — with an
+explicit `--index`, and before the `$WORKSPACE/zephyr` short-circuit, so it runs
+on every invocation. 10/10/9 steps -> 9/9/8.
+
+**What did NOT go, and why**, since the W5 table counts ~6 provisioning steps
+per job and only one was redundant:
+
+| step | kept because |
+| --- | --- |
+| `./.github/actions/setup-nros-cli` | Its own docstring records the decision: `_setup-common` does all three of its steps, but clones `play_launch` in FULL where the action uses `--depth 1`, and it is the only thing that puts the CLI on `$GITHUB_PATH`. A clone-cost change into a lane with no signal cannot be verified. |
+| Register the baked Zephyr SDK for this HOME | `--skip-sdk` exists precisely so setup does NOT touch the SDK. Nothing in `_setup-common` or the module recipe registers a CMake package. |
+| Reclaim disk (#0078) | Container housekeeping, not provisioning. |
+| Unblock rustup clippy-preview conflict / `rustup set profile minimal` | Image workarounds that `rustup target add` needs — and `_setup-common` runs `just workspace rust-targets`, so the conversion makes them MORE load-bearing, not less. |
+| Install clang + libclang for bindgen | An OS package. phase-422 W6 has `_setup-common` REPORT the system closure and never install it. |
+
+**Acceptance.** Met for the zephyr jobs. Not yet swept for the whole
+`.github/workflows/` tree — `host-tests` and `queue` are still W5's rows.
 
 ### W5 — the ratchet
 

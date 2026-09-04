@@ -36,18 +36,18 @@ WORKFLOWS = os.path.join(ROOT, ".github", "workflows")
 
 # `just <scope> setup ...` occurrences that may stay, and why.
 #
-# The dispatcher takes a scope and nothing else -- `setup target="" tier=""`
-# execs `just "$target" setup` with no argument passthrough -- so a call that
-# must pass a FLAG has no dispatcher spelling available. These lanes therefore
-# do not get `_setup-common`, and that is a known gap rather than an accident:
-# giving the dispatcher argument passthrough would let them convert.
-EXEMPT = {
-    "just zephyr setup --skip-sdk": (
-        "Passes `--skip-sdk` (the image bakes the SDK). The `setup` dispatcher "
-        "has no argument passthrough, so no dispatcher spelling exists. These "
-        "jobs provision the host facts themselves or do not need them."
-    ),
-}
+# EMPTY, and that is the point. The one exemption this gate shipped with --
+# `just zephyr setup --skip-sdk` -- existed because the dispatcher took a scope
+# and nothing else, so a call that had to pass a FLAG had no dispatcher spelling
+# available. phase-422 W3 gave `setup` a variadic tail (and re-homes a
+# leading-dash value that `just` binds to `tier`), which made
+# `just setup zephyr --skip-sdk` work; phase-422 W4 converted the three nightly
+# zephyr jobs, and the exemption went with them rather than outliving its cause.
+#
+# A new entry needs a reason that is a PROPERTY OF THE DISPATCHER, not a
+# preference: "this lane provisions the host facts itself" is not one, because
+# nothing checks that claim.
+EXEMPT = {}
 
 
 def scope_tokens():
