@@ -149,6 +149,7 @@ REMEDY = (
     "\n    just generate-rcl-interfaces"
     "\n    just generate-lifecycle-msgs"
     "\n    just generate-diagnostic-msgs"
+    "\n    just generate-rosgraph-msgs"
     "\nand the recipe REPLACES the generated `Cargo.toml`: restore the committed"
     "\none afterwards (`git checkout -- <crate>/Cargo.toml`) or the crate loses its"
     "\nworkspace inheritance and `[package.metadata.ros]`. Codegen output is also"

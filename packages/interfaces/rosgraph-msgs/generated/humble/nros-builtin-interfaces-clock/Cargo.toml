@@ -1,0 +1,19 @@
+[package]
+name = "nros-builtin-interfaces-clock"
+version = "0.0.0"
+edition = "2021"
+links = "nros_msgs_builtin_interfaces"
+
+# Version of the interface package this was generated FROM. Informational: it
+# varies by host (ROS install vs vendored interfaces) and must never reach the
+# `version` field above, or it lands in consumers' lockfiles.
+[package.metadata.nros]
+ament_version = "1.2.2"
+
+[features]
+default = []
+
+[dependencies]
+nros-core = { path = "../../../../../core/nros-core", default-features = false }
+nros-serdes = { path = "../../../../../core/nros-serdes", default-features = false }
+heapless = "0.8"
