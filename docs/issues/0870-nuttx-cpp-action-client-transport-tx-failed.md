@@ -603,3 +603,21 @@ and is not taken unilaterally: **closing this needs an owner's call**, and the
 residual risk to accept is that if the real cause is later reverted, the symptom
 returns and the only thing that will catch it is this cell going red — which it
 now can, where retries used to hide it.
+
+### The one observer that could settle this is itself down
+
+Checked before proposing any disposition: the nightly `nuttx` platform cell is
+**red across all three runs in the window, for issue 1047** — the zenoh-pico
+1.8.0 / NuttX `stdbool.h` preprocessor break, identical error text in CI run
+`33847619657`. It fails at BUILD, so it never reaches a cell.
+
+That is decisive for what to do next. The 210 runs above are local, on a 1.7.2
+pin; CI has not successfully run this cell since the zenoh-pico pin moved. So
+"leave the instrumentation armed and catch it in a sweep" currently has no sweep
+to be caught by, and closing this issue on a green tripwire would be closing it
+on a tripwire that cannot fire.
+
+**Order matters: fix 1047 first.** It restores the only observer, and then this
+issue resolves itself either way — the nightly stays green and this closes with
+a tripwire that actually works, or it goes red and hands over the failing run
+that four rounds of investigation have been unable to produce on demand.
