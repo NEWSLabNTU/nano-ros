@@ -131,3 +131,32 @@ Do not raise the ESP32 stack by shrinking the heap. node.rs documents that as a
 two-sided constraint (issue 0190): 16 KB is too small for the executor backing
 and 96 KB starves the stack. The heap is not where the slack is — the unused
 pools are.
+
+
+## Correction: what a copy-out actually carries (2026-09-05)
+
+The note above says a user copying the example out "could not build it". True,
+but my reason for it was only half measured. Tested properly — copy the leaf
+outside the repo, `cargo build`:
+
+```
+error: failed to parse manifest at `.../copyout/talker/Cargo.toml`
+Caused by: could not load Cargo configuration
+Caused by: failed to load config include `../../../../../nros-patch.toml`
+```
+
+So the copy DOES carry `.cargo/config.toml`, and therefore does carry the `[env]`
+budgets this issue moved into it. What it cannot carry is what that config
+`include`s: `../../../../../nros-patch.toml` resolves five levels up, INTO the
+repo. A missing include target is a hard error during manifest PARSE, not a
+silent drop (issue 0463), so a copied-out leaf fails before the linker is reached
+and the `.bss` overflow is not the first thing such a user would see.
+
+That is expected rather than a second bug: an out-of-tree consumer keeps
+everything INLINE, and `nros sync` is what writes it (RFC-0048 W9, issue 0272).
+
+The correction matters for what it justifies. The argument for moving the budgets
+into the leaf does NOT rest on copy-out. It rests on the measured in-tree fact
+that a direct `cargo build` in the leaf overflowed DRAM by 11,184 B, because the
+numbers lived in a fixture manifest that a plain cargo build never reads — and
+that one I measured both before and after.
