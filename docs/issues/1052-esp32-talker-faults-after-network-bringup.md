@@ -282,6 +282,56 @@ resolving `0x42051d70` cannot name the caller — it is a frame of the panic
 printer, not of the faulting code. Step 1 is a dead end by construction; steps 2
 and 3 are unaffected.
 
+
+
+## The fair comparison, finally (2026-09-04) — and it REFUTES the section above
+
+The "connected path" conclusion is WRONG, and a better experiment is what shows
+it. Two things had to be fixed first:
+
+1. **The router now actually serves.** `rmw_zenohd` needs
+   `/opt/ros/humble/opt/zenoh_cpp_vendor/lib` on `LD_LIBRARY_PATH` (issue 0774);
+   without it the binary resolves and dies on `libzenohc.so`. A stale router on
+   :7447 then blocked a second one from starting at all. Killed it, restarted
+   via `just esp32 zenohd`, and CONFIRMED `:9800` listening before running
+   anything.
+2. **The earlier listener control had no router.** Checking the captured router
+   logs, every faulting talker run has `9800` in its router log and the listener
+   control has none. So that comparison was talker-WITH-router against
+   listener-WITHOUT — not a control at all.
+
+Both leaves, same live router, same conditions:
+
+| leaf | fault | `ConnectionFailed` | `Application setup complete` |
+| --- | ---: | ---: | ---: |
+| talker | **1** | 0 | 0 |
+| listener | 0 | **11205** | 1 |
+
+**Neither leaf connects.** The listener retries and logs the failure eleven
+thousand times; the talker's zero is because it FAULTS FIRST, before the failure
+can be logged. So `ConnectionFailed=0` never meant "connected", and the previous
+section's inference from it is retracted.
+
+### What is actually established now
+
+On the SAME footing — router present, neither side able to establish a session —
+**the talker faults and the listener does not**. That is the first like-for-like
+comparison in this issue, and it puts the difference back on the talker while
+removing the connection from the picture entirely.
+
+So the fault is on the connect-ATTEMPT path, not the connected one, and the
+listener survives the same attempt. Both images run the same board, the same
+`Executor::open`, and the same session setup; the talker dies inside it.
+
+### Why the two leaves might still differ here
+
+Not established, and worth stating as the open question rather than a guess: the
+images differ only in package/bin name, `class` string, node name (ruled out),
+and static IP (ruled out). One of the first two reaches the generated main. A
+`riscv32-esp-elf-gdb` session against QEMU's gdbstub remains the instrument —
+the earlier attempt failed only because the router was down, which is now fixed,
+so the next run of it should reach the fault.
+
 ## STATIC ANALYSIS 2026-09-04 — the registers say it is a RETURN, and the backtrace frame is a ghost
 
 No build was run for this section. Everything below is either arithmetic on the
