@@ -993,9 +993,16 @@ config-knob-census:
 
 # The reverse of `check-sysdep-remedies` — phase-413 W3.
 #
-# That gate refuses a hand-written `sudo apt` in a `just` recipe, and
-# `[prereq.doxygen]`'s own `why` reads "found undeclared by
-# check-sysdep-remedies". Nothing guarded the other direction: a WORKFLOW may
+# That gate refuses a hand-written native install command in a `just` recipe,
+# and `[prereq.doxygen]`'s own `why` reads "found undeclared by
+# check-sysdep-remedies".
+#
+# DESCRIBED, not quoted — `check-sysdep-remedies` is a text scan and cannot tell
+# a command from a sentence about one, so a comment naming the forbidden
+# spelling fails it. `provision-zenohd`'s comment says exactly this and takes
+# exactly this way out; writing that phrase here anyway cost this PR a red.
+#
+# Nothing guarded the other direction: a WORKFLOW may
 # not restate a package `[prereq.*]` already declares. Three did — doxygen and
 # graphviz in `docs.yml`, clang and libclang-dev in `nightly.yml` — each with
 # its dnf/pacman/brew spellings and a presence probe sitting in the index.
