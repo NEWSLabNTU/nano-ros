@@ -206,6 +206,51 @@ def validate_compile_check_fixture(entry):
             _fail(entry, f"missing required key 'output' for builder {builder!r}")
 
 
+# Where a `cxx-syntax` row's stamp is asserted. One directory, because these
+# are all `nros-tests` integration tests.
+CXX_CONSUMER_DIR = SCRIPT_ROOT / "packages/testing/nros-tests/tests"
+
+
+def _cxx_rows_without_a_consumer(entries):
+    """`cxx-syntax` ids no test names — issue 1032.
+
+    The build stage deliberately does NOT fail on a snippet that will not
+    compile: it leaves no `.compile-ok` and defers the report to the consuming
+    test. That contract is only safe while a consumer EXISTS, and for
+    `spin_until_future_complete` none ever did — it was compiled every run,
+    failed every run since at least 2026-09-01, and could not be reported by
+    anyone. A snippet with no consumer is build cost that cannot answer a
+    question.
+
+    A text search for the quoted id, not an import graph: the two consumers
+    spell it differently (a literal argument in `cpp_api_drift.rs`, a `const`
+    array in `platform_header_compile.rs`) and both are found this way.
+    """
+    if not CXX_CONSUMER_DIR.is_dir():
+        return []
+    # `git ls-files`, not a walk: these are tracked sources, and the repo's
+    # `check-no-tracked-file-find` forbids the walk for the reason
+    # `regenerate-bindings.sh` records — an index lookup instead of a
+    # filesystem traversal.
+    listed = subprocess.run(
+        ["git", "ls-files", "-z", "--", str(CXX_CONSUMER_DIR)],
+        cwd=SCRIPT_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    hay = "\n".join(
+        (SCRIPT_ROOT / rel).read_text(encoding="utf-8", errors="replace")
+        for rel in listed.split("\0")
+        if rel.endswith(".rs")
+    )
+    return [
+        e["id"]
+        for e in entries
+        if e.get("builder") == "cxx-syntax" and f'"{e["id"]}"' not in hay
+    ]
+
+
 def validate_compile_check_fixtures(entries):
     seen = {}
     for e in entries:
@@ -214,6 +259,17 @@ def validate_compile_check_fixtures(entries):
         if fid in seen:
             _fail(e, f"duplicate compile-check fixture id {fid!r}")
         seen[fid] = True
+    orphans = _cxx_rows_without_a_consumer(entries)
+    if orphans:
+        raise ValueError(
+            "cxx-syntax row(s) whose `.compile-ok` no test asserts: "
+            + ", ".join(sorted(orphans))
+            + f"\nThe build stage does not fail on a snippet that will not compile — "
+            f"it defers the report to a consuming test (issue 1032). With no "
+            f"consumer, nothing reports it at all.\nAdd an assertion under "
+            f"{CXX_CONSUMER_DIR.relative_to(SCRIPT_ROOT)}/ that calls "
+            f"`nros_tests::fixtures::require_compile_check(\"<id>\")`."
+        )
     return len(seen)
 
 

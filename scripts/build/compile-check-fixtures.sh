@@ -619,6 +619,13 @@ cxx_syntax_check() {
     # missing generated header) does NOT fail build-test-fixtures — it just
     # leaves no `.compile-ok`, so the consuming test reports the gap per tier
     # (hard-fail full / [SKIPPED] light). The compile error is in this log.
+    #
+    # issue 1032 — that sentence was an ASSERTION ABOUT ANOTHER FILE, and it was
+    # false for three snippets. `cpp_api_drift.rs` caught the error and skipped
+    # unconditionally, and `spin_until_future_complete` had no consumer at all,
+    # so "does not fail here because it fails there" failed NOWHERE. Deferring a
+    # report is only safe while something is on the other end; if you add a
+    # snippet, add its assertion in the same commit.
     # phase-363 W4 — `-MD -MF` so the compiler records which headers it actually
     # read. Without it these rows had NO measured closure: their signature was
     # the snippet plus two hand-named include TREES, so a header reached through
