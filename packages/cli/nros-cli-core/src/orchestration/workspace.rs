@@ -778,11 +778,11 @@ fn parse_register_node_call(
         .as_ref()
         .and_then(|t| lib_sources.get(t))
         .unwrap_or(&empty);
-    let language = if sources.is_empty() {
-        infer_cmake_language(None, plugin.as_deref())
-    } else {
-        infer_language_from_sources(sources)
-    };
+    let language = language_from_sources_or_class(
+        sources,
+        plugin.as_deref(),
+        &format!("{package_name}: nros_components_register_node(EXECUTABLE {executable})"),
+    );
     Some(CmakeNodeSummary {
         package: package_name.to_string(),
         component: executable.clone(),
@@ -833,6 +833,7 @@ fn parse_add_node_call(
         "SHAPE",
         "CALLBACK_GROUPS",
         "SOURCES",
+        "LANGUAGE",
     ];
     let tokens = tokenize_cmake_body(body);
     let mut name: Option<String> = None;
@@ -841,6 +842,7 @@ fn parse_add_node_call(
     let mut sources: Vec<String> = Vec::new();
     let mut header: Option<String> = None;
     let mut shape: Option<String> = None;
+    let mut language_kw: Option<String> = None;
     let mut current: Option<&str> = None;
     for tok in tokens {
         if KEYWORDS.contains(&tok.as_str()) {
@@ -851,6 +853,7 @@ fn parse_add_node_call(
                 "SHAPE" => Some("SHAPE"),
                 "CALLBACK_GROUPS" => Some("CALLBACK_GROUPS"),
                 "SOURCES" => Some("SOURCES"),
+                "LANGUAGE" => Some("LANGUAGE"),
                 _ => None, // TYPED — bare flag, no value
             };
             continue;
@@ -858,6 +861,10 @@ fn parse_add_node_call(
         match current {
             Some("CLASS") => {
                 class = Some(tok);
+                current = None;
+            }
+            Some("LANGUAGE") => {
+                language_kw = Some(tok);
                 current = None;
             }
             Some("HEADER") => {
@@ -884,9 +891,21 @@ fn parse_add_node_call(
         }
     }
     let name = name?;
-    // Infer from the source extension, NOT the class: a C node's class still uses
-    // `::` (e.g. `c_talker_pkg::Talker`), so class-based inference mislabels it Cpp.
-    let language = infer_language_from_sources(&sources);
+    // An explicit LANGUAGE is the whole point of the keyword — it is the only
+    // thing this scanner and cmake are guaranteed to read the same way.
+    //
+    // Without one, infer from the source extension and NOT the class: a C node's
+    // class still uses `::` (e.g. `c_talker_pkg::Talker`), so class-shape
+    // inference mislabels it Cpp. The class is the LAST resort, taken out loud,
+    // for sources this scanner cannot read at all (issue 1062).
+    let language = match language_kw.as_deref() {
+        Some(kw) => infer_cmake_language(Some(kw), class.as_deref()),
+        None => language_from_sources_or_class(
+            &sources,
+            class.as_deref(),
+            &format!("{package_name}: nano_ros_add_node({name})"),
+        ),
+    };
     Some(CmakeNodeSummary {
         package: package_name.to_string(),
         component: name.clone(),
@@ -903,14 +922,67 @@ fn parse_add_node_call(
     })
 }
 
-/// C++ if any source has a C++ extension, else C.
-fn infer_language_from_sources(sources: &[String]) -> ComponentLanguage {
+/// C++ if any source carries a C++ extension, C if any carries `.c` — and
+/// `None` when the list settles nothing.
+///
+/// # Why `None` exists (issue 1062)
+///
+/// This used to end in a bare `else C`, which made one answer serve two
+/// unrelated questions: "every source is a C file" and "this list told me
+/// nothing". The second is common, because the scanner reads `CMakeLists.txt`
+/// as TEXT — `SOURCES ${_controller_sources}` is one token that expands to
+/// nothing here, though cmake expands it fine at configure time. A C++
+/// component then read as C, was probed against the C ABI seam, and the probe
+/// failed to link against symbols `NROS_C_COMPONENT` never emitted.
+///
+/// Returning `None` hands the decision back to the caller, which has the class
+/// shape to fall back on and can say out loud that it is guessing.
+fn language_from_sources(sources: &[String]) -> Option<ComponentLanguage> {
+    let mut saw_c = false;
     for s in sources {
         if s.ends_with(".cpp") || s.ends_with(".cxx") || s.ends_with(".cc") || s.ends_with(".C") {
-            return ComponentLanguage::Cpp;
+            return Some(ComponentLanguage::Cpp);
+        }
+        if s.ends_with(".c") {
+            saw_c = true;
         }
     }
-    ComponentLanguage::C
+    saw_c.then_some(ComponentLanguage::C)
+}
+
+/// Source extensions decide; when they cannot, the class shape decides and says
+/// so. `decl` names the declaration in the warning so the message points at the
+/// line to edit.
+///
+/// The class fallback is a guess and stays one — a C component whose class
+/// carries `::` (`c_talker_pkg::Talker`) guesses Cpp. That is why it prints:
+/// the remedy, `LANGUAGE`, travels with the guess. Silence is what let the
+/// wrong answer through before (issues 1062, 0641).
+fn language_from_sources_or_class(
+    sources: &[String],
+    class: Option<&str>,
+    decl: &str,
+) -> ComponentLanguage {
+    if let Some(lang) = language_from_sources(sources) {
+        return lang;
+    }
+    // No sources at all is not a mystery to report — there is nothing the
+    // author could have written differently. An unreadable list is.
+    if !sources.is_empty() {
+        eprintln!(
+            "nros: {decl}: no source in `{}` carries a C/C++ extension — a cmake \
+             variable or generator expression expands at configure time but not \
+             for this scanner. Guessing `{}` from the class shape; pass \
+             `LANGUAGE C` or `LANGUAGE CPP` to state it (issue 1062).",
+            sources.join(" "),
+            match infer_language_from_class(class) {
+                Some(ComponentLanguage::C) => "c",
+                Some(ComponentLanguage::Rust) => "rust",
+                _ => "cpp",
+            }
+        );
+    }
+    infer_language_from_class(class).unwrap_or(ComponentLanguage::Cpp)
 }
 
 /// Strip `#` line comments from a CMake source while preserving line
@@ -2300,6 +2372,54 @@ type = "std_msgs/msg/Int32"
         assert_eq!(s.component, "listener");
         assert_eq!(s.language, ComponentLanguage::Cpp);
         assert_eq!(s.deploy_targets, vec!["native".to_string()]);
+    }
+
+    #[test]
+    fn add_node_unexpandable_sources_fall_back_to_the_class_not_to_c() {
+        // Issue 1062, and the exact ASI declaration that found it. cmake expands
+        // `${_controller_sources}` to `.cpp` paths before inferring; this scanner
+        // reads CMakeLists as text and sees one token with no extension. The old
+        // `else C` called that C, and the C++ component was then probed against
+        // `__nros_c_component_*` — symbols `NROS_COMPONENT` never emits.
+        let body = "controller CLASS controller_pkg::Controller SHAPE rclcpp \
+                    SOURCES ${_controller_sources}";
+        let s = parse_add_node_call(body, "controller_pkg", Path::new("CMakeLists.txt")).unwrap();
+        assert_eq!(
+            s.language,
+            ComponentLanguage::Cpp,
+            "an unreadable source list is not evidence of C"
+        );
+    }
+
+    #[test]
+    fn add_node_language_keyword_beats_the_source_extensions() {
+        // The keyword exists because it is the one thing cmake and this scanner
+        // are guaranteed to read identically. It therefore has to win even when
+        // the extensions disagree — otherwise it cannot fix the case it is for.
+        let body = "shim CLASS shim_pkg::Shim LANGUAGE C SOURCES src/shim.cpp";
+        let s = parse_add_node_call(body, "shim_pkg", Path::new("CMakeLists.txt")).unwrap();
+        assert_eq!(s.language, ComponentLanguage::C);
+    }
+
+    #[test]
+    fn add_node_language_keyword_is_not_swallowed_as_a_source() {
+        // Before the keyword existed, `LANGUAGE CPP` was two positional tokens:
+        // cmake put them in UNPARSED_ARGUMENTS and appended both to SOURCES.
+        // The parser has to consume the value, not file it under sources.
+        let body = "listener CLASS ws::Listener LANGUAGE CPP src/Listener.cpp DEPLOY native";
+        let s = parse_add_node_call(body, "cpp_pkg", Path::new("CMakeLists.txt")).unwrap();
+        assert_eq!(s.language, ComponentLanguage::Cpp);
+        assert_eq!(s.component, "listener");
+        assert_eq!(s.deploy_targets, vec!["native".to_string()]);
+    }
+
+    #[test]
+    fn add_node_literal_c_sources_still_read_as_c() {
+        // The fallback must not swallow the case it replaced: a real `.c` list
+        // is evidence, and the `::`-bearing class must not override it.
+        let body = "talker CLASS c_talker_pkg::Talker TYPED SOURCES src/Talker.c src/util.c";
+        let s = parse_add_node_call(body, "c_talker_pkg", Path::new("CMakeLists.txt")).unwrap();
+        assert_eq!(s.language, ComponentLanguage::C);
     }
 
     #[test]

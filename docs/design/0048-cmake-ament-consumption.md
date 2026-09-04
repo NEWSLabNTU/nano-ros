@@ -103,9 +103,11 @@ them:
   `main` / self-bringup). Emits `add_executable` on native/FreeRTOS/NuttX/ThreadX
   and `add_library`-into-`app` on Zephyr; the platform choice comes from
   `package.xml` (§4), so the call is identical everywhere.
-- **`nano_ros_add_node(<name> <sources…> CLASS <ns::Class>)`** — a *workspace
-  component* (no own `main`; registered into a carrier ELF). Always a component
-  library.
+- **`nano_ros_add_node(<name> <sources…> CLASS <ns::Class> [LANGUAGE C|CPP])`** —
+  a *workspace component* (no own `main`; registered into a carrier ELF). Always
+  a component library. `LANGUAGE` is inferred from the source extensions; it
+  needs stating only when `nros`'s static CMakeLists scanner cannot see them —
+  sources reached through a variable or a generator expression (issue 1062).
 
 Both are followed by `ament_target_dependencies(<name> <msg_pkg>…)` — the
 familiar verb — which links the generated `*__nano_ros_<lang>` bindings.

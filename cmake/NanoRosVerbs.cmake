@@ -188,10 +188,17 @@ function(nano_ros_add_executable name)
 endfunction()
 
 # ---------------------------------------------------------------------------
-# nano_ros_add_node(<name> <sources…> CLASS <ns::Class> [DEPLOY <target>…])
+# nano_ros_add_node(<name> <sources…> CLASS <ns::Class> [LANGUAGE C|CPP]
+#                   [DEPLOY <target>…])
 #
 # Workspace component. Registers a component library via `nano_ros_node_register`;
 # the carrier entry ELF is assembled by the workspace root / `nros plan`.
+#
+# LANGUAGE is optional and normally inferred from the source extensions. State
+# it when SOURCES arrives through a variable or a generator expression: cmake
+# expands those before inferring, `nros`'s static CMakeLists scanner cannot, and
+# the two readers then disagree about which ABI seam the component has
+# (issue 1062).
 # ---------------------------------------------------------------------------
 function(nano_ros_add_node name)
     # RFC-0057 (phase-305 W4.1): this fused spelling remains supported as the
@@ -202,7 +209,7 @@ function(nano_ros_add_node name)
             "nano_ros_add_node(${name}): consider the RFC-0057 split shape "
             "(nano_ros_auto_add_library + nros_components_register_node).")
     endif()
-    cmake_parse_arguments(_NRN "TYPED" "CLASS;HEADER;SHAPE" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
+    cmake_parse_arguments(_NRN "TYPED" "CLASS;HEADER;SHAPE;LANGUAGE" "SOURCES;DEPLOY;CALLBACK_GROUPS" ${ARGN})
     set(_srcs ${_NRN_SOURCES} ${_NRN_UNPARSED_ARGUMENTS})
     if(NOT _srcs)
         message(FATAL_ERROR "nano_ros_add_node(${name}): no sources given.")
@@ -223,7 +230,25 @@ function(nano_ros_add_node name)
     if(NOT _NRN_DEPLOY AND NROS_DEPLOY)
         set(_NRN_DEPLOY "${NROS_DEPLOY}")
     endif()
-    _nros_infer_lang(_lang ${_srcs})
+    # Explicit LANGUAGE wins over inference. Inference reads EXPANDED sources,
+    # which is exactly what the static CMakeLists scanner in `nros` cannot do —
+    # so a component whose SOURCES hides behind `${var}` states the language
+    # here and both readers agree (issue 1062).
+    if(_NRN_LANGUAGE)
+        string(TOLOWER "${_NRN_LANGUAGE}" _lang)
+        if(_lang STREQUAL "cxx")
+            set(_lang cpp)
+        endif()
+        if(NOT _lang STREQUAL "c" AND NOT _lang STREQUAL "cpp")
+            message(FATAL_ERROR
+                "nano_ros_add_node(${name}): LANGUAGE '${_NRN_LANGUAGE}' rejected "
+                "— this verb compiles C/C++ SOURCES into a component library, so "
+                "LANGUAGE is C, CPP, or CXX. A Rust component registers through "
+                "nano_ros_node_register(LANGUAGE RUST) against its Cargo.toml.")
+        endif()
+    else()
+        _nros_infer_lang(_lang ${_srcs})
+    endif()
 
     # Generate the package's declared interface closure (no-op when package.xml
     # declares none — a TYPED component publishes raw topics with no bindings).
