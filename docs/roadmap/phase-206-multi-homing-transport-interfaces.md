@@ -240,7 +240,31 @@ beginning with `<` goes to `ddsrt_xmlp_new_string`, Cyclone's own parser
 as one token and **nano-ros parses no XML at all**. Composition and native
 parsing come from the same mechanism.
 
-### zenoh-pico — there is NO native config document to parse
+### zenoh-pico — upstream's own model has three rungs and NO file format
+
+**Checked against upstream's documentation, not inferred.** zenoh-pico's manual
+(`zenoh-pico.readthedocs.io/en/latest/config.html`) defines exactly three
+configuration categories:
+
+| rung | what | who owns it here |
+| --- | --- | --- |
+| **Run-time options** — *"the primary configuration method"*, set with `zp_config_insert(config, KEY, value)` | mode, connect, listen, scouting, TLS, session zid | **the user** — and this is the surface nano-ros must expose |
+| **Manual compile-time options** — edit `config.h.in` | session ID length, protocol parameters | upstream; not ours to touch |
+| **Generated compile-time options** — CMake flags | buffer sizes, transport timeouts, feature toggles | **nano-ros already does this correctly** via `nros-zpico-build` and RFC-0049's `builtin < platform toml < board toml < env` ladder |
+
+**There is no configuration file format, and that is a design position rather
+than a gap.** zenoh's JSON5/YAML config files are documented for **`zenohd`**,
+the router — `zenoh.io/docs/manual/configuration/` does not mention zenoh-pico
+at all. Upstream's own examples do exactly what the manual says:
+`z_config_default()` then `zp_config_insert(…, Z_CONFIG_CONNECT_KEY, …)` from
+CLI args (`examples/unix/c11/z_pub.c:46-49, 133-139`).
+
+So nano-ros should **expose rung 1 and stop there** — not invent a fourth rung,
+and not duplicate rung 3 into the user-facing surface. The verbatim unit for
+zenoh is a **`key = value` list whose key names are upstream's own**, which is
+what makes a user's zenoh knowledge transfer.
+
+### zenoh-pico — and therefore no document to parse
 
 zenoh-pico's entire configuration API is three functions
 (`include/zenoh-pico/api/primitives.h:360-385`):
@@ -303,16 +327,39 @@ pico.*
 - [ ] **Acceptance:** the same Cyclone XML file, byte-identical, takes effect on
       a hosted build and on one RTOS build.
 
-### 206.W3 — zenoh gets a config surface at all
-- [ ] Unhardcode `properties: &[]` at the C boundary
-      (`rust_adapter.rs:517`) so a C/C++ entry can carry properties.
-- [ ] A baked `key = value` file for embedded, keys being the names
-      `zpico.c:1213-1237` already maps to the numbered constants. Unknown keys
-      are currently **silently ignored** (`zpico.c:1238-1240`) — this phase makes
-      an unknown key an error, because a silently dropped config line is the
-      failure mode the whole phase is about.
+### 206.W3 — zenoh's run-time rung is exposed, complete, and fails loud
+
+Upstream calls run-time options *"the primary configuration method"*. nano-ros
+severs it in two places and then covers less than half of it.
+
+- [ ] **Unhardcode `properties: &[]`** at the C boundary (`rust_adapter.rs:517`)
+      so a C or C++ entry can carry properties at all. Today only a hosted Rust
+      caller building `TransportConfig` by hand can reach any of this.
+- [ ] **Reach embedded.** The `ZENOH_*` env block is `#[cfg(feature = "std")]`
+      (`session.rs:370`), so no `no_std` target reads it. W2's baked file
+      supplies the same pairs.
+- [ ] **Complete the key map — it is a closed list, and it has drifted.**
+      Measured 2026-09-04 against our pinned zenoh-pico 1.8.0: `config.h:224-314`
+      defines **23** keys; `zpico.c:1213-1237` maps **10**. Missing: `USER`,
+      `PASSWORD`, `SCOUTING_WHAT`, and ten of the thirteen TLS keys (listen
+      private key + certificate, mTLS enable, connect private key + certificate,
+      and their `_BASE64` variants). Derive the map from `config.h` or gate it,
+      the way phase-347 W3 retired four other closed lists — a hand-list is how
+      this drifted.
+- [ ] **An unknown key is an ERROR.** `zpico.c:1238-1240` silently ignores one
+      today. The keys are a numbered enum with no upstream schema validation, so
+      nano-ros's map is the *only* place a typo can be caught — and a silently
+      dropped config line is the exact failure mode this phase exists to end.
 - [ ] **Acceptance:** `listen` reaches `Z_CONFIG_LISTEN_KEY` from a C entry on
-      Linux and from a baked file on an RTOS.
+      Linux and from a baked file on an RTOS; a misspelled key fails the build
+      naming the file and line; and a test asserts map coverage against
+      `config.h` so the next upstream bump cannot silently re-open the gap.
+
+> **Do not plan against keys our pin does not have.** The upstream manual is
+> written for `latest` and documents `Z_CONFIG_CONNECT_TIMEOUT_KEY`,
+> `Z_CONFIG_LISTEN_TIMEOUT_KEY` and the `EXIT_ON_FAILURE` pair; **none of the
+> three exist in the 1.8.0 we pin.** phase-415 moved the patch line to 1.8.0 on
+> 2026-09-04; anything newer is a pin decision, not a config decision.
 
 ### 206.W4 — device bring-up stated as the board's contract
 - [ ] Document `init_transport` + `wait_link_up` as *the* device contract, with
@@ -353,7 +400,9 @@ pico.*
       by `<General><Interfaces>` in the user's own XML. This is the original
       phase's acceptance criterion, met by deleting the mechanism it proposed.
 - [ ] `nano-ros parses neither XML nor JSON5.` Cyclone's parser reads the XML;
-      zenoh's key/value table takes the pairs.
+      zenoh's key/value table takes the pairs — and both spellings are the ones
+      the backends' own documentation uses, so a user's existing knowledge
+      transfers instead of being re-learned.
 
 ## What this phase DELETED, and why
 
