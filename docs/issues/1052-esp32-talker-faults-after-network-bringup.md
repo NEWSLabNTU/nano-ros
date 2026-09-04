@@ -99,6 +99,32 @@ static, or the static IP. An EMPTY `register` faults identically, which puts it
 outside the node's own registration code entirely — in the image's startup path,
 before or around `Executor::open`.
 
+### Cut further, 2026-09-04 — and the CONTROL corrected the framing
+
+| variant | setup_complete | fault |
+| --- | ---: | ---: |
+| H — empty `register` AND empty `on_callback` | 0 | 1 |
+| I — full talker, node `name = "listener"` | 0 | 1 |
+| **listener, UNMODIFIED** | **1** | **0** |
+| **listener, EMPTY `register`** | **1** | **0** |
+
+The listener control is the one that matters. An empty `register` does NOT cause
+the fault: the listener with the same empty body completes setup and spins. So
+"an image that registers no entities faults" is REFUTED, and the earlier
+contrast — which compared a non-empty listener against an empty talker — was not
+like-for-like.
+
+**Ruled out for the talker, each by a single-variable image:**
+
+* the whole body of `register` (A–E)
+* the `ENTITY_BOUNDS` static (F)
+* the static IP (G)
+* the node type's `on_callback` body (H)
+* the node NAME (I)
+* "no entities" as the trigger (the listener control)
+
+Same fault address `0x42051d70` throughout.
+
 ### And yet the listener does not fault
 
 Same board, same build system, same run conditions, a NON-empty `register`, and
