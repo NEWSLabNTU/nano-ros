@@ -3917,6 +3917,18 @@ _setup-common:
     fi
     just setup-cli
     just setup-launch-resolve
+    # Host-provisioning facts that `check-tier-preconditions` asserts for EVERY
+    # tier, so every `just setup <scope>` must satisfy them — otherwise the
+    # documented `setup -> build -> test` chain does not clear the checks its
+    # own test step runs, which is how host-tests sat red on three unmet
+    # preconditions it had no step to provision.
+    #
+    # AFTER `setup-cli`: `install-corrosion` resolves its prefix with
+    # `nros sdk-path corrosion`, so it needs the binary to exist.
+    # Both are idempotent -- corrosion short-circuits on its version stamp,
+    # `rustup target add` is a no-op when the target is present.
+    just workspace rust-targets
+    just workspace install-corrosion
 
 # Focused platform setup. Equivalent to `just <platform> setup`.
 [group("setup")]

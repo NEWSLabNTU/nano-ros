@@ -138,6 +138,21 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --no-modify-
         riscv32imc-unknown-none-elf riscv64imac-unknown-none-elf riscv64gc-unknown-none-elf \
     && cargo install cargo-nextest --locked
 
+# ...and then every target the tree DECLARES, read from the SSoT rather than
+# hand-listed. Issue 0833 split this list into `config/rust-targets.txt`
+# because two hand-written copies had drifted; this image was a THIRD copy and
+# had drifted the same way -- it never gained `armv8r-none-eabihf`, so
+# `check-tier-preconditions` failed on every container job that ran a tier.
+#
+# Additive on purpose: the list above carries targets the SSoT does not
+# declare, and dropping them here would be a silent capability loss. The rows
+# below can only add. `scripts/lib/rust-targets.sh` is the one parser (it
+# locates the list relative to itself, hence the mirrored paths).
+COPY scripts/lib/rust-targets.sh /opt/nros-ssot/scripts/lib/rust-targets.sh
+COPY config/rust-targets.txt     /opt/nros-ssot/config/rust-targets.txt
+RUN . /opt/nros-ssot/scripts/lib/rust-targets.sh \
+    && nros_rust_targets rustup | xargs -r rustup target add
+
 # sccache — the compiler cache the justfile ALREADY wires: `RUSTC_WRAPPER` is
 # `command -v sccache || true`, so every `just` recipe picks it up the moment
 # the binary is on PATH, and no workflow needs to opt in.
@@ -185,7 +200,9 @@ RUN rustup toolchain install nightly-2026-04-11 --profile minimal \
     && rustup +nightly-2026-04-11 target add \
         x86_64-unknown-none armv7a-none-eabi armv7r-none-eabihf aarch64-unknown-none \
         thumbv7m-none-eabi thumbv7em-none-eabi thumbv7em-none-eabihf \
-        riscv32imc-unknown-none-elf riscv64imac-unknown-none-elf
+        riscv32imc-unknown-none-elf riscv64imac-unknown-none-elf \
+    && . /opt/nros-ssot/scripts/lib/rust-targets.sh \
+    && nros_rust_targets rustup | xargs -r rustup +nightly-2026-04-11 target add
 
 # git-as-root in CI containers: avoid "dubious ownership" on the checkout + the
 # source submodules `nros setup` provisions.
