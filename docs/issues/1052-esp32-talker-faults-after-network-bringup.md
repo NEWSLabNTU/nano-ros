@@ -848,3 +848,62 @@ subtracted from the stack, so it is the crash.
 3. **Resolve the two heaps** — 83,632 B where the comment budgets 49,152.
 
 Item 1 is the one that keeps it fixed; 2 and 3 are what buy the headroom back.
+
+
+## CONFIRMED by experiment: give the stack back 30 KB and the fault goes away
+
+Prediction from the root cause: recover `.bss` and the overflow stops. The talker
+declares no subscriptions, so its subscriber payload pools are pure waste. Set
+`ZPICO_MAX_SUBSCRIBERS = "1"` on the talker row — the same move the row already
+makes for `ZPICO_MAX_QUERYABLES`, one knob over.
+
+| | `.bss` | stack | `SMALL_PAYLOADS` |
+| --- | ---: | ---: | ---: |
+| shipped | 295,444 | **18,572** | 32,768 |
+| `ZPICO_MAX_SUBSCRIBERS=1` | 264,868 | **49,148** | 4,096 |
+
+**Stack 18,572 → 49,148 B (2.6x).** The faulting `sp` `0x3fcc9180` now sits well
+inside the stack (`_stack_end` moved `0x3fcc9b74` → `0x3fcc2404`).
+
+Three runs, same router, identical QEMU arguments, back to back:
+
+| image | stack | lines of output | `ConnectionFailed` | faults |
+| --- | ---: | ---: | ---: | ---: |
+| full talker (shipped) | 18,572 | **70 — died** | 0 | **2** |
+| empty `register` | 18,572 | 23,083 | 23,033 | 0 |
+| `ZPICO_MAX_SUBSCRIBERS=1` | 49,148 | 23,850 | 23,565 | **0** |
+
+The comparison is sound in the way that matters: the shipped talker dies at line
+70, BEFORE the connection-retry loop that the other two then run for 23k lines.
+All three traverse the same early path; only the one with an 18 KB stack faults
+on it. (None of the three connects — the host router is not reachable through
+`-nic user,model=open_eth`. That is irrelevant here, because the fault happens
+before the retry loop, not on the connected path.)
+
+### This also corrects "the faulting PC is CONSTANT across builds"
+
+That earlier section recorded `mepc = 0x732f7264` in all three
+`ZPICO_MAX_QUERYABLES` builds and reasoned: constancy rules out stack smashing,
+"which would move with layout". Today's shipped-talker run faults with
+**`mepc = 0x02250042`**, and `ra = 35979330` = `0x02250042` — a different value
+entirely. So the PC is not constant, and the argument built on its constancy does
+not hold.
+
+The two observations were never in conflict anyway. That section concluded "the
+value is DATA the code reads deterministically ... from a fixed place",
+`0x732f7264` being the printable text `"s/rd"`. The fixed place is now named: the
+overflowed stack sits inside `nros_smoltcp::TCP_RX_BUFFER_0`, so a return-address
+slot is overwritten by received network bytes — and keyexpr traffic is exactly
+where printable `"s/rd"` comes from. A deterministic overflow landing in a
+deterministic buffer reads the same bytes every run; constancy was evidence FOR
+this mechanism, read as evidence against it.
+
+**Memory pressure is un-refuted and is the cause.** The direct measurement (`sp`
+2,548 B outside the stack) outranks the inference either way.
+
+### Status
+
+Cause established and demonstrated both directions. Remaining work is the fix
+ladder above — and item 1, the `.stack` floor gate, is the one that matters: this
+image shipped with an 18 KB stack against a comment budgeting ~67 KB, and nothing
+said a word.
