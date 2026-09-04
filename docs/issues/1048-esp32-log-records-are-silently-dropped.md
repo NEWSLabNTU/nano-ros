@@ -65,21 +65,65 @@ the PRINTING is broken.
 | two `log` facades, so `set_logger` served the wrong one | there is ONE `log` in the target graph (0.4.33), the same one the example binds and esp-println installs into. (An earlier claim of two was a grep artifact: `log v[0-9.]+` also matches `nros-log v0.5.0`.) |
 | esp-println built without `log-04` | the resolved features for this image include `log-04` |
 
-## The remaining candidate, untested
+## ROOT CAUSE (2026-09-04): `log::set_logger` does not EXIST on this target
 
-`log::set_logger` succeeds at most ONCE per process. If anything installs a
-logger before `init_hardware` runs, esp-println's `init_logger` fails and — as
-that API returns `()` — the failure is invisible. The board registers its own
-platform writer immediately above the `init_logger` call
-(`nros-board-esp32-qemu/src/node.rs:357-363`), so there are two log paths in
-this image and only one can win the facade.
+Not a race, not an ordering bug, not a filter. In `log` 0.4.33:
 
-Testing that is one line: capture `log::set_logger`'s `Result` (or call
-`log::logger()` afterwards and compare) rather than assuming it took.
+```rust
+#[cfg(target_has_atomic = "ptr")]
+pub fn set_logger(logger: &'static dyn Log) -> Result<(), SetLoggerError> { … }
 
-Issue #64 is the ancestor here — the `init_logger` call and its comment exist
-because the same symptom was fixed once already ("without it the `log` crate has
-no logger installed and silently drops every record"). It is back.
+#[cfg(target_has_atomic = "ptr")]
+pub fn set_max_level(level: LevelFilter) { … }
+```
+
+The ESP32-C3 target is `riscv32imc-unknown-none-elf` — RV32 **I M C**, no `A`
+extension, so no atomic pointer operations. `rustc --print cfg --target
+riscv32imc-unknown-none-elf` lists `target_has_atomic_primitive_alignment="ptr"`
+and **no `target_has_atomic="ptr"`**, so both functions are compiled out.
+
+Proved directly rather than inferred: a probe that tried to install its own
+logger from the board crate does not compile —
+
+```
+error[E0425]: cannot find function `set_logger` in crate `log`
+```
+
+**No logger can be installed on this board, by anyone, so every `log::*` record
+is dropped.** That is why no INFO line appears anywhere in the boot, why the
+example's marker never prints, and why `println!`s bracketing it both do.
+
+### What this retires
+
+* `esp_println::logger::init_logger(LevelFilter::Info)` in
+  `nros-board-esp32-qemu/src/node.rs` cannot do anything here. Its comment
+  ("without it the `log` crate has no logger installed and silently drops every
+  record" — issue #64) describes the state the board is still in.
+* The `log::max_level() = Info` reading is NOT evidence a logger installed: the
+  getter is unconditional, the setter is not.
+* `ESP_LOG=info` at build time changes nothing. Tested.
+
+### The fix, and it is a choice
+
+1. **Route markers through the platform writer** the board already registers
+   (`nros_platform_esp32_qemu::register_log_writer` — severity, name, message,
+   straight to `esp_println`). It works on this target today: a plain fn
+   pointer, no atomics. This is the same shape CLAUDE.md already prescribes for
+   Zephyr instead of `std` stdio.
+2. **Give `log` its atomics.** `portable-atomic` is already in this image's
+   graph, but `log` gates on `target_has_atomic` directly with no
+   portable-atomic feature, so this means patching `log` — not worth it for a
+   marker.
+
+(1) fits the tree. Note the scope: this is not only about test markers. EVERY
+`log::info!`/`warn!`/`error!` in any crate this board links is silently
+discarded, nros framework diagnostics included, so an image that fails here can
+currently only report through `println!` or the platform writer.
+
+### Not esp32-specific in principle
+
+Any `no_std` target without `target_has_atomic = "ptr"` has this property. The
+esp32-c3 board is just the one in this tree that does.
 
 ## Not to be confused with
 
