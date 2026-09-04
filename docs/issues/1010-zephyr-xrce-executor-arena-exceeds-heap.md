@@ -1,7 +1,7 @@
 ---
 id: 1010
-title: "Every zephyr XRCE example dies at boot on a ~330-428 KB single
-  allocation — NOT the executor arena (see the 2026-09-04 correction)"
+title: "Every zephyr XRCE example dies at boot allocating the XRCE session
+  struct — 81% of it is `subscriber_slots` at ring depth 32"
 status: open
 type: bug
 area: zephyr, platform, examples
@@ -165,3 +165,71 @@ code; they had to move to `nros-zephyr-build` to run at all.)
 * [ ] Identify the XRCE-side allocation that requests ~330-428 KB, by workload.
 * [ ] The nine zephyr XRCE cells boot.
 * [ ] ~~A link-time gate comparing executor arena to heap~~ — refuted above.
+
+## 2026-09-04 — IDENTIFIED: the allocation is the XRCE session struct's subscriber ring pool
+
+The correction above left one question: what asks for ~330-428 KB. It is
+`xrce_session_state`, and one member dominates it.
+
+### Measured, not estimated
+
+`sizeof` on the real declarations from `nros-rmw-xrce/src/internal.h`, with the
+defines the zephyr XRCE images actually build with
+(`XRCE_BUFFER_SIZE=1024`, `XRCE_SUBSCRIBER_RING_DEPTH=32`,
+`XRCE_MAX_SUBSCRIBERS=8`):
+
+| member | bytes |
+| --- | --- |
+| `xrce_subscriber_ring_entry` (`data[1024]` + `len` + `overflow`) | 1,040 |
+| `xrce_subscriber_slot` (32 entries + indices) | 33,288 |
+| `subscriber_slots[8]` | **266,304** |
+
+Against the observed `request 329648`, that is **81 %** of the allocation; the
+remaining ~63 KB is the service server/client pools (4 + 4 slots carrying their
+own `data[XRCE_BUFFER_SIZE]`), the stream buffers, and `uxrSession`.
+
+The workload scaling on file follows from the same structure: pubsub 329,648,
+service and action 423,808 / 427,952 — more service slots, same ring pool.
+
+### Why the number is what it is
+
+`XRCE_SUBSCRIBER_RING_DEPTH` defaults to 32, and `internal.h` says why:
+
+> Phase 160.H.1 — depth 32 (was bumped 4 -> 16 upstream first; raised to 32
+> after re-testing 100Hz burst behaviour).
+
+That is a HOST-THROUGHPUT tuning value. It sits in a struct allocated from a
+64 KiB embedded heap, and no zephyr example overrides it. `nros-rmw-xrce-cffi/
+build.rs` already documents the lever in as many words — "combined with
+`STREAM_HISTORY=4` + `NROS_XRCE_CUSTOM_TRANSPORT_MTU=512` the session struct
+drops from ~390 KB to ~10-20 KB" — for a configuration far smaller than what
+these images use (they keep `MAX_SUBSCRIBERS=8`, `MAX_SERVICE_SERVERS=4`,
+`MAX_SERVICE_CLIENTS=4`, `BUFFER_SIZE=1024`).
+
+### Two traps for whoever takes the fix
+
+* **Ring depth alone is NOT enough.** At depth 4 the pool falls to 33,344 —
+  measured the same way — but the whole session still lands near 96 KB, above
+  the 64 KiB heap. A fix needs the ring depth AND one of `MAX_SUBSCRIBERS` /
+  `XRCE_BUFFER_SIZE`, or a larger heap. Changing one knob and re-running is how
+  this looks fixed and is not.
+* **`NROS_XRCE_SUBSCRIBER_RING_DEPTH` is not a Kconfig symbol.** `knob()` reads
+  the ENVIRONMENT first and falls back to `CONFIG_<name>` in `$DOTCONFIG`; since
+  Kconfig does not define this one, a `CONFIG_NROS_XRCE_SUBSCRIBER_RING_DEPTH=4`
+  line in a `.conf` is dropped as an unknown symbol and reaches nothing. Setting
+  it needs an env export (or a new Kconfig entry). This is the same shape as
+  issue 0876 — a conf line that changes nothing and looks like it should.
+
+### What is still NOT known
+
+Whether shrinking the session to fit is SUFFICIENT for these cells to pass, or
+only necessary. The nine cells fail at `Executor::open`; nothing downstream of
+that has ever run, so no claim is made about what happens once they boot.
+
+## Revised acceptance
+
+* [x] Identify the XRCE-side allocation. It is `xrce_session_state`, dominated
+      by `subscriber_slots[MAX_SUBSCRIBERS]` at `RING_DEPTH x (BUFFER_SIZE+16)`.
+* [ ] Size it (or the heap) so the session fits, remembering ring depth alone
+      does not.
+* [ ] The nine zephyr XRCE cells boot.
