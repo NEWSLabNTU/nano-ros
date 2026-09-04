@@ -224,3 +224,295 @@ the listener faults too, which would move this off "talker-specific" entirely.
 Start the router and CONFIRM it is serving before drawing any conclusion from an
 esp32 run. `just esp32 zenohd` can exit 127 on the libzenohc pairing and leave
 you measuring the unconnected path, which looks like "no fault" and is not.
+
+**Note on "Where to start" #1 above:** the static analysis below shows that
+resolving `0x42051d70` cannot name the caller — it is a frame of the panic
+printer, not of the faulting code. Step 1 is a dead end by construction; steps 2
+and 3 are unaffected.
+
+## STATIC ANALYSIS 2026-09-04 — the registers say it is a RETURN, and the backtrace frame is a ghost
+
+No build was run for this section. Everything below is either arithmetic on the
+register values already in this issue, source read at `origin/main`, or
+read-only `nm`/`readelf`/`objdump`/`strings` against the **only esp32 ELF on
+this host**, which is
+
+```
+build/cargo-fixtures/qemu-esp32-baremetal/riscv32imc-unknown-none-elf/
+  nros-relwithdebinfo/esp32_qemu_{talker,listener}     built 2026-08-15 11:35
+```
+
+That is 20 days old and predates BOTH the 1048 fix (6d9b0722, 2026-09-04) and
+the exact-`ENTITY_BOUNDS` commit (6ae0249a, 2026-08-28). It is **not** the
+binary that produced the trace above. Every address resolved against it is
+labelled as such; the register arithmetic and the source reads do not depend on
+it.
+
+### 1. MEASURED — the faulting instruction was `ret`, so it is NOT a call through a bad fn pointer
+
+```
+mepc = mtval = 0x732f7264
+ra           = 0x732f7265
+ra & ~1      = 0x732f7264   == mepc, exactly
+t0           = 9            (so the jump did not go through t0)
+```
+
+In RISC-V, `jalr rd, rs1, imm` computes `target = (rs1 + imm) & ~1` and writes
+`rd = pc + 4` (`pc + 2` for `c.jalr`). An instruction-access fault on the target
+is raised on the FETCH, after the jump has retired — so `rd` is already written.
+
+* If this had been an indirect **call** (`jalr ra, 0(rs)` / `c.jalr rs`, which
+  is what a fn-pointer slot compiles to) then `ra` would hold a valid `.text`
+  return address. It holds printable ASCII instead.
+* `target == ra & ~1` with `ra` unchanged is the signature of
+  `ret` = `jalr x0, 0(ra)` (`c.jr ra`): `rd = x0`, so `ra` survives, and the
+  hardware clears bit 0 of the target. All three reported values follow from
+  that one instruction.
+* A tail call `jr t0` would need `t0 == mepc`; `t0` is 9.
+
+**So the previous section's lead is refuted by its own numbers.** The fn-pointer
+slots named there — `register_log_writer`'s writer slot, `nros_rmw_zenoh::register()` —
+are *called*, and a call writes `ra`. What happened here is that a function
+**returned to a return address that had been overwritten**.
+
+### 2. MEASURED — the byte order in this issue is backwards, which changes the candidate strings
+
+`ra` is restored with `lw ra, off(sp)`, a LITTLE-endian load. The bytes actually
+sitting in that slot are therefore
+
+```
+0x732f7265 -> 65 72 2f 73 -> "er/s"        (not "s/re")
+```
+
+`"s/re"` is the big-endian reading and matches nothing that is loaded that way.
+So `refcount.c` and `adapters/rev.rs` are **not** candidates; strings containing
+`er/s` are. Examples that exist in this tree:
+
+* `…/examples/qemu-esp32-baremetal/rust/talk` **`er/s`** `rc/lib.rs`
+* `…/examples/qemu-esp32-baremetal/rust/listen` **`er/s`** `rc/lib.rs`
+* `…/esp-hal-1.0.0/src/tim` **`er/s`** `ystimer.rs`
+* a runtime-built rmw_zenoh keyexpr, `0/chatt` **`er/s`** `td_msgs::msg::dds_::String_/…`
+
+Relevant here: `nros_log`'s macros capture `::core::file!()`
+(`packages/core/nros-log/src/macros.rs:35`), so every `nros_info!` call site puts
+its own source path into rodata AND into the record body — and both leaves' paths
+contain `er/s`.
+
+**MEASURED, on the stale ELF:** the byte sequence `65 72 2f 73` occurs **zero
+times in any ALLOCATED section** of either image (searched `.rodata_desc`,
+`.rodata`, `.nros_boot_config`, `.data`, `.trap`, `.rwtext`, `.text`). It occurs
+only in `.debug_line`, which is not loaded. If a search of the FAULTING build's
+allocated sections also comes up empty, then the four bytes were assembled at
+runtime (a keyexpr, a formatted log record) rather than copied out of rodata, and
+the corruptor is a heap/network/log buffer rather than a static string.
+
+### 3. MEASURED + source — `0x42051d70` cannot name the caller; it is a frame of the panic printer
+
+`esp-hal`'s RISC-V `ExceptionHandler` does not print anything itself: it calls
+`panic!("Exception '{}' mepc=… \n{:?}", code, mepc, mtval, context)`
+(`esp-hal-1.0.0/src/exception_handler/mod.rs:112`). `esp-backtrace`'s
+`panic_handler` then does, in this order (`esp-backtrace-0.18.1/src/lib.rs:105`):
+
+1. `println!("{}", info)` — which formats the `TrapFrame` through
+   `core::fmt::builders::DebugStruct`, and
+2. only *then* `Backtrace::capture()`.
+
+`capture()` reads its OWN frame pointer (`mv {0}, x8`) and walks the fp chain
+(`riscv.rs:20`). That chain starts inside the panic handler and runs back
+through `panic_fmt` → `ExceptionHandler` → the `_start_trap` stub. **It cannot
+cross the trap boundary**: the interrupted function's frame pointer is a field
+of the saved `TrapFrame`, not a link in the handler's chain. So no frame of the
+faulting code can ever appear in that list, however many frames it prints.
+
+Consistent with that, in the 2026-08-15 talker:
+
+```
+0x42051d70  ->  <core::fmt::builders::DebugStruct>::finish + 0x14
+                (symbol starts at 0x42051d5c)
+```
+
+i.e. the address lands squarely in the formatting machinery that step (1) had
+just run. That resolution is against the WRONG BUILD and is offered as
+corroboration, not proof — but the structural argument above holds for any
+build.
+
+**"Where to start" step 1 should be struck.** It is not "the single
+highest-value step"; it is a dead end by construction.
+
+### 4. MEASURED (stale ELF) — the stack and the smoltcp buffers are neighbours, with no guard that works here
+
+```
+.bss            3fc896d0 .. 3fcbec20   (218448 B)
+_stack_end   =  3fcbec20   == __ebss   — no gap, no guard page
+_stack_start =  3fcce400
+.stack size  =  0x0f7e0    =  63456 B  (~62 KB)
+
+__stack_chk_guard = 3fcbec5c  (_stack_end + 0x3c)
+```
+
+What sits immediately BELOW the stack floor, in address order downward:
+
+```
+3fcbec1c  log::STATE, log::MAX_LOG_LEVEL_FILTER, esp_println::LOCK, …  (344 B of small statics)
+3fcbe2c8  nros_smoltcp::TCP_TX_BUFFER_0   0x800
+3fcbdac8  nros_smoltcp::TCP_RX_BUFFER_0   0x800
+3fcbd2c8  nros_smoltcp::UDP_TX_DATA_1     0x800
+3fcbcac8  nros_smoltcp::UDP_TX_DATA_0     0x800
+3fcbc2c8  nros_smoltcp::UDP_RX_DATA_1     0x800
+3fcbbac8  nros_smoltcp::UDP_RX_DATA_0     0x800
+```
+
+`TCP_TX_BUFFER_0` **ends 344 bytes below `_stack_end`**. A write past its end by
+more than 344 bytes lands in the stack; a stack frame more than 344 bytes past
+the floor lands in it. Nothing separates them.
+
+The one guard that exists, `__stack_chk_guard`, is armed through the RISC-V
+debug trigger CSRs (`tselect` / `tdata1` / `tdata2`, `esp-hal-1.0.0/src/debugger.rs`,
+reached from `lib.rs:684` under `cfg(stack_guard_monitoring)`). The three guard
+strings ARE in this image's rodata, so the feature is compiled in — but
+**INFERRED**: QEMU's `esp32c3` machine does not implement the debug trigger
+module, so those writes are inert and a stack overflow on QEMU presents as
+silent corruption with no `Stack overflow detected` / `write to a stack guard
+value` line. That is exactly what we see.
+
+`nros-board-esp32-qemu/src/node.rs` already documents this failure mode
+verbatim, from three previous rounds (#64 / #184 / #190):
+
+> At 96 KB the stack shrank to ~18 KB … the overflow wrote frames straight down
+> into `.bss` … producing the #190 phantom corruptions: InitAck cookies full of
+> DRAM pointers …, **wild jumps (mepc=0x9ae65930)**, the pre-#190 0xffffffff
+> config-pointer fault. None of them were allocator or zenoh-pico bugs.
+>
+> 48 KB fits the executor arena AND leaves a ~67 KB stack … **Check `.stack` in
+> `readelf -S` after changing ANY large static** — there is no runtime
+> stack-overflow guard on this target.
+
+The comment claims ~67 KB. The measured `.stack` at the 2026-08-15 tree state is
+**62 KB**, so ~5 KB of that headroom was already gone before the 1048 fix added
+anything.
+
+### 5. MEASURED — one more register, and the issue elides the evidence that would settle this
+
+```
+t2 = 1070320272 = 0x3fcbca90
+```
+
+In the stale layout that is **inside `nros_smoltcp::UDP_RX_DATA_1`**
+(`3fcbc2c8 + 0x800 = 3fcbcac8`), at offset 0x7c8 — **56 bytes before the end of a
+2 KB UDP receive buffer**. A live register pointing at the tail of an RX buffer,
+in the same trap that shows a smashed return address, is a lead. (Addresses may
+have moved in the faulting build; treat the containment as INFERRED there.)
+
+The `TrapFrame` Debug output is quoted in this issue as
+`{ ra: …, t0: 9, t1: 0, t2: …, … }` — **truncated**. The elided fields include
+`sp` and `s0`. Those are the two that decide the whole question:
+
+* `sp < 0x3fcbec20` (or whatever `_stack_end` is in the faulting build) is a
+  **proof** of stack overflow, not a hypothesis.
+* `s0` is the faulting function's frame pointer, from which the REAL backtrace
+  can be walked by hand — the one the printed backtrace cannot reach (§3).
+
+**This needs no rebuild.** Re-run the image that is already flashed and capture
+the trap frame unabridged.
+
+### 6. MEASURED — what actually differs between the two leaves, and why the bisect cut nearly all of it
+
+At `origin/main`, `examples/qemu-esp32-baremetal/rust/{talker,listener}` differ
+in: package / lib / bin name, `[package.metadata.nros.node] class` + `name`,
+`Node::NAME`, `ENTITY_BOUNDS`, deploy `ip`, and the `register` / `on_callback`
+bodies. Their `.cargo/config.toml` `[env]` blocks are **identical** (the files
+differ by one space), so the arena / socket / payload knobs are not a variable.
+The harness runs both through the same `start_esp32_qemu(…, networking=true)`
+with byte-identical QEMU arguments.
+
+Variants A–I plus the listener control have cut every one of those except the
+crate name and `Node::NAME` (cut by I, with a caveat below). **That is itself a
+result**: there is essentially no source-level difference left to blame, which
+argues the trigger is not a difference between the leaves at all but a threshold
+one of them crosses.
+
+Two things the bisect should know:
+
+* **`.nros_boot_config` in BOTH images has `set_flags = 0x0006`** — locator and
+  domain only, `node_name` bit CLEAR, name bytes all zero. Both boot as
+  `"nros_app"`. If variant I changed the Cargo.toml `[…node] name`, it changed
+  nothing the board reads at boot, and the node name is only used inside
+  `NodeOptions::new(…)` in `register` — which variant E had already emptied.
+  (Stale-ELF measurement; re-check if the baking changed since 2026-08-15.)
+* **The talker and listener DRAM maps were byte-identical** at that tree state:
+  same `.data` size (0x8cd0), same `.bss` size (0x35550), same `.stack`
+  (0x0f7e0), same symbol addresses throughout the `.bss` tail. `.text` differed
+  by 1084 bytes, and `.text` is in flash. So "the talker's image is bigger, so
+  its stack is smaller" is NOT the asymmetry — at least it was not then. Worth
+  re-measuring on the current pair, because that is precisely what the 1048 fix
+  could have changed.
+
+### 7. "Memory pressure REFUTED" is over-claimed
+
+Two problems with the `ZPICO_MAX_QUERYABLES` table:
+
+1. **A constant faulting PC does not rule out stack corruption.** What a stack
+   smash writes is DATA — here, four bytes of a string. String content is
+   byte-identical in every build; only its ADDRESS moves. A deterministic
+   overrun copying the same bytes over the same field of the same frame produces
+   the same `mepc` every time. Constancy rules out *randomised* corruption, and
+   nothing more.
+2. **The three builds are only a layout experiment if that knob moves a static.**
+   The table reports no `.bss` / `.stack` sizes. If `ZPICO_MAX_QUERYABLES` sizes
+   something inside `g_sessions` (0x4948 = 18760 B of `.bss` in the stale
+   talker) then the three had different `.stack` sizes and the experiment means
+   something; if the queryable table is heap-side, all three had identical DRAM
+   maps and the experiment measured nothing. `readelf -SW` on the three ELFs
+   answers it in a second — and the board's own comment tells you to run exactly
+   that after changing any large static.
+
+### Strongest hypothesis, labelled
+
+**INFERRED:** a stack frame's saved return address was overwritten with text,
+because the stack and `.bss` interpenetrate on this board — the class this board
+has already produced three times (#64, #184, #190), for which no runtime guard
+can fire under QEMU. The bytes are ASCII because the thing sharing that memory
+is a string buffer (a `nros_log` record carrying `core::file!()`, a keyexpr, or a
+smoltcp buffer holding text).
+
+**NOT a corrupted fn-pointer slot** — that is MEASURED-refuted by §1.
+
+**Open, and honestly so:** why the talker and not the listener. §6 says the
+source difference is nearly exhausted, so the answer is likely a threshold
+(stack depth, or a buffer whose fill depends on what the router pushes back)
+rather than a line of code.
+
+### Cheapest experiments that would settle it, in order
+
+1. **No build at all.** Re-run the already-flashed talker and capture the
+   `TrapFrame` UNABRIDGED. `sp` below `_stack_end` proves stack overflow; `s0`
+   gives the real backtrace. This is strictly more informative than every
+   variant built so far.
+2. **No build.** `riscv-none-elf-readelf -SW` on the current talker and listener
+   ELFs and on the three `ZPICO_MAX_QUERYABLES` variants; record `.bss` end and
+   `.stack` size for each. Settles §6's asymmetry and §7's item 2.
+3. **No build.** Search the faulting build's ALLOCATED sections for `65 72 2f 73`:
+   `riscv-none-elf-objcopy -O binary --only-section=.rodata <elf> /tmp/ro.bin`
+   then grep. Present ⇒ the corruptor copies that string; absent (as it is in the
+   stale build) ⇒ the bytes are built at runtime.
+4. **One build, one variable.** Change ONLY the esp-alloc size in
+   `node.rs` (`esp_alloc::heap_allocator!(size: 48 * 1024)` → `32 * 1024`).
+   `.stack` grows by 16 KB and nothing else moves. If the fault vanishes or its
+   `mepc` changes, it is stack depth. The board's comment already says the 48 KB
+   is a two-sided constraint; no variant so far has touched that side.
+
+### Corrections to earlier text in this issue
+
+* The transcript under "What the image prints" shows `IP: 10.0.2.51/24`. The
+  shipped talker's deploy `ip` is `10.0.2.50` (`.51` is the listener's), so that
+  capture is from a MODIFIED talker — presumably variant G. Minor, but the
+  opening evidence should say which image it is.
+* `mepc`/`ra` read as `"s/rd"` / `"s/re"` is the big-endian reading; the load
+  that restores `ra` is little-endian, so the bytes are `"er/s"` (§2).
+* "a corrupted return address **or** function pointer" — the registers decide
+  between them: return address (§1).
+* "The same `Instruction access fault` appears twice in the tier-2 capture from
+  BEFORE issue 1048's fix landed" rests on the exception NAME alone; no `mepc`
+  from that capture is recorded here. Two instruction-access faults are not
+  necessarily the same fault, and the pre-fix build had no `nros_log` record
+  path in the leaves.
