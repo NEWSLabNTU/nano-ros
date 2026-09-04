@@ -16,6 +16,7 @@ PROJECT_BRIEF          = "Lightweight ROS 2 client for embedded real-time system
 INPUT                  = include/nros/nros.h \
                          include/nros/nros_generated.h \
                          include/nros/types.h \
+                         include/nros/serialization_format.h \
                          include/nros/init.h \
                          include/nros/node.h \
                          include/nros/publisher.h \

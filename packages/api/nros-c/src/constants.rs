@@ -72,3 +72,62 @@ const _: () = {
 pub use crate::opaque_sizes::{
     GUARD_HANDLE_OPAQUE_U64S, PUBLISHER_OPAQUE_U64S, SESSION_OPAQUE_U64S,
 };
+
+// ── Serialization format (RFC-0088 D5) ──────────────────────────────────
+//
+// The format the linked backend speaks, as a `u8` discriminant and as its
+// cross-image identity string. `cbindgen` lowers the DISCRIMINANT into
+// `nros_generated.h` as `#define NROS_SERIALIZATION_FORMAT_ID`; the string is
+// NOT lowered (cbindgen maps no Rust `&str` to a C constant), so
+// `nros/serialization_format.h` derives `NROS_SERIALIZATION_FORMAT` from the
+// discriminant instead of carrying a second authored spelling. Those macros are
+// what the per-message `_Static_assert` codegen emits compares against, and what
+// `nros/serialization_format.hpp` lifts into `nros::SerializationFormat`.
+//
+// **Only meaningful in a single-backend image.** A bridge image links two
+// backends and has no single answer; it asks each session instead
+// (`nros_node_get_serialization_format()`). `check-format-macro-scope` refuses a
+// bridge-linked image that references either macro.
+//
+// The literals are MIRRORED, not authored: they exist so `cbindgen` — which
+// runs with `parse_deps = false` and evaluates no expressions — can emit a C
+// constant at all. The `const _` below is what makes them true: it compares
+// each against `nros_node::session::IMAGE_SERIALIZATION_FORMAT{,_ID}`, the same
+// constant the Rust API's `format_check` asserts on, so a backend whose format
+// is not CDR fails this crate's build with a message naming the drift rather
+// than shipping a header that quietly disagrees with the linked backend.
+// (Same contract as the `MAX_*` mirrors above; see the module docs.)
+
+/// Image-local discriminant of the linked backend's serialization format
+/// (`nros_serdes::format::SerializationFormatId`). RFC-0088 D2 — image-local:
+/// never persist it, never compare it across images.
+pub const NROS_SERIALIZATION_FORMAT_ID: u8 = 1;
+
+/// Cross-image identity of the linked backend's serialization format.
+pub const NROS_SERIALIZATION_FORMAT: &str = "cdr";
+
+// Compile-time drift check — the mirrors above must equal what the linked
+// backend actually declares. A `const _` is evaluated by `cargo check`, so this
+// fires before codegen, unlike the `const {}` inside the generic Rust entity
+// creators.
+const _: () = {
+    assert!(
+        NROS_SERIALIZATION_FORMAT_ID == nros_node::session::IMAGE_SERIALIZATION_FORMAT_ID.as_u8(),
+        "RFC-0088: NROS_SERIALIZATION_FORMAT_ID no longer matches the linked \
+         backend — update the mirror (and the C/C++ headers that assert on it)"
+    );
+    let mirrored = NROS_SERIALIZATION_FORMAT.as_bytes();
+    let linked = nros_node::session::IMAGE_SERIALIZATION_FORMAT.as_bytes();
+    assert!(
+        mirrored.len() == linked.len(),
+        "RFC-0088: NROS_SERIALIZATION_FORMAT no longer matches the linked backend"
+    );
+    let mut i = 0;
+    while i < mirrored.len() {
+        assert!(
+            mirrored[i] == linked[i],
+            "RFC-0088: NROS_SERIALIZATION_FORMAT no longer matches the linked backend"
+        );
+        i += 1;
+    }
+};

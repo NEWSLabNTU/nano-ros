@@ -83,15 +83,34 @@ The mechanism is compile-time, not runtime: ROS 2 uses format strings because
       a native matrix cell covers it. **No new matrix coordinate** — one cell, not
       an axis (RFC-0088 non-goals).
 
-- [ ] **W6 — C and C++ assert at compile time.** `NROS_SERIALIZATION_FORMAT_ID` /
+- [x] **W6 — C and C++ assert at compile time.** (landed 2026-09-04) `NROS_SERIALIZATION_FORMAT_ID` /
       `NROS_SERIALIZATION_FORMAT` in the generated config; a per-message
       `_Static_assert` in C; `format_of<M>` plus `static_assert` in C++, using
       `const char*` rather than `std::string_view` so the header survives Zephyr's
       minimal libcpp. `check-format-macro-scope`: a bridge-linked image must not
       reference the macro, because a two-backend image has no single answer.
-      **Acceptance:** a C entry publishing a message whose format differs from
-      the linked backend fails to compile; a bridge image referencing the macro
-      fails the gate.
+      **Acceptance, met.** `serialization_format_mismatch_probe.{c,cpp}` are
+      expected-failure compiles in `check-c` / `check-cpp`; the C refusal names
+      the message (`"RFC-0088: px4_msgs/VehicleStatus is not encoded in the
+      format the linked backend speaks"`). `check-format-macro-scope` fails on a
+      bridge-linked TU that references the macro, verified by injecting one.
+
+      Landed differently in two places, both recorded here:
+
+      - **The macro is lowered by cbindgen, not by the config header.**
+        `nros_config_generated.h` is substituted in `nros-build-helpers`, and a
+        build script cannot evaluate a Rust `const`. Each mirror instead carries
+        a `const _` proving it equal to `session::IMAGE_SERIALIZATION_FORMAT{,_ID}`,
+        so a backend that answers otherwise fails `cargo check` naming the drift.
+        **The value's proper home is the RMW descriptor** (`[rmw]
+        serialization_format` → `NanoRosRmwDispatch.cmake` → `configure_file`);
+        the mirror is the affordable version, and its `const _` is the tripwire
+        for the day a backend disagrees.
+      - **`format_of<M>` defaults to `Cdr` rather than being a bare
+        declaration**, mirroring RFC-0088 D1's defaulted const. Hand-written tag
+        types pass through the typed creators (`DebugKeyValueTag` in the px4
+        bridge, `FakeString` in a compat fixture); a hard-erroring primary would
+        have broken them.
 
 ## What landed differently from the plan (2026-09-04)
 

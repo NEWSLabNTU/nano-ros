@@ -16,6 +16,8 @@
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"
+// RFC-0088 D5 — NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creator below.
+#include "nros/serialization_format.hpp"
 
 #include "nros_cpp_ffi.h"
 
@@ -270,6 +272,9 @@ namespace nros {
 
 template <typename M>
 Result Node::create_publisher(Publisher<M>& out, const char* topic, const QoS& qos) {
+    // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
+    // message the linked backend cannot encode never reaches the wire.
+    NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
     if (!initialized_) return Result(ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     nros_cpp_ret_t ret = nros_cpp_publisher_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,

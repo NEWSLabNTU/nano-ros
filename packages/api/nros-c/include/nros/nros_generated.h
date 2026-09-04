@@ -112,6 +112,13 @@ struct nros_goal_uuid_t;
 #define NROS_MAX_CONCURRENT_GOALS 4
 
 /**
+ * Image-local discriminant of the linked backend's serialization format
+ * (`nros_serdes::format::SerializationFormatId`). RFC-0088 D2 — image-local:
+ * never persist it, never compare it across images.
+ */
+#define NROS_SERIALIZATION_FORMAT_ID 1
+
+/**
  * Maximum length of a parameter name
  */
 #define NROS_MAX_PARAM_NAME_LEN 64

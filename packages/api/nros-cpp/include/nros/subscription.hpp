@@ -17,6 +17,8 @@
 #include "nros/config.hpp"
 #include "nros/result.hpp"
 #include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
+// RFC-0088 D5 — NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creators below.
+#include "nros/serialization_format.hpp"
 #include "nros/stream.hpp"
 
 #include "nros_cpp_ffi.h"
@@ -604,6 +606,9 @@ namespace nros {
 
 template <typename M>
 Result Node::create_subscription(Subscription<M>& out, const char* topic, const QoS& qos) {
+    // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
+    // message the linked backend cannot encode never reaches the wire.
+    NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
     if (!initialized_) return Result(ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
     nros_cpp_ret_t ret = nros_cpp_subscription_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
@@ -663,6 +668,9 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, const 
 template <typename M, typename F, typename>
 Result Node::create_subscription(Subscription<M>& out, const char* topic, F callback,
                                  const QoS& qos, const SubscriptionOptions& options) {
+    // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
+    // message the linked backend cannot encode never reaches the wire.
+    NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
     if (!initialized_) return Result(ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
 
@@ -698,6 +706,9 @@ template <typename M, typename F, typename>
 Result Node::create_subscription_in(const CallbackGroup& group, Subscription<M>& out,
                                     const char* topic, F callback, const QoS& qos,
                                     const SubscriptionOptions& options) {
+    // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
+    // message the linked backend cannot encode never reaches the wire.
+    NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
     if (!initialized_) return Result(ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
 
@@ -731,6 +742,9 @@ Result Node::create_subscription_in(const CallbackGroup& group, Subscription<M>&
 template <typename M, typename F, typename>
 Result Node::create_subscription_with_info(Subscription<M>& out, const char* topic, F callback,
                                            const QoS& qos, const SubscriptionOptions& options) {
+    // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
+    // message the linked backend cannot encode never reaches the wire.
+    NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
     if (!initialized_) return Result(ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
 
@@ -777,6 +791,9 @@ inline Expected<Subscription<M>> create_subscription(Node& node, const char* top
 template <typename M, typename F, typename>
 Result Node::create_subscription_with_safety(Subscription<M>& out, const char* topic, F callback,
                                              const QoS& qos, const SubscriptionOptions& options) {
+    // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
+    // message the linked backend cannot encode never reaches the wire.
+    NROS_CPP_ASSERT_MESSAGE_FORMAT(M);
     if (!initialized_) return Result(ErrorCode::NotInitialized);
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
 

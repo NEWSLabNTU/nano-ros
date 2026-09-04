@@ -170,6 +170,7 @@ fast-serial: \
     fixtures-manifest \
     flake-quarantine \
     flavour-lanes \
+    format-macro-scope \
     gate-lists \
     gate-selftests \
     gate-visibility \
@@ -1388,6 +1389,16 @@ cc-build-policy:
 [private]
 ffi-struct-mirrors:
     @bash scripts/check-ffi-struct-mirrors.sh
+
+# RFC-0088 D5 / phase-421 W6 — `NROS_SERIALIZATION_FORMAT{,_ID}` names the
+# format of THE image's single backend. A bridge image links two and has no
+# single answer, so a bridge-linked TU referencing the macro is a wrong answer
+# that compiles. Pure source scan (~1 s, no build, no fixture, no SDK), so it
+# is affordable on the fast line — and it carries its own vacuity guards, since
+# a gate whose subject set emptied reports the same green as one that passed.
+[private]
+format-macro-scope:
+    @python3 scripts/check-format-macro-scope.py
 
 # Issue 0268 — the per-build sizes headers (`nros_{,cpp_}config_generated.h`)
 # mirrored onto the consumer include path must equal the copy build.rs wrote.
@@ -3250,6 +3261,34 @@ c: c-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/graph_query_entry_points.c
+    echo "  - a message's serialization format matches the linked backend (RFC-0088 D5)"
+    # phase-421 W6 — every generated C message header carries a
+    # `_Static_assert` comparing its format id against the image's. The positive
+    # TU proves the assertion is reachable and does not fire on a matching pair;
+    # the probe below proves it fires on a mismatched one.
+    cc -fsyntax-only -std=c11 \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/serialization_format.c
+    # Expected-failure, and asserted-present first for the same reason the
+    # parameter probe below is: a missing file is also a non-zero cc, and reads
+    # as a pass.
+    test -f packages/api/nros-c/tests/compile/serialization_format_mismatch_probe.c || { \
+        echo "ERROR: serialization_format_mismatch_probe.c is MISSING -- the expected-failure" >&2; \
+        echo "       check below would PASS on a missing file." >&2; \
+        exit 1; \
+    }
+    if cc -fsyntax-only -std=c11 \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/serialization_format_mismatch_probe.c 2>/dev/null; then \
+        echo "ERROR: a message declaring a format the linked backend does not speak compiled clean." >&2; \
+        echo "       NROS_ASSERT_MESSAGE_FORMAT is not reaching callers, so a uORB-encoded" >&2; \
+        echo "       message would publish through a CDR backend with no diagnostic." >&2; \
+        exit 1; \
+    fi
     echo "  - parameter name spelling + deprecated forwarders (phase 379 W5)"
     # The parameter family is `nros_parameter_*`; the old `nros_param_*` names
     # survive one release as NROS_DEPRECATED_MSG `static inline` forwarders. The
@@ -3535,6 +3574,33 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/graph_query_entry_points.cpp
+    echo "  - a message's serialization format matches the linked backend (RFC-0088 D5)"
+    # phase-421 W6 — codegen specialises `nros::format_of<M>` per message and the
+    # typed creators `static_assert` on it. The positive TU proves the assertion
+    # is reachable; the probe proves it fires.
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/serialization_format.cpp
+    test -f packages/api/nros-cpp/tests/compile/serialization_format_mismatch_probe.cpp || { \
+        echo "ERROR: serialization_format_mismatch_probe.cpp is MISSING -- the expected-failure" >&2; \
+        echo "       check below would PASS on a missing file." >&2; \
+        exit 1; \
+    }
+    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/serialization_format_mismatch_probe.cpp 2>/dev/null; then \
+        echo "ERROR: a message declaring a format the linked backend does not speak compiled clean." >&2; \
+        echo "       NROS_CPP_ASSERT_MESSAGE_FORMAT is not reaching the typed creators." >&2; \
+        exit 1; \
+    fi
     # issue 0338 — `spin` verb SHAPE probe: `spin()` blocks until shutdown
     # (rclcpp/C/Rust semantics) and the bounded verb is `spin_for(...)`. The
     # defect was the shape of the API, so a compile-time assertion on which

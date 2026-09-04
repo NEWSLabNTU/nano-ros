@@ -3634,3 +3634,62 @@ fn entry_spin_ms() -> u64 {
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(0)
 }
+
+// ── Serialization format (RFC-0088 D5) ──────────────────────────────────
+//
+// The discriminant of the format the linked backend speaks, lowered by
+// `cbindgen` into `nros_cpp_ffi.h` as
+// `#define NROS_CPP_SERIALIZATION_FORMAT_ID`. `nros/serialization_format.hpp`
+// lifts it into `nros::SerializationFormat` and asserts every typed entity's
+// message type against it.
+//
+// It is emitted HERE, into the C++ crate's own FFI header, rather than reused
+// from `nros-c`'s `NROS_SERIALIZATION_FORMAT_ID`, so that no C++ header has to
+// include a C API header to get it. Reaching `nros/nros_generated.h` from a
+// generated message header would put it BEFORE `nros_cpp_ffi.h` in include
+// order, and that order is one-way (issue 0160: the FFI struct mirrors).
+//
+// The literal is a MIRROR — `cbindgen` runs with `parse_deps = false` and
+// evaluates no expressions — and the `const _` below is what makes it true:
+// it compares against `nros_node::session::IMAGE_SERIALIZATION_FORMAT_ID`, the
+// same constant `nros_node::format_check` asserts on. A backend whose format is
+// not CDR fails this crate's build naming the drift, instead of shipping a
+// header that quietly disagrees with the backend the image links.
+//
+// **Only meaningful in a single-backend image** (RFC-0088 D5). A bridge image
+// links two backends and has no single answer; it asks per session, with
+// `nros::Node::serialization_format()`. `scripts/check-format-macro-scope.py`
+// refuses a bridge-linked translation unit that references the macro.
+
+/// Image-local discriminant of the linked backend's serialization format
+/// (`nros_serdes::format::SerializationFormatId`). RFC-0088 D2 — image-local:
+/// never persist it, never compare it across images.
+pub const NROS_CPP_SERIALIZATION_FORMAT_ID: u8 = 1;
+
+/// Cross-image identity of the linked backend's serialization format.
+/// Not lowered to C++ (cbindgen maps no Rust `&str` to a C constant);
+/// `nros::linked_format_name()` derives the name from the discriminant.
+pub const NROS_CPP_SERIALIZATION_FORMAT: &str = "cdr";
+
+const _: () = {
+    assert!(
+        NROS_CPP_SERIALIZATION_FORMAT_ID
+            == nros_node::session::IMAGE_SERIALIZATION_FORMAT_ID.as_u8(),
+        "RFC-0088: NROS_CPP_SERIALIZATION_FORMAT_ID no longer matches the linked \
+         backend — update the mirror (and the C++ headers that assert on it)"
+    );
+    let mirrored = NROS_CPP_SERIALIZATION_FORMAT.as_bytes();
+    let linked = nros_node::session::IMAGE_SERIALIZATION_FORMAT.as_bytes();
+    assert!(
+        mirrored.len() == linked.len(),
+        "RFC-0088: NROS_CPP_SERIALIZATION_FORMAT no longer matches the linked backend"
+    );
+    let mut i = 0;
+    while i < mirrored.len() {
+        assert!(
+            mirrored[i] == linked[i],
+            "RFC-0088: NROS_CPP_SERIALIZATION_FORMAT no longer matches the linked backend"
+        );
+        i += 1;
+    }
+};
