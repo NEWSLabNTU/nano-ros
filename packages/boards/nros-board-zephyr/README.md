@@ -1,8 +1,8 @@
 # nros-board-zephyr
 
-Phase 212.N.2 family driver crate for **Zephyr**. NetworkWait-only.
+Family driver crate for **Zephyr**. Link-up gate only.
 
-## Why "NetworkWait-only"
+## Why "link-up gate only"
 
 Zephyr is the carve-out in the 212.N Board trait family: Kconfig + DTS
 already own the BSP, and the Zephyr build system emits the C `main()`
@@ -10,7 +10,7 @@ entry point. A Rust staticlib (the only shape `zephyr-lang-rust`
 supports) cannot take that `main` over from Zephyr, so the usual
 `<Board as BoardEntry>::run(setup)` shape does not apply.
 
-Instead, this crate implements only [`NetworkWait`] over
+Instead, this crate exposes an inherent `wait_link_up` over
 `<zephyr/net/net_if.h>` — `net_if_get_default` + `net_if_is_up`,
 polled every 100 ms with a 30 s budget. The other `Board` super-trait
 methods (`BoardInit` / `BoardPrint` / `BoardExit`) are no-op stubs
@@ -22,7 +22,6 @@ From your Zephyr Rust app's `extern "C" fn rust_main()`:
 
 ```rust,ignore
 use nros_board_zephyr::ZephyrBoard;
-use nros_platform::board::NetworkWait;
 
 #[no_mangle]
 pub extern "C" fn rust_main() {

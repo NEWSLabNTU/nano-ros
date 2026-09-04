@@ -17,8 +17,7 @@ separately on purpose.
 
 This is the simplest of the family drivers: libstd's runtime already
 brings up the heap, stdio and threading before `fn main` runs, so
-`init_hardware` is a no-op, there is no `TransportBringup` /
-`NetworkWait` impl, and termination calls `std::process::exit`. The
+`init_hardware` is a no-op, there is no device bring-up step, and termination calls `std::process::exit`. The
 executor open + spin lives inside the `setup` callback (typically the
 codegen-emitted `run_plan(runtime)` from Phase 212.N.4) rather than
 inside `BoardEntry::run`.

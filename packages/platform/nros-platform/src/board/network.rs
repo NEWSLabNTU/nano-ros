@@ -1,23 +1,29 @@
-//! [`NetworkWait`] — Phase 212.N.1 mixin.
+//! [`NetworkError`] — the vocabulary for a link-up failure.
 //!
-//! Gate `BoardEntry::run` on carrier / DHCP / link-up before it
-//! tries to open RMW sessions. Boards without an L3 stack (CAN-only,
-//! serial-only, IVC-only) leave it unimplemented.
+//! **The `NetworkWait` TRAIT was removed in phase-206 W4 (issue 1067).** It had
+//! one implementation and no callers, and the one place that would have called
+//! it — the `nros::main!` Zephyr arm — deliberately routed around it, because
+//! `ZephyrBoard::wait_link_up` calls `net_if_is_up` / `k_msleep`, `static
+//! inline` header functions with no link symbol, so the native_sim final link
+//! failed on undefined references.
+//!
+//! The documented boot order it belonged to could not be built either: the
+//! shape the book described,
+//! `impl<B: Board + TransportBringup + NetworkWait> BoardEntry for B`, OVERLAPS
+//! the twelve direct `BoardEntry` impls, and Rust has no "call this method if
+//! the type happens to implement it". "Skipped if the board doesn't impl the
+//! mixin" was not expressible.
+//!
+//! What boards actually do — and the contract that now stands — is
+//! [`super::BoardEntry::run`], whose body (usually a family helper such as
+//! `nros_board_freertos::run_entry`) owns bring-up in the order that board
+//! needs. `ZephyrBoard::wait_link_up` survives as an INHERENT method, which is
+//! how its one caller (its own README example) already used it.
+//!
+//! The error type stays: it is the shared vocabulary a board reports a link
+//! failure in, and it is used whether or not a trait wraps it.
 
-/// Carrier / DHCP / link-up gate for IP-aware transports.
-pub trait NetworkWait: super::Board {
-    /// Block until the board's IP stack is ready: carrier detected,
-    /// DHCP lease acquired (or static IP applied), default route
-    /// installed. Returns when the executor can open sockets.
-    ///
-    /// Returning `Err` ends boot via
-    /// [`super::BoardExit::exit_failure`]. `Ok` proceeds into the
-    /// `setup` callback.
-    fn wait_link_up() -> Result<(), NetworkError>;
-}
-
-/// Network bringup failure mode (matches the coarse shape of
-/// [`super::transport::TransportError`]).
+/// Network bringup failure mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum NetworkError {

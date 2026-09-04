@@ -10,7 +10,7 @@ name = "nros-board-zephyr"
 version = "0.4.0"
 edition = "2024"
 license = "Apache-2.0"
-description = "Zephyr family driver crate for nros — NetworkWait-only impl (Zephyr owns main / BSP)."
+description = "Zephyr family driver crate for nros — link-up gate only (Zephyr owns main / BSP)."
 repository = "https://github.com/NEWSLabNTU/nano-ros"
 publish = false
 
@@ -19,7 +19,7 @@ name = "nros_board_zephyr"
 
 [features]
 # issue #128 (half 2) — `ZephyrBoard::run_tiers` (per-tier k_thread entry).
-# Off by default: NetworkWait-only consumers keep the tiny dep graph; the
+# Off by default: link-up-gate-only consumers keep the tiny dep graph; the
 # `nros::main!` Zephyr arm's multi-tier emit needs an entry crate that
 # enables this on its `nros-board-zephyr` dep.
 tiers = ["dep:nros", "dep:log", "dep:nros-log", "dep:nros-platform-cffi"]

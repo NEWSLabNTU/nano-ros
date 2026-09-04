@@ -17,8 +17,6 @@
 //! ```text
 //! Board: BoardInit + BoardPrint + BoardExit
 //!     │
-//!     ├── TransportBringup: Board    // Ethernet / WiFi / serial / CAN / USB CDC / IVC
-//!     ├── NetworkWait: Board         // carrier / DHCP / link-up gate
 //!     └── BoardEntry: Board {
 //!             fn run<F, E>(setup: F) -> Result<(), E>
 //!             where F: FnOnce(&mut RuntimeCtx) -> Result<(), E>;
@@ -58,7 +56,6 @@ pub mod print;
 pub mod rtic_entry;
 pub mod runtime;
 pub mod tier;
-pub mod transport;
 
 pub use config::{BoardConfig, BoardTransportConfig};
 pub use dispatch::DispatchStrategy;
@@ -66,7 +63,6 @@ pub use embassy_entry::EmbassyBoardEntry;
 pub use entry::{BoardEntry, DeployOverlay};
 pub use exit::BoardExit;
 pub use init::BoardInit;
-pub use network::NetworkWait;
 pub use print::BoardPrint;
 pub use rtic_entry::RticBoardEntry;
 pub use runtime::{
@@ -81,7 +77,6 @@ pub use tier::{
 // `NodeDispatchRuntime` deprecation alias is removed (its one-release cycle long
 // elapsed; the only consumers were the internal re-exports). Impls use
 // `NodeDispatchRuntime` directly.
-pub use transport::TransportBringup;
 
 /// Super-trait every board impl carries (mirrors
 /// `nros-board-common::board_init::Board`).

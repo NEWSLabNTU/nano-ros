@@ -15,7 +15,7 @@
 //!
 //! ```ignore
 //! use nros_board_zephyr::ZephyrBoard;
-//! use nros_platform::board::NetworkWait;
+//! // `wait_link_up` is an inherent method (phase-206 W4) — no trait import.
 //!
 //! #[no_mangle]
 //! pub extern "C" fn rust_main() {
@@ -61,7 +61,7 @@
 
 use core::ffi::c_void;
 
-use nros_platform::{BoardExit, BoardInit, BoardPrint, NetworkError, NetworkWait};
+use nros_platform::{BoardExit, BoardInit, BoardPrint, NetworkError};
 
 /// Zephyr family board marker.
 ///
@@ -118,7 +118,16 @@ const POLL_INTERVAL_MS: i32 = 100;
 /// Total budget for link-up (covers carrier detection + DHCP lease).
 const LINK_UP_DEADLINE_MS: i32 = 30_000;
 
-impl NetworkWait for ZephyrBoard {
+// phase-206 W4 (issue 1067) — an INHERENT method, not a trait impl.
+//
+// The `NetworkWait` trait had one implementation (this one) and no callers: the
+// `nros::main!` Zephyr arm deliberately calls `nros_platform::zephyr::
+// wait_network` instead, because the functions below are `static inline` Zephyr
+// headers with no link symbol and the native_sim final link fails on them. A
+// trait whose single impl cannot be called from the emitted entry was a
+// contract in name only, so the trait is gone and the method stays — which is
+// how this crate's own README example already used it.
+impl ZephyrBoard {
     /// Block until the default `net_if` reports link-up, polling
     /// every [`POLL_INTERVAL_MS`] for up to [`LINK_UP_DEADLINE_MS`].
     ///

@@ -33,10 +33,12 @@
 //!   ultimately calls `write(2)` — matches the contract documented in
 //!   `nros_platform::BoardPrint`).
 //! - `exit_success` / `exit_failure` call `std::process::exit`.
-//! - There is no `TransportBringup` / `NetworkWait` impl — POSIX
-//!   sockets are open as soon as `init_hardware` returns. The trait
-//!   surface treats both as optional mixins; their absence is the
-//!   whole point.
+//! - There is no device bring-up step — POSIX sockets are open as
+//!   soon as `init_hardware` returns. This used to be phrased as the
+//!   absence of a `TransportBringup` / `NetworkWait` impl; phase-206
+//!   W4 removed those traits (issue 1067), so the absence is now
+//!   universal and this board's point is simply that it needs no
+//!   bring-up at all.
 //!
 //! ## `BoardEntry::run` body
 //!

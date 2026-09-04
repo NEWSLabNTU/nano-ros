@@ -1,7 +1,7 @@
 ---
 id: 1067
 title: "The board device-bringup contract is a doc comment: `TransportBringup` has 0 impls and 0 callers, and the one `NetworkWait` impl is deliberately routed around because it does not link"
-status: open
+status: resolved
 type: bug
 area: platform, build
 severity: medium
@@ -10,6 +10,40 @@ related: [1063, 1064, phase-206, phase-212, phase-349]
 ---
 
 # A boot order that nothing executes
+
+## RESOLVED 2026-09-05 — option B, and the root cause turned out to be structural
+
+The two mixins are removed. `NetworkError` stays (the shared failure vocabulary);
+`ZephyrBoard::wait_link_up` stays as an INHERENT method, which is how its own
+README already called it.
+
+**The reason the documented design never landed is that it could not be built.**
+The book described a family-crate blanket impl:
+
+```rust,ignore
+impl<B: Board + TransportBringup + NetworkWait> BoardEntry for B { fn run … }
+```
+
+That **overlaps** the twelve direct `BoardEntry` impls, which Rust's coherence
+rules forbid — and *"skipped if the board doesn't impl the mixin"* has no
+expression in the language at all. The order was written as if specialization
+existed. So this was never a case of "someone forgot to finish 212.N.2"; N.2's
+impls could not have been wired up as designed.
+
+Option A is therefore not "more work" but a different design (defaulted methods
+on `Board`, called by the three family helpers). It is left recorded rather than
+taken, because it changes RTOS boot paths that need FreeRTOS/ThreadX/NuttX cross
+toolchains to verify, and an unverifiable change to embedded boot order is worse
+than the doc comment it would fix.
+
+The sharpest part of the defect was not in code: `book/src/porting/board-trait.md`
+**taught** a board author to implement `TransportBringup`, with a worked example
+of a method nothing would ever call. That page now documents `BoardEntry::run`
+as the contract, with a note recording why there is no mixin.
+
+Verified: `cargo check -p nros-platform` clean, `nros-board-zephyr` clean
+standalone, `just check fast` 202 gates 0 failed.
+
 
 ## Measured 2026-09-05
 
