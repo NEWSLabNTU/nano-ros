@@ -195,9 +195,27 @@ void *nros_platform_alloc(size_t size) {
          * spinlock is released for the same reason -- never call into
          * anything reentrant while holding the funnel's lock. */
         extern size_t nros_zephyr_heap_capacity(void);
-        printk("nros: HEAP EXHAUSTED: request %zu bytes, arena %zu bytes "
-               "(raise CONFIG_NROS_ZEPHYR_HEAP_SIZE / NROS_ZEPHYR_HEAP_SIZE)\n",
-               size, nros_zephyr_heap_capacity());
+        /* issue 0968 — and WHO asked. The size alone is not actionable: three
+         * zephyr xrce-cpp cells died on a byte-identical 427968-byte request
+         * and nothing in the image, the Kconfig or the generated sizes header
+         * accounted for it, so the only move left was to raise the knob until
+         * it booted -- which buries the question instead of answering it.
+         *
+         * The return address costs nothing at runtime and turns the message
+         * into a lead:
+         *     arm-none-eabi-addr2line -f -e build/zephyr/zephyr.elf <caller>
+         *
+         * `__builtin_return_address(0)` is the immediate caller, which on this
+         * path is the allocator shim rather than the code that wanted the
+         * memory. That is still one frame closer than nothing, and it names
+         * the SHIM so the reader knows which allocator to look behind. */
+        printk("nros: HEAP EXHAUSTED: request %zu bytes, arena %zu bytes, "
+               "caller %p\n"
+               "      (addr2line -f -e zephyr.elf %p to name it; raise "
+               "CONFIG_NROS_ZEPHYR_HEAP_SIZE / NROS_ZEPHYR_HEAP_SIZE only once "
+               "you know what asked)\n",
+               size, nros_zephyr_heap_capacity(),
+               __builtin_return_address(0), __builtin_return_address(0));
     }
     return out;
 }
