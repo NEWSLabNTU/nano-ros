@@ -69,11 +69,43 @@ def names_per_line(lines: list[str], s: int, e: int) -> list[list[str]]:
     return out
 
 
+# The no-op every registry ends on, so the LAST real gate carries a trailing
+# backslash like every other. Without it the final entry is the one line with
+# different syntax, and a gate that sorts last must edit someone else's line to
+# add the backslash — two such PRs conflict with CERTAINTY rather than by bad
+# luck. The "trailing comma" fix, and the one conflict class the
+# one-name-per-line format could not reach.
+SENTINEL = "_gate-list-end"
+
+
 def check(lines: list[str], name: str) -> list[str]:
     s, e = dep_block(lines, name)
     per_line = names_per_line(lines, s, e)
     flat = [n for group in per_line for n in group]
     problems = []
+
+    # The sentinel is REQUIRED and must be last. Checked before it is dropped:
+    # if it drifts into the middle it stops terminating anything, and the last
+    # real gate silently becomes the odd line again.
+    if flat and flat[-1] == SENTINEL:
+        flat = flat[:-1]
+        per_line = per_line[:-1]
+    elif SENTINEL in flat:
+        problems.append(
+            f"  {name}: `{SENTINEL}` is present but not LAST.\n"
+            f"      It exists to give the final real gate a trailing backslash;\n"
+            f"      anywhere else it terminates nothing."
+        )
+        flat = [n for n in flat if n != SENTINEL]
+        per_line = [[n for n in g if n != SENTINEL] for g in per_line]
+        per_line = [g for g in per_line if g]
+    else:
+        problems.append(
+            f"  {name}: missing the `{SENTINEL}` terminator.\n"
+            f"      End the list with it so every real gate's line looks the\n"
+            f"      same; otherwise a gate that sorts last has to edit the\n"
+            f"      previous line too, and two such PRs always conflict."
+        )
 
     crowded = sum(1 for group in per_line if len(group) > 1)
     if crowded:
@@ -106,22 +138,47 @@ def self_test() -> None:
     `check-gate-selftests` requires this on the normal path: a control nobody
     runs decays into a comment.
     """
-    good = ["build: \\", "    alpha \\", "    beta \\", "    gamma", "    @echo hi"]
+    good = ["build: \\", "    alpha \\", "    beta \\", "    gamma \\",
+            f"    {SENTINEL}", "    @echo hi"]
     assert check(good, "build") == [], "selftest: rejected a well-formed list"
 
-    crowded = ["build: \\", "    alpha beta \\", "    gamma", "    @echo hi"]
+    crowded = ["build: \\", "    alpha beta \\", "    gamma \\",
+               f"    {SENTINEL}", "    @echo hi"]
     assert any("more than one gate" in p for p in check(crowded, "build")), (
         "selftest: missed two names sharing a line"
     )
 
-    unsorted = ["build: \\", "    gamma \\", "    alpha", "    @echo hi"]
+    unsorted = ["build: \\", "    gamma \\", "    alpha \\",
+                f"    {SENTINEL}", "    @echo hi"]
     assert any("not sorted" in p for p in check(unsorted, "build")), (
         "selftest: missed an out-of-order list"
     )
 
-    dup = ["build: \\", "    alpha \\", "    alpha", "    @echo hi"]
+    dup = ["build: \\", "    alpha \\", "    alpha \\",
+           f"    {SENTINEL}", "    @echo hi"]
     assert any("listed twice" in p for p in check(dup, "build")), (
         "selftest: missed a duplicate"
+    )
+
+    # The sentinel itself. Absent, the last real gate is the odd line again.
+    no_sentinel = ["build: \\", "    alpha \\", "    beta", "    @echo hi"]
+    assert any("missing the" in p for p in check(no_sentinel, "build")), (
+        "selftest: missed an absent terminator"
+    )
+
+    # Present but not last terminates nothing — and would ALSO read as
+    # out-of-order, so the message has to name the real fault.
+    misplaced = ["build: \\", f"    {SENTINEL} \\", "    alpha \\",
+                 "    beta", "    @echo hi"]
+    probs = check(misplaced, "build")
+    assert any("not LAST" in p for p in probs), (
+        f"selftest: missed a misplaced terminator: {probs}"
+    )
+
+    # And it must not be counted as a gate: with it last, a two-gate list is
+    # sorted, not "alpha, beta, _gate-list-end out of order".
+    assert not any("not sorted" in p for p in check(good, "build")), (
+        "selftest: the sentinel was sorted as if it were a gate"
     )
 
     # The block must end at the first line with no continuation, so a BODY line

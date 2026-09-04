@@ -37,6 +37,7 @@ nros-log-riscv32
 staticlib-symbols
 test-targets
 workspace-all
+workspace-features
 
 # --- need the in-tree CLI built, or build it ---
 cli-fresh

@@ -91,6 +91,23 @@ default: cli-fresh fast build api-parity
 fast:
     @bash scripts/build/run-gates-parallel.sh
 
+# The terminator both gate registries end on — a no-op that exists only to give
+# the LAST real gate a trailing `\`.
+#
+# Without it the final entry is the one line in the list with different syntax,
+# so every gate that sorts last must edit SOMEONE ELSE's line to add the
+# backslash as well as adding its own. Two such pull requests then conflict with
+# certainty rather than by bad luck — the "trailing comma" problem, and the one
+# residual conflict class the one-name-per-line format could not reach.
+#
+# `_`-prefixed on purpose: `run-gates-parallel.sh` filters derived names with
+# `^[a-z][a-z0-9-]*$`, so the sentinel is excluded from the fan-out without that
+# script needing to know it exists. `check-gate-lists` DOES know — it requires
+# the sentinel to be last and excludes it from the sort, which is what keeps
+# this from being a name someone quietly moves.
+[private]
+_gate-list-end:
+
 # The GATE LIST, and the serial runner — phase-395 W11.
 #
 # `fast` (below) fans these out; this recipe both DECLARES them and runs
@@ -308,7 +325,8 @@ fast-serial: \
     zenohd-resolution-parity \
     zenohd-router-skips \
     zenohd-spawn-sites \
-    zephyr-knob-agreement
+    zephyr-knob-agreement \
+    _gate-list-end
     # `_check-skip-reset` is shared skip-ledger infrastructure at the ROOT
     # (`run-gates-parallel.sh` calls it too), not a gate — and a module cannot
     # depend on a root recipe, so it is called rather than depended on. It must
@@ -382,7 +400,8 @@ build-serial: \
     staticlib-symbols \
     test-targets \
     workspace-all \
-    workspace-features
+    workspace-features \
+    _gate-list-end
     # `native::check`, which was a DEPENDENCY at the root. A module cannot name
     # another module's recipe — from in here `native::` would mean a submodule
     # of `check` — so it becomes an explicit call. Same constraint the sibling
