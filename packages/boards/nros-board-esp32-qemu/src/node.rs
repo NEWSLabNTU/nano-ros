@@ -361,4 +361,19 @@ pub(crate) fn register_log_writer() {
     // logger installed and silently drops every record. esp-println's logger
     // writes straight to the same console as the platform writer above.
     esp_println::logger::init_logger(log::LevelFilter::Info);
+
+    // Issue 1048 — install the nros_log sink, which is what actually delivers
+    // on this board.
+    //
+    // `init_logger` above cannot work here: `log::set_logger` is
+    // `#[cfg(target_has_atomic = "ptr")]` and riscv32imc has no atomic
+    // pointers, so the `log` facade can never hold a logger and drops every
+    // record. It is left in place for boards that DO have atomics.
+    //
+    // Without this call `nros_log` does not print either — `dispatch_to_sinks`
+    // finds a null sink list and HOLDS each record in the early buffer for a
+    // board that never speaks. `PlatformSink` routes to
+    // `nros_platform_log_write`, which is the fn-pointer writer registered
+    // immediately above: no atomics, and the same console.
+    nros_log::init(&[&nros_platform_cffi::log::PlatformSink]);
 }

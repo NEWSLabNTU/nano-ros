@@ -48,6 +48,16 @@ pub use esp_bootloader_esp_idf;
 // Re-export zpico-platform for direct access to system primitives
 pub use nros_platform_esp32_qemu;
 
+// Issue 1048 — re-exported so an example can log at all on this board.
+// `log::set_logger` is `#[cfg(target_has_atomic = "ptr")]` and riscv32imc has
+// no atomic pointers, so the `log` facade can never have a logger installed
+// here and drops every record. `nros_log` emits through
+// `nros_platform_log_write`, which is the fn-pointer writer `register_log_writer`
+// installs above — no atomics, works today. Re-exported rather than made a
+// direct dep of each example because examples are standalone copy-out projects
+// (RFC-0026) and already depend on this board.
+pub use nros_log;
+
 // Re-export main types
 pub use config::Config;
 pub use node::{init_hardware, run_bare};
