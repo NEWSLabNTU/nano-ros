@@ -323,6 +323,58 @@ processes from manual debugging, which held the interface and produced the same
 after killing every stray. A red you caused reads exactly like a red that was
 already there — the per-cell `heap=` / `zeth=` counts above are recorded so the
 next reader can tell them apart without taking anyone's word.
+## The esp32 cluster, RUN for the first time 2026-09-04 (5 of the 12)
+
+These five could not run at all until [issue 1025](archived/1025-*) was fixed —
+no ESP32 QEMU flash image could be packed. With that fixed and every image
+rebuilt (talker, listener and ws-entry all stamped within minutes of the run, so
+no stale-artifact confound):
+
+| test | verdict |
+| --- | --- |
+| `logging_smoke_esp32_qemu_emits_every_severity` | **PASS** |
+| `test_esp32_talker_listener_e2e` | FAIL |
+| `test_esp32_to_native` | FAIL |
+| `test_native_to_esp32` | FAIL |
+| `test_esp32_workspace_entry_e2e` | FAIL |
+
+**One of the twelve is closed by 1025 alone.** `logging_smoke` is the test whose
+image `just esp32 build-logging-smoke` produces, and it passes now that the
+image exists. That is the whole of what 1025 bought here, and it is worth
+saying plainly: 1025 was NECESSARY for all five and SUFFICIENT for one.
+
+### The four that still fail share a shape, not yet a cause
+
+Every image BOOTS and brings up its network. From the listener's own output:
+
+```
+nros ESP32-C3 QEMU Platform
+Initializing OpenETH...   MAC: 02:00:00:00:00:01
+IP: 10.0.2.51/24  Gateway: 10.0.2.2
+Ethernet ready.
+Application setup complete — entering spin loop.
+```
+
+…and then it never prints `Subscriber created for topic:`. So **application
+setup reports success and the entity is not there**, with no error on the way.
+The stage each test dies at differs:
+
+| test | last thing the image did |
+| --- | --- |
+| `talker_listener` | setup complete; no `Subscriber created for topic:` |
+| `esp32_to_native` | no `Publishing:` within 60 s |
+| `native_to_esp32` | listener `failed to start` |
+| `workspace_entry` | never reaches `Application setup complete` |
+
+The first three complete setup and never become functional; the fourth does not
+finish setup. Whether that is one cause presenting at different stages or more
+than one is NOT established, and this section stops there.
+
+**Do not read the shape as the cause.** The obvious guess — the zenoh session to
+the router fails, as it visibly does in the rtic cell — is a guess: these images
+print no session error, whereas the rtic firmware prints two. Confirming it
+means instrumenting the ESP32 side, not inferring from a sibling.
+
 ## The esp32 cluster, NARROWED (2026-09-04) — the entity exists; its marker does not print
 
 Four of the five still fail after issue 1025 made their images buildable. This
