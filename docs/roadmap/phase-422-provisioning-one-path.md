@@ -303,7 +303,27 @@ dispatcher setup spelling.
 to an index board (or to a documented alias), and every `deploy=` resolves to a
 scope.
 
-### W8 — refuse a wrong-role dependency
+### W8 — refuse a wrong-role dependency — DONE (scoped to `infra`)
+
+**Landed, split in two, and the cheaper half mattered more.** The unresolved-dep
+error was itself teaching the defect: it told users to add a `[prereq.*]` key
+with no mention of role, so a build failing on `<depend>qemu-system-arm</depend>`
+was instructed to make it resolve. Fixed first.
+
+The refusal covers `role = infra` only. `workspace` and `vendor` are NOT
+refused — a package building against a vendored source tree naming it is
+arguable, and refusing them risks more than it buys.
+
+No warn-first window for `infra`, deliberately: MEASURED, zero packages in this
+tree name a non-`package` key, so there is nothing in-tree to migrate and a
+window would only delay the fix while the misleading message kept shipping. A
+window still makes sense for `workspace`/`vendor` if they are ever refused.
+
+`NROS_ALLOW_INFRA_DEPS=1` is its own hatch, not a reuse of
+`NROS_ALLOW_UNRESOLVED_DEPS`: a wrong-role dep resolves and we decline it, so
+overloading one variable would make silencing one silence the other.
+
+Original text:
 
 Deferred by decision, not oversight. `<depend>qemu-system-arm</depend>` resolves
 silently today; `nros setup --workspace` reports it as a category error without
