@@ -225,6 +225,28 @@ class Node {
         return nros_cpp_node_get_namespace(&handle_);
     }
 
+    /// RFC-0088 D4 — the serialization format this node's backend speaks
+    /// (`"cdr"`, `"uorb"`), as its cross-image identity string.
+    ///
+    /// Per SESSION, not per image. A node created with an explicit
+    /// `rmw` option sits on its own session, so an image linking two
+    /// backends gets two answers here — the case where a compile-time
+    /// constant has none.
+    ///
+    /// Returns `const char*`, deliberately, and never `std::string` or
+    /// `std::string_view`: this header must compile against Zephyr's
+    /// minimal libcpp, where `<string>` does not exist and `<string_view>`
+    /// is not reliably there either (the `NROS_CPP_STD` guard exists for
+    /// exactly that). The pointer is static storage owned by the backend;
+    /// callers must NOT free it.
+    ///
+    /// Returns `nullptr` on an uninitialized node, or when the backend
+    /// does not declare a format. `nullptr` does not mean `"cdr"`.
+    const char* serialization_format() const {
+        if (!initialized_) return nullptr;
+        return nros_cpp_node_get_serialization_format(&handle_);
+    }
+
     /// Phase 88.12 — return the `nros_log::Logger` keyed on this
     /// node's name. The returned opaque handle is passed to the
     /// `NROS_LOG_*` macros in `<nros/log.hpp>`. Lifetime is

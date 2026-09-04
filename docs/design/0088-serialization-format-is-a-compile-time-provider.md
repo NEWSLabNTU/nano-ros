@@ -15,9 +15,11 @@ superseded-by: null
 
 nano-ros keeps ROS 2's semantics — **one backend, one encoding, not chosen by the
 user per topic** — and changes the mechanism, because ROS 2's mechanism exists to
-serve `dlopen` and we do not `dlopen`. A serialization format becomes a **type**
-resolved at compile time: a message declares one, a backend declares one, and a
-mismatch is a compile error rather than a runtime string comparison. The format's
+serve `dlopen` and we do not `dlopen`. A serialization format becomes a
+**compile-time constant**: a message declares one, a backend declares one, and a
+mismatch is a compile error rather than a runtime string comparison. (The first
+implementation made it an associated type; D1 records why a defaulted const on
+the universal message trait is the shape that actually covers every backend.) The format's
 canonical representation is a `u8` discriminant assigned per image; the string
 name survives only where an identity must cross image boundaries — the bridge
 config, tooling output, and the parity vtable slot.
@@ -117,30 +119,58 @@ pub struct Cdr;
 pub struct Uorb;
 ```
 
-Codegen gives each message its format; each backend declares its own:
+The message's format is a **defaulted const on the universal message trait**,
+and the backend's is a const on `Session`:
 
 ```rust
-impl Message for PoseStamped { type Format = Cdr; }
-impl Backend for UorbBackend { type Format = Uorb; }
+// nros_core::RosMessage
+const SERIALIZATION_FORMAT_ID: SerializationFormatId = SerializationFormatId::Cdr;
+// nros_rmw::Session
+const SERIALIZATION_FORMAT: &'static str = "cdr";
+const SERIALIZATION_FORMAT_ID: SerializationFormatId = SerializationFormatId::Cdr;
 ```
 
-The check becomes a bound rather than a branch:
+**Three implementation findings amended this section after W1 measured them
+(2026-09-04); the shape survived, the spelling did not.**
+
+*A bound is impossible.* `NodeHandle` is not generic over the backend — it holds
+`&mut session::ConcreteSession`, a type alias resolved by cargo feature — so
+there is no `B` to bind `M::Format` against. The check is an inline `const {}`
+in the generic entity creators, comparing the message's const against
+`session::IMAGE_SERIALIZATION_FORMAT_ID`. Same guarantee, no generics:
 
 ```rust
-impl<B: Backend> Node<B> {
-    pub fn create_publisher<M>(&mut self, topic: &str) -> Result<Publisher<M>, NodeError>
-    where M: Message<Format = B::Format>;
-
-    pub fn create_publisher_raw<F: SerializationFormat>(&mut self, …)
-        -> Result<RawPublisher<F>, NodeError>
-    where F: SameAs<B::Format>;
+const {
+    assert!(M::SERIALIZATION_FORMAT_ID.as_u8() == IMAGE_SERIALIZATION_FORMAT_ID.as_u8(),
+            "message serialization format does not match the linked backend");
 }
 ```
 
+*It must be a const, not an associated type, and it must live on `RosMessage`.*
+An associated type on `nros_serdes::schema::Message` was implemented first and
+reverted: `MessageForRmw` requires a schema **only** under
+`cfg(rmw_needs_type_descriptors)` (Cyclone), so that check was absent under
+zenoh, XRCE — and under uORB, the one backend whose format differs and the
+reason the check exists. `RosMessage` is universal. Rust has no stable
+associated-type defaults but does have const defaults, so a defaulted const also
+costs the 142 existing implementors nothing; phase-380 W4 had already tried
+tightening the message contract to serve a build assertion and reverted it when
+`examples/native/rust/custom-msg` stopped compiling.
+
+*The raw path cannot carry a defaulted type parameter.* `create_publisher_raw<F
+= Cdr>` is rejected by rustc (`invalid_type_param_default`, deny-by-default), and
+a non-defaulted `F` breaks every existing call site. So the raw constructors keep
+their signatures and a caller states its claim explicitly with
+`assert_raw_format::<F>()`.
+
+*It is a `cargo build` error, not a `cargo check` one.* An inline `const {}` in a
+generic function is evaluated by the monomorphisation collector, which runs only
+during codegen. `just ci gate` catches it because `test-unit` builds.
+
 There is **no runtime per-sample cost and no runtime constructor variant**. An
-earlier sketch of this design proposed `create_publisher_raw_in_format(…, format:
-&str)` checked at entity creation; it is rejected here, because a compile-time
-fact does not need a runtime constructor.
+earlier sketch proposed `create_publisher_raw_in_format(…, format: &str)`
+checked at entity creation; it is rejected, because a compile-time fact does not
+need a runtime constructor.
 
 ### D2 — The `u8` is image-local; the string is the cross-image identity
 
@@ -306,6 +336,14 @@ format is decided at compile time and the description never leaves Rust.
 
 ## Changelog
 
+- 2026-09-04 — D1 amended from implementation (phase-421 W1–W3): the message's
+  format is a **defaulted const on `nros_core::RosMessage`**, not an associated
+  type on `nros_serdes::schema::Message` — the schema is required only under
+  Cyclone, so keying on it left the check absent under the very backend it
+  exists for. The check is an inline `const {}` in the entity creators rather
+  than a where-clause bound, because `NodeHandle` is not generic over the
+  backend. Recorded that the raw path cannot take a defaulted type parameter,
+  and that the failure is a `build` error rather than a `check` error.
 - 2026-09-04 — initial draft. Records the ROS 2 study (one middleware one
   encoding; the identifier string as a `dlopen` key; neither typesupport ABI
   stable), decides format-as-a-type with an image-local discriminant, makes the

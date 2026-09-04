@@ -2649,6 +2649,10 @@ impl<'s> Executor<'s> {
         topic_name: &str,
         qos: QoSProfile,
     ) -> Result<crate::executor::handles::EmbeddedPublisher<M>, NodeError> {
+        // RFC-0088 / phase-421 W1 — the message's declared format must be the
+        // one the linked backend speaks. Universal: the const lives on
+        // `RosMessage`, which `MessageForRmw` requires under every backend.
+        crate::format_check::assert_message_format::<M>();
         // Phase 212.K.7.6.b — register `M`'s cyclonedds descriptor before
         // creating the underlying publisher handle. No-op for other RMWs.
         crate::rmw_type_registry::register_type::<M>()?;
@@ -3919,6 +3923,10 @@ impl<'s> Executor<'s> {
     {
         type Entry<M, F> = SubBufferedEntry<M, F>;
 
+        // RFC-0088 / phase-421 W1 — the message's declared format must be the
+        // one the linked backend speaks. Universal: the const lives on
+        // `RosMessage`, which `MessageForRmw` requires under every backend.
+        crate::format_check::assert_message_format::<M>();
         // Phase 212.K.7.6.b — see `create_publisher_on`.
         crate::rmw_type_registry::register_type::<M>()?;
 

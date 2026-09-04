@@ -5344,6 +5344,34 @@ NROS_PUBLIC const char *nros_node_get_name(const struct nros_node_t *node);
 NROS_PUBLIC const char *nros_node_get_namespace(const struct nros_node_t *node);
 
 /**
+ * RFC-0088 D4 / phase-421 W2 — the serialization format the backend behind
+ * THIS node speaks, as its cross-image identity string (`"cdr"`, `"uorb"`).
+ *
+ * Resolved through the node's own session, not from an image-wide constant.
+ * That distinction is the whole point: a single-backend image could answer
+ * from the generated `NROS_SERIALIZATION_FORMAT` macro, but a bridge image
+ * links two backends and has no single answer — its two nodes sit on two
+ * sessions and this function reports each one's format separately. The macro
+ * is the fast path for the common case; this is the correct one always.
+ *
+ * # Parameters
+ * * `node` - Pointer to an initialized node
+ *
+ * # Returns
+ * * Pointer to a static, null-terminated format name; the caller must not
+ *   free it and it stays valid for the life of the image.
+ * * NULL if `node` is NULL / uninitialised, if its session cannot be
+ *   resolved, or if the backend does not declare a format. NULL is not a
+ *   synonym for `"cdr"` — a backend that has not said what it speaks has not
+ *   said CDR, and guessing on its behalf is exactly the fallback the vtable's
+ *   sibling identity slot spent two phases wrongly promising.
+ *
+ * # Safety
+ * * `node` must be a valid pointer
+ */
+NROS_PUBLIC const char *nros_node_get_serialization_format(const struct nros_node_t *node);
+
+/**
  * Phase 88.12 — return the `nros::Logger` keyed on this node's name.
  *
  * The returned handle is opaque from the C side; pass it to

@@ -1723,6 +1723,56 @@ pub unsafe extern "C" fn nros_cpp_node_get_namespace(
     unsafe { (*node).namespace.as_ptr() as *const c_char }
 }
 
+/// RFC-0088 D4 / phase-421 W2 — the serialization format the backend behind
+/// THIS node speaks, as its cross-image identity string (`"cdr"`, `"uorb"`).
+///
+/// Resolved through `Executor::node_session_mut(node_id)`, i.e. the same
+/// session a publisher created on this node would be built against. A node
+/// created with `nros_cpp_node_init_ex(..., rmw = "xrce")` sits on its own
+/// session in the executor's table, so an image with two such nodes gets two
+/// answers from this one function — which is the case a compile-time constant
+/// (`nros_node::IMAGE_SERIALIZATION_FORMAT`, the generated
+/// `NROS_SERIALIZATION_FORMAT` macro) cannot describe at all.
+///
+/// Returns a static, null-terminated string the caller must not free, or NULL
+/// if `node` is NULL, its executor handle is not an nros-cpp context, its
+/// session cannot be resolved, or the backend does not declare a format. NULL
+/// is not a synonym for `"cdr"`.
+///
+/// # Safety
+/// `node` must be a valid pointer to an initialized `nros_cpp_node_t`, or NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_node_get_serialization_format(
+    node: *const nros_cpp_node_t,
+) -> *const c_char {
+    if node.is_null() {
+        return core::ptr::null();
+    }
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        let node = unsafe { &*node };
+        let Some(ctx) = (unsafe { cpp_ctx_checked(node.executor) }) else {
+            return core::ptr::null();
+        };
+        // No NodeId (a node handle built before registration, or one whose
+        // record is gone) means no per-node session to ask, and the primary
+        // session is a GUESS in exactly the image this function exists for.
+        let Some(node_id) = node_id_opt(node) else {
+            return core::ptr::null();
+        };
+        match ctx.executor.node_session_mut(node_id) {
+            Some(session) => session.serialization_format_cstr(),
+            None => core::ptr::null(),
+        }
+    }
+
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        core::ptr::null()
+    }
+}
+
 /// Phase 88.12 — return the `nros_log::Logger` keyed on this node's
 /// name. Opaque handle on the C++ side; pass to `NROS_LOG_*` macros.
 ///

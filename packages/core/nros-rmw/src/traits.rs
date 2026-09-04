@@ -1276,6 +1276,39 @@ pub enum SessionMode {
 ///    publish / receive in parallel.
 /// 4. `close` once at shutdown. Entities must be dropped first.
 pub trait Session {
+    /// RFC-0088 — the serialization format this backend speaks, as ROS 2's
+    /// `rmw_get_serialization_format()` reports it ("One middleware can only
+    /// have one encoding").
+    ///
+    /// Defaulted to CDR because every backend in tree except uORB speaks it,
+    /// and a backend that speaks something else says so by overriding these
+    /// two. They travel together: `SERIALIZATION_FORMAT` is the identity that
+    /// crosses images (bridge config, tooling, the vtable slot) and
+    /// `SERIALIZATION_FORMAT_ID` is the image-local discriminant used for the
+    /// one-byte comparison a bridge makes at construction.
+    const SERIALIZATION_FORMAT: &'static str =
+        nros_serdes::format::SerializationFormatId::Cdr.as_str();
+
+    /// Image-local discriminant for [`Self::SERIALIZATION_FORMAT`]. Never
+    /// persisted, never compared across images — see `nros_serdes::format`.
+    const SERIALIZATION_FORMAT_ID: nros_serdes::format::SerializationFormatId =
+        nros_serdes::format::SerializationFormatId::Cdr;
+
+    /// RFC-0088 — this session's serialization format, as ROS 2's
+    /// `rmw_get_serialization_format()` reports it.
+    ///
+    /// **Per session, not per process.** ROS 2's function takes no handle
+    /// because one process links one middleware; an `Executor::open_multi`
+    /// image links two, so the answer must be asked of the session.
+    ///
+    /// The default answers from [`Self::SERIALIZATION_FORMAT`], which is right
+    /// for any backend whose format is a compile-time fact. A session that
+    /// dispatches to a backend chosen at run time — the C-ABI adapter, whose
+    /// vtable carries the answer — overrides this to ask the backend.
+    fn serialization_format(&self) -> &'static str {
+        Self::SERIALIZATION_FORMAT
+    }
+
     /// Error type for this session
     type Error;
     /// Publisher handle type

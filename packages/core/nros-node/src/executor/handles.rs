@@ -670,6 +670,12 @@ impl<const TX_BUF: usize> TxArena<TX_BUF> {
 }
 
 impl<const TX_BUF: usize> EmbeddedRawPublisher<TX_BUF> {
+    /// RFC-0088 — the serialization format this publisher expects its raw
+    /// bytes to already be in. Counterpart to [`RawSubscription::format`].
+    pub const fn format(&self) -> nros_serdes::format::SerializationFormatId {
+        crate::session::IMAGE_SERIALIZATION_FORMAT_ID
+    }
+
     /// Construct an [`EmbeddedRawPublisher`] from a backend-allocated
     /// `RmwPublisher` handle. Public so external extension crates
     /// (e.g. `nros-px4` for typed uORB wrappers) can wrap a handle
@@ -1328,6 +1334,17 @@ impl<const RX_BUF: usize> Drop for RawSubscription<RX_BUF> {
 }
 
 impl<const RX_BUF: usize> RawSubscription<RX_BUF> {
+    /// RFC-0088 — the serialization format of the bytes this subscription
+    /// yields, as an image-local discriminant.
+    ///
+    /// A single-backend image knows this at compile time; the accessor exists
+    /// for the case that does not, a bridge image built with
+    /// `Executor::open_multi`, where two sessions speak two formats and the
+    /// answer is per session rather than per image.
+    pub const fn format(&self) -> nros_serdes::format::SerializationFormatId {
+        crate::session::IMAGE_SERIALIZATION_FORMAT_ID
+    }
+
     /// Construct a [`RawSubscription`] from a backend-allocated
     /// `RmwSubscriber` handle. Public so external extension crates
     /// (e.g. `nros-px4` for typed uORB wrappers) can wrap a handle

@@ -903,6 +903,28 @@ const char *nros_cpp_node_get_name(const struct nros_cpp_node_t *node);
 const char *nros_cpp_node_get_namespace(const struct nros_cpp_node_t *node);
 
 /**
+ * RFC-0088 D4 / phase-421 W2 — the serialization format the backend behind
+ * THIS node speaks, as its cross-image identity string (`"cdr"`, `"uorb"`).
+ *
+ * Resolved through `Executor::node_session_mut(node_id)`, i.e. the same
+ * session a publisher created on this node would be built against. A node
+ * created with `nros_cpp_node_init_ex(..., rmw = "xrce")` sits on its own
+ * session in the executor's table, so an image with two such nodes gets two
+ * answers from this one function — which is the case a compile-time constant
+ * (`nros_node::IMAGE_SERIALIZATION_FORMAT`, the generated
+ * `NROS_SERIALIZATION_FORMAT` macro) cannot describe at all.
+ *
+ * Returns a static, null-terminated string the caller must not free, or NULL
+ * if `node` is NULL, its executor handle is not an nros-cpp context, its
+ * session cannot be resolved, or the backend does not declare a format. NULL
+ * is not a synonym for `"cdr"`.
+ *
+ * # Safety
+ * `node` must be a valid pointer to an initialized `nros_cpp_node_t`, or NULL.
+ */
+const char *nros_cpp_node_get_serialization_format(const struct nros_cpp_node_t *node);
+
+/**
  * Phase 88.12 — return the `nros_log::Logger` keyed on this node's
  * name. Opaque handle on the C++ side; pass to `NROS_LOG_*` macros.
  *

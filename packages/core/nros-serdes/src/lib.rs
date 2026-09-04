@@ -35,6 +35,7 @@ extern crate alloc;
 
 pub mod cdr;
 pub mod error;
+pub mod format;
 pub mod primitives;
 pub mod schema;
 pub mod size;

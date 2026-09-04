@@ -33,6 +33,19 @@ namespace {
  * slot stays NULL deliberately — see the note at the vtable's identity slots. */
 constexpr const char *kImplementationIdentifier = "cyclonedds";
 
+/* RFC-0088 D4 / phase-421 W2 — the wire encoding, as the cross-image identity
+ * STRING (the `u8` discriminant beside it is assigned per image and means
+ * nothing outside one).
+ *
+ * Cyclone is a DDS implementation and its wire IS OMG CDR with the ROS 2
+ * encapsulation header, which is the same answer `rmw_cyclonedds_cpp` gives
+ * upstream — so an image bridging this backend to a host ROS 2 graph is
+ * format-compatible, and the bridge can now CHECK that instead of assuming it.
+ * Deliberately not folded in with `kImplementationIdentifier`: the backend's
+ * name and the backend's encoding are different facts that happen to be
+ * one-to-one today. */
+static const char *cyclone_get_serialization_format(void) { return "cdr"; }
+
 /* issue 0800 — `set_log_severity` had a slot, a runtime dispatcher and stub
  * tests since phase-376 W5, and no backend body: every image answered
  * UNSUPPORTED while Cyclone has had `dds_set_log_mask` all along. That is the
@@ -350,7 +363,7 @@ const nros_rmw_vtable_t kVtable = {
      * the header's field order, so a slot inserted upstream cannot silently
      * shift the ones below it. */
     /*get_implementation_identifier*/ nullptr,
-    /*get_serialization_format*/ nullptr,
+    /*get_serialization_format*/ cyclone_get_serialization_format,
     /*feature_supported*/ nullptr,
     /*get_gid_for_publisher*/ cyclone_get_gid_for_publisher,
     /*publisher_count_matched_subscriptions*/ cyclone_publisher_count_matched_subscriptions,

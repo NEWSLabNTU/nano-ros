@@ -1068,3 +1068,114 @@ fn rust_backend_adapter_rejects_null_pointers() {
 fn _exports_sanity_check() {
     let _ = NROS_RMW_RET_UNSUPPORTED;
 }
+
+// ----------------------------------------------------------------------------
+// RFC-0088 D4 / phase-421 W2 — the format slot is monomorphised per backend.
+// ----------------------------------------------------------------------------
+
+/// A Rust backend that speaks something other than CDR, like uORB does.
+///
+/// Reuses the `Noop*` handle types: nothing here exercises the data plane, only
+/// which STRING `RustBackendAdapter::<R>::VTABLE` bakes into the format slot.
+#[derive(Default)]
+struct UorbLikeRmw;
+
+struct UorbLikeSession;
+
+impl Rmw for UorbLikeRmw {
+    type Session = UorbLikeSession;
+    type Error = TransportError;
+    fn open(self, _config: &RmwConfig) -> Result<Self::Session, Self::Error> {
+        Ok(UorbLikeSession)
+    }
+}
+
+impl Session for UorbLikeSession {
+    // A real backend overrides BOTH consts together — the string is the
+    // cross-image identity, the id is the image-local discriminant (RFC-0088
+    // D2). Only the string is overridden here, because the vtable slot under
+    // test carries only the string and `nros-rmw-cffi` does not depend on
+    // `nros-serdes`, so this test crate cannot name `SerializationFormatId`.
+    // Nothing in tree is shaped like this fixture: uORB, the one backend that
+    // answers something other than `"cdr"`, is C++ and has no Rust `Session`.
+    const SERIALIZATION_FORMAT: &'static str = "uorb";
+
+    type Error = TransportError;
+    type PublisherHandle = NoopPublisher;
+    type SubscriptionHandle = NoopSubscriber;
+    type ServiceHandle = NoopServer;
+    type ClientHandle = NoopClient;
+
+    fn create_publisher(
+        &mut self,
+        _topic: &TopicInfo,
+        _qos: QoSProfile,
+    ) -> Result<Self::PublisherHandle, Self::Error> {
+        Ok(NoopPublisher)
+    }
+    fn create_subscription(
+        &mut self,
+        _topic: &TopicInfo,
+        _qos: QoSProfile,
+    ) -> Result<Self::SubscriptionHandle, Self::Error> {
+        Ok(NoopSubscriber)
+    }
+    fn create_service(
+        &mut self,
+        _service: &ServiceInfo,
+        _qos: QoSProfile,
+    ) -> Result<Self::ServiceHandle, Self::Error> {
+        Ok(NoopServer)
+    }
+    fn create_client(
+        &mut self,
+        _service: &ServiceInfo,
+        _qos: QoSProfile,
+    ) -> Result<Self::ClientHandle, Self::Error> {
+        Ok(NoopClient)
+    }
+    fn close(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+fn format_of(vt: &nros_rmw_cffi::NrosRmwVtable) -> &'static str {
+    let f = vt
+        .get_serialization_format
+        .expect("adapter must fill get_serialization_format (RFC-0088 D4)");
+    let ptr = unsafe { f() };
+    assert!(!ptr.is_null());
+    unsafe { core::ffi::CStr::from_ptr(ptr) }
+        .to_str()
+        .expect("format name is UTF-8")
+}
+
+/// The slot is generated from `R::Session::SERIALIZATION_FORMAT`, so two
+/// backends that declare different formats get different answers from the same
+/// adapter — the property a bridge image depends on, and the one a global
+/// constant cannot provide.
+#[test]
+fn adapter_bakes_each_backends_own_format() {
+    let cdr = format_of(&RustBackendAdapter::<NoopRmw>::VTABLE);
+    let uorb = format_of(&RustBackendAdapter::<UorbLikeRmw>::VTABLE);
+
+    // `NoopSession` overrides neither const, so it gets the `Session` trait
+    // default. That default being CDR is the reason only uORB needs an
+    // override in tree.
+    assert_eq!(cdr, "cdr");
+    assert_eq!(uorb, "uorb");
+    assert_ne!(cdr, uorb);
+}
+
+/// The slot's `const char *` must outlive the call. The adapter promotes a
+/// per-`R` const array to static storage precisely so that is true; a body that
+/// built the string per call would return a dangling pointer here.
+#[test]
+fn the_adapters_format_string_is_static() {
+    let vt = &RustBackendAdapter::<UorbLikeRmw>::VTABLE;
+    let f = vt.get_serialization_format.expect("vtable slot");
+    assert_eq!(unsafe { f() }, unsafe { f() });
+}

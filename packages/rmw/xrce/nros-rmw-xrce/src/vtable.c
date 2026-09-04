@@ -13,6 +13,15 @@
 
 #include "internal.h"
 
+/* RFC-0088 D4 / phase-421 W2 — the wire encoding, as the cross-image identity
+ * STRING (the `u8` discriminant beside it is image-local and never crosses).
+ *
+ * micro-XRCE-DDS-Client serialises with micro-CDR, whose output is OMG CDR:
+ * the Agent forwards those bytes to a DDS domain unchanged, so an XRCE image
+ * and a host ROS 2 node speak the same encoding. `"cdr"` is therefore a fact
+ * about the wire, not about which library wrote it. */
+static const char *xrce_get_serialization_format(void) { return "cdr"; }
+
 /* Phase 108 event hooks left NULL until a follow-up phase wires
  * micro-XRCE-DDS-Client status callbacks through to the runtime's
  * status-event surface. */
@@ -97,6 +106,9 @@ static const nros_rmw_vtable_t kVtable = {
      * borrows the bytes instead of copying into an arena buffer. */
     .subscription_supports_in_place = xrce_subscription_supports_in_place,
     .process_raw_in_place           = xrce_subscription_process_raw_in_place,
+
+    /* RFC-0088 D4 — the backend's wire encoding, per session. */
+    .get_serialization_format   = xrce_get_serialization_format,
 };
 
 rmw_ret_t nros_rmw_xrce_register(void) {
