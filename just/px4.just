@@ -166,6 +166,30 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     ROOT="$(pwd)"
     PX4_DIR="${PX4_AUTOPILOT_DIR:-$ROOT/third-party/px4/PX4-Autopilot}"
     EXT_DIR="$ROOT/examples/px4/cpp/bridge"
+    # phase-325 W3.3 — the OUTWARD backend, from the ENVIRONMENT and not from a
+    # recipe parameter. `just` has no named-argument syntax: `just px4
+    # build-bridge-example rmw=zenoh` binds the string "rmw=zenoh" to the FIRST
+    # positional (`topics`), and the run dies with
+    #     Error: px4 message `rmw=zenoh` not found under .../msg
+    # which names the message and not the mistake. Measured, not assumed -- and
+    # the same flaw made this file's own README example
+    # (`build-bridge-example topics=vehicle_status`) generate a message called
+    # "topics=vehicle_status" for as long as it has existed.
+    #
+    # The repo is INCONSISTENT here and it is worth knowing which way: archived
+    # phase-410 states the rule plainly ("`just ci matrix depth=build` does NOT
+    # work. `just` does not parse `name=value`"), while `lane=` DOES work --
+    # because `scripts/build/fixture-lane.sh:74` strips the prefix by hand
+    # (`lane="${lane#lane=}"`). So `name=value` is an accommodation each recipe
+    # makes or does not; this one does not, and says so rather than adding a
+    # second idiom nobody can predict from the outside.
+    RMW="${NROS_PX4_BRIDGE_RMW:-zenoh}"
+    case "$RMW" in
+        zenoh|xrce|cyclonedds) ;;
+        *) echo "ERROR: NROS_PX4_BRIDGE_RMW='$RMW' is not a networked backend." >&2
+           echo "       Use one of: zenoh xrce cyclonedds" >&2
+           exit 1 ;;
+    esac
     GEN="$ROOT/build/px4-bridge/generated"
     if [ ! -d "$PX4_DIR/Tools" ]; then
         echo "ERROR: PX4-Autopilot tree not found at $PX4_DIR"
@@ -178,13 +202,26 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
         --ros-edition '{{edition}}' -o "$GEN"
 
     echo "[2/4] building the generated-message FFI staticlib"
+    # `--target-dir` is not cosmetic: without it cargo writes `ffi/target/`, and
+    # a bare `target/` under `examples/**` is exactly what
+    # `check-example-leaf-target-dirs` fails on (phase-340 P2 residue, issue
+    # 0200). That gate is BUILDLESS, so it never saw this — the dir only exists
+    # after someone runs this recipe, and then `just check fast` goes red in a
+    # tree that merely built what the docs told it to.
+    #
+    # NOTE the ordering below: `check-build-profile-literals` looks only 3 LINES
+    # UP from the `cargo` line for its marker, and the `\` continuation means the
+    # marker cannot be appended inline either. Writing the paragraph above
+    # BETWEEN the marker and the command pushed it out of range and turned the
+    # lane red. Explanations go above the marker, never between it and the call.
     # profile-literal-ok: symbol fixture: the archive PATH is handed to PX4's
     # make via NROS_PX4_BRIDGE_FFI_ARCHIVE, and PX4 knows nothing about nano-ros
     # profiles — build and path must name the same dir, so both stay pinned.
     NROS_PX4_BRIDGE_GEN="$GEN" cargo build --release \
-        --manifest-path "$EXT_DIR/ffi/Cargo.toml"
+        --manifest-path "$EXT_DIR/ffi/Cargo.toml" \
+        --target-dir "$EXT_DIR/ffi/target-bridge-ffi"
 
-    echo "[3/4] building the nano-ros archives (outward backend baked in here)"
+    echo "[3/4] building the nano-ros archives (outward backend $RMW baked in here)"
     # `bridge` is what puts nros_init_multi / nros_pubsub_bridge_* (the ABI
     # nros::MultiExecutor calls) into libnros_cpp.a — issue 0436. Without it the
     # module compiles and fails to LINK.
@@ -195,8 +232,17 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     # Linked into the same PX4 SITL image as the archive above; one profile for
     # the whole link. Marker is INLINE because check::build-profile-literals.sh
     # only looks 3 lines up, and this comment block is longer than that.
+    # phase-325 W3.3 — `rmw=` picks the OUTWARD backend, and it has to reach two
+    # places that cannot see each other: this cargo feature (which compiles the
+    # backend INTO libnros_cpp.a) and the module's cmake (which registers it and
+    # names it in the session spec). One value, exported below, drives both.
+    # The archive-vs-BACKENDS half is guarded (an llvm-nm precheck in
+    # nros_px4_add_module names the exact cargo command). The
+    # BACKENDS-vs-session-NAME half is not: asking for a backend by a name
+    # nothing registered opens nothing and reports a transport failure, which
+    # reads as a dead network. One value removes that.
     cargo build -p nros-cpp --no-default-features \
-        --features std,rmw-zenoh-cffi,bridge,platform-posix --release # profile-literal-ok: symbol fixture
+        --features "std,rmw-$RMW-cffi,bridge,platform-posix" --release # profile-literal-ok: symbol fixture
     # profile-literal-ok: symbol fixture: same PX4 SITL link as above.
     # The POSIX platform archive nros_px4_add_module links (its guard names this
     # exact command when it is missing).
@@ -208,7 +254,8 @@ build-bridge-example topics="debug_key_value" edition="jazzy":
     echo "[4/4] building PX4 SITL with EXTERNAL_MODULES_LOCATION=$EXT_DIR"
     # profile-literal-ok: symbol fixture: pairs with the --release build above.
     NROS_PX4_BRIDGE_GEN="$GEN" \
-    NROS_PX4_BRIDGE_FFI_ARCHIVE="$EXT_DIR/ffi/target/release/libnros_px4_bridge_ffi.a" \
+    NROS_PX4_BRIDGE_RMW="$RMW" \
+    NROS_PX4_BRIDGE_FFI_ARCHIVE="$EXT_DIR/ffi/target-bridge-ffi/release/libnros_px4_bridge_ffi.a" \
         make -C "$PX4_DIR" px4_sitl_default EXTERNAL_MODULES_LOCATION="$EXT_DIR"
 
 # Build PX4 examples. (phase-277 W7: the former `build-sitl` recipe pointed

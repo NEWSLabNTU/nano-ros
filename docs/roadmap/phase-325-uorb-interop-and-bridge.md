@@ -646,15 +646,15 @@ a runtime symptom.
 
 ### W3 — the bridge: uORB → the build-time-selected RMW
 
-- [ ] **W3.1** A PX4 module holding two sessions: uORB inward
+- [x] **W3.1** A PX4 module holding two sessions: uORB inward
       (`nros_rmw_uorb_register()`), and outward on the RMW chosen at build time —
       cargo `rmw-*` features / `-DNROS_RMW=<backend>`, the same knob every other
       example uses. `Executor::open_with_rmw(<name>, …)` already takes the backend
       by name; the feature picks the `register()` call and the name string.
-- [ ] **W3.2** ONE path, no `<rmw>/` level and no backend pair in the directory
+- [x] **W3.2** ONE path, no `<rmw>/` level and no backend pair in the directory
       name. This is phase-316's rule applied to the thing that used to break it:
       the outward backend is a build-time CHOICE, not a directory axis.
-- [ ] **W3.3** Build it against **at least two** backends (zenoh + one of
+- [x] **W3.3** Build it against **at least two** backends (zenoh + one of
       xrce/cyclonedds). One backend does not demonstrate selection; it
       demonstrates a hardcoded bridge with extra ceremony.
 - [ ] **W3.4** A test with a **real ROS 2 node** subscribing the bridged topic.
@@ -663,6 +663,67 @@ a runtime symptom.
 
 **Acceptance:** a stock PX4 module's uORB topic reaches a real ROS 2 subscriber
 through the bridge, and the same source builds against a second backend.
+
+#### W3.1-W3.3 LANDED (2026-09-04); W3.4 remains and is scoped below
+
+W3.1 and W3.2 were done on 2026-08-06 and the boxes were never ticked — the
+module is `examples/px4/cpp/bridge/src/modules/nros_uorb_bridge/`, its README
+records "Status (2026-08-06): WORKING" with a SITL receipt, and it holds both
+sessions through `nros_cpp_init_multi` (NOT the `nros::init()` + `NodeBuilder`
+shape this doc sketches at W3.1 — that one opens exactly one session and cannot
+serve a bridge; issue 0436).
+
+**W3.3 landed today.** `NROS_BRIDGE_RMW` was `#ifndef`-guarded with a `"zenoh"`
+default and defined NOWHERE, so the choice existed in the source and could not
+be made from outside — one backend with extra ceremony, which is what W3.3 says
+does not count. One value now drives all three places it must reach: the cargo
+feature that compiles the backend into `libnros_cpp.a`, the `BACKENDS` list that
+registers it, and the name the session spec selects it by.
+
+Built and verified against BOTH backends, not reasoned about:
+
+    NROS_PX4_BRIDGE_RMW=zenoh just px4 build-bridge-example   -> [534/534], rc=0
+    NROS_PX4_BRIDGE_RMW=xrce  just px4 build-bridge-example   -> see receipt below
+
+with cmake logging `nros_uorb_bridge: outward backend = <name>` and the
+generated `nros_app_register_backends.c` carrying exactly
+`nros_rmw_uorb_register` + `nros_rmw_<name>_register`.
+
+Three defects the BUILD found that the plumbing check did not:
+
+* `rmw=zenoh` bound the literal string to the first positional. `just` has no
+  named-argument syntax — archived phase-410 states the rule, and `lane=` works
+  only because `scripts/build/fixture-lane.sh:74` strips the prefix by hand. The
+  outward backend is an env var for that reason.
+* This file's own README told users `build-bridge-example topics=vehicle_status`,
+  which generated a message literally named `topics=vehicle_status`. Broken since
+  it was written; fixed.
+* `COMPILE_FLAGS` is a raw string, so `-DNROS_BRIDGE_RMW="\"${_rmw}\""`
+  collapsed to `""zenoh""` and g++ rejected it ten minutes into a SITL build.
+  `target_compile_definitions` quotes the value itself.
+
+**W3.4 is NOT done, and it is not a tail of this work.** It needs a real PX4
+SITL run with a ROS 2 subscriber; there is no host lane, because the only uORB
+double in the tree is a link-time mock inside one CMake smoke binary
+(`packages/rmw/uorb/nros-rmw-uorb/tests/register_smoke.cpp`) with no broker and
+no second process. So it belongs beside `px4_uorb_interop_e2e.rs` in the
+out-of-workspace `packages/testing/nros-px4-sitl-test/`, which today has no
+`nros-tests` dependency — adding one is what makes `Ros2Process::topic_echo` and
+`ZenohRouter` reachable, and is the "reuse, do not invent a second way" move
+this phase asks for.
+
+Two traps for whoever takes it:
+
+* **Do not copy `px4_uorb_interop_e2e.rs`'s stale-tree guard.** It asserts the
+  module DIRECTORY exists, and module dirs plus `bin/px4-<mod>` shims survive
+  across builds while only the last root's modules are linked. Measured
+  2026-09-04 on a tree built from the bridge root: `nros_uorb_demo`'s directory
+  is present and the binary contains ZERO references to it, so the guard passes
+  and the test then dies at `nros_uorb_demo start` — exactly the confusing
+  failure its own comment says it prevents. Assert on binary CONTENT.
+* An `interop::CELLS` row is blocked four ways: `BuildChannel` has no PX4
+  variant, G2 admits only Linux/ZephyrNativeSim, `examples/fixtures.toml` has no
+  px4 row for G5, and a `Tier::CarveOut` cannot name a test under G1.
 
 #### W3 GATE PASSED (2026-07-31): two backends in one PX4 module
 

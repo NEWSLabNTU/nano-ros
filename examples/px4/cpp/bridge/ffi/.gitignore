@@ -1,0 +1,8 @@
+# The generated-message FFI staticlib's cargo dir.
+#
+# `target-*` and NOT a plain `target/`: `check-example-leaf-target-dirs` gates a
+# bare `target/` under `examples/**` on purpose — it is how phase-340 P2 residue
+# is found (65 such dirs held 119.9 GiB on the maintainer host, issue 0200), so
+# a leaf that needs its own cargo dir names it distinctly and ignores it here.
+# The rule is per-LEAF; the repo root's .gitignore deliberately does not cover it.
+/target-*/
