@@ -404,9 +404,26 @@ amendment's mistake wearing a friendlier hat.
   spec, **segregate**, which is phase-172 K.5. There is no "merge" primitive to
   build, because merging NICs is something Cyclone does inside one participant
   when its config says so.
-* `rmw_session_options_t` does not grow a list field. It is
-  `{u8 localhost_only; u8 _reserved[7]; const char *enclave;}` and nothing in
-  the tree passes it non-NULL; config does not need it.
+* `rmw_session_options_t` does not grow a list field **for the interface
+  case** — CycloneDDS's config is a DOCUMENT the build bakes and the domain
+  parses, so nothing about NIC binding has to cross the session-open seam.
+
+  **Corrected 2026-09-05, by phase-206 W3.** An earlier revision of this bullet
+  said flatly that "config does not need it", generalising from the Cyclone case
+  to both backends. That is false of zenoh-pico, which has **no config document
+  format at all**: its configuration IS `zp_config_insert(key, value)` at
+  session-open time, so key/value pairs have nowhere to travel except that seam.
+  The struct therefore carries `properties` + `property_count`, appended after
+  `enclave` so every existing field keeps its offset — the growth the header's
+  own note sanctioned ("one break, then the struct grows"). And it was not
+  merely unused: `create_session_trampoline` discarded the options pointer and
+  built `properties: &[]`, so **no C or C++ entry could state any transport
+  configuration, on any platform**.
+
+  The general rule survives the correction, and is the useful form: *the seam
+  carries whatever the backend's own configuration language cannot be delivered
+  by the build.* For a document format that is nothing; for a programmatic
+  key/value API it is the pairs.
 
 ### Runtime mapping & binding
 
