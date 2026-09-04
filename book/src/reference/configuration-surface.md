@@ -126,7 +126,7 @@ Read by compiled code or forwarded to a build script. On Zephyr the
 | `CONFIG_NROS_ZENOH_AUTO_RECONNECT` | `y` | cmake |
 | `CONFIG_NROS_ZENOH_LEASE_FACTOR` | `3` | c-define, cmake |
 | `CONFIG_NROS_ZENOH_LEASE_MS` | `10000` | c-define, cmake |
-| `CONFIG_NROS_ZENOH_LEASE_PRIORITY` | `16` | c-define, cmake, rust-source |
+| `CONFIG_NROS_ZENOH_LEASE_PRIORITY` | `200` | c-define, cmake, rust-source |
 | `CONFIG_NROS_ZENOH_LINK_CAN` | `n` | cmake |
 | `CONFIG_NROS_ZENOH_LINK_ISOTP` | `n` | cmake, kconfig select/depends |
 | `CONFIG_NROS_ZENOH_LINK_SERIAL` | `n` | cmake, kconfig select/depends |
@@ -139,7 +139,7 @@ Read by compiled code or forwarded to a build script. On Zephyr the
 | `CONFIG_NROS_ZENOH_QUERY` | `y` | cmake |
 | `CONFIG_NROS_ZENOH_QUERYABLE` | `y` | cmake |
 | `CONFIG_NROS_ZENOH_RAWETH_TRANSPORT` | `n` | cmake |
-| `CONFIG_NROS_ZENOH_READ_PRIORITY` | `16` | c-define, cmake, rust-source |
+| `CONFIG_NROS_ZENOH_READ_PRIORITY` | `200` | c-define, cmake, rust-source |
 | `CONFIG_NROS_ZENOH_SCOUTING` | `n` | cmake |
 | `CONFIG_NROS_ZENOH_SOCKET_TIMEOUT_MS` | `100` | c-define, cmake |
 | `CONFIG_NROS_ZENOH_SUBSCRIPTION` | `y` | cmake |
