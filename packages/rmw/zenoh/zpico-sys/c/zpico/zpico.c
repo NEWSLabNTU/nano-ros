@@ -845,6 +845,8 @@ static void zpico_format_session_zid(char out[37], const uint8_t bytes[ZPICO_ZID
 /**
  * Internal callback for queryable that receives queries
  */
+static void _zpico_release_reply_slot(struct zpico_session* s, int32_t handle, int64_t seq);
+
 static void query_handler(z_loaned_query_t* query, void* arg) {
     struct zpico_session* s = _zpico_unpack_session(arg);
     int idx = _zpico_unpack_slot(arg);
@@ -920,8 +922,7 @@ static void query_handler(z_loaned_query_t* query, void* arg) {
      * Drop it. A callback that DID take the seq keeps its slot for the
      * deferred reply, which is what the mechanism is for. */
     if (reply_seq >= 0 && s->last_reply_seq[idx] >= 0) {
-        z_query_drop(z_query_move(&s->stored_queries[idx][reply_seq]));
-        s->stored_query_valid[idx][reply_seq] = false;
+        _zpico_release_reply_slot(s, idx, reply_seq);
         s->last_reply_seq[idx] = -1;
     }
 
@@ -3910,6 +3911,31 @@ void zpico_set_reply_waker(zpico_session_t* session, zpico_waker_fn fn) {
 // Query Reply Implementation (for service servers)
 // ============================================================================
 
+/* issue 0902 — release a reply slot on EVERY exit, not only the successful one.
+ *
+ * `query_handler` clones the query into the slot before the callback runs, and
+ * the slot is freed in three places: the session-open `memset`, queryable
+ * teardown, and a successful reply. So each error return below used to strand
+ * its slot for the life of the queryable, and four exhausted slots make the
+ * server answer nothing for ever.
+ *
+ * Freeing here is correct because NO CALLER CAN RETRY a seq -- checked, not
+ * assumed: every `send_response` site either `?`-propagates or maps to
+ * `ServiceReplyFailed` (`action_core.rs:373,410,822,895,1014,1037`), and the
+ * deferred-reply flush has already `swap_remove`d the pending entry before it
+ * looks at the result (`action_core.rs:688,695`). A retry has nothing to retry
+ * WITH. Holding the slot would preserve a query nobody will ever answer. */
+static void _zpico_release_reply_slot(struct zpico_session* s, int32_t handle, int64_t seq) {
+    if (seq < 0 || seq >= ZPICO_MAX_PENDING_REPLIES) {
+        return;
+    }
+    if (!s->stored_query_valid[handle][seq]) {
+        return;
+    }
+    z_query_drop(z_query_move(&s->stored_queries[handle][seq]));
+    s->stored_query_valid[handle][seq] = false;
+}
+
 int32_t zpico_query_reply(zpico_session_t* session, int32_t queryable_handle, int64_t reply_seq,
                           const char* keyexpr, const uint8_t* data, size_t len,
                           const uint8_t* attachment, size_t attachment_len) {
@@ -3928,12 +3954,14 @@ int32_t zpico_query_reply(zpico_session_t* session, int32_t queryable_handle, in
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
+        _zpico_release_reply_slot(s, queryable_handle, reply_seq);
         return ZPICO_ERR_KEYEXPR;
     }
 
     // Create payload
     z_owned_bytes_t payload;
     if (z_bytes_copy_from_buf(&payload, data, len) < 0) {
+        _zpico_release_reply_slot(s, queryable_handle, reply_seq);
         return ZPICO_ERR_GENERIC;
     }
 
@@ -3951,6 +3979,7 @@ int32_t zpico_query_reply(zpico_session_t* session, int32_t queryable_handle, in
         // Use explicitly provided attachment
         if (z_bytes_copy_from_buf(&attachment_bytes, attachment, attachment_len) < 0) {
             z_bytes_drop(z_bytes_move(&payload));
+            _zpico_release_reply_slot(s, queryable_handle, reply_seq);
             return ZPICO_ERR_GENERIC;
         }
         options.attachment = z_bytes_move(&attachment_bytes);
@@ -3973,12 +4002,12 @@ int32_t zpico_query_reply(zpico_session_t* session, int32_t queryable_handle, in
     // Reply using the cloned query held in this reply slot.
     if (z_query_reply(z_query_loan(stored_query), z_view_keyexpr_loan(&ke), z_bytes_move(&payload),
                       &options) < 0) {
+        _zpico_release_reply_slot(s, queryable_handle, reply_seq);
         return ZPICO_ERR_GENERIC;
     }
 
     // Drop the cloned query + free the slot after reply.
-    z_query_drop(z_query_move(stored_query));
-    s->stored_query_valid[queryable_handle][reply_seq] = false;
+    _zpico_release_reply_slot(s, queryable_handle, reply_seq);
 
     return ZPICO_OK;
 }
