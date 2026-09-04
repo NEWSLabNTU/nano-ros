@@ -5709,6 +5709,39 @@ fn release_jitter_starts_empty_and_clears() {
     assert_eq!(executor.release_jitter(), (0, 0, 0));
 }
 
+/// The measurement must live on the path the C++ entry actually drives.
+/// nros-cpp paces its tiers with a `spin_once` loop, not `spin_period`, so a
+/// probe on `spin_period` alone records zero forever on that lane -- issue
+/// 0736's mistake one layer up.
+#[test]
+fn spin_once_counts_wakes_without_spin_period() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    for _ in 0..5 {
+        executor.spin_once(core::time::Duration::from_millis(2));
+    }
+    let (_max, late, total) = executor.release_jitter();
+    assert!(
+        total >= 4,
+        "five spin_once calls must count at least four intervals, got {total}"
+    );
+    assert!(late <= total);
+}
+
+/// A zero timeout claims no cadence, so it must not enter the statistic --
+/// otherwise every `Future::wait` busy spin would register as a late wake.
+#[test]
+fn a_zero_timeout_spin_claims_no_cadence() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    for _ in 0..5 {
+        executor.spin_once(core::time::Duration::ZERO);
+    }
+    assert_eq!(
+        executor.release_jitter(),
+        (0, 0, 0),
+        "a polling spin declares no period, so it cannot be late for one"
+    );
+}
+
 /// `spin_period` must actually COUNT its wakes. Before this, `next_us` and
 /// `now_us()` were both in hand every cycle and the difference was discarded,
 /// so a loop that never met its period looked identical to one that always did.
