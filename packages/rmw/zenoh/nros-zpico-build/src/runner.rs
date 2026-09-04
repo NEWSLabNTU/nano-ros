@@ -47,6 +47,60 @@ const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
 /// the answer.
 const UNDECLARED_HEADROOM: usize = 8;
 
+/// RTOS `target_os` values that are NOT hosted, however much they name
+/// themselves (issue 1028).
+///
+/// These targets have a `target_os` and even a `target_family = "unix"`, so the
+/// obvious test — `target_os != "none"` — reads them as Linux-class hosts.
+const RTOS_TARGET_OS: &[&str] = &["nuttx", "espidf", "horizon", "vita", "psp"];
+
+/// "Is this a hosted target?" and "does `target_os` have a value?" are
+/// different questions, and NuttX is the counterexample that proves it.
+///
+/// issue 1028 — `armv7a-nuttx-eabihf` reports `target_os = "nuttx"` and
+/// `target_family = "unix"`, so `target_os != "none"` classified an RTOS as
+/// hosted and handed it the 32-slot queryable budget written for Linux.
+/// MEASURED on `examples/qemu-arm-nuttx/cpp/action-client`, an image that opens
+/// ZERO queryables: `SERVICE_BUFFERS` was 142,336 B of `.bss` (32 x 4,448)
+/// against 35,584 B at the embedded budget. Harmless at qemu-virt's 126 MB;
+/// not harmless on a real part.
+///
+/// `target_os = "none"` still means bare-metal, so it stays unhosted; this only
+/// adds the RTOSes that DO name themselves.
+fn target_os_is_hosted(target_os: Option<&str>) -> bool {
+    match target_os {
+        None | Some("none") => false,
+        Some(os) => !RTOS_TARGET_OS.contains(&os),
+    }
+}
+
+#[cfg(test)]
+mod hosted_tests {
+    use super::*;
+
+    #[test]
+    fn an_rtos_that_names_itself_is_not_hosted() {
+        // issue 1028's exact regression: this returned `true` and cost 106,752 B.
+        assert!(!target_os_is_hosted(Some("nuttx")));
+        assert!(!target_os_is_hosted(Some("espidf")));
+    }
+
+    #[test]
+    fn bare_metal_and_absent_stay_unhosted() {
+        assert!(!target_os_is_hosted(Some("none")));
+        assert!(!target_os_is_hosted(None));
+    }
+
+    #[test]
+    fn real_hosts_are_still_hosted() {
+        // The arm this predicate exists to serve must keep working, or the fix
+        // trades one wrong budget for another.
+        assert!(target_os_is_hosted(Some("linux")));
+        assert!(target_os_is_hosted(Some("macos")));
+        assert!(target_os_is_hosted(Some("windows")));
+    }
+}
+
 /// The queryable-table default, from the declaration when there is one.
 ///
 /// phase-392 W5.d — `SERVICE_BUFFERS` is `ZPICO_MAX_SESSIONS *
@@ -89,7 +143,7 @@ fn resolve_queryable_default() -> QueryableSizing {
         default: queryable_default_from(
             declared.as_deref(),
             infra.as_deref(),
-            std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("none"),
+            target_os_is_hosted(std::env::var("CARGO_CFG_TARGET_OS").as_deref().ok()),
         ),
         floor: queryable_floor_from(declared.as_deref(), infra.as_deref()),
         declared: declared.is_some() || infra.is_some(),
