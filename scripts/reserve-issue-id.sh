@@ -47,6 +47,77 @@ MAX_ATTEMPTS=25
 
 slug="${1:-}"
 
+# --------------------------------------------------------------------------
+# Before reserving: show what already exists on this subject.
+# --------------------------------------------------------------------------
+#
+# This script has always guarded duplicate IDs — the numbering race, where two
+# sessions pick the same number. It said nothing about duplicate SUBJECTS, and
+# that is the failure that actually costs: an issue filed for work already done
+# or in flight. Eleven of those happened in one session on 2026-09-04/05, every
+# one surfacing later through a merge conflict, a failing gate, or reading the
+# code — never at the moment of filing, which is where it is cheapest.
+#
+# `scripts/issues.py` already searches title and body, and `--all` reaches
+# `archived/` — which is where an ALREADY-FIXED issue lives, and therefore
+# exactly where a duplicate hides. Nothing prompted anyone to run it.
+#
+# Advisory, never fatal: a false match must not block filing, and the search
+# failing must not either. `NROS_ISSUE_SKIP_SEARCH=1` silences it for scripts.
+#
+# The terms are the slug's own words. `issues.py` ANDs them, so a six-word slug
+# matches nothing — hence the narrowing: three words, then two, then one. The
+# query that produced the hits is printed, because a reader has to know how
+# wide a net caught them.
+prior_art_search() {
+    [ -n "$slug" ] || return 0
+    [ -z "${NROS_ISSUE_SKIP_SEARCH:-}" ] || return 0
+    command -v python3 >/dev/null 2>&1 || return 0
+    [ -f scripts/issues.py ] || return 0
+
+    local words
+    words="$(printf '%s\n' "$slug" | tr '-' '\n' \
+        | awk 'length($0) >= 4' \
+        | grep -vxE 'with|when|that|this|from|into|does|only|then|than|were|been|have|they|what|make|made|used|uses|using|about|after|before' || true)"
+    [ -n "$words" ] || return 0
+
+    # Rank by SELECTIVITY, not by length. Length is the wrong proxy: in the case
+    # this was built for, the longest word (`nonconforming`) was the filer's own
+    # coinage and matched NOTHING, while `stdbool` — the shared vocabulary —
+    # matched the three issues that mattered. `nuttx` matched 256 and is equally
+    # useless in the other direction.
+    #
+    # So a term earns its place by matching FEW issues but more than zero. The
+    # ledger query is ~20 ms, so scoring every word costs a fraction of a second.
+    local best_term="" best_count=0 w c
+    while IFS= read -r w; do
+        [ -n "$w" ] || continue
+        c="$(python3 scripts/issues.py --all "$w" 2>/dev/null | wc -l || echo 0)"
+        [ "$c" -gt 0 ] || continue          # a word nobody else used says nothing
+        [ "$c" -le 12 ] || continue         # a word everybody used says nothing either
+        if [ -z "$best_term" ] || [ "$c" -lt "$best_count" ]; then
+            best_term="$w"
+            best_count="$c"
+        fi
+    done <<EOF
+$words
+EOF
+
+    [ -n "$best_term" ] || return 0
+
+    echo "" >&2
+    echo "Existing issues matching '$best_term' (open AND archived):" >&2
+    python3 scripts/issues.py --all "$best_term" 2>/dev/null | head -8 | sed 's/^/  /' >&2
+    echo "" >&2
+    echo "  If one of these is your subject, ADD to it rather than filing a" >&2
+    echo "  second row — an archived match means the work may already be DONE." >&2
+    echo "  Search wider yourself with: just issues --all <terms>" >&2
+    echo "" >&2
+    return 0
+}
+
+prior_art_search
+
 # Highest id already used by a FILE, in either docs/issues/ or archived/.
 # `archived/` counts — forgetting it is how ids get reused for a second time
 # after the first document is filed away.
