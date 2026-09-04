@@ -1351,5 +1351,9 @@
   "rust:timestamp_available": {
     "verdict": "extension",
     "why": "phase-417 W4.d — asks whether the platform clock is available, so a caller can tell \"this record has no timestamp\" from \"this record happened at time zero\". ROS 2 has no counterpart because rcutils always has a clock; on a target built without `nros-log/platform-clock` ours does not, and the honest answer is a query rather than a zero that reads as a time. It is also what makes the C throttle's failure mode legible: with no clock a window admits every record, and `nros_log_timestamp_available()` is how a caller finds out before trusting a rate."
+  },
+  "rust:EXECUTOR_VALUE_SIZE": {
+    "verdict": "extension",
+    "why": "phase-417 W-M2 note: ledgered because `--require-disposition` armed the gate and this landed on main in parallel.\n\nSee `rust:EXECUTOR_SIZE`. A `size_of` export in `nros::sizes`, consumed by `nros-build-helpers` (`c.rs:152`, `cpp.rs:111`) to size the C and C++ opaque storage that holds an `Executor` BY VALUE. rclrs has no counterpart because it never hands an executor across an FFI boundary into caller-owned storage; ours must, and the number has to be a build-time fact rather than a guess, which is what the export makes it."
   }
 }
