@@ -190,7 +190,19 @@ impl BoardCapabilities {
 
 /// One board profile. Mirrors the old hardcoded `PlatformProfile` +
 /// `BoardEntry`, but every field is owned data read from `nros-board.toml`.
+/// RFC-0049 promised this: "Unknown keys fail loud with the valid-key list
+/// (`deny_unknown_fields`, the RFC-0033 precedent)" (RFC-0049 §"Schema"). It
+/// shipped without it, so a typo'd board key was silently ignored by this
+/// reader AND by `BoardKnobsFile`, which `#[serde(flatten)]`s the remainder
+/// into a discarded `_rest`. A board descriptor is a hardware SSoT read by
+/// four different consumers; a key nobody reads reads exactly like a key that
+/// works.
+///
+/// `priority_plan` below is the reason this could not simply be switched on:
+/// six boards declare `[board.priority_plan]` and no field modelled it, so a
+/// naive `deny_unknown_fields` would have rejected every one of them.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BoardDescriptor {
     /// Board name + accepted aliases (the values a user passes as `board`).
     pub names: Vec<String>,
@@ -285,6 +297,18 @@ pub struct BoardDescriptor {
     /// sends the next reader to edit the wrong descriptor.
     #[serde(skip)]
     pub source: Option<String>,
+    /// `[board.priority_plan]` — ACKNOWLEDGED here, interpreted elsewhere.
+    ///
+    /// The tier/transport priority plan (RFC-0049; `linux/nros-board.toml`
+    /// declares `reserved.transport = [90, 99]` for zenoh-pico's read and
+    /// lease tasks) is consumed by `check-tier-priority-plan` and by
+    /// `nros-platform-config`, not by this reader. It is modelled as an opaque
+    /// value ON PURPOSE: `deny_unknown_fields` above must not mean "every
+    /// consumer's schema is restated here", which would make this struct the
+    /// union of four readers and guarantee drift. Declaring it says "this key
+    /// is real and someone else owns it"; omitting it would have said "typo".
+    #[serde(default)]
+    pub priority_plan: Option<toml::Value>,
 }
 
 /// `[board.cmake]` — CMake toolchain facts for the ament-shape preset flow.
@@ -408,7 +432,11 @@ fn path_for_template(path: &Path) -> String {
         .replace('"', "\\\"")
 }
 
+/// `deny_unknown_fields` here too: the file level is where a whole MISPLACED
+/// table lands (a `[bard]` typo, or a `[knobs]` written at top level instead of
+/// under the board). Without it the file parses and the table vanishes.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct BoardFile {
     #[serde(default, rename = "board")]
     boards: Vec<BoardDescriptor>,
@@ -1328,6 +1356,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             crate_path: None,
             board_features: vec![],
             capability_features: vec![],
+            priority_plan: None,
             cargo_config: Some("inc = \"${workspace}/third-party/x\"".into()),
             entry: None,
             target_contains: None,
@@ -1550,6 +1579,7 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             crate_path: None,
             board_features: vec![],
             capability_features: vec![],
+            priority_plan: None,
             cargo_config: None,
             entry: None,
             target_contains: None,
@@ -1700,5 +1730,49 @@ entry_kind = "zephyr-staticlib"
             .resolve("native_sim/native/64", "")
             .expect("the zephyr board");
         assert_eq!(zephyr.west_board, None);
+    }
+
+    /// `deny_unknown_fields` is only worth having if it is exercised against
+    /// the REAL descriptors, not a fixture. Six of them declare
+    /// `[board.priority_plan]`, which no field modelled until this change — so
+    /// a naive `deny_unknown_fields` would have rejected them and this test is
+    /// what says so.
+    #[test]
+    fn every_in_tree_descriptor_parses_under_deny_unknown_fields() {
+        let root = repo_root_for_tests();
+        let cat = BoardCatalog::load_with_extra(&root, &[]).expect(
+            "every packages/boards/*/nros-board.toml must parse; an unknown-field              error here names the key and the file",
+        );
+        assert!(
+            cat.descriptors.len() >= 12,
+            "expected the in-tree board descriptors, found {}",
+            cat.descriptors.len()
+        );
+        assert!(
+            cat.descriptors.iter().any(|d| d.priority_plan.is_some()),
+            "at least one in-tree board declares [board.priority_plan]; if none              does, this test has stopped covering the case it exists for"
+        );
+    }
+
+    /// The other half of the same claim: a key nobody reads must now FAIL, and
+    /// fail naming itself. Before this change it parsed and vanished.
+    #[test]
+    fn an_unknown_board_key_is_rejected_and_names_itself() {
+        let err = toml::from_str::<BoardFile>(
+            "[[board]]\n\
+             names = [\"demo\"]\n\
+             platform = \"posix\"\n\
+             toolchain = \"stable\"\n\
+             platform_feature = \"platform-posix\"\n\
+             link_kind = \"none\"\n\
+             entry_kind = \"hosted-main\"\n\
+             supported_netstakcs = []\n",
+        )
+        .expect_err("a misspelled key must not parse");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("supported_netstakcs"),
+            "the error must name the offending key, got: {msg}"
+        );
     }
 }
