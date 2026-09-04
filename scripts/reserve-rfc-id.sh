@@ -49,6 +49,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# `grep -q` cannot tell a NON-MATCH from a TOOL ERROR, and the one conditional
+# below decides whether a failed reservation push means "someone else took this
+# number" (retry) or "something is wrong" (warn and degrade). Getting that
+# backwards under load would silently pick the racy fallback. Issue 0726.
+# shellcheck source=lib/grep-q.sh
+. "$(dirname "$0")/lib/grep-q.sh"
+
 REF_NS="refs/rfc-ids"
 REMOTE="${NROS_RFC_REMOTE:-origin}"
 MAX_ATTEMPTS=25
@@ -115,7 +122,7 @@ while [ "$attempt" -lt "$MAX_ATTEMPTS" ]; do
 
     # Taken by another session between our read and our write — exactly the race
     # this exists for. Step on and retry; not an error.
-    if printf '%s' "$err" | grep -qiE "already exists|non-fast-forward|fetch first|rejected"; then
+    if nros_grep_q -iE "already exists|non-fast-forward|fetch first|rejected" <<<"$err"; then
         candidate=$((candidate + 1))
         attempt=$((attempt + 1))
         continue
