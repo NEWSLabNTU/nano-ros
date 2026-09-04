@@ -77,7 +77,7 @@ its byte cost yet. Absence of a figure is not a claim that it is free.
 | `ZPICO_MAX_LIVELINESS` | 16 | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_MAX_PENDING_GETS` | 4 | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_MAX_PUBLISHERS` | 8 | `packages/rmw/zenoh/nros-zpico-build` |
-| `ZPICO_MAX_QUERYABLES` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:443` | `packages/rmw/zenoh/nros-zpico-build` |
+| `ZPICO_MAX_QUERYABLES` | computed — see `packages/rmw/zenoh/nros-zpico-build/src/runner.rs:497` | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_MAX_SESSIONS` | 1 | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_MAX_SUBSCRIBERS` | 8 | `packages/rmw/zenoh/nros-zpico-build` |
 | `ZPICO_PUBLISHER_TX_BUFFER_SIZE` | 1024 | `packages/rmw/zenoh/nros-rmw-zenoh` |
