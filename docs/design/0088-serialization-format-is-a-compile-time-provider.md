@@ -263,12 +263,25 @@ Consumption uses the general form, so no parser learns a new attribute:
 <nano_ros_uses kind="serdes" name="flatbuf"/>
 ```
 
-and `system.toml` may set it per deploy:
+and the system config may set it per image:
 
 ```toml
-[deploy.orin-spe]
+[image.orin-spe]
 serdes = "flatbuf"
 ```
+
+**Amended 2026-09-04 from implementation (W4).** This RFC first specified
+`[deploy.<t>] serdes = "…"`, and that key cannot exist: `DeployBlock` comes from
+the upstream `ros-launch-manifest` crate (a git-tag dependency) and carries
+`deny_unknown_fields`, so an unknown key in a deploy block is a parse *error*,
+not an ignored line. Adding it would need an upstream release and a dependency
+bump. The ladder therefore mirrors `rmw`'s, minus that rung: CLI override →
+`[image.<t>]` folded over `[image_defaults]` → `[system]` → `"cdr"`, with
+`[package.metadata.nros.deploy.<t>].serdes` — the deploy block nano-ros *does*
+own — carried into the synthesized image block exactly as `rmw` already is.
+`rmw` on `[deploy.*]` is itself deprecated (`image::DEPRECATED_DEPLOY_FIELDS`,
+RFC-0065 D6 / issue 0951), so the rung this loses is one the tree is already
+retiring.
 
 A custom format that wraps a C codec is two ordinary packages: the provider, and
 a vendor package it `<depend>`s on (RFC-0087 D5).
@@ -336,6 +349,9 @@ format is decided at compile time and the description never leaves Rust.
 
 ## Changelog
 
+- 2026-09-04 — D6 amended from implementation (phase-421 W4): the per-target key
+  is `[image.<t>].serdes`, not `[deploy.<t>].serdes`. The upstream `DeployBlock`
+  denies unknown fields, so the specified key would have been a parse error.
 - 2026-09-04 — D1 amended from implementation (phase-421 W1–W3): the message's
   format is a **defaulted const on `nros_core::RosMessage`**, not an associated
   type on `nros_serdes::schema::Message` — the schema is required only under

@@ -365,6 +365,10 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             name: system_name,
             rmw: "zenoh".to_string(),
             domain_id: 0,
+            // phase-421 W4 — omitted from the scaffold on purpose: absent means
+            // `cdr`, which is what the image builds anyway, and a scaffold that
+            // states a default teaches the reader it is a choice they made.
+            serdes: None,
             // Omitted from the scaffold → the humble default (RFC-0056); a user
             // adds `ros_edition = "iron"|"jazzy"|…` when targeting a newer distro.
             ros_edition: None,

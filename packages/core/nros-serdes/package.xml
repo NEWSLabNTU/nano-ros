@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>nros_serdes</name>
+  <version>0.0.0</version>
+  <description>
+    CDR serialization for nano-ros — and, since phase-421 W4, the package that
+    ANNOUNCES it.
+
+    RFC-0087 D1: a package is a directory with a package.xml, so this file is
+    what makes the crate discoverable at all. RFC-0088 D6: the `serdes` family
+    joins `rmw`, `board` and `platform`, and the `nano_ros_provides` export
+    below is what a source-time scan reads. What it lowers to is declared in the
+    sibling `nros-serdes.toml` descriptor, read only when this provider is the
+    one selected.
+
+    The descriptor sits beside the crate that implements the format rather than
+    in a metadata-only package: a provider that announces a format nothing here
+    implements would be a name with no code behind it.
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <export>
+    <build_type>nros_cargo</build_type>
+    <!--
+      Provision, NOT consumption: this package IS the CDR serializer, rather
+      than selecting one. A consumer selects it with
+      `<nano_ros_uses kind="serdes" name="cdr"/>` (phase-420 W1) or
+      `[deploy.<t>] serdes = "cdr"`.
+
+      Must equal the descriptor's declared names, canonical first —
+      `check-provider-announcements.py` compares them, because two spellings of
+      one fact drift.
+    -->
+    <nano_ros_provides kind="serdes" name="cdr"/>
+  </export>
+</package>

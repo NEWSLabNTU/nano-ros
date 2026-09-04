@@ -262,6 +262,7 @@ fast-serial: \
     scope-namespace \
     sdk-guard-can-fire \
     sdk-store-not-enumerated \
+    serdes-descriptors \
     shared-cargo-dir-witness \
     single-rust-staticlib \
     site-config \
@@ -3895,6 +3896,21 @@ build-root:
 rmw-descriptors:
     @python3 scripts/check-rmw-descriptors.py
 
+# phase-421 W4 / RFC-0088 — the `serdes` provider descriptors. Catches: an
+# `impl` that is not "schema"/"codegen"; a `format_id` that is missing, not an
+# integer, or outside 1..=255; an unknown key under `[serdes]`, which lowers to
+# nothing while reading like a decision; two providers claiming one name or —
+# the wire-visible one — one `format_id`; a descriptor whose reserved
+# discriminant disagrees with `nros_serdes::format::SerializationFormatId`
+# (`cdr = 1`, `uorb = 2` are written in both places, and this is what stops them
+# diverging), in EITHER direction; and a package announcing
+# `<nano_ros_provides kind="serdes"/>` with no descriptor beside it, whose
+# symptom is otherwise a defaulted `impl` nobody chose. Runs its own selftest on
+# the normal path. Buildless: TOML plus a regex over one Rust file.
+[private]
+serdes-descriptors:
+    @python3 scripts/check-serdes-descriptors.py
+
 [private]
 fixture-groups:
     @python3 scripts/check-fixture-groups.py
@@ -4123,6 +4139,14 @@ cargo-target-spelling:
 # lowers to (its descriptor). Nothing structural keeps the two name lists equal,
 # so compare them. ONE gate for every provider family: a copy of the rule beside
 # each family's descriptors is the second-spelling antipattern (#282 -> #326).
+#
+# Catches: a descriptor with no `<nano_ros_provides>` beside it (invisible to
+# the phase-348 scan while looking migrated); a name list that disagrees with
+# the descriptor's, or is in the wrong order, for the three families whose
+# descriptors still carry `names`; and, for a family whose descriptor carries
+# none (`serdes`, RFC-0087 D4 — the announcement is the only spelling), two
+# providers announcing one name. phase-421 W4 added that fourth family as one
+# FAMILIES row, not a second script.
 [private]
 provider-announcements:
     @python3 scripts/check-provider-announcements.py

@@ -10,7 +10,27 @@ them.
   A1  a package.xml sitting beside a descriptor announces provisions of that
       kind — otherwise it is invisible to the scan while looking migrated;
   A2  its provision names equal the descriptor's declared names EXACTLY and in
-      order, canonical first, since names[0] is what error messages list.
+      order, canonical first, since names[0] is what error messages list;
+  A3  for a family whose descriptors carry no names at all, the announced names
+      are UNIQUE across the family — see "Two shapes of family" below.
+
+**Two shapes of family, and A2 exists only for one of them.** `rmw`, `board` and
+`platform` predate RFC-0087 D4: their descriptors repeat the provider's names, so
+there are two spellings of one fact and A2 is what keeps them equal. D4 removed
+`names` from NEW descriptors — a descriptor now carries only what no convention
+can produce, and the announcement is the ONLY place a name is written. For such a
+family A2 has nothing to compare against and cannot be written honestly, so the
+row declares `extract=None` and the check becomes A1 + A3: the descriptor must
+still be announced (or it is invisible to the scan), and since the announcement
+is the sole spelling, the one thing that can still go wrong is two providers
+claiming one name.
+
+Do NOT "fix" a nameless family back into an A2 comparison by adding `names` to
+its descriptor: that re-creates the second spelling D4 deleted, and A2 would then
+be checking the descriptor against a copy of itself — the cannot-fail gate
+`check-rmw-descriptors` retired its own S-checks over (see its docstring).
+Equally, do not delete A2 from the three families that DO have `names`; their
+duplication is real and unchecked otherwise.
 
 **One gate for every family, not one per family.** This started as S5 inside
 `check-rmw-descriptors.py`, covering rmw alone. Extending the rule to boards by
@@ -39,7 +59,8 @@ except ModuleNotFoundError:  # 3.10 backport, same spelling as the sibling gates
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# kind -> (descriptor glob, how to pull the declared names out of it).
+# kind -> (descriptor glob, how to pull the declared names out of it — or None
+# for a family whose descriptors carry no names, see A3 above).
 #
 # The two families disagree in shape and that is not an accident: an rmw
 # descriptor is ONE backend (`[rmw]`), while a board descriptor is an ARRAY
@@ -64,6 +85,17 @@ FAMILIES = {
         "config/*/nros-platform.toml",
         lambda d: list(d.get("names", [])),
     ),
+    # phase-421 W4 / RFC-0088 D6. The first family born after RFC-0087 D4, so
+    # its descriptor has NO `names` key and never will: `nros-serdes.toml`
+    # carries `impl` and `format_id`, the two facts no convention can derive,
+    # and the `<nano_ros_provides>` announcement is the name. `None` selects
+    # A1 + A3 instead of A1 + A2 (see the module docstring).
+    #
+    # Everything serdes-SPECIFIC — descriptor well-formedness, the `format_id`
+    # discriminant, and the descriptor a package announcing `serdes` must have —
+    # lives in `scripts/check-serdes-descriptors.py`, the same split that keeps
+    # this gate one gate for every family rather than one per family.
+    "serdes": ("packages/*/*/nros-serdes.toml", None),
 }
 
 PROVIDES_RE = r'<nano_ros_provides\s+kind="{kind}"\s+name="([^"]+)"\s*/?>'
@@ -86,6 +118,7 @@ def main():
     problems = []
     checked = 0
     announced = 0
+    claimed = {}  # (kind, name) -> package.xml that announced it (A3)
 
     for kind, (pattern, extract) in sorted(FAMILIES.items()):
         paths = sorted(glob.glob(os.path.join(ROOT, pattern)))
@@ -112,8 +145,8 @@ def main():
                 except Exception as e:  # noqa: BLE001 — report, do not raise
                     problems.append(f"{desc_rel}: not valid TOML: {e}")
                     continue
-            names = extract(data)
-            if not names:
+            names = None if extract is None else extract(data)
+            if extract is not None and not names:
                 problems.append(
                     f"{desc_rel}: declares no names — nothing could resolve to it"
                 )
@@ -122,12 +155,28 @@ def main():
             found = declared_provisions(pkg_xml, kind)
             announced += len(found)
             if not found:
+                # A1 — true for both shapes of family.
                 problems.append(
                     f'{rel}: sits beside a {kind} descriptor but announces no '
                     f'<nano_ros_provides kind="{kind}"/> — it would be invisible '
                     f"to the phase-348 scan"
                 )
+            elif names is None:
+                # A3 — a nameless-descriptor family (RFC-0087 D4). There is no
+                # second spelling to compare against, so the only failure left
+                # is two providers answering to one name.
+                for n in found:
+                    prior = claimed.get((kind, n))
+                    if prior is not None and prior != rel:
+                        problems.append(
+                            f"{rel}: announces {kind} name {n!r}, already announced "
+                            f"by {prior} — a name resolves to one provider, and "
+                            f"for this family the announcement is the ONLY place "
+                            f"it is written"
+                        )
+                    claimed[(kind, n)] = rel
             elif found != names:
+                # A2 — a family whose descriptor repeats the names.
                 problems.append(
                     f"{rel}: provides {found} but {desc_rel} declares {names} — "
                     f"discovery and resolution must claim the same names, "
@@ -140,10 +189,13 @@ def main():
             sys.stderr.write(f"  {p}\n")
         return 1
 
+    nameless = sum(1 for _, e in FAMILIES.values() if e is None)
     print(
         f"provider announcements: OK ({checked} migrated provider(s) across "
-        f"{len(FAMILIES)} famil(ies), {announced} name(s) announced, all matching "
-        f"their descriptor)"
+        f"{len(FAMILIES)} famil(ies), {announced} name(s) announced; "
+        f"{len(FAMILIES) - nameless} famil(ies) matched name-for-name against "
+        f"their descriptor, {nameless} nameless-descriptor famil(ies) checked "
+        f"for announcement + uniqueness)"
     )
     return 0
 

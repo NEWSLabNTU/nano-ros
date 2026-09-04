@@ -569,6 +569,10 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
             .clone()
             .unwrap_or_else(|| "zenoh".to_string()),
         domain_id: first_deploy.domain_id.unwrap_or(0),
+        // phase-421 W4 — carry the Cargo-native `[..deploy.<t>].serdes`
+        // projection into the synthesized header, the same way `rmw` above
+        // comes from the first deploy block. Absent ⇒ `cdr` at resolve time.
+        serdes: first_deploy.serdes.clone(),
         // Self-bringup synthesized from component deploy metadata, which carries
         // no edition today → humble default (RFC-0056; phase-304 W2 follow-up:
         // thread a component-declared edition here if one is added).
@@ -669,6 +673,12 @@ fn synthesise_self_bringup(comp: &ComponentPackageEntry) -> BringupPackageEntry 
                 crate::orchestration::image::ImageBlock {
                     board: dt.board.clone(),
                     rmw: dt.rmw.clone(),
+                    // phase-421 W4 — the Cargo-native deploy block is the one
+                    // `[deploy.<t>]` nano-ros owns, and it is where a
+                    // `serdes = "…"` key can live at all (system.toml's block
+                    // is upstream's `deny_unknown_fields` struct). Projected as
+                    // an image so `resolved_serdes`'s image rung sees it.
+                    serdes: dt.serdes.clone(),
                     ..Default::default()
                 },
             )

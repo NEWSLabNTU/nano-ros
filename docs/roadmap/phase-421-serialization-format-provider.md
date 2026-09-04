@@ -1,6 +1,6 @@
 # Phase 421 — serialization format as a compile-time provider
 
-**Status (2026-09-04). W1–W3 landed; W4–W6 open.**
+**Status (2026-09-04). W1–W4 landed; W5–W6 open.**
 Implements [RFC-0088](../design/0088-serialization-format-is-a-compile-time-provider.md).
 Depends on **[phase-420](phase-420-package-identity-and-provider-format.md) W1
 only** (the `<nano_ros_uses>` general consumption tag) — and only from W4 onward;
@@ -63,15 +63,34 @@ The mechanism is compile-time, not runtime: ROS 2 uses format strings because
       `declarative_bridge_zenoh_to_{cyclonedds,xrce}` cells stay green; the
       comparison is one byte, at construction, not per sample.
 
-- [ ] **W4 — the `serdes` provider family.** One `FAMILIES` row in
+- [x] **W4 — the `serdes` provider family.** (landed 2026-09-04) One `FAMILIES` row in
       `check-provider-announcements.py`; `nros-serdes.toml` whose only field is
       `impl = "schema" | "codegen"` (absent file means `schema` and all
       defaults); `<nano_ros_provides kind="serdes" name="…"/>`; consumption via
       `<nano_ros_uses kind="serdes" name="…"/>` (phase-420 W1) and a
       `[deploy.<t>] serdes = "…"` key; `check-serdes-descriptors` covering S1–S4
       plus discriminant allocation.
-      **Acceptance:** a provider package outside the repo is selected by name and
-      reaches the build; no parser learns a new attribute to make that work.
+      **Acceptance, partly met.** A provider in the USER WORKSPACE root — a
+      directory outside this repo — is selected by name and resolves
+      (`a_provider_in_the_user_workspace_reaches_the_default_search_path`). A
+      provider at a *third* location is not reachable: `default_search_path`
+      still returns two roots, which is phase-420 W6. No parser learned a new
+      attribute, which is the half W1 of phase-420 bought.
+
+      Two findings recorded rather than worked around:
+
+      - **`[deploy.<t>].serdes` cannot exist.** `DeployBlock` is upstream
+        (`ros-launch-manifest`, git tag) with `deny_unknown_fields`, so the key
+        RFC-0088 D6 specified is a parse error, and adding it needs an upstream
+        release plus a dependency bump. The ladder mirrors `rmw`'s minus that
+        rung — and `rmw` on `[deploy.*]` is itself deprecated (issue 0951). D6 is
+        amended to match.
+      - **Issue 1054**: `provider_scan` reads `.nros-ignore` on the root it is
+        handed, so scanning the nano-ros tree returns zero providers of ANY
+        family. The marker's own header says the opposite is the contract, and
+        `nros-pkg-index` honours it. Pinned by a characterization test here;
+        the fix changes discovery for every family and belongs in its own
+        change.
 
 - [ ] **W5 — the schema-driven strategy, with a reference provider.**
       `SchemaSerializer` over the `&'static [Field]` schema codegen already
