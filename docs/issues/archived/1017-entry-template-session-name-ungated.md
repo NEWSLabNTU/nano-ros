@@ -118,3 +118,55 @@ distinct images get distinct names; a producer that passed the same constant
 everywhere would satisfy it. That is the shape this issue argued would have
 caught the original bug without anyone knowing the templates existed, and it
 still needs a runtime cell.
+
+
+## 2026-09-04 — the reachable half of the behavioural property is now guarded
+
+The section above says the check proves a name is PASSED, not that names are
+DISTINCT, and that "a producer that passed the same constant everywhere would
+satisfy it". That hole is now partly closed, and the part that closed it was not
+where I expected.
+
+Distinctness is not a property of the templates at all — they substitute
+`@NROS_ENTRY_NODE_NAME@`, and whether two images differ depends on what CMake
+puts there. `NanoRosNodeRegister.cmake` sets it from the node's own name, in
+**five separate places**, one per entry shape:
+
+    set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
+
+Five spellings of one fact — the shape this campaign is named for. If ONE
+drifted to a literal, every image built through that entry shape would share a
+name, the templates would still reference the variable, and the existing check
+would still pass. That is the hole, and it is reachable statically.
+
+`check-entry-session-name` now asserts every site takes the node's own name, and
+reports the count it verified:
+
+    check-entry-session-name: OK (13 generated call(s) name a session;
+                                  5 cmake site(s) take it from the node)
+
+Non-vacuous by mutation on the real file: changing site 683 to
+`set(NROS_ENTRY_NODE_NAME "node")` fails the check, naming the assignment.
+Four selftest cases cover it — name from the node, a constant, one-of-several
+drifted, and a commented-out assignment.
+
+**The selftest caught a bug in the check while I wrote it**, which is the reason
+that rule exists: `code_only()` strips `//` and `///` because its inputs are C++
+and Rust, so a commented-out `# set(NROS_ENTRY_NODE_NAME "node")` counted as a
+real site. `#` cannot be stripped globally without eating Rust attributes like
+`#[cfg(test)]`, so CMake needed its own strip.
+
+## Still NOT guarded, and the gap is narrower now
+
+The runtime property — two same-language images on ONE agent registering
+distinct names — remains untested. What is guarded is the whole static chain:
+the templates pass a name, and every CMake site takes that name from the node.
+What is not is the observation that two live images actually differ, which would
+also catch a defect anywhere below CMake (in the substitution, the boot config,
+or the transport's key derivation).
+
+The venue for it is `graph_interop.rs`'s harness — `graph-probe` already opens a
+session, polls `get_node_names` to convergence, and exits non-zero unless it
+sees a named peer. Two template-built entries plus that probe is the shape. It
+was not done here because those images are per-package workspace fixtures that
+must be prebuilt, which is a build this change does not otherwise need.

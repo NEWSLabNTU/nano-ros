@@ -117,6 +117,59 @@ def scan(text: str, marker: str, is_rust: bool) -> list[str]:
 
 
 # --------------------------------------------------------------------------
+# The other half: the name must be PER NODE (issue 1017)
+# --------------------------------------------------------------------------
+#
+# The check above proves a session name is PASSED. It cannot prove the names are
+# DISTINCT — a producer that passed the same constant everywhere would satisfy
+# it, and that is exactly the collision issue 1003 was: every image registering
+# as `"node"`.
+#
+# Distinctness is not a property of the templates. They substitute
+# `@NROS_ENTRY_NODE_NAME@`, and whether two images differ depends on what CMake
+# puts there. `NanoRosNodeRegister.cmake` sets it from the node's own name --
+# in FIVE separate places, one per entry shape:
+#
+#     set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
+#
+# Five spellings of one fact, which is the shape this whole campaign is named
+# for. If ONE drifted to a literal, every image built through that shape would
+# share a name, the templates would still reference the variable, and the check
+# above would still pass. That is the hole.
+#
+# This does not replace the behavioural test issue 1017 asks for (two images on
+# one agent registering distinct names). It closes the reachable half: the name
+# comes from the node, at every site that sets it.
+
+_NODE_NAME_ASSIGN = re.compile(r'set\s*\(\s*NROS_ENTRY_NODE_NAME\s+([^)]*)\)')
+_EXPECTED_SOURCE = "${_NRC_NAME}"
+
+
+def cmake_code_only(text: str) -> str:
+    """Drop CMake comments.
+
+    `code_only` strips `//` and `///` because its inputs are C++ and Rust; CMake
+    comments start with `#`, and `#` cannot be stripped globally without eating
+    Rust attributes like `#[cfg(test)]`. Found by the selftest: a commented-out
+    `# set(NROS_ENTRY_NODE_NAME "node")` was being counted as a real site."""
+    return "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("#")
+    )
+
+
+def node_name_assignments(text: str) -> list[str]:
+    """Every `set(NROS_ENTRY_NODE_NAME ...)` value, comments excluded."""
+    return [
+        m.group(1).strip() for m in _NODE_NAME_ASSIGN.finditer(cmake_code_only(text))
+    ]
+
+
+def check_node_name_is_per_node(text: str) -> list[str]:
+    """Assignments that do NOT take the node's own name."""
+    return [v for v in node_name_assignments(text) if _EXPECTED_SOURCE not in v]
+
+
+# --------------------------------------------------------------------------
 # selftest — runs on the NORMAL path, never behind a flag (phase-395)
 # --------------------------------------------------------------------------
 #
@@ -169,6 +222,26 @@ def self_test(quiet: bool = True) -> int:
         ("rust string continuation", _RS_CONTINUATION, "nros_boot_config_node_name", True, False),
         ("rust test-only mention", _RS_TEST_ONLY, "nros_boot_config_node_name", True, False),
     ]
+
+    # The per-node half (issue 1017). A constant here collides every image built
+    # through that entry shape while the templates stay correct — the hole the
+    # call check above cannot see.
+    name_cases: list[tuple[str, str, bool]] = [
+        ("name taken from the node", 'set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")', False),
+        ("name is a constant", 'set(NROS_ENTRY_NODE_NAME "node")', True),
+        (
+            "one of several sites drifted",
+            'set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")\n'
+            'set(NROS_ENTRY_NODE_NAME "entry")',
+            True,
+        ),
+        (
+            "a commented-out assignment is not a site",
+            '# set(NROS_ENTRY_NODE_NAME "node")\n'
+            'set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")',
+            False,
+        ),
+    ]
     bad = 0
     for name, text, marker, is_rust, expect in cases:
         got = bool(scan(text, marker, is_rust))
@@ -178,6 +251,15 @@ def self_test(quiet: bool = True) -> int:
             print(f"SELFTEST FAIL: {name}: expected {want}, got the opposite", file=sys.stderr)
         elif not quiet:
             print(f"  ok: {name}")
+    for name, text, expect in name_cases:
+        got = bool(check_node_name_is_per_node(text))
+        if got != expect:
+            bad += 1
+            want = "a violation" if expect else "no violation"
+            print(f"SELFTEST FAIL: {name}: expected {want}, got the opposite", file=sys.stderr)
+        elif not quiet:
+            print(f"  ok: {name}")
+
     if bad:
         print(
             "check-entry-session-name: SELFTEST FAILED — the check cannot be "
@@ -185,7 +267,10 @@ def self_test(quiet: bool = True) -> int:
             file=sys.stderr,
         )
     elif not quiet:
-        print(f"check-entry-session-name selftest: OK ({len(cases)} case(s))")
+        print(
+            "check-entry-session-name selftest: OK "
+            f"({len(cases) + len(name_cases)} case(s))"
+        )
     return 1 if bad else 0
 
 
@@ -196,6 +281,47 @@ def main() -> int:
         return 2
     failures: list[str] = []
     checked = 0
+
+    # The name must also come FROM THE NODE at every site that sets it — see
+    # `check_node_name_is_per_node`. Checked first: if the name is a constant,
+    # every call below "passes" while every image collides.
+    reg = ROOT / "cmake/NanoRosNodeRegister.cmake"
+    if not reg.is_file():
+        print(
+            f"ERROR: {reg.relative_to(ROOT)} is missing — it is what makes the\n"
+            "       substituted name PER NODE, so this check cannot vouch for\n"
+            "       distinctness without it.",
+            file=sys.stderr,
+        )
+        return 2
+    reg_text = reg.read_text(encoding="utf8")
+    assigns = node_name_assignments(reg_text)
+    if not assigns:
+        print(
+            "ERROR: no `set(NROS_ENTRY_NODE_NAME ...)` in "
+            f"{reg.relative_to(ROOT)}.\n"
+            "       The templates substitute that variable; if nothing sets it\n"
+            "       the name is empty and every image shares it.",
+            file=sys.stderr,
+        )
+        return 2
+    bad = check_node_name_is_per_node(reg_text)
+    if bad:
+        print(
+            "check-entry-session-name: a session name is not taken from the "
+            "node (issue 1017):\n",
+            file=sys.stderr,
+        )
+        for v in bad:
+            print(f"  set(NROS_ENTRY_NODE_NAME {v})", file=sys.stderr)
+        print(
+            f"\n  Expected every site to use `{_EXPECTED_SOURCE}`. A constant "
+            "here gives\n  every image built through that entry shape the SAME "
+            "name, which is\n  issue 1003's collision with the templates left "
+            "correct.",
+            file=sys.stderr,
+        )
+        return 1
 
     for glob, marker, label in PRODUCERS:
         paths = sorted(ROOT.glob(glob))
@@ -265,7 +391,10 @@ def main() -> int:
         )
         return 2
 
-    print(f"check-entry-session-name: OK ({checked} generated call(s) name a session)")
+    print(
+        f"check-entry-session-name: OK ({checked} generated call(s) name a "
+        f"session; {len(assigns)} cmake site(s) take it from the node)"
+    )
     return 0
 
 
