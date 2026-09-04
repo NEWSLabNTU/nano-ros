@@ -27,8 +27,18 @@ Rewrites the CMakeLists to:
     install(TARGETS <name> DESTINATION lib/${PROJECT_NAME})
     ament_package()
 
-and updates package.xml: `<build_type>cmake` -> `ament_cmake`, and inserts
+and updates package.xml: `<build_type>cmake` -> `nros_cmake`, and inserts
 `<nano_ros deploy="native"/>` into `<export>` when absent.
+
+RFC-0087 D2 / phase-420 W4 amended the build-type half. This script used to
+write `ament_cmake`, which W3 then swept back out of every one of these leaves:
+a native example that calls `nano_ros_add_executable` is nano-ros-owned, and
+`ament_cmake` claims a stock `colcon build` can handle it. The CMake shape it
+writes is UNCHANGED — `find_package(nano_ros)` + `ament_package()` is still
+RFC-0048's ament SHAPE; only the ownership claim moved. Kept rather than
+deleted because `example_shape.rs` still names it as the remedy for a leaf
+carrying a superseded CMakeLists, so it has to keep producing the shape that
+test demands and the build type W3 settled on.
 
 Usage:
     scripts/docs/migrate-example-cmake-ament.py --dry-run
@@ -169,8 +179,11 @@ def _transform_pkgxml(pkgxml: Path) -> bool:
         return False
     body = pkgxml.read_text()
     orig = body
+    # RFC-0087 D2: `cmake` on a `nano_ros_add_executable` leaf is the same
+    # false claim as `ament_cmake`, only quieter — stock colcon registers a
+    # `ros.cmake` task, so it ATTEMPTS the build and fails at find_package.
     body = re.sub(r"<build_type>\s*cmake\s*</build_type>",
-                  "<build_type>ament_cmake</build_type>", body)
+                  "<build_type>nros_cmake</build_type>", body)
     if "<nano_ros" not in body:
         # Insert the tuple right after <build_type>, else at the start of an
         # existing <export>, else synthesize a whole <export> block before
@@ -183,7 +196,7 @@ def _transform_pkgxml(pkgxml: Path) -> bool:
             body = body.replace("<export>", '<export>\n    <nano_ros deploy="native"/>', 1)
         elif "</package>" in body:
             block = ("  <export>\n"
-                     "    <build_type>ament_cmake</build_type>\n"
+                     "    <build_type>nros_cmake</build_type>\n"
                      '    <nano_ros deploy="native"/>\n'
                      "  </export>\n")
             body = body.replace("</package>", block + "</package>", 1)

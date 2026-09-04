@@ -223,29 +223,31 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
         );
     }
 
-    // RFC-0048 (phase-287) — a C/C++ package is written in the ament shape:
-    // `build_type` is `ament_cmake` and the platform delta lives in the
-    // `<export><nano_ros deploy= rmw=/>` tuple (find_package(nano_ros) reads it).
-    // Rust keeps its `nros.<lang>.<platform>` build_type + needs no tuple.
+    // RFC-0048 (phase-287) + RFC-0087 D2/D3 (phase-420 W4) — a scaffolded
+    // package is nano-ros-owned, so `<build_type>` says so: `nros_cmake` for
+    // the C/C++ shape, `nros_cargo` for Rust. Both replace claims that were
+    // false in opposite directions — `ament_cmake` said a stock `colcon build`
+    // could handle the package, and `nros.<lang>.<platform>` was an improvised
+    // spelling whose only registered readers were 30 colcon entry points that
+    // W4 deleted.
+    //
+    // The `<nano_ros deploy= rmw=/>` tuple is now emitted for EVERY language,
+    // not just C/C++. It was the CMake reader's input before; since W4 it is
+    // also where the colcon task reads the platform from, because the platform
+    // no longer rides in the build type. Without it a `--platform freertos`
+    // Rust package would declare no deploy, and a colcon build of it would
+    // silently produce a host binary.
     let deploy = if cfg.platform == "native" {
         "native"
     } else {
         cfg.platform.as_str()
     };
     let is_cxx = matches!(cfg.lang.as_str(), "c" | "cpp");
-    let build_type = if is_cxx {
-        "ament_cmake".to_string()
-    } else {
-        format!("nros.{}.{}", cfg.lang, cfg.platform)
-    };
-    let nano_ros_export = if is_cxx {
-        format!(
-            "\n    <nano_ros deploy=\"{deploy}\" rmw=\"{}\"/>",
-            rmw.cmake_value
-        )
-    } else {
-        String::new()
-    };
+    let build_type = if is_cxx { "nros_cmake" } else { "nros_cargo" };
+    let nano_ros_export = format!(
+        "\n    <nano_ros deploy=\"{deploy}\" rmw=\"{}\"/>",
+        rmw.cmake_value
+    );
 
     fs::create_dir_all(dir.join("src"))?;
 
@@ -364,6 +366,9 @@ fn scaffold_component_rust(cfg: &ComponentScaffoldConfig) -> Result<()> {
   <description>{name} — nano-ros reusable component.</description>
   {maintainer}
   <license>Apache-2.0</license>
+  <export>
+    <build_type>nros_cargo</build_type>
+  </export>
 </package>
 "#,
         name = cfg.name,
@@ -528,7 +533,7 @@ fn scaffold_component_cpp(cfg: &ComponentScaffoldConfig) -> Result<()> {
   <license>Apache-2.0</license>
   <depend>std_msgs</depend>
   <export>
-    <build_type>ament_cmake</build_type>
+    <build_type>nros_cmake</build_type>
     <nano_ros deploy="native"/>
   </export>
 </package>
@@ -687,7 +692,7 @@ fn scaffold_component_c(cfg: &ComponentScaffoldConfig) -> Result<()> {
   {maintainer}
   <license>Apache-2.0</license>
   <export>
-    <build_type>ament_cmake</build_type>
+    <build_type>nros_cmake</build_type>
     <nano_ros deploy="native"/>
   </export>
 </package>
