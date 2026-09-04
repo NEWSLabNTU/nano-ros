@@ -1,7 +1,22 @@
 # Phase 419 — a roadmap phase that contradicts itself should not need a reader to notice
 
-**Status (2026-09-04). PROPOSED — nothing landed. The measurements below are
-real; the work items are not started.**
+**Status (2026-09-04). W1, W2 (three of four rules) and W3 LANDED in one change;
+R2 remains, with its cost measured.**
+
+* **W1 done.** `check-doc-refs` owns the numbered doc series;
+  `check-ci-doc-workflow-refs` owns workflow names but only inside three
+  hand-listed `docs/development/` files, so roadmap docs are covered by
+  NEITHER — 20 dead workflow references across 8 phases, 11 of them in
+  phase-196 alone. R1, R3 and R4: not covered by anything.
+* **W2 done for R1, R3, R4** — `scripts/check-roadmap-claims.py`, fast line,
+  self-testing, ratcheted. Four findings baselined: 230 and 275 (already
+  corrected in an open PR, so their lines delete when it lands — the ratchet
+  will say so), and **292 and 325, which are live and unworked**.
+* **W2 R2 NOT done, and the reason is measured**: extending
+  `check-ci-doc-workflow-refs` means giving it a baseline it does not have, for
+  20 references most of which are legitimate history. Reported by W3 instead.
+* **W3 done** — `just roadmap-audit` + a monthly `roadmap-audit.yml`, a REPORT
+  and never a gate.
 
 ## The finding
 
@@ -59,7 +74,7 @@ other.
 
 ---
 
-## W1 — measure the overlap with the gates that already exist, FIRST
+## W1 — measure the overlap with the gates that already exist, FIRST — DONE
 
 `check-doc-refs`, `check-doc-recipe-refs` and `check-ci-doc-workflow-refs`
 already check references from docs. Before adding a rule, establish which of the
@@ -74,7 +89,7 @@ records the api-parity pair doing exactly that, 25 symbols apart.
 Acceptance: for each of R1-R4, a one-line statement of "covered by X" or "not
 covered", with the command that establishes it.
 
-## W2 — the contradiction gate
+## W2 — the contradiction gate — R1/R3/R4 DONE, R2 deferred to W3
 
 Buildless, offline, self-testing on the normal path (`check-gate-selftests`
 requires that), ratcheted against a baseline that may only SHRINK. Fast line.
@@ -124,7 +139,7 @@ IT WAS before their corrections (they are fixed now, so a self-test with fixture
 documents is the only honest way to assert this), passes on `phase-375` and
 `phase-162`, and its baseline shrinks by at least the four strong R1 hits.
 
-## W3 — the periodic pass, for the four the gate cannot reach
+## W3 — the periodic pass, for the four the gate cannot reach — DONE
 
 A scheduled agent pass, monthly. Output is an issue or a correction PR —
 **never a red gate.** A scheduled required check is the #0975 deadlock, and

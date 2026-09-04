@@ -1,0 +1,52 @@
+# phase-419 W3 — the monthly roadmap verification pass.
+#
+# W2's `check-roadmap-claims` is a GATE and takes the mechanical half: a phase
+# that contradicts its own body. This is the other half, and it is deliberately
+# NOT a gate. Supersession, a reversed premise and a claim of absence each need
+# judgment — 4 of the 11 findings on 2026-09-04 were that kind — and a gate that
+# guessed at them would flag honest documents, which is how a gate gets switched
+# off.
+#
+# NOT A REQUIRED CHECK, and it never runs on `pull_request`, so it can never
+# become a context a PR must satisfy. A scheduled job in the required set is the
+# #0975 deadlock: a check that produces no verdict for a PR blocks it forever.
+# `pr-verdicts.yml` documents the same shape for the same reason.
+#
+# It writes the report into the RUN SUMMARY rather than only stdout. That is not
+# cosmetic: issue 1029 was eight nights of a lane producing no zephyr verdict,
+# and what made it un-debuggable was that the deciding value existed only in a
+# log this workflow family renders lossily (steps as `UNKNOWN STEP`, whole lines
+# missing). A report nobody can read back is the same as no report.
+#
+# MONTHLY, not nightly. The thing it watches moves at the speed of phases being
+# written, and a report that arrives faster than anyone acts on it becomes noise
+# — the same reason `pr-verdicts.yml` runs twice a day and not every hour.
+name: roadmap-audit
+
+on:
+  schedule:
+    # 07:00 on the 1st. Away from the 05:00 Zephyr and 07:00 platform crons in
+    # `nightly.yml` by date rather than by hour, so a busy runner pool on the
+    # 1st does not delay either of them.
+    - cron: "0 7 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `just setup` and no provisioning: the script reads `docs/roadmap/`,
+      # `docs/issues/` and `.github/workflows/` off the checkout and shells out
+      # to nothing. phase-413's rule is that a workflow step which hand-rolls
+      # what a verb does hides defects in the verb — the inverse also holds, and
+      # provisioning a toolchain this job never uses would be boilerplate that
+      # says the script needs something it does not.
+      - name: Roadmap verification candidates
+        run: |
+          python3 scripts/roadmap-audit.py --markdown >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/roadmap-audit.py

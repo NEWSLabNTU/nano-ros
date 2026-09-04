@@ -633,6 +633,14 @@ api-comparison *args:
 # it. Use this instead of eyeballing the highest existing number: that is a
 # check-then-act race, and it has produced six id collisions (see
 # `scripts/reserve-issue-id.sh` for why an instruction cannot fix it).
+# phase-419 W3 — candidates for a roadmap verification pass. A REPORT, never a
+# gate: supersession, a reversed premise and a claim of absence all need
+# judgment, and W2's `check-roadmap-claims` already took everything that does
+# not. Exit 0 whatever it finds.
+[group("docs")]
+roadmap-audit *ARGS:
+    @python3 scripts/roadmap-audit.py {{ ARGS }}
+
 [group("docs")]
 issue-new slug="":
     @scripts/reserve-issue-id.sh {{slug}}
