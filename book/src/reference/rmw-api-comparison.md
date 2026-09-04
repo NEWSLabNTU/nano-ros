@@ -83,9 +83,9 @@ rmw must provide" than any reading of the headers.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | same | 12 | 1 |  |  |  |  |  |  | **13** |
 | re-shaped | 33 | 1 |  |  |  |  |  |  | **34** |
-| re-mapped | 15 |  | 4 | 1 | 3 | 3 | 2 |  | **28** |
+| re-mapped | 16 |  | 4 | 1 | 3 | 3 | 1 |  | **28** |
 | not supported — *by decision* |  |  |  |  |  |  |  | 13 | **13** |
-| **total** | **60** | **2** | **4** | **1** | **3** | **3** | **2** | **13** | **88** |
+| **total** | **61** | **2** | **4** | **1** | **3** | **3** | **1** | **13** | **88** |
 
 Read a row for what we did, a column for where it lives. Only
 **not implemented** should shrink over time; **not supported** is the one
@@ -581,12 +581,12 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
 <span class=pu>)</span></pre></td>
 <td class=why><div class='st s-re-shaped'>● re-shaped</div><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.<br><br><b>no allocator at this seam</b> — This ABI does not allocate. Upstream hands an `rcutils_allocator_t` so the implementation can size and own the result; ours writes into a caller-owned byte range whose capacity the caller already knows. An allocator parameter cannot cross a seam that has nothing to give it.<br><br><b>visitor, not an owning out-param</b> — `rmw_topic_endpoint_info_array_t` and `rmw_network_flow_endpoint_array_t` are heap-owning arrays with their own `fini`. Visited one entry at a time instead.</td>
 </tr>
-<tr class=inert>
+<tr>
 <td class=c><pre><span class=ret>const char *</span>
 <span class='fn'>rmw_get_serialization_format</span><span class=pu>(</span><span class=ty>void</span><span class=pu>)</span></pre></td>
 <td class=c><pre><span class=ret>const char *</span>
 <span class=pu>(*</span><span class='fn'>get_serialization_format</span><span class=pu>)</span><span class=pu>(</span><span class=ty>void</span><span class=pu>)</span></pre></td>
-<td class=why><div class='st s-re-mapped'>◆ re-mapped · runtime</div><div class=answers><div class=ans>runtime: the constant cdr</div></div><b>inert</b> — declared, written and read by nothing.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped</div><div class=answers><div class=ans>vtable: get_serialization_format, per session</div></div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>

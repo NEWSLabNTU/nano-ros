@@ -1679,6 +1679,44 @@ impl CffiSession {
         self.domain_id
     }
 
+    /// RFC-0088 D4 / phase-421 W2 — the serialization format THIS session's
+    /// backend speaks, as a NUL-terminated C string with `'static` lifetime,
+    /// or NULL when the backend does not declare one.
+    ///
+    /// **Not** `<Self as Session>::SERIALIZATION_FORMAT`. That const is the
+    /// trait default, `"cdr"`, and it is a lie for this type specifically:
+    /// `CffiSession` is the one session that does not know its own backend at
+    /// compile time — the vtable arrives at run time through
+    /// `nros_rmw_cffi_register_named`, and an image may register several. The
+    /// per-session answer therefore has to come from the vtable, which is the
+    /// whole reason the slot got a body.
+    ///
+    /// A NULL slot answers NULL rather than `"cdr"`: a backend that declines
+    /// to say what it speaks has not said `"cdr"`, and guessing on its behalf
+    /// is the mistake `get_implementation_identifier`'s doc made for two
+    /// phases (corrected phase-393 W2). Every in-tree backend fills the slot,
+    /// so NULL means a foreign or pre-phase-421 vtable.
+    pub fn serialization_format_cstr(&self) -> *const core::ffi::c_char {
+        match self.vtable.get_serialization_format {
+            // SAFETY: the slot is a non-NULL fn pointer a registered backend
+            // installed; it takes no arguments and returns static storage.
+            Some(f) => unsafe { f() },
+            None => core::ptr::null(),
+        }
+    }
+
+    /// [`serialization_format_cstr`](Self::serialization_format_cstr) as a
+    /// Rust string. `None` for a NULL slot or a non-UTF-8 answer.
+    pub fn serialization_format(&self) -> Option<&'static str> {
+        let ptr = self.serialization_format_cstr();
+        if ptr.is_null() {
+            return None;
+        }
+        // SAFETY: a backend's format name is a `'static` NUL-terminated string
+        // literal — the slot's contract, and what every in-tree body returns.
+        unsafe { core::ffi::CStr::from_ptr(ptr) }.to_str().ok()
+    }
+
     fn make_view(&mut self) -> NrosRmwSession {
         NrosRmwSession {
             node_name: self.node_name_buf.as_ptr().cast(),
@@ -1948,6 +1986,14 @@ fn report_qos_downgrade(kind: &str, name: &str, requested: &NrosRmwQos, granted:
 }
 
 impl Session for CffiSession {
+    /// The backend is chosen at run time here, so the trait's compile-time
+    /// default would be a guess. Ask the vtable, and fall back to the constant
+    /// only for a backend that installed no body — which reads as "this backend
+    /// has not said", not as "cdr".
+    fn serialization_format(&self) -> &'static str {
+        CffiSession::serialization_format(self).unwrap_or(Self::SERIALIZATION_FORMAT)
+    }
+
     type Error = TransportError;
     type PublisherHandle = CffiPublisher;
     type SubscriptionHandle = CffiSubscription;

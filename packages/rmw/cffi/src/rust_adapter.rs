@@ -324,11 +324,66 @@ unsafe fn node_namespace_of<'a>(node: *const NrosRmwNode) -> &'a str {
 // Adapter
 // ============================================================================
 
+/// Longest serialization-format name this seam can hand across the C ABI.
+///
+/// RFC-0088 D2 — the vtable slot carries the format's cross-image identity
+/// STRING, and a Rust backend spells that identity as a `&'static str`
+/// (`Session::SERIALIZATION_FORMAT`), which is not NUL-terminated. The
+/// conversion therefore has to happen somewhere, and it happens HERE, at
+/// compile time, into per-`R` static storage — never at call time into a
+/// buffer whose lifetime the slot's `const char *` contract cannot express.
+///
+/// 32 is generous for a name like `"cdr"`; a longer one is a const-eval error
+/// rather than a truncation, because a truncated format name is a different,
+/// plausible format.
+const FORMAT_NAME_CAP: usize = 32;
+
+/// NUL-terminate a format name at compile time.
+const fn format_name_cstr(name: &str) -> [u8; FORMAT_NAME_CAP] {
+    let bytes = name.as_bytes();
+    assert!(
+        bytes.len() < FORMAT_NAME_CAP,
+        "serialization format name does not fit the vtable slot's buffer"
+    );
+    let mut out = [0u8; FORMAT_NAME_CAP];
+    let mut i = 0;
+    while i < bytes.len() {
+        out[i] = bytes[i];
+        i += 1;
+    }
+    out
+}
+
+/// `get_serialization_format` — RFC-0088 D4.
+///
+/// Takes no arguments, exactly as upstream's `rmw_get_serialization_format()`
+/// does, because the answer is a property of the BACKEND and not of any entity
+/// it created. What differs from upstream is who holds the question: upstream
+/// has one middleware per process and can answer from a global, while
+/// `nros_rmw_cffi_register_named` admits several backends in one image, so the
+/// answer is per-vtable — which is per-session, since a session is opened
+/// against one vtable.
+unsafe extern "C" fn get_serialization_format_trampoline<R: RustBackend>() -> *const c_char {
+    RustBackendAdapter::<R>::SERIALIZATION_FORMAT_CSTR
+        .as_ptr()
+        .cast()
+}
+
 /// Wraps a Rust `Rmw` backend behind the canonical
 /// [`NrosRmwVtable`] C ABI. See module docs.
 pub struct RustBackendAdapter<R>(PhantomData<R>);
 
 impl<R: RustBackend> RustBackendAdapter<R> {
+    /// RFC-0088 D4 — `R`'s serialization format, NUL-terminated, in per-`R`
+    /// static storage so the `get_serialization_format` slot can hand out a
+    /// `const char *` that outlives the call.
+    ///
+    /// `&<const expr>` in a const initialiser is promoted to `'static`, which
+    /// is what makes the slot's lifetime contract true rather than merely
+    /// hoped for.
+    const SERIALIZATION_FORMAT_CSTR: &'static [u8; FORMAT_NAME_CAP] =
+        &format_name_cstr(<R::Session as Session>::SERIALIZATION_FORMAT);
+
     /// Monomorphised vtable for backend `R`. The `const` is promoted
     /// to per-type static storage, so `&Self::VTABLE` has `'static`
     /// lifetime — safe to hand to `nros_rmw_cffi_register`.
@@ -395,6 +450,12 @@ impl<R: RustBackend> RustBackendAdapter<R> {
         ),
         get_publishers_info_by_topic: Some(get_publishers_info_by_topic_trampoline::<R>),
         get_subscriptions_info_by_topic: Some(get_subscriptions_info_by_topic_trampoline::<R>),
+        // RFC-0088 D4 / phase-421 W2 — every Rust backend answers with its own
+        // `Session::SERIALIZATION_FORMAT`, so a bridge image can ask each
+        // session rather than trusting one image-wide constant. The trait
+        // default is `"cdr"`; a backend that speaks something else overrides
+        // it and this slot reports the override with no work here.
+        get_serialization_format: Some(get_serialization_format_trampoline::<R>),
         ..EMPTY_VTABLE
     };
 

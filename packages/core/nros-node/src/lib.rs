@@ -86,6 +86,13 @@ extern crate alloc;
 
 pub mod c_waker;
 pub mod config;
+/// RFC-0088 / phase-421 W1 — the compile-time message-format check.
+///
+/// Gated exactly like [`session`], whose `IMAGE_SERIALIZATION_FORMAT_ID` it
+/// compares against: with no RMW seam compiled in there is no backend, so
+/// there is no format for a message to disagree with.
+#[cfg(any(has_rmw, test))]
+pub mod format_check;
 /// Phase 212.K.7.6.b — runtime cyclonedds type-descriptor registry hook.
 pub mod rmw_type_registry;
 

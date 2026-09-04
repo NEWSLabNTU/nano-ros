@@ -28,12 +28,21 @@ and classifies every slot:
                 fills it — but it must be a DECISION, so every inert slot
                 belongs to a declared family with a reason.
 
-`inert` is the one worth staring at: as of 2026-08-26 it is 35 of 74. Half the
-vtable is reserved rather than working, and before this tool nothing said so.
+`inert` is the one worth staring at. It was 35 of 74 when this tool was written
+(2026-08-26) — half the vtable reserved rather than working, and before this
+tool nothing said so. It is 6 of 68 as of 2026-09-04. Re-run the report rather
+than trusting this sentence; the number is a snapshot and the tool is not.
 
 The families exist because 35 individual essays is how issue 0777 happened —
 reasons written to fill a table, never checked. These slots are inert in groups,
-for one reason per group, so the reason is written once where it is true.
+for one reason per group, so the reason is written once where it is true. A
+family is therefore only as honest as its membership: `--check` rejects a family
+that still names a slot which has since gained a producer or a consumer,
+BECAUSE the reason such a family carries was written about a slot that no longer
+matches it. `get_serialization_format` left the `identity` family that way in
+phase-421 W2 — the family's own reason said it was reserved "so a bridge image
+linking two backends can [ask]", and once that bridge and a backend speaking
+something other than CDR both existed, the reason had argued itself out.
 
 Usage:
     scripts/check-rmw-slot-producers.py           # the report
@@ -84,11 +93,15 @@ DOC_WINDOW = 2600
 # family, and a family that names a slot which is no longer inert is stale.
 INERT_FAMILIES = {
     "identity": (
-        ("get_implementation_identifier", "get_serialization_format"),
-        "the runtime answers both without asking a backend — the registry name "
-        "and `\"cdr\"` — and no backend has yet wanted to say otherwise. Reserved "
-        "so a bridge image linking two backends can, since that is the case where "
-        "a per-backend answer stops being decoration",
+        ("get_implementation_identifier",),
+        "the identity that is load-bearing is the one a backend stamps into "
+        "`rmw_gid_t`, which `rmw_compare_gids_equal` reads before the bytes — so "
+        "what matters is that a backend has ONE spelling of its name, not that it "
+        "can be asked for it. Reserved for the day a caller needs to ask which of "
+        "several linked backends it is on. NOTE its former family-mate "
+        "`get_serialization_format` left in phase-421 W2: the reason above was "
+        "written for both, and it stopped being true for the format the moment "
+        "uORB answered `\"uorb\"` where the others answer `\"cdr\"`",
     ),
     "capability-probe": (
         ("feature_supported",),

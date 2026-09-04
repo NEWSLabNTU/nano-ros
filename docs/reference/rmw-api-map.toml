@@ -198,8 +198,8 @@ reason = "get_publishers_info_by_topic — `rmw_topic_endpoint_info_visit_fn`"
 where = "vtable"
 nano = "get_serialization_format"
 status = "re-mapped"
-answers = ["runtime: the constant cdr"]
-reason = "get_serialization_format — CDR today, but the ANSWER is the backend's"
+answers = ["vtable: get_serialization_format, per session"]
+reason = "get_serialization_format — the slot, PRODUCED by every backend since phase-421 W2 (RFC-0088 D4). This row read `runtime: the constant cdr` while the slot was NULL everywhere, and both halves of that have stopped being true: uORB answers `uorb` where the others answer `cdr`, and there is no runtime constant — `CffiSession::serialization_format` asks the session's own vtable, because `nros_rmw_cffi_register_named` admits several backends and a bridge image has no single answer. Upstream takes no handle here (one process, one middleware, resolved by dlopen); we keep the signature and let the SESSION supply the identity"
 
 [rmw_get_serialized_message_size]
 where = "layer"

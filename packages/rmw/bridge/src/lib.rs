@@ -1,8 +1,20 @@
 //! Cross-RMW bridge primitives for nano-ros (Phase 128.F).
 //!
 //! Lets a binary that intentionally links more than one RMW backend
-//! forward raw CDR payloads between Nodes bound to different
+//! forward raw serialized payloads between Nodes bound to different
 //! backends. Common single-backend code does not need this crate.
+//!
+//! # Serialization format (RFC-0088 D3, phase-421 W3)
+//!
+//! `Executor::open_multi` is the one place where RFC-0088's compile-time
+//! answer stops existing — one image, two backends, potentially two formats —
+//! so it is the one place the format becomes a runtime value.
+//! [`PubSubBridge::new`] compares the two sides' formats once, at
+//! construction, and returns [`BridgeError::FormatMismatch`] naming both when
+//! they differ. [`PubSubBridge::with_converter`] is the deliberate
+//! cross-format case; it takes a [`SerializationFormatConverter`] and checks
+//! its declared endpoints, also once. Nothing about a format is evaluated per
+//! sample.
 //!
 //! # Pattern
 //!
@@ -27,7 +39,7 @@
 //!     let mut field   = exec.create_node_on("field",   "zenoh")?;
 //!     let mut control = exec.create_node_on("control", "dds")?;
 //!     // user wires sub on `field`, pub on `control`, then:
-//!     // let mut bridge = PubSubBridge::new(sub, pubr, "zenoh");
+//!     // let mut bridge = PubSubBridge::new(sub, pubr, "zenoh")?;
 //!     // bridge.pump()?;
 //!     Ok(())
 //! }
@@ -59,6 +71,9 @@ use nros_node::{
     NodeError,
     executor::{EmbeddedRawPublisher, RawSubscription},
 };
+
+mod convert;
+pub use convert::{BridgeError, ConvertError, SerializationFormatConverter};
 
 #[cfg(feature = "config")]
 mod config;
@@ -96,12 +111,36 @@ pub const DEDUP_WINDOW: usize = 16;
 /// another. Each [`pump`](Self::pump) call drains every queued sample
 /// from the subscription and forwards the bytes to the publisher.
 ///
-/// Backend bytes pass through untouched — both sides must use ROS-CDR
-/// (the default for every backend in tree). Cross-encoding bridges
-/// would need an explicit translator and are out of scope.
+/// # Serialization format (RFC-0088 D3, phase-421 W3)
+///
+/// Backend bytes pass through untouched, so the two sides must agree on what
+/// those bytes mean. That used to be a sentence in this doc comment ("both
+/// sides must use ROS-CDR … Cross-encoding bridges would need an explicit
+/// translator and are out of scope") checked by nothing; it is now a return
+/// value. [`new`](Self::new) compares
+/// [`RawSubscription::format`] against [`EmbeddedRawPublisher::format`] and
+/// refuses a mismatch with [`BridgeError::FormatMismatch`], which names both
+/// formats.
+///
+/// The comparison is **one byte, once, at construction**. [`pump`](Self::pump)
+/// never looks at a format: a bridge that exists has already been proven
+/// consistent, so forwarding stays a memcpy.
+///
+/// For the deliberate cross-format case, [`with_converter`](Self::with_converter)
+/// takes a [`SerializationFormatConverter`] and validates its declared
+/// endpoints against the two sides, also once, at construction.
+///
+/// # Const generics
+///
+/// `RX_BUF` / `TX_BUF` size the receive and transmit staging buffers.
+/// `CONV_BUF` sizes the conversion output buffer and defaults to `0` — a
+/// zero-length array is a ZST, so a bridge that does not convert costs exactly
+/// what it did before converters existed. A converting bridge names its own
+/// size: `PubSubBridge::<RX, TX, 1024>::with_converter(…)`.
 pub struct PubSubBridge<
     const RX_BUF: usize = { nros_node::config::DEFAULT_RX_BUF_SIZE },
     const TX_BUF: usize = { nros_node::executor::DEFAULT_LOAN_BUF },
+    const CONV_BUF: usize = 0,
 > {
     sub: RawSubscription<RX_BUF>,
     pubr: EmbeddedRawPublisher<TX_BUF>,
@@ -116,6 +155,15 @@ pub struct PubSubBridge<
     /// [`LoopGuard`] (or hand the same allocation in by sharing a
     /// mutable reference if the bridges live in the same scope).
     dedup: LoopGuard,
+    /// RFC-0088 D3 — `Some` only for a bridge built by
+    /// [`with_converter`](Self::with_converter). `None` is the whole
+    /// single-format world, and the field is one nullable fat pointer, checked
+    /// once per drained sample at the publish step rather than compared as a
+    /// format.
+    conv: Option<&'static dyn SerializationFormatConverter>,
+    /// RFC-0088 D3 — staging for [`SerializationFormatConverter::convert`]
+    /// output. `[u8; 0]` (a ZST) unless the caller sized `CONV_BUF`.
+    conv_buf: [u8; CONV_BUF],
 }
 
 /// Standalone payload-hash dedup ring. Used internally by
@@ -227,22 +275,112 @@ pub fn payload_hash(bytes: &[u8]) -> u64 {
     h
 }
 
-impl<const RX_BUF: usize, const TX_BUF: usize> PubSubBridge<RX_BUF, TX_BUF> {
+/// Same-format bridges — the overwhelming majority — are `CONV_BUF = 0`, and
+/// [`new`](PubSubBridge::new) lives here rather than in the general impl so
+/// that inference can pick that `0` on its own. A const-generic DEFAULT is not
+/// an inference fallback: with `new` in the general impl every existing
+/// `PubSubBridge::new(sub, pubr, origin)` becomes "type annotations needed".
+impl<const RX_BUF: usize, const TX_BUF: usize> PubSubBridge<RX_BUF, TX_BUF, 0> {
     /// Build a one-direction bridge. `origin` is the RMW name of the
     /// session the source subscription is bound to (e.g. `"zenoh"`).
     /// Pass `""` when the bridge is single-direction and loop
     /// protection is not needed.
+    ///
+    /// # Errors
+    ///
+    /// [`BridgeError::FormatMismatch`] when the subscription's
+    /// [`format`](RawSubscription::format) and the publisher's
+    /// [`format`](EmbeddedRawPublisher::format) differ. The bridge forwards
+    /// bytes untouched, so a mismatch would put one format's bytes on a wire
+    /// the other side reads as the other's — RFC-0088 D3 makes that a
+    /// construction failure rather than a doc comment. Cross-format on purpose
+    /// goes through [`with_converter`](Self::with_converter).
+    ///
+    /// The comparison is one byte, evaluated exactly here. `pump` gains
+    /// nothing.
     pub fn new(
         sub: RawSubscription<RX_BUF>,
         pubr: EmbeddedRawPublisher<TX_BUF>,
         origin: &'static str,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, BridgeError> {
+        let ingress = sub.format();
+        let egress = pubr.format();
+        if ingress != egress {
+            return Err(BridgeError::FormatMismatch { ingress, egress });
+        }
+        Ok(Self {
             sub,
             pubr,
             origin,
             dedup: LoopGuard::new(),
+            conv: None,
+            conv_buf: [],
+        })
+    }
+}
+
+impl<const RX_BUF: usize, const TX_BUF: usize, const CONV_BUF: usize>
+    PubSubBridge<RX_BUF, TX_BUF, CONV_BUF>
+{
+    /// Build a bridge that translates between two serialization formats
+    /// (RFC-0088 D3).
+    ///
+    /// This is the deliberate cross-format case: the caller names a
+    /// [`SerializationFormatConverter`], and the bridge checks — once, here —
+    /// that the converter's declared endpoints are the bridge's own. A
+    /// converter wired backwards is then a `Result` at wiring time rather than
+    /// nonsense on the wire.
+    ///
+    /// Size the conversion output buffer on the type:
+    /// `PubSubBridge::<RX, TX, 1024>::with_converter(sub, pubr, origin, conv)`.
+    ///
+    /// # Errors
+    ///
+    /// * [`BridgeError::NoConversionBuffer`] when `CONV_BUF == 0` — the
+    ///   converter would have nowhere to write.
+    /// * [`BridgeError::ConverterMismatch`] when the converter's `from`/`to`
+    ///   are not the subscription's and the publisher's formats. The message
+    ///   names all four.
+    pub fn with_converter(
+        sub: RawSubscription<RX_BUF>,
+        pubr: EmbeddedRawPublisher<TX_BUF>,
+        origin: &'static str,
+        conv: &'static dyn SerializationFormatConverter,
+    ) -> Result<Self, BridgeError> {
+        if CONV_BUF == 0 {
+            return Err(BridgeError::NoConversionBuffer);
         }
+        let ingress = sub.format();
+        let egress = pubr.format();
+        let (conv_from, conv_to) = (conv.from(), conv.to());
+        if conv_from != ingress || conv_to != egress {
+            return Err(BridgeError::ConverterMismatch {
+                conv_from,
+                conv_to,
+                ingress,
+                egress,
+            });
+        }
+        Ok(Self {
+            sub,
+            pubr,
+            origin,
+            dedup: LoopGuard::new(),
+            conv: Some(conv),
+            conv_buf: [0u8; CONV_BUF],
+        })
+    }
+
+    /// The serialization format of the bytes entering this bridge.
+    pub fn ingress_format(&self) -> nros_serdes::format::SerializationFormatId {
+        self.sub.format()
+    }
+
+    /// The serialization format of the bytes leaving this bridge. Equal to
+    /// [`ingress_format`](Self::ingress_format) unless the bridge was built
+    /// with a converter.
+    pub fn egress_format(&self) -> nros_serdes::format::SerializationFormatId {
+        self.pubr.format()
     }
 
     /// Drain every queued sample and forward to the destination
@@ -259,6 +397,12 @@ impl<const RX_BUF: usize, const TX_BUF: usize> PubSubBridge<RX_BUF, TX_BUF> {
     pub fn pump_with_stats(&mut self) -> Result<PumpStats, NodeError> {
         let mut stats = PumpStats::default();
         let origin = self.origin;
+        // RFC-0088 D3 — hoisted out of the drain loop and copied off `self`, so
+        // the loop body borrows only the fields it writes. `None` is the
+        // single-format world and stays one null test at the publish step; no
+        // FORMAT is compared here or anywhere else in `pump` — that happened
+        // once, in `new` / `with_converter`.
+        let conv = self.conv;
         let origin_bytes = origin.as_bytes();
         // Phase 128.F.4 — wire-level attachment scratch buffers for
         // `bridge_origin` reads / writes. 64 bytes covers any
@@ -293,12 +437,36 @@ impl<const RX_BUF: usize, const TX_BUF: usize> PubSubBridge<RX_BUF, TX_BUF> {
                 stats.dropped_echo += 1;
                 continue;
             }
+            // RFC-0088 D3 — translate only when the caller asked for it. The
+            // `None` arm is the original memcpy path, byte for byte.
+            let out: &[u8] = match conv {
+                None => bytes,
+                Some(c) => match c.convert(bytes, &mut self.conv_buf) {
+                    Ok(n) => {
+                        let n = n.min(CONV_BUF);
+                        &self.conv_buf[..n]
+                    }
+                    Err(e) => {
+                        // Dropping is the only local recovery — the sample
+                        // cannot be represented on the far side. Counted AND
+                        // logged, never silent: a converter that fails every
+                        // sample must not read as a quiet bridge.
+                        nros_log::nros_error!(
+                            nros_log::get_logger("nros_bridge"),
+                            "bridge conversion failed, sample dropped: {}",
+                            e
+                        );
+                        stats.dropped_convert += 1;
+                        continue;
+                    }
+                },
+            };
             // Stamp our origin on the way out so the receiving
             // bridge can wire-level-filter it.
             let mut att_out = [0u8; 64];
             let att_out_len = encode_bridge_origin(origin_bytes, &mut att_out);
             self.pubr
-                .publish_raw_with_attachment(bytes, &att_out[..att_out_len])?;
+                .publish_raw_with_attachment(out, &att_out[..att_out_len])?;
             if !origin.is_empty() {
                 self.dedup.record(hash);
             }
@@ -335,6 +503,13 @@ pub struct PumpStats {
     /// Samples that matched a recently-forwarded hash and were
     /// dropped to break a bidirectional echo loop.
     pub dropped_echo: usize,
+    /// RFC-0088 D3 — samples a [`SerializationFormatConverter`] refused, and
+    /// which therefore never reached the destination. Always `0` on a bridge
+    /// built with [`PubSubBridge::new`], which has no converter. Not mirrored
+    /// into the C `nros_pump_stats_t` — that struct's layout is a published
+    /// ABI (`<nros/bridge.h>`) and appending to it is exactly the drift class
+    /// `check-ffi-struct-mirrors` exists for.
+    pub dropped_convert: usize,
 }
 
 #[cfg(test)]
@@ -374,6 +549,23 @@ mod tests {
     fn bridge_origin_empty_skips_encode() {
         let mut buf = [0u8; 32];
         assert_eq!(encode_bridge_origin(b"", &mut buf), 0);
+    }
+
+    /// RFC-0088 D3 — the converter must be free for the bridges that do not
+    /// use one. `CONV_BUF` defaults to `0`, whose array is a ZST, so a
+    /// non-converting bridge pays only for the nullable converter pointer.
+    #[test]
+    fn zero_conv_buf_is_a_zst() {
+        assert_eq!(core::mem::size_of::<[u8; 0]>(), 0);
+        let plain = core::mem::size_of::<PubSubBridge<64, 64, 0>>();
+        let converting = core::mem::size_of::<PubSubBridge<64, 64, 1024>>();
+        assert!(
+            converting >= plain + 1024,
+            "a 1024-byte conversion buffer must actually be there: \
+             plain={plain} converting={converting}"
+        );
+        // And the default spelling is the free one.
+        assert_eq!(core::mem::size_of::<PubSubBridge<64, 64>>(), plain);
     }
 
     #[test]
