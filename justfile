@@ -1870,6 +1870,33 @@ _require-leaf-includes:
     fi
     python3 scripts/build/leaf-config-includes.py
 
+# issue 1038 — WRITE the central `nros-patch.toml` that 47 tracked leaf
+# `.cargo/config.toml` files `include`. The PRODUCER for the dependency the
+# preflight above only checks.
+#
+# Only `nros sync` wrote that file, and sync needs a WORKSPACE. A lane building
+# standalone leaves has no workspace to sync, so it got the file as a SIDE
+# EFFECT of whichever neighbouring lane ran `workspace-fixtures-build.sh` first.
+# Six lanes do (esp32, threadx-linux, native, nuttx, zephyr-ci, freertos);
+# `threadx-riscv64` does not, which is why it is the one whose leaves died at
+# manifest parse with
+#
+#   failed to load config include `../../../../../nros-patch.toml`
+#
+# while the identical config in a freertos leaf resolved. The lanes that worked
+# were working by accident.
+#
+# `nros ws central-patch` is the SAME writer `sync` calls, not a second spelling
+# of the content — the table must agree with sync's byte for byte or two leaves
+# resolve against different crates. Idempotent (skip-write when unchanged), so a
+# lane that already has the file pays one process spawn.
+[private]
+_ensure-central-patch:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/build/cargo.sh
+    nros_ensure_central_patch
+
 # The codegen stage of the build verb (issue 0992).
 #
 # `colcon build` generates messages, which is why a ROS user never types a

@@ -118,6 +118,15 @@ build: build-examples
     @echo "ThreadX RISC-V 64 examples built."
 
 # Build ThreadX QEMU RISC-V 64 examples
+#
+# issue 1038 — `nros_ensure_central_patch` FIRST. Every Rust leaf here reaches the
+# universal-trio patches through `include = ["…/nros-patch.toml"]`, and that
+# file is written by `nros sync`, which needs a workspace. This lane builds only
+# standalone leaves, so nothing here ever wrote it: the nightly cell died on
+# `failed to load config include ../../../../../nros-patch.toml` at MANIFEST
+# PARSE, before any compilation. Every other platform lane runs
+# `workspace-fixtures-build.sh` somewhere and got the file by side effect, which
+# is why the identical config resolved for them and not here.
 [group("main")]
 build-examples:
     #!/usr/bin/env bash
@@ -128,6 +137,8 @@ build-examples:
     source scripts/build/lane-skip.sh
     nros_lane_skip_reset threadx-riscv64
     source scripts/build/cargo.sh
+    # issue 1038 — before ANY cargo invocation in this lane (see the header).
+    nros_ensure_central_patch
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     if [ ! -d "$THREADX_DIR/common/inc" ] || [ ! -d "$NETX_DIR/common/inc" ]; then
         nros_lane_skip_note threadx-riscv64 "Skipping ThreadX QEMU RISC-V examples (ThreadX/NetX not found). Run: just threadx-linux setup"
@@ -191,6 +202,12 @@ build-fixture-extras:
     set -e
     source scripts/build/cargo.sh
     source scripts/build/fixture-matrix.sh
+    # issue 1038 — this is where the Rust leaves are actually built (the
+    # phase-369 cmake path), so it is where the nightly died at manifest parse.
+    # Also called in `build-examples`, which runs first under `build-fixtures`;
+    # the call is idempotent, and repeating it means running THIS recipe alone
+    # works too.
+    nros_ensure_central_patch
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
     export cargo_profile_args
     cargo_frontends="$(nros_cargo_frontend_jobs)"
