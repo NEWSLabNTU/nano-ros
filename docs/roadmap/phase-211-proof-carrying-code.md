@@ -8,7 +8,27 @@ Rust verifier (Frama-C/WP for C). Extract the registry tooling into a
 standalone Why3 Component Registry (`wcr`) and deliver a Sentinel-style
 safety-island demonstrator with an end-to-end GSN safety case.
 
-**Status:** Proposed (2026-05-31).
+**Status (2026-09-04). Still a PROPOSAL, nothing started — and the tree has
+since committed the other way, so this needs RE-DECIDING rather than picking
+up.** Zero checkboxes and zero DONE markers in 478 lines, which is honest; what
+is stale is the premise.
+
+This phase says "Retire Verus in favour of Creusot as the single Rust verifier".
+Measured 2026-09-04:
+
+* **Verus was not retired.** `just verify-verus` exists (`justfile:3125`) and
+  `just verify` DEPENDS on it (`verify: verify-kani verify-verus`,
+  `justfile:3171`). CLAUDE.md documents Kani + Verus as the verification stack.
+* **Creusot is not in the tree at all** — `git ls-files '*creusot*'` returns
+  zero files.
+
+So the retirement half is not merely unstarted, it is contradicted by fifteen
+months of practice. Anyone picking this up should first re-argue the Verus →
+Creusot swap against a stack that now has Verus proofs in it, rather than treat
+it as agreed and outstanding. Kept OPEN because the Frama-C / C half is
+untouched by that, and no decision has been recorded either way.
+
+**Previously:** Proposed (2026-05-31).
 
 > **Post-Phase-218**: References to `scripts/install-nros.sh` + the
 > external `github.com/NEWSLabNTU/nros-cli` repo below predate the

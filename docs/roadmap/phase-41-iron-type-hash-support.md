@@ -2,9 +2,11 @@
 
 **Status: Substantially complete (2026-07-26).** The RIHS01 machinery is built,
 wired, and verified end to end for iron + jazzy:
-- **Computation** — `rosidl-codegen/src/rihs.rs` (`build_type_description` +
+- **Computation** — `packages/cli/rosidl-resolve/src/rihs.rs` (the path below
+  read `rosidl-codegen/src/rihs.rs`, which predates the codegen move into
+  `packages/cli/`; the file is there, under a crate that was renamed) (`build_type_description` +
   `rihs01`, message/service/action) computes REP-2011 hashes; proven
-  `engine == fixture == live Jazzy` by `rosidl-bindgen/tests/edition_hash_oracle.rs`.
+  `engine == fixture == live Jazzy` by `packages/cli/rosidl-bindgen/tests/edition_hash_oracle.rs`.
 - **Codegen** — `nros generate-rust --ros-edition {iron,jazzy}` emits the real
   per-message `const TYPE_HASH` (verified: `std_msgs/Int32` →
   `RIHS01_b6578ded3c58c626cfe8d1a6fb6e04f706f97e9f03d2727c9ff4e74b1cef0deb`,
