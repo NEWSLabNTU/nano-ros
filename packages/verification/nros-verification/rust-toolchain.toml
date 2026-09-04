@@ -6,11 +6,13 @@
 # Reusing the same nightly the NuttX/Zephyr examples pin
 # (`examples/{qemu-arm-nuttx,zephyr}/rust-toolchain.toml`) — bump those
 # together when updating.
-# This pin should track the `Toolchain:` line in `tools/verus --version`.
+# This pin should track the `Toolchain:` line in `verus --version` (the binary
+# is at `$(nros sdk-path verus)/bin/verus` since phase-422 W2).
 # Upstream Verus 0.2026.04.19 currently reports `1.95.0` but its bundled
 # `verus_builtin_macros` still references `proc_macro::tracked_env` (renamed
 # upstream in rustc 1.95 to `proc_macro::tracked`), so `cargo verus verify`
 # fails on any channel. Leaving the pin at 1.93.0 until Verus upstream
-# publishes a compatible release; bump together with `setup-verus.sh`.
+# publishes a compatible release; bump together with `[tool.verus]` in
+# `nros-sdk-index.toml`.
 [toolchain]
 channel = "1.93.0"

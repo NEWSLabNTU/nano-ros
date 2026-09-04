@@ -612,6 +612,111 @@ sha256 = "dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3"
 configure = "./configure --without-guile"
 install = "./build.sh && if ldd make 2>/dev/null | grep -q guile; then echo 'refusing: built make links guile (see the index note)' >&2; exit 1; fi && install -D -m 0755 make {prefix}/bin/make && ln -sf make {prefix}/bin/gmake"
 
+# mdBook — the book builder (`just setup-mdbook`, consumed by `just book`).
+#
+# phase-422 W2: retired from `scripts/setup-mdbook.sh` + a hand-kept
+# `scripts/mdbook-checksums.txt`. That pair was a SECOND provisioning mechanism
+# for a tool this schema already describes: its own version pin, its own host
+# table, its own checksum file, its own "already at the pin?" compare — every
+# one of which has exactly one home here. `[tool.make]` and `[tool.ninja]` moved
+# off their bespoke `just workspace install-*` recipes for the same reason: a
+# tool with two installers has two pins, and nothing makes them agree.
+#
+# PREBUILT, never `cargo install`: mdBook drags a large dependency tree and a
+# docs tool has no business costing a compile.
+#
+# WHY musl ON BOTH LINUX ARCHES (carried over from the retired script)
+#
+# The release ships two Linux x86_64 builds, `-gnu` and `-musl`, and for aarch64
+# only `-musl`. A `-gnu` build is dynamically linked against the glibc of the
+# machine that BUILT it, and glibc's symbols are versioned — so it runs on a
+# newer glibc and dies on an older one with `version 'GLIBC_2.xx' not found`, at
+# exec time, from the loader. That is not hypothetical: it is exactly the class
+# `[tool.verus]` below has to be PINNED around. A `-musl` build is statically
+# linked, so the same file runs on Ubuntu 20.04, a 2026 Arch box and Alpine in
+# CI, and for a tool that reads markdown and writes HTML the static-linking
+# trade-offs that matter elsewhere (NSS, dlopen, locale) do not apply. Taking
+# musl on x86_64 too, rather than gnu-where-available, keeps ONE code path per
+# OS — a per-arch split is the asymmetry that works until the aarch64 runner is
+# the one that breaks.
+#
+# Each dist carries its own `install`, like ninja's: these are UPSTREAM assets,
+# not our mirror's shape — a `.tar.gz` holding a BARE `mdbook` with no `bin/`.
+#
+# sha256s VERIFIED 2026-09-05 by downloading each asset and hashing it; all four
+# also match GitHub's own published `digest` field for the release.
+[tool.mdbook]
+version = "0.5.4"
+smoke = [
+    # `mdbook --version` prints `mdbook v0.5.4` — the `v` is the tool's, not the
+    # tag's, which is why the retired script had to strip it from both sides
+    # before comparing. Asserting the whole string keeps a re-cut tag from
+    # passing as the version it claims.
+    { run = "bin/mdbook --version", expect = "mdbook v0.5.4" },
+]
+upstream = "v0.5.4" # rust-lang/mdBook release tag (SSOT for the URLs below)
+dist.linux-x86_64 = { url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-x86_64-unknown-linux-musl.tar.gz", sha256 = "5222beabd3e37dc5be0d18ff99b79058469354db5c220153a1b92db5ba12be89", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin && chmod +x {prefix}/bin/mdbook" }
+dist.linux-arm64 = { url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-aarch64-unknown-linux-musl.tar.gz", sha256 = "753e5c5c363ee8a56972344dcf91466f005a51db84a7aeffe427ae3ef83d6d44", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin && chmod +x {prefix}/bin/mdbook" }
+dist.macos-arm64 = { url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-aarch64-apple-darwin.tar.gz", sha256 = "03e8a6d8b13a2971e0b3280affd03b388373c1485e26f73407c3a76b0b1838df", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin && chmod +x {prefix}/bin/mdbook" }
+dist.macos-x86_64 = { url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-x86_64-apple-darwin.tar.gz", sha256 = "a47d7bf0d5d670cff9ee6cce95537cbeb62dc10704d9e7131ffbd13e2b59a5de", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin && chmod +x {prefix}/bin/mdbook" }
+
+# Verus — unbounded deductive verification (`just verification verus`, run by
+# `just verify-verus`).
+#
+# phase-422 W2: retired from `scripts/setup-verus.sh`, and THE PIN IS THE POINT.
+# That script resolved its asset through the GitHub releases API — `latest` by
+# request, a tag by default — so the thing it fetched was a query answered at
+# run time rather than a fact recorded in the tree, and its checksum was not
+# recorded at all. A tool provisioned that way has no pin to verify against.
+#
+# The pinned release is a DECISION, not a lag (issue 0368 F6 / phase-327 W6):
+# `releases/latest` moved to a runner whose binaries demand `GLIBC_2.39` (Ubuntu
+# 24.04+), and on the oldest supported LTS (22.04, glibc 2.35) that is a raw
+# loader error. This is the newest release bisected to run there (2026-08-01:
+# 0.2026.05.17 and 0.2026.06.28 run; 0.2026.07.05 / 07.12 / 07.18 / 07.27 all
+# demand 2.39). Re-measured 2026-09-05 on the x86-linux asset: `verus` and
+# `rust_verify` need at most GLIBC_2.34, `z3` 2.29 — all under 22.04's 2.35.
+# Before bumping, check EVERY binary in the bundle, not just `verus`:
+#   objdump -T <bin> | grep -o 'GLIBC_2\.[0-9]*' | sort -V | tail -1
+#
+# NO linux-arm64, deliberately: upstream publishes x86-linux, x86-macos,
+# arm64-macos and x86-win only. An aarch64 Linux host has no dist, no source
+# recipe, and `nros setup` says so — which is what the retired script's
+# `Unsupported platform` arm did, one mechanism over.
+#
+# The asset is a zip holding a `verus-<platform>/` directory whose members must
+# stay SIBLINGS: `verus` execs `rust_verify` and `z3` beside it and reads
+# `verus-root` / `.vstd-fingerprint` / `libvstd.rlib` there. So the install step
+# moves that whole directory into place AS `bin/`, rather than picking four
+# binaries out of it — and moves the DIRECTORY, not `dir/*`, because a glob
+# drops `.vstd-fingerprint` and verus then rebuilds vstd on every invocation.
+#
+# What is NOT expressible here, and stays in `just verification verus`: the
+# rustup toolchain the release pins (a `verus --version` on a host without it
+# prints `required rust toolchain <tc> not found`), and the informative degrade
+# when the binary cannot run at all. Verification is gated in no CI tier, so a
+# host that cannot run this tool must not have its setup fail.
+#
+# sha256s VERIFIED 2026-09-05 by downloading each asset and hashing it; all three
+# also match GitHub's own published `digest` field for the release.
+[tool.verus]
+version = "0.2026.06.28.1847ab3"
+smoke = [
+    # Not an exit-status probe: see `[tool.arm-none-eabi-gcc]` for why that is
+    # not the same question. `verus --version` prints a `Verus` banner followed
+    # by `Version:`, `Profile:`, `Platform:` and the `Toolchain:` line — so this
+    # fails loudly both when the dist cannot start (the glibc case above) and
+    # when its pinned rust toolchain is absent.
+    { run = "bin/verus --version", expect = "Verus" },
+]
+# The dist is a zip; `tar` cannot read one. Same declaration, same reason, as
+# `[tool.ninja]`. Nothing else: the bundle's external closure is base glibc only.
+system = ["unzip"]
+upstream = "release/0.2026.06.28.1847ab3" # verus-lang/verus release tag (SSOT)
+dist.linux-x86_64 = { url = "https://github.com/verus-lang/verus/releases/download/release/0.2026.06.28.1847ab3/verus-0.2026.06.28.1847ab3-x86-linux.zip", sha256 = "b12a622a2f44c31e72a459fc8b764e8d4bd2275e54995d21c405771b316a81e7", install = "rm -rf {prefix}/bin {prefix}/.unpack && unzip -q -o {archive} -d {prefix}/.unpack && mv {prefix}/.unpack/verus-x86-linux {prefix}/bin && rmdir {prefix}/.unpack && chmod +x {prefix}/bin/verus {prefix}/bin/cargo-verus {prefix}/bin/z3 {prefix}/bin/rust_verify" }
+dist.macos-arm64 = { url = "https://github.com/verus-lang/verus/releases/download/release/0.2026.06.28.1847ab3/verus-0.2026.06.28.1847ab3-arm64-macos.zip", sha256 = "225978b94c0f75edeeee76a042bc865afe0e76e87ceb97a305ea89ab21183d98", install = "rm -rf {prefix}/bin {prefix}/.unpack && unzip -q -o {archive} -d {prefix}/.unpack && mv {prefix}/.unpack/verus-arm64-macos {prefix}/bin && rmdir {prefix}/.unpack && chmod +x {prefix}/bin/verus {prefix}/bin/cargo-verus {prefix}/bin/z3 {prefix}/bin/rust_verify" }
+dist.macos-x86_64 = { url = "https://github.com/verus-lang/verus/releases/download/release/0.2026.06.28.1847ab3/verus-0.2026.06.28.1847ab3-x86-macos.zip", sha256 = "4d6b27a6e96079b56d910ec9290485467985aa9f8d68de03c5ca19a91312be75", install = "rm -rf {prefix}/bin {prefix}/.unpack && unzip -q -o {archive} -d {prefix}/.unpack && mv {prefix}/.unpack/verus-x86-macos {prefix}/bin && rmdir {prefix}/.unpack && chmod +x {prefix}/bin/verus {prefix}/bin/cargo-verus {prefix}/bin/z3 {prefix}/bin/rust_verify" }
+
 # --- source packages (built with the app for the user's target) ---
 #
 # Phase 195.B — data-driven provisioning. Each source is a committed submodule,
@@ -1002,7 +1107,7 @@ check = { cmd = "cmake" }
 
 [prereq.unzip]
 role = "workspace"
-why = "unpacks the upstream ninja release zips ([tool.ninja] dist install step); tar cannot read a zip"
+why = "unpacks the upstream ninja and verus release zips ([tool.ninja] / [tool.verus] dist install steps); tar cannot read a zip"
 apt = ["unzip"]
 dnf = ["unzip"]
 pacman = ["unzip"]
