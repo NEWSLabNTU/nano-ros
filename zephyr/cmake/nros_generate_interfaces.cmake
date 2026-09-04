@@ -434,6 +434,9 @@ function(nros_generate_interfaces target)
       # RUST_TARGET, so a missing `nros_detect_rust_target()` fails loudly
       # rather than writing to a path this line would not have predicted.
       set(_ffi_lib "${_ffi_target_dir}/${NROS_RUST_TARGET}/${_nros_cargo_profile_dir}/libnano_ros_cpp_ffi_${target}.a")
+      # issue 0820 — cargo writes its dep-info beside the artifact, same
+      # basename, `.d`. Derived from `_ffi_lib` so the two cannot drift.
+      string(REGEX REPLACE "\\.a$" ".d" _ffi_dep_file "${_ffi_lib}")
 
       # Generate Cargo.toml from template
       set(FFI_TARGET "${target}")
@@ -507,10 +510,16 @@ targets = [\"${NROS_RUST_TARGET}\"]
       if(NOT _NROS_FFI_ENV STREQUAL "")
         set(_ffi_env ${CMAKE_COMMAND} -E env ${_NROS_FFI_ENV} ${NROS_BOARD_FACTS_ENV})
       endif()
+      # issue 0820 — the sibling of the generic generator's block, and the
+      # narrower of the two: DEPENDS here names only the crate's manifest and
+      # `lib.rs`, so neither the GENERATED message sources nor any nano-ros
+      # Rust crate had an edge on this archive. The DEPFILE covers both, from
+      # the graph cargo already computes.
       add_custom_command(
         OUTPUT "${_ffi_lib}"
         COMMAND ${_ffi_env} cargo ${_cargo_ffi_args}
         DEPENDS "${_ffi_crate_dir}/Cargo.toml" "${_ffi_crate_src}/lib.rs"
+        DEPFILE "${_ffi_dep_file}"
         WORKING_DIRECTORY "${_ffi_crate_dir}"
         COMMENT "Building Rust FFI glue for ${target} C++ bindings"
         VERBATIM
