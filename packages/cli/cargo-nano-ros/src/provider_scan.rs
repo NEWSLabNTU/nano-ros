@@ -173,26 +173,299 @@ impl ScanResult {
 
 /// The default search path: the nano-ros tree first, then the user workspace.
 ///
-/// **Exactly two roots, and both live in the user's repo.** Deliberately
-/// rejected: an installed index under `~/.nros`, and any environment variable
-/// such as `NROS_RMW_PATH`. Machine state makes a build irreproducible from the
-/// checkout and lets CI diverge from a developer's box — the failure would be
-/// "works here, not there", which is the expensive kind.
+/// The two-root path — what a caller gets with no configuration at all. It is
+/// [`build_search_path`] with an empty `package_paths` and no environment, kept
+/// as its own name because most callers have nothing to configure and should
+/// not have to say so twice.
+///
+/// **Both roots live in the user's repo.** That was once the whole story, and
+/// the reason given was reproducibility: machine state makes a build
+/// irreproducible from the checkout and lets CI diverge from a developer's box.
+/// phase-420 W6 widens the path without giving that up — see
+/// [`build_search_path`] for how, and for why an environment variable is
+/// additive there rather than authoritative.
 ///
 /// When the workspace IS inside the nano-ros tree (building the monorepo's own
 /// examples, which is the common case in this repo) the two roots coincide and
 /// the second is dropped: scanning one tree twice would report every provider
 /// as shadowing itself.
 pub fn default_search_path(nano_ros_root: Option<&Path>, workspace: &Path) -> Vec<PathBuf> {
-    let mut roots = Vec::new();
+    build_search_path(nano_ros_root, workspace, &[], None).paths()
+}
+
+// ===========================================================================
+// The search path — phase-420 W6 (RFC-0087 D6)
+// ===========================================================================
+
+/// The environment variable that appends roots to the search path.
+///
+/// colcon's `--base-paths` in source-time form, and named for what it holds
+/// rather than for a family: `NROS_RMW_PATH` would need a sibling per kind, and
+/// a fifth provider family would then need a fifth variable nobody sets.
+pub const PACKAGE_PATH_ENV: &str = "NROS_PACKAGE_PATH";
+
+/// Where a search root came from. Carried because the two questions a user asks
+/// about a root — "why is this being scanned" and "why is my provider losing to
+/// that one" — are both answered by its origin, and a bare path answers
+/// neither.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RootOrigin {
+    /// Root 0 — the nano-ros checkout. Not a builtin, merely first.
+    NanoRosTree,
+    /// The workspace being built.
+    Workspace,
+    /// `[workspace] package_paths` in the workspace's `nros.toml`.
+    PackagePaths,
+    /// An entry of [`PACKAGE_PATH_ENV`].
+    Env,
+    /// `--base-paths`, colcon's flag, which REPLACES the whole path. Its own
+    /// origin because a root that arrived this way has no default beneath it:
+    /// reporting it as a `Workspace` would imply a nano-ros tree at root 0 that
+    /// is not being scanned.
+    BasePaths,
+}
+
+impl RootOrigin {
+    /// How the origin is spelled in `nros ws providers` output — the thing the
+    /// user would edit to change it.
+    pub fn label(self) -> &'static str {
+        match self {
+            RootOrigin::NanoRosTree => "nano-ros tree",
+            RootOrigin::Workspace => "workspace",
+            RootOrigin::PackagePaths => "nros.toml [workspace] package_paths",
+            RootOrigin::Env => PACKAGE_PATH_ENV,
+            RootOrigin::BasePaths => "--base-paths",
+        }
+    }
+
+    /// Is a missing root of this origin worth a warning?
+    ///
+    /// Only for the CONFIGURED origins. The nano-ros tree and the workspace are
+    /// legitimately absent — `nros ws providers` in a directory with no
+    /// workspace under it is a normal invocation — and warning about them would
+    /// print noise on every monorepo build, which is how a warning stops being
+    /// read. A root somebody typed is different: nobody types a path they did
+    /// not mean to exist, so its absence is a typo or a moved tree, and that is
+    /// exactly the "my provider is not found" hour.
+    pub fn warns_when_missing(self) -> bool {
+        matches!(
+            self,
+            RootOrigin::PackagePaths | RootOrigin::Env | RootOrigin::BasePaths
+        )
+    }
+}
+
+/// One root on the search path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SearchRoot {
+    /// Absolute, `~`-expanded, canonicalized when it exists.
+    pub path: PathBuf,
+    pub origin: RootOrigin,
+    /// Whether `path` is a directory. Recorded rather than filtered — a root
+    /// that vanished must still occupy its index, or the numbers in a stored
+    /// [`ProviderIndex`] would mean different trees on two machines.
+    pub exists: bool,
+    /// The entry exactly as authored, when it was not already the final path.
+    /// The fix for a typo is an edit to this string, so the message has to be
+    /// able to quote it.
+    pub as_written: Option<String>,
+}
+
+/// An ordered search path, with each root's provenance.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SearchPath {
+    pub roots: Vec<SearchRoot>,
+}
+
+impl SearchPath {
+    /// Just the paths, in order — what [`scan_roots`] and [`ProviderIndex`]
+    /// take. Every root is included, missing ones too: see [`SearchRoot::exists`].
+    pub fn paths(&self) -> Vec<PathBuf> {
+        self.roots.iter().map(|r| r.path.clone()).collect()
+    }
+
+    /// The path a `--base-paths` flag names: exactly these roots, in this
+    /// order, and nothing else.
+    ///
+    /// colcon's semantics, and issue 0646's reason for having the flag — a
+    /// caller that already knows where the packages are should not pay to
+    /// rediscover an underlay per invocation. Nothing else contributes: not the
+    /// nano-ros tree, not the config file, not [`PACKAGE_PATH_ENV`]. A flag
+    /// that replaced everything EXCEPT the environment would be the hardest
+    /// kind of override to reason about.
+    pub fn from_base_paths(paths: &[PathBuf]) -> Self {
+        let mut out = Self::default();
+        for p in paths {
+            push_root(&mut out, p.clone(), RootOrigin::BasePaths, None);
+        }
+        out
+    }
+
+    /// The configured roots that are not directories, in order. Empty is the
+    /// normal case; anything in it is worth printing.
+    pub fn missing(&self) -> Vec<&SearchRoot> {
+        self.roots
+            .iter()
+            .filter(|r| !r.exists && r.origin.warns_when_missing())
+            .collect()
+    }
+}
+
+/// Assemble the ordered search path from every source.
+///
+/// **Order is precedence, and the order is: nano-ros tree, workspace,
+/// `package_paths`, then [`PACKAGE_PATH_ENV`].** [`resolve_unique`] gives the
+/// LATER root the win, so this reads underlay → overlay throughout: the
+/// nano-ros tree is what everything else overlays, and the environment overlays
+/// even the workspace's own committed configuration.
+///
+/// **The environment APPENDS to the config rather than replacing it, and that
+/// is a choice.** colcon's own precedent does not settle it — `COLCON_PREFIX_PATH`
+/// has no configuration file competing with it, so it never had to decide. What
+/// colcon does have is `--base-paths`, which replaces outright; that is a FLAG,
+/// and the distinction is the point. A flag is typed per invocation and its
+/// blast radius is one command. An exported variable persists for a shell
+/// session and reaches every `nros` and every cmake configure underneath it, so
+/// letting it REPLACE a committed `package_paths` would let one developer's
+/// shell silently delete a root the repository declares — the same tree
+/// building differently on two machines with no diff to look at. That is the
+/// "works here, not there" failure this module's doc already names as the
+/// expensive kind, and it is the reason `default_search_path` refused an
+/// environment variable outright.
+///
+/// Additive-only answers that objection without giving up the capability. The
+/// environment can RAISE a provider's precedence (it lands last, so it wins)
+/// but it can never make a configured root disappear; the search path is
+/// recorded in the [`ProviderIndex`], so an index built under a different
+/// environment is rejected on read rather than served; and every winner is
+/// printed with the root it came from. "Replace it all" keeps its verb —
+/// `nros sync --base-paths`, which is a flag, exactly like colcon's.
+///
+/// **Relative entries resolve against the WORKSPACE, never the cwd.** RFC-0087
+/// D6's own example is `package_paths = ["src", …]`, which plainly means
+/// `<ws>/src`; `nros.toml` sits at the workspace root, so that is the directory
+/// the author was writing relative to. A cwd-relative reading would make
+/// `nros ws providers` answer differently depending on where it was invoked
+/// from — issue 0979's shape one module over, where a search path computed
+/// against the cwd produced an empty tree and a message naming the wrong thing.
+/// [`PACKAGE_PATH_ENV`] resolves the same way so the two sources cannot mean
+/// different things by one string.
+///
+/// **`~` expands, `~user` does not.** `~` and `~/…` take `$HOME`. `~user` needs
+/// a passwd lookup, and left literal it becomes a missing root that says so,
+/// which beats resolving to something the author did not name.
+///
+/// **A repeated root is one root, and the FIRST occurrence keeps the index.**
+/// Scanning one tree twice reports every provider in it as shadowing itself —
+/// the noise `default_search_path` already avoids for the nested-workspace
+/// case. Keeping the first occurrence means adding an entry cannot renumber the
+/// roots before it, so `root[0]` is the nano-ros tree in every invocation.
+/// Repeating a root therefore cannot raise its precedence; to raise it, remove
+/// the earlier entry.
+pub fn build_search_path(
+    nano_ros_root: Option<&Path>,
+    workspace: &Path,
+    package_paths: &[String],
+    env_value: Option<&str>,
+) -> SearchPath {
+    let mut out = SearchPath::default();
+
     if let Some(r) = nano_ros_root {
-        roots.push(r.to_path_buf());
+        push_root(&mut out, r.to_path_buf(), RootOrigin::NanoRosTree, None);
     }
+
+    // The nested case: a workspace INSIDE the nano-ros tree is already covered
+    // by root 0. Kept as `starts_with` rather than folded into `push_root`'s
+    // equality dedup, because containment and identity are different questions
+    // and only the default pair is known to nest.
     let ws = workspace.to_path_buf();
-    if !roots.iter().any(|r| ws == *r || ws.starts_with(r)) {
-        roots.push(ws);
+    if !out
+        .roots
+        .iter()
+        .any(|r| ws == r.path || ws.starts_with(&r.path))
+    {
+        push_root(&mut out, ws, RootOrigin::Workspace, None);
     }
-    roots
+
+    for entry in package_paths {
+        if entry.trim().is_empty() {
+            continue;
+        }
+        let path = resolve_entry(entry, workspace);
+        push_root(
+            &mut out,
+            path,
+            RootOrigin::PackagePaths,
+            Some(entry.clone()),
+        );
+    }
+
+    for entry in env_value.into_iter().flat_map(|v| v.split(':')) {
+        if entry.trim().is_empty() {
+            continue;
+        }
+        let path = resolve_entry(entry, workspace);
+        push_root(&mut out, path, RootOrigin::Env, Some(entry.to_string()));
+    }
+
+    out
+}
+
+/// Turn one authored entry into an absolute path: `~` expansion, then
+/// workspace-relative resolution, then canonicalization if it exists.
+///
+/// Canonicalization only when the directory is there — there is nothing to
+/// canonicalize otherwise, and a missing root must keep the spelling that
+/// appears in the warning so the reader recognises what they typed.
+fn resolve_entry(entry: &str, workspace: &Path) -> PathBuf {
+    let expanded = expand_tilde(entry);
+    let abs = if expanded.is_absolute() {
+        expanded
+    } else {
+        workspace.join(expanded)
+    };
+    abs.canonicalize().unwrap_or(abs)
+}
+
+/// `~` / `~/…` against `$HOME`. Anything else, including `~user`, is returned
+/// unchanged — see [`build_search_path`].
+fn expand_tilde(entry: &str) -> PathBuf {
+    let rest = if entry == "~" {
+        ""
+    } else if let Some(r) = entry.strip_prefix("~/") {
+        r
+    } else {
+        return PathBuf::from(entry);
+    };
+    match std::env::var_os("HOME") {
+        Some(home) if !home.is_empty() => {
+            let home = PathBuf::from(home);
+            if rest.is_empty() {
+                home
+            } else {
+                home.join(rest)
+            }
+        }
+        // No `$HOME` to expand against. Left literal so it surfaces as a
+        // missing root naming `~/...`, rather than silently becoming a
+        // relative path under the workspace.
+        _ => PathBuf::from(entry),
+    }
+}
+
+/// Append a root unless an earlier one is the same directory.
+fn push_root(out: &mut SearchPath, path: PathBuf, origin: RootOrigin, as_written: Option<String>) {
+    if out.roots.iter().any(|r| r.path == path) {
+        return;
+    }
+    let exists = path.is_dir();
+    let as_written = as_written.filter(|w| Path::new(w) != path);
+    out.roots.push(SearchRoot {
+        path,
+        origin,
+        exists,
+        as_written,
+    });
 }
 
 /// Scan an ordered search path. Earlier roots come first in the result.
@@ -639,6 +912,71 @@ pub fn resolve_unique(
         winner: (*first).clone(),
         shadowed: hits.iter().skip(1).map(|p| (*p).clone()).collect(),
     })
+}
+
+/// One `(kind, name)` claimed by more than one provider, in precedence order.
+///
+/// The reporting shape for RFC-0087 D6's "shadowing is reported, never
+/// silent". [`resolve_unique`] answers one lookup and either wins or refuses;
+/// this enumerates every contested pair in a scan, so a listing can annotate
+/// the packages it is already printing instead of the reader having to
+/// `--resolve` each name to find out whether it was contested.
+#[derive(Debug, Clone)]
+pub struct Shadowing {
+    pub kind: String,
+    pub name: String,
+    /// Highest precedence — the provider a build will use, UNLESS
+    /// [`Shadowing::same_root_tie`] is set, in which case there is no winner
+    /// and [`resolve_unique`] refuses.
+    pub winner: ProviderPackage,
+    /// The losers, nearest first.
+    pub shadowed: Vec<ProviderPackage>,
+    /// The top two claimants share a root, so precedence cannot separate them.
+    /// Recorded rather than dropped: printing a `winner` for a pair that
+    /// `resolve_unique` will refuse would be a listing that disagrees with the
+    /// build, which is worse than not listing it.
+    pub same_root_tie: bool,
+}
+
+/// Every contested `(kind, name)` in a scan, sorted by kind then name.
+///
+/// Cross-root contention is NORMAL and resolvable — it is what a search path is
+/// for, and the loser is named rather than dropped. Same-root contention is not
+/// (`ResolveError::Ambiguous`), and is reported here too because a listing that
+/// showed only the resolvable half would let the unresolvable one through
+/// silently.
+pub fn shadowing(scan: &ScanResult) -> Vec<Shadowing> {
+    let mut pairs: Vec<(String, String)> = scan
+        .providers
+        .iter()
+        .flat_map(|p| p.provides.iter())
+        .map(|pr| (pr.kind.clone(), pr.name.clone()))
+        .collect();
+    pairs.sort();
+    pairs.dedup();
+
+    pairs
+        .into_iter()
+        .filter_map(|(kind, name)| {
+            let hits = candidates(scan, &kind, &name);
+            // `candidates` orders by precedence, so `hits[0]` is the winner and
+            // the rest are shadowed — the same ordering `resolve_unique` uses,
+            // because two orderings of one fact is how a report starts
+            // disagreeing with the build.
+            let (first, rest) = hits.split_first()?;
+            if rest.is_empty() {
+                return None;
+            }
+            let same_root_tie = rest[0].root_index == first.root_index;
+            Some(Shadowing {
+                kind,
+                name,
+                winner: (*first).clone(),
+                shadowed: rest.iter().map(|p| (*p).clone()).collect(),
+                same_root_tie,
+            })
+        })
+        .collect()
 }
 
 // ===========================================================================
@@ -1613,6 +1951,404 @@ mod tests {
                 .descriptor_path("rmw")
                 .ends_with("nros-rmw.toml"),
             "the scan hands selection a path; it does not read it"
+        );
+    }
+    // =======================================================================
+    // The search path — phase-420 W6
+    // =======================================================================
+
+    /// The two-root default is unchanged by W6: with nothing configured, the
+    /// wider builder produces exactly what `default_search_path` always did.
+    /// The widening is opt-in, so no existing tree changes shape.
+    #[test]
+    fn with_nothing_configured_the_path_is_still_the_two_default_roots() {
+        let repo = tempfile::tempdir().unwrap();
+        let ws = tempfile::tempdir().unwrap();
+
+        let path = build_search_path(Some(repo.path()), ws.path(), &[], None);
+        assert_eq!(
+            path.paths(),
+            default_search_path(Some(repo.path()), ws.path()),
+            "`default_search_path` must BE the unconfigured case, not a second \
+             implementation of it"
+        );
+        assert_eq!(
+            path.roots.iter().map(|r| r.origin).collect::<Vec<_>>(),
+            vec![RootOrigin::NanoRosTree, RootOrigin::Workspace],
+        );
+        assert!(path.missing().is_empty());
+    }
+
+    /// The acceptance criterion, first half: a provider in a THIRD root —
+    /// neither the nano-ros tree nor the workspace — is on the search path and
+    /// resolves by name.
+    #[test]
+    fn a_configured_third_root_is_searched_and_its_provider_resolves() {
+        let repo = tempfile::tempdir().unwrap();
+        let ws = tempfile::tempdir().unwrap();
+        let third = tempfile::tempdir().unwrap();
+        write(
+            &third.path().join("acme_rmw/package.xml"),
+            &provider_xml("acme_rmw", "rmw", "acme"),
+        );
+
+        let path = build_search_path(
+            Some(repo.path()),
+            ws.path(),
+            &[third.path().display().to_string()],
+            None,
+        );
+        assert_eq!(path.roots.len(), 3, "{:?}", path.roots);
+        assert_eq!(path.roots[2].origin, RootOrigin::PackagePaths);
+
+        let scan = scan_roots(&path.paths()).unwrap();
+        let r = resolve_unique(&scan, "rmw", "acme").expect("the third root's provider resolves");
+        assert_eq!(r.winner.package, "acme_rmw");
+        assert_eq!(r.winner.root_index, 2);
+        assert!(!r.is_shadowing());
+    }
+
+    /// The environment reaches the path too, and it lands AFTER the config —
+    /// which under the later-wins rule means it can override a configured
+    /// provider without being able to delete the configured ROOT.
+    #[test]
+    fn the_environment_appends_after_the_config_and_never_replaces_it() {
+        let repo = tempfile::tempdir().unwrap();
+        let ws = tempfile::tempdir().unwrap();
+        let configured = tempfile::tempdir().unwrap();
+        let from_env = tempfile::tempdir().unwrap();
+        write(
+            &configured.path().join("acme/package.xml"),
+            &provider_xml("configured_acme", "rmw", "acme"),
+        );
+        write(
+            &from_env.path().join("acme/package.xml"),
+            &provider_xml("env_acme", "rmw", "acme"),
+        );
+
+        let path = build_search_path(
+            Some(repo.path()),
+            ws.path(),
+            &[configured.path().display().to_string()],
+            Some(&from_env.path().display().to_string()),
+        );
+        assert_eq!(
+            path.roots.iter().map(|r| r.origin).collect::<Vec<_>>(),
+            vec![
+                RootOrigin::NanoRosTree,
+                RootOrigin::Workspace,
+                RootOrigin::PackagePaths,
+                RootOrigin::Env,
+            ],
+            "the configured root must still be on the path — an exported \
+             variable may add precedence, never subtract a root",
+        );
+
+        let scan = scan_roots(&path.paths()).unwrap();
+        let r = resolve_unique(&scan, "rmw", "acme").unwrap();
+        assert_eq!(r.winner.package, "env_acme", "the LATER root wins");
+        assert_eq!(
+            r.shadowed
+                .iter()
+                .map(|p| p.package.as_str())
+                .collect::<Vec<_>>(),
+            vec!["configured_acme"],
+            "and the loser is NAMED, not dropped",
+        );
+    }
+
+    /// Order decides a cross-root collision, and reversing the order reverses
+    /// the winner. Asserted both ways round because a test that only ever sees
+    /// one order cannot tell precedence from the order two tempdirs happen to
+    /// sort in.
+    #[test]
+    fn search_path_order_decides_a_cross_root_collision() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        write(
+            &a.path().join("p/package.xml"),
+            &provider_xml("from_a", "serdes", "flatbuf"),
+        );
+        write(
+            &b.path().join("p/package.xml"),
+            &provider_xml("from_b", "serdes", "flatbuf"),
+        );
+        let ws = tempfile::tempdir().unwrap();
+
+        for (first, second, expected) in [
+            (a.path(), b.path(), "from_b"),
+            (b.path(), a.path(), "from_a"),
+        ] {
+            let path = build_search_path(
+                None,
+                ws.path(),
+                &[first.display().to_string(), second.display().to_string()],
+                None,
+            );
+            let scan = scan_roots(&path.paths()).unwrap();
+            let r = resolve_unique(&scan, "serdes", "flatbuf").unwrap();
+            assert_eq!(
+                r.winner.package,
+                expected,
+                "with {} before {}, the later root must win",
+                first.display(),
+                second.display(),
+            );
+        }
+    }
+
+    /// `shadowing()` is what the listing prints, so it must name the loser and
+    /// agree with `resolve_unique` about the winner. Two orderings of one fact
+    /// is how a report starts disagreeing with the build.
+    #[test]
+    fn the_shadowing_report_names_the_hidden_provider() {
+        let under = tempfile::tempdir().unwrap();
+        let over = tempfile::tempdir().unwrap();
+        write(
+            &under.path().join("p/package.xml"),
+            &provider_xml("shipped", "rmw", "zenoh"),
+        );
+        write(
+            &over.path().join("p/package.xml"),
+            &provider_xml("patched", "rmw", "zenoh"),
+        );
+        // An uncontested provision, to prove the report is about collisions
+        // rather than about "more than one provider exists".
+        write(
+            &under.path().join("q/package.xml"),
+            &provider_xml("alone", "board", "mps2"),
+        );
+
+        let scan = scan_roots(&[under.path().to_path_buf(), over.path().to_path_buf()]).unwrap();
+        let report = shadowing(&scan);
+        assert_eq!(report.len(), 1, "only the contested pair: {report:?}");
+        let s = &report[0];
+        assert_eq!((s.kind.as_str(), s.name.as_str()), ("rmw", "zenoh"));
+        assert!(!s.same_root_tie);
+        assert_eq!(s.winner.package, "patched");
+        assert_eq!(
+            s.shadowed
+                .iter()
+                .map(|p| p.package.as_str())
+                .collect::<Vec<_>>(),
+            vec!["shipped"],
+        );
+        assert_eq!(
+            s.winner.package,
+            resolve_unique(&scan, "rmw", "zenoh")
+                .unwrap()
+                .winner
+                .package,
+            "the report and the resolver must agree about the winner",
+        );
+    }
+
+    /// A collision WITHIN one root has no precedence to appeal to, so the
+    /// report says so rather than inventing a winner the resolver will refuse.
+    #[test]
+    fn a_same_root_collision_is_reported_as_a_tie_not_as_shadowing() {
+        let root = tempfile::tempdir().unwrap();
+        write(
+            &root.path().join("one/package.xml"),
+            &provider_xml("one", "rmw", "acme"),
+        );
+        write(
+            &root.path().join("two/package.xml"),
+            &provider_xml("two", "rmw", "acme"),
+        );
+
+        let scan = scan_root(root.path(), 0).unwrap();
+        let report = shadowing(&scan);
+        assert_eq!(report.len(), 1);
+        assert!(
+            report[0].same_root_tie,
+            "same root ⇒ no precedence; claiming a winner would disagree with \
+             `resolve_unique`, which refuses",
+        );
+        assert!(matches!(
+            resolve_unique(&scan, "rmw", "acme"),
+            Err(ResolveError::Ambiguous { .. })
+        ));
+    }
+
+    /// A root that does not exist is neither fatal nor invisible: it keeps its
+    /// index (so the numbers in a stored index mean the same tree everywhere),
+    /// contributes nothing, and is reported by `missing()`.
+    #[test]
+    fn a_nonexistent_configured_root_keeps_its_index_and_is_reported() {
+        let repo = tempfile::tempdir().unwrap();
+        let ws = tempfile::tempdir().unwrap();
+        let real = tempfile::tempdir().unwrap();
+        write(
+            &real.path().join("p/package.xml"),
+            &provider_xml("real", "rmw", "acme"),
+        );
+        let gone = ws.path().join("definitely/not/here");
+        assert!(!gone.exists(), "the premise of the test");
+
+        let path = build_search_path(
+            Some(repo.path()),
+            ws.path(),
+            &[
+                gone.display().to_string(),
+                real.path().display().to_string(),
+            ],
+            None,
+        );
+        assert_eq!(path.roots.len(), 4, "{:?}", path.roots);
+        assert!(!path.roots[2].exists);
+        assert!(path.roots[3].exists);
+
+        let missing = path.missing();
+        assert_eq!(missing.len(), 1, "{missing:?}");
+        assert_eq!(missing[0].path, gone);
+        assert_eq!(missing[0].origin, RootOrigin::PackagePaths);
+
+        // Not fatal: the scan runs and the root that IS there still answers.
+        let scan = scan_roots(&path.paths()).expect("a missing root must not fail the scan");
+        let r = resolve_unique(&scan, "rmw", "acme").expect("the real root still resolves");
+        assert_eq!(r.winner.root_index, 3, "the missing root kept index 2");
+    }
+
+    /// The default roots are exempt from the missing-root report. A workspace
+    /// that does not exist yet is a normal invocation, and a warning printed on
+    /// every one of them is a warning nobody reads.
+    #[test]
+    fn a_missing_default_root_is_not_reported() {
+        let repo = tempfile::tempdir().unwrap();
+        let ws = repo.path().parent().unwrap().join("no-such-workspace");
+        assert!(!ws.exists());
+
+        let path = build_search_path(Some(repo.path()), &ws, &[], None);
+        assert!(!path.roots[1].exists);
+        assert!(
+            path.missing().is_empty(),
+            "only a root somebody TYPED is worth warning about: {:?}",
+            path.missing(),
+        );
+    }
+
+    /// A relative entry resolves against the WORKSPACE, not the cwd — the
+    /// directory `nros.toml` sits in, and RFC-0087 D6's own `["src", …]`
+    /// example.
+    #[test]
+    fn a_relative_entry_resolves_against_the_workspace() {
+        let ws = tempfile::tempdir().unwrap();
+        write(
+            &ws.path().join("vendor/p/package.xml"),
+            &provider_xml("vendored", "rmw", "acme"),
+        );
+
+        let path = build_search_path(None, ws.path(), &["vendor".to_string()], None);
+        let vendor = path
+            .roots
+            .iter()
+            .find(|r| r.origin == RootOrigin::PackagePaths)
+            .expect("the configured root");
+        assert_eq!(
+            vendor.path,
+            ws.path().join("vendor").canonicalize().unwrap(),
+            "relative to the workspace, and canonicalized because it exists",
+        );
+        assert_eq!(vendor.as_written.as_deref(), Some("vendor"));
+        assert!(vendor.exists);
+
+        let scan = scan_roots(&path.paths()).unwrap();
+        assert!(resolve_unique(&scan, "rmw", "acme").is_ok());
+    }
+
+    /// `~/…` expands against `$HOME`; `~user` is left literal, so it surfaces
+    /// as a missing root naming what was typed rather than resolving to a
+    /// directory nobody named.
+    #[test]
+    fn tilde_expands_for_home_and_not_for_a_named_user() {
+        let home = std::env::var_os("HOME")
+            .filter(|h| !h.is_empty())
+            .expect("this test is about $HOME expansion; without $HOME it proves nothing");
+        let home = PathBuf::from(home);
+
+        assert_eq!(expand_tilde("~"), home);
+        assert_eq!(expand_tilde("~/nros-packages"), home.join("nros-packages"));
+        assert_eq!(
+            expand_tilde("~someone/pkgs"),
+            PathBuf::from("~someone/pkgs"),
+            "`~user` needs a passwd lookup; left literal it fails loudly",
+        );
+        assert_eq!(expand_tilde("/opt/pkgs"), PathBuf::from("/opt/pkgs"));
+        assert_eq!(
+            expand_tilde("relative/pkgs"),
+            PathBuf::from("relative/pkgs")
+        );
+    }
+
+    /// A root named twice is one root, and it keeps the index of its FIRST
+    /// appearance — so adding an entry never renumbers the roots before it, and
+    /// nothing shadows itself.
+    #[test]
+    fn a_repeated_root_is_collapsed_to_its_first_appearance() {
+        let ws = tempfile::tempdir().unwrap();
+        let extra = tempfile::tempdir().unwrap();
+        write(
+            &extra.path().join("p/package.xml"),
+            &provider_xml("once", "rmw", "acme"),
+        );
+        let spelled = extra.path().display().to_string();
+
+        let path = build_search_path(
+            None,
+            ws.path(),
+            std::slice::from_ref(&spelled),
+            Some(&format!("{spelled}:{spelled}")),
+        );
+        assert_eq!(
+            path.roots.len(),
+            2,
+            "workspace + one copy of the repeated root: {:?}",
+            path.roots,
+        );
+        assert_eq!(
+            path.roots[1].origin,
+            RootOrigin::PackagePaths,
+            "the first appearance keeps the slot; repeating cannot promote it",
+        );
+
+        let scan = scan_roots(&path.paths()).unwrap();
+        let r = resolve_unique(&scan, "rmw", "acme").unwrap();
+        assert!(
+            !r.is_shadowing(),
+            "one tree scanned twice would report every provider as shadowing itself",
+        );
+        assert!(shadowing(&scan).is_empty());
+    }
+
+    /// Empty entries are dropped rather than becoming the workspace root: a
+    /// trailing `:` in `NROS_PACKAGE_PATH` is a typo, and resolving it to the
+    /// workspace would silently duplicate root 1.
+    #[test]
+    fn empty_entries_are_dropped() {
+        let ws = tempfile::tempdir().unwrap();
+        let path = build_search_path(None, ws.path(), &[String::new(), "  ".into()], Some("::"));
+        assert_eq!(
+            path.roots.iter().map(|r| r.origin).collect::<Vec<_>>(),
+            vec![RootOrigin::Workspace],
+        );
+    }
+
+    /// `--base-paths` REPLACES: no nano-ros tree, no workspace, no config, no
+    /// environment. That is colcon's semantics for the flag, and the deliberate
+    /// contrast with `NROS_PACKAGE_PATH`, which only ever appends.
+    #[test]
+    fn base_paths_replace_the_whole_search_path() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let path = SearchPath::from_base_paths(&[a.path().to_path_buf(), b.path().to_path_buf()]);
+        assert_eq!(
+            path.roots.iter().map(|r| r.origin).collect::<Vec<_>>(),
+            vec![RootOrigin::BasePaths, RootOrigin::BasePaths],
+        );
+        assert_eq!(
+            path.paths(),
+            vec![a.path().to_path_buf(), b.path().to_path_buf()]
         );
     }
 }

@@ -637,7 +637,7 @@ mod tests {
             "this test is about that marker; if it is gone, the finding is stale"
         );
 
-        let scan = scan_roots(&[root.clone()]).expect("scan the nano-ros root");
+        let scan = scan_roots(std::slice::from_ref(&root)).expect("scan the nano-ros root");
         assert!(
             !scan.providers.is_empty(),
             "issue 1054 exempted depth 0, so scanning the nano-ros root must \
