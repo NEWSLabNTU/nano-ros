@@ -1039,3 +1039,14 @@ _Noreturn void nros_platform_panic(const char *msg, size_t len) {
     fflush(stderr);
     abort();
 }
+
+/* POSIX has no per-thread stack watermark. `pthread_attr_getstack` gives the
+ * REGION, not the deepest excursion into it, and deriving usage from the
+ * current frame address measures where the probe was called rather than the
+ * worst case -- a number that looks like headroom and is not. Reporting 0
+ * says "not instrumented", which is true and useful; a plausible wrong number
+ * would be neither. A pattern-fill scheme could answer honestly, but it
+ * belongs to whoever owns the stacks, and on this port the kernel does. */
+size_t nros_platform_task_stack_unused_bytes(void) {
+    return 0;
+}

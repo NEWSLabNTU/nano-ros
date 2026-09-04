@@ -911,3 +911,21 @@ _Noreturn void nros_platform_panic(const char *msg, size_t len) {
     }
 #endif
 }
+
+/* ThreadX keeps `tx_thread_stack_highest_ptr` only when built with
+ * TX_ENABLE_STACK_CHECKING; without it the field is not maintained and any
+ * number derived from it would be fiction. Headroom is the highest pointer
+ * minus the stack start. */
+size_t nros_platform_task_stack_unused_bytes(void) {
+#ifdef TX_ENABLE_STACK_CHECKING
+    TX_THREAD *self = tx_thread_identify();
+    if (self == TX_NULL || self->tx_thread_stack_highest_ptr == TX_NULL ||
+        self->tx_thread_stack_start == TX_NULL) {
+        return 0;
+    }
+    return (size_t) ((char *) self->tx_thread_stack_highest_ptr -
+                     (char *) self->tx_thread_stack_start);
+#else
+    return 0;
+#endif
+}

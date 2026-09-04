@@ -261,6 +261,36 @@ static inline void nros_platform_free(void *ptr) {
  *  Rust `#[global_allocator]`. */
 size_t nros_platform_heap_used_bytes(void);
 
+/** Smallest number of bytes ever left unused on the CALLING task's stack, or
+ *  `0` if this port cannot report it.
+ *
+ *  HEADROOM, not usage, because that is what both kernels natively track and
+ *  it is the number a safety argument needs: how close the worst observed
+ *  excursion came to the end of the stack.
+ *
+ *  The heap has had `nros_platform_heap_used_bytes` since RFC-0034 D7; the
+ *  stack had nothing, and stack overflow is the classic way one component
+ *  corrupts another's state. ISO 26262 treats spatial freedom from
+ *  interference as a first-class requirement and AUTOSAR pairs memory
+ *  protection with stack monitoring for exactly this reason. Without a
+ *  portable probe the only recourse is a per-RTOS one: this repo's Zephyr
+ *  lane greps `thread_analyzer` printk output in CI, which is a text scrape
+ *  of a debug facility standing in for a platform capability, and reports
+ *  nothing on any other port.
+ *
+ *  SELF only, deliberately. Both kernels answer for the calling task with no
+ *  handle (`uxTaskGetStackHighWaterMark(NULL)`, `k_thread_stack_space_get`
+ *  with `k_current_get()`), whereas answering for an arbitrary task needs a
+ *  native handle this ABI does not carry -- on Zephyr the task storage is a
+ *  `pthread_t` and the mapping to `k_thread *` is not public. A task
+ *  reporting its own headroom is also the shape the callers want: each tier
+ *  says how much of its own stack it has ever needed.
+ *
+ *  `0` means "this port does not instrument it", matching
+ *  `nros_platform_heap_used_bytes`. It is not a claim that the stack is
+ *  full. */
+size_t nros_platform_task_stack_unused_bytes(void);
+
 /** Total managed heap size in bytes (used + free), or `0` if unknown. */
 size_t nros_platform_heap_total_bytes(void);
 
