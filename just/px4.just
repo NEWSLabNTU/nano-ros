@@ -139,6 +139,39 @@ build-sitl-example:
         echo "Run: just px4 setup"
         exit 1
     fi
+    # Issue 1050 -- build the archive this links, instead of inheriting one.
+    #
+    # This recipe used to be `make` alone, linking whatever `cargo build -p
+    # nros-cpp` last left in `target/release/`. That is not a tidiness point:
+    # the demo declares `BACKENDS uorb`, but a zenoh-enabled archive ALSO
+    # registers zenoh through the `.init_array` ctor that survives on hosted
+    # Rust backends -- and on POSIX that ctor runs BEFORE main, hence before the
+    # generated `nros_app_register_backends()`. zenoh takes slot 0, `nros::init()`
+    # opens the default slot, dials tcp/127.0.0.1:7447, finds nothing, and the
+    # module dies with `nros::init() failed` -> PX4_ERROR -> status 255.
+    #
+    # A uORB-only module, broken by a backend it never declared.
+    #
+    # The coupling is circular too: the generated header the module compiles
+    # against comes from the same ambient archive, so building the BRIDGE and
+    # then this produced `undefined reference to
+    # nros_cpp_config_variant_..._rmw_zenoh_cffi_...` -- the module compiled for
+    # an archive it was not linked against.
+    #
+    # `rmw-cffi` and NOT `rmw-zenoh-cffi`: this module's outward side IS uORB.
+    # `build-bridge-example` does the same thing for the opposite reason (it
+    # picks a NETWORKED backend), which is why that recipe never had this bug.
+    echo "Building the nano-ros archive this module links (uORB only)"
+    # profile-literal-ok: symbol fixture: the PX4 link and this build must name
+    # the same profile dir, and PX4 knows nothing about nano-ros profiles.
+    cargo build -p nros-cpp --no-default-features \
+        --features std,rmw-cffi,platform-posix --release
+    # nros-cmake-prefix-exempt: the POSIX platform's C archive -- no Rust target
+    # in that project, so no Corrosion to resolve.
+    cmake -S "$(pwd)/packages/platform/nros-platform-posix" \
+        -B "$(pwd)/build/nros-platform-posix" >/dev/null
+    cmake --build "$(pwd)/build/nros-platform-posix" >/dev/null
+
     echo "Building PX4 SITL with EXTERNAL_MODULES_LOCATION=$EXT_DIR"
     make -C "$PX4_DIR" px4_sitl_default EXTERNAL_MODULES_LOCATION="$EXT_DIR"
 
