@@ -3963,6 +3963,32 @@ _setup-common:
     # Idempotent: the recipe version-checks `build/clang-format/bin/clang-format`
     # and exits early. Project-local, no install.
     just setup-clang-format
+    # phase-422 W6 — TELL the user about the system closure. Measured: 24 of the
+    # 46 `[prereq.*]` keys had no consumer at all, nothing in the repo installs
+    # via `--system`, and `just setup <scope>` never even printed it — so a
+    # missing `cmake`/`ninja`/`make` surfaced as a build failure much later.
+    #
+    # REPORT, never install. Composing the command is this tool's job and
+    # running it is the user's (RFC-0062); a provisioning verb that sudo-installs
+    # behind someone's back is worse than the gap it closes.
+    #
+    # Narrowed to the HOST roles: `infra` keys (emulators, cross toolchains) come
+    # from the scope's own module setup, and listing them here would bury the two
+    # lines that matter under a dozen that do not.
+    #
+    # Non-fatal on purpose: `--check` exits 1 when anything is missing, and setup
+    # must not die for a package it is not allowed to install.
+    #
+    # `--check` is a doctor, so it exits 1 and eyre prints `Error:` with a
+    # source Location. Correct for a doctor, wrong here: an "Error:" plus a
+    # stack location in a path that deliberately continues is how people learn
+    # to scroll past errors. Capture and re-print without the backtrace.
+    if ! _sysout="$(nros setup --system --check --role package --role workspace 2>&1)"; then
+        printf '%s\n' "$_sysout" | grep -vE '^(Error:|Location:|\s+nros-cli-core/src|\s*$)' || true
+        printf '\nsetup: system package(s) above are MISSING; nothing here installs them.\n'
+        printf 'setup: NOT fatal — provisioning continues. Run the command shown, or\n'
+        printf '       `nros setup --system --sudo` to execute it.\n\n'
+    fi
 
 # Focused platform setup. Equivalent to `just <platform> setup`.
 [group("setup")]

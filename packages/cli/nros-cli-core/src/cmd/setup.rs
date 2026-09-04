@@ -121,6 +121,14 @@ pub struct Args {
     /// composing the command is this tool's job, running it is the user's.
     #[arg(long = "workspace", value_name = "PATH", num_args = 0..=1, default_missing_value = ".")]
     pub workspace_scan: Option<PathBuf>,
+    /// Narrow `--system` to keys of these roles (repeatable).
+    ///
+    /// A scope's setup wants the HOST facts — `package` and `workspace` roles —
+    /// and not `infra`: reporting every cross toolchain and emulator to someone
+    /// provisioning `native` is noise, and noise is how a real missing package
+    /// gets scrolled past.
+    #[arg(long = "role", value_name = "ROLE")]
+    pub roles: Vec<String>,
 
     /// Run presence probes and report present/missing/unknown instead of
     /// installing/printing; exits 1 when anything is missing. With
@@ -220,7 +228,7 @@ pub fn run(args: Args) -> Result<()> {
         // re-discovered, so the probe and the provisioner cannot disagree
         // about where a checkout is.
         let root = args.index.parent().map(std::path::Path::to_path_buf);
-        return run_system(&index, args.check, args.sudo, root.as_deref());
+        return run_system(&index, args.check, args.sudo, root.as_deref(), &args.roles);
     }
     // #0390 — must precede the generic `--check` below: `--build-sources --check`
     // is its own preflight, not the all-deps doctor pass.
@@ -1620,6 +1628,7 @@ fn run_system(
     check_only: bool,
     run_sudo: bool,
     repo_root: Option<&std::path::Path>,
+    roles: &[String],
 ) -> Result<()> {
     // W4's retirement notice, WIRED — the step phase-383 W1.f skipped, which is
     // why that deprecation reached nobody.
@@ -1635,7 +1644,40 @@ fn run_system(
         );
     }
 
-    let prereqs = index.prereqs();
+    let mut prereqs = index.prereqs();
+    if !roles.is_empty() {
+        // Narrowing is by ROLE, not by name: `just setup native` wants the host
+        // facts, and telling that user about `gcc-riscv64-unknown-elf` is noise
+        // — which is how a real missing package gets scrolled past.
+        let want: std::collections::BTreeSet<&str> = roles.iter().map(String::as_str).collect();
+        for r in &want {
+            if !matches!(*r, "package" | "workspace" | "infra" | "vendor") {
+                bail!(
+                    "nros setup --role {r}: unknown role. \
+                     One of: package, workspace, infra, vendor."
+                );
+            }
+        }
+        prereqs.retain(|_k, d| {
+            let name = match d.role {
+                crate::orchestration::sdk_index::PrereqRole::Package => "package",
+                crate::orchestration::sdk_index::PrereqRole::Workspace => "workspace",
+                crate::orchestration::sdk_index::PrereqRole::Infra => "infra",
+                crate::orchestration::sdk_index::PrereqRole::Vendor => "vendor",
+                // Unclassified must not silently vanish under a filter: it is
+                // what `check-prereq-roles` exists to catch, so surface it.
+                crate::orchestration::sdk_index::PrereqRole::Unclassified => "unclassified",
+            };
+            want.contains(name) || name == "unclassified"
+        });
+        if prereqs.is_empty() {
+            println!(
+                "nros setup --system --role {}: no key carries that role.",
+                roles.join(",")
+            );
+            return Ok(());
+        }
+    }
     if prereqs.is_empty() {
         println!("nros setup --system: index declares no [prereq.*] / [system.*] entries.");
         return Ok(());
