@@ -737,6 +737,18 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   fields (`Z_FEATURE_LOCAL_QUERYABLE`…) make mismatched TUs a silent ABI break (queries went
   session-local-only). `build_c_shim` injects `ZENOH_GENERIC` + the OUT_DIR config. → issue 0135
   (archived). Local fixture binaries embed the shim — rebuild fixtures after zpico config changes.
+- **One FORMULA is not enough — the INPUTS are derived twice too (issue 1025).** The group key
+  is a function of (platform, cargo args, env); `just esp32 build-qemu` called the shared helper
+  with the platform and `"" ""`, the producer passed the ROW's, and supplying two of the three
+  constants a different answer. It agreed until the esp32 rows gained
+  `env = { ZPICO_MAX_QUERYABLES = "2" }`, after which NO esp32 flash image could be packed. Not
+  silently: the nightly esp32 lane went red and printed this exact path every night. It survived
+  because the PUSH gates are green either way — the packer runs in `build-all`, which only the
+  schedule reaches — and because a lane already red reports its FIRST failure, so a second fault
+  behind it (issue 1070) stayed invisible until this one was fixed. A consumer that did not itself run the build names the ROW:
+  `nros_fixture_row_artifact_dir_by_id <row-id>`. Gate: `check-fixture-artifact-dir-inputs`
+  (a packer of a lane-built artifact must derive its row's args and env from the manifest, not
+  supply them); acceptance is still a BUILD, never a gate.
 - **A lib reached through a raw `-Wl,...` link FLAG gets no rebuild edge (issue 0475)** — CMake cannot
   see a file inside a flag string, and `add_dependencies()` only adds build ORDER, which ninja renders
   `||` (order-only): "must exist before linking", never "relink when it changes". The RMW backends are
