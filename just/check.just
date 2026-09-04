@@ -312,6 +312,7 @@ fast-serial: \
     tier-has-ci-owner \
     tier-priority-plan \
     tier-spin-gap \
+    vendor-fetch-pinned \
     version-lockstep \
     wait-evidence-discarded \
     weak-symbols \
@@ -4641,3 +4642,22 @@ posix-platform-purity:
 [private]
 orphan-generated-stamp:
     @python3 scripts/check-orphan-generated-stamp.py
+
+# RFC-0087 D5 / phase-420 W8 — a fetch without a digest is the same defect as an
+# unpinned submodule, one mechanism over. `check-submodule-pins` can go and ask
+# the submodule because a gitlink IS a full commit id; a `GIT_TAG v0.6.1` names
+# a ref on someone else's server, and if they move it this tree switches trees
+# with NO local diff at all. The two gates partition the surface: gitlink there,
+# CMake argument here.
+#
+# Rejects a short sha (a prefix the REMOTE resolves, not an identity), MD5/SHA1
+# (forgeable), and `URL_SHA256` — which is not a CMake option at all, so CMake
+# takes it as an unknown keyword and verifies nothing while reading as more
+# careful than the correct spelling.
+#
+# Reports NOTHING TO CHECK with the population searched when a rule has no
+# subject, because "the rule holds" and "the rule has no subject" are different
+# facts. Buildless, ~0.15 s.
+[private]
+vendor-fetch-pinned:
+    @python3 scripts/check-vendor-fetch-pinned.py

@@ -270,6 +270,13 @@ comment or an index key, because it is what a human reads; and resolve the
 commit with `git ls-remote <repo> refs/tags/<tag>`, taking the peeled `^{}` line
 when there is one — an annotated tag's own sha is not a commit.
 
+`check-vendor-fetch-pinned` scans the WHOLE tree rather than only the discovered
+packages. Scoped strictly to the sentence above it would have reported OK on an
+empty set while the tree's one fetch sat a directory up, outside every package —
+`cmake/NanoRosCorrosion.cmake`'s Corrosion fallback, then at a movable
+`GIT_TAG v0.6.1` (issue 1060). So it enforces inside packages and holds
+out-of-package findings in a shrink-only baseline.
+
 ### D6 — The search path is an ordered list of roots
 
 ```toml
