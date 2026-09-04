@@ -29,7 +29,7 @@
 //! later by `$(find …)` substitution.
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
 };
 
@@ -249,6 +249,243 @@ pub fn cargo_members_or_walk(root: &Path) -> Vec<PathBuf> {
     } else {
         declared
     }
+}
+
+/// Stage 1b — narrow the workspace to the packages the user asked for
+/// (RFC-0087 D7, phase-420 W7).
+///
+/// Empty means "no narrowing", which is the overwhelmingly common case and is
+/// why [`select`] short-circuits on it: a build that named no package must be
+/// byte-identical to one built before these flags existed.
+///
+/// ## Why this is a filter over an order, not a second order
+///
+/// [`discover`] already returns `packages` in topological order. A subset of a
+/// topologically ordered list, taken in place, is a topological order of the
+/// subset — every edge that survives had its endpoints in the original order,
+/// and filtering removes elements without reordering the ones that remain. So
+/// there is exactly one dependency sort in this crate and this does not add a
+/// second one.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Selection {
+    /// `--packages-select`: exactly these packages, no dependencies and no
+    /// dependents. Empty imposes no constraint.
+    pub select: Vec<String>,
+    /// `--packages-up-to`: these packages plus everything they depend on,
+    /// transitively, and nothing else. Empty imposes no constraint.
+    pub up_to: Vec<String>,
+}
+
+impl Selection {
+    /// Whether the user narrowed anything.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.select.is_empty() && self.up_to.is_empty()
+    }
+}
+
+/// Apply `sel` to what stage 1 discovered.
+///
+/// ## Where this matches colcon and where it deliberately does not
+///
+/// Matched: `--packages-select A B` is exactly A and B; `--packages-up-to A` is
+/// A and its transitive `<depend>` closure; the two flags **compose as an
+/// intersection**, because each is an independent deselecting filter — that is
+/// colcon's own shape (`packages_select` and `packages_up_to` each clear
+/// `decorator.selected` for anything they do not name), and it is the only
+/// composition under which adding a flag can never widen a build.
+///
+/// Diverged, twice, and both times toward failing instead of continuing:
+///
+/// **1. A name matching no package is an ERROR, not a warning.** colcon warns
+/// and carries on, which is defensible there because the unmatched name might
+/// legitimately name something in an install prefix. nano-ros has no install
+/// prefix (RFC-0087 D8) — the selection is resolved against the source tree and
+/// nothing else — so an unmatched name can only be a typo or a stale script.
+/// Warning past it narrows the build to something the user did not ask for and
+/// then reports success, which is the failure this codebase treats as worse
+/// than a red. `plan::resolve` already answers an unknown IMAGE the same way,
+/// with the available names in the message.
+///
+/// **2. A selection that drops a package another selected package needs is an
+/// ERROR.** This is colcon's headline use for `--packages-select` — rebuild one
+/// package against the install prefix the others already populated — and it
+/// does not survive the port. nano-ros builds per-target static objects through
+/// one merged root with no install-and-source stage (RFC-0087 D8), so a package
+/// left out of the selection is not "already built and available"; it is simply
+/// absent from the generated `[workspace] members` / `add_subdirectory` set.
+/// Honouring colcon's answer would hand the user a half-built workspace whose
+/// failure surfaces one layer down as an unresolved path dependency or a
+/// missing CMake target — an error about the wrong thing. So the closure is
+/// checked here and named here, with `--packages-up-to` offered as the fix.
+///
+/// ## What the check can and cannot see
+///
+/// It sees the `<depend>` graph, which is what `provider_scan` returns and what
+/// the topological order is built from. It does NOT see a cargo `path`
+/// dependency between two crates that declare nothing in `package.xml` — a
+/// cargo-only member (`cargo_only`) carries no `depends` at all, deliberately,
+/// because "cargo resolves its own dependency order from `Cargo.toml`". Dropping
+/// one of those is still loud, just later and from cargo rather than from here.
+pub fn select(found: &Discovered, sel: &Selection) -> Result<Discovered, String> {
+    if sel.is_empty() {
+        return Ok(found.clone());
+    }
+
+    let by_name: BTreeMap<&str, &WorkspacePackage> = found
+        .packages
+        .iter()
+        .map(|p| (p.name.as_str(), p))
+        .collect();
+
+    // Both flags at once: a script with two typos should learn about both.
+    let mut unknown: Vec<String> = Vec::new();
+    for (flag, names) in [
+        ("--packages-select", &sel.select),
+        ("--packages-up-to", &sel.up_to),
+    ] {
+        for n in names {
+            if !by_name.contains_key(n.as_str()) {
+                unknown.push(format!("{flag} {n}"));
+            }
+        }
+    }
+    if !unknown.is_empty() {
+        return Err(format!(
+            "no such package in this workspace: {}.\n\nDiscovered: {}",
+            unknown.join(", "),
+            name_list(&found.packages)
+        ));
+    }
+
+    let mut keep: Option<BTreeSet<&str>> = None;
+    if !sel.select.is_empty() {
+        keep = Some(sel.select.iter().map(String::as_str).collect());
+    }
+    if !sel.up_to.is_empty() {
+        let closure = up_to_closure(&by_name, &sel.up_to);
+        keep = Some(match keep {
+            // Intersection — see the doc comment. Each flag deselects.
+            Some(k) => k.intersection(&closure).copied().collect(),
+            None => closure,
+        });
+    }
+    let keep = keep.expect("a non-empty Selection sets at least one constraint");
+
+    if keep.is_empty() {
+        return Err(format!(
+            "`--packages-select` and `--packages-up-to` select no package in \
+             common, so there is nothing to build. They compose as an \
+             INTERSECTION: each narrows, neither widens.\n\n  \
+             --packages-select {}\n  --packages-up-to  {} (closure: {})",
+            sel.select.join(" "),
+            sel.up_to.join(" "),
+            {
+                let c = up_to_closure(&by_name, &sel.up_to);
+                c.into_iter().collect::<Vec<_>>().join(", ")
+            }
+        ));
+    }
+
+    // The closure check. Runs over the FINAL set, so it covers a selection
+    // broken by the intersection as well as one broken by `--packages-select`
+    // alone — an `--packages-up-to` closure is complete by construction, but
+    // intersecting it with a `--packages-select` can punch a hole in it.
+    let mut broken: Vec<String> = Vec::new();
+    for pkg in found
+        .packages
+        .iter()
+        .filter(|p| keep.contains(p.name.as_str()))
+    {
+        let mut missing: Vec<&str> = pkg
+            .depends
+            .iter()
+            .map(String::as_str)
+            .filter(|d| *d != pkg.name && by_name.contains_key(d) && !keep.contains(d))
+            .collect();
+        if missing.is_empty() {
+            continue;
+        }
+        missing.sort_unstable();
+        broken.push(format!("  {} needs {}", pkg.name, missing.join(", ")));
+    }
+    if !broken.is_empty() {
+        let mut up_to: Vec<&str> = keep.iter().copied().collect();
+        up_to.sort_unstable();
+        return Err(format!(
+            "this selection drops packages that selected packages depend on:\n\
+             \n{}\n\n\
+             colcon allows that, because a dropped dependency is found in the \
+             install prefix. nano-ros has none (RFC-0087 D8): it builds one \
+             merged root with no install-and-source stage, so a package left \
+             out is absent from the build, not resolved from a previous one. \
+             The failure would surface a layer down as an unresolved path \
+             dependency or a missing CMake target.\n\n\
+             Build the closure instead:  --packages-up-to {}",
+            broken.join("\n"),
+            up_to.join(" ")
+        ));
+    }
+
+    // Filter in place — see `Selection`'s note on why this needs no second sort.
+    let packages: Vec<WorkspacePackage> = found
+        .packages
+        .iter()
+        .filter(|p| keep.contains(p.name.as_str()))
+        .cloned()
+        .collect();
+    let kept_dirs: BTreeSet<&PathBuf> = packages.iter().map(|p| &p.dir).collect();
+    let cargo_only = found
+        .cargo_only
+        .iter()
+        .filter(|d| kept_dirs.contains(d))
+        .cloned()
+        .collect();
+
+    Ok(Discovered {
+        packages,
+        cargo_only,
+        warnings: found.warnings.clone(),
+    })
+}
+
+/// `roots` plus everything they `<depend>` on, transitively, restricted to
+/// packages of this workspace.
+///
+/// External names (`std_msgs`) are skipped for the same reason
+/// `topological_order` skips them: they impose no local build order and are not
+/// ours to select.
+fn up_to_closure<'a>(
+    by_name: &BTreeMap<&'a str, &'a WorkspacePackage>,
+    roots: &[String],
+) -> BTreeSet<&'a str> {
+    let mut out: BTreeSet<&str> = BTreeSet::new();
+    let mut stack: Vec<&str> = roots
+        .iter()
+        .filter_map(|r| by_name.get_key_value(r.as_str()).map(|(k, _)| *k))
+        .collect();
+    while let Some(name) = stack.pop() {
+        if !out.insert(name) {
+            continue;
+        }
+        let Some(pkg) = by_name.get(name) else {
+            continue;
+        };
+        for dep in &pkg.depends {
+            if let Some((k, _)) = by_name.get_key_value(dep.as_str()) {
+                stack.push(k);
+            }
+        }
+    }
+    out
+}
+
+/// Every discovered package name, sorted, for an error message.
+fn name_list(packages: &[WorkspacePackage]) -> String {
+    let mut names: Vec<&str> = packages.iter().map(|p| p.name.as_str()).collect();
+    names.sort_unstable();
+    names.dedup();
+    names.join(", ")
 }
 
 #[cfg(test)]
@@ -476,5 +713,240 @@ mod tests {
         // A pure C/C++ workspace is normal, not broken.
         let tmp = tempfile::tempdir().unwrap();
         assert!(cargo_workspace_members(tmp.path()).is_empty());
+    }
+
+    // ---- phase-420 W7 — the selection verbs (RFC-0087 D7) ---------------
+
+    /// The graph every selection test below reasons about:
+    ///
+    /// ```text
+    ///   entry ──> talker_pkg ──> msgs_pkg
+    ///     └─────> listener_pkg ─┘
+    ///   other_pkg          (unrelated)
+    ///   helper             (cargo member, no package.xml)
+    /// ```
+    ///
+    /// `talker_pkg` also declares `std_msgs`, which is NOT a workspace package
+    /// — the closure must ignore it rather than fail on it.
+    fn selection_workspace(root: &Path) -> Discovered {
+        write(
+            &root.join("src/entry/package.xml"),
+            &pkg_xml("entry", &["talker_pkg", "listener_pkg"]),
+        );
+        write(
+            &root.join("src/talker_pkg/package.xml"),
+            &pkg_xml("talker_pkg", &["msgs_pkg", "std_msgs"]),
+        );
+        write(
+            &root.join("src/listener_pkg/package.xml"),
+            &pkg_xml("listener_pkg", &["msgs_pkg"]),
+        );
+        write(
+            &root.join("src/msgs_pkg/package.xml"),
+            &pkg_xml("msgs_pkg", &[]),
+        );
+        write(
+            &root.join("src/other_pkg/package.xml"),
+            &pkg_xml("other_pkg", &[]),
+        );
+        write(
+            &root.join("src/helper/Cargo.toml"),
+            "[package]\nname = \"helper\"\n",
+        );
+        discover(root, &[root.join("src/helper")]).expect("discovers")
+    }
+
+    fn sel(select: &[&str], up_to: &[&str]) -> Selection {
+        Selection {
+            select: select.iter().map(|s| (*s).to_string()).collect(),
+            up_to: up_to.iter().map(|s| (*s).to_string()).collect(),
+        }
+    }
+
+    fn names(d: &Discovered) -> Vec<&str> {
+        d.packages.iter().map(|p| p.name.as_str()).collect()
+    }
+
+    #[test]
+    fn no_selection_is_the_whole_workspace() {
+        // A build that named no package must be identical to one built before
+        // these flags existed — not "the same set by a different route".
+        let tmp = tempfile::tempdir().unwrap();
+        let d = selection_workspace(tmp.path());
+        let got = select(&d, &Selection::default()).expect("no-op");
+        assert_eq!(got, d, "an empty selection must not perturb stage 1");
+    }
+
+    #[test]
+    fn a_select_of_one_package_builds_only_that_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = selection_workspace(tmp.path());
+        let got = select(&d, &sel(&["msgs_pkg"], &[])).expect("selects");
+        assert_eq!(names(&got), vec!["msgs_pkg"], "no deps, no dependents");
+        assert!(
+            got.cargo_only.is_empty(),
+            "the cargo-only member is not selected: {:?}",
+            got.cargo_only
+        );
+    }
+
+    #[test]
+    fn up_to_takes_the_transitive_closure_and_nothing_more() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = selection_workspace(tmp.path());
+        let got = select(&d, &sel(&[], &["talker_pkg"])).expect("selects");
+        let mut n = names(&got);
+        n.sort_unstable();
+        assert_eq!(
+            n,
+            vec!["msgs_pkg", "talker_pkg"],
+            "the closure is the package and what it depends on — `entry` \
+             depends on it and must NOT come along, and `std_msgs` is not a \
+             workspace package at all"
+        );
+    }
+
+    #[test]
+    fn up_to_reaches_through_two_edges() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = selection_workspace(tmp.path());
+        let got = select(&d, &sel(&[], &["entry"])).expect("selects");
+        let mut n = names(&got);
+        n.sort_unstable();
+        assert_eq!(
+            n,
+            vec!["entry", "listener_pkg", "msgs_pkg", "talker_pkg"],
+            "transitive, and still excludes other_pkg and the cargo-only helper"
+        );
+    }
+
+    #[test]
+    fn a_selection_keeps_the_topological_order_it_was_given() {
+        // The wave's rule: filter the order stage 1 computed, never sort again.
+        // A subset of a topological order, taken in place, is a topological
+        // order of the subset — this asserts the filter does not disturb it.
+        let tmp = tempfile::tempdir().unwrap();
+        let d = selection_workspace(tmp.path());
+        let got = select(&d, &sel(&[], &["entry"])).expect("selects");
+        let full = names(&d);
+        let kept = names(&got);
+        let expected: Vec<&str> = full.into_iter().filter(|n| kept.contains(n)).collect();
+        assert_eq!(kept, expected, "order must be stage 1's, filtered");
+        let pos = |n: &str| kept.iter().position(|k| *k == n).expect("present");
+        assert!(pos("msgs_pkg") < pos("talker_pkg"), "{kept:?}");
+        assert!(pos("talker_pkg") < pos("entry"), "{kept:?}");
+    }
+
+    #[test]
+    fn an_unknown_name_is_an_error_listing_what_exists() {
+        // Diverges from colcon, which warns. There is no install prefix the
+        // unmatched name could name (RFC-0087 D8), so it is a typo, and warning
+        // past it builds a set the user did not ask for and reports success.
+        let tmp = tempfile::tempdir().unwrap();
+        let d = selection_workspace(tmp.path());
+        let e = select(&d, &sel(&["talkr_pkg"], &[])).expect_err("must refuse");
+        assert!(e.contains("talkr_pkg"), "names what was asked for: {e}");
+        assert!(e.contains("talker_pkg"), "names what exists: {e}");
+        assert!(e.contains("msgs_pkg"), "lists ALL of them: {e}");
+    }
+
+    #[test]
+    fn both_flags_report_their_unknown_names_at_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = selection_workspace(tmp.path());
+        let e = select(&d, &sel(&["nope_a"], &["nope_b"])).expect_err("must refuse");
+        assert!(e.contains("--packages-select nope_a"), "{e}");
+        assert!(e.contains("--packages-up-to nope_b"), "{e}");
+    }
+
+    #[test]
+    fn a_selection_that_drops_a_needed_dependency_is_refused() {
+        // The decision this wave had to make, and the one place colcon's answer
+        // does not port: colcon lets `--packages-select entry` succeed because
+        // `talker_pkg` is in the install prefix. nano-ros has no install prefix
+        // and one merged root, so the package would simply be absent.
+        let tmp = tempfile::tempdir().unwrap();
+        let d = selection_workspace(tmp.path());
+        let e = select(&d, &sel(&["entry"], &[])).expect_err("must refuse");
+        assert!(
+            e.contains("entry needs listener_pkg, talker_pkg"),
+            "names the hole: {e}"
+        );
+        assert!(e.contains("--packages-up-to entry"), "offers the fix: {e}");
+    }
+
+    #[test]
+    fn an_unrelated_dependency_of_an_unselected_package_is_not_a_hole() {
+        // Only edges OUT of kept packages matter. `other_pkg` being dropped
+        // while `msgs_pkg` is kept is not a hole in either direction.
+        let tmp = tempfile::tempdir().unwrap();
+        let d = selection_workspace(tmp.path());
+        let got = select(&d, &sel(&["msgs_pkg", "talker_pkg"], &[])).expect("closed");
+        let mut n = names(&got);
+        n.sort_unstable();
+        assert_eq!(n, vec!["msgs_pkg", "talker_pkg"]);
+    }
+
+    #[test]
+    fn the_two_flags_compose_as_their_intersection() {
+        // colcon's composition: each flag deselects independently, so adding
+        // one can only narrow. `--packages-up-to entry` is the four-package
+        // closure; intersecting it with a two-name select leaves those two.
+        let tmp = tempfile::tempdir().unwrap();
+        let d = selection_workspace(tmp.path());
+        let got = select(
+            &d,
+            &sel(&["talker_pkg", "msgs_pkg", "other_pkg"], &["entry"]),
+        )
+        .expect("selects");
+        let mut n = names(&got);
+        n.sort_unstable();
+        assert_eq!(
+            n,
+            vec!["msgs_pkg", "talker_pkg"],
+            "`other_pkg` is in the select and NOT in the up-to closure, so the \
+             intersection drops it; `listener_pkg` is in the closure and not \
+             the select, so the intersection drops that too"
+        );
+    }
+
+    #[test]
+    fn an_intersection_that_punches_a_hole_is_still_refused() {
+        // The closure check runs over the FINAL set for this reason: an up-to
+        // closure is complete by construction, and intersecting it is not.
+        let tmp = tempfile::tempdir().unwrap();
+        let d = selection_workspace(tmp.path());
+        let e = select(&d, &sel(&["entry", "talker_pkg", "msgs_pkg"], &["entry"]))
+            .expect_err("must refuse");
+        assert!(e.contains("entry needs listener_pkg"), "{e}");
+    }
+
+    #[test]
+    fn disjoint_flags_say_the_intersection_is_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let d = selection_workspace(tmp.path());
+        let e = select(&d, &sel(&["other_pkg"], &["msgs_pkg"])).expect_err("nothing to build");
+        assert!(e.contains("INTERSECTION"), "says how they compose: {e}");
+        assert!(e.contains("other_pkg"), "{e}");
+        assert!(e.contains("msgs_pkg"), "{e}");
+    }
+
+    #[test]
+    fn a_cargo_only_member_is_selectable_by_its_directory_name() {
+        // It is discovered under its directory name and carries NO `depends`
+        // (cargo resolves its own order), so it is selectable and imposes no
+        // constraint. Its cargo `path` edges are the documented blind spot in
+        // `select`: dropping it is loud, but the noise comes from cargo.
+        let tmp = tempfile::tempdir().unwrap();
+        let d = selection_workspace(tmp.path());
+        let got = select(&d, &sel(&["helper", "msgs_pkg"], &[])).expect("selects");
+        let mut n = names(&got);
+        n.sort_unstable();
+        assert_eq!(n, vec!["helper", "msgs_pkg"]);
+        assert_eq!(
+            got.cargo_only,
+            [tmp.path().join("src/helper")].into_iter().collect(),
+            "a kept cargo-only member stays cargo-only"
+        );
     }
 }

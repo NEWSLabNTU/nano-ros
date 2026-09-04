@@ -56,6 +56,10 @@ pub fn run(args: Args) -> Result<()> {
         all: false,
         dry_run: true,
         offline: true,
+        // phase-420 W7 — a QUERY resolves the whole workspace. Narrowing it
+        // would answer a question nobody asked.
+        packages_select: Vec::new(),
+        packages_up_to: Vec::new(),
         native_args: Vec::new(),
     };
     let plans = super::build::plan_builds(&build_args)?;
