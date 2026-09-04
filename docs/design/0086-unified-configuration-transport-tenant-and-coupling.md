@@ -230,9 +230,28 @@ side learning the other's name.
   not encode a pick-one family.
 * Any knob whose correct value is sometimes "off", and any exclusive choice,
   belongs in the ladder with a lane front-end that can carry `0` as well as `1`.
-* No migration is outstanding. The audit found no exclusive or negative
-  configuration expressed as a Cargo feature in core or api. The rule is a
-  standing constraint on new knobs, enforced at review, not a backlog item.
+* ~~No migration is outstanding. The audit found no exclusive or negative
+  configuration expressed as a Cargo feature in core or api.~~ **Both halves of
+  this were wrong — corrected 2026-09-04, issue 1037.** `packages/core/nros-log`
+  carries FOUR pick-one families (`max-level-*`, `early-records-<N>`,
+  `dynamic-loggers-<N>`, `buffer-size-<N>`), three with a member whose whole
+  meaning is "off". Sixteen features, in core, none visible to
+  `nros config explain`.
+
+  The audit missed them because they read as SIZING rather than policy —
+  `buffer-size-256` looks like a build detail — and because `nros-log` was not
+  one of the five tenants phase-400 W6 migrated. The general shape is worth
+  stating: **a knob looks like a Cargo feature exactly when the crate that owns
+  it is not yet a tenant.**
+* "Enforced at review, not a backlog item" did not hold either: phase-417 W4.d
+  added `dynamic-loggers-{0,8,32}` — a NEW pick-one family with an "off" member,
+  in core — after this rule was written, and it passed review. A migration is
+  outstanding; issue 1037 carries the shape.
+* The rule's boundary, which the same issue clarified: a build script MAY derive
+  a `cfg` from the resolved ladder. That is internal logic reading a public
+  declaration. What D5 forbids is a HUMAN writing `features = [...]` in a
+  manifest to choose product behaviour — because a Cargo feature unifies across
+  the workspace, so it cannot be scoped to the consumer that meant it.
 
 ### D6 — provenance is the acceptance test
 
