@@ -548,7 +548,7 @@ check-libc-struct-sizes:
     @python3 {{ justfile_directory() }}/scripts/check-nuttx-libc-struct-sizes.py
 
 # Install NuttX prerequisites. Phase 197.4 — provisioning delegated to
-# `nros setup qemu-arm-nuttx` (toolchain + sources); the NuttX-specific
+# `nros setup qemu-{arm,riscv}-nuttx` (toolchains + sources); the NuttX-specific
 # external-app staging stays here.
 [group("setup")]
 setup:
@@ -559,6 +559,19 @@ setup:
     # SDK index; the host-env helper handles rustup. Kernel build + external-app
     # staging stay below (NuttX-specific). `source setup.bash` to PATH the tools.
     nros setup qemu-arm-nuttx
+    # ...and the RISC-V board, because `build-all` builds BOTH. Issue 1038: this
+    # recipe provisioned only the Arm board while `build-fixtures-riscv` builds
+    # riscv leaves, so the nightly `nuttx` cell died every run on
+    #
+    #   NROS_LANE_NAMED_FAIL: nuttx: riscv-none-elf-gcc not found
+    #     (run: nros setup qemu-riscv-nuttx)
+    #   error: you named `nuttx`, so this is a FAILURE, not a skip.
+    #
+    # The lane was behaving correctly — phase-411's named-platform rule firing
+    # at the point of decision, naming the remedy. The defect was that setup did
+    # not run it. `nros setup` is idempotent, so this costs nothing on a host
+    # that already has the toolchain.
+    nros setup qemu-riscv-nuttx
     "{{justfile_directory()}}/tools/host-env.sh" nuttx
     # Phase 194.4 — the NuttX export is self-provisioned by the example build
     # (`nros_nuttx_build_example` runs `make export` before the cargo link), so
