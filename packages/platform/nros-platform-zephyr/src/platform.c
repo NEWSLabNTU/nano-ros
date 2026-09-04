@@ -1199,3 +1199,15 @@ _Noreturn void nros_platform_panic(const char *msg, size_t len) {
     for (;;) {
     }
 }
+
+/* Headroom for the calling thread. `k_thread_stack_space_get` answers in
+ * unused BYTES, which is the ABI's unit, so no conversion. Needs
+ * CONFIG_INIT_STACKS to have painted the stack; without it the kernel has no
+ * watermark to read and returns an error, which becomes the documented 0. */
+size_t nros_platform_task_stack_unused_bytes(void) {
+    size_t unused = 0;
+    if (k_thread_stack_space_get(k_current_get(), &unused) != 0) {
+        return 0;
+    }
+    return unused;
+}

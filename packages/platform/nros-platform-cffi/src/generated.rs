@@ -83,6 +83,10 @@ unsafe extern "C" {
     pub fn nros_platform_heap_used_bytes() -> usize;
 }
 unsafe extern "C" {
+    #[doc = " Smallest number of bytes ever left unused on the CALLING task's stack, or\n  `0` if this port cannot report it.\n\n  HEADROOM, not usage, because that is what both kernels natively track and\n  it is the number a safety argument needs: how close the worst observed\n  excursion came to the end of the stack.\n\n  The heap has had `nros_platform_heap_used_bytes` since RFC-0034 D7; the\n  stack had nothing, and stack overflow is the classic way one component\n  corrupts another's state. ISO 26262 treats spatial freedom from\n  interference as a first-class requirement and AUTOSAR pairs memory\n  protection with stack monitoring for exactly this reason. Without a\n  portable probe the only recourse is a per-RTOS one: this repo's Zephyr\n  lane greps `thread_analyzer` printk output in CI, which is a text scrape\n  of a debug facility standing in for a platform capability, and reports\n  nothing on any other port.\n\n  SELF only, deliberately. Both kernels answer for the calling task with no\n  handle (`uxTaskGetStackHighWaterMark(NULL)`, `k_thread_stack_space_get`\n  with `k_current_get()`), whereas answering for an arbitrary task needs a\n  native handle this ABI does not carry -- on Zephyr the task storage is a\n  `pthread_t` and the mapping to `k_thread *` is not public. A task\n  reporting its own headroom is also the shape the callers want: each tier\n  says how much of its own stack it has ever needed.\n\n  `0` means \"this port does not instrument it\", matching\n  `nros_platform_heap_used_bytes`. It is not a claim that the stack is\n  full."]
+    pub fn nros_platform_task_stack_unused_bytes() -> usize;
+}
+unsafe extern "C" {
     #[doc = " Total managed heap size in bytes (used + free), or `0` if unknown."]
     pub fn nros_platform_heap_total_bytes() -> usize;
 }

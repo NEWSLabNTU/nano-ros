@@ -964,3 +964,16 @@ _Noreturn void nros_platform_panic(const char *msg, size_t len) {
     for (;;) {
     }
 }
+
+/* Headroom for the calling task. `uxTaskGetStackHighWaterMark(NULL)` answers
+ * in WORDS of free space, so scale by the stack word size to reach the ABI's
+ * bytes. Gated on INCLUDE_uxTaskGetStackHighWaterMark, which FreeRTOSConfig.h
+ * may leave off; the documented 0 covers that build rather than failing to
+ * link. */
+size_t nros_platform_task_stack_unused_bytes(void) {
+#if (INCLUDE_uxTaskGetStackHighWaterMark == 1)
+    return (size_t) uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t);
+#else
+    return 0;
+#endif
+}
