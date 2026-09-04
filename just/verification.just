@@ -48,8 +48,12 @@ doctor:
     else
         echo "  [OK] kani-verifier: $kani_ver (pinned)"
     fi
-    if [ -x tools/verus ] || command -v verus &>/dev/null; then
-        ver=$(tools/verus --version 2>/dev/null | grep -i Version | head -1 | tr -d ' ' || echo "")
+    # phase-422 W2 — Verus is an SDK-store tool (`[tool.verus]`), so its path is
+    # CONSTRUCTED from the index pin and never searched for (issue 0625). No
+    # `--require`: a doctor reports, it does not abort.
+    verus_bin="$(nros sdk-path verus 2>/dev/null)/bin/verus"
+    if [ -x "$verus_bin" ] || command -v verus &>/dev/null; then
+        ver=$("$verus_bin" --version 2>/dev/null | grep -i Version | head -1 | tr -d ' ' || echo "")
         echo "  [OK] verus${ver:+ ($ver)}"
     else
         echo "  [MISSING] verus (run: just verification verus)"
@@ -86,7 +90,75 @@ kani:
         fi
     fi
 
-# Download Verus binary from GitHub releases to tools/verus.
+# Provision the pinned Verus release into the SDK store, plus its rust toolchain.
+#
+# phase-422 W2 — the DOWNLOAD is the index's job now: `[tool.verus]` pins the
+# release, names the per-host asset and carries its sha256. The retired
+# `scripts/setup-verus.sh` resolved its asset through the GitHub releases API
+# (`latest` on request, a tag by default) and verified NO checksum, so what it
+# fetched was a query answered at run time rather than a fact recorded in the
+# tree — which is precisely what a pin is for, and the reason that script had
+# already had to hardcode a release once (issue 0368 F6).
+#
+# What stays here is the half the index cannot express: the rustup toolchain the
+# release pins, and the informative degrade for a host that cannot run the
+# binary at all.
 [group("verification")]
 verus:
-    ./scripts/setup-verus.sh
+    #!/usr/bin/env bash
+    set -euo pipefail
+    nros setup --tool verus
+    verus_bin="$(nros sdk-path verus --require)/bin/verus"
+
+    # `verus --version` fails for TWO distinct reasons and they need OPPOSITE
+    # handling: a missing pinned rust toolchain (install it — the normal
+    # fresh-install path) vs a loader/glibc error (degrade informatively —
+    # installing anything won't help). Disambiguate on the error text.
+    #
+    # Matched with bash's own `case`, not `grep -q`: a `grep` that fails to
+    # START exits >=2, which reads here exactly like "no match" and would send a
+    # glibc failure down the toolchain-install path (issue 0726's class).
+    if out="$("$verus_bin" --version 2>&1)"; then
+        echo "$out"
+        exit 0
+    fi
+    case "$out" in
+        *"required rust toolchain"*)
+            # Two formats: an INSTALLED-toolchain verus prints "Toolchain: <tc>";
+            # a FRESH one cannot print --version at all and errors "required rust
+            # toolchain <tc> not found". Parse both — phase-327 W6: the
+            # fresh-install path always hit the second and installed nothing.
+            tc=$(printf '%s\n' "$out" \
+                | sed -n -e 's/.*Toolchain: //p' -e 's/.*required rust toolchain \([^ ]*\) not found.*/\1/p' \
+                | head -1)
+            if [ -z "$tc" ]; then
+                echo "[verus] could not parse the required rust toolchain from:" >&2
+                printf '%s\n' "$out" >&2
+                exit 1
+            fi
+            if rustup run "$tc" rustc --version >/dev/null 2>&1; then
+                echo "Required toolchain already installed: $tc"
+            else
+                echo "Installing required toolchain: $tc"
+                rustup toolchain install "$tc"
+            fi
+            "$verus_bin" --version
+            ;;
+        *)
+            # Issue 0368 F6. Verification is gated in no CI tier, so a host that
+            # cannot run this tool must NOT have its setup fail — exit 0 with an
+            # explanation, not a raw loader error.
+            printf '%s\n' \
+                "[verus] The Verus binary could not run on this host — almost always a" \
+                "        glibc mismatch: releases newer than the pin are built against a" \
+                "        newer glibc than the oldest supported LTS provides (issue 0368 F6)." \
+                "        Verification is not gated in any CI tier, so this is informative," \
+                "        not fatal." \
+                "        Options: run on a newer host, build Verus from source, or move the" \
+                "        pin in [tool.verus] (nros-sdk-index.toml) — it records which release" \
+                "        was measured to run, and why." \
+                "        It printed:"
+            printf '        %s\n' "$out"
+            exit 0
+            ;;
+    esac

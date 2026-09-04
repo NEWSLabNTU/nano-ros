@@ -42,6 +42,7 @@ WHAT IT DOES NOT CHECK
   --check`'s job, and it is a property of the host, not of the tree.
 * Dists with no `[tool.*]` entry (zenohd is provisioned another way).
 * Non-Linux hosts: `ldd` is glibc's. Skips with a reason.
+* Libraries the RUSTUP TOOLCHAIN provides — see `RUSTC` below.
 
 Usage:  check-dist-runtime-deps.py [--store DIR]
 """
@@ -61,6 +62,29 @@ BASE = re.compile(
     r"^(libc|libm|libdl|libpthread|librt|libstdc\+\+|libgcc_s|libutil|libresolv"
     r"|ld-linux.*|linux-vdso)\.so"
 )
+
+# Shared libraries that come from the RUSTUP TOOLCHAIN a dist pins, not from a
+# package manager (phase-422 W2).
+#
+# `system = [..]` names `[prereq.*]` keys, and every one of those resolves to an
+# apt/dnf/pacman/brew package. `librustc_driver-<hash>.so` has no such package on
+# any distro: it ships inside `~/.rustup/toolchains/<tc>/lib`, and the dist finds
+# it because its own launcher sets the library path before exec'ing the binary
+# that needs it. So a bare `ldd` on such a binary always reports `not found`, on
+# a host where the tool works perfectly — a permanent false positive, and the
+# advice it prints ("add a `[prereq.*]` entry") names a package that cannot
+# exist.
+#
+# `[tool.verus]` is the case: `rust_verify` links `librustc_driver-<hash>.so`,
+# and `verus --version` runs fine beside it. The requirement is not undeclared —
+# it is declared as the rustup toolchain, by `just verification verus`, which
+# installs the exact channel the release pins.
+#
+# Keyed on the SHAPE rustc gives its own shared libraries — `lib<name>-<16 hex
+# digits>.so` — because that hash is a rustc-internal disambiguator and nothing a
+# distro ships is named that way. Narrow on purpose: a plain `libfoo.so.1` a dist
+# forgot to declare still fails, which is the bug this gate exists for.
+RUSTC = re.compile(r"^lib[A-Za-z0-9_]+-[0-9a-f]{16}\.so$")
 
 
 def load_index():
@@ -115,7 +139,7 @@ def closure(dist_root):
                 if "=>" not in line and "not found" not in line:
                     continue
                 so = line.split()[0]
-                if BASE.match(so) or so in own:
+                if BASE.match(so) or RUSTC.match(so) or so in own:
                     continue
                 needed.add(so)
     return needed
@@ -185,6 +209,17 @@ def self_test():
         ),
         ("base runtime is excluded", bool(BASE.match("libstdc++.so.6"))),
         ("a real lib is not excluded", not BASE.match("libftdi.so.1")),
+        # phase-422 W2 — the rustup-provided shape, and its negative control.
+        # Without the second row the pattern could be widened to anything and
+        # still "pass", which is how an exemption turns into a blind spot.
+        (
+            "a rustc-hashed soname is excluded",
+            bool(RUSTC.match("librustc_driver-4d71126a08f22b4a.so")),
+        ),
+        (
+            "a distro soname is NOT excluded by the rustc shape",
+            not (RUSTC.match("libftdi.so.1") or RUSTC.match("libncursesw.so.5")),
+        ),
         # The bug this gate exists for: declared-somewhere but not by THIS tool.
         ("an undeclared-by-tool soname is a problem", True),
     ]

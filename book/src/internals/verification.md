@@ -68,7 +68,7 @@ Verus is a deductive verification tool for Rust. Unlike Kani (which checks bound
 ### Quick Reference
 
 ```bash
-just verification verus   # Download Verus binary to tools/ (or `just verification setup` for kani + verus)
+just verification verus   # Provision the pinned Verus release into the SDK store (or `just verification setup` for kani + verus)
 just verify-verus    # Run all Verus proofs
 just verify          # Run both Kani + Verus
 ```

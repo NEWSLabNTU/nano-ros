@@ -3233,10 +3233,14 @@ verify-verus:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "=== Verus Verification ==="
-    VERUS_DIR="$(pwd)/tools"
-    if [ ! -x "$VERUS_DIR/verus" ]; then
-        echo "Verus not found at $VERUS_DIR/verus"
-        echo "Run 'just verification verus' to install"
+    # phase-422 W2 — Verus is an SDK-store tool (`[tool.verus]`), so its
+    # directory is CONSTRUCTED from the index pin rather than assumed to be
+    # `./tools` (issue 0625). `--require` prints every store path it tried and
+    # the provisioning command, which is strictly more than the bare
+    # "not found at ./tools/verus" this used to say; the line below adds the
+    # `just` spelling, which also installs the rust toolchain Verus pins.
+    if ! VERUS_DIR="$(nros sdk-path verus --require)/bin"; then
+        echo "Run 'just verification verus' to install" >&2
         exit 1
     fi
     export PATH="$VERUS_DIR:$PATH"
@@ -4584,10 +4588,12 @@ setup-docs:
     }
     # mdBook comes from the project's own PREBUILT release, not `cargo install`:
     # it drags a large dependency tree and a docs tool has no business costing a
-    # compile. `tools/mdbook` wins over any on PATH, so the book renders the same
-    # on every host (issue 0500's lesson — a tool resolved by PATH is whichever
-    # one happens to be first).
-    bash scripts/setup-mdbook.sh
+    # compile. The pinned copy wins over any on PATH, so the book renders the
+    # same on every host (issue 0500's lesson — a tool resolved by PATH is
+    # whichever one happens to be first). phase-422 W2: the pin, the per-host
+    # asset and its sha256 live in `[tool.mdbook]`, so this is a thin
+    # `nros setup --tool` caller like every other provisioning line.
+    nros setup --tool mdbook
     # PAIRED, and the pairing is the whole reason this line moved with the one
     # above: mdbook-mermaid 0.17 speaks the mdBook 0.5 preprocessor protocol and
     # 0.14 speaks 0.4's. Bumping mdBook to 0.5.4 without this fails at render
@@ -4642,8 +4648,14 @@ book:
     just doc-platform-cffi
     # Prefer the PINNED binary; fall back to PATH; fail with the remedy rather
     # than `mdbook: command not found` after rustdoc has already run for minutes.
-    if [ -x tools/mdbook ]; then
-        MDBOOK=tools/mdbook
+    #
+    # The pinned path is CONSTRUCTED from the index pin via `nros sdk-path`,
+    # never searched for in the store (issue 0625) — `--require` is deliberately
+    # NOT passed, because a missing install must reach the PATH fallback and
+    # then the remedy below, not abort with a store diagnostic.
+    MDBOOK_DIR="$(nros sdk-path mdbook 2>/dev/null || true)"
+    if [ -n "$MDBOOK_DIR" ] && [ -x "$MDBOOK_DIR/bin/mdbook" ]; then
+        MDBOOK="$MDBOOK_DIR/bin/mdbook"
     elif command -v mdbook >/dev/null 2>&1; then
         MDBOOK=mdbook
     else
@@ -4863,9 +4875,15 @@ changelog-release version:
 # Provision the pinned mdBook from the project's prebuilt release (no compile).
 # Separate from `setup-docs` so the book tool can be fixed without re-running
 # the whole docs setup.
+#
+# A thin `nros setup --tool` caller (phase-422 W2): the version, the per-host
+# asset URL and its sha256 are `[tool.mdbook]` in `nros-sdk-index.toml`. It used
+# to be `scripts/setup-mdbook.sh` plus a hand-kept `scripts/mdbook-checksums.txt`
+# — a second provisioning mechanism, with a second pin, for a tool the index
+# already knows how to describe.
 [group("docs")]
 setup-mdbook:
-    @bash scripts/setup-mdbook.sh
+    @nros setup --tool mdbook
 
 [group("docs")]
 dev-tools *args:

@@ -33,7 +33,12 @@ __pycache__/
 examples/**/generated/
 **/generated/.nros-generate-rust.sig
 
-# Verus binary (downloaded by: just setup-verus)
+# `tools/` is a scratch dir for locally-fetched host binaries, not a checked-in
+# one. Verus and mdBook used to land here from two bespoke shell installers;
+# since phase-422 W2 both are SDK-store tools (`[tool.verus]` / `[tool.mdbook]`
+# in nros-sdk-index.toml) and install under `${NROS_HOME:-~/.nros}/sdk`. The
+# rule stays so a leftover copy from before that move — or any other ad-hoc
+# download — cannot be committed by accident.
 tools/*
 # ...but keep the pinned nightly for workspace tooling (fmt/miri/llvm-cov/etc.)
 !tools/rust-toolchain.toml
