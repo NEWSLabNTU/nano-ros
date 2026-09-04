@@ -285,6 +285,83 @@ that stopped matching cannot report success. Point it at a real dir by hand:
 Verified against the island both ways: it FAILS on the pre-fix build naming all
 four dropped knobs, and passes on the fixed one.
 
+## W5 -- the instrument, because the campaign ran out of oracle. LANDED 2026-09-04
+
+W1 through W4 all assume a way to tell a correct image from a broken one. On
+the island there is not one.
+
+The six derived knobs were unpinned, the graph came up degraded, and the
+bisect that followed could not converge because the signal itself was not
+reliable: **one unchanged configuration produced 4, 0, 0, 4, 4 nodes across
+five runs.** Three hypotheses were raised and each disproved by measurement --
+the arena (the 40,960 image failed identically), `MAX_CBS` (the restore trial
+gave 0 after giving 4), and a printk sink of my own (removing it changed
+nothing). None of those retractions was cheap, and all three were caused by
+reasoning against a 60%-reliable instrument rather than by reasoning badly.
+
+So the board `.conf` is currently pinned back to hand-set values with that
+evidence recorded in comments, and **acceptance 1 below is NOT met.** That is
+the honest state: the numbers derive, and nobody can say whether the derived
+image is right.
+
+### Why every stream was already disqualified
+
+| channel | why not |
+| --- | --- |
+| console UART | `lpuart0`, not wired on the MR-CANHUBK344 |
+| second UART | `lpuart2` carries the zenoh serial transport |
+| `nros_log` | therefore reaches nothing -- including BOTH of issue 0900's arena diagnostics |
+| SEGGER RTT | tried; could not discriminate. Working and derived images both printed only the Zephyr banner, and a deliberate positive control produced nothing |
+| semihosting | halts the core until a probe answers, and FAULTS with none attached, so the image cannot run standalone |
+
+What those share is that they are STREAMS: they need the board still running,
+and somebody attached at the moment the interesting thing happens. The failure
+this phase is chasing is the opposite shape -- an under-sized arena halts
+DURING entity creation, before the first spin, so the advisory that would
+explain it never runs. **W3 is blocked on this and not on arithmetic**, which
+is why it is still open with its derivation already written.
+
+### What landed
+
+`packages/core/nros-node/src/boot_report.rs` -- a fixed 60-byte record in RAM,
+not a stream. Fifteen `AtomicU32`s: the header, the stage boot reached, the
+knobs the image was COMPILED with, and the arena allocation that did not fit.
+Read back by halting the core and dumping memory, with the address resolved
+from the ELF's own symbol table so a relinked image cannot be read at a stale
+one:
+
+    python3 scripts/read-boot-report.py build/zephyr/zephyr.elf dump.bin
+
+A PARTIAL record is the useful case rather than a lost one, which is the whole
+difference from a log: the last stage reached and the failed allocation are
+exactly what names the knob to change.
+
+Opt-in (`NROS_BOOT_REPORT=1`, Zephyr `CONFIG_NROS_BOOT_REPORT=y`), so an image
+that does not enable it is byte-identical -- the rule issue 0900's arena knob
+and phase-403's `rx_buffer_from_type()` both keep.
+
+**The compile-time half is the part this phase needed most.** W4's
+`check-knob-delivery.py` asserts that the number reaching the compiler equals
+the number the resolver decided, read from `build.ninja`. The record asserts
+the same identity one step further along -- from the silicon. Six delivery
+failures reached `main` before W4 existed; this is the arm that would catch a
+seventh that survives the build system entirely.
+
+### Found while building it
+
+[#1036](../issues/1036-arena-exhaustion-is-half-silent-and-wholly-unreachable.md):
+`arena_alloc_with_trailing` reported NOTHING on failure while its sibling
+`arena_alloc` has named the knob since issue 0900. Half of arena exhaustion was
+silent -- and it is the half carrying buffered subscriptions and action
+entries, which is what an island image actually allocates. Fixed with W5.
+
+### What W5 does NOT settle
+
+No cell builds an image with the record on, exhausts its arena on purpose, and
+asserts the dump names the shortfall. The instrument is verified in every part
+except the one that runs on silicon, which is the same shape as the defect it
+exists to find. Filed in #1036 rather than claimed here.
+
 ## Acceptance
 
 1. The island board `.conf` states no NROS count or size that W1 covers, and the
