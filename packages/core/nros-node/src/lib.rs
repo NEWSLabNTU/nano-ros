@@ -84,6 +84,8 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+/// phase-412 -- the boot self-report, for boards with no reachable log sink.
+pub mod boot_report;
 pub mod c_waker;
 pub mod config;
 /// RFC-0088 / phase-421 W1 — the compile-time message-format check.

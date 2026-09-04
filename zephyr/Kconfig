@@ -1089,6 +1089,29 @@ config NROS_SUBSCRIPTION_BUFFER_SIZE
       NROS_EXECUTOR_ARENA_SIZE must move the two together; leaving both to
       derive is the shape that cannot disagree.
 
+config NROS_BOOT_REPORT
+    bool "Write a boot self-report into RAM"
+    default n
+    help
+      The image keeps a fixed 60-byte record in RAM describing itself: the
+      knobs it was COMPILED with, how far boot got, and the arena allocation
+      that did not fit. Read it back with a debugger after halting the core:
+
+        python3 scripts/read-boot-report.py build/zephyr/zephyr.elf dump.bin
+
+      For boards where no log sink reaches a human. On the MR-CANHUBK344 the
+      console UART is not wired and the second UART carries the zenoh serial
+      transport, so both of issue 0900's arena diagnostics -- the two messages
+      written specifically to explain an arena failure -- go nowhere.
+
+      Unlike a log, this survives the failure it reports. An under-sized arena
+      halts DURING entity creation, before the first spin, so the advisory
+      never prints; the record's last stage and failed allocation are still
+      there to be read.
+
+      OFF by default: an image that does not enable it is byte-identical to one
+      built before the feature existed.
+
 config NROS_EXECUTOR_MAX_SC
     int "Maximum scheduling-context slots per executor"
     default 8

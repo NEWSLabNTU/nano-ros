@@ -733,6 +733,17 @@ function(nros_set_cargo_env_from_kconfig)
         set(ENV{${_knob}} "${NROS_RESOLVED_${_knob}}")
     endforeach()
 
+    # phase-412 -- the boot self-report. A BOOL, so it is exported directly
+    # rather than through the resolve ladder above: that machinery exists to
+    # carry a tri-state (env > Kconfig > derived, with -1 and 0 as sentinels for
+    # "derive it"), and a bool has no derive state to represent. Passing it
+    # through would mean inventing a third meaning for a sentinel, which is the
+    # shape that has already produced three double-resolution defects in this
+    # file.
+    if(CONFIG_NROS_BOOT_REPORT)
+        set(ENV{NROS_BOOT_REPORT} "1")
+    endif()
+
     if(CONFIG_NROS_RMW_ZENOH)
         # zpico-sys build.rs needs the nros-platform-cffi header dir. In-tree dev
         # gets it from .env/direnv; set it from the known module path so a
