@@ -777,6 +777,10 @@ macro_rules! nros_platform_export_threading {
             <$ty as ::nros_platform_api::PlatformThreading>::task_init(task, attr, entry, arg)
         }
         #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_task_stack_unused_bytes() -> usize {
+            <$ty as ::nros_platform_api::PlatformThreading>::task_stack_unused_bytes()
+        }
+        #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_task_join(task: *mut ::core::ffi::c_void) -> i8 {
             <$ty as ::nros_platform_api::PlatformThreading>::task_join(task)
         }

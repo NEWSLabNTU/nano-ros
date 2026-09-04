@@ -661,3 +661,9 @@ _Noreturn void nros_platform_panic(const char *msg, size_t len) {
     line[n] = '\0';
     esp_system_abort(line);
 }
+
+/* ESP-IDF is FreeRTOS underneath, so the same self-query applies; IDF always
+ * ships INCLUDE_uxTaskGetStackHighWaterMark, hence no gate. Words to bytes. */
+size_t nros_platform_task_stack_unused_bytes(void) {
+    return (size_t) uxTaskGetStackHighWaterMark(NULL) * sizeof(StackType_t);
+}

@@ -485,6 +485,15 @@ pub trait PlatformTime {
 /// be no-ops returning `0`, except [`task_init`](Self::task_init)
 /// which should return `-1`.
 pub trait PlatformThreading {
+    /// Smallest number of bytes ever left unused on the CALLING task's
+    /// stack, or `0` if this platform does not instrument it.
+    ///
+    /// Defaulted so every existing impl keeps compiling: a port that says
+    /// nothing reports `0`, which the ABI documents as "not instrumented"
+    /// rather than "no headroom left".
+    fn task_stack_unused_bytes() -> usize {
+        0
+    }
     // -- Tasks --
 
     /// Spawn a new task. `task` is opaque caller-provided storage;
