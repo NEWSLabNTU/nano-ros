@@ -275,6 +275,13 @@ function(nros_generate_interfaces target)
     message(STATUS "Generating nros C interfaces for ${target}")
   endif()
 
+  # issue 1018 — the IS_NEWER_THAN loop below is the right predicate and it was
+  # unreachable: it only runs when a configure runs, and nothing made a
+  # configure run when the tool moved. Register the emitter's own tool as a
+  # configure dependency so this lane's freshness is a property of THIS call
+  # site, not of whether the image also called `nano_ros_entry()`.
+  nros_codegen_tool_reconfigure("${_NROS_ZEPHYR_CODEGEN_TOOL}")
+
   set(_codegen_needed FALSE)
   foreach(_out ${_expected_outputs})
     if(NOT EXISTS "${_out}")

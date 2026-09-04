@@ -129,6 +129,66 @@ function(_nros_write_ffi_lib_rs)
     configure_file("${_L_TEMPLATE}" "${_L_CRATE_SRC}/lib.rs" @ONLY)
 endfunction()
 
+# nros_codegen_tool_reconfigure(<tool>)
+#
+# issue 1018 — make a CONFIGURE-TIME emitter re-run when the tool that emits is
+# rebuilt.
+#
+# The build-time generator states the edge outright: its codegen
+# `add_custom_command` carries `DEPENDS … "${_NANO_ROS_CODEGEN_TOOL}"`, so a
+# newer `nros` re-emits (and CMake's `restat = 1` plus codegen's
+# write-if-changed keep an emitter-identical rebuild from cascading downstream —
+# measured, the command re-runs once and nothing else rebuilds).
+#
+# A configure-time emitter has no such edge available: `execute_process()` runs
+# during configure, so its freshness is decided by whether a configure happens
+# AT ALL. The Zephyr interfaces generator even carries the right predicate
+# already — an `IS_NEWER_THAN` loop that names the tool — but it is dead on an
+# incremental build, because nothing makes `build.ninja` stale when the tool
+# moves. Measured in this checkout: `zephyr-workspace/build-rust-talker-zenoh`'s
+# RERUN_CMAKE edge lists 3592 inputs and NOT ONE is under `packages/cli`.
+#
+# `nano_ros_entry()` learned this as issue #182 and registered the binary right
+# there, in its own function. That fixed the site, not the class: the three
+# sibling configure-time emitters (this Zephyr interfaces lane,
+# `nros_system_generate()`, the ESP-IDF shim's `codegen-system`) kept nothing,
+# and a Zephyr image inherits freshness only if it ALSO happens to call
+# `nano_ros_entry()` — which no single-example image does. So an image that
+# generates its interfaces at configure time and does not use an entry package
+# keeps museum generated code after a `nros` rebuild, silently.
+#
+# WHY THE BINARY AND NOT `nros codegen-fingerprint`
+#
+# The fingerprint (RFC-0061 / phase-318 W1) is the better key where it applies:
+# it hashes what the EMITTERS produce for a compiled-in corpus, so 41 distinct
+# `nros` binaries map to 9 fingerprints and 78 % of `just setup-cli` rebuilds
+# would cost nothing. But its corpus covers the MESSAGE/SERVICE/ACTION emitters
+# only — not `codegen entry`, not `codegen-system` — so keying those two on it
+# would report FRESH for a real change to their emitters. One key for all four
+# sites, and it is the conservative one. Narrowing the interfaces site onto the
+# fingerprint is a follow-up that needs a producer for the fingerprint value
+# outside the build dir (a configure cannot write its own configure input
+# without a first configure to write it).
+#
+# The widening this costs was measured before it landed: of the 7 Zephyr build
+# dirs in this checkout, 3 reach a configure-time emitter and all 3 already
+# carry the CLI as a configure dependency via `nano_ros_entry()`; the other 4
+# reach no configure-time emitter and gain nothing, because this registers at
+# the emitter's own call site. Zero build dirs gain a reconfigure. What changes
+# is that the freshness stops being an accident of which other function the
+# image happened to call.
+#
+# Deduplicated because a single directory legitimately reaches several emitters.
+function(nros_codegen_tool_reconfigure _tool)
+    if(_tool STREQUAL "" OR NOT EXISTS "${_tool}")
+        return()
+    endif()
+    get_property(_nctr_deps DIRECTORY PROPERTY CMAKE_CONFIGURE_DEPENDS)
+    if(NOT "${_tool}" IN_LIST _nctr_deps)
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_tool}")
+    endif()
+endfunction()
+
 # _nros_write_codegen_args_json(ARGS_FILE <path> PACKAGE <name> OUTPUT_DIR <dir>
 #     ROS_EDITION <edition> [CODEGEN_CONFIG <path>]
 #     INTERFACE_FILES <files...> DEPS <pkgs...>)
