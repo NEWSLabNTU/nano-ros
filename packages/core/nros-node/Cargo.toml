@@ -51,6 +51,11 @@ scheduler-time-triggered = []
 
 # RMW vtable runtime registry. Every backend ships as a cffi shim
 # that installs a C vtable here.
+# phase-425 W3 — the `/clock` time source. Optional because an image that will
+# never see a simulator should not carry the subscription or the message crate:
+# a `rosgraph_msgs/msg/Clock` sub costs an RX buffer and an entity slot, which
+# on a 128 KiB target is a real decision rather than a default.
+sim-time = ["dep:nros-rosgraph-msgs"]
 rmw-cffi = ["dep:nros-rmw-cffi"]
 # Phase 248 (C2) — INTERNAL marker feature. The umbrella
 # `nros/rmw-cyclonedds` activates this (via `nros-node/__cyclonedds-link`)
@@ -189,6 +194,13 @@ nros-rmw-cffi = { workspace = true, default-features = false, optional = true }
 # `register()` call (bare-metal). See
 # `docs/roadmap/phase-104-multi-backend-bridges.md` Thread A.
 nros-params = { workspace = true, default-features = false }
+# phase-425 W3 — `rosgraph_msgs/msg/Clock`, behind `sim-time`. A path dep on the
+# committed generated crate, like every other in-tree message consumer: it
+# resolves from a bare clone. NO version requirement: a generated crate's
+# version is the constant `0.0.0` and pinning either spelling broke root-workspace
+# resolution twice (#394), which is why every other in-tree consumer of one is
+# path-only too.
+nros-rosgraph-msgs = { path = "../../interfaces/rosgraph-msgs/generated/humble/nros-rosgraph-msgs", default-features = false, optional = true }
 # Phase 88.12 — `Node::logger()` returns a `&'static Logger` from the
 # nros-log intern table.
 nros-log = { version = "0.5.0", path = "../nros-log" }

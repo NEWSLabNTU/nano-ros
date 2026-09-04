@@ -1,9 +1,10 @@
 # Phase 425 — ROS time is a type, not a behaviour: give the timer API the official semantics
 
-**Status (2026-09-05).** W1 in progress. Opened by an owner decision on the
-`cpp:Node::create_wall_timer` ledger row: the answer to "do we adopt rclcpp's
-name" is yes, and the reason given widens the work past a rename — bag replay
-and simulation need ROS *time*, not just the word `wall`.
+**Status (2026-09-05).** W1, W2 and W4 landed; W3 landed except for the
+`use_sim_time` wiring, which is split out as W3b below. Opened by an owner
+decision on the `cpp:Node::create_wall_timer` ledger row: the answer to "do we
+adopt rclcpp's name" is yes, and the reason given widens the work past a
+rename — bag replay and simulation need ROS *time*, not just the word `wall`.
 
 ## The situation
 
@@ -57,7 +58,7 @@ branch. Nothing here needs an allocator or `std`.
 
 ## Work items
 
-### W1 — free the name (C++)
+### W1 — free the name (C++) — LANDED 2026-09-05
 
 Rename, in one commit, with **no deprecated alias** (an alias keeps the
 ours-only ledger row alive forever):
@@ -85,7 +86,7 @@ examples/**/cpp/` and put the command in the commit message.
 `examples/` returns only the `_oneshot` / `_in` / `bind_` family; `just check
 api-parity` green; `just check cpp` green.
 
-### W2 — `rosgraph_msgs/msg/Clock`
+### W2 — `rosgraph_msgs/msg/Clock` — LANDED 2026-09-05
 
 Add `packages/interfaces/rosgraph-msgs` on the `diagnostic-msgs` pattern
 (`package.xml` + committed `generated/humble/`, `nros-` prefixed crate, constant
@@ -96,20 +97,44 @@ the leaf-lockfile invariant holds (`just check leaf-lockfiles`).
 
 ### W3 — the time source
 
-A `TimeSource` that subscribes `/clock` with rclcpp's `ClockQoS` (best effort,
-keep-last 1, volatile — `cpp:ClockQoS::ClockQoS` is already a `gap` row) and
-installs each sample through the existing override. Driven by the
-`use_sim_time` parameter, which becomes a REAL node parameter with rclcpp's
-meaning rather than a name examples happen to use.
+LANDED 2026-09-05, minus the parameter wiring.
 
-Off by default and compile-time excludable: an image that will never see a
-simulator should not carry the subscription.
+`NodeCtx::install_ros_time_source()` subscribes `/clock` with
+`QoSProfile::clock_default()` — rclcpp's `ClockQoS`: best effort, keep-last 1,
+volatile, because a late subscriber wants the NEXT sample and not a replay of
+the simulation's history — and installs each one through the existing override.
+Behind the `sim-time` feature and additionally gated on `has_rmw`: an image
+that will never see a simulator should not carry the subscription, and without
+a backend there is nothing to subscribe with.
+
+It is deliberately NOT `rclcpp::TimeSource`: no jump callbacks, no per-clock
+attachment, no clock thread. The override is process-global — one simulated
+clock per image, the model `nros_core::Clock` already documents — so there is
+nothing to attach to and nothing to fan out.
+
+Cancelling the subscription does not clear the override, on purpose: a node
+that unsubscribes mid-run keeps the last simulated time rather than jumping
+back to the wall clock, which every ROS-time timer would then absorb as a jump.
+
+**Not covered by a gate, and worth knowing:** the parity extractor builds the
+Rust surface without `sim-time`, so `install_ros_time_source` produces no
+ledger row today. It is the same feature blindness issue 0818 fixed for C++ by
+compiling extra TUs. No row was added pre-emptively — a row matching nothing is
+the stale-row failure this campaign spent a week undoing.
+
+### W3b — `use_sim_time`
+
+rclcpp switches the time source on through the `use_sim_time` parameter. Ours
+is an explicit call, so the parameter still means nothing here — it is a name
+the examples happen to use. Wiring it needs a parameter-change hook that
+installs and removes the subscription, which is a parameter-services question
+rather than a clock one, and is why it is split out rather than bundled.
 
 **Acceptance.** With `use_sim_time:=true` and `ros2 bag play --clock`, a node's
-`get_clock()->now()` tracks bag time; with no publisher on `/clock`,
-`started()` is false and nothing blocks.
+`get_clock()->now()` tracks bag time with no code change; with no publisher on
+`/clock`, `started()` is false and nothing blocks.
 
-### W4 — timers on a clock
+### W4 — timers on a clock — LANDED 2026-09-05
 
 `create_timer(clock, period, cb)` in C++ (the name W1 frees), and the
 equivalent selection on the C and Rust surfaces. A ROS-time timer accumulates
@@ -142,3 +167,10 @@ W1 first and alone: it is the breaking change, it is mechanical, and it frees
 the name W4 needs. W2 and W3 are the runtime; W4 is meaningless without them —
 a clock-taking `create_timer` whose ROS clock nothing ever drives is the same
 lie in a new place. W5 last, because it records what actually landed.
+
+**What is true after 2026-09-05.** The three reasons ROS time was a type and
+not a behaviour are down to a residue. `/clock` can be subscribed (W2, W3), a
+timer can be driven by it (W4), and the name says which timer you asked for
+(W1). What remains is W3b — `use_sim_time` — plus an end-to-end test with a
+real publisher on `/clock`, which needs an RMW and therefore a fixture rather
+than a unit test.
