@@ -324,6 +324,7 @@ fast-serial: \
     workspace-build-output \
     workspace-fmt \
     workspace-order \
+    xrce-source-manifest \
     zenoh-config-template \
     zenohd-flag-invocations \
     zenohd-resolution-parity \
@@ -4527,6 +4528,21 @@ opaque-storage-guards:
 # carries "Node pkgs BEFORE entries so the entry codegen sees their metadata";
 # the entry packages already state that as <exec_depend>. Covers the cycle and
 # bad-subdir rejections and the cmake seam. Needs `just setup-cli`.
+# Issue 1068 / RFC-0087's mirror class — micro-XRCE-DDS is compiled by TWO
+# lanes from one vendored tree, and the two source lists drifted: `build.rs`
+# honoured `NROS_LINK_IP=0` and dropped the UDP transports while the CMakeLists
+# compiled them unconditionally, so a serial-only node built from C/C++ carried
+# an IP transport the user had removed — a larger image, not an error.
+#
+# `packages/rmw/xrce/xrce-sources.txt` is now the one list, and this asserts
+# that neither lane names a `.c` of its own, that both answer exactly the
+# manifest's condition tokens (both directions — a token only one lane answers
+# IS 1068, one conditional over), and that no backend source is compiled by
+# nobody. Buildless, ~40 ms.
+[private]
+xrce-source-manifest:
+    @python3 scripts/check-xrce-source-manifest.py
+
 [private]
 workspace-order:
     @bash packages/testing/nros-tests/tests/workspace_order_gate.sh

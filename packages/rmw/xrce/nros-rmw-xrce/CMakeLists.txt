@@ -44,13 +44,45 @@ endif()
 # / find_package machinery. The upstream client's `find_package(microcdr
 # REQUIRED CONFIG)` requires a separate install step that buys nothing
 # in our in-tree case; the inline-compile approach was proven by the
-# Rust lane first (same source list mirrored below).
+# Rust lane first, and since issue 1068 the two lanes share ONE source
+# list (`../xrce-sources.txt`) rather than mirroring it.
 set(MICROXRCEDDS_CLIENT_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/../xrce-sys/micro-xrce-dds-client"
     CACHE PATH "Path to vendored micro-xrce-dds-client checkout")
 set(MICROCDR_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/../xrce-sys/micro-cdr"
     CACHE PATH "Path to vendored micro-cdr checkout")
+
+# ---- The IP link knob ------------------------------------------------------
+# Issue 1068 / phase-204.7. `NROS_LINK_IP=0` sheds the IP (UDP/TCP) transport on
+# a serial-only node. The Rust lane has honoured it since 204.7; this lane
+# ignored it, so a serial-only XRCE node could not be built from C or C++.
+#
+# It gates TWO things and both have to move together, or the generated
+# `<uxr/client/config.h>` promises a profile whose TUs are not compiled:
+# the `UCLIENT_PROFILE_UDP` / `UCLIENT_PROFILE_TCP` defines below, and the
+# `uxr_ip_udp` source group in the shared manifest further down. `build.rs`
+# makes the same pairing.
+#
+# `-DNROS_LINK_IP=0` wins; otherwise the ENVIRONMENT variable is honoured,
+# because that is how 204.7 delivers it (a generated `.cargo/config.toml [env]`
+# block on the Rust side, a plain export here). Unset → IP on, unchanged.
+if(NOT DEFINED NROS_LINK_IP)
+    if(DEFINED ENV{NROS_LINK_IP})
+        set(_xrce_link_ip_default "$ENV{NROS_LINK_IP}")
+    else()
+        set(_xrce_link_ip_default ON)
+    endif()
+    set(NROS_LINK_IP "${_xrce_link_ip_default}"
+        CACHE STRING "Link the IP (UDP/TCP) transport. 0/false/off drops it (serial-only node).")
+endif()
+# `if()` reads 0/OFF/FALSE/NO/N/IGNORE/NOTFOUND/"" as false, case-insensitively,
+# so the `0` / `false` / `off` spellings `build.rs` accepts all land here too.
+if(NROS_LINK_IP)
+    set(_xrce_ip ON)
+else()
+    set(_xrce_ip OFF)
+endif()
 
 # Generate `<uxr/client/config.h>` from the upstream template. Values
 # match the Rust lane's `posix_compat = true, mtu = 4096` defaults; further
@@ -90,8 +122,14 @@ set(UCLIENT_TWEAK_XRCE_WRITE_LIMIT         1)
 # Upstream template uses #cmakedefine — every feature toggle becomes
 # either `#define` or `/* #undef */`. Set vars to true/empty.
 set(UCLIENT_PROFILE_DISCOVERY              TRUE)
-set(UCLIENT_PROFILE_UDP                    TRUE)
-set(UCLIENT_PROFILE_TCP                    TRUE)
+# Paired with the `uxr_ip_udp` source group — see "The IP link knob" above.
+if(_xrce_ip)
+    set(UCLIENT_PROFILE_UDP                TRUE)
+    set(UCLIENT_PROFILE_TCP                TRUE)
+else()
+    set(UCLIENT_PROFILE_UDP)
+    set(UCLIENT_PROFILE_TCP)
+endif()
 set(UCLIENT_PROFILE_SERIAL                 TRUE)
 set(UCLIENT_PROFILE_CUSTOM_TRANSPORT       TRUE)
 set(UCLIENT_PROFILE_STREAM_FRAMING         TRUE)
@@ -118,78 +156,100 @@ configure_file(
     "${CMAKE_CURRENT_BINARY_DIR}/ucdr_generated/ucdr/config.h"
     @ONLY)
 
-# Source lists mirror packages/rmw/xrce/nros-rmw-xrce-cffi/build.rs
-# (proven working set). Keeping these in lockstep is a 115.K.2
-# invariant — if that build.rs adds a file, this CMakeLists must add
-# it too, and vice versa.
+# ---- Source list ------------------------------------------------------------
+# Issue 1068 — this file OWNS NO SOURCE LIST. Every C file compiled into
+# `nros_rmw_xrce` — the vendored micro-XRCE-DDS-Client and micro-CDR TUs AND
+# the in-repo K.2 backend TUs — is read from
+# `packages/rmw/xrce/xrce-sources.txt`, which
+# `nros-rmw-xrce-cffi/build.rs` reads too.
 #
-# phase-420 W9 surveyed the mirror and found two things worth writing
-# down. First, this comment named `packages/rmw/xrce/xrce-sys/build.rs`
-# until now: a file phase-321 W1.d DELETED along with the crate that
-# owned it. The invariant was pointed at a ghost, so "keep them in
-# lockstep" named a file nobody could open. The live counterpart is the
-# path above.
+# There used to be two hand-copied lists here and there, held together by a
+# comment. They drifted, silently: `build.rs` honoured `NROS_LINK_IP=0`
+# (phase-204.7 — the knob a serial-only node uses to shed the IP link) and
+# dropped `profile/transport/ip/udp/udp_transport{,_posix}.c`, while this file
+# compiled them unconditionally. So a serial-only XRCE node could not be built
+# through the CMake lane, and the failure was not a build error but a larger
+# image than the user asked for. The comment asserting the lockstep also named
+# `packages/rmw/xrce/xrce-sys/build.rs`, a file phase-321 W1.d DELETED, so for
+# two phases the invariant pointed at nothing. Correcting the list would have
+# restored the mirror and left the next append to drift again; deriving it is
+# the fix. Gate: `just check xrce-source-manifest`.
+set(_xrce_manifest "${CMAKE_CURRENT_SOURCE_DIR}/../xrce-sources.txt")
+if(NOT EXISTS "${_xrce_manifest}")
+    message(FATAL_ERROR
+        "nros-rmw-xrce: shared source manifest not found at '${_xrce_manifest}'. "
+        "It is tracked in-repo — a missing one means the checkout is incomplete.")
+endif()
+# Re-configure when the shared list changes; without this a manifest edit would
+# leave a configured build dir compiling yesterday's set.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_xrce_manifest}")
+
+# NROS-XRCE-CONDITIONS-BEGIN — the boolean this lane supplies for each condition
+# token the manifest uses. `check-xrce-source-manifest` asserts the Rust lane
+# answers exactly this token set; the manifest, not this block, decides which
+# files a token covers.
 #
-# Second, the two lists have already diverged in one place. `build.rs`
-# honours `NROS_LINK_IP=0` (phase-204.7) and drops
-# `profile/transport/ip/udp/udp_transport{,_posix}.c`; this file compiles
-# them unconditionally, so the CMake lane cannot build a serial-only XRCE
-# node. That is not a source-list typo, it is what a hand-maintained
-# mirror does. The structural fix is ONE vendor build with ONE source list
-# that both lanes consume — RFC-0087 D5's shape, recorded as W9's
-# remaining work in docs/roadmap/phase-420-package-identity-and-provider-
-# format.md. Until that lands, a source added on either side must be added
-# on the other, by hand.
-set(_uxr_session_src
-    core/session/session.c
-    core/session/session_info.c
-    core/session/submessage.c
-    core/session/object_id.c
-    core/session/common_create_entities.c
-    core/session/create_entities_bin.c
-    core/session/create_entities_ref.c
-    core/session/create_entities_xml.c
-    core/session/read_access.c
-    core/session/write_access.c
-)
-set(_uxr_stream_src
-    core/session/stream/input_best_effort_stream.c
-    core/session/stream/input_reliable_stream.c
-    core/session/stream/output_best_effort_stream.c
-    core/session/stream/output_reliable_stream.c
-    core/session/stream/stream_storage.c
-    core/session/stream/stream_id.c
-    core/session/stream/seq_num.c
-)
-set(_uxr_serialization_src
-    core/serialization/xrce_types.c
-    core/serialization/xrce_header.c
-    core/serialization/xrce_subheader.c
-)
-set(_uxr_misc_src
-    util/ping.c
-    util/time.c
-    profile/transport/custom/custom_transport.c
-    profile/transport/stream_framing/stream_framing_protocol.c
-    profile/transport/ip/udp/udp_transport.c
-    profile/transport/ip/udp/udp_transport_posix.c
-)
-set(_uxr_all_src "")
-foreach(_rel IN LISTS _uxr_session_src _uxr_stream_src _uxr_serialization_src _uxr_misc_src)
-    list(APPEND _uxr_all_src "${MICROXRCEDDS_CLIENT_DIR}/src/c/${_rel}")
+# `posix` is unconditionally TRUE here, and that is NOT the 1068 defect wearing
+# another hat: this project is POSIX-only BY CONSTRUCTION. It FATAL_ERRORs
+# without an `nros_platform_posix` target (below), defines
+# `_POSIX_C_SOURCE=200809L` unconditionally, and configures
+# `UCLIENT_PLATFORM_POSIX TRUE` with no fanout. There is no non-POSIX target for
+# the two lanes to disagree about. It is spelled out anyway so the notion exists
+# by name and a future cross-compiling CMake lane has one line to change.
+set(_xrce_cond_always   TRUE)
+set(_xrce_cond_posix    TRUE)
+set(_xrce_cond_posix_ip ${_xrce_ip})
+# NROS-XRCE-CONDITIONS-END
+
+set(_xrce_tree_uxr     "${MICROXRCEDDS_CLIENT_DIR}/src/c")
+set(_xrce_tree_ucdr    "${MICROCDR_DIR}/src/c")
+set(_xrce_tree_backend "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
+# `group <name> <condition>` records → `_xrce_group_cond_<name>`.
+file(STRINGS "${_xrce_manifest}" _xrce_group_lines REGEX "^[ \t]*group[ \t]")
+foreach(_line IN LISTS _xrce_group_lines)
+    string(REGEX REPLACE "^[ \t]*group[ \t]+([^ \t]+)[ \t]+([^ \t#]+).*$" "\\1;\\2" _g "${_line}")
+    list(GET _g 0 _gname)
+    list(GET _g 1 _gcond)
+    if(NOT DEFINED _xrce_cond_${_gcond})
+        message(FATAL_ERROR
+            "nros-rmw-xrce: ${_xrce_manifest} group '${_gname}' uses condition token "
+            "'${_gcond}', which this lane does not answer. Add a `set(_xrce_cond_${_gcond} …)` "
+            "here AND an arm in nros-rmw-xrce-cffi/build.rs — a token only one lane answers "
+            "is issue 1068 again.")
+    endif()
+    set(_xrce_group_cond_${_gname} "${_gcond}")
 endforeach()
 
-set(_ucdr_src
-    common.c
-    types/basic.c
-    types/array.c
-    types/sequence.c
-    types/string.c
-)
-set(_ucdr_all_src "")
-foreach(_rel IN LISTS _ucdr_src)
-    list(APPEND _ucdr_all_src "${MICROCDR_DIR}/src/c/${_rel}")
+# `src <group> <tree> <path>` records → the target's source list.
+set(_xrce_all_src "")
+file(STRINGS "${_xrce_manifest}" _xrce_src_lines REGEX "^[ \t]*src[ \t]")
+foreach(_line IN LISTS _xrce_src_lines)
+    string(REGEX REPLACE "^[ \t]*src[ \t]+([^ \t]+)[ \t]+([^ \t]+)[ \t]+([^ \t#]+).*$"
+           "\\1;\\2;\\3" _r "${_line}")
+    list(GET _r 0 _rgroup)
+    list(GET _r 1 _rtree)
+    list(GET _r 2 _rpath)
+    if(NOT DEFINED _xrce_group_cond_${_rgroup})
+        message(FATAL_ERROR
+            "nros-rmw-xrce: ${_xrce_manifest} source '${_rpath}' names group '${_rgroup}', "
+            "which no `group` line declares.")
+    endif()
+    if(NOT DEFINED _xrce_tree_${_rtree})
+        message(FATAL_ERROR
+            "nros-rmw-xrce: ${_xrce_manifest} names unknown source tree '${_rtree}'.")
+    endif()
+    set(_rcond "${_xrce_group_cond_${_rgroup}}")
+    if(_xrce_cond_${_rcond})
+        list(APPEND _xrce_all_src "${_xrce_tree_${_rtree}}/${_rpath}")
+    endif()
 endforeach()
+if(_xrce_all_src STREQUAL "")
+    message(FATAL_ERROR
+        "nros-rmw-xrce: ${_xrce_manifest} selected no sources — manifest or condition drift.")
+endif()
+message(STATUS
+    "nano-ros: nros-rmw-xrce compiles sources from xrce-sources.txt (NROS_LINK_IP=${_xrce_ip})")
 
 # ---- Platform implementation ----------------------------------------------
 # Issue 0832 — the backend ALLOCATES through `nros_platform_alloc` (see the
@@ -211,19 +271,11 @@ if(NOT TARGET nros_platform_posix AND EXISTS "${NROS_PLATFORM_IMPL_DIR}/CMakeLis
 endif()
 
 # ---- Static library --------------------------------------------------------
+# Every TU — including this project's own `src/*.c` — comes from the shared
+# manifest above (the `backend` tree). Nothing is named here, so nothing can be
+# added here alone.
 add_library(nros_rmw_xrce STATIC
-    src/vtable.c
-    src/session.c
-    src/publisher.c
-    src/subscriber.c
-    src/service.c
-    src/transport_custom.c
-    src/transport_nros_udp.c
-    src/transport_posix_udp.c
-    src/transport_posix_serial.c
-    src/platform_aliases.c
-    ${_uxr_all_src}
-    ${_ucdr_all_src}
+    ${_xrce_all_src}
 )
 
 target_include_directories(nros_rmw_xrce
