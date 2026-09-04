@@ -568,3 +568,52 @@ rather than a line of code.
   from that capture is recorded here. Two instruction-access faults are not
   necessarily the same fault, and the pre-fix build had no `nros_log` record
   path in the leaves.
+
+
+
+## gdb names the frame (2026-09-04): `ZenohSession::create_publisher`
+
+`riscv32-esp-elf-gdb` against QEMU's gdbstub, with the router CONFIRMED serving
+on :9800 first. Break at the handler, dump the stack, resolve every code address
+on it:
+
+```
+0x42017ec8  <nros_rmw_zenoh::shim::session::ZenohSession as nros_rmw::traits::Session>::create_publisher
+0x420531ca  esp_hal::interrupt::riscv::vectored::enable_on_cpu
+0x4205334c  <riscv_rt::TrapFrame as core::fmt::Debug>::fmt
+0x4205e950  <i32 as core::fmt::Display>::fmt
+```
+
+Everything but the first is the exception handler printing itself. **The only
+application frame on the faulting stack is `ZenohSession::create_publisher`.**
+
+At the handler: `sp` is in `.bss` near `nros_smoltcp::TCP_RX_BUFFER_0`, and `ra`
+resolves to `core::panicking::assert_failed_inner+2` — a mid-symbol offset, so
+treat that as nearest-preceding resolution and NOT as proof of a panic frame.
+The `a0`/`a2` strings are the handler's own format literals
+(`"Exception '...' mepc=0x..."`), not an assertion message; an earlier reading of
+them as one would have been wrong.
+
+### It fits the leaf split — and CONTRADICTS the empty-register result
+
+A publisher is what the talker creates and the listener does not, so the frame
+explains the split immediately. But variants E, F and H registered NOTHING and
+faulted identically, and with an empty `register` no publisher is created.
+
+Both cannot be true. Either:
+
+* the empty-`register` images were not actually rebuilt before packing — the
+  pack step may have used a cached ELF, which would make E/F/H measurements of
+  the ORIGINAL image; or
+* something creates a publisher during session setup regardless of what the node
+  registers (liveliness, the graph, an internal token), in which case the frame
+  is reached on every image and the leaf split has a different cause.
+
+**Resolve that before acting on either.** The check is cheap: rebuild an
+empty-`register` talker, confirm the string `Hello World` is ABSENT from the ELF
+(it only exists in the publishing path), and re-run. If it faults with the
+publisher genuinely gone, the second explanation holds.
+
+This is the same class as the four retracted issues 0859-0862: a measurement
+whose artifact provenance was never checked. My E/F/H runs did not verify that
+the packed image contained the edit.
