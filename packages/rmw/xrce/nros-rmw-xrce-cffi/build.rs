@@ -274,6 +274,7 @@ fn main() {
     }
     println!("cargo:rerun-if-env-changed=NROS_XRCE_STREAM_HISTORY");
     println!("cargo:rerun-if-env-changed=NROS_XRCE_CUSTOM_TRANSPORT_MTU");
+    println!("cargo:rerun-if-env-changed=NROS_XRCE_TRANSPORT_MTU");
 
     // Phase 207.6 — per-session pool sizes. A pub-only bare-metal node
     // can drop `MAX_SUBSCRIBERS` to 1 (zero-length arrays aren't
@@ -375,6 +376,26 @@ fn generate_uxr_config(
 ) {
     let template = fs::read_to_string(microxrce.join("include/uxr/client/config.h.in"))
         .expect("read uxr config.h.in");
+    // issue 0968 — the general transport MTU, min-guarded like CUSTOM's.
+    //
+    // `knob_usize`, NOT `env::var`: a Zephyr RUST image inherits none of cmake's
+    // `set(ENV{...})` exports, so a bare read yields the crate default whatever
+    // Kconfig says (issue 0460). `check-kconfig-knob-forwarding` caught exactly
+    // that in the first version of this fix, which would have repaired the C
+    // lane and left the Rust one on 4096 — half-fixing the thing this change is
+    // about.
+    let xrce_transport_mtu = nros_zephyr_build::knob_usize(
+        "NROS_XRCE_TRANSPORT_MTU",
+        "CONFIG_NROS_XRCE_TRANSPORT_MTU",
+        XRCE_TRANSPORT_MTU_DEFAULT
+            .parse()
+            .expect("XRCE_TRANSPORT_MTU_DEFAULT is a number"),
+    );
+    if xrce_transport_mtu < 128 {
+        panic!("NROS_XRCE_TRANSPORT_MTU={xrce_transport_mtu} too small (minimum 128)");
+    }
+    let xrce_transport_mtu = xrce_transport_mtu.to_string();
+
     // Substitute @TOKEN@ placeholders.
     let mut h = template
         .replace("@PROJECT_VERSION_MAJOR@", "2")
@@ -389,8 +410,14 @@ fn generate_uxr_config(
         .replace("@UCLIENT_MIN_SESSION_CONNECTION_INTERVAL@", "1000")
         .replace("@UCLIENT_MIN_HEARTBEAT_TIME_INTERVAL@", "100")
         // Phase 214.C.2 — MTU defaults from named consts at file top.
-        .replace("@UCLIENT_UDP_TRANSPORT_MTU@", XRCE_TRANSPORT_MTU_DEFAULT)
-        .replace("@UCLIENT_TCP_TRANSPORT_MTU@", XRCE_TRANSPORT_MTU_DEFAULT)
+        // issue 0968 — UDP and TCP honour `NROS_XRCE_TRANSPORT_MTU` too. Only
+        // CUSTOM was tunable, so a UDP image (which every Zephyr XRCE example
+        // is — it dials an agent at `CONFIG_NROS_XRCE_AGENT_ADDR:PORT`) was
+        // pinned to 4096 whatever Kconfig said. `STREAM_BUFFER_SIZE = MTU x
+        // STREAM_HISTORY` twice per session, so the default cost 131072 bytes
+        // where the configured 512 costs 16384.
+        .replace("@UCLIENT_UDP_TRANSPORT_MTU@", &xrce_transport_mtu)
+        .replace("@UCLIENT_TCP_TRANSPORT_MTU@", &xrce_transport_mtu)
         .replace("@UCLIENT_SERIAL_TRANSPORT_MTU@", XRCE_SERIAL_MTU_DEFAULT)
         .replace(
             "@UCLIENT_CUSTOM_TRANSPORT_MTU@",

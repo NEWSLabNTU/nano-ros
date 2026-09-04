@@ -77,6 +77,11 @@ KNOB_CLASS = {
     "ZPICO_PUBLISHER_TX_BUFFER_SIZE": ("derived", "TX half of the same split"),
     # --- sizing: the backlog ---
     "NROS_SERVICE_TIMEOUT_MS": ("sizing", "a timeout, not a size, but the same ladder shape. TWO readers (zenoh build + the C emitter), so it needs one emission point before a rung"),
+    # issue 0968 — the UDP/TCP twin of the line above. Documented in the book and
+    # in Kconfig with a 512 default, resolved by cmake under the UNPREFIXED name
+    # that no build script reads, and hardcoded to 4096 on the UDP path anyway —
+    # so every Zephyr XRCE image paid 2 x 4096 x 16 for its stream buffers.
+    "NROS_XRCE_TRANSPORT_MTU": ("sizing", "transport MTU (UDP/TCP); numeric"),
     "ZPICO_MAX_LARGE_SUBSCRIBERS": ("derived", "pool cardinality; multiplies LARGE_PAYLOADS, phase-392"),
     "ZPICO_SERVICE_BUFFER_SIZE": ("derived", "SERVICE_BUFFERS is MAX_SESSIONS x MAX_QUERYABLES; phase-392"),
     # --- infra: not knobs ---

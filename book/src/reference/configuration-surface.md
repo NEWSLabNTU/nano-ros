@@ -122,7 +122,7 @@ Read by compiled code or forwarded to a build script. On Zephyr the
 | `CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS` | `4` | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_XRCE_MAX_SUBSCRIBERS` | `8` | forwarded-to-cargo, cmake |
 | `CONFIG_NROS_XRCE_STREAM_HISTORY` | `16` | forwarded-to-cargo, cmake |
-| `CONFIG_NROS_XRCE_TRANSPORT_MTU` | `512` | forwarded-to-cargo, cmake |
+| `CONFIG_NROS_XRCE_TRANSPORT_MTU` | `512` | forwarded-to-cargo, cmake, rust-source |
 | `CONFIG_NROS_ZENOH_AUTO_RECONNECT` | `y` | cmake |
 | `CONFIG_NROS_ZENOH_LEASE_FACTOR` | `3` | c-define, cmake |
 | `CONFIG_NROS_ZENOH_LEASE_MS` | `10000` | c-define, cmake |

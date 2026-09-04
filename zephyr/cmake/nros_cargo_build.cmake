@@ -627,7 +627,14 @@ function(nros_resolve_knobs)
     # nothing read them and five menuconfig options were inert (issue 0316
     # defect 2). The C defaults in nros-rmw-xrce/src/internal.h always won.
     if(CONFIG_NROS_RMW_XRCE)
-        _nros_resolve_knob(XRCE_TRANSPORT_MTU "${CONFIG_NROS_XRCE_TRANSPORT_MTU}")
+        # issue 0968 — PREFIXED, like every sibling below it. Issue 0316 defect 2
+        # is the comment directly above, and this line was the one site its sweep
+        # missed: it kept exporting the unprefixed `XRCE_TRANSPORT_MTU`, which no
+        # build script reads, so `CONFIG_NROS_XRCE_TRANSPORT_MTU` was documented
+        # in the book, defined in Kconfig, resolved here, and consumed by nobody.
+        # The UDP MTU stayed at its 4096 default and the two per-session stream
+        # buffers cost 2 x 4096 x 16 = 131072 bytes against a 65536-byte heap.
+        _nros_resolve_knob(NROS_XRCE_TRANSPORT_MTU "${CONFIG_NROS_XRCE_TRANSPORT_MTU}")
         _nros_resolve_knob(NROS_XRCE_MAX_SUBSCRIBERS
             "${CONFIG_NROS_XRCE_MAX_SUBSCRIBERS}")
         _nros_resolve_knob(NROS_XRCE_MAX_SERVICE_SERVERS
