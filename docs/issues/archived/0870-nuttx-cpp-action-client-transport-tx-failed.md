@@ -2,7 +2,7 @@
 id: 870
 title: "NuttX C++ action client fails `create_action_client` — the session
   reports `Transport(ConnectionFailed)` against a router the server reached"
-status: open
+status: resolved
 type: bug
 area: rmw, examples
 related: [issue-0867, issue-0891, issue-0460, issue-1007]
@@ -723,3 +723,68 @@ Not more repeats here. Either:
 Until one of those runs, this issue should stay OPEN with this evidence
 attached, not closed on nine green runs. A "does not reproduce" is a
 measurement, not a diagnosis.
+
+## CLOSED 2026-09-04 — green, with the cause UNATTRIBUTED. An owner decision.
+
+The owner has closed this as green-with-cause-unattributed, the same disposition
+W1 was closed under. This section records what that does and does not mean, and
+the objection it overrides, so nobody has to reconstruct either.
+
+### The evidence at close
+
+| batch | condition | result |
+| --- | --- | --- |
+| 28 runs | 2026-09-03, idle + under load | 28 / 28 |
+| 24 + 12 | distro emulator, idle then load avg 22 | 36 / 36 |
+| 150 + 60 | store QEMU `11.0.0-nros2`, idle then load avg 33 | 210 / 210 |
+| 100 | main's shipped zenoh-pico pin, after #1035 | 100 / 100 |
+| 9 | ROS distrobox, freshly built in-box, real router | 9 / 9 |
+
+**383 consecutive passes**, three build regimes, two emulators, two trees. At the
+reported ~2-in-3 rate the last 210 alone are (1/3)^210.
+
+### The objection, which is recorded rather than answered
+
+The section above this one argues the issue should stay OPEN until one of two
+things runs: the cell inside a full `just ci matrix` (32-way parallelism, which
+is where the masking retry actually lived), or a bisect against the pre-#1035
+tree. That argument is sound — *"does not reproduce" is a measurement, not a
+diagnosis* — and closing does not refute it.
+
+What the decision weighs against it is the cost of the alternative. This phase's
+own premise, measured on three of its five items, is that an open issue nobody
+is accountable for does not merely sit: it goes STALE, is read as current, and
+its recorded guesses get re-run. Four have already been burned here. An issue
+kept open on the possibility that a 383-pass symptom returns is exactly that
+shape.
+
+### The residual risk, stated
+
+If the real fix is later reverted, this symptom returns, and **the only thing
+that will catch it is this cell going red**. That is now possible where it was
+not: `retries = 2` is gone from `binary(rtos_e2e) and test(Platform__Nuttx)`, so
+a red is information rather than a FLAKY badge nobody reads. The instrumentation
+is linked in and verified by `strings`, so the first failing run answers the
+question four rounds of investigation could not ask: **six of six, or one of
+six** — do all five liveliness declares plus the feedback subscriber fail (the
+session's declare/TX path is dead), or only the subscriber?
+
+### Reopen on either of these, without argument
+
+1. A red from this cell in any lane.
+2. Either experiment above producing a failure — the `ci matrix` run under real
+   parallelism, or the pre-#1035 bisect.
+
+Both are cheap now in a way they were not for most of this issue's life: the cell
+costs ~4.8 s since #1034's `.bss` fix, against 45.7 s before, and NuttX builds at
+all again since #1035.
+
+### What this issue leaves behind, and it is worth more than the fix
+
+Four wrong diagnoses were killed by measurement here, and each is recorded where
+the next person will meet it: the TX-buffer and queryable-capacity leads (both
+leaves' shim constants are byte-identical, `ZPICO_MAX_QUERYABLES` is 32 not 8);
+the C-vs-C++ timing asymmetry (issue 1034 — it measured the emulator, not the
+binding); and the error-collapse chain, five layers deep, that made any of it
+readable at all. The last of those is a permanent improvement to every NuttX
+investigation that follows.

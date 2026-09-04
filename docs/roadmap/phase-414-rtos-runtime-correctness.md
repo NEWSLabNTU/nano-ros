@@ -1,6 +1,6 @@
 # Phase 414 — RTOS runtime correctness: the e2e failures that reproduce SOLO
 
-**Status (2026-09-04). W1/W2/W4/W5 CLOSED. W3 is the only item left, and its timing lead is withdrawn (issue 1034).** Opened
+**Status (2026-09-04). ALL FIVE WORK ITEMS CLOSED.** W3 — issue 0870 — was closed green with the cause UNATTRIBUTED, an owner decision taken on 383 consecutive passes across three build regimes and two emulators, and it records the objection it overrides plus the two experiments that reopen it without argument. The phase stays ACTIVE for the three issues it adopted later (#0997, #1004, #0968), not for its original five.** Opened
 as a HOME, not as a plan: five open issues had no phase that could hold them,
 and the survey that found that is the whole reason this doc exists — an issue
 with no home is an issue nobody is accountable for, the same shape as a gate
@@ -186,6 +186,33 @@ Each is an existing issue. The item is "close it"; the issue holds the evidence.
   log means.
   Next is a DDS capture (needs root, unavailable here): the writer GUID of the
   28-byte sample decides Agent-framing versus foreign peer.
+
+## The phase's own answer, at close
+
+Its acceptance asked for two things, and both are met.
+
+**"Each of the five is resolved, or reassigned with the reason recorded."** W2 and
+W4 fixed; W1 and W3 closed green with the cause unattributed, each recording the
+residual risk and what reopens it; W5 resolved when the 28-byte sample turned out
+to belong to a foreign peer on another host.
+
+**"For W2/W3, an explicit statement of whether the cause was shared."** NO, and
+the reasoning is structural rather than empirical: W2 was harness ordering and its
+fix covers all three languages, so C++ had been starting after the server's banner
+all along; and the failure POINTS cannot be one defect, since W2 failed at
+`send_goal` after the declarations succeeded while W3 failed inside them.
+
+**What the phase found that was in none of the five issues.** Three of them were
+UNREADABLE rather than unfixed — W2 was fixed on 2026-08-28 and nobody closed it;
+W1's probe reported FRESH over a museum bake because the constant lived in a
+build-script dependency crate; W3 had no `printk` arm on NuttX, so every shim
+diagnostic compiled away; W5's own mitigation had been unreachable for nine days
+behind a file-existence short-circuit. Two of the five were not defects in the
+state their issues described.
+
+That is the phase's real result, and it generalised: it is why phase-423 sequences
+its dropped logger first, and why "an issue with no home goes stale" became a
+survey of all 85 open issues rather than a remark.
 
 ## Acceptance
 
