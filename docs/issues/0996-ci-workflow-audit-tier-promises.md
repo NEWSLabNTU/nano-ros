@@ -197,3 +197,61 @@ is an RFC, and no code should be written against it first.
    `container: ci-base`).
 4. Decide the `package.xml`-vs-index question in an RFC before writing code —
    it changes what a `package.xml` in this repo means.
+
+## Addendum (2026-09-05): §2's last green lane has joined the list
+
+The §2 table records `gate.yml` as *"green (the required `CI`)"*. That was true
+of the `pull_request` and `merge_group` arms and is still true of them. It was
+never true of the `push` arm, and I did not check it when I wrote the table.
+
+Every `gate` run on a push to `main` has failed, without interruption, from
+`321642a20` (2026-08-31) to `eac294028` (2026-09-04) — 14 failures in the
+visible window and no success. Two fast-line gates,
+`check-fixtures-manifest` and `check-kconfig-overridden-values`, both reach
+`scripts/build/zephyr-fixture-leaves.sh`, which resolved the pinned make with a
+bare command substitution:
+
+    make_bin="$(nros sdk-path make)/bin/make"
+
+`gate.yml` builds the CLI only on `pull_request`, `merge_group`, `schedule` and
+`workflow_dispatch` — the "Build nros CLI + provision compile-tier sources" step
+carries that `if:`. So on a plain `push` there is no `nros`, the substitution
+exits 127, and `set -euo pipefail` takes the emitter and both gates with it:
+
+    zephyr-fixture-rows: emitter failed (rc=127):
+    scripts/build/zephyr-fixture-leaves.sh: line 181: nros: command not found
+
+This is §2's own thesis one lane over, and it cost exactly what §2 says it
+costs: for five days those two gates could not have reported a regression on the
+event they still ran on, and nobody could have told a new failure from the
+standing one. It also means the last "green" entry in the table was a lane
+selected for greenness — the arm that was red was simply not looked at.
+
+The rule CLAUDE.md already states covers it: *a gate in an affordability tier
+may only resolve artifacts the JOB ITSELF builds*. `check-lane-contracts`
+enforces that, but its `GATING_EVENTS` is `{"pull_request", "merge_group"}` —
+`push` is out of scope, which is why the gate that exists for this class did not
+fire.
+
+**Fixed** by guarding the resolution the way its own sibling in
+`check-tier-preconditions.sh` already did (`command -v nros` first, `command -v
+make` as the documented fallback), and by giving
+`scripts/check-zephyr-fixture-rows.py` a self-test that runs the emitter with
+every `nros`-bearing directory removed from `PATH`. That control reproduces the
+CI failure locally, on a host that has the CLI, in 0.4 s — the mutation test is
+in the commit message.
+
+Swept: with `nros` off `PATH`, all 212 fast-line gates pass. No other fast gate
+depends on the CLI.
+
+**Still open here**, and deliberately not done in that commit: extending
+`check-lane-contracts`' `GATING_EVENTS` to cover the `push` arm, so the class is
+caught structurally rather than by one gate's own control. That is the fifth
+item in the order below.
+
+## Order to fix (5)
+
+5. Decide whether `check-lane-contracts` should hold the `push` arm of
+   `gate.yml` to the same artifact rule as the merge-gating arms. If it should,
+   the fix is one entry in `GATING_EVENTS`; if it should not, the reason belongs
+   in that file, because the next person will ask.

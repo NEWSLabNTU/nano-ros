@@ -31,6 +31,7 @@ equality. A missing leaf and an orphan row are both caught, on every host, and
 the cyclonedds rows are simply out of scope where cyclonedds is.
 """
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -45,7 +46,7 @@ ROLES = ("talker", "listener", "service-server", "service-client",
          "action-server", "action-client")
 
 
-def emitted_leaves():
+def emitted_leaves(env=None):
     """Every leaf the emitter would build. Read-only: it runs no build tool."""
     proc = subprocess.run(
         [
@@ -53,7 +54,7 @@ def emitted_leaves():
             "--emit", "records",
             "--include-workspace-entry",
         ],
-        capture_output=True, text=True, cwd=REPO,
+        capture_output=True, text=True, cwd=REPO, env=env,
     )
     if proc.returncode != 0:
         print(f"zephyr-fixture-rows: emitter failed (rc={proc.returncode}):\n{proc.stderr}",
@@ -99,7 +100,82 @@ def manifest_rows():
     return out
 
 
+def path_without_nros():
+    """A PATH with every directory holding an `nros` executable removed.
+
+    Not an empty PATH: the emitter legitimately needs bash, realpath, git and
+    friends. Only the CLI goes.
+    """
+    keep = []
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        if not d:
+            continue
+        cand = Path(d) / "nros"
+        if cand.exists() and os.access(cand, os.X_OK):
+            continue
+        keep.append(d)
+    return os.pathsep.join(keep)
+
+
+def self_test(quiet=False):
+    """Negative control: the emitter must work with NO `nros` on PATH.
+
+    WHY. `gate.yml` builds the CLI only on pull_request/merge_group/schedule/
+    dispatch, so on a plain `push` to main there is no `nros`. From 2026-08-31
+    (321642a20, which made `make` come from the SDK store) until 2026-09-05 the
+    emitter resolved it with a bare `$(nros sdk-path make)`, which exits 127
+    under `set -e` -- so THIS gate and `check-kconfig-overridden-values` failed
+    on every push to main for five days. A lane that is uniformly red cannot
+    report a regression, which is the whole cost: the two gates went on looking
+    like gates while guarding nothing on the one event they still ran on.
+
+    It is a control rather than a comment because the emitter has three
+    CLI-derived inputs now (`nros sdk-path`, `nros_cargo_codegen_c_bin`, and
+    whatever the next one is) and each is one unguarded `$(...)` away from the
+    same 127.
+
+    Runs on the NORMAL path, not behind a flag: a control nobody runs decays
+    into a comment, and `check-gate-selftests` holds this file to that. ~0.4 s.
+    """
+    env = dict(os.environ)
+    env["PATH"] = path_without_nros()
+    if shutil.which("nros", path=env["PATH"]) is not None:
+        # Nothing to prove on a host where the CLI cannot be taken off PATH.
+        if not quiet:
+            print("zephyr-fixture-rows self-test: SKIPPED (nros not removable from PATH)")
+        return 0
+
+    bare = emitted_leaves(env=env)
+
+    # The identity tuple must not depend on the CLI at all. It resolves the
+    # codegen tool and `make`, both of which land in the SIGNATURE and in no
+    # identity field -- so a difference here means a CLI-derived value has
+    # leaked into the matrix, which would make the push lane and the PR lane
+    # disagree about which fixtures exist.
+    full = emitted_leaves()
+    if bare != full:
+        only_full = sorted(full - bare)
+        only_bare = sorted(bare - full)
+        print("zephyr-fixture-rows self-test FAILED: the emitted leaf SET depends on\n"
+              "  whether the nros CLI is on PATH. It must not -- the CLI resolves the\n"
+              "  codegen tool and `make`, which are signature inputs, not identity.\n"
+              f"  only with the CLI: {only_full}\n"
+              f"  only without it:   {only_bare}", file=sys.stderr)
+        return 1
+
+    if not quiet:
+        print(f"zephyr-fixture-rows self-test: OK ({len(bare)} leaf/leaves with no CLI on PATH)")
+    return 0
+
+
 def main():
+    if "--self-test" in sys.argv:
+        return self_test()
+    # Always, not only behind the flag. See `scripts/check-board-tiers.py`.
+    rc = self_test(quiet=True)
+    if rc:
+        return rc
+
     emitted = emitted_leaves()
     rows = manifest_rows()
 

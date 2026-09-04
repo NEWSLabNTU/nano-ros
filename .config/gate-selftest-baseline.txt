@@ -101,7 +101,6 @@ scripts/check-zenoh-archive-symbols.sh
 scripts/check-zenohd-flag-invocations.py
 scripts/check-zenohd-resolution-parity.sh
 scripts/check-zenohd-spawn-sites.sh
-scripts/check-zephyr-fixture-rows.py
 scripts/ci/absolute-path-check.sh
 scripts/ci/codegen-invocation-check.sh
 scripts/ci/dep-chain-check.sh
