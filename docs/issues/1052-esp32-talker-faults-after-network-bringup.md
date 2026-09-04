@@ -133,14 +133,41 @@ are down to the node NAME (`"talker"` vs `"listener"`) and the node TYPE itself 
 `Talker`'s `ExecutableNode` impl, its `State = i32`, its `on_callback`. Those are
 what a further bisect should cut.
 
+## Memory pressure REFUTED, and the constant PC is the finding (2026-09-04)
+
+The leaf does not link without `ZPICO_MAX_QUERYABLES=2`, so "the image is over
+budget and smashes its stack" was the obvious next hypothesis. It is wrong:
+
+| `ZPICO_MAX_QUERYABLES` | fault | `mepc` |
+| --- | ---: | --- |
+| 1 | 1 | `0x732f7264` |
+| 2 (shipped) | 1 | `0x732f7264` |
+| 4 | 1 | `0x732f7264` |
+
+Three builds with different session-struct sizes and therefore different
+layouts, and **the faulting PC is byte-identical in all three**.
+
+That rules out stack smashing, which would move with layout, and it rules out
+memory pressure as the trigger. A constant wrong PC across differing builds
+means the value is DATA the code reads deterministically — something loads
+`0x732f7264` ("s/rd", printable text) from a fixed place and calls it.
+
+So the shape is: **a code pointer read from a slot that holds string data**, not
+random corruption. Candidates worth looking at first are the fn-pointer slots
+this board actually installs — `nros_platform_esp32_qemu::register_log_writer`'s
+writer slot, and the RMW backend registration
+(`nros_rmw_zenoh::register()`) — because those are the places a `fn` value is
+stored and later called on this target. That is a direction, NOT a diagnosis.
+
 ## Where to start
 
 1. Resolve `0x42051d70` (the backtrace frame, which IS a code address unlike
    `mepc`) against `esp32_qemu_talker` with a RISC-V `addr2line`. The host
    `addr2line` in this checkout does not read it; the toolchain's
-   `llvm-addr2line` should.
-2. Bisect `register()`: publisher only, then timer only. The fault is before
-   `Application setup complete`, so it is inside those three calls.
-3. Note that zenoh-pico is pinned 1.7.2 (issue 0291) and the esp32 image is the
-   RAM-tightest in the tree — a corrupted pointer here may be an overflow of
-   something sized by a knob rather than a logic bug.
+   `llvm-addr2line` should. This is now the single highest-value step: it names
+   the caller that loaded the bad pointer.
+2. Find what stores `0x732f7264` — search the ELF for that byte sequence and see
+   which object it lands in. The PC is constant across builds, so the source is
+   too.
+3. ~~Bisect `register()`~~ — done, and it is none of it (table above).
+4. ~~Suspect memory pressure~~ — refuted above.
