@@ -111,6 +111,13 @@ mod publisher;
 #[cfg(any(has_rmw, test))]
 pub mod session;
 mod subscriber;
+/// phase-425 W3 — the `/clock` time source. Feature-gated: an image that will
+/// never see a simulator should not carry the subscription or the message crate.
+/// Also gated on `has_rmw`, like `session` and the entity API it uses: without a
+/// backend there is no subscription to install, so the module would be a
+/// conversion helper with no caller.
+#[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+pub mod time_source;
 pub mod timer;
 
 // MockSession only matters when neither a real RMW backend feature

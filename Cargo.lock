@@ -1881,6 +1881,7 @@ dependencies = [
  "nros-rcl-interfaces",
  "nros-rmw",
  "nros-rmw-cffi",
+ "nros-rosgraph-msgs",
  "nros-serdes",
  "nros-zephyr-build",
  "portable-atomic",

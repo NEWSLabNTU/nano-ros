@@ -1488,6 +1488,61 @@ impl<'e, 's> NodeCtx<'e, 's> {
             )
     }
 
+    /// Subscribe `/clock` and install every sample as this image's ROS time —
+    /// phase-425 W3, the thing `rclcpp`'s `use_sim_time` parameter switches on.
+    ///
+    /// After this, `Clock::ros_time().now()` is the simulator's or the bag
+    /// player's time, and a timer registered with `TimerClockSource::Ros`
+    /// follows it: it stops while the simulation is paused and tracks the replay
+    /// rate. Nothing else changes — a wall timer on the same executor keeps its
+    /// own cadence, which is what a watchdog needs.
+    ///
+    /// QoS is `QoSProfile::clock_default()`, i.e. `rclcpp::ClockQoS`: best
+    /// effort, keep-last 1, volatile. A late subscriber wants the NEXT sample,
+    /// not a replay of the simulation's history.
+    ///
+    /// Returns the subscription handle. Cancelling it stops the source but does
+    /// NOT clear the override: a node that unsubscribes mid-run keeps the last
+    /// simulated time rather than jumping back to the wall clock, which every
+    /// ROS-time timer would otherwise have to absorb as a jump.
+    ///
+    /// The override is process-global — one simulated clock per image — so
+    /// calling this on a second node in the same image adds a second subscriber
+    /// to the same global, which is redundant rather than wrong.
+    #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+    pub fn install_ros_time_source(&mut self) -> Result<super::types::HandleId, NodeError> {
+        self.install_ros_time_source_on(crate::time_source::CLOCK_TOPIC)
+    }
+
+    /// [`install_ros_time_source`](Self::install_ros_time_source) against a
+    /// topic other than `/clock` — a remapped or namespaced clock, which is what
+    /// a launch file creates when two simulations share a graph.
+    #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+    pub fn install_ros_time_source_on(
+        &mut self,
+        topic: &str,
+    ) -> Result<super::types::HandleId, NodeError> {
+        self.executor
+            .register_subscription_buffered_on::<
+                nros_rosgraph_msgs::msg::Clock,
+                _,
+                { crate::config::DEFAULT_RX_BUF_SIZE },
+            >(
+                self.node_id,
+                topic,
+                QoSProfile::clock_default(),
+                |msg: &nros_rosgraph_msgs::msg::Clock| {
+                    if let Some(nanos) =
+                        crate::time_source::override_nanos(msg.clock.sec, msg.clock.nanosec)
+                    {
+                        nros_core::clock::Clock::set_ros_time_override(nanos);
+                    }
+                },
+                None, // no group — node default
+                None, // the configured default RX buffer, unchanged
+            )
+    }
+
     // -----------------------------------------------------------------------
     // Phase 273 (RFC-0047) — callback-group API (rclcpp/rclrs shape)
     // -----------------------------------------------------------------------
