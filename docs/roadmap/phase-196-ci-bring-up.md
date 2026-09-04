@@ -8,10 +8,31 @@ have. This phase finishes the Zephyr dual-line bring-up, audits the other
 workflows for the same class of gaps, and codifies the provisioning conventions
 so a new workflow works on its first push.
 
-**Status.** In progress (2026-05-28). `zephyr-dual-line` setup + most build
-stages fixed and validated by repeated `workflow_dispatch` runs; one product
-skew (codegen CLI) remains, owned by Phase 195. The broader audit/codification
-items are proposed.
+**Status (2026-09-04). Every work item is DONE (196.1-196.9, 33 of 34 boxes
+checked); the phase is held open by ONE acceptance criterion that names a
+workflow deleted fifteen months of commits ago.** The 2026-05-28 line below said
+"in progress ... one product skew (codegen CLI) remains" and none of that is
+true now: the skew was resolved at the tool level (see the handoff note), the
+196.7 [P2] item's three boxes are all checked, and 196.3's audit is complete.
+
+**The CI topology this phase was written against no longer exists.** phase-253
+(`682706dbf ci: merge 13 workflows into 6 tier files`) consolidated the lot, and
+ALL TWELVE workflows named in the acceptance criteria are gone: `ci.yml`,
+`zephyr-dual-line.yml`, `platform-ci.yml`, `lint.yml`, `host-unit.yml`,
+`codegen-convention.yml`, `sdk-index-gate.yml`, `nros-acceptance.yml`,
+`dep-chain.yml`, `scaffold-journey.yml`, `embedded-feature-unification.yml`,
+`colcon-parity.yml`. Read every workflow filename below as historical record;
+the live set is `gate.yml`, `queue.yml`, `nightly.yml`, `post-submit.yml`,
+`run-matrix.yml` and friends.
+
+**The one open criterion is still a real question, and it now has no answer.**
+"`zephyr-dual-line` is green end-to-end on both lines" survived the
+consolidation as the zephyr matrix inside `nightly.yml`, on its own `0 5` cron —
+but every zephyr job in the last EIGHT consecutive scheduled runs is `skipped`,
+so the lane reports neither green nor red. Filed as
+[issue 1029](../issues/1029-zephyr-nightly-never-produces-a-verdict.md).
+This criterion cannot be met or refuted until that is fixed, and it should be
+tracked THERE rather than holding a phase open whose own work is finished.
 
 > **Post-Phase-218**: The CLI-skew install path discussed below
 > (`scripts/install-nros.sh` → `~/.nros/bin/nros`) was retired by
