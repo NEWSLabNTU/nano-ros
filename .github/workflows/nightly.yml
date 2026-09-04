@@ -779,6 +779,34 @@ jobs:
       - name: Verify this runner's labels are true
         run: ./scripts/ci/runner-doctor.sh nros-qemu,nros-sdk-zephyr,nros-big
 
+      # THE MISSING MIDDLE — phase-413 W2.
+      #
+      # The documented chain is `setup` -> `build` -> `test` (phase-411 W4), and
+      # this job went straight from setup to the test lane. `ci matrix-nightly`
+      # opens with `_lane-gate tier2-nightly`, which runs `check-fixtures-stale.sh` — a
+      # FRESHNESS GATE, not a build. So the lane asked "are the fixtures fresh?"
+      # of a tree that had never built them.
+      #
+      # On a self-hosted runner with a persistent workspace that can look like it
+      # works, because a previous run left artifacts behind. It stops looking
+      # like it works the moment the per-leaf `generated/` msg crates are absent,
+      # and then the gate cannot even build a fixture to judge it:
+      #
+      #   ERROR: 104 rust fixture(s) could NOT be built by the staleness probe:
+      #     examples/native/rust/talker
+      #         error: failed to load manifest for dependency `std_msgs`
+      #     examples/native/rust/service-client
+      #         error: failed to load manifest for dependency `example_interfaces`
+      #
+      # `just build <scope>` is the stage that produces them: it runs `_codegen`
+      # (issue 0992) and then the lane's fixtures. Naming the SAME scope as
+      # setup and test keeps one vocabulary across the three steps, which is the
+      # property phase-411 exists to give.
+      - name: just build tier2-nightly
+        run: |
+          source ./activate.sh
+          just build tier2-nightly
+
       - name: just ci matrix-nightly
         run: |
           source ./activate.sh
