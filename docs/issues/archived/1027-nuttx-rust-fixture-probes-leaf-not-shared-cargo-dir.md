@@ -2,7 +2,7 @@
 id: 1027
 title: "NuttX Rust fixtures resolve at a LEAF `target/` that phase-340 moved, so
   a freshly built image reports `not prebuilt`"
-status: open
+status: resolved
 type: bug
 area: testing, build
 severity: high

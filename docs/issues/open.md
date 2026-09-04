@@ -76,25 +76,21 @@ fails if this block drifts.
 - **#1001** (tooling, ci) — `check-action-client-arena-budget` walks the whole repo, so `check fast` costs minutes on a cold page cache — the pre-push gate is where that is felt See `1001-*`.
 - **#1002** (cmake) — A derived knob converges after THREE configures, not the two 0991 documents See `1002-*`.
 - **#1004** ([rmw, platform, embedded]) — an536 boot failures on this host were HOST LOAD, not a code regression — and the measurements taken during them should not be trusted See `1004-*`.
-- **#1005** (testing, build) — A zenoh constant that lives in `nros-zpico-build` is invisible to the fixture staleness probe, so a fixture baked before a fix reports FRESH See `1005-*`.
 - **#1006** (tooling, build) — esp32-qemu's configure does not disable the backends it never uses, so its runtime dependency set is a property of the machine that built it See `1006-*`.
-- **#1007** (testing, build) — `just nuttx build-fixtures-arm` can leave every arm cell unrunnable, and the remedy it prints is the command that just short-circuited See `1007-*`.
 - **#1008** (api, rmw) — `wait_for_service` returns `Ok(true)` immediately on every real backend — its fast path calls `is_server_ready()`, whose trait default is `true` and which only zenoh overrides See `1008-*`.
-- **#1009** (testing, ci) — Our DDS interop tests share a bus with the whole LAN, so a foreign peer on another host can fail them — and `ROS_LOCALHOST_ONLY=1` alone does NOT fix it See `1009-*`.
 - **#1012** (docs, api) — Parity-ledger `why` prose names symbols a rename retired — 15 rows describe current state using dead spellings, and nothing checks it See `1012-*`.
-- **#1013** (testing) — `test_rtos_pubsub_e2e` SIGKILLs its talker after ~12 publishes, so the cell exercises twelve seconds of a free-running publisher See `1013-*`.
 - **#1018** (build, codegen) — A codegen change invalidates every consumer's generated interfaces, and only a manual `setup-cli` connects them See `1018-*`.
 - **#1019** (api, docs) — Every `RCLCPP_*` log call in a ported C++ node is discarded on embedded, and `RCLCPP_*_STREAM` drops its message on every target See `1019-*`.
 - **#1020** (docs, api) — The C++ parity lane measures the NATIVE API against rclcpp and cannot see `rclcpp_compat.hpp` — 589 lines whose entire purpose is the thing being measured See `1020-*`.
 - **#1021** (rmw, third-party) — zenoh-pico 1.8.0 does not compile with `Z_FEATURE_MATCHING=0`: an unguarded call to a MATCHING-only function See `1021-*`.
 - **#1023** (rmw, build) — `nros_sertype.cpp` includes `<memory>` and `<string>`, so cyclonedds cannot compile for a freestanding target See `1023-*`.
 - **#1025** (build, testing) — ESP32 flash images can never be built: the packer asks for the group dir with the row's env stripped, so it looks in a directory the build stopped using See `1025-*`.
-- **#1026** (testing) — Six run-to-completion waits are aimed at free-running nodes, turning a timeout into the node's lifetime — and one test cannot fail on any build See `1026-*`.
-- **#1027** (testing, build) — NuttX Rust fixtures resolve at a LEAF `target/` that phase-340 moved, so a freshly built image reports `not prebuilt` See `1027-*`.
 - **#1028** ([rmw, memory, build]) — NuttX is classified `hosted` because its `target_os` is not `\"none\"`, so it takes the Linux 32-queryable budget: 142,336 B of `.bss` in an image with zero queryables See `1028-*`.
 - **#1029** (ci, testing) — The Zephyr dual-line nightly has its own 05:00 cron and every scheduled run SKIPS it, so the lane it exists to watch has produced no verdict for days See `1029-*`.
 - **#1034** (testing, tooling) — The provisioned QEMU 11 spends ~19.6 s materialising a NuttX image's `.bss` before the guest runs, and that stall is the whole C-vs-C++ asymmetry in issue 0870 See `1034-*`.
 - **#1038** (ci, build, testing) — nightly triage (phase-413 W2.3): three of six cell failures are one class — the platform job builds a lane whose prerequisites its own setup never installs; none is a product regression See `1038-*`.
 - **#1043** (ci, tooling) — `check-submodule-pins` fails CLOSED on any submodule CI does not initialise, so a whole class of pin bump could never pass the required lane See `1043-*`.
+- **#1044** (testing) — The run-to-completion wait class is not finished: an eighth site, four bridge callers with an unstated horizon, and an assertion that counts re-opens instead of rating them See `1044-*`.
+- **#1045** (testing, build) — Two unswept corners of fixture resolution: the Zephyr and ThreadX locators, and a staleness probe that announces its own degradation only on the STALE path See `1045-*`.
 
 <!-- END GENERATED open-issue list -->

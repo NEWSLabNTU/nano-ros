@@ -2,7 +2,7 @@
 id: 1026
 title: "Six run-to-completion waits are aimed at free-running nodes, turning a
   timeout into the node's lifetime — and one test cannot fail on any build"
-status: open
+status: resolved
 type: bug
 area: testing
 severity: high

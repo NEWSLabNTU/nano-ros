@@ -2,7 +2,7 @@
 id: 1005
 title: "A zenoh constant that lives in `nros-zpico-build` is invisible to the
   fixture staleness probe, so a fixture baked before a fix reports FRESH"
-status: open
+status: resolved
 type: bug
 area: testing, build
 severity: high
