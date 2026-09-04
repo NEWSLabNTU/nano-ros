@@ -110,6 +110,18 @@ pub const NROS_SERIALIZATION_FORMAT: &str = "cdr";
 // backend actually declares. A `const _` is evaluated by `cargo check`, so this
 // fires before codegen, unlike the `const {}` inside the generic Rust entity
 // creators.
+//
+// GATED on `rmw-cffi` (phase-421 W4 residue, fixed 2026-09-05). `nros_node::session`
+// is `#[cfg(any(has_rmw, test))]`, and `has_rmw` is exactly nros-node's `rmw-cffi`
+// feature (see its build.rs) — which `nros-c`'s own `rmw-cffi` forwards to. Without
+// the gate this block referenced a module that does not exist in any RMW-less
+// combo, so `check-workspace-features` failed to COMPILE the crate:
+//
+//     error[E0433]: cannot find `session` in `nros_node`
+//
+// There is nothing to mirror when no backend is linked, so the assert has no
+// meaning in that combo rather than a different answer.
+#[cfg(feature = "rmw-cffi")]
 const _: () = {
     assert!(
         NROS_SERIALIZATION_FORMAT_ID == nros_node::session::IMAGE_SERIALIZATION_FORMAT_ID.as_u8(),
