@@ -844,7 +844,12 @@ what a backend author wants.
 `service` and `timer` leftovers once step 2 lands.
 
 **Step 4 — retire the deprecated aliases, as ONE batch, last.** By then the set
-is: the `nros_param_*` family (25 forwarders), the service reply verbs, the
+is: the `nros_param_*` family (**34 function forwarders plus 4 silent typedefs = 38 items**; the
+earlier "25" was a miscount, remeasured 2026-09-04 from `parameter.h`'s
+`#ifndef NROS_NO_DEPRECATED_PARAM_ALIASES` block — the 15 array forms,
+`declare`/`get`/`set` x byte/bool/integer/double/string, account for the gap.
+The 4 typedefs are the ones that vanish WITHOUT ever having warned, because C
+cannot portably deprecate a typedef; the changelog has to say so), the service reply verbs, the
 QoS `*_raw()` / `*_ms()` accessors, `BoardConfig::zenoh_locator` and
 `ThreadxConfig::zenoh_locator` (two, not one — the row names only the first),
 and the five `with_zenoh_locator()` builders.
