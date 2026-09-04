@@ -522,11 +522,15 @@ handle.
 | Humble | literal string `"TypeHashNotSupported"` |
 | Iron / Jazzy / Rolling | `RIHS01_<sha256_hex>` computed from the IDL |
 
-nano-ros currently targets Humble (the
-[Iron type-hash roadmap doc](../../../docs/roadmap/phase-41-iron-type-hash-support.md)
-tracks Iron support). A new backend that aims at a newer distro must compute the
-right hash string — the `TopicInfo::type_hash` field is already plumbed
-through.
+Humble is the DEFAULT, not the ceiling: `--ros-edition {humble,iron,jazzy,rolling}`
+selects the edition, and iron/jazzy emit the real REP-2011 hash — computed
+in-tree, not read out of an ament index
+([phase-41](../../../docs/roadmap/archived/phase-41-iron-type-hash-support.md),
+complete). A new backend inherits that: `TopicInfo::type_hash` arrives already
+filled in for the selected edition, so the backend's job is to put it in the
+right place on its own wire, not to compute it. On zenoh that place is the
+keyexpr tail; get it wrong and delivery fails silently, because a peer that
+disagrees about the hash simply never matches.
 
 ### 5. QoS mapping
 
