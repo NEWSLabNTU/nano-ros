@@ -40,6 +40,7 @@ pub mod primitives;
 pub mod schema;
 pub mod size;
 pub mod traits;
+pub mod walk;
 
 #[cfg(test)]
 mod compat_tests;
@@ -50,6 +51,9 @@ pub use cdr::{
 pub use error::{DeserError, SerError};
 pub use schema::{Field, FieldType, Message, NestedType};
 pub use traits::{Deserialize, DeserializeView, Serialize};
+pub use walk::{
+    SchemaError, SchemaSerializer, SchemaSink, SchemaSource, decode_to_cdr, encode_from_cdr,
+};
 
 /// Length of the CDR encapsulation header (representation identifier + options).
 pub const CDR_HEADER_LEN: usize = 4;

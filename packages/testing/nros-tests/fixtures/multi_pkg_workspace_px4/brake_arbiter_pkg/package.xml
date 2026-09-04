@@ -4,5 +4,5 @@
   <description>Phase 212.H.7 PX4 fixture — brake_arbiter component.</description>
   <maintainer email="noreply@example.com">nano-ros</maintainer>
   <license>MIT</license>
-  <export><build_type>ament_cmake</build_type></export>
+  <export><build_type>nros_cmake</build_type></export>
 </package>

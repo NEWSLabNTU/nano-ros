@@ -2130,6 +2130,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-serdes-packed"
+version = "0.5.0"
+dependencies = [
+ "nros-serdes",
+]
+
+[[package]]
 name = "nros-sizes-build"
 version = "0.5.0"
 dependencies = [
@@ -2183,6 +2190,7 @@ dependencies = [
  "nros-rmw",
  "nros-rmw-zenoh",
  "nros-serdes",
+ "nros-serdes-packed",
  "nros-std-msgs-diag",
  "nvidia-ivc",
  "once_cell",

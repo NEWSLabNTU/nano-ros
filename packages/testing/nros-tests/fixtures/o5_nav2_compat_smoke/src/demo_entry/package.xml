@@ -8,6 +8,6 @@
   <exec_depend>primary_node</exec_depend>
   <exec_depend>secondary_node</exec_depend>
   <export>
-    <build_type>nros_entry</build_type>
+    <build_type>nros_cargo</build_type>
   </export>
 </package>

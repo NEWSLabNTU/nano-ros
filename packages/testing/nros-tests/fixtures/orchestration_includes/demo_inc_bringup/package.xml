@@ -10,6 +10,6 @@
   <exec_depend>demo_inc</exec_depend>
 
   <export>
-    <build_type>ament_cmake</build_type>
+    <build_type>nros_cargo</build_type>
   </export>
 </package>

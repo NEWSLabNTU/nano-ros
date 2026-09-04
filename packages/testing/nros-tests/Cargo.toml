@@ -529,4 +529,9 @@ nros-lifecycle-msgs = { path = "../../interfaces/lifecycle-msgs/generated/humble
 nros-std-msgs-diag = { path = "../../interfaces/diagnostic-msgs/generated/humble/nros-std-msgs-diag" }
 nros-diagnostic-msgs = { path = "../../interfaces/diagnostic-msgs/generated/humble/nros-diagnostic-msgs" }
 nros-builtin-interfaces-diag = { path = "../../interfaces/diagnostic-msgs/generated/humble/nros-builtin-interfaces-diag" }
+# phase-421 W5 — the reference schema-driven serdes provider (RFC-0088 D7).
+# `schema_serializer_round_trip` transcodes every generated message above
+# through it and back. A dev-dep, like the generated crates it is exercised
+# against: nothing downstream links `packed`, and no backend speaks it.
+nros-serdes-packed = { path = "../../core/nros-serdes-packed" }
 

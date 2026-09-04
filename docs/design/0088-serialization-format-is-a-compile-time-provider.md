@@ -290,15 +290,47 @@ a vendor package it `<depend>`s on (RFC-0087 D5).
 
 ```rust
 pub trait SchemaSerializer {
-    fn serialize(msg: *const u8, schema: &'static [Field], out: &mut [u8])
-        -> Result<usize, SerdesError>;
-    fn deserialize(bytes: &[u8], schema: &'static [Field], msg: *mut u8)
-        -> Result<(), SerdesError>;
+    const FORMAT_NAME: &'static str;   // cross-image identity (D2)
+    const FORMAT_ID:   u8;             // image-local discriminant
+    fn serialize(msg: &mut CdrReader<'_>, type_name: &str,
+                 schema: &'static [Field], out: &mut [u8]) -> Result<usize, SchemaError>;
+    fn deserialize(bytes: &[u8], type_name: &str,
+                   schema: &'static [Field], msg: &mut CdrWriter<'_>) -> Result<usize, SchemaError>;
 }
 ```
 
 A provider implements this once and works for every message, with no codegen
-plugin and no generated code. It is slower than the per-type `serialize` we emit
+plugin and no generated code.
+
+**Amended 2026-09-04 from implementation (W5): the message side is the CDR byte
+stream, not a `*const u8`.** This RFC first specified a raw pointer to the
+message struct, and that is not implementable over today's schema, for three
+independent measured reasons:
+
+1. **A `String` member's host type is `heapless::String<N>` and the schema
+   carries no `N`.** Codegen emits `FieldType::String`, the IDL type;
+   `BoundedString(n)` is the IDL bound, a *different* number from the host
+   capacity.
+2. **`heapless::String` / `heapless::Vec` are `repr(Rust)`.** `Field::offset`
+   soundly reaches the *start* of the container and nothing inside it.
+3. **`NestedType` records `type_name` and `fields` but no size**, so
+   `Array(N, Nested(..))` and sequences of structs have no stride.
+
+So `impl = "schema"` is a **transcoder** strategy in v1: CDR bytes in, the
+provider's bytes out. That is a smaller claim than "reads the message struct
+directly", and it is the claim the schema can actually support. The walk
+therefore lives in `nros-serdes` (`walk::{SchemaSink, SchemaSource}`) rather
+than being re-implemented per provider, and `type_name` is a parameter because a
+`&'static [Field]` slice has no name of its own.
+
+Making the pointer form implementable is a change to the *schema*, not to this
+trait: it needs the host capacity, a stable container layout, and a nested
+type's size. That is worth doing when a provider needs to skip the CDR hop, and
+it is not free.
+
+**One hole the walk inherits rather than introduces:** `WString` /
+`BoundedWString` return `Unsupported`, because `CdrReader`/`CdrWriter` have no
+wide-string primitive in either direction. Nothing in tree uses a `wstring`. It is slower than the per-type `serialize` we emit
 for CDR, and that trade is deliberate for v1: adequate for a control topic,
 inadequate for a high-rate sensor stream. `impl = "codegen"` is the answer when
 someone hits the wall, and it is the point at which a codegen plugin ABI must
@@ -349,6 +381,11 @@ format is decided at compile time and the description never leaves Rust.
 
 ## Changelog
 
+- 2026-09-04 — D7 amended from implementation (phase-421 W5): the schema-driven
+  strategy transcodes from the CDR byte stream rather than reading the message
+  struct through a `*const u8`. The schema carries neither the host string
+  capacity, nor a stable container layout, nor a nested type's size, so the
+  pointer form cannot be written against it today.
 - 2026-09-04 — D6 amended from implementation (phase-421 W4): the per-target key
   is `[image.<t>].serdes`, not `[deploy.<t>].serdes`. The upstream `DeployBlock`
   denies unknown fields, so the specified key would have been a parse error.
