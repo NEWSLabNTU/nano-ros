@@ -207,7 +207,9 @@ external source tree. Nothing marks it; ROS 2 marks nothing either. Putting it i
 the source tree is the user's responsibility, which is colcon's contract.
 
 ```xml
-<!-- spe_freertos_bsp_vendor/package.xml -->
+<!-- spe_freertos_bsp_vendor/package.xml — the ASPIRATIONAL case: a clean
+     upstream with no patch line, so a digest-pinned tarball is the right fetch.
+     phase-418 W4 is where it would land. -->
 <export><build_type>nros_cmake</build_type></export>
 ```
 
@@ -216,6 +218,32 @@ FetchContent_Declare(spe_bsp
   URL      https://developer.download.nvidia.com/.../public_sources.tbz2
   URL_HASH SHA256=cd4fa3bd2bbd73af7bec6cc4e1e2ec179a8933a217c830d346a0a0c48ea90661)
 ```
+
+**Amended 2026-09-05 from implementation (phase-420 W9): the fetch MAY be a
+submodule, and for a patched upstream it MUST be.** This section read as though
+`FetchContent` were the only spelling, and W9 measured what that costs.
+
+`zenoh-pico` is a patch line — our fork, branch `nano-ros`, carrying commits we
+authored. **A tarball has nowhere to put patches**, and a `PATCH_COMMAND` would
+resurrect the `patches/` directory `.gitmodules` records as deliberately
+deleted. The remaining spelling, `GIT_TAG <full sha>` at our own fork, satisfies
+the invariant below and is *the identical pointer with `check-submodule-pins`
+removed* — the gate that can go and ask the submodule, because a gitlink IS a
+commit id. Converting would trade enforcement for uniformity.
+
+So a fork is a vendor package whose fetch is a submodule, and that is the
+finished shape rather than a way-station. `packages/rmw/zenoh/zpico-sys` is the
+worked in-tree example: it owns the fetch (gitlink), the build
+(`nros-zpico-build`) and the export (`links = "zpico"` → `DEP_ZPICO_*`), and W9
+gave it the one thing it lacked — a `package.xml`, so a consumer can name it.
+
+**The two pin gates partition the surface; they do not rank it.**
+`check-submodule-pins` governs gitlinks, `check-vendor-fetch-pinned` governs
+CMake fetch arguments, and a tree moving between mechanisms moves between gates.
+Neither is the "real" one.
+
+**A vendor package nothing depends on is a fixture, not a proof.** Do not add
+one to demonstrate the shape; add one when a consumer needs the tree.
 
 **Exports travel by each ecosystem's native channel, and nano-ros adds none:**
 
