@@ -5160,7 +5160,7 @@ impl<'s> Executor<'s> {
         Ok(HandleId(slot))
     }
 
-    /// phase-417 W5.a (RFC-0087 stage 5) — the TYPED C-FFI subscription core:
+    /// phase-417 W5.a (RFC-0089 stage 5) — the TYPED C-FFI subscription core:
     /// the same registration as [`Self::add_arena_subscription_c_callback`],
     /// plus caller-owned message storage and the erased deserialiser for its
     /// type, so the callback receives a DESERIALISED message instead of CDR
@@ -7762,7 +7762,7 @@ impl<'s> Executor<'s> {
 impl<'s> Executor<'s> {
     /// Request the executor to stop spinning — `rclcpp::Executor::cancel`.
     ///
-    /// # ADOPT-BOUNDED (RFC-0087)
+    /// # ADOPT-BOUNDED (RFC-0089)
     ///
     /// `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY,
     /// so it returns BEFORE spinning has actually stopped;
