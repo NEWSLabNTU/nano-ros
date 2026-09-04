@@ -609,44 +609,48 @@ mod tests {
         assert_eq!(r.format_id, Some(9));
     }
 
-    /// MEASURED, and it surprised this wave: **root 0 of the default search
-    /// path contributes nothing in this repository.**
+    /// Issue 1054, FIXED — and this test is the inversion of the one that
+    /// recorded the bug.
     ///
     /// The nano-ros root carries its own `.nros-ignore` (issue 0621, so a
     /// vendored checkout stops polluting a consumer's package graph), and
-    /// [`crate::provider_scan`] reads `IGNORE_MARKERS` on every directory
-    /// INCLUDING the root it was handed. `nros-pkg-index` does not — its walk
-    /// exempts depth 0, which the marker file's own header states as the
-    /// contract ("It does NOT affect nano-ros's own discovery"). Issue 0809
-    /// taught `provider_scan` the `.nros-ignore` spelling and did not carry the
-    /// depth-0 exemption across with it, so the two walks agree on the marker
-    /// and disagree on the root.
+    /// [`crate::provider_scan`] used to read `IGNORE_MARKERS` on every
+    /// directory INCLUDING the root it was handed — so root 0 of the default
+    /// search path contributed NOTHING, for rmw and board and platform exactly
+    /// as for serdes. `nros-pkg-index` never had that bug; the marker file's
+    /// own header states the contract ("It does NOT affect nano-ros's own
+    /// discovery"), and issue 0809 taught `provider_scan` the spelling without
+    /// the depth-0 exemption that makes it safe.
     ///
-    /// This test pins the CURRENT behaviour so the day it changes is visible.
-    /// It is not a claim that the behaviour is right — a fix belongs with
-    /// `provider_scan`, whose rmw/board/platform families are affected exactly
-    /// as serdes is, and not with the wave that happened to notice.
+    /// W4 landed this as a characterization test asserting `providers.is_empty()`
+    /// — it passed BECAUSE the bug existed. The expectation flipped when the
+    /// fix landed; that is the intended outcome, not a loosened test.
+    ///
+    /// The count is a lower bound on purpose: the real number moves with the
+    /// tree (375 packages / 21 providers when this was written), and pinning it
+    /// would make every new package a test failure.
     #[test]
-    fn the_nano_ros_root_is_pruned_by_its_own_nros_ignore() {
+    fn the_nano_ros_root_is_scanned_despite_its_own_nros_ignore() {
         let root = repo_root();
         assert!(
             root.join(".nros-ignore").is_file(),
             "this test is about that marker; if it is gone, the finding is stale"
         );
 
-        let scan = scan_roots(&[root]).expect("scan the nano-ros root");
+        let scan = scan_roots(&[root.clone()]).expect("scan the nano-ros root");
         assert!(
-            scan.providers.is_empty(),
-            "root 0 is pruned at depth 0 — if this now finds providers, the \
-             depth-0 exemption landed and `resolve_serdes_in` gains the in-tree \
-             providers through the default search path for free: {:?}",
-            scan.providers
-                .iter()
-                .map(|p| &p.package)
-                .collect::<Vec<_>>()
+            !scan.providers.is_empty(),
+            "issue 1054 exempted depth 0, so scanning the nano-ros root must \
+             find its providers; an empty set means the exemption regressed and \
+             every provider family lost root 0 again"
         );
-        // Which is why the in-tree cross-check above scans `packages/core`
-        // directly: below the marker, the same walk finds the same provider.
+
+        // The point of the fix, for this wave specifically: the in-tree serdes
+        // provider is now reachable BY NAME through the root, not only by
+        // scanning `packages/core` directly.
+        let resolved = resolve_serdes_in(&scan, DEFAULT_SERDES_NAME)
+            .expect("the in-tree cdr provider resolves through the nano-ros root");
+        assert_eq!(resolved.declared, DEFAULT_SERDES_NAME);
     }
 
     #[test]

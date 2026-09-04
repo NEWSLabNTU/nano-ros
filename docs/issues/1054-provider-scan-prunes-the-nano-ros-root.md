@@ -1,7 +1,7 @@
 ---
 id: 1054
 title: "`provider_scan` reads `.nros-ignore` on the root it was handed, so scanning the nano-ros tree finds ZERO providers of any family — the marker's own header says it must not"
-status: open
+status: resolved
 type: bug
 area: cli, tooling
 severity: high
@@ -67,7 +67,24 @@ pins the behaviour as it is today, and says in its body what changes when this
 is fixed. It passes *because* the bug exists; it is a characterization test, not
 an endorsement.
 
-## Fix
+## Fixed 2026-09-04
+
+Depth 0 is exempt in `walk_packages`: markers prune descendants, never the root
+the caller named. Measured on this tree, the scan went from **0 packages to
+375**, 0 providers to **21**, 51 provisions (board 33, rmw 11, platform 8), one
+full walk 27–37 ms. The "~272" below was this file quoting `.nros-ignore`'s own
+header, which is stale.
+
+It was not only latent: `nros ws providers` on an in-tree example workspace had
+`default_search_path` drop the nested workspace, leaving `[nano-ros root]`
+alone, and reported "No rmw providers were discovered at all".
+
+The W4 characterization test named below inverted with the fix, to
+`the_nano_ros_root_is_scanned_despite_its_own_nros_ignore`, and now also asserts
+that the in-tree `cdr` provider resolves BY NAME through the root. Its bound is
+a lower bound, deliberately: the real count moves with the tree.
+
+## The fix, as planned
 
 Exempt depth 0 in `walk_packages`, the way `build_pkg_index` does — check the
 markers on descendants only. That is the smallest change that makes the two
