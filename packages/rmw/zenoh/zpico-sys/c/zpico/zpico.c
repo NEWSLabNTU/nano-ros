@@ -506,6 +506,12 @@ struct zpico_session {
     volatile bool tx_flush_run;
     bool flush_task_configured;
     z_task_attr_t flush_task_attr;
+#if defined(ZENOH_ZEPHYR)
+    /* issue 0852 — the struct the Zephyr port actually reads. `z_task_attr_t`
+     * is `pthread_attr_t` here, and `_z_task_init` forwards `task_attributes`
+     * to `nros_platform_task_init`, which reads this shape. */
+    nros_platform_task_attr_t flush_nros_attr;
+#endif
 #endif
 
 #if Z_FEATURE_MULTI_THREAD == 1
@@ -724,6 +730,9 @@ static z_task_attr_t g_default_lease_task_attr;
  * POSIX-like honour them, others ignore the attr. */
 static bool g_default_flush_task_configured = false;
 static z_task_attr_t g_default_flush_task_attr;
+#if defined(ZENOH_ZEPHYR)
+static nros_platform_task_attr_t g_default_flush_nros_attr;
+#endif
 #endif
 
 // ============================================================================
@@ -1617,12 +1626,38 @@ void zpico_set_flush_task_config(uint32_t priority, uint32_t stack_bytes) {
 #elif (defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(ZENOH_NUTTX) ||                     \
        defined(__NuttX__) || defined(ZENOH_ZEPHYR)) &&                                             \
     !defined(ZENOH_THREADX)
+#if defined(ZENOH_ZEPHYR)
+    /* issue 0852 — the flush task is the THIRD transport task and it had the
+     * same defect as read and lease: it filled a `pthread_attr_t` that the
+     * Zephyr port never reads, and discarded the priority outright ("needs
+     * SCHED_FIFO (root)" — true of Linux, meaningless on an RTOS with no
+     * privilege model). Fixed in the same commit as its two siblings, because
+     * fixing one transport task and leaving the third is how this class keeps
+     * coming back. Band, not RAW — see the read/lease arm. */
+    nros_platform_task_attr_init(&g_default_flush_nros_attr);
+    if (priority != 0u) {
+        g_default_flush_nros_attr.priority = (int32_t)priority;
+    }
+    g_default_flush_nros_attr.name = "zpico_flush";
+    if (stack_bytes != 0u) {
+        g_default_flush_nros_attr.stack_bytes = stack_bytes;
+    }
+    g_default_flush_task_configured = true;
+#else
     /* POSIX: stack size via pthread_attr; priority needs SCHED_FIFO (root),
-     * so only the stack size is applied — mirrors zpico_set_task_config. */
+     * so only the stack size is applied — mirrors zpico_set_task_config.
+     *
+     * NOTE (issue 0852): on a LINUX/NuttX build `z_task_attr_t` is
+     * `nros_platform_task_attr_t` (they reach `zenoh_generic_platform.h`), so
+     * `pthread_attr_init` here would be initialising the wrong struct. It does
+     * not bite today only because those targets default `ZPICO_TX_BATCH` off,
+     * which compiles this whole arm out. Enable batching there and this needs
+     * the same treatment as the Zephyr arm above. */
     pthread_attr_init(&g_default_flush_task_attr);
     pthread_attr_setstacksize(&g_default_flush_task_attr, (size_t)stack_bytes);
     g_default_flush_task_configured = true;
     (void)priority;
+#endif
 #else
     (void)priority;
     (void)stack_bytes;
@@ -1697,6 +1732,9 @@ int32_t zpico_open(zpico_session_t* session) {
 #if ZPICO_TX_BATCH_THREAD == 1
     s->flush_task_configured = g_default_flush_task_configured;
     s->flush_task_attr = g_default_flush_task_attr;
+#if defined(ZENOH_ZEPHYR)
+    s->flush_nros_attr = g_default_flush_nros_attr;
+#endif
 #endif
 
     z_open_options_t open_opts;
@@ -1765,7 +1803,15 @@ int32_t zpico_open(zpico_session_t* session) {
     zp_batch_start(z_session_loan(&s->session));
 #if ZPICO_TX_BATCH_THREAD == 1
     s->tx_flush_run = true;
-    if (_z_task_init(&s->tx_flush_task, s->flush_task_configured ? &s->flush_task_attr : NULL,
+#if defined(ZENOH_ZEPHYR)
+    /* issue 0852 — hand the port the struct it reads, as read and lease do. */
+    z_task_attr_t* flush_attr = s->flush_task_configured
+                                    ? (z_task_attr_t*)&s->flush_nros_attr
+                                    : NULL;
+#else
+    z_task_attr_t* flush_attr = s->flush_task_configured ? &s->flush_task_attr : NULL;
+#endif
+    if (_z_task_init(&s->tx_flush_task, flush_attr,
                      _zpico_tx_flush_task_fn, s) != 0) {
         /* No thread → flushes ride only on implicit sends (keepalives bound
          * sit-time to the lease interval). Loud, not fatal. */
