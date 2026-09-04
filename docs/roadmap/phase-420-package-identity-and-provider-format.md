@@ -187,31 +187,153 @@ is one road.
       (`emit_package_xml.rs`, `new_system.rs`, `scaffold.rs`), for the same
       reason — a freshly scaffolded package must stay colcon-buildable until W4.
 
-- [ ] **W4 — re-key the colcon extension.** Entry points become
-      `ros.nros_cmake` / `ros.nros_cargo`; the 30 `ros.nros.<lang>.<platform>`
-      keys and the `startswith("ros.nros.")` gate go. File the drift as an issue
-      first so the history records that the path was dead, not merely renamed.
-      **Acceptance:** `colcon build` on a workspace of nano-ros packages selects
-      `NrosBuildTask`; the same workspace under a stock colcon reports unknown
-      build type rather than attempting an install.
+- [x] **W4 — re-key the colcon extension.** (landed 2026-09-04) Entry points
+      became `ros.nros_cargo` / `ros.nros_cmake`; the 30
+      `ros.nros.<lang>.<platform>` keys and the `startswith("ros.nros.")` gate
+      are gone. **Acceptance, met**, measured with the host's own colcon 0.20.1
+      on a two-package workspace: `colcon list` reports `(ros.nros_cargo)` /
+      `(ros.nros_cmake)`; with the extension registered `colcon build` selects
+      `NrosBuildTask` for both, and a full cargo-path build installs the binary,
+      the `package.xml` and the ament index marker, with `colcon test` running
+      it through `NrosTestTask`; with the extension absent the same workspace
+      reports `No task extension to 'build' a 'ros.nros_cargo' package` and
+      installs nothing.
 
-      **W3 left three things for this wave to move, in this wave's commit:**
+      **The 30 keys became 2, and the two facts they used to carry moved to
+      where they live.** Deleting the `ros.nros.<lang>.<platform>` string
+      deleted the only place `lang` and `platform` were ever written down, so
+      each had to be re-sourced (`colcon_nano_ros/manifest.py`, one reader for
+      both):
+
+      - **build system ← `<build_type>`**, which is that field's whole job. It
+        is strictly better than the retired `lang` token: W3 measured 19 *Rust*
+        packages that are `nros_cmake`, and `lang == "rust"` would have routed
+        every Zephyr and ThreadX leaf to `cargo build` instead of west/cmake.
+      - **platform ← `<export><nano_ros deploy=…/></export>`**, the RFC-0087 D3
+        consumption tag, with absent meaning the host — the identical rule
+        `_nros_deploy_to_platform` already applies in
+        `cmake/NanoRosPackageXml.cmake`, not a new default invented here.
+      - **language is not recoverable, and was not faked.** `nros_cmake` says
+        CMake; nothing in any manifest says C versus C++. It turned out nothing
+        needed it: `_build_cmake` never read its `lang` argument, and the
+        augmentation's `_needs_c` / `_needs_cpp` were written and never read
+        (C/C++ bindings are CMake's `nano_ros_generate_interfaces()` job). The
+        one load-bearing question — does this workspace need Rust bindings —
+        is answered from evidence instead: a `nros_cargo` package always does,
+        and a `nros_cmake` package does when it carries a `Cargo.toml`.
+
+      **A silent wrong answer became a refusal.** `PLATFORM_TARGETS.get()`
+      returns `None` for an unmapped platform, and `None` is also the spelling
+      for *native*, so a package deploying somewhere the task cannot
+      cross-compile to would have built a host binary and reported success.
+      The cargo path now names the value and the known set and returns 1.
+
+      **The scaffolder was the one real producer of the dead spelling.**
+      `cargo-nano-ros/src/scaffold.rs` emitted `nros.<lang>.<platform>` for
+      Rust — so the 30 keys were reachable in principle by a scaffolded
+      package, just never by a tracked one. Moving it to `nros_cargo` forced a
+      second change: the `<nano_ros deploy= rmw=/>` tuple is now emitted for
+      **every** language, not only C/C++, because the platform no longer rides
+      in the build type and a `--platform freertos` Rust package that declared
+      no `deploy` would build a host binary. `scaffold_component_rust` also
+      gained an `<export><build_type>` — it emitted none at all, which
+      `catkin_pkg` reports as `catkin`, the `owned-declares-nothing` claim by
+      omission that W2 named, and its C and C++ siblings already declared one.
+
+      **W3's three held-back items moved here, in this wave's commit:**
       `examples/templates/local-msg-package/src/rust_consumer/package.xml`
-      (`ament_cargo` → `nros_cargo`), which is what empties
-      `scripts/build-type-spelling-baseline.json` to zero; the scaffolder
-      emitters `emit_package_xml.rs` / `new_system.rs` / `scaffold.rs`; and this
-      doc's status line. All three are the same hazard — a package that declares
-      `nros_*` before the entry points exist is skipped by colcon with a warning,
-      not refused loudly, so the regression is quiet.
+      (`ament_cargo` → `nros_cargo`), which empties
+      `scripts/build-type-spelling-baseline.json` to `{}` — the gate now reads
+      407 `package.xml` with **zero** grandfathered rows; the scaffolder
+      emitters `emit_package_xml.rs` (component `nros_cargo`, bringup
+      `nros_cmake`), `new_system.rs` (`ament_nros` → `nros_cmake`) and
+      `scaffold.rs`; and this doc's status line. `just colcon-parity` still
+      passes (3 packages finished, `install/lib/consumer/consumer` produced):
+      its assertion is on the `ament_cmake` C++ `consumer`, and `rust_consumer`
+      is skipped by a stock colcon exactly as it already was on the CI runner,
+      which installs no `colcon-cargo-ros2`.
 
-- [ ] **W5 — descriptor derivation.** Derive names (from the announcement),
-      cargo feature, cmake value, C define token, cffi feature and crate.
-      `check-derived-descriptor-fields`: a stated derivable field must equal its
-      derived value — a ratchet, so `cpp_define`'s historical spellings are
+      **`scripts/docs/migrate-example-cmake-ament.py` was updated, not
+      deleted.** Its `package.xml` half wrote `<build_type>cmake` →
+      `ament_cmake`, which W3 made backwards; it now writes `nros_cmake`. The
+      CMake shape it emits is unchanged — `find_package(nano_ros)` +
+      `ament_package()` is still RFC-0048's ament *shape*, and only the
+      ownership claim moved. Deleting it was the other option, and lost:
+      `packages/testing/nros-tests/tests/example_shape.rs` still names it as
+      the remedy for a leaf carrying a superseded CMakeLists, so it has to keep
+      working. A dry run over the 27 native leaves reports 27 already-ament, 0
+      migrated — a no-op, as it should be.
+
+      **Not done: the drift issue.** This item asked for one filed first, so
+      the history records the path was dead rather than merely renamed.
+      `just issue-new` reserves an id by pushing a ref to origin, which this
+      change's session could not do; the record lives here and in
+      `colcon_nano_ros/manifest.py` instead.
+
+- [x] **W5 — descriptor derivation.** (landed 2026-09-04) Derive names (from
+      the announcement), cargo feature, cmake value, C define token, cffi
+      feature and crate. `check-derived-descriptor-fields`: a stated derivable
+      field must equal its derived value — a ratchet, so history's spellings are
       grandfathered and new drift is refused. New descriptors state only
       non-derivable facts; an absent descriptor means every default applies.
-      **Acceptance:** deleting the six derivable fields from one existing rmw
-      descriptor changes no generated output.
+      **Acceptance, met:** the five derivable fields were deleted from ALL FOUR
+      rmw descriptors (20 lines) and the generated `rmw_table.rs` is
+      byte-identical — `rmw_cmake_dispatch_is_current` still passes against the
+      committed `cmake/NanoRosRmwDispatch.cmake`, which is the same claim one
+      lowering further down.
+
+      **`crate` is the one field that resisted, and the RFC's table is wrong
+      about it.** D4 says it derives from "the package's `Cargo.toml`". Measured
+      across the four backends, that is right for one and a half:
+      `nros-rmw-zenoh` names its own crate; `nros-rmw-xrce` ships **no
+      `Cargo.toml` at all** and its `[rmw.provides.cargo].crate` names a SIBLING
+      package (`nros-rmw-xrce-cffi`, the cffi shim beside it);
+      `nros-rmw-cyclonedds` states `sys_crate = "cyclonedds-sys"`, also not its
+      own; `nros-rmw-uorb` is C++ and states neither. A rule that holds for two
+      of four is a convention with exceptions, which is not a convention — so
+      `crate` stays authored, and the xrce row is the ratchet's one
+      grandfathered entry rather than a fact explained away. (`cpp_define` never
+      entered the derived set; its own comment says why.)
+
+      **`names` is the ONLY field the announcement can source, and only for a
+      single-entry package.** Boards are the counterexample:
+      `nros-board-nuttx-qemu` declares two `[[board]]` entries and announces
+      seven names in one flat list, and `<nano_ros_provides>` carries no
+      boundary that could say which four are the ARM variant's. So **rmw went
+      nameless and board did not**, and `board_crate` — which every board that
+      states one states correctly — is deletable only once the reader in
+      `nros-cli-core/orchestration/board_descriptor.rs` derives it. That is a
+      one-crate change this wave did not own; the gate covers the field
+      meanwhile, so a wrong `board_crate` fails now even though a redundant one
+      is still tolerated.
+
+      **`check-provider-announcements` grew A2n rather than a second
+      mechanism.** phase-421 W4's `(glob, extract)` row shape already carried
+      `extract=None`; W5 gives it a meaning that binds: a nameless family's
+      descriptor must declare NO names anywhere, searched over the whole
+      document rather than one known table. Deleting A2's comparison without
+      that would have left `names` re-addable with no reader and no gate —
+      worse than a disagreement, because it can be edited with no symptom.
+
+      **The derivation has one implementation and three readers, cross-checked
+      rather than trusted.** `cargo-nano-ros/src/derived_descriptor.rs` is
+      compiled into both the library and `build.rs` (`#[path]`), so the
+      generator cannot be a second spelling. Its cheap announcement scanner —
+      a build script may not gain a dependency without moving `Cargo.lock` — is
+      asserted equal to `package_xml::PackageXml` (quick-xml) on every in-tree
+      backend by `descriptor_names_come_from_the_package_xml_reader`. The gate's
+      Python copy is a checker, never a producer. That is the shape CLAUDE.md
+      demands after the rmw parity map and the vtable sat green and disagreed
+      by 25 symbols.
+
+      **Two gates outside the wave's file list had to move with the schema**,
+      recorded here because a gate left behind is how a schema change becomes a
+      red main: `check-rmw-descriptors` required the four derivable fields to be
+      PRESENT (S1) and read `names` out of the descriptor (S2/S3), so it failed
+      on all four descriptors the moment they shrank. S1 now requires
+      `cpp_define` alone, S2 claims names from the announcement, and S3 is
+      retired — "the canonical name is the first one" became structural when
+      `build.rs` started taking the first announcement.
 
 - [ ] **W6 — the search path.** `[workspace] package_paths` in `nros.toml` plus
       `NROS_PACKAGE_PATH`, nano-ros tree first, shadowing **reported**:
@@ -220,10 +342,77 @@ is one road.
       a same-named provider in two roots produces a printed shadowing report
       rather than a silent winner.
 
-- [ ] **W7 — selection verbs.** `nros build --packages-select` /
-      `--packages-up-to`, colcon semantics, over the existing topological order.
-      **Acceptance:** `--packages-up-to <entry>` builds the entry and its
-      dependencies and nothing else.
+- [x] **W7 — selection verbs.** (landed 2026-09-04) `nros build
+      --packages-select` / `--packages-up-to`, colcon semantics, over the
+      existing topological order.
+      **Acceptance, met:** `up_to_narrows_the_generated_cargo_root_to_the_closure`
+      and `a_selection_narrows_the_generated_cmake_root` assert the closure and
+      the "nothing else" on both root-emitting drivers.
+
+      Landed as one pure function, `builder::discover::select(&Discovered,
+      &Selection)`, applied in `plan_builds` as stage 1b. **It filters the order
+      stage 1 already returned and adds no second sort** — a subset of a
+      topological order, taken in place, is a topological order of the subset,
+      and `a_selection_keeps_the_topological_order_it_was_given` asserts the
+      filter does not disturb it. `topological_order`'s output expressed the
+      filter with nothing missing.
+
+      Three decisions, two of them divergences from colcon, both toward failing
+      instead of continuing:
+
+      - **An unmatched name is an ERROR, not colcon's warning.** colcon can be
+        agnostic because the name might legitimately live in an install prefix.
+        D8 says nano-ros has none — the selection resolves against the source
+        tree and nothing else — so an unmatched name is a typo or a stale
+        script, and warning past it narrows the build to something nobody asked
+        for and then reports success. `plan::resolve` already answers an unknown
+        IMAGE this way, with the available names in the message; this is the
+        same answer one noun over.
+      - **An incomplete selection is REFUSED.** This is the wave's headline
+        question and colcon's answer does not port. `--packages-select A` where
+        A needs B is colcon's way to rebuild one package against an existing
+        install; here there is no install, one merged root, and per-target
+        static objects — B would simply be absent from the generated
+        `[workspace] members` / `add_subdirectory` set, and the failure would
+        surface a layer down as an unresolved path dependency or a missing CMake
+        target, which is an error about the wrong thing. So the `<depend>`
+        closure of the FINAL set is checked, the hole is named, and
+        `--packages-up-to <the same names>` is offered as the fix. The check
+        runs over the final set rather than over `--packages-select` alone
+        because an up-to closure is complete by construction and intersecting it
+        is not (`an_intersection_that_punches_a_hole_is_still_refused`).
+      - **The two flags compose as their INTERSECTION**, which is colcon's own
+        composition — each is an independent deselecting filter — and the only
+        one under which adding a flag can never widen a build. A disjoint pair
+        is an error naming the composition rather than an empty build.
+
+      Two seams worth recording, because each is a place the obvious placement
+      is wrong:
+
+      - **Images are collected BEFORE the selection is applied.** An image is
+        declared by a bringup's `system.toml` and is a property of the
+        workspace, exactly as the generated cargo root's member list is
+        (phase-383 W9.b's reasoning). Narrowing first makes
+        `--packages-select talker_pkg` answer "this workspace declares no
+        `[image.*]`".
+      - **`check_declared_depends` keeps the UNNARROWED set.** It walks the
+        whole tree itself for `<depend>` declarations, so handing it the
+        narrowed name set would report every deliberately-dropped package as an
+        unresolved dependency.
+
+      Known blind spot, stated rather than papered over: the closure check sees
+      the `<depend>` graph, not a cargo `path` dependency between two crates
+      that declare nothing in `package.xml`. A `cargo_only` member carries no
+      `depends` by design ("cargo resolves its own dependency order from
+      `Cargo.toml`"), so dropping one is still loud — the noise just comes from
+      cargo rather than from here.
+
+      One consequence for a cargo workspace: a narrowed selection narrows the
+      generated root's member list, which changes `Cargo.lock`. Where `--locked`
+      is injected (the repo's `scripts/bin/cargo` shim) that is a hard error
+      rather than a silent re-resolve, which is the behaviour issue 0359 wants.
+      Generated entry packages are build output of the images being built, not
+      discovered packages, so they are not selectable and are not narrowed.
 
 - [ ] **W8 — vendor packages, proven by one.** `check-vendor-fetch-pinned`:
       every `FetchContent_Declare` / `ExternalProject_Add` in a discovered

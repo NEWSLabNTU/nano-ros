@@ -12,9 +12,14 @@ from colcon_core.plugin_system import satisfies_version
 from colcon_core.shell import create_environment_hook
 from colcon_core.task import TaskExtensionPoint, run
 
+from colcon_nano_ros import manifest
+
 logger = colcon_logger.getChild(__name__)
 
-# Platform → Rust target triple mapping.
+# Platform → Rust target triple mapping. The keys are `deploy=` values
+# (RFC-0087 D3), which is where the platform now comes from — see
+# `colcon_nano_ros.manifest`. `baremetal` has no in-tree `deploy=` user today
+# and is kept because `_nros_deploy_to_platform` accepts any non-host name.
 # None means native (no --target flag).
 PLATFORM_TARGETS = {
     "native": None,
@@ -36,8 +41,10 @@ PLATFORM_TOOLCHAINS = {
     "zephyr": None,  # Zephyr uses west build
 }
 
-# Platform (build_type token) → NANO_ROS_PLATFORM CMake cache value.
-# Falls back to the token itself when unmapped.
+# Platform (`deploy=` value) → NANO_ROS_PLATFORM CMake cache value. `native`
+# → `posix` is the identical mapping `_nros_deploy_to_platform` makes in
+# cmake/NanoRosPackageXml.cmake. Falls back to the value itself when unmapped,
+# so CMake refuses an unknown platform module by name rather than here.
 PLATFORM_CMAKE = {
     "native": "posix",
     "freertos": "freertos_armcm3",
@@ -84,34 +91,21 @@ SDK_ENV_VARS = (
 )
 
 
-def parse_nros_type(pkg_type):
-    """Parse 'ros.nros.<lang>.<platform>' into (lang, platform).
-
-    >>> parse_nros_type('ros.nros.rust.freertos')
-    ('rust', 'freertos')
-    >>> parse_nros_type('ros.nros.c.native')
-    ('c', 'native')
-    """
-    parts = pkg_type.split(".")
-    if len(parts) != 4 or parts[0] != "ros" or parts[1] != "nros":
-        raise ValueError(
-            f"Invalid nros build type: '{pkg_type}'. Expected 'ros.nros.<lang>.<platform>'."
-        )
-    return parts[2], parts[3]
-
-
 # Lock file to ensure workspace-level binding generation runs only once
 _bindings_generated = False
 
 
 class NrosBuildTask(TaskExtensionPoint):
-    """Build task for nano-ros packages (nros.<lang>.<platform>).
+    """Build task for nano-ros packages (`nros_cargo` / `nros_cmake`).
 
-    Supports Rust (cargo), C (cmake), and C++ (cmake) packages
-    targeting native, FreeRTOS, bare-metal, NuttX, ThreadX, and Zephyr.
+    Registered under two entry points, `ros.nros_cargo` and `ros.nros_cmake`
+    (RFC-0087 D2 / phase-420 W4), replacing the 30 `ros.nros.<lang>.<platform>`
+    keys nothing ever declared. Two facts drive the build and each comes from
+    the package's own manifest — see `colcon_nano_ros.manifest`:
 
-    The build type is encoded in package.xml:
-        <build_type>nros.rust.freertos</build_type>
+    * `<build_type>` says which build system runs (cargo or CMake);
+    * `<export><nano_ros deploy=…/></export>` says which platform, absent
+      meaning the host, the same rule `cmake/NanoRosPackageXml.cmake` applies.
 
     Board-specific configuration is handled by the board crate (Rust)
     or CMake platform module (C/C++), not by this task.
@@ -125,27 +119,27 @@ class NrosBuildTask(TaskExtensionPoint):
         pkg = self.context.pkg
         args = self.context.args
 
-        lang, platform = parse_nros_type(pkg.type)
-        logger.info(f"Building nros package '{pkg.name}' (lang={lang}, platform={platform})")
+        path = manifest.build_path(pkg.type)
+        platform = manifest.deploy(pkg.path)
+        logger.info(f"Building nros package '{pkg.name}' (build={path}, platform={platform})")
 
         # Generate workspace-level bindings (once, first package triggers)
-        rc = await self._generate_bindings(pkg, args, lang)
+        rc = await self._generate_bindings(pkg, args)
         if rc:
             return rc
 
+        # Zephyr is a build ROOT, not a language: `west` drives both the C and
+        # the Rust leaves there, so it is dispatched before the build path.
         if platform == "zephyr":
-            return await self._build_zephyr(pkg, args, lang, additional_hooks, skip_hook_creation)
-        elif lang == "rust":
+            return await self._build_zephyr(pkg, args, additional_hooks, skip_hook_creation)
+        elif path == "cargo":
             return await self._build_rust(pkg, args, platform, additional_hooks, skip_hook_creation)
-        elif lang in ("c", "cpp"):
-            return await self._build_cmake(
-                pkg, args, lang, platform, additional_hooks, skip_hook_creation
-            )
         else:
-            logger.error(f"Unknown language: {lang}")
-            return 1
+            return await self._build_cmake(
+                pkg, args, platform, additional_hooks, skip_hook_creation
+            )
 
-    async def _generate_bindings(self, pkg, args, lang):
+    async def _generate_bindings(self, pkg, args):
         """Generate workspace-level interface bindings (once per workspace).
 
         Checks NrosBindingAugmentation for collected interface dependencies,
@@ -215,6 +209,16 @@ class NrosBuildTask(TaskExtensionPoint):
 
     async def _build_rust(self, pkg, args, platform, additional_hooks, skip_hook_creation):
         """Build a Rust nros package with cargo."""
+        # An unmapped platform used to fall through `PLATFORM_TARGETS.get()`
+        # to `None`, which is the spelling for *native* — so a package
+        # deploying somewhere this task cannot cross-compile to would build
+        # a host binary and report success. Refuse instead.
+        if platform not in PLATFORM_TARGETS:
+            logger.error(
+                f"Package '{pkg.name}' declares deploy='{platform}', which this task "
+                f"cannot build. Known: {', '.join(sorted(PLATFORM_TARGETS))}."
+            )
+            return 1
         pkg_path = Path(pkg.path)
         install_base = Path(args.install_base)
 
@@ -287,7 +291,7 @@ class NrosBuildTask(TaskExtensionPoint):
 
         return 0
 
-    async def _build_zephyr(self, pkg, args, lang, additional_hooks, skip_hook_creation):
+    async def _build_zephyr(self, pkg, args, additional_hooks, skip_hook_creation):
         """Build a Zephyr nros package with west build."""
         pkg_path = Path(pkg.path).resolve()
         install_base = Path(args.install_base).resolve()
@@ -448,7 +452,7 @@ class NrosBuildTask(TaskExtensionPoint):
             logger.warning(f"cargo metadata failed: {e}")
             return self._find_binaries_fallback(pkg_path, target)
 
-    async def _build_cmake(self, pkg, args, lang, platform, additional_hooks, skip_hook_creation):
+    async def _build_cmake(self, pkg, args, platform, additional_hooks, skip_hook_creation):
         """Build a C/C++ nros package with CMake."""
         pkg_path = Path(pkg.path).resolve()
         install_base = Path(args.install_base).resolve()
@@ -475,8 +479,8 @@ class NrosBuildTask(TaskExtensionPoint):
 
         # RMW + platform for the NanoRos CMake config. RMW comes from the
         # single source (NANO_ROS_RMW env; Phase 172.M) instead of a hardcoded
-        # `zenoh`; platform from the parsed build_type token instead of a
-        # hardcoded `freertos_armcm3`.
+        # `zenoh`; platform from the package's own `<nano_ros deploy=…/>`
+        # (phase-420 W4) instead of a build_type token nothing declared.
         cmd.append(f"-DNANO_ROS_RMW={resolve_rmw()}")
         cmd.append(f"-DNANO_ROS_PLATFORM={PLATFORM_CMAKE.get(platform, platform)}")
 

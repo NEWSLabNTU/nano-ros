@@ -63,8 +63,18 @@ const DEFAULT_VERSION: &str = "0.0.0";
 const DEFAULT_LICENSE: &str = "Apache-2.0";
 const DEFAULT_MAINTAINER_EMAIL: &str = "dev@example.com";
 const DEFAULT_MAINTAINER_NAME: &str = "Developer";
-const DEFAULT_BUILD_TYPE_COMPONENT: &str = "ament_cargo";
-const DEFAULT_BUILD_TYPE_BRINGUP: &str = "ament_cmake";
+// RFC-0087 D2 / phase-420 W4 — a generated package is nano-ros-owned, so it
+// says so. Held back through W3 on purpose: a package declaring `nros_*` is
+// skipped with a warning by a colcon that has no `ros.nros_cargo` task, and
+// the entry points only exist as of W4 (`packages/cli/colcon-cargo-ros2`).
+//
+// A component is cargo-rooted. A bringup owns no build file at all — it
+// generates a cargo root OR a cmake root per image — and this renderer cannot
+// see the images, so it takes W3's tie-break: where a bringup's images span
+// both drivers, cmake wins, because corrosion makes cargo consumable from
+// cmake and nothing makes cmake consumable from cargo.
+const DEFAULT_BUILD_TYPE_COMPONENT: &str = "nros_cargo";
+const DEFAULT_BUILD_TYPE_BRINGUP: &str = "nros_cmake";
 const DEFAULT_DESCRIPTION_BRINGUP_FMT: &str = "Generated bringup package for ";
 
 // ---------------------------------------------------------------------------
@@ -485,6 +495,33 @@ build_type   = "ament_cargo"
         assert_eq!(xml, expected);
     }
 
+    /// RFC-0087 D2 / phase-420 W4 — a component with no authored `build_type`
+    /// takes the OWNED default, not an ament one. The golden above pins the
+    /// pass-through of an authored value, which cannot see this: it is the
+    /// DEFAULT that moved, and the default is what every scaffolded and
+    /// generated package gets.
+    #[test]
+    fn an_unauthored_build_type_defaults_to_the_owned_spelling() {
+        let td = tempdir();
+        write_file(
+            td.path(),
+            "Cargo.toml",
+            r#"
+[package]
+name = "talker_pkg"
+version = "0.1.0"
+
+[package.metadata.nros.component]
+default_namespace = "/demo"
+"#,
+        );
+        let xml = render_for_pkg(td.path()).expect("render");
+        assert!(
+            xml.contains("<build_type>nros_cargo</build_type>"),
+            "a generated component is nano-ros-owned; got:\n{xml}"
+        );
+    }
+
     #[test]
     fn emit_package_xml_for_bringup_pkg_from_system_toml() {
         let td = tempdir();
@@ -522,7 +559,7 @@ name = "listener"
              \x20\x20<exec_depend>talker_pkg</exec_depend>\n\
              \n\
              \x20\x20<export>\n\
-             \x20\x20\x20\x20<build_type>ament_cmake</build_type>\n\
+             \x20\x20\x20\x20<build_type>nros_cmake</build_type>\n\
              \x20\x20</export>\n\
              </package>\n",
         );

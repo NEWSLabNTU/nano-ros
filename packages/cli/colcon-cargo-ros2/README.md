@@ -159,6 +159,33 @@ $ colcon list
 my_robot_node   src/my_robot_node   (ament_cargo)
 ```
 
+### nano-ros-owned packages
+
+A package only nano-ros can build — an entry, a board, an RMW / platform
+provider, a bringup — declares its own build type instead of borrowing ament's
+(RFC-0087 D2):
+
+| `<build_type>` | Build path |
+| --- | --- |
+| `nros_cargo` | cargo |
+| `nros_cmake` | CMake (or `west`, when the package deploys to Zephyr) |
+
+That is the whole vocabulary: there is **no** key per language or per platform.
+Which platform a package targets is read from its own consumption tag, and an
+absent one means the host:
+
+```xml
+<export>
+  <build_type>nros_cmake</build_type>
+  <nano_ros deploy="threadx" board="riscv64-qemu" rmw="zenoh"/>
+</export>
+```
+
+Without this extension installed, a colcon build of such a package refuses it
+by name (`No task extension to 'build' a 'ros.nros_cargo' package`) rather than
+attempting to install firmware into a prefix — which is the point of the
+spelling.
+
 ## Building
 
 ### Basic Commands

@@ -300,7 +300,13 @@ fn render_package_xml(pkg_name: &str, components: &[String]) -> String {
         s.push_str(&format!("  <exec_depend>{c}</exec_depend>\n"));
     }
     s.push_str("  <export>\n");
-    s.push_str("    <build_type>ament_nros</build_type>\n");
+    // RFC-0087 D2 / phase-420 W4. `ament_nros` was an improvised spelling no
+    // colcon extension ever registered, and it named neither an ament build
+    // type nor a build system. A bringup owns no build file — it generates a
+    // cargo root OR a cmake root per image — so it takes W3's tie-break:
+    // cmake wins where a bringup's images span both drivers, because
+    // corrosion makes cargo consumable from cmake and not the reverse.
+    s.push_str("    <build_type>nros_cmake</build_type>\n");
     s.push_str("  </export>\n");
     s.push_str("</package>\n");
     s

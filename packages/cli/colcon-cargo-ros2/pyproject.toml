@@ -58,38 +58,19 @@ Changelog = "https://github.com/azewiusz/colcon-nano-ros/releases"
 "nros" = "colcon_nano_ros.nros_augmentation:NrosBindingAugmentation"
 
 [project.entry-points."colcon_core.task.build"]
-# nano-ros embedded/native build types (nros.<lang>.<platform>)
-"ros.nros.rust.native" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
-"ros.nros.rust.freertos" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
-"ros.nros.rust.baremetal" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
-"ros.nros.rust.nuttx" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
-"ros.nros.rust.threadx" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
-"ros.nros.rust.zephyr" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
-"ros.nros.c.native" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
-"ros.nros.c.freertos" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
-"ros.nros.c.zephyr" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
-"ros.nros.c.nuttx" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
-"ros.nros.cpp.native" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
-"ros.nros.cpp.freertos" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
-"ros.nros.cpp.zephyr" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
-"ros.nros.cpp.nuttx" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+# RFC-0087 D2 / phase-420 W4 — two keys, not fifteen. colcon derives a package
+# type as `ros.` + <build_type>, so these are exactly the two build types a
+# nano-ros-owned package declares. They replace 30 `ros.nros.<lang>.<platform>`
+# keys that no `package.xml` in the tree ever declared, so the path was dead.
+# Language and platform no longer ride in the key: `<build_type>` says which
+# build system runs, and `<export><nano_ros deploy=.../></export>` says which
+# platform (see colcon_nano_ros/manifest.py).
+"ros.nros_cargo" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
+"ros.nros_cmake" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
 
 [project.entry-points."colcon_core.task.test"]
-# nano-ros test tasks
-"ros.nros.rust.native" = "colcon_nano_ros.task.nros.test:NrosTestTask"
-"ros.nros.rust.freertos" = "colcon_nano_ros.task.nros.test:NrosTestTask"
-"ros.nros.rust.baremetal" = "colcon_nano_ros.task.nros.test:NrosTestTask"
-"ros.nros.rust.nuttx" = "colcon_nano_ros.task.nros.test:NrosTestTask"
-"ros.nros.rust.threadx" = "colcon_nano_ros.task.nros.test:NrosTestTask"
-"ros.nros.rust.zephyr" = "colcon_nano_ros.task.nros.test:NrosTestTask"
-"ros.nros.c.native" = "colcon_nano_ros.task.nros.test:NrosTestTask"
-"ros.nros.c.freertos" = "colcon_nano_ros.task.nros.test:NrosTestTask"
-"ros.nros.c.zephyr" = "colcon_nano_ros.task.nros.test:NrosTestTask"
-"ros.nros.c.nuttx" = "colcon_nano_ros.task.nros.test:NrosTestTask"
-"ros.nros.cpp.native" = "colcon_nano_ros.task.nros.test:NrosTestTask"
-"ros.nros.cpp.freertos" = "colcon_nano_ros.task.nros.test:NrosTestTask"
-"ros.nros.cpp.zephyr" = "colcon_nano_ros.task.nros.test:NrosTestTask"
-"ros.nros.cpp.nuttx" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+"ros.nros_cargo" = "colcon_nano_ros.task.nros.test:NrosTestTask"
+"ros.nros_cmake" = "colcon_nano_ros.task.nros.test:NrosTestTask"
 
 [tool.maturin]
 bindings = "pyo3"
