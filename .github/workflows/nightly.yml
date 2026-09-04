@@ -253,30 +253,7 @@ jobs:
             nros-cli-${{ runner.os }}-
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
-        run: |
-          source ./activate.sh
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
-          # issue 0797 — `--bin nros` does NOT build `nros-launch-resolve`: the
-          # helper is its own cargo workspace (RFC-0060 layer 2). Without it
-          # `nros sync` refuses any workspace with an unresolved SystemModel,
-          # which aborted five of eight nightly jobs in 2-5 s — nightly looked
-          # like it exercised six platforms and exercised one.
-          #
-          # The refusal is CORRECT and must not be loosened: issue 0409 records
-          # that proceeding without a resolver let a stale one silently drop
-          # every `params` projection from 22 models.
-          #
-          # No copying needed. `nros` finds it by walking up from its own path
-          # (ws.rs `resolver_from`, arm 3: `<repo>/packages/cli/
-          # nros-launch-resolve/target/release/`), which is exactly where this
-          # recipe builds — `nros` lands in `packages/cli/target/release`, four
-          # ancestors below the repo root. Verified against that code, because
-          # the error message says "next to the `nros` binary" (arm 2) and that
-          # phrasing would send you to copy the binary instead.
-          just setup-launch-resolve
-
+        uses: ./.github/actions/setup-nros-cli
       - name: just ${{ matrix.plat }} setup
         run: |
           source ./activate.sh
@@ -511,30 +488,7 @@ jobs:
             nros-cli-${{ runner.os }}-
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
-        run: |
-          source ./activate.sh
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
-          # issue 0797 — `--bin nros` does NOT build `nros-launch-resolve`: the
-          # helper is its own cargo workspace (RFC-0060 layer 2). Without it
-          # `nros sync` refuses any workspace with an unresolved SystemModel,
-          # which aborted five of eight nightly jobs in 2-5 s — nightly looked
-          # like it exercised six platforms and exercised one.
-          #
-          # The refusal is CORRECT and must not be loosened: issue 0409 records
-          # that proceeding without a resolver let a stale one silently drop
-          # every `params` projection from 22 models.
-          #
-          # No copying needed. `nros` finds it by walking up from its own path
-          # (ws.rs `resolver_from`, arm 3: `<repo>/packages/cli/
-          # nros-launch-resolve/target/release/`), which is exactly where this
-          # recipe builds — `nros` lands in `packages/cli/target/release`, four
-          # ancestors below the repo root. Verified against that code, because
-          # the error message says "next to the `nros` binary" (arm 2) and that
-          # phrasing would send you to copy the binary instead.
-          just setup-launch-resolve
-
+        uses: ./.github/actions/setup-nros-cli
       - name: Provision Zephyr sources via nros
         run: |
           source ./activate.sh
@@ -628,30 +582,7 @@ jobs:
             nros-cli-${{ runner.os }}-
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
-        run: |
-          source ./activate.sh
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
-          # issue 0797 — `--bin nros` does NOT build `nros-launch-resolve`: the
-          # helper is its own cargo workspace (RFC-0060 layer 2). Without it
-          # `nros sync` refuses any workspace with an unresolved SystemModel,
-          # which aborted five of eight nightly jobs in 2-5 s — nightly looked
-          # like it exercised six platforms and exercised one.
-          #
-          # The refusal is CORRECT and must not be loosened: issue 0409 records
-          # that proceeding without a resolver let a stale one silently drop
-          # every `params` projection from 22 models.
-          #
-          # No copying needed. `nros` finds it by walking up from its own path
-          # (ws.rs `resolver_from`, arm 3: `<repo>/packages/cli/
-          # nros-launch-resolve/target/release/`), which is exactly where this
-          # recipe builds — `nros` lands in `packages/cli/target/release`, four
-          # ancestors below the repo root. Verified against that code, because
-          # the error message says "next to the `nros` binary" (arm 2) and that
-          # phrasing would send you to copy the binary instead.
-          just setup-launch-resolve
-
+        uses: ./.github/actions/setup-nros-cli
       - name: Provision Zephyr sources via nros
         run: |
           source ./activate.sh
@@ -726,30 +657,7 @@ jobs:
             nros-cli-${{ runner.os }}-
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
-        run: |
-          source ./activate.sh
-          git submodule update --init --depth 1 packages/cli/third-party/play_launch
-          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
-          echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
-          # issue 0797 — `--bin nros` does NOT build `nros-launch-resolve`: the
-          # helper is its own cargo workspace (RFC-0060 layer 2). Without it
-          # `nros sync` refuses any workspace with an unresolved SystemModel,
-          # which aborted five of eight nightly jobs in 2-5 s — nightly looked
-          # like it exercised six platforms and exercised one.
-          #
-          # The refusal is CORRECT and must not be loosened: issue 0409 records
-          # that proceeding without a resolver let a stale one silently drop
-          # every `params` projection from 22 models.
-          #
-          # No copying needed. `nros` finds it by walking up from its own path
-          # (ws.rs `resolver_from`, arm 3: `<repo>/packages/cli/
-          # nros-launch-resolve/target/release/`), which is exactly where this
-          # recipe builds — `nros` lands in `packages/cli/target/release`, four
-          # ancestors below the repo root. Verified against that code, because
-          # the error message says "next to the `nros` binary" (arm 2) and that
-          # phrasing would send you to copy the binary instead.
-          just setup-launch-resolve
-
+        uses: ./.github/actions/setup-nros-cli
       - name: Provision Zephyr sources via nros
         run: |
           source ./activate.sh

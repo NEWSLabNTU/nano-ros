@@ -1,0 +1,49 @@
+name: Build the in-tree nros CLI
+description: >
+  phase-413 W5 — build `packages/cli/target/release/nros` and put it on
+  `$GITHUB_PATH`, plus the `nros-launch-resolve` helper the CLI refuses to work
+  without.
+
+  This body was copied VERBATIM in four `nightly.yml` jobs (platform,
+  zephyr-example-matrix, zephyr-dual-line-summary, zephyr-copy-out). Four
+  copies of a 24-line block is four places to update when the CLI's build
+  changes, and the phase's own finding is that a workflow which hand-rolls what
+  a verb does hides defects in the verb — issue 0992 was invisible to the queue
+  for exactly that reason.
+
+  DELIBERATELY NOT `just _setup-common`, which already does all three of these
+  steps and is what `just setup <tier>` calls. The only delta is `--depth 1` on
+  the submodule init: `_setup-common` clones play_launch in full. Routing
+  through the verb is the RIGHT end state and is what W5 asks for, but it
+  changes clone cost in a lane that is currently red, and a behaviour change
+  landed into a lane with no signal cannot be verified. So this step is a
+  faithful de-duplication with no behavioural delta, and the verb conversion is
+  left as its own change once W2 gets the lane green.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        source ./activate.sh
+        git submodule update --init --depth 1 packages/cli/third-party/play_launch
+        cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+        echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
+        # issue 0797 — `--bin nros` does NOT build `nros-launch-resolve`: the
+        # helper is its own cargo workspace (RFC-0060 layer 2). Without it
+        # `nros sync` refuses any workspace with an unresolved SystemModel,
+        # which aborted five of eight nightly jobs in 2-5 s — nightly looked
+        # like it exercised six platforms and exercised one.
+        #
+        # The refusal is CORRECT and must not be loosened: issue 0409 records
+        # that proceeding without a resolver let a stale one silently drop
+        # every `params` projection from 22 models.
+        #
+        # No copying needed. `nros` finds it by walking up from its own path
+        # (ws.rs `resolver_from`, arm 3: `<repo>/packages/cli/
+        # nros-launch-resolve/target/release/`), which is exactly where this
+        # recipe builds — `nros` lands in `packages/cli/target/release`, four
+        # ancestors below the repo root. Verified against that code, because
+        # the error message says "next to the `nros` binary" (arm 2) and that
+        # phrasing would send you to copy the binary instead.
+        just setup-launch-resolve
