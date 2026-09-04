@@ -697,19 +697,33 @@ fn boot_budget(platform: Platform) -> Duration {
 /// * `L < 30 s` — it cannot be heard in time, and the session closes at
 ///   `2L < 60 s`. Issue 0906's 10 s is in this set.
 ///
-/// 60 samples is exactly the frontier between those two: **every** client-lease
-/// configuration that cannot hold a session against the ROS router fails this
-/// cell, and no configuration that can hold one is asked to prove more than
-/// that. A shorter window would readmit part of the broken half (a 40 s window
-/// passes any `L >= 20 s`); a longer one costs wall clock to prove nothing new
-/// about this class.
+/// 60 samples was exactly the frontier between those two for DELIVERY: every
+/// client-lease configuration that cannot hold a session fails on delivery, and
+/// none that can hold one is asked to prove more. A shorter window readmits part
+/// of the broken half (a 40 s window passes any `L >= 20 s`).
+///
+/// **70, not 60, because a second assertion now shares this window** (issue
+/// 1056). `assert_no_session_churn` needs each node to be up for longer than one
+/// lapse period, and the worst case in the broken band is `L -> 30 s`, lapsing
+/// at `2L -> 59.8 s`. Against 60 samples the later node's uptime is ~60 s, so
+/// that lapse sits under a SUB-SECOND margin: miss it and the count is 3, which
+/// is a PASS on a build this cell exists to reject. 70 gives ~10 s of margin —
+/// about 17 % of the lapse period, against a lapse that is timer-driven and so
+/// jitters in milliseconds.
+///
+/// Priced deliberately: +10 s per cell (12 cells, ~2 min total) against the
+/// +60 s per cell (~12 min) that issue 1056 first proposed, and it buys the same
+/// acceptance. What the 120 s version buys beyond this is a SECOND lapse per
+/// node, i.e. tolerance of missing one entirely; there is no mechanism on record
+/// that misses a timer by ten seconds, so that is margin nobody has priced a
+/// need for.
 ///
 /// **The bound this does NOT cover, stated:** a defect whose first symptom is
 /// beyond 60 s of session life stays invisible here — the shipped 60 s lease's
 /// own lapse would be at 120 s, and a slow leak or a drift that needs minutes
 /// is out of reach of any per-cell window. Nothing in the suite covers that
 /// today; it wants a soak, not a bigger e2e budget.
-const PUBSUB_MIN_SAMPLES: usize = 60;
+const PUBSUB_MIN_SAMPLES: usize = 70;
 
 /// How long the pub/sub cell will wait for [`PUBSUB_MIN_SAMPLES`] samples.
 ///
@@ -720,13 +734,19 @@ const PUBSUB_MIN_SAMPLES: usize = 60;
 /// platform for the same reason [`boot_budget`] is: every term in that list is
 /// a property of the emulator and the board, not of the language.
 fn pubsub_window(platform: Platform) -> Duration {
+    // Every arm carries +10 s over its pre-1056 value, because this deadline and
+    // `PUBSUB_MIN_SAMPLES` are COUPLED: the wait must cover the talker's boot
+    // plus one second per sample, so raising the count to 70 without raising the
+    // deadline would have spent 10 s of the headroom that absorbs a slow QEMU
+    // boot, and paid for it in flakes rather than in wall clock. Headroom is
+    // unchanged, which is the point.
     match platform {
         // Cold arm-virt boot + slirp; the pre-1013 cell already gave this
         // platform 3x the others.
-        Platform::Nuttx => Duration::from_secs(150),
+        Platform::Nuttx => Duration::from_secs(160),
         // A native process — no emulator, no cold boot to absorb.
-        Platform::ThreadxLinux => Duration::from_secs(90),
-        _ => Duration::from_secs(120),
+        Platform::ThreadxLinux => Duration::from_secs(100),
+        _ => Duration::from_secs(130),
     }
 }
 
