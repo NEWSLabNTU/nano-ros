@@ -330,10 +330,15 @@ jobs:
           source ./activate.sh
           nros setup --tool esp32-qemu --sudo
 
-      - name: just ${{ matrix.plat }} setup
+      # The DISPATCHER spelling, not `just <plat> setup`. Only
+      # `just setup <scope>` runs `_setup-common`, which provisions the host
+      # facts every tier asserts (cross Rust targets, pinned corrosion, the CLI,
+      # the resolver, clang-format). The module spelling silently skips all of
+      # it, which is why this job needed a hand-rolled cross-target step below.
+      - name: just setup ${{ matrix.plat }}
         run: |
           source ./activate.sh
-          just ${{ matrix.plat }} setup
+          just setup ${{ matrix.plat }}
 
       # issue-0037 — the e2e fixture build shells out to `play_launch_parser`, a
       # separate binary the in-tree `cargo build --bin nros` does NOT produce.
@@ -354,22 +359,6 @@ jobs:
           apt-get clean 2>/dev/null || true
           rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale 2>/dev/null || true
           echo "after:";  df -h / | tail -1
-
-      # The image bakes SOME rust targets; it does not bake all of them, and this
-      # job had no step to reconcile that. `freertos` builds the s32z270
-      # workspace fixture, whose Cortex-R52 target is `armv8r-none-eabihf`, and
-      # cmake configure died with "Target armv8r-none-eabihf is not installed
-      # for toolchain" on every nightly.
-      #
-      # `just workspace rust-targets` reads `config/rust-targets.txt`, the SSoT
-      # issue 0833 established after a hand-copied second list drifted and made
-      # `just doctor` print [OK] on a host where the build could not configure.
-      # Installing from that same list is what keeps CI and a contributor's
-      # laptop provisioned identically.
-      - name: Install cross targets from config/rust-targets.txt
-        run: |
-          source ./activate.sh
-          just workspace rust-targets
 
       - name: Build (${{ matrix.plat }})
         run: |

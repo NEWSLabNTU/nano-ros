@@ -296,6 +296,7 @@ fast-serial: \
     workflow-indexed-apt \
     workflow-repo-env \
     workflow-runner-isolation \
+    workflow-setup-spelling \
     workspace-build-output \
     workspace-fmt \
     workspace-order \
@@ -1019,6 +1020,18 @@ config-knob-census:
 # its dnf/pacman/brew spellings and a presence probe sitting in the index.
 #
 # Buildless and source-only, so it belongs on the fast line.
+# A workflow must provision with `just setup <scope>`, not `just <scope> setup`.
+# Only the dispatcher runs `_setup-common`, where the host facts every tier
+# asserts get provisioned; the module spelling skips it silently and the lane
+# fails later on a precondition nothing provisioned. nightly's platform job did
+# exactly that and carried a hand-rolled cross-target step to compensate.
+#
+# The sibling of `check-preconditions-provisioned`: that one asks whether setup
+# PROVIDES the facts, this asks whether workflows INVOKE the form that runs them.
+[group("checks")]
+workflow-setup-spelling:
+    @python3 scripts/check-workflow-setup-spelling.py
+
 [group("main")]
 workflow-indexed-apt:
     @python3 scripts/check-workflow-indexed-apt.py
