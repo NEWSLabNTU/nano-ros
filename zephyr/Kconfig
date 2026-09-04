@@ -964,7 +964,7 @@ config NROS_XRCE_MAX_SUBSCRIBERS
 
 config NROS_XRCE_MAX_SERVICE_SERVERS
     int "Maximum concurrent service servers"
-    default 4
+    default -1
     help
       Maximum number of concurrent XRCE service servers.
       Maps to XRCE_MAX_SERVICE_SERVERS.

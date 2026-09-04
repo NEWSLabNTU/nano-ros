@@ -649,8 +649,20 @@ function(nros_resolve_knobs)
         _nros_resolve_derivable_knob(NROS_XRCE_MAX_SUBSCRIBERS
             "${CONFIG_NROS_XRCE_MAX_SUBSCRIBERS}" NROS_DERIVED_MAX_SUBSCRIBERS
             "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
-        _nros_resolve_knob(NROS_XRCE_MAX_SERVICE_SERVERS
-            "${CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS}")
+        # issue 1033 — from NROS_DERIVED_MAX_QUERYABLES, not from the raw
+        # SERVICE_SERVER count. An XRCE service server is the same thing a
+        # zenoh queryable is (a served request endpoint), and that derived
+        # value already carries ACTION_SERVER_QUERYABLES — an action server
+        # needs three of these underneath it, so the raw count would under-size
+        # every action image and fail at registration.
+        #
+        # Same caveat it carries for zenoh, and it is why this is a DEFAULT and
+        # not a ceiling: the parameter (6) and lifecycle (5) service families
+        # are enabled by a FEATURE the inventory cannot see, so an image
+        # carrying them must state the knob.
+        _nros_resolve_derivable_knob(NROS_XRCE_MAX_SERVICE_SERVERS
+            "${CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS}" NROS_DERIVED_MAX_QUERYABLES
+            "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
         _nros_resolve_knob(NROS_XRCE_MAX_SERVICE_CLIENTS
             "${CONFIG_NROS_XRCE_MAX_SERVICE_CLIENTS}")
         _nros_resolve_knob(NROS_XRCE_BUFFER_SIZE "${CONFIG_NROS_XRCE_BUFFER_SIZE}")

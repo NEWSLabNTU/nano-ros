@@ -196,9 +196,43 @@ at speed:
   {min}, which reserved the memory anyway while reading as though the knob had
   been honoured."*
 
-A clamp here is defensible (it is a C language floor, not a pool the caller
-asked to be empty) but it IS the thing that rule exists to catch, so it deserves
-a decision rather than a commit. That decision, plus the same question for
-service CLIENTS — where no audited aggregate exists at all, only the raw
-`NROS_ENTITY_COUNT_SERVICE_CLIENT`, which would under-size any action-client
-image — is what remains.
+**The clamp was unnecessary, and the reasoning above was wrong on every count.**
+Asked why a count with no user cannot be zero, each premise failed a test:
+
+* *"zero-length arrays aren't standard C"* — true of ISO C, and irrelevant here.
+  `slot_t arr[0];` MID-struct compiles on gnu11, c11 and gnu99; only
+  `-pedantic` rejects it, and nothing in this build passes `-pedantic`.
+* *the flexible-array-member error* this repo has hit came from an EMPTY define
+  (`arr[]`), not a zero one (`arr[0]`). These are plain arrays mid-struct, not
+  flexible array members. Two different errors that read alike.
+* *nothing indexes slot 0 unconditionally* — every walk is
+  `for (i = 0; i < MAX; ++i)`, which at 0 does not run.
+* and issue 0827's rule argued FOR honouring zero, not against it: a clamp is
+  precisely the silent rounding it forbids.
+
+So the minimum is 0 for all three entity caps, and
+`NROS_XRCE_MAX_SERVICE_SERVERS` joins the ladder on
+`NROS_DERIVED_MAX_QUERYABLES` — the audited count, because an XRCE service
+server is what a zenoh queryable is and that value already carries
+`ACTION_SERVER_QUERYABLES`. Service CLIENTS stay stated: no audited aggregate
+exists for them, only the raw count, which would under-size any action-client
+image.
+
+### The image fits
+
+| | `sizeof(xrce_session_state_t)` |
+| --- | ---: |
+| original | 427,968 |
+| after the MTU fix (issue 0968) | 309,696 |
+| subscribers derived (8 -> 1) | 76,624 |
+| **service servers derived (4 -> 0)** | **59,088** |
+
+Against a 66,048-byte arena. `NROS_XRCE_MAX_SERVICE_SERVERS=0 DERIVED` is
+honoured, the allocation succeeds, and the image boots past it — **zero heap
+failures**, where every previous build died there.
+
+One practical note for anyone re-measuring: Zephyr treats an existing `.config`
+as user input, so changing a Kconfig DEFAULT does not reach a configured build
+dir. The first attempt at this read `CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS=4`
+from a `.config` written before the sentinel existed and looked like the
+derivation had failed. `west build -p always` is what proves it.
