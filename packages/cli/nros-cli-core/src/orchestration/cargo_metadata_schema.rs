@@ -412,6 +412,16 @@ pub struct DeployTargetMetadata {
     /// RMW backend (`zenoh` / `xrce` / `cyclonedds`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rmw: Option<String>,
+    /// Serialization format, by PROVIDER NAME (phase-421 W4, RFC-0088 D6).
+    ///
+    /// The Cargo-native deploy block is the one `[deploy.<t>]` nano-ros OWNS.
+    /// The `system.toml` one is `ros_launch_manifest_model::DeployBlock`, an
+    /// upstream `deny_unknown_fields` struct that declares `rmw` and not
+    /// `serdes` — so the system.toml rung of RFC-0088 D6's
+    /// `[deploy.<t>] serdes = "…"` needs a spec release, and the live home for
+    /// the key is `[image.<id>].serdes` (where `rmw` itself moved, RFC-0065 D6).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub serdes: Option<String>,
     /// Baked ROS_DOMAIN_ID — embedded targets bake at build time.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain_id: Option<u32>,
@@ -1122,6 +1132,44 @@ impl SystemToml {
         }
     }
 
+    /// The serialization format for `target`, by provider name — phase-421 W4,
+    /// RFC-0088 D6.
+    ///
+    /// **The ladder mirrors [`Self::resolved_rmw`]'s, rung for rung**, because
+    /// serdes is the same kind of fact: one declared, language-agnostic value
+    /// that decides what gets compiled. CLI flag, then `[image.<target>].serdes`
+    /// (folded over `[image_defaults]`), then `[system].serdes`, then `"cdr"`.
+    ///
+    /// **One rung of `rmw`'s is absent, and that is a finding rather than a
+    /// choice.** `rmw` also reads `[deploy.<target>].rmw` — the DEPRECATED rung
+    /// (see `image::DEPRECATED_DEPLOY_FIELDS`) — and `[deploy.*]` in
+    /// `system.toml` is `ros_launch_manifest_model::system_config::DeployBlock`,
+    /// an UPSTREAM struct with `deny_unknown_fields`. `serdes` cannot be added
+    /// to it from this repo, so RFC-0088 D6's `[deploy.<t>] serdes = "…"`
+    /// spelling needs a `ros-launch-manifest` release before it can parse at
+    /// all. Nothing is lost by its absence: `[image.*]` is where every build
+    /// field moved (RFC-0065 D6, issue 0951), a deploy rung would be born
+    /// deprecated, and the Cargo-native deploy block nano-ros DOES own carries
+    /// the key ([`DeployTargetMetadata::serdes`]), projected here as an image.
+    ///
+    /// The default is `cdr` and not, say, the first provider found: a build
+    /// that declares no format must behave exactly as it does today.
+    #[must_use]
+    pub fn resolved_serdes(&self, target: Option<&str>, cli: Option<&str>) -> String {
+        if let Some(c) = cli {
+            return c.to_string();
+        }
+        if let Some(t) = target
+            && let Some(s) = self.image_for(t).and_then(|img| img.serdes)
+        {
+            return s;
+        }
+        self.system
+            .serdes
+            .clone()
+            .unwrap_or_else(|| cargo_nano_ros::serdes_descriptor::DEFAULT_SERDES_NAME.to_string())
+    }
+
     /// Phase 255 Wave 5 — the multi-RMW link set a single binary needs when it
     /// hosts cross-RMW `[[bridge]]`s. A single binary must link the **union** of
     /// every bridged session's RMW so it can speak both sides. Returned in
@@ -1207,6 +1255,15 @@ pub struct SystemHeader {
     /// invocation would be an expensive way to learn the default.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub default_images: Vec<String>,
+    /// System-wide serialization format, by PROVIDER NAME (phase-421 W4,
+    /// RFC-0088 D6). Absent ⇒ `cdr`, which is what every image builds today.
+    ///
+    /// Optional where [`Self::rmw`] is mandatory, deliberately: making it
+    /// mandatory would mean editing every `system.toml` in the tree to restate
+    /// the value they already have, and RFC-0088's rule is that a build
+    /// declaring no format behaves exactly as it does now.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub serdes: Option<String>,
     /// Phase 261 W4 — generic capability axes by declared name, e.g.
     /// `features = ["safety", "param_services"]`. Each entry must resolve via
     /// `capability_resolver::capability(name)` (unknown ⇒ hard error, typo guard);
@@ -1911,6 +1968,72 @@ board = "native"
         let bare: SystemToml =
             toml::from_str("[system]\nname=\"d\"\nrmw=\"\"\ndomain_id=0\n").unwrap();
         assert_eq!(bare.resolved_rmw(None, None), "zenoh");
+    }
+
+    /// phase-421 W4 — `resolved_serdes` mirrors `resolved_rmw`'s ladder:
+    /// `--serdes` > `[image.<t>].serdes` (over `[image_defaults]`) >
+    /// `[system].serdes` > `cdr`.
+    #[test]
+    fn resolved_serdes_precedence_ladder() {
+        let sys: SystemToml = toml::from_str(
+            r#"
+[system]
+name = "d"
+rmw = "zenoh"
+domain_id = 0
+serdes = "uorb"
+
+[image.gw]
+board = "native"
+serdes = "flatbuf"
+
+[image.plain]
+board = "native"
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(sys.resolved_serdes(Some("gw"), Some("cdr")), "cdr");
+        assert_eq!(sys.resolved_serdes(Some("gw"), None), "flatbuf");
+        assert_eq!(sys.resolved_serdes(Some("plain"), None), "uorb");
+        assert_eq!(sys.resolved_serdes(Some("nope"), None), "uorb");
+        assert_eq!(sys.resolved_serdes(None, None), "uorb");
+
+        // `[image_defaults]` is the base, exactly as it is for rmw.
+        let defaults: SystemToml = toml::from_str(
+            r#"
+[system]
+name = "d"
+rmw = "zenoh"
+domain_id = 0
+
+[image_defaults]
+serdes = "flatbuf"
+
+[image.gw]
+board = "native"
+"#,
+        )
+        .unwrap();
+        assert_eq!(defaults.resolved_serdes(Some("gw"), None), "flatbuf");
+    }
+
+    /// A system.toml that never mentions a serialization format must resolve to
+    /// CDR — RFC-0088's rule that declaring nothing changes nothing.
+    #[test]
+    fn a_system_declaring_no_serdes_is_cdr_everywhere() {
+        let bare: SystemToml = toml::from_str(
+            "[system]\nname=\"d\"\nrmw=\"zenoh\"\ndomain_id=0\n[image.gw]\nboard=\"native\"\n",
+        )
+        .unwrap();
+        assert_eq!(bare.resolved_serdes(None, None), "cdr");
+        assert_eq!(bare.resolved_serdes(Some("gw"), None), "cdr");
+        // And the answer is a name the resolver can actually lower.
+        assert!(
+            cargo_nano_ros::serdes_resolver::resolve_serdes(&bare.resolved_serdes(None, None))
+                .is_ok(),
+            "the default must be a provider this checkout ships"
+        );
     }
 
     /// Phase 256 / issue 0951 — `resolve_image`: `--image` → the sole image

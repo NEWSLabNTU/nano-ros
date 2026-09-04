@@ -86,6 +86,16 @@ pub struct ImageBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rmw: Option<String>,
 
+    /// Serialization format for this image, by PROVIDER NAME (phase-421 W4,
+    /// RFC-0088 D6). Absent ⇒ the system header's `serdes`, then `cdr`.
+    ///
+    /// Per IMAGE and not per topic or per publisher: ROS 2's semantic is one
+    /// middleware, one encoding, and RFC-0088 keeps it. The name is resolved
+    /// against the provider search path — an in-tree format and one from a
+    /// package outside this repo are selected the same way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub serdes: Option<String>,
+
     /// ROS edition. Absent ⇒ the system header's `ros_edition`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ros_edition: Option<String>,
@@ -158,6 +168,7 @@ impl ImageBlock {
             },
             panic: pick(&self.panic, &base.panic),
             rmw: pick(&self.rmw, &base.rmw),
+            serdes: pick(&self.serdes, &base.serdes),
             ros_edition: pick(&self.ros_edition, &base.ros_edition),
             profile: pick(&self.profile, &base.profile),
             variant: pick(&self.variant, &base.variant),

@@ -1,0 +1,44 @@
+# nano-ros serialization-format descriptor — RFC-0088 D6, phase-421 W4.
+#
+# The provider announces its NAME in `package.xml`; this file carries only what
+# no convention can produce (RFC-0087 D4). Everything else is derived:
+#
+#   crate          the sibling Cargo.toml's [package] name
+#   cargo feature  serdes-<name>
+#   cmake value    the canonical name
+#   C define token UPPER(name)
+#
+# A provider with nothing non-derivable to say needs no descriptor at all; the
+# defaults apply. This one exists because `impl` and `format_id` cannot be
+# guessed.
+[serdes]
+
+# How this format is produced. Not derivable: it is a property of the
+# implementation, not of the name.
+#
+#   "codegen"  a per-type serializer emitted by `nros generate-rust` — fast,
+#              and what CDR uses (the generated `serialize`/`deserialize`).
+#   "schema"   one implementation walking the `&'static [Field]` schema codegen
+#              already emits for every message. Slower, and costs a provider no
+#              codegen work at all (RFC-0088 D7).
+impl = "codegen"
+
+# Image-local discriminant (RFC-0088 D2).
+#
+# **This number means nothing outside the image that assigned it.** nano-ros
+# cannot allocate a globally unique `u8` to a third-party format, so the NAME is
+# the identity that crosses image boundaries — the bridge config, tooling
+# output, and the `get_serialization_format` vtable slot all carry the string.
+#
+# In-tree formats hold low reserved values for readability, and only for that:
+#   1  cdr    (this file)
+#   2  uorb   (declared by the uORB RMW backend, whose wire is the PX4 struct —
+#              a backend property, not a serialization library, so it has no
+#              provider package of its own)
+# A third-party provider that states none is assigned one by the build from the
+# set of formats its image declares.
+#
+# `check-serdes-descriptors` S3 parses `SerializationFormatId` out of
+# `packages/core/nros-serdes/src/format.rs` and asserts the two spellings of
+# this number agree, in both directions.
+format_id = 1
