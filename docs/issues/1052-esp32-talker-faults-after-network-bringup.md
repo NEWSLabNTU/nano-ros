@@ -674,3 +674,127 @@ provenance was never checked — the ASCII lead, the "fault is on the CONNECTED
 path" claim, and now E/F/H. The control that caught it costs one command
 (`nm | grep -c <symbol>` on the ELF you are about to run) and would have caught
 all three.
+
+
+## Correction: my `create_publisher` symbol probe was vacuous (2026-09-04)
+
+The section above reports "`create_publisher` symbol count in the freshly built
+ELF is **0**". That number came from a command that does not exist on PATH:
+
+```
+riscv32-esp-elf-nm $E 2>/dev/null | grep -c create_publisher
+```
+
+`riscv32-esp-elf-nm` is not on PATH (it lives under
+`~/.espressif/tools/riscv32-esp-elf/esp-13.2.0_20240530/riscv32-esp-elf/bin/`);
+`2>/dev/null` swallowed "command not found" and `grep -c` dutifully returned 0.
+It returns 0 for EVERY input, so it discriminated nothing — and I never ran it on
+the full image at all, I inferred "present" from the source. Run properly, the
+full talker has 5 `create_publisher` and 3 `create_subscription` symbols.
+
+**The behavioural conclusion still stands**, on evidence that does not depend on
+that probe: the two images have different checksums (`bd256c2963a8` vs
+`501cfc6d5412`), they were run back to back under identical arguments, and the
+build log for the edited one carries `warning: unused imports: NodeOptions and
+TimerDuration` — imports that can only become unused once `register` is emptied.
+That is direct evidence the edited source is what compiled.
+
+So: E/F/H stay retracted, `register` still decides it, and the stated
+verification method was worthless. A probe needs a POSITIVE CONTROL — run it
+against the artifact where the symbol MUST appear, and if that also returns
+nothing, the probe is broken rather than the artifact.
+
+## ROOT CAUSE: `.stack` is the linker leftover, and `.bss` has eaten it
+
+`create_publisher` is not the bug. It is the deepest frame on the deepest chain,
+so it is where a stack that is already too small runs out.
+
+From the fixture ELF:
+
+| symbol | value |
+| --- | --- |
+| `.bss` | `0x3fc81960` + `0x048214` = **295,444 B** |
+| `_stack_end` (low bound) | `0x3fcc9b74` |
+| `_stack_start` (high; grows down) | `0x3fcce400` |
+| **stack size** | **18,572 B** |
+| **faulting `sp`** | **`0x3fcc9180`** |
+
+`sp` is **2,548 bytes below `_stack_end`** — outside the stack, inside `.bss`,
+landing in `nros_smoltcp::TCP_RX_BUFFER_0` (`0x3fcc8a1c`) + 1892. That is exactly
+what gdb symbolised it as. **This is a stack overflow**, and the instruction-access
+fault is the smashed frame being returned through.
+
+`nros-board-esp32-qemu/src/node.rs` already describes this failure mode in full —
+it is issue **#190**:
+
+> `.stack` is the LINKER LEFTOVER after `.bss` (link.x fills DRAM up to
+> 0x3fcce400) … At 96 KB the stack shrank to ~18 KB … the overflow wrote frames
+> straight down into `.bss` … producing the #190 phantom corruptions … wild jumps
+> (mepc=0x9ae65930) … **None of them were allocator or zenoh-pico bugs.**
+>
+> 48 KB fits the executor arena AND leaves a **~67 KB stack** … Check `.stack` in
+> `readelf -S` after changing ANY large static — **there is no runtime
+> stack-overflow guard on this target.**
+
+The heap knob is still 48 KB, but the stack is **18,572 B, not ~67 KB**. `.bss`
+grew by roughly the difference and nobody re-ran the check the comment
+prescribes. **Issue 1052 is a regression of #190 by `.bss` growth.**
+
+### Why the talker and not the listener
+
+The publisher chain is ~5.1 KB of frames on its own:
+
+```
+create_publisher_with_qos  2048
+  create_publisher_raw_on  1120
+    CffiSession::create_publisher   928
+      create_publisher_trampoline   272
+        ZenohSession::create_publisher  768
+```
+
+and the talker's `register` also calls `create_timer` (2048). The listener's
+subscription path is shallower. With ~18 KB of stack under a zenoh-pico +
+smoltcp poll path, the publisher side crosses the line first. Nothing in
+`create_publisher` is wrong; both it and `create_subscription` are structurally
+identical, differing only in `ENTITY_PUBLISHER`/`ENTITY_SUBSCRIBER` ("MP"/"MS",
+same length).
+
+### What is in `.bss`, and two findings that belong to the memory campaign
+
+| bytes | symbol |
+| --- | --- |
+| 83,648 | `g_sessions` (zenoh-pico C) |
+| 49,152 | `nros_board_esp32_qemu::node::init_hardware::HEAP` (the documented 48 KB) |
+| 34,480 | `nros_platform_esp32_qemu::memory::HEAP` |
+| 32,768 | `nros_rmw_zenoh::shim::subscriber::SMALL_PAYLOADS` |
+| 32,768 | `nros_rmw_zenoh::shim::subscriber::LARGE_PAYLOADS` |
+| 9,556 | `ETH_DEVICE` |
+| 8,856 | `SERVICE_BUFFERS` |
+
+**Two heaps coexist.** The node.rs comment describes one (48 KB `esp_alloc`), and
+says the DDS path swaps in a `FreeListHeap` *instead*. But
+`nros-platform-esp32-qemu/src/memory.rs:20` declares `FreeListHeap<{32 * 1024}>`
+on the non-DDS arm too, so both are linked: **83,632 B of heap in `.bss`**,
+directly out of the stack. Whether that is intended needs an owner's answer; the
+comment reads as though it is not.
+
+**The talker pays 65,536 B for subscriber pools it never uses.** `SMALL_PAYLOADS`
+and `LARGE_PAYLOADS` are `[_; ZPICO_MAX_SUBSCRIBERS]` / `[_; MAX_LARGE_SUBSCRIBERS]`
+— sized on the configured maximum, not on what the node declares. A pure
+publisher declares zero subscriptions and still pays both. That is precisely the
+campaign thesis (0827 / 0832: pay for what you declare) and the same shape as the
+queryable table. Here it is not a footprint nicety — on this target `.bss` is
+subtracted from the stack, so it is the crash.
+
+### Fixes, in order
+
+1. **Gate it.** The comment says to check `.stack` after any large static and
+   there is no runtime guard, so the check must not be a comment. Assert a
+   `.stack` floor for the ESP32 image in the build, the way `just mem-report`
+   already reads sections. A silent 18 KB stack is how this got here.
+2. **Stop paying for undeclared entities** — the two payload pools, via the
+   inventory the campaign already computes. Recovers up to 64 KB of stack on a
+   publisher-only image.
+3. **Resolve the two heaps** — 83,632 B where the comment budgets 49,152.
+
+Item 1 is the one that keeps it fixed; 2 and 3 are what buy the headroom back.
