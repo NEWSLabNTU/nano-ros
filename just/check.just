@@ -167,6 +167,7 @@ fast-serial: \
     feature-contract \
     feature-set-ssot \
     ffi-struct-mirrors \
+    fixture-artifact-dir-keys \
     fixture-binary-names \
     fixture-groups \
     fixture-id-guard \
@@ -3952,6 +3953,21 @@ rmw-descriptors:
 [private]
 serdes-descriptors:
     @python3 scripts/check-serdes-descriptors.py
+
+# issue 1025 — a consumer may not spell a cargo fixture GROUP KEY that
+# disagrees with the manifest. `nros_fixture_row_artifact_dir` made the group
+# FORMULA single (phase-340 item 7); its INPUTS were still derived twice, and
+# `just esp32 build-qemu` supplied two of the three as empty literals. That
+# agreed with the producer until the esp32 rows gained
+# `env = { ZPICO_MAX_QUERYABLES = "2" }`, after which no ESP32 flash image could
+# be packed at all — for four days, with every gate green. Checks the UNPAIRED
+# read sites (a recipe that also builds with the same key cannot look where it
+# did not write) plus every literal `cargo-fixtures/<slug>` path. Buildless:
+# TOML plus a regex over just/scripts sources. Runs its negative control on the
+# normal path.
+[private]
+fixture-artifact-dir-keys:
+    @python3 scripts/check-fixture-artifact-dir-keys.py
 
 [private]
 fixture-groups:

@@ -342,3 +342,59 @@ nros_example_build_target_dir_flag() {
     dir="$(nros_example_build_target_dir "$@")" || return $?
     printf ' --target-dir %s' "$dir"
 }
+
+# nros_fixture_row_artifact_dir_by_id <row-id> [<manifest>]
+#
+# The same answer as `nros_fixture_row_artifact_dir`, with the row's THREE key
+# inputs read from the manifest instead of spelled at the call site.
+#
+# issue 1025 — `nros_fixture_row_artifact_dir` made the group FORMULA single and
+# left its INPUTS derived twice. The key is a function of
+# (platform, cargo args, env); `just esp32 build-qemu` supplied the platform and
+# passed `"" ""` for the other two, while the producer
+# (`fixtures-build.sh` → `nros_fixture_target_dir_flag`) passed the row's real
+# ones. Both sides agreed for as long as the esp32 rows carried no variant, and
+# diverged the moment `41a7d8de7` added `env = { ZPICO_MAX_QUERYABLES = "2" }`
+# to all three of them: the build moved to
+# `build/cargo-fixtures/qemu-esp32-baremetal-4118800323/` and the packer kept
+# asking for `build/cargo-fixtures/qemu-esp32-baremetal/`, so NO ESP32 flash
+# image could be produced. Supplying two of three constants a different answer.
+#
+# So a consumer that did not itself run the build must name the ROW, never the
+# key. `fixtures-manifest.py list --id` emits exactly the record
+# `fixtures-build.sh` builds from (`<platform>\x1f<dir>\x1f<env>\x1f<args>`),
+# which is why the two cannot disagree: same table, same row, same three fields.
+#
+# `--builder cargo` is not decoration. `list` emits a DIFFERENT record shape for
+# a cmake row (`<dir>\x1f<build-subdir>\x1f<defs>\x1f<target>`) and
+# `--with-platform` does not prefix it, so a cmake id would parse into four
+# fields that mean something else entirely. Restricting the query makes a cmake
+# id an empty result and hence a loud failure — this helper answers about a
+# CARGO group dir and about nothing else.
+#
+# Not in the `export -f` list `fixtures-build.sh` ships to its make leaves, and
+# must not be: a leaf builds ONE row it was already handed and has no business
+# re-reading the manifest (it would also need python3 and the repo root, which
+# the closure gate would then have to carry).
+nros_fixture_row_artifact_dir_by_id() {
+    local id="${1:?nros_fixture_row_artifact_dir_by_id: row id}"
+    local manifest="${2:-}"
+    local -a manifest_arg=()
+    [ -n "$manifest" ] && manifest_arg=(--manifest "$manifest")
+    local record count platform dir envstr args
+    record="$(python3 "$_NROS_BUILD_ROOT_REPO/scripts/build/fixtures-manifest.py" \
+        list --with-platform --builder cargo --id "$id" "${manifest_arg[@]}")" || return 1
+    if [ -z "$record" ]; then
+        printf 'nros_fixture_row_artifact_dir_by_id: no cargo [[fixture]] row has id %s\n' \
+            "$id" >&2
+        return 1
+    fi
+    count="$(printf '%s\n' "$record" | grep -c '')"
+    if [ "$count" -ne 1 ]; then
+        printf 'nros_fixture_row_artifact_dir_by_id: id %s names %s rows — ids must be unique\n' \
+            "$id" "$count" >&2
+        return 1
+    fi
+    IFS=$'\x1f' read -r platform dir envstr args <<< "$record"
+    nros_fixture_row_artifact_dir "$dir" "$platform" "$args" "$envstr"
+}

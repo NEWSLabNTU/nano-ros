@@ -113,9 +113,15 @@ build-qemu:
     source scripts/build/fixtures-target-dir.sh
     target_profile_dir="$(nros_cargo_target_profile_dir)"
     echo "Building ESP32 QEMU fixtures (from examples/fixtures.toml)..."
-    for id in qemu-esp32-baremetal-talker qemu-esp32-baremetal-listener; do
+    # issue 1025 — the row ids are spelled ONCE, here, and the pack loop below
+    # derives its ids from the same `$ex` list. They used to be two independent
+    # lists (`for id in qemu-esp32-baremetal-{talker,listener}` and
+    # `for ex in talker listener`), which is what let the packer address a row
+    # the builder never built.
+    for ex in talker listener; do
         RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
-            bash scripts/build/fixtures-build.sh qemu-esp32-baremetal rust --id "$id"
+            bash scripts/build/fixtures-build.sh qemu-esp32-baremetal rust \
+                --id "qemu-esp32-baremetal-$ex"
     done
     echo ""
     echo "Creating flash images..."
@@ -136,8 +142,19 @@ build-qemu:
         # live under `build/cargo-fixtures/<group>/`; the helper returns the
         # leaf's own `target/` for any platform that has not migrated, so this
         # line is correct on both sides of a migration.
-        artifact_dir="$(nros_fixture_row_artifact_dir \
-            "examples/qemu-esp32-baremetal/rust/$ex" qemu-esp32-baremetal "" "")"
+        #
+        # issue 1025 — BY ROW ID, not by a hand-spelled key. This line used to
+        # read `… "examples/…/$ex" qemu-esp32-baremetal "" ""`, and those two
+        # trailing empties were the bug: the group key is a function of
+        # (platform, cargo args, env), the producer passes the ROW's args and
+        # env, and supplying two of the three constants a different answer. It
+        # agreed by luck until the rows gained `ZPICO_MAX_QUERYABLES=2`
+        # (41a7d8de7), after which the build wrote
+        # `cargo-fixtures/qemu-esp32-baremetal-4118800323/` and this read
+        # `cargo-fixtures/qemu-esp32-baremetal/` — so no flash image could be
+        # packed at all. The id is the same one the build loop above passes to
+        # `fixtures-build.sh`.
+        artifact_dir="$(nros_fixture_row_artifact_dir_by_id "qemu-esp32-baremetal-$ex")"
         elf="$artifact_dir/riscv32imc-unknown-none-elf/$target_profile_dir/$elf_name"
         out="$esp32_qemu_dir/esp32-qemu-$ex.bin"
         # Issue 0439 — the build loop above is lane-narrowable, so under a lane
@@ -188,10 +205,14 @@ build-logging-smoke:
     RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
         bash scripts/build/fixtures-build.sh qemu-esp32-baremetal rust --id qemu-esp32-baremetal-logging-smoke
     echo "Creating logging-smoke-esp32-qemu flash image..."
-    fixture=packages/testing/nros-tests/bins/logging-smoke-esp32-qemu
     # Same migration-aware derivation as `build-qemu` — this row is
     # `qemu-esp32-baremetal` too, so it moved with the platform.
-    artifact_dir="$(nros_fixture_row_artifact_dir "$fixture" qemu-esp32-baremetal "" "")"
+    #
+    # issue 1025 — and by ROW ID for the same reason: this site carried the same
+    # `"" ""` hand-spelled key and was broken by the same commit. It is not in
+    # the reported symptom only because its id is not in the tier-2 lane's
+    # module set; fixed with its sibling rather than after it bites.
+    artifact_dir="$(nros_fixture_row_artifact_dir_by_id qemu-esp32-baremetal-logging-smoke)"
     elf="$artifact_dir/riscv32imc-unknown-none-elf/$target_profile_dir/logging-smoke-esp32-qemu"
     bin="$elf.bin"
     # Issue 0439 — same shape as `build-qemu` above: a lane-narrowable `--id`

@@ -763,6 +763,15 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   a plain `target/` is not, so it is gated: `check-example-leaf-target-dirs`. A PLATFORM's fixture
   profile is `nros_cargo_platform_profile` — the staleness probe must use it too, or it rebuilds
   into a second profile dir and reports permanent false-STALE. Residue → issue 0488.
+  **One FORMULA is not enough — the INPUTS are derived twice too (issue 1025).** The group key
+  is a function of (platform, cargo args, env); `just esp32 build-qemu` called the shared helper
+  with the platform and `"" ""`, the producer passed the ROW's, and supplying two of the three
+  constants a different answer. It agreed until the esp32 rows gained
+  `env = { ZPICO_MAX_QUERYABLES = "2" }`, after which NO esp32 flash image could be packed for
+  four days with every gate green. A consumer that did not itself run the build names the ROW:
+  `nros_fixture_row_artifact_dir_by_id <row-id>`. Gate: `check-fixture-artifact-dir-keys`
+  (unpaired hand-spelled keys + literal `cargo-fixtures/<slug>` paths); acceptance is still a
+  BUILD, never a gate.
 - **Never `cargo:rerun-if-env-changed` on a PATH variable — watch the CONTENT (issue 0491)** —
   cargo compares an env value as TEXT, and one directory has three spellings here: a leaf
   `.cargo/config.toml`'s `relative = true` (one per leaf), `just/sdk-env.just`'s absolute

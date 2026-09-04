@@ -272,7 +272,11 @@ can carry a hash suffix when a row builds with distinct env, so treat
 the path above as *what it is on a default build*, not as a guarantee —
 `scripts/build/fixtures-target-dir.sh` (`nros_fixture_row_artifact_dir`)
 is the single source of truth, and it is what the test side uses to
-find the same file.
+find the same file. That helper takes the row's cargo args and env as
+arguments, so a script that did not itself run the build should ask for
+the row by id — `nros_fixture_row_artifact_dir_by_id <row-id>` reads all
+three key fields from the manifest, and cannot disagree with the builder
+about which group a row landed in (issue 1025).
 
 Run `just qemu help` for more options.
 
