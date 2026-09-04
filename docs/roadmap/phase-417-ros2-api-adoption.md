@@ -304,7 +304,7 @@ rclc_node_init_default(node, name, namespace_, support)
 A sweep that renames without reordering produces code that **compiles with a
 warning and passes the wrong values** — C diagnoses an incompatible pointer
 argument as a warning even under `-Wall -Wextra`, which is the measurement that
-forced RFC-0087's "a C reorder ships with a rename beside it". Here the rename
+forced RFC-0089's "a C reorder ships with a rename beside it". Here the rename
 IS the guard: the old identifier disappears, so a missed site fails to compile
 rather than silently mis-binding.
 
@@ -379,7 +379,7 @@ and the two must not be run as separate passes.
 * `examples/templates/cpp-port-minimal-publisher` still byte-identical to
   upstream's tutorial;
 * `rcl_compat.h` holds only the `RCL_RET_*` mapping and handle typedefs — the
-  two things RFC-0087 says cannot dissolve;
+  two things RFC-0089 says cannot dissolve;
 * `just ci gate` green, and the ported templates build with **every** compat
   layer deleted.
 
