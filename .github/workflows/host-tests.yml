@@ -166,47 +166,30 @@ jobs:
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
 
-      - name: Provision workspace sources via nros
+      # phase-413 W5 — provision with the SCOPE VERB, not four hand-rolled
+      # steps. `just setup native` is what a user runs, and it expands to the
+      # same sequence this lane spelled out: `nros setup --build-sources` (the
+      # union of vendored sources), `just ci provision-zenohd`, and the qemu /
+      # xrce-agent / play_launch_parser tools.
+      #
+      # It also runs `_setup-common`, which builds the CLI and
+      # `nros-launch-resolve` AND provisions the two host facts every tier
+      # asserts — cross Rust targets and pinned corrosion. That is what this
+      # lane was missing: `just ci tier1` failed on three unmet preconditions
+      # that no step here provisioned, so the tier never started.
+      - name: just setup native
         run: |
           source ./activate.sh
-          nros setup --source px4-rs --source zenoh-pico --source mbedtls \
-                     --source micro-cdr --source micro-xrce-dds-client \
-                     --source cyclonedds-src --source nuttx-libc
+          just setup native
 
-      # `test-integration` spawns zenohd to back the Phase 211/212 host tests.
-      - name: just ci provision-zenohd
+      # CI-only: export the provisioned play_launch_parser for later steps.
+      # `just setup native` installs it into the store; a container job still
+      # has to put it on PATH, and it stays best-effort (workspace-entry
+      # fixtures SKIP without it, every other fixture builds).
+      - name: Export play_launch_parser on PATH
         run: |
-          source ./activate.sh
-          just ci provision-zenohd
-
-      # Test prerequisites the way a user gets them — via `nros setup` (#25): the
-      # patched qemu-system-arm (build/qemu/), the prebuilt Micro-XRCE-DDS Agent
-      # (nros store), and play_launch_parser (launch-graph tool; best-effort).
-      - name: Provision QEMU + XRCE agent + play_launch_parser (nros setup --tool)
-        run: |
-          source ./activate.sh
-          nros setup --tool qemu --prefix "$GITHUB_WORKSPACE/build/qemu" --index nros-sdk-index.toml
-          nros setup --tool xrce-agent --index nros-sdk-index.toml
-          nros setup --tool play_launch_parser --index nros-sdk-index.toml \
-            || echo "play_launch_parser unavailable — workspace-entry fixtures [SKIPPED]"
           plp_bin="$(dirname "$(find "$HOME/.nros/sdk/play_launch_parser" -type f -name play_launch_parser -path '*/bin/*' 2>/dev/null | head -1)")"
           [ -n "$plp_bin" ] && echo "$plp_bin" >> "$GITHUB_PATH" || true
-
-      # `nros sync` resolves SystemModels by shelling out to `nros-launch-resolve`,
-      # which it looks for NEXT TO the `nros` binary (issue 0285 — absolute path,
-      # never $PATH). Without it every fixture build dies at the sync step:
-      #
-      #   Error: sync: 9 SystemModel(s) need resolving but `nros-launch-resolve`
-      #          is not next to the `nros` binary
-      #
-      # Only `nightly.yml` provisioned it, so this lane had been red for at least
-      # ten consecutive runs — both fixture builds failing, both failures
-      # swallowed (see below), and 296 tests then skipping for fixtures that were
-      # never built.
-      - name: Build nros-launch-resolve (nros sync needs it beside the CLI)
-        run: |
-          source ./activate.sh
-          just setup-launch-resolve
 
       # The native integration tests spawn PREBUILT example binaries via
       # `require_prebuilt_binary`. Stage them by building the fixtures the way a
@@ -280,6 +263,18 @@ jobs:
       - name: just ci tier1
         env:
           CARGO_BUILD_JOBS: "2"
+          # This lane builds a DELIBERATE SUBSET of the native fixtures --
+          # `build-fixture-rust-core` + `build-workspace-fixtures`, with the
+          # ~52 GB extras omitted so test-integration does not hit ENOSPC (see
+          # the steps above). So it cannot honestly claim the `lane=native`
+          # coverage that `_require-fixtures` checks for, and writing that
+          # stamp would be a lie rather than a fix.
+          #
+          # The documented bypass is exactly this case ("built them another
+          # way?"). It only skips the PRE-FLIGHT: a missing in-lane fixture is
+          # still a hard failure at test time via `check-skip-budget` (issue
+          # 0584), so nothing is laundered into a skip.
+          NROS_SKIP_FIXTURE_CHECK: "1"
         run: |
           source ./activate.sh
           mkdir -p build/ci-logs
