@@ -908,9 +908,15 @@ function(_nros_entry_invoke_codegen)
     # to start is sized from the PREVIOUS answer, which on a clean build dir is
     # the "no inventory yet" placeholder -- and on a memory-tight image that is
     # a link failure naming a byte count and no knob. `nros_reconfigure_*` makes
-    # cmake run once more before the build proceeds; see NanoRosReconfigure.cmake
+    # cmake run again before the build proceeds; see NanoRosReconfigure.cmake
     # for why the `CMAKE_CONFIGURE_DEPENDS` recovery this used to rely on never
     # fired.
+    #
+    # "Again" is not "once" (issue 1002). This fragment feeds the payload-class
+    # join, whose OWN output is what the knob resolver reads, so a clean build
+    # dir takes THREE configures to deliver a derived size: one to learn the
+    # entities, one to re-derive the sizes from them, one for a reader to see
+    # those sizes. Ninja runs all three inside the same `west build`.
     include("${_NROS_ENTRY_DIR}/NanoRosEntityInventory.cmake")
     include("${_NROS_ENTRY_DIR}/NanoRosReconfigure.cmake")
     nros_entity_inventory_knobs_file(_entity_knobs_path)

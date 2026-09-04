@@ -488,6 +488,211 @@ else
 $INT_OUT"
 fi
 
+log_header "H. the value the BUILD USES settles, not just the fragment (issue 1002)"
+
+# Case G above drives the two PRODUCERS. It cannot see issue 1002, and does not:
+# what it reads is `NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE` as
+# `nros_derive_message_bound_knobs` left it in the CALLER's scope -- the
+# FRAGMENT's answer, which is already right on pass 2. The value a build is
+# COMPILED with comes from somewhere else entirely: `nros_resolve_knobs()`,
+# which runs inside `find_package(Zephyr)`, i.e. before EITHER producer, and
+# therefore reads the fragment the PREVIOUS pass wrote.
+#
+# So the real chain has three links, not two:
+#
+#   STAGE R   earliest reader   nros_resolve_knobs   (find_package(Zephyr))
+#   STAGE P1  mid producer      nros_find_interfaces (bounds fragment)
+#   STAGE P2  latest producer   nano_ros_entry       (entity fragment)
+#
+# and the delivered value settles on the THIRD configure:
+#
+#   pass 1  entity=placeholder  bounds=closure(1496)     delivered: nothing
+#   pass 2  entity=real         bounds=subscribed(880)   delivered: 1496  <- stale
+#   pass 3  entity=real         bounds=subscribed(880)   delivered: 880
+#
+# MUTATION THIS CATCHES, and case G does not: set
+# NROS_RECONFIGURE_MAX_PASSES=1 -- which is exactly what this module's own
+# prose used to claim ("exactly ONE extra configure"). The build then stops
+# after pass 2 and compiles at 1496, the island's 103160-byte overflow, while
+# case G reports 13/13 green. Measured, 2026-09-05.
+
+write_chain_project() {
+    local dir="$1"
+    mkdir -p "$dir"
+    cat > "$dir/CMakeLists.txt" <<EOF
+cmake_minimum_required(VERSION 3.20)
+project(nros_reconfigure_chain NONE)
+
+include("$PROJECT_ROOT/cmake/NanoRosMessageBounds.cmake")
+include("$PROJECT_ROOT/cmake/NanoRosEntityInventory.cmake")
+include("$PROJECT_ROOT/cmake/NanoRosReconfigure.cmake")
+
+nros_entity_inventory_knobs_file(_entity)
+nros_message_bounds_knobs_file(_bounds)
+nros_entity_inventory_seed_knobs_file("\${_entity}")
+nros_message_bounds_seed_knobs_file("\${_bounds}")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "\${_entity}" "\${_bounds}")
+
+# ---- STAGE R: the EARLIEST reader, as \`nros_resolve_knobs()\` runs it ---------
+# Settling belongs here for the reason the Zephyr loaders settle here: it is the
+# first thing in the configure that touches either fragment, so the window in
+# which a file is future-dated is as short as it can be.
+nros_reconfigure_settle("\${_bounds}")
+nros_reconfigure_settle("\${_entity}")
+include("\${_bounds}")
+set(_delivered "\${NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE}")
+if("\${_delivered}" STREQUAL "")
+    set(_delivered "unset")
+endif()
+
+# ---- STAGE P1: the bounds producer, as \`nros_find_interfaces()\` runs it ------
+nros_reconfigure_snapshot("\${_bounds}" _bounds_before)
+nros_derive_message_bound_knobs(
+    FRAGMENTS "$BOUNDS_FRAG"
+    OUTPUT_FILE "\${_bounds}"
+    ENTITY_INVENTORY "\${_entity}")
+nros_reconfigure_on_change("\${_bounds}" "\${_bounds_before}"
+    LABEL "this image's derived message-bound sizes")
+
+# ---- STAGE P2: the entity producer, as \`nano_ros_entry()\` runs it ------------
+nros_reconfigure_snapshot("\${_entity}" _entity_before)
+nros_derive_entity_inventory_knobs(CLI "$INT_STUB" METADATA "$INT_META" QUIET)
+nros_reconfigure_on_change("\${_entity}" "\${_entity_before}"
+    LABEL "this image's entity inventory")
+
+add_custom_target(go ALL COMMAND \${CMAKE_COMMAND} -E echo
+    "PROBE_DELIVERED=\${_delivered}")
+EOF
+}
+
+# Configure + build the chain project and report what the build was SIZED FROM.
+run_chain() {
+    local src="$1" build="$2" body="$3" out
+    out="$(NROS_STUB_BODY="$body" timeout 180 ninja -C "$build" 2>&1)"
+    CHAIN_RC=$?
+    CHAIN_OUT="$out"
+    CHAIN_DELIVERED="$(printf '%s\n' "$out" | sed -n 's/.*PROBE_DELIVERED=\([A-Za-z0-9_]*\).*/\1/p' | tail -1)"
+    CHAIN_RERUNS="$(printf '%s\n' "$out" | grep -c 'Re-running CMake')"
+}
+
+CHAIN_SRC="$TEST_TMPDIR/chain-src"
+CHAIN_BUILD="$TEST_TMPDIR/chain-build"
+write_chain_project "$CHAIN_SRC"
+NROS_STUB_BODY="$ENTITY_BODY" \
+    cmake -G Ninja -S "$CHAIN_SRC" -B "$CHAIN_BUILD" >/dev/null 2>&1
+run_chain "$CHAIN_SRC" "$CHAIN_BUILD" "$ENTITY_BODY"
+
+check
+if [ "$CHAIN_RC" -ne 0 ]; then
+    fail "the chain build failed (rc=$CHAIN_RC):
+$CHAIN_OUT"
+elif [ "$CHAIN_DELIVERED" = "880" ]; then
+    log_success "one build from nothing: the build was SIZED FROM 880, the subscribed class"
+else
+    fail "the build was sized from '$CHAIN_DELIVERED', expected 880.
+  This is issue 1002: the FRAGMENT holds 880 by pass 2 (case G checks that and
+  passes), but the value a reader running BEFORE the producers hands to the
+  compile is one pass behind it. 1496 means the chain stopped one link short --
+  check NROS_RECONFIGURE_MAX_PASSES and that both producers still arm.
+$CHAIN_OUT"
+fi
+
+# The pass count is MEASURED here rather than asserted from memory, because
+# "two passes" was folklore for as long as it was written down. It is the
+# chain's DEPTH: one arm per producer upstream of the reader. If a third
+# producer joins the chain this number moves, and it must move HERE -- where a
+# reader also sees how much headroom is left against NROS_RECONFIGURE_MAX_PASSES.
+check
+if [ "$CHAIN_RERUNS" -eq 2 ]; then
+    log_success "2 automatic re-configures = 3 configures total, the chain's depth (bound is $(sed -n 's/^set(NROS_RECONFIGURE_MAX_PASSES \([0-9]*\).*/\1/p' "$MODULE" | head -1) consecutive arms per fragment)"
+else
+    fail "expected 2 automatic re-configures for a two-producer chain, saw $CHAIN_RERUNS.
+  Fewer means a link stopped arming and the build is sized from a stale answer.
+  More means a producer is not settling -- and if it approaches
+  NROS_RECONFIGURE_MAX_PASSES the build will start shipping the previous answer
+  with a warning.
+$CHAIN_OUT"
+fi
+
+# FIXPOINT. Issue 1002's "Not covered" asked for exactly this and it is the one
+# assertion that does not need anyone to know the right pass count in advance.
+run_chain "$CHAIN_SRC" "$CHAIN_BUILD" "$ENTITY_BODY"
+check
+if [ "$CHAIN_RERUNS" -eq 0 ] && [ "$CHAIN_DELIVERED" = "880" ]; then
+    log_success "and the sequence reached a FIXPOINT -- a second build re-configures 0 times"
+else
+    fail "no fixpoint: a second build re-ran cmake $CHAIN_RERUNS time(s), delivered '$CHAIN_DELIVERED':
+$CHAIN_OUT"
+fi
+
+log_header "I. the bound counts CONSECUTIVE arms, not the build dir's lifetime (issue 1002)"
+
+# The counter lives in the CACHE, whose lifetime is the build dir. Reading that
+# as the bound's SCOPE is a defect with a short fuse, and this is the
+# regression: a clean build of the chain above spends 2 of the 3 allowed arms,
+# the FIRST declaration edit spends the third, and from the SECOND edit on the
+# bound is exhausted for the life of the directory -- every later edit warns and
+# compiles the PREVIOUS answer.
+#
+# Measured on the unfixed module, same project, editing which type the image
+# subscribes to:
+#
+#   clean          -> 880   (correct)
+#   after edit 1   -> 1496  (correct)
+#   after edit 2   -> 1496  WRONG, declaration says 880, bound exhausted
+#   after edit 3   -> 880   WRONG, declaration says 1496 -- and this direction is
+#                           UNDER-sized, the half issue 0991 calls unsafe
+#
+# So this is not "the number is off by one". A directory that has been edited
+# twice stops delivering, and which way it fails depends on the edit.
+
+edit_subscribed_type() {   # <out-file> <type>
+    local out="$1" t="$2"
+    sed -e "s|^set(NROS_ENTITY_SUBSCRIBED_TYPES \".*\")|set(NROS_ENTITY_SUBSCRIBED_TYPES \"$t\")|" \
+        -e "s|^set(NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS \".*\")|set(NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS \"$t=1\")|" \
+        -e "s|^set(NROS_ENTITY_RECEIVED_TYPES \".*\")|set(NROS_ENTITY_RECEIVED_TYPES \"$t\")|" \
+        -e "s|^set(NROS_ENTITY_RECEIVED_TYPE_COUNTS \".*\")|set(NROS_ENTITY_RECEIVED_TYPE_COUNTS \"$t=1\")|" \
+        "$ENTITY_BODY" > "$out"
+}
+
+EDIT_BODY_BIG="$TEST_TMPDIR/entity-big.cmake"
+EDIT_BODY_SMALL="$TEST_TMPDIR/entity-small.cmake"
+edit_subscribed_type "$EDIT_BODY_BIG" "std_msgs/msg/Float64MultiArray"
+edit_subscribed_type "$EDIT_BODY_SMALL" "std_msgs/msg/Int32"
+
+# Four edits in the SAME build dir, alternating so a stale answer is always
+# visibly the wrong one. A declaration change is a CMakeLists change, so the
+# touch is what a real edit does, not a way of forcing the issue.
+LIFETIME_OK=1
+LIFETIME_LOG=""
+for _step in 1:big:1496 2:small:880 3:big:1496 4:small:880; do
+    _n="${_step%%:*}"; _rest="${_step#*:}"; _which="${_rest%%:*}"; _want="${_rest##*:}"
+    if [ "$_which" = "big" ]; then _body="$EDIT_BODY_BIG"; else _body="$EDIT_BODY_SMALL"; fi
+    touch "$CHAIN_SRC/CMakeLists.txt"
+    run_chain "$CHAIN_SRC" "$CHAIN_BUILD" "$_body"
+    LIFETIME_LOG="$LIFETIME_LOG
+  edit $_n ($_which): delivered=$CHAIN_DELIVERED want=$_want reruns=$CHAIN_RERUNS"
+    if [ "$CHAIN_DELIVERED" != "$_want" ]; then
+        LIFETIME_OK=0
+    fi
+    if printf '%s\n' "$CHAIN_OUT" | grep -q 'NROS_RECONFIGURE_MAX_PASSES'; then
+        LIFETIME_OK=0
+        LIFETIME_LOG="$LIFETIME_LOG  <-- hit the bound"
+    fi
+done
+
+check
+if [ "$LIFETIME_OK" -eq 1 ]; then
+    log_success "four declaration edits in one build dir all delivered their own answer"
+else
+    fail "the build dir stopped converging as it aged:$LIFETIME_LOG
+
+  The per-fragment counter is not being reset when a fragment SETTLES, so it is
+  counting the build dir's lifetime instead of one convergence episode. A clean
+  build of this chain already spends 2 of NROS_RECONFIGURE_MAX_PASSES, which
+  leaves room for exactly one edit."
+fi
+
 log_header "Result"
 if [ "$FAILURES" -eq 0 ]; then
     log_success "$CHECKS/$CHECKS assertions held"
