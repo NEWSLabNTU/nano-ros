@@ -3823,6 +3823,25 @@ generate-diagnostic-msgs:
     rm -rf generated/humble/geometry_msgs
     echo "✓ diagnostic-msgs regenerated"
 
+# Regenerate rosgraph-msgs bindings (workspace member with nros- prefix).
+# phase-425 W2 — `rosgraph_msgs/msg/Clock` is the wire form of ROS time; the
+# `-clock` rename on builtin_interfaces is not cosmetic: a generated crate
+# names its deps by CRATE name, so two trees generating `builtin_interfaces`
+# collide in one workspace (same reason diagnostic-msgs carries `-diag`).
+[private]
+generate-rosgraph-msgs:
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    NROS="$(nros_cli_bin)"
+    echo "Regenerating rosgraph-msgs bindings..."
+    cd packages/interfaces/rosgraph-msgs
+    rm -rf generated/humble
+    $NROS generate-rust --force -o generated/humble \
+        --rename rosgraph_msgs=nros-rosgraph-msgs \
+        --rename builtin_interfaces=nros-builtin-interfaces-clock
+    echo "✓ rosgraph-msgs regenerated"
+
 # Regenerate lifecycle-msgs bindings (workspace member with nros- prefix)
 [private]
 generate-lifecycle-msgs:

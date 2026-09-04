@@ -1,0 +1,14 @@
+{
+  "derivation": "nros_serdes::size::max_serialized_size",
+  "package": "rosgraph_msgs",
+  "producer": "nros-codegen",
+  "schema_version": 1,
+  "types": [
+    {
+      "rx_max_serialized_size": 20,
+      "state": "bounded",
+      "tx_max_serialized_size": 12,
+      "type_name": "rosgraph_msgs/msg/Clock"
+    }
+  ]
+}

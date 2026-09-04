@@ -116,6 +116,12 @@ members = [
     "packages/interfaces/diagnostic-msgs/generated/humble/nros-diagnostic-msgs",
     "packages/interfaces/diagnostic-msgs/generated/humble/nros-std-msgs-diag",
     "packages/interfaces/diagnostic-msgs/generated/humble/nros-builtin-interfaces-diag",
+    # phase-425 W2 — rosgraph_msgs/msg/Clock, the wire form of ROS time. Its own
+    # builtin_interfaces copy carries the `-clock` suffix for the reason the
+    # `-diag` one does: a generated crate names its deps by crate name, so two
+    # trees generating `builtin_interfaces` would collide in one workspace.
+    "packages/interfaces/rosgraph-msgs/generated/humble/nros-rosgraph-msgs",
+    "packages/interfaces/rosgraph-msgs/generated/humble/nros-builtin-interfaces-clock",
     "packages/core/nros-diagnostics",
     # C function table adapter for third-party RMW backends
     "packages/rmw/cffi",

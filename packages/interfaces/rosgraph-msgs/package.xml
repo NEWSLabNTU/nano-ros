@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>rosgraph_msgs_bindings</name>
+  <version>0.1.0</version>
+  <description>Generated rosgraph_msgs bindings for the nano-ros ROS-time source (phase-425 W2)</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- ROS interface dependencies -->
+  <depend>rosgraph_msgs</depend>
+
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

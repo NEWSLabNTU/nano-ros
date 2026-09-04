@@ -1719,6 +1719,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-builtin-interfaces-clock"
+version = "0.0.0"
+dependencies = [
+ "heapless 0.8.0",
+ "nros-core",
+ "nros-serdes",
+]
+
+[[package]]
 name = "nros-builtin-interfaces-diag"
 version = "0.0.0"
 dependencies = [
@@ -2119,6 +2128,16 @@ dependencies = [
  "nros-platform",
  "nros-rmw-zenoh",
  "panic-halt",
+]
+
+[[package]]
+name = "nros-rosgraph-msgs"
+version = "0.0.0"
+dependencies = [
+ "heapless 0.8.0",
+ "nros-builtin-interfaces-clock",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]
