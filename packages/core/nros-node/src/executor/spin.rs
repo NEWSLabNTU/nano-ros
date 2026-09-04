@@ -1414,6 +1414,15 @@ pub struct Executor<'s> {
     /// jitter is measured over. `None` until the first spin, and reset by
     /// `clear_release_jitter_stats` so a window starts clean.
     pub(crate) last_spin_entry_us: Option<u64>,
+    /// Jitter high-water at the previous `release-jitter-runtime` check, so
+    /// the rule reports the DELTA. Same shape as `overruns_reported` on a
+    /// timer header, and for the same reason: a maximum that has not moved
+    /// is the fault already reported, not a new one.
+    pub(crate) jitter_reported_us: u64,
+    /// The pacing quantum the spin loop was last driven at, in microseconds.
+    /// This is the bound the jitter rule judges against -- the caller's own
+    /// declared cadence, so nothing further has to be declared.
+    pub(crate) spin_nominal_us: u64,
     /// Wakes that were already past their nominal deadline, and wakes total.
     ///
     /// The maximum alone cannot distinguish one bad wake from a loop that is
@@ -1581,6 +1590,8 @@ impl<'s> Executor<'s> {
             monitor_violations_dropped: 0,
             max_release_jitter_us: 0,
             last_spin_entry_us: None,
+            jitter_reported_us: 0,
+            spin_nominal_us: 0,
             late_wakes: 0,
             total_wakes: 0,
             report_violations: true,
@@ -2158,6 +2169,7 @@ impl<'s> Executor<'s> {
         let Some(now) = self.now_us() else {
             return;
         };
+        self.spin_nominal_us = nominal_us;
         if let Some(last) = self.last_spin_entry_us {
             let interval = now.saturating_sub(last);
             self.total_wakes = self.total_wakes.saturating_add(1);
@@ -2199,6 +2211,7 @@ impl<'s> Executor<'s> {
         self.late_wakes = 0;
         self.total_wakes = 0;
         self.last_spin_entry_us = None;
+        self.jitter_reported_us = 0;
     }
 
     pub fn set_fault_handler(&mut self, f: fn(&super::monitor::Violation)) {
@@ -2364,6 +2377,27 @@ impl<'s> Executor<'s> {
     /// activation is a contract failure for any declared period. It runs
     /// on the same tick so violations land in the same ring the entry
     /// glue drains.
+    /// Issue #515 — report a spin wake a whole period late.
+    ///
+    /// Runs on the same tick as `check_timer_overruns` and feeds the same
+    /// ring, so the entry glue drains it with the other rules and no caller
+    /// needs to know this one exists. Like that rule it needs no spec table:
+    /// the bound is the spin period the caller already passes in.
+    fn check_release_jitter_rule(&mut self) {
+        let (max_us, _late, _total) = self.release_jitter();
+        let period_us = self.spin_nominal_us;
+        if let Some(v) =
+            super::monitor::check_release_jitter(max_us, &mut self.jitter_reported_us, period_us)
+        {
+            if self.report_violations {
+                super::monitor::log_violation(&v);
+            }
+            if self.monitor_violations.push(v).is_err() {
+                self.monitor_violations_dropped = self.monitor_violations_dropped.saturating_add(1);
+            }
+        }
+    }
+
     fn check_timer_overruns(&mut self) {
         let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
         for i in 0..self.entries.len() {
@@ -6791,6 +6825,7 @@ impl<'s> Executor<'s> {
         // that just happened, and a tier that is stalling should not have
         // to wait for the next spin to say so.
         self.check_timer_overruns();
+        self.check_release_jitter_rule();
 
         // Process parameter services (outside the arena)
         #[cfg(feature = "param-services")]
