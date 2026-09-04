@@ -50,7 +50,52 @@ It also silently strands an acceptance criterion. phase-196's ONLY open item is
 since 2026-06 waiting on a lane that no longer reports. See the phase-196
 correction landing with this issue.
 
-## The lead, NOT the root cause
+## ROOT-CAUSED 2026-09-04, by elimination — and FIXED
+
+The section below is superseded; it is kept as the record of what the log could
+and could not answer.
+
+**The `changes` job was not the problem.** Read from the raw log ARCHIVE
+(`gh api .../logs` → zip) rather than `gh run view --log`, the 05:40 run printed:
+
+    selected platforms: [""] ; zephyr: true
+
+So `needs.changes.outputs.zephyr` was `true` and the gate's first clause passed.
+What closed it was the second:
+
+    github.event.schedule == '0 5 * * *'
+
+**And the value it compares matches NEITHER cron.** In that same 05:40 run the
+`platform` job — gated on `github.event.schedule == '0 7 * * *'` — also skipped.
+Two guards, two different cron strings, both false in one run, so
+`github.event.schedule` there was neither. That needed no log line: it follows
+from which jobs ran, which is why it survives the lossy-log problem below.
+
+Correlation across 2026-08-30..09-03 is total: **9 of 9 `schedule` runs skipped
+every zephyr job; 5 of 5 `workflow_dispatch` runs ran them.**
+
+### The fix
+
+The three gates now read one computed boolean,
+`needs.changes.outputs.run_zephyr`, decided once in the `changes` job.
+
+* **It FAILS OPEN.** An unrecognised or absent schedule value RUNS the lane. For
+  a nightly that is the safe direction: running too often costs minutes, never
+  running costs the ability to tell a regression from health. The old compare
+  failed CLOSED, and silently.
+* **The raw value is recorded** — stdout AND `$GITHUB_STEP_SUMMARY`. The summary
+  because this workflow's logs are demonstrably lossy, so a value living only in
+  the log is one nobody can read back. After one night the summary will say what
+  `github.event.schedule` actually contains, which is what nobody could see for
+  eight nights.
+* Matching is by PREFIX (`"0 5 "*`), so a cron edited to `0 5 * * 1-5` keeps
+  working rather than silently disabling the lane.
+
+The `0 7` platform guards are left ALONE. Same fragile shape, but they currently
+work and nothing here measured them failing; rewriting a working gate on a hunch
+is how the next eight nights get lost. Recorded as a known sibling.
+
+## The lead, NOT the root cause — superseded, kept as record
 
 `dorny/paths-filter@v3` logs this in the `changes` job on a scheduled run:
 
