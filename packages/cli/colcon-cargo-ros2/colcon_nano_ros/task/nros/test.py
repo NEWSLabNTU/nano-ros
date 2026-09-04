@@ -11,7 +11,7 @@ from colcon_core.logging import colcon_logger
 from colcon_core.plugin_system import satisfies_version
 from colcon_core.task import TaskExtensionPoint
 
-from .build import parse_nros_type
+from colcon_nano_ros import manifest
 
 logger = colcon_logger.getChild(__name__)
 
@@ -21,11 +21,15 @@ QEMU_TIMEOUT = 60
 
 
 class NrosTestTask(TaskExtensionPoint):
-    """Test task for nano-ros packages (nros.<lang>.<platform>).
+    """Test task for nano-ros packages (`nros_cargo` / `nros_cmake`).
 
-    Runs tests appropriate for the target platform:
+    Which runner applies is decided by the platform alone, which is why this
+    task never needed the language half of the retired
+    `ros.nros.<lang>.<platform>` key. The platform is the package's own
+    `<export><nano_ros deploy=…/></export>` (RFC-0087 D3 / phase-420 W4).
+
     - native: execute binary directly, check exit code
-    - freertos/baremetal: launch QEMU, capture semihosting output, timeout
+    - freertos/baremetal/nuttx: launch QEMU, capture semihosting output, timeout
     - zephyr: run native_sim binary directly
     """
 
@@ -37,8 +41,8 @@ class NrosTestTask(TaskExtensionPoint):
         pkg = self.context.pkg
         args = self.context.args
 
-        lang, platform = parse_nros_type(pkg.type)
-        logger.info(f"Testing nros package '{pkg.name}' (lang={lang}, platform={platform})")
+        platform = manifest.deploy(pkg.path)
+        logger.info(f"Testing nros package '{pkg.name}' (platform={platform})")
 
         install_base = Path(args.install_base)
         build_base = Path(args.build_base)

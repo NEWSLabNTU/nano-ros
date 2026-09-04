@@ -7,6 +7,8 @@ from colcon_core.logging import colcon_logger
 from colcon_core.package_augmentation import PackageAugmentationExtensionPoint
 from colcon_core.plugin_system import satisfies_version
 
+from colcon_nano_ros import manifest
+
 logger = colcon_logger.getChild(__name__)
 
 
@@ -36,15 +38,17 @@ class NrosBindingAugmentation(PackageAugmentationExtensionPoint):
     Runs AFTER package discovery but BEFORE build tasks. Collects all
     <depend> entries from nros packages that are interface packages,
     then generates bindings once into build/nros_bindings/.
+
+    phase-420 W4: the gate was `desc.type.startswith("ros.nros.")`, matching the
+    30 `ros.nros.<lang>.<platform>` keys no `package.xml` ever declared, so it
+    never fired. It is now the two RFC-0087 D2 build types.
     """
 
     PRIORITY = 95  # Run after ROS package augmentation
 
     # Class-level state shared with build tasks
     _bindings_dir = None  # Path to build/nros_bindings/
-    _needs_rust = False  # At least one Rust nros package exists
-    _needs_c = False  # At least one C nros package exists
-    _needs_cpp = False  # At least one C++ nros package exists
+    _needs_rust = False  # At least one package consumes generated Rust bindings
     _generated = False  # Bindings already generated this run
 
     def __init__(self):  # noqa: D107
@@ -60,21 +64,18 @@ class NrosBindingAugmentation(PackageAugmentationExtensionPoint):
         for desc in descs:
             if not hasattr(desc, "type") or desc.type is None:
                 continue
-            if not desc.type.startswith("ros.nros."):
+            if not manifest.is_nros_type(desc.type):
                 continue
 
-            # Parse language from type
-            parts = desc.type.split(".")
-            if len(parts) != 4:
-                continue
-            lang = parts[2]
-
-            if lang == "rust":
+            # Whether Rust bindings are needed is EVIDENCE, not a token split:
+            # a cargo-rooted package always needs them, and a CMake-rooted one
+            # does when it carries a `Cargo.toml` (the Zephyr/ThreadX Rust
+            # leaves). The old `_needs_c` / `_needs_cpp` flags are gone — they
+            # were written and never read, and `<build_type>` cannot tell C
+            # from C++ anyway. CMake's `nano_ros_generate_interfaces()` owns
+            # that side, as task/nros/build.py records.
+            if manifest.needs_rust_bindings(desc.type, desc.path):
                 NrosBindingAugmentation._needs_rust = True
-            elif lang == "c":
-                NrosBindingAugmentation._needs_c = True
-            elif lang == "cpp":
-                NrosBindingAugmentation._needs_cpp = True
 
             # Collect interface dependencies from package.xml <depend>
             for dep_name, dep in (desc.dependencies or {}).items():
@@ -90,9 +91,7 @@ class NrosBindingAugmentation(PackageAugmentationExtensionPoint):
 
         logger.info(
             f"nros workspace: {len(interface_deps)} interface packages to "
-            f"generate (rust={NrosBindingAugmentation._needs_rust}, "
-            f"c={NrosBindingAugmentation._needs_c}, "
-            f"cpp={NrosBindingAugmentation._needs_cpp})"
+            f"generate (rust={NrosBindingAugmentation._needs_rust})"
         )
 
         # Store for build tasks to use
