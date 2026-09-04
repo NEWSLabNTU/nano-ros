@@ -139,7 +139,8 @@ pub const MAX_VIOLATIONS: usize = 8;
 pub struct Violation {
     /// `"rate-hierarchy-runtime"` | `"max-age-runtime"` |
     /// `"max-latency-runtime"` | `"deadline-miss-runtime"` |
-    /// `"timer-overrun-runtime"` | `"release-jitter-runtime"`.
+    /// `"timer-overrun-runtime"` | `"release-jitter-runtime"` |
+    /// `"stack-headroom-runtime"`.
     pub rule: &'static str,
     /// Violating endpoint ref (from the spec's `fqn`; the SC name for
     /// deadline misses).
@@ -525,6 +526,88 @@ pub(crate) fn check_release_jitter(
         measured: max_jitter_us.min(u32::MAX as u64) as u32,
         declared: period_us.min(u32::MAX as u64) as u32,
     })
+}
+
+/// Report a spin thread whose stack has come closer to its end than the
+/// declared minimum.
+///
+/// Unlike every other rule here the bound CANNOT be derived from something
+/// already declared, and that is worth stating rather than papering over.
+/// `check_timer_overrun` and `check_release_jitter` both judge against a
+/// period the caller already passes in; there is no equivalent for a stack.
+/// The executor never sees `stack_bytes` -- it lives in the spawn attr and
+/// goes no further -- and the total is not portably queryable either:
+/// FreeRTOS exposes the high-water mark and not the size it was taken
+/// against, so even a percentage cannot be computed. A minimum headroom is
+/// therefore a real declaration, and `min_bytes == 0` means the caller has
+/// not made one, which disables the rule.
+///
+/// Reports on the WORST case, not on each crossing: `worst_reported` holds
+/// the lowest headroom already reported, so a stack hovering just under the
+/// bound says so once and then only when it gets worse. The same delta
+/// discipline as the overrun and jitter rules, inverted because for headroom
+/// smaller is worse.
+pub(crate) fn check_stack_headroom(
+    unused_bytes: usize,
+    min_bytes: usize,
+    worst_reported: &mut usize,
+) -> Option<Violation> {
+    if min_bytes == 0 || unused_bytes >= min_bytes {
+        return None;
+    }
+    // `usize::MAX` is the "nothing reported yet" sentinel: any real headroom
+    // is below it, so the first breach always reports.
+    if *worst_reported != usize::MAX && unused_bytes >= *worst_reported {
+        return None;
+    }
+    *worst_reported = unused_bytes;
+    Some(Violation {
+        rule: "stack-headroom-runtime",
+        // The spin thread is not an endpoint; same stand-in as the timer,
+        // deadline and jitter rules.
+        fqn: "stack",
+        measured: unused_bytes.min(u32::MAX as usize) as u32,
+        declared: min_bytes.min(u32::MAX as usize) as u32,
+    })
+}
+
+#[cfg(test)]
+mod stack_headroom_rule_tests {
+    use super::*;
+
+    /// No declared minimum means no claim to breach.
+    #[test]
+    fn a_zero_minimum_disables_the_rule() {
+        let mut worst = usize::MAX;
+        assert!(check_stack_headroom(8, 0, &mut worst).is_none());
+    }
+
+    #[test]
+    fn headroom_at_the_bound_is_not_a_breach() {
+        let mut worst = usize::MAX;
+        assert!(check_stack_headroom(1024, 1024, &mut worst).is_none());
+        assert!(check_stack_headroom(2048, 1024, &mut worst).is_none());
+    }
+
+    #[test]
+    fn reports_the_first_breach_with_both_numbers() {
+        let mut worst = usize::MAX;
+        let v = check_stack_headroom(512, 1024, &mut worst).expect("under the bound reports");
+        assert_eq!(v.rule, "stack-headroom-runtime");
+        assert_eq!(v.measured, 512);
+        assert_eq!(v.declared, 1024);
+    }
+
+    /// Smaller is worse for headroom, so the delta runs the other way.
+    #[test]
+    fn only_a_new_low_is_a_new_fault() {
+        let mut worst = usize::MAX;
+        assert!(check_stack_headroom(512, 1024, &mut worst).is_some());
+        assert!(check_stack_headroom(512, 1024, &mut worst).is_none());
+        assert!(check_stack_headroom(600, 1024, &mut worst).is_none());
+        let v = check_stack_headroom(100, 1024, &mut worst).expect("a new low reports");
+        assert_eq!(v.measured, 100);
+    }
 }
 
 #[cfg(test)]
