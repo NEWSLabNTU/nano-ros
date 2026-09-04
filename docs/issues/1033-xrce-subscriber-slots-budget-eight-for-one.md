@@ -81,7 +81,7 @@ That is the shape this campaign exists to remove, and the boot failure is
 currently the only thing making it visible.
 
 
-## Option 2 taken, and it stops one step short (2026-09-04)
+## Option 2 taken (2026-09-04) — see the section after this one for the composition fix
 
 The derivation is wired and the declarations are written; the composition step
 that joins them does not run for these leaves. All three facts are measured.
@@ -134,3 +134,71 @@ the declarations are right, and the image keeps the default it always had.
 Nothing regressed and nothing is yet saved.
 
 **Still do not raise the heap.** The reasoning above is unchanged.
+
+
+## The composition gap is CLOSED (2026-09-04) — 427,968 -> 76,624
+
+The step named above as missing is done. `nros_derive_entity_inventory_knobs`
+now has a second caller: a composition DEFERRED to the top-level directory,
+armed by `nano_ros_node_register` itself.
+
+**Deferred to the TOP-LEVEL scope**, for the reason the support-library flush
+documents one file over: the composer must run after EVERY registration, and
+deferring to the current directory fires at the end of whichever package
+registered first. **The deferred call takes no arguments** —
+`cmake_language(DEFER ... CALL fn(arg))` delivers them empty — so the CLI path
+travels as a `GLOBAL` property.
+
+**The reconfigure is not optional here, and the trace proves why.** On Zephyr
+the reader runs inside `find_package(Zephyr)`, before the app's CMakeLists body,
+so no ordering lets one configure both compose and read its own answer. Issue
+0991's machinery carries it across:
+
+```
+nros: NROS_XRCE_MAX_SUBSCRIBERS left to its crate default -- none derivable
+nros: entity inventory DERIVED from 1 components -- 1 entities, 1 callback slots
+nros: this image's entity inventory (standalone) changed after the readers of
+      this pass had run, so cmake will run once more (issue 0991)
+nros: NROS_XRCE_MAX_SUBSCRIBERS=1 DERIVED from this image's entity inventory
+```
+
+Four knobs derive on the second pass where none did before:
+`NROS_XRCE_MAX_SUBSCRIBERS=1`, `NROS_EXECUTOR_MAX_CBS=1`,
+`NROS_EXECUTOR_MAX_NODES=1`, `NROS_RMW_SUBSCRIBER_SLOTS=1`.
+
+### Measured, on the image that motivated this
+
+| | request | note |
+| --- | ---: | --- |
+| original | 427,968 | |
+| after the MTU fix (issue 0968) | 309,696 | dead knob |
+| **after this** | **76,624** | subscriber slots 8 -> 1 |
+
+**82% off the session struct**, and the arena is 66,048 — so it is 10,576 short
+of booting.
+
+### What is left, and why it is not a five-minute follow-up
+
+The remainder is `service_server_slots[4]` (17,536) and `service_client_slots[4]`
+(4,160) on a LISTENER that has neither. Deriving the servers from
+`NROS_DERIVED_MAX_QUERYABLES` — which already carries `ACTION_SERVER_QUERYABLES`,
+so an action image is sized right — would take the request to about 63,472 and
+the image WOULD boot.
+
+It is not done here because of a collision worth stating rather than resolving
+at speed:
+
+* the derived value for this listener is **0**;
+* `build.rs` PANICS below its minimum of 1 (`XRCE_MAX_SERVICE_SERVERS=0 too
+  small`), because a zero-length array is not standard C;
+* so the derivation must clamp to 1 — and silently rounding a knob up is
+  precisely what issue 0827 forbids: *"This used to be silently rounded up to
+  {min}, which reserved the memory anyway while reading as though the knob had
+  been honoured."*
+
+A clamp here is defensible (it is a C language floor, not a pool the caller
+asked to be empty) but it IS the thing that rule exists to catch, so it deserves
+a decision rather than a commit. That decision, plus the same question for
+service CLIENTS — where no audited aggregate exists at all, only the raw
+`NROS_ENTITY_COUNT_SERVICE_CLIENT`, which would under-size any action-client
+image — is what remains.

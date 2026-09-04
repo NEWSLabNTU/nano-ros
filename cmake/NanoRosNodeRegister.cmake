@@ -116,6 +116,64 @@ set(_NROS_NODE_REGISTER_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL
 # skips) — leaving the race in place (pass/fail purely by build order). A deferred
 # call (`cmake_language(DEFER)` at the top-level dir) runs after every subdir is
 # processed, when all targets exist, so the edge is always applied.
+# ---------------------------------------------------------------------------
+# issue 1033 — compose the entity inventory on the NON-ENTRY path.
+#
+# `nros_derive_entity_inventory_knobs` had exactly one caller, inside
+# `nano_ros_entry()`. A standalone image — every `examples/zephyr/**` leaf —
+# registers a node and never calls that verb, so its `ENTITIES` declaration
+# reached `nros-metadata.json` and was never composed: the inventory read
+# `refused / "no entity inventory composed yet"` and every derivable knob fell
+# to its crate default. The declaration was captured and thrown away.
+#
+# DEFERRED to the TOP-LEVEL directory, for the reason the support-library flush
+# documents one file over: the composer must run after EVERY registration, and
+# deferring to the current directory fires at the end of whichever package
+# registered first. On Zephyr the reader (`nros_resolve_knobs()`, inside
+# `find_package(Zephyr)`) runs BEFORE the app's CMakeLists body, so there is no
+# ordering that lets this configure both compose and read its own answer —
+# which is why `nros_reconfigure_on_change` is not optional here. It is the same
+# machinery issue 0991 built for exactly this shape, and the same reason: a
+# clean build dir would otherwise size the image from the "no inventory yet"
+# placeholder.
+#
+# The deferred call takes NO ARGUMENTS. `cmake_language(DEFER … CALL fn(arg))`
+# delivers them EMPTY, so the CLI path travels as a GLOBAL property instead.
+# ---------------------------------------------------------------------------
+function(_nros_node_register_schedule_inventory)
+    get_property(_scheduled GLOBAL PROPERTY NROS_ENTITY_INVENTORY_SCHEDULED)
+    if(_scheduled)
+        return()
+    endif()
+    set_property(GLOBAL PROPERTY NROS_ENTITY_INVENTORY_SCHEDULED TRUE)
+    cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
+        CALL _nros_node_register_compose_inventory)
+endfunction()
+
+function(_nros_node_register_compose_inventory)
+    get_property(_composed GLOBAL PROPERTY NROS_ENTITY_INVENTORY_COMPOSED)
+    if(_composed)
+        # An entry already composed, after its own registrations. Re-composing
+        # would read the same metadata and write the same bytes, so it is not
+        # WRONG — it is a CLI invocation for nothing, and a second writer of one
+        # artifact is the shape this repo keeps paying for.
+        return()
+    endif()
+
+    get_property(_nros_bin GLOBAL PROPERTY NROS_ENTITY_INVENTORY_CLI)
+    if(NOT _nros_bin)
+        return()
+    endif()
+
+    include("${_NROS_NODE_REGISTER_DIR}/NanoRosEntityInventory.cmake")
+    include("${_NROS_NODE_REGISTER_DIR}/NanoRosReconfigure.cmake")
+    nros_entity_inventory_knobs_file(_knobs_path)
+    nros_reconfigure_snapshot("${_knobs_path}" _knobs_before)
+    nros_derive_entity_inventory_knobs(CLI "${_nros_bin}")
+    nros_reconfigure_on_change("${_knobs_path}" "${_knobs_before}"
+        LABEL "this image's entity inventory (standalone)")
+endfunction()
+
 function(_nros_node_register_apply_config_header_deps _tgt)
     if(NOT TARGET ${_tgt})
         return()
@@ -1071,6 +1129,26 @@ function(nano_ros_node_register)
 \"callback_groups\": [${_cbgs_json}]${_entities_field}}")
     set_property(GLOBAL APPEND_STRING PROPERTY NROS_COMPONENTS_JSON "${_entry}")
     _nros_metadata_emit()
+
+    # issue 1033 — arm the deferred composer. The metadata is written above; on
+    # a standalone image nothing else ever composes it into knobs, so this is
+    # where that gets scheduled. Idempotent (guarded on a GLOBAL property) and
+    # a no-op when an entry composes first.
+    #
+    # The CLI travels by GLOBAL property because the deferred call takes no
+    # arguments. OPTIONAL: a tree without the CLI resolvable still registers
+    # fine, it simply derives nothing — which is the behaviour it had before
+    # this existed, not a new failure.
+    get_property(_nros_inv_cli GLOBAL PROPERTY NROS_ENTITY_INVENTORY_CLI)
+    if(NOT _nros_inv_cli)
+        nros_resolve_cli(_nros_inv_cli OPTIONAL
+            CONTEXT "entity inventory (standalone image)")
+        if(_nros_inv_cli)
+            set_property(GLOBAL PROPERTY NROS_ENTITY_INVENTORY_CLI
+                "${_nros_inv_cli}")
+        endif()
+    endif()
+    _nros_node_register_schedule_inventory()
 
     # phase-403 step 2 — carry the declared `@depth=` to the COMPILER.
     if(DEFINED _NRC_ENTITIES)
