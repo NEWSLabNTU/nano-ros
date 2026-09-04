@@ -615,3 +615,59 @@ rather than a line of code.
   from that capture is recorded here. Two instruction-access faults are not
   necessarily the same fault, and the pre-fix build had no `nros_log` record
   path in the leaves.
+
+## RESOLVED, both halves: the frame is real and the bisect was stale (2026-09-04)
+
+Ran the check the section above asked for, and it settles both.
+
+An empty-`register` talker, **with the artifact verified this time** — the
+`create_publisher` symbol count in the freshly built ELF is **0**, so the
+publisher is genuinely gone. (`Hello World` is a BAD probe and stays present:
+the string lives in the callback body, which still compiles. Symbol count is the
+probe that discriminates.) Run against the same router, same QEMU arguments as
+the harness (`-M esp32c3 -icount 3 -nic user,model=open_eth`), with the ORIGINAL
+image kept as a matched control in the same session:
+
+| image | `create_publisher` in ELF | faults in 60 s |
+| --- | --- | --- |
+| empty `register` | 0 | **0** |
+| full talker (control) | present | **2** |
+
+So `register` decides it, `ZenohSession::create_publisher` on the stack is real,
+and **variants E, F and H are RETRACTED** — they measured the original image.
+
+### Why they were stale: this issue's own sibling, #1025
+
+`just esp32 build-qemu` resolved the ELF with
+
+```
+nros_fixture_row_artifact_dir "<leaf>" qemu-esp32-baremetal "" ""
+```
+
+— empty `cargo_args` and empty `envstr`, INVENTED at the call site rather than
+read from the row. The talker row carries the variant `ZPICO_MAX_QUERYABLES=2`,
+so cargo writes to the group dir `qemu-esp32-baremetal-4118800323` while the
+packer looks in the bare `qemu-esp32-baremetal`. During E/F/H a stale ELF sat at
+the bare path, so every "rebuild" packed the SAME original image, and three
+variants agreed because they were one binary.
+
+That is issue **#1025** exactly, and its fix (the by-id helper, which reads the
+row instead of inventing its inputs) is in open PR **#303** — unmerged, which is
+why the broken spelling is still on `main` and why the trap was still armed
+today. It now fails LOUD (`is missing, and nothing narrowed this build`) rather
+than packing a stale image, because #700 landed in between; that is the only
+reason this was catchable at all.
+
+### What is actually established
+
+The fault is reached from `ZenohSession::create_publisher`, on the connected
+path, in the talker only. The listener creates a subscription and does not
+fault. Next step is that function, not another bisect.
+
+### Method note
+
+Every wrong turn in this issue has one shape: a measurement whose artifact
+provenance was never checked — the ASCII lead, the "fault is on the CONNECTED
+path" claim, and now E/F/H. The control that caught it costs one command
+(`nm | grep -c <symbol>` on the ELF you are about to run) and would have caught
+all three.
