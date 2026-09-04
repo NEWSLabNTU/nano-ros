@@ -10,13 +10,14 @@
 //!     compilation inside tests", these compile in the **build stage** — the
 //!     `cpp_compat_snippets/*.cpp` fixtures are `c++ -fsyntax-only`'d by
 //!     `compile-check-fixtures.sh` (run by `build-test-fixtures`), which stamps
-//!     `.compile-ok`. The tests assert the stamps. (The snippets currently fail
-//!     to compile — a pre-existing drift: `declared_node`'s `create_subscription`
-//!     call is stale vs the current signature, and `rclcpp_node_options` needs
-//!     generated config headers; both are tracked in issue 0034 for the C++ API
-//!     owner. Until fixed, the build stage leaves no stamp and these report the
-//!     gap per tier — they do NOT block `build-test-fixtures`.)
+//!     `.compile-ok`. The tests assert the stamps, and a missing stamp is a
+//!     FAILURE in the full tier (`[SKIPPED]` only under
+//!     `NROS_FIXTURES_OPTIONAL=1`) — see `assert_snippet_compiled`. The build
+//!     stage still does not block `build-test-fixtures` on a snippet that will
+//!     not compile; reporting it is this file's job, and until issue 1032 it
+//!     was not being done.
 
+use nros_tests::TestResult;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -104,19 +105,37 @@ fn examples_cpp_have_no_retired_symbols() {
     );
 }
 
-/// Assert a cpp-compat-snippet's build-stage `.compile-ok` stamp. The snippet's
-/// compile is a tracked pre-existing drift (issue 0034) — when the build stage
-/// couldn't compile it, skip with a pointer rather than hard-fail (the compile
-/// error is in the build-test-fixtures log; the fix is the C++ API owner's).
-fn assert_snippet_compiled(id: &str) {
-    match nros_tests::fixtures::require_compile_check(id) {
-        Ok(stamp) => assert!(stamp.exists(), "stamp missing: {}", stamp.display()),
-        Err(_) => nros_tests::skip!(
-            "cpp compat snippet `{id}` not built — pre-existing C++ API drift / \
-             missing generated headers (issue 0034); run `just build-test-fixtures` \
-             and see its log for the compile error"
-        ),
-    }
+/// Assert a cpp-compat-snippet's build-stage `.compile-ok` stamp.
+///
+/// issue 1032 — this used to catch `Err(_)` and `skip!` UNCONDITIONALLY, which
+/// made a broken snippet green at both ends: the build stage already declines
+/// to fail (`cxx-syntax FAILED for <id> (no stamp; consuming test will
+/// report)`) on the understanding that the consuming test reports it, and the
+/// consuming test then reported nothing. Three snippets failed every scheduled
+/// run from at least 2026-09-01 and no lane went red.
+///
+/// The skip cited issue 0034 as a tracked pre-existing drift. 0034 was resolved
+/// and archived on 2026-06-12, and its named cause here — "needs generated
+/// config headers" — was issue 1031, fixed. The excuse outlived the defect by
+/// three months.
+///
+/// `?` rather than a bare `assert!`, because the tier policy the old code threw
+/// away already lives in `require_compile_check`: hard-fail in the full tier,
+/// `[SKIPPED]` under `NROS_FIXTURES_OPTIONAL=1`. This restores that policy
+/// instead of writing a second one — the sibling consumer
+/// (`platform_header_compile.rs`) has always done it this way.
+fn assert_snippet_compiled(id: &str) -> TestResult<()> {
+    let stamp = nros_tests::fixtures::require_compile_check(id)?;
+    assert!(
+        stamp.exists(),
+        "compile-ok stamp missing for `{id}`: {}\n\
+         The snippet did not compile at the build stage. Run \
+         `just build-test-fixtures` and read its log for the compile error — \
+         these snippets are the only compile coverage for the public \
+         `nros.hpp` surface.",
+        stamp.display()
+    );
+    Ok(())
 }
 
 // Phase-257 Stage-3b — the `declared_node_typed_helpers` snippet exercised the
@@ -125,8 +144,8 @@ fn assert_snippet_compiled(id: &str) {
 // (`configure(Node&)` + `Publisher<M>` + `bind_timer`).
 
 #[test]
-fn rclcpp_node_options_and_component_factory_compile() {
-    assert_snippet_compiled("rclcpp_node_options");
+fn rclcpp_node_options_and_component_factory_compile() -> TestResult<()> {
+    assert_snippet_compiled("rclcpp_node_options")
 }
 
 /// phase-277 W5 — the callback-style subscription-with-attachment path
@@ -134,6 +153,19 @@ fn rclcpp_node_options_and_component_factory_compile() {
 /// dedicated snippet; it used to live as an `if (false)` block inside the
 /// `examples/native/cpp/listener` example (examples stay demo-only).
 #[test]
-fn create_subscription_with_info_compiles() {
-    assert_snippet_compiled("subscription_with_info");
+fn create_subscription_with_info_compiles() -> TestResult<()> {
+    assert_snippet_compiled("subscription_with_info")
+}
+
+/// issue 1032 — `spin_until_future_complete.cpp` was compiled by the build
+/// stage and asserted by NOTHING. Not even the unconditional skip above reached
+/// it: a grep for its id across the test tree found only the fixture file.
+///
+/// It was one of the three snippets failing in every scheduled run, and it was
+/// the one no consumer could ever have reported, which is a step worse than a
+/// skip that says nothing — a fixture with no consumer is build cost that
+/// cannot answer a question.
+#[test]
+fn spin_until_future_complete_compiles() -> TestResult<()> {
+    assert_snippet_compiled("spin_until_future_complete")
 }
