@@ -2791,12 +2791,19 @@ fn run_workspace_scan(
             }
             None => {}
         }
-        if scopes.is_empty() {
-            println!(
-                "      contributors: ./scripts/bootstrap.sh  (or: just setup {})",
-                t.deploy
-            );
-        } else if scopes.iter().any(|s| *s == t.deploy) {
+        // One arm, because both cases end in the same remedy: either no scope
+        // list could be read at all, or the deploy name IS a scope. Split, the
+        // two branches were byte-identical — `clippy::if_same_then_else` — and
+        // the second also spelled a membership test as `iter().any(|s| *s ==
+        // x)`, which is `clippy::manual_contains`. Both are `-D warnings` here,
+        // so this was a hard error in `check test-targets`.
+        //
+        // Behaviour is unchanged. If the two cases were ever meant to say
+        // DIFFERENT things — "no scopes readable" is not the same situation as
+        // "your deploy is a scope" — that is a message to write, not a branch
+        // to keep empty-handed, and it belongs with whoever knows which text
+        // each deserves.
+        if scopes.is_empty() || scopes.contains(&t.deploy) {
             println!(
                 "      contributors: ./scripts/bootstrap.sh  (or: just setup {})",
                 t.deploy
