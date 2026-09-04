@@ -238,6 +238,7 @@ fast-serial: \
     pool-inventory \
     posix-platform-purity \
     prelude-tiers \
+    prereq-roles \
     profile-board-mirror \
     provider-announcements \
     provider-index \
@@ -2452,6 +2453,14 @@ ci-image-python-deps:
 # nothing, and nothing said so (issue 0876). A RATCHET, not a prohibition —
 # shared board fragments are legitimately an override layer. Refresh with
 # `python3 scripts/check-kconfig-overridden-values.py --update`, and say why.
+# Every `[prereq.*]` key declares who may NAME it (RFC-0062 amendment 3).
+# The Rust field defaults to `unclassified` so it could land incrementally;
+# without this gate a new key inherits that default and `nros setup --workspace`
+# reports a toolchain as a content dependency — the conflation `role` removes.
+[group("checks")]
+prereq-roles:
+    @python3 scripts/check-prereq-roles.py
+
 [group("checks")]
 kconfig-overridden-values:
     @python3 scripts/check-kconfig-overridden-values.py

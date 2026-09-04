@@ -873,6 +873,7 @@ dest = "third-party/ros/rosidl"
 # brew mappings are best-effort and unverified — fix them as hosts appear.
 
 [prereq.libglib2-dev]
+role = "infra"
 why = "qemu source builds (esp32-qemu meson configure)"
 apt = ["libglib2.0-dev"]
 dnf = ["glib2-devel"]
@@ -881,6 +882,7 @@ brew = ["glib"]
 check = { pkg_config = "glib-2.0" }
 
 [prereq.libpixman-dev]
+role = "infra"
 why = "qemu source builds (softmmu display layer)"
 apt = ["libpixman-1-dev"]
 dnf = ["pixman-devel"]
@@ -889,6 +891,7 @@ brew = ["pixman"]
 check = { pkg_config = "pixman-1" }
 
 [prereq.libgcrypt-dev]
+role = "infra"
 why = "qemu source builds (--enable-gcrypt)"
 apt = ["libgcrypt20-dev"]
 dnf = ["libgcrypt-devel"]
@@ -900,6 +903,7 @@ brew = ["libgcrypt"]
 check = { cmd = "libgcrypt-config", pkg_config = "libgcrypt" }
 
 [prereq.ros-rmw-zenoh-cpp]
+role = "package"
 why = "the zenoh ROS interop lanes: the peer runs `source /opt/ros/<distro>/setup.bash && export RMW_IMPLEMENTATION=rmw_zenoh_cpp`, so the RMW must resolve in the ROS prefix. Without it those lanes report `[SKIPPED:capability]`, which reads as green rather than as absent coverage (2026-08-17: three issues closed unverifiable that way). NOTE the apt name is DISTRO-PARAMETRIC — `ros-<distro>-rmw-zenoh-cpp`; humble is declared here because it is the documented default, and `just doctor` probes $ROS_DISTRO rather than assuming it."
 apt = ["ros-humble-rmw-zenoh-cpp"]
 # No dnf/pacman: ROS 2 is not packaged there, and docs/development/ros2-on-non-ubuntu.md
@@ -913,6 +917,7 @@ apt = ["ros-humble-rmw-zenoh-cpp"]
 # `just doctor` does the real check against $ROS_DISTRO.
 
 [prereq.doxygen]
+role = "workspace"
 why = "C API reference docs (just docs-c; found undeclared by check-sysdep-remedies)"
 apt = ["doxygen"]
 dnf = ["doxygen"]
@@ -926,6 +931,7 @@ check = { cmd = "doxygen" }
 # `.github/workflows/docs.yml` installed the two together in one apt line. The
 # workflow was the only place that knew they belong together.
 [prereq.graphviz]
+role = "workspace"
 why = "doxygen's diagrams (HAVE_DOT); without it the C API docs build with no graphs and say nothing about it"
 apt = ["graphviz"]
 dnf = ["graphviz"]
@@ -934,6 +940,7 @@ brew = ["graphviz"]
 check = { cmd = "dot" }
 
 [prereq.gcc-arm-none-eabi]
+role = "infra"
 why = "ARM bare-metal cross gcc via the apt path (the [tool.arm-none-eabi-gcc] dist is the store alternative)"
 # The LIBC is a separate package on Debian and was missing here, so the apt path
 # produced a compiler that could build freestanding code and nothing that
@@ -963,6 +970,7 @@ brew = ["arm-none-eabi-gcc"]
 check = { cmd = "arm-none-eabi-gcc" }
 
 [prereq.cmake]
+role = "package"
 why = "every C/C++ configure step"
 apt = ["cmake"]
 dnf = ["cmake"]
@@ -971,6 +979,7 @@ brew = ["cmake"]
 check = { cmd = "cmake" }
 
 [prereq.unzip]
+role = "workspace"
 why = "unpacks the upstream ninja release zips ([tool.ninja] dist install step); tar cannot read a zip"
 apt = ["unzip"]
 dnf = ["unzip"]
@@ -979,6 +988,7 @@ brew = ["unzip"]
 check = { cmd = "unzip" }
 
 [prereq.curl]
+role = "workspace"
 why = "every dist download and the [tool.make] source tarball fetch shell out to it"
 apt = ["curl"]
 dnf = ["curl"]
@@ -987,6 +997,7 @@ brew = ["curl"]
 check = { cmd = "curl" }
 
 [prereq.ninja]
+role = "workspace"
 why = "the generator every cmake configure emits for; >=1.13 also speaks the make-4.4 fifo jobserver protocol, so a nested build shares one token budget instead of taking nproc of its own"
 # Same chain as `[prereq.openocd]`: a system copy is fine WHEN new enough.
 # Ubuntu 22.04 ships 1.10.1 and Ubuntu 24.04 1.11.1, both below the jobserver
@@ -1016,6 +1027,7 @@ check = { cmd = "ninja", version = { run = "ninja --version", min = "1.13" } }
 # SECOND make provisioning path before then would be the drift this repo keeps
 # paying for.
 [prereq.make]
+role = "workspace"
 why = "GNU make >=4.4 serves `--jobserver-style=fifo`, the only jobserver flavour ninja 1.13 can join; 4.3 and older serve a pipe-fd jobserver that ninja ignores. install with `nros setup --tool make`"
 apt = ["make"]
 dnf = ["make"]
@@ -1024,12 +1036,14 @@ brew = ["make"]
 check = { cmd = "make", version = { run = "make --version", min = "4.4" } }
 
 [prereq.genromfs]
+role = "infra"
 why = "NuttX riscv rv-virt etc/ ROMFS image (the [tool.genromfs] source recipe is the store alternative)"
 apt = ["genromfs"]
 pacman = ["genromfs"]
 check = { cmd = "genromfs" }
 
 [prereq.socat]
+role = "workspace"
 why = "test-harness serial/TCP relays"
 apt = ["socat"]
 dnf = ["socat"]
@@ -1038,6 +1052,7 @@ brew = ["socat"]
 check = { cmd = "socat" }
 
 [prereq.zstd]
+role = "workspace"
 why = "tar decompresses the prebuilt `.tar.zst` SDK dists via the external zstd binary (issue 0385; stock Ubuntu 22.04 ships no zstd)"
 apt = ["zstd"]
 dnf = ["zstd"]
@@ -1046,6 +1061,7 @@ brew = ["zstd"]
 check = { cmd = "zstd" }
 
 [prereq.libmbedtls]
+role = "package"
 why = "zenoh-pico TLS link (zpico-sys)"
 apt = ["libmbedtls-dev"]
 dnf = ["mbedtls-devel"]
@@ -1061,6 +1077,7 @@ brew = ["mbedtls"]
 check = { header = "mbedtls/entropy.h" }
 
 [prereq.clang]
+role = "package"
 why = "bindgen + C toolchain probes"
 apt = ["clang"]
 dnf = ["clang"]
@@ -1069,6 +1086,7 @@ brew = ["llvm"]
 check = { cmd = "clang" }
 
 [prereq.libclang-dev]
+role = "package"
 why = "bindgen (z3-sys via ros-launch-manifest-check -> nros-launch-resolve build; issue 0368 F5)"
 apt = ["libclang-dev"]
 dnf = ["clang-devel"]
@@ -1083,6 +1101,7 @@ brew = ["llvm"]
 check = { sharedlib = "libclang" }
 
 [prereq.libz3]
+role = "package"
 why = "ros-launch-manifest-check (z3) -> nros-launch-resolve build (issue 0368 F5)"
 apt = ["libz3-dev"]
 dnf = ["z3-devel"]
@@ -1096,6 +1115,7 @@ brew = ["z3"]
 check = { header = "z3.h" }
 
 [prereq.python3-dev]
+role = "package"
 why = "pyo3 source builds (play_launch_parser, nros-launch-resolve; issue 0368 F5)"
 apt = ["python3-dev"]
 dnf = ["python3-devel"]
@@ -1104,6 +1124,7 @@ brew = ["python"]
 check = { pkg_config = "python3" }
 
 [prereq.python3-venv]
+role = "package"
 why = "ESP-IDF install + tool venvs (issue 0368 F7)"
 apt = ["python3-venv"]
 dnf = ["python3"]
@@ -1111,6 +1132,7 @@ pacman = ["python"]
 brew = ["python"]
 
 [prereq.python3-pip]
+role = "package"
 why = "pip-layer installs (west, colcon, clang-format wheel)"
 apt = ["python3-pip"]
 dnf = ["python3-pip"]
@@ -1119,6 +1141,7 @@ brew = ["python"]
 check = { cmd = "pip3" }
 
 [prereq.aria2]
+role = "workspace"
 why = "Zephyr SDK fetch (west sdk install; issue 0368 F7)"
 apt = ["aria2"]
 dnf = ["aria2"]
@@ -1127,6 +1150,7 @@ brew = ["aria2"]
 check = { cmd = "aria2c" }
 
 [prereq.gnu-parallel]
+role = "workspace"
 why = "just format fan-out (issue 0368 F7)"
 apt = ["parallel"]
 dnf = ["parallel"]
@@ -1135,6 +1159,7 @@ brew = ["parallel"]
 check = { cmd = "parallel" }
 
 [prereq.qemu-system-arm]
+role = "infra"
 why = "ARM QEMU lanes via the apt path (the [tool.qemu] nros dist is the harness-preferred build)"
 apt = ["qemu-system-arm"]
 dnf = ["qemu-system-arm"]
@@ -1143,6 +1168,7 @@ brew = ["qemu"]
 check = { cmd = "qemu-system-arm" }
 
 [prereq.qemu-system-misc]
+role = "infra"
 why = "RISC-V QEMU lanes (threadx-riscv64, nuttx rv-virt)"
 apt = ["qemu-system-misc"]
 dnf = ["qemu-system-riscv"]
@@ -1151,16 +1177,19 @@ brew = ["qemu"]
 check = { cmd = "qemu-system-riscv64" }
 
 [prereq.gcc-riscv64-unknown-elf]
+role = "infra"
 why = "RISC-V bare-metal cross gcc (threadx-riscv64, nuttx rv-virt; the [tool.riscv-none-elf-gcc] dist is the xPack-prefixed alternative)"
 apt = ["gcc-riscv64-unknown-elf"]
 pacman = ["riscv64-elf-gcc"]
 check = { cmd = "riscv64-unknown-elf-gcc" }
 
 [prereq.picolibc-riscv64-unknown-elf]
+role = "infra"
 why = "picolibc for the riscv64-unknown-elf gcc (nuttx rv-virt userspace)"
 apt = ["picolibc-riscv64-unknown-elf"]
 
 [prereq.kconfig-frontends]
+role = "workspace"
 why = "NuttX configuration (kconfig-conf/kconfig-mconf)"
 apt = ["kconfig-frontends-nox"]
 check = { cmd = "kconfig-conf" }
@@ -1288,6 +1317,7 @@ check = { cmd = "clang-format" }
 # ---------------------------------------------------------------------------
 
 [prereq.qemu]
+role = "infra"
 why = "QEMU runs every emulated platform test"
 provider = "sdk"
 # `runs`, not `cmd`: the store dist is not on PATH, and its path EXISTING is
@@ -1295,26 +1325,31 @@ provider = "sdk"
 check = { runs = "qemu-system-arm --version" }
 
 [prereq.freertos-kernel]
+role = "vendor"
 why = "FreeRTOS builds compile the kernel from this checkout"
 provider = "submodule"
 check = { path = "include/FreeRTOS.h" }
 
 [prereq.threadx]
+role = "vendor"
 why = "ThreadX builds compile the kernel from this checkout"
 provider = "submodule"
 check = { path = "common/inc/tx_api.h" }
 
 [prereq.zenoh-pico]
+role = "vendor"
 why = "the zenoh backend's C library"
 provider = "submodule"
 check = { path = "include/zenoh-pico.h" }
 
 [prereq.nuttx-kernel]
+role = "vendor"
 why = "NuttX builds configure and build this checkout"
 provider = "submodule"
 check = { path = "Kconfig" }
 
 [prereq.cyclonedds-src]
+role = "vendor"
 why = "the Cyclone backend builds this fork"
 provider = "submodule"
 check = { path = "CMakeLists.txt" }
@@ -1324,6 +1359,7 @@ check = { path = "CMakeLists.txt" }
 # resolved to nothing, silently, for as long as that file has existed.
 
 [prereq.cargo]
+role = "package"
 why = "Rust builds; the real provider is rustup, which [rust.toolchain.*] pins"
 # apt/dnf/pacman ship a `cargo`, but a distro cargo is NOT the pinned toolchain
 # and using one is its own failure class — so the mapping exists for a host with
@@ -1335,6 +1371,7 @@ brew = ["rust"]
 check = { cmd = "cargo" }
 
 [prereq.nros]
+role = "package"
 why = "the nano-ros CLI itself — codegen, sync, and this build verb"
 # No package manager ships it. `./scripts/bootstrap.sh` (users) or
 # `just setup-cli` (contributors) provides it; the probe is the whole entry.
@@ -1401,6 +1438,7 @@ check = { cmd = "nros" }
 # dnf/pacman/brew are best-effort, per this file's existing convention.
 
 [prereq.openocd]
+role = "infra"
 why = "on-chip debug server for flashing/attaching to a target board"
 # phase-404 W2 — the first entry to use ordered preference, and openocd is the
 # right first case: it is neither a build input (nothing it does enters an
@@ -1418,6 +1456,7 @@ brew = ["openocd"]
 check = { cmd = "openocd", version = { min = "0.12" } }
 
 [prereq.libcrypt1]
+role = "infra"
 why = "runtime dep of the arm-none-eabi-gcc dist(s) (issue 0926)"
 apt = ["libcrypt1"]
 dnf = ["libxcrypt"]
@@ -1425,6 +1464,7 @@ pacman = ["libxcrypt-compat"]
 check = { sharedlib = "libcrypt.so.1" }
 
 [prereq.libexpat1]
+role = "infra"
 why = "runtime dep of the play_launch_parser dist(s) (issue 0926)"
 apt = ["libexpat1"]
 dnf = ["expat"]
@@ -1433,6 +1473,7 @@ brew = ["expat"]
 check = { sharedlib = "libexpat.so.1" }
 
 [prereq.libpcre2]
+role = "infra"
 why = "runtime dep of the qemu dist(s) (issue 0926)"
 apt = ["libpcre2-8-0"]
 dnf = ["pcre2"]
@@ -1441,6 +1482,7 @@ brew = ["pcre2"]
 check = { sharedlib = "libpcre2-8.so.0" }
 
 [prereq.libpython310]
+role = "infra"
 why = "runtime dep of the play_launch_parser dist(s) (issue 0926)"
 apt = ["libpython3.10"]
 dnf = ["python3.10-libs"]
@@ -1448,6 +1490,7 @@ pacman = ["python310"]
 check = { sharedlib = "libpython3.10.so.1.0" }
 
 [prereq.libselinux1]
+role = "infra"
 why = "runtime dep of the qemu dist(s) (issue 0926)"
 apt = ["libselinux1"]
 dnf = ["libselinux"]
@@ -1455,6 +1498,7 @@ pacman = ["libselinux"]
 check = { sharedlib = "libselinux.so.1" }
 
 [prereq.libssl3]
+role = "infra"
 why = "runtime dep of the cyclonedds, xrce-agent dist(s) (issue 0926)"
 apt = ["libssl3"]
 dnf = ["openssl-libs"]
@@ -1464,6 +1508,7 @@ provides = ["libcrypto.so.3", "libssl.so.3"]
 check = { sharedlib = "libcrypto.so.3" }
 
 [prereq.libtinfo6]
+role = "infra"
 why = "runtime dep of the qemu dist(s) (issue 0926)"
 apt = ["libtinfo6"]
 dnf = ["ncurses-libs"]
@@ -1472,6 +1517,7 @@ brew = ["ncurses"]
 check = { sharedlib = "libtinfo.so.6" }
 
 [prereq.libz1]
+role = "infra"
 why = "runtime dep of the play_launch_parser, qemu dist(s) (issue 0926)"
 apt = ["zlib1g"]
 dnf = ["zlib"]
