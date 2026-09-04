@@ -1096,7 +1096,7 @@ fn generate_entry(
         .join(coordinate(platform, image))
         .join(crate::builder::entry::package_name(image_id));
 
-    let spec = EntrySpec {
+    let mut spec = EntrySpec {
         image_id: image_id.to_string(),
         deploy: crate::builder::entry::macro_deploy_token(&candidates),
         launch,
@@ -1145,7 +1145,62 @@ fn generate_entry(
     // facade this build needed. Raising it earlier deadlocks a clone: sync
     // keys facades off the entry package, and this function is what writes it.
     if let Some(msg) = facade_missing_fatal {
-        eyre::bail!("{msg}");
+        // SELF-HEAL, because CI only ever gets one pass.
+        //
+        // Deferring the refusal until after the entry was written (the previous
+        // fix) made a DEVELOPER's tree recoverable: sync could finally see the
+        // entry package, so the next `nros build` succeeded. It did nothing for
+        // CI, and `host-tests` proved it — the run does
+        //
+        //     just _codegen        (sync: no entry yet, so no facade)
+        //     nros build           (writes the entry, then refuses)
+        //
+        // and there is no second sync, so the lane failed on the same message
+        // with the fix in place. A fresh checkout every run means the two-pass
+        // recovery never happens.
+        //
+        // But nothing here actually needs sync. `write_facade` wants the entry
+        // name, its directory, its manifest, the system and the facade root —
+        // and we hold all five, because we just generated the entry. The one
+        // input sync was missing is the thing this function produces.
+        //
+        // So: write the facade, then regenerate the entry with it. The second
+        // write is not optional — the first ran with `facade_dir = None`, so
+        // the entry carries no dependency on the facade crate, and a facade no
+        // entry depends on selects nothing (cargo feature unification is the
+        // whole mechanism). Two file writes, one build, no second invocation.
+        //
+        // Still fatal if the facade cannot be written: that is a real problem
+        // and the message already names it.
+        let facade_root = root.join("generated/nros-selection");
+        let entry_name = crate::builder::entry::package_name(image_id);
+        let healed = std::fs::read_to_string(bringup_dir.join("system.toml"))
+            .ok()
+            .and_then(|raw| {
+                toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw).ok()
+            })
+            .and_then(|sys| {
+                crate::orchestration::facade::write_facade(
+                    &entry_name,
+                    &dir,
+                    &dir.join("Cargo.toml"),
+                    &sys,
+                    &facade_root,
+                )
+                .ok()
+                .flatten()
+            });
+
+        let Some(_) = healed else {
+            eyre::bail!("{msg}");
+        };
+        eprintln!(
+            "nros build: wrote the missing selection facade for `{image_id}` from the entry \
+             just generated, and regenerated the entry against it."
+        );
+        spec.facade_dir = Some(facade_root.join(&entry_name));
+        crate::builder::entry::write(&spec, &facts, &parent)
+            .map_err(|e| eyre::eyre!("regenerating the entry for `{image_id}`: {e}"))?;
     }
 
     // phase-392 W5 — the ENTITY facts, from the SAME model resolved above.
