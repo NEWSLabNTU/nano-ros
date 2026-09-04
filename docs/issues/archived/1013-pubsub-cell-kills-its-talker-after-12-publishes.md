@@ -2,7 +2,7 @@
 id: 1013
 title: "`test_rtos_pubsub_e2e` SIGKILLs its talker after ~12 publishes, so the
   cell exercises twelve seconds of a free-running publisher"
-status: open
+status: resolved
 type: bug
 area: testing
 severity: medium

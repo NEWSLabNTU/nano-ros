@@ -2,7 +2,7 @@
 id: 1009
 title: "Our DDS interop tests share a bus with the whole LAN, so a foreign peer
   on another host can fail them — and `ROS_LOCALHOST_ONLY=1` alone does NOT fix it"
-status: open
+status: resolved
 type: bug
 area: testing, ci
 severity: high

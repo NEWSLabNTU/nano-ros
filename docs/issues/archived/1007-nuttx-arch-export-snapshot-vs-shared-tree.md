@@ -2,7 +2,7 @@
 id: 1007
 title: "`just nuttx build-fixtures-arm` can leave every arm cell unrunnable, and
   the remedy it prints is the command that just short-circuited"
-status: open
+status: resolved
 type: bug
 area: testing, build
 severity: medium
