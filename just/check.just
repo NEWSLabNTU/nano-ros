@@ -3014,7 +3014,12 @@ rust-targets-covered:
 # thing that goes stale the first time a feature lands.
 [private]
 pool-inventory:
-    @python3 scripts/gen-pool-inventory.py --check
+    # WRITES the inventory rather than diffing a committed copy: the file is
+    # generated and no longer tracked, so `--check` would report "stale" on
+    # every fresh clone (a missing file compares unequal to the rendered text).
+    # The assertion that mattered is `self_test()` + a scan that evaluates every
+    # formula, and both still run here; the artifact the book needs falls out.
+    @python3 scripts/gen-pool-inventory.py
 
 # Issue 0934 — one fact, up to nine spellings. Most are CARRIERS (how a decision
 # crosses a layer), not decisions; nothing recorded which was which, so a reader

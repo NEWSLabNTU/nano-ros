@@ -102,7 +102,11 @@ jobs:
       - name: Build mdBook
         env:
           MDBOOK_OUTPUT__HTML__SITE_URL: /nano-ros-book/
-        run: mdbook build book
+        # The static pool inventory is generated and untracked, and SUMMARY.md
+        # lists it as a chapter, so it has to exist before mdbook runs.
+        run: |
+          python3 scripts/gen-pool-inventory.py
+          mdbook build book
 
       - name: Build rustdoc
         # User-facing crates only — internal platform/board/driver crates
