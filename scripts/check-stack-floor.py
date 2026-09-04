@@ -59,13 +59,15 @@ FLOORS = {
 # The repo's rule for a real-but-open gap (CLAUDE.md, the rmw-api-parity map):
 # it carries a TRACKED ISSUE ID in the reason, and that is what --check
 # tolerates — nothing else.
-DEBT = {
-    "esp32_qemu_listener": (
-        22_060,
-        "1052",
-        "declares no publishers/services/actions but still links the full "
-        "embedded entity budget; same class as the talker, one entity kind over",
-    ),
+DEBT: dict[str, tuple[int, str, str]] = {
+    # Empty, and that is the point: both ESP32 images now clear the floor on
+    # what they DECLARE (issue 1052 — talker 49,148 B, listener 52,636 B, from
+    # 18,572 and 22,060). An entry here is a debt on record, never a waiver:
+    # the value is a CEILING that may only fall, so the gate fails if an image
+    # regresses toward it, and deleting the entry is what closing the issue
+    # looks like. That is how the listener left this table — it was added at
+    # 22,060 B, the fix took it to 52,636 B, and the gate refused the rise until
+    # the row was removed.
 }
 
 
@@ -285,12 +287,20 @@ def selftest(quiet: bool = False) -> int:
     assert verdict(Path("esp32_qemu_talker"), floor, board)[0]
     assert not verdict(Path("esp32_qemu_talker"), floor - 1, board)[0]
 
-    # a DEBT image passes under its cap and FAILS above it, so the ceiling
-    # cannot silently rise
-    ok, _ = verdict(Path("esp32_qemu_listener"), 22_060, board)
-    assert ok
-    ok, msg = verdict(Path("esp32_qemu_listener"), 22_061, board)
-    assert not ok and "EXCEEDS" in msg, msg
+    # The DEBT mechanism, exercised with a SYNTHETIC entry. DEBT is empty now
+    # that both real images clear the floor, and an untested mechanism is how
+    # the next entry gets added wrong — so inject one rather than letting the
+    # controls lapse with the table.
+    DEBT["_selftest_image"] = (22_060, "1052", "synthetic, selftest only")
+    try:
+        ok, _ = verdict(Path("_selftest_image"), 22_060, board)
+        assert ok, "an image at exactly its cap must pass"
+        ok, msg = verdict(Path("_selftest_image"), 22_061, board)
+        assert not ok and "EXCEEDS" in msg, msg
+        # below the cap is fine — the ceiling may always fall
+        assert verdict(Path("_selftest_image"), 1_000, board)[0]
+    finally:
+        del DEBT["_selftest_image"]
 
     # board resolution must see phase-340 group dirs, and must NOT invent a
     # board for a path it does not recognise
