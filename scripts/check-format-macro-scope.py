@@ -158,8 +158,92 @@ def read(rel: str) -> str:
         return ""
 
 
+
+def self_test(quiet: bool = False) -> None:
+    """Negative controls — a gate whose rule never fires proves nothing.
+
+    Each case asserts the rule FIRES on the shape it exists for, then that the
+    intended escape silences it. These run on the NORMAL path (see the call in
+    `main`), because a control nobody runs decays into a comment.
+    """
+    cases = []
+
+    def case(name: str, ok: bool) -> None:
+        cases.append((name, ok))
+
+    # 1. The image-wide macros are caught, in both language spellings.
+    for macro in (
+        "NROS_SERIALIZATION_FORMAT_ID",
+        "NROS_SERIALIZATION_FORMAT",
+        "NROS_CPP_SERIALIZATION_FORMAT_ID",
+        "NROS_CPP_SERIALIZATION_FORMAT",
+    ):
+        line = f"    uint8_t id = {macro};"
+        case(f"{macro} is caught", bool(MACRO_REFS.search(TABLE_REF.sub("", line))))
+
+    # 2. The C++ accessors are caught too — `linked_format()` answers the same
+    #    question the macro does, so gating only the macros would be the
+    #    narrower-than-the-rule coverage issue 0196 is about.
+    for expr in ("nros::linked_format()", "nros::linked_format_name()"):
+        case(f"{expr} is caught", bool(MACRO_REFS.search(TABLE_REF.sub("", expr))))
+
+    # 3. The reserved-discriminant TABLE is NOT a violation. Naming a format is
+    #    fine anywhere, including a bridge — the one place two legitimately
+    #    meet. This is the escape, and it must silence the rule. The stripping
+    #    is what makes it work, so the case is written against a line where the
+    #    table entry is the ONLY token: without TABLE_REF this must go red.
+    for line in (
+        "NROS_SERIALIZATION_FORMAT_ID_CDR",
+        "NROS_CPP_SERIALIZATION_FORMAT_ID_UORB",
+    ):
+        stripped = TABLE_REF.sub("", line)
+        case(f"table ref is stripped: {line[:34]}", stripped.strip() == "")
+
+    # 4. A prefix of a macro name is not a match — the word boundary matters,
+    #    or `NROS_SERIALIZATION_FORMATTER` would read as the macro.
+    case(
+        "a longer identifier is not a match",
+        not MACRO_REFS.search(TABLE_REF.sub("", "int NROS_SERIALIZATION_FORMATTER = 0;")),
+    )
+
+    # 5. Bridge detection fires on each marker the API actually presents.
+    for marker in (
+        "#include <nros/bridge.h>",
+        '#include "nros/bridge.hpp"',
+        "    nros_pubsub_bridge_create(exec, &src, &dst);",
+        "    nros_bridge_endpoint_t src;",
+        "    nros::MultiExecutor exec;",
+    ):
+        case(f"bridge marker: {marker.strip()[:34]}", bool(BRIDGE_MARKERS.search(marker)))
+
+    # 6. And does NOT fire on a plain nano-ros TU, or every image would be
+    #    treated as a bridge and the gate would fail the whole tree.
+    case(
+        "a plain TU is not a bridge",
+        not BRIDGE_MARKERS.search("#include <nros/nros.h>\n    nros_init();"),
+    )
+
+    failed = [n for n, ok in cases if not ok]
+    if failed:
+        print("check-format-macro-scope SELFTEST FAILED:")
+        for n in failed:
+            print(f"  - {n}")
+        sys.exit(2)
+    if not quiet:
+        print(f"check-format-macro-scope self-test: OK ({len(cases)} case(s))")
+
+
 def main() -> int:
     want_list = "--list" in sys.argv[1:]
+
+    # The negative controls run on the NORMAL path. `check-gate-selftests`
+    # requires that: a control reachable only behind a flag is a comment, and
+    # this gate's whole value is that its two regexes fire on the right shapes
+    # and stay silent on the reserved-discriminant table.
+    verbose_selftest = "--self" in " ".join(sys.argv[1:])
+    self_test(quiet=not verbose_selftest)
+    if verbose_selftest:
+        return 0
 
     # Vacuity guard 1 — the macros still exist where this gate thinks they do.
     missing = []
