@@ -20,4 +20,4 @@ NROS_ENTRY_SPIN_MS=3000 ./target/debug/native_entry
 ```
 
 Delete the sidecar and rebuild to see the pre-307 failure — the sizing falls
-back to the model bound and the sixth `create_timer` returns `Full`.
+back to the model bound and the sixth `create_wall_timer` returns `Full`.

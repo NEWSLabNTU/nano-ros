@@ -291,7 +291,7 @@ public:
     template<typename A>
     Result create_action_client(ActionClient<A>& out, const char* name);
 
-    Result create_timer(Timer& out, uint64_t period_ns,
+    Result create_wall_timer(Timer& out, uint64_t period_ns,
                         void (*callback)(void*),
                         void* context = nullptr);
 
@@ -828,7 +828,7 @@ int main() {
     TalkerApp app{&pub, 0};
 
     nros::Timer timer;
-    NROS_TRY(node.create_timer(timer, 1000000000ULL, timer_callback, &app));
+    NROS_TRY(node.create_wall_timer(timer, 1000000000ULL, timer_callback, &app));
 
     nros::Executor executor;
     NROS_TRY(nros::Executor::create(executor));

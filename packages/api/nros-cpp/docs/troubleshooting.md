@@ -81,7 +81,7 @@ static void on_tick(void* ctx_ptr) {
 
 Ctx ctx{};
 nros::Timer t;
-node.create_timer(t, 1000, on_tick, &ctx);
+node.create_wall_timer(t, 1000, on_tick, &ctx);
 ```
 
 `std::function` overloads are available under `NROS_CPP_STD`.

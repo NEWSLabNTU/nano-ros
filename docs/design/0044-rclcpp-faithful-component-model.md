@@ -86,7 +86,7 @@ class Controller : public nros::ComponentNode {
         : nros::ComponentNode(h, "controller") {
         pub_cmd_ = create_publisher<ControlMsg>(topics::control_cmd);
         create_subscription<TrajectoryMsg>(topics::trajectory, &Controller::on_trajectory);
-        create_timer(ctrl_period_ms_, &Controller::on_control_tick);
+        create_wall_timer(ctrl_period_ms_, &Controller::on_control_tick);
         auto w = declare_parameter<std::vector<double>>("mpc_weights", {…});   // gap (3)
     }
     void on_trajectory(const TrajectoryMsg& m) { traj_.set(m); }               // typed member cb

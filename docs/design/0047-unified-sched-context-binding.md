@@ -69,7 +69,7 @@ node.create_subscription_in(&ctrl, "/cmd", on_cmd);
 ```cpp
 // C++ (rclcpp-shaped, ComponentNode)
 auto ctrl = create_callback_group("ctrl");
-create_timer(ctrl, 10ms, &Ctrl::on_tick);
+create_wall_timer(ctrl, 10ms, &Ctrl::on_tick);
 ```
 
 The group **name** is the join key. It is declared in code — exactly like a topic name — and is the

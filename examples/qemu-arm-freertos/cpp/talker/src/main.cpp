@@ -91,7 +91,7 @@ int nros_app_main(int argc, char** argv) {
     ctx.count = 0;
 
     nros::Timer timer;
-    NROS_TRY_RET(node.create_timer(timer, 1000, timer_callback, &ctx), 1);
+    NROS_TRY_RET(node.create_wall_timer(timer, 1000, timer_callback, &ctx), 1);
 
     // Set up signal handler
     signal(SIGINT, signal_handler);

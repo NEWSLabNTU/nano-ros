@@ -56,7 +56,7 @@ Two forces shape the resolution:
 
 - **No callback naming.** Today the declarative API makes the user invent a
   string the runtime later matches:
-  `declare_callback(on_tick, "on_tick"); create_timer(t, "1000", on_tick)`.
+  `declare_callback(on_tick, "on_tick"); create_wall_timer(t, "1000", on_tick)`.
   The name carries no body — it is exactly the anti-pattern to remove. A
   callback should be bound by **identity** (the actual method/lambda), as the
   imperative executor closure API already does (Rust + C++). The Rust
@@ -77,7 +77,7 @@ the RFC must not conflate them:
   QoS-depth `BufferStrategy` — [RFC-0041](0041-unified-callback-receive-model.md);
   `packages/core/nros-node/src/executor/arena.rs`): **subscription, timer,
   service-server, action-server**. Verified FFI: `node.create_subscription(sub,
-  topic, cb)`, `node.create_timer(t, ms, cb, ctx)`,
+  topic, cb)`, `node.create_wall_timer(t, ms, cb, ctx)`,
   `nros_cpp_service_server_register(node, …, cb, …)`,
   `nros_cpp_action_server_register(…)`, plus the **raw, zero-copy**
   `nros_cpp_subscription_register(node, topic, type, hash, qos, cb, ctx, …)` with
@@ -120,12 +120,12 @@ The subscription receive flavours (none names a callback):
 The executor's callback path runs on **native**, but on embedded the Entry path
 always ran the interpreter, never the executor — that was the architectural
 risk. A throwaway imperative NuttX entry (init → `create_node` →
-`create_timer(cb)` + `nros_cpp_subscription_register(raw_cb)` → `spin_once` loop,
+`create_wall_timer(cb)` + `nros_cpp_subscription_register(raw_cb)` → `spin_once` loop,
 ~10 lines of C++ glue, built by a direct `nros-nuttx-ffi` cargo invocation) was
 booted in QEMU against the talker:
 
 ```
-SPIKE init -> 0 / create_node -> 0 / create_timer -> 0 / subscription_register -> 0
+SPIKE init -> 0 / create_node -> 0 / create_wall_timer -> 0 / subscription_register -> 0
 SPIKE tick 0..88        ← executor TIMER callback fires on NuttX
 SPIKE Received 0..38     ← executor RAW zero-copy SUB callback fires (correct Int32)
 ```
@@ -163,7 +163,7 @@ class Talker {                       // arena-owned instance (Q2)
   public:
     explicit Talker(nros::Node& node) {            // ctor-binds — vs configure(Node&) (Q1)
         node.create_publisher(pub_, "/chatter");
-        node.create_timer(timer_, 1000, [this]{ on_tick(); });      // bound by identity
+        node.create_wall_timer(timer_, 1000, [this]{ on_tick(); });      // bound by identity
     }
 };
 NROS_NODE(Talker);   // PROPOSED: emits factory + sizeof + the per-pkg symbol

@@ -33,7 +33,7 @@ class Talker : public nros::ComponentNode {
     // Creation failure aborts (boot-fatal) — no Result threading here.
     explicit Talker(nros::NodeHandle h) : nros::ComponentNode(h, "cn_talker") {
         pub_ = create_publisher<Int32>("/chatter");
-        create_timer<Talker, &Talker::on_tick>(500);
+        create_wall_timer<Talker, &Talker::on_tick>(500);
     }
 
     void on_tick() { // real body, bound by identity (no name)

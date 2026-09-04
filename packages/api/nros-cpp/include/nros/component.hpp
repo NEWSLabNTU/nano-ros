@@ -157,10 +157,10 @@ inline Result bind_subscription_sized(Node& node, const char* topic, C* self, si
 
 /// Bind a component **member** `void C::on_tick()` as a timer callback. Same
 /// no-alloc member-pointer-as-template-param trampoline; `self` is the ctx the
-/// executor hands back. Wraps the existing `Node::create_timer(out, ms, cb, ctx)`.
+/// executor hands back. Wraps the existing `Node::create_wall_timer(out, ms, cb, ctx)`.
 template <class C, void (C::*Method)()>
 inline Result bind_timer(Node& node, Timer& out, uint64_t period_ms, C* self) {
-    return node.create_timer(
+    return node.create_wall_timer(
         out, period_ms, [](void* ctx) { (static_cast<C*>(ctx)->*Method)(); }, self);
 }
 
@@ -359,7 +359,7 @@ inline Result bind_action_client(Node& node, ActionClientStorage& storage, Timer
         self);
     if (ret != 0) return Result(ret);
     // Pump the GET-query replies each spin tick → callbacks fire from poll().
-    return node.create_timer(
+    return node.create_wall_timer(
         poll_timer, poll_ms, [](void* ctx) { nros_cpp_action_client_poll(ctx); }, storage.bytes);
 }
 

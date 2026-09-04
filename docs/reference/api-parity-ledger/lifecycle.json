@@ -281,7 +281,7 @@
   },
   "cpp:LifecycleNode::create_wall_timer": {
     "verdict": "divergence",
-    "why": "we spell it `nros::Node::create_timer` -- the rename is recorded once, in the timer stage's `cpp:Node::create_wall_timer`. Reached through `nros::Node`, which has it. our `nros::LifecycleNode` is a MIXIN over an executor handle, not a `Node` subclass: RFC-0002 puts one executor per RTOS task and the lifecycle state machine lives on the EXECUTOR (that is what `nros_executor_lifecycle_*` and `register_lifecycle_services` drive), while the node-side API stays on `nros::Node`. rclcpp's `LifecycleNode` re-declares the whole `Node` surface because it cannot inherit from `Node`; ours does not need to, and duplicating ~50 methods onto a second class would cost image size for nothing. What a ported node loses: it holds a `Node&` and a `LifecycleNode` instead of one object."
+    "why": "we spell it `nros::Node::create_wall_timer` too, since phase-425 W1 landed that rename (recorded in the timer stage's `cpp:Node::create_wall_timer`). Reached through `nros::Node`, which has it. our `nros::LifecycleNode` is a MIXIN over an executor handle, not a `Node` subclass: RFC-0002 puts one executor per RTOS task and the lifecycle state machine lives on the EXECUTOR (that is what `nros_executor_lifecycle_*` and `register_lifecycle_services` drive), while the node-side API stays on `nros::Node`. rclcpp's `LifecycleNode` re-declares the whole `Node` surface because it cannot inherit from `Node`; ours does not need to, and duplicating ~50 methods onto a second class would cost image size for nothing. What a ported node loses: it holds a `Node&` and a `LifecycleNode` instead of one object."
   },
   "cpp:LifecycleNode::for_each_callback_group": {
     "verdict": "divergence",

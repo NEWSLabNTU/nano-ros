@@ -279,7 +279,7 @@ void on_timer(void* ctx) {
 }
 
 nros::Timer timer;
-NROS_TRY(node.create_timer(timer, 1000, on_timer));      // 1000ms period
+NROS_TRY(node.create_wall_timer(timer, 1000, on_timer));      // 1000ms period
 NROS_TRY(node.create_timer_oneshot(timer, 5000, on_timer)); // one-shot after 5s
 
 timer.cancel();
@@ -387,7 +387,7 @@ nros::create_publisher<std_msgs::msg::Int32>(node, pub, topic);
 
 ```cpp
 nros::Timer timer;
-nros::create_timer(node, timer, std::chrono::milliseconds(1000), [&count, &pub]() {
+nros::create_wall_timer(node, timer, std::chrono::milliseconds(1000), [&count, &pub]() {
     std_msgs::msg::Int32 msg;
     msg.data = ++count;
     pub.publish(msg);

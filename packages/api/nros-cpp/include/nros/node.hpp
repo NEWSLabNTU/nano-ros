@@ -545,8 +545,8 @@ class Node {
     /// @param period_ms  Timer period in milliseconds.
     /// @param callback   C function pointer invoked on each tick.
     /// @param context    User context passed to the callback (may be nullptr).
-    Result create_timer(Timer& out, uint64_t period_ms, nros_cpp_timer_callback_t callback,
-                        void* context = nullptr) {
+    Result create_wall_timer(Timer& out, uint64_t period_ms, nros_cpp_timer_callback_t callback,
+                             void* context = nullptr) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         size_t handle_id = 0;
         nros_cpp_ret_t ret =
@@ -595,7 +595,7 @@ class Node {
 
     /// Create a repeating timer **in** a callback group (RFC-0047).
     ///
-    /// Like `create_timer` but associates the timer with `group` so the
+    /// Like `create_wall_timer` but associates the timer with `group` so the
     /// executor binds it to the group's SchedContext via `group_sched_table`.
     /// `group.get_name() == nullptr` or empty falls back to node default.
     ///

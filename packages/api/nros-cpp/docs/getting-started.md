@@ -100,7 +100,7 @@ int main() {
 
     Ctx ctx{ &pub, 0 };
     nros::Timer timer;
-    NROS_TRY(node.create_timer(timer, 1000, on_tick, &ctx));
+    NROS_TRY(node.create_wall_timer(timer, 1000, on_tick, &ctx));
 
     std::signal(SIGINT, on_signal);
     while (g_running && nros::ok()) {
@@ -180,7 +180,7 @@ using namespace std::chrono_literals;
 nros::create_node(node, std::string("cpp_talker"));
 node.create_subscription(sub, "/chatter",
     std::function<void(const std_msgs::msg::Int32&)>{...});
-node.create_timer(timer, 100ms, ...);
+node.create_wall_timer(timer, 100ms, ...);
 ```
 
 `NROS_CPP_STD` is opt-in; the freestanding surface remains the
