@@ -2,7 +2,7 @@
 id: 1011
 title: "`publisher.cpp` brace-initializes a struct with default member
   initializers, which is not an aggregate under the Zephyr lane's `-std=c++11`"
-status: open
+status: resolved
 type: bug
 area: rmw-cyclonedds, zephyr
 severity: medium
@@ -87,3 +87,36 @@ blast radius (Zephyr's minimal libcpp), so it should not be done just for this.
 
 * [ ] The six `rust-*-cyclonedds` zephyr fixtures build.
 * [ ] No new assumption broken in the sertype sample path.
+
+
+## Resolved 2026-09-04 — fixed and gated, the issue just outlived its own fix
+
+The fix landed in PR #341 and is on main: `NrosCdrBlob` no longer carries default
+member initialisers, so it is a C++11 aggregate again and
+`NrosCdrBlob{data, len}` compiles under the Zephyr lane's `-std=c++11`.
+
+    struct NrosCdrBlob {
+        const uint8_t* data;
+        size_t size;
+    };
+
+Dropping the initialisers is also the better type: no site default-constructs
+one — all five are brace-init or a `static_cast` from `void*` — so they bought
+nothing, and removing them restores trivial DEFAULT CONSTRUCTIBILITY on top of
+trivial copyability. `sertype_zero_samples` memsets these and
+`sertype_realloc_samples` hands them to `dds_realloc`; that code's comment
+already called the sample "a trivially copyable two-word struct", which was only
+half true before.
+
+Gated by `tests/sertype_sample_cxx11.cpp`, the ONLY C++11 translation unit in
+the tree — nothing else in `just check` compiles this header at that standard,
+which is how the defect survived. Non-vacuous by mutation: restoring the
+initialisers fails with both the triviality `static_assert` and the production
+error verbatim.
+
+**Why this row stayed open after its own fix merged.** The fix and the issue
+travelled on different branches: #341 carried the code, while the issue file was
+still on the unmerged #318. #341 therefore could not archive it, and nothing
+noticed once #318 landed. Worth knowing as a shape — an issue can outlive its
+fix by exactly the distance between two PRs — because the open list is what
+people read to decide what is left.
