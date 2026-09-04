@@ -2011,12 +2011,14 @@ fn check_declared_depends(
         }));
     }
 
-    let prereq_keys: std::collections::BTreeSet<String> = nano_ros_root
-        .map(|nr| nr.join("nros-sdk-index.toml"))
-        .filter(|p| p.is_file())
-        .and_then(|p| crate::orchestration::sdk_index::SdkIndex::load(&p).ok())
-        .map(|i| i.prereqs().keys().cloned().collect())
-        .unwrap_or_default();
+    let prereq_map: std::collections::BTreeMap<String, crate::orchestration::sdk_index::PrereqDep> =
+        nano_ros_root
+            .map(|nr| nr.join("nros-sdk-index.toml"))
+            .filter(|p| p.is_file())
+            .and_then(|p| crate::orchestration::sdk_index::SdkIndex::load(&p).ok())
+            .map(|i| i.prereqs())
+            .unwrap_or_default();
+    let prereq_keys: std::collections::BTreeSet<String> = prereq_map.keys().cloned().collect();
 
     let ros = pr::ros_packages();
     // Off-ROS safety: a package's own buildtool is satisfied by the builder that
@@ -2025,16 +2027,69 @@ fn check_declared_depends(
     let self_buildtools = pr::self_satisfied_buildtools(root);
 
     let mut unresolved: Vec<pr::Unresolved> = Vec::new();
+    // phase-422 W8 — a dep that RESOLVES but names infrastructure. `role` says
+    // who may name a key; `infra` (emulators, cross toolchains, debug probes)
+    // comes from WHERE you deploy, not from what your code needs, so
+    // `<depend>qemu-system-arm</depend>` is a category error rather than a
+    // missing package. Refused separately because the remedy is different:
+    // nothing to install, the declaration itself is wrong.
+    //
+    // Scoped to `infra` DELIBERATELY. `workspace` and `vendor` are not
+    // obviously category errors from a user's side — a package that builds
+    // against a vendored source tree naming it is arguable — so refusing them
+    // would risk more than it buys. Measured before landing: ZERO packages in
+    // this tree name a non-`package` key, so this breaks nothing here and the
+    // blast radius is entirely out-of-tree.
+    let mut wrong_role: Vec<(pr::Unresolved, &'static str)> = Vec::new();
     for (name, files) in &declared {
-        if pr::classify(name, &ws, &generated, &prereq_keys, &ros, &self_buildtools)
-            == pr::Resolution::Unknown
-        {
+        let res = pr::classify(name, &ws, &generated, &prereq_keys, &ros, &self_buildtools);
+        if res == pr::Resolution::Unknown {
             unresolved.push(pr::Unresolved {
                 name: name.clone(),
                 declared_by: files.clone(),
             });
+        } else if res == pr::Resolution::Prereq
+            && let Some(dep) = prereq_map.get(name)
+            && dep.role == crate::orchestration::sdk_index::PrereqRole::Infra
+        {
+            wrong_role.push((
+                pr::Unresolved {
+                    name: name.clone(),
+                    declared_by: files.clone(),
+                },
+                "infra",
+            ));
         }
     }
+
+    if !wrong_role.is_empty() {
+        let mut m = format!(
+            "{} <depend> name(s) declare INFRASTRUCTURE, not a dependency:\n",
+            wrong_role.len()
+        );
+        for (u, role) in &wrong_role {
+            m.push_str(&format!(
+                "  {} (role = {role}) — declared by {}\n",
+                u.name,
+                u.declared_by.join(", ")
+            ));
+        }
+        m.push_str(
+            "\nA package.xml declares what the package's CONTENT needs. An emulator, \
+             cross toolchain or debug probe comes from WHERE the package deploys — \
+             declare that instead:\n\
+             \n  <export><nano_ros deploy=\"<platform>\" board=\"<board>\"/></export>\n\
+             \nand provision it with `nros setup <board>` (see `nros setup --workspace`, \
+             which reports what a workspace needs).\n\
+             \n  NROS_ALLOW_INFRA_DEPS=1  to continue with a warning.",
+        );
+        if std::env::var_os("NROS_ALLOW_INFRA_DEPS").is_some() {
+            eprintln!("nros build: WARNING (NROS_ALLOW_INFRA_DEPS=1): {m}");
+        } else {
+            eyre::bail!("{m}")
+        }
+    }
+
     if unresolved.is_empty() {
         return Ok(());
     }
@@ -2052,9 +2107,14 @@ fn check_declared_depends(
     }
     msg.push_str(
         "\nEach must be one of: a package in this workspace, a message package \
-         `nros sync` generates, a `[prereq.*]` key in nros-sdk-index.toml, or a \
-         package the ambient ROS install provides (source its setup.bash so \
-         AMENT_PREFIX_PATH is set).\n\
+         `nros sync` generates, a `[prereq.*]` key in nros-sdk-index.toml whose \
+         `role` is `package`, or a package the ambient ROS install provides \
+         (source its setup.bash so AMENT_PREFIX_PATH is set).\n\
+         \nNOTE the role: a key for an emulator, cross toolchain or vendored \
+         source tree is NOT declarable here — that comes from the deploy target \
+         in `<export><nano_ros deploy=.. board=../></export>`. Adding a \
+         `[prereq.*]` entry to make this resolve is the wrong fix if the thing \
+         is infrastructure.\n\
          \n  NROS_ALLOW_UNRESOLVED_DEPS=1  to continue with a warning.",
     );
 

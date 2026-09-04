@@ -86,6 +86,11 @@ KNOB_CLASS = {
     "ZPICO_SERVICE_BUFFER_SIZE": ("derived", "SERVICE_BUFFERS is MAX_SESSIONS x MAX_QUERYABLES; phase-392"),
     # --- infra: not knobs ---
     "NROS_ALLOW_UNRESOLVED_DEPS": ("infra", "policy flag"),
+    # phase-422 W8 — its own flag, deliberately NOT reusing the one above.
+    # A wrong-role dep RESOLVES; we decline it. Overloading the
+    # "unresolved" hatch would make one variable mean two different
+    # judgements, and a user silencing one would silence the other.
+    "NROS_ALLOW_INFRA_DEPS": ("infra", "policy flag"),
     "NROS_BUILD_ROOT": ("infra", "path"),
     "NROS_CARGO_FLAGS": ("infra", "the --locked shim"),
     "NROS_LINK_IP": ("infra", "link toggle"),
