@@ -10,6 +10,6 @@
   <exec_depend>cpp_listener_pkg</exec_depend>
   <exec_depend>rust_heartbeat_pkg</exec_depend>
   <export>
-    <build_type>cmake</build_type>
+    <build_type>nros_cmake</build_type>
   </export>
 </package>
