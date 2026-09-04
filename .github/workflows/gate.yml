@@ -979,6 +979,10 @@ jobs:
       # must not drift (else prebuilt != source-built).
       - name: Check qemu configure flags match (index vs build script)
         run: ./scripts/sdk/check-qemu-configure.sh
+      # issue 1006 — a qemu recipe with no `dist` is source-built by every user,
+      # so an auto-detected backend makes its runtime deps the build host's.
+      - name: Check source-only qemu recipes pin their backends
+        run: python3 scripts/sdk/check-qemu-source-features.py nros-sdk-index.toml
 
   # ---------------------------------------------------------------------------
   # THE REQUIRED CHECK — phase-395 W20.

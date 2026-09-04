@@ -70,3 +70,64 @@ observable on a host that has actually built this tool. That is why the gap sat
 unnoticed: CI never provisions esp32-qemu (it is nightly-only), and a developer
 who has built it sees a 75-line failure that looks like index rot rather than a
 configure problem.
+
+## What landed (the configure is pinned; the closure is NOT re-measured)
+
+`[tool.esp32-qemu.source].configure` now names 69 flags instead of 13. The added
+ones are all `--disable-*`, grouped as UI, audio, host-device passthrough,
+block drivers beyond the raw image, TLS, and the remaining host libraries — the
+whole set of qemu feature options that reach for a system library and that
+`-M esp32c3 -icount 3 -nographic -drive file=…,if=mtd,format=raw -nic
+user,model=open_eth` never touches. `--enable-gcrypt`, `--enable-slirp`,
+`--target-list=riscv32-softmmu` and `--disable-werror` are untouched; `fdt`,
+`pixman` and `zlib` are left auto deliberately (the riscv boards require fdt,
+and zlib is `required: true`).
+
+**Measured, without a build:** every one of those 69 flag tokens is accepted by
+the pinned tag. Checked against the fork's own generated
+`scripts/meson-buildoptions.sh` and `configure`'s case list at
+`esp-develop-9.2.2-20260417` — an unrecognised option is `ERROR: unknown
+option`, so this is the failure mode the "not done here" note was worried about,
+and it is now excluded statically rather than hoped away.
+
+**NOT measured:** what the resulting ldd closure is. That still needs
+`nros setup --tool esp32-qemu` + `check-dist-runtime-deps`, exactly as "How to
+verify a fix" says. The issue therefore stays open until someone rebuilds.
+
+## Two corrections to the reasoning above
+
+**`--audio-drv-list=` alone would not have worked.** `audio/meson.build` at the
+pinned tag builds an audio module for every driver whose dependency `.found()`
+— `foreach m : [['alsa', alsa, …], ['pa', pulse, …], …] if m[1].found()` — and
+not for the drivers named in `audio_drv_list`. An empty list changes
+`CONFIG_AUDIO_DRIVERS`, i.e. what the RUNTIME selects, and leaves libasound and
+libpulse (with libpulse's libsndfile/FLAC/vorbis/ogg/X11 tail) linked. The
+per-driver `--disable-alsa --disable-pa --disable-jack --disable-oss
+--disable-sndio --disable-pipewire` is what cuts the link surface, and once they
+are off the default list resolves to empty anyway — so the flag the fix
+prescribed is redundant, not merely insufficient, and is not in the new line.
+
+**The control table compares two different things.** `[tool.qemu]`'s
+`system = [..]` is 2 because its DIST bundles its closure into `lib/` with
+`RUNPATH=$ORIGIN/../lib` (18 libs; the `-nros6` comment in the index measures
+external closure 20 → 2), not because its configure is tighter.
+`[tool.qemu.source]`'s configure says nothing about audio, curl or tools' block
+drivers either — it is the same auto-detection, and `ci/nano-ros-sdk/scripts/
+build-qemu.sh` mirrors it flag for flag. The real difference is that qemu ships
+a dist for the three host keys and esp32-qemu ships none, so nobody but the
+release job runs qemu's configure while EVERY esp32 user runs this one. That is
+the property the new gate keys on.
+
+## Gate coverage (issue-0196 rule)
+
+`check-dist-runtime-deps` does cover this tool — a source build installs into
+the same `<store>/<tool>/<version>` it walks, which is how the 69 were found —
+but only AFTER a provision, and CI never provisions esp32-qemu. So the gate
+could not have caught the defect, and cannot catch a future flag deletion
+either. `scripts/sdk/check-qemu-source-features.py` (wired into
+`just check sdk-index` and the `sdk-index` job in `gate.yml`) is the static
+half: for a `[tool.*]` whose `source.git` names qemu, whose `source.configure`
+runs `./configure`, and which publishes NO `dist.*`, every host-library feature
+must be pinned by name. `[tool.qemu]` is exempt because it has a dist. Negative
+control run: against this file's pre-fix revision the gate reports 55 of its 58
+host-library features unpinned and exits 1; against the new one it passes.
