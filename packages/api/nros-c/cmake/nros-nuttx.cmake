@@ -60,6 +60,14 @@ set(_NROS_NUTTX_INCLUDED TRUE)
 
 include("${CMAKE_CURRENT_LIST_DIR}/nros-rtos-helpers.cmake")
 
+# The `_NROS_ENTRY_DIR` pattern from CLAUDE.md, and it is not optional here:
+# measured, `CMAKE_CURRENT_LIST_DIR` inside a FUNCTION body resolves to the
+# CALLER's list dir, not to the file the function was defined in. The depfile
+# script below is invoked from inside `nros_nuttx_build_example`, so its path
+# has to be captured at FILE scope.
+set(_NROS_NUTTX_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}" CACHE INTERNAL
+    "Directory holding nros-nuttx.cmake and its helper scripts")
+
 # issue 0820 — the cargo profile for this seam is a CARVE-OUT, not the ambient
 # one, and it must come from the table rather than be spelled here.
 #
@@ -284,7 +292,10 @@ function(nros_nuttx_build_example)
     #
     #   * the ARTIFACT via cargo's own `--artifact-dir`, so cargo places it
     #     rather than a copy racing whatever runs next;
-    #   * the DEPFILE by copying it in the same command, immediately after.
+    #   * the DEPFILE by RETARGETING it in the same command, immediately after
+    #     — a plain copy keeps cargo's own path as the rule's target, which
+    #     ninja rejects and which cost the seam its whole rebuild edge again
+    #     (see the `_depfile_retarget_cmd` note below).
     #
     # The key MUST separate the architectures. `<target>/release/build/` holds
     # HOST build-script output and is NOT triple-separated inside one target
@@ -329,11 +340,28 @@ function(nros_nuttx_build_example)
     # crate is already pinned to a nightly and already passes `-Z build-std`.
     # It does NOT copy the depfile (verified), hence the explicit copy below.
     set(_artifact_dir_arg "")
-    set(_depfile_copy_cmd "")
+    set(_depfile_retarget_cmd "")
     if(_artifact_dir)
         set(_artifact_dir_arg -Z unstable-options --artifact-dir "${_artifact_dir}")
-        set(_depfile_copy_cmd COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${_cargo_out_dir}/nros-nuttx-ffi.d" "${_output_binary}.d")
+        # issue 0820, second round — a COPY is not enough, and the difference is
+        # invisible: a depfile names the artifact it describes, and ninja
+        # CHECKS that name against the edge's output. Cargo names its OWN output
+        # in the shared target dir; this command's OUTPUT is the artifact-dir
+        # copy. Measured with ninja 1.13.2 on the real riscv leaf's depfile:
+        #
+        #   ninja explain: expected depfile 'real.d' to mention
+        #     'nros-nuttx-ffi-out/nros-nuttx-ffi', got '<shared>/…/nros-nuttx-ffi'
+        #
+        # and on a mismatch ninja discards the depfile ENTIRELY and marks the
+        # edge permanently dirty. So between 0805 and here, all 308 nano-ros
+        # Rust paths were read by nobody and cargo re-ran on every build — the
+        # always-run cost 0820 rejected, buying the correctness by accident
+        # instead of by the edge. Retarget the rule, don't copy it.
+        set(_depfile_retarget_cmd COMMAND ${CMAKE_COMMAND}
+            "-DNROS_DEPFILE_IN=${_cargo_out_dir}/nros-nuttx-ffi.d"
+            "-DNROS_DEPFILE_OUT=${_output_binary}.d"
+            "-DNROS_DEPFILE_TARGET=${_output_binary}"
+            -P "${_NROS_NUTTX_CMAKE_DIR}/nros-nuttx-depfile.cmake")
     endif()
 
     # 194.4: self-provision the NuttX export before the example links it. The
@@ -394,7 +422,7 @@ function(nros_nuttx_build_example)
             "NUTTX_APPS_DIR=${NUTTX_APPS_DIR}"
             "CARGO_TARGET_DIR=${_cargo_target_dir}"
             cargo build --profile ${_NROS_NUTTX_PROFILE} ${_artifact_dir_arg}
-        ${_depfile_copy_cmd}
+        ${_depfile_retarget_cmd}
         # Issue 0159 — make `cmake --build` itself honest: an exit-0 build with
         # no kernel ELF (up-to-date skip edge / a sub-step whose failure isn't
         # propagated) must fail HERE, not only in the outer fixture script's

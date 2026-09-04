@@ -6,8 +6,78 @@ title: "`c_riscv_nuttx_e2e` failed on a MUSEUM BINARY — the NuttX seam had no
 status: open
 type: bug
 area: cmake, testing
-related: [issue-0475, issue-0445, issue-0196]
+related: [issue-0475, issue-0445, issue-0196, issue-0805]
 ---
+
+## READ FIRST — the 2026-08-27 fix was live for six days (phase-424, 2026-09-05)
+
+The `DEPFILE` this issue landed was **silently neutralised by issue 0805's shared
+cargo dir**, and the verification recipe recorded below cannot see it. Fixed
+again here, by retargeting the depfile rather than copying it.
+
+**A depfile names the artifact it describes, and ninja CHECKS that name.**
+`DependencyScan::LoadDepFile` compares the rule's target against the edge's first
+output; on a mismatch it discards the ENTIRE depfile and marks the edge
+`deps_missing_` — permanently dirty.
+
+0805 moved the artifact out of the shared cargo target dir with cargo's
+`--artifact-dir`, so the `add_custom_command` OUTPUT became
+`<build>/nros-nuttx-ffi-out/nros-nuttx-ffi` while cargo's dep-info kept naming
+its own `<shared>/…/nros-minsizerel/nros-nuttx-ffi`. The seam copied that file
+across verbatim, target line included.
+
+Measured on the riscv leaf's REAL depfile (`build-zenoh/CMakeFiles/d/93e9….d`,
+fed to ninja 1.13.2 with the edge's real output name):
+
+```
+ninja explain: expected depfile 'real.d' to mention
+  'nros-nuttx-ffi-out/nros-nuttx-ffi', got
+  '/home/…/build/corrosion-cargo/nuttx-riscv/682805377484/
+   riscv32imac-unknown-nuttx-elf/nros-minsizerel/nros-nuttx-ffi'
+[1/1] Building NuttX example: c_talker      <- and again on every subsequent run
+```
+
+So all **308** nano-ros Rust paths in that depfile were read by nobody, and the
+seam had silently become the **always-run custom target** this issue explicitly
+rejected on cost grounds ("pays a cargo + NuttX kernel invocation on every build
+of every NuttX example"). It was still correct — but by accident, not by an edge.
+
+**Why the recorded verification could not catch it.** "Touch
+`nros-node/src/lib.rs`, rebuild without wiping, confirm the ELF hash changes"
+passes identically whether the DEPFILE works or the edge is permanently dirty.
+The recipe proves the artifact is not a museum binary; it does not prove the
+mechanism that would keep it that way is alive. A no-op rebuild reporting
+`ninja: no work to do` is the check that separates them.
+
+Note also that the two branches differ: when `nros_shared_cargo_dir` is
+unavailable, `_output_binary` IS cargo's own path and the depfile matched. That
+is the branch the 2026-08-27 verification ran, which is why it was honest then
+and stale six days later.
+
+**Fix (2026-09-05).** `packages/api/nros-c/cmake/nros-nuttx-depfile.cmake` — a
+`cmake -P` script that rewrites the rule's target to the
+`add_custom_command` OUTPUT before cmake's `cmake_transform_depfile` runs;
+`nros-nuttx.cmake` invokes it in place of the `copy_if_different`. The module dir
+is captured `CACHE INTERNAL` at file scope because — measured —
+`CMAKE_CURRENT_LIST_DIR` inside a cmake `function` resolves to the CALLER's list
+dir, not the defining file's.
+
+Measured after the fix, on the same real depfile:
+
+* the script retargets it and preserves all 308 prerequisites;
+* `cmake -E cmake_transform_depfile Ninja gccdepfile …` renders the target as
+  `nros-nuttx-ffi-out/nros-nuttx-ffi:` — ninja's exact output spelling;
+* ninja accepts it (no `expected depfile` explain line) and, in a controlled
+  positive control, reports `no work to do` on a no-op rebuild and rebuilds when
+  a depfile-named source is touched.
+
+**Not verified:** an in-situ incremental `just nuttx build-riscv-c` (needs a full
+NuttX kernel + cross cargo build). And cargo dep-info may name paths that do not
+exist; ninja degrades those to always-rebuild — no worse than the state this
+replaces, never a museum binary — but whether the current dep-info contains any
+is unmeasured.
+
+This changed no probe's watch set, so phase-424's 0835 constraint does not bind.
 
 ## Resolution of the reported failure: stale artifact, not a code defect
 
