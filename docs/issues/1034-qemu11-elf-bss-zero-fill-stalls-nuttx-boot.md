@@ -147,11 +147,13 @@ line introduced.
 
 ## FIXED 2026-09-04 — direction 1, in the NuttX fork's board linker script
 
-**Landing is blocked on one push.** The change is a commit on the `nuttx` fork's
-`nano-ros` branch (`aea00d73`, on top of the pinned `c3fa5dfb`, forward-only).
-Per AGENTS.md the agent does not push fork remotes, so the commit is local and
-the superproject pin cannot advance until a maintainer pushes it. Everything
-below is measured against that commit applied.
+The change is one commit on the `nuttx` fork's patch branch — `aea00d73` on
+`nano-ros`, a fast-forward over the previously pinned `c3fa5dfb` (0 behind,
+1 ahead) — pushed on the owner's instruction, with the superproject pin bumped
+to it in the same PR. Reading the fork's branches needed `git ls-remote`: the
+submodule is a single-branch clone (`+refs/heads/master:refs/remotes/origin/
+master`), so `git branch -a` showed only `master` and the `nano-ros` branch
+`.gitmodules` names looked as though it did not exist.
 
 ### The change
 
