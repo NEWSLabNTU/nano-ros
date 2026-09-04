@@ -137,6 +137,10 @@ jobs:
     outputs:
       platforms: ${{ steps.set.outputs.platforms }}
       zephyr: ${{ steps.set.outputs.zephyr }}
+      # Issue 1029 — the zephyr CRON decision, computed once and observable,
+      # instead of an inline `github.event.schedule` string compare repeated on
+      # three jobs where nobody could see what it evaluated to.
+      run_zephyr: ${{ steps.set.outputs.run_zephyr }}
     steps:
       - uses: actions/checkout@v4
 
@@ -210,6 +214,53 @@ jobs:
           json=$(printf '%s\n' $sel | jq -R . | jq -cs .)
           echo "platforms=$json" >> "$GITHUB_OUTPUT"
           echo "zephyr=$zephyr" >> "$GITHUB_OUTPUT"
+          # Issue 1029 -- decide the zephyr CRON here, once, and SAY what the
+          # payload contained.
+          #
+          # The three zephyr jobs each carried
+          #     github.event.schedule == '0 5 * * *'
+          # and every SCHEDULED run skipped all three: 9 of 9 scheduled runs
+          # skipped, 5 of 5 workflow_dispatch runs ran, over 2026-08-30..09-03.
+          # `changes.outputs.zephyr` was `true` in those runs (read from the raw
+          # log archive), so the string compare is what closed the gate -- but
+          # the value it compared was observable NOWHERE, which is why this sat
+          # for eight nights.
+          #
+          # Two changes, and the second matters more than the first:
+          #
+          #  * FAIL OPEN. An unrecognised or absent schedule value now RUNS the
+          #    lane. For a nightly that is the safe direction: the cost of
+          #    running too often is minutes, the cost of never running is that a
+          #    Zephyr regression and a healthy Zephyr look identical. The old
+          #    compare failed CLOSED, silently, which is the worse half of
+          #    "a red lane answers one of two questions".
+          #  * The raw value is printed AND written to the step summary, which
+          #    survives log formatting. `gh run view --log` mangles this
+          #    workflow (steps render as UNKNOWN STEP and whole lines vanish),
+          #    so a value that exists only in the log is a value nobody can
+          #    read back.
+          sched="${{ github.event.schedule }}"
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            run_zephyr="true"; why="not a schedule event"
+          else
+            case "$sched" in
+              "0 5 "*) run_zephyr="true";  why="the zephyr cron" ;;
+              "0 7 "*) run_zephyr="false"; why="the platform cron, which is not this lane" ;;
+              *)       run_zephyr="true";  why="UNRECOGNISED schedule -- failing OPEN (issue 1029)" ;;
+            esac
+          fi
+          echo "run_zephyr=$run_zephyr" >> "$GITHUB_OUTPUT"
+          echo "zephyr cron: event=${{ github.event_name }} schedule='$sched' -> run_zephyr=$run_zephyr ($why)"
+          {
+            echo "### zephyr cron gate (issue 1029)"
+            echo ""
+            echo "| field | value |"
+            echo "| --- | --- |"
+            echo "| \`github.event_name\` | \`${{ github.event_name }}\` |"
+            echo "| \`github.event.schedule\` | \`$sched\` |"
+            echo "| paths-filter \`zephyr\` | \`$zephyr\` |"
+            echo "| **run_zephyr** | **$run_zephyr** ($why) |"
+          } >> "$GITHUB_STEP_SUMMARY"
           echo "selected platforms: $json ; zephyr: $zephyr"
 
   # ===== per-platform sweep (cron 0 7) ==================================
@@ -440,7 +491,7 @@ jobs:
   # ===== Zephyr dual-line (cron 0 5) ====================================
   zephyr-example-matrix:
     needs: changes
-    if: ${{ needs.changes.outputs.zephyr == 'true' && (github.event_name != 'schedule' || github.event.schedule == '0 5 * * *') }}
+    if: ${{ needs.changes.outputs.zephyr == 'true' && needs.changes.outputs.run_zephyr == 'true' }}
     name: zephyr ${{ matrix.line }} / ${{ matrix.example }}
     runs-on: ubuntu-latest
     concurrency:
@@ -550,7 +601,7 @@ jobs:
 
   zephyr-dual-line-summary:
     needs: changes
-    if: ${{ needs.changes.outputs.zephyr == 'true' && (github.event_name != 'schedule' || github.event.schedule == '0 5 * * *') }}
+    if: ${{ needs.changes.outputs.zephyr == 'true' && needs.changes.outputs.run_zephyr == 'true' }}
     name: zephyr ci-both (3.7 + 4.4)
     env:
       # The 4.4 line needs a Python >=3.12 venv, which nano-ros refuses to
@@ -625,7 +676,7 @@ jobs:
 
   zephyr-copy-out:
     needs: changes
-    if: ${{ needs.changes.outputs.zephyr == 'true' && (github.event_name != 'schedule' || github.event.schedule == '0 5 * * *') }}
+    if: ${{ needs.changes.outputs.zephyr == 'true' && needs.changes.outputs.run_zephyr == 'true' }}
     name: zephyr copy-out check (4.4)
     env:
       # The 4.4 line needs a Python >=3.12 venv, which nano-ros refuses to
