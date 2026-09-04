@@ -2,6 +2,24 @@ include = ["../../../../../nros-patch.toml", "nros-board.toml"]
 
 
 [env]
+# issue 1052 — entity budgets, stated where the entities are DECLARED.
+#
+# On this board the stack is the LINKER LEFTOVER after `.bss` (link.x fills
+# DRAM up to `_stack_start`), so every byte of pool sized for an entity this
+# node does not create is a byte of stack it cannot use — and there is no
+# runtime overflow guard: the image writes frames into `.bss` and dies later
+# as a wild jump. The talker shipped at an 18,572 B stack and faulted.
+#
+# These lived in `examples/fixtures.toml` and so applied ONLY to the fixture
+# build. An example is a standalone copy-out project, and this one did not
+# link on its own: `.bss` overflowed DRAM by 11,184 B. Beside the declaration
+# is the only place the number is true for every build of the leaf.
+#
+# Gate: `scripts/check-stack-floor.py` (issue 1052). Deriving these from the
+# declarations instead of stating them is issue 1061.
+# declares exactly 1 subscription.
+ZPICO_MAX_QUERYABLES = "2"
+ZPICO_MAX_SUBSCRIBERS = "1"
 NROS_EXECUTOR_ARENA_SIZE = "16384"
 NROS_SMOLTCP_MAX_UDP_SOCKETS = "2"
 # issue 0024: shrink the Phase 231 (RFC-0038) size-class large receive buffer

@@ -945,3 +945,25 @@ narrowly the first time", which is that failure mode having happened once.
 `check-stack-floor.py` bounds the damage in the meantime: a leaf that gains an
 entity without gaining budget fails at build time instead of becoming a wild jump
 at runtime.
+
+
+## The talker publishes (2026-09-05)
+
+End of the line for this issue. With the budgets stated in the leaf config, the
+talker runs its steady state for the first time in the investigation:
+
+```
+Ethernet ready.
+[INFO] nros: Publishing: 'Hello World: 1'
+[INFO] nros: Publishing: 'Hello World: 2'
+...
+```
+
+0 faults; the listener creates its subscription and takes none either. Both
+images clear the 32 KB floor (49,148 / 52,636 B) and `DEBT` is empty.
+
+It still cannot reach the router under `-nic user,model=open_eth`, so delivery to
+a ROS peer is not shown here — that is the QEMU network configuration, not the
+image. What is shown is the part this issue was about: the publisher is created,
+the timer fires, and the callback runs, where the image previously took an
+instruction-access fault immediately after network bringup.
