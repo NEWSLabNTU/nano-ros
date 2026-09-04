@@ -76,6 +76,37 @@ creates one subscription.
 [issue 0968](0968-tier2-runtime-failures-unreproduced.md). Both wait on the
 talker's `Publishing:` marker, which the image cannot reach.
 
+## BISECTED 2026-09-04 — it is NOT in `register()`
+
+Six images, one variable each, every one built with the row's env and run under
+QEMU with a router up. `setup_complete` is `Application setup complete`;
+`fault` is the instruction-access fault.
+
+| variant | setup_complete | fault |
+| --- | ---: | ---: |
+| A — `create_node` only | 0 | 1 |
+| B — + publisher | 0 | 1 |
+| C — + timer | 0 | 1 |
+| D — full (`publishes_entity`) | 0 | 1 |
+| **E — `register` does NOTHING (`Ok(())`)** | **0** | **1** |
+| F — E, plus `ENTITY_BOUNDS::exact(0,0,0,0,0)` | 0 | 1 |
+| G — full, but with the LISTENER's `ip = 10.0.2.51` | 0 | 1 |
+
+**The fault address is `0x42051d70` in every one.**
+
+So it is none of: the publisher, the timer, `publishes_entity`, the entity-bounds
+static, or the static IP. An EMPTY `register` faults identically, which puts it
+outside the node's own registration code entirely — in the image's startup path,
+before or around `Executor::open`.
+
+### And yet the listener does not fault
+
+Same board, same build system, same run conditions, a NON-empty `register`, and
+it reaches its spin loop. After G, the differences left between the two leaves
+are down to the node NAME (`"talker"` vs `"listener"`) and the node TYPE itself —
+`Talker`'s `ExecutableNode` impl, its `State = i32`, its `on_callback`. Those are
+what a further bisect should cut.
+
 ## Where to start
 
 1. Resolve `0x42051d70` (the backtrace frame, which IS a code address unlike
