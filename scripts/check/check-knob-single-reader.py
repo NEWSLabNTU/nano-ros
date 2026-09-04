@@ -134,12 +134,22 @@ def census_class(classes: tuple[str, ...]) -> set[str]:
 
 
 def ladder_knobs_from_census() -> set[str]:
-    """The env names the census classifies as `ladder`.
+    """The env names the LADDER maps, read from the ladder's own source.
 
     Imported rather than restated: two hand-kept lists of "what is in the
     ladder" is the same duplicate-fact shape the ladder itself exists to
-    remove, and the census is already the file a new knob has to be added to
-    (its gate fails on an unclassified name).
+    remove.
+
+    This used to read the census's `KNOB_CLASS` rows with class `ladder`. Those
+    rows are gone — they restated `platform_config.rs`, and being hand-kept made
+    that table a per-PR conflict site (three of eleven dirty PRs on 2026-09-04
+    conflicted there and nowhere else, because a phase-400 W6 migration flipped
+    entries `sizing` -> `ladder` by hand). The census now DERIVES the mapping
+    and refuses a row that restates it, so this reads the same derivation.
+
+    `LADDER_MAPPED_NOT_MIGRATED` is subtracted for the same reason the census
+    subtracts it: a knob the ladder maps but that still has two readers is not
+    migrated, and this gate's whole subject is how many readers a knob has.
     """
     import importlib.util
 
@@ -148,7 +158,7 @@ def ladder_knobs_from_census() -> set[str]:
     mod = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(mod)
-    return census_class(("ladder",))
+    return mod.ladder_env_keys() - mod.LADDER_MAPPED_NOT_MIGRATED
 # The resolver itself names every knob in its front-end table; that is the map,
 # not a second reader.
 EXEMPT = {
