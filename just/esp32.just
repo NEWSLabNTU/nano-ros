@@ -82,6 +82,14 @@ build: build-examples
 build-examples:
     #!/usr/bin/env bash
     set -e
+    source scripts/build/cargo.sh
+    # issue 1038 — the central `nros-patch.toml` this lane's Rust leaves
+    # `include`, made EXPLICIT. This lane already got the file, but only as a
+    # side effect of `workspace-fixtures-build.sh` running `nros sync` somewhere
+    # earlier; `threadx-riscv64` had no such neighbour and died at manifest
+    # parse. An inherited artifact is a working lane, not a declared dependency.
+    # Idempotent — a process spawn when the file is already current.
+    nros_ensure_central_patch
     # Phase 244.D2 — the WiFi-only plain esp32 fixtures (talker/listener) were
     # dropped (WiFi un-emulable). The only `platform = "esp32"` fixture left is the
     # ESP32-C3 QEMU (OpenETH) workspace Entry, built by the workspace lane below;
