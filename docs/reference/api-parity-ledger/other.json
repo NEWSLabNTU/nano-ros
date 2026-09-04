@@ -1070,5 +1070,21 @@
   "rust:EXECUTOR_VALUE_SIZE": {
     "verdict": "extension",
     "why": "An `export_size!` probe (`packages/api/nros/src/sizes.rs:109`), not a user-facing API: it publishes `size_of::<Executor>()` so the generated C++ header can hold an executor BY VALUE (`nros-build-helpers/src/cpp.rs:283` bakes it as `NROS_EXECUTOR_VALUE_SIZE`). rclcpp needs no such thing because it heap-allocates its executor; here the whole point is that there is no allocator, so the size has to cross from Rust to C++ at build time. This is the sizes-header mirror whose drift is its own recurring issue family (0088/0114/0122/0123/0245/0268) -- the constant is the mechanism, not an addition to the user surface."
+  },
+  "cpp:SerializationFormat": {
+    "verdict": "extension",
+    "why": "phase-421 W4 / RFC-0088 D5, landed 2026-09-04. Ours-only, with no upstream name to align to: neither the recorded rclcpp nor rclc surface contains \"SerializationFormat\" or \"linked_format\" at all. It cannot — in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and never a question the API is asked. RFC-0088 makes it a PROVIDER instead: a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD via a `const {}` check. The enum itself (`nros-cpp/include/nros/serialization_format.hpp:43`), `uint8_t`-backed to mirror `SerializationFormatId` across the C ABI."
+  },
+  "cpp:format_of": {
+    "verdict": "extension",
+    "why": "phase-421 W4 / RFC-0088 D5, landed 2026-09-04. Ours-only, with no upstream name to align to: neither the recorded rclcpp nor rclc surface contains \"SerializationFormat\" or \"linked_format\" at all. It cannot — in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and never a question the API is asked. RFC-0088 makes it a PROVIDER instead: a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD via a `const {}` check. `format_of<M>` is the compile-time projection — which format a given message type serialises as — and is what the build-time mismatch check reads."
+  },
+  "cpp:linked_format": {
+    "verdict": "extension",
+    "why": "phase-421 W4 / RFC-0088 D5, landed 2026-09-04. Ours-only, with no upstream name to align to: neither the recorded rclcpp nor rclc surface contains \"SerializationFormat\" or \"linked_format\" at all. It cannot — in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and never a question the API is asked. RFC-0088 makes it a PROVIDER instead: a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD via a `const {}` check. `linked_format()` answers which format the LINKED BACKEND speaks, the other half of the comparison `format_of<M>` participates in."
+  },
+  "cpp:linked_format_name": {
+    "verdict": "extension",
+    "why": "phase-421 W4 / RFC-0088 D5, landed 2026-09-04. Ours-only, with no upstream name to align to: neither the recorded rclcpp nor rclc surface contains \"SerializationFormat\" or \"linked_format\" at all. It cannot — in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and never a question the API is asked. RFC-0088 makes it a PROVIDER instead: a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD via a `const {}` check. The printable spelling of `linked_format()`, for diagnostics and for the node accessor `Node::serialization_format()` classified separately in node.json."
   }
 }

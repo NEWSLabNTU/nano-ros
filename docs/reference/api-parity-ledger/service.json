@@ -93,7 +93,13 @@
   },
   "c:client_server_available": {
     "verdict": "rename",
-    "why": "see `cpp:Client::service_is_ready`; C ships this AND `nros_client_service_is_ready`."
+    "why": "see `cpp:Client::service_is_ready`; C ships this AND `nros_client_service_is_ready`.",
+    "rename": {
+      "to": "nros_client_service_is_ready",
+      "status": "settled-pending-owner",
+      "category": "B",
+      "resolution": "Target and shape settled 2026-09-03 by phase-379 W6 decision 2, which amended RFC-0036: \"C keeps rcl's literal shape, `nros_ret_t f(args…, T *out)`\". One C symbol, `nros_ret_t nros_client_service_is_ready(client, bool *out)`, with the tri-state `-1` arm becoming `NROS_RET_UNSUPPORTED`. C++ and Rust landed in 3941b569a; C is the open residue of issue 1008.\n\nIT IS A SWAP, NOT A RENAME, and nobody had written that down: the target name is ALREADY TAKEN by a differently-shaped function — `bool nros_client_service_is_ready(const client)` (`nros_generated.h:6176`) — while the tri-state lives at `nros_client_server_available(client, int32_t *out)` (`:6141`). So `server_available` loses its name, the bare-bool loses its shape, and the deprecated forwarder must be written for the spelling that is KEEPING its name. Same collision class as `make_publisher`->`create_publisher` (issue 0818), one entity over."
+    }
   },
   "c:client_service_is_ready": {
     "verdict": "extension",
@@ -173,8 +179,12 @@
     }
   },
   "c:send_response": {
-    "verdict": "rename",
-    "why": "rcl's free-function spelling; ours is the method-style `nros_service_send_response_raw` (phase-379 W5 renamed it from `nros_service_send_reply_raw` on 2026-08-27; the un-suffixed `nros_service_send_response` is now a deprecated forwarder, see that row). Same shape as `c:publish` -- the word matches, the spelling is ours to align."
+    "verdict": "divergence",
+    "why": "RETRACTED as a rename 2026-09-04; re-verdicted `divergence`. Not an `extension` either — `rcl_send_response(service, rmw_request_id_t*, void*)` exists (`rclc.json`, `rcl/service.h`).\n\nThe row said ours is \"method-style\". It is not: `nros_service_send_response_raw(service, sequence_number, data, len)` (`nros_generated.h:5917`) is a FREE FUNCTION taking the service first — rcl's own shape — and `nros_service_` is a module prefix of the construction rcl itself uses (`rcl_client_fini`). This is verbatim the correction already applied to `c:publish` and `c:send_request` on 2026-08-26, and to the receive-side twins `c:take_request`/`c:take_response` on 2026-09-03. This row is the reply-side member of that family and was not swept with it.\n\nWhat actually differs: `rmw_request_id_t*` (16-byte writer GUID plus sequence) versus a bare `int64_t` — the divergence written up at `rust:RequestId` — and a typed `void*` versus `const uint8_t*` plus `size_t`, because there is no runtime typesupport dispatch and no allocator. The `_raw` suffix belongs to the separate open SERIALIZED-vs-RAW question that `c:publish` owns, not to this row.",
+    "rename": {
+      "status": "not-a-rename",
+      "resolution": "Retracted 2026-09-04 as the fourth member of the c:publish / c:send_request / c:take_* family, all corrected earlier."
+    }
   },
   "c:service_callback_t": {
     "verdict": "divergence",
@@ -678,12 +688,20 @@
     "why": "the wire-bytes tier of `cpp:bind_service`: the bound member is `bool C::on_request(const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap, size_t* resp_len)`, with no serialisation on either side and a `false` return dropping the reply. Same relationship as `cpp:bind_subscription_raw` to `cpp:bind_subscription`, and the same no-allocator reason."
   },
   "cpp:create_client": {
-    "verdict": "rename",
-    "why": "rclcpp's free-function form; ours is `nros::make_client` if it existed -- today there is none, so this is the gap half. `create_publisher`/`make_publisher` was the same pair in pubsub, landed 2026-08-26. Phase 379 W5."
+    "verdict": "divergence",
+    "why": "RETRACTED as a rename 2026-09-04; re-verdicted `divergence`. The row's premise was false BOTH ways, verified: `make_client` has never existed anywhere in the tree (`git grep make_client -- packages examples book` is empty), and `nros::create_client` HAS existed since 61ce91c25 (2026-03-11) at `std_compat.hpp:145`, alongside the member `Node::create_client<S>` (`node.hpp:477`). The row proposed renaming FROM a name never written TO a name already in use.\n\nIssue 0818's blind spot produced it: `std_compat.hpp` sits behind `#ifdef NROS_CPP_STD`, which the extractor did not define, so its eleven free functions were invisible. `api-parity.py:141-147` records the same cause producing the `make_publisher` -> `create_publisher` rename against an already-existing `nros::create_publisher`. These rows were written in that pass and not revisited when `CPP_TRANSLATION_UNITS` fixed the extractor.\n\nWhat actually differs is SHAPE, and it is three RFC constraints rather than a name: rclcpp takes three `node_interfaces::*Interface` shared_ptrs and returns a throwing `SharedPtr`; ours takes `Node&` with an out-param and `Result` — no interface decomposition (RFC-0022), no allocator, no exceptions (RFC-0018/0036).",
+    "rename": {
+      "status": "not-a-rename",
+      "resolution": "Retracted 2026-09-04: the name already agrees. No code change, and no target name invented."
+    }
   },
   "cpp:create_service": {
-    "verdict": "rename",
-    "why": "see `cpp:create_client`."
+    "verdict": "divergence",
+    "why": "RETRACTED as a rename 2026-09-04; see `cpp:create_client` for the shared cause (issue 0818's `#ifdef NROS_CPP_STD` blind spot). `nros::create_service` exists at `std_compat.hpp:138` and `Node::create_service<S>` at `node.hpp:449`/`:467`; `make_service` exists nowhere.\n\nOne structural difference beyond the client's: rclcpp's free `create_service` REQUIRES a `CallbackT&&` (six required parameters), while our free form is poll-style and the callback form is the member overload at `node.hpp:467`.",
+    "rename": {
+      "status": "not-a-rename",
+      "resolution": "Retracted 2026-09-04: the name already agrees. No code change, and no target name invented."
+    }
   },
   "cpp:create_service_client_raw": {
     "verdict": "extension",
