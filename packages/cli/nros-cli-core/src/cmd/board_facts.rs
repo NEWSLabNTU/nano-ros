@@ -31,6 +31,7 @@ use crate::orchestration::{
     board_descriptor::{BoardCatalog, BoardDescriptor},
     site_config::SiteConfig,
 };
+use nros_board_common::platform_config::PLATFORM_CONFIG_FILENAME;
 
 #[derive(Debug, ClapArgs)]
 pub struct BoardFactsArgs {
@@ -506,6 +507,51 @@ pub fn run(args: BoardFactsArgs) -> Result<()> {
     Ok(())
 }
 
+/// Directories in `ws` that CONTAIN platform packages.
+///
+/// A platform descriptor lives at `<root>/<pkg>/nros-platform.toml`, so what
+/// the search path wants is `<root>` — the same shape `packages/platform` has
+/// in the tree.
+///
+/// Bounded and source-time (RFC-0071 D5): three levels is enough for
+/// `<ws>/src/<pkg>/` and `<ws>/<pkg>/`, and the build outputs are skipped by
+/// name because scanning them is pure cost — a workspace's `build/` and
+/// `install/` hold copies of the very files this is looking for, and a copy
+/// resolving as a platform is worse than not finding one.
+fn workspace_platform_roots(ws: &Path) -> Vec<std::path::PathBuf> {
+    const SKIP: &[&str] = &["build", "install", "log", "target", ".git"];
+    let mut out = Vec::new();
+    let mut stack = vec![(ws.to_path_buf(), 0u32)];
+    while let Some((dir, depth)) = stack.pop() {
+        if depth > 3 {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut holds_platform = false;
+        for e in entries.flatten() {
+            let p = e.path();
+            if !p.is_dir() {
+                continue;
+            }
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            if SKIP.contains(&name) || name.starts_with('.') {
+                continue;
+            }
+            if p.join(PLATFORM_CONFIG_FILENAME).is_file() {
+                holds_platform = true;
+            }
+            stack.push((p, depth + 1));
+        }
+        if holds_platform && !out.contains(&dir) {
+            out.push(dir);
+        }
+    }
+    out.sort();
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -923,51 +969,4 @@ sdk = { freertos = "/opt/freertos" }
         );
         assert!(resolve_board(&catalog, "no-such-board").is_none());
     }
-}
-
-use nros_board_common::platform_config::PLATFORM_CONFIG_FILENAME;
-
-/// Directories in `ws` that CONTAIN platform packages.
-///
-/// A platform descriptor lives at `<root>/<pkg>/nros-platform.toml`, so what
-/// the search path wants is `<root>` — the same shape `packages/platform` has
-/// in the tree.
-///
-/// Bounded and source-time (RFC-0071 D5): three levels is enough for
-/// `<ws>/src/<pkg>/` and `<ws>/<pkg>/`, and the build outputs are skipped by
-/// name because scanning them is pure cost — a workspace's `build/` and
-/// `install/` hold copies of the very files this is looking for, and a copy
-/// resolving as a platform is worse than not finding one.
-fn workspace_platform_roots(ws: &Path) -> Vec<std::path::PathBuf> {
-    const SKIP: &[&str] = &["build", "install", "log", "target", ".git"];
-    let mut out = Vec::new();
-    let mut stack = vec![(ws.to_path_buf(), 0u32)];
-    while let Some((dir, depth)) = stack.pop() {
-        if depth > 3 {
-            continue;
-        }
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        let mut holds_platform = false;
-        for e in entries.flatten() {
-            let p = e.path();
-            if !p.is_dir() {
-                continue;
-            }
-            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or_default();
-            if SKIP.contains(&name) || name.starts_with('.') {
-                continue;
-            }
-            if p.join(PLATFORM_CONFIG_FILENAME).is_file() {
-                holds_platform = true;
-            }
-            stack.push((p, depth + 1));
-        }
-        if holds_platform && !out.contains(&dir) {
-            out.push(dir);
-        }
-    }
-    out.sort();
-    out
 }
