@@ -321,8 +321,13 @@ else
     nros_require_sync "$NROS_CLI"
     # shellcheck source=scripts/build/codegen-stamp.sh
     source scripts/build/codegen-stamp.sh
+    # `nros_codegen_fingerprint` (issue 1018) is reached only THROUGH
+    # `nros_codegen_stamp_compute`, which is the 0400/0706 shape a make leaf
+    # turns into an unbound command after a long build. `check-export-f-closure`
+    # walks the call graph for exactly this.
     export -f nros_codegen_stamp_compute nros_codegen_stamp_check_or_wipe \
-              nros_codegen_stamp_write _codegen_stamp_repo_root _codegen_stamp_sources
+              nros_codegen_stamp_write _codegen_stamp_repo_root _codegen_stamp_sources \
+              nros_codegen_fingerprint
     # phase-351 W3 — the NuttX `libc` re-append (Phase 214.M.2,
     # `scripts/build/nuttx-libc-patch.sh`) is GONE. It existed because sync
     # WITHHELD every `${workspace}`-bearing key from the board projection, so

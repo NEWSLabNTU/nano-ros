@@ -159,6 +159,7 @@ fast-serial: \
     cmake-support-library \
     codegen-invocation \
     codegen-size-bound-golden \
+    codegen-stamp-inputs \
     codegen-tool-reconfigure \
     config-header-single-writer \
     config-knob-census \
@@ -2030,6 +2031,24 @@ fixture-staleness-probes:
         exit 0
     fi
     ./tests/fixture-staleness-probe-tests.sh
+
+# Issue 1018 -- the `generated/` regeneration stamp keys on what the CLI EMITS.
+#
+# `scripts/build/codegen-stamp.sh` decides whether a leaf's cached `generated/`
+# tree survives. It watched `nros-core/src/action.rs` and nothing about the
+# emitters, so an edit to `rosidl-codegen` left the tree in place -- and in
+# `just/zephyr-ci.just`, the one lane whose `nros sync` is conditional, the leaf
+# then compiled message crates the PREVIOUS CLI emitted.
+#
+# The term added is `nros codegen-fingerprint`, not the binary: 168 distinct
+# `nros` binaries on this host produced 11 distinct fingerprints, so a
+# binary-keyed stamp would wipe every leaf on 157 rebuilds that emit identical
+# code (phase-424's constraint). Both halves are asserted, because either alone
+# has a trivial wrong implementation, and the pre-fix rule runs on the same
+# trees as the negative control.
+[private]
+codegen-stamp-inputs:
+    @./tests/codegen-stamp-tests.sh
 
 # Every CI job gated on a `vars.*` interlock must have a job that reports
 # whether it ran. A skipped job does not colour its run, so post-submit reported

@@ -18,14 +18,45 @@
 #
 # Stamp sources (kept narrow to avoid noise from unrelated nros-core edits):
 #   - packages/core/nros-core/src/action.rs   (`RosAction` trait — Phase 214.J root)
+#   - the CODEGEN FINGERPRINT of the in-tree CLI (issue 1018, below)
 #
 # Future additions: add more files here only when a codegen-shape contract lives in
 # them; do NOT extend to every file in nros-core (over-invalidation = costly resync).
+#
+# ## Issue 1018 -- the emitter was the one input this stamp did not watch
+#
+# The stamp answered "has the SHAPE the generated code must fit changed?" and
+# never "has the code that GENERATES it changed?". Those are different questions
+# with the same consequence, and only one of them was asked. `action.rs` is a
+# file in `packages/core`; the emitters live in `packages/cli/rosidl-codegen`,
+# and nothing here reached them.
+#
+# The lane where that is not merely redundant is `just/zephyr-ci.just`, the only
+# caller whose `nros sync` is CONDITIONAL:
+#
+#     if [ FORCE ] || ! nros_pkg_sync_stamp_fresh "$pkg" "$stamp" || [ ! -d "$dir/generated" ]
+#
+# -- force, a changed `package.xml`, or an absent `generated/`. Edit an emitter
+# and none of the three fire, `check_or_wipe` sees an unmoved `action.rs`, and
+# every Zephyr Rust leaf compiles message crates the PREVIOUS CLI emitted. The
+# other lanes re-sync unconditionally, so there the fingerprint only buys the
+# removal of files codegen stopped emitting -- real, but quiet.
+#
+# The term is `nros codegen-fingerprint`, NOT the binary and NOT the CLI source
+# stamp. Phase-424's constraint is that a shared-tool input hashed into many
+# consumers must key on what the tool EMITS: measured on this host 2026-09-05,
+# 168 distinct `nros` binaries produced 11 distinct fingerprints, so a
+# binary-keyed term would wipe and re-sync every leaf on 157 rebuilds that emit
+# identical code. `source_stamp` would be worse again -- it moves for an edit to
+# `cmd/doctor.rs` and for a `play_launch` submodule pin bump.
 #
 # Hard constraint (CLAUDE.md): we do not touch nros-cli's codegen logic. The guard
 # fires BEFORE `nros sync` runs, so all responsibility stays on the host-side shell.
 
 set -euo pipefail
+
+# shellcheck source=scripts/build/codegen-fingerprint.sh
+source "$(dirname "${BASH_SOURCE[0]}")/codegen-fingerprint.sh"
 
 # Resolve the nano-ros repo root. Callers either export NROS_REPO_DIR / NROS_REPO_ROOT
 # (the same env the recipes already use for `nros sync`) or pass `$PWD` from the
@@ -69,11 +100,23 @@ nros_codegen_stamp_compute() {
     [ "$missing" = 0 ] || return 1
     # cat each file in the sorted source order, then hash. `sha256sum` is in
     # coreutils on every CI image we target.
+    #
+    # Issue 1018 -- then the emitter's own answer, in the same encoding the two
+    # `.inputsig` lanes use (`tool:nros\0<fp>\0`, or the stable
+    # `tool:nros-absent` marker) so all three consumers of the fingerprint spell
+    # it once. An absent CLI is a MARKER, never a skipped term: "assume
+    # unchanged" is the one answer a freshness input must not give.
+    local fp
     {
         while IFS= read -r f; do
             [ -z "$f" ] && continue
             cat "$root/$f"
         done <<< "$sources"
+        if fp="$(nros_codegen_fingerprint "$root" "binary:")"; then
+            printf 'tool:nros\0%s\0' "$fp"
+        else
+            printf 'tool:nros-absent\0'
+        fi
     } | sha256sum | awk '{print $1}'
 }
 

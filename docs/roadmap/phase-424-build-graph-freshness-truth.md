@@ -37,7 +37,14 @@ symmetrical, which is what makes the grouping useful rather than tidy:
   counting arms over the build dir's lifetime, which made a directory stop
   converging after two declaration edits.
 * **No edge at all** — 1018's codegen change invalidates every consumer's
-  generated interfaces with only a manual step connecting them.
+  generated interfaces with only a manual step connecting them. RESOLVED
+  2026-09-05: the missing edge was not the one filed. The three cmake consumers
+  each already depend on the tool binary; the `generated/` regeneration stamp
+  (`scripts/build/codegen-stamp.sh`) watched ONE file in `nros-core` and nothing
+  about the emitters, so in the one lane whose `nros sync` is conditional
+  (`just/zephyr-ci.just`) a `rosidl-codegen` edit left every Zephyr Rust leaf on
+  museum message crates. Fixed by hashing `nros codegen-fingerprint` into that
+  stamp — the emit-keyed term this phase requires, not the binary.
 
 The reason to hold them together is that the remedies collide. Every one of
 these is tempting to fix by widening what the prober watches, and each widening
@@ -52,7 +59,7 @@ they all rest on is built on build-system internals nobody supports.
 | [#0835](../issues/0835-fixture-staleness-probe-families-restale-each-other.md) | fixtures | the cmake and rust families re-stale each other — **oscillation fixed + gated 2026-09-04**; open for the duplicated ThreadX corrosion group, which is wasted disk, not staleness |
 | [#0945](../issues/archived/0945-shared-cargo-dir-rests-on-unsupported-build-internals.md) | cargo | ~~the shared-cargo-dir campaign rests on five unsupported build-system assumptions~~ **RESOLVED** — six, classified, one gap named |
 | [#1002](../issues/archived/1002-a-derived-knob-needs-three-configures-not-two.md) | cmake | RESOLVED — three is the chain's depth, not a defect; the defect was a bound counting the build dir's lifetime |
-| [#1018](../issues/1018-a-codegen-change-invalidates-generated-interfaces-and-only-a-manual-step-connects-them.md) | codegen | ~~a codegen change invalidates every consumer~~ the configure-time half is closed; **open** for the stale-CLI refusal |
+| [#1018](../issues/1018-a-codegen-change-invalidates-generated-interfaces-and-only-a-manual-step-connects-them.md) | codegen | ~~a codegen change invalidates every consumer~~ the configure-time half is closed (binary-keyed) and the `generated/` regeneration stamp is closed (fingerprint-keyed, no `.inputsig` moved); **open** for the stale-CLI refusal |
 | [#1046](../issues/archived/1046-px4-stale-tree-guard-checks-a-surviving-directory.md) | px4 | RESOLVED 2026-09-05 — the guard asserted a DIRECTORY that outlives the build that linked it; it asserts `bin/px4`'s CONTENT now, and the three "not covered" sweeps came back empty |
 | [#1050](../issues/1050-px4-demo-links-whatever-archive-was-built-last.md) | px4 | links whatever `libnros_cpp.a` was built last — the recipe (1) and the configure-time guard (2) are fixed; open for (3), `nros::init()` taking slot 0 |
 | [#1056](../issues/archived/1056-session-churn-window-too-short-for-start-skew.md) | test window | ~~a check that can pass on the build it exists to reject~~ **RESOLVED** — it can, and no affordable window fixes it |
@@ -86,7 +93,10 @@ project** (2026-09-04). The numbers are in issue 0835 under "Measured
   WRITES is unbounded, and is how 0835 happened.
 * A new input hashed into all 134 rows must key on what the tool EMITS, not on
   its binary — measured 41 distinct `nros` binaries against 9 distinct codegen
-  fingerprints, i.e. 78 % of CLI rebuilds re-staling nothing.
+  fingerprints, i.e. 78 % of CLI rebuilds re-staling nothing. Re-measured
+  2026-09-05 on the same host's grown cache: **168 binaries, 11 fingerprints**
+  (93 %). #1018 is the first fix held to this — it added the fingerprint to a
+  THIRD consumer (`codegen-stamp.sh`) and moved no `.inputsig` at all.
 
 ## Acceptance
 

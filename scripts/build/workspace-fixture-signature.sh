@@ -9,6 +9,8 @@ repo_root="$(cd "$script_dir/../.." && pwd)"
 
 # shellcheck source=scripts/build/source-manifest.sh
 source "$script_dir/source-manifest.sh"
+# shellcheck source=scripts/build/codegen-fingerprint.sh
+source "$script_dir/codegen-fingerprint.sh"
 
 IFS=$'\x1f' read -r id _lang dir bringup _entry _build_subdir _target_dir _codegen_out _defs <<< "$record"
 [ -n "$id" ] && [ -n "$dir" ] || {
@@ -44,17 +46,11 @@ workspace="$repo_root/$dir"
     #
     # Fallback order is deliberate — an OLDER nros without the verb falls back to
     # the binary hash (today's over-approximation), never to "assume fresh".
-    nros_bin="$repo_root/packages/cli/target/release/nros"
-    if [ -x "$nros_bin" ]; then
-        bin_hash="$(sha256sum "$nros_bin" | awk '{print $1}')"
-        cache="$repo_root/.nros-cache/codegen-fingerprint/$bin_hash"
-        if [ -s "$cache" ]; then
-            fp="$(cat "$cache")"
-        elif fp="$("$nros_bin" codegen-fingerprint 2>/dev/null)" && [ -n "$fp" ]; then
-            mkdir -p "$(dirname "$cache")" && printf '%s' "$fp" > "$cache" || true
-        else
-            fp="binary:$bin_hash"
-        fi
+    # The ladder itself lives in `codegen-fingerprint.sh` (issue 1018) — it had
+    # been written twice here and in the compile-check lane and had already
+    # drifted. Byte-for-byte the same signature: the `binary:` fallback prefix
+    # this lane spells is now the helper's second argument.
+    if fp="$(nros_codegen_fingerprint "$repo_root" "binary:")"; then
         printf 'tool:nros\0%s\0' "$fp"
     else
         printf 'tool:nros-absent\0'
