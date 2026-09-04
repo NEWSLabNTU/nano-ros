@@ -108,6 +108,19 @@ pub struct Args {
     /// missing (the doctor surface).
     #[arg(long)]
     pub system: bool,
+    /// RFC-0062 amendment 3 — provision from what THIS WORKSPACE declares,
+    /// instead of a scope the user has to know in advance.
+    ///
+    /// Reads every `package.xml` under the path and answers three questions
+    /// the tree already states: what the code depends on (`<depend>`), which
+    /// builder must exist (`<build_type>` / `<buildtool_depend>`), and where it
+    /// deploys (`<export><nano_ros deploy=.. board=.. rmw=../></export>`, which
+    /// 90+ packages already carry).
+    ///
+    /// Prints the plan; it does not install. Same contract as `--system`:
+    /// composing the command is this tool's job, running it is the user's.
+    #[arg(long = "workspace", value_name = "PATH", num_args = 0..=1, default_missing_value = ".")]
+    pub workspace_scan: Option<PathBuf>,
 
     /// Run presence probes and report present/missing/unknown instead of
     /// installing/printing; exits 1 when anything is missing. With
@@ -196,6 +209,10 @@ pub fn run(args: Args) -> Result<()> {
     if args.licenses {
         print_licenses(&index);
         return Ok(());
+    }
+    if let Some(ws) = args.workspace_scan.clone() {
+        let root = args.index.parent().map(std::path::Path::to_path_buf);
+        return run_workspace_scan(&index, &ws, root.as_deref());
     }
     if args.system {
         // The index lives AT the repo root, so its parent is the base a
@@ -2561,5 +2578,296 @@ mod probe_kind_tests {
             ProbeResult::Present,
             "a failing cmd must not veto a passing runs",
         );
+    }
+}
+
+/// One deploy target a workspace declares.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+struct DeployTarget {
+    deploy: String,
+    board: Option<String>,
+    rmw: Option<String>,
+}
+
+/// Parse `<nano_ros deploy=".." board=".." rmw=".."/>` from a package.xml.
+fn deploy_targets(xml: &str) -> Vec<DeployTarget> {
+    let attr = |tag: &str, name: &str| -> Option<String> {
+        let pat = format!("{name}=\"");
+        let i = tag.find(&pat)? + pat.len();
+        let rest = tag.get(i..)?;
+        let end = rest.find('"')?;
+        Some(rest[..end].to_string())
+    };
+    let mut out = Vec::new();
+    for (i, _) in xml.match_indices("<nano_ros ") {
+        let Some(rest) = xml.get(i..) else { continue };
+        let Some(end) = rest.find('>') else { continue };
+        let tag = &rest[..end];
+        if let Some(deploy) = attr(tag, "deploy") {
+            out.push(DeployTarget {
+                deploy,
+                board: attr(tag, "board"),
+                rmw: attr(tag, "rmw"),
+            });
+        }
+    }
+    out
+}
+
+/// `nros setup --workspace <path>` — provision from what the workspace declares.
+///
+/// The problem this solves: every other form of `nros setup` requires the user
+/// to already know the answer (a board, a `--tool`, a scope). Nothing read
+/// their tree. Yet the tree states it in three places, and 90+ package.xml
+/// files in this repo already carry the deploy export.
+fn run_workspace_scan(
+    index: &SdkIndex,
+    ws: &std::path::Path,
+    repo_root: Option<&std::path::Path>,
+) -> Result<()> {
+    use crate::orchestration::{prereq_resolve as pr, sdk_index::PrereqRole};
+
+    let files = {
+        let mut out: Vec<std::path::PathBuf> = Vec::new();
+        let mut stack = vec![ws.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            let Ok(rd) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for e in rd.flatten() {
+                let p = e.path();
+                let name = e.file_name().to_string_lossy().into_owned();
+                if p.is_dir() {
+                    if !matches!(
+                        name.as_str(),
+                        "build" | "target" | ".git" | "external" | "third-party" | "node_modules"
+                    ) && !name.starts_with("target-")
+                    {
+                        stack.push(p);
+                    }
+                } else if name == "package.xml" {
+                    out.push(p);
+                }
+            }
+        }
+        out.sort();
+        out
+    };
+
+    if files.is_empty() {
+        bail!(
+            "nros setup --workspace {}: no package.xml found.\n  \
+             This mode provisions from what a workspace DECLARES; an empty scan \
+             would report success for provisioning nothing.",
+            ws.display()
+        );
+    }
+
+    use std::collections::BTreeMap;
+
+    let prereqs = index.prereqs();
+    let mut builders: BTreeMap<String, usize> = BTreeMap::new();
+    let mut targets: BTreeMap<DeployTarget, usize> = BTreeMap::new();
+    let mut deps: BTreeMap<String, usize> = BTreeMap::new();
+
+    for f in &files {
+        let Ok(text) = std::fs::read_to_string(f) else {
+            continue;
+        };
+        for d in pr::depend_names(&text) {
+            *deps.entry(d).or_default() += 1;
+        }
+        if let Some(bt) = pr::build_type(&text) {
+            *builders.entry(bt).or_default() += 1;
+        }
+        for t in deploy_targets(&text) {
+            *targets.entry(t).or_default() += 1;
+        }
+    }
+
+    println!(
+        "nros setup --workspace {}: {} package(s)\n",
+        ws.display(),
+        files.len()
+    );
+
+    println!("BUILDERS (from <build_type>) — each implies a toolchain that must exist:");
+    for (bt, n) in &builders {
+        let tool = pr::buildtool_for_build_type(bt).unwrap_or("(no buildtool implied)");
+        println!("  {bt:<16} x{n:<4} buildtool: {tool}");
+    }
+
+    // The scope vocabulary comes from `scripts/build/scope.sh`, the same table
+    // the `just setup` dispatcher consults. Read, never restated: a deploy name
+    // is NOT always a scope — `deploy="threadx"` splits into `threadx_linux`
+    // and `threadx_riscv64` by board, and printing `just setup threadx` would
+    // hand the user a command that does not resolve. A remedy that fails is
+    // worse than no remedy, because it costs a round trip to disbelieve.
+    let scopes: Vec<String> = repo_root
+        .map(|r| r.join("scripts/build/scope.sh"))
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|t| {
+            let i = t.find("_NROS_SCOPE_PLATFORMS=\"")? + "_NROS_SCOPE_PLATFORMS=\"".len();
+            let rest = t.get(i..)?;
+            let end = rest.find('"')?;
+            Some(
+                rest[..end]
+                    .split_whitespace()
+                    .map(str::to_string)
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .unwrap_or_default();
+
+    println!("\nDEPLOY TARGETS (from <export><nano_ros deploy=../>) — the scope to provision:");
+    if targets.is_empty() {
+        println!("  (none declared — nothing here says where it deploys)");
+    }
+    for (t, n) in &targets {
+        let board = t.board.as_deref().unwrap_or("-");
+        let rmw = t.rmw.as_deref().unwrap_or("-");
+        println!(
+            "  deploy={:<10} board={:<26} rmw={:<10} x{}",
+            t.deploy, board, rmw, n
+        );
+        // The USER spelling first, and only when it actually resolves. The
+        // `board=` vocabulary in these exports is NOT the `[board.*]` key
+        // vocabulary: of the five boards declared across this repo's examples,
+        // only `threadx-linux` is an index key. Printing `nros setup <board>`
+        // for the other four would hand an out-of-tree user — the one person
+        // this mode exists for, and the one with no justfile — a command that
+        // fails.
+        match t.board.as_deref() {
+            Some(b) if index.board.contains_key(b) => {
+                println!("      provision with:  nros setup {b}");
+            }
+            Some(b) => {
+                println!(
+                    "      board `{b}` is not an index board key — `nros setup {b}` \
+                     would fail; use the scope below from a nano-ros checkout"
+                );
+            }
+            None => {}
+        }
+        if scopes.is_empty() {
+            println!(
+                "      contributors: ./scripts/bootstrap.sh  (or: just setup {})",
+                t.deploy
+            );
+        } else if scopes.iter().any(|s| *s == t.deploy) {
+            println!(
+                "      contributors: ./scripts/bootstrap.sh  (or: just setup {})",
+                t.deploy
+            );
+        } else {
+            let candidates: Vec<&String> = scopes
+                .iter()
+                .filter(|s| s.starts_with(&format!("{}_", t.deploy)))
+                .collect();
+            if candidates.is_empty() {
+                println!(
+                    "      NO SCOPE matches `{}` — provision it by hand, or add the scope",
+                    t.deploy
+                );
+            } else {
+                let list: Vec<&str> = candidates.iter().map(|s| s.as_str()).collect();
+                println!(
+                    "      `{}` is not a scope; it splits by board. contributors: \
+                     ./scripts/bootstrap.sh  (or: just setup <{}>)",
+                    t.deploy,
+                    list.join(" | ")
+                );
+            }
+        }
+    }
+
+    // Content dependencies, split by whether this tool can act on them.
+    let mut package_role: Vec<(&String, &usize)> = Vec::new();
+    let mut wrong_role: Vec<(&String, &str)> = Vec::new();
+    let mut not_prereq = 0usize;
+    for (name, n) in &deps {
+        match prereqs.get(name) {
+            Some(dep) => match dep.role {
+                PrereqRole::Package | PrereqRole::Unclassified => package_role.push((name, n)),
+                PrereqRole::Workspace => wrong_role.push((name, "workspace")),
+                PrereqRole::Infra => wrong_role.push((name, "infra")),
+                PrereqRole::Vendor => wrong_role.push((name, "vendor")),
+            },
+            None => not_prereq += 1,
+        }
+    }
+
+    println!("\nSYSTEM PREREQUISITES this workspace names (role = package):");
+    if package_role.is_empty() {
+        println!("  (none — its dependencies are packages and messages, not system keys)");
+    }
+    for (name, n) in &package_role {
+        let probe = prereqs.get(*name).and_then(|d| d.check.as_ref());
+        let state = match run_probe(probe) {
+            ProbeResult::Present => "present",
+            ProbeResult::Missing => "MISSING",
+            ProbeResult::Unknown => "unprobed",
+        };
+        println!("  {name:<28} x{n:<4} {state}");
+    }
+
+    if !wrong_role.is_empty() {
+        println!("\nDECLARED BUT NOT A CONTENT DEPENDENCY — these come from the deploy");
+        println!("target, not from a <depend>. Not an error today (RFC-0062 amendment 3");
+        println!("leaves the refusal open), but the declaration is a category error:");
+        for (name, role) in &wrong_role {
+            println!("  {name:<28} role = {role}");
+        }
+    }
+
+    println!(
+        "\n{not_prereq} declared name(s) are workspace packages, generated messages or \
+         ROS packages — not system prerequisites."
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod workspace_scan_tests {
+    use super::*;
+
+    /// The export 90+ package.xml files already carry. All three attributes,
+    /// and a self-closing tag.
+    #[test]
+    fn a_deploy_export_is_parsed_with_board_and_rmw() {
+        let xml = r#"<package><export>
+            <nano_ros deploy="threadx" board="riscv64-qemu" rmw="zenoh"/>
+        </export></package>"#;
+        let got = deploy_targets(xml);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].deploy, "threadx");
+        assert_eq!(got[0].board.as_deref(), Some("riscv64-qemu"));
+        assert_eq!(got[0].rmw.as_deref(), Some("zenoh"));
+    }
+
+    /// `deploy=` alone is the common native shape — board and rmw are optional
+    /// and must not be invented.
+    #[test]
+    fn deploy_alone_leaves_board_and_rmw_unset() {
+        let got = deploy_targets(r#"<nano_ros deploy="native"/>"#);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].board, None);
+        assert_eq!(got[0].rmw, None);
+    }
+
+    /// The sibling exports must not be read as deploy targets: `nano_ros_provides`
+    /// and `nano_ros_uses` also start with `<nano_ros`, and a prefix match would
+    /// silently invent targets from them.
+    #[test]
+    fn sibling_exports_are_not_deploy_targets() {
+        let xml = r#"<nano_ros_provides kind="board" name="threadx"/>
+                     <nano_ros_uses kind="serdes" name="cdr"/>"#;
+        assert!(deploy_targets(xml).is_empty());
+    }
+
+    /// A package with no deploy export contributes nothing rather than a default.
+    #[test]
+    fn no_export_yields_no_target() {
+        assert!(deploy_targets("<package><name>x</name></package>").is_empty());
     }
 }

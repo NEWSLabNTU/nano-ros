@@ -135,11 +135,45 @@ pub enum Provider {
 /// `[prereq.x.system]` sub-table, so an existing `[system.*]` entry is
 /// byte-identical as a `[prereq.*]` entry. That is the whole migration for 25
 /// of 25 current entries.
+/// Who may name a `[prereq.*]` key.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrereqRole {
+    /// A package's CONTENT depends on it, so a `package.xml` may name it and
+    /// `nros setup --workspace` can discover it. `cmake`, `clang`, a ROS
+    /// package the code links.
+    Package,
+    /// A repo-level recipe needs it, and no package does: `doxygen` for
+    /// `just docs-c`, `gnu-parallel` for the gate runner. Reached by running
+    /// that recipe's scope, never by declaring a dependency.
+    Workspace,
+    /// Test/build INFRASTRUCTURE for a target: emulators, cross toolchains,
+    /// on-chip debug probes. Comes from WHERE you deploy, not from what your
+    /// code needs — `<depend>qemu-system-arm</depend>` is a category error.
+    Infra,
+    /// A third-party source tree this repo builds (submodule or fetched
+    /// source). ROS 2 would express these as `*_vendor` packages.
+    Vendor,
+    /// Not yet classified. The DEFAULT so the field can land before all 46
+    /// entries carry one; `check-prereq-roles` is what forbids it staying.
+    #[default]
+    Unclassified,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PrereqDep {
     #[serde(default)]
     pub why: Option<String>,
+    /// WHO may name this key, and therefore how a user reaches it.
+    ///
+    /// RFC-0062 amendment 3. Measured before adding it: of 46 keys, exactly
+    /// THREE are ever named by a `package.xml` (`cargo`, `cmake`, `nros`).
+    /// The rest are provisioning facts no package's CONTENT depends on, and
+    /// conflating the two is why `nros setup` cannot answer "what does MY
+    /// workspace need" — it has no way to tell a dependency from a toolchain.
+    #[serde(default)]
+    pub role: PrereqRole,
     /// Ordered providers. Empty means "just `provider`", which defaults to
     /// `system` — so the common single-provider entry writes neither field.
     ///
@@ -209,6 +243,11 @@ impl From<&SystemDep> for PrereqDep {
     fn from(d: &SystemDep) -> Self {
         Self {
             why: d.why.clone(),
+            // A lowered `[system.*]` entry carries no role: the alias exists to
+            // make the merge additive, and inventing a classification here
+            // would put it somewhere no author chose. `check-prereq-roles`
+            // reports it as unclassified, which is the truth.
+            role: PrereqRole::Unclassified,
             providers: Vec::new(),
             provider: Provider::System,
             apt: d.apt.clone(),
