@@ -253,23 +253,43 @@ fn main() {
     println!("cargo:rerun-if-env-changed=NROS_XRCE_TRANSPORT_MTU");
 
     // Phase 207.6 — per-session pool sizes. A pub-only bare-metal node
-    // can drop `MAX_SUBSCRIBERS` to 1 (zero-length arrays aren't
-    // standard C; 1 is the practical minimum), `MAX_SERVICE_SERVERS` /
-    // `MAX_SERVICE_CLIENTS` to 1, `SUBSCRIBER_RING_DEPTH` to 1, and
+    // can drop `MAX_SUBSCRIBERS` to 0, `MAX_SERVICE_SERVERS` /
+    // `MAX_SERVICE_CLIENTS` to 0, `SUBSCRIBER_RING_DEPTH` to 1, and
     // `BUFFER_SIZE` to 256. Combined with `STREAM_HISTORY=4` +
     // `NROS_XRCE_CUSTOM_TRANSPORT_MTU=512` the session struct drops
     // from ~390 KB to ~10–20 KB.
+    // issue 1033 — the entity caps admit ZERO, and that is the whole saving.
+    //
+    // The minimum used to be 1, justified as "zero-length arrays aren't
+    // standard C; 1 is the practical minimum". Measured, that is wrong in the
+    // way that mattered:
+    //
+    //  * these are PLAIN arrays MID-struct, not flexible array members, so the
+    //    `flexible array member not at end of struct` failure this repo has
+    //    seen came from an EMPTY define (`arr[]`), not a zero one (`arr[0]`) —
+    //    two different errors that read alike;
+    //  * `slot_t arr[0];` mid-struct compiles on gnu11, c11 AND gnu99; only
+    //    `-pedantic` rejects it, and nothing here passes `-pedantic`;
+    //  * nothing indexes slot 0 unconditionally — every walk is
+    //    `for (i = 0; i < MAX; ++i)`, which at 0 simply does not run.
+    //
+    // And clamping was the thing issue 0827 forbids in as many words: it
+    // "reserved the memory anyway while reading as though the knob had been
+    // honoured". A cap of 0 on an image that creates none of that entity is the
+    // honest answer, and on the zephyr cpp listener it is what takes
+    // `xrce_session_state_t` from 76,624 bytes to 54,928 — under its 66,048
+    // heap, so the image boots.
     for (env_name, define_name, min) in [
-        ("NROS_XRCE_MAX_SUBSCRIBERS", "XRCE_MAX_SUBSCRIBERS", 1),
+        ("NROS_XRCE_MAX_SUBSCRIBERS", "XRCE_MAX_SUBSCRIBERS", 0),
         (
             "NROS_XRCE_MAX_SERVICE_SERVERS",
             "XRCE_MAX_SERVICE_SERVERS",
-            1,
+            0,
         ),
         (
             "NROS_XRCE_MAX_SERVICE_CLIENTS",
             "XRCE_MAX_SERVICE_CLIENTS",
-            1,
+            0,
         ),
         (
             "NROS_XRCE_SUBSCRIBER_RING_DEPTH",
