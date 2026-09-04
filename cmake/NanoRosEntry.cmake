@@ -924,6 +924,10 @@ function(_nros_entry_invoke_codegen)
     nros_derive_entity_inventory_knobs(CLI "${_nros_bin}")
     nros_reconfigure_on_change("${_entity_knobs_path}" "${_entity_knobs_before}"
         LABEL "this image's entity inventory")
+    # issue 1033 — tell the deferred non-entry composer to stand down. An entry
+    # composes HERE, after its own registrations, which is the earliest correct
+    # point; the deferred one exists only for images that never call this verb.
+    set_property(GLOBAL PROPERTY NROS_ENTITY_INVENTORY_COMPOSED TRUE)
 
     # #182 — the generated TU is a function of the CODEGEN TOOL too, not just
     # its inputs: a `nros` rebuild that changes the emitter (e.g. the fd32a0f75
