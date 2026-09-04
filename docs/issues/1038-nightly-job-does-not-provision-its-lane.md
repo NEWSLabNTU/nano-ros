@@ -70,6 +70,27 @@ A warning where the leaf tolerates it, a hard parse error where it does not.
 
 ### 3. `esp32` — apt packages for a source build
 
+**CORRECTION (2026-09-04).** This cell has TWO independent faults and the
+triage above attributed its RED to the wrong one. The missing packages are real,
+but `just esp32 setup` tolerates that failure by design —
+`nros setup --tool esp32-qemu || echo "esp32-qemu unavailable (e2e will skip);
+build unaffected"` — so it does not fail the job. What fails the job is one step
+later:
+
+```
+Creating flash images...
+ERROR: .../qemu-esp32-baremetal/riscv32imc-unknown-none-elf/nros-relwithdebinfo/esp32_qemu_talker
+       is missing, and nothing narrowed this build.
+error: recipe `build-qemu` failed with exit code 1
+```
+
+That is **issue 1025**, already owned by PR #303 — the flash packer asking for a
+directory the build stopped using. The packages are a COVERAGE hole (the ESP32
+e2e skips for want of a QEMU that knows `esp32c3`, which reads as green), not
+the red. Both are worth fixing; only one of them turns this cell green, and it
+is not this one.
+
+
 ```
 nros setup: 1 package(s) have no prebuilt for linux-x86_64 — BUILDING FROM SOURCE: esp32-qemu
 Error: nros setup --tool esp32-qemu: needs 3 system package(s) this host is

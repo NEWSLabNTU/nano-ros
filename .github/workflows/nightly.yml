@@ -305,6 +305,31 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         uses: ./.github/actions/setup-nros-cli
+      # issue 1038 — provision `[tool.esp32-qemu]`'s declared BUILD deps before
+      # the lane asks for the tool.
+      #
+      # The Espressif QEMU fork has no prebuilt for linux-x86_64, so `nros setup
+      # --tool esp32-qemu` builds it from source, and qemu's meson needs glib,
+      # pixman and gcrypt. The index declares all three — as `[prereq.*]` with
+      # apt names and probes, AND in `[tool.esp32-qemu] system = [..]` — so the
+      # tool can install them itself. That is why this is NOT an `apt-get
+      # install` line: restating what the index already declares is exactly what
+      # phase-413 W3's gate forbids, and the packages are indexed.
+      #
+      # `--sudo` because a CI container is where executing a package install is
+      # appropriate; the default still refuses and prints the command, which is
+      # the right behaviour on a developer's machine.
+      #
+      # NOT the cause of this cell's RED — that is issue 1025 (#303), where the
+      # flash packer looks in a directory the build stopped using. This step
+      # stops the ESP32 e2e from SKIPPING for want of a QEMU that knows
+      # `esp32c3`, which is a coverage hole that reads as green.
+      - name: Provision esp32-qemu's declared system deps (issue 1038)
+        if: matrix.plat == 'esp32'
+        run: |
+          source ./activate.sh
+          nros setup --tool esp32-qemu --sudo
+
       - name: just ${{ matrix.plat }} setup
         run: |
           source ./activate.sh
