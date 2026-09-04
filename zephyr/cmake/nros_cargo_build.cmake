@@ -635,8 +635,20 @@ function(nros_resolve_knobs)
         # The UDP MTU stayed at its 4096 default and the two per-session stream
         # buffers cost 2 x 4096 x 16 = 131072 bytes against a 65536-byte heap.
         _nros_resolve_knob(NROS_XRCE_TRANSPORT_MTU "${CONFIG_NROS_XRCE_TRANSPORT_MTU}")
-        _nros_resolve_knob(NROS_XRCE_MAX_SUBSCRIBERS
-            "${CONFIG_NROS_XRCE_MAX_SUBSCRIBERS}")
+        # issue 1033 — the subscriber cap joins the DERIVABLE ladder, on the
+        # SAME `NROS_DERIVED_MAX_SUBSCRIBERS` the zenoh pools use. Reusing that
+        # value rather than counting `sub:` entries here is the point: it
+        # already carries `ACTION_CLIENT_SUBSCRIPTIONS`, the multiplier held by
+        # `check-infra-queryable-counts`, so an action-carrying image is sized
+        # right. A second count here would be a second derivation of one fact,
+        # and the one that forgot the multiplier would under-size the image and
+        # fail at registration.
+        #
+        # This is 86% of `xrce_session_state_t`: 8 slots x 32-deep rings of
+        # 1024-byte buffers = 266,368 bytes on an image with one subscriber.
+        _nros_resolve_derivable_knob(NROS_XRCE_MAX_SUBSCRIBERS
+            "${CONFIG_NROS_XRCE_MAX_SUBSCRIBERS}" NROS_DERIVED_MAX_SUBSCRIBERS
+            "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
         _nros_resolve_knob(NROS_XRCE_MAX_SERVICE_SERVERS
             "${CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS}")
         _nros_resolve_knob(NROS_XRCE_MAX_SERVICE_CLIENTS

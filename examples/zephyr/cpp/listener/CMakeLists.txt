@@ -47,4 +47,9 @@ nros_components_register_node(listener_lib
     PLUGIN zephyr_cpp_listener::Listener
     EXECUTABLE listener
     SHAPE configure
-    TYPED)
+    TYPED
+    # issue 1033 — what this image CREATES, read off its own source.
+    # The XRCE subscriber cap derives from this; absence means "nobody
+    # said" and the image keeps the 8-slot default.
+    ENTITIES
+             sub:std_msgs/msg/String:/chatter)

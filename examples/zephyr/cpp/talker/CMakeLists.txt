@@ -49,4 +49,10 @@ nros_components_register_node(talker_lib
     PLUGIN zephyr_cpp_talker::Talker
     EXECUTABLE talker
     SHAPE configure
-    TYPED)
+    TYPED
+    # issue 1033 — what this image CREATES, read off its own source.
+    # The XRCE subscriber cap derives from this; absence means "nobody
+    # said" and the image keeps the 8-slot default.
+    ENTITIES
+             pub:std_msgs/msg/String:/chatter
+             timer)
