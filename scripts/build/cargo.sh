@@ -456,3 +456,26 @@ nros_cargo_fetch_standalone_manifests() {
         fi
     done < "$list"
 }
+
+# issue 1038 — ensure the central `nros-patch.toml` exists.
+#
+# 47 tracked leaf `.cargo/config.toml` files reach the universal-trio patches
+# through `include = ["…/nros-patch.toml"]`, and a missing include target is a
+# HARD cargo error during MANIFEST PARSE — before any compilation, four frames
+# deep, naming neither the leaf nor `nros sync`.
+#
+# Only `nros sync` wrote that file, and sync needs a WORKSPACE. A lane building
+# standalone leaves has no workspace to sync, so it got the file as a SIDE
+# EFFECT of whichever neighbouring lane ran `workspace-fixtures-build.sh` first.
+# Six lanes do; `threadx-riscv64` does not, which is why its leaves were the
+# ones that failed while an identical config in a freertos leaf resolved.
+#
+# `nros ws central-patch` is the SAME writer sync calls, so the table cannot
+# drift from sync's. Idempotent — skip-write when unchanged.
+#
+# A shell function rather than a `just` recipe because `just` MODULES cannot
+# depend on a root-level recipe, and the alternative was spelling these two
+# lines once per platform module.
+nros_ensure_central_patch() {
+    NROS_REPO_DIR="${NROS_REPO_DIR:-$PWD}" "$(nros_cli_bin)" ws central-patch >/dev/null
+}

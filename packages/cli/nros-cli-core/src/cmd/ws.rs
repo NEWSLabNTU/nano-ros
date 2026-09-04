@@ -67,6 +67,27 @@ pub enum Sub {
     /// `package.xml`, stale patch blocks. Mirrors the sync detection.
     Doctor(DoctorArgs),
 
+    /// Write the central `<checkout>/nros-patch.toml` and nothing else
+    /// (issue 1038).
+    ///
+    /// 47 tracked leaf `.cargo/config.toml` files reach the universal-trio
+    /// patches through one `include = ["…/nros-patch.toml"]` line, and a
+    /// missing `include` target is a HARD cargo error during MANIFEST PARSE —
+    /// four frames deep, naming neither the leaf nor `nros sync`. Until now the
+    /// only thing that wrote that file was a full `nros sync`, which needs a
+    /// workspace; a lane building only STANDALONE leaves has no workspace to
+    /// sync, so it got the file by side effect from whichever neighbouring lane
+    /// happened to build workspace fixtures first. `threadx-riscv64` is the one
+    /// lane with no such neighbour, which is why it is the one that failed.
+    ///
+    /// This is the same writer `sync` calls, not a second spelling of the
+    /// content: the patch table must agree with sync's byte for byte or the
+    /// leaves resolve against different crates.
+    ///
+    /// Hidden: a build-system seam, like `model-dims`.
+    #[command(name = "central-patch", hide = true)]
+    CentralPatch(CentralPatchArgs),
+
     /// Print the `execution.tiers` dim keys a committed SystemModel declares,
     /// one per line, sorted (issue 0380).
     ///
@@ -404,6 +425,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::Clean(a) => run_clean(a),
         Sub::Doctor(a) => run_doctor(a),
         Sub::ModelDims(a) => run_model_dims(a),
+        Sub::CentralPatch(a) => run_central_patch(a),
         Sub::CheckBoardProjections(a) => run_check_board_projections(a),
         Sub::BoardFacts(a) => crate::cmd::board_facts::run(a),
         Sub::EntityFacts(a) => crate::cmd::entity_facts::run(a),
@@ -3195,6 +3217,27 @@ fn warn_if_cargo_predates_config_include(ws_root: &Path) {
             line.trim(),
         );
     }
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct CentralPatchArgs {
+    /// nano-ros checkout to write into. Defaults to `NROS_REPO_DIR`, then cwd.
+    #[arg(long)]
+    pub nano_ros_path: Option<PathBuf>,
+}
+
+/// issue 1038 — write the central patch file, with no workspace and no codegen.
+fn run_central_patch(args: CentralPatchArgs) -> Result<()> {
+    let root = match args.nano_ros_path {
+        Some(p) => p,
+        None => match std::env::var_os("NROS_REPO_DIR") {
+            Some(v) => PathBuf::from(v),
+            None => std::env::current_dir()?,
+        },
+    };
+    let dst = write_central_patch_file(&root)?;
+    println!("{}", dst.display());
+    Ok(())
 }
 
 fn write_central_patch_file(nano_ros_path: &Path) -> Result<PathBuf> {
