@@ -13,8 +13,12 @@
 //! `run` owns the full lifecycle:
 //!
 //! 1. [`super::BoardInit::init_hardware`]
-//! 2. [`super::TransportBringup::init_transport`] (if implemented)
-//! 3. [`super::NetworkWait::wait_link_up`] (if implemented)
+//! 2. device bring-up — link layer to L2, then the carrier / DHCP gate if the
+//!    board has an IP stack. This is the `run` BODY's job, usually delegated to
+//!    a family helper (`nros_board_freertos::run_entry`, …). There is no mixin
+//!    trait for it: phase-206 W4 / issue 1067 removed `TransportBringup` and
+//!    `NetworkWait`, which had zero and zero production callers respectively,
+//!    and whose "skipped if not implemented" order was not expressible in Rust.
 //! 4. Open executor, build `RuntimeCtx`, invoke `setup(runtime)`.
 //! 5. Spin executor to completion (or termination signal).
 //! 6. [`super::BoardExit::exit_success`] / `exit_failure`.
