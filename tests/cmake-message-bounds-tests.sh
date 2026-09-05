@@ -899,6 +899,134 @@ fi
 check
 
 # ---------------------------------------------------------------------------
+log_header "P -- an open CLOSURE type does not poison the payload classes"
+# ---------------------------------------------------------------------------
+#
+# issue 0963, the fix case O was written against. The take buffer and the
+# payload classes answer different questions:
+#
+#   * NROS_SUBSCRIPTION_BUFFER_SIZE is one global size, aliased by
+#     DEFAULT_TX_BUF, so a type the image only PUBLISHES must fit it -- an open
+#     type anywhere in the closure genuinely poisons it;
+#   * the payload classes size staging pools for what the image RECEIVES, which
+#     an unbounded type nothing subscribes to cannot reach.
+#
+# So: closure carries an unbounded type, every SUBSCRIBED type is bounded.
+# Expected -- overall `refused`, payload classes `derived`.
+_p_pkg="$T/p-pkgs"
+mkdir -p "$_p_pkg"
+cat > "$_p_pkg/bounds.cmake" <<'EOF'
+set(NROS_MESSAGE_BOUNDS_SCHEMA_VERSION 1)
+list(APPEND NROS_MESSAGE_BOUND_PACKAGES "demo")
+list(APPEND NROS_MESSAGE_BOUND_TYPES "std_msgs/msg/Int32")
+set(NROS_MESSAGE_BOUND_std_msgs_msg_Int32_STATE "bounded")
+set(NROS_MESSAGE_BOUND_std_msgs_msg_Int32_TX 12)
+set(NROS_MESSAGE_BOUND_std_msgs_msg_Int32_RX 12)
+list(APPEND NROS_MESSAGE_BOUND_TYPES "demo/msg/Open")
+set(NROS_MESSAGE_BOUND_demo_msg_Open_STATE "unbounded")
+set(NROS_MESSAGE_BOUND_demo_msg_Open_REASON "unbounded member: data (string)")
+EOF
+# Subscribes to the BOUNDED type only. The unbounded one is linked, never received.
+{
+    printf 'set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 3)\n'
+    printf 'set(NROS_ENTITY_INVENTORY_STATUS "derived")\n'
+    printf 'set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS "resolved")\n'
+    printf 'set(NROS_ENTITY_SUBSCRIBED_TYPES "std_msgs/msg/Int32")\n'
+    printf 'set(NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS "std_msgs/msg/Int32=1")\n'
+    printf 'set(NROS_ENTITY_SUBSCRIBED_ENTITY_COUNT 1)\n'
+} > "$T/p-entities.cmake"
+
+cat > "$T/p-run.cmake" <<EOF
+include("$MODULE")
+nros_derive_message_bound_knobs(
+    FRAGMENTS "$_p_pkg/bounds.cmake"
+    ENTITY_INVENTORY "$T/p-entities.cmake"
+    OUTPUT_FILE "$T/p-out.cmake"
+    QUIET)
+message(STATUS "status=\${NROS_MESSAGE_BOUNDS_STATUS}")
+message(STATUS "payload=\${NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS}")
+message(STATUS "basis=\${NROS_MESSAGE_BOUNDS_BASIS}")
+message(STATUS "why=\${NROS_MESSAGE_BOUNDS_PAYLOAD_REASON}")
+message(STATUS "small=\${NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE}")
+message(STATUS "takebuf=\${NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE}")
+EOF
+_p_out=$(cmake -P "$T/p-run.cmake" 2>&1)
+
+if ! printf '%s' "$_p_out" | grep -q "payload=derived"; then
+    fail "P: every SUBSCRIBED type is bounded, so the payload classes must derive \
+even though the closure refused:"
+    printf '%s\n' "$_p_out"
+fi
+check
+if ! printf '%s' "$_p_out" | grep -q "basis=subscribed"; then
+    fail "P: the payload classes derived on the wrong basis -- a `closure` basis \
+here would be derived over the bounded types ONLY, which is the under-derivation \
+the refusal exists to prevent:"
+    printf '%s\n' "$_p_out"
+fi
+check
+if ! printf '%s' "$_p_out" | grep -q "small=12"; then
+    fail "P: the small class was not sized from the one subscribed type:"
+    printf '%s\n' "$_p_out"
+fi
+check
+# The take buffer must STILL refuse -- that is the half an open closure type
+# genuinely poisons, and the whole reason this is not just "stop refusing".
+if printf '%s' "$_p_out" | grep -q "takebuf=[0-9]"; then
+    fail "P: the take buffer was derived over a closure with an unbounded type -- \
+DEFAULT_TX_BUF aliases it, so a published type could exceed it silently:"
+    printf '%s\n' "$_p_out"
+fi
+check
+
+# The OUTPUT FILE is the transport -- a knob published in memory but absent from
+# it does not reach the consumer, which is exactly the gap the in-memory
+# assertions above cannot see. The refused branch of the writer emitted only the
+# reason until issue 0963.
+if ! grep -q 'NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE' "$T/p-out.cmake"; then
+    fail "P: the payload classes were derived but the OUTPUT FILE does not carry \
+them, so nros_cargo_build.cmake will never see them:"
+    cat "$T/p-out.cmake"
+fi
+check
+if grep -q 'NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE' "$T/p-out.cmake"; then
+    fail "P: the output file carries the TAKE BUFFER on a refused closure -- that \
+is the knob an unbounded closure type genuinely poisons:"
+    cat "$T/p-out.cmake"
+fi
+check
+if ! grep -q 'NROS_MESSAGE_BOUNDS_BASIS "subscribed"' "$T/p-out.cmake"; then
+    fail "P: the file does not record WHICH basis the payload classes used:"
+    cat "$T/p-out.cmake"
+fi
+check
+# ...and the no-inventory case must still write nothing derived.
+if grep -qE '^set\(NROS_DERIVED_' "$T/p-out2.cmake"; then
+    fail "P: with no entity inventory the output file carries derived knobs:"
+    cat "$T/p-out2.cmake"
+fi
+check
+
+# ...and with NO entity inventory, an open closure still publishes NOTHING: the
+# `closure` basis would derive the classes over the bounded types only.
+cat > "$T/p-run2.cmake" <<EOF
+include("$MODULE")
+nros_derive_message_bound_knobs(
+    FRAGMENTS "$_p_pkg/bounds.cmake"
+    OUTPUT_FILE "$T/p-out2.cmake"
+    QUIET)
+message(STATUS "small=\${NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE}")
+message(STATUS "basis=\${NROS_MESSAGE_BOUNDS_BASIS}")
+EOF
+_p_out2=$(cmake -P "$T/p-run2.cmake" 2>&1)
+if printf '%s' "$_p_out2" | grep -q "small=[0-9]"; then
+    fail "P: with no entity inventory the classes were derived over the BOUNDED \
+types only -- exactly the under-derivation the refusal exists to prevent:"
+    printf '%s\n' "$_p_out2"
+fi
+check
+
+# ---------------------------------------------------------------------------
 log_header "Summary"
 if [ "$FAILURES" -eq 0 ]; then
     log_success "$CHECKS assertions held"

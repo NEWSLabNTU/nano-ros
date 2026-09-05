@@ -305,6 +305,58 @@ function(nros_message_bounds_seed_knobs_file _path)
 endfunction()
 
 # nros_derive_message_bound_knobs(...)  -- see the header comment.
+# Issue 0963 — publish the three payload-class knobs from a completed join.
+#
+# A MACRO, not a function: it publishes through `_nros_bounds_publish`, which
+# sets in the caller's scope, and it reads a dozen locals the caller already
+# holds. A function would need all of them threaded through and would put the
+# publishes one scope too deep.
+#
+# Called from two places now, which is the point of factoring it: a closure that
+# refuses the take buffer can still answer the payload classes, because they are
+# a fact about what the image SUBSCRIBES to and the refusal is a fact about what
+# it LINKS.
+macro(_nros_bounds_publish_payload_classes)
+    _nros_bounds_publish(NROS_MESSAGE_BOUNDS_BASIS "${_basis}")
+
+    # BASIS `closure` -- this image declared no entities, so there is no
+    # join to make and the payload classes keep exactly the answer W8
+    # published: derived over every type in the linked closure. The label
+    # and the status line are what stop that being mistaken for the joined
+    # row.
+    if(_basis STREQUAL "closure")
+        set(_sub_small "${_small}")
+        set(_sub_large_types "${_large_types}")
+        set(_sub_large_max "${_large_max}")
+        list(LENGTH _large_types _sub_large_count)
+    endif()
+
+    # Buffer 2, the backend's staging pools: two classes, split at the
+    # policy ceiling. `_sub_small` is the largest bound AT OR UNDER the
+    # ceiling among the receiving set, so the shim's own
+    # `min(threshold, SUBSCRIBER_BUFFER_SIZE)` picks it and the
+    # classification here is the routing at runtime.
+    #
+    # `_sub_small == 0` means nothing received fits under the ceiling --
+    # including the case where nothing is received at all. The small class
+    # is still USED (a caller that states no hint is served from it), so
+    # there is nothing to derive and the configured value stands.
+    if(_sub_small GREATER 0)
+        _nros_bounds_publish(NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE "${_sub_small}")
+    endif()
+
+    # The large COUNT is a count of BLOCKS, so on the `subscribed` basis it
+    # counts subscribing ENTITIES and not distinct types: two subscriptions
+    # on one large type need two blocks, and a type count would under-reserve
+    # by exactly the duplicates. On the `closure` basis there are no entities
+    # to count and it stays a type count, which is what it has always been.
+    _nros_bounds_publish(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS "${_sub_large_count}")
+    _nros_bounds_publish(NROS_DERIVED_LARGE_TYPES "${_sub_large_types}")
+    if(_sub_large_count GREATER 0)
+        _nros_bounds_publish(NROS_DERIVED_SUBSCRIBER_LARGE_SIZE "${_sub_large_max}")
+    endif()
+endmacro()
+
 function(nros_derive_message_bound_knobs)
     cmake_parse_arguments(_B "QUIET"
         "SMALL_CLASS_CEILING;OUTPUT_FILE;ENTITY_INVENTORY" "FRAGMENTS" ${ARGN})
@@ -478,6 +530,23 @@ function(nros_derive_message_bound_knobs)
     _nros_bounds_publish(NROS_MESSAGE_BOUNDS_BOUNDED_COUNT "${_bounded}")
     _nros_bounds_publish(NROS_MESSAGE_BOUNDS_OPEN_TYPES "${_open}")
 
+    # ---- The JOIN: which of those types does this image RECEIVE? ---------
+    #
+    # phase-403 step 1. Everything above is a fact about the closure. The three
+    # payload-class knobs are a fact about the SUBSCRIPTIONS, and this is where
+    # the second inventory supplies them. See the header for why the take
+    # buffer deliberately does not take part.
+    #
+    # Issue 0963 — this runs BEFORE the closure refusal below, which it did not
+    # until 2026-09-06. The refusal `return()`s, so an image whose every
+    # SUBSCRIBED type is bounded was refused for a type it merely LINKS, and the
+    # narrowing this join exists to provide was unreachable through the public
+    # entry point. The join is pure (it publishes nothing), so computing it
+    # early changes no output on the path that then refuses everything.
+    _nros_bounds_join_subscribed("${_B_ENTITY_INVENTORY}" "${_ceiling}"
+        _basis _payload_status _payload_why _sub_count
+        _sub_small _sub_large_types _sub_large_max _sub_large_count)
+
     if(_open)
         list(LENGTH _open _open_count)
         string(REPLACE ";" "\n" _open_block "${_open_detail}")
@@ -499,19 +568,48 @@ function(nros_derive_message_bound_knobs)
                 "type is transitive: `\"std_msgs/Header.frame_id\" = { cap = 64, "
                 "mode = \"inline\" }` bounds every message that nests a Header.")
         endif()
+        # Issue 0963 — the take buffer refuses, and the PAYLOAD CLASSES need
+        # not. They are two different facts:
+        #
+        #   * `NROS_SUBSCRIPTION_BUFFER_SIZE` is one global size for every
+        #     entity, and `DEFAULT_TX_BUF` aliases it, so a type the image only
+        #     PUBLISHES must still fit. That is a fact about the whole linked
+        #     closure, and an open type in the closure genuinely poisons it.
+        #   * the three payload-class knobs size the backend's staging pools for
+        #     what the image RECEIVES. An unbounded type nothing subscribes to
+        #     cannot reach them.
+        #
+        # So an image whose every SUBSCRIBED type is bounded now gets its
+        # payload classes even while the take buffer keeps its configured value.
+        # That was this issue's second remedy — "an image pays only for the
+        # types it actually links" — and it was unreachable while this `return()`
+        # ran before the join.
+        #
+        # ONLY on a real `subscribed` join. The `closure` basis fallback inside
+        # the macro derives over `_small` / `_large_types`, which on THIS path
+        # were accumulated over the bounded types only — deriving a class size
+        # from those is precisely the under-derivation the refusal above exists
+        # to prevent, and its failure mode is a silent `BufferTooSmall`. A
+        # missing entity inventory therefore still gets nothing.
+        # The payload STATUS is published either way: a reader that gets no
+        # classes should be able to see whether the join declined and why,
+        # rather than inferring it from absent variables.
+        _nros_bounds_publish(NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS "${_payload_status}")
+        _nros_bounds_publish(NROS_MESSAGE_BOUNDS_PAYLOAD_REASON "${_payload_why}")
+        _nros_bounds_publish(NROS_MESSAGE_BOUNDS_SUBSCRIPTION_COUNT "${_sub_count}")
+        if(_payload_status STREQUAL "derived" AND _basis STREQUAL "subscribed")
+            _nros_bounds_publish_payload_classes()
+            if(NOT _B_QUIET)
+                message(STATUS
+                    "nros: payload classes DERIVED over ${_sub_count} subscribed "
+                    "type(s) despite the closure refusal above -- every type this "
+                    "image RECEIVES is bounded. The take buffer keeps its "
+                    "configured value (issue 0963).")
+            endif()
+        endif()
         _nros_message_bounds_write_output("${_B_OUTPUT_FILE}" "refused" "${_why}" "${_ceiling}")
         return()
     endif()
-
-    # ---- The JOIN: which of those types does this image RECEIVE? ---------
-    #
-    # phase-403 step 1. Everything above is a fact about the closure. The three
-    # payload-class knobs are a fact about the SUBSCRIPTIONS, and this is where
-    # the second inventory supplies them. See the header for why the take
-    # buffer deliberately does not take part.
-    _nros_bounds_join_subscribed("${_B_ENTITY_INVENTORY}" "${_ceiling}"
-        _basis _payload_status _payload_why _sub_count
-        _sub_small _sub_large_types _sub_large_max _sub_large_count)
 
     # ---- Derive ----------------------------------------------------------
     #
@@ -529,44 +627,7 @@ function(nros_derive_message_bound_knobs)
     _nros_bounds_publish(NROS_MESSAGE_BOUNDS_SUBSCRIPTION_COUNT "${_sub_count}")
 
     if(_payload_status STREQUAL "derived")
-        _nros_bounds_publish(NROS_MESSAGE_BOUNDS_BASIS "${_basis}")
-
-        # BASIS `closure` -- this image declared no entities, so there is no
-        # join to make and the payload classes keep exactly the answer W8
-        # published: derived over every type in the linked closure. The label
-        # and the status line are what stop that being mistaken for the joined
-        # row.
-        if(_basis STREQUAL "closure")
-            set(_sub_small "${_small}")
-            set(_sub_large_types "${_large_types}")
-            set(_sub_large_max "${_large_max}")
-            list(LENGTH _large_types _sub_large_count)
-        endif()
-
-        # Buffer 2, the backend's staging pools: two classes, split at the
-        # policy ceiling. `_sub_small` is the largest bound AT OR UNDER the
-        # ceiling among the receiving set, so the shim's own
-        # `min(threshold, SUBSCRIBER_BUFFER_SIZE)` picks it and the
-        # classification here is the routing at runtime.
-        #
-        # `_sub_small == 0` means nothing received fits under the ceiling --
-        # including the case where nothing is received at all. The small class
-        # is still USED (a caller that states no hint is served from it), so
-        # there is nothing to derive and the configured value stands.
-        if(_sub_small GREATER 0)
-            _nros_bounds_publish(NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE "${_sub_small}")
-        endif()
-
-        # The large COUNT is a count of BLOCKS, so on the `subscribed` basis it
-        # counts subscribing ENTITIES and not distinct types: two subscriptions
-        # on one large type need two blocks, and a type count would under-reserve
-        # by exactly the duplicates. On the `closure` basis there are no entities
-        # to count and it stays a type count, which is what it has always been.
-        _nros_bounds_publish(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS "${_sub_large_count}")
-        _nros_bounds_publish(NROS_DERIVED_LARGE_TYPES "${_sub_large_types}")
-        if(_sub_large_count GREATER 0)
-            _nros_bounds_publish(NROS_DERIVED_SUBSCRIBER_LARGE_SIZE "${_sub_large_max}")
-        endif()
+        _nros_bounds_publish_payload_classes()
     endif()
     # A count of ZERO is an ANSWER, not an abstention -- W4 made
     # `ZPICO_MAX_LARGE_SUBSCRIBERS = 0` legal precisely so an image whose types
@@ -909,7 +970,44 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
         string(REPLACE "\"" "\\\"" _r "${_r}")
         string(REPLACE "\n" "\\n" _r "${_r}")
         string(APPEND _c "set(NROS_MESSAGE_BOUNDS_REASON \"${_r}\")\n")
-        string(APPEND _c "# No knob is derived. Every one keeps its configured value.\n")
+        # Issue 0963 — a refusal is about the TAKE BUFFER, and the payload
+        # classes can still have an answer. This branch used to write nothing
+        # but the reason, so the values the derivation had already computed
+        # never reached the consumer: the file IS the transport, and a knob
+        # published in memory but absent from it does not exist.
+        #
+        # Only ever written when the join ran on the `subscribed` basis — the
+        # caller enforces that, and the comment below states which knobs the
+        # refusal still covers so a reader is not left inferring it.
+        if(DEFINED NROS_MESSAGE_BOUNDS_BASIS
+                AND NROS_MESSAGE_BOUNDS_BASIS STREQUAL "subscribed")
+            string(APPEND _c
+                "# The TAKE BUFFER is refused: an unbounded type in the linked closure\n"
+                "# could be published through it (DEFAULT_TX_BUF aliases it), so\n"
+                "# NROS_SUBSCRIPTION_BUFFER_SIZE keeps its configured value.\n"
+                "#\n"
+                "# The PAYLOAD CLASSES below are derived anyway: they size the staging\n"
+                "# pools for what this image RECEIVES, every subscribed type IS bounded,\n"
+                "# and an unbounded type nothing subscribes to cannot reach them.\n")
+            string(APPEND _c
+                "set(NROS_MESSAGE_BOUNDS_BASIS \"${NROS_MESSAGE_BOUNDS_BASIS}\")\n")
+            string(APPEND _c
+                "set(NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS \"${NROS_MESSAGE_BOUNDS_PAYLOAD_STATUS}\")\n")
+            if(DEFINED NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE)
+                string(APPEND _c
+                    "set(NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE ${NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE})\n")
+            endif()
+            if(DEFINED NROS_DERIVED_MAX_LARGE_SUBSCRIBERS)
+                string(APPEND _c
+                    "set(NROS_DERIVED_MAX_LARGE_SUBSCRIBERS ${NROS_DERIVED_MAX_LARGE_SUBSCRIBERS})\n")
+            endif()
+            if(DEFINED NROS_DERIVED_SUBSCRIBER_LARGE_SIZE)
+                string(APPEND _c
+                    "set(NROS_DERIVED_SUBSCRIBER_LARGE_SIZE ${NROS_DERIVED_SUBSCRIBER_LARGE_SIZE})\n")
+            endif()
+        else()
+            string(APPEND _c "# No knob is derived. Every one keeps its configured value.\n")
+        endif()
     else()
         string(APPEND _c "set(NROS_MESSAGE_BOUNDS_PACKAGES \"${NROS_MESSAGE_BOUNDS_PACKAGES}\")\n")
         string(APPEND _c "set(NROS_MESSAGE_BOUNDS_TYPE_COUNT ${NROS_MESSAGE_BOUNDS_TYPE_COUNT})\n")
