@@ -92,7 +92,19 @@ pub mod action;
 // feature unification under `cargo test --workspace` flips `ConcreteSession`
 // to a real backend handle (e.g. UorbSession when rmw-uorb is on transitively
 // via the workspace), breaking the type signatures the tests expect.
-#[cfg(all(test, not(feature = "rmw-cffi")))]
+// `feature = "std"` is part of the gate, not decoration. The crate is
+// `#![no_std]`; `tests.rs` uses `std::` in 155 places and calls
+// `from_session`, which is itself `#[cfg(feature = "alloc")]`. Without the
+// feature in the gate, a plain `cargo test -p nros-node` compiles this module
+// into a no_std crate and produces 252 errors, 192 of them "cannot find module
+// or crate `std`" — an incomprehensible wall for anyone running the obvious
+// command, and unrelated to whatever they were changing.
+//
+// These tests genuinely need a host: they spawn threads, sleep, and read the
+// wall clock. Gating them is not hiding coverage, it is declaring what they
+// already required. `cargo test -p nros-node --features std` is unchanged and
+// remains the way to run them.
+#[cfg(all(test, feature = "std", not(feature = "rmw-cffi")))]
 mod tests;
 
 // Flat re-exports so users write `executor::Executor` etc.

@@ -456,7 +456,19 @@ def census():
                         pending_test = False
                     elif pending_test and stripped.endswith(";"):
                         pending_test = False  # `#[cfg(test)] mod tests;`
-                    if test_depth is None and code:
+                    # …and never count the TEST GATE ITSELF. `#[cfg(all(test,
+                    # feature = "std", …))]` contains `feature = "std"`, and on
+                    # that line `test_depth` is still None — it is only set when
+                    # the body's brace opens on a LATER line — so the attribute
+                    # was counted as a std requirement of shipped code while its
+                    # body was correctly skipped.
+                    #
+                    # That contradicts this file's own stated policy ("`#[cfg(test)]`
+                    # code is excluded, and that is a CORRECTION not a win"), and it
+                    # punished the change that made four host-only test modules
+                    # DECLARE what they had always needed: `nros-node` went 3 -> 7
+                    # for four attributes on `mod` lines, none of which ships.
+                    if test_depth is None and code and not is_test_gate(stripped):
                         if "cfg" in code:
                             cfg += len(CFG_FEATURE_RE.findall(code))
                         path += len(PATH_RE.findall(code))

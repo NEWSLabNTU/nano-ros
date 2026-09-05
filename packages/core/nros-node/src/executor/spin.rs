@@ -8339,7 +8339,7 @@ impl<'s> Drop for Executor<'s> {
     }
 }
 
-#[cfg(all(test, not(feature = "rmw-cffi")))]
+#[cfg(all(test, feature = "std", not(feature = "rmw-cffi")))]
 mod dispatch_registry_tests {
     //! Phase 216 follow-up — `Executor::register_dispatch_slot` +
     //! `Executor::dispatch_callback` round-trip.
@@ -8461,7 +8461,7 @@ mod dispatch_registry_tests {
 ///
 /// Uses `MockSession` (same pattern as `dispatch_registry_tests`); gated
 /// `not(feature = "rmw-cffi")` for the same reason.
-#[cfg(all(test, not(feature = "rmw-cffi")))]
+#[cfg(all(test, feature = "std", not(feature = "rmw-cffi")))]
 mod p274_w1_tier_executor_tests {
     use super::Executor;
     use crate::mock::MockSession;
