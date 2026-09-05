@@ -43,7 +43,10 @@ use crate::orchestration::cargo_metadata_schema::{NodeOverride, TierDef};
 pub mod emit_c;
 pub mod emit_cpp;
 pub mod emit_rust;
+#[cfg(test)]
+mod golden;
 pub mod metadata;
+mod render;
 
 /// Target language for the emitted TU.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

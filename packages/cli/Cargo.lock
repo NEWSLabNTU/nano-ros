@@ -803,6 +803,7 @@ dependencies = [
  "eyre",
  "indexmap",
  "libc",
+ "minijinja",
  "nros-board-common",
  "nros-cargo-profile",
  "nros-launch-parser",
