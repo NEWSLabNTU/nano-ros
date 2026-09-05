@@ -33,7 +33,7 @@ SYMBOL = "NROS_BOOT_REPORT"
 # "NRSR". Must match boot_report.rs MAGIC.
 MAGIC = 0x4E525352
 # Layout this script knows how to decode. Must match boot_report.rs VERSION.
-KNOWN_VERSION = 1
+KNOWN_VERSION = 3
 
 # Field order, matching `BootReport` and `Snapshot` in boot_report.rs. Every
 # field is a u32; the record is all `AtomicU32`, which is repr(transparent).
@@ -53,19 +53,119 @@ FIELDS = (
     "last_alloc_size",
     "failed_alloc_size",
     "failed_alloc_shortfall",
+    "cpp_init_ret",
+    "err_class",
+    "err_transport",
+    "err_backend_ptr",
+    "err_backend_len",
 )
 
 STAGES = {
-    0: "Untouched -- the image never reached boot_report::init()",
-    1: "ReportReady -- record stamped; executor not constructed",
-    2: "ExecutorReady -- arena bound",
-    3: "RegisteringEntities -- entity creation begun, NOT finished",
-    4: "EntitiesReady -- every declared entity registered",
-    5: "FirstSpin -- registration complete and spinning",
+    0: "Untouched -- the image never entered nros_cpp_init",
+    1: "ReportReady -- entered nros_cpp_init; arguments NOT yet validated",
+    2: "BootConfigResolved -- arguments accepted; executor not yet open",
+    3: "ExecutorReady -- arena bound",
+    4: "RegisteringEntities (NOT YET WIRED -- no call site emits this)",
+    5: "EntitiesReady (NOT YET WIRED -- registration has no single end; see issue 0900)",
+    6: "FirstSpin -- registration complete and spinning",
 }
 
 
-def resolve_symbol(elf: Path) -> tuple[int, int]:
+# Assigned by `node_error_class` in packages/api/nros-cpp/src/lib.rs. Append
+# only, and kept in step by hand -- the Rust side is exhaustive, so a new
+# variant fails THERE first, which is the half that matters.
+ERR_CLASS = {
+    0: "(none)", 1: "Transport", 2: "NameTooLong", 3: "Serialization",
+    4: "Deserialization", 5: "BufferTooSmall", 6: "ActionCreationFailed",
+    7: "ServiceRequestFailed", 8: "ServiceReplyFailed", 9: "Timeout",
+    10: "NotInitialized", 11: "RequestInFlight", 12: "NoSchedContextSlot",
+    13: "InvalidSchedContextBinding", 14: "NodeTableFull", 15: "ExecutorFull",
+    16: "BackendMismatch", 17: "ShutdownCallbacksFull",
+}
+
+# Assigned by `transport_error_class` in the same file.
+ERR_TRANSPORT = {
+    0: "(none)", 1: "ConnectionFailed", 2: "Disconnected",
+    3: "PublisherCreationFailed", 4: "SubscriberCreationFailed",
+    5: "ServiceServerCreationFailed", 6: "ServiceClientCreationFailed",
+    7: "PublishFailed", 8: "ServiceRequestFailed", 9: "ServiceReplyFailed",
+    10: "SerializationError", 11: "DeserializationError", 12: "BufferTooSmall",
+    13: "MessageTooLarge", 14: "Timeout", 15: "InvalidConfig", 16: "WouldBlock",
+    17: "TooLarge", 18: "TaskStartFailed", 19: "PollFailed",
+    20: "KeepaliveFailed", 21: "JoinFailed", 22: "InvalidArgument",
+    23: "Unsupported", 24: "BadAlloc", 25: "IncompatibleQos",
+    26: "TopicNameInvalid", 27: "NodeNameNonExistent", 28: "LoanNotSupported",
+    29: "NoData", 30: "IncompatibleAbi", 31: "Backend", 32: "BackendDynamic",
+}
+
+# Pools and tables map to NROS_CPP_RET_FULL, never to the transport code, so
+# seeing any of these here rules a sizing knob IN -- and seeing a transport
+# class rules every one of them OUT.
+POOL_CLASSES = {5, 12, 14, 15, 17}
+
+
+# --- the subscriber payload-class record (packages/rmw/zenoh/nros-rmw-zenoh) --
+#
+# A SECOND symbol, because the crate that owns these facts cannot call into the
+# boot report: nros-node depends on nros-rmw-zenoh, so the edge runs the other
+# way and a call would be a cycle. See SubscriberAllocReport's own doc comment.
+ALLOC_SYMBOL = "NROS_SUBSCRIBER_ALLOC_REPORT"
+ALLOC_MAGIC = 0x53554241  # "SUBA"
+ALLOC_VERSION = 7
+ALLOC_FIELDS = (
+    "magic",
+    "version",
+    "struct_size",
+    "refusal",
+    "rx_hint",
+    "largest_payload_class",
+    "small_class_ceiling",
+    "max_large_subscribers",
+    "subscriber_large_size",
+    "subscriber_buffer_size",
+    "small_taken",
+    "large_taken",
+    "keyexpr_len",
+    "keyexpr_cap",
+    "zpico_err",
+    "buffer_taken",
+    "zpico_exit",
+    "zpico_ret",
+    "heap_used",
+    "heap_peak",
+    "heap_capacity",
+)
+# Assigned by `zpico_err_class` in the zenoh shim. The variant is recorded on
+# the NEAR side of the C ABI because crossing it collapses Generic and Session
+# into one ConnectionFailed and then into an indistinguishable
+# Backend("rmw_ret error") -- issues 0870 and 0465.
+ZPICO_ERR = {
+    0: "(none -- the declare succeeded)",
+    1: "Generic", 2: "Config", 3: "Session", 4: "Task", 5: "KeyExpr",
+    6: "Full", 7: "Invalid", 8: "Publish", 9: "NotOpen", 10: "Timeout",
+}
+
+# Exit markers stamped by `zpico_declare_subscriber_ring` in the C shim.
+ZPICO_EXIT = {
+    0: "stamped NOTHING -- the function did not run, or ran a path with no marker",
+    1: "session not open",
+    2: "bad ring descriptor",
+    3: "the zpico subscriber table is full",
+    4: "zenoh-pico rejected the keyexpr",
+    5: "z_declare_subscriber itself failed (zpico_ret carries its code)",
+    6: "success",
+}
+
+ALLOC_REFUSAL = {
+    0: "none -- every subscription got a payload block",
+    1: "the hint is above EVERY class, so it has nowhere legal to go",
+    2: "the LARGE class is full (MAX_LARGE_SUBSCRIBERS)",
+    3: "the SMALL class is full (ZPICO_MAX_SUBSCRIBERS)",
+    4: "the METADATA slots are full (ZPICO_MAX_SUBSCRIBERS) -- guarded FIRST",
+}
+
+
+def resolve_symbol(elf: Path, symbol: str = SYMBOL) -> tuple[int, int]:
     """Address and size of the record, from the ELF's symbol table.
 
     `nm` rather than a parser, because every toolchain that produced one of
@@ -87,26 +187,26 @@ def resolve_symbol(elf: Path) -> tuple[int, int]:
         for line in out.stdout.splitlines():
             parts = line.split()
             # "<addr> <size> <type> <name>" -- the size column is why -S.
-            if len(parts) == 4 and parts[3] == SYMBOL:
+            if len(parts) == 4 and parts[3] == symbol:
                 return int(parts[0], 16), int(parts[1], 16)
         # The tool worked and the symbol is not there. Say so rather than
         # trying the next tool and blaming its absence.
         raise SystemExit(
-            f"{elf}: no `{SYMBOL}` symbol.\n"
+            f"{elf}: no `{symbol}` symbol.\n"
             "The image was built WITHOUT the boot report. Rebuild with\n"
             "  NROS_BOOT_REPORT=1        (Zephyr: CONFIG_NROS_BOOT_REPORT=y)"
         )
     raise SystemExit("no usable `nm` found (tried nm, arm-zephyr-eabi-nm, llvm-nm)")
 
 
-def decode(blob: bytes) -> dict[str, int]:
-    want = len(FIELDS) * 4
+def decode(blob: bytes, fields: tuple[str, ...] = FIELDS) -> dict[str, int]:
+    want = len(fields) * 4
     if len(blob) < want:
         raise SystemExit(
             f"dump is {len(blob)} bytes, need at least {want} for one record"
         )
-    values = struct.unpack_from(f"<{len(FIELDS)}I", blob, 0)
-    return dict(zip(FIELDS, values, strict=True))
+    values = struct.unpack_from(f"<{len(fields)}I", blob, 0)
+    return dict(zip(fields, values, strict=True))
 
 
 def report(rec: dict[str, int]) -> int:
@@ -185,16 +285,196 @@ def report(rec: dict[str, int]) -> int:
         )
         return 1
 
-    if stage < 4:
+    cls = rec["err_class"]
+    if cls:
+        print()
+        print(f"LAST ERROR   {ERR_CLASS.get(cls, f'unknown class {cls}')}")
+        if cls == 1:
+            tr = rec["err_transport"]
+            print(f"  transport  {ERR_TRANSPORT.get(tr, f'unknown transport {tr}')}")
+            if rec["err_backend_ptr"]:
+                print(
+                    f"  backend message at 0x{rec['err_backend_ptr']:08x}, "
+                    f"{rec['err_backend_len']} bytes. Read it with:\n"
+                    f"    pyocd commander -t <target> --connect attach \\\n"
+                    f"      -c \"savemem 0x{rec['err_backend_ptr']:08x} "
+                    f"{rec['err_backend_len']} msg.bin\""
+                )
+        if cls in POOL_CLASSES:
+            print(
+                "  This is a POOL or TABLE exhaustion, so a sizing knob IS the\n"
+                "  cause. Raise the one the name points at."
+            )
+        else:
+            print(
+                "  NOT a pool or table exhaustion -- those map to a different\n"
+                "  code. No sizing knob explains this one."
+            )
+
+    ret = rec["cpp_init_ret"]
+    if ret:
+        signed = ret - (1 << 32) if ret >= (1 << 31) else ret
         print()
         print(
-            "Registration did NOT complete, and the arena is not why.\n"
-            "Look for a pool count instead: a full pool fails at registration\n"
-            "with ExecutorFull rather than in the arena."
+            f"nros_cpp_init RETURNED {signed} (nros_cpp_ret_t).\n"
+            "The stage above says how far it got; this says why it stopped.\n"
+            "Stage 1 with a return code means an argument was rejected before\n"
+            "anything was opened; stage 2 means the backend refused."
         )
         return 1
 
+    if stage < 6:
+        print()
+        if rec["failed_alloc_size"]:
+            pass  # already reported above
+        elif rec["alloc_count"]:
+            print(
+                f"Never reached the first spin, and the arena is NOT why: all\n"
+                f"{rec['alloc_count']} allocations succeeded and "
+                f"{rec['arena_used']} of {cap} bytes are claimed.\n"
+                "The executor was built and its entities took their arena; what\n"
+                "did not happen is the spin. Look at what the application does\n"
+                "between registering and spinning -- a blocking wait there\n"
+                "presents exactly like this, and no knob is involved."
+            )
+        else:
+            print(
+                "The executor was built but claimed NO arena, so registration\n"
+                "never started. That is earlier than any sizing knob can\n"
+                "explain."
+            )
+        return 1
+
     return 0
+
+
+def report_alloc(rec: dict[str, int]) -> int:
+    """Print the subscriber payload-class record."""
+    if rec["magic"] != ALLOC_MAGIC:
+        print(
+            f"NO ALLOC RECORD: magic is 0x{rec['magic']:08x}, expected "
+            f"0x{ALLOC_MAGIC:08x}.\n"
+            "alloc_payload_block was never called, so no subscription got as far\n"
+            "as asking for a payload block.",
+            file=sys.stderr,
+        )
+        return 2
+    if rec["version"] != ALLOC_VERSION:
+        print(f"alloc record version {rec['version']}, this script decodes "
+              f"{ALLOC_VERSION}.", file=sys.stderr)
+        return 2
+
+    print("payload classes, as compiled:")
+    print(f"  SUBSCRIBER_BUFFER_SIZE (small)  {rec['subscriber_buffer_size']}")
+    print(f"  SMALL_CLASS_CEILING             {rec['small_class_ceiling']}")
+    print(f"  SUBSCRIBER_LARGE_SIZE           {rec['subscriber_large_size']}")
+    print(f"  MAX_LARGE_SUBSCRIBERS           {rec['max_large_subscribers']}")
+    print(f"  LARGEST_PAYLOAD_CLASS           {rec['largest_payload_class']}")
+    if rec["max_large_subscribers"] == 0:
+        print(
+            "  NOTE: no large slots, so the large class does not exist and the\n"
+            "  ceiling is the small block. Any hint above it is refused."
+        )
+    print()
+    print("measured on the board:")
+    print(f"  metadata slots taken            {rec['buffer_taken']}")
+    print(f"  small blocks taken              {rec['small_taken']}")
+    print(f"  large blocks taken              {rec['large_taken']}")
+    print(f"  last hint seen                  {rec['rx_hint']}")
+    hp, hc = rec["heap_peak"], rec["heap_capacity"]
+    if hc:
+        pct = f"   ({100.0 * hp / hc:.1f}% of the arena)" if hp else ""
+        print(f"  platform heap used              {rec['heap_used']}")
+        print(f"  platform heap PEAK              {hp}{pct}")
+        print(f"  platform heap capacity          {hc}   (NROS_ZEPHYR_HEAP_SIZE)")
+        if hp > hc:
+            print(
+                "  DO NOT SIZE A KNOB FROM THIS. A peak above capacity is impossible\n"
+                "  for a live figure, so the counter is not one: zpico-alloc\n"
+                "  decrements used_bytes only on the SLAB free path, never on the\n"
+                "  rlsf path, so `used` is cumulative-allocated and `peak` tracks it.\n"
+                "  Fixing it needs the block size at free -- rlsf 0.2.3 exposes\n"
+                "  allocation_usable_size only under its `unstable` feature."
+            )
+        elif hp:
+            print(
+                f"  -> size NROS_ZEPHYR_HEAP_SIZE from {hp}, not from a round number.\n"
+                "     This is the peak at the LAST subscription, so add the headroom\n"
+                "     the application's own later allocations need."
+            )
+    else:
+        print("  platform heap                   not instrumented (nros-platform/heap-stats off)")
+    print()
+    kl, kc = rec["keyexpr_len"], rec["keyexpr_cap"]
+    print(f"  last keyexpr length             {kl} of {kc}")
+    if kc and kl >= kc:
+        print(
+            "  TRUNCATED: the keyexpr filled its buffer exactly. `to_key_wildcard`\n"
+            "  discards the overflow, so this is a silently shortened key, and the\n"
+            "  length guard cannot see it -- a truncated string always fits.\n"
+            "  Raise NROS_KEYEXPR_STRING_SIZE (note: currently fails to compile,\n"
+            "  service.rs hardcodes 257)."
+        )
+    zx = rec["zpico_exit"]
+    if rec["zpico_err"] or zx:
+        zr = rec["zpico_ret"]
+        zr_s = zr - (1 << 32) if zr >= (1 << 31) else zr
+        print(f"  zpico declare exit              {zx} -- {ZPICO_EXIT.get(zx, 'unknown')}")
+        if zx == 5:
+            print(f"  z_declare_subscriber returned   {zr_s}")
+        elif zx == 0:
+            print(
+                "  The caller saw an error it believes came from this function,\n"
+                "  and the function stamped no exit. Either it never ran, or the\n"
+                "  error came from somewhere else."
+            )
+    ze = rec["zpico_err"]
+    if ze:
+        print(f"  zpico declare returned          {ZPICO_ERR.get(ze, f'unknown {ze}')}")
+        if ze == 3:
+            print(
+                "  Session -- the zenoh session was NOT OPEN when the declare ran.\n"
+                "  Nothing about sizing; the transport went away mid-registration.\n"
+                "  This exit has no printk, which is why the console showed nothing."
+            )
+        elif ze == 1:
+            print("  Generic -- z_declare_subscriber itself failed; zpico printk carries the code.")
+        elif ze == 6:
+            print("  Full -- the zpico subscriber table is exhausted (ZPICO_MAX_SUBSCRIBERS).")
+    print()
+
+    r = rec["refusal"]
+    print(f"refusal    {r}  {ALLOC_REFUSAL.get(r, 'unknown')}")
+    if r == 0:
+        return 1 if ze else 0
+    print()
+    if r == 1:
+        print(
+            f"  A subscription asked for {rec['rx_hint']} bytes and the largest class\n"
+            f"  is {rec['largest_payload_class']}. Raise NROS_SUBSCRIBER_LARGE_SIZE and give the\n"
+            "  image large slots (NROS_MAX_LARGE_SUBSCRIBERS), or lower the type's bound."
+        )
+    elif r == 2:
+        print(
+            f"  {rec['large_taken']} large blocks were taken and MAX_LARGE_SUBSCRIBERS is\n"
+            f"  {rec['max_large_subscribers']}. Raise NROS_MAX_LARGE_SUBSCRIBERS."
+        )
+    elif r == 4:
+        print(
+            f"  {rec['buffer_taken']} metadata slots were taken and the pool is that size.\n"
+            "  Compare against the number of subscriptions the image DECLARES: if\n"
+            "  the image needed MORE, something other than the application is\n"
+            "  taking slots, and the derivation of NROS_RMW_SUBSCRIBER_SLOTS from\n"
+            "  COUNT_SUBSCRIPTION is short by that many."
+        )
+    else:
+        print(
+            f"  {rec['small_taken']} small blocks were taken. Compare that against the number\n"
+            "  of subscriptions the image DECLARES: if it is higher, something\n"
+            "  other than the application is taking blocks, and the derivation\n"
+            "  from the entity inventory is short by that many."
+        )
+    return 1
 
 
 def main() -> int:
@@ -203,6 +483,11 @@ def main() -> int:
     )
     ap.add_argument("elf", type=Path, help="the image the board is running")
     ap.add_argument("dump", type=Path, nargs="?", help="memory dumped from the target")
+    ap.add_argument(
+        "--alloc",
+        action="store_true",
+        help="decode the subscriber payload-class record instead of the boot report",
+    )
     ap.add_argument(
         "--addr-only",
         action="store_true",
@@ -213,7 +498,8 @@ def main() -> int:
     if not args.elf.is_file():
         raise SystemExit(f"{args.elf}: not a file")
 
-    addr, size = resolve_symbol(args.elf)
+    sym = ALLOC_SYMBOL if args.alloc else SYMBOL
+    addr, size = resolve_symbol(args.elf, sym)
     if args.addr_only:
         print(f"0x{addr:08x} {size}")
         return 0
@@ -223,7 +509,10 @@ def main() -> int:
     if not args.dump.is_file():
         raise SystemExit(f"{args.dump}: not a file")
 
-    return report(decode(args.dump.read_bytes()))
+    blob = args.dump.read_bytes()
+    if args.alloc:
+        return report_alloc(decode(blob, ALLOC_FIELDS))
+    return report(decode(blob))
 
 
 if __name__ == "__main__":

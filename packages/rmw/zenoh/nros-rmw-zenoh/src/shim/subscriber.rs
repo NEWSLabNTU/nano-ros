@@ -3,7 +3,7 @@
 use core::marker::PhantomData;
 
 use atomic_waker::AtomicWaker;
-use portable_atomic::{AtomicUsize, Ordering};
+use portable_atomic::{AtomicU32, AtomicUsize, Ordering};
 
 use nros_rmw::{Subscription, TransportError};
 
@@ -276,9 +276,284 @@ pub fn required_rx_bytes(rx_buffer_hint: usize) -> Option<usize> {
         return Some(SUBSCRIBER_BUFFER_SIZE);
     }
     if rx_buffer_hint > LARGEST_PAYLOAD_CLASS {
+        record_alloc(rx_buffer_hint, 1);
         return None;
     }
     Some(rx_buffer_hint)
+}
+
+/// phase-412 -- a RAM record of what the payload-class allocator decided.
+///
+/// # Why this is its own record and not a field of `boot_report`
+///
+/// `nros-node` owns the boot report, and `nros-node` DEPENDS on this crate --
+/// the edge runs the other way, so calling into it from here would be a cycle.
+/// The alternative, plumbing the refusal up through `TransportError`, cannot
+/// carry the numbers either: the variant that surfaces is
+/// `SubscriberCreationFailed`, which is one variant for three distinct exits.
+///
+/// So the crate that HAS the facts keeps them, and the reader takes two
+/// symbols instead of one. That is the honest shape here.
+///
+/// # What it answers
+///
+/// `alloc_payload_block` refuses on three conditions and the caller cannot tell
+/// them apart. On the mr-canhubk344 island the refusal cost a subscription and
+/// stopped boot, and reasoning from the source narrowed it to "one of three"
+/// twice without settling it -- the ceilings are compile-time and readable from
+/// the build, but WHICH exit fired and WITH WHAT HINT are runtime facts that
+/// nothing recorded.
+///
+/// Written unconditionally: it is 48 bytes of `.bss` and a few relaxed stores
+/// on a path that runs once per subscription at registration. Unlike the boot
+/// report this is not opt-in, because a refusal here is always a build
+/// misconfiguration worth explaining and there is no spin-path cost to weigh
+/// against it.
+#[repr(C)]
+pub struct SubscriberAllocReport {
+    magic: AtomicU32,
+    version: AtomicU32,
+    struct_size: AtomicU32,
+    /// 0 = no refusal, 1 = hint above every class, 2 = large class full,
+    /// 3 = small class full. The three exits of `alloc_payload_block`.
+    refusal: AtomicU32,
+    /// The hint that was refused, or the last one accepted.
+    rx_hint: AtomicU32,
+    /// Compile-time ceilings, so a dump says what the image was built with
+    /// rather than what the reader assumes it was built with.
+    largest_payload_class: AtomicU32,
+    small_class_ceiling: AtomicU32,
+    max_large_subscribers: AtomicU32,
+    subscriber_large_size: AtomicU32,
+    subscriber_buffer_size: AtomicU32,
+    /// How many blocks each class has handed out. The small counter reaching
+    /// `ZPICO_MAX_SUBSCRIBERS` is exit 3, and its value ABOVE the number of
+    /// subscriptions the image declares is the tell that something other than
+    /// the application is taking blocks.
+    small_taken: AtomicU32,
+    large_taken: AtomicU32,
+    /// Bytes in the data keyexpr of the last subscription attempted.
+    ///
+    /// `to_key_wildcard` builds it into a `heapless::String<KEYEXPR_STRING_SIZE>`
+    /// and the writer DISCARDS the overflow, so a keyexpr too long for the buffer
+    /// is silently TRUNCATED rather than refused. A length exactly equal to
+    /// [`Self::keyexpr_cap`] is that truncation; the explicit
+    /// `bytes.len() >= keyexpr_buf.len()` guard below cannot see it, because a
+    /// truncated string is by construction short enough to pass.
+    keyexpr_len: AtomicU32,
+    /// `KEYEXPR_STRING_SIZE`, so a reader can spot the equality above without
+    /// knowing how the image was configured.
+    keyexpr_cap: AtomicU32,
+    /// Which `ZpicoError` the declare returned, or 0 if it succeeded.
+    ///
+    /// The variant, not the mapped error: crossing the C ABI turns
+    /// `Generic` and `Session` BOTH into `ConnectionFailed` (issue 0870) and
+    /// then into an indistinguishable `Backend("rmw_ret error")` on the way
+    /// back. Issue 0465 records what that collapse cost the last time -- an
+    /// exhausted pool "spent two months looking like a router problem". This
+    /// keeps the identity on the near side of the ABI.
+    zpico_err: AtomicU32,
+    /// How many METADATA slots have been handed out (`NEXT_BUFFER_INDEX`).
+    ///
+    /// A THIRD counter, and the one that guards first: its bound check runs
+    /// BEFORE `alloc_payload_block`, so an image that exhausts it never reaches
+    /// the payload classes and the refusal field stays 0. That is exactly how
+    /// this record read on the island before the counter was added -- ten
+    /// blocks taken, no refusal, and an error anyway.
+    buffer_taken: AtomicU32,
+    /// Which exit the C shim's declare took: 1 session-not-open, 2 bad
+    /// descriptor, 3 table full, 4 keyexpr rejected, 5 the declare itself
+    /// failed, 6 success. 0 means it stamped nothing, which contradicts the
+    /// caller having seen an error from it.
+    zpico_exit: AtomicU32,
+    /// Raw `z_declare_subscriber` return, meaningful when the exit is 5.
+    zpico_ret: AtomicU32,
+    /// The platform rlsf arena: bytes out now, the most ever out at once, and
+    /// its capacity.
+    ///
+    /// phase-412 -- `NROS_ZEPHYR_HEAP_SIZE` is hand-picked, and until the
+    /// port's stats were repointed at this arena nothing could say what it
+    /// used. `heap_peak` is the figure the knob wants; `heap_used` sampled here
+    /// is whatever is live at the last subscription. 0 means the image was
+    /// built without `nros-platform/heap-stats`.
+    heap_used: AtomicU32,
+    heap_peak: AtomicU32,
+    heap_capacity: AtomicU32,
+}
+
+/// `"SUBA"` -- subscriber alloc. Written LAST by [`record_alloc_ceilings`].
+pub const SUBSCRIBER_ALLOC_MAGIC: u32 = 0x53554241;
+/// Layout version for [`SubscriberAllocReport`].
+pub const SUBSCRIBER_ALLOC_VERSION: u32 = 7;
+
+/// The record, findable by symbol from a debugger.
+#[unsafe(no_mangle)]
+#[used]
+pub static NROS_SUBSCRIBER_ALLOC_REPORT: SubscriberAllocReport = SubscriberAllocReport {
+    magic: AtomicU32::new(0),
+    version: AtomicU32::new(0),
+    struct_size: AtomicU32::new(0),
+    refusal: AtomicU32::new(0),
+    rx_hint: AtomicU32::new(0),
+    largest_payload_class: AtomicU32::new(0),
+    small_class_ceiling: AtomicU32::new(0),
+    max_large_subscribers: AtomicU32::new(0),
+    subscriber_large_size: AtomicU32::new(0),
+    subscriber_buffer_size: AtomicU32::new(0),
+    small_taken: AtomicU32::new(0),
+    large_taken: AtomicU32::new(0),
+    keyexpr_len: AtomicU32::new(0),
+    keyexpr_cap: AtomicU32::new(0),
+    zpico_err: AtomicU32::new(0),
+    buffer_taken: AtomicU32::new(0),
+    zpico_exit: AtomicU32::new(0),
+    zpico_ret: AtomicU32::new(0),
+    heap_used: AtomicU32::new(0),
+    heap_peak: AtomicU32::new(0),
+    heap_capacity: AtomicU32::new(0),
+};
+
+/// Sample the platform arena into the record.
+///
+/// Zephyr only: `nros_zephyr_heap_*` are that port's symbols. They exist
+/// whenever `nros-platform/platform-zephyr` is on and return 0 without
+/// `heap-stats`, so no second guard is needed.
+#[cfg(feature = "platform-zephyr")]
+fn record_heap(r: &SubscriberAllocReport, sat: &dyn Fn(usize) -> u32) {
+    unsafe extern "C" {
+        fn nros_zephyr_heap_used() -> usize;
+        fn nros_zephyr_heap_peak() -> usize;
+        fn nros_zephyr_heap_capacity() -> usize;
+    }
+    // SAFETY: three argument-free getters over atomics in the platform crate.
+    unsafe {
+        r.heap_used
+            .store(sat(nros_zephyr_heap_used()), Ordering::Relaxed);
+        r.heap_peak
+            .store(sat(nros_zephyr_heap_peak()), Ordering::Relaxed);
+        r.heap_capacity
+            .store(sat(nros_zephyr_heap_capacity()), Ordering::Relaxed);
+    }
+}
+
+/// Every other port: this arena is not theirs to measure.
+#[cfg(not(feature = "platform-zephyr"))]
+fn record_heap(_r: &SubscriberAllocReport, _sat: &dyn Fn(usize) -> u32) {}
+
+/// Record the metadata-slot index that was refused.
+///
+/// The INDEX, not the counter: the refusing path rolls the counter back, so
+/// reading it afterwards reports the pool as it looks once everyone has
+/// retreated rather than at the moment of refusal. `fetch_max` so a rollback
+/// can never make the record claim less than what actually refused.
+pub(super) fn record_buffer_index(idx: usize) {
+    NROS_SUBSCRIBER_ALLOC_REPORT
+        .buffer_taken
+        .fetch_max(u32::try_from(idx).unwrap_or(u32::MAX), Ordering::Relaxed);
+}
+
+/// Record the keyexpr the declare is about to use.
+///
+/// Separate from [`record_alloc`] because it is known LATER: the payload block
+/// is reserved before the key is built.
+pub(super) fn record_keyexpr(len: usize, cap: usize) {
+    let r = &NROS_SUBSCRIBER_ALLOC_REPORT;
+    let sat = |v: usize| u32::try_from(v).unwrap_or(u32::MAX);
+    r.keyexpr_len.store(sat(len), Ordering::Relaxed);
+    r.keyexpr_cap.store(sat(cap), Ordering::Relaxed);
+}
+
+/// Stable code per `ZpicoError` variant, for the report.
+///
+/// EXHAUSTIVE and no wildcard arm, the rule issue 0586 states for the ret
+/// mappers: rustc must refuse a new variant until someone numbers it.
+pub(super) fn zpico_err_class(e: &crate::zpico::ZpicoError) -> u32 {
+    use crate::zpico::ZpicoError as Z;
+    match e {
+        Z::Generic => 1,
+        Z::Config => 2,
+        Z::Session => 3,
+        Z::Task => 4,
+        Z::KeyExpr => 5,
+        Z::Full => 6,
+        Z::Invalid => 7,
+        Z::Publish => 8,
+        Z::NotOpen => 9,
+        Z::Timeout => 10,
+    }
+}
+
+/// Record the C shim's exit marker and raw declare code. FIRST wins.
+pub(super) fn record_zpico_declare(exit: i32, ret: i32) {
+    let r = &NROS_SUBSCRIBER_ALLOC_REPORT;
+    // The exit marker is written on EVERY call, so it is only meaningful
+    // paired with the failure that prompted the read -- hence first-wins,
+    // matching `record_zpico_err` beside it.
+    if r.zpico_exit
+        .compare_exchange(0, exit as u32, Ordering::Relaxed, Ordering::Relaxed)
+        .is_ok()
+    {
+        r.zpico_ret.store(ret as u32, Ordering::Relaxed);
+    }
+}
+
+/// Record which `ZpicoError` the subscriber declare returned. FIRST wins.
+pub(super) fn record_zpico_err(code: u32) {
+    let r = &NROS_SUBSCRIBER_ALLOC_REPORT;
+    let _ = r
+        .zpico_err
+        .compare_exchange(0, code, Ordering::Relaxed, Ordering::Relaxed);
+    r.magic.store(SUBSCRIBER_ALLOC_MAGIC, Ordering::Relaxed);
+}
+
+/// Stamp the compile-time ceilings and the running counters.
+///
+/// Called on EVERY `alloc_payload_block`, success or refusal, so a healthy
+/// image still reports what its classes are -- the ceilings are half the
+/// answer even when nothing refused, and an image that never fails is exactly
+/// the one nobody would think to dump.
+fn record_alloc(hint: usize, refusal: u32) {
+    let r = &NROS_SUBSCRIBER_ALLOC_REPORT;
+    let sat = |v: usize| u32::try_from(v).unwrap_or(u32::MAX);
+    r.version.store(SUBSCRIBER_ALLOC_VERSION, Ordering::Relaxed);
+    r.struct_size.store(
+        core::mem::size_of::<SubscriberAllocReport>() as u32,
+        Ordering::Relaxed,
+    );
+    r.rx_hint.store(sat(hint), Ordering::Relaxed);
+    r.largest_payload_class
+        .store(sat(LARGEST_PAYLOAD_CLASS), Ordering::Relaxed);
+    r.small_class_ceiling
+        .store(sat(SMALL_CLASS_CEILING), Ordering::Relaxed);
+    r.max_large_subscribers
+        .store(sat(MAX_LARGE_SUBSCRIBERS), Ordering::Relaxed);
+    r.subscriber_large_size
+        .store(sat(SUBSCRIBER_LARGE_SIZE), Ordering::Relaxed);
+    r.subscriber_buffer_size
+        .store(sat(SUBSCRIBER_BUFFER_SIZE), Ordering::Relaxed);
+    r.small_taken.store(
+        sat(NEXT_SMALL_PAYLOAD.load(Ordering::SeqCst)),
+        Ordering::Relaxed,
+    );
+    r.large_taken.store(
+        sat(NEXT_LARGE_PAYLOAD.load(Ordering::SeqCst)),
+        Ordering::Relaxed,
+    );
+    r.keyexpr_cap
+        .store(sat(KEYEXPR_STRING_SIZE), Ordering::Relaxed);
+    r.buffer_taken.fetch_max(
+        sat(NEXT_BUFFER_INDEX.load(Ordering::SeqCst)),
+        Ordering::Relaxed,
+    );
+    record_heap(r, &sat);
+    // FIRST refusal wins: the one that stopped the boot is the one that
+    // explains it, and a later refusal is a consequence.
+    if refusal != 0 {
+        let _ = r
+            .refusal
+            .compare_exchange(0, refusal, Ordering::Relaxed, Ordering::Relaxed);
+    }
+    r.magic.store(SUBSCRIBER_ALLOC_MAGIC, Ordering::Relaxed);
 }
 
 pub(super) static NEXT_SMALL_PAYLOAD: AtomicUsize = AtomicUsize::new(0);
@@ -332,25 +607,30 @@ pub(super) fn alloc_payload_block(rx_buffer_hint: usize) -> Option<(*mut u8, usi
     // large class does not exist, so a hint past the small block has nowhere
     // legal to go and is refused rather than silently under-served.
     if rx_buffer_hint > LARGEST_PAYLOAD_CLASS {
+        record_alloc(rx_buffer_hint, 1);
         return None;
     }
     if rx_buffer_hint > SMALL_CLASS_CEILING {
         let idx = NEXT_LARGE_PAYLOAD.fetch_add(1, Ordering::SeqCst);
         if idx >= MAX_LARGE_SUBSCRIBERS {
             NEXT_LARGE_PAYLOAD.fetch_sub(1, Ordering::SeqCst);
+            record_alloc(rx_buffer_hint, 2);
             return None;
         }
         // Safety: idx is in-bounds; LARGE_PAYLOADS is a static with a stable address.
         let base = unsafe { (&raw mut LARGE_PAYLOADS[idx]) as *mut u8 };
+        record_alloc(rx_buffer_hint, 0);
         Some((base, SUBSCRIBER_LARGE_SIZE))
     } else {
         let idx = NEXT_SMALL_PAYLOAD.fetch_add(1, Ordering::SeqCst);
         if idx >= ZPICO_MAX_SUBSCRIBERS {
             NEXT_SMALL_PAYLOAD.fetch_sub(1, Ordering::SeqCst);
+            record_alloc(rx_buffer_hint, 3);
             return None;
         }
         // Safety: idx is in-bounds; SMALL_PAYLOADS is a static with a stable address.
         let base = unsafe { (&raw mut SMALL_PAYLOADS[idx]) as *mut u8 };
+        record_alloc(rx_buffer_hint, 0);
         Some((base, SUBSCRIBER_BUFFER_SIZE))
     }
 }
@@ -670,7 +950,20 @@ impl ZenohSubscriber {
         let buffer_index = NEXT_BUFFER_INDEX.fetch_add(1, Ordering::SeqCst);
         if buffer_index >= ZPICO_MAX_SUBSCRIBERS {
             // Roll back and return error
+            // BEFORE the rollback, and the INDEX rather than the counter --
+            // the first cut read the counter afterwards and reported 0 for a
+            // pool of 10, which is the wrong-number-that-looks-like-a-number
+            // this record exists to stop producing.
+            record_buffer_index(buffer_index);
             NEXT_BUFFER_INDEX.fetch_sub(1, Ordering::SeqCst);
+            // phase-412 -- refusal 4. This guard runs BEFORE the payload classes,
+            // so without recording here the report shows every block allocated
+            // and no refusal, and the failure looks like it came from somewhere
+            // else entirely. `SubscriberCreationFailed` then crosses the C ABI
+            // through `ret_from_error`'s `_ => NROS_RMW_RET_ERROR` fallback and
+            // comes back as `Backend("rmw_ret error")`, losing the last of its
+            // identity.
+            record_alloc(topic.rx_buffer_hint, 4);
             return Err(TransportError::SubscriberCreationFailed);
         }
 
@@ -693,6 +986,7 @@ impl ZenohSubscriber {
         // Create null-terminated keyexpr
         let mut keyexpr_buf = [0u8; KEYEXPR_BUFFER_SIZE];
         let bytes = key.as_bytes();
+        record_keyexpr(bytes.len(), KEYEXPR_STRING_SIZE);
         if bytes.len() >= keyexpr_buf.len() {
             return Err(TransportError::TopicNameInvalid);
         }
@@ -724,6 +1018,15 @@ impl ZenohSubscriber {
                 >(s),
                 Err(e) => {
                     NEXT_BUFFER_INDEX.fetch_sub(1, Ordering::SeqCst);
+                    // phase-412 -- read the C shim's exit marker and raw code
+                    // BEFORE anything else can call the function again. The
+                    // mapped ZpicoError cannot say which of five exits ran, and
+                    // `Generic` in particular discards the zenoh-pico code.
+                    record_zpico_declare(
+                        zpico_sys::zpico_last_sub_declare_exit,
+                        zpico_sys::zpico_last_sub_declare_ret,
+                    );
+                    record_zpico_err(zpico_err_class(&e));
                     return Err(TransportError::from(e));
                 }
             }

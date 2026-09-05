@@ -81,3 +81,25 @@ pub extern "C" fn nros_zephyr_heap_free(ptr: *mut core::ffi::c_void) {
 pub extern "C" fn nros_zephyr_heap_capacity() -> usize {
     HEAP.capacity()
 }
+
+/// phase-412 -- bytes this arena currently has handed out.
+///
+/// `FreeListHeap` has tracked this all along; nothing exported it, so the
+/// platform's `nros_platform_heap_used_bytes()` answered from Zephyr's
+/// `_system_heap` instead -- the heap the application STOPPED allocating from
+/// when the funnel moved here (phase-391 W3). The figure that would size
+/// `NROS_ZEPHYR_HEAP_SIZE` was measuring a different arena.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_zephyr_heap_used() -> usize {
+    HEAP.used()
+}
+
+/// The most this arena has ever had handed out at once.
+///
+/// This is the number `NROS_ZEPHYR_HEAP_SIZE` should be set from, plus
+/// headroom. `used` sampled at an arbitrary instant reports whatever happened
+/// to be live at the moment of the read, which is not what the knob bounds.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_zephyr_heap_peak() -> usize {
+    HEAP.peak()
+}
