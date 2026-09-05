@@ -894,6 +894,77 @@ jobs:
           just check decoupling
 
   # ----- scaffold-journey (RFC-0040 resolve-only) -----
+  # phase-422 follow-up — WARM the compile-tier caches on `main`, so the
+  # pull_request and merge_group runs can actually restore them.
+  #
+  # Measured on merge_group: "Build nros CLI + provision" 128 s and "Build
+  # nros-launch-resolve" 91 s, EVERY entry, plus an sccache dir that missed both
+  # its exact key and its `sccache-Linux-check-` restore prefix. 219 s per entry
+  # rebuilding artifacts whose sources had not changed.
+  #
+  # The cause is cache SCOPING, not the keys. GitHub lets a run restore caches
+  # from its own ref or from the DEFAULT branch, and nothing else. A merge_group
+  # run executes on an ephemeral `gh-readonly-queue/main/pr-N-<sha>` ref, so the
+  # cache it saves is scoped to a ref that will never run again, and the only
+  # other scope it can read — `main` — was never written, because every cache
+  # step in the `check` job is gated to
+  # pull_request/merge_group/schedule/workflow_dispatch. Both halves of the
+  # restore therefore missed by construction, which is exactly what the logs
+  # showed: "Cache not found for input keys: nros-cli-Linux-<hash>,
+  # nros-cli-Linux-".
+  #
+  # This job writes those same keys on `push` to main — once per merge, instead
+  # of once per queue entry. It deliberately does NOT run the gates: its only
+  # product is a populated cache.
+  warm-cache:
+    name: warm the compile-tier cache (main only)
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: read
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      # Same path + key as the `check` job's cache, or this warms nothing.
+      # `check-gate-cache-keys-agree` asserts they stay identical.
+      - name: Cache CLI build (compile tier)
+        uses: actions/cache@v4
+        with:
+          path: |
+            packages/cli/target
+            packages/cli/nros-launch-resolve/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+          restore-keys: |
+            nros-cli-${{ runner.os }}-
+
+      - name: Cache sccache directory
+        uses: actions/cache@v4
+        with:
+          path: /tmp/sccache
+          key: sccache-${{ runner.os }}-check-${{ github.sha }}
+          restore-keys: |
+            sccache-${{ runner.os }}-check-
+            sccache-${{ runner.os }}-
+
+      - name: Build nros CLI + the launch resolver
+        env:
+          SCCACHE_DIR: /tmp/sccache
+          SCCACHE_CACHE_SIZE: 1G
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          cargo build --release --manifest-path packages/cli/nros-launch-resolve/Cargo.toml
+
   scaffold-journey:
     name: nros new -> sync -> resolve
     needs: changes
