@@ -113,16 +113,19 @@ template <class M> struct strict_bounds<M, bound_shape::unbounded> {
     static constexpr size_t rx = M::template rx_size_bound<>::value;
 };
 
-/// CAPACITY: the number these headers actually stack a `uint8_t buf[N]` on
-/// today. Same answer as `strict_bounds` for a bounded type; the legacy
-/// estimate for a type with no derived bound, so an existing consumer keeps
-/// compiling. Never poisons.
+/// CAPACITY: the number these headers actually stack a `uint8_t buf[N]` on.
+/// Same answer as `strict_bounds` for a bounded type, and — since issue 0964
+/// was decided — the same poison for a MARKED type with no bound. It still
+/// differs from `strict_bounds` in one arm: a `legacy` type, which predates the
+/// bound marker entirely and never had a derivation to disagree with, keeps the
+/// estimate so an existing consumer keeps compiling.
 ///
-/// The `unbounded` arm is issue 0964's OPEN half, deliberately: flipping it to
-/// `strict_bounds` would turn every receive path over an unbounded type into a
-/// compile error, and the migration a user would have to make (a `cap` in
-/// `nros-codegen.toml`, or the `_sized` form beside each call) is a product
-/// decision, not one a header can take on their behalf.
+/// The `unbounded` arm WAS issue 0964's open half. Decided 2026-09-05: it
+/// poisons. The reasoning is on the arm itself; in short, a buffer sized from an
+/// invented number cannot accept a message the user legitimately sends, and
+/// that is a fact about the build rather than something a run can recover from.
+/// The migration is a `cap` in `nros-codegen.toml` (or a bound in the `.msg`),
+/// which fixes every site for that type, or the `_sized` form at one site.
 template <class M, bound_shape = shape_of<M>()> struct buffer_bounds;
 
 template <class M> struct buffer_bounds<M, bound_shape::legacy> {
@@ -134,8 +137,25 @@ template <class M> struct buffer_bounds<M, bound_shape::derived> {
     static constexpr size_t rx = M::RX_MAX_SERIALIZED_SIZE;
 };
 template <class M> struct buffer_bounds<M, bound_shape::unbounded> {
-    static constexpr size_t tx = M::SERIALIZED_SIZE_MAX;
-    static constexpr size_t rx = M::SERIALIZED_SIZE_MAX;
+    // Issue 0964, DECIDED 2026-09-05: this arm poisons.
+    //
+    // The estimate is not a smaller-than-ideal bound, it is a WRONG one: this
+    // type's derivation ran and found no bound at all, so any fixed number
+    // here is invented, and `compute_serialized_size_max` is not even trying to
+    // be an upper bound (a flat 512 per nested message, a default capacity per
+    // string). It over-stated 38 of 39 bounded types and under-stated 1.
+    //
+    // Under-stating is the case that decides it. A buffer smaller than the
+    // message a user legitimately sends cannot accept that message, and the
+    // program cannot be made correct at run time — the number is baked into a
+    // stack array. That is a fact about the build, so it is a build error.
+    //
+    // Two ways out, both stating a number somebody chose: bound the type
+    // (`string<=64` in the `.msg`, or a `cap` in `nros-codegen.toml`), which
+    // fixes every site at once; or call the `_sized` form at the one site that
+    // needs it. `heap` / `view` caps do NOT bound (RFC-0033).
+    static constexpr size_t tx = strict_bounds<M>::tx;
+    static constexpr size_t rx = strict_bounds<M>::rx;
 };
 
 } // namespace detail

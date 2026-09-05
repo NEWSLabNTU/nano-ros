@@ -3945,6 +3945,29 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/serialization_format.cpp
+    echo "  - an unbounded type cannot size a buffer (issue 0964)"
+    # Expected-failure, and asserted-present first for the same reason every
+    # other probe here is: a missing file is also a non-zero c++, and reads as a
+    # pass.
+    test -f packages/api/nros-cpp/tests/compile/unbounded_buffer_probe.cpp || { \
+        echo "ERROR: unbounded_buffer_probe.cpp is MISSING -- the expected-failure" >&2; \
+        echo "       check below would PASS on a missing file." >&2; \
+        exit 1; \
+    }
+    if c++ -fsyntax-only -std=c++17 \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/unbounded_buffer_probe.cpp 2>/dev/null; then \
+        echo "ERROR: a type with NO derived bound sized a buffer and compiled clean." >&2; \
+        echo "       detail::buffer_bounds' unbounded arm has been disarmed, so an" >&2; \
+        echo "       INVENTED number is back in a stack array -- and the estimate" >&2; \
+        echo "       under-states as well as over-states, so the buffer can be too" >&2; \
+        echo "       small for a message the user legitimately sends (issue 0964)." >&2; \
+        exit 1; \
+    fi
     test -f packages/api/nros-cpp/tests/compile/serialization_format_mismatch_probe.cpp || { \
         echo "ERROR: serialization_format_mismatch_probe.cpp is MISSING -- the expected-failure" >&2; \
         echo "       check below would PASS on a missing file." >&2; \
