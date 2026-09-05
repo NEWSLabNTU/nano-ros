@@ -1,4 +1,4 @@
-//! RFC-0089 / phase-429 W1 — the codegen version range, read from its ONE
+//! RFC-0090 / phase-429 W1 — the codegen version range, read from its ONE
 //! source of truth.
 //!
 //! The constants live in `packages/core/nros-core/src/codegen_version.rs` and

@@ -24,12 +24,6 @@ serde.workspace = true
 serde_json.workspace = true
 rosidl-codegen.workspace = true
 rosidl-parser.workspace = true
-# phase-429 W1 — the codegen version the emitter stamps into every generated
-# crate is READ from the runtime constant, never re-spelled here. One number,
-# one definition: a second literal would need a drift test to stay true, and
-# `rosidl-codegen` already takes a cross-workspace path dep on a core crate
-# (`nros-serdes`, issue 0896) for exactly this reason.
-nros-core = { path = "../../core/nros-core", default-features = false }
 # RFC-0067 Q1 / D1 — relative path from a generated crate to the checkout's
 # nros-core / nros-serdes, so the emitted dep is a path dep and stays
 # host-invariant for a committed `generated/` tree.
