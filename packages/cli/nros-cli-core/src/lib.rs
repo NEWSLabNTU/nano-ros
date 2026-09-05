@@ -31,6 +31,9 @@ pub mod cmd;
 // Shaped like `rosidl_codegen::bounds` — one data model, three transports —
 // rather than as a second inventory mechanism.
 pub mod entity_inventory;
+/// Issue 0827 — a cargo leaf derives its pool budgets from the metadata probe,
+/// through `entity_inventory`'s rules rather than a second copy of them.
+pub mod leaf_entity_env;
 // Issue 0363 — the freshness predicate, shared verbatim with `build.rs` via
 // `include!`. One implementation: the build embeds a stamp, the runtime
 // recomputes it. Replaces the mtime comparison that fired on every rebase.

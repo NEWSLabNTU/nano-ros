@@ -504,3 +504,60 @@ their budgets by hand in `.cargo/config.toml`.
 
 So the derivation splits by leaf kind, and the split is measured rather than
 assumed: native leaves have a source today, cross-compiled ones need 1061 first.
+
+
+## The derivation is BUILT (2026-09-05) — `nros_cli_core::leaf_entity_env`
+
+The step the section above described as "one step" is written and tested:
+read the probe output, apply `entity_inventory`'s rules, render the `[env]`
+block. What is NOT yet done is calling it from `nros sync`; that is the
+remaining work and it is named at the bottom.
+
+**It reuses the rules, it does not copy them.** The module turns each
+`<leaf>/metadata/<component>.json` into the same `EntityDecl` rows a
+`nano_ros_node_register(... ENTITIES ...)` produces, then hands them to the
+existing `EntityInventory::derive()`. A CMake image and a cargo leaf therefore
+cannot disagree about what a declaration costs — which they would the moment
+there were two counting implementations.
+
+That reuse paid immediately. The first test asserted `max_subscribers == 0` for
+a talker; the shared derivation returned **1**, because issue 1015 puts a FLOOR
+OF ONE on any pool backing a fixed C array (`queryable_entry_t
+queryables[0]` is not a smaller pool, it is a different kind of object). The
+test was wrong and the rule was right — a private counter here would have
+shipped the zero.
+
+**Verified against the real in-tree probe files, not only fixtures:**
+
+| leaf | entities | `MAX_CBS` | subs | pubs | queryables | heavy |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `native/rust/talker` | 2 | 1 | 1 | 1 | 1 | 0 |
+| `native/rust/listener` | 1 | 1 | 1 | 1 | 1 | 0 |
+| `native/rust/action-client` | 1 | 1 | 1 | 1 | 1 | **1** |
+
+The action client's `heavy=1` is issue 0900's rule firing (a heavy arena slot),
+and its `subs=1` is the feedback subscription an action client opens — neither
+is declared in the `.msg` and neither is guessed here. Against the shipped
+defaults of 8 per pool, those are the numbers this issue set out to recover.
+
+**Decisions worth stating:**
+
+* the sidecar sets no `force = true`, so a value the CALLER states still wins —
+  a number a human chose beats one derived on their behalf;
+* an entity row the module cannot parse REFUSES the whole leaf rather than
+  skipping, because a skipped row lowers a pool below what the image creates and
+  short halts the board;
+* an empty probe result is `Declaration::None` ("creates nothing"), never
+  `Absent` — the probe having run IS a statement;
+* `.json.unprobeable` files are counted and reported rather than ignored, since
+  their presence is exactly why a leaf may get no sidecar (issue 1061).
+
+### What is left
+
+Calling it from `nros sync`: render to a gitignored `[env]` sidecar beside
+`nros-managed-patch.toml` and add the `include` entry, in
+`cmd::ws.rs` where `MANAGED_PATCH_FILE` is written today. That path is delicate
+for a known reason — a missing `include` target is a HARD cargo error during
+manifest parse (issue 0463) — so the file and its `include` must appear and
+disappear together, which is the same invariant the patch sidecar already holds
+and the reason to put it in the same place rather than a new one.
