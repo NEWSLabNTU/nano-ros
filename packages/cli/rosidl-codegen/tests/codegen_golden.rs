@@ -324,7 +324,7 @@ fn the_committed_c_and_cpp_goldens_state_the_same_bound() {
     );
 }
 
-/// RFC-0089 / phase-429 W1 — EVERY generated C and C++ header must reference the
+/// RFC-0090 / phase-429 W1 — EVERY generated C and C++ header must reference the
 /// codegen-version anchor for the version it was emitted at.
 ///
 /// The golden above already pins the exact bytes, but re-recording a golden is a
@@ -332,8 +332,8 @@ fn the_committed_c_and_cpp_goldens_state_the_same_bound() {
 /// codegen-version partial from one of the six C/C++ templates fails with a
 /// message about the mechanism rather than as a byte diff a reviewer waves
 /// through. It also binds the emitted number to `NROS_CODEGEN_VERSION`: the
-/// runtime defines anchors for exactly that range, so an artifact stamped with
-/// any other number could not link.
+/// runtime writes its accepted range into the generated config header, so an
+/// artifact stamped with any other number cannot compile.
 ///
 /// Only HEADERS carry the stamp — a generated `.c` gets it transitively from its
 /// own header, and a C++ artifact is headers-only, so a header is the only place
@@ -341,7 +341,7 @@ fn the_committed_c_and_cpp_goldens_state_the_same_bound() {
 #[test]
 fn every_generated_c_and_cpp_header_stamps_the_codegen_version() {
     let version = rosidl_codegen::codegen_version::NROS_CODEGEN_VERSION;
-    let anchor = format!("nros_codegen_version_v{version}");
+    let stamp = format!("#define NROS_EMITTED_CODEGEN_VERSION {version}");
     let emitted = emit_corpus();
 
     let headers: Vec<&String> = emitted
@@ -353,21 +353,34 @@ fn every_generated_c_and_cpp_header_stamps_the_codegen_version() {
         "corpus emitted no C/C++ headers, so this test asserts nothing"
     );
 
+    // Both halves: the version it declares, AND the comparison that makes the
+    // declaration load-bearing. A header carrying the number and no comparison
+    // would satisfy a one-sided check while asserting nothing at compile time.
+    //
+    // `#elif`, not `#if`: the range test is the second arm of the
+    // missing-config-header guard, so that exactly one `#error` fires. An
+    // undefined `NROS_CODEGEN_VERSION` reads as 0 to `#if`, which would
+    // otherwise ALSO trip the range test and tell the reader to regenerate
+    // their tree when the runtime header is the thing missing.
     let unstamped: Vec<&&String> = headers
         .iter()
-        .filter(|k| !emitted[**k].contains(&anchor))
+        .filter(|k| {
+            let body = &emitted[**k];
+            !body.contains(&stamp) || !body.contains("#elif NROS_EMITTED_CODEGEN_VERSION")
+        })
         .collect();
     assert!(
         unstamped.is_empty(),
-        "{} generated header(s) do not reference {anchor}: {unstamped:?}\n\
+        "{} generated header(s) do not carry `{stamp}` plus its range check: \
+         {unstamped:?}\n\
          Every C/C++ pack template must include the codegen-version partial — that \
-         reference is what turns a runtime which does not accept version {version} \
-         into a LINK error naming the version (RFC-0089).",
+         is what turns a runtime which does not accept version {version} into a \
+         COMPILE error naming both numbers (RFC-0090).",
         unstamped.len()
     );
 }
 
-/// RFC-0089 / phase-429 W1 — the STRUCTURAL half of the stamp check, and it is
+/// RFC-0090 / phase-429 W1 — the STRUCTURAL half of the stamp check, and it is
 /// not redundant with the behavioural one above.
 ///
 /// The emit corpus renders C++ headers for MESSAGES only — there is no
@@ -410,7 +423,7 @@ fn every_c_and_cpp_header_template_includes_the_codegen_version_partial() {
             body.contains(PARTIAL),
             "pack template {name} does not include {PARTIAL}, so the artifacts it \
              emits carry no codegen-version stamp and would link against ANY \
-             runtime (RFC-0089)."
+             runtime (RFC-0090)."
         );
     }
 }

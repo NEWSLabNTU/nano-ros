@@ -359,8 +359,17 @@ static const unsigned char *const nros__cpp_config_variant_anchor =
     &nros_cpp_config_variant_{variant_symbol};
 #endif
 
+/* RFC-0090 / phase-429 — the codegen versions this runtime ACCEPTS. A
+ * generated artifact compares the version it was emitted at against this
+ * closed range with the preprocessor, so a disagreement is a COMPILE error
+ * naming both numbers. Emitted from `nros_core::codegen_version`. */
+#define NROS_CODEGEN_VERSION {codegen_version}
+#define NROS_CODEGEN_VERSION_MIN {codegen_version_min}
+
 #endif /* NROS_CPP_CONFIG_GENERATED_H */
-"
+",
+        codegen_version = crate::codegen_version::NROS_CODEGEN_VERSION,
+        codegen_version_min = crate::codegen_version::NROS_CODEGEN_VERSION_MIN,
     );
 
     // Phase 119.3: write the per-build header to two stable locations.

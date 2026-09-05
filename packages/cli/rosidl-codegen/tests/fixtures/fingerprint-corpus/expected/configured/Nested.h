@@ -13,23 +13,17 @@
 
 #include <nros/types.h>
 
-/* RFC-0089 — emitted by nano-ros codegen version 1. The runtime defines
- * one weak `nros_codegen_version_v<K>` per version it accepts, so a runtime
- * that does not accept 1 fails to LINK this artifact and names the
- * version. Regenerate with `nros sync` against the runtime you are building. */
-#ifndef NROS_CODEGEN_VERSION_ANCHOR_V1
-#define NROS_CODEGEN_VERSION_ANCHOR_V1
-#ifdef __cplusplus
-extern "C" const unsigned char nros_codegen_version_v1;
-#else
-extern const unsigned char nros_codegen_version_v1;
+#include <nros/nros_config_generated.h>
+
+/* RFC-0090 — emitted by nano-ros codegen version 1. */
+#define NROS_EMITTED_CODEGEN_VERSION 1
+
+#ifndef NROS_CODEGEN_VERSION
+#error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
+#elif NROS_EMITTED_CODEGEN_VERSION < NROS_CODEGEN_VERSION_MIN \
+   || NROS_EMITTED_CODEGEN_VERSION > NROS_CODEGEN_VERSION
+#error "nros: this generated tree was emitted at a codegen version the runtime does not accept (see NROS_EMITTED_CODEGEN_VERSION above against NROS_CODEGEN_VERSION_MIN..NROS_CODEGEN_VERSION in nros_config_generated.h). Regenerate it against the runtime you are building: `nros sync` in a consumer workspace."
 #endif
-#if defined(__GNUC__) || defined(__clang__)
-__attribute__((used, unused))
-static const unsigned char *const nros__codegen_version_anchor_v1 =
-    &nros_codegen_version_v1;
-#endif
-#endif /* NROS_CODEGEN_VERSION_ANCHOR_V1 */
 
 #ifdef __cplusplus
 extern "C" {
