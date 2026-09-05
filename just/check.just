@@ -338,6 +338,7 @@ fast-serial: \
     workspace-fmt \
     workspace-order \
     xrce-config-manifest \
+    xrce-one-vendored-compile \
     xrce-source-manifest \
     xrce-vendored-versions \
     zenoh-config-template \
@@ -3172,8 +3173,39 @@ rmw-xrce:
             "micro-XRCE-DDS-Client submodule not initialised (git submodule update --init packages/rmw/xrce/xrce-sys/micro-xrce-dds-client)"
         exit 0
     fi
+    # phase-420 W9 step 4 — ONE compile of the vendored tree, and it is the
+    # cargo one, because that is the lane that ships. This project links the
+    # archive `nros-rmw-xrce-cffi`'s build script produces instead of compiling
+    # micro-XRCE-DDS-Client and micro-CDR a second time with different flags,
+    # so its two CTest binaries now exercise the objects an image contains.
+    #
+    # THIS RECIPE BUILDS THE CRATE. It already compiled the same C — the compile
+    # moved lane, it did not move stage — and a check that resolved a prebuilt
+    # artifact nothing in its lane builds is exactly what `check-lane-contracts`
+    # forbids. So there is no "prebuild it first" instruction to get wrong.
+    #
+    # The archive lives at `target/<profile>/build/nros-rmw-xrce-cffi-<hash>/out/`
+    # and `<hash>` is neither stable nor predictable. It is NOT globbed (issue
+    # 0500: taking the first match of a glob is how a stale artifact shadows a
+    # fresh one). Cargo reports the directory itself, in the
+    # `build-script-executed` message; the build script writes
+    # `nros-xrce-vendor-build.txt` into it naming the archive and the generated
+    # headers, so the only fact crossing the seam here is OUT_DIR.
+    #
+    # `cargo::metadata=` + `DEP_<LINKS>_*` was the other candidate and does not
+    # reach: the consumer is a CMake project, and with no `links` key the JSON's
+    # `env` array is empty (measured 2026-09-05).
+    JSON="$(mktemp)"
+    cargo build -p nros-rmw-xrce-cffi --message-format=json > "$JSON"
+    # One line on purpose: a column-0 line inside a `just` recipe is parsed as
+    # SYNTAX, not as text, so a multi-line `python3 -c` program cannot live here
+    # (and an indented one is an IndentationError).
+    OUT_DIR="$(python3 -c "import json,sys;o=[j['out_dir'] for j in (json.loads(l) for l in open(sys.argv[1])) if j.get('reason')=='build-script-executed' and '/nros-rmw-xrce-cffi#' in j.get('package_id','')];sys.exit('rmw-xrce: expected exactly one nros-rmw-xrce-cffi build-script-executed message, got %d' % len(o)) if len(o)!=1 else print(o[0])" "$JSON")"
+    rm -f "$JSON"
+    echo "[rmw-xrce] linking the cargo lane's vendored archive from $OUT_DIR"
     BD="$(nros_build_dir "$NROS_KIND_XRCE_CHECK")"
-    cmake -S packages/rmw/xrce/nros-rmw-xrce -B "$BD" -DCMAKE_BUILD_TYPE=Release
+    cmake -S packages/rmw/xrce/nros-rmw-xrce -B "$BD" -DCMAKE_BUILD_TYPE=Release \
+        -DNROS_XRCE_CFFI_OUT_DIR="$OUT_DIR"
     cmake --build "$BD" --parallel
     ctest --test-dir "$BD" --output-on-failure
 
@@ -4922,6 +4954,26 @@ opaque-storage-guards:
 [private]
 xrce-config-manifest:
     @python3 scripts/check-xrce-config-manifest.py
+
+# phase-420 W9 step 4 — the third XRCE mirror gate, one axis over. Its siblings
+# ask WHICH FILES (`xrce-source-manifest`) and WITH WHAT VALUES
+# (`xrce-config-manifest`); this one asks WHO COMPILES THEM.
+#
+# micro-XRCE-DDS-Client and micro-CDR were compiled twice from the same manifest
+# rows — cc-rs for six target families on one side, `add_library(… STATIC …)` on
+# the other — with each lane choosing its own flags. The CMake copy reached NO
+# image (dispatch maps `xrce` to the cargo crate everywhere, the Zephyr hook is a
+# no-op, nothing add_subdirectory()s the project), so `just check rmw-xrce` was
+# validating objects no image contains. That project now LINKS the cargo lane's
+# archive, and this asserts the arrangement holds: each lane declares the trees
+# it compiles and USES that declaration as its filter, the shipping lane declares
+# all of them, the CMake lane declares no vendored one and cannot even name their
+# source roots, and the pointer file the two exchange has one statement of its
+# name and keys on each side. Direction is checked, not just the count: swapping
+# the two declarations leaves every tree compiled exactly once and ships an
+# archive with no XRCE in it. Buildless, ~0.05 s.
+xrce-one-vendored-compile:
+    @python3 scripts/check-xrce-one-vendored-compile.py
 
 # Issue 1068 / RFC-0087's mirror class — micro-XRCE-DDS is compiled by TWO
 # lanes from one vendored tree, and the two source lists drifted: `build.rs`
