@@ -21,6 +21,19 @@ case a name-only comparison silently passes.
 
   python3 scripts/gen-rmw-api-comparison.py           # rewrite
   python3 scripts/gen-rmw-api-comparison.py --check   # fail if it drifted
+  python3 scripts/gen-rmw-api-comparison.py --html P  # also render a standalone page
+
+`--html` exists because the book page is the SOURCE and not the thing anyone
+reads outside the book: reviewing this table meant hand-wrapping the generated
+markdown in a page shell, which had been done once by hand and left in `tmp/`
+with no way to refresh it. One generator, two outputs — a second script would be
+a second copy of the same three sources, which is the failure mode the docstring
+above already warns about.
+
+The shell is a shell ONLY. The comparison table ships its own `<style>` inside
+the markdown, keyed on `color-scheme` so it follows the reader's theme in the
+book and the OS outside it; restating any of that here would give the page two
+palettes that drift.
 """
 import argparse
 import collections
@@ -637,9 +650,109 @@ def self_test():
     return True
 
 
+
+# Where a `.md` cross-reference points once the page is read outside the book.
+REPO_BLOB = "https://github.com/NEWSLabNTU/nano-ros/blob/main"
+
+# The standalone page's shell. Deliberately NOT a palette: the comparison table
+# carries its own inside the markdown, keyed on `color-scheme` so it follows the
+# mdBook theme in the book and `prefers-color-scheme` outside it. Two palettes
+# in two files is two things to keep in step.
+HTML_SHELL = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RMW API \u2014 nano-ros vs ROS 2</title>
+<style>
+/* Page shell only. The table's own palette is the page's business and follows
+   `color-scheme`; nothing here restates it. */
+:root{color-scheme:light dark;
+      --bg:light-dark(#fff,#14141a);--fg:light-dark(#1b1b23,#e6e6ef);
+      --muted:light-dark(#5b5b6b,#a0a0b4);--line:light-dark(#e2e2ea,#2c2c38);
+      --chip:light-dark(#f5f5f9,#1e1e28);--code:light-dark(#f5f5f9,#1e1e28);
+      --link:light-dark(#0550ae,#79c0ff)}
+html{background:var(--bg)}
+body{margin:0 auto;padding:2.5rem 1.5rem 6rem;max-width:1180px;background:var(--bg);
+     color:var(--fg);font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",
+     Roboto,Helvetica,Arial,sans-serif}
+h1{font-size:1.9rem;line-height:1.2;margin:0 0 .6rem;text-wrap:balance}
+h2{font-size:1.25rem;margin:2.6rem 0 .8rem;padding-top:1.1rem;
+   border-top:1px solid var(--line);text-wrap:balance}
+h3{font-size:1.02rem;margin:1.8rem 0 .5rem}
+p,li{max-width:74ch}
+a{color:var(--link)}
+code{background:var(--code);padding:.12em .34em;border-radius:4px;
+     font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+pre{background:var(--code);padding:.9rem 1rem;border-radius:8px;overflow-x:auto}
+pre code{background:none;padding:0}
+/* the summary/markdown tables \u2014 the comparison table has its own rules */
+table:not(.rmwcmp table){border-collapse:collapse;margin:1.2rem 0}
+table:not(.rmwcmp table) th,table:not(.rmwcmp table) td{
+  border:1px solid var(--line);padding:.4rem .8rem;text-align:left;
+  font-variant-numeric:tabular-nums}
+table:not(.rmwcmp table) th{background:var(--chip)}
+.rmwcmp .wrap{overflow-x:auto}
+</style></head><body>
+%s
+</body></html>
+"""
+
+
+def write_html(markdown_text, dest, fragment=False):
+    """Render the generated page into a standalone HTML file.
+
+    The page is already mostly HTML \u2014 the comparison table and its style
+    block are emitted as raw markup \u2014 so this converts the surrounding
+    prose and leaves the rest alone.
+    """
+    try:
+        import markdown as _md
+    except ImportError:
+        print(
+            "gen-rmw-api-comparison: --html needs python-markdown.\n"
+            "  pip install --user markdown   (or drop --html; the book page is\n"
+            "  the source and `just book` renders it with the rest of the book)",
+            file=sys.stderr,
+        )
+        return 1
+    body = _md.markdown(
+        markdown_text,
+        extensions=["tables", "fenced_code", "attr_list"],
+        output_format="html5",
+    )
+    # In the book, `../design/x.md` resolves. In a standalone page it is a dead
+    # link to a file the reader does not have, which is worse than no link --
+    # the one cross-reference on this page is the prose rationale for the very
+    # divergences the table lists. Point it at the repo instead. Paths are
+    # relative to this document's own directory, `book/src/reference/`.
+    def _repo_link(m):
+        href = m.group(1)
+        target = os.path.normpath(os.path.join("book/src/reference", href))
+        return 'href="%s/%s"' % (REPO_BLOB, target)
+
+    body = re.sub(r'href="((?!https?:)[^"]*\.md)"', _repo_link, body)
+    os.makedirs(os.path.dirname(os.path.abspath(dest)) or ".", exist_ok=True)
+    with open(dest, "w") as fh:
+        # A FRAGMENT is the same page without the shell, for a host that wraps
+        # it in one of its own. The table's `<style>` rides inside the markdown,
+        # so the fragment keeps its palette; only the page furniture is missing.
+        fh.write(body if fragment else HTML_SHELL % body)
+    print(f"wrote {dest}")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
+    ap.add_argument(
+        "--html",
+        metavar="PATH",
+        help="also render a standalone HTML page (implies a rewrite unless --check)",
+    )
+    ap.add_argument(
+        "--html-fragment",
+        metavar="PATH",
+        help="render the page BODY only, for a host that supplies its own shell",
+    )
     args = ap.parse_args()
 
     if not self_test():
@@ -699,6 +812,10 @@ def main():
             subprocess.run(["git", "--no-pager", "diff", "--stat", "--", DOC], cwd=ROOT)
             return 1
         print(f"rmw-api-comparison OK ({len(contract)} symbols).")
+        if args.html:
+            return write_html(new, args.html)
+        if args.html_fragment:
+            return write_html(new, args.html_fragment, fragment=True)
         return 0
 
     with open(DOC, "w") as fh:
@@ -711,6 +828,10 @@ def main():
             if sum(matrix[(st, c)] for c in SURFACES)
         ) + ")"
     )
+    if args.html:
+        return write_html(new, args.html)
+    if args.html_fragment:
+        return write_html(new, args.html_fragment, fragment=True)
     return 0
 
 
