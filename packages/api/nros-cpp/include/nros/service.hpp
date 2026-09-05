@@ -17,6 +17,19 @@
 #include "nros/result.hpp"
 #include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
 
+// phase-417 W1.a — `<memory>` for the nested pointer aliases. Rationale (and
+// why the test is `__has_include` rather than `__STDC_HOSTED__`, issue 0112)
+// lives in `publisher.hpp`.
+#if defined(NROS_CPP_STD)
+#include <memory>
+#define NROS_CPP_HAS_SHARED_PTR 1
+#elif defined(__has_include)
+#if __has_include(<memory>)
+#include <memory>
+#define NROS_CPP_HAS_SHARED_PTR 1
+#endif
+#endif
+
 #include "nros_cpp_ffi.h"
 
 // Phase 189.M3.3.e — `nros_cpp_service_server_register` is excluded from
@@ -59,6 +72,23 @@ namespace nros {
 /// ```
 template <typename S> class Service {
   public:
+#ifdef NROS_CPP_HAS_SHARED_PTR
+    /// `rclcpp::Service<S>::SharedPtr` — phase-417 W1.a.
+    ///
+    /// rclcpp indexes its entity types this way, and
+    /// `rclcpp::Service<S>::SharedPtr member_;` is close to universal in
+    /// ported source. Ergonomics only (RFC-0089 §"Who implements an adopted
+    /// name"): a spelling for `std::shared_ptr<Service<S>>`, no second code path.
+    ///
+    /// Present only where `<memory>` is — a freestanding target has no
+    /// `std::shared_ptr` to alias.
+    using SharedPtr = std::shared_ptr<Service<S>>;
+    /// `rclcpp::Service<S>::ConstSharedPtr` — see `SharedPtr`.
+    using ConstSharedPtr = std::shared_ptr<const Service<S>>;
+    /// `rclcpp::Service<S>::UniquePtr` — see `SharedPtr`.
+    using UniquePtr = std::unique_ptr<Service<S>>;
+#endif
+
     using RequestType = typename S::Request;
     using ResponseType = typename S::Response;
 
@@ -285,5 +315,23 @@ Result Node::create_service(Service<S>& out, const char* service_name, F callbac
 }
 
 } // namespace nros
+
+// ============================================================================
+// rclcpp:: — the ROS 2 spelling (RFC-0089 stage 6, step A)
+// ============================================================================
+//
+// Moved here from `nros/rclcpp_compat.hpp`, which no longer carries a surface
+// of its own: RFC-0089 §"Naming: replace, with alias as the migration step"
+// makes the ROS 2 spelling a first-class name declared by the API header that
+// owns the concept, at which point a shim has nothing left to bridge.
+
+// `rclcpp::Service<S>::SharedPtr` — see `publisher.hpp` for why the alias
+// template is the whole adoption. The upstream shared_ptr CALLBACK shape is
+// REFUSE-LOUD, and the refusal lives on `rclcpp::Node::create_service`
+// (`nros/nros.hpp`) because that is the call site it fires at; its diagnostic
+// is `NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK` in `log.hpp`.
+namespace rclcpp {
+template <typename S> using Service = ::nros::Service<S>;
+} // namespace rclcpp
 
 #endif // NROS_CPP_SERVICE_HPP

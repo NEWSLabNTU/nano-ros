@@ -9,6 +9,7 @@
   },
   "c:action_*wait_set*": {
     "verdict": "declined",
+    "disposition": "absent",
     "bucket": "theirs-only",
     "why": "rcl's wait-set protocol -- the caller asks each entity how many wait-set slots it needs and then reads back which of them are ready. RFC-0002's executor drives entities directly through the RMW vtable, so there is no wait set. See the pubsub and service stages' identical rows."
   },
@@ -73,7 +74,8 @@
   },
   "c:action_client_get_options": {
     "verdict": "declined",
-    "why": "no runtime options struct; see the `compile-time-options` rule and the service stage's `c:client_get_options`."
+    "disposition": "absent",
+    "why": "reads back the options an action client was created with. `nros_action_client_options_t` ships, and so does `nros_action_client_get_default_options`; what is missing is the READBACK -- no `*_get_options` exists anywhere in our C surface, for any entity. See the service stage's `c:client_get_options`. CORRECTED 2026-09-04 (phase-417): this row said there is no runtime options struct. Seven ship and the correlator buckets all fourteen items `same` -- `nros_{node,publisher,subscription,service,client,action_client,action_server}_options_t` (`packages/api/nros-c/include/nros/nros_generated.h:1461,1729,2011,2474,2537,2556,2592`) plus a `*_get_default_options` for each, and `nros_node_options_t::domain_id_override` is a RUNTIME per-node domain. What is genuinely absent is the LIFECYCLE around one: no `*_options_copy`, no `*_options_fini`, and no `*_get_options` readback anywhere in the C surface."
   },
   "c:action_client_get_zero_initialized": {
     "verdict": "extension",
@@ -81,10 +83,12 @@
   },
   "c:action_client_impl_t": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "rcl's pimpl; our handles carry their state inline because there is no allocator to put it behind a pointer. See the pubsub stage's `c:publisher_impl_t`."
   },
   "c:action_client_init_default": {
     "verdict": "declined",
+    "disposition": "adopt",
     "why": "rclc's default-QoS wrapper; `nros_action_client_init` takes no QoS and IS the default form. See the service stage's `c:client_init_default`."
   },
   "c:action_client_init_polling": {
@@ -96,8 +100,8 @@
     "why": "our own options-taking entry point, carrying what a device varies per action client (scheduling context) where rcl would use `rcl_action_client_options_t`. See the pubsub stage's `c:publisher_init_with_options`."
   },
   "c:action_client_is_valid": {
-    "verdict": "extension",
-    "why": "rcl's validity predicate. Ours is `nros_action_client_state_t` on the handle -- a three-state lifecycle (uninitialised / callback-mode / polling-mode) rather than a boolean, so double-init and use-after-fini return a code instead of being undefined. See the pubsub stage's `c:publisher_state_t`. Recorded as the theirs half; ours is `c:action_client_state_t`."
+    "verdict": "divergence",
+    "why": "CORRECTED 2026-09-04 (phase-417 W-M2): verdicted `extension`, which means \"we add it and ROS 2 has none\". The row is THEIRS-ONLY -- `rcl_action_client_is_valid` is rcl's, and the row's own text describes it as \"rcl's validity predicate\" -- so the verdict asserted the opposite of the bucket. It is a `divergence`: rcl asks a BOOLEAN, we answer with a three-state lifecycle on the handle, which is a reshaped answer to the same question rather than a capability we invented.\n\nrcl's validity predicate. Ours is `nros_action_client_state_t` on the handle -- a three-state lifecycle (uninitialised / callback-mode / polling-mode) rather than a boolean, so double-init and use-after-fini return a code instead of being undefined. See the pubsub stage's `c:publisher_state_t`. Recorded as the theirs half; ours is `c:action_client_state_t`."
   },
   "c:action_client_poll": {
     "verdict": "extension",
@@ -153,6 +157,7 @@
   },
   "c:action_get_*names_and_types*": {
     "verdict": "declined",
+    "disposition": "absent",
     "bucket": "theirs-only",
     "why": "no dynamic discovery: peers are static (RFC-0036), so there is no graph to enumerate action names and types out of. See the graph stage."
   },
@@ -162,6 +167,7 @@
   },
   "c:action_get_goal_status_array": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "the read half of `c:action_publish_status`. The per-goal query ours offers is `nros_action_get_goal_status(server, goal, status*)` and the sweep is C++'s `ActionServer::for_each_active_goal`; neither materialises an array, because there is no allocator to materialise it into. A user loses the ability to read every goal's status as one message."
   },
   "c:action_get_result": {
@@ -174,6 +180,7 @@
   },
   "c:action_get_zero_initialized_*": {
     "verdict": "declined",
+    "disposition": "absent",
     "provides": [
       "nros_action_client_get_zero_initialized",
       "nros_action_server_get_zero_initialized"
@@ -183,10 +190,12 @@
   },
   "c:action_goal_event_e": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "the event alphabet of `c:action_transition_goal_state`; we name transitions with verbs instead. See that row."
   },
   "c:action_goal_event_t": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "see `c:action_goal_event_e`."
   },
   "c:action_goal_handle_*": {
@@ -237,6 +246,7 @@
   },
   "c:action_notify_goal_done": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "rcl makes the caller tell the server a goal reached a terminal state, because the goal handle and the server are separate objects that must be kept in step. Ours cannot drift: `nros_action_succeed` / `_abort` / `_canceled` retire the goal in the arena as part of the same call. A user loses nothing; there is no second place for the fact to live."
   },
   "c:action_process_cancel_request": {
@@ -253,6 +263,7 @@
   },
   "c:action_publish_status": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "the `<action>/status` topic is published by the arena on every goal transition (`ActionServerCore::publish_status_array`), not by the user. Exposing the verb would let an image publish a status array that disagrees with the arena, which is the state the arena exists to be the only copy of. A user loses the ability to publish status on their own cadence."
   },
   "c:action_send_*": {
@@ -299,6 +310,7 @@
   },
   "c:action_server_get_goal_handles": {
     "verdict": "declined",
+    "disposition": "absent",
     "provides": [
       "nros_action_server_get_active_goal_count"
     ],
@@ -306,6 +318,7 @@
   },
   "c:action_server_get_options": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "see `c:action_client_get_options`."
   },
   "c:action_server_get_zero_initialized": {
@@ -323,10 +336,12 @@
   },
   "c:action_server_impl_t": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "see `c:action_client_impl_t`."
   },
   "c:action_server_init_default": {
     "verdict": "declined",
+    "disposition": "adopt",
     "why": "see `c:action_client_init_default`."
   },
   "c:action_server_init_polling": {
@@ -361,11 +376,12 @@
     }
   },
   "c:action_server_is_valid": {
-    "verdict": "extension",
-    "why": "see `c:action_client_is_valid`."
+    "verdict": "divergence",
+    "why": "CORRECTED 2026-09-04 (phase-417 W-M2): verdicted `extension`, which means \"we add it and ROS 2 has none\". The row is THEIRS-ONLY -- `rcl_action_client_is_valid` is rcl's, and the row's own text describes it as \"rcl's validity predicate\" -- so the verdict asserted the opposite of the bucket. It is a `divergence`: rcl asks a BOOLEAN, we answer with a three-state lifecycle on the handle, which is a reshaped answer to the same question rather than a capability we invented.\n\nsee `c:action_client_is_valid`."
   },
   "c:action_server_is_valid_except_context": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "rcl's variant that ignores whether the CONTEXT is still valid, for teardown ordering. There is one context per image and it outlives every entity (see the init stage's `c:context_*`), so the distinction has no second case."
   },
   "c:action_server_set_*": {
@@ -393,6 +409,7 @@
   },
   "c:action_transition_goal_state": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "rcl exposes the goal state machine as a pure function over (state, event) so a caller can predict a transition. Ours is not a caller-visible machine: the arena owns it and `nros_goal_status_t` is what a user reads back. A user loses the ability to reason about a transition without performing it."
   },
   "c:action_try_recv_feedback": {
@@ -475,7 +492,7 @@
   },
   "c:goal_uuid_t": {
     "verdict": "divergence",
-    "why": "the 16-byte goal id as its own type. rcl carries it inside `rcl_action_goal_info_t` and rclcpp_action aliases it as `GoalUUID` (a `std::array`). Ours is a plain struct so it is copyable by value into caller storage with no allocator and no STL. Note our C++ has no goal-id type at all -- it passes bare `uint8_t goal_id[16]`; see `cpp:GoalUUID`."
+    "why": "the 16-byte goal id as its own type. rcl carries it inside `rcl_action_goal_info_t` and rclcpp_action aliases it as `GoalUUID` (a `std::array`). Ours is a plain struct so it is copyable by value into caller storage with no allocator and no STL. Note our C++ grew `nros::GoalUUID` in phase-417 W4.b -- a standard-layout, trivially copyable value over the same 16 bytes; before that every C++ action signature passed a bare `uint8_t goal_id[16]`, which decays to a pointer."
   },
   "c:result_callback_t": {
     "verdict": "divergence",
@@ -543,6 +560,7 @@
   },
   "cpp:Client::async_cancel_goals_before": {
     "verdict": "declined",
+    "disposition": "refuse-loud",
     "why": "cancels every goal accepted before a timestamp. It needs each goal's acceptance stamp, which our arena does not keep -- see `c:action_goal_info_t`: time is a board capability (RFC-0036) and the accept path has no clock to read. A user loses bulk cancellation by age and must cancel by goal id."
   },
   "cpp:Client::wait_for_action_server": {
@@ -555,23 +573,20 @@
   },
   "cpp:GoalInfo": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "rclcpp_action's alias for `action_msgs::msg::GoalInfo` (goal id + acceptance stamp). See `c:action_goal_info_t`: the stamp is the arena's, not the caller's. A C++ user loses the acceptance timestamp."
   },
   "cpp:GoalResponse": {
     "verdict": "divergence",
     "why": "the goal callback's accept/reject/defer decision, name-for-name rclcpp_action's `GoalResponse` with the same three cases. NOTE the discriminants do not match rclcpp_action's: ours are 0-based (0/1/2), rclcpp_action's are 1-based (1/2/3), and the enumerators are `Reject` vs `REJECT`. The correlator sees only the NAME, so this pair reports as `same`; enumerator comparison is a feature it does not have, which is why the fact lives here. DECIDED (issue 0796) NOT to align, for two reasons. (1) These are not preferences but a C ABI: the value crosses three FFI seams as an integer -- a `#[repr(i8)]` Rust enum returned directly from `extern \"C\"` trampolines, `nros_c_goal_response_t` / `nros_c_cancel_response_t` in component.h, and an `enum class : int32_t` in C++ -- so renumbering is the kind of break that produces NO compile error anywhere, just a half-rebuilt tree that starts deciding accept where it meant reject. (2) It would buy nothing anyway: a ported `switch` still names `rclcpp_action::GoalResponse::REJECT`, so it must be edited regardless, and once edited it uses OUR enumerators and gets the right value under either numbering. Only code that hardcodes the integers is affected, and that code is already wrong. Against that, `Reject` = 0 is load-bearing: the arena's decision slots are zero-initialised static storage with no allocator and no constructor, and the null-callback path yields `Default`, so 0 MUST mean reject. Making 0 invalid would make \"nobody answered\" mean accept. See `c:goal_response_t` for the C spelling and `rust:GoalResponse` for the Rust one."
   },
-  "cpp:GoalUUID": {
-    "verdict": "gap",
-    "why": "OUR LANGUAGES DISAGREE: rclcpp_action aliases the goal id as a named type. Our C has `nros_goal_uuid_t` with `nros_goal_uuid_generate` and `nros_goal_uuid_equal`; our Rust has `GoalId` with `new`/`zero`/`is_zero`/`from_counter`. Our C++ has nothing -- every action signature in `action_server.hpp`, `action_client.hpp` and the two polling headers passes a raw `uint8_t goal_id[16]`, which decays to a pointer, compares with neither `==` nor `!=`, and cannot be stored in a container without the user writing the wrapper. Phase 379 W3."
-  },
   "cpp:Node::create_action_client": {
-    "verdict": "declined",
+    "verdict": "rename",
     "why": "see `cpp:Node::create_action_server`."
   },
   "cpp:Node::create_action_server": {
-    "verdict": "declined",
-    "why": "rclcpp_action ships FREE functions (`rclcpp_action::create_server(node, ...)`) because it is a separate package that cannot add members to `rclcpp::Node`. Ours is one library, so the factory is a node method like every other entity's. A user porting `rclcpp_action::create_server(node, name, goal_cb, cancel_cb, accepted_cb)` must rewrite it as `node.create_action_server(out, name)` followed by `set_goal_callback` / `set_cancel_callback`. See `cpp:create_server`."
+    "verdict": "rename",
+    "why": "RE-VERDICTED 2026-09-04 (phase-417), declined -> rename. This item is OURS-ONLY, so `declined` -- ROS 2 has it, we deliberately do not -- could not have been true of it in either direction. rclcpp_action ships FREE functions (`rclcpp_action::create_server(node, ...)`) because it is a separate package that cannot add members to `rclcpp::Node`; ours is one library, so the factory is a node method like every other entity's. A user porting `rclcpp_action::create_server(node, name, goal_cb, cancel_cb, accepted_cb)` rewrites it as `node.create_action_server(out, name)` followed by `set_goal_callback` / `set_cancel_callback`. The decision about which spelling survives is on the theirs-only half, `cpp:create_server`."
   },
   "cpp:Node::create_polling_action_client": {
     "verdict": "extension",
@@ -591,6 +606,7 @@
   },
   "cpp:ResultCode": {
     "verdict": "declined",
+    "disposition": "refuse-loud",
     "provides": [
       "nros::GoalStatus"
     ],
@@ -607,7 +623,7 @@
   },
   "cpp:ServerGoalHandle": {
     "verdict": "divergence",
-    "why": "the server side of `cpp:ClientGoalHandle`. Its methods are the ones we moved onto `(server, goal)`: `succeed`/`abort`/`canceled`/`execute` are `nros_action_succeed`/`_abort`/`_canceled`/`nros_action_execute`, and `is_active`/`is_executing`/`is_canceling` are one `nros_action_get_goal_status` call. `get_goal` has no counterpart -- the arena never keeps the goal payload, so a user who needs it stashes it in the goal callback. our goal handle is a 16-byte UUID TOKEN, not an owning object: `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena (read back with `nros_action_get_goal_status`). rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why our terminal verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
+    "why": "the server side of `cpp:ClientGoalHandle`. CORRECTED 2026-09-04 (phase-417): this row answered a `cpp:` question entirely in C -- `nros_action_succeed` / `_abort` / `_canceled` / `nros_action_execute` / `nros_action_get_goal_status` -- and never named the C++ surface a porting rclcpp_action user actually writes. THE C++ ANSWER: `succeed`/`abort`/`canceled` are one call, `nros::ActionServer<A>::complete_goal(goal_id, GoalStatus, result)` (`packages/api/nros-cpp/include/nros/action_server.hpp:257`, with a two-argument overload defaulting `Succeeded`), and `is_active`/`is_executing`/`is_canceling` are `ActionServer::for_each_active_goal(f)` (`:284`), which visits `(uuid, status)` for every live goal. `get_goal` has no counterpart -- the arena never keeps the goal payload, so a user who needs it stashes it in the goal callback. THE DIVERGENCE, unchanged: our goal handle is a 16-byte UUID TOKEN, not an owning object. `nros_goal_handle_t` holds the uuid and nothing else, and every lifecycle fact lives in the executor's static goal arena. rcl's `rcl_action_goal_handle_t` is allocator-constructed, carries its own state machine and is finalised by the caller -- no allocator, so there is nothing to construct, nothing to fini, and no object to hang the lifecycle methods on. It is also why the C verbs take `(server, goal)` where rclcpp's are members: see `c:action_succeed`."
   },
   "cpp:TickCtx::send_goal_raw": {
     "verdict": "extension",
@@ -623,6 +639,7 @@
   },
   "cpp:convert": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "converts between `rclcpp_action::GoalUUID` and `rcl_action_goal_info_t`. Both sides of that conversion are rcl types; our RMW seam is the vtable (RFC-0035), not rcl. See the pubsub stage's rows on rcl handle accessors."
   },
   "cpp:create_action_client": {
@@ -642,13 +659,19 @@
     "why": "the three FFI steps a raw action server needs, in one call against caller-owned storage: create, register on the executor, then set the goal and cancel callbacks. The goal callback returns a `GoalResponse` discriminant (`0` reject / `1` accept-and-execute / `2` accept-defer) and the cancel callback a `CancelResponse`; a goal is completed afterwards with `nros_cpp_action_server_complete_goal`. rclcpp_action's `create_server` takes goal, cancel AND accepted callbacks and returns a `SharedPtr`; ours has no accepted callback because there is no owning goal handle to hand back (see `cpp:ActionServer`) and no allocator to return from. Public and documented, but in practice reached through `cpp:bind_action_server_raw`, which supplies the trampolines."
   },
   "cpp:create_server": {
-    "verdict": "declined",
+    "verdict": "rename",
     "provides": [
       "nros::Node::create_action_server",
       "nros::ActionServer::set_goal_callback",
       "nros::ActionServer::set_cancel_callback"
     ],
-    "why": "the free-function factory; ours is the method `Node::create_action_server`. See that row for what a porting user loses, and the service stage's `cpp:create_client` for the same pair one entity over."
+    "why": "the free-function factory; ours is the method `nros::Node::create_action_server` plus `ActionServer::set_goal_callback` / `set_cancel_callback`. RE-VERDICTED 2026-09-04 (phase-417), declined -> rename: the capability is present under another spelling, so `declined` -- ROS 2 has it and we deliberately do not -- was never the right word, and the identical shape one entity over is already verdict `rename` at the service stage's `cpp:create_client`. What a porting user rewrites is in `cpp:Node::create_action_server`.",
+    "rename": {
+      "to": null,
+      "category": "B",
+      "status": "blocked-needs-decision",
+      "blocker": "Which side moves is unsettled, exactly as at `cpp:create_client`: rclcpp_action ships free functions only because it is a separate package that cannot add members to `rclcpp::Node`, a constraint we do not have. Adding `nros::make_action_server` beside the method would match upstream without removing ours; the pubsub stage did that for `create_publisher`/`make_publisher` (landed 2026-08-26). Nobody has decided whether actions follow."
+    }
   },
   "rust:AcceptedGoal": {
     "verdict": "divergence",
@@ -792,7 +815,7 @@
   },
   "rust:ActionClientCore::is_server_ready": {
     "verdict": "rename",
-    "why": "TARGET SETTLED 2026-08-27 (phase-379 W5), not executed. Verdict stays `rename`: this is the half of the pair that should move, and the surviving spelling is `action_server_is_ready` — rclcpp_action's word, our C's word (`nros_action_client_action_server_is_ready`) and the word our own outer type already uses (`rust:ActionClient::action_server_is_ready`, now re-verdicted `extension` as the survivor). So `ActionClientCore::is_server_ready` (packages/core/nros-node/src/executor/action_core.rs:1144) -> `action_server_is_ready`. NOT executed here: `nros-node` is outside this work item's ownership, and the rename has in-tree callers (`handles.rs:2180`, `:2825`). NOTE the entanglement, which is why this is not a one-line edit: the body forwards to `send_goal_client.is_server_ready()`, which is `ClientTrait::is_server_ready` (nros-rmw/src/traits.rs:2404) — the trait method whose own naming is BLOCKED at `rust:ClientTrait::server_available` on the tri-state question. Renaming the action-side wrapper does not touch the trait and does not depend on that decision, but whoever executes it should say so in the commit or the next reader will assume it did. ORIGINAL ROW: the second Rust spelling of `rust:ActionClient::action_server_is_ready`, on the type one layer below. The service stage recorded the same defect for clients (`rust:ClientTrait::is_server_ready` beside `ClientTrait::server_available` beside `Client::service_is_ready`); actions repeat it. Phase 379 W5.",
+    "why": "TARGET SETTLED 2026-08-27 (phase-379 W5), not executed. Verdict stays `rename`: this is the half of the pair that should move, and the surviving spelling is `action_server_is_ready` — rclcpp_action's word, our C's word (`nros_action_client_action_server_is_ready`) and the word our own outer type already uses (`rust:ActionClient::action_server_is_ready`, now re-verdicted `extension` as the survivor). So `ActionClientCore::is_server_ready` (packages/core/nros-node/src/executor/action_core.rs:1144) -> `action_server_is_ready`. NOT executed here: `nros-node` is outside this work item's ownership, and the rename has in-tree callers (`handles.rs:2180`, `:2825`). NOTE the entanglement, which is why this is not a one-line edit: the body forwarded to `send_goal_client.is_server_ready()`. CORRECTED 2026-09-04 (phase-417): that trait method has since been DELETED (phase-379 W6 decision 2 / issue 1008 -- its default was `true`, so every cffi-backed image answered without asking; see `rust:ClientTrait::is_server_ready`), and the live trait method is `ClientTrait::service_is_ready` (`packages/core/nros-rmw/src/traits.rs:2816`). The tri-state question this row recorded as BLOCKING is therefore settled, and the blocker named a ledger key -- `rust:ClientTrait::server_available` -- that has never existed. Renaming the action-side wrapper is now unentangled. ORIGINAL ROW: the second Rust spelling of `rust:ActionClient::action_server_is_ready`, on the type one layer below. The service stage recorded the same defect for clients (`rust:ClientTrait::is_server_ready` beside `ClientTrait::server_available` beside `Client::service_is_ready`); actions repeat it. Phase 379 W5.",
     "rename": {
       "from": "is_server_ready",
       "to": "action_server_is_ready",
@@ -1304,5 +1327,47 @@
   "rust:action_channel_type": {
     "verdict": "extension",
     "why": "derives the per-channel DDS type name (`…::dds_::Fibonacci_SendGoal_`) from the action type name, in a `heapless::String` with no allocation. rclcpp_action gets these from generated typesupport structs; we need the derivation at runtime because the raw registration path has only the action's type name. See `c:action_type_t`."
+  },
+  "cpp:Server::Server<ActionT>": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-417 stage 0 — visible only because `rclcpp_compat.hpp` is now a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not. `rclcpp_action::Server`'s member surface is the wait-set/`Waitable` protocol (`execute`, `is_ready`, `set_on_ready_callback`) plus `make_shared`; the executor owns readiness here and entities are arena-registered at creation (RFC-0002), so there is nothing for a caller to poll or construct."
+  },
+  "cpp:Server::clear_on_ready_callback": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-417 stage 0 — visible only because `rclcpp_compat.hpp` is now a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not. `rclcpp_action::Server`'s member surface is the wait-set/`Waitable` protocol (`execute`, `is_ready`, `set_on_ready_callback`) plus `make_shared`; the executor owns readiness here and entities are arena-registered at creation (RFC-0002), so there is nothing for a caller to poll or construct."
+  },
+  "cpp:Server::execute": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-417 stage 0 — visible only because `rclcpp_compat.hpp` is now a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not. `rclcpp_action::Server`'s member surface is the wait-set/`Waitable` protocol (`execute`, `is_ready`, `set_on_ready_callback`) plus `make_shared`; the executor owns readiness here and entities are arena-registered at creation (RFC-0002), so there is nothing for a caller to poll or construct."
+  },
+  "cpp:Server::is_ready": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-417 stage 0 — visible only because `rclcpp_compat.hpp` is now a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not. `rclcpp_action::Server`'s member surface is the wait-set/`Waitable` protocol (`execute`, `is_ready`, `set_on_ready_callback`) plus `make_shared`; the executor owns readiness here and entities are arena-registered at creation (RFC-0002), so there is nothing for a caller to poll or construct."
+  },
+  "cpp:Server::make_shared": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-417 stage 0 — visible only because `rclcpp_compat.hpp` is now a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not. `rclcpp_action::Server`'s member surface is the wait-set/`Waitable` protocol (`execute`, `is_ready`, `set_on_ready_callback`) plus `make_shared`; the executor owns readiness here and entities are arena-registered at creation (RFC-0002), so there is nothing for a caller to poll or construct."
+  },
+  "cpp:Server::set_on_ready_callback": {
+    "verdict": "declined",
+    "disposition": "absent",
+    "why": "phase-417 stage 0 — visible only because `rclcpp_compat.hpp` is now a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not. `rclcpp_action::Server`'s member surface is the wait-set/`Waitable` protocol (`execute`, `is_ready`, `set_on_ready_callback`) plus `make_shared`; the executor owns readiness here and entities are arena-registered at creation (RFC-0002), so there is nothing for a caller to poll or construct."
+  },
+  "cpp:GoalUUID::GoalUUID": {
+    "verdict": "extension",
+    "why": "phase-417 stage 0 — visible only because `rclcpp_compat.hpp` is now a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not."
+  },
+  "cpp:GoalUUID::data": {
+    "verdict": "extension",
+    "why": "phase-417 stage 0 — visible only because `rclcpp_compat.hpp` is now a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not."
+  },
+  "cpp:GoalUUID::is_zero": {
+    "verdict": "extension",
+    "why": "phase-417 stage 0 — visible only because `rclcpp_compat.hpp` is now a translation unit (issue 1020). The shim ships this TYPE as a name, so its members stop inheriting \"we do not have this type\" and become their own claim. Not a new gap: a gap INSIDE a type we ship is a different statement from one about a type we do not."
   }
 }

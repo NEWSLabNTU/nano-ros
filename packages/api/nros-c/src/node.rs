@@ -41,7 +41,7 @@ fn resolve_domain_from_c_abi(raw: u8, session_domain: u32) -> Option<u32> {
         // wrong one — it is unroutable, and silent, because a domain is just
         // the first element of the discovery key (issue 0801).
         Some(d) if d > nros_node::DOMAIN_ID_MAX => {
-            nros_log::nros_error!(
+            nros_log::log_error!(
                 nros_log::get_logger("nros-c"),
                 "domain id {} exceeds the ROS maximum of {}; refusing to create \
                  the entity rather than keying it on an unroutable domain \
@@ -88,7 +88,7 @@ pub enum nros_node_state_t {
 ///
 /// So the entity stores an IDENTITY instead: the executor slot the node is
 /// bound to, plus the generation that slot carried when the entity was created.
-/// `nros_node_fini` bumps the generation, which makes "finalise an entity after
+/// `rcl_node_fini` bumps the generation, which makes "finalise an entity after
 /// its node" a return code rather than a silent success.
 ///
 /// `generation == 0` is reserved and never issued, so a zeroed struct — the
@@ -190,7 +190,7 @@ pub struct nros_node_t {
     // Phase 104.C.8 — multi-RMW + per-Node SchedContext fields. Populated
     // by `nros_node_init_ex` from `nros_node_options_t`. Zero values mean
     // "inherit from the support context / executor default" so the legacy
-    // `nros_node_init(node, support, name, ns)` entry point keeps its old
+    // `rclc_node_init_default(node, name, ns, support)` entry point keeps its old
     // single-Node behaviour through `nros_node_init_ex` with default
     // options.
     /// RMW backend name (UTF-8, NUL-terminated within `rmw_name_len`).
@@ -214,11 +214,11 @@ pub struct nros_node_t {
     /// Phase 156 / 104.C.8.b — executor pointer for the multi-Session
     /// dispatch path. `nros_executor_node_init` populates this when
     /// the Node is bound; per-entity `nros_*_init` paths
-    /// (`nros_publisher_init`, `nros_subscription_init`, etc.) branch
+    /// (`rclc_publisher_init_default`, `nros_subscription_init`, etc.) branch
     /// on `node_id != 0 && !executor.is_null()` to route through
     /// `Executor::node_session_mut(NodeId)` instead of the legacy
     /// support-based dispatch. NULL = legacy single-Node path
-    /// (`nros_node_init` / `nros_node_init_ex`).
+    /// (`rclc_node_init_default` / `nros_node_init_ex`).
     pub executor: *const crate::executor::nros_executor_t,
 
     // Phase 211.H (issue #52) — per-topic QoS overrides the deploy plan
@@ -261,7 +261,7 @@ impl Default for nros_node_t {
 /// `qos_overrides.<topic>.<role>.<policy>` launch params (issue #52). Every
 /// entity created on `node` afterwards folds the matching `(topic, role)`
 /// entries into its QoS before the backend-compat check — the C/C++ mirror of
-/// Rust's `NodeHandle::set_qos_overrides`. Call once, after `nros_node_init*`
+/// Rust's `NodeHandle::set_qos_overrides`. Call once, after `rclc_node_init_default*`
 /// and before creating publishers/subscriptions (a generated entry does this
 /// before `configure(node)`).
 ///
@@ -344,7 +344,7 @@ impl Default for nros_node_options_t {
 /// `domain_id_override = NROS_DOMAIN_ID_INHERIT`, `sched_context_id = 0`.
 /// Callers populate only the fields they want to override.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_node_get_default_options() -> nros_node_options_t {
+pub extern "C" fn rcl_node_get_default_options() -> nros_node_options_t {
     nros_node_options_t::default()
 }
 
@@ -353,23 +353,44 @@ pub extern "C" fn nros_node_get_default_options() -> nros_node_options_t {
 /// # Safety
 /// Returns a stack-allocated struct that must be initialized before use.
 #[unsafe(no_mangle)]
-pub extern "C" fn nros_node_get_zero_initialized() -> nros_node_t {
+pub extern "C" fn rcl_get_zero_initialized_node() -> nros_node_t {
     nros_node_t::default()
 }
 
-/// Initialize a node with default options.
+/// Initialize a node with default options — rclc's `rclc_node_init_default`,
+/// in rclc's argument ORDER.
+///
+/// **The parameters were REORDERED at phase-417 stage 6.** This is the one
+/// entry point in the whole C surface that is a pure PERMUTATION of its
+/// upstream counterpart (measured over the surface, not assumed):
+///
+/// ```text
+/// rclc  rclc_node_init_default(node, name, namespace_, support)
+/// was   nros_node_init        (node, support, name, namespace_)
+/// ```
+///
+/// The rename and the reorder land TOGETHER, and that is not stylistic.
+/// RFC-0089's corrected hazard note: in C an incompatible pointer argument is
+/// a **WARNING**, not an error, even under `-Wall -Wextra`, so a reorder alone
+/// is silent-by-default for out-of-tree callers who do not build with our
+/// flags. Renaming makes a stale call fail on the IDENTIFIER, which C does
+/// diagnose fatally. `nros_node_init` therefore survives only as an
+/// `NROS_DEPRECATED_MSG` `static inline` in `<nros/node.h>` that names each
+/// parameter and forwards in the OLD order — never a macro, which would
+/// forward positionally and silently build a node with its name in the
+/// support slot.
 ///
 /// Equivalent to building a [`nros_node_options_t`] via
-/// [`nros_node_get_default_options`], copying `namespace_` into its
-/// `namespace` field, and calling [`nros_node_init_ex`]. The shim is
-/// kept for source-compatibility with rclc-style callers that pre-date
-/// Phase 104.C.8.
+/// [`rcl_node_get_default_options`], copying `namespace_` into its
+/// `namespace` field, and calling [`nros_node_init_ex`] — which is
+/// `rcl_node_init_with_options`'s counterpart and keeps OUR order, because it
+/// has no rclc counterpart to match.
 ///
 /// # Parameters
 /// * `node` - Pointer to a zero-initialized node
-/// * `support` - Pointer to an initialized support context
 /// * `name` - Node name (null-terminated string)
 /// * `namespace_` - Node namespace (null-terminated string, use "/" for root)
+/// * `support` - Pointer to an initialized support context
 ///
 /// # Returns
 /// * `NROS_RET_OK` on success
@@ -381,11 +402,11 @@ pub extern "C" fn nros_node_get_zero_initialized() -> nros_node_t {
 /// * All pointers must be valid
 /// * `name` and `namespace_` must be valid null-terminated strings
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_node_init(
+pub unsafe extern "C" fn rclc_node_init_default(
     node: *mut nros_node_t,
-    support: *const nros_support_t,
     name: *const c_char,
     namespace_: *const c_char,
+    support: *const nros_support_t,
 ) -> nros_ret_t {
     if namespace_.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
@@ -401,7 +422,7 @@ pub unsafe extern "C" fn nros_node_init(
 /// .locator(...).domain_id(...).namespace(...).sched(...).build()`
 /// chain. Options fields with `*_len == 0` (or `domain_id_override ==
 /// NROS_DOMAIN_ID_INHERIT`) inherit from the support context, matching
-/// the legacy single-Node behaviour `nros_node_init` provides.
+/// the legacy single-Node behaviour `rclc_node_init_default` provides.
 ///
 /// The `rmw_name` selector drives Phase 104 multi-RMW Node binding: a
 /// bridge node can be initialised with `options.rmw_name = "cyclonedds"` while
@@ -502,7 +523,7 @@ pub unsafe extern "C" fn nros_node_init_ex(
 /// # Safety
 /// * `node` must be a valid pointer to an initialized nros_node_t
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_node_fini(node: *mut nros_node_t) -> nros_ret_t {
+pub unsafe extern "C" fn rcl_node_fini(node: *mut nros_node_t) -> nros_ret_t {
     if node.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -535,7 +556,7 @@ pub unsafe extern "C" fn nros_node_fini(node: *mut nros_node_t) -> nros_ret_t {
 /// # Safety
 /// * `node` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_node_get_name(node: *const nros_node_t) -> *const c_char {
+pub unsafe extern "C" fn rcl_node_get_name(node: *const nros_node_t) -> *const c_char {
     if node.is_null() {
         return ptr::null();
     }
@@ -559,7 +580,7 @@ pub unsafe extern "C" fn nros_node_get_name(node: *const nros_node_t) -> *const 
 /// # Safety
 /// * `node` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_node_get_namespace(node: *const nros_node_t) -> *const c_char {
+pub unsafe extern "C" fn rcl_node_get_namespace(node: *const nros_node_t) -> *const c_char {
     if node.is_null() {
         return ptr::null();
     }
@@ -665,6 +686,273 @@ pub unsafe extern "C" fn nros_node_get_logger(
     (logger as *const nros_log::Logger).cast()
 }
 
+// ============================================================================
+// phase-417 W5.c — the node accessors filed as `gap`
+//
+// Every one of these is a FORWARDER. The four rows
+// (`c:node_is_valid`, `c:node_get_domain_id`,
+// `c:node_get_fully_qualified_name`, `c:node_resolve_name`) were filed as
+// gaps because the answer lives somewhere the C node does not: on the
+// executor, or behind the ONE name-resolution seam. Reaching through
+// `node.executor` for it is a forward, not a second source of truth
+// (RFC-0002 — one executor per image; RFC-0019 — Rust implements, C
+// delegates). Nothing here adds a field, a cache, or a policy.
+// ============================================================================
+
+/// Read the NUL-terminated C string out of one of `nros_node_t`'s inline
+/// buffers as a `&str`, empty on any surprise.
+///
+/// The three accessors below all need this and the logger accessor above
+/// open-codes it; a fourth spelling would be the "second idiom instead of a
+/// shared helper" the class rule warns about.
+fn inline_str(buf: &[u8], len: usize) -> &str {
+    // `*_len` excludes the NUL, but a caller-built struct can disagree with
+    // itself, so clamp on the buffer AND stop at the first NUL.
+    let end = len.min(buf.len());
+    let bytes = &buf[..end];
+    let nul = bytes.iter().position(|&b| b == 0).unwrap_or(end);
+    core::str::from_utf8(&bytes[..nul]).unwrap_or("")
+}
+
+/// Copy `s` (plus a NUL) into a caller-owned buffer.
+///
+/// `NROS_RET_FULL` when it does not fit — never a truncated name. A truncated
+/// FQN is a name that routes somewhere else, which is the failure mode
+/// `Node::new`'s bounded push already refuses one layer down.
+///
+/// # Safety
+/// `out` must be writable for `out_size` bytes.
+unsafe fn write_cstr_out(s: &str, out: *mut c_char, out_size: usize) -> nros_ret_t {
+    if out.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    if s.len() + 1 > out_size {
+        return NROS_RET_FULL;
+    }
+    let dst = unsafe { core::slice::from_raw_parts_mut(out, s.len() + 1) };
+    dst[..s.len()].copy_from_slice(s.as_bytes());
+    dst[s.len()] = 0;
+    NROS_RET_OK
+}
+
+/// Is this node handle usable?
+///
+/// rcl's `rcl_node_is_valid`. We already had `nros_node_state_t` and
+/// `nros_support_is_valid` for the support object; the node had no predicate
+/// that read its own state, which is the whole of gap `c:node_is_valid`.
+///
+/// Two questions, both answered, because either one alone is a lie:
+///
+/// * the handle's own state is `INITIALIZED` — `rcl_node_fini` sets
+///   `SHUTDOWN`, so a finalised node reports false; and
+/// * the executor slot it is bound to still carries the generation it was
+///   bound at (phase-379 W4). C has no move semantics, so
+///   `nros_node_t copy = original;` is legal and silent — the copy keeps
+///   `state == INITIALIZED` after the original is finalised, and only the
+///   generation catches that.
+///
+/// A legacy (`rclc_node_init_default`) node is not executor-bound, so only the first
+/// question applies to it.
+///
+/// # Safety
+/// * `node` must be NULL or point to a valid `nros_node_t`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rcl_node_is_valid(node: *const nros_node_t) -> bool {
+    if node.is_null() {
+        return false;
+    }
+    let node_ref = &*node;
+    if node_ref.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
+        return false;
+    }
+    if node_ref.is_multi_session() {
+        return node_ref_is_live(node_ref_of(node));
+    }
+    true
+}
+
+/// The ROS domain this node's entities are declared on.
+///
+/// rcl's `rcl_node_get_domain_id(node, size_t *domain_id)`. Gap
+/// `c:node_get_domain_id` records why it was missing: the domain is an INPUT
+/// to `nros_support_init` and could not be read back, while on a device the
+/// value that actually won came from the boot ladder.
+///
+/// So this forwards to [`resolve_session_and_domain`] — the one place the
+/// ladder is decoded (per-node override → C-ABI byte → the session's own
+/// domain). Re-deriving it here is precisely issue 0972's defect: the same
+/// decode at a third call site, where `NROS_DOMAIN_ID_EXPLICIT_ZERO` (255)
+/// reads as an out-of-range domain and plain `0` reads as domain 0 rather
+/// than "unset".
+///
+/// Out-param + status rather than a bare return, because this genuinely can
+/// fail to answer — an uninitialised support context, a retired node slot, or
+/// a domain byte above `DOMAIN_ID_MAX` all have no domain to report, and
+/// `0` is a legal domain that must not stand in for any of them.
+///
+/// Returns `NROS_RET_UNSUPPORTED` in a build with no RMW (`rmw-cffi` off):
+/// there is no session, so there is no resolved domain to read.
+///
+/// # Safety
+/// * `node` must be NULL or point to a valid `nros_node_t`.
+/// * `domain_id` must be NULL or writable.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_node_get_domain_id(
+    node: *const nros_node_t,
+    domain_id: *mut u32,
+) -> nros_ret_t {
+    validate_not_null!(node, domain_id);
+    let node_ref = &*node;
+    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+
+    #[cfg(feature = "rmw-cffi")]
+    {
+        match resolve_session_and_domain(node_ref) {
+            Some((_session, resolved)) => {
+                *domain_id = resolved;
+                NROS_RET_OK
+            }
+            None => NROS_RET_NOT_INIT,
+        }
+    }
+    #[cfg(not(feature = "rmw-cffi"))]
+    {
+        let _ = node_ref;
+        NROS_RET_UNSUPPORTED
+    }
+}
+
+/// The node's namespace and name as one string — `/ns/name`, the form that
+/// appears on the wire.
+///
+/// rcl's `rcl_node_get_fully_qualified_name`. Gap
+/// `c:node_get_fully_qualified_name` records that we exposed
+/// `rcl_node_get_name` and `rcl_node_get_namespace` separately and never
+/// their composition.
+///
+/// The composition is NOT written here. It is `nros_node::names::expand_name`
+/// with the private-name source `~`, which is by definition
+/// `/<ns>/<node>` — the same seam every entity name on this node goes
+/// through (`Executor::resolve_entity_name_for`), so a node's FQN and its
+/// entities' FQNs can never disagree about namespace normalisation. A second
+/// `push(namespace); push('/'); push(name)` in the C layer is exactly
+/// RFC-0020's violation class 4 (name construction in a wrapper), and it is
+/// what the four sibling implementations of this already spelled differently.
+///
+/// **Divergence from rcl, deliberate:** rcl returns `const char *` into
+/// node-owned storage. We have no allocator and the node struct holds no
+/// composed buffer, so the caller supplies one. `NROS_RET_FULL` when it is
+/// too small — a truncated FQN names a different node.
+///
+/// # Safety
+/// * `node` must be NULL or point to a valid `nros_node_t`.
+/// * `output_name` must be NULL or writable for `output_size` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_node_get_fully_qualified_name(
+    node: *const nros_node_t,
+    output_name: *mut c_char,
+    output_size: usize,
+) -> nros_ret_t {
+    validate_not_null!(node, output_name);
+    let node_ref = &*node;
+    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+
+    let name = inline_str(&node_ref.name, node_ref.name_len);
+    if name.is_empty() {
+        return NROS_RET_NOT_INIT;
+    }
+    let namespace = inline_str(&node_ref.namespace, node_ref.namespace_len);
+
+    match nros_node::names::expand_name("~", name, namespace) {
+        Ok(fqn) => write_cstr_out(fqn.as_str(), output_name, output_size),
+        Err(()) => NROS_RET_FULL,
+    }
+}
+
+/// Expand `input_name` against this node's namespace and apply its remap
+/// rules — what a topic or service name a caller builds at runtime will
+/// actually become on the wire.
+///
+/// rcl's `rcl_node_resolve_name`. Gap `c:node_resolve_name` records the
+/// reason it was missing: our names are resolved at codegen/launch time
+/// (RFC-0046), so a C caller constructing one dynamically had no way to ask.
+///
+/// Forwards to `Executor::resolve_entity_name_for` — the identical call the
+/// registration paths in `executor.rs` make for every publisher,
+/// subscription, service and action. That is the point: this answers what
+/// creating the entity WOULD do, not what a parallel implementation thinks
+/// it would do.
+///
+/// `only_expand` is rcl's own parameter and carries rcl's meaning: `true`
+/// applies ROS 2 name expansion (`~`, relative → FQN) and ignores remap
+/// rules; `false` also applies them.
+///
+/// **Remaps live on the executor, so `only_expand == false` needs an
+/// executor-bound node** (`nros_executor_node_init`). On the legacy
+/// `rclc_node_init_default` path this returns `NROS_RET_NOT_INIT` rather than
+/// quietly expanding without the rules — silently dropping a routing rule is
+/// the failure this whole campaign exists to stop, and the caller who wants
+/// expansion alone can ask for it by passing `true`.
+///
+/// **Divergences from rcl, both forced:** no `rcl_allocator_t` (we have no
+/// allocator, so the caller owns the buffer and `NROS_RET_FULL` reports a
+/// short one), and no `is_service` (it selects between rcl's topic- and
+/// service-name VALIDATORS, which we do not ship; taking the argument and
+/// ignoring it would be the inert-parameter defect RFC-0089 §"The hazard"
+/// names).
+///
+/// # Safety
+/// * `node` must be NULL or point to a valid `nros_node_t`.
+/// * `input_name` must be NULL or a valid NUL-terminated C string.
+/// * `output_name` must be NULL or writable for `output_size` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_node_resolve_name(
+    node: *const nros_node_t,
+    input_name: *const c_char,
+    only_expand: bool,
+    output_name: *mut c_char,
+    output_size: usize,
+) -> nros_ret_t {
+    validate_not_null!(node, input_name, output_name);
+    let node_ref = &*node;
+    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
+
+    let Ok(source) = core::ffi::CStr::from_ptr(input_name).to_str() else {
+        return NROS_RET_INVALID_ARGUMENT;
+    };
+    if source.is_empty() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    let name = inline_str(&node_ref.name, node_ref.name_len);
+    if name.is_empty() {
+        return NROS_RET_NOT_INIT;
+    }
+    let namespace = inline_str(&node_ref.namespace, node_ref.namespace_len);
+
+    if only_expand {
+        return match nros_node::names::expand_name(source, name, namespace) {
+            Ok(expanded) => write_cstr_out(expanded.as_str(), output_name, output_size),
+            Err(()) => NROS_RET_INVALID_ARGUMENT,
+        };
+    }
+
+    // Remap rules live in the executor's table. No executor reachable means
+    // the rules are unreadable, NOT absent — say so.
+    if !node_ref.is_multi_session() {
+        return NROS_RET_NOT_INIT;
+    }
+    if !node_ref_is_live(node_ref_of(node)) {
+        return NROS_RET_STALE_NODE;
+    }
+    let exec_mut = &mut *(node_ref.executor as *mut crate::executor::nros_executor_t);
+    let rust_exec = crate::executor::get_executor(&mut exec_mut._opaque);
+    match rust_exec.resolve_entity_name_for(name, namespace, source) {
+        Ok(resolved) => write_cstr_out(resolved.as_str(), output_name, output_size),
+        Err(()) => NROS_RET_INVALID_ARGUMENT,
+    }
+}
+
 #[cfg(kani)]
 mod verification {
     use super::*;
@@ -680,25 +968,25 @@ mod verification {
         let mut support = crate::support::nros_support_get_zero_initialized();
         assert_eq!(
             unsafe {
-                nros_node_init(
+                rclc_node_init_default(
                     core::ptr::null_mut(),
-                    &support,
                     name.as_ptr() as *const core::ffi::c_char,
                     ns.as_ptr() as *const core::ffi::c_char,
+                    &support,
                 )
             },
             NROS_RET_INVALID_ARGUMENT,
         );
 
         // NULL support → INVALID_ARGUMENT
-        let mut node = nros_node_get_zero_initialized();
+        let mut node = rcl_get_zero_initialized_node();
         assert_eq!(
             unsafe {
-                nros_node_init(
+                rclc_node_init_default(
                     &mut node,
-                    core::ptr::null(),
                     name.as_ptr() as *const core::ffi::c_char,
                     ns.as_ptr() as *const core::ffi::c_char,
+                    core::ptr::null(),
                 )
             },
             NROS_RET_INVALID_ARGUMENT,
@@ -707,11 +995,11 @@ mod verification {
         // NULL name → INVALID_ARGUMENT
         assert_eq!(
             unsafe {
-                nros_node_init(
+                rclc_node_init_default(
                     &mut node,
-                    &support,
                     core::ptr::null(),
                     ns.as_ptr() as *const core::ffi::c_char,
+                    &support,
                 )
             },
             NROS_RET_INVALID_ARGUMENT,
@@ -720,11 +1008,11 @@ mod verification {
         // NULL namespace → INVALID_ARGUMENT
         assert_eq!(
             unsafe {
-                nros_node_init(
+                rclc_node_init_default(
                     &mut node,
-                    &support,
                     name.as_ptr() as *const core::ffi::c_char,
                     core::ptr::null(),
+                    &support,
                 )
             },
             NROS_RET_INVALID_ARGUMENT,
@@ -734,7 +1022,7 @@ mod verification {
     #[kani::proof]
     #[kani::unwind(5)]
     fn node_zero_initialized_state() {
-        let node = nros_node_get_zero_initialized();
+        let node = rcl_get_zero_initialized_node();
         assert_eq!(node.state, nros_node_state_t::NROS_NODE_STATE_UNINITIALIZED);
         assert!(node.support.is_null());
     }
@@ -776,7 +1064,7 @@ impl nros_node_t {
 
     /// Phase 156 Sub-bug D — true on Nodes bound via
     /// `nros_executor_node_init` (multi-Session bridge path). False on
-    /// nodes initialised via `nros_node_init` / `nros_node_init_ex`
+    /// nodes initialised via `rclc_node_init_default` / `nros_node_init_ex`
     /// (legacy single-Session path).
     #[inline]
     pub(crate) fn is_multi_session(&self) -> bool {
@@ -922,7 +1210,7 @@ mod node_ref_tests {
         );
     }
 
-    /// phase-379 W4 — a reference minted before `nros_node_fini` stops
+    /// phase-379 W4 — a reference minted before `rcl_node_fini` stops
     /// resolving after it.
     ///
     /// This is the whole behavioural change. Before W4 the entity held a
@@ -983,5 +1271,243 @@ mod node_ref_tests {
             0,
             "wrapping past u32::MAX must skip 0, or a zeroed struct would resolve"
         );
+    }
+}
+
+// ============================================================================
+// phase-417 W5.c tests
+// ============================================================================
+
+#[cfg(test)]
+mod accessor_tests {
+    use super::*;
+
+    /// A node on the legacy (`rclc_node_init_default`) path: initialised, not bound
+    /// to an executor.
+    fn unbound_node(name: &str, namespace: &str) -> nros_node_t {
+        let mut node = nros_node_t::default();
+        node.name[..name.len()].copy_from_slice(name.as_bytes());
+        node.name_len = name.len();
+        node.namespace[..namespace.len()].copy_from_slice(namespace.as_bytes());
+        node.namespace_len = namespace.len();
+        node.state = nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
+        node
+    }
+
+    fn read_out(buf: &[u8]) -> &str {
+        let nul = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+        core::str::from_utf8(&buf[..nul]).unwrap()
+    }
+
+    #[test]
+    fn is_valid_tracks_the_node_state() {
+        let mut node = unbound_node("talker", "/");
+        assert!(unsafe { rcl_node_is_valid(&node) });
+
+        assert_eq!(unsafe { rcl_node_fini(&mut node) }, NROS_RET_OK);
+        assert!(
+            !unsafe { rcl_node_is_valid(&node) },
+            "a finalised node is not usable"
+        );
+
+        assert!(!unsafe { rcl_node_is_valid(core::ptr::null()) });
+        assert!(!unsafe { rcl_node_is_valid(&nros_node_t::default()) });
+    }
+
+    /// The FQN is namespace + name, normalised by the SAME seam entity names
+    /// go through. The root-namespace collapse is the case a hand-written
+    /// `push(ns); push('/'); push(name)` gets wrong: it yields `//talker`.
+    #[test]
+    fn fully_qualified_name_composes_namespace_and_name() {
+        for (ns, expected) in [
+            ("/", "/talker"),
+            ("", "/talker"),
+            ("/sensing", "/sensing/talker"),
+            // A namespace written without its leading slash normalises, the
+            // same way it does for every topic on this node.
+            ("sensing", "/sensing/talker"),
+            ("/sensing/", "/sensing/talker"),
+        ] {
+            let node = unbound_node("talker", ns);
+            let mut buf = [0u8; 64];
+            assert_eq!(
+                unsafe {
+                    nros_node_get_fully_qualified_name(
+                        &node,
+                        buf.as_mut_ptr() as *mut c_char,
+                        buf.len(),
+                    )
+                },
+                NROS_RET_OK,
+                "namespace {ns:?}"
+            );
+            assert_eq!(read_out(&buf), expected, "namespace {ns:?}");
+        }
+    }
+
+    /// A short buffer is an error, never a truncated name. A truncated FQN
+    /// names a different node.
+    #[test]
+    fn fully_qualified_name_refuses_a_short_buffer() {
+        let node = unbound_node("talker", "/sensing");
+        // "/sensing/talker" is 15 bytes + NUL.
+        let mut exact = [0u8; 16];
+        assert_eq!(
+            unsafe {
+                nros_node_get_fully_qualified_name(
+                    &node,
+                    exact.as_mut_ptr() as *mut c_char,
+                    exact.len(),
+                )
+            },
+            NROS_RET_OK
+        );
+        assert_eq!(read_out(&exact), "/sensing/talker");
+
+        let mut short = [0xAAu8; 15];
+        assert_eq!(
+            unsafe {
+                nros_node_get_fully_qualified_name(
+                    &node,
+                    short.as_mut_ptr() as *mut c_char,
+                    short.len(),
+                )
+            },
+            NROS_RET_FULL
+        );
+        assert!(
+            short.iter().all(|&b| b == 0xAA),
+            "a refused write must leave the caller's buffer untouched"
+        );
+    }
+
+    /// `only_expand` applies ROS 2 name expansion and nothing else, which is
+    /// answerable without an executor.
+    #[test]
+    fn resolve_name_expands_against_the_nodes_namespace() {
+        let node = unbound_node("filter", "/sensing");
+        for (input, expected) in [
+            ("/scan", "/scan"),
+            ("scan", "/sensing/scan"),
+            ("~/points", "/sensing/filter/points"),
+        ] {
+            let mut buf = [0u8; 64];
+            let input_c = alloc_cstr(input);
+            assert_eq!(
+                unsafe {
+                    nros_node_resolve_name(
+                        &node,
+                        input_c.as_ptr() as *const c_char,
+                        true,
+                        buf.as_mut_ptr() as *mut c_char,
+                        buf.len(),
+                    )
+                },
+                NROS_RET_OK,
+                "input {input:?}"
+            );
+            assert_eq!(read_out(&buf), expected, "input {input:?}");
+        }
+    }
+
+    /// Remap rules live on the executor. Asking for them on a node that is
+    /// not executor-bound must FAIL rather than quietly returning the
+    /// expansion — a silently dropped routing rule is the failure class this
+    /// campaign exists to stop.
+    #[test]
+    fn resolve_name_refuses_remaps_it_cannot_read() {
+        let node = unbound_node("filter", "/sensing");
+        let input_c = alloc_cstr("scan");
+        let mut buf = [0xAAu8; 64];
+        assert_eq!(
+            unsafe {
+                nros_node_resolve_name(
+                    &node,
+                    input_c.as_ptr() as *const c_char,
+                    false,
+                    buf.as_mut_ptr() as *mut c_char,
+                    buf.len(),
+                )
+            },
+            NROS_RET_NOT_INIT
+        );
+        assert!(
+            buf.iter().all(|&b| b == 0xAA),
+            "the refusal must not look like a successful expansion"
+        );
+    }
+
+    #[test]
+    fn resolve_name_refuses_null_and_empty_input() {
+        let node = unbound_node("filter", "/sensing");
+        let mut buf = [0u8; 64];
+        let empty = alloc_cstr("");
+        assert_eq!(
+            unsafe {
+                nros_node_resolve_name(
+                    &node,
+                    core::ptr::null(),
+                    true,
+                    buf.as_mut_ptr() as *mut c_char,
+                    buf.len(),
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            unsafe {
+                nros_node_resolve_name(
+                    &node,
+                    empty.as_ptr() as *const c_char,
+                    true,
+                    buf.as_mut_ptr() as *mut c_char,
+                    buf.len(),
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT
+        );
+    }
+
+    /// The domain is not readable from a node with no session behind it.
+    /// `0` is a legal domain, so it must not stand in for "unknown".
+    #[test]
+    fn domain_id_on_a_session_less_node_is_reported_not_guessed() {
+        let node = unbound_node("talker", "/");
+        let mut domain: u32 = 0xFFFF;
+        let rc = unsafe { nros_node_get_domain_id(&node, &mut domain) };
+        assert_ne!(rc, NROS_RET_OK);
+        assert_eq!(domain, 0xFFFF, "a failed read must not write the out-param");
+
+        assert_eq!(
+            unsafe { nros_node_get_domain_id(&node, core::ptr::null_mut()) },
+            NROS_RET_INVALID_ARGUMENT
+        );
+        assert_eq!(
+            unsafe { nros_node_get_domain_id(core::ptr::null(), &mut domain) },
+            NROS_RET_INVALID_ARGUMENT
+        );
+    }
+
+    /// `inline_str` stops at the first NUL AND at the buffer bound, because a
+    /// caller-built struct can disagree with itself.
+    #[test]
+    fn inline_str_is_bounded_by_both_the_length_and_the_nul() {
+        let mut buf = [0u8; 8];
+        buf[..3].copy_from_slice(b"abc");
+        assert_eq!(inline_str(&buf, 3), "abc");
+        // A length past the NUL still stops at the NUL.
+        assert_eq!(inline_str(&buf, 8), "abc");
+        // A length past the buffer is clamped rather than read out of bounds.
+        assert_eq!(inline_str(&buf, 999), "abc");
+    }
+
+    /// Test-only NUL-terminated byte buffer. The crate is `no_std` but its
+    /// test profile is hosted, so a `Vec` is available here and nowhere in
+    /// the shipped code.
+    fn alloc_cstr(s: &str) -> std::vec::Vec<u8> {
+        let mut v = std::vec::Vec::with_capacity(s.len() + 1);
+        v.extend_from_slice(s.as_bytes());
+        v.push(0);
+        v
     }
 }

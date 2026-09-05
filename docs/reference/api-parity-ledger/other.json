@@ -92,14 +92,17 @@
     "why": "rcl's zero-init idiom under our naming, applied to the caller-owned `nros_wake_state_t` slot a polling entity's wake callback is registered with. Naming: see `c:publisher_get_zero_initialized` in the pubsub stage (ours is method-style `nros_<thing>_get_zero_initialized` at all 15 sites, rcl's is `rcl_get_zero_initialized_<thing>`); the slot itself: see `c:service_set_wake_callback`."
   },
   "cpp:ContentFilterOptions": {
+    "disposition": "refuse-loud",
     "verdict": "declined",
     "why": "content-filtered topics are a DDS feature: the subscriber ships an SQL-ish expression the WRITER evaluates. Only one of our backends is DDS, and the filter would have to be a no-op on zenoh and XRCE -- a QoS-shaped promise two of three transports cannot keep. Same reasoning `rmw-api-parity.py` already records for `rmw_*_content_filter`."
   },
   "cpp:ImplicitTypeAdapter": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "see `cpp:TypeAdapter`."
   },
   "cpp:SignalHandlerOptions": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclcpp's selector for WHICH signal handlers `rclcpp::init` installs. We install none: see `cpp:install_signal_handlers` in the init stage -- there is no POSIX signal delivery on Zephyr, FreeRTOS or bare-metal, and an image is stopped by its RTOS, a watchdog or a power rail."
   },
@@ -160,26 +163,32 @@
     "why": "see `cpp:TickCtx`."
   },
   "cpp:TopicStatisticsState": {
+    "disposition": "refuse-loud",
     "verdict": "declined",
     "why": "the on/off knob for rclcpp's per-subscription topic statistics, which measure message age and inter-arrival period and PUBLISH them as `statistics_msgs/MetricsMessage`. A user loses built-in latency/period telemetry. The project's answer is RFC-0052's on-target contract monitor instead (`nros::monitor`: a bounded table of specs checked in the executor, violations drained by the app) -- an image cannot afford a second publisher per subscription nor a rolling sample window per topic."
   },
   "cpp:TypeAdapter": {
+    "disposition": "refuse-loud",
     "verdict": "declined",
     "why": "rclcpp's type adaptation: publish a user's own struct on a topic whose wire type is a generated message, with a `TypeAdapter` specialisation converting between them. A user loses that and converts into the generated type by hand before publishing. Two things stop it being merely undone: the conversion needs somewhere to put the converted message and there is no allocator, and the machinery is template metaprogramming over `std::string`/`std::vector` members that the freestanding, `-fno-exceptions` C++ profile (RFC-0018) does not compile. Neither our C nor our Rust has an equivalent either."
   },
   "cpp:WaitResultKind": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "the `{Ready, Timeout, Empty}` outcome of `WaitSet::wait()`. rclcpp's `Waitable` protocol; see the pubsub stage's `cpp:Waitable::take_data`. RFC-0002's executor drives entities through the RMW vtable, so there is no wait set and no wait result."
   },
   "cpp:adapt_type": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "see `cpp:TypeAdapter`."
   },
   "cpp:add_will_overflow": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclcpp's saturating-arithmetic predicates, whose reason to exist is guarding `Time`/`Duration` nanosecond arithmetic against overflow. Our C++ has no clock, time or duration type at all (the timer stage records that; C and Rust both do have one), so there is nothing here for them to guard -- a user loses the guards along with the arithmetic they guard. Not a platform constraint: the check compiles to `__builtin_add_overflow` anywhere."
   },
   "cpp:add_will_underflow": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "see `cpp:add_will_overflow`."
   },
@@ -204,6 +213,7 @@
     "why": "phase-408 / issue 0964. Asks whether a message type carries a DERIVED serialized-size bound, as opposed to the estimate `SERIALIZED_SIZE_MAX` states for every type including unbounded ones. It is the predicate the receive buffers branch on: derived -> use it, not derived -> keep today's behaviour. rclcpp has nothing to compare because with an allocator the question does not arise."
   },
   "cpp:is_type_adapter": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "see `cpp:TypeAdapter`."
   },
@@ -216,10 +226,12 @@
     "why": "phase-408 / issue 0964. `nros::rx_size_bound<M>::value` is the RECEIVE bound a message type derives for itself — max(XCDR1, XCDR2) from `nros_serdes::size::max_serialized_size`, the same function the Rust runtime const uses. rclcpp has no counterpart because it has an allocator: a subscription there grows its buffer, so no caller ever needs to name a capacity. Here the buffer is static and the number decides whether a sample fits or is dropped at the transport. A type with NO bound gets a poisoned template whose static_assert names the member costing it, rather than a plausible estimate."
   },
   "cpp:sub_will_overflow": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "see `cpp:add_will_overflow`."
   },
   "cpp:sub_will_underflow": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "see `cpp:add_will_overflow`."
   },
@@ -248,14 +260,17 @@
     "why": "the subscriber-side table: take-age contracts key different endpoints and need no publish counter. See `rust:MonitorSpec`."
   },
   "rust:ArrayValue": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:BaseType": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:BoundedSequenceValue": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
@@ -336,202 +351,252 @@
     "why": "the FFI discriminant the `nros::node!` trampoline `__nros_node_<pkg>_dispatch_strategy` returns. See `rust:DispatchStrategy`."
   },
   "rust:DynamicBoundedSequence": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedSequence::as_slice": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedSequence::upper_bound": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedSequenceMut": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedSequenceMut::as_mut_slice": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedSequenceMut::as_slice": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedSequenceMut::clear": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedSequenceMut::try_reset": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedSequenceMut::upper_bound": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedString": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedString::upper_bound": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedStringMut": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedStringMut::try_assign": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedStringMut::upper_bound": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedWString": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedWString::upper_bound": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedWStringMut": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedWStringMut::try_assign": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicBoundedWStringMut::upper_bound": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessage": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessage::convert_from_rmw_message": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessage::convert_into_rmw_message": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessage::get": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessage::get_mut": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessage::iter": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessage::iter_mut": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessage::new": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessage::structure": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessage::view": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessage::view_mut": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessageLibraryCache": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessageLibraryCache::get_or_load": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessageLibraryCache::unload": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessageView": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessageView::get": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessageView::iter": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessageView::structure": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessageViewMut": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessageViewMut::get": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessageViewMut::get_mut": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessageViewMut::iter": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessageViewMut::iter_mut": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicMessageViewMut::structure": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicSequence": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicSequence::as_slice": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicSequenceMut": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicSequenceMut::as_mut_slice": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicSequenceMut::as_slice": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicSequenceMut::clear": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:DynamicSequenceMut::reset": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
@@ -568,38 +633,47 @@
     "why": "the one-call collapse of those three. See `rust:IntegrityStatus`."
   },
   "rust:IntoPrimitiveOptions": {
+    "disposition": "refuse-loud",
     "verdict": "declined",
     "why": "rclrs's fluent per-create-site options: `node.create_publisher(\"topic\".keep_last(10).reliable())` builds a `PrimitiveOptions` out of a `&str` and folds it into the entity's QoS. A user loses that spelling AT THE CREATE SITE. QoS and entity options are COMPILE-time here (RFC-0036/0045) -- an entity is declared with a `QoSProfile` const, not with an options value assembled per call -- so there is nothing for the builder to produce. The policy vocabulary itself is not lost: `QoSProfile` carries `keep_last`/`keep_all`/`reliable`/`best_effort`/`volatile`/`transient_local` under exactly these names, plus `deadline_ms`/`lifespan_ms`/`liveliness_kind`/`liveliness_lease_ms`/`avoid_ros_namespace_conventions` as fields. See `rust:QoSProfile`."
   },
   "rust:IntoPrimitiveOptions::avoid_ros_namespace_conventions": {
+    "disposition": "refuse-loud",
     "verdict": "declined",
     "why": "see `rust:IntoPrimitiveOptions`."
   },
   "rust:IntoPrimitiveOptions::best_effort": {
+    "disposition": "refuse-loud",
     "verdict": "declined",
     "why": "see `rust:IntoPrimitiveOptions`."
   },
   "rust:IntoPrimitiveOptions::into_primitive_options": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "see `rust:IntoPrimitiveOptions`."
   },
   "rust:IntoPrimitiveOptions::keep_all": {
+    "disposition": "refuse-loud",
     "verdict": "declined",
     "why": "see `rust:IntoPrimitiveOptions`."
   },
   "rust:IntoPrimitiveOptions::keep_last": {
+    "disposition": "refuse-loud",
     "verdict": "declined",
     "why": "see `rust:IntoPrimitiveOptions`."
   },
   "rust:IntoPrimitiveOptions::reliable": {
+    "disposition": "refuse-loud",
     "verdict": "declined",
     "why": "see `rust:IntoPrimitiveOptions`."
   },
   "rust:IntoPrimitiveOptions::transient_local": {
+    "disposition": "refuse-loud",
     "verdict": "declined",
     "why": "see `rust:IntoPrimitiveOptions`."
   },
   "rust:IntoPrimitiveOptions::volatile": {
+    "disposition": "refuse-loud",
     "verdict": "declined",
     "why": "see `rust:IntoPrimitiveOptions`."
   },
@@ -628,18 +702,22 @@
     "why": "that capacity (128 bytes), and the bound `nros_node::names::MAX_RESOLVED_NAME_LEN` is matched to. See `rust:MetadataString`."
   },
   "rust:MessageFieldInfo": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:MessageStructure": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:MessageStructure::get_field_info": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
   "rust:MessageTypeName": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
@@ -680,14 +758,17 @@
     "why": "see `rust:EXECUTOR_SIZE`."
   },
   "rust:PrimitiveOptions": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "the value `IntoPrimitiveOptions` produces -- a name plus an optional `QoSProfile`. See `rust:IntoPrimitiveOptions`."
   },
   "rust:PrimitiveOptions::apply_to": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "folds the built options into a `QoSProfile`. The equivalent fold exists here and is BAKED rather than per-call: `QoSProfile::apply_overrides`. See `rust:IntoPrimitiveOptions`."
   },
   "rust:PrimitiveOptions::new": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "see `rust:IntoPrimitiveOptions`."
   },
@@ -808,6 +889,7 @@
     "why": "see `rust:SafetyValidator`."
   },
   "rust:SequenceValue": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
@@ -864,6 +946,7 @@
     "why": "see `rust:SessionSpec`."
   },
   "rust:SimpleValue": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
@@ -944,6 +1027,7 @@
     "why": "added by rclrs 0.7.0 (the surface moved from 0.5.1 when this campaign pinned the latest release). Part of its action/goal model -- see `rust:AcceptedGoal` for the typestate argument and why ours is arena-addressed."
   },
   "rust:ValueKind": {
+    "disposition": "absent",
     "verdict": "declined",
     "why": "rclrs 0.7.0's dynamic-message surface: load a type's structure at RUNTIME by name and read or build a message without compiling against it. It needs the introspection typesupport library loaded from disk plus heap for the field table. An image links the types it uses; the same decision the pubsub stage records for rclcpp's `GenericPublisher`/`GenericSubscription`."
   },
@@ -1005,7 +1089,7 @@
   },
   "rust:EXECUTOR_VALUE_SIZE": {
     "verdict": "extension",
-    "why": "An `export_size!` probe (`packages/api/nros/src/sizes.rs:109`), not a user-facing API: it publishes `size_of::<Executor>()` so the generated C++ header can hold an executor BY VALUE (`nros-build-helpers/src/cpp.rs:283` bakes it as `NROS_EXECUTOR_VALUE_SIZE`). rclcpp needs no such thing because it heap-allocates its executor; here the whole point is that there is no allocator, so the size has to cross from Rust to C++ at build time. This is the sizes-header mirror whose drift is its own recurring issue family (0088/0114/0122/0123/0245/0268) -- the constant is the mechanism, not an addition to the user surface."
+    "why": "MERGED 2026-09-04 during the phase-417 rebase onto main, from two independent rows that both landed -- this branch's W-M2 note and main's own filing. JSON keeps the LAST, so one author's reasoning was being discarded silently. Both said `extension`; the prose is combined here and neither is lost.\n\nAn `export_size!` probe (`packages/api/nros/src/sizes.rs:109`), not a user-facing API: it publishes `size_of::<Executor>()` so the generated C++ header can hold an executor BY VALUE (`nros-build-helpers/src/cpp.rs:283` bakes it as `NROS_EXECUTOR_VALUE_SIZE`). rclcpp needs no such thing because it heap-allocates its executor; here the whole point is that there is no allocator, so the size has to cross from Rust to C++ at build time. This is the sizes-header mirror whose drift is its own recurring issue family (0088/0114/0122/0123/0245/0268) -- the constant is the mechanism, not an addition to the user surface.\n\nphase-417 W-M2 note: ledgered because `--require-disposition` armed the gate and this landed on main in parallel.\n\nSee `rust:EXECUTOR_SIZE`. A `size_of` export in `nros::sizes`, consumed by `nros-build-helpers` (`c.rs:152`, `cpp.rs:111`) to size the C and C++ opaque storage that holds an `Executor` BY VALUE. rclrs has no counterpart because it never hands an executor across an FFI boundary into caller-owned storage; ours must, and the number has to be a build-time fact rather than a guess, which is what the export makes it."
   },
   "cpp:SerializationFormat": {
     "verdict": "extension",
@@ -1022,5 +1106,276 @@
   "cpp:linked_format_name": {
     "verdict": "extension",
     "why": "phase-421 W4 / RFC-0088 D5, landed 2026-09-04. Ours-only, with no upstream name to align to: neither the recorded rclcpp nor rclc surface contains \"SerializationFormat\" or \"linked_format\" at all. It cannot — in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and never a question the API is asked. RFC-0088 makes it a PROVIDER instead: a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD via a `const {}` check. The printable spelling of `linked_format()`, for diagnostics and for the node accessor `Node::serialization_format()` classified separately in node.json."
+  },
+  "rust:BoardTransportConfig": {
+    "verdict": "extension",
+    "why": "the trait a BOARD crate implements so the orchestration generator can write `nros.toml` `[[transport]]` values -- static IPv4, MAC, gateway, baud rate, WiFi SSID/password, NIC list -- into the board's own `Config` (RFC-0049). Every method has a default empty body because a board ignores what it has not got: a wired board ignores `set_ssid`, a board with a fused MAC ignores `set_mac`. rclrs has nothing equivalent because a hosted node inherits an already-configured network stack. Named `BoardTransportConfig` to avoid colliding with the transport-layer `rust:TransportConfig`. Its sibling `BoardConfig` is in the boot stage; the taxonomy split them because only one of the two contains the string `BoardConfig`."
+  },
+  "rust:BoardTransportConfig::set_baudrate": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_gateway": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_interfaces": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_ipv4": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_mac": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_password": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:BoardTransportConfig::set_ssid": {
+    "verdict": "extension",
+    "why": "see `rust:BoardTransportConfig`."
+  },
+  "rust:DEFAULT_LOGGER": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:FormatBuffer": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:FormatBuffer::as_str": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:FormatBuffer::new": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:FormatBuffer::truncated": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:LogCrateOnceFlag": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:LogSink": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:LogSink::flush": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:MAX_ADDED_SINKS": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:MAX_LOGGERS": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:MAX_LOGGER_NAME_LEN": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:Record": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s surface, now re-exported from the `nros` facade. It was reachable only as a crate dependency before, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write` — which is why `std::println!` was the path of least resistance from the facade, and that is FATAL on Zephyr native_sim (issue 0589: recursive `zvfs_write`, stack exhaustion, no message). rclrs has no counterpart for the sink and arena types; `Logger`/`Severity` mirror `rclcpp::Logger` in role."
+  },
+  "rust:Throttle": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:Throttle::last_emitted_ns": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:Throttle::new": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:Throttle::reset": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:Throttle::should_log": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:add_sink": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:added_sink_count": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:early_depth": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:flush": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:format_buffer_capacity": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:interval_ms_to_ns": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:nros_debug": {
+    "rename": {
+      "from": "rclrs::log_debug",
+      "status": "blocked-needs-decision",
+      "to": "nros::nros_debug"
+    },
+    "verdict": "rename",
+    "why": "phase-417 W4.d — rclrs spells this `rclrs::log_debug`; we spell it `nros_debug`. Same capability, different name, so this is a RENAME and not the `extension` it was first filed as. rclrs's logging macros were overlooked because the correlator pairs on NAME and `log_info` never matched `nros_info`.\n\nNot yet executed. RFC-0089's end state is that we carry ROS 2's names, and the rename lands LAST -- after the shapes match -- because renaming first relabels a gap without closing one. The decision it is blocked on: rclrs says `log_info!`, rclcpp says `RCLCPP_INFO`, and C already ships `NROS_LOG_INFO`. Following each language's own upstream is defensible; one spelling for all three is not obviously right."
+  },
+  "rust:nros_debug_throttle": {
+    "provides": [
+      "rclrs::log_debug"
+    ],
+    "verdict": "divergence",
+    "why": "phase-417 W4.d — a RE-MAP, not an addition. rclrs expresses throttling as a PARAMETER on one macro -- `log_info!(logger, throttle = Duration, \"..\")` via `LogParams`/`ToLogParams` -- where we ship a separate macro per severity. Same capability, decomposed differently: a parameter list needs named arguments the macro would have to parse off an arbitrary prefix, and a distinct name is what makes the throttled path resolvable at expansion.\n\nThe clock-reading form; without `nros-log/platform-clock` it is a `compile_error!` rather than a throttle that silently admits everything, and `*_throttle_at` takes the caller's timestamp instead."
+  },
+  "rust:nros_debug_throttle_at": {
+    "provides": [
+      "rclrs::log_debug"
+    ],
+    "verdict": "divergence",
+    "why": "phase-417 W4.d — a RE-MAP, not an addition. rclrs expresses throttling as a PARAMETER on one macro -- `log_info!(logger, throttle = Duration, \"..\")` via `LogParams`/`ToLogParams` -- where we ship a separate macro per severity. Same capability, decomposed differently: a parameter list needs named arguments the macro would have to parse off an arbitrary prefix, and a distinct name is what makes the throttled path resolvable at expansion.\n\nThe `_at` form takes the caller's `now_ns`. It exists because a target without `nros-log/platform-clock` has no time base, and a throttle with no clock admits EVERY record -- so the clock-reading form is a `compile_error!` there and this is the form that still works."
+  },
+  "rust:nros_error": {
+    "rename": {
+      "from": "rclrs::log_error",
+      "status": "blocked-needs-decision",
+      "to": "nros::nros_error"
+    },
+    "verdict": "rename",
+    "why": "phase-417 W4.d — rclrs spells this `rclrs::log_error`; we spell it `nros_error`. Same capability, different name, so this is a RENAME and not the `extension` it was first filed as. rclrs's logging macros were overlooked because the correlator pairs on NAME and `log_info` never matched `nros_info`.\n\nNot yet executed. RFC-0089's end state is that we carry ROS 2's names, and the rename lands LAST -- after the shapes match -- because renaming first relabels a gap without closing one. The decision it is blocked on: rclrs says `log_info!`, rclcpp says `RCLCPP_INFO`, and C already ships `NROS_LOG_INFO`. Following each language's own upstream is defensible; one spelling for all three is not obviously right."
+  },
+  "rust:nros_error_throttle": {
+    "provides": [
+      "rclrs::log_error"
+    ],
+    "verdict": "divergence",
+    "why": "phase-417 W4.d — a RE-MAP, not an addition. rclrs expresses throttling as a PARAMETER on one macro -- `log_info!(logger, throttle = Duration, \"..\")` via `LogParams`/`ToLogParams` -- where we ship a separate macro per severity. Same capability, decomposed differently: a parameter list needs named arguments the macro would have to parse off an arbitrary prefix, and a distinct name is what makes the throttled path resolvable at expansion.\n\nThe clock-reading form; without `nros-log/platform-clock` it is a `compile_error!` rather than a throttle that silently admits everything, and `*_throttle_at` takes the caller's timestamp instead."
+  },
+  "rust:nros_error_throttle_at": {
+    "provides": [
+      "rclrs::log_error"
+    ],
+    "verdict": "divergence",
+    "why": "phase-417 W4.d — a RE-MAP, not an addition. rclrs expresses throttling as a PARAMETER on one macro -- `log_info!(logger, throttle = Duration, \"..\")` via `LogParams`/`ToLogParams` -- where we ship a separate macro per severity. Same capability, decomposed differently: a parameter list needs named arguments the macro would have to parse off an arbitrary prefix, and a distinct name is what makes the throttled path resolvable at expansion.\n\nThe `_at` form takes the caller's `now_ns`. It exists because a target without `nros-log/platform-clock` has no time base, and a throttle with no clock admits EVERY record -- so the clock-reading form is a `compile_error!` there and this is the form that still works."
+  },
+  "rust:nros_fatal": {
+    "rename": {
+      "from": "rclrs::log_fatal",
+      "status": "blocked-needs-decision",
+      "to": "nros::nros_fatal"
+    },
+    "verdict": "rename",
+    "why": "phase-417 W4.d — rclrs spells this `rclrs::log_fatal`; we spell it `nros_fatal`. Same capability, different name, so this is a RENAME and not the `extension` it was first filed as. rclrs's logging macros were overlooked because the correlator pairs on NAME and `log_info` never matched `nros_info`.\n\nNot yet executed. RFC-0089's end state is that we carry ROS 2's names, and the rename lands LAST -- after the shapes match -- because renaming first relabels a gap without closing one. The decision it is blocked on: rclrs says `log_info!`, rclcpp says `RCLCPP_INFO`, and C already ships `NROS_LOG_INFO`. Following each language's own upstream is defensible; one spelling for all three is not obviously right."
+  },
+  "rust:nros_fatal_throttle": {
+    "provides": [
+      "rclrs::log_fatal"
+    ],
+    "verdict": "divergence",
+    "why": "phase-417 W4.d — a RE-MAP, not an addition. rclrs expresses throttling as a PARAMETER on one macro -- `log_info!(logger, throttle = Duration, \"..\")` via `LogParams`/`ToLogParams` -- where we ship a separate macro per severity. Same capability, decomposed differently: a parameter list needs named arguments the macro would have to parse off an arbitrary prefix, and a distinct name is what makes the throttled path resolvable at expansion.\n\nThe clock-reading form; without `nros-log/platform-clock` it is a `compile_error!` rather than a throttle that silently admits everything, and `*_throttle_at` takes the caller's timestamp instead."
+  },
+  "rust:nros_fatal_throttle_at": {
+    "provides": [
+      "rclrs::log_fatal"
+    ],
+    "verdict": "divergence",
+    "why": "phase-417 W4.d — a RE-MAP, not an addition. rclrs expresses throttling as a PARAMETER on one macro -- `log_info!(logger, throttle = Duration, \"..\")` via `LogParams`/`ToLogParams` -- where we ship a separate macro per severity. Same capability, decomposed differently: a parameter list needs named arguments the macro would have to parse off an arbitrary prefix, and a distinct name is what makes the throttled path resolvable at expansion.\n\nThe `_at` form takes the caller's `now_ns`. It exists because a target without `nros-log/platform-clock` has no time base, and a throttle with no clock admits EVERY record -- so the clock-reading form is a `compile_error!` there and this is the form that still works."
+  },
+  "rust:nros_info": {
+    "rename": {
+      "from": "rclrs::log_info",
+      "status": "blocked-needs-decision",
+      "to": "nros::nros_info"
+    },
+    "verdict": "rename",
+    "why": "phase-417 W4.d — rclrs spells this `rclrs::log_info`; we spell it `nros_info`. Same capability, different name, so this is a RENAME and not the `extension` it was first filed as. rclrs's logging macros were overlooked because the correlator pairs on NAME and `log_info` never matched `nros_info`.\n\nNot yet executed. RFC-0089's end state is that we carry ROS 2's names, and the rename lands LAST -- after the shapes match -- because renaming first relabels a gap without closing one. The decision it is blocked on: rclrs says `log_info!`, rclcpp says `RCLCPP_INFO`, and C already ships `NROS_LOG_INFO`. Following each language's own upstream is defensible; one spelling for all three is not obviously right."
+  },
+  "rust:nros_info_throttle": {
+    "provides": [
+      "rclrs::log_info"
+    ],
+    "verdict": "divergence",
+    "why": "phase-417 W4.d — a RE-MAP, not an addition. rclrs expresses throttling as a PARAMETER on one macro -- `log_info!(logger, throttle = Duration, \"..\")` via `LogParams`/`ToLogParams` -- where we ship a separate macro per severity. Same capability, decomposed differently: a parameter list needs named arguments the macro would have to parse off an arbitrary prefix, and a distinct name is what makes the throttled path resolvable at expansion.\n\nThe clock-reading form; without `nros-log/platform-clock` it is a `compile_error!` rather than a throttle that silently admits everything, and `*_throttle_at` takes the caller's timestamp instead."
+  },
+  "rust:nros_info_throttle_at": {
+    "provides": [
+      "rclrs::log_info"
+    ],
+    "verdict": "divergence",
+    "why": "phase-417 W4.d — a RE-MAP, not an addition. rclrs expresses throttling as a PARAMETER on one macro -- `log_info!(logger, throttle = Duration, \"..\")` via `LogParams`/`ToLogParams` -- where we ship a separate macro per severity. Same capability, decomposed differently: a parameter list needs named arguments the macro would have to parse off an arbitrary prefix, and a distinct name is what makes the throttled path resolvable at expansion.\n\nThe `_at` form takes the caller's `now_ns`. It exists because a target without `nros-log/platform-clock` has no time base, and a throttle with no clock admits EVERY record -- so the clock-reading form is a `compile_error!` there and this is the form that still works."
+  },
+  "rust:nros_trace": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:nros_trace_throttle": {
+    "verdict": "extension",
+    "why": "CORRECTED 2026-09-04 (phase-417 stage 6): this carried `provides: [\"rclrs::log_trace\"]`, and **`rclrs::log_trace` does not exist** -- rclrs's severity family stops at `debug`. The arrow was generated mechanically as `rclrs::log_<severity>` from the macro name during the throttle re-verdict, without checking the target resolves. That is the exact failure the `provides` authoring pass avoided by hand-writing every arrow, where two independent agents rejected ~76% of mechanically proposed candidates.\n\nThere is no upstream counterpart at TRACE, so this is an `extension`, not a re-map. See `rust:nros_trace`: rclrs has five severities and we have six.\n\nphase-417 W4.d — a RE-MAP, not an addition. rclrs expresses throttling as a PARAMETER on one macro -- `log_info!(logger, throttle = Duration, \"..\")` via `LogParams`/`ToLogParams` -- where we ship a separate macro per severity. Same capability, decomposed differently: a parameter list needs named arguments the macro would have to parse off an arbitrary prefix, and a distinct name is what makes the throttled path resolvable at expansion.\n\nThe clock-reading form; without `nros-log/platform-clock` it is a `compile_error!` rather than a throttle that silently admits everything, and `*_throttle_at` takes the caller's timestamp instead."
+  },
+  "rust:nros_trace_throttle_at": {
+    "verdict": "extension",
+    "why": "CORRECTED 2026-09-04 (phase-417 stage 6): this carried `provides: [\"rclrs::log_trace\"]`, and **`rclrs::log_trace` does not exist** -- rclrs's severity family stops at `debug`. The arrow was generated mechanically as `rclrs::log_<severity>` from the macro name during the throttle re-verdict, without checking the target resolves. That is the exact failure the `provides` authoring pass avoided by hand-writing every arrow, where two independent agents rejected ~76% of mechanically proposed candidates.\n\nThere is no upstream counterpart at TRACE, so this is an `extension`, not a re-map. See `rust:nros_trace`: rclrs has five severities and we have six.\n\nphase-417 W4.d — a RE-MAP, not an addition. rclrs expresses throttling as a PARAMETER on one macro -- `log_info!(logger, throttle = Duration, \"..\")` via `LogParams`/`ToLogParams` -- where we ship a separate macro per severity. Same capability, decomposed differently: a parameter list needs named arguments the macro would have to parse off an arbitrary prefix, and a distinct name is what makes the throttled path resolvable at expansion.\n\nThe `_at` form takes the caller's `now_ns`. It exists because a target without `nros-log/platform-clock` has no time base, and a throttle with no clock admits EVERY record -- so the clock-reading form is a `compile_error!` there and this is the form that still works."
+  },
+  "rust:nros_warn": {
+    "rename": {
+      "from": "rclrs::log_warn",
+      "status": "blocked-needs-decision",
+      "to": "nros::nros_warn"
+    },
+    "verdict": "rename",
+    "why": "phase-417 W4.d — rclrs spells this `rclrs::log_warn`; we spell it `nros_warn`. Same capability, different name, so this is a RENAME and not the `extension` it was first filed as. rclrs's logging macros were overlooked because the correlator pairs on NAME and `log_info` never matched `nros_info`.\n\nNot yet executed. RFC-0089's end state is that we carry ROS 2's names, and the rename lands LAST -- after the shapes match -- because renaming first relabels a gap without closing one. The decision it is blocked on: rclrs says `log_info!`, rclcpp says `RCLCPP_INFO`, and C already ships `NROS_LOG_INFO`. Following each language's own upstream is defensible; one spelling for all three is not obviously right."
+  },
+  "rust:nros_warn_throttle": {
+    "provides": [
+      "rclrs::log_warn"
+    ],
+    "verdict": "divergence",
+    "why": "phase-417 W4.d — a RE-MAP, not an addition. rclrs expresses throttling as a PARAMETER on one macro -- `log_info!(logger, throttle = Duration, \"..\")` via `LogParams`/`ToLogParams` -- where we ship a separate macro per severity. Same capability, decomposed differently: a parameter list needs named arguments the macro would have to parse off an arbitrary prefix, and a distinct name is what makes the throttled path resolvable at expansion.\n\nThe clock-reading form; without `nros-log/platform-clock` it is a `compile_error!` rather than a throttle that silently admits everything, and `*_throttle_at` takes the caller's timestamp instead."
+  },
+  "rust:nros_warn_throttle_at": {
+    "provides": [
+      "rclrs::log_warn"
+    ],
+    "verdict": "divergence",
+    "why": "phase-417 W4.d — a RE-MAP, not an addition. rclrs expresses throttling as a PARAMETER on one macro -- `log_info!(logger, throttle = Duration, \"..\")` via `LogParams`/`ToLogParams` -- where we ship a separate macro per severity. Same capability, decomposed differently: a parameter list needs named arguments the macro would have to parse off an arbitrary prefix, and a distinct name is what makes the throttled path resolvable at expansion.\n\nThe `_at` form takes the caller's `now_ns`. It exists because a target without `nros-log/platform-clock` has no time base, and a throttle with no clock admits EVERY record -- so the clock-reading form is a `compile_error!` there and this is the form that still works."
+  },
+  "rust:overflowed": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:severity_enabled_at_compile_time": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:severity_from_u8": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:throttle_admits": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
+  },
+  "rust:timestamp_available": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — asks whether the platform clock is available, so a caller can tell \"this record has no timestamp\" from \"this record happened at time zero\". ROS 2 has no counterpart because rcutils always has a clock; on a target built without `nros-log/platform-clock` ours does not, and the honest answer is a query rather than a zero that reads as a time. It is also what makes the C throttle's failure mode legible: with no clock a window admits every record, and `nros_log_timestamp_available()` is how a caller finds out before trusting a rate."
   }
 }

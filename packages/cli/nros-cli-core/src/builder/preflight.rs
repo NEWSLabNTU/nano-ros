@@ -178,19 +178,45 @@ fn rust_component_installed(component: &str) -> bool {
 /// a nix shell), this reports installed and lets the build speak for itself.
 /// Preflight exists to give a better message than the compiler, never to refuse
 /// a build the compiler would have accepted.
+/// The installed-target list, probed ONCE per process.
+///
+/// `None` means the probe could not answer -- no `rustup` on PATH, or it
+/// failed. Both callers then report the target as installed, because inventing
+/// a missing target is the worse error.
+///
+/// Probed once because the two failure modes are INDISTINGUISHABLE at the call
+/// site and only one of them is stable. "no rustup here" gives the same `Err`
+/// as a spawn that failed under load, and under an 80-way parallel build the
+/// second happens intermittently -- so two calls in one process could disagree,
+/// and `check()` would report a target as present that a caller had just
+/// measured as absent. Caching does not make the probe more accurate; it makes
+/// the process SELF-CONSISTENT, which is what a caller comparing two answers
+/// actually needs. Issue 0726's class.
+fn installed_rust_targets() -> &'static Option<Vec<String>> {
+    static CACHE: std::sync::OnceLock<Option<Vec<String>>> = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| {
+        let out = std::process::Command::new("rustup")
+            .args(["target", "list", "--installed"])
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        Some(
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .map(|l| l.trim().to_string())
+                .collect(),
+        )
+    })
+}
+
 fn rust_target_installed(target: &str) -> bool {
-    let Ok(out) = std::process::Command::new("rustup")
-        .args(["target", "list", "--installed"])
-        .output()
-    else {
-        return true;
-    };
-    if !out.status.success() {
-        return true;
+    match installed_rust_targets() {
+        // Cannot answer -- see above.
+        None => true,
+        Some(list) => list.iter().any(|l| l == target),
     }
-    String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .any(|l| l.trim() == target)
 }
 
 /// Render the problems as the message stage 3 fails with.
@@ -282,8 +308,21 @@ mod tests {
         // A triple no host has installed, and which is not a real target — so
         // this cannot pass by accident on a well-provisioned machine.
         let b = board("target = \"nros-not-a-real-triple\"\n");
+        // Probe ONCE, before `check`, and branch on that one answer.
+        //
+        // `rust_target_installed` returns TRUE when the fork fails (`:186`,
+        // `:189`) -- "no rustup here, so report installed". Asking twice means
+        // the two answers can disagree under load: `check`'s call forks fine and
+        // reports the missing target, this one fails to spawn and takes the
+        // "nothing to assert" branch, and the test fails on a tree that is
+        // correct. Observed in `check::build`'s parallel lane; passes solo and
+        // twice in a row standalone.
+        //
+        // Issue 0726's class exactly: a forked process that failed to START
+        // under a fan-out, reported as a finding about the source tree.
+        let installed = rust_target_installed("nros-not-a-real-triple");
         let m = check(&b, tmp.path(), None);
-        if rust_target_installed("nros-not-a-real-triple") {
+        if installed {
             // No rustup on this host: the check reports installed by design
             // (see `rust_target_installed`), so there is nothing to assert.
             assert!(m.iter().all(|m| !m.what.contains("Rust target")));

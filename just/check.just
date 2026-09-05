@@ -3170,7 +3170,7 @@ api-parity-ledger:
 # Verify the user API still corresponds to rclc / rclcpp / rclrs.
 [group("check")]
 api-parity:
-    @python3 scripts/api-parity.py --check
+    @python3 scripts/api-parity.py --check --require-disposition
 
 # issue 0734 — a binary links exactly ONE nano-ros Rust staticlib. A staticlib
 # bundles its whole dependency closure, so linking two duplicates it — and
@@ -3875,6 +3875,70 @@ c: c-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-c/tests/compile/receive_verb_aliases.c
+
+    # phase-417 stage 5 — the typed C surface a ported rclc file reaches, plus
+    # the rcl spelling layer. `test -f` first on every one: a syntax-only
+    # compile of a MISSING file is a pass, and this campaign has already shipped
+    # one probe that never ran (issue 0196's class).
+    echo "  - phase-417 stage 5: typed delivery, node/timer accessors, rcl spellings"
+    for probe in typed_subscription_delivery node_timer_accessors rcl_compat_aliases; do \
+        test -f "packages/api/nros-c/tests/compile/$probe.c" || { \
+            echo "ERROR: $probe.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
+        cc -fsyntax-only -std=c11 -Wall -Wextra \
+            -Itarget/nros-c-generated \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            "packages/api/nros-c/tests/compile/$probe.c" || exit 1; \
+    done
+    # The typed SERVICE probe includes the committed golden output of the
+    # service codegen pack, so a pack edit that emits uncompilable C fails here
+    # in seconds rather than during a fixture build.
+    test -f packages/api/nros-c/tests/compile/typed_service_handler.c || { \
+        echo "ERROR: typed_service_handler.c is MISSING." >&2; exit 1; }
+    cc -fsyntax-only -std=c11 -Wall -Wextra \
+        -Ipackages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/configured \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/typed_service_handler.c
+    # phase-417 stage 6 — the rename+reorder guards. Both carry their pragma
+    # INSIDE the TU, so the wiring needs no flags; both are expected-FAILURE.
+    #
+    # The reorder one matters most and its guard is measured, not assumed:
+    # WITHOUT `#pragma GCC diagnostic error "-Wincompatible-pointer-types"` the
+    # same file compiles at rc=0, because C diagnoses an incompatible pointer
+    # ARGUMENT as a warning even under -Wall -Wextra. That is why a C reorder
+    # ships with a RENAME beside it (RFC-0089): a stale call must fail on the
+    # identifier, which C does diagnose fatally.
+    for probe in rcl_rename_deprecation_probe rcl_node_init_reorder_probe; do \
+        f="packages/api/nros-c/tests/compile/$probe.c"; \
+        test -f "$f" || { echo "ERROR: $f is MISSING -- an expected-failure check" >&2; \
+                          echo "       passes on a missing file." >&2; exit 1; }; \
+        if cc -fsyntax-only -std=c11 -Wall -Wextra \
+            -Itarget/nros-c-generated \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            "$f" 2>"tmp/rename-$probe.log"; then \
+            echo "ERROR: $f COMPILED. The stage-6 guard for '$probe' is not firing;" >&2; \
+            echo "       a stale call now binds silently. See RFC-0089." >&2; exit 1; \
+        fi; \
+    done
+
+    # ...and the rcl collision guard must FIRE. nano-ros and the real rcl define
+    # the same RCL_RET_* with DIFFERENT values, so a TU holding both compiles
+    # and silently takes whichever won the include race.
+    test -f packages/api/nros-c/tests/compile/rcl_compat_collision_probe.c || { \
+        echo "ERROR: rcl_compat_collision_probe.c is MISSING -- the expected-failure" >&2; \
+        echo "       check below would PASS on a missing file." >&2; exit 1; }
+    if cc -fsyntax-only -std=c11 \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/rcl_compat_collision_probe.c 2>/dev/null; then \
+        echo "ERROR: rcl_compat_collision_probe.c compiled clean. <nros/rcl_compat.h>'s" >&2; \
+        echo "       guard against the real <rcl/types.h> is gone; a TU with both now" >&2; \
+        echo "       silently takes one of two DIFFERENT numberings." >&2; exit 1; \
+    fi
     # ...and they must WARN, asserted as the same expected-failure compile.
     # An expected-failure compile cannot distinguish "the deprecation
     # attribute fired" from "the file is not there" -- both are a non-zero cc,
@@ -4224,6 +4288,73 @@ cpp: cpp-fmt
     # `the_committed_compile_fixture_is_what_this_emitter_renders` in
     # nros-cli-core, so this fixture cannot drift into a table that matches
     # nothing (which would leave every assertion below vacuous and green).
+    # phase-417 stages 1 + 2b — the ROS 2 adoption surface. Two probes, both
+    # POSITIVE: the facilities a ported rclcpp file reaches must exist and
+    # type-check. `test -f` first, because a syntax-only compile of a missing
+    # file is a pass, and six mechanisms in this campaign were right and never
+    # ran (issue 0196's class).
+    #
+    # `ros2_api_adoption.cpp` is HOSTED deliberately — no -ffreestanding. It
+    # includes `rclcpp_compat.hpp`, which pulls <memory>/<string> unconditionally
+    # and hands out std::shared_ptr in public signatures, so a freestanding
+    # compile would fail for a reason that says nothing about the surface.
+    for probe in ros2_api_adoption node_graph_forwarders; do \
+        test -f "packages/api/nros-cpp/tests/compile/$probe.cpp" || { \
+            echo "ERROR: $probe.cpp is MISSING -- this check would pass on absence." >&2; \
+            exit 1; \
+        }; \
+    done
+    echo "  - phase-417: ported-file surface COMPILES (aliases, string interop, graph, actions, executor)"
+    for probe in ros2_api_adoption node_graph_forwarders ros2_api_adoption_stage2 ros2_one_dispatch_path \
+                 ros2_init_argv_refusal action_goal_uuid executor_cancel; do \
+        c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -DNROS_CPP_STD \
+            -Itarget/nros-cpp-generated \
+            -Itarget/nros-c-generated \
+            -Ipackages/api/nros-cpp/include \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            "packages/api/nros-cpp/tests/compile/$probe.cpp" || exit 1; \
+    done
+    # c++17 alone: it enables NROS_SYSTEM_PARAM_SERVICES in-file, which reaches
+    # `ComponentNode::adopt_launch_seed_`'s `if constexpr`.
+    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/ros2_param_launch_seed.cpp
+
+    # `nros_grep_q`, not `grep -q`: grep exits 1 for "no match" and >=2 for a
+    # tool ERROR, and a bare `grep -q ... || finding` reports the second as the
+    # first (issue 0726 — a forked grep that failed to start under a 32-way
+    # fan-out was reported as a missing anchor, a false and specific claim).
+    # shellcheck source=scripts/lib/grep-q.sh
+    source scripts/lib/grep-q.sh
+    # phase-417 stage 3 — the REFUSALS must FAIL, each with its OWN diagnostic.
+    # Exit code alone is not enough: a typo in an include path also exits
+    # non-zero and would read as "the refusal fired". So each is grepped for the
+    # marker its message carries, and `test -f` runs first because a missing
+    # file compiles to nothing and passes.
+    echo "  - phase-417: the refusals FAIL, each naming its own constraint"
+    for probe in node_options system_defaults_qos log_throttle service_callback; do \
+        f="packages/api/nros-cpp/tests/compile/ros2_refuse_${probe}_probe.cpp"; \
+        test -f "$f" || { echo "ERROR: $f is MISSING -- this check passes on absence." >&2; exit 1; }; \
+        if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+               -Itarget/nros-cpp-generated -Itarget/nros-c-generated \
+               -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
+               -Ipackages/platform/nros-platform-api/include "$f" 2>"tmp/refuse-$probe.log"; then \
+            echo "ERROR: $f COMPILED. The refusal for '$probe' is not firing." >&2; exit 1; \
+        fi; \
+        nros_grep_q "REFUSED by nano-ros" "tmp/refuse-$probe.log"; \
+        case $? in \
+            0) : ;; \
+            1) echo "ERROR: $f failed WITHOUT the refusal diagnostic -- it broke for" >&2; \
+               echo "       another reason, so this check proves nothing. See tmp/refuse-$probe.log" >&2; \
+               exit 1 ;; \
+        esac; \
+    done
+
     echo "  - declared QoS depth: the three cases COMPILE (c++17)"
     c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \

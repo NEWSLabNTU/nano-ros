@@ -20,15 +20,17 @@ use super::{
         BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientCallbackEntry,
         ServiceClientRawArenaEntry, ServiceClientSendHeader, SrvEntry, SrvRawEntry,
         SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry, SubBufferedRawInfoCEntry,
-        SubBufferedRawInfoEntry, SubBufferedViewEntry, SubInfoEntry, SubInplaceEntry,
-        TimerClockSource, TimerEntry, TimerHeader, TimerOverrunPolicy, TraceName, always_ready,
+        SubBufferedRawInfoEntry, SubBufferedTypedCEntry, SubBufferedViewEntry, SubInfoEntry,
+        SubInplaceEntry, TimerClockSource, TimerEntry, TimerHeader, TimerOverrunPolicy, TraceName,
+        always_ready,
         buffered_region_size, drop_entry, guard_has_data, guard_try_process, no_pre_sample,
         service_client_callback_try_process, service_client_raw_try_process, srv_has_data,
         srv_raw_has_data, srv_raw_try_process, srv_try_process, sub_buffered_has_data,
         sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process, sub_buffered_raw_has_data,
         sub_buffered_raw_info_c_has_data, sub_buffered_raw_info_c_try_process,
         sub_buffered_raw_info_has_data, sub_buffered_raw_info_try_process,
-        sub_buffered_raw_try_process, sub_buffered_try_process, sub_buffered_view_has_data,
+        sub_buffered_raw_try_process, sub_buffered_try_process, sub_buffered_typed_c_has_data,
+        sub_buffered_typed_c_try_process, sub_buffered_view_has_data,
         sub_buffered_view_try_process, sub_info_has_data, sub_info_pre_sample,
         sub_info_try_process, sub_inplace_has_data, sub_inplace_try_process, timer_try_process,
     },
@@ -37,9 +39,9 @@ use super::{
     triple_buffer::TripleBuffer,
     types::{
         ExecutorSemantics, GuardCondition, HandleId, InvocationMode, NodeError,
-        RawResponseCallback, RawServiceCallback, RawSubscriptionCallback,
+        RawMessageDeserializeFn, RawResponseCallback, RawServiceCallback, RawSubscriptionCallback,
         RawSubscriptionInfoCallback, ReadinessSnapshot, SpinOnceResult, SpinPeriodPollingResult,
-        Trigger,
+        Trigger, TypedSubscriptionCallback,
     },
 };
 
@@ -151,7 +153,7 @@ impl<'s> Executor<'s> {
                         }
                         nros_rmw_cffi::BackendResolution::Single(_) => unreachable!(),
                     };
-                    nros_log::nros_error!(
+                    nros_log::log_error!(
                         nros_log::get_logger("nros"),
                         "cannot select an RMW backend — {why}"
                     );
@@ -183,7 +185,7 @@ impl<'s> Executor<'s> {
             // exhausted session pool (`InvalidConfig`) and a router that is not
             // there produced the same sentence. Same lesson as the selection
             // arm above: say which failure happened.
-            nros_log::nros_error!(
+            nros_log::log_error!(
                 nros_log::get_logger("nros"),
                 "RMW session open failed — {e:?}"
             );
@@ -2294,7 +2296,7 @@ impl<'s> Executor<'s> {
             // The two periods the timer will actually alternate between.
             let early_us = (period_us / spin_us) * spin_us;
             let late_us = early_us.saturating_add(spin_us);
-            nros_log::nros_warn!(
+            nros_log::log_warn!(
                 nros_log::get_logger("nros"),
                 "timer period {} us is not a multiple of the {} us spin period: activations will alternate between {} us and {} us (mean cadence preserved)",
                 period_us,
@@ -5296,6 +5298,135 @@ impl<'s> Executor<'s> {
         Ok(HandleId(slot))
     }
 
+    /// phase-417 W5.a (RFC-0089 stage 5) — the TYPED C-FFI subscription core:
+    /// the same registration as [`Self::add_arena_subscription_c_callback`],
+    /// plus caller-owned message storage and the erased deserialiser for its
+    /// type, so the callback receives a DESERIALISED message instead of CDR
+    /// bytes.
+    ///
+    /// This is the Rust half of rclc's
+    /// `rclc_executor_add_subscription(executor, subscription, msg, callback,
+    /// invocation)`. rclc has no allocator on that path either — it makes the
+    /// CALLER own the storage, which is exactly what `msg` is here. The C
+    /// ledger recorded our byte-oriented delivery as forced by "no allocator";
+    /// the compared surface operates under the same constraint, so the reason
+    /// was false and the divergence was avoidable (issue 1022 / W-C3).
+    ///
+    /// The raw path is untouched and stays: a byte-oriented subscriber is a
+    /// legitimate thing to want, and this is additive.
+    ///
+    /// # Contract on failure
+    /// If `deserialize` returns non-zero the callback is **not** invoked, the
+    /// sample is dropped, `try_process` reports
+    /// `TransportError::DeserializationError` (so it lands in
+    /// `SpinOnceResult::subscription_errors`), and a rate-limited `nros_log`
+    /// error names the length and the return code. A message that does not fit
+    /// the caller's storage arrives here as exactly that failure: both the
+    /// bounded-string and bounded-sequence decoders refuse rather than
+    /// truncate, so there is no silent short read.
+    ///
+    /// # Safety
+    /// `msg` must point to storage of the type `deserialize` writes, valid for
+    /// as long as the subscription is registered. Nothing here drops it.
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn add_arena_subscription_c_typed_callback<const RX_BUF: usize>(
+        &mut self,
+        node_id: Option<super::node_record::NodeId>,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QoSProfile,
+        msg: core::ptr::NonNull<core::ffi::c_void>,
+        deserialize: RawMessageDeserializeFn,
+        callback: TypedSubscriptionCallback,
+        context: *mut core::ffi::c_void,
+        group: Option<&str>,
+        // Same meaning as on the raw path: bytes the caller expects to receive,
+        // 0 = no opinion. A typed caller normally HAS an answer — the generated
+        // `<Msg>_RX_MAX_SERIALIZED_SIZE` — which is why the C entry point takes
+        // it rather than defaulting.
+        rx_buffer_hint: usize,
+    ) -> Result<HandleId, NodeError> {
+        let slot = self.next_entry_slot()?;
+        let (node_name, ns, session_idx) = match node_id {
+            Some(id) => {
+                let r = self
+                    .nodes
+                    .get(id.index())
+                    .ok_or(NodeError::InvalidSchedContextBinding)?;
+                (r.name.clone(), r.namespace.clone(), r.session_idx)
+            }
+            None => (self.node_name.clone(), self.namespace.clone(), 0u8),
+        };
+        let mut topic = TopicInfo::new(topic_name, type_name, type_hash)
+            .with_domain(self.domain_id)
+            .with_namespace(&ns);
+        if !node_name.is_empty() {
+            topic = topic.with_node_name(&node_name);
+        }
+        if rx_buffer_hint != 0 {
+            topic = topic.with_rx_buffer_hint(rx_buffer_hint);
+        }
+        let handle = {
+            let session = self
+                .session_at_mut(session_idx)
+                .ok_or(NodeError::BackendMismatch)?;
+            session
+                .create_subscription(&topic, qos)
+                .map_err(NodeError::Transport)?
+        };
+
+        // phase-403 W3/W5, unchanged: the hint sizes the arena slot, and 0
+        // means "this caller stated nothing", never "this type is zero bytes".
+        let rx_bytes = if rx_buffer_hint != 0 {
+            rx_buffer_hint
+        } else {
+            RX_BUF
+        };
+
+        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, rx_bytes);
+
+        let (entry_offset, trailing_offset) =
+            self.arena_alloc_with_trailing::<SubBufferedTypedCEntry>(trailing_bytes)?;
+
+        let buf_ptr = unsafe { (self.arena.as_mut_ptr() as *mut u8).add(trailing_offset) };
+
+        let buffer = if qos.depth <= 1 {
+            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, rx_bytes) })
+        } else {
+            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, rx_bytes, qos.depth as usize) })
+        };
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(entry_offset) as *mut SubBufferedTypedCEntry;
+            core::ptr::write(
+                entry_ptr,
+                SubBufferedTypedCEntry {
+                    handle,
+                    buffer,
+                    msg: msg.as_ptr(),
+                    deserialize,
+                    callback,
+                    context,
+                },
+            );
+        }
+
+        let meta = CallbackMeta {
+            offset: entry_offset,
+            kind: EntryKind::Subscription,
+            try_process: sub_buffered_typed_c_try_process,
+            has_data: sub_buffered_typed_c_has_data,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::OnNewData,
+            drop_fn: drop_entry::<SubBufferedTypedCEntry>,
+        };
+        self.emplace_entry(slot, meta, TraceName::Text(topic_name));
+        self.apply_node_default_sched(slot, node_id, group);
+        Ok(HandleId(slot))
+    }
+
     /// Phase 189.M3.4 — register a raw C-fn-ptr subscription whose callback
     /// also receives the sample's wire **attachment**
     /// ([`RawSubscriptionInfoCallback`]: `(data, len, attachment, att_len,
@@ -6068,6 +6199,57 @@ impl<'s> Executor<'s> {
         Some(header.overruns)
     }
 
+    /// Microseconds accumulated since this timer last fired, or `None` if the
+    /// handle is not a valid timer.
+    ///
+    /// This is `TimerHeader::elapsed_us` — the SAME counter
+    /// `arena::timer_try_process` compares against the period and rewinds on
+    /// every activation, so it is the executor's own answer rather than a
+    /// second one derived from a clock. `None` is not "zero elapsed": a caller
+    /// that cannot tell them apart reports a timer that has just fired and a
+    /// handle that is not a timer identically.
+    ///
+    /// phase-417 W5.c — added because the state was already here and nothing
+    /// exposed it, which is why `c:timer_get_time_since_last_call` and
+    /// `c:timer_is_ready` were both filed as gaps. The C forwarders
+    /// (`nros_timer_get_time_since_last_call`, `nros_timer_is_ready`) read
+    /// this; RFC-0019 puts the answer in Rust and only the spelling in the
+    /// wrapper.
+    pub fn timer_elapsed_us(&self, id: HandleId) -> Option<u64> {
+        let meta = self
+            .entries
+            .get(id.0)
+            .and_then(|e| e.as_ref())
+            .filter(|m| matches!(m.kind, EntryKind::Timer))?;
+        let arena_ptr = self.arena.as_ptr() as *const u8;
+        // SAFETY: same layout invariant as `timer_period_us`.
+        let header = unsafe { &*(arena_ptr.add(meta.offset) as *const TimerHeader) };
+        Some(header.elapsed_us)
+    }
+
+    /// Would this timer fire on the next dispatch pass? `None` if the handle
+    /// is not a valid timer.
+    ///
+    /// The predicate is `arena::timer_try_process`'s own guard, in the same
+    /// order: a cancelled timer is never ready, a one-shot that already fired
+    /// is never ready again, and otherwise readiness is `elapsed >= period`.
+    /// Keeping the two in one shape is the point — a readiness answer that
+    /// disagrees with the dispatcher is worse than no answer at all.
+    pub fn timer_is_ready(&self, id: HandleId) -> Option<bool> {
+        let meta = self
+            .entries
+            .get(id.0)
+            .and_then(|e| e.as_ref())
+            .filter(|m| matches!(m.kind, EntryKind::Timer))?;
+        let arena_ptr = self.arena.as_ptr() as *const u8;
+        // SAFETY: same layout invariant as `timer_period_us`.
+        let header = unsafe { &*(arena_ptr.add(meta.offset) as *const TimerHeader) };
+        if header.cancelled || (header.oneshot && header.fired) {
+            return Some(false);
+        }
+        Some(header.elapsed_us >= header.period_us)
+    }
+
     // ========================================================================
     // spin_once (three-phase: readiness -> trigger -> dispatch)
     // ========================================================================
@@ -6605,7 +6787,7 @@ impl<'s> Executor<'s> {
                         .and_then(|st| st.as_mut())
                         .and_then(|st| st.take_budget_window())
                     {
-                        nros_log::nros_warn!(
+                        nros_log::log_warn!(
                             nros_log::get_logger("nros"),
                             "sporadic budget throttled sched context {}: {} of the last {} dispatch opportunities were skipped for want of budget. The declared budget_us/period_us cannot sustain this tier's callbacks on this target.",
                             sc_idx,
@@ -6619,7 +6801,7 @@ impl<'s> Executor<'s> {
                         .and_then(|st| st.as_mut())
                         .and_then(|st| st.note_budget_skip())
                     {
-                        nros_log::nros_warn!(
+                        nros_log::log_warn!(
                             nros_log::get_logger("nros"),
                             "sporadic budget exhausted for {} consecutive spins (sched context {}): its callbacks are not being dispatched. Either the callback runtime exceeds the declared budget_us per period_us, or the declaration is unsatisfiable on this target.",
                             streak,
@@ -7782,6 +7964,135 @@ impl<'s> Executor<'s> {
 }
 
 // ============================================================================
+// Executor lifecycle — cancel / is_spinning (phase-417 W4.c)
+// ============================================================================
+
+impl<'s> Executor<'s> {
+    /// Request the executor to stop spinning — `rclcpp::Executor::cancel`.
+    ///
+    /// # ADOPT-BOUNDED (RFC-0089)
+    ///
+    /// `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY,
+    /// so it returns BEFORE spinning has actually stopped;
+    /// [`is_spinning()`](Self::is_spinning) is the observable that tells you
+    /// when it has. rclcpp makes the same promise in the same shape, but the
+    /// boundary here is one `spin_once` timeout wide (a backend's `drive_io`
+    /// blocks up to the poll interval), so "next boundary" is a duration a
+    /// caller can measure rather than an implementation detail. The wake flag
+    /// below shortens it; it does not remove it.
+    ///
+    /// Nothing here tears down the session: an executor that has been cancelled
+    /// is still initialised, still owns its entities, and can be spun again.
+    /// Teardown is a different verb (`fini` / `shutdown`), and collapsing the
+    /// two costs a full discovery round on every mode change.
+    ///
+    /// Safe to call from another thread or a signal handler.
+    ///
+    /// Also raises the Phase 104.C.6 wake flag so a `spin_once` already blocked
+    /// inside a backend's `drive_io` falls through to the cancel check on its
+    /// next loop iteration instead of waiting out its full `timeout_ms` first.
+    pub fn cancel(&self) {
+        self.halt_flag
+            .store(true, core::sync::atomic::Ordering::SeqCst);
+        // The wake flag is the `Arc` half and still needs an allocator. A
+        // core-only image simply waits out the poll interval, which is the
+        // bounded behaviour the envelope above already promises.
+        #[cfg(feature = "alloc")]
+        self.wake_flag
+            .store(true, core::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Deprecated spelling of [`cancel()`](Self::cancel) — phase-417 W4.c.
+    ///
+    /// `cancel` is ROS 2's name for this (`rclcpp::Executor::cancel`,
+    /// `rclpy.executors.Executor.cancel`) and is now the primary. `halt` was our
+    /// own vocabulary and stays as a forwarder so out-of-tree callers keep
+    /// compiling; it holds no state of its own.
+    #[deprecated(
+        since = "0.5.0",
+        note = "renamed to `cancel()` to match `rclcpp::Executor::cancel` (phase-417 W4.c)"
+    )]
+    pub fn halt(&self) {
+        self.cancel();
+    }
+
+    /// Has a [`cancel()`](Self::cancel) been REQUESTED?
+    ///
+    /// Not the same question as [`is_spinning()`](Self::is_spinning), and both
+    /// are kept because both have callers:
+    ///
+    /// * `is_halted()` — "someone asked this executor to stop." True the instant
+    ///   `cancel()` returns, and it stays true until the next spin loop clears
+    ///   it on entry. This is the flag a hand-rolled `while !exec.is_halted()`
+    ///   loop polls, which is what a BSP that drives `spin_once` itself writes.
+    /// * `is_spinning()` — "a spin loop is running right now." Answers the other
+    ///   half of the envelope: whether the cancel has been ACTED on yet.
+    ///
+    /// The two are true together for as long as one poll takes, which is exactly
+    /// the window the ADOPT-BOUNDED envelope on `cancel()` describes. Neither is
+    /// derivable from the other: an executor that was never spun is neither
+    /// halted nor spinning, and one cancelled mid-poll is both.
+    ///
+    /// The name is the pre-rename spelling and is deliberately NOT deprecated —
+    /// `cancel`'s rclcpp pair is a `spinning` observable, not an
+    /// `is_cancel_requested` one, so there is no ROS 2 name to adopt here and a
+    /// third spelling would buy nothing.
+    pub fn is_halted(&self) -> bool {
+        self.halt_flag.load(core::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Is a spin loop running on this executor right now?
+    ///
+    /// rclcpp spells this `Executor::is_spinning()`. True between the entry and
+    /// the exit of [`spin_blocking`](Self::spin_blocking),
+    /// [`spin_period`](Self::spin_period), the `open_threaded` worker loop, and
+    /// the C / C++ API loops — every construct that owns its own iteration.
+    ///
+    /// A bare `spin_once` does NOT set it: one poll is not a spin, and a caller
+    /// running its own `while` around `spin_once` is the one who knows it is
+    /// looping. Such a caller can say so with
+    /// [`enter_spin_loop`](Self::enter_spin_loop).
+    ///
+    /// See [`is_halted()`](Self::is_halted) for why this is a different question
+    /// from "was cancel requested".
+    pub fn is_spinning(&self) -> bool {
+        self.spinning.load(core::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Declare that the caller is entering a spin loop it drives itself.
+    ///
+    /// The seam the C and C++ APIs use so their loops answer
+    /// [`is_spinning()`](Self::is_spinning) without keeping a flag of their own
+    /// (RFC-0019: ergonomics may live in the wrapper, state may not). Also
+    /// CLEARS any pending cancel, matching what `spin_blocking` does on entry:
+    /// a cancel requested before a spin started is not a cancel of THIS spin.
+    ///
+    /// Pair it with [`exit_spin_loop`](Self::exit_spin_loop) on EVERY exit path,
+    /// `break` and early `return` alike — a loop that leaves without it reports
+    /// `is_spinning() == true` forever. It is a method pair rather than an RAII
+    /// guard on purpose: a guard would have to borrow the executor for the whole
+    /// loop, and every caller needs `&mut` inside the body to poll.
+    ///
+    /// Takes `&self` (the flags are atomics), so the borrow ends at the call.
+    pub fn enter_spin_loop(&self) {
+        self.halt_flag
+            .store(false, core::sync::atomic::Ordering::SeqCst);
+        self.spinning
+            .store(true, core::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// End the scope opened by [`enter_spin_loop`](Self::enter_spin_loop).
+    ///
+    /// Idempotent. Leaves the cancel flag alone: "someone asked me to stop" is
+    /// the caller's answer to keep or clear, and clearing it here would lose the
+    /// reason the loop exited.
+    pub fn exit_spin_loop(&self) {
+        self.spinning
+            .store(false, core::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+// ============================================================================
 // std-gated spin and halt methods
 // ============================================================================
 
@@ -7845,7 +8156,7 @@ impl<'s> Executor<'s> {
         // is a promise this build can keep.
         let start_us = self.now_us();
         if opts.timeout.is_some() && start_us.is_none() {
-            nros_log::nros_error!(
+            nros_log::log_error!(
                 nros_log::get_logger("nros"),
                 "spin_blocking: a timeout was requested but this build has no clock \
                  — install one with `ExecutorConfig::clock_us` (issue 0709)"
@@ -7949,7 +8260,7 @@ impl<'s> Executor<'s> {
         // this build cannot honour is a configuration error, not a silent
         // busy-loop.
         let Some(start_us) = self.now_us() else {
-            nros_log::nros_error!(
+            nros_log::log_error!(
                 nros_log::get_logger("nros"),
                 "spin_period: a period was requested but this build has no clock \
                  — install one with `ExecutorConfig::clock_us` (issue 0709)"
@@ -8883,5 +9194,231 @@ impl<'s> Executor<'s> {
             None, // no group — node default
             None, // the configured default RX buffer, unchanged
         )
+    }
+}
+
+// ============================================================================
+// phase-417 W4.c — cancel / is_spinning
+// ============================================================================
+//
+// Same gate as `executor::tests`, exactly: `ConcreteSession` is `MockSession`
+// only while no rmw-* feature is unified in (see `executor/mod.rs`). No `std`
+// gate — `cfg(test)` already means a hosted harness, and adding one would be a
+// census site phase-359 is spending effort removing.
+#[cfg(all(test, not(feature = "rmw-cffi")))]
+mod cancel_tests {
+    use super::Executor;
+    use crate::{executor::types::ExecutorConfig, mock::MockSession};
+
+    /// The core has no default clock and says so (issue 0709), so a test that
+    /// measures elapsed time brings its own — the same seam a board uses.
+    fn test_clock_us() -> u64 {
+        use std::{sync::OnceLock, time::Instant};
+        static EPOCH: OnceLock<Instant> = OnceLock::new();
+        EPOCH.get_or_init(Instant::now).elapsed().as_micros() as u64
+    }
+
+    fn executor() -> Executor<'static> {
+        let cfg = ExecutorConfig::default().clock_us(test_clock_us);
+        Executor::from_session_with(MockSession::new(), &cfg)
+    }
+
+    /// A fresh executor is neither cancelled nor spinning — the two questions
+    /// are independent, and this is the state where both answers are `false`.
+    #[test]
+    fn a_fresh_executor_is_neither_cancelled_nor_spinning() {
+        let exec = executor();
+        assert!(!exec.is_halted(), "nothing has asked it to stop");
+        assert!(!exec.is_spinning(), "no spin loop is running");
+    }
+
+    /// `cancel()` raises the request bit without starting or stopping anything.
+    #[test]
+    fn cancel_requests_without_spinning() {
+        let exec = executor();
+        exec.cancel();
+        assert!(exec.is_halted(), "cancel() must be observable immediately");
+        assert!(
+            !exec.is_spinning(),
+            "cancel() must not make a non-spinning executor claim to spin"
+        );
+    }
+
+    /// The deprecated forwarder must reach the SAME bit — a second flag behind
+    /// the old name is exactly the drift RFC-0019 forbids.
+    #[test]
+    #[allow(deprecated)]
+    fn halt_forwards_onto_cancel() {
+        let exec = executor();
+        exec.halt();
+        assert!(
+            exec.is_halted(),
+            "`halt()` must set the flag `cancel()` sets, not one of its own"
+        );
+    }
+
+    /// The load-bearing one: `cancel()` from a peer thread TERMINATES a running
+    /// `spin_blocking`, `is_spinning()` is true while the loop runs, and false
+    /// once it has returned.
+    ///
+    /// The peer asserts `is_spinning()` from OUTSIDE the spinning thread, which
+    /// is the whole point of the observable — it is what a signal handler or a
+    /// supervisor sees.
+    #[test]
+    fn cancel_terminates_a_spin_and_is_spinning_tracks_it() {
+        use std::{
+            sync::{
+                Arc,
+                atomic::{AtomicBool, Ordering},
+            },
+            thread,
+            time::{Duration, Instant},
+        };
+
+        let mut exec = executor();
+        assert!(!exec.is_spinning());
+
+        // `Executor` is not `Sync`, so the peer thread cannot hold a reference
+        // to it. It observes and drives through the two flag handles instead —
+        // which is the supported cross-thread surface (`halt_flag()`), and
+        // keeps this test on the same seam a signal handler uses.
+        let cancel_bit = exec.halt_flag();
+        let saw_spinning = Arc::new(AtomicBool::new(false));
+        let saw_spinning_peer = Arc::clone(&saw_spinning);
+
+        let peer = thread::spawn(move || {
+            // Give the loop time to enter. Bounded, and the assertion below is
+            // on what was OBSERVED, so a slow host cannot turn this green by
+            // accident — it fails instead.
+            thread::sleep(Duration::from_millis(50));
+            saw_spinning_peer.store(true, Ordering::SeqCst);
+            cancel_bit.store(true, Ordering::SeqCst);
+        });
+
+        let started = Instant::now();
+        exec.spin_blocking(crate::executor::types::SpinOptions::default())
+            .expect("an untimed spin_blocking runs until cancelled");
+        let elapsed = started.elapsed();
+
+        peer.join().expect("peer thread must not panic");
+
+        assert!(
+            saw_spinning.load(Ordering::SeqCst),
+            "the peer must have run before spin_blocking returned"
+        );
+        assert!(
+            !exec.is_spinning(),
+            "is_spinning() must be false once the loop has returned"
+        );
+        assert!(
+            exec.is_halted(),
+            "the cancel request survives the loop it ended"
+        );
+        // LOWER bound too: a spin that never waited would prove nothing about
+        // termination. The peer sleeps 50 ms before cancelling.
+        assert!(
+            elapsed >= Duration::from_millis(40),
+            "spin_blocking returned in {elapsed:?} — it cannot have spun"
+        );
+        // ...and an UPPER bound, because "terminated" is the claim: without the
+        // cancel check this loop never returns and the test would hang rather
+        // than fail. 10 s is far past any scheduling noise.
+        assert!(
+            elapsed < Duration::from_secs(10),
+            "spin_blocking took {elapsed:?} to observe the cancel"
+        );
+    }
+
+    /// `is_spinning()` is true from INSIDE the loop. Read from a timer callback,
+    /// which is the only place the executor is genuinely mid-spin, and asserted
+    /// after the loop so a callback that never fired cannot pass silently.
+    #[test]
+    fn is_spinning_is_true_inside_the_loop() {
+        use std::time::Duration;
+
+        let mut exec = executor();
+        // `only_next` runs exactly one iteration, so this is a single poll
+        // inside a spin scope — bounded, no thread, no clock dependency beyond
+        // the one the fixture installs.
+        assert!(!exec.is_spinning());
+        exec.spin_blocking(crate::executor::types::SpinOptions::spin_once())
+            .expect("a single-iteration spin must succeed");
+        assert!(
+            !exec.is_spinning(),
+            "the scope must close when the loop returns"
+        );
+
+        // The inside-the-loop reading needs a second thread to do it, because
+        // the spinning thread is blocked in the loop and `Executor` is `!Sync`
+        // so no `&Executor` may cross. What crosses is a pointer to the one
+        // atomic, which is the same thing the C and C++ APIs hold: they observe
+        // `is_spinning` through a raw executor handle, and that is the case this
+        // flag exists to serve.
+        struct FlagPtr(*const portable_atomic::AtomicBool);
+        // SAFETY: the pointee is an `AtomicBool`, which is `Sync`; the only
+        // operation performed through it is a relaxed-or-stronger load. The
+        // executor outlives the thread — `peer.join()` below happens before
+        // `exec` is dropped at the end of the test.
+        unsafe impl Send for FlagPtr {}
+
+        let cancel_bit = exec.halt_flag();
+        let observed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let spinning_bit_seen = std::sync::Arc::clone(&observed);
+        let flag = FlagPtr(&exec.spinning as *const portable_atomic::AtomicBool);
+        let peer = std::thread::spawn(move || {
+            let flag = flag;
+            for _ in 0..500 {
+                // SAFETY: see the `unsafe impl Send` above.
+                if unsafe { &*flag.0 }.load(core::sync::atomic::Ordering::SeqCst) {
+                    spinning_bit_seen.store(true, std::sync::atomic::Ordering::SeqCst);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            cancel_bit.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+
+        exec.spin_blocking(crate::executor::types::SpinOptions::default())
+            .expect("an untimed spin_blocking runs until cancelled");
+        peer.join().expect("peer thread must not panic");
+
+        assert!(
+            observed.load(std::sync::atomic::Ordering::SeqCst),
+            "is_spinning() must read true while spin_blocking is running"
+        );
+    }
+
+    /// `spin_period` maintains the same scope, and a period this build cannot
+    /// pace is an error that must NOT leave the executor claiming to spin.
+    #[test]
+    fn spin_period_with_no_clock_leaves_is_spinning_false() {
+        let mut exec = executor();
+        exec.clock_us_fn = None;
+        let err = exec
+            .spin_period(core::time::Duration::from_millis(10))
+            .expect_err("a period with no clock must fail (issue 0709)");
+        assert_eq!(err, crate::NodeError::NotInitialized);
+        assert!(
+            !exec.is_spinning(),
+            "a spin that never started must not report that it did"
+        );
+    }
+
+    /// Entering a spin CLEARS a stale cancel: a cancel requested before this
+    /// spin is not a cancel of this spin. Documents the ADOPT-BOUNDED envelope's
+    /// one sharp edge.
+    #[test]
+    fn entering_a_spin_clears_a_stale_cancel() {
+        let exec = executor();
+        exec.cancel();
+        assert!(exec.is_halted());
+        exec.enter_spin_loop();
+        assert!(
+            !exec.is_halted(),
+            "a cancel raised before the loop started must not end it instantly"
+        );
+        assert!(exec.is_spinning());
+        exec.exit_spin_loop();
+        assert!(!exec.is_spinning());
     }
 }

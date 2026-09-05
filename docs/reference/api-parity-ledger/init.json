@@ -10,27 +10,32 @@
   },
   "c:get_default_domain_id": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "rcl reads ROS_DOMAIN_ID from the environment at runtime. An embedded backend has no environment (RFC-0036, Domain ID), so the domain arrives through `nros_support_init`'s parameter over a documented ladder -- explicit argument, then hosted env, then the baked default -- with `NROS_DOMAIN_ID_INHERIT`/`NROS_DOMAIN_ID_EXPLICIT_ZERO` sentinels because plain 0 has to stay the UNSET marker (issues 0206/0227)."
   },
   "c:get_zero_initialized_context": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "there is no context type to zero-initialize. `nros_support_get_zero_initialized` is the same idiom on the type we do have."
   },
   "c:get_zero_initialized_init_options": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "no init-options type; see `c:init_options_*`."
   },
   "c:init": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "`rcl_init(argc, argv, options, context)` is the layer BELOW rclc, and rclc's own examples do not call it -- they call `rclc_support_init`, which is what `nros_support_init` mirrors. Declining the lower layer is what makes the C API rclc-shaped rather than rcl-shaped."
   },
   "c:init_options_*": {
     "verdict": "divergence",
     "bucket": "theirs-only",
-    "why": "the options half of the same collapse. `rcl_init_options_t` is built, mutated (set_domain_id), copied and finalised before rcl_init consumes it; ours are the two arguments `nros_support_init` takes. Same constraint as the `compile-time-options` signature rule -- there is no runtime options object because nothing negotiates at runtime."
+    "why": "the options half of the same collapse. `rcl_init_options_t` is built, mutated (set_domain_id), copied and finalised before rcl_init consumes it; ours are the two arguments `nros_support_init` takes. There is no `nros_init_options_t`: `nros_support_init(support, locator, domain_id)` takes as arguments the two values rcl's options would carry. CORRECTED 2026-09-04 (phase-417): the sweeping form of this claim -- \"there is no runtime options object\" -- is false one stage over. Seven ENTITY options structs ship and correlate `same` (see `c:node_options_*`); INIT is a stage that genuinely has none."
   },
   "c:shutdown": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "as `rcl_init`: the rcl-layer counterpart. `nros_support_fini` is the rclc-shaped teardown."
   },
   "c:support_get_zero_initialized": {
@@ -43,6 +48,7 @@
   },
   "c:support_init_with_options": {
     "verdict": "declined",
+    "disposition": "refuse-loud",
     "why": "rclc's options-taking variant. Same constraint as `compile-time-options`: there is no `rcl_init_options_t` to pass."
   },
   "c:support_is_valid": {
@@ -60,6 +66,7 @@
   },
   "cpp:ContextAlreadyInitialized": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "an exception type, and the freestanding builds are -fno-exceptions (RFC-0018). Re-initialising returns `ErrorCode::AlreadyExists` through `nros::Result`."
   },
   "cpp:InitOptions": {
@@ -69,10 +76,12 @@
   },
   "cpp:get_contexts": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "enumerates the process's contexts; there is exactly one and it is not a value you can hold. See `cpp:Context`."
   },
   "cpp:get_current_signal_handler_options": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "see install_signal_handlers."
   },
   "cpp:init": {
@@ -81,10 +90,12 @@
   },
   "cpp:init_and_remove_ros_arguments": {
     "verdict": "declined",
+    "disposition": "refuse-loud",
     "why": "see remove_ros_arguments."
   },
   "cpp:install_signal_handlers": {
     "verdict": "declined",
+    "disposition": "absent",
     "bucket": "theirs-only",
     "why": "no POSIX signal delivery on Zephyr, FreeRTOS or bare-metal. rclcpp installs a SIGINT handler so Ctrl-C shuts the context down; an image is stopped by its RTOS, a watchdog or a power rail."
   },
@@ -106,14 +117,17 @@
   },
   "cpp:remove_ros_arguments": {
     "verdict": "declined",
+    "disposition": "refuse-loud",
     "why": "argv filtering, and there is no argv. RFC-0045 resolves boot config from baked values and the board."
   },
   "cpp:signal_handlers_installed": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "see install_signal_handlers."
   },
   "cpp:uninstall_signal_handlers": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "see install_signal_handlers."
   },
   "rust:Context": {
@@ -128,10 +142,15 @@
   },
   "rust:extract_non_ros_args": {
     "verdict": "declined",
+    "disposition": "absent",
     "why": "argv filtering; see `cpp:remove_ros_arguments`."
   },
   "c:support_init_rmw": {
     "verdict": "extension",
     "why": "`nros_support_init_named` plus a backend selector -- it names the RMW backend the session opens against. rclc/rclcpp have no counterpart because a ROS 2 desktop process selects its middleware with the `RMW_IMPLEMENTATION` environment variable, and an embedded image has no environment to read -- which is precisely how issue 1050 happened: the selector had an env rung and no baked one, so a PX4 module declaring `BACKENDS uorb` could not say so and the registry's first entry won. The hosted env rung (`$NROS_RMW`) still takes precedence, matching `RMW_IMPLEMENTATION`'s authority; this is the rung beneath it."
+  },
+  "rust:init": {
+    "verdict": "extension",
+    "why": "phase-417 W4.d — `nros-log`'s emission surface, now re-exported from the `nros` facade. Before this it was reachable only as a crate dependency, and `nros::Logger` bound a DIFFERENT type (`nros_core::logger::Logger`) that forwards to the `log` crate and never reaches `nros_platform_log_write`. That is why `std::println!` was the path of least resistance from the facade, and `std::println!` is FATAL on Zephyr native_sim (issue 0589: the write recurses through `zvfs_write` and exhausts the stack with no message).\n\nrclrs has no correspondent for the sink, arena and throttle-state types: its logging is `rclrs::log!` over rcutils, which owns its own storage. Ours are the storage, because an arena with a compile-time bound is what replaces an allocator. The MACROS mirror rclcpp's severity family rather than rclrs's single `log!`, since that is the shape a porting user writes; the `*_throttle_at` variants take the caller's `now_ns` because a target without `platform-clock` has no time base and a throttle with no clock admits everything -- so that configuration is a `compile_error!`, not a silent pass-through."
   }
 }

@@ -4,7 +4,28 @@ use core::ffi::c_int;
 
 /// Return type for nros C API functions.
 ///
-/// Compatible with rcl_ret_t for familiarity.
+/// NOT value-compatible with `rcl_ret_t` — only `OK` (0) agrees.
+///
+/// CORRECTED 2026-09-04 (phase-417 W5.b). This said "Compatible with rcl_ret_t
+/// for familiarity", which is false for five of six shared codes: ours are
+/// NEGATIVE where rcl's are positive.
+///
+/// | code | ours | rcl |
+/// | --- | ---: | ---: |
+/// | OK | 0 | 0 |
+/// | ERROR | -1 | 1 |
+/// | TIMEOUT | -2 | 2 |
+/// | UNSUPPORTED | -16 | 3 |
+/// | INVALID_ARGUMENT | -3 | 11 |
+/// | NOT_INIT | -7 | 101 |
+///
+/// A ported `if (ret == RCL_RET_TIMEOUT)` compiled against the old comment and
+/// never matched — the "compiles and differs" shape RFC-0089 forbids, arriving
+/// through a doc comment rather than a signature.
+///
+/// `<nros/rcl_compat.h>` maps rcl's constant SPELLINGS onto these values. The
+/// values are deliberately NOT renumbered: doing so would silently flip the
+/// meaning of every stored return code across the C, C++ and Rust FFI seams.
 pub type nros_ret_t = c_int;
 
 /// Success
@@ -36,7 +57,7 @@ pub const NROS_RET_BAD_SEQUENCE: nros_ret_t = -8;
 
 /// phase-379 W4 — the entity's node reference no longer names a live binding.
 ///
-/// Returned when an entity is used or finalised after `nros_node_fini` retired
+/// Returned when an entity is used or finalised after `rcl_node_fini` retired
 /// the slot it was created on. Before W4 the entity held a raw
 /// `*const nros_node_t` that nothing dereferenced, so this case SUCCEEDED
 /// silently; the identity makes it detectable. Distinct from
@@ -67,7 +88,7 @@ pub const NROS_RET_TRY_AGAIN: nros_ret_t = -14;
 /// Reentrant call detected — a blocking helper (`nros_client_call`,
 /// `nros_action_send_goal`, `nros_action_get_result`) was called from
 /// inside a dispatch callback. These functions internally call
-/// `nros_executor_spin_some`, which is not reentrant.
+/// `rclc_executor_spin_some`, which is not reentrant.
 pub const NROS_RET_REENTRANT: nros_ret_t = -15;
 
 /// The active backend does not implement this operation. Phase 108
