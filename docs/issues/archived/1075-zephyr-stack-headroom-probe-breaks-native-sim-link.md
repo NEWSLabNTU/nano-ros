@@ -1,7 +1,7 @@
 ---
 id: 1075
 title: "The Zephyr stack-headroom probe calls a syscall that is not COMPILED unless two Kconfigs are set, so every native_sim image fails to link"
-status: open
+status: resolved
 type: bug
 area: platform, build
 severity: high
@@ -106,3 +106,47 @@ safety argument the probe was written for actually needs a non-zero answer.
   compiled-out-under-Kconfig property.
 * The tier-1 lanes stayed green throughout, so nothing in the compile tiers
   would have caught this — only a Zephyr fixture build does.
+
+## Resolution (2026-09-05) — option A
+
+Guarded on BOTH Kconfigs, returning the ABI's documented `0` otherwise.
+
+This also restores consistency the commit had broken rather than inventing a
+policy: of the five ports `411addfd2` touched, three already gate
+(`INCLUDE_uxTaskGetStackHighWaterMark` on FreeRTOS, `TX_ENABLE_STACK_CHECKING`
+on ThreadX, POSIX returns 0 outright). Zephyr was the one left ungated, and it
+is the only one of the five whose probe is a SYSCALL — the only kind that can
+vanish from the link rather than answer an error.
+
+### The two "not covered" items, answered
+
+* **FreeRTOS has the same shape and already handles it.** Verified in the
+  commit's own diff: `#if (INCLUDE_uxTaskGetStackHighWaterMark == 1)` with a `0`
+  fallback. The guess in this issue ("probably links unconditionally") was
+  right about the mechanism and unnecessary about the risk.
+* **No other symbol from `411addfd2` has the property.** The commit adds exactly
+  one function per port and nothing else executable; the rest is the header, the
+  Rust binding and the cffi mirror.
+
+Left for whoever wants the number, and it is not free: on this tree the probe
+now returns `0` on Zephyr, so `stack-headroom-runtime` is INERT there. That is
+honest — `0` is the ABI's "not instrumented" and matches POSIX — but it means
+the safety argument the probe was written for is not yet supported on Zephyr.
+Option B (turning both Kconfigs on) buys a real answer at the cost of stack
+painting at boot and per-thread bytes, and it is a decision about the shipped
+image.
+
+### What this fix was NOT verified against
+
+No Zephyr SDK is provisioned on the host that made it, so the link was not
+reproduced or re-run here. The Kconfig names come from the issue's own reading
+of `zephyr/kernel/thread.c:806`, and `git grep` confirms neither is set anywhere
+in this repo, so every image in this tree takes the `#else`. A Zephyr fixture
+build is the acceptance, and it has not run.
+
+### And the reason it reached main
+
+The compile tiers stayed green throughout — nothing below a Zephyr fixture build
+can see a Zephyr link failure. That is the same gap issue 1029 records for the
+Zephyr dual-line nightly being skipped on every scheduled run, and it is not
+closed by this fix.

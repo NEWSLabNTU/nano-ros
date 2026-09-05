@@ -1219,13 +1219,40 @@ _Noreturn void nros_platform_panic(const char *msg, size_t len) {
 }
 
 /* Headroom for the calling thread. `k_thread_stack_space_get` answers in
- * unused BYTES, which is the ABI's unit, so no conversion. Needs
- * CONFIG_INIT_STACKS to have painted the stack; without it the kernel has no
- * watermark to read and returns an error, which becomes the documented 0. */
+ * unused BYTES, which is the ABI's unit, so no conversion.
+ *
+ * GATED, and on BOTH Kconfigs (issue 1075). The original comment here said the
+ * kernel "returns an error, which becomes the documented 0" without
+ * CONFIG_INIT_STACKS, and that was wrong twice over:
+ *
+ *   1. it named only CONFIG_INIT_STACKS. `zephyr/kernel/thread.c` encloses
+ *      `z_impl_k_thread_stack_space_get` in
+ *      `#if defined(CONFIG_INIT_STACKS) && defined(CONFIG_THREAD_STACK_INFO)`,
+ *      so a build with only the first still has no implementation;
+ *   2. it reasoned about RUN time for a failure that happens at LINK time.
+ *      Without both symbols the function is not compiled at all, so there is
+ *      nothing to return an error — the reference is undefined and every
+ *      native_sim image failed to link. Neither Kconfig is set anywhere in
+ *      this repo.
+ *
+ * The other four ports already do this: freertos gates on
+ * INCLUDE_uxTaskGetStackHighWaterMark, threadx on TX_ENABLE_STACK_CHECKING,
+ * posix returns 0 outright. Zephyr was the one that needed it most — a syscall
+ * is the only one of the four that can vanish from the link — and the one that
+ * did not have it.
+ *
+ * `0` is the ABI's "not instrumented", which is exactly what a build without
+ * the watermark is. Turning the Kconfigs ON is a separate decision about the
+ * shipped image (stack painting costs boot time and per-thread bytes), not
+ * about this bug. */
 size_t nros_platform_task_stack_unused_bytes(void) {
+#if defined(CONFIG_INIT_STACKS) && defined(CONFIG_THREAD_STACK_INFO)
     size_t unused = 0;
     if (k_thread_stack_space_get(k_current_get(), &unused) != 0) {
         return 0;
     }
     return unused;
+#else
+    return 0;
+#endif
 }
