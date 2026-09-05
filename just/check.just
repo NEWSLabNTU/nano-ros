@@ -162,6 +162,7 @@ fast-serial: \
     codegen-size-bound-golden \
     codegen-stamp-inputs \
     codegen-tool-reconfigure \
+    codegen-version-refusal \
     codegen-version-surface \
     config-header-single-writer \
     config-knob-census \
@@ -595,6 +596,27 @@ codegen-size-bound-golden:
     @cargo test --manifest-path packages/cli/Cargo.toml -p rosidl-codegen \
         --test codegen_golden --test message_size_bound_parity --quiet
     @echo "codegen size-bound golden + C/C++/Rust parity: OK"
+
+# RFC-0090 / phase-429 W5 — the codegen-version check must FIRE.
+#
+# `check-fast` proves the tree is green. Only a negative control proves the
+# mechanism is armed, and this one guards the failure that stopped nano-ros
+# shipping a prebuilt `nros`: a binary emitting code the runtime does not
+# accept, which COMPILES and is wrong.
+#
+# Three arms, from the REAL emitted artifact rather than a hand-written
+# imitation — the block is extracted verbatim from a committed golden header, so
+# a template edit that dropped the check takes these with it. In range compiles;
+# out of range is refused in both C and C++; a config header that defines
+# neither bound is refused as MISSING rather than as out-of-range, because an
+# undefined macro reads as 0 to `#if` and would otherwise produce a range error
+# about a version nobody set.
+#
+# The Rust half is NOT covered here — see the script's header for why, and for
+# the by-hand verification that stands in for it.
+[private]
+codegen-version-refusal:
+    @./tests/codegen-version-refusal-tests.sh
 
 # phase-429 W3 (RFC-0090 D1/D5) — `NROS_CODEGEN_VERSION` is an AUTHORED integer,
 # and this tree's authored mirrors drift: `check-rmw-api-parity`'s map read green
