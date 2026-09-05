@@ -14,8 +14,6 @@
 //! `Plan` IR makes the two paths converge on a single pkg-index +
 //! launch-parse implementation.
 
-use std::fmt::Write;
-
 use super::{Plan, sanitize_pkg};
 
 /// Emit a Rust `main.rs` body for the given plan.
@@ -26,80 +24,68 @@ use super::{Plan, sanitize_pkg};
 /// the `custom_tasks` splice). The body installs both a hosted `fn
 /// main()` and an embedded `#[unsafe(no_mangle)] extern "C" fn main()`
 /// so the same TU works for native + bare-metal targets.
+/// The whole TU, as the template sees it.
+///
+/// Issue 1102 — every field is ALREADY CORRECT: `board_path` came from
+/// `nros_orchestration_ir`, and every literal is already escaped. The template
+/// places them; it does not compute them.
+#[derive(serde::Serialize)]
+struct RustEntryView {
+    bringup: String,
+    launch: String,
+    board: String,
+    board_path: &'static str,
+    /// Raw-string literals, already quoted by `quote_str`.
+    depfiles: Vec<String>,
+    nodes: Vec<RustNodeView>,
+}
+
+/// One launch node's runtime state.
+///
+/// The three list fields are pre-joined literal text rather than lists,
+/// because their ELEMENTS are Rust syntax (`("a", "b")`, `("t", 1, 2, 3)`)
+/// assembled from escaped literals. Handing the template a list would make it
+/// responsible for composing that syntax, which is the half that must stay in
+/// Rust.
+#[derive(serde::Serialize)]
+struct RustNodeView {
+    pkg: String,
+    params: String,
+    remaps: String,
+    qos_overrides: String,
+    identity: String,
+}
+
+/// Emit a Rust `main.rs` body for the given plan.
+///
+/// Output mirrors the proc-macro's `OwnedSpin` framework branch (which
+/// is the only branch the CLI verb dispatches today — RTIC + Embassy
+/// emits stay proc-macro-only since they need `proc_macro::Span` for
+/// the `custom_tasks` splice). The body installs both a hosted `fn
+/// main()` and an embedded `#[unsafe(no_mangle)] extern "C" fn main()`
+/// so the same TU works for native + bare-metal targets.
 pub fn emit(plan: &Plan) -> String {
-    let mut out = String::new();
-    write_header(&mut out, plan);
+    let view = RustEntryView {
+        bringup: plan.bringup.clone(),
+        launch: plan.launch_file.display().to_string(),
+        board: plan.board.clone(),
+        board_path: board_path_for(&plan.board).unwrap_or("::nros_board_linux::LinuxBoard"),
+        // include_bytes! tracking — same rebuild-correctness workaround the
+        // proc-macro uses. A path that does not exist is skipped, exactly as
+        // the proc-macro does.
+        depfiles: plan
+            .depfile_paths
+            .iter()
+            .filter(|d| d.exists())
+            .map(|d| quote_str(&d.display().to_string()))
+            .collect(),
+        nodes: plan.nodes.iter().map(node_view).collect(),
+    };
 
-    // include_bytes! tracking — same rebuild-correctness workaround
-    // the proc-macro uses. Each tracked path gets one anonymous const.
-    for dep in &plan.depfile_paths {
-        let p = dep.display().to_string();
-        // Defensive: skip non-existent paths (proc-macro does the
-        // same).
-        if !dep.exists() {
-            continue;
-        }
-        let _ = writeln!(
-            out,
-            "const _: &[u8] = ::core::include_bytes!({});",
-            quote_str(&p)
-        );
-    }
-    out.push('\n');
-
-    let board_path = board_path_for(&plan.board).unwrap_or("::nros_board_linux::LinuxBoard");
-
-    // __nros_entry_run body — one ::<pkg>::register(runtime)?; per
-    // launch-XML node, in source order.
-    let mut register_calls = String::new();
-    for n in &plan.nodes {
-        emit_node_state(&mut register_calls, n);
-        let _ = writeln!(
-            register_calls,
-            "            ::{}::register(runtime)?;",
-            sanitize_pkg(&n.pkg)
-        );
-    }
-
-    let _ = writeln!(
-        out,
-        "fn __nros_entry_run() -> ::core::result::Result<\n\
-         \x20   (),\n\
-         \x20   ::nros::__macro_support::nros_platform::RuntimeError,\n\
-         > {{\n\
-         \x20   <{board_path} as ::nros::__macro_support::nros_platform::BoardEntry>::run(\n\
-         \x20       |runtime: &mut ::nros::__macro_support::nros_platform::RuntimeCtx<'_>|\n\
-         \x20           -> ::core::result::Result<\n\
-         \x20               (),\n\
-         \x20               ::nros::__macro_support::nros_platform::RuntimeError,\n\
-         \x20           >\n\
-         \x20   {{\n\
-         {register_calls}            ::core::result::Result::Ok(())\n\
-         \x20       }},\n\
-         \x20   )\n\
-         }}\n"
-    );
-
-    out.push_str(
-        "\n#[cfg(not(target_os = \"none\"))]\n\
-         fn main() {\n\
-         \x20   if let ::core::result::Result::Err(e) = __nros_entry_run() {\n\
-         \x20       ::std::eprintln!(\"{}: {}\", ::core::env!(\"CARGO_PKG_NAME\"), e);\n\
-         \x20       ::std::process::exit(1);\n\
-         \x20   }\n\
-         }\n\
-         \n\
-         #[cfg(target_os = \"none\")]\n\
-         #[unsafe(no_mangle)]\n\
-         pub extern \"C\" fn main() -> i32 {\n\
-         \x20   match __nros_entry_run() {\n\
-         \x20       ::core::result::Result::Ok(()) => 0,\n\
-         \x20       ::core::result::Result::Err(_) => 1,\n\
-         \x20   }\n\
-         }\n",
-    );
-
-    out
+    // A render failure is a bug in a template compiled INTO this binary, so it
+    // cannot be handled meaningfully at a call site that only has a plan.
+    crate::codegen::entry::render::render("rust_entry.rs.jinja", &view)
+        .expect("bundled rust entry template must render")
 }
 
 /// Bake the per-node runtime state the `nros::main!` proc-macro sets before
@@ -115,7 +101,7 @@ pub fn emit(plan: &Plan) -> String {
 /// reset discipline is the macro's and it is load-bearing: `runtime` is reused
 /// across nodes, so a node with no params must clear the previous node's
 /// rather than inherit them.
-fn emit_node_state(out: &mut String, n: &super::PlanNode) {
+fn node_view(n: &super::PlanNode) -> RustNodeView {
     let pairs = |items: &[(String, String)]| -> String {
         items
             .iter()
@@ -124,13 +110,10 @@ fn emit_node_state(out: &mut String, n: &super::PlanNode) {
             .join(", ")
     };
 
-    let _ = writeln!(out, "            runtime.params = &[{}];", pairs(&n.params));
-    let _ = writeln!(out, "            runtime.remaps = &[{}];", pairs(&n.remaps));
-
     // The plan carries LOWERED codes: `nros_orchestration_ir::qos_override`
     // already rejected anything unusable (issue 0303), so nothing is decoded
     // or silently dropped here.
-    let qos = n
+    let qos_overrides = n
         .qos_overrides
         .iter()
         .map(|o| {
@@ -144,41 +127,25 @@ fn emit_node_state(out: &mut String, n: &super::PlanNode) {
         })
         .collect::<Vec<_>>()
         .join(", ");
-    let _ = writeln!(out, "            runtime.qos_overrides = &[{qos}];");
 
-    match (&n.name, &n.namespace) {
-        (Some(name), ns) => {
-            let _ = writeln!(
-                out,
-                "            runtime.node_identity = ::core::option::Option::Some(({}, {}));",
-                lit_str(name),
-                lit_str(ns.as_deref().unwrap_or(""))
-            );
-        }
-        (None, _) => {
-            let _ = writeln!(
-                out,
-                "            runtime.node_identity = ::core::option::Option::None;"
-            );
-        }
+    // A namespace without a name is not an identity: the proc-macro keys the
+    // override on the name, so `None` here means "keep the node's own".
+    let identity = match &n.name {
+        Some(name) => format!(
+            "::core::option::Option::Some(({}, {}))",
+            lit_str(name),
+            lit_str(n.namespace.as_deref().unwrap_or(""))
+        ),
+        None => "::core::option::Option::None".to_string(),
+    };
+
+    RustNodeView {
+        pkg: sanitize_pkg(&n.pkg),
+        params: pairs(&n.params),
+        remaps: pairs(&n.remaps),
+        qos_overrides,
+        identity,
     }
-}
-
-fn write_header(out: &mut String, plan: &Plan) {
-    let _ = writeln!(
-        out,
-        "// Generated by `nros codegen entry --lang rust`\n\
-         //   bringup = {bringup}\n\
-         //   launch  = {launch}\n\
-         //   board   = {board}\n\
-         //\n\
-         // DO NOT EDIT — re-run `cargo build` to regenerate. The Rust\n\
-         // `nros::main!()` proc-macro is the canonical compile-time\n\
-         // emitter; this CLI-baked form mirrors its `OwnedSpin` branch.\n",
-        bringup = plan.bringup,
-        launch = plan.launch_file.display(),
-        board = plan.board,
-    );
 }
 
 /// Board key → Rust ZST path.

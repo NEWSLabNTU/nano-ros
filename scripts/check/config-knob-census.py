@@ -93,6 +93,10 @@ KNOB_CLASS = {
     "NROS_ALLOW_INFRA_DEPS": ("infra", "policy flag"),
     "NROS_BOOT_REPORT": ("infra", "diagnostic toggle; a bool, so it has no rung"),
     "NROS_BUILD_ROOT": ("infra", "path"),
+    # Issue 1102 — regenerates the entry-codegen goldens. A test-only escape
+    # hatch, not a build input: it configures nothing about an image, and the
+    # goldens it rewrites are compared byte-for-byte on every other run.
+    "NROS_UPDATE_GOLDEN": ("infra", "test-only golden regeneration"),
     "NROS_CARGO_FLAGS": ("infra", "the --locked shim"),
     "NROS_LINK_IP": ("infra", "link toggle"),
     "NROS_PLATFORMS_DIR": ("infra", "the ladder's own search path"),
