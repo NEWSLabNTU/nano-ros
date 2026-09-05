@@ -1,7 +1,7 @@
 ---
 id: 1023
 title: "`nros_sertype.cpp` includes `<memory>` and `<string>`, so cyclonedds cannot compile for a freestanding target"
-status: open
+status: resolved
 area: rmw, build
 severity: high
 found: 2026-09-04
@@ -100,3 +100,60 @@ currently reproducible" — which is the first tier-2 fixture build in some time
 None of 0968's twelve runtime failures are on threadx_riscv64: they are esp32
 (5), threadx_linux (3), zephyr xrce-cpp (3) and one qemu-rtic. Those modules
 built. This issue is a separate finding from the same run.
+
+## Resolution (2026-09-05) — the code half was already done by issue 1014
+
+`bed98e8ef` ("the Cyclone sertype TU compiles freestanding — by deleting a copy,
+not replacing it") landed both includes' removal, and took the better of the two
+options this issue laid out for `std::string`:
+
+* `<memory>` — replaced by a ten-line local RAII holder, as recommended here.
+* `<string>` — **not** the `ddsrt_strdup` this issue proposed. The copy was
+  deleted outright: `ddsi_sertype_init_flags` already does
+  `tp->type_name = ddsrt_strdup(name)`, so the `std::string` member was a
+  redundant SECOND copy of a string Cyclone already owns and already frees in
+  `ddsi_sertype_fini`. The comparison, the hash loop and the `.c_str()` all read
+  `ddsi_sertype::type_name` now. No lifetime question to settle, no new free op
+  — which is why the "needs a decision" framing here turned out to be avoidable.
+
+## What this pass adds: the gate's coverage
+
+`check-cpp-freestanding-includes` existed for this exact class (issue 0332) and
+read `packages/api/nros-cpp/include/nros/*.hpp` ONLY, while
+`cmake/toolchain/riscv64-threadx.cmake:219` puts `-nostdinc++ -isystem
+<cxx-compat>` on every C++ TU built for that board. The 0196 rule: coverage
+narrower than the rule it enforces. The class then bit twice in one Cyclone
+file — 0942 (`<cstdio>`) and 1014 (`<memory>` + `<string>`).
+
+The gate now also reads the Cyclone backend's `src/`, `.cpp` as well as `.hpp`,
+under a SECOND contract: nros-cpp headers must gate on `NROS_CPP_STD`
+specifically (the 0112 rule — a hosted compiler run `-nostdinc++` still has no
+`<string>`), while a backend TU may gate on anything, because it guards on the
+PLATFORM and that is the right question there. `internal.hpp` takes
+`<chrono>`/`<thread>` in the `#else` of its `NROS_PLATFORM_*` chain and is
+correct.
+
+**A latent bug in the gate fell out of widening it.** Its "other" push used
+`\b` for a word boundary, which POSIX ERE does not have, so
+`/#[[:space:]]*(ifdef|ifndef|if)\b/` **matched nothing** — the neutral push the
+comment says prevents a nested `#endif` from closing an `NROS_CPP_STD` region
+early had never happened. Invisible while every guarded include sat in a flat
+`#ifdef`; found the moment a real `#if/#elif/#else` chain came into scope.
+`([[:space:]]|$)` now.
+
+Mutation-checked in both directions: an ungated `#include <memory>` in
+`nros_sertype.cpp` is caught, and an ungated `#include <string>` in
+`nros-cpp/node.hpp` is caught.
+
+## What was NOT verified, and how far it got
+
+The acceptance is a threadx_riscv64 fixture build, and it did not run — that
+coordinate needs a configured Cyclone for the board and this host has none.
+
+What DID run is a direct `-ffreestanding -nostdinc++` syntax-only compile of
+`nros_sertype.cpp` with the board's own `riscv-none-elf-g++ 14.2` and its
+ten-header `cxx-compat` shim. It no longer stops on `<memory>`: it now reaches
+`ddsrt/sockets/posix.h` and fails on `sys/socket.h`, i.e. on a C header selected
+by a Linux-generated `dds/features.h` that a real board configure would not
+produce. That is not a pass, and it is evidence that the C++-library blocker
+this issue is about is gone.
