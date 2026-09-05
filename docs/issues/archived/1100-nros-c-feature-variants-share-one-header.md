@@ -2,7 +2,7 @@
 id: 1100
 title: "Two feature variants of `nros-c` in one build dir write the same
   generated header, and the writer guarantees a second build script run"
-status: open
+status: resolved
 type: bug
 area: build
 related: [issue-0528, issue-0475, rfc-0044]
@@ -112,3 +112,62 @@ Worth deciding separately whether a build that has just succeeded should be
 immediately dirty again. Even with one variant, the `rerun-if-changed` on a
 written byproduct means every second build re-runs these scripts; that is
 cheap when it agrees, but it is what turns this defect from latent into fatal.
+
+## Root cause, located 2026-09-05 — and the split is NOT deliberate
+
+This issue asked whether the two variants are intentional ("needs someone who
+knows which consumer is which"). They are not, and the file says so itself.
+
+`zephyr/CMakeLists.txt` builds two hand-written feature strings:
+
+| string | line | nros-c-relevant features |
+| --- | --- | --- |
+| `_nros_features` (the C-API `nros-c` build) | 305/313/323 | `rmw-cffi, cffi-*, platform-zephyr, ros-humble` (+`std`, +trace) |
+| `_nros_cpp_features` (the `nros-cpp` build) | 536/554/573 | the same **plus `alloc`** (554, 573) and **plus `param-services`** (593, under `param_services IN_LIST NANO_ROS_FEATURES`) |
+
+`nros-cpp`'s manifest forwards both: `alloc = [... "nros-c/alloc" ...]` and
+`param-services = ["rmw-cffi", "nros-c/param-services"]`. So in a mixed C + C++
+image cargo resolves TWO `nros-c` units, which is exactly the pair the issue
+observed — `alloc_..._param_services_...` against
+`critical_section_..._platform_...`.
+
+**The rule was already written down, two hundred lines below.** The
+`_nros_c_for_cpp_features` block (the inverse case, C++-only images) says:
+
+> both archives are linked into this image from one nros-node dep graph, and a
+> feature that reaches only one of them splits the unit.
+
+It was stated for `trace-callbacks` and applied only there.
+
+## Fix
+
+`_nros_features` now appends `,alloc` — and `,param-services` under the same
+`NANO_ROS_FEATURES` condition the C++ string uses — **when
+`CONFIG_NROS_CPP_API` is set**.
+
+Conditional on purpose. A C-ONLY image has no second unit to agree with, and
+adding `alloc` there would change what it links for nothing. Where both APIs are
+on, the image already contains the alloc-enabled `nros-node` through `nros-cpp`,
+so unifying removes a duplicate rather than adding a capability — the archive
+should get smaller, not larger.
+
+## NOT VERIFIED against a Zephyr build
+
+No Zephyr SDK is provisioned on the host this was written on, so the
+double-build reproduction was not run and the fix was not exercised. What backs
+it is static: the two feature strings and their line numbers, `nros-cpp`'s
+forwarding in its manifest, the two `NROS_CONFIG_VARIANT` values in this
+issue's own diff, and the fact that they differ by exactly `alloc` +
+`param_services`.
+
+**The acceptance is the reproduction in this issue**: build a mixed C + C++
+Zephyr image, then build again in the same directory. It should now succeed.
+
+## Left alone, and worth a decision of its own
+
+The issue's closing paragraph: `write_header_if_absent_or_verify` declares the
+header it writes as its own `rerun-if-changed` input, so every second build
+re-runs both scripts. That is what turned this from latent into fatal, and it is
+unchanged here — with one variant it is cheap and correct (it is what makes the
+absent-header self-heal reachable, issue 0834). Making a just-succeeded build
+not immediately dirty is a separate question from making the two halves agree.
