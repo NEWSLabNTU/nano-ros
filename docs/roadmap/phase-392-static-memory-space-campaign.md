@@ -971,6 +971,43 @@ Net C/C++ API change: none. No function, no parameter, no generic in a header.
   the same time: `NROS_DECLARED_INFRA_QUERYABLES` must appear in the configure's
   `build.ninja`, where today it does not.
 
+  **ATTEMPTED 2026-09-05, and the recipe above does not work as written.** Ran
+  it; recording what it produced rather than an estimate, per this phase's own
+  rule.
+
+  `just build-test-fixtures lane=native` completes green (after two unrelated
+  breaks that had to be fixed first, below), and
+  `workspace-fixtures-build.sh linux rust` builds 21 entries — **through cargo,
+  producing zero CMake configures**. There is no `build.ninja` to inspect,
+  because the native workspace entries are cargo leaves. That also confirms
+  issue 0965's statement that "every entry in `examples/workspaces/` targets
+  Zephyr or FVP, so there is no host entry to configure": the directories
+  `native_entry` and `native_rust_params_entry` exist, which makes the claim
+  look wrong, and they are cargo-built, which makes it right.
+
+  So the measurement needs a CMake-configured workspace image, and on this tree
+  that means a Zephyr or FVP cross build — not `lane=native`. The instruction
+  above should be rewritten for whoever picks this up.
+
+  What IS measurable now, and consistent with the expectation above:
+  `NROS_DECLARED_INFRA_QUERYABLES` appears in **0 of 26** existing workspace
+  `build.ninja` files, as do `NROS_DERIVED_MAX_QUERYABLES` and
+  `NROS_DERIVED_MAX_SUBSCRIBERS`. Those configures are stale, so this is
+  consistent-with rather than proof-of; it is not a substitute for the A/B.
+
+  **Two blockers were cleared to get this far**, both unrelated to W5:
+
+  * 24 `build.ninja` still referenced `sertype_min.cpp`, retired on main by
+    `6ab5ab7db` (issue 0976). Re-configured 21 in place (`cmake <build-dir>`,
+    the documented fix rather than a wipe); the other 3 are synthesised
+    workspace dirs with no committed root `CMakeLists.txt`.
+  * zenoh-pico did not compile for FreeRTOS + lwIP:
+    `_z_ipv6_port_to_endpoint` uses `INET6_ADDRSTRLEN` unconditionally while
+    `lwip/inet.h` defines it only under `LWIP_IPV6`. Compile-check units u10
+    (`freertos_firmware`) and u11 (`orch_tiers_freertos`) died Error 101. Fixed
+    in the fork (`jerry73204/zenoh-pico` `nano-ros`, `49b4e635`) and the pin
+    bumped forward.
+
 ### Open, and deliberately not assumed away
 
 **Hand-written `main`s.** They create entities at runtime, have no generated
