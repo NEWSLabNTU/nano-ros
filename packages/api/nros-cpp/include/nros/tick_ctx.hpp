@@ -126,7 +126,7 @@ class TickCtx {
     /// over-estimate only wastes stack.
     template <typename Req, typename Resp, size_t RespCap>
     Result call_sized(const char* service_entity, const Req& request, Resp& response) {
-        uint8_t req_buf[Req::SERIALIZED_SIZE_MAX];
+        uint8_t req_buf[::nros::detail::buffer_bounds<Req>::tx];
         size_t req_len = 0;
         if (Req::ffi_serialize(&request, req_buf, sizeof(req_buf), &req_len) != 0) {
             return Result(ErrorCode::Error);
@@ -170,7 +170,7 @@ class TickCtx {
     /// codegen-emitted interface, same as `nros::ActionClient<A>`).
     template <typename G>
     Result send_goal(const char* action_entity, const G& goal, uint8_t goal_id_out[16]) {
-        uint8_t goal_buf[G::SERIALIZED_SIZE_MAX];
+        uint8_t goal_buf[::nros::detail::buffer_bounds<G>::tx];
         size_t goal_len = 0;
         if (G::ffi_serialize(&goal, goal_buf, sizeof(goal_buf), &goal_len) != 0) {
             return Result(ErrorCode::Error);

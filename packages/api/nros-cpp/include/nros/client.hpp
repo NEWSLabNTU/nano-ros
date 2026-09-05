@@ -90,7 +90,7 @@ template <typename S> class Client {
         using Fut = Future<ResponseType, RespCap>;
         if (!initialized_) return Fut();
 
-        uint8_t req_buf[RequestType::SERIALIZED_SIZE_MAX];
+        uint8_t req_buf[::nros::detail::buffer_bounds<RequestType>::tx];
         size_t req_len = 0;
         if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
             return Fut();
@@ -155,7 +155,7 @@ template <typename S> class Client {
     Result call_polling_sized(const RequestType& req, ResponseType& resp,
                               uint32_t timeout_ms = 100) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t req_buf[RequestType::SERIALIZED_SIZE_MAX];
+        uint8_t req_buf[::nros::detail::buffer_bounds<RequestType>::tx];
         size_t req_len = 0;
         if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
             return Result(ErrorCode::Error);
@@ -239,7 +239,7 @@ template <typename S> class Client {
     /// during `spin_once` (no Future). Returns immediately after sending.
     Result async_send_request(const RequestType& req) {
         if (!initialized_ || !callback_mode_) return Result(ErrorCode::NotInitialized);
-        uint8_t req_buf[RequestType::SERIALIZED_SIZE_MAX];
+        uint8_t req_buf[::nros::detail::buffer_bounds<RequestType>::tx];
         size_t req_len = 0;
         if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
             return Result(ErrorCode::Error);

@@ -116,7 +116,7 @@ template <typename A> class PollingActionServer {
     /// Publish a feedback message for an accepted goal.
     Result publish_feedback(const uint8_t goal_id[16], const FeedbackType& fb) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[FeedbackType::SERIALIZED_SIZE_MAX];
+        uint8_t buf[::nros::detail::buffer_bounds<FeedbackType>::tx];
         size_t len = 0;
         if (FeedbackType::ffi_serialize(&fb, buf, sizeof(buf), &len) != 0)
             return Result(ErrorCode::Error);
@@ -127,7 +127,7 @@ template <typename A> class PollingActionServer {
     /// Mark a goal terminal with a typed result.
     Result complete_goal(const uint8_t goal_id[16], GoalStatus status, const ResultType& result) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[ResultType::SERIALIZED_SIZE_MAX];
+        uint8_t buf[::nros::detail::buffer_bounds<ResultType>::tx];
         size_t len = 0;
         if (ResultType::ffi_serialize(&result, buf, sizeof(buf), &len) != 0)
             return Result(ErrorCode::Error);
@@ -215,7 +215,7 @@ template <typename A> class PollingActionServer {
     /// ErrorCode::TryAgain if none pending.
     Result try_handle_get_result(const ResultType& default_result = ResultType{}) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[ResultType::SERIALIZED_SIZE_MAX];
+        uint8_t buf[::nros::detail::buffer_bounds<ResultType>::tx];
         size_t len = 0;
         if (ResultType::ffi_serialize(&default_result, buf, sizeof(buf), &len) != 0)
             return Result(ErrorCode::Error);

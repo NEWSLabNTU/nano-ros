@@ -16,6 +16,10 @@
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"
+// issue 0964 — the feedback/result TX buffers below size through
+// `detail::buffer_bounds`, so this header needs it directly rather than by
+// luck through a transitive include.
+#include "nros/size_bound.hpp"
 
 // Phase 118.D — most action_server FFI symbols come from
 // `nros_cpp_ffi.h`; cbindgen renders Rust `*const [u8; 16]` as
@@ -237,7 +241,7 @@ template <typename A> class ActionServer {
     Result publish_feedback(const uint8_t goal_id[16], const FeedbackType& feedback) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
 
-        uint8_t buf[FeedbackType::SERIALIZED_SIZE_MAX];
+        uint8_t buf[::nros::detail::buffer_bounds<FeedbackType>::tx];
         size_t len = 0;
         if (FeedbackType::ffi_serialize(&feedback, buf, sizeof(buf), &len) != 0) {
             return Result(ErrorCode::Error);
@@ -257,7 +261,7 @@ template <typename A> class ActionServer {
     Result complete_goal(const uint8_t goal_id[16], GoalStatus status, const ResultType& result) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
 
-        uint8_t buf[ResultType::SERIALIZED_SIZE_MAX];
+        uint8_t buf[::nros::detail::buffer_bounds<ResultType>::tx];
         size_t len = 0;
         if (ResultType::ffi_serialize(&result, buf, sizeof(buf), &len) != 0) {
             return Result(ErrorCode::Error);

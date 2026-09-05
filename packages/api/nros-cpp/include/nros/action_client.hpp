@@ -125,7 +125,7 @@ template <typename A> class ActionClient {
     Result send_goal(const GoalType& goal, uint8_t goal_id[16]) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
 
-        uint8_t buf[GoalType::SERIALIZED_SIZE_MAX];
+        uint8_t buf[::nros::detail::buffer_bounds<GoalType>::tx];
         size_t len = 0;
         if (GoalType::ffi_serialize(&goal, buf, sizeof(buf), &len) != 0) {
             return Result(ErrorCode::Error);
@@ -187,7 +187,7 @@ template <typename A> class ActionClient {
     Future<GoalAccept> send_goal_future(const GoalType& goal) {
         if (!initialized_) return Future<GoalAccept>();
 
-        uint8_t buf[GoalType::SERIALIZED_SIZE_MAX];
+        uint8_t buf[::nros::detail::buffer_bounds<GoalType>::tx];
         size_t len = 0;
         if (GoalType::ffi_serialize(&goal, buf, sizeof(buf), &len) != 0) {
             return Future<GoalAccept>();
@@ -335,7 +335,7 @@ template <typename A> class ActionClient {
     Result send_goal_async(const GoalType& goal, uint8_t goal_id[16]) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
 
-        uint8_t buf[GoalType::SERIALIZED_SIZE_MAX];
+        uint8_t buf[::nros::detail::buffer_bounds<GoalType>::tx];
         size_t len = 0;
         if (GoalType::ffi_serialize(&goal, buf, sizeof(buf), &len) != 0) {
             return Result(ErrorCode::Error);
