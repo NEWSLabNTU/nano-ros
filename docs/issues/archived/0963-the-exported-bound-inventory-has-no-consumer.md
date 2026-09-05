@@ -1,7 +1,7 @@
 ---
 id: 963
 title: "The derived-bound inventory has readers now — what is left is the executor arena alone (was: nothing reads it)"
-status: open
+status: resolved
 area: codegen, memory, build
 severity: medium
 related: [0896, 0900, 0939, 0965, phase-403, phase-403-W6, phase-403-W8, phase-412]
@@ -293,3 +293,55 @@ type. A check that has never executed is indistinguishable from one that does
 not work, and the first version of this test passed for the wrong reason: the
 join iterates `TYPE_COUNTS`, not `TYPES`, so a fixture listing the unbounded type
 in only the latter never visited it.
+
+
+## The ordering blocker is LIFTED (2026-09-06) — all three steps
+
+The scoped fix above is done, and the third step turned out to be somewhere
+other than where it was predicted.
+
+**Step 1 — the join runs before the closure refusal.** It is pure (it publishes
+nothing), so computing it early changes no output on the path that then refuses
+everything.
+
+**Step 2 — a refused closure still answers the payload classes**, but only on a
+real `subscribed` join. That guard is the load-bearing part: the macro's
+`closure` basis fallback derives over `_small` / `_large_types`, which on the
+refused path were accumulated over the BOUNDED types only. Publishing those
+would be exactly the under-derivation the refusal exists to prevent, whose
+failure mode is a silent `BufferTooSmall`. So an image with no entity inventory
+still gets nothing.
+
+**Step 3 was not where this issue said it was.** The prediction was that
+`nros_cargo_build.cmake` "gates on the OVERALL status … or it will ignore values
+that are present". It does not: `_nros_resolve_derivable_knob` keys on
+`DEFINED ${derived_var}`, and `_nros_load_derived_message_bounds` forwards any
+of the five names it finds, neither consulting the status. Read rather than
+assumed, and the assumption was wrong.
+
+The real gap was one layer earlier, in `_nros_message_bounds_write_output`: its
+`refused` branch wrote the reason and the line "No knob is derived. Every one
+keeps its configured value.", and nothing else. **The file IS the transport** —
+a knob published in memory but absent from it does not reach the consumer at
+all. That branch now emits the payload-class knobs, the basis and the payload
+status when the join was `subscribed`, with a comment saying which knob the
+refusal still covers and why.
+
+### Held by case P, which asserts the FILE and not just the variables
+
+`tests/cmake-message-bounds-tests.sh` case P builds a closure with an unbounded
+type and subscribes only to the bounded one. It asserts `payload=derived`,
+`basis=subscribed`, the small class sized from the subscribed type, and that the
+take buffer is NOT derived. Then it asserts the same of the OUTPUT FILE — which
+is what caught the writer gap: every in-memory assertion passed while the file
+carried nothing.
+
+It also asserts the no-inventory case publishes nothing, in memory and in the
+file, so the `closure`-fallback hazard has a negative control rather than a
+comment.
+
+Mutation-tested three ways, each restoring the old behaviour and each failing
+the suite: dropping the `subscribed` guard, moving the join back after the
+refusal, and reverting the writer.
+
+92 assertions in the suite (was 83). `just check fast` 230/230.
