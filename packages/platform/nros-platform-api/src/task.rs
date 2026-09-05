@@ -23,6 +23,7 @@
 // once here is the cheaper truth.
 #![allow(dead_code)]
 
+#[cfg(feature = "alloc")]
 use core::ffi::c_void;
 
 /// The ABI's task attributes, mirrored for the `extern` declaration below.
@@ -33,6 +34,12 @@ use core::ffi::c_void;
 /// the wake and task symbols are declared here by hand. The layout is checked
 /// against the header by `check-ffi-struct-mirrors`; see the note at the spawn
 /// site for what a drift would cost.
+//
+// Gated with the spawn path that uses it: `stack_unused_bytes` below needs no
+// allocator, so the module is compiled without the `alloc` feature too, and an
+// ungated private struct would be dead code there. `check-ffi-struct-mirrors`
+// reads the source, not a build, so the layout stays checked either way.
+#[cfg(feature = "alloc")]
 #[repr(C)]
 struct TaskAttr {
     name: *const core::ffi::c_char,
@@ -44,10 +51,18 @@ struct TaskAttr {
 }
 
 /// `INT32_MIN` — inherit the creating task's priority.
+#[cfg(feature = "alloc")]
 const PRIORITY_INHERIT: i32 = i32::MIN;
 
+// The stack probe is a plain query with no arguments and no storage, so it is
+// declared unconditionally — see `stack_unused_bytes`.
 unsafe extern "C" {
     fn nros_platform_task_stack_unused_bytes() -> usize;
+}
+
+// Spawning is the half that allocates.
+#[cfg(feature = "alloc")]
+unsafe extern "C" {
     fn nros_platform_task_init(
         task: *mut c_void,
         attr: *mut c_void,
@@ -65,11 +80,13 @@ unsafe extern "C" {
 /// have to signal their worker to stop BEFORE waiting for it — a `Drop` that
 /// joined implicitly would deadlock against a worker still blocked on its own
 /// wait.
+#[cfg(feature = "alloc")]
 pub struct PlatformTask {
     ptr: *mut u8,
     layout: core::alloc::Layout,
 }
 
+#[cfg(feature = "alloc")]
 impl PlatformTask {
     /// Spawn `entry(arg)`, or `None` when this platform cannot host a task
     /// (no storage sizing, allocation failure, or a refused spawn).
@@ -178,6 +195,7 @@ impl PlatformTask {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl Drop for PlatformTask {
     fn drop(&mut self) {
         // Reached only if a caller dropped the handle without joining, which

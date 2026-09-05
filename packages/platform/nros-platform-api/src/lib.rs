@@ -61,7 +61,9 @@
 // an ABI belongs with the ABI.
 #[cfg(feature = "alloc")]
 extern crate alloc;
-#[cfg(feature = "alloc")]
+// Not `alloc`-gated: `task::stack_unused_bytes` is a plain FFI query, and a
+// stack-headroom probe is most load-bearing exactly on the no-alloc targets.
+// Only the allocate-spawn-join half inside needs the feature.
 pub mod task;
 
 use core::ffi::{c_int, c_void};
