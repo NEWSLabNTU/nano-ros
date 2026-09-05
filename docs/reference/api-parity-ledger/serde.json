@@ -1,275 +1,201 @@
 {
- "_doc": [
-  "Phase 379. One row per item where the nano-ros user API does NOT correspond",
-  "to the ROS 2 client library it mirrors. Written by hand; read by",
-  "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
-  "no entry here.",
-  "",
-  "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
-  "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
-  "",
-  "verdict is one of:",
-  "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
-  "              the constraint (no_std, no exceptions, no allocator, no runtime",
-  "              env, single-threaded transport) -- not a preference. This is the",
-  "              only sanctioned reason to differ (RFC-0036).",
-  "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
-  "  declined    ROS 2 has it, we deliberately do not, with the reason.",
-  "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
-  "              legitimate entry -- the point is that it is written down.",
-  "  rename      the names differ and OURS is the one that should change. A",
-  "              rename with no platform reason costs the drop-in claim for",
-  "              nothing, so these are the campaign's work list.",
-  "  their-rename",
-  "              the names differ, the CAPABILITY matches, and THEIRS is the",
-  "              one that should change: ours is the spelling the broader ROS 2",
-  "              ecosystem already uses and the library this lane compares",
-  "              against is the outlier. The mirror of `rename`, and the only",
-  "              verdict that says a difference is UPSTREAM's to close.",
-  "",
-  "              A claim about NAMES ONLY. If the shapes also differ for a",
-  "              platform reason the row is a `divergence`; if we do not ship",
-  "              the capability at all it is `declined` or `gap`; if we ship it",
-  "              and ROS 2 does not it is an `extension`. Both halves of a pair",
-  "              carry it -- the theirs-only row and the ours-only row are one",
-  "              statement seen from two sides.",
-  "",
-  "              A row MUST carry a `their_rename` object, and `--check`",
-  "              refuses the verdict without it:",
-  "                ours      our spelling.",
-  "                majority  a list, each entry naming a ROS 2 spelling ours",
-  "                          agrees with and where it is recorded. At least one",
-  "                          entry must cite an upstream (rcl / rclcpp / rclrs /",
-  "                          rclc / an interface package) -- our own three",
-  "                          languages agreeing is internal consistency, which",
-  "                          is a PREFERENCE, and preferences are not this",
-  "                          verdict. `c:trigger_guard_condition` stays",
-  "                          `declined` for exactly that reason: `nros_<entity>_",
-  "                          <verb>` is our convention, not ROS 2's majority.",
-  "                outlier   the one upstream spelling that differs, with the",
-  "                          evidence it is the minority -- countable in",
-  "                          docs/reference/api-surface/ or in an interface",
-  "                          package (rcl has 14 `rcl_*_is_valid` and exactly",
-  "                          one `rcl_clock_valid`).",
-  "                pair      the ledger key of the other half, when there is one.",
-  "",
-  "              It does NOT cancel the drop-in cost -- a ported node still has",
-  "              to be edited, and `why` should say what the reader loses. What",
-  "              it buys is that `rename` stays a list of OUR defects, and that",
-  "              a row cannot say \"we have it\" (`declined`) or \"ROS 2 has none\"",
-  "              (`extension`) when neither is true.",
-  "",
-  "              `scripts/check-prelude-tiers.py` treats it as HAVING an",
-  "              upstream correspondent, so a `their-rename` name is prelude-",
-  "              eligible; only `extension` is excluded there.",
-  "",
-  "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
-  "the rest. `--check` is deliberately not wired into `just check` until then --",
-  "a gate that fails on ~2000 rows from the day it lands is one somebody",
-  "switches off. Keys beginning with '_' are documentation and are skipped.",
-  "",
-  "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
-  "shard in this directory. One agent per lane can write without a rebase",
-  "conflict against the others.",
-  "",
-  "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
-  "languages, because the campaign closes a feature at a time across every",
-  "language. `scripts/api-parity.py` merges every shard here, and",
-  "`--self-test` rejects a row whose item belongs to a different stage."
- ],
- "c:cdr_begin_dheader": {
-  "verdict": "extension",
-  "bucket": "ours-only",
-  "why": "Reserves the 4-byte XCDR2 DHEADER at the cursor and returns its offset as an `int64` mark the generated `_serialize_inline` passes back to `nros_cdr_end_dheader`. RFC-0055's XCDR2 DELIMITED_CDR2 machinery. The RFC carries a CORRECTION dated 2026-07-26 that refutes its own premise: a default Jazzy peer serializes FINAL/XCDR1 on the wire, DDS-XTypes REJECTS an appendable writer against a FINAL reader, and #0267 turned out to be two Cyclone descriptor-builder bugs rather than a DHEADER gap. So the path is built, tested and PARKED -- `nros-c/src/cdr.rs`'s `const XCDR2: bool = false` makes every one of these a compile-time no-op today, waiting for a per-type `@appendable` signal that nothing yet emits. ROS 2's equivalent is not an API at all: extensibility is a property of the IDL annotation and the middleware acts on it, so there is no rclcpp/rclc verb to correlate with."
- },
- "c:cdr_begin_dheader_read": {
-  "verdict": "extension",
-  "why": "The read-side scope: consumes the DHEADER and returns the delimited struct's end offset so `_deserialize_inline` can detect an overrun (`DeserError::DHeaderOverrun`). Same RFC-0055 story; see `c:cdr_begin_dheader`. The `_read` suffix is how C spells what Rust gets from the receiver type (`CdrReader::begin_dheader` vs `CdrWriter::begin_dheader`) -- a flat namespace has no other option, so it is not a rename."
- },
- "c:cdr_borrow_bytes": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:cdr_borrow_le_slice_f32": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:cdr_borrow_le_slice_f64": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:cdr_borrow_le_slice_i16": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:cdr_borrow_le_slice_i32": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:cdr_borrow_le_slice_i64": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:cdr_borrow_le_slice_u16": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:cdr_borrow_le_slice_u32": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:cdr_borrow_le_slice_u64": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:cdr_borrow_string": {
-  "verdict": "extension",
-  "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
- },
- "c:cdr_end_dheader": {
-  "verdict": "extension",
-  "why": "Backpatches the mark reserved by `c:cdr_begin_dheader` with the member-block size. Same RFC-0055 story; see that row."
- },
- "c:cdr_end_dheader_read": {
-  "verdict": "extension",
-  "why": "The read-side close; see `c:cdr_begin_dheader_read`."
- },
- "c:cdr_read_*": {
-  "verdict": "extension",
-  "bucket": "ours-only",
-  "why": "The CDR primitive readers (`nros_cdr_read_u8` .. `_f64`), each taking the `(cursor, end, origin)` triple and advancing the cursor. In ROS 2 the CDR encoder belongs to the MIDDLEWARE, not the client library: `rosidl` generates a `rosidl_message_type_support_t` whose function table is filled in by whichever rmw implementation is loaded (FastCDR inside rmw_fastrtps, the ddsi stream writers inside rmw_cyclonedds), and the only byte-level verbs rcl/rclcpp expose are `rmw_serialize`/`rmw_deserialize` on a whole message. No cursor, no per-primitive call, nothing to correlate against. nano-ros has no middleware plugin to hide an encoder inside -- `nros generate-c` emits the `_serialize`/`_deserialize` body into the USER's translation unit and that TU links against libnano_ros -- so the primitives have to be exported symbols. The RTOS constraint that earns it is the one `c:message_type_t` already records: one linked backend, no runtime typesupport registry to dispatch through. The RTOS scenario is the generated message code itself: a `_deserialize` body compiled into a Zephyr or FreeRTOS image, decoding into fixed-size `heapless`-equivalent C storage with no allocator and no stream object -- `origin` exists because CDR alignment is relative to the payload start, and the caller owns the buffer. Recorded honestly rather than as a blanket `extension`: this is CODEGEN MACHINERY published in the user's namespace with nothing marking it so. It is the C-side shape of issue 0784, and if this API ever grows an `nros/detail/` header or an `NROS_INTERNAL` marking, these ~30 symbols are its first residents. `cdr_read_string` and the DHEADER verbs are argued on their own rows."
- },
- "c:cdr_read_string": {
-  "verdict": "extension",
-  "why": "OUR LANGUAGES DISAGREE: `read_string` means opposite things in C and Rust. `nros_cdr_read_string(ptr, end, origin, value, max_len)` COPIES into a caller-sized `char[max_len]` and NUL-terminates; Rust's `CdrReader::read_string` returns `&'a str` borrowed out of the receive buffer, zero-copy. C's borrowing equivalent exists under a different verb entirely -- `nros_cdr_borrow_string` in `nros/view.h` -- so the same two operations are spelled (read=copy, borrow=view) in C and (read=view, deserialize=copy) in Rust. Both behaviours are needed (the copy is what an `inline`-mode field wants, the view is RFC-0033 `view` mode); one word should not name both. Phase 379 W5. The extension verdict itself is `c:cdr_read_*`."
- },
- "c:cdr_write_*": {
-  "verdict": "extension",
-  "bucket": "ours-only",
-  "why": "The write half of `c:cdr_read_*`; same reason, same audience. `cdr_write_string`, `cdr_write_string_n` and `cdr_write_encaps_header` have their own rows."
- },
- "c:cdr_write_encaps_header": {
-  "verdict": "extension",
-  "why": "Writes the 4-byte CDR encapsulation header (`00 01 00 00` XCDR1 / `00 09 00 00` XCDR2) and advances the cursor, replacing the hardcoded header the generated C `_serialize` used to emit. ROS 2's equivalent is inside the middleware's serializer for the reason `c:cdr_read_*` gives. Which header it writes is decided by `const XCDR2: bool` in nros-c, not by a parameter -- see the DHEADER rows and RFC-0055's correction. NOTE the Rust side reaches the same 4 bytes through THREE different doors: `CDR_LE_HEADER` as a constant, `CdrWriter::new_with_header` as a constructor, and `nros::cdr::write_cdr_le_header` as a free function -- the last of which the topic router files under `other`, not here (see the report on topics.py)."
- },
- "c:cdr_write_string": {
-  "verdict": "extension",
-  "why": "The NUL-terminated form, for a generated field held as `char[N]`. See `c:cdr_write_*`; note it walks the string to find its length, which `cdr_write_string_n` exists to avoid."
- },
- "c:cdr_write_string_n": {
-  "verdict": "extension",
-  "why": "The `(ptr, len)` form. C ships BOTH spellings where Rust ships one (`CdrWriter::write_string(&str)` is already ptr+len), and that is NOT a defect: C has no string type, so a fixed-size `char[N]` message field with no guaranteed NUL and a `const char*` argument are genuinely different inputs. Recorded so the asymmetry is not mistaken for the `send_response`/`send_reply_raw` class of duplicate verb. Note the read side has no `_n` counterpart -- `nros_cdr_read_string` always takes a max_len."
- },
- "c:serialized_message_t": {
-  "verdict": "declined",
-  "why": "`rcl_serialized_message_t` is `rcutils_uint8_array_t`: a GROWABLE byte buffer carrying its own `rcutils_allocator_t`, which `rcl_take_serialized_message` reallocates to fit the incoming sample. Two constraints kill it at once -- no allocator (`c:allocator_t` in the types stage) and no growth on a fixed receive arena -- so ours is a `(ptr, len)` pair the caller already owns, passed to `nros_publisher_publish_raw` / `nros_subscription_try_recv_raw`. What a user loses is the auto-sizing take: they must size the buffer, and an oversized sample is an error rather than a realloc. Same decision recorded for the C++ face at `cpp:SerializedMessage`, and the WORD is the SERIALIZED -> RAW rename tracked at `c:take_serialized_message`."
- },
- "rust:CDR_BE_HEADER": {
-  "verdict": "extension",
-  "why": "see `rust:CDR_LE_HEADER`."
- },
- "rust:CDR_HEADER_LEN": {
-  "verdict": "extension",
-  "why": "see `rust:CDR_LE_HEADER`."
- },
- "rust:CDR_LE_HEADER": {
-  "verdict": "extension",
-  "why": "the 4-byte CDR encapsulation header, exported for FFI layers that handle raw CDR bytes (`nros-c` / `nros-cpp`'s action and service paths hand a payload across the boundary already framed, so both sides need the same constant). rclrs never sees CDR: rcl serialises inside `rcl_publish` and `rosidl_runtime_rs` owns the encoding, so there is nothing for it to export. Note the facade exports three of the four headers `nros-serdes` defines -- `CDR2_DELIMITED_LE_HEADER`, the XCDR2 form iron/jazzy need (RFC-0055), is not in the `nros::cdr` list."
- },
- "rust:CdrReader": {
-  "verdict": "extension",
-  "why": "The Rust CDR decode cursor, and the anchor for `CdrReader::*`. rclrs has no serialization surface at all -- `Subscription` hands a typed message straight out of `rcl_take`, and the decode is inside the middleware. In ROS 2 the CDR encoder belongs to the MIDDLEWARE, not the client library: `rosidl` generates a `rosidl_message_type_support_t` whose function table is filled in by whichever rmw implementation is loaded (FastCDR inside rmw_fastrtps, the ddsi stream writers inside rmw_cyclonedds), and the only byte-level verbs rcl/rclcpp expose are `rmw_serialize`/`rmw_deserialize` on a whole message. No cursor, no per-primitive call, nothing to correlate against. nano-ros has no middleware plugin to hide an encoder inside -- `nros generate-c` emits the `_serialize`/`_deserialize` body into the USER's translation unit and that TU links against libnano_ros -- so the primitives have to be exported symbols. The RTOS constraint that earns it is the one `c:message_type_t` already records: one linked backend, no runtime typesupport registry to dispatch through. The RTOS scenario is the same one the C side names: a generated `Deserialize` impl compiled into a `no_std` image, decoding from a borrowed `&[u8]` receive buffer into `heapless` storage with no allocator. Note where this is actually consumed. Generated Rust message crates spell `nros_core::{CdrReader, CdrWriter, Serialize, Deserialize, SerError, DeserError}` (packs/nros/message.rs.jinja:7-8), the generated C++ FFI shim crates spell `nros_serdes::` (examples/px4/cpp/bridge/ffi/src/lib.rs:19), and the `nros::` re-export the parity report sees (nros/src/lib.rs:208) is a THIRD publication of the same six items whose only in-tree consumers are two QEMU test/bench bins (nros-tests/bins/cdr-roundtrip-qemu, nros-bench/wcet-cycles-qemu). No example uses the facade spelling. That third spelling is what issue 0784 is about -- machinery reaching `nros::` -- and it is the part of this row a reviewer should act on: the type must stay public SOMEWHERE for codegen, but it does not have to be public in the facade a user reads to find rclrs's `Subscription`."
- },
- "rust:CdrReader::begin_dheader": {
-  "verdict": "extension",
-  "why": "The Rust side of the XCDR2 delimiter, returning the opaque `DHeaderScope`/`DHeaderMark` that the C FFI round-trips through an `int64`. RFC-0055's XCDR2 DELIMITED_CDR2 machinery. The RFC carries a CORRECTION dated 2026-07-26 that refutes its own premise: a default Jazzy peer serializes FINAL/XCDR1 on the wire, DDS-XTypes REJECTS an appendable writer against a FINAL reader, and #0267 turned out to be two Cyclone descriptor-builder bugs rather than a DHEADER gap. So the path is built, tested and PARKED -- `nros-c/src/cdr.rs`'s `const XCDR2: bool = false` makes every one of these a compile-time no-op today, waiting for a per-type `@appendable` signal that nothing yet emits. ROS 2's equivalent is not an API at all: extensibility is a property of the IDL annotation and the middleware acts on it, so there is no rclcpp/rclc verb to correlate with. See `c:cdr_begin_dheader`."
- },
- "rust:CdrReader::end_dheader": {
-  "verdict": "extension",
-  "why": "Closes a `rust:CdrReader::begin_dheader` scope and reports `DHeaderOverrun`; see that row."
- },
- "rust:CdrReader::new_at_xcdr2": {
-  "verdict": "extension",
-  "why": "The read half of `rust:CdrWriter::new_at_xcdr2`."
- },
- "rust:CdrReader::read_le_slice": {
-  "verdict": "extension",
-  "why": "OUR LANGUAGES DISAGREE: three names for one RFC-0033 concept. The alignment-agnostic `view`-mode read over a numeric sequence is `CdrReader::read_le_slice::<T>() -> LeSliceView<T>` in Rust, `nros_cdr_borrow_le_slice_<t>() -> nros_le_slice_view_<t>_t` in C (nros/view.h), and `nros::LeSpan<T>` in C++. Rust says READ, C says BORROW, C++ says SPAN; the `view` byte sequence is `read_slice_u8` in Rust and `nros_cdr_borrow_bytes` in C. This is the verb the `view` mode should settle on -- BORROW reads correctly against `Publisher::loan`'s borrow/release pair (`c:borrow_loaned_message`) and says the lifetime rule out loud, which READ does not. Phase 379 W5. Note also that the Rust type this returns, `LeSliceView`, is NOT re-exported by the `nros` facade at all -- generated code names `nros_core::LeSliceView` directly -- so the `inline` path and the `view` path reach the user through different crates. DELETED 2026-08-27 (phase-379 W5): the `_raw` five (`read_slice_u16_raw`, `read_slice_u32_raw`, `read_slice_u64_raw`, `read_slice_f32_raw`, `read_slice_f64_raw`) are gone from `packages/core/nros-serdes/src/cdr.rs` -- five definitions, the one unit test (`test_read_slice_f32_raw`) and the doc-comment mention in `traits.rs`, which now names `read_le_slice::<f32>`. Zero consumers, re-verified against `packages/`, `examples/` and every `generated/` tree on disk immediately before the edit. Their five ledger rows went with them -- an item that does not exist needs no row -- so this row is where that family's history now lives. The behaviour is still covered: `read_le_slice_roundtrips_through_cdr` for the CDR round trip and the `LeSliceView` f32 test for decoding. NOTHING UPSTREAM CORRESPONDED: none of rclc/rclcpp/rclrs ships a CDR reader at all (`docs/reference/api-surface/*.json` contain no `cdr` item in any language), so the duplicate family was purely internal dedup with no ROS 2 name to align to -- which is also why the survivor is an `extension` and its only open question is the internal READ/BORROW/SPAN verb disagreement above."
- },
- "rust:CdrReader::read_string": {
-  "verdict": "extension",
-  "why": "See `c:cdr_read_string` -- this is the borrowing half of that disagreement, and the spelling worth keeping."
- },
- "rust:CdrReader::version": {
-  "verdict": "extension",
-  "why": "See `rust:CdrWriter::version` -- on the reader it reports the version DETECTED from the encapsulation header."
- },
- "rust:CdrWriter": {
-  "verdict": "extension",
-  "why": "The encode half of `rust:CdrReader`; same reason, same audience, and it anchors `CdrWriter::*`."
- },
- "rust:CdrWriter::as_slice": {
-  "verdict": "extension",
-  "why": "Returns the bytes written so far, which is how a caller with no allocator gets the encoded message out: the buffer is the caller's, the writer only held a cursor into it. rclcpp's counterpart hands back an owned `SerializedMessage` -- see `cpp:SerializedMessage` for that constraint. NOTE the pair is not symmetric: `CdrReader` has no `as_slice`, it has `is_empty` and `remaining`, and `CdrWriter` has `remaining` but no `is_empty`. Nothing forces that; it is just what each side happened to need."
- },
- "rust:CdrWriter::begin_dheader": {
-  "verdict": "extension",
-  "why": "The Rust side of the XCDR2 delimiter, returning the opaque `DHeaderScope`/`DHeaderMark` that the C FFI round-trips through an `int64`. RFC-0055's XCDR2 DELIMITED_CDR2 machinery. The RFC carries a CORRECTION dated 2026-07-26 that refutes its own premise: a default Jazzy peer serializes FINAL/XCDR1 on the wire, DDS-XTypes REJECTS an appendable writer against a FINAL reader, and #0267 turned out to be two Cyclone descriptor-builder bugs rather than a DHEADER gap. So the path is built, tested and PARKED -- `nros-c/src/cdr.rs`'s `const XCDR2: bool = false` makes every one of these a compile-time no-op today, waiting for a per-type `@appendable` signal that nothing yet emits. ROS 2's equivalent is not an API at all: extensibility is a property of the IDL annotation and the middleware acts on it, so there is no rclcpp/rclc verb to correlate with. See `c:cdr_begin_dheader`."
- },
- "rust:CdrWriter::end_dheader": {
-  "verdict": "extension",
-  "why": "Backpatches a `rust:CdrWriter::begin_dheader` mark; see that row."
- },
- "rust:CdrWriter::new_at_xcdr2": {
-  "verdict": "extension",
-  "why": "An XCDR2 writer positioned at `pos` with `origin = 0`, built for the nros-c FFI bridge, which manages the encapsulation header and the cursor itself and hands us an `(origin, cursor, end)` triple. RFC-0055's XCDR2 DELIMITED_CDR2 machinery. The RFC carries a CORRECTION dated 2026-07-26 that refutes its own premise: a default Jazzy peer serializes FINAL/XCDR1 on the wire, DDS-XTypes REJECTS an appendable writer against a FINAL reader, and #0267 turned out to be two Cyclone descriptor-builder bugs rather than a DHEADER gap. So the path is built, tested and PARKED -- `nros-c/src/cdr.rs`'s `const XCDR2: bool = false` makes every one of these a compile-time no-op today, waiting for a per-type `@appendable` signal that nothing yet emits. ROS 2's equivalent is not an API at all: extensibility is a property of the IDL annotation and the middleware acts on it, so there is no rclcpp/rclc verb to correlate with."
- },
- "rust:CdrWriter::new_with_header_xcdr2": {
-  "verdict": "extension",
-  "why": "Writes the `00 09 00 00` DELIMITED_CDR2 encapsulation header and starts the payload at origin 4. RFC-0055's XCDR2 DELIMITED_CDR2 machinery. The RFC carries a CORRECTION dated 2026-07-26 that refutes its own premise: a default Jazzy peer serializes FINAL/XCDR1 on the wire, DDS-XTypes REJECTS an appendable writer against a FINAL reader, and #0267 turned out to be two Cyclone descriptor-builder bugs rather than a DHEADER gap. So the path is built, tested and PARKED -- `nros-c/src/cdr.rs`'s `const XCDR2: bool = false` makes every one of these a compile-time no-op today, waiting for a per-type `@appendable` signal that nothing yet emits. ROS 2's equivalent is not an API at all: extensibility is a property of the IDL annotation and the middleware acts on it, so there is no rclcpp/rclc verb to correlate with. The asymmetry is deliberate and worth stating so it is not read as a gap: there is no `CdrReader::new_with_header_xcdr2`, because the READER detects the version from the header byte it is already parsing (`0x00|0x01` -> Xcdr1, `0x08|0x09` -> Xcdr2, cdr.rs:427). A writer has to be told; a reader is."
- },
- "rust:CdrWriter::version": {
-  "verdict": "extension",
-  "why": "Reports which `EncodingVersion` this cursor was built for; part of the RFC-0055 surface, see `rust:CdrWriter::new_with_header_xcdr2`. `EncodingVersion` itself is not re-exported by the `nros` facade, so a user can call this and cannot name what it returns."
- },
- "rust:DeserError": {
-  "verdict": "extension",
-  "why": "The read-side error; see `rust:SerError` for the constraint. Worth reading the variants as a list of what an embedded decoder must survive: `UnexpectedEof`, `InvalidData`, `InvalidUtf8`, `CapacityExceeded` (the decoded length exceeded the fixed `heapless` capacity -- the no-allocator failure mode ROS 2 does not have), `InvalidHeader`, and `DHeaderOverrun` (RFC-0055)."
- },
- "rust:Deserialize": {
-  "verdict": "extension",
-  "why": "`fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError>`, implemented by every generated message struct; anchors `Deserialize::deserialize`. This is the trait rosidl's generated typesupport function table replaces in ROS 2, so rclrs exposes nothing to correlate against -- see `rust:CdrReader`. NOT serde's `Deserialize`: no derive, no data model, no format abstraction, one wire encoding. The sibling `DeserializeBorrowed` (RFC-0033) is NOT re-exported by the `nros` facade, so generated code names `nros_core::DeserializeBorrowed` directly (packs/nros/message.rs.jinja:145)."
- },
- "rust:Deserialize::deserialize": {
-  "verdict": "extension",
-  "why": "The trait's one method; see `rust:Deserialize`."
- },
- "rust:Node::deserialize_message": {
-  "verdict": "extension",
-  "why": "The decode half of `rust:Node::serialize_message`; it takes the caller's `&[u8]` and does NOT touch the node's rx_buffer, so unlike its sibling it borrows nothing from the node."
- },
- "rust:Node::serialize_message": {
-  "verdict": "extension",
-  "why": "Reads as `Node::` in the report but the item is `nros::StandaloneNode` (nros_node::node::Node, re-exported under a second name) -- a transport-LESS node that keeps a fixed `tx_buffer: [u8; NODE_TX_BUF_LEN]`, encodes into it and returns `&[u8]`, leaving the caller to put the bytes on the wire. The scenario is the bring-your-own-link board `c:transport_ops_t` describes: a UART, a CAN controller or an IVC channel that no RMW backend drives, where the ROS-shaped part is the message encoding and nothing else. rclrs has no equivalent because `Publisher::publish` serializes into a middleware-owned buffer it never shows you. Two honest caveats: the returned slice borrows the node's single buffer, so it is invalidated by the next call (no allocator to own a per-message buffer), and the in-tree consumers are two QEMU bins (nros-tests/bins/cdr-roundtrip-qemu, nros-bench/wcet-cycles-qemu), not any example. OUR LANGUAGES DISAGREE, inside Rust: `nros::Node` is a TRAIT a component implements (RFC-0043) and `nros::StandaloneNode` is a struct whose real name is also `Node` -- two things called Node in one facade, which is why this row's key looks like it belongs to the component API and does not. Issue 0784."
- },
- "rust:SerError": {
-  "verdict": "extension",
-  "why": "The write-side error: `BufferTooSmall`, `StringTooLong`, `SequenceTooLong` -- a `Copy` fieldless enum with a `Display` impl and no payload. rclrs has no counterpart because it has no serialization surface (`rust:CdrReader`); the ROS 2 equivalents are a FastCDR exception or an `rmw_ret_t` plus the thread-local error string that `rust:RclErrorMsg` in the types stage already declines. Same constraint here: no allocator for a message, no per-thread formatted buffer, and the freestanding C++ side is -fno-exceptions (RFC-0018). Routed to this stage by an authored override in topics.py."
- },
- "rust:Serialize": {
-  "verdict": "extension",
-  "why": "the trait a generated message implements to write itself into a `CdrWriter`. rclrs's equivalent is `rosidl_runtime_rs::Message` plus the C typesupport, which lives outside the client library; ours is in `nros-core` because codegen and the RMW layer both need it. The paired `Deserialize` and the method `Serialize::serialize` are BOTH in the serde stage -- only this one landed here, because the topic regex `serialize` matches `Deserialize` and not `Serialize`. Same reasoning as `rust:RosService` in the service stage."
- },
- "rust:Serialize::serialize": {
-  "verdict": "extension",
-  "why": "The encode half of `rust:Deserialize`. It needs its own row only because the topic router files the TRAIT `Serialize` under `other` while filing `Deserialize` (and this method) under serde -- an artefact of the `serialize` pattern matching inside `deserialize` but not inside `Serialize`. Reported against topics.py; the verdict is `rust:Deserialize`'s."
- },
- "rust:strip_cdr_header": {
-  "verdict": "extension",
-  "why": "the read direction: returns the payload slice, and returns the input unchanged when it is shorter than the header so the parser downstream fails with a clearer error than an out-of-bounds slice. See `rust:CDR_LE_HEADER`."
- },
- "rust:write_cdr_le_header": {
-  "verdict": "extension",
-  "why": "writes that header into a caller-owned buffer and returns the payload slice. The buffer is the caller's because there is no allocator -- serialisation targets storage the entity already owns. See `rust:CDR_LE_HEADER`."
- }
+  "_doc": [
+    "Schema: see docs/reference/api-parity-ledger/SCHEMA.md — the one home for what",
+    "a row means. Do NOT copy it back here; issue 1095 is what that cost."
+  ],
+  "c:cdr_begin_dheader": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "Reserves the 4-byte XCDR2 DHEADER at the cursor and returns its offset as an `int64` mark the generated `_serialize_inline` passes back to `nros_cdr_end_dheader`. RFC-0055's XCDR2 DELIMITED_CDR2 machinery. The RFC carries a CORRECTION dated 2026-07-26 that refutes its own premise: a default Jazzy peer serializes FINAL/XCDR1 on the wire, DDS-XTypes REJECTS an appendable writer against a FINAL reader, and #0267 turned out to be two Cyclone descriptor-builder bugs rather than a DHEADER gap. So the path is built, tested and PARKED -- `nros-c/src/cdr.rs`'s `const XCDR2: bool = false` makes every one of these a compile-time no-op today, waiting for a per-type `@appendable` signal that nothing yet emits. ROS 2's equivalent is not an API at all: extensibility is a property of the IDL annotation and the middleware acts on it, so there is no rclcpp/rclc verb to correlate with."
+  },
+  "c:cdr_begin_dheader_read": {
+    "verdict": "extension",
+    "why": "The read-side scope: consumes the DHEADER and returns the delimited struct's end offset so `_deserialize_inline` can detect an overrun (`DeserError::DHeaderOverrun`). Same RFC-0055 story; see `c:cdr_begin_dheader`. The `_read` suffix is how C spells what Rust gets from the receiver type (`CdrReader::begin_dheader` vs `CdrWriter::begin_dheader`) -- a flat namespace has no other option, so it is not a rename."
+  },
+  "c:cdr_borrow_bytes": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:cdr_borrow_le_slice_f32": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:cdr_borrow_le_slice_f64": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:cdr_borrow_le_slice_i16": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:cdr_borrow_le_slice_i32": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:cdr_borrow_le_slice_i64": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:cdr_borrow_le_slice_u16": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:cdr_borrow_le_slice_u32": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:cdr_borrow_le_slice_u64": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:cdr_borrow_string": {
+    "verdict": "extension",
+    "why": "RFC-0033's C zero-copy reader, reachable from the umbrella header since issue 0795 was fixed. Borrows a view INTO the received CDR buffer instead of copying out of it: `nros_borrowed_str_t` / `nros_borrowed_bytes_t` for strings and byte arrays, and the `nros_le_slice_view_*_t` family for numeric arrays, which are alignment-agnostic because CDR does not guarantee a `u64` array is 8-byte aligned in the wire buffer. ROS 2 has no counterpart: rosidl deserializes into an owned `std::vector`/`rosidl_runtime_c__*__Sequence`, which needs an allocator per message. The whole point here is that a subscription callback can read a 2 kB point cloud without a 2 kB copy it has nowhere to put."
+  },
+  "c:cdr_end_dheader": {
+    "verdict": "extension",
+    "why": "Backpatches the mark reserved by `c:cdr_begin_dheader` with the member-block size. Same RFC-0055 story; see that row."
+  },
+  "c:cdr_end_dheader_read": {
+    "verdict": "extension",
+    "why": "The read-side close; see `c:cdr_begin_dheader_read`."
+  },
+  "c:cdr_read_*": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "The CDR primitive readers (`nros_cdr_read_u8` .. `_f64`), each taking the `(cursor, end, origin)` triple and advancing the cursor. In ROS 2 the CDR encoder belongs to the MIDDLEWARE, not the client library: `rosidl` generates a `rosidl_message_type_support_t` whose function table is filled in by whichever rmw implementation is loaded (FastCDR inside rmw_fastrtps, the ddsi stream writers inside rmw_cyclonedds), and the only byte-level verbs rcl/rclcpp expose are `rmw_serialize`/`rmw_deserialize` on a whole message. No cursor, no per-primitive call, nothing to correlate against. nano-ros has no middleware plugin to hide an encoder inside -- `nros generate-c` emits the `_serialize`/`_deserialize` body into the USER's translation unit and that TU links against libnano_ros -- so the primitives have to be exported symbols. The RTOS constraint that earns it is the one `c:message_type_t` already records: one linked backend, no runtime typesupport registry to dispatch through. The RTOS scenario is the generated message code itself: a `_deserialize` body compiled into a Zephyr or FreeRTOS image, decoding into fixed-size `heapless`-equivalent C storage with no allocator and no stream object -- `origin` exists because CDR alignment is relative to the payload start, and the caller owns the buffer. Recorded honestly rather than as a blanket `extension`: this is CODEGEN MACHINERY published in the user's namespace with nothing marking it so. It is the C-side shape of issue 0784, and if this API ever grows an `nros/detail/` header or an `NROS_INTERNAL` marking, these ~30 symbols are its first residents. `cdr_read_string` and the DHEADER verbs are argued on their own rows."
+  },
+  "c:cdr_read_string": {
+    "verdict": "extension",
+    "why": "OUR LANGUAGES DISAGREE: `read_string` means opposite things in C and Rust. `nros_cdr_read_string(ptr, end, origin, value, max_len)` COPIES into a caller-sized `char[max_len]` and NUL-terminates; Rust's `CdrReader::read_string` returns `&'a str` borrowed out of the receive buffer, zero-copy. C's borrowing equivalent exists under a different verb entirely -- `nros_cdr_borrow_string` in `nros/view.h` -- so the same two operations are spelled (read=copy, borrow=view) in C and (read=view, deserialize=copy) in Rust. Both behaviours are needed (the copy is what an `inline`-mode field wants, the view is RFC-0033 `view` mode); one word should not name both. Phase 379 W5. The extension verdict itself is `c:cdr_read_*`."
+  },
+  "c:cdr_write_*": {
+    "verdict": "extension",
+    "bucket": "ours-only",
+    "why": "The write half of `c:cdr_read_*`; same reason, same audience. `cdr_write_string`, `cdr_write_string_n` and `cdr_write_encaps_header` have their own rows."
+  },
+  "c:cdr_write_encaps_header": {
+    "verdict": "extension",
+    "why": "Writes the 4-byte CDR encapsulation header (`00 01 00 00` XCDR1 / `00 09 00 00` XCDR2) and advances the cursor, replacing the hardcoded header the generated C `_serialize` used to emit. ROS 2's equivalent is inside the middleware's serializer for the reason `c:cdr_read_*` gives. Which header it writes is decided by `const XCDR2: bool` in nros-c, not by a parameter -- see the DHEADER rows and RFC-0055's correction. NOTE the Rust side reaches the same 4 bytes through THREE different doors: `CDR_LE_HEADER` as a constant, `CdrWriter::new_with_header` as a constructor, and `nros::cdr::write_cdr_le_header` as a free function -- the last of which the topic router files under `other`, not here (see the report on topics.py)."
+  },
+  "c:cdr_write_string": {
+    "verdict": "extension",
+    "why": "The NUL-terminated form, for a generated field held as `char[N]`. See `c:cdr_write_*`; note it walks the string to find its length, which `cdr_write_string_n` exists to avoid."
+  },
+  "c:cdr_write_string_n": {
+    "verdict": "extension",
+    "why": "The `(ptr, len)` form. C ships BOTH spellings where Rust ships one (`CdrWriter::write_string(&str)` is already ptr+len), and that is NOT a defect: C has no string type, so a fixed-size `char[N]` message field with no guaranteed NUL and a `const char*` argument are genuinely different inputs. Recorded so the asymmetry is not mistaken for the `send_response`/`send_reply_raw` class of duplicate verb. Note the read side has no `_n` counterpart -- `nros_cdr_read_string` always takes a max_len."
+  },
+  "c:serialized_message_t": {
+    "verdict": "declined",
+    "why": "`rcl_serialized_message_t` is `rcutils_uint8_array_t`: a GROWABLE byte buffer carrying its own `rcutils_allocator_t`, which `rcl_take_serialized_message` reallocates to fit the incoming sample. Two constraints kill it at once -- no allocator (`c:allocator_t` in the types stage) and no growth on a fixed receive arena -- so ours is a `(ptr, len)` pair the caller already owns, passed to `nros_publisher_publish_raw` / `nros_subscription_try_recv_raw`. What a user loses is the auto-sizing take: they must size the buffer, and an oversized sample is an error rather than a realloc. Same decision recorded for the C++ face at `cpp:SerializedMessage`, and the WORD is the SERIALIZED -> RAW rename tracked at `c:take_serialized_message`."
+  },
+  "rust:CDR_BE_HEADER": {
+    "verdict": "extension",
+    "why": "see `rust:CDR_LE_HEADER`."
+  },
+  "rust:CDR_HEADER_LEN": {
+    "verdict": "extension",
+    "why": "see `rust:CDR_LE_HEADER`."
+  },
+  "rust:CDR_LE_HEADER": {
+    "verdict": "extension",
+    "why": "the 4-byte CDR encapsulation header, exported for FFI layers that handle raw CDR bytes (`nros-c` / `nros-cpp`'s action and service paths hand a payload across the boundary already framed, so both sides need the same constant). rclrs never sees CDR: rcl serialises inside `rcl_publish` and `rosidl_runtime_rs` owns the encoding, so there is nothing for it to export. Note the facade exports three of the four headers `nros-serdes` defines -- `CDR2_DELIMITED_LE_HEADER`, the XCDR2 form iron/jazzy need (RFC-0055), is not in the `nros::cdr` list."
+  },
+  "rust:CdrReader": {
+    "verdict": "extension",
+    "why": "The Rust CDR decode cursor, and the anchor for `CdrReader::*`. rclrs has no serialization surface at all -- `Subscription` hands a typed message straight out of `rcl_take`, and the decode is inside the middleware. In ROS 2 the CDR encoder belongs to the MIDDLEWARE, not the client library: `rosidl` generates a `rosidl_message_type_support_t` whose function table is filled in by whichever rmw implementation is loaded (FastCDR inside rmw_fastrtps, the ddsi stream writers inside rmw_cyclonedds), and the only byte-level verbs rcl/rclcpp expose are `rmw_serialize`/`rmw_deserialize` on a whole message. No cursor, no per-primitive call, nothing to correlate against. nano-ros has no middleware plugin to hide an encoder inside -- `nros generate-c` emits the `_serialize`/`_deserialize` body into the USER's translation unit and that TU links against libnano_ros -- so the primitives have to be exported symbols. The RTOS constraint that earns it is the one `c:message_type_t` already records: one linked backend, no runtime typesupport registry to dispatch through. The RTOS scenario is the same one the C side names: a generated `Deserialize` impl compiled into a `no_std` image, decoding from a borrowed `&[u8]` receive buffer into `heapless` storage with no allocator. Note where this is actually consumed. Generated Rust message crates spell `nros_core::{CdrReader, CdrWriter, Serialize, Deserialize, SerError, DeserError}` (packs/nros/message.rs.jinja:7-8), the generated C++ FFI shim crates spell `nros_serdes::` (examples/px4/cpp/bridge/ffi/src/lib.rs:19), and the `nros::` re-export the parity report sees (nros/src/lib.rs:208) is a THIRD publication of the same six items whose only in-tree consumers are two QEMU test/bench bins (nros-tests/bins/cdr-roundtrip-qemu, nros-bench/wcet-cycles-qemu). No example uses the facade spelling. That third spelling is what issue 0784 is about -- machinery reaching `nros::` -- and it is the part of this row a reviewer should act on: the type must stay public SOMEWHERE for codegen, but it does not have to be public in the facade a user reads to find rclrs's `Subscription`."
+  },
+  "rust:CdrReader::begin_dheader": {
+    "verdict": "extension",
+    "why": "The Rust side of the XCDR2 delimiter, returning the opaque `DHeaderScope`/`DHeaderMark` that the C FFI round-trips through an `int64`. RFC-0055's XCDR2 DELIMITED_CDR2 machinery. The RFC carries a CORRECTION dated 2026-07-26 that refutes its own premise: a default Jazzy peer serializes FINAL/XCDR1 on the wire, DDS-XTypes REJECTS an appendable writer against a FINAL reader, and #0267 turned out to be two Cyclone descriptor-builder bugs rather than a DHEADER gap. So the path is built, tested and PARKED -- `nros-c/src/cdr.rs`'s `const XCDR2: bool = false` makes every one of these a compile-time no-op today, waiting for a per-type `@appendable` signal that nothing yet emits. ROS 2's equivalent is not an API at all: extensibility is a property of the IDL annotation and the middleware acts on it, so there is no rclcpp/rclc verb to correlate with. See `c:cdr_begin_dheader`."
+  },
+  "rust:CdrReader::end_dheader": {
+    "verdict": "extension",
+    "why": "Closes a `rust:CdrReader::begin_dheader` scope and reports `DHeaderOverrun`; see that row."
+  },
+  "rust:CdrReader::new_at_xcdr2": {
+    "verdict": "extension",
+    "why": "The read half of `rust:CdrWriter::new_at_xcdr2`."
+  },
+  "rust:CdrReader::read_le_slice": {
+    "verdict": "extension",
+    "why": "OUR LANGUAGES DISAGREE: three names for one RFC-0033 concept. The alignment-agnostic `view`-mode read over a numeric sequence is `CdrReader::read_le_slice::<T>() -> LeSliceView<T>` in Rust, `nros_cdr_borrow_le_slice_<t>() -> nros_le_slice_view_<t>_t` in C (nros/view.h), and `nros::LeSpan<T>` in C++. Rust says READ, C says BORROW, C++ says SPAN; the `view` byte sequence is `read_slice_u8` in Rust and `nros_cdr_borrow_bytes` in C. This is the verb the `view` mode should settle on -- BORROW reads correctly against `Publisher::loan`'s borrow/release pair (`c:borrow_loaned_message`) and says the lifetime rule out loud, which READ does not. Phase 379 W5. Note also that the Rust type this returns, `LeSliceView`, is NOT re-exported by the `nros` facade at all -- generated code names `nros_core::LeSliceView` directly -- so the `inline` path and the `view` path reach the user through different crates. DELETED 2026-08-27 (phase-379 W5): the `_raw` five (`read_slice_u16_raw`, `read_slice_u32_raw`, `read_slice_u64_raw`, `read_slice_f32_raw`, `read_slice_f64_raw`) are gone from `packages/core/nros-serdes/src/cdr.rs` -- five definitions, the one unit test (`test_read_slice_f32_raw`) and the doc-comment mention in `traits.rs`, which now names `read_le_slice::<f32>`. Zero consumers, re-verified against `packages/`, `examples/` and every `generated/` tree on disk immediately before the edit. Their five ledger rows went with them -- an item that does not exist needs no row -- so this row is where that family's history now lives. The behaviour is still covered: `read_le_slice_roundtrips_through_cdr` for the CDR round trip and the `LeSliceView` f32 test for decoding. NOTHING UPSTREAM CORRESPONDED: none of rclc/rclcpp/rclrs ships a CDR reader at all (`docs/reference/api-surface/*.json` contain no `cdr` item in any language), so the duplicate family was purely internal dedup with no ROS 2 name to align to -- which is also why the survivor is an `extension` and its only open question is the internal READ/BORROW/SPAN verb disagreement above."
+  },
+  "rust:CdrReader::read_string": {
+    "verdict": "extension",
+    "why": "See `c:cdr_read_string` -- this is the borrowing half of that disagreement, and the spelling worth keeping."
+  },
+  "rust:CdrReader::version": {
+    "verdict": "extension",
+    "why": "See `rust:CdrWriter::version` -- on the reader it reports the version DETECTED from the encapsulation header."
+  },
+  "rust:CdrWriter": {
+    "verdict": "extension",
+    "why": "The encode half of `rust:CdrReader`; same reason, same audience, and it anchors `CdrWriter::*`."
+  },
+  "rust:CdrWriter::as_slice": {
+    "verdict": "extension",
+    "why": "Returns the bytes written so far, which is how a caller with no allocator gets the encoded message out: the buffer is the caller's, the writer only held a cursor into it. rclcpp's counterpart hands back an owned `SerializedMessage` -- see `cpp:SerializedMessage` for that constraint. NOTE the pair is not symmetric: `CdrReader` has no `as_slice`, it has `is_empty` and `remaining`, and `CdrWriter` has `remaining` but no `is_empty`. Nothing forces that; it is just what each side happened to need."
+  },
+  "rust:CdrWriter::begin_dheader": {
+    "verdict": "extension",
+    "why": "The Rust side of the XCDR2 delimiter, returning the opaque `DHeaderScope`/`DHeaderMark` that the C FFI round-trips through an `int64`. RFC-0055's XCDR2 DELIMITED_CDR2 machinery. The RFC carries a CORRECTION dated 2026-07-26 that refutes its own premise: a default Jazzy peer serializes FINAL/XCDR1 on the wire, DDS-XTypes REJECTS an appendable writer against a FINAL reader, and #0267 turned out to be two Cyclone descriptor-builder bugs rather than a DHEADER gap. So the path is built, tested and PARKED -- `nros-c/src/cdr.rs`'s `const XCDR2: bool = false` makes every one of these a compile-time no-op today, waiting for a per-type `@appendable` signal that nothing yet emits. ROS 2's equivalent is not an API at all: extensibility is a property of the IDL annotation and the middleware acts on it, so there is no rclcpp/rclc verb to correlate with. See `c:cdr_begin_dheader`."
+  },
+  "rust:CdrWriter::end_dheader": {
+    "verdict": "extension",
+    "why": "Backpatches a `rust:CdrWriter::begin_dheader` mark; see that row."
+  },
+  "rust:CdrWriter::new_at_xcdr2": {
+    "verdict": "extension",
+    "why": "An XCDR2 writer positioned at `pos` with `origin = 0`, built for the nros-c FFI bridge, which manages the encapsulation header and the cursor itself and hands us an `(origin, cursor, end)` triple. RFC-0055's XCDR2 DELIMITED_CDR2 machinery. The RFC carries a CORRECTION dated 2026-07-26 that refutes its own premise: a default Jazzy peer serializes FINAL/XCDR1 on the wire, DDS-XTypes REJECTS an appendable writer against a FINAL reader, and #0267 turned out to be two Cyclone descriptor-builder bugs rather than a DHEADER gap. So the path is built, tested and PARKED -- `nros-c/src/cdr.rs`'s `const XCDR2: bool = false` makes every one of these a compile-time no-op today, waiting for a per-type `@appendable` signal that nothing yet emits. ROS 2's equivalent is not an API at all: extensibility is a property of the IDL annotation and the middleware acts on it, so there is no rclcpp/rclc verb to correlate with."
+  },
+  "rust:CdrWriter::new_with_header_xcdr2": {
+    "verdict": "extension",
+    "why": "Writes the `00 09 00 00` DELIMITED_CDR2 encapsulation header and starts the payload at origin 4. RFC-0055's XCDR2 DELIMITED_CDR2 machinery. The RFC carries a CORRECTION dated 2026-07-26 that refutes its own premise: a default Jazzy peer serializes FINAL/XCDR1 on the wire, DDS-XTypes REJECTS an appendable writer against a FINAL reader, and #0267 turned out to be two Cyclone descriptor-builder bugs rather than a DHEADER gap. So the path is built, tested and PARKED -- `nros-c/src/cdr.rs`'s `const XCDR2: bool = false` makes every one of these a compile-time no-op today, waiting for a per-type `@appendable` signal that nothing yet emits. ROS 2's equivalent is not an API at all: extensibility is a property of the IDL annotation and the middleware acts on it, so there is no rclcpp/rclc verb to correlate with. The asymmetry is deliberate and worth stating so it is not read as a gap: there is no `CdrReader::new_with_header_xcdr2`, because the READER detects the version from the header byte it is already parsing (`0x00|0x01` -> Xcdr1, `0x08|0x09` -> Xcdr2, cdr.rs:427). A writer has to be told; a reader is."
+  },
+  "rust:CdrWriter::version": {
+    "verdict": "extension",
+    "why": "Reports which `EncodingVersion` this cursor was built for; part of the RFC-0055 surface, see `rust:CdrWriter::new_with_header_xcdr2`. `EncodingVersion` itself is not re-exported by the `nros` facade, so a user can call this and cannot name what it returns."
+  },
+  "rust:DeserError": {
+    "verdict": "extension",
+    "why": "The read-side error; see `rust:SerError` for the constraint. Worth reading the variants as a list of what an embedded decoder must survive: `UnexpectedEof`, `InvalidData`, `InvalidUtf8`, `CapacityExceeded` (the decoded length exceeded the fixed `heapless` capacity -- the no-allocator failure mode ROS 2 does not have), `InvalidHeader`, and `DHeaderOverrun` (RFC-0055)."
+  },
+  "rust:Deserialize": {
+    "verdict": "extension",
+    "why": "`fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError>`, implemented by every generated message struct; anchors `Deserialize::deserialize`. This is the trait rosidl's generated typesupport function table replaces in ROS 2, so rclrs exposes nothing to correlate against -- see `rust:CdrReader`. NOT serde's `Deserialize`: no derive, no data model, no format abstraction, one wire encoding. The sibling `DeserializeBorrowed` (RFC-0033) is NOT re-exported by the `nros` facade, so generated code names `nros_core::DeserializeBorrowed` directly (packs/nros/message.rs.jinja:145)."
+  },
+  "rust:Deserialize::deserialize": {
+    "verdict": "extension",
+    "why": "The trait's one method; see `rust:Deserialize`."
+  },
+  "rust:Node::deserialize_message": {
+    "verdict": "extension",
+    "why": "The decode half of `rust:Node::serialize_message`; it takes the caller's `&[u8]` and does NOT touch the node's rx_buffer, so unlike its sibling it borrows nothing from the node."
+  },
+  "rust:Node::serialize_message": {
+    "verdict": "extension",
+    "why": "Reads as `Node::` in the report but the item is `nros::StandaloneNode` (nros_node::node::Node, re-exported under a second name) -- a transport-LESS node that keeps a fixed `tx_buffer: [u8; NODE_TX_BUF_LEN]`, encodes into it and returns `&[u8]`, leaving the caller to put the bytes on the wire. The scenario is the bring-your-own-link board `c:transport_ops_t` describes: a UART, a CAN controller or an IVC channel that no RMW backend drives, where the ROS-shaped part is the message encoding and nothing else. rclrs has no equivalent because `Publisher::publish` serializes into a middleware-owned buffer it never shows you. Two honest caveats: the returned slice borrows the node's single buffer, so it is invalidated by the next call (no allocator to own a per-message buffer), and the in-tree consumers are two QEMU bins (nros-tests/bins/cdr-roundtrip-qemu, nros-bench/wcet-cycles-qemu), not any example. OUR LANGUAGES DISAGREE, inside Rust: `nros::Node` is a TRAIT a component implements (RFC-0043) and `nros::StandaloneNode` is a struct whose real name is also `Node` -- two things called Node in one facade, which is why this row's key looks like it belongs to the component API and does not. Issue 0784."
+  },
+  "rust:SerError": {
+    "verdict": "extension",
+    "why": "The write-side error: `BufferTooSmall`, `StringTooLong`, `SequenceTooLong` -- a `Copy` fieldless enum with a `Display` impl and no payload. rclrs has no counterpart because it has no serialization surface (`rust:CdrReader`); the ROS 2 equivalents are a FastCDR exception or an `rmw_ret_t` plus the thread-local error string that `rust:RclErrorMsg` in the types stage already declines. Same constraint here: no allocator for a message, no per-thread formatted buffer, and the freestanding C++ side is -fno-exceptions (RFC-0018). Routed to this stage by an authored override in topics.py."
+  },
+  "rust:Serialize": {
+    "verdict": "extension",
+    "why": "the trait a generated message implements to write itself into a `CdrWriter`. rclrs's equivalent is `rosidl_runtime_rs::Message` plus the C typesupport, which lives outside the client library; ours is in `nros-core` because codegen and the RMW layer both need it. The paired `Deserialize` and the method `Serialize::serialize` are BOTH in the serde stage -- only this one landed here, because the topic regex `serialize` matches `Deserialize` and not `Serialize`. Same reasoning as `rust:RosService` in the service stage."
+  },
+  "rust:Serialize::serialize": {
+    "verdict": "extension",
+    "why": "The encode half of `rust:Deserialize`. It needs its own row only because the topic router files the TRAIT `Serialize` under `other` while filing `Deserialize` (and this method) under serde -- an artefact of the `serialize` pattern matching inside `deserialize` but not inside `Serialize`. Reported against topics.py; the verdict is `rust:Deserialize`'s."
+  },
+  "rust:strip_cdr_header": {
+    "verdict": "extension",
+    "why": "the read direction: returns the payload slice, and returns the input unchanged when it is shorter than the header so the parser downstream fails with a clearer error than an out-of-bounds slice. See `rust:CDR_LE_HEADER`."
+  },
+  "rust:write_cdr_le_header": {
+    "verdict": "extension",
+    "why": "writes that header into a caller-owned buffer and returns the payload slice. The buffer is the caller's because there is no allocator -- serialisation targets storage the entity already owns. See `rust:CDR_LE_HEADER`."
+  }
 }
