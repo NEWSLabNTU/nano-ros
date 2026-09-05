@@ -4041,9 +4041,43 @@ _setup-common:
     #!/usr/bin/env bash
     set -e
     sub="packages/cli/third-party/play_launch"
-    if [ ! -f "$sub/src/ros-launch-resolve/resolve/Cargo.toml" ]; then
+    # Issue 1081 — the guard tests the PIN, not merely presence. Testing for a
+    # file answers "is it initialised", and a checkout can be initialised and at
+    # the WRONG COMMIT: a persistent CI workspace keeps whatever the last run
+    # left, and `actions/checkout` runs with `submodules: false`, so nothing
+    # moves it back. That is not hypothetical — the merge queue was frozen for
+    # SEVEN pull requests with an identical `cannot update the lock file …
+    # because --locked was passed`, because the runner sat on `8fda8d89`
+    # (heads/main) while the pin was `4c214a63`. `nros-launch-resolve`'s lock
+    # matches the PIN, so cargo wanted to rewrite it and `--locked` refused. The
+    # same red on unrelated PRs is never a property of any of them.
+    #
+    # `git submodule status --cached` prefixes `+` for "checkout differs from
+    # the recorded pointer" and `-` for "not initialised" — different states,
+    # and only one of them is safe to fix by force.
+    _sub_state="$(git submodule status --cached "$sub" 2>/dev/null | cut -c1)"
+    if [ "$_sub_state" = "-" ]; then
         echo "setup: initialising in-tree CLI submodule ($sub)"
+        # NON-recursive on purpose (RFC-0060): layer 2 is regular files inside
+        # play_launch; its layer-3 submodules are never built by nano-ros.
         git submodule update --init "$sub"
+    elif [ "$_sub_state" = "+" ]; then
+        # Present but at another commit. Updating DISCARDS work in the
+        # submodule, which AGENTS.md makes a human decision — so this only
+        # forces it when there is provably nothing to lose, and otherwise stops
+        # rather than resolving against a tree the lockfiles do not describe.
+        if [ -z "$(git -C "$sub" status --porcelain 2>/dev/null)" ]; then
+            echo "setup: $sub is at $(git -C "$sub" rev-parse --short HEAD), not the recorded pin — updating (worktree clean)"
+            git submodule update "$sub"
+        else
+            echo "setup: FAILED — $sub is at $(git -C "$sub" rev-parse --short HEAD), not the pin this tree records," >&2
+            echo "  and it has uncommitted changes, so this cannot move it for you (issue 1081)." >&2
+            echo "  Building against it resolves a graph the lockfiles do not describe, which" >&2
+            echo "  surfaces as \`cannot update the lock file … --locked\` several steps later." >&2
+            echo "" >&2
+            echo "  Commit or stash the submodule work, then:  git submodule update $sub" >&2
+            exit 1
+        fi
     fi
     just setup-cli
     just setup-launch-resolve
