@@ -334,7 +334,15 @@ jobs:
       # older entry a partial hit, which is all a content-hashed cache needs.
       - name: Cache sccache directory (compiling events)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
-        uses: actions/cache@v4
+        # RESTORE-ONLY. A save here writes a cache the run can never read again:
+        # merge_group executes on an ephemeral `gh-readonly-queue/...` ref and a
+        # pull_request on `refs/pull/N/merge`, and GitHub scopes a cache to its
+        # creating ref. Measured 2026-09-05: 16 such entries held 13.34 GB of a
+        # 10 GB pool — 97.6% — so the pool ran 37% over its limit and evicted
+        # continuously, and `main`'s shared entry (the only one anything can
+        # restore from) was the small, least-recently-used thing it discarded.
+        # `warm-cache` on push to main is the ONE writer.
+        uses: actions/cache/restore@v4
         with:
           path: /tmp/sccache
           key: sccache-${{ runner.os }}-check-${{ github.sha }}
@@ -423,7 +431,15 @@ jobs:
       # sources, so a change to it still invalidates the entry.
       - name: Cache CLI build (compile tier)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
-        uses: actions/cache@v4
+        # RESTORE-ONLY. A save here writes a cache the run can never read again:
+        # merge_group executes on an ephemeral `gh-readonly-queue/...` ref and a
+        # pull_request on `refs/pull/N/merge`, and GitHub scopes a cache to its
+        # creating ref. Measured 2026-09-05: 16 such entries held 13.34 GB of a
+        # 10 GB pool — 97.6% — so the pool ran 37% over its limit and evicted
+        # continuously, and `main`'s shared entry (the only one anything can
+        # restore from) was the small, least-recently-used thing it discarded.
+        # `warm-cache` on push to main is the ONE writer.
+        uses: actions/cache/restore@v4
         with:
           path: |
             packages/cli/target
@@ -979,6 +995,13 @@ jobs:
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
           cargo build --release --manifest-path packages/cli/nros-launch-resolve/Cargo.toml
+          # `check cli-tests` is 338 s of the 20 min job and it is COMPILE-bound
+          # (measured: 350 CPU-s to build, tests run in under a second). Warming
+          # only the binary left the biggest step cold — main's warm entry was
+          # 208 MB against the 1.78 GB a `check` run actually caches. `--no-run`
+          # compiles the test harnesses without executing them, which is exactly
+          # the artifact that step waits on.
+          cargo test --no-run --manifest-path packages/cli/Cargo.toml
 
   scaffold-journey:
     name: nros new -> sync -> resolve
