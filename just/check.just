@@ -162,6 +162,7 @@ fast-serial: \
     codegen-size-bound-golden \
     codegen-stamp-inputs \
     codegen-tool-reconfigure \
+    codegen-version-surface \
     config-header-single-writer \
     config-knob-census \
     config-surface \
@@ -594,6 +595,20 @@ codegen-size-bound-golden:
     @cargo test --manifest-path packages/cli/Cargo.toml -p rosidl-codegen \
         --test codegen_golden --test message_size_bound_parity --quiet
     @echo "codegen size-bound golden + C/C++/Rust parity: OK"
+
+# phase-429 W3 (RFC-0090 D1/D5) — `NROS_CODEGEN_VERSION` is an AUTHORED integer,
+# and this tree's authored mirrors drift: `check-rmw-api-parity`'s map read green
+# while 25 symbols disagreed with the vtable. Drift here is quieter and worse —
+# every generated tree on disk keeps stamping the old number, so a runtime that
+# can no longer run them accepts them all.
+#
+# So the surface generated code names is EXTRACTED (from the codegen packs AND
+# the emitter's own format strings) and stamped beside the integer. The hash is
+# evidence; the token stays an integer, because a reader must be able to order
+# two of them. Buildless — pure source analysis, ~0.3 s.
+[private]
+codegen-version-surface:
+    @python3 scripts/check-codegen-version-surface.py
 
 # Issue 0984 — `libnros_rmw_cyclonedds.a` is built from TWO authored source
 # lists (the cmake target, and `let cpp_files` in the sys crate's build.rs), and
