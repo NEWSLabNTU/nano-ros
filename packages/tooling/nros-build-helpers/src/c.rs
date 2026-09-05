@@ -32,7 +32,7 @@ pub fn run() {
     // — it just carries no anchor, matching its absent header.
     let variant_suffix = generate_config(&out_dir, &manifest_dir, &probed);
     emit_variant_symbol(&out_dir, variant_suffix.as_deref());
-    // RFC-0089 / phase-429 W1 — the codegen-version anchors. Unconditional: the
+    // RFC-0090 / phase-429 W1 — the codegen-version anchors. Unconditional: the
     // accepted range is a property of this checkout's runtime, not of the
     // feature set and not of whether a size probe ran.
     generate_header(&manifest_dir);
@@ -416,6 +416,19 @@ fn generate_config(
         .replace(
             "@EXACT_RAW_HANDLE_U64S@",
             &exact_raw_handle_u64s.to_string(),
+        )
+        // RFC-0090 — the EXACT template is the one written as
+        // `nros_config_generated.h` (see `write_header_to_corrosion` below), so
+        // the version macros have to be here as well as in the probe template.
+        // Missing them here is not silent: generated C hits the fail-closed
+        // `#ifndef` and says the config header did not define them.
+        .replace(
+            "@CODEGEN_VERSION@",
+            &crate::codegen_version::NROS_CODEGEN_VERSION.to_string(),
+        )
+        .replace(
+            "@CODEGEN_VERSION_MIN@",
+            &crate::codegen_version::NROS_CODEGEN_VERSION_MIN.to_string(),
         );
 
     // Issue 0360 — stamp the variant into the header, and emit the matching
@@ -530,9 +543,6 @@ fn generate_header(manifest_dir: &Path) {
         "include/nros/nros_generated.h",
     );
 }
-
-/// RFC-0089 / phase-429 W1 — define the weak anchor symbols that ARE the
-/// accepted codegen-version range.
 
 /// Issue 0360 — write the archive side of the variant stamp.
 ///
