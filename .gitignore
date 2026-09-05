@@ -138,6 +138,10 @@ examples/**/target-*/
 # hard-errors on the missing include until `nros sync` runs in that leaf;
 # `_require-leaf-includes` is the preflight that says so.
 **/.cargo/nros-managed-patch.toml
+# Issue 0827 — sync's derived pool budgets, the `[env]` sibling of the file
+# above. Derived from the metadata probe's output, which is itself per-host and
+# ignored, so committing this would pin one host's answer for everyone.
+**/.cargo/nros-managed-env.toml
 
 # Issue 0559 / phase-341 W2 — the per-leaf board `cargo_config` projection
 # `nros sync` writes next to the config that `include`s it.
