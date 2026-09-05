@@ -1,7 +1,7 @@
 ---
 id: 1075
 title: "The Zephyr stack-headroom probe calls a syscall that is not COMPILED unless two Kconfigs are set, so every native_sim image fails to link"
-status: open
+status: resolved
 type: bug
 area: platform, build
 severity: high
@@ -10,6 +10,37 @@ related: [0589, 0876]
 ---
 
 # A fallback that only works at run time, for a failure that happens at link time
+
+## FIXED 2026-09-05 — option A, guarded on BOTH Kconfigs
+
+`nros_platform_task_stack_unused_bytes` is now compiled two ways: the real probe
+under `#if defined(CONFIG_INIT_STACKS) && defined(CONFIG_THREAD_STACK_INFO)`, and
+a `return 0` otherwise — the ABI's documented "this port does not instrument it",
+the same answer `nros_platform_heap_used_bytes` gives.
+
+Both symbols, not one: guarding on `CONFIG_INIT_STACKS` alone reproduces the bug
+wherever only that one is set, which is exactly the mistake the original comment
+made. The old comment is kept in the replacement, quoted, with why it was wrong —
+someone will read this function again and the trap is worth leaving visible.
+
+**Verified by rebuilding the fixture that failed**, not by a compile-tier check
+(which passed before the fix and would pass after it):
+
+    just zephyr build-one cpp/service-client xrce
+
+    before:  undefined reference to `z_impl_k_thread_stack_space_get'
+             ninja: build stopped: subcommand failed.
+    after:   [148/148] Running utility command for native_runner_executable
+             Built: …/zephyr.elf   →   zephyr.exe, 11.8 MB, exit 0
+             undefined references: 0
+
+The two `ld: error in …(.eh_frame); no .eh_frame_hdr table will be created`
+lines survive and are unrelated — they were present before the fatal error too.
+
+**Not done:** turning the two Kconfigs ON. That would make the probe return a
+real number instead of `0`, at the cost of stack painting at every thread start.
+It is a decision about the shipped image, and it belongs with whoever needs the
+safety argument the probe was written for — see option B below.
 
 ## Symptom
 

@@ -1219,9 +1219,31 @@ _Noreturn void nros_platform_panic(const char *msg, size_t len) {
 }
 
 /* Headroom for the calling thread. `k_thread_stack_space_get` answers in
- * unused BYTES, which is the ABI's unit, so no conversion. Needs
- * CONFIG_INIT_STACKS to have painted the stack; without it the kernel has no
- * watermark to read and returns an error, which becomes the documented 0. */
+ * unused BYTES, which is the ABI's unit, so no conversion.
+ *
+ * ISSUE 1075 — THE GUARD IS A COMPILE-TIME ONE, and the original comment here
+ * assumed a run-time one. It said: "Needs CONFIG_INIT_STACKS to have painted
+ * the stack; without it the kernel has no watermark to read and returns an
+ * error, which becomes the documented 0."
+ *
+ * There is no function to return that error. `zephyr/kernel/thread.c` encloses
+ * `z_impl_k_thread_stack_space_get` in
+ *
+ *     #if defined(CONFIG_INIT_STACKS) && defined(CONFIG_THREAD_STACK_INFO)
+ *
+ * so without BOTH symbols the implementation is not compiled at all and the
+ * call is an undefined reference — every Zephyr native_sim image failed at the
+ * final link, not at run time. The old comment also named only the first of the
+ * two Kconfigs; guarding on `CONFIG_INIT_STACKS` alone reproduces the bug
+ * wherever only that one is set, which is why both appear below.
+ *
+ * `0` is the ABI's documented "this port does not instrument it", the same
+ * answer `nros_platform_heap_used_bytes` gives — so an image built without the
+ * Kconfigs reports no headroom rather than failing to build. Turning them ON to
+ * get a real number is a separate decision about the shipped image (stack
+ * painting costs time at every thread start), and belongs with whoever needs
+ * the safety argument the probe was written for. */
+#if defined(CONFIG_INIT_STACKS) && defined(CONFIG_THREAD_STACK_INFO)
 size_t nros_platform_task_stack_unused_bytes(void) {
     size_t unused = 0;
     if (k_thread_stack_space_get(k_current_get(), &unused) != 0) {
@@ -1229,3 +1251,8 @@ size_t nros_platform_task_stack_unused_bytes(void) {
     }
     return unused;
 }
+#else
+size_t nros_platform_task_stack_unused_bytes(void) {
+    return 0;
+}
+#endif /* CONFIG_INIT_STACKS && CONFIG_THREAD_STACK_INFO */
