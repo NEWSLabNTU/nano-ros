@@ -59,8 +59,14 @@ def jobs(text):
 def cache_entries(body):
     """[(path_block, key)] for every actions/cache step in a job body."""
     out = []
+    # `actions/cache`, `actions/cache/restore` and `actions/cache/save` all count:
+    # the downstream jobs are RESTORE-only (a save on an ephemeral ref is a cache
+    # nothing can ever read), and the pairing this gate checks is between the
+    # reader's key and the writer's key regardless of which variant each uses.
     for m in re.finditer(
-        r"uses:\s*actions/cache@[^\n]*\n(.*?)(?=\n\s*- name:|\Z)", body, re.S
+        r"uses:\s*actions/cache(?:/(?:restore|save))?@[^\n]*\n(.*?)(?=\n\s*- name:|\Z)",
+        body,
+        re.S,
     ):
         blk = m.group(1)
         key = re.search(r"^\s*key:\s*(.+)$", blk, re.M)
@@ -78,7 +84,7 @@ def self_test():
         "jobs:\n"
         "  a:\n"
         "    steps:\n"
-        "      - uses: actions/cache@v4\n"
+        "      - uses: actions/cache/restore@v4\n"
         "        with:\n"
         "          path: /tmp/x\n"
         "          key: k-1\n"
