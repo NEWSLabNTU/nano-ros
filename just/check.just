@@ -2238,6 +2238,14 @@ doc-refs:
 # `book/docs/…`). Buildless: reads tracked files, resolves paths, no mdbook.
 [private]
 book-links:
+    # Two chapters are GENERATED and no longer tracked, so on a fresh clone they
+    # do not exist and every link to them reads as dead. `just book` and the
+    # docs workflow already generate them before mdbook; this gate has to as
+    # well, and it cannot rely on `check-{pool-inventory,config-surface}`
+    # running first — `check-fast` runs gates in PARALLEL, so that would be a
+    # race that passes locally and fails in CI, or vice versa.
+    @python3 scripts/gen-pool-inventory.py >/dev/null
+    @python3 scripts/gen-config-surface.py >/dev/null
     @python3 scripts/check-book-links.py
 
 # The book's USER track (getting-started/, user-guide/, start-here/,
