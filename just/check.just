@@ -267,6 +267,7 @@ fast-serial: \
     python \
     readiness-marker-literals \
     reconfigure-on-change \
+    reconfigure-stale \
     required-contexts-reportable \
     required-features-reachable \
     retired-platform-clock-symbols \
@@ -1364,6 +1365,33 @@ declared-qos-header:
         exit 0
     fi
     ./tests/cmake-declared-qos-header-tests.sh
+
+# Issue 0882 / the stale-`build.ninja` class -- a manifest error is raised at
+# LOAD, before any rule runs, so ninja can never re-run cmake to repair itself.
+# The dir is wedged and every ninja invocation in it reports the same error
+# whatever you ask for. `just reconfigure-stale` repairs such dirs in place by
+# re-running cmake; it never deletes one, because a wedged build dir is the
+# only reproduction of whatever wedged it.
+#
+# This gate is the NEGATIVE CONTROL for that script. On a healthy tree the
+# script prints "OK, N build dir(s) load", which is exactly what a probe that
+# can never fail would print -- so the check that matters is whether it still
+# detects a dir that is genuinely unloadable. Real cmake + real ninja,
+# `project(... NONE)`, no compiler, ~2 s.
+reconfigure-stale:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _missing=""
+    for _t in cmake ninja; do
+        command -v "$_t" >/dev/null 2>&1 || _missing="$_missing $_t"
+    done
+    if [ -n "$_missing" ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip reconfigure-stale "missing host tool(s):$_missing"
+        exit 0
+    fi
+    ./tests/cmake-reconfigure-stale-tests.sh
 
 reconfigure-on-change:
     #!/usr/bin/env bash
