@@ -137,6 +137,32 @@ fn cases() -> Vec<(&'static str, Plan, Lang)> {
         plan("native", vec![node("talker_pkg", "talker", None)]),
         Lang::Rust,
     ));
+
+    // A bare node leaves every per-node list empty and takes the `None` arm of
+    // the identity branch, so it exercises almost none of the per-node
+    // rendering. This row carries params, remaps, a QoS override, a name and a
+    // namespace across TWO nodes — including one that keeps its own identity,
+    // so both arms appear in one golden. Quoting is the part that must stay in
+    // Rust, so a value with a quote and a backslash is in here on purpose.
+    let mut rich = node("talker_pkg", "talker", None);
+    rich.name = Some("renamed_talker".into());
+    rich.namespace = Some("/demo".into());
+    rich.params = vec![
+        ("rate_hz".into(), "10".into()),
+        ("greeting".into(), "he said \"hi\" \\ bye".into()),
+    ];
+    rich.remaps = vec![("chatter".into(), "/demo/chatter".into())];
+    rich.qos_overrides = vec![super::QoSOverrideSpec {
+        topic: "/demo/chatter".into(),
+        role: 1,
+        policy: 2,
+        value: 5,
+    }];
+    out.push((
+        "rust_native_rich",
+        plan("native", vec![rich, node("listener_pkg", "listener", None)]),
+        Lang::Rust,
+    ));
     out
 }
 
@@ -148,8 +174,16 @@ fn render(p: &Plan, lang: Lang) -> Result<String, String> {
     }
 }
 
+/// Where the goldens live.
+///
+/// OUTSIDE `src/`, and every file carries a `.golden` suffix, because a golden
+/// is data and must never be treated as source. `cargo fmt` walks the crate
+/// and REFORMATTED `rust_native_one.rs` when these sat under `src/` with a
+/// bare `.rs` extension — silently rewriting the very bytes this harness
+/// exists to hold still. `check-cli-fmt` caught it; the suffix means no
+/// formatter, linter or module scan can reach them again.
 fn testdata_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("src/codegen/entry/testdata")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("testdata/entry")
 }
 
 #[test]
@@ -171,7 +205,7 @@ fn every_emitter_matches_its_golden() {
             Ok(s) => s,
             Err(e) => format!("EMITTER REFUSED: {e}\n"),
         };
-        let path = dir.join(format!("{name}.{}", lang.ext()));
+        let path = dir.join(format!("{name}.{}.golden", lang.ext()));
 
         if update {
             std::fs::write(&path, &got).expect("write golden");
