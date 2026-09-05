@@ -1,11 +1,11 @@
 # Phase 429 — the codegen version is enforced everywhere
 
-**Status (2026-09-05).** Opened. RFC-0089 written and indexed; no code yet. The
+**Status (2026-09-05).** Opened. RFC-0090 written and indexed; no code yet. The
 decision is settled — an authored integer, asserted at every generated artifact,
 with freshness and compatibility split apart — and what remains is the work
 breakdown below.
 
-**Implements:** [RFC-0089](../design/0089-codegen-version-is-the-compatibility-token.md).
+**Implements:** [RFC-0090](../design/0090-codegen-version-is-the-compatibility-token.md).
 **Closes:** the residue of [#1018](../issues/1018-a-codegen-change-invalidates-generated-interfaces-and-only-a-manual-step-connects-them.md).
 **Unblocks:** shipping a prebuilt `nros` binary — [#0171](../issues/archived/0171-no-external-distribution-path.md)'s
 "single highest-leverage unlock", which has been blocked since phase-287/288 on
@@ -21,7 +21,7 @@ missing answer: **can this binary's output work with this runtime?**
 
 Today the only mechanism that asks anything adjacent is the in-tree stale-CLI
 refusal, and it asks the wrong question (`binary ↔ its own sources`) in a way
-that both over-fires and cannot ship. RFC-0089 §Motivation has the argument.
+that both over-fires and cannot ship. RFC-0090 §Motivation has the argument.
 
 ## The user workflow is the thing being protected
 
@@ -61,7 +61,7 @@ a check nobody has evidence still works on the path users take.
   three transports (JSON, cargo `links` metadata, CMake), and the rule
   *"a consumer that does not recognise the version must refuse, never guess."*
   Same integer, same discipline, same refusal.
-* Assertions, per RFC-0089 D3:
+* Assertions, per RFC-0090 D3:
   * **Rust** — a `const` block in the generated crate against
     `nros_core::NROS_CODEGEN_VERSION`, modelled on
     `nros_node::format_check::assert_message_format`. Remember its caveat: an
@@ -82,7 +82,7 @@ unedited tree builds.
 
 ### W2 — the binary declares what it emits, and refuses early
 
-**This is a re-token of `abi_guard`, not a new mechanism** (RFC-0089 D1a).
+**This is a re-token of `abi_guard`, not a new mechanism** (RFC-0090 D1a).
 `nros-cli-core/src/abi_guard.rs` already resolves a version, compares it, and
 exits with an actionable message; it compares the wrong thing (the CLI's
 `CARGO_PKG_VERSION` against `nros-core`'s, read out of a `Cargo.lock` a C/C++
@@ -102,7 +102,7 @@ user does not have) and from too few verbs.
   `gate.yml` and `post-submit.yml`; a check in `scripts/bootstrap.sh` is reached
   **only** by the nightly bootstrap probe. Put it where the lanes already go.
 * Where `[MIN, N]` comes from for a user project with no monorepo is part of
-  this item — the provisioned runtime is the source, per RFC-0089 D7.
+  this item — the provisioned runtime is the source, per RFC-0090 D7.
 
 **Acceptance.** A binary whose `E` is forced out of range refuses at `nros
 build` start, before any file is written, and the message names how to recover.
@@ -118,7 +118,7 @@ the other ratchets. Buildless, self-testing on the normal path
 (`check-gate-selftests` requires it).
 
 The hash is the gate's evidence and is **never** compared at build time; it is
-not the token. RFC-0089 D1/D5.
+not the token. RFC-0090 D1/D5.
 
 **Acceptance.** Mutating the surface without bumping turns the gate red and
 names what moved; bumping clears it. Both directions exercised in the gate's own
@@ -176,7 +176,7 @@ refusals, not only the happy build.
 ### W6 — the stale-CLI refusal becomes developer-only, and stops stopping
 
 With W1–W3 live, the refusal is no longer the correctness guard, so it can be
-fixed rather than tolerated (RFC-0089 D6). In a developer checkout — detected by
+fixed rather than tolerated (RFC-0090 D6). In a developer checkout — detected by
 the repo being present, where the Rust toolchain exists by definition — a stale
 CLI is **rebuilt** instead of refused. It cannot fire for a user with a released
 binary and no CLI sources.
@@ -206,7 +206,7 @@ RFC-0065 get the amendment pointer.
 
 ## What this phase must not do
 
-**Do not make the version a hash.** RFC-0089 D1 — a hash cannot say which side
+**Do not make the version a hash.** RFC-0090 D1 — a hash cannot say which side
 is behind, and the difference between "regenerate silently" and "a human must
 move a pin" is the entire value of the token. It also moves on a doc comment,
 and a check that cries wolf is a check users disable.

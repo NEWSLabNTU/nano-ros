@@ -1,5 +1,5 @@
 ---
-rfc: 0089
+rfc: 0090
 title: "The codegen version is the compatibility token, and generated code carries it"
 status: Draft
 since: 2026-09
@@ -9,7 +9,7 @@ supersedes: []
 superseded-by: null
 ---
 
-# RFC-0089 — The codegen version is the compatibility token, and generated code carries it
+# RFC-0090 — The codegen version is the compatibility token, and generated code carries it
 
 **Amends:** [RFC-0014](0014-nros-setup-toolchain-management.md) (`nros setup`
 provisions a runtime that must match the binary asking for it),

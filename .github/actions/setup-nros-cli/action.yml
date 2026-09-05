@@ -39,7 +39,7 @@ runs:
         # an EXACT-key cache hit exists for a tree whose stamp has moved. A
         # fresh checkout's mtimes usually make cargo rebuild anyway — usually is
         # not a guarantee, and "a binary that emits code the runtime did not
-        # expect" is the exact failure RFC-0089 exists to stop. Cheap to ask.
+        # expect" is the exact failure RFC-0090 exists to stop. Cheap to ask.
         "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
         echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
         # issue 0797 — `--bin nros` does NOT build `nros-launch-resolve`: the

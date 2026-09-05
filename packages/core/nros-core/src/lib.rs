@@ -35,7 +35,7 @@ extern crate alloc;
 
 pub mod action;
 pub mod clock;
-// RFC-0089 / phase-429 — the generated-code <-> runtime compatibility token.
+// RFC-0090 / phase-429 — the generated-code <-> runtime compatibility token.
 pub mod codegen_version;
 // issue 0783 — there is no `error` module here any more, and its absence is the
 // decision. It held `NanoRosError { code: RclReturnCode, context, nested }`, a
@@ -61,7 +61,7 @@ pub use action::{
     GoalStatus, GoalStatusStamped, RosAction,
 };
 pub use clock::{Clock, ClockType};
-// RFC-0089 — generated code names these directly, so they are re-exported at
+// RFC-0090 — generated code names these directly, so they are re-exported at
 // the root: an emitted `const` assertion should not have to spell a module path
 // that could be reorganised under it.
 pub use codegen_version::{NROS_CODEGEN_VERSION, NROS_CODEGEN_VERSION_MIN};
