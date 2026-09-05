@@ -246,3 +246,59 @@ or target-dir GC (items 3 and 4), or the NuttX crate leaving its nightly pin
 (item 2). Item 4 also closes properly on its own terms the day the 13 readers
 above reach zero — that is a migration with a countable finish line, and it is
 the only one of the five that has one.
+
+## Item 6's gap is CLOSED 2026-09-05 — the fallback branches announce themselves
+
+The register's one entry with no detection story now has one.
+
+**What was unguarded.** Both staleness probes decide from the artifact's bytes
+(issue 0835). When the locator finds NOTHING they fall back to the older rule —
+cargo's `"fresh":false` for the rust probe, the build-chatter grep for the cmake
+one — and say nothing about having done so. That branch is what an on-disk
+LAYOUT change produces: `_row_artifacts` globs
+`<target-dir>/[<triple>/]<profile>/<bin>`, which is cargo's convention rather
+than anything cargo promises, and `cmake-fixture-stale.sh` assumes a cell has
+exactly one top-level executable.
+
+The consequence is not a missing warning, it is a WRONG VERDICT that reads as a
+right one: for rows sharing a phase-340 cargo group the old rule is
+*permanently* stale, because those rows evict each other. Issue 0835 measured
+that state — ~22 rows reporting stale on every run with byte-identical binaries,
+and ~190 fixture-stale failures per `just ci-matrix` — and it surfaces as a
+self-healing WARNING, which reads as the gate working.
+
+**What landed.** Both fallback branches emit
+`DEGRADED\t<row>\t<reason>`, the convention `rust-fixture-stale.sh` already used
+for `FAILED\t`. `check-fixtures-stale.sh` buckets and counts them beside the
+stale list, as a WARNING: a degraded row is not known to be stale or fresh, it
+is known to have been decided by a rule this gate does not stand behind, so
+escalating would redden a lane over something nobody can act on. **The COUNT is
+the signal** — measured 2026-09-05, 116 of 117 rust rows and 120 of 120 cmake
+cells locate their artifact, so the expected reading is ONE
+(`packages/testing/qemu-smoltcp-bridge`, which names no `[[bin]]` the glob can
+find). More than one means a layout moved.
+
+This widens no watch set, so it cannot make 0835 worse — phase-424's constraint.
+It is a fact ABOUT a verdict, never a new input to one.
+
+**Gated, with the case that was missing.** `check-fixture-staleness-probes` had
+cases A–D and every one of them has the artifact PRESENT, so none reached this
+branch. Case **E** builds a LIBRARY-ONLY cargo leaf — the real shape, not a
+contrived one, since that is exactly why `qemu-smoltcp-bridge` is on the
+fallback today — and asserts both that `DEGRADED` is emitted and that it carries
+a reason. Mutation-tested: removing the `printf` makes E fail, and the leaf then
+appears in the output as an ordinary stale row, which is the silent state
+itself.
+
+**One defect found while writing it, worth recording because it would not have
+failed loudly.** A degrading probe prints its `DEGRADED` line *and*, if the
+fallback rule fires, the stale line. `check-fixtures-stale.sh` reads probe
+output two different ways — `mapfile` when GNU `parallel` is installed, one
+`$( )` capture per record when it is not — so the pair arrives as two array
+elements or as one, and bucketing without re-splitting would have classified
+them by whichever line came first, **differently depending on whether a tool is
+installed on the machine**. The caller re-splits on newlines before bucketing;
+five shapes are checked, including that divergence.
+
+The rest of item 6 stands as written: the layout assumption itself is still an
+assumption. What changed is that it can no longer fail in silence.

@@ -298,6 +298,65 @@ echo "== D. negative control: the pre-fix rules FIRE on these same trees =="
 # which is simultaneously the proof that the fixtures reproduce the hazard and
 # the proof that the assertions above are not vacuous.
 
+echo "== E. the fallback branch ANNOUNCES itself (issue 0945 item 6) =="
+
+# Cases A-D all have the artifact PRESENT, so none of them reaches the branch
+# taken when the locator finds NOTHING — which is the branch an on-disk layout
+# change produces, and the one that silently reverts the verdict to the
+# pre-`2fa1ed09f` rule. That rule is permanently "stale" for rows sharing a
+# phase-340 cargo group, so a layout change would reproduce issue 0835's ~190
+# failures while reading as ordinary self-healing.
+#
+# A LIBRARY-ONLY leaf is the real shape, not a contrived one:
+# `packages/testing/qemu-smoltcp-bridge` is on this branch in the live tree
+# today, because its Cargo.toml names no `[[bin]]` the glob can find.
+mkdir -p "$work/libleaf/src"
+cat > "$work/libleaf/Cargo.toml" <<'TOMLEOF'
+[workspace]
+
+[package]
+name = "nros-staleness-probe-libleaf"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+name = "nros_staleness_probe_libleaf"
+path = "src/lib.rs"
+TOMLEOF
+cat > "$work/libleaf/Cargo.lock" <<'LOCKEOF'
+version = 3
+
+[[package]]
+name = "nros-staleness-probe-libleaf"
+version = "0.0.0"
+LOCKEOF
+printf 'pub fn probe() -> u8 { 7 }\n' > "$work/libleaf/src/lib.rs"
+case "$probe_profile" in
+    dev | release | test | bench) ;;
+    *) printf '\n[profile.%s]\ninherits = "release"\n' "$probe_profile" >> "$work/libleaf/Cargo.toml" ;;
+esac
+
+libleaf_record="$(printf 'linux\x1f%s\x1f\x1f' "$work/libleaf")"
+out="$(bash "$RUST_PROBE" "$libleaf_record")"
+if printf '%s' "$out" | grep -q '^DEGRADED'"$(printf '\t')"; then
+    ok "a leaf whose artifact the locator cannot find reports DEGRADED"
+else
+    fail "the fallback branch stayed SILENT — a layout change would revert every row to the pre-0835 rule with nothing saying so. got: ${out:-<empty>}"
+fi
+checks=$((checks + 1))
+
+# And the reason has to be usable: a bare marker with no cause is a line nobody
+# can act on, which is how the silent state survived in the first place.
+if printf '%s' "$out" | grep -q 'falls back to'; then
+    ok "the DEGRADED line names what the verdict fell back to"
+else
+    fail "the DEGRADED line carries no reason: ${out:-<empty>}"
+fi
+checks=$((checks + 1))
+
+echo ""
+echo "== the OLD rules still fire on this fixture (negative control) =="
+
 out="$(cmake --build "$work/cell/build-probe" 2>&1)"
 if printf '%s' "$out" | grep -qE "Building (C|CXX|ASM) object|Linking (C|CXX|CXX shared)|Compiling [a-z0-9_-]+ v"; then
     ok "the old cmake rule (grep the build chatter) reports STALE — as it did forever"
