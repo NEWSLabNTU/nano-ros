@@ -437,6 +437,14 @@ jobs:
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          # phase-429 W5 — ASSERT the binary matches the checkout, do not hope.
+          # The CLI cache key is narrower than `source_stamp.rs`'s watch set
+          # (it misses `.jinja`, `cli-source-dirs.txt`, the out-of-tree crate
+          # dirs and the `play_launch` pin), so an exact-key hit exists for a
+          # tree whose stamp has moved. Fresh-checkout mtimes usually make
+          # cargo rebuild; usually is not a guarantee, and a binary emitting
+          # code the runtime did not expect is what RFC-0089 exists to stop.
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
           echo "$GITHUB_WORKSPACE/packages/cli/target/release" >> "$GITHUB_PATH"
           "$GITHUB_WORKSPACE/packages/cli/target/release/nros" setup \
             --source px4-rs --source zenoh-pico --source mbedtls --source micro-cdr \
