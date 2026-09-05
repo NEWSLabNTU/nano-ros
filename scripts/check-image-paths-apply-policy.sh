@@ -18,6 +18,16 @@
 set -o pipefail
 cd "$(dirname "$0")/.."
 
+# `nros_grep_q` — 0 match / 1 no-match / exit 2 when grep could not run, so a
+# grep that did not run never becomes a finding (issue 0726). Called with a
+# HERE-STRING, never through a pipe: `printf '%s' "$body" | grep -q PAT` loses a
+# race to `pipefail` — builtin printf flushes per LINE, `grep -q` stops at the
+# first hit, and printf's next write takes SIGPIPE, whose 141 pipefail makes the
+# pipeline's status. This gate then read a MATCH as a MISS and named a compliant
+# file as a violation, intermittently, under fan-out. Issue 1077.
+# shellcheck source=lib/grep-q.sh
+source scripts/lib/grep-q.sh
+
 # A file "builds an image" if it creates an executable or registers an IDF
 # component AND links the nano-ros umbrella.
 mapfile -t candidates < <(
@@ -28,7 +38,7 @@ fail=0
 checked=0
 for f in "${candidates[@]}"; do
     body="$(grep -vE '^[[:space:]]*#' "$f")"
-    printf '%s' "$body" | grep -qE 'add_executable\(|idf_component_register\(' || continue
+    nros_grep_q -E 'add_executable\(|idf_component_register\(' <<<"$body" || continue
     # Infrastructure that DEFINES the umbrella or the verbs is not an image path.
     case "$f" in
         CMakeLists.txt|nano_rosConfig.cmake|cmake/NanoRos*.cmake) continue ;;
@@ -37,7 +47,7 @@ for f in "${candidates[@]}"; do
         packages/testing/*/fixtures/*) continue ;;  # compile-only smoke, never links
     esac
     checked=$((checked + 1))
-    if printf '%s' "$body" | grep -q 'nano_ros_entry(\|nano_ros_add_executable(\|nros_apply_panic_policy('; then
+    if nros_grep_q 'nano_ros_entry(\|nano_ros_add_executable(\|nros_apply_panic_policy(' <<<"$body"; then
         continue
     fi
     fail=1
@@ -50,7 +60,7 @@ done
 # broken grep that preceded it, so prove it still strips.
 probe="$(mktemp)"; trap 'rm -f "$probe"' EXIT
 printf '# nano_ros_entry() named only in a comment\nadd_executable(x)\ntarget_link_libraries(x NanoRos::NanoRos)\n' > "$probe"
-if grep -vE '^[[:space:]]*#' "$probe" | grep -q 'nano_ros_entry('; then
+if nros_grep_q 'nano_ros_entry(' <<<"$(grep -vE '^[[:space:]]*#' "$probe")"; then
     echo "check-image-paths-apply-policy: SELF-TEST FAILED — comment stripping is broken," >&2
     echo "  so this gate would pass files it never examined. Fix before trusting it." >&2
     exit 1

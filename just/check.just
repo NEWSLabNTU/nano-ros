@@ -260,6 +260,7 @@ fast-serial: \
     package-xml-uses \
     path-env-fingerprints \
     peer-sweep-lanes \
+    pipefail-sigpipe-assertions \
     platform-abi-mirror \
     platform-provider-features \
     pool-inventory \
@@ -2537,6 +2538,20 @@ rmw-api-comparison:
 [private]
 peer-sweep-lanes:
     @bash scripts/check-peer-sweep-lanes.sh
+
+# Issue 1077 — under `pipefail`, `… | grep -q X` reports a MATCH as a MISS
+# whenever the reader exits before the writer is done: builtin `printf`
+# flushes per LINE, `grep -q` stops at the first hit, and the writer's next
+# write takes SIGPIPE, whose 141 pipefail then makes the pipeline's status.
+# Measured at 2% per call on a 3-line haystack on an IDLE host — which is four
+# `check-fast` gates flaking, each wearing a considered assertion message that
+# pointed at real code. Fix is `nros_grep_q PAT <<<"$text"` — the 0726 helper
+# for the status contract, a HERE-STRING so there is no writer to kill.
+# Sibling of `grep-q-error-conflation`, which is about the status and skips any
+# line naming `nros_grep_q`; piping INTO the helper has the identical race.
+[private]
+pipefail-sigpipe-assertions:
+    @python3 scripts/check-pipefail-sigpipe-assertions.py
 
 # phase-419 W2 — an active phase must not contradict its own body. Sibling of
 # `roadmap-status`, which asserts a status EXISTS and deliberately stops there
