@@ -1905,6 +1905,94 @@ fn a_non_bool_use_sim_time_attaches_nothing() {
     );
 }
 
+/// Issue 1036 — arena exhaustion must REACH the boot record, not merely return
+/// an error.
+///
+/// The issue's own resolution rests on the record being "unit-tested on the
+/// host". Those tests exercise the RECORD (`boot_report::tests` — layout,
+/// magic, monotonic stage). Nothing tested the LINK: that the allocator, on
+/// failing, actually writes the number an operator would dump. That link is the
+/// whole instrument — on the board this was written for, the console UART is
+/// not wired, so the record is the only channel, and a record nobody writes to
+/// is indistinguishable from the silence it was built to replace.
+///
+/// `arena_alloc_with_trailing` specifically, because that is the half that was
+/// silent (issue 0900 fixed the sibling and left this one), and it is the half
+/// carrying every buffered subscription and every action entry — what an island
+/// image actually allocates.
+///
+/// The record is a process-global static and only the FIRST failure is kept
+/// (`compare_exchange` from 0), so this test must be the ONLY one in its
+/// process that records a failure. It is not named `boot_report*` for exactly
+/// that reason: `boot_report::tests` has its own `note_alloc_failed(100, 8)`
+/// case, and a shared filter put both in one binary — measured, this assertion
+/// caught it reading `(100, 8)`. `just check boot-report-tests` runs the two
+/// groups as SEPARATE cargo invocations, which is two processes and therefore
+/// two records.
+#[cfg(nros_boot_report)]
+#[test]
+fn arena_exhaustion_reaches_the_boot_record() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    // Untouched to start with, which is also the assertion that nothing else in
+    // this run got here first — if it fails, the filter let a sibling in and
+    // every number below would be that sibling's.
+    let before = crate::boot_report::snapshot();
+    assert_eq!(
+        (before.failed_alloc_size, before.failed_alloc_shortfall),
+        (0, 0),
+        "another test recorded an allocation failure before this one; the \
+         record keeps only the FIRST, so this run cannot attribute it"
+    );
+
+    // One byte more than the arena can hold, asked for through the path that
+    // used to say nothing.
+    let capacity = executor.arena.len();
+    let ask = capacity + 1;
+    let err = executor
+        .arena_alloc_with_trailing::<u8>(ask)
+        .expect_err("an allocation larger than the whole arena must fail");
+    assert!(
+        matches!(err, NodeError::BufferTooSmall),
+        "unexpected error for an over-large arena request: {err:?}"
+    );
+
+    let after = crate::boot_report::snapshot();
+    assert!(
+        after.failed_alloc_size > 0,
+        "the arena refused an allocation and the boot record says nothing. On a \
+         board with no console this record is the ONLY channel, so a zero here \
+         is the original defect with an instrument bolted on."
+    );
+    // The SHORTFALL is the number an operator adds to the knob, so it has to be
+    // the real difference rather than a flag that something failed.
+    assert!(
+        after.failed_alloc_shortfall > 0,
+        "size recorded but shortfall zero: the record names a failure without \
+         naming what would fix it, and the shortfall is the actionable half"
+    );
+    assert!(
+        u64::from(after.failed_alloc_shortfall) <= ask as u64,
+        "shortfall {} exceeds the request {ask}, which cannot be a difference \
+         against a non-negative capacity",
+        after.failed_alloc_shortfall
+    );
+
+    // And the record must survive a SECOND failure unchanged: the first
+    // allocation to fail is the one that explains the boot, and a later,
+    // larger, incidental failure overwriting it would replace the cause with a
+    // symptom.
+    let _ = executor.arena_alloc_with_trailing::<u8>(ask * 4);
+    let again = crate::boot_report::snapshot();
+    assert_eq!(
+        (again.failed_alloc_size, again.failed_alloc_shortfall),
+        (after.failed_alloc_size, after.failed_alloc_shortfall),
+        "a second failure overwrote the first; the record must keep the \
+         allocation that explains the boot, not the last one to be attempted"
+    );
+}
+
 #[test]
 fn test_timer_repeats() {
     let session = MockSession::new();

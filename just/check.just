@@ -672,6 +672,23 @@ node-std-tests:
     # tests need the store — and `Executor::declare_parameter`, the seam W3b
     # hooks, lives in a `#[cfg(feature = "param-services")]` impl block.
     cargo test -p nros-node --lib --features std,sim-time,param-services --quiet
+    # Issue 1036 — the boot self-report, third entry and the same defect class.
+    # `boot_report` is behind a BUILD-TIME cfg set from an env var
+    # (`NROS_BOOT_REPORT=1`, Zephyr `CONFIG_NROS_BOOT_REPORT=y`), and nothing in
+    # `just` or `.github/` set it, so every test in `boot_report::tests` — the
+    # ones issue 1036's resolution calls "unit-tested on the host" — had never
+    # run. An env-var cfg is worse than a cargo feature here: `--workspace`
+    # cannot even unify it in by accident.
+    #
+    # TWO INVOCATIONS, and that is not tidiness. The record is a process-global
+    # static keeping only the FIRST allocation failure; `boot_report::tests` has
+    # a `note_alloc_failed(100, 8)` case, and the link test asserts the record
+    # is untouched before it writes. Sharing a binary means sharing a process
+    # and the link test reads the other's numbers — measured, it failed with
+    # `(100, 8)`. Two cargo invocations are two processes.
+    NROS_BOOT_REPORT=1 cargo test -p nros-node --lib --features std --quiet boot_report::tests
+    NROS_BOOT_REPORT=1 cargo test -p nros-node --lib --features std --quiet -- \
+        --exact executor::tests::arena_exhaustion_reaches_the_boot_record
     # `env,std` and NOT `rmw-cffi`: the cffi flavour makes the wall clock an
     # extern the linker wants a platform port for, and this lane links none.
     cargo test -p nros --lib --features env,std --quiet
@@ -681,7 +698,7 @@ node-std-tests:
     # linked; without the combination the test is in no lane at all, which is how
     # the `not(std)` gate on `platform_wall_clock` survived unnoticed.
     cargo test -p nros-core --lib --no-default-features --features std,platform-clock --quiet
-    echo "non-default-feature unit tests passed (nros-node std, nros env, nros-core clock)!"
+    echo "non-default-feature unit tests passed (nros-node std + boot-report, nros env, nros-core clock)!"
 
 # Issue 0652 — the `required-features` targets that were in NO lane.
 #
