@@ -906,6 +906,16 @@ pub use nros_node::{PublisherOptions, SubscriptionOptions};
 
 // Re-export timer types
 pub use nros_node::{TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState};
+// phase-425 W4/W5 — which clock advances a timer. Re-exported here for the
+// reason `sim-time` is a feature here: an application deps `nros`, not
+// `nros-node`, so a capability that stops at the core crate is one no
+// application can name. W4 added the type and the registrar and stopped at the
+// core, which the `/clock` fixture found the moment it tried to use them.
+// Gated on `rmw-cffi`, the spelling every other executor re-export here uses:
+// `nros-node`'s own `has_rmw` IS its `rmw-cffi` feature, and `has_rmw` is a
+// build-script cfg that does not exist in THIS crate.
+#[cfg(feature = "rmw-cffi")]
+pub use nros_node::executor::TimerClockSource;
 
 // Re-export transport types (middleware-agnostic)
 pub use nros_rmw::{

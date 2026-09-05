@@ -970,6 +970,21 @@ pub const ERRNO_ISOLATION_PASS: &str = "errno-isolation: verdict PASS per-thread
 /// phase-381 — the graph probe's verdict line. Like `ERRNO_ISOLATION_PASS`,
 /// this is not delivery: it is the fixture saying it saw the peer it was told
 /// to expect, which is the only thing a discovery workload can assert.
+/// phase-425 W5 — the sim-clock listener's per-second report:
+/// `SIMCLOCK t=<n> ros=<n> wall=<n> ros_now_ms=<n> active=<bool> attached=<bool>`.
+///
+/// A prefix and not a whole line, because the test parses the FIELDS: the
+/// numbers are the evidence, and a marker that only proves the line printed
+/// would pass on a listener whose ROS timer never ticked.
+pub const SIMCLOCK_REPORT_PREFIX: &str = "SIMCLOCK t=";
+
+/// phase-425 W5 — the publisher has stopped sending `/clock` and is idling with
+/// its session still open. The test waits for this before measuring the SILENT
+/// half: a peer that exited would take its participant out of the graph, and a
+/// listener that stops ticking because its peer vanished has demonstrated
+/// nothing about simulated time.
+pub const SIMCLOCK_PUB_STOPPED: &str = "SIMCLOCK_PUB_STOPPED";
+
 pub const GRAPH_PROBE_SAW: &str = "GRAPH_PROBE_SAW";
 
 /// phase-381 verification — the probe exercised ALL ELEVEN graph slots against
