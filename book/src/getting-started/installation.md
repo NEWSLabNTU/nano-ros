@@ -76,6 +76,20 @@ first: they are what it takes to clone the repo and build the CLI.
 Four steps take a bare machine to a building project; each is detailed
 in a section below.
 
+> **Why step 2 builds the CLI instead of downloading it.** nano-ros is a source
+> distribution today: there is no prebuilt `nros` to fetch, so obtaining the tool
+> requires the repository and its toolchain. That is backwards — `nros`
+> provisions dependencies and builds workspaces, so it is meant to be the thing
+> you get *first*, and the thing that makes cloning this repository unnecessary.
+>
+> Prebuilt binaries were shipped early and withdrawn, because a released binary
+> emitted code that had drifted from the runtime — and drifted generated code
+> *compiles*, so the failure was silent. Restoring the download is blocked on one
+> question having a checkable answer: *can this binary's output work with this
+> runtime?* [RFC-0090](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0090-codegen-version-is-the-compatibility-token.md)
+> answers it with a codegen version that every generated artifact carries and
+> every runtime asserts. Until that ships in a release, step 2 stays.
+
 ```sh probe=20
 # 1. Pull the source at a pinned version (or `main` for latest):
 git clone --branch nros-v0.5.0 https://github.com/NEWSLabNTU/nano-ros.git

@@ -231,11 +231,45 @@ So the stale-CLI refusal survives, as a **developer-only** mechanism. In the
 target shape a user has a released binary and no CLI sources, so it cannot fire
 for them.
 
-This reclassifies issue 1018's residue: the refusal is no longer a correctness
-guard with a usability problem, it is a contributor ergonomics problem with a
-correctness backstop underneath it. That is what makes it *fixable* — with the
-backstop live, the refusal may rebuild instead of refusing, or narrow its watch
-set, without the narrowing becoming museum code reported as success.
+This reclassifies issue 1018's residue: the refusal is no longer the correctness
+guard for a USER, it is a contributor cost with a backstop underneath it.
+
+**But the two remedies this section first proposed are both ruled out, and
+saying so is the point** (corrected 2026-09-05, after measuring):
+
+* **Auto-rebuild is banned.** The refusal's own message says why — *"not
+  auto-done — compiling at build/test time is forbidden"*. Making a consumer's
+  build able to compile a Rust binary is issue 1018's option (1), rejected there
+  for the same reason: on the Zephyr lane it is a surprise, and it hides the cost
+  of a codegen change rather than naming it.
+* **Narrowing the watch set is still rejected.** Issue 0604 measured a
+  hand-rolled closure walk wrong in both directions at once, and a narrowing that
+  is too narrow is museum code reported as success — strictly worse than a stop.
+
+What CAN be removed is a watch-set entry that provably cannot affect an emitted
+byte, which needs no judgement. One was:
+`packages/cli/rosidl-codegen/templates/` was a byte-identical duplicate of
+`packs/scaffold/` referenced from no `.rs` file, and deleting it moved the stamp
+without moving the codegen fingerprint — the measurement that proves it reached
+no output.
+
+The other two stops issue 1018 reports are NOT that, and were checked rather
+than assumed:
+
+* the `play_launch` pin **is** a real CLI build input — `build.rs` bakes it as
+  `NROS_PLAY_LAUNCH_SHA` and the issue-0409 guard compares it, and issue 0561
+  records a pin move leaving the stamp unchanged while `setup-cli` skipped the
+  rebuild and reported success. So "I only moved a submodule pin" is a CORRECT
+  stop.
+* `cmd/doctor.rs` is compiled into the binary, so it genuinely changes it. The
+  stamp asks "does this binary match its sources", and for that question the
+  answer is right. It is the wrong question to ask before *codegen*, but the
+  right question cannot be answered without compiling the sources — which is
+  where this section started.
+
+So the residue is the price of a correct guard, and what this RFC changes is who
+pays it: a user with a released binary has no CLI sources, so the guard cannot
+fire for them at all.
 
 ### D7 — Provisioning makes the normal path unrepresentable
 
