@@ -21,6 +21,34 @@ git merges them without help. It costs nothing, because ORDER IN THIS LIST HAS
 NEVER BEEN LOAD-BEARING: `fast` runs the same gates concurrently, and
 `run-gates-parallel.sh` `sort -u`s the list it derives from this very block. A
 list whose consumer sorts it cannot have been ordered on purpose.
+
+AND THE REGISTRY MAY NOT SHRINK (issue 1071)
+--------------------------------------------
+Sorted-and-one-per-line are properties a DELETION satisfies perfectly. PR #431
+added one gate and removed four unrelated ones -- recipes and registry entries
+both, against a stale copy of this file -- and every gate stayed green, this one
+included: it printed `232 gate(s)` where main had 236, and compared that number
+to nothing. One of the four was the guard for a defect that had survived from
+2026-06-13 to 2026-09-03.
+
+So the registry now carries a BASELINE name set that may only grow. A name in
+the baseline and not in the registries is a failure; new names are free.
+
+On the NAME SET and not the count, deliberately: #431 was one addition against
+four removals, so a count ratchet would have had to notice a net of -3, and a
+delete-plus-add that nets to zero would pass it outright. The set catches both,
+and costs a longer file.
+
+A FLAT set across registries rather than per-registry, so moving a gate between
+`fast` and `build` -- a real and legitimate change -- is not a deletion. What it
+asserts is only that a gate that once existed still exists somewhere.
+
+Retiring a gate is rare and always deliberate:
+
+    python3 scripts/check/check-gate-lists.py --write-baseline
+
+and say in the commit message which gate went and why. Re-stating the number is
+the right price for a deletion nobody meant to make.
 """
 
 from __future__ import annotations
@@ -31,6 +59,11 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 JUSTFILE = REPO / "just" / "check.just"
+# Beside `.config/gate-selftest-baseline.txt`, the same shape one question over:
+# that one ratchets how many gates TEST THEMSELVES, this one how many EXIST.
+# Deleting a gate that has a selftest makes that ratchet EASIER to satisfy,
+# which is why it could not have caught #431.
+BASELINE = REPO / ".config" / "gate-registry-baseline.txt"
 
 # The lane recipes whose dependencies are a gate REGISTRY. A lane with a
 # handful of names on one line (`default: cli-fresh fast build api-parity`) is
@@ -132,6 +165,60 @@ def check(lines: list[str], name: str) -> list[str]:
     return problems
 
 
+def registry_names(lines: list[str]) -> set[str]:
+    """Every gate named by any registry, sentinel excluded."""
+    out: set[str] = set()
+    for name in REGISTRIES:
+        s, e = dep_block(lines, name)
+        for group in names_per_line(lines, s, e):
+            out.update(n for n in group if n != SENTINEL)
+    return out
+
+
+def load_baseline() -> set[str] | None:
+    if not BASELINE.exists():
+        return None
+    return {
+        line.strip()
+        for line in BASELINE.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+
+
+def write_baseline(names: set[str]) -> None:
+    BASELINE.parent.mkdir(parents=True, exist_ok=True)
+    BASELINE.write_text(
+        "# The gate names `just/check.just`'s registries have carried.\n"
+        "# May only GROW. A name here and not in a registry fails\n"
+        "# `check-gate-lists` (issue 1071 -- a PR deleted four gates and every\n"
+        "# gate stayed green, because sorted-and-one-per-line is a property a\n"
+        "# deletion satisfies).\n"
+        "#\n"
+        "# Regenerate ONLY for a deliberate retirement, and say which gate went:\n"
+        "#   python3 scripts/check/check-gate-lists.py --write-baseline\n"
+        + "".join(f"{n}\n" for n in sorted(names)),
+        encoding="utf-8",
+    )
+
+
+def ratchet(present: set[str], baseline: set[str] | None) -> list[str]:
+    """Names the baseline knows and the registries no longer name."""
+    if baseline is None:
+        return [
+            f"  the baseline is missing at {BASELINE.relative_to(REPO)}.\n"
+            f"      Without it a deleted gate is invisible again. Create it with\n"
+            f"      `python3 scripts/check/check-gate-lists.py --write-baseline`."
+        ]
+    gone = sorted(baseline - present)
+    if not gone:
+        return []
+    return [
+        "  {} gate(s) in the baseline are no longer in any registry:\n{}".format(
+            len(gone), "".join(f"      {n}\n" for n in gone)
+        ).rstrip()
+    ]
+
+
 def self_test() -> None:
     """Both directions, on synthetic input.
 
@@ -187,15 +274,60 @@ def self_test() -> None:
     s, e = dep_block(body, "build")
     assert (s, e) == (0, 2), f"selftest: block boundary wrong: {(s, e)}"
 
+    # --- the ratchet (issue 1071) ---------------------------------------
+    # A deletion, which every OTHER check here accepts: the list below is
+    # sorted, one per line, terminated, and missing `beta`.
+    assert ratchet({"alpha", "gamma"}, {"alpha", "beta", "gamma"}), (
+        "selftest: a gate that left the registry was not reported"
+    )
+    # Growth is free — that is the whole point of a ratchet.
+    assert ratchet({"alpha", "beta", "delta"}, {"alpha", "beta"}) == [], (
+        "selftest: an ADDED gate was reported as a problem"
+    )
+    # And a delete-plus-add that nets to ZERO, which is #431's exact shape and
+    # the case a count ratchet cannot see.
+    assert ratchet({"alpha", "delta"}, {"alpha", "beta"}), (
+        "selftest: one added and one removed netted out and passed"
+    )
+    # A missing baseline is a failure, not a silent pass: the ratchet would
+    # otherwise disappear the moment someone deleted the file.
+    assert ratchet({"alpha"}, None), "selftest: a missing baseline passed"
 
-def main() -> int:
+    # The set is FLAT across registries, so a gate moving from `fast` to
+    # `build` is not a deletion.
+    moved = ["fast-serial: \\", f"    {SENTINEL}", "    @echo f", "",
+             "build-serial: \\", "    alpha \\", f"    {SENTINEL}", "    @echo b"]
+    assert registry_names(moved) == {"alpha"}, (
+        f"selftest: flat name set wrong: {registry_names(moved)}"
+    )
+
+
+def main(argv: list[str]) -> int:
     lines = JUSTFILE.read_text(encoding="utf-8").split("\n")
+
+    if "--write-baseline" in argv:
+        present = registry_names(lines)
+        write_baseline(present)
+        print(
+            f"check-gate-lists: wrote {len(present)} gate name(s) to "
+            f"{BASELINE.relative_to(REPO)}.\n"
+            "Say in the commit message which gate was retired and why — this "
+            "file exists\nbecause a deletion nobody meant to make passed every "
+            "gate (issue 1071)."
+        )
+        return 0
+
     problems = [p for name in REGISTRIES for p in check(lines, name)]
+    problems += ratchet(registry_names(lines), load_baseline())
     if problems:
         print("check-gate-lists: a gate registry is a conflict site again\n")
         print("\n".join(problems))
         print(
-            "\nOne gate per line, sorted. `just/check.just` is the file every PR\n"
+            "\nA gate registry may not SHRINK, and one gate per line, sorted.\n"
+            "A retirement is deliberate:\n"
+            "    python3 scripts/check/check-gate-lists.py --write-baseline\n"
+            "and name the gate in the commit message.\n"
+            "\n`just/check.just` is the file every PR\n"
             "that adds a gate must touch, and packing names onto shared lines\n"
             "turns that into a merge conflict for changes that do not overlap\n"
             "(issues 0883/0884, same shape, no union merge available here --\n"
@@ -216,4 +348,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     self_test()
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
