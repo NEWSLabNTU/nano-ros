@@ -279,6 +279,7 @@ impl<'a> NodeHandle<'a> {
             handle,
             event_regs: crate::executor::handles::empty_event_regs(),
             monitor,
+            epoch: self.epoch_us_fn,
             _phantom: PhantomData,
         })
     }

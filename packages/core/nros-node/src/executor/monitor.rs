@@ -39,6 +39,28 @@ pub struct PubMonitorCell {
     /// check window. Written by the dispatch loop (fetch_max), drained
     /// (swap 0) by the latency check.
     pub max_latency_us: AtomicU32,
+    /// Age of the stamp this publisher last put ON THE WIRE, in
+    /// microseconds: `epoch_now - outgoing header.stamp`.
+    ///
+    /// Distinct from `max_latency_us`, which times this node's own
+    /// take→publish work. This says how old the DATA is that the node just
+    /// published, which is the quantity a chain is made of.
+    ///
+    /// It exists to answer a question `max-age-runtime` cannot. That rule
+    /// measures `epoch_now - stamp` on the TAKE path, so if every node in a
+    /// chain propagates the original stamp -- the usual ROS convention, each
+    /// node copying its input's stamp to its output -- the age at the final
+    /// consumer already IS the end-to-end latency. If any node re-stamps
+    /// with `now`, the clock silently resets and the same number becomes
+    /// single-hop age instead. Same units, same magnitude, no warning.
+    ///
+    /// A publish age near zero on a node that consumes input is the
+    /// signature of re-stamping. Recording it here is what lets a chain's
+    /// provenance be checked at all, rather than assumed.
+    ///
+    /// `0` = never observed, matching the other cells: the type has no
+    /// `STAMP_OFFSET`, or no epoch source is installed.
+    pub last_publish_stamp_age_us: AtomicU32,
 }
 
 impl PubMonitorCell {
@@ -46,6 +68,7 @@ impl PubMonitorCell {
         Self {
             count: AtomicU32::new(0),
             max_latency_us: AtomicU32::new(0),
+            last_publish_stamp_age_us: AtomicU32::new(0),
         }
     }
 }
@@ -79,6 +102,24 @@ impl SubMonitorCell {
 /// raw CDR receive buffer (encapsulation header included) and return µs
 /// since the UNIX epoch. `None` when the buffer is too short or the
 /// stamp is pre-epoch/zero (unstamped messages never fire age monitors).
+/// Record the age of the stamp a publisher just put on the wire.
+///
+/// Called from the publish path with the encoded CDR still in hand, using the
+/// same `STAMP_OFFSET` peek the take path uses. A no-op when the type carries
+/// no stamp, when no epoch source is installed, or when the publisher is
+/// uncontracted -- the same three ways `observe_age` folds away.
+///
+/// Stores rather than accumulates: this is "how old was the last thing
+/// published", a state, not a window maximum. A chain check wants the current
+/// value, and a max would be pinned forever by one stale message at startup.
+#[inline]
+pub fn observe_publish_stamp(cell: &PubMonitorCell, raw: &[u8], offset: usize, now_us: u64) {
+    if let Some(stamp_us) = peek_stamp_us(raw, offset) {
+        let age = now_us.saturating_sub(stamp_us).min(u32::MAX as u64) as u32;
+        cell.last_publish_stamp_age_us.store(age, Ordering::Relaxed);
+    }
+}
+
 pub fn peek_stamp_us(raw: &[u8], offset: usize) -> Option<u64> {
     let sec_b = raw.get(offset..offset + 4)?;
     let nsec_b = raw.get(offset + 4..offset + 8)?;
@@ -607,6 +648,74 @@ mod stack_headroom_rule_tests {
         assert!(check_stack_headroom(600, 1024, &mut worst).is_none());
         let v = check_stack_headroom(100, 1024, &mut worst).expect("a new low reports");
         assert_eq!(v.measured, 100);
+    }
+}
+
+#[cfg(test)]
+mod publish_stamp_tests {
+    use super::*;
+
+    /// CDR: 4-byte encapsulation header, then `Time { i32 sec; u32 nanosec }`
+    /// little-endian, so `sec` sits at byte 4 — the layout `STAMP_OFFSET`
+    /// encodes.
+    fn cdr_with_stamp(sec: i32, nanosec: u32) -> [u8; 12] {
+        let mut b = [0u8; 12];
+        b[4..8].copy_from_slice(&sec.to_le_bytes());
+        b[8..12].copy_from_slice(&nanosec.to_le_bytes());
+        b
+    }
+
+    #[test]
+    fn records_the_age_of_what_was_published() {
+        let cell = PubMonitorCell::new();
+        let raw = cdr_with_stamp(10, 0); // stamped at 10_000_000 us
+        observe_publish_stamp(&cell, &raw, 4, 10_500_000);
+        assert_eq!(
+            cell.last_publish_stamp_age_us.load(Ordering::Relaxed),
+            500_000,
+            "published data was half a second old"
+        );
+    }
+
+    /// The signature of a node that RE-STAMPED: it publishes data whose
+    /// stamp is now, so downstream age is single-hop, not end-to-end.
+    #[test]
+    fn a_restamping_node_shows_near_zero_age() {
+        let cell = PubMonitorCell::new();
+        let raw = cdr_with_stamp(10, 0);
+        observe_publish_stamp(&cell, &raw, 4, 10_000_000);
+        assert_eq!(cell.last_publish_stamp_age_us.load(Ordering::Relaxed), 0);
+    }
+
+    /// A state, not a window maximum: one stale message at startup must not
+    /// pin the value for the life of the process.
+    #[test]
+    fn the_latest_publish_replaces_the_previous() {
+        let cell = PubMonitorCell::new();
+        observe_publish_stamp(&cell, &cdr_with_stamp(10, 0), 4, 12_000_000);
+        assert_eq!(
+            cell.last_publish_stamp_age_us.load(Ordering::Relaxed),
+            2_000_000
+        );
+        observe_publish_stamp(&cell, &cdr_with_stamp(20, 0), 4, 20_100_000);
+        assert_eq!(
+            cell.last_publish_stamp_age_us.load(Ordering::Relaxed),
+            100_000,
+            "a fresh publish replaces the old age rather than maxing with it"
+        );
+    }
+
+    /// An unset stamp is not an age of `now`. `peek_stamp_us` rejects
+    /// `sec <= 0`, so a zeroed header records nothing at all.
+    #[test]
+    fn an_unstamped_message_records_nothing() {
+        let cell = PubMonitorCell::new();
+        observe_publish_stamp(&cell, &cdr_with_stamp(0, 0), 4, 5_000_000);
+        assert_eq!(
+            cell.last_publish_stamp_age_us.load(Ordering::Relaxed),
+            0,
+            "no stamp means no observation, not an enormous age"
+        );
     }
 }
 

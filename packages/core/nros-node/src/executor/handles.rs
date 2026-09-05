@@ -114,6 +114,11 @@ pub struct EmbeddedPublisher<M> {
     /// RFC-0052 W3b.4 — contracted endpoint's publish counter (`None`
     /// for uncontracted publishers; one relaxed atomic bump when set).
     pub(crate) monitor: Option<&'static crate::executor::monitor::PubMonitorCell>,
+    /// Epoch clock for the publish-stamp observation, paired with `monitor`
+    /// the way the subscriber's `AgeMon` pairs cell and clock. Separate
+    /// field rather than a tuple so an uncontracted publisher costs nothing
+    /// and the existing `monitor` construction sites keep their shape.
+    pub(crate) epoch: Option<fn() -> u64>,
     pub(crate) _phantom: PhantomData<M>,
 }
 
@@ -137,6 +142,7 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
             .map_err(|_| NodeError::Serialization)?;
         let len = writer.position();
         self.bump_monitor();
+        self.observe_publish_stamp(&buffer[..len]);
         self.handle
             .publish_raw(&buffer[..len])
             .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
@@ -144,6 +150,20 @@ impl<M: RosMessage> EmbeddedPublisher<M> {
 
     /// RFC-0052 W3b.4 — one relaxed bump per publish on contracted
     /// endpoints; a predictable no-op otherwise.
+    /// Record how old the data we just put on the wire was.
+    ///
+    /// Folds away completely for a type with no `STAMP_OFFSET`, an
+    /// uncontracted publisher, or a build with no epoch source -- the same
+    /// three exits as the subscriber's `observe_age`.
+    #[inline]
+    fn observe_publish_stamp(&self, raw: &[u8]) {
+        if let (Some(cell), Some(epoch), Some(off)) =
+            (self.monitor, self.epoch, <M as RosMessage>::STAMP_OFFSET)
+        {
+            crate::executor::monitor::observe_publish_stamp(cell, raw, off, epoch());
+        }
+    }
+
     #[inline]
     fn bump_monitor(&self) {
         if let Some(cell) = self.monitor {
