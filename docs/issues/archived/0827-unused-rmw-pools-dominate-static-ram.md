@@ -2,7 +2,7 @@
 id: 827
 title: "Static RAM is a property of the RMW, not of the node — a talker reserves
   275 KB of service and large-payload pools it can never reach"
-status: open
+status: resolved
 type: performance
 area: rmw
 related: [phase-392, phase-391, phase-412, issue-0815, issue-0739]
@@ -561,3 +561,58 @@ for a known reason — a missing `include` target is a HARD cargo error during
 manifest parse (issue 0463) — so the file and its `include` must appear and
 disappear together, which is the same invariant the patch sidecar already holds
 and the reason to put it in the same place rather than a new one.
+
+
+## WIRED and MEASURED (2026-09-05) — `nros sync` writes the budget
+
+The remaining step is done: `write_patch_config` derives the leaf's budget and
+writes `.cargo/nros-managed-env.toml`, with the `include` entry added in the
+same decision that writes the file.
+
+**A/B on one host, one tree, one profile — not against a number from another
+day**, because a stale baseline is how this repo has been wrong before:
+
+| `examples/native/rust/talker` | RAM attributed to symbols |
+| --- | ---: |
+| without the derived sidecar | 417,316 |
+| with it | **240,596** |
+| **saved** | **176,720 (42.3 %)** |
+
+That lands within 2 KB of this issue's earlier hand-set `[env]` measurement
+(415,469 stock), reached from a different direction — the agreement is the
+cross-check.
+
+The mechanism is confirmed end to end rather than inferred from the file: the
+build's generated shim constants read
+
+```
+/// Maximum number of concurrent subscribers (set via ZPICO_MAX_SUBSCRIBERS, default 8).
+pub const ZPICO_MAX_SUBSCRIBERS: usize = 1;
+```
+
+so the derived number reached the crate that sizes the pool.
+
+### Two sidecars, not one section
+
+`nros-managed-env.toml` is a SEPARATE file from `nros-managed-patch.toml`
+because the two empty independently: a leaf can have a generated message dep and
+no probeable component, or the reverse. Sharing a file would make each one's
+presence depend on the other's. Both follow the same rule — the file and its
+`include` entry appear and disappear together, since a missing include target is
+a hard cargo error during manifest parse (issue 0463).
+
+Gitignored, like its sibling: it is derived from a probe output that is itself
+per-host and ignored, so committing it would pin one host's answer for everyone.
+
+### What is still NOT derived
+
+`ZPICO_MAX_LARGE_SUBSCRIBERS` — `LARGE_PAYLOADS` remains 131,072 B and is the
+largest single symbol left in that image. The entity inventory has no notion of
+a "large" subscriber, so nothing here can state that number honestly; it stays a
+knob a human sets. Recording it rather than leaving the impression this issue
+recovered everything.
+
+And the whole mechanism reaches only PROBEABLE leaves. A cross-compiled leaf
+whose metadata is `.json.unprobeable` still states its budgets by hand — issue
+1061 — and `nros sync` now says so on the terminal instead of leaving it to be
+inferred from an absent file.
