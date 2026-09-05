@@ -2,7 +2,7 @@
 id: 1057
 title: "`ci_lane` unit test is RED on main: tier 2 declares `RunScope::LaneCoords`
   and `just ci matrix` no longer exports `NROS_TEST_COORDS`"
-status: open
+status: resolved
 type: bug
 area: ci, testing
 severity: high
@@ -59,3 +59,24 @@ owner and a written cause-so-far, not to guess which.
 `cargo nextest run -p nros-tests --lib -E 'test(recipes_run_the_scope_their_lane_declares)'`
 passes on `main`, and the assertion still fails if the export is removed from
 whichever recipe now carries it.
+
+## Resolution (2026-09-05)
+
+The first of the two possibilities: the export MOVED, and the test needed to
+follow the indirection. `_matrix-run` carries `NROS_TEST_COORDS` on both of its
+`just` invocations; nothing was dropped in the split.
+
+`recipes_run_the_scope_their_lane_declares` now follows a recipe's
+module-qualified private delegates before asserting, rather than hard-coding
+tier 2's inner name — so the next tier that grows a depth is covered by
+construction. A delegate that does not resolve fails the test (issue 0196's
+rule) instead of silently shortening the body it reads.
+
+Mutation-checked: removing every export from `_matrix-run` fails; renaming
+`_matrix-run` without updating the dispatcher fails.
+
+Noted while here, NOT fixed: the assertion is "the body mentions the variable",
+so removing one of the two exports in `_matrix-run` still passes. That is the
+assertion's existing granularity rather than something the fix narrowed, and
+tightening it to "every `just` invocation in the body carries it" is a separate
+change with its own blast radius across four tiers.
