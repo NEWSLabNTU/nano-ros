@@ -351,7 +351,12 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
         # `std::nothrow`. Propagate the C++ stdlib through the INTERFACE
         # so any C consumer resolves them. Harmless for C++ apps (the
         # C++ driver already links it).
-        if(NOT (DEFINED NANO_ROS_PLATFORM AND NANO_ROS_PLATFORM STREQUAL "threadx"))
+        # issue 0835 — the property, not the label. See
+        # `nros_platform_hosted_cxx_runtime` for why this used to read
+        # `NANO_ROS_PLATFORM STREQUAL "threadx"` and why that spelling was
+        # load-bearing on six example leaves misreporting their platform.
+        nros_platform_hosted_cxx_runtime(_nros_hosted_cxx "${NANO_ROS_PLATFORM}")
+        if(_nros_hosted_cxx)
             target_link_libraries(NanoRos INTERFACE stdc++)
         endif()
         # Phase 241.D3-rev — the C++ umbrella (NanoRosCpp = nros-cpp-headers) no longer
@@ -383,7 +388,9 @@ elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
             else()
                 target_link_libraries(nros-cpp-headers INTERFACE nros_rmw_cyclonedds)
             endif()
-            if(NOT (DEFINED NANO_ROS_PLATFORM AND NANO_ROS_PLATFORM STREQUAL "threadx"))
+            # issue 0835 — same property, same helper; one defect, two consumers.
+            nros_platform_hosted_cxx_runtime(_nros_hosted_cxx "${NANO_ROS_PLATFORM}")
+            if(_nros_hosted_cxx)
                 target_link_libraries(nros-cpp-headers INTERFACE stdc++)
             endif()
         endif()

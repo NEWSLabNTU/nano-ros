@@ -131,10 +131,65 @@ are held elsewhere rather than by the probe:
    varying (a timestamp, a temp path) would make the affected rows permanently
    STALE with nothing to fix — and it would look exactly like this issue.
 
-### What is NOT fixed, and why it was left
+### FIXED 2026-09-05 — the leaves no longer misreport, and a gate holds it
 
-The duplicated `threadx-riscv64` corrosion group (below, 2026-08-31) is still
-real: the `set(NANO_ROS_PLATFORM threadx)` hardcode is present in all six
+The last piece of this issue is closed. The section below was written while it
+was open and is kept for its measurements; what follows is what changed.
+
+`examples/qemu-riscv64-threadx/rust/*/CMakeLists.txt` now reads
+
+    if(NOT DEFINED NANO_ROS_PLATFORM)
+        set(NANO_ROS_PLATFORM threadx_riscv64)
+    endif()
+
+— the honest platform, and only as the copy-out DEFAULT, so the
+`-DNANO_ROS_PLATFORM=threadx_riscv64` the leaf's own build passes wins instead
+of being shadowed. Gate: `check-example-platform-not-shadowed`, on the fast
+line. It rejects an unconditional `set()` in any leaf whose `[[fixture]]` row
+carries a `platform` coordinate — **even when the value agrees**, because
+agreement today is what makes the next label-keyed thing quietly depend on which
+of the two wins. It also rejects a guarded default that disagrees with the row.
+Mutation-tested against the original line: it fires, naming the leaf.
+
+**The re-key that was feared is not part of this.** Keying the shared cargo
+directory on the resolved feature set landed separately (`8033bc3f0`), so the
+duplicate groups were already gone; this half is about the leaf telling the
+truth, which is what stops the class rather than the instance.
+
+**What this change was NOT allowed to do, and the measurement that decided it.**
+Two `stdc++` link decisions in the root `CMakeLists.txt` were written as
+`NANO_ROS_PLATFORM STREQUAL "threadx"` and so DEPENDED on the leaves
+misreporting. They are now one named predicate,
+`nros_platform_hosted_cxx_runtime`, and its membership is **exactly the old
+rule** — bare `threadx` only. Both tempting generalisations would have removed
+`stdc++` from a link that currently has it:
+
+* `CMAKE_SYSTEM_NAME STREQUAL "Generic"` — `freertos` is also a Generic cross
+  target and today links it.
+* "any bare-metal ThreadX" — measured from the generated ninja files:
+  `examples/qemu-riscv64-threadx/c/talker/build-cyclonedds` carries `-lstdc++`
+  and its rust sibling does not. The c/cpp leaves are exactly the case the call
+  site describes (a C driver linking the C++ Cyclone wrapper), so taking it away
+  is the direction that breaks.
+
+So no platform's decision changes. The one visible consequence: the six rust
+leaves now take the same branch their c/cpp siblings on the identical board and
+toolchain already take, and gain `-lstdc++`. Adding an unreferenced library to a
+GNU ld link is benign and those siblings prove it resolves for `riscv-none-elf`
+— but this was **not build-verified in the branch that made the change**: a
+fresh worktree has no `nros sync` output, corrosion cannot read
+`nros-patch.toml`, and the leaf will not configure there. The first
+`just threadx_riscv64 build-fixtures` after this lands is the check.
+
+Deriving the predicate from a property instead of listing a label is still the
+right end state — it is what RFC-0064 and phase-338 W5.a argue for. It needs one
+measurement first: whether freertos-cross actually wants the `stdc++` it
+currently gets.
+
+### The original note, written while this was open
+
+The duplicated `threadx-riscv64` corrosion group (below, 2026-08-31) was still
+real at the time: the `set(NANO_ROS_PLATFORM threadx)` hardcode is present in all six
 `examples/qemu-riscv64-threadx/rust/*/CMakeLists.txt`. But it is **wasted disk
 and CPU, not staleness** — after 2fa1ed09f a duplicated group cannot make a
 probe fire, because it cannot change a row's artifact bytes. It could not be
