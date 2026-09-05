@@ -146,6 +146,67 @@ fn board_cpp_path(board: &str) -> &str {
 /// app thread) and dispatches to the entry's `app_main`, so the LAUNCH entry must NOT
 /// define `int main` (it would double-main / never run under the kernel). Native keeps
 /// the POSIX `int main`.
+/// The boot wrapper a generated entry gets, derived from the board.
+///
+/// Issue 1003 — ONE derivation, used by both the per-tier and the
+/// single-executor path.
+///
+/// The two used to spell the branch chain separately, and they spelled it
+/// DIFFERENTLY: the per-tier path tested `freertos || nuttx` where the
+/// single-executor path tested `board_is_embedded`. That reads like a drift
+/// bug and is not one — `use_run_tiers` already excludes every embedded board
+/// except those three, so ThreadX (the only board the two predicates disagree
+/// about) cannot reach the per-tier chain at all, and both produced the same
+/// wrapper for every board that reaches them.
+///
+/// It is still worth one derivation: establishing that equivalence takes a
+/// reachability argument about a condition seventy lines away, and that
+/// argument has to be redone by hand every time either chain is touched. A
+/// board added to `use_run_tiers` tomorrow would make the difference real.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum BootShape {
+    /// The kernel calls `main(void)` directly (Zephyr).
+    Kernel,
+    /// The board's `startup.c` owns `main` and dispatches to `nros_app_main`.
+    App,
+    /// A host process keeping the POSIX `int main(argc, argv)`.
+    Host,
+}
+
+pub(crate) fn boot_shape(board: &str) -> BootShape {
+    if board_is_zephyr(board) {
+        BootShape::Kernel
+    } else if board_is_embedded(board) {
+        BootShape::App
+    } else {
+        BootShape::Host
+    }
+}
+
+/// Wrap `call` — the board call whose value the entry returns — in the board's
+/// boot shape. The `static_cast<int>` belongs to the Zephyr shape only; the
+/// other two return the board's `int32_t` directly.
+fn emit_boot_wrapper(out: &mut String, shape: BootShape, call: &str) {
+    match shape {
+        BootShape::Kernel => {
+            out.push_str("int main(void) {\n");
+            let _ = writeln!(out, "    return static_cast<int>({call});");
+            out.push_str("}\n");
+        }
+        BootShape::App => {
+            out.push_str("extern \"C\" int nros_app_main(int /*argc*/, char** /*argv*/) {\n");
+            let _ = writeln!(out, "    return {call};");
+            out.push_str("}\n\n");
+            out.push_str("NROS_APP_MAIN_REGISTER_VOID();\n");
+        }
+        BootShape::Host => {
+            out.push_str("int main(int /*argc*/, char** /*argv*/) {\n");
+            let _ = writeln!(out, "    return {call};");
+            out.push_str("}\n");
+        }
+    }
+}
+
 pub(crate) fn board_is_embedded(board: &str) -> bool {
     board_cpp_path(board) != "::nros::board::LinuxBoard"
 }
@@ -683,40 +744,16 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
         // NuttX embedded → nros_app_main + NROS_APP_MAIN_REGISTER_VOID (startup
         // path calls app_main); native → int main(argc, argv).
         let board = board_cpp_path(&plan.board);
-        if board_is_zephyr(&plan.board) {
-            // phase-281 W3a — Zephyr per-tier embedded entry. The Zephyr kernel
-            // calls main(void) directly (no nano-ros startup.c owning main); the
-            // connect locator / domain id thread in via NROS_ENTRY_LOCATOR /
-            // NROS_ENTRY_DOMAIN_ID (Kconfig-backed) inside ZephyrBoard::run_tiers.
-            out.push_str("int main(void) {\n");
-            let _ = writeln!(
-                out,
-                "    return static_cast<int>({board}::run_tiers(\
-nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u));"
-            );
-            out.push_str("}\n");
-        } else if board_is_freertos_embedded(&plan.board) || board_is_nuttx(&plan.board) {
-            // Phase 274.W3 (FreeRTOS) / phase-281 W3 (NuttX) — per-tier embedded
-            // entry via the app_main startup shape. `{board}` resolves to
-            // FreertosBoard::run_tiers or NuttxBoard::run_tiers accordingly.
-            out.push_str("extern \"C\" int nros_app_main(int /*argc*/, char** /*argv*/) {\n");
-            let _ = writeln!(
-                out,
-                "    return {board}::run_tiers(\
-nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
-            );
-            out.push_str("}\n\n");
-            out.push_str("NROS_APP_MAIN_REGISTER_VOID();\n");
-        } else {
-            // Native (LinuxBoard): int main.
-            out.push_str("int main(int /*argc*/, char** /*argv*/) {\n");
-            let _ = writeln!(
-                out,
-                "    return {board}::run_tiers(\
-nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
-            );
-            out.push_str("}\n");
-        }
+        // phase-281 W3a (Zephyr, kernel calls `main(void)` directly) /
+        // phase-274 W3 (FreeRTOS) / phase-281 W3 (NuttX, `startup.c` owns
+        // `main` and dispatches to `app_main`) / native. The call is the SAME
+        // for every board that has `run_tiers`; only the wrapper differs, and
+        // that is `boot_shape`'s single derivation.
+        let call = format!(
+            "{board}::run_tiers(nros_boot_config_node_name(&NROS_BOOT_CONFIG), \
+__nros_tiers, {n_tiers}u)"
+        );
+        emit_boot_wrapper(&mut out, boot_shape(&plan.board), &call);
     } else {
         // ----------------------------------------------------------------
         // Single-executor path (single-tier OR embedded multi-tier with
@@ -953,35 +990,22 @@ nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {n_tiers}u);"
         out.push('\n');
 
         let board = board_cpp_path(&plan.board);
-        if board_is_zephyr(&plan.board) {
-            // phase-263 C2d — Zephyr: kernel calls main(void) directly.
-            out.push_str("int main(void) {\n");
-            let _ = writeln!(
-                out,
-                "    return static_cast<int>({board}::run_components(\
-NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup));"
-            );
-            out.push_str("}\n");
-        } else if board_is_embedded(&plan.board) {
-            // phase-263 C2 — embedded: startup.c calls app_main.
-            out.push_str("extern \"C\" int nros_app_main(int /*argc*/, char** /*argv*/) {\n");
-            let _ = writeln!(
-                out,
-                "    return {board}::run_components(\
-NROS_ENTRY_LOCATOR, nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup);"
-            );
-            out.push_str("}\n\n");
-            out.push_str("NROS_APP_MAIN_REGISTER_VOID();\n");
-        } else {
-            // native (LinuxBoard): single-tier or degenerate.
-            out.push_str("int main(int /*argc*/, char** /*argv*/) {\n");
-            let _ = writeln!(
-                out,
-                "    return {board}::run_components(\
-nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup);"
-            );
-            out.push_str("}\n");
-        }
+        // phase-263 C2d (Zephyr: kernel calls `main(void)`) / C2 (embedded:
+        // `startup.c` calls `app_main`) / native. Only the host board resolves
+        // its locator at runtime, so it is the one that takes no locator
+        // argument; the wrapper itself comes from `boot_shape`.
+        let shape = boot_shape(&plan.board);
+        let call = match shape {
+            BootShape::Host => format!(
+                "{board}::run_components(nros_boot_config_node_name(&NROS_BOOT_CONFIG), \
+&__nros_entry_setup)"
+            ),
+            _ => format!(
+                "{board}::run_components(NROS_ENTRY_LOCATOR, \
+nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)"
+            ),
+        };
+        emit_boot_wrapper(&mut out, shape, &call);
     }
 
     Ok(out)
@@ -2305,6 +2329,109 @@ mod tests {
         assert!(
             !src.contains(".sched("),
             "no-tier plan must not use NodeBuilder sched"
+        );
+    }
+
+    // ---------------------------------------------------------------
+    // Issue 1003 — the boot wrapper has ONE derivation
+    // ---------------------------------------------------------------
+
+    /// The wrapper each board family gets. Written as a table because the bug
+    /// this replaces was a board missing from one of two hand-written branch
+    /// chains: a table makes an omission visible as a missing row.
+    #[test]
+    fn every_board_family_derives_its_boot_shape_once() {
+        for (board, want) in [
+            ("native", BootShape::Host),
+            ("posix", BootShape::Host),
+            ("zephyr", BootShape::Kernel),
+            ("nuttx", BootShape::App),
+            ("freertos", BootShape::App),
+            ("threadx", BootShape::App),
+            ("threadx-linux", BootShape::App),
+        ] {
+            assert_eq!(
+                boot_shape(board),
+                want,
+                "board '{board}' derived the wrong boot shape"
+            );
+        }
+    }
+
+    /// ThreadX's `startup.c` owns `main`, so its entry must be `nros_app_main`
+    /// — a host `int main` would be a second `main` in an image whose board
+    /// already defines one.
+    ///
+    /// ThreadX is the one board the two former branch chains disagreed about,
+    /// and it is kept out of the per-tier chain by `use_run_tiers`. Pinning it
+    /// here means the shared derivation is right about it on its own terms,
+    /// rather than by an argument about a condition elsewhere.
+    #[test]
+    fn threadx_is_not_treated_as_a_host_board() {
+        assert_ne!(
+            boot_shape("threadx"),
+            BootShape::Host,
+            "ThreadX boots through the board's startup.c, so a host `int main` \
+would collide with the one the board defines"
+        );
+        assert_eq!(boot_shape("threadx"), boot_shape("nuttx"));
+    }
+
+    /// The boards that DO have `run_tiers` still emit it, each in its own
+    /// wrapper — the consolidation must not have narrowed what works.
+    #[test]
+    fn boards_with_run_tiers_still_emit_their_own_wrapper() {
+        for (board, wrapper) in [
+            ("native", "int main(int /*argc*/, char** /*argv*/) {"),
+            ("zephyr", "int main(void) {"),
+            (
+                "nuttx",
+                "extern \"C\" int nros_app_main(int /*argc*/, char** /*argv*/) {",
+            ),
+            (
+                "freertos",
+                "extern \"C\" int nros_app_main(int /*argc*/, char** /*argv*/) {",
+            ),
+        ] {
+            let mut plan = fixture_plan_with_tiers();
+            plan.board = board.into();
+            let src =
+                emit_typed(&plan).unwrap_or_else(|e| panic!("{board} multi-tier emit failed: {e}"));
+            assert!(
+                src.contains("::run_tiers("),
+                "{board} must still call run_tiers"
+            );
+            assert!(
+                src.contains(wrapper),
+                "{board} must be wrapped in `{wrapper}`"
+            );
+        }
+    }
+
+    /// Only the host board resolves its locator at runtime, so it is the one
+    /// that passes none. Both halves of that rule now come from one place.
+    #[test]
+    fn only_the_host_entry_omits_the_locator_argument() {
+        let mut plan = fixture_plan_typed(&[(
+            "talker_pkg",
+            "talker",
+            "talker",
+            "talker_pkg::Talker",
+            "talker_pkg/Talker.hpp",
+        )]);
+
+        plan.board = "native".into();
+        let host = emit_typed(&plan).expect("native emit ok");
+        assert!(
+            host.contains("run_components(nros_boot_config_node_name("),
+            "the host entry passes no locator: {host}"
+        );
+
+        plan.board = "nuttx".into();
+        let embedded = emit_typed(&plan).expect("nuttx emit ok");
+        assert!(
+            embedded.contains("run_components(NROS_ENTRY_LOCATOR, nros_boot_config_node_name("),
+            "an embedded entry passes NROS_ENTRY_LOCATOR: {embedded}"
         );
     }
 }

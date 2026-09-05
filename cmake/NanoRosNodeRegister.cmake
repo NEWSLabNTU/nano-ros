@@ -238,8 +238,42 @@ function(_nros_json_strlist out_var)
     set(${out_var} "${_acc}" PARENT_SCOPE)
 endfunction()
 
+# Issue 1003 — derive the RTOS entry template's family holes from the family
+# NAME, so a family is named once and everything else follows.
+#
+# NuttX, ThreadX and FreeRTOS all boot the same way (the board's `startup.c`
+# owns `main` and dispatches to `nros_app_main`), so they share ONE entry
+# template, `templates/rtos_entry_main{,_c}_typed.cpp.in`. They used to have
+# three near-identical templates apiece; the copies differed only in these
+# three tokens, which is exactly the duplication issue 1003 is about — a fix
+# applied to one copy leaves the others wrong AND plausible.
+#
+# Every value below is COMPUTED from `_fam`. A table would be a second place
+# to forget a family.
+macro(_nros_rtos_entry_family _fam)
+    set(NROS_ENTRY_RTOS_TAG "${_fam}")
+    string(TOUPPER "${_fam}" NROS_ENTRY_RTOS_UPPER)
+    # `nuttx` -> `Nuttx`, so `::nros::board::NuttxBoard`.
+    string(SUBSTRING "${_fam}" 0 1 _nros_fam_head)
+    string(SUBSTRING "${_fam}" 1 -1 _nros_fam_tail)
+    string(TOUPPER "${_nros_fam_head}" _nros_fam_head)
+    set(NROS_ENTRY_BOARD_CPP "::nros::board::${_nros_fam_head}${_nros_fam_tail}Board")
+endmacro()
+
 function(nano_ros_node_register)
     cmake_parse_arguments(_NRC "TYPED" "NAME;CLASS;LANGUAGE;HEADER;SHAPE;EXISTING_TARGET" "SOURCES;DEPLOY;CALLBACK_GROUPS;ENTITIES" ${ARGN})
+
+    # Issue 1017 — the entry's session name is DERIVED here, once, from the
+    # node's own name, and every entry shape below reads it.
+    #
+    # It used to be set separately in each of the FIVE shape branches, all
+    # spelling the same assignment. Five copies of one fact is the shape that
+    # produced issue 1003 one layer up: if a single branch drifted to a
+    # literal, every image built through THAT shape would share a name — and
+    # the templates, which only substitute `@NROS_ENTRY_NODE_NAME@`, would
+    # still look correct. Hoisting removes the possibility rather than
+    # checking for it.
+    set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
     # RFC-0057 (phase-305 W1.1) — EXISTING_TARGET mode: the component library
     # was created separately (`nano_ros_auto_add_library`); attach
     # registration (class define, metadata row, carrier glue) to it instead
@@ -643,13 +677,13 @@ function(nano_ros_node_register)
         # `NROS_ENTRY_CLASS` / `NROS_ENTRY_CLASS_HEADER` / `NROS_ENTRY_NODE_NAME`
         # feed the typed template. C++ only (the C path is 240.4).
         if(_NRC_TYPED)
-            set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
             set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
+            _nros_rtos_entry_family(nuttx)
             if(_nrc_lang STREQUAL "CPP")
                 set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
                 set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
                 configure_file(
-                    "${_NROS_NODE_REGISTER_DIR}/templates/nuttx_entry_main_typed.cpp.in"
+                    "${_NROS_NODE_REGISTER_DIR}/templates/rtos_entry_main_typed.cpp.in"
                     "${_entry_src}" @ONLY)
             elseif(_nrc_lang STREQUAL "C")
                 # Phase 240.4 — C typed component. The entry TU is C++ but
@@ -657,7 +691,7 @@ function(nano_ros_node_register)
                 # factory/configure seam (NROS_C_COMPONENT). `NROS_ENTRY_PKG_SYM`
                 # is already set above to the sanitized pkg.
                 configure_file(
-                    "${_NROS_NODE_REGISTER_DIR}/templates/nuttx_entry_main_c_typed.cpp.in"
+                    "${_NROS_NODE_REGISTER_DIR}/templates/rtos_entry_main_c_typed.cpp.in"
                     "${_entry_src}" @ONLY)
             else()
                 message(FATAL_ERROR
@@ -738,19 +772,19 @@ function(nano_ros_node_register)
         # (127.0.0.1:7447 on threadx-linux); both are preserved deliberately.
         _nros_resolve_entry_locator(node-register
             "${NANO_ROS_PLATFORM}" "${NANO_ROS_BOARD}" NROS_ENTRY_LOCATOR)
-        set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
+        _nros_rtos_entry_family(threadx)
         set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
         set(_entry_src "${_entry_dir}/main.cpp")
         if(_nrc_lang STREQUAL "CPP")
             set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
             set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
             configure_file(
-                "${_NROS_NODE_REGISTER_DIR}/templates/threadx_entry_main_typed.cpp.in"
+                "${_NROS_NODE_REGISTER_DIR}/templates/rtos_entry_main_typed.cpp.in"
                 "${_entry_src}" @ONLY)
         else() # C
             configure_file(
-                "${_NROS_NODE_REGISTER_DIR}/templates/threadx_entry_main_c_typed.cpp.in"
+                "${_NROS_NODE_REGISTER_DIR}/templates/rtos_entry_main_c_typed.cpp.in"
                 "${_entry_src}" @ONLY)
         endif()
 
@@ -847,19 +881,19 @@ function(nano_ros_node_register)
         # QEMU run per lane.
         _nros_resolve_entry_locator(node-register
             "${NANO_ROS_PLATFORM}" "${NANO_ROS_BOARD}" NROS_ENTRY_LOCATOR)
-        set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
+        _nros_rtos_entry_family(freertos)
         set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
         set(_entry_src "${_entry_dir}/main.cpp")
         if(_nrc_lang STREQUAL "CPP")
             set(NROS_ENTRY_CLASS "${_NRC_CLASS}")
             set(NROS_ENTRY_CLASS_HEADER "${_nrc_header}")
             configure_file(
-                "${_NROS_NODE_REGISTER_DIR}/templates/freertos_entry_main_typed.cpp.in"
+                "${_NROS_NODE_REGISTER_DIR}/templates/rtos_entry_main_typed.cpp.in"
                 "${_entry_src}" @ONLY)
         else() # C
             configure_file(
-                "${_NROS_NODE_REGISTER_DIR}/templates/freertos_entry_main_c_typed.cpp.in"
+                "${_NROS_NODE_REGISTER_DIR}/templates/rtos_entry_main_c_typed.cpp.in"
                 "${_entry_src}" @ONLY)
         endif()
 
@@ -948,7 +982,6 @@ function(nano_ros_node_register)
        AND NOT TARGET ${PROJECT_NAME})
         string(REGEX REPLACE "[^A-Za-z0-9_]" "_" _pkg_sym "${PROJECT_NAME}")
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
-        set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
         set(NROS_ENTRY_SHAPE_RCLCPP "${_nrc_shape_rclcpp}")
         set(_entry_dir "${CMAKE_CURRENT_BINARY_DIR}/nros-entry")
         set(_entry_src "${_entry_dir}/main.cpp")
@@ -1021,7 +1054,6 @@ function(nano_ros_node_register)
                 "the RFC-0043 real-callback component path. The legacy "
                 "declarative-register entry is not generated on Zephyr.")
         endif()
-        set(NROS_ENTRY_NODE_NAME "${_NRC_NAME}")
         set(_zephyr_entry_src "${CMAKE_CURRENT_BINARY_DIR}/nros-entry/zephyr_entry_main.cpp")
         if(_nrc_lang STREQUAL "CPP")
             set(NROS_ENTRY_CLASS "${_NRC_CLASS}")

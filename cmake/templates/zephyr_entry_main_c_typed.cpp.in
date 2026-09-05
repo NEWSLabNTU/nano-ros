@@ -8,7 +8,9 @@
 // `__nros_c_component_<pkg>_configure(node_handle, executor, self)`
 // (NROS_C_COMPONENT in the C source). The C `configure` registers real
 // callbacks on the same executor/node the entry spins — no interpreter, no
-// callback names. Mirrors `nuttx_entry_main_c_typed.cpp.in`.
+// callback names. Mirrors `rtos_entry_main_c_typed.cpp.in` (the merged NuttX/
+// ThreadX/FreeRTOS entry); Zephyr stays separate because the kernel calls
+// `main` directly, so this entry has no `nros_app_main`.
 //
 // Boot symbol: Zephyr owns boot + the C `main` symbol, so the entry is a plain
 // `int main(void)` (NOT the NuttX `nros_app_main` + `NROS_APP_MAIN_REGISTER_VOID`
