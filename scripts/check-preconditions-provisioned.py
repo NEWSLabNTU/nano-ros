@@ -42,6 +42,7 @@ Run:  python3 scripts/check-preconditions-provisioned.py [--self-test]
 
 import os
 import re
+import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -114,12 +115,11 @@ TOOL_RECIPES = {
         "in `_setup-common`: `nros sync` shells out to the resolver by absolute "
         "path beside the CLI (issue 0285), so every scope needs it.",
     ),
-    "setup-mdbook": (
-        "manual",
-        "Docs-only. `just book` is the one consumer and it prints the remedy "
-        "itself; provisioning a book toolchain for every scope would be cost "
-        "with no gate behind it.",
-    ),
+    # `setup-mdbook` was here and is GONE: phase-422 W2 moved mdBook into the
+    # index as `[tool.mdbook]`, so no gate names the recipe any more and the row
+    # went stale. This gate's both-directions check caught that itself — which
+    # is the point of checking an authored map in both directions rather than
+    # only asking "is every mention classified".
     "setup-hooks": (
         "manual",
         "Writes to the user's git config (hooks path, diff.submodule, "
@@ -178,19 +178,25 @@ def gate_tool_recipes(root):
     if root in _TOOL_CACHE:
         return _TOOL_CACHE[root]
     found = set()
-    for base, _dirs, files in os.walk(os.path.join(root, "scripts")):
-        for fn in files:
-            if not fn.endswith((".sh", ".py")):
-                continue
-            try:
-                # Some checked-in scripts carry non-UTF8 bytes (fixture payloads,
-                # encoding probes). Read tolerantly: we are grepping for an ASCII
-                # recipe name, so a lossy decode cannot hide one.
-                with open(os.path.join(base, fn), encoding="utf8", errors="replace") as fh:
-                    t = fh.read()
-            except OSError:
-                continue
-            found.update(re.findall(r"just (setup-[a-z-]+)", t))
+    # `git ls-files`, not a filesystem walk: `check-no-tracked-file-find` forbids
+    # walking to locate tracked files, and it is right — a walk also descends
+    # into build output and untracked scratch, so it answers a different
+    # question than "what does this repo ship".
+    listing = subprocess.run(
+        ["git", "-C", root, "ls-files", "scripts/*.sh", "scripts/*.py", "scripts/**/*.sh", "scripts/**/*.py"],
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    for rel in listing:
+        try:
+            # Some checked-in scripts carry non-UTF8 bytes (fixture payloads,
+            # encoding probes). Read tolerantly: we are grepping for an ASCII
+            # recipe name, so a lossy decode cannot hide one.
+            with open(os.path.join(root, rel), encoding="utf8", errors="replace") as fh:
+                t = fh.read()
+        except OSError:
+            continue
+        found.update(re.findall(r"just (setup-[a-z-]+)", t))
     found.update(re.findall(r"just (setup-[a-z-]+)", read(os.path.join(root, "just", "check.just"))))
     _TOOL_CACHE[root] = found
     return found
