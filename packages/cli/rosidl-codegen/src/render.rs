@@ -88,7 +88,7 @@ struct NrosTypeSpell {
 /// call and any `{% import %}` use. Adding a language = adding rows here plus its
 /// `.jinja` files — no other Rust. `include_str!` bundles them at build time.
 const PACKS: &[(&str, &str)] = &[
-    // RFC-0089 / phase-429 W1 — shared by the C and C++ packs, because the
+    // RFC-0090 / phase-429 W1 — shared by the C and C++ packs, because the
     // codegen-version stamp is about the C ABI both of them emit into. Not
     // inside either pack dir for that reason.
     (
@@ -211,7 +211,7 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     // Generated sources carry their own trailing newline in the template body;
     // do not let the engine append another.
     env.set_keep_trailing_newline(false);
-    // RFC-0089 / phase-429 W1 — a GLOBAL, not a per-context field. Every
+    // RFC-0090 / phase-429 W1 — a GLOBAL, not a per-context field. Every
     // artifact this generator emits was emitted by this generator, so the
     // version is a property of the environment, not of any one message; adding
     // it to the six-odd context structs instead would be six places to forget.
