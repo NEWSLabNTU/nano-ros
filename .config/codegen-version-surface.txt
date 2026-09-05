@@ -1,0 +1,240 @@
+# phase-429 W3 — the version-surface stamp for `NROS_CODEGEN_VERSION`.
+#
+# EVIDENCE, NOT THE TOKEN. Nothing compiles this file, nothing compares these
+# hashes at run time, and no user of nano-ros ever sees one. RFC-0089 D1 keeps
+# the compatibility token an authored integer precisely so a reader can order
+# two of them; this file exists only so that an authored integer cannot drift
+# away from what it claims to describe.
+#
+# `version` is the value of NROS_CODEGEN_VERSION when the surface below was
+# recorded. `check-codegen-version-surface` fails when the surface moves and
+# that integer does not.
+#
+# Regenerate after a DELIBERATE surface move (bump the constant first):
+#     python3 scripts/check-codegen-version-surface.py --write-baseline
+version 1
+2415963024c63037 cpp|fn|component.hpp|bind_subscription_sized
+4e2616f1497bc854 cpp|struct|fixed_sequence.hpp|FixedSequence
+efa12c6f08547166 cpp|struct|fixed_string.hpp|FixedString
+c2bd21803d713aa0 cpp|struct|heap_sequence.hpp|HeapSequence
+f8736d3d1123a4d6 cpp|struct|heap_string.hpp|HeapString
+5feab3fc0e37c2db cpp|struct|size_bound.hpp|size_bound_dependent_false
+c3a4962bef9b0e39 cpp|struct|span.hpp|LeSpan
+3ac972908fe3dcf7 cpp|struct|span.hpp|Span
+bdb092b497ccb841 cpp|struct|span.hpp|StringView
+c8095aa07ee088a0 c|fn|cdr.h|nros_cdr_begin_dheader
+757326358289c886 c|fn|cdr.h|nros_cdr_begin_dheader_read
+0ab1e2ce14d2754f c|fn|cdr.h|nros_cdr_end_dheader
+29096b6cc03e6a36 c|fn|cdr.h|nros_cdr_end_dheader_read
+f67bae0b8868080b c|fn|cdr.h|nros_cdr_read_bool
+6e2b46c4f7ea6d9d c|fn|cdr.h|nros_cdr_read_f32
+c309b60d67ad61e7 c|fn|cdr.h|nros_cdr_read_f64
+b39cc4d118227cd0 c|fn|cdr.h|nros_cdr_read_i16
+89b4d7a0cb9dbdca c|fn|cdr.h|nros_cdr_read_i32
+9d8102daf09b56c3 c|fn|cdr.h|nros_cdr_read_i64
+5da75d7eddb0b376 c|fn|cdr.h|nros_cdr_read_i8
+8b6254fc98bd390d c|fn|cdr.h|nros_cdr_read_string
+877c7f258e99bd4e c|fn|cdr.h|nros_cdr_read_u16
+56a7e653c1af8b2f c|fn|cdr.h|nros_cdr_read_u32
+4d60e453a167b28a c|fn|cdr.h|nros_cdr_read_u64
+eb311091fa0d8307 c|fn|cdr.h|nros_cdr_read_u8
+a91f1c4466f597cb c|fn|cdr.h|nros_cdr_write_bool
+221bf74293e8d367 c|fn|cdr.h|nros_cdr_write_encaps_header
+8cee2038fd2e760c c|fn|cdr.h|nros_cdr_write_f32
+9ac6b2b3cf1c1b94 c|fn|cdr.h|nros_cdr_write_f64
+1838cf31aad1bc51 c|fn|cdr.h|nros_cdr_write_i16
+6d12fed63c1900dd c|fn|cdr.h|nros_cdr_write_i32
+506e7aad9b6a4904 c|fn|cdr.h|nros_cdr_write_i64
+3b3de9efb5921e60 c|fn|cdr.h|nros_cdr_write_i8
+85b1f4d3cae608b4 c|fn|cdr.h|nros_cdr_write_string
+4b4e0aee5e396984 c|fn|cdr.h|nros_cdr_write_string_n
+346e8794a3c77760 c|fn|cdr.h|nros_cdr_write_u16
+2964ed5adc08f31d c|fn|cdr.h|nros_cdr_write_u32
+8460cb2ce1b9fa02 c|fn|cdr.h|nros_cdr_write_u64
+71b87a12f9b2731d c|fn|cdr.h|nros_cdr_write_u8
+97ef03f55dc6ed4d c|fn|component.h|nros_cpp_publish_raw
+27d97d2f6f4d17a9 c|fn|nros_generated.h|nros_cdr_begin_dheader
+953680f7c86afbb7 c|fn|nros_generated.h|nros_cdr_begin_dheader_read
+756b60c3869abdf0 c|fn|nros_generated.h|nros_cdr_end_dheader
+cfc8d0e48578f951 c|fn|nros_generated.h|nros_cdr_end_dheader_read
+71e84af1cc675a96 c|fn|nros_generated.h|nros_cdr_read_bool
+b39c04e802499629 c|fn|nros_generated.h|nros_cdr_read_f32
+fd124f79cedc4280 c|fn|nros_generated.h|nros_cdr_read_f64
+0185bac9492113d4 c|fn|nros_generated.h|nros_cdr_read_i16
+4070900283085bc6 c|fn|nros_generated.h|nros_cdr_read_i32
+e67f762253a6753b c|fn|nros_generated.h|nros_cdr_read_i64
+d9a8b67dbc5a218e c|fn|nros_generated.h|nros_cdr_read_i8
+d365230902e269f5 c|fn|nros_generated.h|nros_cdr_read_string
+c82339299aa86524 c|fn|nros_generated.h|nros_cdr_read_u16
+be6c62494fcb7564 c|fn|nros_generated.h|nros_cdr_read_u32
+f8af588650e6f71a c|fn|nros_generated.h|nros_cdr_read_u64
+02fc5afb462d4469 c|fn|nros_generated.h|nros_cdr_read_u8
+8bdf3b981fd6118e c|fn|nros_generated.h|nros_cdr_write_bool
+4ea21c45f8678376 c|fn|nros_generated.h|nros_cdr_write_encaps_header
+d7effe1821437e55 c|fn|nros_generated.h|nros_cdr_write_f32
+122ccc79155a075d c|fn|nros_generated.h|nros_cdr_write_f64
+c2c6da0f83053db0 c|fn|nros_generated.h|nros_cdr_write_i16
+443d5da4fb469ac4 c|fn|nros_generated.h|nros_cdr_write_i32
+1d4c8ea7df8fba04 c|fn|nros_generated.h|nros_cdr_write_i64
+b1cdeda5fc19682c c|fn|nros_generated.h|nros_cdr_write_i8
+78f23c8a8b32dc75 c|fn|nros_generated.h|nros_cdr_write_string
+36ac8b3fe30e02ce c|fn|nros_generated.h|nros_cdr_write_string_n
+82139d13b26c81ec c|fn|nros_generated.h|nros_cdr_write_u16
+1a82913aa5898aa5 c|fn|nros_generated.h|nros_cdr_write_u32
+a0ee677dbcf470a8 c|fn|nros_generated.h|nros_cdr_write_u64
+bf05a018a3258b10 c|fn|nros_generated.h|nros_cdr_write_u8
+1f102178d10eee73 c|fn|nros_generated.h|nros_publish_raw
+37f6161a4d260013 c|macro|serialization_format.h|NROS_ASSERT_MESSAGE_FORMAT
+fa4c73b6db0355d0 c|macro|serialization_format.h|NROS_SERIALIZATION_FORMAT_ID_CDR
+235604dbaa7be397 c|type|action.h|nros_ret_t
+e977f098960638a3 c|type|client.h|nros_ret_t
+1db72978bc81873b c|type|node_pkg.h|nros_ret_t
+fe679f526273ea16 c|type|nros_generated.h|nros_action_type_t
+d0b697c977eccb8a c|type|nros_generated.h|nros_message_type_t
+99ff00c3dcc2f18e c|type|nros_generated.h|nros_publisher_t
+b80dc9d3520b55aa c|type|nros_generated.h|nros_ret_t
+41874b5b997bbd8b c|type|nros_generated.h|nros_service_type_t
+ad0d65b3ec68f44e c|type|parameter.h|nros_ret_t
+38d790f4151b248f c|type|serialization_format.h|NROS_ASSERT_MESSAGE_FORMAT
+19a6cdf85df5162b c|type|service.h|nros_ret_t
+5bb13590faea8e7f c|type|view.h|nros_le_slice_view_
+54616a685e37b195 c|type|view.h|nros_view_bytes_t
+88d59d0ac993b29b c|type|view.h|nros_view_str_t
+00560764c4419753 rust|enum|nros_serdes::DeserError
+f2f63bb6d001fbee rust|enum|nros_serdes::FieldType
+e298fca3b6a8d063 rust|enum|nros_serdes::SerError
+e62f14fe540a7eae rust|method|nros_serdes::CdrReader::align
+330efd65d0a0d178 rust|method|nros_serdes::CdrReader::begin_dheader
+f6a177f294344afd rust|method|nros_serdes::CdrReader::end_dheader
+f95623ff3a5679e1 rust|method|nros_serdes::CdrReader::is_at_origin
+35945f2a923e2bd3 rust|method|nros_serdes::CdrReader::is_empty
+a8214443312bb52c rust|method|nros_serdes::CdrReader::new
+4b869fc9c42258a0 rust|method|nros_serdes::CdrReader::new_at
+2e6918b146d1cef1 rust|method|nros_serdes::CdrReader::new_at_xcdr2
+f1a84aa1501128c8 rust|method|nros_serdes::CdrReader::new_with_header
+44ca6fc11c53ac38 rust|method|nros_serdes::CdrReader::position
+8f4288659a917784 rust|method|nros_serdes::CdrReader::read_bool
+1799c03f9e909c08 rust|method|nros_serdes::CdrReader::read_bytes
+72c37bcb8b4184ce rust|method|nros_serdes::CdrReader::read_f32
+47e11d407bd167d4 rust|method|nros_serdes::CdrReader::read_f64
+76414aadaf8210f2 rust|method|nros_serdes::CdrReader::read_i16
+a9408aa2e5e3ecc0 rust|method|nros_serdes::CdrReader::read_i32
+56b05c28abb96fa3 rust|method|nros_serdes::CdrReader::read_i64
+676fbbafcdeef62f rust|method|nros_serdes::CdrReader::read_i8
+0e05bfee53da299c rust|method|nros_serdes::CdrReader::read_le_slice
+5625962d9aed48f3 rust|method|nros_serdes::CdrReader::read_sequence_len
+ebc6767eeb308b04 rust|method|nros_serdes::CdrReader::read_slice_bool
+01c46321b1ff78b8 rust|method|nros_serdes::CdrReader::read_slice_i8
+96d3c36d1af4df8e rust|method|nros_serdes::CdrReader::read_slice_u8
+601061379fac5155 rust|method|nros_serdes::CdrReader::read_string
+3bfcaaeec5360b60 rust|method|nros_serdes::CdrReader::read_u16
+c1796e1801ba5bc6 rust|method|nros_serdes::CdrReader::read_u32
+f23ad1423fec73fa rust|method|nros_serdes::CdrReader::read_u64
+e872f9d98b920c79 rust|method|nros_serdes::CdrReader::read_u8
+ea2b625c7c601ccc rust|method|nros_serdes::CdrReader::remaining
+72b44cc9c54ad7d3 rust|method|nros_serdes::CdrReader::version
+26a160acd635bd39 rust|method|nros_serdes::CdrWriter::align
+ee42d53e5fd8d83e rust|method|nros_serdes::CdrWriter::as_slice
+7e62ed51b6e4779d rust|method|nros_serdes::CdrWriter::begin_dheader
+d1349c9417fcf081 rust|method|nros_serdes::CdrWriter::end_dheader
+e52994eccb9e3a75 rust|method|nros_serdes::CdrWriter::measuring
+385359b7d63aa0a5 rust|method|nros_serdes::CdrWriter::new
+319df755a1bf82bd rust|method|nros_serdes::CdrWriter::new_at
+0caab9f1bc1da6ac rust|method|nros_serdes::CdrWriter::new_at_xcdr2
+a9e03758213b8459 rust|method|nros_serdes::CdrWriter::new_with_header
+6daa66632e0989a4 rust|method|nros_serdes::CdrWriter::new_with_header_xcdr2
+44ca6fc11c53ac38 rust|method|nros_serdes::CdrWriter::position
+ea2b625c7c601ccc rust|method|nros_serdes::CdrWriter::remaining
+72b44cc9c54ad7d3 rust|method|nros_serdes::CdrWriter::version
+a36cfdd7fe600509 rust|method|nros_serdes::CdrWriter::write_bool
+78dfd3156a503ff4 rust|method|nros_serdes::CdrWriter::write_bytes
+b65ee142677bff49 rust|method|nros_serdes::CdrWriter::write_f32
+fef07ca38dfdec4f rust|method|nros_serdes::CdrWriter::write_f64
+2ffe9ce2c1968e14 rust|method|nros_serdes::CdrWriter::write_i16
+928631f229027e51 rust|method|nros_serdes::CdrWriter::write_i32
+7499d40bdc76d1b5 rust|method|nros_serdes::CdrWriter::write_i64
+648cf0c274ce66f8 rust|method|nros_serdes::CdrWriter::write_i8
+d8b2a6655cab0fee rust|method|nros_serdes::CdrWriter::write_sequence_len
+c169dee4e2406229 rust|method|nros_serdes::CdrWriter::write_string
+c6ad3d03648a9292 rust|method|nros_serdes::CdrWriter::write_u16
+b88a51ea8e57c760 rust|method|nros_serdes::CdrWriter::write_u32
+9c251e0522a0c9d9 rust|method|nros_serdes::CdrWriter::write_u64
+5b374c8889e9b253 rust|method|nros_serdes::CdrWriter::write_u8
+b4dc8fc82c92846e rust|method|nros_serdes::LeSliceView::as_bytes
+91ae367ca9c8631c rust|method|nros_serdes::LeSliceView::get
+35945f2a923e2bd3 rust|method|nros_serdes::LeSliceView::is_empty
+23a57faf68f3a3d9 rust|method|nros_serdes::LeSliceView::iter
+fed09a2950a65865 rust|method|nros_serdes::LeSliceView::len
+8b36cc004d0dfa85 rust|method|nros_serdes::LeSliceView::new
+1610deb04f1f8e70 rust|mod|nros_core::heap
+a0e5a2d88fbf1d3d rust|mod|nros_serdes::size
+de0b28000ad46674 rust|reexport|nros_core|action::
+64b5234e4523e037 rust|reexport|nros_core|alloc::
+04af8135f6c0f043 rust|reexport|nros_core|heapless
+8a02d9e49c131476 rust|reexport|nros_core|nros_serdes::
+3e8c91d37a454288 rust|reexport|nros_core|types::
+1e2ce90d8c437d47 rust|reexport|nros_serdes|cdr::
+8fd7fafa0e77df6a rust|reexport|nros_serdes|error::
+842caa50a45df29b rust|reexport|nros_serdes|schema::
+28deba8a30e9bc20 rust|reexport|nros_serdes|traits::
+39bcc045988e7773 rust|struct|nros_serdes::CdrReader
+4fea04c42af2f795 rust|struct|nros_serdes::CdrWriter
+807fd4a6e8049b7b rust|struct|nros_serdes::Field
+4e274a3f6e329231 rust|struct|nros_serdes::LeSliceView
+a12b08bbdd0d891b rust|struct|nros_serdes::NestedType
+13332569ab7cfc2d rust|traitimpl|nros_core|impl Deserialize for CancelReturnCode
+672f76a5f45c15b3 rust|traitimpl|nros_core|impl Deserialize for Duration
+007486750141bb0a rust|traitimpl|nros_core|impl Deserialize for GoalId
+a7192c3815bd9baf rust|traitimpl|nros_core|impl Deserialize for GoalInfo
+2de76259cd692346 rust|traitimpl|nros_core|impl Deserialize for GoalStatus
+a8a0b3548fc6b705 rust|traitimpl|nros_core|impl Deserialize for GoalStatusStamped
+a103e966595d061a rust|traitimpl|nros_core|impl Deserialize for Time
+f5a3dcae90f7ea0a rust|traitimpl|nros_core|impl Serialize for CancelReturnCode
+71c66c5aad8c888c rust|traitimpl|nros_core|impl Serialize for Duration
+65bb5959a9164a74 rust|traitimpl|nros_core|impl Serialize for GoalId
+0cbf423fed2b3ba1 rust|traitimpl|nros_core|impl Serialize for GoalInfo
+67068bc81c7e547c rust|traitimpl|nros_core|impl Serialize for GoalStatus
+189e6635fb733064 rust|traitimpl|nros_core|impl Serialize for GoalStatusStamped
+48f5f116dc9911d3 rust|traitimpl|nros_core|impl Serialize for Time
+af5698128df9289f rust|traitimpl|nros_serdes|impl Deserialize for String
+a7052b28c6e52c24 rust|traitimpl|nros_serdes|impl Deserialize for bool
+067dc7f9a0bf09f5 rust|traitimpl|nros_serdes|impl Deserialize for char
+89f088d55f531751 rust|traitimpl|nros_serdes|impl Deserialize for f32
+1224a4fcef081f20 rust|traitimpl|nros_serdes|impl Deserialize for f64
+f55eab3bf78129a4 rust|traitimpl|nros_serdes|impl Deserialize for i16
+75779b5e379f1e2f rust|traitimpl|nros_serdes|impl Deserialize for i32
+fadd86419642e292 rust|traitimpl|nros_serdes|impl Deserialize for i64
+d70a6d862a451674 rust|traitimpl|nros_serdes|impl Deserialize for i8
+e6a7cb2dca493029 rust|traitimpl|nros_serdes|impl Deserialize for u16
+07733e6dabb933e1 rust|traitimpl|nros_serdes|impl Deserialize for u32
+010cb48c7fb63225 rust|traitimpl|nros_serdes|impl Deserialize for u64
+ce37c8737bf6988d rust|traitimpl|nros_serdes|impl Deserialize for u8
+1e694d2566ab1c26 rust|traitimpl|nros_serdes|impl Serialize for &str
+ca5764ddaaa162e6 rust|traitimpl|nros_serdes|impl Serialize for String
+8143a81291bfbd0a rust|traitimpl|nros_serdes|impl Serialize for bool
+49982ea464a4a5cd rust|traitimpl|nros_serdes|impl Serialize for char
+555323485fe8157f rust|traitimpl|nros_serdes|impl Serialize for f32
+c00c0a4ab3193187 rust|traitimpl|nros_serdes|impl Serialize for f64
+ad183ecc85e24ca8 rust|traitimpl|nros_serdes|impl Serialize for i16
+739d4158d4aff93c rust|traitimpl|nros_serdes|impl Serialize for i32
+ea1c61b4aa3eb766 rust|traitimpl|nros_serdes|impl Serialize for i64
+49e3fc02bed483c6 rust|traitimpl|nros_serdes|impl Serialize for i8
+ea838534e08e9bb9 rust|traitimpl|nros_serdes|impl Serialize for str
+9ded62049544ba98 rust|traitimpl|nros_serdes|impl Serialize for u16
+e32e05c4e7420661 rust|traitimpl|nros_serdes|impl Serialize for u32
+da21191ddb71c9f8 rust|traitimpl|nros_serdes|impl Serialize for u64
+462e2f5b6a278504 rust|traitimpl|nros_serdes|impl Serialize for u8
+a576cd61f1aa0ce3 rust|traitimpl|nros_serdes|impl<T: Deserialize, const N: usize> Deserialize for heapless::Vec<T, N>
+ee228e99e2294012 rust|traitimpl|nros_serdes|impl<T: Deserialize> Deserialize for Vec<T>
+1ea608d8a4c01a64 rust|traitimpl|nros_serdes|impl<T: Serialize, const N: usize> Serialize for heapless::Vec<T, N>
+69ce2e1e90867fc8 rust|traitimpl|nros_serdes|impl<T: Serialize> Serialize for Vec<T>
+39e194163c3aef88 rust|traitimpl|nros_serdes|impl<const N: usize> Deserialize for heapless::String<N>
+a9333c7d526cb7b2 rust|traitimpl|nros_serdes|impl<const N: usize> Serialize for heapless::String<N>
+73fe425b16279818 rust|trait|nros_core::RosAction
+7a87e42a7fc69aaa rust|trait|nros_core::RosMessage
+3cb0c6cc55a93688 rust|trait|nros_core::RosService
+1b2b447ecd268b4c rust|trait|nros_core::ViewableMessage
+ec2b25cef5a5269f rust|trait|nros_serdes::Deserialize
+ef7c807c6c367846 rust|trait|nros_serdes::DeserializeView
+a44713241e1e84d8 rust|trait|nros_serdes::Message
+643023dd8144d3c7 rust|trait|nros_serdes::Serialize
