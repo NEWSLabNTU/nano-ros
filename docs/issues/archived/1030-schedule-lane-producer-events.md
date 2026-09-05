@@ -130,3 +130,46 @@ see it, and the summary line says how little it covers (1 invocation today)
 rather than printing a bare OK. Declaring more requirements widens the rule for
 free; inventing a wrapper recipe nobody calls, purely to feed the gate, would
 not, so it was not done.
+
+---
+
+## Follow-up (2026-09-05, issue 1040): the scope call was reversed, with a measurement
+
+"Why the gate did not catch it" gives two reasons. Reason 2 (the predicate) was
+fixed here. Reason 1 (the scope — `GATING_EVENTS = {pull_request, merge_group}`)
+was recorded as a deliberate severity call and explicitly not proposed for
+reversal. It has now been reversed anyway, because the severity argument turned
+out to be an argument about how a finding should READ, not about whether to look:
+
+    SCANNED_EVENTS = GATING_EVENTS | {"push", "schedule", "workflow_dispatch"}
+
+Measured before changing anything: widening the scope moves the tier rules from
+3 resolved lanes to 15, and the finding count from 0 to 0. There is no cost to
+weigh, and the narrow scope's only effect was that the tier rules were
+structurally unable to look at the very lane this issue is about — the scheduled
+gate, red four consecutive nights.
+
+The severity distinction is KEPT, in the output: every derived finding is
+labelled `[gating]` or `[report]`, so "a repository nobody can merge into" still
+reads differently from "a bad nightly". Dropping the lane was never the only way
+to say that. `workflow_run` stays out of scope — `queue-notify.yml`'s `just ci
+l1` is a line of ADVICE TEXT in a comment it posts, not a lane it runs.
+
+**A second bug found while widening.** The derived loop tested each word of the
+`just` command against the recipe map on its own, which is wrong twice:
+
+* It MISSED every module lane. Neither `ci` nor `tier1` is a recipe, so
+  `just ci tier1` — `host-tests.yml`'s tier-1 job, which runs the whole default
+  `just check` — resolved to nothing and was never examined.
+* It MISATTRIBUTED. `just check api-parity` has two candidate recipes and the
+  bare-word test picked the wrong one: the root `api-parity lang=""` is a
+  parameterised REPORT, while the gate is `check::api-parity`. Their closures
+  differ, so the rule was answering about a recipe no workflow runs.
+
+`lane_invocations()` now pairs a word with the next when `<a>::<b>` is a real
+recipe, module spelling first. 3 lanes resolved before, 15 after, 0 findings
+either way. The summary line counts RESOLVED LANES rather than raw words — it
+used to say "51 CI lane invocation(s)" for 15 lanes, a number that grows when a
+workflow adds a `setup` step and says nothing about coverage.
+
+Five new self-tests (33 total, 0 failed).

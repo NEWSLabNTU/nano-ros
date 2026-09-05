@@ -241,10 +241,80 @@ def workflow_jobs():
     ]
 
 
-# Events on which a merge cannot happen without the step passing. A tier that
-# runs here MUST be satisfiable by its own job; anywhere else a broken tier is a
-# bad lane, not a frozen repository.
+def lane_invocations(words, recipes_map):
+    """{(qualified recipe, events)} for the lanes a job's `run:` lines invoke.
+
+    `workflow_jobs` yields a FLAT word stream, and a lane is often two words:
+    `just check build`, `just ci tier1`, `just native build-workspace-fixtures`.
+    Testing each word against the recipe map on its own is wrong twice over.
+
+      * It MISSES every module lane. Neither `ci` nor `tier1` is a recipe, so
+        `just ci tier1` resolved to nothing and host-tests.yml's tier-1 lane —
+        the one that runs `just check`, the whole default tier — was invisible
+        to this rule.
+      * It MISATTRIBUTES. `just check api-parity` has two candidate recipes and
+        the bare-word test picks the wrong one: the ROOT `api-parity lang=""`
+        is a parameterised REPORT, while the gate is `check::api-parity`. Their
+        closures differ, so the rule was answering about a recipe the workflow
+        never runs.
+
+    So: pair a word with the next one when `<a>::<b>` is a real recipe, and only
+    then fall back to the bare word. Pairing is tried FIRST because the module
+    spelling is the more specific of the two, which is what makes the
+    `api-parity` collision resolve the way the workflow means it.
+
+    Measured 2026-09-05: 3 lanes resolved before, 15 after, 0 findings either
+    way — coverage, not a new baseline.
+    """
+    out, i = set(), 0
+    while i < len(words):
+        word, events = words[i]
+        if (i + 1 < len(words) and words[i + 1][1] == events
+                and f"{word}::{words[i + 1][0]}" in recipes_map):
+            out.add((f"{word}::{words[i + 1][0]}", tuple(sorted(events))))
+            i += 2
+            continue
+        if word in recipes_map:
+            out.add((word, tuple(sorted(events))))
+        i += 1
+    return out
+
+
+# Events on which a merge cannot happen without the step passing.
 GATING_EVENTS = {"pull_request", "merge_group"}
+
+# Events that produce a VERDICT nobody is blocked on — post-submit, the nightly,
+# and a hand-fired run.
+REPORTING_EVENTS = {"push", "schedule", "workflow_dispatch"}
+
+# The tier rules' scope. WIDENED beyond `GATING_EVENTS` — issue 1030's stated
+# gap, closed with a measurement rather than an argument.
+#
+# 1030 recorded the narrow scope as a deliberate severity call and did not
+# propose reversing it: "a broken tier on `schedule` is a bad nightly, a broken
+# tier on `merge_group` is a repository nobody can merge into". That is true
+# about SEVERITY and was mistaken as a reason to look away. A lane whose job
+# cannot build what it resolves is broken on every event it runs on; on the
+# nightly it simply fails silently, which is the property issue 1040 is about —
+# reds accumulate in a lane nobody is blocked on until someone finds five at
+# once.
+#
+# MEASURED 2026-09-05 before widening: the scope goes from 7 merge-gating lane
+# invocations to 49, and the finding count goes from 0 to 0. There is no cost
+# to weigh against the severity call, because nothing new fails. What the
+# narrow scope actually bought was blindness — the scheduled gate was red four
+# consecutive nights on exactly this shape (1030's own defect) and the tier
+# rules were structurally unable to look at it.
+#
+# The severity distinction is KEPT, in the output rather than in the scope:
+# every finding is labelled `[gating]` or `[report]`, so "a repository nobody
+# can merge into" still reads differently from "a bad nightly". Dropping the
+# lane was never the only way to say that.
+#
+# `workflow_run` is deliberately absent. `queue-notify.yml` runs on it and its
+# `just ci l1` is TEXT — a line in the comment it posts telling a human what to
+# run — so scanning it attributes lanes to a workflow that runs none of them.
+SCANNED_EVENTS = GATING_EVENTS | REPORTING_EVENTS
 
 
 EVENT = r"(?:pull_request|merge_group|push|schedule|workflow_dispatch|workflow_run)"
@@ -680,15 +750,13 @@ def main():
     for wf, job, recipes, producers in workflow_jobs():
         if producers:
             continue  # the job builds artifacts; it may resolve them
-        for recipe, events in sorted({(r, tuple(sorted(e))) for r, e in recipes}):
-            if recipe not in recipes_map:
+        for recipe, events in sorted(lane_invocations(recipes, recipes_map)):
+            # Every lane that produces a verdict, gating or not — see
+            # SCANNED_EVENTS. `workflow_run` is excluded because the only lane
+            # names on it are advice text in a posted comment.
+            if not (set(events) & SCANNED_EVENTS):
                 continue
-            # Only lanes that GATE a merge. A broken tier on `schedule` is a bad
-            # nightly (issue 0878's territory); a broken tier on `merge_group`
-            # or `pull_request` is a repository nobody can merge into, which is
-            # a different severity and the one this gate exists for.
-            if not (set(events) & GATING_EVENTS):
-                continue
+            sev = "gating" if set(events) & GATING_EVENTS else "report"
             reached = closure(recipes_map, recipe)
             job_makes_stamps = any(
                 "compile-check-fixtures.sh" in line
@@ -696,7 +764,7 @@ def main():
                 for line in recipes_map.get(r, {}).get("body", [])
             )
             for producer, via in sorted(required_producers(recipes_map, reached).items()):
-                ci_findings.append(f"{wf}:{job} runs `{recipe}` -> `{via}` "
+                ci_findings.append(f"[{sev}] {wf}:{job} runs `{recipe}` -> `{via}` "
                                    f"hard-requires `just {producer}`, which the job never runs")
             for test, via in sorted(tests_invoked(recipes_map, reached).items()):
                 used, found = resolvers_used(test)
@@ -704,10 +772,10 @@ def main():
                     continue
                 runtime = sorted(u for u in used if u in RUNTIME_RESOLVERS)
                 if runtime:
-                    ci_findings.append(f"{wf}:{job} runs `{recipe}` -> `{test}` "
+                    ci_findings.append(f"[{sev}] {wf}:{job} runs `{recipe}` -> `{test}` "
                                        f"needs RUNTIME fixture ({','.join(runtime)})")
                 elif not job_makes_stamps:
-                    ci_findings.append(f"{wf}:{job} runs `{recipe}` -> `{test}` "
+                    ci_findings.append(f"[{sev}] {wf}:{job} runs `{recipe}` -> `{test}` "
                                        f"needs a COMPILE stamp nothing in the job builds")
 
     base_path = os.path.join(ROOT, ".config", "lane-contract-baseline.json")
@@ -758,11 +826,19 @@ def main():
         )
         return 1
 
-    gating = sum(
-        1 for _w, _j, r, p in workflow_jobs() if not p
-        for _rec, ev in {(a, tuple(sorted(b))) for a, b in r}
-        if set(ev) & GATING_EVENTS
-    )
+    # Count what the rule RESOLVED, not how many words it saw. The old count
+    # was over the raw word stream, so it reported 51 "lane invocations" for 15
+    # lanes — a number that grows when a workflow adds a `setup` step and says
+    # nothing about coverage, which is the shape this gate's own history warns
+    # about (a green summary beside an uncovered lane).
+    def _count(scope):
+        return sum(
+            1 for _w, _j, r, p in workflow_jobs() if not p
+            for _rec, ev in lane_invocations(r, recipes_map)
+            if set(ev) & scope
+        )
+    gating = _count(GATING_EVENTS)
+    scanned = _count(SCANNED_EVENTS)
     # Say what the producer rule EXAMINED, not just that it passed. A rule that
     # covers nothing prints the same "OK" as one that covers everything, and
     # this gate's own history is a green summary next to an uncovered lane.
@@ -774,8 +850,9 @@ def main():
     )
     print(
         f"check-lane-contracts OK — {checked} test target(s) across "
-        f"{len(LANES)} affordability tier(s) and {gating} merge-gating CI "
-        f"lane invocation(s); none resolves an artifact its job does not build. "
+        f"{len(LANES)} affordability tier(s) and {scanned} CI lane invocation(s) "
+        f"({gating} merge-gating, {scanned - gating} report-only); none resolves "
+        f"an artifact its job does not build. "
         f"{covered} step invocation(s) on any event carry a justfile-ordered "
         f"`setup-*` precondition; each runs where its producer does."
     )
@@ -925,6 +1002,32 @@ def selftest(verbose=False):
     chk("a schedule-only step is NOT gating",
         not (_events_of("""if: ${{ contains(fromJSON('["schedule"]'), github.event_name) }}""",
                         allev) & GATING_EVENTS))
+    # ...and is still SCANNED. Issue 1030 named the narrow scope as the reason
+    # the tier rules could not see the scheduled gate; keeping only the first
+    # assertion is what let that stand, so both directions are pinned here.
+    chk("a schedule-only step IS in scope for the tier rules",
+        bool(_events_of("""if: ${{ contains(fromJSON('["schedule"]'), github.event_name) }}""",
+                        allev) & SCANNED_EVENTS))
+    chk("`workflow_run` is NOT in scope — queue-notify's lane names are advice text",
+        not (_events_of("", {"workflow_run"}) & SCANNED_EVENTS))
+
+    # Lane resolution. `just ci tier1` is one lane spelled in two words, and
+    # `just check api-parity` collides with a DIFFERENT root recipe of the same
+    # name — the two failures the bare-word test had.
+    ev = ("pull_request",)
+    words = [("ci", ev), ("tier1", ev)]
+    chk("a `just <mod> <recipe>` pair resolves to <mod>::<recipe>",
+        lane_invocations(words, {"ci::tier1": {}}) == {("ci::tier1", ev)})
+    chk("the MODULE spelling wins over a root recipe of the same name",
+        lane_invocations([("check", ev), ("api-parity", ev)],
+                         {"api-parity": {}, "check::api-parity": {}})
+        == {("check::api-parity", ev)})
+    chk("a bare word that IS a recipe still resolves",
+        lane_invocations([("test-unit", ev)], {"test-unit": {}}) == {("test-unit", ev)})
+    chk("a word that names no recipe resolves to nothing",
+        lane_invocations([("setup", ev)], {"test-unit": {}}) == set())
+    chk("words with DIFFERENT event sets are never paired",
+        lane_invocations([("ci", ("push",)), ("tier1", ev)], {"ci::tier1": {}}) == set())
     chk("a LONE `!=` guard subtracts rather than selects",
         _events_of("if: ${{ github.event_name != 'pull_request' }}", allev)
         == allev - {"pull_request"})

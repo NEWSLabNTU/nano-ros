@@ -801,27 +801,34 @@ jobs:
       # `borrowed-e2e` since at least 2026-09-01 with nobody noticing, which is
       # issue 0993's whole thesis arriving on schedule. Filed separately; a lane
       # cannot start gating pull requests while it is already red.
-      - name: just check build + no_std + api-parity (nightly / manual only)
+
+      # ONE GATE PER STEP — issue 1040, measured 2026-09-05.
+      #
+      # These three shared a single `run:` block, and a `run:` block is `bash
+      # -e`: the first non-zero command ends it. `check build` has been red on
+      # this lane since 2026-09-01 (`workspace-all`, `workspace-features`), so
+      # `check no-std` and `check api-parity` NEVER EXECUTED on any of the five
+      # scheduled runs since they were wired here. The step reported one red for
+      # three gates, and two of them had no verdict at all — issue 0952's
+      # withdrawal class, one level down from the recipe that names it.
+      #
+      # That is worse than not wiring them: `grep -rl api-parity
+      # .github/workflows/` now answers yes while the gate has still never run
+      # in CI. A placement that cannot report is not a placement.
+      #
+      # `!cancelled()` on each is what makes the split work: GitHub skips later
+      # steps after a failure only under the default `success()` condition.
+      - name: just check build (nightly / manual only)
         if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
           source ./activate.sh
           just check build
+
+      - name: just check no-std (nightly / manual only)
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
           just check no-std
-          # issue 1040 — `check-api-parity` ran in NO workflow at all. Not on
-          # pull_request, not on merge_group, not nightly, not on dispatch:
-          # `grep -rl api-parity .github/workflows/` returned nothing. It
-          # existed only as a local recipe, so an unclassified row was invisible
-          # until somebody happened to run the full tier — and three landed on
-          # main on 2026-09-04 alone.
-          #
-          # It belongs HERE and not on the merge gate: it re-extracts our own
-          # surface with clang and nightly rustdoc, which is why it is not on
-          # the fast line. Making it required is what deadlocked the queue when
-          # `check-build` was required with prerequisites no CI job builds
-          # (`check-lane-contracts` now forbids that shape). A daily signal on
-          # the lane that already has one costs nothing extra and is the whole
-          # gap.
-          just check api-parity
 
       # Aspirational umbrella-decoupling guard — EXPECTED TO FAIL until the
       # Phase 104.A migration completes. Advisory only. (Build tier, non-push.)
