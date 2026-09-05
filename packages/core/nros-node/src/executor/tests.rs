@@ -13,6 +13,49 @@ use super::*;
 /// census excludes it, and a hosted test harness reading the host clock is
 /// exactly right. What was wrong was the CORE offering the same thing as a
 /// silent default.
+/// Issue 1104 — serialize the tests that touch `time_source`'s process-global
+/// and put back what was there.
+///
+/// `SIM_TIME_ACTIVE` is one flag for the whole process while an `Executor` is
+/// one per test, so two tests that both care about it cannot run concurrently
+/// and cannot leave it changed. This gives them both properties: the mutex
+/// orders them, and the drop restores the value OBSERVED ON ENTRY rather than a
+/// guessed default -- the previous cleanup wrote a literal `true`, which is only
+/// right by coincidence and says nothing if the default ever moves.
+///
+/// The lock is only half the fix. It orders the tests that MEAN to touch the
+/// flag; what stopped every other test from touching it by accident is
+/// `Executor::sim_time_declared`, because `reconcile_ros_time_source` runs on
+/// every `spin_once` of every executor.
+#[cfg(feature = "sim-time")]
+struct SimTimeGuard {
+    was_active: bool,
+    _lock: std::sync::MutexGuard<'static, ()>,
+}
+
+#[cfg(feature = "sim-time")]
+impl SimTimeGuard {
+    fn acquire() -> Self {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        // A poisoned lock means a sibling test panicked while holding it. That
+        // is a failure being reported elsewhere, not a reason to fail here too,
+        // so take the guard anyway and let the real failure be the one read.
+        let _lock = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        Self {
+            was_active: crate::time_source::is_active(),
+            _lock,
+        }
+    }
+}
+
+#[cfg(feature = "sim-time")]
+impl Drop for SimTimeGuard {
+    fn drop(&mut self) {
+        crate::time_source::set_active(self.was_active);
+        nros_core::clock::Clock::clear_ros_time_override();
+    }
+}
+
 fn test_clock_us() -> u64 {
     use std::{sync::OnceLock, time::Instant};
     static EPOCH: OnceLock<Instant> = OnceLock::new();
@@ -1725,10 +1768,15 @@ fn test_add_timer_and_fire() {
 ///
 /// One test rather than four, deliberately: the ROS-time override is
 /// process-global (one simulated clock per image, as in Rust rclrs), so four
-/// tests would race each other inside the one test binary. It clears the
-/// override on the way out for the same reason.
+/// tests would race each other inside the one test binary.
+///
+/// Merging them handles the four; it does not handle the OTHER tests that touch
+/// the same globals, which is issue 1104. `SimTimeGuard` does that -- it orders
+/// this against them and restores the override on the way out, replacing the
+/// hand-written clear this test used to end with.
 #[test]
 fn ros_time_timer_follows_the_simulated_clock() {
+    let _sim_time = SimTimeGuard::acquire();
     use nros_core::clock::Clock;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -1813,8 +1861,6 @@ fn ros_time_timer_follows_the_simulated_clock() {
         "after a backwards jump the NEXT period must fire on schedule; a timer \
          that accumulated the negative delta would stay dead for 9.4 s"
     );
-
-    Clock::clear_ros_time_override();
 }
 
 /// phase-425 W3b — `use_sim_time` is a SWITCH, not a value, and declaring it
@@ -1828,6 +1874,7 @@ fn ros_time_timer_follows_the_simulated_clock() {
 #[cfg(all(feature = "sim-time", feature = "param-services"))]
 #[test]
 fn use_sim_time_attaches_and_detaches_the_clock_source() {
+    let _sim_time = SimTimeGuard::acquire();
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
 
@@ -1881,9 +1928,8 @@ fn use_sim_time_attaches_and_detaches_the_clock_source() {
         "use_sim_time went false and /clock samples would still be installed"
     );
 
-    // Leave the process-global as the rest of the suite expects it.
-    crate::time_source::set_active(true);
-    nros_core::clock::Clock::clear_ros_time_override();
+    // The global and the override are put back by `SimTimeGuard`'s drop, which
+    // restores what it observed instead of asserting a default.
 }
 
 /// phase-425 W3b — a non-bool `use_sim_time` attaches nothing.
