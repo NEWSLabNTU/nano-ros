@@ -61,7 +61,11 @@
 // an ABI belongs with the ABI.
 #[cfg(feature = "alloc")]
 extern crate alloc;
-#[cfg(feature = "alloc")]
+// The MODULE is not alloc-gated, only the spawning half of it. `task` also
+// carries `stack_unused_bytes`, a plain FFI query with no allocation, and the
+// executor's stack-headroom rule calls it from `nros-node` on every feature
+// set -- including `nros --no-default-features --features rmw-cffi`, which
+// has no `alloc` and could not name the module at all.
 pub mod task;
 
 use core::ffi::{c_int, c_void};
