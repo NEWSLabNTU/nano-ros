@@ -592,6 +592,53 @@ pub unsafe extern "C" fn nros_cpp_init(
     namespace: *const c_char,
     storage: *mut c_void,
 ) -> nros_cpp_ret_t {
+    // Issue 1050 defect (3) — NULL selector, i.e. "this image names no
+    // backend"; the registry's single entry resolves, and an ambiguous registry
+    // is now refused instead of taking whichever backend registered first.
+    unsafe {
+        nros_cpp_init_rmw(
+            core::ptr::null(),
+            locator,
+            domain_id,
+            node_name,
+            namespace,
+            storage,
+        )
+    }
+}
+
+/// Issue 1050 defect (3) — [`nros_cpp_init`] with an explicit RMW selector.
+///
+/// `rmw` is the BAKED rung of precedence model A (RFC-0045): a hosted
+/// `$NROS_RMW` still wins, and a NULL selector leaves the choice to the
+/// registry, which resolves only when exactly one backend is registered.
+///
+/// It exists because `rmw` was the ONE field of `ExecutorConfig` with no baked
+/// rung — resolvable from the process environment and from nowhere else. An
+/// image that knows which backend it wants (a PX4 module declaring
+/// `BACKENDS uorb`, any C++ entry built against one RMW, any RTOS target with
+/// no environment to read) could not say so, and got whichever backend's
+/// `.init_array` ctor ran first. On hosted POSIX that is the archive's
+/// backend, not the image's.
+///
+/// Additive rather than a sixth parameter on `nros_cpp_init`: that symbol is
+/// called by every generated C++ entry and by user code, and widening it is an
+/// ABI break for all of them. `<nros/node.hpp>`'s `nros::init` reaches this
+/// through the `NROS_ENTRY_RMW` bake macro.
+///
+/// # Safety
+/// As [`nros_cpp_init`], plus: `rmw` must be a valid NUL-terminated string or
+/// NULL.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_init_rmw(
+    rmw: *const c_char,
+    locator: *const c_char,
+    domain_id: u8,
+    node_name: *const c_char,
+    namespace: *const c_char,
+    storage: *mut c_void,
+) -> nros_cpp_ret_t {
     if node_name.is_null() || storage.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
@@ -631,6 +678,21 @@ pub unsafe extern "C" fn nros_cpp_init(
         }
     };
 
+    // Issue 1050 defect (3) — an EMPTY selector is "unset", not a backend named
+    // "". The bake macro expands to a string literal, and a cmake variable that
+    // did not resolve produces `""` rather than nothing at all; treating that
+    // as a name would turn a missing bake into `Unknown backend` instead of the
+    // registry default.
+    let rmw_str = if rmw.is_null() {
+        None
+    } else {
+        match unsafe { cstr_to_str(rmw) } {
+            Some("") => None,
+            Some(s) => Some(s),
+            None => return NROS_CPP_RET_INVALID_ARGUMENT,
+        }
+    };
+
     // RFC-0045 / issue #206 — route through the ONE boot-config resolver
     // (precedence model A: hosted env > baked overlay > compiled default).
     // The header's arg/NROS_ENTRY_* chain arrives as the BAKED rung here;
@@ -647,6 +709,7 @@ pub unsafe extern "C" fn nros_cpp_init(
         // check and fail loudly.
         domain_id: nros_node::baked_domain_from_c_abi(domain_id),
         namespace: Some(ns_str),
+        rmw: rmw_str,
     };
     // issue 0687 — see the same call in `nros-c`: the env rung is the hosted
     // edge's to supply, so the capability cfg sits at the call site.

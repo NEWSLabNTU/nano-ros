@@ -82,6 +82,9 @@ fn main() -> ! {
         locator: None,
         domain_id: Some(0),
         namespace: None,
+        // Issue 1050 defect (3) — this probe links exactly one backend, so it
+        // names none and the registry's single entry resolves.
+        rmw: None,
     });
 
     // SAFETY: `BACKING` is `'static`, exactly `u64_len()` words, and this is

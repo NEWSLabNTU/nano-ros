@@ -1230,6 +1230,23 @@ runner-doctor-sdk-resolution:
 entry-locator-ssot:
     @python3 scripts/check-entry-locator-ssot.py
 
+# Issue 1050 defect (3) — `NROS_ENTRY_RMW` may only name a backend that
+# registers under that name.
+#
+# The RMW selector gained a BAKED rung, so `nano_ros_entry()` /
+# `nros_px4_add_module()` now put a NAME on the target and the core resolves it
+# through `nros_rmw_cffi::resolve_backend`. That is a LOOKUP, and a miss is
+# `Unknown` — a hard error, not a fallback to the registry default — so a rename
+# on either side turns every image built for that RMW into one that dies at
+# `nros::init()`.
+#
+# The two vocabularies (cmake's `NROS_RMW_KNOWN`, and the string each backend
+# passes to `nros_rmw_cffi_register_named`) agreed by convention and nothing
+# held them there. Buildless: both are read out of the sources.
+[private]
+entry-rmw-vocabulary:
+    @python3 scripts/check-entry-rmw-vocabulary.py
+
 # RFC-0054 (phase-299 W3) — the committed bindgen output must match a fresh
 # regeneration from the C-header SSoT packages. Loud skip when bindgen-cli
 # (pinned; maintainer/CI-only dep) is absent — embedded consumers never

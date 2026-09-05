@@ -219,14 +219,14 @@ pub use lifecycle::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
 
 // Re-export types that don't depend on RMW (always available)
 pub use executor::{
-    BOOT_SET_DOMAIN, BOOT_SET_LOCATOR, BOOT_SET_NAMESPACE, BOOT_SET_NODE_NAME, BakedBootConfig,
-    BootConfig, BootConfigError, DOMAIN_ID_EXPLICIT_ZERO_C_ABI, DOMAIN_ID_MAX, EnvRung,
-    ExecutorConfig, ExecutorSemantics, GuardCondition, HandleId, HandleSet, InvocationMode,
-    NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION, NodeError, RawAcceptedCallback,
-    RawCancelCallback, RawGoalCallback, RawResponseCallback, RawServiceCallback,
-    RawSubscriptionCallback, ReadinessSnapshot, ShutdownCallbackFn, ShutdownCallbackHandle,
-    ShutdownPhase, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Trigger,
-    baked_domain_from_c_abi,
+    BOOT_SET_DOMAIN, BOOT_SET_LOCATOR, BOOT_SET_NAMESPACE, BOOT_SET_NODE_NAME, BOOT_SET_RMW,
+    BakedBootConfig, BootConfig, BootConfigError, DOMAIN_ID_EXPLICIT_ZERO_C_ABI, DOMAIN_ID_MAX,
+    EnvRung, ExecutorConfig, ExecutorSemantics, GuardCondition, HandleId, HandleSet,
+    InvocationMode, NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION, NodeError,
+    RawAcceptedCallback, RawCancelCallback, RawGoalCallback, RawResponseCallback,
+    RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot, ShutdownCallbackFn,
+    ShutdownCallbackHandle, ShutdownPhase, SpinOnceResult, SpinOptions, SpinPeriodPollingResult,
+    Trigger, baked_domain_from_c_abi,
 };
 
 // Re-export RMW-dependent executor types

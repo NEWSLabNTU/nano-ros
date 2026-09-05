@@ -720,6 +720,37 @@ nros_cpp_ret_t nros_cpp_init(const char *locator,
                              void *storage);
 
 /**
+ * Issue 1050 defect (3) — [`nros_cpp_init`] with an explicit RMW selector.
+ *
+ * `rmw` is the BAKED rung of precedence model A (RFC-0045): a hosted
+ * `$NROS_RMW` still wins, and a NULL selector leaves the choice to the
+ * registry, which resolves only when exactly one backend is registered.
+ *
+ * It exists because `rmw` was the ONE field of `ExecutorConfig` with no baked
+ * rung — resolvable from the process environment and from nowhere else. An
+ * image that knows which backend it wants (a PX4 module declaring
+ * `BACKENDS uorb`, any C++ entry built against one RMW, any RTOS target with
+ * no environment to read) could not say so, and got whichever backend's
+ * `.init_array` ctor ran first. On hosted POSIX that is the archive's
+ * backend, not the image's.
+ *
+ * Additive rather than a sixth parameter on `nros_cpp_init`: that symbol is
+ * called by every generated C++ entry and by user code, and widening it is an
+ * ABI break for all of them. `<nros/node.hpp>`'s `nros::init` reaches this
+ * through the `NROS_ENTRY_RMW` bake macro.
+ *
+ * # Safety
+ * As [`nros_cpp_init`], plus: `rmw` must be a valid NUL-terminated string or
+ * NULL.
+ */
+nros_cpp_ret_t nros_cpp_init_rmw(const char *rmw,
+                                 const char *locator,
+                                 uint8_t domain_id,
+                                 const char *node_name,
+                                 const char *namespace_,
+                                 void *storage);
+
+/**
  * Issue 0436 — multi-RMW init for the C++ surface: opens one session per spec
  * into the CALLER'S storage, producing a real [`CppContext`].
  *

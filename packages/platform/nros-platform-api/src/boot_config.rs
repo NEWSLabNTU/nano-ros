@@ -11,7 +11,12 @@
 pub const NROS_BOOT_CONFIG_MAGIC: u32 = 0x4E52_4243;
 
 /// Layout version — lets the resolver reject a mismatched baked struct.
-pub const NROS_BOOT_CONFIG_VERSION: u16 = 1;
+///
+/// **2** since issue 1050 defect (3) appended `rmw` (bit 4). The bump is what
+/// the field is for: a reader compiled against v1 rejects a v2 struct rather
+/// than reading 32 bytes of `rmw` as whatever followed `namespace` in its own
+/// layout.
+pub const NROS_BOOT_CONFIG_VERSION: u16 = 2;
 
 // `set_flags` bit assignments in `BakedBootConfig`.
 /// Bit 0 — `node_name` field is set.
@@ -22,6 +27,8 @@ pub const BOOT_SET_LOCATOR: u16 = 1 << 1;
 pub const BOOT_SET_DOMAIN: u16 = 1 << 2;
 /// Bit 3 — `namespace` field is set.
 pub const BOOT_SET_NAMESPACE: u16 = 1 << 3;
+/// Bit 4 — `rmw` field is set (issue 1050 defect (3); layout version 2).
+pub const BOOT_SET_RMW: u16 = 1 << 4;
 
 /// Build-time-baked boot config, emitted (in W4b) into the `.nros_boot_config`
 /// linker section by the entry macro / cmake. Fixed-size + pointer-free so a
@@ -35,7 +42,8 @@ pub struct BakedBootConfig {
     /// Layout version (start at 1) — lets the tool/reader reject mismatched layouts.
     pub version: u16,
     /// One bit per field that is baked-set (else the reader yields `None` → resolver
-    /// default). bit0 = node_name, bit1 = locator, bit2 = domain_id, bit3 = namespace.
+    /// default). bit0 = node_name, bit1 = locator, bit2 = domain_id, bit3 = namespace,
+    /// bit4 = rmw.
     pub set_flags: u16,
     /// ROS 2 domain ID (valid only when `BOOT_SET_DOMAIN` bit is set).
     pub domain_id: u32,
@@ -47,6 +55,14 @@ pub struct BakedBootConfig {
     /// NUL-padded UTF-8 node namespace; the trailing NUL bytes are not part of the
     /// value.
     pub namespace: [u8; 64],
+    /// Issue 1050 defect (3) — NUL-padded UTF-8 RMW backend selector (the name
+    /// the registry is looked up by, e.g. `"uorb"`). Appended in layout
+    /// version 2.
+    ///
+    /// 32 bytes because that is the registry's own `BACKEND_NAME_MAX`; a longer
+    /// name could never resolve, so accepting one here would only move the
+    /// failure later.
+    pub rmw: [u8; 32],
 }
 
 /// Copy `s` bytes into a zero-padded `[u8; N]` array at compile time.
@@ -78,6 +94,23 @@ impl BakedBootConfig {
         locator: Option<&str>,
         domain_id: Option<u32>,
         namespace: Option<&str>,
+    ) -> BakedBootConfig {
+        Self::new_with_rmw(node_name, locator, domain_id, namespace, None)
+    }
+
+    /// [`new`](Self::new) plus the layout-version-2 `rmw` selector — issue 1050
+    /// defect (3).
+    ///
+    /// Kept as a separate constructor rather than a fifth parameter on `new`
+    /// because `new` is called from entry macros in board crates and from
+    /// generated code; a signature change there is a break for every one of
+    /// them, and this field is `None` at all but a handful of call sites.
+    pub const fn new_with_rmw(
+        node_name: Option<&str>,
+        locator: Option<&str>,
+        domain_id: Option<u32>,
+        namespace: Option<&str>,
+        rmw: Option<&str>,
     ) -> BakedBootConfig {
         let mut flags: u16 = 0;
 
@@ -113,6 +146,14 @@ impl BakedBootConfig {
             None => [0u8; 64],
         };
 
+        let rmw_bytes: [u8; 32] = match rmw {
+            Some(s) => {
+                flags |= BOOT_SET_RMW;
+                pack::<32>(s)
+            }
+            None => [0u8; 32],
+        };
+
         BakedBootConfig {
             magic: NROS_BOOT_CONFIG_MAGIC,
             version: NROS_BOOT_CONFIG_VERSION,
@@ -121,6 +162,7 @@ impl BakedBootConfig {
             node_name: node_name_bytes,
             locator: locator_bytes,
             namespace: namespace_bytes,
+            rmw: rmw_bytes,
         }
     }
 }
@@ -208,11 +250,17 @@ mod baked_boot_config_tests {
     // guards on the C/C++ side.
 
     /// Size and field offsets of `BakedBootConfig` must match the C header's
-    /// documented layout (total 236 bytes, no padding).
+    /// documented layout (total 268 bytes, no padding).
+    ///
+    /// 236 -> 268 with layout version 2 (issue 1050 defect (3), `rmw @ 236`).
+    /// This test is the reason that append could not be a one-sided edit: the
+    /// blob has a C mirror (`nros-c/include/nros/boot_config.h`) whose own
+    /// `static_assert`s carry the same numbers, so a change here fails until
+    /// both sides move.
     #[test]
     fn baked_boot_config_layout() {
         use core::mem::{offset_of, size_of};
-        assert_eq!(size_of::<BakedBootConfig>(), 236, "total size must be 236");
+        assert_eq!(size_of::<BakedBootConfig>(), 268, "total size must be 268");
         assert_eq!(offset_of!(BakedBootConfig, magic), 0, "magic @ 0");
         assert_eq!(offset_of!(BakedBootConfig, version), 4, "version @ 4");
         assert_eq!(offset_of!(BakedBootConfig, set_flags), 6, "set_flags @ 6");
@@ -224,5 +272,6 @@ mod baked_boot_config_tests {
             172,
             "namespace @ 172"
         );
+        assert_eq!(offset_of!(BakedBootConfig, rmw), 236, "rmw @ 236");
     }
 }

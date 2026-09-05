@@ -142,6 +142,26 @@ inline Result init(const char* locator = nullptr, uint8_t domain_id = 0);
 /// @return Result indicating success or failure.
 inline Result init(const char* locator, uint8_t domain_id, const char* session_name);
 
+/// Issue 1050 defect (3) — `init` with an explicit RMW backend name.
+///
+/// `rmw` is the BAKED rung of RFC-0045's precedence model A: a hosted
+/// `$NROS_RMW` still wins over it, and `nullptr` (or `""`) means "this image
+/// names no backend", which resolves only when exactly one is registered.
+///
+/// Use it when the image knows which backend it wants and the registry cannot
+/// be trusted to contain only that one. On a hosted target it cannot: a Rust
+/// backend compiled into `libnros_cpp.a` registers from its `.init_array` ctor,
+/// which runs BEFORE `main` and therefore before the generated
+/// `nros_app_register_backends()` — so an archive carrying a backend the image
+/// never declared registers first. That is how a PX4 module declaring
+/// `BACKENDS uorb` came to open zenoh.
+///
+/// The plain `init` overloads reach this automatically when the build bakes
+/// `NROS_ENTRY_RMW` (`nano_ros_entry(... RMW <name>)`); call it directly only
+/// to choose at run time.
+inline Result init_with_rmw(const char* rmw, const char* locator = nullptr, uint8_t domain_id = 0,
+                            const char* session_name = "node");
+
 /// Phase 212.L.5 Pattern 2 — launch-aware init.
 ///
 /// Resolves runtime knobs (domain id, locator, RMW choice) in this order:
@@ -763,6 +783,8 @@ class Node {
     friend class ComponentNode; // Phase 242.1 — ctor-creates the owned node
     friend Result init(const char* locator, uint8_t domain_id);
     friend Result init(const char* locator, uint8_t domain_id, const char* session_name);
+    friend Result init_with_rmw(const char* rmw, const char* locator, uint8_t domain_id,
+                                const char* session_name);
     friend Result shutdown();
     friend bool ok();
     friend Result create_node(Node& out, const char* name, const char* ns);
@@ -868,8 +890,50 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
     // here, no CMake-driven fan-out — the user's
     // `target_link_libraries(... NanoRos::Rmw::<name>)` is the only
     // selector.
+    // Issue 1050 defect (3) — the RMW selector's BAKED rung. `NROS_ENTRY_RMW`
+    // is a target compile definition the entry gate bakes, exactly like
+    // `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID` above; undefined means the
+    // image names no backend and the registry must contain exactly one.
+    //
+    // This is what the paragraph above could not express. "The user's
+    // `target_link_libraries(... NanoRos::Rmw::<name>)` is the only selector"
+    // is true of the LINK and false of the REGISTRY: a hosted archive
+    // registers whatever it carries, from `.init_array`, before `main`.
+#ifdef NROS_ENTRY_RMW
+    const char* rmw = NROS_ENTRY_RMW;
+#else
+    const char* rmw = nullptr;
+#endif
     nros_cpp_ret_t ret =
-        nros_cpp_init(locator, domain_id, session_name, nullptr, Node::global_storage());
+        nros_cpp_init_rmw(rmw, locator, domain_id, session_name, nullptr, Node::global_storage());
+    if (ret == 0) {
+        Node::global_initialized() = true;
+    }
+    return Result(ret);
+}
+
+inline Result init_with_rmw(const char* rmw, const char* locator, uint8_t domain_id,
+                            const char* session_name) {
+    // NROS_CPP_RET_INVALID_ARGUMENT = -3; see the 3-arg overload for why the
+    // value is duplicated here rather than included.
+    if (session_name == nullptr) {
+        return Result(-3);
+    }
+#ifdef NROS_ENTRY_LOCATOR
+    if (locator == nullptr) {
+        locator = NROS_ENTRY_LOCATOR;
+    }
+#endif
+#ifdef NROS_ENTRY_DOMAIN_ID
+    if (domain_id == 0) {
+        domain_id = static_cast<uint8_t>(NROS_ENTRY_DOMAIN_ID);
+    }
+#endif
+    // No `NROS_ENTRY_RMW` fallback here: an explicit argument that resolves to
+    // nullptr is the caller saying "no selector", and quietly substituting the
+    // bake would make this overload unable to express that.
+    nros_cpp_ret_t ret =
+        nros_cpp_init_rmw(rmw, locator, domain_id, session_name, nullptr, Node::global_storage());
     if (ret == 0) {
         Node::global_initialized() = true;
     }

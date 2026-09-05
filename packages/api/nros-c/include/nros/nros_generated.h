@@ -6666,6 +6666,32 @@ nros_ret_t nros_support_init_named(struct nros_support_t *support,
                                    const char *session_name);
 
 /**
+ * Issue 1050 defect (3) — [`nros_support_init_named`] with an explicit RMW
+ * selector.
+ *
+ * `rmw` is the BAKED rung of precedence model A (RFC-0045): a hosted
+ * `$NROS_RMW` still wins, NULL or `""` means "no selector", and a selector
+ * that names no registered backend is an error rather than a fallback.
+ *
+ * The C surface needed this most. Its open path
+ * (`nros::internals::open_session`) never consulted `resolve_backend` at all —
+ * it took registry slot 0 whenever `$NROS_RMW` was unset, so a second backend
+ * registering from an `.init_array` ctor before `main` silently won. That is
+ * fixed at the source (`nros_rmw_cffi::get_vtable` resolves once, for every
+ * language), and this is how a C image says which one it meant.
+ *
+ * # Safety
+ * As [`nros_support_init_named`], plus: `rmw` must be a valid NUL-terminated
+ * string or NULL.
+ */
+NROS_PUBLIC
+nros_ret_t nros_support_init_rmw(struct nros_support_t *support,
+                                 const char *locator,
+                                 uint8_t domain_id,
+                                 const char *session_name,
+                                 const char *rmw);
+
+/**
  * Finalize the support context.
  *
  * This function closes the middleware session and releases all resources.

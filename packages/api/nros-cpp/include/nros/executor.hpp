@@ -133,7 +133,38 @@ class Executor {
         if (session_name == nullptr) {
             return Result(-3);
         }
-        nros_cpp_ret_t ret = nros_cpp_init(locator, domain_id, session_name, nullptr, out.storage_);
+        // Issue 1050 defect (3) — the same baked RMW selector `nros::init()`
+        // reads. Both spellings of "open the one session" must apply it, or the
+        // bake means one thing on one path and nothing on the other — which is
+        // how `BACKENDS` came to read as a declaration that decided nothing.
+#ifdef NROS_ENTRY_RMW
+        const char* rmw = NROS_ENTRY_RMW;
+#else
+        const char* rmw = nullptr;
+#endif
+        nros_cpp_ret_t ret =
+            nros_cpp_init_rmw(rmw, locator, domain_id, session_name, nullptr, out.storage_);
+        if (ret == 0) {
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Issue 1050 defect (3) — [`create`](Executor::create) against a named RMW
+    /// backend.
+    ///
+    /// `rmw` is the baked rung of RFC-0045's precedence model A: a hosted
+    /// `$NROS_RMW` still wins, and `nullptr` / `""` means "name none", which
+    /// resolves only when exactly one backend is registered. See
+    /// `nros::init_with_rmw` for why naming one is sometimes the only way to
+    /// get the backend the image declared.
+    static Result create_with_rmw(Executor& out, const char* rmw, const char* locator = nullptr,
+                                  uint8_t domain_id = 0, const char* session_name = "nros_cpp") {
+        if (session_name == nullptr) {
+            return Result(-3);
+        }
+        nros_cpp_ret_t ret =
+            nros_cpp_init_rmw(rmw, locator, domain_id, session_name, nullptr, out.storage_);
         if (ret == 0) {
             out.initialized_ = true;
         }
