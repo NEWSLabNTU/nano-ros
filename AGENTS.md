@@ -39,11 +39,25 @@ Four entry points live in the module beside the gates: `default` (the full tier,
 and it must stay FIRST — `just check` runs a module's first recipe, not the one
 named `default`), `fast`, `fast-serial` and `build`.
 
-`fast-serial` both DECLARES the fan-out set and runs it serially, so its
-dependency list is the contract: `scripts/build/run-gates-parallel.sh` awks
-`/^fast-serial:/` out of `just/check.just` to build the parallel set. Moving it
-silently empties the runner rather than failing. Adding a gate means adding it
-to `fast-serial`'s list — **not** to `build`, which since phase-396 W1 runs on
+**Adding a fast gate is writing its recipe. There is no list to append to**
+(issue 1072). `fast-serial:` used to carry all 218 names as a sorted
+dependency list, and that list was the single busiest merge target in the tree
+— 15 of the 31 pull requests open on 2026-09-05 touched `just/check.just`, and
+two authors adding ALPHABETICALLY ADJACENT gate names insert at the same base
+line, which git cannot merge. No `.gitattributes` driver can fix it either,
+because GitHub rebases queue entries server-side (issue 0884), so the shared
+line was deleted rather than reformatted.
+
+Membership is now DERIVED: a recipe in `just/check.just` is a fast gate unless
+it is in `build-serial:`, named in `.config/gate-lane-exempt.txt` with a
+reason, or declares parameters (a gate runs as `just check <name>`, with
+nothing after the name). `scripts/check/check-gate-lists.py --list <lane>` is
+the one place that derivation lives; `run-gates-parallel.sh` and
+`check-gate-visibility.py` both ask it rather than parsing the justfile, and it
+exits non-zero rather than emitting a short list.
+
+Put a gate in `build-serial:` only when it CANNOT run without something built
+— **not** as a default, because since phase-396 W1 that lane runs on
 `schedule`/`workflow_dispatch` only and therefore gates nothing a merge passes
 through.
 

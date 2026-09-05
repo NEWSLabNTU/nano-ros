@@ -1,0 +1,70 @@
+# Recipes in `just/check.just` that are NOT fast-lane gates.
+#
+# Issue 1072. `just/check.just` is the tree's busiest merge target — 15 of the
+# 31 pull requests open on 2026-09-05 touch it, 36 % more than the next path —
+# and until this file existed it carried a 218-name `fast-serial:` dependency
+# list that every gate-adding PR appended to. A sorted one-name-per-line list
+# does not survive two authors adding ALPHABETICALLY ADJACENT names: both
+# insertions land at the same base line, git has no unchanged line between them
+# to anchor on, and it conflicts. PR #472 hit exactly that with
+# `codegen-stamp-inputs` next to main's `codegen-tool-reconfigure`.
+#
+# Issues 0883/0884 already established the only fix that reaches the merge
+# queue: REMOVE THE SHARED AUTHORED LINE. A `.gitattributes` merge driver does
+# not run on GitHub's server-side rebase, so union-merging the list was never
+# available here.
+#
+# So the polarity is inverted. A recipe in `just/check.just` is a FAST-LANE
+# GATE by default; the exceptions are the ~20 gates in `build-serial:` (they
+# need something built) and the names below. Adding a gate is now writing its
+# recipe — one insertion, at one place, in the author's own region of the file.
+# No shared list is touched at all.
+#
+# That also closes the other half of issue 1071. Under the old design a gate
+# could be lost by deleting its registry line while the recipe stayed (PR #431
+# lost four that way and `check-gate-lists` stayed green). There is no registry
+# line to delete now: a fast gate can only leave the lane by having its RECIPE
+# deleted, which is visible in review and which a name-set ratchet catches.
+#
+# FORMAT: one name per line, sorted, `# reason` REQUIRED on every line.
+# `check-gate-lists` enforces the format, that every name here names a real
+# recipe, that nothing is both exempt and in `build-serial:`, and that every
+# recipe in the file is classified exactly once.
+#
+# This is a ratchet in spirit, like `.config/ungated-gates.txt`: it should
+# SHRINK. An entry marked `no caller` is not a decision — it is issue 1071's
+# class caught in passing, recorded so it stops being invisible.
+
+_gate-list-end  # the `build-serial:` terminator, a no-op, not a gate
+api-parity  # a REPORT, not a gate; `just ci gate` and gate.yml run it by name
+archive-lang-items  # in no lane and no caller found — issue 1071's class
+book-identifiers  # in no lane and no caller found — issue 1071's class
+build  # lane verb: fans `build-serial` out through run-gates-parallel.sh
+build-serial  # the build-tier registry, still an authored dependency list
+cli-clippy  # called by `check-cli-fmt`'s body, not run standalone
+compile-smoke  # gate.yml runs it by name on pull_request; needs a compile
+decoupling  # RFC-0031 superseded its goal; kept runnable, must not gate (see the file header)
+default  # lane verb: `cli-fresh` + `fast` + `build` + `api-parity`
+dep-chain  # post-submit.yml runs it by name; needs codegen output
+dist-runtime-deps  # re-implemented inline by `just workspace doctor`; no lane
+executor-stack-floor  # in no lane and no caller found — issue 1071's class
+fast  # lane verb: fans this lane out through run-gates-parallel.sh
+fast-parallel  # retired alias for `fast`, kept for muscle memory
+fast-serial  # lane verb: the same lane, one gate at a time, fail-fast
+nextest-test-filters  # in no lane and no caller found — issue 1071's class
+no-std  # gate.yml + `just ci` run it by name; cross-compiles riscv32
+rmw-feature-matrix  # generator `--check`; in no lane and no caller found
+sched-matrix  # generator `--check`; in no lane and no caller found
+sdk-index  # NETWORK — downloads and sha256-checks SDK release assets
+stack-floor  # in no lane and no caller found — issue 1071's class
+submodule-commits-reachable  # gate.yml runs it by name; needs the remote
+submodule-drift  # in no lane and no caller found — issue 1071's class
+support-status  # generator `--check`; in no lane and no caller found
+tier-preconditions  # a PRECONDITION reporter; runs at the head of `just ci`
+weak-symbols-image  # needs built fixtures, so it cannot be buildless
+workspace  # aggregate: depends on `workspace-fmt`, echoes where its jobs went
+workspace-embedded  # cross-compiles the workspace for thumbv7; minutes
+workspace-rmw-agreement  # in no lane and no caller found — issue 1071's class
+zenoh  # `cargo clippy -p nros-rmw`; a compile, not a source gate
+zenoh-archive  # reads a built `libnros_rmw_zenoh_staticlib.a`
+zephyr-kconfig-symbols  # needs the fetched Zephyr Kconfig trees (~600 MB)

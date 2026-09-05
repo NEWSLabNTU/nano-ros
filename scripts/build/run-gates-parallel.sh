@@ -48,29 +48,49 @@ jobs="${NROS_GATE_JOBS:-$(nproc)}"
 # this setting. Kept because it is correct on its own terms; do not read it as
 # the resolution.
 export GIT_OPTIONAL_LOCKS=0
-# The gate list is DERIVED from check-fast's own dependency line, never kept
-# beside it: a second copy silently drifts the moment someone adds a gate, and
-# this runner would then report OK over a set that is missing it.
-list="${1:-}"
+
+# `--serial` runs the same set one gate at a time, fail-fast, output
+# unshredded — what `just check fast-serial` is for. A bare positional is a
+# pre-built list file, which is how a caller pins the set it wants.
+serial=0
+list=""
+for arg in "$@"; do
+    case "$arg" in
+        --serial) serial=1 ;;
+        -*) echo "$0: unknown flag: $arg" >&2; exit 2 ;;
+        *) list="$arg" ;;
+    esac
+done
+
+# `NROS_GATE_LANE` picks WHICH lane to run — issue 0993. `build` gained a
+# parallel runner when it moved onto the pull-request path: serial it is
+# ~587 s, and its slowest single gate is ~148 s, so the fan-out is the
+# difference between a tolerable PR and an intolerable one. Defaulting to
+# `fast-serial` keeps every existing caller unchanged.
+lane="${NROS_GATE_LANE:-fast-serial}"
+
+# The gate list is DERIVED, never kept beside the recipes: a second copy
+# silently drifts the moment someone adds a gate, and this runner would then
+# report OK over a set that is missing it.
+#
+# It used to be awk over `fast-serial:`'s dependency line. That line is GONE
+# (issue 1072) — it was a 218-name list every gate-adding pull request appended
+# to, and two authors adding alphabetically adjacent names insert at the same
+# base line and conflict with certainty. No merge driver can fix that, because
+# GitHub rebases queue entries server-side (issue 0884), so the list had to
+# stop existing. A recipe in `just/check.just` is now a fast gate unless it is
+# in `build-serial:`, exempt in `.config/gate-lane-exempt.txt`, or takes
+# parameters.
+#
+# `check-gate-lists.py --list` is the ONE place that derivation lives, shared
+# with the gate that verifies it, and it exits non-zero rather than emitting a
+# short list — which the emptiness check below backstops.
 if [ -z "$list" ]; then
     list="$(mktemp "${TMPDIR:-/tmp}/nros-gate-list.XXXXXX")"
-    # The list moved with the recipes: `fast-serial` now lives in the `check`
-    # MODULE, and its gates are bare names there (`abi-bindings`, not
-    # `check-abi-bindings`). Parsing the root justfile would silently derive an
-    # EMPTY list, which is why the emptiness check below is a hard refusal
-    # rather than a warning.
-    # `NROS_GATE_LANE` picks WHICH dependency line to fan out — issue 0993.
-    # `build` gained a parallel runner when it moved onto the pull-request
-    # path: serial it is ~587 s, and its slowest single gate is ~148 s, so the
-    # fan-out is the difference between a tolerable PR and an intolerable one.
-    # Defaulting to `fast-serial` keeps every existing caller unchanged.
-    lane="${NROS_GATE_LANE:-fast-serial}"
-    awk -v pat="^${lane}:" '$0 ~ pat {f=1} f{print; if ($0 !~ /\\$/) exit}' just/check.just \
-        | tr -s ' \\' '\n' \
-        | sed 's/:$//' \
-        | grep -E '^[a-z][a-z0-9-]*$' \
-        | grep -vE '^(fast|fast-serial|build|build-serial)$' \
-        | sort -u > "$list"
+    if ! python3 scripts/check/check-gate-lists.py --list "$lane" > "$list"; then
+        echo "$0: could not derive the \`$lane\` gate list — refusing to run" >&2
+        exit 2
+    fi
 fi
 [ -s "$list" ] || {
     echo "$0: derived an EMPTY gate list — refusing to report OK over nothing" >&2
@@ -81,13 +101,47 @@ fi
 # "check-fast", which became a lie the moment `build` got a parallel runner
 # too (issue 0993) — a summary naming the wrong lane is how a green build
 # line gets read as a green fast line.
-label="${NROS_GATE_LANE:-fast-serial}"
-label="${label%-serial}"
+label="${lane%-serial}"
 out_dir="$(mktemp -d "${TMPDIR:-/tmp}/nros-gates.XXXXXX")"
 trap 'rm -rf "$out_dir"' EXIT
 
 # The skip log is shared, so reset it once, before the fan-out.
 just _check-skip-reset >/dev/null 2>&1 || true
+
+# The skip ledger's reader. Sourced here rather than at the bottom because
+# BOTH paths close on it now. Derive the path, do NOT spell it (RFC-0070):
+# `nros_check_skip` writes through `nros_build_dir`, which honours
+# `NROS_BUILD_ROOT` and resolves against the REPO rather than `$PWD` — so a
+# literal `$(pwd)/build/...` reads a different file in a git worktree or with
+# the cache root moved, and every skip is invisible exactly where it was
+# recorded.
+# shellcheck source=scripts/build/check-skip.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-skip.sh"
+
+# `just check fast-serial`'s path: in list order, one at a time, output
+# streaming, STOP at the first red. That fail-fast ordering is the whole reason
+# the serial spelling exists — the parallel path deliberately reports every
+# failure instead, which is the right default and the wrong thing when you are
+# bisecting one.
+#
+# It runs through this script rather than through `just` dependencies so that
+# the two spellings answer from ONE derived list. Under dependencies the serial
+# lane had its own copy of the gate names, which is exactly the drift the
+# derivation exists to remove.
+if [ "$serial" = 1 ]; then
+    ran=0
+    while IFS= read -r gate; do
+        case "$gate" in ''|'#'*) continue ;; esac
+        ran=$((ran + 1))
+        if ! just check "$gate"; then
+            printf '\ncheck-%s (serial): FAILED at `%s` (%d gate(s) in)\n' \
+                "$label" "$gate" "$ran" >&2
+            exit 1
+        fi
+    done <"$list"
+    nros_check_skip_report "check-$label (serial): $ran gate(s) OK"
+    exit 0
+fi
 
 run_one() {
     local gate="$1" dir="$2" start end rc
@@ -135,15 +189,10 @@ fi
 # Still exit 0: these are missing tools and build products, not failures, and
 # `check-fast` must stay green on a bare worktree. What changes is only that
 # the sentence stops overstating what happened.
-# Derive the ledger path, do NOT spell it (RFC-0070). `nros_check_skip` writes
-# through `nros_build_dir`, which honours `NROS_BUILD_ROOT` and resolves against
-# the REPO rather than `$PWD` — so a literal `$(pwd)/build/...` reads a
-# different file in a git worktree or with the cache root moved, and every skip
-# is invisible exactly where it was recorded. Found while adding
-# `action-client-arena-budget`, which skips whenever nothing is built and
-# therefore skips in most CI runs.
-# shellcheck source=scripts/build/check-skip.sh
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check-skip.sh"
+#
+# `check-skip.sh` is sourced ABOVE, before the serial path, which closes on the
+# same ledger. Found while adding `action-client-arena-budget`, which skips
+# whenever nothing is built and therefore skips in most CI runs.
 skips="$(nros_build_dir "$NROS_KIND_CHECK_SKIPS")/checks.skipped"
 skipped=0
 if [ -s "$skips" ]; then

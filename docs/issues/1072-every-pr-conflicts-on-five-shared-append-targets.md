@@ -155,3 +155,180 @@ comm -12 <(git diff --name-only $mb..origin/<branch> | sort) \
 
 `git merge-tree --write-tree` would answer this directly and is unavailable —
 git 2.34.1 here, it needs 2.38+.
+
+---
+
+## RE-MEASURED 2026-09-05, later the same day — the picture moved
+
+Twenty of the 51 pull requests merged between the two measurements, so the
+numbers above are stale. Re-run against `origin/main` at `29d8dd61d`, with
+`git merge-tree --write-tree` — which **is** available: this host has git 2.55,
+and the "git 2.34.1 here, it needs 2.38+" note in the Method section was wrong
+about the machine it was written on.
+
+**31 open pull requests, 11 CONFLICTING.**
+
+| conflicting path | in how many of the 11 |
+| --- | --- |
+| `docs/reference/api-parity-ledger/node.json` | 4 |
+| `docs/reference/api-parity-ledger/other.json` | 3 |
+| `docs/roadmap/phase-424-build-graph-freshness-truth.md` | 3 |
+| `docs/reference/api-parity-ledger/graph.json` | 2 |
+| **`just/check.just`** | **2** |
+| seven other paths (one issue file each, two executor sources, one cmake) | 1 |
+
+As a group, `docs/reference/api-parity-ledger/*.json` is the largest cluster —
+4 distinct pull requests (#329, #446, #471, #481). `phase-424` is 3 (#434,
+#472, #492). `just/check.just` has dropped from 12 to 2.
+
+### Conflict count is the wrong lead indicator, and the touch count says so
+
+Two more measurements, because "conflicts against main today" only counts the
+hazards that have already fired:
+
+**Paths the most open PRs TOUCH** — the pool every future conflict comes from:
+
+| path | open PRs touching it |
+| --- | --- |
+| **`just/check.just`** | **15 of 31** |
+| `packages/core/nros-node/src/executor/spin.rs` | 11 |
+| `packages/api/nros-cpp/src/lib.rs` | 8 |
+| `packages/api/nros-cpp/include/nros/node.hpp` | 6 |
+| `docs/reference/api-parity-ledger/init.json` | 6 |
+
+`just/check.just` is touched by nearly half of all open pull requests, 36 %
+more than the next path. Its conflict count is low today because most of those
+15 have not yet had `main` move under their particular anchor — not because
+the hazard went away.
+
+**Merge-queue simulation** — for each of the 20 PRs that are mergeable now,
+land it on `main` and then merge each of the other 19 (`git commit-tree` on the
+merge-tree result, then a second merge-tree). Of 190 pairs, **6 collide**, on
+`phase-412`/`boot_report.rs`/`spin.rs`/`task.rs` — none on `just/check.just`.
+Two independent appends to that file usually *do* merge; the question is what
+happens when they do not.
+
+### §1 was wrong: the registry is not innocent
+
+The issue says above that the `fast-serial:` registry "merges **cleanly**" and
+that only the recipe bodies conflict. Both live `just/check.just` conflicts
+were examined; they are one of each, and the registry one is real:
+
+* **#472** conflicts **in the registry**, at one hunk of three lines. It adds
+  `codegen-stamp-inputs` and `codegen-tool-reconfigure`; `main` had already
+  landed `codegen-tool-reconfigure`. Both insert at the same base index (42),
+  git has no unchanged line between them to anchor on, and it conflicts.
+* **#471** conflicts **in a recipe body** — but not by appending at a shared
+  anchor. Both sides *rewrote the same block* of `check-c` (one adding a
+  serialization-format probe, the other retiring the deprecation probes). That
+  is a genuine semantic disagreement about what the gate checks, and no
+  positional rule fixes it.
+
+The "four lines apart produced no conflict" observation was right and does not
+generalise. A sorted list is conflict-free only when the two new names are far
+enough apart, and **gate names are not independent**: related work produces
+related names, so sorting converts name correlation directly into position
+correlation. Measured across the 8 open PRs that add registry entries, the
+insertion indices are 15, 15, 15, 42, 42, 84, 139, 151, 208, 209, 209, 210,
+210 — clustered, not spread.
+
+### Why "sort the recipe bodies" (proposal 1 above) was rejected
+
+1. **It fixes neither measured conflict.** #472 is the registry. #471 is two
+   rewrites of one block, which relocating does not help.
+2. **It makes the two conflict classes correlated instead of independent.**
+   Sorting bodies by name puts `codegen-stamp-inputs`'s body immediately
+   beside `codegen-tool-reconfigure`'s *by construction* — the same
+   name-adjacency that already collides in the registry, now also colliding in
+   the bodies.
+3. **The cure costs more than the disease.** Reordering ~4,000 lines conflicts
+   with all 15 in-flight pull requests at once, converting a latent hazard into
+   15 certain conflicts.
+4. It scatters gates that share a comment block and a subject.
+
+## FIXED (the `just/check.just` half)
+
+The lesson from 0883/0884 is that the only fix which reaches the merge queue
+removes the **shared authored line** — a `.gitattributes` driver does not run
+on GitHub's server-side rebase. So the registry was not reformatted; it was
+deleted.
+
+**A recipe in `just/check.just` is a fast-lane gate unless it is listed in
+`build-serial:`, named in `.config/gate-lane-exempt.txt` with a reason, or
+declares parameters** (a gate runs as `just check <name>`, with nothing after
+the name, so a recipe requiring an argument can never be one).
+
+* The 218-name `fast-serial:` dependency list is **gone**. Adding a gate is
+  writing its recipe: one insertion, in the author's own region of the file,
+  colliding with nobody. The 13 registry additions across the currently open
+  PRs become 0.
+* `fast-serial:` keeps its name and its meaning — the same set, one gate at a
+  time, fail-fast — via `run-gates-parallel.sh --serial`, so both spellings
+  answer from one derived list rather than two copies.
+* `build-serial:` stays an authored dependency list, deliberately: ~20 names
+  that change rarely (none of the 13 additions went to it), read directly by
+  `check-gate-visibility`, and a gate belongs there only when it *cannot* run
+  without something built — worth stating explicitly.
+* `.config/gate-lane-exempt.txt` holds the 33 recipes that are not fast gates,
+  each with a required reason. It is a ratchet in spirit, like
+  `.config/ungated-gates.txt`: it should shrink.
+
+### This also closes issue 1071's other half
+
+PR #431 lost four gates by deleting their registry lines while the recipes
+stayed, and `check-gate-lists` — which verified the list's SHAPE — stayed
+green. There is no fast-lane registry line to delete now. A fast gate can only
+leave the lane by having its RECIPE deleted, which is visible in review.
+
+The polarity flip also inverts the failure mode, in the direction this repo
+keeps asking for. Forgetting the registry line meant the gate NEVER RAN —
+silent, issue 0196's class. Forgetting to exempt a new recipe means it runs on
+the fast lane: loud, and on the author's own pull request.
+
+**The name-set ratchet (PR #493) still works**, and reads one function instead
+of a regex: `check_gate_lists.gate_names()` returns the sorted fast + build
+set, raising rather than returning a short list if the classification is
+broken. `.config/gate-registry-baseline.txt` compares against that. The
+baseline's contents do not change — the derived set is byte-identical to what
+the old registry declared (218 fast + 21 build = 239).
+
+`check-gate-lists` stays meaningful, and checks something stronger than before:
+that the classification is **total and unambiguous** — every name in the build
+registry or the exemption ledger resolves to a real recipe, nothing is claimed
+twice, a parameterized recipe is never listed as a gate, and every exemption
+says why. The old shape checks on `build-serial:` (one per line, sorted,
+sentinel last, no duplicates) are unchanged.
+
+### Caught in passing: 12 recipes in no lane and with no caller
+
+Deriving the classification required enumerating every recipe, which turned up
+recipes that are in neither registry and that nothing invokes:
+`archive-lang-items`, `book-identifiers`, `dist-runtime-deps`,
+`executor-stack-floor`, `nextest-test-filters`, `rmw-feature-matrix`,
+`sched-matrix`, `stack-floor`, `submodule-drift`, `support-status`,
+`workspace-rmw-agreement`, `zenoh-archive`. They are recorded in the exemption
+ledger marked `no caller` so they stop being invisible; deciding their fate is
+issue 1071's business, not this one's.
+
+It also turned up **5 recipes the old parse never saw at all** — `stack`,
+`stack-all`, `stack-c`, `stack-elf`, `tier-priority-plan-image`, all of which
+take parameters. Any audit of `just/check.just` written against
+`^[a-z][a-z0-9-]*:` has been missing them.
+
+## STILL OPEN, and out of scope for this change
+
+* **`docs/reference/api-parity-ledger/*.json` (4 PRs) is now the largest
+  cluster.** The recommendation stands and is unchanged by the re-measurement:
+  a merge driver cannot reach the queue, so the untracking-shaped answer is the
+  one available — one file per key, or generate the ledgers and gitignore them
+  the way `docs/issues/open.md` was. They are written by `scripts/api-parity.py`
+  with `sort_keys=True`, so on-disk order carries no information and two
+  branches adding disjoint keys collide with certainty.
+* **`docs/roadmap/phase-424-*.md` (3 PRs)** — the Status paragraph, as
+  described in §4 above.
+* **`check-gate-visibility` had a latent vacuity** created by this change and
+  closed with it: it read `fast-serial:`'s dependency line, which now returns
+  an empty list. It asks `check-gate-lists.py --list fast` instead. Today the
+  branch is unreachable (`just check fast` IS run by a gating job), so this is
+  defensive — but a gate that silently reports zero is the exact shape that
+  file exists to prevent.
