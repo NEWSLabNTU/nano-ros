@@ -438,3 +438,69 @@ derivation, published into a carrier that already exists on both sides. The open
 question is no longer WHERE the number goes, it is what a cargo leaf derives
 FROM — and that is a question about where entities are declared, not about
 transport.
+
+
+## The SOURCE exists too, and it is already in the tree (2026-09-05)
+
+The section above closed the carrier question and left one open: *"what a cargo
+leaf derives FROM"*. It has an answer that needs no new mechanism, and the
+answer was sitting beside the leaf the whole time.
+
+**`<leaf>/metadata/<component>.json` — the metadata probe's output.** It is
+present today for every probeable native leaf:
+
+```
+examples/native/rust/talker/metadata/talker.json
+examples/native/rust/listener/metadata/listener.json
+examples/native/rust/action-client/metadata/fibonacci_action_client.json
+examples/native/rust/action-server/metadata/fibonacci_action_server.json
+```
+
+and it carries exactly the counts the pools are sized by. Per node, the list
+keys are `publishers`, `subscribers`, `timers`, `services`, `actions` — read out
+of the files, not from a schema doc:
+
+| leaf | what its metadata states |
+| --- | --- |
+| `talker` | `publishers: 1`, `timers: 1` |
+| `listener` | `subscribers: 1` |
+| `fibonacci_action_client` | `action_clients: 1` |
+
+So `ZPICO_MAX_SUBSCRIBERS` comes from `subscribers`, `ZPICO_MAX_QUERYABLES` from
+`services` plus the infra floor, and so on. The declaration is already parsed;
+nothing needs a second parser.
+
+### Why this does not contradict the ordering argument above
+
+It does not reach backwards across the dependency edge — it does not try to.
+The probe runs BEFORE the build, as its own step, and writes a file. The build
+script then reads an `[env]` value, exactly as it does today for a hand-written
+one. The ordering argument rules out deriving the number *inside* the cargo
+graph; it says nothing against deriving it before the graph is built, which is
+what `nros sync` already is.
+
+### Both artifacts are gitignored, and that is consistent rather than a problem
+
+`examples/**/metadata/*.json` is ignored (`.gitignore:184`), and so is the
+`.cargo/` sidecar the derived `[env]` belongs in (issues 0457/0463). Both are
+per-host, regenerated, never committed. A fresh clone has neither and gets both
+from `nros sync` — the same contract `generated/` already has.
+
+### What is left, precisely
+
+One step: read the probe output, apply the counting rules
+`entity_inventory` already encodes, write the `[env]` block into the sidecar.
+Carrier measured (415,469 -> 136,293 B), source verified present, rules already
+written. No new mechanism, no second SSoT.
+
+### The one place this does NOT reach, and it has an issue
+
+Leaves whose metadata is `<component>.json.unprobeable` — the probe cannot run
+for them, twice over: `[unstable] build-std` with a foreign `[build] target`
+(`ProbeBlocker::BuildStdForForeignTarget`), and a board crate that does not build
+for a host triple at all. Every `examples/qemu-esp32-baremetal/rust/*` leaf is in
+this set. That is **issue 1061**, and it is the reason those leaves still state
+their budgets by hand in `.cargo/config.toml`.
+
+So the derivation splits by leaf kind, and the split is measured rather than
+assumed: native leaves have a source today, cross-compiled ones need 1061 first.
