@@ -1091,3 +1091,28 @@ pub trait PlatformSerial {
     /// `usize::MAX` on error.
     fn write(h: Self::Handle, buf: *const u8, len: usize) -> usize;
 }
+
+/// Smallest number of bytes ever left unused on the CALLING task's stack, or
+/// `0` if this port does not instrument it.
+///
+/// Lives at the crate root, NOT in [`task`], because that module is
+/// `#[cfg(feature = "alloc")]` -- `PlatformTask` allocates its own storage --
+/// while this is a bare `extern "C"` query returning a `usize`. Gating it
+/// behind `alloc` made it unavailable on exactly the no_std targets whose
+/// stacks are worth watching, and broke the executor's stack-headroom rule
+/// on the Zephyr build.
+///
+/// The heap has had `heap_used_bytes` since RFC-0034 D7; this is the stack's
+/// counterpart. HEADROOM, not usage, and for the CALLING task only -- both
+/// kernels answer for self with no handle, and answering for an arbitrary
+/// task needs a native handle this ABI does not carry.
+///
+/// `0` means "not instrumented", not "no headroom".
+pub fn stack_unused_bytes() -> usize {
+    unsafe extern "C" {
+        fn nros_platform_task_stack_unused_bytes() -> usize;
+    }
+    // SAFETY: a plain query with no arguments and no state; every port either
+    // answers or returns 0.
+    unsafe { nros_platform_task_stack_unused_bytes() }
+}
