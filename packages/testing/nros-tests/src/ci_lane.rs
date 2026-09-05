@@ -453,7 +453,16 @@ mod tests {
                 .chars()
                 .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':'))
                 .collect();
-            let name = token.rsplit("::").next().unwrap_or_default();
+            // MODULE-QUALIFIED private only (`just ci::_matrix-run`). An
+            // UNQUALIFIED private delegate (`just _lane-gate`) is a recipe in
+            // the ROOT justfile, which the caller has not loaded — it could
+            // never resolve here, and accepting it is what forced the lookup to
+            // tolerate a miss. Nothing is lost: the one such delegate in the
+            // tier recipes is `_lane-gate`, a fixture preflight that exports no
+            // `NROS_TEST_*` at all.
+            let Some((_, name)) = token.split_once("::") else {
+                continue;
+            };
             if name.starts_with('_') && !out.iter().any(|n| n == name) {
                 out.push(name.to_string());
             }
@@ -647,6 +656,26 @@ _tier-build:
             "both private delegates must be found, and only the private ones"
         );
 
+        // MODULE-QUALIFIED private only. `just check` is another lane with its
+        // own contract; `just _lane-gate` is a ROOT recipe that this text does
+        // not contain, and accepting it is what forced the lookup to tolerate a
+        // miss — which in turn let a renamed delegate go unnoticed.
+        assert_eq!(
+            delegated_recipes(
+                "tier:\n    just _lane-gate tier2\n    just check\n    just ci::_inner\n"
+            ),
+            vec!["_inner".to_string()],
+            "an unqualified private delegate and a public one must both be skipped"
+        );
+
+        // The other half of that rule: a QUALIFIED delegate must resolve. The
+        // caller panics when this returns None, and this is the shape it panics
+        // on — a dispatcher naming a recipe that is not in its module.
+        assert!(
+            recipe_body(text, "_tier-renamed").is_none(),
+            "a delegate that does not exist must not silently resolve to something"
+        );
+
         let inner = recipe_body(text, "_tier-run").expect("the delegate");
         assert!(
             inner.contains("NROS_TEST_COORDS="),
@@ -696,7 +725,21 @@ _tier-build:
             // dispatcher is a shape nothing here has and one this assertion
             // should not quietly accept.
             for delegate in delegated_recipes(&body) {
-                if let Some(inner) = recipe_body(&text, &delegate) {
+                // A named delegate that does not resolve is a FAILURE, not a
+                // skip (issue 0196's rule). Tolerating a miss leaves exactly the
+                // recurrence path this test was just fixed for: rename
+                // `_matrix-run` without updating the dispatcher and the
+                // assertion silently reads the shorter body again, reporting
+                // green on a lane that narrows nothing.
+                let inner = recipe_body(&text, &delegate).unwrap_or_else(|| {
+                    panic!(
+                        "`just {recipe}` dispatches to `{delegate}`, which does not exist in \
+                         the same justfile module. Either the delegate was renamed and the \
+                         dispatcher not updated, or this test is reading the wrong file — \
+                         both are the defect, not a reason to read less:\n{body}"
+                    )
+                });
+                {
                     body.push('\n');
                     body.push_str(&inner);
                 }
