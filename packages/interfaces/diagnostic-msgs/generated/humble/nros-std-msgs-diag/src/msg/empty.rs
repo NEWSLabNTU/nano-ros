@@ -10,7 +10,7 @@ use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 pub struct Empty {}
 
 impl Serialize for Empty {
-    // Empty message â under XCDR2 an appendable struct still carries a DHEADER
+    // Empty message — under XCDR2 an appendable struct still carries a DHEADER
     // (size 0); under XCDR1 this is a no-op (byte-identical: nothing written).
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
         let __dh = writer.begin_dheader()?;
@@ -20,7 +20,7 @@ impl Serialize for Empty {
 }
 
 impl Deserialize for Empty {
-    // Empty message â read/skip the XCDR2 DHEADER (no-op under XCDR1).
+    // Empty message — read/skip the XCDR2 DHEADER (no-op under XCDR1).
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
         let __dh = reader.begin_dheader()?;
         reader.end_dheader(__dh)?;
@@ -33,9 +33,9 @@ impl RosMessage for Empty {
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
 
-// ââ nros_serdes::Message â runtime field schema âââââââââââââââââââââââââââââ
+// ── nros_serdes::Message — runtime field schema ─────────────────────────────
 // Consumed by RMW backends that build wire-type descriptors at runtime
-// (Cyclone DDS dynamic types, â¦) without per-RMW codegen at compile time.
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
 
 impl ::nros_serdes::Message for Empty {
     const TYPE_NAME: &'static str = "std_msgs/msg/Empty";

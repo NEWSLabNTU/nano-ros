@@ -20,7 +20,7 @@ pub const PARAMETER_STRING_ARRAY: u8 = 9;
 pub struct ParameterType {}
 
 impl Serialize for ParameterType {
-    // Empty message â under XCDR2 an appendable struct still carries a DHEADER
+    // Empty message — under XCDR2 an appendable struct still carries a DHEADER
     // (size 0); under XCDR1 this is a no-op (byte-identical: nothing written).
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
         let __dh = writer.begin_dheader()?;
@@ -30,7 +30,7 @@ impl Serialize for ParameterType {
 }
 
 impl Deserialize for ParameterType {
-    // Empty message â read/skip the XCDR2 DHEADER (no-op under XCDR1).
+    // Empty message — read/skip the XCDR2 DHEADER (no-op under XCDR1).
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
         let __dh = reader.begin_dheader()?;
         reader.end_dheader(__dh)?;
@@ -43,9 +43,9 @@ impl RosMessage for ParameterType {
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
 
-// ââ nros_serdes::Message â runtime field schema âââââââââââââââââââââââââââââ
+// ── nros_serdes::Message — runtime field schema ─────────────────────────────
 // Consumed by RMW backends that build wire-type descriptors at runtime
-// (Cyclone DDS dynamic types, â¦) without per-RMW codegen at compile time.
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
 
 impl ::nros_serdes::Message for ParameterType {
     const TYPE_NAME: &'static str = "rcl_interfaces/msg/ParameterType";

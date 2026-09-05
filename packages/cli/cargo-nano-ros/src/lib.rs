@@ -567,6 +567,19 @@ fn fix_rust_idents_recursive(
 ///
 /// This ensures that DDS `TYPE_NAME` / `SERVICE_NAME` string constants are not
 /// affected by crate renames while Rust `use` paths and identifiers are.
+///
+/// # Copy whole CHARACTERS, never `bytes[i] as char`
+///
+/// The scan is byte-indexed (the literal-tracking sentinels are all ASCII), but
+/// the copy must not be: `bytes[i] as char` is a latin-1 DECODE of one byte, and
+/// pushing it back into a `String` re-encodes it as UTF-8. Every non-ASCII byte
+/// therefore grows into two, once per pass: an em dash `—` (`e2 80 94`) came out
+/// as `c3 a2 c2 80 c2 94`, and a file matching two renames got two passes and
+/// came out as `c3 83 c2 a2 c3 82 c2 80 c3 82 c2 94`. Since every `--rename` run
+/// funnels the generated sources through here, that mangled the comment banners
+/// of every committed interface tree. (The mojibake is spelled in hex on purpose
+/// — writing it out would make this file a hit in the sweep that finds it.)
+/// Slicing the source instead keeps the bytes intact.
 fn replace_outside_strings(src: &str, old: &str, new: &str) -> String {
     let mut out = String::with_capacity(src.len());
     let bytes = src.as_bytes();
@@ -575,25 +588,36 @@ fn replace_outside_strings(src: &str, old: &str, new: &str) -> String {
     let mut in_string = false;
     let mut in_char = false;
 
+    // Copy the whole UTF-8 character that starts at `at`, and report how many
+    // bytes it took. `at` is always on a char boundary: every advance below
+    // moves by a full character, or by a run of ASCII bytes.
+    fn copy_char(src: &str, at: usize, out: &mut String) -> usize {
+        let ch = src[at..]
+            .chars()
+            .next()
+            .expect("byte index is on a char boundary");
+        out.push(ch);
+        ch.len_utf8()
+    }
+
     while i < bytes.len() {
         // Handle escape sequences inside strings/chars
         if (in_string || in_char) && bytes[i] == b'\\' && i + 1 < bytes.len() {
-            out.push(bytes[i] as char);
-            out.push(bytes[i + 1] as char);
-            i += 2;
+            i += copy_char(src, i, &mut out);
+            i += copy_char(src, i, &mut out);
             continue;
         }
         // Toggle string literal tracking
         if !in_char && bytes[i] == b'"' {
             in_string = !in_string;
-            out.push(bytes[i] as char);
+            out.push('"');
             i += 1;
             continue;
         }
         // Toggle char literal tracking
         if !in_string && bytes[i] == b'\'' {
             in_char = !in_char;
-            out.push(bytes[i] as char);
+            out.push('\'');
             i += 1;
             continue;
         }
@@ -602,8 +626,7 @@ fn replace_outside_strings(src: &str, old: &str, new: &str) -> String {
             out.push_str(new);
             i += old_bytes.len();
         } else {
-            out.push(bytes[i] as char);
-            i += 1;
+            i += copy_char(src, i, &mut out);
         }
     }
     out
@@ -2139,8 +2162,50 @@ pub fn install_to_ament(config: InstallConfig) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::collect_interface_files;
+    use super::{collect_interface_files, replace_outside_strings};
     use std::fs;
+
+    /// The `--rename` pass rewrites every generated `.rs` through
+    /// [`replace_outside_strings`], so anything it mangles lands in the
+    /// COMMITTED interface trees. It used to copy byte-by-byte via
+    /// `bytes[i] as char` — a latin-1 decode — which turned the em dash and
+    /// box-drawing rules in the codegen banners into mojibake, once per pass.
+    #[test]
+    fn replace_outside_strings_preserves_non_ascii() {
+        let src = "// phase-303 — DHEADER ─── banner …\nuse rcl_interfaces::msg::X;\n";
+        let out = replace_outside_strings(src, "rcl_interfaces::", "nros_rcl_interfaces::");
+        assert_eq!(
+            out,
+            "// phase-303 — DHEADER ─── banner …\nuse nros_rcl_interfaces::msg::X;\n"
+        );
+    }
+
+    /// Idempotence across passes is the half that produced the DOUBLE-encoded
+    /// files: `fix_rust_idents_recursive` calls this once per matching rename,
+    /// so a file naming two renamed packages went through twice.
+    #[test]
+    fn replace_outside_strings_is_stable_over_repeated_passes() {
+        let src = "// — ─\nuse std_msgs::msg::Header;\nuse builtin_interfaces::msg::Time;\n";
+        let once = replace_outside_strings(src, "std_msgs::", "nros_std_msgs::");
+        let twice =
+            replace_outside_strings(&once, "builtin_interfaces::", "nros_builtin_interfaces::");
+        assert!(
+            twice.starts_with("// — ─\n"),
+            "non-ASCII drifted: {twice:?}"
+        );
+        assert!(twice.contains("use nros_std_msgs::msg::Header;"));
+        assert!(twice.contains("use nros_builtin_interfaces::msg::Time;"));
+    }
+
+    /// The literal-skipping behaviour this function exists for: a DDS
+    /// `TYPE_NAME` keeps the ROS package name even when the crate is renamed.
+    #[test]
+    fn replace_outside_strings_skips_string_literals() {
+        let src = "const T: &str = \"rcl_interfaces::msg::X\";\nuse rcl_interfaces::msg::X;\n";
+        let out = replace_outside_strings(src, "rcl_interfaces::", "nros_rcl_interfaces::");
+        assert!(out.contains("\"rcl_interfaces::msg::X\""));
+        assert!(out.contains("use nros_rcl_interfaces::msg::X;"));
+    }
 
     /// phase-306 W2 (issue 0258): the resolve-deps file collector must skip
     /// rosidl-derived `srv/<Srv>_{Request,Response,Event}.msg` siblings (as
