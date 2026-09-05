@@ -1,0 +1,4 @@
+# Phase sections whose declared `**Files:**` all exist while boxes
+# stay open (issue 1103). A ratchet: entries may only be REMOVED.
+# An entry here is a claim that the section is genuinely unfinished
+# despite its files landing — say why beside it.

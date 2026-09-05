@@ -2,7 +2,8 @@
 id: 1103
 title: "A roadmap box can stay UNTICKED while the file, function or recipe it
   names is in the tree — `check-roadmap-claims` never asks"
-status: open
+status: resolved
+resolved: 2026-09-06
 type: bug
 area: tooling, docs
 related: [1071, 1085]
@@ -79,14 +80,68 @@ the record does not move, and the next person re-derives or re-does it. For a
 roadmap the cost is specific — phase-215 is `**Priority.** P1`, so anyone
 scanning for what to pick up read seven finished items as available work.
 
-## Proposed
+## FIXED 2026-09-06 — and the rule I proposed was the wrong one
 
-`check-roadmap-boxes`, on the fast line: for every UNTICKED box in an active
-phase doc, extract backticked tokens that look like a repo-relative path, and
-report the ones that resolve against `git ls-files`. Index lookup, no walk
-(issue 0844). Ratcheted like `check-gate-selftests` so the known set may only
-shrink — the phases audited here are the seed, and a new occurrence is the
-signal.
+`check-roadmap-boxes`, fast line, ratcheted. It does NOT do what this issue
+proposed, because the proposal was measured against the known answer and failed
+it.
 
-Not done in the same change as the phase-215 fix, deliberately: the fix is a
-verified edit to one document, and the gate is a new rule over 68 of them.
+### The per-box rule catches 2 of the 7
+
+"For every UNTICKED box, extract backticked tokens that look like a path, report
+the ones that resolve." Run against the pre-fix phase-215:
+
+    caught  215.B.2 (`zephyr/CMakeLists.txt`), 215.I.1 (the book page)
+    missed  215.A.1  names cmake VARIABLES, not a path
+            215.A.3  "Documented schema cross-references this phase doc" — prose
+            215.B.3  names a FUNCTION and a call-order constraint
+            215.D.4  names `just zephyr run-fvp-aemv8r*`, a recipe that does not exist
+            215.I.2  "SUMMARY.md update" — no `/`, so not a path
+
+And on today's tree it fires on **2 boxes, both false positives**: phase-216's
+216.A.6 and phase-325's W3.4 each name a file they intend to EDIT, which of
+course exists. 29 % recall on the motivating case and 0 % precision on main is
+not a gate; it is a nuisance that gets switched off.
+
+### What works is one level up
+
+A phase SECTION carries a `**Files:**` line naming what it creates. When every
+path that line declares is in the index and the section still has open boxes,
+the work described has arrived and the record has not moved.
+
+Measured on the same pre-fix document: **3 of the 4 relevant sections** — 215.B,
+215.D, 215.I, five of the seven boxes — with the evidence printed:
+
+```
+  ### 215.D — `west fvp` extension (moves Phase 214.A runner)
+      1 open box(es); all 4 declared file(s) exist:
+        scripts/west_commands/fvp.py
+        scripts/west-commands.yml
+        zephyr/module.yml
+        just/zephyr.just
+```
+
+Zero findings on current `main`, so the baseline starts empty.
+
+**The fourth section is missed for a reason worth keeping.** 215.A's
+`**Files:**` line names
+`packages/boards/nros-board-fvp-aemv8r-smp/board.cmake`; the file is at
+`packages/boards/nros-board-zephyr/boards/fvp-aemv8r-smp/board.cmake`. The doc's
+own path is stale, so the section reads 1-of-2 and is not flagged — the gate
+declining to guess, which is the behaviour to keep. (That stale path is a second,
+smaller finding this exercise turned up.)
+
+### And it FAILS, where this issue argued for warn-only
+
+I argued a failing gate would push people to tick boxes for green. That is right
+about a per-BOX rule and wrong here, and `check-gate-selftests`' own argument
+settles it: a warning nobody must act on decays into a comment.
+
+The ratchet is the resolution. The known set is committed and may only SHRINK; a
+new entry fails with a one-line escape. Ticking a box to silence it is not
+available, because **the flag is on the SECTION, not the box** — the ways out are
+to finish the section, to correct a `**Files:**` line that names a path that
+moved, or to baseline it with a reason.
+
+Self-test on the normal path, 5 cases. Mutation-checked against the real
+pre-fix `phase-215`: 3 findings before, 0 after.
