@@ -20,6 +20,48 @@
     "  rename      the names differ and OURS is the one that should change. A",
     "              rename with no platform reason costs the drop-in claim for",
     "              nothing, so these are the campaign's work list.",
+    "  their-rename",
+    "              the names differ, the CAPABILITY matches, and THEIRS is the",
+    "              one that should change: ours is the spelling the broader ROS 2",
+    "              ecosystem already uses and the library this lane compares",
+    "              against is the outlier. The mirror of `rename`, and the only",
+    "              verdict that says a difference is UPSTREAM's to close.",
+    "",
+    "              A claim about NAMES ONLY. If the shapes also differ for a",
+    "              platform reason the row is a `divergence`; if we do not ship",
+    "              the capability at all it is `declined` or `gap`; if we ship it",
+    "              and ROS 2 does not it is an `extension`. Both halves of a pair",
+    "              carry it -- the theirs-only row and the ours-only row are one",
+    "              statement seen from two sides.",
+    "",
+    "              A row MUST carry a `their_rename` object, and `--check`",
+    "              refuses the verdict without it:",
+    "                ours      our spelling.",
+    "                majority  a list, each entry naming a ROS 2 spelling ours",
+    "                          agrees with and where it is recorded. At least one",
+    "                          entry must cite an upstream (rcl / rclcpp / rclrs /",
+    "                          rclc / an interface package) -- our own three",
+    "                          languages agreeing is internal consistency, which",
+    "                          is a PREFERENCE, and preferences are not this",
+    "                          verdict. `c:trigger_guard_condition` stays",
+    "                          `declined` for exactly that reason: `nros_<entity>_",
+    "                          <verb>` is our convention, not ROS 2's majority.",
+    "                outlier   the one upstream spelling that differs, with the",
+    "                          evidence it is the minority -- countable in",
+    "                          docs/reference/api-surface/ or in an interface",
+    "                          package (rcl has 14 `rcl_*_is_valid` and exactly",
+    "                          one `rcl_clock_valid`).",
+    "                pair      the ledger key of the other half, when there is one.",
+    "",
+    "              It does NOT cancel the drop-in cost -- a ported node still has",
+    "              to be edited, and `why` should say what the reader loses. What",
+    "              it buys is that `rename` stays a list of OUR defects, and that",
+    "              a row cannot say \"we have it\" (`declined`) or \"ROS 2 has none\"",
+    "              (`extension`) when neither is true.",
+    "",
+    "              `scripts/check-prelude-tiers.py` treats it as HAVING an",
+    "              upstream correspondent, so a `their-rename` name is prelude-",
+    "              eligible; only `extension` is excluded there.",
     "",
     "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
     "the rest. `--check` is deliberately not wired into `just check` until then --",
@@ -60,8 +102,18 @@
     "why": "see `c:publisher_get_zero_initialized`."
   },
   "c:clock_is_valid": {
-    "verdict": "extension",
-    "why": "the ours-only half of `c:clock_valid`."
+    "verdict": "their-rename",
+    "why": "RE-VERDICTED extension -> their-rename 2026-09-05 (phase-425). `extension` means \"ROS 2 has none\", and ROS 2 has this: `rcl_clock_valid`. The row reports ours-only because the two projects spell one predicate differently, not because the capability is ours alone. This is the ours-only half of `c:clock_valid`; both halves now make the same statement from their own side. No code change.\n\nORIGINAL ROW: the ours-only half of `c:clock_valid`.",
+    "their_rename": {
+      "ours": "`nros_clock_is_valid(const nros_clock_t *)`",
+      "majority": [
+        "rcl itself, 14 times: `docs/reference/api-surface/rclc.json` records `rcl_context_is_valid`, `rcl_node_is_valid`(+`_except_context`), `rcl_publisher_is_valid`(+`_except_context`), `rcl_subscription_is_valid`, `rcl_client_is_valid`, `rcl_service_is_valid`, `rcl_event_is_valid`, `rcl_wait_set_is_valid`, `rcl_action_client_is_valid`, `rcl_action_server_is_valid`(+`_except_context`), `rcl_action_goal_handle_is_valid`",
+        "rclcpp: `is_valid` (recorded surface)",
+        "our own C++ and Rust use the same `is_*` predicate shape"
+      ],
+      "outlier": "`rcl_clock_valid` -- the ONLY validity predicate in the recorded rclc surface that drops the `is_`, 1 against 14",
+      "pair": "c:clock_valid"
+    }
   },
   "c:clock_remove_jump_callback": {
     "verdict": "declined",
@@ -76,11 +128,17 @@
     "why": "rcl's enum-tag spelling alongside `rcl_clock_type_t`; C tags are not part of the API a caller writes and ours emits only the typedef."
   },
   "c:clock_valid": {
-    "verdict": "declined",
-    "why": "rcl has `rcl_clock_valid(rcl_clock_t*)` (`rclc.json`, `rcl/time.h`) and ours is `nros_clock_is_valid` (`nros_generated.h:3135`), so the counterpart is real and the names do differ. We keep ours DELIBERATELY — re-verdicted from `rename` on 2026-09-04, because adopting rcl's is a net loss on three counts:\n\n1. rcl is the inconsistent one, measurably: 14 of its 15 validity predicates are `_is_valid` and `rcl_clock_valid` is the sole outlier.\n2. We ship NINE `nros_*_is_valid` entry points (`nros_generated.h:3135`, `4836`, `5009`, `5730`, `5958`, `6263`, `6609`, `6695`, `6783`). Renaming one imports rcl's wart AND breaks our own consistency; the other eight are recorded as extension/gap/divergence, so this would be the only member of the family moving.\n3. rclcpp Humble's `Clock` has no `is_valid` at all, so renaming the C spelling would leave C saying `valid` beside C++ saying `is_valid` for the identical predicate — a fresh instance of the cross-language spread issue 0788 tracks.\n\nNo alias either: one would keep an ours-only `c:clock_is_valid` row alive for ever.",
-    "rename": {
-      "status": "not-a-rename",
-      "resolution": "Re-verdicted `declined` 2026-09-04. Nothing lands here; reopen only if rcl normalises its own spelling."
+    "verdict": "their-rename",
+    "why": "RE-VERDICTED rename -> their-rename 2026-09-05 (phase-425). The row already contained its own refutation: it recorded that rcl is the inconsistent one and then filed the work under `rename`, which by `_doc` means OURS is the name that should change. Nothing on our side should move -- `nros_clock_is_valid` is the shape rcl uses fourteen other times. The trailing clause \"the drop-in claim is about matching, not about being right\" is the DROP-IN COST, which `their-rename` records rather than cancels: a ported rcl node still rewrites `rcl_clock_valid(&c)` as `nros_clock_is_valid(&c)`. What it stops doing is sitting on the campaign's work list, where it would have inverted our predicate naming to chase rcl's one exception. Pair: `c:clock_is_valid`. No code change.\n\nORIGINAL ROW: rcl's free-function spelling; ours is `nros_clock_is_valid`. Note ours also matches the `is_*` convention rcl uses elsewhere (`rcl_context_is_valid`), so rcl is the inconsistent one here -- but the drop-in claim is about matching, not about being right.",
+    "their_rename": {
+      "ours": "`nros_clock_is_valid(const nros_clock_t *)`",
+      "majority": [
+        "rcl itself, 14 times: `docs/reference/api-surface/rclc.json` records `rcl_context_is_valid`, `rcl_node_is_valid`(+`_except_context`), `rcl_publisher_is_valid`(+`_except_context`), `rcl_subscription_is_valid`, `rcl_client_is_valid`, `rcl_service_is_valid`, `rcl_event_is_valid`, `rcl_wait_set_is_valid`, `rcl_action_client_is_valid`, `rcl_action_server_is_valid`(+`_except_context`), `rcl_action_goal_handle_is_valid`",
+        "rclcpp: `is_valid` (recorded surface)",
+        "our own C++ and Rust use the same `is_*` predicate shape"
+      ],
+      "outlier": "`rcl_clock_valid` -- the ONLY validity predicate in the recorded rclc surface that drops the `is_`, 1 against 14",
+      "pair": "c:clock_is_valid"
     }
   },
   "c:difference_times": {
