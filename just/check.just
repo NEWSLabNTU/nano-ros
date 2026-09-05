@@ -2158,12 +2158,19 @@ zenoh-config-template:
 # than its `system/<dir>/` path.
 #
 # And check (7), which found something on its first run: the tree is compiled
-# THREE times, not two. `scripts/qemu/build-zenoh-pico.sh` has its own
+# THREE times, not two. `scripts/qemu/build-zenoh-pico.sh` had its own
 # nine-directory loop, its own config header and its own slot defaults (issue
 # 1096), so `check-zenoh-source-manifest`'s "neither lane names a vendored path"
 # was true of the two lanes it knows and false of the repository. Every tracked
-# file naming the vendored SOURCE root must now be a declared lane or carry a
-# TRACKED ISSUE ID — a fourth copy fails while the third is visible debt.
+# file naming the vendored SOURCE root must be a declared lane or carry a
+# TRACKED ISSUE ID, and the ledger is EMPTY now: that script reads the manifest
+# and is a declared lane, so checks (10)-(12) hold it to the build it proxies —
+# how it answers each condition token (it owns no platform, so `always` true and
+# every platform token false), and the two mirrors it cannot derive because
+# their inputs are cargo build-script environment: the generated config header
+# against `config_header()`, and its `-DZPICO_*` slot counts against
+# `ShimConfig::defines()`. Both had drifted — ten macros and three missing
+# `-D`s, 45 of the readiness build's 130 objects.
 #
 # Checks 8 and 9 close a hole review found after the first version: SWAPPING the
 # two groups' conditions (`zephyr_system zephyr` ⇄ `zephyr_isotp zephyr_isotp`)
@@ -2183,19 +2190,23 @@ zenoh-lane-ownership:
     @python3 scripts/check-zenoh-lane-ownership.py
 
 # phase-420 W9 / the mirror class issue 1068 fixed for micro-XRCE, one vendored
-# tree over. zenoh-pico is compiled TWICE — by `nros-zpico-build` for the cargo
-# lane and by `zephyr/cmake/nros_rmw_zenoh.cmake` for the west lane — and each
-# lane held its own copy of the selection: the same nine directory globs,
-# written out twice, with nothing checking they agreed.
+# tree over. zenoh-pico is compiled THREE times — by `nros-zpico-build` for the
+# cargo lane, by `zephyr/cmake/nros_rmw_zenoh.cmake` for the west lane, and by
+# `scripts/qemu/build-zenoh-pico.sh` for the bare-metal QEMU readiness check —
+# and each lane held its own copy of the selection: the same nine directory
+# globs, written out three times, with nothing checking they agreed. (W9 landed
+# knowing two; the third was found by the sibling gate's check 7, issue 1096,
+# and reads the manifest now.)
 #
 # `packages/rmw/zenoh/zpico-sys/zenoh-sources.txt` is now the one list. Unlike
 # the XRCE manifest it names DIRECTORIES, because zenoh-pico's selection is a
 # RULE ("the whole core") on a rebased patch line, not a subset; the safety a
 # file list would buy is bought instead by asserting every `.c` in the tree is
 # covered by a record, left to the per-platform axis, or on a documented
-# not-compiled list. Also asserts that neither lane names a vendored path (pure
-# text, so it holds without the submodule) and that both answer exactly the
-# manifest's condition tokens, both directions.
+# not-compiled list. Also asserts that NO lane names a vendored path (pure
+# text, so it holds without the submodule) and that every lane that selects
+# answers exactly the manifest's condition tokens, both directions. Which WAY a
+# lane answers is `check-zenoh-lane-ownership` (5) and (10).
 #
 # And one check that is NOT about shape, because every other one is: PLATFORM-
 # CONDITIONAL COMPILATION IS LEGITIMATE ONLY FOR THE PLATFORM TREES — a path
