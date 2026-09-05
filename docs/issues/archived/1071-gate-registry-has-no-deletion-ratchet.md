@@ -2,7 +2,7 @@
 id: 1071
 title: "A pull request deleted four gates from `just/check.just` and every gate
   stayed green — `check-gate-lists` verifies the registry's SHAPE, never its size"
-status: open
+status: resolved
 type: bug
 area: tooling, ci
 related: [1072, 0196]
@@ -98,3 +98,36 @@ looked past the hunk they cared about.
 Repaired in the branch (restored from `origin/main`, W8's own gate re-applied on
 top, 236 gates, `check-gate-lists` green); the missing ratchet is what this
 issue tracks.
+
+## Resolution (2026-09-05)
+
+`check-gate-lists` now carries a baseline NAME SET at
+`.config/gate-registry-baseline.txt` (239 names) that may only grow. A name in
+the baseline and not in any registry fails the gate.
+
+The set, not the count, for the reason this issue argued: #431 was one addition
+against four removals, so a count ratchet would have had to notice a net of
+−3, and a delete-plus-add netting to zero would pass it outright. Both are
+covered by selftest cases, the second one explicitly modelled on #431's shape.
+
+FLAT across registries rather than per-registry, so moving a gate between
+`fast` and `build` is not a deletion — the assertion is only that a gate that
+once existed still exists somewhere.
+
+A missing baseline is a failure rather than a silent pass; otherwise the ratchet
+disappears the moment someone deletes the file.
+
+Retirement stays possible and stays deliberate:
+
+    python3 scripts/check/check-gate-lists.py --write-baseline
+
+with the retired gate named in the commit message.
+
+Mutation-checked against the real registry: deleting `entry-session-name` —
+one of #431's four, and the guard for a defect that survived from 2026-06-13 to
+2026-09-03 — is reported by name.
+
+NOT addressed here, and still open in [1072](1072-*.md): `just/check.just` is
+the tree's busiest merge target, which is why #431 held a stale copy of it in
+the first place. The ratchet catches the loss; it does not reduce the odds of a
+branch carrying an old version of the file.
