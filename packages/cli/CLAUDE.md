@@ -31,7 +31,7 @@ too; this file only adds what is CLI-specific.
 | Crate | Role |
 | --- | --- |
 | `nros-cli` | the `nros` binary (thin main over `nros-cli-core`) |
-| `nros-cli-core` | all verb implementations: `cmd/` (setup, init, new, generate*, codegen, metadata, plan, check, explain, config, sync, ws, doctor, board), `codegen/` (entry emitters, metadata seam), `orchestration/` (workspace planning, sdk store, cmake presets), `abi_guard.rs` (CLI↔lock version check) |
+| `nros-cli-core` | all verb implementations: `cmd/` (setup, init, new, generate*, codegen, metadata, plan, check, explain, config, sync, ws, doctor, board), `codegen/` (entry emitters, metadata seam), `orchestration/` (workspace planning, sdk store, cmake presets), `abi_guard.rs` (the CODEGEN VERSION guard: what this binary emits vs the range the consumer's runtime tree accepts — phase-429 W2; it reads no `Cargo.lock`, so C/C++ consumers are guarded too) |
 | `rosidl-parser` / `rosidl-codegen` / `rosidl-bindgen` | ROS interface parsing + Rust/C/C++ message generation |
 | `nros-msg-to-idl` | msg → Cyclone IDL lowering |
 | `nros-pkg-index` | `nros-sdk-index.toml` model (boards → toolchain/SDK package sets) |

@@ -28,6 +28,11 @@ rosidl-lower.workspace = true
 # cannot disagree about encoding rules. Path dep across the workspace boundary:
 # `packages/cli` is its own workspace, and this is a core crate.
 nros-serdes = { path = "../../core/nros-serdes", default-features = false }
+# phase-429 W2 — the CODEGEN VERSION this emitter emits. Same cross-workspace
+# path dep as `nros-serdes` above and for the same reason: the token is a
+# RUNTIME fact, and a binary that emits code must carry the number of the
+# runtime it was built against rather than a second copy of it.
+nros-core = { path = "../../core/nros-core", default-features = false }
 minijinja.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
