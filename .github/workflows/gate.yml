@@ -580,9 +580,16 @@ jobs:
       # THE ARRANGEMENT, phase-395. This job is ONE required status context and
       # it deliberately does DIFFERENT WORK per event:
       #
-      #   pull_request  ->  check-fast only        ~5 min   fast feedback
-      #   merge_group   ->  + check-build, no_std, test-unit  ~15 min, per BATCH
-      #   schedule      ->  the same full tier, daily
+      #   pull_request  ->  check-fast + compile-smoke + cli-tests  ~5 min
+      #   merge_group   ->  + test-unit + workspace-all             per BATCH
+      #   schedule      ->  + check-build, no-std — the full tier, daily
+      #
+      # NOTE `check-build` is schedule/dispatch ONLY. It was on the merge group
+      # once and could never pass there (it resolves generated bindings and
+      # prebuilt `.compile-ok` that no CI job builds), which left the required
+      # check red for every pull request for a day. `check-lane-contracts`
+      # enforces the rule that came out of it: a gate on an affordability tier
+      # may only resolve artifacts the job itself builds.
       #
       # That is the whole economic argument for a merge queue: the expensive
       # verification runs once per batch of up to four, not once per pull
@@ -877,6 +884,42 @@ jobs:
         run: |
           source ./activate.sh
           just test-unit
+
+      # Issue 1080 / #1102 follow-up — the FEATURE-COMBINATION gap, closed on
+      # the batch lane.
+      #
+      # `compile-smoke` says so itself twenty lines up: "no feature
+      # combinations, so a break that only appears under
+      # `--no-default-features` still reaches the queue". On 2026-09-05 that is
+      # exactly what happened. `nros-node`'s new stack-headroom rule called
+      # `nros_platform_api::task::stack_unused_bytes()`, and `task` was gated
+      # behind the `alloc` feature, so `main` could not build for an embedded
+      # target. Both halves were green on the required `CI` context, because
+      # the only lane that compiles a no-alloc configuration —
+      # `check-workspace-embedded`, inside `check-build` — runs on
+      # `schedule`/`workflow_dispatch` and NO merge-gating event.
+      #
+      # The cost of that gap was not one red: THREE independent fixes were
+      # written for the same defect (PRs #489 and #497, plus main's own
+      # `b9450327d` + `92849933d`), because nothing told anyone it was already
+      # being handled.
+      #
+      # `workspace-all` is the narrow answer, not `check-build`. It is the gate
+      # that actually caught this (host check + embedded check in parallel,
+      # measured 62 s), and unlike `check-build` it resolves no prebuilt
+      # fixture or generated binding — `check-build` was tried on a
+      # merge-gating event before and could never pass there, which is what
+      # `check-lane-contracts` now enforces.
+      #
+      # merge_group, deliberately NOT pull_request: same "PR cheap, batch
+      # thorough" split as `test-unit` above. A surprise here ejects a batch,
+      # which is visible and recoverable; on the PR lane it would block every
+      # pull request at once.
+      - name: just check workspace-all (feature combinations)
+        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just check workspace-all
 
       - name: sccache stats (compile tier)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && always() }}
