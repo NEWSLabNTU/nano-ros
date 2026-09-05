@@ -2391,6 +2391,22 @@ runner-sweep-eviction-order:
 doc-refs:
     @bash scripts/check-doc-refs.sh
 
+# Issue 0989 — `check-doc-refs` validates a PATH (`docs/issues/NNNN-slug.md`);
+# this validates the form people actually write in prose (an `issue NNNN`
+# mention, or a comma/slash-separated pair of them). It was green while
+# CLAUDE.md — loaded into every agent session — cited three ids with no file on
+# main.
+#
+# The examples are PARAPHRASED, not quoted: a literal dead id in this comment is
+# a reference like any other and the gate flags it. `check-doc-refs` records
+# hitting the same thing.
+#
+# A RATCHET, not a hard zero: a doc on main can correctly cite an issue whose
+# file is still in another open PR, and deleting that citation would be the
+# wrong fix. Buildless, milliseconds, self-testing.
+prose-issue-refs:
+    @python3 scripts/check-prose-issue-refs.py
+
 # Every relative link in the book must resolve. `check-doc-refs` answers a
 # different question — "does issue 0123 exist?", by ID, and deliberately
 # resolves through `archived/` — so a book link naming the pre-archival PATH
