@@ -35,7 +35,43 @@ extern crate alloc;
 
 pub mod action;
 pub mod clock;
-// RFC-0090 / phase-429 — the generated-code <-> runtime compatibility token.
+/// RFC-0090 / phase-429 — the codegen version, the one token that says whether
+/// generated code and this runtime can work together.
+///
+/// # What breaks without it
+///
+/// nano-ros shipped prebuilt `nros` binaries early and stopped, because a
+/// released binary emitted code that had drifted from the runtime. The failure
+/// is not loud: drifted generated code *compiles*, and the image is simply
+/// wrong in whatever way the generator was wrong. Issue 1018 records the
+/// canonical instance — the C emitter transposed sequence-of-strings dimensions
+/// in all three emission sites (`char data[256][64]` for `[64][256]`) — caught
+/// by a developer's build refusal, which is a thing no user has.
+///
+/// The relation that breaks is **generated code ↔ runtime**. The binary is only
+/// the thing that produced one side of it, which is why the version lives here,
+/// in the runtime, rather than in the CLI.
+///
+/// # Why an integer and not a hash
+///
+/// A hash cannot say WHICH SIDE IS BEHIND, and that distinction is the whole
+/// value of the token: `G < MIN` is "regenerate, silently" and `G > VERSION` is
+/// "a human must move a pin". They are not interchangeable remedies. A hash
+/// also moves when a doc comment moves, and a check that fires on cosmetic
+/// change is one people learn to bypass — `NROS_SKIP_VERSION_CHECK` is right
+/// there.
+///
+/// # Not to be confused with the codegen FINGERPRINT
+///
+/// `nros codegen-fingerprint` hashes every byte the emitters produce for a
+/// compiled-in corpus. It answers *"would this binary emit different bytes?"* —
+/// a FRESHNESS question, whose remedy is to regenerate, silently. The constants
+/// here answer *"can this code work with this runtime?"* — a COMPATIBILITY
+/// question, whose remedy is a refusal. Conflating them is why issue 1018's
+/// stale-CLI refusal both over-fires on `cmd/doctor.rs` and cannot ship.
+///
+/// The module's own file carries no `//!` docs deliberately; see the comment at
+/// its head.
 pub mod codegen_version;
 // issue 0783 — there is no `error` module here any more, and its absence is the
 // decision. It held `NanoRosError { code: RclReturnCode, context, nested }`, a

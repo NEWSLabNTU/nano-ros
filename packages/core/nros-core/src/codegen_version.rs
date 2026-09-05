@@ -1,41 +1,24 @@
-//! RFC-0090 / phase-429 — the codegen version, the one token that says whether
-//! generated code and this runtime can work together.
-//!
-//! # What breaks without it
-//!
-//! nano-ros shipped prebuilt `nros` binaries early and stopped, because a
-//! released binary emitted code that had drifted from the runtime. The failure
-//! is not loud: drifted generated code *compiles*, and the image is simply
-//! wrong in whatever way the generator was wrong. Issue 1018 records the
-//! canonical instance — the C emitter transposed sequence-of-strings dimensions
-//! in all three emission sites (`char data[256][64]` for `[64][256]`) — caught
-//! by a developer's build refusal, which is a thing no user has.
-//!
-//! The relation that breaks is **generated code ↔ runtime**. The binary is only
-//! the thing that produced one side of it, which is why the version lives here,
-//! in the runtime, rather than in the CLI.
-//!
-//! # Why an integer and not a hash
-//!
-//! A hash cannot say WHICH SIDE IS BEHIND, and that distinction is the whole
-//! value of the token: `G < MIN` is "regenerate, silently" and `G > VERSION` is
-//! "a human must move a pin". They are not interchangeable remedies. A hash
-//! also moves when a doc comment moves, and a check that fires on cosmetic
-//! change is one people learn to bypass — `NROS_SKIP_VERSION_CHECK` is right
-//! there.
-//!
-//! The hash still exists, as the ratchet's evidence
-//! (`scripts/check-codegen-version-surface.py`), and is never compared at
-//! build time.
-//!
-//! # Not to be confused with the codegen FINGERPRINT
-//!
-//! `nros codegen-fingerprint` hashes every byte the emitters produce for a
-//! compiled-in corpus. It answers *"would this binary emit different bytes?"* —
-//! a FRESHNESS question, whose remedy is to regenerate, silently. This constant
-//! answers *"can this code work with this runtime?"* — a COMPATIBILITY
-//! question, whose remedy is a refusal. Conflating them is why issue 1018's
-//! stale-CLI refusal both over-fires on `cmd/doctor.rs` and cannot ship.
+// RFC-0090 / phase-429 — the codegen version, the one token that says whether
+// generated code and this runtime can work together.
+//
+// NO `//!` INNER DOC COMMENTS IN THIS FILE, ON PURPOSE. It is `include!`d
+// verbatim by `nros-build-helpers`, and an inner doc comment inside an
+// `include!` expansion is a hard error (E0753). The module docs live on the
+// `pub mod` in `lib.rs`. Keep this file a dependency-free set of `const`s and
+// `const fn`s: anything else breaks the include.
+//
+// THREE READERS, THREE REASONS — do not "unify" them:
+//
+//   * `nros-core` itself, and `rosidl-codegen` through a real path dep. Type
+//     checked, no parsing. `rosidl-codegen` already path-deps `nros-serdes`, so
+//     the edge is precedented there.
+//   * `nros-build-helpers`, by `include!`. It is host-only and appears in every
+//     tracked leaf lockfile, so a `nros-core` dependency edge would land there
+//     too. `include!` costs nothing in the graph, and rustc records the path in
+//     the depfile, so editing the constants rebuilds it.
+//   * the CLI's guard, by parsing this file as TEXT. It inspects a CONSUMER's
+//     tree at run time, where compiling is not available. This is the only
+//     parser, and it exists because the other two options do not apply.
 
 /// The codegen version this runtime emits and accepts.
 ///
