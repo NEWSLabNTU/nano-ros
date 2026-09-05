@@ -227,6 +227,14 @@ pub fn emit_boot_config_static(out: &mut String, plan: &Plan) -> Result<(), Stri
     // only the producer was missing. RFC-0046 makes launch authoritative for node
     // identity, and it was authoritative for the name alone.
     //
+    // `rmw` (layout version 2, issue 1050 defect (3)) is emitted EMPTY with its
+    // bit clear, for the same reason as `domain_id`/`locator`: it is a property
+    // of the IMAGE, not of a node, and `Plan` carries no such field. A C/C++
+    // image gets its selector from the `NROS_ENTRY_RMW` compile definition the
+    // entry gate bakes — the second delivery path issue 0794 records above. It
+    // is spelled here rather than left to the designated-initializer zero fill
+    // so the field is visible in the generated code.
+    //
     // `domain_id` and `locator` STAY hardcoded, and that is a scope statement
     // rather than an oversight: neither exists anywhere in `Plan` — `domain_id`
     // appears exactly once in this whole crate, as the literal below. Both are
@@ -282,6 +290,7 @@ pub fn emit_boot_config_static(out: &mut String, plan: &Plan) -> Result<(), Stri
              .node_name  = \"{node_name}\",\n\
              .locator    = \"\",\n\
              .namespace_ = \"{namespace}\",\n\
+             .rmw        = \"\",\n\
          }};",
     );
     Ok(())

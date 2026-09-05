@@ -357,6 +357,28 @@ function(nros_px4_add_module)
     string(APPEND _c "}\n")
     file(WRITE "${_stub}" "${_c}")
 
+    # Issue 1050 defect (3) — `BACKENDS` also decides which backend
+    # `nros::init()` OPENS, not only which ones get registered.
+    #
+    # The stub above is the image's declaration, and until the selector rung
+    # existed the runtime could not read it: the registry's default was slot 0,
+    # i.e. whichever backend registered first, and on hosted POSIX a Rust backend
+    # inside `libnros_cpp.a` registers from an `.init_array` ctor BEFORE `main` —
+    # so it beats the stub every time. The precheck above refuses that archive,
+    # which closes the accident; this closes the API gap, so a module that
+    # deliberately links two backends still opens the one it named first.
+    #
+    # Only for a SINGLE declared backend. With several there is no single answer,
+    # and inventing one from list order would be the same "whoever is first"
+    # policy this issue is about. Such a module names its sessions explicitly
+    # (`nros::init_with_rmw`, or `MultiExecutor`).
+    list(LENGTH NPX_BACKENDS _npx_backend_count)
+    if(_npx_backend_count EQUAL 1)
+        list(GET NPX_BACKENDS 0 _npx_primary)
+        target_compile_definitions(${NPX_MODULE} PRIVATE
+            "NROS_ENTRY_RMW=\"${_npx_primary}\"")
+    endif()
+
     # The stub goes INTO the module archive, and the linker is told up front that
     # it needs the symbol. Three shapes were measured before this one:
     #

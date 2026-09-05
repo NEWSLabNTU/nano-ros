@@ -129,5 +129,9 @@
   "rust:extract_non_ros_args": {
     "verdict": "declined",
     "why": "argv filtering; see `cpp:remove_ros_arguments`."
+  },
+  "c:support_init_rmw": {
+    "verdict": "extension",
+    "why": "`nros_support_init_named` plus a backend selector -- it names the RMW backend the session opens against. rclc/rclcpp have no counterpart because a ROS 2 desktop process selects its middleware with the `RMW_IMPLEMENTATION` environment variable, and an embedded image has no environment to read -- which is precisely how issue 1050 happened: the selector had an env rung and no baked one, so a PX4 module declaring `BACKENDS uorb` could not say so and the registry's first entry won. The hosted env rung (`$NROS_RMW`) still takes precedence, matching `RMW_IMPLEMENTATION`'s authority; this is the rung beneath it."
   }
 }

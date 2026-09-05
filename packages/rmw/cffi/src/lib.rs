@@ -1282,12 +1282,47 @@ pub unsafe extern "C" fn nros_rmw_cffi_set_custom_transport(
     }
 }
 
+/// The UNNAMED open's answer to "which backend?" — issue 1050 defect (3).
+///
+/// This used to be `default_vtable()`, i.e. **registry slot 0**, described as a
+/// single-backend fast path. It is not a fast path when two backends are
+/// registered: it is a silent choice, and on a hosted target nobody makes it.
+/// A Rust backend compiled into `libnros_cpp.a` registers from its
+/// `.init_array` ctor, before `main`, and therefore before the image's own
+/// generated `nros_app_register_backends()` runs — so slot 0 goes to whichever
+/// backend the ARCHIVE happens to carry, not to the one the image declared. A
+/// PX4 module declaring `BACKENDS uorb` opened zenoh that way.
+///
+/// `resolve_backend(None)` is the policy phase-128.A.3 already wrote for this
+/// exact question, and `Executor::open_in` has consulted it since. It did not
+/// reach here, so the tree carried TWO answers to one question and only one of
+/// them refused an ambiguous registry — which is why the C++ surface was safe
+/// and the C surface (`nros::internals::open_session` → [`CffiRmw::open`]) was
+/// not. There is one answer now.
+///
+/// `InvalidConfig`, not `InvalidArgument`, for the ambiguous case: nothing has
+/// been connected at this point, and reporting an unresolvable selection as a
+/// transport failure is what sent issue 1050 looking for a missing router. The
+/// empty-registry case keeps `InvalidArgument`, which is what it always
+/// answered.
 fn get_vtable() -> Result<&'static NrosRmwVtable, TransportError> {
-    // Phase 104.B.2 — fast path: registry has exactly one backend.
-    // Mirror the single-backend hot path the singleton-VTABLE
-    // implementation had. Bridge / multi-backend users should call
-    // a forthcoming `get_vtable_named` API (104.C work) instead.
-    default_vtable().ok_or(TransportError::InvalidArgument)
+    match resolve_backend(None) {
+        BackendResolution::Single(vtable) => Ok(vtable),
+        BackendResolution::Ambiguous => {
+            nros_log::nros_error!(
+                nros_log::get_logger("nros_rmw_cffi"),
+                "more than one RMW backend is registered and this open named \
+                 none; select one (hosted: $NROS_RMW=<name>; embedded: the \
+                 baked NROS_ENTRY_RMW rung), or open per-backend sessions"
+            );
+            Err(TransportError::InvalidConfig)
+        }
+        // `Unknown` is unreachable for a `None` selector; it collapses with
+        // `NoBackend` rather than growing an arm that cannot be observed.
+        BackendResolution::NoBackend | BackendResolution::Unknown => {
+            Err(TransportError::InvalidArgument)
+        }
+    }
 }
 
 // ============================================================================

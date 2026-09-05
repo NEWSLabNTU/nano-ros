@@ -31,8 +31,12 @@ extern "C" {
 /** Magic word stored in `nros_baked_boot_config::magic`.  ASCII "NRBC". */
 #define NROS_BOOT_CONFIG_MAGIC 0x4E524243u
 
-/** Layout version.  The resolver rejects a struct whose version != this. */
-#define NROS_BOOT_CONFIG_VERSION 1u
+/** Layout version.  The resolver rejects a struct whose version != this.
+ *
+ * 2 since issue 1050 defect (3) appended `rmw`.  The bump is what the field is
+ * for: a reader compiled against version 1 rejects a version-2 blob rather than
+ * reading 32 bytes of `rmw` as whatever its own layout put after `namespace_`. */
+#define NROS_BOOT_CONFIG_VERSION 2u
 
 /** `set_flags` bit — `node_name` field is valid. */
 #define NROS_BOOT_SET_NODE_NAME (1u << 0)
@@ -46,11 +50,14 @@ extern "C" {
 /** `set_flags` bit — `namespace_` field is valid. */
 #define NROS_BOOT_SET_NAMESPACE (1u << 3)
 
+/** `set_flags` bit — `rmw` field is valid (issue 1050; layout version 2). */
+#define NROS_BOOT_SET_RMW (1u << 4)
+
 /**
  * Build-time-baked boot configuration blob.
  *
  * Mirrors `nros_platform_api::BakedBootConfig` (`#[repr(C)]`).  Fixed size
- * (236 bytes), pointer-free, no padding.  A post-link tool scans for
+ * (268 bytes), pointer-free, no padding.  A post-link tool scans for
  * `NROS_BOOT_CONFIG_MAGIC` to locate this struct in a firmware image and can
  * patch the fields in place (RFC-0045).
  *
@@ -62,7 +69,8 @@ extern "C" {
  *   node_name  @ 12  (64 bytes)
  *   locator    @ 76  (96 bytes)
  *   namespace_ @172  (64 bytes)
- *   total size: 236 bytes
+ *   rmw        @236  (32 bytes)
+ *   total size: 268 bytes
  *
  * @note The field is named `namespace_` (trailing underscore) because
  *       `namespace` is a reserved keyword in C++.
@@ -75,6 +83,12 @@ struct nros_baked_boot_config {
     char node_name[64];  /**< NUL-padded UTF-8 node name (NROS_BOOT_SET_NODE_NAME). */
     char locator[96];    /**< NUL-padded UTF-8 middleware locator (NROS_BOOT_SET_LOCATOR). */
     char namespace_[64]; /**< NUL-padded UTF-8 node namespace (NROS_BOOT_SET_NAMESPACE). */
+    /** NUL-padded UTF-8 RMW backend selector, e.g. "uorb" (NROS_BOOT_SET_RMW).
+     *
+     * 32 bytes because that is the registry's own `BACKEND_NAME_MAX`; a longer
+     * name could never resolve, so accepting one here would only move the
+     * failure later.  Appended in layout version 2 (issue 1050 defect (3)). */
+    char rmw[32];
 };
 
 /* ── Layout guards ────────────────────────────────────────────────────────────
@@ -82,8 +96,8 @@ struct nros_baked_boot_config {
  * A matching Rust test in nros-platform-api asserts size + offsets on the
  * Rust side, so a change to BakedBootConfig forces both sides to be updated. */
 #if defined(__cplusplus) && __cplusplus >= 201103L
-static_assert(sizeof(struct nros_baked_boot_config) == 236,
-              "nros_baked_boot_config size must be 236");
+static_assert(sizeof(struct nros_baked_boot_config) == 268,
+              "nros_baked_boot_config size must be 268");
 static_assert(offsetof(struct nros_baked_boot_config, magic) == 0, "magic offset must be 0");
 static_assert(offsetof(struct nros_baked_boot_config, version) == 4, "version offset must be 4");
 static_assert(offsetof(struct nros_baked_boot_config, set_flags) == 6,
@@ -95,9 +109,10 @@ static_assert(offsetof(struct nros_baked_boot_config, node_name) == 12,
 static_assert(offsetof(struct nros_baked_boot_config, locator) == 76, "locator offset must be 76");
 static_assert(offsetof(struct nros_baked_boot_config, namespace_) == 172,
               "namespace_ offset must be 172");
+static_assert(offsetof(struct nros_baked_boot_config, rmw) == 236, "rmw offset must be 236");
 #elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-_Static_assert(sizeof(struct nros_baked_boot_config) == 236,
-               "nros_baked_boot_config size must be 236");
+_Static_assert(sizeof(struct nros_baked_boot_config) == 268,
+               "nros_baked_boot_config size must be 268");
 _Static_assert(offsetof(struct nros_baked_boot_config, magic) == 0, "magic offset must be 0");
 _Static_assert(offsetof(struct nros_baked_boot_config, version) == 4, "version offset must be 4");
 _Static_assert(offsetof(struct nros_baked_boot_config, set_flags) == 6,
@@ -109,6 +124,7 @@ _Static_assert(offsetof(struct nros_baked_boot_config, node_name) == 12,
 _Static_assert(offsetof(struct nros_baked_boot_config, locator) == 76, "locator offset must be 76");
 _Static_assert(offsetof(struct nros_baked_boot_config, namespace_) == 172,
                "namespace_ offset must be 172");
+_Static_assert(offsetof(struct nros_baked_boot_config, rmw) == 236, "rmw offset must be 236");
 #endif /* static_assert */
 
 /**

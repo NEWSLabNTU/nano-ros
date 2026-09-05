@@ -1058,18 +1058,27 @@ pub mod internals {
     /// Wraps the backend-specific session constructor behind a common signature.
     /// Used by the C API (`nros-c`); Rust users should prefer `Executor::open()`.
     ///
-    /// Phase 156 — consults `$NROS_RMW` (when std + the env var is set)
-    /// to pin the primary backend by name, mirroring what `Executor::open`
-    /// does for Rust callers. Without this, C bridges built with two
-    /// linked backends (e.g. xrce + dds) get whichever ctor fires
-    /// first via linkme — non-deterministic across link orderings +
-    /// often the wrong backend for the bridge's intended primary.
+    /// Phase 156 — takes an explicit primary backend by name, mirroring what
+    /// `Executor::open` does for Rust callers. Without it, C bridges built with
+    /// two linked backends (e.g. xrce + dds) get whichever ctor fires first —
+    /// non-deterministic across link orderings, and often the wrong backend for
+    /// the bridge's intended primary.
+    ///
+    /// Issue 1050 defect (3) — `rmw` is the RESOLVED selector, not a second
+    /// reading of the environment. This function used to consult
+    /// `rmw_selector()` itself, which made it the tree's second answer to "which
+    /// backend?" and blind to every rung but the environment: a C image with a
+    /// BAKED selector had it discarded here. The caller resolves the whole
+    /// ladder (`env > baked > none`) through `ExecutorConfig` and passes the
+    /// result; `None` means the registry must hold exactly one backend, which
+    /// `nros_rmw_cffi::get_vtable` now enforces rather than assumes.
     #[cfg(feature = "rmw-cffi")]
     pub fn open_session(
         locator: &str,
         mode: nros_rmw::SessionMode,
         domain_id: u32,
         node_name: &str,
+        rmw: Option<&str>,
     ) -> Result<RmwSession, nros_rmw::TransportError> {
         use nros_rmw::Rmw;
 
@@ -1085,25 +1094,18 @@ pub mod internals {
             namespace: "",
             properties: &[],
         };
-        // Phase 156 — honor `$NROS_RMW` env-var primary selector
-        // when present so C bridges built with multiple linked
-        // backends (e.g. xrce + dds) pin the primary deterministically
-        // instead of taking whichever linkme ctor fires first.
         // Phase 155.B — propagate the real `TransportError` instead of
         // collapsing every backend failure to `ConnectionFailed`. The
         // C-side `nros_support_init` decodes the variant into a
         // specific `NROS_RET_*` code so "init -> -X" tells the user
         // which precondition the backend rejected.
-        // phase-359 W10 / issue 0687 — the ONE selector reader, shared with
-        // `ExecutorConfig::from_env` and the C entry. This used to read
-        // `$NROS_RMW` itself, with its own empty-string rule. `open_session`
-        // takes an arbitrary caller-built config, so it consults the reader
-        // rather than `config.rmw`: a config the caller assembled by hand has
-        // no selector in it, and this entry point has always honoured the
-        // variable.
-        #[cfg(feature = "env")]
-        if let Some(name) = crate::rmw_selector() {
-            return nros_rmw_cffi::CffiRmw::open_with_rmw(name.as_str(), &config);
+        // issue 1050 defect (3) — the selector ARRIVES here now. It used to be
+        // read from `$NROS_RMW` on the spot, which is why a baked one could not
+        // reach this path: the reader knew about one rung and the resolver knew
+        // about two. The environment still wins; it wins in `ExecutorConfig`,
+        // where every other field's precedence is decided, instead of here.
+        if let Some(name) = rmw {
+            return nros_rmw_cffi::CffiRmw::open_with_rmw(name, &config);
         }
         nros_rmw_cffi::CffiRmw.open(&config)
     }

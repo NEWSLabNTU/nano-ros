@@ -398,7 +398,6 @@ impl<'a> ExecutorConfig<'a> {
 /// `node_name` can both apply in the same call.
 ///
 /// Note: `mode` (session mode) is **not** configurable through `BootConfig`.
-/// `BootConfig` carries only `node_name`, `locator`, `domain_id`, and `namespace`.
 /// Session mode comes from the env rung, defaulting to `SessionMode::Client`.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct BootConfig<'a> {
@@ -410,6 +409,21 @@ pub struct BootConfig<'a> {
     pub domain_id: Option<u32>,
     /// Node namespace override.  Maps to [`ExecutorConfig::namespace`].
     pub namespace: Option<&'a str>,
+    /// RMW backend selector.  Maps to [`ExecutorConfig::rmw`], the name
+    /// `nros_rmw_cffi::resolve_backend` looks up.
+    ///
+    /// Issue 1050 defect (3) — this rung did not exist. Every other field of
+    /// [`ExecutorConfig`] resolved `env > baked > compiled default`; `rmw`
+    /// resolved from the environment ALONE, so `$NROS_RMW` was the only way in
+    /// the tree to name a backend. An image that knows perfectly well which
+    /// backend it wants — a PX4 module declaring `BACKENDS uorb`, a C entry
+    /// built against one RMW, any embedded target with no environment to read —
+    /// could not say so, and got whichever backend registered first.
+    ///
+    /// The environment still wins, because a deployment overriding a build is
+    /// the whole point of precedence model A. What changed is that there is now
+    /// something for it to override.
+    pub rmw: Option<&'a str>,
 }
 
 /// The environment rung of precedence model A, as VALUES.
@@ -497,7 +511,11 @@ impl<'a> ExecutorConfig<'a> {
                 namespace: baked.namespace.unwrap_or(""),
                 clock_us: None,
                 epoch_us: None,
-                rmw: None,
+                // Issue 1050 defect (3) — the baked rung. This was a hard
+                // `None`, which is why an image with no environment (every RTOS
+                // target, and every hosted image whose launcher sets nothing)
+                // had no way to name its backend at all.
+                rmw: baked.rmw,
             });
         };
 
@@ -527,7 +545,10 @@ impl<'a> ExecutorConfig<'a> {
             // answers "does this build have one" in the single place that
             // knows, rather than at two struct literals.
             epoch_us: default_epoch_us_fn(),
-            rmw: env.rmw,
+            // Issue 1050 defect (3) — `env > baked`, like every other field
+            // here. It read `env.rmw` alone, so a baked selector was discarded
+            // on any hosted build even when the environment said nothing.
+            rmw: env.rmw.or(baked.rmw),
         })
     }
 }
@@ -1139,8 +1160,8 @@ impl GuardCondition {
 // directly, but internal users in other nros-node submodules see these via
 // `use types::*`.
 pub use nros_platform_api::{
-    BOOT_SET_DOMAIN, BOOT_SET_LOCATOR, BOOT_SET_NAMESPACE, BOOT_SET_NODE_NAME, BakedBootConfig,
-    NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION,
+    BOOT_SET_DOMAIN, BOOT_SET_LOCATOR, BOOT_SET_NAMESPACE, BOOT_SET_NODE_NAME, BOOT_SET_RMW,
+    BakedBootConfig, NROS_BOOT_CONFIG_MAGIC, NROS_BOOT_CONFIG_VERSION,
 };
 
 /// Find the length of the non-NUL prefix in `buf`.
@@ -1199,11 +1220,22 @@ impl<'a> BootConfig<'a> {
             None
         };
 
+        // Issue 1050 defect (3) — layout version 2. A v1 struct has the bit
+        // clear (its `set_flags` never set bit 4), so an older bake reads as
+        // "not specified" rather than as garbage.
+        let rmw = if baked.set_flags & BOOT_SET_RMW != 0 {
+            let len = nul_len(&baked.rmw);
+            core::str::from_utf8(&baked.rmw[..len]).ok()
+        } else {
+            None
+        };
+
         BootConfig {
             node_name,
             locator,
             domain_id,
             namespace,
+            rmw,
         }
     }
 }
@@ -1329,6 +1361,54 @@ mod boot_config_tests {
         // locator and namespace were not baked → compiled defaults.
         assert_eq!(resolved.locator, "");
         assert_eq!(resolved.namespace, "");
+    }
+
+    // ── T3b: the RMW selector's baked rung (issue 1050 defect (3)) ───────────
+
+    /// The baked selector reaches the resolver on the no-rung path.
+    ///
+    /// It did not, and that was the whole defect: `rmw` was the ONE
+    /// `ExecutorConfig` field that resolved from the environment alone, so an
+    /// image with no environment to read — every RTOS target, and every hosted
+    /// image whose launcher sets nothing — could not name its backend at all
+    /// and got whichever one registered first.
+    #[test]
+    fn baked_rmw_resolves_with_no_env_rung() {
+        let resolved = ExecutorConfig::resolve(BootConfig {
+            rmw: Some("uorb"),
+            ..Default::default()
+        });
+        assert_eq!(resolved.rmw, Some("uorb"));
+    }
+
+    /// The env rung still wins — precedence model A is unchanged. What changed
+    /// is that there is now something for it to win against.
+    #[test]
+    fn env_rmw_overrides_baked_rmw() {
+        let baked = BootConfig {
+            rmw: Some("uorb"),
+            ..Default::default()
+        };
+        let env = EnvRung {
+            rmw: Some("zenoh"),
+            ..Default::default()
+        };
+        let resolved = ExecutorConfig::resolve_with(baked, Some(env));
+        assert_eq!(resolved.rmw, Some("zenoh"));
+    }
+
+    /// A silent env rung falls through to baked rather than erasing it. This is
+    /// the arm that was wrong on the hosted path: it read `env.rmw` alone, so a
+    /// baked selector was discarded whenever an environment rung existed at all
+    /// — which on a hosted build is always.
+    #[test]
+    fn baked_rmw_survives_a_silent_env_rung() {
+        let baked = BootConfig {
+            rmw: Some("uorb"),
+            ..Default::default()
+        };
+        let resolved = ExecutorConfig::resolve_with(baked, Some(EnvRung::default()));
+        assert_eq!(resolved.rmw, Some("uorb"));
     }
 
     // ── T4: env rung overrides baked ─────────────────────────────────────────
@@ -1672,6 +1752,30 @@ mod baked_boot_config_tests {
             baked.set_flags,
             BOOT_SET_NODE_NAME | BOOT_SET_DOMAIN | BOOT_SET_NAMESPACE
         );
+    }
+
+    // ── T-BB9: the layout-version-2 `rmw` field (issue 1050 defect (3)) ──────
+
+    /// The selector round-trips through the linker-section struct, and an
+    /// unspecified one reads as `None` rather than as an empty name.
+    ///
+    /// Both halves matter: the reader keys on bit 4, so a struct baked by an
+    /// older toolchain (bit clear, 32 zero bytes) must resolve to "not
+    /// specified" and NOT to a backend named `""`, which would fail lookup.
+    #[test]
+    fn baked_rmw_round_trips_and_absent_reads_as_none() {
+        let with = BakedBootConfig::new_with_rmw(None, None, None, None, Some("uorb"));
+        assert_eq!(with.set_flags & BOOT_SET_RMW, BOOT_SET_RMW);
+        assert_eq!(BootConfig::from_baked(&with).rmw, Some("uorb"));
+
+        let without = BakedBootConfig::new(None, None, None, None);
+        assert_eq!(without.set_flags & BOOT_SET_RMW, 0);
+        assert_eq!(BootConfig::from_baked(&without).rmw, None);
+
+        // The version moved with the layout — a v1 reader must be able to
+        // reject a v2 struct rather than read `rmw` as whatever its own layout
+        // put after `namespace`.
+        assert_eq!(with.version, 2);
     }
 
     // ── Compile-failure comment ───────────────────────────────────────────────

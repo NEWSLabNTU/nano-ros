@@ -341,3 +341,51 @@ fn two_sessions_route_to_correct_vtable() {
     drop(pub_b);
     let _ = ptr::null::<()>(); // suppress unused-use
 }
+
+/// Issue 1050 defect (3) — the UNNAMED open must refuse an ambiguous registry.
+///
+/// `CffiSession::open` / `CffiRmw::open` resolve "which backend?" through
+/// `get_vtable()`, which took **registry slot 0** — whoever registered first.
+/// On a hosted target that is not a choice anyone made: a Rust backend compiled
+/// into `libnros_cpp.a` registers from its `.init_array` ctor, i.e. before
+/// `main`, and therefore before the image's own generated
+/// `nros_app_register_backends()` runs. A PX4 module declaring `BACKENDS uorb`
+/// against a zenoh-carrying archive got zenoh in slot 0 and opened it.
+///
+/// `Executor::open_in` never showed the defect because it calls
+/// `resolve_backend` FIRST and refuses `Ambiguous` — so the C++ surface was
+/// already safe and the C surface (`nros::internals::open_session` →
+/// `CffiRmw::open`) was not. Two selection policies for one question is the
+/// class; there is one now, and it lives here.
+///
+/// The positive control is in the same test on purpose: a refusal is trivially
+/// satisfiable by an open that never works.
+#[test]
+fn unnamed_open_refuses_an_ambiguous_registry() {
+    // Registration is idempotent per name, so this test is independent of
+    // whether the runner gave it a fresh process.
+    assert_eq!(
+        unsafe { nros_rmw_cffi_register_named(c"tb_a".as_ptr(), &A_VTABLE) },
+        NROS_RMW_RET_OK
+    );
+    assert_eq!(
+        unsafe { nros_rmw_cffi_register_named(c"tb_b".as_ptr(), &B_VTABLE) },
+        NROS_RMW_RET_OK
+    );
+
+    let err = nros_rmw_cffi::CffiSession::open("tcp/127.0.0.1:7447", 0, 0, "amb_node")
+        .err()
+        .expect("two backends registered and no selector: the open must be REFUSED");
+    assert_eq!(
+        err,
+        nros_rmw::TransportError::InvalidConfig,
+        "an unresolvable selection is a CONFIG failure, not a transport one — \
+         reporting it as a connection problem is what sent issue 1050 chasing a router"
+    );
+
+    // Positive control: naming one still opens, so the refusal above is about
+    // ambiguity and not about the stubs being unopenable.
+    let named = nros_rmw_cffi::CffiSession::open_named("tb_a", "tcp/127.0.0.1:7447", 0, 0, "amb_a")
+        .expect("naming a registered backend still opens");
+    drop(named);
+}

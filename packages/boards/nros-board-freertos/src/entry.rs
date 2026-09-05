@@ -191,6 +191,10 @@ where
         locator: Some(ctx.config.base.zenoh_locator),
         domain_id: Some(ctx.config.base.domain_id),
         namespace: None,
+        // Issue 1050 defect (3) — the baked rung reaches the resolver. This
+        // board has no environment to read, so before it existed an image here
+        // could not name its backend at all.
+        rmw: baked.rmw,
     });
     let executor = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,
@@ -657,6 +661,10 @@ where
         locator: Some(ctx.config.base.zenoh_locator),
         domain_id: Some(ctx.config.base.domain_id),
         namespace: None,
+        // Issue 1050 defect (3) — the baked rung reaches the resolver. This
+        // board has no environment to read, so before it existed an image here
+        // could not name its backend at all.
+        rmw: baked.rmw,
     });
     let boot_exec = match ::nros::Executor::open(&exec_cfg) {
         Ok(e) => e,

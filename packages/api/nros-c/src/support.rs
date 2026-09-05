@@ -163,6 +163,36 @@ pub unsafe extern "C" fn nros_support_init_named(
     domain_id: u8,
     session_name: *const c_char,
 ) -> nros_ret_t {
+    // Issue 1050 defect (3) — NULL selector: this image names no backend, so
+    // the registry must hold exactly one.
+    unsafe { nros_support_init_rmw(support, locator, domain_id, session_name, core::ptr::null()) }
+}
+
+/// Issue 1050 defect (3) — [`nros_support_init_named`] with an explicit RMW
+/// selector.
+///
+/// `rmw` is the BAKED rung of precedence model A (RFC-0045): a hosted
+/// `$NROS_RMW` still wins, NULL or `""` means "no selector", and a selector
+/// that names no registered backend is an error rather than a fallback.
+///
+/// The C surface needed this most. Its open path
+/// (`nros::internals::open_session`) never consulted `resolve_backend` at all —
+/// it took registry slot 0 whenever `$NROS_RMW` was unset, so a second backend
+/// registering from an `.init_array` ctor before `main` silently won. That is
+/// fixed at the source (`nros_rmw_cffi::get_vtable` resolves once, for every
+/// language), and this is how a C image says which one it meant.
+///
+/// # Safety
+/// As [`nros_support_init_named`], plus: `rmw` must be a valid NUL-terminated
+/// string or NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_support_init_rmw(
+    support: *mut nros_support_t,
+    locator: *const c_char,
+    domain_id: u8,
+    session_name: *const c_char,
+    rmw: *const c_char,
+) -> nros_ret_t {
     if support.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -206,6 +236,18 @@ pub unsafe extern "C" fn nros_support_init_named(
         // flow to the resolver's range check and fail loudly.
         domain_id: nros_node::baked_domain_from_c_abi(domain_id),
         namespace: None,
+        // Issue 1050 defect (3) — an empty selector is "unset", not a backend
+        // named "": the bake macro expands to a string literal, and an
+        // unresolved cmake variable produces `""` rather than nothing.
+        rmw: if rmw.is_null() {
+            None
+        } else {
+            match core::ffi::CStr::from_ptr(rmw).to_str() {
+                Ok("") => None,
+                Ok(s) => Some(s),
+                Err(_) => return NROS_RET_INVALID_ARGUMENT,
+            }
+        },
     };
     // issue 0687 — the environment rung comes from the hosted edge now. This
     // call passed `hosted_env: true` unconditionally and relied on the core's
@@ -288,6 +330,9 @@ pub unsafe extern "C" fn nros_support_init_named(
             SessionMode::Client,
             support.domain_id as u32,
             &name,
+            // Issue 1050 defect (3) — the RESOLVED selector (env > baked). The
+            // borrow is of `resolved`, which outlives this call.
+            resolved.rmw,
         ) {
             Ok(session) => {
                 // Write session directly into inline opaque storage

@@ -571,6 +571,30 @@ function(nano_ros_entry)
         endif()
     endif()
 
+    # Issue 1050 defect (3) — bake the RMW SELECTOR, and do it OUTSIDE the block
+    # above.
+    #
+    # The locator and domain bakes are gated on a non-posix, non-Zephyr, active
+    # board, because a locator is an embedded-deployment fact. The selector is
+    # not: the case it exists for is a HOSTED one. A Rust backend compiled into
+    # `libnros_cpp.a` registers itself from an `.init_array` ctor, which runs
+    # before `main` and therefore before the image's own generated
+    # `nros_app_register_backends()`. So on hosted POSIX the registry can hold a
+    # backend the image never declared, and — until this — the image had no way
+    # to say which one it meant.
+    #
+    # `NANO_ROS_RMW` is exactly the registry's vocabulary: each backend
+    # registers under the same four names this variable takes
+    # (`nros_rmw_cffi_register_named("zenoh"/"cyclonedds"/"xrce"/"uorb", …)`).
+    # `check-entry-rmw-vocabulary` holds the two sides together, because a
+    # selector that names no registered backend is a hard error rather than a
+    # fallback — a drift here would turn a working image into one that cannot
+    # open a session.
+    if(TARGET ${_NRA_NAME} AND NANO_ROS_RMW)
+        target_compile_definitions(${_NRA_NAME} PRIVATE
+            "NROS_ENTRY_RMW=\"${NANO_ROS_RMW}\"")
+    endif()
+
     # phase-263 C2 (issue 0097) — embedded LAUNCH Entry link pass. The standalone
     # `nano_ros_node_register` carrier calls `nros_platform_link_app` for the embedded
     # boards (startup source + app_define + linker script + kernel/netstack umbrella +

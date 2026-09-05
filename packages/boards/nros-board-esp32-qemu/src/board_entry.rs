@@ -189,6 +189,10 @@ impl Esp32QemuEntry {
             locator: Some(config.zenoh_locator),
             domain_id: Some(config.domain_id),
             namespace: None,
+            // Issue 1050 defect (3) — the baked rung reaches the resolver.
+            // This board has no environment to read, so before it existed an
+            // image here could not name its backend at all.
+            rmw: baked.rmw,
         })
         .clock_us(nros_platform_esp32_qemu::clock::clock_us);
         let executor = match nros::Executor::open(&exec_config) {

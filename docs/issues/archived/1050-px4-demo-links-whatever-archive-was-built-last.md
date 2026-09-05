@@ -1,13 +1,14 @@
 ---
 id: 1050
 title: "`just px4 build-sitl-example` links whatever `libnros_cpp.a` was built last, so a uORB-only module fails at `nros::init()` because a backend it never declared won slot 0"
-status: open
+status: resolved
 type: bug
 area: build, testing
 severity: high
 found: 2026-09-04
-# defects (1) and (2) are fixed; (3) — `nros::init()` takes slot 0 — is why
-# this stays open.
+# All three defects are fixed: (1) the recipe builds the archive it links,
+# (2) `BACKENDS` is a configure-time assertion, (3) the RMW selector gained a
+# baked rung and the unnamed open refuses an ambiguous registry.
 related: [1046, 0436, phase-325, 0616, phase-424]
 ---
 
@@ -257,9 +258,100 @@ its backend. `Executor::open_with_rmw("uorb", …)` exists and the examples'
 `nros::init()` does not reach it. That is a consumer-facing API decision and
 still wants an owner.
 
+## (3) FIXED 2026-09-05 — and it was two defects, one of them worse than filed
+
+The framing above says "`nros::init()` takes slot 0". Measured, that is HALF
+right, and the half that is true is on the surface this issue never looked at.
+
+### The C++ path was already safe, and its refusal is what the demo hit
+
+`nros_cpp_init` opens through `Executor::open_in`, which has consulted
+`nros_rmw_cffi::resolve_backend` since phase-128.A.3. With zenoh and uORB both
+registered and no `$NROS_RMW`, that returns `Ambiguous` and the open FAILS. So
+the `ERROR [nros_uorb_demo] nros::init() failed` this issue opens with is the
+resolver refusing, not zenoh being opened — the narrative under "The mechanism"
+("It gets zenoh, dials the default `tcp/127.0.0.1:7447`, finds no router, and
+fails") was a hypothesis, and it is wrong. Corrected rather than deleted: it is
+the reason the fix below is an API gap and not a crash.
+
+### The C path really did take slot 0, silently
+
+`nros::internals::open_session` — the C API's open — never consulted
+`resolve_backend` at all. It read `$NROS_RMW` itself and, unset, called
+`CffiRmw::open` → `get_vtable()` → **`default_vtable()`, registry slot 0**,
+whose own doc called it "the single-backend fast path". It is not a fast path
+when two backends are registered; it is a silent choice.
+
+One question with two answers, and only one of them refused. Reproduced first,
+as a test that failed against the tree:
+
+```
+packages/rmw/cffi/tests/two_backends.rs
+  unnamed_open_refuses_an_ambiguous_registry ... FAILED
+  "two backends registered and no selector: the open must be REFUSED"
+```
+
+Fixed at the source: `get_vtable()` resolves through `resolve_backend(None)`,
+so every language gets one policy. `InvalidConfig`, not `InvalidArgument` —
+nothing is connected at that point, and calling an unresolvable selection a
+transport failure is what sent this issue looking for a missing router.
+
+### The gap: `rmw` was the one config field with no baked rung
+
+`ExecutorConfig` resolves `env > baked > compiled default` for `locator`,
+`domain_id`, `node_name` and `namespace`. For `rmw` it read `env.rmw` **and
+nothing else** — `BootConfig` had no such field. So `$NROS_RMW` was the only way
+in the tree to name a backend, and an image with no environment to read (every
+RTOS target, and every hosted image whose launcher sets nothing) could not name
+one at all. That is why `BACKENDS uorb` could not mean what it reads as: the
+declaration existed, and the runtime had no way to hear it.
+
+The rung exists now, at every layer:
+
+| layer | before | after |
+| --- | --- | --- |
+| `BootConfig` | 4 fields | `+ rmw` |
+| `try_resolve_with` | `rmw: env.rmw` | `rmw: env.rmw.or(baked.rmw)` |
+| `BakedBootConfig` (linker section) | v1, 4 flags | v2, `+ rmw: [u8; 32]`, bit 4 |
+| C++ | `nros_cpp_init` | `+ nros_cpp_init_rmw`, `nros::init_with_rmw`, `Executor::create_with_rmw` |
+| C | `nros_support_init_named` | `+ nros_support_init_rmw` |
+| cmake | `NROS_ENTRY_LOCATOR`, `NROS_ENTRY_DOMAIN_ID` | `+ NROS_ENTRY_RMW` |
+
+`nros::init()` and `Executor::create()` read `NROS_ENTRY_RMW` themselves, so an
+entry gets the right backend with no source change. `nros_px4_add_module` bakes
+it from `BACKENDS` when exactly one is declared — with several there is no
+single answer, and picking by list order would be the same "whoever is first"
+policy this issue is about.
+
+The FFI additions are additive on purpose: `nros_cpp_init` is called by every
+generated C++ entry and by user code, so widening its signature would be an ABI
+break for all of them.
+
+`open_session` stopped reading `$NROS_RMW` and takes the RESOLVED selector
+instead — it was the tree's second environment reader, and being one is what
+made it blind to the baked rung.
+
+### Gate
+
+`check-entry-rmw-vocabulary` (fast line, buildless, self-testing). A baked
+selector that names no registered backend resolves to `Unknown`, which FAILS the
+open — it does not fall back. So cmake's `NROS_RMW_KNOWN` and the names each
+backend passes to `nros_rmw_cffi_register_named` must agree, and until now they
+agreed only by convention. Mutation-checked: renaming uORB's registration to
+`uorb2` fires it.
+
+### Not done, deliberately
+
+* **No PX4 SITL rebuild.** The mechanism is established by the resolver test and
+  by the resolution unit tests, not by watching a module start. Anyone with the
+  tree can check the end-to-end claim with `just px4 build-sitl-example`.
+* **`nros-board-linux` does not carry the rung.** It resolves through the hosted
+  edge, where `$NROS_RMW` already reaches it; adding a baked value there would
+  need a `DeployOverlay` field nothing sets.
+
 ## Three separable defects (original framing, kept)
 
-Only (1) was fixed at filing. (2) is fixed above. (3) remains.
+Only (1) was fixed at filing. (2) and (3) are fixed above.
 
 ## Not covered — swept 2026-09-05
 

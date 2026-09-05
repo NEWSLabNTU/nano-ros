@@ -303,6 +303,10 @@
     "verdict": "divergence",
     "why": "no allocator: `Executor` is constructed into CALLER storage -- `nros::Executor exec; Executor::create(exec, locator, domain_id)` -- with the session held in an `alignas(8) uint8_t storage_[NROS_CPP_EXECUTOR_STORAGE_SIZE]` inline array sized by the build. rclcpp's executors are constructed normally and shared by `SharedPtr`. Same shape as the pubsub stage's `cpp:Publisher::Publisher<M>`. the executor IS the session and the context here. `Executor::create` opens the middleware connection, nodes are created ON it, and every entity lands in its arena; there is no `rclcpp::Context` to hold, register with, or shut down separately. See `cpp:Context`."
   },
+  "cpp:Executor::create_with_rmw": {
+    "verdict": "extension",
+    "why": "`Executor::create` plus a backend selector -- it names the RMW backend the session opens against. rclc/rclcpp have no counterpart because a ROS 2 desktop process selects its middleware with the `RMW_IMPLEMENTATION` environment variable, and an embedded image has no environment to read -- which is precisely how issue 1050 happened: the selector had an env rung and no baked one, so a PX4 module declaring `BACKENDS uorb` could not say so and the registry's first entry won. The hosted env rung (`$NROS_RMW`) still takes precedence, matching `RMW_IMPLEMENTATION`'s authority; this is the rung beneath it. See `cpp:init_with_rmw`, which is the same rung on the free-function surface."
+  },
   "cpp:Executor::create_node": {
     "verdict": "divergence",
     "why": "static entity storage plus one session: a node is created BY the executor and its entities live in that executor's arena, so it cannot exist before one. rclcpp constructs a `Node` from a `Context` and later hands it to an executor with `add_node`. See `cpp:Executor::add_node` for the declined half and `c:executor_node_init` for the same divergence in C."

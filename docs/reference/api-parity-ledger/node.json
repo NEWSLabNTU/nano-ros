@@ -226,6 +226,10 @@
     "verdict": "extension",
     "why": "as `init_with_launch`, resolving the bringup the entry point was generated for instead of taking it as a parameter."
   },
+  "cpp:init_with_rmw": {
+    "verdict": "extension",
+    "why": "`nros::init` plus a backend selector -- it names the RMW backend the session opens against. rclc/rclcpp have no counterpart because a ROS 2 desktop process selects its middleware with the `RMW_IMPLEMENTATION` environment variable, and an embedded image has no environment to read -- which is precisely how issue 1050 happened: the selector had an env rung and no baked one, so a PX4 module declaring `BACKENDS uorb` could not say so and the registry's first entry won. The hosted env rung (`$NROS_RMW`) still takes precedence, matching `RMW_IMPLEMENTATION`'s authority; this is the rung beneath it. The plain `init` overloads read the same value from the baked `NROS_ENTRY_RMW` compile definition, so this exists for a caller choosing at run time."
+  },
   "cpp:make_node": {
     "verdict": "extension",
     "why": "the value-returning spelling of `create_node`, kept for entry points that can take the move."
