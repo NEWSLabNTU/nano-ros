@@ -92,3 +92,53 @@ the defect it was built to find.
 `report_arena_headroom` are two of an unknown number of diagnostics that assume
 a sink. Nothing has enumerated which other `nros_log` call sites are reachable
 only on a target that cannot carry one.
+
+## 2026-09-05 — the "unit-tested on the host" claim was not true either
+
+This issue's resolution rests on the record being verified on the host, with the
+silicon path left open. Measured today: **no lane sets `NROS_BOOT_REPORT`.**
+`git grep` over `just/`, `justfile` and `.github/` finds it only in
+`config-knob-census.py` and in `read-boot-report.py`'s own usage text. The cfg
+is set from an env var, so unlike a cargo feature it cannot even arrive by
+`--workspace` unification — every test in `boot_report::tests` had run zero
+times in CI.
+
+Same defect class as `sim-time` (phase-425) and the `env` tests (issue 0687),
+and `check node-std-tests` exists precisely for it. Both now run there.
+
+### And the gap that mattered was one layer further in
+
+Those unit tests exercise the RECORD — layout, magic, monotonic stage. Nothing
+exercised the LINK: that the allocator, on failing, actually writes the number
+an operator would dump. That link is the whole instrument. On the board this was
+built for the console UART is not wired, so the record is the only channel, and
+a record nobody writes to is indistinguishable from the silence it replaced.
+
+`executor::tests::arena_exhaustion_reaches_the_boot_record` closes it, through
+`arena_alloc_with_trailing` specifically — the half that was silent, and the
+half carrying every buffered subscription and every action entry. It asserts
+four things: the failure is recorded at all, the SHORTFALL is non-zero (that is
+the actionable number, not a flag), the shortfall is a plausible difference
+rather than an arbitrary value, and a SECOND failure does not overwrite the
+first — the allocation that explains the boot must survive later incidental
+ones.
+
+Mutation-checked: deleting the `note_alloc_failed` call from the `_with_trailing`
+path fails the test.
+
+### One thing the writing of it found
+
+The test cannot share a process with `boot_report::tests`. The record is a
+process-global static keeping only the first failure, and that module has a
+`note_alloc_failed(100, 8)` case — with both in one binary the link test read
+`(100, 8)` and its "nothing recorded before me" precondition fired. It is two
+cargo invocations for that reason, stated in the recipe.
+
+### STILL open, and unchanged
+
+No cell exercises the TARGET-side path: an image with
+`CONFIG_NROS_BOOT_REPORT=y`, an arena exhausted on purpose, a dump read back
+with the decoder. That needs a Zephyr SDK, and the host this was written on has
+none — the same wall issue 1075 hit today. What has moved is that the host side
+is now genuinely verified rather than nominally: the record is written by the
+real allocator on the real failure path, and a lane runs it.
