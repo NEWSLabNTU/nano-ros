@@ -211,9 +211,42 @@ has_orphan_include() {
 
 untracked_authored=0
 tracked_pure=0
+orphan_residue=0
+orphan_dirs=()
+
+# Issue 1074 — a config whose PACKAGE no longer exists is residue, not a finding.
+#
+# `git rm` cannot delete a gitignored file, and every leaf `.cargo/config.toml`
+# is gitignored (`.gitignore:111`, blanket, which is the whole reason this gate
+# exists). So deleting a package leaves its config on disk, in a directory that
+# is no longer a package — and the walk below, which is a FILESYSTEM walk, finds
+# it and reports it as an untracked authored config.
+#
+# phase-338 W2 (`ab486a8db`) collapsed 18 `-entry` example packages into their
+# node packages. Twelve of the eighteen corpses were still reporting here a
+# month later, and the remedy the gate printed — track it — would have
+# RESURRECTED config files for packages the tree had deliberately removed.
+#
+# The discriminator is "does anything in this package's directory survive in
+# git". Nothing does, for a deleted package; something always does for a live
+# one, because a package needs at least a manifest. Cheap, and it cannot
+# mistake a live leaf for a dead one.
+#
+# NOT VISIBLE ON CI, which is why it lasted: a fresh clone has no residue, so
+# this only ever fires on a machine that once built the old packages.
+package_is_deleted() {
+    local dir
+    dir="$(dirname "$(dirname "$1")")"   # <pkg>/.cargo/config.toml -> <pkg>
+    [ -z "$(git ls-files "$dir" 2>/dev/null)" ]
+}
 
 while IFS= read -r -d '' cfg; do
     cfg="${cfg#./}"
+    if package_is_deleted "$cfg"; then
+        orphan_residue=$((orphan_residue + 1))
+        orphan_dirs+=("$(dirname "$(dirname "$cfg")")")
+        continue
+    fi
     tracked=0
     git ls-files --error-unmatch "$cfg" >/dev/null 2>&1 && tracked=1
 
@@ -320,6 +353,28 @@ if [ "$tracked_pure" -ne 0 ]; then
         echo "      git rm --cached <path>"
     } >&2
     rc=1
+fi
+
+# Issue 1074 — the skip above is REPORTED, never silent.
+#
+# Skipping a config because its package is gone is right, but a skip nobody can
+# see is the same defect one layer over: the residue would sit there forever,
+# and the next person to wonder why an old example still has a `generated/` tree
+# would have nothing to read. So the count is printed, with the remedy that is
+# actually correct — DELETE the directory. Not `git add -f`, which is what this
+# gate used to imply and which would resurrect a deleted package's config.
+#
+# Advisory, not a failure: residue is local state that no clone and no CI run
+# has, so failing on it would make a green tree depend on a developer's history.
+if [ "$orphan_residue" -ne 0 ]; then
+    {
+        echo
+        echo "  note: skipped $orphan_residue cargo config(s) whose package has no tracked"
+        echo "  files — residue of a deleted package (\`git rm\` cannot remove a gitignored"
+        echo "  file, and every leaf config is gitignored). Not a finding, and not tracked"
+        echo "  by anything; delete the directories when convenient:"
+        printf '      rm -rf %s\n' "${orphan_dirs[@]}" | sort -u
+    } >&2
 fi
 
 [ "$rc" -eq 0 ] && echo "check-cargo-config-tracked: OK (tracked <=> hand-authored content)"
