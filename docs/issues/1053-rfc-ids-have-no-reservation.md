@@ -1,26 +1,30 @@
 ---
 id: 1053
-title: "RFC ids have no reservation, so two sessions both wrote 0087 — the same race `just issue-new` and `just phase-new` exist to stop"
+title: "RFC ids have no reservation, so two sessions both wrote 0087 — then two more wrote 0089. The same race `just issue-new` and `just phase-new` exist to stop"
 status: open
 type: bug
 area: docs, tooling
 severity: medium
 found: 2026-09-04
-related: [0884, phase-395, phase-420, phase-421]
+related: [0884, phase-395, phase-420, phase-421, phase-429]
 ---
 
 # Two RFCs numbered 0087, hours apart, both correct by the documented rule
 
 `docs/design/README.md` says how to start an RFC:
 
-> **New RFC:** copy [0000-template.md](0000-template.md) to `NNNN-slug.md`, next
+> **New RFC:** copy `docs/design/0000-template.md` to `NNNN-slug.md`, next
 > free number.
 
 "Next free number" is read-then-write. Two sessions did exactly that on
 2026-09-04:
 
-- PR #329 (opened 03:29Z) adds
-  `docs/design/0087-ros2-api-adoption-and-the-compile-or-conform-rule.md`.
+- PR #329 (opened 03:29Z) adds an RFC on ROS 2 API adoption, numbered 0087.
+  (It has since been renumbered to 0089 on `phase-417-ros2-api-adoption` — and
+  then collided AGAIN at 0089, which is the recurrence recorded at the end of
+  this issue. Not linked here: the file is on that branch and not on `main`, so
+  a link would be a dangling reference of exactly the kind
+  `check-doc-refs` exists to stop.)
 - PR #367 (merged 10:47Z) added
   `docs/design/0087-package-identity-and-provider-format.md`, plus 0088.
 
@@ -78,3 +82,44 @@ have merged and the number is cited from phase docs, issue `related:` lists and
 commit messages — which is the state issue 0884's renumbering commits describe
 ("docs: renumber — phase 341 -> 345, issues 0467-0471 -> 0492-0496", and a
 second one for the same collision a day later).
+
+## IT RECURRED 2026-09-05, on 0089 (was filed separately as #1086)
+
+Not a hypothetical repeat: the same race, on a different number, the day after.
+
+| file | branch | created |
+| --- | --- | --- |
+| `0089-ros2-api-adoption-and-the-compile-or-conform-rule.md` | `origin/phase-417-ros2-api-adoption` | 13:21 |
+| `0089-codegen-version-is-the-compatibility-token.md` | phase-429 work, local | later that day |
+
+Resolved by renumbering the second to 0090 — and **only because the collision
+happened to be noticed**. Nothing detects it. The second author had read
+`docs/design/README.md`, followed "next free number", and been wrong through no
+fault of their own, which is this issue's whole point arriving twice.
+
+Worth recording that the author of the losing RFC also filed this same issue a
+second time, as #1086, without finding 1053 first. Reading-then-writing produced
+a duplicate ISSUE about reading-then-writing producing duplicate RFCs. #1086 is
+retired into this one.
+
+### What the second instance measured
+
+**The renumber cost ten files across four directories** — `docs/design/` (the
+RFC and the README row), `docs/roadmap/` (the phase doc's
+`implements-tracked-by` and prose), `packages/core/` and `packages/tooling/`
+(source comments citing the RFC), `.github/workflows/` and `scripts/` (comments
+in CI steps and gates).
+
+That is the asymmetry with an issue id, and it is why the fix matters more here
+than for the series that already have one: an issue id lives in frontmatter and
+a few cross-links, while **an RFC number is cited from everywhere it governs**.
+The cost grows with every citation, so it is cheapest at reservation time and
+most expensive at exactly the moment a collision is discovered.
+
+### And it fails quietly
+
+Two files named `0089-*.md` coexist happily on separate branches. Nothing is red
+until both merge, at which point `docs/design/` holds two RFC-0089s and every
+`RFC-0089` citation in the tree is ambiguous — with no gate saying so. The
+uniqueness check in the Fix section above is the part that turns this from
+"noticed by luck" into "noticed by CI".
