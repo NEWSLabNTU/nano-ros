@@ -697,6 +697,29 @@ setup-hooks:
     done < <(nros_git_settings)
     echo "hooks installed: core.hooksPath -> .githooks"
 
+# Repair build dirs whose generated `build.ninja` no longer LOADS.
+#
+# ninja raises a manifest error (`multiple rules generate <x>` and friends) at
+# LOAD, before any rule runs — so the rule that would re-run cmake and rewrite
+# the manifest never gets the chance, and the dir stays wedged no matter what
+# you ask ninja to build (issue 0882). `cmake <build-dir>` re-runs configure
+# from the cached settings and regenerates the manifest in place.
+#
+# This never deletes a build dir. `rm -rf` proves only that a full build works,
+# which was never in doubt, and it destroys the one reproduction that would
+# have shown which dependency edge was missing — so a dir this cannot repair is
+# REPORTED and left alone.
+#
+# `just reconfigure-stale check` reports without repairing.
+[group("dev")]
+reconfigure-stale mode="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{mode}}" = "check" ]; then
+        exec ./scripts/nros-reconfigure-stale.sh --check
+    fi
+    exec ./scripts/nros-reconfigure-stale.sh
+
 # issue 0445 — which coordinates have produced no runtime result, and for how
 # long. The probes write one line per non-running fixture under
 # `target/nros-fixture-staleness/`; a fresh resolution deletes it. A cell stale

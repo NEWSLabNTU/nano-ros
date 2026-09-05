@@ -501,7 +501,12 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   `build.ninja` in place. This is the escape hatch for the one state ninja cannot recover
   from on its own: `multiple rules generate <x>` is raised at LOAD, before any rule runs,
   so ninja can never re-run cmake to fix itself (issue 0882 hit exactly this after a
-  half-applied fix).
+  half-applied fix). `just reconfigure-stale` does it across the tree — it probes every
+  `build.ninja` with a load-only `ninja -t targets`, re-runs `cmake` on the ones that
+  fail, and REPORTS rather than deletes anything it cannot repair (a wedged dir is the
+  only reproduction of whatever wedged it). `just reconfigure-stale check` reports
+  without repairing; gate `check-reconfigure-stale` is its negative control, since
+  "N build dir(s) load" is also what a probe that can never fail would print.
 - **Build-side stale probes must watch the same inputs as test-side gates** — a probe that misses
   `generated/**` lets a museum binary pass every sweep while tests fail STALE (issue 0196).
 - **Sweep contract:** every `just <plat>` invocation needs `source ./activate.sh` first (PATH wires
