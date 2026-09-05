@@ -141,3 +141,60 @@ gate nobody can debug, which is how this went unnoticed for eight runs.
 * Whether the two crons fire at all. Every run above exists, so they fire; what
   is unmeasured is whether any 05:00 run has EVER produced a zephyr verdict
   since phase-253 merged the workflows.
+
+## SECOND PASS 2026-09-05 — the first fix did not work, measured
+
+Two scheduled runs have fired since `2794adf0b` landed (2026-09-04T02:36 UTC),
+and both still skipped all three zephyr jobs:
+
+    2026-09-05T05:10   skipped,skipped,skipped   run 33946510222
+    2026-09-04T05:11   skipped,skipped,skipped   run 33839588525
+
+Both ran the FIXED workflow — verified by resolving each run's `head_sha` and
+grepping that commit's `nightly.yml`, not by assuming. And a
+`workflow_dispatch` on the same version (2026-09-04T19:39, run 33912319861) ran
+all three: `zephyr copy-out check` success, `zephyr ci-both` success, the
+example matrix expanded and reported per-cell results.
+
+So the outputs propagate on dispatch and the gate closes on schedule, and BOTH
+of its clauses are `true` by reading:
+
+* `run_zephyr` is `true` in every branch of its `case` except a literal `0 7 `
+  cron — including the fail-open default the first fix added;
+* `zephyr` is the literal `"true"` whenever the event is not `pull_request`,
+  and **`pull_request` is not a trigger of this workflow at all** (`on:` is
+  `workflow_dispatch` + two `schedule` crons).
+
+### What could not be read, and it is the same wall as last time
+
+Which of the two strings is actually empty is not observable:
+
+* `gh api .../actions/jobs/<id>/logs` returns **zero bytes** for this
+  workflow's `changes` job;
+* the step summary the first fix added is not exposed by the REST API
+  (`check-runs/<id>.output.summary` is null, `.text` is empty).
+
+The first fix put the value in exactly the two places that cannot be read back.
+That is not a criticism of the reasoning — it is the finding.
+
+### This pass
+
+1. **The dead clause is gone.** `needs.changes.outputs.zephyr == 'true'` cannot
+   be false by construction on any reachable trigger, so it can only ever fail
+   CLOSED and invisibly. The three gates now read `run_zephyr` alone, which is
+   the decision this lane is actually about. `zephyr` is still computed and
+   still reported; it just no longer decides anything.
+2. **`zephyr-gate-report`**, an `always()` job that writes the raw values —
+   quoted, so an empty string and `"true"` cannot be confused — to an
+   ARTIFACT. Artifacts survive; this workflow's logs and summaries demonstrably
+   do not.
+
+**Honest status: (1) may well be the repair, and it is justified regardless.**
+It is not confirmed, and it cannot be until a scheduled run fires. If the lane
+is still skipped at the next 05:00, the artifact says which string is wrong,
+which is the thing nobody has been able to see for ten nights.
+
+### Still not covered
+
+* The `0 7` platform family's guards, unchanged. They work today.
+* Whether any 05:00 run has EVER produced a zephyr verdict since phase-253.
