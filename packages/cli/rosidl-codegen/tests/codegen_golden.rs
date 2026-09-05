@@ -323,3 +323,94 @@ fn the_committed_c_and_cpp_goldens_state_the_same_bound() {
         problems.join("\n  ")
     );
 }
+
+/// RFC-0089 / phase-429 W1 — EVERY generated C and C++ header must reference the
+/// codegen-version anchor for the version it was emitted at.
+///
+/// The golden above already pins the exact bytes, but re-recording a golden is a
+/// one-command reflex; this test states the INVARIANT, so dropping the
+/// codegen-version partial from one of the six C/C++ templates fails with a
+/// message about the mechanism rather than as a byte diff a reviewer waves
+/// through. It also binds the emitted number to `NROS_CODEGEN_VERSION`: the
+/// runtime defines anchors for exactly that range, so an artifact stamped with
+/// any other number could not link.
+///
+/// Only HEADERS carry the stamp — a generated `.c` gets it transitively from its
+/// own header, and a C++ artifact is headers-only, so a header is the only place
+/// it CAN carry it.
+#[test]
+fn every_generated_c_and_cpp_header_stamps_the_codegen_version() {
+    let version = rosidl_codegen::codegen_version::NROS_CODEGEN_VERSION;
+    let anchor = format!("nros_codegen_version_v{version}");
+    let emitted = emit_corpus();
+
+    let headers: Vec<&String> = emitted
+        .keys()
+        .filter(|k| k.ends_with(".h") || k.ends_with(".hpp"))
+        .collect();
+    assert!(
+        !headers.is_empty(),
+        "corpus emitted no C/C++ headers, so this test asserts nothing"
+    );
+
+    let unstamped: Vec<&&String> = headers
+        .iter()
+        .filter(|k| !emitted[**k].contains(&anchor))
+        .collect();
+    assert!(
+        unstamped.is_empty(),
+        "{} generated header(s) do not reference {anchor}: {unstamped:?}\n\
+         Every C/C++ pack template must include the codegen-version partial — that \
+         reference is what turns a runtime which does not accept version {version} \
+         into a LINK error naming the version (RFC-0089).",
+        unstamped.len()
+    );
+}
+
+/// RFC-0089 / phase-429 W1 — the STRUCTURAL half of the stamp check, and it is
+/// not redundant with the behavioural one above.
+///
+/// The emit corpus renders C++ headers for MESSAGES only — there is no
+/// `Probe.srv.hpp` or `Probe.action.hpp` in it — so a corpus-driven assertion
+/// covers four of the six C/C++ header templates and reads as if it covered all
+/// six. Deleting the include from `service_cpp.hpp` passed that test (measured,
+/// while writing it) and would also have passed the golden. This one names the
+/// six templates directly, so every site is covered whether or not the corpus
+/// exercises it (the issue-0196 rule: a gate must be as wide as the rule).
+#[test]
+fn every_c_and_cpp_header_template_includes_the_codegen_version_partial() {
+    const PARTIAL: &str = "_codegen_version.jinja";
+    // The header templates a compiler ever sees. `message.c` / `service.c` /
+    // `action.c` are deliberately absent: each includes its own header, and
+    // stamping both would put two anchors where one does.
+    const HEADER_TEMPLATES: &[&str] = &[
+        "message.h",
+        "service.h",
+        "action.h",
+        "message_cpp.hpp",
+        "service_cpp.hpp",
+        "action_cpp.hpp",
+    ];
+
+    let packs: std::collections::BTreeMap<&str, &str> = rosidl_codegen::render::bundled_packs()
+        .iter()
+        .copied()
+        .collect();
+    assert!(
+        packs.contains_key(PARTIAL),
+        "the codegen-version partial {PARTIAL} is not a registered pack; \
+         an `include` of it would fail at render time"
+    );
+
+    for name in HEADER_TEMPLATES {
+        let body = packs.get(name).unwrap_or_else(|| {
+            panic!("pack {name} is not registered — did a template get renamed?")
+        });
+        assert!(
+            body.contains(PARTIAL),
+            "pack template {name} does not include {PARTIAL}, so the artifacts it \
+             emits carry no codegen-version stamp and would link against ANY \
+             runtime (RFC-0089)."
+        );
+    }
+}

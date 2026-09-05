@@ -26,6 +26,8 @@
 #include "{{ inc }}"
 {%- endfor %}
 
+{% include "_codegen_version.jinja" %}
+
 // FFI declarations
 extern "C" {
 int {{ ffi_publish_fn }}(void* handle, const void* msg);

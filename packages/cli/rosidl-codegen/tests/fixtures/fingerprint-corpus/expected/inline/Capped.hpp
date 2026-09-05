@@ -17,6 +17,24 @@
 #include "nros/size_bound.hpp"
 #include "nros/serialization_format.hpp"
 
+/* RFC-0089 — emitted by nano-ros codegen version 1. The runtime defines
+ * one weak `nros_codegen_version_v<K>` per version it accepts, so a runtime
+ * that does not accept 1 fails to LINK this artifact and names the
+ * version. Regenerate with `nros sync` against the runtime you are building. */
+#ifndef NROS_CODEGEN_VERSION_ANCHOR_V1
+#define NROS_CODEGEN_VERSION_ANCHOR_V1
+#ifdef __cplusplus
+extern "C" const unsigned char nros_codegen_version_v1;
+#else
+extern const unsigned char nros_codegen_version_v1;
+#endif
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((used, unused))
+static const unsigned char *const nros__codegen_version_anchor_v1 =
+    &nros_codegen_version_v1;
+#endif
+#endif /* NROS_CODEGEN_VERSION_ANCHOR_V1 */
+
 // FFI declarations
 extern "C" {
 int nros_cpp_publish_fingerprint_corpus_msg_capped(void* handle, const void* msg);

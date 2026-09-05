@@ -4,6 +4,7 @@ pub use rosidl_lower::config;
 /// phase-403 W6 — the derived per-type size bound leaves codegen as build
 /// metadata, instead of stopping at a `#define` in a generated header.
 pub mod bounds;
+pub mod codegen_version;
 // RFC-0061 / phase-318 W1 — the tool answers "would I emit different bytes?"
 pub mod fingerprint;
 pub mod generator;

@@ -128,3 +128,44 @@ pub use heapless;
 pub mod heap {
     pub use alloc::{string::String, vec::Vec};
 }
+
+/// RFC-0090 — tests for `codegen_version`, deliberately NOT inside that module's
+/// file. `nros-build-helpers` and `rosidl-codegen` `include!` it verbatim, so
+/// anything there is compiled into them too; the file is kept to constants and
+/// `const fn`s, and its behaviour is exercised from here.
+#[cfg(test)]
+mod codegen_version_tests {
+    use crate::codegen_version::*;
+
+    // The non-empty-range invariant is NOT a test here: it is a property of two
+    // constants, so it is a `const _: () = assert!(…)` in `codegen_version.rs`
+    // and is checked at compile time in every crate that includes that file.
+    // Written as a runtime test it is `clippy::assertions_on_constants`, which
+    // is a hard error under `-D warnings`.
+
+    #[test]
+    fn accepts_the_range_and_nothing_outside_it() {
+        assert!(accepts(NROS_CODEGEN_VERSION));
+        assert!(accepts(NROS_CODEGEN_VERSION_MIN));
+        assert!(
+            !accepts(NROS_CODEGEN_VERSION + 1),
+            "code emitted by a NEWER binary must be refused — the runtime is \
+             the older side and cannot know what changed"
+        );
+        assert!(
+            !accepts(NROS_CODEGEN_VERSION_MIN.saturating_sub(1)) || NROS_CODEGEN_VERSION_MIN == 0,
+            "code below the floor must be refused, not silently accepted"
+        );
+    }
+
+    /// Version 0 is reserved for "did not say".
+    ///
+    /// A generated artifact that carries no version reads as 0 through every
+    /// path that parses one, and must never be accepted: an artifact that did
+    /// not declare its version is exactly the pre-phase-429 artifact this
+    /// mechanism exists to catch.
+    #[test]
+    fn zero_is_never_accepted() {
+        assert!(!accepts(0));
+    }
+}
