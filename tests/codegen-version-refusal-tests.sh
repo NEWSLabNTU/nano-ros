@@ -16,13 +16,18 @@
 #   2. out of range  -> #error, both C and C++
 #   3. config header present but silent -> #error (fail-closed)
 #
-# NOT COVERED: the Rust half. Its assertion is a crate-scope `const _: () =
-# assert!(...)`, and proving it fires needs a compile-failure harness this repo
-# does not have — there is no `trybuild` (`format_check.rs` records the same
-# finding) and CLAUDE.md bans compiling inside tests. It was verified by hand
-# (`cargo check -p nros-lifecycle-msgs` with the token flipped gives E0080), and
-# `rosidl-bindgen`'s own test asserts the emitted token equals the runtime
-# constant. Stated rather than silently skipped.
+# Arm D covers the RUST half, and it exists because the first version of this
+# gate declined to — on a reason that was wrong. It said "CLAUDE.md bans
+# compiling inside tests", which is true and irrelevant: that ban is on
+# COMPILING AT TEST RUNTIME, and this is a GATE. `check-c` has compiled an
+# expected-failure probe for years (`serialization_format_mismatch_probe.c`),
+# which is the same shape one language over. `format_check.rs` is right that
+# there is no `trybuild`; it does not follow that the negative case cannot be
+# proven, only that it is proven with cargo instead.
+#
+# The probe is a scratch crate rather than an in-tree file, because the
+# assertion under test lives in EMITTED code: a tracked probe would have to be
+# hand-written to look like emitted code and could drift from it silently.
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -129,6 +134,51 @@ if grep -q 'did not define NROS_CODEGEN_VERSION' <<< "$out"; then
 else
     bad "C  a silent config header did not produce the fail-closed diagnostic"
     printf '        %s\n' "$(head -1 <<< "$out")"
+fi
+
+# D — the Rust half: a crate-scope `const _: () = assert!(…)` against the same
+#     runtime constant, which is what every generated Rust crate carries.
+if command -v cargo >/dev/null; then
+    probe="$work/rustprobe"
+    mkdir -p "$probe/src"
+    cat > "$probe/Cargo.toml" <<TOML
+[package]
+name = "codegen_version_probe"
+version = "0.0.0"
+edition = "2021"
+[dependencies]
+nros-core = { path = "$root/packages/core/nros-core", default-features = false }
+[workspace]
+TOML
+    write_probe() {  # $1 = emitted version
+        cat > "$probe/src/lib.rs" <<RS
+#![no_std]
+pub const NROS_EMITTED_CODEGEN_VERSION: u32 = $1;
+const _: () = assert!(
+    nros_core::codegen_version::accepts(NROS_EMITTED_CODEGEN_VERSION),
+    "this crate's NROS_EMITTED_CODEGEN_VERSION is not accepted by the nros-core \
+     it is being compiled against"
+);
+RS
+    }
+    # `NROS_CARGO_FLAGS=` clears the repo's `--locked` shim: this crate is
+    # synthesized outside any workspace and has no lock to honour.
+    write_probe "$emitted"
+    if NROS_CARGO_FLAGS= cargo check -q --manifest-path "$probe/Cargo.toml" 2>/dev/null; then
+        ok "D  Rust: version $emitted inside the accepted range compiles"
+    else
+        bad "D  Rust: the emitted version does NOT compile against a runtime that accepts it"
+    fi
+    write_probe "$((emitted + 6))"
+    out="$(NROS_CARGO_FLAGS= cargo check -q --manifest-path "$probe/Cargo.toml" 2>&1 || true)"
+    if grep -q 'E0080' <<< "$out"; then
+        ok "D  Rust: a version outside the range is REFUSED at compile time"
+    else
+        bad "D  Rust: out-of-range version was accepted (expected error[E0080])"
+        printf '        %s\n' "$(head -1 <<< "$out")"
+    fi
+else
+    echo "  SKIP  D  Rust: cargo not on PATH" >&2
 fi
 
 echo
