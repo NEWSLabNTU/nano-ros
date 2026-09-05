@@ -333,6 +333,7 @@ fast-serial: \
     workspace-order \
     xrce-source-manifest \
     zenoh-config-template \
+    zenoh-platform-macros \
     zenohd-flag-invocations \
     zenohd-resolution-parity \
     zenohd-router-skips \
@@ -2455,6 +2456,15 @@ zenohd-resolution-parity:
 # rejected, and the reader gets a default-configured router with no diagnostic.
 # Gated because the class regenerates by copy-paste from a neighbouring example
 # header — which is how it reached ~95 files.
+# Issue 1039 — a port may declare its own platform to zenoh-pico, never
+# somebody else's. `nros-platform-nuttx` defined ZENOH_LINUX to reach the
+# `getrandom()` arm; the arm was right and the name was not, and the claim
+# then became load-bearing in three unrelated guards. Scans BOTH producers
+# (the platform manifests and `runner.rs`'s `build.define`), and runs its own
+# negative control first.
+zenoh-platform-macros:
+    @python3 scripts/check-zenoh-platform-macros.py
+
 zenohd-flag-invocations:
     @python3 scripts/check-zenohd-flag-invocations.py
 
