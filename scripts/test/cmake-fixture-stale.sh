@@ -67,6 +67,19 @@ after="$(_arts)"
 if [ -z "$before" ] && [ -z "$after" ]; then
     # No artifact to compare (shape changed). Fall back to the output grep so
     # this degrades to the previous behaviour instead of passing blindly.
+    #
+    # issue 0945 item 6 — SAY SO, for the same reason the rust probe does. The
+    # grep this falls back to is the pre-`2fa1ed09f` rule, which is permanently
+    # "stale" for the 17 Corrosion cells issue 0835 identified: their link
+    # re-runs on an order-only edge and produces a byte-identical executable.
+    # So a cell that lands here is not degrading to "the previous behaviour"
+    # neutrally — it is degrading to the behaviour 0835 exists to have removed,
+    # and reporting it as an ordinary stale cell.
+    #
+    # Measured 2026-09-05: 120 of 120 cmake cells find their executable, so this
+    # branch is unreachable today and any occurrence is news.
+    printf 'DEGRADED\t%s\t%s\n' "$bd" \
+        "no top-level executable in the build dir; verdict falls back to the pre-2fa1ed09f output grep"
     if printf '%s' "$out" | grep -qE "Building (C|CXX|ASM) object|Linking (C|CXX|CXX shared)|Compiling [a-z0-9_-]+ v"; then
         echo "$bd"
     fi

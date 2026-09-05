@@ -134,6 +134,28 @@ build_rc=$?
 if [ -z "$art_before" ] && [ -z "$(_row_artifacts)" ]; then
     # Nothing to compare — an unbuilt row, or a leaf whose bins this cannot
     # name. Fall back to cargo's own signal rather than passing blindly.
+    #
+    # issue 0945 item 6 — SAY SO. This branch is the one a cargo output-layout
+    # change produces, and it is silent: `_row_artifacts` globs
+    # `<target-dir>/[<triple>/]<profile>/<bin>`, cargo's convention rather than
+    # anything cargo promises. If that layout moves, every row lands here at
+    # once, the probe reverts to `"fresh":false`, and for rows sharing a
+    # phase-340 group that signal is PERMANENTLY true because they evict each
+    # other — which is issue 0835 exactly: ~22 rows reporting stale on every run
+    # with byte-identical binaries, and ~190 fixture-stale failures per
+    # `just ci-matrix`. Reported as a self-healing WARNING, which reads as the
+    # gate working.
+    #
+    # Measured 2026-09-05 across the shared checkout: 116 of 117 rust rows find
+    # an artifact, so this branch is nearly unreachable today and a jump in the
+    # count is the signal. The one row already on it is
+    # `packages/testing/qemu-smoltcp-bridge`, whose Cargo.toml names no binary
+    # the glob can find.
+    #
+    # `DEGRADED` widens no watch set, so it cannot make 0835 worse — phase-424's
+    # constraint. It is a fact ABOUT the verdict, not a new input to it.
+    printf 'DEGRADED\t%s\t%s\n' "$dir${cargo_args:+ ($cargo_args)}" \
+        "no artifact matched $(_row_bins | tr '\n' ' ' | sed 's/ $//' | sed 's/^$/(no [[bin]] name in Cargo.toml)/'); verdict falls back to cargo's \"fresh\" flag"
     if [ "$build_rc" -eq 0 ]; then
         # `nros_grep_q`, not a bare `grep -q`: this branch decides a VERDICT, and
         # a grep that fails to start (issue 0726 — measured under a 32-way gate

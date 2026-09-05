@@ -90,6 +90,38 @@ else
         [ -n "$out" ] && cmake_stale+=("$out")
     done < <(cmake_records)
 fi
+# issue 0945 item 6 — a cell whose artifact the probe could not find decides its
+# verdict by a DIFFERENT rule (the pre-`2fa1ed09f` output grep), so it is not an
+# ordinary member of the stale list. Split it out before counting.
+#
+# Re-split on newlines FIRST. A degrading probe prints its `DEGRADED` line AND
+# then, if the fallback rule fires, the stale line — two lines from one run. The
+# `parallel` branch above reads them through `mapfile` and gets two elements;
+# the serial branch captures the whole run in ONE `$( )` and gets one element
+# holding both. Bucketing without this would classify the pair by whichever line
+# came first, differently depending on whether GNU parallel is installed.
+_split_lines() {
+    local _e _l
+    _NROS_SPLIT=()
+    for _e in "$@"; do
+        while IFS= read -r _l; do
+            [ -n "$_l" ] && _NROS_SPLIT+=("$_l")
+        done <<<"$_e"
+    done
+}
+
+cmake_degraded=()
+_cmake_kept=()
+_split_lines ${cmake_stale[@]+"${cmake_stale[@]}"}
+for line in ${_NROS_SPLIT[@]+"${_NROS_SPLIT[@]}"}; do
+    case "$line" in
+        DEGRADED$'\t'*) cmake_degraded+=("${line#DEGRADED$'\t'}") ;;
+        *)              _cmake_kept+=("$line") ;;
+    esac
+done
+cmake_stale=(${_cmake_kept[@]+"${_cmake_kept[@]}"})
+unset _cmake_kept
+
 if [ ${#cmake_stale[@]} -gt 0 ]; then
     echo "WARNING: ${#cmake_stale[@]} C/C++ fixture cell(s) were STALE and have now been rebuilt (cmake):" >&2
     printf '  %s\n' "${cmake_stale[@]}" >&2
@@ -150,10 +182,13 @@ fi
 # self-heal for a fixture that had never compiled.
 rust_failed=()
 rust_rebuilt=()
-for line in ${rust_stale[@]+"${rust_stale[@]}"}; do
+rust_degraded=()
+_split_lines ${rust_stale[@]+"${rust_stale[@]}"}
+for line in ${_NROS_SPLIT[@]+"${_NROS_SPLIT[@]}"}; do
     case "$line" in
-        FAILED$'\t'*) rust_failed+=("${line#FAILED$'\t'}") ;;
-        *)            rust_rebuilt+=("$line") ;;
+        FAILED$'\t'*)   rust_failed+=("${line#FAILED$'\t'}") ;;
+        DEGRADED$'\t'*) rust_degraded+=("${line#DEGRADED$'\t'}") ;;
+        *)              rust_rebuilt+=("$line") ;;
     esac
 done
 
@@ -161,6 +196,34 @@ if [ ${#rust_rebuilt[@]} -gt 0 ]; then
     echo "WARNING: ${#rust_rebuilt[@]} rust fixture(s) were STALE and have now been rebuilt by cargo:" >&2
     printf '  %s\n' "${rust_rebuilt[@]}" >&2
     echo "  (cargo incremental self-heal; bypass with  NROS_SKIP_FIXTURE_CHECK=1 )" >&2
+fi
+
+# issue 0945 item 6 — report the rows whose verdict came from the FALLBACK rule.
+#
+# A WARNING, not an error, and the distinction is the point: a degraded row is
+# not known to be stale or fresh, it is known to have been decided by a rule
+# this gate does not stand behind. Escalating would make a `just ci` red on a
+# row nobody can act on; staying silent is what let the state exist unnoticed.
+#
+# The COUNT is the signal, not any single line. Measured 2026-09-05: 116 of 117
+# rust rows and 120 of 120 cmake cells locate their artifact, so the expected
+# reading is ONE. A jump means cargo's output layout or a build dir's shape
+# moved, and every affected row silently reverted to the pre-0835 rule — which
+# for rows sharing a phase-340 cargo group is permanently "stale", the exact
+# ~190-failure state issue 0835 measured and removed.
+_degraded_total=$(( ${#rust_degraded[@]} + ${#cmake_degraded[@]} ))
+if [ "$_degraded_total" -gt 0 ]; then
+    echo "WARNING: $_degraded_total fixture row(s)/cell(s) fell back to a DEGRADED staleness rule:" >&2
+    for _d in ${rust_degraded[@]+"${rust_degraded[@]}"} ${cmake_degraded[@]+"${cmake_degraded[@]}"}; do
+        printf '  %s\n' "$_d" | sed 's/\t/\n      /' >&2
+    done
+    echo "  These are neither confirmed fresh nor confirmed stale: the probe could not" >&2
+    echo "  locate the artifact it compares, so the verdict came from cargo's \"fresh\"" >&2
+    echo "  flag (rust) or the output grep (cmake) — the pre-2fa1ed09f rules, which are" >&2
+    echo "  permanently \"stale\" for rows sharing a phase-340 cargo group (issue 0835)." >&2
+    echo "  ONE is expected today (packages/testing/qemu-smoltcp-bridge names no [[bin]]" >&2
+    echo "  the locator can find). MORE than that means an on-disk layout moved —" >&2
+    echo "  see issue 0945 item 6 before trusting any staleness verdict in this run." >&2
 fi
 
 if [ ${#rust_failed[@]} -gt 0 ]; then
