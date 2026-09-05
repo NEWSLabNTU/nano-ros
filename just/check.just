@@ -222,6 +222,7 @@ fast-serial: \
     interlock-visibility \
     issue-ids \
     issue-index \
+    just-recipe-paths \
     just-recipe-refs \
     kconfig-knob-forwarding \
     kconfig-overridden-values \
@@ -263,6 +264,7 @@ fast-serial: \
     package-xml-uses \
     path-env-fingerprints \
     peer-sweep-lanes \
+    pipefail-sigpipe-assertions \
     platform-abi-mirror \
     platform-provider-features \
     pool-inventory \
@@ -336,9 +338,14 @@ fast-serial: \
     workspace-build-output \
     workspace-fmt \
     workspace-order \
+    xrce-config-manifest \
+    xrce-one-vendored-compile \
     xrce-source-manifest \
+    xrce-vendored-versions \
     zenoh-config-template \
+    zenoh-lane-ownership \
     zenoh-platform-macros \
+    zenoh-source-manifest \
     zenohd-flag-invocations \
     zenohd-resolution-parity \
     zenohd-router-skips \
@@ -2196,6 +2203,98 @@ box-sync-covers-tracked-source:
 zenoh-config-template:
     @python3 scripts/check-zenoh-config-template.py
 
+# phase-420 W9 — EXACTLY ONE LANE COMPILES THE VENDORED ZENOH-PICO TREE PER
+# PLATFORM. Measured 2026-09-05, because W9's zenoh bullet asked and the answer
+# decided the work: can one Zephyr image hold zenoh-pico TUs from BOTH lanes?
+# NO. Zephyr's `nros-platform.toml` says `[build.zenoh] compiled_by =
+# "platform"` and `runner.rs` skips `build_zenoh_pico_unified` on it (issue
+# 0534/0541 — the cargo lane cannot compile those TUs on Zephyr at all, they
+# include a `version.h` only the west build generates). The one C TU cargo emits
+# into a Zephyr image is the in-repo alias TU, which includes no vendored
+# header. So the "duplicate compile" W9 names is a per-platform SPLIT, and
+# "one build consumed by both" is not the shape the evidence supports.
+#
+# What it does support is this gate. The split rests on three statements that
+# have to agree — a TOML field, a Rust guard, and which lane answers a manifest
+# condition token — and a Zephyr C/C++ image links with
+# `-Wl,--allow-multiple-definition`, so if both lanes ever did compile the tree
+# the duplicate symbols would NOT stop the link: one lane's objects would
+# silently win, with the two lanes' independently-resolved `Z_FEATURE_*`
+# deciding flag-gated struct layouts inside it (issue 0135).
+#
+# The check that is not about shape, since `check-zenoh-source-manifest` covers
+# shape: A PLATFORM TOKEN IS ANSWERED TRUE-CAPABLE BY EXACTLY ITS OWNER. That
+# gate asserts both lanes answer the same token SET and says nothing about which
+# WAY. `set(_zenoh_cond_zephyr FALSE)` keeps the set identical and drops
+# `system/zephyr/network.c` from every Zephyr image (phase 160.C —
+# `Transport(ConnectionFailed)` at session open); `"zephyr" => true` keeps it
+# identical and compiles that Zephyr-only TU into every other platform. Both are
+# reported here, as is a record whose group token names a DIFFERENT platform
+# than its `system/<dir>/` path.
+#
+# And check (7), which found something on its first run: the tree is compiled
+# THREE times, not two. `scripts/qemu/build-zenoh-pico.sh` had its own
+# nine-directory loop, its own config header and its own slot defaults (issue
+# 1096), so `check-zenoh-source-manifest`'s "neither lane names a vendored path"
+# was true of the two lanes it knows and false of the repository. Every tracked
+# file naming the vendored SOURCE root must be a declared lane or carry a
+# TRACKED ISSUE ID, and the ledger is EMPTY now: that script reads the manifest
+# and is a declared lane, so checks (10)-(12) hold it to the build it proxies —
+# how it answers each condition token (it owns no platform, so `always` true and
+# every platform token false), and the two mirrors it cannot derive because
+# their inputs are cargo build-script environment: the generated config header
+# against `config_header()`, and its `-DZPICO_*` slot counts against
+# `ShimConfig::defines()`. Both had drifted — ten macros and three missing
+# `-D`s, 45 of the readiness build's 130 objects.
+#
+# Checks 8 and 9 close a hole review found after the first version: SWAPPING the
+# two groups' conditions (`zephyr_system zephyr` ⇄ `zephyr_isotp zephyr_isotp`)
+# leaves every token declared, used, answered and counted as before — sibling
+# green, checks 5 and 6 green, both tokens naming zephyr — while
+# `system/zephyr/network.c` starts compiling only under ISO-TP, which is the
+# phase-160.C ABI break on every non-ISO-TP Zephyr image. So: a group's NAME
+# must agree with its CONDITION on platform and feature (the name is what a
+# reader trusts, so `zephyr_system` gated on an ISO-TP feature is a lie in the
+# file), and its MIRROR — a feature-gated group holds the TUs that IMPLEMENT
+# that feature, which catches the records trading groups instead. Both rules are
+# stated in words in `zenoh-sources.txt`'s header too.
+# Buildless, ~1.1 s measured (check 7 reads every tracked build-ish file; the
+# other eight are a handful of files and are instant).
+[private]
+zenoh-lane-ownership:
+    @python3 scripts/check-zenoh-lane-ownership.py
+
+# phase-420 W9 / the mirror class issue 1068 fixed for micro-XRCE, one vendored
+# tree over. zenoh-pico is compiled THREE times — by `nros-zpico-build` for the
+# cargo lane, by `zephyr/cmake/nros_rmw_zenoh.cmake` for the west lane, and by
+# `scripts/qemu/build-zenoh-pico.sh` for the bare-metal QEMU readiness check —
+# and each lane held its own copy of the selection: the same nine directory
+# globs, written out three times, with nothing checking they agreed. (W9 landed
+# knowing two; the third was found by the sibling gate's check 7, issue 1096,
+# and reads the manifest now.)
+#
+# `packages/rmw/zenoh/zpico-sys/zenoh-sources.txt` is now the one list. Unlike
+# the XRCE manifest it names DIRECTORIES, because zenoh-pico's selection is a
+# RULE ("the whole core") on a rebased patch line, not a subset; the safety a
+# file list would buy is bought instead by asserting every `.c` in the tree is
+# covered by a record, left to the per-platform axis, or on a documented
+# not-compiled list. Also asserts that NO lane names a vendored path (pure
+# text, so it holds without the submodule) and that every lane that selects
+# answers exactly the manifest's condition tokens, both directions. Which WAY a
+# lane answers is `check-zenoh-lane-ownership` (5) and (10).
+#
+# And one check that is NOT about shape, because every other one is: PLATFORM-
+# CONDITIONAL COMPILATION IS LEGITIMATE ONLY FOR THE PLATFORM TREES — a path
+# under `src/system/<platform>/` must be in a conditional group, the core must
+# be in an unconditional one. Moving a record between two legitimately-declared
+# groups breaks no shape: `dir core … utils` → `dir zephyr_system … utils`
+# leaves every count identical and drops nine `.c` from every non-Zephyr build,
+# under the reader's "selected no sources" guard because 125 is not 0.
+# Buildless, ~40 ms.
+[private]
+zenoh-source-manifest:
+    @python3 scripts/check-zenoh-source-manifest.py
+
 # phase-206 W3 — the zpico run-time config-key table vs zenoh-pico's config.h.
 #
 # `zp_config_insert(config, Z_CONFIG_<X>_KEY, value)` is zenoh-pico's PRIMARY
@@ -2592,6 +2691,20 @@ rmw-api-comparison:
 [private]
 peer-sweep-lanes:
     @bash scripts/check-peer-sweep-lanes.sh
+
+# Issue 1077 — under `pipefail`, `… | grep -q X` reports a MATCH as a MISS
+# whenever the reader exits before the writer is done: builtin `printf`
+# flushes per LINE, `grep -q` stops at the first hit, and the writer's next
+# write takes SIGPIPE, whose 141 pipefail then makes the pipeline's status.
+# Measured at 2% per call on a 3-line haystack on an IDLE host — which is four
+# `check-fast` gates flaking, each wearing a considered assertion message that
+# pointed at real code. Fix is `nros_grep_q PAT <<<"$text"` — the 0726 helper
+# for the status contract, a HERE-STRING so there is no writer to kill.
+# Sibling of `grep-q-error-conflation`, which is about the status and skips any
+# line naming `nros_grep_q`; piping INTO the helper has the identical race.
+[private]
+pipefail-sigpipe-assertions:
+    @python3 scripts/check-pipefail-sigpipe-assertions.py
 
 # phase-419 W2 — an active phase must not contradict its own body. Sibling of
 # `roadmap-status`, which asserts a status EXISTS and deliberately stops there
@@ -2992,6 +3105,26 @@ gate-lists:
     @python3 scripts/check/check-gate-lists.py
 
 
+# Issue 1097 — every LITERAL in-repo path a recipe names must exist, and carry
+# the manifest its tool needs.
+#
+# The sibling of 0660 one level over: `just` resolves a recipe NAME only when
+# the recipe runs, and it never resolves a PATH at all. Two recipes were live
+# and dead when this landed, and both were born that way — `xrce
+# check-rust-rmw` (`cargo check` in a directory that has never held a
+# `Cargo.toml`) and `native test-ros2-shell` (a script phase-16 planned and
+# never committed). Both survived by being `[group("debug")]`, on no lane, and
+# named by nothing.
+#
+# Checks the MANIFEST, not just the directory, because the directory was fine:
+# cargo walks UP, so the 1097 recipe silently became a full-workspace check
+# that covered everything EXCEPT the crate it claimed to.
+#
+# A recipe's literal paths exist and carry their tool's manifest. Buildless, ~0.2 s.
+[group("ci")]
+just-recipe-paths:
+    @python3 scripts/check-just-recipe-paths.py
+
 # Issue 0660 — every `just <recipe>` inside a recipe body must name a real one.
 #
 # `just` resolves a recipe reference only when the recipe RUNS, so deleting a
@@ -3072,8 +3205,39 @@ rmw-xrce:
             "micro-XRCE-DDS-Client submodule not initialised (git submodule update --init packages/rmw/xrce/xrce-sys/micro-xrce-dds-client)"
         exit 0
     fi
+    # phase-420 W9 step 4 — ONE compile of the vendored tree, and it is the
+    # cargo one, because that is the lane that ships. This project links the
+    # archive `nros-rmw-xrce-cffi`'s build script produces instead of compiling
+    # micro-XRCE-DDS-Client and micro-CDR a second time with different flags,
+    # so its two CTest binaries now exercise the objects an image contains.
+    #
+    # THIS RECIPE BUILDS THE CRATE. It already compiled the same C — the compile
+    # moved lane, it did not move stage — and a check that resolved a prebuilt
+    # artifact nothing in its lane builds is exactly what `check-lane-contracts`
+    # forbids. So there is no "prebuild it first" instruction to get wrong.
+    #
+    # The archive lives at `target/<profile>/build/nros-rmw-xrce-cffi-<hash>/out/`
+    # and `<hash>` is neither stable nor predictable. It is NOT globbed (issue
+    # 0500: taking the first match of a glob is how a stale artifact shadows a
+    # fresh one). Cargo reports the directory itself, in the
+    # `build-script-executed` message; the build script writes
+    # `nros-xrce-vendor-build.txt` into it naming the archive and the generated
+    # headers, so the only fact crossing the seam here is OUT_DIR.
+    #
+    # `cargo::metadata=` + `DEP_<LINKS>_*` was the other candidate and does not
+    # reach: the consumer is a CMake project, and with no `links` key the JSON's
+    # `env` array is empty (measured 2026-09-05).
+    JSON="$(mktemp)"
+    cargo build -p nros-rmw-xrce-cffi --message-format=json > "$JSON"
+    # One line on purpose: a column-0 line inside a `just` recipe is parsed as
+    # SYNTAX, not as text, so a multi-line `python3 -c` program cannot live here
+    # (and an indented one is an IndentationError).
+    OUT_DIR="$(python3 -c "import json,sys;o=[j['out_dir'] for j in (json.loads(l) for l in open(sys.argv[1])) if j.get('reason')=='build-script-executed' and '/nros-rmw-xrce-cffi#' in j.get('package_id','')];sys.exit('rmw-xrce: expected exactly one nros-rmw-xrce-cffi build-script-executed message, got %d' % len(o)) if len(o)!=1 else print(o[0])" "$JSON")"
+    rm -f "$JSON"
+    echo "[rmw-xrce] linking the cargo lane's vendored archive from $OUT_DIR"
     BD="$(nros_build_dir "$NROS_KIND_XRCE_CHECK")"
-    cmake -S packages/rmw/xrce/nros-rmw-xrce -B "$BD" -DCMAKE_BUILD_TYPE=Release
+    cmake -S packages/rmw/xrce/nros-rmw-xrce -B "$BD" -DCMAKE_BUILD_TYPE=Release \
+        -DNROS_XRCE_CFFI_OUT_DIR="$OUT_DIR"
     cmake --build "$BD" --parallel
     ctest --test-dir "$BD" --output-on-failure
 
@@ -4808,6 +4972,41 @@ opaque-storage-guards:
 # carries "Node pkgs BEFORE entries so the entry codegen sees their metadata";
 # the entry packages already state that as <exec_depend>. Covers the cycle and
 # bad-subdir rejections and the cmake seam. Needs `just setup-cli`.
+# phase-420 W9 — the sibling of `xrce-source-manifest`, one axis over: that one
+# keeps the two XRCE lanes from re-growing a source list each, this one keeps
+# them from re-growing a CONFIGURATION each. Every `@TOKEN@` in the two upstream
+# `config.h.in` templates was written twice, and the six `CONFIG_NROS_XRCE_*`
+# Kconfig options reached the Rust lane and NOT the CMake one (a `grep -c` of
+# zero), so a stated MTU compiled in one lane and the default in the other.
+#
+# It checks WIRING, not just shape: Kconfig's per-option `Maps to <SYMBOL>.`
+# line must name exactly the symbols `xrce-config.txt` binds that knob to, so a
+# row whose columns are perfect and whose env name points at the wrong knob
+# fails. Buildless, ~40 ms.
+[private]
+xrce-config-manifest:
+    @python3 scripts/check-xrce-config-manifest.py
+
+# phase-420 W9 step 4 — the third XRCE mirror gate, one axis over. Its siblings
+# ask WHICH FILES (`xrce-source-manifest`) and WITH WHAT VALUES
+# (`xrce-config-manifest`); this one asks WHO COMPILES THEM.
+#
+# micro-XRCE-DDS-Client and micro-CDR were compiled twice from the same manifest
+# rows — cc-rs for six target families on one side, `add_library(… STATIC …)` on
+# the other — with each lane choosing its own flags. The CMake copy reached NO
+# image (dispatch maps `xrce` to the cargo crate everywhere, the Zephyr hook is a
+# no-op, nothing add_subdirectory()s the project), so `just check rmw-xrce` was
+# validating objects no image contains. That project now LINKS the cargo lane's
+# archive, and this asserts the arrangement holds: each lane declares the trees
+# it compiles and USES that declaration as its filter, the shipping lane declares
+# all of them, the CMake lane declares no vendored one and cannot even name their
+# source roots, and the pointer file the two exchange has one statement of its
+# name and keys on each side. Direction is checked, not just the count: swapping
+# the two declarations leaves every tree compiled exactly once and ships an
+# archive with no XRCE in it. Buildless, ~0.05 s.
+xrce-one-vendored-compile:
+    @python3 scripts/check-xrce-one-vendored-compile.py
+
 # Issue 1068 / RFC-0087's mirror class — micro-XRCE-DDS is compiled by TWO
 # lanes from one vendored tree, and the two source lists drifted: `build.rs`
 # honoured `NROS_LINK_IP=0` and dropped the UDP transports while the CMakeLists
@@ -4822,6 +5021,25 @@ opaque-storage-guards:
 [private]
 xrce-source-manifest:
     @python3 scripts/check-xrce-source-manifest.py
+
+# Issue 1069 — the same mirror class as `xrce-source-manifest`, one fact over.
+# `MICROCDR_VERSION_STR` compiled as "2.4.1" under CMake and "2.0.2" under
+# cargo, for a tree that is 2.0.2; the client said 2.4.1 in BOTH lanes against a
+# 3.0.1 checkout, disarming upstream's own `#if UXR_CLIENT_VERSION_MAJOR >= 4`
+# tripwire by a major version. Both lanes now read `project(<name> VERSION …)`
+# out of the vendored CMakeLists.
+#
+# It checks WIRING, not shape. The first version checked only "no literals, a
+# derivation block exists, sdk-index agrees" and a review mutation walked through
+# it: point micro-CDR's derivation at the CLIENT's tree and every shape check
+# still passes while the configure emits `MICROCDR_VERSION_STR "3.0.1"` — 1069
+# verbatim. So the invariant is stated per hop, both lanes (cmake: dir var →
+# derivation site → prefix → configure_file; cargo: let root → generator arg →
+# in-body derivation + template read), plus the client's expected micro-CDR and
+# the authored `nros-sdk-index.toml` rows. Buildless, ~30 ms.
+[private]
+xrce-vendored-versions:
+    @python3 scripts/check-xrce-vendored-versions.py
 
 [private]
 workspace-order:
