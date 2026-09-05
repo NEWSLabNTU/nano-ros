@@ -47,7 +47,6 @@ struct TaskAttr {
 const PRIORITY_INHERIT: i32 = i32::MIN;
 
 unsafe extern "C" {
-    fn nros_platform_task_stack_unused_bytes() -> usize;
     fn nros_platform_task_init(
         task: *mut c_void,
         attr: *mut c_void,
@@ -189,18 +188,8 @@ impl Drop for PlatformTask {
     }
 }
 
-/// Smallest number of bytes ever left unused on the CALLING task's stack, or
-/// `0` if this port does not instrument it.
-///
-/// The heap has had `heap_used_bytes` since RFC-0034 D7; the stack had
-/// nothing, and stack overflow is how one component corrupts another's state.
-/// A tier asks this about ITSELF -- both kernels answer for the calling task
-/// with no handle, and answering for an arbitrary one needs a native handle
-/// this ABI does not carry.
-///
-/// `0` means "not instrumented", not "no headroom".
-pub fn stack_unused_bytes() -> usize {
-    // SAFETY: a plain query with no arguments and no state; every port either
-    // answers or returns 0.
-    unsafe { nros_platform_task_stack_unused_bytes() }
-}
+// issue 1080 — `stack_unused_bytes` moved to `crate::stack`, which is NOT
+// alloc-gated, because it allocates nothing and a `no_std` image needs it. This
+// re-export keeps every existing `nros_platform_api::task::stack_unused_bytes`
+// caller working.
+pub use crate::stack::stack_unused_bytes;

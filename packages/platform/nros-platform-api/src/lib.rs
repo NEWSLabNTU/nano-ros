@@ -63,6 +63,10 @@
 extern crate alloc;
 #[cfg(feature = "alloc")]
 pub mod task;
+// issue 1080 — the stack probe is NOT alloc-gated. It shares the task ABI's
+// header but allocates nothing, and `nros-node`'s stack-headroom rule needs it
+// on exactly the `no_std` images that have no allocator.
+pub mod stack;
 
 use core::ffi::{c_int, c_void};
 
