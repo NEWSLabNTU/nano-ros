@@ -19,7 +19,7 @@
 # `just release-bump <X.Y.Z>` and in `scripts/bootstrap.sh shell-doctor`.
 #
 # The equality it asserts is what `nros-cli-core/src/abi_guard.rs` depends on
-# today. RFC-0089 replaces that guard's TOKEN with the codegen version, so this
+# today. RFC-0090 replaces that guard's TOKEN with the codegen version, so this
 # check outlives it as a release-hygiene rule (one tag, one product) rather than
 # as a compatibility mechanism.
 #

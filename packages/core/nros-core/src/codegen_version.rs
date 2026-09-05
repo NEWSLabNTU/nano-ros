@@ -1,4 +1,4 @@
-//! RFC-0089 / phase-429 — the codegen version, the one token that says whether
+//! RFC-0090 / phase-429 — the codegen version, the one token that says whether
 //! generated code and this runtime can work together.
 //!
 //! # What breaks without it
