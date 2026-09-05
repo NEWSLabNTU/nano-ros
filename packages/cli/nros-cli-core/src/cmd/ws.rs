@@ -4391,7 +4391,20 @@ fn write_patch_config(
     let cfg_dir = authority_dir.join(".cargo");
     let cfg = cfg_dir.join("config.toml");
     let text = std::fs::read_to_string(&cfg).unwrap_or_default();
-    let out = render_patch_config_with(&text, managed, include_rel, sidecar)
+
+    // Issue 0827 — the derived pool budgets, computed BEFORE the config is
+    // rendered because the render needs to know whether the sidecar will exist.
+    // Deciding by "am I about to write it" rather than by guessing is what keeps
+    // the file and its `include` entry in step (issue 0463).
+    //
+    // Only for an in-tree leaf: an out-of-tree consumer gets no `include` at all
+    // (#272), so a sidecar it could not reference would be a file nothing reads.
+    let derived_env: Option<String> = if sidecar {
+        render_leaf_env_sidecar(authority_dir)
+    } else {
+        None
+    };
+    let out = render_patch_config_with(&text, managed, include_rel, sidecar, derived_env.is_some())
         .wrap_err_with(|| format!("sync: edit {}", cfg.display()))?;
 
     // Atomic write (create `.cargo/` first).
@@ -4433,14 +4446,94 @@ fn write_patch_config(
         atomic_write(&managed_path, &render_managed_patch_file(&generated))?;
     }
 
+    // Issue 0827 — same temp+rename and the same "no stale file" rule as the
+    // patch sidecar above.
+    let env_path = cfg_dir.join(MANAGED_ENV_FILE);
+    match &derived_env {
+        Some(body) => atomic_write(&env_path, body)?,
+        None => {
+            let _ = std::fs::remove_file(&env_path);
+        }
+    }
+
     atomic_write(&cfg, &out)?;
     Ok(())
+}
+
+/// Issue 0827 — the `[env]` body for this leaf, or `None` when there is nothing
+/// to state.
+///
+/// `None` on every path that is not a confident derivation, and the cases are
+/// deliberately different from each other:
+///
+/// * no `metadata/` directory, or no probeable component in it — nothing ran, so
+///   there is nothing to say;
+/// * the inventory REFUSES (`Derivation::Refused`) — it says why, and a refusal
+///   is not a budget;
+/// * a parse failure — reported, and then treated as "no sidecar", because a
+///   budget derived from a half-read probe can be SHORT, and short halts the
+///   board. The leaf keeps the crate defaults, which are large rather than wrong.
+fn render_leaf_env_sidecar(leaf: &Path) -> Option<String> {
+    use crate::{
+        entity_inventory::Derivation,
+        leaf_entity_env::{inventory_for_leaf, render_env_sidecar},
+    };
+
+    let (inv, unprobeable) = match inventory_for_leaf(leaf) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!(
+                "sync: {}: cannot derive pool budgets ({e}); leaving the crate defaults in place",
+                leaf.display()
+            );
+            return None;
+        }
+    };
+    if inv.is_empty() {
+        // An unprobeable component is why a leaf can have `metadata/` and still
+        // get no budget. Say so once rather than leaving it to be inferred from
+        // an absent file (issue 1061).
+        if !unprobeable.is_empty() {
+            eprintln!(
+                "sync: {}: {} component(s) are un-probeable, so pool budgets stay at the crate \
+                 defaults (issue 1061): {}",
+                leaf.display(),
+                unprobeable.len(),
+                unprobeable.join(", ")
+            );
+        }
+        return None;
+    }
+    match inv.derive() {
+        Derivation::Derived(knobs) => Some(render_env_sidecar(&knobs, &inv.source)),
+        other => {
+            eprintln!(
+                "sync: {}: pool budgets not derived ({}); crate defaults stay",
+                leaf.display(),
+                other.tag()
+            );
+            None
+        }
+    }
 }
 
 /// Issue 0457 — basename of the per-leaf gitignored file holding sync's managed
 /// `[patch.crates-io]` block. Sibling of `config.toml` inside `.cargo/`, reached
 /// by an `include` entry that `render_patch_config` maintains.
 const MANAGED_PATCH_FILE: &str = "nros-managed-patch.toml";
+
+/// Issue 0827 — basename of the per-leaf gitignored file holding sync's derived
+/// pool budgets as `[env]`.
+///
+/// A second sidecar rather than a section in the patch one, because the two
+/// answer different questions and empty independently: a leaf can have a
+/// generated message dep and no probeable component, or the reverse. Sharing a
+/// file would make each one's presence depend on the other's.
+///
+/// Same appear-and-disappear-together rule as [`MANAGED_PATCH_FILE`], and for
+/// the same reason (issue 0463): a missing `include` target is a HARD cargo
+/// error during manifest parse, so the entry exists exactly when the file does.
+const MANAGED_ENV_FILE: &str = "nros-managed-env.toml";
 
 /// Render the standalone managed-patch file: a header saying who owns it and a
 /// single `[patch.crates-io]` table of the managed entries, alphabetised.
@@ -5113,7 +5206,7 @@ fn render_patch_config(
     managed: &[(String, String)],
     include_rel: Option<&str>,
 ) -> Result<String> {
-    render_patch_config_with(existing, managed, include_rel, true)
+    render_patch_config_with(existing, managed, include_rel, true, false)
 }
 
 /// [`render_patch_config`] with the sidecar split made explicit.
@@ -5130,6 +5223,10 @@ fn render_patch_config_with(
     managed: &[(String, String)],
     include_rel: Option<&str>,
     sidecar: bool,
+    // Issue 0827 — whether this leaf gets a derived `[env]` sidecar. Same
+    // appear-and-disappear-together rule as the patch one: the caller decides by
+    // whether it is about to WRITE the file, never by guessing.
+    want_env: bool,
 ) -> Result<String> {
     use toml_edit::{DocumentMut, Item, Table, Value, value};
 
@@ -5174,7 +5271,11 @@ fn render_patch_config_with(
             .unwrap_or_default();
         let survivors: Vec<String> = current
             .iter()
-            .filter(|s| !s.ends_with(CENTRAL_PATCH_FILE) && !s.ends_with(MANAGED_PATCH_FILE))
+            .filter(|s| {
+                !s.ends_with(CENTRAL_PATCH_FILE)
+                    && !s.ends_with(MANAGED_PATCH_FILE)
+                    && !s.ends_with(MANAGED_ENV_FILE)
+            })
             .cloned()
             .collect();
         let mut desired: Vec<String> = Vec::new();
@@ -5185,6 +5286,9 @@ fn render_patch_config_with(
         let want_sidecar = sidecar && managed.iter().any(|(_, rel)| is_generated_path(rel));
         if want_sidecar {
             desired.push(MANAGED_PATCH_FILE.to_string());
+        }
+        if want_env {
+            desired.push(MANAGED_ENV_FILE.to_string());
         }
 
         if current != desired {
@@ -5198,7 +5302,11 @@ fn render_patch_config_with(
                 .ok_or_else(|| eyre!("sync: `include` is not an array"))?;
             arr.retain(|v| {
                 v.as_str()
-                    .map(|s| !s.ends_with(CENTRAL_PATCH_FILE) && !s.ends_with(MANAGED_PATCH_FILE))
+                    .map(|s| {
+                        !s.ends_with(CENTRAL_PATCH_FILE)
+                            && !s.ends_with(MANAGED_PATCH_FILE)
+                            && !s.ends_with(MANAGED_ENV_FILE)
+                    })
                     .unwrap_or(true)
             });
             if let Some(rel) = include_rel {
@@ -5227,6 +5335,10 @@ fn render_patch_config_with(
             // "run `nros sync`" before cargo says anything at all.
             if want_sidecar {
                 arr.push(MANAGED_PATCH_FILE);
+            }
+            // Issue 0827 — the derived `[env]` sidecar, on the same terms.
+            if want_env {
+                arr.push(MANAGED_ENV_FILE);
             }
             if arr.is_empty() {
                 doc.as_table_mut().remove("include");
@@ -6652,18 +6764,28 @@ libc = { path = \"../../third-party/nuttx/libc\" }\n";
         // identical. Both spellings are therefore stable, and the old
         // tight/spaced distinction is moot.
         let spaced_single = "include = [ \"../nros-patch.toml\"]\n";
-        let only_managed =
-            render_patch_config_with(spaced_single, &mng(&[]), Some("../nros-patch.toml"), false)
-                .unwrap();
+        let only_managed = render_patch_config_with(
+            spaced_single,
+            &mng(&[]),
+            Some("../nros-patch.toml"),
+            false,
+            false,
+        )
+        .unwrap();
         assert!(
             only_managed.starts_with(spaced_single.trim_end()),
             "membership unchanged: sync must not renormalise the spelling:\n{only_managed}"
         );
 
         let spaced_pair = "include = [ \"../nros-patch.toml\", \"nros-board.toml\"]\n";
-        let with_survivor =
-            render_patch_config_with(spaced_pair, &mng(&[]), Some("../nros-patch.toml"), false)
-                .unwrap();
+        let with_survivor = render_patch_config_with(
+            spaced_pair,
+            &mng(&[]),
+            Some("../nros-patch.toml"),
+            false,
+            false,
+        )
+        .unwrap();
         assert!(
             with_survivor.starts_with(spaced_pair.trim_end()),
             "a survivor keeps the array's decor, so this leaf never churns:\n{with_survivor}"
@@ -6678,7 +6800,8 @@ libc = { path = \"../../third-party/nuttx/libc\" }\n";
         // output). Membership is unchanged here, so the bytes must be too.
         let tight = "include = [\"../nros-patch.toml\", \"nros-board.toml\"]\n";
         let unchanged =
-            render_patch_config_with(tight, &mng(&[]), Some("../nros-patch.toml"), false).unwrap();
+            render_patch_config_with(tight, &mng(&[]), Some("../nros-patch.toml"), false, false)
+                .unwrap();
         assert!(
             unchanged.starts_with(tight.trim_end()),
             "membership unchanged, so the array must be byte-identical:\n  was: {tight}  now: {unchanged}"
@@ -6709,6 +6832,7 @@ libc = { path = \"../../third-party/nuttx/libc\" }\n";
             existing,
             &mng(&[("nros-core", "../nros-core")]),
             None,
+            false,
             false,
         )
         .unwrap();
@@ -7059,6 +7183,7 @@ rustflags = [
             &[("std_msgs".into(), "generated/std_msgs".into())],
             Some("../../nros-patch.toml"),
             true,
+            false,
         )
         .unwrap();
         let inc = includes(&after_patch);
@@ -7603,5 +7728,68 @@ mod search_path_tests {
             text.contains("MISSING — nothing scanned"),
             "a configured root that contributed nothing must say so:\n{text}"
         );
+    }
+
+    // ---- issue 0827: the derived `[env]` sidecar ----------------------------
+
+    /// The include entry appears ONLY when the file will be written. A missing
+    /// include target is a hard cargo error during manifest parse (issue 0463),
+    /// so "wanted" and "written" are one decision, not two.
+    #[test]
+    fn env_sidecar_include_is_added_only_when_wanted() {
+        let with = render_patch_config_with("", &[], None, true, true).unwrap();
+        assert!(
+            with.contains(MANAGED_ENV_FILE),
+            "include missing the env sidecar:\n{with}"
+        );
+        let without = render_patch_config_with("", &[], None, true, false).unwrap();
+        assert!(
+            !without.contains(MANAGED_ENV_FILE),
+            "include names a file that will not be written:\n{without}"
+        );
+    }
+
+    /// And it is EVICTED when no longer wanted, so a leaf that loses its
+    /// probeable component does not keep an include to a deleted file.
+    #[test]
+    fn env_sidecar_include_is_evicted_when_no_longer_wanted() {
+        let existing = format!("include = [\"{MANAGED_ENV_FILE}\"]\n");
+        let out = render_patch_config_with(&existing, &[], None, true, false).unwrap();
+        assert!(
+            !out.contains(MANAGED_ENV_FILE),
+            "stale include survived:\n{out}"
+        );
+    }
+
+    /// The two sidecars are independent: a leaf may want either, both or
+    /// neither, which is why they are separate files.
+    #[test]
+    fn the_two_sidecars_do_not_depend_on_each_other() {
+        // Built inline rather than via the `mng` helper: these tests live in a
+        // different test module, and reaching across for a two-line helper
+        // would couple them for no benefit.
+        let generated: Vec<(String, String)> =
+            vec![("std_msgs".to_string(), "generated/std_msgs".to_string())];
+        let both = render_patch_config_with("", &generated, None, true, true).unwrap();
+        assert!(
+            both.contains(MANAGED_PATCH_FILE) && both.contains(MANAGED_ENV_FILE),
+            "{both}"
+        );
+
+        let env_only = render_patch_config_with("", &[], None, true, true).unwrap();
+        assert!(!env_only.contains(MANAGED_PATCH_FILE), "{env_only}");
+        assert!(env_only.contains(MANAGED_ENV_FILE), "{env_only}");
+
+        let patch_only = render_patch_config_with("", &generated, None, true, false).unwrap();
+        assert!(patch_only.contains(MANAGED_PATCH_FILE), "{patch_only}");
+        assert!(!patch_only.contains(MANAGED_ENV_FILE), "{patch_only}");
+    }
+
+    /// An OUT-OF-TREE consumer gets no include at all (#272), so it must not
+    /// gain an env one either.
+    #[test]
+    fn an_external_consumer_gets_no_env_include() {
+        let out = render_patch_config_with("", &[], None, false, false).unwrap();
+        assert!(!out.contains(MANAGED_ENV_FILE), "{out}");
     }
 }
