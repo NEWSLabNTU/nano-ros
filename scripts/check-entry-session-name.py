@@ -169,6 +169,29 @@ def check_node_name_is_per_node(text: str) -> list[str]:
     return [v for v in node_name_assignments(text) if _EXPECTED_SOURCE not in v]
 
 
+# Every RTOS family whose board `startup.c` owns `main`. They share ONE entry
+# template because their entries differ only in the board class and two log
+# tags; see cmake/templates/rtos_entry_main_typed.cpp.in.
+_RTOS_FAMILIES = ("nuttx", "threadx", "freertos")
+
+_FAMILY_TEMPLATE_REF = re.compile(
+    r"templates/(" + "|".join(_RTOS_FAMILIES) + r")_entry_main(?:_c)?_typed\.cpp\.in"
+)
+
+
+def family_specific_entry_refs(text: str) -> list[str]:
+    """RTOS branches that resolve a per-family entry template instead of the
+    merged one.
+
+    This is the anti-regression half of issue 1003. The session name went
+    missing from some entries and not others because the same template existed
+    six times; merging them removes the possibility, and this keeps a family
+    from splitting back out. A comment naming an old filename (the 287-W6 error
+    message is quoted verbatim in this file) is a record of what the build once
+    printed, not a path to resolve, so comments are excluded."""
+    return _FAMILY_TEMPLATE_REF.findall(cmake_code_only(text))
+
+
 # --------------------------------------------------------------------------
 # selftest — runs on the NORMAL path, never behind a flag (phase-395)
 # --------------------------------------------------------------------------
@@ -242,6 +265,33 @@ def self_test(quiet: bool = True) -> int:
             False,
         ),
     ]
+    # The merged-template half (issue 1003). Six copies of one template is what
+    # let the session name be right in some entries and wrong in others; these
+    # cases keep a family from splitting back out.
+    merge_cases: list[tuple[str, str, bool]] = [
+        (
+            "branch resolves the merged template",
+            '"${_NROS_NODE_REGISTER_DIR}/templates/rtos_entry_main_typed.cpp.in"',
+            False,
+        ),
+        (
+            "a family split back out",
+            '"${_NROS_NODE_REGISTER_DIR}/templates/nuttx_entry_main_typed.cpp.in"',
+            True,
+        ),
+        (
+            "the C variant split back out",
+            '"${_NROS_NODE_REGISTER_DIR}/templates/freertos_entry_main_c_typed.cpp.in"',
+            True,
+        ),
+        (
+            "a comment quoting the 287-W6 error is not a reference",
+            '# member failed "File /templates/freertos_entry_main_c_typed.cpp.in does not\n'
+            '"${_NROS_NODE_REGISTER_DIR}/templates/rtos_entry_main_c_typed.cpp.in"',
+            False,
+        ),
+    ]
+
     bad = 0
     for name, text, marker, is_rust, expect in cases:
         got = bool(scan(text, marker, is_rust))
@@ -259,6 +309,14 @@ def self_test(quiet: bool = True) -> int:
             print(f"SELFTEST FAIL: {name}: expected {want}, got the opposite", file=sys.stderr)
         elif not quiet:
             print(f"  ok: {name}")
+    for name, text, expect in merge_cases:
+        got = bool(family_specific_entry_refs(text))
+        if got != expect:
+            bad += 1
+            want = "a violation" if expect else "no violation"
+            print(f"SELFTEST FAIL: {name}: expected {want}, got the opposite", file=sys.stderr)
+        elif not quiet:
+            print(f"  ok: {name}")
 
     if bad:
         print(
@@ -269,7 +327,7 @@ def self_test(quiet: bool = True) -> int:
     elif not quiet:
         print(
             "check-entry-session-name selftest: OK "
-            f"({len(cases) + len(name_cases)} case(s))"
+            f"({len(cases) + len(name_cases) + len(merge_cases)} case(s))"
         )
     return 1 if bad else 0
 
@@ -319,6 +377,49 @@ def main() -> int:
             "here gives\n  every image built through that entry shape the SAME "
             "name, which is\n  issue 1003's collision with the templates left "
             "correct.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # The RTOS families share one entry template. A branch resolving a
+    # per-family file has split the fact back into copies — which is how the
+    # session name came to be present in some entries and missing from others.
+    split = family_specific_entry_refs(reg_text)
+    if split:
+        print(
+            "check-entry-session-name: an RTOS branch resolves a per-family "
+            "entry template (issue 1003):\n",
+            file=sys.stderr,
+        )
+        for fam in sorted(set(split)):
+            print(f"  templates/{fam}_entry_main*_typed.cpp.in", file=sys.stderr)
+        print(
+            "\n  NuttX, ThreadX and FreeRTOS boot identically (the board's\n"
+            "  `startup.c` owns `main`), so they share ONE template:\n"
+            "  cmake/templates/rtos_entry_main{,_c}_typed.cpp.in, whose family\n"
+            "  holes `_nros_rtos_entry_family(<fam>)` derives from the family\n"
+            "  name. Point the branch at the merged template instead of adding\n"
+            "  a copy that will drift from the other two.",
+            file=sys.stderr,
+        )
+        return 1
+    stray = sorted(
+        p.name
+        for fam in _RTOS_FAMILIES
+        for p in ROOT.glob(f"cmake/templates/{fam}_entry_main*_typed.cpp.in")
+    )
+    if stray:
+        print(
+            "check-entry-session-name: per-family RTOS entry template(s) are "
+            "back on disk (issue 1003):\n",
+            file=sys.stderr,
+        )
+        for name in stray:
+            print(f"  cmake/templates/{name}", file=sys.stderr)
+        print(
+            "\n  Nothing resolves them, so they are a copy that drifts silently\n"
+            "  from cmake/templates/rtos_entry_main{,_c}_typed.cpp.in. Fold any\n"
+            "  real change into the merged template and delete the copy.",
             file=sys.stderr,
         )
         return 1
