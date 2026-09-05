@@ -459,7 +459,49 @@ _hwm_put() {
     return 0
 }
 
-# Evict entries from an area, oldest mtime first, until it fits its budget.
+# Newest mtime found ANYWHERE inside a candidate, as a unix timestamp.
+#
+# issue 1094 — the eviction order used `stat -c '%Y' "$child"`, and a DIRECTORY's
+# mtime moves only when an entry is created or removed IN THAT DIRECTORY. A cargo
+# `--target-dir` writes into `<profile>/deps/…` several levels down, so a group
+# dir's mtime freezes near creation and stays there while the group is used every
+# day.
+#
+# Measured across the 20 children of `build/cargo-fixtures` on 2026-09-05:
+# ELEVEN were wrong by ~20 days (dir 2026-08-15, newest content 2026-09-04), and
+# the error is not random — it is biased toward the LARGEST and most-used groups,
+# because the group that has existed longest has both the oldest creation date
+# and the most accumulated bytes. The two genuinely cold entries carried the SAME
+# 08-15 stamp as the busiest one, so they sorted as ties.
+#
+# What that produced: 60 MiB over budget, and the sweep proposed deleting
+# `cargo-fixtures/linux` — 12.8 GiB, the shared group for the NATIVE platform
+# that every tier-1 run needs, written to the previous day. A 213x overshoot on
+# the wrong entry.
+#
+# `find` is correct here and the file's own `_evict` comment says why: issue
+# 0844's rule is about TRACKED files, and nothing under these roots has ever been
+# in the index. The walk costs what `_du_bytes` already costs on the same tree,
+# and this is a between-jobs operation the header prices at "seconds to a minute
+# or two".
+#
+# Falls back to the directory's own mtime when the walk yields nothing (an empty
+# candidate, or an unreadable one): ordering by a stale timestamp is bad, and
+# ordering by 0 — which sorts FIRST and evicts hardest — is worse.
+_newest_mtime() {
+    local newest=""
+    newest="$(find "$1" -type f -printf '%T@\n' 2>/dev/null | sort -rn | head -1 || true)"
+    newest="${newest%%.*}"
+    case "${newest:-}" in
+        ''|*[!0-9]*) stat -c '%Y' "$1" 2>/dev/null || printf '0' ;;
+        *)           printf '%s' "$newest" ;;
+    esac
+    return 0
+}
+
+# Evict entries from an area, least-recently-WRITTEN first, until it fits its
+# budget. "Recently written" means the newest file anywhere inside the entry —
+# see `_newest_mtime` above for why the entry's own mtime cannot answer.
 #
 #   _evict <area> <budget-bytes> <pinned-glob-or-empty> <candidate-dir>...
 #
@@ -512,7 +554,7 @@ _evict() {
                     $pinned) _say "      pinned, never evicted: $child"; continue ;;
                 esac
             fi
-            listing="${listing}$(stat -c '%Y' "$child" 2>/dev/null || echo 0)"$'\t'"$child"$'\n'
+            listing="${listing}$(_newest_mtime "$child")"$'\t'"$child"$'\n'
         done
     done
 
@@ -619,6 +661,82 @@ _sweep_disk() {
             "${work_dirs[@]}"
     else
         _say "  runner-work: no _actions/_temp under $work_dir"
+    fi
+
+    # --- the HOST cargo target dirs ------------------------------------------
+    #
+    # issue 1094 — these were outside every budget, and on the box this was
+    # written for they were the two LARGEST consumers on the disk: 156 GiB in
+    # `target/` and 30 GiB in `packages/cli/target/`, against a 60 GiB budget
+    # for all the fixture trees put together.
+    #
+    # They are not evicted the way an area of fixture coordinates is, and the
+    # reason is the same one `_evict`'s own comment gives for never deleting a
+    # candidate root: a cargo target dir is ONE cache with internal structure,
+    # so dropping it is a full rebuild when pruning the stale units would have
+    # done. `cargo-sweep` prunes at that granularity; nothing here does.
+    #
+    # Measured on 2026-09-05 with `--time 21`: 31.53 GiB from `target/` and
+    # 9.80 GiB from `packages/cli/target/`, with the current artifacts and the
+    # in-tree `nros` binary left in place.
+    #
+    # ABSENT TOOL IS NOT A FAILURE. A runner without `cargo-sweep` still sweeps
+    # everything else and says what it could not do — the alternative is a
+    # between-jobs hook that exits non-zero on a machine that is otherwise fine.
+    local -a cargo_roots=()
+    [ -f "$repo_root/Cargo.toml" ] && cargo_roots+=("$repo_root")
+    [ -f "$repo_root/packages/cli/Cargo.toml" ] && cargo_roots+=("$repo_root/packages/cli")
+    local sweep_days="${NROS_SWEEP_CARGO_DAYS:-21}"
+    if [ "${#cargo_roots[@]}" -eq 0 ]; then
+        _say "  cargo-targets: no cargo manifest at the checkout root"
+    elif ! command -v cargo-sweep >/dev/null 2>&1; then
+        local total=0 root sz
+        for root in "${cargo_roots[@]}"; do
+            [ -d "$root/target" ] || continue
+            sz="$(_du_bytes "$root/target")"
+            total=$((total + sz))
+        done
+        _hwm_put cargo-targets "$total"
+        _say "  cargo-targets: $(_human "$total") in host target dir(s), NOT pruned —"
+        _say "      \`cargo-sweep\` is not installed. \`cargo binstall cargo-sweep\`, then"
+        _say "      this area prunes artifacts older than ${sweep_days}d instead of reporting them."
+    else
+        local total=0 root sz
+        for root in "${cargo_roots[@]}"; do
+            [ -d "$root/target" ] || continue
+            sz="$(_du_bytes "$root/target")"
+            total=$((total + sz))
+        done
+        _hwm_put cargo-targets "$total"
+        _say "  cargo-targets: $(_human "$total") in host target dir(s), pruning artifacts older than ${sweep_days}d"
+        for root in "${cargo_roots[@]}"; do
+            [ -d "$root/target" ] || continue
+            local out=""
+            # NROS_CARGO_FLAGS is cleared for the same reason `cargo binstall`
+            # needs it cleared: `scripts/bin/cargo` injects `--locked`
+            # project-wide (issues 0359/0378), and `cargo-sweep` shells out to
+            # `cargo metadata`, which then sees a flag meant for a build.
+            if [ "$CHECK" -eq 1 ]; then
+                out="$(NROS_CARGO_FLAGS= cargo-sweep sweep --dry-run --time "$sweep_days" "$root" 2>&1 || true)"
+                # `Would clean: nothing from "…"` is cargo-sweep's NO-OP
+                # answer, not a finding. Matching on "Would clean" alone marks
+                # the sweep dirty on a tree with nothing to do, which under
+                # `--check` is an exit 1 — a between-jobs hook failing a healthy
+                # machine.
+                case "$out" in
+                    *"Would clean: nothing"*) _say "      $root: nothing older than ${sweep_days}d" ;;
+                    *"Would clean"*) dirty=1; _would "cargo-sweep --time $sweep_days $root: ${out##*Would clean: }" ;;
+                    *) _say "      $root: nothing older than ${sweep_days}d" ;;
+                esac
+            else
+                out="$(NROS_CARGO_FLAGS= cargo-sweep sweep --time "$sweep_days" "$root" 2>&1 || true)"
+                case "$out" in
+                    *"Cleaned nothing"*) _say "      $root: nothing older than ${sweep_days}d" ;;
+                    *"Cleaned"*) dirty=1; _did "cargo-sweep --time $sweep_days $root: ${out##*Cleaned }" ;;
+                    *) _say "      $root: nothing older than ${sweep_days}d" ;;
+                esac
+            fi
+        done
     fi
 
     # --- sccache: reported, never evicted ------------------------------------

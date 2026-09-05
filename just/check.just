@@ -294,6 +294,7 @@ fast-serial: \
     roadmap-status \
     ros-env-spelling \
     runner-doctor-sdk-resolution \
+    runner-sweep-eviction-order \
     rust-stdio-on-zephyr \
     rust-targets-covered \
     scope-namespace \
@@ -2299,6 +2300,17 @@ fixtures-manifest:
     # briefly two spellings of one thing. This makes them unable to drift until
     # the emitter reads the rows. Read-only: the emitter runs no build tool.
     @python3 scripts/check-zephyr-fixture-rows.py
+
+# issue 1094 — `runner-sweep` must evict the least recently WRITTEN entry, not
+# the one with the oldest directory inode. A cargo `--target-dir` writes several
+# levels down, so a shared fixture group's dir mtime freezes near creation while
+# the group is used daily: eleven of twenty `cargo-fixtures` children were wrong
+# by ~20 days, and the sweep proposed deleting the 12.8 GiB NATIVE group — used
+# the previous day — to reclaim a 60 MiB overrun. Silent either way; the cost
+# shows up as the next job rebuilding a fixture nobody touched. ~1 s, tmpdir.
+[private]
+runner-sweep-eviction-order:
+    @bash tests/runner-sweep-eviction-order-tests.sh
 
 # Every `docs/{design,issues}/NNNN-*.md` path written anywhere — prose, issue
 # frontmatter, or a cmake error message — must resolve. Renumbering on an id
