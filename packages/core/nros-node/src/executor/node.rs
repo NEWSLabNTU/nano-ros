@@ -1522,25 +1522,10 @@ impl<'e, 's> NodeCtx<'e, 's> {
         &mut self,
         topic: &str,
     ) -> Result<super::types::HandleId, NodeError> {
-        self.executor
-            .register_subscription_buffered_on::<
-                nros_rosgraph_msgs::msg::Clock,
-                _,
-                { crate::config::DEFAULT_RX_BUF_SIZE },
-            >(
-                self.node_id,
-                topic,
-                QoSProfile::clock_default(),
-                |msg: &nros_rosgraph_msgs::msg::Clock| {
-                    if let Some(nanos) =
-                        crate::time_source::override_nanos(msg.clock.sec, msg.clock.nanosec)
-                    {
-                        nros_core::clock::Clock::set_ros_time_override(nanos);
-                    }
-                },
-                None, // no group — node default
-                None, // the configured default RX buffer, unchanged
-            )
+        // One spelling of the QoS and the sample conversion, on the executor:
+        // the `use_sim_time` reconciliation (phase-425 W3b) installs the same
+        // subscription, and two copies would be two places for the QoS to drift.
+        self.executor.install_ros_time_source(self.node_id, topic)
     }
 
     // -----------------------------------------------------------------------

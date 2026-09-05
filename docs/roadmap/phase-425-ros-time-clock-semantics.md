@@ -1,7 +1,8 @@
 # Phase 425 — ROS time is a type, not a behaviour: give the timer API the official semantics
 
-**Status (2026-09-05).** W1, W2 and W4 landed; W3 landed except for the
-`use_sim_time` wiring, which is split out as W3b below. Opened by an owner
+**Status (2026-09-05).** W1, W2, W3, W3b and W4 landed. W5 (ledger, book) is
+open, and so is the one end-to-end demonstration this phase still owes: a
+fixture with a real publisher on `/clock`. Opened by an owner
 decision on the `cpp:Node::create_wall_timer` ledger row: the answer to "do we
 adopt rclcpp's name" is yes, and the reason given widens the work past a
 rename — bag replay and simulation need ROS *time*, not just the word `wall`.
@@ -122,17 +123,48 @@ ledger row today. It is the same feature blindness issue 0818 fixed for C++ by
 compiling extra TUs. No row was added pre-emptively — a row matching nothing is
 the stale-row failure this campaign spent a week undoing.
 
-### W3b — `use_sim_time`
+### W3b — `use_sim_time` — LANDED 2026-09-05
 
-rclcpp switches the time source on through the `use_sim_time` parameter. Ours
-is an explicit call, so the parameter still means nothing here — it is a name
-the examples happen to use. Wiring it needs a parameter-change hook that
-installs and removes the subscription, which is a parameter-services question
-rather than a clock one, and is why it is split out rather than bundled.
+`use_sim_time` is now a RESERVED parameter with rclcpp's meaning: nothing reads
+its value, the runtime acts on it.
 
-**Acceptance.** With `use_sim_time:=true` and `ros2 bag play --clock`, a node's
-`get_clock()->now()` tracks bag time with no code change; with no publisher on
-`/clock`, `started()` is false and nothing blocks.
+**One seam, all three languages.** The hook is
+`Executor::declare_parameter`, which every declaration path funnels through —
+`nros::main!`'s launch bakes via `apply_param_services`, nros-c's
+`nros_parameter_declare_*`, nros-cpp's `params_shim`. Hooking the entry paths
+one at a time would have been three sites and a fourth waiting to be missed.
+
+**A reconcile, not an action at the request site**, because the request
+routinely arrives before there is a node to hang the subscription on:
+`nros::main!` emits `apply_param_services` BEFORE its per-node `register`
+calls, by design, so the store exists when each cell is created. The request is
+recorded; `spin_once` reconciles. In the settled state that is one bool
+comparison.
+
+**A runtime `ros2 param set … use_sim_time true` works too**, without a
+per-spin scan of the parameter store: the store is re-read only after a
+parameter service actually handled something.
+
+**Turning it off stops SAMPLES, not the subscription.** The executor has no
+entity removal, and inventing one for this switch would be a much larger change
+than the switch is worth — so the gate is `time_source::set_active`, read by the
+subscription callback. Turning it off also does not clear the override: a node
+that stops listening keeps the last simulated time rather than jumping back to
+the wall clock, which every ROS-time timer would otherwise absorb as a
+backwards jump. Clearing is the caller's decision, because it is a visible time
+discontinuity.
+
+**A non-bool `use_sim_time` attaches nothing** and is not an error. Declaration
+returns "did the store take it" and has no channel for a complaint, and
+refusing the declaration would fail a node over a parameter ROS 2 lets it
+declare. An `Integer(1)` is not `true`.
+
+**Acceptance, and what is still owed.** The reconciliation is unit-tested
+(attach on the first spin after a node exists, idempotent across spins, detach
+on false, nothing on a non-bool). The end-to-end claim — `use_sim_time:=true`
+plus `ros2 bag play --clock` moves `get_clock()->now()` with no code change —
+needs a real publisher on `/clock` and therefore a fixture, not a unit test.
+That is the one piece of this phase not yet demonstrated.
 
 ### W4 — timers on a clock — LANDED 2026-09-05
 
@@ -168,9 +200,13 @@ the name W4 needs. W2 and W3 are the runtime; W4 is meaningless without them —
 a clock-taking `create_timer` whose ROS clock nothing ever drives is the same
 lie in a new place. W5 last, because it records what actually landed.
 
-**What is true after 2026-09-05.** The three reasons ROS time was a type and
-not a behaviour are down to a residue. `/clock` can be subscribed (W2, W3), a
-timer can be driven by it (W4), and the name says which timer you asked for
-(W1). What remains is W3b — `use_sim_time` — plus an end-to-end test with a
-real publisher on `/clock`, which needs an RMW and therefore a fixture rather
-than a unit test.
+**What is true after 2026-09-05.** All three reasons ROS time was a type and
+not a behaviour are gone. `/clock` can be subscribed (W2, W3), `use_sim_time`
+attaches the source with no code change (W3b), a timer can be driven by it
+(W4), and the name says which timer you asked for (W1).
+
+What remains is evidence, not mechanism: every claim here is unit-tested
+against a hand-installed ROS time, and none of it has yet been demonstrated
+end to end against a real publisher on `/clock`. That needs an RMW and
+therefore a fixture. Until it exists, the honest statement is "the pieces are
+in place and individually proven", not "bag replay works".

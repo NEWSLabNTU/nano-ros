@@ -29,6 +29,38 @@
 /// The topic ROS 2 publishes simulated time on.
 pub const CLOCK_TOPIC: &str = "/clock";
 
+/// The reserved parameter whose value attaches the time source — phase-425 W3b.
+///
+/// ROS 2 gives every node this parameter and treats it as a switch rather than a
+/// value: nothing reads it, the client library acts on it. We do the same, at
+/// `Executor::declare_parameter`, which is the one seam every language's
+/// declaration path funnels through.
+pub const USE_SIM_TIME_PARAM: &str = "use_sim_time";
+
+/// Whether `/clock` samples are being installed.
+///
+/// Process-global for the same reason the override itself is: one simulated
+/// clock per image. Defaults to TRUE so that an explicit
+/// `install_ros_time_source()` needs no second call to arm it — a program that
+/// asks for the source wants the source. `use_sim_time` toggles it from there.
+static SIM_TIME_ACTIVE: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(true);
+
+/// Whether an arriving `/clock` sample should be installed.
+pub fn is_active() -> bool {
+    SIM_TIME_ACTIVE.load(core::sync::atomic::Ordering::Relaxed)
+}
+
+/// Start or stop installing `/clock` samples.
+///
+/// Stopping does NOT clear the current override: a node that stops listening
+/// keeps the last simulated time rather than jumping back to the wall clock,
+/// which every ROS-time timer would otherwise have to absorb as a backwards
+/// jump. Clearing is `Clock::clear_ros_time_override()`, and it is the caller's
+/// decision because it is a visible time discontinuity.
+pub fn set_active(active: bool) {
+    SIM_TIME_ACTIVE.store(active, core::sync::atomic::Ordering::Relaxed);
+}
+
 /// A `/clock` sample as a nanosecond count, or `None` if it is not installable.
 ///
 /// `builtin_interfaces/Time` is `(sec: i32, nanosec: u32)`; the override is a

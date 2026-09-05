@@ -653,7 +653,10 @@ node-std-tests:
     # builds it with `sim-time` off and its tests are in no lane at all. Note
     # `has_rmw` is false here and the module is `cfg(any(has_rmw, test))`, so it
     # compiles under `cargo test` exactly as its unit tests need.
-    cargo test -p nros-node --lib --features std,sim-time --quiet
+    # `param-services` joined for W3b: `use_sim_time` is a PARAMETER, so its two
+    # tests need the store — and `Executor::declare_parameter`, the seam W3b
+    # hooks, lives in a `#[cfg(feature = "param-services")]` impl block.
+    cargo test -p nros-node --lib --features std,sim-time,param-services --quiet
     # `env,std` and NOT `rmw-cffi`: the cffi flavour makes the wall clock an
     # extern the linker wants a platform port for, and this lane links none.
     cargo test -p nros --lib --features env,std --quiet
