@@ -116,6 +116,7 @@ here run Python 3.10, so no `tomllib` and no third-party parser.
 import hashlib
 import os
 import re
+import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -270,26 +271,38 @@ def strip_bodies(text):
 JINJA_COMMENT = re.compile(r"\{#.*?#\}", re.S)
 
 
+def tracked_files(rel, suffix):
+    """Tracked files under `rel` ending in `suffix`, in sorted order.
+
+    `git ls-files`, not a filesystem walk: `check-no-tracked-file-find` refuses
+    a walk used to locate tracked files, and it is right to. A walk also sees
+    build output and untracked scratch, either of which would silently join the
+    surface and make this gate fire on something nobody committed.
+    """
+    out = subprocess.run(
+        ["git", "ls-files", "-z", "--", rel],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    ).stdout
+    return sorted(
+        os.path.join(ROOT, f)
+        for f in out.split("\0")
+        if f and f.endswith(suffix)
+    )
+
+
 def template_text():
     """Every emitter template, comment-stripped, concatenated."""
     chunks = []
     for rel in TEMPLATE_DIRS:
-        d = os.path.join(ROOT, rel)
-        for dirpath, _, names in os.walk(d):
-            for name in sorted(names):
-                if not name.endswith(".jinja"):
-                    continue
-                with open(os.path.join(dirpath, name), encoding="utf8") as fh:
+        for path in tracked_files(rel, ".jinja"):
+                with open(path, encoding="utf8") as fh:
                     body = JINJA_COMMENT.sub(" ", fh.read())
                 # `//` and `/* */` in a template are comments in the OUTPUT, and
                 # a generated comment is not a surface. Stripping them is also
                 # what keeps `nros_cpp_*` prose out of the demand set.
                 chunks.append(sanitize(body, rust=False))
-    for dirpath, _, names in os.walk(os.path.join(ROOT, EMITTER_SRC)):
-        for name in sorted(names):
-            if not name.endswith(".rs"):
-                continue
-            with open(os.path.join(dirpath, name), encoding="utf8") as fh:
+    for path in tracked_files(EMITTER_SRC, ".rs"):
+            with open(path, encoding="utf8") as fh:
                 lits = []
                 sanitize(fh.read(), rust=True, collect=lits)
             chunks.extend(lits)
@@ -393,10 +406,7 @@ def _drop_test_mods(text):
 
 
 def rust_files(rel):
-    for dirpath, _, names in os.walk(os.path.join(ROOT, rel)):
-        for name in sorted(names):
-            if name.endswith(".rs"):
-                yield os.path.join(dirpath, name)
+    return tracked_files(rel, ".rs")
 
 
 def rust_surface(wanted, prefixes):
@@ -488,11 +498,8 @@ def rust_surface(wanted, prefixes):
 # ─────────────────────────── C supply ───────────────────────────
 
 def c_files(rel, exts):
-    d = os.path.join(ROOT, rel)
-    for dirpath, _, names in os.walk(d):
-        for name in sorted(names):
-            if name.endswith(exts):
-                yield os.path.join(dirpath, name)
+    for ext in ((exts,) if isinstance(exts, str) else exts):
+        yield from tracked_files(rel, ext)
 
 
 C_DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+([A-Za-z_][A-Za-z0-9_]*)(\([^)]*\))?", re.M)
