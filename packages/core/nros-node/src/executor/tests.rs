@@ -1817,6 +1817,94 @@ fn ros_time_timer_follows_the_simulated_clock() {
     Clock::clear_ros_time_override();
 }
 
+/// phase-425 W3b — `use_sim_time` is a SWITCH, not a value, and declaring it
+/// attaches the `/clock` source the way rclcpp's does.
+///
+/// The reconciliation, not the wire: a MockSession has no publisher to receive
+/// from, so what this asserts is that the subscription gets installed at the
+/// right moment and that the gate follows the parameter. The sample path is
+/// covered by `time_source::tests` and the timer behaviour by
+/// `ros_time_timer_follows_the_simulated_clock`.
+#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[test]
+fn use_sim_time_attaches_and_detaches_the_clock_source() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    // Declared BEFORE any node exists, which is the order a generated entry
+    // uses: `nros::main!` emits `apply_param_services` ahead of its per-node
+    // `register` calls.
+    executor.declare_parameter("use_sim_time", nros_params::ParameterValue::Bool(true));
+    assert!(
+        !executor.ros_time_source_installed(),
+        "declaring the parameter must not subscribe on the spot — there is no \
+         node yet to hang the subscription on"
+    );
+
+    // A spin with no node must not install and must not give up either: the
+    // request stays pending. This is the ordering the reconcile exists for.
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        !executor.ros_time_source_installed(),
+        "there is still no node; installing would mean subscribing against a \
+         node table entry that does not exist"
+    );
+
+    drop(executor.create_node("sim_node").expect("create node"));
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        executor.ros_time_source_installed(),
+        "the first spin after the request must install the /clock source; \
+         a request that never reconciles is a parameter that does nothing"
+    );
+    assert!(
+        crate::time_source::is_active(),
+        "installed and not armed would drop every sample"
+    );
+
+    // Idempotent: a second spin must not add a second subscription. A fresh
+    // registration would take a new slot, so a stable handle is the evidence.
+    let handle = executor.ros_time_source_handle();
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        executor.ros_time_source_handle(),
+        handle,
+        "reconciliation ran twice and subscribed twice"
+    );
+
+    // Turning it off stops SAMPLES. The subscription stays — the executor has
+    // no entity removal — so the gate is what must change.
+    executor.declare_parameter("use_sim_time", nros_params::ParameterValue::Bool(false));
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        !crate::time_source::is_active(),
+        "use_sim_time went false and /clock samples would still be installed"
+    );
+
+    // Leave the process-global as the rest of the suite expects it.
+    crate::time_source::set_active(true);
+    nros_core::clock::Clock::clear_ros_time_override();
+}
+
+/// phase-425 W3b — a non-bool `use_sim_time` attaches nothing.
+///
+/// ROS 2 lets a node declare the name with a wrong type; what must NOT happen is
+/// a time source attaching off a value that does not mean "yes".
+#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[test]
+fn a_non_bool_use_sim_time_attaches_nothing() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    executor.declare_parameter("use_sim_time", nros_params::ParameterValue::Integer(1));
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        !executor.ros_time_source_installed(),
+        "an INTEGER 1 is not `true`; attaching off it would make the switch \
+         answer to any truthy-looking value"
+    );
+}
+
 #[test]
 fn test_timer_repeats() {
     let session = MockSession::new();

@@ -1333,6 +1333,18 @@ pub struct Executor<'s> {
     pub(crate) signal_fd: Option<WakeSignalFd>,
     #[cfg(feature = "param-services")]
     pub(crate) params: Option<alloc::boxed::Box<crate::parameter_services::ParamState<'s>>>,
+    /// phase-425 W3b — the `/clock` subscription this image installed, if any.
+    /// `None` means no time source; the value is the handle so it can be
+    /// cancelled when `use_sim_time` goes false.
+    #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+    pub(crate) sim_time_source: Option<HandleId>,
+    /// phase-425 W3b — the LAST REQUESTED state of `use_sim_time`, which is not
+    /// the same thing as the installed state: a request can arrive before any
+    /// node exists (`nros::main!` declares parameters BEFORE it registers
+    /// components), and there is no node to hang a subscription on until then.
+    /// `reconcile_ros_time_source` closes the gap on each spin.
+    #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+    pub(crate) sim_time_requested: bool,
     #[cfg(feature = "lifecycle-services")]
     pub(crate) lifecycle:
         Option<alloc::boxed::Box<crate::lifecycle_services::LifecycleRuntimeState>>,
@@ -1567,6 +1579,10 @@ impl<'s> Executor<'s> {
             signal_fd: None,
             #[cfg(feature = "param-services")]
             params: None,
+            #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+            sim_time_source: None,
+            #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+            sim_time_requested: false,
             #[cfg(feature = "lifecycle-services")]
             lifecycle: None,
             // Initialise the spin endpoint to construction time so the
@@ -6073,6 +6089,13 @@ impl<'s> Executor<'s> {
     pub fn spin_once(&mut self, timeout: core::time::Duration) -> SpinOnceResult {
         let timeout_ms = timeout.as_millis().min(i32::MAX as u128) as i32;
 
+        // phase-425 W3b — bring the `/clock` subscription in line with
+        // `use_sim_time`. One bool comparison in the settled case; the work only
+        // happens on a transition, or while a request is waiting for its first
+        // node to exist.
+        #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+        self.reconcile_ros_time_source();
+
         // Release jitter, measured HERE rather than in `spin_period`, because
         // this is the function every driver goes through.
         //
@@ -6360,15 +6383,21 @@ impl<'s> Executor<'s> {
             // Parameter services live outside the arena and must be processed
             // regardless of trigger state, otherwise ROS 2 param queries time out.
             #[cfg(feature = "param-services")]
-            if let Some(params) = &mut self.params {
-                {
-                    let crate::parameter_services::ParamState {
-                        server, services, ..
-                    } = &mut **params;
-                    if let Some(services) = services {
-                        let _ = services.process_services(server);
+            {
+                let mut handled = 0usize;
+                if let Some(params) = &mut self.params {
+                    {
+                        let crate::parameter_services::ParamState {
+                            server, services, ..
+                        } = &mut **params;
+                        if let Some(services) = services {
+                            handled = services.process_services(server).unwrap_or(0);
+                        }
                     }
                 }
+                // phase-425 W3b — a `ros2 param set … use_sim_time true` arrives
+                // through this path.
+                self.note_param_services_ran(handled);
             }
 
             // Same treatment for lifecycle services — `ros2 lifecycle get`
@@ -6957,6 +6986,8 @@ impl<'s> Executor<'s> {
 
         // Process parameter services (outside the arena)
         #[cfg(feature = "param-services")]
+        let mut handled = 0usize;
+        #[cfg(feature = "param-services")]
         if let Some(params) = &mut self.params {
             {
                 let crate::parameter_services::ParamState {
@@ -6966,9 +6997,12 @@ impl<'s> Executor<'s> {
                     && let Ok(n) = services.process_services(server)
                 {
                     result.services_handled += n;
+                    handled = n;
                 }
             }
         }
+        #[cfg(feature = "param-services")]
+        self.note_param_services_ran(handled);
 
         // Process lifecycle services (outside the arena).
         //
@@ -7592,11 +7626,57 @@ impl<'s> Executor<'s> {
     /// Declare a parameter with a value. Returns `true` if successful.
     pub fn declare_parameter(&mut self, name: &str, value: nros_params::ParameterValue) -> bool {
         self.ensure_parameter_store();
+        // phase-425 W3b — `use_sim_time` is RESERVED, exactly as in ROS 2: its
+        // value is not a value the app reads, it is the switch that attaches the
+        // time source. This is the one seam every language funnels through
+        // (`nros::main!`'s launch bakes via `apply_param_services`, nros-c's
+        // `nros_parameter_declare_*`, nros-cpp's `params_shim`), so hooking it
+        // here covers all of them instead of once per entry path.
+        self.note_reserved_parameter(name, &value);
         if let Some(params) = &mut self.params {
             params.server.declare(name, value)
         } else {
             false
         }
+    }
+
+    /// phase-425 W3b — record a reserved parameter's effect. Today that is
+    /// `use_sim_time` and nothing else.
+    ///
+    /// A non-bool `use_sim_time` is IGNORED rather than rejected: parameter
+    /// declaration has no channel to report a complaint on (it returns "did the
+    /// store take it"), and refusing the declaration outright would fail a node
+    /// for a parameter ROS 2 lets it declare. The time source simply does not
+    /// attach, which is the same outcome as `false`.
+    #[cfg_attr(
+        not(all(feature = "sim-time", any(has_rmw, test))),
+        allow(unused_variables)
+    )]
+    fn note_reserved_parameter(&mut self, name: &str, value: &nros_params::ParameterValue) {
+        #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+        if name == crate::time_source::USE_SIM_TIME_PARAM
+            && let nros_params::ParameterValue::Bool(enable) = value
+        {
+            self.sim_time_requested = *enable;
+        }
+    }
+
+    /// phase-425 W3b — a parameter service handled `n` requests this spin.
+    ///
+    /// The hook exists so `use_sim_time` can be re-read after a runtime
+    /// `ros2 param set`, WITHOUT a per-spin scan of the store. It takes the
+    /// count unconditionally and ignores it when `sim-time` is off, rather than
+    /// the call sites carrying the feature test: `handled` was then assigned and
+    /// never read in the `param-services`-without-`sim-time` combo, which is a
+    /// `-D warnings` error `check-build` catches and the narrower per-crate
+    /// clippy runs do not.
+    #[inline]
+    fn note_param_services_ran(&mut self, handled: usize) {
+        #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+        if handled > 0 {
+            self.refresh_use_sim_time_from_store();
+        }
+        let _ = handled;
     }
 
     /// Declare a parameter with a value and descriptor. Returns `true` if successful.
@@ -8645,5 +8725,132 @@ pub(crate) fn default_clock_us_fn() -> Option<fn() -> u64> {
     #[cfg(not(feature = "rmw-cffi"))]
     {
         None
+    }
+}
+
+// =============================================================================
+// phase-425 W3b — the `/clock` time source's executor half.
+//
+// Its OWN impl block, gated on `sim-time`, because the methods were first
+// written next to `declare_parameter` — which lives in a
+// `#[cfg(feature = "param-services")]` block, so `reconcile_ros_time_source`
+// silently disappeared in every combo without parameter services, including the
+// one `spin_once` calls it from.
+// =============================================================================
+#[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+impl<'s> Executor<'s> {
+    /// phase-425 W3b — bring the `/clock` subscription in line with the last
+    /// requested `use_sim_time`.
+    ///
+    /// Called at the head of every spin, and cheap when there is nothing to do:
+    /// the common case is one bool comparison. It is a RECONCILE rather than an
+    /// action at the request site because the request routinely arrives before
+    /// there is a node to hang the subscription on — `nros::main!` emits
+    /// `apply_param_services` before its per-node `register` calls, by design,
+    /// so the store exists when each cell is created.
+    ///
+    /// Turning it off stops SAMPLES from being installed; the subscription
+    /// itself stays, because the executor has no entity removal and inventing
+    /// one for this would be a much larger change than the switch is worth. The
+    /// gate is `time_source::set_active`, which the subscription callback reads.
+    ///
+    /// Turning it off also does NOT clear the override: a node that stops
+    /// listening keeps the last simulated time rather than jumping back to the
+    /// wall clock, which every ROS-time timer would otherwise absorb as a
+    /// backwards jump.
+    #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+    pub(crate) fn reconcile_ros_time_source(&mut self) {
+        if self.sim_time_requested == crate::time_source::is_active()
+            && (!self.sim_time_requested || self.sim_time_source.is_some())
+        {
+            return;
+        }
+        crate::time_source::set_active(self.sim_time_requested);
+        if self.sim_time_requested && self.sim_time_source.is_none() {
+            // No node yet — stay pending and try again next spin. Not an error:
+            // it is the ordinary order of a generated entry, which declares
+            // parameters before it registers components.
+            if self.nodes.is_empty() {
+                return;
+            }
+            if let Ok(handle) = self.install_ros_time_source(
+                super::node_record::NodeId::PRIMARY,
+                crate::time_source::CLOCK_TOPIC,
+            ) {
+                self.sim_time_source = Some(handle);
+            }
+        }
+    }
+
+    /// phase-425 W3b — re-read `use_sim_time` from the parameter store.
+    ///
+    /// Called after a parameter service actually handled something, which is
+    /// what makes a runtime `ros2 param set <node> use_sim_time true` work
+    /// without a per-spin scan of the store. The declaration path does not need
+    /// it — `declare_parameter` records the value directly.
+    #[cfg(all(feature = "sim-time", feature = "param-services", any(has_rmw, test)))]
+    fn refresh_use_sim_time_from_store(&mut self) {
+        if let Some(params) = self.params.as_ref()
+            && let Some(enable) = params
+                .server
+                .get_bool(crate::time_source::USE_SIM_TIME_PARAM)
+        {
+            self.sim_time_requested = enable;
+        }
+    }
+
+    /// phase-425 W3b — the installed `/clock` subscription, if any.
+    ///
+    /// The HANDLE rather than a bool, because "did we subscribe twice" is the
+    /// question a reconciliation loop has to be able to answer: a second
+    /// registration takes a new slot, so a stable handle across spins is the
+    /// evidence that the loop is idempotent.
+    #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+    pub fn ros_time_source_handle(&self) -> Option<HandleId> {
+        self.sim_time_source
+    }
+
+    /// phase-425 W3b — whether a `/clock` subscription is currently installed.
+    #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+    pub fn ros_time_source_installed(&self) -> bool {
+        self.sim_time_source.is_some()
+    }
+
+    /// phase-425 W3 — subscribe `topic` and install every sample as this
+    /// image's ROS time. The registration behind
+    /// [`NodeCtx::install_ros_time_source`](super::node::NodeCtx::install_ros_time_source)
+    /// and behind the `use_sim_time` reconciliation, so both spell the QoS and
+    /// the conversion exactly once.
+    #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+    pub(crate) fn install_ros_time_source(
+        &mut self,
+        node_id: super::node_record::NodeId,
+        topic: &str,
+    ) -> Result<HandleId, NodeError> {
+        self.register_subscription_buffered_on::<
+            nros_rosgraph_msgs::msg::Clock,
+            _,
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+        >(
+            node_id,
+            topic,
+            QoSProfile::clock_default(),
+            |msg: &nros_rosgraph_msgs::msg::Clock| {
+                // The `use_sim_time` gate is read HERE rather than by removing
+                // the subscription, because there is no entity removal. An
+                // image that never touches `use_sim_time` and installs the
+                // source explicitly is active by default.
+                if !crate::time_source::is_active() {
+                    return;
+                }
+                if let Some(nanos) =
+                    crate::time_source::override_nanos(msg.clock.sec, msg.clock.nanosec)
+                {
+                    nros_core::clock::Clock::set_ros_time_override(nanos);
+                }
+            },
+            None, // no group — node default
+            None, // the configured default RX buffer, unchanged
+        )
     }
 }
