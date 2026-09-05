@@ -95,4 +95,15 @@ typedef struct ActionServerRawHandle {
 }
 #endif
 
+/* RFC-0090 / phase-429 — the codegen versions this runtime ACCEPTS.
+ *
+ * A generated artifact declares the version it was emitted at and compares it
+ * against this closed range with the preprocessor, so a disagreement is a
+ * COMPILE error naming both numbers rather than a link error naming a symbol.
+ *
+ * Emitted from `nros_core::codegen_version`, which is the one place either
+ * number is written. Nothing here is authored. */
+#define NROS_CODEGEN_VERSION @CODEGEN_VERSION@
+#define NROS_CODEGEN_VERSION_MIN @CODEGEN_VERSION_MIN@
+
 #endif /* NROS_CONFIG_GENERATED_H */

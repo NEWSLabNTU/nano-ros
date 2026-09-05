@@ -35,7 +35,6 @@ pub fn run() {
     // RFC-0089 / phase-429 W1 — the codegen-version anchors. Unconditional: the
     // accepted range is a property of this checkout's runtime, not of the
     // feature set and not of whether a size probe ran.
-    emit_codegen_version_symbols();
     generate_header(&manifest_dir);
 
     // Weak fallbacks for the platform log ABI (`nros_platform_log_*`), for
@@ -332,7 +331,18 @@ fn generate_config(
             "@LIFECYCLE_CTX_OPAQUE_U64S@",
             &lifecycle_ctx_opaque_u64s.to_string(),
         )
-        .replace("@RAW_HANDLE_U64S@", &raw_handle_u64s.to_string());
+        .replace("@RAW_HANDLE_U64S@", &raw_handle_u64s.to_string())
+        // RFC-0090 / phase-429 — the accepted codegen range, straight from
+        // `nros_core::codegen_version` (this crate `include!`s it). Generated
+        // C compares against these with the preprocessor.
+        .replace(
+            "@CODEGEN_VERSION@",
+            &crate::codegen_version::NROS_CODEGEN_VERSION.to_string(),
+        )
+        .replace(
+            "@CODEGEN_VERSION_MIN@",
+            &crate::codegen_version::NROS_CODEGEN_VERSION_MIN.to_string(),
+        );
     // Phase 119.3: source-tree header is now a committed STUB that
     // `#error`s. Real header gets written PER-BUILD to
     // `$CARGO_TARGET_DIR/nros-c-generated/nros/` (FLAT; issue 0360).
@@ -523,45 +533,6 @@ fn generate_header(manifest_dir: &Path) {
 
 /// RFC-0089 / phase-429 W1 — define the weak anchor symbols that ARE the
 /// accepted codegen-version range.
-///
-/// One `nros_codegen_version_v<K>` per K in
-/// `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]`. A generated artifact
-/// references the single symbol for the version it was emitted at, so a version
-/// outside the range is an undefined reference NAMING that version — no
-/// comparison runs anywhere, at build time or at run time, that could itself be
-/// wrong.
-///
-/// The TU is TRACKED (`csrc/codegen_version_symbols.c`), not generated into
-/// `OUT_DIR`, for the issue-0904 reason spelled out in that file and in
-/// `emit_variant_symbol` below: a generated TU's absolute `OUT_DIR` reaches the
-/// object through `__FILE__` and the debug-info compilation dir, which is what
-/// made otherwise-identical `libnros_c.a` artifacts differ between two target
-/// dirs. Only the `-D`s vary.
-fn emit_codegen_version_symbols() {
-    // `CARGO_MANIFEST_DIR` is expanded at THIS crate's compile time, so it names
-    // nros-build-helpers' own directory, not the consumer's.
-    let c_src =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("csrc/codegen_version_symbols.c");
-    println!("cargo:rerun-if-changed={}", c_src.display());
-    let mut build = cc::Build::new();
-    // issue 0383 — implicit-function-declaration / int-conversion as errors.
-    nros_cc_flags::strict_decls(&mut build);
-    build.file(&c_src).warnings(false);
-    build.define(
-        "NROS_CODEGEN_VERSION",
-        crate::codegen_version::NROS_CODEGEN_VERSION
-            .to_string()
-            .as_str(),
-    );
-    build.define(
-        "NROS_CODEGEN_VERSION_MIN",
-        crate::codegen_version::NROS_CODEGEN_VERSION_MIN
-            .to_string()
-            .as_str(),
-    );
-    crate::shared::apply_baremetal_libc(&mut build);
-    build.compile("nros_codegen_version_symbols");
-}
 
 /// Issue 0360 — write the archive side of the variant stamp.
 ///

@@ -13,5 +13,12 @@
 //!
 //! `rosidl-codegen`, in the separate `packages/cli` workspace, reaches the same
 //! file the same way. Keep the two spellings identical.
+//!
+//! What this crate does with the range: writes it into the generated config
+//! headers (`nros_config_generated.h`, `nros_cpp_config_generated.h`) as
+//! `NROS_CODEGEN_VERSION` / `NROS_CODEGEN_VERSION_MIN`, which is what generated
+//! C and C++ compare themselves against with the preprocessor. It used to also
+//! define one weak anchor symbol per accepted version; that mechanism is gone
+//! (RFC-0090, and `check-weak-symbols`).
 
 include!("../../../core/nros-core/src/codegen_version.rs");
