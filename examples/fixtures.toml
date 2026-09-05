@@ -1413,6 +1413,32 @@ dir = "packages/testing/nros-tests/bins/int32-sink"
 no_default_features = true
 features = ["rmw-zenoh"]
 
+# phase-425 W5 — the `/clock` pair, the phase's end-to-end evidence. Every other
+# simulated-time test installs a ROS time by calling the setter, which proves
+# the timer arithmetic and nothing about the wire; this pair puts a real
+# publisher on a real topic in a separate process.
+#
+# CYCLONE and not zenoh, and that is not a preference: zenoh needs a ROUTER
+# (`rmw_zenohd`, which ships with ROS — RFC-0075), so on a host with no ROS the
+# pair cannot open a session and the test can only skip. Cyclone is
+# peer-to-peer, so this demonstrates rather than skips. The claim under test is
+# about clocks, not about a transport.
+[[fixture]]
+platform = "linux"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "packages/testing/nros-tests/bins/sim-clock-publisher"
+no_default_features = true
+features = ["rmw-cyclonedds"]
+
+[[fixture]]
+platform = "linux"
+lang = "rust"
+rmw = "cyclonedds"
+dir = "packages/testing/nros-tests/bins/sim-clock-listener"
+no_default_features = true
+features = ["rmw-cyclonedds"]
+
 # phase-338 W3 — the XRCE build of the same sink. The zenoh->xrce declarative
 # bridge e2e needs an Int32 listener that speaks XRCE; before this it drove the
 # EXAMPLE (`native/rust/listener`) with a test-only `NROS_SUB_TYPE=int32` env

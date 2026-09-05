@@ -188,6 +188,17 @@ param-services = ["nros-node/param-services"]
 # Lifecycle services for ROS 2 interop (ros2 lifecycle set|get|list|nodes — REP-2002).
 lifecycle-services = ["nros-node/lifecycle-services"]
 
+# phase-425 W3/W3b — the `/clock` time source: `use_sim_time` attaches it, and a
+# `TimerClockSource::Ros` timer then follows a simulator or a bag player.
+#
+# A forward, and it has to exist: 62 of the 62 in-workspace dep-sites on this
+# crate pass `default-features = false` and depend on `nros`, not on `nros-node`
+# — so without a name here the capability is reachable only by whole-workspace
+# feature unification, which is the shape `check-feature-contract` clause (d)
+# rejects and issue 0593 measured. W3 gated it in `nros-node` and stopped there,
+# which left it unreachable from the umbrella every application actually uses.
+sim-time = ["nros-node/sim-time"]
+
 # ROS edition feature flags.
 ros-humble = ["nros-node/ros-humble"]
 ros-iron = ["nros-node/ros-iron"]

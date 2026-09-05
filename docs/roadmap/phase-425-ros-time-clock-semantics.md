@@ -1,8 +1,8 @@
 # Phase 425 — ROS time is a type, not a behaviour: give the timer API the official semantics
 
-**Status (2026-09-05).** W1, W2, W3, W3b and W4 landed. W5 (ledger, book) is
-open, and so is the one end-to-end demonstration this phase still owes: a
-fixture with a real publisher on `/clock`. Opened by an owner
+**Status (2026-09-05).** COMPLETE. W1, W2, W3, W3b, W4 and W5 landed, including
+the end-to-end demonstration the phase owed: `bins/sim-clock-{publisher,listener}`
+plus `tests/sim_time_clock_e2e.rs`, two processes over a real RMW. Opened by an owner
 decision on the `cpp:Node::create_wall_timer` ledger row: the answer to "do we
 adopt rclcpp's name" is yes, and the reason given widens the work past a
 rename — bag replay and simulation need ROS *time*, not just the word `wall`.
@@ -205,8 +205,29 @@ not a behaviour are gone. `/clock` can be subscribed (W2, W3), `use_sim_time`
 attaches the source with no code change (W3b), a timer can be driven by it
 (W4), and the name says which timer you asked for (W1).
 
-What remains is evidence, not mechanism: every claim here is unit-tested
-against a hand-installed ROS time, and none of it has yet been demonstrated
-end to end against a real publisher on `/clock`. That needs an RMW and
-therefore a fixture. Until it exists, the honest statement is "the pieces are
-in place and individually proven", not "bag replay works".
+The evidence is in too. `tests/sim_time_clock_e2e.rs` runs a real
+`rosgraph_msgs/msg/Clock` publisher and a `use_sim_time` node as separate
+processes over cyclonedds and asserts three things in one run: the source
+ATTACHES from the parameter alone (no `install_ros_time_source()` call appears
+in the fixture), a `TimerClockSource::Ros` timer runs at the SIMULATOR's rate
+(measured ~98 activations/s against a wall timer's 10 on a 10x replay), and
+when `/clock` stops the ROS timer stops DEAD while the wall timer keeps its
+cadence. Mutation-checked both ways.
+
+CYCLONE and not zenoh, deliberately: zenoh needs `rmw_zenohd`, which ships with
+ROS (RFC-0075), so on a host without ROS the pair cannot open a session and the
+test could only skip. This one demonstrates.
+
+Two things the fixture taught that no unit test could:
+
+* **The publish STEP interacts with `TimerOverrunPolicy`.** Each `/clock` sample
+  advances simulated time by `step_ms x rate`, and `Skip` — the default —
+  coalesces a jump worth several periods into ONE activation. Publish coarsely
+  and a 10x simulator gives a 1x TICK rate while `now()` still advances at 10x.
+  Both are correct; they are different questions. The consumer relation is
+  `step_ms x rate <= period_ms`, and it is now written on both sides.
+* **A capability that stops at the core crate is unreachable.** `sim-time` and
+  `TimerClockSource` were both absent from the `nros` umbrella, and 62 of the 62
+  in-workspace dep-sites depend on `nros`. W3 and W4 each stopped one crate
+  short; the fixture found it by being the first consumer to write the code a
+  user would write.

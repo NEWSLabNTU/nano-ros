@@ -3685,6 +3685,39 @@ pub fn build_int32_sink_rmw(rmw: Rmw) -> TestResult<&'static Path> {
     .map(|p| p.as_path())
 }
 
+/// phase-425 W5 — the `/clock` publisher, the simulator half of the sim-time
+/// pair. Cyclone only: zenoh needs a router that ships with ROS, and this
+/// fixture exists to DEMONSTRATE simulated time on a host that may have none.
+pub fn build_sim_clock_publisher() -> TestResult<&'static Path> {
+    static BIN: OnceCell<PathBuf> = OnceCell::new();
+    BIN.get_or_try_init(|| {
+        let row = crate::fixtures::groups::select_row(
+            "packages/testing/nros-tests/bins/sim-clock-publisher",
+            &crate::fixtures::groups::FixtureVariant::rmw(Rmw::Cyclonedds),
+        )?;
+        let profile = cargo_target_profile_dir();
+        let rel = PathBuf::from(format!("{profile}/sim-clock-publisher"));
+        require_prebuilt_row_binary_fresh(row, &rel)
+    })
+    .map(|p| p.as_path())
+}
+
+/// phase-425 W5 — the node half: `use_sim_time` true, one ROS-time timer and
+/// one wall timer of the same period.
+pub fn build_sim_clock_listener() -> TestResult<&'static Path> {
+    static BIN: OnceCell<PathBuf> = OnceCell::new();
+    BIN.get_or_try_init(|| {
+        let row = crate::fixtures::groups::select_row(
+            "packages/testing/nros-tests/bins/sim-clock-listener",
+            &crate::fixtures::groups::FixtureVariant::rmw(Rmw::Cyclonedds),
+        )?;
+        let profile = cargo_target_profile_dir();
+        let rel = PathBuf::from(format!("{profile}/sim-clock-listener"));
+        require_prebuilt_row_binary_fresh(row, &rel)
+    })
+    .map(|p| p.as_path())
+}
+
 /// The zenoh build — the default for every caller that does not care.
 pub fn build_int32_sink() -> TestResult<&'static Path> {
     build_int32_sink_rmw(Rmw::Zenoh)

@@ -1,0 +1,61 @@
+[workspace]
+
+[package]
+name = "sim-clock-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "A node with `use_sim_time` true and TWO timers of the same period — one ROS-time, one wall (phase-425 W5). Prints both counts once per real second, so a paired sim-clock-publisher can be observed driving one and not the other. The pair is the phase's end-to-end evidence: every other sim-time test installs a ROS time by calling the setter."
+
+[[bin]]
+name = "sim-clock-listener"
+path = "src/main.rs"
+
+[features]
+default = ["rmw-zenoh"]
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-board-linux/rmw-zenoh"]
+# issue 0449's shape, and here it is not merely parity: zenoh needs a ROUTER
+# (`rmw_zenohd`, which ships with ROS — RFC-0075), so on a host with no ROS the
+# pair cannot even open a session. Cyclone is peer-to-peer and needs no external
+# process, which is what lets this fixture DEMONSTRATE simulated time rather
+# than skip.
+rmw-cyclonedds = ["nros/rmw-cyclonedds", "dep:nros-rmw-cyclonedds-sys", "nros-board-linux/rmw-cyclonedds"]
+
+[dependencies]
+nros = { path = "../../../../api/nros", default-features = false, features = [
+    "std", "alloc", "env",
+    "rmw-cffi",
+    "ros-humble",
+    # The two under test. `param-services` because `use_sim_time` is a
+    # PARAMETER — the seam W3b hooks is `Executor::declare_parameter`, which
+    # lives behind it.
+    "sim-time",
+    "param-services",
+] }
+nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", features = ["posix-c-port"] }
+nros-board-linux = { path = "../../../../boards/nros-board-linux", default-features = false }
+nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
+    "std",
+    "platform-posix",
+    "ros-humble",
+], optional = true }
+# The COMMITTED bindings, not a `generated/` tree: `rosgraph_msgs` is one of the
+# core pre-generated interface packages (phase-425 W2), so this leaf needs no
+# `nros sync` and no per-host codegen — which is also why it can carry a
+# tracked lockfile at all.
+nros-rosgraph-msgs = { path = "../../../../interfaces/rosgraph-msgs/generated/humble/nros-rosgraph-msgs", default-features = false }
+# Named directly because the generated crate does not re-export its own deps —
+# `Clock`'s one field is a `builtin_interfaces/Time`, and the `-clock` suffix is
+# the rename that keeps two generated copies of builtin_interfaces from
+# colliding in one workspace (phase-425 W2).
+nros-builtin-interfaces-clock = { path = "../../../../interfaces/rosgraph-msgs/generated/humble/nros-builtin-interfaces-clock", default-features = false }
+nros-rmw-cyclonedds-sys = { path = "../../../../rmw/cyclonedds/nros-rmw-cyclonedds-sys", features = [
+    "platform-posix",
+], optional = true }
+log = "0.4"
+env_logger = "0.11"
+
+[patch.crates-io]
+nros-core = { path = "../../../../core/nros-core" }
+nros-serdes = { path = "../../../../core/nros-serdes" }
