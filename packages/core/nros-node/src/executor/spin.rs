@@ -7891,6 +7891,14 @@ impl<'s> Executor<'s> {
     /// identity `register_parameter_services` publishes and the one every
     /// single-node entry means. Name a different node with
     /// [`declare_parameter_on`](Self::declare_parameter_on).
+    ///
+    /// phase-428 W6 — `#[must_use]`, for the reason `[[nodiscard]]` went on
+    /// C++'s `Result`: the `else { false }` arm is silently discarded at a
+    /// call site that drops the value, and `NodeCtx::logger` two files over
+    /// already carries the attribute — so this was inconsistency, not house
+    /// style. A declare that failed and was ignored is a parameter the program
+    /// believes it has.
+    #[must_use]
     pub fn declare_parameter(&mut self, name: &str, value: nros_params::ParameterValue) -> bool {
         self.declare_parameter_on(super::node_record::NodeId::PRIMARY, name, value)
     }
