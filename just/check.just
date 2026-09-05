@@ -184,6 +184,7 @@ fast-serial: \
     example-leaf-build-dirs \
     example-leaf-target-dirs \
     example-matrix \
+    example-platform-not-shadowed \
     export-f-closure \
     eyre-context-alias \
     feature-contract \
@@ -4256,6 +4257,19 @@ example-leaf-target-dirs:
 [private]
 example-leaf-build-dirs:
     @python3 scripts/check-example-leaf-build-dirs.py
+
+# issue 0835 — an example leaf must not overrule the platform its own build
+# passes. Six threadx rust leaves carried a plain `set(NANO_ROS_PLATFORM
+# threadx)`, a NORMAL variable that shadows the cache entry
+# `-DNANO_ROS_PLATFORM=threadx_riscv64` wrote — so each leaf and its own
+# CMakeCache disagreed, written in the same second. Visible cost: four shared
+# corrosion cargo groups where the configuration space has two, 2.8 GB of
+# duplicate output. Quieter cost: two `stdc++` link decisions had come to depend
+# on the wrong label, so making the leaves honest would have stopped them
+# matching, silently. Buildless, reads the manifest and the leaves.
+[private]
+example-platform-not-shadowed:
+    @python3 scripts/check-example-platform-not-shadowed.py
 
 # issue 0720 — a test asks a fixture resolver for an artifact BY NAME, and a
 # name no CMake target produces resolves to a missing path, which the test

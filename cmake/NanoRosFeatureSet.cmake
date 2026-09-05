@@ -24,6 +24,60 @@ include_guard(GLOBAL)
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 
+# nros_platform_hosted_cxx_runtime(<out> <platform>)
+#
+# TRUE when a binary for `<platform>` can link the toolchain's C++ runtime
+# (`stdc++`). The Cyclone RMW wrapper is C++, so a C application linking
+# `NanoRos::NanoRos` needs it propagated through the INTERFACE or the link fails
+# on `operator new` — but a bare-metal ThreadX image has no `libstdc++` to link
+# and the flag is fatal there.
+#
+# issue 0835 — this exists because the test was written inline, TWICE, as
+# `NANO_ROS_PLATFORM STREQUAL "threadx"`. That is a platform LABEL standing in
+# for a property, which is the defect RFC-0064 records and phase-338 W5.a already
+# fixed one layer down (the ThreadX tier derives from `_cross`, not from the
+# board name). It also silently DEPENDED on six example leaves misreporting their
+# platform: `examples/qemu-riscv64-threadx/rust/*/CMakeLists.txt` each carried
+# `set(NANO_ROS_PLATFORM threadx)`, shadowing the `-DNANO_ROS_PLATFORM=
+# threadx_riscv64` their own build passes. Those leaves now report honestly, so a
+# test on the bare label would have stopped matching — silently, and the failure
+# would have been a link error on a platform nobody was editing.
+#
+# THE LIST IS EXACTLY TODAY'S RULE, and that is deliberate: this change must not
+# remove `stdc++` from any link that currently has it. Two derivations were
+# considered and both would have:
+#
+#  * `CMAKE_SYSTEM_NAME STREQUAL "Generic"` — `freertos` is also a Generic cross
+#    target, also builds Cyclone fixtures, and today DOES link `stdc++`.
+#  * "any bare-metal ThreadX", i.e. adding `threadx_riscv64` — MEASURED from the
+#    generated ninja files: `examples/qemu-riscv64-threadx/c/talker/
+#    build-cyclonedds` carries `-lstdc++` and its rust sibling does not. The c/cpp
+#    leaves are exactly the case the comment at the call site describes (a C
+#    driver linking the C++ Cyclone wrapper), so taking it away is the direction
+#    that breaks.
+#
+# So bare `threadx` stays the only entry. The visible consequence is that the six
+# `examples/qemu-riscv64-threadx/rust/*` leaves, which used to reach this by
+# MISREPORTING their platform, now take the same branch their c/cpp siblings on
+# the identical board and toolchain already take, and gain `-lstdc++`. Adding a
+# library to a link that does not reference it is benign with GNU ld, and those
+# siblings prove it resolves for `riscv-none-elf`. NOT build-verified in the
+# branch that made this change: a fresh worktree has no `nros sync` output, so
+# corrosion cannot read `nros-patch.toml` and the leaf will not configure there.
+#
+# The generalisation — derive from a property instead of listing a label — is
+# still the right end state and is what RFC-0064 and phase-338 W5.a argue for.
+# What it needs first is a measurement nobody has taken: whether freertos-cross
+# actually wants the `stdc++` it currently gets.
+function(nros_platform_hosted_cxx_runtime out platform)
+    set(_freestanding threadx)
+    if(platform IN_LIST _freestanding)
+        set(${out} FALSE PARENT_SCOPE)
+    else()
+        set(${out} TRUE PARENT_SCOPE)
+    endif()
+endfunction()
+
 # nros_feature_set(<out>
 #     CRATE        <c|cpp>               which crate's feature vocabulary
 #     EDITION      <humble|iron|jazzy>   default: NANO_ROS_ROS_EDITION, else humble

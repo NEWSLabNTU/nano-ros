@@ -8,7 +8,29 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # the C/C++ examples. CMake owns Cyclone's C++ backend + generated
 # descriptors; the Rust crate is imported as a staticlib exposing
 # app_main().
-set(NANO_ROS_PLATFORM threadx)
+# issue 0835 — the caller decides, and this is only the copy-out default.
+#
+# This line used to read `set(NANO_ROS_PLATFORM threadx)`, an unconditional
+# normal variable that SHADOWED the `-DNANO_ROS_PLATFORM=threadx_riscv64` this
+# leaf's own build passes (`just/threadx-riscv64.just`, both the Rust
+# `nros_cmake_fixture_build` path and the C/C++ `NROS_CMAKE_EXTRA_DEFS` one).
+# The leaf therefore reported one platform while its CMakeCache recorded
+# another, both written in the same second, and the shared cargo directory keyed
+# on the label got FOUR groups where the configuration space has two:
+#
+#   platform=threadx         |rmw=zenoh     |board=riscv64-qemu|…   <- these six
+#   platform=threadx_riscv64 |rmw=zenoh     |board=riscv64-qemu|…   <- the c/cpp leaves
+#   platform=threadx         |rmw=cyclonedds|board=riscv64-qemu|…
+#   platform=threadx_riscv64 |rmw=cyclonedds|board=riscv64-qemu|…
+#
+# — 2.8 GB of duplicate build output for a spelling difference. The key now
+# hashes the resolved feature set rather than the label (`8033bc3f0`), so the
+# duplication is already gone; this makes the leaf stop lying, which is the
+# other half and the one that keeps the next label-keyed thing from repeating
+# it.
+if(NOT DEFINED NANO_ROS_PLATFORM)
+    set(NANO_ROS_PLATFORM threadx_riscv64)
+endif()
 set(NROS_RMW "cyclonedds" CACHE STRING
     "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")
 set(NANO_ROS_RMW "${NROS_RMW}" CACHE STRING
