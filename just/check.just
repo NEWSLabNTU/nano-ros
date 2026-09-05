@@ -294,6 +294,7 @@ fast-serial: \
     rmw-slot-producers \
     rmw-slot-table \
     rmw-vtable-order \
+    roadmap-boxes \
     roadmap-claims \
     roadmap-status \
     ros-env-spelling \
@@ -2592,6 +2593,22 @@ rmw-api-comparison:
 [private]
 peer-sweep-lanes:
     @bash scripts/check-peer-sweep-lanes.sh
+
+# issue 1103 — a phase SECTION whose declared `**Files:**` all exist while its
+# boxes stay open. `check-roadmap-claims` beside this compares a document against
+# ITSELF (status text vs box counts, an `**Owns:**` link vs an issue's
+# frontmatter); nothing asked whether the work described had ARRIVED. phase-215
+# read 20 of 38 boxes while 27 were done — a P1 phase advertising seven finished
+# items as available.
+#
+# SECTION level, not box level, and that was measured rather than assumed: the
+# per-box rule ("an unticked box naming a path that exists") catches 2 of those
+# 7 and fires on 2 false positives tree-wide, because most boxes name a variable,
+# a function, a recipe, or prose. The section rule catches 3 of the 4 relevant
+# sections with zero findings on main. Ratcheted; `--write-baseline` to accept.
+[private]
+roadmap-boxes:
+    @python3 scripts/check-roadmap-boxes.py
 
 # phase-419 W2 — an active phase must not contradict its own body. Sibling of
 # `roadmap-status`, which asserts a status EXISTS and deliberately stops there
