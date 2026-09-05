@@ -10,8 +10,7 @@ anchor symbol and was replaced: this project avoids those, and the check turned
 out to decompose into one new check plus `nros_config_variant_<slug>`, which
 already existed). Rust refuses under `cargo check`. The ratchet holds the
 authored integer to its surface. `check-codegen-version-refusal` is the negative
-control that proves the C/C++ arms actually fire, and names the one arm it does
-not cover.
+control that proves every arm actually fires — C, C++ and Rust.
 
 **Not done, and it is the point of all of it:** shipping a prebuilt binary. That
 is a release decision, now unblocked rather than taken.
@@ -170,6 +169,17 @@ refusals, not only the happy build.
   and asserts `nros build` refuses at the start; a job that hand-edits `G` in a
   generated tree and asserts the Rust / C / C++ assertion fires. A uniformly
   green lane proves nothing about a check that has never fired in it.
+* **A CORRECTION worth keeping (2026-09-06).** This item first shipped covering
+  C and C++ only, recording the Rust half as unreachable because "there is no
+  `trybuild` and CLAUDE.md bans compiling inside tests". The second clause is
+  true and irrelevant: the ban is on compiling at TEST RUNTIME, and a negative
+  control is a GATE. `check-c` has compiled an expected-failure probe
+  (`serialization_format_mismatch_probe.c`) for years — the same shape, one
+  language over. Arm D builds a scratch crate carrying a bad token and requires
+  `error[E0080]`; mutation-verified by raising `NROS_CODEGEN_VERSION` so the
+  out-of-range probe becomes acceptable, which turns the arm red. A scratch
+  crate rather than a tracked file, because the assertion under test lives in
+  EMITTED code and a hand-written probe could drift from it silently.
 * **The CLI cache key is narrower than the freshness stamp, and that is the
   shipped-binary bug reproduced inside our own CI.** Seven `actions/cache`
   blocks share one key:

@@ -72,6 +72,14 @@ pub mod clock;
 ///
 /// The module's own file carries no `//!` docs deliberately; see the comment at
 /// its head.
+///
+/// # Where the negative case is proven
+///
+/// `just check codegen-version-refusal` builds artifacts carrying an
+/// out-of-range version and requires each language to refuse: `#error` for C and
+/// C++, `error[E0080]` for Rust. A check that has never been observed to fail is
+/// a check nobody has evidence still works, and this one guards a failure whose
+/// whole character is that it is silent.
 pub mod codegen_version;
 // issue 0783 — there is no `error` module here any more, and its absence is the
 // decision. It held `NanoRosError { code: RclReturnCode, context, nested }`, a

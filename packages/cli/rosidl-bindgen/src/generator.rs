@@ -1538,13 +1538,17 @@ mod tests {
     /// phase-429 W1 — the emitted crate carries the codegen version it was
     /// emitted at, and that number is THE runtime constant.
     ///
-    /// This is the runnable half of the compatibility token. The other half —
-    /// that an unaccepted version is a compile error — cannot be asserted by a
-    /// running test (no compile-fail harness in this workspace, and CLAUDE.md
-    /// bans shelling out to `cargo` from a test); `nros_core::codegen_version`
-    /// records what covers it instead. What this test can prove is that the
-    /// assertion is really emitted, at CRATE scope rather than inside a
-    /// generic, and that it reads the constant it claims to.
+    /// This is the runnable half of the compatibility token: that the assertion
+    /// is really emitted, at CRATE scope rather than inside a generic, and that
+    /// it reads the constant it claims to.
+    ///
+    /// The other half — that an unaccepted version is a compile ERROR — is
+    /// covered by `just check codegen-version-refusal` (arm D), which builds a
+    /// scratch crate carrying a bad token and requires `error[E0080]`. It is a
+    /// GATE rather than a test, which is the distinction this comment used to
+    /// get wrong: CLAUDE.md bans compiling at TEST RUNTIME, and says nothing
+    /// about a gate — `check-c` has compiled an expected-failure probe for
+    /// years. There is still no `trybuild`; it turned out not to be needed.
     #[test]
     fn lib_rs_carries_the_codegen_version_token() {
         let temp_dir = tempfile::tempdir().unwrap();
