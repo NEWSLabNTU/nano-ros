@@ -1,9 +1,20 @@
 # Phase 429 — the codegen version is enforced everywhere
 
-**Status (2026-09-05).** Opened. RFC-0090 written and indexed; no code yet. The
-decision is settled — an authored integer, asserted at every generated artifact,
-with freshness and compatibility split apart — and what remains is the work
-breakdown below.
+**Status (2026-09-05).** W1, W2, W3, W5 and W7 landed. W4 and W6 resolved as
+"already true" and "smaller than filed" — each records the measurement that
+settled it, because both were written from a guess I did not check first.
+
+The token exists and every generated artifact carries it. C and C++ refuse at
+COMPILE time through the preprocessor (the first implementation used a weak
+anchor symbol and was replaced: this project avoids those, and the check turned
+out to decompose into one new check plus `nros_config_variant_<slug>`, which
+already existed). Rust refuses under `cargo check`. The ratchet holds the
+authored integer to its surface. `check-codegen-version-refusal` is the negative
+control that proves the C/C++ arms actually fire, and names the one arm it does
+not cover.
+
+**Not done, and it is the point of all of it:** shipping a prebuilt binary. That
+is a release decision, now unblocked rather than taken.
 
 **Implements:** [RFC-0090](../design/0090-codegen-version-is-the-compatibility-token.md).
 **Closes:** the residue of [#1018](../issues/1018-a-codegen-change-invalidates-generated-interfaces-and-only-a-manual-step-connects-them.md).
@@ -135,8 +146,18 @@ reported. Phase-424 already put the fingerprint in the `generated/` stamp
 (`scripts/build/codegen-stamp.sh`), which is the detector; this item makes the
 response automatic.
 
-**Acceptance.** Editing an emitter and rebuilding the CLI regenerates on the
-next `nros build` with no user action and no message beyond a progress line.
+**SATISFIED, and mostly before this phase opened** (recorded 2026-09-05).
+`nros_codegen_stamp_check_or_wipe` already wipes on drift and lets `nros sync`
+repopulate — it prints `codegen-stamp: drift detected … — wiping (will regen)`
+and returns 0. It never stopped anyone; what it could not do was NOTICE an
+emitter edit, because its watch set was one file in `nros-core`. Phase-424
+supplied the missing detection by hashing `nros codegen-fingerprint` into that
+stamp.
+
+So this item is the composition of two things that already exist, and the work
+here is to say so rather than to build a third. **Acceptance met:** editing an
+emitter, rebuilding the CLI, and running a consumer build regenerates with a
+progress line and no refusal.
 
 ### W5 — CI exercises the user path, including the failures
 
@@ -173,16 +194,34 @@ refusals, not only the happy build.
 
 **Acceptance.** Each negative control fails when its check is reverted.
 
-### W6 — the stale-CLI refusal becomes developer-only, and stops stopping
+### W6 — the stale-CLI refusal becomes developer-only
 
-With W1–W3 live, the refusal is no longer the correctness guard, so it can be
-fixed rather than tolerated (RFC-0090 D6). In a developer checkout — detected by
-the repo being present, where the Rust toolchain exists by definition — a stale
-CLI is **rebuilt** instead of refused. It cannot fire for a user with a released
-binary and no CLI sources.
+**SCOPE CORRECTED 2026-09-05, after measuring.** This item first said a stale CLI
+would be *rebuilt* instead of refused. That is wrong twice over, and RFC-0090 D6
+now records why: auto-rebuild is banned by the refusal's own rule (*"compiling at
+build/test time is forbidden"*, and it is issue 1018's rejected option 1), and
+narrowing the watch set is rejected by issue 0604's measurement that a
+hand-rolled closure walk was wrong in both directions.
 
-This is what closes #1018's residue: the `cmd/doctor.rs` stop, and the
-"I only moved a submodule pin" stop.
+What is left is real but smaller:
+
+* **Remove watch-set entries that provably cannot affect an emitted byte.** One
+  existed and is gone — `rosidl-codegen/templates/`, a byte-identical duplicate
+  of `packs/scaffold/` referenced from no `.rs`. Proof is the pair of
+  measurements: the codegen fingerprint did not move (nothing emitted changed)
+  and the source stamp did (the refusal watches five fewer files).
+* **Check the other two reported stops rather than assuming them false.** Both
+  were, and both are CORRECT:
+  * the `play_launch` pin is a genuine CLI build input (`build.rs` bakes
+    `NROS_PLAY_LAUNCH_SHA`; issue 0561 records a pin move that left the stamp
+    unchanged while `setup-cli` reported success);
+  * `cmd/doctor.rs` is compiled into the binary, so it does change it. The stamp
+    asks "does this binary match its sources" and answers correctly.
+* **Record who pays.** A user with a released binary has no CLI sources, so
+  `checkout_root_of` cannot match and the guard cannot fire for them.
+
+**Acceptance.** The refusal cannot fire for a binary outside a checkout, and no
+watch-set entry remains that cannot affect an emitted byte.
 
 **A free narrowing, found while surveying.**
 `packages/cli/rosidl-codegen/templates/` is a **byte-identical duplicate** of
