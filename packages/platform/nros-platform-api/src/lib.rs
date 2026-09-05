@@ -61,7 +61,12 @@
 // an ABI belongs with the ABI.
 #[cfg(feature = "alloc")]
 extern crate alloc;
-#[cfg(feature = "alloc")]
+// The module is NOT `alloc`-gated; `PlatformTask` inside it is. Gating the whole
+// module put `stack_unused_bytes` — a bare `extern` query that allocates nothing
+// — behind `alloc`, so `Executor::check_stack_headroom_rule` failed to compile
+// in every no-alloc image. That is the build where stack headroom matters most,
+// and the rule was unreachable there (phase-425 sweep; the lane that catches it,
+// `check workspace-embedded`, runs in no merge-gating event).
 pub mod task;
 
 use core::ffi::{c_int, c_void};

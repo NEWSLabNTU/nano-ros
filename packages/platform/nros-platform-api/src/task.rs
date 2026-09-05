@@ -60,15 +60,22 @@ unsafe extern "C" {
 
 /// A spawned platform task plus the storage the platform tracks it in.
 ///
+/// `alloc`-gated, and it is the ONLY thing in this module that is: it owns a
+/// heap block sized from the platform's own storage probes. The bare queries
+/// beside it (`stack_unused_bytes`) allocate nothing and stay available to a
+/// no-alloc image.
+///
 /// Joining is [`join`](Self::join) rather than `Drop`, because both callers
 /// have to signal their worker to stop BEFORE waiting for it — a `Drop` that
 /// joined implicitly would deadlock against a worker still blocked on its own
 /// wait.
+#[cfg(feature = "alloc")]
 pub struct PlatformTask {
     ptr: *mut u8,
     layout: core::alloc::Layout,
 }
 
+#[cfg(feature = "alloc")]
 impl PlatformTask {
     /// Spawn `entry(arg)`, or `None` when this platform cannot host a task
     /// (no storage sizing, allocation failure, or a refused spawn).
@@ -177,6 +184,7 @@ impl PlatformTask {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl Drop for PlatformTask {
     fn drop(&mut self) {
         // Reached only if a caller dropped the handle without joining, which

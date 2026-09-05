@@ -796,6 +796,11 @@
     "why": "switches one registered callback between ON_NEW_DATA and ALWAYS at runtime -- rclc's invocation mode, which rclrs has no counterpart for. See `c:executor_handle_invocation_t`.",
     "bucket": "ours-only"
   },
+  "rust:Executor::set_min_stack_headroom_bytes": {
+    "verdict": "extension",
+    "why": "declares the minimum stack headroom the executor's own thread must keep, in bytes; `0` (the default) disables the `stack-headroom-runtime` rule. The companion to `rust:Executor::*monitor_table` for a resource ROS 2 never has to watch: a hosted node's stack grows, an RTOS task's does not, and an overflow there corrupts a NEIGHBOUR's state rather than faulting cleanly.\n\nSet by the ENTRY rather than inferred, because the entry is the only party that knows what stack it handed over -- the executor never sees `stack_bytes` and no portable query returns a task's total stack, so neither an absolute floor nor a percentage can be computed here. Same \"ask, do not assume\" as issue 0667's `stack_bytes` floors.\n\nNewly VISIBLE to this report on 2026-09-05, not newly written: `nros_platform_api::task` was gated on `alloc` because it also holds the allocating spawn helper, so the rule's own platform query (`stack_unused_bytes`, a bare `extern` that allocates nothing) did not compile in a no-alloc image and the surface was never extracted. phase-425 moved the gate onto `PlatformTask` alone.",
+    "bucket": "ours-only"
+  },
   "rust:Executor::set_node_identity": {
     "verdict": "divergence",
     "why": "sets node name and namespace after open, because RFC-0046 makes LAUNCH the authority on node identity and an image is told its name at boot rather than parsing argv (there is none). rclrs fixes identity at `create_node`. See `c:support_init_named`.",
