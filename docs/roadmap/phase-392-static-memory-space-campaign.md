@@ -8,7 +8,7 @@ Landed since: **W1** (pool inventory to full coverage, plus `just mem-report`
 and the `static_memory_declared_pools` test that makes a published pool figure
 answer to the linker), **W3a/W3b** (a subscription buffer sized from the
 message's own `MAX_SERIALIZED_SIZE_*` rather than by hand — Rust only; the
-C/C++ half is [issue 0896](../issues/0896-c-cpp-subscriptions-never-state-a-buffer-hint.md)),
+C/C++ half is [issue 0896](../issues/archived/0896-c-cpp-subscriptions-never-state-a-buffer-hint.md)),
 and **W5.b1/c/d/e/f** (the queryable table sized by declaration — 143,456 B off
 a talker — with an exhausted table that names the declaration and a knob that is
 checked at build time).
@@ -272,7 +272,7 @@ and `__nros_comp_buf_N` is not the exception this wave assumed, it is the rule:
 `SERVICE_BUFFERS` is a product including `ZPICO_MAX_QUERYABLES`, whose default is
 *computed*, so there is no integer to write down; `MESSAGE_INFO_TABLE`'s element
 gains three fields under `alloc` + `safety-e2e`, which is why [issue
-0739](../issues/0739-static-pool-inventory-not-enumerable.md) declined to
+0739](../issues/archived/0739-static-pool-inventory-not-enumerable.md) declined to
 annotate it and was right to; `SUBSCRIBER_BUFFERS` is an array of structs. The
 size is known to the COMPILER, not to a comment, and a hand-written figure in a
 comment is the drift class this tree already gates against
@@ -358,7 +358,7 @@ A C or C++ subscription to the same type still hints 0. The field is declared,
 `packages/api/nros-c`, `packages/api/nros-cpp`, `packages/cli/rosidl-*` or
 `examples/` writes it. The producer is the Rust executor and nothing else, so
 W3a's saving applies to half the tree.
-[Issue 0896](../issues/0896-c-cpp-subscriptions-never-state-a-buffer-hint.md)
+[Issue 0896](../issues/archived/0896-c-cpp-subscriptions-never-state-a-buffer-hint.md)
 carries the survey and the constraint that decides the design: the bound is a
 PROVIDED const computed from `FIELDS`, a C message has no such trait, and
 whatever carries the number to the C call site must not become a SECOND
@@ -537,7 +537,7 @@ IS observable there is the executor arena, which nano-ros sizes itself from the
 same bound. Measure the arena, not the backend.
 
 Original text follows. Filed as
-[issue 0958](../issues/0958-cyclonedds-ignores-rx-buffer-hint.md), which carries
+[issue 0958](../issues/archived/0958-cyclonedds-ignores-rx-buffer-hint.md), which carries
 the evidence: `subscription_create` takes the options struct and names none of
 it, so the parameter is discarded at a comment. `grep
 rx_buffer_hint packages/rmw/cyclonedds/` returns nothing today, so a consumer on

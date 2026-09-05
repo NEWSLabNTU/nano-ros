@@ -63,7 +63,7 @@ is known. Two of the three inputs already exist:
   (`NROS_ARENA_REQUIRED`).
 - **The knobs already exist and are already enumerable.**
   `ZPICO_MAX_QUERYABLES`, `ZPICO_MAX_LARGE_SUBSCRIBERS`, `ZPICO_MAX_SUBSCRIBERS`
-  are in the [static pool inventory](../../book/src/reference/static-pool-inventory.md).
+  are in the static pool inventory.
   A node with no service server wants `ZPICO_MAX_QUERYABLES = 0`.
 
 So the saving is available without inventing a mechanism: it is one more

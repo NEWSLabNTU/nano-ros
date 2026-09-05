@@ -96,7 +96,7 @@ this issue's own thesis arriving one stage earlier than it predicted:
   and `<string>` and the target is freestanding. The file is new in issue 0970's
   commit, and `examples/fixtures.toml:3146` declares the coordinate, so this is
   a supported cell that has been unbuildable since it landed.
-* **[#1025](1025-esp32-flash-image-consumer-drops-the-row-variant.md)** — ESP32
+* **[#1025](archived/1025-esp32-flash-image-consumer-drops-the-row-variant.md)** — ESP32
   QEMU flash images cannot be packed. The ELF builds fine; the packer looks in
   `build/cargo-fixtures/qemu-esp32-baremetal/` while the build writes to
   `qemu-esp32-baremetal-4118800323`, because the packer asks
@@ -254,7 +254,7 @@ Rust)` is 10210, and the firmware's `Cargo.toml` bakes
 
 So the router is listening on the host and the guest is dialling the right
 gateway and port, and the connection still fails. The next suspect is
-[issue 0774](0774-*): the router is ROS's `rmw_zenohd`, which loads whatever
+[issue 0774](archived/0774-zenohd-loads-unpaired-libzenohc.md): the router is ROS's `rmw_zenohd`, which loads whatever
 `libzenohc.so` the loader finds and SEGVs mid-startup when the pairing is wrong
 — a router that binds, satisfies `wait_for_port`, and is gone by the time
 firmware connects would produce exactly this. Checking that means watching the
