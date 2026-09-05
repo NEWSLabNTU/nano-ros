@@ -3069,6 +3069,20 @@ stack-floor:
     @python3 scripts/check-stack-floor.py --selftest
     @python3 scripts/check-stack-floor.py --claims
 
+# Issue 0961 — `Executor::open_in` builds the executor as a VALUE in its own
+# frame and `nros_cpp_init` moves it again, so an image whose main thread is
+# smaller overflows in a function PROLOGUE, before any statement runs and so
+# before any check written inside those functions could execute. Four bring-up
+# sessions went into finding that once. The answer is a compile-time guard in
+# the CALLER's translation unit; it exists in all four producers and nothing
+# kept it there. Source-level by necessity: the generated headers are build
+# artifacts and an affordability tier may not resolve one, but "does every
+# producer still emit the define AND still compare against it" is exactly the
+# regression that would silently disarm it.
+[private]
+executor-stack-floor:
+    @python3 scripts/check-executor-stack-floor.py
+
 # The per-RMW capability page is derived from the two C vtables + the zenoh
 # shim's trait overrides. Prose versions of this table drifted in BOTH
 # directions (cyclone services documented unsupported after service.cpp landed;

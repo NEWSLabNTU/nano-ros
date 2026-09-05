@@ -1,7 +1,7 @@
 ---
 id: 961
 title: "Executor::open_in needs more than 32 KiB of the calling thread's stack, and nothing says so"
-status: open
+status: resolved
 area: core, memory
 severity: high
 found: 2026-08-31
@@ -262,7 +262,59 @@ floor is 3104 and every in-tree image (minimum 16384) passes, so the check is
 silent on the current tree and armed against a regression in `MAX_CBS`,
 `MAX_NODES`, or anything else that grows the value.
 
-**What this still does NOT do.** The board has not booted it — item 1 of the two
-above is unchanged and needs the part. And the floor remains roughly a third of
+**What this still does NOT do.** ~~The board has not booted it -- item 1 of the
+two above is unchanged and needs the part.~~ **That sentence was wrong when
+written (2026-09-04).** Item 1 was met on 2026-08-31 and says so in its own
+text three sections up: the island entry boots on `mr_canhubk3/s32k344` at
+`CONFIG_MAIN_STACK_SIZE=16384`. Two statements about the same criterion, in one
+file, disagreeing — the same failure this issue already recorded once, in the
+same direction: a HIGH-severity issue overstating what is still broken. And the floor remains roughly a third of
 the true frame cost, by this issue's own x86_64 measurement; it is a necessary
 condition and its message says so in those words.
+
+
+## RESOLVED 2026-09-05 — both criteria met, and the check is now GATED
+
+Both acceptance criteria are satisfied:
+
+1. **The board has booted it** — met 2026-08-31 on `mr_canhubk3/s32k344` at
+   `CONFIG_MAIN_STACK_SIZE=16384`, half the previously smallest workable value,
+   with `Executor::open_in` 16000 -> 2244 and `nros_cpp_init` 15104 -> 1396.
+2. **Something states the number** — `NROS_EXECUTOR_MAIN_STACK_MIN` is emitted
+   with its `#if` / `#error` guard, in the caller's translation unit, by all
+   four producers: `nros-build-helpers::cpp` inlines the text, `::c` substitutes
+   `@EXECUTOR_STACK_MIN@` into `nros_config_generated.h.template` and
+   `nros_config_generated_exact.h.template`, which carry it.
+
+### What was missing until now: nothing kept it there
+
+The check had no gate and no test. It was mutation-tested by hand on 2026-09-04
+and then nothing would have noticed it going away — which matters more here than
+usual, because both ways of losing it are SILENT:
+
+* drop the `#define` and the `#if` compares against an undefined identifier,
+  which the preprocessor reads as `0`, so the guard passes for every stack size;
+* keep the `#define` and drop the `#if` and the number becomes documentation —
+  which is precisely the state this issue was filed about.
+
+`scripts/check-executor-stack-floor.py` (gate `check-executor-stack-floor`)
+asserts every producer still defines the floor, still compares against it, still
+has an `#error`, and still offers the `NROS_STACK_MIN_ACKNOWLEDGE` opt-out.
+Source-level deliberately: the generated headers are build artifacts and a gate
+in an affordability tier may not resolve one, but the disarming regression is
+visible in the emitters without building anything.
+
+Mutation-tested against a REAL producer, not only synthetic text: deleting the
+`#if` line from `nros_config_generated.h.template` fails the gate naming that
+file. Its selftest runs on the normal path so the controls cannot rot, and one
+of those controls earned its keep immediately — the first `#define` regex used
+`\s+`, which matches a NEWLINE, so a valueless `#define` followed by the `#if`
+line passed. Anchored to `[^\S\n]` now.
+
+### What is deliberately still true
+
+The floor is a NECESSARY condition, roughly a third of the true frame cost by
+this issue's own x86_64 measurement, and its message says so in those words. An
+image below it provably cannot boot; one above it may still not. The value is
+that the failure arrives at compile time naming the number, instead of as a
+prologue overflow four bring-up sessions deep.
