@@ -2412,7 +2412,11 @@ impl<'s> Executor<'s> {
         if self.min_stack_headroom_bytes == 0 {
             return;
         }
-        let unused = nros_platform_api::task::stack_unused_bytes();
+        // issue 1080 — `stack`, not `task`. `task` is `#[cfg(feature = "alloc")]`
+        // for `PlatformTask`'s sake, so naming it here made this rule — a SAFETY
+        // check — uncompilable on every `no_std` image without an allocator,
+        // which is exactly where a stack overflow goes unnoticed.
+        let unused = nros_platform_api::stack::stack_unused_bytes();
         // 0 means the port does not instrument stacks, not that the stack is
         // full. Reporting a violation there would be a fault invented from an
         // absence of data.

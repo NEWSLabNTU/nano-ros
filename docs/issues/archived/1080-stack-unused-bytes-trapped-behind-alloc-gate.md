@@ -1,7 +1,7 @@
 ---
 id: 1080
 title: "`stack_unused_bytes` allocates nothing but lives in an `alloc`-gated module, so the new stack-headroom rule breaks every `no_std`-without-`alloc` image"
-status: open
+status: resolved
 type: bug
 area: platform, core
 severity: high
@@ -73,9 +73,44 @@ the platforms it exists for is worse than the build error that revealed it.**
 ## Fix
 
 `stack_unused_bytes` moves to a new `crate::stack` module that is NOT
-alloc-gated; `crate::task` re-exports it, so every existing
-`nros_platform_api::task::stack_unused_bytes` caller is unchanged. The function
-lands where its own requirements put it rather than where its neighbours did.
+alloc-gated, **and the caller names that path**. The function lands where its own
+requirements put it rather than where its neighbours did.
+
+**The re-export alone was not enough, and the first attempt shipped that
+mistake.** `crate::task` re-exports the function so out-of-tree callers keep
+working — but `task` is itself `#[cfg(feature = "alloc")]`, so
+`nros_platform_api::task::stack_unused_bytes` is *still* unreachable without an
+allocator. Re-exporting through a gated module helps nobody in the failing case.
+`spin.rs` now says `nros_platform_api::stack::stack_unused_bytes()`.
+
+### The check that finally discriminated
+
+Three attempts did not:
+
+* `cargo check -p nros-platform-api --no-default-features` — passes either way;
+  the defect is in the CALLER.
+* `cargo check -p nros-node --no-default-features` — passes with the fix
+  **stashed** too. Workspace resolution gives `nros-platform-api` its default
+  features regardless, so `alloc` is always on.
+* `just zephyr build-one c/talker zenoh mps2_an385` — cannot reach the
+  coordinate at all. `build-one` names its build dir from example+rmw, while the
+  cortex-m rows carry a distinct `west_build_name`, so it refused on a board
+  mismatch against the existing native_sim dir.
+
+The size probe's own key-inputs file (`build/sizes-probe/.../nros-probe-key-inputs.txt`)
+records what it actually builds — target `thumbv7m-none-eabi`, features
+`rmw-cffi,ros-humble`, no defaults — which is the reproduction:
+
+```
+cargo check -p nros --target thumbv7m-none-eabi \
+      --no-default-features --features rmw-cffi,ros-humble
+
+  with `task::`   -> error[E0433]: cannot find `task` in `nros_platform_api`
+  with `stack::`  -> Finished
+```
+
+Seconds rather than a 20-minute fixture build, and it fails for the right
+reason — which none of the earlier three did.
 
 ## The family
 
