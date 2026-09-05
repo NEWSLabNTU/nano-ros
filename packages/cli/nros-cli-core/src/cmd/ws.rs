@@ -2499,6 +2499,26 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
         Some(p) => std::fs::canonicalize(&p).wrap_err_with(|| format!("sync: {}", p.display()))?,
         None => std::env::current_dir()?,
     };
+    // phase-429 W2 — the codegen version guard, before the first write. `sync`
+    // emits generated msg crates and rewrites every consumer's
+    // `.cargo/config.toml`; a mismatched emitter's output is what the user then
+    // has to unpick, so the refusal belongs here rather than after.
+    //
+    // Anchor: a nano-ros checkout named on the COMMAND LINE wins (it IS the
+    // runtime this workspace links), then the workspace itself, which the
+    // resolver walks up from — the arm that reaches a C/C++-only workspace
+    // with no `Cargo.lock`. Deliberately NOT `nano_ros_path_for`, whose
+    // `NROS_REPO_DIR` fallback is ambient after `source activate.sh`: that
+    // would measure every workspace against whichever checkout the shell was
+    // opened in. `runtime_root` still consults the env, one rung lower, for a
+    // consumer that is inside no tree at all.
+    {
+        let anchor = nano_ros_root
+            .clone()
+            .or_else(|| args.nano_ros_path.clone())
+            .unwrap_or_else(|| ws_root.clone());
+        crate::abi_guard::check_workspace(&anchor, crate::abi_guard::Verb::Sync)?;
+    }
     // Two layouts supported:
     //  * `src/`-based: workspace root has src/, src/<pkg>/ subdirs (colcon
     //    standard).

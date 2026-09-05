@@ -31,6 +31,17 @@ pub use config::{
     CODEGEN_CONFIG_FILENAME, CapacityResolver, ConfigError, FieldKind, FieldStorage, StorageMode,
 };
 pub use fingerprint::codegen_fingerprint;
+
+/// The CODEGEN VERSION this binary EMITS (`E`) — phase-429 W2.
+///
+/// Read straight through from the `nros-core` this emitter was compiled
+/// against, so "what does this `nros` emit" has exactly one answer and it is
+/// baked at build time. Sibling of [`codegen_fingerprint`]: the fingerprint
+/// says whether two binaries emit the same BYTES, this says whether emitted
+/// bytes and a runtime can be PAIRED.
+///
+/// Deliberately not a release version — see `nros_core::codegen_version`.
+pub const EMITTED_CODEGEN_VERSION: u32 = nros_core::codegen_version::NROS_CODEGEN_VERSION;
 pub use generator::{
     GeneratedActionPackage, GeneratedCActionPackage, GeneratedCPackage, GeneratedCServicePackage,
     GeneratedCppActionPackage, GeneratedCppPackage, GeneratedCppServicePackage, GeneratedFfiRs,

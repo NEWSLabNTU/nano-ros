@@ -789,6 +789,21 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
 }
 
 pub fn run(args: Args) -> Result<()> {
+    // phase-429 W2 — the codegen version guard, BEFORE planning. `nros build`
+    // is RFC-0065's front door and was the one codegen path with no guard on
+    // it at all; planning is where the generated root is written, so the check
+    // has to precede it rather than sit beside the handoff.
+    //
+    // Anchor: an explicitly-named nano-ros checkout if the caller gave one —
+    // that IS the runtime this build links — else the workspace, which the
+    // resolver walks up from.
+    let guard_anchor = match (&args.nano_ros_path, &args.workspace) {
+        (Some(p), _) => p.clone(),
+        (None, Some(ws)) => ws.clone(),
+        (None, None) => std::env::current_dir()?,
+    };
+    crate::abi_guard::check_workspace(&guard_anchor, crate::abi_guard::Verb::Build)?;
+
     let plans = plan_builds(&args)?;
     for p in &plans {
         eprintln!(
