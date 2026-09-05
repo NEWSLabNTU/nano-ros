@@ -119,7 +119,7 @@ template <typename S> class Service {
     /// @return Result indicating success or failure.
     Result send_response(int64_t seq_id, const ResponseType& resp) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        uint8_t buf[ResponseType::SERIALIZED_SIZE_MAX];
+        uint8_t buf[::nros::detail::buffer_bounds<ResponseType>::tx];
         size_t len = 0;
         if (ResponseType::ffi_serialize(&resp, buf, sizeof(buf), &len) != 0) {
             return Result(ErrorCode::Error);

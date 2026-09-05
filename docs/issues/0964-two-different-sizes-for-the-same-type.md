@@ -219,3 +219,76 @@ simplest type in the corpus, which is a fair summary of why it was replaced.
 Not measured: an image delta. That still needs the second instrument 0896 named
 — these are stack frames, and the number of live buffers depends on which of the
 13 sites an image instantiates.
+
+
+## The lever was connected to nothing — rerouted, and the RX/TX split audited (2026-09-05)
+
+The open half above says the flip is "the `unbounded` arm of
+`detail::buffer_bounds` … the one line it turns on". That line existed;
+**nothing called it.** `buffer_bounds` had no consumer anywhere outside
+`size_bound.hpp`, so flipping it would have changed nothing at all.
+
+### Where the estimate actually was
+
+| | sites |
+| --- | ---: |
+| `uint8_t buf[M::SERIALIZED_SIZE_MAX]`, bypassing both templates | **15** |
+| strict `rx_size_bound` / `tx_size_bound` (poisons on unbounded) | 2 |
+
+(24 grep hits, but 8 are doc comments and one is a stub type defining its own
+constant. 15 are real buffer declarations.)
+
+Spread over `client` (3), `action_client` (3), `polling_action_server` (3),
+`action_server` (2), `tick_ctx` (2), `service` (1), `polling_action_client` (1).
+
+### The audit answer: all 15 are TX, and none is the 0896 hazard
+
+Every one of the fifteen is
+`X::ffi_serialize(&value, buf, sizeof(buf), &len)` with the return checked.
+**There is no RX buffer sized by the estimate** — the receive paths already go
+through `component.hpp`, which passes `nros::rx_size_bound<M>::value`, the
+STRICT template that poisons on an unbounded type.
+
+That matters for the product decision, and it lowers the stakes:
+
+* the silent-truncation failure 0896 exists to remove **does not apply here**.
+  These buffers are written by us, bounds-checked against `sizeof(buf)`, and an
+  over-long message returns a non-zero code rather than corrupting anything;
+* so an under-sized estimate on these paths is a LOUD runtime failure, not
+  data loss. Flipping the unbounded arm would convert that into a compile-time
+  failure — better in kind, but a usability change, not a safety fix.
+
+The safety argument for the flip should not be made from these sites. It has to
+be made about `component.hpp`'s receive path, which is already strict.
+
+### What changed here
+
+The 15 sites now size through `::nros::detail::buffer_bounds<T>::tx`, and
+`action_server.hpp` gained the `size_bound.hpp` include it had been getting by
+luck. This is deliberately NOT a semantic no-op — I predicted it would be and
+was wrong, so the measurement is on real generated headers rather than an
+assumption. `buffer_bounds` answers `TX_MAX_SERIALIZED_SIZE` for a DERIVED type,
+so those buffers shrink to the bound:
+
+| | bytes |
+| --- | ---: |
+| estimate, over the 19 types carrying both constants | 1,928 |
+| derived, same 19 | **202** |
+| TX buffers shrink by | **1,726** |
+
+Zero buffers grow. The other 21 generated types in that tree state no derived
+bound, so they keep the estimate and are untouched — which is exactly the
+`legacy`/`unbounded` arm doing its job.
+
+`just check cpp`, `just check c` and `just check fast` (213/213) all pass.
+
+### What this leaves for the decision
+
+The flip is now genuinely one line at one control point, and it is a real lever.
+Staging it is possible where it was not before: the arm can be turned on for RX
+before TX, and `has_derived_size_bound<M>` already exists for a per-site opt-in.
+
+Still a product decision, and unchanged in substance: 81 of 120 stock Humble
+types have no derived bound, so the flip makes code that compiled yesterday stop
+compiling until each type gains a `cap` or each call site uses the `_sized`
+form.
