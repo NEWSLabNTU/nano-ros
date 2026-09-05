@@ -28,6 +28,7 @@ in the build tier, whatever its history.
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -44,6 +45,29 @@ def lane_members(text: str, lane: str) -> list[str]:
     if not m:
         return []
     return re.findall(r"^    ([a-z0-9-]+) \\", m.group(1), re.M)
+
+
+def lane_gates(text: str, lane: str) -> list[str]:
+    """A lane's members, however that lane records them.
+
+    `build-serial` is still an authored dependency list, so `lane_members`
+    reads it. `fast-serial` has none: issue 1072 deleted the 218-name registry
+    because two authors adding alphabetically adjacent gates insert at the same
+    base line and conflict, and no `.gitattributes` driver runs on GitHub's
+    server-side rebase to fix it. Its membership is DERIVED by
+    `check-gate-lists.py`, and it is asked rather than parsed here — a regex
+    over a dependency line that no longer exists returns [], which would make
+    this gate silently vacuous the moment `just check fast` stopped being run
+    by a gating job. That is the exact shape this file exists to prevent.
+    """
+    if lane.removesuffix("-serial") == "fast":
+        out = subprocess.run(
+            [sys.executable, str(ROOT / "scripts/check/check-gate-lists.py"),
+             "--list", "fast"],
+            capture_output=True, text=True, check=True,
+        )
+        return [ln for ln in out.stdout.split("\n") if ln.strip()]
+    return lane_members(text, lane)
 
 
 def lanes_run_by_gating_jobs() -> set[str]:
@@ -119,7 +143,7 @@ def main() -> int:
         verb = lane.removesuffix("-serial")
         if lane in gated_lanes or verb in gated_lanes:
             continue
-        ungated.extend(lane_members(text, lane))
+        ungated.extend(lane_gates(text, lane))
 
     listed = set(read_baseline())
     actual = set(ungated)

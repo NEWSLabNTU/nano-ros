@@ -1,54 +1,58 @@
 #!/usr/bin/env python3
-"""A gate registry holds ONE name per line, sorted.
+"""The fast lane is DERIVED from the recipes; only its exceptions are authored.
 
+WHY THERE IS NO LONGER A `fast-serial:` REGISTRY
+------------------------------------------------
 `just/check.just` names every gate twice: once as a recipe, and once as a
-dependency of the lane that runs it. That dependency list is the shape issues
-0883/0884 are about — a file EVERY pull request appends to — and it had the
-worse variant of it: up to fifteen names packed onto a line, with new gates
-appended at the tail. Two agents adding unrelated gates edited the same
-physical line, so git conflicted on changes that do not overlap in meaning, and
-the merge queue ejected them.
+dependency of the lane that runs it. That second name is the shape issues
+0883/0884 are about — a line EVERY pull request appends to.
 
-0884 fixed the same shape for `docs/issues/open.md` with `merge=union`, and that
-IS working (measured: it conflicts in none of the open PRs). Union is not
-available here — `.gitattributes` says so in as many words, "NEVER apply this to
-an authored file" — because a union of two recipe bodies is not a recipe, it is
-both of them.
+The first fix was to make the list one-name-per-line and sorted, on the
+reasoning that two gates with different names then land at different lines.
+Measured on 2026-09-05, that is only true when the names are far enough apart.
+Two ADJACENT names insert at the SAME base line, git has no unchanged line
+between them to anchor on, and it conflicts with certainty. PR #472 hit exactly
+that: `codegen-stamp-inputs` against main's `codegen-tool-reconfigure`, one
+hunk, three lines. And names are not independent — related work produces
+related names (`codegen-*`, `xrce-*`, `zenoh-*`), so sorting turns name
+correlation directly into position correlation.
 
-One name per line, sorted, is the fix that does not need a merge driver: two
-gates with different names land at different, usually non-adjacent, lines, and
-git merges them without help. It costs nothing, because ORDER IN THIS LIST HAS
-NEVER BEEN LOAD-BEARING: `fast` runs the same gates concurrently, and
-`run-gates-parallel.sh` `sort -u`s the list it derives from this very block. A
-list whose consumer sorts it cannot have been ordered on purpose.
+No merge driver can fix it. 0884 established that GitHub rebases queue entries
+SERVER-SIDE, where `.gitattributes` drivers do not run; the fix that reached the
+queue for `open.md` was to stop committing the shared line at all. The same
+answer applies here, and this file is it:
 
-AND THE REGISTRY MAY NOT SHRINK (issue 1071)
---------------------------------------------
-Sorted-and-one-per-line are properties a DELETION satisfies perfectly. PR #431
-added one gate and removed four unrelated ones -- recipes and registry entries
-both, against a stale copy of this file -- and every gate stayed green, this one
-included: it printed `232 gate(s)` where main had 236, and compared that number
-to nothing. One of the four was the guard for a defect that had survived from
-2026-06-13 to 2026-09-03.
+    a recipe in `just/check.just` is a FAST-LANE GATE unless it is listed in
+    `build-serial:` (it needs something built), named in
+    `.config/gate-lane-exempt.txt` (with a reason), or declares parameters
+    (a gate is invoked as `just check <name>` with no arguments, so a recipe
+    that requires one cannot be one).
 
-So the registry now carries a BASELINE name set that may only grow. A name in
-the baseline and not in the registries is a failure; new names are free.
+Adding a gate is now writing its recipe. Nothing shared is touched, so two
+authors adding gates cannot collide on a registry that no longer exists.
 
-On the NAME SET and not the count, deliberately: #431 was one addition against
-four removals, so a count ratchet would have had to notice a net of -3, and a
-delete-plus-add that nets to zero would pass it outright. The set catches both,
-and costs a longer file.
+WHAT THIS BUYS BEYOND THE MERGE QUEUE
+-------------------------------------
+Issue 1071: PR #431 deleted four gates by dropping their registry lines and
+`check-gate-lists` stayed green, because it verified the list's SHAPE and never
+its size. There is no fast-lane registry line to drop now. A fast gate can only
+leave the lane by having its RECIPE deleted, which is visible in review, and
+which a name-set ratchet over `gate_names()` catches outright.
 
-A FLAT set across registries rather than per-registry, so moving a gate between
-`fast` and `build` -- a real and legitimate change -- is not a deletion. What it
-asserts is only that a gate that once existed still exists somewhere.
+The polarity flip also inverts the failure mode. Forgetting the registry line
+used to mean the gate NEVER RAN — silent, and the repo's most-repeated defect
+(issue 0196's class). Forgetting to exempt a new recipe now means it runs on the
+fast lane, which is loud and lands on the author's own pull request.
 
-Retiring a gate is rare and always deliberate:
+`build-serial:` stays an authored dependency list. It holds ~20 names, none of
+the 13 registry additions across the pull requests open on 2026-09-05 went to
+it, and `scripts/check-gate-visibility.py` reads its members directly.
 
-    python3 scripts/check/check-gate-lists.py --write-baseline
-
-and say in the commit message which gate went and why. Re-stating the number is
-the right price for a deletion nobody meant to make.
+FOR A NAME-SET RATCHET
+----------------------
+`gate_names()` returns the full sorted set (fast + build). A baseline file of
+names that may only grow compares against that one call — the same interface a
+registry-parsing ratchet had, minus the registry.
 """
 
 from __future__ import annotations
@@ -59,19 +63,45 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 JUSTFILE = REPO / "just" / "check.just"
-# Beside `.config/gate-selftest-baseline.txt`, the same shape one question over:
-# that one ratchets how many gates TEST THEMSELVES, this one how many EXIST.
-# Deleting a gate that has a selftest makes that ratchet EASIER to satisfy,
-# which is why it could not have caught #431.
+EXEMPT_FILE = REPO / ".config" / "gate-lane-exempt.txt"
+# phase-425/issue 1071 — the deletion ratchet's baseline. It survived the
+# 1072 rewrite unchanged in CONTENT: its 239 names are byte-identical to the
+# derived fast+build set, so inverting where membership is WRITTEN did not
+# move what the ratchet reads.
 BASELINE = REPO / ".config" / "gate-registry-baseline.txt"
 
-# The lane recipes whose dependencies are a gate REGISTRY. A lane with a
-# handful of names on one line (`default: cli-fresh fast build api-parity`) is
-# not one: nobody appends to it, so it is not a conflict site.
-# `build` gained a parallel runner (issue 0993), so its LIST moved to
-# `build-serial` exactly as `fast`'s did — the registry is the dependency line,
-# not the verb.
-REGISTRIES = ("fast-serial", "build-serial")
+# The one lane whose membership is still authored. A build gate is the
+# EXCEPTION — it cannot run without something compiled — so it is listed, and
+# `check-gate-visibility` reads this same list to decide which gates no
+# merge-gating job reaches.
+BUILD_REGISTRY = "build-serial"
+
+# The no-op `build-serial:` ends on, so the LAST real gate carries a trailing
+# backslash like every other. Without it the final entry is the one line with
+# different syntax, and a gate that sorts last must edit someone else's line to
+# add the backslash — two such PRs conflict with CERTAINTY rather than by bad
+# luck. The "trailing comma" fix.
+SENTINEL = "_gate-list-end"
+
+# A recipe header at column 0. Variables use `:=`, attributes start with `[`,
+# comments with `#`, and bodies are indented, so none of them match.
+RECIPE_RE = re.compile(r"^([a-z_][a-z0-9_-]*)([^:\n]*):(?!=)")
+
+
+def recipes(lines: list[str]) -> dict[str, bool]:
+    """Every top-level recipe name -> whether it declares parameters.
+
+    A recipe that takes an argument cannot be a gate: the runners invoke
+    `just check <name>` with nothing after the name. `stack-elf elf top="30"`
+    would fail on the missing `elf` every time, so excluding it is a property
+    of the recipe rather than a decision someone has to remember to record.
+    """
+    out: dict[str, bool] = {}
+    for line in lines:
+        m = RECIPE_RE.match(line)
+        if m:
+            out[m.group(1)] = bool(m.group(2).strip())
+    return out
 
 
 def dep_block(lines: list[str], name: str) -> tuple[int, int]:
@@ -102,16 +132,41 @@ def names_per_line(lines: list[str], s: int, e: int) -> list[list[str]]:
     return out
 
 
-# The no-op every registry ends on, so the LAST real gate carries a trailing
-# backslash like every other. Without it the final entry is the one line with
-# different syntax, and a gate that sorts last must edit someone else's line to
-# add the backslash — two such PRs conflict with CERTAINTY rather than by bad
-# luck. The "trailing comma" fix, and the one conflict class the
-# one-name-per-line format could not reach.
-SENTINEL = "_gate-list-end"
+def parse_exempt(text: str) -> tuple[list[str], list[str]]:
+    """(names, problems). Every entry needs a name and a `# reason`."""
+    names: list[str] = []
+    problems: list[str] = []
+    for lineno, raw in enumerate(text.split("\n"), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, sep, reason = line.partition("#")
+        name = name.strip()
+        if " " in name or not re.fullmatch(r"[a-z_][a-z0-9_-]*", name or ""):
+            problems.append(
+                f"  {EXEMPT_FILE.name}:{lineno}: `{line}` is not `<name>  # reason`"
+            )
+            continue
+        if not sep or not reason.strip():
+            problems.append(
+                f"  {EXEMPT_FILE.name}:{lineno}: `{name}` has no reason.\n"
+                f"      Say why it is not a fast gate; a bare name is how a\n"
+                f"      temporary exclusion becomes permanent."
+            )
+        names.append(name)
+    if names != sorted(names):
+        first = next((a for a, b in zip(names, sorted(names)) if a != b), "?")
+        problems.append(
+            f"  {EXEMPT_FILE.name}: not sorted (first out of order: `{first}`)."
+        )
+    dupes = sorted({n for n in names if names.count(n) > 1})
+    if dupes:
+        problems.append(f"  {EXEMPT_FILE.name}: listed twice: {', '.join(dupes)}")
+    return names, problems
 
 
-def check(lines: list[str], name: str) -> list[str]:
+def check_registry(lines: list[str], name: str) -> tuple[list[str], list[str]]:
+    """(gate names, problems) for an authored dependency-line registry."""
     s, e = dep_block(lines, name)
     per_line = names_per_line(lines, s, e)
     flat = [n for group in per_line for n in group]
@@ -149,9 +204,7 @@ def check(lines: list[str], name: str) -> list[str]:
         )
 
     if flat != sorted(flat):
-        first = next(
-            (a for a, b in zip(flat, sorted(flat)) if a != b), "?"
-        )
+        first = next((a for a, b in zip(flat, sorted(flat)) if a != b), "?")
         problems.append(
             f"  {name}: not sorted (first out of order: `{first}`).\n"
             f"      Sorted order is what makes a new gate's line position\n"
@@ -162,17 +215,89 @@ def check(lines: list[str], name: str) -> list[str]:
     if dupes:
         problems.append(f"  {name}: listed twice: {', '.join(dupes)}")
 
-    return problems
+    return flat, problems
 
 
-def registry_names(lines: list[str]) -> set[str]:
-    """Every gate named by any registry, sentinel excluded."""
-    out: set[str] = set()
-    for name in REGISTRIES:
-        s, e = dep_block(lines, name)
-        for group in names_per_line(lines, s, e):
-            out.update(n for n in group if n != SENTINEL)
-    return out
+def classify(just_text: str, exempt_text: str) -> tuple[dict[str, list[str]], list[str]]:
+    """Split every recipe into fast / build / exempt / parameterized.
+
+    Returns (buckets, problems). This is the whole contract: a recipe lands in
+    exactly one bucket, and the fast lane is whatever is left over.
+    """
+    lines = just_text.split("\n")
+    rec = recipes(lines)
+    build, problems = check_registry(lines, BUILD_REGISTRY)
+    exempt, ex_problems = parse_exempt(exempt_text)
+    problems += ex_problems
+
+    parameterized = sorted(n for n, has_args in rec.items() if has_args)
+    plain = {n for n, has_args in rec.items() if not has_args}
+
+    ghost_build = [n for n in build if n not in rec]
+    if ghost_build:
+        problems.append(
+            f"  {BUILD_REGISTRY}: names with no recipe: {', '.join(sorted(ghost_build))}.\n"
+            f"      `just check <name>` would fail; delete the entry with the recipe."
+        )
+    ghost_exempt = [n for n in exempt if n not in rec]
+    if ghost_exempt:
+        problems.append(
+            f"  {EXEMPT_FILE.name}: names with no recipe: "
+            f"{', '.join(sorted(ghost_exempt))}.\n"
+            f"      A stale exemption is a note nobody can act on — and the next\n"
+            f"      recipe to take that name inherits it silently."
+        )
+    both = sorted(set(build) & set(exempt))
+    if both:
+        problems.append(
+            f"  in `{BUILD_REGISTRY}` AND exempt: {', '.join(both)}.\n"
+            f"      A gate has one home; pick the lane or the exemption."
+        )
+    args_claimed = sorted((set(build) | set(exempt)) & set(parameterized))
+    if args_claimed:
+        problems.append(
+            f"  declares parameters but is listed as a gate/exemption: "
+            f"{', '.join(args_claimed)}.\n"
+            f"      A recipe with arguments can never run as `just check <name>`,\n"
+            f"      so it is excluded structurally and needs no entry."
+        )
+
+    fast = sorted(plain - set(build) - set(exempt))
+    if not fast:
+        problems.append(
+            "  the derived FAST lane is EMPTY.\n"
+            "      Refusing to report OK over nothing — the runner would too."
+        )
+    return (
+        {
+            "fast": fast,
+            "build": sorted(build),
+            "exempt": sorted(exempt),
+            "parameterized": parameterized,
+        },
+        problems,
+    )
+
+
+def buckets() -> tuple[dict[str, list[str]], list[str]]:
+    return classify(
+        JUSTFILE.read_text(encoding="utf-8"),
+        EXEMPT_FILE.read_text(encoding="utf-8") if EXEMPT_FILE.is_file() else "",
+    )
+
+
+def gate_names() -> list[str]:
+    """Every gate `just check <name>` can run, fast lane and build lane.
+
+    The hook a name-set ratchet reads (issue 1071). One call, one sorted list,
+    with no knowledge of where the names are written down.
+    """
+    b, problems = buckets()
+    if problems:
+        raise SystemExit(
+            "check-gate-lists: cannot derive the gate set:\n" + "\n".join(problems)
+        )
+    return sorted(b["fast"] + b["build"])
 
 
 def load_baseline() -> set[str] | None:
@@ -225,88 +350,150 @@ def self_test() -> None:
     `check-gate-selftests` requires this on the normal path: a control nobody
     runs decays into a comment.
     """
-    good = ["build: \\", "    alpha \\", "    beta \\", "    gamma \\",
+    good = [f"{BUILD_REGISTRY}: \\", "    alpha \\", "    beta \\", "    gamma \\",
             f"    {SENTINEL}", "    @echo hi"]
-    assert check(good, "build") == [], "selftest: rejected a well-formed list"
+    assert check_registry(good, BUILD_REGISTRY)[1] == [], "selftest: rejected a well-formed list"
 
-    crowded = ["build: \\", "    alpha beta \\", "    gamma \\",
+    crowded = [f"{BUILD_REGISTRY}: \\", "    alpha beta \\", "    gamma \\",
                f"    {SENTINEL}", "    @echo hi"]
-    assert any("more than one gate" in p for p in check(crowded, "build")), (
+    assert any("more than one gate" in p for p in check_registry(crowded, BUILD_REGISTRY)[1]), (
         "selftest: missed two names sharing a line"
     )
 
-    unsorted = ["build: \\", "    gamma \\", "    alpha \\",
+    unsorted = [f"{BUILD_REGISTRY}: \\", "    gamma \\", "    alpha \\",
                 f"    {SENTINEL}", "    @echo hi"]
-    assert any("not sorted" in p for p in check(unsorted, "build")), (
+    assert any("not sorted" in p for p in check_registry(unsorted, BUILD_REGISTRY)[1]), (
         "selftest: missed an out-of-order list"
     )
 
-    dup = ["build: \\", "    alpha \\", "    alpha \\",
+    dup = [f"{BUILD_REGISTRY}: \\", "    alpha \\", "    alpha \\",
            f"    {SENTINEL}", "    @echo hi"]
-    assert any("listed twice" in p for p in check(dup, "build")), (
+    assert any("listed twice" in p for p in check_registry(dup, BUILD_REGISTRY)[1]), (
         "selftest: missed a duplicate"
     )
 
-    # The sentinel itself. Absent, the last real gate is the odd line again.
-    no_sentinel = ["build: \\", "    alpha \\", "    beta", "    @echo hi"]
-    assert any("missing the" in p for p in check(no_sentinel, "build")), (
+    no_sentinel = [f"{BUILD_REGISTRY}: \\", "    alpha \\", "    beta", "    @echo hi"]
+    assert any("missing the" in p for p in check_registry(no_sentinel, BUILD_REGISTRY)[1]), (
         "selftest: missed an absent terminator"
     )
 
-    # Present but not last terminates nothing — and would ALSO read as
-    # out-of-order, so the message has to name the real fault.
-    misplaced = ["build: \\", f"    {SENTINEL} \\", "    alpha \\",
+    misplaced = [f"{BUILD_REGISTRY}: \\", f"    {SENTINEL} \\", "    alpha \\",
                  "    beta", "    @echo hi"]
-    probs = check(misplaced, "build")
-    assert any("not LAST" in p for p in probs), (
-        f"selftest: missed a misplaced terminator: {probs}"
+    assert any("not LAST" in p for p in check_registry(misplaced, BUILD_REGISTRY)[1]), (
+        "selftest: missed a misplaced terminator"
     )
-
-    # And it must not be counted as a gate: with it last, a two-gate list is
-    # sorted, not "alpha, beta, _gate-list-end out of order".
-    assert not any("not sorted" in p for p in check(good, "build")), (
+    assert not any("not sorted" in p for p in check_registry(good, BUILD_REGISTRY)[1]), (
         "selftest: the sentinel was sorted as if it were a gate"
     )
 
-    # The block must end at the first line with no continuation, so a BODY line
-    # that happens to look like a name is not read as a dependency.
-    body = ["build: \\", "    alpha", "    zzz-not-a-dep", "    @echo hi"]
-    s, e = dep_block(body, "build")
-    assert (s, e) == (0, 2), f"selftest: block boundary wrong: {(s, e)}"
+    body = [f"{BUILD_REGISTRY}: \\", "    alpha", "    zzz-not-a-dep", "    @echo hi"]
+    assert dep_block(body, BUILD_REGISTRY) == (0, 2), "selftest: block boundary wrong"
 
-    # --- the ratchet (issue 1071) ---------------------------------------
-    # A deletion, which every OTHER check here accepts: the list below is
-    # sorted, one per line, terminated, and missing `beta`.
+    # --- the derivation itself -------------------------------------------
+    # A miniature justfile: two plain recipes, one build gate, one exempt
+    # verb, one parameterized helper.
+    mini = "\n".join([
+        "NIGHTLY := `true`",
+        "",
+        "[private]",
+        "alpha-gate:",
+        "    @true",
+        "",
+        "[private]",
+        "beta-gate:",
+        "    @true",
+        "",
+        "[private]",
+        f"{BUILD_REGISTRY}: \\",
+        "    heavy-gate \\",
+        f"    {SENTINEL}",
+        "    @true",
+        "",
+        "[private]",
+        "heavy-gate:",
+        "    @true",
+        "",
+        "[private]",
+        "some-verb:",
+        "    @true",
+        "",
+        "[private]",
+        f"{SENTINEL}:",
+        "",
+        "[private]",
+        'stack-elf elf top="30":',
+        "    @true",
+    ])
+    ex = f"{SENTINEL}  # terminator\n{BUILD_REGISTRY}  # the registry\nsome-verb  # a verb\n"
+    b, problems = classify(mini, ex)
+    assert problems == [], f"selftest: rejected a well-formed tree: {problems}"
+    assert b["fast"] == ["alpha-gate", "beta-gate"], b["fast"]
+    assert b["build"] == ["heavy-gate"], b["build"]
+    assert b["parameterized"] == ["stack-elf"], b["parameterized"]
+
+    # A NEW recipe joins the fast lane with no list to edit — the whole point.
+    plus = mini + "\n\n[private]\ngamma-gate:\n    @true\n"
+    assert classify(plus, ex)[0]["fast"] == ["alpha-gate", "beta-gate", "gamma-gate"], (
+        "selftest: a new recipe did not become a fast gate"
+    )
+
+    # A reason is mandatory.
+    assert any("has no reason" in p for p in classify(mini, ex + "orphan\n")[1]), (
+        "selftest: accepted an exemption with no reason"
+    )
+    # An exemption naming nothing.
+    assert any("no recipe" in p for p in classify(mini, ex + "ghost  # gone\n")[1]), (
+        "selftest: accepted an exemption for a recipe that does not exist"
+    )
+    # Exempt AND in the build registry.
+    assert any("AND exempt" in p for p in classify(mini, ex + "heavy-gate  # both\n")[1]), (
+        "selftest: accepted a gate claimed twice"
+    )
+    # A parameterized recipe cannot be listed.
+    assert any("declares parameters" in p
+               for p in classify(mini, ex + "stack-elf  # nope\n")[1]), (
+        "selftest: accepted an entry for a parameterized recipe"
+    )
+    # The ledger must be sorted, like the registry.
+    assert any("not sorted" in p
+               for p in classify(mini, f"some-verb  # v\n{SENTINEL}  # t\n")[1]), (
+        "selftest: missed an unsorted exemption ledger"
+    )
+
+
+    # --- the deletion ratchet (issue 1071) -------------------------------
+    # Carried through the 1072 rewrite. What changed is only WHERE the present
+    # set comes from — a derived classification instead of a registry line —
+    # so these cases are about the ratchet itself and stay as they were.
+    #
+    # A deletion, which every other check here accepts: sorted, one per line,
+    # terminated, and missing `beta`.
     assert ratchet({"alpha", "gamma"}, {"alpha", "beta", "gamma"}), (
-        "selftest: a gate that left the registry was not reported"
+        "selftest: a gate that left the set was not reported"
     )
     # Growth is free — that is the whole point of a ratchet.
     assert ratchet({"alpha", "beta", "delta"}, {"alpha", "beta"}) == [], (
         "selftest: an ADDED gate was reported as a problem"
     )
-    # And a delete-plus-add that nets to ZERO, which is #431's exact shape and
-    # the case a count ratchet cannot see.
+    # A delete-plus-add netting to ZERO: #431's exact shape, and the case a
+    # count ratchet cannot see.
     assert ratchet({"alpha", "delta"}, {"alpha", "beta"}), (
         "selftest: one added and one removed netted out and passed"
     )
-    # A missing baseline is a failure, not a silent pass: the ratchet would
-    # otherwise disappear the moment someone deleted the file.
+    # A missing baseline fails, or the ratchet disappears the moment someone
+    # deletes the file.
     assert ratchet({"alpha"}, None), "selftest: a missing baseline passed"
 
-    # The set is FLAT across registries, so a gate moving from `fast` to
-    # `build` is not a deletion.
-    moved = ["fast-serial: \\", f"    {SENTINEL}", "    @echo f", "",
-             "build-serial: \\", "    alpha \\", f"    {SENTINEL}", "    @echo b"]
-    assert registry_names(moved) == {"alpha"}, (
-        f"selftest: flat name set wrong: {registry_names(moved)}"
-    )
-
-
 def main(argv: list[str]) -> int:
-    lines = JUSTFILE.read_text(encoding="utf-8").split("\n")
+    b, problems = buckets()
 
     if "--write-baseline" in argv:
-        present = registry_names(lines)
+        if problems:
+            print("check-gate-lists: refusing to write a baseline over a broken "
+                  "classification:", file=sys.stderr)
+            print("\n".join(problems), file=sys.stderr)
+            return 1
+        present = set(gate_names())
         write_baseline(present)
         print(
             f"check-gate-lists: wrote {len(present)} gate name(s) to "
@@ -317,31 +504,50 @@ def main(argv: list[str]) -> int:
         )
         return 0
 
-    problems = [p for name in REGISTRIES for p in check(lines, name)]
-    problems += ratchet(registry_names(lines), load_baseline())
+    if argv and argv[0] == "--list":
+        # The runners' one source of truth. `fast-serial`/`build-serial` are
+        # accepted as well as the verbs, because `NROS_GATE_LANE` is spelled
+        # with the suffix and predates this.
+        if problems:
+            print("check-gate-lists: refusing to emit a list over a broken registry:",
+                  file=sys.stderr)
+            print("\n".join(problems), file=sys.stderr)
+            return 1
+        lane = (argv[1] if len(argv) > 1 else "fast").removesuffix("-serial")
+        if lane == "all":
+            names = sorted(b["fast"] + b["build"])
+        elif lane in ("fast", "build"):
+            names = b[lane]
+        else:
+            print(f"check-gate-lists: unknown lane `{lane}`", file=sys.stderr)
+            return 2
+        print("\n".join(names))
+        return 0
+
+    # The deletion ratchet (issue 1071) reads the DERIVED set, not a registry
+    # line — that is the whole of its 1072 rebase. A gate can now only leave by
+    # having its recipe deleted, and this is what notices.
+    if not problems:
+        problems = ratchet(set(b["fast"] + b["build"]), load_baseline())
+
     if problems:
-        print("check-gate-lists: a gate registry is a conflict site again\n")
+        print("check-gate-lists: the gate classification does not hold\n")
         print("\n".join(problems))
         print(
-            "\nA gate registry may not SHRINK, and one gate per line, sorted.\n"
-            "A retirement is deliberate:\n"
-            "    python3 scripts/check/check-gate-lists.py --write-baseline\n"
-            "and name the gate in the commit message.\n"
-            "\n`just/check.just` is the file every PR\n"
-            "that adds a gate must touch, and packing names onto shared lines\n"
-            "turns that into a merge conflict for changes that do not overlap\n"
-            "(issues 0883/0884, same shape, no union merge available here --\n"
-            "a union of two authored recipe bodies is both of them, not one)."
+            "\nA recipe in just/check.just is a FAST gate unless it is in\n"
+            "`build-serial:`, named in .config/gate-lane-exempt.txt with a\n"
+            "reason, or declares parameters. There is deliberately no\n"
+            "fast-lane registry to append to: a shared authored list is the\n"
+            "conflict issues 0883/0884/1072 measured, and no merge driver can\n"
+            "fix it because GitHub rebases queue entries server-side."
         )
         return 1
 
-    total = sum(
-        len([n for g in names_per_line(lines, *dep_block(lines, name)) for n in g])
-        for name in REGISTRIES
-    )
     print(
-        f"check-gate-lists OK — {len(REGISTRIES)} registry(ies), {total} gate(s), "
-        "one per line and sorted."
+        f"check-gate-lists OK — {len(b['fast'])} fast gate(s) derived, "
+        f"{len(b['build'])} in `{BUILD_REGISTRY}` (one per line and sorted), "
+        f"{len(b['exempt'])} exempt with a reason, "
+        f"{len(b['parameterized'])} parameterized recipe(s) excluded."
     )
     return 0
 
