@@ -88,6 +88,13 @@ struct NrosTypeSpell {
 /// call and any `{% import %}` use. Adding a language = adding rows here plus its
 /// `.jinja` files — no other Rust. `include_str!` bundles them at build time.
 const PACKS: &[(&str, &str)] = &[
+    // RFC-0089 / phase-429 W1 — shared by the C and C++ packs, because the
+    // codegen-version stamp is about the C ABI both of them emit into. Not
+    // inside either pack dir for that reason.
+    (
+        "_codegen_version.jinja",
+        include_str!("../packs/_codegen_version.jinja"),
+    ),
     // C pack (packs/c)
     ("_field.jinja", include_str!("../packs/c/_field.jinja")),
     ("message.h", include_str!("../packs/c/message.h.jinja")),
@@ -204,6 +211,14 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
     // Generated sources carry their own trailing newline in the template body;
     // do not let the engine append another.
     env.set_keep_trailing_newline(false);
+    // RFC-0089 / phase-429 W1 — a GLOBAL, not a per-context field. Every
+    // artifact this generator emits was emitted by this generator, so the
+    // version is a property of the environment, not of any one message; adding
+    // it to the six-odd context structs instead would be six places to forget.
+    env.add_global(
+        "codegen_version",
+        crate::codegen_version::NROS_CODEGEN_VERSION,
+    );
     // Custom filter parity with the askama path (`templates::filters::snake_case`).
     env.add_filter("snake_case", |s: &str| crate::utils::to_snake_case(s));
     // RFC-0068 step 2 — the C type spelling composed in the pack from a CField's

@@ -9,13 +9,14 @@
 //
 // THREE READERS, THREE REASONS — do not "unify" them:
 //
-//   * `nros-core` itself, and `rosidl-codegen` through a real path dep. Type
-//     checked, no parsing. `rosidl-codegen` already path-deps `nros-serdes`, so
-//     the edge is precedented there.
-//   * `nros-build-helpers`, by `include!`. It is host-only and appears in every
-//     tracked leaf lockfile, so a `nros-core` dependency edge would land there
-//     too. `include!` costs nothing in the graph, and rustc records the path in
-//     the depfile, so editing the constants rebuilds it.
+//   * `nros-core` itself, directly.
+//   * `nros-build-helpers` (defines the runtime anchors) and `rosidl-codegen`
+//     (stamps the emitted artifacts), both by `include!`. Neither can afford a
+//     `nros-core` dependency edge for a pair of `const`s: the first is host-only
+//     and appears in every tracked leaf lockfile, and the second lives in the
+//     separate `packages/cli` workspace, so the edge would add rows to its
+//     lockfile too. `include!` costs nothing in the graph, and rustc records the
+//     path in the depfile, so editing the constants rebuilds both.
 //   * the CLI's guard, by parsing this file as TEXT. It inspects a CONSUMER's
 //     tree at run time, where compiling is not available. This is the only
 //     parser, and it exists because the other two options do not apply.
@@ -59,41 +60,11 @@ pub const fn accepts(emitted: u32) -> bool {
     emitted >= NROS_CODEGEN_VERSION_MIN && emitted <= NROS_CODEGEN_VERSION
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_floor_is_never_above_the_ceiling() {
-        assert!(
-            NROS_CODEGEN_VERSION_MIN <= NROS_CODEGEN_VERSION,
-            "the accepted range is empty: nothing could ever be compatible"
-        );
-    }
-
-    #[test]
-    fn accepts_the_range_and_nothing_outside_it() {
-        assert!(accepts(NROS_CODEGEN_VERSION));
-        assert!(accepts(NROS_CODEGEN_VERSION_MIN));
-        assert!(
-            !accepts(NROS_CODEGEN_VERSION + 1),
-            "code emitted by a NEWER binary must be refused — the runtime is \
-             the older side and cannot know what changed"
-        );
-        assert!(
-            !accepts(NROS_CODEGEN_VERSION_MIN.saturating_sub(1)) || NROS_CODEGEN_VERSION_MIN == 0,
-            "code below the floor must be refused, not silently accepted"
-        );
-    }
-
-    /// Version 0 is reserved for "did not say".
-    ///
-    /// A generated artifact that carries no version reads as 0 through every
-    /// path that parses one, and must never be accepted: an artifact that did
-    /// not declare its version is exactly the pre-phase-429 artifact this
-    /// mechanism exists to catch.
-    #[test]
-    fn zero_is_never_accepted() {
-        assert!(!accepts(0));
-    }
-}
+// The accepted range must be non-empty, checked at COMPILE time because it is a
+// property of two constants. A runtime test would be the wrong tool — and
+// clippy says so (`assertions_on_constants`) in every crate that `include!`s
+// this file, which is how it was found.
+const _: () = assert!(
+    NROS_CODEGEN_VERSION_MIN <= NROS_CODEGEN_VERSION,
+    "the accepted codegen range is empty: nothing could ever be compatible"
+);

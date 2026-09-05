@@ -1,0 +1,51 @@
+{#-
+  RFC-0089 / phase-429 W1 — the CODEGEN VERSION STAMP emitted into every
+  generated C and C++ header. This block is a jinja comment: it explains the
+  mechanism to whoever edits the pack, and does NOT land in the artifact, which
+  keeps a ~30-line rationale out of every generated file in a user's tree.
+
+  MECHANISM. The artifact references `nros_codegen_version_v<G>`, G being the
+  version it was emitted at. The runtime DEFINES one weak
+  `nros_codegen_version_v<K>` for every K in
+  [NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION] — see
+  packages/tooling/nros-build-helpers/csrc/codegen_version_symbols.c. So the
+  accepted range IS the set of defined symbols: nothing compares two numbers
+  anywhere, so there is no comparison that could itself be wrong. A generated
+  tree the runtime does not accept fails to LINK, naming the version it wanted,
+  instead of linking cleanly and disagreeing about layout at run time.
+
+  IDEMPOTENT. The `#ifndef` guard means N generated headers in one translation
+  unit produce ONE anchor; a TU mixing two codegen versions gets one anchor each
+  and fails on whichever the runtime lacks.
+
+  LANGUAGE-NEUTRAL on purpose — the stamp is about the C ABI, which is exactly
+  the surface the C and C++ packs share, so both packs include this one file
+  rather than each carrying a spelling of it.
+
+  CARRIER, chosen deliberately. C has a single guaranteed carrier (every
+  generated C artifact includes <nros/types.h>), but C++ has none: message.hpp
+  includes six nros/*.hpp, service.hpp and action.hpp only two. The per-package
+  umbrella <pkg>/<pkg>.hpp was the other candidate and is WEAKER — a consumer
+  that includes only <pkg>/msg/Foo.hpp never reaches it, and a header nobody
+  includes stamps nothing. So the stamp goes in EVERY generated header of both
+  languages, and the guard above is what keeps that from costing more than one
+  anchor per translation unit. C++ generated output is headers-only, so a header
+  is also the only place a C++ artifact CAN carry it.
+-#}
+/* RFC-0089 — emitted by nano-ros codegen version {{ codegen_version }}. The runtime defines
+ * one weak `nros_codegen_version_v<K>` per version it accepts, so a runtime
+ * that does not accept {{ codegen_version }} fails to LINK this artifact and names the
+ * version. Regenerate with `nros sync` against the runtime you are building. */
+#ifndef NROS_CODEGEN_VERSION_ANCHOR_V{{ codegen_version }}
+#define NROS_CODEGEN_VERSION_ANCHOR_V{{ codegen_version }}
+#ifdef __cplusplus
+extern "C" const unsigned char nros_codegen_version_v{{ codegen_version }};
+#else
+extern const unsigned char nros_codegen_version_v{{ codegen_version }};
+#endif
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((used, unused))
+static const unsigned char *const nros__codegen_version_anchor_v{{ codegen_version }} =
+    &nros_codegen_version_v{{ codegen_version }};
+#endif
+#endif /* NROS_CODEGEN_VERSION_ANCHOR_V{{ codegen_version }} */
