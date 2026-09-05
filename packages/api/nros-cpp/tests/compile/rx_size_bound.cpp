@@ -148,11 +148,14 @@ static_assert(::nros::tx_buffer_capacity<Bounded>::value == 133,
               "a bounded type's transmit capacity is TX_MAX_SERIALIZED_SIZE -- XCDR1");
 static_assert(::nros::rx_buffer_capacity<Legacy>::value == Legacy::SERIALIZED_SIZE_MAX,
               "a type with no derivation keeps the pre-phase-408 behaviour");
-static_assert(::nros::rx_buffer_capacity<Unbounded>::value == Unbounded::SERIALIZED_SIZE_MAX,
-              "issue 0964 step 3, PINNED so a future flip is a deliberate edit here: a type with "
-              "NO bound stays on the estimate at a receive site rather than becoming a compile "
-              "error. `rx_size_bound<Unbounded>` is still the poison -- that is the difference "
-              "between the two traits, and the whole reason both exist");
+// Issue 0964, DECIDED 2026-09-05: `rx_buffer_capacity<Unbounded>` no longer
+// HAS a value -- instantiating it is the deliberate compile error, so it cannot
+// be asserted about here. The proof that it fires lives in
+// `unbounded_buffer_probe.cpp`, an expected-failure TU, because a static_assert
+// cannot express "this expression must not compile".
+//
+// What still holds, and is asserted above: `has_derived_size_bound<Unbounded>`
+// is false. That is the FACT; the poison is the POLICY built on it.
 
 // Anti-drift, the 0088-family rule: `shape_of` decides `derived` by probing the
 // CONSTANTS, while the poison arm reads the nested TEMPLATES. Both come out of
@@ -252,32 +255,33 @@ static_assert(
                  ::nros::Future<Bounded, 137>>::value,
     "Client<S>::send_request must hand back a Future sized from the response type's DERIVED "
     "bound, not from its SERIALIZED_SIZE_MAX estimate");
-static_assert(std::is_same<decltype(std::declval<::nros::Client<SvcOf<Unbounded>>&>().send_request(
-                               std::declval<const Unbounded&>())),
-                           ::nros::Future<Unbounded, Unbounded::SERIALIZED_SIZE_MAX>>::value,
-              "a response type with NO derived bound keeps the estimate -- issue 0964 step 3");
+// Issue 0964: the matching `Client<SvcOf<Unbounded>>` assertion is gone for the
+// same reason -- `send_request` over an unbounded response type is now a build
+// error, which is the point, and an expected-failure TU is where that is shown.
 
-/// The point of the whole arrangement: the SAME bodies instantiate for a type
-/// with a derived bound and for one with none. Before this, a blanket switch to
-/// `rx_size_bound<M>` would have made the second column a compile error for 81
-/// of the 120 stock Humble types.
+/// Every path instantiates for a type with a derived bound.
+///
+/// The `Unbounded` column that used to sit beside each of these is GONE, and
+/// its absence is the change issue 0964 asked for: those bodies size a buffer,
+/// an unbounded type has no size to give them, and the estimate they used to
+/// fall back on was invented. Each of them is now a build error, proven in
+/// `unbounded_buffer_probe.cpp` rather than here.
+///
+/// This is a real migration cost and it is not hidden: 81 of the 120 stock
+/// Humble types state no derived bound, so a user reaching any of these paths
+/// with one must bound the type (`string<=64`, or a `cap` in
+/// `nros-codegen.toml`) or call the `_sized` form. The trade accepted is that a
+/// wrong number found at build time beats a buffer that cannot hold what the
+/// program sends.
 inline ::nros::Result instantiate_recv_paths(
     ::nros::Subscription<Bounded>& bsub, ::nros::Stream<Bounded>& bstream, Bounded& bmsg,
-    ::nros::Subscription<Unbounded>& usub, ::nros::Stream<Unbounded>& ustream, Unbounded& umsg,
     ::nros::Client<SvcOf<Bounded>>& bclient, ::nros::Service<SvcOf<Bounded>>& bservice,
-    ::nros::Client<SvcOf<Unbounded>>& uclient, ::nros::Service<SvcOf<Unbounded>>& uservice,
     ::nros::TickCtx& tick, ::nros::ActionClient<ActionOf<Bounded>>& bac,
     ::nros::PollingActionClient<ActionOf<Bounded>>& bpac,
-    ::nros::PollingActionServer<ActionOf<Bounded>>& bpas,
-    ::nros::ActionClient<ActionOf<Unbounded>>& uac,
-    ::nros::PollingActionClient<ActionOf<Unbounded>>& upac,
-    ::nros::PollingActionServer<ActionOf<Unbounded>>& upas) {
+    ::nros::PollingActionServer<ActionOf<Bounded>>& bpas) {
     (void)recv_paths<Bounded>(bsub, bstream, bmsg);
-    (void)recv_paths<Unbounded>(usub, ustream, umsg);
     (void)client_paths<Bounded>(bclient, bservice, tick, bmsg);
-    (void)client_paths<Unbounded>(uclient, uservice, tick, umsg);
     (void)action_paths<Bounded>(bac, bpac, bpas, bmsg);
-    (void)action_paths<Unbounded>(uac, upac, upas, umsg);
     return ::nros::Result::success();
 }
 

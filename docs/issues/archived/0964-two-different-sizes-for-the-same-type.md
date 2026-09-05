@@ -1,7 +1,7 @@
 ---
 id: 964
 title: "The C++ header states an ESTIMATED size for every type, including types that have no bound"
-status: open
+status: resolved
 area: codegen
 severity: medium
 related: [0896, 0939, 0940, phase-403, phase-380]
@@ -292,3 +292,64 @@ Still a product decision, and unchanged in substance: 81 of 120 stock Humble
 types have no derived bound, so the flip makes code that compiled yesterday stop
 compiling until each type gains a `cap` or each call site uses the `_sized`
 form.
+
+
+## DECIDED and LANDED 2026-09-05: the unbounded arm poisons
+
+Maintainer decision, in their words: avoid silent truncation; over-long messages
+fail with explicit errors; **an under-size estimate should be a compile-time
+error, because the calculation is incorrect and cannot accept the message size
+the user expects.**
+
+That is the argument this issue could not make for itself, and it is the right
+one. The estimate is not a conservative bound — `compute_serialized_size_max`
+uses a flat 512 per nested message and a default capacity per string, and over
+the measured corpus it over-stated 38 of 39 bounded types and UNDER-stated one.
+An under-state sizes a stack array that cannot hold what the program
+legitimately sends, and no run-time check repairs a number already baked into
+`uint8_t buf[N]`. It is a fact about the build, so it is a build error.
+
+`detail::buffer_bounds<M, bound_shape::unbounded>` now delegates to
+`strict_bounds`. The `legacy` arm is deliberately NOT flipped: a legacy type
+predates the bound marker and never had a derivation to disagree with, so it
+keeps the estimate and an existing consumer keeps compiling.
+
+### What it cost in-tree: nothing
+
+Measured, not assumed. `compile-check-fixtures.sh` builds **36 rows across 5
+builders** with **zero** `states no serialized-size bound` errors, and
+`just check cpp`, `just check c` and `just check fast` (213/213) all pass. Every
+in-tree C++ consumer either uses a bounded type on these paths or does not reach
+them.
+
+(That run needed the zenoh-pico INET6 fix present, which is a separate PR. The
+first attempt reported zero poison hits with `cxx=0` — the C++ checks had not
+run at all, because the config-header step died on that unrelated bug. A zero
+from a check that did not execute is not a zero.)
+
+### How it is held
+
+* `unbounded_buffer_probe.cpp` — an EXPECTED-FAILURE TU that asks an unbounded
+  type to size a buffer, in both directions, and must not compile. A
+  `static_assert` cannot express "this must not compile", so the assertion that
+  the poison still fires has to live in a TU of its own.
+* Wired into `check-cpp`, asserted-present first, because a missing file is also
+  a non-zero `c++` and reads as a pass.
+* Mutation-tested: reverting the arm to the estimate makes `check-cpp` fail with
+  "a type with NO derived bound sized a buffer and compiled clean".
+
+### What a user does now
+
+Unchanged from the analysis above, and the cost is real — 81 of 120 stock Humble
+types state no derived bound:
+
+1. **Bound the type** — `string<=64` in the `.msg`, or a `cap` in
+   `nros-codegen.toml` (`[fields]` / `[types]` / `[packages]` / `[defaults]`).
+   One edit fixes every site for that type. `heap` / `view` caps do NOT bound.
+2. **Or call the `_sized` form** at the one site that needs it.
+
+The receive paths were already strict before this (`component.hpp` passes
+`rx_size_bound`), so what changed is the 15 TX sites the previous section
+rerouted — and on those the old failure was loud rather than silent. The
+decision was made on the correctness of the number, not on a silent-data-loss
+risk that did not exist there.
