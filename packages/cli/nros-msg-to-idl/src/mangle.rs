@@ -252,9 +252,17 @@ fn mangle_scoped_refs(line: &str) -> String {
             j += 1;
         }
         if j == id_start {
-            // Not an identifier char — copy and advance.
-            out.push(bytes[i] as char);
-            i += 1;
+            // Not an identifier char — copy the whole CHARACTER and advance by
+            // its length. `bytes[i] as char` would latin-1-decode a single byte
+            // and re-encode it as UTF-8, doubling every non-ASCII byte (an em
+            // dash `e2 80 94` in an IDL comment came out as `c3 a2 c2 80 c2 94`);
+            // see the sibling fix in `cargo_nano_ros::replace_outside_strings`.
+            let ch = line[i..]
+                .chars()
+                .next()
+                .expect("byte index is on a char boundary");
+            out.push(ch);
+            i += ch.len_utf8();
             continue;
         }
 

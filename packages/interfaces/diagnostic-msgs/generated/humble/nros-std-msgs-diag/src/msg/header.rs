@@ -14,7 +14,7 @@ pub struct Header {
 
 impl Serialize for Header {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
-        // phase-303 W4 (#0267) Ã¢ÂÂ DHEADER wrap for XCDR2 appendable structs.
+        // phase-303 W4 (#0267) — DHEADER wrap for XCDR2 appendable structs.
         // No-op under XCDR1 (byte-identical); under XCDR2 delimits this struct.
         let __dh = writer.begin_dheader()?;
         self.stamp.serialize(writer)?;
@@ -26,7 +26,7 @@ impl Serialize for Header {
 
 impl Deserialize for Header {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        // phase-303 W4 (#0267) Ã¢ÂÂ read the XCDR2 DHEADER (no-op under XCDR1);
+        // phase-303 W4 (#0267) — read the XCDR2 DHEADER (no-op under XCDR1);
         // end_dheader skips any unknown trailing members (forward compat).
         let __dh = reader.begin_dheader()?;
         let __value = Self {
@@ -44,14 +44,14 @@ impl Deserialize for Header {
 impl RosMessage for Header {
     const TYPE_NAME: &'static str = "std_msgs::msg::dds_::Header_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
-    // RFC-0052 W3a Ã¢ÂÂ Header/Time-leading type: `stamp.sec` at CDR byte
+    // RFC-0052 W3a — Header/Time-leading type: `stamp.sec` at CDR byte
     // 4 (raw-buffer peek for on-target max_age monitors).
     const STAMP_OFFSET: Option<usize> = Some(4);
 }
 
-// Ã¢ÂÂÃ¢ÂÂ nros_serdes::Message Ã¢ÂÂ runtime field schema Ã¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂÃ¢ÂÂ
+// ── nros_serdes::Message — runtime field schema ─────────────────────────────
 // Consumed by RMW backends that build wire-type descriptors at runtime
-// (Cyclone DDS dynamic types, Ã¢ÂÂ¦) without per-RMW codegen at compile time.
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
 
 #[allow(non_upper_case_globals)]
 pub const NESTED_STAMP: ::nros_serdes::NestedType = ::nros_serdes::NestedType {

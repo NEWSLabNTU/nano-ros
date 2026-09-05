@@ -14,7 +14,7 @@ pub struct Duration {
 
 impl Serialize for Duration {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
-        // phase-303 W4 (#0267) â DHEADER wrap for XCDR2 appendable structs.
+        // phase-303 W4 (#0267) — DHEADER wrap for XCDR2 appendable structs.
         // No-op under XCDR1 (byte-identical); under XCDR2 delimits this struct.
         let __dh = writer.begin_dheader()?;
         writer.write_i32(self.sec)?;
@@ -26,7 +26,7 @@ impl Serialize for Duration {
 
 impl Deserialize for Duration {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        // phase-303 W4 (#0267) â read the XCDR2 DHEADER (no-op under XCDR1);
+        // phase-303 W4 (#0267) — read the XCDR2 DHEADER (no-op under XCDR1);
         // end_dheader skips any unknown trailing members (forward compat).
         let __dh = reader.begin_dheader()?;
         let __value = Self {
@@ -43,9 +43,9 @@ impl RosMessage for Duration {
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
 
-// ââ nros_serdes::Message â runtime field schema âââââââââââââââââââââââââââââ
+// ── nros_serdes::Message — runtime field schema ─────────────────────────────
 // Consumed by RMW backends that build wire-type descriptors at runtime
-// (Cyclone DDS dynamic types, â¦) without per-RMW codegen at compile time.
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
 
 impl ::nros_serdes::Message for Duration {
     const TYPE_NAME: &'static str = "builtin_interfaces/msg/Duration";

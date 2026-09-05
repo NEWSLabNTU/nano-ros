@@ -13,7 +13,7 @@ pub struct GetParameterTypesRequest {
 
 impl Serialize for GetParameterTypesRequest {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
-        // phase-303 W4 (#0267) â DHEADER wrap (no-op under XCDR1).
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
         let __dh = writer.begin_dheader()?;
         writer.write_u32(self.names.len() as u32)?;
         for item in &self.names {
@@ -50,9 +50,9 @@ impl RosMessage for GetParameterTypesRequest {
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
 
-// ââ nros_serdes::Message â runtime field schema (Request) âââââââââââââââââââ
+// ── nros_serdes::Message — runtime field schema (Request) ───────────────────
 // Consumed by RMW backends that build wire-type descriptors at runtime
-// (Cyclone DDS dynamic types, â¦) without per-RMW codegen at compile time.
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
 
 #[allow(non_upper_case_globals)]
 pub const REQ_FT_NAMES_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::String;
@@ -73,7 +73,7 @@ pub struct GetParameterTypesResponse {
 
 impl Serialize for GetParameterTypesResponse {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
-        // phase-303 W4 (#0267) â DHEADER wrap (no-op under XCDR1).
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
         let __dh = writer.begin_dheader()?;
         writer.write_u32(self.types.len() as u32)?;
         for item in &self.types {
@@ -108,7 +108,7 @@ impl RosMessage for GetParameterTypesResponse {
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
 
-// ââ nros_serdes::Message â runtime field schema (Response) ââââââââââââââââââ
+// ── nros_serdes::Message — runtime field schema (Response) ──────────────────
 
 #[allow(non_upper_case_globals)]
 pub const RESP_FT_TYPES_ELEM: ::nros_serdes::FieldType = ::nros_serdes::FieldType::Uint8;

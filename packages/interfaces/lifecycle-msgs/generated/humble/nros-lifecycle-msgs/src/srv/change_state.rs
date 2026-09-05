@@ -13,7 +13,7 @@ pub struct ChangeStateRequest {
 
 impl Serialize for ChangeStateRequest {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
-        // phase-303 W4 (#0267) â DHEADER wrap (no-op under XCDR1).
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
         let __dh = writer.begin_dheader()?;
         self.transition.serialize(writer)?;
         writer.end_dheader(__dh)?;
@@ -37,9 +37,9 @@ impl RosMessage for ChangeStateRequest {
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
 
-// ââ nros_serdes::Message â runtime field schema (Request) âââââââââââââââââââ
+// ── nros_serdes::Message — runtime field schema (Request) ───────────────────
 // Consumed by RMW backends that build wire-type descriptors at runtime
-// (Cyclone DDS dynamic types, â¦) without per-RMW codegen at compile time.
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
 
 #[allow(non_upper_case_globals)]
 pub const REQ_NESTED_TRANSITION: ::nros_serdes::NestedType = ::nros_serdes::NestedType {
@@ -63,7 +63,7 @@ pub struct ChangeStateResponse {
 
 impl Serialize for ChangeStateResponse {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
-        // phase-303 W4 (#0267) â DHEADER wrap (no-op under XCDR1).
+        // phase-303 W4 (#0267) — DHEADER wrap (no-op under XCDR1).
         let __dh = writer.begin_dheader()?;
         writer.write_bool(self.success)?;
         writer.end_dheader(__dh)?;
@@ -87,7 +87,7 @@ impl RosMessage for ChangeStateResponse {
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
 
-// ââ nros_serdes::Message â runtime field schema (Response) ââââââââââââââââââ
+// ── nros_serdes::Message — runtime field schema (Response) ──────────────────
 
 impl ::nros_serdes::Message for ChangeStateResponse {
     const TYPE_NAME: &'static str = "lifecycle_msgs/srv/ChangeState_Response";

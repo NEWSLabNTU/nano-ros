@@ -21,7 +21,7 @@ pub struct DiagnosticStatus {
 
 impl Serialize for DiagnosticStatus {
     fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
-        // phase-303 W4 (#0267) â DHEADER wrap for XCDR2 appendable structs.
+        // phase-303 W4 (#0267) — DHEADER wrap for XCDR2 appendable structs.
         // No-op under XCDR1 (byte-identical); under XCDR2 delimits this struct.
         let __dh = writer.begin_dheader()?;
         writer.write_u8(self.level)?;
@@ -39,7 +39,7 @@ impl Serialize for DiagnosticStatus {
 
 impl Deserialize for DiagnosticStatus {
     fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
-        // phase-303 W4 (#0267) â read the XCDR2 DHEADER (no-op under XCDR1);
+        // phase-303 W4 (#0267) — read the XCDR2 DHEADER (no-op under XCDR1);
         // end_dheader skips any unknown trailing members (forward compat).
         let __dh = reader.begin_dheader()?;
         let __value = Self {
@@ -76,9 +76,9 @@ impl RosMessage for DiagnosticStatus {
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
 
-// ââ nros_serdes::Message â runtime field schema âââââââââââââââââââââââââââââ
+// ── nros_serdes::Message — runtime field schema ─────────────────────────────
 // Consumed by RMW backends that build wire-type descriptors at runtime
-// (Cyclone DDS dynamic types, â¦) without per-RMW codegen at compile time.
+// (Cyclone DDS dynamic types, …) without per-RMW codegen at compile time.
 
 #[allow(non_upper_case_globals)]
 pub const NESTED_VALUES: ::nros_serdes::NestedType = ::nros_serdes::NestedType {
@@ -98,22 +98,22 @@ impl ::nros_serdes::Message for DiagnosticStatus {
         },
         ::nros_serdes::Field {
             name: "name",
-            ty: ::nros_serdes::FieldType::String,
+            ty: ::nros_serdes::FieldType::BoundedString(64),
             offset: ::core::mem::offset_of!(DiagnosticStatus, name),
         },
         ::nros_serdes::Field {
             name: "message",
-            ty: ::nros_serdes::FieldType::String,
+            ty: ::nros_serdes::FieldType::BoundedString(128),
             offset: ::core::mem::offset_of!(DiagnosticStatus, message),
         },
         ::nros_serdes::Field {
             name: "hardware_id",
-            ty: ::nros_serdes::FieldType::String,
+            ty: ::nros_serdes::FieldType::BoundedString(96),
             offset: ::core::mem::offset_of!(DiagnosticStatus, hardware_id),
         },
         ::nros_serdes::Field {
             name: "values",
-            ty: ::nros_serdes::FieldType::Sequence(&FT_VALUES_ELEM),
+            ty: ::nros_serdes::FieldType::BoundedSequence(8, &FT_VALUES_ELEM),
             offset: ::core::mem::offset_of!(DiagnosticStatus, values),
         },
     ];
