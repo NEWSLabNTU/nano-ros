@@ -1,7 +1,9 @@
 # Phase 420 — package identity and the provider format
 
-**Status (2026-09-05). W1, W2, W5–W7 and W9 landed; W3 and W4 land with this
-change; W8 is in review.** Implements
+**Status (2026-09-05). W1–W8 landed. W9 is the only work item still open,
+and only its last step: its two source-list halves and its configuration
+half are in review, and the single compile is argued down rather than
+pending — see the item.** Implements
 [RFC-0087](../design/0087-package-identity-and-provider-format.md). Sequenced
 with [phase-421](phase-421-serialization-format-provider.md), which implements
 RFC-0088 and needs **W1 of this phase only** — the rest of this phase can land
@@ -335,12 +337,17 @@ is one road.
       retired — "the canonical name is the first one" became structural when
       `build.rs` started taking the first announcement.
 
-- [ ] **W6 — the search path.** `[workspace] package_paths` in `nros.toml` plus
-      `NROS_PACKAGE_PATH`, nano-ros tree first, shadowing **reported**:
-      `nros ws packages` prints each package's kind, its root, and what it hid.
-      **Acceptance:** a provider in an out-of-repo root is selected by name, and
-      a same-named provider in two roots produces a printed shadowing report
-      rather than a silent winner.
+- [x] **W6 — the search path.** (landed 2026-09-04, `8a96d6d77`)
+      `[workspace] package_paths` in `nros.toml` plus `NROS_PACKAGE_PATH`,
+      nano-ros tree first, shadowing **reported**: `nros ws packages` prints
+      each package's kind, its root, and what it hid.
+      **Acceptance, met:** a provider in an out-of-repo root is selected by
+      name, and a same-named provider in two roots produces a printed shadowing
+      report rather than a silent winner. `RootOrigin` names which of the three
+      sources contributed a root, so the report says WHERE a winner came from
+      and not merely that it won; `ProviderResolution::shadowed` retains the
+      losers rather than discarding them, and a root that is not a directory
+      prints a MISSING marker instead of being silently skipped.
 
 - [x] **W7 — selection verbs.** (landed 2026-09-04) `nros build
       --packages-select` / `--packages-up-to`, colcon semantics, over the
@@ -414,7 +421,8 @@ is one road.
       Generated entry packages are build output of the images being built, not
       discovered packages, so they are not selectable and are not narrowed.
 
-- [ ] **W8 — vendor packages, proven by one.** `check-vendor-fetch-pinned`:
+- [x] **W8 — the fetch-pin gate.** (landed 2026-09-05, `207519a70`)
+      `check-vendor-fetch-pinned`:
       every `FetchContent_Declare` / `ExternalProject_Add` in a discovered
       package carries `URL_HASH`, and any downloading build script verifies a
       digest. Then convert **one** `nros-sdk-index.toml` `[source.*]` row into a
@@ -425,6 +433,20 @@ is one road.
       vendor package's name, its values arrive through CMake targets or
       `DEP_<LINKS>_<KEY>` rather than ambient environment, and the old
       `[source.*]` row is deleted in the same commit.
+
+      **Amended 2026-09-05: the "prove it by converting one" half is RETIRED,
+      and W8 is the gate alone.** RFC-0087 D5 now says a vendor package nothing
+      depends on is a fixture, not a proof — converting a row no consumer asked
+      to move would demonstrate the shape against a package written to
+      demonstrate the shape, which is the vacuity this repo gates for elsewhere
+      (`check-no-vacuous-tests`). W9's survey then found the stronger form of
+      the same objection: for a PATCHED upstream a fetch is impossible, and for
+      an unpatched one it trades a gitlink for a weaker pin and leaves the
+      duplicated build — the actual defect — untouched. So the first conversion
+      waits for a consumer that needs one; the Orin SPE BSP (phase-418) is the
+      candidate, being a clean upstream tarball with a real dependent.
+      The gate ships with no subject and says so on every run, which is the
+      honest state for a rule whose first case has not arrived.
 
 - [~] **W9 — the in-tree vendored backends adopt the same shape.** (surveyed +
       partially landed 2026-09-05) `zpico-sys` and `xrce-sys` currently vendor
