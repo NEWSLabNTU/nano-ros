@@ -1,555 +1,481 @@
 {
- "_doc": [
-  "Phase 379. One row per item where the nano-ros user API does NOT correspond",
-  "to the ROS 2 client library it mirrors. Written by hand; read by",
-  "`scripts/api-parity.py --check`, which fails on any non-matching row that has",
-  "no entry here.",
-  "",
-  "Key is '<lang>:<normalized item>' exactly as the report prints it, where lang",
-  "is one of c / cpp / rust. Run the report to get the spelling; do not guess it.",
-  "",
-  "verdict is one of:",
-  "  divergence  we changed it and a PLATFORM CONSTRAINT is why. `why` must name",
-  "              the constraint (no_std, no exceptions, no allocator, no runtime",
-  "              env, single-threaded transport) -- not a preference. This is the",
-  "              only sanctioned reason to differ (RFC-0036).",
-  "  extension   we add it because an RTOS scenario needs it; ROS 2 has none.",
-  "  declined    ROS 2 has it, we deliberately do not, with the reason.",
-  "  gap         ROS 2 has it, we should too, nobody has done it. A gap is a",
-  "              legitimate entry -- the point is that it is written down.",
-  "  rename      the names differ and OURS is the one that should change. A",
-  "              rename with no platform reason costs the drop-in claim for",
-  "              nothing, so these are the campaign's work list.",
-  "  their-rename",
-  "              the names differ, the CAPABILITY matches, and THEIRS is the",
-  "              one that should change: ours is the spelling the broader ROS 2",
-  "              ecosystem already uses and the library this lane compares",
-  "              against is the outlier. The mirror of `rename`, and the only",
-  "              verdict that says a difference is UPSTREAM's to close.",
-  "",
-  "              A claim about NAMES ONLY. If the shapes also differ for a",
-  "              platform reason the row is a `divergence`; if we do not ship",
-  "              the capability at all it is `declined` or `gap`; if we ship it",
-  "              and ROS 2 does not it is an `extension`. Both halves of a pair",
-  "              carry it -- the theirs-only row and the ours-only row are one",
-  "              statement seen from two sides.",
-  "",
-  "              A row MUST carry a `their_rename` object, and `--check`",
-  "              refuses the verdict without it:",
-  "                ours      our spelling.",
-  "                majority  a list, each entry naming a ROS 2 spelling ours",
-  "                          agrees with and where it is recorded. At least one",
-  "                          entry must cite an upstream (rcl / rclcpp / rclrs /",
-  "                          rclc / an interface package) -- our own three",
-  "                          languages agreeing is internal consistency, which",
-  "                          is a PREFERENCE, and preferences are not this",
-  "                          verdict. `c:trigger_guard_condition` stays",
-  "                          `declined` for exactly that reason: `nros_<entity>_",
-  "                          <verb>` is our convention, not ROS 2's majority.",
-  "                outlier   the one upstream spelling that differs, with the",
-  "                          evidence it is the minority -- countable in",
-  "                          docs/reference/api-surface/ or in an interface",
-  "                          package (rcl has 14 `rcl_*_is_valid` and exactly",
-  "                          one `rcl_clock_valid`).",
-  "                pair      the ledger key of the other half, when there is one.",
-  "",
-  "              It does NOT cancel the drop-in cost -- a ported node still has",
-  "              to be edited, and `why` should say what the reader loses. What",
-  "              it buys is that `rename` stays a list of OUR defects, and that",
-  "              a row cannot say \"we have it\" (`declined`) or \"ROS 2 has none\"",
-  "              (`extension`) when neither is true.",
-  "",
-  "              `scripts/check-prelude-tiers.py` treats it as HAVING an",
-  "              upstream correspondent, so a `their-rename` name is prelude-",
-  "              eligible; only `extension` is excluded there.",
-  "",
-  "This file is SEEDED, not complete: W1 shipped the correlator, W2 classifies",
-  "the rest. `--check` is deliberately not wired into `just check` until then --",
-  "a gate that fails on ~2000 rows from the day it lands is one somebody",
-  "switches off. Keys beginning with '_' are documentation and are skipped.",
-  "",
-  "the `<lang>:` rows for its own lane, and `scripts/api-parity.py` merges every",
-  "shard in this directory. One agent per lane can write without a rebase",
-  "conflict against the others.",
-  "",
-  "SHARDED BY TOPIC: this file holds one stage's rows in ALL THREE",
-  "languages, because the campaign closes a feature at a time across every",
-  "language. `scripts/api-parity.py` merges every shard here, and",
-  "`--self-test` rejects a row whose item belongs to a different stage."
- ],
- "c:get_disable_loaned_message": {
-  "verdict": "declined",
-  "why": "reads the `ROS_DISABLE_LOANED_MESSAGES` environment variable. No runtime environment on a device, and loaned messages are a zero-copy path selected at build time here (RFC-0010/0038)."
- },
- "c:get_zero_initialized_node": {
-  "verdict": "declined",
-  "why": "rcl's free-function spelling of the above; ours is `nros_node_get_zero_initialized`, a method-style name on the type. The idiom is kept, the spelling follows our own convention."
- },
- "c:node_get_domain_id": {
-  "verdict": "gap",
-  "why": "the domain is an input to `nros_support_init` and cannot be read back from a node. On a device the value came from the boot ladder (explicit / hosted env / baked), so which domain actually won is genuinely not obvious to the code that wants to log it. Phase 379 W3."
- },
- "c:node_get_fully_qualified_name": {
-  "verdict": "gap",
-  "why": "namespace + name as one string. We expose `nros_node_get_name` and `nros_node_get_namespace` separately and never their composition, which is the form that matches what appears on the wire. Phase 379 W3."
- },
- "c:node_get_graph_guard_condition": {
-  "verdict": "gap",
-  "why": "the guard condition rcl fires when the ROS graph changes. `nros/rmw_vtable.h` carries this exact slot, shaped like `set_wake_callback`, precisely so a backend CAN trigger it -- no backend fills it yet. An earlier verdict here said `nothing would ever trigger it`, which is narrower than the truth: nothing triggers it TODAY. NOT impossible -- unimplemented. `nros/rmw_vtable.h` has carried the whole graph family as optional slots since phase-376 W4 (get_node_names, the four *_by_node forms, get_{topic,service}_names_and_types, get_{publishers,subscriptions}_info_by_topic, count_{publishers,subscribers}, node_get_graph_guard_condition), every one is `None` in the cffi backend, and no runtime wrapper or user entry point exists. Both real backends already run the machinery: the zenoh shim declares AND queries `@ros2_lv` liveliness tokens (`Ros2Liveliness::*_keyexpr`, wildcard GETs in shim/session.rs) -- the same mechanism rmw_zenoh_cpp builds its graph cache from -- and nros-rmw-cyclonedds publishes `ros_discovery_info` so `ros2 node list` can see us. We are VISIBLE in the graph and cannot READ it; only the reading half is missing. Phase 379 W3."
- },
- "c:node_get_logger_name": {
-  "verdict": "declined",
-  "why": "rcl derives a logger name from the node so rcutils logging can be filtered per node. `nros_log` takes an explicit logger name at the call site (`nros_log::get_logger(\"<crate>\")`), so there is no derived name to fetch."
- },
- "c:node_get_options": {
-  "verdict": "declined",
-  "why": "see `c:node_options_*`."
- },
- "c:node_get_rcl_instance_id": {
-  "verdict": "declined",
-  "why": "identifies which `rcl_init` epoch a node belongs to, so a stale handle from a previous init is detectable. There is one init per image."
- },
- "c:node_get_rmw_handle": {
-  "verdict": "declined",
-  "why": "hands out the underlying `rmw_node_t` so a caller can bypass rcl. Our RMW seam is the vtable in `nros/rmw_vtable.h` (RFC-0035) and is not reachable through a node handle; reaching past the API is how an image ends up depending on which backend it linked."
- },
- "c:node_get_serialization_format": {
-  "verdict": "extension",
-  "why": "phase-421 W1-W3 (RFC-0088) \u2014 asks the node which serialization format the linked backend speaks, as the cross-image identity STRING (`\"cdr\"`, `\"uorb\"`), never the image-local `u8` discriminant. Ours-only, and there is no upstream name to align to: rcl and rclcpp have no node-level accessor of this shape because in ROS 2 the format is a `dlopen` KEY resolved per typesupport at run time, so the question 'what does this node's backend speak' has no single answer there. Here one image links one backend, so it does.\n\nReturns NULL when the backend has not DECLARED a format, and NULL is not a synonym for `\"cdr\"` \u2014 a backend that has not said what it speaks has not said CDR. That is the fallback the vtable's sibling identity slot spent two phases wrongly promising, so the absence is reported rather than guessed.\n\nphase-421 W2 (landed 2026-09-04). Ours-only, and there is no upstream name to align to: neither the recorded rclcpp nor rclc surface contains the string \"serialization\" at all. It cannot: in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and not a question a node is asked. Here it IS a question \u2014 RFC-0088 makes the format a provider (`nros_serdes::format`, `SerializationFormatId`), a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD (`error[E0080]` from the `const {}` check). The accessor is how a program reads back which one it got. Answers from the single image constant today; the runtime path only becomes reachable when a bridge image links two backends (phase-421 W3, recorded as not yet reachable). C spelling: `nros_node_get_serialization_format()` (`nros_generated.h:5372`, cbindgen output)."
- },
- "c:node_get_zero_initialized": {
-  "verdict": "extension",
-  "why": "rcl's `rcl_get_zero_initialized_node()` idiom on our type. Counted as an extension for the same reason as `c:support_get_zero_initialized`: rclc, the C reference, ships no equivalent for its own handles."
- },
- "c:node_impl_t": {
-  "verdict": "declined",
-  "why": "rcl's pimpl. `nros_node_t` carries its state inline because there is no allocator to put it behind a pointer; same shape as `nros_support_t` in the init stage."
- },
- "c:node_init_default": {
-  "verdict": "declined",
-  "why": "rcl's convenience wrapper for `rcl_node_init` with default options. Ours takes no options at all, so `nros_node_init` already IS the default form."
- },
- "c:node_init_ex": {
-  "verdict": "extension",
-  "why": "`nros_node_init` plus the fields a device actually varies per node -- the RMW selection and the scheduling context (RFC-0047). rcl would express these through `rcl_node_options_t`; with no options struct they are named parameters on an explicit second entry point rather than a struct nobody can allocate."
- },
- "c:node_init_with_options": {
-  "verdict": "declined",
-  "why": "see `c:node_options_*` -- there is no options struct to pass."
- },
- "c:node_is_valid": {
-  "verdict": "gap",
-  "why": "rcl reports whether a node handle is usable. We have `nros_node_state_t` (uninitialised/initialised/finalised) and no predicate that reads it -- `nros_support_is_valid` exists for the support object and the node has no counterpart. Nothing prevents one. Phase 379 W3."
- },
- "c:node_is_valid_except_context": {
-  "verdict": "declined",
-  "why": "rcl's variant for checking a node whose context has already been finalised -- a teardown-ordering hazard that exists because rcl's node points at a separately-owned context. Our node reaches its support object through the handle it was created with, so the split state is not reachable."
- },
- "c:node_options_*": {
-  "bucket": "theirs-only",
-  "verdict": "divergence",
-  "why": "`rcl_node_options_t` is built, copied and finalised before rcl_node_init consumes it. Same collapse as `c:init_options_*` in the init stage, and the same `compile-time-options` constraint: domain, arguments and the rosout toggle are build-time decisions here (RFC-0045), so there is no options object to copy or free."
- },
- "c:node_resolve_name": {
-  "verdict": "gap",
-  "why": "expands a relative topic name against the node's namespace and remap rules. Ours are resolved at codegen/launch time (RFC-0046), so a C caller passing a runtime-built name has no way to ask what it will become. Real for anyone constructing topic names dynamically. Phase 379 W3."
- },
- "c:node_state_t": {
-  "verdict": "extension",
-  "why": "an explicit node lifecycle (uninitialised / initialised / finalised) so double-init and use-after-fini return a code instead of being undefined. See `c:support_state_t`."
- },
- "c:node_visit_fn": {
-  "verdict": "divergence",
-  "why": "phase-381 W4. The ours-half of the `names_and_types_t` / `topic_endpoint_info_array_t` divergence already recorded in this file: upstream returns `rcutils_string_array_t` / `rmw_names_and_types_t`, which allocate two levels deep. There is no allocator at this seam, and a caller-provided buffer needs a bound the CALLER cannot know -- the graph has no such bound. So enumeration is a VISITOR: peak extra memory is one entry, the backend streams from state it already holds, every string is borrowed for the call, and a caller with its own limit stops early by returning false."
- },
- "cpp:ComponentNode": {
-  "verdict": "divergence",
-  "why": "RFC-0044's IS-A-node authoring base: a user writes `class Talker : public nros::ComponentNode` and wires its entities in the ctor body, which is exactly what `class Talker : public rclcpp::Node` is. It reports ours-only because rclcpp needs ONE node type and we ship two. `nros::Node` is the value HANDLE -- caller-owned storage, move-only, carrying an FFI handle, with RFC-0022's rule that two live handles are a borrow error -- so deriving from it would put its move/dtor surface on every user node; RFC-0044 Q1 decided WRAP rather than derive, and `ComponentNode` owns an `nros::Node node_` member the convenience methods forward to. Two constraints hold the split in place: no allocator (there is no `std::make_shared<Talker>` -- the generated entry placement-news the component into an arena slot) and no exceptions (a ctor cannot throw on a failed entity creation, so RFC-0044 Q2 records an `ok()` flag instead -- see `cpp:ComponentNode::ok`). Whether the pair should be spelled differently is the open question this row records; the METHODS need no change, and each is filed under its own topic. Note `nros/nros.hpp` does not include `component_node.hpp`, so a ported node reaches this type only through the generated entry or an explicit include -- `cpp:Node::declare_parameter` records what that costs. Phase 379 W5, issue 0818: these rows exist at all only because the extractor now compiles `component_node.hpp` as its own translation unit."
- },
- "cpp:ComponentNode::ComponentNode": {
-  "verdict": "divergence",
-  "why": "`ComponentNode(NodeHandle, const char* name, const char* ns = nullptr)` against rclcpp's `Node(const std::string& name[, const std::string& ns], const NodeOptions&)`. Three differences, each with a constraint. The leading `NodeHandle`: the executor IS the session and owns the static entity arena, so a node is created ON one and cannot exist before it (`cpp:Executor::create_node`, `cpp:Context`, `cpp:NodeHandle`). `const char*` rather than `std::string`: no allocator, and a node name on a device is a literal. No `NodeOptions`: the `compile-time-options` rule. It also cannot throw -- a null handle or a failed `Node::create` sets the `ok()` flag and the generated entry halts boot naming the node (RFC-0044 Q2). See `cpp:Node::Node` for the same divergence on the handle type."
- },
- "cpp:ComponentNode::error_code": {
-  "verdict": "divergence",
-  "why": "the raw error CODE of the first failure, or `0` when `ok()`. The other half of `cpp:ComponentNode::error_what`; see `cpp:ComponentNode::ok`."
- },
- "cpp:ComponentNode::error_what": {
-  "verdict": "divergence",
-  "why": "the failure SITE (`\"create_publisher\"`, `\"node create\"`, ...) of the first error, or `nullptr` when `ok()`. Half of what a thrown rclcpp ctor exception would have carried; see `cpp:ComponentNode::ok` for why it is a flag and not a throw."
- },
- "cpp:ComponentNode::get_name": {
-  "verdict": "divergence",
-  "why": "rclcpp's `Node::get_name`: same name, same no-argument shape, same `const char*` return, forwarding to the owned node. It reports ours-only ONLY because the owning TYPE is spelled differently -- `Node::get_name` correlates as `same`, so the method needs no change and `cpp:ComponentNode` carries the open question. Same pattern as `cpp:Client::wait_for_action_server`, where a method we ship reads as unmatched because rclcpp_action can spell its type `Client` and we cannot."
- },
- "cpp:ComponentNode::get_namespace": {
-  "verdict": "divergence",
-  "why": "rclcpp's `Node::get_namespace`, forwarding to the owned node; `Node::get_namespace` correlates as `same`. A type-name artifact, not a new method -- see `cpp:ComponentNode::get_name`."
- },
- "cpp:ComponentNode::node": {
-  "verdict": "divergence",
-  "why": "the accessor for the owned `nros::Node`, and a direct consequence of RFC-0044 Q1's WRAP decision: a base that DERIVED from the node would need no accessor, which is why `rclcpp::Node` -- the thing a user derives -- has none. A component reaches through it for the lower-level `bind_*` / `create_*_raw` seam in `<nros/component.hpp>` and for the entities `ComponentNode`'s convenience members do not cover (services, actions). See `cpp:ComponentNode`."
- },
- "cpp:ComponentNode::ok": {
-  "verdict": "divergence",
-  "why": "RFC-0044 Q2. rclcpp reports a failed entity or parameter creation inside a node ctor by THROWING; we compile without exceptions, so the ctor records a flag and the generated entry / single-node carrier checks `ok()` immediately after construction and halts boot NAMING the failing node -- the multi-node boot diagnostic a thrown ctor would otherwise have given. Do not confuse it with the free `nros::ok()` / `rclcpp::ok()`, which report context liveness, or with `cpp:Executor::ok`. Issue #230 made the flag SMP-safe: the healthy value is the zero-initialised default, so a reader on a core the ctor's stores have not reached still sees `ok()`, and a real failure is published with a release store and read with an acquire load so it cannot be missed either."
- },
- "cpp:Node::Node": {
-  "provides": [
-   "nros::Executor::create_node",
-   "nros::Node::create"
+  "_doc": [
+    "Schema: see docs/reference/api-parity-ledger/SCHEMA.md — the one home for what",
+    "a row means. Do NOT copy it back here; issue 1095 is what that cost."
   ],
-  "verdict": "divergence",
-  "why": "rclcpp constructs a node from `(name[, namespace][, NodeOptions])` and expects `std::make_shared`. Ours has a default constructor and a move constructor, and the node is produced by `Executor::create_node` / `nros::Node::create` into caller-owned storage -- the `out-param-first` and `no-shared-ptr` rules, applied to construction itself. Constraint: no allocator, and RFC-0022's rule that two live node handles are a borrow error rather than a second shared_ptr."
- },
- "cpp:Node::create": {
-  "verdict": "extension",
-  "why": "the static factory that replaces `std::make_shared<Node>(...)`: it writes into caller-owned storage and returns a status. rclcpp needs no equivalent because its constructor can throw and its factory can allocate."
- },
- "cpp:Node::create_sub_node": {
-  "verdict": "declined",
-  "why": "a lightweight node sharing its parent's context with an extra namespace prefix, used to group entities under one node. It needs a second node object per sub-namespace and an allocator for it; a namespace is set once at declaration here."
- },
- "cpp:Node::ffi_handle": {
-  "verdict": "extension",
-  "why": "the opaque pointer the C API and the generated entry point pass around. It is the C++/C seam, not something a ported node calls; rclcpp's analogue would be `get_rcl_node_handle`, which we decline (see `c:node_get_rmw_handle`)."
- },
- "cpp:Node::get_effective_namespace": {
-  "verdict": "declined",
-  "why": "see `cpp:Node::create_sub_node` -- with no sub-nodes, the effective namespace IS `get_namespace()`."
- },
- "cpp:Node::get_fully_qualified_name": {
-  "verdict": "gap",
-  "why": "see `c:node_get_fully_qualified_name` -- same gap, C++ side."
- },
- "cpp:Node::get_node_base_interface": {
-  "bucket": "theirs-only",
-  "verdict": "declined",
-  "why": "rclcpp splits a node into ~10 `node_interfaces::Node*Interface` slices so a component can be handed the part it needs. The split exists to make rclcpp_components and rclcpp_action composable without passing a whole node; our components are declared, not constructed with an injected node (RFC-0044), so there is nothing to inject a slice of."
- },
- "cpp:Node::get_node_options": {
-  "verdict": "declined",
-  "why": "see `cpp:NodeOptions`."
- },
- "cpp:Node::get_node_topics_interface": {
-  "verdict": "declined",
-  "why": "see `cpp:Node::get_node_base_interface`."
- },
- "cpp:Node::get_node_waitables_interface": {
-  "verdict": "declined",
-  "why": "see `cpp:Node::get_node_base_interface`."
- },
- "cpp:Node::get_sub_namespace": {
-  "verdict": "declined",
-  "why": "see `cpp:Node::create_sub_node`."
- },
- "cpp:Node::is_valid": {
-  "verdict": "extension",
-  "why": "rclcpp has no node validity predicate because a `Node` that exists was constructed successfully or threw. With -fno-exceptions the object exists either way, so it has to be askable."
- },
- "cpp:Node::make_shared": {
-  "verdict": "declined",
-  "why": "rclcpp's `SharedPtr` factory macro. No allocator; see `no-shared-ptr` in signature_rules.py."
- },
- "cpp:Node::make_unique": {
-  "verdict": "declined",
-  "why": "see `cpp:Node::make_shared`."
- },
- "cpp:Node::serialization_format": {
-  "verdict": "extension",
-  "why": "phase-421 W1-W3 (RFC-0088) \u2014 asks the node which serialization format the linked backend speaks, as the cross-image identity STRING (`\"cdr\"`, `\"uorb\"`), never the image-local `u8` discriminant. Ours-only, and there is no upstream name to align to: rcl and rclcpp have no node-level accessor of this shape because in ROS 2 the format is a `dlopen` KEY resolved per typesupport at run time, so the question 'what does this node's backend speak' has no single answer there. Here one image links one backend, so it does.\n\nReturns NULL when the backend has not DECLARED a format, and NULL is not a synonym for `\"cdr\"` \u2014 a backend that has not said what it speaks has not said CDR. That is the fallback the vtable's sibling identity slot spent two phases wrongly promising, so the absence is reported rather than guessed.\n\nThe C++ half returns `const char*` deliberately, never `std::string` or `std::string_view`: `node.hpp` must compile against Zephyr's minimal libcpp, where `<string>` does not exist (issue 0112, and the `NROS_CPP_STD` guard exists for exactly this).\n\nphase-421 W2 (landed 2026-09-04). Ours-only, and there is no upstream name to align to: neither the recorded rclcpp nor rclc surface contains the string \"serialization\" at all. It cannot: in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and not a question a node is asked. Here it IS a question \u2014 RFC-0088 makes the format a provider (`nros_serdes::format`, `SerializationFormatId`), a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD (`error[E0080]` from the `const {}` check). The accessor is how a program reads back which one it got. Answers from the single image constant today; the runtime path only becomes reachable when a bridge image links two backends (phase-421 W3, recorded as not yet reachable). C++ spelling: `Node::serialization_format()` (`nros-cpp/include/nros/node.hpp:245`), forwarding to the C entry point."
- },
- "cpp:NodeBuilder": {
-  "verdict": "extension",
-  "why": "what replaces `NodeOptions`: a builder that names the four things a device varies -- domain, locator, namespace, RMW selection -- plus the scheduling context (RFC-0047). rclcpp's options object is mutable, copied and passed; a builder consumed at construction needs no storage to outlive the call."
- },
- "cpp:NodeHandle": {
-  "verdict": "divergence",
-  "why": "the ctor argument that stands in for rclcpp's implicit default `Context`: a `void* executor` the generated entry reads from `nros::global_handle()` and hands to every component ctor (`nros::NodeHandle __h(::nros::global_handle());`). rclcpp's `Node` ctor takes no context in the common case -- it picks up the global default -- and the node is attached to an executor afterwards with `add_node`. Ours cannot: the executor IS the session and owns the static entity arena every entity lands in, so a node is created ON one and there is nothing to add later (`cpp:Executor::create_node`, `cpp:Context`). It is a two-word `constexpr` struct with no allocation and no ownership -- see `cpp:NodeHandle::valid` and `cpp:NodeHandle::NodeHandle`."
- },
- "cpp:NodeHandle::NodeHandle": {
-  "verdict": "divergence",
-  "why": "`constexpr NodeHandle()` (null) and `explicit constexpr NodeHandle(void*)`. No allocation, no ownership; rclcpp has no counterpart because it has no such argument. See `cpp:NodeHandle`."
- },
- "cpp:NodeHandle::valid": {
-  "verdict": "divergence",
-  "why": "`executor != nullptr`. `ComponentNode`'s ctor checks it and sets `ok()=false` rather than throwing (`cpp:ComponentNode::ok`); rclcpp's nearest is `Context::is_valid`, which asks a different question of a different object. See `cpp:NodeHandle`."
- },
- "cpp:NodeOptions": {
-  "bucket": "theirs-only",
-  "verdict": "divergence",
-  "why": "the C++ face of `rcl_node_options_t`; see `c:node_options_*`. `use_intra_process_comms` and `enable_topic_statistics` are runtime toggles for paths that are compile-time here, and `allocator` has nothing to configure."
- },
- "cpp:create_node": {
-  "verdict": "extension",
-  "why": "the free function that creates a node on the global executor, so a component's `register` does not have to name the executor. rclcpp's equivalent is the `Node` constructor, which we decline."
- },
- "cpp:create_node_on": {
-  "verdict": "extension",
-  "why": "as `create_node`, but naming the executor explicitly -- required when an image runs several executors, one per RTOS priority tier (RFC-0002). rclcpp's node is not bound to an executor at construction, so it has no counterpart."
- },
- "cpp:extend_name_with_sub_namespace": {
-  "verdict": "declined",
-  "why": "the free function behind `create_sub_node`."
- },
- "cpp:init_with_launch": {
-  "verdict": "extension",
-  "why": "initialises from a resolved launch SystemModel rather than from arguments (RFC-0046: launch is authoritative for node identity). rclcpp reads the same information from argv, which a device does not have."
- },
- "cpp:init_with_launch_auto": {
-  "verdict": "extension",
-  "why": "as `init_with_launch`, resolving the bringup the entry point was generated for instead of taking it as a parameter."
- },
- "cpp:make_node": {
-  "verdict": "extension",
-  "why": "the value-returning spelling of `create_node`, kept for entry points that can take the move."
- },
- "rust:ActionExecutor": {
-  "verdict": "extension",
-  "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
- },
- "rust:Callback": {
-  "verdict": "divergence",
-  "why": "identifies WHICH declared callback is firing, because one component's `on_callback` serves all of them. rclrs has one closure per entity and never needs to ask. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
- },
- "rust:CallbackCtx": {
-  "verdict": "divergence",
-  "why": "what a callback is handed: the message, and the verbs it may use (publish, reply, decide on a goal). rclrs passes the message to a closure that captured whatever it needs; with static storage and no allocator the callback cannot capture, so the capabilities arrive as a parameter. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
- },
- "rust:CallbackEffects": {
-  "verdict": "extension",
-  "why": "declares what a callback reads and writes so the executor can check the declaration against what actually happened (RFC-0043). rclrs has no equivalent because a closure's effects are whatever it captured."
- },
- "rust:ClientDispatch": {
-  "verdict": "extension",
-  "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
- },
- "rust:DeclaredNode": {
-  "verdict": "extension",
-  "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
- },
- "rust:DeclaredNodeRuntime": {
-  "verdict": "extension",
-  "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
- },
- "rust:EntityBounds": {
-  "verdict": "extension",
-  "why": "phase-391 W5-endgame step 2c (issue 0857) -- a component class's declared per-kind entity bounds, sizing its STATIC cell registries at compile time (one publisher slot costs ~1.35 KiB, so capacity is a real price). Default = the NROS_RUNTIME_MAX_CELL_ENTITIES knob per kind; exact bounds stop a class paying for capacity `register()` never fills. Public and non-generic (the `ExecutorSizing` rule); the const generics it feeds stay behind the `nros::node!` emission. No upstream analogue: rcl sizes nothing statically."
- },
- "rust:EntityBounds::exact": {
-  "verdict": "extension",
-  "why": "phase-391 W5-endgame step 2c -- positional constructor (publishers, service_servers, service_clients, action_clients, action_servers); service_servers joined in the ctx-slab step, sizing the trampoline-context slab rather than a registry."
- },
- "rust:EntityBounds::knob_caps": {
-  "verdict": "extension",
-  "why": "phase-391 W5-endgame step 2c -- the knob-capped default, the always-works arm."
- },
- "rust:ExecutableNode": {
-  "verdict": "divergence",
-  "why": "the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
- },
- "rust:IntoNodeOptions": {
-  "bucket": "theirs-only",
-  "verdict": "declined",
-  "why": "the trait letting rclrs accept `&str` or a full options struct wherever a node is created. Our `NodeOptions` is one concrete type taken by value; the ergonomic overload needs a blanket impl that buys nothing when there is one caller shape."
- },
- "rust:MISSING_NODE_EXPORT_ERROR": {
-  "verdict": "extension",
-  "why": "a diagnostic string the macro emits when a package exports no component. machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Zero consumers outside its defining module."
- },
- "rust:Node": {
-  "provides": [
-   "nros::Node",
-   "nros::NodeHandle",
-   "nros::StandaloneNode",
-   "NodeCtx"
-  ],
-  "verdict": "divergence",
-  "why": "the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape. Note the name collision this creates: `nros::Node` is the TRAIT, while rclrs's `Node` is the handle. The handle-equivalent here is `NodeCtx`, which the facade does not export at all -- issue 0784."
- },
- "rust:Node::commands": {
-  "verdict": "declined",
-  "why": "rclrs's handle for spawning work onto the executor from inside a callback (`ExecutorCommands`). It exists to support async tasks and workers, which need a runtime and an allocator; RFC-0002 gives one executor per RTOS task and no way to spawn into it."
- },
- "rust:Node::create_worker": {
-  "verdict": "declined",
-  "why": "rclrs's worker owns a payload and serialises callbacks that touch it, so several entities can share mutable state without a mutex. Our equivalent of the sharing problem is the component's `State`, which `on_callback` already receives by `&mut` -- one owner, one task, decided at declaration rather than spawned. See `rust:Node::commands`."
- },
- "rust:Node::new": {
-  "verdict": "divergence",
-  "why": "constructs the STANDALONE `nros_node::Node` from a `NodeConfig` -- the pre-component path RTOS images still use. rclrs builds its node through `Executor::create_node`, which needs a context to exist first."
- },
- "rust:Node::register": {
-  "verdict": "divergence",
-  "why": "the one method the `Node` trait requires: declare this component's entities. rclrs's `Node` is a handle with no such method because entities are created ad hoc on a live node. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
- },
- "rust:NodeActionClient": {
-  "verdict": "divergence",
-  "why": "an action client declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
- },
- "rust:NodeActionServer": {
-  "verdict": "divergence",
-  "why": "an action server declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
- },
- "rust:NodeConfig": {
-  "verdict": "extension",
-  "why": "domain and identity for a standalone (non-component) node. RTOS images that predate the component model still use it; rclrs folds the same into `Context` + `NodeOptions`."
- },
- "rust:NodeContext": {
-  "verdict": "divergence",
-  "why": "the `register`-time context a component declares entities on. rclrs's equivalent is the `Arc<Node>` itself, which stays live for the node's lifetime; ours is a short-lived borrow that exists only while the declaration runs, which is what makes the entity set static. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
- },
- "rust:NodeDeclError": {
-  "verdict": "divergence",
-  "why": "declaration-time failures are a separate error from runtime ones, because they happen in `register` before any entity exists and are reported by the generated entry point rather than to a caller. rclrs creates entities at runtime and has one error type. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
- },
- "rust:NodeError": {
-  "verdict": "divergence",
-  "why": "the error every fallible call in the Rust user API returns. See issue 0783: it is exported but `TransportError`, its most common payload, is not, so a caller can hold it and not match its contents."
- },
- "rust:NodeExecutorRuntime": {
-  "verdict": "divergence",
-  "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
- },
- "rust:NodeHandle": {
-  "verdict": "divergence",
-  "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
- },
- "rust:NodeHandle::domain_id": {
-  "verdict": "divergence",
-  "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
- },
- "rust:NodeHandle::name": {
-  "verdict": "divergence",
-  "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
- },
- "rust:NodeHandle::session_mut": {
-  "verdict": "divergence",
-  "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
- },
- "rust:NodeHandle::set_age_monitors": {
-  "verdict": "divergence",
-  "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
- },
- "rust:NodeHandle::set_domain_id": {
-  "verdict": "divergence",
-  "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
- },
- "rust:NodeHandle::set_monitors": {
-  "verdict": "divergence",
-  "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
- },
- "rust:NodeId": {
-  "verdict": "extension",
-  "why": "a stable identity for a declared node, so the launch resolver and the image agree on which node a model entry refers to (RFC-0046). machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
- },
- "rust:NodeOptions": {
-  "bucket": "theirs-only",
-  "verdict": "divergence",
-  "why": "rclrs's `IntoNodeOptions` builds arguments, namespace and the rosout toggle for a node being constructed. Ours names the two things a device varies (`domain_id`, `namespace`); the rest are build-time (RFC-0045)."
- },
- "rust:NodeOptions::domain_id": {
-  "verdict": "divergence",
-  "why": "rclrs sets the domain on the CONTEXT (`InitOptions::set_domain_id`) and a node inherits it; ours is per-node because an image may run nodes on different domains without a context to hang the value on. See `rust:NodeOptions`."
- },
- "rust:NodeOptions::namespace": {
-  "verdict": "divergence",
-  "why": "rclrs takes the namespace through `IntoNodeOptions`, which also carries arguments and the rosout toggle. Ours carries the namespace alone; the rest are build-time (RFC-0045)."
- },
- "rust:NodeParameter": {
-  "verdict": "divergence",
-  "why": "a parameter DECLARED by a component rather than created on a live node. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
- },
- "rust:NodePublisher": {
-  "verdict": "divergence",
-  "why": "a publisher declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
- },
- "rust:NodeResult": {
-  "verdict": "divergence",
-  "why": "the component API's `Result` alias. See the types stage: no `std::error::Error`, no owned context strings."
- },
- "rust:NodeRuntime": {
-  "verdict": "divergence",
-  "why": "the seam a generated entry point creates nodes and entities through. rclrs's equivalent is `Context::create_executor` plus the node's own methods. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
- },
- "rust:NodeRuntimeAdapter": {
-  "verdict": "extension",
-  "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Zero consumers outside its defining module."
- },
- "rust:NodeServiceClient": {
-  "verdict": "divergence",
-  "why": "a service client declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
- },
- "rust:NodeServiceServer": {
-  "verdict": "divergence",
-  "why": "a service server declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
- },
- "rust:NodeSlot": {
-  "verdict": "extension",
-  "why": "the index a declared node occupies in the static table. machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Zero consumers outside its defining module -- see 0784's table."
- },
- "rust:NodeSubscription": {
-  "verdict": "divergence",
-  "why": "a subscription declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
- },
- "rust:NodeTimer": {
-  "verdict": "divergence",
-  "why": "a timer declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
- },
- "rust:PublisherResolver": {
-  "verdict": "extension",
-  "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
- },
- "rust:RegisteredNode": {
-  "verdict": "divergence",
-  "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
- },
- "rust:RegisteredNode::slot": {
-  "verdict": "divergence",
-  "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
- },
- "rust:RuntimeNodeRecord": {
-  "verdict": "extension",
-  "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Zero consumers outside its defining module."
- },
- "rust:TopicInfo::with_node_name": {
-  "verdict": "extension",
-  "why": "attaches the declaring node to a topic record so the launch resolver can attribute an entity. rclrs's graph API answers the same question at runtime by querying the graph, which needs discovery."
- },
- "rust:declarative_component": {
-  "verdict": "extension",
-  "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
- },
- "rust:install_node_typed": {
-  "verdict": "divergence",
-  "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
- },
- "rust:install_node_typed_in": {
-  "verdict": "extension",
-  "why": "phase-391 W5 -- `install_node_typed` with caller-supplied storage (`&'static ComponentSlotStorage`), the `open_in` pattern: same behaviour, no allocator. The alloc-backed spelling stays for hosted targets; the macro emits this one so component images stop needing `alloc`."
- },
- "rust:install_node_typed_with_launch": {
-  "verdict": "divergence",
-  "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
- },
- "rust:install_node_typed_with_launch_in": {
-  "verdict": "extension",
-  "why": "phase-391 W5 -- the `_with_launch` twin of `install_node_typed_in`; launch-model wiring plus caller storage."
- },
- "rust:install_node_typed_with_node_identity": {
-  "verdict": "divergence",
-  "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
- },
- "rust:install_node_typed_with_params": {
-  "verdict": "divergence",
-  "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
- },
- "rust:record_node_metadata": {
-  "verdict": "extension",
-  "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
- },
- "rust:register_node": {
-  "verdict": "extension",
-  "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
- }
+  "c:get_disable_loaned_message": {
+    "verdict": "declined",
+    "why": "reads the `ROS_DISABLE_LOANED_MESSAGES` environment variable. No runtime environment on a device, and loaned messages are a zero-copy path selected at build time here (RFC-0010/0038)."
+  },
+  "c:get_zero_initialized_node": {
+    "verdict": "declined",
+    "why": "rcl's free-function spelling of the above; ours is `nros_node_get_zero_initialized`, a method-style name on the type. The idiom is kept, the spelling follows our own convention."
+  },
+  "c:node_get_domain_id": {
+    "verdict": "gap",
+    "why": "the domain is an input to `nros_support_init` and cannot be read back from a node. On a device the value came from the boot ladder (explicit / hosted env / baked), so which domain actually won is genuinely not obvious to the code that wants to log it. Phase 379 W3."
+  },
+  "c:node_get_fully_qualified_name": {
+    "verdict": "gap",
+    "why": "namespace + name as one string. We expose `nros_node_get_name` and `nros_node_get_namespace` separately and never their composition, which is the form that matches what appears on the wire. Phase 379 W3."
+  },
+  "c:node_get_graph_guard_condition": {
+    "verdict": "gap",
+    "why": "the guard condition rcl fires when the ROS graph changes. `nros/rmw_vtable.h` carries this exact slot, shaped like `set_wake_callback`, precisely so a backend CAN trigger it -- no backend fills it yet. An earlier verdict here said `nothing would ever trigger it`, which is narrower than the truth: nothing triggers it TODAY. NOT impossible -- unimplemented. `nros/rmw_vtable.h` has carried the whole graph family as optional slots since phase-376 W4 (get_node_names, the four *_by_node forms, get_{topic,service}_names_and_types, get_{publishers,subscriptions}_info_by_topic, count_{publishers,subscribers}, node_get_graph_guard_condition), every one is `None` in the cffi backend, and no runtime wrapper or user entry point exists. Both real backends already run the machinery: the zenoh shim declares AND queries `@ros2_lv` liveliness tokens (`Ros2Liveliness::*_keyexpr`, wildcard GETs in shim/session.rs) -- the same mechanism rmw_zenoh_cpp builds its graph cache from -- and nros-rmw-cyclonedds publishes `ros_discovery_info` so `ros2 node list` can see us. We are VISIBLE in the graph and cannot READ it; only the reading half is missing. Phase 379 W3."
+  },
+  "c:node_get_logger_name": {
+    "verdict": "declined",
+    "why": "rcl derives a logger name from the node so rcutils logging can be filtered per node. `nros_log` takes an explicit logger name at the call site (`nros_log::get_logger(\"<crate>\")`), so there is no derived name to fetch."
+  },
+  "c:node_get_options": {
+    "verdict": "declined",
+    "why": "see `c:node_options_*`."
+  },
+  "c:node_get_rcl_instance_id": {
+    "verdict": "declined",
+    "why": "identifies which `rcl_init` epoch a node belongs to, so a stale handle from a previous init is detectable. There is one init per image."
+  },
+  "c:node_get_rmw_handle": {
+    "verdict": "declined",
+    "why": "hands out the underlying `rmw_node_t` so a caller can bypass rcl. Our RMW seam is the vtable in `nros/rmw_vtable.h` (RFC-0035) and is not reachable through a node handle; reaching past the API is how an image ends up depending on which backend it linked."
+  },
+  "c:node_get_serialization_format": {
+    "verdict": "extension",
+    "why": "phase-421 W1-W3 (RFC-0088) — asks the node which serialization format the linked backend speaks, as the cross-image identity STRING (`\"cdr\"`, `\"uorb\"`), never the image-local `u8` discriminant. Ours-only, and there is no upstream name to align to: rcl and rclcpp have no node-level accessor of this shape because in ROS 2 the format is a `dlopen` KEY resolved per typesupport at run time, so the question 'what does this node's backend speak' has no single answer there. Here one image links one backend, so it does.\n\nReturns NULL when the backend has not DECLARED a format, and NULL is not a synonym for `\"cdr\"` — a backend that has not said what it speaks has not said CDR. That is the fallback the vtable's sibling identity slot spent two phases wrongly promising, so the absence is reported rather than guessed.\n\nphase-421 W2 (landed 2026-09-04). Ours-only, and there is no upstream name to align to: neither the recorded rclcpp nor rclc surface contains the string \"serialization\" at all. It cannot: in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and not a question a node is asked. Here it IS a question — RFC-0088 makes the format a provider (`nros_serdes::format`, `SerializationFormatId`), a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD (`error[E0080]` from the `const {}` check). The accessor is how a program reads back which one it got. Answers from the single image constant today; the runtime path only becomes reachable when a bridge image links two backends (phase-421 W3, recorded as not yet reachable). C spelling: `nros_node_get_serialization_format()` (`nros_generated.h:5372`, cbindgen output)."
+  },
+  "c:node_get_zero_initialized": {
+    "verdict": "extension",
+    "why": "rcl's `rcl_get_zero_initialized_node()` idiom on our type. Counted as an extension for the same reason as `c:support_get_zero_initialized`: rclc, the C reference, ships no equivalent for its own handles."
+  },
+  "c:node_impl_t": {
+    "verdict": "declined",
+    "why": "rcl's pimpl. `nros_node_t` carries its state inline because there is no allocator to put it behind a pointer; same shape as `nros_support_t` in the init stage."
+  },
+  "c:node_init_default": {
+    "verdict": "declined",
+    "why": "rcl's convenience wrapper for `rcl_node_init` with default options. Ours takes no options at all, so `nros_node_init` already IS the default form."
+  },
+  "c:node_init_ex": {
+    "verdict": "extension",
+    "why": "`nros_node_init` plus the fields a device actually varies per node -- the RMW selection and the scheduling context (RFC-0047). rcl would express these through `rcl_node_options_t`; with no options struct they are named parameters on an explicit second entry point rather than a struct nobody can allocate."
+  },
+  "c:node_init_with_options": {
+    "verdict": "declined",
+    "why": "see `c:node_options_*` -- there is no options struct to pass."
+  },
+  "c:node_is_valid": {
+    "verdict": "gap",
+    "why": "rcl reports whether a node handle is usable. We have `nros_node_state_t` (uninitialised/initialised/finalised) and no predicate that reads it -- `nros_support_is_valid` exists for the support object and the node has no counterpart. Nothing prevents one. Phase 379 W3."
+  },
+  "c:node_is_valid_except_context": {
+    "verdict": "declined",
+    "why": "rcl's variant for checking a node whose context has already been finalised -- a teardown-ordering hazard that exists because rcl's node points at a separately-owned context. Our node reaches its support object through the handle it was created with, so the split state is not reachable."
+  },
+  "c:node_options_*": {
+    "bucket": "theirs-only",
+    "verdict": "divergence",
+    "why": "`rcl_node_options_t` is built, copied and finalised before rcl_node_init consumes it. Same collapse as `c:init_options_*` in the init stage, and the same `compile-time-options` constraint: domain, arguments and the rosout toggle are build-time decisions here (RFC-0045), so there is no options object to copy or free."
+  },
+  "c:node_resolve_name": {
+    "verdict": "gap",
+    "why": "expands a relative topic name against the node's namespace and remap rules. Ours are resolved at codegen/launch time (RFC-0046), so a C caller passing a runtime-built name has no way to ask what it will become. Real for anyone constructing topic names dynamically. Phase 379 W3."
+  },
+  "c:node_state_t": {
+    "verdict": "extension",
+    "why": "an explicit node lifecycle (uninitialised / initialised / finalised) so double-init and use-after-fini return a code instead of being undefined. See `c:support_state_t`."
+  },
+  "c:node_visit_fn": {
+    "verdict": "divergence",
+    "why": "phase-381 W4. The ours-half of the `names_and_types_t` / `topic_endpoint_info_array_t` divergence already recorded in this file: upstream returns `rcutils_string_array_t` / `rmw_names_and_types_t`, which allocate two levels deep. There is no allocator at this seam, and a caller-provided buffer needs a bound the CALLER cannot know -- the graph has no such bound. So enumeration is a VISITOR: peak extra memory is one entry, the backend streams from state it already holds, every string is borrowed for the call, and a caller with its own limit stops early by returning false."
+  },
+  "cpp:ComponentNode": {
+    "verdict": "divergence",
+    "why": "RFC-0044's IS-A-node authoring base: a user writes `class Talker : public nros::ComponentNode` and wires its entities in the ctor body, which is exactly what `class Talker : public rclcpp::Node` is. It reports ours-only because rclcpp needs ONE node type and we ship two. `nros::Node` is the value HANDLE -- caller-owned storage, move-only, carrying an FFI handle, with RFC-0022's rule that two live handles are a borrow error -- so deriving from it would put its move/dtor surface on every user node; RFC-0044 Q1 decided WRAP rather than derive, and `ComponentNode` owns an `nros::Node node_` member the convenience methods forward to. Two constraints hold the split in place: no allocator (there is no `std::make_shared<Talker>` -- the generated entry placement-news the component into an arena slot) and no exceptions (a ctor cannot throw on a failed entity creation, so RFC-0044 Q2 records an `ok()` flag instead -- see `cpp:ComponentNode::ok`). Whether the pair should be spelled differently is the open question this row records; the METHODS need no change, and each is filed under its own topic. Note `nros/nros.hpp` does not include `component_node.hpp`, so a ported node reaches this type only through the generated entry or an explicit include -- `cpp:Node::declare_parameter` records what that costs. Phase 379 W5, issue 0818: these rows exist at all only because the extractor now compiles `component_node.hpp` as its own translation unit."
+  },
+  "cpp:ComponentNode::ComponentNode": {
+    "verdict": "divergence",
+    "why": "`ComponentNode(NodeHandle, const char* name, const char* ns = nullptr)` against rclcpp's `Node(const std::string& name[, const std::string& ns], const NodeOptions&)`. Three differences, each with a constraint. The leading `NodeHandle`: the executor IS the session and owns the static entity arena, so a node is created ON one and cannot exist before it (`cpp:Executor::create_node`, `cpp:Context`, `cpp:NodeHandle`). `const char*` rather than `std::string`: no allocator, and a node name on a device is a literal. No `NodeOptions`: the `compile-time-options` rule. It also cannot throw -- a null handle or a failed `Node::create` sets the `ok()` flag and the generated entry halts boot naming the node (RFC-0044 Q2). See `cpp:Node::Node` for the same divergence on the handle type."
+  },
+  "cpp:ComponentNode::error_code": {
+    "verdict": "divergence",
+    "why": "the raw error CODE of the first failure, or `0` when `ok()`. The other half of `cpp:ComponentNode::error_what`; see `cpp:ComponentNode::ok`."
+  },
+  "cpp:ComponentNode::error_what": {
+    "verdict": "divergence",
+    "why": "the failure SITE (`\"create_publisher\"`, `\"node create\"`, ...) of the first error, or `nullptr` when `ok()`. Half of what a thrown rclcpp ctor exception would have carried; see `cpp:ComponentNode::ok` for why it is a flag and not a throw."
+  },
+  "cpp:ComponentNode::get_name": {
+    "verdict": "divergence",
+    "why": "rclcpp's `Node::get_name`: same name, same no-argument shape, same `const char*` return, forwarding to the owned node. It reports ours-only ONLY because the owning TYPE is spelled differently -- `Node::get_name` correlates as `same`, so the method needs no change and `cpp:ComponentNode` carries the open question. Same pattern as `cpp:Client::wait_for_action_server`, where a method we ship reads as unmatched because rclcpp_action can spell its type `Client` and we cannot."
+  },
+  "cpp:ComponentNode::get_namespace": {
+    "verdict": "divergence",
+    "why": "rclcpp's `Node::get_namespace`, forwarding to the owned node; `Node::get_namespace` correlates as `same`. A type-name artifact, not a new method -- see `cpp:ComponentNode::get_name`."
+  },
+  "cpp:ComponentNode::node": {
+    "verdict": "divergence",
+    "why": "the accessor for the owned `nros::Node`, and a direct consequence of RFC-0044 Q1's WRAP decision: a base that DERIVED from the node would need no accessor, which is why `rclcpp::Node` -- the thing a user derives -- has none. A component reaches through it for the lower-level `bind_*` / `create_*_raw` seam in `<nros/component.hpp>` and for the entities `ComponentNode`'s convenience members do not cover (services, actions). See `cpp:ComponentNode`."
+  },
+  "cpp:ComponentNode::ok": {
+    "verdict": "divergence",
+    "why": "RFC-0044 Q2. rclcpp reports a failed entity or parameter creation inside a node ctor by THROWING; we compile without exceptions, so the ctor records a flag and the generated entry / single-node carrier checks `ok()` immediately after construction and halts boot NAMING the failing node -- the multi-node boot diagnostic a thrown ctor would otherwise have given. Do not confuse it with the free `nros::ok()` / `rclcpp::ok()`, which report context liveness, or with `cpp:Executor::ok`. Issue #230 made the flag SMP-safe: the healthy value is the zero-initialised default, so a reader on a core the ctor's stores have not reached still sees `ok()`, and a real failure is published with a release store and read with an acquire load so it cannot be missed either."
+  },
+  "cpp:Node::Node": {
+    "provides": [
+      "nros::Executor::create_node",
+      "nros::Node::create"
+    ],
+    "verdict": "divergence",
+    "why": "rclcpp constructs a node from `(name[, namespace][, NodeOptions])` and expects `std::make_shared`. Ours has a default constructor and a move constructor, and the node is produced by `Executor::create_node` / `nros::Node::create` into caller-owned storage -- the `out-param-first` and `no-shared-ptr` rules, applied to construction itself. Constraint: no allocator, and RFC-0022's rule that two live node handles are a borrow error rather than a second shared_ptr."
+  },
+  "cpp:Node::create": {
+    "verdict": "extension",
+    "why": "the static factory that replaces `std::make_shared<Node>(...)`: it writes into caller-owned storage and returns a status. rclcpp needs no equivalent because its constructor can throw and its factory can allocate."
+  },
+  "cpp:Node::create_sub_node": {
+    "verdict": "declined",
+    "why": "a lightweight node sharing its parent's context with an extra namespace prefix, used to group entities under one node. It needs a second node object per sub-namespace and an allocator for it; a namespace is set once at declaration here."
+  },
+  "cpp:Node::ffi_handle": {
+    "verdict": "extension",
+    "why": "the opaque pointer the C API and the generated entry point pass around. It is the C++/C seam, not something a ported node calls; rclcpp's analogue would be `get_rcl_node_handle`, which we decline (see `c:node_get_rmw_handle`)."
+  },
+  "cpp:Node::get_effective_namespace": {
+    "verdict": "declined",
+    "why": "see `cpp:Node::create_sub_node` -- with no sub-nodes, the effective namespace IS `get_namespace()`."
+  },
+  "cpp:Node::get_fully_qualified_name": {
+    "verdict": "gap",
+    "why": "see `c:node_get_fully_qualified_name` -- same gap, C++ side."
+  },
+  "cpp:Node::get_node_base_interface": {
+    "bucket": "theirs-only",
+    "verdict": "declined",
+    "why": "rclcpp splits a node into ~10 `node_interfaces::Node*Interface` slices so a component can be handed the part it needs. The split exists to make rclcpp_components and rclcpp_action composable without passing a whole node; our components are declared, not constructed with an injected node (RFC-0044), so there is nothing to inject a slice of."
+  },
+  "cpp:Node::get_node_options": {
+    "verdict": "declined",
+    "why": "see `cpp:NodeOptions`."
+  },
+  "cpp:Node::get_node_topics_interface": {
+    "verdict": "declined",
+    "why": "see `cpp:Node::get_node_base_interface`."
+  },
+  "cpp:Node::get_node_waitables_interface": {
+    "verdict": "declined",
+    "why": "see `cpp:Node::get_node_base_interface`."
+  },
+  "cpp:Node::get_sub_namespace": {
+    "verdict": "declined",
+    "why": "see `cpp:Node::create_sub_node`."
+  },
+  "cpp:Node::is_valid": {
+    "verdict": "extension",
+    "why": "rclcpp has no node validity predicate because a `Node` that exists was constructed successfully or threw. With -fno-exceptions the object exists either way, so it has to be askable."
+  },
+  "cpp:Node::make_shared": {
+    "verdict": "declined",
+    "why": "rclcpp's `SharedPtr` factory macro. No allocator; see `no-shared-ptr` in signature_rules.py."
+  },
+  "cpp:Node::make_unique": {
+    "verdict": "declined",
+    "why": "see `cpp:Node::make_shared`."
+  },
+  "cpp:Node::serialization_format": {
+    "verdict": "extension",
+    "why": "phase-421 W1-W3 (RFC-0088) — asks the node which serialization format the linked backend speaks, as the cross-image identity STRING (`\"cdr\"`, `\"uorb\"`), never the image-local `u8` discriminant. Ours-only, and there is no upstream name to align to: rcl and rclcpp have no node-level accessor of this shape because in ROS 2 the format is a `dlopen` KEY resolved per typesupport at run time, so the question 'what does this node's backend speak' has no single answer there. Here one image links one backend, so it does.\n\nReturns NULL when the backend has not DECLARED a format, and NULL is not a synonym for `\"cdr\"` — a backend that has not said what it speaks has not said CDR. That is the fallback the vtable's sibling identity slot spent two phases wrongly promising, so the absence is reported rather than guessed.\n\nThe C++ half returns `const char*` deliberately, never `std::string` or `std::string_view`: `node.hpp` must compile against Zephyr's minimal libcpp, where `<string>` does not exist (issue 0112, and the `NROS_CPP_STD` guard exists for exactly this).\n\nphase-421 W2 (landed 2026-09-04). Ours-only, and there is no upstream name to align to: neither the recorded rclcpp nor rclc surface contains the string \"serialization\" at all. It cannot: in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and not a question a node is asked. Here it IS a question — RFC-0088 makes the format a provider (`nros_serdes::format`, `SerializationFormatId`), a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD (`error[E0080]` from the `const {}` check). The accessor is how a program reads back which one it got. Answers from the single image constant today; the runtime path only becomes reachable when a bridge image links two backends (phase-421 W3, recorded as not yet reachable). C++ spelling: `Node::serialization_format()` (`nros-cpp/include/nros/node.hpp:245`), forwarding to the C entry point."
+  },
+  "cpp:NodeBuilder": {
+    "verdict": "extension",
+    "why": "what replaces `NodeOptions`: a builder that names the four things a device varies -- domain, locator, namespace, RMW selection -- plus the scheduling context (RFC-0047). rclcpp's options object is mutable, copied and passed; a builder consumed at construction needs no storage to outlive the call."
+  },
+  "cpp:NodeHandle": {
+    "verdict": "divergence",
+    "why": "the ctor argument that stands in for rclcpp's implicit default `Context`: a `void* executor` the generated entry reads from `nros::global_handle()` and hands to every component ctor (`nros::NodeHandle __h(::nros::global_handle());`). rclcpp's `Node` ctor takes no context in the common case -- it picks up the global default -- and the node is attached to an executor afterwards with `add_node`. Ours cannot: the executor IS the session and owns the static entity arena every entity lands in, so a node is created ON one and there is nothing to add later (`cpp:Executor::create_node`, `cpp:Context`). It is a two-word `constexpr` struct with no allocation and no ownership -- see `cpp:NodeHandle::valid` and `cpp:NodeHandle::NodeHandle`."
+  },
+  "cpp:NodeHandle::NodeHandle": {
+    "verdict": "divergence",
+    "why": "`constexpr NodeHandle()` (null) and `explicit constexpr NodeHandle(void*)`. No allocation, no ownership; rclcpp has no counterpart because it has no such argument. See `cpp:NodeHandle`."
+  },
+  "cpp:NodeHandle::valid": {
+    "verdict": "divergence",
+    "why": "`executor != nullptr`. `ComponentNode`'s ctor checks it and sets `ok()=false` rather than throwing (`cpp:ComponentNode::ok`); rclcpp's nearest is `Context::is_valid`, which asks a different question of a different object. See `cpp:NodeHandle`."
+  },
+  "cpp:NodeOptions": {
+    "bucket": "theirs-only",
+    "verdict": "divergence",
+    "why": "the C++ face of `rcl_node_options_t`; see `c:node_options_*`. `use_intra_process_comms` and `enable_topic_statistics` are runtime toggles for paths that are compile-time here, and `allocator` has nothing to configure."
+  },
+  "cpp:create_node": {
+    "verdict": "extension",
+    "why": "the free function that creates a node on the global executor, so a component's `register` does not have to name the executor. rclcpp's equivalent is the `Node` constructor, which we decline."
+  },
+  "cpp:create_node_on": {
+    "verdict": "extension",
+    "why": "as `create_node`, but naming the executor explicitly -- required when an image runs several executors, one per RTOS priority tier (RFC-0002). rclcpp's node is not bound to an executor at construction, so it has no counterpart."
+  },
+  "cpp:extend_name_with_sub_namespace": {
+    "verdict": "declined",
+    "why": "the free function behind `create_sub_node`."
+  },
+  "cpp:init_with_launch": {
+    "verdict": "extension",
+    "why": "initialises from a resolved launch SystemModel rather than from arguments (RFC-0046: launch is authoritative for node identity). rclcpp reads the same information from argv, which a device does not have."
+  },
+  "cpp:init_with_launch_auto": {
+    "verdict": "extension",
+    "why": "as `init_with_launch`, resolving the bringup the entry point was generated for instead of taking it as a parameter."
+  },
+  "cpp:make_node": {
+    "verdict": "extension",
+    "why": "the value-returning spelling of `create_node`, kept for entry points that can take the move."
+  },
+  "rust:ActionExecutor": {
+    "verdict": "extension",
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+  },
+  "rust:Callback": {
+    "verdict": "divergence",
+    "why": "identifies WHICH declared callback is firing, because one component's `on_callback` serves all of them. rclrs has one closure per entity and never needs to ask. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
+  },
+  "rust:CallbackCtx": {
+    "verdict": "divergence",
+    "why": "what a callback is handed: the message, and the verbs it may use (publish, reply, decide on a goal). rclrs passes the message to a closure that captured whatever it needs; with static storage and no allocator the callback cannot capture, so the capabilities arrive as a parameter. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
+  },
+  "rust:CallbackEffects": {
+    "verdict": "extension",
+    "why": "declares what a callback reads and writes so the executor can check the declaration against what actually happened (RFC-0043). rclrs has no equivalent because a closure's effects are whatever it captured."
+  },
+  "rust:ClientDispatch": {
+    "verdict": "extension",
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+  },
+  "rust:DeclaredNode": {
+    "verdict": "extension",
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+  },
+  "rust:DeclaredNodeRuntime": {
+    "verdict": "extension",
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+  },
+  "rust:EntityBounds": {
+    "verdict": "extension",
+    "why": "phase-391 W5-endgame step 2c (issue 0857) -- a component class's declared per-kind entity bounds, sizing its STATIC cell registries at compile time (one publisher slot costs ~1.35 KiB, so capacity is a real price). Default = the NROS_RUNTIME_MAX_CELL_ENTITIES knob per kind; exact bounds stop a class paying for capacity `register()` never fills. Public and non-generic (the `ExecutorSizing` rule); the const generics it feeds stay behind the `nros::node!` emission. No upstream analogue: rcl sizes nothing statically."
+  },
+  "rust:EntityBounds::exact": {
+    "verdict": "extension",
+    "why": "phase-391 W5-endgame step 2c -- positional constructor (publishers, service_servers, service_clients, action_clients, action_servers); service_servers joined in the ctx-slab step, sizing the trampoline-context slab rather than a registry."
+  },
+  "rust:EntityBounds::knob_caps": {
+    "verdict": "extension",
+    "why": "phase-391 W5-endgame step 2c -- the knob-capped default, the always-works arm."
+  },
+  "rust:ExecutableNode": {
+    "verdict": "divergence",
+    "why": "the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
+  },
+  "rust:IntoNodeOptions": {
+    "bucket": "theirs-only",
+    "verdict": "declined",
+    "why": "the trait letting rclrs accept `&str` or a full options struct wherever a node is created. Our `NodeOptions` is one concrete type taken by value; the ergonomic overload needs a blanket impl that buys nothing when there is one caller shape."
+  },
+  "rust:MISSING_NODE_EXPORT_ERROR": {
+    "verdict": "extension",
+    "why": "a diagnostic string the macro emits when a package exports no component. machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Zero consumers outside its defining module."
+  },
+  "rust:Node": {
+    "provides": [
+      "nros::Node",
+      "nros::NodeHandle",
+      "nros::StandaloneNode",
+      "NodeCtx"
+    ],
+    "verdict": "divergence",
+    "why": "the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape. Note the name collision this creates: `nros::Node` is the TRAIT, while rclrs's `Node` is the handle. The handle-equivalent here is `NodeCtx`, which the facade does not export at all -- issue 0784."
+  },
+  "rust:Node::commands": {
+    "verdict": "declined",
+    "why": "rclrs's handle for spawning work onto the executor from inside a callback (`ExecutorCommands`). It exists to support async tasks and workers, which need a runtime and an allocator; RFC-0002 gives one executor per RTOS task and no way to spawn into it."
+  },
+  "rust:Node::create_worker": {
+    "verdict": "declined",
+    "why": "rclrs's worker owns a payload and serialises callbacks that touch it, so several entities can share mutable state without a mutex. Our equivalent of the sharing problem is the component's `State`, which `on_callback` already receives by `&mut` -- one owner, one task, decided at declaration rather than spawned. See `rust:Node::commands`."
+  },
+  "rust:Node::new": {
+    "verdict": "divergence",
+    "why": "constructs the STANDALONE `nros_node::Node` from a `NodeConfig` -- the pre-component path RTOS images still use. rclrs builds its node through `Executor::create_node`, which needs a context to exist first."
+  },
+  "rust:Node::register": {
+    "verdict": "divergence",
+    "why": "the one method the `Node` trait requires: declare this component's entities. rclrs's `Node` is a handle with no such method because entities are created ad hoc on a live node. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
+  },
+  "rust:NodeActionClient": {
+    "verdict": "divergence",
+    "why": "an action client declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
+  },
+  "rust:NodeActionServer": {
+    "verdict": "divergence",
+    "why": "an action server declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
+  },
+  "rust:NodeConfig": {
+    "verdict": "extension",
+    "why": "domain and identity for a standalone (non-component) node. RTOS images that predate the component model still use it; rclrs folds the same into `Context` + `NodeOptions`."
+  },
+  "rust:NodeContext": {
+    "verdict": "divergence",
+    "why": "the `register`-time context a component declares entities on. rclrs's equivalent is the `Arc<Node>` itself, which stays live for the node's lifetime; ours is a short-lived borrow that exists only while the declaration runs, which is what makes the entity set static. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
+  },
+  "rust:NodeDeclError": {
+    "verdict": "divergence",
+    "why": "declaration-time failures are a separate error from runtime ones, because they happen in `register` before any entity exists and are reported by the generated entry point rather than to a caller. rclrs creates entities at runtime and has one error type. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
+  },
+  "rust:NodeError": {
+    "verdict": "divergence",
+    "why": "the error every fallible call in the Rust user API returns. See issue 0783: it is exported but `TransportError`, its most common payload, is not, so a caller can hold it and not match its contents."
+  },
+  "rust:NodeExecutorRuntime": {
+    "verdict": "divergence",
+    "why": "an `Executor::register_*` entry point: the imperative half of what the component model declares. The executor owns the static entity table, so registration is a call on it rather than a method on a node the entity outlives. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle": {
+    "verdict": "divergence",
+    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::domain_id": {
+    "verdict": "divergence",
+    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::name": {
+    "verdict": "divergence",
+    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::session_mut": {
+    "verdict": "divergence",
+    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::set_age_monitors": {
+    "verdict": "divergence",
+    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::set_domain_id": {
+    "verdict": "divergence",
+    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeHandle::set_monitors": {
+    "verdict": "divergence",
+    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:NodeId": {
+    "verdict": "extension",
+    "why": "a stable identity for a declared node, so the launch resolver and the image agree on which node a model entry refers to (RFC-0046). machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+  },
+  "rust:NodeOptions": {
+    "bucket": "theirs-only",
+    "verdict": "divergence",
+    "why": "rclrs's `IntoNodeOptions` builds arguments, namespace and the rosout toggle for a node being constructed. Ours names the two things a device varies (`domain_id`, `namespace`); the rest are build-time (RFC-0045)."
+  },
+  "rust:NodeOptions::domain_id": {
+    "verdict": "divergence",
+    "why": "rclrs sets the domain on the CONTEXT (`InitOptions::set_domain_id`) and a node inherits it; ours is per-node because an image may run nodes on different domains without a context to hang the value on. See `rust:NodeOptions`."
+  },
+  "rust:NodeOptions::namespace": {
+    "verdict": "divergence",
+    "why": "rclrs takes the namespace through `IntoNodeOptions`, which also carries arguments and the rosout toggle. Ours carries the namespace alone; the rest are build-time (RFC-0045)."
+  },
+  "rust:NodeParameter": {
+    "verdict": "divergence",
+    "why": "a parameter DECLARED by a component rather than created on a live node. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
+  },
+  "rust:NodePublisher": {
+    "verdict": "divergence",
+    "why": "a publisher declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
+  },
+  "rust:NodeResult": {
+    "verdict": "divergence",
+    "why": "the component API's `Result` alias. See the types stage: no `std::error::Error`, no owned context strings."
+  },
+  "rust:NodeRuntime": {
+    "verdict": "divergence",
+    "why": "the seam a generated entry point creates nodes and entities through. rclrs's equivalent is `Context::create_executor` plus the node's own methods. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
+  },
+  "rust:NodeRuntimeAdapter": {
+    "verdict": "extension",
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Zero consumers outside its defining module."
+  },
+  "rust:NodeServiceClient": {
+    "verdict": "divergence",
+    "why": "a service client declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
+  },
+  "rust:NodeServiceServer": {
+    "verdict": "divergence",
+    "why": "a service server declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
+  },
+  "rust:NodeSlot": {
+    "verdict": "extension",
+    "why": "the index a declared node occupies in the static table. machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Zero consumers outside its defining module -- see 0784's table."
+  },
+  "rust:NodeSubscription": {
+    "verdict": "divergence",
+    "why": "a subscription declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
+  },
+  "rust:NodeTimer": {
+    "verdict": "divergence",
+    "why": "a timer declared by a component. the Rust API is a DECLARATIVE COMPONENT MODEL, not rclrs's handle model (RFC-0043/0044). A user implements `Node`/`ExecutableNode` for a type, declares entities in `register`, and receives callbacks; rclrs holds an `Arc<Node>` and calls methods on it. The constraint is static entity storage plus an executor that owns dispatch: with no allocator the entity set has to be known at declaration time, and with one executor per RTOS task the callback cannot be a closure the node keeps. `examples/native/rust/talker/src/lib.rs` is the shape."
+  },
+  "rust:PublisherResolver": {
+    "verdict": "extension",
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+  },
+  "rust:RegisteredNode": {
+    "verdict": "divergence",
+    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RegisteredNode::slot": {
+    "verdict": "divergence",
+    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:RuntimeNodeRecord": {
+    "verdict": "extension",
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is. Zero consumers outside its defining module."
+  },
+  "rust:TopicInfo::with_node_name": {
+    "verdict": "extension",
+    "why": "attaches the declaring node to a topic record so the launch resolver can attribute an entity. rclrs's graph API answers the same question at runtime by querying the graph, which needs discovery."
+  },
+  "rust:declarative_component": {
+    "verdict": "extension",
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+  },
+  "rust:install_node_typed": {
+    "verdict": "divergence",
+    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:install_node_typed_in": {
+    "verdict": "extension",
+    "why": "phase-391 W5 -- `install_node_typed` with caller-supplied storage (`&'static ComponentSlotStorage`), the `open_in` pattern: same behaviour, no allocator. The alloc-backed spelling stays for hosted targets; the macro emits this one so component images stop needing `alloc`."
+  },
+  "rust:install_node_typed_with_launch": {
+    "verdict": "divergence",
+    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:install_node_typed_with_launch_in": {
+    "verdict": "extension",
+    "why": "phase-391 W5 -- the `_with_launch` twin of `install_node_typed_in`; launch-model wiring plus caller storage."
+  },
+  "rust:install_node_typed_with_node_identity": {
+    "verdict": "divergence",
+    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:install_node_typed_with_params": {
+    "verdict": "divergence",
+    "why": "`NodeHandle` IS the rclrs-shaped handle -- `create_publisher`, `create_subscription`, `create_service`, `create_client`, `name`, `domain_id`, `logger` -- exported from `nros` and in the prelude behind `rmw-cffi`. It is NOT reported as matching rclrs's `Node` because the names differ (`NodeHandle` against `Node`) and because our Rust ALSO has a `Node` trait for the component model and a standalone `Node` struct. Four node-shaped things, and nothing in the facade says which a user should reach for -- issue 0784. part of the IMPERATIVE Rust API, which coexists with the declarative component model and is the rclrs-shaped one: `NodeHandle` (exported from `nros` and IN THE PRELUDE, behind `rmw-cffi`) hands back concrete entities you hold and call. rclrs's counterpart exists and correlates by concept but not by name, because ours carries the storage strategy in the type -- `Embedded*` means the entity lives in the executor's static table rather than behind an `Arc`, which is the no-allocator constraint made visible in the name. Whether the two Rust APIs should both be public, and which one `nros::` should lead with, is issue 0784."
+  },
+  "rust:record_node_metadata": {
+    "verdict": "extension",
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+  },
+  "rust:register_node": {
+    "verdict": "extension",
+    "why": "machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
+  }
 }

@@ -232,6 +232,7 @@ fast-serial: \
     lane-skip-class \
     lane-skip-protocol \
     leaf-lockfiles \
+    ledger-doc-single-home \
     literal-domain-id \
     manifests-parse \
     message-bound-knobs \
@@ -2681,6 +2682,14 @@ board-vocabulary:
 [group("checks")]
 gate-cache-keys-agree:
     @python3 scripts/check-gate-cache-keys-agree.py
+
+# The api-parity ledger's schema has ONE home (issue 1095). It used to be copied
+# into all 17 shards, so a schema change touched 17 files and concurrent PRs
+# conflicted in up to 17 paths without disagreeing about anything — the class
+# issues 0883/0884 record, one surface over.
+[group("checks")]
+ledger-doc-single-home:
+    @python3 scripts/check-ledger-doc-single-home.py
 
 [group("checks")]
 prereq-roles:
