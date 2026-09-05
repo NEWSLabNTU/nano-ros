@@ -1693,22 +1693,33 @@ fn probe_net_type_sizes(
         }
     } else if use_nuttx {
         build.define("ZENOH_NUTTX", None);
-        // ZENOH_LINUX ALONGSIDE ZENOH_NUTTX, deliberately. Its only effect here
-        // is to pick the Linux arm of the six `#if defined(ZENOH_LINUX) …
-        // #elif defined(ZENOH_NUTTX)` pairs in zenoh-pico's
-        // `src/system/unix/system.c` — everywhere else NuttX is already named
-        // explicitly (`platform.h`'s unix-header selection and `network.c`'s two
-        // `LINUX || NUTTX` sites), so it is NOT what selects the unix layer.
+        // Issue 1039 — this used to be `ZENOH_LINUX`, defined ALONGSIDE
+        // ZENOH_NUTTX so that the six `#if defined(ZENOH_LINUX)` arms in
+        // zenoh-pico's `src/system/unix/system.c` would compile: NuttX ships
+        // `<sys/random.h>` and `getrandom()`, and the NuttX arm they shadow
+        // opens `/dev/urandom`, a device node a NuttX configuration is not
+        // obliged to provide.
         //
-        // Keep it. NuttX ships `<sys/random.h>` and `getrandom()`, so the Linux
-        // arm compiles and works, while the NuttX arm it shadows opens
-        // `/dev/urandom` — a device node a NuttX configuration is not obliged
-        // to provide. Dropping this define would silently move every NuttX
-        // image onto six code paths nothing here has ever exercised.
+        // The arm was right and the NAME was wrong. Reaching a capability by
+        // asserting a platform makes the image claim to BE Linux for every
+        // OTHER guard that tests the same macro, which is why dropping the
+        // define was not a one-line change: three guards in
+        // `system/common/platform.c` (`<arpa/inet.h>` and the two endpoint
+        // helpers) were being reached through it too, and NuttX has no
+        // endpoint implementation of its own to fall back to.
         //
-        // The consequence worth knowing: those six `ZENOH_NUTTX` arms are DEAD
-        // in our builds. Do not "fix" one and expect it to take effect.
-        build.define("ZENOH_LINUX", None);
+        // Those guards now name NuttX, the randomness arms test
+        // `ZENOH_HAS_GETRANDOM`, and this says what the port actually has.
+        // Proven equivalent, not assumed: `gcc -E -P` output for
+        // `system/unix/system.c`, `system/common/platform.c` and
+        // `system/unix/network.c` is byte-identical before and after, so every
+        // NuttX image compiles the code it compiled before.
+        //
+        // Still worth knowing: the six `ZENOH_NUTTX` randomness arms remain
+        // DEAD in our builds, because we do define the capability. They are
+        // now REACHABLE — a NuttX port without `getrandom()` selects them by
+        // omitting this define — which they were not before.
+        build.define("ZENOH_HAS_GETRANDOM", None);
         // Issue 0551 — the SHARED tree's `include/` is not a guaranteed compile
         // input. `build-nuttx.sh`'s snapshot short-circuit says so in as many
         // words ("this path guarantees the SNAPSHOT, never the tree"): when the
