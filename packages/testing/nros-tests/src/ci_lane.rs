@@ -539,6 +539,54 @@ mod tests {
         );
     }
 
+    /// One recipe's body: the `<name>:` / `<name> <args>:` header line through
+    /// the last line before the next column-0 non-blank one.
+    ///
+    /// Stopping at a column-0 COMMENT matters as much as at a recipe header:
+    /// that is where the next recipe's doc block starts, and the tier recipes
+    /// document each other constantly, so running past it would let a
+    /// neighbour's prose satisfy (or break) an assertion about this one.
+    fn recipe_body(text: &str, name: &str) -> Option<String> {
+        let mut lines = text.lines().skip_while(|l| {
+            !(l.starts_with(name) && l[name.len()..].starts_with([':', ' ']) && l.contains(':'))
+        });
+        let header = lines.next()?;
+        let mut body = String::from(header);
+        for l in lines {
+            if !l.is_empty() && !l.starts_with([' ', '\t']) {
+                break;
+            }
+            body.push('\n');
+            body.push_str(l);
+        }
+        Some(body)
+    }
+
+    /// The module-qualified PRIVATE recipes a body dispatches to, in order and
+    /// deduplicated: `just ci::_matrix-run` yields `_matrix-run`.
+    ///
+    /// Qualified-and-private is the whole filter. A qualified PUBLIC recipe
+    /// (`just check`) is a different lane with its own contract, and an
+    /// UNQUALIFIED private one (`just _lane-gate`) is a root recipe in a file
+    /// this test has not loaded — chasing either would widen what an assertion
+    /// about this recipe can accidentally read.
+    fn module_private_delegates(body: &str) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for token in body.split_whitespace() {
+            let Some((_, name)) = token.split_once("::") else {
+                continue;
+            };
+            let name = name.trim_end_matches([';', ')', '"', '\'']);
+            if !name.starts_with('_') || name.is_empty() {
+                continue;
+            }
+            if !out.iter().any(|n| n == name) {
+                out.push(name.to_string());
+            }
+        }
+        out
+    }
+
     /// Issue 0482 — the justfile recipe must set the `NROS_TEST_SCOPE` its lane
     /// declares, and must not build a NARROWER fixture lane than that run needs.
     ///
@@ -571,25 +619,37 @@ mod tests {
             let Some((text, name)) = tier.justfile_source() else {
                 continue;
             };
-            // The recipe body: from the `<name>:`/`<name> <args>:` line to the
-            // next line at column 0 that is not blank and not indented.
-            let mut lines = text.lines().skip_while(|l| {
-                !(l.starts_with(name) && l[name.len()..].starts_with([':', ' ']) && l.contains(':'))
-            });
-            let header = lines.next().unwrap_or_else(|| {
+            let mut body = recipe_body(&text, name).unwrap_or_else(|| {
                 panic!("justfile has no `{recipe}` recipe (gated by ci_tier_ladder_matches_justfile_recipes)")
             });
-            // Stop at the first column-0 non-blank line — including a comment,
-            // which is where the NEXT recipe's doc block starts. Running past it
-            // would let a neighbouring recipe's prose satisfy (or break) this
-            // assertion, and the tier recipes document each other constantly.
-            let mut body = String::from(header);
-            for l in lines {
-                if !l.is_empty() && !l.starts_with([' ', '\t']) {
-                    break;
-                }
+            // phase-410 split each tier's DEPTH into a fixed inner recipe --
+            // `matrix` is now a dispatcher whose body is a `case` over
+            // `just ci::_matrix-{run,build}` -- so the env the lane declares
+            // moved out of the body this test reads, and issue 1057 is the red
+            // that produced: a dispatcher can satisfy nothing and no assertion
+            // here could tell. Follow the dispatch instead of hard-coding tier
+            // 2's inner name, so the next tier that gains a depth is covered by
+            // construction.
+            //
+            // ONLY module-qualified private targets (`just <mod>::_<name>`) are
+            // followed: those are the dispatch targets and they live in the file
+            // already loaded. An unqualified `just _lane-gate` is a ROOT recipe
+            // in another file and is deliberately not chased.
+            //
+            // A named delegate that does not resolve is a FAILURE, not a skip
+            // (the issue-0196 rule): silently reading a shorter body is how this
+            // assertion would go quiet the next time a recipe is renamed.
+            for delegate in module_private_delegates(&body) {
+                let delegate_body = recipe_body(&text, &delegate).unwrap_or_else(|| {
+                    panic!(
+                        "`just {recipe}` dispatches to `{delegate}`, which does not exist in the \
+                         same justfile module. Either the recipe was renamed and the dispatcher \
+                         not updated, or this test is reading the wrong file -- both are the \
+                         defect, not a reason to skip:\n{body}"
+                    )
+                });
                 body.push('\n');
-                body.push_str(l);
+                body.push_str(&delegate_body);
             }
 
             let scope = lane.run_scope();
