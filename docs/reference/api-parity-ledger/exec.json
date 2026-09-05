@@ -1101,10 +1101,5 @@
   "rust:Executor::clear_release_jitter_stats": {
     "verdict": "extension",
     "why": "Sibling of `Executor::release_jitter`, same commit, same reason there is no upstream name. Resets the window (`executor/spin.rs:2163`) so monitoring code can log-and-clear per period; without it a single early outlier pins the maximum for the life of the process, which is the failure mode that makes a max-only statistic useless on a long-running image."
-  },
-  "rust:Executor::set_min_stack_headroom_bytes": {
-    "verdict": "extension",
-    "why": "declares how much stack a spin thread must keep free, so the monitor ladder can report one that has come too close to the end (`cb2be0ca4`, 2026-09-04). It is a SETTER because only the party that spawned the thread knows what stack it handed over: the executor never sees `stack_bytes`, and no portable query returns a task's total stack, so neither an absolute floor nor a percentage can be inferred. rclcpp has no counterpart -- a desktop thread's stack grows on demand and the OS reports the overrun; an RTOS task's does not, and the overrun is silent memory corruption. Same family as `rust:Executor::*violation*`.",
-    "bucket": "ours-only"
   }
 }
