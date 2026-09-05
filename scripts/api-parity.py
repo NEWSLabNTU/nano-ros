@@ -63,6 +63,14 @@ each tier removed. `--include-internal` compares everything.
   rename      the two names differ and ours is the one that should change. This
               is the campaign's work list: a rename with no platform reason is
               a defect, because the drop-in claim is what it costs.
+  their-rename
+              the two names differ, the CAPABILITY matches, and THEIRS is the
+              outlier: ours is the spelling the broader ROS 2 ecosystem already
+              uses. The mirror of `rename`, and the only verdict that says a
+              difference is upstream's to close. A row must carry a
+              `their_rename` object naming `ours`, the `majority` it agrees
+              with (at least one entry citing an upstream: rcl / rclcpp /
+              rclrs / rclc / an interface package) and the `outlier`.
 
 The gate is not "no differences". It is "no UNEXPLAINED differences".
 """
@@ -90,7 +98,21 @@ import topics  # noqa: E402
 SURFACE_DIR = os.path.join(ROOT, "docs", "reference", "api-surface")
 LEDGER_DIR = os.path.join(ROOT, "docs", "reference", "api-parity-ledger")
 
-VERDICTS = ("divergence", "extension", "declined", "gap", "rename")
+VERDICTS = ("divergence", "extension", "declined", "gap", "rename", "their-rename")
+
+# `their-rename` is the only verdict that claims the DEFECT IS UPSTREAM'S, so it
+# is the only one that can be self-serving. It therefore has to name its
+# evidence in a machine-checkable shape rather than in prose a reader has to
+# take on trust: which spelling is ours, which ROS 2 spellings ours agrees with,
+# and which single upstream spelling is the odd one out. `validate_ledger`
+# rejects the verdict without it, and rejects the object without the verdict.
+THEIR_RENAME_FIELDS = ("ours", "majority", "outlier")
+
+# At least one `majority` entry must cite an upstream. "our own C and C++ agree"
+# is internal consistency, which is a preference -- the whole point of the
+# verdict is that ROS 2 ITSELF is on our side.
+UPSTREAM_TOKENS = ("rcl", "rclcpp", "rclrs", "rclc", "rcl_interfaces",
+                   "action_msgs", "lifecycle_msgs", "rosidl", "rmw", "REP-")
 
 BUCKETS = ("systematic", "arity-only", "differs", "ours-only", "theirs-only")
 
@@ -375,17 +397,27 @@ def load_ledger():
         # the file, so there is no textual conflict to notice. `other.json`
         # carried `cpp:declared_depth` twice on 2026-09-04 for exactly that
         # reason; both said `extension`, which is luck, not a guarantee.
-        pairs = json.loads(text, object_pairs_hook=lambda p: p)
-        seen = set()
-        for key, _ in pairs:
-            if key in seen:
-                raise SystemExit(
-                    f"api-parity: {name} defines {key!r} more than once. JSON keeps the "
-                    f"LAST, so the other row's verdict is being discarded silently. "
-                    f"Merge them into one row -- do not delete either reason."
-                )
-            seen.add(key)
-        raw = dict(pairs)
+        #
+        # The hook runs on EVERY object, nested ones included, and returns a
+        # real dict -- an earlier version returned the pair list itself, which
+        # detected the duplicates but left every nested object (`rename`,
+        # `their_rename`) as a list of tuples for the rest of the tool. Nothing
+        # read below the top level at the time, so the trap only sprang when a
+        # validator finally did.
+        def no_duplicate_keys(pairs, _name=name):
+            seen = set()
+            for key, _ in pairs:
+                if key in seen:
+                    raise SystemExit(
+                        f"api-parity: {_name} defines {key!r} more than once. JSON keeps "
+                        f"the LAST, so the other row's verdict is being discarded "
+                        f"silently. Merge them into one row -- do not delete either "
+                        f"reason."
+                    )
+                seen.add(key)
+            return dict(pairs)
+
+        raw = json.loads(text, object_pairs_hook=no_duplicate_keys)
         for key, value in raw.items():
             if key.startswith("_"):
                 continue
@@ -456,6 +488,53 @@ def lookup(ledger, lang, key, bucket, buckets_by_key):
     return None, False
 
 
+def validate_their_rename(key, value):
+    """The evidence a `their-rename` row owes, and nobody else may claim.
+
+    Kept separate so the self-test can drive it with rows that are wrong in one
+    way each -- a validator exercised only through the good ledger proves the
+    good ledger is good and nothing about the validator.
+    """
+    problems = []
+    evidence = value.get("their_rename")
+    is_verdict = value.get("verdict") == "their-rename"
+
+    if evidence is None:
+        if is_verdict:
+            problems.append(
+                "ledger %s: verdict `their-rename` needs a `their_rename` object "
+                "naming %s" % (key, ", ".join(THEIR_RENAME_FIELDS))
+            )
+        return problems
+
+    if not is_verdict:
+        problems.append(
+            "ledger %s: carries `their_rename` evidence under verdict %r -- the "
+            "object is the claim that THEIRS is the outlier, so it belongs only "
+            "on `their-rename`" % (key, value.get("verdict"))
+        )
+    if not isinstance(evidence, dict):
+        problems.append("ledger %s: `their_rename` must be an object" % key)
+        return problems
+
+    for field in THEIR_RENAME_FIELDS:
+        if not evidence.get(field):
+            problems.append("ledger %s: `their_rename` is missing %r" % (key, field))
+    majority = evidence.get("majority")
+    if majority is not None and not isinstance(majority, list):
+        problems.append("ledger %s: `their_rename.majority` must be a list" % key)
+    elif majority:
+        if not any(
+            isinstance(m, str) and any(t in m for t in UPSTREAM_TOKENS) for m in majority
+        ):
+            problems.append(
+                "ledger %s: `their_rename.majority` cites no upstream (%s) -- our "
+                "own languages agreeing is internal consistency, not the ROS 2 "
+                "ecosystem" % (key, "/".join(UPSTREAM_TOKENS[:5]))
+            )
+    return problems
+
+
 def validate_ledger(entries):
     """Structural complaints about ledger rows -- what is checkable with no build.
 
@@ -476,6 +555,7 @@ def validate_ledger(entries):
             problems.append("ledger %s: unknown verdict %r" % (key, value.get("verdict")))
         if not value.get("why", "").strip():
             problems.append("ledger %s: empty reason" % key)
+        problems.extend(validate_their_rename(key, value))
         pattern = key.partition(":")[2]
         if "*" in pattern and value.get("bucket") not in BUCKETS:
             problems.append(
@@ -911,7 +991,19 @@ def self_test():
     # A ledger row must not be able to claim a verdict this tool does not know:
     # a typo'd verdict that silently satisfies the gate is the failure mode a
     # ledger is supposed to prevent.
-    failures.extend(validate_ledger(load_ledger()))
+    merged = load_ledger()
+    failures.extend(validate_ledger(merged))
+
+    # And the duplicate-key hook must hand back real dicts, nested objects
+    # included -- returning the pair list detects the duplicates and leaves
+    # every `rename` / `their_rename` as a list of tuples for everything
+    # downstream, which is how a validator ended up rejecting well-formed rows.
+    unparsed = sorted(
+        k for k, v in merged.items()
+        if any(isinstance(x, list) and x and isinstance(x[0], tuple) for x in v.values())
+    )
+    if unparsed:
+        failures.append("load_ledger left nested objects unparsed: %r" % (unparsed[:3],))
 
     # And the validator itself must reject each shape, or it only proves the
     # ledger on disk is the ledger on disk.
@@ -927,6 +1019,42 @@ def self_test():
                    "unknown language"):
         if not any(needle in c for c in caught):
             failures.append("validate_ledger missed %r" % needle)
+
+    # `their-rename` says the defect is UPSTREAM's, so it is the one verdict a
+    # row could claim to excuse itself. Each way of claiming it without the
+    # evidence has to be caught, and the well-formed row has to be accepted --
+    # a validator that rejects everything is as useless as one that rejects
+    # nothing.
+    good_tr = {
+        "verdict": "their-rename",
+        "why": "x",
+        "their_rename": {
+            "ours": "nros_clock_is_valid",
+            "majority": ["rcl: 14 x `rcl_*_is_valid`"],
+            "outlier": "rcl_clock_valid",
+        },
+    }
+    if validate_their_rename("c:clock_valid", good_tr):
+        failures.append("a well-formed their-rename row was rejected")
+    tr_cases = [
+        ("needs a `their_rename` object",
+         {"verdict": "their-rename", "why": "x"}),
+        ("belongs only",
+         dict(good_tr, verdict="declined")),
+        ("is missing 'outlier'",
+         {"verdict": "their-rename", "why": "x",
+          "their_rename": {"ours": "a", "majority": ["rclcpp: b"]}}),
+        ("cites no upstream",
+         {"verdict": "their-rename", "why": "x",
+          "their_rename": {"ours": "a", "outlier": "b",
+                           "majority": ["our own C and C++ agree"]}}),
+        ("must be a list",
+         {"verdict": "their-rename", "why": "x",
+          "their_rename": {"ours": "a", "outlier": "b", "majority": "rclcpp"}}),
+    ]
+    for needle, row in tr_cases:
+        if not any(needle in c for c in validate_their_rename("c:x", row)):
+            failures.append("validate_their_rename missed %r" % needle)
 
     # A type-level row covers its members only when both sit in the same
     # bucket. The negative case is the one that matters: a gap INSIDE a type we
