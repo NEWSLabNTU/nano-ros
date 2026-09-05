@@ -7,8 +7,26 @@ hand-curated `EXTRA_CONF_FILE` / `DTC_OVERLAY_FILE` / hardcoded board
 id list / hand-rolled FVP launch flags on the consumer side. FVP
 AEMv8-R is the driving case; the shape is generic across boards.
 
-**Status.** OPEN. Driven by ASI's Phase 190 follow-up — ASI today
-hand-glues every layer Phase 215 collapses.
+**Status (2026-09-05).** OPEN, and **the in-repo half is done** — 27 of 38
+boxes, up from 20 after an audit found seven that had landed and were never
+ticked (A.1, A.3, B.2, B.3, D.4, I.1, I.2). Each carries its witness now; the
+schema, the `nano_ros_use_board()` import, the `west fvp` delegation and the
+book page were all in the tree while the doc read as unstarted work.
+
+**What is actually left splits in two**, and neither half is nano-ros
+engineering:
+
+* **215.H / 215.J.5 — the ASI side.** `actuation_module/CMakeLists.txt`,
+  `build.sh`, `fvp/NOTES.md`, `bootstrap-asi.sh`. External repo; this phase's
+  worktree cannot verify or land them.
+* **The acceptance bullets that need a RUN.** `west fvp run -d build/`
+  launching `FVP_BaseR_AEMv8R` end to end, and the 215.E fixture building in
+  CI — the fixture and its build test landed, and the build is
+  gated-pending-Zephyr-SDK in this environment, so the test skips loudly rather
+  than passing vacuously.
+
+Driven by ASI's Phase 190 follow-up — ASI today hand-glues every layer Phase 215
+collapses.
 
 **Priority.** P1 — unblocks ASI's actuation consumption story + every
 future external Zephyr consumer of a nano-ros board crate.
@@ -101,7 +119,7 @@ against drift.
 
 ### 215.A — Sidecar `board.cmake` per board crate
 
-- [ ] **215.A.1** Define the `board.cmake` schema. Variables:
+- [x] **215.A.1** Define the `board.cmake` schema. Variables:
       `NROS_BOARD_ZEPHYR_ID` (Zephyr `BOARD` string),
       `NROS_BOARD_TOOLCHAIN` (SDK abi target, e.g. `aarch64-zephyr-elf`),
       `NROS_BOARD_GATED_PKGS` (semicolon list keyed on
@@ -116,7 +134,10 @@ against drift.
 - [x] **215.A.2** Write `packages/boards/nros-board-fvp-aemv8r-smp/board.cmake`
       filling every variable. Absolute paths via
       `${CMAKE_CURRENT_LIST_DIR}`. _(landed `01ef6bd1a`, 2026-06)_
-- [ ] **215.A.3** Documented schema cross-references this phase doc.
+- [x] **215.A.3** Documented schema cross-references this phase doc.
+      _(verified 2026-09-05: `docs/reference/board-cmake-schema.md:15`
+      cross-refs this file, and all nine `NROS_BOARD_*` variables of A.1
+      appear in BOTH that doc and the fvp-aemv8r-smp `board.cmake`.)_
 - **Files:** `packages/boards/nros-board-fvp-aemv8r-smp/board.cmake`
   (new), `docs/reference/board-cmake-schema.md` (new).
 
@@ -137,10 +158,10 @@ against drift.
       7. If `NANO_ROS_RMW` undefined → cache `${NROS_BOARD_DEFAULT_RMW}`.
       8. Cache `NROS_BOARD_RUNNER` so `west fvp run` reads it from
          `CMakeCache.txt`.
-- [ ] **215.B.2** `zephyr/CMakeLists.txt` `include()`s the new fn so
+- [x] **215.B.2** `zephyr/CMakeLists.txt` `include()`s the new fn so
       it's available to every downstream app once nano-ros's Zephyr
       module is on `ZEPHYR_EXTRA_MODULES`.
-- [ ] **215.B.3** `nano_ros_use_board()` must be call-able BEFORE
+- [x] **215.B.3** `nano_ros_use_board()` must be call-able BEFORE
       `find_package(Zephyr)` OR after — order tested both ways. The
       `EXTRA_CONF_FILE` / `BOARD` overrides need to land before
       Zephyr's board-resolution phase, so the fn either re-orders
@@ -199,7 +220,7 @@ against drift.
       scripts/west-commands.yml` so any workspace that has nano-ros as
       a west project gets the extension for free (no manual
       registration).
-- [ ] **215.D.4** Phase 214.A `just zephyr run-fvp-aemv8r*` recipes
+- [x] **215.D.4** Phase 214.A `just zephyr run-fvp-aemv8r*` recipes
       are RETAINED (developer ergonomics inside nano-ros) but
       delegate to `west fvp run` instead of duplicating the resolver
       + `-t run` invocation. ~3-line recipes.
@@ -317,10 +338,12 @@ External landing in `github.com/NEWSLabNTU/autoware-safety-island`:
 
 ### 215.I — Book chapter
 
-- [ ] **215.I.1** `book/src/porting/board-crate-import.md` — the
+- [x] **215.I.1** `book/src/porting/board-crate-import.md` — the
       consumer guide. Cross-refs Phase 212.N.8 board-trait porting +
       Phase 214 FVP runtime + Phase 191 sdk provisioning.
-- [ ] **215.I.2** SUMMARY.md update.
+- [x] **215.I.2** SUMMARY.md update.
+      _(verified 2026-09-05: `book/src/SUMMARY.md:100`
+      — `[Importing a Board Crate](./porting/board-crate-import.md)`.)_
 - **Files:** `book/src/porting/board-crate-import.md` (new),
   `book/src/SUMMARY.md` (edit).
 
