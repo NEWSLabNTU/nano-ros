@@ -531,8 +531,20 @@ typedef struct ActionServerRawHandle {{
 }}
 #endif
 
+/* RFC-0090 / phase-429 — the codegen versions this runtime ACCEPTS.
+ *
+ * THE THIRD PRODUCER of this header. `nros-c` writes it from two templates
+ * (probe and exact) and this crate writes it inline when nros-c has not; the
+ * single-writer guard compares the `#define` VALUES, so a version macro added
+ * to only some of the three is caught here as a divergence between writers.
+ * That is how this one was found. */
+#define NROS_CODEGEN_VERSION {codegen_version}
+#define NROS_CODEGEN_VERSION_MIN {codegen_version_min}
+
 #endif /* NROS_CONFIG_GENERATED_H */
-"
+",
+        codegen_version = crate::codegen_version::NROS_CODEGEN_VERSION,
+        codegen_version_min = crate::codegen_version::NROS_CODEGEN_VERSION_MIN,
     );
     // phase-308 follow-up — nros-c OWNS this file; we only fill a gap, and
     // verify otherwise. See `write_header_if_absent_or_verify` for why a

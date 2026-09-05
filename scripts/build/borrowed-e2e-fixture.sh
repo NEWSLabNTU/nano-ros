@@ -133,7 +133,14 @@ if command -v g++ >/dev/null 2>&1; then
     cpp_lib="$build/target/release/libborrowed_cpp_e2e.a"
     [ -f "$cpp_lib" ] || { echo "FAIL: C++ FFI staticlib missing" >&2; exit 1; }
     echo "borrowed-e2e: compiling C++ proof binary…"
+    # phase-429 — `$cfg_dir` FIRST, as the C leg above already does. The
+    # per-build config header must precede `packages/api/nros-*/include`, which
+    # carry tracked STUBS of the same names whose job is to `#error` when a build
+    # system forgot to supply the real one. A stub that wins the search shadows
+    # the generated header for every macro the stub does not define — which is
+    # how RFC-0090's version macros went missing here while the C leg was fine.
     g++ -std=c++14 -D_DEFAULT_SOURCE -DNROS_PLATFORM_POSIX -Wall \
+        -I "$cfg_dir" \
         -I "$platform_inc" \
         -I "$repo_root/packages/api/nros-cpp/include" \
         -I "$repo_root/packages/api/nros-c/include" \

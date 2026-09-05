@@ -49,12 +49,12 @@ import sys
 # failure with a useless message. Write what was found and let the assertions
 # below name what is missing.
 src = open(sys.argv[1]).read()
-head = '#ifdef __cplusplus\n#include <nros/nros_cpp_config_generated.h>'
+head = '#include <nros/nros_config_generated.h>'
 start = src.find(head)
 if start < 0:
     open(sys.argv[2], 'w').write('/* no codegen-version block in the golden */\n')
     sys.exit(0)
-check = src.find('#if NROS_EMITTED_CODEGEN_VERSION', start)
+check = src.find('#elif NROS_EMITTED_CODEGEN_VERSION', start)
 if check < 0:
     nl = src.find('\n', src.find('#define NROS_EMITTED_CODEGEN_VERSION', start))
     end = nl if nl > 0 else len(src)
@@ -65,9 +65,9 @@ PY
 
 grep -q '#define NROS_EMITTED_CODEGEN_VERSION' "$work/stamp.h" \
     || { echo "FAIL: extracted block carries no emitted-version define" >&2; exit 1; }
-if ! grep -q '#if NROS_EMITTED_CODEGEN_VERSION' "$work/stamp.h"; then
+if ! grep -q '#elif NROS_EMITTED_CODEGEN_VERSION' "$work/stamp.h"; then
     echo "FAIL: the emitted header carries no range check -- the pack's codegen-version" >&2
-    echo "      partial has lost its '#if', so generated C/C++ asserts NOTHING at" >&2
+    echo "      partial has lost its '#elif', so generated C/C++ asserts NOTHING at" >&2
     echo "      compile time (RFC-0090)." >&2
     exit 1
 fi
