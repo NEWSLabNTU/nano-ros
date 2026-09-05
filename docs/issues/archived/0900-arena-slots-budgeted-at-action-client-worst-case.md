@@ -1,7 +1,7 @@
 ---
 id: 900
 title: "Every executor arena slot is budgeted at the ActionClient worst case, so a pub/sub-only image carries ~56 KiB it cannot use"
-status: open
+status: resolved
 area: core, memory
 severity: medium
 found: 2026-08-29
@@ -539,3 +539,58 @@ Not measured here: an end-to-end image build showing the stack reservation
 shrink. The constant is what sizes it, and no image in the tree currently
 derives a non-default value, so that measurement needs an image built through
 the CMake seam with a declaring `nano_ros_node_register`.
+
+
+## The end-to-end measurement this issue was waiting for (2026-09-05)
+
+The section above closes with "Not measured here: an end-to-end image build
+showing the stack reservation shrink … no image in the tree currently derives a
+non-default value, so that measurement needs an image built through the CMake
+seam with a declaring `nano_ros_node_register`."
+
+That is no longer true, and it did not need the CMake seam. Issue 0827's
+derivation makes `nros sync` write `NROS_EXECUTOR_ACTION_CLIENTS` and
+`NROS_EXECUTOR_MAX_CBS` into a per-leaf `[env]` sidecar, computed from the
+metadata probe through the same `entity_inventory` rules. So in-tree cargo
+leaves now derive non-default values, and the constant can be read from a real
+build instead of a synthetic one.
+
+Read from `nros-node`'s generated `nros_node_config.rs`, same host, same tree,
+same profile, sidecar present vs absent:
+
+| leaf | | `MAX_CBS` | `ARENA_SIZE` |
+| --- | --- | ---: | ---: |
+| `native/rust/talker` | stock | 4 | 74,240 |
+| | derived | 1 | **8,192** |
+| | **saved** | | **66,048 (64.5 KiB)** |
+| `native/rust/action-client` | stock | 4 | 74,240 |
+| | derived | 1 | **20,096** |
+| | **saved** | | **54,144 (52.9 KiB)** |
+
+**Both rows are larger than this issue predicted, and for a reason worth
+stating.** The 56.5 KiB and 43,392 B figures above were measured with `MAX_CBS`
+held at its default of 4 and only `ACTION_CLIENTS` varied. A derived image moves
+BOTH: the talker declares one callback, so it gets `MAX_CBS=1` as well, and the
+two compound.
+
+The action-client row is the one that settles the argument this issue kept
+having with itself. An image that genuinely HAS an action client — the case the
+worst-case default was chosen to protect — still recovers **52.9 KiB**, because
+the default budgets all four slots at action-client size when exactly one needs
+it. The default was not conservative for that image; it was wrong by 52 KiB.
+
+### What that does to the three options
+
+Option 1 ("declare client-side entities … costs a schema addition, a resolver
+change and a migration") is delivered for probeable leaves at none of those
+costs: the probe already records `action_clients`, so nothing new is declared
+and no model migrates. Option 3's gate stays as the backstop, and option 2 —
+flipping the default — is not needed where the derivation runs.
+
+### Where it does not run
+
+A leaf whose metadata is `.json.unprobeable` derives nothing and keeps the
+worst-case default: correct, and loud rather than silent, since `nros sync` now
+says so. That set is issue 1061. An image built through the CMake seam gets the
+same numbers from `entity-inventory` directly, which is the path phase-403 W9
+already wired.
