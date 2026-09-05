@@ -4683,6 +4683,7 @@ book:
     # The inventory is generated and untracked, and SUMMARY.md links it, so it
     # must exist before mdbook runs or the build 404s on a listed chapter.
     python3 scripts/gen-pool-inventory.py
+    python3 scripts/gen-config-surface.py
     "$MDBOOK" build book
     mkdir -p book/book/api
     rm -rf book/book/api/rust book/book/api/c book/book/api/cpp \

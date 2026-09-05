@@ -3029,7 +3029,11 @@ pool-inventory:
 # be switched off on day one.
 [private]
 config-surface:
-    @python3 scripts/gen-config-surface.py --check
+    # WRITES the page rather than diffing a committed copy: it is generated
+    # and no longer tracked, so `--check` would report "stale" on every fresh
+    # clone. The assertions that matter (the knob scan and its self-test) run
+    # either way; the artifact the book needs falls out.
+    @python3 scripts/gen-config-surface.py
 
 # Phase 392 W1 — the declared arithmetic has to survive contact with a linker.
 # `check-pool-inventory` proves the FORMULA is present and evaluates; this proves
