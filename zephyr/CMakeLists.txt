@@ -331,6 +331,37 @@ if(CONFIG_NROS_C_API)
     # phase-8 W4 — callback tracing (see `_nros_trace_suffix` above).
     string(APPEND _nros_features "${_nros_trace_suffix}")
 
+    # Issue 1100 — the nros-c features nros-cpp FORWARDS must be on this string
+    # too, or the image carries TWO nros-c units.
+    #
+    # `nros-cpp`'s manifest forwards `alloc -> nros-c/alloc` and
+    # `param-services -> nros-c/param-services`, and `_nros_cpp_features` below
+    # sets both (`,alloc` unconditionally, `,param-services` under
+    # `param_services IN_LIST NANO_ROS_FEATURES`). This string set neither. In a
+    # mixed C + C++ image cargo therefore built nros-c twice, with different
+    # `EXECUTOR_SIZE`, and both build scripts write the SAME shared
+    # `nros-c-generated/nros/nros_config_generated.h`. The first build wins; the
+    # second aborts with "written by another crate with DIFFERENT probed sizes"
+    # — so a mixed image builds exactly once and every rebuild fails, including
+    # the one `west build --target run` performs.
+    #
+    # This is the rule the `_nros_c_for_cpp_features` block below already states
+    # for the inverse case: "a feature that reaches only one of them splits the
+    # unit". It was stated for `trace-callbacks` and not applied to `alloc` or
+    # `param-services`.
+    #
+    # Conditional on the C++ API being on, deliberately: a C-ONLY image has no
+    # second unit to agree with, and adding `alloc` there would change what it
+    # links for nothing. Where both are on, the image already contains the
+    # alloc-enabled nros-node through nros-cpp — unifying removes a duplicate
+    # rather than adding a capability.
+    if(CONFIG_NROS_CPP_API)
+        string(APPEND _nros_features ",alloc")
+        if("param_services" IN_LIST NANO_ROS_FEATURES)
+            string(APPEND _nros_features ",param-services")
+        endif()
+    endif()
+
     # Build nros-c static library via Cargo
     nros_cargo_build(
         PACKAGE nros-c
