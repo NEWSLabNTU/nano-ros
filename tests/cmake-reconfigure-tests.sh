@@ -79,6 +79,14 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
 
+# `nros_grep_q` — 0 match / 1 no-match / exit 2 when grep could not run, so a
+# tool failure never becomes a finding (issue 0726). Call it with a HERE-STRING,
+# NEVER through a pipe: builtin `printf` flushes per LINE and `grep -q` stops at
+# the first hit, so the writer's next write takes SIGPIPE and `pipefail` turns a
+# MATCH into a MISS. That is issue 1077, measured at 13 of 300 runs here.
+# shellcheck source=../scripts/lib/grep-q.sh
+source "$PROJECT_ROOT/scripts/lib/grep-q.sh"
+
 MODULE="$PROJECT_ROOT/cmake/NanoRosReconfigure.cmake"
 
 FAILURES=0
