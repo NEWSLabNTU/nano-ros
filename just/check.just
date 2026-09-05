@@ -203,6 +203,7 @@ fast-serial: \
     flake-quarantine \
     flavour-lanes \
     format-macro-scope \
+    gate-cache-keys-agree \
     gate-lists \
     gate-selftests \
     gate-visibility \
@@ -2650,6 +2651,14 @@ ci-image-python-deps:
 [group("checks")]
 board-vocabulary:
     @python3 scripts/check-board-vocabulary.py
+
+# gate.yml's warm job must cache the SAME key+path as the job it warms.
+# GitHub scopes a cache to the ref that created it, so only `main` writes a
+# scope pull_request/merge_group can read — a drifted key means the warm job
+# succeeds, uploads, and warms nothing, with no error anywhere.
+[group("checks")]
+gate-cache-keys-agree:
+    @python3 scripts/check-gate-cache-keys-agree.py
 
 [group("checks")]
 prereq-roles:
