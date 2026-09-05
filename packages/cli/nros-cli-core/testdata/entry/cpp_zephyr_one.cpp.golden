@@ -42,6 +42,7 @@ __attribute__((section(".nros_boot_config"), used))
 .node_name  = "talker",
 .locator    = "",
 .namespace_ = "",
+.rmw        = "",
 };
 
 int main(void) {

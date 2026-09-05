@@ -51,6 +51,7 @@ __attribute__((section(".nros_boot_config"), used))
 .node_name  = "",
 .locator    = "",
 .namespace_ = "",
+.rmw        = "",
 };
 
 int main(void) {

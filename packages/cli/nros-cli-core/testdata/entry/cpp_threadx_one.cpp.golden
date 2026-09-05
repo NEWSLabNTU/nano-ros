@@ -43,6 +43,7 @@ __attribute__((section(".nros_boot_config"), used))
 .node_name  = "talker",
 .locator    = "",
 .namespace_ = "",
+.rmw        = "",
 };
 
 extern "C" int nros_app_main(int /*argc*/, char** /*argv*/) {
