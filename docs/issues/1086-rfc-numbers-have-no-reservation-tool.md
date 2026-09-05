@@ -13,7 +13,7 @@ related: [0883, 0884, phase-429]
 
 `docs/design/README.md` says:
 
-> **New RFC:** copy [0000-template.md](0000-template.md) to `NNNN-slug.md`,
+> **New RFC:** copy `docs/design/0000-template.md` to `NNNN-slug.md`,
 > next free number.
 
 "Next free number" is read-then-write. Two sessions that read before either
