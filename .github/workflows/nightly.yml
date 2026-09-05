@@ -541,9 +541,57 @@ jobs:
           echo "All tier-2 nightly lane modules have a home (platform matrix result: $PLATFORM_RESULT)."
 
   # ===== Zephyr dual-line (cron 0 5) ====================================
+
+  # Issue 1029, second pass. The first fix computed `run_zephyr` once and the
+  # lane STILL skipped on both scheduled runs after it landed (2026-09-04T05:11
+  # and 2026-09-05T05:10, both on the fixed workflow — checked by `head_sha`),
+  # while the 2026-09-04T19:39 workflow_dispatch on the SAME version ran all
+  # three jobs.
+  #
+  # So one of the two gate clauses is not the string it is supposed to be on a
+  # schedule event, and BOTH are `true` by reading:
+  #
+  #   * `run_zephyr` is `true` in every branch of its `case` except a literal
+  #     `0 7 ` cron — including the fail-open default;
+  #   * `zephyr` is the literal `"true"` whenever the event is not
+  #     `pull_request`, and `pull_request` is NOT A TRIGGER of this workflow.
+  #
+  # Which of them is empty is not READABLE. `gh api .../jobs/<id>/logs` returns
+  # zero bytes for this workflow's `changes` job, and a step summary is not
+  # exposed by the API at all — the two places the first fix put the value.
+  #
+  # This job puts it somewhere that survives: an ARTIFACT. It runs on every
+  # event, including the ones where the lane is correctly skipped, so the next
+  # scheduled run answers the question whatever it does.
+  zephyr-gate-report:
+    needs: changes
+    if: ${{ always() }}
+    name: zephyr gate inputs (issue 1029)
+    runs-on: ubuntu-latest
+    steps:
+      - name: record the gate inputs
+        run: |
+          set -euo pipefail
+          # Quoted deliberately: an EMPTY output and the string "true" are the
+          # two candidates, and unquoted they look the same in a log.
+          {
+            echo "event_name='${{ github.event_name }}'"
+            echo "event_schedule='${{ github.event.schedule }}'"
+            echo "changes_result='${{ needs.changes.result }}'"
+            echo "outputs_zephyr='${{ needs.changes.outputs.zephyr }}'"
+            echo "outputs_run_zephyr='${{ needs.changes.outputs.run_zephyr }}'"
+            echo "outputs_platforms='${{ needs.changes.outputs.platforms }}'"
+            echo "gate_would_pass='${{ needs.changes.outputs.run_zephyr == 'true' }}'"
+          } | tee zephyr-gate-inputs.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zephyr-gate-inputs
+          path: zephyr-gate-inputs.txt
+          retention-days: 14
+
   zephyr-example-matrix:
     needs: changes
-    if: ${{ needs.changes.outputs.zephyr == 'true' && needs.changes.outputs.run_zephyr == 'true' }}
+    if: ${{ needs.changes.outputs.run_zephyr == 'true' }}
     name: zephyr ${{ matrix.line }} / ${{ matrix.example }}
     runs-on: ubuntu-latest
     concurrency:
@@ -662,7 +710,7 @@ jobs:
 
   zephyr-dual-line-summary:
     needs: changes
-    if: ${{ needs.changes.outputs.zephyr == 'true' && needs.changes.outputs.run_zephyr == 'true' }}
+    if: ${{ needs.changes.outputs.run_zephyr == 'true' }}
     name: zephyr ci-both (3.7 + 4.4)
     env:
       # The 4.4 line needs a Python >=3.12 venv, which nano-ros refuses to
@@ -736,7 +784,7 @@ jobs:
 
   zephyr-copy-out:
     needs: changes
-    if: ${{ needs.changes.outputs.zephyr == 'true' && needs.changes.outputs.run_zephyr == 'true' }}
+    if: ${{ needs.changes.outputs.run_zephyr == 'true' }}
     name: zephyr copy-out check (4.4)
     env:
       # The 4.4 line needs a Python >=3.12 venv, which nano-ros refuses to
