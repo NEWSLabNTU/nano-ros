@@ -748,6 +748,274 @@ impl EntityInventory {
         }
     }
 
+    /// phase-412 -- build the inventory from a resolved SystemModel's wiring
+    /// instead of from `ENTITIES`.
+    ///
+    /// `structure.topics` carries, per topic, its message type and the endpoint
+    /// refs on each side (`/node/endpoint`). That is exactly a per-node sub/pub
+    /// set with types attached, which is what this inventory holds -- so the
+    /// authored contract beside the launch file can replace the `ENTITIES` list
+    /// duplicated in every component's `CMakeLists.txt`.
+    ///
+    /// # What each kind is read from
+    ///
+    /// | kind | model location |
+    /// | --- | --- |
+    /// | publisher, subscription | `structure.topics[*].{publishers,subscribers}` |
+    /// | service server / client | `structure.services[*].{server,client}` |
+    /// | action server / client | `structure.actions[*].{server,client}` |
+    /// | timer | `contracts.node_paths[*]` with an EMPTY `input` |
+    ///
+    /// The timer row is the one that needs explaining. The model has no timer
+    /// ENTITY, and for a while that was read as "the model cannot express a
+    /// timer" -- it was the stated reason `ENTITIES` had to stay. It is not
+    /// true. A node path is a `take -> publish` causal path, and the model's
+    /// own definition of `PathContract::input` is "empty = periodic
+    /// (timer-driven)", so a path with no inputs IS the periodic callback. The
+    /// contract spells it `trigger: { timer: { rate_hz: N } }`, which the
+    /// resolver flattens to a `node_paths` entry with no `input` key.
+    ///
+    /// The flattening loses the rest of the taxonomy: `once` and `spontaneous`
+    /// triggers also arrive here as an empty `input`, and both are counted as
+    /// a timer. That over-counts by one callback slot per such path, which is
+    /// the SAFE direction -- an over-sized `MAX_CBS` costs bytes, an
+    /// under-sized one halts entity creation at boot with a `BufferTooSmall`
+    /// a dozen other paths also return. Recover the distinction by carrying
+    /// the trigger onto `PathContract`, not by guessing here.
+    ///
+    /// Depth comes from `contracts.sub_endpoints[*].qos.depth` when the
+    /// contract states one; an endpoint that states none yields `None`, never
+    /// `0` -- a depth of zero is a QoS a subscriber cannot have, so it must
+    /// never be the way "not declared" is spelled.
+    ///
+    /// Returns `None` when the model describes no wiring, so a caller cannot
+    /// mistake "nobody authored a contract" for "this image creates nothing".
+    /// That distinction is the one this module exists to preserve.
+    pub fn from_model(
+        source: impl Into<String>,
+        model: &ros_launch_manifest_model::SystemModel,
+    ) -> Option<Self> {
+        // `node_paths` counts here for the same reason the other three do: a
+        // component whose only callback is a timer describes real wiring, and
+        // an image made only of such components would otherwise read as "no
+        // contract authored" and fall back to nothing.
+        if model.structure.topics.is_empty()
+            && model.structure.services.is_empty()
+            && model.structure.actions.is_empty()
+            && model.contracts.node_paths.is_empty()
+        {
+            return None;
+        }
+
+        // Endpoint refs are `/ns/node/endpoint`; the node FQN is everything but
+        // the last segment. Group per node so each becomes one component row.
+        fn node_of(ep: &str) -> String {
+            ep.rsplit_once('/')
+                .map(|(n, _)| n)
+                .unwrap_or(ep)
+                .to_string()
+        }
+
+        let mut per_node: std::collections::BTreeMap<String, Vec<EntityDecl>> =
+            std::collections::BTreeMap::new();
+
+        // A subscriber endpoint's declared history depth, when the contract
+        // states one. `None` is "not declared" and stays `None`; see the note
+        // on `EntityDecl::depth` for why it must never become `0`.
+        let depth_of = |ep: &str| -> Option<u32> {
+            model
+                .contracts
+                .sub_endpoints
+                .get(ep)
+                .and_then(|c| c.qos.as_ref())
+                .and_then(|q| q.depth)
+        };
+
+        for wiring in model.structure.topics.values() {
+            for ep in &wiring.subscribers {
+                per_node.entry(node_of(ep)).or_default().push(EntityDecl {
+                    kind: EntityKind::Subscription,
+                    type_name: Some(wiring.msg_type.clone()),
+                    name: Some(ep.clone()),
+                    depth: depth_of(ep),
+                });
+            }
+            for ep in &wiring.publishers {
+                per_node.entry(node_of(ep)).or_default().push(EntityDecl {
+                    kind: EntityKind::Publisher,
+                    type_name: Some(wiring.msg_type.clone()),
+                    name: Some(ep.clone()),
+                    depth: None,
+                });
+            }
+        }
+
+        // Services and actions carry the same shape as topics -- a type plus
+        // the endpoint refs on each side -- so they read the same way. The
+        // model uses ONE `ServiceWiring` type for both, and the only thing
+        // that distinguishes them is which map they came from.
+        for (kinds, wirings) in [
+            (
+                (EntityKind::ServiceServer, EntityKind::ServiceClient),
+                &model.structure.services,
+            ),
+            (
+                (EntityKind::ActionServer, EntityKind::ActionClient),
+                &model.structure.actions,
+            ),
+        ] {
+            let (server_kind, client_kind) = kinds;
+            for wiring in wirings.values() {
+                for (kind, eps) in [(server_kind, &wiring.server), (client_kind, &wiring.client)] {
+                    for ep in eps {
+                        per_node.entry(node_of(ep)).or_default().push(EntityDecl {
+                            kind,
+                            type_name: Some(wiring.srv_type.clone()),
+                            name: Some(ep.clone()),
+                            depth: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Timers. The key is `<node FQN>/<path name>`, so `node_of` splits it
+        // the same way an endpoint ref splits -- the path name takes the place
+        // of the endpoint name.
+        //
+        // There is no type and no topic to record: a timer subscribes to
+        // nothing. The NAME is kept because it is the only thing that
+        // distinguishes two timers on one node, and a consumer rendering the
+        // inventory should be able to say which path it is.
+        for (path_key, path) in &model.contracts.node_paths {
+            if !path.input.is_empty() {
+                continue;
+            }
+            per_node
+                .entry(node_of(path_key))
+                .or_default()
+                .push(EntityDecl {
+                    kind: EntityKind::Timer,
+                    type_name: None,
+                    name: Some(path_key.clone()),
+                    depth: None,
+                });
+        }
+
+        let mut inv = Self::new(source);
+        for (node_fqn, entities) in per_node {
+            let component = node_fqn.rsplit('/').next().unwrap_or(&node_fqn).to_string();
+            inv.insert(ComponentEntities {
+                // The model names nodes, not ament packages. A node FQN is the
+                // stable identity here, and stating it as the package rather
+                // than inventing one keeps the provenance line honest about
+                // where the row came from.
+                pkg: node_fqn.clone(),
+                component,
+                class: String::new(),
+                declaration: Declaration::Stated(entities),
+            });
+        }
+        Some(inv)
+    }
+
+    /// phase-412 -- combine a declaration-derived inventory with a
+    /// model-derived one, PER COMPONENT and PER KIND, taking whichever source
+    /// says more.
+    ///
+    /// Neither source is complete, which is why this is a max and not a choice
+    /// -- the same rule, for the same reason, that
+    /// `model_ingest::count_callbacks_with_metadata` applies one layer up:
+    ///
+    /// * The MODEL has no timer entity. The island runs four timers and the
+    ///   contract cannot express one, so a model-only `MAX_CBS` is short by
+    ///   four and short halts the board.
+    /// * The DECLARATION is hand-written. mrm_handler's said six subscriptions
+    ///   where the code creates seven, and nothing compared the two; the model
+    ///   gets its seven from an authored contract instead.
+    ///
+    /// Per KIND rather than per component total, because the two blind spots
+    /// are in different kinds: taking a whole-component max would let the
+    /// declaration's four timers hide the model's extra subscription, or the
+    /// reverse. Per kind, each source can only ever raise the answer.
+    ///
+    /// UNION would double-count: both sources describe the same subscriptions,
+    /// so adding them sizes every pool at twice the truth.
+    ///
+    /// The join key is the COMPONENT name -- `nano_ros_node_register(NAME ...)`
+    /// on one side and the launch `exec` on the other, which RFC-0057 already
+    /// requires to be the same string. A component in one source and not the
+    /// other is carried through unchanged rather than dropped.
+    #[must_use]
+    pub fn merged_per_kind_max(&self, model: &EntityInventory) -> EntityInventory {
+        use std::collections::BTreeMap;
+
+        fn by_kind(d: &Declaration) -> BTreeMap<EntityKind, Vec<EntityDecl>> {
+            let mut m: BTreeMap<EntityKind, Vec<EntityDecl>> = BTreeMap::new();
+            for e in d.entities() {
+                m.entry(e.kind).or_default().push(e.clone());
+            }
+            m
+        }
+
+        let model_rows: BTreeMap<&str, &ComponentEntities> = model
+            .components
+            .iter()
+            .map(|c| (c.component.as_str(), c))
+            .collect();
+
+        let mut out = Self::new(format!("{} + {}", self.source, model.source));
+        let mut seen: Vec<&str> = Vec::new();
+
+        for decl_row in &self.components {
+            let Some(model_row) = model_rows.get(decl_row.component.as_str()) else {
+                out.insert(decl_row.clone());
+                continue;
+            };
+            seen.push(decl_row.component.as_str());
+
+            // A component the declaration says nothing about is NOT a zero, so
+            // the model simply stands. `Declaration::None` IS a zero and the
+            // max still holds.
+            let decl_kinds = by_kind(&decl_row.declaration);
+            let model_kinds = by_kind(&model_row.declaration);
+
+            let mut merged: Vec<EntityDecl> = Vec::new();
+            let mut kinds: Vec<EntityKind> = decl_kinds
+                .keys()
+                .chain(model_kinds.keys())
+                .copied()
+                .collect();
+            kinds.sort_by_key(|k| k.tag());
+            kinds.dedup();
+            for k in kinds {
+                let d = decl_kinds.get(&k).map(Vec::as_slice).unwrap_or(&[]);
+                let m = model_kinds.get(&k).map(Vec::as_slice).unwrap_or(&[]);
+                // The LONGER list wins whole, so the winning source's types and
+                // topic names survive intact rather than being spliced.
+                merged.extend_from_slice(if m.len() > d.len() { m } else { d });
+            }
+
+            out.insert(ComponentEntities {
+                pkg: decl_row.pkg.clone(),
+                component: decl_row.component.clone(),
+                class: decl_row.class.clone(),
+                declaration: if merged.is_empty() {
+                    decl_row.declaration.clone()
+                } else {
+                    Declaration::Stated(merged)
+                },
+            });
+        }
+
+        for (name, row) in &model_rows {
+            if !seen.contains(name) {
+                out.insert((*row).clone());
+            }
+        }
+        out
+    }
+
     /// Record one component. A later record for the same `(pkg, component)`
     /// replaces the earlier one, so a configure that registers a component
     /// twice cannot double-count it.
@@ -2328,5 +2596,350 @@ mod tests {
         assert_eq!(k.per_kind["service_server"], 2);
         assert_eq!(k.per_kind["service_client"], 2);
         assert_eq!(k.max_cbs, 19);
+    }
+}
+
+#[cfg(test)]
+mod from_model_tests {
+    use super::*;
+    use ros_launch_manifest_model::SystemModel;
+
+    /// phase-412 -- the island's own resolved model, cut down to the shape that
+    /// matters: two nodes, three topics, one of them internal.
+    ///
+    /// Asserts the counts the pool derivation consumes, not the parse: the
+    /// question is whether `structure.topics` yields the same per-node sub/pub
+    /// sets the hand-written `ENTITIES` lists did.
+    fn model_from_yaml(y: &str) -> SystemModel {
+        serde_yaml_ng::from_str(y).expect("model fixture parses")
+    }
+
+    #[test]
+    fn topics_become_per_node_subscriptions_and_publishers() {
+        let m = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /mrm_handler:
+      { scope: s.launch.xml, pkg: autoware_mrm_handler, exec: mrm_handler,
+        node_name: mrm_handler }
+    /stop_mode_operator:
+      { scope: s.launch.xml, pkg: autoware_stop_mode_operator,
+        exec: stop_mode_operator, node_name: stop_mode_operator }
+  topics:
+    /system/mrm/emergency_stop/status:
+      type: tier4_system_msgs/msg/MrmBehaviorStatus
+      sub: [/mrm_handler/emergency_stop_status]
+    /api/operation_mode/state:
+      type: autoware_adapi_v1_msgs/msg/OperationModeState
+      sub: [/mrm_handler/operation_mode_state]
+    /system/stop_mode/control:
+      type: autoware_control_msgs/msg/Control
+      pub: [/stop_mode_operator/control]
+"#,
+        );
+        let inv = EntityInventory::from_model("test", &m).expect("model describes wiring");
+        let d = inv.derive();
+        let k = d.knobs().expect("wiring yields knobs");
+        assert_eq!(k.max_subscribers, 2, "two subscriptions across the image");
+        assert_eq!(k.max_publishers, 1, "one publisher");
+    }
+
+    /// phase-412 -- the merge takes the larger list of each kind, whichever
+    /// source it came from.
+    ///
+    /// The fixture is the island's failure in miniature: a hand-written list
+    /// saying one subscription where the contract says two. It also has the
+    /// declaration carrying a timer the model row does not, which is what the
+    /// per-kind rule protects -- NOT because a contract cannot state a timer
+    /// (it can, as a `paths:` entry with a `timer` trigger, which is how
+    /// ENTITIES was retired), but because either source may be the one that
+    /// knows about a given kind and a whole-component max would let one hide
+    /// the other.
+    #[test]
+    fn the_merge_takes_the_larger_of_each_kind() {
+        let mut decl = EntityInventory::new("metadata");
+        decl.insert(ComponentEntities {
+            pkg: "autoware_mrm_handler".into(),
+            component: "mrm_handler".into(),
+            class: "MrmHandler".into(),
+            declaration: Declaration::Stated(vec![
+                EntityDecl {
+                    kind: EntityKind::Subscription,
+                    type_name: Some("a/msg/A".into()),
+                    name: Some("/one".into()),
+                    depth: None,
+                },
+                EntityDecl {
+                    kind: EntityKind::Timer,
+                    type_name: None,
+                    name: None,
+                    depth: None,
+                },
+            ]),
+        });
+
+        let mut model = EntityInventory::new("model");
+        model.insert(ComponentEntities {
+            pkg: "/mrm_handler".into(),
+            component: "mrm_handler".into(),
+            class: String::new(),
+            declaration: Declaration::Stated(vec![
+                EntityDecl {
+                    kind: EntityKind::Subscription,
+                    type_name: Some("a/msg/A".into()),
+                    name: Some("/one".into()),
+                    depth: None,
+                },
+                EntityDecl {
+                    kind: EntityKind::Subscription,
+                    type_name: Some("b/msg/B".into()),
+                    name: Some("/two".into()),
+                    depth: None,
+                },
+            ]),
+        });
+
+        let merged = decl.merged_per_kind_max(&model);
+        let d = merged.derive();
+        let k = d.knobs().expect("merged yields knobs");
+        assert_eq!(
+            k.max_subscribers, 2,
+            "the model's extra subscription survives"
+        );
+        assert_eq!(
+            k.max_cbs, 3,
+            "two subscriptions plus the timer only the declaration knows"
+        );
+    }
+
+    /// phase-412 -- services and actions become server/client entities.
+    ///
+    /// Both live in `structure` under one `ServiceWiring` shape, and the only
+    /// thing that tells a service from an action is which map it came from --
+    /// so a fixture with one of each is the smallest thing that can catch the
+    /// two maps being read into the same kind.
+    #[test]
+    fn services_and_actions_become_server_and_client_entities() {
+        let m = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /add_server:
+      { scope: s.launch.xml, pkg: service_server_pkg, exec: add_server,
+        node_name: add_server }
+    /fib_client:
+      { scope: s.launch.xml, pkg: action_client_pkg, exec: fib_client,
+        node_name: fib_client }
+  services:
+    /add_two_ints:
+      type: example_interfaces/srv/AddTwoInts
+      server: [/add_server/add_two_ints]
+  actions:
+    /fibonacci:
+      type: example_interfaces/action/Fibonacci
+      client: [/fib_client/fibonacci]
+"#,
+        );
+        let inv = EntityInventory::from_model("test", &m).expect("model describes wiring");
+        let d = inv.derive();
+        let k = d.knobs().expect("wiring yields knobs");
+        let n = |tag: &str| k.per_kind.get(tag).copied().unwrap_or(0);
+        assert_eq!(
+            n(EntityKind::ServiceServer.tag()),
+            1,
+            "the service's server side"
+        );
+        assert_eq!(
+            n(EntityKind::ActionClient.tag()),
+            1,
+            "the action's client side"
+        );
+        assert_eq!(
+            n(EntityKind::ServiceClient.tag()),
+            0,
+            "nothing invented on the side the model left empty"
+        );
+        assert_eq!(
+            n(EntityKind::ActionServer.tag()),
+            0,
+            "same, the other way round"
+        );
+    }
+
+    /// phase-412 -- a node path with NO INPUT is the periodic callback.
+    ///
+    /// This is what retired `ENTITIES`: the claim that the model has no timer
+    /// entity was wrong. `PathContract::input` is documented as "empty =
+    /// periodic (timer-driven)", and a contract's
+    /// `trigger: { timer: { rate_hz: N } }` resolves to exactly that. A path
+    /// WITH inputs is a take-and-publish path, already counted through its
+    /// subscriptions, and must not add a slot.
+    #[test]
+    fn a_node_path_with_no_input_is_a_timer_and_one_with_inputs_is_not() {
+        let m = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /talker:
+      { scope: s.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+contracts:
+  node_paths:
+    /talker/on_timer:
+      output: [/talker/chatter]
+    /talker/on_message:
+      input: [/talker/inbox]
+      output: [/talker/chatter]
+"#,
+        );
+        let inv = EntityInventory::from_model("test", &m).expect("model describes wiring");
+        let d = inv.derive();
+        let k = d.knobs().expect("wiring yields knobs");
+        assert_eq!(
+            k.per_kind
+                .get(EntityKind::Timer.tag())
+                .copied()
+                .unwrap_or(0),
+            1,
+            "only the input-less path is a timer"
+        );
+    }
+
+    /// phase-412 -- an image whose ONLY wiring is a timer still describes
+    /// wiring.
+    ///
+    /// Before `node_paths` joined the emptiness test, such a model returned
+    /// `None` -- "nobody authored a contract" -- and the image silently fell
+    /// back to its configured pool sizes. That is the same absent-is-not-zero
+    /// collapse this module exists to prevent, one layer up.
+    #[test]
+    fn a_model_with_only_timers_is_not_mistaken_for_an_unauthored_one() {
+        let m = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /ticker:
+      { scope: s.launch.xml, pkg: ticker_pkg, exec: ticker, node_name: ticker }
+contracts:
+  node_paths:
+    /ticker/on_timer:
+      output: []
+"#,
+        );
+        let inv = EntityInventory::from_model("test", &m)
+            .expect("a timer-only contract still describes wiring");
+        let d = inv.derive();
+        let k = d.knobs().expect("wiring yields knobs");
+        assert_eq!(
+            k.per_kind
+                .get(EntityKind::Timer.tag())
+                .copied()
+                .unwrap_or(0),
+            1
+        );
+    }
+
+    /// phase-412 -- a declared history depth rides the model to the inventory,
+    /// and an endpoint that declares none yields `None` rather than `0`.
+    ///
+    /// A depth of zero is a QoS no subscriber can have, so it must never be
+    /// how "not declared" is spelled -- a consumer that read it as a number
+    /// would size a queue to nothing.
+    #[test]
+    fn a_declared_depth_reaches_the_inventory_and_an_undeclared_one_stays_absent() {
+        let m = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /deep:
+      type: std_msgs/msg/Int32
+      sub: [/listener/deep]
+    /plain:
+      type: std_msgs/msg/Int32
+      sub: [/listener/plain]
+contracts:
+  sub_endpoints:
+    /listener/deep:
+      qos: { depth: 20 }
+"#,
+        );
+        let inv = EntityInventory::from_model("test", &m).expect("model describes wiring");
+        let row = inv
+            .components()
+            .into_iter()
+            .find(|c| c.component == "listener")
+            .expect("the listener row");
+        let mut by_name: Vec<(Option<String>, Option<u32>)> = row
+            .declaration
+            .entities()
+            .iter()
+            .filter(|e| e.kind == EntityKind::Subscription)
+            .map(|e| (e.name.clone(), e.depth))
+            .collect();
+        by_name.sort();
+        assert_eq!(
+            by_name,
+            vec![
+                (Some("/listener/deep".to_string()), Some(20)),
+                (Some("/listener/plain".to_string()), None),
+            ]
+        );
+    }
+
+    /// A component the model does not mention keeps its declaration whole.
+    #[test]
+    fn a_component_absent_from_the_model_is_not_dropped() {
+        let mut decl = EntityInventory::new("metadata");
+        decl.insert(ComponentEntities {
+            pkg: "p".into(),
+            component: "only_declared".into(),
+            class: "C".into(),
+            declaration: Declaration::Stated(vec![EntityDecl {
+                kind: EntityKind::Timer,
+                type_name: None,
+                name: None,
+                depth: None,
+            }]),
+        });
+        let merged = decl.merged_per_kind_max(&EntityInventory::new("model"));
+        assert_eq!(merged.len(), 1);
+        let d = merged.derive();
+        assert_eq!(d.knobs().expect("knobs").max_cbs, 1);
+    }
+
+    /// A model that describes NO wiring must abstain, never report zero.
+    ///
+    /// Every launch file in this tree without a contract resolves that way, and
+    /// reporting 0 would size each pool to the infrastructure alone and exhaust
+    /// it the moment a node registers -- a confident wrong number, which is the
+    /// failure shape this module exists to prevent.
+    #[test]
+    fn a_model_without_wiring_abstains() {
+        let m = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /talker:
+      { scope: s.launch.xml, pkg: demo, exec: talker, node_name: talker }
+"#,
+        );
+        assert!(
+            EntityInventory::from_model("test", &m).is_none(),
+            "no contract authored means unanswered, not zero"
+        );
     }
 }

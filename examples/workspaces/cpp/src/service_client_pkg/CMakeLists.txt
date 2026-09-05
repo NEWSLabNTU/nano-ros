@@ -15,12 +15,13 @@ nros_components_register_node(service_client_lib
     PLUGIN service_client_pkg::AddClient
     EXECUTABLE add_client
     SHAPE configure
-    # issue 0965 — what this component CREATES, read off its own
-    # source. Absence means "nobody said" and refuses the whole image,
-    # so every component in a workspace declares or none derives.
-    ENTITIES
-             service_client:example_interfaces/srv/AddTwoInts:/add_two_ints
-             timer)
+    # phase-412 -- `ENTITIES` is retired. What this component creates is
+    # stated in demo_bringup/launch/service_client.contract.yaml, beside
+    # the launch file that runs it. That contract marks the service
+    # `external: server`, because the server is the separate add_server
+    # image; without that mark (ros-launch-manifest v0.1.23, issue 1083)
+    # a client-only tree could not be written at all.
+)
 
 if(TARGET example_interfaces__nano_ros_cpp)
     target_link_libraries(service_client_lib
