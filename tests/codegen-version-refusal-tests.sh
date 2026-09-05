@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# RFC-0090 / phase-429 W5 — the codegen-version check must FIRE.
+#
+# A check that has never been observed to fail is a check nobody has evidence
+# still works, and this one guards the failure that stopped nano-ros shipping a
+# prebuilt `nros`: a binary emitting code the runtime does not accept, which
+# COMPILES and is wrong. `check-fast` proves the tree is green; only a negative
+# control proves the mechanism is armed.
+#
+# Three arms, all from the REAL emitted artifact rather than a hand-written
+# imitation: the block under test is extracted verbatim from a committed golden
+# header, so a template edit that removed the check would take these with it.
+#
+#   1. in range      -> compiles          (negative control; a refusal that
+#                                          refuses everything proves nothing)
+#   2. out of range  -> #error, both C and C++
+#   3. config header present but silent -> #error (fail-closed)
+#
+# NOT COVERED: the Rust half. Its assertion is a crate-scope `const _: () =
+# assert!(...)`, and proving it fires needs a compile-failure harness this repo
+# does not have — there is no `trybuild` (`format_check.rs` records the same
+# finding) and CLAUDE.md bans compiling inside tests. It was verified by hand
+# (`cargo check -p nros-lifecycle-msgs` with the token flipped gives E0080), and
+# `rosidl-bindgen`'s own test asserts the emitted token equals the runtime
+# constant. Stated rather than silently skipped.
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+golden="$root/packages/cli/rosidl-codegen/tests/fixtures/fingerprint-corpus/expected/inline/Shapes.h"
+[ -r "$golden" ] || { echo "FAIL: no golden header at $golden" >&2; exit 1; }
+
+for tool in gcc g++; do
+    command -v "$tool" >/dev/null || {
+        echo "SKIP: $tool not on PATH — cannot compile the negative controls" >&2
+        exit 0
+    }
+done
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+mkdir -p "$work/inc/nros"
+
+# The block under test, verbatim from the emitted artifact.
+python3 - "$golden" "$work/stamp.h" <<'PY'
+import sys
+# Extraction must DEGRADE, not throw. The mutation this gate exists to catch is
+# "the range check was removed from the pack", and that removes the very anchor
+# an extractor keys on -- so a naive extractor dies with a traceback, which is a
+# failure with a useless message. Write what was found and let the assertions
+# below name what is missing.
+src = open(sys.argv[1]).read()
+head = '#ifdef __cplusplus\n#include <nros/nros_cpp_config_generated.h>'
+start = src.find(head)
+if start < 0:
+    open(sys.argv[2], 'w').write('/* no codegen-version block in the golden */\n')
+    sys.exit(0)
+check = src.find('#if NROS_EMITTED_CODEGEN_VERSION', start)
+if check < 0:
+    nl = src.find('\n', src.find('#define NROS_EMITTED_CODEGEN_VERSION', start))
+    end = nl if nl > 0 else len(src)
+else:
+    end = src.index('#endif', check) + len('#endif')
+open(sys.argv[2], 'w').write(src[start:end] + '\n')
+PY
+
+grep -q '#define NROS_EMITTED_CODEGEN_VERSION' "$work/stamp.h" \
+    || { echo "FAIL: extracted block carries no emitted-version define" >&2; exit 1; }
+if ! grep -q '#if NROS_EMITTED_CODEGEN_VERSION' "$work/stamp.h"; then
+    echo "FAIL: the emitted header carries no range check -- the pack's codegen-version" >&2
+    echo "      partial has lost its '#if', so generated C/C++ asserts NOTHING at" >&2
+    echo "      compile time (RFC-0090)." >&2
+    exit 1
+fi
+
+emitted="$(sed -n 's/^#define NROS_EMITTED_CODEGEN_VERSION \([0-9]*\)$/\1/p' "$work/stamp.h")"
+
+mkconfig() {  # $1=dir $2=min $3=max ; empty min/max = define neither
+    local d="$1"
+    mkdir -p "$d/nros"
+    { echo '#ifndef NROS_CONFIG_GENERATED_H'
+      echo '#define NROS_CONFIG_GENERATED_H'
+      [ -n "$2" ] && echo "#define NROS_CODEGEN_VERSION_MIN $2"
+      [ -n "$3" ] && echo "#define NROS_CODEGEN_VERSION $3"
+      echo '#endif'; } > "$d/nros/nros_config_generated.h"
+    sed 's/NROS_CONFIG_GENERATED_H/NROS_CPP_CONFIG_GENERATED_H/g' \
+        "$d/nros/nros_config_generated.h" > "$d/nros/nros_cpp_config_generated.h"
+}
+
+printf '#include "stamp.h"\nint main(void){return 0;}\n' > "$work/tu.c"
+printf '#include "stamp.h"\nint main(){return 0;}\n'     > "$work/tu.cpp"
+
+fails=0
+ok()   { printf '  ok    %s\n' "$1"; }
+bad()  { printf '  FAIL  %s\n' "$1"; fails=$((fails + 1)); }
+
+echo "codegen-version refusal (RFC-0090, emitted version $emitted)"
+
+# 1 — in range, both languages: must compile.
+mkconfig "$work/good" "$emitted" "$emitted"
+for t in "gcc:$work/tu.c:C" "g++:$work/tu.cpp:C++"; do
+    IFS=: read -r tool src lang <<< "$t"
+    if "$tool" -I"$work" -I"$work/good" -fsyntax-only "$src" 2>/dev/null; then
+        ok "A  $lang: version $emitted inside the accepted range compiles"
+    else
+        bad "A  $lang: the emitted artifact does NOT compile against a runtime that accepts it"
+    fi
+done
+
+# 2 — out of range, both languages: must refuse, and say so.
+mkconfig "$work/narrow" $((emitted + 1)) $((emitted + 2))
+for t in "gcc:$work/tu.c:C" "g++:$work/tu.cpp:C++"; do
+    IFS=: read -r tool src lang <<< "$t"
+    out="$("$tool" -I"$work" -I"$work/narrow" -fsyntax-only "$src" 2>&1 || true)"
+    if grep -q 'codegen version the runtime does not accept' <<< "$out"; then
+        ok "B  $lang: a version outside the range is REFUSED, naming the remedy"
+    else
+        bad "B  $lang: out-of-range version was accepted (or the message changed)"
+        printf '        %s\n' "$(head -1 <<< "$out")"
+    fi
+done
+
+# 3 — fail-closed: config header present, macros absent. An undefined macro
+#     reads as 0 to `#if`, so without the explicit guard this would produce a
+#     range error about a version nobody set.
+mkconfig "$work/silent" "" ""
+out="$(gcc -I"$work" -I"$work/silent" -fsyntax-only "$work/tu.c" 2>&1 || true)"
+if grep -q 'did not define NROS_CODEGEN_VERSION' <<< "$out"; then
+    ok "C  a silent config header is refused as MISSING, not as out-of-range"
+else
+    bad "C  a silent config header did not produce the fail-closed diagnostic"
+    printf '        %s\n' "$(head -1 <<< "$out")"
+fi
+
+echo
+if [ "$fails" -ne 0 ]; then
+    echo "codegen-version refusal: $fails check(s) FAILED" >&2
+    exit 1
+fi
+echo "codegen-version refusal: all checks passed"
