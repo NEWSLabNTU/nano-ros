@@ -176,7 +176,13 @@ template <typename T> class ResultOf;
 /// `Result` — a fallible operation that produces no value.
 ///
 /// `NROS_NODISCARD`: a discarded result is a failure nobody was told about,
-/// which is the one outcome this channel exists to prevent.
+/// which is the one outcome this channel exists to prevent. That attribute is
+/// a signal to a reader and to a `-Werror` consumer, not an enforced gate in
+/// this tree (see `NROS_NODISCARD`'s own doc above for the measured
+/// warning-vs-error spelling); where a failure must not be ignorable, the
+/// refusal has to be at RUNTIME — which is what
+/// `rclcpp::detail::require_created` does for the `create_*` verbs, and what
+/// `rclcpp::init(argc, argv)` already does for `--ros-args`.
 template <> class NROS_NODISCARD ResultOf<void> {
   public:
     /// Default-construct a success.
