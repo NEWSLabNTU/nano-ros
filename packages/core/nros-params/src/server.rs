@@ -341,6 +341,11 @@ impl<'s> ParameterServer<'s> {
     ///
     /// If the parameter already exists, this does nothing and returns false.
     /// Returns true if the parameter was declared successfully.
+    ///
+    /// phase-428 W6 remainder: this is the method `Executor::declare_parameter`
+    /// delegates to, so marking only the wrapper would leave the class half
+    /// fixed one crate down.
+    #[must_use]
     pub fn declare(&mut self, node: NodeKey, name: &str, value: ParameterValue) -> bool {
         self.declare_with_descriptor(node, name, value, None)
     }
@@ -348,6 +353,10 @@ impl<'s> ParameterServer<'s> {
     /// Declare a new parameter with value and descriptor on `node`
     ///
     /// The descriptor provides metadata like description, constraints, and read-only flag.
+    ///
+    /// phase-428 W6 remainder: see [`Self::declare`]. Every `false` arm below
+    /// is a REFUSAL (name taken, table full, value rejected), never a question.
+    #[must_use]
     pub fn declare_with_descriptor(
         &mut self,
         node: NodeKey,
@@ -800,6 +809,10 @@ impl<'a, 's> LegacyParameterBuilder<'a, 's> {
     }
 
     /// Declare the parameter
+    ///
+    /// phase-428 W6 remainder: the terminal of a builder chain, so a dropped
+    /// answer is a parameter that was configured in full and then not declared.
+    #[must_use]
     pub fn declare(self) -> bool {
         self.server.declare_with_descriptor(
             self.node,
@@ -1194,7 +1207,7 @@ mod tests {
     fn test_set_parameter() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        server.declare(NODE, "count", ParameterValue::Integer(0));
+        assert!(server.declare(NODE, "count", ParameterValue::Integer(0)));
 
         assert_eq!(
             server.set_integer(NODE, "count", 10),
@@ -1222,12 +1235,12 @@ mod tests {
             .unwrap()
             .with_read_only(true);
 
-        server.declare_with_descriptor(
+        assert!(server.declare_with_descriptor(
             NODE,
             "version",
             ParameterValue::from_string("1.0.0").unwrap(),
             Some(desc),
-        );
+        ));
 
         assert_eq!(
             server.set_string(NODE, "version", "2.0.0"),
@@ -1245,7 +1258,12 @@ mod tests {
             .unwrap()
             .with_float_range(0.0, 10.0, 0.0);
 
-        server.declare_with_descriptor(NODE, "speed", ParameterValue::Double(5.0), Some(desc));
+        assert!(server.declare_with_descriptor(
+            NODE,
+            "speed",
+            ParameterValue::Double(5.0),
+            Some(desc)
+        ));
 
         // Valid value
         assert_eq!(
@@ -1265,7 +1283,7 @@ mod tests {
     fn test_remove_parameter() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        server.declare(NODE, "temp", ParameterValue::Double(25.0));
+        assert!(server.declare(NODE, "temp", ParameterValue::Double(25.0)));
 
         assert!(server.has(NODE, "temp"));
         assert!(server.remove(NODE, "temp"));
@@ -1277,13 +1295,13 @@ mod tests {
     fn test_list_parameters() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        server.declare(NODE, "robot.speed", ParameterValue::Double(1.0));
-        server.declare(
+        assert!(server.declare(NODE, "robot.speed", ParameterValue::Double(1.0)));
+        assert!(server.declare(
             NODE,
             "robot.name",
             ParameterValue::from_string("bot1").unwrap(),
-        );
-        server.declare(NODE, "sensor.range", ParameterValue::Double(10.0));
+        ));
+        assert!(server.declare(NODE, "sensor.range", ParameterValue::Double(10.0)));
 
         let robot_params: heapless::Vec<&str, 8> =
             server.list_with_prefix(NODE, "robot.").collect();
@@ -1403,7 +1421,7 @@ mod ghost_checks {
     fn ghost_remove_decrements() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        server.declare(NODE, "test", ParameterValue::Integer(1));
+        assert!(server.declare(NODE, "test", ParameterValue::Integer(1)));
         let before = ghost_from_server(&server).count;
         assert!(server.remove(NODE, "test"));
         let after = ghost_from_server(&server).count;
@@ -1417,7 +1435,7 @@ mod ghost_checks {
         for i in 0..MAX_PARAMETERS {
             let mut name = heapless::String::<64>::new();
             let _ = core::fmt::write(&mut name, format_args!("p{}", i));
-            server.declare(NODE, name.as_str(), ParameterValue::Integer(i as i64));
+            assert!(server.declare(NODE, name.as_str(), ParameterValue::Integer(i as i64)));
         }
         let ghost = ghost_from_server(&server);
         assert!(ghost.count <= ghost.max);
