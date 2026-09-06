@@ -384,6 +384,17 @@ pub enum Workload {
     /// participant recognises it, and a granted QoS is only interesting where
     /// it differs from the requested one.
     AdvertisedState,
+    /// phase-433 W6 — a QoS STATUS EVENT fires and we report it. The node
+    /// registers `on_liveliness_changed` and a stock ROS 2 peer's `@ros2_lv`
+    /// liveliness token is what changes state.
+    ///
+    /// Its own workload rather than a case of [`Workload::Qos`]: that one is
+    /// about the PROFILE a peer reads back off our endpoint (`qos_override_e2e`
+    /// reads `ros2 topic info --verbose`), a static property settled at
+    /// creation. This one is about a NOTIFICATION raised later, by a remote
+    /// entity's state change, through four vtable slots the profile lanes never
+    /// touch. They fail for entirely different reasons.
+    QosEvents,
 }
 
 impl Workload {
@@ -411,6 +422,10 @@ impl Workload {
             Workload::Errno => 94,
             Workload::Graph => 95,
             Workload::AdvertisedState => 96,
+            // Needs no port of its own: the fixture's peer is reached over the
+            // cell's zenoh locator. Unique within the band, which is all the
+            // offset has to be.
+            Workload::QosEvents => 97,
         }
     }
 

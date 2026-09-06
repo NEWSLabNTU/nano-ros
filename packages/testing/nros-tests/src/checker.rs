@@ -67,6 +67,9 @@ pub fn delivery_marker(workload: Workload) -> &'static str {
         // whether the peer agreed — that comparison is the test's, not a
         // marker count's.
         Workload::AdvertisedState => output::ADV_PROBE_READY,
+        // Also a verdict: the evidence is that a status event reached an
+        // application callback at all, which no message count can express.
+        Workload::QosEvents => output::QOS_EVENT_LIVELINESS_CHANGED,
     }
 }
 
