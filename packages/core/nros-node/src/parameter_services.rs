@@ -1449,8 +1449,8 @@ mod tests {
         use alloc::boxed::Box;
 
         let mut server = leaked_server();
-        server.declare(NODE, "speed", InternalValue::Double(1.0));
-        server.declare(NODE, "enabled", InternalValue::Bool(true));
+        assert!(server.declare(NODE, "speed", InternalValue::Double(1.0)));
+        assert!(server.declare(NODE, "enabled", InternalValue::Bool(true)));
 
         // Use Box for request due to large heapless::Vec size (~1MB+)
         // Handler returns Box<Response> internally
@@ -1473,7 +1473,7 @@ mod tests {
         use alloc::boxed::Box;
 
         let mut server = leaked_server();
-        server.declare(NODE, "speed", InternalValue::Double(1.0));
+        assert!(server.declare(NODE, "speed", InternalValue::Double(1.0)));
 
         // Use Box for request due to large heapless::Vec size (~1MB+)
         // Handler returns Box<Response> internally
@@ -1496,13 +1496,13 @@ mod tests {
         use alloc::boxed::Box;
 
         let mut server = leaked_server();
-        server.declare(NODE, "robot.speed", InternalValue::Double(1.0));
-        server.declare(
+        assert!(server.declare(NODE, "robot.speed", InternalValue::Double(1.0)));
+        assert!(server.declare(
             NODE,
             "robot.name",
             InternalValue::from_string("bot1").unwrap(),
-        );
-        server.declare(NODE, "sensor.range", InternalValue::Double(10.0));
+        ));
+        assert!(server.declare(NODE, "sensor.range", InternalValue::Double(10.0)));
 
         // Use Box for request due to large heapless::Vec size
         let request = Box::new(ListParametersRequest::default());
@@ -1516,8 +1516,8 @@ mod tests {
         use alloc::boxed::Box;
 
         let mut server = leaked_server();
-        server.declare(NODE, "speed", InternalValue::Double(1.0));
-        server.declare(NODE, "count", InternalValue::Integer(5));
+        assert!(server.declare(NODE, "speed", InternalValue::Double(1.0)));
+        assert!(server.declare(NODE, "count", InternalValue::Integer(5)));
 
         // Use Box for request due to large heapless::Vec size
         let mut request = Box::new(GetParameterTypesRequest::default());
