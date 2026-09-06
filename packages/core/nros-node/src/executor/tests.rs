@@ -2226,7 +2226,7 @@ fn use_sim_time_attaches_and_detaches_the_clock_source() {
     // Declared BEFORE any node exists, which is the order a generated entry
     // uses: `nros::main!` emits `apply_param_services` ahead of its per-node
     // `register` calls.
-    executor.declare_parameter("use_sim_time", nros_params::ParameterValue::Bool(true));
+    assert!(executor.declare_parameter("use_sim_time", nros_params::ParameterValue::Bool(true)));
     assert!(
         !executor.ros_time_source_installed(),
         "declaring the parameter must not subscribe on the spot — there is no \
@@ -2558,7 +2558,7 @@ fn a_non_bool_use_sim_time_attaches_nothing() {
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
 
-    executor.declare_parameter("use_sim_time", nros_params::ParameterValue::Integer(1));
+    assert!(executor.declare_parameter("use_sim_time", nros_params::ParameterValue::Integer(1)));
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
     assert!(
         !executor.ros_time_source_installed(),
