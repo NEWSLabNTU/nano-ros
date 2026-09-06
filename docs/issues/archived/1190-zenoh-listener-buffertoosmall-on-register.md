@@ -35,6 +35,28 @@ nros: application error: NodeRegister("native_rs_listener")
 (`report_arena_exhausted(new_used - arena.len(), …)`), so the single allocation
 asked for **8,192 + 3,952 = 12,144 bytes into an empty 8,192-byte arena**.
 
+## RESOLVED 2026-09-07 — confirmed live, in the box
+
+The fix is PR #692 and the confirmation is the cell that opened this issue.
+Same machine, same box, fixtures rebuilt from a tree carrying the fix:
+
+| | before | after |
+| --- | --- | --- |
+| `case_2_zenoh_pubsub_ros2_to_nano` | FAIL x3, 0.92 s each | **PASS x3** — 6.1 s, 1.8 s, 1.8 s |
+
+And the derivation itself, over every `nros_node_config.rs` the box built:
+
+| MAX_CBS | ARENA_SIZE | units |
+| ---: | ---: | ---: |
+| 4 | 74,240 | 70 — byte-identical to before |
+| 1 | 20,096 | 3 |
+| 1 | 14,424 | 2 |
+
+Every `MAX_CBS = 1` unit derived **8,192** before, against a 12,144-byte
+registration. All of them now derive above it, and the 70 default units did not
+move — which is the claim PR #692 made from arithmetic, now measured on a real
+build tree.
+
 ## Root cause: the model prices a buffer nothing creates
 
 `packages/core/nros-node/build.rs` billed a pub/sub arena slot at
