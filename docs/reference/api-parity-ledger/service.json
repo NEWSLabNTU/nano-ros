@@ -31,11 +31,6 @@
     "disposition": "absent",
     "why": "rcl's pimpl; our handles carry their state inline. See `c:publisher_impl_t`."
   },
-  "c:client_init": {
-    "disposition": "adopt",
-    "verdict": "declined",
-    "why": "rcl's options-taking client constructor, and the one rcl name in this family we do not define. The CAPABILITY is present under our own spelling: `nros_client_init_with_options(cli, node, type_support, name, const struct nros_client_options_t *)` (`nros_generated.h`), and rclc's default form ships under rclc's exact name as `rclc_client_init_default`. Ours says `_with_options` where rcl says bare `_init` because rcl has no second constructor to distinguish it from -- its `_init` IS the options-taking form -- while our surface spells the pair `_init_default` / `_init_with_options` across all five entities, so a reader who has seen one has seen them all. See `c:client_init_with_options` for the ours-only half and `c:client_get_options` for the readback rcl also has and we decline."
-  },
   "c:client_init_best_effort": {
     "verdict": "divergence",
     "why": "rclc ships an entry point per QoS preset; ours takes a QoS value. See `c:publisher_init_best_effort`."
@@ -208,11 +203,6 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "rcl's pimpl; our handles carry their state inline. See `c:publisher_impl_t`."
-  },
-  "c:service_init": {
-    "disposition": "adopt",
-    "verdict": "declined",
-    "why": "rcl's options-taking service constructor, and the one rcl name in this family we do not define. The CAPABILITY is present under our own spelling: `nros_service_init_with_options(srv, node, type_support, name, const struct nros_service_options_t *)` (`nros_generated.h`), and rclc's default form ships under rclc's exact name as `rclc_service_init_default`. Ours says `_with_options` where rcl says bare `_init` because rcl has no second constructor to distinguish it from -- its `_init` IS the options-taking form -- while our surface spells the pair `_init_default` / `_init_with_options` across all five entities, so a reader who has seen one has seen them all. See `c:service_init_with_options` for the ours-only half and `c:service_get_options` for the readback rcl also has and we decline."
   },
   "c:service_init_best_effort": {
     "verdict": "divergence",
@@ -1283,5 +1273,15 @@
   "rust:rmw_request_id_t": {
     "verdict": "divergence",
     "why": "see `rust:RequestId`."
+  },
+  "c:client_init": {
+    "verdict": "divergence",
+    "disposition": "absent",
+    "why": "phase-428 Q1 (2026-09-06) -- `rcl_client_init(client, node, type_support, service_name, options)`. No symbol answers to this key; the rclc spelling `rclc_client_init_default` does (`c:client_init_default`, `packages/api/nros-c/src/service.rs:1164`), and the options-shaped forms are `nros_client_init_with_qos` / `_with_options` / `_polling` (`packages/api/nros-c/include/nros/nros_generated.h:6448`, `:6470`, `:6519`). Same reasoning as `c:service_init`, one entity over."
+  },
+  "c:service_init": {
+    "verdict": "divergence",
+    "disposition": "absent",
+    "why": "phase-428 Q1 (2026-09-06) -- `rcl_service_init(service, node, type_support, service_name, options)`. No symbol answers to this key. The six-argument `nros_service_init` (callback and context in positions 5 and 6) was retired at phase-417 stage 6 step B (`packages/api/nros-c/src/service.rs:303-322`): the callback moved to registration, where rclc puts it (`nros_executor_add_service_raw` <-> `rclc_executor_add_service`). What remains is `rclc_service_init_default` at rclc's arity (`c:service_init_default`, adopt-bounded on the typesupport type) and `nros_service_init_with_qos` / `_with_options` / `_polling` (`packages/api/nros-c/include/nros/nros_generated.h:6194`, `:6246`, `:6293`) for the options-shaped and RFC-0022 polling forms.\n\nABSENT, not adopt-bounded: see `c:node_init` for why the label is the rcl-layer name's, not the rclc-layer name's."
   }
 }
