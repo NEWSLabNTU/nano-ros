@@ -23,6 +23,36 @@
 //! forwarded gate back ON for every member of a workspace build. A feature is a
 //! property of the BUILD; what the question needs is a property of the BINARY.
 //!
+//! ## A funnel is not always a board method — issues 1048 and 1123
+//!
+//! The search above kept losing for one more reason, and it is worth naming
+//! because it defeats the obvious grep: **not every boot funnel lives in a
+//! board crate.** `nros::main!` emits a different entry shape per framework,
+//! and two of them reach no `BoardEntry` method at all —
+//!
+//! * `Framework::Zephyr` (and its single-node sibling
+//!   `nros::zephyr_component_main!`) emits `rust_main` directly, because Zephyr
+//!   owns the C `main` and a Rust staticlib cannot take it over. That is why
+//!   `nros-board-zephyr` has only `run_tiers` to install from, and why a
+//!   single-tier pure-Rust Zephyr image published no sink list for two phases
+//!   (issue 1123) while its `log::info!`s worked fine.
+//! * a `[[bridge]]` system replaces the register/spin body with
+//!   `nros_bridge::run_from_config_str`, so it reaches no board either.
+//!
+//! Both now call `nros_platform::log::init_default()` — reached through
+//! `nros-platform` (which re-exports `nros_platform_cffi::log`) because that is
+//! the crate a generated Entry and the Zephyr example leaves already declare;
+//! giving each leaf a `nros-platform-cffi` dep of its own is the link-time
+//! requirement 0710 rejected.
+//!
+//! So the enumeration is **board crates PLUS the framework arms of
+//! `nros-macros`' `main_macro.rs` PLUS `nros`' entry macros**. Sweep it with:
+//!
+//! ```text
+//! grep -rn 'Framework::[A-Za-z]* => ' packages/core/nros-macros/src/main_macro.rs
+//! grep -rn 'init_default()' packages/boards packages/core/nros-macros packages/api/nros
+//! ```
+//!
 //! ## What this does instead
 //!
 //! Hold the records. A record raised with no sinks installed is copied into a
