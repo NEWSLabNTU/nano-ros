@@ -242,3 +242,25 @@ cxx-standard-floor:
 [group("check")]
 cargo-dir-knob-key:
     @bash scripts/check-cargo-dir-knob-key.sh
+
+# Issue 1132 -- `cmake_language(DEFER ... CALL fn "${local}")` delivers an
+# EMPTY string.
+#
+# DEFER stores its CALL arguments UNEXPANDED and expands them when the deferred
+# call runs, in the deferred directory's scope, by which time a function-local
+# is gone. Measured on cmake 3.22, this repo's floor.
+#
+# The one site this was written for had been a no-op for its whole life: the
+# callee returned at its own `if(NOT TARGET "")` guard, which reads exactly
+# like a guard correctly skipping a non-target, and the eager `OBJECT_DEPENDS`
+# edge beside it kept builds correct anyway. Nothing failed and nothing warned,
+# so the 0088/0090 config-header ordering was never actually applied.
+#
+# Buildless. `--self-test` drives 7 synthetic sources, including the two forms
+# that must NOT be flagged: the `cmake_language(EVAL CODE ...)` wrapper (which
+# expands the argument into a literal BEFORE defer stores it, and is the only
+# way to defer a call that genuinely needs one), and a comment quoting the
+# broken form -- the false reading this gate shipped with and had to fix.
+[group("ci")]
+deferred-call-args:
+    @python3 scripts/check-deferred-call-args.py

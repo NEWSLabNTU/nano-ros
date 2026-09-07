@@ -2,11 +2,12 @@
 id: 1132
 title: "`cmake_language(DEFER ... CALL fn \"${local}\")` passes an EMPTY string,
   so the config-header ordering edges have never been applied"
-status: open
+status: resolved
 type: bug
 area: build, cmake
 severity: medium
 related: [issue-0088, issue-0090, issue-1084]
+resolved_in: "phase-412 follow-up"
 ---
 
 ## What happens
@@ -100,3 +101,65 @@ the tree to fix it with. The `EVAL CODE` form at `NanoRosEntry.cmake:104` is
 worth knowing about: it is the only way to defer a call that genuinely needs an
 argument, and it works because the expansion happens at EVAL time rather than
 at execution time.
+
+## Fixed, and MEASURED on the island image
+
+The one broken site now appends its target to a GLOBAL property and defers a
+NO-ARGUMENT drain, which is the idiom
+`_nros_node_register_schedule_inventory` already used two functions above. The
+list form is needed because several callers register different targets before
+the deferred call runs, and the drain is scheduled once rather than per call.
+
+Measured by putting a `message(STATUS ...)` at the top of the callee and
+re-running cmake configure on the safety-island Zephyr image
+(`mr_canhubk3/s32k344`), once with each form. Same build directory, same cache,
+nothing else changed:
+
+```
+BEFORE (the shipped form, DEFER ... CALL fn "${_tgt}")
+  5 calls, and every one of them:
+  -- NROS1132PROBE applying to []
+
+AFTER (GLOBAL property + no-argument DEFER)
+  5 calls:
+  -- NROS1132PROBE applying to [mrm_comfortable_stop_operator_lib]
+  -- NROS1132PROBE applying to [mrm_emergency_stop_operator_lib]
+  -- NROS1132PROBE applying to [mrm_handler_lib]
+  -- NROS1132PROBE applying to [stop_mode_operator_lib]
+  -- NROS1132PROBE applying to [zephyr_entry]
+```
+
+So the callee ran five times per configure for the whole life of this code and
+did nothing five times, exactly as this issue predicted.
+
+## What the fix does NOT change, on this image
+
+Every one of those five targets ALREADY carried the
+`nros_c_cargo_build` / `nros_cpp_cargo_build` order-only edge in `build.ninja`
+before the fix -- checked on a build dir produced by the broken code. The eager
+`OBJECT_DEPENDS` half was supplying it, which is what this issue says and is why
+nothing ever failed. The fix restores the weaker target-level half for the cases
+that half does not cover; on THIS image it is redundant, and no before/after
+difference in the generated ninja is claimed.
+
+## The gate
+
+`scripts/check-deferred-call-args.py`, in the `ci` group. It parses cmake
+invocations (quoted strings and bracket arguments as single tokens) and fails on
+any `cmake_language(DEFER ... CALL fn <arg>)` whose argument carries a `${`.
+Both correct idioms pass: the no-argument form, and the
+`cmake_language(EVAL CODE ...)` wrapper, whose DEFER lives inside a quoted
+string and is therefore not a token of the statement the gate reads.
+
+7 self-test cases, including the false reading the gate shipped with and had to
+fix: it flagged the cmake COMMENT that quotes the broken form in order to
+explain it. A scanner that cannot tell code from prose about code will keep
+finding itself.
+
+## Not verified: a linked image
+
+The island image does not link on nano-ros main right now -- `region DTCM
+overflowed by 45040 bytes` -- and that is NOT this change. A control build of
+clean main with this change stashed produces the identical overflow, to the
+byte. Filed separately. The configure-level measurement above is what backs
+this fix.

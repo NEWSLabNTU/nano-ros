@@ -175,7 +175,38 @@ function(_nros_node_register_compose_inventory)
         LABEL "this image's entity inventory (standalone)")
 endfunction()
 
-function(_nros_node_register_apply_config_header_deps _tgt)
+# Issue 1132 -- the target travels by GLOBAL property, and the deferred call
+# takes NO ARGUMENTS.
+#
+# `cmake_language(DEFER ... CALL fn "${_tgt}")` stores its arguments UNEXPANDED
+# and expands them when the deferred call runs, in the deferred directory's
+# scope. `_tgt` is function-local and long gone by then, so the callee received
+# an empty string and returned at its own `if(NOT TARGET "")` guard. Every
+# `add_dependencies()` below -- the 0088/0090 config-header ordering -- had
+# therefore never happened, for any image in this tree.
+#
+# It stayed hidden because a no-op guarded by `if(NOT TARGET "")` is
+# indistinguishable from a guard that correctly skipped a non-target, and
+# because the STRONGER edge beside it (the `OBJECT_DEPENDS` file dependency) is
+# applied EAGERLY and does work. What was missing is the weaker target-ordering
+# half, so the symptom is a rare ordering race rather than a wrong artifact.
+#
+# Same idiom as `_nros_node_register_schedule_inventory` above. The list form is
+# needed because several callers register different targets before the deferred
+# call runs.
+define_property(GLOBAL PROPERTY NROS_PENDING_CONFIG_HEADER_DEPS
+    BRIEF_DOCS "Targets awaiting the 0088/0090 config-header ordering edges"
+    FULL_DOCS  "Issue 1132 -- appended by _nros_node_register_config_header_deps(), \
+drained once by _nros_node_register_apply_config_header_deps() at DEFER time.")
+
+function(_nros_node_register_apply_config_header_deps)
+    get_property(_pending GLOBAL PROPERTY NROS_PENDING_CONFIG_HEADER_DEPS)
+    foreach(_tgt IN LISTS _pending)
+        _nros_node_register_apply_config_header_deps_to("${_tgt}")
+    endforeach()
+endfunction()
+
+function(_nros_node_register_apply_config_header_deps_to _tgt)
     if(NOT TARGET ${_tgt})
         return()
     endif()
@@ -199,8 +230,17 @@ function(_nros_node_register_apply_config_header_deps _tgt)
 endfunction()
 
 function(_nros_node_register_config_header_deps _tgt)
+    set_property(GLOBAL APPEND PROPERTY NROS_PENDING_CONFIG_HEADER_DEPS "${_tgt}")
+    # Schedule the drain ONCE. Deferring per call would re-drain the whole list
+    # for every registered target -- harmless (add_dependencies is idempotent)
+    # but N^2 and noisy.
+    get_property(_scheduled GLOBAL PROPERTY NROS_CONFIG_HEADER_DEPS_SCHEDULED)
+    if(_scheduled)
+        return()
+    endif()
+    set_property(GLOBAL PROPERTY NROS_CONFIG_HEADER_DEPS_SCHEDULED TRUE)
     cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}"
-        CALL _nros_node_register_apply_config_header_deps "${_tgt}")
+        CALL _nros_node_register_apply_config_header_deps)
 endfunction()
 
 define_property(GLOBAL PROPERTY NROS_COMPONENTS_JSON
