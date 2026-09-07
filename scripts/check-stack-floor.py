@@ -50,6 +50,34 @@ FLOORS = {
     "qemu-esp32-baremetal": 32 * 1024,
 }
 
+# A fixture ROW's `platform` -> the board whose floor applies to it.
+#
+# phase-413 W2. `board_of` reads PATH components, and that is enough for a
+# `[[fixture]]` row, whose artifacts land under `build/cargo-fixtures/<board>`.
+# A `[[workspace_fixture]]` row spells the PLATFORM in its `target_dir`
+# (`target-fixtures/esp32`), so the same path sniff finds nothing and would
+# refuse the file rather than check it — which is how the esp32 workspace entry
+# linked with 18,444 B of stack, 14,324 B under its floor and 128 B below the
+# size at which issue 1052's talker faulted, while three sibling images WERE
+# gated.
+# `None` = this platform has no stack floor, DECLARED rather than fallen
+# through. Every `[[workspace_fixture]] platform` is listed, so adding a
+# platform is a decision someone writes here instead of a row that silently
+# escapes the gate — which is the whole defect this map exists for.
+ROW_PLATFORM_BOARD: dict[str, str | None] = {
+    "esp32": "qemu-esp32-baremetal",
+    # The rest run on an OS that gives a thread its own stack — the floor is
+    # the PORT's (`stack_bytes` is a floor the port raises, issue 0667), not a
+    # linker leftover, so `_stack_start`/`_stack_end` do not describe them.
+    "freertos": None,
+    "freertos-posix": None,
+    "linux": None,
+    "nuttx": None,
+    "nuttx-riscv": None,
+    "threadx-linux": None,
+    "zephyr": None,
+}
+
 # Images that do NOT meet their board floor and are allowed to link anyway,
 # each with the issue that tracks getting it there. An entry here is a DEBT
 # ON RECORD, not an exemption from the rule: the recorded value is the worst
@@ -187,7 +215,7 @@ def verdict(elf: Path, size: int, board: str) -> tuple[bool, str]:
     return True, f"{name}: {size:,} B (floor {floor:,} B)"
 
 
-def check(paths: list[str]) -> int:
+def check(paths: list[str], board: str | None = None) -> int:
     # Run the selftest on the NORMAL path, not only under `--selftest`.
     # It is pure text/arithmetic and costs nothing, and it means the controls
     # cannot rot into decoration while the gate keeps reporting verdicts —
@@ -200,7 +228,7 @@ def check(paths: list[str]) -> int:
         elf = Path(p)
         if not elf.is_file():
             raise Failure(f"{elf}: not a file. Refusing to skip it silently.")
-        board = board_of(elf)
+        board = board or board_of(elf)
         if board is None:
             raise Failure(
                 f"{elf}: no board in this path matches a floor in FLOORS "
@@ -301,6 +329,28 @@ def selftest(quiet: bool = False) -> int:
         assert verdict(Path("_selftest_image"), 1_000, board)[0]
     finally:
         del DEBT["_selftest_image"]
+
+    # phase-413 W2 — ROW_PLATFORM_BOARD must NAME every `[[workspace_fixture]]`
+    # platform, `None` included. Asserted here rather than in a separate gate
+    # because the map and its coverage are one fact, and because the failure it
+    # prevents is a row escaping the gate silently — which is what happened to
+    # the esp32 workspace entry while three sibling images were checked.
+    import re as _re
+
+    _toml = Path(__file__).resolve().parents[1] / "examples" / "fixtures.toml"
+    if _toml.is_file():
+        _text = _toml.read_text(encoding="utf8")
+        _plats = set()
+        for _blk in _re.split(r"^\[\[workspace_fixture\]\]", _text, flags=_re.M)[1:]:
+            _m = _re.search(r'^\s*platform\s*=\s*"([^"]+)"', _blk, _re.M)
+            if _m:
+                _plats.add(_m.group(1))
+        _missing = sorted(_plats - set(ROW_PLATFORM_BOARD))
+        assert not _missing, (
+            f"ROW_PLATFORM_BOARD does not name workspace platform(s) {_missing}. "
+            "Add each — `None` when the platform has no stack floor — so a row "
+            "cannot escape this gate by not matching."
+        )
 
     # board resolution must see phase-340 group dirs, and must NOT invent a
     # board for a path it does not recognise
@@ -415,6 +465,27 @@ def main(argv: list[str]) -> int:
         if len(args) != 3:
             raise Failure("--row takes exactly <leaf-dir> <artifact-dir>")
         return check_row(args[1], args[2])
+    if args[0] == "--board-for-row":
+        # phase-413 W2 — the workspace lane names the row's PLATFORM, because
+        # its artifact path does not carry the board. Unknown platform RAISES;
+        # a platform with no floor must be added to `ROW_PLATFORM_BOARD` as an
+        # explicit `None`, so "this row is not gated" is a decision someone
+        # wrote down rather than a path that happened not to match.
+        if len(args) < 3:
+            raise Failure("--board-for-row takes <platform> <elf>...")
+        platform = args[1]
+        if platform not in ROW_PLATFORM_BOARD:
+            raise Failure(
+                f"row platform {platform!r} has no entry in ROW_PLATFORM_BOARD.\n"
+                "Add one — `None` if the platform has no stack floor — rather than\n"
+                "leaving it to fall through, which is how this gate went quiet on the\n"
+                "esp32 workspace entry."
+            )
+        board = ROW_PLATFORM_BOARD[platform]
+        if board is None:
+            print(f"check-stack-floor: {platform} has no floor (declared); skipped.")
+            return 0
+        return check(args[2:], board=board)
     return check(args)
 
 

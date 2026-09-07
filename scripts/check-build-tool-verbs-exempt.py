@@ -10,7 +10,8 @@ different nano-ros tree.
 
 That is what took the tier-2 lane red: `nros codegen resolve-deps` refused a
 correct, freshly built binary because the zephyr west workspace lives under
-`/mnt/evo/aeon/nano-ros` while the binary came from the runner's `_work` tree.
+a second nano-ros tree on the runner while the binary came from the checkout
+GitHub Actions cloned.
 The fix exempted `codegen`, `codegen-system` and `generate-rust` — the three
 verbs whose symptom was visible — and left FIVE more of the same class:
 `ws providers`, `ws order`, `ws entity-inventory`, `ws board-facts` and
