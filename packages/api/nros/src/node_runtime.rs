@@ -372,6 +372,18 @@ struct ComponentCell<
     // declare never moves anything this pointer or a stored `&ParameterValue` names.
     #[cfg(feature = "param-services")]
     param_server: core::cell::Cell<*const nros_params::ParameterServer<'static>>,
+    // phase-426 W3 — WHICH node in that store this component's callbacks read.
+    //
+    // The store is keyed by node and the six parameter services are registered
+    // per node, so a cell holding the store address and nothing else can only
+    // answer for the executor's first node: every component on a multi-node
+    // executor read the primary's values. Set from the sink's own
+    // `create_node` result once `register()` has run — the raw index rather
+    // than a `NodeKey`, because `Cell<T>` wants a `Copy` payload and the key is
+    // exactly this byte. `NodeId::PRIMARY` (0) until then, which is what a
+    // component that declares no node means.
+    #[cfg(feature = "param-services")]
+    param_node: core::cell::Cell<u8>,
 }
 
 impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize, const SSRV: usize>
@@ -463,6 +475,11 @@ trait CellView {
     /// threads it in.
     #[cfg(feature = "param-services")]
     fn view_param_server(&self) -> Option<&nros_params::ParameterServer<'static>>;
+    /// phase-426 W3 — the node key this component's parameter reads are about.
+    /// Travels with the store, because a store keyed by node and a reader that
+    /// cannot name one is how every component read the primary's values.
+    #[cfg(feature = "param-services")]
+    fn view_param_node(&self) -> nros_params::NodeKey;
     /// The `(callbacks, messages)` dispatch counters. Only the dynamic
     /// runtime's stats fold reads them through the trait; the macro path's
     /// fold reads the `CellHeader` directly.
@@ -609,6 +626,11 @@ impl<const PUBS: usize, const SVCS: usize, const ACTC: usize, const ACTS: usize,
     #[cfg(feature = "param-services")]
     fn view_param_server(&self) -> Option<&nros_params::ParameterServer<'static>> {
         self.param_server()
+    }
+
+    #[cfg(feature = "param-services")]
+    fn view_param_node(&self) -> nros_params::NodeKey {
+        nros_params::NodeKey::new(self.param_node.get())
     }
 }
 
@@ -889,6 +911,10 @@ impl ExecutorNodeRuntime {
             // W4c — set by `apply_param_services` once the store exists.
             #[cfg(feature = "param-services")]
             param_server: core::cell::Cell::new(core::ptr::null()),
+            // phase-426 W3 — overwritten below with the node `register()`
+            // actually created.
+            #[cfg(feature = "param-services")]
+            param_node: core::cell::Cell::new(0),
         });
         let component_idx = self.components.len();
         self.components.push(cell.clone());
@@ -904,6 +930,14 @@ impl ExecutorNodeRuntime {
         let sink_dyn: &mut dyn NodeRuntime = &mut sink;
         let mut context = NodeContext::new(C::NAME, sink_dyn);
         let result = C::register(&mut context);
+        // phase-426 W3 — the node this component actually created, so its
+        // callbacks read ITS parameters and not the primary's. First node: a
+        // component declares one in every shipped shape, and the reads are
+        // per COMPONENT, which is the granularity a cell has.
+        #[cfg(feature = "param-services")]
+        if let Some(node) = sink.nodes.first() {
+            cell.param_node.set(node.node_id.raw());
+        }
         if result.is_err() {
             // Roll back the slot push so `component_count` stays
             // consistent with what users observe.
@@ -1072,7 +1106,7 @@ fn tick_one_cell(cell: &dyn CellView, exec_ptr: *mut Executor<'static>) {
     // (the store is a separate `Box<ParamState>` allocation, so this does NOT alias the
     // `&mut Executor<'static>` the action/client tick calls reborrow through `exec_ptr`).
     #[cfg(feature = "param-services")]
-    ctx.set_param_server(cell.view_param_server());
+    ctx.set_param_server(cell.view_param_server(), cell.view_param_node());
     cell.try_with_slot_mut(&mut |slot| slot.tick(&mut ctx));
 }
 
@@ -1718,7 +1752,7 @@ fn dispatch_into_cell(cell: &dyn CellView, cb_id: &str, payload: &[u8]) {
     // W4c — let the callback read `ctx.parameter::<T>(name)` from the executor's store
     // (threaded onto the cell by `apply_param_services`; `None` until then).
     #[cfg(feature = "param-services")]
-    ctx.set_param_server(cell.view_param_server());
+    ctx.set_param_server(cell.view_param_server(), cell.view_param_node());
     // If the slot is already borrowed (a re-entrant publish from a
     // tick hook on the same cell, etc.) the view drops this dispatch. In
     // practice the borrow succeeds because subscription / timer
@@ -1741,7 +1775,7 @@ fn dispatch_into_cell_with_integrity(
     let mut ctx = CallbackCtx::new_with_integrity(payload, &resolver, status);
     // W4c — param store for a `.safety()` subscription callback too.
     #[cfg(feature = "param-services")]
-    ctx.set_param_server(cell.view_param_server());
+    ctx.set_param_server(cell.view_param_server(), cell.view_param_node());
     cell.try_with_slot_mut(&mut |slot| slot.dispatch(cb_id, &mut ctx));
 }
 
@@ -1830,7 +1864,7 @@ unsafe extern "C" fn service_server_trampoline(
     let mut cb = CallbackCtx::with_reply(req_slice, &resolver, resp_slice, &mut written);
     // W4c — service-server callback can read `ctx.parameter::<T>(name)` too.
     #[cfg(feature = "param-services")]
-    cb.set_param_server(view.view_param_server());
+    cb.set_param_server(view.view_param_server(), view.view_param_node());
     view.try_with_slot_mut(&mut |slot| slot.dispatch(&sctx.callback_id, &mut cb));
     unsafe { *resp_len = written };
     true
@@ -1851,7 +1885,7 @@ unsafe extern "C" fn action_goal_trampoline(
     let mut cb = CallbackCtx::with_goal_decision(goal_slice, &resolver, &mut resp);
     // W4c — action goal callback can read `ctx.parameter::<T>(name)` too.
     #[cfg(feature = "param-services")]
-    cb.set_param_server(view.view_param_server());
+    cb.set_param_server(view.view_param_server(), view.view_param_node());
     view.try_with_slot_mut(&mut |slot| slot.dispatch(&actx.goal_callback_id, &mut cb));
     resp
 }
@@ -1870,7 +1904,7 @@ unsafe extern "C" fn action_cancel_trampoline(
     let mut cb = CallbackCtx::with_cancel_decision(&[], &resolver, &mut resp);
     // W4c — action cancel callback can read `ctx.parameter::<T>(name)` too.
     #[cfg(feature = "param-services")]
-    cb.set_param_server(view.view_param_server());
+    cb.set_param_server(view.view_param_server(), view.view_param_node());
     view.try_with_slot_mut(&mut |slot| slot.dispatch(&actx.cancel_callback_id, &mut cb));
     resp
 }
@@ -2142,6 +2176,9 @@ where
         // W4c — set by `apply_param_services` once the store exists (it runs after this).
         #[cfg(feature = "param-services")]
         param_server: core::cell::Cell::new(core::ptr::null()),
+        // phase-426 W3 — overwritten below with the node `register()` created.
+        #[cfg(feature = "param-services")]
+        param_node: core::cell::Cell::new(0),
     });
     let mut sink = ExecutorSink {
         // Reborrow so `executor` stays usable for `enroll_component` after the
@@ -2162,6 +2199,12 @@ where
     // them via `NodeContext::param`.
     context.set_params(params);
     C::register(&mut context)?;
+    // phase-426 W3 — see the sibling in `register_node`: the cell records the
+    // node it created, so `ctx.parameter::<T>(name)` reads that node's slot.
+    #[cfg(feature = "param-services")]
+    if let Some(node) = sink.nodes.first() {
+        cell.param_node.set(node.node_id.raw());
+    }
 
     // Phase 258 (Track 2, 2a) — enroll the cell in the executor's component
     // tick registry so `install`'d nodes tick (closes phase-257 D2: poll-only

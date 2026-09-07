@@ -1851,6 +1851,14 @@ pub struct CallbackCtx<'a> {
     /// `param-services` is off.
     #[cfg(feature = "param-services")]
     params: Option<&'a crate::ParameterServer<'a>>,
+    /// phase-426 W3 — WHICH node's parameters `parameter()` reads.
+    ///
+    /// One set of six parameter services is registered per node and the store
+    /// is keyed the same way, so a context that carries the store without the
+    /// key can only ever answer for one node — which is how every component on
+    /// a multi-node executor came to read the primary's values.
+    #[cfg(feature = "param-services")]
+    param_node: nros_params::NodeKey,
 }
 
 impl<'a> CallbackCtx<'a> {
@@ -1866,6 +1874,12 @@ impl<'a> CallbackCtx<'a> {
             integrity: None,
             #[cfg(feature = "param-services")]
             params: None,
+            // phase-426 W3 — the store is keyed by node and this context does
+            // not know which one until the dispatch site says so
+            // (`set_param_server`). PRIMARY until then, which is the executor's
+            // first node and what a single-node image means.
+            #[cfg(feature = "param-services")]
+            param_node: nros_params::NodeKey::PRIMARY,
         }
     }
 
@@ -1888,6 +1902,12 @@ impl<'a> CallbackCtx<'a> {
             integrity: Some(integrity),
             #[cfg(feature = "param-services")]
             params: None,
+            // phase-426 W3 — the store is keyed by node and this context does
+            // not know which one until the dispatch site says so
+            // (`set_param_server`). PRIMARY until then, which is the executor's
+            // first node and what a single-node image means.
+            #[cfg(feature = "param-services")]
+            param_node: nros_params::NodeKey::PRIMARY,
         }
     }
 
@@ -1913,6 +1933,12 @@ impl<'a> CallbackCtx<'a> {
             integrity: None,
             #[cfg(feature = "param-services")]
             params: None,
+            // phase-426 W3 — the store is keyed by node and this context does
+            // not know which one until the dispatch site says so
+            // (`set_param_server`). PRIMARY until then, which is the executor's
+            // first node and what a single-node image means.
+            #[cfg(feature = "param-services")]
+            param_node: nros_params::NodeKey::PRIMARY,
         }
     }
 
@@ -1933,6 +1959,12 @@ impl<'a> CallbackCtx<'a> {
             integrity: None,
             #[cfg(feature = "param-services")]
             params: None,
+            // phase-426 W3 — the store is keyed by node and this context does
+            // not know which one until the dispatch site says so
+            // (`set_param_server`). PRIMARY until then, which is the executor's
+            // first node and what a single-node image means.
+            #[cfg(feature = "param-services")]
+            param_node: nros_params::NodeKey::PRIMARY,
         }
     }
 
@@ -1952,6 +1984,12 @@ impl<'a> CallbackCtx<'a> {
             integrity: None,
             #[cfg(feature = "param-services")]
             params: None,
+            // phase-426 W3 — the store is keyed by node and this context does
+            // not know which one until the dispatch site says so
+            // (`set_param_server`). PRIMARY until then, which is the executor's
+            // first node and what a single-node image means.
+            #[cfg(feature = "param-services")]
+            param_node: nros_params::NodeKey::PRIMARY,
         }
     }
 
@@ -1959,8 +1997,13 @@ impl<'a> CallbackCtx<'a> {
     /// The dispatch site calls this after construction (the store reaches the callback via
     /// the component cell, not the constructor args). No-op-equivalent when `None`.
     #[cfg(feature = "param-services")]
-    pub fn set_param_server(&mut self, params: Option<&'a crate::ParameterServer<'a>>) {
+    pub fn set_param_server(
+        &mut self,
+        params: Option<&'a crate::ParameterServer<'a>>,
+        node: nros_params::NodeKey,
+    ) {
         self.params = params;
+        self.param_node = node;
     }
 
     /// Phase 264 W4c — read this node's parameter `name` as `T`, or `None` if the
@@ -1970,12 +2013,12 @@ impl<'a> CallbackCtx<'a> {
     #[cfg(feature = "param-services")]
     pub fn parameter<T: crate::ParameterVariant>(&self, name: &str) -> Option<T> {
         self.params
-            // phase-426 W1 — the store is keyed by node. This context is
-            // handed the executor's store and no executor-node identity, and
-            // the six services are still registered under the executor's
-            // primary node, so PRIMARY is the node these reads are about.
-            // W3 registers per node and threads the key here instead.
-            .and_then(|server| server.get(nros_params::NodeKey::PRIMARY, name))
+            // phase-426 W3 — the store is keyed by node, and the key is the
+            // component's OWN node, threaded in beside the store by the
+            // dispatch site. Reading PRIMARY here (which is what this did
+            // until W3) makes the second node on an executor read its
+            // sibling's values.
+            .and_then(|server| server.get(self.param_node, name))
             .and_then(T::from_parameter_value)
     }
 
@@ -2224,6 +2267,14 @@ pub struct TickCtx<'a> {
     /// `[param_services]` registers the store. Read with [`parameter`](Self::parameter).
     #[cfg(feature = "param-services")]
     params: Option<&'a crate::ParameterServer<'a>>,
+    /// phase-426 W3 — WHICH node's parameters `parameter()` reads.
+    ///
+    /// One set of six parameter services is registered per node and the store
+    /// is keyed the same way, so a context that carries the store without the
+    /// key can only ever answer for one node — which is how every component on
+    /// a multi-node executor came to read the primary's values.
+    #[cfg(feature = "param-services")]
+    param_node: nros_params::NodeKey,
 }
 
 impl<'a> TickCtx<'a> {
@@ -2239,14 +2290,25 @@ impl<'a> TickCtx<'a> {
             clients,
             #[cfg(feature = "param-services")]
             params: None,
+            // phase-426 W3 — the store is keyed by node and this context does
+            // not know which one until the dispatch site says so
+            // (`set_param_server`). PRIMARY until then, which is the executor's
+            // first node and what a single-node image means.
+            #[cfg(feature = "param-services")]
+            param_node: nros_params::NodeKey::PRIMARY,
         }
     }
 
     /// Phase 264 W4c — thread the executor's volatile parameter store in (the tick
     /// driver holds the executor directly). No-op-equivalent when `None`.
     #[cfg(feature = "param-services")]
-    pub fn set_param_server(&mut self, params: Option<&'a crate::ParameterServer<'a>>) {
+    pub fn set_param_server(
+        &mut self,
+        params: Option<&'a crate::ParameterServer<'a>>,
+        node: nros_params::NodeKey,
+    ) {
         self.params = params;
+        self.param_node = node;
     }
 
     /// Phase 264 W4c — read this node's parameter `name` as `T` during `tick`, or `None`
@@ -2255,12 +2317,12 @@ impl<'a> TickCtx<'a> {
     #[cfg(feature = "param-services")]
     pub fn parameter<T: crate::ParameterVariant>(&self, name: &str) -> Option<T> {
         self.params
-            // phase-426 W1 — the store is keyed by node. This context is
-            // handed the executor's store and no executor-node identity, and
-            // the six services are still registered under the executor's
-            // primary node, so PRIMARY is the node these reads are about.
-            // W3 registers per node and threads the key here instead.
-            .and_then(|server| server.get(nros_params::NodeKey::PRIMARY, name))
+            // phase-426 W3 — the store is keyed by node, and the key is the
+            // component's OWN node, threaded in beside the store by the
+            // dispatch site. Reading PRIMARY here (which is what this did
+            // until W3) makes the second node on an executor read its
+            // sibling's values.
+            .and_then(|server| server.get(self.param_node, name))
             .and_then(T::from_parameter_value)
     }
 
@@ -3408,17 +3470,30 @@ mod tests {
         // phase-382 W2' — the slots are the caller's; a local `ParameterStorage`
         // is the shape a test wants, sized for what it actually declares rather
         // than the build-time `MAX_PARAMETERS` default.
+        // phase-426 W1/W3 — every store call names the node it is about.
+        // `talker` is the executor's first node, `listener` its second.
+        let talker = nros_params::NodeKey::PRIMARY;
+        let listener = nros_params::NodeKey::new(1);
         let mut storage = crate::ParameterStorage::<4>::new();
         let mut server = crate::ParameterServer::new_in(storage.as_table());
-        assert!(server.declare("speed", crate::ParameterValue::Integer(7)));
+        assert!(server.declare(talker, "speed", crate::ParameterValue::Integer(7)));
+        assert!(server.declare(listener, "speed", crate::ParameterValue::Integer(99)));
 
         let mut ctx = CallbackCtx::new(&[], &resolver);
-        ctx.set_param_server(Some(&server));
+        ctx.set_param_server(Some(&server), talker);
         assert_eq!(ctx.parameter::<i64>("speed"), Some(7));
         // Wrong type ⇒ None, not a panic.
         assert_eq!(ctx.parameter::<bool>("speed"), None);
         // Undeclared ⇒ None.
         assert_eq!(ctx.parameter::<i64>("missing"), None);
+
+        // phase-426 W3 — the SIBLING's identically-named parameter is a
+        // different parameter, and the context reads the node it was given.
+        // Before W3 this ctx was pinned to PRIMARY, so a listener component
+        // read the talker's 7.
+        let mut sibling = CallbackCtx::new(&[], &resolver);
+        sibling.set_param_server(Some(&server), listener);
+        assert_eq!(sibling.parameter::<i64>("speed"), Some(99));
     }
 
     // Phase 250 Wave 2 — the declarative `.safety()` surface: a normal ctx has
