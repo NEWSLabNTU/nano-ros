@@ -445,6 +445,30 @@ build_workspace() {
 
             local out_root="${target_dir:-target}"
             echo "     built: $dir/$out_root/$row_profile_dir/$entry"
+
+            # phase-413 W2 — the stack floor, on the lane that never had it.
+            #
+            # `check-stack-floor.py` has run over `[[fixture]]` rows since
+            # phase-392 (`fixtures-build.sh`); this script contained the string
+            # "stack" zero times. So the esp32 WORKSPACE entry linked with
+            # 18,444 B of stack against a 32,768 B floor — 128 B below the size
+            # at which issue 1052's talker faulted — and the nightly cell died
+            # with `Exception 'Instruction access fault'`, `ra` holding keyexpr
+            # bytes: a saved return address overwritten, which is exactly the
+            # documented esp32 mode (`.stack` is the linker leftover after
+            # `.bss`, no runtime overflow guard). Three sibling images WERE
+            # gated. Issue-0196: the gate's coverage was narrower than its rule.
+            #
+            # `--board-for-row` because the row's path spells the PLATFORM and
+            # the gate's path sniff looks for the BOARD; an unmapped platform
+            # RAISES rather than passing, so a new one is a decision.
+            local _sf_elf
+            _sf_elf="$(find "$dir/$out_root" -type f -name "$entry" \
+                -path "*/$row_profile_dir/*" 2>/dev/null | head -1)"
+            if [ -n "$_sf_elf" ]; then
+                python3 "$NROS_REPO_ROOT/scripts/check-stack-floor.py" \
+                    --board-for-row "$platform" "$_sf_elf"
+            fi
         else
             [ -n "$build_subdir" ] || {
                 echo "workspace fixture '$id' is missing build_subdir for CMake build" >&2

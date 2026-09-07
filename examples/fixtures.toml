@@ -380,7 +380,22 @@ target = "riscv32imc-unknown-none-elf"
 #    than 2 service servers will not`
 # which is the tradeoff stated out loud — the checked-override behaviour
 # phase-392 W5.f added for exactly this.
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc", ESP_LOG = "info", NROS_EXECUTOR_ARENA_SIZE = "16384", NROS_SMOLTCP_MAX_UDP_SOCKETS = "2", ZPICO_SUBSCRIBER_LARGE_SIZE = "4096", NROS_RUNTIME_MAX_CELL_ENTITIES = "2", ZPICO_MAX_QUERYABLES = "2" }
+# `ZPICO_MAX_SUBSCRIBERS = 1` — phase-413 W2, issue 1052's move applied to the
+# workspace entry. `.stack` on esp32-c3 is the LINKER LEFTOVER after `.bss` and
+# there is no runtime overflow guard, so a pool sized for entities this image
+# never creates is stack it cannot use. Measured on the linked image: stack
+# 18,444 B against a 32,768 B floor, and 128 B BELOW the 18,572 B at which
+# 1052's talker faulted. The nightly cell died the way that mode dies — QEMU
+# `Exception 'Instruction access fault'` with `ra` = 0x2F252F25, whose bytes
+# are `%/%/`, the middle of a ROS 2 liveliness keyexpr: a saved return address
+# overwritten by frames spilling into `.bss`.
+#
+# The entry runs `system.launch.xml` = talker + listener, so ONE subscription.
+# `SMALL_PAYLOADS = ZPICO_MAX_SUBSCRIBERS * RING_DEPTH(4) * BUFFER(1024)`, so
+# 8 -> 1 returns 28,672 B to the stack: ~47,116 B, clear of the floor. Over-
+# subscription is no longer mute (issue 1033), and on bare metal it reaches the
+# log now that `vsnprintf` exists there.
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc", ESP_LOG = "info", NROS_EXECUTOR_ARENA_SIZE = "16384", NROS_SMOLTCP_MAX_UDP_SOCKETS = "2", ZPICO_SUBSCRIBER_LARGE_SIZE = "4096", NROS_RUNTIME_MAX_CELL_ENTITIES = "2", ZPICO_MAX_QUERYABLES = "2", ZPICO_MAX_SUBSCRIBERS = "1" }
 
 # Phase 225.O follow-up (known-issue #18) — NuttX QEMU ARM virt
 # (Cortex-A7) workspace Entry. Built by the cargo lane
