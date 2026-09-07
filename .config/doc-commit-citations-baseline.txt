@@ -32,14 +32,6 @@
 2687c5135
 e5db0ce8a
 
-# `ros2` distrobox tree states, cited by issues 1127 and 1137 to date the box a
-# measurement was taken in. A box is a separate checkout on a separate tree
-# (CLAUDE.md's "box in play => every job in the box, on its OWN tree"), so these
-# are correct references to a thing this repo does not contain.
-d1d88f660
-ea9fbfae9
-45e6ced2d
-
 # phase-311, the rmw-edition matrix. `db91f2bad` is a divergent `heads/main`
 # written by a parallel agent inside a submodule; `0612574f4` is the pointer the
 # superproject records for it. Both are submodule history — forward-only pins
@@ -50,13 +42,12 @@ db91f2bad
 
 # ---- DEAD -------------------------------------------------------------------
 
-# `docs/issues/README.md`, the curated index. Three "Recently resolved" entries
+# `docs/issues/README.md`, the curated index. Two "Recently resolved" entries
 # name the commit that closed an issue, and those commits are gone. The issue
-# numbers beside them (#0952, #0750, #569/#570) are the durable identifier and
-# are already in the text, so these can be dropped rather than re-resolved.
+# numbers beside them (#0952, #0750) are the durable identifier and are already
+# in the text, so these can be dropped rather than re-resolved.
 3084f7bd9
 22e511442
-d97c9c606
 
 # `docs/roadmap/phase-359-drop-std-campaign.md`, the four-row table of std
 # symbols and the commit that removed each. The symbol names and issue numbers
