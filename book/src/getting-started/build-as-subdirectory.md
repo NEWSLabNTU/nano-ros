@@ -59,7 +59,7 @@ libraries (`pthread`, `dl`, `m`), and the per-build
 | Variable | Default | Values |
 |----------|---------|--------|
 | `NANO_ROS_PLATFORM` | `posix` | `posix`, `freertos`, `nuttx`, `threadx`, `esp_idf` (legacy spellings: `freertos_armcm3`, `nuttx_armv7a`, `threadx_linux`, `threadx_riscv64`). Zephyr and bare-metal are not add_subdirectory platforms — they enter via the [Zephyr module](integration-zephyr.md) / cargo directly |
-| `NANO_ROS_BOARD` | (unset) | required for `threadx` (`threadx-linux` or `riscv64-qemu`) |
+| `NANO_ROS_BOARD` | (unset) | required for `threadx` (`threadx-linux` or `rv-virt-threadx`) |
 | `NANO_ROS_SKIP_BOOTSTRAP` | `OFF` | `ON` skips the configure-time bootstrap (git submodule updates + a possible network FetchContent of Corrosion). **Required for air-gapped/mirrored CI** — pre-seed submodules and install Corrosion first (`nros setup --tool corrosion`) |
 | `NANO_ROS_FEATURES` | (empty) | extra cargo features forwarded to the Rust build |
 | `NANO_ROS_RMW` | `zenoh` | `zenoh`, `dds`, `xrce`, `cyclonedds` |

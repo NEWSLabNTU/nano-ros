@@ -69,10 +69,15 @@ nros setup zephyr                        # Zephyr west workspace + SDK bits
 | `--licenses` | show license-gated packages + how to install them |
 | `--dry-run` | resolve + print the plan without fetching anything |
 
-Board names: `native`, `posix`, `mps2-an385-baremetal`,
-`stm32f4`, `mps2-an385-freertos`, `qemu-arm-nuttx`, `qemu-riscv64-threadx`,
-`threadx-linux`, `esp32-c3-baremetal`, `zephyr`, and more —
-run `nros setup --list` or `nros setup <board> --dry-run`.
+Board names (the full set — RFC-0093 names each board for the reach of
+its build): `native`, `posix`, `mps2-an385-baremetal`,
+`mps2-an385-freertos`, `mps3-an536-freertos`, `s32z270-freertos`,
+`freertos-posix`, `qemu-armv7a-nuttx`, `rv-virt-nuttx`, `rv-virt-threadx`,
+`threadx-linux`, `esp32-c3-baremetal`, `fvp-aemv8r-smp`, `zephyr`. A wrong
+one lists the rest; `nros setup <board> --dry-run` resolves without fetching.
+Names retired by phase-437 are in the
+[retired board names](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/reference/retired-board-names.md)
+ledger.
 
 ### `nros init [<dir>]`
 
@@ -84,9 +89,9 @@ hand-set `-DCMAKE_TOOLCHAIN_FILE` / `-Dnano_ros_ROOT`. Idempotent — re-run
 after provisioning a new board to pick up its fragment.
 
 ```sh
-nros setup qemu-arm-nuttx
+nros setup qemu-armv7a-nuttx
 nros init                 # writes ./CMakePresets.json
-cmake --preset qemu-arm-nuttx
+cmake --preset qemu-armv7a-nuttx
 ```
 
 ### `nros new <name> --platform <plat> [--rmw <rmw>] [--lang <lang>] [--use-case <case>] [--force]`

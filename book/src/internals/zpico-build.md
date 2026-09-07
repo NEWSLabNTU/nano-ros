@@ -130,7 +130,7 @@ need to target it set `arch = "<your_arch>"` (or extend their
 existing `arch = [...]` list with the new name).
 
 For platforms that span multiple architectures (e.g. `bare-metal`
-covers `cortex-m3` for `qemu-arm-baremetal` / `stm32f4` AND
+covers `cortex-m3` for `mps2-an385-baremetal` / `stm32f4` AND
 `riscv32imc` for `ESP32-C3`), declare every arch the platform
 supports and let build.rs's first-match dispatch pick the right
 one per target triple:
@@ -141,8 +141,8 @@ arch = ["cortex-m3", "riscv32imc"]   # first arch_matches wins
 ```
 
 This is what makes `cargo check` work on both
-`qemu-arm-baremetal/rust/zenoh/talker` and
-`esp32/rust/zenoh/{listener,talker}` from the same platform
+`examples/mps2-an385-baremetal/rust/talker` and
+`examples/esp32-c3-baremetal/rust/{listener,talker}` from the same platform
 entry — the picolibc sysroot wired up by
 `arch.riscv32imc.needs_picolibc = true` is added to the cc-rs
 `-I` list only when the build target is riscv32imc-*.

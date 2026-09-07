@@ -191,7 +191,7 @@ full reference + `package.xml` schema.
 | Platform | Source file shape | Build command | Notes |
 |---|---|---|---|
 | `native` | `src/main.rs`, `src/main.c`, `src/main.cpp` | `cargo run` / `cmake --build` | Full `std`. Pattern A or B. |
-| `qemu-arm-baremetal` | `src/main.rs` with `#[entry]` | `cargo run` (`runner = qemu-system-arm …`) | No `std`. Pure Cortex-M3. |
+| `mps2-an385-baremetal` | `src/main.rs` with `#[entry]` | `cargo run` (`runner = qemu-system-arm …`) | No `std`. Pure Cortex-M3. |
 | `mps2-an385-freertos` | `src/main.rs` / `src/main.cpp` / `src/main.c` | `cargo run` (Rust) or `cmake --build` (C/C++) | FreeRTOS kernel + lwIP. |
 | `nuttx` | `src/main.rs` / `src/main.c` | `cmake --build` (NuttX export tarball) | NuttX kernel. |
 | `threadx-linux` / `threadx-riscv64` | `src/main.rs` | `cmake --build` | ThreadX + NetX Duo. |

@@ -40,10 +40,10 @@ nano-ros on them. Per-crate tier truth is the generated
 | NXP          | MIMXRT1170-EVK       | Cortex-M7 + M4     | Armv7-M    | FreeRTOS / Zephyr | Untested | FreeRTOS starter + vendor BSP                                  |
 | TI           | LP-CC1352P7          | Cortex-M4F         | Armv7E-M   | FreeRTOS / TI-RTOS | Untested | FreeRTOS starter + TI driver overlay                         |
 | RP2040       | Raspberry Pi Pico    | Cortex-M0+         | Armv6-M    | bare / FreeRTOS | Untested | Bare-metal Cortex-M3 path — Cortex-M0+ has only 4 NVIC priority levels (per-callback OS-priority dispatch is disqualified — pub/sub still works fine) |
-| QEMU         | `virt` RISC-V64      | rv64gc             | RISC-V     | ThreadX       | Tested   | `examples/qemu-riscv64-threadx/`                                  |
+| QEMU         | `virt` RISC-V64      | rv64gc             | RISC-V     | ThreadX       | Tested   | `examples/rv-virt-threadx/`                                  |
 | QEMU         | Cortex-A9 (Versatile)| Cortex-A9          | Armv7-A    | Zephyr        | Tested   | Zephyr `-b qemu_cortex_a9`                                         |
-| QEMU         | arm `virt`           | Cortex-A7          | Armv7-A    | NuttX         | Tested   | `examples/qemu-arm-nuttx/`                                         |
-| QEMU         | `rv-virt` RISC-V32   | rv32imac           | RISC-V     | NuttX         | Tested   | `just nuttx build-riscv-c` / `build-riscv-rust` (`nros setup qemu-riscv-nuttx`) |
+| QEMU         | arm `virt`           | Cortex-A7          | Armv7-A    | NuttX         | Tested   | `examples/qemu-armv7a-nuttx/`                                         |
+| QEMU         | `rv-virt` RISC-V32   | rv32imac           | RISC-V     | NuttX         | Tested   | `just nuttx build-riscv-c` / `build-riscv-rust` (`nros setup rv-virt-nuttx`) |
 | NVIDIA       | Jetson Orin SPE      | Cortex-R5          | Armv7-R    | FreeRTOS      | Not supported (no board crate) | Board crate removed (phase-337); FreeRTOS starter + vendor BSP is the path back |
 | Arm FVP      | `Base_RevC AEMv8R` (SMP) | AEMv8-R, AArch64 profile | Armv8-R | Zephyr 3.7 | Build-only | See [ARM FVP getting-started chapter](../getting-started/arm-fvp.md); `just zephyr build-fvp-ws-entry` / `build-fvp-board-import` + their `run-` siblings. Runtime is **maintainer-run** (`just zephyr verify-fvp-runtime`) — the model is license-gated, so no CI lane can boot it |
 | Linux host   | (sim)                | x86-64 / aarch64    | x86 / Arm  | ThreadX sim   | Tested   | `examples/threadx-linux/`                                          |

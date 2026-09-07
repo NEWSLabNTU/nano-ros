@@ -96,7 +96,7 @@ The cross toolchain wasn't provisioned. Run nros setup for your
 board (it ships a prebuilt arm-none-eabi-gcc):
 
 ```bash
-nros setup mps2-an385-freertos       # or qemu-arm-nuttx / mps2-an385 / …
+nros setup mps2-an385-freertos       # or qemu-armv7a-nuttx / mps2-an385-baremetal / …
 ```
 
 ### A5. Cyclone DDS runtime missing

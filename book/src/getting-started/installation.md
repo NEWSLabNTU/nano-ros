@@ -363,8 +363,8 @@ RMW daemon + board SDK sources. `--rmw` defaults to `zenoh`.
 | `nros setup native --rmw xrce` | host build; the Micro-XRCE-DDS agent |
 | `nros setup native --rmw cyclonedds` | host build; Cyclone DDS runtime + `idlc` |
 | `nros setup mps2-an385-freertos` | `arm-none-eabi-gcc`, patched `qemu-system-arm`, FreeRTOS + lwIP sources |
-| `nros setup qemu-arm-nuttx` | `arm-none-eabi-gcc`, qemu, NuttX sources |
-| `nros setup qemu-riscv64-threadx` | `riscv64-*-gcc`, qemu, ThreadX/NetX sources |
+| `nros setup qemu-armv7a-nuttx` | `arm-none-eabi-gcc`, qemu, NuttX sources |
+| `nros setup rv-virt-threadx` | `riscv64-*-gcc`, qemu, ThreadX/NetX sources |
 | `nros setup threadx-linux` | ThreadX POSIX-sim sources |
 | `nros setup esp32-c3-baremetal` | the ESP32-C3 QEMU + bare-metal (esp-hal) toolchain bits |
 | `nros setup zephyr` | the Zephyr west workspace + Zephyr SDK bits |
@@ -501,7 +501,7 @@ Provision one module:
 
 ```bash
 just setup freertos           # → nros setup mps2-an385-freertos
-just setup nuttx              # → nros setup qemu-arm-nuttx
+just setup nuttx              # → nros setup qemu-armv7a-nuttx
 just setup threadx_linux      # → nros setup threadx-linux
 ```
 
