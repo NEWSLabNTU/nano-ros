@@ -19,10 +19,25 @@
 # not correspond to rclc/rclcpp/rclrs carries a written verdict. 2158 rows across
 # 17 topic shards under docs/reference/api-parity-ledger/.
 #
-# NOT buildless, which is why it is here and not on the fast lane: it re-extracts
-# OUR surface every run (clang for C/C++, nightly rustdoc for Rust) so an edit
-# that moves us away from ROS 2 fails the gate instead of aging the ledger. The
-# ROS 2 side is the recorded surface and needs no ROS install.
+# It re-extracts OUR surface every run (clang for C/C++, nightly rustdoc for
+# Rust) so an edit that moves us away from ROS 2 fails the gate instead of
+# aging the ledger. The ROS 2 side is the recorded surface and needs no ROS
+# install.
+#
+# ON THE FAST LANE since this commit, and the reason it was not is worth
+# keeping. `.config/gate-lane-exempt.txt` excused it as "a REPORT, not a gate",
+# which stopped being true: the recipe runs `--check`, which EXITS NON-ZERO on
+# an unledgered row. It is a gate, and one that only `just ci gate` ran — so a
+# report that had been wrong about 43 C symbols (issue 1188: our `rcl_*` /
+# `rclc_*` exports were invisible to the correlator, and read as gaps we did
+# not have) sat unnoticed until someone ran the full tier.
+#
+# Affordable, measured warm on this host: c 0.3 s, cpp 13.9 s, rust 11.2 s.
+# It resolves NO build artifact — the C side is `-I` over source headers, and
+# the Rust side points `CARGO_TARGET_DIR` at a fresh temp dir, so it is
+# hermetic and its cost does not depend on what the tree has already built.
+# That is what makes it lane-legal: `check-lane-contracts` bans a gate that
+# RESOLVES an artifact its lane did not produce, and this produces its own.
 #
 # A new divergence fails this with the row's key and the bucket it landed in.
 # Add a row to the matching topic shard; `--topic <name>` shows the stage.
