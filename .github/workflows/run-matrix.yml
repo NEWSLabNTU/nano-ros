@@ -41,6 +41,14 @@ jobs:
     defaults:
       run:
         shell: bash
+    # WHICH STAGE DID THIS RUN REACH? — issue 1158 item 3.
+    #
+    # Consumed by the `coverage` job below, which puts it in its own NAME so the
+    # answer is legible from `gh run view` / the checks list without opening a
+    # log. Empty when this job never started, which is a third answer again.
+    outputs:
+      stage_label: ${{ steps.stage.outputs.label }}
+      reached_cells: ${{ steps.stage.outputs.reached_cells }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,6 +65,7 @@ jobs:
       # reader left to know they must agree. `just test tier2` builds what that
       # scope needs and runs exactly it.
       - name: just setup tier2
+        id: setup
         run: |
           source ./activate.sh
           just setup tier2
@@ -89,6 +98,7 @@ jobs:
       # Fail-fast is not lost: a genuinely mislabeled runner still fails here,
       # and `setup` would have failed on it first anyway.
       - name: Verify this runner's labels are true
+        id: doctor
         run: ./scripts/ci/runner-doctor.sh nros-qemu,nros-sdk-zephyr,nros-big
 
       # THE MISSING MIDDLE — phase-413 W2.
@@ -115,6 +125,7 @@ jobs:
       # setup and test keeps one vocabulary across the three steps, which is the
       # property phase-411 exists to give.
       - name: just build tier2
+        id: build
         run: |
           source ./activate.sh
           just build tier2
@@ -125,6 +136,7 @@ jobs:
       # last of those. Provisioning by scope + running the TIER keeps the
       # transcript shape without quietly narrowing what runs.
       - name: just ci matrix
+        id: cells
         run: |
           source ./activate.sh
           just ci matrix
@@ -142,18 +154,67 @@ jobs:
         if: always()
         run: ./scripts/ci/runner-sweep.sh || true
 
+      # WHICH STAGE DID THIS RUN REACH? — issue 1158 item 3.
+      #
+      # The eight runs before this landed all said `failure` and hid three
+      # different stories: three died in `Verify this runner's labels are true`,
+      # two in `just setup tier2`, three in `just build tier2`. NOT ONE was a
+      # test result — every failure is upstream of the cells, so this lane
+      # produced no runtime verdict on any of those days while looking exactly
+      # like a lane that had.
+      #
+      # That is the shape issue 1043 fixed for `check-submodule-pins`: where
+      # there were two outcomes there are really three, and the third is "this
+      # could not be evaluated here". VERDICT / NO VERDICT / DID NOT START.
+      #
+      # `if: always()`, and the script exits 0 unconditionally: it DESCRIBES the
+      # lane, and a reporter that can redden the run it reports on is the defect
+      # one layer up. The lane's own steps colour the run, as they already did.
+      #
+      # `steps.<id>.outcome`, not `.conclusion` — `outcome` is the step's real
+      # result before any `continue-on-error` rewrite. Its vocabulary
+      # (success/failure/skipped/cancelled) is the SAME one `gh run view --json
+      # jobs` returns, which is what lets `--history` classify the eight runs
+      # above with the identical function this step calls. See the module
+      # docstring; those runs are asserted in its self-test.
+      - name: Which stage did this lane reach?
+        id: stage
+        if: always()
+        env:
+          NROS_LANE_STEPS: >-
+            [{"name": "just setup tier2", "conclusion": "${{ steps.setup.outcome }}"},
+             {"name": "Verify this runner's labels are true", "conclusion": "${{ steps.doctor.outcome }}"},
+             {"name": "just build tier2", "conclusion": "${{ steps.build.outcome }}"},
+             {"name": "just ci matrix", "conclusion": "${{ steps.cells.outcome }}"}]
+        run: python3 scripts/ci/lane-stage.py --report --lane "tier 2 (1-wise matrix)"
+
   # phase-405 — make the interlocked job's SKIP visible in the run that skipped
   # it. See scripts/ci/report-interlock-coverage.sh for why this warns rather
   # than fails when no runner is registered, and fails when one supposedly is.
   #
   # `if: always()` so it reports on a skip; `needs` so it sees the result.
 
+  # The job NAME carries the stage — issue 1158 item 3.
+  #
+  # `did tier 2 run?` was a question this job could not answer. It read
+  # `needs.matrix.result`, which is `failure` for a run that tested the whole
+  # matrix and found a regression AND for a run that died in `runner-doctor`
+  # having built nothing, so it printed "RAN and FAILED" for eight consecutive
+  # runs of which none ran anything. A check-run name is the last piece of a
+  # run that is legible without opening a log — `gh run view`, the commit's
+  # checks list, the PR checks tab — so the answer goes there.
+  #
+  # `needs` IS an available context for `jobs.<job_id>.name` (unlike, say,
+  # `steps`), which is why this reads a job OUTPUT rather than re-deriving
+  # anything. `|| 'DID NOT START'` covers the interlocked skip, where the matrix
+  # job produces no outputs at all — a third answer that is neither verdict nor
+  # lane failure, and the one `report-interlock-coverage.sh` already handled.
   coverage:
-    name: coverage report (did tier 2 run?)
+    name: "tier 2 — ${{ needs.matrix.outputs.stage_label || 'DID NOT START' }}"
     needs: [matrix]
     if: always()
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - name: Report whether the interlocked lane ran
-        run: ./scripts/ci/report-interlock-coverage.sh "tier 2 (1-wise matrix)" "${{ needs.matrix.result }}" "${{ vars.NROS_SELF_HOSTED_READY }}"
+        run: ./scripts/ci/report-interlock-coverage.sh "tier 2 (1-wise matrix)" "${{ needs.matrix.result }}" "${{ vars.NROS_SELF_HOSTED_READY }}" "${{ needs.matrix.outputs.stage_label }}"

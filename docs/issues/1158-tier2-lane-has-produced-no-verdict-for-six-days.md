@@ -91,10 +91,88 @@ verdict. The lane needs to reach the cells ONCE and then keep reaching them:
    give the lane its own runner/label, or schedule it where the queue is idle,
    or accept and DOCUMENT that it yields — the current state is neither chosen
    nor written down.
-3. **Distinguish "did not run" from "ran and failed"** at the summary level, the
+3. ~~**Distinguish "did not run" from "ran and failed"** at the summary level, the
    way issue 1043 did for `check-submodule-pins`. Six runs that all say
    "failure" hide four different stories; a lane that never reached its cells
-   should not report the same word as one that did.
+   should not report the same word as one that did.~~ **DONE — see below.**
+
+## Item 3, fixed (2026-09-07)
+
+`scripts/ci/lane-stage.py` gives the lane the third outcome it was missing:
+
+    VERDICT      the cells RAN. Green or red, the answer is about the CODE.
+    NO VERDICT   the lane stopped before its cells, naming the stage
+                 (provisioning / build). The answer is about the LANE.
+    DID NOT START  the interlocked job never ran at all.
+
+It reaches a reader in three places, in decreasing order of effort:
+
+* **The `coverage` job's NAME.** It was `coverage report (did tier 2 run?)` — a
+  question the job could not answer, because it read `needs.matrix.result`,
+  which is `failure` for a run that tested the whole matrix and for a run that
+  died in `runner-doctor` having built nothing. It is now
+  `tier 2 — NO VERDICT: stopped in the build`. A check-run name is the last
+  thing legible without opening a log (`gh run view`, the checks list), which is
+  the level the issue asked for.
+* **An annotation + a step summary** on the matrix job itself, saying which
+  stage it reached and, when it reached no cells, that the run answers nothing
+  about the code.
+* **`just matrix-triage`**, the run-list-scale view — the sibling of
+  `just nightly-triage` and `just queue-triage`, extended rather than replaced.
+  It reads `gh run list`/`gh run view` and classifies runs that PREDATE the
+  change, because a step's `conclusion` from `gh` and a step's `outcome` inside
+  the workflow are the same four-word vocabulary and go through the same
+  function.
+
+**Measured, against the eight real runs above** (`just matrix-triage 8`,
+2026-09-07): `0 of 8 run(s) reached the cells and produced a VERDICT`, split
+`5 provisioning / 3 build` under one flat `failure`. Those eight runs are
+recorded in the tool's self-test, so the classification is re-checkable offline
+and the two counterfactuals (cells ran and failed / cells ran and passed) are
+asserted to differ. Three mutations red it: adding `run` to the cells markers
+(the `runner` substring trap `nightly-triage.py` records), treating a `skipped`
+cells step as reached, and renaming a workflow step without updating the map.
+
+Gate: `check-lane-stage-reporting` (fast line) — the step→stage map is AUTHORED,
+so it drifts when a step is renamed, and it drifts in the safe-looking direction.
+
+**What this deliberately does NOT do.** It cannot make a red green or a green
+red — `lane-stage.py` exits 0 unconditionally. A reporter that can redden the
+lane it describes is the defect one layer up. And it produces no verdict: it
+makes the ABSENCE of one legible, which is the whole of item 3 and none of
+item 1.
+
+**Why the other three self-hosted lanes did not get this.** `build-wide.yml` and
+`queue.yml`'s L3 have no cells at all — they are build-depth lanes, so "did it
+reach the cells" has no referent there. `nightly.yml`'s `matrix-nightly` does
+have cells and is already covered by `just nightly-triage`, which classifies its
+per-cell reds by failing step. `run-matrix` was the one lane with cells and no
+per-stage report.
+
+## Still open, and why this issue is NOT resolved
+
+The substance of this issue is the MISSING VERDICT, and item 3 does not deliver
+one. It makes the absence legible; the lane still has not reached its cells.
+
+1. **A verdict, once — OPEN.** Nothing here runs the cells. It needs the shared
+   self-hosted runner and hours of fixture build, and until it happens issue
+   0968's ~12 tier-2 runtime failures stay unreproduced. The one thing that has
+   changed is that when the lane next fails, the run says whether that failure
+   was one.
+2. **Contention — OPEN, and deliberately not touched.** One runner serves both
+   this lane and the merge queue's `gate` jobs, and choosing between "give the
+   verdict lane its own runner", "schedule it where the queue is idle" and
+   "accept that it yields" is an infrastructure decision with a cost the
+   maintainer owns, not a defect an agent should decide by editing a label. No
+   `runs-on`, no required-check set and no path filter was changed here.
+
+Item 3's own limits, stated so they are not mistaken for coverage: the stage
+model is `run-matrix`'s pipeline only; a cells step that fails having SKIPPED
+every test still reads as a verdict (only `check-skip-budget` knows that
+difference, the same known limitation `nightly-triage.py` records); and the
+`coverage` job's dynamic name has not been observed on a real run, because
+dispatching one is item 1's cost — its inputs are asserted in the gate and the
+expression uses `needs`, which is an available context for `jobs.<job_id>.name`.
 
 ## Not covered
 

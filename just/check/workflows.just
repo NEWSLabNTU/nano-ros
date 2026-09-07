@@ -431,6 +431,20 @@ workflow-doctor-after-setup:
 workflow-indexed-apt:
     @python3 scripts/check-workflow-indexed-apt.py
 
+# issue 1158 — `run-matrix.yml`'s stage report must still describe the steps that
+# exist. The step->stage map is AUTHORED (the workflow hands `lane-stage.py` a
+# copy of its own `- name:` lines), and an authored map drifts the moment a step
+# is renamed — silently, and in the safe-looking direction: the tool keeps
+# reporting, on a step that no longer runs.
+#
+# This runs `lane-stage.py --selftest`, which cross-checks the map against the
+# workflow in BOTH directions and replays the eight real runs the issue
+# tabulates. Pure text + YAML, no network, no build — it passes in a pristine
+# worktree, which is the bar for this lane.
+[group("main")]
+lane-stage-reporting:
+    @python3 scripts/ci/lane-stage.py --selftest
+
 # issue 0933 — a CI step that invokes `just`/`nros`/`west` must source the repo
 # environment. `activate.sh` is what exports `nano_ros_ROOT`, and that is how
 # `find_package(nano_ros)` resolves: the config lives at the checkout root and a
