@@ -65,13 +65,25 @@ function(nros_lower_system_features features)
             set(NANO_ROS_SAFETY_E2E ON CACHE BOOL
                 "nano-ros: E2E message-integrity (CRC) — from [system].features" FORCE)
         elseif(_feat STREQUAL "param_services")
-            # Known axis, no CMake OPTION. Issue 0745 — the define is now a
-            # directory-wide compile definition (not just system_config.h):
-            # ComponentNode's header-inline `declare_parameter` gates its
-            # seed-adoption on it, and that code compiles in COMPONENT TUs,
-            # which never include the entry's system_config.h. Capabilities
-            # resolve BEFORE the runtime import (issue 0353), so this reaches
-            # every subdirectory of the workspace configure.
+            # Known axis, no CMake OPTION. Issue 0745 — the define is a
+            # directory-wide compile definition (not just system_config.h),
+            # because it has to reach COMPONENT TUs, which never include the
+            # entry's system_config.h. Capabilities resolve BEFORE the runtime
+            # import (issue 0353), so this reaches every subdirectory of the
+            # workspace configure.
+            #
+            # phase-426 W4 — no nano-ros HEADER branches on it any more. It
+            # gated the two launch-seed adoption helpers, which existed only
+            # because the C++ node types owned their own parameter store; W4
+            # deleted the stores and the helpers, and the node parameter
+            # forwarders are now unconditional (they answer
+            # `NROS_CPP_RET_UNSUPPORTED` when no store was compiled in, so a
+            # ported node still COMPILES and LINKS on an image that declared no
+            # `param_services`). What the define still says is which capability
+            # the bringup asked for — read by the compile probe
+            # `ros2_param_launch_seed.cpp` and available to user code — and it
+            # is measured against C++ layouts by
+            # `check-cpp-capability-layout`, whose CAPS list it joined in W4.
             add_compile_definitions(NROS_SYSTEM_PARAM_SERVICES)
         elseif(_feat STREQUAL "lifecycle")
             # Phase 269 W2 — Known axis, no CMake knob. lifecycle-services is always

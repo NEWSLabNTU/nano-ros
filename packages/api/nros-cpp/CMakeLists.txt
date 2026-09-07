@@ -312,6 +312,20 @@ endif()
 # `#if defined(NROS_SYSTEM_PARAM_SERVICES)`, a macro only
 # `NanoRosCapabilities.cmake` defines and no probe does.
 #
+# UPDATED 2026-09-07 (phase-426 W4): that `if constexpr` chain is GONE. It was
+# `ComponentNode::adopt_launch_seed_`, which existed to copy launch-seeded
+# values out of the executor's parameter store into the node's own — and with
+# one store there is nothing to copy, so the helper went with the member. No
+# header in this package uses a C++17 construct today, and the new forwarder set
+# (`node_parameters.hpp`) is written as C++14 overloads on purpose.
+#
+# The floor STAYS AT 17 anyway, and the reason is the paragraph below rather
+# than any single construct: 17 is what ROS 2 Humble's `rclcpp` exports, so a
+# ported file's own dependencies already require it, and lowering a declared
+# floor is a decision about what we support rather than a tidy-up that follows
+# from one deletion. What is retired is the claim that a specific line forces
+# it.
+#
 # C++17 and not C++20, deliberately: 17 is what the code already needs, what
 # ROS 2 Humble's `rclcpp` exports (`cxx_std_17`), and what every toolchain this
 # tree pins supports. Nothing in nros-cpp uses a C++20 feature, and C++20
