@@ -223,3 +223,22 @@ workspace-fmt:
 [group("check")]
 cxx-standard-floor:
     @python3 scripts/check-cxx-standard-floor.py
+
+# RFC-0094 D4 / phase-439 W1 — two images differing ONLY in a derived knob must
+# not share a cargo directory.
+#
+# `nros_shared_cargo_dir()` hashes the fields its caller supplies, and cargo
+# uplifts the archive to an UNHASHED `libnros_c.a`, so two configurations that
+# hash the same overwrite each other's artifact and one links the other's
+# numbers (issue 0616's shape). The `nros-c` and NuttX keys carried no knob
+# values at all until W1; the Zephyr key already did, because issue 0528
+# measured what omitting them cost there.
+#
+# The gate DRIVES the production cmake (`cmake -P` on the shared module) rather
+# than re-deriving the key, and its negative control runs on the normal path:
+# with the knob fields taken back out — the pre-W1 shape, i.e. what reverting
+# the change produces — the two images must COLLIDE. A green here is therefore
+# a demonstration, not an assertion.
+[group("check")]
+cargo-dir-knob-key:
+    @bash scripts/check-cargo-dir-knob-key.sh

@@ -128,18 +128,27 @@ nros_resolve_cargo_profile()
 #
 # Sorted, because a key must not depend on the order the features happened to be
 # appended in.
+#
+# phase-439 W1 (RFC-0094 D4) — plus the KNOB values, which this key carried none
+# of. The fields above are the inputs `nros_feature_set()` is a function of, and
+# a pool size is not one of them: two images at the same features/rmw/board/caps
+# differing only in `ZPICO_MAX_QUERYABLES` hashed IDENTICALLY and the second took
+# the first's uplifted `libnros_c.a`. `nros_knob_key_fields()` is the ONE
+# spelling of "what is the knob half" — never a list here.
 if(COMMAND nros_share_corrosion_cargo_dir)
     string(REPLACE ";" "," _caps_flat "${_caps}")
     set(_features_key ${_features})
     list(SORT _features_key)
     string(REPLACE ";" "," _features_flat "${_features_key}")
+    nros_knob_key_fields(_knob_fields)
     nros_share_corrosion_cargo_dir(KEY
         "features=${_features_flat}"
         "rmw=${NANO_ROS_RMW}"
         "board=${NANO_ROS_BOARD}"
         "caps=${_caps_flat}"
         "profile=${NROS_CARGO_PROFILE}"
-        "target=${Rust_CARGO_TARGET}")
+        "target=${Rust_CARGO_TARGET}"
+        ${_knob_fields})
 endif()
 
 corrosion_import_crate(
