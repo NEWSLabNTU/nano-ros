@@ -304,6 +304,26 @@ set_target_properties(nros_rmw_cyclonedds PROPERTIES
 # ddsc objects is fragile — see 204.14); enable with
 # `-DNROS_RMW_CYCLONEDDS_IPO=ON` where the toolchain supports it. Pair with
 # `-DCMAKE_BUILD_TYPE=MinSizeRel` (`-Os`) for the smallest wrapper.
+# Issue 1202 — decline the data-available wake slot on a platform that cannot be
+# woken from a thread it does not own.
+#
+# Cyclone calls `on_data_available` from ITS OWN receive thread. On every board
+# where Cyclone's threads are the platform's threads that is fine and it is what
+# gives the executor an asynchronous wake. On the FreeRTOS POSIX port, tasks are
+# host pthreads and Cyclone is the host library, so that thread is foreign and
+# entering the scheduler from it aborts (`vPortYield` asserts
+# `prvIsFreeRTOSThread`). The runtime already supports the alternative: a NULL
+# wake slot means poll-only, with a bounded `condvar_wait_until`.
+#
+# Default ON so every existing board keeps the wake it has; the POSIX board
+# turns it off (cmake/board/nano-ros-board-freertos-posix.cmake).
+option(NROS_RMW_CYCLONEDDS_FOREIGN_WAKE
+       "Install the Cyclone data-available listener, which wakes the executor \
+from Cyclone's own receive thread" ON)
+if(NOT NROS_RMW_CYCLONEDDS_FOREIGN_WAKE)
+    target_compile_definitions(nros_rmw_cyclonedds PRIVATE NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE=1)
+endif()
+
 option(NROS_RMW_CYCLONEDDS_IPO "Enable IPO/LTO on the Cyclone RMW wrapper" OFF)
 if(NROS_RMW_CYCLONEDDS_IPO)
     include(CheckIPOSupported)
