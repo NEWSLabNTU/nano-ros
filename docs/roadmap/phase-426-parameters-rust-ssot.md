@@ -107,3 +107,54 @@ default of 8 means a two-node image is already over on embedded, and the
 failure mode today is a runtime `-80` from zenoh-pico, not a build error. The
 acceptance criterion is written to force the build-time answer, because a
 runtime one is how issue 0460 read to the person who hit it.
+
+## Conciliated with phase-427 (2026-09-07) — this phase gates the node merge
+
+Full reasoning in RFC-0089 §"Conciliating phase-426 and phase-427". Three
+changes to this document.
+
+**This phase's "Not in scope" was right; phase-427's mirror image was not.**
+Keying the table, adding the writer and registering per node are Rust and RMW
+work that does not care how many C++ node types exist. But phase-427 W1 cannot
+proceed until W4 here lands: the parameter store is not hosted-only, so the node
+merge's `void* hosted_` does not move it, and one type means one store size.
+Measured today — `::nros::Node` 192 B, `rclcpp::Node` 3 752 B,
+`::nros::ComponentNode` 55 776 B, the difference being entirely the inline
+`ParameterServer`. Taking either store is a defect; deleting both is W4.
+
+**So W4 is the gate on another phase, not a tidy-up at the end of this one.**
+Its ordering constraint is unchanged and still load-bearing — W4 last, after
+W1–W3, because deleting a store before its replacement exists is how a
+capability disappears quietly — but its priority is higher than "cleanup"
+suggests.
+
+**The memory consequence, which this document does not state.** Forwarding to
+the Rust store is right on SSoT grounds and it is not free
+(`executor/spin.rs:7895`): the table is a leaked heap allocation of **285,184
+bytes at the default `MAX_PARAMETERS=32`**, and 2,281,472 at 256, because
+`ParameterValue` is sized by its `StringArray` variant and every slot costs
+~8.5 KiB whatever it holds.
+
+| image | today | after W4 |
+| --- | ---: | ---: |
+| any node count, no parameters declared | 3.5–55 KB per node | **0** — the table is lazy |
+| one node using parameters | 55 KB | **285 KB** |
+| five nodes using parameters | 277 KB | 285 KB |
+
+A large win for images that declare nothing, roughly neutral at five nodes, and
+a REGRESSION for a small one-node image that uses them. Issue 0756 already
+records 256 slots overrunning the Zephyr thread stack and hanging boot with no
+output. The ~8.5 KiB per slot is phase-382's defect, not this phase's, but W4's
+acceptance should state the number for the image it lands on rather than let a
+Zephyr build discover it.
+
+**Two things W4 inherits from the node-type work.** `has_parameter` has no FFI,
+and `declare_parameter<std::vector<T>>` — the sequence form written for the
+vendored ASI consumer — has no forwarding target at all and no work item that
+owns it. Neither is mentioned in W2's "the missing writer", which names only
+`set_parameter`.
+
+**Line citation:** `register_parameter_services` is at `executor/spin.rs:7480`,
+not `:7182`. The premise it supports is confirmed: `node_fqn` is built from
+`self.node_name` / `self.namespace`, the executor's, and all six services
+register under that one name.

@@ -299,3 +299,72 @@ also does not work by itself, because `std::make_shared<Derived>` populates the
 weak reference through that base and nothing else does.
 
 This needs a decision before W1 lands, and it is not recorded anywhere yet.
+
+## Conciliated with phase-426 (2026-09-07) — the ordering, and W4's acceptance
+
+Full reasoning in RFC-0089 §"Conciliating phase-426 and phase-427". The parts
+that change this document:
+
+**The governing reason is the owner's, and it is stronger than the one recorded
+above.** In nano-ros a node is always linked into the final image; there is no
+distinction like ROS 2 on Linux, and we keep ROS 2's shape. `ComponentNode`
+versus `Node` encodes a LOADING-MODEL distinction that this system does not
+have. That is why the count is one — not because upstream happens to lack a
+counterpart.
+
+**Deriving is not hosted-only, and this document inherited that error from the
+RFC.** Measured, compiled to an object rather than parsed: a class deriving
+from the node, holding a `Timer` member and binding a member function, builds
+under `-std=c++14 -fno-exceptions -fno-rtti -ffreestanding -nostdinc++` against
+the ThreadX shim, and `__is_polymorphic` is false for both base and derived.
+Derivation needs no allocator, no exceptions and no vtable. What was hosted-only
+was `rclcpp::Node` itself — the whole class sits inside `#if
+defined(NROS_CPP_HAS_SHARED_PTR) && ...` — plus `ComponentNode`'s virtual
+destructor. Neither is a property of deriving.
+
+Consequence for W4: `nros_components_register_node`'s default `SHAPE rclcpp`
+stays correct on every target, and cmake's comment calling `configure(Node&)`
+"legacy" stops contradicting the RFC. The freestanding acceptance is met by the
+DERIVED shape, which is the one users port.
+
+**W1 is reordered behind phase-426.** The parameter store is not hosted-only, so
+W1's `void* hosted_` does not move it, and one type means one store size: 192 B
+/ 3 752 B / 55 776 B for the three types today. Every naive merge is a defect.
+phase-426 W1–W4 land first — including its W4, which deletes both C++ stores —
+and W1 then begins from a node with no parameter store. This document's
+"Parameters … does not depend on it" is WITHDRAWN.
+
+**W4's RFC-0047 acceptance criterion is deleted, not weakened.** "One component,
+several named nodes" does not exist: `ComponentNode` holds one `Node` and takes
+one name, RFC-0047 is about per-callback-group tiering inside one node, both
+subnode packages are one node with two groups, and `entity_inventory.rs:604`
+derives `NROS_EXECUTOR_MAX_NODES` from "one constructor is one node NAME". The
+criterion was satisfiable only vacuously.
+
+**W4 gains an acceptance it was missing.**
+`packages/api/nros-cpp/tests/compile/declared_qos_depth.cpp` and its `_probe.cpp`
+sibling are gates, not tests — the lane compiles the first clean, requires the
+second to FAIL, and greps its diagnostic. "Zero `ComponentNode` in the tree" is
+satisfied by a migration that leaves both compiling and proving nothing.
+*Acceptance:* after migration the probe still fails, and still fails with a
+diagnostic naming the declared depth and the topic; the lane's grep moves in the
+same commit.
+
+**W2/W3 gain three signatures.** The member-pointer fold needs four, not one:
+the two subscription forms take NO out-ref, because the arena registers with
+`ctx = self` and produces no C++ object. The blanket claim that "the arena
+stores `&entity`" is true of subscriptions only — timers store the caller's
+context and return an id, which is also why `ComponentNode`'s `timers_` pool
+disappears rather than moving.
+
+**W5 has a type question, not just a behaviour question.**
+`ComponentNode::get_logger()` returns `const void*` (what the `NROS_LOG_*`
+macros consume); `rclcpp::Node::get_logger()` returns a `rclcpp::Logger`. One
+accessor cannot return both, and decision 1 settles only the name it carries.
+
+**Three things need explicit homes** or they vanish with the header: the Zephyr
+placement-`new` shim (`component_node.hpp:78-87`), `check_declared_depth`
+(public, and with no ledger row the parity gate will not notice it go), and
+`declare_parameter<std::vector<T>>`, which has no FFI to forward to.
+`NROS_COMPONENT(Class)` needs none — zero invocations, and the entry
+placement-news the class directly instead of calling its factory.
