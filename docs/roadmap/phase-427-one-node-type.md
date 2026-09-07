@@ -215,8 +215,21 @@ Measured against the tree, three citations here and in phase-417 have drifted:
   `:568-659`.
 * phase-417 W2.b's stated blocker — *"`nros.hpp` does not include
   `component_node.hpp`"* — was fixed by W2.b itself; the include is at
-  `nros.hpp:62`, unconditional. Six places in the tree still assert the
-  opposite.
+  `nros.hpp:62`, unconditional. **SWEPT 2026-09-07.** Re-verified first by
+  compiling a TU including only `<nros/nros.hpp>` and naming `ComponentNode`,
+  `NodeHandle`, `nros::detail::report_component_failure` and the
+  `NROS_SUBSCRIBE` / `NROS_COMPONENT` macros — it compiles, and the same TU
+  against `node.hpp` alone fails, so it is the umbrella supplying them.
+  Corrected in place (superseded text kept, per the docs convention) in
+  `scripts/api-parity.py:199`, `docs/issues/README.md`, issue 0793,
+  `api-parity-ledger/node.json` (`cpp:ComponentNode`),
+  `api-parity-ledger/param.json`, phase-417 W2.b itself, and
+  `archived/0795-*`. The count was NINE sites, not six: the param.json
+  boilerplate carrying the false sentence sits in **six** rows
+  (`declare_parameter`, `declare_parameters`, `get_parameter`,
+  `get_parameter_or`, `get_parameters`, `has_parameter`), of which only the
+  three that also carry the survival argument had been spotted, and the
+  archived issue 0795 repeats it as a "same shape, different header" aside.
 
 ### One thing the design does not address: `shared_from_this`
 

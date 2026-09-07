@@ -103,11 +103,28 @@ Where a real node stops being a tutorial. Each item is independently useful.
   `#if defined(NROS_SYSTEM_PARAM_SERVICES)` (`component_node.hpp:536`), and
   Rust has one. Converge on the executor's, with node facades as views.
   Unfiled twin of 0793 on the C++ side; file it as part of this item.
-* W2.b **[wrapper]** — rclcpp-shaped `declare_parameter<T>` / `get_parameter<T>` /
-  `set_parameter<T>` / `has_parameter` on the node reachable from the umbrella.
-  The implementation exists at `component_node.hpp:568-659`; the blocker is
-  that `nros.hpp` does not include `component_node.hpp` (15 of 46 headers are
-  unreachable from the umbrella).
+* W2.b **[wrapper]** — **LANDED (the include half).** rclcpp-shaped
+  `declare_parameter<T>` / `get_parameter<T>` / `set_parameter<T>` /
+  `has_parameter` on the node reachable from the umbrella. The implementation
+  already existed at `component_node.hpp:568-659`; the blocker was that
+  `nros.hpp` did not include `component_node.hpp` (15 of 46 headers were
+  unreachable from the umbrella). Fixed by an unconditional
+  `#include "nros/component_node.hpp"` at `nros.hpp:62` — freestanding-safe,
+  because the header's `<string>` use is gated on `NROS_CPP_STD` (issue 0112)
+  and its placement-new shim on Zephyr's stub `<new>`. `ComponentNode`,
+  `NodeHandle`, `nros::detail::report_component_failure` and the
+  `NROS_SUBSCRIBE` / `NROS_COMPONENT` macros now all resolve from
+  `<nros/nros.hpp>` alone (verified by compiling a TU that includes nothing
+  else, against a negative control that includes only `node.hpp` and fails).
+  **Two things this did NOT do**, so the item is not closed outright:
+  `set_parameter<T>` is still absent — `ComponentNode` has no setter of any
+  kind, and the only C++ setter is `ParameterServer<Cap>::set_parameter<T>` on
+  the store (`cpp:Node::set_parameter` in the param ledger) — and the methods
+  arrive under `ComponentNode`, not on `nros::Node`, so the six
+  `cpp:Node::*_parameter*` ledger rows stay `gap` on the native bucket. The
+  store-convergence half is W2.a. Stale restatements of the old blocker were
+  swept 2026-09-07 (phase-427): `scripts/api-parity.py`, `docs/issues/README.md`,
+  issue 0793, and seven ledger rows in `node.json` / `param.json`.
 * W2.c **[wrapper]** — `create_service` / `create_client` on the node; `async_send_request`
   returning something the existing `spin_until_future_complete` accepts.
   `nros::Client<S>` and `nros::Future` already exist.

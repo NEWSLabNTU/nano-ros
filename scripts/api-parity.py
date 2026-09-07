@@ -196,9 +196,14 @@ RCLC_SOURCE = (
 # C++ API" silently made every header it omits non-API, and the tool reported
 # that silence as agreement:
 #
-#   * `component_node.hpp` is not included by it at all, so `ComponentNode`,
+#   * `component_node.hpp` was not included by it at all, so `ComponentNode`,
 #     `NodeHandle`, the `bind_*` family and the `create_*_raw` family produced
 #     ZERO rows while holding ~half the C++ `create_timer` call sites.
+#     EXPIRED 2026-09-07 (phase-427): phase-417 W2.b added an unconditional
+#     `#include "nros/component_node.hpp"` at `nros.hpp:62`, so the base TU now
+#     reaches all four families on its own. The history stays because it is the
+#     reason the union exists; see the `component` entry below for what the
+#     separate TU is still FOR now that it no longer supplies anything.
 #   * `std_compat.hpp` IS included, but behind `#ifdef NROS_CPP_STD`, which this
 #     extractor never defined — so its eleven free functions were invisible.
 #
@@ -233,6 +238,21 @@ NATIVE, PORTED = correlate.NATIVE, correlate.PORTED
 CPP_TRANSLATION_UNITS = (
     # label, source, extra clang args, namespace roots, marks on every record
     ("base", '#include "nros/nros.hpp"\n', (), {"nros"}, {}),
+    # MEASURED 2026-09-07 (phase-427) to contribute ZERO records: since
+    # phase-417 W2.b put the header in the umbrella, all 84 of this TU's unique
+    # records are byte-identical to ones the `base` TU already emitted, so the
+    # whole-record de-dup in `ours_cpp` drops every one of them. `ours_cpp`
+    # returns 162 items with this entry and 162 without it — there are NO
+    # duplicate ledger rows, and removing it would change no row today.
+    #
+    # It is kept deliberately, with its job changed from SUPPLYING the surface
+    # to GUARDING it. This TU is now the tripwire for issue 0818's actual
+    # failure mode: if the umbrella include is ever dropped or wrapped in an
+    # `#if`, the base TU silently narrows and a green `--check` reports that
+    # silence as agreement, which is exactly what happened before. With this
+    # entry present the records keep coming from somewhere and the narrowing
+    # shows up as changed rows instead of as nothing at all. It also holds
+    # `component_node.hpp` to compiling standalone. Cost is one clang run.
     ("component", '#include "nros/component_node.hpp"\n', (), {"nros"}, {}),
     ("std", '#include "nros/nros.hpp"\n', ("-DNROS_CPP_STD=1",), {"nros"},
      {"std_only": True}),
