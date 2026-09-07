@@ -389,7 +389,21 @@ RFC-0091 is honest that the codegen cost becomes a pack while the
 with the least design behind it — treat the items as scoped questions, not as
 settled work.
 
-- **W3.1 — complete the C-ABI board surface.** Assessed in depth; the
+- **W3.1 — complete the C-ABI board surface. DECIDED 2026-09-08: GO.** The
+  consumer this is for is real — C-only, MISRA-style, a certified C compiler
+  and no C++ runtime — so the work is worth its cost and the remaining item is
+  to write the runner and BUILD it.
+
+  Two things the decision does not change, and both belong in the plan rather
+  than in a surprise later. The headline benefit is **RMW-conditional**: it
+  drops a C++ toolchain requirement for zenoh and XRCE, and NOT for cyclonedds
+  or uORB, whose RMW libraries are themselves C++ — so the acceptance fixture
+  is pinned to zenoh or it measures a claim it cannot support. And ThreadX
+  still gets no C runner: it has no `run_tiers` either, so there is nothing to
+  copy, and it stays C++-entry-only with the routing REPORTED rather than
+  refused.
+
+  Assessed in depth; the
   CONCLUSION survives and the JUSTIFICATION did not. Correct the reasoning
   before starting, because the original is checkable and wrong.
 
@@ -670,7 +684,22 @@ settled work.
   story is not made cheap by any of this, and a reader planning the work should
   budget for it separately.
 
-- **W3.5 — a reference third language. THE QUESTION, put properly.** This item
+- **W3.5 — a reference third language. DECIDED 2026-09-08: no in-tree
+  reference language, and the split is by WHO.** If the team takes on a
+  language, the team takes on its toolchain and its CI lanes with it — that is
+  what "supporting a language" means here, and the codegen pack is the small
+  half of it. A hobbyist who wants one does not need our permission or our CI:
+  the packs, the manifest and `book/src/internals/codegen-packs.md` are enough
+  to hack a language in downstream, and W3.2/W3.3/W3.4 exist to make that
+  possible without a fork.
+
+  So the compile-only middle option below is NOT taken either. It would buy a
+  standing CI cost to test a property nothing shipping depends on, in a
+  language nobody on the team supports — the worst of both halves. The
+  question stays answerable later if a real consumer appears; what follows is
+  the evidence it would be answered from.
+
+  **(original framing, kept — it is the evidence, not the decision)** This item
   was always the question rather than the answer, and the rest of Track 3 has
   now changed what the question costs. Recorded here so whoever owns the CI
   budget can decide on evidence.
