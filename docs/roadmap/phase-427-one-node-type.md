@@ -131,6 +131,51 @@ lane. `result.hpp` still carries ZERO capability gates and still parses under
 the ThreadX `-nostdinc++` shim — the rename must not introduce a gate, and the
 header lane is what proves it. This subsumes W6's first item.
 
+### W8 LANDED 2026-09-07 — with two corrections this section had wrong
+
+Both are measurements, and both change what the acceptance could say.
+
+**1. The template cannot be called `Result`.** "One template, one name" is not
+expressible in C++: an identifier in a scope names a class, a class template, or
+an alias, never two. Measured on gcc 12.3 and clang 14 —
+`template <typename T = void> class Result; Result f();` is *"invalid use of
+template-name 'Result' without an argument list"* (c++14) and *"deduced class
+type 'Result' in function return type"* (c++17); a class and a template sharing
+the name is *"class template 'Result' redeclared as non-template"*; an alias and
+a template sharing it is *"redeclared as different kind of entity"*.
+
+So the STRUCTURE landed in full — one template, the value-less case IS its
+`void` specialization, `Result` is an alias for that specialization, two
+unrelated types are gone — and only the template's spelling differs: it is
+**`ResultOf<T>`**. `Result` kept the bare name because 1100+ call sites and the
+whole public API write it for the void case; requiring `Result<>` there would
+have been a flag day for a spelling that reads worse. RFC-0089's section is
+corrected in place.
+
+`Expected<T>` survives for one release as a `[[deprecated]]` **class** template
+that converts from `ResultOf<T>`, not as a deprecated alias template: measured,
+`[[deprecated]]` on an alias template warns on gcc and is SILENT on clang, both
+standards, and a deprecation half our users never see is just an alias.
+
+**2. `rclcpp::init(argc, argv)` cannot be the probe.** It returns `void` here —
+deliberately, by this section's own ported-channel rule — so a TU discarding it
+compiles clean and would have made the gate vacuous. The case the attribute
+actually catches is the WIDENING: `nros::init()` returns a `Result` where
+`rclcpp::init()` returns nothing. `result_nodiscard_probe.cpp` discards both
+halves of the channel and the lane requires two `unused-result` diagnostics.
+
+What it caught on its first run, which is the argument for it: `rclcpp::shutdown()`
+was discarding `nros::shutdown()`'s `Result` and answering `true`
+unconditionally — a fini that failed reported success.
+
+`NROS_NODISCARD` lives in `result.hpp` beside the types it marks (nothing else
+is marked, and every other header reaches that one). It gates no member;
+`::nros::Result` and `::nros::ResultOf<int>` joined
+`check-cpp-capability-layout`'s type list, so `sizeof` invariance is measured
+rather than asserted, hosted and freestanding. The header still carries its
+original two `NROS_CPP_STD` sites and no third, and still parses under the
+ThreadX `-nostdinc++` shim.
+
 ## Measured before starting (2026-09-07) — two findings that change the order
 
 Both are measurements, not readings. Each contradicts something this document

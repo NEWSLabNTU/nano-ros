@@ -1263,13 +1263,13 @@ inline Result create_node_on(Node& out, void* executor_handle, const char* name,
 }
 
 /// Phase 123.B.4 — value-returning factory. Wraps `create_node`
-/// in the `Expected<Node>` envelope so users can write
+/// in the `ResultOf<Node>` envelope so users can write
 /// `auto n = nros::make_node("foo");` in the rclcpp-style.
-inline Expected<Node> make_node(const char* name, const char* ns = nullptr) {
+inline ResultOf<Node> make_node(const char* name, const char* ns = nullptr) {
     Node n;
     Result r = create_node(n, name, ns);
-    if (!r.ok()) return Expected<Node>::error(r);
-    return Expected<Node>::ok(::std::move(n));
+    if (!r.ok()) return ResultOf<Node>::error(r);
+    return ResultOf<Node>::ok(::std::move(n));
 }
 
 // -- Executor::create_node implementation (requires full Node definition) --

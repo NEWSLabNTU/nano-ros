@@ -211,14 +211,14 @@ template <typename M> class Publisher {
     /// Loan a writable slot of at least `requested_len` bytes. The returned
     /// `Loan` is RAII: call `commit(actual_len)` to send, `discard()` to
     /// abandon, or let it drop (auto-discard).
-    Expected<Loan> loan(size_t requested_len) {
-        if (!initialized_) return Expected<Loan>::error(Result(ErrorCode::NotInitialized));
+    ResultOf<Loan> loan(size_t requested_len) {
+        if (!initialized_) return ResultOf<Loan>::error(Result(ErrorCode::NotInitialized));
         uint8_t* buf = nullptr;
         size_t cap = 0;
         void* token = nullptr;
         nros_cpp_ret_t ret = nros_cpp_publisher_loan(storage_, requested_len, &buf, &cap, &token);
-        if (ret != 0) return Expected<Loan>::error(Result(ret));
-        return Expected<Loan>::ok(Loan{storage_, buf, cap, token});
+        if (ret != 0) return ResultOf<Loan>::error(Result(ret));
+        return ResultOf<Loan>::ok(Loan{storage_, buf, cap, token});
     }
 
     /// Get the topic name.
@@ -349,17 +349,17 @@ Result Node::create_publisher(Publisher<M>& out, const char* topic, const QoS& q
 }
 
 /// Phase 123.B.4 — value-returning publisher factory. Wraps the
-/// out-param `Node::create_publisher` in `Expected<Publisher<M>>`
+/// out-param `Node::create_publisher` in `ResultOf<Publisher<M>>`
 /// so users can write
 /// `auto pub = nros::create_publisher<Int32>(node, "/chatter");`
 /// in the rclcpp-style.
 template <typename M>
-inline Expected<Publisher<M>> create_publisher(Node& node, const char* topic,
+inline ResultOf<Publisher<M>> create_publisher(Node& node, const char* topic,
                                                const QoS& qos = QoS::default_profile()) {
     Publisher<M> p;
     Result r = node.create_publisher<M>(p, topic, qos);
-    if (!r.ok()) return Expected<Publisher<M>>::error(r);
-    return Expected<Publisher<M>>::ok(std::move(p));
+    if (!r.ok()) return ResultOf<Publisher<M>>::error(r);
+    return ResultOf<Publisher<M>>::ok(std::move(p));
 }
 
 } // namespace nros

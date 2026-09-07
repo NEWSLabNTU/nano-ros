@@ -219,16 +219,16 @@ template <typename S> class Client {
     /// inside callbacks. Mirrors `rclcpp::ClientBase::service_is_ready`
     /// but with a tri-state result instead of collapsing
     /// "don't know" and "no" into the same `false`.
-    Expected<bool> service_is_ready() const {
-        if (!initialized_) return Expected<bool>::error(ErrorCode::NotInitialized);
+    ResultOf<bool> service_is_ready() const {
+        if (!initialized_) return ResultOf<bool>::error(ErrorCode::NotInitialized);
         int out = -1;
         nros_cpp_ret_t ret =
             nros_cpp_service_client_server_available(const_cast<uint8_t*>(storage_), &out);
         // A failed CALL and a backend that cannot ANSWER are different facts,
         // and the old `int` form reported both as `-1`. Keep them apart.
-        if (ret != 0) return Expected<bool>::error(static_cast<ErrorCode>(ret));
-        if (out < 0) return Expected<bool>::error(ErrorCode::Unsupported);
-        return Expected<bool>::ok(out != 0);
+        if (ret != 0) return ResultOf<bool>::error(static_cast<ErrorCode>(ret));
+        if (out < 0) return ResultOf<bool>::error(ErrorCode::Unsupported);
+        return ResultOf<bool>::ok(out != 0);
     }
 
     /// @deprecated Use `service_is_ready()`.
@@ -237,7 +237,7 @@ template <typename S> class Client {
     /// answer. It cannot distinguish a failed call from an unsupported backend,
     /// which is why it is replaced rather than kept.
     [[deprecated("Client::server_available is deprecated; use "
-                 "Client::service_is_ready, which returns Expected<bool>")]] int
+                 "Client::service_is_ready, which returns ResultOf<bool>")]] int
     server_available() const {
         auto r = service_is_ready();
         if (!r.ok()) return -1;

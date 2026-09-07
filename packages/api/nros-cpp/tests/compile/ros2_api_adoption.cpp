@@ -117,7 +117,14 @@ class PortedNode : public rclcpp::Node {
         (void)n;
         (void)is_empty;
 
-        publisher_->publish(message);
+        // `(void)`, where upstream's file writes the bare call: ours
+        // WIDENS the return type — `rclcpp::Publisher::publish` returns
+        // void, `nros::Publisher::publish` returns `Result` — and
+        // phase-427 W8 put `NROS_NODISCARD` on that type. So a ported
+        // file has to say what it wants done with the failure. That is
+        // the porting cost the attribute exists to charge, made visible
+        // here rather than left as a silent drop.
+        (void)publisher_->publish(message);
     }
 
     // W1.a — the nested-pointer spellings, as members.

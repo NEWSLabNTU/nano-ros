@@ -127,8 +127,9 @@ struct PumpStats {
 class PubSubBridge {
   public:
     /// Default-construct an empty (invalid) bridge. Required so
-    /// `Expected<PubSubBridge>::Expected()` can compile; users
-    /// should not construct one directly — use the factory below.
+    /// `ResultOf<PubSubBridge>` can hold one — the error case
+    /// default-constructs its value member; users should not
+    /// construct one directly — use the factory below.
     PubSubBridge() = default;
 
     explicit PubSubBridge(nros_pubsub_bridge_t handle) : handle_(handle) {}
@@ -180,7 +181,7 @@ class PubSubBridge {
 /// Construct a raw pubsub bridge. `origin` enables the dedup window
 /// (pass the source backend's RMW name); empty string skips dedup
 /// for single-direction bridges.
-inline Expected<PubSubBridge> pubsub_raw(MultiExecutor& exec, const std::string& src_node,
+inline ResultOf<PubSubBridge> pubsub_raw(MultiExecutor& exec, const std::string& src_node,
                                          const std::string& src_rmw, const std::string& src_topic,
                                          const std::string& dst_node, const std::string& dst_rmw,
                                          const std::string& dst_topic, const std::string& type_name,
@@ -192,9 +193,9 @@ inline Expected<PubSubBridge> pubsub_raw(MultiExecutor& exec, const std::string&
         nros_pubsub_bridge_create(exec.handle(), &src, &dst, type_name.c_str(), type_hash.c_str(),
                                   origin.empty() ? nullptr : origin.c_str(), &handle);
     if (rc != 0) {
-        return Expected<PubSubBridge>::error(static_cast<ErrorCode>(rc));
+        return ResultOf<PubSubBridge>::error(static_cast<ErrorCode>(rc));
     }
-    return Expected<PubSubBridge>::ok(PubSubBridge(handle));
+    return ResultOf<PubSubBridge>::ok(PubSubBridge(handle));
 }
 
 } // namespace bridge

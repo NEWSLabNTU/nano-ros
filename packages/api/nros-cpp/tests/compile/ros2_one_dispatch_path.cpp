@@ -129,7 +129,9 @@ class MixedSpinNode : public rclcpp::Node {
         timer_ = this->create_wall_timer(std::chrono::milliseconds(500), [this]() {
             CounterMsg msg;
             msg.data = static_cast<int32_t>(++ticks_);
-            publisher_->publish(msg);
+            // `(void)`: our `publish` returns a `NROS_NODISCARD Result`
+            // where upstream's returns void (phase-427 W8).
+            (void)publisher_->publish(msg);
         });
 
         // Capturing lambda: the native callback-style `create_subscription`

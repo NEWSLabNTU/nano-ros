@@ -18,6 +18,59 @@
 #include <cstdio>
 #endif
 
+/// `NROS_NODISCARD` — `[[nodiscard]]` where the compiler has it, and nothing
+/// where it does not.
+///
+/// WHERE IT LIVES, and why here. The only things this tree marks are the two
+/// result types below, and `result.hpp` is the lowest C++ header we own — it
+/// includes `<cstdint>` and `<utility>` and nothing of ours, and every other
+/// `nros/*.hpp` reaches it. A header of its own would be one more file and one
+/// more include for one macro.
+///
+/// It is NOT a capability gate. It asks the COMPILER what attribute spelling it
+/// has, not the target what library it ships, and it never gates a MEMBER — so
+/// `sizeof(Result)` and `sizeof(ResultOf<T>)` are the same number in every
+/// configuration. That is the rule `scripts/check-cpp-capability-layout.sh`
+/// measures, both types are named in its list, and it is why phase-427 W8
+/// forbids this header a third capability gate. The two it has stay two:
+/// `<cstdio>` for the default `NROS_TRY_LOG`, and the body of that macro.
+///
+/// The spelling is measured, not assumed (gcc 12.3 and clang 14, `-std=c++14`,
+/// which is the standard the `cpp` lane compiles these headers with):
+///
+///   * `[[nodiscard]]` on a CLASS works in C++14 mode on both compilers and
+///     fires `-Wunused-result` at a discarding call site. GCC says nothing
+///     about it being a C++17 attribute; clang reports
+///     `-Wc++17-attribute-extensions`, but only under `-pedantic`.
+///   * `__attribute__((warn_unused_result))` on a CLASS is a clang-only
+///     spelling. GCC 12 rejects it — "warn_unused_result attribute only
+///     applies to function types" `[-Wattributes]` — and the class then
+///     carries no attribute at all, which is the silent-nothing outcome this
+///     macro exists to avoid.
+///
+/// So: the GNU spelling on clang below C++17, where it costs no `-pedantic`
+/// diagnostic and clang honours it on types; `[[nodiscard]]` everywhere else
+/// the compiler advertises it; empty otherwise.
+///
+/// The outer `#ifndef` is there so a toolchain that already defines the name is
+/// not redefined out from under itself. It is not an invitation: defining it
+/// away is a decision to let failed operations be dropped in silence, and the
+/// `cpp` lane compiles a TU that proves the attribute reaches callers.
+#ifndef NROS_NODISCARD
+#if defined(__has_cpp_attribute)
+#if __has_cpp_attribute(nodiscard) >= 201603L
+#if defined(__clang__) && __cplusplus < 201703L
+#define NROS_NODISCARD __attribute__((warn_unused_result))
+#else
+#define NROS_NODISCARD [[nodiscard]]
+#endif
+#endif
+#endif
+#endif
+#ifndef NROS_NODISCARD
+#define NROS_NODISCARD
+#endif
+
 namespace nros {
 
 /// Error codes returned by nros-cpp functions.
@@ -83,18 +136,55 @@ static_assert(static_cast<int32_t>(ErrorCode::NotFound) == -4 &&
                   static_cast<int32_t>(ErrorCode::Unsupported) == -16,
               "ErrorCode numbering must match nros_ret_t (issue #229)");
 
-/// Result type for fallible operations.
+/// The result of a fallible operation: `Result` when it produces nothing,
+/// `ResultOf<T>` when it produces a value. This is the whole error channel —
+/// RFC-0018 forbids exceptions, so nothing here throws, and RFC-0089
+/// §"The error channel, settled" is the rule for which one an API picks.
+/// Use the NROS_TRY macro for early return on error.
 ///
-/// This replaces exceptions in freestanding C++. Use the NROS_TRY macro
-/// for early return on error.
-class Result {
+/// ONE TEMPLATE, TWO SPELLINGS — and the second spelling is forced by the
+/// language rather than chosen. RFC-0089 asks for one template named `Result`,
+/// the value-less case as `Result<void>`, and `Result` as its alias. C++
+/// cannot express that: an identifier in a scope is a class, a class template,
+/// or an alias, never two of those. Measured on gcc 12.3 and clang 14, every
+/// route is ill-formed —
+///
+///     template <typename T = void> class Result;  Result f();
+///         "invalid use of template-name 'Result' without an argument list"
+///         under -std=c++14, and "deduced class type 'Result' in function
+///         return type" under -std=c++17, where CTAD gets close enough to
+///         change the message and no closer.
+///     template <typename T> class Result;  class Result { };
+///         "class template 'Result' redeclared as non-template"
+///     template <typename T> class Result;  using Result = Result<void>;
+///         "redeclared as different kind of entity"
+///
+/// So the STRUCTURE the RFC asks for is here in full — one template, the
+/// value-less case IS its `void` specialization, `Result` is an alias for that
+/// specialization, and there are no longer two unrelated types to learn. Only
+/// the template's own spelling differs, because `Result` is what 1100+ call
+/// sites and the entire public API already write for the void case, and a bare
+/// name is the one worth keeping bare. phase-427 W8.
+///
+/// The primary template is DECLARED here and defined below `Result`, because
+/// the value-less specialization is what `ResultOf<T>::error(const Result&)`
+/// names. `NROS_NODISCARD` sits on the two DEFINITIONS and not on this
+/// declaration: repeating it would be legal and redundant, and a reader looking
+/// at a class body should be able to see whether its result may be dropped.
+template <typename T> class ResultOf;
+
+/// `Result` — a fallible operation that produces no value.
+///
+/// `NROS_NODISCARD`: a discarded result is a failure nobody was told about,
+/// which is the one outcome this channel exists to prevent.
+template <> class NROS_NODISCARD ResultOf<void> {
   public:
     /// Default-construct a success.
-    constexpr Result() : code_(ErrorCode::Ok) {}
+    constexpr ResultOf() : code_(ErrorCode::Ok) {}
     /// Construct from a typed code.
-    constexpr Result(ErrorCode code) : code_(code) {}
+    constexpr ResultOf(ErrorCode code) : code_(code) {}
     /// Construct from a raw FFI return value (`int32_t`).
-    constexpr Result(int32_t raw) : code_(static_cast<ErrorCode>(raw)) {}
+    constexpr ResultOf(int32_t raw) : code_(static_cast<ErrorCode>(raw)) {}
 
     /// Returns true if the operation succeeded.
     bool ok() const { return code_ == ErrorCode::Ok; }
@@ -109,11 +199,15 @@ class Result {
     int32_t raw() const { return static_cast<int32_t>(code_); }
 
     /// Named constructors.
-    static constexpr Result success() { return Result(ErrorCode::Ok); }
+    static constexpr ResultOf success() { return ResultOf(ErrorCode::Ok); }
 
   private:
     ErrorCode code_;
 };
+
+/// The name every caller writes for the value-less case, and the name this
+/// header's macros expand to.
+using Result = ResultOf<void>;
 
 /// Early-return macro for error propagation (replaces try/catch).
 ///
@@ -174,7 +268,9 @@ class Result {
         }                                                                                          \
     } while (0)
 
-/// Phase 123.B.4 — templated value-or-error wrapper.
+/// `ResultOf<T>` — a fallible operation that produces a value (phase 123.B.4;
+/// this was `Expected<T>` until phase-427 W8 folded both halves of the error
+/// channel into one template).
 ///
 /// Lets factory functions return constructed entities by value
 /// instead of forcing the out-param + Result idiom. Trade-off:
@@ -195,21 +291,21 @@ class Result {
 /// zero-cost API for embedded / strictly-no-alloc code; `make()`
 /// is a hosted-friendly convenience that closes the rclcpp /
 /// rclrs idiom gap.
-template <typename T> class Expected {
+template <typename T> class NROS_NODISCARD ResultOf {
   public:
-    static Expected ok(T value) {
-        Expected e;
+    static ResultOf ok(T value) {
+        ResultOf e;
         e.ok_ = true;
         e.value_ = ::std::move(value);
         return e;
     }
-    static Expected error(ErrorCode code) {
-        Expected e;
+    static ResultOf error(ErrorCode code) {
+        ResultOf e;
         e.ok_ = false;
         e.error_ = code;
         return e;
     }
-    static Expected error(const Result& r) { return error(r.code()); }
+    static ResultOf error(const Result& r) { return error(r.code()); }
 
     bool ok() const { return ok_; }
     explicit operator bool() const { return ok_; }
@@ -222,11 +318,33 @@ template <typename T> class Expected {
     Result error_as_result() const { return Result(error_); }
 
   private:
-    Expected() : ok_(false), error_(ErrorCode::Error), value_() {}
+    ResultOf() : ok_(false), error_(ErrorCode::Error), value_() {}
 
     bool ok_;
     ErrorCode error_;
     T value_;
+};
+
+/// `Expected<T>` — the old spelling of `ResultOf<T>`, kept for one release.
+///
+/// A DERIVED CLASS rather than the alias template the obvious reading asks
+/// for, and the reason is measured: `[[deprecated]]` on an alias template
+/// warns on gcc 12.3 and is SILENT on clang 14 (both -std=c++14 and c++17),
+/// so half our users would be told nothing until the name vanished. The same
+/// attribute on a CLASS template warns on both. A deprecation nobody is told
+/// about is just an alias, so the shape follows the diagnostic.
+///
+/// It converts from `ResultOf<T>` in both directions a caller needs: the
+/// inherited `ok()`/`error()` factories return the base, which converts here,
+/// and an `Expected<T>` slices back to the base wherever one is expected.
+template <typename T>
+class NROS_NODISCARD [[deprecated("nros::Expected<T> is now nros::ResultOf<T>; one template "
+                                  "carries the whole error channel (phase-427 W8, RFC-0089). "
+                                  "The old spelling goes away after one release.")]] Expected
+    : public ResultOf<T> {
+  public:
+    Expected(const ResultOf<T>& r) : ResultOf<T>(r) {}
+    Expected(ResultOf<T>&& r) : ResultOf<T>(::std::move(r)) {}
 };
 
 } // namespace nros
