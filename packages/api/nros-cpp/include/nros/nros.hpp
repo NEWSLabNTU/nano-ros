@@ -49,6 +49,11 @@
 #include "nros/polling_action_client.hpp"
 #include "nros/polling_subscription.hpp"
 #include "nros/parameter.hpp"
+// phase-426 W4 — the ONE parameter facade both node types wear. Forwards a
+// node's declare/get/set/has onto the executor's store across the FFI, so
+// `rclcpp::Node` and `nros::ComponentNode` cannot disagree about what a
+// parameter is. Freestanding: `<string>`/`<vector>` behind `NROS_CPP_STD`.
+#include "nros/node_parameters.hpp"
 #include "nros/tick_ctx.hpp"
 #include "nros/lifecycle.hpp"
 // phase-417 W2.b — the component model carries the rclcpp-shaped, value-returning
@@ -383,69 +388,21 @@ namespace rclcpp {
 
 namespace detail {
 
-#if defined(NROS_SYSTEM_PARAM_SERVICES)
-// --- launch-seed adoption (issue 0745) --------------------------------------
+// phase-426 W4 — `adopt_executor_param_seed` IS GONE, along with the store it
+// existed to reconcile.
 //
-// The generated entry seeds `nros_cpp_declare_param` into the EXECUTOR's store
-// before any user code runs. `rclcpp::Node`'s store is a different object, so
-// without reading the seed back a `declare_parameter("period", 0.15)` would
-// return 0.15 while launch said 0.03 — a silently dropped configuration, which
-// is exactly what RFC-0089's rule forbids compiling.
+// It re-read every launch-seeded parameter out of the EXECUTOR's store and
+// copied it over the code default, because `rclcpp::Node`'s own
+// `nros::ParameterServer` was a DIFFERENT object and would otherwise have
+// answered 0.15 while launch said 0.03 (issue 0745). `nros::ComponentNode`
+// carried the same dispatch written a second time, in C++17 `if constexpr`,
+// and both headers flagged the duplication against themselves.
 //
-// Compiled only when the bringup declares `param_services`, which is also what
-// links `nros_cpp_get_param_*`. Where it is absent there is no executor store,
-// so there is no seed to drop.
-//
-// KNOWN DUPLICATION, flagged rather than hidden: this is a C++14 restatement of
-// `ComponentNode::adopt_launch_seed_` (`component_node.hpp:536-565`), which
-// spells the same dispatch with C++17 `if constexpr`. There should be ONE
-// helper; hoisting it is tracked with phase-417 W2.a (issue 0793, "one
-// parameter store").
-
-inline void adopt_executor_param_seed(void* executor, const char* name, bool& def) {
-    if (executor == nullptr) return;
-    bool v = false;
-    if (nros_cpp_get_param_bool(executor, name, &v) == NROS_CPP_RET_OK) def = v;
-}
-
-template <typename T>
-inline typename ::std::enable_if<::std::is_floating_point<T>::value>::type
-adopt_executor_param_seed(void* executor, const char* name, T& def) {
-    if (executor == nullptr) return;
-    double v = 0.0;
-    if (nros_cpp_get_param_double(executor, name, &v) == NROS_CPP_RET_OK) {
-        def = static_cast<T>(v);
-    }
-}
-
-template <typename T>
-inline
-    typename ::std::enable_if<::std::is_integral<T>::value && !::std::is_same<T, bool>::value>::type
-    adopt_executor_param_seed(void* executor, const char* name, T& def) {
-    if (executor == nullptr) return;
-    int64_t v = 0;
-    if (nros_cpp_get_param_integer(executor, name, &v) == NROS_CPP_RET_OK) {
-        def = static_cast<T>(v);
-    }
-}
-
-inline void adopt_executor_param_seed(void* executor, const char* name, ::std::string& def) {
-    if (executor == nullptr) return;
-    char buf[256] = {0};
-    if (nros_cpp_get_param_string(executor, name, buf, sizeof(buf)) == NROS_CPP_RET_OK) {
-        def = buf;
-    }
-}
-
-/// Everything else — `const char*`, `nros::Seq<…>`, `std::vector<…>`. The
-/// executor store's FFI carries four scalar types and no more, so there is no
-/// seed channel for these and the code default stands. Silent by necessity
-/// rather than by choice: a compile error here would refuse a parameter type
-/// launch cannot seed in the first place.
-template <typename T>
-inline typename ::std::enable_if<!::std::is_arithmetic<T>::value>::type
-adopt_executor_param_seed(void*, const char*, T&) {}
-#endif // NROS_SYSTEM_PARAM_SERVICES
+// With one store there is nothing to reconcile: `declare_parameter` declares
+// into the store the seed was written to, finds the name already present, and
+// reads back the seeded value. The adoption is the FFI's `ALREADY_EXISTS`
+// path, not a helper — and it is now one path rather than two that could
+// disagree.
 
 } // namespace detail
 
@@ -607,51 +564,85 @@ inline ::std::shared_ptr<Timer> Node::create_wall_timer(::std::chrono::duration<
 
 // -- parameters ---------------------------------------------------------------
 //
-// What the envelope does NOT include is silently ignoring a launch override:
-// where the executor's store exists (`NROS_SYSTEM_PARAM_SERVICES` — the bringup
-// declared `param_services`, which is also what links the FFI),
-// `declare_parameter` adopts the seeded value over the code default, exactly as
-// `ComponentNode` does for issue 0745. Without that a launch parameter would be
-// dead weight, which is the "silently drops configuration" the rule forbids.
+// Forwarders onto THE parameter store — the `nros_params::ParameterServer` the
+// EXECUTOR owns, reached through `nros/node_parameters.hpp`. There is no other
+// one any more.
+//
+// What changed in phase-426 W4, and why it is not a detail: these used to
+// forward to an inline `nros::ParameterServer<NROS_RCLCPP_MAX_PARAMS>` member
+// on the hosted block — a second store, node-local, which the six
+// `rcl_interfaces/srv/*` servers could not read. So a parameter declared here
+// was invisible to `ros2 param get`, a sibling node did not share it, and the
+// launch seed had to be copied across by a helper because the two stores could
+// not be the same object. The member is deleted; the seam is one FFI call;
+// `ros2 param get <node> <name>` sees what `declare_parameter` wrote. Issue
+// 0793 / RFC-0089 §"Parameters".
+//
+// ADOPT-BOUNDED still, and the envelope is now about TYPES rather than scope:
+// bool / int / int64_t / double reach the store, `std::string` and
+// `std::vector<T>` do under `NROS_CPP_STD`, and rclcpp's `ParameterDescriptor`
+// / `ignore_override` / callback arguments remain absent (the
+// compile-time-options rule). The WIRE half of the acceptance — that the six
+// services answer per node FQN — is phase-426 W3/W6.
+//
+// Where the image declares no `param_services` capability there is no store at
+// all, and every call answers `ErrorCode::Unsupported`. `rclcpp::Node` has no
+// `ok()` flag to record that on, so `declare_parameter` returns the code
+// default; the loud half is `nros::ComponentNode`, whose facade makes it
+// boot-fatal.
 
 /// `rclcpp::Node::declare_parameter<T>(name, default)` — declare, then read
 /// back, returning the value in effect.
 ///
 /// Re-declaring is not an error: a launch-seeded parameter is DECLARED before
 /// user code runs, and upstream's contract is that `declare` adopts the
-/// override. On any other failure the code default is returned.
+/// override. That adoption is now the store's own `ALREADY_EXISTS` answer
+/// followed by the read-back below, rather than a helper that copied a value
+/// between two stores. On any other failure the code default is returned.
 template <typename T> inline T Node::declare_parameter(const char* name, T default_value) {
-#if defined(NROS_SYSTEM_PARAM_SERVICES)
-    ::rclcpp::detail::adopt_executor_param_seed(this->executor_handle(), name, default_value);
-#endif
-    Result r = this->hosted().params.template declare_parameter<T>(name, default_value);
+    const ::nros_cpp_node_t* h = this->ffi_handle();
+    Result r = ::nros::detail::node_param_declare(h, name, default_value);
     if (!r.ok() && r.raw() != NROS_RET_ALREADY_EXISTS) {
         return default_value;
     }
     T out = T();
-    if (!this->hosted().params.template get_parameter<T>(name, out).ok()) {
+    if (!::nros::detail::node_param_get(h, name, out).ok()) {
         return default_value;
     }
     return out;
 }
 
 template <typename T> inline bool Node::get_parameter(const char* name, T& out) const {
-    return this->hosted().params.template get_parameter<T>(name, out).ok();
+    return ::nros::detail::node_param_get(this->ffi_handle(), name, out).ok();
 }
 
 template <typename T> inline T Node::get_parameter(const char* name) const {
     T out = T();
-    (void)this->hosted().params.template get_parameter<T>(name, out);
+    (void)::nros::detail::node_param_get(this->ffi_handle(), name, out);
     return out;
 }
 
+/// phase-426 W4 — `set_parameter` now goes through the SAME
+/// `ParameterServer::apply` a remote `ros2 param set` does, so a read-only
+/// parameter is refused here exactly as it is on the wire, and the value a
+/// service reports back is the value this wrote.
 template <typename T> inline Result Node::set_parameter(const char* name, T value) {
-    return this->hosted().params.template set_parameter<T>(name, value);
+    return ::nros::detail::node_param_set(this->ffi_handle(), name, value);
 }
 
 inline bool Node::has_parameter(const char* name) const {
-    return this->hosted().params.has_parameter(name);
+    return ::nros::detail::node_param_has(this->ffi_handle(), name);
 }
+
+// `parameters()` IS GONE (phase-426 W4). It handed out a reference to the node's
+// own `nros::ParameterServer`, described as the escape hatch for "the C-API
+// helpers that take an `nros_parameter_server_t*`" — and no such helper
+// existed: `nros_executor_register_parameter_services` takes the executor,
+// never a standalone store, which the ledger row for `cpp:ParameterServer` had
+// already recorded. With the member deleted there is nothing to return, and
+// nothing that took it. A node's parameters are reached through
+// `declare_parameter` / `get_parameter` / `set_parameter`, which now name the
+// store the services actually read.
 
 // -- services and clients -----------------------------------------------------
 //

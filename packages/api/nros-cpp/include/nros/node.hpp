@@ -53,9 +53,14 @@
 #include "nros/graph.hpp"
 // Phase 273 (RFC-0047) — callback-group token (value type, no heap).
 #include "nros/callback_group.hpp"
-// phase-427 W1 — the merged node's HOSTED block holds a `ParameterServer`, and
-// this header now declares the parameter facade that reads it. `parameter.hpp`
-// depends on `result.hpp` and `<nros/parameter.h>` only, so there is no cycle.
+// phase-427 W1 declared the parameter facade here; phase-426 W4 took away the
+// store it read. The hosted block no longer holds a `ParameterServer` — the
+// facade forwards to the EXECUTOR's store — so this header needs
+// `parameter.hpp` for nothing of its own. It is kept because `nros::Parameter`
+// / `nros::ParameterServer` remain a public surface a consumer reaches through
+// the node header (`examples/native/cpp/parameters` uses the class directly),
+// and `parameter.hpp` depends on `result.hpp` and `<nros/parameter.h>` only,
+// so there is no cycle.
 #include "nros/parameter.hpp"
 
 // `<chrono>` requires the EXPLICIT opt-in, not `__has_include`, and that is
@@ -170,13 +175,17 @@
 // exactly the reason issue 0332 records: a hosted STL include a freestanding
 // board cannot satisfy, reachable because a probe answered wrong.
 
-/// Capacity of the merged node's HOSTED parameter store. Inline storage inside
-/// the heap-allocated hosted block, so a freestanding image pays nothing for it
-/// — but a hosted one pays it per node, so override per build rather than
-/// raising the default. (Moved here from `nros.hpp` with the class, phase-427.)
-#ifndef NROS_RCLCPP_MAX_PARAMS
-#define NROS_RCLCPP_MAX_PARAMS 16
-#endif
+// `NROS_RCLCPP_MAX_PARAMS` IS GONE (phase-426 W4). It sized an inline
+// `nros::ParameterServer` on the merged node's hosted block — a SECOND
+// parameter store, node-local, which `ros2 param get` could not see and a
+// sibling node did not share. The member is deleted and the facade forwards to
+// the executor's store (`nros/node_parameters.hpp`), so there is no per-node
+// arena left for a number to bound.
+//
+// The image's one parameter arena is now `NROS_MAX_PARAMETERS` on
+// `nros-params` (default 32, a build knob), and it is shared across every node
+// on the executor rather than multiplied by the node count. Do not reintroduce
+// a per-facade capacity: a second number is how a second store starts.
 
 #ifdef NROS_RMW_CYCLONEDDS
 extern "C" int32_t nros_rmw_cyclonedds_register(void);
@@ -277,11 +286,6 @@ struct NodeHosted : NodeHostedBase {
     /// entity must outlive the node even if the caller drops the `shared_ptr`
     /// we handed back.
     ::std::vector<::std::shared_ptr<void>> owned_entities;
-
-    /// The node-local parameter store the hosted `declare_parameter<T>` /
-    /// `get_parameter<T>` facade reads. NODE-LOCAL: `ros2 param list` reads the
-    /// EXECUTOR's store, which is Rust-side (RFC-0089 decision 3, issue 0793).
-    ParameterServer<NROS_RCLCPP_MAX_PARAMS> params;
 
     static void destroy_fn(void* p) {
         delete static_cast<NodeHosted*>(static_cast<NodeHostedBase*>(p));
@@ -632,11 +636,18 @@ class Node {
 
     // -- parameters (bodies in `nros.hpp`) ----------------------------------
     //
-    // Forwarders onto `nros::ParameterServer`, which is a thin C++ face over
-    // the `nros_parameter_*` C store. ADOPT-BOUNDED, and the envelope is the
-    // store's SCOPE: this server is NODE-LOCAL, so `ros2 param list` does not
-    // see it and a sibling node does not share it. Converging on the executor's
-    // store is issue 0793 / phase-426, and it is Rust-side work.
+    // Forwarders onto THE parameter store — the `nros_params::ParameterServer`
+    // the EXECUTOR owns, reached across the FFI by `nros/node_parameters.hpp`.
+    // Declared here with the class and DEFINED in `nros.hpp` beside the other
+    // out-of-line members, which is where the reasoning lives.
+    //
+    // Until phase-426 W4 these read an inline `ParameterServer` member on the
+    // hosted block instead: a second store, node-local, that the six
+    // `rcl_interfaces/srv/*` servers could not read — so a parameter declared
+    // through this facade was invisible to `ros2 param get` and a sibling node
+    // did not share it. That member is gone, and with it the last thing that
+    // made `NROS_CPP_NODE_HOSTED` decide whether a node HAS parameters rather
+    // than whether it can spell them.
 
     /// `rclcpp::Node::declare_parameter<T>(name, default)`.
     template <typename T> T declare_parameter(const char* name, T default_value = T());
@@ -683,14 +694,6 @@ class Node {
         this->hosted().owned_entities.push_back(cell);
     }
 
-    /// The node-local parameter store, for the C-API helpers that take one
-    /// (`nros_parameter_server_t*`) — e.g. ROS 2 parameter-service
-    /// registration.
-    ParameterServer<NROS_RCLCPP_MAX_PARAMS>& parameters() { return this->hosted().params; }
-    /// Const overload of [`parameters`].
-    const ParameterServer<NROS_RCLCPP_MAX_PARAMS>& parameters() const {
-        return this->hosted().params;
-    }
 #endif // NROS_CPP_NODE_HOSTED
 
     /// Create a new node.
