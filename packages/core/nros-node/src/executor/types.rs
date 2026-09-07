@@ -407,6 +407,59 @@ impl<'a> ExecutorConfig<'a> {
     }
 
     /// Set the node name.
+    ///
+    /// # Deprecated — a node is named at [`Executor::create_node`], not here
+    ///
+    /// phase-427 W10 (RFC-0089 "Context and `init`, settled"). This setter is
+    /// the last place where the executor IS the node it was configured with,
+    /// and that is the shape "one node type" removes: a `Context` says WHERE
+    /// the image is connected, the executor owns the SESSION, and each
+    /// [`Node`](crate::executor::NodeHandle) has a NAME. One executor already
+    /// holds several named nodes (RFC-0047), so a name on the session config
+    /// can only ever describe the first of them.
+    ///
+    /// Replacement:
+    ///
+    /// ```ignore
+    /// let context = nros::Context::default_from_env()?;
+    /// let mut executor = context.create_executor()?;      // no name here
+    /// let mut node = executor.create_node("talker")?;     // the name lives here
+    /// ```
+    ///
+    /// The FIELD ([`ExecutorConfig::node_name`](Self::node_name)) is not
+    /// deprecated: it still names the transport session for diagnostics, and
+    /// `Executor::open` still reads it. Only the builder spelling — which is
+    /// how a caller ASKS for the old model — is on the way out. Scheduled for
+    /// removal one release after phase-427.
+    ///
+    /// ## The attribute is ARMED BY A FEATURE — `deprecate-node-name-setter`
+    ///
+    /// The same shape `nros-log`'s `deprecate-legacy-names` had for the
+    /// `nros_info!` → `log_info!` rename, and for the same reason: this
+    /// workspace sets `warnings = "deny"` (root `Cargo.toml`,
+    /// `[workspace.lints.rust]`), so an always-armed `#[deprecated]` is not a
+    /// warning here — it is 65 hard compile errors across 47 files, in tests,
+    /// benches, boards, bridges and example leaves that have not migrated yet.
+    /// Landing that as `#[allow(deprecated)]` at every one of those sites would
+    /// suppress the signal in exactly the code the deprecation is aimed at.
+    ///
+    /// So: build with `--features nros-node/deprecate-node-name-setter` (or
+    /// `nros/deprecate-node-name-setter`) to turn every remaining call site
+    /// into a diagnostic naming `create_node`. That is the migration tool, and
+    /// it is what the in-tree sweep will run against. When the sweep is done
+    /// the feature and this setter go together.
+    ///
+    /// [`Executor::create_node`]: crate::executor::Executor::create_node
+    #[cfg_attr(
+        feature = "deprecate-node-name-setter",
+        deprecated(
+            since = "0.5.0",
+            note = "name the node at `Executor::create_node(name)` -- one executor holds \
+                    several named nodes (RFC-0047), so a name on the session config can only \
+                    describe the first. Open with `Context::create_executor()` / \
+                    `create_executor_in(backing)`."
+        )
+    )]
     pub const fn node_name(mut self, name: &'a str) -> Self {
         self.node_name = name;
         self
@@ -684,6 +737,61 @@ pub enum NodeError {
     /// exhausted; the two tables are sized independently of `MAX_CBS`.
     ShutdownCallbacksFull,
 }
+
+// phase-427 W10 — `Display` + `core::error::Error`, so a ported rclrs `main`
+// can keep ONE error type.
+//
+// RFC-0089 "Context and `init`, settled" says the port's error difference
+// (`InitError` / `NodeError` where upstream has `RclrsError`) is "invisible
+// under `?` and loud under a `match`". That was only half true: `?` into a
+// `Box<dyn Error>` needs `Error`, `Error` needs `Display`, and this enum had
+// neither — so the ported `main`'s SIGNATURE became an extra edit, which is
+// the opposite of invisible. `InitError` already carries both (`init.rs`);
+// this is its sibling catching up.
+//
+// `Transport` renders its payload with `{:?}`: `TransportError` (nros-rmw)
+// has no `Display` of its own, and inventing a prose rendering for a
+// backend-supplied error here would put the wording in the wrong crate.
+impl core::fmt::Display for NodeError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            NodeError::Transport(e) => write!(f, "transport error: {e:?}"),
+            NodeError::NameTooLong => f.write_str("node name exceeds 64 bytes"),
+            NodeError::Serialization => f.write_str("CDR serialization failed"),
+            NodeError::Deserialization => f.write_str("CDR deserialization failed"),
+            NodeError::BufferTooSmall => f.write_str("buffer too small for message"),
+            NodeError::ActionCreationFailed => f.write_str("action server/client creation failed"),
+            NodeError::ServiceRequestFailed => f.write_str("service request failed"),
+            NodeError::ServiceReplyFailed => f.write_str("service reply failed"),
+            NodeError::Timeout => f.write_str("operation timed out"),
+            NodeError::NotInitialized => f.write_str("a required subsystem is not initialized"),
+            NodeError::RequestInFlight => f.write_str("a request is already in flight"),
+            NodeError::NoSchedContextSlot => {
+                f.write_str("no scheduling-context slot left (NROS_EXECUTOR_MAX_SC)")
+            }
+            NodeError::InvalidSchedContextBinding => {
+                f.write_str("invalid scheduling-context binding")
+            }
+            NodeError::NodeTableFull => {
+                f.write_str("the executor's node table is full (NROS_EXECUTOR_MAX_NODES)")
+            }
+            NodeError::ExecutorFull => {
+                f.write_str("the executor's callback table is full (NROS_EXECUTOR_MAX_CBS)")
+            }
+            NodeError::BackendMismatch => {
+                f.write_str("the requested RMW backend is not this executor's session")
+            }
+            NodeError::ShutdownCallbacksFull => f.write_str(
+                "the shutdown-hook table for this phase is full (NROS_EXECUTOR_MAX_SHUTDOWN_CBS)",
+            ),
+        }
+    }
+}
+
+// `core::error::Error` — `std::error::Error` is a re-export of it since Rust
+// 1.81, so this is the same trait and needs no feature. Same reasoning as
+// `nros::InitError`'s impl.
+impl core::error::Error for NodeError {}
 
 impl From<TransportError> for NodeError {
     fn from(err: TransportError) -> Self {
