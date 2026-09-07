@@ -4,8 +4,8 @@
 //! Parameters are stored in a fixed-size array with compile-time capacity.
 
 use crate::types::{
-    MAX_PARAM_NAME_LEN, Parameter, ParameterDescriptor, ParameterType, ParameterValue,
-    SetParameterResult,
+    MAX_PARAM_NAME_LEN, NodeFlags, NodeKey, Parameter, ParameterDescriptor, ParameterType,
+    ParameterValue, SetParameterResult,
 };
 use heapless::String;
 
@@ -19,6 +19,10 @@ use crate::types::MAX_PARAMETERS;
 /// [`ParameterTable`] / [`ParameterStorage`], never this.
 #[derive(Debug, Clone)]
 pub(crate) struct ParameterEntry {
+    /// phase-426 W1 — which node declared it. The slot arena is shared (one
+    /// fixed table per executor, no per-node allocation); this is what keeps
+    /// two nodes' identically-named parameters apart inside it.
+    node: NodeKey,
     /// The parameter (name + value)
     param: Parameter,
     /// Optional descriptor with constraints
@@ -81,11 +85,11 @@ impl core::fmt::Debug for ParameterTable<'_> {
 /// `alloc`) one allocation made once at start-up:
 ///
 /// ```
-/// use nros_params::{ParameterServer, ParameterStorage, ParameterValue};
+/// use nros_params::{NodeKey, ParameterServer, ParameterStorage, ParameterValue};
 ///
 /// let mut storage: ParameterStorage<8> = ParameterStorage::new();
 /// let mut server = ParameterServer::new_in(storage.as_table());
-/// assert!(server.declare("max_speed", ParameterValue::Double(1.0)));
+/// assert!(server.declare(NodeKey::PRIMARY, "max_speed", ParameterValue::Double(1.0)));
 /// ```
 ///
 /// # Why this type exists at all — issue 0756
@@ -186,34 +190,54 @@ impl<const N: usize> ParameterStorage<N> {
 /// length is the capacity. [`ParameterStorage`] is the usual way to produce
 /// one, defaulting to the build-time `MAX_PARAMETERS` slots.
 ///
+/// # Keyed by node — phase-426 W1
+///
+/// Every per-parameter method takes a [`NodeKey`] first. The slot arena is
+/// shared (one table per executor), but a name is only ever looked up within
+/// one node, so two nodes composed onto one executor (RFC-0047) hold
+/// independent values for the same name — which is what upstream does, where
+/// each node owns a table and a set of six services.
+///
 /// # Example
 ///
 /// ```
-/// use nros_params::{ParameterServer, ParameterStorage, ParameterValue};
+/// use nros_params::{NodeKey, ParameterServer, ParameterStorage, ParameterValue};
 ///
 /// let mut storage = ParameterStorage::<8>::new();
 /// let mut server = ParameterServer::new_in(storage.as_table());
+/// let talker = NodeKey::new(0);
+/// let listener = NodeKey::new(1);
 ///
 /// // Declare a parameter with initial value
-/// server.declare("max_speed", ParameterValue::Double(1.0));
+/// server.declare(talker, "rate", ParameterValue::Double(1.0));
+/// server.declare(listener, "rate", ParameterValue::Double(2.0));
 ///
 /// // Get parameter value
-/// if let Some(value) = server.get("max_speed") {
-///     println!("max_speed = {:?}", value.as_double());
-/// }
+/// assert_eq!(
+///     server.get(talker, "rate").and_then(|v| v.as_double()),
+///     Some(1.0)
+/// );
+/// assert_eq!(
+///     server.get(listener, "rate").and_then(|v| v.as_double()),
+///     Some(2.0)
+/// );
 ///
 /// // Set parameter value
-/// server.set("max_speed", ParameterValue::Double(2.0));
+/// server.set(talker, "rate", ParameterValue::Double(3.0));
 /// ```
 pub struct ParameterServer<'s> {
     /// Borrowed parameter storage
     table: ParameterTable<'s>,
-    /// Number of parameters currently stored
+    /// Number of parameters currently stored, across every node.
     count: usize,
-    /// May a wire-facing set ([`apply`](Self::apply)) DECLARE a name it does
-    /// not hold? Off by default, as upstream (`allow_undeclared_parameters`
-    /// in rclcpp's `NodeOptions`, `allow_undeclared` in rclrs) — issue 1151.
-    allow_undeclared: bool,
+    /// May a wire-facing set ([`apply`](Self::apply)) DECLARE a name the node
+    /// does not hold? Off by default, as upstream
+    /// (`allow_undeclared_parameters` in rclcpp's `NodeOptions`,
+    /// `allow_undeclared` in rclrs) — issue 1151.
+    ///
+    /// phase-426 W1 — PER NODE, because upstream's is a node option. One node
+    /// opting in must not decide what a remote set may do to its sibling.
+    allow_undeclared: NodeFlags,
 }
 
 impl<'s> ParameterServer<'s> {
@@ -232,53 +256,78 @@ impl<'s> ParameterServer<'s> {
         Self {
             table,
             count,
-            allow_undeclared: false,
+            allow_undeclared: NodeFlags::new(),
         }
     }
 
-    /// Let a wire-facing set ([`apply`](Self::apply)) create a parameter that
-    /// was never declared. Default `false`: a remote set on a misspelled
+    /// Let a wire-facing set ([`apply`](Self::apply)) create a parameter
+    /// `node` never declared. Default `false`: a remote set on a misspelled
     /// name used to report success and create the misspelling (issue 1151);
     /// now it is refused with a reason unless this is switched on, as
     /// upstream.
-    pub fn set_allow_undeclared(&mut self, allow: bool) {
-        self.allow_undeclared = allow;
+    ///
+    /// phase-426 W1 — scoped to `node`. Switching it on for `/talker` leaves
+    /// `/listener` refusing undeclared names.
+    pub fn set_allow_undeclared(&mut self, node: NodeKey, allow: bool) {
+        self.allow_undeclared.set(node, allow);
     }
 
-    /// Whether [`apply`](Self::apply) may declare an unknown name.
-    pub fn allows_undeclared(&self) -> bool {
-        self.allow_undeclared
+    /// Whether [`apply`](Self::apply) may declare an unknown name on `node`.
+    pub fn allows_undeclared(&self, node: NodeKey) -> bool {
+        self.allow_undeclared.get(node)
     }
 
-    /// Get the number of parameters stored
-    pub fn len(&self) -> usize {
+    /// Get the number of parameters `node` has stored.
+    pub fn len(&self, node: NodeKey) -> usize {
+        self.entries_of(node).count()
+    }
+
+    /// Check if `node` has no parameters
+    pub fn is_empty(&self, node: NodeKey) -> bool {
+        self.len(node) == 0
+    }
+
+    /// Parameters held across EVERY node — how much of the shared arena is in
+    /// use. [`len`](Self::len) is the per-node question; this one is the
+    /// capacity question's other half.
+    pub fn total_len(&self) -> usize {
         self.count
-    }
-
-    /// Check if the server has no parameters
-    pub fn is_empty(&self) -> bool {
-        self.count == 0
     }
 
     /// Capacity of the borrowed table.
     ///
     /// phase-382 W2' — this is the TABLE's length, not `MAX_PARAMETERS`. The
     /// build-time knob only picks the default size of a [`ParameterStorage`].
+    ///
+    /// phase-426 W1 — the arena is SHARED across nodes, so this is not a
+    /// per-node budget: `MAX_PARAMETERS` bounds the image, not each node.
     pub fn capacity(&self) -> usize {
         self.table.capacity()
     }
 
-    /// Check if the server is at capacity
+    /// Check if the server is at capacity (across every node)
     pub fn is_full(&self) -> bool {
         self.count >= self.table.capacity()
     }
 
-    /// Find the index of a parameter by name
-    fn find_index(&self, name: &str) -> Option<usize> {
+    /// Occupied slots belonging to `node`.
+    fn entries_of(&self, node: NodeKey) -> impl Iterator<Item = &ParameterEntry> {
+        self.table
+            .entries
+            .iter()
+            .filter_map(|slot| slot.as_ref())
+            .filter(move |e| e.node == node)
+    }
+
+    /// Find the index of `node`'s parameter by name.
+    ///
+    /// phase-426 W1 — the node is part of the key, so a sibling's identically
+    /// named parameter is simply not found here.
+    fn find_index(&self, node: NodeKey, name: &str) -> Option<usize> {
         self.table.entries.iter().position(|entry| {
             entry
                 .as_ref()
-                .map(|e| e.param.name.as_str() == name)
+                .map(|e| e.node == node && e.param.name.as_str() == name)
                 .unwrap_or(false)
         })
     }
@@ -288,25 +337,26 @@ impl<'s> ParameterServer<'s> {
         self.table.entries.iter().position(|entry| entry.is_none())
     }
 
-    /// Declare a new parameter with a value
+    /// Declare a new parameter with a value on `node`
     ///
     /// If the parameter already exists, this does nothing and returns false.
     /// Returns true if the parameter was declared successfully.
-    pub fn declare(&mut self, name: &str, value: ParameterValue) -> bool {
-        self.declare_with_descriptor(name, value, None)
+    pub fn declare(&mut self, node: NodeKey, name: &str, value: ParameterValue) -> bool {
+        self.declare_with_descriptor(node, name, value, None)
     }
 
-    /// Declare a new parameter with value and descriptor
+    /// Declare a new parameter with value and descriptor on `node`
     ///
     /// The descriptor provides metadata like description, constraints, and read-only flag.
     pub fn declare_with_descriptor(
         &mut self,
+        node: NodeKey,
         name: &str,
         value: ParameterValue,
         descriptor: Option<ParameterDescriptor>,
     ) -> bool {
         // Check if already exists
-        if self.find_index(name).is_some() {
+        if self.find_index(node, name).is_some() {
             return false;
         }
 
@@ -328,7 +378,11 @@ impl<'s> ParameterServer<'s> {
             None => return false,
         };
 
-        self.table.entries[slot] = Some(ParameterEntry { param, descriptor });
+        self.table.entries[slot] = Some(ParameterEntry {
+            node,
+            param,
+            descriptor,
+        });
         self.count += 1;
         true
     }
@@ -366,13 +420,18 @@ impl<'s> ParameterServer<'s> {
     /// Dry-run of [`apply`](Self::apply): the verdict a wire-facing set would
     /// get, without changing anything. `SetParametersAtomically` runs this
     /// over the whole batch before applying any of it.
-    pub fn check_apply(&self, name: &str, value: &ParameterValue) -> SetParameterResult {
+    pub fn check_apply(
+        &self,
+        node: NodeKey,
+        name: &str,
+        value: &ParameterValue,
+    ) -> SetParameterResult {
         match self
-            .find_index(name)
+            .find_index(node, name)
             .and_then(|idx| self.table.entries[idx].as_ref())
         {
             Some(entry) => Self::check_set_existing(entry, value),
-            None if !self.allow_undeclared => SetParameterResult::Undeclared,
+            None if !self.allows_undeclared(node) => SetParameterResult::Undeclared,
             None if self.is_full() => SetParameterResult::StorageFull,
             None if name.len() > MAX_PARAM_NAME_LEN => SetParameterResult::StorageFull,
             None => SetParameterResult::Success,
@@ -384,18 +443,24 @@ impl<'s> ParameterServer<'s> {
     ///
     /// An existing parameter is set through [`set`](Self::set). An unknown
     /// name is [`Undeclared`](SetParameterResult::Undeclared) unless
-    /// [`set_allow_undeclared`](Self::set_allow_undeclared) was switched on,
-    /// in which case it is declared (or `StorageFull`). Every service handler
-    /// goes through here so the by-value oracle, the streaming path and the
-    /// atomic pre-check cannot disagree about what "undeclared" means.
-    pub fn apply(&mut self, name: &str, value: ParameterValue) -> SetParameterResult {
-        let verdict = self.check_apply(name, &value);
+    /// [`set_allow_undeclared`](Self::set_allow_undeclared) was switched on
+    /// FOR THAT NODE, in which case it is declared (or `StorageFull`). Every
+    /// service handler and every facade writer goes through here so the
+    /// by-value oracle, the streaming path, the atomic pre-check and the C
+    /// setters cannot disagree about what "undeclared" means.
+    pub fn apply(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        value: ParameterValue,
+    ) -> SetParameterResult {
+        let verdict = self.check_apply(node, name, &value);
         if !verdict.is_success() {
             return verdict;
         }
-        if self.find_index(name).is_some() {
-            self.set(name, value)
-        } else if self.declare(name, value) {
+        if self.find_index(node, name).is_some() {
+            self.set(node, name, value)
+        } else if self.declare(node, name, value) {
             SetParameterResult::Success
         } else {
             SetParameterResult::StorageFull
@@ -403,22 +468,22 @@ impl<'s> ParameterServer<'s> {
     }
 
     /// Get a parameter value by name
-    pub fn get(&self, name: &str) -> Option<&ParameterValue> {
-        self.find_index(name)
+    pub fn get(&self, node: NodeKey, name: &str) -> Option<&ParameterValue> {
+        self.find_index(node, name)
             .and_then(|idx| self.table.entries[idx].as_ref())
             .map(|entry| &entry.param.value)
     }
 
     /// Get a parameter by name
-    pub fn get_parameter(&self, name: &str) -> Option<&Parameter> {
-        self.find_index(name)
+    pub fn get_parameter(&self, node: NodeKey, name: &str) -> Option<&Parameter> {
+        self.find_index(node, name)
             .and_then(|idx| self.table.entries[idx].as_ref())
             .map(|entry| &entry.param)
     }
 
     /// Get a parameter descriptor by name
-    pub fn get_descriptor(&self, name: &str) -> Option<&ParameterDescriptor> {
-        self.find_index(name)
+    pub fn get_descriptor(&self, node: NodeKey, name: &str) -> Option<&ParameterDescriptor> {
+        self.find_index(node, name)
             .and_then(|idx| self.table.entries[idx].as_ref())
             .and_then(|entry| entry.descriptor.as_ref())
     }
@@ -426,8 +491,8 @@ impl<'s> ParameterServer<'s> {
     /// Set a parameter value
     ///
     /// Returns the result of the set operation.
-    pub fn set(&mut self, name: &str, value: ParameterValue) -> SetParameterResult {
-        let idx = match self.find_index(name) {
+    pub fn set(&mut self, node: NodeKey, name: &str, value: ParameterValue) -> SetParameterResult {
+        let idx = match self.find_index(node, name) {
             Some(idx) => idx,
             None => return SetParameterResult::NotFound,
         };
@@ -452,8 +517,8 @@ impl<'s> ParameterServer<'s> {
     ///
     /// This bypasses the type check to allow optional parameters to be unset.
     /// Returns an error if the parameter is read-only.
-    pub fn unset(&mut self, name: &str) -> SetParameterResult {
-        let idx = match self.find_index(name) {
+    pub fn unset(&mut self, node: NodeKey, name: &str) -> SetParameterResult {
+        let idx = match self.find_index(node, name) {
             Some(idx) => idx,
             None => return SetParameterResult::NotFound,
         };
@@ -480,11 +545,17 @@ impl<'s> ParameterServer<'s> {
     /// If the parameter exists, sets its value. Otherwise, declares it. This
     /// ignores `allow_undeclared` on purpose: the flag governs what a REMOTE
     /// set may do; a Rust caller naming this method has opted in by naming
-    /// it. Nothing on the wire path reaches here (issue 1151).
-    pub fn set_or_declare(&mut self, name: &str, value: ParameterValue) -> SetParameterResult {
-        if self.find_index(name).is_some() {
-            self.set(name, value)
-        } else if self.declare(name, value) {
+    /// it. Nothing on the wire path — and, since phase-426 W2, nothing on the
+    /// C or C++ facade path either — reaches here (issue 1151).
+    pub fn set_or_declare(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        value: ParameterValue,
+    ) -> SetParameterResult {
+        if self.find_index(node, name).is_some() {
+            self.set(node, name, value)
+        } else if self.declare(node, name, value) {
             SetParameterResult::Success
         } else {
             SetParameterResult::StorageFull
@@ -492,15 +563,15 @@ impl<'s> ParameterServer<'s> {
     }
 
     /// Check if a parameter exists
-    pub fn has(&self, name: &str) -> bool {
-        self.find_index(name).is_some()
+    pub fn has(&self, node: NodeKey, name: &str) -> bool {
+        self.find_index(node, name).is_some()
     }
 
     /// Remove a parameter
     ///
     /// Returns true if the parameter was removed.
-    pub fn remove(&mut self, name: &str) -> bool {
-        if let Some(idx) = self.find_index(name) {
+    pub fn remove(&mut self, node: NodeKey, name: &str) -> bool {
+        if let Some(idx) = self.find_index(node, name) {
             self.table.entries[idx] = None;
             self.count -= 1;
             true
@@ -510,68 +581,69 @@ impl<'s> ParameterServer<'s> {
     }
 
     /// Get the type of a parameter
-    pub fn get_type(&self, name: &str) -> Option<ParameterType> {
-        self.get(name).map(|v| v.param_type())
+    pub fn get_type(&self, node: NodeKey, name: &str) -> Option<ParameterType> {
+        self.get(node, name).map(|v| v.param_type())
     }
 
-    /// Iterate over all parameters
-    pub fn iter(&self) -> impl Iterator<Item = &Parameter> {
-        self.table
-            .entries
-            .iter()
-            .filter_map(|entry| entry.as_ref().map(|e| &e.param))
+    /// Iterate over `node`'s parameters
+    pub fn iter(&self, node: NodeKey) -> impl Iterator<Item = &Parameter> {
+        self.entries_of(node).map(|e| &e.param)
     }
 
-    /// List all parameter names
-    pub fn list_names(&self) -> impl Iterator<Item = &str> {
-        self.iter().map(|p| p.name.as_str())
+    /// List `node`'s parameter names
+    pub fn list_names(&self, node: NodeKey) -> impl Iterator<Item = &str> {
+        self.iter(node).map(|p| p.name.as_str())
     }
 
-    /// List parameter names with a given prefix
-    pub fn list_with_prefix<'a>(&'a self, prefix: &'a str) -> impl Iterator<Item = &'a str> {
-        self.list_names()
+    /// List `node`'s parameter names with a given prefix
+    pub fn list_with_prefix<'a>(
+        &'a self,
+        node: NodeKey,
+        prefix: &'a str,
+    ) -> impl Iterator<Item = &'a str> {
+        self.list_names(node)
             .filter(move |name| name.starts_with(prefix))
     }
 
     /// Get a bool parameter value
-    pub fn get_bool(&self, name: &str) -> Option<bool> {
-        self.get(name).and_then(|v| v.as_bool())
+    pub fn get_bool(&self, node: NodeKey, name: &str) -> Option<bool> {
+        self.get(node, name).and_then(|v| v.as_bool())
     }
 
     /// Get an integer parameter value
-    pub fn get_integer(&self, name: &str) -> Option<i64> {
-        self.get(name).and_then(|v| v.as_integer())
+    pub fn get_integer(&self, node: NodeKey, name: &str) -> Option<i64> {
+        self.get(node, name).and_then(|v| v.as_integer())
     }
 
     /// Get a double parameter value
-    pub fn get_double(&self, name: &str) -> Option<f64> {
-        self.get(name).and_then(|v| v.as_double())
+    pub fn get_double(&self, node: NodeKey, name: &str) -> Option<f64> {
+        self.get(node, name).and_then(|v| v.as_double())
     }
 
     /// Get a string parameter value
-    pub fn get_string(&self, name: &str) -> Option<&str> {
-        self.get(name).and_then(|v| v.as_string())
+    pub fn get_string(&self, node: NodeKey, name: &str) -> Option<&str> {
+        self.get(node, name).and_then(|v| v.as_string())
     }
 
     /// Set a bool parameter value
-    pub fn set_bool(&mut self, name: &str, value: bool) -> SetParameterResult {
-        self.set(name, ParameterValue::Bool(value))
+    pub fn set_bool(&mut self, node: NodeKey, name: &str, value: bool) -> SetParameterResult {
+        self.set(node, name, ParameterValue::Bool(value))
     }
 
     /// Set an integer parameter value
-    pub fn set_integer(&mut self, name: &str, value: i64) -> SetParameterResult {
-        self.set(name, ParameterValue::Integer(value))
+    pub fn set_integer(&mut self, node: NodeKey, name: &str, value: i64) -> SetParameterResult {
+        self.set(node, name, ParameterValue::Integer(value))
     }
 
     /// Set a double parameter value
-    pub fn set_double(&mut self, name: &str, value: f64) -> SetParameterResult {
-        self.set(name, ParameterValue::Double(value))
+    pub fn set_double(&mut self, node: NodeKey, name: &str, value: f64) -> SetParameterResult {
+        self.set(node, name, ParameterValue::Double(value))
     }
 
     /// Set a string parameter value
-    pub fn set_string(&mut self, name: &str, value: &str) -> SetParameterResult {
+    pub fn set_string(&mut self, node: NodeKey, name: &str, value: &str) -> SetParameterResult {
         match ParameterValue::from_string(value) {
-            Some(v) => self.set(name, v),
+            Some(v) => self.set(node, name, v),
             None => SetParameterResult::StorageFull, // String too long
         }
     }
@@ -581,18 +653,20 @@ impl<'s> ParameterServer<'s> {
     /// This is a more comprehensive declaration method used by the typed parameter API.
     ///
     /// # Arguments
+    /// - `node`: The node the parameter belongs to.
     /// - `descriptor`: The metadata for the parameter.
     /// - `initial_value`: An optional initial value for the parameter. If `None`,
     ///   the parameter will be initialized to `ParameterValue::NotSet`.
     pub fn declare_parameter(
         &mut self,
+        node: NodeKey,
         descriptor: ParameterDescriptor,
         initial_value: Option<&ParameterValue>,
     ) -> Result<(), SetParameterResult> {
         let name = descriptor.name.as_str();
 
         // Check if already exists
-        if self.find_index(name).is_some() {
+        if self.find_index(node, name).is_some() {
             return Err(SetParameterResult::TypeMismatch); // Indicates already declared
         }
 
@@ -612,6 +686,7 @@ impl<'s> ParameterServer<'s> {
         let param = Parameter::new(name, param_value).ok_or(SetParameterResult::StorageFull)?; // name too long
 
         self.table.entries[slot] = Some(ParameterEntry {
+            node,
             param,
             descriptor: Some(descriptor),
         });
@@ -623,22 +698,30 @@ impl<'s> ParameterServer<'s> {
     ///
     /// Returns `Some(ParameterValue)` if the parameter exists, `None` otherwise.
     /// The `ParameterValue` is cloned to avoid lifetime issues with `&mut self`.
-    pub fn get_parameter_value(&self, name: &str) -> Option<ParameterValue> {
-        self.get(name).cloned()
+    pub fn get_parameter_value(&self, node: NodeKey, name: &str) -> Option<ParameterValue> {
+        self.get(node, name).cloned()
     }
 
     /// Set the value of a parameter.
     ///
     /// Returns `SetParameterResult::Success` on success, or an error if the parameter
     /// is read-only, type mismatches, or is out of range.
-    pub fn set_parameter_value(&mut self, name: &str, value: ParameterValue) -> SetParameterResult {
-        self.set(name, value)
+    pub fn set_parameter_value(
+        &mut self,
+        node: NodeKey,
+        name: &str,
+        value: ParameterValue,
+    ) -> SetParameterResult {
+        self.set(node, name, value)
     }
 }
 
 /// Builder for declaring parameters with a fluent API
 pub struct LegacyParameterBuilder<'a, 's> {
     server: &'a mut ParameterServer<'s>,
+    /// phase-426 W1 — the node this declaration belongs to, fixed when the
+    /// builder is made so no chained call can lose it.
+    node: NodeKey,
     name: String<MAX_PARAM_NAME_LEN>,
     value: ParameterValue,
     descriptor: Option<ParameterDescriptor>,
@@ -648,6 +731,7 @@ impl<'a, 's> LegacyParameterBuilder<'a, 's> {
     /// Create a new parameter builder
     pub fn new(
         server: &'a mut ParameterServer<'s>,
+        node: NodeKey,
         name: &str,
         value: ParameterValue,
     ) -> Option<Self> {
@@ -655,6 +739,7 @@ impl<'a, 's> LegacyParameterBuilder<'a, 's> {
         n.push_str(name).ok()?;
         Some(Self {
             server,
+            node,
             name: n,
             value,
             descriptor: None,
@@ -716,15 +801,160 @@ impl<'a, 's> LegacyParameterBuilder<'a, 's> {
 
     /// Declare the parameter
     pub fn declare(self) -> bool {
-        self.server
-            .declare_with_descriptor(self.name.as_str(), self.value, self.descriptor)
+        self.server.declare_with_descriptor(
+            self.node,
+            self.name.as_str(),
+            self.value,
+            self.descriptor,
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// phase-426 W1 — the node these single-node tests are about.
+    const NODE: NodeKey = NodeKey::PRIMARY;
     use crate::types::{ParameterDescriptor, ParameterType};
+
+    // ── phase-426 W1: the store is keyed by NODE ──
+
+    /// Two nodes composed onto one executor (RFC-0047) declaring the same
+    /// name. Before W1 the table was flat, so the second `declare` returned
+    /// `false` (already exists) and both nodes read ONE value: `/talker`'s
+    /// `rate` and `/listener`'s `rate` were the same parameter.
+    #[test]
+    fn two_nodes_hold_independent_values_for_one_name() {
+        let talker = NodeKey::new(0);
+        let listener = NodeKey::new(1);
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+
+        assert!(server.declare(talker, "rate", ParameterValue::Integer(10)));
+        // The pre-W1 collision: a flat table refuses this as a duplicate.
+        assert!(
+            server.declare(listener, "rate", ParameterValue::Integer(20)),
+            "a sibling node's identical name is a DIFFERENT parameter"
+        );
+
+        assert_eq!(server.get_integer(talker, "rate"), Some(10));
+        assert_eq!(server.get_integer(listener, "rate"), Some(20));
+
+        // A set on one is invisible to the other.
+        assert_eq!(
+            server.set(talker, "rate", ParameterValue::Integer(11)),
+            SetParameterResult::Success
+        );
+        assert_eq!(server.get_integer(talker, "rate"), Some(11));
+        assert_eq!(server.get_integer(listener, "rate"), Some(20));
+
+        // And each node enumerates only its own.
+        assert_eq!(server.len(talker), 1);
+        assert_eq!(server.len(listener), 1);
+        assert_eq!(server.total_len(), 2, "one shared arena, two entries");
+    }
+
+    /// A name one node declared is not a name its sibling has.
+    #[test]
+    fn a_sibling_cannot_read_or_write_a_name_it_never_declared() {
+        let a = NodeKey::new(0);
+        let b = NodeKey::new(3);
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        assert!(server.declare(a, "gain", ParameterValue::Double(1.0)));
+
+        assert!(!server.has(b, "gain"));
+        assert!(server.get(b, "gain").is_none());
+        assert_eq!(
+            server.set(b, "gain", ParameterValue::Double(2.0)),
+            SetParameterResult::NotFound
+        );
+        assert_eq!(
+            server.check_apply(b, "gain", &ParameterValue::Double(2.0)),
+            SetParameterResult::Undeclared
+        );
+        // Untouched.
+        assert_eq!(server.get_double(a, "gain"), Some(1.0));
+    }
+
+    /// `allow_undeclared` is a NODE option upstream, so one node opting in
+    /// must not decide what a remote set may do to its sibling (issue 1151 +
+    /// phase-426 W1).
+    #[test]
+    fn allow_undeclared_does_not_leak_to_a_sibling_node() {
+        let permissive = NodeKey::new(1);
+        let strict = NodeKey::new(2);
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        server.set_allow_undeclared(permissive, true);
+
+        assert!(server.allows_undeclared(permissive));
+        assert!(!server.allows_undeclared(strict));
+
+        assert_eq!(
+            server.apply(permissive, "fresh", ParameterValue::Integer(7)),
+            SetParameterResult::Success
+        );
+        assert_eq!(
+            server.apply(strict, "fresh", ParameterValue::Integer(7)),
+            SetParameterResult::Undeclared,
+            "the sibling still refuses a name IT never declared"
+        );
+        assert_eq!(server.get_integer(permissive, "fresh"), Some(7));
+        assert!(!server.has(strict, "fresh"));
+    }
+
+    /// The flag reaches every key in a `u8`'s range, not just the low ones —
+    /// the bitmask is `[u64; 4]` precisely so there is no ceiling to find at
+    /// runtime.
+    #[test]
+    fn the_allow_undeclared_flag_covers_the_whole_key_space() {
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        for raw in [0u8, 63, 64, 127, 128, 191, 192, 255] {
+            let node = NodeKey::new(raw);
+            assert!(!server.allows_undeclared(node), "raw {raw}");
+            server.set_allow_undeclared(node, true);
+            assert!(server.allows_undeclared(node), "raw {raw}");
+            server.set_allow_undeclared(node, false);
+            assert!(!server.allows_undeclared(node), "raw {raw}");
+        }
+    }
+
+    /// The arena is shared, so capacity is an IMAGE bound, and the node that
+    /// runs into it is told `StorageFull` rather than being silently given a
+    /// sibling's slot.
+    #[test]
+    fn the_slot_arena_is_shared_across_nodes() {
+        let a = NodeKey::new(0);
+        let b = NodeKey::new(1);
+        let mut storage = ParameterStorage::<2>::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        assert!(server.declare(a, "one", ParameterValue::Integer(1)));
+        assert!(server.declare(b, "one", ParameterValue::Integer(2)));
+        assert!(server.is_full());
+        assert!(!server.declare(a, "two", ParameterValue::Integer(3)));
+        assert_eq!(server.total_len(), 2);
+        assert_eq!(server.len(a), 1);
+        assert_eq!(server.len(b), 1);
+    }
+
+    /// `remove` takes the right node's slot.
+    #[test]
+    fn remove_is_keyed_by_node() {
+        let a = NodeKey::new(0);
+        let b = NodeKey::new(1);
+        let mut storage: ParameterStorage = ParameterStorage::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        assert!(server.declare(a, "x", ParameterValue::Integer(1)));
+        assert!(server.declare(b, "x", ParameterValue::Integer(2)));
+
+        assert!(server.remove(a, "x"));
+        assert!(!server.has(a, "x"));
+        assert_eq!(server.get_integer(b, "x"), Some(2));
+        assert_eq!(server.total_len(), 1);
+    }
 
     // ── issue 1150: step reaches `set`, and declare validates its range ──
 
@@ -735,18 +965,23 @@ mod tests {
         let desc = ParameterDescriptor::new("rate", ParameterType::Integer)
             .unwrap()
             .with_integer_range(0, 100, 10);
-        assert!(server.declare_with_descriptor("rate", ParameterValue::Integer(20), Some(desc)));
+        assert!(server.declare_with_descriptor(
+            NODE,
+            "rate",
+            ParameterValue::Integer(20),
+            Some(desc)
+        ));
 
         assert_eq!(
-            server.set("rate", ParameterValue::Integer(30)),
+            server.set(NODE, "rate", ParameterValue::Integer(30)),
             SetParameterResult::Success
         );
         // In range by min/max, off the lattice: the old `contains` said yes.
         assert_eq!(
-            server.set("rate", ParameterValue::Integer(35)),
+            server.set(NODE, "rate", ParameterValue::Integer(35)),
             SetParameterResult::OutOfRange
         );
-        assert_eq!(server.get_integer("rate"), Some(30));
+        assert_eq!(server.get_integer(NODE, "rate"), Some(30));
     }
 
     #[test]
@@ -756,14 +991,22 @@ mod tests {
         let desc = ParameterDescriptor::new("gain", ParameterType::Double)
             .unwrap()
             .with_float_range(0.0, 1.0, 0.25);
-        assert!(server.declare_with_descriptor("gain", ParameterValue::Double(0.5), Some(desc)));
+        assert!(server.declare_with_descriptor(
+            NODE,
+            "gain",
+            ParameterValue::Double(0.5),
+            Some(desc)
+        ));
 
-        assert_eq!(server.set_double("gain", 0.75), SetParameterResult::Success);
         assert_eq!(
-            server.set_double("gain", 0.6),
+            server.set_double(NODE, "gain", 0.75),
+            SetParameterResult::Success
+        );
+        assert_eq!(
+            server.set_double(NODE, "gain", 0.6),
             SetParameterResult::OutOfRange
         );
-        assert_eq!(server.get_double("gain"), Some(0.75));
+        assert_eq!(server.get_double(NODE, "gain"), Some(0.75));
     }
 
     #[test]
@@ -774,16 +1017,17 @@ mod tests {
             .unwrap()
             .with_integer_range(0, 100, -1);
         assert!(!server.declare_with_descriptor(
+            NODE,
             "bad",
             ParameterValue::Integer(0),
             Some(desc.clone())
         ));
-        assert!(!server.has("bad"));
+        assert!(!server.has(NODE, "bad"));
         assert_eq!(
-            server.declare_parameter(desc, Some(&ParameterValue::Integer(0))),
+            server.declare_parameter(NODE, desc, Some(&ParameterValue::Integer(0))),
             Err(SetParameterResult::InvalidRange)
         );
-        assert!(!server.has("bad"));
+        assert!(!server.has(NODE, "bad"));
     }
 
     #[test]
@@ -794,11 +1038,17 @@ mod tests {
             .unwrap()
             .with_integer_range(0, 100, 2);
         assert!(!server.declare_with_descriptor(
+            NODE,
             "odd",
             ParameterValue::Integer(3),
             Some(desc.clone())
         ));
-        assert!(server.declare_with_descriptor("odd", ParameterValue::Integer(4), Some(desc)));
+        assert!(server.declare_with_descriptor(
+            NODE,
+            "odd",
+            ParameterValue::Integer(4),
+            Some(desc)
+        ));
     }
 
     // ── issue 1151: a wire-facing set on an undeclared name is refused ──
@@ -807,61 +1057,61 @@ mod tests {
     fn apply_rejects_an_undeclared_name_by_default() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        assert!(server.declare("max_speed", ParameterValue::Double(1.0)));
-        assert!(!server.allows_undeclared());
+        assert!(server.declare(NODE, "max_speed", ParameterValue::Double(1.0)));
+        assert!(!server.allows_undeclared(NODE));
 
         // The typo from the issue: reported success and created a parameter
         // nobody reads.
         assert_eq!(
-            server.check_apply("max_speeed", &ParameterValue::Double(5.0)),
+            server.check_apply(NODE, "max_speeed", &ParameterValue::Double(5.0)),
             SetParameterResult::Undeclared
         );
         assert_eq!(
-            server.apply("max_speeed", ParameterValue::Double(5.0)),
+            server.apply(NODE, "max_speeed", ParameterValue::Double(5.0)),
             SetParameterResult::Undeclared
         );
-        assert!(!server.has("max_speeed"));
-        assert_eq!(server.len(), 1);
-        assert_eq!(server.get_double("max_speed"), Some(1.0));
+        assert!(!server.has(NODE, "max_speeed"));
+        assert_eq!(server.len(NODE), 1);
+        assert_eq!(server.get_double(NODE, "max_speed"), Some(1.0));
 
         // A declared name still sets.
         assert_eq!(
-            server.apply("max_speed", ParameterValue::Double(5.0)),
+            server.apply(NODE, "max_speed", ParameterValue::Double(5.0)),
             SetParameterResult::Success
         );
-        assert_eq!(server.get_double("max_speed"), Some(5.0));
+        assert_eq!(server.get_double(NODE, "max_speed"), Some(5.0));
     }
 
     #[test]
     fn apply_declares_an_unknown_name_under_allow_undeclared() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        server.set_allow_undeclared(true);
-        assert!(server.allows_undeclared());
+        server.set_allow_undeclared(NODE, true);
+        assert!(server.allows_undeclared(NODE));
 
         assert_eq!(
-            server.check_apply("fresh", &ParameterValue::Integer(7)),
+            server.check_apply(NODE, "fresh", &ParameterValue::Integer(7)),
             SetParameterResult::Success
         );
         assert_eq!(
-            server.apply("fresh", ParameterValue::Integer(7)),
+            server.apply(NODE, "fresh", ParameterValue::Integer(7)),
             SetParameterResult::Success
         );
-        assert_eq!(server.get_integer("fresh"), Some(7));
+        assert_eq!(server.get_integer(NODE, "fresh"), Some(7));
     }
 
     #[test]
     fn apply_under_allow_undeclared_still_reports_a_full_store() {
         let mut storage: ParameterStorage<1> = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        server.set_allow_undeclared(true);
-        assert!(server.declare("only", ParameterValue::Bool(true)));
+        server.set_allow_undeclared(NODE, true);
+        assert!(server.declare(NODE, "only", ParameterValue::Bool(true)));
         assert_eq!(
-            server.check_apply("second", &ParameterValue::Bool(true)),
+            server.check_apply(NODE, "second", &ParameterValue::Bool(true)),
             SetParameterResult::StorageFull
         );
         assert_eq!(
-            server.apply("second", ParameterValue::Bool(true)),
+            server.apply(NODE, "second", ParameterValue::Bool(true)),
             SetParameterResult::StorageFull
         );
     }
@@ -873,28 +1123,33 @@ mod tests {
         let desc = ParameterDescriptor::new("rate", ParameterType::Integer)
             .unwrap()
             .with_integer_range(0, 100, 10);
-        assert!(server.declare_with_descriptor("rate", ParameterValue::Integer(20), Some(desc)));
+        assert!(server.declare_with_descriptor(
+            NODE,
+            "rate",
+            ParameterValue::Integer(20),
+            Some(desc)
+        ));
         assert_eq!(
-            server.check_apply("rate", &ParameterValue::Integer(35)),
+            server.check_apply(NODE, "rate", &ParameterValue::Integer(35)),
             SetParameterResult::OutOfRange
         );
         assert_eq!(
-            server.apply("rate", ParameterValue::Integer(35)),
+            server.apply(NODE, "rate", ParameterValue::Integer(35)),
             SetParameterResult::OutOfRange
         );
         assert_eq!(
-            server.apply("rate", ParameterValue::Double(30.0)),
+            server.apply(NODE, "rate", ParameterValue::Double(30.0)),
             SetParameterResult::TypeMismatch
         );
-        assert_eq!(server.get_integer("rate"), Some(20));
+        assert_eq!(server.get_integer(NODE, "rate"), Some(20));
     }
 
     #[test]
     fn test_new_server() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let server = ParameterServer::new_in(storage.as_table());
-        assert_eq!(server.len(), 0);
-        assert!(server.is_empty());
+        assert_eq!(server.len(NODE), 0);
+        assert!(server.is_empty(NODE));
     }
 
     #[test]
@@ -903,16 +1158,16 @@ mod tests {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
 
-        assert!(server.declare("my_bool", ParameterValue::Bool(true)));
-        assert!(server.declare("my_int", ParameterValue::Integer(42)));
-        assert!(server.declare("my_double", ParameterValue::Double(3.14)));
+        assert!(server.declare(NODE, "my_bool", ParameterValue::Bool(true)));
+        assert!(server.declare(NODE, "my_int", ParameterValue::Integer(42)));
+        assert!(server.declare(NODE, "my_double", ParameterValue::Double(3.14)));
 
-        assert_eq!(server.len(), 3);
-        assert!(!server.is_empty());
+        assert_eq!(server.len(NODE), 3);
+        assert!(!server.is_empty(NODE));
 
-        assert_eq!(server.get_bool("my_bool"), Some(true));
-        assert_eq!(server.get_integer("my_int"), Some(42));
-        assert_eq!(server.get_double("my_double"), Some(3.14));
+        assert_eq!(server.get_bool(NODE, "my_bool"), Some(true));
+        assert_eq!(server.get_integer(NODE, "my_int"), Some(42));
+        assert_eq!(server.get_double(NODE, "my_double"), Some(3.14));
     }
 
     #[test]
@@ -924,22 +1179,28 @@ mod tests {
         // assertion moves here rather than going out with the flag.
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        assert!(server.declare("count", ParameterValue::Integer(0)));
-        assert_eq!(server.set_integer("count", 10), SetParameterResult::Success);
-        assert_eq!(server.get_integer("count"), Some(10));
+        assert!(server.declare(NODE, "count", ParameterValue::Integer(0)));
+        assert_eq!(
+            server.set_integer(NODE, "count", 10),
+            SetParameterResult::Success
+        );
+        assert_eq!(server.get_integer(NODE, "count"), Some(10));
 
-        assert_eq!(server.unset("count"), SetParameterResult::Success);
-        assert_eq!(server.get_integer("count"), None);
+        assert_eq!(server.unset(NODE, "count"), SetParameterResult::Success);
+        assert_eq!(server.get_integer(NODE, "count"), None);
     }
 
     #[test]
     fn test_set_parameter() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        server.declare("count", ParameterValue::Integer(0));
+        server.declare(NODE, "count", ParameterValue::Integer(0));
 
-        assert_eq!(server.set_integer("count", 10), SetParameterResult::Success);
-        assert_eq!(server.get_integer("count"), Some(10));
+        assert_eq!(
+            server.set_integer(NODE, "count", 10),
+            SetParameterResult::Success
+        );
+        assert_eq!(server.get_integer(NODE, "count"), Some(10));
     }
 
     #[test]
@@ -947,7 +1208,7 @@ mod tests {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
         assert_eq!(
-            server.set("nonexistent", ParameterValue::Integer(1)),
+            server.set(NODE, "nonexistent", ParameterValue::Integer(1)),
             SetParameterResult::NotFound
         );
     }
@@ -962,16 +1223,17 @@ mod tests {
             .with_read_only(true);
 
         server.declare_with_descriptor(
+            NODE,
             "version",
             ParameterValue::from_string("1.0.0").unwrap(),
             Some(desc),
         );
 
         assert_eq!(
-            server.set_string("version", "2.0.0"),
+            server.set_string(NODE, "version", "2.0.0"),
             SetParameterResult::ReadOnly
         );
-        assert_eq!(server.get_string("version"), Some("1.0.0"));
+        assert_eq!(server.get_string(NODE, "version"), Some("1.0.0"));
     }
 
     #[test]
@@ -983,40 +1245,48 @@ mod tests {
             .unwrap()
             .with_float_range(0.0, 10.0, 0.0);
 
-        server.declare_with_descriptor("speed", ParameterValue::Double(5.0), Some(desc));
+        server.declare_with_descriptor(NODE, "speed", ParameterValue::Double(5.0), Some(desc));
 
         // Valid value
-        assert_eq!(server.set_double("speed", 8.0), SetParameterResult::Success);
+        assert_eq!(
+            server.set_double(NODE, "speed", 8.0),
+            SetParameterResult::Success
+        );
 
         // Out of range
         assert_eq!(
-            server.set_double("speed", 15.0),
+            server.set_double(NODE, "speed", 15.0),
             SetParameterResult::OutOfRange
         );
-        assert_eq!(server.get_double("speed"), Some(8.0)); // Unchanged
+        assert_eq!(server.get_double(NODE, "speed"), Some(8.0)); // Unchanged
     }
 
     #[test]
     fn test_remove_parameter() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        server.declare("temp", ParameterValue::Double(25.0));
+        server.declare(NODE, "temp", ParameterValue::Double(25.0));
 
-        assert!(server.has("temp"));
-        assert!(server.remove("temp"));
-        assert!(!server.has("temp"));
-        assert!(!server.remove("temp")); // Already removed
+        assert!(server.has(NODE, "temp"));
+        assert!(server.remove(NODE, "temp"));
+        assert!(!server.has(NODE, "temp"));
+        assert!(!server.remove(NODE, "temp")); // Already removed
     }
 
     #[test]
     fn test_list_parameters() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        server.declare("robot.speed", ParameterValue::Double(1.0));
-        server.declare("robot.name", ParameterValue::from_string("bot1").unwrap());
-        server.declare("sensor.range", ParameterValue::Double(10.0));
+        server.declare(NODE, "robot.speed", ParameterValue::Double(1.0));
+        server.declare(
+            NODE,
+            "robot.name",
+            ParameterValue::from_string("bot1").unwrap(),
+        );
+        server.declare(NODE, "sensor.range", ParameterValue::Double(10.0));
 
-        let robot_params: heapless::Vec<&str, 8> = server.list_with_prefix("robot.").collect();
+        let robot_params: heapless::Vec<&str, 8> =
+            server.list_with_prefix(NODE, "robot.").collect();
         assert_eq!(robot_params.len(), 2);
     }
 
@@ -1027,26 +1297,26 @@ mod tests {
 
         // First call declares
         assert_eq!(
-            server.set_or_declare("new_param", ParameterValue::Integer(1)),
+            server.set_or_declare(NODE, "new_param", ParameterValue::Integer(1)),
             SetParameterResult::Success
         );
-        assert_eq!(server.get_integer("new_param"), Some(1));
+        assert_eq!(server.get_integer(NODE, "new_param"), Some(1));
 
         // Second call sets
         assert_eq!(
-            server.set_or_declare("new_param", ParameterValue::Integer(2)),
+            server.set_or_declare(NODE, "new_param", ParameterValue::Integer(2)),
             SetParameterResult::Success
         );
-        assert_eq!(server.get_integer("new_param"), Some(2));
+        assert_eq!(server.get_integer(NODE, "new_param"), Some(2));
     }
 
     #[test]
     fn test_duplicate_declare() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        assert!(server.declare("param", ParameterValue::Integer(1)));
-        assert!(!server.declare("param", ParameterValue::Integer(2))); // Already exists
-        assert_eq!(server.get_integer("param"), Some(1)); // Unchanged
+        assert!(server.declare(NODE, "param", ParameterValue::Integer(1)));
+        assert!(!server.declare(NODE, "param", ParameterValue::Integer(2))); // Already exists
+        assert_eq!(server.get_integer(NODE, "param"), Some(1)); // Unchanged
     }
 }
 
@@ -1058,6 +1328,9 @@ mod tests {
 mod ghost_checks {
     use super::*;
     use nros_ghost_types::ParamServerGhost;
+
+    /// phase-426 W1 — the node these single-node tests are about.
+    const NODE: NodeKey = NodeKey::PRIMARY;
 
     /// Structural check: construct ParamServerGhost from ParameterServer private fields.
     /// If a field is renamed or retyped, this fails to compile.
@@ -1093,10 +1366,10 @@ mod ghost_checks {
         let mut storage = ParameterStorage::<2>::new();
         let mut server = ParameterServer::new_in(storage.as_table());
         assert_eq!(ghost_from_server(&server).max, 2);
-        assert!(server.declare("a", ParameterValue::Integer(1)));
-        assert!(server.declare("b", ParameterValue::Integer(2)));
+        assert!(server.declare(NODE, "a", ParameterValue::Integer(1)));
+        assert!(server.declare(NODE, "b", ParameterValue::Integer(2)));
         assert!(server.is_full());
-        assert!(!server.declare("c", ParameterValue::Integer(3)));
+        assert!(!server.declare(NODE, "c", ParameterValue::Integer(3)));
         let ghost = ghost_from_server(&server);
         assert!(ghost.count <= ghost.max);
     }
@@ -1109,11 +1382,11 @@ mod ghost_checks {
         let mut storage = ParameterStorage::<4>::new();
         {
             let mut first = ParameterServer::new_in(storage.as_table());
-            assert!(first.declare("kept", ParameterValue::Integer(7)));
+            assert!(first.declare(NODE, "kept", ParameterValue::Integer(7)));
         }
         let second = ParameterServer::new_in(storage.as_table());
         assert_eq!(ghost_from_server(&second).count, 1);
-        assert_eq!(second.get_integer("kept"), Some(7));
+        assert_eq!(second.get_integer(NODE, "kept"), Some(7));
     }
 
     #[test]
@@ -1121,7 +1394,7 @@ mod ghost_checks {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
         let before = ghost_from_server(&server).count;
-        assert!(server.declare("test", ParameterValue::Integer(1)));
+        assert!(server.declare(NODE, "test", ParameterValue::Integer(1)));
         let after = ghost_from_server(&server).count;
         assert_eq!(after, before + 1);
     }
@@ -1130,9 +1403,9 @@ mod ghost_checks {
     fn ghost_remove_decrements() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        server.declare("test", ParameterValue::Integer(1));
+        server.declare(NODE, "test", ParameterValue::Integer(1));
         let before = ghost_from_server(&server).count;
-        assert!(server.remove("test"));
+        assert!(server.remove(NODE, "test"));
         let after = ghost_from_server(&server).count;
         assert_eq!(after, before - 1);
     }
@@ -1144,13 +1417,13 @@ mod ghost_checks {
         for i in 0..MAX_PARAMETERS {
             let mut name = heapless::String::<64>::new();
             let _ = core::fmt::write(&mut name, format_args!("p{}", i));
-            server.declare(name.as_str(), ParameterValue::Integer(i as i64));
+            server.declare(NODE, name.as_str(), ParameterValue::Integer(i as i64));
         }
         let ghost = ghost_from_server(&server);
         assert!(ghost.count <= ghost.max);
         assert_eq!(ghost.count, MAX_PARAMETERS);
         // Next declare should fail — count stays bounded
-        assert!(!server.declare("overflow", ParameterValue::Integer(0)));
+        assert!(!server.declare(NODE, "overflow", ParameterValue::Integer(0)));
         let ghost2 = ghost_from_server(&server);
         assert!(ghost2.count <= ghost2.max);
     }
@@ -1164,6 +1437,9 @@ mod ghost_checks {
 mod verification {
     use super::*;
 
+    /// phase-426 W1 — the node these single-node tests are about.
+    const NODE: NodeKey = NodeKey::PRIMARY;
+
     // phase-382 W2' — each proof used to build the whole store on the proof
     // stack (`ParameterServer::new()`); it now places a `ParameterStorage` and
     // lends it, which is the only shape a caller-owned store has. Kani still
@@ -1173,8 +1449,8 @@ mod verification {
     fn server_new_is_empty() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let server = ParameterServer::new_in(storage.as_table());
-        assert!(server.is_empty());
-        assert_eq!(server.len(), 0);
+        assert!(server.is_empty(NODE));
+        assert_eq!(server.len(NODE), 0);
         assert!(!server.is_full());
     }
 
@@ -1183,10 +1459,10 @@ mod verification {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
         let val: i64 = kani::any();
-        assert!(server.declare("test", ParameterValue::Integer(val)));
-        assert_eq!(server.get_integer("test"), Some(val));
-        assert!(server.has("test"));
-        assert_eq!(server.len(), 1);
+        assert!(server.declare(NODE, "test", ParameterValue::Integer(val)));
+        assert_eq!(server.get_integer(NODE, "test"), Some(val));
+        assert!(server.has(NODE, "test"));
+        assert_eq!(server.len(NODE), 1);
     }
 
     #[kani::proof]
@@ -1194,8 +1470,8 @@ mod verification {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
         let val: bool = kani::any();
-        assert!(server.declare("test", ParameterValue::Bool(val)));
-        assert_eq!(server.get_bool("test"), Some(val));
+        assert!(server.declare(NODE, "test", ParameterValue::Bool(val)));
+        assert_eq!(server.get_bool(NODE, "test"), Some(val));
     }
 
     #[kani::proof]
@@ -1204,7 +1480,7 @@ mod verification {
         let mut server = ParameterServer::new_in(storage.as_table());
         let val: i64 = kani::any();
         // Set without declare should fail
-        let result = server.set("test", ParameterValue::Integer(val));
+        let result = server.set(NODE, "test", ParameterValue::Integer(val));
         assert_eq!(result, SetParameterResult::NotFound);
     }
 
@@ -1212,31 +1488,31 @@ mod verification {
     fn server_duplicate_declare_fails() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        assert!(server.declare("test", ParameterValue::Integer(1)));
-        assert!(!server.declare("test", ParameterValue::Integer(2)));
+        assert!(server.declare(NODE, "test", ParameterValue::Integer(1)));
+        assert!(!server.declare(NODE, "test", ParameterValue::Integer(2)));
         // Original value preserved
-        assert_eq!(server.get_integer("test"), Some(1));
+        assert_eq!(server.get_integer(NODE, "test"), Some(1));
     }
 
     #[kani::proof]
     fn server_remove_clears() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let mut server = ParameterServer::new_in(storage.as_table());
-        assert!(server.declare("test", ParameterValue::Integer(42)));
-        assert!(server.has("test"));
-        assert!(server.remove("test"));
-        assert!(!server.has("test"));
-        assert_eq!(server.len(), 0);
+        assert!(server.declare(NODE, "test", ParameterValue::Integer(42)));
+        assert!(server.has(NODE, "test"));
+        assert!(server.remove(NODE, "test"));
+        assert!(!server.has(NODE, "test"));
+        assert_eq!(server.len(NODE), 0);
     }
 
     #[kani::proof]
     fn server_get_nonexistent_returns_none() {
         let mut storage: ParameterStorage = ParameterStorage::new();
         let server = ParameterServer::new_in(storage.as_table());
-        assert!(server.get("nonexistent").is_none());
-        assert!(server.get_bool("nonexistent").is_none());
-        assert!(server.get_integer("nonexistent").is_none());
-        assert!(server.get_double("nonexistent").is_none());
-        assert!(server.get_string("nonexistent").is_none());
+        assert!(server.get(NODE, "nonexistent").is_none());
+        assert!(server.get_bool(NODE, "nonexistent").is_none());
+        assert!(server.get_integer(NODE, "nonexistent").is_none());
+        assert!(server.get_double(NODE, "nonexistent").is_none());
+        assert!(server.get_string(NODE, "nonexistent").is_none());
     }
 }
