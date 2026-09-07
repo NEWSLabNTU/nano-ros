@@ -61,6 +61,7 @@ the baseline when their issue lands. Same shape as
 """
 
 import os
+import subprocess
 import re
 import sys
 
@@ -120,7 +121,39 @@ def candidate_files():
             for name in filenames:
                 if name.endswith((".md", ".sh", ".py", ".cmake", ".just", ".txt")):
                     out.append(os.path.relpath(os.path.join(dirpath, name), ROOT))
-    return sorted(set(out))
+    return sorted(_drop_ignored(set(out)))
+
+
+def _drop_ignored(paths):
+    """Everything git does not ignore.
+
+    The walk above is deliberate — an id and the doc citing it must be able to
+    land in one commit, so `git ls-files` is the wrong index. But "not in the
+    index" and "not ours" are different things, and the walk could not tell
+    them apart: `scripts/zephyr/.venv/` is gitignored, holds pip's vendored
+    third-party sources, and those cite THEIR OWN upstream issue numbers —
+    `pip/_vendor/requests/sessions.py` cites 1704, `distro.py` cites 1322. The
+    gate reported them as references to nano-ros issues that do not exist.
+
+    It fires only for someone who HAS such a directory, so it is red on a
+    developer's machine and green in CI, where a fresh clone has no venv. That
+    is the worst shape for a gate: the person who can see it is the person
+    least able to believe it.
+
+    One `git check-ignore` over the batch, not one per file.
+    """
+    if not paths:
+        return paths
+    try:
+        r = subprocess.run(
+            ["git", "-C", ROOT, "check-ignore", "--stdin"],
+            input="\n".join(sorted(paths)),
+            capture_output=True, text=True, check=False,
+        )
+    except OSError:
+        return paths  # no git: keep the walk's answer rather than lose coverage
+    ignored = {ln for ln in r.stdout.splitlines() if ln}
+    return {p for p in paths if p not in ignored}
 
 
 def refs_in(text):
