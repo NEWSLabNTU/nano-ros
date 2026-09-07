@@ -124,7 +124,7 @@ use super::storage::ExecutorSizing;
 /// judged against, and a constant that disappears with its consumer cannot be
 /// compared to anything.
 #[allow(dead_code)]
-pub(crate) const EXECUTOR_BACKING_DEFAULT_U64S: usize = ExecutorSizing::DEFAULT.u64_len();
+pub const EXECUTOR_BACKING_DEFAULT_U64S: usize = ExecutorSizing::DEFAULT.u64_len();
 
 // `EXECUTOR_BACKING`, its size const, and the optional
 // `#[unsafe(link_section = …)]` on it are emitted by `build.rs`: `link_section`
