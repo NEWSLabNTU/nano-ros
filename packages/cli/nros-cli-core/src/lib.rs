@@ -113,11 +113,16 @@ use eyre::Result;
 /// only inside comments, so five is the invoked set.
 fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
     match args.command {
+        // phase-439 W4 added `RmwDispatch`: cmake ASKS for the rmw descriptor
+        // row instead of being generated at, so the verb runs from a build
+        // directory that may sit under a different checkout (issue 1166). The
+        // cwd question is meaningless there; the STALENESS guard still applies.
         cmd::ws::Sub::Providers(_)
         | cmd::ws::Sub::Order(_)
         | cmd::ws::Sub::BoardFacts(_)
         | cmd::ws::Sub::EntityFacts(_)
-        | cmd::ws::Sub::EntityInventory(_) => "ws-build",
+        | cmd::ws::Sub::EntityInventory(_)
+        | cmd::ws::Sub::RmwDispatch(_) => "ws-build",
         _ => "ws",
     }
 }
