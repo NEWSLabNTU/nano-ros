@@ -7211,3 +7211,111 @@ fn spin_period_counts_its_wakes_and_keeps_late_within_total() {
         "a non-zero maximum ({max_us} us) with zero late wakes is contradictory"
     );
 }
+
+/// phase-430 W4 — the clock axis reaches the NODE-LEVEL surface, not just the
+/// executor's `register_timer_on_clock`.
+///
+/// `ros_time_timer_follows_the_simulated_clock` above proves the executor's
+/// registrar honours `/clock`; it says nothing about whether a user who writes
+/// nodes the way the workspace examples do can ASK for one. Until W4 they could
+/// not: `NodeCtx`'s only timer verb was `create_timer_in`, which lowers to
+/// `register_timer_on` with `TimerClockSource::Steady` hardcoded.
+///
+/// Both halves are asserted in one test for the reason the sibling gives: the
+/// ROS-time override is process-global, so two tests would race inside the one
+/// binary. `SimTimeGuard` orders this against every other test that touches it.
+#[cfg(feature = "sim-time")]
+#[test]
+fn a_node_level_ros_time_timer_follows_the_simulated_clock() {
+    let _sim_time = SimTimeGuard::acquire();
+    use crate::executor::TimerClockSource;
+    use nros_core::clock::Clock;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    const MS: i64 = 1_000_000;
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let nid = executor.node_builder("node_level_clock").build().unwrap();
+
+    Clock::set_ros_time_override(10_000 * MS);
+
+    let ros_ticks = std::sync::Arc::new(AtomicUsize::new(0));
+    let group_ticks = std::sync::Arc::new(AtomicUsize::new(0));
+    let wall_ticks = std::sync::Arc::new(AtomicUsize::new(0));
+    let r = ros_ticks.clone();
+    let g = group_ticks.clone();
+    let w = wall_ticks.clone();
+
+    {
+        let mut node = executor.node_mut(nid);
+        let telem = node.create_callback_group("telem");
+        node.create_timer_on_clock(
+            TimerDuration::from_millis(100),
+            TimerClockSource::Ros,
+            move || {
+                r.fetch_add(1, Ordering::SeqCst);
+            },
+        )
+        .unwrap();
+        // The group form takes the same axis, and the two axes are independent.
+        node.create_timer_on_clock_in(
+            &telem,
+            TimerDuration::from_millis(100),
+            TimerClockSource::Ros,
+            move || {
+                g.fetch_add(1, Ordering::SeqCst);
+            },
+        )
+        .unwrap();
+        // The pre-W4 spelling, unchanged: still the wall case.
+        node.create_timer_in(&telem, TimerDuration::from_millis(100), move || {
+            w.fetch_add(1, Ordering::SeqCst);
+        })
+        .unwrap();
+    }
+
+    // 1. STOPPED. Real time passes, simulated time does not.
+    for _ in 0..3 {
+        let _ = elapse_then_spin_once(&mut executor, 120);
+    }
+    assert_eq!(
+        ros_ticks.load(Ordering::SeqCst),
+        0,
+        "a node-level ROS-time timer fired while the simulated clock was \
+         stopped: 360 ms of REAL time passed and /clock did not move"
+    );
+    assert_eq!(
+        group_ticks.load(Ordering::SeqCst),
+        0,
+        "the callback-group form must take the clock too -- a group is a \
+         scheduling choice, not a clock choice"
+    );
+    assert!(
+        wall_ticks.load(Ordering::SeqCst) >= 3,
+        "`create_timer_in` is the WALL spelling and must be unaffected by the \
+         stopped simulator; fired {} times",
+        wall_ticks.load(Ordering::SeqCst)
+    );
+
+    // 2. ADVANCING. Four 100 ms steps of simulated time in ~40 ms of real time.
+    let wall_before = wall_ticks.load(Ordering::SeqCst);
+    for i in 1..=4 {
+        Clock::set_ros_time_override(10_000 * MS + i * 100 * MS);
+        let _ = elapse_then_spin_once(&mut executor, 10);
+    }
+    assert_eq!(
+        ros_ticks.load(Ordering::SeqCst),
+        4,
+        "four 100 ms steps of simulated time on a 100 ms node-level ROS timer \
+         must be four activations"
+    );
+    assert_eq!(
+        group_ticks.load(Ordering::SeqCst),
+        4,
+        "the group form follows the same clock as the plain one"
+    );
+    assert!(
+        wall_ticks.load(Ordering::SeqCst) - wall_before <= 1,
+        "~40 ms of real time cannot be four activations of a 100 ms wall timer"
+    );
+}

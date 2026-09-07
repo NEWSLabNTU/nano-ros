@@ -1577,6 +1577,74 @@ impl<'e, 's> NodeCtx<'e, 's> {
             .register_timer_on(Some(self.node_id), period, callback, Some(group.name()))
     }
 
+    /// Create a repeating timer on a chosen CLOCK — phase-430 W4, the
+    /// node-level spelling of
+    /// [`Executor::register_timer_on_clock`](crate::Executor::register_timer_on_clock)
+    /// and the Rust counterpart of C++'s `create_timer(clock, period, cb)`.
+    ///
+    /// [`create_timer_in`](Self::create_timer_in) and the executor's
+    /// `register_timer` are the WALL case: they consume the spin delta the
+    /// executor already measured, and no simulator can slow them down. A
+    /// [`TimerClockSource::Ros`] timer instead follows `/clock`, so it stops
+    /// while the simulator is paused and tracks a bag's replay rate; with no
+    /// `/clock` source installed it reads system time, the same fallback
+    /// `rclcpp::Clock` has.
+    ///
+    /// The timer is bound to this node, so the node's default `SchedContext`
+    /// applies — [`create_timer_on_clock_in`](Self::create_timer_on_clock_in)
+    /// is the callback-group form.
+    ///
+    /// ```ignore
+    /// node.create_timer_on_clock(
+    ///     TimerDuration::from_millis(100),
+    ///     TimerClockSource::Ros,
+    ///     || { /* fires once per 100 ms of SIMULATED time */ },
+    /// )?;
+    /// ```
+    pub fn create_timer_on_clock<F>(
+        &mut self,
+        period: crate::timer::TimerDuration,
+        source: crate::executor::TimerClockSource,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        self.executor.register_timer_entry(
+            Some(self.node_id),
+            period,
+            source,
+            false,
+            None,
+            callback,
+        )
+    }
+
+    /// [`create_timer_on_clock`](Self::create_timer_on_clock) **in** a callback
+    /// group — the clock axis on [`create_timer_in`](Self::create_timer_in)
+    /// (phase-430 W4). The two axes are independent: the group decides which
+    /// `SchedContext` the callback runs under, the clock decides what advances
+    /// the timer towards its next activation.
+    pub fn create_timer_on_clock_in<F>(
+        &mut self,
+        group: &CallbackGroup,
+        period: crate::timer::TimerDuration,
+        source: crate::executor::TimerClockSource,
+        callback: F,
+    ) -> Result<super::types::HandleId, NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        self.executor.register_timer_entry(
+            Some(self.node_id),
+            period,
+            source,
+            false,
+            Some(group.name()),
+            callback,
+        )
+    }
+
     /// Create a typed subscription **in** a callback group (phase 273, rclcpp shape).
     ///
     /// The subscription's callback is bound to the `SchedContext` associated
