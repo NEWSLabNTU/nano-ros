@@ -1,6 +1,6 @@
 # Phase 437 — rename every board to the reach its build has
 
-**Status (2026-09-08). PLANNED.** Implements
+**Status (2026-09-08). W1 and W2 LANDED; W3-W7 open.** Implements
 [RFC-0093](../design/0093-board-naming-states-reach.md). Nothing has moved yet;
 the measurements below are from `main` at `9c0702322`.
 
@@ -80,6 +80,39 @@ It reads the pins rather than a list: `.ld`/`.lds`/`.x` in the overlay or crate,
 **Acceptance.** The gate reproduces the RFC's table — every name it calls false
 is one §4 renames, and every name §4 leaves alone passes.
 
+**LANDED.** `check-board-name-reach`, on the fast line, ratcheted at **nine**
+violations — exactly the nine names §4 retires, and nothing else:
+`qemu-arm-baremetal`, `qemu-arm-freertos`, `qemu-arm-nuttx`, `qemu-riscv-nuttx`,
+`qemu-riscv64-threadx`, `qemu-esp32-baremetal`, `nuttx-qemu-arm`,
+`nuttx-qemu-riscv`, `riscv64-qemu`. `mps2-an385*`, `mps3-an536-freertos`,
+`s32z270-freertos`, `esp32-c3`, `freertos-posix`, `threadx-linux`, `native`,
+`posix`, `zephyr` and `fvp-aemv8r-smp` all pass.
+
+Two things the implementation had to get right, both found by running it:
+
+**Reach is read from the OVERLAY alone.** The first version walked the
+`packages/boards/**` directories each overlay names and looked for linker
+scripts and MMIO literals. That is wrong, because those directories are
+SHARED — `nros-board-freertos` is referenced by four boards and
+`nros-board-common` by two — so the FreeRTOS Cortex-M linker script made
+`freertos-posix` look pinned, and a peripheral address in `threadx_hooks.c` did
+the same to `threadx-linux`. Both of those travel. Attributing a shared crate's
+pins to every consumer inverts the answer for exactly the boards the rule is
+about.
+
+**The gate is conservative in one direction only.** A board whose toolchain
+comes from an external SDK (ESP-IDF supplies ESP32-C3's linking) pins nothing in
+its overlay and reads as a system board — so the gate can call a target board
+portable, never the reverse. That is safe: the SYSTEM rule then forbids naming a
+machine or an emulator, which is what catches `qemu-esp32-baremetal` either way.
+
+**Not enforced: R2** (`<where>-<stack>`, stack last). `mps2-an385` and
+`esp32-c3` carry no stack suffix and pass the gate, while §4 still renames them.
+R1/R3/R4 are about a name stating something FALSE; a missing stack suffix
+misleads nobody. Enforcing R2 would need `native`, `posix`, `zephyr` and
+`fvp-aemv8r-smp` carved out, and an allow-list carved out of a shape rule is how
+a gate stops meaning anything. R2 stays this phase's job, in W5.
+
 ### W2 — the fifth duplicate, and the marker the gate keys on
 
 `check-board-vocabulary`'s mirror assertion keys on a `# = [board.X]` comment.
@@ -94,6 +127,38 @@ comment documents, so the evidence is all there is.
 **Acceptance.** Every identical-body pair is either marked and asserted, or
 shown to be two boards that coincide. `native`/`posix` stay unmarked and
 deliberately so (`check-host-platform-vocabulary` owns them).
+
+**LANDED — ONE board, and the table said so all along.** The board table's own
+header reads: *"Keyed by the canonical board id (`examples/<board>/` dir name
+OR the board-crate name)"*. That is the doubling rule, written in the contract.
+`qemu-arm-baremetal` is the examples directory; `mps2-an385` is the crate. Both
+were added by `719ff9436`, adjacent, with identical bodies — born together, not
+one mirrored onto the other later, which is why the pair predates the `# =`
+convention and never got a marker.
+
+The same commit is the control: it also added `[board.stm32f4]` with
+`cortex-m4` and `openocd` instead of `qemu`, because that one is real hardware
+you flash. The author DID encode the difference when there was one.
+
+Marked rather than collapsed, so `check-board-vocabulary` holds the two in step
+for the waves before W5 merges them. The gate now asserts **five** mirrored
+pairs.
+
+Two findings this wave turned up that later waves must not trip over:
+
+* **`cmake/board/nano-ros-board-mps2-an385.cmake` has zero live consumers.**
+  `NANO_ROS_BOARD` is set to `mps2-an385` nowhere in the tree; the only
+  occurrences are a `FATAL_ERROR` example string and a doc reference. Its own
+  header is also stale — it claims it is used under
+  `NANO_ROS_PLATFORM=freertos`, but `nano-ros-board-mps2-an385-freertos.cmake`
+  is fully self-contained. So the overlay is bare-metal-only, and a
+  `-baremetal` suffix is a correction rather than a narrowing.
+* **W6's acceptance needs namespace scoping for this pair.** `git grep
+  qemu-arm-baremetal` can go empty; `git grep mps2-an385` cannot and must not.
+  The string survives legitimately as the QEMU machine argument
+  (`-machine mps2-an385`), as the deploy-token alias this phase's non-goals
+  leave untouched, as the linker script `mps2-an385.x`, and as the
+  `mps2-an385-pac` crate. Only the INDEX KEY retires.
 
 ### W3 — the two correct names that are not index keys
 

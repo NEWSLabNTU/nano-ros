@@ -553,6 +553,21 @@ nuttx-shared-tree-headers:
 config-header-producers:
     @python3 scripts/check-config-header-producers.py
 
+# RFC-0093 / phase-437 W1 — a board name is a CLAIM about where its artifact
+# runs, and the claim must be true. `riscv64-qemu` reads "riscv64 under QEMU"
+# and is ONE machine: UART 0x10000000, CLINT 0x02000000, virtio-MMIO
+# 0x10001000, and a write to QEMU's test-finisher at 0x100000 — a device no
+# silicon has. A user reads that name to decide whether their board is
+# supported.
+#
+# The reach is MEASURED from the overlay (a linker script, a board defconfig),
+# never declared, and the vendor exemption is HARVESTED (`CONFIG_ARCH_BOARD`)
+# rather than listed. A ratchet: `.config/board-name-reach-baseline.txt` holds
+# the nine names phase-437 W4-W6 retire, and may only shrink. Buildless.
+[private]
+board-name-reach:
+    @python3 scripts/check-board-name-reach.py
+
 # `nros-platform-posix` is named for a standard — keep it holding to one, so
 # the board layer stays the only place that is Linux-only (phase-401 W4).
 [private]

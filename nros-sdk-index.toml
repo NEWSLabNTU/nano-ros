@@ -1118,6 +1118,19 @@ arch = "cortex-m3"
 platform = "bare-metal"
 packages = ["arm-none-eabi-gcc", "qemu"]
 
+# = [board.qemu-arm-baremetal] — ONE board, two lookup keys, and this table's
+# own header says why: "Keyed by the canonical board id (examples/<board>/ dir
+# name OR the board-crate name)". `qemu-arm-baremetal` is the examples dir,
+# `mps2-an385` is the crate. Both were added by `719ff9436`, adjacent, with
+# identical bodies — born together, not one mirrored onto the other later,
+# which is why this pair predates the `# =` convention and never got a marker.
+#
+# The same commit shows the author DID distinguish a different board when it
+# was different: `[board.stm32f4]` got `cortex-m4` and `openocd` instead of
+# `qemu`, because it is real hardware you flash. This one got neither.
+#
+# Marked now (phase-437 W2) so `check-board-vocabulary` holds the two in step
+# for the one wave before W5 collapses them into `mps2-an385-baremetal`.
 [board.mps2-an385]
 arch = "cortex-m3"
 platform = "bare-metal"
