@@ -676,8 +676,21 @@ jobs:
       # workspace: the wider pass has ~70 diagnostics in crates nothing
       # publishes (issue 1116), which is a separate cleanup and would make this
       # gate un-landable rather than useful.
+      # issue 1138 — the gate has three outcomes now (FAIL / NOT VERIFIED / OK),
+      # because `cargo doc` runs `zpico-sys`'s build script and that script
+      # PANICS on an unprovisioned zenoh-pico. A checkout without the source
+      # gets a reported skip instead of a red about documentation.
+      #
+      # THIS job is the one lane that genuinely provisions it — the step above
+      # does — so here the skip would be a lie of a different kind: a
+      # provisioning regression would silently stop checking the docs and this
+      # step would stay green. STRICT turns that back into a red, and it is set
+      # HERE and nowhere else, for exactly the reason 1043 gives: setting it on
+      # a lane that provisions a subset re-creates the issue.
       - name: just check rustdoc-links (pull request only)
         if: ${{ github.event_name == 'pull_request' && !cancelled() }}
+        env:
+          NROS_RUSTDOC_LINKS_STRICT: "1"
         run: |
           source ./activate.sh
           just check rustdoc-links
