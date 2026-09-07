@@ -65,8 +65,8 @@ STAGES = {
     1: "ReportReady -- entered nros_cpp_init; arguments NOT yet validated",
     2: "BootConfigResolved -- arguments accepted; executor not yet open",
     3: "ExecutorReady -- arena bound",
-    4: "RegisteringEntities (NOT YET WIRED -- no call site emits this)",
-    5: "EntitiesReady (NOT YET WIRED -- registration has no single end; see issue 0900)",
+    4: "RegisteringEntities -- an entity claimed arena; registration in flight",
+    5: "EntitiesReady -- RESERVED, no producer (registration has no single end)",
     6: "FirstSpin -- registration complete and spinning",
 }
 
@@ -327,6 +327,13 @@ def report(rec: dict[str, int]) -> int:
         print()
         if rec["failed_alloc_size"]:
             pass  # already reported above
+        elif stage == 4:
+            print(
+                f"Halted DURING REGISTRATION: {rec['alloc_count']} allocation(s) succeeded,\n"
+                f"{rec['arena_used']} of {cap} arena bytes are claimed, and none of them\n"
+                "failed. So the arena is not the cause -- registration began and\n"
+                "stopped for some other reason. `LAST ERROR` above, if set, is it."
+            )
         elif rec["alloc_count"]:
             print(
                 f"Never reached the first spin, and the arena is NOT why: all\n"
@@ -340,8 +347,8 @@ def report(rec: dict[str, int]) -> int:
         else:
             print(
                 "The executor was built but claimed NO arena, so registration\n"
-                "never started. That is earlier than any sizing knob can\n"
-                "explain."
+                "never started (the stage would read 4 if it had). That is\n"
+                "earlier than any sizing knob can explain."
             )
         return 1
 

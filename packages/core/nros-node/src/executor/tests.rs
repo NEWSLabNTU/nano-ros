@@ -2186,6 +2186,17 @@ fn arena_exhaustion_reaches_the_boot_record() {
          record keeps only the FIRST, so this run cannot attribute it"
     );
 
+    // `Executor::open` stamped `ExecutorReady` and nothing since. Asserted
+    // rather than assumed, because the whole point of the next assertion is
+    // that the stage MOVES.
+    assert_eq!(
+        before.stage,
+        crate::boot_report::Stage::ExecutorReady as u32,
+        "the executor is open and nothing has registered, so the stage must \
+         read ExecutorReady; a different value means another test shared this \
+         process"
+    );
+
     // One byte more than the arena can hold, asked for through the path that
     // used to say nothing.
     let capacity = executor.arena.len();
@@ -2219,6 +2230,23 @@ fn arena_exhaustion_reaches_the_boot_record() {
         after.failed_alloc_shortfall
     );
 
+    // Issue 1036 -- the record must also say WHERE. Until this was wired the
+    // stage stayed at `ExecutorReady`, which is the same value an image reports
+    // when it opens an executor and dies before registering anything: the dump
+    // named the allocation and could not distinguish the failure it exists to
+    // catch from never having started. `RegisteringEntities` EXACTLY, not
+    // `>=` -- a `>=` here would pass on a record some other test had already
+    // pushed to `FirstSpin`, which is the shape that makes an assertion read as
+    // coverage while checking nothing.
+    assert_eq!(
+        after.stage,
+        crate::boot_report::Stage::RegisteringEntities as u32,
+        "an arena allocation failed and the stage still reads {}; a dump that \
+         names the shortfall but not the phase cannot separate 'ran out during \
+         registration' from 'never registered anything'",
+        after.stage
+    );
+
     // And the record must survive a SECOND failure unchanged: the first
     // allocation to fail is the one that explains the boot, and a later,
     // larger, incidental failure overwriting it would replace the cause with a
@@ -2230,6 +2258,243 @@ fn arena_exhaustion_reaches_the_boot_record() {
         (after.failed_alloc_size, after.failed_alloc_shortfall),
         "a second failure overwrote the first; the record must keep the \
          allocation that explains the boot, not the last one to be attempted"
+    );
+}
+
+/// Issue 1036 -- the WHOLE reporting path, end to end, as far as a host can
+/// take it: an arena that runs out, both channels that are supposed to carry
+/// that fact, and the decoder an operator actually runs.
+///
+/// The sibling above (`arena_exhaustion_reaches_the_boot_record`) stops at
+/// `snapshot()`, which reads the record through Rust. That is one half of the
+/// instrument. The other half is everything between the `.bss` bytes and a
+/// number a human types into a Kconfig file:
+///
+///   1. the record is findable in the ELF by SYMBOL, and the size the symbol
+///      table reports is the length a `savemem` must ask for;
+///   2. the bytes at that symbol, read as bytes rather than through Rust,
+///      decode positionally under `scripts/read-boot-report.py`;
+///   3. the decoder's verdict names ARENA EXHAUSTED, the stage it happened in,
+///      and the value to set -- not merely "something failed".
+///
+/// None of that had a test. `check-boot-report-layout` compares two SOURCE
+/// files and cannot see a dump; `boot_report::tests` reads through `Snapshot`
+/// and never touches the script. So the tool an operator runs on the one board
+/// this record was built for had never been run against a record produced by a
+/// real failure, in any lane.
+///
+/// This also asserts the LOG channel, in the same failure, because "reported"
+/// means both: `report_arena_exhausted` is what an image with a console gets,
+/// and until now nothing asserted it fired from `arena_alloc_with_trailing` at
+/// all -- `executor_arena_advisory.rs` asserts the over-provision ADVISORY,
+/// which is a different function on a different latch. Deleting the
+/// `report_arena_exhausted` call from the `_with_trailing` path passed every
+/// test in the tree.
+///
+/// # What this still does NOT prove
+///
+/// The dump here is taken with a pointer, not with a debug probe, and the image
+/// is a host test binary rather than a Zephyr image built with
+/// `CONFIG_NROS_BOOT_REPORT=y`. The board run -- halt, `pyocd commander
+/// savemem`, decode -- remains outstanding and issue 1036 stays open for it.
+/// What has moved is that everything up to the probe is now exercised by a lane.
+///
+/// # Why its own cargo invocation
+///
+/// Two process-globals: the record keeps only the FIRST allocation failure, and
+/// `report_arena_exhausted` is one-shot on `ARENA_EXHAUSTED_REPORTED`. Any other
+/// test in this binary that exhausts an arena consumes both, and this one would
+/// then assert on that test's numbers. `just check node-std-tests` runs it with
+/// its own `--exact` filter for exactly that reason, and checks that the filter
+/// matched something.
+#[cfg(all(nros_boot_report, feature = "std"))]
+#[test]
+fn an_exhausted_arena_decodes_to_the_knob_an_operator_must_set() {
+    use std::io::Write as _;
+
+    static CAPTURED: std::sync::Mutex<alloc::vec::Vec<alloc::string::String>> =
+        std::sync::Mutex::new(alloc::vec::Vec::new());
+
+    struct CapturingSink;
+    impl nros_log::LogSink for CapturingSink {
+        fn log(&self, record: &nros_log::Record<'_>) {
+            // unwrap: poisoned only if another thread already panicked, which
+            // would have failed this test anyway.
+            CAPTURED
+                .lock()
+                .unwrap()
+                .push(alloc::string::ToString::to_string(record.message));
+        }
+    }
+    static SINK: CapturingSink = CapturingSink;
+    static SINKS: &[&dyn nros_log::LogSink] = &[&SINK];
+    nros_log::init(SINKS);
+
+    let before = crate::boot_report::snapshot();
+    assert_eq!(
+        (before.failed_alloc_size, before.failed_alloc_shortfall),
+        (0, 0),
+        "another test recorded an allocation failure before this one; the \
+         record keeps only the FIRST, so this run cannot attribute it"
+    );
+
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    let capacity = executor.arena.len();
+    assert!(
+        capacity > 0,
+        "a zero-capacity arena is issue 0460, not a shortfall to measure"
+    );
+
+    // Through `arena_alloc_with_trailing`, the half that was silent and the
+    // half every buffered subscription and every action entry takes.
+    let err = executor
+        .arena_alloc_with_trailing::<u8>(capacity + 1)
+        .expect_err("an allocation larger than the whole arena must fail");
+    assert!(
+        matches!(err, NodeError::BufferTooSmall),
+        "unexpected error for an over-large arena request: {err:?}"
+    );
+
+    // ---- channel 1: the log line, for an image that HAS a sink ------------
+    let records = CAPTURED.lock().unwrap().clone();
+    let exhausted = records
+        .iter()
+        .find(|m| m.contains("arena exhausted"))
+        .unwrap_or_else(|| {
+            panic!(
+                "the arena-exhausted report reached no sink. {} record(s) \
+                 captured: {records:?}",
+                records.len()
+            )
+        });
+    assert!(
+        exhausted.contains("NROS_EXECUTOR_ARENA_SIZE"),
+        "the exhaustion line must name the knob, not just say it failed: \
+         {exhausted}"
+    );
+    assert!(
+        !exhausted.contains('\u{2026}'),
+        "the exhaustion line overflowed nros_log's format buffer and was \
+         truncated, so its actionable half never reached the sink: {exhausted}"
+    );
+
+    // ---- channel 2: the record, read as BYTES and decoded by the script ---
+    let snap = crate::boot_report::snapshot();
+    assert!(
+        snap.failed_alloc_shortfall > 0,
+        "nothing to decode: the record did not take the shortfall"
+    );
+
+    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(3)
+        .expect("repo root is three levels above packages/core/nros-node")
+        .to_path_buf();
+    let script = repo.join("scripts/read-boot-report.py");
+    assert!(
+        script.is_file(),
+        "the decoder an operator runs is missing: {}",
+        script.display()
+    );
+    let elf = std::env::current_exe().expect("current_exe");
+
+    // The address AND the length, from the ELF's own symbol table -- the two
+    // numbers a `savemem` line is built from. A length that disagreed with the
+    // struct would produce a short dump, and a short dump is the one failure
+    // this record cannot report on its own.
+    let addr_only = std::process::Command::new("python3")
+        .arg(&script)
+        .arg("--addr-only")
+        .arg(&elf)
+        .output()
+        .expect("python3 is a hard requirement of this repo's lanes");
+    assert!(
+        addr_only.status.success(),
+        "read-boot-report.py --addr-only failed on this binary: {}",
+        alloc::string::String::from_utf8_lossy(&addr_only.stderr)
+    );
+    let addr_line = alloc::string::String::from_utf8_lossy(&addr_only.stdout);
+    let symbol_len: u32 = addr_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|n| n.parse().ok())
+        .unwrap_or_else(|| panic!("unparsable --addr-only output: {addr_line:?}"));
+    assert_eq!(
+        symbol_len,
+        crate::boot_report::BootReport::struct_size(),
+        "the ELF says the record is {symbol_len} bytes and the struct says {}; \
+         an operator sizes `savemem` from the first and the decoder refuses \
+         anything short of the second",
+        crate::boot_report::BootReport::struct_size()
+    );
+
+    // The `savemem`, minus the probe: the record's own bytes, in memory order.
+    // Not a re-serialisation of `Snapshot` -- that would assert the test's idea
+    // of the layout rather than the compiler's, which is the half
+    // `check-boot-report-layout` already cannot see.
+    let len = crate::boot_report::BootReport::struct_size() as usize;
+    // SAFETY: the record is a live `#[repr(C)]` static of exactly `len` bytes,
+    // every field an `AtomicU32`. Reading it as bytes is what a debugger does;
+    // no other thread writes it during this test.
+    let dump: alloc::vec::Vec<u8> = unsafe {
+        core::slice::from_raw_parts(
+            (&raw const crate::boot_report::NROS_BOOT_REPORT).cast::<u8>(),
+            len,
+        )
+    }
+    .to_vec();
+
+    // `$repo/tmp`, not `/tmp` (AGENTS.md); pid-suffixed so parallel lanes on one
+    // checkout cannot collide.
+    let tmp = repo.join("tmp");
+    std::fs::create_dir_all(&tmp).expect("create $repo/tmp");
+    let dump_path = tmp.join(alloc::format!("boot-report-{}.bin", std::process::id()));
+    {
+        let mut f = std::fs::File::create(&dump_path).expect("write the dump");
+        f.write_all(&dump).expect("write the dump");
+    }
+
+    let decoded = std::process::Command::new("python3")
+        .arg(&script)
+        .arg(&elf)
+        .arg(&dump_path)
+        .output()
+        .expect("python3");
+    let _ = std::fs::remove_file(&dump_path);
+
+    let out = alloc::string::String::from_utf8_lossy(&decoded.stdout).into_owned();
+    let errs = alloc::string::String::from_utf8_lossy(&decoded.stderr).into_owned();
+    assert_eq!(
+        decoded.status.code(),
+        Some(1),
+        "the decoder must EXIT NON-ZERO on a record that carries a failure -- a \
+         scripted board run reads the status, not the prose.\nstdout:\n{out}\n\
+         stderr:\n{errs}"
+    );
+    assert!(
+        out.contains("ARENA EXHAUSTED"),
+        "the decoder read a record with a shortfall in it and did not say the \
+         arena was exhausted:\n{out}\n{errs}"
+    );
+    // The number, not a symptom. `capacity + shortfall` is what the arena had
+    // to have been for this allocation to fit, and it is the whole reason the
+    // shortfall is stored rather than recomputed.
+    let want = alloc::format!(
+        "set NROS_EXECUTOR_ARENA_SIZE >= {}",
+        capacity as u64 + u64::from(snap.failed_alloc_shortfall)
+    );
+    assert!(
+        out.contains(&want),
+        "the decoder must name the value to set (`{want}`), not merely report \
+         that something did not fit:\n{out}"
+    );
+    // And WHERE. Issue 1036's other half: before `RegisteringEntities` was
+    // wired this line read `ExecutorReady`, which is also what an image prints
+    // when it never registered anything.
+    assert!(
+        out.contains("RegisteringEntities"),
+        "the decoded stage must place the failure inside registration:\n{out}"
     );
 }
 

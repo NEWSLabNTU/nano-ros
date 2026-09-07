@@ -58,9 +58,17 @@
 //! same rule issue 0900's arena knob and phase-403's `rx_buffer_from_type()`
 //! both keep.
 //!
-//! Enabled, it costs [`BootReport::struct_size`] bytes of `.bss` (60 on a
-//! 32-bit target) and a handful of relaxed atomic stores on paths that run once
-//! per entity at registration. Nothing here is on the spin path.
+//! Enabled, it costs [`BootReport::struct_size`] bytes of `.bss` -- 80, the
+//! same on every target because every field is a `u32` -- and a handful of
+//! relaxed atomic stores on paths that run once per entity at registration.
+//!
+//! The 80 is not a detail: it is the LENGTH an operator types into `savemem`,
+//! and this sentence said 60 for as long as the record had fifteen fields. A
+//! short dump decodes -- `read-boot-report.py` needs `20 * 4` bytes and a
+//! 60-byte one is refused, but a reader who trusts the prose over the tool
+//! spends the refusal looking at the wrong thing. Ask the tool instead:
+//! `read-boot-report.py --addr-only <elf>` prints the address AND the length,
+//! from the ELF's own symbol size.
 
 #![allow(clippy::module_name_repetitions)]
 
@@ -104,13 +112,48 @@ pub enum Stage {
     /// An `Executor` has bound its arena, so [`BootReport::arena_capacity`]
     /// is the real slice length rather than the compiled constant.
     ExecutorReady = 3,
-    /// Entity registration has begun. The interval between this and
-    /// [`Stage::EntitiesReady`] is where an under-sized arena halts.
+    /// Entity registration has begun: something claimed arena bytes.
+    ///
+    /// Stamped by [`note_alloc`] and [`note_alloc_failed`], which is to say by
+    /// the arena allocator itself rather than by any register seam. The arena
+    /// is claimed by entity registration and by nothing else, so an allocation
+    /// ATTEMPT is the event, and putting the stamp on the record's own writers
+    /// means every present and future `arena_alloc*` call site is covered by
+    /// construction -- there is no second place to remember.
+    ///
+    /// Issue 1036: nothing emitted this for three phases, so an image that ran
+    /// out of arena left the stage reading [`Stage::ExecutorReady`] -- the same
+    /// value as an image that opened its executor and died before registering
+    /// anything at all. The record named the allocation and could not say
+    /// WHERE, which is half of a diagnostic on a board where it is the only
+    /// channel.
+    ///
+    /// The interval between this and [`Stage::FirstSpin`] is where an
+    /// under-sized arena halts, so `stage == 4` with a non-zero
+    /// [`BootReport::failed_alloc_shortfall`] is the signature of the failure
+    /// this whole record exists to catch.
     RegisteringEntities = 4,
-    /// Every entity the image declares was registered successfully.
+    /// RESERVED. Nothing emits this, and nothing can from inside the core.
+    ///
+    /// "Every entity the image declares was registered successfully" has no
+    /// observable moment here: an application may register lazily, which is the
+    /// same reason issue 0900's headroom advisory fires at the first spin
+    /// rather than at an end of registration that does not exist. A stamp at
+    /// the top of `spin_once` would be a claim the core cannot support.
+    ///
+    /// Kept rather than removed, and DOCUMENTED rather than left looking
+    /// unfinished (issue 1036): removing it renumbers [`Stage::FirstSpin`] and
+    /// bumps [`VERSION`] to retire a value no image can produce, and the next
+    /// reader would file the renumbering as the bug. An entry shape that DOES
+    /// know when its register pass ended -- a generated component `setup`
+    /// callback returning OK -- can stamp it without moving anything.
     EntitiesReady = 5,
     /// The first `spin_once` was entered, which is where issue 0900's
     /// headroom advisory would have printed had a sink existed.
+    ///
+    /// Because [`Stage::EntitiesReady`] has no producer, this is also what
+    /// "registration finished" reads as: reaching 6 means the application
+    /// stopped registering and started spinning.
     FirstSpin = 6,
 }
 
@@ -365,11 +408,15 @@ mod enabled {
     }
 
     /// Record a successful arena allocation.
+    ///
+    /// Also stamps [`Stage::RegisteringEntities`]: see that variant for why the
+    /// stamp belongs to the record's writers rather than to a register seam.
     pub fn note_alloc(size: usize, used_after: usize) {
         let r = &NROS_BOOT_REPORT;
         r.alloc_count.fetch_add(1, Ordering::Relaxed);
         r.last_alloc_size.store(saturate(size), Ordering::Relaxed);
         r.arena_used.store(saturate(used_after), Ordering::Relaxed);
+        checkpoint(Stage::RegisteringEntities);
     }
 
     /// Record the arena allocation that did not fit.
@@ -377,8 +424,14 @@ mod enabled {
     /// FIRST writer wins, on the same reasoning as [`checkpoint`]: the first
     /// failure is the one that explains the boot, and any later one is a
     /// consequence of it.
+    /// Also stamps [`Stage::RegisteringEntities`], and UNCONDITIONALLY -- outside
+    /// the first-writer branch. A second failure adds nothing to the numbers but
+    /// it is still evidence that registration was in flight, and a stage that
+    /// depended on winning a race would be exactly the sort of number this
+    /// record must never print.
     pub fn note_alloc_failed(size: usize, shortfall: usize) {
         let r = &NROS_BOOT_REPORT;
+        checkpoint(Stage::RegisteringEntities);
         if r.failed_alloc_size
             .compare_exchange(0, saturate(size), Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()

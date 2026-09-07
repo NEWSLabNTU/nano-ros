@@ -342,9 +342,12 @@ is why it is still open with its derivation already written.
 
 ### What landed
 
-`packages/core/nros-node/src/boot_report.rs` -- a fixed 60-byte record in RAM,
-not a stream. Fifteen `AtomicU32`s: the header, the stage boot reached, the
+`packages/core/nros-node/src/boot_report.rs` -- a fixed 80-byte record in RAM,
+not a stream. Twenty `AtomicU32`s: the header, the stage boot reached, the
 knobs the image was COMPILED with, and the arena allocation that did not fit.
+(It landed at fifteen fields / 60 bytes; the length is what an operator types
+into `savemem`, so read it from `read-boot-report.py --addr-only <elf>` rather
+than from any prose -- issue 1036.)
 Read back by halting the core and dumping memory, with the address resolved
 from the ELF's own symbol table so a relinked image cannot be read at a stale
 one:
