@@ -170,10 +170,20 @@ fn start_talker_with_params(locator: &str) -> ManagedProcess {
 /// in the graph" — a DELIVERY failure, which is the exact thing these tests
 /// exist to detect. That is `resource`, not `capability`: the host can run this
 /// test, a peer just never appeared.
+///
+/// **The node is `/talker`, and every query in this file addressed
+/// `/demo/talker` from the day they were written (2026-02-14) until
+/// 2026-09-08.** `param-chatter-talker` calls `create_node("talker")` with no
+/// namespace and has never set one — no commit in its directory has ever
+/// contained the string `demo`. So the four `ros2 param *` tests spent seven
+/// months addressing a node that did not exist, and the bare-`return` guard
+/// issue 1135 removed is the only reason nobody found out: they reported PASS
+/// on every host. The first run after 1135 made the guard honest is the run
+/// that found this.
 fn require_node_discoverable(locator: &str) {
     for attempt in 1..=3 {
         if let Ok(output) = nros_tests::ros2::ros2_node_list(locator, DEFAULT_ROS_DISTRO)
-            && output.contains("/demo/talker")
+            && output.contains("/talker")
         {
             return;
         }
@@ -183,7 +193,7 @@ fn require_node_discoverable(locator: &str) {
     }
     nros_tests::skip_class!(
         resource,
-        "nros node /demo/talker not discoverable via `ros2 node list` after 3 attempts \
+        "nros node /talker not discoverable via `ros2 node list` after 3 attempts \
          (locator {locator}) — zenohd, ROS 2 and the talker fixture were all present, so \
          this is our node failing to reach the ROS graph, not a missing prerequisite"
     );
@@ -208,9 +218,8 @@ fn test_ros2_param_list(zenohd_unique: ZenohRouter) {
     // Retry up to 3 times since parameter services need discovery time
     let mut ros2_stdout = String::new();
     for attempt in 1..=3 {
-        ros2_stdout =
-            nros_tests::ros2::ros2_param_list("/demo/talker", &locator, DEFAULT_ROS_DISTRO)
-                .expect("Failed to run ros2 param list");
+        ros2_stdout = nros_tests::ros2::ros2_param_list("/talker", &locator, DEFAULT_ROS_DISTRO)
+            .expect("Failed to run ros2 param list");
 
         println!("=== ros2 param list attempt {} ===", attempt);
         println!("{}", ros2_stdout);
@@ -251,7 +260,7 @@ fn test_ros2_param_get(zenohd_unique: ZenohRouter) {
     let mut ros2_stdout = String::new();
     for attempt in 1..=3 {
         ros2_stdout = nros_tests::ros2::ros2_param_get(
-            "/demo/talker",
+            "/talker",
             "start_value",
             &locator,
             DEFAULT_ROS_DISTRO,
@@ -295,7 +304,7 @@ fn test_ros2_param_set(zenohd_unique: ZenohRouter) {
 
     // Set start_value to 42
     let set_output = nros_tests::ros2::ros2_param_set(
-        "/demo/talker",
+        "/talker",
         "start_value",
         "42",
         &locator,
@@ -313,13 +322,9 @@ fn test_ros2_param_set(zenohd_unique: ZenohRouter) {
     );
 
     // Read back to verify
-    let get_output = nros_tests::ros2::ros2_param_get(
-        "/demo/talker",
-        "start_value",
-        &locator,
-        DEFAULT_ROS_DISTRO,
-    )
-    .expect("Failed to run ros2 param get");
+    let get_output =
+        nros_tests::ros2::ros2_param_get("/talker", "start_value", &locator, DEFAULT_ROS_DISTRO)
+            .expect("Failed to run ros2 param get");
 
     println!("=== ros2 param get (after set) output ===");
     println!("{}", get_output);
@@ -351,7 +356,7 @@ fn test_ros2_param_describe(zenohd_unique: ZenohRouter) {
     let mut ros2_stdout = String::new();
     for attempt in 1..=3 {
         ros2_stdout = nros_tests::ros2::ros2_param_describe(
-            "/demo/talker",
+            "/talker",
             "start_value",
             &locator,
             DEFAULT_ROS_DISTRO,
