@@ -231,7 +231,7 @@ QEMU serial pub/sub workflow. Run it with:
 ```bash
 source ./activate.sh
 just qemu build-fixtures                  # the test consumes a prebuilt
-                                          # qemu-arm-baremetal fixture
+                                          # baremetal fixture
 cargo nextest run -p nros-tests --test emulator test_qemu_serial_pubsub_e2e
 ```
 

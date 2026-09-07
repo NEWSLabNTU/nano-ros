@@ -50,7 +50,7 @@ Provision the ThreadX flavour you need (+ the RMW):
 
 ```bash
 nros setup threadx-linux --rmw zenoh          # POSIX-sim flavour; --rmw defaults to zenoh
-nros setup qemu-riscv64-threadx --rmw zenoh   # only if you need the RISC-V64 QEMU flow
+nros setup rv-virt-threadx --rmw zenoh   # only if you need the RISC-V64 QEMU flow
 source ./activate.sh
 ```
 
@@ -61,7 +61,7 @@ Micro-XRCE-DDS agent (installed by `nros setup … --rmw xrce`).
 ## Project layout
 
 Each example is a standalone Cargo or CMake project under
-`examples/threadx-linux/` and `examples/qemu-riscv64-threadx/`
+`examples/threadx-linux/` and `examples/rv-virt-threadx/`
 (`<lang>/<example>/` under each):
 
 ```text
@@ -78,7 +78,7 @@ examples/threadx-linux/
     ├── package.xml
     └── src/Talker.c
 
-examples/qemu-riscv64-threadx/
+examples/rv-virt-threadx/
 ├── rust/talker/                 # Cargo, target = riscv64gc-unknown-linux-gnu
 │   └── ...
 └── c/talker/
@@ -145,7 +145,7 @@ domain_id = 0
 ```
 
 threadx-riscv64 —
-[`examples/qemu-riscv64-threadx/c/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-riscv64-threadx/c/talker/CMakeLists.txt):
+[`examples/rv-virt-threadx/c/talker/CMakeLists.txt`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/rv-virt-threadx/c/talker/CMakeLists.txt):
 
 ```cmake
 cmake_minimum_required(VERSION 3.22)
@@ -159,7 +159,7 @@ ament_target_dependencies(c_talker std_msgs)
 ```
 
 The deploy coordinate lives in `package.xml`, not CMake:
-`<nano_ros deploy="threadx" board="riscv64-qemu" rmw="zenoh"/>`.
+`<nano_ros deploy="threadx" board="rv-virt-threadx" rmw="zenoh"/>`.
 
 Network shape (guest IP, gateway, router locator) beyond these fields
 comes from the board crate's defaults — see the
@@ -272,7 +272,7 @@ for the mechanics.
 - ThreadX-Linux C:
   [`examples/threadx-linux/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/threadx-linux/c/talker)
 - ThreadX-RISC-V64 Rust:
-  [`examples/qemu-riscv64-threadx/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-riscv64-threadx/rust/talker)
+  [`examples/rv-virt-threadx/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/rv-virt-threadx/rust/talker)
 - Board crates:
   [`packages/boards/nros-board-threadx-linux/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-threadx-linux),
   [`packages/boards/nros-board-threadx-qemu-riscv64/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-threadx-qemu-riscv64)

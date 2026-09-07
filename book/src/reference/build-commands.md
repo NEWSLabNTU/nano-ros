@@ -254,7 +254,7 @@ just qemu setup-network                    # Requires sudo
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 
 # Terminal 2: Talker (192.0.2.10)
-bin=build/cargo-fixtures/qemu-arm-baremetal/thumbv7m-none-eabi/nros-relwithdebinfo
+bin=build/cargo-fixtures/baremetal/thumbv7m-none-eabi/nros-relwithdebinfo
 ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary "$bin/qemu-bsp-talker"
 
 # Terminal 3: Listener (192.0.2.11)

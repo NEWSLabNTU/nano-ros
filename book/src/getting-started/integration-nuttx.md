@@ -12,7 +12,7 @@ own kernel build and you want to add ROS 2 communication.
 > the canonical user entry.
 
 > **Prereqs.** Install the `nros` CLI once per machine, then run
-> `nros setup qemu-arm-nuttx --rmw <zenoh|xrce|cyclonedds>` (`--rmw`
+> `nros setup qemu-armv7a-nuttx --rmw <zenoh|xrce|cyclonedds>` (`--rmw`
 > defaults to `zenoh`). This fetches a mostly-prebuilt toolchain set into
 > `${NROS_HOME:-~/.nros}/sdk` — the NuttX cross-compiler, the emulator, the NuttX
 > sources, and the RMW host daemon — so you do **not** hand-install
@@ -21,7 +21,7 @@ own kernel build and you want to add ROS 2 communication.
 > ```bash
 > ./scripts/bootstrap.sh      # builds packages/cli/target/release/nros (Phase 218)
 > source ./activate.sh        # OR: direnv allow / source ./activate.fish
-> nros setup qemu-arm-nuttx --rmw zenoh
+> nros setup qemu-armv7a-nuttx --rmw zenoh
 > ```
 >
 > You still need a NuttX ≥ nuttx-12 checkout with an `apps/` sibling
@@ -55,7 +55,7 @@ Wire the shell into your NuttX apps tree. Easiest path:
 ```bash
 just setup nuttx        # contributor helper: stages the shell +
                         # example apps into $NUTTX_APPS_DIR/external/
-                        # (delegates to `nros setup qemu-arm-nuttx`
+                        # (delegates to `nros setup qemu-armv7a-nuttx`
                         # for the toolchain/SDK provisioning)
 ```
 
@@ -103,7 +103,7 @@ already include these.
 Deploy config (RMW / domain id, plus an optional `locator` override) is
 declared in the build manifest and baked at compile time. Verbatim from
 the in-tree
-[`examples/qemu-arm-nuttx/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-nuttx/rust/talker/Cargo.toml):
+[`examples/qemu-armv7a-nuttx/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-armv7a-nuttx/rust/talker/Cargo.toml):
 
 ```toml
 [package.metadata.nros.deploy.nuttx]
@@ -119,7 +119,7 @@ tuple (RFC-0048 §4):
 ```xml
 <export>
   <build_type>ament_cmake</build_type>
-  <nano_ros deploy="nuttx" board="nuttx-qemu-arm" rmw="zenoh"/>
+  <nano_ros deploy="nuttx" board="qemu-armv7a-nuttx" rmw="zenoh"/>
 </export>
 ```
 
@@ -208,7 +208,7 @@ count at 1, matching the official ROS 2 demo talker. If no
 1. Confirm the app actually ran — `ps` should show your task.
 2. Confirm networking — `ifconfig` shows a configured interface.
    With the virtio-net + Slirp wiring above, `eth0` comes up at
-   `10.0.2.30` (the board crate's default for the qemu-arm-nuttx examples).
+   `10.0.2.30` (the board crate's default for the qemu-armv7a-nuttx examples).
 3. Confirm `zenohd` reachable; the deploy locator (or the
    `nros_init` arguments) must match the router's listen port.
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
@@ -254,9 +254,9 @@ not on PATH"`); install it before retrying.
 - NuttX integration shell:
   [`integrations/nuttx/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/integrations/nuttx)
 - Worked NuttX QEMU examples:
-  [`examples/qemu-arm-nuttx/rust/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-nuttx/rust),
-  [`examples/qemu-arm-nuttx/c/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-nuttx/c),
-  [`examples/qemu-arm-nuttx/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-nuttx/cpp)
+  [`examples/qemu-armv7a-nuttx/rust/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-armv7a-nuttx/rust),
+  [`examples/qemu-armv7a-nuttx/c/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-armv7a-nuttx/c),
+  [`examples/qemu-armv7a-nuttx/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-armv7a-nuttx/cpp)
 - Kconfig schema:
   [`integrations/nuttx/Kconfig`](https://github.com/NEWSLabNTU/nano-ros/blob/main/integrations/nuttx/Kconfig)
 

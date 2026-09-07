@@ -254,14 +254,14 @@ are applied where noted; the serial cell ships with the recipe below.
 
 | platform | transport | backend | profile | text (flash code) | data | bss | RAM total |
 |---|---|---|---|---|---|---|---|
-| qemu-arm-baremetal (mps2-an385, cortex-m3) | ethernet (smoltcp) | zenoh-pico | release | 177.4 KB | 67.0 KB | 91.7 KB | **158.7 KB** |
-| qemu-arm-baremetal | ethernet | zenoh-pico | size | **158.3 KB** | 67.0 KB | 91.7 KB | 158.7 KB |
-| qemu-arm-baremetal | **serial** (no IP stack) | zenoh-pico | release | 128.6 KB | 25.2 KB | 75.8 KB | **101.0 KB** |
-| qemu-arm-baremetal | **serial** | zenoh-pico | **size** + recipe | **116.1 KB** | 25.2 KB | 75.8 KB | **101.0 KB** |
+| mps2-an385-baremetal (cortex-m3) | ethernet (smoltcp) | zenoh-pico | release | 177.4 KB | 67.0 KB | 91.7 KB | **158.7 KB** |
+| mps2-an385-baremetal | ethernet | zenoh-pico | size | **158.3 KB** | 67.0 KB | 91.7 KB | 158.7 KB |
+| mps2-an385-baremetal | **serial** (no IP stack) | zenoh-pico | release | 128.6 KB | 25.2 KB | 75.8 KB | **101.0 KB** |
+| mps2-an385-baremetal | **serial** | zenoh-pico | **size** + recipe | **116.1 KB** | 25.2 KB | 75.8 KB | **101.0 KB** |
 | stm32f4 (thumbv7em-eabihf, cortex-m4) ¹ | ethernet | zenoh-pico | release | 186.9 KB | 13.7 KB | 123.0 KB | 136.7 KB |
 | stm32f4 ¹ | ethernet | zenoh-pico | size | **138.1 KB** | 13.7 KB | 123.0 KB | 136.7 KB |
 | mps2-an385-freertos (cortex-m3 + lwIP, RTOS-reused stack) | ethernet (lwIP) | zenoh-pico | release | 240.6 KB | 10.7 KB | 3.3 MB | 3.3 MB |
-| **qemu-arm-baremetal (serial)** | **serial** (custom XRCE transport) | **XRCE** | **size**, heap 24 KB, tight XRCE pools | **60.3 KB** | 25.2 KB (heap 24 KB) | 8.8 KB | **~34 KB** |
+| **mps2-an385-baremetal (serial)** | **serial** (custom XRCE transport) | **XRCE** | **size**, heap 24 KB, tight XRCE pools | **60.3 KB** | 25.2 KB (heap 24 KB) | 8.8 KB | **~34 KB** |
 | **micro-ROS reference** (XRCE) | serial | XRCE-DDS Client | -Os | < 75 KB | — | ~3 KB | ~3 KB peak |
 
 ¹ The two stm32f4 rows are **historical**: the board crates left the tree in
@@ -296,7 +296,7 @@ hosted / non-tight-RAM consumers — the env vars are pure opt-in.
 
 ### Size-minimal recipe
 
-Smallest measured nano-ros configuration today (qemu-arm-baremetal serial
+Smallest measured nano-ros configuration today (mps2-an385-baremetal serial
 talker, **116 KB text / 101 KB RAM**):
 
 ```toml

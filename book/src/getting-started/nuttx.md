@@ -44,7 +44,7 @@ points and `println!` -- no semihosting or custom panic handlers needed.
 
 ## Setup
 
-`nros setup qemu-arm-nuttx` provisions everything this board needs —
+`nros setup qemu-armv7a-nuttx` provisions everything this board needs —
 the NuttX cross-compiler, `qemu-system-arm`, the NuttX source tree,
 and the RMW host daemon — into the shared store at `~/.nros/sdk`. No
 hand-installed cross-toolchain and no ROS 2 install required.
@@ -55,11 +55,11 @@ Build the in-tree `nros` CLI (Phase 218), then provision the board
 ```bash
 ./scripts/bootstrap.sh      # builds packages/cli/target/release/nros
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
-nros setup qemu-arm-nuttx --rmw zenoh
+nros setup qemu-armv7a-nuttx --rmw zenoh
 ```
 
 As a contributor, `just setup nuttx` remains available and now
-delegates to `nros setup qemu-arm-nuttx` for the toolchain/SDK
+delegates to `nros setup qemu-armv7a-nuttx` for the toolchain/SDK
 provisioning while also staging the external apps.
 
 The NuttX sources land in `third-party/nuttx/nuttx/` and
@@ -73,7 +73,7 @@ variables if your sources are elsewhere:
 
 ### Prerequisites
 
-The `nros setup qemu-arm-nuttx` step above provisions the
+The `nros setup qemu-armv7a-nuttx` step above provisions the
 `qemu-system-arm` emulator and the `arm-none-eabi-gcc` cross-compiler
 used for NuttX kernel compilation. The one host-side tool you still
 supply yourself:
@@ -90,7 +90,7 @@ layer, which provides sockets, pthreads, and standard I/O.
 
 ### Available Examples
 
-All examples are in `examples/qemu-arm-nuttx/rust/`:
+All examples are in `examples/qemu-armv7a-nuttx/rust/`:
 
 | Example          | Description                                      |
 |------------------|--------------------------------------------------|
@@ -108,7 +108,7 @@ The same NuttX path also runs on QEMU's RISC-V `rv-virt` board
 path is arch-agnostic. Provision and build with:
 
 ```bash
-nros setup qemu-riscv-nuttx --rmw zenoh
+nros setup rv-virt-nuttx --rmw zenoh
 ```
 
 > **Contributors:** the in-tree RISC-V fixture build lanes are in

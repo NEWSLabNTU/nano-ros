@@ -62,7 +62,7 @@ fetches the matching prebuilt cross-toolchain + emulator + SDK:
 ```bash
 nros setup mps2-an385-freertos --rmw zenoh     # arm-none-eabi-gcc, qemu, FreeRTOS+lwIP
 nros setup zephyr            --rmw zenoh     # Zephyr west workspace + SDK bits
-nros setup qemu-arm-nuttx    --rmw zenoh     # arm-none-eabi-gcc, qemu, NuttX
+nros setup qemu-armv7a-nuttx    --rmw zenoh     # arm-none-eabi-gcc, qemu, NuttX
 ```
 
 Useful flags: `nros setup --list` (every package + version),

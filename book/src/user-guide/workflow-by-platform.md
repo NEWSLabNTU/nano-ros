@@ -96,8 +96,7 @@ all three spellings.
 | `zephyr` | cargo, west | cmake, west | cmake, west | cargo |
 | `zephyr-cortex-m` | west | west | west | — |
 | `esp32` | cargo | — | — | — |
-| `qemu-arm-baremetal` | cargo | — | — | — |
-| `esp32-c3-baremetal` | cargo | — | — | — |
+| `baremetal` | cargo | — | — | — |
 
 Where a row lists two builders, both are real and they build different
 things: on Zephyr, `west` builds the single-node examples under
@@ -178,22 +177,22 @@ thing, copy the example out and `cargo build` normally.
 |---|---|---|---|---|---|
 | Linux host | `linux` | `native` | `examples/native/` | `just native …` | [Native host build](../platform-guides/native-host.md) |
 | FreeRTOS (QEMU MPS2-AN385) | `freertos` | `mps2-an385-freertos` | `examples/mps2-an385-freertos/` | `just freertos …` | [FreeRTOS](../getting-started/freertos.md) |
-| NuttX (Arm) | `nuttx` | `qemu-arm-nuttx` | `examples/qemu-arm-nuttx/` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
-| NuttX (RISC-V) | `nuttx-riscv` | `qemu-riscv-nuttx` | `examples/qemu-riscv-nuttx/` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
+| NuttX (Arm) | `nuttx` | `qemu-armv7a-nuttx` | `examples/qemu-armv7a-nuttx/` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
+| NuttX (RISC-V) | `nuttx-riscv` | `rv-virt-nuttx` | `examples/rv-virt-nuttx/` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
 | ThreadX (Linux sim) | `threadx-linux` | `threadx-linux` | `examples/threadx-linux/` | `just threadx_linux …` | [ThreadX](../getting-started/threadx.md) |
-| ThreadX (QEMU RISC-V 64) | `threadx-riscv64` | `qemu-riscv64-threadx` | `examples/qemu-riscv64-threadx/` | `just threadx_riscv64 …` | [ThreadX](../getting-started/threadx.md) |
+| ThreadX (QEMU RISC-V 64) | `threadx-riscv64` | `rv-virt-threadx` | `examples/rv-virt-threadx/` | `just threadx_riscv64 …` | [ThreadX](../getting-started/threadx.md) |
 | Zephyr | `zephyr`, `zephyr-cortex-m` | `zephyr` | `examples/zephyr/` | `just zephyr …` | [Zephyr](../getting-started/integration-zephyr.md) |
-| ESP32 | `esp32-c3-baremetal` (single-node), `esp32` (workspace) | `esp32-c3-baremetal` | `examples/esp32-c3-baremetal/` | `just esp32 …` | [ESP32](../getting-started/esp32.md) |
-| Bare-metal Cortex-M3 | `qemu-arm-baremetal` | `qemu-arm-baremetal` | `examples/mps2-an385-baremetal/` | `just qemu …` | [Bare-metal](../getting-started/bare-metal.md) |
+| ESP32 | `esp32` | `esp32-c3-baremetal` | `examples/esp32-c3-baremetal/` | `just esp32 …` | [ESP32](../getting-started/esp32.md) |
+| Bare-metal Cortex-M3 | `baremetal` | `mps2-an385-baremetal` | `examples/mps2-an385-baremetal/` | `just qemu …` | [Bare-metal](../getting-started/bare-metal.md) |
 | Arm FVP (Cortex-A SMP) | — | `zephyr` + a license-gated FVP binary | — | — | [ARM FVP](../getting-started/arm-fvp.md) |
 
 Multi-node workspace examples do not follow that directory rule: they
 all live under `examples/workspaces/`, selected by fixture row rather
-than by directory. That is why ESP32 has two grid rows —
-`esp32-c3-baremetal` for its single-node examples and `esp32` for its
-share of the workspace ones. Zephyr's two rows split differently:
-`zephyr` and `zephyr-cortex-m` build the SAME examples for different
-boards.
+than by directory. So ESP32's single-node and workspace examples share
+one grid row, `esp32`: a grid row names a platform FAMILY, never a board
+(RFC-0093 R6), and `esp32` carries both. Zephyr is the case that does
+split — `zephyr` and `zephyr-cortex-m` build the SAME examples for
+different boards.
 
 **Contributors (in-tree checkout):** each module's recipes are
 discoverable rather than memorized:
