@@ -256,11 +256,80 @@ roadmap-status:
 # It runs from its OWN pull-request step in gate.yml, which sits after the
 # provisioning step — `check-lane-contracts`'s rule is that a lane may only
 # resolve artifacts the job itself builds, and that job does.
+#
+# THREE OUTCOMES, NOT TWO — issue 1138, which is issue 1043 one gate over.
+#
+# Taking it off the fast line stopped the push lane reporting a red it could
+# never satisfy; it did nothing for the gate ITSELF. Run by hand in a checkout
+# where the source is absent — every `git worktree` an agent session opens —
+# `cargo doc` still reached that build script and still answered "your
+# documentation is broken" when the true answer was "I cannot build the docs
+# here". Four sessions in one day were stopped by it, none touching Rust: two
+# initialised the submodule, two pushed past the hook. A gate whose ordinary
+# outcome is a bypass has stopped being a gate.
+#
+#   FAIL          rustdoc RAN and a link is dead.
+#   NOT VERIFIED  a vendored source this doc build needs is absent here, so
+#                 rustdoc never ran and nothing was measured either way.
+#   OK            rustdoc ran and the published crates document cleanly.
+#
+# The check must come BEFORE `cargo doc`, because the panic is inside it — a
+# precondition cannot be read out of the thing it is a precondition for. The
+# table of required sources lives beside the crate list in
+# `scripts/build/rustdoc-set.sh`; it records WHY narrowing the feature set
+# cannot sidestep `zpico-sys` (the dependency is unconditional, so the build
+# script runs whatever features are on).
+#
+# The narrowing is reported through the SHARED ledger (`nros_check_skip`),
+# not by printing on the happy path: `run-gates-parallel.sh` discards the stdout
+# of every gate that exits 0, so a message there is invisible on the lane that
+# runs in bulk (issue 0650's shape).
+#
+# `NROS_RUSTDOC_LINKS_STRICT=1` restores fail-closed, and unlike issue 1043's
+# it IS wired to a lane: gate.yml's own `rustdoc-links` step runs after the
+# provisioning step, so on that job an absent source is the WORKFLOW's
+# regression and must be a red, not a skip.
 [group("ci")]
 rustdoc-links:
     #!/usr/bin/env bash
     set -euo pipefail
     source scripts/build/rustdoc-set.sh
+    mapfile -t _missing < <(nros_rustdoc_missing_sources)
+    if [ "${#_missing[@]}" -ne 0 ]; then
+        _names=()
+        for _row in "${_missing[@]}"; do
+            IFS='|' read -r _path _name _why <<< "$_row"
+            _names+=("$_name")
+            echo "rustdoc-links: NOT VERIFIED — vendored source '$_name' is not provisioned here." >&2
+            echo "    expected at: $_path" >&2
+            echo "    needed by:   $_why" >&2
+        done
+        _list="$(IFS=','; printf '%s' "${_names[*]}")"
+        if [ "${NROS_RUSTDOC_LINKS_STRICT:-0}" = "1" ]; then
+            echo "rustdoc-links: FAILED — NROS_RUSTDOC_LINKS_STRICT=1 and the source(s) above are absent." >&2
+            echo "  This lane DECLARES that it provisions them, so their absence is the lane's" >&2
+            echo "  regression and not the author's: see gate.yml's \"Build nros CLI + provision" >&2
+            echo "  compile-tier sources\" step, which runs before this gate. Nothing the author" >&2
+            echo "  pushes can fix it." >&2
+            exit 1
+        fi
+        if [ -n "${GITHUB_ACTIONS:-}${CI:-}" ]; then
+            echo "  In CI: THIS JOB did not provision it, so the doc links were not checked." >&2
+            echo "  Nothing you push changes that — the fix belongs in the workflow. A lane that" >&2
+            echo "  does provision the source sets NROS_RUSTDOC_LINKS_STRICT=1, which turns this" >&2
+            echo "  skip back into a red." >&2
+        else
+            echo "  Locally: 'nros setup --source zenoh-pico' (or 'git submodule update --init" >&2
+            echo "  packages/rmw/zenoh/zpico-sys/zenoh-pico') turns this skip into a verdict." >&2
+            echo "  The published crates' doc links are UNCHECKED until you do — this is not a" >&2
+            echo "  finding about your tree." >&2
+        fi
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip rustdoc-links \
+            "vendored source(s) not provisioned: ${_list} — rustdoc never ran, so the ${#NROS_RUSTDOC_CRATES[@]} published crates' doc links were NOT checked"
+        exit 0
+    fi
     mapfile -t pkgs < <(nros_rustdoc_package_args)
     cargo doc --no-deps --quiet \
         --features "$NROS_RUSTDOC_FEATURES" \
