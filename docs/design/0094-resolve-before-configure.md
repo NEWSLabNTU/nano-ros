@@ -182,6 +182,14 @@ status quo.
 
 ### D5 — Descriptors become load-bearing; the closed lists go
 
+**LANDED, phase-439 W4 (2026-09-08).** `nros_rmw_dispatch()` asks
+`nros ws rmw-dispatch <name> --lines`, which resolves over the provider scan;
+the generated chain, its generator and the root's hand-written chain are all
+deleted, and the root dispatches on the DECLARED link strategy (`umbrella` /
+`cmake`) instead of on names. `NANO_ROS_RMW=uorb` configures. Issues 1214,
+1215 and 1216 are closed; 1219's gate is not written and the issue records the
+survey that says why.
+
 `cmake/NanoRosRmwDispatch.cmake` is GENERATED from `rmw_resolver.rs`'s
 `KNOWN_RMW` and re-emits, as an `if/elseif` chain, the same eight values that
 already live in each backend's `nros-rmw.toml`. Its `else()` arm is a
@@ -219,6 +227,12 @@ No build required.
 `nros_rmw_acme_register`. It must configure and link without editing
 `NanoRosRmwDispatch.cmake`, the root `CMakeLists.txt`, or recompiling the `nros`
 binary.
+
+*Met, phase-439 W4, with `uorb` as the in-tree proof: it announces itself, ships
+a descriptor and a `CMakeLists.txt`, has no `Cargo.toml`, and was refused by both
+closed lists. `NANO_ROS_RMW=uorb` now configures and `add_subdirectory` creates
+its target. A uorb IMAGE still does not link on a plain host — `orb_*` is PX4's
+uORB middleware, which is a property of that backend and not of the seam.*
 
 **A3 — the fixed point is gone.** No lane re-derives a knob during configure;
 `nros_reconfigure_settle` and the future-mtime arm are deleted, and Zephyr

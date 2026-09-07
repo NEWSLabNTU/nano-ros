@@ -1,10 +1,11 @@
 ---
 id: 1215
 title: "The root CMakeLists is a FIFTH closed rmw list: `uorb` is offered by the cache UI and FATAL_ERRORs at configure"
-status: open
+status: resolved
 area: cmake, build, rmw
 severity: medium
 found: 2026-09-08
+resolved_in: phase-439 W4
 related: [1214, 1216, 1218, RFC-0071]
 ---
 
@@ -103,3 +104,57 @@ discarded — `packages/cli/cargo-nano-ros/build.rs:154` says
 `[rmw.provides.*]` and `[rmw.codegen]` "are for later waves and are **ignored**".
 Making the root chain read them is the shape of the fix; until then, note that
 the drop-down advertises a value the configure rejects.
+
+---
+
+## Fix (phase-439 W4, RFC-0094 D5)
+
+`NANO_ROS_RMW=uorb` configures.
+
+The root chain's three arms were never three backends — they were three LINK
+STRATEGIES, and this issue's own "fix direction" said so. A backend declares its
+strategy and the root dispatches on that:
+
+* `umbrella` — the backend is a Rust rlib bundled into `libnros_c.a` /
+  `libnros_cpp.a`; nothing separate reaches the link line. DERIVED from
+  `[rmw.link] rlib_dep` being non-empty, which is what naming an rlib means.
+* `cmake` — the backend is a CMake project: `add_subdirectory()` the dir it
+  declares and whole-archive the target it declares into both umbrellas.
+
+`_nros_link_cmake_rmw(<target>)` is the one implementation of the second, for
+both umbrellas; the block existed twice, ~45 lines apart, differing only in the
+target name, and its own comments said "one defect, two consumers". The
+`else()` arm is now a closed list of STRATEGIES — a property of the file that
+implements them — rather than of names.
+
+Two other things this cost:
+
+* `NROS_RMW_CYCLONEDDS_DDSC_LIBRARY` in the root became
+  `NROS_RMW_COMPANION_LIBRARIES`, a generic channel a backend appends to. The
+  root had to know that one backend has a companion archive; issue 0837 was the
+  price of that archive having no channel to be declared through.
+* The `CYCLONEDDS_SOURCE_DIR` pre-step moved to
+  `packages/rmw/cyclonedds/nros-rmw-cyclonedds/nros-rmw-provision.cmake`, a
+  fragment the selecting build includes when present. What a backend needs
+  provisioned is the backend's business; an `if(NANO_ROS_RMW STREQUAL
+  "cyclonedds")` pre-step at the root is the same closed list one line up.
+
+`NROS_RMW_KNOWN` — the generated literal at `NanoRosRmwDispatch.cmake:58` that
+the drop-down read — is gone too, replaced by `nros_rmw_known()`, a query. So
+the two lines 370 apart in one file now have ONE source: what a provider
+announces. `check-entry-rmw-vocabulary`, which regex'd that literal out of the
+generated file, reads the announcements instead.
+
+## Measured, and the honest limit
+
+`cmake -DNANO_ROS_RMW=uorb` configures, `add_subdirectory` runs, and
+`nros_rmw_uorb` is created — so `nros-cpp`'s `NROS_RMW_CMAKE_TARGET` guard,
+inert since it was written, finally has a producer.
+
+A uorb IMAGE still does not LINK on a plain host: `orb_advertise_multi`,
+`orb_subscribe_multi`, `orb_check`, `orb_copy`, `orb_publish`,
+`orb_unadvertise`, `orb_unsubscribe` are undefined. That is uORB itself — the
+middleware lives in PX4, which is why `NROS_RMW_UORB_LINK_PX4` exists and
+defaults OFF and why `integrations/px4/` is uorb's consumer. The nano-ros half
+of the link (`nros_rmw_cffi_register_named`) resolves. Recorded in the
+descriptor so the next person reads it before re-deriving it.

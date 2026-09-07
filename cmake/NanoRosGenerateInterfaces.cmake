@@ -68,6 +68,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosBoardFacts.cmake")
 # `nros_read_package_xml_body()` — regex reads of a package.xml must not see
 # commented-out elements (phase-348 W1).
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosPackageXml.cmake")
+# phase-439 W4 — this file CALLS `nros_rmw_dispatch()` (the per-message codegen
+# hook) and never included the module that defines it, relying entirely on a
+# transitive include from whoever pulled it in. `include_guard(GLOBAL)` makes
+# this free where that already happened, and correct where it did not.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 
 # =========================================================================
 # Locate the nros-codegen tool

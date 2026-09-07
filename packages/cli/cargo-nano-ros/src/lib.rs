@@ -53,6 +53,11 @@ pub mod derived_descriptor;
 pub mod package_discovery;
 pub mod package_xml;
 pub mod provider_scan;
+/// The `nros-rmw.toml` descriptor (phase-439 W4, RFC-0094 D5). `build.rs`
+/// shares this exact file via `include!`, so the compile-time table and the
+/// selection-time read of an out-of-tree provider cannot be two spellings of
+/// one format.
+pub mod rmw_descriptor;
 pub mod rmw_resolver;
 pub mod scaffold;
 /// The `nros-serdes.toml` descriptor and the derivations that make it almost

@@ -16,7 +16,12 @@
 //! It lives in `cargo-nano-ros` (the lower crate) so both the scaffolder here
 //! and the orchestration loader in `nros-cli-core` share one mapping.
 
-use std::fmt;
+use std::{fmt, path::PathBuf};
+
+use crate::{
+    provider_scan::{ResolveError, ScanResult, resolve_unique},
+    rmw_descriptor::{RMW_KIND, RmwDescriptor, agree_with_convention, parse_rmw_descriptor},
+};
 
 include!(concat!(env!("OUT_DIR"), "/rmw_table.rs"));
 
@@ -46,6 +51,12 @@ pub struct ResolvedRmw {
     pub cmake_value: &'static str,
     /// The C `#define NROS_SYSTEM_RMW_<TOKEN>` token, e.g. `"ZENOH"`.
     pub c_define_token: &'static str,
+    /// `[rmw].cpp_define` — the define `nros-cpp` puts on its INTERFACE.
+    pub cpp_define: &'static str,
+    /// The cmake target the backend's own `CMakeLists.txt` creates, or empty.
+    pub cmake_target: &'static str,
+    /// `[rmw.codegen].per_message` — a cmake command run per message type.
+    pub per_message_hook: &'static str,
     /// Phase 241 W13/R1 (RFC-0042 §D3 bullet 2) — the **link dispatch** data,
     /// the one place that records how each backend reaches the final link.
     /// Consumed by both the W11 synthesized `nros_ws_runtime` crate's nros-cpp
@@ -63,14 +74,23 @@ pub struct RmwDispatch {
     /// `nros_ws_runtime` crate sets this on its `nros-cpp` dep.
     pub umbrella_cffi_feature: &'static str,
     /// The pure-Rust backend crate force-linked **into** the umbrella as an rlib
-    /// dep, e.g. `Some("nros-rmw-zenoh")`. `None` for cyclonedds — it is a C++
-    /// library linked separately (see `extra_link_libs`), not a Rust rlib.
+    /// dep, e.g. `Some("nros-rmw-zenoh")`. `None` for a backend that is not a
+    /// Rust crate — cyclonedds and uorb are C/C++ CMake projects.
+    ///
+    /// phase-439 W4 — this used to be read by NOTHING (issue 1216) and is now
+    /// the discriminator: naming an rlib IS the statement that the backend
+    /// arrives inside the umbrella staticlib and nothing separate reaches the
+    /// link line. See [`RmwDispatch::link_strategy`].
     pub rlib_dep: Option<&'static str>,
-    /// Extra non-umbrella link libraries the final binary needs for this backend.
-    /// Empty for the pure-Rust backends (zenoh/xrce); cyclonedds pulls its C++
-    /// RMW wrapper + Cyclone + the C++ runtime (incl. for C binaries — the locked
-    /// design choice). Names are cmake link targets / `-l` stems.
-    pub extra_link_libs: &'static [&'static str],
+    /// `umbrella` | `cmake` — see `rmw_descriptor::LINK_STRATEGIES`.
+    pub link_strategy: &'static str,
+    /// The `nros-c` feature that bundles this backend, or empty.
+    ///
+    /// AUTHORED per backend rather than derived: the two in-tree values are
+    /// `cffi-zenoh-cffi` and `cffi-xrce-c`, irregular by history in the same way
+    /// `cpp_define` is. `umbrella_cffi_feature` is the `nros-cpp` half, which IS
+    /// regular (`<cargo_feature>-cffi`).
+    pub c_cffi_feature: &'static str,
     /// Whether the final link must use the C++ linker driver (libstdc++ on the
     /// line). True for cyclonedds (its wrapper is C++), even for C binaries.
     pub needs_cxx_linker: bool,
@@ -157,10 +177,14 @@ pub fn resolve_rmw(declared: &str) -> Result<ResolvedRmw, UnknownRmw> {
             cargo_feature: r.cargo_feature,
             cmake_value: r.cmake_value,
             c_define_token: r.c_define_token,
+            cpp_define: r.cpp_define,
+            cmake_target: r.cmake_target,
+            per_message_hook: r.per_message_hook,
             dispatch: RmwDispatch {
                 umbrella_cffi_feature: r.cffi_feature,
                 rlib_dep: (!r.rlib_dep.is_empty()).then_some(r.rlib_dep),
-                extra_link_libs: r.extra_link_libs,
+                link_strategy: r.link_strategy,
+                c_cffi_feature: r.c_cffi_feature,
                 needs_cxx_linker: r.needs_cxx_linker,
             },
         })
@@ -169,102 +193,194 @@ pub fn resolve_rmw(declared: &str) -> Result<ResolvedRmw, UnknownRmw> {
         })
 }
 
-/// Phase 241 W13/R1 — render the per-backend link dispatch ([`RmwDispatch`]) as a
-/// CMake-includable `nros_rmw_dispatch(<rmw>)` function, the **generated** form of the
-/// formerly hand-maintained "RMW backend dispatch" prose (RFC-0042 §D3 bullet 2). The
-/// output is committed at `cmake/NanoRosRmwDispatch.cmake`; `rmw_cmake_dispatch_is_current`
-/// asserts the committed copy matches this renderer, so the SSoT is `resolve_rmw()` and
-/// drift fails the build. Consumed by `NanoRosRuntimeCrate.cmake` (the W11 synthesized
-/// runtime crate's nros-cpp cffi feature) and the cmake Cyclone link block.
-pub fn render_cmake_dispatch() -> String {
-    let mut out = String::new();
-    out.push_str(
-        "# Generated from cargo-nano-ros `resolve_rmw()` — DO NOT EDIT.\n\
-         # Regenerate: `cargo test -p cargo-nano-ros rmw_cmake_dispatch_is_current -- --ignored`\n\
-         # (or run the bin helper). The SSoT is rmw_resolver.rs; this is its CMake lowering.\n\
-         #\n\
-         # nros_rmw_dispatch(<rmw>) sets in the CALLER scope:\n\
-         #   NROS_RMW_UMBRELLA_CFFI_FEATURE  the nros-c/nros-cpp cffi feature (e.g. rmw-zenoh-cffi)\n\
-         #   NROS_RMW_RLIB_DEP               backend rlib crate bundled in the umbrella, or \"\"\n\
-         #   NROS_RMW_EXTRA_LINK_LIBS        ;-list of extra link libs (cyclonedds C++ path), or \"\"\n\
-         #   NROS_RMW_NEEDS_CXX_LINKER       ON/OFF — force the C++ linker driver (libstdc++)\n\
-         #   NROS_RMW_CPP_DEFINE             the define nros-cpp puts on its INTERFACE\n\
-         #   NROS_RMW_CMAKE_TARGET           a cmake target to link when present, or \"\"\n\
-         #   NROS_RMW_CAPABILITIES           ;-list of capabilities this backend declares\n\
-         #   NROS_RMW_PER_MESSAGE_HOOK       cmake command run per message type, or \"\"\n\
-         function(nros_rmw_dispatch rmw)\n",
-    );
-    let mut first = true;
-    for name in known_rmw() {
-        let row = RMW_ROWS
-            .iter()
-            .find(|x| x.declared == name)
-            .expect("known_rmw() names come from RMW_ROWS");
-        let r = resolve_rmw(name).expect("a descriptor-provided name resolves");
-        let d = &r.dispatch;
-        let branch = if first { "if" } else { "elseif" };
-        first = false;
-        let rlib = d.rlib_dep.unwrap_or("");
-        let extra = d.extra_link_libs.join(";");
-        let needs_cxx = if d.needs_cxx_linker { "ON" } else { "OFF" };
-        out.push_str(&format!(
-            "    {branch}(rmw STREQUAL \"{decl}\")\n\
-             \x20       set(NROS_RMW_UMBRELLA_CFFI_FEATURE \"{feat}\" PARENT_SCOPE)\n\
-             \x20       set(NROS_RMW_RLIB_DEP \"{rlib}\" PARENT_SCOPE)\n\
-             \x20       set(NROS_RMW_EXTRA_LINK_LIBS \"{extra}\" PARENT_SCOPE)\n\
-             \x20       set(NROS_RMW_NEEDS_CXX_LINKER {needs_cxx} PARENT_SCOPE)\n\
-             \x20       set(NROS_RMW_CPP_DEFINE \"{cpp_define}\" PARENT_SCOPE)\n\
-             \x20       set(NROS_RMW_CMAKE_TARGET \"{cmake_target}\" PARENT_SCOPE)\n\
-             \x20       set(NROS_RMW_CAPABILITIES \"{caps}\" PARENT_SCOPE)\n\
-             \x20       set(NROS_RMW_PER_MESSAGE_HOOK \"{hook}\" PARENT_SCOPE)\n",
-            decl = r.declared,
-            feat = d.umbrella_cffi_feature,
-            cpp_define = row.cpp_define,
-            cmake_target = row.cmake_target,
-            hook = row.per_message_hook,
-            caps = row
-                .capabilities
-                .iter()
-                .map(|(k, _)| *k)
-                .collect::<Vec<_>>()
-                .join(";"),
-        ));
+/// Lower a declared RMW string against a PROVIDER SCAN.
+///
+/// The sibling of [`resolve_rmw`], and the answer to issue 1214. `resolve_rmw`
+/// reads a table baked into this binary at COMPILE time from `packages/rmw/`,
+/// so the set of resolvable names is structurally the contents of one checkout:
+/// an out-of-tree provider that `nros ws providers --resolve rmw:acme` FINDS is
+/// then reported unknown by every build path. This reads the descriptor at
+/// SELECTION time, through the same scan, so discovery and dispatch are one
+/// mechanism.
+///
+/// Modelled on `serdes_resolver::resolve_serdes_in`, which is the shape RFC-0088
+/// D6 established and RFC-0094 D5 extends to this axis. Owned `String`s for the
+/// same reason it gives: an out-of-repo provider's name is read from a file at
+/// selection time and cannot be `'static`.
+///
+/// A provider with NO `nros-rmw.toml` is an error here, unlike serdes: a serdes
+/// provider with nothing non-derivable to say gets every default, while an RMW
+/// backend must at minimum say how it reaches the link and what `cpp_define`
+/// consumers `#if` on. Both are non-derivable, so silence is not a default.
+pub fn resolve_rmw_in(scan: &ScanResult, declared: &str) -> Result<ResolvedRmwIn, RmwResolveError> {
+    let resolution = resolve_unique(scan, RMW_KIND, declared).map_err(RmwResolveError::Scan)?;
+    let pkg = resolution.winner;
+
+    // The CANONICAL name is the provider's first `rmw` announcement, not the
+    // string the consumer typed: a provider announcing `zenoh`, `rmw-zenoh` and
+    // `rmw-zenoh-cffi` has one canonical spelling, and the lowering must not
+    // depend on which alias the consumer reached it by.
+    let canonical = pkg
+        .provides
+        .iter()
+        .find(|p| p.kind == RMW_KIND)
+        .map(|p| p.name.clone())
+        .ok_or_else(|| RmwResolveError::Provider {
+            dir: pkg.dir.clone(),
+            message: "resolved as an rmw provider but announces no rmw provision".to_string(),
+        })?;
+
+    let fail = |message: String| RmwResolveError::Provider {
+        dir: pkg.dir.clone(),
+        message,
+    };
+
+    let descriptor_path = pkg.descriptor_path(RMW_KIND);
+    if !descriptor_path.is_file() {
+        return Err(fail(format!(
+            "no {} beside the announcement. An rmw provider must declare at least \
+             `[rmw] cpp_define` and how it reaches the link — neither is derivable \
+             from the name, so there is no default that could be right.",
+            descriptor_path.file_name().map_or_else(
+                || descriptor_path.display().to_string(),
+                |f| f.to_string_lossy().into_owned()
+            )
+        )));
     }
-    out.push_str(
-        "    else()\n\
-         \x20       message(FATAL_ERROR \"nros_rmw_dispatch: unknown rmw '${rmw}' \"\n\
-         \x20           \"(known: KNOWN_PLACEHOLDER)\")\n\
-         \x20   endif()\n\
-         endfunction()\n",
-    );
-    // phase-347 W3 — the "known:" list in the FATAL_ERROR is DERIVED. It used to
-    // be the literal "zenoh xrce cyclonedds", which is how the message came to
-    // omit `uorb`: a hand-written list inside a generator is still a hand-written
-    // list.
-    out = out.replace("KNOWN_PLACEHOLDER", &known_rmw().join(" "));
-    // phase-347 W3 — one derived list every cmake consumer shares, so
-    // `NanoRosFeatureSet`'s validator and `nros-cpp`'s dispatch stop keeping
-    // their own. Those two accepted `uorb` while `nros_rmw_dispatch` fatal'd on
-    // it: three lists, two of which were right.
-    out.push_str(&format!(
-        "\n# Every rmw a descriptor in this checkout provides. DERIVED — see above.\n\
-         set(NROS_RMW_KNOWN \"{}\" CACHE INTERNAL \"rmw names provided by nros-rmw.toml descriptors\")\n\
-         \n\
-         # nros_rmw_is_known(<name> <out_var>) — TRUE when a descriptor claims <name>.\n\
-         function(nros_rmw_is_known name out_var)\n\
-         \x20   if(name IN_LIST NROS_RMW_KNOWN)\n\
-         \x20       set(${{out_var}} TRUE PARENT_SCOPE)\n\
-         \x20   else()\n\
-         \x20       set(${{out_var}} FALSE PARENT_SCOPE)\n\
-         \x20   endif()\n\
-         endfunction()\n",
-        known_rmw().join(";")
-    ));
-    out
+    let text = std::fs::read_to_string(&descriptor_path)
+        .map_err(|e| fail(format!("read {}: {e}", descriptor_path.display())))?;
+    let origin = descriptor_path.display().to_string();
+    let d = parse_rmw_descriptor(&text, &origin).map_err(fail)?;
+
+    // The same convention half `build.rs` applies to an in-tree descriptor, and
+    // the same refusal of a restatement that disagrees (RFC-0087 D4).
+    let cargo_feature = crate::derived_descriptor::cargo_feature(RMW_KIND, &canonical);
+    let cmake_value = crate::derived_descriptor::cmake_value(&canonical);
+    let c_define_token = crate::derived_descriptor::c_define_token(&canonical);
+    let cffi_feature = crate::derived_descriptor::cffi_feature(&cargo_feature);
+    for (field, stated, derived) in [
+        ("cargo_feature", &d.stated_cargo_feature, &cargo_feature),
+        ("cmake_value", &d.stated_cmake_value, &cmake_value),
+        ("c_define_token", &d.stated_c_define_token, &c_define_token),
+        ("cffi_feature", &d.stated_cffi_feature, &cffi_feature),
+    ] {
+        agree_with_convention(&origin, field, stated, derived).map_err(fail)?;
+    }
+    if !d.stated_names.is_empty() {
+        let announced: Vec<String> = pkg
+            .provides
+            .iter()
+            .filter(|p| p.kind == RMW_KIND)
+            .map(|p| p.name.clone())
+            .collect();
+        agree_with_convention(
+            &origin,
+            "names",
+            &d.stated_names.join(","),
+            &announced.join(","),
+        )
+        .map_err(fail)?;
+    }
+    if d.cpp_define.is_empty() {
+        return Err(fail(format!(
+            "{origin}: [rmw].cpp_define is missing — it is the one non-derivable \
+             lowering (spellings are inconsistent across backends by history and \
+             consumers `#if` on them), so it must be authored"
+        )));
+    }
+
+    // The cmake project directory is descriptor-relative, so a provider may put
+    // its `CMakeLists.txt` in a subdirectory. Normalised here rather than in
+    // cmake: a `dir` of `"."` must come back as the package dir itself, not as
+    // `<dir>/.`, because the value is compared against build paths.
+    let cmake_dir = if d.cmake_dir == "." || d.cmake_dir.is_empty() {
+        pkg.dir.clone()
+    } else {
+        pkg.dir.join(&d.cmake_dir)
+    };
+
+    Ok(ResolvedRmwIn {
+        declared: canonical,
+        cargo_feature,
+        cmake_value,
+        c_define_token,
+        cffi_feature,
+        package: pkg.package.clone(),
+        package_dir: pkg.dir.clone(),
+        cmake_dir,
+        descriptor: d,
+    })
 }
 
-/// Repo-relative path of the committed CMake lowering of [`render_cmake_dispatch`].
-pub const CMAKE_DISPATCH_REL_PATH: &str = "cmake/NanoRosRmwDispatch.cmake";
+/// A declared RMW value lowered against a provider scan ([`resolve_rmw_in`]).
+///
+/// Everything [`ResolvedRmw`] carries plus WHERE the provider is — which is the
+/// half the compile-time table cannot have, and the half a `add_subdirectory()`
+/// needs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedRmwIn {
+    /// The provider's first `rmw` announcement — its canonical name.
+    pub declared: String,
+    pub cargo_feature: String,
+    pub cmake_value: String,
+    pub c_define_token: String,
+    pub cffi_feature: String,
+    /// The `package.xml` `<name>`.
+    pub package: String,
+    /// The directory holding the provider's `package.xml`.
+    pub package_dir: PathBuf,
+    /// The cmake project to `add_subdirectory()`, resolved absolute.
+    pub cmake_dir: PathBuf,
+    /// Everything the descriptor itself declares.
+    pub descriptor: RmwDescriptor,
+}
+
+/// Why [`resolve_rmw_in`] could not lower a name.
+#[derive(Debug)]
+pub enum RmwResolveError {
+    /// No provider announced it, or several did ambiguously.
+    Scan(ResolveError),
+    /// A provider WAS resolved and its descriptor is unusable.
+    Provider { dir: PathBuf, message: String },
+}
+
+impl fmt::Display for RmwResolveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Scan(e) => write!(f, "{e}"),
+            Self::Provider { dir, message } => {
+                write!(f, "rmw provider at {}: {message}", dir.display())
+            }
+        }
+    }
+}
+
+impl std::error::Error for RmwResolveError {}
+
+/// Every rmw backend a provider on this scan announces, by CANONICAL name.
+///
+/// The scan-based sibling of [`known_rmw`], and the producer of the cmake
+/// `NROS_RMW_KNOWN` list. One entry per provider — its FIRST `rmw` provision —
+/// not one per announcement: `zenoh`, `rmw-zenoh` and `rmw-zenoh-cffi` are
+/// three ways to reach one backend, and listing all three in the cache
+/// drop-down would offer a user three choices that are one choice.
+/// [`resolve_rmw_in`] still accepts every alias.
+///
+/// Sorted rather than in scan order so the list does not reorder when an
+/// unrelated package is added — the same reason `nano_ros_load_providers` sorts
+/// its kinds.
+#[must_use]
+pub fn known_rmw_in(scan: &ScanResult) -> Vec<String> {
+    let mut names: Vec<String> = scan
+        .providers
+        .iter()
+        .filter_map(|p| p.provides.iter().find(|x| x.kind == RMW_KIND))
+        .map(|p| p.name.clone())
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}
 
 #[cfg(test)]
 mod tests {
@@ -330,40 +446,97 @@ mod tests {
         }
     }
 
-    fn cmake_dispatch_path() -> std::path::PathBuf {
+    /// The repo root, from this crate's manifest dir.
+    fn repo_root() -> std::path::PathBuf {
         // CARGO_MANIFEST_DIR = packages/cli/cargo-nano-ros → repo root is ../../..
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../..")
-            .join(CMAKE_DISPATCH_REL_PATH)
+            .canonicalize()
+            .expect("the repo root exists relative to this manifest")
     }
 
+    /// The compile-time table and the scan-time read must agree, field for
+    /// field, for every backend in this checkout.
+    ///
+    /// Two readers of one file format that nobody compares is how the RMW
+    /// parity map came to disagree with the vtable by 25 symbols, and it is the
+    /// exact risk `resolve_rmw_in` introduces: `build.rs` bakes `RMW_ROWS` from
+    /// `packages/rmw/`, `resolve_rmw_in` reads the same descriptors through the
+    /// provider scan, and nothing else would notice them drifting. They share
+    /// `rmw_descriptor::parse_rmw_descriptor`, so this asserts the DERIVATIONS
+    /// around it agree too.
     #[test]
-    fn rmw_cmake_dispatch_is_current() {
-        let want = render_cmake_dispatch();
-        let path = cmake_dispatch_path();
-        let got = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-            panic!(
-                "cannot read {} ({e}); regenerate with `cargo test -p cargo-nano-ros \
-                 regenerate_cmake_dispatch -- --ignored`",
-                path.display()
-            )
-        });
-        assert_eq!(
-            got, want,
-            "{} is stale — resolve_rmw() changed. Regenerate: `cargo test -p cargo-nano-ros \
-             regenerate_cmake_dispatch -- --ignored`",
-            CMAKE_DISPATCH_REL_PATH
+    fn the_baked_table_and_the_scan_agree_on_every_in_tree_backend() {
+        let root = repo_root();
+        let scan = crate::provider_scan::scan_roots(&[root]).expect("the nano-ros tree scans");
+        for name in known_rmw() {
+            let baked = resolve_rmw(name).expect("a baked name resolves");
+            let scanned = resolve_rmw_in(&scan, name)
+                .unwrap_or_else(|e| panic!("{name} resolves through the scan: {e}"));
+            assert_eq!(scanned.declared, baked.declared, "{name}: declared");
+            assert_eq!(
+                scanned.cargo_feature, baked.cargo_feature,
+                "{name}: cargo_feature"
+            );
+            assert_eq!(
+                scanned.cmake_value, baked.cmake_value,
+                "{name}: cmake_value"
+            );
+            assert_eq!(
+                scanned.c_define_token, baked.c_define_token,
+                "{name}: c_define_token"
+            );
+            assert_eq!(
+                scanned.cffi_feature, baked.dispatch.umbrella_cffi_feature,
+                "{name}: cffi"
+            );
+            let d = &scanned.descriptor;
+            assert_eq!(d.cpp_define, baked.cpp_define, "{name}: cpp_define");
+            assert_eq!(
+                d.per_message_hook, baked.per_message_hook,
+                "{name}: per_message_hook"
+            );
+            assert_eq!(
+                d.link_strategy, baked.dispatch.link_strategy,
+                "{name}: link_strategy"
+            );
+            assert_eq!(
+                d.c_cffi_feature, baked.dispatch.c_cffi_feature,
+                "{name}: c_cffi_feature"
+            );
+            assert_eq!(
+                d.needs_cxx_linker, baked.dispatch.needs_cxx_linker,
+                "{name}: cxx_linker"
+            );
+            assert_eq!(
+                d.rlib_dep.as_str(),
+                baked.dispatch.rlib_dep.unwrap_or(""),
+                "{name}: rlib_dep"
+            );
+            // `cmake_target` is the one field whose SOURCE differs: the baked
+            // row reads only the legacy top-level `[rmw].cmake_target` (uorb's),
+            // while the scan also reads `[rmw.provides.cmake].target`. So the
+            // scan is a SUPERSET, and the assertion is one-directional.
+            if !baked.cmake_target.is_empty() {
+                assert_eq!(d.cmake_target, baked.cmake_target, "{name}: cmake_target");
+            }
+        }
+    }
+
+    /// Every backend a provider announces must be dispatchable, not merely
+    /// discoverable — issue 1214's exact shape, as a test.
+    #[test]
+    fn every_announced_backend_resolves_through_the_scan() {
+        let root = repo_root();
+        let scan = crate::provider_scan::scan_roots(&[root]).expect("the nano-ros tree scans");
+        let announced = known_rmw_in(&scan);
+        assert!(
+            announced.iter().any(|n| n == "uorb"),
+            "uorb announces `kind=\"rmw\"` and must be in the scan's answer: {announced:?}"
         );
-    }
-
-    /// Writes the committed CMake lowering from `resolve_rmw()`. Ignored by default
-    /// (it mutates a tracked file); run explicitly to regenerate after editing the
-    /// dispatch data: `cargo test -p cargo-nano-ros regenerate_cmake_dispatch -- --ignored`.
-    #[test]
-    #[ignore = "writes a tracked file; run explicitly to regenerate"]
-    fn regenerate_cmake_dispatch() {
-        let path = cmake_dispatch_path();
-        std::fs::write(&path, render_cmake_dispatch())
-            .unwrap_or_else(|e| panic!("write {}: {e}", path.display()));
+        for name in &announced {
+            resolve_rmw_in(&scan, name)
+                .unwrap_or_else(|e| panic!("{name} is announced but does not dispatch: {e}"));
+        }
     }
 }
