@@ -84,12 +84,28 @@ FORWARDS = re.compile(r"nros\s+setup\b[^\n]*--tool")
 # A line whose whole job is to say something.
 PRINTS = re.compile(r"^(echo|printf|>&2\s|nros_(check|lane)_skip|warn|die|fail)\b")
 
-# (file, recipe-or-function name) -> reason. Checked in BOTH directions.
+# (file, recipe-or-function name, TOOL) -> reason. Checked in BOTH directions.
 #
-# EMPTY. An entry needs a reason that is a property of the TOOL, not of the
-# caller: "this one is faster to install directly" is not one, because that is
-# exactly what both retired producers were.
-EXEMPT = {}
+# An entry needs a reason that is a property of the TOOL, not of the caller:
+# "this one is faster to install directly" is not one, because that is exactly
+# what both retired producers were.
+#
+# Keyed on the tool as well as the site (phase-431 W4), so an exemption cannot
+# quietly widen: `scripts/install.sh` may fetch `nros` and nothing else, and a
+# day when it also fetches `qemu` is a day this gate speaks up.
+EXEMPT = {
+    ("scripts/install.sh", "<file>", "nros"): (
+        "The bootstrap of the producer itself. `nros setup --tool nros` is the "
+        "one forwarding target that cannot exist yet: it needs the binary this "
+        "script is fetching. That is a property of the TOOL — every other "
+        "indexed tool has an `nros` to install it, and `nros` does not — so it "
+        "is not the 'faster to install directly' argument the two retired "
+        "producers made. The script is also not a SECOND producer in issue "
+        "0500's sense: it writes the same versioned store prefix and fronts it "
+        "the same way (`nros sdk-front`), which is why the shapes agree once "
+        "there is an `nros` to compare against."
+    ),
+}
 
 
 def indexed_tools(path):
@@ -362,8 +378,8 @@ def main():
         scanned += 1
         bodies = just_bodies(text) if kind == "just" else shell_bodies(text)
         for _origin, name, lineno, tool, what in offenders(bodies, tools, rel):
-            if (rel, name) in EXEMPT:
-                seen_exempt.add((rel, name))
+            if (rel, name, tool) in EXEMPT:
+                seen_exempt.add((rel, name, tool))
                 continue
             problems.append(
                 "%s:%d  `%s` %s `%s`, which the index already declares.\n"

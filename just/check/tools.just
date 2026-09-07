@@ -148,6 +148,40 @@ stack-floor:
     @python3 scripts/check-stack-floor.py --selftest
     @python3 scripts/check-stack-floor.py --claims
 
+# phase-431 W4 — `scripts/install.sh` must INSTALL, and must REFUSE. The
+# refusals are the interesting half: this is the script someone runs from a
+# curl pipe on a machine with nothing provisioned, so an unverified asset that
+# installs anyway leaves a binary emitting code into their workspace.
+#
+# The phase doc named this recipe before it existed, and the test shipped with
+# no caller — which `check-test-scripts-have-callers` caught, and which is the
+# exact shape it exists for: running it by hand still passes, so an unreachable
+# test reads like a passing one.
+#
+# Everything is served from LOOPBACK over a tarball built here from the
+# checkout's own `nros`, so it needs no release and reaches no network. It
+# SKIPS rather than failing when the tools it drives are absent — a bare
+# worktree has no built CLI, and `check-fast` must stay green there.
+[private]
+nros-installer:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _missing=""
+    for _t in curl tar zstd python3; do
+        command -v "$_t" >/dev/null 2>&1 || _missing="$_missing $_t"
+    done
+    command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 \
+        || _missing="$_missing sha256sum"
+    [ -x "${NROS_CLI:-packages/cli/target/release/nros}" ] \
+        || _missing="$_missing nros(just setup-cli)"
+    if [ -n "$_missing" ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip nros-installer "missing:$_missing"
+        exit 0
+    fi
+    ./tests/nros-installer-tests.sh
+
 # Issue 0466 — report EVERY unmet tier precondition at once (CLI stamp, leaf
 # includes, build sources, fixtures for the lane) instead of one per ~40-minute
 # attempt. Run at the head of `ci`; callable directly to check a tree before
