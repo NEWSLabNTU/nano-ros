@@ -20,9 +20,17 @@
 #
 # # What it checks
 #
-# The number of fields in each `*ServiceServers` struct equals its constant.
-# Field-counting is crude but it is the thing that changes: the structs are
-# flat lists of one server per service.
+# The number of SERVER fields in each `*ServiceServers` struct equals its
+# constant. Field-counting is crude but it is the thing that changes: the
+# structs are lists of one server per service.
+#
+# phase-426 W1 — "server field", not "field". A server is always typed through
+# the file's own generic alias (`ParamServer<Svc>` / `LcSrv<Svc>`), so a field
+# whose type has no `<` is not a service and must not be counted: the
+# parameter set gained a `node: NodeKey` (which node's parameters these six
+# serve) and the gate read it as a seventh service. Counting every field made
+# the gate's REACH wider than the rule it enforces, which is issue 0196's
+# shape — a struct with any bookkeeping field would have failed it.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -30,11 +38,14 @@ cd "$(dirname "$0")/.."
 fail=0
 
 count_fields() {
-    # Fields between `pub struct <name> {` and the closing brace.
+    # SERVER fields between `pub struct <name> {` and the closing brace: a
+    # field whose type is the file's generic server alias (`ParamServer<Svc>`,
+    # `LcSrv<Svc>`). A field with a non-generic type is bookkeeping, not a
+    # service — see the header note.
     awk -v pat="pub struct $1 [{]" '
         $0 ~ pat {inside=1; next}
         inside && /^\}/ {exit}
-        inside && /^[[:space:]]*[a-z_]+:/ {n++}
+        inside && /^[[:space:]]*[a-z_]+:[[:space:]]*[A-Za-z_][A-Za-z0-9_]*</ {n++}
         END {print n+0}
     ' "$2"
 }
