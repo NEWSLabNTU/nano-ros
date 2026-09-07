@@ -379,6 +379,12 @@ NROS_PUBLIC nros_ret_t nros_parameter_server_fini(struct nros_parameter_server_t
  * =================================================================== */
 
 struct nros_executor_t;
+/* `struct nros_node_t` is NOT forward-declared here: it is fully defined in
+ * <nros/nros_generated.h>, which the <nros/types.h> include at the top of this
+ * file already brings in. A redundant forward declaration would also register
+ * as a NEW TYPE on the generated-C surface (`check-codegen-version-surface`),
+ * which would demand an NROS_CODEGEN_VERSION bump for a declaration that
+ * changes nothing. */
 
 /**
  * @brief Register the 6 ROS 2 parameter services on the executor's node.
@@ -396,26 +402,26 @@ struct nros_executor_t;
  */
 NROS_PUBLIC nros_ret_t nros_executor_register_parameter_services(struct nros_executor_t* executor);
 
-/** @brief Declare a boolean parameter on the executor's server. */
+/** @brief Declare a boolean parameter on the executor's PRIMARY node. */
 NROS_PUBLIC nros_ret_t nros_executor_declare_param_bool(struct nros_executor_t* executor,
                                                         const char* name, bool value);
-/** @brief Declare an integer parameter on the executor's server. */
+/** @brief Declare an integer parameter on the executor's PRIMARY node. */
 NROS_PUBLIC nros_ret_t nros_executor_declare_param_integer(struct nros_executor_t* executor,
                                                            const char* name, int64_t value);
-/** @brief Declare a double parameter on the executor's server. */
+/** @brief Declare a double parameter on the executor's PRIMARY node. */
 NROS_PUBLIC nros_ret_t nros_executor_declare_param_double(struct nros_executor_t* executor,
                                                           const char* name, double value);
-/** @brief Declare a string parameter on the executor's server. */
+/** @brief Declare a string parameter on the executor's PRIMARY node. */
 NROS_PUBLIC nros_ret_t nros_executor_declare_param_string(struct nros_executor_t* executor,
                                                           const char* name, const char* value);
 
-/** @brief Get a boolean parameter from the executor's server. */
+/** @brief Get a boolean parameter from the executor's PRIMARY node. */
 NROS_PUBLIC nros_ret_t nros_executor_get_param_bool(struct nros_executor_t* executor,
                                                     const char* name, bool* out_value);
-/** @brief Get an integer parameter from the executor's server. */
+/** @brief Get an integer parameter from the executor's PRIMARY node. */
 NROS_PUBLIC nros_ret_t nros_executor_get_param_integer(struct nros_executor_t* executor,
                                                        const char* name, int64_t* out_value);
-/** @brief Get a double parameter from the executor's server. */
+/** @brief Get a double parameter from the executor's PRIMARY node. */
 NROS_PUBLIC nros_ret_t nros_executor_get_param_double(struct nros_executor_t* executor,
                                                       const char* name, double* out_value);
 /** @brief Get a string parameter into a caller-provided null-terminated buffer. */
@@ -423,21 +429,125 @@ NROS_PUBLIC nros_ret_t nros_executor_get_param_string(struct nros_executor_t* ex
                                                       const char* name, char* out_value,
                                                       size_t max_len);
 
-/** @brief Set a boolean parameter on the executor's server. */
+/** @brief Set a boolean parameter on the executor's PRIMARY node. */
 NROS_PUBLIC nros_ret_t nros_executor_set_param_bool(struct nros_executor_t* executor,
                                                     const char* name, bool value);
-/** @brief Set an integer parameter on the executor's server. */
+/** @brief Set an integer parameter on the executor's PRIMARY node. */
 NROS_PUBLIC nros_ret_t nros_executor_set_param_integer(struct nros_executor_t* executor,
                                                        const char* name, int64_t value);
-/** @brief Set a double parameter on the executor's server. */
+/** @brief Set a double parameter on the executor's PRIMARY node. */
 NROS_PUBLIC nros_ret_t nros_executor_set_param_double(struct nros_executor_t* executor,
                                                       const char* name, double value);
-/** @brief Set a string parameter on the executor's server. */
+/** @brief Set a string parameter on the executor's PRIMARY node. */
 NROS_PUBLIC nros_ret_t nros_executor_set_param_string(struct nros_executor_t* executor,
                                                       const char* name, const char* value);
 
-/** @brief Check if a parameter exists on the executor's server. */
+/** @brief Check if a parameter exists on the executor's PRIMARY node. */
 NROS_PUBLIC bool nros_executor_has_param(struct nros_executor_t* executor, const char* name);
+
+/**
+ * @brief May a set DECLARE a name the PRIMARY node never declared?
+ *
+ * Upstream's `allow_undeclared_parameters` node option, off by default. With
+ * it off, nros_executor_set_param_*() on an undeclared name is
+ * NROS_RET_NOT_FOUND and nothing is created.
+ */
+NROS_PUBLIC nros_ret_t nros_executor_allow_undeclared_parameters(struct nros_executor_t* executor,
+                                                                 bool allow);
+
+/* -------------------------------------------------------------------
+ * Per-node spellings (phase-426 W5)
+ *
+ * The parameter store is keyed by NODE, because upstream's is: an image
+ * composes several nodes onto one executor, and `/talker`'s `rate` is not
+ * `/listener`'s. The functions above name the executor's PRIMARY node, which
+ * is what a single-node image means and what
+ * nros_executor_register_parameter_services() publishes. The `_on` spellings
+ * below name any node bound to this executor by
+ * nros_executor_node_init(); they are the C mirror of Rust's
+ * `Executor::declare_parameter_on` / `_set_parameter_on` / `_get_parameter_on`
+ * pair-per-method, and they point at the SAME table, so C and C++ cannot
+ * disagree about what a node's parameters are.
+ *
+ * `node` must be INITIALISED and bound to `executor`; anything else is
+ * NROS_RET_INVALID_ARGUMENT (false for the `has` / predicate form), never a
+ * silent fallback to the primary node.
+ *
+ * These prototypes spell both handles as TYPEDEFS (`nros_executor_t*`,
+ * `const nros_node_t*`) where the block above writes `struct nros_executor_t*`.
+ * Both types are fully defined by <nros/nros_generated.h>, which the
+ * <nros/types.h> include at the top of this file pulls in, so the two spellings
+ * are the same type. The difference is `check-codegen-version-surface`: it
+ * treats any `struct` keyword in a declaration as a TYPE DECLARATION and keys
+ * the entry on the first tracked name inside it, so `struct nros_node_t* node`
+ * in a prototype puts `nros_node_t` on the generated-C surface from this header
+ * and demands an NROS_CODEGEN_VERSION bump. Nothing generated changed -- these
+ * are new functions over an existing type, and no generated tree includes this
+ * header -- so bumping would record a move that did not happen. Do not
+ * reintroduce the `struct` keyword here for consistency with the block above.
+ * ------------------------------------------------------------------- */
+
+/** @brief Declare a boolean parameter on @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_declare_param_bool_on(nros_executor_t* executor,
+                                                           const nros_node_t* node,
+                                                           const char* name, bool value);
+/** @brief Declare an integer parameter on @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_declare_param_integer_on(nros_executor_t* executor,
+                                                              const nros_node_t* node,
+                                                              const char* name, int64_t value);
+/** @brief Declare a double parameter on @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_declare_param_double_on(nros_executor_t* executor,
+                                                             const nros_node_t* node,
+                                                             const char* name, double value);
+/** @brief Declare a string parameter on @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_declare_param_string_on(nros_executor_t* executor,
+                                                             const nros_node_t* node,
+                                                             const char* name, const char* value);
+
+/** @brief Get a boolean parameter from @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_get_param_bool_on(nros_executor_t* executor,
+                                                       const nros_node_t* node, const char* name,
+                                                       bool* out_value);
+/** @brief Get an integer parameter from @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_get_param_integer_on(nros_executor_t* executor,
+                                                          const nros_node_t* node, const char* name,
+                                                          int64_t* out_value);
+/** @brief Get a double parameter from @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_get_param_double_on(nros_executor_t* executor,
+                                                         const nros_node_t* node, const char* name,
+                                                         double* out_value);
+/** @brief Get a string parameter from @p node into a caller-provided buffer. */
+NROS_PUBLIC nros_ret_t nros_executor_get_param_string_on(nros_executor_t* executor,
+                                                         const nros_node_t* node, const char* name,
+                                                         char* out_value, size_t max_len);
+
+/** @brief Set a boolean parameter on @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_set_param_bool_on(nros_executor_t* executor,
+                                                       const nros_node_t* node, const char* name,
+                                                       bool value);
+/** @brief Set an integer parameter on @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_set_param_integer_on(nros_executor_t* executor,
+                                                          const nros_node_t* node, const char* name,
+                                                          int64_t value);
+/** @brief Set a double parameter on @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_set_param_double_on(nros_executor_t* executor,
+                                                         const nros_node_t* node, const char* name,
+                                                         double value);
+/** @brief Set a string parameter on @p node. */
+NROS_PUBLIC nros_ret_t nros_executor_set_param_string_on(nros_executor_t* executor,
+                                                         const nros_node_t* node, const char* name,
+                                                         const char* value);
+
+/** @brief Check if a parameter exists on @p node. */
+NROS_PUBLIC bool nros_executor_has_param_on(nros_executor_t* executor, const nros_node_t* node,
+                                            const char* name);
+
+/** @brief nros_executor_allow_undeclared_parameters() for @p node. Per node,
+ *         as upstream: switching it on for one node leaves its siblings
+ *         refusing. */
+NROS_PUBLIC nros_ret_t nros_executor_allow_undeclared_parameters_on(nros_executor_t* executor,
+                                                                    const nros_node_t* node,
+                                                                    bool allow);
 
 #ifdef __cplusplus
 }
