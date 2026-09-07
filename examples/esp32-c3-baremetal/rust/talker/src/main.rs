@@ -1,14 +1,14 @@
 //! ESP32-C3 QEMU Talker — Entry pkg.
 //!
 //! `nros::main!()` reads `[package.metadata.nros.entry] deploy =
-//! "qemu-esp32-baremetal"` from this pkg's `Cargo.toml`, maps the
+//! "esp32-c3-baremetal"` from this pkg's `Cargo.toml`, maps the
 //! deploy key to `nros_board_esp32_qemu::Esp32QemuEntry`, and emits the
 //! `#[esp_hal::main]` boot scaffold that brings up the board, opens the
 //! executor, registers this pkg's `Talker` node (its sibling `lib.rs`
 //! `nros::node!` export) and spins.
 //!
 //! Network endpoint / domain come from
-//! `[package.metadata.nros.deploy.qemu-esp32-baremetal]`; board MAC / IP
+//! `[package.metadata.nros.deploy.esp32-c3-baremetal]`; board MAC / IP
 //! defaults live in the board crate.
 
 #![no_std]

@@ -81,7 +81,7 @@
 # that "esp32 has no rust rows in the manifest under that name", which is TRUE
 # and was the wrong question: the platform string on ESP32's rust rows is
 # `esp32`, and it has THREE of them
-# (`examples/qemu-esp32-baremetal/rust/{talker,listener}` and
+# (`examples/esp32-c3-baremetal/rust/{talker,listener}` and
 # `packages/testing/nros-tests/bins/logging-smoke-esp32-qemu`). Asking the gate
 # about a spelling the manifest does not use returns "no rows" for a platform
 # that has them — the answer looked like a verdict and was a typo's shadow.
@@ -277,11 +277,11 @@ nros_fixture_target_dir_flag() {
 # consumer cannot disagree with the build about where the build wrote.
 #
 # phase-340 item 7 — this exists because `just esp32 build-qemu` hand-wrote
-# `examples/qemu-esp32-baremetal/rust/$ex/target/...` to find the ELF it packs
+# `examples/esp32-c3-baremetal/rust/$ex/target/...` to find the ELF it packs
 # into a flash image. Migrating the platform redirected the BUILD and left that
 # path pointing at nothing:
 #
-#   ERROR: examples/qemu-esp32-baremetal/rust/talker/target/riscv32imc-unknown-none-elf/
+#   ERROR: examples/esp32-c3-baremetal/rust/talker/target/riscv32imc-unknown-none-elf/
 #          nros-relwithdebinfo/esp32_qemu_talker is missing, and nothing narrowed this build.
 #
 # Every gate passed while that happened, which is #393's failure mode and the

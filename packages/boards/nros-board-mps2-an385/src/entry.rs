@@ -136,7 +136,7 @@ where
     // the C API, is built on).
     //
     // Issue 1048 — W7's evidence for that premise USED to be
-    // qemu-esp32-baremetal ("it bridges `log` on a `no_std` target through
+    // esp32-c3-baremetal ("it bridges `log` on a `no_std` target through
     // `esp_println`"), and that claim was FALSE: the call was there, it did
     // nothing, and nobody had read the console. `log::set_logger` is
     // `#[cfg(target_has_atomic = "ptr")]`, esp32-c3 is `riscv32imc` (no `A`

@@ -101,7 +101,7 @@ When a project grows beyond one node, continue with
 | ARM MPS2-AN385 (QEMU)     | Cortex-M3     | FreeRTOS / bare | Rust C C++ ¹ | `examples/qemu-arm-{freertos,baremetal}/`         | Verified      |
 | ST STM32F4-Discovery      | Cortex-M4F    | bare            | Rust ²    | out-of-tree — [worked example](porting/stm32f4-out-of-tree.md) | Untested ⁴ |
 | Espressif ESP32-C3        | RISC-V (RV32) | ESP-IDF         | Rust C C++ | `integrations/nano-ros/` — nightly lane, build-only | Ready ⁵       |
-| Espressif ESP32-C3 (QEMU) | RISC-V        | bare            | Rust      | `examples/qemu-esp32-baremetal/`                  | Verified      |
+| Espressif ESP32-C3 (QEMU) | RISC-V        | bare            | Rust      | `examples/esp32-c3-baremetal/`                  | Verified      |
 | QEMU `virt` RISC-V64      | RV64GC        | ThreadX         | Rust C C++ | `examples/qemu-riscv64-threadx/`                  | Verified      |
 | Linux host                | x86-64 / aarch64 | ThreadX sim  | Rust C C++ | `examples/threadx-linux/`                         | Verified      |
 | QEMU virt / Cortex-A9     | Cortex-A7 / A9 | NuttX / Zephyr | Rust C C++ | `examples/qemu-arm-nuttx/`, `examples/zephyr/`    | Verified      |

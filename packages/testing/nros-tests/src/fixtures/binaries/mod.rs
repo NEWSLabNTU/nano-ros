@@ -6118,7 +6118,7 @@ fn build_esp32_qemu_example(name: &str, binary_name: &str) -> TestResult<PathBuf
     // lane is now part of `build-test-fixtures` (`just esp32 build-fixtures`);
     // consume the prebuilt ELF like every other platform.
     let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-esp32-baremetal/rust/{}", name));
+    let example_dir = root.join(format!("examples/esp32-c3-baremetal/rust/{}", name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(

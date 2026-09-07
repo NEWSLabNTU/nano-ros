@@ -31,7 +31,7 @@
 //! table, the following sub-trees are deliberately skipped (with a
 //! `[SKIPPED]` reason so CI is auditable):
 //!
-//! * `examples/qemu-esp32-baremetal/` — M.7 BLOCKED (ESP-IDF). M.7
+//! * `examples/esp32-c3-baremetal/` — M.7 BLOCKED (ESP-IDF). M.7
 //!   fix landed at `e4204459a` (Arc swap) but the sweep itself hasn't
 //!   migrated the example yet.
 //! * `examples/mps2-an385-baremetal/` — bare-metal Cortex-M3, not in
@@ -189,7 +189,7 @@ const UNMIGRATED_LEAF_SUFFIXES: &[&str] = &[
 /// to give a precise `[SKIPPED]` message.
 const UNMIGRATED_PREFIXES: &[(&str, &str)] = &[
     (
-        "examples/qemu-esp32-baremetal/",
+        "examples/esp32-c3-baremetal/",
         "M.7 territory — ESP32 bare-metal, not in M sweep table",
     ),
     (

@@ -135,7 +135,7 @@ Takeaways:
 
 ### Embedded (esp32-c3, `cargo` + build-std, cross)
 
-Same experiment on `examples/qemu-esp32-baremetal/rust/talker` (riscv32imc, build-std
+Same experiment on `examples/esp32-c3-baremetal/rust/talker` (riscv32imc, build-std
 core/alloc):
 
 | build (`cargo clean` each) | total | cache |

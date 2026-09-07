@@ -336,7 +336,7 @@ build-example-extras:
         platform="$(echo "$dir" | cut -d/ -f2)"
         local env_prefix=""
         local toolchain=""
-        if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32-baremetal" ]; then
+        if [ "$platform" = "esp32" ] || [ "$platform" = "esp32-c3-baremetal" ]; then
             env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
             toolchain="+{{NIGHTLY}}"
         fi
@@ -370,7 +370,7 @@ build-example-extras:
             plat="$(echo "$dir" | cut -d/ -f2)"
             e=""; tc=""
             case "$plat" in
-                esp32 | qemu-esp32-baremetal)
+                esp32 | esp32-c3-baremetal)
                     e="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"; tc="+{{NIGHTLY}}" ;;
             esac
             # issue 0635 — the flag spelled in the FORMAT, not folded into a

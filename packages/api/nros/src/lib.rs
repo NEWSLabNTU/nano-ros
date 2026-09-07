@@ -575,7 +575,7 @@ pub use nros_macros::main;
 ///
 /// `#[panic_handler]` is a singleton of the final artifact, and the image owns
 /// it. Emitting one silently from `nros::main!()` would collide with every image
-/// that already declares its own — `examples/qemu-esp32-baremetal` writes
+/// that already declares its own — `examples/esp32-c3-baremetal` writes
 /// `use esp_backtrace as _;`, and `logging-smoke-freertos-mps2` uses
 /// `panic-semihosting` with `features = ["exit"]` so a panic exits QEMU instead
 /// of hanging the test harness. Those images are RIGHT, and an invisible default

@@ -68,7 +68,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     trap 'rm -f "$toml_list" "$makefile"' EXIT
 
     # Phase 181.6 / 181.4.h — the `examples/mps2-an385-baremetal/` and
-    # `examples/qemu-esp32-baremetal/` leaves are excluded here and built from
+    # `examples/esp32-c3-baremetal/` leaves are excluded here and built from
     # the SSOT manifest below instead (fixture platforms `baremetal` and
     # `esp32`), so each has a single enumeration source (matching the
     # test-all staleness probe). The remaining platforms have no manifest rows
@@ -79,7 +79,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # leak in. `NF>=5` = the old find's `-mindepth 4` (leaf crates, not
     # workspace-root manifests). Selection filters stay as greps.
     git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
-        | grep -vE '/zephyr/|/workspaces/|/mps2-an385-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/mps2-an385-baremetal/|/esp32/|/qemu-esp32-baremetal/|/px4/' \
+        | grep -vE '/zephyr/|/workspaces/|/mps2-an385-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/mps2-an385-baremetal/|/esp32/|/esp32-c3-baremetal/|/px4/' \
         | sort > "$toml_list"
 
     # The ESP platforms (which need the nightly toolchain + SSID/PASSWORD env)
@@ -152,10 +152,10 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # the workspace nightly + rust-src/build-std (NOT xtensa/espup) +
     # SSID/PASSWORD; inject those as platform env.
     #
-    # phase-437 W4a — ONE invocation, not two. `esp32` and
-    # `qemu-esp32-baremetal` were two fixture coordinates for one platform
-    # (RFC-0093 R6); collapsing them means the second call would rebuild the
-    # first's rows.
+    # phase-437 W4a — ONE invocation, not two. `esp32` and the token then
+    # spelled `qemu-esp32-baremetal` were two fixture coordinates for one
+    # platform (RFC-0093 R6); collapsing them means the second call would
+    # rebuild the first's rows.
     RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
         bash scripts/build/fixtures-build.sh esp32 rust
     echo "All examples built!"
@@ -473,7 +473,7 @@ check JOBS="75%":
     # Tracked-file enumeration via the git index (no filesystem traversal;
     # untracked build/target trees can never slow this down or leak in).
     git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
-        | grep -vE '/zephyr/|/multi-package-workspace/|/templates/local-msg-package/|/templates/multi-node-workspace/|/templates/workspace-shadowing/|/workspaces/|qemu-esp32-baremetal/rust/dds/|/mps2-an385-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/px4/' \
+        | grep -vE '/zephyr/|/multi-package-workspace/|/templates/local-msg-package/|/templates/multi-node-workspace/|/templates/workspace-shadowing/|/workspaces/|esp32-c3-baremetal/rust/dds/|/mps2-an385-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/px4/' \
         | sort > "$toml_list"
 
     # Message-bindings precondition gate (phase-264 W4c follow-up). Example msg
@@ -520,7 +520,7 @@ check JOBS="75%":
         # phase-336 — embedded examples lint at the ambient profile rather than a
         # hardcoded `--release`; resolved once above and passed in by variable.
         if [ "$platform" != "native" ]; then flags="$NROS_EXAMPLE_PROFILE_FLAGS"; fi
-        if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32-baremetal" ]; then
+        if [ "$platform" = "esp32" ] || [ "$platform" = "esp32-c3-baremetal" ]; then
             env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
         fi
         # Quiet by default: no per-example label, and cargo --quiet suppresses
@@ -590,7 +590,7 @@ check JOBS="75%":
             [ "$plat" != "native" ] && f="$NROS_EXAMPLE_PROFILE_FLAGS"
             e=""
             case "$plat" in
-                esp32 | qemu-esp32-baremetal) e="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}" ;;
+                esp32 | esp32-c3-baremetal) e="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}" ;;
             esac
             pkg="$(sed -n 's/^name[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$d/Cargo.toml" | head -1)"
             # No `-j`: the pool's tokens are the budget now (cargo joins it).

@@ -90,7 +90,7 @@ packages/drivers/
 packages/rmw/zenoh/
 └── zpico-platform-esp32-qemu/ # QEMU FFI symbols
 
-examples/qemu-esp32-baremetal/rust/
+examples/esp32-c3-baremetal/rust/
 ├── talker/                # QEMU publisher (nros-board-esp32-qemu BSP)
 └── listener/              # QEMU subscriber (nros-board-esp32-qemu BSP)
 ```
