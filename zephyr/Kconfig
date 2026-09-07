@@ -1138,6 +1138,33 @@ config NROS_EXECUTOR_MAX_CBS
       native_sim listener's .bss by 219 KB (+35%) as a side effect of repairing
       the plumbing.
 
+config NROS_PUBSUB_QOS_DEPTH
+    int "QoS history depth the arena budgets per subscription"
+    default 10
+    help
+      How deep a history the executor arena reserves for each pub/sub
+      callback slot. 10 is ROS 2's own default -- `rmw_qos_profile_default`
+      is KEEP_LAST(10), which is what a subscription created with no QoS
+      argument actually gets -- so an image that says nothing here is sized
+      the way ROS would size it.
+
+      STATE 1 IF YOUR SUBSCRIPTIONS ARE KEEP_LAST(1), and the saving is large
+      rather than marginal. The buffer shape is a step function, not a slope:
+      depth 1 is a TripleBuffer of 3 slots and anything deeper is an SpscRing
+      of depth+1, so the default budgets 11 slots where 3 would do. Measured
+      on the reference island's entity shape (11 subscriptions, 4 timers, 2
+      service servers): 144,584 bytes of arena at 10, 53,504 at 1.
+
+      This is the IMAGE-WIDE number. A per-endpoint answer is derived instead
+      from `<stem>.contract.yaml`'s `qos.depth` when EVERY endpoint states one
+      (phase-412 W3); that is finer, needs no knob, and this value still wins
+      over it -- env > Kconfig/board > derived > default, the ladder every
+      derivable knob follows.
+
+      TOO SMALL IS NOT A SMALLER BUFFER. The arena is sized from this, and an
+      arena that does not fit halts during entity creation, before the first
+      spin -- so raise it, or state the depths, rather than trimming it to fit.
+
 config NROS_SUBSCRIPTION_BUFFER_SIZE
     int "Per-subscription receive buffer size in bytes (-1 = derive)"
     default -1
