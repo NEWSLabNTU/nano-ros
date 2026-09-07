@@ -852,6 +852,10 @@ cpp: cpp-fmt
     # image instantiates, so a `std::shared_ptr` signature escaping its guard
     # would break every RTOS C++ image and no header-parse lane would see it
     # (a template body is not instantiated by `-include`).
+    # `nros_grep_q` for the two diagnostic greps below — see the note at its
+    # other use in this recipe, and issue 0726.
+    # shellcheck source=scripts/lib/grep-q.sh
+    source scripts/lib/grep-q.sh
     echo "  - one node type: hosted shape + both create families (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
         -Itarget/nros-cpp-generated \
@@ -896,13 +900,18 @@ cpp: cpp-fmt
     fi
     # "It failed" is also what a typo produces. The diagnostic must name the
     # overload that IS available, because that naming is the migration.
-    grep -q 'create_publisher(Publisher<M>& out, const char\* topic' \
-        tmp/refuse-ported-create-publisher.log || { \
+    #
+    # `nros_grep_q`, not `grep -q`: grep exits 1 for "no match" and >=2 for a
+    # tool failure, and `grep -q … || {finding}` cannot tell them apart (issue
+    # 0726). Sourced above, beside the other refusal probes.
+    nros_grep_q 'create_publisher(Publisher<M>& out, const char\* topic' \
+        tmp/refuse-ported-create-publisher.log && _rc=0 || _rc=$?
+    if [ "$_rc" -ne 0 ]; then \
         echo "ERROR: the freestanding create_publisher refusal no longer names the out-ref" >&2; \
         echo "       overload. The refusal is only useful if it says what to write instead;" >&2; \
         echo "       see tmp/refuse-ported-create-publisher.log." >&2; \
         exit 1; \
-    }
+    fi
 
     # phase-427 W3 — the `bind_timer` RETIREMENT, both halves.
     #
@@ -938,11 +947,12 @@ cpp: cpp-fmt
         echo "       consumer to write node.create_wall_timer<C, &C::method>(...)." >&2; \
         exit 1; \
     fi
-    grep -q 'create_wall_timer<C, &C::method>' tmp/refuse-bind-timer.log || { \
+    nros_grep_q 'create_wall_timer<C, &C::method>' tmp/refuse-bind-timer.log && _rc=0 || _rc=$?
+    if [ "$_rc" -ne 0 ]; then \
         echo "ERROR: the bind_timer deprecation no longer names its replacement." >&2; \
         echo "       See tmp/refuse-bind-timer.log." >&2; \
         exit 1; \
-    }
+    fi
 
     echo "  - QoS policy accessors + ms boundary (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Wno-deprecated-declarations \
