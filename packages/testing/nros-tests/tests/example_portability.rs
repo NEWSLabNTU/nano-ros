@@ -69,7 +69,7 @@ const GROUPS: &[Group] = &[
         platforms: &[
             "native",
             "threadx-linux",
-            "qemu-arm-freertos",
+            "mps2-an385-freertos",
             "qemu-armv7a-nuttx",
             "rv-virt-nuttx",
             "rv-virt-threadx",

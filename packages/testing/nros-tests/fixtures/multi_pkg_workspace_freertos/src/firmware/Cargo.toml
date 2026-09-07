@@ -4,7 +4,7 @@
 # `nros_run()` shape with the Phase 212.N Entry pkg form: `BoardEntry::run`
 # + codegen-emitted `run_plan(runtime)` from `nros-build`. The 5-line
 # `main.rs` body matches the wave-4 sibling Entry pkgs under
-# `examples/qemu-arm-freertos/rust/<name>_entry/`.
+# `examples/mps2-an385-freertos/rust/<name>_entry/`.
 #
 # The empty `[workspace]` table makes this its own workspace root so the
 # embedded `thumbv7m-none-eabi` target pinned in `.cargo/config.toml`

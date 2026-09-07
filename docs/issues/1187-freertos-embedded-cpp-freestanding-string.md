@@ -11,7 +11,7 @@ related: [0112, 0332, 1146]
 
 ## Problem
 
-Nothing under `examples/qemu-arm-freertos/cpp/` or any FreeRTOS C++ workspace
+Nothing under `examples/mps2-an385-freertos/cpp/` or any FreeRTOS C++ workspace
 entry compiles at `bd204b986` with the toolchain `nros-sdk-index.toml` pins
 (`arm-none-eabi-gcc 13.2-nros4`). Measured, twice:
 

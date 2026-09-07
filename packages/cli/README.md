@@ -43,7 +43,7 @@ checked out from the index's pinned git/ref into its declared destination. Run i
 from a nano-ros checkout (it reads `./nros-sdk-index.toml`):
 
 ```bash
-nros setup qemu-arm-freertos      # arm-none-eabi-gcc + qemu + FreeRTOS-Kernel + lwip
+nros setup mps2-an385-freertos      # arm-none-eabi-gcc + qemu + FreeRTOS-Kernel + lwip
 nros setup native --rmw cyclonedds
 nros setup --list                 # every package + version
 nros setup --licenses             # license-gated SDKs (NVIDIA SPE, ARM FVP)

@@ -318,7 +318,7 @@ def prerequisite_rows():
             "build_root": "$FREERTOS_DIR; $LWIP_DIR",
             "scheduler": "just freertos setup",
             "shared_mutation": "$FREERTOS_DIR; $LWIP_DIR; build/qemu",
-            "notes": "requires FreeRTOS kernel, lwIP, arm-none-eabi-gcc, and qemu-arm-freertos setup",
+            "notes": "requires FreeRTOS kernel, lwIP, arm-none-eabi-gcc, and mps2-an385-freertos setup",
         },
         {
             "id": "freertos-rust-ws-sync-preflight",
@@ -326,10 +326,10 @@ def prerequisite_rows():
             "kind": "preflight",
             "lang": "rust",
             "role": "ws-sync",
-            "dir": "examples/qemu-arm-freertos/rust",
-            "build_root": "examples/qemu-arm-freertos/rust/*/generated",
+            "dir": "examples/mps2-an385-freertos/rust",
+            "build_root": "examples/mps2-an385-freertos/rust/*/generated",
             "scheduler": "just freertos build-examples",
-            "shared_mutation": "examples/qemu-arm-freertos/rust/*/generated; examples/qemu-arm-freertos/rust/*/.cargo/config.toml",
+            "shared_mutation": "examples/mps2-an385-freertos/rust/*/generated; examples/mps2-an385-freertos/rust/*/.cargo/config.toml",
             "notes": "serial nros sync before FreeRTOS Rust role fixtures",
         },
         {

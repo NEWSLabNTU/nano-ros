@@ -60,7 +60,7 @@
 | Pick a target chip | `idf.py set-target esp32c3` (re-runs cmake with right toolchain, picks `sdkconfig.defaults.esp32c3`) | hard-coded per-example `Cargo.toml` + `.cargo/config.toml` + `boards/<name>.conf` | A user wanting to retarget a working example to a different MCU has to hand-edit ~4 files. |
 | Configure | `idf.py menuconfig` (Kconfig TUI on `Kconfig.projbuild` + IDF tree) | none for Rust paths; only Zephyr C examples expose Kconfig | nano-ros `[features]` aren't browsable. |
 | Build → flash → run-loop | `idf.py build flash monitor` (chained, single command) | `cargo run --release` works only on ESP32 via espflash; everywhere else: separate commands | The chained verb is the killer feature — one command per save. |
-| Component dependency | `idf_component.yml` + `idf.py update-dependencies` (component manager) | `cargo` for Rust deps; for C, manual `find_package(NanoRos CONFIG REQUIRED)` plus `CMAKE_PREFIX_PATH` plumbing | No C-side package manager; users reading `examples/qemu-arm-freertos/c/zenoh/talker/CMakeLists.txt` have to know to run `just install-local` first. |
+| Component dependency | `idf_component.yml` + `idf.py update-dependencies` (component manager) | `cargo` for Rust deps; for C, manual `find_package(NanoRos CONFIG REQUIRED)` plus `CMAKE_PREFIX_PATH` plumbing | No C-side package manager; users reading `examples/mps2-an385-freertos/c/zenoh/talker/CMakeLists.txt` have to know to run `just install-local` first. |
 | Size profiling | `idf.py size-components` lists every component's `.text/.data/.bss` contribution; `size-files` zooms further | `scripts/stack-analysis*.sh` exists but is undocumented and per-platform | An nros user can't easily ask "how many bytes does adding a subscription cost me?" |
 | Erase / recover device | `idf.py erase-flash` | none | Real-board recovery story is delegated to `espflash`. |
 | Project info | `idf.py reconfigure`, `--info`, `--list-targets` | `just doctor` (per-platform) is closest | No machine-readable project introspection. |
@@ -107,7 +107,7 @@ just zenohd::start                      # 9 — in another terminal
 
 **Honest count: 7–9 commands, plus 3 manual file edits, plus knowledge of "must be named `rustapp`", plus knowing that `nano-ros-workspace` is a sibling directory of the repo.** This is the gap.
 
-A C example targeting QEMU FreeRTOS is comparable: `just setup`, `just freertos setup`, `just install-local`, `cd examples/qemu-arm-freertos/c/zenoh/talker`, edit `config.toml`, `cmake -B build`, `cmake --build build`, then a hand-rolled `qemu-system-arm` line that's mirrored in `nros_tests/src/qemu.rs` but not exposed.
+A C example targeting QEMU FreeRTOS is comparable: `just setup`, `just freertos setup`, `just install-local`, `cd examples/mps2-an385-freertos/c/zenoh/talker`, edit `config.toml`, `cmake -B build`, `cmake --build build`, then a hand-rolled `qemu-system-arm` line that's mirrored in `nros_tests/src/qemu.rs` but not exposed.
 
 ---
 
@@ -121,7 +121,7 @@ A C example targeting QEMU FreeRTOS is comparable: `just setup`, `just freertos 
 |---|---|---|---|
 | Rust workspace selection | Cargo `[features]` mutual-exclusion at compile time | `Cargo.toml` of the example | `cargo build` errors |
 | Zephyr-side wiring | Kconfig `CONFIG_NROS_*` (in `zephyr/Kconfig`) | `prj.conf` | `west build -t menuconfig` (Zephyr only) |
-| Per-board static config (IPs, MAC, priorities) | TOML parsed by `nano_ros_read_config()` (see `examples/qemu-arm-freertos/c/zenoh/talker/CMakeLists.txt:11`) | `config.toml` | none — silent if file missing |
+| Per-board static config (IPs, MAC, priorities) | TOML parsed by `nano_ros_read_config()` (see `examples/mps2-an385-freertos/c/zenoh/talker/CMakeLists.txt:11`) | `config.toml` | none — silent if file missing |
 | Build glue | CMake `-D` flags (`NANO_ROS_RMW=…`, `NANO_ROS_PLATFORM=…`) | `justfile` (`install-local-posix:` loop) | `just --list` |
 | Cargo patches | `[patch.crates-io]` in `.cargo/config.toml` | every example | invisible until `cargo` complains |
 
@@ -129,7 +129,7 @@ A C example targeting QEMU FreeRTOS is comparable: `just setup`, `just freertos 
 
 - **Kconfig is heavyweight.** It assumes a project tree (`Kconfig.zephyr`-rooted), Python tooling, and an `autoconf.h` writer. nano-ros wants to ship to *non-Zephyr* RTOSes (FreeRTOS, NuttX, ThreadX) where there is no Kconfig host.
 - **Cargo features are first-class for Rust users.** The mutual-exclusion compile-time checks (RMW × platform × ROS edition) are clean and only cost a one-time learning curve.
-- **`config.toml` is the right shape for *deployment* config** (IP, MAC, stack sizes) but is invisible to discovery — a new user reading `examples/qemu-arm-freertos/c/zenoh/talker/` has no signal that `config.toml` exists or that it must be present.
+- **`config.toml` is the right shape for *deployment* config** (IP, MAC, stack sizes) but is invisible to discovery — a new user reading `examples/mps2-an385-freertos/c/zenoh/talker/` has no signal that `config.toml` exists or that it must be present.
 - **Verdict:** the current split between *build-time choice* (cargo features) and *deploy-time tuning* (`config.toml`) is sound, but it deserves a single discoverable entry point — see proposals 4, 5, 6 below.
 
 ---
@@ -223,11 +223,11 @@ Each entry: **problem → reference SDK approach → proposed change → effort 
 2. **Add `just run <example>` as a single verb.**
    *Problem:* Build + flash + monitor is a 3–4 command sequence that's different per platform.
    *Reference:* `idf.py build flash monitor`, `west flash`, `cargo run`.
-   *Proposal:* `just run examples/qemu-arm-freertos/c/zenoh/talker` chooses the right backend (cargo / cmake), the right launcher (QEMU / espflash / openocd / native), and pipes stdout. Reuse `nros-tests` runner code.
+   *Proposal:* `just run examples/mps2-an385-freertos/c/zenoh/talker` chooses the right backend (cargo / cmake), the right launcher (QEMU / espflash / openocd / native), and pipes stdout. Reuse `nros-tests` runner code.
    *Effort:* M. *Risk:* Medium — has to handle every platform; phase rollout (POSIX → QEMU → ESP32 → real ARM boards).
 
 3. **Ship a real `module.yml` Kconfig for non-Zephyr RTOSes too — drop the `config.toml` parser.**
-   *Problem:* `nano_ros_read_config()` parses a TOML file the user has to know about (`examples/qemu-arm-freertos/c/zenoh/talker/CMakeLists.txt:11`). Discovery is zero.
+   *Problem:* `nano_ros_read_config()` parses a TOML file the user has to know about (`examples/mps2-an385-freertos/c/zenoh/talker/CMakeLists.txt:11`). Discovery is zero.
    *Reference:* Zephyr's `prj.conf` is universally understood.
    *Proposal:* Extend `nros_generate_interfaces()` family to emit a `prj.conf`-style key=value file that's read by every platform's CMake. Single discoverable file per example; `just menuconfig <example>` runs Zephyr's `kconfig.py` in standalone mode.
    *Effort:* M. *Risk:* Medium — re-tooling existing examples.

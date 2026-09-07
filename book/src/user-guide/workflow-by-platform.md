@@ -81,8 +81,8 @@ coverage today, not that it is forbidden.
 
 The row names are the manifest's, which are shorter than the ones you
 type: `freertos` here is the platform whose board is
-`qemu-arm-freertos` and whose examples live in
-`examples/qemu-arm-freertos/`. The per-platform table further down maps
+`mps2-an385-freertos` and whose examples live in
+`examples/mps2-an385-freertos/`. The per-platform table further down maps
 all three spellings.
 
 | platform | rust | c | cpp | mixed |
@@ -177,7 +177,7 @@ thing, copy the example out and `cargo build` normally.
 | platform | grid row | `nros setup <board>` | examples under | recipes (contributors) | starter page |
 |---|---|---|---|---|---|
 | Linux host | `linux` | `native` | `examples/native/` | `just native …` | [Native host build](../platform-guides/native-host.md) |
-| FreeRTOS (QEMU MPS2-AN385) | `freertos` | `qemu-arm-freertos` | `examples/qemu-arm-freertos/` | `just freertos …` | [FreeRTOS](../getting-started/freertos.md) |
+| FreeRTOS (QEMU MPS2-AN385) | `freertos` | `mps2-an385-freertos` | `examples/mps2-an385-freertos/` | `just freertos …` | [FreeRTOS](../getting-started/freertos.md) |
 | NuttX (Arm) | `nuttx` | `qemu-arm-nuttx` | `examples/qemu-arm-nuttx/` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
 | NuttX (RISC-V) | `nuttx-riscv` | `qemu-riscv-nuttx` | `examples/qemu-riscv-nuttx/` | `just nuttx …` | [NuttX](../getting-started/integration-nuttx.md) |
 | ThreadX (Linux sim) | `threadx-linux` | `threadx-linux` | `examples/threadx-linux/` | `just threadx_linux …` | [ThreadX](../getting-started/threadx.md) |

@@ -61,7 +61,7 @@ static FREERTOS_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Resolve the prebuilt firmware image for one `examples/qemu-arm-freertos/rust/<name>`
+/// Resolve the prebuilt firmware image for one `examples/mps2-an385-freertos/rust/<name>`
 /// Entry pkg.
 ///
 /// THE one spelling of that path. phase-340 P2 folded a second one in:
@@ -94,7 +94,7 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     // `qemu-freertos-<role>` bin the role crate can no longer produce, so the
     // lane looked permanently unbuilt.
     let _ = binary_name;
-    let dir_rel = format!("examples/qemu-arm-freertos/rust/{name}");
+    let dir_rel = format!("examples/mps2-an385-freertos/rust/{name}");
     let example_dir = project_root().join(&dir_rel);
 
     if !example_dir.exists() {
@@ -187,7 +187,7 @@ static FREERTOS_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Build a FreeRTOS CMake example (C or C++).
 fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-arm-freertos/{}/{}", lang, name));
+    let example_dir = root.join(format!("examples/mps2-an385-freertos/{}/{}", lang, name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(

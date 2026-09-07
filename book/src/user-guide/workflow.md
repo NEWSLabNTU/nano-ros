@@ -13,7 +13,7 @@ workspace, then provision the board's toolchain with `nros setup`:
 # Build the in-tree nros CLI (Phase 218), then provision your board (+ RMW):
 ./scripts/bootstrap.sh base
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
-nros setup native --rmw zenoh        # or qemu-arm-freertos, zephyr, …
+nros setup native --rmw zenoh        # or mps2-an385-freertos, zephyr, …
 ```
 
 `nros setup` provides most components prebuilt per platform per RMW; a few
@@ -110,7 +110,7 @@ nros sync
 cargo run
 
 # Single C/C++ example (CMake + add_subdirectory) — no sync needed:
-cd examples/qemu-arm-freertos/cpp/talker
+cd examples/mps2-an385-freertos/cpp/talker
 cmake -B build -DCMAKE_TOOLCHAIN_FILE=$PWD/../../../../../cmake/toolchain/arm-freertos-armcm3.cmake
 cmake --build build
 

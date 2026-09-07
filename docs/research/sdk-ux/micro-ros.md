@@ -66,7 +66,7 @@ modification needed; `list_apps.sh` autodiscovers.
 There is no project generator. New apps are created by *copying an example*
 under `examples/<platform>/<lang>/<rmw>/<usecase>/` — CLAUDE.md explicitly
 calls out "Each `examples/` dir is self-contained, copy-out template". The
-talker layout (`examples/qemu-arm-freertos/c/zenoh/talker/`) requires the
+talker layout (`examples/mps2-an385-freertos/c/zenoh/talker/`) requires the
 user to also copy the sibling `cmake/freertos-support.cmake` referenced from
 `CMakeLists.txt:5`.
 
@@ -116,7 +116,7 @@ user's main calls (`micro_ros_zephyr_module/src/main.c:46`).
 
 Multi-tier build: `just build`, `just build-examples`, `just build-test-fixtures`,
 `just build-all` (CLAUDE.md). For users, the actual command is
-`cmake -S examples/qemu-arm-freertos/c/zenoh/talker -B …/build && cmake
+`cmake -S examples/mps2-an385-freertos/c/zenoh/talker -B …/build && cmake
 --build` (book/freertos.md:97). For Zephyr it is
 `west build -b native_sim/native/64 nros/examples/zephyr/c/talker`
 (book/zephyr.md:101). Both are idiomatic — the gap is
@@ -160,13 +160,13 @@ from `ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32)` (see
 `cargo nano-ros generate-rust|generate-c|generate-cpp` reads
 `package.xml` and emits typed bindings; CMake function
 `nros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE C)`
-(used at `examples/qemu-arm-freertos/c/zenoh/talker/CMakeLists.txt:7`)
+(used at `examples/mps2-an385-freertos/c/zenoh/talker/CMakeLists.txt:7`)
 runs codegen at configure time. No Docker, no workspace overlay.
 
 The user surface in C is `std_msgs_msg_int32_get_type_support()` plus an
 explicit `std_msgs_msg_int32_serialize(&msg, buf, sizeof buf, &len)` step
 followed by `nros_publish_raw(&pub, buf, len)`
-(`examples/qemu-arm-freertos/c/zenoh/talker/src/main.c:80-86`).
+(`examples/mps2-an385-freertos/c/zenoh/talker/src/main.c:80-86`).
 
 **Gap:** rclc users `rcl_publish(&publisher, &msg, NULL)` — the typed
 struct is published directly, no manual buffer dance. nros-c forces
@@ -207,7 +207,7 @@ function pointers; transport agnostic.
 Transport choice is partly Cargo features (`rmw-zenoh` vs `rmw-xrce` vs
 `rmw-dds`), partly board features (`ethernet` vs `wifi` vs `serial`,
 CLAUDE.md "Board Transport Features"), partly per-app `config.toml`
-(`examples/qemu-arm-freertos/c/zenoh/talker/config.toml:1-9`),
+(`examples/mps2-an385-freertos/c/zenoh/talker/config.toml:1-9`),
 and partly Kconfig (`CONFIG_NROS_ZENOH_LOCATOR`,
 `CONFIG_NROS_XRCE_AGENT_ADDR`). All of these are **edit-and-rebuild**.
 There is no runtime transport plug-in vtable on the C side comparable to
@@ -280,7 +280,7 @@ by the build system, not in user code.
 
 Compare:
 
-- FreeRTOS (`examples/qemu-arm-freertos/c/zenoh/talker/src/main.c`):
+- FreeRTOS (`examples/mps2-an385-freertos/c/zenoh/talker/src/main.c`):
   uses `app_main(void)`, no network-wait, relies on
   `APP_ZENOH_LOCATOR` macro injected via CMake.
 - Zephyr (`examples/zephyr/c/talker/src/main.c`):
@@ -320,7 +320,7 @@ while (1) { rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)); usleep(100000
   `rcl_publish(&publisher, &msg, NULL);` — typed struct, no
   user-managed CDR buffer.
 
-### nros-c talker (FreeRTOS, `examples/qemu-arm-freertos/c/zenoh/talker/src/main.c`)
+### nros-c talker (FreeRTOS, `examples/mps2-an385-freertos/c/zenoh/talker/src/main.c`)
 
 - 98 source lines; uses no error macros (each call check is open-coded
   with branches that `printf` and `return`).
@@ -384,7 +384,7 @@ west manifest, drops `prj.conf` + `src/main.c` + `CMakeLists.txt` (3 files).
 ### nano-ros user repo (qemu-arm-freertos talker)
 
 ```
-examples/qemu-arm-freertos/c/zenoh/talker/
+examples/mps2-an385-freertos/c/zenoh/talker/
 ├── CMakeLists.txt           (30 lines, must include sibling `freertos-support.cmake` from a path that escapes the example dir)
 ├── config.toml              (network + scheduling — TOML knobs)
 └── src/main.c               (98 lines — see above)
@@ -446,7 +446,7 @@ Each entry: **problem · micro-ROS approach · proposed nano-ros change · effor
 
 ### P2 — Typed publish in C/C++ (`nros_publish(&pub, &msg)`)
 
-- **Problem.** `examples/qemu-arm-freertos/c/zenoh/talker/src/main.c:80-86`
+- **Problem.** `examples/mps2-an385-freertos/c/zenoh/talker/src/main.c:80-86`
   has the user serialize to a stack buffer then call `nros_publish_raw`.
   Doubles the LOC of every publish.
 - **micro-ROS.** `rcl_publish(&publisher, &msg, NULL)` typed.
@@ -464,7 +464,7 @@ Each entry: **problem · micro-ROS approach · proposed nano-ros change · effor
 - **Problem.** `examples/` are simultaneously test fixtures and user
   templates. The "self-contained example" rule conflicts with the cmake
   include of `../../../cmake/freertos-support.cmake`
-  (`examples/qemu-arm-freertos/c/zenoh/talker/CMakeLists.txt:5`).
+  (`examples/mps2-an385-freertos/c/zenoh/talker/CMakeLists.txt:5`).
 - **micro-ROS.** Per-platform extension repos (`freertos_apps`,
   `micro_ros_zephyr_module`, …) shipped separately, versioned, releasable.
 - **Proposal.** Spin up `nano-ros-templates/` as a sibling repo (or
@@ -547,7 +547,7 @@ Each entry: **problem · micro-ROS approach · proposed nano-ros change · effor
 
 - **Problem.** FreeRTOS example uses *both* `config.toml` (parsed by
   `nano_ros_read_config()`) and `target_compile_definitions(... APP_*)`
-  (`examples/qemu-arm-freertos/c/zenoh/talker/CMakeLists.txt:11-26`). The
+  (`examples/mps2-an385-freertos/c/zenoh/talker/CMakeLists.txt:11-26`). The
   user's main.c then uses preprocessor macros (`APP_ZENOH_LOCATOR`,
   `APP_DOMAIN_ID`). Zephyr does this differently via Kconfig
   (`CONFIG_NROS_ZENOH_LOCATOR`).
@@ -602,7 +602,7 @@ Each entry: **problem · micro-ROS approach · proposed nano-ros change · effor
 
 - **Problem.** nros-c users hand-roll
   `for (j=0;j<100;j++) nros_executor_spin_some(...)` then publish
-  (`examples/qemu-arm-freertos/c/zenoh/talker/src/main.c:74-77`). rclc has
+  (`examples/mps2-an385-freertos/c/zenoh/talker/src/main.c:74-77`). rclc has
   first-class `rclc_timer_init_default` + `rclc_executor_add_timer`.
 - **Proposal.** Already exists in `nros/timer.h` (per book/c-api.md);
   examples should be rewritten to use it.
@@ -663,9 +663,9 @@ Rust core.
 | `external/micro_ros_arduino/library.properties`                                       | Arduino-IDE distribution metadata |
 | `external/micro_ros_arduino/examples/micro-ros_publisher/micro-ros_publisher.ino`     | Arduino .ino hello-world          |
 | `external/micro_ros_arduino/README.md:130`                                            | Docker-based custom rebuild       |
-| `examples/qemu-arm-freertos/c/zenoh/talker/CMakeLists.txt:5,7,11-26`                  | nros-c CMake                      |
-| `examples/qemu-arm-freertos/c/zenoh/talker/src/main.c:30-97`                          | nros-c FreeRTOS hello-world       |
-| `examples/qemu-arm-freertos/c/zenoh/talker/config.toml:1-22`                          | TOML knobs                        |
+| `examples/mps2-an385-freertos/c/zenoh/talker/CMakeLists.txt:5,7,11-26`                  | nros-c CMake                      |
+| `examples/mps2-an385-freertos/c/zenoh/talker/src/main.c:30-97`                          | nros-c FreeRTOS hello-world       |
+| `examples/mps2-an385-freertos/c/zenoh/talker/config.toml:1-22`                          | TOML knobs                        |
 | `examples/zephyr/c/talker/src/main.c:25-95`                                           | nros-c Zephyr hello-world         |
 | `examples/zephyr/c/talker/prj.conf:54-62`                                             | nros Zephyr Kconfig               |
 | `book/src/getting-started/freertos.md:51-103`                                         | nano-ros FreeRTOS user docs       |

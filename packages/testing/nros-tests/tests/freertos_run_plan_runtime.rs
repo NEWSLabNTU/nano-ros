@@ -10,7 +10,7 @@
 //!
 //! ## Fixture
 //!
-//! `examples/qemu-arm-freertos/rust/talker/` — the M-F.15-shipped
+//! `examples/mps2-an385-freertos/rust/talker/` — the M-F.15-shipped
 //! FreeRTOS Entry pkg (Phase 212.N.7 step-2 / 213.C.1). Shape:
 //!
 //! - `src/main.rs` is one line: `nros::main!();` (Form 1 self-bringup).
@@ -104,7 +104,7 @@ fn entry_zenohd_port(entry: &str) -> u16 {
 /// FreeRTOS Entry pkg fixture dir for `<entry>` (e.g. `talker_entry`).
 fn entry_dir(entry: &str) -> PathBuf {
     project_root()
-        .join("examples/qemu-arm-freertos/rust")
+        .join("examples/mps2-an385-freertos/rust")
         .join(entry)
 }
 
@@ -149,7 +149,7 @@ fn require_freertos_qemu_prereqs() -> Option<String> {
     None
 }
 
-/// Shared boot+connected-run gate for any qemu-arm-freertos Entry pkg. All six
+/// Shared boot+connected-run gate for any mps2-an385-freertos Entry pkg. All six
 /// share the `Mps2An385` board, `nros::main!()` self-bringup, the
 /// per-variant allocator deploy locator + `10.0.2.15` deploy ip/gateway, and the
 /// release-profile build, so the #45 (panic/crate-type/linker), #46 (stack/heap),
@@ -257,7 +257,7 @@ fn boot_and_connect(entry: &str, bin_name: &str) {
     );
 }
 
-// One boot+connected gate per qemu-arm-freertos Entry pkg. Serialized via the
+// One boot+connected gate per mps2-an385-freertos Entry pkg. Serialized via the
 // `qemu-freertos-entry` nextest group (see boot_and_connect's doc).
 
 #[test]

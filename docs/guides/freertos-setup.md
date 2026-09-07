@@ -53,7 +53,7 @@ driver via the `cc` crate.
 
 ### Available Examples
 
-Rust examples are in `examples/qemu-arm-freertos/rust/`:
+Rust examples are in `examples/mps2-an385-freertos/rust/`:
 
 | Example          | Description                                      |
 |------------------|--------------------------------------------------|

@@ -1,4 +1,4 @@
-# `talker-xrce` — qemu-arm-baremetal / rust
+# `talker-xrce` — mps2-an385-baremetal / rust
 
 Standalone copy-out example: copy this directory anywhere, nothing above it
 is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0026-example-directory-layout.md)).
@@ -6,7 +6,7 @@ is required ([RFC-0026](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/de
 ## Build
 
 ```bash
-cp -r examples/qemu-arm-baremetal/rust/talker-xrce ~/my-talker-xrce && cd ~/my-talker-xrce
+cp -r examples/mps2-an385-baremetal/rust/talker-xrce ~/my-talker-xrce && cd ~/my-talker-xrce
 NROS_REPO_DIR=/path/to/nano-ros nros sync   # msg crates + [patch.crates-io]
 cargo build
 ```
@@ -14,7 +14,7 @@ cargo build
 ## Run
 
 Cross-built. SDK env comes from `source activate.sh` in the checkout;
-QEMU / flashing steps live in the [qemu-arm-baremetal README](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-baremetal/README.md).
+QEMU / flashing steps live in the [mps2-an385-baremetal README](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-baremetal/README.md).
 
 ## Config
 

@@ -86,7 +86,7 @@ successor). Domain/locator ride the build config (`config.toml` /
 `-DNROS_ENTRY_LOCATOR`), not the tuple:
 
 ```xml
-<!-- package.xml (e.g. examples/qemu-arm-freertos/c/talker) -->
+<!-- package.xml (e.g. examples/mps2-an385-freertos/c/talker) -->
 <export>
   <build_type>ament_cmake</build_type>
   <nano_ros deploy="freertos" board="mps2-an385-freertos" rmw="zenoh"/>
@@ -260,7 +260,7 @@ are applied where noted; the serial cell ships with the recipe below.
 | qemu-arm-baremetal | **serial** | zenoh-pico | **size** + recipe | **116.1 KB** | 25.2 KB | 75.8 KB | **101.0 KB** |
 | stm32f4 (thumbv7em-eabihf, cortex-m4) ¹ | ethernet | zenoh-pico | release | 186.9 KB | 13.7 KB | 123.0 KB | 136.7 KB |
 | stm32f4 ¹ | ethernet | zenoh-pico | size | **138.1 KB** | 13.7 KB | 123.0 KB | 136.7 KB |
-| qemu-arm-freertos (cortex-m3 + lwIP, RTOS-reused stack) | ethernet (lwIP) | zenoh-pico | release | 240.6 KB | 10.7 KB | 3.3 MB | 3.3 MB |
+| mps2-an385-freertos (cortex-m3 + lwIP, RTOS-reused stack) | ethernet (lwIP) | zenoh-pico | release | 240.6 KB | 10.7 KB | 3.3 MB | 3.3 MB |
 | **qemu-arm-baremetal (serial)** | **serial** (custom XRCE transport) | **XRCE** | **size**, heap 24 KB, tight XRCE pools | **60.3 KB** | 25.2 KB (heap 24 KB) | 8.8 KB | **~34 KB** |
 | **micro-ROS reference** (XRCE) | serial | XRCE-DDS Client | -Os | < 75 KB | — | ~3 KB | ~3 KB peak |
 

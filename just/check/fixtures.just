@@ -64,7 +64,7 @@ example-fmt:
     # definition) can never slow this down or leak in. `NF>=5` = the old
     # `-mindepth 4` (leaf crates, not workspace-root manifests).
     git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
-        | grep -vE '/(target|generated|build|build-[^/]*|install|log)/|examples/zephyr/|/multi-package-workspace/|qemu-esp32-baremetal/rust/dds/|examples/qemu-arm-freertos/|examples/qemu-armv7a-nuttx/|examples/threadx-linux/|examples/rv-virt-threadx/|examples/px4/' \
+        | grep -vE '/(target|generated|build|build-[^/]*|install|log)/|examples/zephyr/|/multi-package-workspace/|qemu-esp32-baremetal/rust/dds/|examples/mps2-an385-freertos/|examples/qemu-armv7a-nuttx/|examples/threadx-linux/|examples/rv-virt-threadx/|examples/px4/' \
         | sort | while read -r toml; do
         dir="$(dirname "$toml")"
         # Read the edition from the manifest rather than assuming one: rustfmt

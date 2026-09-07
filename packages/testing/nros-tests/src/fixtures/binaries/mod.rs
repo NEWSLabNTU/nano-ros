@@ -1423,7 +1423,7 @@ fn find_build_script_outputs(dir: &Path, prefix: &str, depth: usize) -> Vec<Path
 /// graph and absent from every recorded path.
 ///
 /// Cargo's own dep-info for the staticlib carries both halves. Measured on
-/// `examples/qemu-arm-freertos/c/talker/build-zenoh` (2026-09-04),
+/// `examples/mps2-an385-freertos/c/talker/build-zenoh` (2026-09-04),
 /// `libnros_c.d` lists 236 in-repo inputs including `packages/core/**` (65),
 /// `zpico-sys/c/**` (14) and the build-script closure
 /// (`nros-zpico-build/src/lib.rs`, `nros-board-common/src/*`,
@@ -4502,7 +4502,7 @@ pub fn build_nuttx_cmake_example_rmw(
 
 /// Phase 118.D — collapsed-shape FreeRTOS C / C++ example resolver.
 /// `lang` is `"c"` or `"cpp"`. Binary lands at
-/// `examples/qemu-arm-freertos/<lang>/<case>/build-<rmw>/<binary>`.
+/// `examples/mps2-an385-freertos/<lang>/<case>/build-<rmw>/<binary>`.
 pub fn build_freertos_cmake_example_rmw(
     lang: &str,
     case: &str,
@@ -4510,7 +4510,7 @@ pub fn build_freertos_cmake_example_rmw(
     rmw: Rmw,
 ) -> TestResult<PathBuf> {
     build_example_cmake_rmw(
-        &format!("qemu-arm-freertos/{}/{}", lang, case),
+        &format!("mps2-an385-freertos/{}/{}", lang, case),
         binary_name,
         rmw,
     )
@@ -4540,7 +4540,7 @@ pub fn build_freertos_rust_example_rmw(
     rmw: Rmw,
 ) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-arm-freertos/rust/{}", case));
+    let example_dir = root.join(format!("examples/mps2-an385-freertos/rust/{}", case));
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
             "Example directory not found: {}",
@@ -6903,7 +6903,7 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp);
 
         // The layout corrosion produces, measured on
-        // `examples/qemu-arm-freertos/c/talker/build-zenoh` (2026-09-04):
+        // `examples/mps2-an385-freertos/c/talker/build-zenoh` (2026-09-04):
         //   cargo/<pkg>_<hash>/<triple>/<profile>/{deps/,libnros_c.d,libnros_c.a}
         let profile = tmp.join("cargo/nano-ros_0b88c/thumbv7m-none-eabi/release");
         fs::create_dir_all(profile.join("deps")).unwrap();

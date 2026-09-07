@@ -18,7 +18,7 @@ Usage:
   migrate-embedded-example-native-shape.py <platform-dir> <deploy> <board> [rmw]
 
   e.g. migrate-embedded-example-native-shape.py \
-      examples/qemu-arm-freertos freertos mps2-an385-freertos zenoh
+      examples/mps2-an385-freertos freertos mps2-an385-freertos zenoh
 """
 
 import re

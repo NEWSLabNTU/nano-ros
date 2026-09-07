@@ -398,7 +398,7 @@ pub const SERVICE_RESULT_PREFIX: &str = "Result of add_two_ints:";
 /// There are TWO of these because the example groups word it differently, and a
 /// test that greps the wrong one waits out its whole budget against a client
 /// that is reporting the failure perfectly well. This is the RUST wording,
-/// shared verbatim by the `qemu-armv7a-nuttx`, `qemu-arm-freertos` and
+/// shared verbatim by the `qemu-armv7a-nuttx`, `mps2-an385-freertos` and
 /// `threadx-linux` copies.
 pub const SERVICE_CALL_FAILED_MARKER: &str = "Service call failed, retrying:";
 

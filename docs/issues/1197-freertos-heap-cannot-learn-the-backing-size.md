@@ -43,7 +43,7 @@ six because `nros sync` writes each leaf a `nros-managed-env.toml` carrying
 derived executor knobs — the issue 0827 / 1061 channel:
 
 ```
-# examples/qemu-arm-freertos/rust/talker/.cargo/nros-managed-env.toml
+# examples/mps2-an385-freertos/rust/talker/.cargo/nros-managed-env.toml
 NROS_EXECUTOR_ACTION_CLIENTS = "0"      # action-server: "1"
 NROS_EXECUTOR_MAX_CBS = "1"
 ```

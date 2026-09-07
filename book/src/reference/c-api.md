@@ -76,7 +76,7 @@ Canonical pattern: declare the executor, register the client, then
 either call the blocking helper or drive `rclc_executor_spin_some()`
 yourself between async calls until your callback flags the result. See
 the example layouts in `examples/native/c/action-client/` and
-`examples/qemu-arm-freertos/c/action-client/`.
+`examples/mps2-an385-freertos/c/action-client/`.
 
 Phase 122.3 added a separate L1 polling family
 (`nros_action_client_init_polling` + the `_raw` send/recv siblings)

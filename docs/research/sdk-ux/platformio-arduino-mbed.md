@@ -22,9 +22,9 @@ nano-ros baselines reviewed:
 
 - `/home/aeon/repos/nano-ros/CLAUDE.md`
 - `/home/aeon/repos/nano-ros/justfile` (1123 lines, 60+ recipes)
-- `/home/aeon/repos/nano-ros/examples/qemu-arm-freertos/rust/zenoh/talker/`
+- `/home/aeon/repos/nano-ros/examples/mps2-an385-freertos/rust/zenoh/talker/`
   (a full FreeRTOS Rust example: 4 config files for one binary)
-- `/home/aeon/repos/nano-ros/examples/qemu-arm-freertos/c/zenoh/talker/CMakeLists.txt`
+- `/home/aeon/repos/nano-ros/examples/mps2-an385-freertos/c/zenoh/talker/CMakeLists.txt`
 - `/home/aeon/repos/nano-ros/templates/` (4 Cargo.toml stubs, no scaffolding tool)
 - `/home/aeon/repos/nano-ros/book/src/getting-started/{freertos,zephyr,nuttx,esp32}.md`
   (576 + 291 + 133 + 305 = **1305 lines** of platform-specific onboarding text)
@@ -93,7 +93,7 @@ builds one. `pio run -e uno -t upload` flashes. The file is what the user
 sees, edits, commits, and onboards a colleague with.
 
 Compare to nano-ros's per-binary configuration surface for
-`examples/qemu-arm-freertos/rust/zenoh/talker/`:
+`examples/mps2-an385-freertos/rust/zenoh/talker/`:
 
 | File | Lines | Owns |
 |---|---|---|
@@ -410,7 +410,7 @@ direnv allow                              # 3: load .env
 just build-zenoh-pico-arm                 # 4: prereq for build (CLAUDE.md)
 just qemu setup-network                   # 5: TAP bridge for QEMU
 # Pick example or copy from templates/
-cp -r examples/qemu-arm-freertos/rust/zenoh/talker my-talker
+cp -r examples/mps2-an385-freertos/rust/zenoh/talker my-talker
 # Edit Cargo.toml, .cargo/config.toml, config.toml dep paths
 cd my-talker && cargo build --release    # 6
 qemu-system-arm -M mps2-an385 ...        # 7 (or just freertos run)

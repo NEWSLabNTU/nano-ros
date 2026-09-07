@@ -1,7 +1,7 @@
 //! Phase 212.O.3 — POSIX Entry pkg main.rs.
 //!
 //! Mirror the canonical Entry pkg shape from
-//! `examples/qemu-arm-freertos/rust/*_entry/`: include the
+//! `examples/mps2-an385-freertos/rust/*_entry/`: include the
 //! codegen-emitted `run_plan(runtime)` body and drive it through
 //! `<LinuxBoard as BoardEntry>::run`.
 //!

@@ -378,7 +378,7 @@ this tree, and the four were never verified by any previous green run:
 ```
 weak-image: WARN — coverage row(s) matched no image, so these symbols
   were NOT verified in this run (build the fixtures to cover them):
-  examples/qemu-arm-freertos/rust (freertos_rs_*entry): nros_board_register_netif nros_board_poll_netif
+  examples/mps2-an385-freertos/rust (freertos_rs_*entry): nros_board_register_netif nros_board_poll_netif
   build/cargo-fixtures/qemu-arm-freertos (freertos_rs_*entry): nros_board_register_netif nros_board_poll_netif
   examples/mps2-an385-baremetal/rust (qemu-serial-talker): _z_open_serial_from_dev _z_close_serial …
   examples/mps2-an385-baremetal/rust (qemu-serial-listener): _z_open_serial_from_dev _z_close_serial …
@@ -501,7 +501,7 @@ image is not built" were indistinguishable. With the build unblocked (issue
 
 | Field | Row said | Reality |
 | --- | --- | --- |
-| base | `examples/qemu-arm-freertos/rust`, `build/cargo-fixtures/qemu-arm-freertos` | `build/cargo-fixtures/freertos` — the group dir is keyed on the fixture coordinate's PLATFORM token, not the example directory name (phase-340 P2) |
+| base | `examples/mps2-an385-freertos/rust`, `build/cargo-fixtures/qemu-arm-freertos` | `build/cargo-fixtures/freertos` — the group dir is keyed on the fixture coordinate's PLATFORM token, not the example directory name (phase-340 P2) |
 | glob | `freertos_rs_*entry` | `talker`, `listener`, … — `freertos_rs_talker` is the CRATE (an rlib, which the loop skips); the BIN cargo emits is `talker`. Nothing here was ever named `*entry` |
 
 **The guarantee itself holds.** `nros_board_register_netif` and

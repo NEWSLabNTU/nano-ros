@@ -165,7 +165,7 @@ target dies in `<string>` → `requires_hosted.h` under `-ffreestanding` with th
 pinned `arm-none-eabi-gcc 13.2-nros4` (**issue 1187**). Reducing it on the
 strength of the half that runs would be exactly the unverified move this issue
 exists to stop. It moves when 1187 is fixed and a
-`examples/qemu-arm-freertos/cpp/*` image has been measured the same way.
+`examples/mps2-an385-freertos/cpp/*` image has been measured the same way.
 
 ## Also found, not fixed
 

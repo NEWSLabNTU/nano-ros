@@ -161,7 +161,7 @@ const MIGRATED_PREFIXES: &[&str] = &[
     // M.4 NuttX rust/c/cpp
     "examples/qemu-armv7a-nuttx/",
     // M.5 FreeRTOS rust/c/cpp (M.5.a + M.5.b landed)
-    "examples/qemu-arm-freertos/",
+    "examples/mps2-an385-freertos/",
     // M.6 ThreadX linux/{rust,cpp} — `c/` is NOT in M.6 scope; the
     // is_migrated() filter below carves it out.
     "examples/threadx-linux/rust/",
@@ -338,7 +338,7 @@ fn expected_deploy_target_for(rel: &Path) -> Option<&'static str> {
         None
     } else if s.contains("/qemu-armv7a-nuttx/") {
         Some("nuttx")
-    } else if s.contains("/qemu-arm-freertos/") {
+    } else if s.contains("/mps2-an385-freertos/") {
         Some("freertos")
     } else if s.contains("/zephyr/") {
         Some("zephyr")
@@ -833,7 +833,7 @@ fn unmigrated_trees_status_surface() {
 /// are NOT here — they keep their own shapes until their migration waves land.
 const AMENT_SHAPE_TREES: &[&str] = &[
     "native",
-    "qemu-arm-freertos",
+    "mps2-an385-freertos",
     "qemu-armv7a-nuttx",
     "rv-virt-nuttx",
     "rv-virt-threadx",
