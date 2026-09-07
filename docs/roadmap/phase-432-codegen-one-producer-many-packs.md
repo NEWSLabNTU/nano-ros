@@ -1,10 +1,28 @@
 # Phase 432 — one codegen producer, many language packs
 
-**Status (2026-09-06).** Not started as a phase; four commits of it already
-landed ahead of the design, which is why the design exists. The golden harness,
-`emit_rust` and `emit_c` are on templates, the tier table is structured, and
-escaping is a per-language filter. Everything below is what those four commits
-proved was needed and did not do.
+**Status (2026-09-08).** Tracks 1 and 2 are COMPLETE. Track 3 is complete
+except **W3.1**, which is partly done and blocked on a decision rather than on
+effort, and **W3.5**, which was always a question rather than a work item.
+
+Every wave below carries its own state. What is left, in one place:
+
+- **W3.1** — the C-ABI `run_components` itself is unwritten. Both original
+  prerequisites are closed, and so is a THIRD the assessment missed (`ok()` and
+  `shutdown()` were not C-ABI; the context tag is the session flag now). So the
+  runner is unblocked. **Nobody has linked or booted one on FreeRTOS** — that
+  measurement is the acceptance and it has not been taken.
+- **W3.5** — a decision for whoever owns the CI budget. The options and their
+  costs are in the item.
+- **Issue 1172** — the two entry packs derive a tier's callback groups
+  differently. Needs a runtime answer about what `run_tiers` does with a group
+  named by two tiers; it is not a style question.
+- **RFC-0091 is still `Draft`**, correctly: W1.3 says to move its status once
+  the RFC is fully implemented, and W3.1 and W3.5 are open.
+
+The earlier status line said "not started as a phase; four commits of it
+already landed ahead of the design". That was true on 2026-09-06 and stopped
+being true within two days, while the doc went on saying it — which is the
+failure mode this phase spent its whole length removing from the code.
 
 **Implements:** [RFC-0091](../design/0091-one-entry-codegen-producer-many-language-packs.md),
 which **amends** [RFC-0068](../design/0068-language-neutral-codegen-ir.md).
@@ -51,11 +69,11 @@ own crate, passing `host()` unconditionally; `enum_width` read nowhere;
 says the result changes no outcome. The hazard it guards cannot occur — the C
 and Rust message packs emit no `enum` at all.
 
-- **W1.1** Delete `TargetProfile` from `rosidl-lower`; `lower_fields` loses the
+- **W1.1 — DONE.** Delete `TargetProfile` from `rosidl-lower`; `lower_fields` loses the
   argument. The nested-struct `align` stand-in becomes an explicit named
   constant with the comment that already explains why its value cannot matter
   (`plain` is false for nested regardless).
-- **W1.2** The cross-language repr gate — **re-scoped by implementing W1.1**,
+- **W1.2 — DONE.** The cross-language repr gate — **re-scoped by implementing W1.1**,
   and the correction matters more than the original wording.
 
   The first draft said "compile the generated C and the generated Rust and
@@ -81,9 +99,15 @@ and Rust message packs emit no `enum` at all.
   without adding a measurement of it is strictly worse than either. Precedent
   and warning both: the sizes-header mirror (0088→0268), where a stale one was
   silent memory corruption, 336 bytes short on freertos C.
-- **W1.3** Amend RFC-0068 in place. Already drafted as a `> **Amended by**`
+- **W1.3 — DONE, with its conditional half correctly not done.** Amend RFC-0068 in place. Already drafted as a `> **Amended by**`
   block at its Stage 2; W1.3 is confirming it reads correctly once the code is
   gone, and moving RFC-0091's own status if it is then fully implemented.
+
+  The amendment is in place (`0068-…:91`) and reads correctly: `TargetProfile`
+  is gone from the code, and the only mentions left are historical comments
+  saying what a value USED to be. RFC-0091's status stays `Draft`, which is the
+  right answer rather than an oversight — W3.1 and W3.5 are open, so it is not
+  fully implemented yet. Move it when they close.
 
 **Acceptance.** `TargetProfile` appears nowhere; W1.2's gate is on a lane that
 runs, and fails when a repr is changed on one side only (mutation-test it).
@@ -94,7 +118,7 @@ The order matters and is not arbitrary: each step removes a blocker for the
 next, and doing them out of order re-creates the duplication the phase exists
 to remove.
 
-- **W2.1 — `nros-lang`, one `Language`.** A leaf crate whose only dependency
+- **W2.1 — `nros-lang`, one `Language`. DONE.** A leaf crate whose only dependency
   is `serde`. Placement is FORCED: `rosidl-codegen` does not depend on
   `nros-pkg-index`, and the proc-macro depends on neither
   `nros-orchestration-ir` nor `nros-cli-core`, so no existing crate is
@@ -108,7 +132,7 @@ to remove.
   derives rather than re-spells.**
   Closes the second reader in #1062.
 
-- **W2.2 — `nros-entry-lower`, structured `LoweredEntry`.** All computation,
+- **W2.2 — `nros-entry-lower`, structured `LoweredEntry`. DONE.** All computation,
   inside the proc-macro's dependency budget (`nros-pkg-index`,
   `nros-launch-parser`, `nros-orchestration-ir`).
 
@@ -135,7 +159,7 @@ to remove.
   is an IDENTITY plus a boot shape — `::nros::board::LinuxBoard` is a C++ path
   and a Zig or pure-C pack cannot use it.
 
-- **W2.3 — convert `emit_cpp` (2437 lines).** The emitter issue 1003 was
+- **W2.3 — convert `emit_cpp` (2437 lines). DONE.** The emitter issue 1003 was
   actually about, and the one that RELEASES the three fields still
   pre-rendered in the C view: `decls`, `trailer`, `boot_config` come from
   `emit_boot_config_static` and the `pub(super)` `emit_declare_*` helpers,
@@ -144,7 +168,7 @@ to remove.
   Depends on W2.2.
 
 - **W2.4 — retire the `--lang rust` VERB; both Rust producers consume
-  `LoweredEntry`; a parity gate compares them.** *(LANDED. The item as first
+  `LoweredEntry`; a parity gate compares them. DONE.** *(The item as first
   written said "delete `emit_rust`" AND "a gate compares their two Rust
   renderings", which cannot both hold — deleting the renderer removes the
   second thing to compare. Implementing it resolved that, and two of its
@@ -204,7 +228,7 @@ to remove.
   dependency weight that created this duplication once already (issue 0083).
   Depends on W2.2.
 
-- **W2.5a — the message-side context becomes the IR.** Measured (RFC-0091
+- **W2.5a — the message-side context becomes the IR. DONE.** Measured (RFC-0091
   §6b): `lower_fields`' output is reduced to `Vec<FieldStorage>` before any
   template sees it, so `shape`, `cdr_op`, `align` and `plain` are computed and
   dropped; and each surface re-derives from the PARSER — `RmwField`,
@@ -233,7 +257,7 @@ to remove.
   `primitive_to_cdr_method`, `c_cdr_write_method`, `c_cdr_read_method` — the
   duplicate derivations gone rather than bypassed.
 
-- **W2.5b — a language contributes a FILTER SET.** Nine of the ten registered
+- **W2.5b — a language contributes a FILTER SET. DONE.** Nine of the ten registered
   filters are per-language type spellings (`c_type`, `rust_type_rmw`,
   `cpp_repr_c_type`, `nros_type`, …) and they are already the RIGHT shape — a
   neutral fact in, a spelling out. Name that as the language's Rust surface
@@ -301,7 +325,7 @@ to remove.
   initialisers) and `check-entry-session-name` (the boot wrapper). Every entry
   golden is byte-identical — this is a move, and the bytes say so.
 
-- **W2.6 — the CMake templates become a pack. LANDED.** The six
+- **W2.6 — the CMake templates become a pack. DONE.** The six
   `cmake/templates/*_entry_main*.cpp.in` are DELETED;
   `nano_ros_node_register()` calls `nros codegen entry-node`, which synthesises
   a one-node `Plan` in Rust (`codegen/entry/registered_node.rs`) and renders the
