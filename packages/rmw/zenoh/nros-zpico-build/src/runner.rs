@@ -161,16 +161,24 @@ fn resolve_queryable_default() -> QueryableSizing {
     // found.
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_SERVICE_SERVERS");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_INFRA_QUERYABLES");
+    // phase-426 W3 — the parameter services are PER NODE now, so the image's
+    // node count is a term in this pool. Same watch discipline as its two
+    // siblings: an entry that gains a node changes the number this script
+    // must produce.
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_NODES");
     let declared = std::env::var("NROS_DECLARED_SERVICE_SERVERS").ok();
     let infra = std::env::var("NROS_DECLARED_INFRA_QUERYABLES").ok();
+    let nodes = std::env::var("NROS_DECLARED_NODES").ok();
     QueryableSizing {
         default: queryable_default_from(
             declared.as_deref(),
             infra.as_deref(),
+            nodes.as_deref(),
             target_os_is_hosted(std::env::var("CARGO_CFG_TARGET_OS").as_deref().ok()),
         ),
-        floor: queryable_floor_from(declared.as_deref(), infra.as_deref()),
+        floor: queryable_floor_from(declared.as_deref(), infra.as_deref(), nodes.as_deref()),
         declared: declared.is_some() || infra.is_some(),
+        param_nodes: declared_nodes(nodes.as_deref()),
     }
 }
 
@@ -183,6 +191,10 @@ struct QueryableSizing {
     floor: usize,
     /// Whether any part of this came from a declaration.
     declared: bool,
+    /// phase-426 W3 — how many nodes the parameter services were sized for.
+    /// Carried so the refusal message can SHOW the multiplication rather than
+    /// hand the reader a total and let them work backwards.
+    param_nodes: usize,
 }
 
 /// The slots this image PROVABLY needs, as opposed to the ones it is budgeted.
@@ -205,14 +217,38 @@ struct QueryableSizing {
 ///
 /// Undeclared images have a floor of zero: nothing is known, so nothing is
 /// provable, and the historical budgets apply unchecked.
-fn queryable_floor_from(declared: Option<&str>, infra: Option<&str>) -> usize {
+fn queryable_floor_from(declared: Option<&str>, infra: Option<&str>, nodes: Option<&str>) -> usize {
     if declared.is_none() && infra.is_none() {
         return 0;
     }
     let app = declared
         .and_then(|v| v.trim().parse::<usize>().ok())
         .unwrap_or(0);
-    app + infra_queryables(infra)
+    app + infra_queryables(infra, nodes)
+}
+
+/// phase-426 W3 — how many nodes claim a set of parameter services.
+///
+/// `NROS_DECLARED_NODES` is a COUNT of the model's nodes, and this verb's
+/// contract is the same as its siblings': the declarer states the fact, the
+/// consumer states what it costs. Absent means undeclared, and undeclared is
+/// ONE — the pre-W3 number, so an image nobody described keeps the pool it had.
+///
+/// A malformed value panics rather than falling back, for the reason
+/// [`queryable_default_from`] gives about `.max(1)`: a value that reads as
+/// applied and is not is worse than no value.
+fn declared_nodes(nodes: Option<&str>) -> usize {
+    match nodes {
+        Some(v) => match v.trim().parse::<usize>() {
+            Ok(n) => n.max(1),
+            Err(_) => panic!(
+                "NROS_DECLARED_NODES={v:?} is not a count. It is the number of \
+                 nodes the entry's model declares, and the ROS parameter \
+                 services are registered once PER NODE (phase-426 W3)."
+            ),
+        },
+        None => 1,
+    }
 }
 
 /// phase-392 W5.f — `ZPICO_MAX_QUERYABLES` as a CHECKED override.
@@ -245,9 +281,13 @@ fn check_queryable_override(requested: usize, sizing: &QueryableSizing) {
              infrastructure services and application service servers that claim those \
              slots at boot, so a smaller table cannot start — it fails with \
              `ServiceServerCreationFailed` and no explanation (issue 0460).\n  \
+             The ROS parameter services are registered once PER NODE (phase-426 W3), \
+             so a {}-node image carrying them claims {} slots for those alone.\n  \
              On Zephyr this knob is CONFIG_NROS_MAX_QUERYABLES, whose Kconfig default \
              is 8; raise it, or stop declaring the services the image does not have.",
-            sizing.floor
+            sizing.floor,
+            sizing.param_nodes,
+            PARAM_SERVICE_QUERYABLES * sizing.param_nodes
         );
     }
     if requested < sizing.default {
@@ -268,21 +308,26 @@ fn check_queryable_override(requested: usize, sizing: &QueryableSizing) {
 ///
 /// ONE parser, shared by the default and the floor: two readings of the same
 /// spelling is how a sizing rule and its check come to disagree.
-fn infra_queryables(infra: Option<&str>) -> usize {
+fn infra_queryables(infra: Option<&str>, nodes: Option<&str>) -> usize {
+    // phase-426 W3 — the parameter family is PER NODE and the lifecycle family
+    // is not. `register_parameter_services` publishes one set of six under each
+    // node's own FQN, because that is what `ros2 param list` enumerates;
+    // `register_lifecycle_services` still registers one set on the executor.
+    // Multiplying both would over-reserve, multiplying neither is issue 0460
+    // again one node over.
+    let params = PARAM_SERVICE_QUERYABLES * declared_nodes(nodes);
     match infra {
         Some("none") => 0,
-        Some("param") => PARAM_SERVICE_QUERYABLES,
+        Some("param") => params,
         Some("lifecycle") => LIFECYCLE_SERVICE_QUERYABLES,
-        Some("param+lifecycle") | Some("all") => {
-            PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
-        }
+        Some("param+lifecycle") | Some("all") => params + LIFECYCLE_SERVICE_QUERYABLES,
         Some(other) => panic!(
             "NROS_DECLARED_INFRA_QUERYABLES={other:?} is not one of \
              none|param|lifecycle|param+lifecycle (phase-392 W5)."
         ),
         // Undeclared infrastructure is assumed PRESENT: over-reserving costs
         // RAM, under-reserving fails at boot with an exhausted table.
-        None => PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES,
+        None => params + LIFECYCLE_SERVICE_QUERYABLES,
     }
 }
 
@@ -290,7 +335,12 @@ fn infra_queryables(infra: Option<&str>) -> usize {
 ///
 /// A build script reading env directly is untestable in-process (env is
 /// global), which is how a sizing rule ends up verified by reading.
-fn queryable_default_from(declared: Option<&str>, infra: Option<&str>, hosted: bool) -> usize {
+fn queryable_default_from(
+    declared: Option<&str>,
+    infra: Option<&str>,
+    nodes: Option<&str>,
+    hosted: bool,
+) -> usize {
     let app = match declared {
         Some(v) => match v.trim().parse::<usize>() {
             Ok(n) => n,
@@ -326,7 +376,7 @@ fn queryable_default_from(declared: Option<&str>, infra: Option<&str>, hosted: b
         None => return if hosted { 32 } else { UNDECLARED_HEADROOM },
     };
 
-    let infra = infra_queryables(infra);
+    let infra = infra_queryables(infra, nodes);
 
     // A table of zero would make every service-server registration fail, so an
     // entry declaring none still gets one slot rather than a pool nothing can
@@ -342,28 +392,99 @@ mod queryable_default_tests {
     #[test]
     fn the_floor_counts_only_what_is_provably_claimed() {
         // Undeclared: nothing is known, so nothing is provable.
-        assert_eq!(queryable_floor_from(None, None), 0);
+        assert_eq!(queryable_floor_from(None, None, None), 0);
         // Infrastructure declared absent: an image that declares nothing still
         // needs nothing, even though its BUDGET is 8.
-        assert_eq!(queryable_floor_from(None, Some("none")), 0);
-        assert_eq!(queryable_default_from(None, Some("none"), true), 8);
+        assert_eq!(queryable_floor_from(None, Some("none"), None), 0);
+        assert_eq!(queryable_default_from(None, Some("none"), None, true), 8);
         // Both service families: eleven slots claimed at boot. This is the
         // number issue 0460 discovered at runtime against a table of 8.
         assert_eq!(
-            queryable_floor_from(None, Some("param+lifecycle")),
+            queryable_floor_from(None, Some("param+lifecycle"), None),
             PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
         );
         // A declared application count is provable too — it is what the model
         // says the image will create.
-        assert_eq!(queryable_floor_from(Some("2"), Some("lifecycle")), 7);
+        assert_eq!(queryable_floor_from(Some("2"), Some("lifecycle"), None), 7);
     }
 
     fn sizing(declared: Option<&str>, infra: Option<&str>) -> QueryableSizing {
+        sizing_for(declared, infra, None)
+    }
+
+    fn sizing_for(
+        declared: Option<&str>,
+        infra: Option<&str>,
+        nodes: Option<&str>,
+    ) -> QueryableSizing {
         QueryableSizing {
-            default: queryable_default_from(declared, infra, true),
-            floor: queryable_floor_from(declared, infra),
+            default: queryable_default_from(declared, infra, nodes, true),
+            floor: queryable_floor_from(declared, infra, nodes),
             declared: declared.is_some() || infra.is_some(),
+            param_nodes: declared_nodes(nodes),
         }
+    }
+
+    /// phase-426 W3 — the parameter family is PER NODE, so the floor is too.
+    #[test]
+    fn the_parameter_family_costs_six_slots_per_node() {
+        // One node: the number issue 0460 discovered at runtime, unchanged.
+        assert_eq!(
+            queryable_floor_from(None, Some("param+lifecycle"), Some("1")),
+            PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+        );
+        // Undeclared node count IS one — an image nobody described keeps the
+        // pool it had.
+        assert_eq!(
+            queryable_floor_from(None, Some("param+lifecycle"), None),
+            queryable_floor_from(None, Some("param+lifecycle"), Some("1"))
+        );
+        // Three nodes: 18 for the parameter services plus the executor's five
+        // lifecycle services. The lifecycle family does NOT multiply — it is
+        // still one set on the executor.
+        assert_eq!(
+            queryable_floor_from(None, Some("param+lifecycle"), Some("3")),
+            3 * PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+        );
+        assert_eq!(
+            queryable_floor_from(None, Some("lifecycle"), Some("3")),
+            LIFECYCLE_SERVICE_QUERYABLES,
+            "an image with no parameter services pays nothing for its nodes"
+        );
+        assert_eq!(
+            queryable_floor_from(Some("0"), Some("param"), Some("2")),
+            12
+        );
+    }
+
+    /// phase-426 W3's second acceptance criterion, at the layer that enforces
+    /// it: a three-node image on the Zephyr Kconfig default of 8 fails the
+    /// BUILD, and the message names the knob.
+    #[test]
+    #[should_panic(expected = "CONFIG_NROS_MAX_QUERYABLES")]
+    fn a_three_node_image_on_the_default_table_is_refused_at_build_time() {
+        check_queryable_override(8, &sizing_for(None, Some("param"), Some("3")));
+    }
+
+    /// The same image at its derived floor builds. Tight, not wrong.
+    #[test]
+    fn a_three_node_image_at_its_floor_is_accepted() {
+        check_queryable_override(18, &sizing_for(None, Some("param"), Some("3")));
+    }
+
+    /// A TWO-node image is already over the default of 8 — which is the whole
+    /// reason the ceiling had to become a build question rather than a boot
+    /// one.
+    #[test]
+    #[should_panic(expected = "DERIVED floor")]
+    fn even_two_nodes_do_not_fit_the_default_table() {
+        check_queryable_override(8, &sizing_for(None, Some("param"), Some("2")));
+    }
+
+    #[test]
+    #[should_panic(expected = "NROS_DECLARED_NODES")]
+    fn a_malformed_node_count_is_not_silently_one() {
+        declared_nodes(Some("several"));
     }
 
     #[test]
@@ -408,19 +529,19 @@ mod queryable_default_tests {
     fn infra_declared_without_an_app_count_still_drops_the_hosted_guess() {
         // A native talker: no parameter services, no lifecycle. 32 -> 8.
         assert_eq!(
-            queryable_default_from(None, Some("none"), true),
+            queryable_default_from(None, Some("none"), None, true),
             UNDECLARED_HEADROOM
         );
         // An image that carries both: the headroom PLUS what they cost.
         assert_eq!(
-            queryable_default_from(None, Some("param+lifecycle"), true),
+            queryable_default_from(None, Some("param+lifecycle"), None, true),
             UNDECLARED_HEADROOM + PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
         );
         // And it is the same number on an embedded target: the hosted/embedded
         // sniff decides nothing once the declaration arrives.
         assert_eq!(
-            queryable_default_from(None, Some("none"), false),
-            queryable_default_from(None, Some("none"), true)
+            queryable_default_from(None, Some("none"), None, false),
+            queryable_default_from(None, Some("none"), None, true)
         );
     }
 
@@ -430,14 +551,14 @@ mod queryable_default_tests {
     #[test]
     #[should_panic(expected = "NROS_DECLARED_INFRA_QUERYABLES")]
     fn an_unknown_infra_spelling_panics_even_without_an_app_count() {
-        queryable_default_from(None, Some("safety"), true);
+        queryable_default_from(None, Some("safety"), None, true);
     }
 
     #[test]
     fn undeclared_keeps_the_historical_budgets() {
-        assert_eq!(queryable_default_from(None, None, true), 32);
+        assert_eq!(queryable_default_from(None, None, None, true), 32);
         assert_eq!(
-            queryable_default_from(None, None, false),
+            queryable_default_from(None, None, None, false),
             UNDECLARED_HEADROOM
         );
     }
@@ -446,23 +567,29 @@ mod queryable_default_tests {
     fn a_declaration_beats_the_hosted_guess() {
         // The talker case: no services, no infrastructure. Measured at 4,504
         // bytes of SERVICE_BUFFERS against 144,128 for the guess.
-        assert_eq!(queryable_default_from(Some("0"), Some("none"), true), 1);
+        assert_eq!(
+            queryable_default_from(Some("0"), Some("none"), None, true),
+            1
+        );
     }
 
     #[test]
     fn infrastructure_is_added_here_not_by_the_declarer() {
         // Issue 0460: codegen sees the user's entities and never the runtime's.
         assert_eq!(
-            queryable_default_from(Some("0"), Some("param+lifecycle"), true),
+            queryable_default_from(Some("0"), Some("param+lifecycle"), None, true),
             11
         );
         assert_eq!(
-            queryable_default_from(Some("2"), Some("param+lifecycle"), true),
+            queryable_default_from(Some("2"), Some("param+lifecycle"), None, true),
             13
         );
-        assert_eq!(queryable_default_from(Some("2"), Some("param"), true), 8);
         assert_eq!(
-            queryable_default_from(Some("2"), Some("lifecycle"), true),
+            queryable_default_from(Some("2"), Some("param"), None, true),
+            8
+        );
+        assert_eq!(
+            queryable_default_from(Some("2"), Some("lifecycle"), None, true),
             7
         );
     }
@@ -470,27 +597,27 @@ mod queryable_default_tests {
     #[test]
     fn unknown_infrastructure_is_assumed_present() {
         // Over-reserving wastes RAM; under-reserving fails at boot.
-        assert_eq!(queryable_default_from(Some("0"), None, true), 11);
+        assert_eq!(queryable_default_from(Some("0"), None, None, true), 11);
     }
 
     #[test]
     fn the_hosted_split_stops_mattering_once_declared() {
         assert_eq!(
-            queryable_default_from(Some("3"), Some("none"), true),
-            queryable_default_from(Some("3"), Some("none"), false)
+            queryable_default_from(Some("3"), Some("none"), None, true),
+            queryable_default_from(Some("3"), Some("none"), None, false)
         );
     }
 
     #[test]
     #[should_panic(expected = "is not a count")]
     fn a_malformed_count_is_not_silently_undeclared() {
-        queryable_default_from(Some("lots"), Some("none"), true);
+        queryable_default_from(Some("lots"), Some("none"), None, true);
     }
 
     #[test]
     #[should_panic(expected = "is not one of")]
     fn an_unknown_infrastructure_spelling_is_refused() {
-        queryable_default_from(Some("0"), Some("params"), true);
+        queryable_default_from(Some("0"), Some("params"), None, true);
     }
 }
 

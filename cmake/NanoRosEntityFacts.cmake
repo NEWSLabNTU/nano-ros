@@ -89,6 +89,15 @@ function(nros_record_entity_facts _model)
             if(NOT _have OR CMAKE_MATCH_1 GREATER _have)
                 set_property(GLOBAL PROPERTY NROS_ENTITY_SERVERS_MAX "${CMAKE_MATCH_1}")
             endif()
+        elseif(_line MATCHES "^NROS_DECLARED_NODES=([0-9]+)$")
+            # phase-426 W3 -- the ROS parameter services are registered once
+            # PER NODE, so this is a term in the queryable pool. MAX across the
+            # configure's models for the same reason the server count is: the
+            # shared staticlib holds the largest, and the pool is sized once.
+            get_property(_have GLOBAL PROPERTY NROS_ENTITY_NODES_MAX)
+            if(NOT _have OR CMAKE_MATCH_1 GREATER _have)
+                set_property(GLOBAL PROPERTY NROS_ENTITY_NODES_MAX "${CMAKE_MATCH_1}")
+            endif()
         endif()
     endforeach()
     if(NOT _saw_servers)
@@ -415,6 +424,16 @@ function(nros_entity_facts_env _target)
         set(_infra "none")
     endif()
     set(_env "NROS_DECLARED_INFRA_QUERYABLES=${_infra}")
+
+    # phase-426 W3 -- how many nodes claim a set of parameter services. Sent
+    # unconditionally when known, even with `_infra` "none": the consumer owns
+    # what a node COSTS (`PARAM_SERVICE_QUERYABLES`, beside the code that
+    # creates the servers), and this side only states the count. Absent means
+    # undeclared, which the consumer reads as one -- the pre-W3 number.
+    get_property(_nodes GLOBAL PROPERTY NROS_ENTITY_NODES_MAX)
+    if(NOT _nodes STREQUAL "")
+        list(APPEND _env "NROS_DECLARED_NODES=${_nodes}")
+    endif()
 
     get_property(_unknown GLOBAL PROPERTY NROS_ENTITY_SERVERS_UNKNOWN)
     get_property(_max GLOBAL PROPERTY NROS_ENTITY_SERVERS_MAX)

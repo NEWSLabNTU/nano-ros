@@ -148,6 +148,12 @@ KNOB_CLASS = {
     # --- infra ---
     "NROS_DECLARED_INFRA_QUERYABLES": ("infra", "a COUNT the resolver passes down, not a knob"),
     "NROS_DECLARED_SERVICE_SERVERS": ("infra", "a COUNT the resolver passes down, not a knob"),
+    # phase-426 W3 — the same shape a third time: the ROS parameter services are
+    # registered once PER NODE, so the model's node count is a term in the
+    # queryable pool. A COUNT the resolver passes down, never something a user
+    # tunes; `ZPICO_MAX_QUERYABLES` / `CONFIG_NROS_MAX_QUERYABLES` is the knob
+    # and still outranks it (it is the checked OVERRIDE this bounds from below).
+    "NROS_DECLARED_NODES": ("infra", "a COUNT the resolver passes down, not a knob"),
     # issue 1122 — the same shape one pool over: cmake DERIVES the large-payload
     # class count and this carries it to the build script as a DEFAULT on lanes
     # with no Kconfig. Not a knob: `ZPICO_MAX_LARGE_SUBSCRIBERS` is the knob and
