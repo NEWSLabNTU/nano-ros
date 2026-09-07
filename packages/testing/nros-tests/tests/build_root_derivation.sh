@@ -57,6 +57,22 @@ leaf_exported_fns() {
         ' scripts/build/fixtures-build.sh | tr '\n' ' '
 }
 
+# Every `platform =` the manifest spells, deduped. The "unmigrated witness"
+# arms below derive their candidate from THIS rather than from a hand-written
+# list: phase-437 W4a collapsed `qemu-esp32-baremetal` into `esp32` (RFC-0093
+# R6), `esp32` was already in NROS_FIXTURE_SHARED_PLATFORMS, and the old list
+# (`nuttx freertos esp32 threadx-linux`) was then four migrated platforms — so
+# the probe refused to verdict, correctly and for the second time. A list that
+# has to be re-derived by hand after every migration is the same defect
+# phase-340 B3 already fixed once here.
+#
+# Defined out here because a scenario body is single-quoted and cannot hold the
+# `\037` field separator.
+manifest_platforms() {
+    python3 scripts/build/fixtures-manifest.py coords \
+        | cut -d"$(printf '\037')" -f2 | sort -u
+}
+
 # shellcheck source=scripts/build/build-root.sh
 source scripts/build/build-root.sh
 
@@ -109,21 +125,21 @@ scenario '
 
 echo "fixtures-target-dir still emits the pre-migration path:"
 
-# The step-1 invariant. `qemu-arm-baremetal` is the one platform in
+# The step-1 invariant. `baremetal` is the one platform in
 # NROS_FIXTURE_SHARED_PLATFORMS, so it is the only row that produces a flag.
 scenario '
     unset NROS_BUILD_ROOT
     export NROS_REPO_ROOT="$repo_root"
     source scripts/build/fixtures-target-dir.sh
     check "shared platform -> old literal path" \
-        " --target-dir $repo_root/build/cargo-fixtures/qemu-arm-baremetal" \
-        "$(nros_fixture_target_dir_flag qemu-arm-baremetal "" "")"
+        " --target-dir $repo_root/build/cargo-fixtures/baremetal" \
+        "$(nros_fixture_target_dir_flag baremetal "" "")"
     # phase-340 B3 — the "unmigrated" example must be a platform that is
     # actually unmigrated. This arm named `linux`, which B3 migrated, so it
     # started asserting the opposite of its own title. Derive one instead of
     # naming a second value that a later migration will invalidate again.
     unmigrated=""
-    for _p in nuttx freertos esp32 threadx-linux; do
+    for _p in $(manifest_platforms); do
         case " $NROS_FIXTURE_SHARED_PLATFORMS " in
             *" $_p "*) ;;
             *) unmigrated="$_p"; break ;;
@@ -145,8 +161,8 @@ scenario '
     # Same group as a bare row: the authored STRING is not in the key, so a row
     # that only differs by spelling its own dir joins the default group.
     check "authored dir no longer opts out" \
-        " --target-dir $repo_root/build/cargo-fixtures/qemu-arm-baremetal" \
-        "$(nros_fixture_target_dir_flag qemu-arm-baremetal "--target-dir target-zenoh" "")"
+        " --target-dir $repo_root/build/cargo-fixtures/baremetal" \
+        "$(nros_fixture_target_dir_flag baremetal "--target-dir target-zenoh" "")"
     # NOTE: this scenario body is a SINGLE-QUOTED string. No apostrophes in
     # these comments — one closes the body, and everything after it evaluates in
     # the wrong context. (Cost one debugging round; the symptom was
@@ -175,9 +191,9 @@ scenario '
     # the A2 arm of check-fixture-groups by construction (every group becomes
     # the default group), which is why the key-level assertion lives here and
     # not only in the gate.
-    bare="$(nros_fixture_group_slug qemu-arm-baremetal "" "")"
-    authored="$(nros_fixture_group_slug qemu-arm-baremetal "--target-dir target-zenoh" "")"
-    feats="$(nros_fixture_group_slug qemu-arm-baremetal "--no-default-features --features rmw-zenoh" "")"
+    bare="$(nros_fixture_group_slug baremetal "" "")"
+    authored="$(nros_fixture_group_slug baremetal "--target-dir target-zenoh" "")"
+    feats="$(nros_fixture_group_slug baremetal "--no-default-features --features rmw-zenoh" "")"
     check "authored dir does not change the group key" "$bare" "$authored"
     if [ "$bare" = "$feats" ]; then
         echo "  FAIL a feature set must change the group key — two variants of ONE"
@@ -190,7 +206,7 @@ scenario '
     # The env is in the key for the same reason: nros-bench/stress-zenoh has a
     # bare row and a ZPICO_SUBSCRIBER_BUFFER_SIZE=8192 row, same package, same
     # binary name.
-    envd="$(nros_fixture_group_slug qemu-arm-baremetal "" "ZPICO_SUBSCRIBER_BUFFER_SIZE=8192")"
+    envd="$(nros_fixture_group_slug baremetal "" "ZPICO_SUBSCRIBER_BUFFER_SIZE=8192")"
     if [ "$bare" = "$envd" ]; then
         echo "  FAIL a build env var must change the group key (same artifact path)"
         rc=1
@@ -204,7 +220,7 @@ scenario '
     # list, so this keeps testing "eligibility gates the flag" rather than
     # quietly testing a migrated platform.
     unmigrated=""
-    for _p in nuttx freertos esp32 threadx-linux; do
+    for _p in $(manifest_platforms); do
         case " $NROS_FIXTURE_SHARED_PLATFORMS " in
             *" $_p "*) ;;
             *) unmigrated="$_p"; break ;;
@@ -262,8 +278,8 @@ scenario '
     export NROS_REPO_ROOT="$repo_root" NROS_BUILD_ROOT=/scratch/nros
     source scripts/build/fixtures-target-dir.sh
     check "shared platform follows NROS_BUILD_ROOT" \
-        " --target-dir /scratch/nros/cargo-fixtures/qemu-arm-baremetal" \
-        "$(nros_fixture_target_dir_flag qemu-arm-baremetal "" "")"
+        " --target-dir /scratch/nros/cargo-fixtures/baremetal" \
+        "$(nros_fixture_target_dir_flag baremetal "" "")"
 '
 
 # --- step 2 (CALLERS) --------------------------------------------------------
@@ -295,8 +311,8 @@ scenario '
         "$repo_root/build/west-fixtures" "$(nros_build_dir "$NROS_KIND_WEST_FIXTURES")"
     # cargo-fixtures: the shell half moved in step 1, the resolver half here.
     check "cargo-fixtures resolver dir" \
-        "$repo_root/build/cargo-fixtures/qemu-arm-baremetal" \
-        "$(nros_build_dir "$NROS_KIND_CARGO_FIXTURES" qemu-arm-baremetal)"
+        "$repo_root/build/cargo-fixtures/baremetal" \
+        "$(nros_build_dir "$NROS_KIND_CARGO_FIXTURES" baremetal)"
 '
 
 # …and all of them relocate together, which is the whole point of one root.
@@ -341,11 +357,11 @@ scenario '
     fi
     # shellcheck disable=SC2086
     export -f $fns
-    inproc="$(nros_fixture_target_dir_flag qemu-arm-baremetal "" "")"
-    leaf="$(cd examples && env bash -c "nros_fixture_target_dir_flag qemu-arm-baremetal \"\" \"\"" 2>/dev/null)"
+    inproc="$(nros_fixture_target_dir_flag baremetal "" "")"
+    leaf="$(cd examples && env bash -c "nros_fixture_target_dir_flag baremetal \"\" \"\"" 2>/dev/null)"
     check "make leaf resolves the same dir as the parent" "$inproc" "$leaf"
     check "make leaf dir is the pre-migration path" \
-        " --target-dir $repo_root/build/cargo-fixtures/qemu-arm-baremetal" "$leaf"
+        " --target-dir $repo_root/build/cargo-fixtures/baremetal" "$leaf"
     # phase-340 W2 — the strip runs in the leaf too, and it is the half that
     # would fail SILENTLY: a leaf missing it passes cargo two --target-dir
     # flags and the build still succeeds, into the wrong tree.
@@ -499,8 +515,8 @@ scenario '
         echo "  FAIL could not read FIXTURE_TARGET out of just/qemu-baremetal.just"
         rc=1
     fi
-    check "FIXTURE_TARGET == the derived qemu-arm-baremetal group dir" \
-        "$(nros_build_dir "$NROS_KIND_CARGO_FIXTURES" qemu-arm-baremetal)" "$repo_root/$lit"
+    check "FIXTURE_TARGET == the derived baremetal group dir" \
+        "$(nros_build_dir "$NROS_KIND_CARGO_FIXTURES" baremetal)" "$repo_root/$lit"
 '
 
 echo "phase-340 B2 — the Rust resolver holds NO copy of the eligibility rule:"

@@ -49,9 +49,9 @@ def selftest() -> None:
     import tempfile
 
     bug = ('  artifact_dir="$(nros_fixture_row_artifact_dir '
-           '"examples/qemu-esp32-baremetal/rust/$ex" qemu-esp32-baremetal "" "")"\n')
+           '"examples/qemu-esp32-baremetal/rust/$ex" esp32 "" "")"\n')
     ok = ('  artifact_dir="$(nros_fixture_row_artifact_dir_by_id '
-          '"qemu-esp32-baremetal-$ex" qemu-esp32-baremetal)"\n')
+          '"qemu-esp32-baremetal-$ex" esp32)"\n')
     self_consistent = ('  flag="$(nros_fixture_target_dir_flag nuttx "" "")"\n'
                        '  d="$(nros_fixture_row_artifact_dir "$L" nuttx "" "")"\n')
 

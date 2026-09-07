@@ -115,7 +115,7 @@ build-qemu:
     echo "Building ESP32 QEMU fixtures (from examples/fixtures.toml)..."
     for id in qemu-esp32-baremetal-talker qemu-esp32-baremetal-listener; do
         RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
-            bash scripts/build/fixtures-build.sh qemu-esp32-baremetal rust --id "$id"
+            bash scripts/build/fixtures-build.sh esp32 rust --id "$id"
     done
     echo ""
     echo "Creating flash images..."
@@ -132,7 +132,7 @@ build-qemu:
         # left espflash opening a nonexistent ELF while the lane exited 0).
         elf_name="esp32_qemu_${ex}"
         # phase-340 item 7 — ask where the build WROTE, never assume the leaf.
-        # `qemu-esp32-baremetal` shares a target dir, so this row's artifacts
+        # the `esp32` fixture platform shares a target dir, so this row's artifacts
         # live under `build/cargo-fixtures/<group>/`; the helper returns the
         # leaf's own `target/` for any platform that has not migrated, so this
         # line is correct on both sides of a migration.
@@ -141,15 +141,15 @@ build-qemu:
         # key is a function of (platform, cargo args, env); this used to pass
         # `"" ""` for the last two, so the moment these rows gained
         # `env = { ZPICO_MAX_QUERYABLES = "2" }` the build wrote
-        # `qemu-esp32-baremetal-4118800323` and this line kept reading
-        # `qemu-esp32-baremetal`. No flash image could be packed at all. The id
+        # `esp32-4118800323` and this line kept reading
+        # `esp32`. No flash image could be packed at all. The id
         # is the same one passed to `fixtures-build.sh --id` four lines up.
         artifact_dir="$(nros_fixture_row_artifact_dir_by_id \
-            "qemu-esp32-baremetal-$ex" qemu-esp32-baremetal)"
+            "qemu-esp32-baremetal-$ex" esp32)"
         elf="$artifact_dir/riscv32imc-unknown-none-elf/$target_profile_dir/$elf_name"
         out="$esp32_qemu_dir/esp32-qemu-$ex.bin"
         # Issue 0439 — the build loop above is lane-narrowable, so under a lane
-        # that excludes `qemu-esp32-baremetal,rust` it correctly builds nothing
+        # that excludes `esp32,rust` it correctly builds nothing
         # and there is no ELF to pack. Skip ONLY for that reason: an absent ELF
         # with nothing narrowing the build is issue #181 exactly (espflash
         # opening a nonexistent path while the lane exits 0), and that has to
@@ -203,15 +203,15 @@ build-logging-smoke:
     target_profile_dir="$(nros_cargo_target_profile_dir)"
     echo "Building logging-smoke-esp32-qemu..."
     RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
-        bash scripts/build/fixtures-build.sh qemu-esp32-baremetal rust --id qemu-esp32-baremetal-logging-smoke
+        bash scripts/build/fixtures-build.sh esp32 rust --id qemu-esp32-baremetal-logging-smoke
     echo "Creating logging-smoke-esp32-qemu flash image..."
     fixture=packages/testing/nros-tests/bins/logging-smoke-esp32-qemu
-    # Same migration-aware derivation as `build-qemu` — this row is
-    # `qemu-esp32-baremetal` too, so it moved with the platform. Issue 1025:
+    # Same migration-aware derivation as `build-qemu` — this row is on the
+    # `esp32` platform too, so it moved with the platform. Issue 1025:
     # by ROW ID, because this row carries `env` as well and the two-empty-string
     # form derives a group dir the build never wrote to.
     artifact_dir="$(nros_fixture_row_artifact_dir_by_id \
-        qemu-esp32-baremetal-logging-smoke qemu-esp32-baremetal)"
+        qemu-esp32-baremetal-logging-smoke esp32)"
     elf="$artifact_dir/riscv32imc-unknown-none-elf/$target_profile_dir/logging-smoke-esp32-qemu"
     bin="$elf.bin"
     # Issue 0439 — same shape as `build-qemu` above: a lane-narrowable `--id`

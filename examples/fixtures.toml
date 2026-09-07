@@ -13,7 +13,7 @@
 # per-fixture.
 #
 # Single-node entry schema ([[fixture]]):
-#   platform   required  "linux" | "qemu-arm-baremetal" | "freertos" | ...
+#   platform   required  "linux" | "baremetal" | "freertos" | ...
 #   lang       required  "rust" | "c" | "cpp"
 #   dir        required  build cwd (cargo: the crate dir; cmake: the example dir)
 #   rmw        optional  "zenoh" | "xrce" | "cyclonedds"; DEFAULTS TO "zenoh"
@@ -1868,73 +1868,73 @@ dir = "packages/testing/nros-bench/stress-xrce"
 env = { NROS_XRCE_BUFFER_SIZE = "8192" }
 
 # ===========================================================================
-# qemu-arm-baremetal — Rust (cortex-m3; cross target via each example's
+# baremetal — Rust (cortex-m3; cross target via each example's
 # .cargo/config.toml = thumbv7m-none-eabi, so no --target here). Default
 # features; no feature variants.
 # ===========================================================================
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/talker"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/talker-xrce"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/listener"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/talker-rtic"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/listener-rtic"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/talker-rtic-mixed"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/listener-rtic-mixed"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/service-server-rtic"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/service-client-rtic"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/action-server-rtic"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/action-client-rtic"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/serial-talker"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "examples/qemu-arm-baremetal/rust/serial-listener"
 
@@ -1945,12 +1945,12 @@ dir = "examples/qemu-arm-baremetal/rust/serial-listener"
 # references — so the assertion is "it still builds", which is what a row states
 # without a second spelling of the command.
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "packages/testing/qemu-smoltcp-bridge"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/rtic-run-plan-e2e"
 
@@ -1961,32 +1961,32 @@ dir = "packages/testing/nros-tests/bins/rtic-run-plan-e2e"
 # wired here so `just qemu build-fixtures` stages it. Exercises the canonical
 # bare-metal registration path (`__register_linked_rmw` on target_os="none").
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/qemu-baremetal-main-e2e"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/cdr-roundtrip-qemu"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/lan9118-qemu"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/logging-smoke-mps2-baremetal"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "packages/testing/nros-bench/wcet-cycles-qemu"
 
 [[fixture]]
-platform = "qemu-arm-baremetal"
+platform = "baremetal"
 lang = "rust"
 dir = "packages/testing/nros-bench/large-msg-baremetal"
 
@@ -3259,7 +3259,7 @@ dir = "examples/rv-virt-threadx/cpp/listener"
 cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57" }
 
 # ===========================================================================
-# qemu-esp32-baremetal — Rust (ESP32-C3, riscv32imc-unknown-none-elf).
+# esp32 — Rust (ESP32-C3, riscv32imc-unknown-none-elf).
 # Built with the workspace nightly (rust-src + build-std) — NOT xtensa/espup.
 # Plain default builds; each example's .cargo/config.toml selects the riscv
 # target. skip_probe = true: the test-all staleness probe runs the default
@@ -3269,7 +3269,7 @@ cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57" }
 
 [[fixture]]
 id = "qemu-esp32-baremetal-talker"
-platform = "qemu-esp32-baremetal"
+platform = "esp32"
 lang = "rust"
 dir = "examples/qemu-esp32-baremetal/rust/talker"
 skip_probe = true
@@ -3282,7 +3282,7 @@ skip_probe = true
 
 [[fixture]]
 id = "qemu-esp32-baremetal-listener"
-platform = "qemu-esp32-baremetal"
+platform = "esp32"
 lang = "rust"
 dir = "examples/qemu-esp32-baremetal/rust/listener"
 skip_probe = true
@@ -3290,7 +3290,7 @@ skip_probe = true
 
 [[fixture]]
 id = "qemu-esp32-baremetal-logging-smoke"
-platform = "qemu-esp32-baremetal"
+platform = "esp32"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/logging-smoke-esp32-qemu"
 skip_probe = true

@@ -134,14 +134,19 @@ impl PlatformId {
     /// ([`PlatformId::from_fixture_token`] is its inverse, gated by
     /// `fixture_token_mapping_round_trips`).
     ///
-    /// It is one-to-MANY: `Esp32Qemu` covers both the RTOS lane (`esp32`) and the
-    /// bare-metal one (`qemu-esp32-baremetal`). Selecting the platform must select
-    /// both, so callers iterate the slice rather than taking a single token.
+    /// It is one-to-MANY *in shape*, and today every platform spells exactly one
+    /// token. `Esp32Qemu` was the sole exception — it carried `esp32` and
+    /// `qemu-esp32-baremetal` for one platform, with no stated reason — and
+    /// phase-437 W4a collapsed that under RFC-0093 R6 (a fixture platform names
+    /// a FAMILY, never a board). The slice stays because callers must not
+    /// assume a single token: a platform that legitimately needs two, the way
+    /// `nuttx`/`nuttx-riscv` would if they were one `PlatformId`, must not
+    /// require touching every call site.
     ///
     /// One home on purpose. Before phase-318 W4.d this existed only as
     /// `platform_from_str` inside `tests/matrix_fixture_coverage.rs`, and the
-    /// forward direction got hand-written a second time — with
-    /// `qemu-esp32-baremetal` attributed to the wrong platform. A second spelling
+    /// forward direction got hand-written a second time — with the esp32
+    /// bare-metal token attributed to the wrong platform. A second spelling
     /// of a mapping is the recurring defect class in this repo (CLAUDE.md "add ONE
     /// shared helper rather than a second spelling").
     pub const fn fixture_tokens(self) -> &'static [&'static str] {
@@ -185,8 +190,11 @@ impl PlatformId {
             PlatformId::NuttxRiscv => &["nuttx-riscv"],
             PlatformId::ThreadxLinux => &["threadx-linux"],
             PlatformId::ThreadxRiscv64 => &["threadx-riscv64"],
-            PlatformId::Esp32Qemu => &["esp32", "qemu-esp32-baremetal"],
-            PlatformId::QemuBaremetal => &["qemu-arm-baremetal"],
+            PlatformId::Esp32Qemu => &["esp32"],
+            // RFC-0093 R6 — the FAMILY, not the board. The board is
+            // `mps2-an385-baremetal`; `baremetal` is free because this is the
+            // only bare-metal family.
+            PlatformId::QemuBaremetal => &["baremetal"],
             PlatformId::Fvp => &["fvp"],
             // Carried as a CarveOut (no CI runner builds PX4-SITL), so no row
             // spells this today. The token is still declared: the vocabulary has

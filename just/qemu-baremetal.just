@@ -110,9 +110,9 @@ build:
     # emit `[PREREQ]` + exit 0 if missing.
     nros_require_sync "$nros_cli"
     echo "Building QEMU ARM examples..."
-    # phase-340 P2 — `qemu-arm-baremetal` is a migrated platform (phase-226.D,
+    # phase-340 P2 — `baremetal` is a migrated platform (phase-226.D,
     # the first one), so its default-config manifest rows build into
-    # `build/cargo-fixtures/qemu-arm-baremetal`. Both loops below used to run a
+    # `build/cargo-fixtures/baremetal`. Both loops below used to run a
     # bare in-leaf `cargo build`, writing a SECOND per-leaf copy of the same
     # artifacts — the same second build path phase-340 P2 closed on freertos,
     # here re-creating `examples/qemu-arm-baremetal/**/target/`. The dir comes
@@ -122,7 +122,7 @@ build:
     # unmigrated platform, where the leaf `target/` is still right.
     # shellcheck source=scripts/build/fixtures-target-dir.sh
     source scripts/build/fixtures-target-dir.sh
-    qemu_tdir_flag="$(nros_fixture_target_dir_flag qemu-arm-baremetal "" "")"
+    qemu_tdir_flag="$(nros_fixture_target_dir_flag baremetal "" "")"
     # phase-300 W1.1 — enumerate tracked crates via the git index (the
     # F1 `-not -path` find still DESCENDED every target*/build* tree).
     _qemu_tomls="$(git ls-files 'examples/qemu-arm-baremetal/**/Cargo.toml' | awk -F/ 'NF>=4' | sort)"
@@ -199,7 +199,7 @@ build-fixtures:
         ./scripts/qemu/build-zenoh-pico.sh
     fi
     echo "Building QEMU bare-metal test fixtures..."
-    scripts/build/fixtures-build.sh qemu-arm-baremetal rust
+    scripts/build/fixtures-build.sh baremetal rust
     # issue 0488 residue 1 — "remains ad-hoc until reference package coverage
     # moves into the fixture manifest" is done: it has a row, so the
     # `fixtures-build.sh` call above builds it with a coordinate and a group.
@@ -255,12 +255,12 @@ test verbose="": build-fixtures
         echo "All QEMU tests passed!"
     fi
 
-# Phase 226.D — shared fixture-only Cargo target dir for qemu-arm-baremetal
+# Phase 226.D — shared fixture-only Cargo target dir for the `baremetal` platform
 # Rust rows. `build-fixtures` (scripts/build/fixtures-build.sh) builds every
 # eligible row into this tree instead of each example's local target/, so the
 # kernel paths below resolve here. Mirrors fixture_shared_target_dir() in
 # packages/testing/nros-tests/src/fixtures/binaries/mod.rs.
-FIXTURE_TARGET := absolute_path("build/cargo-fixtures/qemu-arm-baremetal") / "thumbv7m-none-eabi" / PROFILE_DIR
+FIXTURE_TARGET := absolute_path("build/cargo-fixtures/baremetal") / "thumbv7m-none-eabi" / PROFILE_DIR
 
 # Run basic QEMU test (nros serialization on Cortex-M3)
 [group("debug")]
@@ -308,14 +308,14 @@ build-rtic-main-e2e:
     set -e
     source scripts/build/cargo.sh
     # issue 0488 residue 1 — this leaf IS a `[[fixture]]` row
-    # (qemu-arm-baremetal/rust), and that platform is migrated, so the fixture
+    # (examples/qemu-arm-baremetal/rust), and its platform `baremetal` is migrated, so the fixture
     # lane compiles it into `build/cargo-fixtures/<slug>`. The bare in-leaf build
     # here wrote the leaf's own `target/` instead, and `test-rtic-main-e2e` then
     # `-kernel`ed THAT — a second copy nothing else reads, and a path that
     # disagrees with where the lane writes.
     source scripts/build/fixtures-target-dir.sh
     cargo_profile_args="$(nros_cargo_profile_arg_string)"
-    rtic_tdir_flag="$(nros_fixture_target_dir_flag qemu-arm-baremetal "" "")"
+    rtic_tdir_flag="$(nros_fixture_target_dir_flag baremetal "" "")"
     cd packages/testing/nros-tests/bins/rtic-run-plan-e2e
     # shellcheck disable=SC2086
     cargo build $cargo_profile_args $rtic_tdir_flag --quiet
@@ -334,7 +334,7 @@ test-rtic-main-e2e verbose="": _require-profile-dir build-rtic-main-e2e
     # issue 0488 residue 1 — the kernel path comes from the same
     # `nros_fixture_group` answer `build-rtic-main-e2e` builds with.
     source scripts/build/fixtures-target-dir.sh
-    rtic_artifacts="$(nros_fixture_row_artifact_dir packages/testing/nros-tests/bins/rtic-run-plan-e2e qemu-arm-baremetal "" "")"
+    rtic_artifacts="$(nros_fixture_row_artifact_dir packages/testing/nros-tests/bins/rtic-run-plan-e2e baremetal "" "")"
     zenoh_log={{LOG_DIR}}/latest/qemu-rtic-main-e2e-zenohd.log
     # phase-362 — `rmw_zenohd` is configured by env, not argv. Backgrounded with
     # a log here, so it uses the binary + override directly rather than
@@ -602,7 +602,7 @@ clean: clean-zenoh-pico
     done
     rm -rf packages/testing/qemu-smoltcp-bridge/target
     # Phase 226.D — shared fixture-only Cargo target dir.
-    rm -rf build/cargo-fixtures/qemu-arm-baremetal
+    rm -rf build/cargo-fixtures/baremetal
     echo "QEMU bare-metal build artifacts cleaned"
 
 # =============================================================================

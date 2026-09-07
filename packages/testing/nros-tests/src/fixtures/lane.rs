@@ -821,7 +821,7 @@ mod tests {
         // turns "never built" into "skipped" (issue 0445).
         for p in [
             "build/zephyr-workspace-builds/build-ws-c-entry-zenoh/zephyr/zephyr.exe",
-            "build/cargo-fixtures/qemu-arm-baremetal/thumbv7m-none-eabi/x/y",
+            "build/cargo-fixtures/baremetal/thumbv7m-none-eabi/x/y",
             "build/cmake-fixtures/some-id/bin",
             "packages/testing/nros-smoke/target/x/y",
         ] {

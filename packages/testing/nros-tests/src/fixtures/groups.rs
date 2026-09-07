@@ -61,7 +61,7 @@
 //! That matters because the recorded sub-blocker was that
 //! `require_shared_fixture_binary` hardcodes a `{triple}/` component while 0 of
 //! 65 `linux` rows carry `--target` — one directory too deep for a host build.
-//! A rewrite never synthesises the component: a `qemu-arm-baremetal` leaf path
+//! A rewrite never synthesises the component: a `baremetal` leaf path
 //! has `thumbv7m-none-eabi/` in it (from that leaf's `.cargo/config.toml`) and
 //! keeps it; a `linux` leaf path has none and does not gain one. No triple
 //! table, no per-platform knowledge, nothing to keep in step.
@@ -70,7 +70,7 @@
 //!
 //! Eligibility is still `NROS_FIXTURE_SHARED_PLATFORMS`, read by the SHELL and
 //! reported per row in the export — this module has no mirror of it. With the
-//! shipped default (`qemu-arm-baremetal`) every other platform's rows report
+//! shipped default (`baremetal`) every other platform's rows report
 //! `shared = 0` and nothing is redirected, which is why B2 lands inert and B3
 //! is a one-line change to that list plus a native-lane rebuild.
 
@@ -265,7 +265,7 @@ pub fn attribute<'a>(rows: &'a [GroupRow], rel: &Path) -> Option<(&'a GroupRow, 
 /// `sharing_possible()` short-circuit for one commit — "`NROS_FIXTURE_SHARED_
 /// PLATFORMS` empty ⇒ no row can be shared, so skip the subprocess" — and
 /// `tests/fixture_group_resolution.rs` immediately falsified it: the shell
-/// spells the default `${NROS_FIXTURE_SHARED_PLATFORMS:-qemu-arm-baremetal}`,
+/// spells the default `${NROS_FIXTURE_SHARED_PLATFORMS:-baremetal}`,
 /// and `:-` treats EMPTY as unset, so an empty value means the DEFAULT list, not
 /// the empty one. A 4-line "cheap gate" was already a second, wrong copy of the
 /// eligibility rule — the exact class the mirror it replaced belonged to.
@@ -665,8 +665,8 @@ mod tests {
         // rows.
         let t = vec![GroupRow {
             artifact_root: "examples/qemu-arm-baremetal/rust/talker/target".into(),
-            platform: "qemu-arm-baremetal".into(),
-            slug: "qemu-arm-baremetal".into(),
+            platform: "baremetal".into(),
+            slug: "baremetal".into(),
             shared: true,
             ..Default::default()
         }];
@@ -749,8 +749,8 @@ mod tests {
         // Driven through the same code on a synthetic table would need the
         // static; assert the live one instead, which today has ONE group and so
         // must succeed.
-        let dir = sole_group_dir("qemu-arm-baremetal").expect("one group today");
-        assert_eq!(dir, group_dir("qemu-arm-baremetal"));
+        let dir = sole_group_dir("baremetal").expect("one group today");
+        assert_eq!(dir, group_dir("baremetal"));
         assert!(
             sole_group_dir("no-such-platform").is_err(),
             "an unmigrated platform must be an error, not a guessed dir"

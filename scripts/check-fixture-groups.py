@@ -12,7 +12,7 @@ resolver for one of them silently gets the other's binary.  A green test on the
 wrong artifact is the worst outcome in this repository's failure taxonomy, so
 the invariant is checked rather than hoped for.
 
-Nothing enforced this before.  `qemu-arm-baremetal` — the one migrated platform
+Nothing enforced this before.  `baremetal` — the one migrated platform
 — happens to be collision-free, so the eligibility gate
 (`NROS_FIXTURE_SHARED_PLATFORMS`) has been protecting the property by accident.
 `linux`, the platform phase-340 W2.a wants to add next, is NOT collision-free.
@@ -26,7 +26,7 @@ configuration, because A1 keyed its owner set on the leaf DIRECTORY and the four
 rows share one.  Widening the key to the ROW turns the same experiment into 11
 failures on `linux` and 6 on `threadx-linux`.  To reproduce: replace the body of
 `nros_fixture_group_slug` with `printf '%s' "$platform"` and run this gate with
-`NROS_FIXTURE_SHARED_PLATFORMS="qemu-arm-baremetal linux"`.  Note also that the
+`NROS_FIXTURE_SHARED_PLATFORMS="baremetal linux"`.  Note also that the
 coarse key disarms A2 by construction — every group becomes the default group —
 so A2 could not have caught it either.  A change to the KEY must be evaluated
 against this gate with the key actually applied, not reasoned about.
@@ -84,7 +84,7 @@ Three arms, all fatal:
 point.**  The first version skipped platforms already in the shared list, on
 the theory that A1 owns those.  It made A3's remediation actively wrong the
 moment anyone ran the obvious experiment: with
-`NROS_FIXTURE_SHARED_PLATFORMS="qemu-arm-baremetal linux"`, A1 correctly
+`NROS_FIXTURE_SHARED_PLATFORMS="baremetal linux"`, A1 correctly
 reported the two `linux` collisions while A3 observed `[]` — because it had
 stopped looking, not because they were gone — and told the reader to delete two
 live blockers from the record.  Following that advice would have erased the only

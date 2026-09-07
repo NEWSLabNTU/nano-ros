@@ -354,7 +354,7 @@ fn an_unattributable_artifact_is_never_skipped() {
     let coords: BTreeSet<Coord> = std::iter::once(all_coords()[0].clone()).collect();
     for p in [
         "build/zephyr-workspace-builds/build-ws-c-entry-zenoh/zephyr/zephyr.exe",
-        "build/cargo-fixtures/qemu-arm-baremetal/thumbv7m-none-eabi/p/bin",
+        "build/cargo-fixtures/baremetal/thumbv7m-none-eabi/p/bin",
         "build/cmake-fixtures/some-id/bin",
         "/somewhere/entirely/else/bin",
     ] {

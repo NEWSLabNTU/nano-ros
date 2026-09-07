@@ -2,7 +2,7 @@
 //! that has not happened yet — phase-340 B2.
 //!
 //! B2 lands inert: `NROS_FIXTURE_SHARED_PLATFORMS` still names only
-//! `qemu-arm-baremetal`, whose 20 rows are one group, so on the shipped tree
+//! `baremetal`, whose 20 rows are one group, so on the shipped tree
 //! nothing distinguishes a resolver that understands the variant slug from the
 //! platform-only one it replaces. A test over the live table would therefore
 //! pass under both and gate nothing — the trap this phase paid for three times.
@@ -79,7 +79,7 @@ fn talker_variants() -> Vec<(&'static str, FixtureVariant)> {
 
 #[test]
 fn migrating_linux_gives_each_talker_variant_its_own_group_dir() {
-    let rows = export_with("qemu-arm-baremetal linux");
+    let rows = export_with("baremetal linux");
 
     let mut dirs = BTreeSet::new();
     for (label, variant) in talker_variants() {
@@ -121,7 +121,7 @@ fn migrating_linux_never_synthesises_a_triple_component() {
     // assert about. The sole-row leaves are also exactly the population
     // `require_shared_fixture_binary` — the function that hardcoded the triple —
     // serves, so the guard keeps its subject.
-    for platforms in ["qemu-arm-baremetal", "qemu-arm-baremetal linux"] {
+    for platforms in ["baremetal", "baremetal linux"] {
         let rows = export_with(platforms);
         let mut checked = 0usize;
         for row in rows.iter().filter(|r| r.shared) {
@@ -194,7 +194,7 @@ fn the_shipped_eligibility_list_redirects_every_linux_row() {
     );
 
     // Vacuity guard, kept and widened: both migrated platforms must report.
-    for p in ["qemu-arm-baremetal", "linux"] {
+    for p in ["baremetal", "linux"] {
         assert!(
             rows.iter().any(|r| r.shared && r.platform == p),
             "no {p} row reports as shared — the export lost a migrated platform, \
@@ -220,7 +220,7 @@ fn the_shipped_eligibility_list_redirects_every_linux_row() {
 fn an_empty_eligibility_list_means_the_default_list_not_the_empty_one() {
     // There is NO "share nothing" spelling, and assuming one is a live trap.
     // `fixtures-target-dir.sh` writes
-    // `${NROS_FIXTURE_SHARED_PLATFORMS:-qemu-arm-baremetal}`, and `:-` treats an
+    // `${NROS_FIXTURE_SHARED_PLATFORMS:-baremetal}`, and `:-` treats an
     // EMPTY value as unset — so clearing the variable restores the default
     // rather than disabling sharing.
     //
@@ -235,8 +235,8 @@ fn an_empty_eligibility_list_means_the_default_list_not_the_empty_one() {
         "the export must still describe every cargo row"
     );
     // Compare against the LIVE table, not a hardcoded list. The first version
-    // named `qemu-arm-baremetal` literally and so had to be edited when B3
-    // widened the default to `qemu-arm-baremetal linux` — a test that pins the
+    // named `baremetal` literally and so had to be edited when B3
+    // widened the default to `baremetal linux` — a test that pins the
     // value it is checking becomes a maintenance tax and, worse, a place where
     // someone "fixes" the test instead of noticing the change. `manifest_rows()`
     // already resolves through the shell's own `:-` default, so this derives.
