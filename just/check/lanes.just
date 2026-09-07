@@ -100,6 +100,36 @@ c: c-fmt
         "$nros_c_lib" -lpthread -ldl -lm \
         -o tmp/cdr_borrow_le_slice
     ./tmp/cdr_borrow_le_slice
+    echo "  - phase-430 W1: a C timer created on a ROS clock FOLLOWS that clock"
+    # The second COMPILE+LINK+RUN TU, and for the same reason as the first: the
+    # defect is a behaviour, not a signature. `nros_timer_init_on_clock` could
+    # accept an `nros_clock_t *`, store it, and schedule the timer on the wall
+    # anyway — that compiles, links, and reads as a ROS-time timer, which is
+    # RFC-0089's "compiles and differs". So the probe stops the simulated clock
+    # and asserts the ROS-time timer goes quiet while the wall timer beside it
+    # does not. Measured against the mutation it exists to catch (registering
+    # through `register_timer` instead of `register_timer_on_clock`): 200 ROS
+    # activations with /clock stopped, where 0 is correct.
+    #
+    # It links the same `libnros_c.a` built above plus a stub RMW backend, so it
+    # needs no router, no agent and no network — an executor needs a session and
+    # a session needs a registered backend, and that is the whole reason the
+    # stub exists. `test -f` first on both: a missing TU must not read as a pass
+    # (issue 0196's class).
+    for _tu in timer_clock_source stub_rmw_backend; do \
+        test -f "packages/api/nros-c/tests/run/$_tu.c" || { \
+            echo "ERROR: $_tu.c is MISSING -- this check passes on absence." >&2; exit 1; }; \
+    done
+    cc -std=c11 -Wall -Wextra -Wmissing-prototypes -D_GNU_SOURCE \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/run/timer_clock_source.c \
+        packages/api/nros-c/tests/run/stub_rmw_backend.c \
+        "$nros_c_lib" -lpthread -ldl -lm \
+        -o tmp/timer_clock_source
+    ./tmp/timer_clock_source
     echo "  - entry seam links from C alone + the strong override wins (phase-432 W3.1)"
     # `nros_board_network_wait()` is the board hook the three RTOS
     # `run_tiers.c` call `extern`. Its weak default used to live in

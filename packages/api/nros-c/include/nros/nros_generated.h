@@ -2167,6 +2167,16 @@ typedef struct nros_timer_t {
    */
   const struct nros_support_t *support;
   /**
+   * The clock this timer is scheduled against, or NULL for the WALL timer
+   * `nros_timer_init` creates (phase-430 W1).
+   *
+   * rcl's `rcl_timer_init` takes a `rcl_clock_t *` here and rcl's timer
+   * keeps it; ours does the same, in the same position, so a reader of one
+   * recognises the other. The clock must outlive the timer — the executor
+   * reads its `type` at `rclc_executor_add_timer` time, not at init.
+   */
+  const struct nros_clock_t *clock;
+  /**
    * Handle ID from executor registration (SIZE_MAX = not registered)
    */
   size_t handle_id;
@@ -7282,7 +7292,14 @@ NROS_PUBLIC bool nros_support_is_valid(const struct nros_support_t *support);
 NROS_PUBLIC struct nros_timer_t rcl_get_zero_initialized_timer(void);
 
 /**
- * Initialize a timer.
+ * Initialize a WALL timer — the clock-less case (phase-430 W1).
+ *
+ * The timer is scheduled against the executor's monotonic spin delta, which
+ * is what every `nros_timer_init` caller has always got and is what rclcpp
+ * spells `create_wall_timer`: a paused simulator does not pause it. For a
+ * timer that follows ROS time — a bag replay, a simulator's `/clock` — use
+ * [`nros_timer_init_on_clock`], which takes the clock in the position
+ * `rcl_timer_init` puts it.
  *
  * # Parameters
  * * `timer` - Pointer to a zero-initialized timer
@@ -7306,6 +7323,66 @@ nros_ret_t nros_timer_init(struct nros_timer_t *timer,
                            uint64_t period_ns,
                            nros_timer_callback_t callback,
                            void *context);
+
+/**
+ * Initialize a timer scheduled against `clock` — rcl's shape (phase-430 W1).
+ *
+ * `rcl_timer_init(timer, clock, context, period, callback, allocator)` takes
+ * its `rcl_clock_t *` immediately after the timer, and so does this: the
+ * clock is the second parameter, ahead of the context-carrying `support`.
+ * That is RFC-0089's "C takes rcl's spellings" applied to the ARGUMENT LIST,
+ * which is the half of the spelling that survives our different callback
+ * contract — `<nros/rcl_compat.h>` §4 records why the NAME `rcl_timer_init`
+ * stays refused (rcl hands the callback the time since its last call, we hand
+ * it the user's context, so a ported timer callback is a different FUNCTION
+ * and taking the name would be a compile-and-differ).
+ *
+ * The clock's TYPE selects the schedule, through the one mapping
+ * [`crate::clock::nros_timer_clock_source`]:
+ *
+ * * `NROS_CLOCK_STEADY_TIME` — identical to [`nros_timer_init`].
+ * * `NROS_CLOCK_ROS_TIME` — follows the ROS clock. It stops while a
+ *   simulator is paused, halves with a bag replayed at 0.5x, and restarts its
+ *   period on a backwards jump. With no `/clock` override installed it reads
+ *   system time, the same fallback `rclcpp::Clock` has, so a node written for
+ *   simulation still runs standalone.
+ * * `NROS_CLOCK_SYSTEM_TIME` — the wall clock, NTP steps and all.
+ *
+ * An UNINITIALIZED clock is REJECTED rather than treated as steady: a timer
+ * created on a clock the caller never initialised would silently be a wall
+ * timer, which is the confusion this verb exists to remove.
+ *
+ * The clock must outlive the timer. Its type is read again by
+ * `rclc_executor_add_timer`, which is where the schedule is chosen; rcl has
+ * the same obligation and states it the same way.
+ *
+ * # Parameters
+ * * `timer` - Pointer to a zero-initialized timer
+ * * `clock` - Pointer to an initialized clock (must NOT be NULL — the
+ *   clock-less form is [`nros_timer_init`])
+ * * `support` - Pointer to an initialized support context
+ * * `period_ns` - Timer period in nanoseconds
+ * * `callback` - Callback function to invoke when timer fires
+ * * `context` - User context pointer passed to callback (can be NULL)
+ *
+ * # Returns
+ * * `NROS_RET_OK` on success
+ * * `NROS_RET_INVALID_ARGUMENT` if any required pointer is NULL, the period
+ *   is 0, or the clock names no schedule (uninitialized clock type)
+ * * `NROS_RET_NOT_INIT` if support or clock is not initialized
+ *
+ * # Safety
+ * * All required pointers must be valid
+ * * `callback` must be a valid function pointer
+ * * `clock` must remain valid for as long as the timer is registered
+ */
+NROS_PUBLIC
+nros_ret_t nros_timer_init_on_clock(struct nros_timer_t *timer,
+                                    const struct nros_clock_t *clock,
+                                    const struct nros_support_t *support,
+                                    uint64_t period_ns,
+                                    nros_timer_callback_t callback,
+                                    void *context);
 
 /**
  * Cancel a timer.
