@@ -76,7 +76,7 @@ the virtio-net NetX Duo driver.
 ### Available Examples
 
 Examples are in `examples/threadx-linux/rust/` and
-`examples/qemu-riscv64-threadx/rust/`; select the RMW at build time.
+`examples/rv-virt-threadx/rust/`; select the RMW at build time.
 
 | Example          | Description                                      |
 |------------------|--------------------------------------------------|

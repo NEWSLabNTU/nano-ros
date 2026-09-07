@@ -299,7 +299,7 @@ possibly shipping a `makefile.init` that patches it.
 holds:
 
 ```toml
-[board.qemu-arm-freertos]
+[board.mps2-an385-freertos]
 arch = "cortex-m3"  ;  platform = "freertos"
 packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
 ```
@@ -924,8 +924,10 @@ loader follows that two-hop chain"* — is only sound with one namespace.
 module is at `${CMAKE_CURRENT_LIST_DIR}/../board/nano-ros-board-${NANO_ROS_BOARD}.cmake`,
 and `nano_ros_use_board()` resolves `${NROS_REPO_DIR}/packages/boards/nros-board-${NAME}`.
 Both in-tree only. Confirmed that **no consumer works around this** — every
-`NANO_ROS_BOARD` value set anywhere (`mps2-an385-freertos`, `nuttx-qemu-arm`,
-`nuttx-qemu-riscv`, `riscv64-qemu`, `threadx-linux`) has an in-tree module,
+`NANO_ROS_BOARD` value set anywhere (`mps2-an385-baremetal`,
+`mps2-an385-freertos`, `mps3-an536-freertos`, `s32z270-freertos`,
+`freertos-posix`, `qemu-armv7a-nuttx`, `rv-virt-nuttx`, `rv-virt-threadx`,
+`threadx-linux`) has an in-tree module,
 because nothing else can.
 
 ### Documentation contradicts a decided policy

@@ -234,7 +234,7 @@ owners), and they have the identical defect:
 
 | file | note |
 | --- | --- |
-| `packages/boards/nros-board-nuttx-qemu/armv7a-nuttx-toolchain.cmake` | bare `arm-none-eabi-gcc`; live, via `cmake/board/nano-ros-board-nuttx-qemu-arm.cmake` |
+| `packages/boards/nros-board-nuttx-qemu/armv7a-nuttx-toolchain.cmake` | bare `arm-none-eabi-gcc`; live, via `cmake/board/nano-ros-board-qemu-armv7a-nuttx.cmake` |
 | `packages/boards/nros-board-nuttx-qemu/riscv-nuttx-toolchain.cmake` | same, riscv side |
 | `scripts/qemu/arm-none-eabi-cortex-m3.cmake` | `find_program`, so it resolves — and still reports neither version nor origin |
 | `integrations/s32ds/CMakeLists.txt` | writes a toolchain file at configure time (deliberately derived from the S32DS project); the emitted file hardcodes `arm-none-eabi-gcc` |

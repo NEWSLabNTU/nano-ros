@@ -378,6 +378,47 @@ not.
 **Acceptance.** `check-markdown-links` and `check-doc-refs` green; every
 retired name appears in the ledger with its replacement.
 
+**LANDED.** The ledger is
+[`docs/reference/retired-board-names.md`](../reference/retired-board-names.md),
+linked from RFC-0093 §4, from `docs/design/README.md`'s RFC-0093 row and from
+the book's CLI reference. It carries all eleven retired spellings (the nine
+index keys plus the two `mps2-an385` / `esp32-c3` bare names), the two fixture
+`platform =` coordinates, and — because the phase's own W2 finding predicted
+the confusion — the strings that look retired and are not: `mps2-an385` in 659
+files as a QEMU machine argument, two linker scripts, a PAC crate, two Zephyr
+fragments and two deploy tokens; `esp32-c3` in 34 files as the chip; and the
+four `nros-board-*` crate directories that keep a `qemu` in their name because
+a crate is not a board key.
+
+The book was fixed completely and the rewrite/leave line was drawn per
+occurrence elsewhere:
+
+* **Rewritten** — anything a reader TYPES or NAVIGATES TO: every `nros setup
+  <board>`, `cmake --preset <board>`, `NANO_ROS_BOARD=` and `examples/<board>/`
+  path in `book/**`; `docs/reference/c-api-cmake.md`,
+  `docs/reference/riscv64-threadx-c-porting.md`, `docs/guides/threadx-setup.md`;
+  and the present-tense body prose of RFC-0026, RFC-0048, RFC-0064, RFC-0066
+  and RFC-0077.
+* **Left as record** — dated measurements and changelog entries (RFC-0062's
+  *"Measured 2026-09-06"* board census, RFC-0026's own revision log, RFC-0064's
+  phase-337 deletion list and fixture-count table), the
+  `docs/development/audit-findings-*` files, `docs/research/sdk-ux/*` (each
+  stamped *"Status: research note (2026-05-04)"*), `docs/issues/README.md`'s
+  resolved-issue summaries, and every `docs/issues/archived/**`.
+* **Annotated, not rewritten** — verbatim tool output inside OPEN issues (1038,
+  1115): the captured text stays as captured and a one-line note gives the
+  current key and points here.
+
+Three claims the sweep found FALSE and fixed while it was there, each verified
+against the tree rather than assumed: `book/src/reference/cli.md` listed
+`stm32f4` as a board name (`nros setup` rejects it — no `[board.stm32f4]`
+exists, and `configuration.md` already records the crates leaving the tree), so
+the list is now the fourteen keys that resolve; RFC-0048's consumption example
+said `nros setup freertos-mps2-an385`, a key in the wrong order that never
+resolved; and `workflow-by-platform.md` still carried `esp32-c3-baremetal` as a
+fixture-platform grid row, which W4a's R6 collapse had already merged into
+`esp32`.
+
 ## Non-goals
 
 **Config axes are not board names.** `fvp-aemv8r-smp` folds SMP into the name,

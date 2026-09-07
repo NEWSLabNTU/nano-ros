@@ -178,10 +178,10 @@ complicates parsing and bakes in an assumption about the nano-ros tree layout):
    substitutes its own repo root and the store bin dir it just provisioned into, so
    the emitted JSON has no `${…}` to parse:
    ```jsonc
-   // ~/.nros/presets/nuttx-qemu-arm.json
+   // ~/.nros/presets/qemu-armv7a-nuttx.json
    { "version": 6,
      "configurePresets": [{
-       "name": "nuttx-qemu-arm",
+       "name": "qemu-armv7a-nuttx",
        "toolchainFile": "/abs/nano-ros/cmake/toolchain/armv7a-nuttx-eabi.cmake",
        "cacheVariables": { "nano_ros_ROOT": "/abs/nano-ros", "CMAKE_BUILD_TYPE": "Release" },
        "environment": { "PATH": "/home/u/.nros/sdk/arm-gnu-toolchain/14.2/bin:$penv{PATH}" }
@@ -205,10 +205,10 @@ its preset carries only `nano_ros_ROOT` (or a bare `cmake` works when
 git clone --branch v0.X.Y https://github.com/NEWSLabNTU/nano-ros   # pinned source (D2)
 ./nano-ros/bootstrap.sh                 # builds nros CLI (phase-288)
 source nano-ros/activate.sh             # PATH + NROS_REPO_DIR + nano_ros_ROOT
-nros setup freertos-mps2-an385          # toolchain/SDK + ~/.nros/presets/<board>.json
+nros setup mps2-an385-freertos          # toolchain/SDK + ~/.nros/presets/<board>.json
 # in your project:
 nros init                               # CMakePresets.json wired to nano-ros
-cmake --preset freertos-mps2-an385 && cmake --build --preset freertos-mps2-an385
+cmake --preset mps2-an385-freertos && cmake --build --preset mps2-an385-freertos
 ```
 
 ## Old paths removed (by phase-287)
