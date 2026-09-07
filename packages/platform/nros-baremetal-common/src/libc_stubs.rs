@@ -289,3 +289,60 @@ pub unsafe extern "C" fn snprintf(buf: *mut c_char, size: usize, _fmt: *const c_
     }
     0
 }
+
+/// The varargs sibling of `snprintf`, and the one stub here that is NOT a
+/// no-op — deliberately.
+///
+/// phase-413 W2. Issue 1033 gave `nros-rmw-xrce` a single diagnostic funnel,
+/// `xrce_log_error`, which calls `vsnprintf` and emits the result through
+/// `nros_platform_log_write`. That C TU is compiled into `nros-rmw-xrce-cffi`
+/// and linked into BARE-METAL images, where this file is the entire libc — and
+/// it had 18 exports, none of them `vsnprintf`. Every `qemu-arm-baremetal` XRCE
+/// fixture failed to link the night 1033 landed:
+///
+/// ```text
+/// rust-lld: error: undefined symbol: vsnprintf
+///   >>> referenced by session.c:58 … in archive libnros_rmw_xrce_cffi-….rlib
+///   >>> did you mean: snprintf
+/// ```
+///
+/// The gap was latent before that: the only other `vsnprintf` call sites are in
+/// `nros/log.h` and its C stub, neither of which enters a pure-Rust bare-metal
+/// link closure.
+///
+/// It copies `fmt` VERBATIM instead of writing `""` like `snprintf` above,
+/// because muteness is the exact defect issue 1033 exists to remove. An
+/// unsubstituted format string still names the knob and the failure —
+/// `"no free %s slot for '%s': this image was BUILT with %s=%u…"` — while an
+/// empty buffer plus a 0 length reproduces the silence on the one class of
+/// target that cannot afford it. The caller uses the return as a length, so
+/// returning the copied length is what makes the message reach the log.
+///
+/// `_ap` is an opaque pointer rather than a real `va_list`: nothing reads it,
+/// and on every target this file serves a `va_list` is pointer-sized, so the
+/// ABI agrees. The sibling stubs above already declare fewer parameters than
+/// the C variadic they stand in for.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn vsnprintf(
+    buf: *mut c_char,
+    size: usize,
+    fmt: *const c_char,
+    _ap: *mut c_void,
+) -> c_int {
+    if buf.is_null() || size == 0 {
+        return 0;
+    }
+    unsafe {
+        if fmt.is_null() {
+            *buf = 0;
+            return 0;
+        }
+        let mut n = 0usize;
+        while n < size - 1 && *fmt.add(n) != 0 {
+            *buf.add(n) = *fmt.add(n);
+            n += 1;
+        }
+        *buf.add(n) = 0;
+        n as c_int
+    }
+}
