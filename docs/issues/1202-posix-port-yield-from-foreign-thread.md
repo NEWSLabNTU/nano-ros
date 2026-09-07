@@ -47,17 +47,24 @@ answers from a pthread TLS key the port sets when it creates a task's thread.
    > Safe to call from a foreign thread by contract: the runtime callback does
    > a flag write plus a condvar signal and nothing else.
 
-3. On this platform that condvar signal is
-   `nros-platform-freertos/src/platform.c::nros_platform_condvar_signal`:
+3. On this platform the wake is
+   `nros-platform-freertos/src/platform.c::nros_platform_wake_signal`, whose
+   `xSemaphoreGive` reaches `portYIELD_WITHIN_API` → `vPortYield`.
 
-   ```c
-   xSemaphoreTake((SemaphoreHandle_t) c->mutex, portMAX_DELAY);
-   if (c->waiters > 0) { xSemaphoreGive((SemaphoreHandle_t) c->sem); ... }
-   xSemaphoreGive((SemaphoreHandle_t) c->mutex);
-   ```
+CONFIRMED from the core of the original abort (`coredumpctl`, systemd kept it):
 
-   Both `xSemaphoreTake` (when contended) and `xSemaphoreGive` (when it
-   unblocks a higher-priority task) reach `portYIELD_WITHIN_API` → `vPortYield`.
+```
+#5  freertos_assert_failed ()
+#6  vPortYield ()
+#7  xQueueGenericSend ()
+#8  nros_platform_wake_signal ()
+#9  nros_rmw_cyclonedds::(anonymous namespace)::on_data_available(int, void*)
+#10 libddsc.so.0                      <- Cyclone's receive thread
+```
+
+The class was predicted correctly and the function was not: this filing first
+guessed `nros_platform_condvar_signal`. The wake primitive is the one on the
+path.
 
 The contract in step 2 holds on every OTHER FreeRTOS board, where Cyclone's
 threads ARE FreeRTOS tasks. It does not hold here, and this board's own
@@ -71,6 +78,20 @@ pthread that the port never registered.
 
 The ISR variant is not an escape: this port's `portYIELD_FROM_ISR` expands to
 `portEND_SWITCHING_ISR`, which calls `vPortYield()` too.
+
+## Reproduction (deterministic)
+
+`kill -INT <pid>` on the running image aborts it every time; `SIGTERM` exits
+cleanly (143). This port deliberately leaves SIGINT unblocked in EVERY thread —
+
+```c
+/* Don't block SIGINT so this can be used to break into GDB while
+ * in a critical section. */
+sigdelset( &xAllSignals, SIGINT );
+```
+
+— which is what makes a foreign-thread entry easy to provoke on demand. The
+original occurrence needed no signal; it happened on its own after ~40 minutes.
 
 ## Why it is intermittent, and why CI has never seen it
 
@@ -107,15 +128,23 @@ Two candidates:
    signal. Keeps the latency win and fixes the class rather than this
    instance.
 
-A third option — marking FreeRTOS-owned threads in `freertos_task_trampoline`
-and having `condvar_signal` defer when unmarked — works but puts host-pthread
-reasoning into a file that also compiles for three bare-metal targets.
+A third option — swapping in the `FromISR` give — was measured and REJECTED.
+On this port `xPortSetInterruptMask()` returns 0 and `vPortDisableInterrupts()`
+no-ops unless the caller is a FreeRTOS thread, so the ISR variant drops the
+assert and keeps the race: a quieter bug, not a fixed one. `portYIELD_FROM_ISR`
+also expands to `vPortYield()` here, so it is not even quiet.
 
-## What this issue does not claim
+## Status
 
-The reproduction is one occurrence, caught without a debugger attached. The
-mechanism above is established by reading the code, not by a captured stack: a
-`gdb` soak was still running when this was filed. If someone reproduces it
-under a debugger, the backtrace of the asserting thread should name a Cyclone
-receive/delivery thread and `nros_platform_condvar_signal` beneath it — and if
-it does not, this analysis is wrong and the issue should say so.
+Fixed by declining the wake slot on this board (option 1). Verified:
+
+* before — `kill -INT` gives `rc=134`, `FreeRTOS ASSERT FAILED`, core dumped;
+* after — same signal, no assert, no core, process still running;
+* delivery still works on the poll-only path: with a publisher on
+  `/vehicle/status/steering_status`, the controller logs
+  "Waiting for steering data" ONCE (before the publisher starts) while the
+  three unpublished inputs keep reporting every cycle.
+
+This filing originally guessed the wrong function and said what would refute
+it. The core named `nros_platform_wake_signal`, so that guess was corrected
+here rather than quietly dropped.
