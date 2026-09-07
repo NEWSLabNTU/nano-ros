@@ -260,7 +260,7 @@ All options are under `menuconfig NROS` in `zephyr/Kconfig`.
 | `CONFIG_NROS_ZENOH_LINK_TCP` | bool | y | TCP transport link |
 | `CONFIG_NROS_MAX_PUBLISHERS` | int | 8 | Max concurrent publishers |
 | `CONFIG_NROS_MAX_SUBSCRIBERS` | int | 8 | Max concurrent subscribers |
-| `CONFIG_NROS_MAX_QUERYABLES` | int | 8 | Max concurrent queryables |
+| `CONFIG_NROS_MAX_QUERYABLES` | int | -1 (derive) | Max concurrent queryables (service servers). `[param_services]` costs 6 **per node**, `[lifecycle]` 5 once — a value below that floor fails the build, naming this knob (phase-426 W3) |
 | `CONFIG_NROS_FRAG_MAX_SIZE` | int | 2048 | Max reassembled message size |
 | `CONFIG_NROS_BATCH_UNICAST_SIZE` | int | 1024 | Max unicast batch size |
 | `CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE` | int | -1 (derive) | Per-subscriber buffer, small payload class |

@@ -420,6 +420,12 @@ CONFIG_NROS_ZENOH=y
 # Entity limits
 CONFIG_NROS_MAX_PUBLISHERS=8
 CONFIG_NROS_MAX_SUBSCRIBERS=8
+# A service server IS a queryable, and the ROS parameter services are
+# registered once PER NODE (phase-426 W3): an image declaring
+# `[param_services]` needs 6 x its node count here, plus 5 if it also declares
+# `[lifecycle]`, before its own service servers. Below that derived floor the
+# BUILD fails naming this knob rather than the boot failing with a bare
+# `ServiceServerCreationFailed` (issue 0460).
 CONFIG_NROS_MAX_QUERYABLES=4
 CONFIG_NROS_MAX_LIVELINESS=16
 

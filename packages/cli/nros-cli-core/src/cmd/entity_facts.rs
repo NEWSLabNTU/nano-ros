@@ -86,6 +86,21 @@ pub fn facts_from_model(model: &SystemModel) -> BTreeMap<String, String> {
         "NROS_DECLARED_INFRA_QUERYABLES".to_string(),
         declared_infra(model).to_string(),
     );
+    // phase-426 W3 — the third fact, and it is a COUNT rather than a cost, for
+    // the same reason the two above split that way: the ROS parameter services
+    // are registered once per node, so the consumer multiplies its own
+    // `PARAM_SERVICE_QUERYABLES` by this. Stating "the image needs 18 slots"
+    // here would put the number in two places again.
+    //
+    // Always emitted, never abstained: unlike the wiring an application
+    // declares, `structure.nodes` is what a launch file IS. A model that
+    // resolves has nodes; one with none is an empty system, and a zero here
+    // would be a claim the consumer must not act on — so it floors at one, on
+    // the consumer's side, where the pool is.
+    out.insert(
+        "NROS_DECLARED_NODES".to_string(),
+        model.structure.nodes.len().to_string(),
+    );
     out
 }
 
@@ -342,6 +357,37 @@ mod tests {
         let f = facts_from_model(&m);
         assert_eq!(f["NROS_DECLARED_SERVICE_SERVERS"], "1");
         assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "lifecycle");
-        assert_eq!(f.len(), 2);
+        // phase-426 W3 — a third name in the contract; the consumer watches
+        // and parses all three.
+        assert_eq!(f["NROS_DECLARED_NODES"], "0");
+        assert_eq!(f.len(), 3);
+    }
+
+    /// phase-426 W3 — the node count reaches the queryable pool, because the
+    /// ROS parameter services are registered once per node.
+    #[test]
+    fn the_node_count_is_reported_for_the_parameter_service_pool() {
+        let m = model(
+            "meta:\n  version: 1\nstructure:\n  nodes:\n    /talker:\n      scope: root\n\
+             \n      pkg: demo\n      exec: talker\n    /listener:\n      scope: root\n\
+             \n      pkg: demo\n      exec: listener\nexecution:\n  features:\n  - param_services\n",
+        );
+        let f = facts_from_model(&m);
+        assert_eq!(f["NROS_DECLARED_NODES"], "2");
+        assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "param");
+    }
+
+    /// It is a COUNT, not a cost. This verb never states
+    /// `PARAM_SERVICE_QUERYABLES` — the consumer owns that number, beside the
+    /// code that creates the servers (issue 0827's split).
+    #[test]
+    fn the_node_count_is_stated_even_when_no_capability_uses_it() {
+        let m = model(
+            "meta:\n  version: 1\nstructure:\n  nodes:\n    /solo:\n      scope: root\n\
+             \n      pkg: demo\n      exec: solo\n",
+        );
+        let f = facts_from_model(&m);
+        assert_eq!(f["NROS_DECLARED_NODES"], "1");
+        assert_eq!(f["NROS_DECLARED_INFRA_QUERYABLES"], "none");
     }
 }
