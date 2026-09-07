@@ -1,6 +1,10 @@
 # Phase 437 — rename every board to the reach its build has
 
-**Status (2026-09-08). W1-W3 LANDED. RFC-0093 amended (R6 + the deploy exception) and W4-W6 UNBLOCKED, with the coordinated-commit rules the survey found.** Implements
+**Status (2026-09-08). COMPLETE — W1 through W7 landed.**
+`check-board-name-reach`: **0 violations**. `check-board-vocabulary`: **0
+mirrored pairs**. Nineteen `[board.*]` keys are fourteen (five duplicate pairs
+collapsed, the three W3 added kept). NOT verified: any build — see "What is
+unverified" at the end. Implements
 [RFC-0093](../design/0093-board-naming-states-reach.md). Nothing has moved yet;
 the measurements below are from `main` at `9c0702322`.
 
@@ -448,3 +452,85 @@ other way round.
 * Tier-2 fixtures build and run at the new names, on a lane that was green
   BEFORE the rename started (phase-413 W2's lanes are the precondition — a
   rename verified in a red lane is verified by nothing).
+
+## What landed, W4–W7
+
+Three agents renamed one board family each in isolated worktrees, because the
+families collide through `nros-sdk-index.toml`, `examples/fixtures.toml` and
+`matrix.rs` — concurrent edits in one tree would have corrupted each other.
+Their branches were then cherry-picked in sequence.
+
+**The merge was where the work was.** Every shared file conflicted, and the
+resolution was never "take one side": each branch had renamed ITS board and left
+the others at their old names, so the answer was take HEAD and apply the
+incoming branch's substitution, so both renames survive. The nightly
+`paths-filter` needed all five globs correct simultaneously — a stale one means
+the lane goes green BY NEVER RUNNING.
+
+**One conflict was worth the whole exercise.** The ThreadX branch renamed six
+`binary_name` literals to `rv-virt-threadx-<role>` — still the cargo package
+name. Issue 1222's fix, landed just before the merge, had them as the CMake
+targets (`riscv64_threadx_rust_<role>`). Git presented it as an ordinary
+conflict; the extended gate is what settled it. Fixing 1222 BEFORE the merge
+rather than after is why that landed correctly instead of quietly reverting.
+
+### Findings the waves produced
+
+* **A sixth duplicate the RFC's grep missed.** `deploy = [...]` — the ARRAY
+  form in `[package.metadata.nros.application]` — named two retiring boards.
+  RFC-0093 measured `^\s*deploy\s*=\s*"`, the scalar form. Both moved.
+* **Issue 1222.** Six ThreadX RV64 resolvers asked for the cargo PACKAGE name
+  where CMake declares a different target, so every one resolved to a path no
+  target writes — `skip!("fixture missing")` on a tree where the fixtures were
+  built. The gate could not see it because the literals were one frame up, in a
+  local wrapper. Fixed, and the gate now follows wrappers structurally.
+* **The entry `deploy =` scalar and its `[deploy.<board>]` table key are
+  unguarded.** A rename can move one and not the other, and nothing notices:
+  `check fast` is buildless, and `synthesise_self_bringup` takes the FIRST
+  deploy block rather than the one the entry names, so a single-block leaf keeps
+  working while `system.deploy.<target>` is keyed on a board nothing deploys to.
+  Worth a gate; not written here.
+* **`build_root_derivation.sh` derived its "unmigrated platform" witness from a
+  hardcoded list.** `esp32` joining the shared platforms left all four migrated
+  and the probe refused to verdict — correctly. Second time that list has
+  rotted. It reads the manifest now.
+* **`check-stack-floor.py`'s `FLOORS` is keyed by the fixture PLATFORM**, not by
+  a board — `board_of` matches it against a path component of the group dir.
+
+### W7 — the docs
+
+The book is fixed completely: every `nros setup <board>`, `cmake --preset`,
+`NANO_ROS_BOARD=` and `examples/<dir>/` path names something that exists, and
+the fourteen board keys in `cli.md` were each checked with `--dry-run`. Two that
+never resolved were found on the way: `stm32f4` (crates left the tree) and
+`mps2-an385` (retired in W5).
+
+`docs/reference/retired-board-names.md` is the ledger — eleven retired spellings
+to their replacement and the rule that selected each, the two fixture-platform
+coordinates under R6, and a "Strings that did NOT retire" section, because
+`mps2-an385` survives in 659 files as a QEMU `-machine` argument, two linker
+scripts and the `mps2-an385-pac` crate, and `esp32-c3` in 34 as the chip.
+
+Records were left as records: 22 `docs/roadmap/` files, dated audit findings and
+research notes, RFC-0062's stamped census, and every archived issue. Two open
+issues whose occurrences are verbatim tool output got a one-line note rather
+than a rewritten capture.
+
+## What is unverified
+
+**Nothing here was built.** Disk sat at 97% throughout, so no agent and no
+merge step ran a fixture build. Specifically unmeasured:
+
+* that `build/cargo-fixtures/baremetal` and `.../esp32` are written and found
+  where the test-side resolver looks — W4a's stated acceptance is a BUILD, never
+  a gate (#393), and it has not been met;
+* that the six moved example trees still build after their `dir =`, `id =` and
+  workspace-exclude changes;
+* that `just esp32 build-qemu` still packs a flash image with the renamed row
+  ids;
+* that the six ThreadX RV64 cells 1222 unblocked now RUN.
+
+And the precondition this phase stated at the outset still holds: phase-413
+W2's lanes have no green post-W2 verdict, so the first CI run after this lands
+is the first real test of ~700 renamed files. A rename regression and that
+lane's existing red are indistinguishable until it goes green once.
