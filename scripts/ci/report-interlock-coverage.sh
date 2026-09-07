@@ -33,13 +33,29 @@
 # `runs-on`, or the variable disagree with reality, and a silent skip there
 # hides a lane everyone believes is running.
 #
+# RAN IS NOT ONE THING — issue 1158
+#
+# The `failure` arm below used to say "RAN and FAILED", full stop. That is two
+# different runs wearing one sentence: a lane that executed its cells and found
+# a regression, and a lane that died in provisioning having tested nothing.
+# `run-matrix.yml`'s last eight runs were all the second kind and all read as
+# the first. So an OPTIONAL fourth argument carries the stage the lane reached
+# (`scripts/ci/lane-stage.py --report` produces it); when it is present and says
+# NO VERDICT, this says so instead of claiming the lane ran.
+#
+# Optional because three other workflows call this with three arguments and
+# their lanes are not staged the same way. A missing stage degrades to the old
+# wording, which is correct for a caller that cannot compute one — the same
+# "reported skip rather than a false claim" shape as issue 1043.
+#
 # Usage:
-#   report-interlock-coverage.sh <lane-name> <needs-result> <interlock-value>
+#   report-interlock-coverage.sh <lane-name> <needs-result> <interlock-value> [<stage-label>]
 set -uo pipefail
 
 lane="${1:?lane name}"
 result="${2:?the gated job needs.<job>.result}"
 interlock="${3-}"
+stage="${4-}"
 
 summary="${GITHUB_STEP_SUMMARY:-/dev/null}"
 
@@ -52,8 +68,25 @@ case "$result" in
     failure)
         # The gated job already reddens the run; say which lane, then let its
         # own verdict stand rather than double-reporting.
-        echo "$lane: RAN and FAILED — see that job's log." >&2
-        printf '### %s: ran and FAILED ❌\n' "$lane" >> "$summary"
+        case "$stage" in
+            *"NO VERDICT"*)
+                echo "$lane: $stage" >&2
+                echo "" >&2
+                echo "  This run is NOT a verdict about the code. The lane stopped" >&2
+                echo "  before its cells, so a regression landing today would look" >&2
+                echo "  exactly like this failure. Issue 1158." >&2
+                printf '### %s: %s ❌\n\n' "$lane" "$stage" >> "$summary"
+                printf 'The red above is about the LANE, not about the code — the cells never ran.\n' >> "$summary"
+                ;;
+            "")
+                echo "$lane: RAN and FAILED — see that job's log." >&2
+                printf '### %s: ran and FAILED ❌\n' "$lane" >> "$summary"
+                ;;
+            *)
+                echo "$lane: $stage — see that job's log." >&2
+                printf '### %s: %s ❌\n' "$lane" "$stage" >> "$summary"
+                ;;
+        esac
         exit 0
         ;;
     cancelled)

@@ -612,7 +612,13 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   nightly's own `c/talker` cell reported `failure` before and after. `just
   nightly-triage` classifies by which STEP failed and flags cells red across a
   whole window; `just queue-triage` does the same for merge-queue ejections
-  (INFRA vs MINE).
+  (INFRA vs MINE). **A lane with an ordered pipeline needs one axis more — HOW
+  FAR did it get** (issue 1158): tier 2's eight runs to 2026-09-06 all said
+  `failure`, 0 reached the cells, and they split 5 provisioning / 3 build. `just
+  matrix-triage` prints that per run; `run-matrix.yml` names the stage in the
+  `coverage` job's own check-run NAME, so `gh run view` answers it without a log.
+  Gated by `check-lane-stage-reporting` — the step→stage map is AUTHORED, so a
+  renamed step drifts it in the safe-looking direction.
 - **Rust edition 2024:** `unsafe extern "C" {}`, `#[unsafe(no_mangle)]`, explicit `unsafe {}` in
   `unsafe fn`. `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]`.
 - **No POSIX-style Rust ctor sections on Zephyr/native_sim/RTOS** — backend registration is an

@@ -2608,6 +2608,23 @@ tier-health *args:
 nightly-triage runs="3":
     @python3 scripts/ci/nightly-triage.py --runs {{runs}}
 
+# How far did the tier-2 lane get? (issue 1158) Never gates.
+#
+# `nightly-triage` asks "was this failure a verdict?"; the tier-2 lane needs one
+# axis more, because it has an ORDERED pipeline — provisioning -> build -> cells
+# — and the answer that matters is HOW FAR IT GOT. `just build tier2` failing is
+# a real verdict about the code AND still not the runtime verdict this lane
+# exists to produce, and only a stage model can say both at once.
+#
+# Measured 2026-09-07: 0 of the last 8 runs reached the cells, under one flat
+# `failure` word covering three different stopping points.
+#
+#   just matrix-triage         just matrix-triage 20
+#   just matrix-triage 8 nightly.yml
+[group("ci")]
+matrix-triage runs="8" workflow="run-matrix.yml":
+    @python3 scripts/ci/lane-stage.py --history --runs {{runs}} --workflow {{workflow}}
+
 # Which open PRs can never merge because nothing ever ran on them? A PR with
 # ZERO check suites is not failing and not pending — it is silently ineligible,
 # and auto-merge can sit armed against a check that was never requested (PR #71,
