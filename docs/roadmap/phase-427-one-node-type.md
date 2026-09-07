@@ -368,3 +368,26 @@ placement-`new` shim (`component_node.hpp:78-87`), `check_declared_depth`
 `declare_parameter<std::vector<T>>`, which has no FFI to forward to.
 `NROS_COMPONENT(Class)` needs none — zero invocations, and the entry
 placement-news the class directly instead of calling its factory.
+
+## W1 moves to phase-438 (2026-09-08)
+
+W1 — "the out-of-line hosted block", `void* hosted_` replacing every hosted-only
+member — is a consequence of the C++ std surface being DISCOVERED from the
+toolchain rather than requested, not of the node merge. It relocates to
+phase-438 W4, and phase-438 lands before this phase and before phase-426.
+
+The reason, in one line: hosted-only MEMBERS exist because the hosted API is a
+different SHAPE of the same class, and that is only true because
+`NROS_CPP_HAS_*` are auto-detected. Once the surface is an opt-in, the hosted
+half is additive methods over an unconditional layout, and W1 is what falls out
+rather than what has to be engineered.
+
+Two more of this phase's problems go with it. `rclcpp::Node`'s absence on
+freestanding targets is that same guard (`nros.hpp:447`) and nothing else; and
+`shared_from_this` stops being a layout question — the recorded decision and its
+cost are unchanged, but it becomes a hosted-only method over a `weak_ptr` behind
+`hosted_` rather than a base class that moves everyone's members.
+
+Remaining here after the move: W2 (construction), W3 (one name, two signatures —
+now four, see the conciliation section), W4 (`ComponentNode` deleted), W5
+(`get_logger`), W7 (the `nros::Node` alias). W0 and W8 are landed.
