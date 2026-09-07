@@ -664,7 +664,7 @@ mod tests {
         // one, which is the "one directory too deep" bug for all 65 `linux`
         // rows.
         let t = vec![GroupRow {
-            artifact_root: "examples/qemu-arm-baremetal/rust/talker/target".into(),
+            artifact_root: "examples/mps2-an385-baremetal/rust/talker/target".into(),
             platform: "baremetal".into(),
             slug: "baremetal".into(),
             shared: true,
@@ -674,7 +674,9 @@ mod tests {
             &t,
             // profile-literal-ok: dir vocabulary: synthetic leaf paths exercising the
             // artifact-root rewrite; no build is invoked from this test data
-            Path::new("examples/qemu-arm-baremetal/rust/talker/target/thumbv7m-none-eabi/debug/t"),
+            Path::new(
+                "examples/mps2-an385-baremetal/rust/talker/target/thumbv7m-none-eabi/debug/t",
+            ),
         )
         .unwrap();
         assert_eq!(suffix, Path::new("thumbv7m-none-eabi/debug/t"));

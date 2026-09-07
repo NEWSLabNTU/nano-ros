@@ -297,7 +297,7 @@ pub unsafe extern "C" fn snprintf(buf: *mut c_char, size: usize, _fmt: *const c_
 /// `xrce_log_error`, which calls `vsnprintf` and emits the result through
 /// `nros_platform_log_write`. That C TU is compiled into `nros-rmw-xrce-cffi`
 /// and linked into BARE-METAL images, where this file is the entire libc — and
-/// it had 18 exports, none of them `vsnprintf`. Every `qemu-arm-baremetal` XRCE
+/// it had 18 exports, none of them `vsnprintf`. Every `mps2-an385-baremetal` XRCE
 /// fixture failed to link the night 1033 landed:
 ///
 /// ```text

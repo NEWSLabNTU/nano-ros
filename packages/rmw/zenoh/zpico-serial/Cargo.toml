@@ -7,7 +7,7 @@ description = "Serial (UART) link layer for nros (bare-metal systems)"
 # Phase 121.7.f — literal authors/homepage/documentation instead
 # of `workspace = true`. zpico-serial is consumed as a path-dep
 # from example trees that live outside the nano-ros workspace
-# (e.g. examples/qemu-arm-baremetal/...); cargo fails to resolve
+# (e.g. examples/mps2-an385-baremetal/...); cargo fails to resolve
 # `workspace.package.X` inheritance when loading the manifest from
 # the example's workspace context. Literal values match the
 # workspace defaults; bump together if those ever change.

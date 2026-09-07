@@ -105,11 +105,11 @@ pub const fn aux_port(platform: PlatformId, slot: u16) -> u16 {
 }
 
 /// mps2-an385 BSP (non-RTIC) pubsub demo pair (`qemu-bsp-talker` /
-/// `qemu-bsp-listener`, `examples/qemu-arm-baremetal/rust/{talker,listener}`).
+/// `qemu-bsp-listener`, `examples/mps2-an385-baremetal/rust/{talker,listener}`).
 pub const BAREMETAL_BSP_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 0);
 
 /// mps2-an385 RTIC mixed-priority pubsub pair
-/// (`examples/qemu-arm-baremetal/rust/{talker,listener}-rtic-mixed`).
+/// (`examples/mps2-an385-baremetal/rust/{talker,listener}-rtic-mixed`).
 pub const BAREMETAL_MIXED_PRIORITY_PORT: u16 = aux_port(PlatformId::QemuBaremetal, 1);
 
 /// mps2-an385 large-message bench firmware

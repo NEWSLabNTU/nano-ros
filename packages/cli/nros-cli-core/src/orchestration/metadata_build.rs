@@ -656,7 +656,7 @@ mod probe_blocker_tests {
         );
     }
 
-    /// The qemu-arm-baremetal shape: a foreign target but NO build-std. The
+    /// The mps2-an385-baremetal shape: a foreign target but NO build-std. The
     /// `--target <host>` flag already covers it, so it stays probeable —
     /// skipping it would silently cost that lane its exact executor sizing.
     #[test]

@@ -326,7 +326,7 @@ build-example-extras:
     list="$(mktemp)"
     rg --files examples -g Cargo.toml \
         | sed 's#/Cargo.toml$##' \
-        | grep -Ev '^examples/(zephyr|qemu-arm-freertos|qemu-armv7a-nuttx|threadx-linux|rv-virt-threadx|qemu-arm-baremetal)/' \
+        | grep -Ev '^examples/(zephyr|qemu-arm-freertos|qemu-armv7a-nuttx|threadx-linux|rv-virt-threadx|mps2-an385-baremetal)/' \
         | grep -Ev '^examples/native/rust/(talker|listener|lifecycle-node|custom-msg|service-server|service-client|action-server|action-client|talker-rtic|listener-rtic|service-server-rtic|service-client-rtic|action-server-rtic|action-client-rtic|serial-talker|serial-listener)$' \
         | sort > "$list"
 

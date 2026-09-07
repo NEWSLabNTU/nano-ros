@@ -115,7 +115,7 @@ build:
     # `build/cargo-fixtures/baremetal`. Both loops below used to run a
     # bare in-leaf `cargo build`, writing a SECOND per-leaf copy of the same
     # artifacts — the same second build path phase-340 P2 closed on freertos,
-    # here re-creating `examples/qemu-arm-baremetal/**/target/`. The dir comes
+    # here re-creating `examples/mps2-an385-baremetal/**/target/`. The dir comes
     # from the resolver the manifest build and the staleness probe share, so
     # rows land where their row lands and the rowless crates join the same
     # group (bin names checked collision-free across both sets). Empty for an
@@ -125,7 +125,7 @@ build:
     qemu_tdir_flag="$(nros_fixture_target_dir_flag baremetal "" "")"
     # phase-300 W1.1 — enumerate tracked crates via the git index (the
     # F1 `-not -path` find still DESCENDED every target*/build* tree).
-    _qemu_tomls="$(git ls-files 'examples/qemu-arm-baremetal/**/Cargo.toml' | awk -F/ 'NF>=4' | sort)"
+    _qemu_tomls="$(git ls-files 'examples/mps2-an385-baremetal/**/Cargo.toml' | awk -F/ 'NF>=4' | sort)"
     # Issue 0100 — single sync-then-build pass. The former two-pass split existed
     # only because the Entry+Node-pkg shape had an Entry whose `[patch]` pointed
     # at a SIBLING `../<pkg>/generated/*`, so every entry had to wait for its
@@ -146,7 +146,7 @@ build:
         (cd "$dir" && cargo build $cargo_profile_args $qemu_tdir_flag)
     done
     # Phase 131.B — bench/test-fixture binaries that used to live under
-    # examples/qemu-arm-baremetal/rust/{core,standalone,zenoh/large-msg-test}
+    # examples/mps2-an385-baremetal/rust/{core,standalone,zenoh/large-msg-test}
     # now sit under packages/testing/.
     for dir in \
         packages/testing/nros-tests/bins/cdr-roundtrip-qemu \
@@ -308,7 +308,7 @@ build-rtic-main-e2e:
     set -e
     source scripts/build/cargo.sh
     # issue 0488 residue 1 — this leaf IS a `[[fixture]]` row
-    # (examples/qemu-arm-baremetal/rust), and its platform `baremetal` is migrated, so the fixture
+    # (examples/mps2-an385-baremetal/rust), and its platform `baremetal` is migrated, so the fixture
     # lane compiles it into `build/cargo-fixtures/<slug>`. The bare in-leaf build
     # here wrote the leaf's own `target/` instead, and `test-rtic-main-e2e` then
     # `-kernel`ed THAT — a second copy nothing else reads, and a path that
@@ -443,7 +443,7 @@ setup:
     # Phase 197.4/196.9 — provision the board's sources (arm-gcc, qemu dist, +
     # zenoh-pico/mbedtls via the default zenoh RMW) via nros before the arm
     # zenoh-pico build needs them. Then the patched-qemu + zenoh-pico-arm builds.
-    # Phase 208 (post-CI dispatch) — `examples/qemu-arm-baremetal/rust/talker-xrce/`
+    # Phase 208 (post-CI dispatch) — `examples/mps2-an385-baremetal/rust/talker-xrce/`
     # (Phase 207) needs micro-cdr + micro-xrce-dds-client sources too, otherwise
     # `nros-rmw-xrce-cffi/build.rs` panics "submodule not initialised". Provision
     # both RMW source sets in the same step so `just qemu build` covers every
@@ -588,7 +588,7 @@ help:
 clean: clean-zenoh-pico
     #!/usr/bin/env bash
     # phase-300 W1.1 — tracked-crate enumeration (see build recipe).
-    for toml in $(git ls-files 'examples/qemu-arm-baremetal/**/Cargo.toml' | awk -F/ 'NF>=4' | sort); do
+    for toml in $(git ls-files 'examples/mps2-an385-baremetal/**/Cargo.toml' | awk -F/ 'NF>=4' | sort); do
         rm -rf "$(dirname "$toml")/target"
     done
     # Phase 131.B — relocated bare-metal bench/fixture crates.

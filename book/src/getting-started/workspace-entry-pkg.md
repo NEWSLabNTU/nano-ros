@@ -383,7 +383,7 @@ crate and executor backend, and the same model resolves its tier table for
 whichever RTOS that board targets. On Embassy / RTIC targets it emits the
 framework-specific `#[embassy_executor::main]` or `#[rtic::app]` body, so the
 crate root stays a single line — as in
-`examples/qemu-arm-baremetal/rust/talker-rtic/src/main.rs`:
+`examples/mps2-an385-baremetal/rust/talker-rtic/src/main.rs`:
 
 ```rust
 #![no_std]

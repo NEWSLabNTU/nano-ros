@@ -67,7 +67,7 @@ fi
 #
 #   A fresh, artifacts: 78ecc91a b11f4d7c
 #   after B:            78ecc91a b11f4d7c
-#   A stale again? [examples/qemu-arm-baremetal/rust/talker]
+#   A stale again? [examples/mps2-an385-baremetal/rust/talker]
 #   after A rebuild:    78ecc91a b11f4d7c
 #
 # So ~22 rows reported stale on EVERY run, forever, with nothing to fix — a

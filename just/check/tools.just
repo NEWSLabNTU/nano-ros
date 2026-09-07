@@ -80,8 +80,8 @@ stack-all top="10":
     for example in \
         packages/testing/nros-bench/wcet-cycles-qemu \
         packages/testing/nros-tests/bins/cdr-roundtrip-qemu \
-        examples/qemu-arm-baremetal/rust/talker \
-        examples/qemu-arm-baremetal/rust/listener \
+        examples/mps2-an385-baremetal/rust/talker \
+        examples/mps2-an385-baremetal/rust/listener \
     ; do
         echo "================================================================"
         ./scripts/stack-analysis.sh "$example" --top {{top}} || { echo "[FAIL] $example"; failed=$((failed + 1)); }

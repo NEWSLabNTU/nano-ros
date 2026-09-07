@@ -973,7 +973,7 @@ fn main() {{
 /// Self-bringup (baremetal/esp32) — `main.rs` is the one-line `nros::main!()`
 /// Form-1 entry, `lib.rs` is the node. The macro reads
 /// `[package.metadata.nros.entry] deploy` to resolve the board. Models the
-/// single-package `examples/qemu-arm-baremetal/rust/talker` / esp32 talker.
+/// single-package `examples/mps2-an385-baremetal/rust/talker` / esp32 talker.
 fn scaffold_rust_self_bringup(
     name: &str,
     spec: &PlatformSpec,
@@ -1062,7 +1062,7 @@ std_msgs = {{ version = "*", default-features = false }}
 
 /// The shared `lib.rs` node for the self-bringup shape — a `std_msgs/String`
 /// talker (`Node` + `ExecutableNode` + `nros::node!`), copied from the tracked
-/// `examples/qemu-arm-baremetal/rust/talker/src/lib.rs`. RMW/platform-agnostic:
+/// `examples/mps2-an385-baremetal/rust/talker/src/lib.rs`. RMW/platform-agnostic:
 /// the same node compiles under every board.
 fn self_bringup_node_lib(name: &str) -> String {
     format!(

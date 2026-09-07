@@ -207,7 +207,7 @@ mod app {
 
 **nano-ros integration**: RTIC tasks call nano-ros directly — no executor
 needed. Each RTIC task can own a publisher, subscription, or service handle.
-See `examples/qemu-arm-baremetal/rust/talker-rtic/`.
+See `examples/mps2-an385-baremetal/rust/talker-rtic/`.
 
 ### FreeRTOS
 

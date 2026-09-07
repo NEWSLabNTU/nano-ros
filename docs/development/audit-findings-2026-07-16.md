@@ -62,7 +62,7 @@ Classification: all **new** (no baseline).
   `unsafe extern "C"` lifecycle callbacks + raw slot registration in a RUST
   example ("exercises the FFI surface") — points at a missing safe Rust
   lifecycle-callback API; kept P3 pending a design decision (borderline P2).
-- J1 · `examples/qemu-arm-baremetal/rust/talker/src/main.rs:3`,
+- J1 · `examples/mps2-an385-baremetal/rust/talker/src/main.rs:3`,
   `examples/stm32f4/rust/talker-rtic/src/main.rs:24` · panic-handler /
   defmt-transport selection lives in example bodies while the threadx board
   crate owns its `#[panic_handler]` — inconsistent convention (app-level

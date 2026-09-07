@@ -101,7 +101,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:7447"];scouting/multicast/
 ./scripts/qemu/launch-mps2-an385.sh \
     --tap tap-qemu0 \
     --ip 192.0.2.10 \
-    --binary examples/qemu-arm-baremetal/rust/standalone/lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
+    --binary examples/mps2-an385-baremetal/rust/standalone/lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
 ```
 
 ### 5. Teardown

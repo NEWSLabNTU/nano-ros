@@ -84,9 +84,9 @@ nros setup zephyr                        # Zephyr west workspace + SDK bits
 | `--licenses` | show license-gated packages + how to install them |
 | `--dry-run` | resolve + print the plan without fetching anything |
 
-Board names: `native`, `posix`, `qemu-arm-baremetal`, `mps2-an385`,
-`stm32f4`, `qemu-arm-freertos`, `qemu-arm-nuttx`, `qemu-riscv64-threadx`,
-`threadx-linux`, `qemu-esp32-baremetal`, `zephyr`, and more —
+Board names: `native`, `posix`, `mps2-an385-baremetal`,
+`stm32f4`, `mps2-an385-freertos`, `qemu-arm-nuttx`, `qemu-riscv64-threadx`,
+`threadx-linux`, `esp32-c3-baremetal`, `zephyr`, and more —
 run `nros setup --list` or `nros setup <board> --dry-run`.
 
 ### `nros init [<dir>]`

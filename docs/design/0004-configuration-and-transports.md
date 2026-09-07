@@ -112,7 +112,7 @@ below (which describe an `nros.toml` home that **never materialized**):
   land — but as a standalone **`config.toml`** (above) parsed by the same
   `Config::from_toml`, not as an `nros.toml` file.
 - **Embedded net/RT config lives in `[package.metadata.nros.deploy.<t>]`.** E.g.
-  `examples/qemu-arm-baremetal/rust/talker-rtic` declares `locator`/`ip`/`gateway`/`netmask` there;
+  `examples/mps2-an385-baremetal/rust/talker-rtic` declares `locator`/`ip`/`gateway`/`netmask` there;
   `nros::main!()` bakes them into a `DeployOverlay` that `BoardEntry::run_with_deploy`
   applies onto the board boot `Config`. RT/stack/heap come from board-crate Cargo
   features + (Zephyr) `prj*.conf` Kconfig. There is **no `[[transport]]` file block**

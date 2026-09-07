@@ -85,7 +85,7 @@ before either side starts.
 
 ```bash
 nros sync                       # materialize generated/ + the patch table
-cd examples/qemu-arm-baremetal/rust/serial-talker
+cd examples/mps2-an385-baremetal/rust/serial-talker
 cargo build --release
 ```
 

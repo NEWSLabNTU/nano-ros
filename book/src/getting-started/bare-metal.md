@@ -25,18 +25,20 @@ for the policy.
 source ./activate.sh        # OR: direnv allow / source ./activate.fish
 
 # Provision the bare-metal Cortex-M3 board (zenoh RMW is the default):
-nros setup qemu-arm-baremetal --rmw zenoh
+nros setup mps2-an385-baremetal --rmw zenoh
 ```
 
-> A board-named variant exists too: `nros setup mps2-an385` provisions
-> the same QEMU toolchain under a board-named key (nothing extra for
-> physical hardware — no probe/flash tooling). For a real STM32F4 see
-> the [out-of-tree worked example](../porting/stm32f4-out-of-tree.md).
+> One key, not two. `qemu-arm-baremetal` and `mps2-an385` were the same
+> entry under two spellings until phase-437 W5 collapsed them (RFC-0093:
+> a board name states the reach of its build, and this build is true for
+> one silicon part). Nothing extra is provisioned for physical hardware —
+> no probe/flash tooling. For a real STM32F4 see the
+> [out-of-tree worked example](../porting/stm32f4-out-of-tree.md).
 
 ## Project layout
 
 ```text
-examples/qemu-arm-baremetal/rust/talker/
+examples/mps2-an385-baremetal/rust/talker/
 ├── Cargo.toml                 # deps + [package.metadata.nros.deploy.qemu-mps2-an385]
 ├── .cargo/                    # config.toml + nros-board.toml
 │                              # (nros-board.toml carries target = thumbv7m-none-eabi
@@ -84,7 +86,7 @@ default — which every in-tree example does, and which you should too.
 Deploy config lives in the app's `Cargo.toml` and is baked at compile
 time — `nros::main!()` folds it into a `DeployOverlay` the board's boot
 `Config` applies. Verbatim from the in-tree
-[`examples/qemu-arm-baremetal/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-baremetal/rust/talker/Cargo.toml):
+[`examples/mps2-an385-baremetal/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-baremetal/rust/talker/Cargo.toml):
 
 ```toml
 [package.metadata.nros.deploy.qemu-mps2-an385]
@@ -108,7 +110,7 @@ or edit the `locator` above to the port you prefer.
 ## Build
 
 ```bash
-cd examples/qemu-arm-baremetal/rust/talker
+cd examples/mps2-an385-baremetal/rust/talker
 nros sync            # once per checkout location; writes the generated
                      # bindings + the [patch.crates-io] table the leaf's
                      # .cargo/config.toml includes
@@ -140,7 +142,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:10500"];scouting/multica
 #    LAN9118 networking wiring the example expects (a plain `cargo run`
 #    boots QEMU without networking — the example's runner is bare
 #    `-kernel`). The patched qemu-system-arm is provisioned by
-#    `nros setup qemu-arm-baremetal` and reaches PATH via activate.sh:
+#    `nros setup mps2-an385-baremetal` and reaches PATH via activate.sh:
 qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
     -icount shift=auto \
     -semihosting-config enable=on,target=native \
@@ -185,7 +187,7 @@ talker. If no `Publishing:` line:
 ## GitHub source
 
 - Bare-metal talker:
-  [`examples/qemu-arm-baremetal/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-baremetal/rust/talker)
+  [`examples/mps2-an385-baremetal/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-baremetal/rust/talker)
 - Board crate:
   [`packages/boards/nros-board-mps2-an385/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-mps2-an385)
 
@@ -207,7 +209,7 @@ For Cortex-M3 with an RTOS, switch to the
 ## Next
 
 - Subscriber / service / action peers under the same
-  `examples/qemu-arm-baremetal/rust/` tree.
+  `examples/mps2-an385-baremetal/rust/` tree.
 - Wake-callback opt-in: the `wake-callback` (latency-probe) bench
   under `packages/testing/nros-bench/wake-latency-cortex-m3/` shows
   how to feed a backend's transport-notify into the cooperative

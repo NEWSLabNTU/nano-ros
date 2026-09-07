@@ -49,7 +49,7 @@ the burden of getting RTIC + nros + the dispatcher list right on every
 example author. The macro collapses it to one line:
 
 ```rust
-// File: examples/qemu-arm-baremetal/rust/talker-rtic/src/main.rs
+// File: examples/mps2-an385-baremetal/rust/talker-rtic/src/main.rs
 #![no_std]
 #![no_main]
 
