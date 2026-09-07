@@ -1065,8 +1065,11 @@ cpp: cpp-fmt
             -Ipackages/platform/nros-platform-api/include \
             "packages/api/nros-cpp/tests/compile/$probe.cpp" || exit 1; \
     done
-    # c++17 alone: it enables NROS_SYSTEM_PARAM_SERVICES in-file, which reaches
-    # `ComponentNode::adopt_launch_seed_`'s `if constexpr`.
+    # c++17 alone: it enables NROS_SYSTEM_PARAM_SERVICES in-file. That macro
+    # used to reach `ComponentNode::adopt_launch_seed_`'s `if constexpr`, which
+    # no other probe compiled; phase-426 W4 deleted that helper (one store now,
+    # nothing to adopt across), so what this pins today is the parameter surface
+    # at the standard the component lane actually builds with.
     c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -Itarget/nros-cpp-generated \
         -Itarget/nros-c-generated \
@@ -1074,6 +1077,24 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/ros2_param_launch_seed.cpp
+
+    # The HOSTED parameter overloads (`NROS_CPP_STD`) — `std::string` VALUES and
+    # `std::vector<T>` on both node types. NOTHING compiled them before
+    # phase-426 W4: the header sweep above is `-std=c++14 -ffreestanding`
+    # WITHOUT the macro, the `-nostdinc++` probes are the opposite
+    # configuration, and the only in-tree definer is one px4 bridge module no
+    # gate builds. So `ComponentNode::declare_parameter<std::vector<double>>`
+    # shipped unparsed. Its own TU because defining `NROS_CPP_STD` changes what
+    # every nano-ros header does in that unit (issue 0135's flag-gated-field
+    # hazard), which is exactly why it must not join the sweep.
+    echo "  - hosted parameter overloads: std::string + std::vector<T> on both node types (c++17)"
+    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/param_hosted_overloads.cpp
 
     # `nros_grep_q`, not `grep -q`: grep exits 1 for "no match" and >=2 for a
     # tool ERROR, and a bare `grep -q ... || finding` reports the second as the

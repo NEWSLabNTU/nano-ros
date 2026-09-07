@@ -147,6 +147,16 @@ KINDS = ("diverges", "hosted-only")
 
 # Every capability macro the public headers define for themselves, plus the
 # consumer-facing opt-in. Forcing one ON is exactly what px4 does.
+#
+# phase-426 W4 added `NROS_SYSTEM_PARAM_SERVICES`, the one macro on this list
+# that no header defines for itself: `NanoRosCapabilities.cmake` sets it, per
+# DIRECTORY (`add_compile_definitions`), when the bringup declares the
+# `param_services` capability. So it is exactly the shape the rest of this list
+# exists for — a macro two TUs of one image can legitimately disagree about —
+# and it had never been measured against a layout, while gating the branch that
+# decides whether a node has a parameter store at all. It became worth
+# measuring when the C++ parameter MEMBERS went away and the facade started
+# depending on the store's existence.
 CAPS = (
     "NROS_CPP_STD",
     "NROS_CPP_HAS_SHARED_PTR",
@@ -155,6 +165,7 @@ CAPS = (
     "NROS_CPP_HAS_STD_FUNCTION",
     "NROS_CPP_HAS_STD_CHRONO",
     "NROS_CPP_HAS_STD_SSTREAM",
+    "NROS_SYSTEM_PARAM_SERVICES",
 )
 
 # Hosted is c++17 because the umbrella's `if constexpr` needs it; the
