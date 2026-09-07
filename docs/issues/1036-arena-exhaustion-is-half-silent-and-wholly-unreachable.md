@@ -142,3 +142,117 @@ with the decoder. That needs a Zephyr SDK, and the host this was written on has
 none — the same wall issue 1075 hit today. What has moved is that the host side
 is now genuinely verified rather than nominally: the record is written by the
 real allocator on the real failure path, and a lane runs it.
+
+## 2026-09-07 -- the record named the number and could not name the place
+
+Both halves were re-measured against the tree rather than against this file,
+and the "half silent" half was still half silent, one layer in from where the
+first fix landed.
+
+### Stage 4 was declared, documented, decoded, and emitted by nothing
+
+`Stage::RegisteringEntities = 4` is documented as "the interval where an
+under-sized arena halts", and `read-boot-report.py` shipped it as
+`RegisteringEntities (NOT YET WIRED -- no call site emits this)`. Measured:
+`git grep` finds four `checkpoint` call sites in the tree -- `ReportReady`,
+`BootConfigResolved`, `ExecutorReady`, `FirstSpin`. Stages 4 and 5 had no
+producer.
+
+So an image that ran out of arena wrote a record whose `stage` read
+`ExecutorReady` -- the same value an image reports when it opens an executor
+and dies before registering anything at all. The record named the ALLOCATION
+and could not say WHERE, which is exactly half of a diagnostic on the one board
+where it is the only channel. The module's own claim, "the stage that was NOT
+reached names the phase to look at", was false for the single phase this
+instrument was built to observe.
+
+Fixed: `boot_report::note_alloc` and `note_alloc_failed` stamp
+`RegisteringEntities`. The stamp is on the RECORD's writers rather than on the
+two `arena_alloc*` sites, because the arena is claimed by entity registration
+and by nothing else -- so every present and future call site is covered by
+construction and there is no second place to remember. On the failure path it
+is stamped unconditionally, outside the first-writer branch: a second failure
+adds nothing to the numbers but is still evidence that registration was in
+flight, and a stage that depended on winning a race is the sort of number this
+record must never print.
+
+Stage 5 (`EntitiesReady`) has no truthful producer in the core and is now
+documented as RESERVED rather than left reading as an oversight. "Every entity
+the image declares was registered" has no observable moment here: an
+application may register lazily, which is the same reason issue 0900's headroom
+advisory fires at the first spin instead of at an end of registration that does
+not exist. Removing it would renumber `FirstSpin` and bump `VERSION` to retire
+a value no image can produce; the next reader would then file the renumbering
+as the bug. An entry shape that DOES know when its register pass ended -- a
+generated component `setup` callback returning OK -- can stamp it later without
+moving anything.
+
+### The log channel had never been asserted for the `_with_trailing` half
+
+This file says "every hosted test has a sink, so the message is asserted and
+passes (`executor_arena_advisory.rs` does exactly that)". That is not what that
+file asserts. It asserts `report_arena_headroom` -- the OVER-PROVISION advisory,
+a different function on a different latch. Nothing anywhere asserted
+`report_arena_exhausted` firing at all, from either half. Measured by mutation:
+deleting the `report_arena_exhausted` call from `arena_alloc_with_trailing`
+passed every test in the tree.
+
+### The dump-and-decode path had no test either
+
+`check-boot-report-layout` compares two SOURCE files. `boot_report::tests` reads
+the record through `Snapshot`, in Rust. Neither can see a dump, so the tool an
+operator actually runs had never been run against a record produced by a real
+failure -- in any lane, on any host.
+
+`executor::tests::an_exhausted_arena_decodes_to_the_knob_an_operator_must_set`
+closes that, as far as a host can take it. One real arena exhaustion through
+`arena_alloc_with_trailing`, then:
+
+* the log line reached a sink, names `NROS_EXECUTOR_ARENA_SIZE`, and was not
+  truncated by `nros_log`'s 256-byte format budget;
+* `read-boot-report.py --addr-only` resolves the record by SYMBOL out of the
+  test binary's ELF, and the size the symbol table reports equals
+  `BootReport::struct_size()` -- those are the two numbers a `savemem` line is
+  built from, and a short dump is the one failure this record cannot report
+  about itself;
+* the record's own BYTES (not a re-serialised `Snapshot`, so the compiler's
+  layout rather than the test's idea of it) decode under the script;
+* the verdict exits non-zero and names ARENA EXHAUSTED, the stage
+  `RegisteringEntities`, and `set NROS_EXECUTOR_ARENA_SIZE >= <capacity +
+  shortfall>` -- the value, not the symptom.
+
+Mutation-checked both ways: removing the `report_arena_exhausted` call fails it
+on the log channel, removing the `RegisteringEntities` stamp fails it on the
+stage.
+
+### Gate and lane
+
+* `check-boot-report-layout.py` now also compares the `Stage` ladder -- every
+  variant's NAME and NUMBER -- against the decoder's `STAGES` table, with the
+  same three negative controls the field-order check has. A renumbered stage is
+  the drift that DECODES: the script prints a plausible phase name for a number
+  the image never meant. The gate's reach was narrower than the rule it
+  enforced, which is the issue-0196 shape.
+* `just check node-std-tests` runs the new cell as a third `NROS_BOOT_REPORT=1`
+  process, and every filtered invocation in that recipe now goes through one
+  shared `ran_tests` guard. A cargo filter that matches nothing runs zero tests
+  and exits 0; the backing-latch check had a hand-written guard for that and the
+  two boot-report invocations had none.
+
+### STILL open, and this is the whole of what is left
+
+**The on-silicon run.** No Zephyr image has been built with
+`CONFIG_NROS_BOOT_REPORT=y`, had its arena exhausted on purpose, halted, and
+been dumped with `pyocd commander savemem`. Nothing in this repo can do it:
+there is no hardware-in-the-loop lane (`git grep` over `just/`, `.github/` and
+`scripts/` finds no probe harness), and the board and the shared sizes-probe
+directory were in use by another task while this landed, so no board build was
+attempted -- deliberately, rather than for want of a toolchain.
+
+What has moved is that the step the probe performs is now the ONLY untested one.
+Symbol resolution, dump length, positional decode, the operator's verdict and
+both diagnostic channels are exercised by a lane on every run. The board run is
+one command against an image, and the expected output is written above.
+
+**The sibling sweep, unchanged.** Nothing has yet enumerated which other
+`nros_log` call sites are reachable only on a target that cannot carry a sink.

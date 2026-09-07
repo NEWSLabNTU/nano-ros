@@ -2,7 +2,7 @@
 """The boot report's Rust layout and its Python decoder must agree.
 
 phase-412. `scripts/read-boot-report.py` decodes a memory dump positionally --
-fifteen little-endian u32s in a fixed order. Nothing in either language forces
+twenty little-endian u32s in a fixed order. Nothing in either language forces
 that order to match `BootReport` in
 `packages/core/nros-node/src/boot_report.rs`, and a mismatch does not fail: it
 DECODES, and prints an arena size that is really a callback count.
@@ -17,6 +17,8 @@ Checked here:
 * `Snapshot`, which the Rust tests read through, has the same order again --
   so a test asserting on the record exercises the layout the script assumes
 * `MAGIC` and `VERSION` are the same constants on both sides
+* the `Stage` ladder -- every variant's NAME and NUMBER -- equals the
+  decoder's `STAGES` table (issue 1036)
 
 Not checked here: the size the RECORD reports at runtime. That comes from
 `size_of` on the target and is asserted by the Rust test, which is the only
@@ -61,6 +63,53 @@ def py_fields(text: str, name: str = "FIELDS") -> list[str]:
     if not m:
         raise SystemExit(f"{PY}: no `{name}` tuple found")
     return re.findall(r'"([a-z_][a-z0-9_]*)"', m.group(1))
+
+
+def rust_stage_variants(text: str) -> dict[int, str]:
+    """`Stage` variant name by discriminant, from the Rust enum.
+
+    Issue 1036. `stage` is the record's single most useful field and the decoder
+    renders it through a hand-written table, so an inserted or renumbered
+    variant makes the script name the WRONG PHASE -- confidently, with a
+    plausible string, which is the same failure mode the field order has and
+    the reason this gate exists. The enum's own doc comment says inserting a
+    stage renumbers the rest; this is what notices when only one side did.
+    """
+    m = re.search(r"\npub enum Stage \{\n(.*?)\n\}\n", text, re.S)
+    if not m:
+        raise SystemExit(f"{RUST}: no `pub enum Stage` found")
+    out: dict[int, str] = {}
+    for line in m.group(1).splitlines():
+        vm = re.match(r"\s*([A-Z][A-Za-z0-9]*) = (\d+),\s*$", line)
+        if vm:
+            out[int(vm.group(2))] = vm.group(1)
+    return out
+
+
+def py_stage_names(text: str) -> dict[int, str]:
+    """Leading variant name of each entry in the decoder's `STAGES` table."""
+    m = re.search(r"\nSTAGES = \{\n(.*?)\n\}\n", text, re.S)
+    if not m:
+        raise SystemExit(f"{PY}: no `STAGES` dict found")
+    out: dict[int, str] = {}
+    for line in m.group(1).splitlines():
+        sm = re.match(r'\s*(\d+): "([A-Za-z0-9]+)', line)
+        if sm:
+            out[int(sm.group(1))] = sm.group(2)
+    return out
+
+
+def diff_stages(rust: dict[int, str], py: dict[int, str], quiet: bool = False) -> int:
+    if rust == py:
+        return 0
+    if quiet:
+        return 1
+    rc = fail("stage ladder: boot_report.rs and read-boot-report.py disagree")
+    for n in sorted(set(rust) | set(py)):
+        r, p = rust.get(n), py.get(n)
+        if r != p:
+            print(f"  stage {n}: Rust has {r!r}, decoder has {p!r}", file=sys.stderr)
+    return rc
 
 
 def const_u32(text: str, name: str) -> int:
@@ -126,6 +175,11 @@ def main() -> int:
         if r != p:
             rc |= fail(f"{name}: boot_report.rs has {r:#x}, read-boot-report.py has {p:#x}")
 
+    stages = rust_stage_variants(rust)
+    if len(stages) < 2:
+        rc |= fail("parsed fewer than two `Stage` variants -- the gate is blind")
+    rc |= diff_stages(stages, py_stage_names(py))
+
     # The SECOND record. Same positional decode, same drift, same gate -- it
     # lives in another crate only because nros-node depends on that crate and
     # the call would otherwise be a cycle, which changes nothing about how
@@ -147,7 +201,8 @@ def main() -> int:
     if rc == 0:
         print(
             f"check-boot-report-layout: OK (BootReport {len(record)} fields / "
-            f"{len(record) * 4} bytes; SubscriberAllocReport {len(alloc_record)} fields / "
+            f"{len(record) * 4} bytes, {len(stages)} stages; "
+            f"SubscriberAllocReport {len(alloc_record)} fields / "
             f"{len(alloc_record) * 4} bytes; all agreed with the decoder)"
         )
     return rc
@@ -191,6 +246,21 @@ def self_test() -> int:
 
     # And the agreeing case must still pass, or the gate fails everything.
     expect("passes when they agree", diff("t", record, script, "a", "b", quiet=True), 0)
+
+    # The stage ladder, same three controls. A renumber is the drift that
+    # DECODES: the script prints a stage name for a number the image never
+    # meant, which is worse than refusing.
+    rust_stages = rust_stage_variants(rust)
+    py_stages = py_stage_names(py)
+    expect("parses the stage enum", len(rust_stages) > 2, True)
+    expect("parses the stage table", len(py_stages) > 2, True)
+    renumbered = dict(py_stages)
+    lo, hi = sorted(renumbered)[:2]
+    renumbered[lo], renumbered[hi] = renumbered[hi], renumbered[lo]
+    expect("catches a renumbered stage", diff_stages(rust_stages, renumbered, quiet=True) != 0, True)
+    dropped = {k: v for k, v in py_stages.items() if k != max(py_stages)}
+    expect("catches a missing stage", diff_stages(rust_stages, dropped, quiet=True) != 0, True)
+    expect("passes when the stages agree", diff_stages(rust_stages, py_stages, quiet=True), 0)
 
     print("check-boot-report-layout --self-test: " + ("OK" if ok else "FAILED"))
     return 0 if ok else 1

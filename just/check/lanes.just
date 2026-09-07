@@ -1244,15 +1244,53 @@ node-std-tests:
     # run. An env-var cfg is worse than a cargo feature here: `--workspace`
     # cannot even unify it in by accident.
     #
-    # TWO INVOCATIONS, and that is not tidiness. The record is a process-global
+    # THREE INVOCATIONS, and that is not tidiness. The record is a process-global
     # static keeping only the FIRST allocation failure; `boot_report::tests` has
     # a `note_alloc_failed(100, 8)` case, and the link test asserts the record
     # is untouched before it writes. Sharing a binary means sharing a process
     # and the link test reads the other's numbers — measured, it failed with
-    # `(100, 8)`. Two cargo invocations are two processes.
-    NROS_BOOT_REPORT=1 cargo test -p nros-node --lib --features std --quiet boot_report::tests
-    NROS_BOOT_REPORT=1 cargo test -p nros-node --lib --features std --quiet -- \
+    # `(100, 8)`. Separate cargo invocations are separate processes.
+    #
+    # ONE spelling for "did the filter actually match something". A cargo test
+    # filter that matches nothing runs zero tests and EXITS 0 -- the silently
+    # inert shape this file already guards against for `required-features`
+    # targets, and the shape a renamed test takes here. The backing-latch check
+    # below had this guard and the boot-report ones did not, which is a gate
+    # whose reach is narrower than the rule it enforces (issue 0196).
+    ran_tests() {
+        local label="$1"; shift
+        local out
+        out="$("$@" 2>&1)" || { printf '%s\n' "$out"; return 1; }
+        printf '%s\n' "$out"
+        case "$out" in
+            *"0 passed"*|*"running 0 tests"*)
+                printf '%s\n' \
+                    "node-std-tests: $label ran 0 tests." \
+                    "  The filter matched nothing, so it was renamed or its cfg is off." \
+                    "  A filter that matches nothing exits 0 -- fix the name here." >&2
+                return 1 ;;
+        esac
+    }
+    ran_tests "boot_report::tests" \
+        env NROS_BOOT_REPORT=1 cargo test -p nros-node --lib --features std --quiet \
+        boot_report::tests
+    ran_tests "the arena-to-record link test" \
+        env NROS_BOOT_REPORT=1 cargo test -p nros-node --lib --features std --quiet -- \
         --exact executor::tests::arena_exhaustion_reaches_the_boot_record
+    # Issue 1036 -- the same failure, taken all the way to the tool an operator
+    # runs: the record resolved by SYMBOL out of the ELF, its bytes decoded by
+    # the boot-report reader under `scripts/`, and the verdict asserted to name
+    # the arena, the stage and the value to set. (Spelled without the script's
+    # path on purpose: `check-gate-selftests` reads a recipe body for
+    # `scripts/*.py` mentions to decide what is a GATE, and a decoder named in a
+    # comment would be asked for a selftest it has no failure path to exercise.)
+    # Its own process for the same reason as the line above (the record keeps
+    # only the FIRST failure) plus a second one: `report_arena_exhausted` is
+    # one-shot on a process-scoped latch, and this cell asserts the LOG channel
+    # too.
+    ran_tests "the boot-report decode cell" \
+        env NROS_BOOT_REPORT=1 cargo test -p nros-node --lib --features std --quiet -- \
+        --exact executor::tests::an_exhausted_arena_decodes_to_the_knob_an_operator_must_set
     # issues 1183/1186 — a THIRD process-global in this crate, found the same
     # way and answered the same way. `executor::backing::TAKEN` is a
     # process-scoped latch, and `spin.rs`'s `default_backing` claims it on every
@@ -1262,22 +1300,17 @@ node-std-tests:
     # Measured: green alone, red in the full lane. It is `#[ignore]`d for that
     # reason and runs here, in its own process.
     #
-    # The `1 passed` assertion is not belt-and-braces. `--exact` against a
+    # The ran-tests assertion is not belt-and-braces. `--exact` against a
     # renamed test matches NOTHING and cargo exits 0 having run none — the
     # silently-inert shape this file already guards against for
     # `required-features` targets. A skip must be loud or it is not a lane.
-    backing_out="$(cargo test -p nros-node --lib \
+    # It goes through the shared `ran_tests` above rather than a hand-written
+    # `case` of its own: this check had two spellings for one rule, and a second
+    # spelling is how a rule ends up enforced in one place and not the others.
+    ran_tests "the executor-backing latch test" \
+        cargo test -p nros-node --lib \
         --features std,sim-time,param-services --quiet -- --ignored --exact \
-        executor::backing::tests::the_static_is_handed_out_once_and_only_once 2>&1)"
-    printf '%s\n' "$backing_out"
-    case "$backing_out" in
-        *"1 passed"*) ;;
-        *) printf '%s\n' \
-             "node-std-tests: the executor-backing latch test ran 0 tests." \
-             "  \`--exact\` matched nothing, so it was renamed or its cfg is off." \
-             "  A filter that matches nothing exits 0 — fix the name here." >&2
-           exit 1 ;;
-    esac
+        executor::backing::tests::the_static_is_handed_out_once_and_only_once
     # `env,std` and NOT `rmw-cffi`: the cffi flavour makes the wall clock an
     # extern the linker wants a platform port for, and this lane links none.
     cargo test -p nros --lib --features env,std --quiet
