@@ -259,13 +259,44 @@ second one.
       host SPE code or heap. That decides whether "does not fit" is fatal or
       merely expensive, and nothing in §2a settles it.
 
-- [ ] **418.2 — Compile what already exists.** SCOPE CORRECTED 2026-09-06:
-      `unix-mock` is already on a lane (`required-features-tests`, issue 0652),
-      so what remains is the DEFAULT-stub and `fsp` configurations plus the
-      fork's `ivc.c` behind `link-ivc`. The original text said no lane compiled
-      the crate at all, which was never true after 0652. **Acceptance:** `just check` fails if either the
-      driver or the vendored IVC link stops compiling. This is the cheapest item
-      and it is the one that stops phase-415 from silently breaking §2 Q4.
+- [x] **418.2 — Compile what already exists.** (landed 2026-09-07) SCOPE
+      CORRECTED TWICE. The 2026-09-06 correction said what remained was "the
+      DEFAULT-stub and `fsp` configurations plus the fork's `ivc.c` behind
+      `link-ivc`". The stub half was already wrong: `nvidia-ivc` and
+      `zpico-link-ivc` are both workspace MEMBERS, so
+      `check-workspace-features`' `--workspace --no-default-features`
+      test-compile builds them — measured by touching both files and watching
+      them compile, before adding a row that would have duplicated it.
+
+      What was genuinely uncovered, and is now:
+
+      * **`zpico-sys --features link-ivc`** — a clippy row in
+        `check-workspace-features`. `link-ivc` is a zpico-sys FEATURE, so
+        nothing off it compiled the vendored
+        `zenoh-pico/src/link/{unicast,config}/ivc.c`; the build script emits
+        `Z_FEATURE_LINK_IVC 1` and both TUs now build on every `just check`
+        (verified: `ivc.o` appears in the object set).
+      * **`nvidia-ivc --features fsp`** — `check-ivc-fsp`, skip-capable. Its
+        build script REFUSES without `NV_SPE_FSP_DIR` pointing at a tree holding
+        `lib/libtegra_aon_fsp.a`, so on an unprovisioned host this cannot be a
+        compile. It is a LEDGERED skip (issue 1184's rule: an uncounted skip
+        reads as a pass), and a variable that is SET but wrong is a FAILURE
+        rather than a skip — someone who set it meant to point somewhere.
+        Provisioning is 418.4; when that lands this gate starts compiling with
+        no change to it.
+
+      **Compiling `fsp.rs` for the first time found a lint immediately** —
+      `clippy::declare_interior_mutable_const` on `Slot::EMPTY`. It is a false
+      positive for the `[const { … }; N]` atomic-array idiom (the repeat wants a
+      fresh value per element, which is what the inline `const {}` block is for)
+      and is allowed at the constant with that reason. The gate runs `-D
+      warnings` like every other clippy lane, so without it this would have
+      scrolled past.
+
+      **Acceptance:** `just check` fails if either the driver or the vendored
+      IVC link stops compiling — met for `link-ivc` on every host, and for `fsp`
+      on a provisioned one. `just check fast`: 264 gates, 2 ledgered skips, 0
+      failed.
 
 - [x] **418.3 — `cortex-r5` arch profile.** (landed 2026-09-06) Added to
       `nros-platform-freertos/nros-platform.toml`, settling the float ABI in the

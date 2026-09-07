@@ -324,6 +324,15 @@ kconfig-overridden-values:
 # `resolve_queryable_default` read two declared facts without declaring either,
 # so cargo never re-ran when a declaration changed and the sizing read as
 # applied while being stale.
+# phase-418 418.2 — the IVC driver's `fsp` configuration, which reaches the Orin
+# safety island and which no lane compiled. Skip-capable by design: its build
+# script REFUSES without `NV_SPE_FSP_DIR`, so on an unprovisioned host this is a
+# LEDGERED skip rather than a silent pass (issue 1184's rule). The default stub
+# and `unix-mock` are covered elsewhere -- see the script's header.
+[group("checks")]
+ivc-fsp:
+    @bash scripts/check-ivc-fsp-compile.sh
+
 [group("checks")]
 declared-fact-carriers:
     @python3 scripts/check-declared-fact-carriers.py
