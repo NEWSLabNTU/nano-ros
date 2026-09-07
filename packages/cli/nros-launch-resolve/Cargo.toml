@@ -8,11 +8,27 @@
 # cannot be shadowed, and we never shadow a user's real `play_launch`.
 #
 # Its OWN workspace on purpose. It links layer 2 from the `play_launch` repo,
-# whose `ros-launch-resolve` git-deps `ros-launch-manifest` by tag (v0.1.11, in
-# the submodule's own workspace manifest); `nros-cli-core` deps the SAME rlm tag. Both resolve to one rev, but keeping
-# this crate excluded from the `packages/cli` workspace (its own lock) preserves
-# the separation the old two-copies layout needed and stays robust if the two
-# ever diverge on a pin.
+# whose `ros-launch-resolve` git-deps `ros-launch-manifest` by tag, in the
+# submodule's own manifest — and the two pins HAVE diverged, which is what this
+# separation was built for: the submodule resolves rlm at the tag its checkout
+# names, while `nros-cli-core` and the three other nano-ros crates name their
+# own. Excluding this crate from the `packages/cli` workspace gives it its own
+# lock, so each side moves on its own schedule instead of one forcing the other.
+#
+# Do not read a version out of this comment. It said `v0.1.11` while the
+# submodule was on v0.1.23 and nano-ros on v0.1.31, and asserted the two were
+# "the SAME rlm tag" long after they were not — a comment naming a pin goes
+# stale silently, because nothing compiles it. Read the pins:
+#   git grep 'ros-launch-manifest' -- '*Cargo.toml'
+#
+# rlm is OUR repo and a git-tag dep, never crates.io, so this leaf's
+# `Cargo.lock` legitimately FOLLOWS the submodule: when the submodule pin moves
+# and its rlm tag changes with it, regenerate the lock (`just lock-update "" ""
+# packages/cli/nros-launch-resolve`), re-run `just setup-launch-resolve` (issue
+# 0409) and `just check submodule-pinned-locks`. That is a lock tracking a
+# local source, not the registry drift `check-leaf-lockfiles` guards — which is
+# why that gate excludes `packages/cli/` and this one is covered by
+# `check-submodule-pinned-locks` instead.
 [package]
 name = "nros-launch-resolve"
 version = "0.5.0"
