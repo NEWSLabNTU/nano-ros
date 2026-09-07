@@ -929,6 +929,63 @@ edit, which the governing principle requires be made loud by other means:
    The generated entry already checks; a hand-written `main` does not, and a
    node that failed to create currently proceeds silently.
 
+## `shared_from_this` — the merged node cannot keep the base (2026-09-07)
+
+The node-API proposal above gives the merged type this layout, with no base
+class:
+
+```cpp
+nros_cpp_node_t handle_;  bool initialized_;  void* executor_handle_;
+Clock clock_;             void* hosted_ = nullptr;
+```
+
+Today's `rclcpp::Node` does have one — `std::enable_shared_from_this<Node>`
+(`nros.hpp:540`) — and it is load-bearing. Two in-tree templates use upstream's
+own two-phase idiom to hand a node to `diagnostic_updater`:
+
+```cpp
+auto node = std::make_shared<SmokeNode>();
+node->post_init();          // calls shared_from_this(); cannot be done in the ctor
+```
+
+(`examples/templates/rclcpp-compat-smoke/src/talker.cpp:75-76` and
+`examples/templates/topic-state-monitor-port/src/topic_state_monitor.cpp:106`.)
+Both are hand-written `main`s, so this is a live runtime path, not a
+compile-only surface.
+
+**The base cannot simply be gated.** A base that exists only where `<memory>`
+does changes `sizeof` between two TUs of one image, and px4 sets
+`-DNROS_CPP_STD` on one module of a larger image deliberately. A freestanding TU
+holding a `rclcpp::Node` by value and passing `Node&` to a hosted TU would have
+every member offset shifted — issues 0135 and 0460, exactly the hazard the
+layout rule exists to prevent.
+
+**Nor can it be equalised by mirroring.** Reserving two pointers' worth of
+opaque storage freestanding, to match what `std::enable_shared_from_this` happens
+to occupy, hand-mirrors a foreign type's layout. This repo has a rule and a gate
+against that shape for FFI structs (`check-ffi-struct-mirrors`), for the reason
+that the mirror drifts silently. A standard-library internal is a worse thing to
+mirror than our own header, not a better one.
+
+**Decision: the base goes.** `shared_from_this()` survives as a hosted-only
+member over a `std::weak_ptr<Node>` held in `detail::NodeHosted`, populated by an
+explicit `bind_shared(std::shared_ptr<Node>)` call. `std::make_shared<Derived>`
+populates the real base and nothing else does, so without the base nothing can
+populate it implicitly, and the explicit call is the only honest substitute.
+
+**The cost, stated.** A ported file that calls `shared_from_this()` needs one
+added line, and a file that does not add it gets a runtime refusal rather than a
+compile error. That is weaker than clause 2's "mechanical edit" standard, and it
+is the same class as `ok()` and as `init()`'s discarded `Result`: a difference
+the compiler does not point at, admissible only because it is loud. Disposition
+is `adopt-bounded`, and `shared_from_this()` on an unbound node must refuse
+loudly rather than return an empty pointer for the caller to dereference.
+
+The alternative — keep the base and accept that `rclcpp::Node` stays hosted-only
+— was rejected because it abandons the merge: phase-427 W4's acceptance requires
+one of the subnode packages to build for a freestanding target, which is the
+test of whether the merged type fits at all.
+
 ## Review of the invented parts (2026-09-05)
 
 Four items were listed as inventions. Reviewed against the governing principle,
