@@ -268,7 +268,12 @@ def main() -> int:
     }
     pack_texts = {
         str(p.relative_to(REPO)): p.read_text(encoding="utf-8")
-        for p in sorted(PACKS_DIR.rglob("*.jinja"))
+        # `tracked()`, not `rglob`: the packs are committed, so the index
+        # answers this and a walk only stats its way to the same list.
+        # `check-no-tracked-file-find` refuses the walk for the reason it
+        # states — 7m36s to 0.8s for the same 232 paths — and the helper is
+        # already used two lines up for the fallback headers.
+        for p in sorted(tracked(f"{PACKS_DIR.relative_to(REPO)}/**/*.jinja"))
     }
     codegen_rs = (
         CODEGEN_VERSION_RS.read_text(encoding="utf-8")
