@@ -377,6 +377,26 @@ typedef struct nros_support_t rclc_support_t;
  * is NOT deprecated. Closing this needs a decision about what our timer
  * callback receives, not a rename.
  *
+ * ── The CLOCK, though, is taken (phase-430 W1) ────────────────────────────
+ *
+ * The refusal above is about the NAME and the callback contract; it says
+ * nothing about the argument list, and rcl's argument list is
+ *
+ *   rcl:  rcl_ret_t rcl_timer_init(rcl_timer_t *timer, rcl_clock_t *clock,
+ *             rcl_context_t *context, int64_t period,
+ *             const rcl_timer_callback_t callback, rcl_allocator_t allocator)
+ *
+ * — clock SECOND, immediately after the timer. `nros_timer_init_on_clock`
+ * takes an `nros_clock_t *` in exactly that position, ahead of the
+ * context-carrying `support`, which is RFC-0089's "C takes rcl's spellings"
+ * applied to the half of the spelling that survives our callback contract.
+ *
+ * It is a SECOND verb rather than a widened `nros_timer_init` because C has no
+ * overloading and every existing caller passes five arguments. The clock-less
+ * form is the wall timer (rclcpp's `create_wall_timer`), which is what those
+ * callers have always had; the clock-taking form is how a C node asks for a
+ * ROS-time timer that follows `/clock`. Ledger row `c:timer_init_on_clock`.
+ *
  * ── Also still refused, and why, so the absence is a record ───────────────
  *
  * * `rcl_*_fini` for publisher / subscription / client / service / action —

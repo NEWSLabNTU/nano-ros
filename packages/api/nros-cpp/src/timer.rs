@@ -102,9 +102,6 @@ pub unsafe extern "C" fn nros_cpp_timer_create_on_clock(
     context: *mut c_void,
     out_handle_id: *mut usize,
 ) -> nros_cpp_ret_t {
-    use nros_c::nros_clock_type_t as Ct;
-    use nros_node::executor::TimerClockSource;
-
     if out_handle_id.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
@@ -121,11 +118,13 @@ pub unsafe extern "C" fn nros_cpp_timer_create_on_clock(
     // which is the exact confusion phase-425 exists to remove. An out-of-range
     // value is rejected for the same reason — the widening cannot be UB here,
     // unlike a transmute into the enum.
-    let source = match clock_type {
-        x if x == Ct::NROS_CLOCK_STEADY_TIME as u8 => TimerClockSource::Steady,
-        x if x == Ct::NROS_CLOCK_ROS_TIME as u8 => TimerClockSource::Ros,
-        x if x == Ct::NROS_CLOCK_SYSTEM_TIME as u8 => TimerClockSource::System,
-        _ => return NROS_CPP_RET_INVALID_ARGUMENT,
+    //
+    // phase-430 W1 — the mapping itself is `nros_c::nros_timer_clock_source`,
+    // the one place the `nros_clock_type_t` discriminants are decoded, so the C
+    // verb (`nros_timer_init_on_clock`) and this one cannot disagree about what
+    // a clock kind means.
+    let Some(source) = nros_c::nros_timer_clock_source(clock_type) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
     };
 
     let cb = match callback {

@@ -48,6 +48,30 @@ pub enum nros_clock_type_t {
     NROS_CLOCK_STEADY_TIME = 3,
 }
 
+/// phase-430 W1 — the ONE mapping from a C clock kind to the executor's
+/// timer clock source, and the reason it lives here rather than in
+/// `nros-node`: these discriminants belong to `nros_clock_type_t`, so a copy
+/// of them a crate away is the hand-mirror drift 0135/0160 measured one layer
+/// down. Both FFI crates call this — `nros_timer_init_on_clock` (C) and
+/// `nros_cpp_timer_create_on_clock` (C++) — so a clock kind cannot mean one
+/// thing in a C image and another in a C++ one.
+///
+/// `None` for a kind that names no source: `NROS_CLOCK_UNINITIALIZED`, and any
+/// out-of-range byte a C caller widened into the parameter. Both are REJECTED
+/// by the callers rather than defaulted to `Steady` — a timer created on a
+/// clock the caller never initialised would silently be a wall timer, which is
+/// the exact confusion phase-425 exists to remove.
+pub fn nros_timer_clock_source(clock_type: u8) -> Option<nros_node::executor::TimerClockSource> {
+    use nros_node::executor::TimerClockSource;
+
+    match clock_type {
+        x if x == nros_clock_type_t::NROS_CLOCK_STEADY_TIME as u8 => Some(TimerClockSource::Steady),
+        x if x == nros_clock_type_t::NROS_CLOCK_ROS_TIME as u8 => Some(TimerClockSource::Ros),
+        x if x == nros_clock_type_t::NROS_CLOCK_SYSTEM_TIME as u8 => Some(TimerClockSource::System),
+        _ => None,
+    }
+}
+
 /// Clock state enumeration.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

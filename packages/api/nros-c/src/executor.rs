@@ -1926,9 +1926,35 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
             return NROS_RET_INVALID_ARGUMENT;
         }
 
+        // phase-430 W1 — the clock the timer was initialised on selects the
+        // schedule, and every timer this crate creates ends at the ONE dispatch
+        // `Executor::register_timer_on_clock`. A NULL clock is the wall timer
+        // `nros_timer_init` makes, which is `TimerClockSource::Steady` — the
+        // pre-425 code path, byte for byte.
+        //
+        // The clock's type is read HERE rather than cached at init because that
+        // is where rcl reads it too, and because the mapping has exactly one
+        // implementation (`nros_c::nros_timer_clock_source`) shared with the
+        // C++ verb. A clock that has been finalised or was never initialised
+        // between init and this call is refused rather than defaulted to a wall
+        // timer — silently becoming a wall timer is the confusion phase-425
+        // exists to remove.
+        let source = if timer_ref.clock.is_null() {
+            nros_node::executor::TimerClockSource::Steady
+        } else {
+            let clock_ref = &*timer_ref.clock;
+            if clock_ref.state != crate::clock::nros_clock_state_t::NROS_CLOCK_STATE_READY {
+                return NROS_RET_NOT_INIT;
+            }
+            match crate::clock::nros_timer_clock_source(clock_ref.r#type as u8) {
+                Some(source) => source,
+                None => return NROS_RET_INVALID_ARGUMENT,
+            }
+        };
+
         // Register with the nros-node executor
         let period = nros_node::TimerDuration::from_micros(period_us);
-        match rust_exec.register_timer(period, wrapper) {
+        match rust_exec.register_timer_on_clock(period, source, wrapper) {
             Ok(handle_id) => {
                 // Store handle ID and executor pointer for cancel/reset operations
                 let timer_mut = &mut *timer;

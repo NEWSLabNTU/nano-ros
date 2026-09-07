@@ -5,6 +5,7 @@
 use core::{ffi::c_void, ptr};
 
 use crate::{
+    clock::{nros_clock_state_t, nros_clock_t},
     error::*,
     support::{nros_support_state_t, nros_support_t},
 };
@@ -46,6 +47,14 @@ pub struct nros_timer_t {
     pub context: *mut c_void,
     /// Pointer to parent support context
     pub support: *const nros_support_t,
+    /// The clock this timer is scheduled against, or NULL for the WALL timer
+    /// `nros_timer_init` creates (phase-430 W1).
+    ///
+    /// rcl's `rcl_timer_init` takes a `rcl_clock_t *` here and rcl's timer
+    /// keeps it; ours does the same, in the same position, so a reader of one
+    /// recognises the other. The clock must outlive the timer — the executor
+    /// reads its `type` at `rclc_executor_add_timer` time, not at init.
+    pub clock: *const nros_clock_t,
     /// Handle ID from executor registration (SIZE_MAX = not registered)
     pub handle_id: usize,
     /// Opaque pointer to internal executor (set by rclc_executor_add_timer)
@@ -61,6 +70,7 @@ impl Default for nros_timer_t {
             callback: None,
             context: ptr::null_mut(),
             support: ptr::null(),
+            clock: ptr::null(),
             handle_id: usize::MAX,
             _executor: ptr::null_mut(),
         }
@@ -96,7 +106,14 @@ pub extern "C" fn rcl_get_zero_initialized_timer() -> nros_timer_t {
     nros_timer_t::default()
 }
 
-/// Initialize a timer.
+/// Initialize a WALL timer — the clock-less case (phase-430 W1).
+///
+/// The timer is scheduled against the executor's monotonic spin delta, which
+/// is what every `nros_timer_init` caller has always got and is what rclcpp
+/// spells `create_wall_timer`: a paused simulator does not pause it. For a
+/// timer that follows ROS time — a bag replay, a simulator's `/clock` — use
+/// [`nros_timer_init_on_clock`], which takes the clock in the position
+/// `rcl_timer_init` puts it.
 ///
 /// # Parameters
 /// * `timer` - Pointer to a zero-initialized timer
@@ -121,6 +138,86 @@ pub unsafe extern "C" fn nros_timer_init(
     callback: nros_timer_callback_t,
     context: *mut c_void,
 ) -> nros_ret_t {
+    unsafe { timer_init_inner(timer, ptr::null(), support, period_ns, callback, context) }
+}
+
+/// Initialize a timer scheduled against `clock` — rcl's shape (phase-430 W1).
+///
+/// `rcl_timer_init(timer, clock, context, period, callback, allocator)` takes
+/// its `rcl_clock_t *` immediately after the timer, and so does this: the
+/// clock is the second parameter, ahead of the context-carrying `support`.
+/// That is RFC-0089's "C takes rcl's spellings" applied to the ARGUMENT LIST,
+/// which is the half of the spelling that survives our different callback
+/// contract — `<nros/rcl_compat.h>` §4 records why the NAME `rcl_timer_init`
+/// stays refused (rcl hands the callback the time since its last call, we hand
+/// it the user's context, so a ported timer callback is a different FUNCTION
+/// and taking the name would be a compile-and-differ).
+///
+/// The clock's TYPE selects the schedule, through the one mapping
+/// [`crate::clock::nros_timer_clock_source`]:
+///
+/// * `NROS_CLOCK_STEADY_TIME` — identical to [`nros_timer_init`].
+/// * `NROS_CLOCK_ROS_TIME` — follows the ROS clock. It stops while a
+///   simulator is paused, halves with a bag replayed at 0.5x, and restarts its
+///   period on a backwards jump. With no `/clock` override installed it reads
+///   system time, the same fallback `rclcpp::Clock` has, so a node written for
+///   simulation still runs standalone.
+/// * `NROS_CLOCK_SYSTEM_TIME` — the wall clock, NTP steps and all.
+///
+/// An UNINITIALIZED clock is REJECTED rather than treated as steady: a timer
+/// created on a clock the caller never initialised would silently be a wall
+/// timer, which is the confusion this verb exists to remove.
+///
+/// The clock must outlive the timer. Its type is read again by
+/// `rclc_executor_add_timer`, which is where the schedule is chosen; rcl has
+/// the same obligation and states it the same way.
+///
+/// # Parameters
+/// * `timer` - Pointer to a zero-initialized timer
+/// * `clock` - Pointer to an initialized clock (must NOT be NULL — the
+///   clock-less form is [`nros_timer_init`])
+/// * `support` - Pointer to an initialized support context
+/// * `period_ns` - Timer period in nanoseconds
+/// * `callback` - Callback function to invoke when timer fires
+/// * `context` - User context pointer passed to callback (can be NULL)
+///
+/// # Returns
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if any required pointer is NULL, the period
+///   is 0, or the clock names no schedule (uninitialized clock type)
+/// * `NROS_RET_NOT_INIT` if support or clock is not initialized
+///
+/// # Safety
+/// * All required pointers must be valid
+/// * `callback` must be a valid function pointer
+/// * `clock` must remain valid for as long as the timer is registered
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_timer_init_on_clock(
+    timer: *mut nros_timer_t,
+    clock: *const nros_clock_t,
+    support: *const nros_support_t,
+    period_ns: u64,
+    callback: nros_timer_callback_t,
+    context: *mut c_void,
+) -> nros_ret_t {
+    if clock.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+    unsafe { timer_init_inner(timer, clock, support, period_ns, callback, context) }
+}
+
+/// The one body behind both init verbs. `clock` NULL means the wall timer.
+///
+/// # Safety
+/// As the callers'.
+unsafe fn timer_init_inner(
+    timer: *mut nros_timer_t,
+    clock: *const nros_clock_t,
+    support: *const nros_support_t,
+    period_ns: u64,
+    callback: nros_timer_callback_t,
+    context: *mut c_void,
+) -> nros_ret_t {
     validate_not_null!(timer, support);
 
     if callback.is_none() || period_ns == 0 {
@@ -140,10 +237,24 @@ pub unsafe extern "C" fn nros_timer_init(
         nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
     );
 
+    // The clock is validated HERE as well as at registration, so a caller that
+    // hands over an uninitialised clock hears about it at the call that named
+    // it rather than two calls later from `rclc_executor_add_timer`.
+    if !clock.is_null() {
+        let clock_ref = &*clock;
+        if clock_ref.state != nros_clock_state_t::NROS_CLOCK_STATE_READY {
+            return NROS_RET_NOT_INIT;
+        }
+        if crate::clock::nros_timer_clock_source(clock_ref.r#type as u8).is_none() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+    }
+
     timer.period_ns = period_ns;
     timer.callback = callback;
     timer.context = context;
     timer.support = support;
+    timer.clock = clock;
     timer.last_call_time_ns = 0;
     timer.state = nros_timer_state_t::NROS_TIMER_STATE_RUNNING;
 
