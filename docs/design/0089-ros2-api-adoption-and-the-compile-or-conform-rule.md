@@ -958,6 +958,334 @@ edit, which the governing principle requires be made loud by other means:
    The generated entry already checks; a hand-written `main` does not, and a
    node that failed to create currently proceeds silently.
 
+## Conciliating phase-426 and phase-427 (2026-09-07)
+
+The two phases that implement this RFC each declared the other out of scope, in
+matching words:
+
+* phase-427: *"Parameters — phase-426. W4 touches the facades but does not
+  depend on it."*
+* phase-426: *"Making `nros::ComponentNode` disappear; that is the node-type
+  merge, which W4 touches but does not depend on."*
+
+Measured, the symmetry is false in one direction, and several claims in this
+RFC did not survive contact with the code. This section records the owner's
+governing reason, the corrected dependency, and six corrections.
+
+### The governing reason: one loading model, therefore one node type
+
+This RFC previously argued for one node type from upstream's shape —
+*"`rclcpp_components` composes plain `rclcpp::Node`s, so there is no second
+node type to mirror."* The owner's reason is stronger and is the one to lead
+with:
+
+> **In nano-ros a node is always linked into the final image. There is no
+> distinction like ROS 2 on Linux. We still maintain the shape from ROS 2.**
+
+`ComponentNode` versus `Node` encodes a LOADING-MODEL distinction — a component
+`dlopen`ed into a container at runtime versus a node with its own `main`. That
+distinction does not exist here; there is one loading model, static linking.
+A type whose only job is to mark which loading path an object arrived by has no
+referent in this system.
+
+Two consequences follow immediately. The `NodeHandle` constructor exists because
+the entry supplies the executor handle rather than the node reaching for a
+global — but if everything is linked into one image there is always a global
+executor, so this is a constructor overload, not a type. And "keep ROS 2's
+shape" means keep DERIVATION, which the next correction shows we can.
+
+### Correction 1 — deriving is NOT hosted-only, and the RFC said it was
+
+This RFC states, of the ported hosted component: *"Deriving needs the hosted
+constructor, so it is hosted-only; on a freestanding target the answer is the
+shape above, which needs no derivation."* It also calls the non-derived
+`configure(Node&)` shape *"the only one of the three shapes that compiles on
+every target we ship."*
+
+Both are false. Measured — compiled to an object file, not parsed:
+
+```cpp
+class Talker : public nros::Node {
+  public:
+    nros::Timer timer_;
+    int         count_ = 0;
+    nros::Result start() { return create_wall_timer(timer_, 1000, &Talker::tick, this); }
+    static void tick(void* ctx) { static_cast<Talker*>(ctx)->count_++; }
+};
+Talker g_talker;
+static_assert(!__is_polymorphic(Talker), "no vtable is introduced by deriving");
+static_assert(!__is_polymorphic(nros::Node), "the base has no vtable");
+```
+
+```
+c++ -c -std=c++14 -fno-exceptions -fno-rtti -ffreestanding -nostdinc++ \
+    -isystem packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat ...
+COMPILE EXIT=0
+```
+
+Derivation costs nothing on a freestanding target. It needs no allocator, no
+exceptions, and no vtable — `nros::Node` has no virtual member, so deriving
+introduces none. What was actually hosted-only was never derivation: it was
+`rclcpp::Node` ITSELF, because that entire class sits inside
+`#if defined(NROS_CPP_HAS_SHARED_PTR) && ...` (`nros.hpp:447`), plus
+`ComponentNode`'s virtual destructor. Neither is a property of deriving.
+
+This matters because the build system already agrees with the owner and not
+with this RFC. `nros_components_register_node` defaults to `SHAPE rclcpp` and
+its comment calls the `configure(Node&)` shape "legacy"
+(`cmake/NanoRosVerbs.cmake:436-438`), while this RFC calls `configure(Node&)`
+"the firmware recommendation". After the merge the cmake default is the correct
+one on every target, and the two documents stop disagreeing.
+
+`configure(Node&)` remains available and is still the right shape when one
+component drives several nodes or holds no identity of its own. It is an
+option, not the fallback for targets that cannot derive — there are none.
+
+### Correction 2 — the dependency is real, one-directional, and it is 427 that has it
+
+phase-427's W1 rehomes hosted-only state behind `void* hosted_`. The parameter
+store is not hosted-only, so `hosted_` does not move it, and one type means one
+store size:
+
+| | today | per |
+| --- | ---: | --- |
+| `::nros::Node` | 192 B | node |
+| `rclcpp::Node` — `ParameterServer<16>` | 3 752 B | node, always, even declaring nothing |
+| `::nros::ComponentNode` — `ParameterServer<256,8,4096>` | 55 776 B | node, always, even declaring nothing |
+
+Every naive merge is a defect: ComponentNode's store makes every freestanding
+node ~55 KB, and `rclcpp::Node`'s silently cuts ComponentNode's derivers from
+256 declared parameters to 16. The third door is this RFC's own decision 3 —
+forward to the Rust store — and that needs the writer phase-426 owns.
+
+So **phase-426 W1–W4 precede phase-427 W1**, and phase-427's "does not depend on
+it" is withdrawn. phase-426's mirror-image claim stands: keying the Rust table,
+adding the writer and registering services per node are Rust and RMW work that
+does not care how many C++ node types exist.
+
+**Re-cut the boundary rather than interleave the phases.** phase-426 owns the
+parameter SSoT end to end, INCLUDING the deletion of both C++ stores, which is
+already its W4. phase-427 then begins from a node that has no parameter store,
+and its W1 becomes what it was written to be: a question about hosted-only
+state and nothing else. Each phase keeps an acceptance it can check alone.
+
+### Correction 3 — the memory consequence of decision 3, which neither phase states
+
+"Parameters are the Rust store" is right on SSoT grounds, and it is not free.
+The Rust table is a leaked heap allocation sized by its widest variant
+(`executor/spin.rs:7895`):
+
+> *285,184 bytes at the default `MAX_PARAMETERS=32` and 2,281,472 at 256 —
+> `ParameterValue` is sized by its `StringArray` variant, so every slot costs
+> ~8.5 KiB regardless of what it holds.*
+
+Against a per-node C++ store that is unconditional, the trade is:
+
+| image | today | after |
+| --- | ---: | ---: |
+| any number of nodes, no parameters declared | 3.5–55 KB per node | **0** (the table is lazy) |
+| one node using parameters | 55 KB | **285 KB** |
+| five nodes using parameters | 277 KB | 285 KB |
+
+So the merge is a large win for images that declare nothing, roughly neutral
+around five nodes, and a REGRESSION for a small one-node image that uses
+parameters. Issue 0756 already records 256 slots overrunning the Zephyr thread
+stack and hanging boot with no output. The ~8.5 KiB per slot is the defect
+underneath and belongs to phase-382, not here — but both phases must carry the
+number rather than meet it on a Zephyr image.
+
+### Correction 4 — RFC-0047's "several named nodes" does not exist
+
+This RFC and phase-427 W4 both preserve *"RFC-0047's one component, several
+named nodes"* as a documented ours-only capability. Measured, there is no such
+capability to preserve:
+
+* `ComponentNode` holds exactly one `Node node_` and takes exactly one `name`.
+  There is no second identity anywhere in the class.
+* RFC-0047 is *"Unified sched-context binding via callback groups"*; its
+  "sub-node splitting" means per-callback-group tiering INSIDE one node, and
+  the word "node" is singular throughout.
+* Both subnode packages are one node with two groups —
+  `ComponentNode(h, "sub_node")` once, then two `create_callback_group` calls.
+* `entity_inventory.rs:604` derives `NROS_EXECUTOR_MAX_NODES` from the rule
+  *"a `ComponentNode` constructor is one `Node::create` is one node NAME"*. If
+  a component could own several identities that knob would be under-derived on
+  every image using one.
+
+The claim is deleted, here and in phase-427. W4's acceptance criterion "the
+RFC-0047 several-named-nodes capability survives" was satisfiable only
+vacuously, which is the shape of an acceptance nobody can fail.
+
+### Correction 5 — `ok()` is two different predicates, and the merge narrows one
+
+This RFC gives the merged type `bool ok()` "replacing upstream's throw", and
+says *"the generated entry checks `ok()` and halts naming the node"*. The entry
+does more than that (`packs/entry/cpp/node_body.jinja:29-32`): it reads
+`ok()`, `error_what()` AND `error_code()`, and returns the code.
+
+The two `ok()`s answer different questions. `ComponentNode::ok()` is STICKY: it
+is false if the node failed to create **or** if any of ten later `create_*` /
+`declare_parameter` calls failed, through `set_error`'s first-failure-wins flag
+with the issue-#230 acquire/release ordering. This RFC's `ok()` is construction
+only. Merging them without saying so narrows the boot halt from "this node did
+not finish registering" to "this node was not created".
+
+`error_what()`, `error_code()` and `set_error()` have no home in the proposed
+layout or API list. The merged node keeps all three and the sticky predicate,
+and `nros::detail::report_component_failure` stays where it is as a free
+function — the generated entry calls it directly and does not need the class.
+
+### Correction 6 — the out-ref rationale is true of one entity kind, not the family
+
+Both documents justify the whole out-ref `create_*` family with *"the arena
+stores `&entity` as its dispatch context and has NO unregister"*. That is true
+of subscriptions (`subscription.hpp:723,759,795,845` pass `&out`) and false
+elsewhere: `nros_cpp_timer_create` stores the CALLER's context and returns an
+id, and the member-pointer subscription path registers with `ctx = self` and
+produces no C++ object at all.
+
+Two consequences. `ComponentNode`'s `timers_` pool exists only because its
+storage-less overload has no out-parameter — with the out-ref form the caller
+owns the cell and the pool disappears entirely, along with its
+`NROS_COMPONENT_MAX_TIMERS` knob and the issue-1167 `#error` floor. And the
+member-pointer fold needs FOUR signatures, not the one this RFC gives; the
+subscription forms take no out-ref because there is nothing to put in it:
+
+```cpp
+template <class C, void (C::*M)()>
+Result create_wall_timer(Timer& out, uint64_t period_ms, C* self) noexcept;
+
+template <class C, void (C::*M)()>
+Result create_timer_in(const CallbackGroup&, Timer& out, uint64_t, C* self) noexcept;
+
+template <typename Msg, class C, void (C::*M)(const Msg&)>
+Result create_subscription(const char* topic, C* self, const QoS& = QoS::default_profile()) noexcept;
+
+template <typename Msg, class C, void (C::*M)(const Msg&)>
+Result create_subscription_in(const CallbackGroup&, const char* topic, C* self,
+                              const QoS& = QoS::default_profile()) noexcept;
+```
+
+### Correction 7 — "no vtable budget" was never measured, and the real cost is not bytes
+
+This RFC declines upstream's `TimerBase`/`WallTimer` hierarchy partly on "a
+vtable we have no budget for". Searched: no measurement of a C++ vtable cost
+exists in any RFC or phase document. The only vtable figures in `docs/` are for
+the RMW's C function-pointer struct, which is a different thing.
+
+Measured now, one virtual destructor plus one virtual method on a two-int base
+with a derived override, `-Os -ffreestanding -fno-exceptions -fno-rtti`:
+
+| target | object `.bss` | vtable | extra `.text` |
+| --- | --- | --- | --- |
+| arm-none-eabi cortex-m4/thumb | 12 → **16** (+4) | 20 B | 26 B |
+| riscv64 rv64gc | 12 → **24** (+8) | 40 B | 22 B |
+
+Both freestanding lanes compile virtual functions without complaint. So the
+budget argument is not the reason, and stating it as one made an architectural
+decision look like a resource decision.
+
+**The reason that IS real, and is better than the one given:**
+
+```
+$ arm-none-eabi-nm -u o_NONVIRT.o     # (empty)
+$ arm-none-eabi-nm -u o_VIRT.o
+         U memset
+         U _ZdlPvj                     # operator delete(void*, unsigned int)
+```
+
+A virtual destructor forces emission of the D0 *deleting* destructor, which
+leaves an undefined reference to `operator delete` — on a target where nothing
+ever deletes a node, and where the allocator may not exist at all. That is a
+link-time consequence of a keyword, not a byte count, and it is the argument to
+keep.
+
+`ComponentNode`'s vptr is 8 bytes of its 55,776 — 0.014 %. The size was never
+the problem there either.
+
+### Correction 8 — the virtual destructor is paying for a base pointer nobody creates
+
+Two premises behind keeping it are false:
+
+* **The generated entry never holds a `ComponentNode*`.** It declares the
+  storage with the DERIVED type and placement-news the derived type into it —
+  verified against real generated output, where the word `ComponentNode` does
+  not occur. Nothing is ever deleted: static arena, no destructor call.
+* **The compat `main` is not a `ComponentNode` site.** It casts to
+  `rclcpp::Node`, a different and non-polymorphic type. And that `main` is never
+  actually emitted in this tree.
+
+The only construct in the repo that produces a `ComponentNode*` base pointer is
+the `NROS_COMPONENT(Class)` factory macro, which has zero users. A `shared_ptr`
+keeps the derived deleter through both conversion spellings — verified by
+running it, with a raw-`delete`-through-a-non-virtual-base control that does
+skip the derived destructor, so the experiment discriminates.
+
+Both real workspace derivations still compile with the base devirtualised under
+`-Werror -Wnon-virtual-dtor -Wdelete-non-virtual-dtor`. The merged type is
+non-polymorphic and nothing has to be given up for that.
+
+One adjacent fact for whoever schedules the migration: **no embedded fixture
+derives `ComponentNode` today.** The only `SHAPE rclcpp` packages are the two
+`subnode_pkg`s, and every fixture consuming them is `platform = "linux"`. So the
+freestanding derivation proved in correction 1 is currently a capability with no
+in-tree consumer — which is an argument for adding a fixture in the same phase,
+not for assuming it works.
+
+### What correction 1 and correction 5 together mean for `hosted_`
+
+Today a hosted and a freestanding TU cannot disagree about `rclcpp::Node`,
+because it does not exist freestanding at all — both shims lack `<memory>`,
+`<string>`, `<vector>` and `<functional>`. After the merge it exists everywhere,
+and the disagreement becomes possible. Measured on a patched header that gates
+the destructor's `virtual` on `NROS_CPP_STD`: `sizeof` 3752 versus 3760 and
+`__is_polymorphic` flipping outright — the issue 0135/0460 hazard, live on the
+axis px4 actually exercises.
+
+`check-cpp-capability-layout` catches that mutation now, and only since
+phase-427 W0 (issue 1204) gave it a freestanding arm. Its `hosted_only_reason`
+entry for `rclcpp::Node` is standing in for exactly this measurement, and W1 is
+what removes the entry.
+
+### What the merge must not quietly break
+
+`packages/api/nros-cpp/tests/compile/declared_qos_depth.cpp` and its
+`_probe.cpp` sibling are GATES, not tests: the lane compiles the first clean,
+requires the second to FAIL, and greps its diagnostic for
+`declared_depth_agrees<1, 10>` and the topic name. Their whole value is that a
+check which has never failed is not a check. phase-427 W4's acceptance — "zero
+`ComponentNode` in the tree" — is satisfied by a migration that leaves both
+files compiling and proving nothing. Migrating them while keeping them
+FALSIFIABLE is the work item, and the lane's grep pattern moves in the same
+commit.
+
+Three smaller things that live in the doomed header and need explicit homes:
+the Zephyr placement-`new` shim (`component_node.hpp:78-87`, cited as precedent
+by `heap_sequence.hpp:26`), `check_declared_depth` (public API with no ledger
+row, so the parity gate will not notice it vanish), and
+`declare_parameter<std::vector<T>>`, which has no FFI to forward to and no work
+item that owns it.
+
+`NROS_COMPONENT(Class)` needs no home: it has zero invocations in the tree, and
+the entry placement-news the class directly rather than calling its factory.
+
+### One thing that becomes possible, and should not be taken
+
+`adopt_launch_seed_`'s `if constexpr` chain is the ENTIRE C++17 requirement of
+the C++ header set — measured, all 45 headers parse clean at
+`-std=c++14 -pedantic-errors` on gcc 12.3 and clang 14 unless
+`NROS_SYSTEM_PARAM_SERVICES` is defined, and then only those four lines fail.
+That function dies in the merge, along with its twin on `rclcpp::Node`.
+
+Do not drop the floor to C++14. `packages/api/nros-cpp/CMakeLists.txt:315`
+gives the independent reason: 17 is what Humble's `rclcpp` exports, and under
+the compile-or-conform rule declaring 14 to a consumer whose upstream declares
+17 re-creates issue 1118 pointing the other way. The gain is that `cxx_std_17`
+becomes a POLICY choice rather than a forced one — and
+`check-cxx-standard-floor`'s docstring, which names `component_node.hpp`'s
+`if constexpr` as the reason, must be rewritten in the same commit or the gate
+will explain itself with a file that no longer exists.
+
 ## `shared_from_this` — the merged node cannot keep the base (2026-09-07)
 
 The node-API proposal above gives the merged type this layout, with no base
