@@ -303,14 +303,23 @@ function(nros_nuttx_build_example)
     # rv-virt — so a dir shared across arches would serve build-script output
     # compiled against the other arch's headers. Triple + profile + FFI crate
     # keeps them apart (the two arches also use different FFI crates).
+    #
+    # phase-439 W1 (RFC-0094 D4) — and the KNOB values. This lane's cargo command
+    # is hand-rolled and carries no knob env of its own, so every knob it
+    # compiles against arrives through the INHERITED process environment (the
+    # shape `examples/fixtures.toml` rows state: `env = { ZPICO_MAX_QUERYABLES =
+    # "2" }`). Two leaves at the same triple/profile/ffi differing only there
+    # hashed identically, which is issue 0616's shape one lane over.
     set(_shared_cargo_dir "")
     if(COMMAND nros_shared_cargo_dir)
+        nros_knob_key_fields(_nnbe_knob_fields)
         nros_shared_cargo_dir(_shared_cargo_dir KEY
             "triple=${_NNBE_TARGET_TRIPLE}"
             "profile=${_NROS_NUTTX_PROFILE}"
             "ffi=${_NNBE_FFI_CRATE_DIR}"
             "nuttx=${NUTTX_DIR}"
-            "defconfig=${NROS_NUTTX_DEFCONFIG}")
+            "defconfig=${NROS_NUTTX_DEFCONFIG}"
+            ${_nnbe_knob_fields})
     endif()
     if(_shared_cargo_dir)
         set(_cargo_target_dir "${_shared_cargo_dir}")
