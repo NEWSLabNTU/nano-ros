@@ -183,12 +183,28 @@ validated bidirectionally by two CTest harnesses
   example_interfaces/srv/AddTwoInts` and stock `ros2 run
   demo_nodes_cpp add_two_ints_server` ↔ nano-ros client.
 
-The harness picks a multicast-capable ethernet interface
-(auto-detect, override via `NROS_RMW_CYCLONEDDS_E2E_IFACE`) and
-writes a per-test `CYCLONEDDS_URI` config so SPDP works on hosts
-where `lo` is non-multicast. Both harnesses skip cleanly with
-`[SKIPPED]` if `/opt/ros/humble/setup.bash`, the `ros2` CLI, or a
-suitable interface is missing.
+Both harnesses get their `CYCLONEDDS_URI` from one shared helper,
+`nros_export_cyclone_config` in `ros2_e2e_common.sh`, and it pins
+the bus to **loopback** -- `AllowMulticast=false` plus an explicit
+localhost peer, mirroring `nros_tests::dds_isolation`'s
+`CYCLONE_LOOPBACK_XML`. It is exported, so the `ros2` peer and our
+own binaries read the same file; issue 1137 is what pinning only
+one half of a pair costs.
+
+Until issue 1139 each script wrote its own config instead, pinned
+to a multicast-capable ethernet interface, which put these two
+cells -- and no other DDS lane in the tree -- on the LAN. Measured
+with a foreign `/chatter` publisher on that old config: the
+nano-ros subscriber took the foreign sample 5 of 5 times, and 0 of
+5 with the loopback config.
+
+`NROS_DDS_ALLOW_LAN=1` restores the ethernet-interface config for a
+peer that must genuinely reach another host (auto-detect, override
+via `NROS_RMW_CYCLONEDDS_E2E_IFACE`); an operator's own
+`CYCLONEDDS_URI` is never overwritten. Both harnesses skip cleanly
+with `[SKIPPED]` if `/opt/ros/humble/setup.bash` or the `ros2` CLI
+is missing -- and, on the LAN path only, if no suitable interface
+is found.
 
 ## QoS coverage
 

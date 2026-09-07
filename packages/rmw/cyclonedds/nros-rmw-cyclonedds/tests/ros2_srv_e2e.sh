@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Phase 117.12.B — native (host) E2E vs stock `rmw_cyclonedds_cpp`
-# (services). `native` is the ROLE here; the REACH is LINUX, not POSIX:
-# `e2e_iface` below shells out to iproute2's `ip -o -br link show`, and the
-# sourced `ros2_e2e_common.sh` reads `/proc/net/udp`. One sub-case for now:
+# (services). `native` is the ROLE here; the REACH is LINUX, not POSIX: the
+# sourced `ros2_e2e_common.sh` reads `/proc/net/udp` and its `nros_e2e_iface`
+# shells out to iproute2's `ip -o -br link show`. One sub-case for now:
 #
 #   1. nano-ros service server ↔ `ros2 service call` (stock client)
 #
@@ -43,38 +43,19 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ros2_e2e_common.sh"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-$(nros_unique_ros_domain_id)}"
 
-e2e_iface() {
-    if [ -n "${NROS_RMW_CYCLONEDDS_E2E_IFACE:-}" ]; then
-        printf '%s\n' "$NROS_RMW_CYCLONEDDS_E2E_IFACE"; return 0
-    fi
-    ip -o -br link show | awk '
-        /BROADCAST,MULTICAST/ && / UP / &&
-        $1 !~ /^(docker|veth|tap|qemu|tailscale)/ { print $1; exit }'
-}
-IFACE=$(e2e_iface)
-if [ -z "$IFACE" ]; then
-    echo "[SKIPPED] no multicast-capable ethernet interface for SPDP"
-    exit 0
-fi
-
+# issue 1139 / issue 1009 — the bus is confined to loopback by the shared
+# helper in `ros2_e2e_common.sh`, not by a config spelled out here. This is the
+# cell issue 0741 lost five diagnoses to: a foreign CycloneDDS
+# `add_two_ints_server` on ANOTHER HOST answered our `/add_two_ints` calls,
+# because the config this script used to write pinned the bus to a real
+# ethernet interface with multicast left on.
 CYCLONE_XML=$(mktemp --suffix=.xml)
 SERVER_OUT=$(mktemp)
 CALL_OUT=$(mktemp)
 trap 'rm -f "$CYCLONE_XML" "$SERVER_OUT" "$CALL_OUT"' EXIT
-cat > "$CYCLONE_XML" <<XML
-<?xml version="1.0" encoding="UTF-8" ?>
-<CycloneDDS xmlns="https://cdds.io/config">
-  <Domain id="any">
-    <General>
-      <Interfaces>
-        <NetworkInterface name="$IFACE" priority="default" multicast="default" />
-      </Interfaces>
-    </General>
-  </Domain>
-</CycloneDDS>
-XML
-export CYCLONEDDS_URI="file://$CYCLONE_XML"
-echo "  using interface=$IFACE domain=$ROS_DOMAIN_ID"
+
+nros_export_cyclone_config "$CYCLONE_XML" || exit 0
+echo "  domain=$ROS_DOMAIN_ID"
 
 # Drop the ros2 daemon so successive test runs don't reuse stale
 # discovery state.
