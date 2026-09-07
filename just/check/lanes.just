@@ -789,7 +789,7 @@ cpp: cpp-fmt
     # This lane found a live red on its first run, which is the argument for it:
     # RFC-0089 W3.b's refusal path calls `::std::abort()` (`nros.hpp:369`), the
     # ThreadX shim's `cstdlib` re-exported malloc/calloc/free/getenv/realloc and
-    # NOT abort, and `examples/qemu-riscv64-threadx/cpp/talker` includes
+    # NOT abort, and `examples/rv-virt-threadx/cpp/talker` includes
     # `<nros/nros.hpp>` — so every ThreadX C++ image stopped compiling the
     # moment `rclcpp::init` entered the umbrella header, and no gate could see
     # it.

@@ -328,7 +328,7 @@ def is_cargo_row(entry):
     """
     # phase-344 W2 — BUILDER-keyed, not language-keyed. `lang` was a proxy that
     # held only while every rust row built with cargo. It does not: the six
-    # `qemu-riscv64-threadx/rust/*` cyclonedds rows are driven through
+    # `rv-virt-threadx/rust/*` cyclonedds rows are driven through
     # `build_threadx_cmake_rmw` into `build-cyclonedds/`, so a lang-keyed
     # predicate reported a `target/` dir nothing writes and left their real
     # output unattributable — the same shape P2 found in freertos, where a build

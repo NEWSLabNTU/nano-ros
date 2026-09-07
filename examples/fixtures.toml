@@ -2312,7 +2312,7 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "zenoh"
 builder = "cmake"
-dir = "examples/qemu-riscv64-threadx/rust/talker"
+dir = "examples/rv-virt-threadx/rust/talker"
 
 [[fixture]]
 # phase-369 W2 — the zenoh build of this rust leaf is driven through
@@ -2324,7 +2324,7 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "zenoh"
 builder = "cmake"
-dir = "examples/qemu-riscv64-threadx/rust/listener"
+dir = "examples/rv-virt-threadx/rust/listener"
 
 [[fixture]]
 # phase-369 W2 — the zenoh build of this rust leaf is driven through
@@ -2336,7 +2336,7 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "zenoh"
 builder = "cmake"
-dir = "examples/qemu-riscv64-threadx/rust/service-server"
+dir = "examples/rv-virt-threadx/rust/service-server"
 
 [[fixture]]
 # phase-369 W2 — the zenoh build of this rust leaf is driven through
@@ -2348,7 +2348,7 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "zenoh"
 builder = "cmake"
-dir = "examples/qemu-riscv64-threadx/rust/service-client"
+dir = "examples/rv-virt-threadx/rust/service-client"
 
 [[fixture]]
 # phase-369 W2 — the zenoh build of this rust leaf is driven through
@@ -2360,7 +2360,7 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "zenoh"
 builder = "cmake"
-dir = "examples/qemu-riscv64-threadx/rust/action-server"
+dir = "examples/rv-virt-threadx/rust/action-server"
 
 [[fixture]]
 # phase-369 W2 — the zenoh build of this rust leaf is driven through
@@ -2372,7 +2372,7 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "zenoh"
 builder = "cmake"
-dir = "examples/qemu-riscv64-threadx/rust/action-client"
+dir = "examples/rv-virt-threadx/rust/action-client"
 
 [[fixture]]
 id = "threadx-riscv64-logging-smoke"
@@ -3052,7 +3052,7 @@ cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9220" }
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-riscv64-threadx/c/talker"
+dir = "examples/rv-virt-threadx/c/talker"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9500" }
 
 # issue 0680 — the discriminator for per-thread newlib `errno`. No message
@@ -3064,83 +3064,83 @@ cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9500" }
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-riscv64-threadx/c/errno-isolation"
+dir = "examples/rv-virt-threadx/c/errno-isolation"
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-riscv64-threadx/c/listener"
+dir = "examples/rv-virt-threadx/c/listener"
 cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9500" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-riscv64-threadx/c/service-server"
+dir = "examples/rv-virt-threadx/c/service-server"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9510" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-riscv64-threadx/c/service-client"
+dir = "examples/rv-virt-threadx/c/service-client"
 cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9510" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-riscv64-threadx/c/action-server"
+dir = "examples/rv-virt-threadx/c/action-server"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9520" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-riscv64-threadx/c/action-client"
+dir = "examples/rv-virt-threadx/c/action-client"
 cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9520" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-riscv64-threadx/cpp/talker"
+dir = "examples/rv-virt-threadx/cpp/talker"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9600" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-riscv64-threadx/cpp/listener"
+dir = "examples/rv-virt-threadx/cpp/listener"
 cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9600" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-riscv64-threadx/cpp/service-server"
+dir = "examples/rv-virt-threadx/cpp/service-server"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9610" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-riscv64-threadx/cpp/service-client"
+dir = "examples/rv-virt-threadx/cpp/service-client"
 cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9610" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-riscv64-threadx/cpp/action-server"
+dir = "examples/rv-virt-threadx/cpp/action-server"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9620" }
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-riscv64-threadx/cpp/action-client"
+dir = "examples/rv-virt-threadx/cpp/action-client"
 cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9620" }
 
 # ===========================================================================
@@ -3227,13 +3227,13 @@ dir = "examples/threadx-linux/cpp/action-client"
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "cyclonedds"
-dir = "examples/qemu-riscv64-threadx/c/talker"
+dir = "examples/rv-virt-threadx/c/talker"
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "c"
 rmw = "cyclonedds"
-dir = "examples/qemu-riscv64-threadx/c/listener"
+dir = "examples/rv-virt-threadx/c/listener"
 # Phase 214.P — distinct NetX L2/L3 identity (IP + MAC) so the two-QEMU
 # Cyclone pubsub e2e (`test_threadx_riscv64_cyclonedds_two_qemu_pubsub`)
 # can unicast SEDP / RTPS data between talker (board default
@@ -3248,13 +3248,13 @@ cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57" }
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "cyclonedds"
-dir = "examples/qemu-riscv64-threadx/cpp/talker"
+dir = "examples/rv-virt-threadx/cpp/talker"
 
 [[fixture]]
 platform = "threadx-riscv64"
 lang = "cpp"
 rmw = "cyclonedds"
-dir = "examples/qemu-riscv64-threadx/cpp/listener"
+dir = "examples/rv-virt-threadx/cpp/listener"
 # Phase 214.P — same per-fixture L2/L3 carve-out as the C cell above.
 cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57" }
 
@@ -4008,7 +4008,7 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "cyclonedds"
 builder = "cmake"
-dir = "examples/qemu-riscv64-threadx/rust/talker"
+dir = "examples/rv-virt-threadx/rust/talker"
 
 [[fixture]]
 # phase-344 W2 — the cyclonedds build of this rust leaf is driven through
@@ -4019,7 +4019,7 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "cyclonedds"
 builder = "cmake"
-dir = "examples/qemu-riscv64-threadx/rust/listener"
+dir = "examples/rv-virt-threadx/rust/listener"
 
 [[fixture]]
 # phase-344 W2 — the cyclonedds build of this rust leaf is driven through
@@ -4030,7 +4030,7 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "cyclonedds"
 builder = "cmake"
-dir = "examples/qemu-riscv64-threadx/rust/service-server"
+dir = "examples/rv-virt-threadx/rust/service-server"
 
 [[fixture]]
 # phase-344 W2 — the cyclonedds build of this rust leaf is driven through
@@ -4041,7 +4041,7 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "cyclonedds"
 builder = "cmake"
-dir = "examples/qemu-riscv64-threadx/rust/service-client"
+dir = "examples/rv-virt-threadx/rust/service-client"
 
 [[fixture]]
 # phase-344 W2 — the cyclonedds build of this rust leaf is driven through
@@ -4052,7 +4052,7 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "cyclonedds"
 builder = "cmake"
-dir = "examples/qemu-riscv64-threadx/rust/action-server"
+dir = "examples/rv-virt-threadx/rust/action-server"
 
 [[fixture]]
 # phase-344 W2 — the cyclonedds build of this rust leaf is driven through
@@ -4063,7 +4063,7 @@ platform = "threadx-riscv64"
 lang = "rust"
 rmw = "cyclonedds"
 builder = "cmake"
-dir = "examples/qemu-riscv64-threadx/rust/action-client"
+dir = "examples/rv-virt-threadx/rust/action-client"
 
 # ===========================================================================
 # zephyr (west) — phase-350 W1.

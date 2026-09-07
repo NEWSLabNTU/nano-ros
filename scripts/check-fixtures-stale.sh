@@ -146,7 +146,7 @@ stale_families=0
 # BUILDER-keyed, not language-keyed (phase-344 W2's rule, applied here at last).
 #
 # `is_cargo_row` stopped keying on `lang` when the six
-# `examples/qemu-riscv64-threadx/rust/*` cyclonedds rows turned out to build
+# `examples/rv-virt-threadx/rust/*` cyclonedds rows turned out to build
 # through cmake; this probe kept `--lang rust` and so kept handing those rows —
 # twelve of them, zenoh and cyclonedds — to `cargo build`. A threadx C/C++ leaf
 # cannot be built that way, so the probe failed on all twelve EVERY run:

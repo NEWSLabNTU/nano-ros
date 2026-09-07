@@ -55,7 +55,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # resolver name -> (leaf prefix, index of the `case` arg, index of `binary_name`)
 RESOLVERS = {
-    "build_threadx_rv64_rust_example_rmw": ("examples/qemu-riscv64-threadx/rust", 0, 1),
+    "build_threadx_rv64_rust_example_rmw": ("examples/rv-virt-threadx/rust", 0, 1),
     "build_native_c_example_rmw": ("examples/native/c", 0, 1),
     "build_native_cpp_example_rmw": ("examples/native/cpp", 0, 1),
 }

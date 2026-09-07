@@ -36,8 +36,8 @@
 //!   migrated the example yet.
 //! * `examples/qemu-arm-baremetal/` — bare-metal Cortex-M3, not in
 //!   the M sweep table.
-//! * `examples/qemu-riscv64-threadx/` — M.6 covered `threadx-linux/`
-//!   only; `qemu-riscv64-threadx/` is not in the sweep.
+//! * `examples/rv-virt-threadx/` — M.6 covered `threadx-linux/`
+//!   only; `rv-virt-threadx/` is not in the sweep.
 //! * `examples/threadx-linux/c/` — M.6 covered `threadx-linux/{rust,
 //!   cpp}/` only; the `c/` sub-tree remains pre-212.
 //! * `examples/templates/` — sibling category (per Phase 131), not a
@@ -197,8 +197,8 @@ const UNMIGRATED_PREFIXES: &[(&str, &str)] = &[
         "bare-metal Cortex-M3 — not in M sweep table",
     ),
     (
-        "examples/qemu-riscv64-threadx/",
-        "M.6 covered threadx-linux only; qemu-riscv64-threadx not in sweep",
+        "examples/rv-virt-threadx/",
+        "M.6 covered threadx-linux only; rv-virt-threadx not in sweep",
     ),
     (
         "examples/threadx-linux/c/",
@@ -836,7 +836,7 @@ const AMENT_SHAPE_TREES: &[&str] = &[
     "qemu-arm-freertos",
     "qemu-armv7a-nuttx",
     "rv-virt-nuttx",
-    "qemu-riscv64-threadx",
+    "rv-virt-threadx",
     "threadx-linux",
 ];
 

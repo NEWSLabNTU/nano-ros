@@ -2,7 +2,7 @@
 """An example leaf must not overrule the platform its own build passes.
 
 WHY THIS EXISTS (issue 0835). Six leaves --
-`examples/qemu-riscv64-threadx/rust/*/CMakeLists.txt` -- each carried
+`examples/rv-virt-threadx/rust/*/CMakeLists.txt` -- each carried
 
     set(NANO_ROS_PLATFORM threadx)
 

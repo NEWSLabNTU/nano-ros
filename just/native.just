@@ -78,7 +78,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # leak in. `NF>=5` = the old find's `-mindepth 4` (leaf crates, not
     # workspace-root manifests). Selection filters stay as greps.
     git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
-        | grep -vE '/zephyr/|/workspaces/|/qemu-arm-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/qemu-riscv64-threadx/|/qemu-arm-baremetal/|/esp32/|/qemu-esp32-baremetal/|/px4/' \
+        | grep -vE '/zephyr/|/workspaces/|/qemu-arm-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/qemu-arm-baremetal/|/esp32/|/qemu-esp32-baremetal/|/px4/' \
         | sort > "$toml_list"
 
     # The ESP platforms (which need the nightly toolchain + SSID/PASSWORD env)
@@ -403,7 +403,7 @@ format:
     # Tracked-file enumeration via the git index (no filesystem traversal;
     # untracked build/target trees can never slow this down or leak in).
     git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
-        | grep -vE '/zephyr/|/multi-package-workspace/|/qemu-arm-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/qemu-riscv64-threadx/' \
+        | grep -vE '/zephyr/|/multi-package-workspace/|/qemu-arm-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/' \
         | xargs -r -n1 dirname | sort \
     | parallel --halt now,fail=1 --line-buffer \
         'cd {} && cargo +{{NIGHTLY}} fmt && echo "  fmt {}"'
@@ -469,7 +469,7 @@ check JOBS="75%":
     # Tracked-file enumeration via the git index (no filesystem traversal;
     # untracked build/target trees can never slow this down or leak in).
     git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
-        | grep -vE '/zephyr/|/multi-package-workspace/|/templates/local-msg-package/|/templates/multi-node-workspace/|/templates/workspace-shadowing/|/workspaces/|qemu-esp32-baremetal/rust/dds/|/qemu-arm-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/qemu-riscv64-threadx/|/px4/' \
+        | grep -vE '/zephyr/|/multi-package-workspace/|/templates/local-msg-package/|/templates/multi-node-workspace/|/templates/workspace-shadowing/|/workspaces/|qemu-esp32-baremetal/rust/dds/|/qemu-arm-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/px4/' \
         | sort > "$toml_list"
 
     # Message-bindings precondition gate (phase-264 W4c follow-up). Example msg

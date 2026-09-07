@@ -363,7 +363,7 @@ endif()
 # `.build_script_output()` is walked.
 #
 # The C / C++ cmake-driven examples (and the CMake/Corrosion Cyclone
-# Rust talker at `examples/qemu-riscv64-threadx/rust/talker/CMakeLists.txt`)
+# Rust talker at `examples/rv-virt-threadx/rust/talker/CMakeLists.txt`)
 # all `add_subdirectory(<repo-root>)` → `nros_platform_link_app(<target>)`
 # → this overlay's `nros_board_link_app`. None of them traversed
 # corrosion's link-arg side channel for the *board* crate (corrosion
@@ -383,7 +383,7 @@ endif()
 # both paths bake byte-identical defaults into the running firmware.
 # Phase 214.P — per-fixture network identity overrides. Phase 212.M.10
 # (`55f36c6a9`) retired the per-example `nros.toml` files, which had let
-# `examples/qemu-riscv64-threadx/c/listener` carry `ip = 10.0.2.41 / mac
+# `examples/rv-virt-threadx/c/listener` carry `ip = 10.0.2.41 / mac
 # `…:57` distinct from `talker`'s `…:40 / …:56`. With the toml gone every
 # fixture now collapses onto the board default below (10.0.2.40, MAC :56),
 # so the threadx-rv64 two-QEMU Cyclone e2e talker + listener boot on
@@ -394,7 +394,7 @@ endif()
 #
 # Make the IP + MAC trailing octet overridable via cmake cache vars so each
 # fixture can carve its own L2 / L3 identity. Defaults match the pre-M.10
-# `qemu-riscv64-threadx/c/talker/nros.toml` values, so a fixture that
+# `rv-virt-threadx/c/talker/nros.toml` values, so a fixture that
 # omits the override keeps the historical talker identity. The threadx
 # riscv64 `test_threadx_riscv64_cyclonedds_two_qemu_pubsub` test passes
 # `NROS_APP_NET_IP_LAST=41` + `NROS_APP_NET_MAC_LAST=0x57` for the
@@ -534,7 +534,7 @@ endfunction()
 # phase-369 W1 — RMW-neutral: the same seam builds the zenoh and cyclonedds
 # images, which is what lets these six leaves have ONE build path (issue 0666).
 #
-# Collapses the boilerplate every `examples/qemu-riscv64-threadx/rust/*`
+# Collapses the boilerplate every `examples/rv-virt-threadx/rust/*`
 # CMakeLists used to carry after `add_subdirectory(<nano-ros>)`: the corrosion
 # staticlib import, the (formerly hand-written `src/cyclonedds_app.c`) empty
 # link-anchor TU — now GENERATED into the build dir — the executable, and the
@@ -543,7 +543,7 @@ endfunction()
 #
 #   nros_generate_interfaces(std_msgs "msg/String.msg" LANGUAGE C SKIP_INSTALL)
 #   nros_threadx_rv64_rust_app(riscv64_threadx_rust_talker
-#       CRATE qemu-riscv64-threadx-talker
+#       CRATE rv-virt-threadx-talker
 #       LINK  std_msgs__nano_ros_c)
 #
 # CRATE is the cargo package name; the corrosion target is derived from it

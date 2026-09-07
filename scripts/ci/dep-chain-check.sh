@@ -66,7 +66,7 @@ CELLS=(
     "qemu-arm-freertos:zenoh"
     "qemu-armv7a-nuttx:zenoh"
     "qemu-esp32-baremetal:zenoh"
-    "qemu-riscv64-threadx:zenoh"
+    "rv-virt-threadx:zenoh"
     "threadx-linux:zenoh"
 )
 

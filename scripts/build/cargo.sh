@@ -538,7 +538,7 @@ nros_ensure_central_patch() {
 # patches a message crate (any `std_msgs = { path = "generated/std_msgs" }`
 # row — RFC-0067) fails the SAME way one path deeper: cargo cannot read a
 # `generated/` dir that was never materialised, central table or not. Measured
-# by reproducing it (`cargo metadata` on `examples/qemu-riscv64-threadx/rust/
+# by reproducing it (`cargo metadata` on `examples/rv-virt-threadx/rust/
 # talker` after `nros ws central-patch` alone: parse still fails, now on
 # `generated/std_msgs/Cargo.toml`).
 #

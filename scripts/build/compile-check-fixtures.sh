@@ -690,7 +690,7 @@ if cmake_fixture_prereqs_ok; then
     done < <(_lane_on cmake-configure && compile_check_records cmake-configure || true)
     # Phase 246 — the ThreadX `threadx_bringup_rv64` configure-only baker-audit
     # leg is retired with `NanoRosThreadxSystemCodegen.cmake`; the bare-metal
-    # riscv64 typed-carrier examples (examples/qemu-riscv64-threadx/{c,cpp}/*)
+    # riscv64 typed-carrier examples (examples/rv-virt-threadx/{c,cpp}/*)
     # cover the real path.
 fi
 

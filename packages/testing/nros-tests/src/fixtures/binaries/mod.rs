@@ -4110,7 +4110,7 @@ pub fn build_threadx_rv64_rust_example_rmw(
     rmw: Rmw,
 ) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-riscv64-threadx/rust/{}", case));
+    let example_dir = root.join(format!("examples/rv-virt-threadx/rust/{}", case));
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
             "Example directory not found: {}",
@@ -4480,7 +4480,7 @@ pub fn build_threadx_rv64_cmake_example_rmw(
     rmw: Rmw,
 ) -> TestResult<PathBuf> {
     build_example_cmake_rmw(
-        &format!("qemu-riscv64-threadx/{}/{}", lang, case),
+        &format!("rv-virt-threadx/{}/{}", lang, case),
         binary_name,
         rmw,
     )
@@ -6677,7 +6677,7 @@ mod tests {
         let tmp = root.join("tmp/zpico-probe-test");
         let _ = fs::remove_dir_all(&tmp);
         // The REAL nesting corrosion produces, measured on
-        // `examples/qemu-riscv64-threadx/cpp/action-client/build-zenoh`:
+        // `examples/rv-virt-threadx/cpp/action-client/build-zenoh`:
         //   cargo/<pkg>_<hash>/<triple>/<profile>/build/zpico-sys-<hash>/output
         // The `zpico-sys-*` dir is matched at recursion depth 5 from the build
         // dir — measured, not counted by eye: MAX_DEPTH 4 fails this test and 5

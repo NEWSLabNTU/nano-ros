@@ -37,7 +37,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 # for a property, which is the defect RFC-0064 records and phase-338 W5.a already
 # fixed one layer down (the ThreadX tier derives from `_cross`, not from the
 # board name). It also silently DEPENDED on six example leaves misreporting their
-# platform: `examples/qemu-riscv64-threadx/rust/*/CMakeLists.txt` each carried
+# platform: `examples/rv-virt-threadx/rust/*/CMakeLists.txt` each carried
 # `set(NANO_ROS_PLATFORM threadx)`, shadowing the `-DNANO_ROS_PLATFORM=
 # threadx_riscv64` their own build passes. Those leaves now report honestly, so a
 # test on the bare label would have stopped matching — silently, and the failure
@@ -50,14 +50,14 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 #  * `CMAKE_SYSTEM_NAME STREQUAL "Generic"` — `freertos` is also a Generic cross
 #    target, also builds Cyclone fixtures, and today DOES link `stdc++`.
 #  * "any bare-metal ThreadX", i.e. adding `threadx_riscv64` — MEASURED from the
-#    generated ninja files: `examples/qemu-riscv64-threadx/c/talker/
+#    generated ninja files: `examples/rv-virt-threadx/c/talker/
 #    build-cyclonedds` carries `-lstdc++` and its rust sibling does not. The c/cpp
 #    leaves are exactly the case the comment at the call site describes (a C
 #    driver linking the C++ Cyclone wrapper), so taking it away is the direction
 #    that breaks.
 #
 # So bare `threadx` stays the only entry. The visible consequence is that the six
-# `examples/qemu-riscv64-threadx/rust/*` leaves, which used to reach this by
+# `examples/rv-virt-threadx/rust/*` leaves, which used to reach this by
 # MISREPORTING their platform, now take the same branch their c/cpp siblings on
 # the identical board and toolchain already take, and gain `-lstdc++`. Adding a
 # library to a link that does not reference it is benign with GNU ld, and those

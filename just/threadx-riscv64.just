@@ -243,7 +243,7 @@ build-fixture-extras:
     # else in this lane ever ran it. Serial, once per role, before the six
     # leaves fan out below — same shape as `nros_presync_row_dirs`.
     for _rc_sync in {{RV64_RUST_ROLES}}; do
-        _rc_sync_dir="examples/qemu-riscv64-threadx/rust/$_rc_sync"
+        _rc_sync_dir="examples/rv-virt-threadx/rust/$_rc_sync"
         if [ -d "$_rc_sync_dir" ]; then
             echo "  → (role codegen) $_rc_sync_dir"
             nros_ensure_leaf_synced "$_rc_sync_dir"
@@ -427,7 +427,7 @@ build-fixture-extras:
             _tx_status_dir="$(mktemp -d)"
             _tx_n=0
             for _rc in {{RV64_RUST_ROLES}}; do
-                if [ -d "examples/qemu-riscv64-threadx/rust/$_rc" ]; then
+                if [ -d "examples/rv-virt-threadx/rust/$_rc" ]; then
                     for _tx_pair in "cyclonedds build-cyclonedds" "zenoh build-zenoh"; do
                         # shellcheck disable=SC2086
                         set -- $_tx_pair
@@ -435,7 +435,7 @@ build-fixture-extras:
                         _tx_n=$((_tx_n + 1))
                         (
                             if build_threadx_cmake_rmw \
-                                "examples/qemu-riscv64-threadx/rust/$_rc" "$1" "$2"; then
+                                "examples/rv-virt-threadx/rust/$_rc" "$1" "$2"; then
                                 : > "$_tx_status_dir/$_rc-$1.ok"
                             else
                                 : > "$_tx_status_dir/$_rc-$1.fail"
@@ -525,7 +525,7 @@ _run-qemu example binary peer_index:
     source "{{justfile_directory()}}/scripts/build/fixtures-target-dir.sh"
     TX_DIR="$(nros_cargo_target_profile_dir)"
     TX_ARGS="--no-default-features --features rmw-zenoh"
-    TX_LEAF="examples/qemu-riscv64-threadx/rust/{{example}}"
+    TX_LEAF="examples/rv-virt-threadx/rust/{{example}}"
     tx_tdir_flag="$(nros_fixture_target_dir_flag threadx-riscv64 "$TX_ARGS" "")"
     tx_artifacts="$(nros_fixture_row_artifact_dir "$TX_LEAF" threadx-riscv64 "$TX_ARGS" "")"
     cd "{{justfile_directory()}}/$TX_LEAF"
@@ -542,22 +542,22 @@ _run-qemu example binary peer_index:
     wait $PID
 
 # Run ThreadX RISC-V talker on QEMU
-talker: (_run-qemu "talker" "qemu-riscv64-threadx-talker" "0")
+talker: (_run-qemu "talker" "rv-virt-threadx-talker" "0")
 
 # Run ThreadX RISC-V listener on QEMU
-listener: (_run-qemu "listener" "qemu-riscv64-threadx-listener" "1")
+listener: (_run-qemu "listener" "rv-virt-threadx-listener" "1")
 
 # Run ThreadX RISC-V service server on QEMU
-service-server: (_run-qemu "service-server" "qemu-riscv64-threadx-service-server" "0")
+service-server: (_run-qemu "service-server" "rv-virt-threadx-service-server" "0")
 
 # Run ThreadX RISC-V service client on QEMU
-service-client: (_run-qemu "service-client" "qemu-riscv64-threadx-service-client" "1")
+service-client: (_run-qemu "service-client" "rv-virt-threadx-service-client" "1")
 
 # Run ThreadX RISC-V action server on QEMU
-action-server: (_run-qemu "action-server" "qemu-riscv64-threadx-action-server" "0")
+action-server: (_run-qemu "action-server" "rv-virt-threadx-action-server" "0")
 
 # Run ThreadX RISC-V action client on QEMU
-action-client: (_run-qemu "action-client" "qemu-riscv64-threadx-action-client" "1")
+action-client: (_run-qemu "action-client" "rv-virt-threadx-action-client" "1")
 
 # Start zenohd router for ThreadX RISC-V examples (allocator rust-pubsub port 9400)
 zenohd:
@@ -572,9 +572,9 @@ clean:
     #!/usr/bin/env bash
     rm -rf build/cmake-threadx-riscv64-zenoh
     for example in {{RV64_RUST_ROLES}}; do
-        rm -rf "examples/qemu-riscv64-threadx/rust/$example/target" \
-               "examples/qemu-riscv64-threadx/rust/$example/target-zenoh"
-        rm -rf "examples/qemu-riscv64-threadx/c/$example/build-zenoh" \
-               "examples/qemu-riscv64-threadx/cpp/$example/build-zenoh"
+        rm -rf "examples/rv-virt-threadx/rust/$example/target" \
+               "examples/rv-virt-threadx/rust/$example/target-zenoh"
+        rm -rf "examples/rv-virt-threadx/c/$example/build-zenoh" \
+               "examples/rv-virt-threadx/cpp/$example/build-zenoh"
     done
     echo "ThreadX RISC-V build artifacts cleaned"
