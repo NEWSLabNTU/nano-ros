@@ -1357,10 +1357,18 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `Result`, so the image printed nothing after "Network ready".
     // `zephyr/rust/safety` passed throughout because `safety` is a BACKEND
     // feature that registers no services.
+    //
+    // phase-426 W3 — and the parameter half is PER NODE. The six services are
+    // registered under each node's own FQN so `ros2 param list` enumerates the
+    // image's nodes, so a two-node entry declaring `[param_services]` needs
+    // twelve slots, not six. Sizing for one set is issue 0460's defect one node
+    // over: the entry builds and the SECOND node's registration is the one that
+    // fails. The multiplication has one home,
+    // `executor_sizing::param_service_slots`.
     let capability_slots = usize::from(lifecycle_code.is_some())
         * nros_orchestration_ir::executor_sizing::LIFECYCLE_SERVICE_SLOTS
         + usize::from(param_services_enabled)
-            * nros_orchestration_ir::executor_sizing::PARAM_SERVICE_SLOTS;
+            * nros_orchestration_ir::executor_sizing::param_service_slots(num_register_calls);
     let exec_sizing = executor_sizing_for(declared_sizing, model_callbacks + capability_slots)?;
     // Issue 0257 — the loud bake-time check. On a board that ignores the
     // per-entry sizing the capacity is whatever `NROS_EXECUTOR_MAX_CBS`

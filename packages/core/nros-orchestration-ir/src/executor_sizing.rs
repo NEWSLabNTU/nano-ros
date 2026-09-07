@@ -82,6 +82,26 @@ pub const LIFECYCLE_SERVICE_SLOTS: usize = 5;
 /// `nros_node::parameter_services::ParameterServiceServers`.
 pub const PARAM_SERVICE_SLOTS: usize = 6;
 
+/// phase-426 W3 — what `[param_services]` costs an entry registering `nodes`
+/// nodes.
+///
+/// [`PARAM_SERVICE_SLOTS`] is per NODE, not per image: the six services are
+/// registered under each node's own fully-qualified name, because that is what
+/// `ros2 param list` enumerates. Sizing an executor for one set is issue 0460's
+/// shape one node over — the entry builds, and the second node's
+/// `register_parameter_services` fails inside a call whose `Result` some boot
+/// paths drop.
+///
+/// Floored at one: an entry with no register call still registers a set under
+/// the executor's own identity, which is the fallback
+/// `Executor::reconcile_parameter_services` takes when the node table is empty.
+///
+/// [`LIFECYCLE_SERVICE_SLOTS`] deliberately has no twin — those five are
+/// registered once, on the executor.
+pub const fn param_service_slots(nodes: usize) -> usize {
+    PARAM_SERVICE_SLOTS * if nodes == 0 { 1 } else { nodes }
+}
+
 /// Node FQN owning an endpoint ref (`"/ns/node/endpoint"` → `"/ns/node"`).
 fn endpoint_node(ep: &str) -> &str {
     ep.rsplit_once('/').map(|(node, _)| node).unwrap_or(ep)

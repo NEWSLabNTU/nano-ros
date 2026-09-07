@@ -738,6 +738,16 @@ config NROS_MAX_QUERYABLES
       it: the parameter (6) and lifecycle (5) service families. An image
       carrying either must state this knob.
 
+      phase-426 W3 -- the PARAMETER family is per NODE. `ros2 param list`
+      enumerates an image's nodes, so one set of six services is registered
+      under each node's own fully-qualified name: an N-node image carrying
+      `[param_services]` claims 6*N slots before the application declares
+      anything, plus 5 for the lifecycle family, which is still one set on the
+      executor. A value below that DERIVED floor is refused at BUILD time by
+      `nros-zpico-build` and the refusal names this knob -- it used to be a
+      runtime `ServiceServerCreationFailed` with no explanation (issue 0460).
+      Two nodes already need 12, which is over the historical default of 8.
+
 config NROS_MAX_LIVELINESS
     int "Maximum concurrent liveliness tokens"
     default 16
