@@ -114,6 +114,46 @@ noticing: `qemu-arm-freertos` and `mps2-an385-freertos` differ in no field.
 Exception: a **system** board, where the ABI is the constraint rather than an
 attribute of a target — `freertos-posix` is the whole claim.
 
+## 2b. The fixture-platform axis is a FAMILY axis (added 2026-09-08)
+
+Board names are not the only board-ish vocabulary. A survey found **five**:
+
+| # | vocabulary | shape |
+| --- | --- | --- |
+| 1 | index `[board.*]` key | this RFC's subject |
+| 2 | index `.platform` field | `bare-metal freertos nuttx posix threadx zephyr` |
+| 3 | `examples/fixtures.toml` `platform =` | a lane COORDINATE, keyed by `PlatformId` |
+| 4 | `just` scope | `native … threadx_linux threadx_riscv64 esp32 …` (underscores) |
+| 5 | `just` module filename | `qemu-baremetal threadx-linux …` (hyphens) |
+
+Vocabulary 3 is a different AXIS from 1, and the difference is the point. Ten of
+its twelve values name a platform FAMILY — `linux`, `zephyr`,
+`zephyr-cortex-m`, `threadx-linux`, `threadx-riscv64`, `freertos`,
+`freertos-posix`, `nuttx`, `nuttx-riscv`, `esp32`. Two name a BOARD:
+`qemu-arm-baremetal` (21 rows) and `qemu-esp32-baremetal` (3).
+
+**R6 — a fixture platform names a family, never a board.** Renaming the two
+odd entries to their new BOARD names would leave the axis just as mixed, spelled
+differently. They take family names instead:
+
+    qemu-arm-baremetal    -> baremetal      (the only bare-metal family; the word is free)
+    qemu-esp32-baremetal  -> esp32          (COLLAPSES a duplicate — see below)
+
+The esp32 case is the evidence. `matrix.rs` already maps ONE `PlatformId` to
+TWO tokens:
+
+    PlatformId::Esp32Qemu => &["esp32", "qemu-esp32-baremetal"],
+
+`esp32` carries the workspace fixture; `qemu-esp32-baremetal` carries two
+example leaves and a test bin. One platform, two coordinates, no stated reason —
+the same duplication §1 found in the index, one namespace over. Collapsing to
+`esp32` REMOVES it; renaming to `esp32-c3-baremetal` would add a third spelling.
+
+Vocabularies 4 and 5 are a separate defect — `threadx_linux` and
+`threadx-linux` are one concept with two separators — and a separate rename with
+its own blast radius. Out of scope here, deliberately: bundling it would put two
+unrelated decisions in one sweep.
+
 ## 3. What the rule is not
 
 **Not "hardware-first" or "emulator-first".** Both framings pick a word order
@@ -126,9 +166,24 @@ wrong for others.
 `fvp-aemv8r-smp` is machine-first and sits among the `qemu-*` keys — so
 "consistency" was not available to defend either.
 
-**Not about `deploy=`.** A deploy names a FAMILY (`threadx`, `nuttx`), and the
-`board=` beside it selects the implementation. RFC-0087 D3 and
-`check-board-alias-unique` own that; this RFC does not touch it.
+**Not about `deploy=` — with one exception, measured.** A deploy names a FAMILY
+(`threadx`, `nuttx`), and the `board=` beside it selects the implementation.
+RFC-0087 D3 and `check-board-alias-unique` own that; this RFC does not touch it.
+
+The exception: a deploy token that IS ALSO a board key follows its board.
+
+    git grep -hoP '^\s*deploy\s*=\s*"\K[^"]+' -- '*.toml' | sort | uniq -c
+      2 qemu-esp32-baremetal
+
+`qemu-esp32-baremetal` is an index board key, a fixture platform, a member of
+`NROS_FIXTURE_SHARED_PLATFORMS`, and a `deploy=` value in two manifests. Leaving
+the deploy token behind would not preserve a separate vocabulary — it would
+leave a THIRD spelling of one thing, which is the defect this RFC exists to
+close. So it moves with the board: `deploy = "esp32-c3-baremetal"`.
+
+Deploy values that are not board keys — `native`, `freertos`, `nuttx`,
+`threadx-linux`, `zephyr`, `qemu-mps2-an385`, `rtic-mps2-an385`,
+`threadx-qemu-riscv64`, `esp32-qemu` — are untouched.
 
 **Not about config axes.** `fvp-aemv8r-smp` folds SMP into the name, and the
 NuttX crate carries `arm`, `arm-smp` and `riscv` defconfigs where the first two
@@ -156,6 +211,15 @@ non-goals.
 Sixteen index keys become twelve. The two `rv-virt-*` entries are the same QEMU
 machine at different ISA widths and are distinguished by the `arch` field
 (`riscv32` vs `riscv64`) — R5 doing its job rather than a collision.
+
+And in vocabulary 3, per R6:
+
+| current fixture `platform =` | rows | name |
+| --- | ---: | --- |
+| `qemu-arm-baremetal` | 21 | `baremetal` |
+| `qemu-esp32-baremetal` | 3 | `esp32` (collapses into the existing token) |
+
+Twelve fixture platforms become eleven.
 
 ## 5. How it is enforced
 
