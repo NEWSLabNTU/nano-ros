@@ -3236,12 +3236,16 @@ pub unsafe extern "C" fn nros_cpp_bind_node_name_sched(
             None => return NROS_CPP_RET_INVALID_ARGUMENT,
         }
     };
-    ctx.executor.bind_node_name_sched(
+    match ctx.executor.bind_node_name_sched(
         name_str,
         ns_str,
         nros_node::executor::sched_context::SchedContextId(sc_id),
-    );
-    NROS_CPP_RET_OK
+    ) {
+        Ok(()) => NROS_CPP_RET_OK,
+        // issue 1172 — a binding that does not fit is refused, not dropped: it
+        // would leave the node on the wrong sched context silently.
+        Err(()) => NROS_CPP_RET_FULL,
+    }
 }
 
 /// Phase 273 (W2) — seed the group → sched-context table for a specific
@@ -3287,13 +3291,15 @@ pub unsafe extern "C" fn nros_cpp_bind_group_sched(
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
-    ctx.executor.bind_group_sched(
+    match ctx.executor.bind_group_sched(
         name_str,
         ns_str,
         group_str,
         nros_node::executor::sched_context::SchedContextId(sc_id),
-    );
-    NROS_CPP_RET_OK
+    ) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(()) => NROS_CPP_RET_FULL,
+    }
 }
 
 /// Phase 305 W3 (issue 0255) — declare one launch `<remap from= to=/>` rule for
@@ -3598,18 +3604,31 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
 
     if n == 0 || groups.is_null() {
         // Empty / NULL ⇒ wildcard (clear filter, accept all groups).
-        ctx.executor.set_active_groups(&[]);
-        return NROS_CPP_RET_OK;
+        return match ctx.executor.set_active_groups(&[]) {
+            Ok(()) => NROS_CPP_RET_OK,
+            Err(()) => NROS_CPP_RET_FULL,
+        };
     }
 
     // Collect group names from the C string pointer array onto the stack.
-    // Bounded at 16 entries (generous for tier gating; silently truncates extras).
+    //
+    // issue 1172 — this used to read `n.min(MAX_GROUPS_FFI)` and say so:
+    // "silently truncates extras". A 17th group was dropped HERE, before the
+    // executor ever saw it, and the tier then filtered on a set missing an
+    // entry. Every drop on this path is now refused instead: a tier that
+    // cannot express its filter must not run with a filter that is quietly
+    // narrower than the one it was given.
     const MAX_GROUPS_FFI: usize = 16;
+    if n > MAX_GROUPS_FFI {
+        return NROS_CPP_RET_FULL;
+    }
     let mut group_strs = [""; MAX_GROUPS_FFI];
     let mut count = 0usize;
 
-    let ptr_slice = unsafe { core::slice::from_raw_parts(groups, n.min(MAX_GROUPS_FFI)) };
+    let ptr_slice = unsafe { core::slice::from_raw_parts(groups, n) };
     for &raw_ptr in ptr_slice {
+        // A NULL or empty entry is not a group and never was; skipping it is
+        // the documented wildcard-free shape, not a drop.
         if let Some(s) = unsafe { cstr_to_str(raw_ptr) }
             && !s.is_empty()
         {
@@ -3618,8 +3637,10 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
         }
     }
 
-    ctx.executor.set_active_groups(&group_strs[..count]);
-    NROS_CPP_RET_OK
+    match ctx.executor.set_active_groups(&group_strs[..count]) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(()) => NROS_CPP_RET_FULL,
+    }
 }
 
 // ============================================================================

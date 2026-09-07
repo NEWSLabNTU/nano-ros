@@ -2045,21 +2045,38 @@ impl<'s> Executor<'s> {
     /// only callbacks whose `.callback_group()` is in `groups` register here.
     /// An empty slice (or never calling it) leaves the wildcard — register all
     /// callbacks (the single-tier degenerate case + today's behaviour).
-    pub fn set_active_groups(&mut self, groups: &[&str]) {
+    pub fn set_active_groups(&mut self, groups: &[&str]) -> Result<(), ()> {
         // phase-409 — the table is CARVED and reused, so clear before refilling;
         // the old `Option<heapless::Vec>` got a fresh empty vector each call.
         self.active_groups.clear();
         if groups.is_empty() {
             self.active_groups_filtering = false;
-            return;
+            return Ok(());
         }
         for g in groups {
+            // issue 1172 — this used to be `if s.push_str(g).is_ok()`, which
+            // DROPPED an oversized group name and left the tier filtering on a
+            // set that silently lacked it. It fails closed (the entity is never
+            // created), so the symptom is a missing entity with nothing to read
+            // that says why. Same contract as `declare_remap` below: too long,
+            // or table full, is the caller's error.
             let mut s = heapless::String::new();
-            if s.push_str(g).is_ok() {
-                let _ = self.active_groups.push(s);
+            if s.push_str(g).is_err() || self.active_groups.push(s).is_err() {
+                // FAIL CLOSED, and say so. Returning here with a PARTIAL table
+                // would leave the tier filtering on a subset — the same silent
+                // narrowing, one step later. An empty table with filtering ON
+                // accepts NOTHING (`group_filter_accepts` matches on an empty
+                // slice), so the tier registers no entities at all: visible in
+                // behaviour, where a missing entry is not. The `Err` is for the
+                // caller that can report it; the state is safe for the one that
+                // cannot.
+                self.active_groups.clear();
+                self.active_groups_filtering = true;
+                return Err(());
             }
         }
         self.active_groups_filtering = true;
+        Ok(())
     }
 
     /// The current callback-group filter, or `None` for the wildcard.
@@ -2203,23 +2220,26 @@ impl<'s> Executor<'s> {
         name: &str,
         namespace: &str,
         sc: super::sched_context::SchedContextId,
-    ) {
+    ) -> Result<(), ()> {
         let norm_ns = if namespace.is_empty() { "/" } else { namespace };
         // Overwrite if there is already an entry for this (name, ns) pair.
         for entry in self.node_sched_table.iter_mut() {
             if entry.0.as_str() == name && entry.1.as_str() == norm_ns {
                 entry.2 = sc;
-                return;
+                return Ok(());
             }
         }
-        // New entry — build the heapless strings and push. Silently ignore
-        // if the name/ns is too long or the table is at capacity.
+        // New entry. Too long, or table full, is an ERROR the caller surfaces
+        // — never a dropped binding. A binding that vanishes leaves the node on
+        // the wrong sched context with nothing to read that says so.
         let mut name_s = heapless::String::<64>::new();
         let mut ns_s = heapless::String::<64>::new();
-        if name_s.push_str(name).is_err() || ns_s.push_str(norm_ns).is_err() {
-            return;
-        }
-        let _ = self.node_sched_table.push((name_s, ns_s, sc));
+        name_s.push_str(name).map_err(|_| ())?;
+        ns_s.push_str(norm_ns).map_err(|_| ())?;
+        self.node_sched_table
+            .push((name_s, ns_s, sc))
+            .map_err(|_| ())?;
+        Ok(())
     }
 
     /// Look up the seeded sched-context for `(name, namespace)`. Returns
@@ -2257,28 +2277,27 @@ impl<'s> Executor<'s> {
         namespace: &str,
         group: &str,
         sc: super::sched_context::SchedContextId,
-    ) {
+    ) -> Result<(), ()> {
         let norm_ns = if namespace.is_empty() { "/" } else { namespace };
         // Overwrite if there is already an entry for this (name, ns, group).
         for entry in self.group_sched_table.iter_mut() {
             if entry.0.as_str() == name && entry.1.as_str() == norm_ns && entry.2.as_str() == group
             {
                 entry.3 = sc;
-                return;
+                return Ok(());
             }
         }
-        // New entry — build the heapless strings and push. Silently ignore
-        // if name/ns/group is too long or the table is at capacity.
+        // Same contract as the two above.
         let mut name_s = heapless::String::<64>::new();
         let mut ns_s = heapless::String::<64>::new();
         let mut grp_s = heapless::String::<32>::new();
-        if name_s.push_str(name).is_err()
-            || ns_s.push_str(norm_ns).is_err()
-            || grp_s.push_str(group).is_err()
-        {
-            return;
-        }
-        let _ = self.group_sched_table.push((name_s, ns_s, grp_s, sc));
+        name_s.push_str(name).map_err(|_| ())?;
+        ns_s.push_str(norm_ns).map_err(|_| ())?;
+        grp_s.push_str(group).map_err(|_| ())?;
+        self.group_sched_table
+            .push((name_s, ns_s, grp_s, sc))
+            .map_err(|_| ())?;
+        Ok(())
     }
 
     /// Look up the seeded sched-context for `(name, namespace, group)`. Returns
@@ -10105,6 +10124,39 @@ mod p274_w1_tier_executor_tests {
         );
     }
 
+    /// An oversized group name is REFUSED and fails CLOSED.
+    ///
+    /// issue 1172 — this used to be `if s.push_str(g).is_ok()`, which dropped
+    /// the name and left the tier filtering on a set that silently lacked it.
+    /// Two things are asserted because either alone would let the bug back:
+    /// the call must REPORT the failure, and the resulting filter must accept
+    /// NOTHING rather than fall back to the wildcard, which would be
+    /// fail-open.
+    #[test]
+    fn an_oversized_group_name_is_refused_and_fails_closed() {
+        let session = MockSession::new();
+        let mut primary = Executor::from_session(session);
+        let handle = primary.session_handle();
+        // SAFETY: primary outlives borrowed.
+        let mut borrowed = unsafe { Executor::open_with_session_handle(handle) };
+
+        // `GroupName` is `heapless::String<32>`.
+        let too_long = "g".repeat(33);
+        assert!(
+            borrowed.set_active_groups(&[too_long.as_str()]).is_err(),
+            "an oversized group name must be reported, not dropped"
+        );
+        assert!(
+            !borrowed.group_active(&too_long),
+            "the name that did not fit must not be active"
+        );
+        assert!(
+            !borrowed.group_active("anything-else"),
+            "a refused filter must accept NOTHING — falling back to the \
+             wildcard would run every callback on this tier"
+        );
+    }
+
     #[test]
     fn set_active_groups_gates_group_active() {
         let session = MockSession::new();
@@ -10125,7 +10177,7 @@ mod p274_w1_tier_executor_tests {
         );
 
         // Gate borrowed to only the "ctrl" group (one-tier filter).
-        borrowed.set_active_groups(&["ctrl"]);
+        borrowed.set_active_groups(&["ctrl"]).expect("fits");
 
         assert!(
             borrowed.group_active("ctrl"),
@@ -10147,7 +10199,9 @@ mod p274_w1_tier_executor_tests {
         );
 
         // Clear the filter on borrowed — back to wildcard.
-        borrowed.set_active_groups(&[]);
+        borrowed
+            .set_active_groups(&[])
+            .expect("the wildcard always fits");
         assert!(
             borrowed.group_active("telem"),
             "after clearing, borrowed must accept all groups again"

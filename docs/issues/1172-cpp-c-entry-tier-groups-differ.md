@@ -62,6 +62,76 @@ that first, then make it one derivation beside `tier_views`, and add a golden
 row that carries a cross-tier group and an empty group name so the answer is
 pinned.
 
+## Scope — option 4, node-qualified filtering (2026-09-08)
+
+The chosen fix is not "pick C's rule or C++'s". Both are wrong for the same
+reason: **the filter matches on group NAME alone**, so it cannot tell node A's
+`ctrl` from node B's `ctrl`, and the codegen difference is only how each pack
+copes with an ambiguity neither can express.
+
+### What the filter actually is
+
+`Executor::group_active` has ONE caller in the tree — `create_entity`
+(`packages/api/nros/src/node_runtime.rs:1338`). It is a REGISTRATION gate, not
+a dispatch gate: an entity whose group is inactive on this tier is never
+created, so it gets no RMW handle and no slot. `metadata.node_id` is already in
+scope there (used three lines below to `lookup_node`), so the node identity is
+available at the exact point the match happens.
+
+### The precedent to copy
+
+`Executor::bind_group_sched` (`spin.rs:2129`) already solves this for the
+sched-context path: it keys `group_sched_table` on the TUPLE
+`(name<64>, ns<64>, group<32>)` and matches all three. The tier filter is the
+same question with a different answer shape, and it should key the same way —
+a tuple, not a delimiter-joined string, so no name can collide by containing
+the delimiter.
+
+That the two paths already disagree is itself the finding: `bind_group_sched`
+is node-qualified and `set_active_groups` is not, and both are fed by the same
+emitter from the same `tier.members`.
+
+### What changes
+
+RUNTIME (`nros-node/src/executor/spin.rs`)
+  * `active_groups: CarvedVec<GroupName>` becomes a tuple vec keyed like
+    `group_sched_table`.
+  * `set_active_groups(&[&str])` takes triples.
+  * `group_active(group)` becomes `group_active(name, ns, group)`.
+  * `create_entity` moves its `lookup_node` ABOVE the gate and passes the
+    node's name and namespace.
+
+C ABI (`nros_cpp_executor_set_active_groups`)
+  * The signature does NOT change. The array becomes 3N strings — name, ns,
+    group, repeated — and the count stays the number of ENTRIES. That is what
+    keeps `nros_native_tier_spec_t` byte-identical: no change to the struct,
+    its 8 mirrors, the designated initialisers or the C runners, which pass the
+    array through blind.
+  * The cost of that choice, stated: `groups` / `n_groups` then name a triple
+    array, so the field names under-describe the content. The alternative —
+    three parallel arrays or a struct — is an ABI change across 8 mirrors and
+    7 runners, which is a phase rather than a wave.
+
+CODEGEN (both entry packs)
+  * `groups_per_tier` emits the triple, and the two derivations collapse: with
+    the node in the key there is nothing to dedup ACROSS tiers, so C's rule and
+    C++'s rule stop differing. `tier_views`' `groups_per_tier` parameter — the
+    one this issue exists to remove — goes away.
+
+### What this changes for a user
+
+An observable behaviour change, and no fixture covers it today. A tier filter
+that matched any node's group of that name will now match only the named
+node's. A plan relying on the old breadth — deliberately or not — behaves
+differently.
+
+### Acceptance
+
+A RUNTIME test, not a golden: a tiered fixture with two nodes declaring the
+SAME group id pinned to different tiers, asserting each tier registers only its
+own node's entities. Everything in this issue is read from source; the case has
+been unreachable by construction, which is why it survived.
+
 ## Related
 
 - phase-432 (`docs/roadmap/phase-432-codegen-one-producer-many-packs.md`) — W2.3.

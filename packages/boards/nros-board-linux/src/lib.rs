@@ -723,7 +723,12 @@ fn run_one_tier<B, F, E>(
     // spin loop afterwards.
     apply_tier_priority(tier);
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(exec);
-    crt.executor_mut().set_active_groups(tier.groups);
+    // issue 1172 — `Err` means the filter did not fit, and
+    // `set_active_groups` has already cleared it and left filtering ON,
+    // so this tier registers NOTHING rather than registering on a
+    // quietly narrower set. Nothing here can return an error (the tier
+    // runner is `-> ()`), so the fail-closed state IS the report.
+    let _ = crt.executor_mut().set_active_groups(tier.groups);
     apply_tier_sched(&mut crt, tier);
     apply_tier_affinity::<B>(tier);
     {
@@ -767,7 +772,12 @@ fn run_boot_tier<B, F, E>(
     // nothing at all) and cost issue 0636 a measurement round on NuttX. A tier
     // is a tier whichever thread carries it.
     apply_tier_priority(tier);
-    crt.executor_mut().set_active_groups(tier.groups);
+    // issue 1172 — `Err` means the filter did not fit, and
+    // `set_active_groups` has already cleared it and left filtering ON,
+    // so this tier registers NOTHING rather than registering on a
+    // quietly narrower set. Nothing here can return an error (the tier
+    // runner is `-> ()`), so the fail-closed state IS the report.
+    let _ = crt.executor_mut().set_active_groups(tier.groups);
     apply_tier_sched(crt, tier);
     apply_tier_affinity::<B>(tier);
     {

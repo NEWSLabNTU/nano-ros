@@ -6886,7 +6886,9 @@ fn test_bind_node_name_sched_seeded_resolves() {
     assert_eq!(sc2, SchedContextId(2));
 
     // Seed the table before building.
-    executor.bind_node_name_sched("talker", "/", SchedContextId(2));
+    executor
+        .bind_node_name_sched("talker", "/", SchedContextId(2))
+        .expect("fixture binding must fit");
 
     let nid = executor.node_builder("talker").build().unwrap();
 
@@ -6931,7 +6933,9 @@ fn test_bind_node_name_sched_explicit_beats_table() {
         .unwrap(); // SchedContextId(2)
 
     // Table says SC 2, but explicit .sched(1) should win.
-    executor.bind_node_name_sched("talker", "/", SchedContextId(2));
+    executor
+        .bind_node_name_sched("talker", "/", SchedContextId(2))
+        .expect("fixture binding must fit");
 
     let nid = executor
         .node_builder("talker")
@@ -6960,7 +6964,9 @@ fn test_bind_node_name_sched_namespace_disambiguates() {
         .unwrap(); // SchedContextId(1)
 
     // Seed for the namespaced node only.
-    executor.bind_node_name_sched("talker", "/ns", SchedContextId(1));
+    executor
+        .bind_node_name_sched("talker", "/ns", SchedContextId(1))
+        .expect("fixture binding must fit");
 
     // Node in "/ns" namespace → gets SC 1.
     let nid_ns = executor
@@ -7005,7 +7011,9 @@ fn test_bind_group_sched_seeded_resolves() {
     assert_eq!(sc2, SchedContextId(2));
 
     // Seed the group table: node "node" / group "ctrl" → SC 2.
-    executor.bind_group_sched("node", "/", "ctrl", SchedContextId(2));
+    executor
+        .bind_group_sched("node", "/", "ctrl", SchedContextId(2))
+        .expect("fixture binding must fit");
 
     // Build the node (no default_sched seeded — node stays at SC 0).
     let nid = executor.node_builder("node").build().unwrap();
@@ -7046,8 +7054,12 @@ fn test_bind_group_sched_sub_node_split() {
     assert_eq!(sc3, SchedContextId(3));
 
     // One node, two groups, two SCs — the capability the node-name table can't express.
-    executor.bind_group_sched("node", "/", "ctrl", SchedContextId(2));
-    executor.bind_group_sched("node", "/", "telem", SchedContextId(3));
+    executor
+        .bind_group_sched("node", "/", "ctrl", SchedContextId(2))
+        .expect("fixture binding must fit");
+    executor
+        .bind_group_sched("node", "/", "telem", SchedContextId(3))
+        .expect("fixture binding must fit");
 
     let nid = executor.node_builder("node").build().unwrap();
 
@@ -7077,8 +7089,12 @@ fn test_bind_group_sched_no_group_uses_node_default() {
     assert_eq!(sc2, SchedContextId(2));
 
     // Seed both the node-name table and the group table.
-    executor.bind_node_name_sched("node", "/", SchedContextId(2));
-    executor.bind_group_sched("node", "/", "ctrl", SchedContextId(1));
+    executor
+        .bind_node_name_sched("node", "/", SchedContextId(2))
+        .expect("fixture binding must fit");
+    executor
+        .bind_group_sched("node", "/", "ctrl", SchedContextId(1))
+        .expect("fixture binding must fit");
 
     let nid = executor.node_builder("node").build().unwrap();
     assert_eq!(executor.nodes[nid.index()].default_sched, SchedContextId(2));
@@ -7105,7 +7121,9 @@ fn test_bind_group_sched_unmapped_group_falls_back_to_node_default() {
     assert_eq!(sc2, SchedContextId(2));
 
     // Node default = SC 2; no group entry for "unknown_group".
-    executor.bind_node_name_sched("node", "/", SchedContextId(2));
+    executor
+        .bind_node_name_sched("node", "/", SchedContextId(2))
+        .expect("fixture binding must fit");
 
     let nid = executor.node_builder("node").build().unwrap();
     assert_eq!(executor.nodes[nid.index()].default_sched, SchedContextId(2));
@@ -7147,8 +7165,12 @@ fn test_bind_group_sched_group_beats_node_default() {
     assert_eq!(sc5, SchedContextId(5));
 
     // node default = SC 5; "ctrl" group → SC 2.
-    executor.bind_node_name_sched("node", "/", SchedContextId(5));
-    executor.bind_group_sched("node", "/", "ctrl", sc2);
+    executor
+        .bind_node_name_sched("node", "/", SchedContextId(5))
+        .expect("fixture binding must fit");
+    executor
+        .bind_group_sched("node", "/", "ctrl", sc2)
+        .expect("fixture binding must fit");
 
     let nid = executor.node_builder("node").build().unwrap();
     assert_eq!(executor.nodes[nid.index()].default_sched, SchedContextId(5));
@@ -7188,7 +7210,9 @@ fn test_callback_group_timer_in_group_binds_to_group_sc() {
     assert_eq!(sc2, SchedContextId(2));
 
     // Seed: group "ctrl" on node "node" → SC 2.
-    executor.bind_group_sched("node", "/", "ctrl", SchedContextId(2));
+    executor
+        .bind_group_sched("node", "/", "ctrl", SchedContextId(2))
+        .expect("fixture binding must fit");
 
     let nid = executor.node_builder("node").build().unwrap();
     // Node default is SC 0 (no bind_node_name_sched).
@@ -7227,7 +7251,9 @@ fn test_callback_group_subscription_in_group_binds_to_group_sc() {
     assert_eq!(sc2, SchedContextId(2));
 
     // Seed: group "telem" on node "sensor" → SC 2.
-    executor.bind_group_sched("sensor", "/", "telem", SchedContextId(2));
+    executor
+        .bind_group_sched("sensor", "/", "telem", SchedContextId(2))
+        .expect("fixture binding must fit");
 
     let nid = executor.node_builder("sensor").build().unwrap();
 
@@ -7263,7 +7289,9 @@ fn test_callback_group_unmapped_group_falls_back_to_node_default() {
     assert_eq!(sc2, SchedContextId(2));
 
     // node "ctrl_node" has a default SC of 2; the group "unknown" has no entry.
-    executor.bind_node_name_sched("ctrl_node", "/", SchedContextId(2));
+    executor
+        .bind_node_name_sched("ctrl_node", "/", SchedContextId(2))
+        .expect("fixture binding must fit");
 
     let nid = executor.node_builder("ctrl_node").build().unwrap();
     assert_eq!(executor.nodes[nid.index()].default_sched, SchedContextId(2));
