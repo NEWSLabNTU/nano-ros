@@ -42,6 +42,14 @@ layout-size-markers = []
 # takes values (`ExecutorConfig::resolve_with` + `EnvRung`). `from_env` now
 # lives in `nros` as `ExecutorConfigEnvExt`, and consumers name `nros/env`.
 
+# phase-427 W10 — arms the `#[deprecated]` on `ExecutorConfig::node_name`, the
+# builder spelling that says "this executor IS one node". The name belongs on
+# `Executor::create_node`; the attribute is behind a feature (the same shape
+# `nros-log`'s retired `deprecate-legacy-names` had) because this workspace sets
+# `warnings = "deny"`, so arming it unconditionally is 65 hard errors across 47
+# unmigrated files rather than a nudge. Turn it on to find your call sites.
+deprecate-node-name-setter = []
+
 std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-cffi?/std", "log"]
 alloc = ["nros-core/alloc", "nros-rmw/alloc", "dep:portable-atomic-util", "nros-platform-api/alloc"]
 

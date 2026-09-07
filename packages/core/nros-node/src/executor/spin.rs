@@ -3648,6 +3648,31 @@ impl<'s> Executor<'s> {
     /// Registers the node in the executor's table, deduplicating on
     /// `(name, namespace)` — phase-376 W5/B1.
     ///
+    /// # This is `rclrs::Executor::create_node`
+    ///
+    /// phase-427 W10 (RFC-0089 "Context and `init`, settled"). Same name, same
+    /// place in the sequence — `Context` → executor → node — so a ported rclrs
+    /// `main` lands here unchanged:
+    ///
+    /// ```ignore
+    /// let context = nros::Context::default_from_env()?;
+    /// let mut executor = context.create_executor()?;
+    /// let mut node = executor.create_node("talker")?;
+    /// ```
+    ///
+    /// Two differences from upstream, both structural and both named in the
+    /// ledger row (`rust:Executor::create_node`): ours takes `&mut self`,
+    /// because the node is registered in the executor's compile-time-sized
+    /// table rather than allocated, and it hands back a borrowing
+    /// [`NodeHandle`] rather than an `Arc<Node>`, because there is no
+    /// allocator. Neither is silent — the compiler names both.
+    ///
+    /// The name comes from HERE, not from
+    /// [`ExecutorConfig::node_name`](crate::ExecutorConfig::node_name), whose
+    /// builder spelling is deprecated for exactly this reason: one executor
+    /// holds several named nodes (RFC-0047), so a name on the session config
+    /// can only ever describe the first of them.
+    ///
     /// Until 2026-08-24 this path registered NOTHING. It built a `NodeHandle`
     /// and returned it, so `node_id_by_name` could not find a node the caller
     /// had just created, and two calls with one name handed out two handles the
