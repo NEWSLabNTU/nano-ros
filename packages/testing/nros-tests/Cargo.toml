@@ -124,6 +124,12 @@ nros-platform = { path = "../../platform/nros-platform", default-features = fals
 
 [features]
 default = []
+# phase-427 W10 — `tests/rclrs_talker_port.rs` only needs the facade's
+# RMW-dependent surface (`Context::create_executor`, `Executor`,
+# `NodeHandle::create_publisher`) to COMPILE the ported tutorial; it opens
+# nothing. Deliberately NOT `component-runtime-test`, whose `trigger-test` half
+# pulls zenoh-pico source in to prove a diff.
+rclrs-port-test = ["nros/rmw-cffi", "dep:nros-platform-cffi"]
 types = ["nros-core", "nros-serdes"]
 rmw = ["nros-rmw", "nros-core", "nros-serdes"]
 safety-e2e = ["rmw", "nros-rmw/safety-e2e"]
@@ -292,6 +298,25 @@ path = "tests/init_api.rs"
 name = "component_runtime"
 path = "tests/component_runtime.rs"
 required-features = ["component-runtime-test"]
+
+# phase-427 W10 — the rclrs talker tutorial, ported and DIFFED against
+# upstream's text. Its own feature rather than `component-runtime-test`,
+# which would drag in zenoh-pico: all this needs is `nros/rmw-cffi`, the
+# thing that puts `Context::create_executor` / `Executor` on the facade's
+# surface. It opens no session and needs no router.
+[[test]]
+name = "rclrs_talker_port"
+path = "tests/rclrs_talker_port.rs"
+required-features = ["rclrs-port-test"]
+
+# phase-427 W10 — `Context::create_executor` / `create_executor_in`. Not in
+# `nros`'s own `--lib` tests because that crate's test binary cannot LINK with
+# `rmw-cffi` on (nros-node's platform externs have no port there); this crate
+# has a host platform in its graph.
+[[test]]
+name = "context_create_executor"
+path = "tests/context_create_executor.rs"
+required-features = ["rclrs-port-test"]
 
 # Phase 228 — per-tier callback-group filter + shared-session
 # (session_ptr / open_with_session) acceptance test.

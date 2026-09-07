@@ -1773,6 +1773,17 @@ required-features-tests:
         --test component_runtime --test tier_filter \
         --test component_dispatch --test component_param \
         --test dispatch_strategy --test signal_fd_wake
+    # phase-427 W10 — the rclrs talker port + its diff against upstream's text.
+    # A lane line of its own, not a `--test` on the tolerant invocation above,
+    # because `rclrs-port-test` is deliberately the CHEAP feature: it needs
+    # `nros/rmw-cffi` and nothing else — no router, no capability probe, no
+    # zenoh-pico source — so a red here is a red, and a plain `nextest run`
+    # says so. The manifest `required-features` and the file's own
+    # `#![cfg(feature = "rclrs-port-test")]` are the same name on purpose: pass
+    # one without the other and the binary holds zero tests (issue 0779).
+    cargo nextest run "${cargo_nextest_args[@]}" \
+        -p nros-tests --features rclrs-port-test \
+        --test rclrs_talker_port --test context_create_executor
     # Issue 0779 — the FILE-CFG half. These are gated by a crate-level
     # `#![cfg(feature = "lending")]` rather than a manifest `required-features`,
     # which is worse: cargo BUILDS them with the feature off, so nextest runs a
