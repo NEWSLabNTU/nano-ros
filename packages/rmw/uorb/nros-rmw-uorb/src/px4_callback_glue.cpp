@@ -46,6 +46,42 @@ namespace {
 #define NROS_RMW_UORB_PX4_MAX_CALLBACKS 64
 #endif
 
+/* issue 1131 — this knob sizes `Slot g_pool[N]`, and 0 is NOT a legal size
+ * here, for a reason that is about the LANGUAGE rather than about the runtime.
+ *
+ * Zero looked arguable, and the runtime half of the argument is sound: at 0
+ * both range-`for`s over `g_pool` simply do not execute, `find_free_or_construct`
+ * returns NULL, `nros_orb_register_callback` returns -1, and `subscriber.cpp`
+ * treats that as its DOCUMENTED slow path — it pins `ready` true and polls
+ * `orb_check` every time, "same behaviour the pre-push-wake K.4.2 build had".
+ * That is not issue 1015's silence: data still flows. So zero does not break
+ * the runtime.
+ *
+ * It breaks the BUILD. `Slot g_pool[0]` is a zero-size array, which ISO C++
+ * forbids (a GNU extension, unlike the C case issue 1033 measured for the XRCE
+ * pools). This TU is compiled `-Wall -Wextra -Wpedantic` by our own
+ * CMakeLists, and PX4 builds every module `-Werror` — and PX4 is the ONLY
+ * build that compiles this file at all, since it is appended to the sources
+ * only under NROS_RMW_UORB_BUILD_PX4_GLUE, which requires
+ * NROS_RMW_UORB_LINK_PX4. Measured with the real flags
+ * (`g++ -std=gnu++14 -Wall -Wextra -Wpedantic -Werror -fno-exceptions
+ * -fno-rtti`): at 0, `error: ISO C++ forbids zero-size array 'g_pool'
+ * [-Werror=pedantic]`; at 64, clean.
+ *
+ * And the saving zero was supposed to buy already has a better spelling that
+ * costs nothing: an image that wants polling only sets
+ * NROS_RMW_UORB_BUILD_PX4_GLUE=OFF, which drops this whole TU and links
+ * `callback_default.cpp`'s weak stubs — those return -1 unconditionally, which
+ * is the same slow path, with the pool not merely empty but ABSENT. So this
+ * guard forecloses nothing, which is the thing issue 1015's first fix got
+ * wrong about issue 1033's pools.
+ *
+ * Below the `#ifndef`, never above: an undefined identifier reads as 0 in
+ * `#if`, so a guard above its own default fires on every build (issue 1167). */
+#if NROS_RMW_UORB_PX4_MAX_CALLBACKS < 1
+#error "NROS_RMW_UORB_PX4_MAX_CALLBACKS must be >= 1: ISO C++ forbids a zero-size array (1131)"
+#endif
+
 // One adapter per registration. The WorkItem half handles the WQ
 // dispatch; the SubscriptionCallbackWorkItem half is constructed in
 // `install()` (after PX4's WQs have come up) and points back at
