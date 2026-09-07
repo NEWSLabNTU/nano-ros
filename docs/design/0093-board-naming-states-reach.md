@@ -221,6 +221,12 @@ And in vocabulary 3, per R6:
 
 Twelve fixture platforms become eleven.
 
+Every retired name, its replacement and the rule that selected it are
+enumerated in
+[`docs/reference/retired-board-names.md`](../reference/retired-board-names.md),
+which also records the two `mps2-an385` / `esp32-c3` strings that survive
+outside the index and the crate directories that deliberately did not move.
+
 ## 5. How it is enforced
 
 `check-board-vocabulary` asserts today that every `board=` resolves and is an
