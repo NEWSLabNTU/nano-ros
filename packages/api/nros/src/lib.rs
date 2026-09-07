@@ -1044,11 +1044,13 @@ pub use nros_node::{TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, Time
 // `nros-node`, so a capability that stops at the core crate is one no
 // application can name. W4 added the type and the registrar and stopped at the
 // core, which the `/clock` fixture found the moment it tried to use them.
-// Gated on `rmw-cffi`, the spelling every other executor re-export here uses:
-// `nros-node`'s own `has_rmw` IS its `rmw-cffi` feature, and `has_rmw` is a
-// build-script cfg that does not exist in THIS crate.
-#[cfg(feature = "rmw-cffi")]
-pub use nros_node::executor::TimerClockSource;
+// UNGATED since phase-430 W4, and the enum moved to `nros_node::timer` to make
+// that possible. The `rmw-cffi` gate was right while the only way to name a
+// clock was `Executor::register_timer_on_clock`; W4 put the axis on the
+// DECLARATIVE surface too (`DeclaredNode::create_timer_on_clock`), which a
+// metadata-mode build compiles with no transport linked. A type the metadata
+// layer cannot name is a type the metadata layer re-invents.
+pub use nros_node::timer::TimerClockSource;
 
 // Re-export transport types (middleware-agnostic)
 pub use nros_rmw::{
