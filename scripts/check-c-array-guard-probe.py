@@ -114,6 +114,17 @@ PROBE_CONTEXT = {
         "why": "nros_cpp_config_generated.h is a per-build artifact, not a checkout",
         "enclosing": "none — the guard sits at file scope",
     },
+    # Unlike `component_node.hpp` above, this header pulls in only the
+    # COMMITTED `nros_cpp_ffi.h` (cbindgen output, checked in) and
+    # `nros/result.hpp` — no per-build generated config — so the real TU
+    # compiles from this checkout with one include path.
+    "packages/api/nros-cpp/include/nros/node_parameters.hpp": {
+        "mode": "compile",
+        "cc": "c++",
+        "std": "c++14",
+        "includes": ["packages/api/nros-cpp/include"],
+        "defines": [],
+    },
     "packages/platform/nros-platform-threadx/src/timer.c": {
         "mode": "preprocess",
         "cc": "cc",
