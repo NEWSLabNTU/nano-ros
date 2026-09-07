@@ -152,13 +152,19 @@ compares the baseline against itself seven times:
 rclcpp::Node baseline = 3752   and all seven forced measurements = 3752
 ```
 
-Proven by mutation. A capability-gated `double` member was added to
-`rclcpp::Node`'s private block — the exact defect the gate exists to catch — and
-the gate reported `OK — 3 type(s) x 7 capability macro(s), no layout depends on a
-probe`, exit 0, while its own selftest passed in the same run. The selftest is
-honest but tests a synthetic struct in a standalone TU, where the macro really
-does start undefined; it says nothing about the three real types. (Mutation
-reverted; tree byte-identical.)
+Proven by mutation — but not by the first mutation tried, and the correction
+matters. Injecting a member gated on `NROS_CPP_HAS_SHARED_PTR` into
+`rclcpp::Node` is TAUTOLOGICAL: that type is itself inside
+`#if defined(NROS_CPP_HAS_SHARED_PTR) && ...` (`nros.hpp:447`), so the inner
+`#ifdef` holds wherever the type exists. Every configuration reports 3760 —
+uniform, no divergence, and the gate was right to pass it.
+
+The honest demonstration is `::nros::Node`, which sits under no capability
+guard. With a gated `double` added there, the old gate reports
+`OK — no layout depends on a probe`, exit 0, while its synthetic selftest passes
+in the same run. The rebuilt gate reports
+`FAIL: sizeof(::nros::Node) differs hosted vs -nostdinc++ freestanding — 200 vs 192`,
+exit 1. Both mutations reverted; tree byte-identical. Filed as issue 1204.
 
 **Consequence: a W0 precedes W1.** The macros are genuinely off only under
 `-nostdinc++` against a shim with no `<memory>`, and the `cpp` lane already has

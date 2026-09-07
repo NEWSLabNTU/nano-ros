@@ -46,28 +46,57 @@ rclcpp::Node baseline = 3752
   -DNROS_CPP_HAS_STD_SSTREAM=1 -> 3752
 ```
 
-## Mutation test — the gate stays green on the exact defect
+## Mutation test — CORRECTED 2026-09-07
 
-A capability-gated data member was added to `rclcpp::Node`'s private block:
+**The first demonstration filed here was invalid, and the gate was right to pass
+it.** It injected a member gated on `NROS_CPP_HAS_SHARED_PTR` into
+`rclcpp::Node`. That mutation is tautological: `rclcpp::Node` is *itself* inside
+`#if defined(NROS_CPP_HAS_SHARED_PTR) && defined(NROS_CPP_HAS_STD_STRING) && ...`
+(`nros.hpp:447`), so the inner `#ifdef` is true wherever the type exists at all.
+Measured with it applied, every configuration reports 3760 — a uniform shift, no
+divergence, nothing for any gate to detect. Keeping the original claim would have
+aimed the next reader at a defect that is not there.
+
+The conclusion survives; the evidence had to be replaced. The honest
+demonstration uses `::nros::Node`, which is NOT inside a capability guard, so a
+gated member there really is present hosted and absent freestanding:
 
 ```cpp
 #ifdef NROS_CPP_HAS_SHARED_PTR
     double __mutation_probe_member;
 #endif
-    ::nros::Node node_;
+    nros_cpp_node_t handle_;
 ```
 
-`bash scripts/check-cpp-capability-layout.sh` then reported:
+Old gate, on that mutation:
 
 ```
 check-cpp-capability-layout --selftest: 2 case(s) OK (member diverges, method does not)
 check-cpp-capability-layout: OK — 3 type(s) x 7 capability macro(s), no layout depends on a probe
-GATE EXIT=0
+OLD GATE EXIT=0
 ```
 
-Both lines at once: the negative control passes on its synthetic struct, and the
-real type carries the defect undetected. (The mutation was reverted; the tree is
-byte-identical.)
+Green on a genuine layout divergence. The negative control passes on its
+synthetic struct in the same run, which is what made the gate look trustworthy.
+
+New gate, same mutation:
+
+```
+FAIL: sizeof(::nros::Node) differs hosted vs -nostdinc++ freestanding — 200 vs 192
+NEW GATE EXIT=1
+```
+
+(Both mutations reverted; the tree is byte-identical.)
+
+### What this means for `rclcpp::Node` specifically
+
+`rclcpp::Node` cannot be covered by the freestanding arm today, because it does
+not exist freestanding. Nor can a non-tautological mutation be constructed for
+it: that needs a configuration with `<memory>` present and some other capability
+header absent, and an include path can add a header, never hide one. Neither
+shim offers such a configuration. So `rclcpp::Node` stays on the forced-macro arm
+alone until phase-427 makes it freestanding — recorded as a limit in the script
+rather than papered over.
 
 ## Why it matters now
 
