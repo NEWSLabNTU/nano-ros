@@ -1398,6 +1398,31 @@ pub(crate) struct ParamState<'s> {
     /// `Executor::reconcile_parameter_services` once the nodes exist — the
     /// same shape `reconcile_ros_time_source` uses for the same reason.
     pub(crate) requested: bool,
+    /// phase-430 W2 — for each node key, whether that node's `use_sim_time`
+    /// entry is the AUTO-DECLARED `false` the executor seeded (as rclcpp does
+    /// in every node constructor) rather than a value the application named.
+    ///
+    /// A seed is a PLACEHOLDER, and that is load-bearing: the store refuses a
+    /// duplicate name, so without this the auto-declare would turn an app's own
+    /// `declare_parameter("use_sim_time", Bool(true))` into a refusal and the
+    /// default would silently beat the app.
+    /// `Executor::yield_seeded_use_sim_time` steps the placeholder aside for
+    /// the first real declaration, after which a second declaration of the same
+    /// name is refused exactly as it was before W2.
+    ///
+    /// PER NODE, because the store is keyed by node and the six services are
+    /// published per node: an app that declares `use_sim_time` on one of an
+    /// image's nodes has said nothing about the others, whose defaults must
+    /// stay placeholders.
+    ///
+    /// It lives HERE rather than beside `sim_time_stated` on the executor
+    /// because it is a fact about the STORE's contents, and because a table
+    /// that scales with a knob does not belong in the `Executor` value —
+    /// `the_executor_value_does_not_scale_with_the_knobs` (issue 0961) is the
+    /// test that says so. `ParamState` is boxed, and the bound is the one
+    /// [`ParamState::services`] already uses: one entry per node key.
+    #[cfg(feature = "sim-time")]
+    pub(crate) sim_time_seeded: [bool; MAX_PARAM_SERVICE_SETS],
 }
 
 /// phase-426 W3 — the executor's bound on parameter-service SETS.

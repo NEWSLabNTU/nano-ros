@@ -7711,6 +7711,20 @@ impl<'s> Executor<'s> {
                     self.params = Some(state);
                 }
             }
+            // phase-430 W2 — "declare `use_sim_time` on EVERY node, as rclcpp
+            // does", said where the nodes finally exist. This is the only place
+            // that knows the full set: `ensure_parameter_store` runs before any
+            // node record does, so it can only seed the implicit PRIMARY, and
+            // the further nodes an image composes onto one executor arrive
+            // later. Seeding as each set of six goes up keeps the two in step —
+            // the parameter is declared on exactly the nodes a
+            // `ros2 param set <node> use_sim_time true` can reach.
+            //
+            // Idempotent by construction: `declare` refuses a name the node
+            // already holds and the placeholder flag is only raised on
+            // acceptance, so re-seeding PRIMARY here neither duplicates the
+            // entry nor re-marks an application's own declaration as ours.
+            self.seed_use_sim_time_default(super::node_record::NodeId::from_raw(index));
         }
         Ok(())
     }
@@ -8139,7 +8153,89 @@ impl<'s> Executor<'s> {
     fn ensure_parameter_store(&mut self) {
         if self.params.is_none() {
             self.params = Some(Self::new_param_state());
+            // phase-430 W2 — the executor's implicit PRIMARY node exists the
+            // moment the store does, whether or not a node record has been
+            // built yet, so it is seeded here. The other node keys are seeded
+            // in `reconcile_parameter_services`, as each one's set of six goes
+            // up.
+            self.seed_use_sim_time_default(super::node_record::NodeId::PRIMARY);
         }
+    }
+
+    /// phase-430 W2 — declare `use_sim_time = false`, as rclcpp does on EVERY
+    /// node.
+    ///
+    /// Upstream auto-declares the parameter in `rclcpp::Node`'s constructor, so
+    /// `ros2 param list` shows it and `ros2 param set <node> use_sim_time true`
+    /// reaches a node whose author never wrote a line about simulated time.
+    /// Ours honoured the parameter only if the APP had declared it: the store
+    /// refuses an undeclared set (`allow_undeclared` is false), so the runtime
+    /// switch worked on exactly the nodes that least needed it.
+    ///
+    /// The seed is a PLACEHOLDER, tracked by `ParamState::sim_time_seeded`,
+    /// because the store refuses a duplicate name: without that flag, seeding
+    /// here would turn an application's own `declare_parameter("use_sim_time",
+    /// Bool(true))` into a refusal and the auto-declared default would silently
+    /// beat the app. `yield_seeded_use_sim_time` steps the placeholder aside
+    /// for the first real declaration, whatever value or descriptor it carries.
+    ///
+    /// PER NODE, both here and in the flag. phase-426 keyed the store and the
+    /// six services by node, so "every node" is now literally expressible and
+    /// this is where it is said: `ensure_parameter_store` seeds the executor's
+    /// implicit PRIMARY, and `reconcile_parameter_services` seeds each further
+    /// node key as its set of six goes up — which is exactly the set of nodes a
+    /// `ros2 param set <node> use_sim_time true` can reach.
+    ///
+    /// It deliberately does NOT go through `note_reserved_parameter`, so
+    /// `sim_time_stated` stays false: an auto-declared default is not a
+    /// STATEMENT by anyone. Recording it as one would make every executor with
+    /// parameter services write `set_active(false)` onto a PROCESS-GLOBAL gate
+    /// on its first spin — switching off a simulated clock another executor in
+    /// the same image installed, which is exactly the collision
+    /// `sim_time_stated` was added for (issue 1104). That property is per node
+    /// too: seeding N nodes must still be N statements by nobody.
+    ///
+    /// Gated on `sim-time` as well as `param-services`: an image that cannot
+    /// act on the parameter should not advertise it, because a settable knob
+    /// that does nothing is worse than an absent one.
+    fn seed_use_sim_time_default(&mut self, node: super::node_record::NodeId) {
+        #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+        if let Some(params) = self.params.as_mut()
+            && let Some(seeded) = params.sim_time_seeded.get_mut(node.index())
+            && params.server.declare(
+                node.into(),
+                crate::time_source::USE_SIM_TIME_PARAM,
+                nros_params::ParameterValue::Bool(false),
+            )
+        {
+            *seeded = true;
+        }
+        let _ = node;
+    }
+
+    /// phase-430 W2 — step the seeded `use_sim_time` aside for an application
+    /// that declares it itself on `node`. Returns whether it did.
+    ///
+    /// The app's declaration must WIN — its own default, its own descriptor —
+    /// and a declaration is refused when the name is already taken, so the
+    /// placeholder has to leave before the real one arrives. Only ever the
+    /// placeholder: once a real declaration has landed the flag is false and a
+    /// second declaration is refused exactly as it was before W2.
+    ///
+    /// Only ever THIS node's placeholder, too: an app that names
+    /// `use_sim_time` on one node of an image has said nothing about the
+    /// others, and their seeds stay placeholders for whoever declares next.
+    fn yield_seeded_use_sim_time(&mut self, node: super::node_record::NodeId, name: &str) -> bool {
+        #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+        if name == crate::time_source::USE_SIM_TIME_PARAM
+            && let Some(params) = self.params.as_mut()
+            && let Some(seeded) = params.sim_time_seeded.get_mut(node.index())
+            && core::mem::replace(seeded, false)
+        {
+            return params.server.remove(node.into(), name);
+        }
+        let _ = (node, name);
+        false
     }
 
     /// Produce the parameter slot table the executor's store will borrow.
@@ -8194,6 +8290,10 @@ impl<'s> Executor<'s> {
             // one per node, once the node table is populated.
             services: heapless::Vec::new(),
             requested: false,
+            // phase-430 W2 — no node has been auto-declared yet; the caller
+            // (`ensure_parameter_store`) seeds PRIMARY immediately after.
+            #[cfg(feature = "sim-time")]
+            sim_time_seeded: [false; crate::parameter_services::MAX_PARAM_SERVICE_SETS],
         })
     }
 
@@ -8216,10 +8316,21 @@ impl<'s> Executor<'s> {
         value: nros_params::ParameterValue,
     ) -> bool {
         self.ensure_parameter_store();
+        // phase-430 W2 — an application declaring `use_sim_time` itself wins
+        // over the auto-declared default, so the placeholder leaves first.
+        let yielded = self.yield_seeded_use_sim_time(node, name);
         let accepted = match &mut self.params {
             Some(params) => params.server.declare(node.into(), name, value),
             None => false,
         };
+        if yielded && !accepted {
+            // The app's own declaration was refused on its own terms (a full
+            // store, an ill-formed range). Put the rclcpp default back rather
+            // than leaving the name undeclared — that is a state neither the
+            // app nor upstream asked for, and it would silently un-do W2 for
+            // this node.
+            self.seed_use_sim_time_default(node);
+        }
         // phase-425 W3b — `use_sim_time` is RESERVED, exactly as in ROS 2: its
         // value is not a value the app reads, it is the switch that attaches the
         // time source. This is the one seam every language funnels through
@@ -8314,6 +8425,9 @@ impl<'s> Executor<'s> {
         descriptor: nros_params::ParameterDescriptor,
     ) -> bool {
         self.ensure_parameter_store();
+        // phase-430 W2 — same rule as the sibling above: the app's own
+        // declaration, descriptor and all, replaces the auto-declared default.
+        let yielded = self.yield_seeded_use_sim_time(node, name);
         let accepted = match &mut self.params {
             Some(params) => {
                 params
@@ -8322,6 +8436,9 @@ impl<'s> Executor<'s> {
             }
             None => false,
         };
+        if yielded && !accepted {
+            self.seed_use_sim_time_default(node);
+        }
         // phase-430 W3 / issue 1202 — the sibling declare path, which had NO
         // reserved hook at all: `declare_parameter_with_descriptor` stored
         // `use_sim_time` and attached nothing, so the same declaration meant
