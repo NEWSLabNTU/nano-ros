@@ -1,7 +1,7 @@
 ---
 id: 1169
 title: "`nros-c`'s cancel/is_spinning surface needs `alloc` unconditionally, and the crate's no-alloc \"lending\" build has never compiled"
-status: open
+status: resolved
 type: bug
 area: build, api
 severity: high
@@ -170,3 +170,27 @@ capability added behind `alloc` reaches only one of the crate's build
 configurations) but a different site and, here, an open design question
 about whether the capability can even be made no-alloc-safe rather than a
 pure wiring fix.
+
+## RESOLVED by issue 1177 (verified 2026-09-07, phase-413 W2)
+
+`9fd7e3457` — *"the halt flag needs an allocator to be SHARED, not to exist"* —
+un-gated the block this issue was filed about. `HaltFlag` is now an alias:
+`Arc<AtomicBool>` under `alloc`, a plain `portable_atomic::AtomicBool` without.
+That is option 2 of this issue's own open questions, and it is the ADDITION
+this issue predicted rather than a repair — the no-alloc build had never
+compiled.
+
+Measured at HEAD rather than inferred:
+
+    cargo clippy -p nros-c --no-default-features \
+        --features "panic-platform,rmw-cffi,lending" -- -D warnings
+    Finished `dev` profile ... exit 0
+
+and CI's own evidence: run `34067202025` reports `check-build (parallel): 1 of
+21 gate(s) FAILED`, where the one was `cli-clippy` and `workspace-features` —
+the lane that carries this build — was among the twenty that passed.
+
+The `host-tests` lane stayed red for other reasons, which this issue was
+mistakenly credited with: `check-leaf-lockfiles` (two leaf locks missed the
+`ros-launch-manifest` tag bump) and `cli-clippy` (`template_keys` added
+un-gated with only a `#[cfg(test)]` caller). Both fixed in phase-413 W2.

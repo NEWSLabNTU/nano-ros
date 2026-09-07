@@ -91,6 +91,39 @@ workflow runs the l3 lane; a full change cycle shows the lane running once.
 Not a conversion task — a debugging one, and it comes first because no
 conversion can be verified in a lane that is already red.
 
+### Progress (2026-09-07) — every lane re-measured, four in parallel
+
+The 09-06 pass below is kept for the record; three of the six cells it called
+DONE were red again the next day, on NEW causes rather than regressions of the
+old ones. That is what a wave like this looks like when the lanes finally have
+signal: each red is now a verdict about something that landed in the last 33
+hours, not the same wall.
+
+| lane / cell | cause found 2026-09-07 | landed |
+| --- | --- | --- |
+| `host-tests` | `check-leaf-lockfiles` — the rlm tag bump regenerated 11 of 13 leaf locks | fixed |
+| `host-tests` (behind it) | `cli-clippy` — `template_keys` added un-gated, only caller is `#[cfg(test)]` | fixed |
+| `run-matrix` + `tier 2 nightly` | the workspace guard, at FIVE more `ws` verbs cmake invokes | fixed + gated |
+| nightly `qemu` | `undefined symbol: vsnprintf` — issue 1033's diagnostic funnel vs an 18-symbol bare-metal libc | fixed |
+| nightly `nuttx` | RFC-0090's version stamp reached 3 of 4 config-header producers | fixed + gated |
+| nightly `threadx_riscv64` | already fixed by `df61d2983`, six hours AFTER the run — a stale red | none needed |
+| nightly `freertos` / `threadx_linux` / `esp32_to_native` | one bug, issue 1190 (arena priced for a depth-1 ring against KEEP_LAST(10)) | fixed on main |
+| nightly `esp32` workspace entry | stack 18,444 B against a 32,768 B floor; the gate never saw this lane | fixed + gated |
+
+**Issue 1169 is resolved and archived** — `9fd7e3457` (issue 1177) un-gated the
+no-alloc cancellation surface, which is the ADDITION 1169 predicted. The ten
+`E0599`s below are no longer why `host-tests` is red, and were not why it was
+red on 09-07 either.
+
+Four of the eight causes got a GATE, because in each case the fix's own site
+was the second or third instance of a rule whose coverage was narrower than the
+rule: `check-config-header-producers` (a producer is anything defining
+`NROS_EXECUTOR_STORAGE_SIZE`, not "the NuttX file"),
+`check-build-tool-verbs-exempt` (the exempt set is READ from `ws_cmd_name`,
+never restated), `check-stack-floor --board-for-row` (every
+`[[workspace_fixture]]` platform named, `None` included), and
+`check-leaf-lockfiles`' remaining blind spot recorded against issue 1182.
+
 ### Progress (2026-09-06), each item measured against the lane rather than the doc
 
 * **`nuttx` — DONE.** `9de62f253` (09-04) made `just nuttx setup` provision the
