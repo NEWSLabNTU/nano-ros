@@ -1672,21 +1672,44 @@ taste:
   returns `std::shared_ptr<nros::Timer>` ALIASED onto the private cell — the
   shape `create_subscription` has always used — so the returned type is the type
   that exists and the cell stays an implementation detail.
-* **Cost, measured — and the first measurement was wrong.** It was recorded as
-  "zero non-test call sites" (a `grep` whose `--include` glob silently matched
-  nothing). The real answer is three source files and one book snippet. The
-  migration is still `rclcpp::TimerBase::SharedPtr timer_;` ->
-  `rclcpp::Timer::SharedPtr timer_;`, but the NAME now survives one release as a
-  DEPRECATED ALIAS while the hierarchy does not. That is not the ported-alias
-  proposal this document refused in §"Review of the invented parts" item 1 —
-  that one made `TimerBase` a first-class ported name permanently, which sells
-  the taxonomy; this one is the second step of the document's own two-step, and
-  its diagnostic says there is no hierarchy. It exists because
-  `examples/templates/cpp-port-minimal-publisher` is vendored UNMODIFIED to
-  demonstrate upstream source compiling here, and the deprecation interval is
-  the only window in which that claim and this ruling are both true. `check-cpp`
-  asserts the warning fires and names `rclcpp::Timer`; GCC offers no suggestion
-  when the name is simply absent.
+* **The NAME is KEPT, and §"Timer, studied against RTOS semantics" is WRONG
+  about it — measured by a gate, not argued.** That section says an alias
+  "sells a taxonomy we do not have" and concludes "either port the hierarchy or
+  do not take the name". Deleting the name turned `colcon-parity` red:
+
+  ```
+  rclcpp::Timer -> 'Timer' in namespace 'rclcpp' does not name a type;
+                   did you mean 'Time'?          [REAL ROS 2, humble]
+  ```
+
+  `just colcon-parity` builds `examples/templates/local-msg-package` against a
+  REAL `/opt/ros/<distro>` install, and `cpp-port-minimal-publisher` is vendored
+  UNMODIFIED to demonstrate upstream source compiling here. Both declare a timer
+  member, and upstream has no `rclcpp::Timer`. **So the alias is what keeps the
+  intersection of "compiles under real ROS 2" and "compiles under nano-ros"
+  non-empty for any ported node holding a timer** — which is most of them.
+  Without it, that intersection is empty and the campaign's own flagship
+  property is false.
+
+  This vindicates §"Review of the invented parts" item 1, which proposed exactly
+  this alias and which the later section withdrew. The withdrawal's reasoning
+  was about ADVERTISING and is answered by documentation plus a probe
+  (`timer_base_is_a_name_not_a_hierarchy.cpp` pins `is_same<TimerBase, Timer>`,
+  `!is_polymorphic`, and the continued ABSENCE of `WallTimer`/`GenericTimer`
+  with a self-tested detector). It is not deprecated: a deprecation would
+  promise a removal that would break the dual-compile property on purpose.
+
+  **The general lesson, which is bigger than the timer.** For a name UPSTREAM
+  HAS and we lack, the ported alias is not a courtesy — it is the only thing
+  that keeps a file compilable BOTH ways. "Do not take the name" is available
+  only where upstream does not have it either. Any future decision to withhold
+  an upstream name should be checked against `colcon-parity` before it lands,
+  because that gate is the one place the two-directional requirement is
+  measured.
+
+  The cost measurement itself was wrong twice before this: first "zero non-test
+  call sites" (a `grep --include` glob the shell expanded to nothing), then "one
+  deprecated release". Both are recorded in phase-427 rather than tidied away.
 
 §"Review of the invented parts" item 1 — which proposed `TimerBase` as a ported
 ALIAS — is superseded by this and by the section that already withdrew it. It

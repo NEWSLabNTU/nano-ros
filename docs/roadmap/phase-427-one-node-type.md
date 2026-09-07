@@ -191,29 +191,46 @@ it). The ruling is delete, argued from the executor's dispatch:
    `std::shared_ptr<nros::Timer>` aliased onto the private cell — the shape
    `create_subscription` has always used.
 
-**Cost, measured — and the first measurement was WRONG.** The commit that
-landed this said "zero non-test call sites". A `grep` with a broken
-`--include` glob is what said so; the real answer is THREE source files
-(`examples/templates/cpp-port-minimal-publisher`,
-`examples/templates/workspace-shadowing`,
-`examples/templates/local-msg-package`) plus one book snippet. That changed the
-migration, not the ruling:
+**Cost, measured TWICE, and both earlier answers were wrong.** This is worth
+recording in full, because each wrong answer changed what shipped.
 
-* the HIERARCHY is deleted outright, which is what W7 asked to rule on;
-* the NAME survives ONE RELEASE as a deprecated alias for `rclcpp::Timer`, with
-  a message stating there is no hierarchy — this document's own two-step
-  ("alias, then deprecate, then remove"), pointing at removal;
-* the two ours-authored consumers and the book snippet migrated in the same
-  commit; `cpp-port-minimal-publisher` did NOT, deliberately, because it is
-  vendored UNMODIFIED to demonstrate upstream source compiling here, and the
-  deprecation interval is exactly when both claims can be true. Its README now
-  says the line is on a clock and what it becomes.
-* `check-cpp` asserts the deprecation FIRES and greps the diagnostic for
-  `rclcpp::Timer`, because GCC offers NO suggestion when the name is simply
-  gone (measured: `'TimerBase' in namespace 'rclcpp' does not name a type`, and
-  nothing else).
+*First answer, "zero non-test call sites."* A `grep` whose `--include` glob the
+shell expanded to nothing — the command matched no files and reported no hits.
+The real in-tree count is three source files
+(`cpp-port-minimal-publisher`, `workspace-shadowing`, `local-msg-package`) plus
+a book snippet. Acting on the wrong number, the name was deleted outright.
 
-`rclcpp::Timer` is UNCONDITIONAL, so a freestanding target gets the ROS 2 timer
+*Second answer, "a one-release deprecated alias."* Better, and still wrong,
+because it treated the alias as a courtesy to in-tree consumers. **The
+`colcon-parity` gate then failed and named the real constraint**:
+
+```
+rclcpp::Timer -> 'Timer' in namespace 'rclcpp' does not name a type;
+                 did you mean 'Time'?          [REAL ROS 2, humble]
+```
+
+`just colcon-parity` builds `examples/templates/local-msg-package` against a
+REAL `/opt/ros/<distro>` install, and `cpp-port-minimal-publisher` is vendored
+UNMODIFIED to demonstrate upstream source compiling here. Both declare a timer
+member, and **upstream has no `rclcpp::Timer`** — only `TimerBase`/`WallTimer`.
+So without the alias, the intersection of "compiles under real ROS 2" and
+"compiles under nano-ros" is EMPTY for any ported node that holds a timer, which
+is most of them.
+
+**Settled ruling.** The HIERARCHY is deleted — that is what W7 asked and where
+the cost was. The NAME is KEPT as the ported alias, and NOT deprecated:
+deprecating it would promise a removal that would break the campaign's own
+flagship property on purpose. `rclcpp::TimerBase` and `rclcpp::Timer` are one
+flat type, pinned by `timer_base_is_a_name_not_a_hierarchy.cpp`
+(`is_same<TimerBase, Timer>`, `!is_polymorphic`, both nested `SharedPtr`
+spellings, and both member declarations the templates actually contain).
+`WallTimer` and `GenericTimer` stay absent, with a self-tested detector so
+"we still do not have them" is asserted rather than assumed.
+
+RFC-0089 §"Timer, studied against RTOS semantics" says an alias "sells a
+taxonomy we do not have". That argument is right about advertising and did not
+consider the dual-compile templates; the correction is in the RFC's amendment.
+`rclcpp::Timer` is UNCONDITIONAL, so a freestanding target gets a ROS 2 timer
 name too.
 
 **W6 — the clock-taking verb** on the merged type
