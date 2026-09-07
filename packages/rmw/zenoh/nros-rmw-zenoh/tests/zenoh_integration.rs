@@ -680,7 +680,15 @@ fn client_session_with_absent_locator_dials_backend_default() {
     // never kills an unrelated router.
     match std::net::TcpListener::bind(("127.0.0.1", port)) {
         Ok(probe) => drop(probe),
-        Err(e) => nros_tests::skip!(
+        // issue 1161 — `resource`, not the `capability` a bare `skip!` defaults
+        // to. A port already bound is a RUNTIME prerequisite that a rerun or a
+        // quieter host resolves; a capability is something this host cannot do
+        // at all, and the two have opposite remedies. The distinction became
+        // load-bearing when an undeclared capability skip started failing the
+        // budget: mislabelled, this would have demanded a baseline entry for a
+        // condition nobody can provision away.
+        Err(e) => nros_tests::skip_class!(
+            resource,
             "default locator port {port} (from {DEFAULT_LOCATOR}) is already in use \
              by something else on this host: {e}"
         ),

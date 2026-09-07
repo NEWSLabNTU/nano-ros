@@ -1,11 +1,12 @@
 ---
 id: 1161
 title: "The skip budget forbids a missing FIXTURE and permits a missing CAPABILITY, so `check-required-features-tests` reports pass having run 7 of 20"
-status: open
+status: resolved
 type: bug
 area: testing, ci
 severity: medium
 found: 2026-09-06
+resolved: 2026-09-08
 related: [0584, 0673, 1168]
 ---
 
@@ -54,26 +55,69 @@ looks exactly like today's skip, and they are worth signal — issues
 0652/0612/0667 found four targets broken and one capability non-functional the
 first time this lane's targets actually ran.
 
-## What "set the scope precisely" means here
+## Fixed — a capability skip is a FAILURE unless the lane declared it
 
-The choice is between two honest states, and the current one is neither:
+`check-skip-budget.py` gains the rule 0584 gave fixtures, one class over: a
+`capability` skip whose reason matches no line in
+`.config/capability-skip-baseline.txt` fails the run and names what was missing.
 
-1. **The lane provides the capability.** `rmw_zenohd` is resolvable through
-   RFC-0075's documented order (`NROS_RMW_ZENOHD` -> `AMENT_PREFIX_PATH` ->
-   `$ROS_DISTRO` under `/opt/ros`), so a lane that declares it can also
-   provision it, and then a red is a red.
-2. **The lane does not claim them.** Move the router-dependent targets to a
-   lane whose contract states the requirement, and let this one run only what it
-   can. Seven tests honestly reported beats twenty with thirteen absent.
+A RATCHET, not an allowlist. Each line states what is absent, why a host may
+legitimately lack it, and what would retire it. The set may shrink freely; it
+cannot grow without someone writing that paragraph. A MISSING baseline file
+declares nothing rather than allowing everything — the direction that keeps a
+ratchet ratcheting when someone deletes it, and it is self-tested.
 
-Either way the tolerance stops being ambient: a capability skip becomes a
-FAILURE by default, and any remaining one needs a declared, checked exemption
-the way `check-submodule-pins`' NOT VERIFIED does — a reported skip in a ledger,
-not a silent subtraction.
+Two entries, and neither is the one this issue was filed about:
 
-`check-lane-contracts` already encodes the same principle one layer over: *a
-gate in an affordability tier may only resolve artifacts the JOB ITSELF builds.*
-This is that rule for capabilities rather than artifacts.
+* **`rmw_zenoh_cpp/rmw_zenohd`** — the router ships as a ROS package that is not
+  part of a base install, and RFC-0075 resolves it through `AMENT_PREFIX_PATH`
+  rather than PATH, so "installed but not sourced" correctly reads as absent
+  (issue 0774: an unsourced router is one the loader pairs with the wrong
+  `libzenohc.so`). Retires when the lanes needing it provision it.
+* **`ZPICO_MAX_SESSIONS=1`** — the default single-session shim, which is the
+  right default for a shipped target. The multi-session paths have their own
+  lane. Retires when the cell moves to a coordinate the selector can express, so
+  it deselects as `lane` instead.
+
+## What the rule caught on its first run, and it was not what I expected
+
+The lane this issue is named after now runs **20 of 20**: the router got
+installed on this host between the filing and the fix, so the 13 skips are
+gone and the rule never fires there. What it did fire on was `test-unit`, twice:
+
+1. **A MISCLASSIFICATION.** "default locator port 7447 … already in use" was
+   reported as `capability`, because a bare `skip!` defaults to that class and
+   the site never said otherwise. A bound port is a `resource` — a runtime
+   prerequisite a rerun or a quieter host resolves — and the two have opposite
+   remedies. Mislabelled, it would have demanded a baseline entry for a
+   condition nobody can provision away. Now `skip_class!(resource, …)`, and the
+   breakdown reads `capability=1 resource=1` where it read `capability=2`.
+2. **The `ZPICO_MAX_SESSIONS` cell**, which CLAUDE.md already records as
+   "skipped on every host in every tier" — visible in a budget line nobody was
+   required to read, and now declared with the lane that does run it.
+
+That first one is the argument for the rule. The class was wrong by DEFAULT, in
+a lane that was green, and nothing would have said so.
+
+## Verified
+
+Both directions, against crafted junit rather than by waiting for a host to lack
+something:
+
+```
+declared capability   -> rc 0
+undeclared capability -> rc 1, naming the reason and the first test
+```
+
+Plus four self-test cases on the declaration itself (declared allowed,
+undeclared refused, empty declaration refuses everything, missing file declares
+nothing).
+
+```
+just test-unit                    1214 ran, capability=1 resource=1, rc 0
+just check required-features-tests PASS (20 of 20 on this host)
+just check fast                   275 ran, 1 ledger skip, 0 failed
+```
 
 ## Measured
 

@@ -1,0 +1,50 @@
+# Capability skips a lane is ALLOWED to take — issue 1161.
+#
+# A RATCHET, not an allowlist. Every line is a declaration that some host may
+# legitimately lack a thing, and that skipping is the honest outcome there. A
+# capability skip matching NO line is a FAILURE, so the set cannot grow by
+# accident; it may shrink freely, and shrinking is the goal.
+#
+# WHY THIS EXISTS. `check-skip-budget` already distinguishes the three skip
+# classes and prints the actionable ones. What it did not do was FAIL on any of
+# them, so `check-required-features-tests` ran 7 of its 20 tests and reported
+# pass — the shape issue 0584 made countable for FIXTURES ("an absent in-lane
+# fixture is a hard failure, not a skip") and left open for CAPABILITIES. The
+# two are the same sentence: the thing this test needs is not here, and the run
+# did less than it claimed.
+#
+# FORMAT: one Python regular expression per line, matched against the reason
+# text of a `capability`-class skip (the `[SKIPPED] …` line). Comments and blank
+# lines ignored. Keep each pattern narrow enough to name ONE missing thing — a
+# broad pattern re-creates the hole this file closes.
+#
+# Each entry states what is missing, why a host may lack it, and what would
+# retire the line.
+
+# `rmw_zenoh_cpp` ships as a ROS package (`ros-<distro>-rmw-zenoh-cpp`) and is
+# not part of a base ROS install, so a host with ROS can still lack it. The
+# router is resolved through `AMENT_PREFIX_PATH` (RFC-0075) and is deliberately
+# NOT searched for on PATH, so "installed but not sourced" reads the same as
+# absent — which is correct, because an unsourced router is one the loader would
+# pair with the wrong `libzenohc.so` (issue 0774).
+#
+# RETIRES WHEN: the lanes that need it provision it, or move to a lane whose
+# contract states the requirement. 13 of `check-required-features-tests`' 20
+# tests are behind this one line.
+no `rmw_zenoh_cpp/rmw_zenohd` found
+
+# The zpico shim is built with `ZPICO_MAX_SESSIONS=1` by default, which is the
+# right default for a shipped target: the C shim's session pool and the Rust
+# shim's session-indexed tables collapse to one entry and the static footprint
+# stays minimal (issues 0348/0376). Raising it globally is the wrong fix — cargo
+# merges `.cargo/config.toml` up the tree, so a repo-root `[env]` would double
+# those tables in every embedded example.
+#
+# So the multi-session paths have their own lane, `just test-zpico-multisession`,
+# which builds the shim with `ZPICO_MAX_SESSIONS=2`. In every other lane this
+# test cannot run, and that is the DESIGN rather than a provisioning gap.
+#
+# RETIRES WHEN: the cell moves to a coordinate the lane selector can express, so
+# it deselects as `lane` (nobody acts on those) instead of skipping as a
+# capability here. Issue 0393 is the history.
+second session refused — shim built with ZPICO_MAX_SESSIONS=1
