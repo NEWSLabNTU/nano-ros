@@ -129,6 +129,13 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
 ///
 /// Exposed so the pack manifests can be checked against the registry rather
 /// than merely agreeing with it by inspection (phase-432 W3.2).
+///
+/// `cfg(test)` because that cross-check IS its only purpose: the sole caller is
+/// `pack::tests::manifests_and_the_registry_describe_the_same_templates`. Without
+/// the gate a non-test build sees an uncalled `pub(crate)` fn and `check
+/// cli-clippy`'s `-D dead-code` refuses it — a red that reached `main` because
+/// `check::build` runs on schedule/dispatch only, never on a merge-gating event.
+#[cfg(test)]
 pub(crate) fn template_keys() -> Vec<&'static str> {
     TEMPLATES.iter().map(|(k, _)| *k).collect()
 }
