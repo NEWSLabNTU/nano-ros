@@ -19,7 +19,21 @@ README claimed verbatim anyway. What made the claim true is that
 (the nested aliases exist on the entity types) and `FixedString<N>` accepts a
 `std::string`, so the two member declarations and the
 `message.data = "Hello, world! " + std::to_string(count_++);` assignment are
-upstream's own lines again. The CMakeLists.txt's stock-ROS-2 shape
+upstream's own lines again.
+
+**One of those two lines is now on a deprecation clock** (phase-430 W7,
+2026-09-08). `rclcpp::TimerBase` is RETIRED: nano-ros has no timer hierarchy,
+because the executor dispatches through a raw function pointer and a
+polymorphic base would be a vtable nothing calls. The name survives one release
+as a deprecated alias for `rclcpp::Timer` — which is precisely why this file is
+still verbatim, and why `rclcpp::TimerBase::SharedPtr timer_;` now compiles with
+a warning carrying the migration. When the alias goes, THIS FILE STOPS BEING
+VERBATIM: the line becomes `rclcpp::Timer::SharedPtr timer_;`.
+
+That is worth stating rather than quietly fixing, because it is a real datum
+about the campaign: RFC-0089's rule is that a name we cannot honour must fail to
+compile, and here it collides with this example's whole purpose. The deprecation
+is the interval in which both can be true. The CMakeLists.txt's stock-ROS-2 shape
 (`find_package(ament_cmake_auto)` / `ament_auto_add_executable` /
 `ament_target_dependencies` / `ament_auto_package`) is **untouched**.
 

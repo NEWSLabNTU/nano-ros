@@ -171,8 +171,10 @@ the node. It also never throws where upstream would raise `bad_weak_ptr`.
 ### `rclcpp::TimerBase` is `rclcpp::Timer`
 
 A ported `rclcpp::TimerBase::SharedPtr timer_;` becomes
-`rclcpp::Timer::SharedPtr timer_;` — a rename the compiler demands, so you will
-not miss it. There is no timer hierarchy here: the executor dispatches through a
+`rclcpp::Timer::SharedPtr timer_;`. For one release the old name still compiles,
+as a deprecated alias whose warning carries that sentence; after that it is
+gone. Do the rename when the warning appears — there is nothing behind it to
+wait for. There is no timer hierarchy here: the executor dispatches through a
 raw function pointer, so a polymorphic base would be a vtable nothing calls, and
 `TimerBase` is a name that promises `WallTimer` and `GenericTimer` siblings we
 deliberately do not have. The clock axis is a runtime field plus the second verb

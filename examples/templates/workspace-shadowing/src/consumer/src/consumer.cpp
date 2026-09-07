@@ -24,10 +24,9 @@
 using namespace std::chrono_literals;
 
 class ShadowConsumer : public rclcpp::Node {
-public:
+  public:
     ShadowConsumer() : rclcpp::Node("shadow_consumer") {
-        publisher_ =
-            this->create_publisher<std_msgs::msg::Marker>("markers", 10);
+        publisher_ = this->create_publisher<std_msgs::msg::Marker>("markers", 10);
         timer_ = this->create_wall_timer(500ms, [this]() {
             std_msgs::msg::Marker marker;
             // Field name unique to the workspace shadow — upstream
@@ -37,8 +36,8 @@ public:
         });
     }
 
-private:
-    std::shared_ptr<rclcpp::TimerBase> timer_;
+  private:
+    rclcpp::Timer::SharedPtr timer_;
     std::shared_ptr<rclcpp::Publisher<std_msgs::msg::Marker>> publisher_;
 };
 

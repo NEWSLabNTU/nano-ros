@@ -271,6 +271,29 @@ namespace rclcpp {
 /// ever hosted-only.
 using Timer = ::nros::Timer;
 
+/// `rclcpp::TimerBase` — **RETIRED**, and an alias for one release so a ported
+/// file gets the migration in the compiler's own words rather than
+/// `'TimerBase' in namespace 'rclcpp' does not name a type`, which GCC offers
+/// no suggestion for (measured).
+///
+/// THIS IS NOT THE PORTED-ALIAS PROPOSAL RFC-0089 REFUSED. That one made
+/// `TimerBase` a first-class ported NAME, permanently, which sells a taxonomy
+/// we do not have. This is the second step of the same document's own two-step
+/// ("alias, then deprecate, then remove"), pointing the other way: the name is
+/// GOING, and the diagnostic says so — including that there is no hierarchy
+/// here, so a file that DERIVES from it is being told it is deriving from a
+/// concrete handle.
+///
+/// The hierarchy itself IS deleted, which was phase-430 W7's actual ruling:
+/// `detail::WallTimer` derives from nothing, `create_wall_timer` returns
+/// `std::shared_ptr<Timer>`, and no vtable is emitted for any timer.
+using TimerBase NROS_CPP_DEPRECATED_MSG(
+    "rclcpp::TimerBase is retired: nano-ros has no timer hierarchy (the executor "
+    "dispatches through a raw function pointer, so a polymorphic base would be a "
+    "vtable nothing calls). Write rclcpp::Timer -- e.g. rclcpp::Timer::SharedPtr "
+    "timer_;. WallTimer and GenericTimer are absent by design; the clock axis is "
+    "rclcpp::create_timer(node, clock, period, cb), not a type parameter.") = ::nros::Timer;
+
 #ifdef NROS_CPP_HAS_STD_FUNCTION
 namespace detail {
 

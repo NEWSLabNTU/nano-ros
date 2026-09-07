@@ -30,16 +30,16 @@
 using namespace std::chrono_literals;
 
 class MixedConsumer : public rclcpp::Node {
-public:
+  public:
     MixedConsumer() : rclcpp::Node("mixed_consumer"), count_(0) {
         greeting_pub_ = this->create_publisher<local_msgs::msg::Greeting>("greetings", 10);
-        echo_pub_     = this->create_publisher<extra_msgs::msg::Echo>("echoes", 10);
-        point_pub_    = this->create_publisher<geometry_msgs::msg::Point>("points", 10);
-        imu_pub_      = this->create_publisher<sensor_msgs::msg::Imu>("imu", 10);
+        echo_pub_ = this->create_publisher<extra_msgs::msg::Echo>("echoes", 10);
+        point_pub_ = this->create_publisher<geometry_msgs::msg::Point>("points", 10);
+        imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu", 10);
         timer_ = this->create_wall_timer(500ms, [this]() { this->tick(); });
     }
 
-private:
+  private:
     void tick() {
         const int32_t seq = static_cast<int32_t>(count_++);
 
@@ -51,7 +51,7 @@ private:
 
         // Workspace msg with workspace-cross-dep (extra_msgs → local_msgs).
         extra_msgs::msg::Echo e;
-        e.original  = g;
+        e.original = g;
         e.hop_count = 1;
         echo_pub_->publish(e);
 
@@ -70,15 +70,14 @@ private:
         imu.linear_acceleration.z = 0.0;
         imu_pub_->publish(imu);
 
-        RCLCPP_INFO(this->get_logger(),
-                    "tick %d — published Greeting/Echo/Point/Imu", seq);
+        RCLCPP_INFO(this->get_logger(), "tick %d — published Greeting/Echo/Point/Imu", seq);
     }
 
-    std::shared_ptr<rclcpp::TimerBase> timer_;
+    rclcpp::Timer::SharedPtr timer_;
     std::shared_ptr<rclcpp::Publisher<local_msgs::msg::Greeting>> greeting_pub_;
-    std::shared_ptr<rclcpp::Publisher<extra_msgs::msg::Echo>>     echo_pub_;
+    std::shared_ptr<rclcpp::Publisher<extra_msgs::msg::Echo>> echo_pub_;
     std::shared_ptr<rclcpp::Publisher<geometry_msgs::msg::Point>> point_pub_;
-    std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::Imu>>     imu_pub_;
+    std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::Imu>> imu_pub_;
     size_t count_;
 };
 
