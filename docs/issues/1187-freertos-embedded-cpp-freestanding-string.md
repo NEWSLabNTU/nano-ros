@@ -94,3 +94,40 @@ is this same gate being fixed at one site at a time. One shared spelling, not a
 Acceptance is a BUILD: `bash scripts/build/fixtures-build.sh freertos cpp
 zenoh` green, with `NROS_CMAKE_EXTRA_DEFS` carrying
 `cmake/toolchain/arm-freertos-armcm3.cmake`.
+
+## Update 2026-09-08 — this is phase-438, and the measurement is in
+
+`docs/roadmap/phase-438-cpp-std-is-an-opt-in-porting-surface.md` is the class fix
+this section asks for, and the option it takes is the first one: delete the
+`#elif __has_include` arm outright, so the std surface is reachable only through
+`NROS_CPP_STD`. Measured, per-header, on this issue's own toolchain
+(`arm-none-eabi 13.2`, `-std=c++14 -ffreestanding -fno-exceptions -fno-rtti`):
+
+```
+TRACKED  : pass=26 fail=19
+STRIPPED : pass=45 fail=0
+```
+
+and on hosted `g++ 12.3` the same strip is a no-op (46 pass either way), so the
+fix is not a trade between the lanes.
+
+Two corrections to the analysis above, both measured:
+
+* **The second option — AND `__has_include` with `__STDC_HOSTED__` — does not
+  work either.** `__STDC_HOSTED__` is 0 on this lane and 1 on Zephyr's
+  `-nostdinc++` lane, where `<string>` is genuinely absent; `__has_include` is the
+  reverse. Each probe is correct on exactly one embedded lane. Only the opt-in is
+  correct on both.
+* **This issue's "with the rationale, from issue 0112" is not what 0112 says.**
+  0112 chose `NROS_CPP_STD` over `__STDC_HOSTED__`; it never chose
+  `__has_include`, which arrived later in `acf213871`. Eleven header comments
+  cite 0112 as authority for the construct. phase-438 W5 corrects them.
+
+The count here is also slightly off: **15 blocks across 11 headers**, not 19
+sites across 13. Nineteen is the `__has_include(<...>)` occurrence count and 29
+is the `#define NROS_CPP_HAS_*` line count; the block count is what W1 has to
+consolidate.
+
+Blocked on issue 1223 only in ordering: `check-cpp-freestanding-includes` cannot
+see any of these arms, so it must be taught to before they are deleted, or the
+blindness ships uncaught.
