@@ -37,6 +37,7 @@ extern int nros_cpp_executor_open_over_session(void* session_handle, const char*
                                                uint32_t domain_id, void* out_storage);
 
 extern int nros_cpp_executor_set_active_groups(void* executor, const char* const* groups, size_t n);
+extern int nros_cpp_executor_derive_min_stack_headroom(void* executor, size_t stack_bytes);
 
 extern int nros_cpp_spin_once(void* handle, int32_t timeout_ms);
 
@@ -343,6 +344,28 @@ static void freertos_tier_task(void* arg) {
         nros_cpp_executor_set_active_groups(ctx->executor_storage, ctx->groups, ctx->n_groups);
     }
 
+    /* phase-436 follow-up — declare a default stack-headroom bound from the
+     * stack this tier's task was actually created with. The executor cannot
+     * derive one itself (`check_stack_headroom`: it never sees `stack_bytes`),
+     * but this layer can, because it just spawned the task with that size.
+     *
+     * BEFORE `setup()` deliberately: an explicit
+     * `nros_cpp_executor_set_min_stack_headroom` inside the tier's setup then
+     * overwrites this, so declared beats derived by ordering alone.
+     *
+     * Spawned tiers only. The boot tier runs on the caller (`app_task`, a
+     * 512 KiB stack this layer never sized), so a bound derived from its spec
+     * would be measured against the wrong stack. */
+    if (nros_cpp_executor_derive_min_stack_headroom(ctx->executor_storage, ctx->stack_bytes)
+        != 0) {
+        /* Same fail-loud rule as a spawn failure above: a bound that was never
+         * set leaves `stack-headroom-runtime` off, and a monitor that silently
+         * fails to arm is indistinguishable from a healthy system. */
+        nros_board_freertos_console_write("nros: stack-headroom bound NOT set tier=`");
+        nros_board_freertos_console_write((ctx->name != NULL) ? ctx->name : "?");
+        nros_board_freertos_console_write("` — the rule stays off\n");
+    }
+
     /* Run the tier's node-setup function. */
     if (ctx->setup != NULL) {
         rc = ctx->setup(ctx->executor_storage);
@@ -451,6 +474,13 @@ static int freertos_spawn_next_tier(void* session_handle, uint8_t domain_id,
      * emit_cpp (the pre-W2 literal hardcoded 0), so a configured stack is
      * honored; this default covers unset specs. */
     uint32_t stack_words = (t->stack_bytes > 0u) ? (uint32_t)(t->stack_bytes / 4u) : (262144u / 4u);
+
+    /* The EFFECTIVE stack, not the declared one: an unset `stack_bytes` still
+     * gets 256 KiB above, and a bound derived from `0` would leave the
+     * stack-headroom rule off on exactly the tiers that declared nothing and
+     * therefore most need a default. The field is otherwise unread — nothing
+     * assigned it before this. */
+    ctx->stack_bytes = (size_t)stack_words * 4u;
 
     /* Raw FreeRTOS priority from the tier spec (the system.toml [tiers.*.freertos]
      * priority is the numeric FreeRTOS value; clamp to configMAX_PRIORITIES-1). */
@@ -591,6 +621,15 @@ int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
      * the console and RFC-0052's fail-loud rule is broken by this file. NULL
      * task = pin the CALLING task, which is what the boot tier runs on. */
     freertos_apply_core_pin(NULL, boot->name, boot->core_plus1);
+
+    /* No derived stack-headroom bound for the boot tier here, unlike Zephyr.
+     * It runs on the caller (`app_task`), and FreeRTOS offers no way to ask a
+     * task how large its stack IS — `uxTaskGetStackHighWaterMark` reports what
+     * is left, not what it was taken against, which is the same asymmetry
+     * `check_stack_headroom` cites for why the bound must be declared. Zephyr
+     * can answer (CONFIG_MAIN_STACK_SIZE) and so derives there; hardcoding
+     * startup.c's 512 KiB here would be a second copy of a number that file
+     * owns. A boot tier that wants the rule declares it in `setup()`. */
 
     /* Gate the boot executor to its tier's callback groups. */
     if (boot->n_groups > 0 && boot->groups != NULL) {
