@@ -7595,6 +7595,11 @@ impl<'s> Executor<'s> {
         )?;
 
         let servers = ParameterServiceServers::new(
+            // phase-426 W1 — the six services are registered under the
+            // EXECUTOR's node FQN (`node_fqn` above), so the set they serve is
+            // the executor's implicit primary node. W3 registers one set per
+            // node and passes each node's own key here.
+            super::node_record::NodeId::PRIMARY.into(),
             PSrv::<GetParameters> {
                 handle: get_handle,
                 req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
@@ -7932,11 +7937,27 @@ impl<'s> Executor<'s> {
         })
     }
 
-    /// Declare a parameter with a value. Returns `true` if successful.
+    /// Declare a parameter with a value on the executor's PRIMARY node.
+    ///
+    /// phase-426 W1 — the store is keyed by node, and this is the spelling for
+    /// the executor's implicit primary node (`NodeId::PRIMARY`), which is the
+    /// identity `register_parameter_services` publishes and the one every
+    /// single-node entry means. Name a different node with
+    /// [`declare_parameter_on`](Self::declare_parameter_on).
     pub fn declare_parameter(&mut self, name: &str, value: nros_params::ParameterValue) -> bool {
+        self.declare_parameter_on(super::node_record::NodeId::PRIMARY, name, value)
+    }
+
+    /// Declare a parameter with a value on a named node.
+    pub fn declare_parameter_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: nros_params::ParameterValue,
+    ) -> bool {
         self.ensure_parameter_store();
         let accepted = match &mut self.params {
-            Some(params) => params.server.declare(name, value),
+            Some(params) => params.server.declare(node.into(), name, value),
             None => false,
         };
         // phase-425 W3b — `use_sim_time` is RESERVED, exactly as in ROS 2: its
@@ -8008,9 +8029,26 @@ impl<'s> Executor<'s> {
         let _ = handled;
     }
 
-    /// Declare a parameter with a value and descriptor. Returns `true` if successful.
+    /// Declare a parameter with a value and descriptor on the PRIMARY node.
+    /// Returns `true` if successful.
     pub fn declare_parameter_with_descriptor(
         &mut self,
+        name: &str,
+        value: nros_params::ParameterValue,
+        descriptor: nros_params::ParameterDescriptor,
+    ) -> bool {
+        self.declare_parameter_with_descriptor_on(
+            super::node_record::NodeId::PRIMARY,
+            name,
+            value,
+            descriptor,
+        )
+    }
+
+    /// Declare a parameter with a value and descriptor on a named node.
+    pub fn declare_parameter_with_descriptor_on(
+        &mut self,
+        node: super::node_record::NodeId,
         name: &str,
         value: nros_params::ParameterValue,
         descriptor: nros_params::ParameterDescriptor,
@@ -8019,7 +8057,7 @@ impl<'s> Executor<'s> {
         let accepted = match &mut self.params {
             Some(params) => params
                 .server
-                .declare_with_descriptor(name, value, Some(descriptor)),
+                .declare_with_descriptor(node.into(), name, value, Some(descriptor)),
             None => false,
         };
         // phase-430 W3 / issue 1202 — the sibling declare path, which had NO
@@ -8033,14 +8071,101 @@ impl<'s> Executor<'s> {
         accepted
     }
 
-    /// Get a parameter value by name.
-    pub fn get_parameter(&self, name: &str) -> Option<&nros_params::ParameterValue> {
-        self.params.as_ref()?.server.get(name)
+    /// THE writer — phase-426 W2.
+    ///
+    /// Set an ALREADY-DECLARED parameter on the executor's primary node, with
+    /// the same rules a remote `ros2 param set` gets: read-only, type, range
+    /// (min/max/step), and issue 1151's refusal of a name the node never
+    /// declared unless that node opted in through
+    /// [`allow_undeclared_parameters_on`](Self::allow_undeclared_parameters_on).
+    ///
+    /// It routes through [`ParameterServer::apply`](nros_params::ParameterServer::apply),
+    /// which is what makes the C and C++ facades, the by-value oracle, the
+    /// streaming service path and the atomic pre-check agree — a facade that
+    /// wrote the slot directly would be a second answer to "may this set
+    /// happen", which is the class RFC-0019/0020 forbids. An in-image caller
+    /// that genuinely wants declare-on-write names
+    /// `params_mut()`/`set_or_declare` and has opted in by naming it.
+    ///
+    /// Returns [`SetParameterResult::NotFound`] when the store does not exist
+    /// yet (no parameter has been declared and no services registered).
+    pub fn set_parameter(
+        &mut self,
+        name: &str,
+        value: nros_params::ParameterValue,
+    ) -> nros_params::SetParameterResult {
+        self.set_parameter_on(super::node_record::NodeId::PRIMARY, name, value)
     }
 
-    /// Get an integer parameter value by name (convenience).
+    /// [`set_parameter`](Self::set_parameter) on a named node.
+    pub fn set_parameter_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        name: &str,
+        value: nros_params::ParameterValue,
+    ) -> nros_params::SetParameterResult {
+        // Reserved parameters (`use_sim_time`) take effect on a set exactly as
+        // they do on a declare — this is the seam every language funnels
+        // through, so hooking it once here covers all of them.
+        //
+        // AFTER the store's verdict and only on `Success`, for the reason issue
+        // 1202 gives one function up: the hook used to run first and off the
+        // caller's value, so a write the store REFUSED still moved the switch
+        // and left sim time recorded as on with no source attached. `apply` has
+        // more ways to refuse than `declare` does — read-only, type, range,
+        // undeclared-without-the-node-option — so a writer that hooked first
+        // would reach that state from four directions instead of one.
+        let result = match &mut self.params {
+            Some(params) => params.server.apply(node.into(), name, value),
+            None => nros_params::SetParameterResult::NotFound,
+        };
+        if result == nros_params::SetParameterResult::Success {
+            self.note_reserved_parameter(name);
+        }
+        result
+    }
+
+    /// May a remote set DECLARE a name this node never declared? Upstream's
+    /// `allow_undeclared_parameters` node option (issue 1151), per node since
+    /// phase-426 W1: switching it on for one node leaves its siblings
+    /// refusing.
+    pub fn allow_undeclared_parameters_on(
+        &mut self,
+        node: super::node_record::NodeId,
+        allow: bool,
+    ) {
+        self.ensure_parameter_store();
+        if let Some(params) = &mut self.params {
+            params.server.set_allow_undeclared(node.into(), allow);
+        }
+    }
+
+    /// [`allow_undeclared_parameters_on`](Self::allow_undeclared_parameters_on)
+    /// for the primary node.
+    pub fn allow_undeclared_parameters(&mut self, allow: bool) {
+        self.allow_undeclared_parameters_on(super::node_record::NodeId::PRIMARY, allow);
+    }
+
+    /// Get a parameter value by name from the primary node.
+    pub fn get_parameter(&self, name: &str) -> Option<&nros_params::ParameterValue> {
+        self.get_parameter_on(super::node_record::NodeId::PRIMARY, name)
+    }
+
+    /// Get a parameter value by name from a named node.
+    pub fn get_parameter_on(
+        &self,
+        node: super::node_record::NodeId,
+        name: &str,
+    ) -> Option<&nros_params::ParameterValue> {
+        self.params.as_ref()?.server.get(node.into(), name)
+    }
+
+    /// Get an integer parameter value by name from the primary node (convenience).
     pub fn get_parameter_integer(&self, name: &str) -> Option<i64> {
-        self.params.as_ref()?.server.get_integer(name)
+        self.params
+            .as_ref()?
+            .server
+            .get_integer(super::node_record::NodeId::PRIMARY.into(), name)
     }
 
     /// Get a reference to the parameter server (if registered).
@@ -8078,12 +8203,25 @@ impl<'s> Executor<'s> {
         &'a mut self,
         name: &'a str,
     ) -> Result<nros_params::ParameterBuilder<'a, 's, T>, NodeError> {
+        self.parameter_on(super::node_record::NodeId::PRIMARY, name)
+    }
+
+    /// [`parameter`](Self::parameter) on a named node.
+    pub fn parameter_on<'a, T: nros_params::ParameterVariant>(
+        &'a mut self,
+        node: super::node_record::NodeId,
+        name: &'a str,
+    ) -> Result<nros_params::ParameterBuilder<'a, 's, T>, NodeError> {
         let server = self
             .params
             .as_mut()
             .map(|p| &mut p.server)
             .ok_or(NodeError::NotInitialized)?;
-        Ok(nros_params::ParameterBuilder::new(server, name))
+        Ok(nros_params::ParameterBuilder::new(
+            server,
+            node.into(),
+            name,
+        ))
     }
 }
 
@@ -9275,11 +9413,67 @@ impl<'s> Executor<'s> {
     /// needs the entry point a parameter service uses, not a copy of it.
     #[cfg(all(feature = "sim-time", feature = "param-services", any(has_rmw, test)))]
     pub(crate) fn refresh_use_sim_time_from_store(&mut self) {
-        if let Some(params) = self.params.as_ref()
-            && let Some(enable) = params
+        // phase-426 W1 — the store is keyed by NODE, and the simulated clock is
+        // not. This function is where those two facts meet, so the rule is
+        // stated here rather than left to whichever call site got there first.
+        //
+        // `use_sim_time` is a per-node parameter in ROS 2, and rclcpp means it:
+        // every `Node` builds its own `TimeSource` over its own `Clock`, so two
+        // nodes composed into one process CAN be configured differently and
+        // stamp messages from different clocks at the same instant. This tree
+        // deliberately does not follow that (phase-425): "the override is
+        // process-global — one simulated clock per image, the model
+        // `nros_core::Clock` already documents — so there is nothing to attach
+        // to and nothing to fan out." That is the right trade for an image with
+        // a fixed RAM budget, and it makes "whose `use_sim_time`?" a question
+        // rclcpp never has to answer and this executor now does.
+        //
+        // ANY node asking arms the one source. Two reasons, and the second is
+        // the binding one:
+        //
+        //   * it is the only rule the CALLERS can implement. `note_param_
+        //     services_ran` fires after a runtime `ros2 param set` and knows
+        //     only that N requests were handled — not which node was written.
+        //     A last-writer-wins rule would need a writer identity that does
+        //     not reach here, so it would silently degrade to "whatever node 0
+        //     says", which is the default-to-primary bug phase-426 W1 exists to
+        //     remove.
+        //   * one node still wanting simulated time is a reason to keep the
+        //     source attached, and detaching is the destructive direction:
+        //     phase-425 already records that turning it off "stops SAMPLES, not
+        //     the subscription", precisely so a mid-run change does not read as
+        //     a clock jump.
+        //
+        // The scan is over the executor's own node table, which is the same
+        // `u8` index space `NodeKey` wraps, so there is one node identity here
+        // and not two.
+        let Some(params) = self.params.as_ref() else {
+            return;
+        };
+        let mut stated = false;
+        let mut enable = false;
+        // A `NodeId` IS the index into this table (`NodeId::index`), so the
+        // enumeration is the key space — no second derivation of the number.
+        //
+        // `.max(1)` because `NodeId::PRIMARY` is IMPLICIT: the executor's node
+        // table starts empty and a parameter can be declared on the primary
+        // node before any `create_node` puts a record in it. Scanning only the
+        // table would then find nothing and leave `sim_time_stated` false, so a
+        // `use_sim_time` declared before the first node would never arm the
+        // source — which `use_sim_time_attaches_and_detaches_the_clock_source`
+        // catches, since its whole first half runs while "there is still no
+        // node". Slot 0 is always a legitimate key; at worst the lookup misses.
+        for idx in 0..self.nodes.len().max(1) {
+            let key = nros_params::NodeKey::new(idx as u8);
+            if let Some(v) = params
                 .server
-                .get_bool(crate::time_source::USE_SIM_TIME_PARAM)
-        {
+                .get_bool(key, crate::time_source::USE_SIM_TIME_PARAM)
+            {
+                stated = true;
+                enable |= v;
+            }
+        }
+        if stated {
             self.sim_time_requested = enable;
             self.sim_time_stated = true;
         }

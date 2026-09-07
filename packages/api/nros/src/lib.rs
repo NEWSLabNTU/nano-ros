@@ -1453,10 +1453,12 @@ pub use nros_bridge::run_from_config;
 // phase-382 W2' — `ParameterStorage` / `ParameterTable` are here because the
 // store's slots are CALLER-OWNED: anyone constructing a `ParameterServer`
 // outside an executor has to place the storage and lend it.
+// phase-426 W1 — `NodeKey` is here because every per-parameter call names the
+// node it is about; a consumer holding a `ParameterServer` needs it to say so.
 pub use nros_params::{
-    MandatoryParameter, OptionalParameter, Parameter, ParameterBuilder, ParameterDescriptor,
-    ParameterError, ParameterServer, ParameterStorage, ParameterTable, ParameterType,
-    ParameterValue, ParameterVariant, ReadOnlyParameter, SetParameterResult,
+    MandatoryParameter, NodeKey, OptionalParameter, Parameter, ParameterBuilder,
+    ParameterDescriptor, ParameterError, ParameterServer, ParameterStorage, ParameterTable,
+    ParameterType, ParameterValue, ParameterVariant, ReadOnlyParameter, SetParameterResult,
 };
 /// Prelude module for convenient imports
 ///
