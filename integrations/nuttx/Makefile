@@ -125,7 +125,7 @@ export NUTTX_INCLUDE_DIR := $(TOPDIR)/include:$(TOPDIR)/include/arch
 # stable. The NuttX `-Zbuild-std=std,panic_abort` flags need
 # nightly. Pin via env var so the Cargo invocation from
 # `RUST_CARGO_BUILD` picks the same nightly the rest of the
-# NuttX examples use (`examples/qemu-arm-nuttx/
+# NuttX examples use (`examples/qemu-armv7a-nuttx/
 # rust-toolchain.toml`). Override via env before `make` if you
 # need a different nightly.
 export RUSTUP_TOOLCHAIN ?= nightly-2026-04-11
@@ -196,14 +196,14 @@ endif
 # resolved triple so the empty-expansion bug above can't bite.
 # Includes the same `-Zbuild-std`/`-Zbuild-std-features` flags
 # upstream uses for `CONFIG_DEBUG_NOOPT`-style release builds —
-# matches what `examples/qemu-arm-nuttx/rust/zenoh/*/.cargo/
+# matches what `examples/qemu-armv7a-nuttx/rust/zenoh/*/.cargo/
 # config.toml` declares.
 # Phase 157.C — `--config` overrides for the NuttX Rust build.
 # nano-ros's root workspace doesn't carry a `[patch.crates-io]
 # libc = ...` entry (it would affect every build, not just the
 # NuttX cross). Inject the same libc patch + per-target rustflags
 # the standalone examples carry in their `.cargo/config.toml`
-# (e.g. `examples/qemu-arm-nuttx/rust/zenoh/talker/.cargo/
+# (e.g. `examples/qemu-armv7a-nuttx/rust/zenoh/talker/.cargo/
 # config.toml`) via cargo's `--config <inline-toml>` flag so the
 # integration shell builds match those examples exactly.
 #

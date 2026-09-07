@@ -83,7 +83,7 @@ ln -sfn "$INTEGRATION" "$EXT/nano-ros"
 # row when supplied.
 #
 # Phase 212.M-F.12 — the legacy Phase 157.C nuttx-examples staging
-# loop (per-example symlinks under `examples/qemu-arm-nuttx/{c,cpp}/`
+# loop (per-example symlinks under `examples/qemu-armv7a-nuttx/{c,cpp}/`
 # + per-example codegen / cpp-FFI staticlib accumulation) was retired
 # here. M-F.10.5 deleted the `cmake/templates/nros_app_config.h.in`
 # template the per-example baker required, and the Phase 212 multi-pkg

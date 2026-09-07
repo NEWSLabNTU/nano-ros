@@ -41,7 +41,7 @@ pub fn is_arm_gcc_available() -> bool {
 
 /// Trust that `just setup` installed the pinned NuttX nightly
 /// toolchain. The pinned version lives in
-/// `examples/qemu-arm-nuttx/rust-toolchain.toml` and is the
+/// `examples/qemu-armv7a-nuttx/rust-toolchain.toml` and is the
 /// authoritative source — cargo auto-resolves it when invoked from
 /// inside that directory tree. If setup wasn't run, the cargo build
 /// will fail with an actionable "toolchain not found" message, which
@@ -351,7 +351,7 @@ pub fn build_nuttx_action_client() -> TestResult<&'static Path> {
 /// missed, `<leaf>/target/<triple>/<ambient>/<bin>`. Phase-340 moved the NuttX
 /// build into a shared cargo group dir, so under a clean
 /// `just nuttx build-fixtures-arm` NEITHER leaf path exists — MEASURED: no
-/// `examples/qemu-arm-nuttx/rust/talker/target` at all, while
+/// `examples/qemu-armv7a-nuttx/rust/talker/target` at all, while
 /// `build/cargo-fixtures/nuttx-*/armv7a-nuttx-eabihf/nros-minsizerel/talker`
 /// was freshly built. The first `.exists()` therefore always missed, the
 /// ambient arm always won, and the path route's root redirect then reported the
@@ -369,7 +369,7 @@ pub fn build_nuttx_action_client() -> TestResult<&'static Path> {
 /// at the WRONG PROFILE — the ambient one is on disk and the carve-out is not —
 /// rather than "the artifact is not where I looked".
 pub fn require_entry_binary(role: &str, bin: &str) -> TestResult<PathBuf> {
-    let dir_rel = format!("examples/qemu-arm-nuttx/rust/{role}");
+    let dir_rel = format!("examples/qemu-armv7a-nuttx/rust/{role}");
     let dir = project_root().join(&dir_rel);
     if !dir.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -450,7 +450,7 @@ static NUTTX_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-arm-nuttx/{}/{}", lang, name));
+    let example_dir = root.join(format!("examples/qemu-armv7a-nuttx/{}/{}", lang, name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(

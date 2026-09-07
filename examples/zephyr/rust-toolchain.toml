@@ -3,7 +3,7 @@
 # the workspace's root `rust-toolchain.toml` (stable, thumbv7em target),
 # which misses the features the Zephyr Rust integration relies on.
 #
-# Matches `examples/qemu-arm-nuttx/rust-toolchain.toml`'s pattern. Bump
+# Matches `examples/qemu-armv7a-nuttx/rust-toolchain.toml`'s pattern. Bump
 # to a newer nightly when the Zephyr examples or zephyr-lang-rust
 # require it — run `just zephyr test` after any change to confirm.
 [toolchain]

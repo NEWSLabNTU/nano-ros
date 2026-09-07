@@ -79,7 +79,7 @@ endif()
 # same rust-toolchain.toml SSoT the arm overlay uses (one NuttX nightly across
 # arches — the patched libc fork pins it).
 if(NOT Rust_TOOLCHAIN MATCHES "nightly")
-    set(_nros_nuttx_tc_ssot "${_NROS_BOARD_ROOT}/examples/qemu-arm-nuttx/rust-toolchain.toml")
+    set(_nros_nuttx_tc_ssot "${_NROS_BOARD_ROOT}/examples/qemu-armv7a-nuttx/rust-toolchain.toml")
     if(EXISTS "${_nros_nuttx_tc_ssot}")
         file(READ "${_nros_nuttx_tc_ssot}" _nros_nuttx_tc_content)
         string(REGEX MATCH "channel[ \t]*=[ \t]*\"([^\"]+)\"" _nros_tc_m "${_nros_nuttx_tc_content}")

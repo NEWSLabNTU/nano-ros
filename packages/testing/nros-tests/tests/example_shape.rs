@@ -14,7 +14,7 @@
 //!   codegen + humans land in the same crate (L.4 lint).
 //! * **deploy target matches platform path** — every key under
 //!   `[package.metadata.nros.deploy.<target>]` matches the platform
-//!   that the example lives under (e.g. `qemu-arm-nuttx/*` → `nuttx`).
+//!   that the example lives under (e.g. `qemu-armv7a-nuttx/*` → `nuttx`).
 //! * **Path A bringup dirs free of code** — any dir holding
 //!   `system.toml` carries neither `Cargo.toml` nor `CMakeLists.txt`
 //!   nor `src/` (L.8 lint complement).
@@ -159,7 +159,7 @@ const MIGRATED_PREFIXES: &[&str] = &[
     // those sub-trees with the rust-only filter below).
     "examples/zephyr/rust/",
     // M.4 NuttX rust/c/cpp
-    "examples/qemu-arm-nuttx/",
+    "examples/qemu-armv7a-nuttx/",
     // M.5 FreeRTOS rust/c/cpp (M.5.a + M.5.b landed)
     "examples/qemu-arm-freertos/",
     // M.6 ThreadX linux/{rust,cpp} — `c/` is NOT in M.6 scope; the
@@ -336,7 +336,7 @@ fn expected_deploy_target_for(rel: &Path) -> Option<&'static str> {
     // here; native classification is covered by Test 2.
     if s.contains("/native/") {
         None
-    } else if s.contains("/qemu-arm-nuttx/") {
+    } else if s.contains("/qemu-armv7a-nuttx/") {
         Some("nuttx")
     } else if s.contains("/qemu-arm-freertos/") {
         Some("freertos")
@@ -729,7 +729,7 @@ fn pre_212_files_forbidden_in_migrated_examples() {
     // `Kconfig` and `Make.defs` are NuttX-specific pre-212 files; the
     // M.4 sweep dropped them per the M.4 acceptance line. `Makefile`
     // is also listed in the M.4 sweep but is a more generic name —
-    // we still flag it inside the migrated `qemu-arm-nuttx/` tree,
+    // we still flag it inside the migrated `qemu-armv7a-nuttx/` tree,
     // but tolerate it elsewhere (e.g. NUTTX top-level makefiles).
     const ALWAYS_FORBIDDEN: &[&str] = &[
         "nros.toml",
@@ -751,7 +751,7 @@ fn pre_212_files_forbidden_in_migrated_examples() {
                 violations.push(format!("{}/{}", rel.to_string_lossy(), forbidden));
             }
         }
-        if rel.to_string_lossy().contains("qemu-arm-nuttx/") {
+        if rel.to_string_lossy().contains("qemu-armv7a-nuttx/") {
             for forbidden in NUTTX_FORBIDDEN {
                 if dir.join(forbidden).is_file() {
                     violations.push(format!("{}/{}", rel.to_string_lossy(), forbidden));
@@ -834,8 +834,8 @@ fn unmigrated_trees_status_surface() {
 const AMENT_SHAPE_TREES: &[&str] = &[
     "native",
     "qemu-arm-freertos",
-    "qemu-arm-nuttx",
-    "qemu-riscv-nuttx",
+    "qemu-armv7a-nuttx",
+    "rv-virt-nuttx",
     "qemu-riscv64-threadx",
     "threadx-linux",
 ];

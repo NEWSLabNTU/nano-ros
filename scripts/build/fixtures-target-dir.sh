@@ -88,7 +88,7 @@
 # collisions, 122 artifact roots all invertible.
 #
 # `nuttx-riscv` IS correctly absent, and for the reason wave 2 gave: it has one
-# `[[fixture]]` row and that row is C (`examples/qemu-riscv-nuttx/c/talker`).
+# `[[fixture]]` row and that row is C (`examples/rv-virt-nuttx/c/talker`).
 # There is no alternate spelling — `threadx-riscv64` is a different OS.
 #
 # Neither absence is about `[[workspace_fixture]]` rows, which DO exist for

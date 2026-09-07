@@ -1285,9 +1285,9 @@ packages = ["zephyr-sdk"]
 # EDIT BOTH.
 #
 # phase-437 W4 COLLAPSED the NuttX pair rather than mirroring it: RFC-0093
-# selects ONE name per board, so `qemu-arm-nuttx`/`nuttx-qemu-arm` became the
+# selects ONE name per board, so `qemu-armv7a-nuttx`/`nuttx-qemu-arm` became the
 # single `[board.qemu-armv7a-nuttx]` above (NuttX's own `CONFIG_ARCH_BOARD`)
-# and `qemu-riscv-nuttx`/`nuttx-qemu-riscv` the single `[board.rv-virt-nuttx]`.
+# and `rv-virt-nuttx`/`nuttx-qemu-riscv` the single `[board.rv-virt-nuttx]`.
 # A collapsed pair has no mirror to hold in step, so its `# =` marker goes with
 # it — a marker naming a section that no longer exists is what
 # `check-board-vocabulary` reports first.

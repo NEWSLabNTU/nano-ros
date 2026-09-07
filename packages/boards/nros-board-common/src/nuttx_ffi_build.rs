@@ -75,7 +75,7 @@ pub fn run_nuttx() {
     let main_src = env::var("APP_MAIN_CPP").unwrap_or_else(|_| {
         panic!(
             "APP_MAIN_CPP not set. Set it to the path of the C/C++ source file.\n\
-             Example: APP_MAIN_CPP=examples/qemu-arm-nuttx/c/zenoh/talker/src/main.c"
+             Example: APP_MAIN_CPP=examples/qemu-armv7a-nuttx/c/zenoh/talker/src/main.c"
         )
     });
 

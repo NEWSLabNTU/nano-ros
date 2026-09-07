@@ -20,7 +20,7 @@ crate-type = ["rlib"]
 # names a `.a`. A `staticlib` is a FINAL artifact and rustc holds it to that —
 # it needs its own lang items — so declaring one nothing builds is a standing
 # obligation with no consumer. Same removal, same reasoning, as phase-359 W7 on
-# qemu-arm-nuttx. threadx-linux is a hosted (`std`) sim, which is why the
+# qemu-armv7a-nuttx. threadx-linux is a hosted (`std`) sim, which is why the
 # obligation was invisible: libstd supplied the items and no one had to notice.
 
 [features]

@@ -230,7 +230,7 @@ build-fixtures-arm:
     # downloads dir on first component fetch (`error: component download failed
     # … could not rename '…partial'`). One serial `rustup component add` makes it
     # a no-op for the parallel builds. Idempotent (skips if already present).
-    nuttx_nightly="$(awk '/^channel/{gsub(/"/,"",$3);print $3;exit}' examples/qemu-arm-nuttx/rust-toolchain.toml)"
+    nuttx_nightly="$(awk '/^channel/{gsub(/"/,"",$3);print $3;exit}' examples/qemu-armv7a-nuttx/rust-toolchain.toml)"
     if [ -n "$nuttx_nightly" ]; then
         rustup component add rust-src cargo rust-std --toolchain "$nuttx_nightly" >/dev/null 2>&1 || true
     fi
@@ -719,11 +719,11 @@ _run-qemu example binary:
     # they cannot disagree, on either side of a migration.
     # shellcheck source=scripts/build/fixtures-target-dir.sh
     source "{{justfile_directory()}}/scripts/build/fixtures-target-dir.sh"
-    NX_LEAF="examples/qemu-arm-nuttx/rust/{{example}}"
+    NX_LEAF="examples/qemu-armv7a-nuttx/rust/{{example}}"
     nx_tdir_flag="$(nros_fixture_target_dir_flag nuttx "" "")"
     NX_ARTIFACTS="$(nros_fixture_row_artifact_dir "$PWD/$NX_LEAF" nuttx "" "")"
     cd "$NX_LEAF"
-    # Nightly version pinned by examples/qemu-arm-nuttx/rust-toolchain.toml.
+    # Nightly version pinned by examples/qemu-armv7a-nuttx/rust-toolchain.toml.
     CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc cargo build $(nros_cargo_profile_args_for "$NX_PROFILE") $nx_tdir_flag
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     # -icount shift=auto: sync virtual clock with wall-clock for proper sleep/timeout
@@ -789,6 +789,6 @@ clean:
     #!/usr/bin/env bash
     rm -rf build/cmake-nuttx-armv7a-zenoh
     for example in talker listener service-server service-client action-server action-client; do
-        rm -rf "examples/qemu-arm-nuttx/rust/$example/target"
+        rm -rf "examples/qemu-armv7a-nuttx/rust/$example/target"
     done
     echo "NuttX build artifacts cleaned"

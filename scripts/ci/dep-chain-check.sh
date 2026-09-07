@@ -64,7 +64,7 @@ CELLS=(
     "native:xrce"
     "qemu-arm-baremetal:zenoh"
     "qemu-arm-freertos:zenoh"
-    "qemu-arm-nuttx:zenoh"
+    "qemu-armv7a-nuttx:zenoh"
     "qemu-esp32-baremetal:zenoh"
     "qemu-riscv64-threadx:zenoh"
     "threadx-linux:zenoh"

@@ -11,7 +11,7 @@ description = "NuttX kernel + nros C/C++ FFI bundle for CMake-built examples"
 [dependencies]
 # Phase 144.6 — relocated under packages/boards/nros-board-nuttx-qemu/.
 # Path deps go up 3 levels to the repo root (was 4 under
-# examples/qemu-arm-nuttx/cmake/).
+# examples/qemu-armv7a-nuttx/cmake/).
 # phase-359 W7 — this bin supplies the image's runtime through `nros-c`
 # (`global-allocator` gives it the `#[global_allocator]`, and its own
 # `#[panic_handler]` activates once `std` is gone), so the board crate's copies

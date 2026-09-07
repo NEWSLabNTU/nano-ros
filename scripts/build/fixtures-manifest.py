@@ -389,7 +389,7 @@ def row_is_variant(entry):
     Equivalence where it is consumed is GATED, not assumed — see
     `tests/core_only_predicate.sh`. Measured at the time of the swap: over the
     65 `linux`/`rust` rows both spellings select the same 12. The two diverge
-    only on `qemu-arm-nuttx` rust rows, which carry a variant signature and no
+    only on `qemu-armv7a-nuttx` rust rows, which carry a variant signature and no
     authored dir — a platform `--core-only` has never been invoked on.
     """
     if entry.get("target_dir"):

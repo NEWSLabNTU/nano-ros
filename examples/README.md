@@ -14,7 +14,7 @@ examples/
 └── templates/<name>/                          # multi-platform recipes (Pattern A workspace, etc.)
 ```
 
-- **Platform** (10): `native`, `px4`, `qemu-arm-baremetal`, `qemu-arm-freertos`, `qemu-arm-nuttx`, `qemu-esp32-baremetal`, `qemu-riscv-nuttx`, `qemu-riscv64-threadx`, `threadx-linux`, `zephyr`
+- **Platform** (10): `native`, `px4`, `qemu-arm-baremetal`, `qemu-arm-freertos`, `qemu-armv7a-nuttx`, `qemu-esp32-baremetal`, `rv-virt-nuttx`, `qemu-riscv64-threadx`, `threadx-linux`, `zephyr`
 - **Language**: `c`, `cpp`, `rust`
 - **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic`, `-rtic-mixed`, `-async`, `-serial`, `-aemv8r`, etc.
 
@@ -92,11 +92,11 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 | `qemu-arm-freertos`       | c        | 6     | –    | –          | –    |
 | `qemu-arm-freertos`       | cpp      | 6     | –    | –          | –    |
 | `qemu-arm-freertos`       | rust     | 6     | –    | –          | –    |
-| `qemu-arm-nuttx`          | c        | 6     | –    | –          | –    |
-| `qemu-arm-nuttx`          | cpp      | 6     | –    | –          | –    |
-| `qemu-arm-nuttx`          | rust     | 6     | –    | –          | –    |
+| `qemu-armv7a-nuttx`          | c        | 6     | –    | –          | –    |
+| `qemu-armv7a-nuttx`          | cpp      | 6     | –    | –          | –    |
+| `qemu-armv7a-nuttx`          | rust     | 6     | –    | –          | –    |
 | `qemu-esp32-baremetal`    | rust     | 2     | –    | –          | –    |
-| `qemu-riscv-nuttx`        | c        | 1     | –    | –          | –    |
+| `rv-virt-nuttx`        | c        | 1     | –    | –          | –    |
 | `qemu-riscv64-threadx`    | c        | 6 ¹   | –    | –          | –    |
 | `qemu-riscv64-threadx`    | cpp      | 6 ¹   | –    | –          | –    |
 | `qemu-riscv64-threadx`    | rust     | 6 ¹   | –    | –          | –    |
@@ -116,9 +116,9 @@ example fixtures compile, but the action runtime lanes were
 deliberately dropped from the run matrix in 182.5 (pub/sub + service
 remain runtime-tested).
 
-`qemu-riscv-nuttx` currently ships only `c/talker`, built by the separate
+`rv-virt-nuttx` currently ships only `c/talker`, built by the separate
 `build-riscv-c` recipe in `just/nuttx.just` (its own riscv toolchain/board
-lane — not the `qemu-arm-nuttx` build path above).
+lane — not the `qemu-armv7a-nuttx` build path above).
 
 ### Interop & bridge coverage (issue 0352 / phase-324)
 
@@ -170,7 +170,7 @@ spin up examples here without first lifting the underlying constraint.
 | `qemu-esp32-baremetal/{c,cpp}/*`                       | Same constraint. Even though ESP-IDF can host C/C++, the `qemu-esp32-baremetal` *example* tree is the no-IDF / pure-Rust HAL path (`esp-hal`). C/C++ on the same board would belong under a hypothetical `esp32-idf/` tree, not here.                                | Same as above, plus a decision on whether ESP-IDF-hosted C/C++ examples deserve a sibling platform dir.                                                                        |
 | `px4/{c,rust}/*` (px4 has no example-tree uORB cell)   | PX4 integration is uORB-only (the platform's native pub/sub), and Phase 115.K.4 collapsed `nros-rmw-uorb` to a single C++ port (the legacy Rust crate was deleted). `packages/testing/nros-px4-register-check/` is the canonical surface (the former `examples/px4/rust/uorb/` README-only placeholder was retired in phase-277 W7). | Won't lift: C is not on the PX4 module API, and the Rust uORB backend was retired in Phase 115.K.4 (see `docs/roadmap/phase-115-runtime-transport-vtable.md`). No C/Rust PX4 examples are planned.                  |
 | `cyclonedds` on bare-metal (`qemu-arm-baremetal`, `qemu-esp32-baremetal`) | Cyclone DDS requires a hosted runtime — BSD sockets, threads, heap, libc. Pure Cortex-M / esp-hal bare-metal targets have none, so the C++ Cyclone stack cannot run (Phase 171.C.gate decision). | Won't lift on bare-metal. Cyclone DDS is the hosted-platform DDS backend; embedded targets use the zenoh-pico or XRCE backends instead. |
-| `cyclonedds` on NuttX QEMU (`qemu-arm-nuttx` × all langs) | Deferred-upstream: a Cyclone DDS NuttX socket-shim port is an upstream-scale effort not attempted in nano-ros. FreeRTOS is no longer in this bucket; Phase 175 added FreeRTOS/lwIP Cyclone fixture wiring. | An upstream Cyclone DDS NuttX port (socket shim + config + heap budget), then a nano-ros example cell. |
+| `cyclonedds` on NuttX QEMU (`qemu-armv7a-nuttx` × all langs) | Deferred-upstream: a Cyclone DDS NuttX socket-shim port is an upstream-scale effort not attempted in nano-ros. FreeRTOS is no longer in this bucket; Phase 175 added FreeRTOS/lwIP Cyclone fixture wiring. | An upstream Cyclone DDS NuttX port (socket shim + config + heap budget), then a nano-ros example cell. |
 | pure-cargo `cyclonedds` Rust binaries on `native` / `threadx-linux` | Still intentionally unsupported: `nros-rmw-cyclonedds-sys` exposes only the C register shim, so a plain Cargo build has no way to build+link the C++ Cyclone lib + `libddsc`. Native Rust Cyclone now uses the Phase 175 CMake/Corrosion path instead. | Use the CMake/Corrosion fixture path for Cyclone-backed Rust examples, or scope a new staticlib crate separately. |
 | `cyclonedds` service/action on `qemu-riscv64-threadx` (`c`/`cpp`) — talker+listener only | De-scoped (Phase 275 W4): Cyclone on ThreadX RISC-V64 is *experimental* and its runtime still needs participant-init diagnosis (Phase 177.22). Only talker/listener are wired, exercised by the AF_UNIX two-QEMU pub/sub e2e (`test_threadx_riscv64_cyclonedds_two_qemu_pubsub`). Service/action would need bidirectional RTPS discovery over that L2 tunnel, unproven on this port; the zenoh RMW covers the full 6-role set here. | Land the Phase 177.22 participant-init fix, then a two-QEMU Cyclone request/response e2e before adding `service-*`/`action-*` cyclone fixture rows. |
 | `zephyr/rust/service-client-async` | Dropped 2026-06-02 per Phase 212.M-F.5 — the Embassy-driven async client has no `Node` / `ExecutableNode` analogue today. The native tokio sibling (`examples/native/rust/service-client-async/`) remains as the async-client reference. | Decide on an async executable-node trait (deferred until L-Wave / runtime authors pick the path), then re-introduce the example. |
@@ -275,7 +275,7 @@ examples to your own board.
 | `native/` | Host native (Linux) | Just `cargo run` — no integration shell needed. |
 | `qemu-arm-baremetal/` | Cargo-first bare-metal | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-baremetal-cortex-m`) |
 | `qemu-arm-freertos/` | Cargo-first FreeRTOS | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-freertos`); reference overlay `nros-board-mps2-an385-freertos`. For STM32 / NXP / Espressif FreeRTOS, write a [vendor overlay](../book/src/porting/vendor-overlay.md). |
-| `qemu-arm-nuttx/` | NuttX native shell | [NuttX integration shell](../book/src/getting-started/integration-nuttx.md) — `apps/external/nano-ros/`. |
+| `qemu-armv7a-nuttx/` | NuttX native shell | [NuttX integration shell](../book/src/getting-started/integration-nuttx.md) — `apps/external/nano-ros/`. |
 | `qemu-esp32-baremetal/` | Cargo-first bare-metal | Bare-metal `esp-hal` path; same generic-crate flow as `qemu-arm-baremetal`. |
 | `qemu-riscv64-threadx/` | Cargo-first ThreadX | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-threadx`); reference overlay `nros-board-threadx-qemu-riscv64`. For Renesas Synergy / STM32 X-CUBE-AZRTOS / NXP MCUXpresso ThreadX, write a [vendor overlay](../book/src/porting/vendor-overlay.md). |
 | `threadx-linux/` | Linux sim (CI) | Same as `qemu-riscv64-threadx` but with NSOS host-kernel sockets shim. |

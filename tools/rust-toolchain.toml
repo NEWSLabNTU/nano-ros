@@ -9,7 +9,7 @@
 #
 # When bumping: check that `cargo fmt --check`, `cargo miri test`, and
 # `just coverage` still work with the new channel. The
-# `examples/qemu-arm-nuttx/` and `examples/zephyr/` pins typically track
+# `examples/qemu-armv7a-nuttx/` and `examples/zephyr/` pins typically track
 # the same channel but may diverge if a platform's build-std breaks.
 [toolchain]
 channel = "nightly-2026-04-11"

@@ -4,7 +4,7 @@
 //! Phase 212.C / 212.E pipeline expects. Body is intentionally trivial
 //! — the Phase 212.H.2 audit verifies the *build pipeline* shape, not
 //! runtime publishing (that is exercised by the existing
-//! `examples/qemu-arm-nuttx/rust/talker/` end-to-end fixture).
+//! `examples/qemu-armv7a-nuttx/rust/talker/` end-to-end fixture).
 
 #![no_std]
 
