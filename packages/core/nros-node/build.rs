@@ -304,7 +304,20 @@ fn main() {
     // lane has nothing better to read yet. Budgeting the default is not a guess
     // in the meantime -- it is exactly what a subscription created with no QoS
     // argument gets, which is what "the image declared nothing" means.
-    let pubsub_region = buffered_region(PUBSUB_QOS_DEPTH, rx_recv_size);
+    // phase-412 W3 — the DECLARED depth when the image stated one for every
+    // endpoint, `PUBSUB_QOS_DEPTH` otherwise. The comment above describes the
+    // constant as what "a subscription created with no QoS argument gets",
+    // which is exactly right for an image that declared nothing and exactly
+    // wrong for one that declared depth 1 everywhere: `buffered_region` gives
+    // the latter a 3-slot TripleBuffer and the constant bills it 11 slots.
+    //
+    // cmake refuses to publish this unless every endpoint that COULD state a
+    // depth did (`NROS_ENTITY_UNDECLARED_DEPTH_COUNT == 0`), so an absent
+    // variable means "some endpoint said nothing" and the default stands. That
+    // guard belongs there rather than here: the count is a property of the
+    // declaration, and this lane cannot see it.
+    let pubsub_depth = declared_max_qos_depth().unwrap_or(PUBSUB_QOS_DEPTH);
+    let pubsub_region = buffered_region(pubsub_depth, rx_recv_size);
     let pubsub_entry = pubsub_region + PUBSUB_ENTRY_STRUCT;
 
     // phase-403 step 3 -- SUM OVER WHAT THE IMAGE DECLARES, when it declares.
@@ -460,7 +473,11 @@ fn main() {
              /// Smallest arena the derivation will produce.\n    \
              pub const FLOOR: usize = {arena_floor};\n\
          }}\n",
-        pubsub_qos_depth = PUBSUB_QOS_DEPTH,
+        // The RESOLVED depth, not the constant: this const is what
+        // `the_modelled_qos_depth_is_the_runtime_default` in `arena.rs` reads
+        // back, so emitting the constant while sizing from the declaration
+        // would make the assertion pass against a model the build did not use.
+        pubsub_qos_depth = pubsub_depth,
         pubsub_entry_struct = PUBSUB_ENTRY_STRUCT,
         action_feedback_depth = ACTION_FEEDBACK_DEPTH,
         arena_base_overhead = ARENA_BASE_OVERHEAD,
@@ -643,6 +660,22 @@ fn env_opt_usize(name: &str) -> Option<usize> {
 ///
 /// The front-end keeps winning. Migrating a knob into the ladder must not take
 /// an operator's override away, which is half of this wave's own gate.
+/// phase-412 W3 — the largest QoS depth this image DECLARES, if it declared
+/// every one.
+///
+/// `None` when cmake made no claim, which covers three different situations and
+/// deliberately does not distinguish them here: no entity inventory, a
+/// `refused` depth status, or at least one endpoint that could have stated a
+/// depth and did not. All three mean the same thing to a consumer that sizes
+/// from depth — the table describes a SUBSET of the image — and the remedy is
+/// the same, so the guard lives at the producer where the count is visible.
+fn declared_max_qos_depth() -> Option<usize> {
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_MAX_QOS_DEPTH");
+    std::env::var("NROS_DECLARED_MAX_QOS_DEPTH")
+        .ok()
+        .and_then(|v| v.trim().parse().ok())
+}
+
 fn env_usize(name: &str, default: usize) -> usize {
     println!("cargo:rerun-if-env-changed={name}");
     if let Some(v) = std::env::var(name).ok().and_then(|v| v.trim().parse().ok()) {

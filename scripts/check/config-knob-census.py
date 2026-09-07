@@ -164,6 +164,10 @@ KNOB_CLASS = {
     "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": ("infra", "a SIZE the resolver passes down, not a knob"),
     "NROS_DECLARED_EXECUTOR_MAX_CBS": ("infra", "a COUNT the resolver passes down, not a knob"),
     "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS": ("infra", "a COUNT the resolver passes down, not a knob"),
+    # phase-412 W3 — a DEPTH the resolver passes down. Same category as the
+    # counts beside it: nobody tunes it, it is what the image DECLARED, and the
+    # arena derivation multiplies by it.
+    "NROS_DECLARED_MAX_QOS_DEPTH": ("infra", "a DEPTH the resolver passes down, not a knob"),
     "NROS_PICOLIBC_SYSROOT": ("infra", "path"),
     "NROS_RISCV64_PREFIX": ("infra", "toolchain prefix"),
     "NROS_SDK_STORE": ("infra", "path"),
