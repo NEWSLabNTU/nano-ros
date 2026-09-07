@@ -643,7 +643,7 @@ with the promotion absent — same six, and only those six. They are not in the
 > **Written independently of the section above, against the same base commit,
 > by an author who had not seen it.** Both halves found and fixed the SAME
 > `_ret_of` bug (it read `item["ret"]`; `flatten` stores return types one level
-> down under `overloads`). The section above landed first, in `fe807a999`, and
+> down under `overloads`). The section above landed first, and
 > ITS fix is the one that ships — it is the superset: it applies `canon_type`
 > inside `_ret_of` and additionally normalises `rcl_{time_point,duration}_value_t`
 > to `int64_t`, which the version here does not. What survives from this half is
@@ -674,7 +674,7 @@ not have seen.
 | `divergence` rows whose subject correlates `same:ret` | 2, both by inheritance |
 | `divergence` rows in every other bucket — NOT gated | 819 |
 
-**Re-measured after the merge** (`839f69b5c` + this half), because the other
+**Re-measured after the merge** (that earlier half + this one), because the other
 half authored 20 `divergence` rows on subjects that correlate `same` and they
 land in exactly this set — the two halves compound, they do not overlap:
 
