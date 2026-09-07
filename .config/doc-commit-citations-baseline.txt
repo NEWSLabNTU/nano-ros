@@ -62,11 +62,6 @@ adb4c592e
 # fixed here because this gate is a separate change and must not carry an
 # unrelated document edit.
 
-# docs/issues/README.md — an archived issue cites the commit that made a QEMU
-# failure drain the guest before killing it. Hash rebased away; the change is
-# real and the prose is the record. Dangling on main before this line.
-d97c9c606
-
 # `docs/issues/1127-live-peer-cells-skip-forever.md` — commits in ANOTHER
 # CHECKOUT. The issue is about a live-peer lane that runs inside the distrobox
 # against a mirror tree at `/mnt/wd/data/projects/nano-ros-box`, and it records
