@@ -2515,7 +2515,7 @@ reads identically whether a commit is unpublished or merely unfetched. See `arch
 RESOLVED 2026-08-13 — **#565** filed as one bug ("the 100 ms low tier is never scheduled, both arches") on the
 strength of a verdict that INFERRED its cause from missing telemetry and then killed the guest unread. Both leads
 it opened with — the Rust `run_tiers` path, a clock unit/resolution error — are refuted by the console for BOTH
-rows. Closed as SPLIT into #569/#570; nothing here was repaired. The lasting change is `d97c9c606`: the failure
+rows. Closed as SPLIT into #569/#570; nothing here was repaired. The lasting change is that the failure
 now drains the guest before killing it and prints the last 25 lines, or says outright that the guest printed
 NOTHING. That is issue #0445's rule one test over, and it separated two unrelated defects on the first run. An
 assertion that infers a cause and discards the evidence will merge every failure sharing its symptom.
