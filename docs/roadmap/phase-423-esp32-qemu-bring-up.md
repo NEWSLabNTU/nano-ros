@@ -36,7 +36,7 @@ each fix lands with no way to demonstrate it.
   by inference. **RESOLVED 2026-09-06** — the markers deliver through `nros_log`
   + the platform writer, and the class sweep is recorded in the archived issue.
   Its one sibling instance (Zephyr pure-Rust images publish no sink list) is
-  [#1123](../issues/1123-zephyr-pure-rust-nros-log-has-no-sinks.md), which is
+  [#1123](../issues/archived/1123-zephyr-pure-rust-nros-log-has-no-sinks.md), which is
   NOT part of this phase — no esp32 cell depends on it.
 
 ## Sequencing, and the reason for it
