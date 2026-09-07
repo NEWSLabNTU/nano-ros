@@ -148,6 +148,28 @@ PROBE_CONTEXT = {
         "why": "Zephyr headers come from the west workspace, not from this checkout",
         "enclosing": "none — the guard sits at file scope",
     },
+    # issue 1131 — `<uORB/SubscriptionCallback.hpp>` and the px4_platform_common
+    # work-queue headers ship in the PX4 SDK, whose submodule is empty in every
+    # host lane. The file's own `#ifndef NROS_RMW_UORB_USE_PX4_HEADER` #error is
+    # supplied by name below, exactly as the cmake does under
+    # NROS_RMW_UORB_LINK_PX4.
+    "packages/rmw/uorb/nros-rmw-uorb/src/px4_callback_glue.cpp": {
+        "mode": "preprocess",
+        "cc": "c++",
+        "std": "c++14",
+        "defines": ["-DNROS_RMW_UORB_USE_PX4_HEADER=1"],
+        "why": "PX4's uORB + work-queue headers are an SDK checkout no host lane has",
+        "enclosing": "none — the guard sits at file scope as the preprocessor sees "
+                     "it (the enclosing `namespace {` is not a preprocessor "
+                     "condition). NROS_RMW_UORB_USE_PX4_HEADER is supplied for "
+                     "FIDELITY with the real TU, which is compiled only under "
+                     "NROS_RMW_UORB_BUILD_PX4_GLUE -> NROS_RMW_UORB_LINK_PX4; it is "
+                     "NOT load-bearing for this probe, and that was measured rather "
+                     "than assumed — dropping it leaves the guard firing, because "
+                     "the file's own `#ifndef ... #error` does not stop gcc "
+                     "preprocessing. Stated so a reviewer is not misled into "
+                     "thinking this probe proves more than it does.",
+    },
 }
 INCLUDE_LINE = re.compile(r"^\s*#\s*include\b")
 

@@ -129,11 +129,11 @@ ZERO_LEGAL = {
 # reproduced through them. That is a reason to rank them below the derived
 # knobs, not a reason to call them safe.
 #
-# Issue 1131 ruled the other eleven (nine guarded here, and two the widened scan
-# below turned out to have carried a guard all along). What is LEFT is left on
-# purpose: each of these two has a real argument that zero is the right answer,
-# and that argument needs a measurement nobody has taken. A guard would foreclose
-# the saving the way issue 1015's first fix foreclosed issue 1033's.
+# Issue 1131 ruled the other fourteen (ten guarded here, and two the widened
+# scan below turned out to have carried a guard all along). What is LEFT is left
+# on purpose: it has a real argument that zero is the right answer, and that
+# argument needs a measurement nobody has taken. A guard would foreclose the
+# saving the way issue 1015's first fix foreclosed issue 1033's.
 UNCLASSIFIED = {
     # 16,384 bytes of stack a slot x 4 slots = 64 KiB of .noinit, present in
     # EVERY Zephyr image whether or not the system declares a tier — nothing
@@ -144,18 +144,10 @@ UNCLASSIFIED = {
     # -DNROS_ZEPHYR_MAX_TIERS=0 proving K_THREAD_STACK_ARRAY_DEFINE accepts a
     # count of 0, plus a `just mem-report` delta for the 64 KiB.
     "NROS_ZEPHYR_MAX_TIERS": "zephyr/nros_platform_zephyr_shims.c",
-    # `Slot g_pool[N]`, where a Slot is `alignas(CallbackAdapter) unsigned char
-    # storage[sizeof(CallbackAdapter)]` — a px4::WorkItem subclass — x 64. The
-    # exhaustion path is a DOCUMENTED FALLBACK ("Caller falls back to polling"),
-    # not a failure, which is exactly what makes 0 arguable: an image that wants
-    # polling only would reclaim the pool. NEEDS: the PX4 SDK, to size
-    # CallbackAdapter, and confirmation from the uORB caller that the polling
-    # fallback is a supported mode rather than a degradation nobody reports.
-    "NROS_RMW_UORB_PX4_MAX_CALLBACKS": "packages/rmw/uorb/nros-rmw-uorb/src/px4_callback_glue.cpp",
 }
 # The list may SHRINK. Raising this is a deliberate edit that says "one more
 # knob-sized array ships unruled on", beside the entry that says which.
-UNCLASSIFIED_CEILING = 2
+UNCLASSIFIED_CEILING = 1
 
 # --- the producer half -----------------------------------------------------
 

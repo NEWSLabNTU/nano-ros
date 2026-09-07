@@ -1,38 +1,95 @@
 ---
 id: 1131
-title: "Two knob-sized C arrays have no ruling on whether zero is a legal size"
+title: "One knob-sized C array has no ruling on whether zero is a legal size"
 status: open
 area: rmw, memory
 severity: low
 related: [1015, 1033, 1167, 0815, 0196, phase-392, phase-403, phase-412]
 ---
 
-# The wider question issue 1015 left open, now down to two
+# The wider question issue 1015 left open, now down to one
 
-Was fifteen. Thirteen are ruled; the two below are left UNRULED ON PURPOSE,
-because each has a real argument that zero is the right answer and that argument
-needs a measurement nobody has taken. A guard on either would foreclose a saving
+Was fifteen. Fourteen are ruled; the one below is left UNRULED ON PURPOSE,
+because it has a real argument that zero is the right answer and that argument
+needs a measurement nobody has taken. A guard on it would foreclose a saving
 exactly the way issue 1015's first fix foreclosed issue 1033's.
 
 ## Where the class stands
 
 ```
-$ python3 scripts/check-c-array-pool-floors.py --audit | tail -1
-  23 knob-sized arrays, 0 problem(s)
+$ python3 scripts/check-c-array-pool-floors.py | tail -1
+check-c-array-pool-floors: OK (23 knob-sized C arrays: 19 guarded, 3 zero-legal, 1 unclassified)
 ```
 
-23 (not 21 — see "what the gate could not see" below): **18 guarded, 3
-zero-legal, 2 unclassified**, against 8 / 3 / 10 before.
+23 (not 21 — see "what the gate could not see" below): **19 guarded, 3
+zero-legal, 1 unclassified**, against 8 / 3 / 10 before.
 
-## What is left, and what each one needs
+## What is left, and what it needs
 
 | knob | file | why zero is arguable | what would settle it |
 | --- | --- | --- | --- |
-| `NROS_ZEPHYR_MAX_TIERS` | `zephyr/nros_platform_zephyr_shims.c` | `K_THREAD_STACK_ARRAY_DEFINE(nros_tier_stacks, N, 16384)` — **64 KiB** of stacks in every Zephyr image, declared tiers or not, because nothing produces this knob and 4 is what everything compiles. A tierless image setting 0 is `XRCE_MAX_SUBSCRIBERS=0`'s shape, and the refusal is already loud (`entry_tiers.rs` prints `failed to spawn tier … pool exhausted?` per tier). | a Zephyr build at `-DNROS_ZEPHYR_MAX_TIERS=0` proving `K_THREAD_STACK_ARRAY_DEFINE` accepts a count of 0, plus a `just mem-report <elf> --json --baseline` delta for the 64 KiB |
-| `NROS_RMW_UORB_PX4_MAX_CALLBACKS` | `packages/rmw/uorb/nros-rmw-uorb/src/px4_callback_glue.cpp` | `Slot g_pool[N]`, a `Slot` being `alignas(CallbackAdapter) unsigned char storage[sizeof(CallbackAdapter)]` × 64. Pool exhaustion here is a **documented fallback** (`// Pool exhausted. Caller falls back to polling.`), not a failure — which is what makes 0 arguable rather than broken. The range-`for` over `Slot[0]` does not execute, so there is no walk to trip. | the PX4 SDK, to size `CallbackAdapter`; and confirmation from the uORB caller that the polling fallback is a supported mode rather than a degradation nobody reports |
+| `NROS_ZEPHYR_MAX_TIERS` | `zephyr/nros_platform_zephyr_shims.c` | `K_THREAD_STACK_ARRAY_DEFINE(nros_tier_stacks, N, 16384)` — **64 KiB** of stacks in every Zephyr image, declared tiers or not, because nothing produces this knob and 4 is what everything compiles. A tierless image setting 0 is `XRCE_MAX_SUBSCRIBERS=0`'s shape, and the refusal is loud AND FATAL, which is more than the table first claimed: `entry_tiers.rs` logs `failed to spawn tier … pool exhausted?` and then returns `Err(RuntimeError::Spin)`, so a tiered image at 0 fails rather than running short-handed. | a Zephyr build at `-DNROS_ZEPHYR_MAX_TIERS=0` proving `K_THREAD_STACK_ARRAY_DEFINE` accepts a count of 0, plus a `just mem-report <elf> --json --baseline` delta for the 64 KiB. **Not attemptable on a host with no Zephyr:** the macro lives in `zephyr/kernel.h`, which comes from the west workspace, so even reading its expansion needs a checkout this repo does not carry. |
 
-Both are in the gate's `UNCLASSIFIED` table with that reasoning inline, and the
-`UNCLASSIFIED_CEILING` is now 2, so adding a third is a visible edit.
+It is in the gate's `UNCLASSIFIED` table with that reasoning inline, and the
+`UNCLASSIFIED_CEILING` is now 1, so adding a second is a visible edit.
+
+## Second pass: `NROS_RMW_UORB_PX4_MAX_CALLBACKS`, ruled GUARDED
+
+The first pass left this one needing two things. One is still unavailable and
+turned out not to matter; the other is answerable from the tree and answers the
+question the other way round.
+
+**The runtime half of the "zero is fine" argument is CORRECT, and it is not
+enough.** The first pass suspected the polling fallback might be "a degradation
+nobody reports". It is the opposite — it is the DEFAULT everywhere else:
+`callback_default.cpp` supplies `__attribute__((weak))`
+`nros_orb_register_callback` returning `-1` unconditionally, and that is what
+every non-PX4 build links. `subscriber.cpp` handles the `-1` by pinning `ready`
+true and falling through to `orb_check` on every poll — its own comment calls it
+"same behaviour the pre-push-wake K.4.2 build had". So at 0 both range-`for`s
+over `g_pool[0]` do not execute, every registration returns `-1`, and data still
+flows. **Zero silences nothing here**, which is the discriminator issues 1015 and
+1033 turn on.
+
+**Zero still loses, on the language.** `Slot g_pool[0]` is a zero-size array,
+which ISO C++ forbids — a GNU extension, and this is where the C case issue 1033
+measured for the XRCE pools does not carry over. This TU is compiled
+`-Wall -Wextra -Wpedantic` by `packages/rmw/uorb/nros-rmw-uorb/CMakeLists.txt`,
+and PX4 builds every module `-Werror`; PX4 is the only build that compiles the
+file at all, since it joins the sources only under
+`NROS_RMW_UORB_BUILD_PX4_GLUE`, which requires `NROS_RMW_UORB_LINK_PX4`.
+Measured on a reduction with those exact flags:
+
+```
+$ g++ -std=gnu++14 -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -c probe.cpp
+error: ISO C++ forbids zero-size array ‘g_pool’ [-Werror=pedantic]
+$ g++ … -DPOOL_N=64 -c probe.cpp     # clean
+```
+
+**And the guard forecloses nothing, which is why it is safe to write.** The
+saving zero was meant to buy — a polling-only image that does not pay for the
+pool — already has a better spelling: `NROS_RMW_UORB_BUILD_PX4_GLUE=OFF` drops
+the whole TU and links the weak stubs, so the pool is not empty but ABSENT.
+Zero was a strictly worse way to ask for something the build system already
+offers. That is the test issue 1015's first fix failed against issue 1033's
+pools, and this one passes it.
+
+The PX4 SDK is still absent (`third-party/px4/PX4-Autopilot` is an empty
+submodule dir here), so `sizeof(CallbackAdapter)` is still unmeasured. It does
+not change the ruling: it would quantify a saving that is unreachable at 0 for a
+reason that has nothing to do with its size.
+
+### The probe context this needed
+
+`check-c-array-guard-probe` gained a `preprocess` entry for the file — PX4's
+uORB and work-queue headers are an SDK checkout no host lane has. Its declared
+enclosing condition is **`none`**, and that was MEASURED rather than assumed:
+`NROS_RMW_UORB_USE_PX4_HEADER` is supplied for fidelity with the real TU, but
+dropping it leaves the guard firing anyway, because the file's own
+`#ifndef … #error` does not stop gcc preprocessing. Written down that way so a
+reviewer is not misled into thinking the probe proves more than it does — the
+opposite of the `-DZ_FEATURE_MULTI_THREAD=1` case, where dropping the
+declaration does make the guard unreachable.
 
 ## What was ruled, and on what
 
@@ -142,3 +199,23 @@ above one (`STRESS_SIZE`) can state it; `< 0` is still not a guard.
     `-DZ_FEATURE_MULTI_THREAD=1` dropped (which must, and does, make
     `Z_TASK_STACK_SIZE` read as unreachable — so the declaration is
     load-bearing, not decoration).
+
+### Second pass (the uORB ruling)
+
+* `python3 scripts/check-c-array-pool-floors.py` — green,
+  `23 knob-sized C arrays: 19 guarded, 3 zero-legal, 1 unclassified`.
+* `check-c-array-guard-probe` SKIPS on a bare agent worktree (it needs the
+  zenoh-pico submodule, which is not checked out there), so its
+  `compile_probe` was driven directly against the new `PROBE_CONTEXT` entry:
+  **silent at defaults, and at `-DNROS_RMW_UORB_PX4_MAX_CALLBACKS=0` it emits
+  the `#error` naming the knob** — the two halves that gate asks for. Its
+  `--self-test` is green.
+* Mutations, each red naming the site, then restored green:
+  * the guard disarmed to `< 0` — the source gate reports the knob UNCLASSIFIED
+    again and prints the exact `#if … < 1` to write.
+  * the declared enclosing define dropped — guard still fires, which is the
+    finding that made the `enclosing` note say `none` rather than claim a
+    condition the probe does not actually depend on.
+* NOT run: any Zephyr, PX4 or fixture build (memory-constrained host). Nothing
+  in this pass needed one — the ruling rests on the reduction's compile result
+  and on in-tree source.
