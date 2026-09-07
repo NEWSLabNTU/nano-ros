@@ -233,12 +233,12 @@ exclude = [
     # companion round-trip is CI-able without PX4 SITL. Standalone copy-out.
     "examples/px4/rust/companion/px4-stub",
     "examples/px4/rust/companion/px4-probe",
-    "examples/qemu-arm-freertos/rust/talker",
-    "examples/qemu-arm-freertos/rust/listener",
-    "examples/qemu-arm-freertos/rust/service-server",
-    "examples/qemu-arm-freertos/rust/service-client",
-    "examples/qemu-arm-freertos/rust/action-server",
-    "examples/qemu-arm-freertos/rust/action-client",
+    "examples/mps2-an385-freertos/rust/talker",
+    "examples/mps2-an385-freertos/rust/listener",
+    "examples/mps2-an385-freertos/rust/service-server",
+    "examples/mps2-an385-freertos/rust/service-client",
+    "examples/mps2-an385-freertos/rust/action-server",
+    "examples/mps2-an385-freertos/rust/action-client",
     "examples/rv-virt-threadx/rust/talker",
     "examples/rv-virt-threadx/rust/listener",
     "examples/rv-virt-threadx/rust/service-server",
@@ -298,22 +298,22 @@ exclude = [
     # Phase 169.2 — Rust DDS examples deleted (no Rust→Cyclone
     # path yet; see Phase 169 doc work item .9).
     # QEMU ARM FreeRTOS examples (Cortex-M3 + FreeRTOS + lwIP)
-    "examples/qemu-arm-freertos/rust/zenoh/talker",
-    "examples/qemu-arm-freertos/rust/zenoh/listener",
-    "examples/qemu-arm-freertos/rust/zenoh/service-server",
-    "examples/qemu-arm-freertos/rust/zenoh/service-client",
-    "examples/qemu-arm-freertos/rust/zenoh/action-server",
-    "examples/qemu-arm-freertos/rust/zenoh/action-client",
+    "examples/mps2-an385-freertos/rust/zenoh/talker",
+    "examples/mps2-an385-freertos/rust/zenoh/listener",
+    "examples/mps2-an385-freertos/rust/zenoh/service-server",
+    "examples/mps2-an385-freertos/rust/zenoh/service-client",
+    "examples/mps2-an385-freertos/rust/zenoh/action-server",
+    "examples/mps2-an385-freertos/rust/zenoh/action-client",
     # Phase 212.N.7 step-2 — Entry pkg siblings (per board target =
     # Mps2An385). Each shadows a Component pkg above; runs the new
     # `<Mps2An385 as BoardEntry>::run(|ctx| run_plan(ctx))` lifecycle.
-    "examples/qemu-arm-freertos/rust/talker-entry",
-    "examples/qemu-arm-freertos/rust/listener-entry",
-    "examples/qemu-arm-freertos/rust/service-server-entry",
-    "examples/qemu-arm-freertos/rust/service-client-entry",
-    "examples/qemu-arm-freertos/rust/action-server-entry",
-    "examples/qemu-arm-freertos/rust/action-client-entry",
-    # Phase 169.2 — qemu-arm-freertos rust/dds deleted.
+    "examples/mps2-an385-freertos/rust/talker-entry",
+    "examples/mps2-an385-freertos/rust/listener-entry",
+    "examples/mps2-an385-freertos/rust/service-server-entry",
+    "examples/mps2-an385-freertos/rust/service-client-entry",
+    "examples/mps2-an385-freertos/rust/action-server-entry",
+    "examples/mps2-an385-freertos/rust/action-client-entry",
+    # Phase 169.2 — mps2-an385-freertos rust/dds deleted.
     # QEMU ARM NuttX examples (Cortex-M3 + NuttX)
     "examples/qemu-armv7a-nuttx/rust/talker",
     "examples/qemu-armv7a-nuttx/rust/listener",

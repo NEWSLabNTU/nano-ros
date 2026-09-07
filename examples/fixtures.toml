@@ -2039,7 +2039,7 @@ dir = "packages/testing/nros-bench/wake-latency-cortex-m3"
 platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/rust/talker"
+dir = "examples/mps2-an385-freertos/rust/talker"
 # issue #181 — an explicit target, even though the leaf `.cargo/config.toml`
 # now also sets `[build] target`: the row is the SSoT the staleness probe and
 # the group resolver read, and a triple only cargo can see is a triple they
@@ -2050,35 +2050,35 @@ target = "thumbv7m-none-eabi"
 platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/rust/listener"
+dir = "examples/mps2-an385-freertos/rust/listener"
 target = "thumbv7m-none-eabi"
 
 [[fixture]]
 platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/rust/service-server"
+dir = "examples/mps2-an385-freertos/rust/service-server"
 target = "thumbv7m-none-eabi"
 
 [[fixture]]
 platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/rust/service-client"
+dir = "examples/mps2-an385-freertos/rust/service-client"
 target = "thumbv7m-none-eabi"
 
 [[fixture]]
 platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/rust/action-server"
+dir = "examples/mps2-an385-freertos/rust/action-server"
 target = "thumbv7m-none-eabi"
 
 [[fixture]]
 platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/rust/action-client"
+dir = "examples/mps2-an385-freertos/rust/action-client"
 target = "thumbv7m-none-eabi"
 
 [[fixture]]
@@ -2768,84 +2768,84 @@ target = "cpp_logging"
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/c/talker"
+dir = "examples/mps2-an385-freertos/c/talker"
 cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7900" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/c/listener"
+dir = "examples/mps2-an385-freertos/c/listener"
 cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7900" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/c/service-server"
+dir = "examples/mps2-an385-freertos/c/service-server"
 cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7910" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/c/service-client"
+dir = "examples/mps2-an385-freertos/c/service-client"
 cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7910" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/c/action-server"
+dir = "examples/mps2-an385-freertos/c/action-server"
 cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7920" }
 
 [[fixture]]
 platform = "freertos"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/c/action-client"
+dir = "examples/mps2-an385-freertos/c/action-client"
 cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:7920" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/cpp/talker"
+dir = "examples/mps2-an385-freertos/cpp/talker"
 cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8000" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/cpp/listener"
+dir = "examples/mps2-an385-freertos/cpp/listener"
 cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8000" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/cpp/service-server"
+dir = "examples/mps2-an385-freertos/cpp/service-server"
 cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8010" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/cpp/service-client"
+dir = "examples/mps2-an385-freertos/cpp/service-client"
 cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8010" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/cpp/action-server"
+dir = "examples/mps2-an385-freertos/cpp/action-server"
 cmake_defs = { NROS_ENTRY_IP_LAST = "10", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8020" }
 
 [[fixture]]
 platform = "freertos"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-arm-freertos/cpp/action-client"
+dir = "examples/mps2-an385-freertos/cpp/action-client"
 cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8020" }
 
 # ===========================================================================

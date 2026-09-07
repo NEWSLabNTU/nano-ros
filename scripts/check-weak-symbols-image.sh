@@ -50,7 +50,7 @@ COVERAGE=(
     # unverified — W3b made that visible (`warn`), and this makes it checked.
     # What was wrong, and why each half is easy to get wrong again:
     #
-    #   base  `examples/qemu-arm-freertos/rust` / `build/cargo-fixtures/`
+    #   base  `examples/mps2-an385-freertos/rust` / `build/cargo-fixtures/`
     #         `qemu-arm-freertos` -> the real group dir is keyed on the fixture
     #         COORDINATE's platform token (`freertos`), not on the example
     #         directory name. phase-340 P2 moved every leaf into that shared

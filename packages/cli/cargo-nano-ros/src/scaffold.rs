@@ -124,7 +124,7 @@ fn platform_spec(platform: &str) -> Result<PlatformSpec> {
             deploy_token: "freertos",
             kind: PlatformKind::Deferred {
                 reason: "the tracked shape is a split node-lib + `*-entry` bin pair; \
-                         see examples/qemu-arm-freertos/rust/ (issue 0333 follow-up)",
+                         see examples/mps2-an385-freertos/rust/ (issue 0333 follow-up)",
             },
         },
         "nuttx" => PlatformSpec {

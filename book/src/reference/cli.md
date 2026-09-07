@@ -69,7 +69,7 @@ ROS's `rmw_zenoh_cpp/rmw_zenohd`. See
 
 ```sh
 nros setup native --rmw zenoh            # host build (router comes from ROS)
-nros setup qemu-arm-freertos --rmw xrce  # arm-none-eabi-gcc, qemu, FreeRTOS, XRCE agent
+nros setup mps2-an385-freertos --rmw xrce  # arm-none-eabi-gcc, qemu, FreeRTOS, XRCE agent
 nros setup zephyr                        # Zephyr west workspace + SDK bits
 ```
 

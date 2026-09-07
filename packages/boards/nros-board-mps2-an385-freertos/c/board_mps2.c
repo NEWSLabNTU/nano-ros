@@ -60,7 +60,7 @@ extern void vPortSVCHandler(void);
  * Phase 212.M-F.15 — the firmware binary's entry point is the standard
  * `#[unsafe(no_mangle)] pub extern "C" fn main() -> i32` symbol emitted
  * by the Phase 212.N Entry pkg shape (`<Board as BoardEntry>::run(...)`
- * → see `examples/qemu-arm-freertos/rust/*_entry/src/main.rs`). The
+ * → see `examples/mps2-an385-freertos/rust/*_entry/src/main.rs`). The
  * legacy `_start` shape used by the pre-N.7 M.5.a baker fixture was
  * retired together with the `freertos-qemu-mps2-an385-bsp` crate
  * (commit `d99386173`); calling `_start` from `Reset_Handler` left a

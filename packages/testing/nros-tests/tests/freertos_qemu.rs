@@ -94,7 +94,7 @@ fn test_freertos_rust_talker_cyclonedds_boot() {
     )
     .unwrap_or_else(|e| {
         nros_tests::skip!(
-            "qemu-arm-freertos/rust/talker cyclonedds not prebuilt; run \
+            "mps2-an385-freertos/rust/talker cyclonedds not prebuilt; run \
              `just freertos build-fixtures` first: {:?}",
             e
         )
@@ -130,7 +130,7 @@ fn test_freertos_rust_talker_cyclonedds_boot() {
 /// CMake-driven build (Cyclone is a C++ backend with idlc descriptors
 /// linked via corrosion). Without those files,
 /// `just freertos build-fixtures` skips the rust cyclonedds branch
-/// (the loop tries `cmake -S examples/qemu-arm-freertos/rust/<case>`
+/// (the loop tries `cmake -S examples/mps2-an385-freertos/rust/<case>`
 /// and fails for lack of `CMakeLists.txt`), so the
 /// `freertos_rust_talker_cyclonedds` binary is never produced. The
 /// test then panics via `nros_tests::skip!`, which nextest junit
@@ -138,7 +138,7 @@ fn test_freertos_rust_talker_cyclonedds_boot() {
 ///
 /// Empirically reproduced 2026-06-04: `cargo nextest run …
 /// test_freertos_rust_cyclonedds_local_pubsub_e2e` panics at
-/// `[SKIPPED] qemu-arm-freertos/rust/talker cyclonedds not prebuilt`,
+/// `[SKIPPED] mps2-an385-freertos/rust/talker cyclonedds not prebuilt`,
 /// NOT at the assertion the Track P audit row originally reported
 /// ("Listener: expected at least 1 received messages, got 0"). The
 /// audit row was stale — the listener-loss symptom required the
@@ -174,7 +174,7 @@ fn test_freertos_rust_cyclonedds_local_pubsub_e2e() {
     )
     .unwrap_or_else(|e| {
         nros_tests::skip!(
-            "qemu-arm-freertos/rust/talker cyclonedds not prebuilt; run \
+            "mps2-an385-freertos/rust/talker cyclonedds not prebuilt; run \
              `just freertos build-fixtures` first: {:?}",
             e
         )

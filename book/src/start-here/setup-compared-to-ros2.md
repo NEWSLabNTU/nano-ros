@@ -60,7 +60,7 @@ For embedded targets, name the board instead of `native`; `nros setup`
 fetches the matching prebuilt cross-toolchain + emulator + SDK:
 
 ```bash
-nros setup qemu-arm-freertos --rmw zenoh     # arm-none-eabi-gcc, qemu, FreeRTOS+lwIP
+nros setup mps2-an385-freertos --rmw zenoh     # arm-none-eabi-gcc, qemu, FreeRTOS+lwIP
 nros setup zephyr            --rmw zenoh     # Zephyr west workspace + SDK bits
 nros setup qemu-arm-nuttx    --rmw zenoh     # arm-none-eabi-gcc, qemu, NuttX
 ```

@@ -4,7 +4,7 @@ Single-node starter on FreeRTOS + lwIP, cross-compiled for Cortex-M3
 and booted in QEMU MPS2-AN385. Slirp networking; no host TAP /
 bridge / sudo. Rust, C, and C++ talkers all live in-tree.
 
-> **Prereqs.** `nros setup qemu-arm-freertos` is the single command
+> **Prereqs.** `nros setup mps2-an385-freertos` is the single command
 > that prepares your machine for this board. It fetches a prebuilt
 > toolchain set into the shared store at `~/.nros/sdk` — the
 > `arm-none-eabi-gcc` cross-compiler, the patched
@@ -27,7 +27,7 @@ Then provision the board (`--rmw` defaults to `zenoh`; pick `xrce`
 or `cyclonedds` to match the example you intend to run):
 
 ```bash
-nros setup qemu-arm-freertos --rmw zenoh
+nros setup mps2-an385-freertos --rmw zenoh
 ```
 
 This fetches the cross-compiler, the patched `qemu-system-arm`, and the
@@ -39,10 +39,10 @@ NOT installed — it comes from your ROS 2 install (RFC-0075).
 
 Each language uses the standard nano-ros canonical example shape —
 standalone Cargo (Rust) or CMake (C / C++) project under
-`examples/qemu-arm-freertos/<lang>/<example>/`.
+`examples/mps2-an385-freertos/<lang>/<example>/`.
 
 ```text
-examples/qemu-arm-freertos/
+examples/mps2-an385-freertos/
 ├── rust/talker/             # Cargo package, cross-compile target = thumbv7m-none-eabi
 │   ├── Cargo.toml                  # deps + [package.metadata.nros.deploy.freertos]
 │   ├── .cargo/config.toml          # target + QEMU runner
@@ -73,7 +73,7 @@ nano_ros_link_rmw(<target> RMW zenoh)` pattern with
 Deploy config (router locator, domain, RMW) is declared in the build
 manifest and **baked at compile time** — there is no config file on the
 device. Verbatim from the in-tree
-[`examples/qemu-arm-freertos/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-arm-freertos/rust/talker/Cargo.toml):
+[`examples/mps2-an385-freertos/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-freertos/rust/talker/Cargo.toml):
 
 ```toml
 [package.metadata.nros.deploy.freertos]
@@ -113,7 +113,7 @@ Ports: the shipped examples dial host port **7447**.
 # generated message bindings and the [patch.crates-io] table the leaf's
 # .cargo/config.toml includes; without it cargo fails while PARSING the
 # manifest, with an error that never names sync (see below).
-cd examples/qemu-arm-freertos/rust/talker
+cd examples/mps2-an385-freertos/rust/talker
 nros sync
 cargo build --release
 
@@ -121,7 +121,7 @@ cargo build --release
 # on PATH auto-resolves the codegen tool — no `-D_NANO_ROS_CODEGEN_TOOL=`
 # needed):
 toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
-cd examples/qemu-arm-freertos/c/talker
+cd examples/mps2-an385-freertos/c/talker
 cmake -B build -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
               -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
@@ -153,7 +153,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 
 # 2. Boot the talker in QEMU. The leaf's .cargo/config.toml runner
 #    wraps qemu-system-arm with the LAN9118 + Slirp wiring:
-cd examples/qemu-arm-freertos/rust/talker
+cd examples/mps2-an385-freertos/rust/talker
 cargo run --release
 
 # 3. Verify from stock ROS 2:
@@ -192,9 +192,9 @@ session open typically takes 10–15 s. If no `Publishing:` line in
 
 Canonical, copy-out:
 
-- Rust: [`examples/qemu-arm-freertos/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-freertos/rust/talker)
-- C: [`examples/qemu-arm-freertos/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-freertos/c/talker)
-- C++: [`examples/qemu-arm-freertos/cpp/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-arm-freertos/cpp/talker)
+- Rust: [`examples/mps2-an385-freertos/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-freertos/rust/talker)
+- C: [`examples/mps2-an385-freertos/c/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-freertos/c/talker)
+- C++: [`examples/mps2-an385-freertos/cpp/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/mps2-an385-freertos/cpp/talker)
 
 ## Next
 

@@ -64,7 +64,7 @@ nros-build-paths = { path = "../../tooling/nros-build-paths" }
 
 [features]
 # Default keeps the historic zenoh-pico wiring active so existing
-# `examples/qemu-arm-freertos/rust/zenoh/*` and downstream crates
+# `examples/mps2-an385-freertos/rust/zenoh/*` and downstream crates
 # using `nros-mps2-an385-freertos` without a feature override link
 # unchanged.
 default = ["rmw-zenoh"]

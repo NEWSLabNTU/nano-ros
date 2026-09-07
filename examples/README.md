@@ -14,7 +14,7 @@ examples/
 └── templates/<name>/                          # multi-platform recipes (Pattern A workspace, etc.)
 ```
 
-- **Platform** (10): `native`, `px4`, `mps2-an385-baremetal`, `qemu-arm-freertos`, `qemu-armv7a-nuttx`, `qemu-esp32-baremetal`, `rv-virt-nuttx`, `rv-virt-threadx`, `threadx-linux`, `zephyr`
+- **Platform** (10): `native`, `px4`, `mps2-an385-baremetal`, `mps2-an385-freertos`, `qemu-armv7a-nuttx`, `qemu-esp32-baremetal`, `rv-virt-nuttx`, `rv-virt-threadx`, `threadx-linux`, `zephyr`
 - **Language**: `c`, `cpp`, `rust`
 - **Example** (cases): `talker`, `listener`, `service-{server,client}`, `action-{server,client}`, `custom-msg`, plus variant suffixes: `-rtic`, `-rtic-mixed`, `-async`, `-serial`, `-aemv8r`, etc.
 
@@ -25,7 +25,7 @@ examples/
 > customization ladder, is
 > [`book/src/porting/stm32f4-out-of-tree.md`](../book/src/porting/stm32f4-out-of-tree.md).
 > Cortex-M stays witnessed here by `mps2-an385-baremetal` and
-> `qemu-arm-freertos`, both of which a lane actually boots.
+> `mps2-an385-freertos`, both of which a lane actually boots.
 
 **There is no per-RMW directory level for the standard example set.** The path
 is `<platform>/<language>/<example>`, never
@@ -89,9 +89,9 @@ Cell content: `<count>` of `talker|listener|service-{server,client}|action-{serv
 | `px4`                     | cpp      | –     | –    | –          | – ²  |
 | `px4`                     | rust     | –     | companion+stub | – | –    |
 | `mps2-an385-baremetal`      | rust     | 6+rtic+serial | – | –     | –    |
-| `qemu-arm-freertos`       | c        | 6     | –    | –          | –    |
-| `qemu-arm-freertos`       | cpp      | 6     | –    | –          | –    |
-| `qemu-arm-freertos`       | rust     | 6     | –    | –          | –    |
+| `mps2-an385-freertos`       | c        | 6     | –    | –          | –    |
+| `mps2-an385-freertos`       | cpp      | 6     | –    | –          | –    |
+| `mps2-an385-freertos`       | rust     | 6     | –    | –          | –    |
 | `qemu-armv7a-nuttx`          | c        | 6     | –    | –          | –    |
 | `qemu-armv7a-nuttx`          | cpp      | 6     | –    | –          | –    |
 | `qemu-armv7a-nuttx`          | rust     | 6     | –    | –          | –    |
@@ -274,7 +274,7 @@ examples to your own board.
 |---|---|---|
 | `native/` | Host native (Linux) | Just `cargo run` — no integration shell needed. |
 | `mps2-an385-baremetal/` | Cargo-first bare-metal | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-baremetal-cortex-m`) |
-| `qemu-arm-freertos/` | Cargo-first FreeRTOS | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-freertos`); reference overlay `nros-board-mps2-an385-freertos`. For STM32 / NXP / Espressif FreeRTOS, write a [vendor overlay](../book/src/porting/vendor-overlay.md). |
+| `mps2-an385-freertos/` | Cargo-first FreeRTOS | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-freertos`); reference overlay `nros-board-mps2-an385-freertos`. For STM32 / NXP / Espressif FreeRTOS, write a [vendor overlay](../book/src/porting/vendor-overlay.md). |
 | `qemu-armv7a-nuttx/` | NuttX native shell | [NuttX integration shell](../book/src/getting-started/integration-nuttx.md) — `apps/external/nano-ros/`. |
 | `qemu-esp32-baremetal/` | Cargo-first bare-metal | Bare-metal `esp-hal` path; same generic-crate flow as `mps2-an385-baremetal`. |
 | `rv-virt-threadx/` | Cargo-first ThreadX | [Generic board crate](../book/src/concepts/board-integration.md#generic-board-crate) (`nros-board-threadx`); reference overlay `nros-board-threadx-qemu-riscv64`. For Renesas Synergy / STM32 X-CUBE-AZRTOS / NXP MCUXpresso ThreadX, write a [vendor overlay](../book/src/porting/vendor-overlay.md). |

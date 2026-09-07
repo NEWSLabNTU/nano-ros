@@ -395,7 +395,7 @@ RMW daemon + board SDK sources. `--rmw` defaults to `zenoh`.
 | `nros setup native` | host build; zenoh-pico + mbedtls sources (**no router — see above**) |
 | `nros setup native --rmw xrce` | host build; the Micro-XRCE-DDS agent |
 | `nros setup native --rmw cyclonedds` | host build; Cyclone DDS runtime + `idlc` |
-| `nros setup qemu-arm-freertos` | `arm-none-eabi-gcc`, patched `qemu-system-arm`, FreeRTOS + lwIP sources |
+| `nros setup mps2-an385-freertos` | `arm-none-eabi-gcc`, patched `qemu-system-arm`, FreeRTOS + lwIP sources |
 | `nros setup qemu-arm-nuttx` | `arm-none-eabi-gcc`, qemu, NuttX sources |
 | `nros setup qemu-riscv64-threadx` | `riscv64-*-gcc`, qemu, ThreadX/NetX sources |
 | `nros setup threadx-linux` | ThreadX POSIX-sim sources |
@@ -533,7 +533,7 @@ just doctor tier=all
 Provision one module:
 
 ```bash
-just setup freertos           # → nros setup qemu-arm-freertos
+just setup freertos           # → nros setup mps2-an385-freertos
 just setup nuttx              # → nros setup qemu-arm-nuttx
 just setup threadx_linux      # → nros setup threadx-linux
 ```

@@ -63,7 +63,7 @@ CELLS=(
     "native:zenoh"
     "native:xrce"
     "mps2-an385-baremetal:zenoh"
-    "qemu-arm-freertos:zenoh"
+    "mps2-an385-freertos:zenoh"
     "qemu-armv7a-nuttx:zenoh"
     "qemu-esp32-baremetal:zenoh"
     "rv-virt-threadx:zenoh"

@@ -807,7 +807,7 @@ mod tests {
         assert!(sched_caps_for("zephyr").edf);
         assert!(!sched_caps_for("zephyr").reservation);
         assert!(sched_caps_for("zephyr").low_number_is_high);
-        assert!(!sched_caps_for("qemu-arm-freertos").edf);
+        assert!(!sched_caps_for("mps2-an385-freertos").edf);
         assert!(sched_caps_for("threadx-linux").preempt_threshold);
         assert!(sched_caps_for("threadx-linux").low_number_is_high);
         assert!(sched_caps_for("nuttx").reservation);

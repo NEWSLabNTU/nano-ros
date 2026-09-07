@@ -114,7 +114,7 @@ build-examples:
     # `generated/` msg crates moved in with the entry).
     for example in \
         talker listener service-server service-client action-server action-client; do
-        dir="examples/qemu-arm-freertos/rust/$example"
+        dir="examples/mps2-an385-freertos/rust/$example"
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
         NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
@@ -131,7 +131,7 @@ build-examples:
     # P2 a bare `cd <leaf> && cargo build` loop ran here as well, prebuilding the
     # same six Entry pkgs into their own `target/`: a build with no manifest row,
     # therefore no coordinate, therefore no shared cargo group — so it re-created
-    # `examples/qemu-arm-freertos/rust/*/target/` two minutes after the group dir
+    # `examples/mps2-an385-freertos/rust/*/target/` two minutes after the group dir
     # was written, on a platform B3 had already migrated. The rows now name that
     # build (see the comment on them in examples/fixtures.toml for why the old
     # `target-zenoh` half was the dead one), and the loop is gone.
@@ -410,12 +410,12 @@ clean:
     #!/usr/bin/env bash
     rm -rf build/cmake-freertos-armcm3-zenoh
     for example in talker listener service-server service-client action-server action-client; do
-        rm -rf "examples/qemu-arm-freertos/rust/$example/target-zenoh"
+        rm -rf "examples/mps2-an385-freertos/rust/$example/target-zenoh"
         # Phase 220.C path B — `build-cyclonedds` retired from rust freertos
         # (no cmake-bridge build path); leave the rm for legacy artifacts.
-        rm -rf "examples/qemu-arm-freertos/rust/$example/build-cyclonedds"
-        rm -rf "examples/qemu-arm-freertos/c/$example/build-zenoh"
-        rm -rf "examples/qemu-arm-freertos/cpp/$example/build-zenoh"
+        rm -rf "examples/mps2-an385-freertos/rust/$example/build-cyclonedds"
+        rm -rf "examples/mps2-an385-freertos/c/$example/build-zenoh"
+        rm -rf "examples/mps2-an385-freertos/cpp/$example/build-zenoh"
     done
     echo "FreeRTOS build artifacts cleaned"
 
@@ -441,7 +441,7 @@ trace example="talker":
     set -e
 
     EXAMPLE="{{example}}"
-    EXAMPLE_DIR="examples/qemu-arm-freertos/rust/$EXAMPLE"
+    EXAMPLE_DIR="examples/mps2-an385-freertos/rust/$EXAMPLE"
     TRACE_DIR="test-logs/freertos-trace/$EXAMPLE"
     mkdir -p "$TRACE_DIR"
 
@@ -544,7 +544,7 @@ _run-qemu example binary:
     source "{{justfile_directory()}}/scripts/build/fixtures-target-dir.sh"
     FR_PROFILE="$(nros_cargo_freertos_qemu_profile)"
     FR_DIR="$(nros_cargo_target_profile_dir_for "$FR_PROFILE")"
-    FR_LEAF="examples/qemu-arm-freertos/rust/{{example}}"
+    FR_LEAF="examples/mps2-an385-freertos/rust/{{example}}"
     fr_tdir_flag="$(nros_fixture_target_dir_flag freertos "" "")"
     fr_artifacts="$(nros_fixture_row_artifact_dir "$FR_LEAF" freertos "" "")"
     cd "{{justfile_directory()}}/$FR_LEAF" && \

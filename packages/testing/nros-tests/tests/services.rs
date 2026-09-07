@@ -23,7 +23,7 @@ use std::{path::PathBuf, process::Command, time::Duration};
 /// `examples/native/rust/service-client/src/lib.rs` logs
 /// `Service call failed, retrying: {:?}` from the `Err` arm of
 /// `call_for_name` — the same wording every Rust group copy uses
-/// (`examples/{qemu-armv7a-nuttx,qemu-arm-freertos,threadx-linux}/rust/
+/// (`examples/{qemu-armv7a-nuttx,mps2-an385-freertos,threadx-linux}/rust/
 /// service-client`). MEASURED at 1 Hz, the timer period, starting ~1 s after
 /// spawn.
 ///

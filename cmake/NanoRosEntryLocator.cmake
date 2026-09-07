@@ -15,7 +15,7 @@
 # The entry lane's FreeRTOS rung dials the static-lwIP gateway 192.0.3.1
 # (phase-263 C2b: the default 10.0.2.0/24 slirp never answers the guest's
 # gateway ARP for that net); the node-register lane's FreeRTOS rung dials the
-# slirp host 10.0.2.2 and says it "matches the qemu-arm-freertos example
+# slirp host 10.0.2.2 and says it "matches the mps2-an385-freertos example
 # deploy". Each may be correct for the lane that reaches it, and merging them
 # on a reading of the code would break whichever lane lost. Deciding needs a
 # QEMU run per platform, not a grep — so this file PRESERVES both answers and

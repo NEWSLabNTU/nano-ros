@@ -56,7 +56,7 @@ the rest. Phase 138's `cmake/platform/nano-ros-freertos.cmake` +
 kernel + lwIP + LAN9118 driver in-tree; no install step needed.
 
 ```bash
-cmake -S examples/qemu-arm-freertos/cpp/talker -B build/talker \
+cmake -S examples/mps2-an385-freertos/cpp/talker -B build/talker \
     -DCMAKE_TOOLCHAIN_FILE=$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake \
     -DNROS_RMW=zenoh
 cmake --build build/talker

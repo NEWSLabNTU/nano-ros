@@ -168,7 +168,7 @@ full reference + `package.xml` schema.
 1. **Pick the canonical cell.** Confirm `<plat>/<lang>/<name>`
    isn't in the "intentionally empty" list in `examples/README.md`.
 2. **Copy the nearest peer.** Identical-RMW + adjacent-platform is
-   the lowest-risk template (e.g. copy `examples/qemu-arm-freertos/c/talker`
+   the lowest-risk template (e.g. copy `examples/mps2-an385-freertos/c/talker`
    to make a new FreeRTOS C/zenoh example).
 3. **Update names + `package.xml`.** Rename `Cargo.toml`'s `name`
    and `[[bin]]` entries (Rust) or `project(...)` and `add_executable(...)`
@@ -192,7 +192,7 @@ full reference + `package.xml` schema.
 |---|---|---|---|
 | `native` | `src/main.rs`, `src/main.c`, `src/main.cpp` | `cargo run` / `cmake --build` | Full `std`. Pattern A or B. |
 | `qemu-arm-baremetal` | `src/main.rs` with `#[entry]` | `cargo run` (`runner = qemu-system-arm …`) | No `std`. Pure Cortex-M3. |
-| `qemu-arm-freertos` | `src/main.rs` / `src/main.cpp` / `src/main.c` | `cargo run` (Rust) or `cmake --build` (C/C++) | FreeRTOS kernel + lwIP. |
+| `mps2-an385-freertos` | `src/main.rs` / `src/main.cpp` / `src/main.c` | `cargo run` (Rust) or `cmake --build` (C/C++) | FreeRTOS kernel + lwIP. |
 | `nuttx` | `src/main.rs` / `src/main.c` | `cmake --build` (NuttX export tarball) | NuttX kernel. |
 | `threadx-linux` / `threadx-riscv64` | `src/main.rs` | `cmake --build` | ThreadX + NetX Duo. |
 | `esp32` | `src/main.rs` | `cargo run` (esp-hal) | bare-metal `esp-hal`. |

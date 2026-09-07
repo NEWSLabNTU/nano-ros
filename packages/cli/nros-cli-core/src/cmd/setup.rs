@@ -2525,7 +2525,7 @@ mod tests {
 
     fn board_index() -> SdkIndex {
         SdkIndex::parse(
-            "[board.qemu-arm-freertos]\npackages=[\"arm-none-eabi-gcc\",\"qemu\",\"freertos-kernel\",\"lwip\"]\n\
+            "[board.mps2-an385-freertos]\npackages=[\"arm-none-eabi-gcc\",\"qemu\",\"freertos-kernel\",\"lwip\"]\n\
              [board.rv-virt-threadx]\npackages=[\"riscv-none-elf-gcc\",\"qemu\",\"threadx\"]\n\
              [board.esp32-c3-baremetal]\narch=\"riscv32\"\npackages=[]\n\
              [board.native]\npackages=[\"zenohd\"]\n\
@@ -2537,7 +2537,7 @@ mod tests {
     #[test]
     fn resolves_board_package_sets_from_index() {
         let idx = board_index();
-        let fr = resolve_packages(&idx, "qemu-arm-freertos").unwrap();
+        let fr = resolve_packages(&idx, "mps2-an385-freertos").unwrap();
         assert!(fr.contains(&"arm-none-eabi-gcc") && fr.contains(&"qemu"));
         assert!(fr.contains(&"freertos-kernel") && fr.contains(&"lwip"));
 
@@ -2604,7 +2604,7 @@ mod tests {
         let idx = SdkIndex::parse(
             "[tool.zenohd]\nversion=\"1\"\n[tool.xrce-agent]\nversion=\"1\"\n\
              [rmw.zenoh]\npackages=[\"zenohd\"]\n[rmw.xrce]\npackages=[\"xrce-agent\"]\n\
-             [board.native]\npackages=[]\n[board.qemu-arm-freertos]\npackages=[\"qemu\"]\n",
+             [board.native]\npackages=[]\n[board.mps2-an385-freertos]\npackages=[\"qemu\"]\n",
         )
         .unwrap();
         // Default RMW is zenoh.
@@ -2617,7 +2617,7 @@ mod tests {
             resolve_packages_with_rmw(&idx, "native", Some("xrce")).unwrap(),
             vec!["xrce-agent"]
         );
-        let fr = resolve_packages_with_rmw(&idx, "qemu-arm-freertos", Some("xrce")).unwrap();
+        let fr = resolve_packages_with_rmw(&idx, "mps2-an385-freertos", Some("xrce")).unwrap();
         assert!(fr.contains(&"qemu") && fr.contains(&"xrce-agent"));
         // Unknown RMW errors (lists known).
         assert!(resolve_packages_with_rmw(&idx, "native", Some("nope")).is_err());
