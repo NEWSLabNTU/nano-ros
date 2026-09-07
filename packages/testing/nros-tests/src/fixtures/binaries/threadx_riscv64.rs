@@ -127,20 +127,20 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
 
 pub fn build_threadx_rv64_talker() -> TestResult<&'static Path> {
     THREADX_RV64_TALKER_BINARY
-        .get_or_try_init(|| build_rust_example("talker", "qemu-riscv64-threadx-talker"))
+        .get_or_try_init(|| build_rust_example("talker", "riscv64_threadx_rust_talker"))
         .map(|p| p.as_path())
 }
 
 pub fn build_threadx_rv64_listener() -> TestResult<&'static Path> {
     THREADX_RV64_LISTENER_BINARY
-        .get_or_try_init(|| build_rust_example("listener", "qemu-riscv64-threadx-listener"))
+        .get_or_try_init(|| build_rust_example("listener", "riscv64_threadx_rust_listener"))
         .map(|p| p.as_path())
 }
 
 pub fn build_threadx_rv64_service_server() -> TestResult<&'static Path> {
     THREADX_RV64_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
-            build_rust_example("service-server", "qemu-riscv64-threadx-service-server")
+            build_rust_example("service-server", "riscv64_threadx_rust_service_server")
         })
         .map(|p| p.as_path())
 }
@@ -148,7 +148,7 @@ pub fn build_threadx_rv64_service_server() -> TestResult<&'static Path> {
 pub fn build_threadx_rv64_service_client() -> TestResult<&'static Path> {
     THREADX_RV64_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_rust_example("service-client", "qemu-riscv64-threadx-service-client")
+            build_rust_example("service-client", "riscv64_threadx_rust_service_client")
         })
         .map(|p| p.as_path())
 }
@@ -156,7 +156,7 @@ pub fn build_threadx_rv64_service_client() -> TestResult<&'static Path> {
 pub fn build_threadx_rv64_action_server() -> TestResult<&'static Path> {
     THREADX_RV64_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
-            build_rust_example("action-server", "qemu-riscv64-threadx-action-server")
+            build_rust_example("action-server", "riscv64_threadx_rust_action_server")
         })
         .map(|p| p.as_path())
 }
@@ -164,7 +164,7 @@ pub fn build_threadx_rv64_action_server() -> TestResult<&'static Path> {
 pub fn build_threadx_rv64_action_client() -> TestResult<&'static Path> {
     THREADX_RV64_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
-            build_rust_example("action-client", "qemu-riscv64-threadx-action-client")
+            build_rust_example("action-client", "riscv64_threadx_rust_action_client")
         })
         .map(|p| p.as_path())
 }

@@ -47,6 +47,7 @@ Run: python3 scripts/check-fixture-binary-names.py
 """
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -63,6 +64,36 @@ RESOLVERS = {
 # `format!(…)` or a nested call inside the arguments defeats any regex that
 # stops at the first `)`.
 CALL_HEAD = re.compile(r"\b(" + "|".join(RESOLVERS) + r")\s*\(")
+
+# issue 1222 — a LOCAL WRAPPER forwards the literals one frame up.
+#
+# `threadx_riscv64.rs` defines `fn build_rust_example(name, binary_name)` whose
+# body is one call to `build_threadx_rv64_rust_example_rmw(name, binary_name,
+# Rmw::Zenoh)`. The literals are at the WRAPPER's call sites; the resolver sees
+# variables. So scanning resolver names alone counts six real call sites as
+# "non-literal, not checked" and the gate reports OK — which is exactly what it
+# did before this, with three spellings live in that file.
+#
+# A wrapper is recognised STRUCTURALLY, never listed: a private `fn` in the same
+# file whose body calls a known resolver forwarding its own parameter names.
+# Listing them would be a second registry to drift.
+WRAPPER_DEF = re.compile(
+    r"^fn\s+(\w+)\s*\([^)]*\)[^{]*\{(.*?)^\}", re.M | re.S
+)
+
+
+def wrappers_in(text):
+    """{local fn name: resolver it forwards to} for this file."""
+    out = {}
+    for m in WRAPPER_DEF.finditer(text):
+        name, body = m.group(1), m.group(2)
+        if name in RESOLVERS:
+            continue
+        for r in RESOLVERS:
+            if re.search(r"\b" + r + r"\s*\(", body):
+                out[name] = r
+                break
+    return out
 LITERAL = re.compile(r'^"([^"]*)"$')
 
 
@@ -115,12 +146,44 @@ def main() -> int:
     unchecked = 0
     checked = 0
 
-    for src in sorted((ROOT / "packages/testing/nros-tests/tests").glob("*.rs")):
+    # issue 1222 — BOTH sides. `tests/**` is where a test names a binary;
+    # `src/fixtures/binaries/**` is where the RESOLVER does, and that is the
+    # half that builds the path. Scanning only the first left the argument that
+    # actually reaches the filesystem unchecked: `threadx_riscv64.rs` passes the
+    # cargo PACKAGE name where the leaf declares a `[lib]` and CMake links a
+    # third spelling, and no gate could see it.
+    sources = [
+        ROOT / p
+        for p in subprocess.run(
+            [
+                "git", "ls-files",
+                "packages/testing/nros-tests/tests/*.rs",
+                "packages/testing/nros-tests/src/fixtures/binaries/*.rs",
+                "packages/testing/nros-tests/src/fixtures/binaries/**/*.rs",
+            ],
+            cwd=ROOT, capture_output=True, text=True,
+        ).stdout.split()
+    ]
+    if not sources:
+        print(
+            "error: no sources to scan — the walk found neither tests/ nor\n"
+            "src/fixtures/binaries/. A check over nothing is not a pass.",
+            file=sys.stderr,
+        )
+        return 1
+    for src in sources:
         text = src.read_text()
-        for match in CALL_HEAD.finditer(text):
+        # A wrapper's call sites carry the literals; resolve them to the
+        # resolver the wrapper forwards to (issue 1222).
+        local = wrappers_in(text)
+        heads = re.compile(
+            r"\b(" + "|".join(list(RESOLVERS) + list(local)) + r")\s*\("
+        ) if local else CALL_HEAD
+        for match in heads.finditer(text):
             fn = match.group(1)
+            resolver = local.get(fn, fn)
             args = call_args(text, match.end() - 1)
-            prefix, case_i, bin_i = RESOLVERS[fn]
+            prefix, case_i, bin_i = RESOLVERS[resolver]
             if args is None or len(args) <= bin_i:
                 unchecked += 1
                 continue
