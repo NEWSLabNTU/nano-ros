@@ -23,12 +23,12 @@ if(DEFINED _NROS_RUNTIME_CRATE_INCLUDED)
 endif()
 set(_NROS_RUNTIME_CRATE_INCLUDED TRUE)
 
-# Phase 241 W13/R1 — the BACKEND → {cffi feature, rlib, extra link libs, needs-cxx}
-# dispatch is GENERATED from cargo-nano-ros `resolve_rmw()` (the RFC-0031 SSoT) into
-# `NanoRosRmwDispatch.cmake` (drift-guarded by `rmw_cmake_dispatch_is_current`). The
-# former hardcoded `_nros_runtime_backend_feature` map is replaced by the generated
-# `nros_rmw_dispatch(<rmw>)` so the synthesized runtime crate's cffi feature can never
-# drift from the Rust SSoT / the cmake link extras.
+# Phase 241 W13/R1 — the BACKEND → {cffi feature, rlib, needs-cxx} dispatch, which
+# replaced a hardcoded `_nros_runtime_backend_feature` map here. phase-439 W4: it is
+# no longer GENERATED from `resolve_rmw()`; `nros_rmw_dispatch()` asks the CLI, which
+# reads the backend's own `nros-rmw.toml` over the provider scan (RFC-0094 D5). The
+# synthesized runtime crate reaches it through `nros_feature_set` below rather than
+# calling it directly.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRmwDispatch.cmake")
 # phase-336 — the cargo-profile resolver. File scope, so the function below
 # does not include() inside its own frame.
@@ -216,7 +216,12 @@ function(nros_synth_runtime_umbrella)
     # riscv64-qemu (no_std), and it carried no capabilities at all — which meant
     # a MIXED workspace silently lost param-services while a pure C/C++ one kept
     # them (issue 0311 / phase-314 W1).
-    nros_rmw_dispatch("${_NRR_BACKEND}")
+    # phase-439 W4 — the bare `nros_rmw_dispatch("${_NRR_BACKEND}")` that stood
+    # here is GONE. It read none of the eight variables it set: the next line
+    # includes `NanoRosFeatureSet`, which computes the cffi feature from
+    # `_NRR_BACKEND` itself, so the call was a no-op that read as the SSoT
+    # (`grep NROS_RMW` over this file returned nothing). It is a process spawn
+    # now, which is a good reason to notice, but it was dead before.
     include("${NANO_ROS_ROOT}/cmake/NanoRosFeatureSet.cmake")
     set(_caps ${NANO_ROS_FEATURES})
     if(NANO_ROS_SAFETY_E2E)

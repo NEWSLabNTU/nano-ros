@@ -270,9 +270,10 @@ cmake_language(DEFER DIRECTORY "${NANO_ROS_ROOT_DIR}" CALL
 if(NANO_ROS_RMW AND NOT NANO_ROS_RMW STREQUAL "none")
     nros_rmw_is_known("${NANO_ROS_RMW}" _nros_cpp_rmw_known)
     if(NOT _nros_cpp_rmw_known)
+        nros_rmw_known(_nros_cpp_rmw_names)
         message(FATAL_ERROR
             "nros-cpp: unknown RMW '${NANO_ROS_RMW}' "
-            "(provided by a descriptor: ${NROS_RMW_KNOWN})")
+            "(announced by a provider: ${_nros_cpp_rmw_names})")
     endif()
     nros_rmw_dispatch("${NANO_ROS_RMW}")
     if(NROS_RMW_CPP_DEFINE)

@@ -98,9 +98,21 @@ function(nano_ros_link_rmw TARGET)
     #
     # Verify: the archive must appear under `|` (implicit), not `||`, in
     #   ninja -C <build-dir> -t query <exe>
-    if(TARGET nros_rmw_${_chosen})
+    #
+    # phase-439 W4 — the target is DECLARED, not guessed. This read
+    # `if(TARGET nros_rmw_${_chosen})`, an accidental generalisation of 0475's
+    # fix that nothing documented and nothing gated: a provider whose cmake
+    # target happened to be spelled `nros_rmw_<name>` got the file edge for
+    # free, and one that named it anything else silently got the 0475 defect
+    # back — build order without a file edge, i.e. museum binaries (issue 1216).
+    # `NROS_RMW_CMAKE_TARGET` is `[rmw.provides.cmake] target` from the
+    # backend's own descriptor, so the edge follows the declaration rather than
+    # a naming coincidence. A backend with NO cmake target (the `umbrella`
+    # strategy) correctly gets none: it has no separate archive to depend on.
+    nros_rmw_dispatch("${_chosen}")
+    if(NROS_RMW_CMAKE_TARGET AND TARGET ${NROS_RMW_CMAKE_TARGET})
         set_property(TARGET ${TARGET} APPEND PROPERTY
-            LINK_DEPENDS "$<TARGET_FILE:nros_rmw_${_chosen}>")
+            LINK_DEPENDS "$<TARGET_FILE:${NROS_RMW_CMAKE_TARGET}>")
     endif()
 
     # Issue 0837 — the SAME edge for every other file named in that flag.
@@ -161,11 +173,19 @@ function(nano_ros_link_rmw TARGET)
     # directory scope and is not visible from the leaf that builds the image, so
     # a `if(TARGET …)` here is silently false — the first cut of this block was,
     # and left the RUNPATH in place.
-    if(_chosen STREQUAL "cyclonedds" AND UNIX AND NOT APPLE
-       AND DEFINED NROS_RMW_CYCLONEDDS_DDSC_LIBRARY
-       AND NROS_RMW_CYCLONEDDS_DDSC_LIBRARY MATCHES "\\.so(\\.[0-9]+)*$")
-        set_property(TARGET ${TARGET} APPEND PROPERTY
-            LINK_OPTIONS "-Wl,--disable-new-dtags")
+    #
+    # phase-439 W4 — keyed on the backend's DECLARED companion archives rather
+    # than on `_chosen STREQUAL "cyclonedds"`. The predicate that matters is
+    # "this backend drags in a shared library by SONAME", which is a property
+    # any backend can have; the name test just happened to be the one that did.
+    if(UNIX AND NOT APPLE)
+        foreach(_companion IN LISTS NROS_RMW_COMPANION_LIBRARIES)
+            if(_companion MATCHES "\\.so(\\.[0-9]+)*$")
+                set_property(TARGET ${TARGET} APPEND PROPERTY
+                    LINK_OPTIONS "-Wl,--disable-new-dtags")
+                break()
+            endif()
+        endforeach()
     endif()
 
     # Phase 104.B.6 — accumulate the chosen RMW into the target's

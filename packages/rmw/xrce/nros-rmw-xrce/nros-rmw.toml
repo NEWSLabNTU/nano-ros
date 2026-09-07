@@ -38,7 +38,9 @@ target = "nros_rmw_xrce"
 
 [rmw.link]
 rlib_dep = "nros-rmw-xrce-cffi"
-extra_link_libs = []
+# Irregular by history — see the zenoh descriptor's note. `nros-c` spells this
+# `cffi-xrce-c`, not `cffi-xrce-cffi`, so no convention produces it.
+c_cffi_feature = "cffi-xrce-c"
 needs_cxx_linker = false
 
 [rmw.capabilities]

@@ -33,18 +33,33 @@ cmake_target = "nros_rmw_uorb"
 # through the `integrations/px4/` shell rather than a nano-ros entry, which is a
 # property of the deployment, not of the backend.
 #
-# It is absent from `resolve_rmw()`/`nros_rmw_dispatch()` today while being a
-# first-class value in `NanoRosFeatureSet.cmake` and `nros-cpp/CMakeLists.txt` —
-# the three-disagreeing-lists bug W3 retires. `check-rmw-descriptors` therefore
-# EXEMPTS uorb from the agreement check and says why, rather than pretending the
-# dispatch has a row it does not.
+# phase-439 W4 — it is now SELECTABLE. `NANO_ROS_RMW=uorb` was advertised by the
+# cache drop-down (`NROS_RMW_KNOWN`), accepted by `NanoRosFeatureSet` and by
+# `nros-cpp`, and a configure-time FATAL_ERROR at the repo root, because the root
+# chain had arms for three names and no descriptor could add a fourth
+# (issue 1215). The root now dispatches on the DECLARED strategy below, so this
+# backend reaches a link through the same path every other one does, and the
+# `NROS_RMW_CMAKE_TARGET` guard in `nros-cpp` — inert since it was written,
+# because nothing ever created the target — finally has a producer.
+#
+# MEASURED, and worth stating so nobody reads more into it: a `NANO_ROS_RMW=uorb`
+# image CONFIGURES and reaches a correct link line, and on a plain host it then
+# fails to LINK on `orb_advertise_multi` / `orb_subscribe_multi` / `orb_check` /
+# `orb_copy` / `orb_publish` / `orb_unadvertise` / `orb_unsubscribe`. That is
+# uORB itself: the middleware lives in PX4, not here, which is why
+# `NROS_RMW_UORB_LINK_PX4` exists and defaults OFF (the archive builds anywhere;
+# an image needs PX4). `nros_rmw_cffi_register_named` — the nano-ros half of that
+# link — resolves.
 [rmw.provides.cmake]
 dir = "."
 target = "nros_rmw_uorb"
 
 [rmw.link]
 rlib_dep = ""
-extra_link_libs = ["nros_rmw_uorb"]
+# Same shape as cyclonedds: a CMake project, whole-archived. phase-439 W4 is
+# what makes `NANO_ROS_RMW=uorb` reach a link at all — the root chain had no
+# uorb arm and hard-failed on the value its own cache drop-down offered
+# (issue 1215). `extra_link_libs` deleted with the class (issue 1216).
 needs_cxx_linker = true             # C++ port
 
 [rmw.capabilities]

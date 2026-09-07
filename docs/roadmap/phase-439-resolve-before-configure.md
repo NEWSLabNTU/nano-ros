@@ -2,8 +2,12 @@
 
 **Status (2026-09-08). Opened from RFC-0094. W0 and W1 are the routing diff and
 the digest key — both are PRECONDITIONS and neither changes behaviour. W2–W4 are
-the three landings. W0 has LANDED and corrected three of the RFC's numbers; W1
-is not started.**
+the three landings. W0 has LANDED and corrected three of the RFC's numbers; W4
+has LANDED; W1–W3 are not started.**
+
+W4 landed out of the stated order because it depends on none of the others: it
+is the RMW axis alone (descriptors, the cmake seam, the link strategies), while
+W0/W1's preconditions are about routing and cargo-directory keys.
 
 Implements [RFC-0094](../design/0094-resolve-before-configure.md). Read its
 "Design" section first; this doc carries work items and acceptance only.
@@ -143,7 +147,7 @@ needs.
 `Cargo.toml` that IS routed produces a loud error naming the package, where
 today it is silently skipped.
 
-## W4 — Descriptors become load-bearing
+## W4 — Descriptors become load-bearing — **LANDED 2026-09-08**
 
 `nros_rmw_dispatch` becomes a query against the provider index rather than a
 generated `if/elseif` chain, following `NanoRosProviders.cmake`'s existing
@@ -160,7 +164,48 @@ configures and links with ZERO edits to `NanoRosRmwDispatch.cmake`, the root
 `CMakeLists.txt`, or the `nros` binary. `uorb` becoming selectable is the
 in-tree proof.
 
-Closes issues 1214, 1215, 1216, 1219.
+Closes issues 1214, 1215, 1216. **1219 stays OPEN** — see below.
+
+### What landed
+
+* `rmw_descriptor.rs` — ONE `nros-rmw.toml` parser, `include!`d by `build.rs`
+  and compiled into the library. `resolve_rmw_in(&ScanResult, name)` reads a
+  descriptor at SELECTION time over the provider scan, so an out-of-tree
+  provider dispatches by the same code as an in-tree one (1214).
+* `nros ws rmw-dispatch <name> --lines` / `--known` — the cmake seam.
+  `NanoRosRmwDispatch.cmake` is hand-written and ASKS; `render_cmake_dispatch()`
+  and its two drift tests are deleted.
+* The root chain dispatches on the DECLARED link strategy (`umbrella` /
+  `cmake`), one helper for both umbrellas, a per-backend
+  `nros-rmw-provision.cmake` hook for what a backend needs resolved first, and
+  a generic `NROS_RMW_COMPANION_LIBRARIES` where the root used to name
+  cyclone's `libddsc` (1215).
+* The three unread dispatch outputs: `EXTRA_LINK_LIBS` deleted, `RLIB_DEP` and
+  `UMBRELLA_CFFI_FEATURE` wired — the latter deleting a fourth closed list in
+  `NanoRosFeatureSet.cmake`. `LINK_DEPENDS` keys on the declared cmake target
+  rather than the `nros_rmw_<name>` naming coincidence (1216).
+* `check-codegen-tool-reconfigure` counts `rmw-dispatch` as an emitting verb,
+  with its own negative control.
+
+### Measured
+
+`NANO_ROS_RMW=uorb` configures and reaches a correct link line — it had been
+advertised in the cache drop-down and fatal at the root. A uorb IMAGE still does
+not link on a plain host: `orb_*` is PX4's uORB middleware, not ours. All four
+backends configure; the cargo feature sets are byte-identical to the ones the
+deleted closed chains produced; cyclonedds and zenoh and xrce probes LINK, and
+`ninja -t query` shows both the backend archive and `libddsc` under `|`.
+
+### Why 1219 is not closed
+
+`check-rmw-agnostic` was written and deleted rather than shipped. W4 removed
+three of the five closed lists it counted and fixed the `safety` capability's
+two-site defect, but the GATE needs a classification pass the measurement made
+plain: repo-wide over build logic the rule reports 93 files, and 39 even
+narrowed to the build-decision surface, most of them test plans, demos and help
+text rather than dispatch. A 39-row baseline of unverified reasons reads as
+coverage. The survey, the narrowing that worked, and what a next attempt should
+decide are recorded in the issue.
 
 ## Out of scope
 
