@@ -4,4 +4,24 @@ components = ["rustfmt", "clippy", "rust-src", "llvm-tools"]
 # phase-418 418.3 — `armv7r-none-eabi` joins the hard-float triple already
 # here: the Orin SPE FSP is softfp (AAPCS base), so the `hf` triple is the
 # wrong ABI for that image. Neither replaces the other.
-targets = ["thumbv7em-none-eabihf", "armv7r-none-eabi", "armv7r-none-eabihf", "aarch64-unknown-none"]
+# The list is the set the GATES compile for, not a subset someone remembered.
+# It was four while `check-build` needed nine, and the gap is invisible until a
+# toolchain is reinstalled or a clone is fresh: rustup installs exactly what is
+# declared here, so the five undeclared ones survived only as residue on hosts
+# that had once added them by hand. `check-build`'s `nros-log-riscv32` then
+# fails with "can't find crate for `core`" and `repr-memory-agreement` reports
+# SKIPPED for want of `armv7a-none-eabi` — a gate that cannot evaluate, which
+# reads exactly like one that found nothing wrong.
+targets = [
+    "thumbv7em-none-eabihf",
+    "thumbv7m-none-eabi",
+    "armv7r-none-eabi",
+    "armv7r-none-eabihf",
+    "armv7a-none-eabi",
+    "armv7a-none-eabihf",
+    "aarch64-unknown-none",
+    "riscv32imc-unknown-none-elf",
+    "riscv64gc-unknown-none-elf",
+]
+# The two NuttX triples (`armv7a-nuttx-eabihf`, `riscv32imac-unknown-nuttx-elf`)
+# are custom JSON targets, not rustup ones, and are deliberately NOT listed.

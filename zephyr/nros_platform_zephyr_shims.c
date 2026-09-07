@@ -648,6 +648,32 @@ void nros_zephyr_log_2int(const char* tag, int64_t a, int64_t b) {
 #define NROS_ZEPHYR_MAX_TIERS 4
 #endif
 
+/* Floor of 1, and the reason zero is NOT the answer here is MEASURED, not
+ * assumed -- issue 1131 left this knob unruled precisely because a plausible
+ * argument said 0 (64 KiB of .noinit reclaimed by a tierless image, the shape
+ * issue 1033 ruled zero-legal for XRCE_MAX_SUBSCRIBERS). That argument rested
+ * on a premise that is false: the stacks are NOT present in every Zephyr image.
+ *
+ * `nros_tier_stacks` is the only referent of this array, and the sole path that
+ * reaches it is `nros_zephyr_tier_task_create`. In an image that declares no
+ * tier nothing calls that function, so --gc-sections (on in every Zephyr link)
+ * drops the section. Measured over the 91 built images in this tree: 4 carry
+ * `nros_tier_stacks`, 87 do not, and the 4 are EXACTLY the four realtime-entry
+ * images that declare tiers -- the correspondence is total, with no image
+ * paying for a pool it does not use. On mps2_an385 the section is listed in the
+ * map's "Discarded input sections" at 0x10100 (65,792 bytes); on native_sim the
+ * tiered image carries 0x10000 and the tierless one has no such symbol.
+ *
+ * So 0 buys nothing the linker does not already give, and in the one class of
+ * image that would define it -- a tiered one -- it makes `nros_tier_index >=
+ * NROS_ZEPHYR_MAX_TIERS` true for the FIRST tier, so every spawn fails and the
+ * system runs with no tier at all. The saving a tiered image can actually want
+ * is a SMALLER pool (2 or 3 slots, 16 KiB each), which this floor permits: it
+ * forecloses nothing, which is the trap issue 1015's first fix fell into. */
+#if NROS_ZEPHYR_MAX_TIERS < 1
+#error "NROS_ZEPHYR_MAX_TIERS must be >= 1: it sizes a C array (issue 1015)"
+#endif
+
 #ifndef NROS_ZEPHYR_TIER_STACK_SIZE
 #define NROS_ZEPHYR_TIER_STACK_SIZE 16384
 #endif

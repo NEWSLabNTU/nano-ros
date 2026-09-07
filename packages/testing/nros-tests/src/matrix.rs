@@ -790,6 +790,15 @@ pub const CELLS: &[Cell] = &[
     cell(ZephyrNativeSim, C,     Zenoh, EntryPubsub, Workspace, Runtime),
     cell(ZephyrNativeSim, Cpp,   Zenoh, EntryPubsub, Workspace, Runtime),
     cell(ZephyrNativeSim, Mixed, Zenoh, EntryPubsub, Workspace, Runtime),
+    // phase-206 W2 — the RTOS image that links Cyclone AND carries a baked
+    // bringup config (`workspace-zephyr-cpp-cyclonedds`). Its fixture row
+    // landed with commit 9ae271174 while this cell did not, so the coordinate
+    // (zephyr, cpp, cyclonedds, workspace) was a fixtures.toml orphan: built
+    // and run by the lane, modeled by nothing. `fixture_rows_all_modeled_by_matrix`
+    // is the assertion that caught it, and it is the reverse direction of the
+    // pair -- the forward one was green throughout, because a cell that does
+    // not exist cannot be missing a fixture.
+    cell(ZephyrNativeSim, Cpp,   Cyclonedds, EntryPubsub, Workspace, Runtime),
     cell(FreertosMps2, C,    Zenoh, EntryPubsub, Workspace, Runtime),
     cell(FreertosMps2, Cpp,  Zenoh, EntryPubsub, Workspace, Runtime),
     cell(FreertosMps2, Rust, Zenoh, EntryPubsub, Workspace, Runtime),

@@ -1,37 +1,124 @@
 ---
 id: 1131
-title: "One knob-sized C array has no ruling on whether zero is a legal size"
-status: open
+title: "Every knob-sized C array now states whether zero is a legal size"
+status: resolved
 area: rmw, memory
 severity: low
 related: [1015, 1033, 1167, 0815, 0196, phase-392, phase-403, phase-412]
 ---
 
-# The wider question issue 1015 left open, now down to one
+# The wider question issue 1015 left open, now closed
 
-Was fifteen. Fourteen are ruled; the one below is left UNRULED ON PURPOSE,
-because it has a real argument that zero is the right answer and that argument
-needs a measurement nobody has taken. A guard on it would foreclose a saving
-exactly the way issue 1015's first fix foreclosed issue 1033's.
+Was fifteen. **All fifteen are ruled**, and the gate's `UNCLASSIFIED` table is
+empty with `UNCLASSIFIED_CEILING = 0` — so the next knob-sized array that ships
+without a ruling trips it.
+
+The last two landed on the same floor for reasons that do not transfer to each
+other, which is the argument for ruling each one rather than reasoning by
+analogy from the last: `NROS_RMW_UORB_PX4_MAX_CALLBACKS` because ISO C++ has no
+zero-size array at all, and `NROS_ZEPHYR_MAX_TIERS` because C *does* — GCC's
+zero-length-array extension takes it silently — so nothing but a guard stood
+between a `-D` and a broken image.
 
 ## Where the class stands
 
 ```
 $ python3 scripts/check-c-array-pool-floors.py | tail -1
-check-c-array-pool-floors: OK (23 knob-sized C arrays: 19 guarded, 3 zero-legal, 1 unclassified)
+check-c-array-pool-floors: OK (23 knob-sized C arrays: 20 guarded, 3 zero-legal, 0 unclassified)
 ```
 
-23 (not 21 — see "what the gate could not see" below): **19 guarded, 3
-zero-legal, 1 unclassified**, against 8 / 3 / 10 before.
+23 (not 21 — see "what the gate could not see" below): **20 guarded, 3
+zero-legal, 0 unclassified**, against 8 / 3 / 10 before.
 
-## What is left, and what it needs
+## Third pass: `NROS_ZEPHYR_MAX_TIERS`, ruled GUARDED
 
-| knob | file | why zero is arguable | what would settle it |
-| --- | --- | --- | --- |
-| `NROS_ZEPHYR_MAX_TIERS` | `zephyr/nros_platform_zephyr_shims.c` | `K_THREAD_STACK_ARRAY_DEFINE(nros_tier_stacks, N, 16384)` — **64 KiB** of stacks in every Zephyr image, declared tiers or not, because nothing produces this knob and 4 is what everything compiles. A tierless image setting 0 is `XRCE_MAX_SUBSCRIBERS=0`'s shape, and the refusal is loud AND FATAL, which is more than the table first claimed: `entry_tiers.rs` logs `failed to spawn tier … pool exhausted?` and then returns `Err(RuntimeError::Spin)`, so a tiered image at 0 fails rather than running short-handed. | a Zephyr build at `-DNROS_ZEPHYR_MAX_TIERS=0` proving `K_THREAD_STACK_ARRAY_DEFINE` accepts a count of 0, plus a `just mem-report <elf> --json --baseline` delta for the 64 KiB. **Not attemptable on a host with no Zephyr:** the macro lives in `zephyr/kernel.h`, which comes from the west workspace, so even reading its expansion needs a checkout this repo does not carry. |
+The premise this knob sat on for two passes is **false**, and measuring it was
+the whole ruling. The table above said *64 KiB of stacks in every Zephyr image,
+declared tiers or not*. It is not in every image; it is in four of them.
 
-It is in the gate's `UNCLASSIFIED` table with that reasoning inline, and the
-`UNCLASSIFIED_CEILING` is now 1, so adding a second is a visible edit.
+`nros_tier_stacks` is reachable only through `nros_zephyr_tier_task_create`. An
+image whose system declares no tier calls nothing on that path, so
+`--gc-sections` — on in every Zephyr link — drops the section. Over the **91
+built images** in this tree:
+
+| | images |
+| --- | --- |
+| carry `nros_tier_stacks` | **4** |
+| linker discarded it | **87** |
+
+and the 4 are *exactly* the four `realtime-entry` images that declare tiers.
+The correspondence is total in both directions: no image pays for a pool it
+does not use, and no tiered image is missing one.
+
+Both link flavours agree:
+
+* **mps2_an385** (`build-cortex-m-c-talker-zenoh`, tierless) — the object holds
+  `.noinit."…shims.c".1` at `0x10100` (65,792 bytes), and `zephyr_final.map`
+  lists it under *Discarded input sections* at address 0, while the 512 KiB
+  `nros_thread_stacks` is placed at `0x200769c0`. One object, one link, one
+  section kept and one dropped, on exactly the reachability distinction.
+* **native_sim** — the tiered `build-ws-c-realtime-entry-zenoh` carries
+  `nros_tier_stacks` at `0x10000`; the tierless `build-c-listener-zenoh` has no
+  such symbol.
+
+So zero reclaims nothing the linker has not already reclaimed, while in the one
+class of image that would ever set it — a tiered one — it makes
+`nros_tier_index >= NROS_ZEPHYR_MAX_TIERS` true for the *first* tier, and
+`entry_tiers.rs` returns `Err(RuntimeError::Spin)`.
+
+**The guard is load-bearing, and this is where the uORB ruling does not carry.**
+That pool is C++, where the language itself refuses `Slot g_pool[0]`. This one
+is C, and asked directly the macro takes zero **silently**:
+`K_THREAD_STACK_ARRAY_DEFINE(probe, 0, 16384)` compiles clean under the real
+`arm-zephyr-eabi` flags as a zero-length array (`B probe_stacks`, size 0, no
+diagnostic). Without a guard, `-D…MAX_TIERS=0` builds an image whose every tier
+spawn fails — issue 1015's silent-zero shape exactly.
+
+Ruled: **floor of 1**, beside the array, below its own `#ifndef` (issue 1167's
+ordering rule), matching its sibling `NROS_ZEPHYR_MAX_THREADS`. It forecloses no
+saving: the saving a tiered image can actually want is a *smaller* pool, and
+`-DNROS_ZEPHYR_MAX_TIERS=2` compiles. That is the trap issue 1015's first fix
+fell into and this one does not.
+
+### The host that "could not" run this
+
+The table above recorded *"Not attemptable on a host with no Zephyr: the macro
+lives in `zephyr/kernel.h`, which comes from the west workspace"*. That was true
+of the toolchain state, not of the host — `nros setup` provisions the west
+workspace, and this tree already carried one with 91 built images in it. The
+measurement then cost no build at all: the map files and objects were already on
+disk, and the three compile checks reused the TU's own command from
+`compile_commands.json` with `-o` redirected to scratch, so no build directory
+moved. A blocker worth re-testing before it is inherited a third time.
+
+Verified against the real toolchain:
+
+| build | result |
+| --- | --- |
+| default (4) | compiles — no regression from the guard |
+| `-DNROS_ZEPHYR_MAX_TIERS=0` | `#error "NROS_ZEPHYR_MAX_TIERS must be >= 1…"` |
+| `-DNROS_ZEPHYR_MAX_TIERS=2` | compiles — the floor forecloses no saving |
+
+Mutations, each red naming the exact site, then restored green: the guard
+deleted (`[FAIL] … sizes a fixed C array and states no floor`); the guard moved
+above its `#ifndef` (`[FAIL] … is guarded where the guard CANNOT FIRE`, and the
+probe gate red too, since it then fires at defaults).
+
+Re-runnable sweep:
+
+```
+for d in zephyr-workspace/build-*/; do
+  nm -S "$d/zephyr/zephyr.exe" 2>/dev/null | grep -c nros_tier_stacks
+done
+```
+
+### The selftest this emptied
+
+Ruling the last knob left `UNCLASSIFIED` **empty**, and the gate's own selftest
+read `next(iter(UNCLASSIFIED))` — so it raised `StopIteration` the moment the
+backlog it was protecting reached zero. The two controls now run against a
+SYNTHETIC entry: a negative control that only works while unruled debt exists
+retires itself at exactly the moment the table starts needing protection.
 
 ## Second pass: `NROS_RMW_UORB_PX4_MAX_CALLBACKS`, ruled GUARDED
 
