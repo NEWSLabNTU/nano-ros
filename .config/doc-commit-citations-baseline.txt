@@ -75,3 +75,19 @@ d97c9c606
 # the comment above says "those hashes", plural, and always meant both.
 d1d88f660
 ea9fbfae9
+
+# ---- RE-ADDED 2026-09-08 — removed while still needed --------------------
+#
+# All three were taken out of this file by a tree in which they were NOT
+# dangling, and `main` went red. `839f69b5c` and `fe807a999` are fixed on PR
+# #629's branch (replaced with descriptions of the commits), so any checkout
+# carrying that work sees them resolve; `main` does not have it. `d1d88f660`
+# names a `ros2` distrobox tree, which no checkout of THIS repository will ever
+# resolve — the FOREIGN case above.
+#
+# The gate no longer FAILS on a seemingly-stale entry for exactly this reason;
+# it reports one. Remove these two when #629 lands:
+839f69b5c
+fe807a999
+# Keep this one permanently — foreign, like its two siblings above:
+d1d88f660

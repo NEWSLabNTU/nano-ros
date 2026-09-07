@@ -172,14 +172,29 @@ def main():
     problems = [h for h in dangling if h not in baseline]
     stale = [h for h in baseline if h not in dangling]
 
+    # A stale entry is REPORTED, not failed. It used to `return 1`, and that
+    # was wrong in a way only running it on more than one branch reveals.
+    #
+    # The baseline is keyed on a global hash, but "is this citation dangling?"
+    # is answered against the WORKING TREE. A branch that fixes a citation —
+    # PR #629 replaces two of these with descriptions of the commits — makes
+    # its baseline entries look stale, so this demanded they be deleted; on
+    # `main`, which does not have that branch, the same entries are required
+    # and their absence is a red. Both edits are locally correct and they
+    # contradict each other, so the gate drove three fix commits in one day
+    # (`055b84387`, `e63d3e11b`, `9c0702322`) and `main` was red between them.
+    #
+    # The ratchet's real protection is the other half: a NEW dangling citation
+    # fails. That is what stops the debt growing, it is branch-independent, and
+    # it is untouched. A stale entry costs a line in a file nobody reads twice
+    # — cheaper than a gate whose remedy is wrong half the time it is applied.
     if stale:
-        sys.stderr.write(
-            "check-doc-commit-citations: %d baseline entry/entries no longer "
-            "needed — the citation resolves now, or the line is gone. Remove "
-            "them:\n" % len(stale))
+        print("check-doc-commit-citations: %d baseline entry/entries may no "
+              "longer be needed (the citation resolves now, or the line is "
+              "gone). Not a failure — remove them when the branch that fixed "
+              "them has landed on `main`:" % len(stale))
         for h in sorted(stale):
-            sys.stderr.write(f"  {h}\n")
-        return 1
+            print(f"  {h}")
 
     if problems:
         sys.stderr.write(
