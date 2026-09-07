@@ -121,7 +121,7 @@ fi
 
 # phase-344 W2 follow-up — this driver builds the CARGO lanes, so it must select
 # by BUILDER, not by `lang`. `--lang rust` was a proxy that held only while every
-# rust row built with cargo; the six qemu-riscv64-threadx cyclonedds rows are
+# rust row built with cargo; the six rv-virt-threadx cyclonedds rows are
 # rust leaves driven through cmake (just/threadx-riscv64.just), and routing them
 # here made the driver export their cmake-only `build_subdir` as a shell
 # variable name: `export: 'build-cyclonedds': not a valid identifier`.

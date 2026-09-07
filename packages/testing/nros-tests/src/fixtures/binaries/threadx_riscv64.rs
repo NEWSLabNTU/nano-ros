@@ -112,7 +112,7 @@ fn build_rust_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     // shared-group redirect never fired, and the resolver read a leaf tree the
     // fixture build had stopped writing MONTHS earlier:
     //
-    //     Test fixture binary not prebuilt: examples/qemu-riscv64-threadx/rust/
+    //     Test fixture binary not prebuilt: examples/rv-virt-threadx/rust/
     //       talker/target-zenoh/riscv64gc-unknown-none-elf/nros-relwithdebinfo/…
     //
     // while the build wrote `build/cargo-fixtures/threadx-riscv64-<slug>/…`. The
@@ -191,7 +191,7 @@ static RV64_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Resolve a ThreadX-RV64 cmake example's artifact for a NAMED rmw.
 ///
 /// Issue 0786. The C and C++ pubsub tests used to hand-build
-/// `examples/qemu-riscv64-threadx/<lang>/<case>/build-cyclonedds/<bin>` as a
+/// `examples/rv-virt-threadx/<lang>/<case>/build-cyclonedds/<bin>` as a
 /// plain `root.join(...)`, because the resolver below only ever spelled
 /// `build-zenoh`. A hand-built path skips BOTH things this function exists to
 /// do: the lane coordinate check, and `require_prebuilt_binary_fresh_cmake`.
@@ -212,7 +212,7 @@ pub fn build_rv64_cmake_example_rmw(
     rmw: super::Rmw,
 ) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-riscv64-threadx/{}/{}", lang, name));
+    let example_dir = root.join(format!("examples/rv-virt-threadx/{}/{}", lang, name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(

@@ -72,7 +72,7 @@ const GROUPS: &[Group] = &[
             "qemu-arm-freertos",
             "qemu-armv7a-nuttx",
             "rv-virt-nuttx",
-            "qemu-riscv64-threadx",
+            "rv-virt-threadx",
             "qemu-esp32-baremetal",
         ],
     },

@@ -982,7 +982,7 @@ pub const LINUX_CORE_PIN_FALLBACK_MARKER: &str = "nros: core pin FAILED tier=";
 /// spawn, or `write(-1, …)` did not fail) and proves NOTHING about errno;
 /// FAIL means the observer saw the victim's value, which is the bug; PASS
 /// means isolation held. MIRRORS the `printf` literals in
-/// `examples/qemu-riscv64-threadx/c/errno-isolation/src/main.c` — keep in
+/// `examples/rv-virt-threadx/c/errno-isolation/src/main.c` — keep in
 /// lockstep.
 /// Common prefix of ALL three verdicts, so a harness can wait for "the fixture
 /// decided" rather than for one outcome — waiting on PASS alone turns a real

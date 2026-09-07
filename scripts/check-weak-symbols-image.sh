@@ -91,8 +91,8 @@ COVERAGE=(
     # here: this row is the on-platform guard for the 155.A class (a 64 KB-default
     # stack overflow). (`_tx_initialize_low_level` is deliberately NOT here — it
     # is a weak SOLE def the board ships as overridable; see the allowlist.)
-    "examples/qemu-riscv64-threadx/rust|qemu-riscv64-threadx-talker|nros_board_init_eth nros_board_app_stack_size nros_board_app_priority"
-    "examples/qemu-riscv64-threadx/rust|qemu-riscv64-threadx-listener|nros_board_init_eth nros_board_app_stack_size nros_board_app_priority"
+    "examples/rv-virt-threadx/rust|rv-virt-threadx-talker|nros_board_init_eth nros_board_app_stack_size nros_board_app_priority"
+    "examples/rv-virt-threadx/rust|rv-virt-threadx-listener|nros_board_init_eth nros_board_app_stack_size nros_board_app_priority"
     # PENDING (no image target yet): px4 uorb `nros_orb_{register,unregister}_callback`
     # — strong in px4_callback_glue.cpp, but no Cargo.toml currently links
     # `nros-rmw-uorb` into an example/fixture, so there is no final image to nm.
