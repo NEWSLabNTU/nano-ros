@@ -978,9 +978,13 @@ function(_nros_root_cargo_dir out_var features)
         endif()
         set(_key "triple=${NROS_RUST_TARGET}" "profile=${NROS_CARGO_PROFILE}"
                  "features=${features}")
-        foreach(_knob IN LISTS NROS_RESOLVED_KNOBS)
-            list(APPEND _key "${_knob}=${NROS_RESOLVED_${_knob}}")
-        endforeach()
+        # phase-439 W1 — the knob loop that stood here moved into
+        # `nros_knob_key_fields()` so the `nros-c` and NuttX lanes get the SAME
+        # rule rather than a second copy of it (RFC-0094 D4). Road 1 of that
+        # function is this registry, in this order, so the text it returns here
+        # is what the loop produced and no Zephyr image changes directory.
+        nros_knob_key_fields(_knob_fields)
+        list(APPEND _key ${_knob_fields})
         nros_shared_cargo_dir(_dir KEY ${_key})
     endif()
     if(NOT _dir)

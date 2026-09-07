@@ -2,12 +2,15 @@
 
 **Status (2026-09-08). Opened from RFC-0094. W0 and W1 are the routing diff and
 the digest key — both are PRECONDITIONS and neither changes behaviour. W2–W4 are
-the three landings. W0 has LANDED and corrected three of the RFC's numbers; W4
-has LANDED; W1–W3 are not started.**
+the three landings. **W0, W1 and W4 have LANDED; W2 and W3 are not started.**
+
+W0 corrected three of RFC-0094's own numbers — the count of `package.xml`, the
+size of the declare-but-no-file class, and how many of the 21 side-changers are
+already handled by another mechanism.
 
 W4 landed out of the stated order because it depends on none of the others: it
 is the RMW axis alone (descriptors, the cmake seam, the link strategies), while
-W0/W1's preconditions are about routing and cargo-directory keys.
+W0's and W1's preconditions are about routing and cargo-directory keys.
 
 Implements [RFC-0094](../design/0094-resolve-before-configure.md). Read its
 "Design" section first; this doc carries work items and acceptance only.
@@ -116,6 +119,41 @@ every `NROS_RESOLVED_*`; the `nros-c` and NuttX lanes do not.
 **Acceptance:** two images differing ONLY in a derived knob resolve to different
 cargo directories. Mutation-tested — revert the key change and the collision
 reappears, demonstrated rather than argued.
+
+**LANDED 2026-09-08.** The knob half has ONE spelling, `nros_knob_key_fields()`
+in `cmake/NanoRosSharedCargoDir.cmake`, and all three callers append it. It
+reads TWO roads: the resolver registry (`NROS_RESOLVED_KNOBS`, Zephyr today and
+every lane once W2 writes `resolved.toml`) and, for the names the resolver did
+not answer for, the ENVIRONMENT — which is how `examples/fixtures.toml` states a
+knob and the only knob road knowable at key time on a lane with no resolver. The
+knob NAME inventory is READ from its one authored site rather than copied: the
+43 `_nros_resolve_knob(<NAME> …)` call sites `check-kconfig-knob-forwarding`
+already treats as authoritative.
+
+Measured, on the real `nros-c` call site (two root configures, `posix`/`zenoh`,
+differing only in `ZPICO_MAX_QUERYABLES`):
+
+| | no knob stated | `ZPICO_MAX_QUERYABLES=2` |
+| --- | --- | --- |
+| with W1 | `…/d20f4167871d` | `…/ba45165655e7` |
+| key change reverted | `…/d20f4167871d` | `…/d20f4167871d` — COLLIDES |
+| restored | `…/d20f4167871d` | `…/ba45165655e7` |
+
+The left column is identical in all three rows, which is the other half of the
+acceptance: an image whose knobs did not move keeps the directory it already
+has, so no warm cargo directory in the tree is invalidated.
+
+The bash-owned fixture group key (`nros_fixture_group_slug`) needed no change —
+its signature is already (platform, cargo args, **sorted env**), measured:
+`qemu-esp32-baremetal` vs `qemu-esp32-baremetal-4118800323` at
+`ZPICO_MAX_QUERYABLES=2` and `-4054584529` at 4. Every other cargo target dir in
+the tree is per-build-dir (`${CMAKE_BINARY_DIR}/nros-rust`, `nros-rust-ws-<n>`,
+`<ffi-crate>/target`), serves one configuration, and has no key to carry.
+
+Gate: `check-cargo-dir-knob-key`, which drives the production cmake through
+`cmake -P` rather than re-deriving the key, and whose NEGATIVE CONTROL runs on
+the normal path — with the knob fields removed the two images must COLLIDE, so a
+green verdict is a demonstration rather than an assertion.
 
 ## W2 — Stage 3.5, the resolve phase
 
