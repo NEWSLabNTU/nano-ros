@@ -99,6 +99,75 @@ nothing would catch until an image malloc-fails at runtime — and issue 1146
 measured exactly that failure mode, finding it reports `*** MALLOC FAILED ***`
 rather than `*** STACK OVERFLOW ***`, because heap_4 hands out the task stacks.
 
+## ATTEMPTED 2026-09-07 — the board cannot be the consumer, and here is why
+
+The mechanism was built and the arithmetic validated. The board still cannot
+use it, for a reason that is structural rather than plumbing.
+
+### What works
+
+`nros-node` can publish the number as a symbol whose STORAGE SIZE is the value
+(`__NROS_LU_SZ_executor_backing`, behind `layout-size-markers`, off by default),
+and `nros-sizes-build::extract_sizes` reads exactly that shape. Verified: the
+symbol appears in `libnros_node.rlib` for `thumbv7m-none-eabi`.
+
+The arithmetic is validated independently. Probing the fifteen per-region
+`(size, align)` pairs out of the same rlib and running
+`nros-executor-layout`'s placement over them reproduces **all four** measured
+images to the byte:
+
+| image | cbs | arena | computed | linked |
+| --- | ---: | ---: | ---: | ---: |
+| `talker` | 1 | 8,192 | 20,608 | 20,608 |
+| `service-client` | 2 | 9,216 | 21,832 | 21,832 |
+| `action-server` | 1 | 20,096 | 32,512 | 32,512 |
+| defaults | 4 | 74,240 | 87,256 | 87,256 |
+
+`alloc` is discriminating: with it off every row is 96 bytes low (8 sc x 12), so
+the flag is doing real work rather than being decorative.
+
+### Why the board still cannot consume it
+
+**1. `nros-board-freertos` is in the root workspace's `exclude`, not its
+`members`.** It is a cross-only crate and its own workspace root
+(`cargo metadata` reports `workspace_root` = the board directory, 1 member). A
+nested `cargo build -p nros-node` from its build script therefore fails with
+`cannot specify features for packages outside of workspace`. It can be forced
+with `--manifest-path <repo>/Cargo.toml`, and that does build.
+
+**2. But the answer then depends on inputs the board cannot know.** Three probe
+invocations against a leaf whose linked backing is **21,832** returned:
+
+```
+--features rmw-cffi,alloc, two env vars forwarded   ->  39,416
+--features rmw-cffi,alloc, six env vars forwarded   ->  87,256   (the defaults)
+```
+
+The number is a function of the executor env AND the feature set the LEAF
+resolved for `nros-node`. The board is not on the leaf's dependency path to
+`nros-node` — it does not depend on it at all — so it can neither be told nor
+discover either one. Guessing `rmw-cffi,alloc` is the issue-0665 hazard at full
+strength, and 0665 was 16 bytes; this is tens of kilobytes.
+
+**3. The probe cache cannot save it either.** `probe_key` hashes (target,
+features). The backing varies by env, so two leaves with identical features and
+different `NROS_EXECUTOR_MAX_CBS` collide on one cache entry.
+
+### What this rules out, and what it points at
+
+The consumer of this number **must be inside `nros-node`'s dependency graph**,
+where the features and env are the ones that will actually link. The board is
+structurally the wrong place, and no amount of wiring changes that.
+
+That points at the entry, or at a crate the leaf already pulls in through
+`nros-node`, publishing the heap requirement — rather than the board deriving
+it. Whether `configTOTAL_HEAP_SIZE` can be set from there at all is the open
+question, because it is baked into the board's C at the board's build time.
+
+Which is the argument for the measurement route this issue already recommends:
+`xPortGetMinimumEverFreeHeapSize()` answers "how much heap does this image
+need" from inside the image, where every input is the real one.
+
 ## Recommended order
 
 1. Land issue 1146 (the stack default).

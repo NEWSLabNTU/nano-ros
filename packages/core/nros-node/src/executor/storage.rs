@@ -285,6 +285,34 @@ pub const NATIVE_UNITS: RegionUnits = RegionUnits {
     violation: unit_of::<Violation>(),
 };
 
+/// issue 1197 — publish the backing's TOTAL size as a symbol whose storage size
+/// IS the number, so a build script can recover it from the rlib without running
+/// anything. `nros-sizes-build::extract_sizes` reads exactly this shape, the way
+/// `nros-c` recovers `EXECUTOR_OPAQUE_U64S`.
+///
+/// **The total rather than the per-region units, and that is a decision.** The
+/// units alone would be more robust — they do not vary with the executor knobs,
+/// so a probe cache keyed by (target, features) is correct for them, and the
+/// caller supplies `alloc` and the counts explicitly. But the backing is
+/// `arena + tables`, and `ARENA_SIZE` is DERIVED in this crate's build script
+/// from `MAX_CBS`, `RX_BUF_SIZE` and `ACTION_CLIENTS`. A consumer computing from
+/// units would have to re-implement that derivation — a second implementation,
+/// which is the whole thing this design refuses. So the consumer probes the one
+/// number, and keys its probe directory by the executor env, because unlike the
+/// units this DOES vary with it.
+///
+/// Behind a feature and OFF by default: it is `#[used]`, and a shipped image
+/// should not carry a static that exists only to be measured. The probe enables
+/// it for its own nested build, which is a separate compilation from the linked
+/// one.
+#[cfg(feature = "layout-size-markers")]
+#[used]
+#[unsafe(no_mangle)]
+#[doc(hidden)]
+pub static __NROS_LU_SZ_executor_backing: [u8;
+    crate::executor::backing::EXECUTOR_BACKING_DEFAULT_U64S * 8] =
+    [0u8; crate::executor::backing::EXECUTOR_BACKING_DEFAULT_U64S * 8];
+
 const fn unit_of<T>() -> RegionUnit {
     RegionUnit {
         size: size_of::<T>(),
