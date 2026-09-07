@@ -547,10 +547,22 @@ def evaluate(
             problems.append(f"  {who}: `date` is not YYYY-MM-DD: {e['date']!r}")
         else:
             when = datetime.date.fromisoformat(str(e["date"]))
-            if when > today:
+            # ONE DAY of slack, and it is not laxity — it is the difference
+            # between two clocks the ledger spans. `date.today()` is LOCAL, the
+            # runner is UTC, and an author east of Greenwich writes tomorrow's
+            # UTC date for eight to twelve hours of every day. This gate went
+            # red on exactly that: `2026-09-08` recorded at 00:56 CST, read on a
+            # runner where it was still `2026-09-07 16:56` UTC.
+            #
+            # The check exists to catch a date nobody could have run — a typo or
+            # a fabricated verdict — and its own negative control uses
+            # `2099-01-01`. A day of tolerance still catches that and stops
+            # rejecting an honest entry for the timezone its author sits in.
+            if when > today + datetime.timedelta(days=1):
                 problems.append(
                     f"  {who}: `date` {when} is in the future — a typo, or a run "
-                    f"that has not happened."
+                    f"that has not happened. (One day of slack is allowed for "
+                    f"the local/UTC gap; this is beyond it.)"
                 )
 
         verdict = str(e["verdict"]).strip()
