@@ -1125,8 +1125,21 @@ jobs:
 
       # Same path + key as the `check` job's cache, or this warms nothing.
       # `check-gate-cache-keys-agree` asserts they stay identical.
-      - name: Cache CLI build (compile tier)
-        uses: actions/cache@v4
+      #
+      # RESTORE here, SAVE right after "Build nros CLI + the launch resolver"
+      # below — deliberately split. `actions/cache` saves in a POST step, at
+      # job end; by then nothing else in THIS job writes into these two
+      # `target` dirs, but a combined action still stores whatever the runner
+      # image itself leaves lying around under them plus whatever a future
+      # step here grows into. Measured on the live cache under the sibling
+      # `nros-cli-*` key in host-tests.yml: entries at 116 MB (restore/save
+      # split, bounded to the CLI build) and 8194 MB (combined action, one
+      # entry carrying a whole job's leftovers) — the repository's 10 GB
+      # Actions cache total was at 11.69 GB, so GitHub was evicting, including
+      # `gate.yml`'s own sccache entry that the required PR check reads.
+      - name: Restore CLI build cache (compile tier)
+        id: cli-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             packages/cli/target
@@ -1135,8 +1148,14 @@ jobs:
           restore-keys: |
             nros-cli-${{ runner.os }}-
 
-      - name: Cache sccache directory
-        uses: actions/cache@v4
+      # RESTORE here, SAVE right after "Build nros CLI + the launch resolver"
+      # below — same split, same reason: sccache's own dir is populated by
+      # that same step (every `cargo` call there runs through `RUSTC_WRAPPER`
+      # once "Configure sccache" exports it), and nothing after that step
+      # writes into it.
+      - name: Restore sccache directory
+        id: sccache-cache
+        uses: actions/cache/restore@v4
         with:
           path: /tmp/sccache
           key: sccache-${{ runner.os }}-check-${{ github.sha }}
@@ -1217,6 +1236,26 @@ jobs:
           # the artifact that step waits on.
           cargo test --no-run --manifest-path packages/cli/Cargo.toml
 
+      # SAVE NOW, before anything else writes into these paths (nothing after
+      # this point does). See the restore steps above for the measurement.
+      # `if: always()` is deliberately NOT set: a failed build leaves a target
+      # dir that should not become the entry every later run restores from.
+      - name: Save CLI build cache (compile tier)
+        if: steps.cli-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            packages/cli/target
+            packages/cli/nros-launch-resolve/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+
+      - name: Save sccache directory
+        if: steps.sccache-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /tmp/sccache
+          key: sccache-${{ runner.os }}-check-${{ github.sha }}
+
       # Say what was actually warmed. This job was green for its whole life
       # while saving nothing, because the only evidence was a `::warning::` in
       # the save step's log. A size of 0 here means the wrapper did not run and
@@ -1253,8 +1292,20 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
-      - name: Cache CLI build (Phase 218)
-        uses: actions/cache@v4
+      # RESTORE here, SAVE right after "just scaffold-journey" below —
+      # deliberately split. `actions/cache` saves in a POST step, at job end;
+      # `just scaffold-journey`'s `setup-cli` prereq is what actually populates
+      # `packages/cli/target` (via `cargo build`), and the recipe itself writes
+      # nothing else into that dir afterward. A combined action here stores
+      # whatever this job leaves behind rather than "the CLI build" alone.
+      # Measured on the live cache under the sibling `nros-cli-*` key in
+      # host-tests.yml: 116 MB (restore/save split) vs 8194 MB (combined
+      # action) — the repository's 10 GB Actions cache total was at 11.69 GB,
+      # so GitHub was evicting, including `gate.yml`'s own sccache entry that
+      # the required PR check reads.
+      - name: Restore CLI build cache (Phase 218)
+        id: cli-cache
+        uses: actions/cache/restore@v4
         with:
           path: packages/cli/target
           key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
@@ -1272,6 +1323,18 @@ jobs:
         run: |
           source ./activate.sh
           just scaffold-journey
+
+      # SAVE NOW, before anything else writes into this directory (nothing
+      # after this point does — this is the job's last step). See the restore
+      # step above for the measurement. `if: always()` is deliberately NOT
+      # set: a failed build leaves a target dir that should not become the
+      # entry every later run restores from.
+      - name: Save CLI build cache (Phase 218)
+        if: steps.cli-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
 
   # ----- colcon-parity (the CI image, phase-413 W3) -----
   #

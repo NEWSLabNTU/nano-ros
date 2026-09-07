@@ -82,7 +82,20 @@ jobs:
       modules: ${{ steps.lane.outputs.modules }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      # RESTORE here, SAVE right after the "id: lane" build step below —
+      # deliberately split. `actions/cache` saves in a POST step, at job end;
+      # this job's only step touching these paths is the `cargo build` below,
+      # and nothing after it writes into them, so a combined action stores
+      # nothing more than the split does while risking whatever else lands
+      # under `target` in a future edit to this job. Measured on the live
+      # cache under the sibling `nros-cli-*` key in host-tests.yml: 116 MB
+      # (restore/save split) vs 8194 MB (combined action) under the SAME key —
+      # the repository's 10 GB Actions cache total was at 11.69 GB, so GitHub
+      # was evicting, including `gate.yml`'s own sccache entry that the
+      # required PR check reads.
+      - name: Restore lane-coords build cache
+        id: lane-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/registry
@@ -119,6 +132,22 @@ jobs:
             cat lane-coords.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # SAVE NOW, before anything else writes into these paths (nothing after
+      # this point does). See the restore step above for the measurement.
+      # `if: always()` is deliberately NOT set: a failed build leaves a
+      # `target` dir that should not become the entry every later run
+      # restores from.
+      - name: Save lane-coords build cache
+        if: steps.lane-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: lane-coords-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: tier2-nightly-lane
@@ -305,8 +334,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache CLI build (Phase 218)
-        uses: actions/cache@v4
+      # RESTORE here, SAVE right after "Build nros CLI from
+      # packages/cli/ (Phase 218)" below — deliberately split.
+      # `actions/cache` saves in a POST step, at job end; that step's
+      # composite action (`./.github/actions/setup-nros-cli`) is the SOLE
+      # populator of `packages/cli/target` in this job, and nothing after
+      # it writes into that dir. Measured on the live cache under this
+      # SAME key in host-tests.yml: 116 MB (restore/save split) vs
+      # 8194 MB (combined action) — the repository's 10 GB Actions cache
+      # total was at 11.69 GB, so GitHub was evicting, including
+      # `gate.yml`'s own sccache entry that the required PR check reads.
+      - name: Restore CLI build cache (Phase 218)
+        id: cli-cache
+        uses: actions/cache/restore@v4
         with:
           path: packages/cli/target
           key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
@@ -315,6 +355,19 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         uses: ./.github/actions/setup-nros-cli
+
+      # SAVE NOW, before anything else writes into this directory (the
+      # composite action above is the sole populator). See the restore
+      # step above for the measurement. `if: always()` is deliberately
+      # NOT set: a failed build leaves a target dir that should not
+      # become the entry every later run restores from.
+      - name: Save CLI build cache (Phase 218)
+        if: steps.cli-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
+
       # phase-413 W3 — provision the repo's declared `[prereq.*]` closure.
       #
       # `nros setup --system --sudo` resolves what the INDEX declares for the
@@ -675,8 +728,19 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
-      - name: Cache CLI build (Phase 218)
-        uses: actions/cache@v4
+      # RESTORE here, SAVE right after "Build nros CLI from
+      # packages/cli/ (Phase 218)" below — deliberately split.
+      # `actions/cache` saves in a POST step, at job end; that step's
+      # composite action (`./.github/actions/setup-nros-cli`) is the SOLE
+      # populator of `packages/cli/target` in this job, and nothing after
+      # it writes into that dir. Measured on the live cache under this
+      # SAME key in host-tests.yml: 116 MB (restore/save split) vs
+      # 8194 MB (combined action) — the repository's 10 GB Actions cache
+      # total was at 11.69 GB, so GitHub was evicting, including
+      # `gate.yml`'s own sccache entry that the required PR check reads.
+      - name: Restore CLI build cache (Phase 218)
+        id: cli-cache
+        uses: actions/cache/restore@v4
         with:
           path: packages/cli/target
           key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
@@ -685,6 +749,18 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         uses: ./.github/actions/setup-nros-cli
+
+      # SAVE NOW, before anything else writes into this directory (the
+      # composite action above is the sole populator). See the restore
+      # step above for the measurement. `if: always()` is deliberately
+      # NOT set: a failed build leaves a target dir that should not
+      # become the entry every later run restores from.
+      - name: Save CLI build cache (Phase 218)
+        if: steps.cli-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
 
       # The image registered the SDK CMake package as root; the container runs
       # with HOME=/github/home → re-register for this HOME (4.4's FindZephyr-sdk
@@ -778,8 +854,19 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
-      - name: Cache CLI build (Phase 218)
-        uses: actions/cache@v4
+      # RESTORE here, SAVE right after "Build nros CLI from
+      # packages/cli/ (Phase 218)" below — deliberately split.
+      # `actions/cache` saves in a POST step, at job end; that step's
+      # composite action (`./.github/actions/setup-nros-cli`) is the SOLE
+      # populator of `packages/cli/target` in this job, and nothing after
+      # it writes into that dir. Measured on the live cache under this
+      # SAME key in host-tests.yml: 116 MB (restore/save split) vs
+      # 8194 MB (combined action) — the repository's 10 GB Actions cache
+      # total was at 11.69 GB, so GitHub was evicting, including
+      # `gate.yml`'s own sccache entry that the required PR check reads.
+      - name: Restore CLI build cache (Phase 218)
+        id: cli-cache
+        uses: actions/cache/restore@v4
         with:
           path: packages/cli/target
           key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
@@ -788,6 +875,18 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         uses: ./.github/actions/setup-nros-cli
+
+      # SAVE NOW, before anything else writes into this directory (the
+      # composite action above is the sole populator). See the restore
+      # step above for the measurement. `if: always()` is deliberately
+      # NOT set: a failed build leaves a target dir that should not
+      # become the entry every later run restores from.
+      - name: Save CLI build cache (Phase 218)
+        if: steps.cli-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
 
       - name: Register the baked Zephyr SDK for this HOME
         run: /opt/zephyr-sdk/setup.sh -c
@@ -852,8 +951,19 @@ jobs:
       - name: Checkout nano-ros
         uses: actions/checkout@v4
 
-      - name: Cache CLI build (Phase 218)
-        uses: actions/cache@v4
+      # RESTORE here, SAVE right after "Build nros CLI from
+      # packages/cli/ (Phase 218)" below — deliberately split.
+      # `actions/cache` saves in a POST step, at job end; that step's
+      # composite action (`./.github/actions/setup-nros-cli`) is the SOLE
+      # populator of `packages/cli/target` in this job, and nothing after
+      # it writes into that dir. Measured on the live cache under this
+      # SAME key in host-tests.yml: 116 MB (restore/save split) vs
+      # 8194 MB (combined action) — the repository's 10 GB Actions cache
+      # total was at 11.69 GB, so GitHub was evicting, including
+      # `gate.yml`'s own sccache entry that the required PR check reads.
+      - name: Restore CLI build cache (Phase 218)
+        id: cli-cache
+        uses: actions/cache/restore@v4
         with:
           path: packages/cli/target
           key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
@@ -862,6 +972,18 @@ jobs:
 
       - name: Build nros CLI from packages/cli/ (Phase 218)
         uses: ./.github/actions/setup-nros-cli
+
+      # SAVE NOW, before anything else writes into this directory (the
+      # composite action above is the sole populator). See the restore
+      # step above for the measurement. `if: always()` is deliberately
+      # NOT set: a failed build leaves a target dir that should not
+      # become the entry every later run restores from.
+      - name: Save CLI build cache (Phase 218)
+        if: steps.cli-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: packages/cli/target
+          key: nros-cli-${{ runner.os }}-${{ hashFiles('packages/cli/Cargo.lock', 'packages/cli/**/Cargo.toml', 'packages/cli/**/*.rs') }}
 
       - name: Register the baked Zephyr SDK for this HOME
         run: /opt/zephyr-sdk/setup.sh -c

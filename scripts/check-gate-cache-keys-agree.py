@@ -56,6 +56,40 @@ def jobs(text):
     return out
 
 
+def _path_values(blk):
+    """The `path:` value(s) of one `with:` block — a single inline value, or
+    every line of a `path: |` block scalar.
+
+    INDENTATION-SCOPED, not "any indented line": a flat `\\s{10,}` scan used to
+    sweep up `restore-keys: |` and ITS OWN block-scalar value as if they were
+    paths, because both happen to sit at the same indent as `path:` itself.
+    That was invisible as long as every restore step also carried a save step
+    with the identical `restore-keys:` tail — restore/save split (a job with a
+    restore step's `restore-keys:` but no matching save step) breaks that
+    symmetry and turns the pollution into a real false mismatch. Scoping to
+    lines STRICTLY DEEPER than `path:`'s own indent, stopping at the next line
+    that is not, is what a YAML block scalar actually means.
+    """
+    lines = blk.split("\n")
+    for i, line in enumerate(lines):
+        m = re.match(r"^(\s*)path:\s*(.*)$", line)
+        if not m:
+            continue
+        indent, val = len(m.group(1)), m.group(2).strip()
+        if val and val not in ("|", "|-", ">", ">-"):
+            return [val]
+        out = []
+        for line2 in lines[i + 1 :]:
+            if not line2.strip():
+                continue
+            indent2 = len(line2) - len(line2.lstrip(" "))
+            if indent2 <= indent:
+                break
+            out.append(line2.strip())
+        return out
+    return []
+
+
 def cache_entries(body):
     """[(path_block, key)] for every actions/cache step in a job body."""
     out = []
@@ -70,10 +104,7 @@ def cache_entries(body):
     ):
         blk = m.group(1)
         key = re.search(r"^\s*key:\s*(.+)$", blk, re.M)
-        paths = re.findall(r"^\s{10,}([^\s#][^\n]*)$", blk, re.M)
-        pth = re.search(r"^\s*path:\s*(.+)$", blk, re.M)
-        single = pth.group(1).strip() if pth and pth.group(1).strip() != "|" else None
-        norm = [single] if single else [p.strip() for p in paths if not p.strip().startswith("key:")]
+        norm = _path_values(blk)
         if key:
             out.append((tuple(sorted(p for p in norm if p)), key.group(1).strip()))
     return out
@@ -102,6 +133,41 @@ def self_test():
         cache_entries(js["b"]),
     )
     assert cache_entries(js["a"])[0][1] == "k-1"
+
+    # A restore step (with `restore-keys:`) and a save step (without) for the
+    # SAME multi-line `path: |` + `key:` must parse to the SAME entry — this
+    # is exactly the restore/save split shape, and `restore-keys:`'s own
+    # block-scalar value must never be swept in as a path.
+    t2 = (
+        "jobs:\n"
+        "  restore:\n"
+        "    steps:\n"
+        "      - uses: actions/cache/restore@v4\n"
+        "        with:\n"
+        "          path: |\n"
+        "            packages/cli/target\n"
+        "            packages/cli/nros-launch-resolve/target\n"
+        "          key: nros-cli-x\n"
+        "          restore-keys: |\n"
+        "            nros-cli-\n"
+        "  save:\n"
+        "    steps:\n"
+        "      - uses: actions/cache/save@v4\n"
+        "        with:\n"
+        "          path: |\n"
+        "            packages/cli/target\n"
+        "            packages/cli/nros-launch-resolve/target\n"
+        "          key: nros-cli-x\n"
+    )
+    js2 = jobs(t2)
+    ce_restore = cache_entries(js2["restore"])
+    ce_save = cache_entries(js2["save"])
+    assert ce_restore == ce_save, (ce_restore, ce_save)
+    assert ce_restore[0][0] == (
+        "packages/cli/nros-launch-resolve/target",
+        "packages/cli/target",
+    ), ce_restore
+
     sys.stdout.write("check-gate-cache-keys-agree self-test: OK\n")
 
 
