@@ -1869,6 +1869,30 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             pub extern "C" fn rust_main() {
                 // SAFETY: `set_logger` is callable once post-kernel-init.
                 unsafe { let _ = ::zephyr::set_logger(); }
+                // issue 1123 — publish an `nros_log` sink list, the sibling of
+                // the `set_logger` above. That one serves the `log` FACADE (what
+                // an example body and the `::log::error!`s below write); this one
+                // serves `nros_log` (what the FRAMEWORK writes — nros-node's
+                // executor, nros-rmw-zenoh's session/pool diagnostics,
+                // nros-rmw-cffi). Without it `dispatch_to_sinks` finds a null
+                // list and HOLDS each record in the bounded `nros_log::early`
+                // ring forever: issue 0710 removed the implicit platform
+                // fallback on purpose, and a pure-Rust Zephyr image has no
+                // `libnros_c.a` (issue 0163) to run `nros_log_emit`'s lazy
+                // `ensure_default_sinks()`. `nros-board-zephyr` covers only
+                // `run_tiers`, so a single-tier image reached no funnel at all.
+                //
+                // Reached through `nros_platform` (which re-exports
+                // `nros_platform_cffi::log`) because that is the crate the
+                // generated Entry manifest already declares; giving the entry a
+                // `nros-platform-cffi` dep of its own is the link-time
+                // requirement issue 0710 rejected.
+                //
+                // Ordered FIRST so `init`'s drain of the early ring reaches a
+                // live writer — the Zephyr port defines `nros_platform_log_write`
+                // unconditionally, so there is no `None`-writer window like the
+                // one issue 1048 found on esp32.
+                ::nros_platform::log::init_default();
                 // issue 0460 — this was `let _ = __nros_zephyr_entry_run();`,
                 // which is the silent early-return this project bans at
                 // runtime. The comment above already SAID errors are "logged
@@ -2512,6 +2536,16 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         let expanded = quote! {
             #( #tracked_consts )*
             fn main() -> ::core::result::Result<(), ::nros_bridge::ConfigError> {
+                // issue 1123 (the class, not the reported Zephyr site) — a
+                // `[[bridge]]` entry REPLACES the register/spin body, so it
+                // reaches no board funnel and published no `nros_log` sink list
+                // either. `nros-rmw-bridge`'s own diagnostics (`cffi.rs`, and
+                // `run_from_config_str`'s forward-failure path) are `nros_log`
+                // records — held in the bounded `nros_log::early` ring and never
+                // seen. The generated Entry manifest always declares
+                // `nros-platform` with the board's `platform-*` feature, so this
+                // resolves for every board a bridge can deploy to.
+                ::nros_platform::log::init_default();
                 #( #register_calls )*
                 #( #typed_register_calls )*
                 ::nros_bridge::run_from_config_str(::core::include_str!(#cfg_lit))

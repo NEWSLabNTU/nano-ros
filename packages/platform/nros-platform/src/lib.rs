@@ -68,6 +68,36 @@ pub use resolve::{NET_ENDPOINT_ALIGN, NET_ENDPOINT_SIZE, NET_SOCKET_ALIGN, NET_S
 ))]
 pub use resolve::ConcretePlatform;
 
+// issue 1123 — the `nros_log` sink list, reachable from a crate the ENTRY
+// already declares.
+//
+// `nros_platform_cffi::log::init_default()` is the one funnel that publishes a
+// sink list (issue 0710 moved it there because the ABI it speaks is a
+// DEPENDENCY, not a feature). Every board crate calls it in its own boot path —
+// but the Zephyr pure-Rust entry is a MACRO, not a board method, and neither
+// the Zephyr example leaves (`examples/zephyr/rust/*`) nor `nros` itself dep
+// `nros-platform-cffi`, so no expansion could name it. They all dep THIS crate
+// (`nros-platform = { features = ["platform-zephyr"] }`), and every
+// `platform-*` feature already pulls `nros-platform-cffi` in, so the re-export
+// costs nothing and adds no link-time requirement that the feature did not
+// already carry.
+//
+// Deliberately NOT giving the leaves a `nros-platform-cffi` dep of their own:
+// that pushes a link-time requirement onto every consumer, which is the shape
+// issue 0710 rejected.
+#[cfg(any(
+    feature = "platform-posix",
+    feature = "platform-cffi",
+    feature = "platform-mps2-an385",
+    feature = "platform-stm32f4",
+    feature = "platform-esp32-qemu",
+    feature = "platform-nuttx",
+    feature = "platform-freertos",
+    feature = "platform-threadx",
+    feature = "platform-zephyr",
+))]
+pub use nros_platform_cffi::log;
+
 // Re-export every trait from the split-out `nros-platform-api` crate so
 // existing `use nros_platform::PlatformClock;` imports keep working.
 pub use nros_platform_api::*;

@@ -881,6 +881,29 @@ macro_rules! zephyr_component_main {
             unsafe {
                 zephyr::set_logger().ok();
             }
+            // issue 1123 — publish an `nros_log` sink list. `zephyr::set_logger`
+            // above serves the `log` FACADE, which is what an example body
+            // writes; it does nothing for `nros_log`, which is what the
+            // FRAMEWORK writes (nros-node's executor, nros-rmw-zenoh's session
+            // and pool diagnostics, nros-rmw-cffi). With no sink list
+            // `nros_log::dispatch_to_sinks` holds each record in the bounded
+            // `nros_log::early` ring — issue 0710 deliberately removed the
+            // implicit platform fallback — so on a pure-Rust Zephyr image every
+            // framework record was constructed, dispatched and never seen.
+            //
+            // This is the funnel: a pure-Rust Zephyr image has no
+            // `libnros_c.a` (issue 0163), so `nros_log_init` / `nros_log_emit`'s
+            // lazy `ensure_default_sinks()` never run, and `nros-board-zephyr`
+            // covers only `run_tiers`. Reached through `nros_platform` because
+            // the example leaves dep that and not `nros-platform-cffi`.
+            //
+            // FIRST, before `wait_network`: `init` DRAINS the early ring, and
+            // anything raised during bringup is exactly what the ring exists to
+            // serve (the esp32 half of this class, issue 1048, got this order
+            // backwards and drained into a writer that was still `None`). The
+            // Zephyr writer is `nros_platform_log_write`, defined
+            // unconditionally by the C port, so there is no such window here.
+            ::nros_platform::log::init_default();
             // Phase 248 C7 step 1 — relocated helper (was `$crate::platform::zephyr`).
             let _ = ::nros_platform::zephyr::wait_network(2000);
             // Phase 249 P1 — RMW register is board/platform-owned (Phase 248 C5a);
