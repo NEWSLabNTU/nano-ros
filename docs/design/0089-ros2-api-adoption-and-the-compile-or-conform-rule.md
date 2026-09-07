@@ -958,6 +958,63 @@ edit, which the governing principle requires be made loud by other means:
    The generated entry already checks; a hand-written `main` does not, and a
    node that failed to create currently proceeds silently.
 
+## The C++ std surface is REQUESTED, not discovered (2026-09-08)
+
+The compile-or-conform rule needs a surface on which an upstream rclcpp file
+compiles unmodified. This section settles what that surface is and who turns it
+on, because the answer today is "the toolchain does, behind the consumer's
+back".
+
+Six macros gate it. Each is defined by a block repeated 29 times across 13
+headers whose `#elif` arm reads `__has_include(<memory>)` — so `NROS_CPP_STD` is
+an opt-in, and the same macros are ALSO discovered from the include path. On any
+hosted compiler they are on whether or not the consumer asked, and
+`rclcpp::Node` is guarded on the discovered ones (`nros.hpp:447`).
+
+**Measured, nothing but ported code wants that surface.** The hosted
+`shared_ptr`-returning `create_*` family has ONE user in the tree and it is a
+compile test; the freestanding out-ref family has 27 call sites in `examples/`
+alone. Every consumer of the hosted `rclcpp::Node` class is a porting template,
+a compile test, or the `diagnostic_updater` shim. No application code, on any
+platform.
+
+**So the axis is not host versus embedded.** It is *ported rclcpp code* versus
+*code written for nano-ros*, and every real nano-ros program — native
+included — is already on the freestanding side. `NROS_CPP_HAS_SHARED_PTR` asks
+"can this toolchain reach `<memory>`" while the question that needs answering is
+"does this consumer want the porting surface". Two questions, one name: the
+collapse CLAUDE.md records for `native`/`posix`/`linux`, one layer over.
+
+**Decision: the `#elif __has_include` arm is deleted.** The std surface is
+reachable only through `NROS_CPP_STD`. It is a declared porting surface — the
+thing you enable to compile someone else's file — and never something a build
+acquires by being hosted. phase-438 carries it.
+
+This is the same argument phase-359 made for Rust, where `std` was found to be a
+second implementation of the platform layer rather than a convenience over it.
+The C++ case is weaker in one way and stronger in another: the surface is
+genuinely needed (it is what makes porting work, so it is not deleted), but it
+was never even chosen.
+
+### What follows for the node merge
+
+Three of phase-427's hardest problems are consequences of the discovery, not of
+the merge:
+
+* `rclcpp::Node` does not exist freestanding, because its guard is the
+  discovered macros. That is the single reason the type that must become the
+  one node type is absent from half its targets.
+* Hosted-only MEMBERS exist — `owned_entities_`, the `enable_shared_from_this`
+  base — because the hosted API is a different SHAPE of the same class rather
+  than additive methods over a fixed layout. Once the surface is opt-in and the
+  layout unconditional, the 0135/0460 hazard has nothing to bite on.
+* `shared_from_this` shrinks from a base class that changes everyone's layout to
+  a hosted-only method over a `weak_ptr` behind `hosted_`. The decision recorded
+  above stands; its cost is the same, but it stops being a layout question.
+
+phase-427 W1 therefore moves to phase-438 W4, and phase-438 lands before both
+phase-426 and phase-427.
+
 ## Conciliating phase-426 and phase-427 (2026-09-07)
 
 The two phases that implement this RFC each declared the other out of scope, in
