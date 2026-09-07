@@ -257,6 +257,34 @@ impl ParameterValue {
         s.push_str(value).ok()?;
         Some(Self::String(s))
     }
+
+    /// Create a bool-array value from a slice.
+    ///
+    /// phase-426 W4 — `None` when the slice is longer than [`MAX_ARRAY_LEN`],
+    /// the same fallible shape [`from_string`](Self::from_string) has for the
+    /// same reason: the value lives in a `heapless::Vec` inside the server's
+    /// fixed slot and there is no allocator to grow it.
+    ///
+    /// These three exist so a caller outside `nros-params` can build an array
+    /// value without naming `heapless` or the capacity constant. The C++ FFI
+    /// shim is such a caller: `nros_cpp_node_declare_param_*_array` forwards
+    /// `nros::ComponentNode`'s `std::vector<T>` facade into the executor's
+    /// store, and the capacity belongs where the storage is.
+    pub fn from_bool_array(values: &[bool]) -> Option<Self> {
+        Some(Self::BoolArray(Vec::from_slice(values).ok()?))
+    }
+
+    /// Create an integer-array value from a slice. See
+    /// [`from_bool_array`](Self::from_bool_array).
+    pub fn from_integer_array(values: &[i64]) -> Option<Self> {
+        Some(Self::IntegerArray(Vec::from_slice(values).ok()?))
+    }
+
+    /// Create a double-array value from a slice. See
+    /// [`from_bool_array`](Self::from_bool_array).
+    pub fn from_double_array(values: &[f64]) -> Option<Self> {
+        Some(Self::DoubleArray(Vec::from_slice(values).ok()?))
+    }
 }
 
 /// Floating point range constraints for parameters

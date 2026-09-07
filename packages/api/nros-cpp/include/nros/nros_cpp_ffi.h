@@ -3005,8 +3005,11 @@ nros_cpp_ret_t nros_cpp_get_param_double(void *executor, const char *name, doubl
  * Get a boolean parameter by name from the C++ executor's parameter store.
  *
  * Issue 0745 follow-up — the missing bool getter: without it, seeded bool
- * launch params were not ctor-adoptable (`ComponentNode::adopt_launch_seed_`
- * fell through to the compiled default for `bool`).
+ * launch params were not ctor-adoptable (the C++ facades' launch-seed helpers
+ * fell through to the compiled default for `bool`). Those helpers are gone
+ * since phase-426 W4 — with one store there is nothing to copy across — but
+ * this getter stays: it is the executor-scoped read the C API and the
+ * generated entry still use.
  *
  * # Safety
  * `executor` must be a valid, live `CppContext*`. `name` must be valid null-terminated
@@ -3029,6 +3032,248 @@ nros_cpp_ret_t nros_cpp_get_param_string(void *executor,
                                          const char *name,
                                          char *out_buf,
                                          size_t buf_len);
+
+/**
+ * Declare a `bool` parameter on this node, in the executor's store.
+ *
+ * # Safety
+ * `node` must be null or point to an `nros_cpp_node_t` opened by
+ * `nros_cpp_node_create*`. `name` must be a valid null-terminated UTF-8 string.
+ */
+nros_cpp_ret_t nros_cpp_node_declare_param_bool(const struct nros_cpp_node_t *node,
+                                                const char *name,
+                                                bool value);
+
+/**
+ * Declare an integer parameter on this node. See
+ * [`nros_cpp_node_declare_param_bool`].
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`].
+ */
+nros_cpp_ret_t nros_cpp_node_declare_param_integer(const struct nros_cpp_node_t *node,
+                                                   const char *name,
+                                                   int64_t value);
+
+/**
+ * Declare a double parameter on this node. See
+ * [`nros_cpp_node_declare_param_bool`].
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`].
+ */
+nros_cpp_ret_t nros_cpp_node_declare_param_double(const struct nros_cpp_node_t *node,
+                                                  const char *name,
+                                                  double value);
+
+/**
+ * Declare a string parameter on this node. A value longer than the store's
+ * `MAX_STRING_VALUE_LEN` is REFUSED (`NROS_CPP_RET_FULL`), never truncated —
+ * a silently shortened frame id is a wrong value, not a smaller one.
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`]; `value` must also be a valid
+ * null-terminated UTF-8 string.
+ */
+nros_cpp_ret_t nros_cpp_node_declare_param_string(const struct nros_cpp_node_t *node,
+                                                  const char *name,
+                                                  const char *value);
+
+/**
+ * Read a `bool` parameter of this node.
+ *
+ * `NROS_CPP_RET_NOT_FOUND` when the name is undeclared for this node OR holds
+ * another type — the C++ facade's `get_parameter<T>` asks a typed question and
+ * a wrong-typed answer is not one.
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`]; `out_value` must be writable.
+ */
+nros_cpp_ret_t nros_cpp_node_get_param_bool(const struct nros_cpp_node_t *node,
+                                            const char *name,
+                                            bool *out_value);
+
+/**
+ * Read an integer parameter of this node. See
+ * [`nros_cpp_node_get_param_bool`].
+ *
+ * # Safety
+ * As [`nros_cpp_node_get_param_bool`].
+ */
+nros_cpp_ret_t nros_cpp_node_get_param_integer(const struct nros_cpp_node_t *node,
+                                               const char *name,
+                                               int64_t *out_value);
+
+/**
+ * Read a double parameter of this node. See
+ * [`nros_cpp_node_get_param_bool`].
+ *
+ * # Safety
+ * As [`nros_cpp_node_get_param_bool`].
+ */
+nros_cpp_ret_t nros_cpp_node_get_param_double(const struct nros_cpp_node_t *node,
+                                              const char *name,
+                                              double *out_value);
+
+/**
+ * Read a string parameter of this node into `out_buf`, null-terminated.
+ *
+ * `NROS_CPP_RET_FULL` when the value did not fit: the buffer holds the
+ * truncated prefix, so a caller that ignores the code still holds a valid
+ * C string.
+ *
+ * # Safety
+ * As [`nros_cpp_node_get_param_bool`]; `out_buf` must be valid for `buf_len`
+ * bytes.
+ */
+nros_cpp_ret_t nros_cpp_node_get_param_string(const struct nros_cpp_node_t *node,
+                                              const char *name,
+                                              char *out_buf,
+                                              size_t buf_len);
+
+/**
+ * Set an already-declared `bool` parameter of this node.
+ *
+ * Routes through `Executor::set_parameter_on`, i.e. through
+ * `ParameterServer::apply` — the same read-only / type / range rules a remote
+ * `ros2 param set` gets. A C++ facade that wrote the slot directly would be a
+ * second answer to "may this set happen".
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`].
+ */
+nros_cpp_ret_t nros_cpp_node_set_param_bool(const struct nros_cpp_node_t *node,
+                                            const char *name,
+                                            bool value);
+
+/**
+ * Set an already-declared integer parameter of this node. See
+ * [`nros_cpp_node_set_param_bool`].
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`].
+ */
+nros_cpp_ret_t nros_cpp_node_set_param_integer(const struct nros_cpp_node_t *node,
+                                               const char *name,
+                                               int64_t value);
+
+/**
+ * Set an already-declared double parameter of this node. See
+ * [`nros_cpp_node_set_param_bool`].
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`].
+ */
+nros_cpp_ret_t nros_cpp_node_set_param_double(const struct nros_cpp_node_t *node,
+                                              const char *name,
+                                              double value);
+
+/**
+ * Set an already-declared string parameter of this node. See
+ * [`nros_cpp_node_set_param_bool`].
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_string`].
+ */
+nros_cpp_ret_t nros_cpp_node_set_param_string(const struct nros_cpp_node_t *node,
+                                              const char *name,
+                                              const char *value);
+
+/**
+ * Is `name` declared for this node?
+ *
+ * A `bool`, not a `nros_cpp_ret_t`: `has_parameter` is upstream's spelling and
+ * answers a yes/no question. "No store compiled in" is therefore
+ * indistinguishable from "not declared", which is the right collapse — in both
+ * cases the node does not have that parameter.
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`].
+ */
+bool nros_cpp_node_has_param(const struct nros_cpp_node_t *node, const char *name);
+
+/**
+ * Declare a double-array parameter on this node, copying `len` elements.
+ *
+ * `NROS_CPP_RET_FULL` when `len` exceeds the store's `MAX_ARRAY_LEN`.
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_bool`]; `data` must be valid for `len`
+ * elements (it may be null when `len` is 0).
+ */
+nros_cpp_ret_t nros_cpp_node_declare_param_double_array(const struct nros_cpp_node_t *node,
+                                                        const char *name,
+                                                        const double *data,
+                                                        size_t len);
+
+/**
+ * Declare an integer-array parameter on this node. See
+ * [`nros_cpp_node_declare_param_double_array`].
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_double_array`].
+ */
+nros_cpp_ret_t nros_cpp_node_declare_param_integer_array(const struct nros_cpp_node_t *node,
+                                                         const char *name,
+                                                         const int64_t *data,
+                                                         size_t len);
+
+/**
+ * Declare a bool-array parameter on this node. See
+ * [`nros_cpp_node_declare_param_double_array`].
+ *
+ * # Safety
+ * As [`nros_cpp_node_declare_param_double_array`].
+ */
+nros_cpp_ret_t nros_cpp_node_declare_param_bool_array(const struct nros_cpp_node_t *node,
+                                                      const char *name,
+                                                      const bool *data,
+                                                      size_t len);
+
+/**
+ * Copy a double-array parameter of this node into `out`, writing the element
+ * count to `out_len`.
+ *
+ * `NROS_CPP_RET_FULL` when the stored array is longer than `capacity` —
+ * NOTHING is written in that case and `*out_len` carries the length the caller
+ * would have needed. Truncating a weight matrix produces a plausible wrong
+ * answer, which is worse than none.
+ *
+ * # Safety
+ * As [`nros_cpp_node_get_param_bool`]; `out` must be valid for `capacity`
+ * elements and `out_len` must be writable.
+ */
+nros_cpp_ret_t nros_cpp_node_get_param_double_array(const struct nros_cpp_node_t *node,
+                                                    const char *name,
+                                                    double *out,
+                                                    size_t capacity,
+                                                    size_t *out_len);
+
+/**
+ * Copy an integer-array parameter of this node. See
+ * [`nros_cpp_node_get_param_double_array`].
+ *
+ * # Safety
+ * As [`nros_cpp_node_get_param_double_array`].
+ */
+nros_cpp_ret_t nros_cpp_node_get_param_integer_array(const struct nros_cpp_node_t *node,
+                                                     const char *name,
+                                                     int64_t *out,
+                                                     size_t capacity,
+                                                     size_t *out_len);
+
+/**
+ * Copy a bool-array parameter of this node. See
+ * [`nros_cpp_node_get_param_double_array`].
+ *
+ * # Safety
+ * As [`nros_cpp_node_get_param_double_array`].
+ */
+nros_cpp_ret_t nros_cpp_node_get_param_bool_array(const struct nros_cpp_node_t *node,
+                                                  const char *name,
+                                                  bool *out,
+                                                  size_t capacity,
+                                                  size_t *out_len);
 
 /**
  * Register a hook to run BEFORE the executor's session is closed.
