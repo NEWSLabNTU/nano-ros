@@ -69,6 +69,14 @@ EXEMPT = {
     # The `nros::main!` emitters drive ONE executor — a single-tier image has no
     # second tier to starve, which is the gap's entire subject.
     "packages/core/nros-macros/src/main_macro.rs": "single-executor entry shapes, no tiers",
+    # `nros::zephyr_component_main!` is the single-NODE sibling of the entry
+    # shape above: one executor, one component, spin forever. Zephyr's tiered
+    # path is `ZephyrBoard`'s own funnel in `nros-board-zephyr`, which is a
+    # different file and not exempt. Added when an issue-1123 COMMENT in this
+    # file first named that funnel: the scope test reads the RAW text, so a
+    # prose mention of the name is enough to put a file in scope, and the file
+    # was then judged on a loop that has no tiers to starve.
+    "packages/api/nros/src/lib.rs": "single-executor entry macro, no tiers",
 }
 
 
