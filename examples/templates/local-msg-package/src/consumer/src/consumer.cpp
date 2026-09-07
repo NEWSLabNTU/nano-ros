@@ -73,7 +73,14 @@ class MixedConsumer : public rclcpp::Node {
         RCLCPP_INFO(this->get_logger(), "tick %d — published Greeting/Echo/Point/Imu", seq);
     }
 
-    rclcpp::Timer::SharedPtr timer_;
+    // `rclcpp::TimerBase`, NOT `rclcpp::Timer`, and that is load-bearing:
+    // `just colcon-parity` builds this package against REAL ROS 2 (it sources
+    // /opt/ros/<distro>/setup.bash), where `rclcpp::Timer` does not exist —
+    // upstream spells the type-erased handle `TimerBase`. nano-ros has no timer
+    // hierarchy, so `rclcpp::TimerBase` is a flat alias for `rclcpp::Timer`
+    // there; this line is the only spelling that compiles BOTH ways, which is
+    // the whole property this template exists to hold. Do not "modernise" it.
+    std::shared_ptr<rclcpp::TimerBase> timer_;
     std::shared_ptr<rclcpp::Publisher<local_msgs::msg::Greeting>> greeting_pub_;
     std::shared_ptr<rclcpp::Publisher<extra_msgs::msg::Echo>> echo_pub_;
     std::shared_ptr<rclcpp::Publisher<geometry_msgs::msg::Point>> point_pub_;

@@ -37,7 +37,11 @@ class ShadowConsumer : public rclcpp::Node {
     }
 
   private:
-    rclcpp::Timer::SharedPtr timer_;
+    // `rclcpp::TimerBase` is upstream's spelling and the one that compiles
+    // against real ROS 2 as well as against nano-ros; see the note in
+    // `examples/templates/local-msg-package`. nano-ros has no timer hierarchy,
+    // so the name is a flat alias for `rclcpp::Timer`.
+    std::shared_ptr<rclcpp::TimerBase> timer_;
     std::shared_ptr<rclcpp::Publisher<std_msgs::msg::Marker>> publisher_;
 };
 

@@ -954,39 +954,27 @@ cpp: cpp-fmt
         exit 1; \
     fi
 
-    # phase-430 W7 — `rclcpp::TimerBase` is RETIRED, and the retirement has to
-    # be AUDIBLE. The hierarchy is deleted outright (asserted in
-    # `ros2_one_dispatch_path.cpp`), but the NAME survives one release as a
-    # deprecated alias, because `examples/templates/cpp-port-minimal-publisher`
-    # is vendored UNMODIFIED to show upstream source compiling and it names
-    # `rclcpp::TimerBase::SharedPtr`. Without the warning that alias is just a
-    # rename that never happens.
-    test -f packages/api/nros-cpp/tests/compile/timer_base_deprecation_probe.cpp || { \
-        echo "ERROR: timer_base_deprecation_probe.cpp is MISSING -- the expected-failure" >&2; \
-        echo "       check below would PASS on a missing file." >&2; \
-        exit 1; \
-    }
-    echo "  - the retired rclcpp::TimerBase WARNS, naming rclcpp::Timer"
-    if c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
-        -Werror=deprecated-declarations \
+    # phase-430 W7 — `rclcpp::TimerBase` is a NAME, not a hierarchy, and both
+    # halves of that need holding.
+    #
+    # The HIERARCHY is deleted (`ros2_one_dispatch_path.cpp` asserts
+    # `!is_polymorphic<detail::WallTimer>` and the return type). The NAME is
+    # KEPT and is load-bearing: `just colcon-parity` builds
+    # `examples/templates/local-msg-package` against a REAL /opt/ros install and
+    # `cpp-port-minimal-publisher` is vendored UNMODIFIED, both declare a timer
+    # member, and upstream has no `rclcpp::Timer` — so without the alias the
+    # intersection of "compiles under real ROS 2" and "compiles under nano-ros"
+    # is empty for any ported node holding a timer. Deleting it outright is what
+    # turned that gate red; this probe is what stops the name regrowing a base
+    # underneath it instead.
+    echo "  - rclcpp::TimerBase is a NAME for the flat rclcpp::Timer, not a hierarchy (c++17)"
+    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
         -Itarget/nros-cpp-generated \
         -Itarget/nros-c-generated \
         -Ipackages/api/nros-cpp/include \
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
-        packages/api/nros-cpp/tests/compile/timer_base_deprecation_probe.cpp \
-        > tmp/refuse-timer-base.log 2>&1; then \
-        echo "ERROR: rclcpp::TimerBase no longer warns. It is a RETIRED name kept one" >&2; \
-        echo "       release so a ported file gets the migration in the compiler's own" >&2; \
-        echo "       words -- GCC offers no suggestion when the name is simply gone." >&2; \
-        exit 1; \
-    fi
-    nros_grep_q 'Write rclcpp::Timer' tmp/refuse-timer-base.log && _rc=0 || _rc=$?
-    if [ "$_rc" -ne 0 ]; then \
-        echo "ERROR: the TimerBase retirement no longer names its replacement." >&2; \
-        echo "       See tmp/refuse-timer-base.log." >&2; \
-        exit 1; \
-    fi
+        packages/api/nros-cpp/tests/compile/timer_base_is_a_name_not_a_hierarchy.cpp
 
     echo "  - QoS policy accessors + ms boundary (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Wno-deprecated-declarations \

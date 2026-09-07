@@ -110,7 +110,7 @@ The compat surface covers the patterns a typical ROS 2 C++ node uses:
 | `std::make_shared<MyNode>()` | works | `shared_from_this()` works too, with one caveat — see "Two things the compiler will not tell you" below. |
 | `create_publisher<M>(topic, qos)` | shared_ptr-returning wrapper | `qos` can be `rclcpp::QoS(10)` or an int. |
 | `create_subscription<M>(topic, qos, callback)` | registered on the executor arena; dispatched by **any** spin verb | **Capturing lambdas + `std::function` all work**. |
-| `create_wall_timer(period, callback)` | registered on the executor arena; dispatched by **any** spin verb | `std::chrono::duration` arg, capturing-lambda callback. Returns `rclcpp::Timer::SharedPtr`, not `TimerBase::SharedPtr` — see below. |
+| `create_wall_timer(period, callback)` | registered on the executor arena; dispatched by **any** spin verb | `std::chrono::duration` arg, capturing-lambda callback. Returns `rclcpp::TimerBase::SharedPtr`, which is `rclcpp::Timer::SharedPtr` — one flat type, two names. See below. |
 | `rclcpp::create_timer(node, clock, period, cb)` | the clock-taking verb; a `NROS_CLOCK_ROS_TIME` clock follows `/clock` | Humble's only form. `create_wall_timer` stays on the steady clock. |
 | `rclcpp::init(argc, argv) / shutdown() / ok() / spin(n) / spin_some(n)` | wraps `nros::init/shutdown/ok/spin_once` | argc/argv ignored. |
 | `RCLCPP_INFO / WARN / ERROR / DEBUG / FATAL` | dispatched through `NROS_*` macros | `_THROTTLE` variants degrade to plain log. |
@@ -168,13 +168,26 @@ node's lifetime (`diagnostic_updater::Updater(shared_from_this(), 1.0)` is the
 common case and is fine), and it is NOT safe to store somewhere that outlives
 the node. It also never throws where upstream would raise `bad_weak_ptr`.
 
-### `rclcpp::TimerBase` is `rclcpp::Timer`
+### `rclcpp::TimerBase` is a NAME here, not a hierarchy
 
-A ported `rclcpp::TimerBase::SharedPtr timer_;` becomes
-`rclcpp::Timer::SharedPtr timer_;`. For one release the old name still compiles,
-as a deprecated alias whose warning carries that sentence; after that it is
-gone. Do the rename when the warning appears — there is nothing behind it to
-wait for. There is no timer hierarchy here: the executor dispatches through a
+`rclcpp::TimerBase::SharedPtr timer_;` compiles unchanged, and you should keep
+writing it — it is the only spelling that works against real ROS 2 as well as
+against nano-ros, since upstream has no `rclcpp::Timer`.
+
+What differs is behind the name. nano-ros has no timer hierarchy: `TimerBase`
+is an ALIAS for the one flat `rclcpp::Timer`, so `is_same<TimerBase,
+Timer>::value` is true and neither spelling carries a vtable. The executor
+dispatches through a raw function pointer, so a polymorphic base would be cost
+with no caller.
+
+Two consequences worth knowing:
+
+* `rclcpp::WallTimer<...>` and `rclcpp::GenericTimer<...>` do not exist. The
+  clock axis is the second verb `rclcpp::create_timer(node, clock, period, cb)`
+  plus a runtime field, not a type parameter.
+* DERIVING from `rclcpp::TimerBase` gets you a concrete handle with a
+  non-virtual destructor. Upstream code almost never does this; if yours does,
+  it needs rework. There is no timer hierarchy here: the executor dispatches through a
 raw function pointer, so a polymorphic base would be a vtable nothing calls, and
 `TimerBase` is a name that promises `WallTimer` and `GenericTimer` siblings we
 deliberately do not have. The clock axis is a runtime field plus the second verb
