@@ -88,7 +88,7 @@ const GROUPS: &[Group] = &[
                  way), and the old reason claimed `log` needs std — which esp32 \
                  disproves by bridging `log` on a no_std target via esp_println. \
                  Corrected 2026-08-05",
-        platforms: &["qemu-arm-baremetal"],
+        platforms: &["mps2-an385-baremetal"],
     },
     Group {
         name: "C-zephyr",

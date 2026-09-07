@@ -184,7 +184,7 @@ thing, copy the example out and `cargo build` normally.
 | ThreadX (QEMU RISC-V 64) | `threadx-riscv64` | `qemu-riscv64-threadx` | `examples/qemu-riscv64-threadx/` | `just threadx_riscv64 …` | [ThreadX](../getting-started/threadx.md) |
 | Zephyr | `zephyr`, `zephyr-cortex-m` | `zephyr` | `examples/zephyr/` | `just zephyr …` | [Zephyr](../getting-started/integration-zephyr.md) |
 | ESP32 | `qemu-esp32-baremetal` (single-node), `esp32` (workspace) | `qemu-esp32-baremetal` | `examples/qemu-esp32-baremetal/` | `just esp32 …` | [ESP32](../getting-started/esp32.md) |
-| Bare-metal Cortex-M3 | `qemu-arm-baremetal` | `qemu-arm-baremetal` | `examples/qemu-arm-baremetal/` | `just qemu …` | [Bare-metal](../getting-started/bare-metal.md) |
+| Bare-metal Cortex-M3 | `qemu-arm-baremetal` | `qemu-arm-baremetal` | `examples/mps2-an385-baremetal/` | `just qemu …` | [Bare-metal](../getting-started/bare-metal.md) |
 | Arm FVP (Cortex-A SMP) | — | `zephyr` + a license-gated FVP binary | — | — | [ARM FVP](../getting-started/arm-fvp.md) |
 
 Multi-node workspace examples do not follow that directory rule: they

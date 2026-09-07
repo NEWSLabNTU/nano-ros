@@ -408,7 +408,7 @@ void z_clock_advance_s(uint64_t *clock, unsigned long duration) {
  *    + 2-byte socket. RV32 / Cortex-M3 pass-by-value ABI puts these
  *    inline in arg registers; if the alias TU declared a 16-byte
  *    opaque the call site would treat register slot as a pointer →
- *    fault. Used on ESP32-C3, qemu-arm-baremetal, stm32f4.
+ *    fault. Used on ESP32-C3, mps2-an385-baremetal, stm32f4.
  *
  *  - Opaque 16/32-byte (gated `NROS_ZP_ALIAS_OPAQUE_NET`): vendor
  *    compiles against `nros_zenoh_generic_platform.h` (because

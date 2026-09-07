@@ -25,7 +25,7 @@ names = ["bare-metal"]
 # wired again, in the runner (Step 6 of `build_zenoh_pico_unified`): a
 # serial-only link set + `ZPICO_NO_SMOLTCP` swaps this define for
 # `ZPICO_SERIAL`. The serial-only boards were never hypothetical
-# (qemu-arm-baremetal serial-talker/-listener predate the migration),
+# (mps2-an385-baremetal serial-talker/-listener predate the migration),
 # and the smoltcp spin branch's clock is frozen without a smoltcp iface
 # — timers never fire on such firmware.
 defines = ["ZENOH_GENERIC", "ZPICO_SMOLTCP"]
@@ -34,7 +34,7 @@ include = ["system/common"]
 extra_sources = [
   { path = "{nros}/c/zpico/zpico.c" },
 ]
-# Phase 148: bare-metal spans cortex-m3 (qemu-arm-baremetal,
+# Phase 148: bare-metal spans cortex-m3 (mps2-an385-baremetal,
 # stm32f4) AND riscv32imc (ESP32-C3). First arch whose `target_match`
 # hits is applied — see build.rs::build_zenoh_pico_unified Step 3.
 arch = ["cortex-m3", "riscv32imc"]
@@ -48,7 +48,7 @@ include_paths = [
   # `<nros/platform_net.h>` (the canonical `nros_platform_*` ABI +
   # `nros_platform_socket_get_fd` accessor). `zpico.c` includes it
   # unconditionally; without this on the bare-metal path
-  # `cargo check` against any `examples/qemu-arm-baremetal/...`
+  # `cargo check` against any `examples/mps2-an385-baremetal/...`
   # example fails with `nros/platform_net.h: No such file or directory`.
   "{nros}/../../platform/nros-platform-api/include",
 ]

@@ -65,7 +65,7 @@ config file on the device and nothing is parsed at runtime.
 `BoardEntry::run_with_deploy` applies onto the board's boot `Config`:
 
 ```toml
-# Cargo.toml (e.g. examples/qemu-arm-baremetal/rust/talker)
+# Cargo.toml (e.g. examples/mps2-an385-baremetal/rust/talker)
 [package.metadata.nros.node]
 class = "talker_pkg::Talker"
 name  = "talker"

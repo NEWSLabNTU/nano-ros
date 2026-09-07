@@ -294,7 +294,7 @@ BOOK_CLAIMS = (
         "text": "the no-alloc + framework-task-routed contract",
         "backed_by": None,
         "why_not": "the RTIC entries that would carry it "
-        "(examples/qemu-arm-baremetal/rust/*-rtic) all enable "
+        "(examples/mps2-an385-baremetal/rust/*-rtic) all enable "
         '`nros` feature "alloc" in their Cargo.toml, so they are '
         "`unified`-tier images, not `heap-free` ones",
     },

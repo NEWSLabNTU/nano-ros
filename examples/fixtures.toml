@@ -1876,67 +1876,67 @@ env = { NROS_XRCE_BUFFER_SIZE = "8192" }
 [[fixture]]
 platform = "baremetal"
 lang = "rust"
-dir = "examples/qemu-arm-baremetal/rust/talker"
+dir = "examples/mps2-an385-baremetal/rust/talker"
 
 [[fixture]]
 platform = "baremetal"
 lang = "rust"
-dir = "examples/qemu-arm-baremetal/rust/talker-xrce"
+dir = "examples/mps2-an385-baremetal/rust/talker-xrce"
 
 [[fixture]]
 platform = "baremetal"
 lang = "rust"
-dir = "examples/qemu-arm-baremetal/rust/listener"
+dir = "examples/mps2-an385-baremetal/rust/listener"
 
 [[fixture]]
 platform = "baremetal"
 lang = "rust"
-dir = "examples/qemu-arm-baremetal/rust/talker-rtic"
+dir = "examples/mps2-an385-baremetal/rust/talker-rtic"
 
 [[fixture]]
 platform = "baremetal"
 lang = "rust"
-dir = "examples/qemu-arm-baremetal/rust/listener-rtic"
+dir = "examples/mps2-an385-baremetal/rust/listener-rtic"
 
 [[fixture]]
 platform = "baremetal"
 lang = "rust"
-dir = "examples/qemu-arm-baremetal/rust/talker-rtic-mixed"
+dir = "examples/mps2-an385-baremetal/rust/talker-rtic-mixed"
 
 [[fixture]]
 platform = "baremetal"
 lang = "rust"
-dir = "examples/qemu-arm-baremetal/rust/listener-rtic-mixed"
+dir = "examples/mps2-an385-baremetal/rust/listener-rtic-mixed"
 
 [[fixture]]
 platform = "baremetal"
 lang = "rust"
-dir = "examples/qemu-arm-baremetal/rust/service-server-rtic"
+dir = "examples/mps2-an385-baremetal/rust/service-server-rtic"
 
 [[fixture]]
 platform = "baremetal"
 lang = "rust"
-dir = "examples/qemu-arm-baremetal/rust/service-client-rtic"
+dir = "examples/mps2-an385-baremetal/rust/service-client-rtic"
 
 [[fixture]]
 platform = "baremetal"
 lang = "rust"
-dir = "examples/qemu-arm-baremetal/rust/action-server-rtic"
+dir = "examples/mps2-an385-baremetal/rust/action-server-rtic"
 
 [[fixture]]
 platform = "baremetal"
 lang = "rust"
-dir = "examples/qemu-arm-baremetal/rust/action-client-rtic"
+dir = "examples/mps2-an385-baremetal/rust/action-client-rtic"
 
 [[fixture]]
 platform = "baremetal"
 lang = "rust"
-dir = "examples/qemu-arm-baremetal/rust/serial-talker"
+dir = "examples/mps2-an385-baremetal/rust/serial-talker"
 
 [[fixture]]
 platform = "baremetal"
 lang = "rust"
-dir = "examples/qemu-arm-baremetal/rust/serial-listener"
+dir = "examples/mps2-an385-baremetal/rust/serial-listener"
 
 # issue 0488 residue 1 — the smoltcp/zenoh-pico bridge. It was built by a bare
 # `cargo build` in two `just qemu` recipes, so it had no coordinate, no group and

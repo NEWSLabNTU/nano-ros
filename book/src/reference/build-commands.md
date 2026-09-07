@@ -155,7 +155,7 @@ Build with `--features link-tls`:
 
 ```bash
 # Build TLS-enabled examples
-cd examples/qemu-arm-baremetal/rust/talker
+cd examples/mps2-an385-baremetal/rust/talker
 cargo build --release --features link-tls
 ```
 

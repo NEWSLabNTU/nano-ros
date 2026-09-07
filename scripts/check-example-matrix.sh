@@ -8,7 +8,7 @@ rmw_names='^(zenoh|xrce|dds|cyclonedds|uorb)$'
 
 allowed_roots=(
   # (phase-277 W7 pruned the lines whose dirs no longer exist:
-  # qemu-arm-baremetal/rust/zenoh, qemu-esp32-baremetal/rust/zenoh,
+  # mps2-an385-baremetal/rust/zenoh, qemu-esp32-baremetal/rust/zenoh,
   # stm32f4/rust/zenoh. Issue 0314 then removed the last two bare-metal
   # `rust/dds` roots along with every other abandoned per-RMW tree — they held
   # only untracked `generated/` output — so Phase 118.G's carve-outs are gone

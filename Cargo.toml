@@ -278,23 +278,23 @@ exclude = [
     # backend. Rust DDS examples will be re-created once the
     # Rust-to-Cyclone path lands (Phase 169.5 / 169.9).
     # QEMU ARM examples (bare-metal Cortex-M3)
-    "examples/qemu-arm-baremetal/rust/talker",
-    "examples/qemu-arm-baremetal/rust/listener",
+    "examples/mps2-an385-baremetal/rust/talker",
+    "examples/mps2-an385-baremetal/rust/listener",
     "packages/testing/nros-tests/bins/cdr-roundtrip-qemu",
     "packages/testing/nros-bench/wcet-cycles-qemu",
     "packages/testing/nros-bench/port-metric",
     "packages/testing/nros-bench/large-msg-baremetal",
     "packages/testing/nros-tests/bins/lan9118-qemu",
-    "examples/qemu-arm-baremetal/rust/talker-rtic",
-    "examples/qemu-arm-baremetal/rust/listener-rtic",
-    "examples/qemu-arm-baremetal/rust/service-server-rtic",
-    "examples/qemu-arm-baremetal/rust/service-client-rtic",
-    "examples/qemu-arm-baremetal/rust/action-server-rtic",
-    "examples/qemu-arm-baremetal/rust/action-client-rtic",
-    "examples/qemu-arm-baremetal/rust/talker-rtic-mixed",
-    "examples/qemu-arm-baremetal/rust/listener-rtic-mixed",
-    "examples/qemu-arm-baremetal/rust/serial-talker",
-    "examples/qemu-arm-baremetal/rust/serial-listener",
+    "examples/mps2-an385-baremetal/rust/talker-rtic",
+    "examples/mps2-an385-baremetal/rust/listener-rtic",
+    "examples/mps2-an385-baremetal/rust/service-server-rtic",
+    "examples/mps2-an385-baremetal/rust/service-client-rtic",
+    "examples/mps2-an385-baremetal/rust/action-server-rtic",
+    "examples/mps2-an385-baremetal/rust/action-client-rtic",
+    "examples/mps2-an385-baremetal/rust/talker-rtic-mixed",
+    "examples/mps2-an385-baremetal/rust/listener-rtic-mixed",
+    "examples/mps2-an385-baremetal/rust/serial-talker",
+    "examples/mps2-an385-baremetal/rust/serial-listener",
     # Phase 169.2 — Rust DDS examples deleted (no Rust→Cyclone
     # path yet; see Phase 169 doc work item .9).
     # QEMU ARM FreeRTOS examples (Cortex-M3 + FreeRTOS + lwIP)

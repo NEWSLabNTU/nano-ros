@@ -157,7 +157,7 @@ fn main() {
 
 ---
 
-## BSP Examples (`examples/qemu-arm-baremetal/`)
+## BSP Examples (`examples/mps2-an385-baremetal/`)
 
 BSP examples run on bare-metal embedded targets via a Board Support Package that wraps all hardware and network setup.
 

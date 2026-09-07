@@ -100,7 +100,7 @@ including every RTIC one, which is where the dispatch-strategy claim lives —
 enables the `alloc` feature:
 
 ```
-$ for f in examples/qemu-arm-baremetal/rust/*/Cargo.toml; do grep -c '"alloc"' $f; done
+$ for f in examples/mps2-an385-baremetal/rust/*/Cargo.toml; do grep -c '"alloc"' $f; done
 # 1 for all 13, incl. talker-rtic, listener-rtic, {service,action}-{server,client}-rtic
 ```
 

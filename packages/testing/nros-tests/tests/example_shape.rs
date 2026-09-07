@@ -34,7 +34,7 @@
 //! * `examples/qemu-esp32-baremetal/` — M.7 BLOCKED (ESP-IDF). M.7
 //!   fix landed at `e4204459a` (Arc swap) but the sweep itself hasn't
 //!   migrated the example yet.
-//! * `examples/qemu-arm-baremetal/` — bare-metal Cortex-M3, not in
+//! * `examples/mps2-an385-baremetal/` — bare-metal Cortex-M3, not in
 //!   the M sweep table.
 //! * `examples/rv-virt-threadx/` — M.6 covered `threadx-linux/`
 //!   only; `rv-virt-threadx/` is not in the sweep.
@@ -193,7 +193,7 @@ const UNMIGRATED_PREFIXES: &[(&str, &str)] = &[
         "M.7 territory — ESP32 bare-metal, not in M sweep table",
     ),
     (
-        "examples/qemu-arm-baremetal/",
+        "examples/mps2-an385-baremetal/",
         "bare-metal Cortex-M3 — not in M sweep table",
     ),
     (

@@ -194,7 +194,7 @@ jobs:
               - 'justfile'
               - 'cmake/**'
               - 'nros-sdk-index.toml'
-            qemu: [ *core, 'examples/qemu-arm-baremetal/**', 'packages/boards/nros-board-mps2-an385*/**' ]
+            qemu: [ *core, 'examples/mps2-an385-baremetal/**', 'packages/boards/nros-board-mps2-an385*/**' ]
             freertos: [ *core, 'examples/qemu-arm-freertos/**', 'packages/boards/nros-board-freertos/**', 'packages/boards/nros-board-mps2-an385-freertos/**' ]
             nuttx: [ *core, 'examples/qemu-armv7a-nuttx/**', 'packages/boards/nros-board-nuttx*/**' ]
             threadx_linux: [ *core, 'examples/threadx-linux/**', 'packages/boards/nros-board-threadx-linux/**' ]

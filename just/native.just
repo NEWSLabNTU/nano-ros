@@ -67,7 +67,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     makefile="$(mktemp "${TMPDIR:-/tmp}/nros_example_build.XXXXXX.mk")"
     trap 'rm -f "$toml_list" "$makefile"' EXIT
 
-    # Phase 181.6 / 181.4.h — the `examples/qemu-arm-baremetal/` and
+    # Phase 181.6 / 181.4.h — the `examples/mps2-an385-baremetal/` and
     # `examples/qemu-esp32-baremetal/` leaves are excluded here and built from
     # the SSOT manifest below instead (fixture platforms `baremetal` and
     # `esp32`), so each has a single enumeration source (matching the
@@ -79,7 +79,7 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     # leak in. `NF>=5` = the old find's `-mindepth 4` (leaf crates, not
     # workspace-root manifests). Selection filters stay as greps.
     git ls-files 'examples/**/Cargo.toml' | awk -F/ 'NF>=5' \
-        | grep -vE '/zephyr/|/workspaces/|/qemu-arm-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/qemu-arm-baremetal/|/esp32/|/qemu-esp32-baremetal/|/px4/' \
+        | grep -vE '/zephyr/|/workspaces/|/qemu-arm-freertos/|/qemu-armv7a-nuttx/|/threadx-linux/|/rv-virt-threadx/|/mps2-an385-baremetal/|/esp32/|/qemu-esp32-baremetal/|/px4/' \
         | sort > "$toml_list"
 
     # The ESP platforms (which need the nightly toolchain + SSID/PASSWORD env)
