@@ -2567,6 +2567,139 @@ fn a_non_bool_use_sim_time_attaches_nothing() {
     );
 }
 
+// phase-430 W1 — a clock this test SETS, so it can cross a five-second
+// threshold without sleeping five seconds. `test_clock_us` is free-running and
+// shared by the whole process (issue 1105), so the interval would be measured
+// against however much of the suite ran first.
+#[cfg(all(feature = "sim-time", feature = "param-services"))]
+private_test_clock!(sim_silence_clock);
+
+/// phase-430 W1 — `use_sim_time` true and no `/clock` sample ever: the image
+/// says so, ONCE.
+///
+/// The two states are indistinguishable from outside: an image whose simulator
+/// is paused and an image whose `/clock` was never wired both sit there with
+/// every ROS-time timer quiet. Only the image can tell them apart, because "no
+/// sample has EVER arrived" is a fact about this subscriber and not about the
+/// topic.
+///
+/// Asserted through `sim_time_silence_warnings()` rather than a log grep: the
+/// contract is "exactly once", so the assertion has to be able to tell one from
+/// two, and `nros_log`'s sink is not present on every target that runs this.
+#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[test]
+fn use_sim_time_with_no_clock_sample_is_reported_exactly_once() {
+    use nros_core::clock::Clock;
+
+    let _sim_time = SimTimeGuard::acquire();
+    // A precondition, not a courtesy: the watch's whole question is "has a
+    // sample arrived", and a leftover override from a sibling test answers it
+    // yes. The guard SERIALIZES against those tests and clears on the way out;
+    // this clears on the way in, so the test does not depend on which of them
+    // ran last.
+    Clock::clear_ros_time_override();
+
+    sim_silence_clock::claim_at_us(0);
+    let mut executor: Executor =
+        executor_with_clock_fn(MockSession::new(), sim_silence_clock::now_us);
+
+    assert!(
+        executor.declare_parameter("use_sim_time", nros_params::ParameterValue::Bool(true)),
+        "the app's own declaration must be accepted"
+    );
+    drop(executor.create_node("silent_sim").expect("create node"));
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        executor.ros_time_source_installed(),
+        "the /clock source must be attached before its silence means anything"
+    );
+    assert_eq!(
+        executor.sim_time_silence_warnings(),
+        0,
+        "the interval starts at ATTACH; nothing has elapsed yet"
+    );
+
+    // One microsecond short of the threshold.
+    sim_silence_clock::set_us(crate::time_source::SILENCE_WARN_US - 1);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        executor.sim_time_silence_warnings(),
+        0,
+        "a simulator still coming up must not be accused of being absent"
+    );
+
+    // Crossing it.
+    sim_silence_clock::set_us(crate::time_source::SILENCE_WARN_US);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        executor.sim_time_silence_warnings(),
+        1,
+        "use_sim_time is on, /clock has never spoken, and the image said \
+         nothing -- which is exactly the silence that reads as a paused \
+         simulator"
+    );
+
+    // Far past it, many times over: still one. A diagnostic that repeats is
+    // the noise it was written to replace.
+    sim_silence_clock::set_us(crate::time_source::SILENCE_WARN_US * 4);
+    for _ in 0..5 {
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    }
+    assert_eq!(
+        executor.sim_time_silence_warnings(),
+        1,
+        "the warning repeated; the record became the noise"
+    );
+
+    // Detach and re-attach: W1 asks for the one-shot to reset, because the
+    // second attachment is a new question.
+    assert!(
+        executor
+            .params_mut()
+            .expect("the declaration above created the store")
+            .apply(
+                super::node_record::NodeId::PRIMARY.into(),
+                "use_sim_time",
+                nros_params::ParameterValue::Bool(false),
+            )
+            .is_success()
+    );
+    executor.refresh_use_sim_time_from_store();
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        executor
+            .params_mut()
+            .expect("store")
+            .apply(
+                super::node_record::NodeId::PRIMARY.into(),
+                "use_sim_time",
+                nros_params::ParameterValue::Bool(true),
+            )
+            .is_success()
+    );
+    executor.refresh_use_sim_time_from_store();
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+
+    // ...and this time a sample DOES arrive before the interval. That answers
+    // the question for good: a simulator that publishes and then stops is a
+    // PAUSE, which is the state this diagnostic exists to be distinguished
+    // from, so it must stay quiet about it however long the pause runs.
+    sim_silence_clock::set_us(crate::time_source::SILENCE_WARN_US * 5);
+    Clock::set_ros_time_override(1_000_000_000);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    Clock::clear_ros_time_override();
+    sim_silence_clock::set_us(crate::time_source::SILENCE_WARN_US * 20);
+    for _ in 0..5 {
+        let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    }
+    assert_eq!(
+        executor.sim_time_silence_warnings(),
+        1,
+        "/clock spoke and then stopped -- that is a pause, and warning about a \
+         pause is the false alarm that teaches everyone to ignore the line"
+    );
+}
+
 /// phase-430 W2 — `use_sim_time` is declared on a node that never named it,
 /// as rclcpp does, so `ros2 param set <node> use_sim_time true` reaches an app
 /// with no simulated-time code in it.

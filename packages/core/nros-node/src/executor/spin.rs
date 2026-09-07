@@ -1420,6 +1420,13 @@ pub struct Executor<'s> {
     /// passing alone.
     #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
     pub(crate) sim_time_stated: bool,
+    /// phase-430 W1 — the one-shot that says "`use_sim_time` is on and `/clock`
+    /// has never spoken", so a MISCONFIGURED image is distinguishable from a
+    /// merely PAUSED one. Armed when the source attaches, disarmed by the first
+    /// sample or by the report. The policy, and the argument for its unit, are
+    /// in [`crate::time_source::SilenceWatch`].
+    #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+    pub(crate) sim_time_silence: crate::time_source::SilenceWatch,
     #[cfg(feature = "lifecycle-services")]
     pub(crate) lifecycle:
         Option<alloc::boxed::Box<crate::lifecycle_services::LifecycleRuntimeState>>,
@@ -1675,6 +1682,8 @@ impl<'s> Executor<'s> {
             sim_time_requested: false,
             #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
             sim_time_stated: false,
+            #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+            sim_time_silence: crate::time_source::SilenceWatch::new(),
             #[cfg(feature = "lifecycle-services")]
             lifecycle: None,
             // Initialise the spin endpoint to construction time so the
@@ -6608,6 +6617,13 @@ impl<'s> Executor<'s> {
             None => (timeout_ms as u64).saturating_mul(1000),
         };
 
+        // phase-430 W1 — the silence watch is credited the SAME `delta_us` the
+        // wall timers below are, which is the whole of its unit argument: the
+        // diagnostic arrives after as much time as this image's own wall timers
+        // believe has passed, on whatever clock it actually has.
+        #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+        self.note_sim_time_silence(delta_us);
+
         if !self.spin_quantization_checked && timeout_ms > 0 {
             self.spin_quantization_checked = true;
             self.audit_spin_quantization((timeout_ms as u64).saturating_mul(1000));
@@ -9798,7 +9814,15 @@ impl<'s> Executor<'s> {
             return;
         }
         crate::time_source::set_active(self.sim_time_requested);
-        if self.sim_time_requested && self.sim_time_source.is_none() {
+        if !self.sim_time_requested {
+            // phase-430 W1 — the source is no longer wanted, so its silence is
+            // no longer a symptom. Disarming here (rather than only re-arming
+            // on attach) is what makes a later re-attach start a FRESH
+            // interval: the watch that was counting is put down, not paused.
+            self.sim_time_silence.disarm();
+            return;
+        }
+        if self.sim_time_source.is_none() {
             // No node yet — stay pending and try again next spin. Not an error:
             // it is the ordinary order of a generated entry, which declares
             // parameters before it registers components.
@@ -9810,8 +9834,58 @@ impl<'s> Executor<'s> {
                 crate::time_source::CLOCK_TOPIC,
             ) {
                 self.sim_time_source = Some(handle);
+                // phase-430 W1 — the interval starts HERE, at attach, and not
+                // at construction: before the subscription exists there is
+                // nothing to be silent about, so counting from boot would
+                // accuse an image that spent the interval bringing a transport
+                // up.
+                self.sim_time_silence.arm();
             }
+        } else {
+            // Re-attached: `use_sim_time` went false and back to true while the
+            // subscription (which the executor cannot remove) stayed. W1 asks
+            // for the one-shot to reset in exactly this case.
+            self.sim_time_silence.arm();
         }
+    }
+
+    /// phase-430 W1 — credit one spin's elapsed time to the silence watch and
+    /// emit the diagnostic if this is the spin that crosses the threshold.
+    ///
+    /// `delta_us` is the executor's OWN per-spin elapsed measure — the same one
+    /// every wall timer on this executor accumulates, including its "no clock,
+    /// credit the requested timeout" fallback. See
+    /// [`SILENCE_WARN_US`](crate::time_source::SILENCE_WARN_US) for why that is
+    /// the unit and not a spin count or an independent wall clock.
+    ///
+    /// Scope: the source the EXECUTOR installed for `use_sim_time`. An
+    /// application that calls
+    /// [`NodeCtx::install_ros_time_source`](super::node::NodeCtx::install_ros_time_source)
+    /// directly is not watched, because the line this would print names
+    /// `use_sim_time`, and that application never set it — the honest
+    /// diagnostic for the explicit path would be a different sentence, and
+    /// inventing one nobody asked for is how a warning becomes noise.
+    #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+    fn note_sim_time_silence(&mut self, delta_us: u64) {
+        if self.sim_time_silence.tick(
+            delta_us,
+            nros_core::clock::Clock::is_ros_time_override_active(),
+        ) {
+            crate::time_source::report_silence(crate::time_source::CLOCK_TOPIC);
+        }
+    }
+
+    /// phase-430 W1 — how many times this executor has reported that
+    /// `use_sim_time` is on with no `/clock` sample.
+    ///
+    /// The count rather than a bool, and an accessor rather than a log grep: a
+    /// diagnostic whose contract is "exactly once" needs an assertion that can
+    /// tell one from two, and a log sink is not present on every target that
+    /// runs the test. It is also the question an application supervising its
+    /// own configuration would ask.
+    #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
+    pub fn sim_time_silence_warnings(&self) -> u32 {
+        self.sim_time_silence.reports()
     }
 
     /// phase-425 W3b — re-read `use_sim_time` from the parameter store.
