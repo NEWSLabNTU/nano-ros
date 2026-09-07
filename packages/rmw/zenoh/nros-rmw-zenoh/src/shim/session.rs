@@ -692,7 +692,44 @@ impl ZenohSession {
         &self,
         build_keyexpr: impl FnOnce(&ZenohId, u32) -> heapless::String<256>,
     ) -> Option<LivelinessToken> {
-        let zid = self.context.zid().ok()?;
+        // phase-412 — every arm below SAYS why it produced `None`.
+        //
+        // This helper returned `Option`, and `.ok()` on the declare erased the
+        // error type at the boundary, so no caller could recover it even in
+        // principle. Six creation paths inherited that: a token that failed
+        // because `ZPICO_MAX_LIVELINESS` was exhausted, one that failed on a
+        // zid, one whose keyexpr overran 256 bytes, and the deliberate
+        // feature opt-out all arrived as the same `None`, and every one of them
+        // still returned `Ok(entity)`. The entity works and is invisible to
+        // `ros2 node list` for the life of the process.
+        //
+        // Issue 0870 spent its investigation blocked on exactly this — "whether
+        // the other five also failed is currently unknowable, and that
+        // distinction is the diagnosis" — and ruled this function out as a
+        // suspect *because* it swallows, which is not the same as innocent.
+        //
+        // The shape is `acquire_session_slot`'s (`zpico.rs`): name the knob,
+        // say what was exceeded, and log through `nros_log` rather than
+        // `cfg(feature = "std")`. Issue 0697 is why the gate matters — a
+        // std-gated arm leaves the pool mute on firmware, and firmware is where
+        // a fixed-size pool actually fills. Issue 0589 is why it is `nros_log`
+        // and not `println!`.
+        //
+        // Still `Option`: the six callers treat "no token" as non-fatal by
+        // design (RFC — a graph outage is not a data outage), and issue 0283
+        // settled that a missing token must be ANNOUNCED, not fatal. What
+        // changes is that it is no longer silent.
+        let zid = match self.context.zid() {
+            Ok(zid) => zid,
+            Err(_e) => {
+                nros_log::log_error!(
+                    nros_log::get_logger("nros_rmw_zenoh"),
+                    "liveliness: no zenoh id, so no token was declared — this \
+                     entity will not appear in `ros2 node list`."
+                );
+                return None;
+            }
+        };
         let entity_id = self
             .entity_counter
             .fetch_add(1, core::sync::atomic::Ordering::Relaxed);
@@ -706,8 +743,36 @@ impl ZenohSession {
         if bytes.len() < buf.len() {
             buf[..bytes.len()].copy_from_slice(bytes);
             buf[bytes.len()] = 0;
-            self.context.declare_liveliness(&buf[..=bytes.len()]).ok()
+            match self.context.declare_liveliness(&buf[..=bytes.len()]) {
+                Ok(token) => Some(token),
+                Err(e) => {
+                    // `Full` is the one a reader can act on, and it names a
+                    // DIFFERENT knob from every other pool in this crate. The C
+                    // side already distinguishes exhaustion (-6) from a genuine
+                    // declare failure (-1); that distinction died at the `.ok()`
+                    // and is preserved here.
+                    nros_log::log_error!(
+                        nros_log::get_logger("nros_rmw_zenoh"),
+                        "liveliness: declare failed ({:?}) for a {}-byte keyexpr \
+                         — this entity is created and WORKING but invisible to \
+                         `ros2 node list` / `ros2 topic info`. If this is \
+                         `Full`, the image exceeded ZPICO_MAX_LIVELINESS: every \
+                         node takes one token and every publisher, subscriber, \
+                         service server and client takes one more.",
+                        e,
+                        bytes.len()
+                    );
+                    None
+                }
+            }
         } else {
+            nros_log::log_error!(
+                nros_log::get_logger("nros_rmw_zenoh"),
+                "liveliness: keyexpr is {} bytes and the buffer holds {} — no \
+                 token declared, so this entity is invisible to ROS 2 tooling.",
+                bytes.len(),
+                buf.len() - 1
+            );
             None
         }
     }
@@ -936,10 +1001,56 @@ impl ZenohSession {
         }
         // Treat empty namespace as root "/" — same as the #104 primary path.
         let ns = if namespace.is_empty() { "/" } else { namespace };
-        if let Some(tok) = self.declare_node_liveliness(domain_id, ns, node_name) {
-            let mut key: heapless::String<64> = heapless::String::new();
-            let _ = key.push_str(node_name);
-            let _ = self.per_node_liveliness.push((key, tok)); // silent overflow past MAX
+        let Some(tok) = self.declare_node_liveliness(domain_id, ns, node_name) else {
+            // phase-412 — this was an `if let Some` with no `else`. The reason
+            // is logged one frame down in `declare_entity_liveliness`; what
+            // this arm adds is WHICH NODE was lost, which that frame cannot
+            // know.
+            nros_log::log_error!(
+                nros_log::get_logger("nros_rmw_zenoh"),
+                "liveliness: node `{}` declared no token (reason logged above) \
+                 — it will not appear in `ros2 node list`.",
+                node_name
+            );
+            return;
+        };
+        let mut key: heapless::String<64> = heapless::String::new();
+        {
+            // phase-412 — a node name past 64 bytes was truncated to EMPTY
+            // here, which then makes the dedup check above miss and re-declare
+            // the node on every entity creation, burning a
+            // ZPICO_MAX_LIVELINESS slot each time. A feeder for the exhaustion
+            // this sweep is about, so it says so.
+            if key.push_str(node_name).is_err() {
+                nros_log::log_error!(
+                    nros_log::get_logger("nros_rmw_zenoh"),
+                    "liveliness: node name `{}` exceeds the {}-byte dedup key, \
+                     so this node will be RE-DECLARED on every entity it \
+                     creates and will exhaust ZPICO_MAX_LIVELINESS.",
+                    node_name,
+                    key.capacity()
+                );
+            }
+        }
+        {
+            // phase-412 — the push was `let _ =` with the overflow admitted in
+            // a trailing comment. Losing here is worse than it looks: `tok` is
+            // moved into the discarded `Err` and dropped immediately, which
+            // UNDECLARES the token that was just declared on the wire. The
+            // ceiling is MAX_PER_NODE_LIVELINESS, a different number from
+            // ZPICO_MAX_LIVELINESS, so the two can disagree.
+            if self.per_node_liveliness.push((key, tok)).is_err() {
+                nros_log::log_error!(
+                    nros_log::get_logger("nros_rmw_zenoh"),
+                    "liveliness: node `{}` was declared and then immediately \
+                     UNDECLARED — the per-node table holds {} and is full. \
+                     Raise NROS_EXECUTOR_MAX_NODES, which is what sizes it.",
+                    node_name,
+                    MAX_PER_NODE_LIVELINESS
+                );
+            }
+        }
+        {
             // Gate: a per-node token with a DIFFERENT name supersedes the
             // primary `/node` phantom — drop it so multi-node launches show
             // only their components, not a spurious "node" entry.

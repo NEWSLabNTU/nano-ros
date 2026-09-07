@@ -2873,6 +2873,17 @@ int32_t zpico_declare_liveliness(zpico_session_t* session, const char* keyexpr) 
         }
     }
     if (idx < 0) {
+        /* phase-412 — issue 0283 gave the declare-failure arm below a printk
+         * because "a failed token is a SILENT graph outage (the ROS 2 tools see
+         * nothing)". THIS arm produces the identical outcome and was left mute,
+         * so an image that ran out of slots looked like one that never tried.
+         * It names the knob because the count is not derivable from anything
+         * the caller can see. */
+        printk("zpico: liveliness pool exhausted (ZPICO_MAX_LIVELINESS=%d) for '%s'\n"
+               "       every node takes one token and every publisher, subscriber,\n"
+               "       service server and client takes one more; this entity works\n"
+               "       but is invisible to ROS 2 tooling\n",
+               ZPICO_MAX_LIVELINESS, keyexpr);
         return ZPICO_ERR_FULL;
     }
 
