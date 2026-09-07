@@ -106,11 +106,12 @@ The compat surface covers the patterns a typical ROS 2 C++ node uses:
 
 | rclcpp surface | nano-ros mapping | Notes |
 |---|---|---|
-| `class MyNode : public rclcpp::Node` | `rclcpp::Node` shim → `nros::Executor` + `nros::Node` | Ctor takes `(name)`. |
-| `std::make_shared<MyNode>()` | inherits `enable_shared_from_this` | `shared_from_this()` works. |
+| `class MyNode : public rclcpp::Node` | `rclcpp::Node` IS `nros::Node` — one type, both spellings | Ctor takes `(name)`, `(name, options)` or `(name, ns, options)`. |
+| `std::make_shared<MyNode>()` | works | `shared_from_this()` works too, with one caveat — see "Two things the compiler will not tell you" below. |
 | `create_publisher<M>(topic, qos)` | shared_ptr-returning wrapper | `qos` can be `rclcpp::QoS(10)` or an int. |
-| `create_subscription<M>(topic, qos, callback)` | polling pump dispatched from `spin*` | **Capturing lambdas + `std::function` all work**. |
-| `create_wall_timer(period, callback)` | wall-timer dispatched from `spin*` | `std::chrono::duration` arg, capturing-lambda callback. |
+| `create_subscription<M>(topic, qos, callback)` | registered on the executor arena; dispatched by **any** spin verb | **Capturing lambdas + `std::function` all work**. |
+| `create_wall_timer(period, callback)` | registered on the executor arena; dispatched by **any** spin verb | `std::chrono::duration` arg, capturing-lambda callback. Returns `rclcpp::Timer::SharedPtr`, not `TimerBase::SharedPtr` — see below. |
+| `rclcpp::create_timer(node, clock, period, cb)` | the clock-taking verb; a `NROS_CLOCK_ROS_TIME` clock follows `/clock` | Humble's only form. `create_wall_timer` stays on the steady clock. |
 | `rclcpp::init(argc, argv) / shutdown() / ok() / spin(n) / spin_some(n)` | wraps `nros::init/shutdown/ok/spin_once` | argc/argv ignored. |
 | `RCLCPP_INFO / WARN / ERROR / DEBUG / FATAL` | dispatched through `NROS_*` macros | `_THROTTLE` variants degrade to plain log. |
 | `rclcpp::QoS / KeepLast(n) / SystemDefaultsQoS()` | subclass of `nros::QoS` with the `(depth)` ctor | Chainable setters inherited. |
@@ -118,6 +119,64 @@ The compat surface covers the patterns a typical ROS 2 C++ node uses:
 | `rclcpp_action::Server<A> / Client<A>` | aliases for `nros::ActionServer/Client<A>` | The action call shapes (send_goal_async etc.) match. |
 | `RCLCPP_COMPONENTS_REGISTER_NODE(class)` | no-op macro + cmake-side `rclcpp_components_register_node()` emits a thin `int main()` per registration | Single-binary embedded. |
 | `find_package(ament_cmake_auto / rclcpp / rclcpp_components / diagnostic_updater / std_msgs / …)` | Find-stubs at `cmake/compat/stubs/` | ~24 of the most-cited ROS 2 packages stubbed; add your own under `cmake/compat/stubs/Find<pkg>.cmake` for more. |
+
+## Two things the compiler will not tell you
+
+Everything else on this page either works or fails to compile. These two
+compile and behave slightly differently, so they are written down rather than
+left for a debugging session.
+
+### `Node::ok()` — nano-ros cannot throw, so YOU have to ask
+
+Upstream's `rclcpp::Node` constructor THROWS when the node cannot be created.
+nano-ros is built `-fno-exceptions` (RFC-0018), so the constructor cannot: it
+records the failure and the node answers `false` to `ok()`.
+
+```cpp
+rclcpp::Node node("talker");
+if (!node.ok()) return 1;        // <- this line replaces upstream's try/catch
+```
+
+A **generated entry already does this** and halts naming the node, so a
+workspace component needs nothing. A **hand-written `main` does not**, and a
+node that failed to create will otherwise go on to create publishers that
+quietly do nothing. There is no diagnostic for it — the object exists either
+way, which is the whole point of not throwing — so checking `ok()` after
+constructing a node by hand is on you.
+
+The same shape applies to `init()`, the two-phase form:
+
+```cpp
+rclcpp::Node node;
+if (!node.init("talker").ok()) return 1;
+```
+
+`Result` carries `[[nodiscard]]` on C++17 and later, so *that* one the compiler
+does warn about.
+
+### `shared_from_this()` does not extend the node's lifetime
+
+Upstream gets it from `std::enable_shared_from_this<Node>` and the returned
+pointer is a co-OWNER. nano-ros cannot derive from that base — it carries a
+`std::weak_ptr` member that exists only where `<memory>` does, which would make
+`sizeof(rclcpp::Node)` depend on a capability probe and let two translation
+units of one firmware image disagree about the object's layout.
+
+So `shared_from_this()` here returns a pointer that ALIASES the node with an
+empty owner: it is safe to pass to anything that holds it for less than the
+node's lifetime (`diagnostic_updater::Updater(shared_from_this(), 1.0)` is the
+common case and is fine), and it is NOT safe to store somewhere that outlives
+the node. It also never throws where upstream would raise `bad_weak_ptr`.
+
+### `rclcpp::TimerBase` is `rclcpp::Timer`
+
+A ported `rclcpp::TimerBase::SharedPtr timer_;` becomes
+`rclcpp::Timer::SharedPtr timer_;` — a rename the compiler demands, so you will
+not miss it. There is no timer hierarchy here: the executor dispatches through a
+raw function pointer, so a polymorphic base would be a vtable nothing calls, and
+`TimerBase` is a name that promises `WallTimer` and `GenericTimer` siblings we
+deliberately do not have. The clock axis is a runtime field plus the second verb
+`rclcpp::create_timer`, not a type parameter.
 
 ## What's documented as "needs adapt" (codegen-side, not surface-side)
 

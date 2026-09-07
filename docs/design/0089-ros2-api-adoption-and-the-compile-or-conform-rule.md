@@ -788,7 +788,10 @@ namespace nros { using Node = ::rclcpp::Node; }   // transitional; deprecated, t
 
 `rclcpp::Node` is the class **[2]**. One type — `ComponentNode` is deleted, not
 aliased, because once its handle became a constructor it had no distinction
-left. `nros::` survives only as a migration alias so the remaining call sites
+left. (CORRECTED 2026-09-08: the class is DEFINED in `nros::` and aliased into
+`rclcpp::`, for a measured reason about `api-parity.py`'s namespace roots —
+§"AMENDED 2026-09-08", item 2. Both spellings are one type. `ComponentNode` is
+still present; phase-427 W4 is not started.) `nros::` survives only as a migration alias so the remaining call sites
 are optional to move rather than a flag day.
 
 **Layout is probe-independent [1].** Hosted-only state lives out of line behind
@@ -1606,7 +1609,9 @@ Inventing `nros::TimerBase` with a single `WallTimer` under it would reproduce
 the misleading promise we just refused to import, and charge a vtable for it.
 
 **Decision: `rclcpp::Timer` stays flat and stays ours.** No `TimerBase`, no
-`WallTimer`, no `GenericTimer`. A ported file's
+`WallTimer`, no `GenericTimer`. (LANDED 2026-09-08, phase-430 W7 — the tree had
+a `TimerBase` for a phase in spite of this paragraph; see §"AMENDED 2026-09-08"
+for the ruling and its argument.) A ported file's
 `rclcpp::TimerBase::SharedPtr timer_;` becomes `rclcpp::Timer timer_;` — a
 rename the compiler demands, which is a mechanical edit under the principle.
 
@@ -1638,6 +1643,143 @@ sim-driven clock feeding the executor's scheduler — the port is
 flat.** The hierarchy would only become right if the executor needed a
 type-erased base, and it will not, because dispatch stays a raw function
 pointer in the arena.
+
+## AMENDED 2026-09-08 — what the merge measured, and three things this RFC got wrong
+
+phase-427 landed W1, W2, W3 and W5 (the node-type merge itself), W6 and W8's
+loudness half, and phase-430's W6 and W7. Three claims above are now false or
+unbuildable, and the corrections are measurements rather than preferences.
+
+### 1. The `TimerBase` question is RULED, and the ruling is DELETE
+
+§"Timer, studied against RTOS semantics" decided the timer stays flat. The TREE
+DISAGREED WITH IT for a phase: phase-417 W1.a had landed `class TimerBase` with
+a virtual destructor and `detail::WallTimer : TimerBase` under it — precisely
+the hierarchy this document refused, added by the same campaign, and neither
+document noticed. phase-430 W7 asked for a ruling either way. **It is deleted**
+(phase-427, 2026-09-08), argued from the executor's dispatch rather than from
+taste:
+
+* **The vtable had no caller.** The only virtual member was `~TimerBase()`, and
+  no virtual call through a `TimerBase*` existed anywhere in the tree — none
+  can, because the executor's callback slot is `nros_cpp_timer_callback_t`, a
+  raw `void(*)(void*)`, and dispatch goes through the STATIC
+  `detail::WallTimer::trampoline`. Even the destructor's virtuality was dead:
+  the cell is built with `std::make_shared<detail::WallTimer>()`, so the control
+  block already records the concrete deleter and destruction through a base
+  pointer was correct without it.
+* **The flat shape is strictly better as a handle.** `create_wall_timer` now
+  returns `std::shared_ptr<nros::Timer>` ALIASED onto the private cell — the
+  shape `create_subscription` has always used — so the returned type is the type
+  that exists and the cell stays an implementation detail.
+* **Cost, measured:** zero non-test call sites. The migration is
+  `rclcpp::TimerBase::SharedPtr timer_;` -> `rclcpp::Timer::SharedPtr timer_;`.
+
+§"Review of the invented parts" item 1 — which proposed `TimerBase` as a ported
+ALIAS — is superseded by this and by the section that already withdrew it. It
+is left in place as the record of the argument.
+
+`rclcpp::Timer` is UNCONDITIONAL, unlike the `TimerBase` it replaces: it is
+`nros::Timer`, which needs no `<memory>`, so a freestanding target gets the ROS
+2 timer name too. Only the nested `SharedPtr` aliases were ever hosted-only.
+
+### 2. The namespace direction is INVERTED, and the reason is the parity tool
+
+§"Type and namespace" says `rclcpp::Node` is the class and `nros::Node` the
+migration alias. **It is the other way round in the tree, and the blocker is
+`scripts/api-parity.py`'s own configuration.**
+
+The extractor reads the NATIVE C++ surface with namespace root `{"nros"}` and
+the PORTED surface with `{"rclcpp", "rclcpp_action", "rclcpp_lifecycle"}`, and
+`--check` gates only the native bucket. Defining the class in `rclcpp` empties
+`nros::Node::*` from the native surface, so roughly sixty members re-bucket to
+`theirs-only` with no ledger row and the gate goes red. That is a namespace
+question answered by a measurement tool's roots, and the fix — moving the roots
+— re-buckets the WHOLE ported surface at once, which is phase-428's sweep and
+not one type's business.
+
+This costs nothing observable: both spellings name ONE class,
+`std::is_same<rclcpp::Node, nros::Node>::value` is asserted by a compile probe,
+and the `rclcpp::Node` alias is UNCONDITIONAL where the shim class was declared
+only under four capability probes. It is also the CONSISTENT direction —
+`rclcpp::Publisher`, `rclcpp::QoS`, `rclcpp::Timer` and `rclcpp::Clock` are all
+aliases of `nros::` definitions already, so `Node` being the one exception would
+have been arbitrary.
+
+**Consequence for the "Replace" step.** phase-427 W7 ("`nros::Node` deprecated
+with `NROS_DEPRECATED_MSG`") cannot be done in this direction: a deprecation
+attaches to the alias, and the alias is the name a user is supposed to write.
+The migration macro ships (`NROS_CPP_DEPRECATED_MSG`, `result.hpp`) and is used
+on the one ours-only name phase-427 did retire, `nros::bind_timer`. The `Node`
+half waits on the flip — and whoever lands it must migrate the 218 in-tree
+`nros::Node` sites in the same commit, because a bare `[[deprecated]]` on an
+alias warns at every one of them at once, which is the flag day this document's
+two-step exists to avoid.
+
+### 3. The one-name half of the settled shape is NOT EXPRESSIBLE in C++
+
+§"The error channel, settled" specified one template and one name: `Expected<T>`
+renamed to `Result<T>`, today's `Result` becoming `Result<void>` with `Result`
+as the alias. The language does not allow the last part, W8 measured it, and
+**that section now carries the correction inline** — one template
+**`ResultOf<T>`**, the value-less case as its `void` specialization, `Result` as
+the alias for that specialization, and `Expected<T>` deprecated for one release.
+Read it there; it has the three ill-formed routes and the compiler messages.
+
+What is recorded HERE is the part that section does not: the acceptance text
+named the wrong probe. `rclcpp::init(argc, argv)` returns `void` here, as
+upstream's does — a PORTED api keeps upstream's channel, which is that section's
+own last row — so a TU discarding it compiles clean and the gate would have been
+vacuous. The discarding call site the loudness item was about is `nros::init()`,
+which returns a `Result` where `rclcpp::init()` returns nothing, and the WIDENING
+is the one signature change the compiler does not otherwise point at.
+`result_nodiscard_probe.cpp` discards both halves of the channel and the lane
+requires two `unused-result` diagnostics.
+
+That probe earned itself on its first run: `rclcpp::shutdown()` was discarding
+`nros::shutdown()`'s `Result` and answering `true` unconditionally — a fini that
+failed reported success, which is exactly the silence the attribute exists to
+break.
+
+
+### 4. `std::enable_shared_from_this` is a capability-dependent LAYOUT
+
+Not previously noticed anywhere. The shim `rclcpp::Node` derived from it, which
+was invisible while the whole class lived inside a capability `#if` — there was
+nothing to compare it against. On the merged type it is a hosted-only BASE with
+a `std::weak_ptr` member, i.e. 16 bytes of layout behind a probe: the exact
+defect `check-cpp-capability-layout` exists to catch, and the one the deleted
+`timers_` member already shipped once.
+
+So the base is gone and `shared_from_this()` is a METHOD returning a pointer
+that aliases `this` with an EMPTY owner. ADOPT-BOUNDED and ledgered
+(`cpp:Node::shared_from_this`, `divergence`): it observes the node without
+extending its lifetime, where upstream's shares ownership, and it never throws
+where upstream raises `bad_weak_ptr`. In this API a node is constructed by the
+generated entry or by `main` and outlives everything it is handed to, so the two
+behave the same — but a caller who stores the pointer past the node's scope gets
+a dangling one.
+
+The general rule this generalises to, worth stating because it will recur: **a
+BASE CLASS is a member for layout purposes.** Any `#if`-gated base is the same
+defect as an `#if`-gated field, and the capability-layout gate measures `sizeof`
+precisely so the distinction never has to be argued.
+
+### 5. RFC-0047's "one component, several named nodes" DOES NOT EXIST
+
+Decision 2 above lists it as `ComponentNode`'s second distinguishing feature and
+as a divergence to preserve. Measured: `ComponentNode` owns exactly ONE
+`nros::Node`, created once in its constructor, and
+`packages/cli/nros-cli-core/src/entity_inventory.rs` states the invariant in so
+many words — "a `ComponentNode` constructor is one `Node::create` is one node
+NAME". `docs/design/0047-unified-sched-context-binding.md` says nothing about
+several named nodes either; the phrase originates here.
+
+What the two subnode packages actually exercise is **one node with several NAMED
+CALLBACK GROUPS bound to different sched contexts** — `create_callback_group`
+plus `create_timer_in` / `create_subscription_in` — which is RFC-0047's real
+subject, and which the merged node already carries. There is no
+several-named-nodes capability to preserve when `ComponentNode` is deleted.
 
 ## Parameters: feature-complete, Rust-side SSoT, and `ros2 param list` must work
 
