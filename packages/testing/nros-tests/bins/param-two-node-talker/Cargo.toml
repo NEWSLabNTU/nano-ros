@@ -1,0 +1,35 @@
+[workspace]
+
+[package]
+name = "param-two-node-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Two-node parameter fixture (phase-426 W6). One executor composes `alpha` and `beta`; both declare the same parameter name with different values, and `alpha` additionally declares a step-constrained one. Registers the REP-2002 parameter services, which phase-426 W3 publishes once PER NODE. Consumed by tests/params_per_node_interop.rs, which drives `ros2 param list/get/set` against both fully-qualified names."
+
+[[bin]]
+name = "param-two-node-talker"
+path = "src/main.rs"
+
+[dependencies]
+nros = { path = "../../../../api/nros", default-features = false, features = [
+    # phase-361 W8.e — `param-services` requires the heap; it no longer enables it.
+    "std", "alloc", "env",
+    "rmw-cffi",
+    "ros-humble",
+    "param-services",
+] }
+nros-platform-cffi = { path = "../../../../platform/nros-platform-cffi", features = ["posix-c-port"] }
+nros-rmw-zenoh = { path = "../../../../rmw/zenoh/nros-rmw-zenoh", default-features = false, features = [
+    "std",
+    "platform-posix",
+    "ros-humble",
+] }
+std_msgs = { path = "generated/std_msgs", default-features = false }
+log = "0.4"
+env_logger = "0.11"
+
+[patch.crates-io]
+nros-core = { path = "../../../../core/nros-core" }
+nros-serdes = { path = "../../../../core/nros-serdes" }

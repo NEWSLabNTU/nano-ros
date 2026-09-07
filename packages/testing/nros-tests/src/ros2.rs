@@ -1172,6 +1172,29 @@ pub fn ros2_param_list(node_name: &str, locator: &str, distro: &str) -> TestResu
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+/// Run `ros2 param list` with NO node argument — the whole-graph form.
+///
+/// phase-426 W6. [`ros2_param_list`] addresses one node, so it can only ever
+/// answer "does this FQN serve parameters"; the question W6 asks is "which FQNs
+/// does the image expose", and that is the enumerating form. It prints an
+/// indented block per node, headed by the node's fully-qualified name, so the
+/// caller greps for a `<fqn>:` header rather than a bare parameter name.
+///
+/// A longer budget than its per-node sibling on purpose: this form calls
+/// `ListParameters` on EVERY node in the graph, so its cost scales with the
+/// graph rather than with the node under test.
+pub fn ros2_param_list_all(locator: &str, distro: &str) -> TestResult<String> {
+    let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
+    let cmd = format!("{env_setup} && timeout --foreground 25 ros2 param list --no-daemon 2>&1");
+
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run ros2 param list: {e}")))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 /// Run `ros2 param get` for a specific parameter on a node
 pub fn ros2_param_get(
     node_name: &str,

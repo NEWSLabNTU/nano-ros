@@ -3610,6 +3610,30 @@ pub fn build_native_param_talker() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Resolve the prebuilt `param-two-node-talker` fixture (cached).
+///
+/// phase-426 W6 — the two-node parameter image
+/// (`packages/testing/nros-tests/bins/param-two-node-talker`). One executor,
+/// nodes `alpha` and `beta`, both declaring `rate` with different values, plus
+/// a step-constrained `stepped` on `alpha` alone. Registers the REP-2002
+/// parameter services, which W3 publishes once PER NODE, and logs one
+/// [`crate::output::PARAM_SERVICE_NODE_PREFIX`] line per registered FQN once
+/// the first spin has reconciled them. Consumed by
+/// tests/params_per_node_interop.rs.
+pub fn build_native_param_two_node_talker() -> TestResult<&'static Path> {
+    static NATIVE_PARAM_TWO_NODE_BINARY: OnceCell<PathBuf> = OnceCell::new();
+    NATIVE_PARAM_TWO_NODE_BINARY
+        .get_or_try_init(|| {
+            let row = crate::fixtures::groups::select_sole_row(
+                "packages/testing/nros-tests/bins/param-two-node-talker",
+            )?;
+            let profile = cargo_target_profile_dir();
+            let rel = PathBuf::from(format!("{profile}/param-two-node-talker"));
+            require_prebuilt_row_binary_fresh(row, &rel)
+        })
+        .map(|p| p.as_path())
+}
+
 /// Resolve the prebuilt `int32-sink` fixture (cached).
 ///
 /// phase-277 W4: was `examples/native/rust/listener` with its `NROS_SUB_TOPIC`

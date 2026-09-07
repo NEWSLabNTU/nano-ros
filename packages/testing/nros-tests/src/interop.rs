@@ -354,6 +354,18 @@ pub const CELLS: &[InteropCell] = &[
     ic("native-params-rust-zenoh",
        c(Linux, Rust, Zenoh, Params, Interop, Runtime),
        NativeFixtures, RosEdition(Zenoh), BiDir, "params"),
+    // tests/params_per_node_interop.rs — phase-426 W6, the cell that would have
+    // caught three parameter stores coexisting. Same coordinate as its sibling
+    // above and a DIFFERENT test, the shape `bridge-zenoh-to-cyclone{,-imperative}`
+    // already has: the coordinate says what is built, not what is asked of it.
+    // Its sibling drives one node, and one node is precisely what the phase-426
+    // defect is invisible through — the six services were published under the
+    // EXECUTOR's identity, so a single-node image reads the same before and
+    // after. This one runs `ros2 param list/get/set` against a TWO-node image
+    // and asserts each node's own FQN answers with its own value.
+    ic("native-params-per-node-rust-zenoh",
+       c(Linux, Rust, Zenoh, Params, Interop, Runtime),
+       NativeFixtures, RosEdition(Zenoh), BiDir, "params_per_node_interop"),
     // tests/rust_multi_node_per_node_graph.rs — a multi-node Rust entry shows
     // one graph node per launch component in `ros2 node list` (#104/phase-268).
     ic("native-multinode-rust-zenoh",

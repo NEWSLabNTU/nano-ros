@@ -825,6 +825,24 @@ test-ros2-params verbose="":
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
+# Run the PER-NODE ROS 2 parameter interop cell (phase-426 W6).
+# Its sibling above drives a ONE-node image, which is the shape the phase-426
+# defect is invisible through — the six parameter services were published under
+# the executor's identity, so a single node reads the same before and after.
+# This one drives a two-node image and asserts each node's own FQN answers with
+# its own value. Same prerequisites: the distro's `rmw_zenoh_cpp` plus zenohd.
+[group("debug")]
+test-ros2-params-per-node verbose="":
+    #!/usr/bin/env bash
+    set -e
+    source scripts/build/cargo.sh
+    cargo_nextest_args=($(nros_cargo_nextest_args))
+    args=(-p nros-tests --test params_per_node_interop --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
+
 # Run the `ros2 lifecycle …` interop test against an nros lifecycle-node.
 # Needs the distro's `rmw_zenoh_cpp` (`ros-<distro>-rmw-zenoh-cpp` from apt).
 # There is no source overlay to build: issue 0291 refuted the "wire-match our
