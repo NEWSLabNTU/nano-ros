@@ -118,7 +118,7 @@ pub fn resolve_system_tiers(
 /// buildable unit, so a workspace that has migrated has its board only there;
 /// the `kind` rung is last because it is the coarsest — it was only ever a
 /// stand-in for a board name, and the two boards it has to separate
-/// (`nuttx-qemu-arm` vs `nuttx-qemu-riscv`) it cannot.
+/// (`qemu-armv7a-nuttx` vs `rv-virt-nuttx`) it cannot.
 ///
 /// Still a SUBSTRING match on the hint rather than a board-catalog lookup. The
 /// catalog would answer properly — `BoardDescriptor::platform` is exactly this
@@ -173,7 +173,7 @@ mod tests {
             // Mid-migration a workspace carries both. The image is the half
             // that survives, so it decides — reading the deploy would resolve
             // the RTOS of a block that is about to be deleted.
-            let s = sys("[image.fw]\nboard=\"nuttx-qemu-arm\"\n\
+            let s = sys("[image.fw]\nboard=\"qemu-armv7a-nuttx\"\n\
                  [deploy.fw]\nkind=\"embedded\"\nboard=\"mps2-an385-freertos\"\n");
             assert_eq!(derive_target_rtos(&s, Some("fw")), "nuttx");
         }
@@ -204,9 +204,8 @@ mod tests {
         /// reaching into `system.image` directly would miss it.
         #[test]
         fn the_defaults_table_supplies_a_board_the_block_omits() {
-            let s = sys(
-                "[image_defaults]\nboard=\"nuttx-qemu-riscv\"\n[image.fw]\nprofile=\"release\"\n",
-            );
+            let s =
+                sys("[image_defaults]\nboard=\"rv-virt-nuttx\"\n[image.fw]\nprofile=\"release\"\n");
             assert_eq!(derive_target_rtos(&s, Some("fw")), "nuttx");
         }
     }

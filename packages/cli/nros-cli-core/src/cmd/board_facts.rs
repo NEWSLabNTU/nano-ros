@@ -140,9 +140,9 @@ pub fn resolve(
 ///
 /// Compared by `names`, which is per-ENTRY, and NOT by `source`, which is the
 /// descriptor FILE. `packages/boards/nros-board-nuttx/nros-board.toml` declares
-/// two distinct boards — `nuttx-qemu-arm` and `nuttx-qemu-riscv` — so a
+/// two distinct boards — `qemu-armv7a-nuttx` and `rv-virt-nuttx` — so a
 /// file-level compare answers "yes" for two boards that differ in ISA, and
-/// `--board nuttx-qemu-riscv` silently resolves the arm board's facts. That is
+/// `--board rv-virt-nuttx` silently resolves the arm board's facts. That is
 /// the same collapse `check-site-config.py`'s alias map has to avoid, and it is
 /// worth stating in both places: a directory is not a board.
 fn same_board(a: &BoardDescriptor, b: &BoardDescriptor) -> bool {
@@ -192,7 +192,7 @@ fn resolve_one(
     // legal spellings — the descriptor's `names`, its directory, its
     // downstream framework id. Matching the key TEXTUALLY would make
     // `[board_config."qemu-armv7a-nsh"]` invisible to a build that spelled the
-    // same board `nuttx-qemu-arm`, which is issue 0606 one table over. So
+    // same board `qemu-armv7a-nuttx`, which is issue 0606 one table over. So
     // resolve both sides through the catalog and compare DESCRIPTORS.
     let (site_section, site) = match site_for_board(site_table, &catalog, descriptor) {
         Some((key, value)) => {
@@ -808,8 +808,8 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
     #[test]
     fn naming_the_deploy_picks_among_boards() {
         let ws = ws_with(&format!(
-            "{FREERTOS_WS}\n[deploy.nuttx]\nboard = \"nuttx-qemu-arm\"\nrmw = \"zenoh\"\n\n\
-             [board_config.\"nuttx-qemu-arm\"]\n\
+            "{FREERTOS_WS}\n[deploy.nuttx]\nboard = \"qemu-armv7a-nuttx\"\nrmw = \"zenoh\"\n\n\
+             [board_config.\"qemu-armv7a-nuttx\"]\n\
              sdk = {{ nuttx = \"{{env:NUTTX_DIR}}\" }}\n"
         ));
         let env = |k: &str| match k {
@@ -879,7 +879,7 @@ sdk = { freertos = "/opt/freertos", lwip = "/opt/lwip" }
 
     /// Two boards share `packages/boards/nros-board-nuttx/nros-board.toml`, so
     /// a descriptor compared by its FILE answers "same board" for an arm and a
-    /// riscv target. `--board nuttx-qemu-riscv` would then hand the build the
+    /// riscv target. `--board rv-virt-nuttx` would then hand the build the
     /// arm board's facts — a wrong answer that reports success.
     #[test]
     fn two_boards_in_one_descriptor_file_stay_distinct() {
@@ -891,15 +891,15 @@ rmw = "zenoh"
 domain_id = 0
 
 [image.arm]
-board = "nuttx-qemu-arm"
+board = "qemu-armv7a-nuttx"
 
 [image.riscv]
 board = "nuttx-riscv"
 
-[board_config."nuttx-qemu-arm"]
+[board_config."qemu-armv7a-nuttx"]
 sdk = { nuttx = "/opt/arm", nuttx_apps = "/opt/arm-apps" }
 
-[board_config."nuttx-qemu-riscv"]
+[board_config."rv-virt-nuttx"]
 sdk = { nuttx = "/opt/riscv", nuttx_apps = "/opt/riscv-apps" }
 "#,
         );
@@ -907,7 +907,7 @@ sdk = { nuttx = "/opt/riscv", nuttx_apps = "/opt/riscv-apps" }
             ws.path(),
             &repo_root(),
             None,
-            Some("nuttx-qemu-arm"),
+            Some("qemu-armv7a-nuttx"),
             &|_| None,
         )
         .expect("arm resolves");
@@ -915,10 +915,10 @@ sdk = { nuttx = "/opt/riscv", nuttx_apps = "/opt/riscv-apps" }
             arm.get("NROS_SDK_NUTTX").map(String::as_str),
             Some("/opt/arm")
         );
-        // `nuttx-riscv` is the descriptor's declared name; `nuttx-qemu-riscv`
+        // `nuttx-riscv` is the descriptor's declared name; `rv-virt-nuttx`
         // is another spelling of the SAME entry, so both must find the riscv
         // block and neither may find the arm one.
-        for spelling in ["nuttx-riscv", "nuttx-qemu-riscv"] {
+        for spelling in ["nuttx-riscv", "rv-virt-nuttx"] {
             let r = resolve(ws.path(), &repo_root(), None, Some(spelling), &|_| None)
                 .unwrap_or_else(|e| panic!("{spelling} resolves: {e}"));
             assert_eq!(

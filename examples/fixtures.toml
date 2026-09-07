@@ -704,8 +704,8 @@ rmw = "zenoh"
 dir = "examples/workspaces/c"
 bringup = "src/demo_bringup"
 image = "nuttx"
-build_subdir = "build/nuttx-zenoh-nuttx-qemu-arm/cmake"
-cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8330" }
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx/cmake"
+cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "qemu-armv7a-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8330" }
 
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C++ RT-TIERS workspace entry
 # (`realtime-cpp`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C++ nodes over ONE
@@ -723,8 +723,8 @@ rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
 image = "nuttx"
-build_subdir = "build/nuttx-zenoh-nuttx-qemu-arm/cmake"
-cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8491" }
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx/cmake"
+cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "qemu-armv7a-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8491" }
 
 # #199 follow-up — the rv-virt (riscv32) C++ RT-TIERS workspace entry: the
 # riscv sibling of workspace-cpp-nuttx-realtime (same demo_bringup 2-tier
@@ -738,8 +738,8 @@ rmw = "zenoh"
 dir = "examples/workspaces/realtime-cpp"
 bringup = "src/demo_bringup"
 image = "riscv_nuttx"
-build_subdir = "build/nuttx-zenoh-nuttx-qemu-riscv/cmake"
-cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-riscv", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8891" }
+build_subdir = "build/nuttx-zenoh-rv-virt-nuttx/cmake"
+cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "rv-virt-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8891" }
 
 # phase-281 W3-nuttx — the NuttX (QEMU arm-virt) C RT-TIERS workspace entry
 # (`realtime-c`): ctrl (high tier, 10 ms) + telem (low tier, 100 ms) C nodes over ONE
@@ -756,8 +756,8 @@ rmw = "zenoh"
 dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
 image = "nuttx"
-build_subdir = "build/nuttx-zenoh-nuttx-qemu-arm/cmake"
-cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-arm", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8391" }
+build_subdir = "build/nuttx-zenoh-qemu-armv7a-nuttx/cmake"
+cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "qemu-armv7a-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8391" }
 
 # #199 follow-up — the rv-virt (riscv32) C RT-TIERS workspace entry: the riscv
 # sibling of workspace-c-nuttx-realtime (same demo_bringup 2-tier plan; the
@@ -773,8 +773,8 @@ rmw = "zenoh"
 dir = "examples/workspaces/realtime-c"
 bringup = "src/demo_bringup"
 image = "riscv_nuttx"
-build_subdir = "build/nuttx-zenoh-nuttx-qemu-riscv/cmake"
-cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "nuttx-qemu-riscv", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8791" }
+build_subdir = "build/nuttx-zenoh-rv-virt-nuttx/cmake"
+cmake_defs = { NANO_ROS_PLATFORM = "nuttx", NANO_ROS_BOARD = "rv-virt-nuttx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8791" }
 
 [[workspace_fixture]]
 id = "workspace-cpp-native"

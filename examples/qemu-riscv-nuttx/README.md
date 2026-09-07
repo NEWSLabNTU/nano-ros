@@ -8,7 +8,7 @@ toolchain/board lane — not the `qemu-arm-nuttx` build path. Just module:
 
 ```sh
 source ./activate.sh
-nros setup qemu-riscv-nuttx    # riscv-none-elf toolchain + NuttX sources
+nros setup rv-virt-nuttx    # riscv-none-elf toolchain + NuttX sources
 ```
 
 ## RMW selection

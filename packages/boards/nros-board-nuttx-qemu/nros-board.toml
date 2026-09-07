@@ -14,9 +14,10 @@
 
 # ── arm: QEMU ARM virt (Cortex-A7 + virtio-net). Tier 1. ────────────────────
 [[board]]
-# phase-351 / issue 0606 — the arm witness's DOWNSTREAM ids: `nuttx-qemu-arm` (workspace deploys) and
-# `qemu-armv7a-nsh` (the NuttX board config the copy-out examples name).
-names = ["nuttx", "NuttX", "nuttx-qemu-arm", "qemu-armv7a-nsh"]
+# phase-351 / issue 0606 — the arm witness's DOWNSTREAM ids: `qemu-armv7a-nuttx` (workspace deploys;
+# renamed from `nuttx-qemu-arm` by phase-437 W4) and `qemu-armv7a-nsh` (the NuttX board config the
+# copy-out examples name — board PLUS config, so it stays distinct from the board id).
+names = ["nuttx", "NuttX", "qemu-armv7a-nuttx", "qemu-armv7a-nsh"]
 platform = "nuttx"
 toolchain = "nightly"
 entry_kind = "board-run"
@@ -116,8 +117,9 @@ toolchain_file = "cmake/toolchain/armv7a-nuttx-eabi.cmake"
 # a board by a name both could answer to; the names themselves are distinct, so
 # this is belt-and-braces against an alias being added later.
 [[board]]
-# phase-351 / issue 0606 — the riscv witness's downstream id, as used by the realtime workspaces.
-names = ["nuttx-riscv", "NuttX-riscv", "nuttx-qemu-riscv"]
+# phase-351 / issue 0606 — the riscv witness's downstream id, as used by the realtime workspaces
+# (renamed from `nuttx-qemu-riscv` by phase-437 W4).
+names = ["nuttx-riscv", "NuttX-riscv", "rv-virt-nuttx"]
 disambiguate_by_target = "riscv"
 platform = "nuttx"
 toolchain = "nightly"

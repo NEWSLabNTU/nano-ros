@@ -177,12 +177,12 @@ include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosGenerateInterfaces.cmake")
 # Per-board overlay — REQUIRED for NuttX. Overlays own the FFI crate
 # path, the cargo target triple, and the `nros_board_link_app`
 # implementation that drives `nuttx_build_example`. Today the only
-# board is `nuttx-qemu-arm` (QEMU ARM virt, Cortex-A7).
+# board is `qemu-armv7a-nuttx` (QEMU ARM virt, Cortex-A7).
 # ---------------------------------------------------------------------------
 if(NOT DEFINED NANO_ROS_BOARD)
     message(FATAL_ERROR
         "nano-ros-nuttx: NANO_ROS_BOARD is required for the NuttX "
-        "platform (e.g. -DNANO_ROS_BOARD=nuttx-qemu-arm). Boards "
+        "platform (e.g. -DNANO_ROS_BOARD=qemu-armv7a-nuttx). Boards "
         "supply the FFI crate path, cargo target triple, and the "
         "`nros_board_link_app` implementation that drives "
         "`nuttx_build_example`.")
@@ -195,7 +195,7 @@ if(NOT EXISTS "${_nros_nuttx_board_module}")
         "nano-ros-nuttx: no board overlay at "
         "${_nros_nuttx_board_module}. Add a "
         "cmake/board/nano-ros-board-${NANO_ROS_BOARD}.cmake module or "
-        "pick a supported board (e.g. nuttx-qemu-arm).")
+        "pick a supported board (e.g. qemu-armv7a-nuttx).")
 endif()
 include("${_nros_nuttx_board_module}")
 

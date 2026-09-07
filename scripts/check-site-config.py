@@ -57,8 +57,8 @@ SDK_ENV = os.path.join(ROOT, "just/sdk-env.just")
 # descriptor and this gate reads it. One fact, one home (RFC-0072 §5 A vs B).
 BOARDS = {
     "mps2-an385-freertos": {"freertos": "FREERTOS_DIR", "lwip": "LWIP_DIR"},
-    "nuttx-qemu-arm": {"nuttx": "NUTTX_DIR", "nuttx_apps": "NUTTX_APPS_DIR"},
-    "nuttx-qemu-riscv": {"nuttx": "NUTTX_DIR", "nuttx_apps": "NUTTX_APPS_DIR"},
+    "qemu-armv7a-nuttx": {"nuttx": "NUTTX_DIR", "nuttx_apps": "NUTTX_APPS_DIR"},
+    "rv-virt-nuttx": {"nuttx": "NUTTX_DIR", "nuttx_apps": "NUTTX_APPS_DIR"},
     "qemu-armv7a-nsh": {"nuttx": "NUTTX_DIR", "nuttx_apps": "NUTTX_APPS_DIR"},
     "threadx-linux": {"threadx": "THREADX_DIR", "netxduo": "NETX_DIR"},
 }
@@ -107,7 +107,7 @@ def board_aliases():
     resolver cannot disagree about which block describes which board.
 
     Resolution is per BOARD ENTRY, not per directory: `nros-board-nuttx/`
-    declares two distinct boards (`nuttx-qemu-arm` and `nuttx-qemu-riscv`), so
+    declares two distinct boards (`qemu-armv7a-nuttx` and `rv-virt-nuttx`), so
     folding a directory's entries together would map both spellings onto
     whichever one was seen first — two boards collapsed into one, with the
     riscv site block silently answering for the arm build. The directory alias

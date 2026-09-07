@@ -397,7 +397,7 @@ build-fixtures-riscv:
 # recipe (not folded into build-fixtures) because the shared NuttX tree holds one
 # board config at a time: this reconfigures arm->rv-virt via the 194.5
 # board-aware marker, so it must run as its own serial step. CI runs it after the
-# arm fixtures. All toolchains/SDKs come from `nros setup qemu-riscv-nuttx`.
+# arm fixtures. All toolchains/SDKs come from `nros setup rv-virt-nuttx`.
 [group("full-matrix")]
 build-riscv-c:
     #!/usr/bin/env bash
@@ -406,7 +406,7 @@ build-riscv-c:
     set -e
     source scripts/build/cargo.sh
     if ! command -v riscv-none-elf-gcc >/dev/null 2>&1; then
-        nros_lane_skip_note nuttx "riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)"; exit 0
+        nros_lane_skip_note nuttx "riscv-none-elf-gcc not found (run: nros setup rv-virt-nuttx)"; exit 0
     fi
     if nros_sdk_missing NUTTX_DIR include; then
         nros_lane_skip_note nuttx "NuttX not found at $NUTTX_DIR — run: just setup nuttx"; exit 0
@@ -445,7 +445,7 @@ build-riscv-c-workspaces:
     set -e
     source scripts/build/cargo.sh
     if ! command -v riscv-none-elf-gcc >/dev/null 2>&1; then
-        nros_lane_skip_note nuttx "riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)"; exit 0
+        nros_lane_skip_note nuttx "riscv-none-elf-gcc not found (run: nros setup rv-virt-nuttx)"; exit 0
     fi
     if nros_sdk_missing NUTTX_DIR include; then
         nros_lane_skip_note nuttx "NuttX not found at $NUTTX_DIR — run: just setup nuttx"; exit 0
@@ -479,7 +479,7 @@ build-riscv-rust:
     set -e
     source scripts/build/cargo.sh
     if ! command -v riscv-none-elf-gcc >/dev/null 2>&1; then
-        nros_lane_skip_note nuttx "riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)"; exit 0
+        nros_lane_skip_note nuttx "riscv-none-elf-gcc not found (run: nros setup rv-virt-nuttx)"; exit 0
     fi
     if nros_sdk_missing NUTTX_DIR include; then
         nros_lane_skip_note nuttx "NuttX not found at $NUTTX_DIR — run: just setup nuttx"; exit 0
@@ -565,20 +565,20 @@ setup:
     # (arm-none-eabi-gcc, qemu, nuttx-libc/kernel/apps, zenoh-pico, …) from the
     # SDK index; the host-env helper handles rustup. Kernel build + external-app
     # staging stay below (NuttX-specific). `source setup.bash` to PATH the tools.
-    nros setup qemu-arm-nuttx
+    nros setup qemu-armv7a-nuttx
     # ...and the RISC-V board, because `build-all` builds BOTH. Issue 1038: this
     # recipe provisioned only the Arm board while `build-fixtures-riscv` builds
     # riscv leaves, so the nightly `nuttx` cell died every run on
     #
     #   NROS_LANE_NAMED_FAIL: nuttx: riscv-none-elf-gcc not found
-    #     (run: nros setup qemu-riscv-nuttx)
+    #     (run: nros setup rv-virt-nuttx)
     #   error: you named `nuttx`, so this is a FAILURE, not a skip.
     #
     # The lane was behaving correctly — phase-411's named-platform rule firing
     # at the point of decision, naming the remedy. The defect was that setup did
     # not run it. `nros setup` is idempotent, so this costs nothing on a host
     # that already has the toolchain.
-    nros setup qemu-riscv-nuttx
+    nros setup rv-virt-nuttx
     "{{justfile_directory()}}/tools/host-env.sh" nuttx
     # Phase 194.4 — the NuttX export is self-provisioned by the example build
     # (`nros_nuttx_build_example` runs `make export` before the cargo link), so

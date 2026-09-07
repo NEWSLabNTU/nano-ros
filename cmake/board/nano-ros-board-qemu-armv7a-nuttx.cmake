@@ -1,4 +1,4 @@
-# cmake/board/nano-ros-board-nuttx-qemu-arm.cmake
+# cmake/board/nano-ros-board-qemu-armv7a-nuttx.cmake
 #
 # Phase 138.3 / 144.6 — board overlay for QEMU ARM virt (Cortex-A7)
 # under NuttX. Mirrors the legacy
@@ -7,7 +7,7 @@
 # location under `packages/boards/nros-board-nuttx-qemu/`.
 #
 # Loaded by `cmake/platform/nano-ros-nuttx.cmake` when
-# NANO_ROS_BOARD=nuttx-qemu-arm.
+# NANO_ROS_BOARD=qemu-armv7a-nuttx.
 #
 # Required cmake variables (env or -D):
 #   NUTTX_DIR        — pre-built NuttX kernel source/build tree
@@ -85,7 +85,7 @@ if(NOT DEFINED NUTTX_FFI_CRATE_DIR)
 endif()
 if(NOT EXISTS "${NUTTX_FFI_CRATE_DIR}/Cargo.toml")
     message(FATAL_ERROR
-        "nano-ros-board-nuttx-qemu-arm: NUTTX_FFI_CRATE_DIR points at "
+        "nano-ros-board-qemu-armv7a-nuttx: NUTTX_FFI_CRATE_DIR points at "
         "'${NUTTX_FFI_CRATE_DIR}' but Cargo.toml is missing. Default "
         "in-tree path: ${_NROS_NUTTX_FFI_CRATE_DIR_DEFAULT}.")
 endif()

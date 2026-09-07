@@ -3,12 +3,8 @@
 #
 # Regenerate ONLY to record a rename that removed one:
 #     python3 scripts/check-board-name-reach.py --write-baseline
-nuttx-qemu-arm
-nuttx-qemu-riscv
 qemu-arm-baremetal
 qemu-arm-freertos
-qemu-arm-nuttx
 qemu-esp32-baremetal
-qemu-riscv-nuttx
 qemu-riscv64-threadx
 riscv64-qemu

@@ -18,7 +18,7 @@ name = "listener"
 # platform family, which `[image.*]` reads off the board, and `target` restated
 # the rustc triple the board descriptor already states. `launch` loses its
 # `launch/` prefix: an image's value is resolved against that directory.
-[image.qemu-arm-nuttx]
+[image.qemu-armv7a-nuttx]
 board = "qemu-armv7a-nsh"
 launch = "system.launch.xml"
 [board_config."qemu-armv7a-nsh"]

@@ -1,10 +1,10 @@
-# cmake/board/nano-ros-board-nuttx-qemu-riscv.cmake
+# cmake/board/nano-ros-board-rv-virt-nuttx.cmake
 #
 # 194.3c — board overlay for QEMU rv-virt (rv32imac) under NuttX. Mirror of
-# nano-ros-board-nuttx-qemu-arm.cmake with the riscv FFI crate, riscv cargo
+# nano-ros-board-qemu-armv7a-nuttx.cmake with the riscv FFI crate, riscv cargo
 # target, the rv-virt defconfig, and the rv-virt Make.defs path.
 #
-# Loaded by cmake/platform/nano-ros-nuttx.cmake when NANO_ROS_BOARD=nuttx-qemu-riscv.
+# Loaded by cmake/platform/nano-ros-nuttx.cmake when NANO_ROS_BOARD=rv-virt-nuttx.
 #
 # Required cmake variables (env or -D):
 #   NUTTX_DIR        — NuttX kernel source/build tree (third-party/nuttx/nuttx/)
@@ -44,7 +44,7 @@ if(NOT DEFINED NUTTX_FFI_CRATE_DIR)
 endif()
 if(NOT EXISTS "${NUTTX_FFI_CRATE_DIR}/Cargo.toml")
     message(FATAL_ERROR
-        "nano-ros-board-nuttx-qemu-riscv: NUTTX_FFI_CRATE_DIR points at "
+        "nano-ros-board-rv-virt-nuttx: NUTTX_FFI_CRATE_DIR points at "
         "'${NUTTX_FFI_CRATE_DIR}' but Cargo.toml is missing. Default "
         "in-tree path: ${_NROS_NUTTX_FFI_CRATE_DIR_DEFAULT}.")
 endif()

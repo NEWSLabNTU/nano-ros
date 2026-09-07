@@ -136,7 +136,7 @@ pub fn board_path_for(key: &str) -> Option<&'static str> {
         // differed between arm virt and rv-virt (the arch delta is defconfig +
         // toolchain DATA). The keys stay distinct because they select the
         // `[[board]]` descriptor — and therefore the target triple — not the type.
-        "nuttx" | "qemu-arm-nuttx" | "nuttx-riscv" | "qemu-riscv-nuttx" => {
+        "nuttx" | "qemu-armv7a-nuttx" | "nuttx-riscv" | "rv-virt-nuttx" => {
             "::nros_board_nuttx_qemu::NuttxQemu"
         }
         // Phase 225.O — CI-runnable ESP32-C3 QEMU (OpenETH) board. Routed
@@ -1278,9 +1278,9 @@ mod tests {
             "threadx-qemu-riscv64",
             "qemu-riscv64-threadx",
             "nuttx",
-            "qemu-arm-nuttx",
+            "qemu-armv7a-nuttx",
             "nuttx-riscv",
-            "qemu-riscv-nuttx",
+            "rv-virt-nuttx",
             "esp32-qemu",
             "qemu-esp32-baremetal",
             "zephyr",

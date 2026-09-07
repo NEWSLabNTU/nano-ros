@@ -72,10 +72,10 @@ INDEX = os.path.join(ROOT, "nros-sdk-index.toml")
 EXEMPT = {
     "packages/boards/nros-board-nuttx-qemu/armv7a-nuttx-toolchain.cmake":
         "issue 1117 — same defect, board-owned file; reached via "
-        "cmake/board/nano-ros-board-nuttx-qemu-arm.cmake",
+        "cmake/board/nano-ros-board-qemu-armv7a-nuttx.cmake",
     "packages/boards/nros-board-nuttx-qemu/riscv-nuttx-toolchain.cmake":
         "issue 1117 — same defect, board-owned file; reached via "
-        "cmake/board/nano-ros-board-nuttx-qemu-riscv.cmake",
+        "cmake/board/nano-ros-board-rv-virt-nuttx.cmake",
     "scripts/qemu/arm-none-eabi-cortex-m3.cmake":
         "issue 1117 — find_program on ${TOOLCHAIN_PREFIX}, so it resolves but "
         "still reports neither version nor origin",
