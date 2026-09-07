@@ -78,6 +78,21 @@
 #ifndef NROS_NODE_PARAM_STRING_BUF
 #define NROS_NODE_PARAM_STRING_BUF 256
 #endif
+// AFTER the `#endif`, deliberately, and not inside the block above. Both other
+// placements are broken and neither is obvious (issues 0637, 1015):
+//
+//   * BEFORE the `#define`, the preprocessor reads an undefined macro as 0, so
+//     `< 1` is true on every build that does not `-D` it — the guard fires
+//     always and the header never compiles.
+//   * INSIDE the `#ifndef`, a `-D NROS_NODE_PARAM_STRING_BUF=0` skips the whole
+//     block and takes the guard with it — it is absent for exactly the input it
+//     exists to catch.
+//
+// Here it sees whatever value actually reached the translation unit, from
+// either source. `check-c-array-guard-probe` compiles this both ways.
+#if NROS_NODE_PARAM_STRING_BUF < 1
+#error "NROS_NODE_PARAM_STRING_BUF must be >= 1: it sizes a C array (issue 1015)"
+#endif
 
 namespace nros {
 namespace detail {
