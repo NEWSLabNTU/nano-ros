@@ -1346,11 +1346,24 @@ impl ParameterServiceServers {
 /// without coupling to the parameter service implementation.
 pub(crate) trait ParamServiceProcessor {
     fn process_services(&mut self, server: &mut ParameterServer) -> Result<usize, NodeError>;
+
+    /// phase-426 W3 — which node this set of six serves.
+    ///
+    /// The executor holds one set PER NODE now, so "have I already registered
+    /// for this node?" is a question the reconcile pass asks every spin. The
+    /// key lives on the set that owns it rather than in a parallel list beside
+    /// it: two containers agreeing about the same identity is the shape that
+    /// drifts.
+    fn param_node(&self) -> NodeKey;
 }
 
 impl ParamServiceProcessor for ParameterServiceServers {
     fn process_services(&mut self, server: &mut ParameterServer) -> Result<usize, NodeError> {
         self.process(server)
+    }
+
+    fn param_node(&self) -> NodeKey {
+        self.node
     }
 }
 
@@ -1362,13 +1375,43 @@ pub(crate) struct ParamState<'s> {
     /// carries the storage's lifetime. `'s` is the executor's own borrow
     /// lifetime, which is what W3' will hand the carved table under.
     pub(crate) server: ParameterServer<'s>,
-    /// Issue 0745 — `None` until `register_parameter_services` attaches the
-    /// six service servers. The STORE half exists earlier: launch-param
-    /// seeding (`declare_parameter`) runs BEFORE any node is constructed —
-    /// service servers cannot be created that early, but initial values
-    /// must be, or ctor-read parameters silently use compiled defaults.
-    pub(crate) services: Option<Box<dyn ParamServiceProcessor>>,
+    /// phase-426 W3 — ONE SET OF SIX PER NODE, because upstream's parameter
+    /// services are per node and `ros2 param list` enumerates nodes.
+    ///
+    /// Issue 0745 — EMPTY until the reconcile pass attaches service servers.
+    /// The STORE half exists earlier: launch-param seeding
+    /// (`declare_parameter`) runs BEFORE any node is constructed — service
+    /// servers cannot be created that early, but initial values must be, or
+    /// ctor-read parameters silently use compiled defaults.
+    ///
+    /// Bounded by [`MAX_PARAM_SERVICE_SETS`] rather than heap-grown: the
+    /// executor's node table is a fixed arena, so the number of sets is
+    /// already bounded and a `Vec` would only hide where.
+    pub(crate) services: heapless::Vec<Box<dyn ParamServiceProcessor>, MAX_PARAM_SERVICE_SETS>,
+    /// phase-426 W3 — whether a caller asked for parameter services at all.
+    ///
+    /// Registration cannot happen where the request is made. `nros::main!`
+    /// emits `apply_param_services` BEFORE its per-node `register` calls by
+    /// design (the store must exist when each cell captures it), so at request
+    /// time the node table is empty and there is no FQN to publish under. The
+    /// request is therefore recorded here and satisfied by
+    /// `Executor::reconcile_parameter_services` once the nodes exist — the
+    /// same shape `reconcile_ros_time_source` uses for the same reason.
+    pub(crate) requested: bool,
 }
+
+/// phase-426 W3 — the executor's bound on parameter-service SETS.
+///
+/// One set per node, and the node table is `MAX_NODES`
+/// (`NROS_EXECUTOR_MAX_NODES`), so this is that bound restated for the sets
+/// rather than a second, independently-tunable number. An executor with no
+/// registered node still gets one set, under its own implicit primary
+/// identity, which is why the floor is 1.
+pub(crate) const MAX_PARAM_SERVICE_SETS: usize = if crate::config::MAX_NODES == 0 {
+    1
+} else {
+    crate::config::MAX_NODES
+};
 
 #[cfg(test)]
 mod tests {
