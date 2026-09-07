@@ -337,6 +337,20 @@ def demand(text=None):
             c.add(name)
     # A name that is only ever a prefix is not itself an identifier.
     c -= prefixes
+    # THE TOKEN IS NOT PART OF THE SURFACE IT VERSIONS (phase-413 W2).
+    #
+    # `_codegen_version.jinja` writes `#ifndef NROS_CODEGEN_VERSION / #error`,
+    # so both names are demanded — but they ARE the compatibility token, and a
+    # token that appears in its own surface makes the gate circular: bumping the
+    # integer changes the surface, which demands a bump. It also fires for
+    # merely DEFINING them, which is what happened when the NuttX fallback
+    # header gained the two `#define`s phase-429 W1 had missed — a fix for a
+    # two-day-red nightly lane, reported here as "the surface MOVED".
+    #
+    # Same reasoning as `INVENTORY_SCHEMA_VERSION` above: a thing that carries
+    # its own authored integer must not also be answerable to this one, or one
+    # change has two tokens and the second is the one nobody bumps.
+    c -= {"NROS_CODEGEN_VERSION", "NROS_CODEGEN_VERSION_MIN", "NROS_EMITTED_CODEGEN_VERSION"}
     rust.discard("")
     return rust, c, cpp, prefixes
 
