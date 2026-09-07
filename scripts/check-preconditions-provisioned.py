@@ -72,6 +72,16 @@ CLASSIFICATION = {
         "unships whatever the skipped commits fixed, and setup must never "
         "silently pick a side.",
     ),
+    "the Zephyr workspace lives inside a DIFFERENT": (
+        "manual",
+        "WHERE a shared west workspace lives is a host-provisioning decision, "
+        "and the only fix is to move a directory that may hold tens of GB and "
+        "be shared by other jobs. `just setup` must never relocate one it did "
+        "not create, and it cannot know whether the second checkout around it "
+        "is someone's active tree. The probe's job is to name the cause at the "
+        "point of resolution instead of letting phase-431 W1's ownership guard "
+        "refuse 15 minutes later inside a cmake configure.",
+    ),
     "in-tree nros CLI is stale": (
         "setup",
         "`just setup-cli`, run by `_setup-common` on every setup path.",

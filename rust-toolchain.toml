@@ -4,24 +4,26 @@ components = ["rustfmt", "clippy", "rust-src", "llvm-tools"]
 # phase-418 418.3 — `armv7r-none-eabi` joins the hard-float triple already
 # here: the Orin SPE FSP is softfp (AAPCS base), so the `hf` triple is the
 # wrong ABI for that image. Neither replaces the other.
-# The list is the set the GATES compile for, not a subset someone remembered.
-# It was four while `check-build` needed nine, and the gap is invisible until a
-# toolchain is reinstalled or a clone is fresh: rustup installs exactly what is
-# declared here, so the five undeclared ones survived only as residue on hosts
-# that had once added them by hand. `check-build`'s `nros-log-riscv32` then
-# fails with "can't find crate for `core`" and `repr-memory-agreement` reports
-# SKIPPED for want of `armv7a-none-eabi` — a gate that cannot evaluate, which
-# reads exactly like one that found nothing wrong.
+# MIRRORS the `rustup` rows of config/rust-targets.txt, which is the ONE list
+# (issue 0833) — do not hand-edit this against a grep of `--target`, which is
+# how it came to hold three triples the list did not and to miss one it did.
+# The `build-std` rows there (the two NuttX triples) are deliberately absent:
+# they have no prebuilt rust-std for rustup to install.
+#
+# Why duplicate the list at all: rustup reads THIS file automatically, so a
+# fresh clone gets the targets without anyone running a recipe first. That is
+# worth a mirror, and `check-rust-targets-covered` is what keeps the mirror
+# from becoming a fifth spelling — it compares this array against the `rustup`
+# rows in both directions, so neither a missing nor a stray triple can ship.
 targets = [
-    "thumbv7em-none-eabihf",
     "thumbv7m-none-eabi",
+    "thumbv7em-none-eabihf",
     "armv7r-none-eabi",
     "armv7r-none-eabihf",
-    "armv7a-none-eabi",
-    "armv7a-none-eabihf",
-    "aarch64-unknown-none",
+    "armv8r-none-eabihf",
     "riscv32imc-unknown-none-elf",
     "riscv64gc-unknown-none-elf",
+    "aarch64-unknown-none",
+    "armv7a-none-eabi",
+    "armv7a-none-eabihf",
 ]
-# The two NuttX triples (`armv7a-nuttx-eabihf`, `riscv32imac-unknown-nuttx-elf`)
-# are custom JSON targets, not rustup ones, and are deliberately NOT listed.

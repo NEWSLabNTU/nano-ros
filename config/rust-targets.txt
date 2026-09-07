@@ -59,6 +59,34 @@ armv7r-none-eabihf              rustup
 armv8r-none-eabihf              rustup
 riscv32imc-unknown-none-elf     rustup
 riscv64gc-unknown-none-elf      rustup
+# ARMv8-A AArch64 bare-metal — the Arm FVP BaseR AEMv8-R board
+# (`fvp-aemv8r-smp`) names it in its `nros-board.toml`, but as
+# `rust_targets = ["aarch64-unknown-none"]`, which is a FOURTH declaring form:
+# `check-rust-targets-covered` reads `[target.<triple>]` SECTIONS, not that key,
+# so the triple was declared by a board and listed nowhere while the gate
+# reported OK. The gate's reach is narrower than the rule it enforces, which is
+# issue 0196's shape inside the gate written to prevent exactly this.
+aarch64-unknown-none            rustup
+# Cortex-A / ARMv7-A bare-metal. Two ABIs, two different declaring forms, and
+# NEITHER is one the coverage gate can see:
+#
+#   armv7a-none-eabi    the single non-host target BOTH halves of
+#                       `check-repr-memory-agreement` cross-compile to, as a
+#                       CONSTANT in the gate script itself (RUST_TARGET). A
+#                       gate's own constant is a FIFTH declaring form. Until
+#                       this row existed nothing provisioned it, so that gate
+#                       reported `[SKIPPED] missing: rust-std for
+#                       armv7a-none-eabi` on every host — a check that cannot
+#                       evaluate, which reads exactly like one that found
+#                       nothing wrong.
+#   armv7a-none-eabihf  set by `scripts/zephyr/cortex-a9-rust-patch.sh`
+#                       (`set(RUST_TARGET ... PARENT_SCOPE)`) and installed
+#                       AD HOC by `just/zephyr-ci.just`. That ad-hoc install is
+#                       the installer-vs-doctor divergence this whole file
+#                       exists to end, still running for this one triple: the
+#                       CI lane had it and `just doctor` never asked for it.
+armv7a-none-eabi                rustup
+armv7a-none-eabihf              rustup
 
 # NuttX: Tier 3 custom targets, no prebuilt std. See RFC-0012 / issue 0583.
 armv7a-nuttx-eabihf             build-std

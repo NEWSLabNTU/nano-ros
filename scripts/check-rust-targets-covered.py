@@ -138,6 +138,66 @@ def index_triples():
     return triples
 
 
+def toolchain_file_triples():
+    """The `targets = [...]` array in rust-toolchain.toml."""
+    import re as _re
+    path = ROOT / "rust-toolchain.toml"
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8")
+    m = _re.search(r"^targets\s*=\s*\[(.*?)\]", text, _re.S | _re.M)
+    if not m:
+        return set()
+    return set(_re.findall(r'"([^"]+)"', m.group(1)))
+
+
+def check_toolchain_file(known):
+    """`rustup` rows <-> rust-toolchain.toml `targets`, exactly.
+
+    A FIFTH place, and it drifted the same way the SDK index did (issue 0944).
+    rustup reads that file automatically, so it is worth keeping — but it was
+    hand-authored from a grep of `--target` rather than from this list, which
+    made it wrong in BOTH directions at once: it carried three triples no row
+    had (aarch64-unknown-none, armv7a-none-eabi, armv7a-none-eabihf) and missed
+    one that did (armv8r-none-eabihf). Same shape as the CLI source-dirs list,
+    which was blind in both directions for the same reason.
+
+    build-std rows are excluded: rustup cannot install them, and naming one here
+    makes every `rustup` invocation in the tree fail.
+    """
+    have = toolchain_file_triples()
+    if have is None:
+        return 0
+    want = {t for t, kind in known.items() if kind == "rustup"}
+    build_std = {t for t, kind in known.items() if kind == "build-std"}
+
+    absent = sorted(want - have)
+    forbidden = sorted(have & build_std)
+    stray = sorted(have - want - build_std)
+
+    if not (absent or forbidden or stray):
+        return 0
+
+    print("rust-toolchain.toml `targets` disagrees with "
+          "config/rust-targets.txt:\n", file=sys.stderr)
+    for t in absent:
+        print(f"  MISSING from rust-toolchain.toml: {t}", file=sys.stderr)
+        print("      A fresh clone or a reinstalled toolchain will not have it, "
+              "and the\n      failure arrives as `can't find crate for `core`` "
+              "in a cross build.", file=sys.stderr)
+    for t in forbidden:
+        print(f"  build-std target in rust-toolchain.toml: {t}", file=sys.stderr)
+        print("      rustup cannot install it; every rustup call in the tree "
+              "then fails.", file=sys.stderr)
+    for t in stray:
+        print(f"  in rust-toolchain.toml but in no row: {t}", file=sys.stderr)
+        print("      Add it to config/rust-targets.txt (with its declaring "
+              "site) or drop it.", file=sys.stderr)
+    print("\n  rust-toolchain.toml MIRRORS the `rustup` rows. Never hand-edit "
+          "it\n  against a grep of `--target`.", file=sys.stderr)
+    return 1
+
+
 def check_index(known):
     """`rustup` rows <-> `[rust.target.*]`, exactly. Issue 0944."""
     have = index_triples()
@@ -237,11 +297,13 @@ def main():
 
     if check_index(known) != 0:
         return 1
+    if check_toolchain_file(known) != 0:
+        return 1
 
     rustup = sum(1 for k in known.values() if k == "rustup")
     print(f"check-rust-targets-covered: OK "
           f"({len(known)} listed, {len(set(t for t, _ in declared_rows()))} declared, "
-          f"{rustup} mirrored in the SDK index)")
+          f"{rustup} mirrored in the SDK index and in rust-toolchain.toml)")
     return 0
 
 

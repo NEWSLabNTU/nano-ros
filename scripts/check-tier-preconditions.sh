@@ -67,6 +67,17 @@ probe "cross Rust target(s) declared by this tree are not installed" \
     "just workspace rust-targets   (or: rustup target add <triple>)" \
     bash scripts/check-rust-targets-installed.sh
 
+# phase-431 W1's ownership guard, asked HERE rather than 15 minutes into a
+# fixture build. A shared west workspace nested inside a SECOND checkout is a
+# host-provisioning fact decided once, but it surfaces as an error about a
+# BINARY, deep inside a cmake configure, naming neither the workspace nor the
+# fix. That shape cost the tier-2 lane two consecutive nights (2026-09-06/-07).
+# The probe mirrors the guard's three silent cases exactly, so it can never be
+# stricter than the thing it front-runs.
+probe "the Zephyr workspace lives inside a DIFFERENT nano-ros checkout" \
+    "move it out of any checkout — see the message; do NOT reach for NROS_SKIP_STALE_CHECK=1" \
+    bash scripts/check-zephyr-workspace-checkout.sh
+
 probe "a submodule is not at the commit this superproject records" \
     "git submodule update <path>   (bypass: NROS_SKIP_SUBMODULE_DRIFT_CHECK=1)" \
     bash scripts/check-submodule-drift.sh
