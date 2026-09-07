@@ -143,6 +143,26 @@ codegen-version-refusal:
 config-header-single-writer:
     @python3 scripts/check-config-header-single-writer.py
 
+# Issue 1115 — a COMMITTED fallback config header must be a superset of what
+# generated code reads.
+#
+# `_codegen_version.jinja` says of its two macros "neither side is authored and
+# neither can drift", on the premise that both reach a TU through a header
+# `nros-build-helpers` writes. On NuttX that premise is false: the stub
+# dispatches to a committed snapshot and the per-build header is on no include
+# path at all. phase-429 W1 paired the template and the artifacts correctly and
+# missed the two snapshots, so from a CLEAN CLONE every NuttX C and C++ image
+# failed to compile for two days — invisible to CI because nothing
+# merge-gating builds NuttX, and easy to misread as build residue because the
+# only visible symptom was in an old build dir.
+#
+# Names must be a superset (the class); the codegen-version pair must match the
+# Rust constants EXACTLY (a version range has no safe upper bound, unlike every
+# size in those files). Self-testing, buildless, ~0.1 s.
+[private]
+config-fallback-macros:
+    @python3 scripts/check-config-fallback-macros.py
+
 # `nros sync` skips the leaf with a count instead of a name. Buildless.
 # RFC-0087 D4 / phase-420 W5 — a descriptor carries only what no convention can
 # produce, so a field it DOES state must equal the value convention derives.

@@ -867,6 +867,17 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   mirror-only TU passes a SHORTER struct by value → tail field garbage. Gated:
   `check-ffi-struct-mirrors` (push lane) + cross-include TU in `check-c`. Include order is
   one-way: `nros_cpp_ffi.h` BEFORE `component.h`. → issue 0160 (archived).
+- **On NuttX `<nros/nros_config_generated.h>` is a COMMITTED SNAPSHOT, not the per-build
+  header** (issue 1115) — the stub dispatches to `nros_config_generated_nuttx.h` (and the
+  `_cpp_` twin) under `NROS_PLATFORM_NUTTX`, and the per-build file is on NO NuttX include
+  path (`nros-c-generated` appears zero times in a NuttX leaf's `build.ninja`), because the
+  0088/0114 ordering is guarded on `nros_c_config_header`/`cargo-build_nros_c` targets a
+  NuttX build does not have. So a template edit that the generated artifacts consume is a
+  TWO-FILE change, and phase-429 W1's codegen-version pair made only one of them: every
+  NuttX C and C++ image failed to compile from a CLEAN CLONE for two days, invisible because
+  no merge-gating lane builds NuttX. Gate: `check-config-fallback-macros`. The stale
+  per-build headers in `build-*/cargo-target/` are real and are NOT this — a `rm -rf` here
+  rebuilds the same failure while destroying the reproduction.
 - **zpico shim + zenoh-pico library MUST share the generated zenoh config** — flag-gated struct
   fields (`Z_FEATURE_LOCAL_QUERYABLE`…) make mismatched TUs a silent ABI break (queries went
   session-local-only). `build_c_shim` injects `ZENOH_GENERIC` + the OUT_DIR config. → issue 0135
