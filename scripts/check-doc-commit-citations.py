@@ -106,22 +106,34 @@ def citations(files):
 
 
 def resolve(hashes):
-    """The subset of `hashes` that names a commit in this repository.
+    """The subset of `hashes` naming a commit REACHABLE from a ref here.
 
-    One `cat-file --batch-check` for the whole set rather than a process per
-    hash: 1 446 of them is 1 446 forks otherwise, and this gate is on the fast
-    line.
+    Reachable, not merely present. `git cat-file` answers for any object the
+    object store holds, INCLUDING unreachable ones -- a commit left behind by a
+    rebase, or one written by another checkout that shares this store. On a host
+    where a `ros2` distrobox is a second nano-ros checkout on the same store,
+    three hashes declared FOREIGN in the baseline (`ros2` tree states cited by
+    issues 1127 and 1137) answered "commit" and the gate demanded their baseline
+    entries be deleted. Deleting them is exactly wrong: on a fresh clone and in
+    CI those objects do not exist, so the citations go unresolvable and the
+    baseline is what keeps the gate green. The gate was asking for a change that
+    would break the thing it guards, and it asked only on that host.
+
+    Reachability is also the property the gate's own prose claims to check --
+    "a short hash is invalidated by any rebase of the branch it names". An
+    unreachable commit IS the post-rebase state.
+
+    One `rev-list --all` for the whole set rather than a process per hash: 1 446
+    of them is 1 446 forks otherwise, and this gate is on the fast line.
+    Citations are a fixed 9 hex digits (see CITATION), so a prefix set is an
+    exact test rather than an abbreviation guess.
     """
     if not hashes:
         return set()
-    query = "\n".join(f"{h}^{{commit}}" for h in hashes)
-    r = subprocess.run(["git", "-C", ROOT, "cat-file", "--batch-check"],
-                       input=query, capture_output=True, text=True)
-    ok = set()
-    for h, line in zip(hashes, r.stdout.strip().split("\n")):
-        if " commit " in line:
-            ok.add(h)
-    return ok
+    r = subprocess.run(["git", "-C", ROOT, "rev-list", "--all"],
+                       capture_output=True, text=True)
+    reachable = {line[:9] for line in r.stdout.split()}
+    return {h for h in hashes if h in reachable}
 
 
 def read_baseline(path=None):
@@ -227,6 +239,18 @@ def self_test():
     real = subprocess.run(["git", "-C", ROOT, "rev-parse", "--short=9", "HEAD"],
                           capture_output=True, text=True).stdout.strip()
     dead = "0123456789"[:9]          # not a commit, and never will be
+    # An object this store HOLDS and no ref REACHES -- what a rebase leaves
+    # behind, and what a second checkout sharing the store contributes.
+    # `cat-file` says "commit" for it; the gate must not.
+    tree = subprocess.run(["git", "-C", ROOT, "rev-parse", "HEAD^{tree}"],
+                          capture_output=True, text=True).stdout.strip()
+    unreachable = subprocess.run(
+        ["git", "-C", ROOT, "commit-tree", tree, "-m", "unreachable self-test object"],
+        capture_output=True, text=True,
+        env={**os.environ,
+             "GIT_AUTHOR_NAME": "selftest", "GIT_AUTHOR_EMAIL": "selftest@invalid",
+             "GIT_COMMITTER_NAME": "selftest", "GIT_COMMITTER_EMAIL": "selftest@invalid"},
+    ).stdout.strip()[:9]
     cases = [
         ("a resolving citation passes", f"see `{real}` for it\n", False),
         ("a dangling citation fails", f"see `{dead}` for it\n", True),
@@ -237,6 +261,13 @@ def self_test():
         ("bare hex outside backticks is ignored",
          f"see {dead} for it\n", False),
     ]
+    if unreachable:
+        # Only when `commit-tree` actually produced one -- a read-only object
+        # store cannot, and a gate must not fail because it could not build its
+        # own fixture.
+        cases.append(
+            ("an object present but UNREACHABLE fails (it is the post-rebase state)",
+             f"see `{unreachable}` for it\n", True))
     bad = 0
     with tempfile.TemporaryDirectory() as d:
         for name, text, want_fail in cases:
