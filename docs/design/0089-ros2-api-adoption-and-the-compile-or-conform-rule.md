@@ -1672,8 +1672,21 @@ taste:
   returns `std::shared_ptr<nros::Timer>` ALIASED onto the private cell — the
   shape `create_subscription` has always used — so the returned type is the type
   that exists and the cell stays an implementation detail.
-* **Cost, measured:** zero non-test call sites. The migration is
-  `rclcpp::TimerBase::SharedPtr timer_;` -> `rclcpp::Timer::SharedPtr timer_;`.
+* **Cost, measured — and the first measurement was wrong.** It was recorded as
+  "zero non-test call sites" (a `grep` whose `--include` glob silently matched
+  nothing). The real answer is three source files and one book snippet. The
+  migration is still `rclcpp::TimerBase::SharedPtr timer_;` ->
+  `rclcpp::Timer::SharedPtr timer_;`, but the NAME now survives one release as a
+  DEPRECATED ALIAS while the hierarchy does not. That is not the ported-alias
+  proposal this document refused in §"Review of the invented parts" item 1 —
+  that one made `TimerBase` a first-class ported name permanently, which sells
+  the taxonomy; this one is the second step of the document's own two-step, and
+  its diagnostic says there is no hierarchy. It exists because
+  `examples/templates/cpp-port-minimal-publisher` is vendored UNMODIFIED to
+  demonstrate upstream source compiling here, and the deprecation interval is
+  the only window in which that claim and this ruling are both true. `check-cpp`
+  asserts the warning fires and names `rclcpp::Timer`; GCC offers no suggestion
+  when the name is simply absent.
 
 §"Review of the invented parts" item 1 — which proposed `TimerBase` as a ported
 ALIAS — is superseded by this and by the section that already withdrew it. It

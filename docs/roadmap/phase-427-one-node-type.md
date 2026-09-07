@@ -184,9 +184,30 @@ it). The ruling is delete, argued from the executor's dispatch:
    `std::shared_ptr<nros::Timer>` aliased onto the private cell — the shape
    `create_subscription` has always used.
 
-Cost, measured: `rclcpp::TimerBase` had ZERO non-test call sites in this tree.
-`rclcpp::Timer` replaces it and is UNCONDITIONAL, so a freestanding target gets
-the ROS 2 timer name too.
+**Cost, measured — and the first measurement was WRONG.** The commit that
+landed this said "zero non-test call sites". A `grep` with a broken
+`--include` glob is what said so; the real answer is THREE source files
+(`examples/templates/cpp-port-minimal-publisher`,
+`examples/templates/workspace-shadowing`,
+`examples/templates/local-msg-package`) plus one book snippet. That changed the
+migration, not the ruling:
+
+* the HIERARCHY is deleted outright, which is what W7 asked to rule on;
+* the NAME survives ONE RELEASE as a deprecated alias for `rclcpp::Timer`, with
+  a message stating there is no hierarchy — this document's own two-step
+  ("alias, then deprecate, then remove"), pointing at removal;
+* the two ours-authored consumers and the book snippet migrated in the same
+  commit; `cpp-port-minimal-publisher` did NOT, deliberately, because it is
+  vendored UNMODIFIED to demonstrate upstream source compiling here, and the
+  deprecation interval is exactly when both claims can be true. Its README now
+  says the line is on a clock and what it becomes.
+* `check-cpp` asserts the deprecation FIRES and greps the diagnostic for
+  `rclcpp::Timer`, because GCC offers NO suggestion when the name is simply
+  gone (measured: `'TimerBase' in namespace 'rclcpp' does not name a type`, and
+  nothing else).
+
+`rclcpp::Timer` is UNCONDITIONAL, so a freestanding target gets the ROS 2 timer
+name too.
 
 **W6 — the clock-taking verb** on the merged type
 (`create_timer<C, &C::m>(out, clock, ms, self)`) and the hosted free
