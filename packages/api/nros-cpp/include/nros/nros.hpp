@@ -238,99 +238,8 @@ inline Result spin(uint32_t duration_ms, int32_t poll_ms = 10) {
 // 0112, rationale in `publisher.hpp`), so on a minimal libcpp they are absent
 // rather than a parse error.
 
-/// Capacity of `rclcpp::Node`'s node-local parameter store. Inline storage, so
-/// this is RAM in every image that constructs one — override it per build
-/// rather than raising the default.
-#ifndef NROS_RCLCPP_MAX_PARAMS
-#define NROS_RCLCPP_MAX_PARAMS 16
-#endif
-
 #include <cstdlib>     // std::abort -- the runtime half of RFC-0089 W3.b
 #include <type_traits> // the SFINAE guards on create_service / create_client
-
-// `<chrono>` requires the EXPLICIT opt-in, not `__has_include`, and that is
-// measured rather than stylistic.
-//
-// `__has_include(<chrono>)` is TRUE on the Zephyr arm-none-eabi toolchain --
-// the file exists -- but under `-ffreestanding` libstdc++ ships it INCOMPLETE:
-// `std::chrono::duration_cast` is absent, so `create_wall_timer` and `Rate`
-// failed to compile on every Zephyr C++ image with
-// `'duration_cast' is not a member of 'std::chrono'`. Replayed from that build
-// dir's own recorded compile command, not inferred.
-//
-// So the idiom has a boundary worth stating: `__has_include` answers "does the
-// header exist", which is the right question for `<memory>` (present or absent
-// as a unit) and the WRONG one for `<chrono>` (present but hollowed out). Where
-// a freestanding toolchain ships a partial header, only the consumer's own
-// `NROS_CPP_STD` opt-in is a reliable signal. Issue 0112's class, one layer past
-// where step A caught it.
-// CORRECTED 2026-09-05. The `NROS_CPP_STD`-only gate above was measured on the
-// Zephyr lane and never on a plain hosted one, and NOTHING THAT SHIPS DEFINES
-// `NROS_CPP_STD`: it appears in no cmake module, no toolchain file, no build.rs
-// and no Kconfig -- only in docs and in `check.just`'s own probe TUs. So the
-// narrow gate did not merely tighten `<chrono>`; it removed `create_wall_timer`
-// and `Rate` from EVERY shipped configuration, including the hosted one, where
-// `examples/templates/cpp-port-minimal-publisher` calls `create_wall_timer` and
-// is phase-417's own acceptance criterion.
-//
-// The right predicate needs BOTH halves, because the two lanes fail
-// differently and neither test alone sees both:
-//
-//   * Zephyr / ThreadX-RV64 build `-nostdinc++` against a minimal libcpp that
-//     has no `<chrono>` at all, so `__has_include` answers FALSE and is exactly
-//     right there.
-//   * FreeRTOS armcm3 builds `-ffreestanding` WITHOUT `-nostdinc++`, so
-//     `__has_include(<chrono>)` answers TRUE against the host's own libstdc++
-//     -- which then refuses to be used, because GCC 13 gates
-//     `bits/requires_hosted.h` on `__STDC_HOSTED__` and `-ffreestanding` clears
-//     it. That is the "present but hollow" case, and `__STDC_HOSTED__` is
-//     precisely the flag that distinguishes it.
-//
-// `__STDC_HOSTED__` alone is still not enough -- CLAUDE.md's pitfall entry says
-// so, and it is right: a hosted compiler can run `-nostdinc++` against Zephyr's
-// minimal libcpp, where the macro is 1 and the header is absent. Neither test
-// covers both lanes; the conjunction does.
-//
-// `NROS_CPP_STD` stays as an explicit override for a consumer who knows better
-// than the probes, which is what the parity extractor and the docs use it for.
-// CORRECTED AGAIN 2026-09-07, and this time the discriminator is the library's
-// own feature-test macro rather than a guess about which RTOS ships what.
-//
-// The conjunction above is still not enough. Measured under the safety island's
-// OWN recorded compile command (`-nostdinc++`, arm-zephyr-eabi, picolibc), not
-// inferred:
-//
-//     __STDC_HOSTED__          1
-//     __has_include(<chrono>)  TRUE
-//     __cpp_lib_chrono         ABSENT
-//
-// So Zephyr does NOT merely "have no <chrono> at all" -- this toolchain ships
-// one that is present and hollow, which is the case the note above attributes
-// to FreeRTOS alone. Both halves of the conjunction answer yes and
-// `duration_cast` is still missing, so `Rate`'s duration constructor failed to
-// compile on the island exactly as it did before that note was written.
-//
-// `<ratio>` is the third test, and it is a PREREQUISITE rather than a proxy.
-// `duration_cast<To>(duration<Rep, Period>)` is defined in terms of
-// `std::ratio_divide` -- a duration's `Period` IS a `std::ratio` -- so a
-// `<chrono>` shipped without `<ratio>` cannot provide `duration_cast`, and that
-// is exactly the shape this toolchain ships. Measured on both sides:
-//
-//                        island (Zephyr)   hosted g++ -std=c++14
-//   __has_include(<chrono>)   TRUE              TRUE
-//   __has_include(<ratio>)    FALSE             TRUE
-//
-// `__cpp_lib_chrono` was tried first and is WRONG here: it is a C++17
-// feature-test macro, so it is absent under `-std=c++14` even where the library
-// is complete. `check-cpp` compiles the phase-417 probes at C++14 and caught
-// that immediately -- gating on it removed `create_wall_timer` from the hosted
-// build, which is the same over-tightening the note above records.
-// `_GLIBCXX_CHRONO` also separates the two but is libstdc++'s private spelling;
-// `__has_include` is the portable question.
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<chrono>) && __has_include(<ratio>))
-#include <chrono>
-#define NROS_CPP_HAS_STD_CHRONO 1
-#endif
 
 namespace rclcpp {
 
@@ -425,6 +334,22 @@ inline bool shutdown() {
 inline bool ok() {
     return ::nros::ok();
 }
+
+/// `rclcpp::spin_once(timeout_ms)` — INVENTION, kept (RFC-0089 §"Review of the
+/// invented parts", item 2), and now reachable under the `rclcpp::` spelling a
+/// user is meant to write.
+///
+/// Upstream's one-cycle verb is `spin_some(node)` — drain what is ready, never
+/// wait — and that one is already ported (`rclcpp::spin_some`, `nros.hpp`, a
+/// 0-timeout call to this). This is a BLOCKING WAIT WITH A BUDGET, which
+/// rclcpp has no verb for and an RTOS task needs: a task that must not
+/// spin-poll sleeps until work arrives or the budget expires.
+///
+/// COLLISION NOTE, recorded rather than hidden: `rclpy.spin_once` exists with
+/// the signature `(node, timeout_sec=None)`. A user carrying that habit writes
+/// `spin_once(node, 0.1)` here and gets no matching overload — mechanical, not
+/// silent. The collision gate watches in case rclcpp ever adds one.
+using ::nros::spin_once;
 
 /// Mirror of `rclcpp::FutureReturnCode` (issue 0339).
 ///
@@ -524,480 +449,369 @@ adopt_executor_param_seed(void*, const char*, T&) {}
 
 } // namespace detail
 
-// --- Node --------------------------------------------------------------------
+// --- Node ---------------------------------------------------------------------
 //
-// rclcpp users write `auto n = std::make_shared<rclcpp::Node>("name");` and
-// then `n->create_publisher<M>(topic, qos)` returning a shared_ptr. nros's
-// Node is created via an `Executor` and exposes out-ref `create_*` member
-// functions. This matches the rclcpp call shape onto it.
+// phase-427 W1-W3 — THE NODE TYPES ARE MERGED. `rclcpp::Node` is not a class
+// here any more; it is an ALIAS for `nros::Node`, and the hosted call shape
+// that used to be a separate adapter class in this file is now a set of
+// overloads on that one type (declared in `node.hpp`, defined below).
 //
-// A `rclcpp::Node` does NOT own an executor. It opens its `nros::Node` on the
-// GLOBAL one `rclcpp::init()` created (issue 0465 — one session per image), and
-// since phase-417 every entity it creates — publisher, subscription, wall
-// timer, service, client — is registered THERE. So this class holds no dispatch
-// state and runs no loop: it is a call-shape adapter over `nros::Node`, which
-// is all RFC-0019 permits a wrapper to be, and it is the property that lets a
-// later step merge the two node types safely.
+// What that closes, in order of how much it cost:
+//
+//   * THE DUPLICATE PARAMETER FACADE. `nros.hpp` said so about itself ("KNOWN
+//     DUPLICATION... There should be ONE helper"): the same rclcpp-shaped
+//     `declare_parameter<T>` existed twice, once in C++14 here and once in
+//     C++17 `if constexpr` on `ComponentNode`. One node type is what makes one
+//     facade possible.
+//   * THE `get_logger()` COLLISION. Two accessors with identical signatures
+//     and different observable behaviour — a real node logger and the
+//     hardcoded `"nros.compat"` sentinel. One type can hold only one, so the
+//     merge forced the decision W5 records.
+//   * THE TWO-VOCABULARY SPLIT. A ported file wrote `rclcpp::Node` and got a
+//     type with no graph queries, no lifecycle, no callback groups, no action
+//     entities and no out-ref creators; a native file wrote `nros::Node` and
+//     got no `shared_ptr` creators and no parameters. Neither list was a
+//     design; both were what the other file happened to have.
+//
+// The class holds no dispatch state and runs no loop — every entity it creates
+// is registered on the executor arena `rclcpp::init()` opened (issue 0465, one
+// session per image), which is all RFC-0019 permits a wrapper to be.
 //
 // Threading: callbacks fire on whatever thread services a spin verb, mirroring
-// the rclcpp default. An `nros::Node` cannot move between executors (RFC-0002,
-// one executor per RTOS task), which is why the executor is decided at
-// construction and never afterwards.
+// the rclcpp default. A node cannot move between executors (RFC-0002, one
+// executor per RTOS task), which is why the executor is decided at construction
+// and never afterwards.
 
-class Node : public std::enable_shared_from_this<Node> {
-  public:
-    using SharedPtr = std::shared_ptr<Node>;
+} // namespace rclcpp
 
-    explicit Node(const std::string& name) { initialize(name, nullptr); }
+namespace nros {
 
-    explicit Node(const std::string& name, const NodeOptions& options) : node_options_(options) {
-        initialize(name, nullptr);
-    }
+// The HOSTED half of `nros::Node`, defined here rather than in `node.hpp`
+// because every body below needs a complete entity type (`Publisher<M>`,
+// `Subscription<M>`, `Service<S>`, `Client<S>`) or a helper the umbrella pulls
+// in (`create_subscription_raw` from `component.hpp`, the callback cells from
+// `subscription.hpp` / `timer.hpp`). That is the same split Phase 84.G8 already
+// uses for the out-ref `Node::create_X<>` templates, which live in the header
+// that owns each entity.
+//
+// The declarations — with the default arguments — are in `node.hpp` under
+// `NROS_CPP_NODE_HOSTED`, the one predicate both files share.
 
-    Node(const std::string& name, const std::string& namespace_,
-         const NodeOptions& options = NodeOptions())
-        : node_options_(options) {
-        initialize(name, namespace_.c_str());
-    }
+#ifdef NROS_CPP_NODE_HOSTED
 
-    ~Node() {
-        // Issue 0465 — nothing to tear down per Node any more: the session is
-        // the GLOBAL executor's, and `rclcpp::shutdown()` → `nros::shutdown()`
-        // owns its lifetime. Shutting down here would have closed the shared
-        // session out from under any sibling Node.
-    }
+// -- publishers ---------------------------------------------------------------
 
-    Node(const Node&) = delete;
-    Node& operator=(const Node&) = delete;
+template <typename M>
+inline ::std::shared_ptr<Publisher<M>> Node::create_publisher(const ::std::string& topic,
+                                                              const QoS& qos) {
+    auto p = ::std::make_shared<Publisher<M>>();
+    (void)this->create_publisher<M>(*p, topic.c_str(), qos);
+    // OWNERSHIP: the arena stores `&entity` as its dispatch context and there
+    // is no unregister, so the cell must outlive the registration whatever the
+    // caller does with the pointer we hand back.
+    this->hosted().owned_entities.push_back(p);
+    return p;
+}
 
-    const NodeOptions& get_node_options() const { return node_options_; }
+template <typename M>
+inline ::std::shared_ptr<Publisher<M>> Node::create_publisher(const ::std::string& topic,
+                                                              ::size_t depth) {
+    return this->create_publisher<M>(topic, QoS(static_cast<uint32_t>(depth)));
+}
 
-    const ::nros::Node& nros_node() const { return node_; }
-    ::nros::Node& nros_node() { return node_; }
+// -- subscriptions ------------------------------------------------------------
+//
+// phase-417 — ONE DISPATCH PATH. This ARENA-REGISTERS the subscription through
+// `nros::create_subscription_raw` (`component.hpp`), the same
+// `nros_cpp_subscription_register` call the native callback-style
+// `create_subscription` makes, so the executor owns the subscriber and
+// dispatches the callback during `spin_once` — whichever spin verb the caller
+// drives. It used to create a POLL-mode subscription and drain it from a
+// node-local `pump()`, which only `rclcpp::spin` / `spin_some` called: a file
+// that spun `nros::spin_once()` instead got zero callbacks and no diagnostic.
+//
+// Why not the out-ref `create_subscription(sub, topic, cb, qos)` overload: that
+// one is SFINAE-restricted to `void(*)(const M&)` — a plain function pointer
+// with NO context slot — and every ported rclcpp callback captures.
+//
+// The receive-buffer hint is `rx_buffer_capacity<M>` — the same number the poll
+// path's `take()` stacks — and NOT the strict `rx_size_bound<M>`, whose
+// unbounded-type arm is a deliberate compile error (issue 0964). A ported file
+// must not stop compiling because its message has an unbounded string.
+//
+// ONE THING THIS LOSES, stated rather than left silent:
+// `create_subscription_raw` hardcodes an EMPTY type hash (it takes no such
+// parameter), which `normalize_type_hash` turns into `"TypeHashNotSupported"`.
+// It does not affect DELIVERY — a subscriber's data keyexpr puts `*` in the
+// hash slot — but under `ros-iron` / `ros-jazzy` the subscription's LIVELINESS
+// token advertises the placeholder instead of the real hash, so
+// `ros2 topic info --verbose` reads differently.
+//
+// WHAT THE RETURNED POINTER IS: a keep-alive, which is all upstream source does
+// with it (`rclcpp::Subscription<M>::SharedPtr sub_;`). The executor owns the
+// real subscriber, so `sub->take(msg)` on it answers `NotInitialized` — the
+// sample went to your callback.
+template <typename M, typename Cb>
+inline ::std::shared_ptr<Subscription<M>> Node::create_subscription(const ::std::string& topic,
+                                                                    const QoS& qos, Cb cb) {
+    auto cell = ::std::make_shared<::rclcpp::detail::SubscriptionCallback<M>>();
+    cell->fn = ::std::move(cb);
+    (void)::nros::create_subscription_raw(*this, topic.c_str(), M::TYPE_NAME,
+                                          &::rclcpp::detail::SubscriptionCallback<M>::trampoline,
+                                          cell.get(), qos, ::nros::rx_buffer_capacity<M>::value);
+    this->hosted().owned_entities.push_back(cell);
+    return ::std::shared_ptr<Subscription<M>>(cell, &cell->handle);
+}
 
-    bool initialized() const { return initialized_; }
+template <typename M, typename Cb>
+inline ::std::shared_ptr<Subscription<M>> Node::create_subscription(const ::std::string& topic,
+                                                                    ::size_t depth, Cb cb) {
+    return this->create_subscription<M>(topic, QoS(static_cast<uint32_t>(depth)), ::std::move(cb));
+}
 
-    // --- phase-417 W1.d — identity + clock -----------------------------------
-    //
-    // All four already exist on `nros::Node` (`node.hpp:217,223,249,260`);
-    // these are one-line forwarders, which is all RFC-0089 §"Who implements an
-    // adopted name" permits the wrapper to be. An uninitialized node answers
-    // `""` / the node's own default-constructed clock, matching what
-    // `nros::Node` does — this adds no behaviour of its own.
-
-    /// `rclcpp::Node::get_name()` — the node's name.
-    const char* get_name() const { return node_.get_name(); }
-
-    /// `rclcpp::Node::get_namespace()` — the node's namespace.
-    const char* get_namespace() const { return node_.get_namespace(); }
-
-    /// `rclcpp::Node::get_clock()`.
-    ///
-    /// ADOPT-BOUNDED: upstream hands back a `rclcpp::Clock::SharedPtr`; there
-    /// is no allocator here (RFC-0022), so the clock is a member of the
-    /// underlying `nros::Node` and this returns a pointer to it. The call
-    /// spelling `node->get_clock()->now()` is unchanged; the pointer is valid
-    /// for as long as the node is, and must not be freed.
-    ::nros::Clock* get_clock() { return node_.get_clock(); }
-    /// Const overload of `get_clock()`.
-    const ::nros::Clock* get_clock() const { return node_.get_clock(); }
-
-    /// `rclcpp::Node::now()` — the current time on the node's clock.
-    ///
-    /// Shorthand for `get_clock()->now()`, and the call a ported publisher
-    /// makes to stamp a header. See `nros::Clock` for what ROS time does and
-    /// does not yet do here (issue 0789).
-    ::nros::Time now() const { return node_.now(); }
-
-    Logger get_logger() const { return Logger("nros.compat"); }
-
-  private:
-    void initialize(const std::string& name, const char* namespace_) {
-        // Bring up the underlying nros::Node on the GLOBAL executor — the one
-        // `rclcpp::init()` already created. Initialization failures leave the
-        // node marked uninitialized rather than throwing (nros-cpp is
-        // freestanding by default — no `<stdexcept>`), so a caller using
-        // `std::make_shared<rclcpp::Node>("n")` still mirrors rclcpp's
-        // "constructor never returns an error code" contract and subsequent
-        // `create_*` fail visibly.
-        //
-        // Issue 0465 — this used to call `Executor::create(executor_)`, giving
-        // every Node its OWN executor and therefore its own RMW session.
-        // A non-bridge application has exactly one session; two is the bridge
-        // shape. With `ZPICO_MAX_SESSIONS` at its default of 1 the second open
-        // exhausted the pool and returned -1, surfacing as
-        // `Transport(ConnectionFailed)` — the same text a real connection
-        // failure gives, which is why it read as one for two months. Raising
-        // the pool would have hidden the design error behind memory spent on
-        // every embedded target.
-        //
-        // `::nros::create_node` targets `Node::global_storage()`, so N
-        // `rclcpp::Node`s share the single session, which is also what rclcpp's
-        // own process-level Context model implies.
-        ::nros::Result r = ::nros::create_node(node_, name.c_str(), namespace_);
-        initialized_ = r.ok();
-    }
-
-  public:
-    // create_publisher<M>(topic, qos)
-    //
-    // QoS arg is `const QoS&` OR an integer depth (`10`) — both bind via
-    // `nros::QoS(uint32_t)`'s implicit conversion.
-    template <typename M>
-    std::shared_ptr<::nros::Publisher<M>> create_publisher(const std::string& topic,
-                                                           const ::nros::QoS& qos) {
-        auto p = std::make_shared<::nros::Publisher<M>>();
-        (void)node_.create_publisher(*p, topic.c_str(), qos);
-        return p;
-    }
-
-    template <typename M>
-    std::shared_ptr<::nros::Publisher<M>> create_publisher(const std::string& topic,
-                                                           ::size_t depth) {
-        return create_publisher<M>(topic, QoS(static_cast<::size_t>(depth)));
-    }
-
-    // create_subscription<M>(topic, qos, callback)
-    //
-    // Accepts ANY callable (capturing lambda, std::function, member-fn bind,
-    // plain fn ptr).
-    //
-    // phase-417 — ONE DISPATCH PATH. This ARENA-REGISTERS the subscription
-    // through `nros::create_subscription_raw` (`component.hpp:23`), the same
-    // `nros_cpp_subscription_register` call the native callback-style
-    // `nros::Node::create_subscription` makes, so the executor owns the
-    // subscriber and dispatches the callback during `spin_once` — whichever
-    // spin verb the caller drives. It used to create a POLL-mode subscription
-    // and drain it from a node-local `pump()`, which only `rclcpp::spin` /
-    // `spin_some` called: a file that spun `nros::spin_once()` instead got zero
-    // callbacks and no diagnostic (RFC-0089 §"There is also one mismatch the
-    // rename makes strictly worse").
-    //
-    // Why not `node_.create_subscription(*s, topic, cb, qos)`: that overload is
-    // SFINAE-restricted to `void(*)(const M&)` — a plain function pointer with
-    // NO context slot — and every ported rclcpp callback captures. The typed
-    // ctx-carrying delivery exists one layer down (`Subscription<M>::
-    // user_fn_ctx_` + `user_ctx_`, and the `message_trampoline` branch that
-    // reads them, `subscription.hpp:563`) but NO `create_*` sets those fields,
-    // so the raw register with a type-erased ctx is the reachable shape. A
-    // `create_subscription` overload taking `(void(*)(const M&, void*), void*
-    // ctx)` would let this call `nros::Node` instead, and is C++-side work.
-    //
-    // The receive-buffer hint is `rx_buffer_capacity<M>` — the same number the
-    // poll path's `take()` stacks — and NOT the strict `rx_size_bound<M>`,
-    // whose unbounded-type arm is a deliberate compile error (issue 0964). A
-    // ported file must not stop compiling because its message has an unbounded
-    // string.
-    //
-    // ONE THING THIS LOSES, stated rather than left silent:
-    // `create_subscription_raw` hardcodes an EMPTY type hash (it takes no such
-    // parameter), which `normalize_type_hash` turns into
-    // `"TypeHashNotSupported"`. The poll-mode create this replaced passed
-    // `M::TYPE_HASH`. It does not affect DELIVERY — a subscriber's data
-    // keyexpr puts `*` in the hash slot (`keyexpr.rs:51`), and on the default
-    // Humble edition the publisher's is the literal `TypeHashNotSupported`
-    // anyway (`keyexpr.rs:30`) — but under `ros-iron` / `ros-jazzy` the
-    // subscription's LIVELINESS token now advertises the placeholder instead of
-    // the real hash, so `ros2 topic info --verbose` reads differently. The fix
-    // is a `type_hash` parameter on `create_subscription_raw`, defaulted to
-    // `""` so no existing caller moves.
-    //
-    // OWNERSHIP: the arena stores the cell's address as its dispatch context
-    // and there is no unregister, so the cell must outlive the registration.
-    // `owned_entities_` holds it for the node's lifetime — the same rule
-    // `create_service` below states — and the returned `shared_ptr` is a
-    // co-owner via the aliasing constructor, so dropping it is safe.
-    //
-    // WHAT THE RETURNED POINTER IS: a keep-alive, which is all upstream source
-    // does with it (`rclcpp::Subscription<M>::SharedPtr sub_;`). The executor
-    // owns the real subscriber, so `sub->take(msg)` on it answers
-    // `NotInitialized` — the sample went to your callback.
-    template <typename M, typename Cb>
-    std::shared_ptr<::nros::Subscription<M>> create_subscription(const std::string& topic,
-                                                                 const ::nros::QoS& qos, Cb cb) {
-        auto cell = std::make_shared<detail::SubscriptionCallback<M>>();
-        cell->fn = std::move(cb);
-        (void)::nros::create_subscription_raw(
-            node_, topic.c_str(), M::TYPE_NAME, &detail::SubscriptionCallback<M>::trampoline,
-            cell.get(), qos, ::nros::rx_buffer_capacity<M>::value);
-        owned_entities_.push_back(cell);
-        return std::shared_ptr<::nros::Subscription<M>>(cell, &cell->handle);
-    }
-
-    template <typename M, typename Cb>
-    std::shared_ptr<::nros::Subscription<M>> create_subscription(const std::string& topic,
-                                                                 ::size_t depth, Cb cb) {
-        return create_subscription<M>(topic, QoS(static_cast<::size_t>(depth)), std::move(cb));
-    }
+// -- wall timer ---------------------------------------------------------------
 
 #ifdef NROS_CPP_HAS_STD_CHRONO
-    /// `create_wall_timer(period, callback)` — fires `callback()` every
-    /// `period`, dispatched by the EXECUTOR during `spin_once`, i.e. under
-    /// whichever spin verb the caller drives: `rclcpp::spin`, `spin_some`,
-    /// `nros::spin_once`, `nros::spin`, `rclcpp::Rate::sleep`, or an
-    /// `nros::Executor` driven directly.
-    ///
-    /// The `std::chrono::duration` → milliseconds conversion is the only work
-    /// this function does beyond delegating; that is ergonomics and permitted,
-    /// the schedule is not. See the envelope on `rclcpp::TimerBase`
-    /// (`timer.hpp`) for the two things it costs (millisecond resolution, and
-    /// catch-up rather than rcl's drop-the-backlog on a missed deadline).
-    template <typename Rep, typename Period, typename Cb>
-    std::shared_ptr<TimerBase> create_wall_timer(std::chrono::duration<Rep, Period> period, Cb cb) {
-        auto t = std::make_shared<detail::WallTimer>();
-        t->callback = std::move(cb);
-        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(period).count();
-        (void)node_.create_wall_timer(t->timer, ms > 0 ? static_cast<uint64_t>(ms) : uint64_t(0),
-                                      &detail::WallTimer::trampoline, t.get());
-        // The arena holds `t.get()`; the node keeps the cell alive, and
-        // `~nros::Timer` cancels the slot when it finally drops.
-        // `owned_entities_`, NOT a typed `timers_` member. The typed vector
-        // existed so the deleted `pump()` could iterate it; with pump gone its
-        // only remaining job is keeping the cell alive, which is exactly what
-        // `owned_entities_` does -- and that member is UNCONDITIONAL, while a
-        // `std::vector<std::shared_ptr<detail::WallTimer>>` cannot be declared
-        // without `<chrono>`. See the layout rule below.
-        owned_entities_.push_back(t);
-        return std::static_pointer_cast<TimerBase>(t);
-    }
+/// `create_wall_timer(period, callback)` — fires `callback()` every `period`,
+/// dispatched by the EXECUTOR during `spin_once`, i.e. under whichever spin
+/// verb the caller drives.
+///
+/// The `std::chrono::duration` -> milliseconds conversion is the only work this
+/// function does beyond delegating; that is ergonomics and permitted, the
+/// schedule is not. See the envelope on `rclcpp::Timer` (`timer.hpp`) for the
+/// two things it costs (millisecond resolution, and catch-up rather than rcl's
+/// drop-the-backlog on a missed deadline).
+///
+/// RETURNS `Timer::SharedPtr`, not the deleted `TimerBase::SharedPtr`
+/// (phase-430 W7). The pointer is an ALIASING co-owner of the private
+/// `detail::WallTimer` cell, pointing at its `timer` member — the same shape
+/// `create_subscription` returns, which is why the cell needs no base class to
+/// be handed out.
+template <typename Rep, typename Period, typename Cb>
+inline ::std::shared_ptr<Timer> Node::create_wall_timer(::std::chrono::duration<Rep, Period> period,
+                                                        Cb cb) {
+    auto t = ::std::make_shared<::rclcpp::detail::WallTimer>();
+    t->callback = ::std::move(cb);
+    const auto ms = ::std::chrono::duration_cast<::std::chrono::milliseconds>(period).count();
+    (void)this->create_wall_timer(t->timer, ms > 0 ? static_cast<uint64_t>(ms) : uint64_t(0),
+                                  &::rclcpp::detail::WallTimer::trampoline, t.get());
+    // The arena holds `t.get()`; the node keeps the cell alive, and
+    // `~nros::Timer` cancels the slot when it finally drops. `owned_entities`,
+    // NOT a typed `timers_` member — the typed vector existed so the deleted
+    // `pump()` could iterate it, and it was the member that broke the
+    // capability-layout rule.
+    this->hosted().owned_entities.push_back(t);
+    return ::std::shared_ptr<Timer>(t, &t->timer);
+}
 #endif // NROS_CPP_HAS_STD_CHRONO
 
-    // --- phase-417 W2.b — parameters on the node -----------------------------
-    //
-    // Forwarders onto `nros::ParameterServer` (`parameter.hpp`), which is a
-    // thin C++ face over the `nros_parameter_*` C store — the typing, the
-    // storage and the string/sequence pools all live below the FFI, so nothing
-    // here is a second implementation. The shape is `nros::ComponentNode`'s
-    // (`component_node.hpp:568-659`), deliberately: two rclcpp-shaped parameter
-    // facades in one package that disagree would be worse than none.
-    //
-    // ADOPT-BOUNDED, and the envelope is the store's SCOPE. This server is
-    // NODE-LOCAL: it is not the executor's store, so `ros2 param list` does not
-    // see it and a sibling node does not share it. Converging the three
-    // arrangements onto the executor's store is phase-417 W2.a / issue 0793,
-    // and it cannot be done from here — the executor store exposes four typed
-    // GETTERS across the FFI (`nros_cpp_get_param_*`) and no setter and no
-    // existence check, so `set_parameter` and `has_parameter` have nothing to
-    // call. That is Rust-side work, not wrapper work.
-    //
-    // What the envelope does NOT include is silently ignoring a launch
-    // override: where the executor's store exists (`NROS_SYSTEM_PARAM_SERVICES`
-    // — the bringup declared `param_services`, which is also what links the
-    // FFI), `declare_parameter` adopts the seeded value over the code default,
-    // exactly as `ComponentNode` does for issue 0745. Without that a launch
-    // parameter would be dead weight, which is the "silently drops
-    // configuration" the rule forbids.
+// -- parameters ---------------------------------------------------------------
+//
+// What the envelope does NOT include is silently ignoring a launch override:
+// where the executor's store exists (`NROS_SYSTEM_PARAM_SERVICES` — the bringup
+// declared `param_services`, which is also what links the FFI),
+// `declare_parameter` adopts the seeded value over the code default, exactly as
+// `ComponentNode` does for issue 0745. Without that a launch parameter would be
+// dead weight, which is the "silently drops configuration" the rule forbids.
 
-    /// `rclcpp::Node::declare_parameter<T>(name, default)` — declare, then read
-    /// back, returning the value in effect.
-    ///
-    /// Re-declaring is not an error: a launch-seeded parameter is DECLARED
-    /// before user code runs, and upstream's contract is that `declare` adopts
-    /// the override. On any other failure the code default is returned.
-    template <typename T> T declare_parameter(const char* name, T default_value = T{}) {
+/// `rclcpp::Node::declare_parameter<T>(name, default)` — declare, then read
+/// back, returning the value in effect.
+///
+/// Re-declaring is not an error: a launch-seeded parameter is DECLARED before
+/// user code runs, and upstream's contract is that `declare` adopts the
+/// override. On any other failure the code default is returned.
+template <typename T> inline T Node::declare_parameter(const char* name, T default_value) {
 #if defined(NROS_SYSTEM_PARAM_SERVICES)
-        detail::adopt_executor_param_seed(node_.executor_handle(), name, default_value);
+    ::rclcpp::detail::adopt_executor_param_seed(this->executor_handle(), name, default_value);
 #endif
-        ::nros::Result r = params_.template declare_parameter<T>(name, default_value);
-        if (!r.ok() && r.raw() != NROS_RET_ALREADY_EXISTS) {
-            return default_value;
-        }
-        T out{};
-        if (!params_.template get_parameter<T>(name, out).ok()) {
-            return default_value;
-        }
-        return out;
+    Result r = this->hosted().params.template declare_parameter<T>(name, default_value);
+    if (!r.ok() && r.raw() != NROS_RET_ALREADY_EXISTS) {
+        return default_value;
     }
-
-    /// `rclcpp::Node::get_parameter<T>(name, out)` — upstream's two-argument
-    /// form. Returns whether the parameter was found.
-    template <typename T> bool get_parameter(const char* name, T& out) const {
-        return params_.template get_parameter<T>(name, out).ok();
+    T out = T();
+    if (!this->hosted().params.template get_parameter<T>(name, out).ok()) {
+        return default_value;
     }
+    return out;
+}
 
-    /// Value-returning read, matching `nros::ComponentNode::get_parameter<T>`.
-    /// Returns `T{}` when the name is undeclared — declare before you get.
-    template <typename T> T get_parameter(const char* name) const {
-        T out{};
-        (void)params_.template get_parameter<T>(name, out);
-        return out;
-    }
+template <typename T> inline bool Node::get_parameter(const char* name, T& out) const {
+    return this->hosted().params.template get_parameter<T>(name, out).ok();
+}
 
-    /// Set a declared parameter.
-    ///
-    /// NOT upstream's signature — `rclcpp::Node::set_parameter` takes a single
-    /// `rclcpp::Parameter` and returns a `SetParametersResult`, and neither of
-    /// those types exists here (both are generated ROS messages). This is the
-    /// nano-ros spelling, forwarded to `nros::ParameterServer::set_parameter`;
-    /// `rclcpp::Parameter` stays ABSENT rather than being half-modelled.
-    template <typename T>::nros::Result set_parameter(const char* name, T value) {
-        return params_.template set_parameter<T>(name, value);
-    }
+template <typename T> inline T Node::get_parameter(const char* name) const {
+    T out = T();
+    (void)this->hosted().params.template get_parameter<T>(name, out);
+    return out;
+}
 
-    /// `rclcpp::Node::has_parameter(name)`.
-    bool has_parameter(const char* name) const { return params_.has_parameter(name); }
+template <typename T> inline Result Node::set_parameter(const char* name, T value) {
+    return this->hosted().params.template set_parameter<T>(name, value);
+}
 
-    /// `std::string`-keyed overloads. rclcpp keys on `std::string`, which does
-    /// not implicitly convert to `const char*`, so a ported call site needs
-    /// these to bind at all.
-    template <typename T> T declare_parameter(const std::string& name, T default_value = T{}) {
-        return this->template declare_parameter<T>(name.c_str(), default_value);
-    }
-    template <typename T> bool get_parameter(const std::string& name, T& out) const {
-        return this->template get_parameter<T>(name.c_str(), out);
-    }
-    template <typename T> T get_parameter(const std::string& name) const {
-        return this->template get_parameter<T>(name.c_str());
-    }
-    template <typename T>::nros::Result set_parameter(const std::string& name, T value) {
-        return this->template set_parameter<T>(name.c_str(), value);
-    }
-    bool has_parameter(const std::string& name) const { return has_parameter(name.c_str()); }
+inline bool Node::has_parameter(const char* name) const {
+    return this->hosted().params.has_parameter(name);
+}
 
-    /// The node-local parameter store, for the C-API helpers that take one
-    /// (`nros_parameter_server_t*`) — e.g. ROS 2 parameter-service
-    /// registration. Same escape hatch `nros::ComponentNode` offers.
-    ::nros::ParameterServer<NROS_RCLCPP_MAX_PARAMS>& parameters() { return params_; }
-    const ::nros::ParameterServer<NROS_RCLCPP_MAX_PARAMS>& parameters() const { return params_; }
+// -- services and clients -----------------------------------------------------
+//
+// A callback of upstream's `shared_ptr<Request>, shared_ptr<Response>` shape is
+// REFUSE-LOUD rather than "no matching function": that signature needs a
+// per-request heap allocation on the delivery path, which is a second delivery
+// path, not a spelling.
 
-    // --- phase-417 W2.c — services and clients -------------------------------
-    //
-    // Forwarders onto `nros::Node::create_service` / `create_client`, in the
-    // rclcpp call shape (name first, `shared_ptr` back). Two overloads each:
-    //
-    //   * POLL-STYLE `create_service<S>(name, qos)` — no callback, drained with
-    //     `service->take_request(...)` from your spin loop. Not an upstream
-    //     signature (upstream requires a callback), so it claims nothing.
-    //   * CALLBACK-STYLE `create_service<S>(name, callback, qos)` — upstream's
-    //     shape, with nano-ros's handler signature. The callback runs during
-    //     `spin_once`, on the executor arena — as every other entity this node
-    //     creates now does (phase-417).
-    //
-    // A callback of upstream's `shared_ptr<Request>, shared_ptr<Response>`
-    // shape is REFUSE-LOUD rather than "no matching function": that signature
-    // needs a per-request heap allocation on the delivery path, which is a
-    // second delivery path, not a spelling.
-    //
-    // OWNERSHIP: the callback-style overloads arena-register the entity, and
-    // the arena stores `&entity` as its dispatch context — so the object must
-    // outlive the node whatever the caller does with the returned pointer.
-    // `owned_entities_` keeps a reference for the node's lifetime; the returned
-    // `shared_ptr` is a co-owner, not the only one. Dropping it is safe.
+template <typename S>
+inline ::std::shared_ptr<Service<S>> Node::create_service(const ::std::string& name,
+                                                          const QoS& qos) {
+    auto s = ::std::make_shared<Service<S>>();
+    (void)this->template create_service<S>(*s, name.c_str(), qos);
+    this->hosted().owned_entities.push_back(s);
+    return s;
+}
 
-    /// Poll-style service server. Drain with `service->take_request(...)`.
-    template <typename S>
-    std::shared_ptr<::nros::Service<S>> create_service(const std::string& name,
-                                                       const ::nros::QoS& qos = ServicesQoS()) {
-        auto s = std::make_shared<::nros::Service<S>>();
-        (void)node_.template create_service<S>(*s, name.c_str(), qos);
-        return s;
-    }
+template <typename S, typename F, typename>
+inline ::std::shared_ptr<Service<S>> Node::create_service(const ::std::string& name, F callback,
+                                                          const QoS& qos) {
+    auto s = ::std::make_shared<Service<S>>();
+    this->hosted().owned_entities.push_back(s);
+    (void)this->template create_service<S>(*s, name.c_str(), callback, qos);
+    return s;
+}
 
-    /// Callback-style service server (`void(const S::Request&, S::Response&)`).
-    template <typename S, typename F,
-              typename = typename std::enable_if<std::is_convertible<
-                  F, void (*)(const typename S::Request&, typename S::Response&)>::value>::type>
-    std::shared_ptr<::nros::Service<S>> create_service(const std::string& name, F callback,
-                                                       const ::nros::QoS& qos = ServicesQoS()) {
-        auto s = std::make_shared<::nros::Service<S>>();
-        owned_entities_.push_back(s);
-        (void)node_.template create_service<S>(*s, name.c_str(), callback, qos);
-        return s;
-    }
+template <typename S, typename F, typename, typename>
+inline ::std::shared_ptr<Service<S>> Node::create_service(const ::std::string&, F, const QoS&) {
+    static_assert(::rclcpp::detail::refuse<F>::value,
+                  NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK);
+    return ::std::shared_ptr<Service<S>>();
+}
 
-    /// **REFUSED** — upstream's `shared_ptr` handler shape. See
-    /// `NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK`.
-    template <typename S, typename F,
-              typename = typename std::enable_if<
-                  !detail::is_qos_arg<F>::value &&
-                  !std::is_convertible<F, void (*)(const typename S::Request&,
-                                                   typename S::Response&)>::value>::type,
-              typename = void>
-    std::shared_ptr<::nros::Service<S>> create_service(const std::string&, F,
-                                                       const ::nros::QoS& = ServicesQoS()) {
-        static_assert(detail::refuse<F>::value, NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK);
-        return std::shared_ptr<::nros::Service<S>>();
-    }
+template <typename S>
+inline ::std::shared_ptr<Client<S>> Node::create_client(const ::std::string& name, const QoS& qos) {
+    auto c = ::std::make_shared<Client<S>>();
+    (void)this->template create_client<S>(*c, name.c_str(), qos);
+    this->hosted().owned_entities.push_back(c);
+    return c;
+}
 
-    /// Future-style service client — pair with `spin_until_future_complete`.
-    template <typename S>
-    std::shared_ptr<::nros::Client<S>> create_client(const std::string& name,
-                                                     const ::nros::QoS& qos = ServicesQoS()) {
-        auto c = std::make_shared<::nros::Client<S>>();
-        (void)node_.template create_client<S>(*c, name.c_str(), qos);
-        return c;
-    }
+template <typename S, typename F, typename>
+inline ::std::shared_ptr<Client<S>> Node::create_client(const ::std::string& name, F callback,
+                                                        const QoS& qos) {
+    auto c = ::std::make_shared<Client<S>>();
+    this->hosted().owned_entities.push_back(c);
+    (void)this->template create_client<S>(*c, name.c_str(), callback, qos);
+    return c;
+}
 
-    /// Callback-style service client (`void(const S::Response&)`).
-    template <typename S, typename F,
-              typename = typename std::enable_if<
-                  std::is_convertible<F, void (*)(const typename S::Response&)>::value>::type>
-    std::shared_ptr<::nros::Client<S>> create_client(const std::string& name, F callback,
-                                                     const ::nros::QoS& qos = ServicesQoS()) {
-        auto c = std::make_shared<::nros::Client<S>>();
-        owned_entities_.push_back(c);
-        (void)node_.template create_client<S>(*c, name.c_str(), callback, qos);
-        return c;
-    }
+template <typename S, typename F, typename, typename>
+inline ::std::shared_ptr<Client<S>> Node::create_client(const ::std::string&, F, const QoS&) {
+    static_assert(::rclcpp::detail::refuse<F>::value,
+                  NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK);
+    return ::std::shared_ptr<Client<S>>();
+}
 
-    /// **REFUSED** — upstream's `shared_ptr` handler shape.
-    template <typename S, typename F,
-              typename = typename std::enable_if<
-                  !detail::is_qos_arg<F>::value &&
-                  !std::is_convertible<F, void (*)(const typename S::Response&)>::value>::type,
-              typename = void>
-    std::shared_ptr<::nros::Client<S>> create_client(const std::string&, F,
-                                                     const ::nros::QoS& = ServicesQoS()) {
-        static_assert(detail::refuse<F>::value, NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK);
-        return std::shared_ptr<::nros::Client<S>>();
-    }
+#endif // NROS_CPP_NODE_HOSTED
 
-    // phase-417 — `pump()` IS GONE. It ran this node's wall timers and drained
-    // its polling subscriptions, and only `rclcpp::spin` / `spin_some` called
-    // it, so a node driven by any other spin verb dispatched nothing. Every
-    // entity a `rclcpp::Node` creates is now registered on the executor arena,
-    // so there is nothing left for a node-local sweep to do and mixing spin
-    // spellings is harmless. Do not reintroduce one: a second dispatch path
-    // here is the RFC-0019 violation the whole item was about, and it cannot be
-    // made visible by a diagnostic.
+} // namespace nros
 
-  private:
-    // LAYOUT RULE (phase-417): no member of this class may sit inside a
-    // capability `#if`. A probe may gate a METHOD; it may never change
-    // `sizeof`. Enforced by `check-cpp-capability-layout`, which MEASURES it.
-    //
-    // `timers_` broke this rule and the breakage SHIPPED. It was a
-    // `std::vector<std::shared_ptr<detail::WallTimer>>` behind
-    // `NROS_CPP_HAS_STD_CHRONO`, which at the time was reachable only through
-    // `NROS_CPP_STD` -- a macro nothing in the build system sets, EXCEPT
-    // `examples/px4/cpp/bridge/.../CMakeLists.txt:123`, on ONE module of a
-    // larger image. So that module compiled a 3776-byte node while every other
-    // TU compiled a 3752-byte one, they linked, and each wrote the object
-    // through its own layout. Measured, not inferred: restoring both halves
-    // reproduces `3752` vs `3776` exactly, and the gate reports it.
-    //
-    // Two TUs of one image disagreeing about a capability is a SUPPORTED
-    // state, not a misconfiguration -- px4 sets the macro deliberately, and
-    // `zephyr/cmake/nros_rmw_cyclonedds.cmake` adds an include dir for some
-    // targets only. This tree has the scar twice: issues 0135 and 0460.
-    //
-    // Worse than an ordinary ODR hazard, because the probes are themselves
-    // unreliable -- three failure modes measured in one day: `<type_traits>`
-    // present-but-hollow on Zephyr, `NROS_CPP_STD` set by nothing that ships,
-    // `<memory>` present-then-`#error` under `-ffreestanding` on GCC 13. So
-    // the rule is not "get the probe right"; it is "make being wrong unable to
-    // change a layout".
-    ::nros::Node node_;
-    NodeOptions node_options_;
-    bool initialized_ = false;
-    // Node-local parameter store — see `declare_parameter` above.
-    ::nros::ParameterServer<NROS_RCLCPP_MAX_PARAMS> params_;
-    // Co-ownership of arena-registered services / clients / subscription
-    // callback cells. The executor arena holds a raw pointer as its dispatch
-    // context, so the entity must outlive the node even if the caller drops the
-    // `shared_ptr` we handed back.
-    std::vector<std::shared_ptr<void>> owned_entities_;
-};
+namespace rclcpp {
+
+// `rclcpp::Node` is declared at the bottom of `node.hpp`, UNCONDITIONALLY —
+// see there for why. It is not declared here, because a freestanding target
+// gets the class and must get its ROS 2 spelling with it.
+//
+// phase-417 — `pump()` IS GONE and does not come back. It ran a node's wall
+// timers and drained its polling subscriptions, and only `rclcpp::spin` /
+// `spin_some` called it, so a node driven by any other spin verb dispatched
+// nothing. Every entity a node creates is registered on the executor arena, so
+// there is nothing left for a node-local sweep to do and mixing spin spellings
+// is harmless. A second dispatch path here is the RFC-0019 violation the whole
+// item was about, and it cannot be made visible by a diagnostic.
+
+// --- rclcpp::create_timer (phase-430 W6) -------------------------------------
+//
+// Humble has NO `Node::create_timer` member — the clock-taking verb is a FREE
+// function, `rclcpp::create_timer(node, clock, period, callback[, group])`, and
+// that is the only form a Humble-era file can be written in. Ours takes the
+// same arguments in the same order and returns the same cell
+// `create_wall_timer` returns.
+//
+// The clock is `nros::Clock*`, which is exactly what `node->get_clock()` hands
+// back, so the ported line binds with no conversion. Upstream's parameter is
+// `rclcpp::Clock::SharedPtr`; there is no allocator here (RFC-0022) and the
+// clock is a member of the node, so the pointer is the counterpart — the same
+// ADOPT-BOUNDED trade `get_clock()` itself makes.
+//
+// WHAT THE CLOCK DOES, and it is the whole point of the verb: a
+// `NROS_CLOCK_ROS_TIME` clock follows `/clock`, so the timer stops when a bag
+// stops and re-times when the bag is replayed at another rate; a
+// `NROS_CLOCK_STEADY_TIME` one does not. `create_wall_timer` is the steady
+// verb and is unaffected by simulated time. Upstream distinguishes the two
+// cases by TYPE (`WallTimer` vs `GenericTimer<ClockT>`) *and* by VERB; the type
+// distinction is unportable here (the clock is a runtime field on one flat
+// `Timer` — RFC-0089 §"Timer, studied against RTOS semantics"), the verb
+// distinction is portable and is what ported code writes, so that is what we
+// take.
+//
+// NOT ADDED: a clock-less `Node::create_timer(period, callback)`. That member
+// arrives in Iron, and the captured surface here is Humble; adding it now would
+// claim a spelling the recorded upstream does not have.
+
+namespace detail {
+
+/// `NodeT` in upstream's signature is anything node-shaped — `this`, a
+/// `shared_ptr`, a reference. One overload set, so the free function does not
+/// need three copies.
+inline ::nros::Node& as_node_ref(::nros::Node& n) {
+    return n;
+}
+inline ::nros::Node& as_node_ref(::nros::Node* n) {
+    return *n;
+}
+inline ::nros::Node& as_node_ref(const ::std::shared_ptr<::nros::Node>& n) {
+    return *n;
+}
+
+} // namespace detail
+
+#ifdef NROS_CPP_NODE_HOSTED
+
+/// `rclcpp::create_timer(node, clock, period, callback)` — humble's only
+/// clock-taking timer verb.
+template <typename NodeT, typename CallbackT>
+inline ::std::shared_ptr<::nros::Timer>
+create_timer(NodeT&& node, ::nros::Clock* clock, ::nros::Duration period, CallbackT&& callback) {
+    ::nros::Node& n = detail::as_node_ref(node);
+    auto t = ::std::make_shared<detail::WallTimer>();
+    t->callback = ::std::forward<CallbackT>(callback);
+    const int64_t ns = period.nanoseconds();
+    const uint64_t ms = ns > 0 ? static_cast<uint64_t>(ns / 1000000) : uint64_t(0);
+    (void)n.create_timer(t->timer, clock != nullptr ? *clock : *n.get_clock(), ms,
+                         &detail::WallTimer::trampoline, t.get());
+    // Same ownership rule as `create_wall_timer`: the arena holds `t.get()` and
+    // has no unregister, so the node keeps the cell alive and the returned
+    // pointer is an ALIASING co-owner of its `nros::Timer` member.
+    n.own_entity(t);
+    return ::std::shared_ptr<::nros::Timer>(t, &t->timer);
+}
+
+#ifdef NROS_CPP_HAS_STD_CHRONO
+/// `rclcpp::create_timer(node, clock, 100ms, callback)` — the `std::chrono`
+/// spelling, which is what a ported file actually writes. `rclcpp::Duration` is
+/// implicitly constructible from a chrono duration upstream; `nros::Duration`
+/// is not (it reaches freestanding targets where `<chrono>` does not exist), so
+/// the conversion is an overload rather than a constructor.
+template <typename NodeT, typename Rep, typename Period, typename CallbackT>
+inline ::std::shared_ptr<::nros::Timer> create_timer(NodeT&& node, ::nros::Clock* clock,
+                                                     ::std::chrono::duration<Rep, Period> period,
+                                                     CallbackT&& callback) {
+    const auto ns = ::std::chrono::duration_cast<::std::chrono::nanoseconds>(period).count();
+    return create_timer(::std::forward<NodeT>(node), clock,
+                        ::nros::Duration::from_nanoseconds(static_cast<int64_t>(ns)),
+                        ::std::forward<CallbackT>(callback));
+}
+#endif // NROS_CPP_HAS_STD_CHRONO
+
+#endif // NROS_CPP_NODE_HOSTED
 
 // --- spin / spin_some --------------------------------------------------------
 //
@@ -1156,7 +970,7 @@ class Rate {
             // — upstream's `Rate` contract, and the choice the retired
             // node-local `pump()` used to make for wall timers before they
             // became executor timers (which catch up instead; see the envelope
-            // on `rclcpp::TimerBase`).
+            // on `rclcpp::Timer`).
             next_tick_ns_ = now_ns + static_cast<uint64_t>(period_ns_);
             return false;
         }

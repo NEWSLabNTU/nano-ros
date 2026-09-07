@@ -47,7 +47,7 @@ void ManagedTalker::on_tick() {
     if (!r.ok()) {
         return r;
     }
-    r = ::nros::bind_timer<ManagedTalker, &ManagedTalker::on_tick>(node, timer_, 200, this);
+    r = node.create_wall_timer<ManagedTalker, &ManagedTalker::on_tick>(timer_, 200, this);
     if (!r.ok()) {
         return r;
     }

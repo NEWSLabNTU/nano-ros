@@ -28,7 +28,7 @@ void Talker::on_tick() {
     ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) return r;
     // Member-fn-pointer-as-template-param → no-alloc trampoline; `this` is ctx.
-    return ::nros::bind_timer<Talker, &Talker::on_tick>(node, timer_, 1000, this);
+    return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 1000, this);
 }
 
 } // namespace talker_pkg

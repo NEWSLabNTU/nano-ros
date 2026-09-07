@@ -191,6 +191,14 @@
     "verdict": "declined",
     "why": "see `cpp:Node::create_sub_node`."
   },
+  "cpp:Node::init": {
+    "verdict": "extension",
+    "why": "the EXPLICIT-CODE construction channel a `-fno-exceptions` target needs in place of upstream's throwing constructor (RFC-0089 §\"Construction\"; phase-427 W2). `Node n; n.init(\"talker\")` and `Node n(\"talker\")` reach the same place; the difference is only whether the failure arrives as a `Result` you must read or as an `ok()` you must ask. rclcpp needs no equivalent because it can throw. Both spellings ship because the arena needs a node in caller-owned storage, so the two-phase form cannot be the odd one out."
+  },
+  "cpp:Node::init_on": {
+    "verdict": "extension",
+    "why": "construction against an EXPLICIT executor handle rather than the global one -- what a generated multi-tier entry writes, where each tier's setup runs on the tier's borrowed executor (phase-274 W2). It is `nros::create_node_on` as a member, and it is the constructor `nros::ComponentNode`'s `NodeHandle` ctor was (RFC-0089 §\"What this means for the merge\": construction is not identity). rclcpp's nearest equivalent is passing `NodeOptions` and letting the caller do `executor.add_node(...)`, which needs a second object we do not have."
+  },
   "cpp:Node::is_valid": {
     "verdict": "extension",
     "why": "rclcpp has no node validity predicate because a `Node` that exists was constructed successfully or threw. With -fno-exceptions the object exists either way, so it has to be askable."
@@ -205,9 +213,22 @@
     "verdict": "declined",
     "why": "see `cpp:Node::make_shared`."
   },
+  "cpp:Node::ok": {
+    "verdict": "extension",
+    "why": "ADOPT-BOUNDED replacement for upstream's throwing constructor: a node that failed to come up records the failure and answers `false` here. The SPELLING is upstream's own (`rclcpp::ok()` asks the same question of the process), which is why this is `ok()` and not an invented `is_healthy()`. It is weaker than a throw and the weakening is only safe if it is loud: the generated entry checks it and halts naming the node (RFC-0044 Q2), and a hand-written `main` must check it -- documented in the book, because the compiler cannot force it. `is_valid()` is the older nano-ros spelling of the same bit and stays as a forwarder."
+  },
+  "cpp:Node::own_entity": {
+    "verdict": "extension",
+    "why": "INTERNAL, not user API: hands the node co-ownership of an arena-registered cell. The executor arena stores a raw pointer as its dispatch context and has NO unregister path, so a cell must outlive its registration whatever the caller does with the `shared_ptr` it was handed. The `create_*` members reach the hosted block directly; this exists for a FREE function that registers on a node (`rclcpp::create_timer`, phase-430 W6), which cannot reach a private member. rclcpp needs no equivalent because its entities own themselves and its executor holds weak pointers."
+  },
   "cpp:Node::serialization_format": {
     "verdict": "extension",
     "why": "phase-421 W2 (landed 2026-09-04). Ours-only, and there is no upstream name to align to: neither the recorded rclcpp nor rclc surface contains the string \"serialization\" at all. It cannot: in ROS 2 the wire format is a property of the RMW implementation the process linked, fixed at build time and not a question a node is asked. Here it IS a question — RFC-0088 makes the format a provider (`nros_serdes::format`, `SerializationFormatId`), a uORB image and a CDR image are both buildable, and a message whose format disagrees with the linked backend fails to BUILD (`error[E0080]` from the `const {}` check). The accessor is how a program reads back which one it got. Answers from the single image constant today; the runtime path only becomes reachable when a bridge image links two backends (phase-421 W3, recorded as not yet reachable). C++ spelling: `Node::serialization_format()` (`nros-cpp/include/nros/node.hpp:245`), forwarding to the C entry point."
+  },
+  "cpp:Node::shared_from_this": {
+    "verdict": "divergence",
+    "disposition": "adopt-bounded",
+    "why": "upstream gets this from `std::enable_shared_from_this<Node>` and the returned pointer SHARES OWNERSHIP; ours is a method and the returned pointer ALIASES `this` with an EMPTY owner, so it observes the node without extending its lifetime. The base class is what forced the change, not a preference: it carries a `std::weak_ptr` member that exists only where `<memory>` does, so deriving from it would make `sizeof(Node)` follow a capability probe -- the exact defect `check-cpp-capability-layout` exists to catch, and the one the deleted `timers_` member already shipped once (phase-427 W1). In this API a node is constructed by the generated entry or by `main` and outlives everything it is handed to, so the two behave the same; a caller who stores the pointer past the node's scope gets a dangling one where upstream would have kept the node alive. Ours also never throws, where upstream raises `bad_weak_ptr` on a node no `shared_ptr` owns (RFC-0018)."
   },
   "cpp:NodeBuilder": {
     "verdict": "extension",

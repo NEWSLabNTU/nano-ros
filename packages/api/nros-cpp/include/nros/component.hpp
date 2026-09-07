@@ -21,7 +21,7 @@
 ///   public:
 ///     nros::Result configure(nros::Node& node) {
 ///         NROS_TRY(node.create_publisher(pub_, "/chatter"));
-///         return nros::bind_timer<Talker, &Talker::on_tick>(node, timer_, 1000, this);
+///         return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 1000, this);
 ///     }
 /// };
 /// ```
@@ -155,13 +155,25 @@ inline Result bind_subscription_sized(Node& node, const char* topic, C* self, si
         self, qos, rx_bytes);
 }
 
-/// Bind a component **member** `void C::on_tick()` as a timer callback. Same
-/// no-alloc member-pointer-as-template-param trampoline; `self` is the ctx the
-/// executor hands back. Wraps the existing `Node::create_wall_timer(out, ms, cb, ctx)`.
+/// **RETIRED — phase-427 W3.** Write
+/// `node.create_wall_timer<C, &C::method>(out, period_ms, self)` instead.
+///
+/// This was an INVENTED free-function name doing exactly what upstream's
+/// `create_wall_timer` does, with the node as its first argument instead of its
+/// receiver. Folding it into the member removed an invention by reusing an
+/// upstream name, which is what RFC-0089's clause 2 asks for — and the member
+/// is the verb a reader meets first, so a component no longer has to learn a
+/// second spelling for its most common line.
+///
+/// Kept as a deprecated forwarder for one release rather than deleted: the
+/// in-tree call sites all moved in the same commit, so the attribute costs
+/// nothing here and gives an out-of-tree consumer the migration in the
+/// compiler's own words. There is no second code path — it forwards.
 template <class C, void (C::*Method)()>
+NROS_CPP_DEPRECATED_MSG("nros::bind_timer is retired (phase-427 W3): write "
+                        "node.create_wall_timer<C, &C::method>(out, period_ms, self)")
 inline Result bind_timer(Node& node, Timer& out, uint64_t period_ms, C* self) {
-    return node.create_wall_timer(
-        out, period_ms, [](void* ctx) { (static_cast<C*>(ctx)->*Method)(); }, self);
+    return node.template create_wall_timer<C, Method>(out, period_ms, self);
 }
 
 /// Register a **raw** callback-style service server on the executor that owns
@@ -377,8 +389,10 @@ inline Result bind_action_client(Node& node, ActionClientStorage& storage, Timer
 #define NROS_BIND_SUB(node, Msg, Class, method, topic, self)                                       \
     ::nros::bind_subscription<Msg, Class, &Class::method>((node), (topic), (self))
 
-/// Convenience: bind a component timer member.
+/// Convenience: bind a component timer member. Expands to the MEMBER overload
+/// (phase-427 W3) — the retired `nros::bind_timer` would warn here, and a
+/// deprecation a macro hides is not one.
 #define NROS_BIND_TIMER(node, Class, method, out, period_ms, self)                                 \
-    ::nros::bind_timer<Class, &Class::method>((node), (out), (period_ms), (self))
+    (node).template create_wall_timer<Class, &Class::method>((out), (period_ms), (self))
 
 #endif // NROS_COMPONENT_HPP

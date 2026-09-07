@@ -22,7 +22,7 @@ void LifecycleTalker::on_tick() {
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) return r;
-    return ::nros::bind_timer<LifecycleTalker, &LifecycleTalker::on_tick>(node, timer_, 1000, this);
+    return node.create_wall_timer<LifecycleTalker, &LifecycleTalker::on_tick>(timer_, 1000, this);
 }
 
 } // namespace cpp_lifecycle_talker_pkg

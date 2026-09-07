@@ -108,7 +108,7 @@ void FibClient::on_tick() {
     if (ret != 0) {
         return ::rclcpp::Result(ret);
     }
-    return ::nros::bind_timer<FibClient, &FibClient::on_tick>(node, timer_, 500, this);
+    return node.create_wall_timer<FibClient, &FibClient::on_tick>(timer_, 500, this);
 }
 
 } // namespace action_client_pkg

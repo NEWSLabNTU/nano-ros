@@ -27,7 +27,7 @@ void ReadingTalker::on_tick() {
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     ::rclcpp::Result r = node.create_publisher(pub_, "/reading");
     if (!r.ok()) return r;
-    return ::nros::bind_timer<ReadingTalker, &ReadingTalker::on_tick>(node, timer_, 1000, this);
+    return node.create_wall_timer<ReadingTalker, &ReadingTalker::on_tick>(timer_, 1000, this);
 }
 
 } // namespace cpp_reading_talker_pkg

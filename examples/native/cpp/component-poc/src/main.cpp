@@ -37,7 +37,7 @@ class Talker {
     rclcpp::Result configure(nros::Node& node) {
         rclcpp::Result r = node.create_publisher(pub_, "/chatter");
         if (!r.ok()) return r;
-        return nros::bind_timer<Talker, &Talker::on_tick>(node, timer_, 500, this);
+        return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 500, this);
     }
 };
 

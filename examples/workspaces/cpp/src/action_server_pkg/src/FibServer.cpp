@@ -81,7 +81,7 @@ void FibServer::on_tick() {
     if (!r.ok()) {
         return r;
     }
-    r = ::nros::bind_timer<FibServer, &FibServer::on_tick>(node, timer_, 500, this);
+    r = node.create_wall_timer<FibServer, &FibServer::on_tick>(timer_, 500, this);
     if (r.ok()) {
         std::printf("[action_server_pkg] fibonacci action server ready\n");
     }
