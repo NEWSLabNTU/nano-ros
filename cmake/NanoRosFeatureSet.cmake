@@ -119,38 +119,51 @@ function(nros_feature_set out_var)
     # `nros_rmw_dispatch` accepted only the first three and FATAL_ERROR'd on
     # uorb: two lists disagreeing about the same tree. Both now read
     # `NROS_RMW_KNOWN`, which is derived from `packages/rmw/*/*/nros-rmw.toml`.
-    nros_rmw_is_known("${_FS_RMW}" _fs_rmw_known)
-    if(NOT _fs_rmw_known AND NOT _FS_RMW STREQUAL "none")
-        message(FATAL_ERROR
-            "nros_feature_set: unknown RMW '${_FS_RMW}' "
-            "(provided by a descriptor: ${NROS_RMW_KNOWN}; or 'none')")
-    endif()
-    # The two crates spell the same selection differently — nros-cpp has
-    # `rmw-{zenoh,xrce}-cffi`, nros-c has `cffi-zenoh-cffi` / `cffi-xrce-c`.
-    # That is a real vocabulary difference, not an alias, so CRATE selects the
-    # spelling rather than the caller post-processing the list. (Renaming the
-    # features to match would be a nicer end state, but it is a separate change
-    # with its own blast radius.)
-    if(_FS_CRATE STREQUAL "c")
-        if(_FS_RMW STREQUAL "zenoh")
-            list(APPEND _feats cffi-zenoh-cffi)
-        elseif(_FS_RMW STREQUAL "xrce")
-            list(APPEND _feats cffi-xrce-c)
-        else()
-            list(APPEND _feats rmw-cffi)
-        endif()
-    elseif(_FS_CRATE STREQUAL "cpp")
-        if(_FS_RMW STREQUAL "zenoh")
-            list(APPEND _feats rmw-zenoh-cffi)
-        elseif(_FS_RMW STREQUAL "xrce")
-            list(APPEND _feats rmw-xrce-cffi)
-        else()
-            list(APPEND _feats rmw-cffi)
-        endif()
-    else()
+    if(NOT _FS_CRATE STREQUAL "c" AND NOT _FS_CRATE STREQUAL "cpp")
         message(FATAL_ERROR
             "nros_feature_set: CRATE must be 'c' or 'cpp' (got '${_FS_CRATE}') — "
             "the two crates spell the rmw feature differently.")
+    endif()
+    # `none` is not a backend and has no descriptor; it is the absence of one.
+    if(_FS_RMW STREQUAL "none" OR _FS_RMW STREQUAL "")
+        list(APPEND _feats rmw-cffi)
+    else()
+        nros_rmw_is_known("${_FS_RMW}" _fs_rmw_known)
+        if(NOT _fs_rmw_known)
+            nros_rmw_known(_fs_known_names)
+            message(FATAL_ERROR
+                "nros_feature_set: unknown RMW '${_FS_RMW}' "
+                "(announced by a provider: ${_fs_known_names}; or 'none')")
+        endif()
+        nros_rmw_dispatch("${_FS_RMW}")
+        # phase-439 W4 — the two crates spell the same selection differently
+        # (nros-cpp has `rmw-zenoh-cffi`, nros-c has `cffi-zenoh-cffi` and, for
+        # xrce, `cffi-xrce-c`), and that is a real vocabulary difference rather
+        # than an alias. It used to be an `if(_FS_RMW STREQUAL "zenoh")` chain
+        # here — the closed list issue 1219 counted as one of five, and the one
+        # that would silently hand a fifth backend the wrong feature. The
+        # spellings are DECLARED now: `[rmw.link] c_cffi_feature` (authored,
+        # because `cffi-xrce-c` follows no convention) and the derived
+        # `<cargo_feature>-cffi` for nros-cpp.
+        #
+        # An EMPTY feature is the correct answer, not a missing one: a backend
+        # that is not a Rust rlib (cyclonedds, uorb) is bundled into neither
+        # umbrella, so both fall back to the RMW-agnostic `rmw-cffi` — which is
+        # exactly what the old `else()` arm did for them.
+        if(_FS_CRATE STREQUAL "c")
+            set(_fs_rmw_feature "${NROS_RMW_C_CFFI_FEATURE}")
+        else()
+            set(_fs_rmw_feature "${NROS_RMW_UMBRELLA_CFFI_FEATURE}")
+        endif()
+        # `rlib_dep` is what says "this backend is bundled into the umbrella".
+        # Without it the cffi feature names a feature the umbrella crate does
+        # not have, and cargo fails on an unknown feature rather than falling
+        # back — so the DECLARATION gates the use of the name.
+        if(NROS_RMW_RLIB_DEP AND _fs_rmw_feature)
+            list(APPEND _feats "${_fs_rmw_feature}")
+        else()
+            list(APPEND _feats rmw-cffi)
+        endif()
     endif()
 
     # ---- platform ----------------------------------------------------------
@@ -235,13 +248,27 @@ function(nros_feature_set out_var)
         elseif(_cap STREQUAL "lifecycle")
             list(APPEND _feats lifecycle-services)
         elseif(_cap STREQUAL "safety")
-            # zenoh-only: the CRC path lives in that backend.
-            if(_FS_RMW STREQUAL "zenoh")
+            # phase-439 W4 — DECLARED, not named. This read
+            # `if(_FS_RMW STREQUAL "zenoh")` and warned "only the zenoh RMW
+            # carries the CRC path", while `nros-cpp/CMakeLists.txt` had already
+            # moved to `"safety" IN_LIST NROS_RMW_CAPABILITIES` (phase-347 W4).
+            # Two sites, one rule, one of them fixed: a third-party backend
+            # declaring `safety = "<its feature>"` was honoured on one path and
+            # refused with a WRONG explanation on the other — issue 1219's
+            # 0196-shaped half.
+            #
+            # `safety-e2e` stays spelled here because it is the UMBRELLA's
+            # feature (nros-c / nros-cpp), which forwards to whatever the
+            # backend calls its own implementation — the right-hand side of
+            # `[rmw.capabilities]`, which core never learns. What moved is the
+            # CONDITION: which backends offer the capability.
+            if("safety" IN_LIST NROS_RMW_CAPABILITIES)
                 list(APPEND _feats safety-e2e)
             else()
                 message(WARNING
-                    "nros_feature_set: capability 'safety' ignored — only the zenoh "
-                    "RMW carries the CRC path (got RMW=${_FS_RMW}).")
+                    "nros_feature_set: capability 'safety' ignored — RMW "
+                    "'${_FS_RMW}' does not declare it in its nros-rmw.toml "
+                    "[rmw.capabilities].")
             endif()
         else()
             message(FATAL_ERROR

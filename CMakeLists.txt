@@ -21,12 +21,22 @@ project(NanoRos VERSION 0.1.0 LANGUAGES C CXX)
 option(NANO_ROS_BUILD_CODEGEN "Build the nros-codegen tool" ON)
 # phase-347 W3 — the FOURTH closed list of backends, and the one that had rotted
 # furthest: it offered `dds`, retired in Phase 169, and omitted `uorb`, which the
-# tree ships. Both the default and the cmake-gui choices now come from the
-# descriptors (`packages/rmw/*/*/nros-rmw.toml`) via `NROS_RMW_KNOWN`.
+# tree ships. Both the default and the cmake-gui choices come from the
+# descriptors (`nros-rmw.toml`) rather than from a list kept here.
+#
+# phase-439 W4 — and they come from the provider SCAN now, not from a generated
+# `NROS_RMW_KNOWN` literal that was written into `NanoRosRmwDispatch.cmake` when
+# the `nros` binary was compiled. That literal could only ever name backends in
+# THIS checkout; the scan reaches the user's workspace too (RFC-0094 D5).
+# `SOFT` because these two lines are cosmetic — the help string and the
+# cmake-gui drop-down — and a configure that cannot list the choices is still a
+# configure. Selecting one is not cosmetic, and `nros_rmw_dispatch` below has no
+# such arm.
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/NanoRosRmwDispatch.cmake")
+nros_rmw_known(_nros_rmw_choices SOFT)
 set(NANO_ROS_RMW "zenoh" CACHE STRING
-    "RMW backend — one of: ${NROS_RMW_KNOWN}")
-set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS ${NROS_RMW_KNOWN})
+    "RMW backend — one of: ${_nros_rmw_choices}")
+set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS ${_nros_rmw_choices})
 set(NANO_ROS_PLATFORM "posix" CACHE STRING
     "Target platform (canonical: posix/freertos/nuttx/threadx; legacy: freertos_armcm3, nuttx_armv7a, threadx_linux, threadx_riscv64)")
 set_property(CACHE NANO_ROS_PLATFORM PROPERTY STRINGS
@@ -259,146 +269,175 @@ if(NOT TARGET NanoRos)
 endif()
 
 # ---------------------------------------------------------------------------
-# Phase 137.3 — RMW dispatch (inline form). Each branch pulls in the
-# corresponding staticlib (or notes a gap) and links the RMW target into
-# `NanoRos::NanoRos`. We keep the dispatch inline for Phase 137; per-RMW
-# `cmake/rmw/nano-ros-rmw-<rmw>.cmake` modules land in Phase 138 once
-# the per-platform layout (138 / 139) is in place.
+# RMW link dispatch — phase-439 W4 (RFC-0094 D5).
+#
+# WHAT THIS REPLACES
+#
+# An `if/elseif/else` chain over backend NAMES, closing on
+#
+#     else()
+#         message(FATAL_ERROR "Unknown NANO_ROS_RMW: '${NANO_ROS_RMW}' "
+#             "(expected: zenoh, xrce, or cyclonedds)")
+#
+# — the SECOND closed list of backends in the tree and the one that decides
+# (issue 1215). Its contradiction sat 370 lines up in this same file: `:29`
+# advertises `${NROS_RMW_KNOWN}` in the cmake-gui drop-down, which has named
+# `uorb` since phase-347 W3, and this arm hard-failed on it. So `uorb` — an
+# in-tree, zero-Rust C++ backend that announces itself, ships a descriptor and
+# builds standalone in `just check rmw-uorb` — was advertised and unselectable,
+# and the `NROS_RMW_CMAKE_TARGET` guard in `nros-cpp/CMakeLists.txt` written to
+# link it had never once fired, because no arm ever created the target.
+#
+# WHAT DECIDES NOW
+#
+# The backend's own `[rmw.link]` declaration, read through `nros_rmw_dispatch`.
+# The three arms were never three backends — they were three LINK STRATEGIES,
+# and a backend knows which one it wants:
+#
+#   umbrella  the backend is a Rust rlib BUNDLED into `libnros_c.a` /
+#             `libnros_cpp.a` and anchored there. Nothing separate reaches the
+#             link line, so there is nothing to do here. (zenoh, xrce)
+#   cmake     the backend is a CMake project. add_subdirectory its declared
+#             dir and whole-archive its declared target into both umbrellas.
+#             (cyclonedds, uorb, and any provider a user ships)
+#
+# Adding a backend is a `package.xml` announcement plus an `nros-rmw.toml`. It
+# is NOT an edit here, which is RFC-0094's acceptance A2 and RFC-0071 D5's
+# original one: "a fifth backend added out-of-tree with zero core edits."
 # ---------------------------------------------------------------------------
-if(NANO_ROS_RMW STREQUAL "zenoh" OR NANO_ROS_RMW STREQUAL "xrce")
-    # Phase 241.D3-rev — the zenoh / xrce Rust backend is now BUNDLED into the
-    # umbrella staticlib (`libnros_c.a` / `libnros_cpp.a`, built with the
-    # `cffi-zenoh-cffi` / `cffi-xrce-c` feature in their CMakeLists) and force-linked
-    # + auto-registered by the umbrella's `rmw_backend` `.init_array` ctor. The
-    # standalone `nros-rmw-{zenoh,xrce}-cffi-staticlib` archives + the `-u` register
-    # forcing are retired — there is no separate backend archive to link.
-elseif(NANO_ROS_RMW STREQUAL "cyclonedds")
-    # Phase 144.fix — Cyclone DDS is a standalone C++ CMake project
-    # (NOT a Rust crate via corrosion). It builds a libnros_rmw_cyclonedds.a
-    # that registers the C++ vtable via nros_rmw_cffi_register at .init_array
-    # time. add_subdirectory invokes the project's own CMakeLists.txt.
-    #
-    # Phase 186 — the backend's nros_provide_cyclonedds() resolves Cyclone:
-    # a prebuilt install on CMAKE_PREFIX_PATH wins; otherwise it self-provisions
-    # from CYCLONEDDS_SOURCE_DIR. As the project root we own third-party/, so
-    # default that to the pinned submodule — a bare cmake build then needs no
-    # `just cyclonedds` pre-step. A user overrides with -DCMAKE_PREFIX_PATH
-    # (their install) or -DCYCLONEDDS_SOURCE_DIR (their checkout).
-    if(NOT DEFINED CYCLONEDDS_SOURCE_DIR
-       AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third-party/dds/cyclonedds/CMakeLists.txt")
-        set(CYCLONEDDS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third-party/dds/cyclonedds"
-            CACHE PATH "CycloneDDS source tree for self-provisioning (Phase 186)")
+nros_rmw_dispatch("${NANO_ROS_RMW}")
+
+# ---------------------------------------------------------------------------
+# _nros_link_cmake_rmw(<target>) — wire a CMake-provided backend into <target>.
+#
+# ONE implementation for the two consumers. This block used to exist twice,
+# ~45 lines apart, differing only in the target name — and its own comments
+# said so ("Issue 0837 — same flag, same missing edge; see the C umbrella
+# above. One property, both consumers."). A second spelling of a link rule is
+# how issue 0837 came to be a separate issue from 0475 in the first place.
+#
+# WHOLE-ARCHIVE, and why it is not `target_link_libraries`. The backend's
+# registration object is referenced by nothing — it self-registers from a
+# constructor — so a plain archive link drops it and the image boots with no
+# backend and no diagnostic. And `target_link_libraries` with the archive
+# BESIDE the flag is worse than useless: it reorders ld's single pass and
+# breaks the whole-archive group outright (`undefined reference to ddsrt_*`,
+# issue 0475). The archives ride ONE flag string; the rebuild edges come from
+# `NANO_ROS_LINK_DEPEND_FILES` and `NanoRosLink.cmake`'s `LINK_DEPENDS`, which
+# is the file edge a raw `-Wl,` flag cannot carry.
+#
+# `NROS_RMW_COMPANION_LIBRARIES` is what a backend APPENDS to that flag —
+# cyclonedds names its `libddsc` there. Generic on purpose: the root has no
+# business knowing that one backend has a companion library, and issue 0837
+# was exactly the cost of a second archive in a flag with no channel to declare
+# it through.
+# ---------------------------------------------------------------------------
+function(_nros_link_cmake_rmw _target)
+    if(NOT TARGET ${_target})
+        return()
     endif()
-    add_subdirectory(packages/rmw/cyclonedds/nros-rmw-cyclonedds)
-    if(TARGET nros_rmw_cyclonedds)
-        # The Linux/BSD link path below whole-archives the backend via a raw
-        # linker flag so the registration object cannot be dropped. Raw
-        # `$<TARGET_FILE:...>` link flags do not add a build-order edge for
-        # consumers of this INTERFACE library, so keep the dependency explicit.
-        add_dependencies(NanoRos nros_rmw_cyclonedds)
-        if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
-           OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
-            # RFC-0042 D3 — `--allow-multiple-definition` dropped (cffi single-def
-            # via the provider). Whole-archive kept: Cyclone is C/C++ (libddsc + the
-            # C++ wrapper), so it carries no Rust core/std COMDAT closure to collide
-            # — the `-u` swap the Rust-staticlib backends need does not apply here.
-            if(NROS_RMW_CYCLONEDDS_DDSC_LIBRARY)
-                target_link_libraries(NanoRos INTERFACE
-                    "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY},--no-whole-archive")
-                # Issue 0837 — every FILE named inside that flag needs a rebuild
-                # edge, not just the backend archive.
-                #
-                # Issue 0475 gave `nros_rmw_cyclonedds` one (in
-                # `nano_ros_link_rmw`). `libddsc.a` rides the SAME flag string
-                # and never got one, so a cyclonedds submodule bump rebuilt
-                # `libddsc.a` and left every executable linking the old one:
-                # measured `lib/libddsc.a` at 18:06 against `c_talker` at 15:45,
-                # with `cmake --build` exiting 0 having done nothing. Fixing the
-                # reported site instead of the class is what left it.
-                #
-                # Recorded as a LIST on `NanoRos` so the link seam consumes
-                # whatever the flag names: a third archive added to either flag
-                # is covered by existing, rather than needing a third
-                # `LINK_DEPENDS` line somewhere else.
-                set_property(TARGET NanoRos APPEND PROPERTY
-                    NANO_ROS_LINK_DEPEND_FILES "${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY}")
-                # phase-368 W4 — the flag above names the SDK's libddsc.so by
-                # ABSOLUTE PATH, but ld records only its SONAME (libddsc.so.0),
-                # so without an RPATH the runtime loader searches the default
-                # paths and finds nothing on a ROS-less host. It worked on dev
-                # machines by ACCIDENT: a sourced ROS env put ROS's own libddsc
-                # on LD_LIBRARY_PATH — a different build of the library than
-                # the one linked. The clean-container probe caught it as
-                # "error while loading shared libraries: libddsc.so.0" on the
-                # first scaffolded cyclone workspace run. Stamp the linked
-                # library's own directory as RPATH on every consumer.
-                get_filename_component(_nros_ddsc_dir
-                    "${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY}" DIRECTORY)
-                target_link_options(NanoRos INTERFACE
-                    "-Wl,-rpath,${_nros_ddsc_dir}")
-            else()
-                target_link_libraries(NanoRos INTERFACE
-                    "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,--no-whole-archive")
+    # Raw `$<TARGET_FILE:...>` link flags carry no build-ORDER edge for
+    # consumers of an INTERFACE library, so keep the dependency explicit.
+    add_dependencies(${_target} ${NROS_RMW_CMAKE_TARGET})
+
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
+       OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
+        set(_flag "-Wl,--whole-archive,$<TARGET_FILE:${NROS_RMW_CMAKE_TARGET}>")
+        foreach(_companion IN LISTS NROS_RMW_COMPANION_LIBRARIES)
+            string(APPEND _flag ",${_companion}")
+            # Issue 0837 — every FILE named inside that flag needs a rebuild
+            # edge, not just the backend archive. `libddsc.a` rode the same
+            # string with no edge, so a cyclonedds submodule bump rebuilt it and
+            # relinked nothing: `lib/libddsc.a` at 18:06 against `c_talker` at
+            # 15:45, with `cmake --build` exiting 0 having done nothing.
+            # Recorded as a LIST on `NanoRos` so the link seam consumes whatever
+            # the flag names — a third archive is covered by existing.
+            set_property(TARGET NanoRos APPEND PROPERTY
+                NANO_ROS_LINK_DEPEND_FILES "${_companion}")
+            # phase-368 W4 — a companion named by ABSOLUTE PATH still records
+            # only its SONAME in the link, so without an RPATH the runtime
+            # loader searches the default paths and finds nothing on a host that
+            # has no ROS. It worked on dev machines by ACCIDENT: a sourced ROS
+            # env put ROS's own libddsc on LD_LIBRARY_PATH — a DIFFERENT build
+            # of the library than the one linked. Stamp the linked library's own
+            # directory on every consumer.
+            get_filename_component(_companion_dir "${_companion}" DIRECTORY)
+            if(_companion_dir)
+                target_link_options(${_target} INTERFACE
+                    "-Wl,-rpath,${_companion_dir}")
             endif()
-        else()
-            target_link_libraries(NanoRos INTERFACE nros_rmw_cyclonedds)
+        endforeach()
+        string(APPEND _flag ",--no-whole-archive")
+        target_link_libraries(${_target} INTERFACE "${_flag}")
+    else()
+        target_link_libraries(${_target} INTERFACE ${NROS_RMW_CMAKE_TARGET})
+    endif()
+
+    # A C++ backend in a C binary: the C driver does not pull in the C++
+    # runtime, so `operator new`/`delete`/`std::nothrow` go unresolved.
+    # Propagate through the INTERFACE; harmless for C++ apps. WHICH backends
+    # need it is DECLARED (`[rmw.link] needs_cxx_linker`), not a name test.
+    # issue 0835 — the property, not the label: see
+    # `nros_platform_hosted_cxx_runtime` for why this used to read
+    # `NANO_ROS_PLATFORM STREQUAL "threadx"` and why that was load-bearing on
+    # six example leaves misreporting their platform.
+    if(NROS_RMW_NEEDS_CXX_LINKER)
+        nros_platform_hosted_cxx_runtime(_hosted_cxx "${NANO_ROS_PLATFORM}")
+        if(_hosted_cxx)
+            target_link_libraries(${_target} INTERFACE stdc++)
         endif()
-        # Cyclone DDS's RMW wrapper is C++ (operator new/delete,
-        # std::nothrow). A C application linking `NanoRos::NanoRos`
-        # drives the link with the C compiler, which does NOT pull in
-        # the C++ runtime — so C examples (e.g. examples/native/c/
-        # cyclonedds/) fail with undefined `operator new`/`delete` /
-        # `std::nothrow`. Propagate the C++ stdlib through the INTERFACE
-        # so any C consumer resolves them. Harmless for C++ apps (the
-        # C++ driver already links it).
-        # issue 0835 — the property, not the label. See
-        # `nros_platform_hosted_cxx_runtime` for why this used to read
-        # `NANO_ROS_PLATFORM STREQUAL "threadx"` and why that spelling was
-        # load-bearing on six example leaves misreporting their platform.
-        nros_platform_hosted_cxx_runtime(_nros_hosted_cxx "${NANO_ROS_PLATFORM}")
-        if(_nros_hosted_cxx)
-            target_link_libraries(NanoRos INTERFACE stdc++)
-        endif()
-        # Phase 241.D3-rev — the C++ umbrella (NanoRosCpp = nros-cpp-headers) no longer
-        # links NanoRos (the C umbrella), so it must pull the Cyclone C++ backend lib +
-        # libddsc itself. Cyclone is C/C++ (no Rust std closure), so whole-archive is
-        # safe here. libstdc++ is wired for ALL languages incl. C (per design: Cyclone
-        # needs the C++ runtime even in a C binary).
-        if(TARGET nros-cpp-headers)
-            add_dependencies(nros-cpp-headers nros_rmw_cyclonedds)
-            if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME MATCHES "BSD"
-               OR CMAKE_SYSTEM_NAME STREQUAL "Generic")
-                if(NROS_RMW_CYCLONEDDS_DDSC_LIBRARY)
-                    target_link_libraries(nros-cpp-headers INTERFACE
-                        "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY},--no-whole-archive")
-                    # Issue 0837 — same flag, same missing edge; see the C
-                    # umbrella above. One property, both consumers.
-                    set_property(TARGET NanoRos APPEND PROPERTY
-                        NANO_ROS_LINK_DEPEND_FILES "${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY}")
-                    # Same RPATH stamp as the C umbrella above (one defect,
-                    # two consumers) — see the comment there.
-                    get_filename_component(_nros_ddsc_dir
-                        "${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY}" DIRECTORY)
-                    target_link_options(nros-cpp-headers INTERFACE
-                        "-Wl,-rpath,${_nros_ddsc_dir}")
-                else()
-                    target_link_libraries(nros-cpp-headers INTERFACE
-                        "-Wl,--whole-archive,$<TARGET_FILE:nros_rmw_cyclonedds>,--no-whole-archive")
-                endif()
-            else()
-                target_link_libraries(nros-cpp-headers INTERFACE nros_rmw_cyclonedds)
-            endif()
-            # issue 0835 — same property, same helper; one defect, two consumers.
-            nros_platform_hosted_cxx_runtime(_nros_hosted_cxx "${NANO_ROS_PLATFORM}")
-            if(_nros_hosted_cxx)
-                target_link_libraries(nros-cpp-headers INTERFACE stdc++)
-            endif()
-        endif()
+    endif()
+endfunction()
+
+if(NROS_RMW_LINK_STRATEGY STREQUAL "umbrella")
+    # Phase 241.D3-rev — the backend is BUNDLED into the umbrella staticlib
+    # (`libnros_c.a` / `libnros_cpp.a`, built with the cffi feature the
+    # descriptor names) and force-linked + auto-registered from there. The
+    # standalone `nros-rmw-{zenoh,xrce}-cffi-staticlib` archives and the `-u`
+    # register forcing are retired — there is no separate backend archive to
+    # link, which is what `[rmw.link] rlib_dep` says.
+elseif(NROS_RMW_LINK_STRATEGY STREQUAL "cmake")
+    # A backend that needs something resolved BEFORE its own configure ships a
+    # fragment beside its descriptor. The root includes it blind: what a
+    # backend needs provisioned is the backend's business, and the alternative
+    # is the `if(NANO_ROS_RMW STREQUAL "cyclonedds")` pre-step this wave
+    # deleted. cyclonedds uses it to default `CYCLONEDDS_SOURCE_DIR` to the
+    # pinned submodule so a bare cmake build needs no `just cyclonedds`.
+    if(EXISTS "${NROS_RMW_CMAKE_DIR}/nros-rmw-provision.cmake")
+        include("${NROS_RMW_CMAKE_DIR}/nros-rmw-provision.cmake")
+    endif()
+    if(NOT NROS_RMW_CMAKE_TARGET)
+        message(FATAL_ERROR
+            "nano-ros: rmw '${NROS_RMW_NAME}' declares the `cmake` link "
+            "strategy but names no target. Add "
+            "`[rmw.provides.cmake] target = \"<cmake target>\"` to "
+            "${NROS_RMW_PACKAGE_DIR}/nros-rmw.toml.")
+    endif()
+    # A binary directory named after the backend, not after its source path:
+    # an out-of-tree provider is outside `CMAKE_SOURCE_DIR`, and
+    # `add_subdirectory()` REQUIRES an explicit binary dir for one.
+    add_subdirectory("${NROS_RMW_CMAKE_DIR}"
+        "${CMAKE_BINARY_DIR}/nros-rmw-${NROS_RMW_NAME}")
+    if(TARGET ${NROS_RMW_CMAKE_TARGET})
+        _nros_link_cmake_rmw(NanoRos)
+        # Phase 241.D3-rev — the C++ umbrella no longer links the C one, so it
+        # must pull the backend itself. One defect, two consumers, one helper.
+        _nros_link_cmake_rmw(nros-cpp-headers)
+    else()
+        message(FATAL_ERROR
+            "nano-ros: rmw '${NROS_RMW_NAME}' declares cmake target "
+            "'${NROS_RMW_CMAKE_TARGET}', which its own CMakeLists.txt "
+            "(${NROS_RMW_CMAKE_DIR}) did not create. The descriptor and the "
+            "project disagree; nothing downstream can link this backend.")
     endif()
 else()
+    # Not a closed list of NAMES — a closed list of STRATEGIES, which is a
+    # property of this file (it implements them) rather than of the tree.
     message(FATAL_ERROR
-        "Unknown NANO_ROS_RMW: '${NANO_ROS_RMW}' "
-        "(expected: zenoh, xrce, or cyclonedds)")
+        "nano-ros: rmw '${NROS_RMW_NAME}' declares link strategy "
+        "'${NROS_RMW_LINK_STRATEGY}', which this build does not implement "
+        "(known: umbrella, cmake). See `[rmw.link] strategy` in "
+        "${NROS_RMW_PACKAGE_DIR}/nros-rmw.toml.")
 endif()
 
 # ---------------------------------------------------------------------------

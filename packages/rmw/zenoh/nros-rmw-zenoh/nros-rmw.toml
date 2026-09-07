@@ -32,9 +32,20 @@ cpp_define = "NROS_RMW_ZENOH_CFFI"
 crate = "nros-rmw-zenoh"
 
 [rmw.link]
+# Naming an rlib IS the statement that this backend arrives INSIDE the C/C++
+# umbrella staticlib and nothing separate reaches the link line — phase-439 W4
+# reads it as `strategy = "umbrella"` (RFC-0094 D5), which is what retired the
+# root `CMakeLists.txt`'s `if(NANO_ROS_RMW STREQUAL "zenoh" OR ... "xrce")` arm.
 rlib_dep = "nros-rmw-zenoh"
-extra_link_libs = []
+# The `nros-c` feature that bundles it. AUTHORED, like `cpp_define`: `nros-c`
+# spells this `cffi-zenoh-cffi` and xrce's `cffi-xrce-c`, which no convention
+# produces. The `nros-cpp` half IS regular and is derived (`rmw-zenoh-cffi`).
+c_cffi_feature = "cffi-zenoh-cffi"
 needs_cxx_linker = false
+# `extra_link_libs` was DELETED in phase-439 W4 (issue 1216). It was read by
+# NOTHING, and its cyclonedds value named the archives whose only correct use is
+# NOT to be passed to `target_link_libraries` — doing so is what issue 0475
+# records as breaking the link with `undefined reference to ddsrt_*`.
 
 # Optional capabilities a user may select (RFC-0071 D6). The KEY is the
 # capability; the VALUE is this backend's own feature. Core never learns the

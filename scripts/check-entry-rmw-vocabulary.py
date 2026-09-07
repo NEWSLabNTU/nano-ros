@@ -10,8 +10,10 @@ That resolution is a LOOKUP, and a miss is `BackendResolution::Unknown` — a ha
 error, not a fallback to the registry default. So the two vocabularies have to
 agree exactly:
 
-  * what cmake can bake — `NROS_RMW_KNOWN` in `cmake/NanoRosRmwDispatch.cmake`,
-    which is also the set `NANO_ROS_RMW` may take;
+  * what cmake can bake — the canonical `<nano_ros_provides kind="rmw"/>`
+    announcement of each in-tree backend, which is also the set `NANO_ROS_RMW`
+    may take (phase-439 W4: `NROS_RMW_KNOWN` is no longer a generated literal
+    in `cmake/NanoRosRmwDispatch.cmake`, it is a query);
   * what the registry answers to — the name each backend passes to
     `nros_rmw_cffi_register_named`.
 
@@ -32,8 +34,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-DISPATCH = ROOT / "cmake" / "NanoRosRmwDispatch.cmake"
 BACKEND_ROOT = ROOT / "packages" / "rmw"
+
+# The announcement each backend's `package.xml` carries. Same regex shape as
+# `check-rmw-descriptors.py`'s, and the FIRST match per package is the canonical
+# name (the rule `rmw_resolver::known_rmw_in` applies).
+PROVIDES_RE = re.compile(r'<nano_ros_provides\s+kind="rmw"\s+name="([^"]+)"\s*/?>')
 
 # `nros_rmw_cffi_register_named("uorb", …)` in C/C++, `c"zenoh".as_ptr()` in
 # Rust, and — cyclone — a named constant, which is why a bare literal scan is
@@ -83,7 +89,7 @@ def compare(known: set[str], registered: dict[str, set[str]]) -> list[str]:
     errors = []
     for name in sorted(known - set(registered)):
         errors.append(
-            f'cmake can bake NROS_ENTRY_RMW="{name}" (it is in NROS_RMW_KNOWN), '
+            f'cmake can bake NROS_ENTRY_RMW="{name}" (a package.xml announces it), '
             f"but no backend under packages/rmw/ registers under that name.\n"
             f"      A baked selector that names no registered backend resolves "
             f"to `Unknown`, which FAILS the session open — it does not fall "
@@ -93,11 +99,12 @@ def compare(known: set[str], registered: dict[str, set[str]]) -> list[str]:
     for name in sorted(set(registered) - known - NOT_A_CMAKE_RMW):
         where = ", ".join(sorted(registered[name]))
         errors.append(
-            f"'{name}' is registered ({where}) but is not in NROS_RMW_KNOWN, "
-            f"so no entry can select it.\n"
-            f"      Add it to the descriptor set (and regenerate "
-            f"cmake/NanoRosRmwDispatch.cmake), or add it to NOT_A_CMAKE_RMW in "
-            f"this script if it is a stub that ships in no image."
+            f"'{name}' is registered ({where}) but no package.xml announces it "
+            f"as an rmw provision, so no entry can select it.\n"
+            f"      Add `<nano_ros_provides kind=\"rmw\" name=\"{name}\"/>` to the "
+            f"backend's package.xml (with an nros-rmw.toml beside it), or add it "
+            f"to NOT_A_CMAKE_RMW in this script if it is a stub that ships in no "
+            f"image."
         )
     return errors
 
@@ -139,11 +146,49 @@ def self_test() -> None:
 
 
 def cmake_known() -> set[str]:
-    text = DISPATCH.read_text()
-    m = re.search(r'set\(NROS_RMW_KNOWN\s+"([^"]*)"', text)
-    if not m:
-        sys.exit(f"{DISPATCH}: no NROS_RMW_KNOWN — has the dispatch file moved?")
-    return {n for n in m.group(1).split(";") if n}
+    """Every rmw name `NANO_ROS_RMW` may take, from the ANNOUNCEMENTS.
+
+    phase-439 W4 — this used to regex `set(NROS_RMW_KNOWN "…")` out of
+    `cmake/NanoRosRmwDispatch.cmake`, which was a GENERATED literal listing the
+    backends present when the `nros` binary was compiled. That file is now a
+    query against the provider scan and holds no list, so there is nothing left
+    to grep.
+
+    The same rule the CLI applies (`rmw_resolver::known_rmw_in`): one CANONICAL
+    name per provider — its FIRST `<nano_ros_provides kind="rmw"/>` — not one
+    per announcement, because `zenoh` / `rmw-zenoh` / `rmw-zenoh-cffi` are three
+    spellings of one backend and only the first is a `NANO_ROS_RMW` value.
+
+    Read from source rather than by asking the CLI on purpose: this gate is on
+    the buildless, source-free `check-fast` line, where no `nros` binary exists.
+    That makes it a SECOND reader of the announcements, which this repo
+    normally refuses — the mitigation is that it reads the same files by the
+    same rule and that `check-rmw-descriptors` already parses them this way, and
+    the cross-check is
+    `rmw_resolver::tests::every_announced_backend_resolves_through_the_scan`,
+    which fails if the CLI's answer and the announcements ever diverge.
+
+    Out-of-tree providers are deliberately out of scope: this gate is about
+    whether THIS tree's bakeable names and THIS tree's registrations agree.
+    """
+    known: set[str] = set()
+    for pkg_xml in sorted(BACKEND_ROOT.glob("*/*/package.xml")):
+        if not (pkg_xml.parent / "nros-rmw.toml").is_file():
+            continue
+        m = PROVIDES_RE.search(pkg_xml.read_text(errors="replace"))
+        if not m:
+            sys.exit(
+                f"{pkg_xml}: an rmw backend with a descriptor announces no "
+                f'<nano_ros_provides kind="rmw" name="…"/> — nothing could '
+                f"select it."
+            )
+        known.add(m.group(1))
+    if not known:
+        sys.exit(
+            f"{BACKEND_ROOT}: no rmw provider announcements found — refusing to "
+            f"compare an EMPTY bakeable set, which would pass vacuously."
+        )
+    return known
 
 
 def registered_names() -> dict[str, set[str]]:

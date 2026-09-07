@@ -1,11 +1,11 @@
 ---
 id: 1219
-title: "RFC-0071's `check-rmw-agnostic` gate was never written, so the closed backend lists grew from three to at least five while the RFC's other waves landed"
+title: "RFC-0071's `check-rmw-agnostic` gate was never written, so the closed backend lists grew from three to at least five while the RFC's other waves landed (phase-439 W4 removed three of the five; the GATE is still unwritten)"
 status: open
 area: ci, rmw, api
 severity: medium
 found: 2026-09-08
-related: [1214, 1215, 1218, RFC-0071]
+related: [1214, 1215, 1216, 1218, RFC-0071, RFC-0094, phase-439]
 ---
 
 # The verification section is the part that did not land
@@ -116,3 +116,78 @@ two of the five closed lists are in neither Rust nor a manifest, which is why a
 manifest-only guard like `check-decoupling.sh` could never have caught them.
 Retire or rewrite `check-decoupling.sh` in the same change rather than leaving a
 gate that is documented as testing a goal the project abandoned.
+
+---
+
+## Status after phase-439 W4 (2026-09-08) — three of the five lists are gone; the GATE is not written
+
+**Still open, and deliberately so.** W4 was expected to close this issue. It
+removed most of what the issue counted and did not write the gate, and saying
+that plainly is worth more than a green check on a rule nobody calibrated.
+
+### What went
+
+| site | state |
+| --- | --- |
+| `CMakeLists.txt:267-402` (`if/elseif` → `FATAL_ERROR`, `uorb` fatal) | **gone** — dispatches on the DECLARED link strategy (issue 1215) |
+| `cmake/NanoRosRmwDispatch.cmake` (generated chain + `NROS_RMW_KNOWN` literal) | **gone** — the file asks the CLI (issue 1214) |
+| `cmake/NanoRosFeatureSet.cmake:135-146` (name → cffi feature, per crate) | **gone** — reads `[rmw.link] c_cffi_feature` / the derived `<cargo_feature>-cffi` (issue 1216) |
+| `cmake/NanoRosFeatureSet.cmake:239` (`safety` is zenoh-only) | **gone** — `"safety" IN_LIST NROS_RMW_CAPABILITIES`, which is what `nros-cpp` already did |
+
+That last one is the 0196-shaped half this issue named: the fix had landed at
+one of two sites, and a third-party backend declaring `safety` was honoured on
+one path and refused with a WRONG explanation on the other. Both sites now ask
+the descriptor.
+
+`scripts/check-entry-rmw-vocabulary.py` no longer regexes `NROS_RMW_KNOWN` out
+of a generated file — it reads the `<nano_ros_provides kind="rmw"/>`
+announcements, cross-checked against the CLI's own answer by
+`rmw_resolver::tests::every_announced_backend_resolves_through_the_scan`.
+
+### What did not: the gate, and why not — MEASURED
+
+`check-rmw-agnostic` was written and then deleted rather than shipped. The rule
+is easy to state ("code that enumerates two or more backend names") and the
+measurement is what killed the first version:
+
+* over every tracked build-logic file (cmake / rs / py / sh / just / Kconfig),
+  comments stripped, names matched only as quoted literals or regex
+  alternations: **93 files**;
+* narrowed to the build-DECISION surface (`cmake/`, `zephyr/`, `integrations/`,
+  `just/`, `packages/{api,boards,cli,core,rmw,platform,tooling}/`): **39 files**.
+
+Most of the excess is not a defect. `packages/testing/**` enumerates the
+backends a TEST MATRIX covers; `examples/bridges/tt-zenoh-to-cyclonedds` names
+two backends because bridging them is what it demonstrates;
+`scripts/build/fixtures-manifest.py`'s `KNOWN_RMWS` is a test-plan coordinate
+list. Even inside the 39, spot-checking found roughly 40 % noise from `#[cfg(test)]`
+TOML fixtures inside `cargo_metadata_schema.rs` — a shape the reader would have
+to learn to skip.
+
+A baseline of 39 (let alone 93) reasons written without verifying each one is a
+gate that reads as coverage, which this repo has paid for before. So the gate
+needs a classification pass — dispatch vs test-plan vs demo vs help text — and
+that is its own wave, not a side effect of W4.
+
+### What a next attempt should start from
+
+* The narrowing that worked: comments stripped per language; names matched only
+  where they open a quoted string or follow an alternation (`"zenoh"`,
+  `(zenoh|xrce)`), which drops `nros_rmw_zenoh_register` and `use
+  nros_rmw_zenoh::…`; a window (~320 chars) so two names at opposite ends of a
+  file are not "one construct"; a threshold of TWO names, because one is usually
+  a legitimate backend-specific site.
+* The name set from `check-entry-rmw-vocabulary.cmake_known()`, imported — a
+  gate against second spellings must not carry one.
+* What still needs a decision: skipping `#[cfg(test)]` bodies, and whether a
+  `Cargo.toml` feature table (`rmw-zenoh = [...]`, this issue's "api leaks")
+  belongs to this rule at all or is a separate one.
+
+### Unchanged by W4
+
+The api-manifest leaks (`packages/api/nros-{c,cpp}/Cargo.toml`), the core leaks
+(`main_macro.rs`'s `rmw_crate_ident` and its `cyclonedds` filter,
+`nros-orchestration-ir/src/cyclonedds_type_sizing.rs`), D8's
+`board.knobs.zenoh.tx`, `workspace_scaffold.rs`, `colcon_nano_ros`'s
+`RMW_BACKENDS`, and `scripts/check-decoupling.sh` (still documented as testing
+a goal the project abandoned).

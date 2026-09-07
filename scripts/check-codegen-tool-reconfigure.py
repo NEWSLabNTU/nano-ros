@@ -79,9 +79,24 @@ REPO = Path(__file__).resolve().parent.parent
 
 HELPER = "nros_codegen_tool_reconfigure"
 
-# Verbs whose emitted files outlive the configure. See the module docstring for
-# why `resolve-deps` and the fact verbs are not here.
-EMITTING_VERBS = ("codegen", "codegen-system")
+# Verbs whose answer outlives the configure. See the module docstring for why
+# `resolve-deps` and the fact verbs are not here.
+#
+# `rmw-dispatch` joined in phase-439 W4 (RFC-0094 D6). It emits no FILE, so it
+# is not an emitter in the `codegen` sense — but its answer is BAKED INTO
+# `build.ninja`: which cmake project is add_subdirectory'd, which archive rides
+# the whole-archive flag, which cffi feature the umbrella is built with, which
+# `#define` the C++ INTERFACE carries. That outlives the configure exactly the
+# way generated code does, and it is decided by a query whose only input the
+# build graph can see is the `nros` binary itself.
+#
+# The fact verbs' exemption reads "they still get the tool change the moment any
+# configure runs, and the emitters above are what make one run" — which assumes
+# the same directory ALSO reaches an emitter. That assumption is what issue 1018
+# was: `nano_ros_entry()` registered inline and three siblings inherited nothing.
+# A build dir that reaches no codegen emitter (a C++ leaf whose messages are
+# pre-generated) reaches this query, so it does not get to inherit.
+EMITTING_VERBS = ("codegen", "codegen-system", "rmw-dispatch")
 
 # `codegen` with this argument is the same-configure fragment writer, not an
 # emitter of anything a later build step compiles.
@@ -287,6 +302,13 @@ def selftest(verbose=False):
             '    RESULT_VARIABLE _rc)\n'
         ),
         "both.cmake": emit + resolve,
+        # phase-439 W4 — the RMW dispatch query. It writes no file; what it
+        # bakes into `build.ninja` is which backend project is added and which
+        # archive rides the whole-archive flag.
+        "rmwdispatch.cmake": 'execute_process(COMMAND "${_tool}" ws rmw-dispatch zenoh --lines)\n',
+        "rmwdispatch_reg.cmake": (
+            reg + 'execute_process(COMMAND "${_tool}" ws rmw-dispatch zenoh --lines)\n'
+        ),
         "cmdvar.cmake": via_cmd_var,
         "argsvar.cmake": via_args_var,
         "prose.cmake": (
@@ -304,6 +326,10 @@ def selftest(verbose=False):
     chk("`codegen-system` is not reported as `codegen`",
         run(["system.cmake"])[0][1] == ["codegen-system"])
     chk("`codegen resolve-deps` is not an emitter", run(["resolve.cmake"]) == [])
+    chk("an unregistered `ws rmw-dispatch` FAILS",
+        run(["rmwdispatch.cmake"]) == [("rmwdispatch.cmake", ["rmw-dispatch"])])
+    chk("registering the rmw dispatch query passes",
+        run(["rmwdispatch_reg.cmake"]) == [])
     chk("a BUILD-time add_custom_command is out of scope (it carries DEPENDS)",
         run(["custom.cmake"]) == [])
     chk("a commented-out emitter is not a finding", run(["commented.cmake"]) == [])
