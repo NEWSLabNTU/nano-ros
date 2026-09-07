@@ -5058,73 +5058,27 @@ impl<'s> Executor<'s> {
     // Timer registration
     // ========================================================================
 
-    /// Register a repeating timer callback.
+    /// The ONE timer registration in the tree (phase-430 W4).
     ///
-    /// The callback fires every `period` milliseconds during [`spin_once()`](Self::spin_once).
-    /// The timer delta is approximated by the `timeout_ms` argument to `spin_once`.
-    pub fn register_timer<F>(
+    /// Every timer verb — the four `Executor::register_timer*` entry points
+    /// below, `NodeCtx::create_timer_in` / `create_timer_on_clock*`, the
+    /// declarative `nros::Node` timer, and the C/C++ FFI that lower to them —
+    /// constructs its arena entry HERE. Until W4 there were four copies of this
+    /// body differing only in `oneshot`, `clock_source` and whether the sched
+    /// binding was applied, and phase-425's clock axis reached exactly one of
+    /// them; that is how a `nros::main!` component could declare a timer but
+    /// not a ROS-time one.
+    ///
+    /// `node_id` / `group` feed `apply_node_default_sched` (phase 273: group
+    /// table > node default > SC 0). `node_id == None` is the legacy unscoped
+    /// path and makes that call a no-op.
+    pub(crate) fn register_timer_entry<F>(
         &mut self,
-        period: TimerDuration,
-        callback: F,
-    ) -> Result<HandleId, NodeError>
-    where
-        F: FnMut() + 'static,
-    {
-        let slot = self.next_entry_slot()?;
-        let offset = self.arena_alloc::<TimerEntry<F>>()?;
-
-        unsafe {
-            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut TimerEntry<F>;
-            core::ptr::write(
-                entry_ptr,
-                TimerEntry {
-                    period_us: period.as_micros(),
-                    elapsed_us: 0,
-                    overruns: 0,
-                    overruns_reported: 0,
-                    oneshot: false,
-                    fired: false,
-                    cancelled: false,
-                    overrun_policy: TimerOverrunPolicy::default(),
-                    clock_source: TimerClockSource::Steady,
-                    last_clock_ns: 0,
-                    callback,
-                },
-            );
-        }
-
-        let meta = CallbackMeta {
-            offset,
-            kind: EntryKind::Timer,
-            try_process: timer_try_process::<F>,
-            has_data: always_ready,
-            pre_sample: no_pre_sample,
-            invocation: InvocationMode::Always,
-            drop_fn: drop_entry::<TimerEntry<F>>,
-        };
-        self.emplace_entry(slot, meta, TraceName::TimerPeriod(period.as_micros()));
-        Ok(HandleId(slot))
-    }
-
-    /// Register a repeating timer driven by a CLOCK rather than by the spin
-    /// delta — phase-425 W4, the shape rclcpp spells
-    /// `create_timer(node, clock, period, cb)`.
-    ///
-    /// [`register_timer`](Self::register_timer) is the wall timer: it consumes
-    /// the executor's monotonic spin delta and no simulator can slow it down.
-    /// This one reads `source` on every poll and advances by the difference, so
-    /// a [`TimerClockSource::Ros`] timer follows `/clock` — it stops while the
-    /// simulator is paused, halves with a bag replayed at 0.5x, and restarts
-    /// its period on a backwards jump instead of stalling for the length of it.
-    ///
-    /// With no `/clock` source installed, a `Ros` timer reads system time and
-    /// behaves like a wall timer with NTP steps, which is the same fallback
-    /// `rclcpp::Clock` has: a node written for simulation still runs standalone.
-    pub fn register_timer_on_clock<F>(
-        &mut self,
+        node_id: Option<super::node_record::NodeId>,
         period: TimerDuration,
         source: TimerClockSource,
+        oneshot: bool,
+        group: Option<&str>,
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
@@ -5143,7 +5097,7 @@ impl<'s> Executor<'s> {
                     elapsed_us: 0,
                     overruns: 0,
                     overruns_reported: 0,
-                    oneshot: false,
+                    oneshot,
                     fired: false,
                     cancelled: false,
                     overrun_policy: TimerOverrunPolicy::default(),
@@ -5151,7 +5105,8 @@ impl<'s> Executor<'s> {
                     // Seeded HERE rather than on the first poll: a zero would
                     // make the first delta the whole epoch, which `Skip` would
                     // then coalesce into one immediate activation and `CatchUp`
-                    // into a replay burst of ~10^9 periods.
+                    // into a replay burst of ~10^9 periods. `Steady` reads no
+                    // clock at all, so its seed is 0 and is never read.
                     last_clock_ns: source.now_ns(),
                     callback,
                 },
@@ -5168,7 +5123,62 @@ impl<'s> Executor<'s> {
             drop_fn: drop_entry::<TimerEntry<F>>,
         };
         self.emplace_entry(slot, meta, TraceName::TimerPeriod(period.as_micros()));
+        // Phase 273 — apply group sched binding (group > node default > SC 0).
+        self.apply_node_default_sched(slot, node_id, group);
         Ok(HandleId(slot))
+    }
+
+    /// Register a repeating timer callback.
+    ///
+    /// The callback fires every `period` milliseconds during [`spin_once()`](Self::spin_once).
+    /// The timer delta is approximated by the `timeout_ms` argument to `spin_once`.
+    pub fn register_timer<F>(
+        &mut self,
+        period: TimerDuration,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        self.register_timer_entry(
+            None,
+            period,
+            TimerClockSource::Steady,
+            false,
+            None,
+            callback,
+        )
+    }
+
+    /// Register a repeating timer driven by a CLOCK rather than by the spin
+    /// delta — phase-425 W4, the shape rclcpp spells
+    /// `create_timer(node, clock, period, cb)`.
+    ///
+    /// [`register_timer`](Self::register_timer) is the wall timer: it consumes
+    /// the executor's monotonic spin delta and no simulator can slow it down.
+    /// This one reads `source` on every poll and advances by the difference, so
+    /// a [`TimerClockSource::Ros`] timer follows `/clock` — it stops while the
+    /// simulator is paused, halves with a bag replayed at 0.5x, and restarts
+    /// its period on a backwards jump instead of stalling for the length of it.
+    ///
+    /// With no `/clock` source installed, a `Ros` timer reads system time and
+    /// behaves like a wall timer with NTP steps, which is the same fallback
+    /// `rclcpp::Clock` has: a node written for simulation still runs standalone.
+    ///
+    /// The node-level spellings of this are `NodeCtx::create_timer_on_clock`
+    /// and the declarative `DeclaredNode::create_timer_on_clock` (phase-430 W4);
+    /// all of them reach `register_timer_entry`, which is the only place a
+    /// timer entry is built.
+    pub fn register_timer_on_clock<F>(
+        &mut self,
+        period: TimerDuration,
+        source: TimerClockSource,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        self.register_timer_entry(None, period, source, false, None, callback)
     }
 
     /// Register a one-shot timer callback.
@@ -5182,41 +5192,7 @@ impl<'s> Executor<'s> {
     where
         F: FnMut() + 'static,
     {
-        let slot = self.next_entry_slot()?;
-        let offset = self.arena_alloc::<TimerEntry<F>>()?;
-
-        unsafe {
-            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut TimerEntry<F>;
-            core::ptr::write(
-                entry_ptr,
-                TimerEntry {
-                    period_us: delay.as_micros(),
-                    elapsed_us: 0,
-                    overruns: 0,
-                    overruns_reported: 0,
-                    oneshot: true,
-                    fired: false,
-                    cancelled: false,
-                    overrun_policy: TimerOverrunPolicy::default(),
-                    clock_source: TimerClockSource::Steady,
-                    last_clock_ns: 0,
-                    callback,
-                },
-            );
-        }
-
-        let meta = CallbackMeta {
-            offset,
-            kind: EntryKind::Timer,
-            try_process: timer_try_process::<F>,
-            has_data: always_ready,
-            pre_sample: no_pre_sample,
-            invocation: InvocationMode::Always,
-            drop_fn: drop_entry::<TimerEntry<F>>,
-        };
-        self.emplace_entry(slot, meta, TraceName::TimerPeriod(delay.as_micros()));
-        Ok(HandleId(slot))
+        self.register_timer_entry(None, delay, TimerClockSource::Steady, true, None, callback)
     }
 
     /// Phase 273 (RFC-0047) — register a repeating timer callback bound to a
@@ -5237,43 +5213,14 @@ impl<'s> Executor<'s> {
     where
         F: FnMut() + 'static,
     {
-        let slot = self.next_entry_slot()?;
-        let offset = self.arena_alloc::<TimerEntry<F>>()?;
-
-        unsafe {
-            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut TimerEntry<F>;
-            core::ptr::write(
-                entry_ptr,
-                TimerEntry {
-                    period_us: period.as_micros(),
-                    elapsed_us: 0,
-                    overruns: 0,
-                    overruns_reported: 0,
-                    oneshot: false,
-                    fired: false,
-                    cancelled: false,
-                    overrun_policy: TimerOverrunPolicy::default(),
-                    clock_source: TimerClockSource::Steady,
-                    last_clock_ns: 0,
-                    callback,
-                },
-            );
-        }
-
-        let meta = CallbackMeta {
-            offset,
-            kind: EntryKind::Timer,
-            try_process: timer_try_process::<F>,
-            has_data: always_ready,
-            pre_sample: no_pre_sample,
-            invocation: InvocationMode::Always,
-            drop_fn: drop_entry::<TimerEntry<F>>,
-        };
-        self.emplace_entry(slot, meta, TraceName::TimerPeriod(period.as_micros()));
-        // Phase 273 — apply group sched binding (group > node default > SC 0).
-        self.apply_node_default_sched(slot, node_id, group);
-        Ok(HandleId(slot))
+        self.register_timer_entry(
+            node_id,
+            period,
+            TimerClockSource::Steady,
+            false,
+            group,
+            callback,
+        )
     }
 
     // ========================================================================

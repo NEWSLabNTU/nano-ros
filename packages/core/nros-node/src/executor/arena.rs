@@ -21,6 +21,9 @@ use super::{
     },
 };
 use crate::session;
+// phase-430 W4 — the clock-source enum moved to the ungated `timer` module so
+// the declarative metadata layer can name it; `executor` re-exports it.
+pub(crate) use crate::timer::TimerClockSource;
 
 // ============================================================================
 // Callback metadata
@@ -213,48 +216,6 @@ pub enum TimerOverrunPolicy {
     /// not be lost. A replay burst runs back-to-back at dispatch speed,
     /// NOT at the declared cadence — control loops usually want `Skip`.
     CatchUp,
-}
-
-/// Which clock advances a timer (phase-425 W4, RFC-0075-adjacent: this is the
-/// distinction rclcpp draws between `create_wall_timer` and `create_timer`).
-///
-/// The default is [`Steady`](Self::Steady) and it is the only source that costs
-/// nothing: it consumes the spin delta the executor already measured. The other
-/// two READ a clock on every poll of the timer, which is one relaxed atomic load
-/// plus whatever the platform's time call costs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[repr(u8)]
-pub enum TimerClockSource {
-    /// The executor's monotonic spin delta — a WALL timer in rclcpp's sense.
-    /// Unaffected by `/clock`: a paused simulator does not pause it, which is
-    /// exactly what a watchdog or a transport keep-alive wants.
-    #[default]
-    Steady = 0,
-    /// `ClockType::RosTime`: simulated time when a `/clock` source is active,
-    /// and system time when none is (the same fallback `rclcpp::Clock` has, so
-    /// a node built for simulation still runs standalone).
-    Ros = 1,
-    /// `ClockType::SystemTime`: the wall clock, NTP steps and all. Present
-    /// because rclrs offers it (`TimerClock::SystemTime`); a timer that must
-    /// not jump wants `Steady`.
-    System = 2,
-}
-
-impl TimerClockSource {
-    /// The `nros_core` clock this source reads, or `None` for [`Steady`](Self::Steady),
-    /// which reads no clock at all.
-    pub(crate) fn clock(self) -> Option<nros_core::clock::Clock> {
-        match self {
-            TimerClockSource::Steady => None,
-            TimerClockSource::Ros => Some(nros_core::clock::Clock::ros_time()),
-            TimerClockSource::System => Some(nros_core::clock::Clock::system()),
-        }
-    }
-
-    /// The clock's current reading in nanoseconds, or 0 for [`Steady`](Self::Steady).
-    pub(crate) fn now_ns(self) -> i64 {
-        self.clock().map(|c| c.now().to_nanos()).unwrap_or(0)
-    }
 }
 
 /// Concrete timer entry stored in the arena.

@@ -122,8 +122,11 @@ pub use action::{
 };
 #[cfg(any(has_rmw, test))]
 pub use action_core::{ActionClientCore, ActionServerCore, RawActiveGoal, action_channel_type};
-#[cfg(any(has_rmw, test))]
-pub use arena::TimerClockSource;
+// phase-430 W4 — DEFINED in `crate::timer` (ungated) and re-exported here, so
+// `nros_node::executor::TimerClockSource` keeps resolving for every caller
+// phase-425 wrote while the declarative metadata layer, which builds with no
+// transport, can name the same enum instead of inventing a second one.
+pub use crate::timer::TimerClockSource;
 #[cfg(any(has_rmw, test))]
 pub use arena::TimerOverrunPolicy;
 #[cfg(any(has_rmw, test))]
