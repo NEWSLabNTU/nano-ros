@@ -55,10 +55,14 @@ namespace nros {
 class Timer {
   public:
 #ifdef NROS_CPP_HAS_SHARED_PTR
-    /// `Timer::SharedPtr` — phase-417 W1.a; the analog of
-    /// `rclcpp::TimerBase::SharedPtr`, which is how ported source declares a
-    /// timer member (`rclcpp::TimerBase::SharedPtr timer_;`). The shim's own
-    /// `rclcpp::TimerBase` carries the same three aliases.
+    /// `Timer::SharedPtr` — how a timer member is declared:
+    /// `rclcpp::Timer::SharedPtr timer_;`.
+    ///
+    /// Upstream spells that `rclcpp::TimerBase::SharedPtr`. We do not have a
+    /// `TimerBase`, deliberately — phase-430 W7 deleted the one-leaf hierarchy
+    /// phase-417 W1.a had added, because the executor dispatches through a raw
+    /// function pointer and a base class would be a vtable no dispatch uses.
+    /// The rename is the mechanical edit the compile-or-conform rule wants.
     ///
     /// Ergonomics only (RFC-0089 §"Who implements an adopted name"): a
     /// spelling for `std::shared_ptr<Timer>`, no second code path.
@@ -66,9 +70,9 @@ class Timer {
     /// Present only where `<memory>` is — a freestanding target has no
     /// `std::shared_ptr` to alias.
     using SharedPtr = std::shared_ptr<Timer>;
-    /// `rclcpp::TimerBase::ConstSharedPtr` — see `SharedPtr`.
+    /// `Timer::ConstSharedPtr` — see `SharedPtr`.
     using ConstSharedPtr = std::shared_ptr<const Timer>;
-    /// `rclcpp::TimerBase::UniquePtr` — see `SharedPtr`.
+    /// `Timer::UniquePtr` — see `SharedPtr`.
     using UniquePtr = std::unique_ptr<Timer>;
 #endif
 
@@ -173,26 +177,51 @@ class Timer {
 } // namespace nros
 
 // ============================================================================
-// rclcpp::TimerBase (RFC-0089 stage 6, step A)
+// rclcpp::Timer — FLAT. No `TimerBase`, no hierarchy (phase-430 W7 ruling)
 // ============================================================================
 //
-// Moved here from `nros/rclcpp_compat.hpp`. rclcpp users typically store a
-// `rclcpp::TimerBase::SharedPtr` and only care that it stays alive as long as
-// the timer should fire. The dispatch happens through
-// `rclcpp::Node::create_wall_timer(period, callback)` (`nros/nros.hpp`).
+// RFC-0089 §"Timer, studied against RTOS semantics" decided this and the tree
+// disagreed with it: phase-417 W1.a had landed `class TimerBase` with a virtual
+// destructor and `detail::WallTimer : TimerBase` under it — exactly the
+// hierarchy the RFC refused. phase-430 W7 called for a ruling either way. The
+// ruling is DELETE, and it is argued from the executor's dispatch:
 //
-// phase-417 — ONE DISPATCH PATH. `create_wall_timer` registers an EXECUTOR
-// timer via `nros::Node::create_timer` (`node.hpp:718`), so the period
-// arithmetic, the missed-deadline policy and the clock are the executor's,
-// Rust-side. Until this landed, `WallTimer` carried its own
-// `std::chrono::steady_clock` deadline and a `Node::pump()` fired it from
-// `rclcpp::spin` / `spin_some` ONLY — a ported file driving `nros::spin_once()`
-// or an `nros::Executor` got zero callbacks and no diagnostic, and no
-// diagnostic could be written for it because both spin spellings are
-// legitimate and which one is wrong depends on the node object the file holds.
-// Scheduling in the wrapper is RFC-0019/RFC-0020 violation class 2; this is the
-// structural fix RFC-0089 makes a prerequisite for the stage-6 rename. Do not
-// reintroduce a second dispatch loop.
+//   1. THE VTABLE HAS NO CALLER. The only virtual member was `~TimerBase()`,
+//      and there is no virtual call through a `TimerBase*` anywhere in the
+//      tree — there cannot be. The executor's callback slot is
+//      `nros_cpp_timer_callback_t`, a raw `void(*)(void*)`, and dispatch goes
+//      through the STATIC `detail::WallTimer::trampoline`. The executor never
+//      holds a C++ timer object, so it never needs a type-erased base. Even
+//      the destructor's virtuality was dead: the cell is built with
+//      `std::make_shared<detail::WallTimer>()`, so the control block already
+//      records the CONCRETE deleter and destruction through a base pointer was
+//      correct without it. A vtable no dispatch uses is cost with no caller,
+//      which is what clause 1 of the governing principle refuses.
+//
+//   2. THE NAME PROMISES CHILDREN WE REFUSE TO HAVE. `WallTimer` and
+//      `GenericTimer` are upstream's siblings under `TimerBase`, and both stay
+//      absent by decision: the clock axis is a RUNTIME FIELD on the flat timer
+//      plus a second VERB (`create_timer(clock, …)` beside `create_wall_timer`),
+//      never a type parameter — phase-425 landed ROS time in exactly that
+//      shape. A base whose one leaf is `detail::`-private advertises a taxonomy
+//      the header itself refuses two paragraphs later.
+//
+//   3. THE FLAT SHAPE IS A STRICTLY BETTER KEEP-ALIVE. `create_wall_timer` now
+//      returns `std::shared_ptr<::nros::Timer>` aliased onto the private cell,
+//      which is what `create_subscription` has always done. The returned type
+//      is the type that actually exists, and the cell stays an implementation
+//      detail instead of being half-exposed as a base class.
+//
+// The migration cost is one mechanical rename the compiler demands:
+// `rclcpp::TimerBase::SharedPtr timer_;` becomes `rclcpp::Timer::SharedPtr
+// timer_;`. That is the compile-or-conform rule working as designed, and it is
+// what the RFC calls the honest outcome — we do not have the hierarchy, so we
+// do not take the name for it. Zero non-test call sites in this tree used it.
+//
+// `rclcpp::Timer` is an ours-only name in upstream's namespace (RFC-0089
+// §"Settled: `nros::` is phased out entirely"), so it carries a ledger row with
+// `disposition: extension` and the collision gate watches for `rclcpp::Timer`
+// appearing in the recorded upstream surface.
 //
 // ADOPT-BOUNDED, and both halves of the envelope come with the executor:
 //
@@ -208,6 +237,15 @@ class Timer {
 //     whole missed periods and re-phases onto the grid, firing once. Closing
 //     the gap means a missed-deadline POLICY on the executor's timer —
 //     Rust-side work, not a loop re-added here (issue 1041).
+//
+// phase-417 — ONE DISPATCH PATH. `create_wall_timer` registers an EXECUTOR
+// timer via `rclcpp::Node::create_wall_timer` (`node.hpp`), so the period
+// arithmetic, the missed-deadline policy and the clock are the executor's,
+// Rust-side. Until this landed, `WallTimer` carried its own
+// `std::chrono::steady_clock` deadline and a `Node::pump()` fired it from
+// `rclcpp::spin` / `spin_some` ONLY. Scheduling in the wrapper is
+// RFC-0019/RFC-0020 violation class 2. Do not reintroduce a second dispatch
+// loop.
 
 // `<functional>` for the type-erased callback cell. Gated for the same reason
 // `<memory>` is above — issue 0112, rationale in `publisher.hpp`.
@@ -221,24 +259,17 @@ class Timer {
 #endif
 #endif
 
-#ifdef NROS_CPP_HAS_SHARED_PTR
 namespace rclcpp {
 
-/// `rclcpp::TimerBase` — what `rclcpp::TimerBase::SharedPtr timer_;` names.
+/// `rclcpp::Timer` — the ROS 2 spelling of `nros::Timer`, and the whole timer
+/// taxonomy this API has.
 ///
-/// Present only where `<memory>` is: the three nested aliases ARE the reason
-/// upstream source declares this type, and a freestanding target has no
-/// `std::shared_ptr` to alias.
-class TimerBase {
-  public:
-    /// phase-417 W1.a — `rclcpp::TimerBase::SharedPtr timer_;` is how upstream
-    /// source declares a timer member.
-    using SharedPtr = std::shared_ptr<TimerBase>;
-    using ConstSharedPtr = std::shared_ptr<const TimerBase>;
-    using UniquePtr = std::unique_ptr<TimerBase>;
-
-    virtual ~TimerBase() = default;
-};
+/// UNCONDITIONAL, unlike the `TimerBase` it replaces: `nros::Timer` needs no
+/// `<memory>`, so a freestanding target gets the ROS 2 name too. The nested
+/// `SharedPtr` / `ConstSharedPtr` / `UniquePtr` aliases live on `nros::Timer`
+/// itself and are present where `<memory>` is, which is the only part that was
+/// ever hosted-only.
+using Timer = ::nros::Timer;
 
 #ifdef NROS_CPP_HAS_STD_FUNCTION
 namespace detail {
@@ -252,15 +283,20 @@ namespace detail {
 /// calls it. That is a spelling, not a second code path (RFC-0089 §"Who
 /// implements an adopted name"); no schedule, no clock read, no ordering.
 ///
+/// NOT A CLASS HIERARCHY. It derived from `rclcpp::TimerBase` until phase-430
+/// W7 deleted that base; it is a private implementation cell, and
+/// `create_wall_timer` hands back a `std::shared_ptr<::nros::Timer>` aliased
+/// onto its `timer` member rather than a pointer to the cell itself.
+///
 /// LIFETIME: the arena stores `this` as the dispatch context and nothing
 /// unregisters it, so the cell has to outlive the registration.
-/// `rclcpp::Node::timers_` holds a `shared_ptr` for the node's lifetime, and
-/// the MEMBER ORDER below is load-bearing — members destruct in reverse
-/// declaration order, so `timer` goes first and `~nros::Timer` cancels the
-/// arena slot (`timer.hpp:70`) before `callback` is destroyed. Declared the
-/// other way round, a tick landing between the two destructions would run a
-/// destroyed `std::function`.
-class WallTimer : public TimerBase {
+/// `rclcpp::Node`'s `owned_entities_` holds a `shared_ptr` for the node's
+/// lifetime, and the MEMBER ORDER below is load-bearing — members destruct in
+/// reverse declaration order, so `timer` goes first and `~nros::Timer` cancels
+/// the arena slot before `callback` is destroyed. Declared the other way round,
+/// a tick landing between the two destructions would run a destroyed
+/// `std::function`.
+class WallTimer {
   public:
     static void trampoline(void* ctx) {
         auto* self = static_cast<WallTimer*>(ctx);
@@ -277,6 +313,5 @@ class WallTimer : public TimerBase {
 #endif // NROS_CPP_HAS_STD_FUNCTION
 
 } // namespace rclcpp
-#endif // NROS_CPP_HAS_SHARED_PTR
 
 #endif // NROS_CPP_TIMER_HPP
