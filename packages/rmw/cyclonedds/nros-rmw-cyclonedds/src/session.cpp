@@ -124,6 +124,34 @@ rmw_ret_t session_set_wake_callback(rmw_session_t* session,
     if (session == nullptr || session->backend_data == nullptr) {
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
+#ifdef NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE
+    /* Issue 1202 — this build's platform cannot be woken from a thread it does
+     * not own, so decline the slot and let the runtime fall back to its
+     * poll-only path (`spin.rs`: "Poll-only backends (NULL `set_wake_callback`
+     * slot)"). `condvar_wait_until` is bounded, so the cost is wake LATENCY,
+     * not liveness.
+     *
+     * The FreeRTOS POSIX port runs tasks as host pthreads; Cyclone is the host
+     * library, so `on_data_available` arrives on a thread the port never
+     * registered. Captured from the core of an ASI controller image:
+     *
+     *   #5  freertos_assert_failed ()
+     *   #6  vPortYield ()
+     *   #7  xQueueGenericSend ()
+     *   #8  nros_platform_wake_signal ()
+     *   #9  nros_rmw_cyclonedds::on_data_available(int, void*)
+     *   #10 libddsc.so.0                      <- Cyclone's receive thread
+     *
+     * `vPortYield` asserts `prvIsFreeRTOSThread()`. There is no safe variant to
+     * substitute: this port's `xPortSetInterruptMask()` returns 0 and its
+     * `vPortDisableInterrupts()` no-ops for a foreign thread, so the FromISR
+     * give would drop the assert and keep the race — a quieter bug, not a
+     * fixed one. The only correct answer is not to enter the scheduler from
+     * that thread at all. */
+    (void)cb;
+    (void)ctx;
+    return NROS_RMW_RET_UNSUPPORTED;
+#else
     auto* state = as_state(session);
 
     if (cb == nullptr) {
@@ -171,6 +199,7 @@ rmw_ret_t session_set_wake_callback(rmw_session_t* session,
         }
     }
     return NROS_RMW_RET_OK;
+#endif
 }
 
 rmw_ret_t session_create(const char* /*locator*/, uint8_t /*mode*/, uint32_t domain_id,

@@ -162,6 +162,30 @@ set(NROS_PLATFORM_FREERTOS_HEAP_3 ON CACHE BOOL
 set(NROS_PLATFORM_FREERTOS_WITH_BAREMETAL_COMPAT OFF CACHE BOOL
     "freertos-posix: the host C library provides what cyclonedds_compat.c fills in" FORCE)
 
+# Issue 1202 — no wake from Cyclone's own thread on this board.
+#
+# The kernel port here runs tasks as host pthreads, and Cyclone is the HOST
+# library, so `on_data_available` arrives on a thread the port never registered.
+# Waking the executor from it enters the scheduler from a foreign thread, which
+# `vPortYield` asserts on; captured from a core of an ASI controller image:
+#
+#   #6  vPortYield ()
+#   #7  xQueueGenericSend ()
+#   #8  nros_platform_wake_signal ()
+#   #9  nros_rmw_cyclonedds::on_data_available(int, void*)
+#   #10 libddsc.so.0                        <- Cyclone's receive thread
+#
+# Deterministic to reproduce: SIGINT the running image (this port deliberately
+# leaves SIGINT unblocked in every thread, "so this can be used to break into
+# GDB"), and the abort follows.
+#
+# The RMW declines the slot instead, and the runtime falls back to the poll-only
+# path it already documents. The cost is wake LATENCY on this simulator board;
+# every other FreeRTOS board keeps the listener, because there Cyclone's threads
+# ARE the platform's threads.
+set(NROS_RMW_CYCLONEDDS_FOREIGN_WAKE OFF CACHE BOOL
+    "freertos-posix: Cyclone's receive thread is not a FreeRTOS thread (issue 1202)" FORCE)
+
 # Read by `cmake/platform/nano-ros-freertos.cmake` BEFORE it stages the Phase
 # 186 Cyclone flags. Those set `WITH_FREERTOS`/`WITH_LWIP` on ddsrt, which
 # selects a ddsrt whose sockets are lwIP's — against a build with no lwIP to
