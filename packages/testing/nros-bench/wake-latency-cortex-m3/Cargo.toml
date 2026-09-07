@@ -29,7 +29,7 @@ bench = false
 # example pattern). Single-board FreeRTOS bench fixture; deploy
 # target is the platform path the binary runs on.
 [package.metadata.nros.application]
-deploy = ["qemu-arm-freertos"]
+deploy = ["mps2-an385-freertos"]
 
 [features]
 default = []
