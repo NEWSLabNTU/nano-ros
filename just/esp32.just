@@ -12,11 +12,11 @@ default:
 # example's cargo build; no standalone library build step is needed
 # or wired up anywhere in the project.
 #
-# Phase 213.A.4 — this recipe provisions the `[board.qemu-esp32-baremetal]`
+# Phase 213.A.4 — this recipe provisions the `[board.esp32-c3-baremetal]`
 # board (Espressif QEMU fork, esp32c3 machine). It has `packages = []` in
 # the index — the riscv32 target comes from `just workspace rust-targets`
 # (rustup), and the QEMU fork is the source-built `[tool.esp32-qemu]`. There
-# is no `just qemu-esp32-baremetal setup` sibling; this recipe is the entry point.
+# is no `just esp32-c3-baremetal setup` sibling; this recipe is the entry point.
 [group("setup")]
 setup:
     #!/usr/bin/env bash
@@ -26,7 +26,7 @@ setup:
     # resolves. The esp32 board has no toolchain package (build-std), so this is
     # the source set.
     source scripts/build/cargo.sh
-    "$(nros_cli_bin)" setup qemu-esp32-baremetal
+    "$(nros_cli_bin)" setup esp32-c3-baremetal
     # Probe for the `esp32c3` machine model, not the binary's mere existence —
     # the ESP32 e2e TESTS need Espressif's QEMU fork (stock qemu-system-riscv32
     # only knows `virt`). Build does NOT need it, so provision best-effort: the

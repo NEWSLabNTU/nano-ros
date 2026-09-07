@@ -2468,7 +2468,7 @@ mod tests {
         SdkIndex::parse(
             "[board.qemu-arm-freertos]\npackages=[\"arm-none-eabi-gcc\",\"qemu\",\"freertos-kernel\",\"lwip\"]\n\
              [board.rv-virt-threadx]\npackages=[\"riscv-none-elf-gcc\",\"qemu\",\"threadx\"]\n\
-             [board.qemu-esp32-baremetal]\narch=\"riscv32\"\npackages=[]\n\
+             [board.esp32-c3-baremetal]\narch=\"riscv32\"\npackages=[]\n\
              [board.native]\npackages=[\"zenohd\"]\n\
              [board.gated-example]\npackages=[\"arm-none-eabi-gcc\",\"a-gated-sdk\"]\n",
         )
@@ -2489,7 +2489,7 @@ mod tests {
 
         // ESP32-C3 QEMU: declared arch riscv32, no index host-tool (rustup target).
         assert!(
-            resolve_packages(&idx, "qemu-esp32-baremetal")
+            resolve_packages(&idx, "esp32-c3-baremetal")
                 .unwrap()
                 .is_empty()
         );

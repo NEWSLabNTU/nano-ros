@@ -1113,33 +1113,20 @@ arch = "x86_64"
 platform = "posix"
 packages = [] # host daemon comes from the RMW axis (default rmw.zenoh)
 
-[board.qemu-arm-baremetal]
+# phase-437 W5 (RFC-0093 §4) — ONE key where W2 marked a mirrored PAIR.
+# `qemu-arm-baremetal` (the examples dir) and `mps2-an385` (the board crate)
+# were byte-identical bodies born together in `719ff9436`; W2 marked them so
+# `check-board-vocabulary` held them in step, and this wave collapses them.
+#
+# The name is the PART (R1): the overlay and the board crate pin
+# `mps2-an385.x`, so the build is true for one silicon part and for nothing
+# broader — `qemu-arm-baremetal` claimed any ARM under QEMU. Stack last (R2),
+# emulator never named (R3), and `arch`/`platform` below are not repeated in
+# the name (R5).
+[board.mps2-an385-baremetal]
 arch = "cortex-m3"
 platform = "bare-metal"
 packages = ["arm-none-eabi-gcc", "qemu"]
-
-# = [board.qemu-arm-baremetal] — ONE board, two lookup keys, and this table's
-# own header says why: "Keyed by the canonical board id (examples/<board>/ dir
-# name OR the board-crate name)". `qemu-arm-baremetal` is the examples dir,
-# `mps2-an385` is the crate. Both were added by `719ff9436`, adjacent, with
-# identical bodies — born together, not one mirrored onto the other later,
-# which is why this pair predates the `# =` convention and never got a marker.
-#
-# The same commit shows the author DID distinguish a different board when it
-# was different: `[board.stm32f4]` got `cortex-m4` and `openocd` instead of
-# `qemu`, because it is real hardware you flash. This one got neither.
-#
-# Marked now (phase-437 W2) so `check-board-vocabulary` holds the two in step
-# for the one wave before W5 collapses them into `mps2-an385-baremetal`.
-[board.mps2-an385]
-arch = "cortex-m3"
-platform = "bare-metal"
-packages = ["arm-none-eabi-gcc", "qemu"]
-
-[board.qemu-arm-freertos]
-arch = "cortex-m3"
-platform = "freertos"
-packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
 
 [board.qemu-armv7a-nuttx]
 arch = "cortex-a7"
@@ -1229,12 +1216,16 @@ platform = "threadx"
 # runs on the host; the zenoh daemon comes from rmw.zenoh
 packages = ["threadx", "threadx-netxduo"]
 
-[board.qemu-esp32-baremetal]
+# phase-437 W5 (RFC-0093 §4) — the rule's own witness: the cmake overlay
+# already read "board overlay for ESP32-C3 (real silicon) + ESP32-C3 QEMU" —
+# one name, both, because the name is the PART. This key was the emulator
+# spelling of the same board and collapses into it.
+[board.esp32-c3-baremetal]
 arch = "riscv32"
 platform = "bare-metal"
 # issue 0399 — the board compiles zpico C for riscv32imc and needs a riscv
 # cross gcc. `riscv-none-elf-gcc` is the xPack multilib toolchain (rv32imc /
-# ilp32 capable); declaring it here means `nros setup qemu-esp32-baremetal`
+# ilp32 capable); declaring it here means `nros setup esp32-c3-baremetal`
 # provisions the compiler zpico-build's detection now looks for, instead of
 # leaving a documented-provisioned host unable to build the example.
 # issue 0486 — `espflash` joins `riscv-none-elf-gcc` for the same reason 0399
@@ -1291,18 +1282,23 @@ packages = ["zephyr-sdk"]
 # package set EXACTLY, and the pairing is asserted by `check-board-vocabulary`.
 # This is a DUPLICATE, not an alias, because `BoardEntry` is
 # `deny_unknown_fields` and has no alias key — giving the index one is a CLI
-# schema change, which this additive step deliberately is not. Until then,
+# schema change, which the additive step deliberately was not. Until then,
 # EDIT BOTH.
 #
-# phase-437 W4 COLLAPSED the NuttX pair rather than mirroring it: RFC-0093
-# selects ONE name per board, so `qemu-armv7a-nuttx`/`nuttx-qemu-arm` became the
-# single `[board.qemu-armv7a-nuttx]` above (NuttX's own `CONFIG_ARCH_BOARD`)
-# and `rv-virt-nuttx`/`nuttx-qemu-riscv` the single `[board.rv-virt-nuttx]`.
-# A collapsed pair has no mirror to hold in step, so its `# =` marker goes with
-# it — a marker naming a section that no longer exists is what
-# `check-board-vocabulary` reports first.
+# phase-437 is emptying this block rather than growing it: RFC-0093 selects ONE
+# name per board, so a collapsed pair has no mirror to hold in step and its
+# `# =` marker goes with it — a marker naming a section that no longer exists is
+# what `check-board-vocabulary` reports first. W4 collapsed the NuttX pair into
+# `[board.qemu-armv7a-nuttx]` and `[board.rv-virt-nuttx]` (NuttX's own
+# `CONFIG_ARCH_BOARD` values) and the ThreadX pair into `[board.rv-virt-threadx]`;
+# W5 kept `mps2-an385-freertos` and retired its `qemu-arm-freertos` counterpart,
+# and collapsed `qemu-arm-baremetal`/`mps2-an385` into
+# `[board.mps2-an385-baremetal]`.
 
-# = [board.qemu-arm-freertos] (examples/qemu-arm-freertos)
+# phase-437 W5 — NO LONGER A MIRROR. `[board.qemu-arm-freertos]` is gone: the
+# two differed in no field (R5), and this is the name RFC-0093 §4 selects, so
+# the pair collapsed into this entry rather than staying held in step. It is
+# also the `board=` value 12 package.xml exports already carry.
 [board.mps2-an385-freertos]
 arch = "cortex-m3"
 platform = "freertos"
