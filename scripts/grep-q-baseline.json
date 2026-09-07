@@ -6,7 +6,7 @@
   "just/qemu-baremetal.just": 1,
   "just/workspace.just": 2,
   "just/zephyr-setup.just": 1,
-  "justfile": 2,
+  "justfile": 1,
   "packages/cli/rosidl-codegen/scripts/check_parser_failures.sh": 3,
   "packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/alloc_free_audit.sh": 1,
   "packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/ros2_pubsub_e2e.sh": 2,

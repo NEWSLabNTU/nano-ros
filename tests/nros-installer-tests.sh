@@ -21,6 +21,12 @@
 set -uo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# issue 0726 — `nros_grep_q` exits 2 when grep itself fails to run, so a forked
+# grep that could not start under a parallel fan-out cannot be read here as
+# "the installer did not print that". Every assertion below is about the
+# ABSENCE of a string, which is exactly the shape that conflation corrupts.
+# shellcheck source=scripts/lib/grep-q.sh
+source "$root/scripts/lib/grep-q.sh"
 installer="$root/scripts/install.sh"
 cli="$root/packages/cli/target/release/nros"
 
@@ -103,7 +109,7 @@ home="$tmp/h2"
 if run_install "$home" "$base/nros-asset.tar.zst"; then
     fail "3: a checksum mismatch INSTALLED"
 else
-    grep -q "checksum MISMATCH" "$home.log" || fail "3: refused without naming the cause"
+    nros_grep_q "checksum MISMATCH" "$home.log" || fail "3: refused without naming the cause"
     [ -e "$home" ] && fail "3: refused but left $home behind"
     ok "a checksum mismatch refuses, and installs nothing"
 fi
@@ -115,7 +121,7 @@ home="$tmp/h3"
 if run_install "$home" "$base/unsigned.tar.zst"; then
     fail "4: an asset with no .sha256 INSTALLED"
 else
-    grep -q "refusing to install unverified" "$home.log" \
+    nros_grep_q "refusing to install unverified" "$home.log" \
         || fail "4: refused for the wrong reason"
     ok "an asset with no .sha256 refuses"
 fi
@@ -125,7 +131,7 @@ home="$tmp/h4"
 if run_install "$home" "$base/absent.tar.zst"; then
     fail "5: a 404 INSTALLED"
 else
-    grep -q "bootstrap.sh" "$home.log" \
+    nros_grep_q "bootstrap.sh" "$home.log" \
         || fail "5: a missing release must name the source build as the way forward"
     ok "a missing release names the source build"
 fi
