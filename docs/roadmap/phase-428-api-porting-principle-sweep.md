@@ -513,7 +513,7 @@ contained it, on a branch that was still open.
 
 So the fourth red did not slip past a gate; it reached `main` through the
 absence of one. Every "that class is now gated" conclusion downstream is
-unsupported until `ci/land-node-std-gate` (`00e8f3087`) merges.
+unsupported until `ci/land-node-std-gate` merges.
 `check-api-parity` remains run by no workflow on any event (issue 1066), which
 was correctly stated and is unchanged.
 

@@ -106,5 +106,5 @@ test — before the simplest check. One `git merge-base --is-ancestor` and one
 campaign documents in other people's work. It was made here, three times, about
 this issue's own remedy.
 
-Landed on `ci/land-node-std-gate` (`00e8f3087`). This issue stays open until
+Landed on `ci/land-node-std-gate`. This issue stays open until
 that merges.
