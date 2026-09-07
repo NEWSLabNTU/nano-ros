@@ -89,29 +89,31 @@ inline void operator delete[](void*, void*) noexcept {}
 #include "nros/component.hpp"    // bind_subscription (the no-alloc trampoline)
 #include "nros/declared_qos.hpp" // phase-403 step 2 — the DECLARED depth table + its assertion
 #include "nros/node.hpp"
-#include "nros/parameter.hpp" // ParameterServer backing the value-returning facade (242.7)
+// phase-426 W4 — the ONE parameter facade, shared with `rclcpp::Node`. This
+// replaces `nros/parameter.hpp`, which backed a node-local store this class no
+// longer owns; `nros::ParameterServer` itself is untouched and still available
+// to a caller who wants a standalone one.
+#include "nros/node_parameters.hpp"
 #include "nros/publisher.hpp"
 #include "nros/qos.hpp"
 #include "nros/result.hpp"
 #include "nros/timer.hpp"
 
-// Phase 242.7 (RFC-0044) — sizing for the per-node `ParameterServer` backing the
-// rclcpp-faithful value-returning parameter facade. Overridable per build with a
-// `#define` before including this header. Defaults cover a real controller node
-// (ASI's MPC/PID declares ~150 scalar params + a few `std::vector<double>`
-// weight matrices); the storage is fixed-capacity (no heap).
-#ifndef NROS_COMPONENT_MAX_PARAMS
-#define NROS_COMPONENT_MAX_PARAMS 256 // scalar parameter slots
-#endif
-#ifndef NROS_COMPONENT_MAX_SEQ_PARAMS
-#define NROS_COMPONENT_MAX_SEQ_PARAMS 8 // sequence (vector) parameter slots
-#endif
-#ifndef NROS_COMPONENT_SEQ_POOL_BYTES
-#define NROS_COMPONENT_SEQ_POOL_BYTES 4096 // inline byte pool for all sequence elements
-#endif
-#ifndef NROS_PARAM_SEQ_DEFAULT_CAP
-#define NROS_PARAM_SEQ_DEFAULT_CAP 64 // per-vector element capacity when the caller gives no N
-#endif
+// phase-426 W4 — the four parameter-sizing knobs that used to live here
+// (`NROS_COMPONENT_MAX_PARAMS`, `NROS_COMPONENT_MAX_SEQ_PARAMS`,
+// `NROS_COMPONENT_SEQ_POOL_BYTES`, `NROS_PARAM_SEQ_DEFAULT_CAP`) ARE GONE with
+// the member they sized. They bounded a per-node `nros::ParameterServer` —
+// a SECOND parameter store, invisible to `ros2 param get` and unshared with a
+// sibling node. The facade below now forwards to the executor's store, so a
+// `ComponentNode` carries no parameter storage and there is nothing per node
+// to size: 4 KiB of sequence pool and 256 scalar slots left every image that
+// constructed one, whether or not it declared a parameter.
+//
+// The image's one parameter arena is `NROS_MAX_PARAMETERS` on `nros-params`
+// (default 32) plus `NROS_MAX_ARRAY_LEN` (default 32) for an array value's
+// element count — build knobs on the crate that owns the storage, shared across
+// every node on the executor rather than multiplied by the node count. An image
+// with a 150-parameter controller raises THAT number, once.
 
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdio> // fprintf — boot-failure diagnostic (hosted only)
@@ -550,92 +552,50 @@ class ComponentNode {
         }
     }
 
-    // -- Parameters (RFC-0044 / 242.7 — value-returning rclcpp facade) -----
+    // -- Parameters (RFC-0044, rebased onto phase-426 W4) ------------------
     //
     // rclcpp shape: `T declare_parameter<T>(name, default)` / `T
-    // get_parameter<T>(name)` / `bool has_parameter(name)`, backed by the owned
-    // `params_` ParameterServer. No-exceptions reconciliation: a failed
-    // declare/get sets the `ok()`-flag (boot-fatal, checked post-construct) and
-    // returns the default. Scalars route to the scalar store; `std::vector<T>`
-    // (hosted) routes to a default-capacity `Seq` so the vendored
-    // `declare_parameter<std::vector<double>>(name, {…})` compiles unchanged.
-
-#if defined(NROS_SYSTEM_PARAM_SERVICES)
-    /// Issue 0745 — adopt a launch-seeded initial from the EXECUTOR param
-    /// store. The generated entry seeds `nros_cpp_declare_param` into the
-    /// EXECUTOR's store BEFORE any component ctor runs, but this node's
-    /// `params_` is a separate per-node ParameterServer — without this
-    /// adoption the ctor-read `declare_parameter` silently used the C++
-    /// default and every launch param was dead weight (measured on the ASI
-    /// consumer: `ctrl_period` 0.03 seeded, 0.15 ran). Compiled only when
-    /// the bringup declares the `param_services` capability (which is also
-    /// what links the executor-store FFI).
-    ///
-    /// Issue 1118 — THIS is why nano-ros declares C++17
-    /// (`target_compile_features(nros-cpp-headers INTERFACE cxx_std_17)`). The
-    /// `if constexpr` chain below is the only C++17 construct in the header
-    /// set, and it is load-bearing: at C++14 the chain degrades to a runtime
-    /// `if`, every arm is INSTANTIATED, and the `NROS_CPP_STD` arm's
-    /// `T = std::string` then meets `def = <bool>` in the first arm.
-    ///
-    /// It shipped unnoticed because GCC only WARNS on `if constexpr` under
-    /// `-std=c++14`, and because `just check cpp`'s c++14 probes cannot reach
-    /// it: the whole block is behind `NROS_SYSTEM_PARAM_SERVICES`, which only
-    /// `NanoRosCapabilities.cmake` defines. If this ever has to compile at
-    /// C++14 again (PX4 modules build `-std=gnu++14 -Werror`), rewrite it as
-    /// tag dispatch rather than lowering the declared floor.
-    template <typename T> void adopt_launch_seed_(const char* name, T& def) {
-        void* ex = node_.executor_handle_;
-        if (ex == nullptr) {
-            return;
-        }
-        if constexpr (::std::is_same<T, bool>::value) {
-            bool v = false;
-            if (nros_cpp_get_param_bool(ex, name, &v) == NROS_CPP_RET_OK) {
-                def = v;
-            }
-        } else if constexpr (::std::is_floating_point<T>::value) {
-            double v = 0.0;
-            if (nros_cpp_get_param_double(ex, name, &v) == NROS_CPP_RET_OK) {
-                def = static_cast<T>(v);
-            }
-        } else if constexpr (::std::is_integral<T>::value) {
-            int64_t v = 0;
-            if (nros_cpp_get_param_integer(ex, name, &v) == NROS_CPP_RET_OK) {
-                def = static_cast<T>(v);
-            }
-        }
-#ifdef NROS_CPP_STD
-        else if constexpr (::std::is_same<T, ::std::string>::value) {
-            char buf[256] = {0};
-            if (nros_cpp_get_param_string(ex, name, buf, sizeof(buf)) == NROS_CPP_RET_OK) {
-                def = buf;
-            }
-        }
-#endif
-    }
-#endif
+    // get_parameter<T>(name)` / `bool has_parameter(name)` — unchanged, and
+    // still the shape `rclcpp::Node` wears, because two rclcpp-faithful
+    // parameter facades in one package that disagreed would be worse than
+    // none. Both now call the SAME forwarders (`nros/node_parameters.hpp`)
+    // onto the SAME store: the `nros_params::ParameterServer` the executor
+    // owns, keyed by this node's id.
+    //
+    // What that replaces: an owned `params_` ParameterServer, a second store
+    // the six `rcl_interfaces/srv/*` servers could not read. A parameter
+    // declared here was invisible to `ros2 param get`, a sibling node did not
+    // share it, and `adopt_launch_seed_` existed purely to copy launch values
+    // from one store into the other — a helper `nros.hpp` had a duplicate of,
+    // in a different C++ standard, with both headers flagging the duplication
+    // against themselves. All three are gone. Issue 0793 / RFC-0089.
+    //
+    // No-exceptions reconciliation is unchanged: a failed declare/get sets the
+    // `ok()`-flag (boot-fatal, checked post-construct) and returns the default.
+    // Scalars route to the store's scalar slots; `std::vector<T>` (hosted)
+    // routes to an array value, whose element bound is the store's own
+    // `NROS_MAX_ARRAY_LEN` rather than a per-node pool.
 
     /// Declare + read back a **scalar** parameter, rclcpp value-returning shape.
     template <typename T,
               typename = typename ::std::enable_if<!detail::cn_is_std_vector<T>::value>::type>
     T declare_parameter(const char* name, T default_value = T{}) {
-#if defined(NROS_SYSTEM_PARAM_SERVICES)
-        // Issue 0745 — launch-seeded initials win over the code default.
-        adopt_launch_seed_(name, default_value);
-#endif
-        Result r = params_.template declare_parameter<T>(name, default_value);
-        // Launch-seeded params (phase-269 entry post-configure) are DECLARED
-        // before the component ctor runs; a component re-declare is the rclcpp
-        // "declare adopts the override" case, not an error — fall through to
-        // the read-back so the seeded value wins. (NROS_RET_ALREADY_EXISTS is
-        // the C-ABI code; do not confuse with the C++ ErrorCode at -5.)
+        const nros_cpp_node_t* h = node_.ffi_handle();
+        Result r = detail::node_param_declare(h, name, default_value);
+        // A launch-seeded parameter is DECLARED before the component ctor runs
+        // (the generated entry seeds the executor's store), so a component
+        // re-declare is the rclcpp "declare adopts the override" case, not an
+        // error — fall through to the read-back so the seeded value wins.
+        // Since W4 the two are the same store, so this is the store answering
+        // about itself rather than a second one being consulted.
+        // (NROS_RET_ALREADY_EXISTS is the C-ABI code; do not confuse with the
+        // C++ ErrorCode at -5.)
         if (!r.ok() && r.raw() != NROS_RET_ALREADY_EXISTS) {
-            set_error("declare_parameter", r.raw());
+            set_error(declare_error_what_(r), r.raw());
             return default_value;
         }
         T out{};
-        r = params_.template get_parameter<T>(name, out);
+        r = detail::node_param_get(h, name, out);
         if (!r.ok()) {
             set_error("declare_parameter(read-back)", r.raw());
             return default_value;
@@ -649,23 +609,28 @@ class ComponentNode {
               typename = typename ::std::enable_if<!detail::cn_is_std_vector<T>::value>::type>
     T get_parameter(const char* name) const {
         T out{};
-        (void)params_.template get_parameter<T>(name, out);
+        (void)detail::node_param_get(node_.ffi_handle(), name, out);
         return out;
     }
 
-    bool has_parameter(const char* name) const { return params_.has_parameter(name); }
+    bool has_parameter(const char* name) const {
+        return detail::node_param_has(node_.ffi_handle(), name);
+    }
 
 #ifdef NROS_CPP_STD
-    /// Declare + read back a **`std::vector<T>`** parameter (hosted). Backed by a
-    /// default-capacity `Seq<T, NROS_PARAM_SEQ_DEFAULT_CAP>` — the caller supplies
-    /// no `N`, matching the vendored `declare_parameter<std::vector<double>>`.
+    /// Declare + read back a **`std::vector<T>`** parameter (hosted).
+    ///
+    /// Backed by the store's own array value since phase-426 W4, not by a
+    /// per-node `Seq<T, NROS_PARAM_SEQ_DEFAULT_CAP>` in an inline pool — so the
+    /// caller still supplies no `N` (matching the vendored
+    /// `declare_parameter<std::vector<double>>`), and the bound that applies is
+    /// the store's `NROS_MAX_ARRAY_LEN`.
     template <typename V,
               typename = typename ::std::enable_if<detail::cn_is_std_vector<V>::value>::type,
               typename = void>
     V declare_parameter(const char* name, const V& default_value = V{}) {
-        using Elem = typename V::value_type;
-        Result r = params_.template declare_parameter<Elem, NROS_PARAM_SEQ_DEFAULT_CAP>(
-            name, default_value);
+        const nros_cpp_node_t* h = node_.ffi_handle();
+        Result r = detail::node_param_declare(h, name, default_value);
         if (!r.ok() && r.raw() == NROS_RET_ALREADY_EXISTS) {
             r = Result(0); // launch-seeded — adopt the existing value below
         }
@@ -674,7 +639,7 @@ class ComponentNode {
             return default_value;
         }
         V out;
-        r = params_.template get_parameter<Elem>(name, out);
+        r = detail::node_param_get(h, name, out);
         if (!r.ok()) {
             set_error("declare_parameter(vector read-back)", r.raw());
             return default_value;
@@ -687,9 +652,8 @@ class ComponentNode {
               typename = typename ::std::enable_if<detail::cn_is_std_vector<V>::value>::type,
               typename = void>
     V get_parameter(const char* name) const {
-        using Elem = typename V::value_type;
         V out;
-        (void)params_.template get_parameter<Elem>(name, out);
+        (void)detail::node_param_get(node_.ffi_handle(), name, out);
         return out;
     }
 
@@ -732,14 +696,31 @@ class ComponentNode {
         }
     }
 
+    /// The `set_error` text for a failed declare, phase-426 W4.
+    ///
+    /// `Unsupported` means the image has no parameter store — it declared no
+    /// `param_services` capability, so nothing linked one in. That is a missing
+    /// CAPABILITY rather than a rejected value, and it is boot-fatal here on
+    /// purpose: before W4 the node-local store made the call appear to succeed
+    /// while `ros2 param get` saw nothing, which is the silent drop the rule
+    /// forbids. Naming the knob is the difference between a fixable boot
+    /// failure and a puzzling one.
+    static const char* declare_error_what_(Result r) {
+        return r.code() == ErrorCode::Unsupported
+                   ? "declare_parameter: this image has no parameter store — its bringup declares "
+                     "no `param_services` capability, so add it to [system].features"
+                   : "declare_parameter";
+    }
+
     Node node_;
     Timer timers_[NROS_COMPONENT_MAX_TIMERS];
     size_t timer_count_ = 0;
-    // 242.7 — backs the value-returning parameter facade. Fixed-capacity, no heap;
-    // sized by the NROS_COMPONENT_MAX_{PARAMS,SEQ_PARAMS} / SEQ_POOL_BYTES knobs.
-    ParameterServer<NROS_COMPONENT_MAX_PARAMS, NROS_COMPONENT_MAX_SEQ_PARAMS,
-                    NROS_COMPONENT_SEQ_POOL_BYTES>
-        params_;
+    // phase-426 W4 — `params_` IS GONE. It was a
+    // `ParameterServer<NROS_COMPONENT_MAX_PARAMS, …>`, an inline second
+    // parameter store costing every component ~4 KiB of sequence pool plus 256
+    // scalar slots whether or not it declared a parameter. The facade forwards
+    // to the executor's store now, keyed by `node_`'s own id, so the node keeps
+    // no parameter storage of its own.
     // Issue #230 — inverted flag: the HEALTHY value is the zero-init default,
     // so a cross-core reader sees "ok" without waiting for any store. Accessed
     // via __atomic builtins (release on set_error, acquire in ok()/error_*) —
