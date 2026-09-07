@@ -249,6 +249,36 @@ Gates run green: `just check cpp` (which now carries the three new probes),
 `docs/issues/README.md` commit citation; a sandbox `PermissionError` in
 `check-xrce-source-manifest`'s own self-test).
 
+### A sweep the merge made possible, and one live defect it found
+
+`check-cpp-capability-layout` MEASURES its rule rather than grepping for it,
+which is right, but its reach is an authored three-name list
+(`TYPES=("rclcpp::Node" "::nros::Node" "::nros::QoS")`) written for the
+`timers_` defect it was built to catch. Nothing else in the API has ever been
+measured — the issue 0196 shape, a gate narrower than its own rule.
+
+Asking the same question of every public type turned up **three that follow a
+probe**, all pre-existing and none of them `Node`:
+
+| type | baseline | `-DNROS_CPP_STD=1` |
+| --- | --- | --- |
+| `nros::Timer` | 24 | **32** |
+| `nros::GuardCondition` | 32 | **40** |
+| `nros::ComponentNode` | 55784 | **55848** |
+
+One member, twice: the `#ifdef NROS_CPP_STD` `std::unique_ptr<std::function<
+void()>> closure_` that `attach_std_closure` writes. `ComponentNode` is not a
+third instance — it holds `Timer timers_[8]`, and 8 x 8 = 64 is exactly its
+delta.
+
+Filed as **issue 1225** rather than fixed here, because the mechanical fix (the
+`hosted_` trick) costs a FREESTANDING target +8 bytes per timer and per guard
+condition and +64 per `ComponentNode`, and the cheaper alternative — making the
+closure caller-owned, the shape `rclcpp::detail::WallTimer` already uses — is a
+design question this phase did not ask. `nros::Node` (200/200), `QoS`,
+`Executor`, `Clock`, `Time`, `Duration`, `CallbackGroup`, `NodeBuilder`,
+`LifecycleNode` and `rclcpp::NodeOptions` are clean.
+
 ### W5's runtime half is still owed
 
 The compile probe proves the logger is built from the node's name. That two
