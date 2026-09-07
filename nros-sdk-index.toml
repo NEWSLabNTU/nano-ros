@@ -1649,6 +1649,24 @@ triple = "riscv32imc-unknown-none-elf"
 [rust.target.riscv64gc]
 triple = "riscv64gc-unknown-none-elf"
 
+# ARMv8-A AArch64 bare-metal — the `fvp-aemv8r-smp` board declares it, but as
+# `rust_targets = [...]` in its `nros-board.toml`, a form the coverage gate does
+# not read; it was in NEITHER list until then.
+[rust.target.aarch64-none]
+triple = "aarch64-unknown-none"
+
+# Cortex-A / ARMv7-A bare-metal. `armv7a-none-eabi` is the target BOTH halves of
+# `check-repr-memory-agreement` cross-compile to (a constant in the gate script,
+# so nothing provisioned it and the gate reported SKIPPED on every host);
+# `armv7a-none-eabihf` is what `scripts/zephyr/cortex-a9-rust-patch.sh` sets and
+# `just/zephyr-ci.just` installed ad hoc — the installer-vs-doctor divergence
+# issue 0833 exists to end, still live for this triple.
+[rust.target.armv7a]
+triple = "armv7a-none-eabi"
+
+[rust.target.armv7a-hf]
+triple = "armv7a-none-eabihf"
+
 [rust.cargo-tool.nextest]
 crate = "cargo-nextest"
 check = { cmd = "cargo-nextest" }
