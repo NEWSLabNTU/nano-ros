@@ -1,6 +1,6 @@
 # Phase 437 — rename every board to the reach its build has
 
-**Status (2026-09-08). W1 and W2 LANDED; W3-W7 open.** Implements
+**Status (2026-09-08). W1-W3 LANDED. W4-W6 are BLOCKED on two findings recorded below; W7 follows them.** Implements
 [RFC-0093](../design/0093-board-naming-states-reach.md). Nothing has moved yet;
 the measurements below are from `main` at `9c0702322`.
 
@@ -172,6 +172,121 @@ index cannot reach at all, and it is cheap.
 **Acceptance.** `nros setup mps3-an536-freertos` / `s32z270-freertos` /
 `freertos-posix` each resolve to a package set. `s32z270-freertos` is REAL NXP
 silicon, so this is also the first index entry that is not an emulator.
+
+**LANDED.** All three resolve — 6, 5 and 3 packages. Every field measured
+rather than copied:
+
+* `mps3-an536-freertos` — `arch = "cortex-r52"` from
+  `cmake/toolchain/arm-freertos-armcr52.cmake` (`CMAKE_SYSTEM_PROCESSOR
+  cortex-r52`, `-mcpu=cortex-r52`), and the pinned QEMU lists
+  `mps3-an536  ARM MPS3 with AN536 FPGA image for Cortex-R52`. Package set is
+  identical to `qemu-arm-freertos` and only `arch` differs, so it adds no new
+  byte-identical body and no new mirror obligation.
+* `s32z270-freertos` — **no `qemu`, deliberately.** No emulator models this
+  SoC (`board-support.toml`: tier 3, `execution_class = "hardware"`, no
+  `matrix_platform`), so listing one would advertise a run path that does not
+  exist. What it provisions is what makes a clean checkout LINK, which is the
+  cell's whole promise. Three things it also needs are NOT index-expressible
+  and stay consumer-provisioned seams: NXP's RTD NETC driver (NXP
+  Confidential, arriving as a strong override of the board's weak fail-loud
+  `nros_board_register_netif`), NXP's `GCC/ARM_CR52_GIC` FreeRTOS port, and an
+  RTD PBcfg set. `[gated.*]` exists for license-gated packages and holds zero
+  entries; none of the three has a public URL.
+* `freertos-posix` — `platform = "freertos"`, not `posix`.
+  `nros_entry_lower::board_family` puts it in `BoardFamily::Freertos` with a
+  note that it once fell through to the host default, *"a silent wrong answer
+  that only surfaced at link when `app_main` came up undefined"*. The key
+  spelling is fixed by its use as a LANE coordinate.
+
+This is the first index entry for real silicon, and the first whose package set
+is deliberately incomplete — both stated in the entry rather than left to be
+rediscovered.
+
+## BLOCKED: what a full site survey found, and why W4-W6 do not start yet
+
+A read-only inventory of all five namespaces was taken before renaming anything.
+It found two things that make the remaining waves a different job from the one
+this doc scoped, and both are recorded here rather than discovered halfway
+through a 600-file sweep.
+
+### Finding 1 — the RFC's "nothing keys on the string" is true of one path and false of five
+
+RFC-0093 §6 says the rename is mechanical because nothing keys on a board name;
+the evidence given was the test harness resolving emulators by TOOL. That holds
+for that path and for **eight** other derivation shapes it does not:
+
+1. **The fixture group key IS the platform string, and IS a directory name.**
+   `scripts/build/fixtures-target-dir.sh:100` declares
+   `NROS_FIXTURE_SHARED_PLATFORMS="... qemu-arm-baremetal ... qemu-esp32-baremetal"`
+   — **two retired names** — and the resulting `build/cargo-fixtures/<platform>`
+   path is hardcoded independently in `just/qemu-baremetal.just`,
+   `scripts/check-weak-symbols-image.sh` and asserted in
+   `nros-tests/src/fixtures/groups.rs`. Rename a `platform =` value without
+   moving all of them and the group dir is valid-looking and EMPTY: no error,
+   just missing fixtures — the phase-340 P2 regression exactly.
+2. **The overlay path is built from `NANO_ROS_BOARD`** in all four platform
+   dispatchers (`include(".../nano-ros-board-${NANO_ROS_BOARD}.cmake")`), so a
+   grep for the old name finds neither the include nor the file.
+3. **The cmake board vocabulary is derived from filenames** —
+   `check-board-vocabulary` lists `cmake/board/` and strips the prefix. It
+   FOLLOWS a rename rather than catching a half-applied one.
+4. **The crate vocabulary is derived by prefix-strip in five places**, and at
+   runtime `board_descriptor.rs::directory_alias()` accepts the crate DIRECTORY
+   as an alias. Moving a board crate silently changes an alias the resolver
+   honours, with no grep hit anywhere.
+5. **`board_family` falls through to the host** (`_ => BoardFamily::Native`).
+   Loud eventually — `app_main` undefined — but many minutes and one build
+   stage from the rename, and the same file records `freertos-posix` having
+   fallen through this way before.
+6. Board-key match arms in `nros-orchestration-ir` (fail loud), plus a
+   hand-written `known_boards_csv()` shown in a user-facing error.
+7. Board id as a data-file lookup key: 16 `system.toml` sites, per-board dicts
+   in `check-site-config.py` and `check-stack-floor.py`, `matrix.rs` arms, a
+   cmake PRESET filename derived from the id.
+8. Path interpolation from the token — `format!("examples/qemu-arm-nuttx/rust/{role}")`
+   and friends, `dep-chain-check.sh`'s `CELLS` array, and a fail-OPEN fallback
+   in `binaries/mod.rs` that returns `<dir>/target` when a leaf lookup misses,
+   so a half-applied rename reads as "binary not prebuilt".
+
+Plus two that fail by NOT firing: path-exclusion regexes in `justfile`/`just/*`
+that stop excluding, and five `paths-filter` globs in `nightly.yml` — a stale
+glob means the lane never triggers and goes green by not running.
+
+**Consequence for W6.** "One `git mv` per directory, one commit each" is wrong
+as written. The crate-dir move must land WITH the alias arrays, and the
+`examples/<board>/` move must land WITH `NROS_FIXTURE_SHARED_PLATFORMS`, the
+fixture `platform =` values and the three hardcoded `build/cargo-fixtures/`
+paths — otherwise an intermediate revision builds, reports green, and produces
+nothing.
+
+### Finding 2 — `qemu-esp32-baremetal` wears three hats, and one is a non-goal
+
+    git grep -hoP '^\s*deploy\s*=\s*"\K[^"]+' -- '*.toml' | sort | uniq -c
+      2 qemu-esp32-baremetal
+
+It is simultaneously an index `[board.*]` key, a fixture `platform` value and a
+member of `NROS_FIXTURE_SHARED_PLATFORMS`, **and a live `deploy=` token in two
+manifests**. This phase's non-goals say `deploy=` is untouched. So W5 cannot
+rename it without either leaving the two spellings disagreeing or breaking a
+stated non-goal.
+
+That is a decision, not a detail, and it belongs to RFC-0093 rather than to a
+sweep: either the RFC's §4 row for esp32 is deferred, or the non-goal is
+amended to say a deploy token that IS a board key moves with it. **W5 does not
+start until that is answered.**
+
+### The precondition this phase already stated, and which is not met
+
+> Tier-2 fixtures build and run at the new names, on a lane that was green
+> BEFORE the rename started.
+
+Phase-413 W2's lanes are the precondition. As of 2026-09-08 `nightly` and
+`run-matrix` have no post-W2 verdict at all and `host-tests` is red. Renaming
+600 files into a lane with no signal capacity means a rename regression and the
+lane's existing red are indistinguishable — which is the failure mode
+`just nightly-triage` exists to name.
+
+W4-W6 wait on: Finding 2's answer, and one green run of each lane.
 
 ### W4 — the machine boards
 

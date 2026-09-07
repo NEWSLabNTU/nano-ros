@@ -1165,6 +1165,57 @@ arch = "riscv64"
 platform = "threadx"
 packages = ["riscv-none-elf-gcc", "qemu", "threadx", "threadx-netxduo"]
 
+# phase-437 W3 — three boards that obey RFC-0093 already and that
+# `nros setup <board>` could not reach. Additive: no rename, no new mirror
+# pair (each body differs from every existing one in at least `arch`).
+
+# Cortex-R52 under QEMU's `mps3-an536` machine. Same package set as
+# `qemu-arm-freertos` and the difference is only `arch` — measured, not
+# assumed: `cmake/toolchain/arm-freertos-armcr52.cmake` sets
+# `CMAKE_SYSTEM_PROCESSOR cortex-r52` and `-mcpu=cortex-r52`, and the pinned
+# QEMU lists `mps3-an536  ARM MPS3 with AN536 FPGA image for Cortex-R52`.
+# The `armv8r-none-eabihf` Rust target is the orthogonal `[rust.target.*]`
+# axis, never a `packages` entry; the LAN9118 netif is in-tree.
+[board.mps3-an536-freertos]
+arch = "cortex-r52"
+platform = "freertos"
+packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
+
+# REAL SILICON — NXP S32Z270 RTU, Cortex-R52. The first index board that is not
+# an emulator, and the first whose package set is deliberately INCOMPLETE.
+#
+# No `qemu`, on purpose: no emulator models this SoC (`board-support.toml` has
+# it tier 3, `execution_class = "hardware"`, no `matrix_platform`), so listing
+# one would advertise a run path that does not exist. What the entry provisions
+# is what makes a clean checkout LINK, which is this cell's whole promise.
+#
+# Three things it also needs and the index cannot express, so they stay
+# consumer-provisioned seams: NXP's RTD NETC ethernet driver (NXP Confidential
+# — arrives as a strong override of the board's weak, fail-loud
+# `nros_board_register_netif`), NXP's `GCC/ARM_CR52_GIC` FreeRTOS port, and an
+# RTD PBcfg set. `[gated.*]` exists for license-gated packages and holds zero
+# entries; none of these has a public URL, so none is index-expressible.
+[board.s32z270-freertos]
+arch = "cortex-r52"
+platform = "freertos"
+packages = ["arm-none-eabi-gcc", "freertos-kernel", "lwip"]
+
+# A SYSTEM board (RFC-0093): the FreeRTOS POSIX port, running as a host
+# process. Its overlay sets no `CMAKE_C_COMPILER` and no linker script, and
+# `NROS_FREERTOS_BOARD_HAS_LWIP FALSE` keeps lwIP out — host sockets instead —
+# so beyond the host it needs exactly one thing, the kernel source that carries
+# `ThirdParty/GCC/Posix`.
+#
+# `platform = "freertos"`, not `posix`: `nros_entry_lower::board_family` puts it
+# in `BoardFamily::Freertos` with a note that it once fell through to the host
+# default, "a silent wrong answer that only surfaced at link when `app_main`
+# came up undefined". The key spelling is fixed by its use as a LANE
+# coordinate (`examples/fixtures.toml` `platform = "freertos-posix"`).
+[board.freertos-posix]
+arch = "x86_64"
+platform = "freertos"
+packages = ["freertos-kernel"]
+
 [board.threadx-linux]
 arch = "x86_64"
 platform = "threadx"
