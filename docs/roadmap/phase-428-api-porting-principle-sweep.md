@@ -876,7 +876,7 @@ refusal is a declaration: once a name refuses it correlates `same` or
 
 ### Census
 
-| disposition | before (`9c492403d`) | after |
+| disposition | before (the pre-sweep census) | after |
 | --- | ---: | ---: |
 | refuse-loud | 144 | 20 |
 | absent | 518 | 652 |
