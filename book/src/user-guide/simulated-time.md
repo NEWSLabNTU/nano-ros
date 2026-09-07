@@ -58,6 +58,18 @@ talker:
 `use_sim_time` is reserved: nothing reads its value, the runtime acts on it.
 Set it false and `/clock` samples stop being installed.
 
+You do not have to declare it first. An image built with parameter services
+declares `use_sim_time = false` on your behalf, as rclcpp does on every node, so
+`ros2 param list` shows it and
+
+```console
+$ ros2 param set /talker use_sim_time true
+```
+
+reaches a node whose author never wrote a line about simulated time. Declaring
+it yourself still wins — your default, and your descriptor, replace the
+auto-declared one.
+
 The Rust crate needs the `sim-time` feature, because the subscription costs an
 entity slot and an RX buffer:
 

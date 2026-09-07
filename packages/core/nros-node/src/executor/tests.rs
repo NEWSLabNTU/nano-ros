@@ -2567,6 +2567,295 @@ fn a_non_bool_use_sim_time_attaches_nothing() {
     );
 }
 
+/// phase-430 W2 — `use_sim_time` is declared on a node that never named it,
+/// as rclcpp does, so `ros2 param set <node> use_sim_time true` reaches an app
+/// with no simulated-time code in it.
+///
+/// The store refuses an undeclared set (`allow_undeclared` is false), so before
+/// this the runtime switch worked on exactly the nodes that least needed it:
+/// the ones whose author had already thought about simulated time.
+#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[test]
+fn use_sim_time_is_declared_on_a_node_that_never_named_it() {
+    let _sim_time = SimTimeGuard::acquire();
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    // An app that knows nothing about simulated time: it declares one ordinary
+    // parameter of its own and stops.
+    assert!(executor.declare_parameter("start_value", nros_params::ParameterValue::Integer(0)));
+
+    assert_eq!(
+        executor.params().and_then(|p| {
+            p.get_bool(super::node_record::NodeId::PRIMARY.into(), "use_sim_time")
+        }),
+        Some(false),
+        "rclcpp declares use_sim_time=false on every node; a `ros2 param list` \
+         here showed nothing until the app named it"
+    );
+    assert!(
+        executor
+            .params()
+            .expect("store")
+            .list_names(super::node_record::NodeId::PRIMARY.into())
+            .any(|n| n == "use_sim_time"),
+        "declared but not listed would be a parameter no tool can discover"
+    );
+
+    // The auto-declared default is NOT a statement by anyone: it must not touch
+    // the process-global gate and must not attach a source. An image where
+    // every executor wrote its default onto that gate is issue 1104.
+    drop(executor.create_node("plain").expect("create node"));
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        !executor.ros_time_source_installed(),
+        "a defaulted use_sim_time=false must cost an image that will never see \
+         a simulator exactly nothing"
+    );
+
+    // `ros2 param set /plain use_sim_time true` — the wire path, which is the
+    // whole point of the declaration existing.
+    assert!(
+        executor
+            .params_mut()
+            .expect("store")
+            .apply(
+                super::node_record::NodeId::PRIMARY.into(),
+                "use_sim_time",
+                nros_params::ParameterValue::Bool(true),
+            )
+            .is_success(),
+        "the set must reach a declared parameter; an undeclared one is refused"
+    );
+    executor.refresh_use_sim_time_from_store();
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        executor.ros_time_source_installed(),
+        "a runtime `ros2 param set <node> use_sim_time true` must attach the \
+         /clock source on a node with no sim-time code at all"
+    );
+}
+
+/// phase-430 W2 — the same, for a node that declares NOTHING WHATEVER and only
+/// registers the six parameter services.
+///
+/// That node is the one W2 is really for, and it reaches the store by a
+/// different door: `register_parameter_services` used to build its own
+/// `ParamState` rather than going through `ensure_parameter_store`, so a hook
+/// placed only on the declaration path would have missed it entirely — the
+/// two-write-paths shape issue 1202 was.
+#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[test]
+fn use_sim_time_is_declared_by_registering_the_parameter_services_alone() {
+    let _sim_time = SimTimeGuard::acquire();
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    // The six service names are built from the EXECUTOR's identity, which
+    // `from_session_with` does not take from the config the way `open` does.
+    executor.set_node_identity("bare", "/");
+    drop(executor.create_node("bare").expect("create node"));
+    executor
+        .register_parameter_services()
+        .expect("mock services register");
+
+    assert_eq!(
+        executor.params().and_then(|p| {
+            p.get_bool(super::node_record::NodeId::PRIMARY.into(), "use_sim_time")
+        }),
+        Some(false),
+        "a node that declared nothing still has use_sim_time in ROS 2, and \
+         `ros2 param set` on it is the only way to move an already-running \
+         image onto simulated time"
+    );
+}
+
+/// phase-430 W2 — EVERY node, which is what the work item says and what
+/// phase-426 made expressible.
+///
+/// rclcpp declares `use_sim_time` in every `rclcpp::Node` constructor, and an
+/// image composes several nodes onto one executor — that is the model. Before
+/// phase-426 the store was one flat table per executor, so "every node" and
+/// "the executor" were the same sentence and the distinction could not be
+/// tested. It is keyed by node now, and the six parameter services are
+/// published per node, so the claim has a shape: the parameter is declared on
+/// exactly the nodes a `ros2 param set <node> use_sim_time true` can reach —
+/// which is the set `parameter_service_node_names` enumerates.
+///
+/// A seed on the primary alone would leave the second node's
+/// `ros2 param set /beta use_sim_time true` refused as undeclared, which is
+/// the pre-W2 behaviour for every node but the first.
+#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[test]
+fn use_sim_time_is_declared_on_every_node_the_services_are_published_under() {
+    let _sim_time = SimTimeGuard::acquire();
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    executor.set_node_identity("alpha", "/");
+    let alpha = executor.node_builder("alpha").build().expect("alpha");
+    let beta = executor.node_builder("beta").build().expect("beta");
+    assert_ne!(alpha, beta, "precondition: two distinct node keys");
+    executor
+        .register_parameter_services()
+        .expect("mock services register");
+
+    assert_eq!(
+        executor.parameter_service_node_names().len(),
+        2,
+        "precondition: one set of six per node (phase-426 W3)"
+    );
+    for node in [alpha, beta] {
+        assert_eq!(
+            executor
+                .params()
+                .and_then(|p| p.get_bool(node.into(), "use_sim_time")),
+            Some(false),
+            "node {} has parameter services but no use_sim_time; `ros2 param \
+             set` on it would be refused as undeclared, which is the pre-W2 \
+             behaviour this work item removes",
+            node.raw()
+        );
+    }
+
+    // The auto-declared default is still nobody's STATEMENT — seeding N nodes
+    // must not become N writes to the process-global gate (issue 1104).
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        !executor.ros_time_source_installed(),
+        "an image of nodes that will never see a simulator must pay nothing \
+         for the declaration, however many nodes it has"
+    );
+
+    // An app naming `use_sim_time` on ONE node says nothing about the other:
+    // beta's seed stays a placeholder for whoever declares it next.
+    assert!(
+        executor.declare_parameter_on(
+            alpha,
+            "use_sim_time",
+            nros_params::ParameterValue::Bool(true)
+        ),
+        "alpha's own declaration must step alpha's placeholder aside"
+    );
+    assert_eq!(
+        executor
+            .params()
+            .and_then(|p| p.get_bool(beta.into(), "use_sim_time")),
+        Some(false),
+        "declaring on alpha must not disturb beta's stored default"
+    );
+    assert!(
+        executor.declare_parameter_on(
+            beta,
+            "use_sim_time",
+            nros_params::ParameterValue::Bool(true)
+        ),
+        "beta's placeholder must still be a placeholder: a declaration on a \
+         SIBLING node is not a declaration on this one"
+    );
+    assert!(
+        !executor.declare_parameter_on(
+            alpha,
+            "use_sim_time",
+            nros_params::ParameterValue::Bool(false)
+        ),
+        "alpha's placeholder is spent, so a SECOND declaration there is a \
+         refusal exactly as it was before W2"
+    );
+}
+
+/// phase-430 W2 — an application that declares `use_sim_time` ITSELF wins,
+/// value and descriptor and all.
+///
+/// This is the failure mode the auto-declare invites: the store refuses a
+/// duplicate name, so a default seeded first would turn the app's own
+/// declaration into a refusal and quietly beat it. The ordering matters — the
+/// app names another parameter FIRST, so the store (and the seed) already exist
+/// when it gets to this one, which is the case a naive implementation gets
+/// wrong.
+#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[test]
+fn an_apps_own_use_sim_time_declaration_beats_the_auto_declared_default() {
+    let _sim_time = SimTimeGuard::acquire();
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    assert!(executor.declare_parameter("start_value", nros_params::ParameterValue::Integer(0)));
+    assert_eq!(
+        executor.params().and_then(|p| {
+            p.get_bool(super::node_record::NodeId::PRIMARY.into(), "use_sim_time")
+        }),
+        Some(false),
+        "precondition: the seeded default is already in the store"
+    );
+
+    assert!(
+        executor.declare_parameter("use_sim_time", nros_params::ParameterValue::Bool(true)),
+        "the app's own declaration was refused because the auto-declared \
+         default had taken the name"
+    );
+    assert_eq!(
+        executor.params().and_then(|p| {
+            p.get_bool(super::node_record::NodeId::PRIMARY.into(), "use_sim_time")
+        }),
+        Some(true),
+        "the app asked for true and the defaulted false survived"
+    );
+
+    // And it is a real declaration, not just a stored value: it attaches the
+    // source, which the seeded default deliberately does not.
+    drop(executor.create_node("app").expect("create node"));
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        executor.ros_time_source_installed(),
+        "the app's declaration must reach the reserved-parameter hook"
+    );
+}
+
+/// phase-430 W2 — the descriptor-carrying sibling of the test above.
+///
+/// A declaration with a descriptor is a different function
+/// (`declare_parameter_with_descriptor`), and the same seam has already been
+/// wrong in exactly one of its two spellings once (issue 1202, where that path
+/// had no reserved hook at all). Both or neither.
+#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[test]
+fn an_apps_use_sim_time_declaration_with_a_descriptor_beats_the_default() {
+    let _sim_time = SimTimeGuard::acquire();
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    assert!(executor.declare_parameter("start_value", nros_params::ParameterValue::Integer(0)));
+
+    let descriptor =
+        nros_params::ParameterDescriptor::new("use_sim_time", nros_params::ParameterType::Bool)
+            .expect("the name fits a descriptor")
+            .with_description("follow /clock");
+    assert!(
+        executor.declare_parameter_with_descriptor(
+            "use_sim_time",
+            nros_params::ParameterValue::Bool(true),
+            descriptor,
+        ),
+        "the descriptor path must step the seeded default aside too"
+    );
+    assert_eq!(
+        executor.params().and_then(|p| {
+            p.get_bool(super::node_record::NodeId::PRIMARY.into(), "use_sim_time")
+        }),
+        Some(true)
+    );
+    assert!(
+        executor
+            .params()
+            .and_then(|p| {
+                p.get_descriptor(super::node_record::NodeId::PRIMARY.into(), "use_sim_time")
+            })
+            .is_some(),
+        "the app's descriptor must survive; a seeded default carries none"
+    );
+}
+
 /// Issue 1036 — arena exhaustion must REACH the boot record, not merely return
 /// an error.
 ///
