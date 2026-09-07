@@ -61,6 +61,23 @@ pub enum nros_clock_type_t {
 /// by the callers rather than defaulted to `Steady` — a timer created on a
 /// clock the caller never initialised would silently be a wall timer, which is
 /// the exact confusion phase-425 exists to remove.
+///
+/// issue 1177 -- GATED on `rmw-cffi`, and the gate follows the TYPE. The return
+/// type `nros_node::executor::TimerClockSource` is re-exported behind
+/// `#[cfg(any(has_rmw, test))]`, and `has_rmw` is set from
+/// `CARGO_FEATURE_RMW_CFFI` -- so without an RMW seam the type does not exist
+/// and this signature does not resolve:
+///
+///     error[E0432]: unresolved import `nros_node::executor::TimerClockSource`
+///         --> packages/api/nros-c/src/clock.rs:65:9
+///
+/// `clock` is one of this crate's backend-INDEPENDENT modules, so it is
+/// compiled under `nros-c`'s bare default (`panic-platform`), where every
+/// CALLER is absent: `executor` and `timer` here, and `nros-cpp`'s `timer`, are
+/// all `#[cfg(feature = "rmw-cffi")]` modules. A gated item with an ungated
+/// caller is the shape issues 1175 and 1177 both name; this is the same defect
+/// with the two sides swapped -- the caller is gated and the callee was not.
+#[cfg(feature = "rmw-cffi")]
 pub fn nros_timer_clock_source(clock_type: u8) -> Option<nros_node::executor::TimerClockSource> {
     use nros_node::executor::TimerClockSource;
 
