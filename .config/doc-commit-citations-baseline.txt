@@ -46,7 +46,6 @@ db91f2bad
 # name the commit that closed an issue, and those commits are gone. The issue
 # numbers beside them (#0952, #0750) are the durable identifier and are already
 # in the text, so these can be dropped rather than re-resolved.
-3084f7bd9
 22e511442
 
 # `docs/roadmap/phase-359-drop-std-campaign.md`, the four-row table of std
@@ -62,6 +61,8 @@ adb4c592e
 # — remove these three lines when that PR lands. They are listed rather than
 # fixed here because this gate is a separate change and must not carry an
 # unrelated document edit.
-fe807a999
-839f69b5c
-9c492403d
+
+# docs/issues/README.md — an archived issue cites the commit that made a QEMU
+# failure drain the guest before killing it. Hash rebased away; the change is
+# real and the prose is the record. Dangling on main before this line.
+d97c9c606
