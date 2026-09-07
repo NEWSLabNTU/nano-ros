@@ -316,7 +316,30 @@ fn main() {
     // variable means "some endpoint said nothing" and the default stands. That
     // guard belongs there rather than here: the count is a property of the
     // declaration, and this lane cannot see it.
-    let pubsub_depth = declared_max_qos_depth().unwrap_or(PUBSUB_QOS_DEPTH);
+    // phase-412 W3b — and this is the whole ladder, in one expression.
+    //
+    // `env_usize` supplies the three rungs above the builtin (an environment
+    // value, `CONFIG_NROS_PUBSUB_QOS_DEPTH` from `$DOTCONFIG`, then the
+    // board/platform descriptor); the DECLARED depth sits between those and the
+    // literal, which is where the tree's stated precedence puts a derived
+    // value: env > Kconfig/board > derived > crate default.
+    //
+    // WHY A KNOB EXISTS BESIDE THE DECLARATION. The declared depth needs a
+    // `<stem>.contract.yaml` stating `qos.depth` for EVERY endpoint — one
+    // unannotated subscription and cmake refuses, correctly, because a table
+    // over the annotated subset sizes the image from part of itself. That is a
+    // high bar for a saving worth 91,080 bytes on the island shape, and an
+    // image whose subscriptions are all KEEP_LAST(1) should not have to author
+    // a contract to say one number. This lets it say the number.
+    //
+    // The BUILTIN stays ROS 2's own default: `PUBSUB_QOS_DEPTH` is
+    // `rmw_qos_profile_default`'s KEEP_LAST(10), which is what a subscription
+    // created with no QoS argument actually gets, so an image that says nothing
+    // is still sized the way ROS would size it.
+    let pubsub_depth = env_usize(
+        "NROS_PUBSUB_QOS_DEPTH",
+        declared_max_qos_depth().unwrap_or(PUBSUB_QOS_DEPTH),
+    );
     let pubsub_region = buffered_region(pubsub_depth, rx_recv_size);
     let pubsub_entry = pubsub_region + PUBSUB_ENTRY_STRUCT;
 
@@ -452,6 +475,10 @@ fn main() {
              /// QoS history depth the pub/sub term budgets \
              (`QoSProfile::QOS_PROFILE_DEFAULT.depth`).\n    \
              pub const QOS_DEPTH: u32 = {pubsub_qos_depth};\n    \
+             /// The depth this image's arena was actually BUDGETED for — the \
+             resolved `NROS_PUBSUB_QOS_DEPTH`, which defaults to `QOS_DEPTH` \
+             when nothing states one.\n    \
+             pub const BUDGETED_QOS_DEPTH: u32 = {budgeted_qos_depth};\n    \
              /// Buffered receive region for ONE subscription at that depth.\n    \
              pub const PUBSUB_REGION: usize = {pubsub_region};\n    \
              /// Allowance for the entry STRUCT beside that region.\n    \
@@ -477,7 +504,20 @@ fn main() {
         // `the_modelled_qos_depth_is_the_runtime_default` in `arena.rs` reads
         // back, so emitting the constant while sizing from the declaration
         // would make the assertion pass against a model the build did not use.
-        pubsub_qos_depth = pubsub_depth,
+        // TWO depths, because `arena.rs` asks two different questions of them
+        // and one answer cannot serve both.
+        //
+        // `QOS_DEPTH` is the RESTATEMENT of ROS 2's default, and it exists so
+        // `the_modelled_qos_depth_is_the_runtime_default` can catch it drifting
+        // from `QoSProfile::default().depth` — a build script cannot read that
+        // const out of the crate it is building, so the number is retyped and
+        // that test is what holds the two equal. It stays the BUILTIN whatever
+        // this image budgeted, or the drift check starts asserting against a
+        // configuration instead of against ROS.
+        //
+        // `BUDGETED_QOS_DEPTH` is what the arena was actually sized for.
+        pubsub_qos_depth = PUBSUB_QOS_DEPTH,
+        budgeted_qos_depth = pubsub_depth,
         pubsub_entry_struct = PUBSUB_ENTRY_STRUCT,
         action_feedback_depth = ACTION_FEEDBACK_DEPTH,
         arena_base_overhead = ARENA_BASE_OVERHEAD,

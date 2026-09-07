@@ -789,18 +789,28 @@ mod arena_model_tests {
     /// allocator itself calls, and not through a second copy of its arithmetic.
     #[test]
     fn the_modelled_pubsub_region_covers_a_default_qos_subscription() {
+        // phase-412 W3b — against the depth this image BUDGETED, not against
+        // ROS 2's default. They are the same number until something states
+        // otherwise, and once something does, "does the model cover a DEFAULT
+        // subscription" stops being the question the image is asking: an image
+        // that budgets KEEP_LAST(1) is claiming its subscriptions are
+        // KEEP_LAST(1), and this assertion holding at depth 10 would only mean
+        // it had over-provisioned.
+        //
+        // What it still catches is the thing that matters — a budget that does
+        // not cover its own claim.
         let (slots, region) =
-            super::buffered_region_size(QoSProfile::default().depth, DEFAULT_RX_BUF_SIZE);
+            super::buffered_region_size(model::BUDGETED_QOS_DEPTH, DEFAULT_RX_BUF_SIZE);
         assert!(
             model::PUBSUB_REGION >= region,
             "the arena derivation budgets {} bytes for a subscription's \
              buffered region and the allocator claims {region} for it \
-             ({slots} slots of {DEFAULT_RX_BUF_SIZE} at the default \
+             ({slots} slots of {DEFAULT_RX_BUF_SIZE} at the budgeted \
              KEEP_LAST({}) ) — every image that derives its arena from a \
              declared subscription count is short by {} bytes per \
              subscription (issue 1190)",
             model::PUBSUB_REGION,
-            QoSProfile::default().depth,
+            model::BUDGETED_QOS_DEPTH,
             region.saturating_sub(model::PUBSUB_REGION),
         );
     }

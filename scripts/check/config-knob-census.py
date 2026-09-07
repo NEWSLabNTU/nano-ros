@@ -89,6 +89,16 @@ KNOB_CLASS = {
         "per-session graph cache bytes; sized by the PEER graph, so it is "
         "stated rather than derived",
     ),
+    # phase-412 W3b — the arena's QoS-depth multiplier, and a SIZING knob rather
+    # than a derived one. The per-endpoint answer IS derived (from
+    # `<stem>.contract.yaml`'s `qos.depth`, when every endpoint states one) and
+    # this is the image-wide number that outranks it, which is what the ladder
+    # is for. Default 10 is ROS 2's own `rmw_qos_profile_default` KEEP_LAST(10).
+    "NROS_PUBSUB_QOS_DEPTH": (
+        "sizing",
+        "the arena's per-subscription history depth; the derived per-endpoint "
+        "form is phase-412 W3's NROS_DECLARED_MAX_QOS_DEPTH, which this outranks",
+    ),
     "ZPICO_SUBSCRIBER_BUFFER_SIZE": ("derived", "SMALL_PAYLOADS class (phase-403)"),
     "ZPICO_SUBSCRIBER_LARGE_SIZE": ("derived", "LARGE_PAYLOADS class (phase-403)"),
     "ZPICO_SUBSCRIBER_SIZE_THRESHOLD": ("derived", "SMALL_CLASS_CEILING (phase-403)"),
