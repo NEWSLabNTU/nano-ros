@@ -951,7 +951,12 @@ where
         // keeps whatever the init task was started with.
         boot_tier.priority
     );
-    boot_crt.executor_mut().set_active_groups(boot_tier.groups);
+    // issue 1172 — `Err` means the filter did not fit, and
+    // `set_active_groups` has already cleared it and left filtering ON,
+    // so this tier registers NOTHING rather than registering on a
+    // quietly narrower set. Nothing here can return an error (the tier
+    // runner is `-> ()`), so the fail-closed state IS the report.
+    let _ = boot_crt.executor_mut().set_active_groups(boot_tier.groups);
     // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT). BUT the
     // boot tier is the SESSION OWNER: `apply_tier_sched_policy` installs the
     // lowered context as the executor's *default* SchedContext, which gates
@@ -1261,7 +1266,12 @@ fn nuttx_run_one_tier<F, E>(
     E: core::fmt::Debug,
 {
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(exec);
-    crt.executor_mut().set_active_groups(tier.groups);
+    // issue 1172 — `Err` means the filter did not fit, and
+    // `set_active_groups` has already cleared it and left filtering ON,
+    // so this tier registers NOTHING rather than registering on a
+    // quietly narrower set. Nothing here can return an error (the tier
+    // runner is `-> ()`), so the fail-closed state IS the report.
+    let _ = crt.executor_mut().set_active_groups(tier.groups);
     // W5.4 — shared tier→SchedContext lowering (Sporadic / EDF / TT).
     crt.apply_tier_sched_policy(
         tier.class,

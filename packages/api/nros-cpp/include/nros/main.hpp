@@ -145,9 +145,14 @@ inline int32_t component_spin_loop() {
 /// the `run_tiers` static method casts between the two.
 ///
 /// `name`           — tier name (null-terminated), informational.
-/// `groups`         — array of `n_groups` null-terminated callback-group
-///                    names; NULL / 0 means wildcard (accept all groups).
-/// `n_groups`       — number of entries in `groups`.
+/// `groups`         — FLAT `(node name, node namespace, group)` triples: 3 ×
+///                    `n_groups` null-terminated strings. NULL / 0 means
+///                    wildcard (accept all groups).
+/// `n_groups`       — number of TRIPLES, so the array holds three times this
+///                    many strings. issue 1172 — the key used to be the group
+///                    NAME alone, so two nodes' `ctrl` were one key; flat
+///                    rather than a struct array so this mirror stays
+///                    byte-identical to `nros_native_tier_spec_t`.
 /// `priority`       — raw POSIX nice level adjustment (advisory on Linux).
 /// `stack_bytes`    — informational on native (`std::thread` manages the stack).
 /// `spin_period_us` — sleep between `spin_once` calls; 0 → 1 ms floor.
