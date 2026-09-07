@@ -6352,6 +6352,16 @@ impl<'s> Executor<'s> {
         #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
         self.reconcile_ros_time_source();
 
+        // phase-426 W3 — attach the six parameter services to any node that
+        // does not have them yet. Same reason as the reconcile above: the
+        // request routinely arrives before there is a node to publish under
+        // (`nros::main!` emits `apply_param_services` ahead of its per-node
+        // `register` calls, by design). One length comparison once settled.
+        #[cfg(feature = "param-services")]
+        if self.parameter_services_pending() {
+            let _ = self.reconcile_parameter_services();
+        }
+
         // Release jitter, measured HERE rather than in `spin_period`, because
         // this is the function every driver goes through.
         //
@@ -6651,8 +6661,11 @@ impl<'s> Executor<'s> {
                         let crate::parameter_services::ParamState {
                             server, services, ..
                         } = &mut **params;
-                        if let Some(services) = services {
-                            handled = services.process_services(server).unwrap_or(0);
+                        // phase-426 W3 — one set per node; every set is pumped,
+                        // because `ros2 param list` addresses each node's own
+                        // six and a set nobody polls times out.
+                        for set in services.iter_mut() {
+                            handled += set.process_services(server).unwrap_or(0);
                         }
                     }
                 }
@@ -7254,11 +7267,12 @@ impl<'s> Executor<'s> {
                 let crate::parameter_services::ParamState {
                     server, services, ..
                 } = &mut **params;
-                if let Some(services) = services
-                    && let Ok(n) = services.process_services(server)
-                {
-                    result.services_handled += n;
-                    handled = n;
+                // phase-426 W3 — one set per node; see the sibling site above.
+                for set in services.iter_mut() {
+                    if let Ok(n) = set.process_services(server) {
+                        result.services_handled += n;
+                        handled += n;
+                    }
                 }
             }
         }
@@ -7425,6 +7439,144 @@ impl<'s> Executor<'s> {
     /// executor.declare_parameter("start_value", ParameterValue::Integer(0));
     /// ```
     pub fn register_parameter_services(&mut self) -> Result<(), NodeError> {
+        self.ensure_parameter_store();
+        if let Some(params) = &mut self.params {
+            params.requested = true;
+        }
+        // phase-426 W3 — with no node yet, RECORD the request and stop. The
+        // reconcile's no-node fallback publishes under the executor's own
+        // identity, and taking it here would pin node 0 to that name before the
+        // node that IS node 0 has been built — which is the pre-W3 behaviour
+        // this work item exists to remove. Every generated entry arrives in
+        // exactly this state (`apply_param_services` runs ahead of the per-node
+        // `register` calls, by design), so the fallback belongs on the spin
+        // path, where "no node" has stopped being merely "not yet".
+        if self.nodes.is_empty() {
+            return Ok(());
+        }
+        self.reconcile_parameter_services()
+    }
+
+    /// phase-426 W3 — is there a node whose six services are not up yet?
+    ///
+    /// The cheap half of the reconcile, kept separate so `spin_once` can test
+    /// it without carrying the reconcile's frame (see below).
+    #[inline]
+    pub(crate) fn parameter_services_pending(&self) -> bool {
+        self.params
+            .as_ref()
+            .is_some_and(|p| p.requested && p.services.len() < self.nodes.len().max(1))
+    }
+
+    /// phase-426 W3 — publish one set of six under every node that does not
+    /// have one yet.
+    ///
+    /// **Why a reconcile and not a registration.** `nros::main!` emits
+    /// `apply_param_services` BEFORE its per-node `register` calls, by design:
+    /// the store has to exist when each component cell captures it. So at the
+    /// moment the request is made the node table is EMPTY and there is no FQN
+    /// to publish under — registering there is how the six ended up pinned to
+    /// the executor's own identity in the first place. The request is recorded
+    /// and satisfied here, at the head of every spin, exactly as
+    /// `reconcile_ros_time_source` does for `use_sim_time` and for the same
+    /// reason.
+    ///
+    /// **An executor with no registered node still gets one set**, under its
+    /// own `node_name`/`namespace` and keyed `NodeId::PRIMARY` — the identity
+    /// [`declare_parameter`](Self::declare_parameter) writes to. That is the
+    /// pre-W3 behaviour, preserved for the direct-API images that never call
+    /// `node_builder` (`param-chatter-talker` is one), and it is keyed the same
+    /// as the first node record, so a node registered later inherits the set
+    /// rather than getting a second one under a different name.
+    ///
+    /// Cheap in the settled case: one length comparison — but the FRAME is not
+    /// cheap, so it is `inline(never)` and the spin site tests
+    /// [`parameter_services_pending`](Self::parameter_services_pending) first.
+    /// Building one set materialises six `EmbeddedServiceServer`s by value
+    /// (2 x `PARAM_SERVICE_BUFFER_SIZE` each, ~48 KiB at the 4096 default)
+    /// before they are boxed; inlined into `spin_once` that lands on every
+    /// spin frame whether or not the branch is taken. Issue 0756's rule one
+    /// call up — a parameter-service frame does not fit an embedded thread
+    /// stack, and `test_open_threaded_spawn_and_halt` died with a bare SIGSEGV
+    /// the first time this was reachable from the spin path.
+    #[inline(never)]
+    pub(crate) fn reconcile_parameter_services(&mut self) -> Result<(), NodeError> {
+        let Some(params) = self.params.as_ref() else {
+            return Ok(());
+        };
+        if !params.requested {
+            return Ok(());
+        }
+        // The nodes wanted, minus the ones already served. Collected first
+        // because building a set borrows `self.session` mutably while
+        // `self.nodes` / `self.params` are still borrowed by the scan.
+        let want = self.nodes.len().max(1);
+        if params.services.len() >= want {
+            return Ok(());
+        }
+        let mut todo: heapless::Vec<
+            (u8, heapless::String<64>, heapless::String<64>),
+            { crate::parameter_services::MAX_PARAM_SERVICE_SETS },
+        > = heapless::Vec::new();
+        for index in 0..want {
+            let key = nros_params::NodeKey::new(index as u8);
+            if params.services.iter().any(|set| set.param_node() == key) {
+                continue;
+            }
+            let (name, namespace) = match self.nodes.get(index) {
+                Some(record) => (record.name.clone(), record.namespace.clone()),
+                // No node table entry: the executor's own implicit primary
+                // identity, which is what `NodeId::PRIMARY` means.
+                None => (self.node_name.clone(), self.namespace.clone()),
+            };
+            if todo.push((index as u8, name, namespace)).is_err() {
+                return Err(NodeError::NodeTableFull);
+            }
+        }
+        for (index, name, namespace) in todo {
+            let servers = self.build_parameter_service_set(
+                nros_params::NodeKey::new(index),
+                &name,
+                &namespace,
+            )?;
+            let services_box: alloc::boxed::Box<
+                dyn crate::parameter_services::ParamServiceProcessor,
+            > = alloc::boxed::Box::new(servers);
+            // Issue 0745 — PRESERVE an already-initialized store: launch-param
+            // seeding may have run before any node existed (services can't be
+            // registered that early). Overwriting here would wipe the seeds.
+            match &mut self.params {
+                Some(params) => params
+                    .services
+                    .push(services_box)
+                    .map_err(|_| NodeError::NodeTableFull)?,
+                None => {
+                    // Issue 0756 — see new_param_state: never build a ParamState
+                    // by value, it does not fit an embedded thread stack.
+                    let mut state = Self::new_param_state();
+                    state.requested = true;
+                    let _ = state.services.push(services_box);
+                    self.params = Some(state);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// phase-426 W3 — create the six service servers for ONE node.
+    ///
+    /// Split out of [`register_parameter_services`](Self::register_parameter_services)
+    /// because there are now N of these per image rather than one, and because
+    /// the six `create_param_srv` call sites are what
+    /// `check-infra-queryable-counts` reads to hold `PARAM_SERVICE_QUERYABLES`
+    /// to the number of queryables a set actually claims.
+    #[inline(never)]
+    fn build_parameter_service_set(
+        &mut self,
+        node: nros_params::NodeKey,
+        node_name: &str,
+        namespace: &str,
+    ) -> Result<crate::parameter_services::ParameterServiceServers, NodeError> {
         use crate::parameter_services::{
             DescribeParameters, GetParameterTypes, GetParameters, ListParameters,
             PARAM_SERVICE_BUFFER_SIZE, ParameterServiceServers, SetParameters,
@@ -7444,11 +7596,11 @@ impl<'s> Executor<'s> {
         // three did not agree: this one absolutised a bare namespace, that one
         // did not. A join with three spellings has no answer to "what does the
         // tree do with `my_ns`".
-        let node_fqn = crate::names::fully_qualified_name(&self.node_name, &self.namespace)
+        let node_fqn = crate::names::fully_qualified_name(node_name, namespace)
             .map_err(|()| NodeError::NameTooLong)?;
         // The service names below still take the two halves separately.
-        let ns: &str = &self.namespace;
-        let nn: &str = &self.node_name;
+        let ns: &str = namespace;
+        let nn: &str = node_name;
 
         /// Build a service name like `{node_fqn}/{suffix}` and create the server handle.
         fn create_param_srv<Svc: RosService>(
@@ -7465,11 +7617,6 @@ impl<'s> Executor<'s> {
             name.push_str("/").map_err(|_| NodeError::NameTooLong)?;
             name.push_str(suffix).map_err(|_| NodeError::NameTooLong)?;
             let mut info = ServiceInfo::new(&name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
-                // issue 0824 follow-up — `domain_id` is a PARAMETER, not `self.domain_id`:
-                // this is a nested `fn`, not a method, so `self` is not in scope and
-                // the original spelling was E0434. It only fails under feature sets
-                // that compile this arm, which is why `--all-features` caught it and
-                // the narrower lanes did not.
                 // issue 0824 follow-up — `domain_id` is a PARAMETER, not `self.domain_id`:
                 // this is a nested `fn`, not a method, so `self` is not in scope and
                 // the original spelling was E0434. It only fails under feature sets
@@ -7541,12 +7688,11 @@ impl<'s> Executor<'s> {
             "get_parameter_types",
         )?;
 
-        let servers = ParameterServiceServers::new(
-            // phase-426 W1 — the six services are registered under the
-            // EXECUTOR's node FQN (`node_fqn` above), so the set they serve is
-            // the executor's implicit primary node. W3 registers one set per
-            // node and passes each node's own key here.
-            super::node_record::NodeId::PRIMARY.into(),
+        Ok(ParameterServiceServers::new(
+            // phase-426 W3 — the set carries the node whose parameters it
+            // serves, so a handler can never read the store without saying
+            // whose parameters it means.
+            node,
             PSrv::<GetParameters> {
                 handle: get_handle,
                 req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
@@ -7583,23 +7729,37 @@ impl<'s> Executor<'s> {
                 reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
                 _phantom: core::marker::PhantomData,
             },
-        );
+        ))
+    }
 
-        // Issue 0745 — PRESERVE an already-initialized store: launch-param
-        // seeding may have run before any node existed (services can't be
-        // registered that early). Overwriting here would wipe the seeds.
-        let services_box: alloc::boxed::Box<dyn crate::parameter_services::ParamServiceProcessor> =
-            alloc::boxed::Box::new(servers);
-        match &mut self.params {
-            Some(params) => params.services = Some(services_box),
-            None => {
-                // Issue 0756 — see new_param_state: never build a ParamState
-                // by value, it does not fit an embedded thread stack.
-                self.params = Some(Self::new_param_state(Some(services_box)));
+    /// phase-426 W3 — the node FQNs this executor publishes parameter services
+    /// under, in registration order.
+    ///
+    /// The acceptance question for W3 ("does a two-node image expose both
+    /// FQNs?") answered without a wire: the six services are created from
+    /// exactly this list, so asserting it asserts what `ros2 param list` will
+    /// enumerate. The wire assertion is W6.
+    pub fn parameter_service_node_names(
+        &self,
+    ) -> heapless::Vec<
+        crate::names::ResolvedName,
+        { crate::parameter_services::MAX_PARAM_SERVICE_SETS },
+    > {
+        let mut out = heapless::Vec::new();
+        let Some(params) = self.params.as_ref() else {
+            return out;
+        };
+        for set in params.services.iter() {
+            let index = set.param_node().raw() as usize;
+            let (name, namespace) = match self.nodes.get(index) {
+                Some(record) => (record.name.as_str(), record.namespace.as_str()),
+                None => (self.node_name.as_str(), self.namespace.as_str()),
+            };
+            if let Ok(fqn) = crate::names::fully_qualified_name(name, namespace) {
+                let _ = out.push(fqn);
             }
         }
-
-        Ok(())
+        out
     }
 
     // phase-359 W10 / issue 0080 — `enable_parameter_persistence{,_with}` are
@@ -7826,7 +7986,7 @@ impl<'s> Executor<'s> {
     /// which preserves this store.
     fn ensure_parameter_store(&mut self) {
         if self.params.is_none() {
-            self.params = Some(Self::new_param_state(None));
+            self.params = Some(Self::new_param_state());
         }
     }
 
@@ -7875,12 +8035,13 @@ impl<'s> Executor<'s> {
     /// nothing about constructing one depends on `MAX_PARAMETERS`. The bulk
     /// (and issue 0756's placement requirement with it) lives in
     /// [`leak_parameter_storage`](Self::leak_parameter_storage).
-    fn new_param_state(
-        services: Option<alloc::boxed::Box<dyn crate::parameter_services::ParamServiceProcessor>>,
-    ) -> alloc::boxed::Box<crate::parameter_services::ParamState<'s>> {
+    fn new_param_state() -> alloc::boxed::Box<crate::parameter_services::ParamState<'s>> {
         alloc::boxed::Box::new(crate::parameter_services::ParamState {
             server: nros_params::ParameterServer::new_in(Self::leak_parameter_storage()),
-            services,
+            // phase-426 W3 — the sets attach in `reconcile_parameter_services`,
+            // one per node, once the node table is populated.
+            services: heapless::Vec::new(),
+            requested: false,
         })
     }
 
