@@ -401,6 +401,22 @@
     "verdict": "extension",
     "why": "a stable identity for a declared node, so the launch resolver and the image agree on which node a model entry refers to (RFC-0046). machinery `nros::node!` expands into. Public because the macro resolves it through `::nros::`, not because a user writes it -- the module says so in its own first line (\"shared by metadata discovery and generated runtimes\"). rclrs has no counterpart because rclrs has no codegen step. Issue 0784: this should be `#[doc(hidden)]` as `__private_node_state_into_raw` already is."
   },
+  "rust:NodeKey": {
+    "verdict": "extension",
+    "why": "phase-426 W1 -- the parameter store's node key. ROS 2 has no correspondent because it needs none: a node OWNS its parameter table there, so 'which node' is the receiver. Ours is one fixed table shared by every node on the executor (no allocator, so no container per node), and this one-byte index is what keeps `/talker`'s `rate` and `/listener`'s `rate` apart inside it. It is `nros_node::executor::NodeId` seen from below: `nros-params` sits under `nros-node` in the layer graph and cannot name that type, so it defines the same index and `nros-node` carries the one `From` between them. Deliberately an index and not a name -- a name would cost `MAX_PARAM_NAME_LEN` bytes in every one of the ~8.5 KiB slots and would be a second answer to 'which node is this' that could disagree with the executor's table."
+  },
+  "rust:NodeKey::index": {
+    "verdict": "extension",
+    "why": "the node-table index a `rust:NodeKey` names; see that row."
+  },
+  "rust:NodeKey::new": {
+    "verdict": "extension",
+    "why": "constructs a `rust:NodeKey` from a node-table index; see that row."
+  },
+  "rust:NodeKey::raw": {
+    "verdict": "extension",
+    "why": "the raw byte of a `rust:NodeKey`, for the FFI that already persists the same index (`nros_node_t.node_id`, `nros_cpp_node_t.node_id`); see that row."
+  },
   "rust:NodeOptions": {
     "bucket": "theirs-only",
     "verdict": "divergence",
