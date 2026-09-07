@@ -462,9 +462,20 @@ build_workspace() {
             # `--board-for-row` because the row's path spells the PLATFORM and
             # the gate's path sniff looks for the BOARD; an unmapped platform
             # RAISES rather than passing, so a new one is a decision.
+            #
+            # `-print -quit`, NOT `| head -1`. Under this script's
+            # `set -euo pipefail`, a `find` that still has output to write when
+            # `head` exits takes SIGPIPE, the pipeline reports 141, and the
+            # command substitution kills the script. It survived review and a
+            # local run because this tree had exactly ONE match, so `find`
+            # finished before `head` left; CI had more, and the build died
+            # immediately after `built: … native_entry` with no message of its
+            # own — `error: recipe build-workspace-fixtures failed on line 234`
+            # and nothing else. `-quit` stops find itself at the first hit, so
+            # there is no second writer and no pipeline to fail.
             local _sf_elf
             _sf_elf="$(find "$dir/$out_root" -type f -name "$entry" \
-                -path "*/$row_profile_dir/*" 2>/dev/null | head -1)"
+                -path "*/$row_profile_dir/*" -print -quit 2>/dev/null)"
             if [ -n "$_sf_elf" ]; then
                 python3 "$NROS_REPO_ROOT/scripts/check-stack-floor.py" \
                     --board-for-row "$platform" "$_sf_elf"
