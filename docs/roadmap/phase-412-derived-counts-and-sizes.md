@@ -245,7 +245,47 @@ Worth the contrast, since it is the argument for having built W4 first:
 | found by | build failures, then the gate after merge | the gate, in seconds |
 | reached `main` | yes -- 8/8/8 shipped | no |
 
-## W3 — the arena, once phase-403 step 2 lands
+## W3 — the arena's DEPTH multiplier. LANDED 2026-09-08
+
+`nros-node/build.rs` billed every pub/sub callback slot at `PUBSUB_QOS_DEPTH`, a
+constant 10, and named its own blocker: "`NROS_ENTITY_DECLARED_DEPTHS` and
+`NROS_ENTITY_UNDECLARED_DEPTH_COUNT` reach cmake and stop there, so this lane
+has nothing better to read yet." They now cross, on the DECLARED road issue 1122
+built — `_nros_qos_depth_env` publishes `NROS_DECLARED_MAX_QOS_DEPTH` and
+`declared_max_qos_depth()` takes it as the default.
+
+**The MAXIMUM, not the table.** The arena charges every pub/sub slot the same
+`pubsub_entry`, so one number is what a consumer can use, and the max is the
+only reduction that cannot under-size it.
+
+**Two guards, and the second is the producer's own instruction.** Status must be
+`resolved`, and `NROS_ENTITY_UNDECLARED_DEPTH_COUNT` must be ZERO —
+`NanoRosEntityInventory.cmake` calls that "what a consumer must refuse on",
+because a table over the endpoints that happened to be annotated sizes an image
+from a subset of itself. One unannotated endpoint and the max is a lower bound
+presented as a bound.
+
+Measured on the reference island's entity shape (11 subscriptions, 4 timers, 2
+service servers), by building `nros-node` three ways:
+
+| | `PUBSUB_REGION` | `ARENA_SIZE` |
+| --- | ---: | ---: |
+| no depth declaration (the old behaviour) | 11,352 | 144,584 |
+| declared depth 1 | 3,072 | **53,504** |
+| declared depth 5 | 6,192 | 87,824 |
+
+**−91,080 B** at depth 1. The shape of it is `buffered_region`: `depth <= 1` is a
+TripleBuffer of 3 slots, anything deeper an `SpscRing` of `depth + 1`, so a
+depth-1 image was charged 11 slots for 3.
+
+Both guards are mutation-tested in `tests/cmake-entity-inventory-tests.sh`
+(seven cases, beside the writer): ignoring the undeclared count fails it, and so
+does taking the minimum instead of the maximum.
+
+What this does NOT close is the tightness question the W2 table raises — the
+model still bills the worst case per KIND, and depth is one multiplier of it.
+
+## W3 (original) — the arena, once phase-403 step 2 lands
 
 The arena is the single largest hand-set number on the island (40960 B) and the
 last big one. It is listed here rather than duplicated: **phase-403 owns steps 2

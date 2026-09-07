@@ -300,6 +300,69 @@ function(_nros_entity_budget_env _out_var)
     set(${_out_var} "${_out}" PARENT_SCOPE)
 endfunction()
 
+# _nros_qos_depth_env(<out-var>)
+#
+# phase-412 W3 / phase-403 step 2 — carry the declared QoS DEPTH to the arena.
+#
+# `nros-node/build.rs` bills every pub/sub callback slot at `PUBSUB_QOS_DEPTH`,
+# a CONSTANT 10, and says why: "Carrying the declared depths here instead is
+# phase-403 step 2's remaining wiring: `NROS_ENTITY_DECLARED_DEPTHS` and
+# `NROS_ENTITY_UNDECLARED_DEPTH_COUNT` reach cmake and stop there, so this lane
+# has nothing better to read yet." This is that wiring, on the road issue 1122
+# built.
+#
+# The over-billing is structural rather than marginal. `buffered_region` gives a
+# `depth <= 1` subscription a TripleBuffer of 3 slots and anything deeper an
+# `SpscRing` of `depth + 1`, so an image whose subscriptions all declare depth 1
+# is charged 11 slots for 3 -- on every lane, before this.
+#
+# WHAT TRAVELS IS THE MAXIMUM, not the table. The arena charges every pub/sub
+# slot the same `pubsub_entry`, so one number is what the consumer can use, and
+# the max is the only reduction that cannot under-size it. Shipping the triples
+# would hand the build script a table it has no way to attribute to slots.
+#
+# TWO GUARDS, and the second is the producer's own instruction. The status must
+# be `resolved`, and `NROS_ENTITY_UNDECLARED_DEPTH_COUNT` must be ZERO --
+# `NanoRosEntityInventory.cmake` calls it "what a consumer must refuse on",
+# because a table over the endpoints that happened to be annotated sizes an
+# image from a subset of itself. One unannotated subscription and the max is a
+# lower bound rather than a bound, which is the under-size direction.
+function(_nros_qos_depth_env _out_var)
+    set(${_out_var} "" PARENT_SCOPE)
+    if(NOT COMMAND nros_entity_inventory_knobs_file)
+        return()
+    endif()
+    nros_entity_inventory_knobs_file(_inv)
+    if(NOT EXISTS "${_inv}")
+        return()
+    endif()
+    include("${_inv}")
+    if(NOT NROS_ENTITY_DECLARED_DEPTH_STATUS STREQUAL "resolved")
+        return()
+    endif()
+    if(NOT DEFINED NROS_ENTITY_UNDECLARED_DEPTH_COUNT
+            OR NOT NROS_ENTITY_UNDECLARED_DEPTH_COUNT EQUAL 0)
+        return()
+    endif()
+    if(NOT DEFINED NROS_ENTITY_DECLARED_DEPTHS)
+        return()
+    endif()
+    # `type|topic=depth` triples. The depth is what follows the LAST `=`, so a
+    # topic containing one does not shift the field.
+    set(_max 0)
+    foreach(_triple IN LISTS NROS_ENTITY_DECLARED_DEPTHS)
+        string(REGEX MATCH "=([0-9]+)$" _m "${_triple}")
+        if(_m)
+            if(CMAKE_MATCH_1 GREATER _max)
+                set(_max "${CMAKE_MATCH_1}")
+            endif()
+        endif()
+    endforeach()
+    if(_max GREATER 0)
+        set(${_out_var} "NROS_DECLARED_MAX_QOS_DEPTH=${_max}" PARENT_SCOPE)
+    endif()
+endfunction()
+
 # nros_entity_facts_env(<target>)
 #
 # Attach this configure's accumulated entity facts to a Corrosion target's cargo
@@ -313,6 +376,11 @@ function(nros_entity_facts_env _target)
     _nros_entity_budget_env(_budget_env)
     if(_budget_env)
         list(APPEND _payload_env ${_budget_env})
+    endif()
+
+    _nros_qos_depth_env(_depth_env)
+    if(_depth_env)
+        list(APPEND _payload_env "${_depth_env}")
     endif()
 
     get_property(_seen GLOBAL PROPERTY NROS_ENTITY_FACTS_SEEN)

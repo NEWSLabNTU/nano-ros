@@ -432,6 +432,75 @@ if ! nros_grep_q "NROS_DERIVED_EXECUTOR_MAX_CBS 19" "$KEEP"; then
 fi
 
 # ---------------------------------------------------------------------------
+log_header "the declared QoS DEPTH crosses the lane boundary (phase-412 W3)"
+
+# The inventory publishes the depth table and, before this, nothing read it:
+# `nros-node/build.rs` said so itself — "reach cmake and stop there, so this
+# lane has nothing better to read yet". `_nros_qos_depth_env` in
+# `cmake/NanoRosEntityFacts.cmake` is the crossing, and it is tested beside the
+# writer.
+#
+# The GUARDS are the whole safety argument and each gets a case. A table over
+# the endpoints that happened to be annotated sizes an image from a subset of
+# itself, so one unannotated endpoint must mean "no answer" — the max would
+# otherwise be a lower bound presented as a bound, which is the under-size
+# direction the arena cannot survive.
+FACTS="$PROJECT_ROOT/cmake/NanoRosEntityFacts.cmake"
+
+depth_env() {
+    # depth_env <status> <undeclared-count> <depths…>
+    local dir="$TEST_TMPDIR/depth"
+    rm -rf "$dir"; mkdir -p "$dir/nros"
+    {
+        printf 'set(NROS_ENTITY_DECLARED_DEPTH_STATUS "%s")\n' "$1"
+        [ "$2" != "-" ] && printf 'set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT %s)\n' "$2"
+        shift 2
+        [ "$#" -gt 0 ] && printf 'set(NROS_ENTITY_DECLARED_DEPTHS "%s")\n' "$*"
+    } > "$dir/nros/entity_inventory.cmake"
+    cat > "$dir/run.cmake" <<EOF
+include("$MODULE")
+include("$FACTS")
+_nros_qos_depth_env(_out)
+message(STATUS "DEPTH=\${_out}")
+EOF
+    # `cmake -P` resolves CMAKE_BINARY_DIR to the CWD, and the carrier finds the
+    # fragment through `nros_entity_inventory_knobs_file()`.
+    (cd "$dir" && cmake -P run.cmake 2>&1) | sed -n 's/^-- DEPTH=//p'
+}
+
+_want() {
+    local label="$1" want="$2" got="$3"
+    if [ "$got" != "$want" ]; then
+        fail "depth: $label -- wanted '${want:-<empty>}', got '${got:-<empty>}'"
+    fi
+    check
+}
+
+_want "a fully declared table crosses as its MAXIMUM" \
+    "NROS_DECLARED_MAX_QOS_DEPTH=10" \
+    "$(depth_env resolved 0 'a|/t1=1;b|/t2=10;c|/t3=5')"
+_want "a single endpoint at depth 1 crosses as 1" \
+    "NROS_DECLARED_MAX_QOS_DEPTH=1" \
+    "$(depth_env resolved 0 'a|/t1=1')"
+# The guard the producer's own doc demands.
+_want "ONE undeclared endpoint carries nothing" \
+    "" \
+    "$(depth_env resolved 3 'a|/t1=1;b|/t2=10')"
+_want "a refused status carries nothing" \
+    "" \
+    "$(depth_env refused 0 'a|/t1=1')"
+_want "no depth table carries nothing" \
+    "" \
+    "$(depth_env resolved 0)"
+_want "a missing undeclared COUNT carries nothing" \
+    "" \
+    "$(depth_env resolved - 'a|/t1=1')"
+# A topic containing `=` must not shift the depth field.
+_want "the depth is what follows the LAST '='" \
+    "NROS_DECLARED_MAX_QOS_DEPTH=7" \
+    "$(depth_env resolved 0 'a|/odd=name=7')"
+
+# ---------------------------------------------------------------------------
 if [ "$FAILURES" -eq 0 ]; then
     log_success "cmake-entity-inventory: $CHECKS assertion(s) held"
     exit 0
