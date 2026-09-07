@@ -853,6 +853,46 @@ cpp: cpp-fmt
         exit 1; \
     }
 
+    # phase-427 W3 — the `bind_timer` RETIREMENT, both halves.
+    #
+    # Every path that used to reach the free `nros::bind_timer` is a TEMPLATE
+    # BODY, and the header parse loop instantiates none of them. That is how a
+    # retirement rots: the free function keeps compiling because it is still
+    # parsed, and the member its 22 call sites moved to is never built.
+    echo "  - timer binding paths instantiate through the MEMBER overload (c++17)"
+    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/timer_binding_paths.cpp
+    test -f packages/api/nros-cpp/tests/compile/bind_timer_deprecation_probe.cpp || { \
+        echo "ERROR: bind_timer_deprecation_probe.cpp is MISSING -- the expected-failure" >&2; \
+        echo "       check below would PASS on a missing file." >&2; \
+        exit 1; \
+    }
+    echo "  - ...and the retired nros::bind_timer WARNS"
+    if c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+        -Werror=deprecated-declarations \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/bind_timer_deprecation_probe.cpp \
+        > tmp/refuse-bind-timer.log 2>&1; then \
+        echo "ERROR: nros::bind_timer no longer warns. A deprecation nobody is told about" >&2; \
+        echo "       is an alias, and this one is the only thing telling an out-of-tree" >&2; \
+        echo "       consumer to write node.create_wall_timer<C, &C::method>(...)." >&2; \
+        exit 1; \
+    fi
+    grep -q 'create_wall_timer<C, &C::method>' tmp/refuse-bind-timer.log || { \
+        echo "ERROR: the bind_timer deprecation no longer names its replacement." >&2; \
+        echo "       See tmp/refuse-bind-timer.log." >&2; \
+        exit 1; \
+    }
+
     echo "  - QoS policy accessors + ms boundary (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Wno-deprecated-declarations \
         -Itarget/nros-cpp-generated \
