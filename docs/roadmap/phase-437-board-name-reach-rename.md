@@ -1,6 +1,6 @@
 # Phase 437 — rename every board to the reach its build has
 
-**Status (2026-09-08). W1-W3 LANDED. W4-W6 are BLOCKED on two findings recorded below; W7 follows them.** Implements
+**Status (2026-09-08). W1-W3 LANDED. RFC-0093 amended (R6 + the deploy exception) and W4-W6 UNBLOCKED, with the coordinated-commit rules the survey found.** Implements
 [RFC-0093](../design/0093-board-naming-states-reach.md). Nothing has moved yet;
 the measurements below are from `main` at `9c0702322`.
 
@@ -259,7 +259,7 @@ fixture `platform =` values and the three hardcoded `build/cargo-fixtures/`
 paths — otherwise an intermediate revision builds, reports green, and produces
 nothing.
 
-### Finding 2 — `qemu-esp32-baremetal` wears three hats, and one is a non-goal
+### Finding 2 — RESOLVED by RFC-0093's amendment: `qemu-esp32-baremetal` wears three hats
 
     git grep -hoP '^\s*deploy\s*=\s*"\K[^"]+' -- '*.toml' | sort | uniq -c
       2 qemu-esp32-baremetal
@@ -270,10 +270,39 @@ manifests**. This phase's non-goals say `deploy=` is untouched. So W5 cannot
 rename it without either leaving the two spellings disagreeing or breaking a
 stated non-goal.
 
-That is a decision, not a detail, and it belongs to RFC-0093 rather than to a
-sweep: either the RFC's §4 row for esp32 is deferred, or the non-goal is
-amended to say a deploy token that IS a board key moves with it. **W5 does not
-start until that is answered.**
+**Answered (2026-09-08).** RFC-0093's non-goal is amended: a deploy token that
+IS ALSO a board key follows its board, because leaving it behind does not
+preserve a separate vocabulary — it leaves a THIRD spelling of one thing. So
+`deploy = "qemu-esp32-baremetal"` becomes `deploy = "esp32-c3-baremetal"` in
+both manifests. Deploy values that are not board keys stay untouched.
+
+### W4a — the fixture-platform axis (added 2026-09-08)
+
+RFC-0093 R6: a fixture `platform =` names a FAMILY, never a board. Ten of the
+twelve values already do; two do not.
+
+    qemu-arm-baremetal   (21 rows)  -> baremetal
+    qemu-esp32-baremetal ( 3 rows)  -> esp32   [COLLAPSES an existing duplicate]
+
+The esp32 half removes a duplicate rather than creating one:
+`PlatformId::Esp32Qemu => &["esp32", "qemu-esp32-baremetal"]` maps one platform
+to two coordinates today.
+
+**This wave is where the group-key hazard lives.** A fixture platform IS a
+directory name. All of these must move in ONE commit or the group dir is
+valid-looking and empty:
+
+* `examples/fixtures.toml` `platform =` values
+* `NROS_FIXTURE_SHARED_PLATFORMS` (`scripts/build/fixtures-target-dir.sh:100`)
+* `just/qemu-baremetal.just:263` `FIXTURE_TARGET := absolute_path("build/cargo-fixtures/qemu-arm-baremetal")`
+* `just/qemu-baremetal.just:605` `rm -rf build/cargo-fixtures/qemu-arm-baremetal`
+* `matrix.rs`'s `PlatformId -> tokens` arms
+* the assertions in `nros-tests/src/fixtures/groups.rs`
+
+**Acceptance.** `nros_fixture_group_slug` returns the new token, the group dir
+under `build/cargo-fixtures/` is the new name, and a fixture build for each
+platform produces artifacts where the test-side resolver looks — verified by a
+BUILD, never by a gate (#393's rule).
 
 ### The precondition this phase already stated, and which is not met
 
