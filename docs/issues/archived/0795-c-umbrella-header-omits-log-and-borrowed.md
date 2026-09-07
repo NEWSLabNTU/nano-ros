@@ -87,7 +87,10 @@ written in `nros.h` rather than inferred.
 ## Related, same shape, different header
 
 `packages/api/nros-cpp/include/nros/component_node.hpp` is not included by
-`nros/nros.hpp` either. `nros::ComponentNode` carries rclcpp's exact
+`nros/nros.hpp` either. **(Retired 2026-09-07, phase-427: phase-417 W2.b added
+that include at `nros.hpp:62`, unconditional. The paragraph is kept because it
+is the observation that the C-side fix here had a C++-side twin, which was
+true and got acted on.)** `nros::ComponentNode` carries rclcpp's exact
 `declare_parameter<T>` / `get_parameter<T>` / `has_parameter`, so through the
 umbrella a ported C++ node gets `nros::Node` — which has no parameter method at
 all — plus a standalone `ParameterServer<Cap>` the node cannot see. Recorded in

@@ -63,10 +63,19 @@ campaign built a checker rather than another prose catalog.
 * **A C++ node cannot set a parameter at all.** `nros::ComponentNode` carries
   rclcpp's exact `declare_parameter<T>` / `get_parameter<T>` / `has_parameter`
   and no setter, typed or otherwise. C and Rust both have full setter families.
-* **`component_node.hpp` is not included by `nros/nros.hpp`.** So through the
-  umbrella header a ported node gets `nros::Node` (no parameter method at all)
+* **`component_node.hpp` was not included by `nros/nros.hpp`.** So through the
+  umbrella header a ported node got `nros::Node` (no parameter method at all)
   plus a standalone `ParameterServer<Cap>` the node cannot see — the rclcpp-shaped
-  surface exists and only the generated entry point reaches it.
+  surface existed and only the generated entry point reached it.
+  **RETIRED 2026-09-07 (phase-427):** phase-417 W2.b added an unconditional
+  `#include "nros/component_node.hpp"` at `nros.hpp:62`, so `ComponentNode` and
+  its rclcpp-shaped `declare_parameter<T>` / `get_parameter<T>` / `has_parameter`
+  ARE reachable through `<nros/nros.hpp>` today. This bullet is kept because the
+  disagreement it was filed under is not what it fixed: the umbrella reaching the
+  type says nothing about WHICH STORE the type reads, and the two-disjoint-stores
+  problem this issue is actually about (C's legacy store invisible to `ros2 param`,
+  and C++'s node-local `ParameterServer` beside the executor's) is untouched by an
+  include. That convergence is phase-417 W2.a, still open.
 * **`get_type` exists in C and Rust and not in C++**; `nros::ParameterType` is
   named in C and Rust and in no C++ header.
 * **Undeclare exists only in Rust** (`ParameterServer::remove` / `unset`).

@@ -408,9 +408,13 @@ fault reproduces with slots to spare. See `archived/0822-*`. (2026-08-27)
 
 Recently resolved (2026-08-26): **#0818** (api/tooling) — a green `api-parity.py --check` was being
 read as "the C++ surface is accounted for" while being silent about two whole families. The extractor
-compiled ONE TU, `#include "nros/nros.hpp"`, which never includes `component_node.hpp` (ZERO ledger
-rows repo-wide contained `ComponentNode`) and never defined `NROS_CPP_STD`, so `std_compat.hpp` was
-included-but-compiled-out. It produced two wrong rows in one day. Fixed by extracting the UNION of
+compiled ONE TU, `#include "nros/nros.hpp"`, which at the time never included `component_node.hpp`
+(ZERO ledger rows repo-wide contained `ComponentNode`) and never defined `NROS_CPP_STD`, so
+`std_compat.hpp` was included-but-compiled-out. (The umbrella half of that description EXPIRED on
+2026-09-07: phase-417 W2.b added an unconditional `#include "nros/component_node.hpp"` at
+`nros.hpp:62`. The fix here survives it — the extractor still takes the UNION, and the
+`component_node.hpp` TU now contributes zero records because the base TU already reaches them, so
+it stands as a tripwire against the umbrella narrowing again rather than as a source of rows.) It produced two wrong rows in one day. Fixed by extracting the UNION of
 three TUs, with the std flavour extracted SEPARATELY and tagged `std_only` (a `no_std` consumer does
 not get those symbols, so folding them in would trade one wrong answer for another). 11 + 17 items
 were invisible; closing it produced 46 unledgered rows, now written — 11 of which are TYPE-NAME
