@@ -114,7 +114,13 @@ INC=(-Itarget/nros-cpp-generated
 INC_BASE=("${INC[@]}")
 
 # Types whose layout must not move. Add a type here when it gains members.
-TYPES=("rclcpp::Node" "::nros::Node" "::nros::QoS")
+# `Result` and `ResultOf<int>` are the two halves of the error channel
+# (phase-427 W8). They are the cheapest possible subjects — one enum and one
+# value — which is exactly why they belong here: `result.hpp` is the header
+# every other one reaches, so a capability gate that grew a member there
+# would move a layout in every TU of every image.
+TYPES=("rclcpp::Node" "::nros::Node" "::nros::QoS" "::nros::Result"
+       "::nros::ResultOf<int>")
 
 # Every capability macro the public headers define for themselves, plus the
 # consumer-facing opt-in. Forcing one ON is exactly what px4 does.

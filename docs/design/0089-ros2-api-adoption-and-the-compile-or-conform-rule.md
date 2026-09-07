@@ -324,9 +324,9 @@ Only when the wrapper must satisfy a language contract the Rust side cannot
 express, and then it is recorded rather than assumed. The bar is the same one
 RFC-0020 audits against, and a new second path needs: what language contract
 forces it, why no FFI slot can carry it, and what keeps the two from drifting.
-`nros::Expected<T>` is the model — it exists because RFC-0018 forbids
-exceptions and Rust's `Result` cannot cross `extern "C"`, and it holds no state
-of its own.
+`nros::ResultOf<T>` (`Expected<T>` until phase-427 W8) is the model — it exists
+because RFC-0018 forbids exceptions and Rust's `Result` cannot cross
+`extern "C"`, and it holds no state of its own.
 
 ## Naming: replace, with alias as the migration step
 
@@ -568,13 +568,42 @@ Two channels, and the value-carrying one is renamed:
 | --- | --- |
 | cannot fail; answers a question | `bool` |
 | can fail, produces nothing | `Result` |
-| can fail, produces a value | `Result<T>` — **today's `Expected<T>`, renamed** |
+| can fail, produces a value | `ResultOf<T>` — **today's `Expected<T>`, renamed** |
 | **upstream THROWS** | `Result<T>` (or `Result`), never an exception — RFC-0018 |
 | a ported API whose upstream channel is `bool` | `bool`, unchanged |
 
-`Result` becomes `Result<void>` with `Result` as the alias, so there is one
-template and one name rather than two unrelated types a reader must learn.
-`Expected<T>` survives as a deprecated alias for one release.
+`Result` becomes the `void` case of one template, with `Result` as the alias, so
+there is one template rather than two unrelated types a reader must learn.
+`Expected<T>` survives as a deprecated spelling for one release.
+
+**CORRECTED 2026-09-07, when W8 implemented it: the template cannot also be
+called `Result`.** This section said `Result<T>`, and that spelling is not
+available — an identifier in a C++ scope names a class, a class template, or an
+alias, never two of those. All three routes were measured on gcc 12.3 and
+clang 14 and all three are ill-formed:
+
+```
+template <typename T = void> class Result;  Result f();
+    "invalid use of template-name 'Result' without an argument list" (c++14)
+    "deduced class type 'Result' in function return type"           (c++17)
+template <typename T> class Result;  class Result { };
+    "class template 'Result' redeclared as non-template"
+template <typename T> class Result;  using Result = Result<void>;
+    "redeclared as different kind of entity"
+```
+
+So the STRUCTURE this section asks for landed in full — one template, the
+value-less case IS its `void` specialization, `Result` is an alias for that
+specialization, and there are no longer two unrelated types — and only the
+template's own spelling differs: it is **`ResultOf<T>`**. `Result` keeps the
+bare name because that is what 1100+ call sites and the whole public API already
+write for the void case, and a name used bare is the one worth keeping bare.
+
+The deprecation of the old name is a `[[deprecated]]` **class** template that
+converts from `ResultOf<T>`, not the alias template the obvious reading asks
+for: measured, `[[deprecated]]` on an alias template warns on gcc 12.3 and is
+SILENT on clang 14, both standards. A deprecation half our users are never told
+about is just an alias, so the shape follows the diagnostic.
 
 Two properties this has to keep, both already true and both worth stating so a
 refactor does not lose them:
@@ -1070,7 +1099,7 @@ shim, so both are available on every target.
 | the operation | channel |
 | --- | --- |
 | ours-only, can fail, produces nothing | `Result` |
-| ours-only, can fail, produces a value | `Expected<T>` |
+| ours-only, can fail, produces a value | `ResultOf<T>` (was `Expected<T>`) |
 | a state query that cannot fail | `bool` |
 | **a PORTED API** | **upstream's channel, even when that is `bool`** |
 
@@ -1079,12 +1108,21 @@ The last row is clause 2 outranking local consistency, and it is load-bearing:
 tidier all-`Expected` surface would be a preference recorded as a divergence,
 which RFC-0036 forbids.
 
-**What this makes outstanding:** `Result` and `Expected<T>` both need
-`[[nodiscard]]` (`NROS_NODISCARD` on C++14 targets). Without it,
-`rclcpp::init(argc, argv);` as a bare statement is a signature change the
-compiler does not point at — the exact case the governing principle says must
-be made loud by other means. `grep -n nodiscard` over `result.hpp` returns
-nothing today.
+**What this made outstanding — CLOSED by phase-427 W8 (2026-09-07):** both
+halves now carry `NROS_NODISCARD`, and the `cpp` lane compiles a TU that
+discards each of them and requires the build to fail.
+
+One correction to the sentence that motivated it. `rclcpp::init(argc, argv);`
+as a bare statement is NOT the case the attribute catches, because
+`rclcpp::init` returns `void` here — deliberately, by the ported-channel rule
+two paragraphs up. The case is the WIDENING one layer down: `nros::init()`
+returns a `Result` where `rclcpp::init()` returns nothing, and it is a call to
+the widened form whose discarded value nothing would otherwise point at. The
+attribute found two live instances of exactly that on its first run:
+`rclcpp::shutdown()` was discarding `nros::shutdown()`'s `Result` and answering
+`true` unconditionally, and the two ported-file probes drop `publish()`'s
+result the way an upstream file does, which is the porting cost this rule
+exists to charge rather than hide.
 
 ### 4. The out-ref `create_*` family — forced by the arena, not a style
 

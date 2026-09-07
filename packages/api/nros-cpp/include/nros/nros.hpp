@@ -411,9 +411,16 @@ inline void init(int argc, char const* const* argv) {
 inline void init() {
     (void)::nros::init();
 }
+/// `rclcpp::shutdown()` — ADOPT. Upstream's channel here is `bool`, so ours is
+/// too (RFC-0089's error-channel rule: a ported API keeps upstream's channel
+/// even when that is `bool`).
+///
+/// It used to discard `nros::shutdown()`'s `Result` and answer `true`
+/// unconditionally. `NROS_NODISCARD` on `Result` is what pointed at it
+/// (phase-427 W8) — a fini that failed reported success, which is the exact
+/// silence the attribute exists to break.
 inline bool shutdown() {
-    ::nros::shutdown();
-    return true;
+    return ::nros::shutdown().ok();
 }
 inline bool ok() {
     return ::nros::ok();

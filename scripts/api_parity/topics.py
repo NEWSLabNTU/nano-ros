@@ -161,7 +161,7 @@ TOPICS = [
     (
         "types",
         re.compile(
-            r"_callback_t$|_t$|ErrorCode|RetCode|ReturnCode|\bResult\b|Expected"
+            r"_callback_t$|_t$|ErrorCode|RetCode|ReturnCode|\bResult\b|ResultOf|Expected"
             r"|\bFuture\b|Promise|Span|FixedString|FixedSequence|HeapString"
             r"|HeapSequence|Borrowed"
         ),
@@ -479,6 +479,11 @@ def self_test():
     check("cdr_read_f32", "serde")
     check("nros_ret_t", "types")
     check("Expected::value", "types")
+    # phase-427 W8 renamed `Expected<T>` to `ResultOf<T>`. `\bResult\b` does not
+    # match it -- there is no word boundary after "Result" -- so without its own
+    # alternative the error channel's value half files under `other`, one shard
+    # away from `Result` and `ErrorCode`.
+    check("ResultOf", "types")
     check("BOOT_SET_DOMAIN", "boot")
     check("BakedBootConfig::new", "boot")
     # A feature keeps its own typedef: `types` is checked after every feature.

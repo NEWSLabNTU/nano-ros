@@ -314,16 +314,16 @@ template <typename M> class Subscription {
 
     /// Phase 124.A.7 — try to borrow the next message in place. Returns
     /// `View` with data when a message is ready, empty `View` when not.
-    /// On error returns `Expected::error`.
-    Expected<View> try_borrow() {
-        if (!initialized_) return Expected<View>::error(Result(ErrorCode::NotInitialized));
+    /// On error returns `ResultOf::error`.
+    ResultOf<View> try_borrow() {
+        if (!initialized_) return ResultOf<View>::error(Result(ErrorCode::NotInitialized));
         const uint8_t* buf = nullptr;
         size_t len = 0;
         void* token = nullptr;
         int32_t rc = nros_cpp_subscription_borrow(storage_, &buf, &len, &token);
-        if (rc < 0) return Expected<View>::error(Result(rc));
-        if (rc == 0) return Expected<View>::ok(View{});
-        return Expected<View>::ok(View{storage_, buf, len, token});
+        if (rc < 0) return ResultOf<View>::error(Result(rc));
+        if (rc == 0) return ResultOf<View>::ok(View{});
+        return ResultOf<View>::ok(View{storage_, buf, len, token});
     }
 
     /// Phase 124.D.1 — burst-take.
@@ -805,12 +805,12 @@ Result Node::create_subscription_with_info(Subscription<M>& out, const char* top
 /// with `create_publisher` so the full pub/sub create dance is
 /// expressible as a chain of `auto`-typed factories.
 template <typename M>
-inline Expected<Subscription<M>> create_subscription(Node& node, const char* topic,
+inline ResultOf<Subscription<M>> create_subscription(Node& node, const char* topic,
                                                      const QoS& qos = QoS::default_profile()) {
     Subscription<M> s;
     Result r = node.create_subscription<M>(s, topic, qos);
-    if (!r.ok()) return Expected<Subscription<M>>::error(r);
-    return Expected<Subscription<M>>::ok(std::move(s));
+    if (!r.ok()) return ResultOf<Subscription<M>>::error(r);
+    return ResultOf<Subscription<M>>::ok(std::move(s));
 }
 
 #if defined(NANO_ROS_SAFETY_E2E)

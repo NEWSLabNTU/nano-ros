@@ -80,7 +80,7 @@
   },
   "cpp:Expected": {
     "verdict": "divergence",
-    "why": "value-or-error where rclcpp returns the value and throws on failure. Same no-exceptions constraint. Not `std::expected`: that is C++23 and the freestanding builds have no STL."
+    "why": "value-or-error where rclcpp returns the value and throws on failure. Same no-exceptions constraint. Not `std::expected`: that is C++23 and the freestanding builds have no STL. DEPRECATED 2026-09-07 (phase-427 W8): renamed to `cpp:ResultOf`, and this spelling survives one release as a `[[deprecated]]` class template that converts from it. See that row for why the family could not simply be called `Result<T>`."
   },
   "cpp:Future": {
     "verdict": "divergence",
@@ -92,7 +92,11 @@
   },
   "cpp:Result": {
     "verdict": "divergence",
-    "why": "rclcpp signals failure by throwing, so it needs no result type. nano-ros builds with -fno-exceptions on Zephyr, FreeRTOS and bare-metal (RFC-0018), so every fallible call returns `nros::Result` and NROS_TRY() early-returns it. The constraint is no exceptions; the type is what replaces them."
+    "why": "rclcpp signals failure by throwing, so it needs no result type. nano-ros builds with -fno-exceptions on Zephyr, FreeRTOS and bare-metal (RFC-0018), so every fallible call returns `nros::Result` and NROS_TRY() early-returns it. The constraint is no exceptions; the type is what replaces them. AMENDED 2026-09-07 (phase-427 W8): `Result` is now an ALIAS for `ResultOf<void>` -- one template carries the whole error channel -- and it carries `NROS_NODISCARD`, so dropping a failure on the floor is a diagnostic. The name, the size and the members a caller writes are unchanged."
+  },
+  "cpp:ResultOf": {
+    "verdict": "divergence",
+    "why": "phase-427 W8, RFC-0089 'The error channel, settled'. The value-carrying half of the error channel -- what a fallible call returns when it also produces a value -- and since 2026-09-07 the ONE template both halves are: `Result` is `ResultOf<void>`. Same no-exceptions constraint as `cpp:Result`; rclcpp returns the value and throws, and -fno-exceptions (RFC-0018) removes that channel. Was `cpp:Expected`, which remains for one release as a deprecated spelling. The RFC asked for the template to be called `Result`, with `Result` also naming the void case; C++ cannot do that -- an identifier is a class, a class template or an alias, never two -- and all three routes were measured ill-formed on gcc 12.3 and clang 14 (see the comment on the template in `nros/result.hpp`). `Result` kept the bare spelling because it is the one 1100+ call sites and the whole public API already write. Carries `NROS_NODISCARD`."
   },
   "rust:DynamicMessageError": {
     "verdict": "declined",

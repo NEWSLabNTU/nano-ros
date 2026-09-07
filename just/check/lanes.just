@@ -1001,6 +1001,79 @@ cpp: cpp-fmt
         echo "       rename ships with no migration warning at all." >&2; \
         exit 1; \
     fi
+    # phase-427 W8 — the error channel is ONE template, and neither half of it
+    # may be silently discarded.
+    #
+    # POSITIVE FIRST, and it is not a formality here: the positive TU includes
+    # the umbrella, so it also asserts that OUR OWN headers never drop a
+    # `Result`. Writing it is what found `rclcpp::shutdown()` discarding
+    # `nros::shutdown()` and returning `true` unconditionally.
+    for probe in result_nodiscard result_nodiscard_probe expected_deprecation_probe; do \
+        test -f "packages/api/nros-cpp/tests/compile/$probe.cpp" || { \
+            echo "ERROR: $probe.cpp is MISSING -- the expected-failure checks below" >&2; \
+            echo "       would PASS on a missing file, which is why this asserts first." >&2; \
+            exit 1; \
+        }; \
+    done
+    echo "  - phase-427 W8: a CHECKED result compiles clean (c++14, -Werror=unused-result)"
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -Werror=unused-result -Werror=deprecated-declarations \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/result_nodiscard.cpp
+    # ...and a DISCARDED one must not. Exit code alone would also be produced by
+    # a typo in an include path, so the diagnostic is counted: BOTH halves of
+    # the channel are discarded in that TU, `NROS_NODISCARD` sits on the
+    # template and on its `void` specialization separately, and an attribute
+    # lost from either one is exactly the silence this asserts against.
+    echo "  - phase-427 W8: a DISCARDED result fails the build (expected failure, both halves)"
+    _nd_out="$(c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Werror=unused-result \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/result_nodiscard_probe.cpp 2>&1)" && { \
+        echo "ERROR: result_nodiscard_probe.cpp COMPILED. A discarded nros::Result is" >&2; \
+        echo "       not a diagnostic, so NROS_NODISCARD is reaching no caller and a" >&2; \
+        echo "       failed operation can be dropped in silence." >&2; \
+        exit 1; \
+    }
+    _nd_hits="$(printf '%s\n' "$_nd_out" | grep -c 'unused-result' || true)"
+    if [ "${_nd_hits:-0}" -lt 2 ]; then \
+        echo "ERROR: the discarded-result probe failed with $_nd_hits unused-result" >&2; \
+        echo "       diagnostic(s), expected 2 (Result and ResultOf<int>). It broke for" >&2; \
+        echo "       another reason, or one of the two attributes is not firing." >&2; \
+        echo "--- compiler said ---" >&2; echo "$_nd_out" >&2; \
+        exit 1; \
+    fi
+    # ...and the old `Expected<T>` spelling must WARN. Same shape as the QoS and
+    # receive-verb deprecations above; separate from them because a shared
+    # expected-failure cannot say WHICH deprecation fired.
+    echo "  - phase-427 W8: the Expected<T> spelling is deprecated (expected failure)"
+    _dep_out="$(c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -Werror=deprecated-declarations \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/expected_deprecation_probe.cpp 2>&1)" && { \
+        echo "ERROR: expected_deprecation_probe.cpp compiled clean under" >&2; \
+        echo "       -Werror=deprecated-declarations. nros::Expected<T> ships with no" >&2; \
+        echo "       migration warning, so the rename is invisible until the name goes." >&2; \
+        exit 1; \
+    }
+    nros_grep_q "deprecated" <(printf '%s\n' "$_dep_out") && _rc=0 || _rc=$?
+    if [ "$_rc" -ne 0 ]; then \
+        echo "ERROR: expected_deprecation_probe.cpp failed WITHOUT a deprecation" >&2; \
+        echo "       diagnostic -- it broke for another reason, so this proves nothing." >&2; \
+        echo "--- compiler said ---" >&2; echo "$_dep_out" >&2; \
+        exit 1; \
+    fi
     # issue #201 — HeapSequence element-destructor RUNTIME probe: compiled AND
     # executed (counting allocator in the TU; asserts zero live allocations
     # across dtor / move-assign / clear / reserve-relocation of a two-level
