@@ -422,13 +422,15 @@ One thing is said once and not eleven times: **no release is cut yet.** It sits
 in `installation.md`, and `install.sh` says the same thing itself when run early,
 so a user who skips the book still lands somewhere useful.
 
-**Filed while verifying:** [#1110](../issues/1110-rustdoc-broken-intra-doc-link-in-clienttrait.md)
-— `just book` and the docs deploy have been red since 2026-09-03. `3941b569a`
-deleted `ClientTrait::is_server_ready`; the paragraph beside it still links to it,
-rustdoc's broken-link lint is deny-level, and nothing on a merge-gating lane runs
-rustdoc. Not this phase's change (`mdbook build` alone is green, and `just book`
-was red before the edit and after it), and the class is 0319/0896 again: a correct
-check on a path nothing traverses.
+**Filed while verifying, and FIXED since (issue 1110):** `just book` and the
+docs deploy were red from 2026-09-03. `3941b569a` deleted
+`ClientTrait::is_server_ready`; the paragraph beside it still linked to it,
+rustdoc's broken-link lint is deny-level, and nothing on a merge-gating lane ran
+rustdoc. Not this phase's change (`mdbook build` alone was green, and `just
+book` was red before the edit and after it), and the class is 0319/0896 again: a
+correct check on a path nothing traverses. `just check rustdoc-links` now
+reports the six published crates documenting cleanly, which is the lane that
+class was missing.
 
 ## What this phase must not do
 
