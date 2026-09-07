@@ -129,25 +129,33 @@ ZERO_LEGAL = {
 # reproduced through them. That is a reason to rank them below the derived
 # knobs, not a reason to call them safe.
 #
-# Issue 1131 ruled the other fourteen (ten guarded here, and two the widened
-# scan below turned out to have carried a guard all along). What is LEFT is left
-# on purpose: it has a real argument that zero is the right answer, and that
-# argument needs a measurement nobody has taken. A guard would foreclose the
-# saving the way issue 1015's first fix foreclosed issue 1033's.
+# Issue 1131 ruled all fifteen, and the table below is EMPTY. It stays here
+# because emptiness is the claim: a new knob-sized array with no ruling lands
+# in it and trips `UNCLASSIFIED_CEILING`, which is now 0.
+#
+# The last two were ruled on measurements that disagree about WHY while
+# agreeing on the floor, which is the point of ruling each one separately:
+#
+#   * NROS_RMW_UORB_PX4_MAX_CALLBACKS — `Slot g_pool[N]` is C++, and ISO C++
+#     has no zero-size array at all, so 0 is not a saving that the language
+#     will express. Guarded beside the array.
+#   * NROS_ZEPHYR_MAX_TIERS — the C side has no such refusal: GCC's
+#     zero-length-array extension makes `K_THREAD_STACK_ARRAY_DEFINE(x, 0, N)`
+#     compile CLEAN (measured under the real arm-zephyr-eabi flags: `B x`,
+#     size 0, no diagnostic), so nothing but a guard stands between a `-D` and
+#     an image whose every tier spawn fails. Its case for zero rested on
+#     "64 KiB in every Zephyr image, tiers declared or not", and that premise
+#     is false: --gc-sections drops the section in any image declaring no
+#     tier. Over the 91 built images, 4 carry `nros_tier_stacks` and 87 do
+#     not, and the 4 are exactly the four realtime-entry images that declare
+#     tiers. Zero reclaims nothing the linker has not already reclaimed, while
+#     a tiered image wanting a SMALLER pool can still say 2 — the saving a
+#     floor of 1 does not foreclose.
 UNCLASSIFIED = {
-    # 16,384 bytes of stack a slot x 4 slots = 64 KiB of .noinit, present in
-    # EVERY Zephyr image whether or not the system declares a tier — nothing
-    # produces this knob, so 4 is what every image compiles. A tierless image
-    # setting 0 is the same shape as XRCE_MAX_SUBSCRIBERS=0, and the refusal is
-    # already loud (`entry_tiers.rs` prints "failed to spawn tier ... pool
-    # exhausted?" per tier). NEEDS: a Zephyr build at
-    # -DNROS_ZEPHYR_MAX_TIERS=0 proving K_THREAD_STACK_ARRAY_DEFINE accepts a
-    # count of 0, plus a `just mem-report` delta for the 64 KiB.
-    "NROS_ZEPHYR_MAX_TIERS": "zephyr/nros_platform_zephyr_shims.c",
 }
 # The list may SHRINK. Raising this is a deliberate edit that says "one more
 # knob-sized array ships unruled on", beside the entry that says which.
-UNCLASSIFIED_CEILING = 1
+UNCLASSIFIED_CEILING = 0
 
 # --- the producer half -----------------------------------------------------
 
@@ -631,15 +639,28 @@ def selftest() -> int:
     assert any(
         "ALSO carries" in p for p in check_arrays({zl: {"path": "x.h", "guarded": True}})
     )
-    uc = next(iter(UNCLASSIFIED))
-    assert any(
-        "remove it from\n    UNCLASSIFIED" in p
-        for p in check_arrays({uc: {"path": "x.c", "guarded": True}})
-    )
-    # A table entry the scan no longer finds at all.
-    stale = check_arrays({})
-    assert any(f"ZERO_LEGAL names {zl}" in p for p in stale), stale
-    assert any(f"UNCLASSIFIED names {uc}" in p for p in stale), stale
+    # These two controls are driven from a SYNTHETIC entry, not from whatever
+    # happens to be in the table. Issue 1131 ruled the last knob, so
+    # UNCLASSIFIED is now EMPTY and `next(iter(...))` raises StopIteration --
+    # a control that can only run while the backlog is non-empty is a control
+    # that retires itself at exactly the moment the table starts needing
+    # protection. The table's job from here is to stay empty; that is what
+    # UNCLASSIFIED_CEILING = 0 asserts, and these keep its machinery proven.
+    uc = "NROS_SELFTEST_SYNTHETIC_UNRULED"
+    _saved_unclassified = dict(UNCLASSIFIED)
+    UNCLASSIFIED[uc] = "x.c"
+    try:
+        assert any(
+            "remove it from\n    UNCLASSIFIED" in p
+            for p in check_arrays({uc: {"path": "x.c", "guarded": True}})
+        )
+        # A table entry the scan no longer finds at all.
+        stale = check_arrays({})
+        assert any(f"ZERO_LEGAL names {zl}" in p for p in stale), stale
+        assert any(f"UNCLASSIFIED names {uc}" in p for p in stale), stale
+    finally:
+        UNCLASSIFIED.clear()
+        UNCLASSIFIED.update(_saved_unclassified)
 
     # PRODUCERS. Green when both lanes floor all three knobs.
     assert check_producers(producer_texts()) == []

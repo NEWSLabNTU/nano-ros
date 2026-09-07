@@ -785,16 +785,25 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `_nros_c_array_pool_floor`), keep `#if X < 1 / #error` beside the array as the
   backstop that binds a producer neither reaches. Gate: `check-c-array-pool-floors`
   (also refuses an unruled new one; the 1 still unruled is issue 1131 — the
-  other 14 were ruled there, 10 guarded and 4 already covered). **A third
-  outcome exists and `NROS_RMW_UORB_PX4_MAX_CALLBACKS` is it: zero silences
+  other 14 were ruled there, 10 guarded and 4 already covered). **Issue 1131
+  has since ruled the last one too, so the table is EMPTY and
+  `UNCLASSIFIED_CEILING` is 0.** The final two agree on the floor and disagree
+  entirely about WHY, which is the case for ruling each separately rather than
+  by analogy. `NROS_RMW_UORB_PX4_MAX_CALLBACKS`: zero silences
   nothing at RUNTIME (the pool's exhaustion path is the polling fallback that
   every non-PX4 build already links) and still loses, because `Slot g_pool[0]`
   is a zero-size array ISO C++ forbids and the TU is built `-Wpedantic` inside a
   `-Werror` PX4 — so "does zero break the runtime?" is not the whole question,
-  and 1033's C measurement does not carry to a C++ pool.** A guard is only safe
+  and 1033's C measurement does not carry to a C++ pool. A guard is only safe
   when it forecloses nothing: here the polling-only image already has
   `NROS_RMW_UORB_BUILD_PX4_GLUE=OFF`, which removes the pool rather than
-  emptying it. **BOTH gates in
+  emptying it. `NROS_ZEPHYR_MAX_TIERS` has NO such refusal from the language —
+  GCC's zero-length-array extension compiles
+  `K_THREAD_STACK_ARRAY_DEFINE(x, 0, N)` clean, size 0, no diagnostic — so only
+  a guard stands between a `-D` and an image whose every tier spawn fails. Its
+  case for zero was "64 KiB in EVERY Zephyr image", and `--gc-sections` had
+  already dropped it in 87 of 91 built images, the 4 carriers being exactly the
+  4 that declare tiers: zero reclaimed nothing the linker had not. **BOTH gates in
   this family had a REACH narrower than the rule they enforce** (0196's shape),
   and issue 1131 hit both at once. `check-c-array-pool-floors` required a knob's
   `#ifndef` and `#define` on ADJACENT LINES, so the two knobs that document
