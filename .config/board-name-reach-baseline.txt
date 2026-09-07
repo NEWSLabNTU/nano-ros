@@ -3,5 +3,3 @@
 #
 # Regenerate ONLY to record a rename that removed one:
 #     python3 scripts/check-board-name-reach.py --write-baseline
-qemu-riscv64-threadx
-riscv64-qemu

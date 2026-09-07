@@ -2402,13 +2402,13 @@ rate_hz = 5
         let raw = r#"
 [application]
 name = "demo_app"
-deploy = ["native", "qemu-arm-baremetal"]
+deploy = ["native", "mps2-an385-baremetal"]
 "#;
         let v: PackageMetadataNros = toml::from_str(raw).expect("parse");
         v.validate().expect("application-shape ok");
         let app = v.application.as_ref().expect("application present");
         assert_eq!(app.name.as_deref(), Some("demo_app"));
-        assert_eq!(app.deploy, vec!["native", "qemu-arm-baremetal"]);
+        assert_eq!(app.deploy, vec!["native", "mps2-an385-baremetal"]);
         assert!(v.component.is_none());
         assert!(v.components.is_empty());
 
