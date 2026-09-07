@@ -531,6 +531,19 @@ nuttx-links-snapshot:
 nuttx-shared-tree-headers:
     @python3 scripts/check-nuttx-shared-tree-headers.py
 
+# phase-413 W2 — RFC-0090's version guard is fail-closed, so a producer of
+# `nros_config_generated.h` that does not define the two version macros stops
+# the build of every generated message header that includes it. Phase-429 W1
+# taught three producers and missed the hand-maintained NuttX fallback; the
+# nightly `nuttx` cell was red for two days on the resulting `#error`. A
+# producer is identified by what makes it one (it defines
+# NROS_EXECUTOR_STORAGE_SIZE), so producer number five is covered too, and the
+# fallback's LITERAL values are compared against the runtime's constants —
+# exact, not an upper bound like every size macro beside them. Buildless.
+[private]
+config-header-producers:
+    @python3 scripts/check-config-header-producers.py
+
 # `nros-platform-posix` is named for a standard — keep it holding to one, so
 # the board layer stays the only place that is Linux-only (phase-401 W4).
 [private]
