@@ -368,6 +368,11 @@ DEFINES="$DEFINES -DZPICO_MAX_PUBLISHERS=8"
 DEFINES="$DEFINES -DZPICO_MAX_SUBSCRIBERS=8"
 DEFINES="$DEFINES -DZPICO_MAX_QUERYABLES=8"
 DEFINES="$DEFINES -DZPICO_MAX_LIVELINESS=16"
+# phase-412 — the graph cache, matching the C `#ifndef` fallback. It gained a
+# cargo-lane producer (`ShimConfig::defines()`), and this lane builds the shim
+# by hand, so leaving it out would let the shim default win HERE only: issue
+# 0460's shape, and what `check-zenoh-lane-ownership` refuses.
+DEFINES="$DEFINES -DZPICO_GRAPH_CACHE_SIZE=65536"
 DEFINES="$DEFINES -DZPICO_MAX_PENDING_GETS=4"
 DEFINES="$DEFINES -DZPICO_MAX_SESSIONS=1"
 DEFINES="$DEFINES -DZPICO_GET_REPLY_BUF_SIZE=4096"

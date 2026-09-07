@@ -29,6 +29,21 @@ pub struct ShimConfig {
     /// costs this, and phase-392 W5.b2 says it is paid in the same wave.
     pub queryable_table_declared: bool,
     pub max_liveliness: usize,
+    /// Bytes of NUL-separated liveliness keyexprs the per-session graph cache
+    /// holds (`ZPICO_GRAPH_CACHE_SIZE`, default 65536).
+    ///
+    /// phase-412 — it reached the C compile on the ZEPHYR CMAKE lane only
+    /// (`nros_rmw_zenoh.cmake` passes `CONFIG_NROS_GRAPH_CACHE_SIZE` straight
+    /// through), so every build that compiles `zpico.c` through cargo — every
+    /// FreeRTOS, ThreadX, NuttX, posix and bare-metal image, and the Zephyr
+    /// RUST lane — took the 65,536-byte default with no way to state another.
+    /// Issue 0460's shape: a knob that reaches one lane and not the other.
+    ///
+    /// It is `.bss` and it is per SESSION, so the cost is this times
+    /// `ZPICO_MAX_SESSIONS`. An embedded image with a small graph should turn
+    /// it down; overflow is COUNTED rather than truncated, so a too-small cache
+    /// degrades `service_is_ready` to "cannot say" instead of answering wrong.
+    pub graph_cache_size: usize,
     pub max_pending_gets: usize,
     /// phase-328 (issue 0348) — size of the C shim's session pool
     /// (`ZPICO_MAX_SESSIONS`, default 1). A single-session target keeps the
@@ -167,6 +182,7 @@ impl ShimConfig {
             ("ZPICO_MAX_SUBSCRIBERS", self.max_subscribers.to_string()),
             ("ZPICO_MAX_QUERYABLES", self.max_queryables.to_string()),
             ("ZPICO_MAX_LIVELINESS", self.max_liveliness.to_string()),
+            ("ZPICO_GRAPH_CACHE_SIZE", self.graph_cache_size.to_string()),
             ("ZPICO_MAX_PENDING_GETS", self.max_pending_gets.to_string()),
             ("ZPICO_MAX_SESSIONS", self.max_sessions.to_string()),
             (
@@ -1127,6 +1143,7 @@ int32_t zpico_init(void);\n";
             max_queryables: 3,
             queryable_table_declared: true,
             max_liveliness: 4,
+            graph_cache_size: 4096,
             max_pending_gets: 5,
             max_sessions: 9,
             get_reply_buf_size: 6,
@@ -1165,6 +1182,7 @@ int32_t zpico_init(void);\n";
                 max_queryables: 3,
                 queryable_table_declared: false,
                 max_liveliness: 4,
+                graph_cache_size: 4096,
                 max_pending_gets: 5,
                 max_sessions: 1,
                 get_reply_buf_size: 6,

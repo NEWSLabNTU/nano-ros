@@ -545,6 +545,11 @@ fn shim_config_from_env() -> ShimConfig {
         max_queryables,
         queryable_table_declared: sizing.declared,
         max_liveliness: env_usize("ZPICO_MAX_LIVELINESS", 16),
+        // phase-412 — the graph cache, which had NO cargo-lane producer at all.
+        // Default matches the C `#ifndef` fallback exactly: the two must agree,
+        // because a build that goes through cargo now states the number and one
+        // that does not still falls through to the literal in `zpico.c`.
+        graph_cache_size: env_usize("ZPICO_GRAPH_CACHE_SIZE", 65536),
         max_pending_gets: env_usize("ZPICO_MAX_PENDING_GETS", 4),
         max_sessions: env_usize("ZPICO_MAX_SESSIONS", 1),
         // phase-400 W6 — BUILTINS, like the tx pair below: these five are
@@ -618,6 +623,7 @@ const KCONFIG_KNOBS: &[(&str, &str)] = &[
     ("ZPICO_MAX_SUBSCRIBERS", "CONFIG_NROS_MAX_SUBSCRIBERS"),
     ("ZPICO_MAX_QUERYABLES", "CONFIG_NROS_MAX_QUERYABLES"),
     ("ZPICO_MAX_LIVELINESS", "CONFIG_NROS_MAX_LIVELINESS"),
+    ("ZPICO_GRAPH_CACHE_SIZE", "CONFIG_NROS_GRAPH_CACHE_SIZE"),
     ("ZPICO_MAX_PENDING_GETS", "CONFIG_NROS_MAX_PENDING_GETS"),
     ("ZPICO_GET_REPLY_BUF_SIZE", "CONFIG_NROS_GET_REPLY_BUF_SIZE"),
     (

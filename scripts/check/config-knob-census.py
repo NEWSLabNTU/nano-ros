@@ -71,6 +71,15 @@ KNOB_CLASS = {
         "the runtime-owned take buffer. phase-403 makes it per-type; it is in "
         "the ladder today as the fallback for a type with no bound",
     ),
+    # phase-412 — a SIZING knob, not a derived one, and it is the peer graph
+    # that sizes it: the cache holds a liveliness keyexpr for every entity of
+    # every node on the domain, remote included. Not a property of this image,
+    # so no inventory can answer it and an operator states it.
+    "ZPICO_GRAPH_CACHE_SIZE": (
+        "sizing",
+        "per-session graph cache bytes; sized by the PEER graph, so it is "
+        "stated rather than derived",
+    ),
     "ZPICO_SUBSCRIBER_BUFFER_SIZE": ("derived", "SMALL_PAYLOADS class (phase-403)"),
     "ZPICO_SUBSCRIBER_LARGE_SIZE": ("derived", "LARGE_PAYLOADS class (phase-403)"),
     "ZPICO_SUBSCRIBER_SIZE_THRESHOLD": ("derived", "SMALL_CLASS_CEILING (phase-403)"),
