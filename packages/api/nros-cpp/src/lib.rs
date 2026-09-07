@@ -3192,6 +3192,56 @@ pub unsafe extern "C" fn nros_cpp_bind_group_sched(
 /// Call from a tier's `setup(executor)`, beside the other declarations the
 /// generated entry already makes there.
 ///
+/// Fraction of a thread's stack that must stay unused before
+/// `stack-headroom-runtime` complains: one eighth, 12.5 %.
+///
+/// A power of two so the derivation is a shift, and conservative enough that a
+/// healthy tier never trips it — a bound a healthy tier trips is noise, and
+/// noise gets muted, which costs more than having no bound at all.
+const STACK_HEADROOM_DIVISOR: usize = 8;
+
+/// Derive a default minimum-headroom bound from the stack a tier was actually
+/// created with.
+///
+/// `check_stack_headroom` documents why the bound is a DECLARATION rather than
+/// a percentage: *"the executor never sees `stack_bytes` — it lives in the
+/// spawn attr and goes no further"*, and FreeRTOS reports a high-water mark
+/// without the size it was taken against, so the executor cannot compute a
+/// fraction even in principle.
+///
+/// The board can. `zephyr_run_tiers.c` and its FreeRTOS mirror hold
+/// `stack_bytes` because they just created the thread with it, so they are in
+/// a position to make the declaration on the tier's behalf. That is what this
+/// is for: the policy lives HERE, in one place, rather than being spelled
+/// twice in two board files that would drift.
+///
+/// `0` in gives `0` out — a tier that declared no stack size has made no claim
+/// to derive from, and `0` is the rule's own "no declaration" sentinel, which
+/// leaves it off.
+pub(crate) fn derive_min_stack_headroom(stack_bytes: usize) -> usize {
+    stack_bytes / STACK_HEADROOM_DIVISOR
+}
+
+/// Set the minimum stack headroom from the stack the thread was created with,
+/// using the default fraction.
+///
+/// Boards call this BEFORE the tier's `setup()`, which is what makes an
+/// explicit `nros_cpp_executor_set_min_stack_headroom` inside `setup` win:
+/// declared beats derived by ordering, with no precedence logic to keep in
+/// step. Same shape as `set_spin_nominal_us` (phase-436).
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_derive_min_stack_headroom(
+    handle: *mut c_void,
+    stack_bytes: usize,
+) -> nros_cpp_ret_t {
+    unsafe {
+        nros_cpp_executor_set_min_stack_headroom(handle, derive_min_stack_headroom(stack_bytes))
+    }
+}
+
 /// # Safety
 /// `handle` must be a live executor handle from this ABI, or NULL.
 #[unsafe(no_mangle)]
@@ -3836,6 +3886,46 @@ pub(crate) unsafe fn cstr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
     }
     let bytes = unsafe { core::slice::from_raw_parts(ptr.cast::<u8>(), len) };
     core::str::from_utf8(bytes).ok()
+}
+
+#[cfg(test)]
+mod stack_headroom_derivation_tests {
+    use super::derive_min_stack_headroom;
+
+    /// A tier that declares no stack size has made no claim the board can turn
+    /// into a bound, so the rule must stay OFF — `0` is the rule's own
+    /// "no declaration" sentinel.
+    #[test]
+    fn an_undeclared_stack_derives_no_bound() {
+        assert_eq!(derive_min_stack_headroom(0), 0);
+    }
+
+    /// The bound is a fixed fraction of the stack the thread was actually
+    /// created with.
+    #[test]
+    fn the_bound_is_an_eighth_of_the_declared_stack() {
+        assert_eq!(derive_min_stack_headroom(32_768), 4_096);
+        assert_eq!(derive_min_stack_headroom(8_192), 1_024);
+    }
+
+    /// The derived bound must leave the great majority of the stack usable —
+    /// a bound that a healthy tier trips is noise, and noise gets muted.
+    #[test]
+    fn the_bound_leaves_most_of_the_stack_usable() {
+        let stack = 32_768;
+        let bound = derive_min_stack_headroom(stack);
+        assert!(
+            bound * 4 < stack,
+            "a bound of {bound} on a {stack}-byte stack reserves too much"
+        );
+    }
+
+    /// A stack too small to yield a whole byte of bound derives nothing rather
+    /// than rounding up into a bound larger than the stack itself.
+    #[test]
+    fn a_stack_smaller_than_the_divisor_derives_no_bound() {
+        assert_eq!(derive_min_stack_headroom(4), 0);
+    }
 }
 
 #[cfg(test)]

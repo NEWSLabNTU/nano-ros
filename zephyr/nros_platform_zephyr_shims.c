@@ -679,6 +679,28 @@ void nros_zephyr_log_2int(const char* tag, int64_t a, int64_t b) {
 #endif
 
 K_THREAD_STACK_ARRAY_DEFINE(nros_tier_stacks, NROS_ZEPHYR_MAX_TIERS, NROS_ZEPHYR_TIER_STACK_SIZE);
+
+/* The stack a spawned tier thread ACTUALLY gets.
+ *
+ * `k_thread_create` below is passed NROS_ZEPHYR_TIER_STACK_SIZE, not the
+ * tier's declared `stack_bytes` — the pool slots are fixed at compile time, so
+ * a declared size can only be checked against the slot (and warned about),
+ * never honoured. Anything deriving a bound FROM the stack has to ask for this
+ * number rather than the declared one, or it measures against a stack that
+ * does not exist. */
+size_t nros_zephyr_tier_stack_size(void) {
+    return (size_t)NROS_ZEPHYR_TIER_STACK_SIZE;
+}
+
+/* The stack the BOOT tier runs on.
+ *
+ * The boot tier is not spawned — it runs on the Zephyr `main()` thread, which
+ * the kernel created with CONFIG_MAIN_STACK_SIZE before any nano-ros code ran.
+ * The tier spec's `stack_bytes` describes a thread that was never created, so
+ * this is the only honest answer for that tier. */
+size_t nros_zephyr_main_stack_size(void) {
+    return (size_t)CONFIG_MAIN_STACK_SIZE;
+}
 static struct k_thread nros_tier_threads[NROS_ZEPHYR_MAX_TIERS];
 static int nros_tier_index;
 

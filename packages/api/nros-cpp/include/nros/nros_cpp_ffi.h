@@ -1387,32 +1387,20 @@ nros_cpp_ret_t nros_cpp_bind_group_sched(void *handle,
                                          uint8_t sc_id);
 
 /**
- * Phase 305 W3 (issue 0255) — declare one launch `<remap from= to=/>` rule for
- * the node identified by `(node_name, node_namespace)`. Call BEFORE the node's
- * component registers its entities (the entry codegen emits these right after
- * `nros_cpp_node_create`); every subsequent entity registration resolves its
- * source name through the executor-side remap table (`~`/relative expansion +
- * exact-FQN match, first rule wins). Errors on a full table / oversized string
- * so a dropped routing rule is never silent.
+ * Set the minimum stack headroom from the stack the thread was created with,
+ * using the default fraction.
+ *
+ * Boards call this BEFORE the tier's `setup()`, which is what makes an
+ * explicit `nros_cpp_executor_set_min_stack_headroom` inside `setup` win:
+ * declared beats derived by ordering, with no precedence logic to keep in
+ * step. Same shape as `set_spin_nominal_us` (phase-436).
  *
  * # Safety
- * `handle` must be a context returned by `nros_cpp_init`.
- * `node_name`, `from`, `to` must be valid null-terminated UTF-8 strings.
- * `node_namespace` may be NULL (defaults to `"/"`), otherwise must be a valid
- * null-terminated UTF-8 string.
- * Declare the minimum stack headroom this executor's thread must keep, in
- * bytes. `0` (the default) leaves the `stack-headroom-runtime` rule off.
- *
- * Exists because the bound cannot be derived from anything the executor can
- * see. It never receives `stack_bytes` -- that lives in the spawn attr and
- * goes no further -- and no portable query returns a task's total stack, so
- * neither an absolute floor nor a percentage can be inferred. The entry that
- * spawned the thread is the only party that knows what it handed over, and
- * on a C++ image that entry is on this side of the ABI.
- *
- * Call from a tier's `setup(executor)`, beside the other declarations the
- * generated entry already makes there.
- *
+ * `handle` must be a live executor handle from this ABI, or NULL.
+ */
+nros_cpp_ret_t nros_cpp_executor_derive_min_stack_headroom(void *handle, size_t stack_bytes);
+
+/**
  * # Safety
  * `handle` must be a live executor handle from this ABI, or NULL.
  */

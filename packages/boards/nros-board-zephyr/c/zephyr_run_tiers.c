@@ -162,6 +162,14 @@ extern int nros_cpp_executor_open_over_session(void* session_handle, const char*
                                                uint32_t domain_id, void* out_storage);
 
 extern int nros_cpp_executor_set_active_groups(void* executor, const char* const* groups, size_t n);
+extern int nros_cpp_executor_derive_min_stack_headroom(void* executor, size_t stack_bytes);
+/* The stack a spawned tier thread actually gets (the fixed pool slot). The
+ * shim ignores the tier's declared `stack_bytes` — see its definition. */
+extern size_t nros_zephyr_tier_stack_size(void);
+/* The stack the boot tier runs on (the `main()` thread's
+ * CONFIG_MAIN_STACK_SIZE) — its spec's `stack_bytes` describes no real
+ * thread. */
+extern size_t nros_zephyr_main_stack_size(void);
 
 extern int nros_cpp_spin_once(void* handle, int32_t timeout_ms);
 
@@ -341,6 +349,27 @@ static void* zephyr_tier_task(void* arg) {
     /* Gate this executor to its tier's callback groups. */
     if (ctx->n_groups > 0 && ctx->groups != NULL) {
         nros_cpp_executor_set_active_groups(ctx->executor_storage, ctx->groups, ctx->n_groups);
+    }
+
+    /* phase-436 follow-up — declare a default stack-headroom bound from the
+     * stack this tier's thread was actually created with. The executor cannot
+     * derive one itself (`check_stack_headroom`: it never sees `stack_bytes`),
+     * but this layer can, because it just spawned the thread with that size.
+     *
+     * BEFORE `setup()` deliberately: an explicit
+     * `nros_cpp_executor_set_min_stack_headroom` inside the tier's setup then
+     * overwrites this, so declared beats derived by ordering alone.
+     *
+     * The SLOT size, not `ctx->stack_bytes`: the shim creates every tier
+     * thread with the fixed pool slot and only warns when a declared size
+     * exceeds it, so the declared number describes no real stack here. */
+    if (nros_cpp_executor_derive_min_stack_headroom(ctx->executor_storage,
+                                                    nros_zephyr_tier_stack_size()) != 0) {
+        /* Fail LOUD. A bound that was never set leaves `stack-headroom-runtime`
+         * off, and a monitor that silently fails to arm reads exactly like a
+         * system with nothing to report. */
+        printk("nros: stack-headroom bound NOT set tier=`%s` — the rule stays off\n",
+               (ctx->name != NULL) ? ctx->name : "?");
     }
 
     /* Run the tier's node-setup function. */
@@ -551,6 +580,18 @@ int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
     /* Gate the boot executor to its tier's callback groups. */
     if (boot->n_groups > 0 && boot->groups != NULL) {
         nros_cpp_executor_set_active_groups(boot_storage, boot->groups, boot->n_groups);
+    }
+
+    /* Same derive for the boot tier, but from the `main()` thread's own stack.
+     * `boot->stack_bytes` describes a thread that was never spawned — the
+     * kernel created this one with CONFIG_MAIN_STACK_SIZE before any nano-ros
+     * code ran — so the shim is asked instead. Excluding the boot tier
+     * entirely would leave the rule off on every single-tier app, which is the
+     * common shape and includes the Zephyr FVP lane. */
+    if (nros_cpp_executor_derive_min_stack_headroom(boot_storage,
+                                                    nros_zephyr_main_stack_size()) != 0) {
+        printk("nros: stack-headroom bound NOT set tier=`%s` (boot) — the rule stays off\n",
+               (boot->name != NULL) ? boot->name : "?");
     }
 
     /* Boot tier node setup. */
