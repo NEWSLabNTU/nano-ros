@@ -2,7 +2,7 @@
 // unblockers" that the first lines of nearly every ported rclcpp file need.
 //
 // W1.a  nested `SharedPtr` / `ConstSharedPtr` / `UniquePtr` on the entity
-//       types and on `rclcpp::TimerBase`, so
+//       types and on `rclcpp::Timer`, so
 //       `rclcpp::Publisher<T>::SharedPtr member_;` — close to universal in
 //       real rclcpp source — declares.
 // W1.c  `std::string` interop on `nros::FixedString<N>` / `nros::HeapString`,
@@ -128,7 +128,7 @@ class PortedNode : public rclcpp::Node {
     }
 
     // W1.a — the nested-pointer spellings, as members.
-    rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::Timer::SharedPtr timer_;
     rclcpp::Publisher<StringMsg>::SharedPtr publisher_;
     size_t count_ = 0;
 };
@@ -169,10 +169,10 @@ static_assert(std::is_same<::nros::Client<StubService>::SharedPtr,
               "Client<S>::SharedPtr must be std::shared_ptr<Client<S>>");
 static_assert(std::is_same<::nros::Timer::SharedPtr, std::shared_ptr<::nros::Timer>>::value,
               "Timer::SharedPtr must be std::shared_ptr<Timer>");
-static_assert(std::is_same<rclcpp::TimerBase::SharedPtr, std::shared_ptr<rclcpp::TimerBase>>::value,
-              "TimerBase::SharedPtr must be std::shared_ptr<TimerBase>");
-static_assert(std::is_same<rclcpp::TimerBase::UniquePtr, std::unique_ptr<rclcpp::TimerBase>>::value,
-              "TimerBase::UniquePtr must be std::unique_ptr<TimerBase>");
+static_assert(std::is_same<rclcpp::Timer::SharedPtr, std::shared_ptr<rclcpp::Timer>>::value,
+              "Timer::SharedPtr must be std::shared_ptr<Timer>");
+static_assert(std::is_same<rclcpp::Timer::UniquePtr, std::unique_ptr<rclcpp::Timer>>::value,
+              "Timer::UniquePtr must be std::unique_ptr<Timer>");
 
 // The rclcpp alias templates hand the SAME nested names through.
 static_assert(std::is_same<rclcpp::Publisher<StringMsg>::SharedPtr,
@@ -242,7 +242,7 @@ static_assert(sizeof(::nros::HeapString) == sizeof(char*) + 2 * sizeof(size_t),
 // Instantiate the ported node's members so the bodies above are type-checked.
 inline void instantiate() {
     ::nros::Publisher<StringMsg>::SharedPtr pub = std::make_shared<::nros::Publisher<StringMsg>>();
-    rclcpp::TimerBase::SharedPtr timer;
+    rclcpp::Timer::SharedPtr timer;
     (void)pub;
     (void)timer;
 }
