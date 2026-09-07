@@ -25,7 +25,7 @@ void Telem::on_tick() {
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     ::rclcpp::Result r = node.create_publisher(pub_, "/telem");
     if (!r.ok()) return r;
-    return ::nros::bind_timer<Telem, &Telem::on_tick>(node, timer_, 100, this);
+    return node.create_wall_timer<Telem, &Telem::on_tick>(timer_, 100, this);
 }
 
 } // namespace telem_pkg

@@ -168,17 +168,20 @@ size_of() { # $1 = type, rest = compiler flags (including -std)
 # Prints the reason on stdout for a hosted-only type, nothing otherwise.
 hosted_only_reason() {
     case "$1" in
-    "rclcpp::Node")
-        # `nros.hpp:447` wraps the whole `rclcpp` node adapter in
-        # `#if defined(NROS_CPP_HAS_SHARED_PTR) && defined(NROS_CPP_HAS_STD_STRING)
-        #  && defined(NROS_CPP_HAS_STD_VECTOR) && defined(NROS_CPP_HAS_STD_FUNCTION)`,
-        # because `std::shared_ptr` is in every one of its signatures.
-        # phase-427 ("one node type") merges the three node types into a single
-        # `rclcpp::Node` that must exist on freestanding targets; that work item
-        # takes this entry off the list, and the check below fails the moment
-        # the type becomes measurable so the removal cannot be forgotten.
-        echo "guarded by defined(NROS_CPP_HAS_SHARED_PTR) && ... at nros.hpp:447; phase-427 removes this"
-        ;;
+    # EMPTY, and that is the phase-427 outcome rather than an oversight.
+    #
+    # `rclcpp::Node` was the one entry: `nros.hpp` wrapped the whole rclcpp node
+    # adapter in `#if defined(NROS_CPP_HAS_SHARED_PTR) && ...` because
+    # `std::shared_ptr` was in every one of its signatures. phase-427 W1-W3/W5
+    # merged the three node types into ONE that exists on freestanding targets,
+    # which is exactly what the ratchet below was armed to notice — it failed
+    # with "listed hosted-only but DOES measure freestanding (200)" the moment
+    # the merge landed, and this is the removal it demanded.
+    #
+    # Keep the function. A future type that is legitimately hosted-only names
+    # itself here with its reason, and the two arms below stay meaningful:
+    # unmeasurable-and-undeclared is a failure, declared-and-measurable is a
+    # stale exemption.
     *) ;;
     esac
 }

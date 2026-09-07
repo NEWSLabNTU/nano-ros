@@ -28,7 +28,7 @@ void Talker::on_tick() {
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) return r;
-    return ::nros::bind_timer<Talker, &Talker::on_tick>(node, timer_, 500, this);
+    return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 500, this);
 }
 
 } // namespace zephyr_cpp_talker

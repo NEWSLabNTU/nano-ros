@@ -27,7 +27,7 @@ void Aux::on_tick() {
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     ::rclcpp::Result r = node.create_publisher(pub_, "/aux");
     if (!r.ok()) return r;
-    return ::nros::bind_timer<Aux, &Aux::on_tick>(node, timer_, 50, this);
+    return node.create_wall_timer<Aux, &Aux::on_tick>(timer_, 50, this);
 }
 
 } // namespace aux_pkg

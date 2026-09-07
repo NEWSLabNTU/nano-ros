@@ -26,7 +26,7 @@ void Ctrl::on_tick() {
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     ::rclcpp::Result r = node.create_publisher(pub_, "/ctrl");
     if (!r.ok()) return r;
-    return ::nros::bind_timer<Ctrl, &Ctrl::on_tick>(node, timer_, 10, this);
+    return node.create_wall_timer<Ctrl, &Ctrl::on_tick>(timer_, 10, this);
 }
 
 } // namespace ctrl_pkg

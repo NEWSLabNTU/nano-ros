@@ -245,11 +245,34 @@ namespace rclcpp {
 
 class Logger {
   public:
-    explicit Logger(const char* name = "") : name_(name) {}
+    explicit Logger(const char* name = "") : name_(name), handle_(nullptr) {}
+
+    /// phase-427 W5 — the name PLUS the opaque `nros_log::Logger` handle the
+    /// `NROS_LOG_*` macros dispatch through. `nros::Node::get_logger()` builds
+    /// one of these; `rclcpp::get_logger("free")` leaves the handle null,
+    /// because a free-standing name has no node behind it.
+    Logger(const char* name, const void* handle) : name_(name), handle_(handle) {}
+
     const char* get_name() const { return name_; }
+
+    /// Implicit conversion to `nros_logger_t` (`const void*`, `<nros/log.h>`).
+    ///
+    /// This is what let `get_logger()` become ONE accessor with upstream's
+    /// return type without breaking the native call sites. Before the merge
+    /// there were two: `nros::Node::get_logger() -> const void*` for
+    /// `NROS_LOG_INFO(logger, …)`, and the shim's `-> rclcpp::Logger` for
+    /// `RCLCPP_INFO(get_logger(), …)`. Two overloads differing only in return
+    /// type are ill-formed, so the ported channel won (RFC-0089 clause 2) and
+    /// the native one is reached by conversion — including `logger == nullptr`,
+    /// which `examples/native/cpp/logging` writes.
+    ///
+    /// Null when this logger was built from a name alone, or from an
+    /// uninitialized node.
+    operator const void*() const { return handle_; }
 
   private:
     const char* name_;
+    const void* handle_;
 };
 
 inline Logger get_logger(const char* name) {

@@ -109,8 +109,23 @@ static_assert(
     "rclcpp::detail::WallTimer no longer owns an nros::Timer -- the wall-timer "
     "schedule has moved back into the wrapper");
 
-static_assert(std::is_base_of<rclcpp::TimerBase, rclcpp::detail::WallTimer>::value,
-              "create_wall_timer's return type must stay rclcpp::TimerBase::SharedPtr");
+// phase-430 W7 — `rclcpp::TimerBase` IS DELETED. The timer is FLAT: the cell
+// derives from nothing, and `create_wall_timer` returns a `shared_ptr` ALIASED
+// onto the cell's `nros::Timer` member. Pin both halves, because the flatness
+// is the ruling and the aliasing is what made it affordable.
+static_assert(!std::is_polymorphic<rclcpp::detail::WallTimer>::value,
+              "rclcpp::detail::WallTimer has regained a vtable -- phase-430 W7 deleted "
+              "the one-leaf TimerBase hierarchy because the executor dispatches through "
+              "a raw function pointer and no virtual call exists");
+// A named functor, not a lambda: a lambda-expression in an unevaluated context
+// is C++20 and these probes are compiled at C++14.
+struct TickFn {
+    void operator()() const {}
+};
+static_assert(std::is_same<decltype(std::declval<rclcpp::Node&>().create_wall_timer(
+                               std::declval<std::chrono::milliseconds>(), std::declval<TickFn>())),
+                           std::shared_ptr<::nros::Timer>>::value,
+              "create_wall_timer's return type must stay rclcpp::Timer::SharedPtr");
 
 // --- (1) + (4) the mixed shape, driven by the NATIVE spin verbs --------------
 //
@@ -146,7 +161,7 @@ class MixedSpinNode : public rclcpp::Node {
   private:
     rclcpp::Publisher<CounterMsg>::SharedPtr publisher_;
     rclcpp::Subscription<CounterMsg>::SharedPtr subscription_;
-    rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::Timer::SharedPtr timer_;
     size_t ticks_ = 0;
     int32_t last_ = 0;
 };
@@ -172,7 +187,7 @@ inline void returned_handles_keep_their_ported_spellings() {
     auto node = std::make_shared<rclcpp::Node>("handles");
     rclcpp::Subscription<CounterMsg>::SharedPtr sub =
         node->create_subscription<CounterMsg>("counter", rclcpp::QoS(10), [](const CounterMsg&) {});
-    rclcpp::TimerBase::SharedPtr timer =
+    rclcpp::Timer::SharedPtr timer =
         node->create_wall_timer(std::chrono::milliseconds(100), []() {});
     (void)sub;
     (void)timer;

@@ -791,6 +791,68 @@ cpp: cpp-fmt
         echo "  - -nostdinc++ header parse (Zephyr): SKIP — $_zephyr_min absent (west workspace not initialised)"
     fi
 
+    # phase-427 W1-W3 / W5 + phase-430 W6 — ONE NODE TYPE.
+    #
+    # Three probes, and the negative one is the item: a ported
+    # `create_publisher<M>("chatter", 10)` must FAIL on a freestanding target
+    # rather than silently gaining a heap allocation per publisher. The
+    # positive freestanding probe is what keeps the merge honest in the other
+    # direction — the hosted half now lives on the SAME class a freestanding
+    # image instantiates, so a `std::shared_ptr` signature escaping its guard
+    # would break every RTOS C++ image and no header-parse lane would see it
+    # (a template body is not instantiated by `-include`).
+    echo "  - one node type: hosted shape + both create families (c++14)"
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/one_node_type.cpp
+    echo "  - one node type: FREESTANDING construct + create_publisher (-nostdinc++)"
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
+        -nostdinc++ -isystem "$_threadx_shim" \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/one_node_type_freestanding.cpp
+    # Expected-failure, asserted-present first for the reason every other
+    # probe of this shape is: a missing file is also a non-zero c++, and reads
+    # as a pass.
+    test -f packages/api/nros-cpp/tests/compile/ported_create_publisher_freestanding_probe.cpp || { \
+        echo "ERROR: ported_create_publisher_freestanding_probe.cpp is MISSING -- the" >&2; \
+        echo "       expected-failure check below would PASS on a missing file." >&2; \
+        exit 1; \
+    }
+    echo "  - one node type: a ported create_publisher<M>(topic, depth) is REFUSED freestanding"
+    mkdir -p tmp
+    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -ffreestanding \
+        -nostdinc++ -isystem "$_threadx_shim" \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/ported_create_publisher_freestanding_probe.cpp \
+        > tmp/refuse-ported-create-publisher.log 2>&1; then \
+        echo "ERROR: create_publisher<M>(\"chatter\", 10) COMPILED on a freestanding target." >&2; \
+        echo "       The hosted overload returns std::shared_ptr and there is no allocator" >&2; \
+        echo "       here, so a ported firmware image just gained a heap allocation per" >&2; \
+        echo "       publisher with nothing to tell it (RFC-0089: never compile and differ)." >&2; \
+        exit 1; \
+    fi
+    # "It failed" is also what a typo produces. The diagnostic must name the
+    # overload that IS available, because that naming is the migration.
+    grep -q 'create_publisher(Publisher<M>& out, const char\* topic' \
+        tmp/refuse-ported-create-publisher.log || { \
+        echo "ERROR: the freestanding create_publisher refusal no longer names the out-ref" >&2; \
+        echo "       overload. The refusal is only useful if it says what to write instead;" >&2; \
+        echo "       see tmp/refuse-ported-create-publisher.log." >&2; \
+        exit 1; \
+    }
+
     echo "  - QoS policy accessors + ms boundary (c++14)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -Wno-deprecated-declarations \
         -Itarget/nros-cpp-generated \

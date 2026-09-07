@@ -30,7 +30,7 @@ void QosTalker::on_tick() {
     ::rclcpp::Result r = node.create_publisher(pub_, "/chatter", qos);
     if (!r.ok()) return r;
     // Member-fn-pointer-as-template-param → no-alloc trampoline; `this` is ctx.
-    return ::nros::bind_timer<QosTalker, &QosTalker::on_tick>(node, timer_, 1000, this);
+    return node.create_wall_timer<QosTalker, &QosTalker::on_tick>(timer_, 1000, this);
 }
 
 } // namespace cpp_qos_talker_pkg

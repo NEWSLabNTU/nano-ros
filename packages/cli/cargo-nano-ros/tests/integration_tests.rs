@@ -862,7 +862,7 @@ mod component_scaffold {
 
         let cpp = fs::read_to_string(dir.join("src/Talker.cpp")).unwrap();
         assert!(cpp.contains("::nros::Result Talker::configure(::nros::Node& node)"));
-        assert!(cpp.contains("bind_timer<Talker, &Talker::on_tick>"));
+        assert!(cpp.contains("create_wall_timer<Talker, &Talker::on_tick>"));
         assert!(
             !cpp.contains("NROS_NODE_REGISTER") && !cpp.contains("DeclaredNode"),
             "typed C++ scaffold body must not carry the declarative seam:\n{cpp}"

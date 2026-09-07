@@ -86,7 +86,7 @@ inline void operator delete(void*, void*) noexcept {}
 inline void operator delete[](void*, void*) noexcept {}
 #endif
 
-#include "nros/component.hpp"    // bind_subscription / bind_timer (the no-alloc trampolines)
+#include "nros/component.hpp"    // bind_subscription (the no-alloc trampoline)
 #include "nros/declared_qos.hpp" // phase-403 step 2 — the DECLARED depth table + its assertion
 #include "nros/node.hpp"
 #include "nros/parameter.hpp" // ParameterServer backing the value-returning facade (242.7)
@@ -428,7 +428,8 @@ class ComponentNode {
             return;
         }
         Timer& slot = timers_[timer_count_];
-        Result r = bind_timer<C, Method>(node_, slot, period_ms, static_cast<C*>(this));
+        Result r =
+            node_.template create_wall_timer<C, Method>(slot, period_ms, static_cast<C*>(this));
         if (!r.ok()) {
             set_error("create_wall_timer", r.raw());
             return;

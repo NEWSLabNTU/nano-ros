@@ -102,7 +102,7 @@ void FibonacciServer::on_tick() {
     if (!r.ok()) {
         return r;
     }
-    r = ::nros::bind_timer<FibonacciServer, &FibonacciServer::on_tick>(node, timer_, 200, this);
+    r = node.create_wall_timer<FibonacciServer, &FibonacciServer::on_tick>(timer_, 200, this);
     if (r.ok()) {
         // Readiness marker the e2e harness greps before sending a goal.
         std::printf("Waiting for action goals\n");
