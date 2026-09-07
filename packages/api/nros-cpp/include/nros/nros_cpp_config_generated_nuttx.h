@@ -52,6 +52,23 @@
 #define NROS_CPP_RAW_ACTION_SERVER_OPAQUE_U64S 816
 #define NROS_CPP_RAW_ACTION_CLIENT_OPAQUE_U64S 2193
 
+/* RFC-0090 / issue 1115 — the codegen-version anchors, mirroring the per-build
+ * `nros_cpp_config_generated.h` (`nros-build-helpers/src/cpp.rs`), which emits
+ * the same pair from `nros_core::codegen_version`.
+ *
+ * A generated artifact reads these from the C header (see
+ * `rosidl-codegen/packs/_codegen_version.jinja` — one header for both
+ * languages, and it is the C one), so the C twin of this file is what unbroke
+ * the NuttX build. They are here because this fallback stands in for a
+ * per-build header that DOES define them, and a fallback that carries a
+ * strict subset of its twin is the drift issue 1115 is: identical token
+ * sequences, so a TU that reaches both headers sees a benign redefinition.
+ *
+ * EXACT values, not upper bounds — a version range has no bound to be safe on.
+ * Gated by `check-config-fallback-macros`. */
+#define NROS_CODEGEN_VERSION 3
+#define NROS_CODEGEN_VERSION_MIN 2
+
 /* Issue 0464 — the generator computes
  *   NROS_CPP_EXECUTOR_STORAGE_SIZE = NROS_EXECUTOR_SIZE + CPP_CONTEXT_OVERHEAD
  * with the overhead currently 16 (`nros-build-helpers/src/cpp.rs`). A snapshot

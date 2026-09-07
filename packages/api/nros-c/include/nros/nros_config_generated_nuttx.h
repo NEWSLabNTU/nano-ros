@@ -73,6 +73,32 @@
 #define ACTION_SERVER_OPAQUE_U64S 816
 #undef ACTION_CLIENT_OPAQUE_U64S
 #define ACTION_CLIENT_OPAQUE_U64S 2193
+
+/* RFC-0090 / issue 1115 — the codegen-version anchors, and the ONE pair in this
+ * file that is not a bound.
+ *
+ * Every generated C and C++ header emits `NROS_EMITTED_CODEGEN_VERSION` and
+ * compares it against `NROS_CODEGEN_VERSION_MIN..NROS_CODEGEN_VERSION` with the
+ * preprocessor (`rosidl-codegen/packs/_codegen_version.jinja`). That pack's own
+ * rationale says "neither side is authored and neither can drift", on the
+ * premise that both numbers reach a TU through a header `nros-build-helpers`
+ * writes from `nros_core::codegen_version`. On NuttX that premise is false:
+ * `<nros/nros_config_generated.h>` dispatches to THIS file under
+ * `NROS_PLATFORM_NUTTX`, the per-build header is on no include path (measured:
+ * `nros-c-generated` appears nowhere in a NuttX leaf's `build.ninja`), and
+ * phase-429 W1 added the macros to the template and to the artifacts without
+ * adding them here. Result: every NuttX C and C++ image failed to compile on
+ * the FIRST `#error` arm — "the generated config header did not define
+ * NROS_CODEGEN_VERSION" — from a clean clone, for two days.
+ *
+ * These are EXACT values, not upper bounds: a bound is meaningless for a
+ * version range, and a snapshot that is merely "high enough" would accept a
+ * tree the runtime rejects. Gated by `check-config-fallback-macros`, which
+ * requires every macro a generated artifact reads to be defined here AND
+ * requires these two to equal the Rust constants. */
+#define NROS_CODEGEN_VERSION 3
+#define NROS_CODEGEN_VERSION_MIN 2
+
 /* Issue 0464 — this file is a hand-maintained SNAPSHOT, so the pairs below can
  * drift against each other, and one of them did: #167 bumped
  * NROS_EXECUTOR_{STORAGE_,}SIZE and left EXECUTOR_OPAQUE_U64S at the stale

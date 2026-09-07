@@ -95,6 +95,8 @@ afa4a8b1a5fb961c c|fn|nros_generated.h|nros_service_init_with_qos
 72e1976772373bd4 c|fn|nros_generated.h|nros_service_typed_report_error
 a081f22d8e3003b2 c|macro|node_pkg.h|NROS_RET_INVALID_ARGUMENT
 020c5acaef5b4c4b c|macro|node_pkg.h|NROS_RET_OK
+6f3f16da709d0d00 c|macro|nros_config_generated_nuttx.h|NROS_CODEGEN_VERSION
+59e64f81b3e34459 c|macro|nros_config_generated_nuttx.h|NROS_CODEGEN_VERSION_MIN
 4ee984a1b028ac91 c|macro|nros_generated.h|NROS_RET_ERROR
 a081f22d8e3003b2 c|macro|nros_generated.h|NROS_RET_INVALID_ARGUMENT
 020c5acaef5b4c4b c|macro|nros_generated.h|NROS_RET_OK
