@@ -42,12 +42,6 @@ db91f2bad
 
 # ---- DEAD -------------------------------------------------------------------
 
-# `docs/issues/README.md`, the curated index. Two "Recently resolved" entries
-# name the commit that closed an issue, and those commits are gone. The issue
-# numbers beside them (#0952, #0750) are the durable identifier and are already
-# in the text, so these can be dropped rather than re-resolved.
-22e511442
-
 # `docs/roadmap/phase-359-drop-std-campaign.md`, the four-row table of std
 # symbols and the commit that removed each. The symbol names and issue numbers
 # in the same rows survive; the hashes did not.
@@ -75,5 +69,9 @@ d97c9c606
 # which is the case this file's header calls "another checkout" and the exact
 # thing it exists to hold. `e63d3e11b` shrank the ratchet past them and left
 # `main` red; a ratchet may only shrink where the citation RESOLVES, and these
-# never will.
+# never will. `9c0702322` restored the pair PARTIALLY — `ea9fbfae9` came back
+# and `d1d88f660`, the mirror's own HEAD named in the same sentence, did not,
+# so `main` stayed red for the half that was still missing. Both belong here:
+# the comment above says "those hashes", plural, and always meant both.
+d1d88f660
 ea9fbfae9
