@@ -160,7 +160,7 @@ mod tests {
 
         let path = emit_board_preset_into(
             &presets,
-            "nuttx-qemu-arm",
+            "qemu-armv7a-nuttx",
             &repo,
             Some(&toolchain),
             std::slice::from_ref(&bin),
@@ -169,7 +169,7 @@ mod tests {
 
         let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         let preset = &doc["configurePresets"][0];
-        assert_eq!(preset["name"], "nuttx-qemu-arm");
+        assert_eq!(preset["name"], "qemu-armv7a-nuttx");
         // toolchainFile is the absolute path we passed.
         assert_eq!(preset["toolchainFile"], path_str(&toolchain));
         // nano_ros_ROOT is absolute (repo root), Release build.
@@ -201,8 +201,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let presets = tmp.path().join("presets");
         let repo = tmp.path().join("nano-ros");
+        emit_board_preset_into(&presets, "qemu-armv7a-nuttx", &repo, None, &[]).unwrap();
         emit_board_preset_into(&presets, "posix", &repo, None, &[]).unwrap();
-        emit_board_preset_into(&presets, "nuttx-qemu-arm", &repo, None, &[]).unwrap();
 
         let proj = tmp.path().join("proj");
         std::fs::create_dir_all(&proj).unwrap();
@@ -211,13 +211,18 @@ mod tests {
         let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         let includes = doc["include"].as_array().unwrap();
         assert_eq!(includes.len(), 2);
-        // sorted: nuttx-qemu-arm.json before posix.json
+        // sorted: posix.json before qemu-armv7a-nuttx.json. The ORDER is what
+        // this test asserts, so the two names must not sort in emit order —
+        // they are emitted qemu-armv7a-nuttx first and must come back reversed.
+        // (phase-437 W4 renamed the board from `nuttx-qemu-arm`, which sorted
+        // ahead of `posix`; keeping the old expectation would have made this
+        // test pass on the emit order rather than on the sort.)
+        assert!(includes[0].as_str().unwrap().ends_with("posix.json"));
         assert!(
-            includes[0]
+            includes[1]
                 .as_str()
                 .unwrap()
-                .ends_with("nuttx-qemu-arm.json")
+                .ends_with("qemu-armv7a-nuttx.json")
         );
-        assert!(includes[1].as_str().unwrap().ends_with("posix.json"));
     }
 }

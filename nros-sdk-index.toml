@@ -689,7 +689,7 @@ install = "cargo install --path espflash --root {prefix} --locked"
 # rv-virt `make export` needs it on PATH. The qemu-armv7a board has no RCSRCS, so
 # arm doesn't. Source-built (tiny single-file C tool; not apt — keeps "everything
 # via nros setup"). Installs to {prefix}/bin/genromfs; activate puts the SDK-store
-# bins on PATH. Only the qemu-riscv-nuttx board lists it.
+# bins on PATH. Only the rv-virt-nuttx board lists it.
 [tool.genromfs]
 version = "0.5.7-nros1"
 upstream = "0.5.7"
@@ -930,9 +930,9 @@ version = "1.7.2"
 dest = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 submodule = "packages/rmw/zenoh/zpico-sys/zenoh-pico"
 
-# NuttX Rust libc fork — the qemu-arm-nuttx examples path-dep it via their
+# NuttX Rust libc fork — the qemu-armv7a-nuttx examples path-dep it via their
 # .cargo/config (`libc = { path = third-party/nuttx/libc }`), so it must be
-# provisioned by `nros setup qemu-arm-nuttx`, not hand-checked-out by the user.
+# provisioned by `nros setup qemu-armv7a-nuttx`, not hand-checked-out by the user.
 [source.nuttx-libc]
 version = "0.2-nuttx"
 dest = "third-party/nuttx/libc"
@@ -1006,7 +1006,7 @@ version = "6.4.x"
 dest = "third-party/threadx/netxduo"
 submodule = "third-party/threadx/netxduo"
 
-# NuttX kernel + apps — the qemu-arm-nuttx board build.rs / build-nuttx.sh expect
+# NuttX kernel + apps — the qemu-armv7a-nuttx board build.rs / build-nuttx.sh expect
 # them present (the export is built with the app, per Phase 194). The Rust libc
 # fork is the separate `[source.nuttx-libc]` (it's a board package).
 [source.nuttx-kernel]
@@ -1141,7 +1141,7 @@ arch = "cortex-m3"
 platform = "freertos"
 packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
 
-[board.qemu-arm-nuttx]
+[board.qemu-armv7a-nuttx]
 arch = "cortex-a7"
 platform = "nuttx" # NuttX kernel/apps are submodule SDKs (built with the app)
 # nuttx-libc is the one source the Rust example path-deps, so `nros setup` must
@@ -1149,12 +1149,12 @@ platform = "nuttx" # NuttX kernel/apps are submodule SDKs (built with the app)
 packages = ["arm-none-eabi-gcc", "qemu", "nuttx-libc", "nuttx-kernel", "nuttx-apps"]
 
 # 194.3c — the riscv (rv-virt) NuttX board: the 2nd-arch proof that the NuttX
-# provisioning path is arch-agnostic. Same source set as qemu-arm-nuttx but the
+# provisioning path is arch-agnostic. Same source set as qemu-armv7a-nuttx but the
 # riscv cross-gcc; qemu already builds riscv64-softmmu (see [tool.qemu] configure
 # --target-list). The rv-virt board bakes an `etc/` ROMFS at export time (the
 # stock board's `RCSRCS = etc/init.d/{rc.sysinit,rcS}` → `genromfs`), so it
 # needs the `genromfs` host tool — arm's config skips ROMFS and does not.
-[board.qemu-riscv-nuttx]
+[board.rv-virt-nuttx]
 arch = "riscv32" # rv-virt (rv32imac); riscv32imac-unknown-nuttx-elf
 platform = "nuttx"
 # genromfs: the rv-virt board bakes an etc/ ROMFS at export time (arm doesn't).
@@ -1270,39 +1270,33 @@ packages = ["zephyr-sdk"]
 #     nano-ros-board-<name>.cmake`, which is what a `package.xml` deploy export
 #     carries: `<nano_ros deploy="…" board="…" rmw="…"/>`.
 #
-# Measured 2026-09-05: the five `board=` values authored across `examples/`
-# are `mps2-an385-freertos`, `nuttx-qemu-arm`, `nuttx-qemu-riscv`,
-# `riscv64-qemu`, `threadx-linux`. Only the LAST was an index key — the one
-# where the two vocabularies happen to agree — so `nros setup <board>` with
-# the value a user READS OFF THEIR OWN `package.xml` failed for four of five,
-# with "unknown board" listing names that appear nowhere in their manifest.
+# Measured 2026-09-05: five `board=` values were authored across `examples/`
+# and only ONE (`threadx-linux`) was an index key — the one where the two
+# vocabularies happen to agree — so `nros setup <board>` with the value a user
+# READS OFF THEIR OWN `package.xml` failed for four of five, with "unknown
+# board" listing names that appear nowhere in their manifest.
 #
-# These four are the same physical boards as their counterparts above, under
-# the cmake spelling; each mirrors its counterpart's package set EXACTLY, and
-# the pairing is asserted by `check-board-vocabulary`. This is a DUPLICATE,
-# not an alias, because `BoardEntry` is `deny_unknown_fields` and has no alias
-# key — giving the index one is a CLI schema change, which this additive step
-# deliberately is not. When that lands, these four collapse into `aliases =`
-# on the entries above and this block goes away; until then, EDIT BOTH.
+# The entries left in this block are the same physical boards as their
+# counterparts above, under the cmake spelling; each mirrors its counterpart's
+# package set EXACTLY, and the pairing is asserted by `check-board-vocabulary`.
+# This is a DUPLICATE, not an alias, because `BoardEntry` is
+# `deny_unknown_fields` and has no alias key — giving the index one is a CLI
+# schema change, which this additive step deliberately is not. Until then,
+# EDIT BOTH.
+#
+# phase-437 W4 COLLAPSED the NuttX pair rather than mirroring it: RFC-0093
+# selects ONE name per board, so `qemu-arm-nuttx`/`nuttx-qemu-arm` became the
+# single `[board.qemu-armv7a-nuttx]` above (NuttX's own `CONFIG_ARCH_BOARD`)
+# and `qemu-riscv-nuttx`/`nuttx-qemu-riscv` the single `[board.rv-virt-nuttx]`.
+# A collapsed pair has no mirror to hold in step, so its `# =` marker goes with
+# it — a marker naming a section that no longer exists is what
+# `check-board-vocabulary` reports first.
 
 # = [board.qemu-arm-freertos] (examples/qemu-arm-freertos)
 [board.mps2-an385-freertos]
 arch = "cortex-m3"
 platform = "freertos"
 packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
-
-# = [board.qemu-arm-nuttx] (examples/qemu-arm-nuttx)
-[board.nuttx-qemu-arm]
-arch = "cortex-a7"
-platform = "nuttx"
-packages = ["arm-none-eabi-gcc", "qemu", "nuttx-libc", "nuttx-kernel", "nuttx-apps"]
-
-# = [board.qemu-riscv-nuttx] (examples/qemu-riscv-nuttx); genromfs because the
-# rv-virt board bakes an etc/ ROMFS at export time and arm's config does not.
-[board.nuttx-qemu-riscv]
-arch = "riscv32"
-platform = "nuttx"
-packages = ["riscv-none-elf-gcc", "qemu", "genromfs", "nuttx-libc", "nuttx-kernel", "nuttx-apps"]
 
 # = [board.qemu-riscv64-threadx] (examples/qemu-riscv64-threadx)
 [board.riscv64-qemu]

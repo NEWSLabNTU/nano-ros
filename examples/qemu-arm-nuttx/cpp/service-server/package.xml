@@ -8,6 +8,6 @@
   <depend>example_interfaces</depend>
   <export>
     <build_type>nros_cmake</build_type>
-    <nano_ros deploy="nuttx" board="nuttx-qemu-arm" rmw="zenoh"/>
+    <nano_ros deploy="nuttx" board="qemu-armv7a-nuttx" rmw="zenoh"/>
   </export>
 </package>

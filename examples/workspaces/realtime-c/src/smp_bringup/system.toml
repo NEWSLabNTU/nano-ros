@@ -126,10 +126,10 @@ board = "mps2-an385-freertos"
 board = "native"
 
 [image.nuttx]
-board = "nuttx-qemu-arm"
+board = "qemu-armv7a-nuttx"
 
 [image.riscv_nuttx]
-board = "nuttx-qemu-riscv"
+board = "rv-virt-nuttx"
 
 [image.zephyr]
 board = "native_sim/native/64"
@@ -145,11 +145,11 @@ sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image
 # name, because that is what the fact is about (issue 0951).
-[board_config."nuttx-qemu-arm"]
+[board_config."qemu-armv7a-nuttx"]
 sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image
 # name, because that is what the fact is about (issue 0951).
-[board_config."nuttx-qemu-riscv"]
+[board_config."rv-virt-nuttx"]
 sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }

@@ -575,7 +575,7 @@ function(nano_ros_node_register)
             target_link_libraries(${_lib} INTERFACE ${_NRC_EXISTING_TARGET})
             # phase-305 W2 fix: consumers that reach a component by its
             # CONVENTIONAL name must still find the facts they read off it —
-            # notably the NuttX kernel link (cmake/board/nano-ros-board-nuttx-*),
+            # notably the NuttX kernel link (cmake/board/nano-ros-board-*-nuttx),
             # which recompiles each C component's SOURCES for the ARM target
             # tagged with its own `-DNROS_PKG_NAME` (phase-263 C2b) and pulls the
             # include dirs. An INTERFACE wrapper carries none of that by default:

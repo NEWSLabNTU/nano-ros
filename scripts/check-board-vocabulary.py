@@ -13,10 +13,18 @@ They used to resolve to NOTHING ELSE. When this gate was written only
 `threadx-linux` was also an index key, so `nros setup <board>` failed for four
 of five and `nros setup --workspace` had to validate before printing a command.
 W7's additive half closed that: `mps2-an385-freertos`, `nuttx-qemu-arm`,
-`nuttx-qemu-riscv` and `riscv64-qemu` are `[board.*]` entries now, each marked
-`# = [board.<other-spelling>]` against the entry it duplicates. All five values
-resolve in BOTH namespaces, which is what lets the second assertion below —
-`board=` must be an index key — be enforced rather than aspired to.
+`nuttx-qemu-riscv` and `riscv64-qemu` became `[board.*]` entries too, each
+marked `# = [board.<other-spelling>]` against the entry it duplicates. All five
+values resolve in BOTH namespaces, which is what lets the second assertion
+below — `board=` must be an index key — be enforced rather than aspired to.
+
+phase-437 (RFC-0093) is retiring the duplicates by CHOOSING one name per board
+rather than mirroring two. A collapsed pair has no counterpart left, so its
+`# =` marker must be deleted in the same commit — a marker naming a section
+that no longer exists is the first thing this gate reports. The NuttX pair went
+first: `qemu-arm-nuttx`/`nuttx-qemu-arm` are now the single
+`[board.qemu-armv7a-nuttx]` and `qemu-riscv-nuttx`/`nuttx-qemu-riscv` the
+single `[board.rv-virt-nuttx]`.
 
 Five namespaces exist for closely related concepts, overlapping partially:
 
@@ -82,7 +90,7 @@ def fixture_boards(root):
     """Boards named by the fixture matrix.
 
     NOT a bare `board = "..."`: fixtures.toml carries the board inside a cmake
-    definition table, `cmake_defs = { NANO_ROS_BOARD = "nuttx-qemu-arm", .. }`.
+    definition table, `cmake_defs = { NANO_ROS_BOARD = "qemu-armv7a-nuttx", .. }`.
     Reading the wrong spelling made this gate report three real, well-defined
     boards as resolving nowhere — a false positive that would have sent someone
     renaming working examples.

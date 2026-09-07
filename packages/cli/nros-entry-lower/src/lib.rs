@@ -128,7 +128,7 @@ pub fn board_family(board: &str) -> BoardFamily {
         "zephyr" | "fvp-aemv8r-smp" | "armfvp" => BoardFamily::Zephyr,
         // Phase 238 — network is up at kernel boot; shares the lifecycle
         // adapter.
-        "nuttx" | "nuttx-qemu-arm" | "nuttx-qemu-riscv" => BoardFamily::Nuttx,
+        "nuttx" | "qemu-armv7a-nuttx" | "rv-virt-nuttx" => BoardFamily::Nuttx,
         // Phase 240.6 / phase-263 C2b, plus phase-370's `freertos-posix` and
         // phase-372/385's S32Z270 and MPS3-AN536. `freertos-posix` is a HOST
         // process whose nodes still run as FreeRTOS TASKS, so it belongs here
@@ -163,8 +163,8 @@ mod tests {
         ("fvp-aemv8r-smp", BoardFamily::Zephyr),
         ("armfvp", BoardFamily::Zephyr),
         ("nuttx", BoardFamily::Nuttx),
-        ("nuttx-qemu-arm", BoardFamily::Nuttx),
-        ("nuttx-qemu-riscv", BoardFamily::Nuttx),
+        ("qemu-armv7a-nuttx", BoardFamily::Nuttx),
+        ("rv-virt-nuttx", BoardFamily::Nuttx),
         ("freertos", BoardFamily::Freertos),
         ("mps2-an385-freertos", BoardFamily::Freertos),
         ("freertos-posix", BoardFamily::Freertos),
