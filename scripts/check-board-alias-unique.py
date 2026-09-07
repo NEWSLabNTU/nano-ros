@@ -28,7 +28,7 @@ fixtures, exactly one name is claimed twice: `threadx`, by
 like the defect the gate was written for, and it is not.
 
 `threadx` is a DEPLOY FAMILY, not a board. 25 `package.xml` files carry
-`<nano_ros deploy="threadx" board="riscv64-qemu"/>` or `board="threadx-linux"`,
+`<nano_ros deploy="threadx" board="rv-virt-threadx"/>` or `board="threadx-linux"`,
 and per RFC-0087 D3 `deploy=` names a `[deploy.*]` block rather than a provider —
 the `board=` attribute beside it is what selects the implementation. So a family
 name appearing in two boards' `names` lists is the vocabulary working: both

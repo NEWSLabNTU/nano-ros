@@ -245,7 +245,7 @@ fn resolve_one(
     // Issue 1063 — the RESOLVED VALUE is deliberately NOT emitted. It used to
     // become `NROS_NETSTACK`, which nothing ever read: the only plausible
     // consumer is a per-board cmake file, and those pick their stack directly
-    // (`cmake/board/nano-ros-board-riscv64-qemu.cmake` calls
+    // (`cmake/board/nano-ros-board-rv-virt-threadx.cmake` calls
     // `nros_threadx_build_netstack_netxduo` unconditionally) because a file
     // that is already per-board knows its own netstack. Emitting a value with
     // no reader is the declared-but-unread shape phase-349 named; the

@@ -31,7 +31,7 @@ setup:
     # the default shell is `sh`, which has no `source` at all.
     set -euo pipefail
     source scripts/build/platform-rmws.sh
-    nros_setup_board_rmws qemu-riscv64-threadx threadx-riscv64
+    nros_setup_board_rmws rv-virt-threadx threadx-riscv64
     "{{justfile_directory()}}/tools/host-env.sh" threadx
 
 # Diagnose ThreadX RISC-V 64 install status (read-only).
@@ -162,7 +162,7 @@ build-examples:
     # builds and its cmake ones use the same compiler.
     nros_riscv64_export_cc
     if [ -z "$(nros_riscv64_prefix)" ]; then
-        nros_lane_skip_note threadx-riscv64 "Skipping ThreadX QEMU RISC-V examples (no riscv64 bare-metal gcc: run nros setup qemu-riscv64-threadx)"
+        nros_lane_skip_note threadx-riscv64 "Skipping ThreadX QEMU RISC-V examples (no riscv64 bare-metal gcc: run nros setup rv-virt-threadx)"
         exit 0
     fi
     echo "Building ThreadX QEMU RISC-V 64 examples..."
@@ -227,7 +227,7 @@ build-fixture-extras:
     # builds and its cmake ones use the same compiler.
     nros_riscv64_export_cc
     if [ -z "$(nros_riscv64_prefix)" ]; then
-        nros_lane_skip_note threadx-riscv64 "no riscv64 bare-metal gcc (run: nros setup qemu-riscv64-threadx)"; exit 0
+        nros_lane_skip_note threadx-riscv64 "no riscv64 bare-metal gcc (run: nros setup rv-virt-threadx)"; exit 0
     fi
     # issue 1038 follow-up — sync the six rust roles' message crates BEFORE
     # cmake ever configures them.

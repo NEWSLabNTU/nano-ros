@@ -813,7 +813,7 @@ where
     // C/C++ API is a thin wrapper over this same Rust API, so the asymmetry was
     // the bug, not just the duration.
     //
-    // Measured on qemu-riscv64-threadx, CycloneDDS, listener-ready then delivery:
+    // Measured on rv-virt-threadx, CycloneDDS, listener-ready then delivery:
     //
     //     cell    before          after
     //     c       1.35 s          1.40 s

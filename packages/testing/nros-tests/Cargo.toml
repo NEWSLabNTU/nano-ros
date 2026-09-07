@@ -465,7 +465,7 @@ path = "tests/cli_bringup_px4.rs"
 # canonical shape: package.xml present, component XOR application
 # classification, deploy targets match platform path, Path A bringup
 # dirs free of code, and pre-212 files absent. ESP32 (M.7 BLOCKED),
-# bare-metal Cortex-M3, ESP32-baremetal, qemu-riscv64-threadx, and
+# bare-metal Cortex-M3, ESP32-baremetal, rv-virt-threadx, and
 # threadx-linux/c are skipped per the per-wave migration status in
 # the Phase 212.M table.
 [[test]]

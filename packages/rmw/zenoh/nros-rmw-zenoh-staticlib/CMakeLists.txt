@@ -32,12 +32,12 @@ elseif(NANO_ROS_PLATFORM STREQUAL "threadx")
     # the std-vs-no_std crate-feature split.
     if(NANO_ROS_BOARD STREQUAL "threadx-linux")
         set(_platform_features platform-threadx-std)
-    elseif(NANO_ROS_BOARD STREQUAL "riscv64-qemu")
+    elseif(NANO_ROS_BOARD STREQUAL "rv-virt-threadx")
         set(_platform_features platform-threadx)
     else()
         message(FATAL_ERROR
             "NANO_ROS_PLATFORM=threadx requires NANO_ROS_BOARD to be one of: "
-            "threadx-linux, riscv64-qemu. Got '${NANO_ROS_BOARD}'.")
+            "threadx-linux, rv-virt-threadx. Got '${NANO_ROS_BOARD}'.")
     endif()
     set(_lib_name "libnros_rmw_zenoh_${NANO_ROS_PLATFORM}.a")
 else()

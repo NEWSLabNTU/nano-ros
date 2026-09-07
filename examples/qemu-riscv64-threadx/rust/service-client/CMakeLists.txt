@@ -18,10 +18,10 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # another, both written in the same second, and the shared cargo directory keyed
 # on the label got FOUR groups where the configuration space has two:
 #
-#   platform=threadx         |rmw=zenoh     |board=riscv64-qemu|…   <- these six
-#   platform=threadx_riscv64 |rmw=zenoh     |board=riscv64-qemu|…   <- the c/cpp leaves
-#   platform=threadx         |rmw=cyclonedds|board=riscv64-qemu|…
-#   platform=threadx_riscv64 |rmw=cyclonedds|board=riscv64-qemu|…
+#   platform=threadx         |rmw=zenoh     |board=rv-virt-threadx|…   <- these six
+#   platform=threadx_riscv64 |rmw=zenoh     |board=rv-virt-threadx|…   <- the c/cpp leaves
+#   platform=threadx         |rmw=cyclonedds|board=rv-virt-threadx|…
+#   platform=threadx_riscv64 |rmw=cyclonedds|board=rv-virt-threadx|…
 #
 # — 2.8 GB of duplicate build output for a spelling difference. The key now
 # hashes the resolved feature set rather than the label (`8033bc3f0`), so the
@@ -35,7 +35,7 @@ set(NROS_RMW "cyclonedds" CACHE STRING
     "Active RMW (zenoh|dds|xrce|cyclonedds) — selects the backend linked into this example.")
 set(NANO_ROS_RMW "${NROS_RMW}" CACHE STRING
     "nano-ros root RMW backend" FORCE)
-set(NANO_ROS_BOARD riscv64-qemu)
+set(NANO_ROS_BOARD rv-virt-threadx)
 # Resolve the nano-ros checkout root once (phase-277 W6 standard guard):
 #   1. -DNANO_ROS_ROOT=<path> cache var (explicit, e.g. a copied-out example),
 #   2. NROS_REPO_DIR env var (exported by nano-ros's activate.sh),
@@ -75,7 +75,7 @@ nros_generate_interfaces(example_interfaces "srv/AddTwoInts.srv" LANGUAGE C SKIP
 
 # Issue #205 step 3 — the corrosion import, generated link-anchor TU,
 # executable, and platform/RMW link calls collapse into the board-overlay
-# seam (cmake/board/nano-ros-board-riscv64-qemu.cmake). The Rust crate's
+# seam (cmake/board/nano-ros-board-rv-virt-threadx.cmake). The Rust crate's
 # `app_main!(register)` (board macro) provides `app_main`.
 nros_threadx_rv64_rust_app(riscv64_threadx_rust_service_client
     CRATE qemu-riscv64-threadx-service-client

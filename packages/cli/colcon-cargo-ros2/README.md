@@ -177,7 +177,7 @@ absent one means the host:
 ```xml
 <export>
   <build_type>nros_cmake</build_type>
-  <nano_ros deploy="threadx" board="riscv64-qemu" rmw="zenoh"/>
+  <nano_ros deploy="threadx" board="rv-virt-threadx" rmw="zenoh"/>
 </export>
 ```
 

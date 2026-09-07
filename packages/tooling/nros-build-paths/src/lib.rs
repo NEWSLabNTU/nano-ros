@@ -330,7 +330,7 @@ pub fn nuttx_include_root(nuttx_dir: &std::path::Path) -> PathBuf {
 
 /// The riscv64 bare-metal toolchain, resolved rather than spelled — issue 0657.
 ///
-/// `[board.qemu-riscv64-threadx]` provisions xPack's `riscv-none-elf-gcc`, and
+/// `[board.rv-virt-threadx]` provisions xPack's `riscv-none-elf-gcc`, and
 /// it is what `nros setup` installs on every supported host. The build scripts
 /// spelled the compiler `riscv64-unknown-elf-*` (Ubuntu's package), so a host
 /// provisioned entirely by `nros setup` could not build this platform at all.

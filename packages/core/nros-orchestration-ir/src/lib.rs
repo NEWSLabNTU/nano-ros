@@ -128,7 +128,7 @@ pub fn board_path_for(key: &str) -> Option<&'static str> {
             "::nros_board_mps2_an385_freertos::Mps2An385"
         }
         "threadx-linux" => "::nros_board_threadx_linux::ThreadxLinux",
-        "threadx-qemu-riscv64" | "qemu-riscv64-threadx" => {
+        "threadx-qemu-riscv64" | "rv-virt-threadx" => {
             "::nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64"
         }
         // phase-337 W3 — ONE crate, two witnesses. Both keys resolve to the
@@ -1276,7 +1276,7 @@ mod tests {
             "qemu-arm-freertos",
             "threadx-linux",
             "threadx-qemu-riscv64",
-            "qemu-riscv64-threadx",
+            "rv-virt-threadx",
             "nuttx",
             "qemu-armv7a-nuttx",
             "nuttx-riscv",

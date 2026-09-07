@@ -81,7 +81,7 @@ endif()
 # tx_user.h / nx_user.h). FORCE the right per-board path here — the
 # .env's legacy value happens to point at this same dir today but
 # might drift; staying explicit avoids cross-board contamination
-# when both threadx-linux and riscv64-qemu cmake trees exist in the
+# when both threadx-linux and rv-virt-threadx cmake trees exist in the
 # same shell session.
 set(THREADX_CONFIG_DIR "${_NROS_BOARD_CONFIG_DIR}"
     CACHE PATH "Directory containing tx_user.h / nx_user.h" FORCE)
@@ -162,7 +162,7 @@ endif()
 # Phase 214 followup — `NROS_APP_CONFIG` source-side definition for the
 # cmake-driven consumer path. Mirrors the Rust build.rs::emit_app_config_def
 # body in packages/boards/nros-board-threadx-linux/build.rs. Same shape as
-# Phase 214.P's emission in nano-ros-board-riscv64-qemu.cmake — see that
+# Phase 214.P's emission in nano-ros-board-rv-virt-threadx.cmake — see that
 # file's block for the rationale. Without this TU, every C/C++ threadx-linux
 # example fails at link with `undefined reference to NROS_APP_CONFIG` from
 # startup.c::main.

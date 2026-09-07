@@ -1,6 +1,6 @@
 # The riscv64 bare-metal toolchain PREFIX — issue 0657.
 #
-# `[board.qemu-riscv64-threadx]` in `nros-sdk-index.toml` provisions
+# `[board.rv-virt-threadx]` in `nros-sdk-index.toml` provisions
 # `riscv-none-elf-gcc` (the xPack build, with `dist.<host>` rows for
 # linux-x86_64, linux-arm64 and macos-arm64 — it is the portable choice, and the
 # one `nros setup` actually installs on every supported host). Twenty files then

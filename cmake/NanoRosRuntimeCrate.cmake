@@ -46,7 +46,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRosEdition.cmake")
 # Hosted / host-sim builds (posix, threadx-linux) keep the `std` host staticlib.
 # phase-314 — `_nros_runtime_platform_features` is GONE. It was the weaker of
 # the two platform mappings: no BOARD input, so it could not split threadx-linux
-# (std) from riscv64-qemu (no_std). `nros_feature_set` in
+# (std) from rv-virt-threadx (no_std). `nros_feature_set` in
 # cmake/NanoRosFeatureSet.cmake is the one computation now.
 
 # Write the synthesised `nros_ws_runtime` crate (Cargo.toml + src/lib.rs) into OUT_DIR.
@@ -213,7 +213,7 @@ function(nros_synth_runtime_umbrella)
     # phase-314 — ONE feature computation, shared with nros-c and nros-cpp.
     # This site used to build its own list: it honoured the edition (correctly)
     # but had no BOARD input, so it could not split threadx-linux (std) from
-    # riscv64-qemu (no_std), and it carried no capabilities at all — which meant
+    # rv-virt-threadx (no_std), and it carried no capabilities at all — which meant
     # a MIXED workspace silently lost param-services while a pure C/C++ one kept
     # them (issue 0311 / phase-314 W1).
     # phase-439 W4 — the bare `nros_rmw_dispatch("${_NRR_BACKEND}")` that stood
