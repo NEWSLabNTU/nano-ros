@@ -249,7 +249,12 @@ where
     // (its spin loop never returns), so the handle stays valid.
     let executor = unsafe { ::nros::Executor::open_with_session_handle(ctx.session) };
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
-    crt.executor_mut().set_active_groups(ctx.tier.groups);
+    // issue 1172 — `Err` means the filter did not fit, and
+    // `set_active_groups` has already cleared it and left filtering ON,
+    // so this tier registers NOTHING rather than registering on a
+    // quietly narrower set. Nothing here can return an error (the tier
+    // runner is `-> ()`), so the fail-closed state IS the report.
+    let _ = crt.executor_mut().set_active_groups(ctx.tier.groups);
     // W5.4 — lower this tier's class/budget/period/deadline onto the executor's
     // default SchedContext (Sporadic / EDF / TT), shared with every board.
     crt.apply_tier_sched_policy(
@@ -407,7 +412,12 @@ impl ZephyrBoard {
         // which is SAFE — a spin exchanges keepalives/data, not declares (only
         // declare-vs-declare races the interest handshake).
         let boot_tier = &tiers[0];
-        crt.executor_mut().set_active_groups(boot_tier.groups);
+        // issue 1172 — `Err` means the filter did not fit, and
+        // `set_active_groups` has already cleared it and left filtering ON,
+        // so this tier registers NOTHING rather than registering on a
+        // quietly narrower set. Nothing here can return an error (the tier
+        // runner is `-> ()`), so the fail-closed state IS the report.
+        let _ = crt.executor_mut().set_active_groups(boot_tier.groups);
         crt.apply_tier_sched_policy(
             boot_tier.class,
             boot_tier.period_us,
