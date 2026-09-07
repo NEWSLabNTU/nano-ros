@@ -891,12 +891,18 @@ mod service_backed {
                         return NROS_RET_INVALID_ARGUMENT;
                     };
                     let exec = get_executor(&mut (*executor)._opaque);
-                    let Some(server) = exec.params_mut() else {
-                        return NROS_RET_NOT_INIT;
-                    };
-                    match server.set(n, $from(value)) {
+                    // phase-426 W2 — through `Executor::set_parameter`, which
+                    // is `ParameterServer::apply`: the same read-only / type /
+                    // range / undeclared rules a `ros2 param set` gets. The
+                    // old spelling reached `ParameterServer::set` directly,
+                    // which is a SECOND answer to "may this set happen" — the
+                    // duplication RFC-0019/0020 forbids, and the seam through
+                    // which issue 1151's rules could be bypassed from C.
+                    match exec.set_parameter(n, $from(value)) {
                         SetParameterResult::Success => NROS_RET_OK,
-                        SetParameterResult::NotFound => NROS_RET_NOT_FOUND,
+                        SetParameterResult::NotFound | SetParameterResult::Undeclared => {
+                            NROS_RET_NOT_FOUND
+                        }
                         _ => NROS_RET_INVALID_ARGUMENT,
                     }
                 }
@@ -985,12 +991,10 @@ mod service_backed {
             return NROS_RET_INVALID_ARGUMENT;
         };
         let exec = get_executor(&mut (*executor)._opaque);
-        let Some(server) = exec.params_mut() else {
-            return NROS_RET_NOT_INIT;
-        };
-        match server.set(n, pv) {
+        // phase-426 W2 — same routing as the scalar setters above.
+        match exec.set_parameter(n, pv) {
             SetParameterResult::Success => NROS_RET_OK,
-            SetParameterResult::NotFound => NROS_RET_NOT_FOUND,
+            SetParameterResult::NotFound | SetParameterResult::Undeclared => NROS_RET_NOT_FOUND,
             _ => NROS_RET_INVALID_ARGUMENT,
         }
     }
