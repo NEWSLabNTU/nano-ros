@@ -122,7 +122,8 @@ build at?" is answered by cache-variable archaeology.
 
 These are two questions and conflating them is a defect in BOTH directions.
 
-Measured over 411 tracked `package.xml`:
+Measured over 416 tracked `package.xml` (411 of which carry a `<build_type>`;
+five declare none):
 
     both CMakeLists.txt + Cargo.toml :  21
     CMakeLists.txt only              : 173
@@ -132,13 +133,33 @@ Measured over 411 tracked `package.xml`:
 The 21 are almost all Zephyr Rust leaves declaring `nros_cmake` — correctly, as
 cmake drives and the `Cargo.toml` is an implementation detail inside that build.
 Today `builder/cargo_root.rs` pulls them into the generated `[workspace]
-members` on file presence alone, which is wrong.
+members` on file presence alone.
 
-Of the 64, ten declare `nros_cargo` with no `Cargo.toml` and ten declare
-`ament_cmake` with no `CMakeLists.txt` (`packages/cli/interfaces` — interface
-packages whose build files are generated at sync time). Routing on the
-declaration ALONE would hard-fail 20 packages that are legitimately not built
-here.
+**W0 measured that 20 of the 21 are already excluded by a different mechanism** —
+13 declare their own `[workspace]` (cargo REFUSES such a member: `multiple
+workspace roots found in the same workspace`) and 13 declare
+`[package.metadata.nros.entry] deploy`, which `cargo_excluded_entry_dirs`
+resolves through the board catalog to `Driver::West`; six carry both. So for
+those D3 changes nothing observable — it reaches today's answer from the
+declaration instead of a `Cargo.toml` metadata round-trip.
+
+The one genuine repair is `examples/workspaces/mixed/src/rust_heartbeat_pkg`: a
+cmake-driven Rust node carrying its own `[workspace]`, which makes the generated
+cargo root unusable the moment `mixed` routes to the cargo driver. This RFC did
+not name it; W0 found it.
+
+**All 64** declare-but-no-file packages would be hard-failed by routing on the
+declaration alone — not the 20 an earlier draft of this RFC claimed, which came
+from reading the head of a frequency table rather than the whole of it. The real
+breakdown, measured by phase-439 W0:
+
+    23  nros_cargo      22  nros_cmake      12  ament_cmake
+     2  ament_cargo      5  (no declaration)
+
+And they are not an interface-package accident: **34 are bringups, 13 are
+platform/board descriptors, 17 are interface/message packages** whose build
+files are generated at sync time. The case for keeping participation on file
+presence is three times stronger than this RFC first stated.
 
 So:
 
