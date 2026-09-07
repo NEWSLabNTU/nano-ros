@@ -1406,6 +1406,20 @@ platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/param-chatter-talker"
 
+# phase-426 W6 — the TWO-node parameter fixture. Its sibling above composes one
+# node, and one node is exactly what the phase-426 defect could not be seen
+# through: the six parameter services used to be published under the executor's
+# identity, so a one-node image looks identical before and after W3. This image
+# gives `alpha` and `beta` the same parameter NAME with different values (W1),
+# a step-constrained parameter on `alpha` alone (issue 1150) and no
+# `allow_undeclared` opt-in anywhere (issue 1151).
+# Consumed by tests/params_per_node_interop.rs.
+[[fixture]]
+id = "param-two-node-talker"
+platform = "linux"
+lang = "rust"
+dir = "packages/testing/nros-tests/bins/param-two-node-talker"
+
 # phase-381 acceptance — the graph probe. Enumerates the ROS graph and prints
 # what it can SEE, so `graph_interop.rs` can compare it against `ros2 node
 # list`. The one fixture in the phase whose subject is DISCOVERY: every other

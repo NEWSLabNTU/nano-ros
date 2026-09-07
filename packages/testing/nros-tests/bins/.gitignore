@@ -24,6 +24,7 @@
 /int32-sink/Cargo.lock
 /message-info-observer/Cargo.lock
 /param-chatter-talker/Cargo.lock
+/param-two-node-talker/Cargo.lock
 /safety-chatter-listener/Cargo.lock
 /safety-chatter-talker/Cargo.lock
 

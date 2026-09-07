@@ -815,6 +815,17 @@ filter = "binary(interop_e2e)"
 test-group = "ros2-interop"
 slow-timeout = { period = "60s", terminate-after = 2 }
 
+# phase-426 W6 — the per-node parameter cell. BEFORE the `binary(params)` row
+# below, and that order is the whole point: `binary(x)` is a CONTAINS match, so
+# the generic row already catches `params_per_node_interop` and first-match-wins
+# would hand it the 60 s budget. This binary needs more — each of its two cases
+# boots a two-node image, waits for both service sets, and then makes ~10
+# `ros2 param` calls, one of which is the whole-graph `ros2 param list`.
+[[profile.default.overrides]]
+filter = "binary(=params_per_node_interop)"
+test-group = "ros2-interop"
+slow-timeout = { period = "90s", terminate-after = 2 }
+
 [[profile.default.overrides]]
 filter = "binary(params)"
 test-group = "ros2-interop"

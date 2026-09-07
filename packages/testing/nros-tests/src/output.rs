@@ -222,6 +222,18 @@ pub const INT32_SINK_READY_MARKER: &str = "Waiting for Int32";
 /// services it is about to call actually exist.
 pub const PARAM_TALKER_READY_MARKER: &str = "Publishing Int32 messages";
 
+/// phase-426 W6 — the `param-two-node-talker` fixture prints one of these per
+/// node once the first spin has reconciled the per-node parameter services,
+/// followed by that node's fully-qualified name.
+///
+/// It doubles as the readiness marker (the services provably exist by the time
+/// it is printed) and as the fixture's own answer to W6's question, from
+/// `Executor::parameter_service_node_names` — the list the six servers are
+/// built from. A test that sees the same two FQNs here and on the wire has
+/// checked both ends of one claim; a test that sees ONE line here is looking at
+/// a tree where the per-node registration is gone.
+pub const PARAM_SERVICE_NODE_PREFIX: &str = "param services registered for node: ";
+
 /// FreeRTOS realtime-tier workspace nodes (`ws-realtime-{c,cpp}-mps2`)
 /// print `"[<tier>] tick=N"` on the QEMU serial console **only when the
 /// tier's publish succeeds** — the marker doubles as a delivery proof for
