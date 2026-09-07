@@ -1,6 +1,6 @@
 //! Emulator tests for nros
 //!
-//! **Bucket (phase-329 W4): KEEP — sole qemu-arm-baremetal coverage + on-target
+//! **Bucket (phase-329 W4): KEEP — sole `baremetal` coverage + on-target
 //! one-offs, not matrix-cell dups.** rtos_e2e's `Platform` enum is RTOS-only
 //! (Freertos/Nuttx/ThreadxLinux/ThreadxRiscv64); this file is the ONLY runtime
 //! coverage of the BARE-METAL Cortex-M3 (MPS2-AN385) target, so nothing duplicates
@@ -8,9 +8,9 @@
 //!   * ON-TARGET UNIT tests no cell asserts — CDR serialization, Node API, type
 //!     metadata, output format, the WCET benchmark, the LAN9118 driver, and the
 //!     toolchain/qemu detection probes.
-//!   * TRANSPORT/FRAMEWORK pubsub VARIANTS on qemu-arm-baremetal — `bsp` (the
+//!   * TRANSPORT/FRAMEWORK pubsub VARIANTS on `baremetal` — `bsp` (the
 //!     standard), `serial` (serial transport), `xrce` (XRCE rmw), `rtic` (the RTIC
-//!     framework entry shape). These overlap the `qemu-arm-baremetal` matrix
+//!     framework entry shape). These overlap the `baremetal` matrix
 //!     coordinate in intent but there is no cell-bound baremetal consumer to fold
 //!     into; when one exists, the `bsp` case is the fold candidate and the
 //!     serial/xrce/rtic variants stay one-offs.
@@ -281,7 +281,7 @@ fn test_qemu_lan9118_driver() {
 
 // (Phase 182.3) The qemu-bsp `*_builds` presence tests were
 // removed — they only asserted a fixture compiled, covered by `build-all`
-// (qemu-arm-baremetal is a manifest row, Phase 181.4/181.6) + the
+// (`baremetal` is a manifest row, Phase 181.4/181.6) + the
 // `_require-fixtures` preflight. (The BSP examples have no e2e here — they need
 // Docker/slirp networking, see the skipped start tests below — so their compile
 // coverage now lives solely in `build-all`, which is the test-all prerequisite.)

@@ -293,7 +293,7 @@ else
     NROS_CLI="$(nros_cli_bin)"; export NROS_CLI
     NROS_REPO_ROOT="${NROS_REPO_ROOT:-$PWD}"; export NROS_REPO_ROOT
     # Phase 226.D — shared fixture-only --target-dir resolver. Eligible
-    # default-config rows for a migrated platform (qemu-arm-baremetal,
+    # default-config rows for a migrated platform (baremetal,
     # examples) share one `build/cargo-fixtures/<group>` so nano-ros
     # crates compile once for the group, not once per example dir. The
     # stale probe sources the SAME helper (rust-fixture-stale.sh).
@@ -401,7 +401,7 @@ else
         # comment cannot run on a schedule, and the talker shipped at 18,572 B
         # against a ~67 KB budget.
         case "$platform" in
-            qemu-esp32-baremetal)
+            esp32)
                 nros_fixture_check_stack_floor "$platform" "$args" "$envstr"
                 ;;
         esac

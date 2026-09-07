@@ -139,7 +139,7 @@ rmw-api-parity:
 # cargo does not hash the final artifact name the way it hashes `deps/`, so two
 # rows in one group producing a binary of the same name overwrite each other
 # and one test silently runs the other's binary. Nothing checked this: the one
-# migrated platform (qemu-arm-baremetal) is collision-free by luck, and `linux`
+# migrated platform (baremetal) is collision-free by luck, and `linux`
 # — the next candidate — is not.
 #
 # `check-fast`: buildless and source-free (it reads examples/fixtures.toml and

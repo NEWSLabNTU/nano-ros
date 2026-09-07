@@ -146,7 +146,7 @@ def load_compile_check_fixtures(path):
 #
 # The pattern is a LEADING letter+digits+underscore, which is what the
 # work-item spellings share and what ordinary names do not — `mps2` and
-# `qemu-arm-baremetal` contain digits without matching, because the digits are
+# `baremetal` contain digits without matching, because the digits are
 # part of a real name rather than an index into a plan.
 _WORK_ITEM_ID = re.compile(r"^[a-z]\d+_")
 _PHASE_ISSUE_ID = re.compile(r"\b(phase|issue)[-_]?\d+", re.IGNORECASE)

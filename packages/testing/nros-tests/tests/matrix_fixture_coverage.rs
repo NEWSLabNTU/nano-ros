@@ -30,7 +30,7 @@ use nros_tests::{
 ///
 /// Delegates to the SSoT on `PlatformId` (phase-318 W4.d). It used to be spelled
 /// out here, and `ci_lane::coords` then grew a second, disagreeing copy of the
-/// forward direction — `qemu-esp32-baremetal` attributed to `QemuBaremetal`
+/// forward direction — the esp32 bare-metal token attributed to `QemuBaremetal`
 /// rather than `Esp32Qemu`. One home, two directions, a round-trip test.
 fn platform_from_str(s: &str) -> Option<PlatformId> {
     PlatformId::from_fixture_token(s)

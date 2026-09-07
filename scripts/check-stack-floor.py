@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Assert a floor on the runtime stack of ESP32 images (issues 0190, 1052).
 
-On `qemu-esp32-baremetal` the stack is not declared — it is the LINKER
+On the `esp32` fixture platform the stack is not declared — it is the LINKER
 LEFTOVER. `link.x` fills DRAM up to `_stack_start` (0x3fcce400) and `.bss`
 grows up from below, so `_stack_end` is wherever `.bss` happens to end and
 
@@ -46,8 +46,13 @@ from pathlib import Path
 # smoltcp poll path (≈98 KB deep at its worst; ~67 KB budgeted). A floor set
 # just above the last crash would bless the next one.
 # --------------------------------------------------------------------------
+# Keyed by the FIXTURE PLATFORM, which is what `board_of` finds in an artifact
+# path (`build/cargo-fixtures/<platform>[-<group cksum>]`). phase-437 W4a
+# renamed that token `qemu-esp32-baremetal` -> `esp32` (RFC-0093 R6: a fixture
+# platform names a FAMILY, never a board); the BOARD is `esp32-c3-baremetal`
+# and is not what this dict looks up.
 FLOORS = {
-    "qemu-esp32-baremetal": 32 * 1024,
+    "esp32": 32 * 1024,
 }
 
 # A fixture ROW's `platform` -> the board whose floor applies to it.
@@ -65,7 +70,13 @@ FLOORS = {
 # platform is a decision someone writes here instead of a row that silently
 # escapes the gate — which is the whole defect this map exists for.
 ROW_PLATFORM_BOARD: dict[str, str | None] = {
-    "esp32": "qemu-esp32-baremetal",
+    # phase-437 W4a collapsed the two esp32 fixture coordinates into one, so
+    # this row is now an identity — the `[[workspace_fixture]]` `target_dir`
+    # (`target-fixtures/esp32`) and the `[[fixture]]` group dir
+    # (`build/cargo-fixtures/esp32`) finally spell the same token. The map
+    # stays: its job is to make "this platform has no floor" a DECLARED `None`
+    # rather than a fall-through, and that is unchanged for the other nine.
+    "esp32": "esp32",
     # The rest run on an OS that gives a thread its own stack — the floor is
     # the PORT's (`stack_bytes` is a floor the port raises, issue 0667), not a
     # linker leftover, so `_stack_start`/`_stack_end` do not describe them.
@@ -299,7 +310,7 @@ def selftest(quiet: bool = False) -> int:
     else:
         raise AssertionError("inverted stack region accepted")
 
-    board = "qemu-esp32-baremetal"
+    board = "esp32"
     floor = FLOORS[board]
 
     # the shipped talker that crashed must FAIL

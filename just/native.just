@@ -67,9 +67,10 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
     makefile="$(mktemp "${TMPDIR:-/tmp}/nros_example_build.XXXXXX.mk")"
     trap 'rm -f "$toml_list" "$makefile"' EXIT
 
-    # Phase 181.6 / 181.4.h — qemu-arm-baremetal, esp32 and
-    # qemu-esp32-baremetal are excluded here and built from the SSOT manifest
-    # below instead, so each has a single enumeration source (matching the
+    # Phase 181.6 / 181.4.h — the `examples/qemu-arm-baremetal/` and
+    # `examples/qemu-esp32-baremetal/` leaves are excluded here and built from
+    # the SSOT manifest below instead (fixture platforms `baremetal` and
+    # `esp32`), so each has a single enumeration source (matching the
     # test-all staleness probe). The remaining platforms have no manifest rows
     # for this broad find, or are built by their own platform recipes
     # (freertos/nuttx/threadx/zephyr/px4).
@@ -143,17 +144,20 @@ build-examples JOBS=env_var_or_default("NROS_BUILD_JOBS", "75%"):
         source scripts/build/subtree-guard.sh
         nros_guard_exec native-examples make -j "$cargo_frontends" -f "$makefile"
     fi
-    # Phase 181.6 — qemu-arm-baremetal rust examples from the SSOT manifest
+    # Phase 181.6 — `baremetal` rust examples from the SSOT manifest
     # (plain default builds; each example's .cargo/config.toml selects the cross
     # target). No codegen prep needed (no generated-msg consumers).
-    bash scripts/build/fixtures-build.sh qemu-arm-baremetal rust
-    # Phase 181.4.h — esp32 + qemu-esp32-baremetal (ESP32-C3, riscv32imc) from
-    # the manifest. They need the workspace nightly + rust-src/build-std (NOT
-    # xtensa/espup) + SSID/PASSWORD; inject those as platform env.
+    bash scripts/build/fixtures-build.sh baremetal rust
+    # Phase 181.4.h — esp32 (ESP32-C3, riscv32imc) from the manifest. It needs
+    # the workspace nightly + rust-src/build-std (NOT xtensa/espup) +
+    # SSID/PASSWORD; inject those as platform env.
+    #
+    # phase-437 W4a — ONE invocation, not two. `esp32` and
+    # `qemu-esp32-baremetal` were two fixture coordinates for one platform
+    # (RFC-0093 R6); collapsing them means the second call would rebuild the
+    # first's rows.
     RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
         bash scripts/build/fixtures-build.sh esp32 rust
-    RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
-        bash scripts/build/fixtures-build.sh qemu-esp32-baremetal rust
     echo "All examples built!"
 
 # Build all example binaries used as test fixtures (Rust + C + C++ + workspaces).

@@ -269,7 +269,7 @@ nros_lane_modules() {
 #
 # Issue #405 / phase-337 W3.f. `lane-coords --modules` schedules `just <module>
 # build-fixtures`, and a module may own SEVERAL fixture platforms (`nuttx` owns
-# `nuttx` and `nuttx-riscv`; `esp32` owns `esp32` and `qemu-esp32-baremetal`).
+# `nuttx` and `nuttx-riscv`; `esp32` owns `esp32` and `esp32`).
 # Such a module has to build the ones its lane asked for and skip the ones it
 # did not — a riscv NuttX build costs an arm↔rv-virt kernel reconfigure, so
 # "always build both" is not free, and "never build the second" is issue #405.

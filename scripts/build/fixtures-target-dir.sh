@@ -15,7 +15,7 @@
 #
 # Eligibility — returns nothing (caller keeps the example-local
 # `target/`) unless the platform has been migrated to a shared fixture dir
-# (qemu-arm-baremetal — see NROS_FIXTURE_SHARED_PLATFORMS).
+# (baremetal — see NROS_FIXTURE_SHARED_PLATFORMS).
 #
 # phase-340 W2 (work-order item 5) — an authored `--target-dir` used to be a
 # SECOND opt-out: rows spelling `target-zenoh` / `target-safety` stayed
@@ -76,10 +76,11 @@
 # resolves through the manifest row) BEFORE being added; the check is one
 # command per platform and is recorded in the commit.
 #
-# phase-340 item 7 — `qemu-esp32-baremetal` joins 2026-08-10. Wave 2 recorded
+# phase-340 item 7 — `esp32` (then spelled `qemu-esp32-baremetal`) joins
+# 2026-08-10. Wave 2 recorded
 # that "esp32 has no rust rows in the manifest under that name", which is TRUE
 # and was the wrong question: the platform string on ESP32's rust rows is
-# `qemu-esp32-baremetal`, and it has THREE of them
+# `esp32`, and it has THREE of them
 # (`examples/qemu-esp32-baremetal/rust/{talker,listener}` and
 # `packages/testing/nros-tests/bins/logging-smoke-esp32-qemu`). Asking the gate
 # about a spelling the manifest does not use returns "no rows" for a platform
@@ -97,7 +98,7 @@
 # its authored `target_dir`. Gate scope and mechanism scope agree — checked,
 # not assumed, because a rule enforced over a narrower set than it covers is
 # issue 0196's shape.
-export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-qemu-arm-baremetal linux nuttx freertos threadx-linux threadx-riscv64 qemu-esp32-baremetal}"
+export NROS_FIXTURE_SHARED_PLATFORMS="${NROS_FIXTURE_SHARED_PLATFORMS:-baremetal linux nuttx freertos threadx-linux threadx-riscv64 esp32}"
 
 # _nros_fixture_variant_sig <cargo-args> <envstr>
 # Signature of everything in the grouping key BEYOND platform+triple.
@@ -309,10 +310,10 @@ nros_fixture_row_artifact_dir() {
 # passes `"" ""` for two of the three asks a different question with the same
 # function and gets an answer that is wrong exactly when a row has a variant:
 #
-#   producer  nros_fixture_group_slug qemu-esp32-baremetal "" "ZPICO_MAX_QUERYABLES=2"
-#             -> qemu-esp32-baremetal-4118800323
-#   consumer  nros_fixture_group_slug qemu-esp32-baremetal "" ""
-#             -> qemu-esp32-baremetal
+#   producer  nros_fixture_group_slug esp32 "" "ZPICO_MAX_QUERYABLES=2"
+#             -> esp32-4118800323
+#   consumer  nros_fixture_group_slug esp32 "" ""
+#             -> esp32
 #
 # That is what stopped every ESP32 QEMU flash image from being packed the moment
 # those rows gained an `env` (41a7d8de7). The manifest is the one place the

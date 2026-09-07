@@ -300,7 +300,7 @@ def prerequisite_rows():
         },
         {
             "id": "qemu-arm-toolchain-prereq",
-            "platform": "qemu-arm-baremetal",
+            "platform": "baremetal",
             "kind": "sdk-prereq",
             "role": "arm-none-eabi-gcc",
             "dir": "nros-sdk-index.toml",
@@ -444,7 +444,7 @@ def prerequisite_rows():
         },
         {
             "id": "esp32-sdk-prereq",
-            "platform": "qemu-esp32-baremetal",
+            "platform": "esp32",
             "kind": "sdk-prereq",
             "role": "esp32-qemu-tooling",
             "dir": "nros-sdk-index.toml",
@@ -535,7 +535,7 @@ def hand_authored_rows():
         # the list, so nothing failed. `--check` now fails on a stale claim.
         {
             "id": "esp32-qemu-flash-images",
-            "platform": "qemu-esp32-baremetal",
+            "platform": "esp32",
             "kind": "postprocess",
             "lang": "rust",
             "rmw": "zenoh",
@@ -548,7 +548,7 @@ def hand_authored_rows():
         },
         {
             "id": "esp32-qemu-logging-smoke-flash-image",
-            "platform": "qemu-esp32-baremetal",
+            "platform": "esp32",
             "kind": "postprocess",
             "lang": "rust",
             "rmw": "zenoh",

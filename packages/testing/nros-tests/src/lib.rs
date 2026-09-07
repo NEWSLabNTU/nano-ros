@@ -744,7 +744,7 @@ pub mod kind {
     pub const ZEPHYR_WORKSPACE_BUILDS: &str = "zephyr-workspace-builds";
 
     /// The espflash-packed ESP32-C3 QEMU flash images. A POSTPROCESS of the
-    /// `qemu-esp32-baremetal` cargo rows rather than a row of its own — the
+    /// `esp32` cargo rows rather than a row of its own — the
     /// manifest has no shape for "another row's artifact, repacked" — so the
     /// KIND is what the two sides share instead of a row (issue 0535).
     pub const ESP32_QEMU: &str = "esp32-qemu";
@@ -1152,8 +1152,8 @@ mod tests {
         );
         // scripts/build/fixtures-target-dir.sh (migrated in step 1)
         assert_eq!(
-            build_dir(kind::CARGO_FIXTURES, &["qemu-arm-baremetal"]),
-            root.join("build/cargo-fixtures").join("qemu-arm-baremetal")
+            build_dir(kind::CARGO_FIXTURES, &["baremetal"]),
+            root.join("build/cargo-fixtures").join("baremetal")
         );
 
         // R2 — empty coordinate parts are skipped, as in the shell helper.

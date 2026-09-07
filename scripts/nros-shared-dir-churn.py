@@ -276,7 +276,7 @@ def main(argv, run_selftest=True):
     # sentence it can say, on evidence it did not read.
     #
     # `Precalculated` entries are normal and carry neither key (measured: 14 of
-    # 125 records in the freertos tree, 16 of 72 in qemu-arm-baremetal), so the
+    # 125 records in the freertos tree, 16 of 72 in baremetal), so the
     # predicate is "not ONE record in ANY tree yielded an entry", not "some
     # record yielded none".
     #
