@@ -130,3 +130,108 @@ on C++14); a TU that discards `rclcpp::init(argc, argv)` fails a `-D warnings`
 lane. `result.hpp` still carries ZERO capability gates and still parses under
 the ThreadX `-nostdinc++` shim — the rename must not introduce a gate, and the
 header lane is what proves it. This subsumes W6's first item.
+
+## Measured before starting (2026-09-07) — two findings that change the order
+
+Both are measurements, not readings. Each contradicts something this document
+asserted, so the original wording is kept above and corrected here.
+
+### Finding 1 — W1's acceptance cannot currently fail (issue 1204)
+
+W1 accepts on *"`check-cpp-capability-layout` passes with the hosted members
+present, and `sizeof(rclcpp::Node)` is identical with and without
+`-DNROS_CPP_STD`"*. Both halves are satisfiable by a broken implementation.
+
+The gate forces each capability macro **on** against a hosted baseline where the
+headers already self-define every one of them (`client.hpp:23-32` under
+`__has_include(<memory>)`, and the same block in publisher / service /
+subscription / polling_subscription). Forcing them on is a no-op, so the gate
+compares the baseline against itself seven times:
+
+```
+rclcpp::Node baseline = 3752   and all seven forced measurements = 3752
+```
+
+Proven by mutation. A capability-gated `double` member was added to
+`rclcpp::Node`'s private block — the exact defect the gate exists to catch — and
+the gate reported `OK — 3 type(s) x 7 capability macro(s), no layout depends on a
+probe`, exit 0, while its own selftest passed in the same run. The selftest is
+honest but tests a synthetic struct in a standalone TU, where the macro really
+does start undefined; it says nothing about the three real types. (Mutation
+reverted; tree byte-identical.)
+
+**Consequence: a W0 precedes W1.** The macros are genuinely off only under
+`-nostdinc++` against a shim with no `<memory>`, and the `cpp` lane already has
+two such configurations (`just/check/lanes.just:708-747`). The gate must measure
+there. The blanket `continue` on an unmeasurable type must also become a
+per-type policy: "the type does not exist in this configuration" is not the same
+as "not a layout question", and for a type that is supposed to exist everywhere
+it is the failure.
+
+### Finding 2 — the merge is blocked on phase-426, and "Not in scope" was wrong
+
+This document says: *"Parameters — phase-426. W4 touches the facades but does not
+depend on it."* Measured, W1 cannot be done without that decision, because the
+parameter store is not hosted-only and so W1's `void* hosted_` does not move it.
+
+```
+::nros::Node                        =    192 bytes
+rclcpp::Node                        =  3 752      (192 + ParameterServer<16>)
+::nros::ComponentNode               = 55 776      (192 + ParameterServer<256,8,4096>)
+::nros::ParameterServer<16>         =  3 512
+::nros::ParameterServer<256,8,4096> = 55 352
+```
+
+One type means one store size, and `nros::Node` is the type embedded in every
+freestanding image — 211 files, 299 references. Each naive merge is a defect:
+
+| take | consequence |
+| --- | --- |
+| `ComponentNode`'s store | every node grows to ~55 KB — the regression the phase-392/394 memory campaign exists to prevent |
+| `rclcpp::Node`'s store | `ComponentNode`'s derivers silently drop from 256 declared parameters to 16 |
+| neither (RFC-0089 decision 3) | correct, and it needs the Rust-side setter phase-426 owns |
+
+RFC-0089 decision 3 already chose the third: *"The merged node's parameters are
+the Rust store"*, both inline stores becoming forwarders. The FFI supports that
+for `declare_parameter` and the four typed getters
+(`nros_cpp_declare_param`, `nros_cpp_get_param_{integer,double,bool,string}`),
+and supports nothing else — there is no `nros_cpp_set_param` and no
+`set_parameter` on the Rust executor, confirmed again here. `has_parameter` has
+no FFI either.
+
+So the merged node can forward declare and get today; `set_parameter<T>` and
+`has_parameter` have nothing to forward to. That is a `refuse-loud` disposition
+until phase-426 lands the setter, which is the disposition machinery working as
+designed rather than a workaround. Note `ComponentNode` has no `set_parameter` at
+all, so only `rclcpp::Node`'s two overloads (`nros.hpp:826`, `:845`) regress.
+
+### Corrections to line references in this document
+
+Measured against the tree, three citations here and in phase-417 have drifted:
+
+* `adopt_launch_seed_` is `component_node.hpp:586-615`, not `:536-565`; its
+  `#if defined(NROS_SYSTEM_PARAM_SERVICES)` opens at `:562`, not `:536`.
+* The rclcpp-shaped parameter facade is `component_node.hpp:618-709`, not
+  `:568-659`.
+* phase-417 W2.b's stated blocker — *"`nros.hpp` does not include
+  `component_node.hpp`"* — was fixed by W2.b itself; the include is at
+  `nros.hpp:62`, unconditional. Six places in the tree still assert the
+  opposite.
+
+### One thing the design does not address: `shared_from_this`
+
+`rclcpp::Node` derives from `std::enable_shared_from_this<Node>`
+(`nros.hpp:540`), and two example templates call `shared_from_this()` to hand a
+node to `diagnostic_updater`
+(`examples/templates/rclcpp-compat-smoke/src/talker.cpp:48`,
+`examples/templates/topic-state-monitor-port/src/topic_state_monitor.cpp:60`).
+
+RFC-0089's layout sketch for the merged type has no base class, and the base
+cannot simply be gated: a base that exists only where `<memory>` does changes
+`sizeof` between two TUs of one image, which is precisely the mixed-layout
+hazard (issues 0135, 0460) that the layout rule exists to prevent — px4 sets
+`-DNROS_CPP_STD` on one module of a larger image on purpose. Dropping the base
+also does not work by itself, because `std::make_shared<Derived>` populates the
+weak reference through that base and nothing else does.
+
+This needs a decision before W1 lands, and it is not recorded anywhere yet.
