@@ -163,3 +163,12 @@ tests = ["interop::case_4_zenoh_service_nano_server", "interop::case_5_zenoh_ser
 run = "cargo nextest run -p nros-tests --test interop_e2e"
 where = "ros2 distrobox, Humble, tree with #684 + #692"
 evidence = "2 case(s) produced a result in interop_e2e.xml"
+
+[[verdict]]
+cell = "zephyr-qos-rust-zenoh"
+date = "2026-09-08"
+verdict = "pass"
+tests = ["nros_zephyr_publisher_reaches_ros2_topic_echo"]
+run = "cargo nextest run -p nros-tests --test qos_zephyr_ros2_interop_e2e"
+where = "ros2 distrobox, Humble, zephyr native_sim"
+evidence = "2/2: an nros zenoh-pico publisher on a Zephyr native_sim image reaches a stock rmw_zenoh_cpp subscriber via ros2 topic echo. First Zephyr build this host has ever produced."

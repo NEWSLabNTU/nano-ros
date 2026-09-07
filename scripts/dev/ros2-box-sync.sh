@@ -106,6 +106,27 @@ exclusions=(
     # `third-party/` needs no equivalent: it has no directory named `build` at
     # all, measured, and if one appears it will be output.
     --include '/zephyr-workspace/**/build/***'
+    # issue: `target/` is a RUST BUILD-OUTPUT pattern and Zephyr has two
+    # directories of SOURCE with that name — `drivers/i2c/target/` and
+    # `include/zephyr/drivers/i2c/target/`, five files, I2C target (slave) mode.
+    # Excluding them left the mirror unable to CONFIGURE any Zephyr image:
+    #
+    #   drivers/i2c/Kconfig:101: 'drivers/i2c/target/Kconfig' not found
+    #
+    # which reads as a broken Zephyr checkout rather than as a sync rule.
+    #
+    # This is the FIFTH time this exclusion has eaten tracked source; the
+    # comment on `build-*/` below records the first four and the fix each time.
+    # It survived `check-box-sync-covers-tracked-source` because that gate
+    # sweeps the SUPERPROJECT's `git ls-files`, and `zephyr-workspace/zephyr`
+    # is a nested repo — `git ls-files | grep -cE '(^|/)target/'` is 0 while
+    # two such directories exist on disk. A sweep scoped to one repo cannot see
+    # a sibling's source.
+    #
+    # Re-included AHEAD of the exclusion, the same shape as
+    # `/zephyr-workspace/**/build/***` above, and scoped to the zephyr tree so
+    # a genuine Rust `target/` anywhere else is still excluded.
+    --include '/zephyr-workspace/zephyr/**/target/***'
     --exclude 'target/'
     --exclude 'target-*/'
     --exclude 'build/'
