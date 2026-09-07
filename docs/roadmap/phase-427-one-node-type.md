@@ -1,6 +1,6 @@
 # Phase 427 — one node type, named `rclcpp::Node`, compiling freestanding
 
-**Status (2026-09-05). Planned.** Implements RFC-0089 §"The node API, proposed
+**Status (2026-09-08). W1, W2, W3, W5, W6 and W8 LANDED; W4 NOT STARTED; W7 blocked and re-scoped — see "What landed, and what it measured" below.** Implements RFC-0089 §"The node API, proposed
 under the governing principle". Preconditions are met by phase-417: the
 `pump()` blocker is gone, `check-cpp-capability-layout` measures the layout
 rule, and the `-nostdinc++` lane can see a freestanding regression.
@@ -9,38 +9,338 @@ rule, and the `-nostdinc++` lane can see a freestanding regression.
 
 Three C++ node shapes collapse to one type:
 
-| today | after |
-| --- | --- |
-| `nros::Node` — out-ref creation, freestanding, 103 files | `rclcpp::Node` |
-| `rclcpp::Node` — hosted, `shared_ptr`, derivable | the same type, hosted members |
-| `nros::ComponentNode` — derivable, entry-supplied handle, 5 dirs | DELETED; its handle becomes a constructor |
+| today | after | status |
+| --- | --- | --- |
+| `nros::Node` — out-ref creation, freestanding, 103 files | one type, both spellings | **DONE** |
+| `rclcpp::Node` — hosted, `shared_ptr`, derivable | the same type, hosted members out of line | **DONE** |
+| `nros::ComponentNode` — derivable, entry-supplied handle, 5 dirs | DELETED; its handle becomes a constructor | **NOT STARTED** |
 
-`nros::Node` survives only as a deprecated alias so the remaining call sites are
-optional to migrate rather than a flag day.
+Both spellings name ONE class — `std::is_same<rclcpp::Node, nros::Node>::value`
+is asserted by `tests/compile/one_node_type.cpp`. Which of the two is the
+definition and which the alias is settled the OTHER way from RFC-0089's end
+state, for a measured reason recorded below; neither is deprecated yet, so the
+remaining call sites are still optional to migrate.
+
+## What landed, and what it measured (2026-09-08)
+
+W1, W2, W3, W5 landed together (one merge is not divisible), W6/W8 landed
+first because the merge needed the macro, and phase-430's W6 and W7 landed with
+them because they are the same headers. W4 is untouched. W7 turned out not to
+mean what it says; the reason is measured and recorded below rather than worked
+around.
+
+### The number W1 asked for
+
+`sizeof`, hosted `g++ -std=c++17`, via `check-cpp-capability-layout`'s own probe:
+
+| | `nros::Node` | `rclcpp::Node` |
+| --- | --- | --- |
+| origin/main, baseline | 192 | 3752 |
+| origin/main, `-DNROS_CPP_STD=1` | 192 | 3752 |
+| **after, baseline** | **200** | **200** |
+| **after, `-DNROS_CPP_STD=1`** | **200** | **200** |
+
+Two types became one, and the acceptance criterion — identical with and without
+`-DNROS_CPP_STD` — holds. The +8 is `void* hosted_`, which is the entire cost of
+the hosted surface to a node that never makes a hosted-shape call: the block is
+allocated lazily and a freestanding image can never allocate it at all.
+
+`~Node()` is byte-identical in every configuration. That was not free: the
+hosted block's type is hosted-only, so a `#if`-gated `delete` in the destructor
+would have given two TUs of one image two different inline destructors — the
+ODR half of the same defect. The block carries its own `destroy` function
+pointer instead.
+
+### `std::enable_shared_from_this` had to go, and that is a divergence
+
+The shim derived from it. It is a hosted-only BASE with a `std::weak_ptr`
+member — 16 bytes of layout behind a capability probe, which is exactly what
+the rule forbids and what the deleted `timers_` member already shipped once. So
+the base is deleted and `shared_from_this()` survives as a METHOD returning a
+pointer that aliases `this` with an EMPTY owner: it observes the node without
+extending its lifetime, where upstream's shares ownership.
+
+Ledgered as `divergence` / `adopt-bounded` (`cpp:Node::shared_from_this`). Two
+example templates call it (`rclcpp-compat-smoke`, `topic-state-monitor-port`,
+both `diagnostic_updater::Updater(shared_from_this(), …)`) and both still build,
+because in this API a node is constructed by the generated entry or by `main`
+and outlives everything it is handed to.
+
+### W5 was forced by the merge, not chosen after it
+
+The two `get_logger()`s could not both survive: two overloads differing only in
+return type are ill-formed. The ported channel wins (clause 2), so the merged
+accessor returns `rclcpp::Logger` — which now carries the node's NAME **and**
+the opaque `nros_log::Logger` handle, with an implicit conversion to
+`nros_logger_t`. That conversion is what kept every native call site compiling:
+`NROS_LOG_INFO(node.get_logger(), …)` and the `logger == nullptr` check in
+`examples/native/cpp/logging` are unchanged.
+
+### W3 retired `bind_timer` for real
+
+All 22 in-tree call sites moved to
+`node.create_wall_timer<C, &C::method>(out, ms, self)` in the same commit;
+`NROS_BIND_TIMER` repoints to the member (a deprecation a macro hides is not
+one); the scaffold codegen and its test moved with them. The free function stays
+one release as a deprecated forwarder with no second code path.
+
+Sweep: `grep -rn 'nros::bind_timer' examples packages` returns only the
+deprecated definition and the probes that name it in prose.
+
+### The namespace direction is the opposite of the RFC's end state, and it is measured
+
+RFC-0089 describes `rclcpp::Node` as the class and `nros::Node` as the migration
+alias. **It is the other way round here, because of the parity tool's own
+configuration.** `scripts/api-parity.py` extracts the NATIVE C++ surface with
+namespace root `{"nros"}` and the PORTED surface with `{"rclcpp", …}`, and
+`just check api-parity --check` gates only the native bucket. Defining the class
+in `rclcpp` empties `nros::Node::*` from the native surface, so roughly sixty
+members re-bucket to `theirs-only` with no ledger row and the gate goes red.
+
+That is not a reason to keep two vocabularies — both spellings name one type and
+`std::is_same<rclcpp::Node, nros::Node>::value` is asserted — but it does mean
+the flip is a change to the extractor's roots, which re-buckets the whole ported
+surface at once. That belongs with phase-428's whole-tree `nros::` -> `rclcpp::`
+sweep, not with one type.
+
+Consistency argues the same way: every other type in this API is already spelled
+this direction (`rclcpp::Publisher`, `rclcpp::QoS`, `rclcpp::Timer`,
+`rclcpp::Clock` are aliases of `nros::` definitions). `Node` being the one
+exception would have been arbitrary.
+
+The alias is UNCONDITIONAL, which the shim class was not: it lived inside
+`#if defined(NROS_CPP_HAS_SHARED_PTR) && …`, so a freestanding target had the
+node and not its ROS 2 name — the two vocabularies split exactly where the port
+matters most.
+
+### W7 cannot mean what it says, and the blocker is the line above
+
+W7 is "`nros::Node` deprecated with `NROS_DEPRECATED_MSG`, not deleted". A
+deprecation attaches to the ALIAS, and after the merge the alias is
+`rclcpp::Node` — the name a user is supposed to write. Deprecating the
+definition would deprecate both spellings at once, because they are one name for
+one class.
+
+So W7 is **blocked on the namespace flip**, which is blocked on the extractor
+roots above. What landed of it:
+
+* `NROS_CPP_DEPRECATED_MSG` ships (`result.hpp`), C++11 attribute with a
+  GNU/clang fallback, so the migration channel exists.
+* It is USED, on the one ours-only name this phase actually retired:
+  `nros::bind_timer`.
+* Even after the flip, a bare `[[deprecated]]` on `nros::Node` warns at all 218
+  in-tree `nros::Node` sites at once, which the phase's own "Not in scope"
+  section says must stay optional and incremental. Whoever lands it should
+  migrate the tree in the same commit, or the attribute is a flag day wearing a
+  migration's clothes.
+
+### W8's settled shape, and the one part of it C++ cannot express
+
+RFC-0089 settled on "one template, one name": `Expected<T>` renamed to
+`Result<T>`, today's `Result` becoming `Result<void>` with `Result` as the alias.
+**C++ cannot express the last part.** In one namespace `Result` is either a
+class-template name — in which case the bare `Result` that every call site and
+every ported file writes is ill-formed, because a defaulted template parameter
+still requires `Result<>` — or a non-template type name, in which case
+`Result<T>` is ill-formed. A using-declaration, an alias template and a
+nested-namespace re-export all redeclare the same name and collide with the
+other spelling.
+
+What landed (2026-09-07, recorded in full under "W8 LANDED" below) is the
+STRUCTURE the RFC asked for with only the template's own spelling changed: one
+template **`ResultOf<T>`**, the value-less case IS its `void` specialization,
+and `Result` is an alias for that specialization. `Expected<T>` survives one
+release as a `[[deprecated]]` class template converting from `ResultOf<T>`.
+`NROS_NODISCARD` is on both, and the RULE for which channel an API picks is
+stated in `result.hpp` beside the types it governs.
+
+Blast radius, measured: exactly ONE discard existed in the headers —
+`rclcpp::shutdown()` dropping `nros::shutdown()`'s `Result`. It now reports it,
+which is also more faithful, since upstream's `bool` means "was the shutdown
+successful".
+
+
+### phase-430 W6 and W7, landed here because they are the same headers
+
+**W7 — the `TimerBase` ruling: DELETE.** RFC-0089 §"Timer, studied against RTOS
+semantics" decided `Timer` stays flat; the tree disagreed (phase-417 W1.a had
+landed `class TimerBase` with a virtual destructor and `detail::WallTimer` under
+it). The ruling is delete, argued from the executor's dispatch:
+
+1. **The vtable has no caller.** The only virtual member was `~TimerBase()`, and
+   there is no virtual call through a `TimerBase*` anywhere in the tree — there
+   cannot be. The executor's callback slot is `nros_cpp_timer_callback_t`, a raw
+   `void(*)(void*)`, and dispatch goes through the STATIC
+   `detail::WallTimer::trampoline`; the executor never holds a C++ timer object.
+   Even the destructor's virtuality was dead: the cell is built with
+   `std::make_shared<detail::WallTimer>()`, so the control block already records
+   the concrete deleter.
+2. **The name promises children we refuse to have.** `WallTimer` and
+   `GenericTimer` stay absent by decision — the clock axis is a runtime field
+   plus a second VERB, which is the shape phase-425 shipped. A base whose one
+   leaf is `detail::`-private advertises a taxonomy the header refuses two
+   paragraphs later.
+3. **The flat shape is a better keep-alive.** `create_wall_timer` returns
+   `std::shared_ptr<nros::Timer>` aliased onto the private cell — the shape
+   `create_subscription` has always used.
+
+Cost, measured: `rclcpp::TimerBase` had ZERO non-test call sites in this tree.
+`rclcpp::Timer` replaces it and is UNCONDITIONAL, so a freestanding target gets
+the ROS 2 timer name too.
+
+**W6 — the clock-taking verb** on the merged type
+(`create_timer<C, &C::m>(out, clock, ms, self)`) and the hosted free
+`rclcpp::create_timer(node, clock, period, cb)`, humble's only form, returning
+the same cell `create_wall_timer` does. Two period spellings, because
+`rclcpp::Duration` is implicitly constructible from a chrono duration upstream
+and `nros::Duration` is not (it reaches targets where `<chrono>` does not
+exist), so the conversion is an overload rather than a constructor.
+
+### Acceptance, and what proves each
+
+| item | proof |
+| --- | --- |
+| W1 `sizeof` invariance | `check-cpp-capability-layout`, plus the table above |
+| W1 hosted members present | `one_node_type.cpp` exercises `get_node_options`, the `shared_ptr` creators and the parameter facade |
+| W2 freestanding TU | `tests/compile/one_node_type_freestanding.cpp`, compiled `-nostdinc++` against the ThreadX minimal libcpp: constructs a node, creates a publisher |
+| W2 hosted constructor verbatim | `one_node_type.cpp` `upstream_construction_verbatim()` |
+| W3 both families, no ambiguity | `one_node_type.cpp` `both_create_families_on_one_object()` |
+| W3 member binding, no allocation | `one_node_type.cpp` `Talker::configure` + the `static_assert` on its shape |
+| W3 ported line FAILS freestanding | `tests/compile/ported_create_publisher_freestanding_probe.cpp`, an expected-failure whose diagnostic the lane GREPS for the out-ref overload's signature — "it failed" is also what a typo produces |
+| W5 distinct logger names | `one_node_type.cpp` `two_nodes_two_logger_names()` (compile-side; the runtime cell is still owed) |
+| W6/W8 `[[nodiscard]]` | `result.hpp`; the one in-tree discard is fixed |
+| phase-430 W6 | `one_node_type.cpp` `clock_driven_timer_is_humbles_free_verb()` |
+| phase-430 W7 | `ros2_one_dispatch_path.cpp` asserts `!is_polymorphic<detail::WallTimer>` and the return type |
+
+Gates run green: `just check cpp` (which now carries the three new probes),
+`just check api-parity` (5 new rows in `node.json`), `check-cbindgen-headers`,
+`check-ffi-struct-mirrors`, `check-api-parity-ledger`,
+`check-cpp-freestanding-includes`, `check-cpp-capability-layout`.
+`just check fast` has 4 reds, all pre-existing and environmental on this host
+(zenoh-pico and the XRCE vendored trees are not checked out; a
+`docs/issues/README.md` commit citation; a sandbox `PermissionError` in
+`check-xrce-source-manifest`'s own self-test).
+
+### W5's runtime half is still owed
+
+The compile probe proves the logger is built from the node's name. That two
+nodes in one image EMIT under distinct names is a runtime assertion and belongs
+in `nros_tests` beside the other logging cells.
+
+## W4 — NOT STARTED, and what it has to decide first
+
+W4 is the largest item and it is untouched. Attempting it inside this change
+would have shipped a half-merged `ComponentNode`, which is worse than either
+half. What the next person needs, measured rather than assumed:
+
+**The delta is 14 members, not a rename.** Already on the merged type and
+deletable outright: `get_name`, `get_namespace`, `get_logger`, `node()`
+(now the identity), `create_callback_group`, the scalar parameter facade and its
+`std::string` overloads, and `adopt_launch_seed_` (whose twin
+`rclcpp::detail::adopt_executor_param_seed` already lives in `nros.hpp` — keep
+ONE). Genuinely missing, and each needing a decision:
+
+1. **The `create_publisher` RETURN SHAPE COLLIDES, and the merge is what creates
+   the collision.** `ComponentNode::create_publisher<M>(const char*, const QoS&)`
+   returns `Publisher<M>` BY VALUE; the merged node's
+   `create_publisher<M>(const std::string&, const QoS&)` returns a
+   `shared_ptr`. On one type, `create_publisher<M>("chatter", 10)` — a string
+   LITERAL — binds the `const char*` overload and returns by value, so a ported
+   `auto pub = node->create_publisher<M>("chatter", 10); pub->publish(…)` stops
+   compiling, or worse binds differently than the author expects. This is
+   compile-and-differ manufactured by the merge itself, and it has to be
+   designed away (drop the value-returning form, or give it a different verb)
+   before anything else moves.
+2. **The error latch is 24 unconditional bytes.** `has_error_` + `error_what_` +
+   `error_code_` cannot live in the hosted block — the boot-halt mechanism
+   (`NanoRosEntityInventory.cmake`, RFC-0044 Q2) is exactly what a freestanding
+   image needs. Decide whether every node pays for it.
+3. **The timer pool is 192 unconditional bytes.** `Timer timers_[8]` +
+   `timer_count_`. Same question, larger number, and `NROS_COMPONENT_MAX_TIMERS`
+   is a knob with an `#error` floor that would move onto the node.
+4. **Do NOT add a virtual destructor.** Upstream's `rclcpp::Node` has one, but
+   the generated entry placement-news each component and never destroys it
+   through a base pointer, so a vtable here would be 8 bytes on every
+   freestanding node with no dispatch that uses it — the same argument that
+   deleted `TimerBase` one file over. Derivation works without it; only
+   `delete base_ptr` is UB, and nothing does that.
+5. `check_declared_depth`, the member-pointer `create_subscription` /
+   `create_subscription_in` family, and the `std::vector<T>` parameter arm all
+   move as-is.
+
+**RFC-0047's "one component, several named nodes" DOES NOT EXIST.** This is a
+correction, not a scoping note: `ComponentNode` owns exactly one `nros::Node`,
+created once in its constructor, and `packages/cli/nros-cli-core/src/
+entity_inventory.rs` states the invariant — "a `ComponentNode` constructor is
+one `Node::create` is one node NAME". What the subnode packages actually
+exercise is **one node with several NAMED CALLBACK GROUPS bound to different
+sched contexts** (`create_callback_group` + `create_timer_in` +
+`create_subscription_in`), which is RFC-0047's real subject and which the merged
+node already carries. The phase table's row should say so; there is no
+several-named-nodes capability to preserve.
+
+**No subnode package builds freestanding today.** All three consuming
+`fixtures.toml` rows are `platform = "linux"`. The workspace that HOSTS
+`subnode_pkg` (`examples/workspaces/realtime-cpp`) already has nuttx, freertos
+and zephyr rows, but they select the `configure`-shape packages via their own
+launch files. The smallest path to W4's "one of them builds for a freestanding
+target" is a new `[image.*_subnode]` pointing at `subnode_system.launch.xml`;
+`subnode_pkg/CMakeLists.txt` carries no platform restriction.
+
+**Four gates are keyed on the file by PATH or by namespace** and will need
+moving with it: `scripts/api-parity.py`'s `CPP_TRANSLATION_UNITS` includes
+`component_node.hpp` as its own TU and `extract_cxx` RAISES on any clang error,
+so deleting the file is a hard red; `scripts/check-c-array-guard-probe.py` keys
+a table on the literal path; `scripts/check-cxx-standard-floor.py` names it as
+the C++17 floor's justification (`adopt_launch_seed_`'s `if constexpr` is the
+tree's only one); and 17 ledger rows are keyed `cpp:ComponentNode::*`.
+
+Codegen moves with it too: `entry.cpp.jinja` emits the include,
+`node_body.jinja` placement-news the class from a `::nros::NodeHandle`,
+`emit_cpp.rs` has the `is_rclcpp_node` branch, and two goldens record the
+output.
 
 ## Work items
 
-* **W1 [cpp] — the out-of-line hosted block.** `void* hosted_` replaces every
+* **W1 [cpp] — the out-of-line hosted block. DONE (2026-09-08).** `void* hosted_` replaces every
   hosted-only member; `detail::NodeHosted` is allocated lazily on the first
   hosted-shape call and never on a freestanding target.
   *Acceptance:* `check-cpp-capability-layout` passes with the hosted members
   present, and `sizeof(rclcpp::Node)` is identical with and without
   `-DNROS_CPP_STD`.
+  *Met:* 200 bytes in both configurations, against 192 / 3752 for the two
+  separate types on `origin/main`. `std::enable_shared_from_this` had to be
+  deleted to get there (a hosted-only base with a `weak_ptr` member IS a
+  capability-dependent layout); `shared_from_this()` survives as a method and
+  the divergence is ledgered.
 
-* **W2 [cpp] — construction.** `Node(const char*)` + `init()` + `ok()`
+* **W2 [cpp] — construction. DONE (2026-09-08).** `Node(const char*)` + `init()` + `ok()`
   freestanding; upstream's `std::string`/`NodeOptions` constructors hosted.
   *Acceptance:* the `-nostdinc++` lane compiles a TU that constructs a node and
   creates a publisher; a hosted TU compiles upstream's constructor verbatim.
+  *Met:* `tests/compile/one_node_type_freestanding.cpp` (ThreadX minimal libcpp)
+  and `one_node_type.cpp` `upstream_construction_verbatim()`, both wired into
+  `just check cpp`.
 
-* **W3 [cpp] — one name, two signatures.** The out-ref `create_*` family and
+* **W3 [cpp] — one name, two signatures. DONE (2026-09-08).** The out-ref `create_*` family and
   the `shared_ptr` family coexist as overloads on the one type;
   `create_wall_timer` gains the member-binding template overload, retiring
   `bind_timer`.
   *Acceptance:* a component binds a member function with no allocation; a
   ported file's `create_publisher<M>("chatter", 10)` compiles hosted and FAILS
   TO COMPILE freestanding, with a diagnostic naming the out-ref overload.
+  *Met:* `one_node_type.cpp` for the binding (plus a `static_assert` on its
+  shape), `ported_create_publisher_freestanding_probe.cpp` for the refusal —
+  and the lane GREPS the diagnostic for the out-ref signature, because "it
+  failed" is also what a typo produces. All 22 in-tree `bind_timer` call sites
+  moved in the same commit.
 
-* **W4 [cpp] — `ComponentNode` deleted.** Its 5 directories move to the one
+* **W4 [cpp] — `ComponentNode` deleted. NOT STARTED.** See "W4 — NOT STARTED,
+  and what it has to decide first" above: the `create_publisher` return shape
+  COLLIDES on the merged type, the error latch and timer pool are unconditional
+  bytes on every node, RFC-0047's "several named nodes" turns out not to exist
+  (it is several named CALLBACK GROUPS), and four gates are keyed on the file by
+  path or namespace. Its 5 directories move to the one
   type; RFC-0047's several-named-nodes survives as a documented ours-only
   capability on it. RFC-0044 is amended, not deleted — its Q2 boot-failure
   reasoning becomes `ok()`'s.
@@ -48,20 +348,38 @@ optional to migrate rather than a flag day.
   build and run; **one of them builds for a freestanding target**, which is the
   test of whether the merged type still fits.
 
-* **W5 [cpp] — `get_logger()` follows ROS 2.** The `"nros.compat"` sentinel is
+* **W5 [cpp] — `get_logger()` follows ROS 2. DONE (compile half; runtime half owed).** The `"nros.compat"` sentinel is
   replaced by a logger named for the node (RFC-0089 decision 1).
   *Acceptance:* two nodes in one image emit records under distinct logger names.
+  *Partly met:* the accessor is built from the node's name and
+  `one_node_type.cpp` pins that plus the `nros_logger_t` conversion that kept
+  every native call site compiling. That two nodes EMIT under distinct names is
+  a runtime assertion and still belongs in `nros_tests`.
 
-* **W6 [loudness] — the two items the design creates.** `[[nodiscard]]` on
+* **W6 [loudness] — the two items the design creates. DONE (first half; second half is documentation, as the item allows).** `[[nodiscard]]` on
   `Result` (`NROS_NODISCARD` for C++14) so a discarded `rclcpp::init(argc,
   argv);` warns; and a story for a hand-written `main` that never checks
   `Node::ok()`.
   *Acceptance:* a TU that discards `init()`'s result fails a `-D warnings`
   lane. The `ok()` half may end as documentation — if so, say so in the book
   rather than leaving it implied.
+  *Met:* `NROS_NODISCARD` on both halves of the channel — `Result` and
+  `ResultOf<T>`, and the deprecated `Expected<T>` that still names it; measured
+  blast radius
+  inside the headers was exactly one discard. **The `ok()` half IS
+  documentation** — it is stated in `Node`'s constructor doc and in the ledger
+  row `cpp:Node::ok`, and the book page is owed. A compiler cannot force a
+  hand-written `main` to ask a question.
 
-* **W7 [migration] — `nros::Node` deprecated, then deleted.** Alias for one
-  release with `NROS_DEPRECATED_MSG`, then removed.
+* **W7 [migration] — `nros::Node` deprecated, then deleted. BLOCKED, and the
+  item does not mean what it says.** After the merge `nros::Node` is the
+  DEFINITION and `rclcpp::Node` the alias (see the namespace-direction section
+  above), so a deprecation would land on the name a user is supposed to write.
+  What shipped: `NROS_CPP_DEPRECATED_MSG` exists and is used on the one
+  ours-only name this phase retired, `nros::bind_timer`. The `Node` half waits
+  on phase-428's namespace flip, and whoever lands it must migrate the 218
+  in-tree `nros::Node` sites in the same commit — a bare attribute warns at all
+  of them at once, which this doc's own "Not in scope" forbids.
 
 ## What stays invented — REVISED after review (2026-09-05)
 
