@@ -1,4 +1,4 @@
-# examples/qemu-esp32-baremetal — bare-metal ESP32-C3 (esp-hal) on QEMU
+# examples/esp32-c3-baremetal — bare-metal ESP32-C3 (esp-hal) on QEMU
 
 Pure-Rust `esp-hal` examples (no ESP-IDF), riscv32, OpenETH networking under
 the Espressif QEMU fork. Just module: **`esp32`** (`just/esp32.just`).
@@ -7,7 +7,7 @@ the Espressif QEMU fork. Just module: **`esp32`** (`just/esp32.just`).
 
 ```sh
 source ./activate.sh
-just setup esp32              # nros setup qemu-esp32-baremetal (+ optional esp32-qemu tool)
+just setup esp32              # nros setup esp32-c3-baremetal (+ optional esp32-qemu tool)
 ```
 
 The build uses rustup + `-Z build-std` (no separate toolchain package); the

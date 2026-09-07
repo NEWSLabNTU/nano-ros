@@ -62,7 +62,7 @@ const GROUPS: &[Group] = &[
         reason: "callbacks are dispatched IMMEDIATELY by the executor, so the node \
                  body is plain declarative + callback code with no DISPATCH \
                  override and no tick(). Usually because an RTOS or host OS \
-                 scheduler runs them — but NOT always: qemu-esp32-baremetal has \
+                 scheduler runs them — but NOT always: esp32-c3-baremetal has \
                  neither and still dispatches immediately, which is why this \
                  reason names the dispatch model rather than the presence of an OS \
                  (corrected 2026-08-05, see the group-B note)",
@@ -73,7 +73,7 @@ const GROUPS: &[Group] = &[
             "qemu-armv7a-nuttx",
             "rv-virt-nuttx",
             "rv-virt-threadx",
-            "qemu-esp32-baremetal",
+            "esp32-c3-baremetal",
         ],
     },
     Group {
@@ -82,7 +82,7 @@ const GROUPS: &[Group] = &[
                  tick(). That is now the WHOLE reason — W7 moved this group's \
                  bodies onto the `log` facade, so the execution model is the only \
                  thing separating it from A. ONE member, and the reason was wrong \
-                 twice before: qemu-esp32-baremetal sat here on the assumption \
+                 twice before: esp32-c3-baremetal sat here on the assumption \
                  that bare-metal implies deferred dispatch (its bodies are plain \
                  immediate-dispatch group-A code and its Pubsub cell RUNS that \
                  way), and the old reason claimed `log` needs std — which esp32 \

@@ -3268,10 +3268,10 @@ cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57" }
 # ===========================================================================
 
 [[fixture]]
-id = "qemu-esp32-baremetal-talker"
+id = "esp32-c3-baremetal-talker"
 platform = "esp32"
 lang = "rust"
-dir = "examples/qemu-esp32-baremetal/rust/talker"
+dir = "examples/esp32-c3-baremetal/rust/talker"
 skip_probe = true
 # Entity budgets are NOT here any more (issue 1052). They live in each leaf's
 # own `.cargo/config.toml [env]`, beside the declarations they are derived from
@@ -3281,15 +3281,15 @@ skip_probe = true
 # overflowed DRAM by 11,184 B. Deriving them rather than stating them is 1061.
 
 [[fixture]]
-id = "qemu-esp32-baremetal-listener"
+id = "esp32-c3-baremetal-listener"
 platform = "esp32"
 lang = "rust"
-dir = "examples/qemu-esp32-baremetal/rust/listener"
+dir = "examples/esp32-c3-baremetal/rust/listener"
 skip_probe = true
 # Budgets live in the leaf config — see the talker row above.
 
 [[fixture]]
-id = "qemu-esp32-baremetal-logging-smoke"
+id = "esp32-c3-baremetal-logging-smoke"
 platform = "esp32"
 lang = "rust"
 dir = "packages/testing/nros-tests/bins/logging-smoke-esp32-qemu"

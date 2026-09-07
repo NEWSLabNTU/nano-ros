@@ -20,7 +20,7 @@ test = false
 bench = false
 
 # Phase 244 D2 — Entry pkg deploy key. `nros::main!()` maps
-# "qemu-esp32-baremetal" → `nros_board_esp32_qemu::Esp32QemuEntry` +
+# "esp32-c3-baremetal" → `nros_board_esp32_qemu::Esp32QemuEntry` +
 # `Framework::Esp32` emit shape.
 [package.metadata.nros.entry]
 deploy = "esp32-c3-baremetal"
@@ -33,7 +33,7 @@ default_namespace = "/"
 # Phase 244 D2 / E5 — deploy-target overlay (network endpoint + domain).
 # `[package.metadata.nros.deploy.<board>]`; the board default `Config`
 # (MAC / IP / gateway) supplies the remaining smoltcp knobs.
-[package.metadata.nros.deploy.qemu-esp32-baremetal]
+[package.metadata.nros.deploy.esp32-c3-baremetal]
 rmw = "zenoh"
 domain_id = 0
 ip = "10.0.2.50"

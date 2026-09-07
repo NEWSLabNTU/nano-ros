@@ -97,7 +97,7 @@ all three spellings.
 | `zephyr-cortex-m` | west | west | west | — |
 | `esp32` | cargo | — | — | — |
 | `qemu-arm-baremetal` | cargo | — | — | — |
-| `qemu-esp32-baremetal` | cargo | — | — | — |
+| `esp32-c3-baremetal` | cargo | — | — | — |
 
 Where a row lists two builders, both are real and they build different
 things: on Zephyr, `west` builds the single-node examples under
@@ -183,14 +183,14 @@ thing, copy the example out and `cargo build` normally.
 | ThreadX (Linux sim) | `threadx-linux` | `threadx-linux` | `examples/threadx-linux/` | `just threadx_linux …` | [ThreadX](../getting-started/threadx.md) |
 | ThreadX (QEMU RISC-V 64) | `threadx-riscv64` | `qemu-riscv64-threadx` | `examples/qemu-riscv64-threadx/` | `just threadx_riscv64 …` | [ThreadX](../getting-started/threadx.md) |
 | Zephyr | `zephyr`, `zephyr-cortex-m` | `zephyr` | `examples/zephyr/` | `just zephyr …` | [Zephyr](../getting-started/integration-zephyr.md) |
-| ESP32 | `qemu-esp32-baremetal` (single-node), `esp32` (workspace) | `qemu-esp32-baremetal` | `examples/qemu-esp32-baremetal/` | `just esp32 …` | [ESP32](../getting-started/esp32.md) |
+| ESP32 | `esp32-c3-baremetal` (single-node), `esp32` (workspace) | `esp32-c3-baremetal` | `examples/esp32-c3-baremetal/` | `just esp32 …` | [ESP32](../getting-started/esp32.md) |
 | Bare-metal Cortex-M3 | `qemu-arm-baremetal` | `qemu-arm-baremetal` | `examples/mps2-an385-baremetal/` | `just qemu …` | [Bare-metal](../getting-started/bare-metal.md) |
 | Arm FVP (Cortex-A SMP) | — | `zephyr` + a license-gated FVP binary | — | — | [ARM FVP](../getting-started/arm-fvp.md) |
 
 Multi-node workspace examples do not follow that directory rule: they
 all live under `examples/workspaces/`, selected by fixture row rather
 than by directory. That is why ESP32 has two grid rows —
-`qemu-esp32-baremetal` for its single-node examples and `esp32` for its
+`esp32-c3-baremetal` for its single-node examples and `esp32` for its
 share of the workspace ones. Zephyr's two rows split differently:
 `zephyr` and `zephyr-cortex-m` build the SAME examples for different
 boards.

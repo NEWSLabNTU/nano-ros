@@ -113,7 +113,7 @@ build-qemu:
     source scripts/build/fixtures-target-dir.sh
     target_profile_dir="$(nros_cargo_target_profile_dir)"
     echo "Building ESP32 QEMU fixtures (from examples/fixtures.toml)..."
-    for id in qemu-esp32-baremetal-talker qemu-esp32-baremetal-listener; do
+    for id in esp32-c3-baremetal-talker esp32-c3-baremetal-listener; do
         RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
             bash scripts/build/fixtures-build.sh esp32 rust --id "$id"
     done
@@ -145,7 +145,7 @@ build-qemu:
         # `esp32`. No flash image could be packed at all. The id
         # is the same one passed to `fixtures-build.sh --id` four lines up.
         artifact_dir="$(nros_fixture_row_artifact_dir_by_id \
-            "qemu-esp32-baremetal-$ex" esp32)"
+            "esp32-c3-baremetal-$ex" esp32)"
         elf="$artifact_dir/riscv32imc-unknown-none-elf/$target_profile_dir/$elf_name"
         out="$esp32_qemu_dir/esp32-qemu-$ex.bin"
         # Issue 0439 — the build loop above is lane-narrowable, so under a lane
@@ -203,7 +203,7 @@ build-logging-smoke:
     target_profile_dir="$(nros_cargo_target_profile_dir)"
     echo "Building logging-smoke-esp32-qemu..."
     RUSTUP_TOOLCHAIN="{{NIGHTLY}}" SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" \
-        bash scripts/build/fixtures-build.sh esp32 rust --id qemu-esp32-baremetal-logging-smoke
+        bash scripts/build/fixtures-build.sh esp32 rust --id esp32-c3-baremetal-logging-smoke
     echo "Creating logging-smoke-esp32-qemu flash image..."
     fixture=packages/testing/nros-tests/bins/logging-smoke-esp32-qemu
     # Same migration-aware derivation as `build-qemu` — this row is on the
@@ -211,7 +211,7 @@ build-logging-smoke:
     # by ROW ID, because this row carries `env` as well and the two-empty-string
     # form derives a group dir the build never wrote to.
     artifact_dir="$(nros_fixture_row_artifact_dir_by_id \
-        qemu-esp32-baremetal-logging-smoke esp32)"
+        esp32-c3-baremetal-logging-smoke esp32)"
     elf="$artifact_dir/riscv32imc-unknown-none-elf/$target_profile_dir/logging-smoke-esp32-qemu"
     bin="$elf.bin"
     # Issue 0439 — same shape as `build-qemu` above: a lane-narrowable `--id`
@@ -346,7 +346,7 @@ ci: doctor test
 clean:
     #!/usr/bin/env bash
     for ex in talker listener; do
-        rm -rf "examples/qemu-esp32-baremetal/rust/$ex/target"
+        rm -rf "examples/esp32-c3-baremetal/rust/$ex/target"
     done
     source scripts/build/build-root.sh
     rm -rf "$(nros_build_dir "$NROS_KIND_ESP32_QEMU")" "$(nros_build_dir "$NROS_KIND_ESP32_ZENOH_PICO")"

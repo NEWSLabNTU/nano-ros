@@ -540,7 +540,7 @@ def hand_authored_rows():
             "lang": "rust",
             "rmw": "zenoh",
             "role": "flash-image",
-            "dir": "examples/qemu-esp32-baremetal/rust",
+            "dir": "examples/esp32-c3-baremetal/rust",
             "build_root": "build/esp32-qemu",
             "scheduler": "just esp32 build-qemu",
             "shared_mutation": "build/esp32-qemu",

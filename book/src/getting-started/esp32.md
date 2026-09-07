@@ -5,7 +5,7 @@ path — no ESP-IDF — running under the Espressif QEMU fork (OpenETH
 ethernet). For the ESP-IDF component path (C / C++ apps), see
 [ESP32 (ESP-IDF component)](./integration-esp-idf.md).
 
-> **Prereqs.** `nros setup qemu-esp32-baremetal` prepares the build: the
+> **Prereqs.** `nros setup esp32-c3-baremetal` prepares the build: the
 > riscv cross-gcc and `espflash` from a pinned index into the shared
 > store at `~/.nros/sdk` — you do not hand-install cross-compilers.
 > Running under QEMU additionally needs Espressif's QEMU fork
@@ -30,7 +30,7 @@ source ./activate.sh        # OR: direnv allow / source ./activate.fish
 Provision the board (and RMW):
 
 ```bash
-nros setup qemu-esp32-baremetal --rmw zenoh     # --rmw defaults to zenoh; xrce | cyclonedds also valid
+nros setup esp32-c3-baremetal --rmw zenoh     # --rmw defaults to zenoh; xrce | cyclonedds also valid
 ```
 
 This pulls the SDK sources nano-ros owns (zenoh-pico + mbedtls
@@ -59,8 +59,8 @@ Each example is a standalone Cargo package targeting
 > board crate is RISC-V only; this gap is tracked separately.
 
 ```text
-examples/qemu-esp32-baremetal/rust/talker/
-├── Cargo.toml                 # deps + [package.metadata.nros.deploy.qemu-esp32-baremetal]
+examples/esp32-c3-baremetal/rust/talker/
+├── Cargo.toml                 # deps + [package.metadata.nros.deploy.esp32-c3-baremetal]
 ├── .cargo/                    # config.toml + nros-board.toml
 │                              # (target = riscv32imc-unknown-none-elf lives in nros-board.toml)
 ├── package.xml
@@ -76,10 +76,10 @@ Deploy config lives in the app's `Cargo.toml` (baked at compile time;
 the board's default `Config` supplies the remaining smoltcp knobs like
 the MAC). The QEMU ESP32 board uses OpenETH ethernet via
 `nros-board-esp32-qemu`. Verbatim from
-[`examples/qemu-esp32-baremetal/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-esp32-baremetal/rust/talker/Cargo.toml):
+[`examples/esp32-c3-baremetal/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/esp32-c3-baremetal/rust/talker/Cargo.toml):
 
 ```toml
-[package.metadata.nros.deploy.qemu-esp32-baremetal]
+[package.metadata.nros.deploy.esp32-c3-baremetal]
 rmw       = "zenoh"
 domain_id = 0
 ip        = "10.0.2.50"
@@ -108,7 +108,7 @@ NROS_REPO_DIR=<path-to-nano-ros> nros sync
 cargo +nightly build --release
 
 # pack the ELF into the flash image QEMU boots (espflash comes from
-# `nros setup qemu-esp32-baremetal`, on PATH via activate):
+# `nros setup esp32-c3-baremetal`, on PATH via activate):
 espflash save-image --chip esp32c3 --flash-size 4mb --merge \
     target/riscv32imc-unknown-none-elf/release/esp32_qemu_talker talker.bin
 ```
@@ -170,14 +170,14 @@ If no `Publishing:` line:
 ## GitHub source
 
 - QEMU ESP32 talker:
-  [`examples/qemu-esp32-baremetal/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-esp32-baremetal/rust/talker)
+  [`examples/esp32-c3-baremetal/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32-c3-baremetal/rust/talker)
 - Board crate:
   [`packages/boards/nros-board-esp32-qemu/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/packages/boards/nros-board-esp32-qemu)
 
 ## Next
 
 - Subscriber + service + action peer directories under the same
-  `examples/qemu-esp32-baremetal/rust/`.
+  `examples/esp32-c3-baremetal/rust/`.
 - ESP-IDF component path for C / C++ apps:
   [ESP32 (ESP-IDF component)](./integration-esp-idf.md).
 - ESP32-S3 (Xtensa) — not supported today. The Xtensa toolchain

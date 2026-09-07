@@ -26,7 +26,7 @@ bare-metal Rust (`esp-hal`) path, see [ESP32 (esp-hal)](./esp32.md).
 >    ```bash
 >    ./scripts/bootstrap.sh      # builds packages/cli/target/release/nros (Phase 218)
 >    source ./activate.sh        # OR: direnv allow / source ./activate.fish
->    nros setup qemu-esp32-baremetal --rmw zenoh     # lands the toolchain
+>    nros setup esp32-c3-baremetal --rmw zenoh     # lands the toolchain
 >                                     # (and for xrce the Micro-XRCE-DDS
 >                                     # agent) in ${NROS_HOME:-~/.nros}/sdk,
 >                                     # AND clones the transport submodules.
@@ -162,7 +162,7 @@ official ROS 2 demo talker. If no `Publishing:` line:
 
 A complete reference app showing Wi-Fi + zenoh wiring on top of the
 component is not in-tree yet; the bare-metal
-[`examples/qemu-esp32-baremetal/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/qemu-esp32-baremetal/rust/talker)
+[`examples/esp32-c3-baremetal/rust/talker/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/esp32-c3-baremetal/rust/talker)
 is the closest worked example.
 
 ## Next

@@ -125,7 +125,7 @@ test FILES **2 → 0**.
 - `cmake_minimum_required` drift — 252 files at 3.22, 61 at 3.20, 9 at 3.16, one at **3.8** (rejected outright by CMake 4). The 3.20 cluster is Zephyr-facing and defensible but undocumented.
 - `cmake/NanoRosVerbs.cmake:328` — `nros_components_register_node` is the only public verb not prefixed `nano_ros_`; the ament counterpart makes `nano_ros_components_register_node` the derivable name.
 - `just/ros-editions.just:145` — the zenoh recipe's comment claims "jazzy runs 5/6 (ROS→nano action server is #0292, ignored)", but `ros_editions_zenoh.rs:170` is a plain `#[test]` with a hard `assert!` (no `#[ignore]`, no skip) and #0292 is archived as fixed. The recipe prints "PASS (cyclone + xrce + zenoh)" on a path that either passes 6/6 or hard-fails — the comment is stale either way.
-- **~5.1 GB of orphaned build output** in husks of moved/deleted examples (`examples/native/rust/entry-poc` 3.4 G, `examples/mps2-an385-baremetal/rust/phase216-rtic-e2e` 1.7 G, plus `examples/zephyr/rust/{xrce,dds}`, `examples/qemu-esp32-baremetal/rust/dds`, …), and the two retired `packages/cli/third-party/{play_launch_parser,ros-launch-manifest}` worktrees — the latter are what mask P1-1.
+- **~5.1 GB of orphaned build output** in husks of moved/deleted examples (`examples/native/rust/entry-poc` 3.4 G, `examples/mps2-an385-baremetal/rust/phase216-rtic-e2e` 1.7 G, plus `examples/zephyr/rust/{xrce,dds}`, `examples/esp32-c3-baremetal/rust/dds`, …), and the two retired `packages/cli/third-party/{play_launch_parser,ros-launch-manifest}` worktrees — the latter are what mask P1-1.
 
 ## Cross-cutting pattern (the most actionable thing in this report)
 

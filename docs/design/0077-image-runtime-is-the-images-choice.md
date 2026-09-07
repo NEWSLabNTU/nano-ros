@@ -49,7 +49,7 @@ Proposed, in one rule with three shapes: **the package that declares the entry
 owns the image runtime** — the `*_entry` package in a workspace, the example
 package itself when standalone, `nano_ros_entry()`'s generated TU for a C/C++
 image. A panic raised anywhere in core, board, RMW or user code then reaches the
-one handler that image declared, the way `examples/qemu-esp32-baremetal` already
+one handler that image declared, the way `examples/esp32-c3-baremetal` already
 works with `use esp_backtrace as _;`.
 
 ## Where the design already is — this completes it, it does not oppose it
@@ -207,7 +207,7 @@ either.
 ## The existence proof
 
 One platform already does this correctly, and it is the one where the upstream
-ecosystem forced the question. `examples/qemu-esp32-baremetal/rust/talker`:
+ecosystem forced the question. `examples/esp32-c3-baremetal/rust/talker`:
 
 ```toml
 esp-backtrace = { version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }
