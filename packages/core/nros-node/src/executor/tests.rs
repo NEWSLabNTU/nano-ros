@@ -84,8 +84,96 @@ fn test_clock_us() -> u64 {
 }
 
 fn executor_with_clock(session: MockSession) -> Executor<'static> {
-    let cfg = ExecutorConfig::default().clock_us(test_clock_us);
+    executor_with_clock_fn(session, test_clock_us)
+}
+
+/// `executor_with_clock` with the clock named at the call site.
+///
+/// The default one above is deliberately SHARED — see `private_test_clock!`
+/// for when it must not be.
+fn executor_with_clock_fn(session: MockSession, clock: fn() -> u64) -> Executor<'static> {
+    let cfg = ExecutorConfig::default().clock_us(clock);
     Executor::from_session_with(session, &cfg)
+}
+
+/// Declare a monotonic µs clock PRIVATE to one test — issue 1105.
+///
+/// `test_clock_us` is FREE-RUNNING and shared by every test in the process:
+/// on `std` its epoch is a `OnceLock` initialised by whichever test ran first,
+/// on `alloc` it is a counter advanced by whoever read it last. Either way its
+/// value at any point in a test is *how much of the suite ran before that
+/// test*, so a test asserting WHERE in a cyclic schedule "now" falls
+/// (`now_us % major_frame_us`) is measuring the suite's runtime and not the
+/// scheduler. That is the whole of issue 1105: the assertion was true solo and
+/// under the default parallel mode, and false 3-of-3 under `--test-threads=1`,
+/// for reasons entirely outside the code under test.
+///
+/// Nothing in `executor_with_clock`'s name warns an author about that, which
+/// is why the fix is a clock rather than a one-off phase alignment: a window
+/// test that reaches for `private_test_clock!` gets a clock whose value it
+/// SETS, so its phase is a constant of the test.
+///
+/// One invocation per test. Each expands to its own module, so each gets its
+/// own static and its own `fn() -> u64` — no lock, no ordering between tests,
+/// nothing shared to be disturbed. `claim_at_us` panics on a second claim
+/// because two tests sharing one clock is exactly the coupling this removes,
+/// and it must not be silent.
+///
+/// ```ignore
+/// private_test_clock!(my_window_clock);
+///
+/// #[test]
+/// fn my_window_test() {
+///     my_window_clock::claim_at_us(0);
+///     let mut ex = executor_with_clock_fn(MockSession::new(), my_window_clock::now_us);
+///     // ... then `my_window_clock::set_us(x)` to put "now" wherever the
+///     // assertion needs it.
+/// }
+/// ```
+macro_rules! private_test_clock {
+    ($name:ident) => {
+        mod $name {
+            use portable_atomic::{AtomicBool, AtomicU64, Ordering};
+
+            static NOW_US: AtomicU64 = AtomicU64::new(0);
+            static CLAIMED: AtomicBool = AtomicBool::new(false);
+
+            /// The `fn() -> u64` to hand `executor_with_clock_fn`.
+            pub fn now_us() -> u64 {
+                NOW_US.load(Ordering::SeqCst)
+            }
+
+            /// Claim this clock for the calling test and set its starting
+            /// phase. A second claim is a hard error, not a shrug: it would
+            /// re-create issue 1105 one clock down.
+            pub fn claim_at_us(start_us: u64) {
+                assert!(
+                    !CLAIMED.swap(true, Ordering::SeqCst),
+                    concat!(
+                        "private clock `",
+                        stringify!($name),
+                        "` is already claimed — one private clock serves exactly one \
+                         test (issue 1105); declare another with private_test_clock!"
+                    )
+                );
+                NOW_US.store(start_us, Ordering::SeqCst);
+            }
+
+            /// Move "now". Monotonic by contract — a test asserts a phase, it
+            /// does not rewind time — so a backwards step is a hard error.
+            pub fn set_us(now_us: u64) {
+                let prev = NOW_US.swap(now_us, Ordering::SeqCst);
+                assert!(
+                    now_us >= prev,
+                    concat!(
+                        "private clock `",
+                        stringify!($name),
+                        "` must not go backwards"
+                    )
+                );
+            }
+        }
+    };
 }
 
 use nros_core::{
@@ -1152,21 +1240,29 @@ fn test_os_priority_worker_dispatches_callback() {
     );
 }
 
+private_test_clock!(tt_window_gate_clock);
+
 /// Phase 110.G — TT-window gate suppresses dispatch when the
 /// current monotonic time falls outside `[off, off + duration)`.
 /// Coexists with the existing class-based dispatch — this test uses
 /// a `Fifo` SC with a TT window set, demonstrating that the gate is
 /// orthogonal to class.
+///
+/// Issue 1105 — on its own clock. The old version read the shared
+/// free-running `test_clock_us` and relied on the phase landing outside
+/// `[50s, 50.001s)` of a 60 s frame, which is a 1-in-60 000 coin toss on the
+/// suite's runtime rather than a statement about the gate. Both directions
+/// are asserted now, off a clock this test sets: outside the window nothing
+/// dispatches, inside it the same entry does, and the only thing that changed
+/// between the two is the clock.
 #[test]
 fn test_tt_window_gate_suppresses_outside_window() {
     use crate::executor::sched_context::{OptUs, SchedClass, SchedContext};
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    tt_window_gate_clock::claim_at_us(0);
+    let mut executor: Executor = executor_with_clock_fn(session, tt_window_gate_clock::now_us);
 
-    // Window = [50ms..51ms) within a 60-second major frame.
-    // Test runs in a single spin_once well under 50 ms after the
-    // executor's epoch — phase < 50 ms → outside window → dispatch
-    // suppressed.
+    // Window = [50s..50.001s) within a 60-second major frame.
     executor.register_time_triggered_dispatcher(60_000_000);
     let nid = executor
         .node_builder("test_tt_window_gate_suppresses_outside_window")
@@ -1182,7 +1278,6 @@ fn test_tt_window_gate_suppresses_outside_window() {
         })
         .unwrap();
 
-    // Far-future window so the spin happens outside it.
     let sc_id = executor
         .create_sched_context(SchedContext {
             class: SchedClass::Fifo,
@@ -1195,31 +1290,57 @@ fn test_tt_window_gate_suppresses_outside_window() {
 
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     let off = executor.entries[0].as_ref().unwrap().offset;
-    let (d, n) = encode_test_msg(1);
-    unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }.load(d, n);
+    let subscriber = unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) };
 
+    // Phase 10 s — outside `[50s, 50.001s)`.
+    tt_window_gate_clock::set_us(10_000_000);
+    let (d, n) = encode_test_msg(1);
+    subscriber.load(d, n);
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(
         count.load(portable_atomic::Ordering::SeqCst),
         0,
         "TT window gate must suppress dispatch outside the active slot"
     );
+
+    // Same executor, same entry, same waiting sample — only the clock moved,
+    // to phase 50.0005 s, inside the window. Without this half the assertion
+    // above passes for a gate that suppresses unconditionally.
+    tt_window_gate_clock::set_us(50_000_500);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        count.load(portable_atomic::Ordering::SeqCst),
+        1,
+        "the suppressed sample must dispatch once the clock reaches the window"
+    );
 }
+
+private_test_clock!(tt_active_window_clock);
 
 /// Phase 110.G — schedule-table builder declares + applies a full
 /// cyclic schedule in one call: validates window layout, sets
 /// major-frame length, creates one SC per window with the right
-/// TT-gate fields. Two-window schedule with the first window
-/// covering [0..1s) within a 2-second major frame ensures the
-/// test's spin (well under 1s after executor construction) fires
-/// the entry bound to window-0 and suppresses the one bound to
-/// window-1.
+/// TT-gate fields. Two-window schedule, each window 1 s of a 2-second
+/// major frame: the entry bound to the CURRENT window fires and the one
+/// bound to the other stays suppressed.
+///
+/// Issue 1105 — "the current window" used to mean *whichever window the
+/// suite's own elapsed runtime happened to land in*: the executor read the
+/// shared free-running `test_clock_us`, so the asserted phase was
+/// `time-spent-in-earlier-tests % 2s`. Solo that is ~0 and the assertion held;
+/// after ~340 siblings under `--test-threads=1` it landed in window 1 and the
+/// test failed 3 of 3, with nothing about the scheduler having changed.
+///
+/// It now runs on its own clock (`private_test_clock!`), and asserts the
+/// schedule in BOTH slots — the clock is the only thing that moves between
+/// them, which is what makes this a statement about the gate.
 #[test]
 fn test_time_triggered_dispatch_active_window() {
     use crate::executor::sched_context::{TimeTriggeredSchedule, TimeTriggeredWindow};
 
     let session = MockSession::new();
-    let mut executor: Executor = executor_with_clock(session);
+    tt_active_window_clock::claim_at_us(0);
+    let mut executor: Executor = executor_with_clock_fn(session, tt_active_window_clock::now_us);
 
     let count_w0 = alloc::sync::Arc::new(portable_atomic::AtomicUsize::new(0));
     let count_w1 = alloc::sync::Arc::new(portable_atomic::AtomicUsize::new(0));
@@ -1258,15 +1379,19 @@ fn test_time_triggered_dispatch_active_window() {
     let arena_ptr = executor.arena.as_ptr() as *const u8;
     let off0 = executor.entries[0].as_ref().unwrap().offset;
     let off1 = executor.entries[1].as_ref().unwrap().offset;
+    let sub0 = unsafe { &*(arena_ptr.add(off0) as *const MockSubscriber) };
+    let sub1 = unsafe { &*(arena_ptr.add(off1) as *const MockSubscriber) };
     let (d0, n0) = encode_test_msg(10);
     let (d1, n1) = encode_test_msg(20);
-    unsafe { &*(arena_ptr.add(off0) as *const MockSubscriber) }.load(d0, n0);
-    unsafe { &*(arena_ptr.add(off1) as *const MockSubscriber) }.load(d1, n1);
+    sub0.load(d0, n0);
+    sub1.load(d1, n1);
 
+    // Phase 0.5 s, i.e. inside window-0 by construction rather than by luck.
+    tt_active_window_clock::set_us(500_000);
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
 
-    // Phase < 1s → only the entry bound to window-0 fires; the
-    // entry bound to window-1 must stay suppressed.
+    // Only the entry bound to window-0 fires; the entry bound to
+    // window-1 must stay suppressed.
     assert_eq!(
         count_w0.load(portable_atomic::Ordering::SeqCst),
         1,
@@ -1276,6 +1401,25 @@ fn test_time_triggered_dispatch_active_window() {
         count_w1.load(portable_atomic::Ordering::SeqCst),
         0,
         "entry bound to window-1 must stay suppressed outside its slot"
+    );
+
+    // Advance into window-1 and assert the complement. Same executor, same
+    // entries; only the clock moved. Without this half a gate that suppressed
+    // window-1 unconditionally — or one that ignored the binding entirely —
+    // would still pass.
+    sub0.load(d0, n0);
+    tt_active_window_clock::set_us(1_500_000);
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+
+    assert_eq!(
+        count_w0.load(portable_atomic::Ordering::SeqCst),
+        1,
+        "entry bound to window-0 must stay suppressed once the phase leaves its slot"
+    );
+    assert_eq!(
+        count_w1.load(portable_atomic::Ordering::SeqCst),
+        1,
+        "the sample held back in window-0 must dispatch once window-1 is active"
     );
 }
 
