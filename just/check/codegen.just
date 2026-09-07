@@ -93,6 +93,18 @@ codegen-stamp-inputs:
 codegen-tool-reconfigure:
     @python3 scripts/check-codegen-tool-reconfigure.py
 
+# phase-413 W2 — phase-431 W1's workspace check ("is this binary foreign to the
+# checkout my cwd is in") is meaningless for a verb the BUILD SYSTEM runs: cmake
+# uses the tool path it was configured with, from a build output dir that on a
+# runner may sit under a different nano-ros tree. That refusal took tier 2 red,
+# was fixed for the three verbs whose symptom was visible, and left five `ws`
+# subcommands of the same class — two of which swallow the refusal into
+# `message(STATUS ...)` and build on with EMPTY board/entity facts. The exempt
+# set is READ from `ws_cmd_name`, never restated here. Buildless.
+[group("checks")]
+build-tool-verbs-exempt:
+    @python3 scripts/check-build-tool-verbs-exempt.py
+
 # RFC-0090 / phase-429 W5 — the codegen-version check must FIRE.
 #
 # `check-fast` proves the tree is green. Only a negative control proves the

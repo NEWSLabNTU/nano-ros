@@ -39,7 +39,14 @@ const BUILT_STAMP: &str = env!("NROS_CLI_SOURCE_STAMP");
 fn command_is_guarded(name: &str) -> bool {
     matches!(
         name,
-        "sync" | "plan" | "ws" | "codegen" | "codegen-system" | "generate-rust" | "setup"
+        "sync"
+            | "plan"
+            | "ws"
+            | "ws-build"
+            | "codegen"
+            | "codegen-system"
+            | "generate-rust"
+            | "setup"
     )
 }
 
@@ -66,7 +73,14 @@ fn command_is_guarded(name: &str) -> bool {
 /// The verbs a USER types in their own workspace keep the check, which is what
 /// phase-431 W1 was for: `sync`, `plan`, `ws`, `setup`.
 fn workspace_check_applies(name: &str) -> bool {
-    !matches!(name, "codegen" | "codegen-system" | "generate-rust")
+    // `ws-build` is the five `ws` subcommands cmake invokes — see `ws_cmd_name`
+    // in `lib.rs`. Same argument as the three beside it, and the same lane:
+    // two of the five swallow a refusal into `message(STATUS …)` and build on
+    // with empty board/entity facts.
+    !matches!(
+        name,
+        "codegen" | "codegen-system" | "generate-rust" | "ws-build"
+    )
 }
 
 /// Refuse to run when this binary is older than the sources it was built from,
@@ -256,7 +270,13 @@ mod foreign_binary_tests {
     /// freshly built binary was refused.
     #[test]
     fn the_build_tool_verbs_skip_the_workspace_check() {
-        for verb in ["codegen", "codegen-system", "generate-rust"] {
+        // `ws-build` is the five `ws` subcommands cmake invokes (`ws_cmd_name`
+        // in `lib.rs`). Phase-413 W2 found them AFTER the three below: the
+        // first fix landed at the one site whose symptom was visible, and
+        // `ws providers` / `ws order` / `ws entity-inventory` would have gone
+        // red at the first workspace entry leaf, while `ws board-facts` and
+        // `ws entity-facts` swallow the refusal and build on with no facts.
+        for verb in ["codegen", "codegen-system", "generate-rust", "ws-build"] {
             assert!(!workspace_check_applies(verb), "{verb} must be exempt");
             // …but they are still STALENESS-guarded: that question is about the
             // binary, and is the one that protects a build-time emitter.

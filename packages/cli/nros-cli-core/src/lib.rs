@@ -77,11 +77,56 @@ use eyre::Result;
 /// Matched on the ENUM VARIANT, not a user-typed string: a renamed CLI verb
 /// then cannot silently fall out of the guarded set, which is the drift that
 /// makes allow-lists rot.
+/// The `ws` subcommands CMAKE invokes, named apart from the ones a user types.
+///
+/// phase-413 W2. Phase-431 W1's workspace check asks "did this binary come from
+/// the checkout my cwd is in", and for a verb the BUILD SYSTEM runs that
+/// question has no meaning: cmake invokes the tool path it was configured with
+/// (`-D_NANO_ROS_CODEGEN_TOOL`) from a build OUTPUT directory, which on a
+/// runner may sit under an entirely different nano-ros tree. That is what took
+/// tier 2 red — `nros codegen resolve-deps` refused a correct, freshly built
+/// binary — and the fix exempted the three verbs whose symptom was seen.
+///
+/// These five are the rest of the same class, measured from a foreign checkout:
+/// `ws providers`, `ws order`, `ws entity-inventory`, `ws board-facts` and
+/// `ws entity-facts` all get `this nros does not belong to the checkout it is
+/// being run against`. Their cmake call sites are
+/// `NanoRos{Providers,Workspace,EntityInventory,BoardFacts,EntityFacts}.cmake`,
+/// none of which sets `WORKING_DIRECTORY`, so every one inherits the cwd that
+/// already refused `resolve-deps`.
+///
+/// TWO OF THEM FAIL SILENTLY, which is why this is worse than another red lane.
+/// `nros_resolve_board_facts` and `nros_read_entity_facts` degrade a refusal to
+/// `message(STATUS …)` + `return()` and let the build continue with an EMPTY
+/// facts environment — the 0460 class, a knob that reaches one lane and not the
+/// other, and unobservable in a log that only echoes a failed leaf's tail.
+///
+/// They stay in `command_is_guarded`, so the STALENESS question — the one that
+/// protects a build-time emitter — still applies. Only the cwd question drops.
+/// The sweep, re-runnable:
+///
+/// ```text
+/// grep -rhoE '\bws [a-z-]+' cmake/ --include='*.cmake' | sort -u
+/// ```
+///
+/// It reports seven; `ws model-dims` and `ws check-board-projections` appear
+/// only inside comments, so five is the invoked set.
+fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
+    match args.command {
+        cmd::ws::Sub::Providers(_)
+        | cmd::ws::Sub::Order(_)
+        | cmd::ws::Sub::BoardFacts(_)
+        | cmd::ws::Sub::EntityFacts(_)
+        | cmd::ws::Sub::EntityInventory(_) => "ws-build",
+        _ => "ws",
+    }
+}
+
 fn cmd_name(cmd: &cmd::Cmd) -> &'static str {
     match cmd {
         cmd::Cmd::Sync(_) => "sync",
         cmd::Cmd::Plan(_) => "plan",
-        cmd::Cmd::Ws(_) => "ws",
+        cmd::Cmd::Ws(a) => ws_cmd_name(a),
         cmd::Cmd::Codegen(_) => "codegen",
         cmd::Cmd::CodegenSystem(_) => "codegen-system",
         cmd::Cmd::ModelPath(_) => "model-path",
