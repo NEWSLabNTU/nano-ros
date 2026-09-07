@@ -293,8 +293,8 @@
 
 ::nros::Result Ctrl::<span class="fn">configure</span>(::nros::Node&amp; node) {
     node.<span class="fn">create_publisher</span>(pub_, <span class="lit">"/ctrl"</span>);
-    <span class="kw">return</span> ::nros::<span class="fn">bind_timer</span>&lt;Ctrl, &amp;Ctrl::on_tick&gt;(
-               node, timer_, <span class="lit">10</span>, <span class="kw">this</span>);
+    <span class="kw">return</span> node.<span class="fn">create_wall_timer</span>&lt;Ctrl, &amp;Ctrl::on_tick&gt;(
+               timer_, <span class="lit">10</span>, <span class="kw">this</span>);
 }</pre>
         </div>
       </div>

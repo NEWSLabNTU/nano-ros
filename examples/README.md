@@ -214,7 +214,7 @@ two-layer scheme. Every workspace has its own README; one line each:
 | `bridge-cyclonedds` | declarative `[[bridge]]`: `/chatter` zenoh → cyclonedds in one process, no user bridge code |
 | `bridge-xrce` | same declarative bridge, XRCE variant (zenoh → XRCE agent → DDS) |
 | `ws-custom-msg-c` | in-workspace `custom_msgs/Reading` interface pkg, raw-CDR pub/sub on `/reading` |
-| `ws-custom-msg-cpp` | C++ projection of the custom-msg demo (`bind_timer` / `bind_subscription_raw`) |
+| `ws-custom-msg-cpp` | C++ projection of the custom-msg demo (`create_wall_timer<C, &C::m>` / `bind_subscription_raw`) |
 | `ws-custom-msg-mixed` | C custom-msg node pkgs (verbatim from `-c`) under a C++ TYPED entry carrier |
 | `ws-custom-msg-rust` | custom interface pkg used via the typed pub/sub path |
 | `launch` | advanced launch composition — topology lives in the launch XML (launch v1) |

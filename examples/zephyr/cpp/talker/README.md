@@ -2,7 +2,7 @@
 
 The node is a stateful **component** rather than a hand-written imperative
 `main.cpp`: `Talker::configure(node)` binds a `std_msgs/String` publisher on
-`/chatter` plus a 500 ms `bind_timer` member callback that publishes
+`/chatter` plus a 500 ms `create_wall_timer<Talker, &Talker::on_tick>` member callback that publishes
 `Hello World: N` (the official ROS 2 demo chatter). The **Zephyr typed
 carrier** generates the entry:
 
