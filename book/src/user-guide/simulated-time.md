@@ -137,6 +137,26 @@ deliberate: `Clock::clear_ros_time_override()`.
 model `nros_core::Clock` has always documented. Two nodes in one image cannot be
 on different simulated times.
 
+**A never-connected `/clock` looks exactly like a paused one, so the image says
+so once.** Both leave every ROS-time timer sitting still. Five seconds after the
+source attaches with no sample received, the image logs one warning at `WARN`,
+naming `use_sim_time` and `/clock` and the fact that ROS-time timers are running
+on system time meanwhile:
+
+```text
+use_sim_time is true but no /clock sample has arrived in 5s: ROS-time timers are
+running on SYSTEM time meanwhile. Publish rosgraph_msgs/msg/Clock (ros2 bag play
+--clock), or set use_sim_time false.
+```
+
+Once, not per spin, and never again once a sample has arrived — a simulator that
+publishes and then pauses is the case the line exists to be distinguished from.
+Turning `use_sim_time` off and on again arms it afresh. The five seconds are
+measured on the executor's own per-spin elapsed time, the same one your wall
+timers accumulate, so an image whose wall clock is itself simulated gets the
+warning at a point it can relate to its own timers. `Executor::sim_time_silence_warnings()`
+answers the same question in code.
+
 **No jump callbacks.** `rclcpp::Clock::create_jump_callback` and the
 `rcl_jump_threshold_t` machinery have no counterpart. The behaviour a jump
 produces is fixed (above); you cannot subscribe to the event.
