@@ -129,6 +129,17 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
 ///
 /// Exposed so the pack manifests can be checked against the registry rather
 /// than merely agreeing with it by inspection (phase-432 W3.2).
+///
+/// `#[cfg(test)]` because that check IS a unit test — `pack.rs`'s
+/// `manifests_and_the_registry_describe_the_same_templates`, its only caller,
+/// inside that file's `#[cfg(test)] mod tests`. `--all-targets` still builds
+/// the plain lib, where an un-gated accessor with no runtime caller is
+/// genuinely dead code and `-D warnings` says so: this took `check-build` red
+/// on `cli-clippy` within a day of landing (phase-413 W2). Gating states the
+/// fact; `allow(dead_code)` would suppress a true lint, and inventing a
+/// runtime caller to satisfy it is the shape `check-no-vacuous-tests` exists
+/// to refuse. Un-gate it the day a non-test caller exists.
+#[cfg(test)]
 pub(crate) fn template_keys() -> Vec<&'static str> {
     TEMPLATES.iter().map(|(k, _)| *k).collect()
 }
