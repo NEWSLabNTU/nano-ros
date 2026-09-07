@@ -1903,7 +1903,12 @@ impl<'a> CallbackCtx<'a> {
     #[cfg(feature = "param-services")]
     pub fn parameter<T: crate::ParameterVariant>(&self, name: &str) -> Option<T> {
         self.params
-            .and_then(|server| server.get(name))
+            // phase-426 W1 — the store is keyed by node. This context is
+            // handed the executor's store and no executor-node identity, and
+            // the six services are still registered under the executor's
+            // primary node, so PRIMARY is the node these reads are about.
+            // W3 registers per node and threads the key here instead.
+            .and_then(|server| server.get(nros_params::NodeKey::PRIMARY, name))
             .and_then(T::from_parameter_value)
     }
 
@@ -2183,7 +2188,12 @@ impl<'a> TickCtx<'a> {
     #[cfg(feature = "param-services")]
     pub fn parameter<T: crate::ParameterVariant>(&self, name: &str) -> Option<T> {
         self.params
-            .and_then(|server| server.get(name))
+            // phase-426 W1 — the store is keyed by node. This context is
+            // handed the executor's store and no executor-node identity, and
+            // the six services are still registered under the executor's
+            // primary node, so PRIMARY is the node these reads are about.
+            // W3 registers per node and threads the key here instead.
+            .and_then(|server| server.get(nros_params::NodeKey::PRIMARY, name))
             .and_then(T::from_parameter_value)
     }
 

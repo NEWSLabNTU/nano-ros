@@ -49,6 +49,19 @@ impl NodeId {
     }
 }
 
+/// phase-426 W1 — the parameter store's node key IS this index.
+///
+/// `nros-params` sits below `nros-node` in the layer graph, so it cannot name
+/// `NodeId`; it defines the same one-byte index as
+/// [`nros_params::NodeKey`] and this is the one conversion between them. One
+/// spelling, so a store lookup can never be keyed on a number derived some
+/// other way.
+impl From<NodeId> for nros_params::NodeKey {
+    fn from(id: NodeId) -> Self {
+        nros_params::NodeKey::new(id.raw())
+    }
+}
+
 /// Per-Node metadata stored inside the Executor.
 ///
 /// Phase 104.C.2 keeps the shape minimal — name, namespace,

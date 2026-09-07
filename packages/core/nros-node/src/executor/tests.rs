@@ -2275,7 +2275,11 @@ fn use_sim_time_attaches_and_detaches_the_clock_source() {
         executor
             .params_mut()
             .expect("the declaration above created the store")
-            .apply("use_sim_time", nros_params::ParameterValue::Bool(false))
+            .apply(
+                super::node_record::NodeId::PRIMARY.into(),
+                "use_sim_time",
+                nros_params::ParameterValue::Bool(false),
+            )
             .is_success(),
         "an existing bool parameter set to a bool is an ordinary accepted set"
     );
@@ -2335,7 +2339,9 @@ fn use_sim_time_follows_the_store_verdict_not_the_caller() {
     );
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
     assert_eq!(
-        executor.params().and_then(|p| p.get_bool("use_sim_time")),
+        executor.params().and_then(|p| {
+            p.get_bool(super::node_record::NodeId::PRIMARY.into(), "use_sim_time")
+        }),
         Some(true),
         "a refused declaration must leave the stored value alone"
     );
@@ -2356,7 +2362,11 @@ fn use_sim_time_follows_the_store_verdict_not_the_caller() {
         executor
             .params_mut()
             .expect("store")
-            .apply("use_sim_time", nros_params::ParameterValue::Bool(false))
+            .apply(
+                super::node_record::NodeId::PRIMARY.into(),
+                "use_sim_time",
+                nros_params::ParameterValue::Bool(false),
+            )
             .is_success()
     );
     executor.refresh_use_sim_time_from_store();
@@ -2371,7 +2381,11 @@ fn use_sim_time_follows_the_store_verdict_not_the_caller() {
         executor
             .params_mut()
             .expect("store")
-            .apply("use_sim_time", nros_params::ParameterValue::Bool(true))
+            .apply(
+                super::node_record::NodeId::PRIMARY.into(),
+                "use_sim_time",
+                nros_params::ParameterValue::Bool(true),
+            )
             .is_success()
     );
     executor.refresh_use_sim_time_from_store();
@@ -2416,6 +2430,122 @@ fn use_sim_time_declared_with_a_descriptor_attaches_the_clock_source() {
         "a descriptor is metadata; it cannot change what the reserved name means"
     );
     assert!(crate::time_source::is_active());
+}
+
+// -- phase-426 W1/W2: the executor's parameter API --
+
+/// phase-426 W2 -- `Executor::set_parameter` IS `ParameterServer::apply`.
+///
+/// The writer was missing entirely (`grep -c 'fn set_parameter'` was 0 in
+/// `nros-node`), so `SetParameters` was a registered service with no
+/// store-side writer any wrapper could reach, and the C facade wrote the slot
+/// through `ParameterServer::set` -- a second answer to "may this set happen".
+#[cfg(feature = "param-services")]
+#[test]
+fn executor_set_parameter_enforces_the_wire_rules() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let descriptor =
+        nros_params::ParameterDescriptor::new("speed", nros_params::ParameterType::Double)
+            .expect("name fits")
+            .with_float_range(0.0, 10.0, 0.5);
+    assert!(executor.declare_parameter_with_descriptor(
+        "speed",
+        nros_params::ParameterValue::Double(1.0),
+        descriptor,
+    ));
+
+    // In range and on the step lattice.
+    assert_eq!(
+        executor.set_parameter("speed", nros_params::ParameterValue::Double(2.5)),
+        nros_params::SetParameterResult::Success
+    );
+    assert_eq!(
+        executor.get_parameter("speed").and_then(|v| v.as_double()),
+        Some(2.5)
+    );
+
+    // Off the step: refused, and the stored value does not move.
+    assert_eq!(
+        executor.set_parameter("speed", nros_params::ParameterValue::Double(4.2)),
+        nros_params::SetParameterResult::OutOfRange
+    );
+    assert_eq!(
+        executor.get_parameter("speed").and_then(|v| v.as_double()),
+        Some(2.5)
+    );
+
+    // Undeclared: refused with issue 1151's verdict, and NOT created.
+    assert_eq!(
+        executor.set_parameter("speeed", nros_params::ParameterValue::Double(1.0)),
+        nros_params::SetParameterResult::Undeclared
+    );
+    assert!(executor.get_parameter("speeed").is_none());
+
+    // The node option opens it, as upstream.
+    executor.allow_undeclared_parameters(true);
+    assert_eq!(
+        executor.set_parameter("speeed", nros_params::ParameterValue::Double(1.0)),
+        nros_params::SetParameterResult::Success
+    );
+}
+
+/// phase-426 W1 -- two nodes on one executor keep their parameters apart, and
+/// one node's `allow_undeclared` does not reach its sibling.
+#[cfg(feature = "param-services")]
+#[test]
+fn two_nodes_on_one_executor_keep_their_parameters_apart() {
+    use super::node_record::NodeId;
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let talker = NodeId::PRIMARY;
+    let listener = NodeId::from_raw(1);
+
+    assert!(executor.declare_parameter_on(
+        talker,
+        "rate",
+        nros_params::ParameterValue::Integer(10)
+    ));
+    assert!(
+        executor.declare_parameter_on(listener, "rate", nros_params::ParameterValue::Integer(20)),
+        "a sibling node's identical name is a different parameter"
+    );
+
+    assert_eq!(
+        executor
+            .get_parameter_on(talker, "rate")
+            .and_then(|v| v.as_integer()),
+        Some(10)
+    );
+    assert_eq!(
+        executor
+            .get_parameter_on(listener, "rate")
+            .and_then(|v| v.as_integer()),
+        Some(20)
+    );
+
+    assert_eq!(
+        executor.set_parameter_on(talker, "rate", nros_params::ParameterValue::Integer(11)),
+        nros_params::SetParameterResult::Success
+    );
+    assert_eq!(
+        executor
+            .get_parameter_on(listener, "rate")
+            .and_then(|v| v.as_integer()),
+        Some(20),
+        "a set on one node moved its sibling's value"
+    );
+
+    // The node option is per node.
+    executor.allow_undeclared_parameters_on(talker, true);
+    assert_eq!(
+        executor.set_parameter_on(talker, "fresh", nros_params::ParameterValue::Bool(true)),
+        nros_params::SetParameterResult::Success
+    );
+    assert_eq!(
+        executor.set_parameter_on(listener, "fresh", nros_params::ParameterValue::Bool(true)),
+        nros_params::SetParameterResult::Undeclared,
+        "allow_undeclared leaked from one node to its sibling"
+    );
 }
 
 /// phase-425 W3b — a non-bool `use_sim_time` attaches nothing.

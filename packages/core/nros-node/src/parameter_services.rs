@@ -32,8 +32,8 @@ extern crate alloc;
 use alloc::boxed::Box;
 
 use nros_params::{
-    ParameterDescriptor as InternalDescriptor, ParameterServer, ParameterType as InternalType,
-    ParameterValue as InternalValue, SetParameterResult,
+    NodeKey, ParameterDescriptor as InternalDescriptor, ParameterServer,
+    ParameterType as InternalType, ParameterValue as InternalValue, SetParameterResult,
 };
 
 pub(crate) use nros_rcl_interfaces::{
@@ -630,8 +630,13 @@ pub const UNDECLARED_REASON: &str =
 /// gone; `ParameterServer::apply` is the single place that decides, and it
 /// refuses an undeclared name unless the server was told to allow it.
 #[inline]
-fn apply_one(server: &mut ParameterServer, name: &str, value: InternalValue) -> SetParameterResult {
-    server.apply(name, value)
+fn apply_one(
+    server: &mut ParameterServer,
+    node: NodeKey,
+    name: &str,
+    value: InternalValue,
+) -> SetParameterResult {
+    server.apply(node, name, value)
 }
 
 /// `GetParameters` — no scratch at all.
@@ -641,6 +646,7 @@ fn apply_one(server: &mut ParameterServer, name: &str, value: InternalValue) -> 
 /// direction.
 pub(crate) fn stream_get_parameters(
     server: &ParameterServer,
+    node: NodeKey,
     reader: &mut CdrReader<'_>,
     writer: &mut CdrWriter<'_>,
 ) -> Result<(), TransportError> {
@@ -653,7 +659,7 @@ pub(crate) fn stream_get_parameters(
         // the RESPONSE message, both reply NOT_SET. GetParameters has no
         // per-parameter error channel, so that is the only in-protocol way to
         // avoid handing back a plausible-looking truncation.
-        match server.get(name).filter(|v| value_fits_wire(v)) {
+        match server.get(node, name).filter(|v| value_fits_wire(v)) {
             Some(value) => write_parameter_value(writer, value),
             None => write_parameter_value(writer, &InternalValue::NotSet),
         }
@@ -668,6 +674,7 @@ pub(crate) fn stream_get_parameters(
 /// length is known from the request before any element is written.
 pub(crate) fn stream_set_parameters(
     server: &mut ParameterServer,
+    node: NodeKey,
     reader: &mut CdrReader<'_>,
     writer: &mut CdrWriter<'_>,
 ) -> Result<(), TransportError> {
@@ -681,7 +688,7 @@ pub(crate) fn stream_set_parameters(
         match read_parameter_value(reader).map_err(deser_failed)? {
             Err(e) => write_set_result(writer, false, e.reason()),
             Ok(value) => {
-                let result = apply_one(server, name, value);
+                let result = apply_one(server, node, name, value);
                 write_set_result(writer, result.is_success(), set_result_reason(result))
             }
         }
@@ -698,6 +705,7 @@ pub(crate) fn stream_set_parameters(
 /// scratch — peak stays at the one `InternalValue` the pass in flight holds.
 pub(crate) fn stream_set_parameters_atomically(
     server: &mut ParameterServer,
+    node: NodeKey,
     reader: &mut CdrReader<'_>,
     writer: &mut CdrWriter<'_>,
 ) -> Result<(), TransportError> {
@@ -733,7 +741,7 @@ pub(crate) fn stream_set_parameters_atomically(
         // min/max/step, and issue 1151's undeclared refusal — without
         // applying it. One predicate, so the pre-check cannot pass a value the
         // apply would then refuse.
-        if !server.check_apply(name, &value).is_success() {
+        if !server.check_apply(node, name, &value).is_success() {
             can_set_all = false;
         }
     }
@@ -748,7 +756,7 @@ pub(crate) fn stream_set_parameters_atomically(
             let Ok(value) = read_parameter_value(&mut pass).map_err(deser_failed)? else {
                 continue;
             };
-            let _ = apply_one(server, name, value);
+            let _ = apply_one(server, node, name, value);
         }
         write_set_result(writer, true, "").map_err(ser_failed)
     } else {
@@ -766,6 +774,7 @@ pub(crate) fn stream_set_parameters_atomically(
 /// prefixes. Bounded by the wire capacity, no copies, no `alloc`.
 pub(crate) fn stream_list_parameters<'r>(
     server: &ParameterServer,
+    node: NodeKey,
     reader: &mut CdrReader<'r>,
     writer: &mut CdrWriter<'_>,
 ) -> Result<(), TransportError> {
@@ -791,7 +800,7 @@ pub(crate) fn stream_list_parameters<'r>(
     // `let _ = push(..)` into a `heapless::Vec<_, 64>` silently did.
     let mut name_count = 0usize;
     let mut prefixes: heapless::Vec<&str, WIRE_SEQ_CAP> = heapless::Vec::new();
-    for param in server.iter() {
+    for param in server.iter(node) {
         let name = param.name.as_str();
         if !selected(name) {
             continue;
@@ -810,7 +819,7 @@ pub(crate) fn stream_list_parameters<'r>(
     // ListParametersResponse is a bare ListParametersResult: names, then prefixes.
     writer.write_sequence_len(name_count).map_err(ser_failed)?;
     let mut written = 0usize;
-    for param in server.iter() {
+    for param in server.iter(node) {
         if written == name_count {
             break;
         }
@@ -885,6 +894,7 @@ fn write_minimal_descriptor(
 /// `DescribeParameters` — one descriptor per requested name.
 pub(crate) fn stream_describe_parameters(
     server: &ParameterServer,
+    node: NodeKey,
     reader: &mut CdrReader<'_>,
     writer: &mut CdrWriter<'_>,
 ) -> Result<(), TransportError> {
@@ -893,9 +903,9 @@ pub(crate) fn stream_describe_parameters(
 
     for _ in 0..count {
         let name = read_wire_string(reader).map_err(deser_failed)?;
-        if let Some(desc) = server.get_descriptor(name) {
+        if let Some(desc) = server.get_descriptor(node, name) {
             write_descriptor(writer, desc)
-        } else if let Some(param) = server.get_parameter(name) {
+        } else if let Some(param) = server.get_parameter(node, name) {
             write_minimal_descriptor(writer, name, type_to_u8(param.param_type()))
         } else {
             write_minimal_descriptor(writer, name, 0)
@@ -908,6 +918,7 @@ pub(crate) fn stream_describe_parameters(
 /// `GetParameterTypes` — one type code per requested name.
 pub(crate) fn stream_get_parameter_types(
     server: &ParameterServer,
+    node: NodeKey,
     reader: &mut CdrReader<'_>,
     writer: &mut CdrWriter<'_>,
 ) -> Result<(), TransportError> {
@@ -917,7 +928,7 @@ pub(crate) fn stream_get_parameter_types(
     for _ in 0..count {
         let name = read_wire_string(reader).map_err(deser_failed)?;
         // NOT_SET for an unknown parameter.
-        let code = server.get_type(name).map(type_to_u8).unwrap_or(0);
+        let code = server.get_type(node, name).map(type_to_u8).unwrap_or(0);
         writer.write_u8(code).map_err(ser_failed)?;
     }
     Ok(())
@@ -945,6 +956,7 @@ pub(crate) fn stream_get_parameter_types(
 #[cfg(test)]
 pub fn handle_get_parameters(
     server: &ParameterServer,
+    node: NodeKey,
     request: &GetParametersRequest,
 ) -> Box<GetParametersResponse> {
     let mut response = Box::new(GetParametersResponse::default());
@@ -957,7 +969,7 @@ pub fn handle_get_parameters(
         // truncation; a client can tell that apart from a real value, which it
         // could not do before.
         let value = server
-            .get(name.as_str())
+            .get(node, name.as_str())
             .and_then(|v| to_rcl_value(v).ok())
             .unwrap_or_else(|| {
                 // Return NOT_SET for unknown parameters
@@ -979,6 +991,7 @@ pub fn handle_get_parameters(
 #[cfg(test)]
 pub fn handle_set_parameters(
     server: &mut ParameterServer,
+    node: NodeKey,
     request: &SetParametersRequest,
 ) -> Box<SetParametersResponse> {
     let mut response = Box::new(SetParametersResponse::default());
@@ -995,7 +1008,7 @@ pub fn handle_set_parameters(
                 continue;
             }
         };
-        let result = apply_one(server, param.name.as_str(), value);
+        let result = apply_one(server, node, param.name.as_str(), value);
         let _ = response.results.push(to_rcl_set_result(result));
     }
 
@@ -1009,6 +1022,7 @@ pub fn handle_set_parameters(
 #[cfg(test)]
 pub fn handle_set_parameters_atomically(
     server: &mut ParameterServer,
+    node: NodeKey,
     request: &SetParametersAtomicallyRequest,
 ) -> Box<SetParametersAtomicallyResponse> {
     let mut response = Box::new(SetParametersAtomicallyResponse::default());
@@ -1026,7 +1040,10 @@ pub fn handle_set_parameters_atomically(
         };
 
         // Check if setting would succeed — the same predicate the apply uses.
-        if !server.check_apply(param.name.as_str(), &value).is_success() {
+        if !server
+            .check_apply(node, param.name.as_str(), &value)
+            .is_success()
+        {
             can_set_all = false;
             break;
         }
@@ -1040,7 +1057,7 @@ pub fn handle_set_parameters_atomically(
             let Ok(value) = from_rcl_value(&param.value) else {
                 continue;
             };
-            let _ = apply_one(server, param.name.as_str(), value);
+            let _ = apply_one(server, node, param.name.as_str(), value);
         }
         response.result.successful = true;
     } else {
@@ -1061,6 +1078,7 @@ pub fn handle_set_parameters_atomically(
 #[cfg(test)]
 pub fn handle_list_parameters(
     server: &ParameterServer,
+    node: NodeKey,
     request: &ListParametersRequest,
 ) -> Box<ListParametersResponse> {
     let mut response = Box::new(ListParametersResponse::default());
@@ -1071,7 +1089,7 @@ pub fn handle_list_parameters(
     let mut prefixes: heapless::Vec<heapless::String<256>, MAX_PARAMS_PER_REQUEST> =
         heapless::Vec::new();
 
-    for param in server.iter() {
+    for param in server.iter(node) {
         let name = param.name.as_str();
 
         // Check prefix filter
@@ -1126,14 +1144,15 @@ pub fn handle_list_parameters(
 #[cfg(test)]
 pub fn handle_describe_parameters(
     server: &ParameterServer,
+    node: NodeKey,
     request: &DescribeParametersRequest,
 ) -> Box<DescribeParametersResponse> {
     let mut response = Box::new(DescribeParametersResponse::default());
 
     for name in request.names.iter() {
-        let descriptor = if let Some(desc) = server.get_descriptor(name.as_str()) {
+        let descriptor = if let Some(desc) = server.get_descriptor(node, name.as_str()) {
             to_rcl_descriptor(desc)
-        } else if let Some(param) = server.get_parameter(name.as_str()) {
+        } else if let Some(param) = server.get_parameter(node, name.as_str()) {
             // Create a minimal descriptor from the parameter
             let mut d = ParameterDescriptor::default();
             let _ = d.name.push_str(name.as_str());
@@ -1159,12 +1178,16 @@ pub fn handle_describe_parameters(
 #[cfg(test)]
 pub fn handle_get_parameter_types(
     server: &ParameterServer,
+    node: NodeKey,
     request: &GetParameterTypesRequest,
 ) -> Box<GetParameterTypesResponse> {
     let mut response = Box::new(GetParameterTypesResponse::default());
 
     for name in request.names.iter() {
-        let type_code = server.get_type(name.as_str()).map(type_to_u8).unwrap_or(0); // NOT_SET for unknown
+        let type_code = server
+            .get_type(node, name.as_str())
+            .map(type_to_u8)
+            .unwrap_or(0); // NOT_SET for unknown
         let _ = response.types.push(type_code);
     }
 
@@ -1213,6 +1236,11 @@ type ParamServer<Svc> =
 /// Boxed when stored in executor to avoid 48KB+ on the stack
 /// (6 servers × 8KB buffers each).
 pub struct ParameterServiceServers {
+    /// phase-426 W1 — the node this SET of six serves. It is fixed at
+    /// registration and travels with the servers, so a handler can never read
+    /// the store without saying whose parameters it means. W3 registers one
+    /// set per node; today there is one set, on the executor's primary node.
+    node: NodeKey,
     get_parameters: ParamServer<GetParameters>,
     set_parameters: ParamServer<SetParameters>,
     set_parameters_atomically: ParamServer<SetParametersAtomically>,
@@ -1224,6 +1252,7 @@ pub struct ParameterServiceServers {
 impl ParameterServiceServers {
     /// Create a new set of parameter service servers
     pub(crate) fn new(
+        node: NodeKey,
         get_parameters: ParamServer<GetParameters>,
         set_parameters: ParamServer<SetParameters>,
         set_parameters_atomically: ParamServer<SetParametersAtomically>,
@@ -1232,6 +1261,7 @@ impl ParameterServiceServers {
         get_parameter_types: ParamServer<GetParameterTypes>,
     ) -> Self {
         Self {
+            node,
             get_parameters,
             set_parameters,
             set_parameters_atomically,
@@ -1249,44 +1279,44 @@ impl ParameterServiceServers {
     /// Returns the number of requests handled.
     pub(crate) fn process(&mut self, server: &mut ParameterServer) -> Result<usize, NodeError> {
         let mut count = 0;
+        // phase-426 W1 — every handler below is scoped to THIS set's node, so
+        // a sibling node's identically-named parameter is invisible to it.
+        let node = self.node;
 
         // phase-382 W1' — every one of these STREAMS. `handle_request_boxed`
         // boxed only the reply and left the request as a by-value stack local,
         // so `ros2 param set` put 1.19 MB on the calling task's stack.
-        if self
-            .get_parameters
-            .handle_request_raw(|reader, writer| stream_get_parameters(server, reader, writer))?
-        {
+        if self.get_parameters.handle_request_raw(|reader, writer| {
+            stream_get_parameters(server, node, reader, writer)
+        })? {
             count += 1;
         }
 
-        if self
-            .set_parameters
-            .handle_request_raw(|reader, writer| stream_set_parameters(server, reader, writer))?
-        {
+        if self.set_parameters.handle_request_raw(|reader, writer| {
+            stream_set_parameters(server, node, reader, writer)
+        })? {
             count += 1;
         }
 
         if self
             .set_parameters_atomically
             .handle_request_raw(|reader, writer| {
-                stream_set_parameters_atomically(server, reader, writer)
+                stream_set_parameters_atomically(server, node, reader, writer)
             })?
         {
             count += 1;
         }
 
-        if self
-            .list_parameters
-            .handle_request_raw(|reader, writer| stream_list_parameters(server, reader, writer))?
-        {
+        if self.list_parameters.handle_request_raw(|reader, writer| {
+            stream_list_parameters(server, node, reader, writer)
+        })? {
             count += 1;
         }
 
         if self
             .describe_parameters
             .handle_request_raw(|reader, writer| {
-                stream_describe_parameters(server, reader, writer)
+                stream_describe_parameters(server, node, reader, writer)
             })?
         {
             count += 1;
@@ -1295,7 +1325,7 @@ impl ParameterServiceServers {
         if self
             .get_parameter_types
             .handle_request_raw(|reader, writer| {
-                stream_get_parameter_types(server, reader, writer)
+                stream_get_parameter_types(server, node, reader, writer)
             })?
         {
             count += 1;
@@ -1344,6 +1374,9 @@ pub(crate) struct ParamState<'s> {
 mod tests {
     use super::*;
     use nros_rcl_interfaces::msg::Parameter;
+
+    /// phase-426 W1 — the node these single-node oracles are about.
+    const NODE: NodeKey = NodeKey::PRIMARY;
 
     /// A parameter server over freshly leaked heap storage.
     ///
@@ -1416,8 +1449,8 @@ mod tests {
         use alloc::boxed::Box;
 
         let mut server = leaked_server();
-        server.declare("speed", InternalValue::Double(1.0));
-        server.declare("enabled", InternalValue::Bool(true));
+        server.declare(NODE, "speed", InternalValue::Double(1.0));
+        server.declare(NODE, "enabled", InternalValue::Bool(true));
 
         // Use Box for request due to large heapless::Vec size (~1MB+)
         // Handler returns Box<Response> internally
@@ -1429,7 +1462,7 @@ mod tests {
         request.names.push(n1).unwrap();
         request.names.push(n2).unwrap();
 
-        let response = handle_get_parameters(&server, &request);
+        let response = handle_get_parameters(&server, NODE, &request);
         assert_eq!(response.values.len(), 2);
         assert_eq!(response.values[0].type_, 3); // DOUBLE
         assert_eq!(response.values[1].type_, 1); // BOOL
@@ -1440,7 +1473,7 @@ mod tests {
         use alloc::boxed::Box;
 
         let mut server = leaked_server();
-        server.declare("speed", InternalValue::Double(1.0));
+        server.declare(NODE, "speed", InternalValue::Double(1.0));
 
         // Use Box for request due to large heapless::Vec size (~1MB+)
         // Handler returns Box<Response> internally
@@ -1451,11 +1484,11 @@ mod tests {
         param.value.double_value = 2.5;
         request.parameters.push(*param).unwrap();
 
-        let response = handle_set_parameters(&mut server, &request);
+        let response = handle_set_parameters(&mut server, NODE, &request);
         assert_eq!(response.results.len(), 1);
         assert!(response.results[0].successful);
 
-        assert_eq!(server.get_double("speed"), Some(2.5));
+        assert_eq!(server.get_double(NODE, "speed"), Some(2.5));
     }
 
     #[test]
@@ -1463,13 +1496,17 @@ mod tests {
         use alloc::boxed::Box;
 
         let mut server = leaked_server();
-        server.declare("robot.speed", InternalValue::Double(1.0));
-        server.declare("robot.name", InternalValue::from_string("bot1").unwrap());
-        server.declare("sensor.range", InternalValue::Double(10.0));
+        server.declare(NODE, "robot.speed", InternalValue::Double(1.0));
+        server.declare(
+            NODE,
+            "robot.name",
+            InternalValue::from_string("bot1").unwrap(),
+        );
+        server.declare(NODE, "sensor.range", InternalValue::Double(10.0));
 
         // Use Box for request due to large heapless::Vec size
         let request = Box::new(ListParametersRequest::default());
-        let response = handle_list_parameters(&server, &request);
+        let response = handle_list_parameters(&server, NODE, &request);
 
         assert_eq!(response.result.names.len(), 3);
     }
@@ -1479,8 +1516,8 @@ mod tests {
         use alloc::boxed::Box;
 
         let mut server = leaked_server();
-        server.declare("speed", InternalValue::Double(1.0));
-        server.declare("count", InternalValue::Integer(5));
+        server.declare(NODE, "speed", InternalValue::Double(1.0));
+        server.declare(NODE, "count", InternalValue::Integer(5));
 
         // Use Box for request due to large heapless::Vec size
         let mut request = Box::new(GetParameterTypesRequest::default());
@@ -1491,7 +1528,7 @@ mod tests {
         request.names.push(n1).unwrap();
         request.names.push(n2).unwrap();
 
-        let response = handle_get_parameter_types(&server, &request);
+        let response = handle_get_parameter_types(&server, NODE, &request);
         assert_eq!(response.types.len(), 2);
         assert_eq!(response.types[0], 3); // DOUBLE
         assert_eq!(response.types[1], 2); // INTEGER
@@ -1636,7 +1673,7 @@ mod tests {
     #[inline(never)]
     fn store_digest(server: &ParameterServer) -> AllocVec<(alloc::string::String, ParameterValue)> {
         server
-            .iter()
+            .iter(NODE)
             .map(|p| {
                 (
                     alloc::string::String::from(p.name.as_str()),
@@ -1746,17 +1783,21 @@ mod tests {
             // The two rejection shapes have no stored form; skip them here.
             if let Ok(internal) = from_rcl_value(&value) {
                 assert!(
-                    server.declare(name, internal),
+                    server.declare(NODE, name, internal),
                     "test store must hold {name}"
                 );
             }
         }
         assert!(
-            server.declare("robot.speed", InternalValue::Double(1.5)),
+            server.declare(NODE, "robot.speed", InternalValue::Double(1.5)),
             "dotted name declares"
         );
         assert!(
-            server.declare("robot.mode", InternalValue::from_string("fast").unwrap()),
+            server.declare(
+                NODE,
+                "robot.mode",
+                InternalValue::from_string("fast").unwrap()
+            ),
             "dotted name declares"
         );
         server
@@ -1772,6 +1813,7 @@ mod tests {
         // lost an entry would make every oracle comparison below vacuous.
         assert!(
             server.declare_with_descriptor(
+                NODE,
                 "speed",
                 InternalValue::Double(1.0),
                 Some(
@@ -1784,6 +1826,7 @@ mod tests {
         );
         assert!(
             server.declare_with_descriptor(
+                NODE,
                 "count",
                 InternalValue::Integer(4),
                 Some(
@@ -1796,6 +1839,7 @@ mod tests {
         );
         assert!(
             server.declare_with_descriptor(
+                NODE,
                 "mode",
                 InternalValue::from_string("idle").unwrap(),
                 Some(
@@ -1806,7 +1850,7 @@ mod tests {
             )
         );
         // No descriptor: DescribeParameters must synthesise a minimal one.
-        assert!(server.declare("bare", InternalValue::Bool(true)));
+        assert!(server.declare(NODE, "bare", InternalValue::Bool(true)));
         server
     }
 
@@ -1816,7 +1860,7 @@ mod tests {
     #[inline(never)]
     fn permissive_server() -> ParameterServer<'static> {
         let mut server = leaked_server();
-        server.set_allow_undeclared(true);
+        server.set_allow_undeclared(NODE, true);
         server
     }
 
@@ -1897,7 +1941,7 @@ mod tests {
         server: &ParameterServer,
         request: &GetParametersRequest,
     ) -> Box<GetParametersResponse> {
-        handle_get_parameters(server, request)
+        handle_get_parameters(server, NODE, request)
     }
 
     #[test]
@@ -1907,7 +1951,7 @@ mod tests {
         for names in [&[][..], PROBE_NAMES] {
             let request = names_request!(GetParametersRequest, names);
             let streamed = run_streaming(&encode(&*request), |reader, writer| {
-                stream_get_parameters(&server, reader, writer)
+                stream_get_parameters(&server, NODE, reader, writer)
             });
             // `GetParametersResponse` is 1.17 MB, so the oracle's reply and
             // the round-tripped one are never alive in the same FRAME: each
@@ -1930,9 +1974,9 @@ mod tests {
         for names in [&[][..], PROBE_NAMES] {
             let request = names_request!(GetParameterTypesRequest, names);
             let streamed = run_streaming(&encode(&*request), |reader, writer| {
-                stream_get_parameter_types(&server, reader, writer)
+                stream_get_parameter_types(&server, NODE, reader, writer)
             });
-            let oracle = handle_get_parameter_types(&server, &request);
+            let oracle = handle_get_parameter_types(&server, NODE, &request);
             assert_eq!(
                 streamed,
                 encode(&*oracle),
@@ -1952,9 +1996,9 @@ mod tests {
         ] {
             let request = names_request!(DescribeParametersRequest, names);
             let streamed = run_streaming(&encode(&*request), |reader, writer| {
-                stream_describe_parameters(&server, reader, writer)
+                stream_describe_parameters(&server, NODE, reader, writer)
             });
-            let oracle = handle_describe_parameters(&server, &request);
+            let oracle = handle_describe_parameters(&server, NODE, &request);
             assert_eq!(
                 streamed,
                 encode(&*oracle),
@@ -1990,9 +2034,9 @@ mod tests {
         ] {
             let request = list_request(prefixes, depth);
             let streamed = run_streaming(&encode(&*request), |reader, writer| {
-                stream_list_parameters(&server, reader, writer)
+                stream_list_parameters(&server, NODE, reader, writer)
             });
-            let oracle = handle_list_parameters(&server, &request);
+            let oracle = handle_list_parameters(&server, NODE, &request);
             assert_eq!(
                 streamed,
                 encode(&*oracle),
@@ -2074,9 +2118,9 @@ mod tests {
                 let mut oracle_server = build();
 
                 let streamed = run_streaming(&encode(&*request), |reader, writer| {
-                    stream_set_parameters(&mut streaming_server, reader, writer)
+                    stream_set_parameters(&mut streaming_server, NODE, reader, writer)
                 });
-                let oracle = handle_set_parameters(&mut oracle_server, &request);
+                let oracle = handle_set_parameters(&mut oracle_server, NODE, &request);
 
                 assert_eq!(
                     streamed,
@@ -2135,9 +2179,9 @@ mod tests {
             let mut oracle_server = described_server();
 
             let streamed = run_streaming(&encode(&*request), |reader, writer| {
-                stream_set_parameters_atomically(&mut streaming_server, reader, writer)
+                stream_set_parameters_atomically(&mut streaming_server, NODE, reader, writer)
             });
-            let oracle = handle_set_parameters_atomically(&mut oracle_server, &request);
+            let oracle = handle_set_parameters_atomically(&mut oracle_server, NODE, &request);
 
             assert_eq!(
                 streamed,
@@ -2162,7 +2206,7 @@ mod tests {
     #[test]
     fn set_parameters_refuses_an_undeclared_name_with_a_reason() {
         let mut server = leaked_server();
-        assert!(server.declare("max_speed", InternalValue::Double(1.0)));
+        assert!(server.declare(NODE, "max_speed", InternalValue::Double(1.0)));
 
         let mut request = Box::new(SetParametersRequest::default());
         let mut typo = wire_value_of(3);
@@ -2170,16 +2214,19 @@ mod tests {
         push_param!(request, "max_speeed", typo);
 
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
-            stream_set_parameters(&mut server, reader, writer)
+            stream_set_parameters(&mut server, NODE, reader, writer)
         });
         let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
         assert_eq!(reply.results.len(), 1);
         assert!(!reply.results[0].successful);
         assert_eq!(reply.results[0].reason.as_str(), UNDECLARED_REASON);
 
-        assert!(!server.has("max_speeed"), "the typo must not be created");
-        assert_eq!(server.len(), 1);
-        assert_eq!(server.get_double("max_speed"), Some(1.0));
+        assert!(
+            !server.has(NODE, "max_speeed"),
+            "the typo must not be created"
+        );
+        assert_eq!(server.len(NODE), 1);
+        assert_eq!(server.get_double(NODE, "max_speed"), Some(1.0));
     }
 
     /// Issue 1151 — the opt-in. With `allow_undeclared` on, the same request
@@ -2194,12 +2241,12 @@ mod tests {
         push_param!(request, "fresh", v);
 
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
-            stream_set_parameters(&mut server, reader, writer)
+            stream_set_parameters(&mut server, NODE, reader, writer)
         });
         let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
         assert!(reply.results[0].successful, "{}", reply.results[0].reason);
         assert_eq!(reply.results[0].reason.as_str(), "");
-        assert_eq!(server.get_double("fresh"), Some(5.0));
+        assert_eq!(server.get_double(NODE, "fresh"), Some(5.0));
     }
 
     /// Issue 1150 on the wire — a value inside min..max but off the step is
@@ -2213,12 +2260,12 @@ mod tests {
         push_param!(request, "speed", off_step);
 
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
-            stream_set_parameters(&mut server, reader, writer)
+            stream_set_parameters(&mut server, NODE, reader, writer)
         });
         let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
         assert!(!reply.results[0].successful);
         assert_eq!(reply.results[0].reason.as_str(), "Value out of range");
-        assert_eq!(server.get_double("speed"), Some(1.0));
+        assert_eq!(server.get_double(NODE, "speed"), Some(1.0));
     }
 
     /// Issue 1151, atomic variant — one undeclared name in the batch rejects
@@ -2226,7 +2273,7 @@ mod tests {
     #[test]
     fn set_parameters_atomically_rejects_the_batch_on_an_undeclared_name() {
         let mut server = leaked_server();
-        assert!(server.declare("max_speed", InternalValue::Double(1.0)));
+        assert!(server.declare(NODE, "max_speed", InternalValue::Double(1.0)));
 
         let mut request = Box::new(SetParametersAtomicallyRequest::default());
         let mut good = wire_value_of(3);
@@ -2237,30 +2284,215 @@ mod tests {
         push_param!(request, "max_speeed", typo);
 
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
-            stream_set_parameters_atomically(&mut server, reader, writer)
+            stream_set_parameters_atomically(&mut server, NODE, reader, writer)
         });
         let reply: Box<SetParametersAtomicallyResponse> = decode_boxed(&streamed);
         assert!(!reply.result.successful);
         assert!(!reply.result.reason.is_empty());
 
         assert_eq!(
-            server.get_double("max_speed"),
+            server.get_double(NODE, "max_speed"),
             Some(1.0),
             "atomic: the good half must not have applied"
         );
-        assert!(!server.has("max_speeed"));
-        assert_eq!(server.len(), 1);
+        assert!(!server.has(NODE, "max_speeed"));
+        assert_eq!(server.len(NODE), 1);
 
         // Same batch, permissive store: applies whole.
         let mut server = permissive_server();
-        assert!(server.declare("max_speed", InternalValue::Double(1.0)));
+        assert!(server.declare(NODE, "max_speed", InternalValue::Double(1.0)));
         let streamed = run_streaming(&encode(&*request), |reader, writer| {
-            stream_set_parameters_atomically(&mut server, reader, writer)
+            stream_set_parameters_atomically(&mut server, NODE, reader, writer)
         });
         let reply: Box<SetParametersAtomicallyResponse> = decode_boxed(&streamed);
         assert!(reply.result.successful, "{}", reply.result.reason);
-        assert_eq!(server.get_double("max_speed"), Some(2.0));
-        assert_eq!(server.get_double("max_speeed"), Some(5.0));
+        assert_eq!(server.get_double(NODE, "max_speed"), Some(2.0));
+        assert_eq!(server.get_double(NODE, "max_speeed"), Some(5.0));
+    }
+
+    // ── phase-426 W1/W2: the six services are keyed by NODE ──
+
+    /// The nodes a two-node image composes onto one executor. W3 registers a
+    /// SET of six services per node; the handlers already take the key, so
+    /// these tests drive them the way W3 will.
+    const TALKER: NodeKey = NodeKey::new(0);
+    const LISTENER: NodeKey = NodeKey::new(1);
+
+    /// `GetParameters` against two nodes holding the same name reads each
+    /// node's own value. Before W1 the store was flat, so `/talker/rate` and
+    /// `/listener/rate` were one parameter and one of the two declares
+    /// silently lost.
+    #[test]
+    fn get_parameters_reads_the_asking_nodes_own_value() {
+        let mut server = leaked_server();
+        assert!(server.declare(TALKER, "rate", InternalValue::Integer(10)));
+        assert!(
+            server.declare(LISTENER, "rate", InternalValue::Integer(20)),
+            "a sibling's identical name is a different parameter"
+        );
+
+        let request = names_request!(GetParametersRequest, &["rate"][..]);
+        for (node, expected) in [(TALKER, 10i64), (LISTENER, 20)] {
+            let streamed = run_streaming(&encode(&*request), |reader, writer| {
+                stream_get_parameters(&server, node, reader, writer)
+            });
+            let mut reader = CdrReader::new_with_header(&streamed).expect("reply header");
+            assert_eq!(reader.read_sequence_len().expect("len"), 1);
+            let value = ParameterValue::deserialize(&mut reader).expect("value");
+            assert_eq!(value.integer_value, expected, "node {}", node.raw());
+        }
+    }
+
+    /// `SetParameters` writes only the asking node's slot.
+    #[test]
+    fn set_parameters_writes_only_the_asking_nodes_slot() {
+        let mut server = leaked_server();
+        assert!(server.declare(TALKER, "rate", InternalValue::Integer(10)));
+        assert!(server.declare(LISTENER, "rate", InternalValue::Integer(20)));
+
+        let mut request = Box::new(SetParametersRequest::default());
+        let mut v = wire_value_of(2);
+        v.integer_value = 99;
+        push_param!(request, "rate", v);
+
+        let streamed = run_streaming(&encode(&*request), |reader, writer| {
+            stream_set_parameters(&mut server, TALKER, reader, writer)
+        });
+        let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
+        assert!(reply.results[0].successful, "{}", reply.results[0].reason);
+
+        assert_eq!(server.get_integer(TALKER, "rate"), Some(99));
+        assert_eq!(
+            server.get_integer(LISTENER, "rate"),
+            Some(20),
+            "the sibling's parameter must not move"
+        );
+    }
+
+    /// `ListParameters` enumerates the asking node, not the image.
+    #[test]
+    fn list_parameters_enumerates_only_the_asking_node() {
+        let mut server = leaked_server();
+        assert!(server.declare(TALKER, "rate", InternalValue::Integer(10)));
+        assert!(server.declare(TALKER, "topic", InternalValue::from_string("a").unwrap()));
+        assert!(server.declare(LISTENER, "only_mine", InternalValue::Bool(true)));
+
+        let request = Box::new(ListParametersRequest::default());
+        let streamed = run_streaming(&encode(&*request), |reader, writer| {
+            stream_list_parameters(&server, TALKER, reader, writer)
+        });
+        let reply: Box<ListParametersResponse> = decode_boxed(&streamed);
+        let names: AllocVec<&str> = reply.result.names.iter().map(|n| n.as_str()).collect();
+        assert_eq!(names.len(), 2, "{names:?}");
+        assert!(names.contains(&"rate"), "{names:?}");
+        assert!(names.contains(&"topic"), "{names:?}");
+        assert!(
+            !names.contains(&"only_mine"),
+            "a sibling's parameter leaked into the listing: {names:?}"
+        );
+    }
+
+    /// Issue 1151 per node — `allow_undeclared` is upstream's NODE option, so
+    /// one node opting in must not open its sibling to declare-on-set.
+    #[test]
+    fn allow_undeclared_on_one_node_does_not_open_its_sibling() {
+        let mut server = leaked_server();
+        server.set_allow_undeclared(TALKER, true);
+
+        let mut request = Box::new(SetParametersRequest::default());
+        let mut v = wire_value_of(2);
+        v.integer_value = 7;
+        push_param!(request, "fresh", v);
+
+        let streamed = run_streaming(&encode(&*request), |reader, writer| {
+            stream_set_parameters(&mut server, TALKER, reader, writer)
+        });
+        let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
+        assert!(reply.results[0].successful, "{}", reply.results[0].reason);
+
+        let streamed = run_streaming(&encode(&*request), |reader, writer| {
+            stream_set_parameters(&mut server, LISTENER, reader, writer)
+        });
+        let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
+        assert!(!reply.results[0].successful);
+        assert_eq!(reply.results[0].reason.as_str(), UNDECLARED_REASON);
+
+        assert_eq!(server.get_integer(TALKER, "fresh"), Some(7));
+        assert!(!server.has(LISTENER, "fresh"));
+    }
+
+    /// phase-426 W2 — every WIRE path refuses an undeclared name and an
+    /// off-step value, on each node independently. The two set services are
+    /// the whole write surface on the wire; this is the sweep, not a sample.
+    #[test]
+    fn every_wire_set_path_refuses_undeclared_and_off_step_per_node() {
+        for node in [TALKER, LISTENER] {
+            let mut server = leaked_server();
+            assert!(
+                server.declare_with_descriptor(
+                    node,
+                    "speed",
+                    InternalValue::Double(1.0),
+                    Some(
+                        InternalDescriptor::new("speed", InternalType::Double)
+                            .expect("name fits")
+                            .with_float_range(0.0, 10.0, 0.5),
+                    ),
+                )
+            );
+
+            let mut undeclared = Box::new(SetParametersRequest::default());
+            let mut v = wire_value_of(3);
+            v.double_value = 5.0;
+            push_param!(undeclared, "speeed", v);
+
+            let mut off_step = Box::new(SetParametersRequest::default());
+            let mut v = wire_value_of(3);
+            v.double_value = 4.2; // inside 0..10, off the 0.5 lattice
+            push_param!(off_step, "speed", v);
+
+            // SetParameters
+            let streamed = run_streaming(&encode(&*undeclared), |reader, writer| {
+                stream_set_parameters(&mut server, node, reader, writer)
+            });
+            let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
+            assert!(!reply.results[0].successful);
+            assert_eq!(reply.results[0].reason.as_str(), UNDECLARED_REASON);
+
+            let streamed = run_streaming(&encode(&*off_step), |reader, writer| {
+                stream_set_parameters(&mut server, node, reader, writer)
+            });
+            let reply: Box<SetParametersResponse> = decode_boxed(&streamed);
+            assert!(!reply.results[0].successful);
+            assert_eq!(reply.results[0].reason.as_str(), "Value out of range");
+
+            // SetParametersAtomically — the same two requests, re-encoded
+            // under the atomic request type.
+            let mut undeclared_atomic = Box::new(SetParametersAtomicallyRequest::default());
+            let mut v = wire_value_of(3);
+            v.double_value = 5.0;
+            push_param!(undeclared_atomic, "speeed", v);
+            let streamed = run_streaming(&encode(&*undeclared_atomic), |reader, writer| {
+                stream_set_parameters_atomically(&mut server, node, reader, writer)
+            });
+            let reply: Box<SetParametersAtomicallyResponse> = decode_boxed(&streamed);
+            assert!(!reply.result.successful);
+
+            let mut off_step_atomic = Box::new(SetParametersAtomicallyRequest::default());
+            let mut v = wire_value_of(3);
+            v.double_value = 4.2;
+            push_param!(off_step_atomic, "speed", v);
+            let streamed = run_streaming(&encode(&*off_step_atomic), |reader, writer| {
+                stream_set_parameters_atomically(&mut server, node, reader, writer)
+            });
+            let reply: Box<SetParametersAtomicallyResponse> = decode_boxed(&streamed);
+            assert!(!reply.result.successful);
+
+            // Nothing moved, and nothing was created.
+            assert_eq!(server.get_double(node, "speed"), Some(1.0));
+            assert!(!server.has(node, "speeed"));
+            assert_eq!(server.len(node), 1);
+        }
     }
 
     /// The streaming readers refuse a sequence or string the generated
