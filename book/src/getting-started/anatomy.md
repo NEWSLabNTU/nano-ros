@@ -23,7 +23,7 @@ src/talker_pkg/
 ├── CMakeLists.txt          # nano_ros component library
 ├── package.xml             # ROS package manifest — deps live here
 ├── include/talker_pkg/Talker.hpp
-└── src/Talker.cpp          # bind_timer → publish on /chatter
+└── src/Talker.cpp          # create_wall_timer<C,&C::m> → publish on /chatter
 ```
 
 `package.xml` is standard ROS: message dependencies (`std_msgs`) are

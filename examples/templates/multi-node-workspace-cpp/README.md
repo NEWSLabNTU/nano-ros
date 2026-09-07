@@ -7,7 +7,7 @@ the same Node pkg / Bringup pkg / Entry pkg shape, built with CMake.
 ## Layout
 
 - `src/talker_pkg/`, `src/listener_pkg/` — typed components (RFC-0043):
-  `Result configure(nros::Node&)`; the talker binds a 500 ms `bind_timer`
+  `Result configure(nros::Node&)`; the talker binds a 500 ms `create_wall_timer<Talker, &Talker::on_tick>`
   publishing `std_msgs/Int32` on `/chatter`; the listener uses
   `bind_subscription` (typed member callback on the generated `std_msgs::msg::Int32`).
 - `src/demo_bringup/` — `package.xml` + `system.toml` + `launch/`

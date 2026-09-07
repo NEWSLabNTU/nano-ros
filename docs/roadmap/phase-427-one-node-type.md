@@ -84,8 +84,14 @@ All 22 in-tree call sites moved to
 one); the scaffold codegen and its test moved with them. The free function stays
 one release as a deprecated forwarder with no second code path.
 
-Sweep: `grep -rn 'nros::bind_timer' examples packages` returns only the
-deprecated definition and the probes that name it in prose.
+Sweep — and the first one was run with a `--include` glob the shell expanded
+to nothing, which is why the `TimerBase` count below was also wrong. The
+reliable form is `grep -rn --exclude-dir=.git 'bind_timer' .`, and it now
+returns only the deprecated definition, the probes that name it, the gate that
+asserts it warns, and archived phase docs. Two doc SNIPPETS the first sweep
+missed (`book/src/getting-started/workspace-cpp.md`, the model-1 slides)
+migrated too: a book page teaching a deprecated call is a call site with extra
+reach.
 
 ### The namespace direction is the opposite of the RFC's end state, and it is measured
 
@@ -128,11 +134,12 @@ roots above. What landed of it:
   GNU/clang fallback, so the migration channel exists.
 * It is USED, on the one ours-only name this phase actually retired:
   `nros::bind_timer`.
-* Even after the flip, a bare `[[deprecated]]` on `nros::Node` warns at all 218
-  in-tree `nros::Node` sites at once, which the phase's own "Not in scope"
-  section says must stay optional and incremental. Whoever lands it should
-  migrate the tree in the same commit, or the attribute is a flag day wearing a
-  migration's clothes.
+* Even after the flip, a bare `[[deprecated]]` on `nros::Node` warns at every
+  in-tree site at once — 191 lines across `examples/` and `packages/` `.cpp` /
+  `.hpp`, 218 counting codegen templates, goldens and prose — which the phase's
+  own "Not in scope" section says must stay optional and incremental. Whoever
+  lands it should migrate the tree in the same commit, or the attribute is a
+  flag day wearing a migration's clothes.
 
 ### W8's settled shape, and the one part of it C++ cannot express
 

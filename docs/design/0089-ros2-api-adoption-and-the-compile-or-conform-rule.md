@@ -1724,10 +1724,11 @@ with `NROS_DEPRECATED_MSG`") cannot be done in this direction: a deprecation
 attaches to the alias, and the alias is the name a user is supposed to write.
 The migration macro ships (`NROS_CPP_DEPRECATED_MSG`, `result.hpp`) and is used
 on the one ours-only name phase-427 did retire, `nros::bind_timer`. The `Node`
-half waits on the flip — and whoever lands it must migrate the 218 in-tree
-`nros::Node` sites in the same commit, because a bare `[[deprecated]]` on an
-alias warns at every one of them at once, which is the flag day this document's
-two-step exists to avoid.
+half waits on the flip — and whoever lands it must migrate every in-tree
+`nros::Node` site in the same commit (191 lines across `examples/` and
+`packages/` C++ sources, 218 counting codegen templates, goldens and prose),
+because a bare `[[deprecated]]` on an alias warns at every one of them at once,
+which is the flag day this document's two-step exists to avoid.
 
 ### 3. The one-name half of the settled shape is NOT EXPRESSIBLE in C++
 
