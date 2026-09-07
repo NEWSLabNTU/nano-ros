@@ -9,7 +9,8 @@
 //!
 //! ```
 //! use nros_params::{
-//!     ParameterDescriptor, ParameterServer, ParameterStorage, ParameterType, ParameterValue,
+//!     NodeKey, ParameterDescriptor, ParameterServer, ParameterStorage, ParameterType,
+//!     ParameterValue,
 //! };
 //!
 //! // phase-382 W2' — storage is CALLER-OWNED: place it (a `static`, a struct
@@ -19,19 +20,23 @@
 //! let mut storage = ParameterStorage::<8>::new();
 //! let mut server = ParameterServer::new_in(storage.as_table());
 //!
+//! // phase-426 W1 — every per-parameter call names the NODE it is about, so
+//! // two nodes composed onto one executor never share a name.
+//! let node = NodeKey::PRIMARY;
+//!
 //! // Declare a simple parameter
-//! server.declare("max_speed", ParameterValue::Double(1.0));
+//! server.declare(node, "max_speed", ParameterValue::Double(1.0));
 //!
 //! // Declare a parameter with constraints
 //! let desc = ParameterDescriptor::new("velocity", ParameterType::Double)
 //!     .unwrap()
 //!     .with_description("Maximum velocity in m/s")
 //!     .with_float_range(0.0, 10.0, 0.1);
-//! server.declare_with_descriptor("velocity", ParameterValue::Double(5.0), Some(desc));
+//! server.declare_with_descriptor(node, "velocity", ParameterValue::Double(5.0), Some(desc));
 //!
 //! // Get and set parameters
-//! assert_eq!(server.get_double("max_speed"), Some(1.0));
-//! server.set_double("max_speed", 2.0);
+//! assert_eq!(server.get_double(node, "max_speed"), Some(1.0));
+//! server.set_double(node, "max_speed", 2.0);
 //! ```
 //!
 //! # Features
@@ -65,6 +70,6 @@ pub use typed::{
 };
 pub use types::{
     FloatingPointRange, IntegerRange, MAX_ARRAY_LEN, MAX_BYTE_ARRAY_LEN, MAX_PARAM_NAME_LEN,
-    MAX_PARAMETERS, MAX_STRING_VALUE_LEN, Parameter, ParameterDescriptor, ParameterRange,
-    ParameterType, ParameterValue, ParameterVariant, SetParameterResult,
+    MAX_PARAMETERS, MAX_STRING_VALUE_LEN, NodeFlags, NodeKey, Parameter, ParameterDescriptor,
+    ParameterRange, ParameterType, ParameterValue, ParameterVariant, SetParameterResult,
 };

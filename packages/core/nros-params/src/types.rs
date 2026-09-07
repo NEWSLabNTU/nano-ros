@@ -13,6 +13,83 @@ use alloc::string::ToString;
 
 pub use crate::config::*;
 
+/// Which node a parameter belongs to.
+///
+/// phase-426 W1 — upstream's parameters belong to a NODE, not to a process:
+/// `ros2 param list` enumerates per node and `/<node>/get_parameters` is a
+/// per-node service. An image composes several nodes onto one executor
+/// (RFC-0047), so a store with no node key makes `/talker`'s `rate` and
+/// `/listener`'s `rate` the same parameter.
+///
+/// The key is the executor's node INDEX, not a name: `nros_node::NodeId` is
+/// already a `u8` index into the executor's node table, it is already the
+/// identity the FFI persists (`nros_node_t.node_id`, `nros_cpp_node_t.node_id`),
+/// and one byte per slot keeps the store's arena the size it was. A name would
+/// cost `MAX_PARAM_NAME_LEN` bytes per slot and would need a second answer to
+/// "which node is this" that could disagree with the table.
+///
+/// `nros-params` sits below `nros-node`, so this is the local spelling and
+/// `nros-node` converts (`impl From<NodeId> for NodeKey`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct NodeKey(u8);
+
+impl NodeKey {
+    /// The executor's implicit primary node — `nros_node::NodeId::PRIMARY`.
+    pub const PRIMARY: NodeKey = NodeKey(0);
+
+    /// Build a key from a node table index.
+    pub const fn new(index: u8) -> Self {
+        NodeKey(index)
+    }
+
+    /// The node table index this key names.
+    pub const fn index(self) -> usize {
+        self.0 as usize
+    }
+
+    /// The raw index, for FFI persistence.
+    pub const fn raw(self) -> u8 {
+        self.0
+    }
+}
+
+/// A per-node bool, bounded by the key's own range.
+///
+/// phase-426 W1 — `allow_undeclared` is a NODE option upstream
+/// (`rclcpp::NodeOptions::allow_undeclared_parameters`, rclrs's
+/// `allow_undeclared`), so one node switching it on must not decide what a
+/// remote set may do to its sibling. [`NodeKey`] is a `u8`, so 256 bits covers
+/// the whole key space exactly: no ceiling to discover at runtime, 32 bytes,
+/// `const`-constructible, no allocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NodeFlags {
+    bits: [u64; 4],
+}
+
+impl NodeFlags {
+    /// All nodes off.
+    pub const fn new() -> Self {
+        Self { bits: [0; 4] }
+    }
+
+    /// Is the flag set for `node`?
+    pub const fn get(&self, node: NodeKey) -> bool {
+        let raw = node.raw() as usize;
+        self.bits[raw >> 6] & (1u64 << (raw & 63)) != 0
+    }
+
+    /// Set or clear the flag for `node`.
+    pub fn set(&mut self, node: NodeKey, on: bool) {
+        let raw = node.raw() as usize;
+        let mask = 1u64 << (raw & 63);
+        if on {
+            self.bits[raw >> 6] |= mask;
+        } else {
+            self.bits[raw >> 6] &= !mask;
+        }
+    }
+}
+
 /// ROS 2 parameter types
 ///
 /// These match the parameter types defined in rcl_interfaces/msg/ParameterType
