@@ -4,6 +4,12 @@ use crate::{
     ParameterType, QoSProfile,
     heapless::{String, Vec},
 };
+// phase-430 W4 — the ONE clock-source enum, from `nros_node::timer` (ungated:
+// see the note on its definition). The declarative layer records which clock a
+// declared timer wants and the runtime hands it to
+// `Executor::register_timer_entry`; a metadata-local copy of the enum here
+// would be the drift 0135/0160 measured one layer down.
+use nros_node::timer::TimerClockSource;
 
 #[cfg(feature = "alloc")]
 use crate::{QoSDurabilityPolicy, QoSHistoryPolicy, QoSLivelinessPolicy, QoSReliabilityPolicy};
@@ -326,6 +332,17 @@ pub struct EntityMetadata {
     /// to reach the runtime as 33 ms, a 1% permanent rate error, and a
     /// sub-millisecond period reached it as zero.
     pub period_us: Option<u64>,
+    /// Which clock advances this timer (phase-430 W4). `Steady` — the default
+    /// and every timer declared before W4 — is the WALL case: the runtime
+    /// registers it exactly as it always did. `Ros` makes the timer follow
+    /// `/clock`, so a `nros::main!` component can own a simulated-time timer
+    /// without reaching for the executor.
+    ///
+    /// Meaningless for every other entity kind, and deliberately NOT emitted in
+    /// the metadata JSON: the runtime reads this struct directly from the
+    /// component's `declare()`, so the sidecar schema does not have to move for
+    /// the capability to work.
+    pub timer_clock: TimerClockSource,
     pub parameter_type: Option<ParameterType>,
     pub parameter_default: Option<ParameterDefault>,
     pub parameter_read_only: bool,
@@ -1068,6 +1085,7 @@ pub fn entity_metadata(spec: EntityMetadataSpec<'_>) -> Result<EntityMetadata, N
         action_accepted_source: SourceLocationMetadata::empty(),
         period_ms: None,
         period_us: None,
+        timer_clock: TimerClockSource::Steady,
         parameter_type: None,
         parameter_default: None,
         parameter_read_only: false,

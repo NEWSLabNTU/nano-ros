@@ -1455,8 +1455,16 @@ impl NodeRuntime for ExecutorSink<'_> {
                     ),
                 };
                 let cell = self.cell.clone();
+                // phase-430 W4 — ONE registrar for both spellings. A timer
+                // declared with no clock carries `TimerClockSource::Steady`,
+                // which is the arena entry `register_timer` built anyway (same
+                // fields, same seed), so the wall case is unchanged and a `Ros`
+                // one now reaches the executor at all. Before W4 this site
+                // called `register_timer` unconditionally and the declarative
+                // surface could not express a clock, which is why a
+                // `nros::main!` component had no way to own a ROS-time timer.
                 self.executor
-                    .register_timer(period, move || {
+                    .register_timer_on_clock(period, metadata.timer_clock, move || {
                         dispatch_into_cell(cell.view(), &cb_id_owned, &[]);
                     })
                     .map_err(decl_err_from_node)?;

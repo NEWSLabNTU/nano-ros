@@ -11,7 +11,7 @@ use nros_node::rmw_type_registry::MessageForRmw;
 use crate::{
     ActionTag, CallbackId, CancelResponse, EntityId, GoalId, GoalResponse, GoalStatus,
     ParameterType, QoSProfile, RosAction, RosMessage, RosService, ServiceTag, SubscriptionTag,
-    TimerDuration,
+    TimerClockSource, TimerDuration,
     heapless::Vec,
     node_metadata::{
         CallbackEffectKind, CallbackEffectMetadata, CallbackSlot, EntityKind, EntityMetadata,
@@ -1087,22 +1087,11 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         callback_id: CallbackId<'callback>,
         period: TimerDuration,
     ) -> NodeResult<NodeTimer<'entity>> {
-        let mut metadata = entity_metadata(EntityMetadataSpec {
-            id,
-            node_id: self.id,
-            kind: EntityKind::Timer,
-            source_name: "",
-            type_name: "",
-            type_hash: "",
-            qos: QoSProfile::default(),
-        })?;
-        metadata.callback_id = Some(copy_str(callback_id.as_str())?);
-        metadata.callback_source = SourceLocationMetadata::caller()?;
-        metadata.source = metadata.callback_source.clone();
-        metadata.period_ms = Some(period.as_millis());
-        metadata.period_us = Some(period.as_micros());
-        self.declare_entity(metadata)?;
-        Ok(NodeTimer::new(id))
+        // phase-430 W4 — the wall spelling IS the `Steady` clock, so it is the
+        // same declaration with the axis defaulted rather than a second body.
+        // `#[track_caller]` on both hops keeps `SourceLocationMetadata::caller`
+        // pointing at the component, not at this line.
+        self.create_timer_on_clock(id, callback_id, period, TimerClockSource::Steady)
     }
 
     /// Declare a timer using `callback_id` as the stable timer entity ID.
@@ -1125,6 +1114,84 @@ impl<'ctx, 'id, R: NodeRuntime + ?Sized> DeclaredNode<'ctx, 'id, R> {
         period: TimerDuration,
     ) -> NodeResult<NodeTimer<'callback>> {
         self.create_timer_for_callback(CallbackId::new(callback_name), period)
+    }
+
+    /// Declare a timer on a chosen CLOCK — phase-430 W4, the declarative
+    /// spelling of [`Executor::register_timer_on_clock`](crate::Executor::register_timer_on_clock)
+    /// and the counterpart of C++'s `create_timer(clock, period, cb)`.
+    ///
+    /// [`create_timer`](Self::create_timer) is this with
+    /// [`TimerClockSource::Steady`], which is the WALL case and is what every
+    /// timer declared before W4 gets: the runtime registers it exactly as it
+    /// always did. A [`TimerClockSource::Ros`] timer instead follows `/clock` —
+    /// it stops while the simulator is paused and tracks a bag's replay rate —
+    /// and with no `/clock` source installed it reads system time, the same
+    /// fallback `rclcpp::Clock` has.
+    #[track_caller]
+    #[doc(hidden)]
+    pub fn create_timer_on_clock<'entity, 'callback>(
+        &mut self,
+        id: EntityId<'entity>,
+        callback_id: CallbackId<'callback>,
+        period: TimerDuration,
+        clock: TimerClockSource,
+    ) -> NodeResult<NodeTimer<'entity>> {
+        let mut metadata = entity_metadata(EntityMetadataSpec {
+            id,
+            node_id: self.id,
+            kind: EntityKind::Timer,
+            source_name: "",
+            type_name: "",
+            type_hash: "",
+            qos: QoSProfile::default(),
+        })?;
+        metadata.callback_id = Some(copy_str(callback_id.as_str())?);
+        metadata.callback_source = SourceLocationMetadata::caller()?;
+        metadata.source = metadata.callback_source.clone();
+        metadata.period_ms = Some(period.as_millis());
+        metadata.period_us = Some(period.as_micros());
+        metadata.timer_clock = clock;
+        self.declare_entity(metadata)?;
+        Ok(NodeTimer::new(id))
+    }
+
+    /// [`create_timer_on_clock`](Self::create_timer_on_clock) using
+    /// `callback_id` as the stable timer entity ID.
+    #[track_caller]
+    #[doc(hidden)]
+    pub fn create_timer_for_callback_on_clock<'callback>(
+        &mut self,
+        callback_id: CallbackId<'callback>,
+        period: TimerDuration,
+        clock: TimerClockSource,
+    ) -> NodeResult<NodeTimer<'callback>> {
+        self.create_timer_on_clock(
+            EntityId::new(callback_id.as_str()),
+            callback_id,
+            period,
+            clock,
+        )
+    }
+
+    /// [`create_timer_on_clock`](Self::create_timer_on_clock) using
+    /// `callback_name` as the source callback name and synthesized entity ID —
+    /// the spelling a `nros::main!` component writes:
+    ///
+    /// ```ignore
+    /// node.create_timer_for_callback_name_on_clock(
+    ///     "on_tick",
+    ///     TimerDuration::from_millis(100),
+    ///     TimerClockSource::Ros,
+    /// )?;
+    /// ```
+    #[track_caller]
+    pub fn create_timer_for_callback_name_on_clock<'callback>(
+        &mut self,
+        callback_name: &'callback str,
+        period: TimerDuration,
+        clock: TimerClockSource,
+    ) -> NodeResult<NodeTimer<'callback>> {
+        self.create_timer_for_callback_on_clock(CallbackId::new(callback_name), period, clock)
     }
 
     /// Declare a service server. Stable service and callback IDs are required.
@@ -2832,6 +2899,59 @@ mod tests {
             result,
             Err(NodeDeclError::Metadata(NodeMetadataError::DuplicateId))
         ));
+    }
+
+    /// phase-430 W4 — the declarative surface carries the clock through to the
+    /// runtime, and the clock-less spelling still means WALL.
+    ///
+    /// The runtime half is one line (`node_runtime.rs` hands
+    /// `metadata.timer_clock` to `Executor::register_timer_on_clock`), so this
+    /// asserts the thing that line reads. What the clock then DOES is
+    /// `nros-node`'s `a_node_level_ros_time_timer_follows_the_simulated_clock`,
+    /// which needs an executor and a `/clock` override.
+    #[test]
+    fn a_declared_timer_records_the_clock_it_asked_for() {
+        let mut recorder = MetadataRecorder::<1, 2, 0>::new();
+        let mut context = NodeContext::new("test", &mut recorder);
+        let mut node = context.create_node(NodeOptions::new("talker")).unwrap();
+
+        let _wall = node
+            .create_timer_for_callback_name("on_tick", TimerDuration::from_millis(10))
+            .unwrap();
+        let _sim = node
+            .create_timer_for_callback_name_on_clock(
+                "on_sim_tick",
+                TimerDuration::from_millis(10),
+                TimerClockSource::Ros,
+            )
+            .unwrap();
+
+        let _ = node;
+        let _ = context;
+        assert_eq!(recorder.entities().len(), 2);
+        assert_eq!(
+            recorder.entities()[0].timer_clock,
+            TimerClockSource::Steady,
+            "a timer declared with no clock is the WALL case, unchanged by W4 -- \
+             every timer in the tree predates the axis and must keep its behaviour"
+        );
+        assert_eq!(
+            recorder.entities()[1].timer_clock,
+            TimerClockSource::Ros,
+            "the clock a component asks for must survive into the metadata the \
+             runtime registers from; this is the field `node_runtime` reads"
+        );
+        // The rest of the declaration is identical between the two spellings --
+        // the clock is an added axis, not a different kind of entity.
+        assert_eq!(recorder.entities()[1].kind, EntityKind::Timer);
+        assert_eq!(recorder.entities()[1].period_us, Some(10_000));
+        assert_eq!(
+            recorder.entities()[1]
+                .callback_id
+                .as_ref()
+                .map(|id| id.as_str()),
+            Some("on_sim_tick")
+        );
     }
 
     #[test]
