@@ -138,6 +138,62 @@ impl From<TimerDuration> for nros_core::Duration {
     }
 }
 
+// phase-430 W4 — this enum lives HERE, in the ungated `timer` module, rather
+// than in `executor::arena` where phase-425 W4 first wrote it. `mod arena` is
+// `#[cfg(any(has_rmw, test))]`, so the type could not be named by the
+// DECLARATIVE layer (`nros::node_metadata::EntityMetadata`, which a
+// metadata-mode build compiles with no transport) — and a metadata field that
+// cannot name the enum is how a second spelling of it gets invented one layer
+// up, which is the 0135/0160 drift. One enum, one spelling, reachable from
+// both halves; `executor` re-exports it so every existing path still resolves.
+/// Which clock advances a timer (phase-425 W4, RFC-0075-adjacent: this is the
+/// distinction rclcpp draws between `create_wall_timer` and `create_timer`).
+///
+/// The default is [`Steady`](Self::Steady) and it is the only source that costs
+/// nothing: it consumes the spin delta the executor already measured. The other
+/// two READ a clock on every poll of the timer, which is one relaxed atomic load
+/// plus whatever the platform's time call costs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u8)]
+pub enum TimerClockSource {
+    /// The executor's monotonic spin delta — a WALL timer in rclcpp's sense.
+    /// Unaffected by `/clock`: a paused simulator does not pause it, which is
+    /// exactly what a watchdog or a transport keep-alive wants.
+    #[default]
+    Steady = 0,
+    /// `ClockType::RosTime`: simulated time when a `/clock` source is active,
+    /// and system time when none is (the same fallback `rclcpp::Clock` has, so
+    /// a node built for simulation still runs standalone).
+    Ros = 1,
+    /// `ClockType::SystemTime`: the wall clock, NTP steps and all. Present
+    /// because rclrs offers it (`TimerClock::SystemTime`); a timer that must
+    /// not jump wants `Steady`.
+    System = 2,
+}
+
+// The helpers are the EXECUTOR's half: only `timer_try_process` and the timer
+// registrar read a clock, and both live behind `mod arena` / `mod spin`, which
+// are `#[cfg(any(has_rmw, test))]`. The TYPE stays ungated — the declarative
+// metadata layer names it with no transport linked — so without a backend these
+// two would be dead code under `-D warnings`.
+#[cfg(any(has_rmw, test))]
+impl TimerClockSource {
+    /// The `nros_core` clock this source reads, or `None` for [`Steady`](Self::Steady),
+    /// which reads no clock at all.
+    pub(crate) fn clock(self) -> Option<nros_core::clock::Clock> {
+        match self {
+            TimerClockSource::Steady => None,
+            TimerClockSource::Ros => Some(nros_core::clock::Clock::ros_time()),
+            TimerClockSource::System => Some(nros_core::clock::Clock::system()),
+        }
+    }
+
+    /// The clock's current reading in nanoseconds, or 0 for [`Steady`](Self::Steady).
+    pub(crate) fn now_ns(self) -> i64 {
+        self.clock().map(|c| c.now().to_nanos()).unwrap_or(0)
+    }
+}
+
 /// Timer mode (repeating, one-shot, or inert)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimerMode {
