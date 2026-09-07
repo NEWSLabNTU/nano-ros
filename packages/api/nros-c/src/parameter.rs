@@ -769,8 +769,11 @@ pub unsafe extern "C" fn nros_parameter_server_fini(
 #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
 mod service_backed {
     use super::*;
-    use crate::executor::{get_executor, nros_executor_t};
-    use nros_node::{ParameterValue, SetParameterResult};
+    use crate::{
+        executor::{CExecutor, get_executor, nros_executor_t},
+        node::{nros_node_state_t, nros_node_t},
+    };
+    use nros_node::{ParameterValue, SetParameterResult, executor::NodeId};
 
     /// Read a C string up to `max_len` bytes into a `&str` slice.
     /// Returns `None` if `name` is NULL or non-UTF-8.
@@ -805,6 +808,49 @@ mod service_backed {
         NROS_RET_OK
     }
 
+    /// phase-426 W5 — resolve the `nros_node_t` an `_on` call names into the
+    /// store's node key. ONE spelling, for all fourteen `_on` entry points.
+    ///
+    /// The store is keyed by node (W1), so a C caller has to be able to say
+    /// WHICH node — and the thing a C caller holds is the `nros_node_t` it
+    /// passed to `nros_executor_node_init`, not the `u8` slot index inside it.
+    /// Taking the node rather than the index is what makes these checks
+    /// possible at all; an index argument would make every one of them a
+    /// silent out-of-range write into a sibling node's parameters.
+    ///
+    /// Refuses, in order:
+    ///
+    /// * a NULL node — the caller means the primary node, and says so by
+    ///   calling the un-suffixed spelling;
+    /// * a node that is not INITIALISED — a zeroed `nros_node_t` reads as slot
+    ///   0, so accepting it would silently mean "the primary node";
+    /// * a node bound to a DIFFERENT executor — two executors have two stores,
+    ///   and slot 3 of one names nothing in the other. `rclc_node_init_default`
+    ///   leaves `executor` NULL and `node_id` 0 (the legacy single-node path),
+    ///   which IS the primary node and is accepted;
+    /// * a slot the executor never built. Slot 0 is always legal — an executor
+    ///   with no `nros_executor_node_init` call still HAS a primary node, and
+    ///   `Executor::nodes()` is empty until one is built, so a membership test
+    ///   alone would refuse the commonest image in the tree.
+    unsafe fn node_key(
+        exec: &CExecutor,
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+    ) -> Option<NodeId> {
+        let node = node.as_ref()?;
+        if node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
+            return None;
+        }
+        if !node.executor.is_null() && node.executor != executor.cast_const() {
+            return None;
+        }
+        let id = NodeId::from_raw(node.node_id);
+        if node.node_id != 0 && exec.node(id).is_none() {
+            return None;
+        }
+        Some(id)
+    }
+
     /// Register the 6 ROS 2 parameter services on the executor's node.
     ///
     /// After this call, parameters declared via
@@ -824,6 +870,21 @@ mod service_backed {
         }
     }
 
+    /// phase-426 W2/W5 — the ONE translation of a write's verdict into the C
+    /// return code, for all eight setters.
+    ///
+    /// The mapping used to be written out twice (the scalar macro and
+    /// `nros_executor_set_param_string`); W5 doubles the number of setters, and
+    /// four copies of a `match` over an enum that grows is how one of them ends
+    /// up reporting an `OutOfRange` as `NROS_RET_OK`.
+    fn set_result_to_ret(result: SetParameterResult) -> nros_ret_t {
+        match result {
+            SetParameterResult::Success => NROS_RET_OK,
+            SetParameterResult::NotFound | SetParameterResult::Undeclared => NROS_RET_NOT_FOUND,
+            _ => NROS_RET_INVALID_ARGUMENT,
+        }
+    }
+
     macro_rules! impl_executor_param_scalar {
         (
             name: $name:ident,
@@ -833,7 +894,7 @@ mod service_backed {
             doc: $doc:literal
         ) => {
             paste::paste! {
-                #[doc = "Declare " $doc " parameter on the executor's server."]
+                #[doc = "Declare " $doc " parameter on the executor's PRIMARY node."]
                 #[unsafe(no_mangle)]
                 pub unsafe extern "C" fn [<nros_executor_declare_param_ $name>](
                     executor: *mut nros_executor_t,
@@ -854,7 +915,32 @@ mod service_backed {
                     }
                 }
 
-                #[doc = "Get " $doc " parameter from the executor's server."]
+                #[doc = "Declare " $doc " parameter on `node`."]
+                #[unsafe(no_mangle)]
+                pub unsafe extern "C" fn [<nros_executor_declare_param_ $name _on>](
+                    executor: *mut nros_executor_t,
+                    node: *const nros_node_t,
+                    name: *const c_char,
+                    value: $T,
+                ) -> nros_ret_t {
+                    if executor.is_null() {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    }
+                    let Some(n) = cstr_to_str(name) else {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    };
+                    let exec = get_executor(&mut (*executor)._opaque);
+                    let Some(id) = node_key(exec, executor, node) else {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    };
+                    if exec.declare_parameter_on(id, n, $from(value)) {
+                        NROS_RET_OK
+                    } else {
+                        NROS_RET_ALREADY_EXISTS
+                    }
+                }
+
+                #[doc = "Get " $doc " parameter from the executor's PRIMARY node."]
                 #[unsafe(no_mangle)]
                 pub unsafe extern "C" fn [<nros_executor_get_param_ $name>](
                     executor: *mut nros_executor_t,
@@ -877,7 +963,34 @@ mod service_backed {
                     }
                 }
 
-                #[doc = "Set " $doc " parameter on the executor's server."]
+                #[doc = "Get " $doc " parameter from `node`."]
+                #[unsafe(no_mangle)]
+                pub unsafe extern "C" fn [<nros_executor_get_param_ $name _on>](
+                    executor: *mut nros_executor_t,
+                    node: *const nros_node_t,
+                    name: *const c_char,
+                    out_value: *mut $T,
+                ) -> nros_ret_t {
+                    if executor.is_null() || out_value.is_null() {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    }
+                    let Some(n) = cstr_to_str(name) else {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    };
+                    let inner = get_executor(&mut (*executor)._opaque);
+                    let Some(id) = node_key(inner, executor, node) else {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    };
+                    match inner.get_parameter_on(id, n).and_then(|v| v.$as()) {
+                        Some(v) => {
+                            *out_value = v.into();
+                            NROS_RET_OK
+                        }
+                        None => NROS_RET_NOT_FOUND,
+                    }
+                }
+
+                #[doc = "Set " $doc " parameter on the executor's PRIMARY node."]
                 #[unsafe(no_mangle)]
                 pub unsafe extern "C" fn [<nros_executor_set_param_ $name>](
                     executor: *mut nros_executor_t,
@@ -898,13 +1011,29 @@ mod service_backed {
                     // which is a SECOND answer to "may this set happen" — the
                     // duplication RFC-0019/0020 forbids, and the seam through
                     // which issue 1151's rules could be bypassed from C.
-                    match exec.set_parameter(n, $from(value)) {
-                        SetParameterResult::Success => NROS_RET_OK,
-                        SetParameterResult::NotFound | SetParameterResult::Undeclared => {
-                            NROS_RET_NOT_FOUND
-                        }
-                        _ => NROS_RET_INVALID_ARGUMENT,
+                    set_result_to_ret(exec.set_parameter(n, $from(value)))
+                }
+
+                #[doc = "Set " $doc " parameter on `node`."]
+                #[unsafe(no_mangle)]
+                pub unsafe extern "C" fn [<nros_executor_set_param_ $name _on>](
+                    executor: *mut nros_executor_t,
+                    node: *const nros_node_t,
+                    name: *const c_char,
+                    value: $T,
+                ) -> nros_ret_t {
+                    if executor.is_null() {
+                        return NROS_RET_INVALID_ARGUMENT;
                     }
+                    let Some(n) = cstr_to_str(name) else {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    };
+                    let exec = get_executor(&mut (*executor)._opaque);
+                    let Some(id) = node_key(exec, executor, node) else {
+                        return NROS_RET_INVALID_ARGUMENT;
+                    };
+                    // Same `apply` routing as the primary spelling above.
+                    set_result_to_ret(exec.set_parameter_on(id, n, $from(value)))
                 }
             }
         };
@@ -929,7 +1058,7 @@ mod service_backed {
         doc: "a double"
     );
 
-    /// Declare a string parameter on the executor's server.
+    /// Declare a string parameter on the executor's PRIMARY node.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nros_executor_declare_param_string(
         executor: *mut nros_executor_t,
@@ -953,7 +1082,36 @@ mod service_backed {
         }
     }
 
-    /// Get a string parameter from the executor's server into a fixed buffer.
+    /// Declare a string parameter on `node`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_declare_param_string_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        name: *const c_char,
+        value: *const c_char,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let (Some(n), Some(v)) = (cstr_to_str(name), cstr_to_str(value)) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let Some(pv) = ParameterValue::from_string(v) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(exec, executor, node) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        if exec.declare_parameter_on(id, n, pv) {
+            NROS_RET_OK
+        } else {
+            NROS_RET_ALREADY_EXISTS
+        }
+    }
+
+    /// Get a string parameter from the executor's PRIMARY node into a fixed
+    /// buffer.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nros_executor_get_param_string(
         executor: *mut nros_executor_t,
@@ -974,7 +1132,32 @@ mod service_backed {
         }
     }
 
-    /// Set a string parameter on the executor's server.
+    /// Get a string parameter from `node` into a fixed buffer.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_get_param_string_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        name: *const c_char,
+        out_value: *mut c_char,
+        max_len: usize,
+    ) -> nros_ret_t {
+        if executor.is_null() || out_value.is_null() || max_len == 0 {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let Some(n) = cstr_to_str(name) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let inner = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(inner, executor, node) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        match inner.get_parameter_on(id, n).and_then(|v| v.as_string()) {
+            Some(s) => str_to_cbuf(s, out_value, max_len),
+            None => NROS_RET_NOT_FOUND,
+        }
+    }
+
+    /// Set a string parameter on the executor's PRIMARY node.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nros_executor_set_param_string(
         executor: *mut nros_executor_t,
@@ -992,14 +1175,34 @@ mod service_backed {
         };
         let exec = get_executor(&mut (*executor)._opaque);
         // phase-426 W2 — same routing as the scalar setters above.
-        match exec.set_parameter(n, pv) {
-            SetParameterResult::Success => NROS_RET_OK,
-            SetParameterResult::NotFound | SetParameterResult::Undeclared => NROS_RET_NOT_FOUND,
-            _ => NROS_RET_INVALID_ARGUMENT,
-        }
+        set_result_to_ret(exec.set_parameter(n, pv))
     }
 
-    /// Check if a parameter exists on the executor's server.
+    /// Set a string parameter on `node`.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_set_param_string_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        name: *const c_char,
+        value: *const c_char,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let (Some(n), Some(v)) = (cstr_to_str(name), cstr_to_str(value)) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let Some(pv) = ParameterValue::from_string(v) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(exec, executor, node) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        set_result_to_ret(exec.set_parameter_on(id, n, pv))
+    }
+
+    /// Check if a parameter exists on the executor's PRIMARY node.
     #[unsafe(no_mangle)]
     pub unsafe extern "C" fn nros_executor_has_param(
         executor: *mut nros_executor_t,
@@ -1013,6 +1216,70 @@ mod service_backed {
         };
         let inner = get_executor(&mut (*executor)._opaque);
         inner.get_parameter(n).is_some()
+    }
+
+    /// Check if a parameter exists on `node`.
+    ///
+    /// A node this executor does not own answers `false`, never the primary
+    /// node's answer: "which node" is the question, and defaulting it is how a
+    /// sibling's parameter comes back as this one's.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_has_param_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        name: *const c_char,
+    ) -> bool {
+        if executor.is_null() {
+            return false;
+        }
+        let Some(n) = cstr_to_str(name) else {
+            return false;
+        };
+        let inner = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(inner, executor, node) else {
+            return false;
+        };
+        inner.get_parameter_on(id, n).is_some()
+    }
+
+    /// May a `set` DECLARE a name the executor's PRIMARY node never declared?
+    ///
+    /// Upstream's `allow_undeclared_parameters` node option (issue 1151), off
+    /// by default. Without it a C image could not reach the policy at all: a
+    /// `nros_executor_set_param_*` on an undeclared name was a permanent
+    /// `NROS_RET_NOT_FOUND` with no opt-in, so the rule was reachable from Rust
+    /// and from the wire and not from here. Set it before
+    /// `nros_executor_register_parameter_services` starts answering.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_allow_undeclared_parameters(
+        executor: *mut nros_executor_t,
+        allow: bool,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = get_executor(&mut (*executor)._opaque);
+        exec.allow_undeclared_parameters(allow);
+        NROS_RET_OK
+    }
+
+    /// [`nros_executor_allow_undeclared_parameters`] for `node`. Per node, as
+    /// upstream: switching it on for one node leaves its siblings refusing.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn nros_executor_allow_undeclared_parameters_on(
+        executor: *mut nros_executor_t,
+        node: *const nros_node_t,
+        allow: bool,
+    ) -> nros_ret_t {
+        if executor.is_null() {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+        let exec = get_executor(&mut (*executor)._opaque);
+        let Some(id) = node_key(exec, executor, node) else {
+            return NROS_RET_INVALID_ARGUMENT;
+        };
+        exec.allow_undeclared_parameters_on(id, allow);
+        NROS_RET_OK
     }
 }
 

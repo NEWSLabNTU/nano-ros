@@ -365,6 +365,57 @@ c: c-fmt
     cc -fsyntax-only \
         -Ipackages/core/nros-rmw-abi/include \
         packages/rmw/cffi/tests/c_stubs/abi_layout_check.c
+    echo "  - parameters are keyed by NODE from C (phase-426 W5)"
+    # COMPILE+LINK+RUN, and it has to be: the defect is not in the
+    # declarations. A `_on` family that resolved every node to slot 0 would
+    # compile, link, and pass `param_entry_points.c` above, while a two-node C
+    # image silently shared one parameter table -- which is what the C surface
+    # did before W5, because it had no way to name a node at all.
+    #
+    # It needs a SECOND feature shape: `C_API_SHIPPED_FEATURES` does not carry
+    # `param-services`, so the archive every step above links has none of these
+    # symbols at all.
+    #
+    # That second shape gets its OWN target dir, and the reason is the
+    # config-variant guard, not tidiness. `nros_config_generated.h` is mirrored
+    # to `$CARGO_TARGET_DIR/nros-c-generated/` as a build-script SIDE EFFECT, so
+    # it carries whichever feature shape last RAN a build script -- and cargo
+    # caches both shapes' fingerprints, so switching back to one it has already
+    # built re-runs nothing and rewrites nothing. Sharing one target dir
+    # therefore links a header sized for the shipped shape against an archive
+    # built for this one: `undefined reference to nros_config_variant_sz_<hash>`
+    # when the guard fires, and a wrong `nros_executor_t` if it ever did not.
+    # A separate dir makes header and archive one build, permanently.
+    #
+    # `CARGO_TARGET_DIR`, not `--target-dir`: the mirror resolves its root from
+    # that variable FIRST and only falls back to walking up from `OUT_DIR`, and
+    # that walk reads a directory name containing a `-` as a target TRIPLE
+    # (`nros-c-param-services` looks exactly like one). With the flag alone the
+    # header landed back in the shared `target/`, clobbering the shipped one --
+    # measured, not reasoned.
+    #
+    # No router and no network: the TU registers a STUB RMW backend, because
+    # nothing on the parameter path touches the wire. `test -f` first -- a
+    # missing TU must not read as a pass (issue 0196's class).
+    test -f packages/api/nros-c/tests/run/executor_param_node_keying.c || { \
+        echo "ERROR: executor_param_node_keying.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; }
+    # profile-literal-ok: unprofiled: a plain `cargo build`, so `<dir>/debug/` IS
+    # its derived output dir, and the mirrored header beside it is from this
+    # same build.
+    param_dir="$PWD/target/nros-c-param-services"
+    CARGO_TARGET_DIR="$param_dir" cargo build -p nros-c --no-default-features \
+        --features "{{C_API_SHIPPED_FEATURES}},param-services" --quiet
+    mkdir -p tmp
+    cc -std=c11 -Wall -Wextra \
+        -I"$param_dir/nros-c-generated" \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/core/nros-rmw-abi/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/run/executor_param_node_keying.c \
+        "$param_dir/debug/libnros_c.a" -lpthread -ldl -lm \
+        -o tmp/executor_param_node_keying
+    ./tmp/executor_param_node_keying
     echo "All C checks passed!"
 
 # issue 0379 — clippy gate for the CLI sub-workspace. No lane ran clippy on

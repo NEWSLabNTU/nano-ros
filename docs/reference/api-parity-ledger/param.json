@@ -62,20 +62,47 @@
     "verdict": "gap",
     "why": "the `void* context` form -- and the row that matters, because BOTH rclc forms take the on-modification callback and ours takes none. So a `ros2 param set` reaching the executor-owned store notifies nobody: the C callback that does exist, `nros_parameter_server_set_callback`, is on the legacy standalone `nros_parameter_server_t`, which is not the object the services write to. Note which of our TWO C parameter stores this is. `nros_parameter_server_t` (`nros/parameter.h`) is a standalone store over caller-supplied storage and is purely node-local -- `parameter.rs` calls it \"the legacy `nros_parameter_server_t` API\" in its own comment. The store the six `rcl_interfaces/srv/*` servers read is a DIFFERENT object, the `nros_params::ParameterServer` the executor owns, reached only through `nros_executor_*_param_*`. Nothing joins them. NOTE FOR RFC-0036: line 91 says \"No parameter callbacks; parameters are read/write only\", and that is now wrong in both directions -- C ships an accept/reject set-callback on one store, and has none on the store `ros2 param` talks to. Phase 379 W3."
   },
+  "c:executor_allow_undeclared_parameters": {
+    "verdict": "divergence",
+    "why": "the C spelling of `rust:Executor::allow_undeclared_parameters`, and it exists for the same reason the Rust one does: upstream's `allow_undeclared_parameters` is a NODE OPTION given at construction (rclcpp `NodeOptions`, rclrs `allow_undeclared`), and there is no `NodeOptions` object here to carry it -- a node is a row in the executor's fixed table, so the option is a call on the executor. The SEMANTICS are upstream's: per node, off by default (issue 1151). phase-426 W5 added it because C could not reach the policy AT ALL: `nros_executor_set_param_*` on an undeclared name was a permanent `NROS_RET_NOT_FOUND` with no opt-in, so a rule that Rust and a remote `ros2 param set` both honour was unreachable from the C API that shares the store. What a user loses: it cannot be given at node-construction time, so it must be set before `nros_executor_register_parameter_services` starts answering."
+  },
+  "c:executor_allow_undeclared_parameters_on": {
+    "verdict": "divergence",
+    "why": "the node-naming half of `c:executor_allow_undeclared_parameters`; see `c:executor_declare_param_*_on` for why the node is an argument here and a receiver upstream."
+  },
   "c:executor_declare_param_*": {
     "verdict": "divergence",
     "bucket": "ours-only",
-    "why": "the service-backed parameter API: it operates on the `nros_params::ParameterServer` the EXECUTOR owns, which is the store `nros_executor_register_parameter_services` exposes to `ros2 param`. rclc has no equivalent spelling because rclc hands the executor a caller-owned server instead (`c:executor_add_parameter_server`); with static entity storage and no allocator there is one server and the executor holds it, so the executor is the handle. Gated on the `param-services` Cargo feature, which needs `alloc`. SCALARS ONLY -- bool/integer/double/string -- where the local `c:parameter_declare_*` family covers all ten `rcl_interfaces` types, so no C caller can publish an array parameter to `ros2 param`. Phase 379 W3."
+    "why": "the service-backed parameter API: it operates on the `nros_params::ParameterServer` the EXECUTOR owns, which is the store `nros_executor_register_parameter_services` exposes to `ros2 param`. rclc has no equivalent spelling because rclc hands the executor a caller-owned server instead (`c:executor_add_parameter_server`); with static entity storage and no allocator there is one server and the executor holds it, so the executor is the handle. Gated on the `param-services` Cargo feature, which needs `alloc`. SCALARS ONLY -- bool/integer/double/string -- where the local `c:parameter_declare_*` family covers all ten `rcl_interfaces` types, so no C caller can publish an array parameter to `ros2 param`. This spelling means the executor's PRIMARY node; `c:executor_declare_param_*_on` names another. Phase 379 W3; phase-426 W1/W5."
+  },
+  "c:executor_declare_param_*_on": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "phase-426 W5 -- the node-naming half of `c:executor_declare_param_*`, and the C mirror of `rust:Executor::declare_parameter_on`. The parameter STORE is one fixed table owned by the EXECUTOR, not a container per node: there is no allocator to make a second, so a node cannot own its own. Upstream keys parameters by making the node the RECEIVER (`rclcpp::Node::declare_parameter`, rclc's `rclc_parameter_server_t` bound to a node); ours are on the executor and the node is an ARGUMENT, because an image composes several nodes onto one executor (RFC-0047) and the shared table has to be told whose parameter it is. The `_on` suffix is the same disambiguation the entity builders already use (`node_mut(id)` / `_on(...)`, phase 104.C) and the same pair Rust ships, so C and Rust name one relationship one way. It is a NEW NAME rather than a widened signature deliberately: RFC-0089 permits a signature change only where the compiler forces the edit, and the existing spellings are not wrong -- they mean the primary node and will go on meaning it -- so re-signing them would cost every C caller an edit that buys nothing. What a user loses: a ported node writes `nros_executor_declare_param_integer_on(&exec, &node, name, value)` where rclcpp writes `node->declare_parameter(name, value)`. Takes the `nros_node_t` rather than its slot index, so a node that is uninitialised or bound to another executor is refused instead of silently meaning slot 0."
   },
   "c:executor_get_param_*": {
     "verdict": "divergence",
     "bucket": "ours-only",
     "why": "the read half; see `c:executor_declare_param_*`."
   },
+  "c:executor_get_param_*_on": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "the read half of the per-node family; see `c:executor_declare_param_*_on`."
+  },
+  "c:executor_has_param_on": {
+    "verdict": "divergence",
+    "why": "the existence predicate of the per-node family; see `c:executor_declare_param_*_on`. Upstream's correspondent is `rclcpp::Node::has_parameter`, whose receiver IS the node. A node this executor does not own answers `false`, never the primary node's answer -- defaulting the node is how a sibling's parameter reads as this one's."
+  },
   "c:executor_set_param_*": {
     "verdict": "divergence",
     "bucket": "ours-only",
     "why": "the write half; see `c:executor_declare_param_*`."
+  },
+  "c:executor_set_param_*_on": {
+    "verdict": "divergence",
+    "bucket": "ours-only",
+    "why": "the write half of the per-node family; see `c:executor_declare_param_*_on`. Routes through `Executor::set_parameter_on`, hence `ParameterServer::apply`, so a C set gets exactly the read-only / type / range / undeclared rules a remote `ros2 param set` gets (phase-426 W2)."
   },
   "c:int64_array_t": {
     "verdict": "declined",

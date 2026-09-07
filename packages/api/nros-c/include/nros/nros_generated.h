@@ -431,6 +431,24 @@ typedef enum nros_support_state_t {
 } nros_support_state_t;
 
 /**
+ * Node state
+ */
+typedef enum nros_node_state_t {
+  /**
+   * Not initialized
+   */
+  NROS_NODE_STATE_UNINITIALIZED = 0,
+  /**
+   * Initialized and ready
+   */
+  NROS_NODE_STATE_INITIALIZED = 1,
+  /**
+   * Shutdown
+   */
+  NROS_NODE_STATE_SHUTDOWN = 2,
+} nros_node_state_t;
+
+/**
  * Action client state.
  */
 typedef enum nros_action_client_state_t {
@@ -491,24 +509,6 @@ typedef enum nros_goal_status_t {
    */
   NROS_GOAL_STATUS_ABORTED = 6,
 } nros_goal_status_t;
-
-/**
- * Node state
- */
-typedef enum nros_node_state_t {
-  /**
-   * Not initialized
-   */
-  NROS_NODE_STATE_UNINITIALIZED = 0,
-  /**
-   * Initialized and ready
-   */
-  NROS_NODE_STATE_INITIALIZED = 1,
-  /**
-   * Shutdown
-   */
-  NROS_NODE_STATE_SHUTDOWN = 2,
-} nros_node_state_t;
 
 /**
  * Action server state.
@@ -1159,6 +1159,130 @@ typedef struct nros_executor_t {
 } nros_executor_t;
 
 /**
+ * Phase 211.H (issue #52) — one per-topic QoS override, the C-ABI mirror of
+ * Rust's `nros_rmw::QoSOverride`. The deploy plan lowers a
+ * `qos_overrides.<topic>.<role>.<policy>` launch param into a `&'static`
+ * array of these, which the entry installs on the node via
+ * [`nros_node_set_qos_overrides`](crate::node::nros_node_set_qos_overrides);
+ * the node folds the matching entries into each entity's QoS at
+ * `create_publisher` / `create_subscription` time (setup-time, before the
+ * backend-compat check — no silent downgrade).
+ *
+ * Plain scalar fields only (no `#[repr(C)]` enums) so the C++/cbindgen header
+ * is trivially stable and there is no short-enum ABI mirror to keep in sync.
+ */
+typedef struct nros_qos_override_t {
+  /**
+   * Resolved (remapped) topic the override targets, NUL-terminated UTF-8
+   * (e.g. `"/chatter"`). Matched exactly against the entity's topic.
+   */
+  const char *topic;
+  /**
+   * `0` = publisher, `1` = subscription. Other values never match.
+   */
+  uint8_t role;
+  /**
+   * `0` = reliability, `1` = durability, `2` = history, `3` = depth,
+   * `4` = deadline, `5` = lifespan, `6` = liveliness,
+   * `7` = liveliness_lease_duration. Append-only — these numbers are baked
+   * into shipped images; `nros_rmw::qos_override_policy` is the SSoT.
+   */
+  uint8_t policy;
+  /**
+   * Policy-specific value: reliability `0`=best_effort/`1`=reliable;
+   * durability `0`=volatile/`1`=transient_local; history
+   * `0`=keep_last/`1`=keep_all; depth = the KeepLast depth; deadline /
+   * lifespan / liveliness_lease_duration = milliseconds; liveliness =
+   * the `QoSLivelinessPolicy` discriminant
+   * (`0`=none/`1`=automatic/`2`=manual_by_topic/`3`=manual_by_node).
+   */
+  uint32_t value;
+} nros_qos_override_t;
+
+/**
+ * Node structure.
+ *
+ * Represents a ROS 2 node with a name and namespace.
+ */
+typedef struct nros_node_t {
+  /**
+   * Current state
+   */
+  enum nros_node_state_t state;
+  /**
+   * Node name storage
+   */
+  uint8_t name[NROS_MAX_NAME_LEN];
+  /**
+   * Node name length
+   */
+  size_t name_len;
+  /**
+   * Namespace storage
+   */
+  uint8_t namespace_[NROS_MAX_NAMESPACE_LEN];
+  /**
+   * Namespace length
+   */
+  size_t namespace_len;
+  /**
+   * Pointer to parent support context
+   */
+  const struct nros_support_t *support;
+  /**
+   * RMW backend name (UTF-8, NUL-terminated within `rmw_name_len`).
+   * Empty (`rmw_name_len == 0`) selects the first-registered backend.
+   */
+  uint8_t rmw_name[MAX_RMW_NAME_LEN];
+  /**
+   * Length of `rmw_name` in bytes (excluding NUL). 0 = inherit.
+   */
+  size_t rmw_name_len;
+  /**
+   * Per-Node domain ID. `NROS_DOMAIN_ID_INHERIT` (== u32::MAX) means
+   * "use the support context's domain_id".
+   */
+  uint32_t domain_id_override;
+  /**
+   * SchedContext slot to inherit on every handle created by this Node
+   * (Phase 104.C.4). 0 = inherit the executor's default Fifo context.
+   */
+  uint8_t sched_context_id;
+  /**
+   * Reserved for future use (alignment + ABI stability).
+   */
+  uint8_t _reserved[3];
+  /**
+   * Opaque NodeId slot returned by `Executor::node_builder(...).build()`
+   * when this Node is bound to an Executor. 0 = primary Node (legacy
+   * single-Node path). Internal use only — readers should treat as
+   * opaque.
+   */
+  uint8_t node_id;
+  /**
+   * Phase 156 / 104.C.8.b — executor pointer for the multi-Session
+   * dispatch path. `nros_executor_node_init` populates this when
+   * the Node is bound; per-entity `nros_*_init` paths
+   * (`rclc_publisher_init_default`, `nros_subscription_init`, etc.) branch
+   * on `node_id != 0 && !executor.is_null()` to route through
+   * `Executor::node_session_mut(NodeId)` instead of the legacy
+   * support-based dispatch. NULL = legacy single-Node path
+   * (`rclc_node_init_default` / `nros_node_init_ex`).
+   */
+  const struct nros_executor_t *executor;
+  /**
+   * Pointer to a `&'static`-lifetime array of [`nros_qos_override_t`], or
+   * null. The caller (a generated entry / a hand-written app) owns the
+   * storage for the node's lifetime.
+   */
+  const struct nros_qos_override_t *qos_overrides;
+  /**
+   * Number of entries in `qos_overrides`. 0 = none.
+   */
+  size_t qos_overrides_len;
+} nros_node_t;
+
+/**
  * Phase 115.C — C-side mirror of
  * `nros_rmw::custom_transport::NrosTransportOps`. Same `#[repr(C)]`
  * layout — single ABI, no parallel definitions.
@@ -1360,130 +1484,6 @@ typedef struct nros_action_client_t {
    */
   uint64_t _opaque[ACTION_CLIENT_OPAQUE_U64S];
 } nros_action_client_t;
-
-/**
- * Phase 211.H (issue #52) — one per-topic QoS override, the C-ABI mirror of
- * Rust's `nros_rmw::QoSOverride`. The deploy plan lowers a
- * `qos_overrides.<topic>.<role>.<policy>` launch param into a `&'static`
- * array of these, which the entry installs on the node via
- * [`nros_node_set_qos_overrides`](crate::node::nros_node_set_qos_overrides);
- * the node folds the matching entries into each entity's QoS at
- * `create_publisher` / `create_subscription` time (setup-time, before the
- * backend-compat check — no silent downgrade).
- *
- * Plain scalar fields only (no `#[repr(C)]` enums) so the C++/cbindgen header
- * is trivially stable and there is no short-enum ABI mirror to keep in sync.
- */
-typedef struct nros_qos_override_t {
-  /**
-   * Resolved (remapped) topic the override targets, NUL-terminated UTF-8
-   * (e.g. `"/chatter"`). Matched exactly against the entity's topic.
-   */
-  const char *topic;
-  /**
-   * `0` = publisher, `1` = subscription. Other values never match.
-   */
-  uint8_t role;
-  /**
-   * `0` = reliability, `1` = durability, `2` = history, `3` = depth,
-   * `4` = deadline, `5` = lifespan, `6` = liveliness,
-   * `7` = liveliness_lease_duration. Append-only — these numbers are baked
-   * into shipped images; `nros_rmw::qos_override_policy` is the SSoT.
-   */
-  uint8_t policy;
-  /**
-   * Policy-specific value: reliability `0`=best_effort/`1`=reliable;
-   * durability `0`=volatile/`1`=transient_local; history
-   * `0`=keep_last/`1`=keep_all; depth = the KeepLast depth; deadline /
-   * lifespan / liveliness_lease_duration = milliseconds; liveliness =
-   * the `QoSLivelinessPolicy` discriminant
-   * (`0`=none/`1`=automatic/`2`=manual_by_topic/`3`=manual_by_node).
-   */
-  uint32_t value;
-} nros_qos_override_t;
-
-/**
- * Node structure.
- *
- * Represents a ROS 2 node with a name and namespace.
- */
-typedef struct nros_node_t {
-  /**
-   * Current state
-   */
-  enum nros_node_state_t state;
-  /**
-   * Node name storage
-   */
-  uint8_t name[NROS_MAX_NAME_LEN];
-  /**
-   * Node name length
-   */
-  size_t name_len;
-  /**
-   * Namespace storage
-   */
-  uint8_t namespace_[NROS_MAX_NAMESPACE_LEN];
-  /**
-   * Namespace length
-   */
-  size_t namespace_len;
-  /**
-   * Pointer to parent support context
-   */
-  const struct nros_support_t *support;
-  /**
-   * RMW backend name (UTF-8, NUL-terminated within `rmw_name_len`).
-   * Empty (`rmw_name_len == 0`) selects the first-registered backend.
-   */
-  uint8_t rmw_name[MAX_RMW_NAME_LEN];
-  /**
-   * Length of `rmw_name` in bytes (excluding NUL). 0 = inherit.
-   */
-  size_t rmw_name_len;
-  /**
-   * Per-Node domain ID. `NROS_DOMAIN_ID_INHERIT` (== u32::MAX) means
-   * "use the support context's domain_id".
-   */
-  uint32_t domain_id_override;
-  /**
-   * SchedContext slot to inherit on every handle created by this Node
-   * (Phase 104.C.4). 0 = inherit the executor's default Fifo context.
-   */
-  uint8_t sched_context_id;
-  /**
-   * Reserved for future use (alignment + ABI stability).
-   */
-  uint8_t _reserved[3];
-  /**
-   * Opaque NodeId slot returned by `Executor::node_builder(...).build()`
-   * when this Node is bound to an Executor. 0 = primary Node (legacy
-   * single-Node path). Internal use only — readers should treat as
-   * opaque.
-   */
-  uint8_t node_id;
-  /**
-   * Phase 156 / 104.C.8.b — executor pointer for the multi-Session
-   * dispatch path. `nros_executor_node_init` populates this when
-   * the Node is bound; per-entity `nros_*_init` paths
-   * (`rclc_publisher_init_default`, `nros_subscription_init`, etc.) branch
-   * on `node_id != 0 && !executor.is_null()` to route through
-   * `Executor::node_session_mut(NodeId)` instead of the legacy
-   * support-based dispatch. NULL = legacy single-Node path
-   * (`rclc_node_init_default` / `nros_node_init_ex`).
-   */
-  const struct nros_executor_t *executor;
-  /**
-   * Pointer to a `&'static`-lifetime array of [`nros_qos_override_t`], or
-   * null. The caller (a generated entry / a hand-written app) owns the
-   * storage for the node's lifetime.
-   */
-  const struct nros_qos_override_t *qos_overrides;
-  /**
-   * Number of entries in `qos_overrides`. 0 = none.
-   */
-  size_t qos_overrides_len;
-} nros_node_t;
 
 /**
  * Action type information.
@@ -3452,7 +3452,7 @@ NROS_PUBLIC nros_ret_t nros_parameter_server_fini(struct nros_parameter_server_t
 NROS_PUBLIC nros_ret_t nros_executor_register_parameter_services(struct nros_executor_t *executor);
 
 /**
- * Declare a string parameter on the executor's server.
+ * Declare a string parameter on the executor's PRIMARY node.
  */
 NROS_PUBLIC
 nros_ret_t nros_executor_declare_param_string(struct nros_executor_t *executor,
@@ -3460,7 +3460,17 @@ nros_ret_t nros_executor_declare_param_string(struct nros_executor_t *executor,
                                               const char *value);
 
 /**
- * Get a string parameter from the executor's server into a fixed buffer.
+ * Declare a string parameter on `node`.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_declare_param_string_on(struct nros_executor_t *executor,
+                                                 const struct nros_node_t *node,
+                                                 const char *name,
+                                                 const char *value);
+
+/**
+ * Get a string parameter from the executor's PRIMARY node into a fixed
+ * buffer.
  */
 NROS_PUBLIC
 nros_ret_t nros_executor_get_param_string(struct nros_executor_t *executor,
@@ -3469,7 +3479,17 @@ nros_ret_t nros_executor_get_param_string(struct nros_executor_t *executor,
                                           size_t max_len);
 
 /**
- * Set a string parameter on the executor's server.
+ * Get a string parameter from `node` into a fixed buffer.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_get_param_string_on(struct nros_executor_t *executor,
+                                             const struct nros_node_t *node,
+                                             const char *name,
+                                             char *out_value,
+                                             size_t max_len);
+
+/**
+ * Set a string parameter on the executor's PRIMARY node.
  */
 NROS_PUBLIC
 nros_ret_t nros_executor_set_param_string(struct nros_executor_t *executor,
@@ -3477,9 +3497,53 @@ nros_ret_t nros_executor_set_param_string(struct nros_executor_t *executor,
                                           const char *value);
 
 /**
- * Check if a parameter exists on the executor's server.
+ * Set a string parameter on `node`.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_set_param_string_on(struct nros_executor_t *executor,
+                                             const struct nros_node_t *node,
+                                             const char *name,
+                                             const char *value);
+
+/**
+ * Check if a parameter exists on the executor's PRIMARY node.
  */
 NROS_PUBLIC bool nros_executor_has_param(struct nros_executor_t *executor, const char *name);
+
+/**
+ * Check if a parameter exists on `node`.
+ *
+ * A node this executor does not own answers `false`, never the primary
+ * node's answer: "which node" is the question, and defaulting it is how a
+ * sibling's parameter comes back as this one's.
+ */
+NROS_PUBLIC
+bool nros_executor_has_param_on(struct nros_executor_t *executor,
+                                const struct nros_node_t *node,
+                                const char *name);
+
+/**
+ * May a `set` DECLARE a name the executor's PRIMARY node never declared?
+ *
+ * Upstream's `allow_undeclared_parameters` node option (issue 1151), off
+ * by default. Without it a C image could not reach the policy at all: a
+ * `nros_executor_set_param_*` on an undeclared name was a permanent
+ * `NROS_RET_NOT_FOUND` with no opt-in, so the rule was reachable from Rust
+ * and from the wire and not from here. Set it before
+ * `nros_executor_register_parameter_services` starts answering.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_allow_undeclared_parameters(struct nros_executor_t *executor,
+                                                     bool allow);
+
+/**
+ * [`nros_executor_allow_undeclared_parameters`] for `node`. Per node, as
+ * upstream: switching it on for one node leaves its siblings refusing.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_allow_undeclared_parameters_on(struct nros_executor_t *executor,
+                                                        const struct nros_node_t *node,
+                                                        bool allow);
 
 /**
  * Monotonic nanoseconds since a platform-defined epoch (RFC-0073).
