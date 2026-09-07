@@ -93,6 +93,15 @@ where = "ros2 distrobox, Humble, tree with #684 + #692"
 evidence = "1 case(s) produced a result in rust_multi_node_per_node_graph.xml"
 
 [[verdict]]
+cell = "native-params-rust-zenoh"
+date = "2026-09-08"
+verdict = "pass"
+tests = ["test_param_integer_type", "test_ros2_param_describe", "test_ros2_param_get", "test_ros2_param_list", "test_ros2_param_set", "test_ros2_param_set_reconfigures_live_read", "test_talker_param_declaration", "test_talker_uses_default_param"]
+run = "cargo nextest run -p nros-tests --test params"
+where = "ros2 distrobox, Humble"
+evidence = "9/9 after correcting the node address from /demo/talker to /talker; the four ros2 param cases had addressed a node that never existed since 2026-02-14"
+
+[[verdict]]
 cell = "native-pubsub-c-cyclone-n2r"
 date = "2026-09-07"
 verdict = "pass"
