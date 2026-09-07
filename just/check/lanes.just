@@ -1763,6 +1763,23 @@ workspace-features:
     # must cover the class it claims to.
     @echo "  - nros-c: test-compile (default features)"
     cargo test --no-run -p nros-c --quiet
+    # phase-418 418.2 — the IVC path, which reaches the Orin safety island and
+    # is on no other lane.
+    #
+    # The DEFAULT-stub configuration of `nvidia-ivc` and `zpico-link-ivc` is
+    # already covered: both are workspace members, so the
+    # `--workspace --no-default-features` test-compile above builds them (this
+    # was MEASURED before adding a row for it — 418.2's text says the stub still
+    # needs one, and it does not). What that line cannot reach is the C half:
+    # `link-ivc` is a zpico-sys FEATURE, so nothing off it compiles the vendored
+    # `zenoh-pico/src/link/{unicast,config}/ivc.c`, and phase-415 could delete
+    # or break either file with every lane still green.
+    #
+    # A clippy row, not a `cargo check`: the build script runs either way, which
+    # is what emits `Z_FEATURE_LINK_IVC 1` and compiles the two `ivc.c` TUs, and
+    # clippy is what this lane spells everywhere else.
+    @echo "  - zpico-sys: link-ivc (compiles the vendored ivc.c)"
+    cargo clippy --quiet -p zpico-sys --features link-ivc
     # issue 0814 — the loan/borrow surface, which had NOT COMPILED since issue
     # 0812 retyped the backend token (`*mut c_void` -> `*mut rmw_loan_token_t`)
     # and left these three FFI call sites behind. Seven errors, for months,

@@ -97,6 +97,17 @@ struct Slot {
 }
 
 impl Slot {
+    // phase-418 418.2 — `clippy::declare_interior_mutable_const` fires on any
+    // `const` holding an atomic, because the usual hazard is a caller COPYING
+    // it and mutating the copy, thinking it shared. That is not what happens
+    // here: the one use is the `[const { Slot::EMPTY }; MAX_CHANNELS]` repeat
+    // below, whose whole purpose is a FRESH value per element, and an inline
+    // `const {}` block is the idiom the language added for exactly this. There
+    // is no other reader.
+    //
+    // Found by compiling this file for the first time: the `fsp` configuration
+    // reached no lane until 418.2 gave it one, so nothing had ever linted it.
+    #[allow(clippy::declare_interior_mutable_const)]
     const EMPTY: Self = Self {
         id: u32::MAX,
         ptr: AtomicPtr::new(core::ptr::null_mut()),
