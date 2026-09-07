@@ -35,6 +35,13 @@ read as three unrelated bugs.
 
 ### 1. `nuttx` — a cross toolchain
 
+> **Board names below predate phase-437.** The verbatim tool output in
+> this issue is left as captured. `qemu-riscv-nuttx`, `qemu-riscv64-threadx`
+> and `qemu-esp32-baremetal` are now `rv-virt-nuttx`, `rv-virt-threadx` and
+> `esp32-c3-baremetal` — see the
+> [retired-name ledger](../reference/retired-board-names.md).
+
+
 ```
 NROS_LANE_NAMED_FAIL: nuttx: riscv-none-elf-gcc not found (run: nros setup qemu-riscv-nuttx)
 error: you named `nuttx`, so this is a FAILURE, not a skip.

@@ -20,7 +20,7 @@ NuttX standalone example is in the gap between all three:
 | Zephyr | any Zephyr image | `zephyr/Kconfig` `CONFIG_NROS_MAX_QUERYABLES` default `-1` (the DERIVE sentinel) → `nros_cargo_build.cmake` |
 | cargo leaf | a probeable cargo leaf, or one that declares (issue 1061) | `nros sync` → `<leaf>/metadata/<component>.json` → `leaf_entity_env.rs` → the leaf's `[env]` sidecar |
 
-`examples/qemu-arm-nuttx/cpp/action-client` is none of them. It is a standalone
+`examples/qemu-armv7a-nuttx/cpp/action-client` is none of them. It is a standalone
 copy-out CMake project (`find_package(nano_ros)` + `nano_ros_add_executable`),
 so:
 
@@ -56,7 +56,7 @@ no "somewhere" yet:
   `[package.metadata.nros.component] entities` — NuttX leaves are exactly the
   `*.json.unprobeable` case that mechanism exists for (a foreign `[build]
   target` with `[unstable] build-std` cannot be host-compiled by the probe).
-  None of the six `examples/qemu-arm-nuttx/rust/*` leaves declares one today,
+  None of the six `examples/qemu-armv7a-nuttx/rust/*` leaves declares one today,
   so the Rust half of the platform is in the same gap for a different reason.
 * Whichever is chosen, **the acceptance is a BUILD** — a measured
   `nm -S <elf> | grep SERVICE_BUFFERS` before and after — not a gate. That

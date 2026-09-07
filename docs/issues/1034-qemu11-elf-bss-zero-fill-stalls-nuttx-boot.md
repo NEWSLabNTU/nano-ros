@@ -133,9 +133,9 @@ line introduced.
 
     # slow (2 PT_LOADs) vs fast (3 PT_LOADs), same emulator
     ~/.nros/sdk/qemu/11.0.0-nros2/bin/qemu-system-arm -M virt -cpu cortex-a7 \
-      -nographic -kernel examples/qemu-arm-nuttx/cpp/action-server/build-zenoh/cpp_action_server
+      -nographic -kernel examples/qemu-armv7a-nuttx/cpp/action-server/build-zenoh/cpp_action_server
     ~/.nros/sdk/qemu/11.0.0-nros2/bin/qemu-system-arm -M virt -cpu cortex-a7 \
-      -nographic -kernel examples/qemu-arm-nuttx/c/action-client/build-zenoh/c_action_client
+      -nographic -kernel examples/qemu-armv7a-nuttx/c/action-client/build-zenoh/c_action_client
 
     # the same two on the distro emulator: both immediate
     /usr/bin/qemu-system-arm -M virt -cpu cortex-a7 -nographic -kernel <same>

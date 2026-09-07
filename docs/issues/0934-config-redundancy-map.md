@@ -122,7 +122,7 @@ the mitigation, and the question is whether the gate is the end state.
 
 * **R8** — `platform` appears in `nros-sdk-index.toml [board.*]`,
   `nros-board.toml`, and `board-support.toml`. The KEY SPACES differ
-  (`qemu-arm-freertos` vs `nros-board-mps2-an385-freertos` vs `Linux`), so these
+  (`mps2-an385-freertos` vs `nros-board-mps2-an385-freertos` vs `Linux`), so these
   may be three keyings of a board that each carry a platform column rather than
   one fact three times.
 * Whether `[deploy.<t>].{framework,optimize,target}` have any nano-ros reader

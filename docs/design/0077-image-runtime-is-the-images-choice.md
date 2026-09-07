@@ -716,7 +716,7 @@ Implementing M1 surfaced a third case the two-surface table does not cover, and
 resolving it removes a user-facing choice rather than adding one.
 
 **The case.** `nros::main!()` expands in `main.rs`, the bin target. Six examples
-— `examples/qemu-riscv64-threadx/rust/*` — are `crate-type = ["staticlib",
+— `examples/rv-virt-threadx/rust/*` — are `crate-type = ["staticlib",
 "rlib"]` and produce TWO final artifacts from one crate: a bin (cargo/zenoh) and
 a `.a` (CMake/CycloneDDS, whose C `startup.c::main` dispatches to `app_main`).
 rustc demands the lang item when it compiles the staticlib, which is built from
@@ -764,7 +764,7 @@ CMake-linked, which is a BUILD-SYSTEM property. An entry macro named for a
 backend contradicts the RMW-portability promise; the divergence that produced the
 name is issue 0666. And `examples/threadx-linux/rust/*` declared
 `crate-type = ["rlib", "staticlib"]` with nothing consuming the `.a` — dropped,
-same removal and reasoning as phase-359 W7 on qemu-arm-nuttx. A `staticlib` is a
+same removal and reasoning as phase-359 W7 on qemu-armv7a-nuttx. A `staticlib` is a
 final artifact and carries a lang-item obligation; declaring one nothing builds
 is an obligation with no consumer, invisible there only because the family is
 hosted and libstd satisfied it.
@@ -827,7 +827,7 @@ Removing the call and adding the argument in the same edit is what keeps each
 commit self-consistent — do them separately and the image has two providers or
 none in between.
 
-**M3 — declare the images that bring their own.** `qemu-esp32-baremetal`
+**M3 — declare the images that bring their own.** `esp32-c3-baremetal`
 (`esp-backtrace`), `logging-smoke-freertos-mps2` and
 `examples/workspaces/rust/src/freertos_entry` (`panic-semihosting`) gain
 `panic = "own"`. Behaviour unchanged; they now SAY what was previously inferred

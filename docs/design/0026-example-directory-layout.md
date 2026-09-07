@@ -161,7 +161,8 @@ Variant naming uses a **suffix** form so variants sort with their peers:
 `talker-rtic`, `service-client-async`, `talker-rtic-mixed`.
 
 **Entry-pkg sibling dirs** use the kebab-case `-entry` suffix (`talker-entry`,
-`listener-entry`, … on `qemu-arm-freertos`, `qemu-arm-nuttx`, `threadx-linux`),
+`listener-entry`, … on `mps2-an385-freertos`, `qemu-armv7a-nuttx`,
+`threadx-linux`),
 consistent with every other example dir. (The former snake_case `_entry` interim
 exception was blessed only while phase-275 owned the fixture-manifest/lane
 renames; phase-275 closed 2026-07-08 and the rename landed — #136 item 4.)
@@ -188,9 +189,9 @@ Three README tiers, linted by `scripts/check-example-matrix.sh`:
   level they used to sit under, along with the last two entries in
   `check-example-matrix.sh`'s allowlist. Being single-RMW is a property of the
   example, not a directory axis.
-- `examples/qemu-riscv-nuttx/` is a **partial platform**: it ships only
+- `examples/rv-virt-nuttx/` is a **partial platform**: it ships only
   `c/talker`, built by the separate `build-riscv-c` recipe in `just/nuttx.just`
-  (own riscv toolchain/board lane, not the `qemu-arm-nuttx` path).
+  (own riscv toolchain/board lane, not the `qemu-armv7a-nuttx` path).
 - Deliberately empty cells (no harness exists): bare-metal `{c,cpp}` (no hosted
   RTOS startup/heap/libc), and `px4/{c,rust}` (PX4 is uORB-only, C++-only port).
 

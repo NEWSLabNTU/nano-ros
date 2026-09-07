@@ -58,7 +58,7 @@ function calls. The strip script also localizes Rust's mem symbols
 versions.
 
 **Files:** `cmake/toolchain/riscv64-threadx.cmake`,
-`examples/qemu-riscv64-threadx/cmake/startup.c`,
+`packages/boards/nros-board-threadx-qemu-riscv64/startup.c`,
 `cmake/strip-compiler-builtins.sh`
 
 ### 4. picolibc TLS requires tp register initialization
@@ -100,7 +100,8 @@ output unless the application defines a `stdout` FILE stream.
 picolibc provides C headers (`stdio.h`, `stdint.h`) but not C++ wrapper
 headers (`cstdio`, `cstdint`). The nros C++ API headers use C++ includes.
 
-**Fix:** Minimal wrapper headers in `examples/qemu-riscv64-threadx/cmake/cxx-compat/`
+**Fix:** Minimal wrapper headers in
+`packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat/`
 that `#include` the corresponding C header. Added to the include path
 via the support cmake module.
 
