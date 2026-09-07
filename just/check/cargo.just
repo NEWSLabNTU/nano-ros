@@ -68,6 +68,32 @@ build-rs-rerun-paths:
 build-type-spelling:
     @python3 scripts/check-build-type-spelling.py
 
+# RFC-0094 D3 / phase-439 W0 — the routing diff, written BEFORE the feature.
+#
+# `<build_type>` selects the DRIVER; file presence selects PARTICIPATION.
+# Today three sites answer both with file presence: `builder/cargo_root.rs`
+# (`Cargo.toml` -> `[workspace] members`), `builder/cmake_root.rs`
+# (`CMakeLists.txt` -> `add_subdirectory`) and `cmd/build.rs` (the driver
+# choice). The gate pushes every tracked `package.xml` through both rules and
+# refuses any package that changes side for a reason D3 does not name.
+#
+# Exactly one class may change: a dual-file package declaring a cmake type,
+# which leaves the cargo members list because cmake drives it. 21 today, and
+# 20 of those already carry a reason cargo membership is impossible (their own
+# `[workspace]` table) or already waived (`cargo_excluded_entry_dirs`). Plus
+# D3's intersection rule — a PARTICIPATING package must carry the file its
+# declared driver needs.
+#
+# NOT a baseline list: a list of paths goes stale the first time a Zephyr leaf
+# is added; the rule that generated them does not. The human table is
+# `python3 scripts/check/check-package-routing.py --report` — deliberately not
+# a recipe parameter, because a parameterised recipe leaves the fast lane
+# (`check-gate-lists.py` derives membership from the recipe's shape).
+# Buildless, ~0.05 s.
+[private]
+package-routing:
+    @python3 scripts/check/check-package-routing.py
+
 # Issue 0701 — the OTHER half of ARCHITECTURE §2 clause (a).
 #
 # `check-feature-contract` enforces "a capability does not GRANT the heap" by
