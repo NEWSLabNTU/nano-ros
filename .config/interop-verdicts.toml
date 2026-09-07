@@ -8,8 +8,8 @@ date = "2026-09-07"
 verdict = "pass"
 tests = ["declarative_zenoh_to_cyclonedds_bridge_to_nano_listener", "declarative_zenoh_to_cyclonedds_nested_header_to_ros2"]
 run = "cargo nextest run -p nros-tests --test declarative_bridge_zenoh_to_cyclonedds"
-where = "ros2 distrobox, Humble, box tree 605d667eb"
-evidence = "2 case(s) produced a result in junit.xml"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "2 case(s) produced a result in declarative_bridge_zenoh_to_cyclonedds.xml"
 
 [[verdict]]
 cell = "bridge-zenoh-to-cyclone-imperative"
@@ -17,26 +17,71 @@ date = "2026-09-07"
 verdict = "pass"
 tests = ["test_zenoh_to_cyclonedds_bridge_e2e", "test_zenoh_to_cyclonedds_bridge_ros2", "test_zenoh_to_cyclonedds_bridge_to_nano_listener"]
 run = "cargo nextest run -p nros-tests --test bridge_zenoh_to_cyclonedds"
-where = "ros2 distrobox, Humble, box tree 605d667eb"
-evidence = "3 case(s) produced a result in junit.xml"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "3 case(s) produced a result in bridge_zenoh_to_cyclonedds.xml"
+
+[[verdict]]
+cell = "bridge-zenoh-to-xrce"
+date = "2026-09-07"
+verdict = "pass"
+tests = ["declarative_zenoh_to_xrce_bridge_to_nros_listener"]
+run = "cargo nextest run -p nros-tests --test declarative_bridge_zenoh_to_xrce"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "1 case(s) produced a result in declarative_bridge_zenoh_to_xrce.xml"
+
+[[verdict]]
+cell = "native-action-rust-cyclone-n2r"
+date = "2026-09-07"
+verdict = "pass"
+tests = ["the_nano_ros_action_client_drives_a_stock_ros2_server"]
+run = "cargo nextest run -p nros-tests --test ros2_action_e2e"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "1 case(s) produced a result in ros2_action_e2e.xml"
+
+[[verdict]]
+cell = "native-action-rust-cyclone-r2n"
+date = "2026-09-07"
+verdict = "pass"
+tests = ["a_stock_ros2_client_drives_the_nano_ros_action_server"]
+run = "cargo nextest run -p nros-tests --test ros2_action_e2e"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "1 case(s) produced a result in ros2_action_e2e.xml"
 
 [[verdict]]
 cell = "native-graph-rust-cyclone-r2n"
 date = "2026-09-07"
 verdict = "pass"
-tests = ["cyclone_enumerates_a_stock_ros2_node", "nano_ros_enumerates_a_stock_ros2_node"]
+tests = ["cyclone_enumerates_a_stock_ros2_node"]
 run = "cargo nextest run -p nros-tests --test graph_interop"
-where = "ros2 distrobox, Humble, box tree 605d667eb"
-evidence = "2 case(s) produced a result in junit.xml"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "1 case(s) produced a result in graph_interop.xml"
 
 [[verdict]]
 cell = "native-graph-rust-zenoh-r2n"
 date = "2026-09-07"
 verdict = "pass"
-tests = ["cyclone_enumerates_a_stock_ros2_node", "nano_ros_enumerates_a_stock_ros2_node"]
+tests = ["nano_ros_enumerates_a_stock_ros2_node"]
 run = "cargo nextest run -p nros-tests --test graph_interop"
-where = "ros2 distrobox, Humble, box tree 605d667eb"
-evidence = "2 case(s) produced a result in junit.xml"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "1 case(s) produced a result in graph_interop.xml"
+
+[[verdict]]
+cell = "native-lifecycle-rust-zenoh"
+date = "2026-09-07"
+verdict = "pass"
+tests = ["interop::case_9_zenoh_lifecycle_full_cycle"]
+run = "cargo nextest run -p nros-tests --test interop_e2e"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "1 case(s) produced a result in interop_e2e.xml"
+
+[[verdict]]
+cell = "native-multinode-cpp-zenoh"
+date = "2026-09-07"
+verdict = "pass"
+tests = ["multi_node_workspace_cpp_per_node_graph_nodes", "multi_node_workspace_cpp_typed_configures_and_builds", "multi_node_workspace_cpp_typed_pubsub_e2e"]
+run = "cargo nextest run -p nros-tests --test cpp_multi_node_entry"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "3 case(s) produced a result in cpp_multi_node_entry.xml"
 
 [[verdict]]
 cell = "native-multinode-rust-zenoh"
@@ -44,14 +89,68 @@ date = "2026-09-07"
 verdict = "pass"
 tests = ["rust_multi_node_entry_per_node_graph_nodes"]
 run = "cargo nextest run -p nros-tests --test rust_multi_node_per_node_graph"
-where = "ros2 distrobox, Humble, box tree 605d667eb"
-evidence = "1 case(s) produced a result in junit.xml"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "1 case(s) produced a result in rust_multi_node_per_node_graph.xml"
+
+[[verdict]]
+cell = "native-pubsub-c-cyclone-n2r"
+date = "2026-09-07"
+verdict = "pass"
+tests = ["interop::case_6_cyclone_pubsub_nano_to_ros2", "interop::case_7_cyclone_pubsub_ros2_to_nano"]
+run = "cargo nextest run -p nros-tests --test interop_e2e"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "2 case(s) produced a result in interop_e2e.xml"
+
+[[verdict]]
+cell = "native-pubsub-rust-xrce-n2r"
+date = "2026-09-07"
+verdict = "pass"
+tests = ["test_ros2_to_xrce_pubsub", "test_xrce_to_ros2_pubsub"]
+run = "cargo nextest run -p nros-tests --test xrce_ros2_interop"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "2 case(s) produced a result in xrce_ros2_interop.xml"
 
 [[verdict]]
 cell = "native-pubsub-rust-zenoh-n2r"
 date = "2026-09-07"
 verdict = "pass"
-tests = ["interop::case_2_zenoh_pubsub_ros2_to_nano"]
+tests = ["interop::case_1_zenoh_pubsub_nano_to_ros2", "interop::case_2_zenoh_pubsub_ros2_to_nano", "interop::case_3_zenoh_pubsub_stock_demo_nodes_cpp"]
 run = "cargo nextest run -p nros-tests --test interop_e2e"
-where = "ros2 distrobox, Humble, tree with PR #692"
-evidence = "case_2 PASS x3 (6.1s/1.8s/1.8s) after the arena derivation fix; was FAIL x3 at 0.92s"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "3 case(s) produced a result in interop_e2e.xml"
+
+[[verdict]]
+cell = "native-qos-override-rust-zenoh"
+date = "2026-09-07"
+verdict = "pass"
+tests = ["a_ros2_peer_sees_the_overridden_publisher_profile", "the_bringup_declares_a_reliability_override_that_lowers"]
+run = "cargo nextest run -p nros-tests --test qos_override_e2e"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "2 case(s) produced a result in qos_override_e2e.xml"
+
+[[verdict]]
+cell = "native-service-c-cyclone-r2n"
+date = "2026-09-07"
+verdict = "pass"
+tests = ["interop::case_8_cyclone_service_nano_server"]
+run = "cargo nextest run -p nros-tests --test interop_e2e"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "1 case(s) produced a result in interop_e2e.xml"
+
+[[verdict]]
+cell = "native-service-rust-xrce-r2n"
+date = "2026-09-07"
+verdict = "pass"
+tests = ["test_ros2_service_xrce_client", "test_xrce_service_ros2_client"]
+run = "cargo nextest run -p nros-tests --test xrce_ros2_interop"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "2 case(s) produced a result in xrce_ros2_interop.xml"
+
+[[verdict]]
+cell = "native-service-rust-zenoh-r2n"
+date = "2026-09-07"
+verdict = "pass"
+tests = ["interop::case_4_zenoh_service_nano_server", "interop::case_5_zenoh_service_ros2_server"]
+run = "cargo nextest run -p nros-tests --test interop_e2e"
+where = "ros2 distrobox, Humble, tree with #684 + #692"
+evidence = "2 case(s) produced a result in interop_e2e.xml"
