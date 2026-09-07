@@ -48,9 +48,10 @@ borrow — ThreadX ships no board layer at all.
 WHAT IT DOES NOT ENFORCE, AND WHY
 
 RFC-0093 R2 (`<where>-<stack>`, stack always last) is a SHAPE rule, and this
-gate does not check it. `mps2-an385` and `esp32-c3` carry no stack suffix and
-pass here, while RFC-0093 §4 still renames them to `mps2-an385-baremetal` and
-`esp32-c3-baremetal`.
+gate does not check it. `mps2-an385` and `esp32-c3` carried no stack suffix
+and passed here, while RFC-0093 §4 renamed them anyway (phase-437 W5, to
+`mps2-an385-baremetal` and `esp32-c3-baremetal`) — a rename this gate could
+neither demand nor confirm.
 
 The line is deliberate: R1/R3/R4 are about a name stating something FALSE —
 `riscv64-qemu` tells a user their RISC-V64 board is supported — and a gate is
@@ -106,7 +107,9 @@ def index_boards(path):
 
     The index namespace is what `nros setup <board>` looks up, and it is where
     the emulator-first spellings live — so a gate that read only the cmake
-    overlays would miss `qemu-arm-freertos` entirely, which is half the point.
+    overlays would miss the emulator-first index spellings entirely
+    (`qemu-arm-freertos`, before phase-437 W5 retired it), which is half the
+    point.
     """
     out = {}
     try:
@@ -179,7 +182,8 @@ def scan(root, board, overlay_path):
     here and reads as a system board — so the gate can call a target board
     portable, never the reverse. That is the safe direction: the SYSTEM rule
     then forbids naming a machine or an emulator, which is what catches
-    `qemu-esp32-baremetal` regardless of how it is classified.
+    `qemu-esp32-baremetal` regardless of how it is classified. (That key
+    retired in phase-437 W5; the arm still holds for the next one.)
     """
     try:
         with open(overlay_path, encoding="utf8", errors="replace") as fh:

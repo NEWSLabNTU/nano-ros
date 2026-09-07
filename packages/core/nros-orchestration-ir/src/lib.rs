@@ -70,7 +70,7 @@ pub mod wcet;
 ///   directly in the emitted `main.rs` body.
 ///
 /// Adding a new board requires ONE edit here, not two. Aliases (e.g.
-/// `"qemu-arm-freertos"` for `"freertos"`) are normalised here so callers
+/// `"mps2-an385-freertos"` for `"freertos"`) are normalised here so callers
 /// need no extra translation.
 ///
 /// Keys match the `deploy = "…"` strings in
@@ -111,7 +111,7 @@ pub fn framework_for_board_key(key: &str) -> Option<&'static str> {
     Some(match key {
         "rtic-mps2-an385" | "qemu-rtic-mps2-an385" => "rtic",
         "zephyr" => "zephyr",
-        "esp32-qemu" | "qemu-esp32-baremetal" => "esp32",
+        "esp32-qemu" | "esp32-c3-baremetal" => "esp32",
         // NuttX, FreeRTOS, ThreadX and native ride `owned-spin`: the RTOS (or
         // the board crate's own entry symbol) calls `main`, and the macro emits
         // the plain `fn main()` those expect.
@@ -124,7 +124,7 @@ pub fn board_path_for(key: &str) -> Option<&'static str> {
         "native" | "posix" => "::nros_board_linux::LinuxBoard",
         // FreeRTOS — MPS2-AN385 Cortex-M3 (the only FreeRTOS board today).
         // The RTOS calls `main()`; the board ZST impls `BoardEntry`.
-        "freertos" | "freertos-qemu-mps2-an385" | "qemu-arm-freertos" => {
+        "freertos" | "freertos-qemu-mps2-an385" | "mps2-an385-freertos" => {
             "::nros_board_mps2_an385_freertos::Mps2An385"
         }
         "threadx-linux" => "::nros_board_threadx_linux::ThreadxLinux",
@@ -141,7 +141,7 @@ pub fn board_path_for(key: &str) -> Option<&'static str> {
         }
         // Phase 225.O — CI-runnable ESP32-C3 QEMU (OpenETH) board. Routed
         // through `Framework::Esp32` emit shape in the proc-macro.
-        "esp32-qemu" | "qemu-esp32-baremetal" => "::nros_board_esp32_qemu::Esp32QemuEntry",
+        "esp32-qemu" | "esp32-c3-baremetal" => "::nros_board_esp32_qemu::Esp32QemuEntry",
         // Phase 225.P — Zephyr owns `main`; the board ZST impls `NetworkWait`
         // only (NOT `BoardEntry`). The proc-macro routes through
         // `Framework::Zephyr` and emits a `rust_main` staticlib export.
@@ -1273,7 +1273,7 @@ mod tests {
             "posix",
             "freertos",
             "freertos-qemu-mps2-an385",
-            "qemu-arm-freertos",
+            "mps2-an385-freertos",
             "threadx-linux",
             "threadx-qemu-riscv64",
             "rv-virt-threadx",
@@ -1282,7 +1282,7 @@ mod tests {
             "nuttx-riscv",
             "rv-virt-nuttx",
             "esp32-qemu",
-            "qemu-esp32-baremetal",
+            "esp32-c3-baremetal",
             "zephyr",
             "rtic-mps2-an385",
             "qemu-rtic-mps2-an385",
@@ -1306,7 +1306,11 @@ mod tests {
     /// `freertos` must map to the FreeRTOS board, not LinuxBoard.
     #[test]
     fn freertos_key_maps_to_freertos_board() {
-        for key in ["freertos", "freertos-qemu-mps2-an385", "qemu-arm-freertos"] {
+        for key in [
+            "freertos",
+            "freertos-qemu-mps2-an385",
+            "mps2-an385-freertos",
+        ] {
             let path = board_path_for(key).expect("freertos keys must resolve");
             assert!(
                 path.contains("nros_board_mps2_an385_freertos"),

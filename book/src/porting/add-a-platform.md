@@ -101,7 +101,7 @@ The board layer owns:
 - Startup object emission (`crt0.o`, vector table, etc.)
 - MCU-specific final-link flags
 
-See `cmake/board/nano-ros-board-mps2-an385.cmake` for a working example.
+See `cmake/board/nano-ros-board-mps2-an385-baremetal.cmake` for a working example.
 
 ## Where the existing layer-2 helpers live
 

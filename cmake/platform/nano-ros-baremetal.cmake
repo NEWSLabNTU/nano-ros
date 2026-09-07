@@ -34,7 +34,7 @@ function(nros_platform_link_app target)
         message(FATAL_ERROR
             "nros_platform_link_app: bare-metal builds must set "
             "NANO_ROS_BOARD before linking (e.g. "
-            "set(NANO_ROS_BOARD mps2-an385) — supported boards live "
+            "set(NANO_ROS_BOARD mps2-an385-baremetal) — supported boards live "
             "under cmake/board/nano-ros-board-*.cmake).")
     endif()
     set(_board_module

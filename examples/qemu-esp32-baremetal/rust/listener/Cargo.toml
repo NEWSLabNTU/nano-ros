@@ -23,7 +23,7 @@ bench = false
 # "qemu-esp32-baremetal" → `nros_board_esp32_qemu::Esp32QemuEntry` +
 # `Framework::Esp32` emit shape.
 [package.metadata.nros.entry]
-deploy = "qemu-esp32-baremetal"
+deploy = "esp32-c3-baremetal"
 
 [package.metadata.nros.node]
 class = "esp32_qemu_listener::Listener"

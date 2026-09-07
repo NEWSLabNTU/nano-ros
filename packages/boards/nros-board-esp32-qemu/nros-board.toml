@@ -1,9 +1,12 @@
 # Phase 195.C — board profile descriptor. ESP32-C3 under QEMU (esp-hal).
 
 [[board]]
-# phase-341 W3 — 2 leaves deploy to `qemu-esp32-baremetal`.
+# phase-341 W3 — 2 leaves deploy to this board (phase-437 W5 renamed that
+# token `qemu-esp32-baremetal` -> `esp32-c3-baremetal` with the index key it
+# duplicated; `esp32-c3` stays beside it as the CHIP name, which is a
+# different claim and is not retiring).
 # phase-351 / issue 0606 — `esp32dev` is the PlatformIO board id (`framework = "espidf"` deploys).
-names = ["esp32-qemu", "esp32dev", "esp32", "esp32c3", "esp32-c3", "qemu-esp32-baremetal"]
+names = ["esp32-qemu", "esp32dev", "esp32", "esp32c3", "esp32-c3", "esp32-c3-baremetal"]
 platform = "esp32"
 toolchain = "nightly"
 local_aliases = ["platform-esp32-qemu"]

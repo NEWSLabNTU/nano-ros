@@ -28,7 +28,7 @@ setup:
     # the default shell is `sh`, which has no `source` at all.
     set -euo pipefail
     source scripts/build/platform-rmws.sh
-    nros_setup_board_rmws qemu-arm-freertos freertos
+    nros_setup_board_rmws mps2-an385-freertos freertos
     "{{justfile_directory()}}/tools/host-env.sh" freertos
 
 # Diagnose FreeRTOS install status (read-only).

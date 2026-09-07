@@ -27,6 +27,6 @@
     <nano_ros_provides kind="board" name="esp32"/>
     <nano_ros_provides kind="board" name="esp32c3"/>
     <nano_ros_provides kind="board" name="esp32-c3"/>
-    <nano_ros_provides kind="board" name="qemu-esp32-baremetal"/>
+    <nano_ros_provides kind="board" name="esp32-c3-baremetal"/>
   </export>
 </package>

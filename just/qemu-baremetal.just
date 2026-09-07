@@ -429,7 +429,7 @@ run-networked TAP="tap-qemu0" IP="192.0.2.10" BINARY="":
 # is newer than every patch file.
 #
 # Phase 213.A.3 — this recipe covers BOTH boards built on this toolchain:
-#   * `[board.qemu-arm-baremetal]` (QEMU + arm-none-eabi-gcc)
+#   * `[board.mps2-an385-baremetal]` (QEMU + arm-none-eabi-gcc)
 #   * `[board.mps2-an385]` (same toolchain; real hw uses openocd separately)
 # There is no `just mps2-an385 setup` sibling — the recipe is shared because
 # the SDK packages overlap 1:1 and mps2-an385's only divergence is `openocd`
@@ -449,7 +449,7 @@ setup:
     # both RMW source sets in the same step so `just qemu build` covers every
     # in-tree bare-metal example without a separate setup invocation.
     source scripts/build/cargo.sh
-    "$(nros_cli_bin)" setup qemu-arm-baremetal --rmw zenoh
+    "$(nros_cli_bin)" setup mps2-an385-baremetal --rmw zenoh
     "$(nros_cli_bin)" setup --source micro-cdr --source micro-xrce-dds-client
     # build-zenoh-pico.sh picks `arm-none-eabi-gcc` off PATH; the nros-provisioned
     # arm-gcc 13.2 (newlib headers — apt's gcc-arm-none-eabi has none, so its
