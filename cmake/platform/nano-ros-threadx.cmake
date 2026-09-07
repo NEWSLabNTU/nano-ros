@@ -3,7 +3,7 @@
 # Phase 138.2 / 144.7-8 — ThreadX platform module. Single source of
 # truth for ThreadX platform-shim wiring under the Phase 137
 # `add_subdirectory(<nano-ros-root>)` consumption shape. Used by both
-# `qemu-riscv64-threadx` (NANO_ROS_BOARD=riscv64-qemu) and
+# `rv-virt-threadx` (NANO_ROS_BOARD=rv-virt-threadx) and
 # `threadx-linux` (NANO_ROS_BOARD=threadx-linux).
 #
 # What this module composes:
@@ -98,7 +98,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/../NanoRosGenerateInterfaces.cmake")
 if(NOT DEFINED NANO_ROS_BOARD)
     message(FATAL_ERROR
         "nano-ros-threadx: NANO_ROS_BOARD is required for the ThreadX "
-        "platform (e.g. -DNANO_ROS_BOARD=riscv64-qemu or "
+        "platform (e.g. -DNANO_ROS_BOARD=rv-virt-threadx or "
         "-DNANO_ROS_BOARD=threadx-linux). Boards supply tx_user.h, "
         "nx_user.h, app_define.c, netstack glue, and (RV64) the linker "
         "script + startup asm.")
@@ -111,7 +111,7 @@ if(NOT EXISTS "${_nros_threadx_board_module}")
         "nano-ros-threadx: no board overlay at "
         "${_nros_threadx_board_module}. Add a "
         "cmake/board/nano-ros-board-${NANO_ROS_BOARD}.cmake module or "
-        "pick a supported board (e.g. riscv64-qemu, threadx-linux).")
+        "pick a supported board (e.g. rv-virt-threadx, threadx-linux).")
 endif()
 include("${_nros_threadx_board_module}")
 
@@ -123,11 +123,11 @@ include("${_nros_threadx_board_module}")
 # the Cyclone add_subdirectory needs WITH_THREADX + LTO off (the ddsrt ThreadX
 # port's ops-walker trips under LTO / the xcdr opt_size fast-path — Phase 177.22/.23,
 # gated inside Cyclone on DDSRT_WITH_THREADX) + the NetX/picolibc include paths.
-# Board-gated to riscv64-qemu (cross rv64); the threadx-linux board is host-linked
+# Board-gated to rv-virt-threadx (cross rv64); the threadx-linux board is host-linked
 # and resolves Cyclone differently, so it's excluded here.
 # ---------------------------------------------------------------------------
 if(NANO_ROS_RMW STREQUAL "cyclonedds"
-   AND NANO_ROS_BOARD STREQUAL "riscv64-qemu"
+   AND NANO_ROS_BOARD STREQUAL "rv-virt-threadx"
    AND NOT DEFINED NROS_CYCLONE_THREADX_FLAGS_STAGED)
     set(NROS_CYCLONE_THREADX_FLAGS_STAGED TRUE)
     foreach(_off BUILD_SHARED_LIBS BUILD_IDLC BUILD_TESTING BUILD_IDLC_TESTING

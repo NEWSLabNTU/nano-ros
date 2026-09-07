@@ -80,7 +80,7 @@ class TestDeploy:
             tmp_path,
             "threadx_pkg",
             "<build_type>nros_cmake</build_type>\n"
-            '<nano_ros deploy="threadx" board="riscv64-qemu" rmw="zenoh"/>',
+            '<nano_ros deploy="threadx" board="rv-virt-threadx" rmw="zenoh"/>',
         )
         assert manifest.deploy(d) == "threadx"
 

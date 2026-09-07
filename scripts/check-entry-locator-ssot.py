@@ -84,7 +84,7 @@ SYNC_NOTE = re.compile(r"keep\s+(?:it\s+|them\s+)?in\s+sync", re.IGNORECASE)
 # pairing is ever shown to matter it is its own issue, not this gate's business.
 ALLOWED_LITERALS = {
     "cmake/board/nano-ros-board-threadx-linux.cmake",
-    "cmake/board/nano-ros-board-riscv64-qemu.cmake",
+    "cmake/board/nano-ros-board-rv-virt-threadx.cmake",
 }
 
 

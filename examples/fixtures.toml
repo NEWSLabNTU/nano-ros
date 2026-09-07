@@ -3240,7 +3240,7 @@ dir = "examples/qemu-riscv64-threadx/c/listener"
 # 10.0.2.40 / MAC :56) and listener. Pre-212.M.10 these came from the
 # per-example `nros.toml`; M.10 retired the toml and collapsed every
 # fixture onto the board's NROS_APP_CONFIG default, blocking RTPS
-# unicast. See cmake/board/nano-ros-board-riscv64-qemu.cmake's Phase
+# unicast. See cmake/board/nano-ros-board-rv-virt-threadx.cmake's Phase
 # 214.P override block for the cache-var wiring.
 cmake_defs = { NROS_APP_NET_IP_LAST = "41", NROS_APP_NET_MAC_LAST = "0x57" }
 

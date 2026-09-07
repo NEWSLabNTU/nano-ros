@@ -32,7 +32,7 @@ pub fn is_netx_available() -> bool {
 
 /// The riscv64 bare-metal gcc this host actually has — issue 0657.
 ///
-/// `[board.qemu-riscv64-threadx]` provisions xPack's `riscv-none-elf-gcc`, so a
+/// `[board.rv-virt-threadx]` provisions xPack's `riscv-none-elf-gcc`, so a
 /// probe spelling only Ubuntu's `riscv64-unknown-elf-gcc` reported "no
 /// toolchain" on a host that had one. Resolution order and the env override
 /// live in `scripts/build/riscv64-toolchain.sh`; this is the test-side reader of

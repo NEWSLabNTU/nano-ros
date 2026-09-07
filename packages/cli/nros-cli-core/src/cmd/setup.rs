@@ -2526,7 +2526,7 @@ mod tests {
     fn board_index() -> SdkIndex {
         SdkIndex::parse(
             "[board.qemu-arm-freertos]\npackages=[\"arm-none-eabi-gcc\",\"qemu\",\"freertos-kernel\",\"lwip\"]\n\
-             [board.qemu-riscv64-threadx]\npackages=[\"riscv-none-elf-gcc\",\"qemu\",\"threadx\"]\n\
+             [board.rv-virt-threadx]\npackages=[\"riscv-none-elf-gcc\",\"qemu\",\"threadx\"]\n\
              [board.qemu-esp32-baremetal]\narch=\"riscv32\"\npackages=[]\n\
              [board.native]\npackages=[\"zenohd\"]\n\
              [board.gated-example]\npackages=[\"arm-none-eabi-gcc\",\"a-gated-sdk\"]\n",
@@ -2541,7 +2541,7 @@ mod tests {
         assert!(fr.contains(&"arm-none-eabi-gcc") && fr.contains(&"qemu"));
         assert!(fr.contains(&"freertos-kernel") && fr.contains(&"lwip"));
 
-        let tx = resolve_packages(&idx, "qemu-riscv64-threadx").unwrap();
+        let tx = resolve_packages(&idx, "rv-virt-threadx").unwrap();
         assert!(
             tx.contains(&"riscv-none-elf-gcc") && tx.contains(&"qemu") && tx.contains(&"threadx")
         );
@@ -3201,12 +3201,12 @@ mod workspace_scan_tests {
     #[test]
     fn a_deploy_export_is_parsed_with_board_and_rmw() {
         let xml = r#"<package><export>
-            <nano_ros deploy="threadx" board="riscv64-qemu" rmw="zenoh"/>
+            <nano_ros deploy="threadx" board="rv-virt-threadx" rmw="zenoh"/>
         </export></package>"#;
         let got = deploy_targets(xml);
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].deploy, "threadx");
-        assert_eq!(got[0].board.as_deref(), Some("riscv64-qemu"));
+        assert_eq!(got[0].board.as_deref(), Some("rv-virt-threadx"));
         assert_eq!(got[0].rmw.as_deref(), Some("zenoh"));
     }
 

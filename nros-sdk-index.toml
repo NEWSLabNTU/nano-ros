@@ -1160,7 +1160,14 @@ platform = "nuttx"
 # genromfs: the rv-virt board bakes an etc/ ROMFS at export time (arm doesn't).
 packages = ["riscv-none-elf-gcc", "qemu", "genromfs", "nuttx-libc", "nuttx-kernel", "nuttx-apps"]
 
-[board.qemu-riscv64-threadx]
+# phase-437 W4 (RFC-0093 R1/R3/R4) — `rv-virt` is QEMU's own machine name for
+# the RISC-V virt board. ThreadX ships no board layer, so there is no vendor
+# `CONFIG_ARCH_BOARD` to borrow: every address is a literal in our own C
+# (UART 0x10000000, CLINT 0x02000000, virtio-MMIO 0x10001000, test-finisher
+# 0x100000). One machine, so the name says one machine. Was
+# `qemu-riscv64-threadx`, mirrored by `riscv64-qemu`; both retired here and the
+# two entries collapsed into this one.
+[board.rv-virt-threadx]
 arch = "riscv64"
 platform = "threadx"
 packages = ["riscv-none-elf-gcc", "qemu", "threadx", "threadx-netxduo"]
@@ -1274,7 +1281,10 @@ packages = ["zephyr-sdk"]
 # and only ONE (`threadx-linux`) was an index key — the one where the two
 # vocabularies happen to agree — so `nros setup <board>` with the value a user
 # READS OFF THEIR OWN `package.xml` failed for four of five, with "unknown
-# board" listing names that appear nowhere in their manifest.
+# board" listing names that appear nowhere in their manifest. phase-437 W4/W5
+# then gave each board ONE name, so the question no longer arises: the five are
+# `mps2-an385-freertos`, `qemu-armv7a-nuttx`, `rv-virt-nuttx`,
+# `rv-virt-threadx` and `threadx-linux`.
 #
 # The entries left in this block are the same physical boards as their
 # counterparts above, under the cmake spelling; each mirrors its counterpart's
@@ -1298,11 +1308,6 @@ arch = "cortex-m3"
 platform = "freertos"
 packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
 
-# = [board.qemu-riscv64-threadx] (examples/qemu-riscv64-threadx)
-[board.riscv64-qemu]
-arch = "riscv64"
-platform = "threadx"
-packages = ["riscv-none-elf-gcc", "qemu", "threadx", "threadx-netxduo"]
 
 # NOTE (197.4 → phase-327): index sections are rejected-unknown by whatever
 # `nros` parses them, so adding a section IS a CLI schema change. phase-327 W1

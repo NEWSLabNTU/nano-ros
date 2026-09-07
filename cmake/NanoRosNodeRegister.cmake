@@ -913,7 +913,7 @@ function(nano_ros_node_register)
         set(NROS_ENTRY_PKG_SYM "${_pkg_sym}")
         # Baked connect locator. QEMU slirp routes the guest to the host zenoh
         # router at `10.0.2.2:<port>`. Override with `-DNROS_THREADX_LOCATOR=…`;
-        # the default 7553 matches the qemu-riscv64-threadx fixture port.
+        # the default 7553 matches the rv-virt-threadx fixture port.
         # CycloneDDS ignores the locator (no router); domain id is compile-time.
         #
         # issue 0946 — resolved through the ONE producer. Note this lane's

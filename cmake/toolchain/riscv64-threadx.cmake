@@ -17,7 +17,7 @@
 set(CMAKE_SYSTEM_NAME       Generic)
 set(CMAKE_SYSTEM_PROCESSOR  riscv64)
 
-# issue 0657 — RESOLVE the toolchain, do not spell it. `[board.qemu-riscv64-threadx]`
+# issue 0657 — RESOLVE the toolchain, do not spell it. `[board.rv-virt-threadx]`
 # provisions xPack's `riscv-none-elf-*` (the portable dist, installed by
 # `nros setup` on every supported host); hardcoding Ubuntu's
 # `riscv64-unknown-elf-*` here meant a provisioned host configured with a

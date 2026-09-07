@@ -16,7 +16,7 @@
  * user-define file NetX force-includes). It compiled only because the Ubuntu
  * `riscv64-unknown-elf` newlib happens to pull `stdlib.h` in transitively; the
  * toolchain `nros setup` provisions for this board (xPack `riscv-none-elf`,
- * per `[board.qemu-riscv64-threadx]` in nros-sdk-index.toml) does not, and
+ * per `[board.rv-virt-threadx]` in nros-sdk-index.toml) does not, and
  * every netxduo TU then failed `-Werror=implicit-function-declaration`.
  * Depending on one libc's include graph is the accident; this is the fix. */
 #include <stdlib.h>

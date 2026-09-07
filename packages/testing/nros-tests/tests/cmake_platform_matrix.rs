@@ -127,7 +127,7 @@ fn cmake_platform_threadx_requires_board() {
     // still requires a separate `NANO_ROS_BOARD` value today is
     // `threadx` (lines 73-81 of `packages/api/nros-c/CMakeLists.txt`),
     // which disambiguates the std-vs-no_std split between
-    // `threadx-linux` (host libc) and `riscv64-qemu` (bare-metal).
+    // `threadx-linux` (host libc) and `rv-virt-threadx` (bare-metal).
     //
     // Verifies: `NANO_ROS_PLATFORM=threadx` without `NANO_ROS_BOARD`
     // FATAL_ERRORs at configure time and the error message mentions

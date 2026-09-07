@@ -1136,7 +1136,7 @@ mod tests {
             "threadx",
             "threadx-linux",
             "threadx-qemu-riscv64",
-            "qemu-riscv64-threadx",
+            "rv-virt-threadx",
         ] {
             let mut plan = fixture_plan_typed(&[("t_pkg", "t", "t", "t_pkg::T", "t_pkg/T.hpp")]);
             plan.board = key.into();

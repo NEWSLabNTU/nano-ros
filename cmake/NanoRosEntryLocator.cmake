@@ -28,7 +28,7 @@
 #
 #   lane           platform / board          locator
 #   entry          threadx / threadx-linux   tcp/127.0.0.1:7447
-#   entry          threadx / riscv64-qemu    tcp/10.0.2.2:7447
+#   entry          threadx / rv-virt-threadx    tcp/10.0.2.2:7447
 #   entry          freertos                  tcp/192.0.3.1:7447
 #   entry          nuttx                     tcp/10.0.2.2:7447
 #   node-register  nuttx                     tcp/10.0.2.2:7447
@@ -77,7 +77,7 @@ set(NANO_ROS_LOCATOR_ENTRY_DEFAULT "tcp/10.0.2.2:7447"
     CACHE INTERNAL "nano-ros: entry-lane locator default, QEMU slirp host")
 
 # The `nano_ros_node_register()` RTOS typed-entry carriers. Port 7447 serves
-# manual `zenohd` runs; 7553 matches the qemu-riscv64-threadx fixture port.
+# manual `zenohd` runs; 7553 matches the rv-virt-threadx fixture port.
 set(NANO_ROS_LOCATOR_NODEREG_NUTTX "tcp/10.0.2.2:7447"
     CACHE INTERNAL "nano-ros: node-register carrier locator default, nuttx")
 set(NANO_ROS_LOCATOR_NODEREG_THREADX "tcp/10.0.2.2:7553"

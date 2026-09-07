@@ -18,13 +18,14 @@ marked `# = [board.<other-spelling>]` against the entry it duplicates. All five
 values resolve in BOTH namespaces, which is what lets the second assertion
 below — `board=` must be an index key — be enforced rather than aspired to.
 
-phase-437 (RFC-0093) is retiring the duplicates by CHOOSING one name per board
-rather than mirroring two. A collapsed pair has no counterpart left, so its
-`# =` marker must be deleted in the same commit — a marker naming a section
-that no longer exists is the first thing this gate reports. The NuttX pair went
-first: `qemu-armv7a-nuttx`/`nuttx-qemu-arm` are now the single
-`[board.qemu-armv7a-nuttx]` and `rv-virt-nuttx`/`nuttx-qemu-riscv` the
-single `[board.rv-virt-nuttx]`.
+phase-437 (RFC-0093) is COLLAPSING those pairs rather than holding them in
+step: a rename picks one true name per board and the mirror entry, its `# =`
+marker included, goes away. A collapsed pair has no counterpart left, so a
+marker naming a section that no longer exists is the first thing this gate
+reports. W4 did it to both NuttX boards (`qemu-armv7a-nuttx`, `rv-virt-nuttx`)
+and to the ThreadX RISC-V board (`rv-virt-threadx`), so the mirror-pair
+assertion below covers a SHRINKING set — and an empty one is the endpoint, not
+a failure.
 
 Five namespaces exist for closely related concepts, overlapping partially:
 
@@ -194,8 +195,8 @@ def scopes(root):
 
 
 def self_test():
-    got = exports('<nano_ros deploy="threadx" board="riscv64-qemu" rmw="zenoh"/>')
-    assert got == [("threadx", "riscv64-qemu")], got
+    got = exports('<nano_ros deploy="threadx" board="rv-virt-threadx" rmw="zenoh"/>')
+    assert got == [("threadx", "rv-virt-threadx")], got
     assert exports('<nano_ros deploy="native"/>') == [("native", None)]
     # Siblings are not deploy exports.
     assert exports('<nano_ros_provides kind="board" name="threadx"/>') == []

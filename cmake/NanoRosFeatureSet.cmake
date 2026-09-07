@@ -4,7 +4,7 @@
 # nros-cpp and the workspace umbrella in NanoRosRuntimeCrate. They did not
 # agree: two hardcoded `ros-humble` while only the umbrella honoured the
 # configured edition, the umbrella had no `NANO_ROS_BOARD` input so it could not
-# split threadx-linux (std) from riscv64-qemu (no_std), and the capabilities
+# split threadx-linux (std) from rv-virt-threadx (no_std), and the capabilities
 # existed on the direct paths only.
 #
 # The failures that produced were all SILENT:

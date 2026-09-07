@@ -143,7 +143,7 @@ pub fn board_family(board: &str) -> BoardFamily {
         | "mps3-an536-freertos"
         | "an536" => BoardFamily::Freertos,
         // Phase 246 — Azure RTOS ThreadX (host sim + bare-metal qemu-riscv64).
-        "threadx" | "threadx-linux" | "threadx-qemu-riscv64" | "qemu-riscv64-threadx" => {
+        "threadx" | "threadx-linux" | "threadx-qemu-riscv64" | "rv-virt-threadx" => {
             BoardFamily::Threadx
         }
         _ => BoardFamily::Native,
@@ -175,7 +175,7 @@ mod tests {
         ("threadx", BoardFamily::Threadx),
         ("threadx-linux", BoardFamily::Threadx),
         ("threadx-qemu-riscv64", BoardFamily::Threadx),
-        ("qemu-riscv64-threadx", BoardFamily::Threadx),
+        ("rv-virt-threadx", BoardFamily::Threadx),
     ];
 
     #[test]
