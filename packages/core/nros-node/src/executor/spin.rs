@@ -7935,40 +7935,59 @@ impl<'s> Executor<'s> {
     /// Declare a parameter with a value. Returns `true` if successful.
     pub fn declare_parameter(&mut self, name: &str, value: nros_params::ParameterValue) -> bool {
         self.ensure_parameter_store();
+        let accepted = match &mut self.params {
+            Some(params) => params.server.declare(name, value),
+            None => false,
+        };
         // phase-425 W3b — `use_sim_time` is RESERVED, exactly as in ROS 2: its
         // value is not a value the app reads, it is the switch that attaches the
         // time source. This is the one seam every language funnels through
         // (`nros::main!`'s launch bakes via `apply_param_services`, nros-c's
         // `nros_parameter_declare_*`, nros-cpp's `params_shim`), so hooking it
         // here covers all of them instead of once per entry path.
-        self.note_reserved_parameter(name, &value);
-        if let Some(params) = &mut self.params {
-            params.server.declare(name, value)
-        } else {
-            false
+        //
+        // phase-430 W3 / issue 1202 — the hook runs AFTER the store's verdict
+        // and only on acceptance. It used to run first and unconditionally, so
+        // a re-declaration the store REFUSES (the name is already there) still
+        // flipped the switch: the store kept `use_sim_time = true` while the
+        // `/clock` source detached, leaving an executor with sim time recorded
+        // as on and no source attached, which is neither of the two states the
+        // parameter can name.
+        if accepted {
+            self.note_reserved_parameter(name);
         }
+        accepted
     }
 
     /// phase-425 W3b — record a reserved parameter's effect. Today that is
-    /// `use_sim_time` and nothing else.
+    /// `use_sim_time` and nothing else: it is the tree's only reserved name,
+    /// and [`time_source::USE_SIM_TIME_PARAM`](crate::time_source::USE_SIM_TIME_PARAM)
+    /// is the only such constant.
+    ///
+    /// Called only after the store ACCEPTED a declaration, and it reads the
+    /// value back OUT of the store instead of taking the caller's: what the
+    /// switch must follow is what the store holds, and the two are the same
+    /// thing only while every write succeeds (issue 1202). The read is
+    /// [`refresh_use_sim_time_from_store`](Self::refresh_use_sim_time_from_store),
+    /// the same one the runtime `ros2 param set` path uses, so the declare path
+    /// and the wire path cannot disagree about the value.
     ///
     /// A non-bool `use_sim_time` is IGNORED rather than rejected: parameter
     /// declaration has no channel to report a complaint on (it returns "did the
     /// store take it"), and refusing the declaration outright would fail a node
     /// for a parameter ROS 2 lets it declare. The time source simply does not
     /// attach, which is the same outcome as `false`.
-    #[cfg_attr(
-        not(all(feature = "sim-time", any(has_rmw, test))),
-        allow(unused_variables)
-    )]
-    fn note_reserved_parameter(&mut self, name: &str, value: &nros_params::ParameterValue) {
+    ///
+    /// Not covered: [`Executor::parameter`](Self::parameter)'s
+    /// [`ParameterBuilder`](nros_params::ParameterBuilder) borrows the server
+    /// and declares through it, so the executor never sees the write and
+    /// `use_sim_time` named that way attaches nothing — issue 1203.
+    fn note_reserved_parameter(&mut self, name: &str) {
         #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
-        if name == crate::time_source::USE_SIM_TIME_PARAM
-            && let nros_params::ParameterValue::Bool(enable) = value
-        {
-            self.sim_time_requested = *enable;
-            self.sim_time_stated = true;
+        if name == crate::time_source::USE_SIM_TIME_PARAM {
+            self.refresh_use_sim_time_from_store();
         }
+        let _ = name;
     }
 
     /// phase-425 W3b — a parameter service handled `n` requests this spin.
@@ -7997,13 +8016,21 @@ impl<'s> Executor<'s> {
         descriptor: nros_params::ParameterDescriptor,
     ) -> bool {
         self.ensure_parameter_store();
-        if let Some(params) = &mut self.params {
-            params
+        let accepted = match &mut self.params {
+            Some(params) => params
                 .server
-                .declare_with_descriptor(name, value, Some(descriptor))
-        } else {
-            false
+                .declare_with_descriptor(name, value, Some(descriptor)),
+            None => false,
+        };
+        // phase-430 W3 / issue 1202 — the sibling declare path, which had NO
+        // reserved hook at all: `declare_parameter_with_descriptor` stored
+        // `use_sim_time` and attached nothing, so the same declaration meant
+        // two different things depending on whether the app passed a
+        // descriptor. Same seam, same verdict ordering, one shared hook.
+        if accepted {
+            self.note_reserved_parameter(name);
         }
+        accepted
     }
 
     /// Get a parameter value by name.
@@ -9237,10 +9264,17 @@ impl<'s> Executor<'s> {
     ///
     /// Called after a parameter service actually handled something, which is
     /// what makes a runtime `ros2 param set <node> use_sim_time true` work
-    /// without a per-spin scan of the store. The declaration path does not need
-    /// it — `declare_parameter` records the value directly.
+    /// without a per-spin scan of the store.
+    ///
+    /// phase-430 W3 / issue 1202 — the declaration path calls it too, through
+    /// `note_reserved_parameter`, once the store has accepted the write. It
+    /// used to record the value directly from the caller's argument, which is
+    /// the same thing only while the store never refuses. One read for both
+    /// paths; a second spelling is the drift this function exists to prevent.
+    /// `pub(crate)` for the same reason: a test that changes the store directly
+    /// needs the entry point a parameter service uses, not a copy of it.
     #[cfg(all(feature = "sim-time", feature = "param-services", any(has_rmw, test)))]
-    fn refresh_use_sim_time_from_store(&mut self) {
+    pub(crate) fn refresh_use_sim_time_from_store(&mut self) {
         if let Some(params) = self.params.as_ref()
             && let Some(enable) = params
                 .server
