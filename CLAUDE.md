@@ -189,6 +189,19 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
   the required set, and never path-filter a required workflow: a check that
   produces no verdict blocks forever, which deadlocked two PRs on 2026-08-28.
   Read AGENTS.md "Branch policy" — it has the flow and the break-glass.
+- **A STACKED pull request cannot arm auto-merge, and rebasing its parent strands
+  it.** Auto-merge is a property of the BASE branch: `main` has the ruleset and
+  the queue, a feature branch has neither, so GitHub refuses
+  (`Protected branch rules not configured for this branch`) — and `gh pr merge
+  --auto` still exits 0, so only `autoMergeRequest` proves anything armed. A stack
+  also never enters the queue, so it forfeits the 5-way speculative build and
+  SERIALISES what it was reached for. Prefer basing on `main` and cherry-picking
+  only what you need from the parent: the queue rebase-merges, so the carried
+  commits drop by patch-id on the next rebase with no intervention (#699 22->1,
+  #550 4->1, #626 2->1, each drop verified on main). Check the commit count after
+  every rebase — a patch-id skip and a silently lost commit look identical until
+  you do. The one thing stacking still buys is that a REJECTED parent cannot ship
+  inside the child. -> AGENTS.md "What stacking costs".
 - **Never `git add -A` / `git add .`** — stage the paths you actually changed
   (`git add <path>…`, or `git add -u <dir>` for tracked-only edits). A blanket add
   scoops up build output, leftover dirs and stray artifacts. Twice in one session it

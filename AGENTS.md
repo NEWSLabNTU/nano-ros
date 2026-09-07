@@ -500,6 +500,56 @@ open B. It costs one queue cycle and has no failure mode. Stack only when B is
 genuinely blocked on A's code, which is rarer than it feels — `just claim` exists
 so two agents do not need the same work in flight.
 
+### What stacking costs, measured 2026-09-07
+
+Three things the choice above does not price. None of them changes the
+rejected-work argument — that is still the reason stacking exists — but an agent
+weighing "I do not want to block on A" should know what the alternative buys.
+
+**A stacked PR CANNOT arm auto-merge.** Auto-merge is a property of the BASE
+branch, not of the pull request: GitHub only enables it where the base has
+something to wait on. `main` has the ruleset and the queue; `fix/a` has neither,
+so the request is refused outright —
+
+    $ gh pr merge 704 --auto
+    --merge, --rebase, or --squash required when not running interactively
+    $ gh pr merge 704 --auto --rebase
+    GraphQL: Pull request Protected branch rules not configured for this branch
+             (enablePullRequestAutoMerge)
+
+Note the second command still exits **0** — the error is on stderr. `gh pr merge
+--auto` returning success is not evidence that anything armed; only
+`autoMergeRequest` is. Reading the exit code is how a sweep reports armed PRs
+that are not.
+
+So B needs a human at both ends: one merge into `fix/a`, then A shepherded
+through the queue. It also never enters the queue itself, so it gets none of the
+`max_entries_to_build: 5` speculative parallelism — stacking SERIALISES
+throughput, which is the opposite of the reason it usually gets reached for.
+
+**Rebasing A strands B.** The queue is not the only thing that moves `fix/a`;
+so does every rebase of A onto a newer `main`. B's base then stops being an
+ancestor and B cannot be restacked mechanically, because its copies of A's
+commits conflict with their own rebased twins. Measured on #704 after #629 was
+rebased twice: common ancestor an old `main` tip, base **110 commits** past it,
+and the restack conflicted on `bd4b087c1` — one of A's own commits. The remedy
+is to wait for A to land, retarget B to `main`, and rebase there.
+
+**The `main`-based alternative self-cleans, because the queue rebase-merges.**
+`merge_method=REBASE` replays A's commits onto `main` with new hashes and
+IDENTICAL patch content, so `git rebase` drops B's copies by patch-id with no
+intervention. Measured the same day: #699 went 22 commits to 1, #550 4 to 1,
+#626 2 to 1, every drop verified present on `main` by subject. This property is
+load-bearing on the merge method — under a squash queue the patch-ids would not
+match and every carried commit would conflict instead.
+
+When you do carry A's commits on a `main`-based branch: cherry-pick only what B
+actually needs (usually A's interface, not its whole diff), say so in the PR
+body so a reviewer does not read A's diff as B's work, and after each rebase
+CHECK THE COMMIT COUNT and confirm every dropped commit is genuinely on `main`.
+That check is what separates a legitimate patch-id skip from a silently lost
+commit, and both happened in one afternoon.
+
 ## When the merge queue rejects your pull request
 
 A merge group tests **`main` + your PR**, which is a commit that exists nowhere
