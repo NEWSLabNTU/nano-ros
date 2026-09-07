@@ -421,11 +421,18 @@ fn the_default_subscription_buffer_is_derived_from_the_type() {
 #[test]
 fn naming_a_receive_buffer_opts_out_of_the_derivation() {
     const N: usize = 4096;
-    assert!(
-        N > crate::config::DEFAULT_RX_BUF_SIZE,
-        "the fixture is only meaningful while N is off the default, or an \
-         opt-out that silently fell back would still pass"
-    );
+    // A `const` block: both sides are constants, so this is a compile-time
+    // claim about the fixture, not a run-time check. Written as a plain
+    // `assert!` it is `clippy::assertions_on_constants`, which `-D warnings`
+    // takes red under `cargo clippy -p nros-node --all-targets` — a lane no
+    // merge-gating job runs, which is why it sat here.
+    const {
+        assert!(
+            N > crate::config::DEFAULT_RX_BUF_SIZE,
+            "the fixture is only meaningful while N is off the default, or an \
+             opt-out that silently fell back would still pass"
+        )
+    };
 
     let mut executor: Executor = executor_with_clock(MockSession::new());
     let nid = executor.node_builder("explicit_sizing").build().unwrap();
@@ -2115,7 +2122,20 @@ fn use_sim_time_attaches_and_detaches_the_clock_source() {
 
     // Turning it off stops SAMPLES. The subscription stays — the executor has
     // no entity removal — so the gate is what must change.
-    executor.declare_parameter("use_sim_time", nros_params::ParameterValue::Bool(false));
+    //
+    // phase-430 W3 / issue 1202 — through the STORE, which is the only way it
+    // can happen: a second `declare_parameter` is a refusal (the name is
+    // already there), and the switch no longer follows a refused write. This is
+    // the `ros2 param set <node> use_sim_time false` path, verdict first.
+    assert!(
+        executor
+            .params_mut()
+            .expect("the declaration above created the store")
+            .apply("use_sim_time", nros_params::ParameterValue::Bool(false))
+            .is_success(),
+        "an existing bool parameter set to a bool is an ordinary accepted set"
+    );
+    executor.refresh_use_sim_time_from_store();
     let _ = executor.spin_once(core::time::Duration::from_millis(0));
     assert!(
         !crate::time_source::is_active(),
@@ -2124,6 +2144,134 @@ fn use_sim_time_attaches_and_detaches_the_clock_source() {
 
     // The global and the override are put back by `SimTimeGuard`'s drop, which
     // restores what it observed instead of asserting a default.
+}
+
+/// phase-430 W3 / issue 1202 — the reserved-parameter switch follows the
+/// STORE'S VERDICT, not the caller's proposal.
+///
+/// `note_reserved_parameter` used to run unconditionally, ahead of
+/// `params.server.declare(...)`. A re-declaration is a REFUSAL — the name is
+/// already there — so `declare_parameter("use_sim_time", false)` on a node that
+/// had declared it `true` returned `false`, changed nothing in the store, and
+/// still detached the `/clock` source. That left the executor in a state the
+/// parameter cannot name: sim time recorded as ON, no source installed, and
+/// nothing to reconcile it back, because the reconcile believes the switch.
+///
+/// The negative control for the fix is the middle block: on the pre-fix code it
+/// reports `is_active() == false` while the store still reads `Some(true)`.
+#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[test]
+fn use_sim_time_follows_the_store_verdict_not_the_caller() {
+    let _sim_time = SimTimeGuard::acquire();
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    drop(executor.create_node("verdict_node").expect("create node"));
+
+    // Accepted `true` attaches.
+    assert!(
+        executor.declare_parameter("use_sim_time", nros_params::ParameterValue::Bool(true)),
+        "the first declaration of a name is an acceptance"
+    );
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        executor.ros_time_source_installed(),
+        "accepted true must attach"
+    );
+    assert!(
+        crate::time_source::is_active(),
+        "attached and not armed drops every sample"
+    );
+
+    // A REFUSED re-declaration must change neither half. Both are asserted,
+    // because the defect was precisely the two halves disagreeing: checking
+    // only the store, or only the source, reads as correct on the broken code.
+    assert!(
+        !executor.declare_parameter("use_sim_time", nros_params::ParameterValue::Bool(false)),
+        "a second declaration of a declared name is a refusal, not a set"
+    );
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert_eq!(
+        executor.params().and_then(|p| p.get_bool("use_sim_time")),
+        Some(true),
+        "a refused declaration must leave the stored value alone"
+    );
+    assert!(
+        crate::time_source::is_active(),
+        "the refused declaration detached the source anyway: the store keeps \
+         `true` while /clock samples stop being installed, which is an executor \
+         with sim time on and no clock source (issue 1202)"
+    );
+    assert!(
+        executor.ros_time_source_installed(),
+        "the subscription must survive a refused write"
+    );
+
+    // An ACCEPTED false — the wire-facing set, which is how a running node is
+    // told — detaches.
+    assert!(
+        executor
+            .params_mut()
+            .expect("store")
+            .apply("use_sim_time", nros_params::ParameterValue::Bool(false))
+            .is_success()
+    );
+    executor.refresh_use_sim_time_from_store();
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        !crate::time_source::is_active(),
+        "an accepted false must stop samples being installed"
+    );
+
+    // And back on: the switch is a switch, not a one-way latch.
+    assert!(
+        executor
+            .params_mut()
+            .expect("store")
+            .apply("use_sim_time", nros_params::ParameterValue::Bool(true))
+            .is_success()
+    );
+    executor.refresh_use_sim_time_from_store();
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        crate::time_source::is_active(),
+        "an accepted true must re-arm the source that is still installed"
+    );
+}
+
+/// phase-430 W3 / issue 1202 — the sibling declare path carries the same hook.
+///
+/// `declare_parameter_with_descriptor` had none at all, so the same reserved
+/// name meant two different things depending on whether the app passed a
+/// descriptor: `use_sim_time = true` with one stored a parameter and attached
+/// nothing. Same class as the ordering above, found by sweeping the seam rather
+/// than the reported site.
+#[cfg(all(feature = "sim-time", feature = "param-services"))]
+#[test]
+fn use_sim_time_declared_with_a_descriptor_attaches_the_clock_source() {
+    let _sim_time = SimTimeGuard::acquire();
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    drop(
+        executor
+            .create_node("descriptor_node")
+            .expect("create node"),
+    );
+
+    let descriptor =
+        nros_params::ParameterDescriptor::new("use_sim_time", nros_params::ParameterType::Bool)
+            .expect("descriptor")
+            .with_description("use simulated time");
+    assert!(executor.declare_parameter_with_descriptor(
+        "use_sim_time",
+        nros_params::ParameterValue::Bool(true),
+        descriptor,
+    ));
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    assert!(
+        executor.ros_time_source_installed(),
+        "a descriptor is metadata; it cannot change what the reserved name means"
+    );
+    assert!(crate::time_source::is_active());
 }
 
 /// phase-425 W3b — a non-bool `use_sim_time` attaches nothing.
