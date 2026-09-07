@@ -444,7 +444,7 @@ actually move — editing it now would describe a state the tree is not in.
 > moving model generation moves fixture build wall-clock, and W5's delta would
 > then mix two causes.
 
-- [x] **W4.a — EXECUTED 2026-08-03 (`c6535536e`): all 112 tracked models
+- [x] **W4.a — EXECUTED 2026-08-03: all 112 tracked models
       `git rm`'d, regeneration verified for both the workspace and standalone
       classes, `check-no-tracked-models` gates the ban.** The blockers below
       resolved first: the SYNCFAIL class closed as issue 0392 (fixed
