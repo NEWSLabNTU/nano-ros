@@ -8055,9 +8055,11 @@ impl<'s> Executor<'s> {
     ) -> bool {
         self.ensure_parameter_store();
         let accepted = match &mut self.params {
-            Some(params) => params
-                .server
-                .declare_with_descriptor(node.into(), name, value, Some(descriptor)),
+            Some(params) => {
+                params
+                    .server
+                    .declare_with_descriptor(node.into(), name, value, Some(descriptor))
+            }
             None => false,
         };
         // phase-430 W3 / issue 1202 — the sibling declare path, which had NO
