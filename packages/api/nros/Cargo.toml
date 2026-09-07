@@ -71,6 +71,12 @@ metadata-mode = ["nros-rmw/sync-spin"]
 # rather than granting it.
 env = []
 
+# phase-427 W10 — forwards `nros-node`'s armed `#[deprecated]` on
+# `ExecutorConfig::node_name` so a consumer of the FACADE can find its own call
+# sites without naming the core crate. Off by default; see the setter's doc
+# comment for why the attribute is feature-armed at all.
+deprecate-node-name-setter = ["nros-node/deprecate-node-name-setter"]
+
 std = [
     "alloc",
     "nros-core/std",

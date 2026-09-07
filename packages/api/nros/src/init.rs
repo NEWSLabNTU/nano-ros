@@ -51,8 +51,12 @@
 //!    for argv-style entry). Launch file is ignored; env vars +
 //!    `ExecutorConfig::from_env()` semantics still apply.
 //!
-//! To actually open a session, materialise an [`crate::ExecutorConfig`] via
-//! [`Context::config`] and pass it to `Executor::open`.
+//! To actually open a session, call [`Context::create_executor`] (`alloc`) or
+//! [`Context::create_executor_in`] (caller-supplied backing, nothing leaked),
+//! then name each node with `Executor::create_node`. The older spelling —
+//! materialise an [`crate::ExecutorConfig`] via [`Context::config`] and pass it
+//! to `Executor::open` — still works and is what a single-node entry wants;
+//! phase-427 W10 added the pair because it cannot express the second node.
 //!
 //! ## Launch overlay (current limitation)
 //!
@@ -76,10 +80,19 @@
 // `std`, so nothing here is reachable without one.
 use std::path::Path;
 
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+use core::mem::MaybeUninit;
+
 #[cfg(feature = "alloc")]
 use nros_node::DOMAIN_ID_MAX;
 #[cfg(feature = "alloc")]
 use nros_node::ExecutorConfig;
+// phase-427 W10 — the open failure a `create_executor*` call can carry back.
+// Ungated: `NodeError` lives in `nros_node::executor::types`, which is compiled
+// on every target, and [`InitError`] is on every target too (W9).
+use nros_node::NodeError;
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+use nros_node::{Executor, ExecutorSizing};
 #[cfg(feature = "alloc")]
 use nros_rmw::SessionMode;
 
@@ -102,6 +115,32 @@ pub enum InitError {
     /// [`crate::DOMAIN_ID_MAX`]. Rejected here rather than
     /// handed to a backend that can only fail later (the #206 rule).
     DomainIdOutOfRange,
+    /// phase-427 W10 — [`Context::create_executor`] /
+    /// [`Context::create_executor_in`] resolved the identity and the RMW
+    /// session open then failed.
+    ///
+    /// The backend's own [`NodeError`] is CARRIED, not flattened into a flag:
+    /// `Transport(InvalidConfig)` (no backend registered, or more than one and
+    /// no selector) and `Transport(ConnectionFailed)` (the router is not there)
+    /// are different problems with different fixes, and issue 0465 is what
+    /// collapsing them cost the last time.
+    ExecutorOpenFailed(NodeError),
+    /// phase-427 W10 — [`Context::create_executor_in`] was handed a backing
+    /// smaller than the executor's tables need.
+    ///
+    /// Refused rather than accepted: `Executor::open_in` is `unsafe` precisely
+    /// because a short backing is undefined behaviour, so the safe wrapper
+    /// checks the length and names both numbers. `needed` is
+    /// `ExecutorSizing::DEFAULT.u64_len()` for this build — it moves with
+    /// `NROS_EXECUTOR_MAX_CBS` / `_MAX_SC` / `_ARENA_SIZE` / `_MAX_NODES`, so a
+    /// caller sizing a `static` from a literal will hear about it here rather
+    /// than corrupting memory later.
+    BackingTooSmall {
+        /// `u64` words the executor's tables need.
+        needed: usize,
+        /// `u64` words the caller supplied.
+        given: usize,
+    },
 }
 
 impl core::fmt::Display for InitError {
@@ -111,6 +150,13 @@ impl core::fmt::Display for InitError {
             InitError::LaunchParseFailed => f.write_str("launch file parse failed"),
             InitError::EnvParseFailed => f.write_str("env var parse failed"),
             InitError::DomainIdOutOfRange => f.write_str("domain id out of range"),
+            InitError::ExecutorOpenFailed(e) => {
+                write!(f, "RMW session open failed: {e:?}")
+            }
+            InitError::BackingTooSmall { needed, given } => write!(
+                f,
+                "executor backing too small: {given} u64 words supplied, {needed} needed"
+            ),
         }
     }
 }
@@ -242,6 +288,16 @@ impl Context {
     /// let cfg = ctx.config("talker");
     /// let mut executor = nros::Executor::open(&cfg)?;
     /// ```
+    ///
+    /// phase-427 W10 — this is the shape where the executor IS the node it was
+    /// configured with, and it stays: an entry that opens exactly one node
+    /// wants exactly this. What it cannot express is the second node, which is
+    /// why `Context::create_executor()` + `Executor::create_node(name)` now sit
+    /// beside it — the session takes no name, and each node takes its own.
+    // phase-427 W10 — the one legitimate remaining use of the deprecated
+    // builder spelling: this method IS the executor-is-the-node shape, so it
+    // asks for it deliberately rather than by not having heard.
+    #[allow(deprecated)]
     pub fn config<'a>(&'a self, node_name: &'a str) -> ExecutorConfig<'a> {
         ExecutorConfig::new(self.locator.as_str())
             .node_name(node_name)
@@ -375,6 +431,108 @@ impl Context {
             }
         }
         self
+    }
+
+    /// phase-427 W10 — the config the executor's SESSION opens with: this
+    /// context's locator, domain and mode, and no node name.
+    ///
+    /// The counterpart of [`config`](Self::config), which is for the older
+    /// shape where the executor IS the node it was configured with. Here the
+    /// session carries no ROS identity of its own — `Executor::create_node`
+    /// supplies that, once per node, and one executor holds several
+    /// (RFC-0047). What lands in `ExecutorConfig::node_name` is therefore
+    /// whatever [`ExecutorConfig::new`] defaults to; it names the transport
+    /// session for diagnostics, not a participant on the graph.
+    #[cfg(feature = "rmw-cffi")]
+    fn session_config(&self) -> ExecutorConfig<'_> {
+        ExecutorConfig::new(self.locator.as_str())
+            .domain_id(self.domain_id)
+            .mode(self.mode)
+    }
+}
+
+/// phase-427 W10 — `rclrs::Context::create_executor`, and the ours-only
+/// no-leak twin beside it.
+///
+/// Both are gated on `rmw-cffi`, because an executor without the vtable
+/// runtime has no session to open; `create_executor` is additionally gated on
+/// `alloc`, because it is the one that leaks a default-sized backing.
+#[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+impl Context {
+    /// `rclrs::Context::create_executor()` — open the session this context
+    /// resolved and hand back the [`Executor`] that owns it.
+    ///
+    /// This is the entry a ported rclrs `main` lands on: upstream writes
+    /// `context.create_basic_executor()` (or `create_executor(runtime)`) and
+    /// gets an `Executor` back; ours returns a `Result`, so the port is a `?`.
+    /// The runtime argument has no counterpart here and is not accepted — one
+    /// executor per RTOS task is the model (RFC-0002), and there is no runtime
+    /// to choose between.
+    ///
+    /// The node name is NOT taken here. Name nodes with
+    /// [`Executor::create_node`], which is where several named nodes on one
+    /// session already live (RFC-0047).
+    ///
+    /// # Available on `alloc` only
+    ///
+    /// It leaks an executor-lifetime backing at
+    /// [`ExecutorSizing::DEFAULT`] — the reason it is `Executor<'static>` and
+    /// the reason it needs an allocator. A target without one calls
+    /// [`create_executor_in`](Self::create_executor_in) with its own
+    /// `static`, which is the same open with the storage supplied rather than
+    /// leaked. (Today [`Context`] itself has an `alloc` floor — its `locator`
+    /// and `rmw` are owned `String`s — so the pair moves together; if that
+    /// floor ever drops, this is the half that stays behind.)
+    ///
+    /// ```ignore
+    /// let context = nros::Context::default_from_env()?;
+    /// let mut executor = context.create_executor()?;
+    /// let mut node = executor.create_node("talker")?;
+    /// ```
+    pub fn create_executor(&self) -> Result<Executor<'static>, InitError> {
+        Executor::open(&self.session_config()).map_err(InitError::ExecutorOpenFailed)
+    }
+
+    /// OURS — [`create_executor`](Self::create_executor) with the storage
+    /// supplied by the caller instead of leaked.
+    ///
+    /// The freestanding form. An RTOS or bare-metal entry owns a
+    /// `static mut [MaybeUninit<u64>; N]` (or the array the `nros::main!`
+    /// macro sizes for it) and hands it in; nothing is allocated, and the
+    /// returned executor borrows the backing for `'b` rather than living
+    /// forever. rclrs has no counterpart — it allocates.
+    ///
+    /// `backing` must hold at least `ExecutorSizing::DEFAULT.u64_len()` words.
+    /// A shorter slice is [`InitError::BackingTooSmall`] naming both numbers,
+    /// never undefined behaviour: this is the safe wrapper around the `unsafe`
+    /// `Executor::open_in`, and the length check is what makes it safe. Size
+    /// the array with `ExecutorSizing::DEFAULT.u64_len()` rather than a
+    /// literal, since the default moves with `NROS_EXECUTOR_MAX_CBS` and its
+    /// siblings.
+    ///
+    /// ```ignore
+    /// static mut BACKING: [MaybeUninit<u64>; N] = [MaybeUninit::uninit(); N];
+    /// let context = nros::Context::default_from_env()?;
+    /// // SAFETY: single-threaded entry, taken once.
+    /// let mut executor = context.create_executor_in(unsafe { &mut *&raw mut BACKING })?;
+    /// let mut node = executor.create_node("talker")?;
+    /// ```
+    pub fn create_executor_in<'b>(
+        &self,
+        backing: &'b mut [MaybeUninit<u64>],
+    ) -> Result<Executor<'b>, InitError> {
+        let sizing = ExecutorSizing::DEFAULT;
+        let needed = sizing.u64_len();
+        let given = backing.len();
+        if given < needed {
+            return Err(InitError::BackingTooSmall { needed, given });
+        }
+        // SAFETY: `backing` is at least `sizing.u64_len()` words (checked
+        // directly above), is `u64`-aligned by its element type, is uniquely
+        // borrowed for `'b`, and the returned `Executor<'b>` is the only thing
+        // that can reach it for that lifetime.
+        unsafe { Executor::open_in(&self.session_config(), backing, sizing) }
+            .map_err(InitError::ExecutorOpenFailed)
     }
 }
 
@@ -785,6 +943,34 @@ mod baked_tests {
         assert_eq!(opts, InitOptions::new().with_domain_id(Some(9)));
         opts.set_domain_id(None);
         assert_eq!(opts, InitOptions::new());
+    }
+
+    /// phase-427 W10 — the two variants `create_executor*` can produce say
+    /// WHICH thing went wrong, in words. `alloc` only: the errors are values
+    /// and need no RMW to construct, which is the point of testing them here
+    /// rather than beside a session.
+    #[test]
+    fn the_executor_errors_say_what_happened() {
+        use alloc::string::ToString as _;
+
+        let too_small = InitError::BackingTooSmall {
+            needed: 4096,
+            given: 8,
+        }
+        .to_string();
+        // Both numbers, because "too small" without them tells a caller
+        // nothing they can act on.
+        assert!(too_small.contains("4096"), "{too_small}");
+        assert!(too_small.contains('8'), "{too_small}");
+
+        // The backend's own error survives the wrapping — issue 0465's rule:
+        // an exhausted table and a missing router must not read alike.
+        let open_failed = InitError::ExecutorOpenFailed(NodeError::NodeTableFull).to_string();
+        assert!(open_failed.contains("NodeTableFull"), "{open_failed}");
+        assert_ne!(
+            open_failed,
+            InitError::ExecutorOpenFailed(NodeError::NameTooLong).to_string()
+        );
     }
 
     #[cfg(not(feature = "env"))]
