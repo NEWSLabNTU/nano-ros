@@ -72,6 +72,7 @@ Run:  python3 scripts/check-board-name-reach.py [--self-test] [--write-baseline]
 
 import os
 import re
+import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -142,6 +143,21 @@ def overlays(root):
     return out
 
 
+_DEFCONFIGS = None
+
+
+def _tracked_defconfigs(root):
+    """Every tracked `defconfig` under `packages/boards`, cached."""
+    global _DEFCONFIGS
+    if _DEFCONFIGS is None:
+        out = subprocess.run(
+            ["git", "ls-files", "packages/boards/**/defconfig"],
+            cwd=root, capture_output=True, text=True,
+        ).stdout.split()
+        _DEFCONFIGS = out
+    return _DEFCONFIGS
+
+
 def scan(root, board, overlay_path):
     """(pinned, why, vendor_names) — is this board tied to one target?
 
@@ -181,10 +197,12 @@ def scan(root, board, overlay_path):
     for m in re.finditer(r'set\(\s*\w*DEFCONFIG\s+"([^"]+)"', overlay):
         rel = re.sub(r"\$\{[^}]+\}/?", "", m.group(1))
         why.append(f"its overlay names the board defconfig {rel}")
-        for dirpath, _dn, filenames in os.walk(os.path.join(root, "packages", "boards")):
-            if "defconfig" in filenames and dirpath.endswith(os.path.dirname(rel)):
+        # `git ls-files`, never a walk: these are TRACKED files, and
+        # `check-no-tracked-file-find` measured 7m36s -> 0.8s for the same set.
+        for tracked in _tracked_defconfigs(root):
+            if tracked.endswith(rel):
                 try:
-                    with open(os.path.join(dirpath, "defconfig"), encoding="utf8") as fh:
+                    with open(os.path.join(root, tracked), encoding="utf8") as fh:
                         vendor |= set(VENDOR_BOARD.findall(fh.read()))
                 except OSError:
                     pass
