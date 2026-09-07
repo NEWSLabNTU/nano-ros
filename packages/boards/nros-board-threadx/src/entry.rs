@@ -245,7 +245,12 @@ struct TierTaskCtx<F> {
 /// common-backend `apply_tier_sched_policy` (W1). Shared by the boot tier and
 /// every spawned tier so the lowering never diverges.
 fn apply_tier(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime, tier: &TierSpec<'static>) {
-    crt.executor_mut().set_active_groups(tier.groups);
+    // issue 1172 — `Err` means the filter did not fit, and
+    // `set_active_groups` has already cleared it and left filtering ON,
+    // so this tier registers NOTHING rather than registering on a
+    // quietly narrower set. Nothing here can return an error (the tier
+    // runner is `-> ()`), so the fail-closed state IS the report.
+    let _ = crt.executor_mut().set_active_groups(tier.groups);
     // phase-436 W7 — one site, shared by the boot tier and every spawned tier,
     // so the park never diverges from the rest of the lowering.
     install_park(crt);
