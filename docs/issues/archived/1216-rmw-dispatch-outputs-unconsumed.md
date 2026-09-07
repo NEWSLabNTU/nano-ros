@@ -1,10 +1,11 @@
 ---
 id: 1216
 title: "Three of the eight `nros_rmw_dispatch` outputs are set and read by nothing — including the one that carries a backend's link libraries"
-status: open
+status: resolved
 area: cmake, rmw, build
 severity: medium
 found: 2026-09-08
+resolved_in: phase-439 W4
 related: [1214, 1215, 0475, 0837, RFC-0071]
 ---
 
@@ -103,3 +104,58 @@ gate it, in the spirit of `just check cmake-support-library`
 class. Note there is no gate at all on the RMW link path today; verification is
 the manual `ninja -t query` recipe in the comments at
 `cmake/NanoRosLink.cmake:99-100`.
+
+---
+
+## Fix (phase-439 W4)
+
+Decided one at a time rather than as a batch, because they are three different
+things that happened to share a symptom.
+
+**`NROS_RMW_EXTRA_LINK_LIBS` — DELETED**, along with the `extra_link_libs`
+field in all four descriptors and in `RmwDispatch`. This issue's argument stands
+as written: a maintained, generated, documented declaration of how to link a
+backend whose only correct use is not to use it. Nothing read it, and the
+obvious consumption is what 0475 records as breaking the link. The reason is
+recorded IN the cyclonedds descriptor where the value used to be, so the next
+person finds the warning at the place they would reach for it.
+
+**`NROS_RMW_RLIB_DEP` — WIRED, and load-bearing.** Naming an rlib IS the
+statement that the backend arrives inside the C/C++ umbrella and nothing
+separate reaches the link line, so it now derives `[rmw.link] strategy` and
+decides which arm of the root `CMakeLists.txt` runs (issue 1215). It also gates
+the cffi feature below: without an rlib there is no umbrella feature to name.
+
+**`NROS_RMW_UMBRELLA_CFFI_FEATURE` — WIRED**, in `nros_feature_set`, together
+with a new `NROS_RMW_C_CFFI_FEATURE`. That deleted a fourth closed list:
+`NanoRosFeatureSet.cmake` mapped backend NAME to cffi feature with its own
+`if(_FS_RMW STREQUAL "zenoh")` chain per crate. `nros-cpp`'s spelling is regular
+(`<cargo_feature>-cffi`, derived); `nros-c`'s is not (`cffi-zenoh-cffi` but
+`cffi-xrce-c`), so it is AUTHORED in the descriptor for the same reason
+`cpp_define` is. Verified byte-for-byte against the deleted chain for all four
+backends × both crates × `none`.
+
+**The `nros_rmw_<name>` naming convention `LINK_DEPENDS` depended on — REPLACED,
+not documented.** `cmake/NanoRosLink.cmake` read `if(TARGET nros_rmw_${_chosen})`.
+This issue called that an accidental generalisation that nothing documented and
+nothing gated, and a provider naming its target anything else silently got the
+0475 defect back. It reads `NROS_RMW_CMAKE_TARGET` now — the backend's own
+`[rmw.provides.cmake] target` — so the edge follows the DECLARATION and there is
+no convention left to document or gate. A backend with no cmake target correctly
+gets no edge: it has no separate archive.
+
+The same file's cyclone-named `--disable-new-dtags` block is keyed on
+`NROS_RMW_COMPANION_LIBRARIES` now: "this backend drags in a shared library by
+SONAME" is a property any backend can have, and the name test just happened to
+be the one that did.
+
+Verified with `ninja -t query`, which is the recipe 0475 left in the comments:
+for a cyclonedds link, both `libnros_rmw_cyclonedds.a` and
+`libddsc.so.0.10.5` appear under `|` (implicit), not only under `||`.
+
+## Not fixed here
+
+Also unread and left alone: `NROS_RMW_CMAKE_TARGET`'s guard in
+`packages/api/nros-cpp/CMakeLists.txt` is still a guard rather than the link
+path — the root does the linking. It is no longer INERT, though (issue 1215),
+which was the part that made it a lie.

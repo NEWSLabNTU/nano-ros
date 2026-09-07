@@ -39,8 +39,18 @@ sys_crate = "cyclonedds-sys"
 
 [rmw.link]
 rlib_dep = ""                       # none — it is a C++ library, not an rlib
-extra_link_libs = ["nros_rmw_cyclonedds", "ddsc", "stdc++"]
+# No rlib and a cmake target above ⇒ `strategy = "cmake"` (RFC-0094 D5): the
+# build `add_subdirectory()`s `[rmw.provides.cmake].dir` and whole-archives
+# `[rmw.provides.cmake].target` into both umbrellas. `nros-c`/`nros-cpp` bundle
+# nothing for it, so it names no cffi feature and both fall back to `rmw-cffi`.
 needs_cxx_linker = true
+# `extra_link_libs = ["nros_rmw_cyclonedds", "ddsc", "stdc++"]` was DELETED in
+# phase-439 W4 (issue 1216). Nothing read it, and consuming it the obvious way —
+# `target_link_libraries(${TARGET} ${NROS_RMW_EXTRA_LINK_LIBS})` — is precisely
+# what issue 0475 records as BREAKING the link (`undefined reference to
+# ddsrt_*`): the archives must ride ONE `-Wl,--whole-archive` group, and adding
+# them to the link LINE reorders ld's single pass. The real link is that flag
+# plus `LINK_DEPENDS` for the rebuild edge.
 
 # The per-message IDL descriptor step no other backend needs. W5 consumes this;
 # W2/W3 only record it.

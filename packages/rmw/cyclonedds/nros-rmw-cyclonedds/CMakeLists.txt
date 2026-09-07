@@ -178,6 +178,12 @@ if(NROS_CYCLONEDDS_PROVENANCE STREQUAL "source")
     # drops every dds_*/ddsrt_* symbol. Phase 186.
     set(NROS_RMW_CYCLONEDDS_DDSC_LIBRARY "$<TARGET_FILE:CycloneDDS::ddsc>"
         CACHE STRING "Resolved Cyclone DDS ddsc library (source path)" FORCE)
+    # phase-439 W4 — the GENERIC channel the selecting build reads. The root's
+    # link helper knows "a backend may name companion archives that ride the
+    # same whole-archive flag"; it does not know that one backend's companion is
+    # called libddsc. Same value, declared under the name the seam uses.
+    set(NROS_RMW_COMPANION_LIBRARIES "${NROS_RMW_CYCLONEDDS_DDSC_LIBRARY}"
+        CACHE STRING "Archives that ride this backend's whole-archive flag" FORCE)
 endif()
 
 if(DEFINED NANO_ROS_PLATFORM
@@ -278,6 +284,10 @@ if(_ddsc_loc)
     get_filename_component(_ddsc_libdir "${_ddsc_loc}" DIRECTORY)
     set(NROS_RMW_CYCLONEDDS_DDSC_LIBRARY "${_ddsc_loc}"
         CACHE FILEPATH "Resolved Cyclone DDS ddsc library path")
+    # phase-439 W4 — see the source-path arm above; the generic name is what the
+    # selecting build's whole-archive helper consumes.
+    set(NROS_RMW_COMPANION_LIBRARIES "${_ddsc_loc}"
+        CACHE STRING "Archives that ride this backend's whole-archive flag" FORCE)
     set_property(TARGET nros_rmw_cyclonedds APPEND PROPERTY
         INTERFACE_LINK_OPTIONS "LINKER:-rpath,${_ddsc_libdir}")
 endif()

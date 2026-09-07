@@ -1,10 +1,11 @@
 ---
 id: 1214
 title: "An out-of-tree RMW provider is DISCOVERABLE and not DISPATCHABLE — the D5 scan resolves it, and no build path can consume the answer"
-status: open
+status: resolved
 area: rmw, build, cli, cmake
 severity: high
 found: 2026-09-08
+resolved_in: phase-439 W4
 related: [1215, 1216, 1219, 0934, RFC-0071, RFC-0087, RFC-0088]
 ---
 
@@ -157,3 +158,48 @@ takes its rows from the scan rather than from `OUT_DIR`. Note that alone is not
 sufficient — see issue 1215 (the root `CMakeLists.txt` chain fatals on a name
 the dispatch accepts) and issue 1216 (the dispatch outputs that would carry an
 out-of-tree provider's link data are read by nothing).
+
+---
+
+## Fix (phase-439 W4, RFC-0094 D5)
+
+The scan half and the dispatch half are ONE mechanism now.
+
+* `cargo-nano-ros/src/rmw_descriptor.rs` — the `nros-rmw.toml` parser, `include!`d
+  by `build.rs` and compiled into the library, the arrangement
+  `serdes_descriptor.rs` already used. `build.rs`'s private `parse()` is gone, so
+  there is no second reader to drift.
+* `rmw_resolver::resolve_rmw_in(&ScanResult, name)` — the sibling of
+  `serdes_resolver::resolve_serdes_in` this issue asked for. It reads the winner's
+  descriptor at SELECTION time, applies the same RFC-0087 D4 derivations
+  `build.rs` applies, and returns the provider's DIRECTORY as well — the half a
+  compile-time table cannot have and the half `add_subdirectory()` needs.
+  `known_rmw_in` is the scan-based `known_rmw`.
+* `nros ws rmw-dispatch <name> --lines` / `--known` — the cmake seam, the same
+  "cmake asks the CLI for a shape it can read" pattern as `ws providers --lines`.
+* `cmake/NanoRosRmwDispatch.cmake` is HAND-WRITTEN and asks. Its
+  `if/elseif`-over-four-names chain, the `render_cmake_dispatch()` that generated
+  it, `CMAKE_DISPATCH_REL_PATH` and the `rmw_cmake_dispatch_is_current` /
+  `regenerate_cmake_dispatch` tests are deleted. Answers are memoised in GLOBAL
+  properties (they die with the configure, so a rebuilt `nros` cannot be served a
+  stale one), and every query registers the tool through
+  `nros_codegen_tool_reconfigure()` — `check-codegen-tool-reconfigure` now counts
+  `rmw-dispatch` as an emitting verb, with its own negative control.
+
+Two readers of one format that nobody compares is what this repo keeps paying
+for, so `rmw_resolver::tests::the_baked_table_and_the_scan_agree_on_every_in_tree_backend`
+asserts the compile-time table and the scan agree field for field, and
+`every_announced_backend_resolves_through_the_scan` asserts that what the scan
+FINDS, the resolver DISPATCHES — this issue's shape, as a test.
+
+Measured: `NANO_ROS_RMW=uorb` configures (see issue 1215), and all four backends
+configure and produce byte-identical cargo feature sets to the ones the deleted
+closed chains produced.
+
+## Not fixed here
+
+The BOARD axis is still not resolved through the scan (this issue's own "what
+would settle the remaining uncertainty"), and `nano_ros_load_providers()` still
+has no production caller — `nros_rmw_dispatch` runs its own scan through the CLI
+rather than sharing cmake's index. Both are follow-ups; neither blocks the rmw
+axis, which is what the acceptance test asked for.

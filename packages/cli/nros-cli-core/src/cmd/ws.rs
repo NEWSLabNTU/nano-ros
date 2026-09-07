@@ -185,6 +185,58 @@ pub enum Sub {
     /// dependency cycle is an error naming every package on it.
     #[command(name = "order")]
     Order(OrderArgs),
+
+    /// phase-439 W4 (RFC-0094 D5) — lower one declared RMW name to the build
+    /// facts its descriptor declares, over the SAME provider scan `providers`
+    /// uses.
+    ///
+    /// This is the seam that makes a backend's `nros-rmw.toml` load-bearing.
+    /// `cmake/NanoRosRmwDispatch.cmake` used to be GENERATED from the table
+    /// baked into this binary — an `if/elseif` chain over the four backends in
+    /// one checkout, with an `else()` `FATAL_ERROR` naming a closed set. So an
+    /// out-of-tree provider that `providers --resolve rmw:acme` found was then
+    /// reported unknown by the very next step (issue 1214). cmake now ASKS,
+    /// exactly as `nano_ros_load_providers` does, and an unknown name is "no
+    /// provider announced this" rather than "not one of the four we compiled".
+    #[command(name = "rmw-dispatch")]
+    RmwDispatch(RmwDispatchArgs),
+}
+
+#[derive(Debug, ClapArgs)]
+pub struct RmwDispatchArgs {
+    /// The declared RMW name — canonical (`zenoh`) or any announced alias
+    /// (`rmw-zenoh`, `rmw-zenoh-cffi`). Omit it with `--known`.
+    pub name: Option<String>,
+
+    /// Workspace to scan as the second search root. Defaults to the cwd.
+    #[arg(long)]
+    pub workspace: Option<PathBuf>,
+
+    /// nano-ros source tree to scan as the FIRST search root.
+    #[arg(long)]
+    pub nano_ros_root: Option<PathBuf>,
+
+    /// Read this provider index instead of scanning. Same identity rule as
+    /// `providers --index`: an index built for other roots is rejected.
+    #[arg(long, value_name = "PATH")]
+    pub index: Option<PathBuf>,
+
+    /// Scan, and leave the index current for the next reader.
+    #[arg(long, value_name = "PATH", conflicts_with = "index")]
+    pub write_index: Option<PathBuf>,
+
+    /// Emit `KEY<TAB>VALUE` rows cmake can read with `string(REPLACE)`.
+    ///
+    /// The cmake seam, same shape and same reason as `providers --lines`:
+    /// cmake has no JSON parser, and a second parser of the descriptor is the
+    /// drift class this wave exists to delete.
+    #[arg(long)]
+    pub lines: bool,
+
+    /// List every rmw name a provider on the search path announces, instead of
+    /// dispatching one. This is what feeds `NROS_RMW_KNOWN`.
+    #[arg(long)]
+    pub known: bool,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -442,7 +494,153 @@ pub fn run(args: Args) -> Result<()> {
         Sub::EntityInventory(a) => crate::cmd::entity_inventory::run(a),
         Sub::Providers(a) => run_providers(a),
         Sub::Order(a) => run_order(a),
+        Sub::RmwDispatch(a) => run_rmw_dispatch(a),
     }
+}
+
+// =============================================================================
+// `nros ws rmw-dispatch` — phase-439 W4 (RFC-0094 D5)
+// =============================================================================
+
+/// Build the provider search path and scan (or read the index) the way
+/// `run_providers` does.
+///
+/// Shared rather than copied: the roots are part of an index's IDENTITY —
+/// `is_valid_for` REJECTS an index written against a different root list — so
+/// two spellings of "which roots" would make every cached read fail, which is
+/// exactly the failure `provider_search_path` was factored out to prevent one
+/// level up.
+fn scan_providers_for(
+    workspace: Option<PathBuf>,
+    nano_ros_root: Option<PathBuf>,
+    index: Option<&Path>,
+    write_index: Option<&Path>,
+) -> Result<provider_scan::ScanResult> {
+    let workspace = match workspace {
+        Some(w) => w,
+        None => std::env::current_dir().wrap_err("resolving cwd as the workspace root")?,
+    };
+    let workspace = workspace
+        .canonicalize()
+        .unwrap_or_else(|_| workspace.clone());
+    let search_path = match nano_ros_root {
+        Some(r) => {
+            let r = r.canonicalize().unwrap_or(r);
+            provider_search_path_with(Some(&r), &workspace)?
+        }
+        None => provider_search_path(&workspace)?,
+    };
+    warn_missing_roots(&search_path);
+    let roots = search_path.paths();
+
+    let result = match index {
+        Some(path) => {
+            let idx = provider_scan::ProviderIndex::read(path)?;
+            if !idx.is_valid_for(&roots) {
+                bail!(
+                    "provider index {} was built for roots {:?}, not {:?} — \
+                     an index for other roots is wrong, not merely stale",
+                    path.display(),
+                    idx.roots,
+                    roots
+                );
+            }
+            provider_scan::ScanResult {
+                providers: idx.providers,
+                errors: Vec::new(),
+                inputs: idx.inputs,
+            }
+        }
+        None => provider_scan::scan_roots(&roots)?,
+    };
+    // A package.xml that could not be parsed is the reason a provider the user
+    // expected is missing; never bury it.
+    for e in &result.errors {
+        eprintln!("warning: {}: {}", e.path.display(), e.message);
+    }
+    if let Some(path) = write_index {
+        provider_scan::ProviderIndex::from_scan(&roots, &result).write(path)?;
+    }
+    Ok(result)
+}
+
+fn run_rmw_dispatch(args: RmwDispatchArgs) -> Result<()> {
+    use cargo_nano_ros::rmw_resolver::{known_rmw_in, resolve_rmw_in};
+
+    let scan = scan_providers_for(
+        args.workspace,
+        args.nano_ros_root,
+        args.index.as_deref(),
+        args.write_index.as_deref(),
+    )?;
+
+    if args.known {
+        let names = known_rmw_in(&scan);
+        if args.lines {
+            println!("NROS_RMW_KNOWN\t{}", names.join(";"));
+        } else {
+            for n in &names {
+                println!("{n}");
+            }
+        }
+        return Ok(());
+    }
+
+    let name = args.name.ok_or_else(|| {
+        eyre!("`nros ws rmw-dispatch` takes an rmw NAME, or `--known` to list them")
+    })?;
+    let r = resolve_rmw_in(&scan, &name).map_err(|e| {
+        // The known list is part of the DIAGNOSTIC, never part of the decision:
+        // it is derived from this same scan, so it cannot go stale against the
+        // answer the way the generated `FATAL_ERROR`'s hand-spelled one did.
+        eyre!(
+            "{e}\n\nnames announced on this search path: {}",
+            known_rmw_in(&scan).join(", ")
+        )
+    })?;
+    let d = &r.descriptor;
+
+    // ON/OFF rather than true/false: the value is consumed by `if()` in cmake,
+    // where both spellings work but only one reads as a cmake boolean.
+    let bool_cmake = |b: bool| if b { "ON" } else { "OFF" };
+    let rows: Vec<(&str, String)> = vec![
+        ("NROS_RMW_NAME", r.declared.clone()),
+        ("NROS_RMW_PACKAGE", r.package.clone()),
+        ("NROS_RMW_PACKAGE_DIR", r.package_dir.display().to_string()),
+        ("NROS_RMW_CMAKE_DIR", r.cmake_dir.display().to_string()),
+        ("NROS_RMW_LINK_STRATEGY", d.link_strategy.clone()),
+        ("NROS_RMW_UMBRELLA_CFFI_FEATURE", r.cffi_feature.clone()),
+        ("NROS_RMW_C_CFFI_FEATURE", d.c_cffi_feature.clone()),
+        ("NROS_RMW_RLIB_DEP", d.rlib_dep.clone()),
+        ("NROS_RMW_CARGO_FEATURE", r.cargo_feature.clone()),
+        ("NROS_RMW_C_DEFINE_TOKEN", r.c_define_token.clone()),
+        ("NROS_RMW_CPP_DEFINE", d.cpp_define.clone()),
+        ("NROS_RMW_CMAKE_TARGET", d.cmake_target.clone()),
+        (
+            "NROS_RMW_NEEDS_CXX_LINKER",
+            bool_cmake(d.needs_cxx_linker).to_string(),
+        ),
+        (
+            "NROS_RMW_CAPABILITIES",
+            d.capabilities
+                .iter()
+                .map(|(k, _)| k.as_str())
+                .collect::<Vec<_>>()
+                .join(";"),
+        ),
+        ("NROS_RMW_PER_MESSAGE_HOOK", d.per_message_hook.clone()),
+    ];
+
+    if args.lines {
+        for (k, v) in &rows {
+            println!("{k}\t{v}");
+        }
+    } else {
+        for (k, v) in &rows {
+            println!("{k} = {v}");
+        }
+    }
+    Ok(())
 }
 
 // =============================================================================
