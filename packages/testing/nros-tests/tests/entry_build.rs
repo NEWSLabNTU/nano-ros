@@ -10,7 +10,7 @@
 //!
 //! ## What each half was for
 //!
-//! **NuttX** — the six `examples/qemu-arm-nuttx/rust/{role}-entry` demos are
+//! **NuttX** — the six `examples/qemu-armv7a-nuttx/rust/{role}-entry` demos are
 //! standalone `nros::main!` Entry pkgs that bake board + zenoh RMW through the
 //! `nros-board-nuttx-qemu` shim. Their standalone `[[bin]]` link used to fail on
 //! unresolved NuttX libc/syscall symbols (issue #127). The board-centric image

@@ -2997,14 +2997,14 @@ pub fn build_nuttx_riscv_workspace_rust_realtime_entry() -> TestResult<&'static 
 /// Resolve the prebuilt riscv-nuttx (rv-virt) C talker kernel ELF (cached).
 ///
 /// #199 follow-up — the first riscv-nuttx C-lane RUNTIME fixture: the
-/// standalone `examples/qemu-riscv-nuttx/c/talker` cmake example, built by
+/// standalone `examples/rv-virt-nuttx/c/talker` cmake example, built by
 /// `just nuttx build-riscv-c` with the baked `tcp/10.0.2.2:8700` locator
 /// (see its `examples/fixtures.toml` row). Consumed by `c_riscv_nuttx_e2e`.
 pub fn build_nuttx_riscv_c_talker() -> TestResult<&'static Path> {
     static NUTTX_RISCV_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
     NUTTX_RISCV_C_TALKER_BINARY
         .get_or_try_init(|| {
-            build_example_cmake_rmw("qemu-riscv-nuttx/c/talker", "c_talker", Rmw::Zenoh)
+            build_example_cmake_rmw("rv-virt-nuttx/c/talker", "c_talker", Rmw::Zenoh)
         })
         .map(|p| p.as_path())
 }
@@ -4522,7 +4522,7 @@ pub fn build_nuttx_cmake_example_rmw(
     rmw: Rmw,
 ) -> TestResult<PathBuf> {
     build_example_cmake_rmw(
-        &format!("qemu-arm-nuttx/{}/{}", lang, case),
+        &format!("qemu-armv7a-nuttx/{}/{}", lang, case),
         binary_name,
         rmw,
     )

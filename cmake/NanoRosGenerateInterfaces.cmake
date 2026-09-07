@@ -554,7 +554,7 @@ function(nros_generate_interfaces target)
           "[env]\nCC_${_ffi_cc_env_key} = \"${_ffi_cross_gcc}\"\n"
         )
         # Pin to the EXACT nightly the rest of the build uses — the dated
-        # nightly is what's installed (matches examples/qemu-arm-nuttx/rust-
+        # nightly is what's installed (matches examples/qemu-armv7a-nuttx/rust-
         # toolchain.toml + cmake/toolchain/armv7a-nuttx-eabi.cmake's
         # Rust_TOOLCHAIN). Generic `+nightly` resolves to an UNinstalled
         # `nightly-x86_64-unknown-linux-gnu` → rustlib src/Cargo.lock missing.

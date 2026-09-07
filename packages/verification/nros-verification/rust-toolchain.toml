@@ -4,7 +4,7 @@
 # even though Verus's binary distribution reports `Toolchain: 1.95.0`.
 #
 # Reusing the same nightly the NuttX/Zephyr examples pin
-# (`examples/{qemu-arm-nuttx,zephyr}/rust-toolchain.toml`) — bump those
+# (`examples/{qemu-armv7a-nuttx,zephyr}/rust-toolchain.toml`) — bump those
 # together when updating.
 # This pin should track the `Toolchain:` line in `verus --version` (the binary
 # is at `$(nros sdk-path verus)/bin/verus` since phase-422 W2).

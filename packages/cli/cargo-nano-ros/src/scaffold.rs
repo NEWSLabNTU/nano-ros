@@ -132,7 +132,7 @@ fn platform_spec(platform: &str) -> Result<PlatformSpec> {
             deploy_token: "nuttx",
             kind: PlatformKind::Deferred {
                 reason: "the tracked shape is a split node-lib + `*-entry` bin pair; \
-                         see examples/qemu-arm-nuttx/rust/ (issue 0333 follow-up)",
+                         see examples/qemu-armv7a-nuttx/rust/ (issue 0333 follow-up)",
             },
         },
         "threadx" => PlatformSpec {

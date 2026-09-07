@@ -73,7 +73,7 @@ const RTOS_TARGET_OS: &[&str] = &["nuttx", "espidf", "horizon", "vita", "psp"];
 /// issue 1028 — `armv7a-nuttx-eabihf` reports `target_os = "nuttx"` and
 /// `target_family = "unix"`, so `target_os != "none"` classified an RTOS as
 /// hosted and handed it the 32-slot queryable budget written for Linux.
-/// MEASURED on `examples/qemu-arm-nuttx/cpp/action-client`, an image that opens
+/// MEASURED on `examples/qemu-armv7a-nuttx/cpp/action-client`, an image that opens
 /// ZERO queryables: `SERVICE_BUFFERS` was 142,336 B of `.bss` (32 x 4,448)
 /// against 35,584 B at the embedded budget. Harmless at qemu-virt's 126 MB;
 /// not harmless on a real part.

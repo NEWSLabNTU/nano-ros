@@ -7,7 +7,7 @@ reports `target_os = "nuttx"` and `target_family = "unix"`, so the obvious test
 `target_os != "none"` reads an RTOS on a fixed-RAM part as a Linux-class host.
 
 Measured cost the one time it was looked at:
-`examples/qemu-arm-nuttx/cpp/action-client`, an image that opens ZERO
+`examples/qemu-armv7a-nuttx/cpp/action-client`, an image that opens ZERO
 queryables, carried a 32-slot `SERVICE_BUFFERS` table — 142,336 B of `.bss`
 where the embedded budget gives 35,584 B. 106,752 B, byte-identical in the C
 image, decided by a predicate that could not tell which kind of machine it was

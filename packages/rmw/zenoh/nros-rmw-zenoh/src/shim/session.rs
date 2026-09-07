@@ -59,7 +59,7 @@ pub fn normalize_locator(locator: Option<&str>) -> Option<&str> {
 /// hosted. 1028 measured that same predicate one crate over handing NuttX the
 /// 32-slot Linux queryable budget (106,752 B of `.bss`); here it hands a NuttX
 /// image the host loopback the paragraph above says an embedded image must
-/// never dial. Latent in-tree only because every `examples/qemu-arm-nuttx`
+/// never dial. Latent in-tree only because every `examples/qemu-armv7a-nuttx`
 /// entry supplies an explicit locator, so this arm is not reached today.
 ///
 /// The RTOS `target_os` values are the ones `nros-zpico-build`'s

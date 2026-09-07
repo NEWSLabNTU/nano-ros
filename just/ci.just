@@ -166,7 +166,7 @@ l3:
     checked=0
     for elf in \
         "examples/qemu-arm-freertos/rust/talker/target-link-check/thumbv7m-none-eabi/$(nros_cargo_platform_profile freertos)/talker" \
-        "examples/qemu-arm-nuttx/rust/talker/target-link-check/armv7a-nuttx-eabihf/$(nros_cargo_platform_profile nuttx)/talker" \
+        "examples/qemu-armv7a-nuttx/rust/talker/target-link-check/armv7a-nuttx-eabihf/$(nros_cargo_platform_profile nuttx)/talker" \
         "examples/threadx-linux/rust/talker/target-zenoh/$(nros_cargo_platform_profile threadx-linux)/talker"
     do
         if [ ! -f "$elf" ]; then

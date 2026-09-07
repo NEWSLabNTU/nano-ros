@@ -52,9 +52,9 @@ set(CMAKE_ASM_FLAGS_INIT "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4")
 set(Rust_CARGO_TARGET "armv7a-nuttx-eabihf" CACHE STRING "Rust target triple" FORCE)
 # Pin the EXACT nightly, not generic "nightly": NuttX uses -Z build-std against a
 # patched libc whose version must match this nightly's std libc dep (see
-# examples/qemu-arm-nuttx/rust-toolchain.toml — the SSOT). A generic "nightly"
+# examples/qemu-armv7a-nuttx/rust-toolchain.toml — the SSOT). A generic "nightly"
 # (a) isn't what's installed (the pin is dated) and (b) would break the libc
-# match. Keep in lockstep with examples/qemu-arm-nuttx/rust-toolchain.toml.
+# match. Keep in lockstep with examples/qemu-armv7a-nuttx/rust-toolchain.toml.
 set(Rust_TOOLCHAIN "nightly-2026-04-11" CACHE STRING "Rust toolchain" FORCE)
 
 # Don't search host paths for libraries / headers when cross-compiling.

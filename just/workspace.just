@@ -605,7 +605,7 @@ _pinned-toolchain-files:
 # repo:
 #   - rust-toolchain.toml                                   stable + workspace components
 #   - tools/rust-toolchain.toml                             pinned nightly for workspace tooling
-#   - examples/qemu-arm-nuttx/rust-toolchain.toml           nightly for -Z build-std + patched libc
+#   - examples/qemu-armv7a-nuttx/rust-toolchain.toml           nightly for -Z build-std + patched libc
 #   - examples/zephyr/rust-toolchain.toml                   nightly for Corrosion + Zephyr Rust
 #   - packages/verification/nros-verification/…             Verus-required channel
 #

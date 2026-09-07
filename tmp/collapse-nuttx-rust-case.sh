@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Phase 118.B.5 — collapse one qemu-arm-nuttx/rust/<rmw>/<case>
-# sibling into qemu-arm-nuttx/rust/<case>.
+# Phase 118.B.5 — collapse one qemu-armv7a-nuttx/rust/<rmw>/<case>
+# sibling into qemu-armv7a-nuttx/rust/<case>.
 #
 # Usage: tmp/collapse-nuttx-rust-case.sh <case>
 set -euo pipefail
 
 case_name="${1:?usage: $0 <case>}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
-src_zenoh="${root}/examples/qemu-arm-nuttx/rust/zenoh/${case_name}"
-src_dds="${root}/examples/qemu-arm-nuttx/rust/dds/${case_name}"
-dst="${root}/examples/qemu-arm-nuttx/rust/${case_name}"
+src_zenoh="${root}/examples/qemu-armv7a-nuttx/rust/zenoh/${case_name}"
+src_dds="${root}/examples/qemu-armv7a-nuttx/rust/dds/${case_name}"
+dst="${root}/examples/qemu-armv7a-nuttx/rust/${case_name}"
 
 if [ ! -d "$src_zenoh" ]; then
     echo "missing zenoh source: $src_zenoh" >&2

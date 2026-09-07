@@ -7,7 +7,7 @@
 #
 # Examples:
 #   tmp/collapse-rtos-cmake-case.sh qemu-arm-freertos c talker
-#   tmp/collapse-rtos-cmake-case.sh qemu-arm-nuttx cpp listener
+#   tmp/collapse-rtos-cmake-case.sh qemu-armv7a-nuttx cpp listener
 set -euo pipefail
 
 plat="${1:?usage: $0 <plat> <lang> <case>}"

@@ -22,8 +22,8 @@ phase-437 (RFC-0093) is retiring the duplicates by CHOOSING one name per board
 rather than mirroring two. A collapsed pair has no counterpart left, so its
 `# =` marker must be deleted in the same commit — a marker naming a section
 that no longer exists is the first thing this gate reports. The NuttX pair went
-first: `qemu-arm-nuttx`/`nuttx-qemu-arm` are now the single
-`[board.qemu-armv7a-nuttx]` and `qemu-riscv-nuttx`/`nuttx-qemu-riscv` the
+first: `qemu-armv7a-nuttx`/`nuttx-qemu-arm` are now the single
+`[board.qemu-armv7a-nuttx]` and `rv-virt-nuttx`/`nuttx-qemu-riscv` the
 single `[board.rv-virt-nuttx]`.
 
 Five namespaces exist for closely related concepts, overlapping partially:

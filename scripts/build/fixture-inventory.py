@@ -378,7 +378,7 @@ def prerequisite_rows():
             "kind": "preflight",
             "lang": "rust",
             "role": "rustup-build-std-warmup",
-            "dir": "examples/qemu-arm-nuttx/rust-toolchain.toml",
+            "dir": "examples/qemu-armv7a-nuttx/rust-toolchain.toml",
             "build_root": "$RUSTUP_HOME/toolchains",
             "scheduler": "just nuttx build-fixtures",
             "shared_mutation": "$RUSTUP_HOME/downloads; $RUSTUP_HOME/toolchains",

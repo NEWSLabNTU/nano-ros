@@ -326,7 +326,7 @@ build-example-extras:
     list="$(mktemp)"
     rg --files examples -g Cargo.toml \
         | sed 's#/Cargo.toml$##' \
-        | grep -Ev '^examples/(zephyr|qemu-arm-freertos|qemu-arm-nuttx|threadx-linux|qemu-riscv64-threadx|qemu-arm-baremetal)/' \
+        | grep -Ev '^examples/(zephyr|qemu-arm-freertos|qemu-armv7a-nuttx|threadx-linux|qemu-riscv64-threadx|qemu-arm-baremetal)/' \
         | grep -Ev '^examples/native/rust/(talker|listener|lifecycle-node|custom-msg|service-server|service-client|action-server|action-client|talker-rtic|listener-rtic|service-server-rtic|service-client-rtic|action-server-rtic|action-client-rtic|serial-talker|serial-listener)$' \
         | sort > "$list"
 
@@ -2515,7 +2515,7 @@ rust-rtos-link-check: _codegen
         ( cd examples/qemu-arm-freertos/rust/talker && cargo build "${freertos_profile[@]}" --target-dir target-link-check ) >/dev/null
         echo "  nuttx talker ($(nros_cargo_platform_profile nuttx)):"
         mapfile -t nuttx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile nuttx)")
-        ( cd examples/qemu-arm-nuttx/rust/talker && cargo build "${nuttx_profile[@]}" --target-dir target-link-check ) >/dev/null
+        ( cd examples/qemu-armv7a-nuttx/rust/talker && cargo build "${nuttx_profile[@]}" --target-dir target-link-check ) >/dev/null
     else
         echo "  [SKIPPED] freertos + nuttx: arm-none-eabi-gcc not installed"
     fi

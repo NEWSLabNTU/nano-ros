@@ -163,7 +163,7 @@ examples/**/target-*/
 
 # cmake build dirs in the standalone examples. `examples/**/target-*/` above
 # covered the cargo side and many leaves carry their own `/build/` line, but
-# the west/cmake entry leaves (qemu-arm-freertos, qemu-arm-nuttx,
+# the west/cmake entry leaves (qemu-arm-freertos, qemu-armv7a-nuttx,
 # threadx-linux) had neither, so 18 build trees showed up untracked after a
 # fixture sweep. No `examples/**/build/` path is tracked, here or anywhere.
 examples/**/build/

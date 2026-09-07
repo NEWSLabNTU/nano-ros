@@ -2135,7 +2135,7 @@ env = { CC_armv7a_nuttx_eabi = "arm-none-eabi-gcc" }
 platform = "nuttx"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/rust/talker"
+dir = "examples/qemu-armv7a-nuttx/rust/talker"
 skip_probe = true
 env = { NROS_LOCATOR = "tcp/10.0.2.2:8200", NROS_DOMAIN_ID = "0" }
 
@@ -2143,7 +2143,7 @@ env = { NROS_LOCATOR = "tcp/10.0.2.2:8200", NROS_DOMAIN_ID = "0" }
 platform = "nuttx"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/rust/listener"
+dir = "examples/qemu-armv7a-nuttx/rust/listener"
 skip_probe = true
 env = { NROS_LOCATOR = "tcp/10.0.2.2:8200", NROS_DOMAIN_ID = "0" }
 
@@ -2151,7 +2151,7 @@ env = { NROS_LOCATOR = "tcp/10.0.2.2:8200", NROS_DOMAIN_ID = "0" }
 platform = "nuttx"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/rust/service-server"
+dir = "examples/qemu-armv7a-nuttx/rust/service-server"
 skip_probe = true
 env = { NROS_LOCATOR = "tcp/10.0.2.2:8210", NROS_DOMAIN_ID = "0" }
 
@@ -2159,7 +2159,7 @@ env = { NROS_LOCATOR = "tcp/10.0.2.2:8210", NROS_DOMAIN_ID = "0" }
 platform = "nuttx"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/rust/service-client"
+dir = "examples/qemu-armv7a-nuttx/rust/service-client"
 skip_probe = true
 env = { NROS_LOCATOR = "tcp/10.0.2.2:8210", NROS_DOMAIN_ID = "0" }
 
@@ -2167,7 +2167,7 @@ env = { NROS_LOCATOR = "tcp/10.0.2.2:8210", NROS_DOMAIN_ID = "0" }
 platform = "nuttx"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/rust/action-server"
+dir = "examples/qemu-armv7a-nuttx/rust/action-server"
 skip_probe = true
 env = { NROS_LOCATOR = "tcp/10.0.2.2:8220", NROS_DOMAIN_ID = "0" }
 
@@ -2175,7 +2175,7 @@ env = { NROS_LOCATOR = "tcp/10.0.2.2:8220", NROS_DOMAIN_ID = "0" }
 platform = "nuttx"
 lang = "rust"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/rust/action-client"
+dir = "examples/qemu-armv7a-nuttx/rust/action-client"
 skip_probe = true
 env = { NROS_LOCATOR = "tcp/10.0.2.2:8220", NROS_DOMAIN_ID = "0" }
 
@@ -2857,88 +2857,88 @@ cmake_defs = { NROS_ENTRY_IP_LAST = "11", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:80
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/c/talker"
+dir = "examples/qemu-armv7a-nuttx/c/talker"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8300" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/c/listener"
+dir = "examples/qemu-armv7a-nuttx/c/listener"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8300" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/c/service-server"
+dir = "examples/qemu-armv7a-nuttx/c/service-server"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8310" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/c/service-client"
+dir = "examples/qemu-armv7a-nuttx/c/service-client"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8310" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/c/action-server"
+dir = "examples/qemu-armv7a-nuttx/c/action-server"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8320" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/c/action-client"
+dir = "examples/qemu-armv7a-nuttx/c/action-client"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8320" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/cpp/talker"
+dir = "examples/qemu-armv7a-nuttx/cpp/talker"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8400" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/cpp/listener"
+dir = "examples/qemu-armv7a-nuttx/cpp/listener"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8400" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/cpp/service-server"
+dir = "examples/qemu-armv7a-nuttx/cpp/service-server"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8410" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/cpp/service-client"
+dir = "examples/qemu-armv7a-nuttx/cpp/service-client"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8410" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/cpp/action-server"
+dir = "examples/qemu-armv7a-nuttx/cpp/action-server"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8420" }
 
 [[fixture]]
 platform = "nuttx"
 lang = "cpp"
 rmw = "zenoh"
-dir = "examples/qemu-arm-nuttx/cpp/action-client"
+dir = "examples/qemu-armv7a-nuttx/cpp/action-client"
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8420" }
 
 # ===========================================================================
-# qemu-riscv-nuttx — C (cmake), Phase 194.3c. 2nd-arch NuttX board (rv-virt).
+# rv-virt-nuttx — C (cmake), Phase 194.3c. 2nd-arch NuttX board (rv-virt).
 # Distinct `platform = "nuttx-riscv"` so `just nuttx build-riscv-c` builds these
 # with the riscv toolchain + riscv FFI crate (the `nuttx` rows use arm). The
 # shared NuttX tree holds one board config at a time, so the riscv build is a
@@ -2949,7 +2949,7 @@ cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8420" }
 platform = "nuttx-riscv"
 lang = "c"
 rmw = "zenoh"
-dir = "examples/qemu-riscv-nuttx/c/talker"
+dir = "examples/rv-virt-nuttx/c/talker"
 # #199 follow-up — dedicated e2e port (the rust riscv realtime entry uses
 # 8691): the guest dials the host router through the QEMU slirp gateway.
 cmake_defs = { NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:8700" }

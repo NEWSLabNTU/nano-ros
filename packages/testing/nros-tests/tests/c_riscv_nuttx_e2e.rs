@@ -4,7 +4,7 @@
 //! the riscv-nuttx C lane, so it stays until that platform joins the matrix.
 //!
 //! #199 follow-up — the FIRST riscv-nuttx (rv-virt) **C-lane RUNTIME** e2e:
-//! the standalone `examples/qemu-riscv-nuttx/c/talker` kernel image (the very
+//! the standalone `examples/rv-virt-nuttx/c/talker` kernel image (the very
 //! binary whose link #199 fixed) boots under the phase-285 W2 harness and its
 //! `/chatter` `std_msgs/String` publishes are observed CROSS-PROCESS by a
 //! native listener through a host zenoh router. Before this test the riscv C
@@ -31,7 +31,7 @@ use nros_tests::{
 use std::{process::Command, time::Duration};
 
 /// The router port baked into the riscv C talker's locator — the allocator's
-/// (nuttx-riscv, c, pubsub) number, matching the `qemu-riscv-nuttx/c/talker`
+/// (nuttx-riscv, c, pubsub) number, matching the `rv-virt-nuttx/c/talker`
 /// fixture row's `NROS_ENTRY_LOCATOR` bake.
 const C_RISCV_NUTTX_TALKER_PORT: u16 = port_of(PlatformId::NuttxRiscv, Lang::C, Workload::Pubsub);
 
