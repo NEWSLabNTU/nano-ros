@@ -273,8 +273,8 @@ mod tests {
         use nros_entry_lower::BoardFamily;
         assert!(BoardFamily::Native.has_c_run_components());
         assert!(BoardFamily::Freertos.has_c_run_components());
-        assert!(!BoardFamily::Zephyr.has_c_run_components());
-        assert!(!BoardFamily::Nuttx.has_c_run_components());
+        assert!(BoardFamily::Zephyr.has_c_run_components());
+        assert!(BoardFamily::Nuttx.has_c_run_components());
         assert!(!BoardFamily::Threadx.has_c_run_components());
     }
 
