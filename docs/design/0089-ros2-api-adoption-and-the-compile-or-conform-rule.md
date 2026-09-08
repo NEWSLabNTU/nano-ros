@@ -457,6 +457,105 @@ direction for the campaign — the goal is ROS 2 code running on nano-ros, not
 the reverse — but users will assume symmetry, so the book must say it plainly
 rather than letting a build failure say it later.
 
+## Settled: `rclcpp::` is the HOME, not an alias onto `nros::` (2026-09-09)
+
+The section above settles WHICH SPELLING a user writes. It leaves open the
+question the node-type merge ran into, which is a different one: **where is the
+type DEFINED?** A `class nros::Node` with `namespace rclcpp { using Node =
+::nros::Node; }` satisfies "the user writes `rclcpp::`" and still makes `nros::`
+the home. The two are not the same decision, and the merge could not proceed
+without the second.
+
+**Settled: `rclcpp::` is the home.** The class is `class rclcpp::Node`; `nros::`
+holds the transitional alias, deprecated and then deleted. That is the direction
+"The node API, revised" already stated ("`rclcpp::Node` is the class and
+`nros::Node` is the alias, the reverse of the shim we are retiring"), now settled
+as a decision rather than left as a draft's aside, and extended to every type the
+sweep reaches.
+
+### What blocked it was the MEASURING TOOL, and the tool is what changed
+
+The node-type merge found that defining the merged class in `rclcpp::` turned
+`just check api-parity` red, and kept the class in `nros::` with an alias
+because of it. The red was real and the diagnosis was right: the C++ lane rooted
+OUR native surface at namespace `nros` alone, so a class defined in `rclcpp::`
+was extracted only by the compat translation unit, landed `surface: ported`, and
+its `native_bucket` — the bucket `--check` actually gates — read **`theirs-only`**.
+About sixty members of one merged class re-bucketed as names only ROS 2 has.
+
+The instrument was measuring the half of our vocabulary we are deprecating. Under
+this decision that rooting is not conservative, it is backwards: it reports the
+home namespace as foreign. So the tool was fixed, not the header.
+
+`scripts/api-parity.py` now roots every C++ translation unit at `OUR_CPP_ROOTS =
+{nros, rclcpp, rclcpp_action, rclcpp_lifecycle}` — the vocabulary we ship, both
+halves of it. Three properties, each pinned by `--self-test`
+(`just check api-parity-ledger`):
+
+* a name **we** declare in `rclcpp::` correlates as OURS, on the native surface;
+* a name **upstream** declares that our headers do not still correlates
+  `theirs-only`. Widening our roots cannot move it, because `theirs` comes from
+  the recorded upstream surface and never from a namespace filter. Measured on
+  the real lane: `WallTimer`, `Waitable`, `Waitable::is_ready` and
+  `uninstall_signal_handlers` read `theirs-only` before and after;
+* the widening is a NAMED LIST, not a prefix match — `rclcpp::detail` stays out,
+  because it is upstream's internals and admitting it would import a private
+  surface as ours.
+
+Mutation-tested in both directions: narrowing the roots back to `{nros}` fails
+the first check, and adding `rclcpp::detail` fails the third. And end-to-end
+through clang: declaring `rclcpp::uninstall_signal_handlers` — a name that is
+upstream-only today — in one of our headers moved it `theirs-only` → `same` on
+the gated surface (`theirs-only` 651 → 650). Under the OLD rooting the same
+declaration moved the ported summary and left the gated native summary at
+`theirs-only` 695, unchanged. That is the defect, reproduced on demand.
+
+Two consequences of the fix, both stated rather than absorbed:
+
+* **The C++ lane now reports ONE surface.** The `compat` translation unit had
+  been reduced by the shim's deletion to "the same header, read for the other
+  namespace", and once that namespace is ours it emits only records the `std` TU
+  already emits — measured, 0 of 162 records marked `ported`. A TU that can never
+  contribute is the gate shape that reads live and answers nothing, so it was
+  deleted. The `surface` / `native_bucket` / `--check-ported` machinery stays; it
+  is one tuple row to re-admit a genuinely separate ported header. Issue 1020's
+  question is not retired, its ANSWER is: with one set of headers and one home
+  vocabulary there is one surface.
+* **The gate got strictly stronger and cost nothing.** It used to enforce on the
+  native surface and merely REPORT the ported one; now the union is enforced.
+  Measured, `--check --require-disposition` stayed green with **zero** new ledger
+  rows — the ledger had already been written against the union. Bucket counts,
+  before → after (C++): `same` 88 → 135, `arity-only` 12 → 11, `systematic`
+  12 → 9, `differs` 20 → 21, `ours-only` 354 → 360, `theirs-only` 695 → 651.
+  Forty-four names we ship stopped being reported as names only ROS 2 has.
+
+### The flip is UNBLOCKED; what remains is a sweep
+
+Nothing in the tooling now argues for defining a type in `nros::`. What remains
+is mechanical and belongs to the phase-428 sweep: **nine types are defined in
+`nros::` and aliased into upstream's namespace**, and each moves its definition
+across, leaving the alias pointing the other way.
+
+| aliased as | defined as | header |
+| --- | --- | --- |
+| `rclcpp::Clock` | `nros::Clock` | `clock.hpp:135` |
+| `rclcpp::Duration` | `nros::Duration` | `duration.hpp:164` |
+| `rclcpp::Time` | `nros::Time` | `time.hpp:158` |
+| `rclcpp::Publisher<M>` | `nros::Publisher<M>` | `publisher.hpp:386` |
+| `rclcpp::Subscription<M>` | `nros::Subscription<M>` | `subscription.hpp:880` |
+| `rclcpp::Client<S>` | `nros::Client<S>` | `client.hpp:432` |
+| `rclcpp::Service<S>` | `nros::Service<S>` | `service.hpp:334` |
+| `rclcpp_action::Client<A>` | `nros::ActionClient<A>` | `action_client.hpp:542` |
+| `rclcpp_action::Server<A>` | `nros::ActionServer<A>` | `action_server.hpp:651` |
+
+`Node` is the tenth and is the node-type merge's own file, in flight; it is the
+one that surfaced the problem and is not swept here.
+
+The move is a one-way rename per type and each is independently landable, so the
+sweep does not need a flag day. What it does need is the ORDER this RFC already
+states: the compatibility is the work, the rename is cheap, and a type is only
+worth moving once its contract is the one the name promises.
+
 ## Settled: C takes rcl's spellings (2026-09-04)
 
 The question the disposition pass could not answer, because it is a decision and
