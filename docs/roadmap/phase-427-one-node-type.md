@@ -41,12 +41,23 @@ optional to migrate rather than a flag day.
   TO COMPILE freestanding, with a diagnostic naming the out-ref overload.
 
 * **W4 [cpp] — `ComponentNode` deleted.** Its 5 directories move to the one
-  type; RFC-0047's several-named-nodes survives as a documented ours-only
-  capability on it. RFC-0044 is amended, not deleted — its Q2 boot-failure
-  reasoning becomes `ok()`'s.
-  *Acceptance:* zero `ComponentNode` in the tree; the RFC-0047 subnode packages
-  build and run; **one of them builds for a freestanding target**, which is the
-  test of whether the merged type still fits.
+  type. RFC-0044 is amended, not deleted — its Q2 boot-failure reasoning becomes
+  `ok()`'s.
+  *Acceptance (amended 2026-09-09):* zero `ComponentNode` in the tree; the
+  RFC-0047 subnode packages build and run — **as callback-group packages, which
+  is what they are**; **one of them builds for a freestanding target**, which is
+  the test of whether the merged type still fits.
+
+  The first version of this item also required that "RFC-0047's
+  several-named-nodes survives as a documented ours-only capability on it".
+  **That clause is struck: the capability does not exist and the citation was
+  wrong.** RFC-0047 is callback groups; `ComponentNode` owns exactly one
+  `Node node_` (`component_node.hpp:734`); both subnode packages open with "ONE
+  ComponentNode with TWO callback groups". Several named nodes per IMAGE is real
+  and belongs to the executor under **RFC-0046** (`Executor::create_node` /
+  `node_builder`), one node per component. Preserving a capability that is not
+  there would have added a constructor and a ledger row for nothing — RFC-0089
+  "The several-named-nodes capability, corrected" carries the measurement.
 
 * **W5 [cpp] — `get_logger()` follows ROS 2.** The `"nros.compat"` sentinel is
   replaced by a logger named for the node (RFC-0089 decision 1).
@@ -119,8 +130,10 @@ watched by the collision gate.
   (ours-only, no-alloc); `Executor::create_node(name)`; `ExecutorConfig::
   node_name` deprecated for one release. This is the Rust half of "one node
   type": today the executor IS the node it was configured with, which is why a
-  ported `executor.create_node("talker")` has nowhere to go. RFC-0047's
-  several-named-nodes is the existing capability this lands on.
+  ported `executor.create_node("talker")` has nowhere to go. **RFC-0046's**
+  several-named-nodes-per-image (the `node_builder(name)` funnel) is the existing
+  capability this lands on — not RFC-0047, which is callback groups; see RFC-0089
+  "The several-named-nodes capability, corrected".
   *Acceptance:* the rclrs talker tutorial ports with exactly two edits (`?` on
   `create_executor` and `spin`); `rust:Context::create_executor` and
   `rust:Executor::create_node` carry `adopt-bounded`/`adopt`.
