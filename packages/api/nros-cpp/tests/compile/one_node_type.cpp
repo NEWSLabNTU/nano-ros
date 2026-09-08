@@ -8,6 +8,15 @@
 // (`ported_create_publisher_freestanding_probe.cpp`) proves that a ported
 // `create_publisher<M>("chatter", 10)` FAILS THERE rather than differing.
 //
+// The lane compiles this one with `-DNROS_CPP_STD=1`, and it has to since
+// phase-438 W2: the hosted shape is a REQUEST now, not a property of the
+// toolchain. Everything below `NROS_CPP_NODE_HOSTED` — the `shared_ptr` and
+// `std::string` families AND the whole parameter facade, `const char*`-keyed
+// forms included — is absent without it. A `rclcpp::Node` still EXISTS with no
+// flag, which is phase-427's point and what
+// `rclcpp_node_freestanding_surface.cpp` instantiates; it is a smaller surface,
+// which is phase-438's.
+//
 // WHAT THIS PROVES
 //   1. `rclcpp::Node` and `nros::Node` are the SAME TYPE, not two types with a
 //      converting constructor between them. This is the whole item: before the
