@@ -105,11 +105,31 @@ The C++ API must work without the C++ standard library. This means:
 This is the C++ equivalent of Rust's `no_std`. The same binary runs on
 bare-metal Cortex-M, Zephyr, FreeRTOS, NuttX, ThreadX, and Linux.
 
-### Optional `std` mode
+### Opt-in `std` surface
 
-When `NROS_CPP_STD` is defined (or detected via `__STDC_HOSTED__`), the
-API can optionally expose convenience overloads that accept `std::string`,
-`std::function`, etc. These are `#ifdef`-guarded and never required.
+When `NROS_CPP_STD` is defined, the API exposes convenience overloads that
+accept `std::string`, `std::function`, etc., plus the `rclcpp::Node` shape whose
+factories return `std::shared_ptr`. These are `#ifdef`-guarded and never
+required.
+
+**It is REQUESTED by the build, never detected.** This paragraph read "or
+detected via `__STDC_HOSTED__`" until phase-438, and the headers did carry such
+a probe — latterly `__has_include`, which had re-broadened the gate issue 0112
+narrowed. Both were deleted, for a measured reason: no compile-time probe
+answers correctly on both embedded lanes. `__STDC_HOSTED__` is 1 for a hosted
+compiler run `-nostdinc++` against Zephyr's minimal libcpp (0112's own finding),
+and `__has_include(<string>)` is TRUE on arm-none-eabi 13.2 under
+`-ffreestanding`, where libstdc++ 13's `bits/requires_hosted.h` makes the
+include a hard `#error` — which broke every embedded C++ FreeRTOS build
+(issue 1187). Only the request is right on both, because it is not a probe.
+
+The consequence for the design is that the split is **ported rclcpp code versus
+code written for nano-ros**, not hosted versus embedded: the std surface exists
+to let an upstream ROS 2 source file compile unmodified (RFC-0089's
+compile-or-conform rule), so a native host build of a nano-ros-native node stays
+on the freestanding surface. Detection sits in one place,
+`packages/api/nros-cpp/include/nros/std_detect.hpp`, which carries the
+measurement.
 
 ## Error Handling
 

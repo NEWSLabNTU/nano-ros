@@ -1,6 +1,6 @@
 # phase-438 — the C++ std surface is an opt-in PORTING surface, not a discovered capability
 
-**Status (2026-09-09). W0, W1, W2, W3, W4 LANDED — issue 1187 is closed; W5 open.** The C++ half of phase-359's
+**Status (2026-09-09). W0-W5 LANDED — issue 1187 is closed; the phase is complete.** The C++ half of phase-359's
 argument. Implements RFC-0089's compile-or-conform rule by making the surface that
 rule needs an explicit request rather than a property of the toolchain. W4 was
 written as a re-cut of phase-427 W1; the node merge landed that implementation
@@ -432,13 +432,46 @@ program — native included — is on the freestanding side already.
   `nros::spin()` / `nros::spin_once()`, which are unconditional.
 
 
-* **W5 — say which surface a consumer is on.** The book and
-  `docs/reference/c-api-cmake.md` document `NROS_CPP_STD` as the porting surface,
-  and the CMake verb that turns it on. A consumer porting an rclcpp file asks for
-  it; a consumer writing for nano-ros never does. The eleven header comments
-  miscitng 0112 are corrected here, with the three-lane probe table as the reason.
-  *Acceptance:* a reader can answer "do I need this flag" from the book without
-  reading a header.
+* **W5 — say which surface a consumer is on. LANDED.** `NROS_CPP_STD` is
+  documented as the PORTING surface, in four voices: the book's C++ API
+  reference gains a `Two surfaces` section with a "do I need this flag?" table;
+  `book/src/getting-started/porting-a-cpp-node.md` gains the one compile
+  definition and the fact that `NrosRclcppCompat.cmake` already sets it;
+  `docs/reference/c-api-cmake.md` carries the same at reference depth beside the
+  other CMake knobs; and `docs/guides/cpp-api.md`'s "Optional std Mode" is
+  re-cut, since "for any toolchain with a C++ standard library" was exactly the
+  host-versus-embedded framing this phase disproves. Each states the split as
+  ported-rclcpp-code versus code-written-for-nano-ros — measured, not asserted:
+  1 in-tree user of the hosted `shared_ptr`-returning `create_*` against 27 call
+  sites of the freestanding out-ref form in `examples/` alone — and each carries
+  the three-lane probe table as the reason nothing detects it.
+
+  Two things the item did not anticipate. **The changelog entry is `breaking`,
+  not `docs`** (`changelog.d/1187.breaking.md`): an out-of-tree consumer that
+  relied on the discovered macros now gets the freestanding API where it used to
+  get the std one, and there is no deprecation path, because nothing can warn on
+  a macro that stops being defined. And **RFC-0018 itself asserted the removed
+  behaviour** — "When `NROS_CPP_STD` is defined (or detected via
+  `__STDC_HOSTED__`)" — which is the same claim one layer above the header
+  comments; corrected in place, with no status flip.
+
+  The eleven header comments miscitng 0112 were already corrected by W1, which
+  moved them to `std_detect.hpp`. The tree-wide sweep for the same claim
+  elsewhere found **one live residue**, `nros.hpp:237` — *"gated on the
+  standard-library pieces their signatures are spelled in (`__has_include`,
+  never `__STDC_HOSTED__` — issue 0112, rationale in `publisher.hpp`)"* — stale
+  twice over now, since the gate is `NROS_CPP_STD` and the rationale moved. It
+  was left to W4, which owns that file; **W4 has since landed without taking
+  it** — verified 2026-09-10, the two lines still read that way at
+  `nros.hpp:242` and `git log -- packages/api/nros-cpp/include/nros/nros.hpp`
+  shows no phase-438 commit touching the file. One stale comment is what the
+  phase leaves behind, and it is a comment, not a gate. Every other
+  `__STDC_HOSTED__` citation in
+  the tree is about a **C-library** facility (`printf`/`getenv`/`fopen`), which
+  is the different question this phase's "Not in scope" already enumerates, and
+  each reads correctly.
+  *Acceptance (met):* a reader can answer "do I need this flag" from the book
+  without reading a header — the table does it in one row per consumer shape.
 
 ## Not in scope
 

@@ -9,7 +9,7 @@ The nros C++ API (`nros-cpp`) provides a freestanding C++14 interface for embedd
 - **rclcpp naming** — `Node`, `Publisher<M>`, `Subscription<M>`, `Service<S>`, `Client<S>`, `ActionServer<A>`, `ActionClient<A>`, `Timer`, `GuardCondition`, `Executor`
 - **Result-based error handling** — `nros::Result` + `NROS_TRY` macro (no exceptions)
 - **Generated message types** — `std_msgs::msg::Int32`, `example_interfaces::srv::AddTwoInts`, etc.
-- **Optional std mode** — `NROS_CPP_STD` enables `std::string`, `std::function`, `std::chrono` conveniences
+- **Opt-in std surface** — `NROS_CPP_STD` enables `std::string`, `std::function`, `std::chrono` conveniences and `rclcpp::Node`. It is a PORTING surface, requested by the build; it is never detected from the toolchain
 
 ## Building with CMake
 
@@ -364,14 +364,34 @@ Error codes (`nros::ErrorCode`):
 - `Full` (-5) — buffer full
 - `TransportError` (-100) — middleware transport failure
 
-## Optional `std` Mode (`NROS_CPP_STD`)
+## Opt-in `std` Surface (`NROS_CPP_STD`)
 
-For any toolchain with a C++ standard library, define `NROS_CPP_STD` to enable STL convenience overloads. This is automatically available when including `<nros/nros.hpp>` with the macro defined.
+`NROS_CPP_STD` selects the std-flavoured API: the STL convenience overloads
+below, plus `rclcpp::Node` and its `std::shared_ptr`-returning factories.
 
-```cpp
-#define NROS_CPP_STD
-#include <nros/nros.hpp>
+**Ask for it when you are compiling ported rclcpp code; do not ask for it
+otherwise.** The split is *whose code it is*, not *what it runs on* — a native
+Linux build of a node written against `nros::Node` stays on the freestanding
+surface, and a ported upstream node wants this flag on a Cortex-M3 build just
+as much as on a host. Nothing detects it for you: the headers do not probe the
+include path, because no probe answers correctly on both embedded lanes (the
+measurement is in `packages/api/nros-cpp/include/nros/std_detect.hpp`, and
+before phase-438 the probe that was there broke every embedded C++ FreeRTOS
+build — issue 1187).
+
+Set it on the target, so every translation unit of an image agrees:
+
+```cmake
+target_compile_definitions(my_ported_node PRIVATE NROS_CPP_STD=1)
 ```
+
+A per-file `#define NROS_CPP_STD` ahead of `<nros/nros.hpp>` compiles, but it
+changes the layout of `rclcpp::Node`, so mixing it within one image is an ODR
+break rather than a missing function.
+
+If you are using `cmake/compat/NrosRclcppCompat.cmake` — the drop-in
+source-compat path for ported packages — the flag is already set on every
+target the shim touches and you need nothing here.
 
 ### `std::string` overloads
 

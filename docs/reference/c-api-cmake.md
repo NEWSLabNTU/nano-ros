@@ -180,6 +180,89 @@ The example's own `CMakeLists.txt` add_subdirectory's nano-ros; the
 Corrosion target tree under `build/talker/cargo/` holds the
 per-build staticlib (`libnros_c.a`, `libnros_rmw_zenoh_staticlib.a`, …).
 
+## C++ surface selection: `NROS_CPP_STD`
+
+`nros-cpp` ships two API surfaces out of one header set, and a build selects
+one with a compile definition. Nothing in CMake, and nothing in the headers,
+probes for it.
+
+- **Freestanding (default).** C++14, no standard library, no exceptions, no
+  RTTI. `nros::Node`, `create_*` writing through an out-reference and returning
+  `nros::Result`, `const char *` names, `uint64_t` millisecond durations. This
+  is the surface every nano-ros application in this repository is built
+  against, `posix` host builds included.
+- **std (`NROS_CPP_STD`).** Defining it turns on the six `NROS_CPP_HAS_*`
+  capability macros in `nros/std_detect.hpp`, and with them the `std::string` /
+  `std::function` / `std::chrono` / `std::vector` overloads in
+  `nros/std_compat.hpp`, the `RCLCPP_*_STREAM` macros, and `rclcpp::Node`,
+  whose factories return `std::shared_ptr` and whose name parameters are
+  `const std::string &`.
+
+**The split is ported-rclcpp-code versus code-written-for-nano-ros, not host
+versus embedded.** A native `posix` build wants the flag no more than a
+`freertos` build does; a vendored upstream `.cpp` wants it on both. Concretely:
+`NROS_CPP_STD` is what makes an upstream ROS 2 source file compile *unmodified*,
+so it is a **porting** surface, and it is the only reason to ask for it.
+
+### Where it is set
+
+```cmake
+target_compile_definitions(my_ported_node PRIVATE NROS_CPP_STD=1)
+```
+
+Two build paths already set it, and between them they cover every in-tree
+consumer:
+
+- **`cmake/compat/NrosRclcppCompat.cmake`** sets `NROS_CPP_STD=1` on every
+  target it applies the compat shim to. Anything reaching
+  `<rclcpp/rclcpp.hpp>` through `find_package(rclcpp)` and the Find-stub is
+  therefore already on the std surface with no line of its own — which is why
+  the ported-package `CMakeLists.txt` in
+  [book/src/getting-started/porting-a-cpp-node.md](../../book/src/getting-started/porting-a-cpp-node.md)
+  still carries zero nano-ros lines.
+- **`examples/px4/cpp/bridge/src/modules/nros_uorb_bridge/CMakeLists.txt`** sets
+  it directly, on one module of a larger PX4 image — PX4 SITL is real POSIX with
+  a full libstdc++, so that module opts in explicitly.
+
+Set it **per target**, not with a `#define` ahead of the include. The macro
+changes the layout of `rclcpp::Node` (hosted-only members plus an
+`enable_shared_from_this` base), so two translation units of one image
+disagreeing about it is an ODR/layout break rather than a missing function —
+the issue 0135 class. The px4 case above shows the disagreement is reachable in
+a real image, not a theoretical one.
+
+### Why CMake does not detect it
+
+It used to, in the headers rather than in CMake, and it was removed in
+phase-438 because no compile-time probe answers the question correctly on both
+embedded lanes. Measured on each lane's own pinned compiler:
+
+| | `__STDC_HOSTED__` | `__has_include(<string>)` | `#include <string>` |
+| --- | --- | --- | --- |
+| arm-none-eabi 13.2, `-ffreestanding` (FreeRTOS lane) | 0 | TRUE | hard `#error` |
+| Zephyr `-nostdinc++`, minimal libcpp | 1 | FALSE | absent |
+| hosted g++ 12.3 | 1 | TRUE | works |
+
+Each probe is right on exactly one embedded lane and wrong on the other, and
+the reason presence stopped being a usable proxy is upstream: libstdc++ 13
+added `bits/requires_hosted.h`, so on the FreeRTOS lane `<string>` is present
+*and* including it is a hard `#error`. Only the request is right on both,
+because it is not a probe.
+
+The cost of getting this wrong was not hypothetical. While the headers
+discovered the macros with `__has_include`, **no embedded C++ FreeRTOS image
+compiled at all** (issue 1187): per-header parsing on the pinned arm-none-eabi
+toolchain stood at 26 pass / 20 fail. After the discovery arm was deleted it is
+47 pass / 0 fail, and
+`bash scripts/build/fixtures-build.sh freertos cpp zenoh` (with
+`NROS_CMAKE_EXTRA_DEFS=-DCMAKE_TOOLCHAIN_FILE=$PWD/cmake/toolchain/arm-freertos-armcm3.cmake`)
+exits 0 with six ARM ELF binaries where none built before.
+
+Rationale and the full measurement:
+`packages/api/nros-cpp/include/nros/std_detect.hpp`,
+[RFC-0089](../design/0089-ros2-api-adoption-and-the-compile-or-conform-rule.md),
+and `docs/roadmap/phase-438-cpp-std-is-an-opt-in-porting-surface.md`.
+
 ## Board capabilities & deterministic build (RFC-0042)
 
 The C/C++ build contract is **structural**, not convention-enforced — see
