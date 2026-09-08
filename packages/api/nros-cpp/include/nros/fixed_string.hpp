@@ -18,18 +18,15 @@
 
 // phase-417 W1.c — `std::string` interop. `<string>` is absent from a minimal
 // freestanding libcpp, so gate on the declared std flavour, else ASK THE
-// COMPILER. `__STDC_HOSTED__` is the wrong question (issue 0112): the Zephyr
-// XRCE C++ leaves compile `-fno-freestanding -nostdinc++`, i.e. hosted with no
-// `<string>`. Same `__has_include` idiom as `declared_qos.hpp:80`; the longer
+// COMPILER, with BOTH probes. `__STDC_HOSTED__` alone is the wrong question
+// (issue 0112): the Zephyr XRCE C++ leaves compile `-fno-freestanding
+// -nostdinc++`, i.e. hosted with no `<string>`. `__has_include` alone is wrong
+// too (issue 1240): under `-ffreestanding` a full libstdc++ HAS `<string>` and
+// `#error`s on it. Same two-probe idiom as every other capability block; the longer
 // rationale is in `publisher.hpp`.
-#if defined(NROS_CPP_STD)
+#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<string>))
 #include <string>
 #define NROS_CPP_HAS_STD_STRING 1
-#elif defined(__has_include)
-#if __has_include(<string>)
-#include <string>
-#define NROS_CPP_HAS_STD_STRING 1
-#endif
 #endif
 
 namespace nros {

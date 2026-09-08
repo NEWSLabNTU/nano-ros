@@ -5,47 +5,47 @@
 # matches a violation is a FAILURE, so the debt cannot go stale, and a new
 # violation not listed here is a failure too, so it cannot grow.
 #
-# WHY THESE ARE HERE RATHER THAN FIXED IN THE SAME CHANGE
+# EMPTY as of issue 1240 (2026-09-09). All fourteen entries are paid.
 #
-# `check-cpp-freestanding-includes` could not see any of them until issue 1223.
-# Its walker pushed a guard frame on `#if defined(NROS_CPP_STD)` and popped only
-# on `#endif`; `#elif` and `#else` matched neither rule, so the frame from the
-# opening `#if` survived into the alternative arm — the arm whose condition is
-# false by construction. All fourteen scored as guarded.
+# WHAT PAID THEM, AND WHY IT IS NOT WHAT WAS PLANNED
 #
-# They are REAL, not a false positive of the new walker. Measured per-header on
-# the FreeRTOS lane's own pinned compiler (arm-none-eabi 13.2, `-std=c++14
-# -ffreestanding -fno-exceptions -fno-rtti`): 19 of 45 nros-cpp headers fail to
-# compile, and `log.hpp`'s `<string>` — the first line below — is the entry
-# point for 17 of the 19. That is issue 1187, and no embedded C++ FreeRTOS
-# image builds today because of it.
+# The plan recorded here was phase-438 W2: "delete the `#elif` arm, so the std
+# surface is reachable only through `NROS_CPP_STD`." That would have been the
+# wrong fix, and `nros.hpp` already says why in its `<chrono>` note — NOTHING
+# THAT SHIPS DEFINES `NROS_CPP_STD`. It appears in no cmake module, no
+# toolchain file, no build.rs and no Kconfig, only in docs and in `check.just`'s
+# own probe TUs. Deleting the arm would not have tightened the gate on
+# freestanding targets; it would have removed `std::string`-taking `get_logger`,
+# `std::shared_ptr` aliases and the `<vector>` options surface from EVERY
+# configuration, hosted ones included. `nros.hpp` made exactly that mistake for
+# `<chrono>` on 2026-09-05 and corrected it two days later.
 #
-# The fix is phase-438 W2: delete the `#elif` arm, so the std surface is
-# reachable only through `NROS_CPP_STD`. It is deliberately NOT in this change.
-# Landing the walker fix alone would put a red fast-line gate on `main`, which
-# blocks every push in the repository — the exact failure this session already
-# cleaned up once for `check-doc-commit-citations`. So the walker lands first
-# with the debt it can finally see recorded here, and W2 empties this file.
+# What paid them instead is the corrected predicate from that same note, applied
+# to all fourteen sites at once (issue 1240):
 #
-# Keyed on FILE and HEADER, not on a line number, so the entries survive edits
-# above them and so a second `<memory>` appearing in a listed file is still
-# caught.
+#   #if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ \
+#       && __has_include(<string>))
 #
-# Ordering note for W2: delete a line here in the same commit that deletes the
-# arm it names. A stale entry FAILS, which is what makes this file W2's
-# acceptance rather than its paperwork.
-
-client.hpp <memory>
-fixed_string.hpp <string>
-heap_string.hpp <string>
-log.hpp <string>
-log.hpp <sstream>
-options.hpp <string>
-options.hpp <vector>
-polling_subscription.hpp <memory>
-publisher.hpp <memory>
-service.hpp <memory>
-subscription.hpp <memory>
-subscription.hpp <functional>
-timer.hpp <memory>
-timer.hpp <functional>
+# Neither probe alone is sufficient and both are necessary:
+#
+#   * `__has_include` alone answers "does the header FILE exist", which is TRUE
+#     under `-ffreestanding` for a libstdc++ whose `<string>` begins
+#     `#error "This header is not available in freestanding mode."` That is what
+#     GCC 16 made unmissable (issue 1240) and what arm-none-eabi 13.2 had been
+#     doing quietly on the FreeRTOS lane (issue 1187).
+#   * `__STDC_HOSTED__` alone is wrong for the reason issue 0112 records: a
+#     hosted compiler run `-nostdinc++` against Zephyr's minimal libcpp reads
+#     HOSTED and still has no `<string>`.
+#
+# The conjunction covers both lanes; `NROS_CPP_STD` stays as the explicit
+# override for a consumer who knows better than the probes.
+#
+# The walker was tightened in the same change so it cannot be satisfied by the
+# TOKEN alone: an `#if`/`#elif` naming NROS_CPP_STD that also reaches
+# `__has_include` without `__STDC_HOSTED__` is NOT a std region. Without that,
+# the broken shape and the corrected one score identically, which is the 0196
+# rule — a gate whose reach is narrower than the rule it enforces.
+#
+# Keyed on FILE and HEADER, not on a line number, so an entry survives edits
+# above it and so a second `<memory>` appearing in a listed file is still
+# caught. Add a line here only with a written reason and a tracked issue id.

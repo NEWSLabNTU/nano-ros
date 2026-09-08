@@ -652,9 +652,20 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   workaround, and it discards the information exactly where a return code is all you get. Gated by
   `check-no-std-stdio` (`just check`), which forbids `std::`-qualified stdio in a `#![no_std]`
   crate's `src/`; a bare `println!` there is a board's own console macro, not this hazard.
-- **nros-cpp headers: gate `<string>`/std includes on `NROS_CPP_STD`, not `__STDC_HOSTED__`** — a
-  hosted compiler can still run `-nostdinc++` against Zephyr's minimal libcpp (no `<string>`).
-  → issue 0112 (archived).
+- **A hosted STL include in an nros-cpp header needs BOTH probes, and each alone is
+  measurably wrong** (issues 0112 + 1240). `__STDC_HOSTED__` alone: a hosted compiler can
+  run `-nostdinc++` against Zephyr's minimal libcpp and have no `<string>`. `__has_include`
+  alone: under `-ffreestanding` a FULL libstdc++ HAS `<string>` and opens it with
+  `#error "This header is not available in freestanding mode."` — so the file exists and
+  including it is a hard error, which is how GCC 16 made `just check cpp` unrunnable with
+  ~200 errors, none in our code (the `-Wtemplate-body` tag and the `shared_ptr` reports were
+  a CASCADE off one `#error`; `-isystem` and `-Wno-template-body` were both measured and
+  clear 0 and 6 of 15). One spelling:
+  `#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<hdr>))`.
+  Do NOT gate on `NROS_CPP_STD` alone — **nothing that ships defines it**, so that removes the
+  surface from the hosted build too (`nros.hpp` did it to `<chrono>` and corrected it two days
+  later). Gate: `check-cpp-freestanding-includes`, which since 1240 refuses an `#if` naming the
+  token whose live arm asks only `__has_include`.
 - **Domain ID:** compile-time on embedded (Kconfig / per-example `config.toml`), runtime env on
   native via `nros_tests::unique_ros_domain_id()`. `CONFIG_NROS_CYCLONE_DOMAIN_ID` defaults to
   `NROS_DOMAIN_ID` — never pin it to a literal in confs (the phase-180 split-brain silently ran

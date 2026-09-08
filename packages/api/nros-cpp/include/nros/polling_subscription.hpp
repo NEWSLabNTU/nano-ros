@@ -29,16 +29,12 @@
 #include "nros/subscription.hpp"
 
 // phase-417 W1.a — `<memory>` for the nested pointer aliases. Rationale (and
-// why the test is `__has_include` rather than `__STDC_HOSTED__`, issue 0112)
+// why the test needs BOTH `__has_include` and `__STDC_HOSTED__` — issues
+// 0112 and 1240)
 // lives in `publisher.hpp`.
-#if defined(NROS_CPP_STD)
+#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<memory>))
 #include <memory>
 #define NROS_CPP_HAS_SHARED_PTR 1
-#elif defined(__has_include)
-#if __has_include(<memory>)
-#include <memory>
-#define NROS_CPP_HAS_SHARED_PTR 1
-#endif
 #endif
 
 namespace nros {
