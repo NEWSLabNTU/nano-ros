@@ -32,14 +32,37 @@ activate-shells:
 # so. Same shape as RFC-0054's committed bindgen output plus
 # `check-abi-bindings`. Offline: no cmake, no configure.
 # `ros2-box-sync.sh` excludes build-output directories by NAME, and the tree has
-# tracked SOURCE whose names match. That collision has eaten tracked files FOUR
+# tracked SOURCE whose names match. That collision has eaten tracked files FIVE
 # times, each found as a build failure inside the box naming something else —
-# most recently `packages/cli/build-support/`, which left the box unable to
-# compile `nros` at all. Anchoring fixed one instance and directory-only
-# patterns fixed another; neither fixed the class.
+# `packages/cli/build-support/`, which left the box unable to compile `nros` at
+# all, then Zephyr's `drivers/i2c/target/`, which left it unable to configure any
+# Zephyr image. Anchoring fixed one instance and directory-only patterns fixed
+# another; neither fixed the class.
+#
+# Issue 1229: the fifth got past this gate because the gate swept ONE index, the
+# superproject's, while rsync copies the whole working TREE. It now asks every
+# repository the mirror copies — 39 on a provisioned host, 1 in a bare worktree.
+# The trees it could not look at are named through the shared skip ledger, so
+# "All checks passed!" never stands for a sweep of one repo out of forty.
 [private]
 box-sync-covers-tracked-source:
-    @python3 scripts/check-box-sync-covers-tracked-source.py
+    #!/usr/bin/env bash
+    set -uo pipefail
+    _log="$(mktemp)"
+    trap 'rm -f "$_log"' EXIT
+    python3 scripts/check-box-sync-covers-tracked-source.py 2>&1 | tee "$_log"
+    _rc="${PIPESTATUS[0]}"
+    [ "$_rc" -eq 0 ] || exit "$_rc"
+    # The gate's own verdict line carries the count; re-deriving it here would be
+    # a second computation of one number, which is how the two halves of a
+    # narrowing end up disagreeing.
+    _partial="$(sed -n 's/.*— PARTIAL: \(.*\)$/\1/p' "$_log" | head -1)"
+    if [ -n "$_partial" ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip box-sync-covers-tracked-source \
+            "$_partial — absent here (zephyr-workspace and/or uninitialised submodules), so their tracked source was not swept"
+    fi
 
 # The reverse of `check-sysdep-remedies` — phase-413 W3.
 #

@@ -106,7 +106,7 @@ exclusions=(
     # `third-party/` needs no equivalent: it has no directory named `build` at
     # all, measured, and if one appears it will be output.
     --include '/zephyr-workspace/**/build/***'
-    # issue: `target/` is a RUST BUILD-OUTPUT pattern and Zephyr has two
+    # issue 1229 — `target/` is a RUST BUILD-OUTPUT pattern and Zephyr has two
     # directories of SOURCE with that name — `drivers/i2c/target/` and
     # `include/zephyr/drivers/i2c/target/`, five files, I2C target (slave) mode.
     # Excluding them left the mirror unable to CONFIGURE any Zephyr image:
@@ -118,15 +118,33 @@ exclusions=(
     # This is the FIFTH time this exclusion has eaten tracked source; the
     # comment on `build-*/` below records the first four and the fix each time.
     # It survived `check-box-sync-covers-tracked-source` because that gate
-    # sweeps the SUPERPROJECT's `git ls-files`, and `zephyr-workspace/zephyr`
+    # swept the SUPERPROJECT's `git ls-files`, and `zephyr-workspace/zephyr`
     # is a nested repo — `git ls-files | grep -cE '(^|/)target/'` is 0 while
     # two such directories exist on disk. A sweep scoped to one repo cannot see
-    # a sibling's source.
+    # a sibling's source. Issue 1229 widened the gate to every repository the
+    # mirror copies (39 of them here), which is what now stands behind both
+    # carve-outs below.
     #
     # Re-included AHEAD of the exclusion, the same shape as
     # `/zephyr-workspace/**/build/***` above, and scoped to the zephyr tree so
     # a genuine Rust `target/` anywhere else is still excluded.
     --include '/zephyr-workspace/zephyr/**/target/***'
+    # …and the SECOND live instance, which the widened sweep found the moment it
+    # could see past the superproject — a different tree, the same pattern:
+    #
+    #   third-party/px4/PX4-Autopilot/boards/modalai/voxl2/target/
+    #
+    # Six tracked files (`voxl-px4`, `voxl-px4-start`, `voxl-px4-hitl`, …),
+    # named one by one in PX4's own `boards/modalai/voxl2/scripts/install-voxl.sh`,
+    # which `adb push`es each of them by that path. Upstream board source, and
+    # PX4's `.gitignore` says nothing about `target`.
+    #
+    # Scoped to `boards/**` rather than the whole submodule: `target/` under a
+    # PX4 board is a deploy tree by convention, while `target/` anywhere else in
+    # a repo that big would more likely be output. PX4 carries no Cargo.toml
+    # today (measured), so the narrower rule costs nothing and stays honest if
+    # it ever does.
+    --include '/third-party/px4/PX4-Autopilot/boards/**/target/***'
     --exclude 'target/'
     --exclude 'target-*/'
     --exclude 'build/'
