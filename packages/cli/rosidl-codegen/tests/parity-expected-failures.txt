@@ -1,0 +1,43 @@
+# Interface definitions that `rosidl-codegen` is KNOWN not to handle.
+#
+# Issue 1176. The three `test_parse_all_*` tests in `parity_test.rs` used to
+# walk a ROS share root, count the parse/generate failures, print them and PASS,
+# under the comment "Note: Some failures expected due to parser limitations
+# (default values, etc.)". An expected-failure set that is neither enumerated
+# nor bounded cannot be told apart from a regression: a change that broke forty
+# more messages passed identically, a change that fixed all of them passed
+# identically, and the percentage was computed and thrown away. This file is
+# that set, written down, so a change to it is a diff someone reviews.
+#
+# IT IS EMPTY, AND THAT IS A MEASUREMENT, NOT AN ASSUMPTION. Measured
+# 2026-09-08 against `packages/cli/interfaces/` — the vendored ROS 2 Humble
+# sources these suites' own bundled corpus carries: 133 `.msg` files across 10
+# packages (std_msgs 30, geometry_msgs 33, sensor_msgs 27, example_interfaces
+# 29, lifecycle_msgs 4, action_msgs 3, diagnostic_msgs 3, builtin_interfaces 2,
+# rosgraph_msgs 1, unique_identifier_msgs 1), zero parse failures and zero
+# generate failures. The named limitation was measured too and does not exist:
+# `parse_message` accepts a scalar default (`int32 x 42`), a string default
+# (`string name "hi"`), an array default, a bounded string (`string<=10 s`), a
+# bounded array (`int32[<=5] a`) and a constant. So the excuse in the old
+# comment was false on both counts, and the honest tolerated set is nothing.
+#
+# FORMAT: `<package>/<kind>/<file>  # <reason>`, one per line, sorted.
+#   kind is `msg`, `srv` or `action`; the path is relative to a ROS share root,
+#   so it is the same string on every host.
+#   The reason is documentation for the next reader — it is NOT compared, so
+#   nobody has to keep an error-message wording in sync with a ledger.
+#
+# THE RATCHET HAS TWO DIRECTIONS, and that is the whole point:
+#   * a failure that is NOT listed here fails the test — a regression;
+#   * an entry listed here whose file was VISITED and SUCCEEDED also fails the
+#     test — the limitation is gone, so delete the line and take the credit.
+# The failing assertion prints the lines to add or delete in this exact format.
+#
+# THE ONE THING IT DOES NOT ADJUDICATE: an entry naming a file the host does not
+# carry. The input set here is whichever ROS distro is installed, which this
+# repo does not pin, so an entry that is true on jazzy is not wrong on humble —
+# it is simply unvisited, and it is tolerated in silence. That hides nothing: a
+# file nobody parsed cannot mask a parser regression, because a regression is
+# always an unlisted failure.
+#
+# (no entries)
