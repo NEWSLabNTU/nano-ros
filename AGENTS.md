@@ -532,8 +532,17 @@ so does every rebase of A onto a newer `main`. B's base then stops being an
 ancestor and B cannot be restacked mechanically, because its copies of A's
 commits conflict with their own rebased twins. Measured on #704 after #629 was
 rebased twice: common ancestor an old `main` tip, base **110 commits** past it,
-and the restack conflicted on `bd4b087c1` — one of A's own commits. The remedy
-is to wait for A to land, retarget B to `main`, and rebase there.
+and the restack conflicted on one of A's own commits — #629's QoS-SSoT commit
+("one QoS SSoT, and the field four transcriptions disagreed about"), which #704
+carried a stale copy of. The remedy is
+to wait for A to land, retarget B to `main`, and rebase there.
+
+That sentence used to name that commit by short hash, and the hash is gone,
+because #629 was rebased again — which is the very failure this paragraph
+describes, committed inside the paragraph describing it. `check-doc-commit-citations`
+caught it, on `main`, where a red fast-line gate blocks every push in the
+repository. A citation to a commit on an UNMERGED branch is a citation with an
+expiry date; describe the commit instead.
 
 **The `main`-based alternative self-cleans, because the queue rebase-merges.**
 `merge_method=REBASE` replays A's commits onto `main` with new hashes and
