@@ -446,10 +446,12 @@ output.
   (it is several named CALLBACK GROUPS), and four gates are keyed on the file by
   path or namespace. Its 5 directories move to the one type. RFC-0044 is
   amended, not deleted — its Q2 boot-failure reasoning becomes `ok()`'s.
-  *Acceptance (amended 2026-09-09):* zero `ComponentNode` in the tree; the
-  RFC-0047 subnode packages build and run — **as callback-group packages, which
-  is what they are**; **one of them builds for a freestanding target**, which is
-  the test of whether the merged type still fits.
+  *Acceptance (amended 2026-09-09, then SPLIT the same day):* zero
+  `ComponentNode` in the tree; the RFC-0047 subnode packages build and run —
+  **as callback-group packages, which is what they are**; and **the freestanding
+  compile probe stays green**. The clause "one of them builds for a freestanding
+  target" was a NEW PORT rather than a check and moves to **W12**; see (c)
+  below.
 
   The first version of this item also required that "RFC-0047's
   several-named-nodes survives as a documented ours-only capability on it".
@@ -463,6 +465,80 @@ output.
   "The several-named-nodes capability, corrected" carries the measurement, and
   "W4's RFC-0047 acceptance criterion is deleted, not weakened" below is the
   same ruling reached independently.
+
+  **Amended 2026-09-09 — three resolutions the migration was missing.**
+
+  **(a) The ours-only creation family takes the `_in` NAME, not just its
+  signature.** On the merged type a value-returning `create_publisher(const
+  char*, const QoS&)` and upstream's `shared_ptr`-returning
+  `create_publisher(const std::string&, const QoS&)` are overloads, and a string
+  literal binds OURS — array-to-pointer decay is a standard conversion, reaching
+  `std::string` needs a user-defined one, and the standard conversion wins.
+  Measured on gcc 11.4 and clang 14 at `-std=c++14` and `-std=c++17`: four for
+  four, no diagnostic. So a ported line compiles and gets a different type,
+  lifetime and failure channel. RFC-0089 §"The `_in` rule" is the general form;
+  for W4 it means the migration renames rather than overloads, onto the suffix
+  the tree already spells (`node.hpp:878`, `:909`, `:926`). The out-ref
+  `create_*` family is NOT affected — it differs in ARITY, so the compiler names
+  the line.
+
+  **(b) The two inline members split, and they split for different reasons.**
+  Measured on the layout `component_node.hpp` declares:
+
+  | member | bytes | after |
+  | --- | ---: | --- |
+  | the sticky error latch (`has_error_` / `error_what_` / `error_code_`, `:747-749`) | **24** | stays, UNCONDITIONAL |
+  | the inline timer pool (`Timer timers_[NROS_COMPONENT_MAX_TIMERS]`, `:735`) | **192** at the default 8 | a template parameter, defaulting to **0** |
+
+  The latch stays because on a `-fno-exceptions` target it IS the error channel,
+  not a diagnostic convenience: it is the only route by which a `create_*`
+  failure inside a constructor reaches the generated entry, which reads `ok()`,
+  `error_what()` AND `error_code()` and returns the code
+  (`packs/entry/cpp/node_body.jinja`). RFC-0089 correction 5 also makes it
+  STICKY — false if the node failed to create *or* if any later `create_*` /
+  `declare_parameter` failed — so making it conditional would make the error
+  channel a build configuration, which is the shape RFC-0089 refuses everywhere
+  else.
+
+  The pool goes because RFC-0089 correction 6 already removed its reason: it
+  exists only for the storage-LESS `create_wall_timer` overload, and with the
+  out-ref form the caller owns the cell. Nodes that never use the storage-less
+  overload should pay nothing.
+
+  **A default of zero is a real constraint on the implementation, not a knob
+  value.** `Timer timers_[0]` is not ISO C++ (issue 1131, and the `#error` floor
+  at `component_node.hpp:144` from issues 1015/1167), so the parameter must
+  select a base or member that HOLDS NOTHING at `N == 0` rather than a
+  zero-length array — an empty specialisation, not a smaller array. The
+  `NROS_COMPONENT_MAX_TIMERS` macro and its `#error` floor (`:144`, issues
+  1015/1167 — the guard sits BELOW its own default or it fires on every build)
+  move or die with the header, in this commit. The ledger row
+  `cpp:ComponentNode::create_wall_timer` names the pool in its reason and is
+  re-read at the same time.
+
+  **(c) The freestanding acceptance was two claims and only one of them is a
+  check.** Splitting them, because a check and a port do not belong in one
+  acceptance:
+
+  * *stays here:* **the merge keeps the freestanding compile probe green** —
+    `check-cpp`'s `-nostdinc++` header-parse lane (ThreadX `cxx-compat`, and
+    Zephyr's minimal libcpp when the west workspace is present) and
+    `check-cpp-capability-layout`'s freestanding arm. This is a regression
+    check on work W4 does, and it can fail on the day W4 lands.
+  * *moves to W12:* **a subnode package BUILDS for a freestanding target.**
+    Measured, **no embedded fixture derives `ComponentNode` today** — the only
+    `SHAPE rclcpp` packages are the two `subnode_pkg`s and every fixture
+    consuming them is `platform = "linux"` (RFC-0089 correction 8). So this is
+    a new port, not a check on an existing one, and holding W4's acceptance
+    open on a fixture nobody has written is how a work item stops being
+    landable.
+
+  **Gates whose subject W4 deletes are retargeted in the same commit**
+  (RFC-0089 §"A gate whose subject disappears passes vacuously"): the
+  `declared_qos_depth.cpp` / `_probe.cpp` pair (already an acceptance below) and
+  `check-cxx-standard-floor`'s docstring, which names `component_node.hpp`'s
+  `if constexpr` as the reason the floor is 17. Each needs its negative control
+  re-run, not merely its pattern moved.
 
 * **W5 [cpp] — `get_logger()` follows ROS 2. DONE.** The `"nros.compat"` sentinel is
   replaced by a logger named for the node (RFC-0089 decision 1).
@@ -508,6 +584,42 @@ output.
   on phase-428's namespace flip, and whoever lands it must migrate the 218
   in-tree `nros::Node` sites in the same commit — a bare attribute warns at all
   of them at once, which this doc's own "Not in scope" forbids.
+
+* **W11 [rust] — the `spin` family takes upstream's names. LANDED 2026-09-09.**
+  Queued here as W12 while it was still work; `main` landed it as W11 before
+  this branch rebased, so the number and the record are `main`'s. RFC-0089
+  §"The `spin` family: upstream's names get upstream's contracts" settles the
+  shape and the section "W11 [rust] — the spin family takes upstream's names —
+  LANDED 2026-09-09" at the end of this file records what shipped, including
+  the two things the plan here did not have: `SpinOptions::poll_interval` as a
+  hand-written `Default` (the derive is `Duration::ZERO`, a busy-poll that
+  passes every functional test) and `stop_on_first_error`. This closed the
+  SEVENTH porting difference W10 recorded and did not own.
+
+  One item the landed section leaves owed and this branch inherits: the port
+  test `packages/testing/nros-tests/tests/rclrs_talker_port.rs` arrives with
+  W10 (PR #753), not with `main`, so its `EXPECTED` entry for line 10 becomes
+  `executor.spin(SpinOptions::default())?;` once both are in one tree. The
+  RENAME half of that difference is gone; the COUNT does not drop, because ours
+  is `?` where upstream is `.first_error()?` — the no-allocator divergence, not
+  a naming one.
+
+* **W12 [cpp, fixture] — a subnode package builds for a freestanding target.**
+  Split out of W4's acceptance on 2026-09-09, because it is a NEW PORT and not a
+  check on existing work. Measured: no embedded fixture derives `ComponentNode`
+  today — the only `SHAPE rclcpp` packages are the two `subnode_pkg`s under
+  `examples/workspaces/realtime-cpp{,-subnode-portable}` and every fixture
+  consuming them is `platform = "linux"` (RFC-0089 correction 8). The capability
+  itself is proved — correction 1 compiled a derivation under
+  `-std=c++14 -fno-exceptions -fno-rtti -ffreestanding -nostdinc++` against the
+  ThreadX shim, with `__is_polymorphic` false for base and derived — so what is
+  missing is a consumer, which is exactly why this is a work item and not an
+  assumption.
+  *Acceptance:* one subnode package has a `fixtures.toml` row on a non-`linux`
+  platform and BUILDS there; the fixture's coordinate is in a lane
+  (`row_coord()` / `row_artifact_root()`), so it is neither unattributable nor
+  silently skipped. A fixture that only ever resolves STALE is not this
+  acceptance met — read the `probe:` lines.
 
 ## What stays invented — REVISED after review (2026-09-05)
 
@@ -618,6 +730,14 @@ watched by the collision gate.
   here by `spin(Duration) -> !`, the body of an RTOS task. Moving upstream's
   `spin(SpinOptions)` onto that name is a later wave — **open item, W10 does not
   own it.**
+
+  **OWNED 2026-09-09: that later wave is W11, and it LANDED the same day.**
+  RFC-0089 §"The `spin` family" settles the shape — `spin(SpinOptions) ->
+  Result<(), NodeError>` and `spin_forever` for the diverging `-> !` form — and
+  W11 landed it on `main`, at which point the port writes `spin` and this
+  difference is CLOSED. The count of differences does not drop with it: the
+  ported line still differs, because ours is `?` where upstream is
+  `.first_error()?`.
 
 ## Not in scope
 
@@ -1028,6 +1148,12 @@ for `spin_forever`'s sake.
   issue 0338 renamed `Executor::spin(ms)` to `spin_for` and left the FREE
   `nros::spin(duration_ms, poll_ms)` bounded overload behind.
 
+Two items joined after that move (2026-09-09), and `main` has since settled how
+they are numbered. The `spin` family rename this branch queued as W12 LANDED as
+**W11** — the section above is `main`'s, written when it landed, and it is the
+same shape RFC-0089 §"The `spin` family" settles. So the item split out of W4's
+acceptance, the freestanding subnode port, is **W12**; it depends on W4, and W11
+depended on neither and is done.
 
 ## W1 is REVERSED by RFC-0096 / phase-442 (2026-09-09)
 
