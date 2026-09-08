@@ -275,6 +275,109 @@ not build upstream; that is clause 1 outranking clause 2 and it is fine. The
 builds here teaches upstream's users nothing. `colcon-parity` exists to hold
 exactly that line, and this rule is what keeps a name available to it.
 
+## The `_in` rule: an ours-only family may not sit under an upstream NAME (2026-09-09)
+
+The sibling of the alias rule, and it points the other way. The alias rule is
+about a name upstream HAS and we lack; this is about a family upstream lacks
+that we were about to hang off a name upstream has.
+
+> **A family with no upstream counterpart takes a different NAME, not merely a
+> different signature.** C++ resolves a signature-only difference silently, so a
+> ported line binds ours, compiles, and gets a different type, a different
+> lifetime and a different failure channel with nothing said.
+
+### The case that produced it, measured
+
+On the merged node type (phase-427 W4) the two `create_publisher` forms become
+overloads on ONE class:
+
+```cpp
+template <class M> ResultOf<Publisher<M>>       create_publisher(const char*,        const QoS&);  // ours
+template <class M> std::shared_ptr<Publisher<M>> create_publisher(const std::string&, const QoS&);  // upstream's
+```
+
+A ported file writes `node->create_publisher<M>("chatter", 10)` and **binds
+ours**. The reason is ordinary overload resolution and it is not close:
+`const char[8]` → `const char*` is array-to-pointer decay, a standard conversion
+(an lvalue transformation), while `const char[8]` → `std::string` needs
+`std::string`'s converting constructor, a user-defined conversion. A standard
+conversion sequence is a better conversion sequence than a user-defined one,
+always, so ours wins with no ambiguity to report.
+
+Measured rather than reasoned — a two-overload probe printing which one it
+reached, on both compilers this tree gates with and both standards it builds at:
+
+| | `-std=c++14` | `-std=c++17` |
+| --- | --- | --- |
+| gcc 11.4.0 | `OURS` | `OURS` |
+| clang 14.0.0 | `OURS` | `OURS` |
+
+Four for four, no diagnostic in any of them.
+
+### Why this is the non-mechanical row, not a rename
+
+Three things change under one spelling, and the governing principle's table
+says the compiler points at none of them:
+
+* **type** — a value, not a `std::shared_ptr`. A ported line usually writes
+  `auto`, which absorbs it;
+* **lifetime** — ours is a caller-owned cell whose address the arena records;
+  upstream's is co-owned by the node through `owned_entities_` (see "The out-ref
+  `create_*` family — forced by the arena");
+* **failure channel** — ours is a `ResultOf<T>` the caller must inspect;
+  upstream's path goes through `detail::require_created`, which aborts naming
+  the verb.
+
+That is "behaviour behind an identical signature" reached by a different route:
+the signature is not identical, it is merely *convertible*, which for the caller
+is the same thing.
+
+**The out-ref family is NOT this hazard, and the difference is the point.**
+`create_publisher(Publisher<M>&, const char*, const QoS&)` differs in ARITY, so
+a ported two-argument call has no matching overload and the compiler names the
+line. This RFC already calls that family "not an invention" for exactly that
+reason. The hazard appears only where the two forms share an arity and differ in
+a parameter type one implicitly converts to — which is what a value-returning
+convenience form would have introduced.
+
+### The spelling
+
+**`_in`**, which is already in the tree rather than invented here:
+`Node::create_timer_in`, `create_subscription_in` and `create_publisher_in`
+(`packages/api/nros-cpp/include/nros/node.hpp:878`, `:909`, `:926`), where the
+suffix marks the form that writes into caller-owned storage in a named callback
+group. Under this rule the suffix generalises to the ours-only family as a
+whole: caller-supplied storage, `Result` channel, no allocation — and the
+callback group stays an argument of the overload that takes one, not part of
+what the suffix means.
+
+The cost is that a nano-ros program's creation verbs read differently from a
+ported one's. That is the one-directional consequence again, paid where it is
+visible instead of at a call site that compiled.
+
+### Third application of one rule; the first two are recorded
+
+This is not a new principle, it is the third place the campaign has reached it,
+and stating that is what makes it a rule rather than three coincidences:
+
+1. **The reordered C node initialiser** — Part IV, "The hazard, CORRECTED".
+   C diagnoses an incompatible pointer argument as a WARNING by default, so a
+   reorder is silent for exactly the out-of-tree callers who do not build with
+   our flags. The conclusion there was already this one: *a C reorder must be
+   accompanied by a RENAME, so a stale call fails on the identifier.*
+2. **The clock-taking C timer verb** — phase-430 W1, shipped as
+   `nros_timer_init_on_clock` rather than as a widened `nros_timer_init`
+   (`packages/api/nros-c/include/nros/rcl_compat.h:389-398`). Its recorded
+   reason is arity and the absence of C overloading, which is the same
+   observation from the language that cannot hide it.
+3. **This one**, which is the first time the mechanism is C++ overload
+   resolution rather than C's permissiveness — and the first time the language
+   actively picks ours.
+
+The generalisation the three share: **a difference the language RESOLVES is a
+difference the user never sees.** Whether it resolves by warning-not-error, by
+arity, or by conversion rank does not change what the porting reader gets.
+
 ## Where the refusal fires: the earliest point the defect is KNOWABLE
 
 `rclcpp::init(argc, argv)` forced this and it generalises.
