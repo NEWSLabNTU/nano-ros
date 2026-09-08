@@ -1544,6 +1544,13 @@ pub struct Executor<'s> {
     /// replacing it: reporting both is what makes the rounding auditable
     /// instead of silent (issue 1194).
     pub(crate) last_park_achieved_us: u64,
+    /// phase-436 W6 — registered platform deadline sources, and how many are
+    /// live. Inline table: no allocator on the targets this exists for.
+    pub(crate) wake_sources: [Option<WakeSourceSlot>; MAX_WAKE_SOURCES],
+    pub(crate) wake_source_count: usize,
+    /// The single thing that actually blocks. Many sources say WHEN; one
+    /// primitive does the waiting.
+    pub(crate) park_primitive: Option<(ParkUntilFn, *mut core::ffi::c_void)>,
     /// Wakes that were already past their nominal deadline, and wakes total.
     ///
     /// The maximum alone cannot distinguish one bad wake from a loop that is
@@ -1741,6 +1748,9 @@ impl<'s> Executor<'s> {
             last_park_bound_us: 0,
             last_park_source: WakeSourceId::CallerBudget,
             last_park_achieved_us: 0,
+            wake_sources: [None; MAX_WAKE_SOURCES],
+            wake_source_count: 0,
+            park_primitive: None,
             late_wakes: 0,
             total_wakes: 0,
             report_violations: true,
@@ -1867,6 +1877,52 @@ pub enum WakeSourceId {
     CallerBudget,
     /// A registered timer's next expiry (issue 1192).
     Timer,
+    /// The backend's next internal event (lease keepalive, heartbeat,
+    /// ACK-NACK). Folded into the same `min` as everything else rather than
+    /// capping the budget separately upstream, so one rule decides the park
+    /// and one attribution explains it.
+    Session,
+    /// A source the PLATFORM registered: a `k_poll` event set, an `epoll`
+    /// group, a FreeRTOS queue set, a ThreadX event-flags group, or a
+    /// bare-metal device ISR. The core never names an RTOS; it only asks each
+    /// registered source when it will next need the executor.
+    Platform(u8),
+}
+
+/// How many platform sources one executor can carry. Fixed, like `MAX_SC` and
+/// `MAX_MONITORS`: the table is inline, so no allocator is required on the
+/// no_std targets this seam mainly exists for.
+pub const MAX_WAKE_SOURCES: usize = 8;
+
+/// When this source will next need the executor, in the executor's clock,
+/// as microseconds FROM NOW.
+///
+/// `u64::MAX` means "nothing pending" — the source does not shorten the park.
+/// That is how an ASYNC source spells itself: a socket or a DDS listener
+/// contributes no deadline and instead breaks the park by signalling the wake
+/// primitive, so async and deadline sources compose without a second
+/// mechanism.
+pub type NextDeadlineFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void) -> u64;
+
+/// Park until `deadline_us` from now, or until something signals, whichever
+/// comes first.
+///
+/// Returns `0` when woken by an event, `1` when the deadline expired, and a
+/// negative value when this build cannot park at all.
+///
+/// A DEADLINE, not a duration, and that distinction is what makes bare metal
+/// work: `nros-baremetal-common`'s own note says `wfi` with no pending
+/// interrupt deadlocks, so a board must arm a timer compare BEFORE waiting.
+/// A `sleep(duration)` seam cannot express that — the sleeper does not know
+/// whether anyone armed an interrupt. `park_until(deadline)` does, because the
+/// deadline is exactly what the compare is armed to.
+pub type ParkUntilFn = unsafe extern "C" fn(ctx: *mut core::ffi::c_void, deadline_us: u64) -> i8;
+
+/// A registered deadline contributor.
+#[derive(Clone, Copy)]
+pub(crate) struct WakeSourceSlot {
+    pub(crate) next: NextDeadlineFn,
+    pub(crate) ctx: *mut core::ffi::c_void,
 }
 
 impl<'s> Executor<'s> {
@@ -2429,15 +2485,88 @@ impl<'s> Executor<'s> {
     /// --features rmw-cffi`, which excludes `mod tests` too).
     #[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
     pub(crate) fn next_wake_bound_us(&self, budget_us: u64) -> u64 {
-        self.next_wake_bound_attributed_us(budget_us).0
+        self.next_wake_bound_attributed_us(budget_us, None).0
     }
 
-    /// The bound and the source that produced it.
-    pub(crate) fn next_wake_bound_attributed_us(&self, budget_us: u64) -> (u64, WakeSourceId) {
-        match self.next_timer_deadline_us() {
-            Some(timer_us) if timer_us < budget_us => (timer_us, WakeSourceId::Timer),
-            _ => (budget_us, WakeSourceId::CallerBudget),
+    /// phase-436 W6 — contribute a deadline source.
+    ///
+    /// The core never names an RTOS: a port registers `k_poll`, `epoll`, a
+    /// queue set or a device ISR here, and the executor only ever asks "when
+    /// will you next need me?".
+    ///
+    /// Refuses past capacity rather than dropping silently. A source that was
+    /// quietly discarded would leave the executor sleeping past a deadline it
+    /// had been told about, which is the failure this whole phase exists to
+    /// remove.
+    pub fn register_wake_source(
+        &mut self,
+        next: NextDeadlineFn,
+        ctx: *mut core::ffi::c_void,
+    ) -> Result<WakeSourceId, NodeError> {
+        if self.wake_source_count >= MAX_WAKE_SOURCES {
+            return Err(NodeError::ExecutorFull);
         }
+        let idx = self.wake_source_count;
+        self.wake_sources[idx] = Some(WakeSourceSlot { next, ctx });
+        self.wake_source_count += 1;
+        Ok(WakeSourceId::Platform(idx as u8))
+    }
+
+    /// Install THE thing that blocks. Singular by nature — only one primitive
+    /// can actually wait — so this replaces whatever was there.
+    pub fn set_park_primitive(&mut self, park: ParkUntilFn, ctx: *mut core::ffi::c_void) {
+        self.park_primitive = Some((park, ctx));
+    }
+
+    /// Whether a platform park primitive is installed.
+    pub fn has_park_primitive(&self) -> bool {
+        self.park_primitive.is_some()
+    }
+
+    /// The bound and the source that produced it: the `min` over every
+    /// deadline source, with the caller's budget as an ordinary member.
+    ///
+    /// The budget being a member is what makes the result never unbounded and
+    /// never zero-by-omission, and it is why "no sources registered" needs no
+    /// special case.
+    pub(crate) fn next_wake_bound_attributed_us(
+        &self,
+        budget_us: u64,
+        session_us: Option<u64>,
+    ) -> (u64, WakeSourceId) {
+        let mut best = (budget_us, WakeSourceId::CallerBudget);
+
+        // The backend's next internal event is a MEMBER, not a pre-cap. It was
+        // folded into the budget upstream, which meant a park the session
+        // actually won reported `CallerBudget` — the attribution named the
+        // wrong source, and "why did we wake" is the question attribution
+        // exists to answer.
+        if let Some(s) = session_us
+            && s < best.0
+        {
+            best = (s, WakeSourceId::Session);
+        }
+
+        if let Some(timer_us) = self.next_timer_deadline_us()
+            && timer_us < best.0
+        {
+            best = (timer_us, WakeSourceId::Timer);
+        }
+
+        for (i, slot) in self.wake_sources.iter().enumerate() {
+            let Some(slot) = slot else { continue };
+            // SAFETY: the callback and ctx were supplied together by the port
+            // through `register_wake_source` and outlive the executor by its
+            // contract; the call takes no ownership.
+            let due = unsafe { (slot.next)(slot.ctx) };
+            // `u64::MAX` is "nothing pending" — an async source spells itself
+            // this way and breaks the park by signalling instead.
+            if due != u64::MAX && due < best.0 {
+                best = (due, WakeSourceId::Platform(i as u8));
+            }
+        }
+
+        best
     }
 
     /// phase-436 — the bound the last park used, and which source won it.
@@ -6593,15 +6722,19 @@ impl<'s> Executor<'s> {
         // advisory above cannot deliver on the island: registration completed.
         crate::boot_report::checkpoint(crate::boot_report::Stage::FirstSpin);
 
-        // Phase 110.0 — cap against the backend's next internal-event
-        // deadline (lease keepalive, heartbeat, ACK-NACK timeout, ...).
-        // Default backend impl returns `None`, so this is a no-op
-        // unless the active backend opts in.
-        #[allow(unused_variables)]
-        let timeout_us = match self.session.next_deadline_ms() {
-            Some(next) => timeout_us.min((next as u64).saturating_mul(1000)),
-            None => timeout_us,
-        };
+        // Phase 110.0 — the backend's next internal-event deadline (lease
+        // keepalive, heartbeat, ACK-NACK timeout, ...). Default backend impl
+        // returns `None`, so this contributes nothing unless the active
+        // backend opts in.
+        //
+        // phase-436 W6 — a CANDIDATE now, not a pre-cap. Folding it into the
+        // budget here meant a park the session won was attributed to
+        // `CallerBudget`, so the one number that explains a wake named the
+        // wrong source.
+        let session_us = self
+            .session
+            .next_deadline_ms()
+            .map(|next| (next as u64).saturating_mul(1000));
 
         // phase-436 W1 (issue 1192) — and by the next TIMER deadline, which is
         // the one class of deadline the executor itself owns. Before this the
@@ -6611,7 +6744,8 @@ impl<'s> Executor<'s> {
         //
         // Attribution is recorded here rather than derived later: this is the
         // only point where the losing candidates are still in hand.
-        let (park_bound_us, park_source) = self.next_wake_bound_attributed_us(timeout_us);
+        let (park_bound_us, park_source) =
+            self.next_wake_bound_attributed_us(timeout_us, session_us);
         self.last_park_bound_us = park_bound_us;
         self.last_park_source = park_source;
         // phase-436 W2 (issue 1193) — round UP to what the primitive can
@@ -6619,7 +6753,38 @@ impl<'s> Executor<'s> {
         // request became a zero park: the non-blocking path, a busy loop.
         let park_achieved_us = self.round_park_up_us(park_bound_us);
         self.last_park_achieved_us = park_achieved_us;
-        let timeout_ms = (park_achieved_us / 1000).min(i32::MAX as u64) as i32;
+
+        // phase-436 W6 — a port that installed a park primitive does its
+        // waiting HERE, on the bound every source agreed on, and the transport
+        // is then drained non-blockingly.
+        //
+        // This is the path bare metal needs: `park_until(deadline)` can arm a
+        // timer compare before `wfi`, which `sleep(duration)` cannot express —
+        // and `nros-baremetal-common` notes that `wfi` with no pending
+        // interrupt deadlocks, so arming first is not optional there.
+        //
+        // Additive by construction: with no primitive installed this is a
+        // no-op and every existing port keeps the behaviour it has.
+        let parked = match self.park_primitive {
+            Some((park, ctx)) if park_achieved_us > 0 => {
+                // SAFETY: `park` and `ctx` were supplied together by the port
+                // through `set_park_primitive` and outlive the executor by its
+                // contract.
+                let _ = unsafe { park(ctx, park_achieved_us) };
+                true
+            }
+            _ => false,
+        };
+
+        // Having already waited, the transport drain must not block again —
+        // otherwise the park and the drive would sum, and the cadence would be
+        // up to twice what was asked. Same trap as passing a period to
+        // `spin_once` instead of declaring it (#648).
+        let timeout_ms = if parked {
+            0
+        } else {
+            (park_achieved_us / 1000).min(i32::MAX as u64) as i32
+        };
 
         // Wall-clock-accurate timer accumulation. Measure real time
         // since the previous `spin_once` exited (or, on the first call,
