@@ -171,7 +171,23 @@ CAPS = (
 # Hosted is c++17 because the umbrella's `if constexpr` needs it; the
 # freestanding flags are copied verbatim from the `cpp` lane's `-nostdinc++`
 # header-parse arm so the two agree by construction.
-HOSTED_FLAGS = ["-std=c++17"]
+#
+# `-DNROS_CPP_STD` is on the hosted arm since phase-438 W2, and it is not a new
+# configuration — it is the SAME one, asked for out loud. Before W2 a hosted
+# compiler got the std surface because `__has_include` found the headers, so
+# this arm measured the std-flavoured types without naming them. W2 deleted
+# discovery; without the flag the probe TU no longer compiles and the gate
+# reports "could not measure sizeof(rclcpp::Node)" instead of a size.
+#
+# Note what this arm is and is not. Forcing an individual `NROS_CPP_HAS_*` ON
+# here is close to a no-op, because the baseline already has them all — that is
+# issue 1204's finding, and the answer to it is the FREESTANDING arm below,
+# which is where the macros are genuinely off. A THIRD arm is now measurable
+# and was not before W2: hosted WITHOUT the opt-in, i.e. the shape a hosted
+# consumer gets by default from here on. It belongs with phase-438 W4, whose
+# acceptance is that `sizeof(rclcpp::Node)` does not move between it and this
+# one.
+HOSTED_FLAGS = ["-std=c++17", "-DNROS_CPP_STD=1"]
 THREADX_SHIM = "packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat"
 FREESTANDING_FLAGS = [
     "-std=c++14",

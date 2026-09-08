@@ -50,96 +50,78 @@
 #ifndef NROS_CPP_STD_DETECT_HPP
 #define NROS_CPP_STD_DETECT_HPP
 
-// --- Why the predicate is a DISJUNCTION over a CONJUNCTION --------------------
-//
-// Moved here verbatim from `publisher.hpp`, which carried it for the other ten
-// headers under the note "the rationale lives here". It still does; the file
-// changed.
-//
-// Gate on the declared std flavour, else ASK THE COMPILER — with BOTH probes,
-// because each one alone gives a wrong answer on a lane the other gets right.
-//
-// `__STDC_HOSTED__` alone is the WRONG question (issue 0112), and measurably
-// so: the Zephyr XRCE C++ leaves compile with `-fno-freestanding -nostdinc++`,
-// i.e. they read HOSTED while having no `<memory>` at all, and the aarch64
-// workspace leaf has `-nostdinc++` with no `-ffreestanding` either. Only
-// `__has_include` sees that.
-//
-// `__has_include` alone is ALSO wrong, and this half was missing until issue
-// 1240. It answers "does the header FILE exist" — which is TRUE under
-// `-ffreestanding` against a FULL libstdc++, whose `<memory>` / `<string>` /
-// `<vector>` / `<sstream>` open with
-//
-//     #error "This header is not available in freestanding mode."
-//
-// GCC 16 made that unmissable: `just check cpp`'s own `-ffreestanding` probe
-// stopped compiling, ~200 errors deep inside `/usr/include/c++/16` and none in
-// our code, and the `shared_ptr does not name a template type` reports it ended
-// with were a CASCADE — `timer.hpp` includes `<memory>` and always did. The
-// same shape had been failing quietly on the FreeRTOS lane's arm-none-eabi 13.2
-// for longer (issue 1187: 19 of 45 headers, 17 of them entered through
-// `log.hpp`'s `<string>`). `__STDC_HOSTED__` is the only probe that separates
-// "present" from "present and usable"; `nros.hpp` measured the same thing for
-// `<chrono>` two days earlier and this is its class.
-//
-// So: `NROS_CPP_STD` (the explicit consumer opt-in, which nothing that ships
-// defines — do not gate on it ALONE, that removes the surface from the hosted
-// build too) OR the conjunction. Gated by
-// `scripts/check-cpp-freestanding-includes.sh`, which since 1240 rejects an
-// `#if` that names `NROS_CPP_STD` while its live arm asks only
-// `__has_include`.
-//
-
 // --- The five uniform capabilities -------------------------------------------
 //
-// Uniform in the literal sense: before consolidation these fourteen blocks
-// normalised to one block text, with the header name and the macro name
-// consistent at all three positions in every instance. `<chrono>` below is the
-// fifteenth and it does NOT normalise into these.
+// Uniform in the literal sense: before W1 these fourteen blocks normalised to
+// one block text, with the header name and the macro name consistent at all
+// three positions in every instance. `<chrono>` below is the one that does not,
+// and it is kept separate rather than normalised into these.
+//
+// DISCOVERY IS GONE (phase-438 W2). The predicate is the request and nothing
+// else. Issue 1240 had just corrected discovery at all fourteen sites to the
+// two-probe conjunction
+//
+//     defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__
+//                               && __has_include(<string>))
+//
+// because each probe alone is wrong on a lane the other gets right:
+// `__STDC_HOSTED__` alone misreads Zephyr's `-fno-freestanding -nostdinc++`
+// leaves as having `<memory>` (issue 0112), and `__has_include` alone answers
+// "does the FILE exist", which is TRUE under `-ffreestanding` against a full
+// libstdc++ whose `<string>` opens `#error "This header is not available in
+// freestanding mode."` (issue 1240, made unmissable by GCC 16; issue 1187 is
+// the same shape failing quietly on arm-none-eabi 13.2).
+//
+// That conjunction is a better PROBE. W2's claim is that no probe is the right
+// instrument: the question a capability macro answers is which SURFACE the
+// consumer asked to be compiled, not what the include path happens to hold.
+// So the conjunction is removed rather than kept as a fallback, and the five
+// consumers that need the porting surface make the request out loud -- the
+// rclcpp compat shim, the phase-417 ported-surface probes, the four refusal
+// probes, the `cpp_compat_snippets` compile-check arm, and this gate's own
+// hosted arm.
 
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<memory>))
+#if defined(NROS_CPP_STD)
 #include <memory>
 #define NROS_CPP_HAS_SHARED_PTR 1
 #endif
 
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<string>))
+#if defined(NROS_CPP_STD)
 #include <string>
 #define NROS_CPP_HAS_STD_STRING 1
 #endif
 
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<vector>))
+#if defined(NROS_CPP_STD)
 #include <vector>
 #define NROS_CPP_HAS_STD_VECTOR 1
 #endif
 
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<functional>))
+#if defined(NROS_CPP_STD)
 #include <functional>
 #define NROS_CPP_HAS_STD_FUNCTION 1
 #endif
 
-// `<sstream>` is the `RCLCPP_*_STREAM` family only. Worth knowing where it
-// sits: `log.hpp` pulls it, `qos.hpp` includes `log.hpp`, and every entity
-// header includes `qos.hpp` — so a stream-formatting convenience is on the
-// transitive include path of every freestanding TU in the API.
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<sstream>))
+// `<sstream>` is the `RCLCPP_*_STREAM` family only. It is worth noting that
+// `log.hpp` pulls it, `qos.hpp` includes `log.hpp`, and every entity header
+// includes `qos.hpp` — so a stream-formatting convenience sits on the
+// transitive include path of every freestanding TU. That is a separate leak
+// from how it is gated (phase-438, "which failures are real", cause (c)).
+#if defined(NROS_CPP_STD)
 #include <sstream>
 #define NROS_CPP_HAS_STD_SSTREAM 1
 #endif
 
-// --- `<chrono>`: the one predicate that is NOT the uniform block --------------
+// --- `<chrono>`: the block that got here first --------------------------------
 //
-// This block reached the correct shape first, and the hard way — the comment
-// below records three successive corrections, each measured against a build's
-// own recorded compile command, and issue 1240's fix is explicitly that
-// reasoning generalised to the other fourteen. Moved here verbatim, comment
-// included, because the comment is the evidence rather than decoration.
-//
-// It differs in one way that is load-bearing and must not be normalised away:
-// `<ratio>` is a SECOND probe used as a PREREQUISITE rather than a proxy.
-// `duration_cast<To>(duration<Rep, Period>)` is defined in terms of
-// `std::ratio_divide` — a duration's `Period` IS a `std::ratio` — so a
-// `<chrono>` shipped without `<ratio>` cannot provide `duration_cast`, which is
-// exactly what the safety island's toolchain ships.
+// `<chrono>` reached the opt-in-only form one phase ahead of the other five,
+// the hard way, and its comment is kept because it is the EVIDENCE for what
+// phase-438 W2 then did to all of them. Three successive corrections, each
+// measured against a build's own recorded compile command, each narrowing a
+// probe that was answering the wrong question. Read as history now — the
+// `__STDC_HOSTED__ && __has_include(<chrono>) && __has_include(<ratio>)`
+// disjunct it describes is gone, because W2 removed discovery from every
+// capability here. What survives is the finding: a header can be PRESENT,
+// pass every probe, and still not provide the thing you need.
 
 // `<chrono>` requires the EXPLICIT opt-in, not `__has_include`, and that is
 // measured rather than stylistic.
@@ -220,7 +202,7 @@
 // build, which is the same over-tightening the note above records.
 // `_GLIBCXX_CHRONO` also separates the two but is libstdc++'s private spelling;
 // `__has_include` is the portable question.
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<chrono>) && __has_include(<ratio>))
+#if defined(NROS_CPP_STD)
 #include <chrono>
 #define NROS_CPP_HAS_STD_CHRONO 1
 #endif

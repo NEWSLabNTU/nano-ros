@@ -3,7 +3,7 @@ id: 1187
 title: "Every embedded C++ FreeRTOS image fails to compile: `<string>` reaches
   `requires_hosted.h` under `-ffreestanding` on the PINNED arm-none-eabi-gcc,
   and the `__has_include` gate cannot see it"
-status: open
+status: resolved
 type: bug
 area: cpp
 related: [0112, 0332, 1146]
@@ -131,3 +131,59 @@ consolidate.
 Blocked on issue 1223 only in ordering: `check-cpp-freestanding-includes` cannot
 see any of these arms, so it must be taught to before they are deleted, or the
 blindness ships uncaught.
+
+## Resolution — phase-438 W1 + W2
+
+The `#elif defined(__has_include)` arms are gone. The std surface is reachable
+only through `NROS_CPP_STD`, which is a consumer REQUEST and not a probe, so no
+toolchain can answer the question wrongly any more.
+
+Two commits, in the order that made the second one small:
+
+* **W1** consolidated the fourteen hand-copied detection blocks into one
+  `nros/std_detect.hpp`. Behaviour-neutral, measured — the per-header failing
+  set was byte-identical before and after.
+* **W2** deleted the discovery arms. Five lines in one file, plus `<chrono>`'s
+  `||` disjunct.
+
+### Acceptance — this issue's own, as written
+
+```
+$ NROS_CMAKE_EXTRA_DEFS=-DCMAKE_TOOLCHAIN_FILE=$PWD/cmake/toolchain/arm-freertos-armcm3.cmake \
+  bash scripts/build/fixtures-build.sh freertos cpp zenoh
+EXIT=0
+requires_hosted hits: 0
+```
+
+Six ARM ELF binaries where none built before: `cpp_talker`, `cpp_listener`,
+`cpp_service_server`, `cpp_service_client`, `cpp_action_server`,
+`cpp_action_client`.
+
+Per-header standalone parse on this issue's toolchain (`arm-none-eabi 13.2`,
+`-std=c++14 -ffreestanding -fno-exceptions -fno-rtti`):
+
+```
+before   pass=26 fail=20
+after    pass=47 fail=0
+```
+
+### Corrections to the analysis above
+
+* **The second fix option in "Fix direction" would not have worked either.**
+  Pairing `__has_include` with `__STDC_HOSTED__` fails on the OTHER embedded
+  lane: `__STDC_HOSTED__` is 0 here and 1 on Zephyr's `-nostdinc++` lane, where
+  `<string>` is genuinely absent. Each probe is correct on exactly one embedded
+  lane; only the opt-in is correct on both.
+* **"with the rationale, from issue 0112" is not what 0112 says.** 0112's
+  Resolution chose `NROS_CPP_STD` over `__STDC_HOSTED__`; it never chose
+  `__has_include`, which arrived later in `acf213871`. Eleven header comments
+  cited 0112 as authority for the construct; W1 rewrote them.
+* **The count was 15 blocks across 11 headers**, not 19 sites across 13.
+  Nineteen is the `__has_include(<...>)` occurrence count, 29 is the
+  `#define NROS_CPP_HAS_*` line count.
+
+### What this unblocks
+
+Issue 1146 can now measure the FreeRTOS app-task stack on the C++ path, so
+`cmake/templates/freertos_app_config.c.in`'s 512 KiB — one number serving C and
+C++, measured only on the C half — can be reduced to the measured figure.

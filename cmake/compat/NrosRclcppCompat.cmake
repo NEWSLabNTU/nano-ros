@@ -114,6 +114,24 @@ function(_nros_compat_apply_force_includes target)
     # header) resolve to the nano-ros compat shims.
     target_include_directories(${target} PRIVATE
         "${_nros_compat_dir}/include")
+    # phase-438 W2 — ASK for the std surface. A file reaching
+    # `<rclcpp/rclcpp.hpp>` subclasses `rclcpp::Node`, whose signatures are
+    # spelled in `std::shared_ptr` / `std::string` / `std::vector`; that surface
+    # is now reachable only through `NROS_CPP_STD`, never discovered from the
+    # include path (issue 1187 — `__has_include(<string>)` is TRUE on
+    # arm-none-eabi `-ffreestanding`, where including it is a hard `#error`).
+    #
+    # This target is exactly the right place and nowhere else is: the shim is
+    # applied per-target and is deliberately NOT auto-applied on Zephyr (see
+    # below), so the opt-in follows the porting surface instead of leaking to
+    # images that use `nros::Node` directly.
+    #
+    # Until now this function set NO compile definition at all, and the whole
+    # ported-code path worked only because a hosted compiler happened to find
+    # libstdc++. `scripts/api-parity.py` even documented the opposite —
+    # "that is the flavour the compat CMake path builds under" — of a path that
+    # defined nothing. It is true from here.
+    target_compile_definitions(${target} PRIVATE NROS_CPP_STD=1)
 endfunction()
 
 # Phase 210.E.3.c — Zephyr context: do NOT auto-apply force-include of
