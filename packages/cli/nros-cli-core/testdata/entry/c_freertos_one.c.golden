@@ -58,7 +58,7 @@ __attribute__((section(".nros_boot_config"), used))
 int nros_app_main(int argc, char** argv) {
     (void)argc;
     (void)argv;
-    return nros_board_freertos_run_components(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup);
+    return nros_board_rtos_run_components(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup);
 }
 
 NROS_APP_MAIN_REGISTER_VOID();

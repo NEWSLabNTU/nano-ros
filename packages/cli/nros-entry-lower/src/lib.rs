@@ -112,8 +112,9 @@ impl BoardFamily {
     ///   implemented in Rust in `nros-cpp`.
     /// - `Freertos` — `nros_board_freertos_run_components`, C, in the board
     ///   crate's glue (`c/freertos_run_components.c`).
-    /// - `Zephyr`, `Nuttx` — no C runner yet; each is the same shape as the
-    ///   FreeRTOS one and is the remaining W3.1 work.
+    /// - `Zephyr`, `Nuttx` — the SAME runner. `run_components` is the
+    ///   single-executor path, identical on every RTOS but for a per-tick
+    ///   yield, so all three link one `nros_board_rtos_run_components`.
     /// - `Threadx` — deliberately none, and not merely unwritten. It has no
     ///   `run_tiers` either, so there is nothing to copy, and it stays
     ///   C++-entry-only with the routing REPORTED rather than refused.
@@ -125,8 +126,11 @@ impl BoardFamily {
     /// routing answers only the first.
     pub fn has_c_run_components(self) -> bool {
         match self {
-            BoardFamily::Native | BoardFamily::Freertos => true,
-            BoardFamily::Zephyr | BoardFamily::Nuttx | BoardFamily::Threadx => false,
+            BoardFamily::Native
+            | BoardFamily::Freertos
+            | BoardFamily::Zephyr
+            | BoardFamily::Nuttx => true,
+            BoardFamily::Threadx => false,
         }
     }
 

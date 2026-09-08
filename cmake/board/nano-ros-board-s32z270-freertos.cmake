@@ -27,6 +27,11 @@ set(_NROS_FREERTOS_PLAT_DIR
     "${_NROS_BOARD_ROOT}/packages/platform/nros-platform-freertos")
 set(_NROS_FREERTOS_FAMILY_DIR
     "${_NROS_BOARD_ROOT}/packages/boards/nros-board-freertos")
+# phase-432 W3.1 — the C glue shared across board FAMILIES, not just across
+# boards in one family. `nros_board_rtos_run_components` lives here because
+# every RTOS uses the same single-executor entry.
+set(_NROS_BOARDS_COMMON_C_DIR
+    "${_NROS_BOARD_ROOT}/packages/boards/nros-board-common/c")
 set(_NROS_FREERTOS_SHARED_CONFIG_DIR "${_NROS_FREERTOS_FAMILY_DIR}/config")
 set(_NROS_FREERTOS_NET_C
     "${_NROS_FREERTOS_PLAT_DIR}/src/net.c")
@@ -36,10 +41,11 @@ set(_NROS_FREERTOS_SHARED_C
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_task_glue.c"
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_run_tiers.c"
     # phase-432 W3.1 — the C-ABI single-executor runner, beside the tiers one.
-    # Both are the board's entry surface and the CMake lane compiles the family
-    # glue itself (the cargo lane gets the same two files via `build.rs`), so a
-    # runner listed in only one lane links in only one.
-    "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_run_components.c"
+    # SHARED by every RTOS board (`nros_board_rtos_run_components`), which is
+    # why it comes from the common dir rather than the family one. The CMake
+    # lane compiles this glue itself (the cargo lane gets it via `build.rs`),
+    # so a runner listed in only one lane links in only one.
+    "${_NROS_BOARDS_COMMON_C_DIR}/nros_rtos_run_components.c"
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_c_entry.c"
     "${_NROS_BOARD_DIR}/c/board_s32z270.c")
 

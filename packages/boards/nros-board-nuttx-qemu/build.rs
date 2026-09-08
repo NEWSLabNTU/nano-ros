@@ -43,7 +43,18 @@ fn main() {
     // links against (RFC-0015 Model 1: one pthread per tier over one shared
     // session). NuttX analog of the FreeRTOS `c/freertos_run_tiers.c` glue.
     let run_tiers = Path::new(env!("CARGO_MANIFEST_DIR")).join("c/nuttx_run_tiers.c");
-    nros_board_common::nuttx_platform_build::compile_run_tiers_seam(&run_tiers);
+    // phase-432 W3.1 — the C-ABI single-executor entry rides the same seam
+    // archive. SHARED with every other RTOS board
+    // (`nros_board_rtos_run_components`): the single-executor path differs
+    // only in a per-tick yield, so three copies would be three chances to
+    // drift. Both must be whole-archived for the same reason — the generated
+    // entry's reference has to resolve regardless of archive order.
+    let run_components = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../nros-board-common/c/nros_rtos_run_components.c");
+    nros_board_common::nuttx_platform_build::compile_entry_seams(&[
+        run_tiers.as_path(),
+        run_components.as_path(),
+    ]);
     // Empty-builtins stub lives in this board crate's `c/` (see its header
     // for why libapps' `builtin_list.o` must be preempted).
     let stub = Path::new(env!("CARGO_MANIFEST_DIR")).join("c/nuttx_builtins_stub.c");
