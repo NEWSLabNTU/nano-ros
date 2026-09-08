@@ -620,38 +620,100 @@ impl SessionHandle {
 /// every group); `Some` = accept only listed groups. Backs
 /// [`Executor::group_active`]; split out so the logic is unit-testable without a
 /// live session.
-pub(crate) fn group_filter_accepts<const N: usize>(
-    active: Option<&[heapless::String<N>]>,
+pub(crate) fn group_filter_accepts(
+    active: Option<&[super::storage::ActiveGroup]>,
+    node: u64,
     group: &str,
 ) -> bool {
     match active {
         None => true,
-        Some(v) => v.iter().any(|g| g.as_str() == group),
+        Some(v) => v.iter().any(|(n, g)| *n == node && g.as_str() == group),
     }
 }
 
 #[cfg(test)]
 mod group_filter_tests {
     use super::group_filter_accepts;
+    use crate::executor::storage::{ActiveGroup, node_identity_hash};
 
     type Group = heapless::String<32>;
 
-    fn group(s: &str) -> Group {
-        let mut g = Group::new();
-        g.push_str(s).unwrap();
-        g
+    fn entry(node: &str, ns: &str, g: &str) -> ActiveGroup {
+        let mut s = Group::new();
+        s.push_str(g).unwrap();
+        (node_identity_hash(node, ns), s)
     }
 
     #[test]
     fn wildcard_accepts_all() {
-        assert!(group_filter_accepts::<32>(None, "anything"));
+        assert!(group_filter_accepts(
+            None,
+            node_identity_hash("n", "/"),
+            "anything"
+        ));
     }
 
     #[test]
     fn set_accepts_only_listed_groups() {
-        let active = [group("ctrl")];
-        assert!(group_filter_accepts(Some(&active[..]), "ctrl"));
-        assert!(!group_filter_accepts(Some(&active[..]), "telem"));
+        let active = [entry("n", "/", "ctrl")];
+        let n = node_identity_hash("n", "/");
+        assert!(group_filter_accepts(Some(&active[..]), n, "ctrl"));
+        assert!(!group_filter_accepts(Some(&active[..]), n, "telem"));
+    }
+
+    /// issue 1172 — the SAME group id on a DIFFERENT node is not this tier's.
+    ///
+    /// This is the case the whole change exists for: two nodes may legitimately
+    /// declare `ctrl`, pinned to different tiers, and the old filter — keyed on
+    /// the group name alone — admitted both onto whichever tier asked first.
+    #[test]
+    fn the_same_group_on_another_node_is_not_accepted() {
+        let active = [entry("talker", "/", "ctrl")];
+        assert!(group_filter_accepts(
+            Some(&active[..]),
+            node_identity_hash("talker", "/"),
+            "ctrl"
+        ));
+        assert!(
+            !group_filter_accepts(
+                Some(&active[..]),
+                node_identity_hash("listener", "/"),
+                "ctrl"
+            ),
+            "another node's identically-named group must NOT be admitted"
+        );
+    }
+
+    /// The namespace is part of the identity, not decoration: two nodes may
+    /// share a bare name under different namespaces, which is legal in ROS.
+    #[test]
+    fn the_same_name_under_another_namespace_is_a_different_node() {
+        let active = [entry("talker", "/left", "ctrl")];
+        assert!(!group_filter_accepts(
+            Some(&active[..]),
+            node_identity_hash("talker", "/right"),
+            "ctrl"
+        ));
+    }
+
+    /// An empty namespace and `/` are the SAME node. Both ends normalise, and
+    /// if only one did, a filter would never match what it named.
+    #[test]
+    fn an_empty_namespace_normalises_to_root() {
+        assert_eq!(
+            node_identity_hash("talker", ""),
+            node_identity_hash("talker", "/")
+        );
+    }
+
+    /// The separator is load-bearing: without it `("ab","c")` and `("a","bc")`
+    /// would hash alike, and a node name may contain any namespace character.
+    #[test]
+    fn the_name_namespace_split_cannot_be_forged() {
+        assert_ne!(
+            node_identity_hash("ab", "/c"),
+            node_identity_hash("a", "b/c")
+        );
     }
 
     /// phase-409 — the wildcard and an EMPTY filter are different answers, and
@@ -660,9 +722,10 @@ mod group_filter_tests {
     /// them apart; this pins the distinction at the decision itself.
     #[test]
     fn an_empty_filter_is_not_the_wildcard() {
-        let empty: [Group; 0] = [];
-        assert!(!group_filter_accepts(Some(&empty[..]), "anything"));
-        assert!(group_filter_accepts::<32>(None, "anything"));
+        let empty: [ActiveGroup; 0] = [];
+        let n = node_identity_hash("n", "/");
+        assert!(!group_filter_accepts(Some(&empty[..]), n, "anything"));
+        assert!(group_filter_accepts(None, n, "anything"));
     }
 }
 
@@ -1174,7 +1237,7 @@ pub struct Executor<'s> {
     /// `Option` around the table, because the table itself no longer lives in
     /// the value. "Filtering with an empty set" and "not filtering" stay
     /// distinguishable, which is the whole content of the old `Option`.
-    pub(crate) active_groups: super::storage::CarvedVec<'s, super::storage::GroupName>,
+    pub(crate) active_groups: super::storage::CarvedVec<'s, super::storage::ActiveGroup>,
     /// Whether [`active_groups`](Self::active_groups) is a filter at all.
     /// `false` = wildcard (the old `None`).
     pub(crate) active_groups_filtering: bool,
@@ -1938,7 +2001,10 @@ impl<'s> Executor<'s> {
     /// only callbacks whose `.callback_group()` is in `groups` register here.
     /// An empty slice (or never calling it) leaves the wildcard — register all
     /// callbacks (the single-tier degenerate case + today's behaviour).
-    pub fn set_active_groups(&mut self, groups: &[&str]) -> Result<(), ()> {
+    pub fn set_active_groups(
+        &mut self,
+        groups: &[(&str, &str, &str)],
+    ) -> Result<(), super::types::BindError> {
         // phase-409 — the table is CARVED and reused, so clear before refilling;
         // the old `Option<heapless::Vec>` got a fresh empty vector each call.
         self.active_groups.clear();
@@ -1946,15 +2012,23 @@ impl<'s> Executor<'s> {
             self.active_groups_filtering = false;
             return Ok(());
         }
-        for g in groups {
+        for (name, ns, group) in groups {
             // issue 1172 — this used to be `if s.push_str(g).is_ok()`, which
             // DROPPED an oversized group name and left the tier filtering on a
             // set that silently lacked it. It fails closed (the entity is never
             // created), so the symptom is a missing entity with nothing to read
             // that says why. Same contract as `declare_remap` below: too long,
             // or table full, is the caller's error.
+            let key = super::storage::node_identity_hash(name, ns);
             let mut s = heapless::String::new();
-            if s.push_str(g).is_err() || self.active_groups.push(s).is_err() {
+            let why = if s.push_str(group).is_err() {
+                Some(super::types::BindError::NameTooLong)
+            } else if self.active_groups.push((key, s)).is_err() {
+                Some(super::types::BindError::TableFull)
+            } else {
+                None
+            };
+            if let Some(why) = why {
                 // FAIL CLOSED, and say so. Returning here with a PARTIAL table
                 // would leave the tier filtering on a subset — the same silent
                 // narrowing, one step later. An empty table with filtering ON
@@ -1965,7 +2039,7 @@ impl<'s> Executor<'s> {
                 // cannot.
                 self.active_groups.clear();
                 self.active_groups_filtering = true;
-                return Err(());
+                return Err(why);
             }
         }
         self.active_groups_filtering = true;
@@ -1973,15 +2047,19 @@ impl<'s> Executor<'s> {
     }
 
     /// The current callback-group filter, or `None` for the wildcard.
-    fn active_group_filter(&self) -> Option<&[super::storage::GroupName]> {
+    fn active_group_filter(&self) -> Option<&[super::storage::ActiveGroup]> {
         self.active_groups_filtering
             .then(|| self.active_groups.as_slice())
     }
 
     /// Phase 228.C — whether a callback in `group` should register in this
     /// executor under the current filter. The wildcard accepts everything.
-    pub fn group_active(&self, group: &str) -> bool {
-        group_filter_accepts(self.active_group_filter(), group)
+    pub fn group_active(&self, node_name: &str, node_namespace: &str, group: &str) -> bool {
+        group_filter_accepts(
+            self.active_group_filter(),
+            super::storage::node_identity_hash(node_name, node_namespace),
+            group,
+        )
     }
 
     /// Set the node name and namespace used for liveliness tokens.
@@ -2106,14 +2184,15 @@ impl<'s> Executor<'s> {
     ///
     /// Call BEFORE `node_builder(name).build()`. An existing entry for the
     /// same `(name, namespace)` key is overwritten (last-write wins). Overflow
-    /// past `MAX_NODES` is silently ignored. An empty `namespace` is normalised
+    /// past `MAX_NODES` is an `Err`, never a dropped binding — issue 1172. An
+    /// empty `namespace` is normalised
     /// to `"/"` to match what `NodeBuilder::build` computes for a root-NS node.
     pub fn bind_node_name_sched(
         &mut self,
         name: &str,
         namespace: &str,
         sc: super::sched_context::SchedContextId,
-    ) -> Result<(), ()> {
+    ) -> Result<(), super::types::BindError> {
         let norm_ns = if namespace.is_empty() { "/" } else { namespace };
         // Overwrite if there is already an entry for this (name, ns) pair.
         for entry in self.node_sched_table.iter_mut() {
@@ -2127,11 +2206,14 @@ impl<'s> Executor<'s> {
         // the wrong sched context with nothing to read that says so.
         let mut name_s = heapless::String::<64>::new();
         let mut ns_s = heapless::String::<64>::new();
-        name_s.push_str(name).map_err(|_| ())?;
-        ns_s.push_str(norm_ns).map_err(|_| ())?;
+        name_s
+            .push_str(name)
+            .map_err(|_| super::types::BindError::NameTooLong)?;
+        ns_s.push_str(norm_ns)
+            .map_err(|_| super::types::BindError::NameTooLong)?;
         self.node_sched_table
             .push((name_s, ns_s, sc))
-            .map_err(|_| ())?;
+            .map_err(|_| super::types::BindError::TableFull)?;
         Ok(())
     }
 
@@ -2162,7 +2244,8 @@ impl<'s> Executor<'s> {
     ///
     /// Call BEFORE entity creation. An existing entry for the same
     /// `(name, namespace, group)` key is overwritten (last-write wins). Overflow
-    /// past `MAX_CBS` is silently ignored. An empty `namespace` is normalised to
+    /// past `MAX_CBS` is an `Err`, never a dropped binding — issue 1172. An
+    /// empty `namespace` is normalised to
     /// `"/"` to match `NodeBuilder::build`. Mirror of `bind_node_name_sched`.
     pub fn bind_group_sched(
         &mut self,
@@ -2170,7 +2253,7 @@ impl<'s> Executor<'s> {
         namespace: &str,
         group: &str,
         sc: super::sched_context::SchedContextId,
-    ) -> Result<(), ()> {
+    ) -> Result<(), super::types::BindError> {
         let norm_ns = if namespace.is_empty() { "/" } else { namespace };
         // Overwrite if there is already an entry for this (name, ns, group).
         for entry in self.group_sched_table.iter_mut() {
@@ -2184,12 +2267,17 @@ impl<'s> Executor<'s> {
         let mut name_s = heapless::String::<64>::new();
         let mut ns_s = heapless::String::<64>::new();
         let mut grp_s = heapless::String::<32>::new();
-        name_s.push_str(name).map_err(|_| ())?;
-        ns_s.push_str(norm_ns).map_err(|_| ())?;
-        grp_s.push_str(group).map_err(|_| ())?;
+        name_s
+            .push_str(name)
+            .map_err(|_| super::types::BindError::NameTooLong)?;
+        ns_s.push_str(norm_ns)
+            .map_err(|_| super::types::BindError::NameTooLong)?;
+        grp_s
+            .push_str(group)
+            .map_err(|_| super::types::BindError::NameTooLong)?;
         self.group_sched_table
             .push((name_s, ns_s, grp_s, sc))
-            .map_err(|_| ())?;
+            .map_err(|_| super::types::BindError::TableFull)?;
         Ok(())
     }
 
@@ -9627,15 +9715,17 @@ mod p274_w1_tier_executor_tests {
         // `GroupName` is `heapless::String<32>`.
         let too_long = "g".repeat(33);
         assert!(
-            borrowed.set_active_groups(&[too_long.as_str()]).is_err(),
+            borrowed
+                .set_active_groups(&[("n", "/", too_long.as_str())])
+                .is_err(),
             "an oversized group name must be reported, not dropped"
         );
         assert!(
-            !borrowed.group_active(&too_long),
+            !borrowed.group_active("n", "/", &too_long),
             "the name that did not fit must not be active"
         );
         assert!(
-            !borrowed.group_active("anything-else"),
+            !borrowed.group_active("n", "/", "anything-else"),
             "a refused filter must accept NOTHING — falling back to the \
              wildcard would run every callback on this tier"
         );
@@ -9652,33 +9742,35 @@ mod p274_w1_tier_executor_tests {
 
         // Before gating: wildcard — every group is accepted.
         assert!(
-            borrowed.group_active("ctrl"),
+            borrowed.group_active("n", "/", "ctrl"),
             "default (wildcard) must accept every group"
         );
         assert!(
-            borrowed.group_active("telem"),
+            borrowed.group_active("n", "/", "telem"),
             "default (wildcard) must accept every group"
         );
 
         // Gate borrowed to only the "ctrl" group (one-tier filter).
-        borrowed.set_active_groups(&["ctrl"]).expect("fits");
+        borrowed
+            .set_active_groups(&[("n", "/", "ctrl")])
+            .expect("fits");
 
         assert!(
-            borrowed.group_active("ctrl"),
+            borrowed.group_active("n", "/", "ctrl"),
             "\"ctrl\" must be active after set_active_groups([\"ctrl\"])"
         );
         assert!(
-            !borrowed.group_active("telem"),
+            !borrowed.group_active("n", "/", "telem"),
             "\"telem\" must NOT be active when only \"ctrl\" is gated"
         );
         assert!(
-            !borrowed.group_active("planning"),
+            !borrowed.group_active("n", "/", "planning"),
             "\"planning\" must NOT be active when only \"ctrl\" is gated"
         );
 
         // Primary is unaffected (it still uses the wildcard).
         assert!(
-            primary.group_active("telem"),
+            primary.group_active("n", "/", "telem"),
             "primary executor must remain unaffected (still wildcard)"
         );
 
@@ -9687,7 +9779,7 @@ mod p274_w1_tier_executor_tests {
             .set_active_groups(&[])
             .expect("the wildcard always fits");
         assert!(
-            borrowed.group_active("telem"),
+            borrowed.group_active("n", "/", "telem"),
             "after clearing, borrowed must accept all groups again"
         );
     }

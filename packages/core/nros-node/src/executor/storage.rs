@@ -52,6 +52,59 @@ pub(crate) type ExtraSessionId = (heapless::String<32>, heapless::String<128>);
 /// Phase 228.C — one callback-group name in a tier executor's filter.
 pub(crate) type GroupName = heapless::String<32>;
 
+/// The node half of an [`ActiveGroup`] key: a hash of `(name, namespace)`.
+///
+/// FNV-1a, 64-bit, over `name` then `\0` then the normalised namespace. The
+/// separator matters: without it `("ab", "c")` and `("a", "bc")` hash alike,
+/// and a node name may legally contain any of the namespace's characters.
+///
+/// FNV because the tree already depends on it (heapless's `FnvIndexMap`), it
+/// is `const`-friendly and allocation-free, and this runs on the registration
+/// path of every entity on an MCU. A 64-bit collision across the handful of
+/// nodes in one image is not a risk worth a bigger key: at 32 entries the
+/// probability is around 3e-17.
+///
+/// ONE home, deliberately. Both ends of the comparison call this —
+/// `set_active_groups` hashing what the tier declared, and `create_entity`
+/// hashing the node an entity belongs to. Two hashers that agree by
+/// inspection is exactly the defect class issue 1172 is filed under.
+pub(crate) fn node_identity_hash(name: &str, namespace: &str) -> u64 {
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let norm_ns = if namespace.is_empty() { "/" } else { namespace };
+    let mut h = OFFSET;
+    for b in name
+        .as_bytes()
+        .iter()
+        .chain(core::iter::once(&0u8))
+        .chain(norm_ns.as_bytes())
+    {
+        h ^= *b as u64;
+        h = h.wrapping_mul(PRIME);
+    }
+    h
+}
+
+/// One entry of a tier's active-group filter: `(node identity hash, group)`.
+///
+/// issue 1172 — the filter used to be the GROUP NAME ALONE, which cannot tell
+/// node A's `ctrl` from node B's `ctrl`. Two nodes may legitimately declare the
+/// same group id on different tiers and nothing rejects it, so a tier filter
+/// was admitting entities it did not own. The sibling table for the
+/// sched-context path (`group_sched_table`, `bind_group_sched`) has been
+/// node-qualified all along; only this one was not.
+///
+/// The node half is a HASH of `(name, namespace)` rather than the strings.
+/// Storing them would cost 184 B per entry against this table's 48 B, and the
+/// table is CARVED one entry per node slot — +144 B per slot, which is 4.6 KB
+/// of static executor arena at 32 slots. The group name stays readable because
+/// a refused filter should be able to say WHICH group it refused.
+///
+/// The hash has exactly one home, [`node_identity_hash`], and both ends of the
+/// comparison call it — codegen never hashes anything, it emits plain strings.
+/// A second hasher would be this phase's own defect in a new place.
+pub(crate) type ActiveGroup = (u64, GroupName);
+
 // ============================================================================
 // CarvedVec — a `heapless::Vec` whose capacity lives in the caller's backing
 // ============================================================================
@@ -185,7 +238,7 @@ pub(crate) struct ExecutorStorage<
     node_sched_table: [MaybeUninit<NodeSchedEntry>; NODES],
     dispatch_slots: [MaybeUninit<DispatchSlot>; NODES],
     component_slots: [MaybeUninit<ComponentSlot>; NODES],
-    active_groups: [MaybeUninit<GroupName>; NODES],
+    active_groups: [MaybeUninit<ActiveGroup>; NODES],
     group_sched_table: [MaybeUninit<GroupSchedEntry>; CBS],
     monitor_violations: [MaybeUninit<Violation>; MAX_VIOLATIONS],
 }
@@ -223,7 +276,7 @@ pub(crate) struct ExecutorSlices<'s> {
     pub(crate) node_sched_table: CarvedVec<'s, NodeSchedEntry>,
     pub(crate) dispatch_slots: CarvedVec<'s, DispatchSlot>,
     pub(crate) component_slots: CarvedVec<'s, ComponentSlot>,
-    pub(crate) active_groups: CarvedVec<'s, GroupName>,
+    pub(crate) active_groups: CarvedVec<'s, ActiveGroup>,
     pub(crate) group_sched_table: CarvedVec<'s, GroupSchedEntry>,
     pub(crate) monitor_violations: CarvedVec<'s, Violation>,
 }
@@ -280,7 +333,7 @@ pub const NATIVE_UNITS: RegionUnits = RegionUnits {
     node_sched_entry: unit_of::<NodeSchedEntry>(),
     dispatch_slot: unit_of::<DispatchSlot>(),
     component_slot: unit_of::<ComponentSlot>(),
-    group_name: unit_of::<GroupName>(),
+    group_name: unit_of::<ActiveGroup>(),
     group_sched_entry: unit_of::<GroupSchedEntry>(),
     violation: unit_of::<Violation>(),
 };
@@ -589,7 +642,7 @@ pub(crate) unsafe fn carve<'s>(
             node_sched_table: carved!(o.node_sched_table, node_slots, NodeSchedEntry),
             dispatch_slots: carved!(o.dispatch_slots, node_slots, DispatchSlot),
             component_slots: carved!(o.component_slots, node_slots, ComponentSlot),
-            active_groups: carved!(o.active_groups, node_slots, GroupName),
+            active_groups: carved!(o.active_groups, node_slots, ActiveGroup),
             group_sched_table: carved!(o.group_sched_table, cbs, GroupSchedEntry),
             monitor_violations: carved!(o.monitor_violations, MAX_VIOLATIONS, Violation),
         }
@@ -739,7 +792,7 @@ mod tests {
         assert!(align_of::<NodeSchedEntry>() <= 8);
         assert!(align_of::<DispatchSlot>() <= 8);
         assert!(align_of::<ComponentSlot>() <= 8);
-        assert!(align_of::<GroupName>() <= 8);
+        assert!(align_of::<ActiveGroup>() <= 8);
         assert!(align_of::<GroupSchedEntry>() <= 8);
         assert!(align_of::<Violation>() <= 8);
         assert!(executor_storage_layout(DEFAULT).align() <= 8);
@@ -769,7 +822,7 @@ mod tests {
             + size_of::<NodeSchedEntry>()
             + size_of::<DispatchSlot>()
             + size_of::<ComponentSlot>()
-            + size_of::<GroupName>();
+            + size_of::<ActiveGroup>();
         assert!(
             one_more_node - base >= per_node,
             "one more Node slot must cost its seven tables ({per_node} B) in the \

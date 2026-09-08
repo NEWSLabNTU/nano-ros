@@ -217,20 +217,12 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
             })
             .collect();
 
-        // Per-tier callback groups, deduped ACROSS tiers: a group named by two
-        // tiers belongs to the first, and the arrays are what the runtime uses
-        // to route a callback.
-        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-        let mut groups_per_tier: Vec<Vec<String>> = Vec::new();
-        for t in &tiers.tiers {
-            let mut g = Vec::new();
-            for (_, grp) in &t.members {
-                if !grp.is_empty() && seen.insert(grp.clone()) {
-                    g.push(grp.clone());
-                }
-            }
-            groups_per_tier.push(g);
-        }
+        // issue 1172 — ONE derivation now, and it lives in `mod.rs` because the
+        // two packs used to disagree here: `emit_c` deduped ACROSS tiers and
+        // `emit_cpp` within each tier, so the same plan produced two different
+        // filters. With the node in the key there is nothing to dedup across
+        // tiers, and the rule that is left is the same for both.
+        let groups_per_tier = super::tier_group_keys(tiers, plan);
 
         let tier_views = super::tier_views(tiers, groups_per_tier);
 

@@ -47,9 +47,15 @@ static int32_t __nros_entry_setup_tier_1(void* executor) {
     return 0;
 }
 
-/* Phase 274.W2 — per-tier groups arrays + tier spec table. */
-static const char* __nros_tier_0_groups[] = {"ctrl_grp", };
-static const char* __nros_tier_1_groups[] = {"telem_grp", };
+/* Phase 274.W2 — per-tier groups arrays + tier spec table.
+ *
+ * issue 1172 — a groups array is FLAT `(node name, node namespace, group)`
+ * triples, and `n_groups` counts TRIPLES, not strings. The filter used to
+ * match on the group id alone, so two nodes' `ctrl` were one key and a tier
+ * naming one of them admitted both. An EMPTY array is the WILDCARD, so a tier
+ * that names groups must never render an empty one. */
+static const char* __nros_tier_0_groups[] = {"ctrl", "/", "ctrl_grp", };
+static const char* __nros_tier_1_groups[] = {"telem", "/", "telem_grp", };
 static const ::nros::board::NativeTierSpec __nros_tiers[2] = {
     {
         .name = "high",

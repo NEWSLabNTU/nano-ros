@@ -283,6 +283,32 @@ pub fn baked_domain_from_c_abi(raw: u8) -> Option<u32> {
 /// fallback: a typo'd `ROS_DOMAIN_ID` must not invisibly move a node to
 /// domain 0 (the pre-#206 C++ behavior) or be silently ignored (the
 /// pre-#206 behavior of this resolver).
+/// Why a filter or sched binding could not be recorded.
+///
+/// issue 1172 — these three calls used to DROP whatever did not fit and return
+/// nothing, so a tier ran on a filter quietly narrower than the one it was
+/// given, or a node sat on the wrong sched context, with nothing to read that
+/// said why. The tables are fixed-capacity, so both failures are real and the
+/// caller has to be able to tell them apart: one is a name the storage cannot
+/// hold, the other is an image that declared more than it sized for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BindError {
+    /// A name, namespace or group id is longer than its `heapless::String`.
+    NameTooLong,
+    /// The fixed table is full — the image declared more entries than the
+    /// executor was sized for.
+    TableFull,
+}
+
+impl core::fmt::Display for BindError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            BindError::NameTooLong => write!(f, "name is longer than its fixed-capacity storage"),
+            BindError::TableFull => write!(f, "the executor's fixed table is full"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BootConfigError {
     /// `ROS_DOMAIN_ID` env var set but not a decimal integer.
