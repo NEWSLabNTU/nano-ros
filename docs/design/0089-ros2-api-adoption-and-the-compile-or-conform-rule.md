@@ -2396,6 +2396,12 @@ site exists.
 
 ## Prerequisite: the measurement must include the shim
 
+**HISTORY as of 2026-09-09 — read "Settled: `rclcpp::` is the HOME" for the
+lane's shape today.** This section states the problem stage 0 was written to
+solve, and the solution it chose was a fourth translation unit with the shim's
+namespace admitted for it alone. That solution is retired, in favour of the
+same namespace being admitted for ALL of them.
+
 The C++ parity lane reads three translation units and filters to namespace
 `nros`, so `rclcpp_compat.hpp` contributes zero rows (issue 1020). Every number
 in this RFC about "how far we are" is therefore measured against the NATIVE API,
@@ -2405,9 +2411,19 @@ without it, progress and noise are indistinguishable.
 ## The measurement can flatter, which is why `disposition` is not bookkeeping
 
 Stage 0 admitted `rclcpp_compat.hpp` as a fourth translation unit, so the lane
-now reports two surfaces: the NATIVE API's distance from rclcpp, and what a
-ported file actually reaches. The ported surface is better by construction —
-`same` goes 84 → 110, `theirs-only` 717 → 692.
+reported two surfaces: the NATIVE API's distance from rclcpp, and what a ported
+file actually reaches. The ported surface was better by construction — `same`
+went 84 → 110, `theirs-only` 717 → 692.
+
+**AMENDED 2026-09-09 — the lane now reports ONE surface, and the argument below
+is unaffected.** The two surfaces were a split by NAMESPACE, and with `rclcpp::`
+ruled our home both vocabularies are ours; the numbers on the one surface are
+`same` 135 and `theirs-only` 651. What the split bought was that a shim-only row
+could not be mistaken for a native one, and that mattered while the shim was a
+separate header. The reason `disposition` exists is untouched: it was never about
+WHICH surface a row sits on, but about a row correlating `same` by shape while
+its contract differs — which is as true on one surface as on two, and is exactly
+what the two rows below do.
 
 **Two of those newly-`same` rows are the live inversions this RFC was written
 about.** Measured 2026-09-04:
@@ -2416,6 +2432,9 @@ about.** Measured 2026-09-04:
 ParametersQoS                          state=same   surface=ported
 NodeOptions::use_intra_process_comms   state=same   surface=ported
 ```
+
+(`surface=ported` is how those rows read on 2026-09-04. Both are now plain
+`same`; the defect each records is unchanged, which is the point.)
 
 `ParametersQoS()` returns `QoS(10)` where upstream is `KEEP_LAST, 1000`, and
 that `NodeOptions` setter stores its argument and is never read. Both now
