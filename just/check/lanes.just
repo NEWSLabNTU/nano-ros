@@ -799,8 +799,12 @@ cpp: cpp-fmt
     # The C library headers still come from the host, which is the one thing
     # this probe does not model — a `<stdlib.h>` difference between glibc and
     # picolibc would slip through. Named here rather than papered over.
-    echo "  - capability layout invariance (sizeof must not follow a probe)"
-    bash scripts/check-cpp-capability-layout.sh
+    # The capability-layout measurement USED to run here. It is its own gate now
+    # (`just check cpp-capability-layout`), on the FAST lane, because this lane
+    # is `build-serial` and no merge-gating event reaches it — so a gate whose
+    # whole job is making a silent ABI split impossible was gating nothing.
+    # Nothing it does needs this lane's cargo build: it parses and measures the
+    # COMMITTED `_nuttx` sizes header. Issue 1225.
     echo "  - -nostdinc++ header parse (ThreadX shim)"
     _nostd_tu="$(mktemp -d)/nostdincxx_probe.cpp"
     _threadx_shim=packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat

@@ -1,0 +1,72 @@
+# What `check-cpp-capability-layout` must tolerate today, and nothing more.
+#
+# A RATCHET, not an allowlist. It may only SHRINK: a line here that no longer
+# matches what the gate measures is a FAILURE, so the debt cannot go stale, and
+# a violation not listed here is a failure too, so it cannot grow.
+#
+# Two kinds of entry, and they mean different things:
+#
+#   diverges <subject>     `sizeof(subject)` follows a capability macro. This is
+#                          the defect the gate exists to catch. Delete the line
+#                          in the commit that fixes the member.
+#   hosted-only <subject>  the subject does not EXIST in the freestanding arm.
+#                          Absence is not a layout divergence -- no freestanding
+#                          TU can name the type, so no object of it crosses the
+#                          boundary and no two TUs can disagree about its shape.
+#                          It is DECLARED rather than inferred because "the type
+#                          was supposed to exist there" is a real defect wearing
+#                          the same clothes; issue 1204 is the version of this
+#                          gate that inferred it and passed on absence.
+#
+# Subject spellings are the DERIVED ones -- `scripts/check/
+# cpp_capability_subjects.py` prints the list. A line naming a subject the
+# derivation no longer produces is a failure, so a renamed type cannot leave a
+# dead exemption behind.
+#
+# --- the `diverges` entries: issue 1225, and why they are here not fixed -----
+#
+# Three types, five spellings, ONE member. `nros::Timer` and
+# `nros::GuardCondition` each hold an `#ifdef NROS_CPP_STD`
+# `std::unique_ptr<std::function<void()>> closure_` that `attach_std_closure`
+# writes and only `std_compat.hpp`'s four wrappers reach; `nros::ComponentNode`
+# holds `Timer timers_[8]`, so its 64-byte delta is exactly 8 x 8 and follows.
+# `rclcpp::Timer` and `rclcpp::TimerBase` are ALIASES of `nros::Timer` -- the
+# same layout under the spellings a ported file writes, listed separately
+# because the gate measures spellings and a porting user depends on those two.
+#
+#     nros::Timer           24 -> 32   with -DNROS_CPP_STD=1
+#     nros::GuardCondition  32 -> 40
+#     nros::ComponentNode   55784 -> 55848
+#
+# `packages/api/nros-cpp/**` is owned by PR #755, in flight, so this change
+# lands the WIDER gate with the debt it can finally see recorded here rather
+# than editing headers underneath it. The gate protects every other subject
+# from today; these five come off as #755's wave fixes them.
+#
+# The decision that wave carries, so it is not re-litigated at the keyboard:
+# STATE HIDES BEHIND A POINTER ONLY WHEN IT EXCEEDS A POINTER. The node's
+# hosted block is far larger than a pointer, so `rclcpp::Node`'s indirection is
+# right there. The timer and the guard condition differ by exactly 8 bytes,
+# which IS a pointer -- so they take the member UNCONDITIONALLY in both
+# configurations: the same 8 bytes a freestanding target would have paid for
+# the indirection, one stable layout, no one-definition hazard, and no
+# dereference on the hot path.
+#
+# --- the `hosted-only` entries ----------------------------------------------
+#
+# `rclcpp::Rate` (and `WallRate`, its alias) sit inside `#ifdef
+# NROS_CPP_HAS_STD_CHRONO` at nros.hpp:936 -- the duration constructor and
+# `period()` are spelled in `std::chrono`. `rclcpp::NodeOptions` sits inside
+# `#if defined(NROS_CPP_HAS_STD_STRING) && defined(NROS_CPP_HAS_STD_VECTOR)` at
+# options.hpp:217. All three are absent against the ThreadX shim, which is the
+# correct outcome for a type whose whole surface is hosted, and none of them is
+# a layout that two TUs can disagree about.
+
+diverges ::nros::ComponentNode
+diverges ::nros::GuardCondition
+diverges ::nros::Timer
+diverges ::rclcpp::Timer
+diverges ::rclcpp::TimerBase
+hosted-only ::rclcpp::NodeOptions
+hosted-only ::rclcpp::Rate
+hosted-only ::rclcpp::WallRate
