@@ -233,6 +233,16 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     // undeclared prerequisite is cheapest to report before a toolchain is
     // touched (RFC-0065 D2's reasoning, applied to dependencies).
     check_declared_depends(&root, &all_packages, nano_ros_root.as_deref())?;
+    // RFC-0094 D3 / phase-439 W3 — a package that PARTICIPATES (carries a build
+    // file) must carry the file its declared `<build_type>` needs.
+    //
+    // Reported here for the same reason as the line above: before a toolchain is
+    // touched, naming every offender at once. And loudly, because the pre-W3
+    // behaviour was a SILENT skip — the site routed the package by whichever
+    // build file it happened to have and never read the declaration, so a
+    // `<build_type>nros_cargo</build_type>` over a directory with only a
+    // `CMakeLists.txt` built as cmake and looked correct.
+    crate::routing::check_declarations(&all_packages).map_err(|e| eyre::eyre!("{e}"))?;
 
     // The workspace's OWN packages can carry board descriptors, so a board is
     // declared where everything else about this workspace is declared.
@@ -261,7 +271,16 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         .packages
         .iter()
         .filter(|p| !framework_entries.contains(&p.dir))
-        .filter(|p| p.dir.join("CMakeLists.txt").is_file())
+        // RFC-0094 D3 (phase-439 W3) — the package's DECLARED build type, not
+        // the presence of a `CMakeLists.txt`. The two differ for a package that
+        // carries both build files: a Rust node whose `CMakeLists.txt` registers
+        // it with the workspace's cmake build is cmake-driven and says so, while
+        // a crate with a C harness beside it is not, and file presence cannot
+        // tell them apart. This is the same refinement W8.a made for framework
+        // entries ("a framework entry's build file is its framework's, not
+        // evidence about the graph"), reached from the declaration instead of
+        // from a second directory probe.
+        .filter(|p| crate::routing::route(p).cmake_subdir)
         .map(|p| p.name.as_str())
         .collect();
 
@@ -2544,6 +2563,7 @@ mod deprecation_wiring_tests {
         vec![cargo_nano_ros::provider_scan::WorkspacePackage {
             name: "demo_bringup".to_string(),
             dir: dir.to_path_buf(),
+            build_type: None,
             depends: Default::default(),
         }]
     }

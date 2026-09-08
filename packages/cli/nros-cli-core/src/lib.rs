@@ -46,6 +46,9 @@ pub mod resolve;
 // `include!`. One implementation: the build embeds a stamp, the runtime
 // recomputes it. Replaces the mtime comparison that fired on every rebase.
 pub mod interface_package;
+/// RFC-0094 D3 — which driver builds a package, and whether it is built here.
+/// The ONE reader of `<build_type>` for routing; the three sites call it.
+pub mod routing;
 pub mod source_stamp;
 pub mod stale_guard;
 // Issue 0455 — one `scratch_dir` for every unit test in this crate. Nine

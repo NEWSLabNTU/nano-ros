@@ -2,8 +2,8 @@
 
 **Status (2026-09-08). Opened from RFC-0094. W0 and W1 are the routing diff and
 the digest key — both are PRECONDITIONS and neither changes behaviour. W2–W4 are
-the three landings. **W0, W1 and W4 have LANDED; W2 is PARTIALLY landed (the phase and its
-artifact, not the deletion — issue 1228); W3 is not started.**
+the three landings. **W0, W1, W3 and W4 have LANDED; W2 is PARTIALLY landed (the phase and its
+artifact, not the deletion — issue 1228).**
 
 W0 corrected three of RFC-0094's own numbers — the count of `package.xml`, the
 size of the declare-but-no-file class, and how many of the 21 side-changers are
@@ -93,15 +93,25 @@ carries: every `cmake-only` package declares a cmake type and every
   driver the generated root is unusable. That one is a **latent fix the RFC did
   not name**.
 
-### The one row that is neither, and blocks W3
+### The one row that is neither — RESOLVED by W3, and not the way W0 expected
 
 `packages/rmw/cyclonedds/nros-rmw-cyclonedds` — issue 1224. It is the only
 dual-file package with no own `[workspace]` and no entry `deploy`, and it is
 member 87 of the repo-root `[workspace]`. Its `package.xml` declares
-`nros_cmake` while cargo genuinely builds the crate; the `CMakeLists.txt` is a
-separate C/C++ test wrapper. Nothing breaks today only because no workspace walk
-reaches `packages/rmw/`. W3 makes that declaration load-bearing, so the
-declaration is what must change.
+`nros_cmake` while cargo genuinely builds the crate. W0 read the `CMakeLists.txt`
+as a separate C/C++ test wrapper and concluded the declaration was what had to
+change before W3 could land.
+
+**It was not, and the premise was false.** W3 measured it: that file is the
+production `add_library(nros_rmw_cyclonedds STATIC …)` which the root
+`add_subdirectory`s through the backend's own `[rmw.provides.cmake] dir = "."`,
+and its CTest harness is `OFF` unless `PROJECT_IS_TOP_LEVEL` — so cmake is
+genuinely the driver that enters this DIRECTORY as a package, which is the
+question `<build_type>` answers. The crate is reached as a path dependency of
+the repo root's HAND-WRITTEN `[workspace]`, which `has_tracked_root` makes the
+emitter refuse to regenerate, so W3 could not have moved member 87 whatever the
+declaration said. No declaration change, no rule widening; the reasoning is in
+`docs/issues/archived/1224-*.md`.
 
 **Acceptance: met.** No build, 21 named-and-justified rows, wired as a gate.
 Mutation-tested on the real tree — flipping
@@ -292,7 +302,7 @@ why the pass is not yet saved in the real tree, and it is issue 1228's headline.
   <build-dir>` green on both sides and the unrelated values asserted UNCHANGED
   as the control.
 
-## W3 — `build_type` selects the driver
+## W3 — `build_type` selects the driver — **LANDED 2026-09-08**
 
 Add `build_type` to `PackageXml` and have the three sites read it for the
 DRIVER, keeping file presence for PARTICIPATION (RFC-0094 D3). Gate the
@@ -301,7 +311,74 @@ needs.
 
 **Acceptance:** W0's diff is empty; a package declaring `nros_cargo` with no
 `Cargo.toml` that IS routed produces a loud error naming the package, where
-today it is silently skipped.
+before it was silently skipped. **Met, both halves measured.**
+
+### What landed
+
+* `PackageXml.build_type` and `WorkspacePackage.build_type` — the raw spelling,
+  never canonicalised in the parser or the scan. The `<build_type>` vocabulary
+  has three cross-checked readers already (RFC-0087 D2); a fourth that resolved
+  the value would be the drift `check-build-type-spelling.py` exists to stop.
+* **`nros_cli_core::routing` — ONE home for the rule**, called by all three
+  sites. `route()` is total (a misdeclared package routes NOWHERE, which is what
+  makes the separate report load-bearing rather than cosmetic);
+  `misdeclaration()` is D3's intersection; `check_declarations()` reports every
+  offender at once, the same reasoning `check-tier-preconditions` uses.
+* The loud error runs in `cmd/build.rs` beside `check_declared_depends`, i.e.
+  **before stage 3 preflight** — so a wrong declaration is diagnosed before a
+  toolchain is touched. Both emitters check it again on their own inputs, so a
+  caller reaching them by another road cannot get the silent version.
+* **`exclude` is now derived from the routing.** A cmake-driven package that
+  leaves `members` still has a `Cargo.toml` under the root, and cargo walks UP
+  from a manifest — so unlisted-and-unexcluded is an error, not an omission.
+  RFC-0094 D3 did not state this; it is the same reason the west entries were
+  already excluded. In-tree all 21 side-changers happen to be covered another
+  way, so the derivation exists precisely so the next one need not be.
+
+### Measured
+
+**The `mixed` repair, with real cargo.** `examples/workspaces/mixed`'s only
+package carrying a `Cargo.toml` is `rust_heartbeat_pkg`, and it declares its own
+`[workspace]`:
+
+| the generated root | `cargo metadata --no-deps` |
+| --- | --- |
+| pre-W3 — `members = [entry, "src/rust_heartbeat_pkg"]` | `error: multiple workspace roots found in the same workspace` |
+| post-W3 — that package `exclude`d instead | exit 0, one member |
+
+`nros-cli-core/tests/package_routing_reads_the_declaration.rs` then runs the
+REAL emitter over the REAL `mixed` and `rust` trees, so the repair is pinned
+rather than re-measured by hand. Its own first version was wrong in the silent
+direction — `body.find(']')` matched the `]` of `[workspace]`, so the headline
+assertion passed against an empty slice; the negative control over `rust` caught
+it, which is the whole reason that control is there.
+
+**The loud error, end to end through the built binary.** Flipping
+`examples/workspaces/mixed/src/c_talker_pkg` (cmake-only) to `nros_cargo` and
+running `nros build native --dry-run`:
+
+```
+Error: 1 package(s) declare a build type they cannot be built by:
+
+  - c_talker_pkg: package.xml declares <build_type>nros_cargo</build_type>, so
+    cargo builds it — but there is no Cargo.toml in …/src/c_talker_pkg.
+```
+
+Restored, and the build proceeds to its normal preflight.
+
+**The gate's own mutation, both kinds.** Flipping
+`examples/workspaces/c/src/talker_pkg` to `nros_cargo` reds
+`check-package-routing` naming that exact path; restoring is green. And
+reverting `cargo_root.rs`'s member test to `pkg.dir.join("Cargo.toml").is_file()`
+reds it at the line — **which it did NOT do in the gate's first version.** Three
+greps for `routing::route(` stayed satisfied by that file's OTHER call to the
+helper (the `exclude` derivation), so the gate was green while
+`a_dual_file_package_declaring_cmake_is_not_a_member` failed in 0.14 s: a gate
+that could not fail its own mutation, which is issue 1167's shape. The two
+emitters now also refuse an unexplained build-file probe, with
+`nros-routing-exempt: <reason>` the one escape — and the selftest checks that
+the marker exempts, that a marker further than three lines above does NOT, and
+that the predicate quoted inside the comment explaining the rule is prose.
 
 ## W4 — Descriptors become load-bearing — **LANDED 2026-09-08**
 

@@ -627,6 +627,19 @@ pub struct WorkspacePackage {
     /// not workspace packages (`std_msgs`); ordering ignores those rather than
     /// failing, since an external dependency imposes no local build order.
     pub depends: HashSet<String>,
+    /// The package's `<build_type>`, VERBATIM (RFC-0094 D3, phase-439 W3).
+    ///
+    /// Carried here so the three routing sites read the DECLARATION instead of
+    /// re-deriving the driver from file presence — the defect issue 1207
+    /// records. Raw, not canonicalised: the vocabulary table lives in
+    /// `nros_cli_core::build_type` and is cross-checked against the cmake
+    /// reader, so resolving it in the scan would be a fourth reader of it.
+    ///
+    /// `None` means "declared nothing" — either the package.xml carries no
+    /// `<build_type>`, or (in `builder::discover`) the entry is a cargo-only
+    /// workspace member with no package.xml at all. Both fall back to file
+    /// presence, which is the pre-RFC-0094 answer.
+    pub build_type: Option<String>,
 }
 
 /// Every package under `root`, in path order.
@@ -638,6 +651,7 @@ pub fn scan_workspace_packages(root: &Path) -> Result<(Vec<WorkspacePackage>, Sc
             name: pkg.name.clone(),
             dir: dir.to_path_buf(),
             depends: pkg.dependencies.clone(),
+            build_type: pkg.build_type.clone(),
         });
     })?;
     pkgs.sort_by(|a, b| a.dir.cmp(&b.dir));

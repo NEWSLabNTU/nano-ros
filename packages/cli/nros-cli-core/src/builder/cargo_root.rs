@@ -69,6 +69,14 @@ pub fn render(
     extra: &[PathBuf],
     default_system: Option<&str>,
 ) -> Result<String, String> {
+    // D3's intersection rule, BEFORE anything is listed: a participating
+    // package must carry the file its declared driver needs. Without this the
+    // package below is dropped by the `cargo_member` test with no explanation
+    // — which is precisely the pre-W3 silence this work item removes. Checked
+    // here as well as in `cmd::build` so a caller that reached this emitter by
+    // another road cannot get the silent version.
+    crate::routing::check_declarations(&discovered.packages)?;
+
     let mut members: Vec<String> = Vec::new();
     // Generated packages — the entry (W3.b) — live under `build/`, which the
     // discovery walk PRUNES by design. They are members nonetheless, and cargo
@@ -80,11 +88,17 @@ pub fn render(
         if excluded.contains(&pkg.dir) {
             continue;
         }
-        // A member must be a cargo package. A C/C++ package carrying only a
-        // CMakeLists is discovered (it is part of the system) and is not a
-        // cargo member (cargo cannot build it) — those reach the image through
-        // the cmake root, W4.
-        if !pkg.dir.join("Cargo.toml").is_file() {
+        // RFC-0094 D3 (phase-439 W3) — the package's `<build_type>` selects
+        // the DRIVER; file presence only decides whether it participates. This
+        // was `pkg.dir.join("Cargo.toml").is_file()`, which answered both
+        // questions with one probe and therefore swept in 21 dual-file packages
+        // that cmake drives: a Zephyr west leaf's `Cargo.toml` is an
+        // implementation detail INSIDE its cmake build, and cargo cannot build
+        // a staticlib for the board. 13 of them also declare their own
+        // `[workspace]`, which makes listing them here a hard cargo error
+        // (`multiple workspace roots found in the same workspace`), so this is
+        // a repair and not merely a narrowing.
+        if !crate::routing::route(pkg).cargo_member {
             continue;
         }
         let rel = super::paths::relative_or_err(manifest_dir, &pkg.dir)?;
@@ -128,9 +142,32 @@ pub fn render(
     // part of this workspace, or the macro's pkg-index walk and a host build
     // both go wrong. The hand-written roots carry this exclusion with a comment
     // explaining the same thing.
+    //
+    // RFC-0094 D3 (phase-439 W3) MADE THIS BIGGER, and it is not optional. A
+    // dual-file package that declares a cmake build type now leaves `members`
+    // while its `Cargo.toml` stays on disk under this root — exactly the
+    // "unlisted and unexcluded" state the paragraph above calls an error. So
+    // the exclusion is derived from the ROUTING, not only from the caller's
+    // `excluded` set: anything with a manifest that did not become a member is
+    // listed here. In-tree all 21 such packages happen to be covered another
+    // way (13 declare their own `[workspace]`, which stops cargo's walk-up
+    // before it reaches this root; 13 are already in `excluded` as west/idf
+    // entries; six are both), so this is the case that must not depend on that
+    // coincidence holding for the next package someone adds.
     let mut skipped: Vec<String> = Vec::new();
-    for dir in excluded {
-        if dir.join("Cargo.toml").is_file() {
+    let member_dirs: BTreeSet<&PathBuf> = discovered
+        .packages
+        .iter()
+        .filter(|p| !excluded.contains(&p.dir) && crate::routing::route(p).cargo_member)
+        .map(|p| &p.dir)
+        .collect();
+    for dir in excluded
+        .iter()
+        .chain(discovered.packages.iter().map(|p| &p.dir))
+    {
+        // nros-routing-exempt: not a routing decision — this asks whether cargo
+        // has anything to walk UP from, which is true of a package cmake drives.
+        if dir.join("Cargo.toml").is_file() && !member_dirs.contains(dir) {
             skipped.push(super::paths::relative_or_err(manifest_dir, dir)?);
         }
     }
@@ -243,7 +280,21 @@ mod tests {
             name: name.to_string(),
             dir,
             depends: Default::default(),
+            // Undeclared, so RFC-0094 D3 falls back to file presence and these
+            // existing cases keep asserting exactly what they asserted before.
+            // The declaration-driven cases are their own tests below.
+            build_type: None,
         }
+    }
+
+    /// A package carrying a `<build_type>` declaration (RFC-0094 D3).
+    fn declared(root: &Path, name: &str, cargo: bool, cmake: bool, bt: &str) -> WorkspacePackage {
+        let mut p = pkg(root, name, cargo);
+        if cmake {
+            std::fs::write(p.dir.join("CMakeLists.txt"), "project(x)\n").unwrap();
+        }
+        p.build_type = Some(bt.to_string());
+        p
     }
 
     fn discovered(packages: Vec<WorkspacePackage>) -> Discovered {
@@ -330,6 +381,136 @@ mod tests {
         .expect("renders");
         assert!(body.contains("rust_pkg"), "{body}");
         assert!(!body.contains("cpp_pkg"), "{body}");
+    }
+
+    // -- RFC-0094 D3 / phase-439 W3 -- the DECLARATION picks the driver ----
+
+    /// The 21 packages W0 measured, in one case: a dual-file package declaring
+    /// a cmake build type is not a cargo member, because cmake drives it and
+    /// the `Cargo.toml` is an implementation detail inside that build.
+    ///
+    /// Before W3 the member test was `Cargo.toml` presence, so every one of
+    /// these landed in `members` -- and for 13 of them that is a HARD cargo
+    /// error, not a slow build: they declare their own `[workspace]`, and
+    /// `multiple workspace roots found in the same workspace` is what cargo
+    /// says about a root listing another root as a member.
+    #[test]
+    fn a_dual_file_package_declaring_cmake_is_not_a_member() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![
+            declared(root, "rust_node_pkg", true, false, "nros_cargo"),
+            declared(root, "rust_heartbeat_pkg", true, true, "nros_cmake"),
+        ]);
+        let body = render(
+            &d,
+            &root.join("build/native"),
+            &Default::default(),
+            &[],
+            None,
+        )
+        .expect("renders");
+        let members = &body[body.find("members").unwrap()..];
+        let members = &members[..members.find(']').unwrap()];
+        assert!(members.contains("rust_node_pkg"), "{body}");
+        assert!(
+            !members.contains("rust_heartbeat_pkg"),
+            "a cmake-driven Rust node must leave the members list: {body}"
+        );
+    }
+
+    /// And it must be EXCLUDED, not merely unlisted. Cargo walks UP from a
+    /// package to find its workspace, so a manifest under this root that is in
+    /// neither list is an error rather than an omission -- the same reason the
+    /// west entries are excluded, reached by a different road.
+    #[test]
+    fn a_cmake_driven_package_with_a_manifest_is_excluded() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![
+            declared(root, "rust_node_pkg", true, false, "nros_cargo"),
+            declared(root, "rust_heartbeat_pkg", true, true, "nros_cmake"),
+        ]);
+        let body = render(
+            &d,
+            &root.join("build/native"),
+            &Default::default(),
+            &[],
+            None,
+        )
+        .expect("renders");
+        let excl = body.find("exclude").expect("an exclude block is required");
+        assert!(
+            body[excl..].contains("rust_heartbeat_pkg"),
+            "unlisted-and-unexcluded is a cargo error, not an omission: {body}"
+        );
+    }
+
+    /// A cmake-driven package with NO manifest needs no exclusion -- there is
+    /// nothing for cargo to walk up from. Pinned so the derivation above does
+    /// not grow a spurious entry for every C package in a mixed workspace.
+    #[test]
+    fn a_cmake_only_package_is_not_excluded_because_it_has_nothing_to_exclude() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![
+            declared(root, "rust_node_pkg", true, false, "nros_cargo"),
+            declared(root, "c_talker_pkg", false, true, "nros_cmake"),
+        ]);
+        let body = render(
+            &d,
+            &root.join("build/native"),
+            &Default::default(),
+            &[],
+            None,
+        )
+        .expect("renders");
+        assert!(
+            !body.contains("c_talker_pkg"),
+            "a package with no Cargo.toml belongs in neither list: {body}"
+        );
+    }
+
+    /// The 64 declare-but-no-file packages, and the 5 that declare nothing:
+    /// participation stays file presence, so neither class changes anything.
+    #[test]
+    fn an_undeclared_cargo_package_is_still_a_member() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![pkg(root, "legacy_pkg", true)]);
+        let body = render(
+            &d,
+            &root.join("build/native"),
+            &Default::default(),
+            &[],
+            None,
+        )
+        .expect("renders");
+        assert!(body.contains("legacy_pkg"), "{body}");
+    }
+
+    /// W3's acceptance: a participating package whose declared driver has no
+    /// file is a LOUD error naming it, where before it was silently skipped by
+    /// the file probe that answered both questions.
+    #[test]
+    fn a_cargo_declaration_over_a_cmake_only_package_names_the_package() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![
+            declared(root, "healthy_pkg", true, false, "nros_cargo"),
+            declared(root, "misdeclared_pkg", false, true, "nros_cargo"),
+        ]);
+        let e = render(
+            &d,
+            &root.join("build/native"),
+            &Default::default(),
+            &[],
+            None,
+        )
+        .expect_err("a misdeclared participant must not be silently dropped");
+        assert!(e.contains("misdeclared_pkg"), "must NAME the package: {e}");
+        assert!(e.contains("Cargo.toml"), "and the missing file: {e}");
+        assert!(!e.contains("healthy_pkg"), "and only the offender: {e}");
     }
 
     #[test]

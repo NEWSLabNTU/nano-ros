@@ -99,6 +99,12 @@ pub fn discover(root: &Path, cargo_members: &[PathBuf]) -> Result<Discovered, St
             name,
             dir: dir.clone(),
             depends: Default::default(),
+            // No `package.xml`, so nothing DECLARED a build type. RFC-0094 D3
+            // falls back to file presence for these, which is what a cargo-only
+            // member wants anyway: it is a member because a `[workspace]`
+            // listed it, and it has a `Cargo.toml` by construction (the arm
+            // above skips one that does not).
+            build_type: None,
         });
         cargo_only.insert(dir);
     }
