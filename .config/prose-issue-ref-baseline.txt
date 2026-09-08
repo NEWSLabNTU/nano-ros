@@ -32,12 +32,18 @@
 #         whoever claimed the id. Not deleted: a reference removed is a
 #         record lost, and the id is not free either.
 #
+#   1164  IN FLIGHT — `docs/issues/1164-*.md` is on PR #641 (the phase-433 W6
+#         events cell). Cited by phase-441, whose W1 verdict table names the
+#         three issues the on-target cell demonstrated. The citation is
+#         correct and the file is coming; the row leaves when #641 lands.
+#
 docs/issues/1092-rmw-shape-gate-licenses-deviation-without-pinning-it.md:9999
 docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
 docs/issues/1163-compile-smoke-checks-nros-c-under-default-features-only.md:1080
 docs/issues/1186-executor-backing-latch-test-races-siblings.md:0417
 docs/roadmap/phase-428-api-porting-principle-sweep.md:1099
 docs/roadmap/phase-432-codegen-one-producer-many-packs.md:1080
+docs/roadmap/phase-441-rmw-on-target-verification.md:1164
 just/check/docs.just:1110
 just/check/lanes.just:1099
 scripts/build/rustdoc-set.sh:1110
