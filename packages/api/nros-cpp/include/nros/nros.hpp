@@ -241,6 +241,16 @@ inline Result spin(uint32_t duration_ms, int32_t poll_ms = 10) {
 #include <cstdlib>     // std::abort -- the runtime half of RFC-0089 W3.b
 #include <type_traits> // the SFINAE guards on create_service / create_client
 
+// The `NROS_CPP_HAS_*` capability macros, including `<chrono>` and the
+// measured reason its condition is not the same as the other five.
+//
+// This header USED four of these macros and DEFINED none, so which of them
+// held depended on `publisher.hpp` / `options.hpp` / `subscription.hpp`
+// having been included first — the only header in the tree in that state,
+// and a latent issue 0135 (two TUs of one image disagreeing about a
+// capability, hence about a layout). phase-438 W1.
+#include "nros/std_detect.hpp"
+
 namespace rclcpp {
 
 // --- Process-level lifecycle -------------------------------------------------

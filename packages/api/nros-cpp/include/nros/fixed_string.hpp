@@ -17,17 +17,11 @@
 #include <string.h>
 
 // phase-417 W1.c — `std::string` interop. `<string>` is absent from a minimal
-// freestanding libcpp, so gate on the declared std flavour, else ASK THE
-// COMPILER, with BOTH probes. `__STDC_HOSTED__` alone is the wrong question
-// (issue 0112): the Zephyr XRCE C++ leaves compile `-fno-freestanding
-// -nostdinc++`, i.e. hosted with no `<string>`. `__has_include` alone is wrong
-// too (issue 1240): under `-ffreestanding` a full libstdc++ HAS `<string>` and
-// `#error`s on it. Same two-probe idiom as every other capability block; the longer
-// rationale is in `publisher.hpp`.
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<string>))
-#include <string>
-#define NROS_CPP_HAS_STD_STRING 1
-#endif
+// freestanding libcpp, so the interop below exists only where
+// `NROS_CPP_HAS_STD_STRING` does. That macro has ONE definition site
+// (phase-438 W1), which also carries the measurement for why it is a REQUEST
+// and not a probe of the include path.
+#include "nros/std_detect.hpp"
 
 namespace nros {
 

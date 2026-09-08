@@ -102,22 +102,15 @@
 
 // `<string>` for `rclcpp::get_logger(const std::string&)` and `<sstream>` for
 // the `_STREAM` family. Gated: this header is reachable from a `no_std` C++
-// build with a minimal libcpp, where neither exists — and from a
-// `-ffreestanding` build against a FULL libstdc++, which has both files and
-// refuses to be included from either. `__has_include` AND `__STDC_HOSTED__`:
-// issues 0112 and 1240, rationale in `publisher.hpp`. When they are
-// absent the names below simply do not exist, which is what a freestanding
-// target should see; the un-gated half (the refusal vocabulary, `Logger`, the
-// printf-style macros) still reaches it.
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<string>))
-#include <string>
-#define NROS_CPP_HAS_STD_STRING 1
-#endif
-
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<sstream>))
-#include <sstream>
-#define NROS_CPP_HAS_STD_SSTREAM 1
-#endif
+// build with a minimal libcpp, where neither exists. When they are absent the
+// names below simply do not exist, which is what a freestanding target should
+// see; the un-gated half (the refusal vocabulary, `Logger`, the printf-style
+// macros) still reaches it.
+//
+// Worth knowing where this sits: `qos.hpp` includes this header and every
+// entity header includes `qos.hpp`, so the `_STREAM` family's `<sstream>` is on
+// the transitive include path of every freestanding TU in the API.
+#include "nros/std_detect.hpp"
 
 namespace rclcpp {
 

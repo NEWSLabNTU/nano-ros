@@ -28,14 +28,11 @@
 #include "nros/result.hpp"
 #include "nros/subscription.hpp"
 
-// phase-417 W1.a — `<memory>` for the nested pointer aliases. Rationale (and
-// why the test needs BOTH `__has_include` and `__STDC_HOSTED__` — issues
-// 0112 and 1240)
-// lives in `publisher.hpp`.
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<memory>))
-#include <memory>
-#define NROS_CPP_HAS_SHARED_PTR 1
-#endif
+// phase-417 W1.a — `<memory>` for the nested pointer aliases below.
+// `NROS_CPP_HAS_SHARED_PTR` and the other capability macros have ONE definition
+// site, and the measured reason they are a REQUEST rather than a probe is
+// stated there (phase-438 W1).
+#include "nros/std_detect.hpp"
 
 namespace nros {
 
