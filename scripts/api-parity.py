@@ -109,14 +109,18 @@ It also REJECTS two shapes a disposition can be wrong in (phase-428 Q1):
                              row. Checked by name, not by parse -- see
                              `unreferenced_refusals` for what that cannot do.
 
-# The C++ lane measures TWO surfaces (issue 1020, phase-417 W0.a)
+# The C++ lane's surfaces (issue 1020, phase-417 W0.a; amended phase-428)
 
-`rclcpp_compat.hpp` is what a ported file actually reaches, so it is the fourth
-C++ translation unit and namespace `rclcpp` is admitted for it. But the shim's
-rows answer a DIFFERENT question from the native `nros::` headers' rows, so
-they are not merged into one number: every row carries `surface` and
-`native_bucket`, and the report prints both summaries. See CPP_TRANSLATION_UNITS
-and `run_lang`.
+`rclcpp_compat.hpp` was what a ported file actually reached, so it became a
+fourth C++ translation unit with namespace `rclcpp` admitted for it alone. Its
+rows answered a DIFFERENT question from the native `nros::` headers' rows, so
+they were never merged into one number: every row carries `surface` and
+`native_bucket`, and the report prints both summaries when they differ.
+
+phase-428 retired the SPLIT, not the machinery. The shim is gone (one set of
+headers, two vocabularies) and the maintainer ruled that `rclcpp::` is the HOME
+of our C++ API, so both vocabularies are rooted as OURS — `OUR_CPP_ROOTS` — and
+nothing is marked `ported` today. See CPP_TRANSLATION_UNITS and `run_lang`.
 """
 
 import argparse
@@ -291,15 +295,42 @@ RCLC_SOURCE = (
 # rows measured how far the NATIVE `nros::` API is from rclcpp, not how far
 # nano-ros is, and that was the headline number.
 #
-# Hence the per-TU namespace roots: the shim admits `rclcpp`, and the native TUs
-# stay on `nros` so a native row cannot silently become a shim row.
+# The per-TU namespace roots USED to double as the surface split: the shim
+# admitted `rclcpp` and the native TUs stayed on `nros`, so a native row could
+# not silently become a shim row.
+#
+# phase-428 — THE ROOTS ARE NO LONGER A PROXY FOR THE SURFACE, because the
+# maintainer ruled that `rclcpp::` is the HOME of our C++ API and `nros::` is
+# the spelling that phases out (RFC-0089 §"Settled: `rclcpp::` is the home").
+# Rooting our native surface at `nros` alone therefore measures the DEPRECATED
+# half of our own vocabulary: a class we define in `rclcpp::` is extracted only
+# by the compat TU, lands `surface: ported`, and its `native_bucket` reads
+# `theirs-only` — the tool reporting a name WE ship as a name only ROS 2 has.
+# Measured on the node-type merge (phase-427 W4): ~60 members of the merged
+# class re-bucket that way, which is why that work kept the class in `nros::`
+# with an alias rather than defining it where the design says it belongs. The
+# tool is the thing that had to change.
+#
+# So `OUR_CPP_ROOTS` names the vocabulary we ship, both halves of it, and every
+# native TU is rooted there. This widens what counts as OURS; it does NOT widen
+# what counts as THEIRS. `theirs` comes from the recorded upstream surface, and
+# a name rclcpp declares that our headers do not still produces no record on our
+# side and still correlates `theirs-only`. That is the direction the widening
+# must not go blind in, and `--self-test` pins both directions -- see the W0.a
+# block in `self_test`, and `just check api-parity-ledger` for the lane.
 #
 # `surface` is the answer to issue 1020's second question — see SURFACE_* below.
 NATIVE, PORTED = correlate.NATIVE, correlate.PORTED
 
+# The namespaces OUR C++ headers declare our API in. `nros` is the historical
+# spelling; the three `rclcpp*` ones are what the campaign migrates to and what
+# a user is meant to write. A namespace listed here is ours WHEREVER our headers
+# declare it — the list says nothing whatever about upstream's surface.
+OUR_CPP_ROOTS = {"nros", "rclcpp", "rclcpp_action", "rclcpp_lifecycle"}
+
 CPP_TRANSLATION_UNITS = (
     # label, source, extra clang args, namespace roots, marks on every record
-    ("base", '#include "nros/nros.hpp"\n', (), {"nros"}, {}),
+    ("base", '#include "nros/nros.hpp"\n', (), OUR_CPP_ROOTS, {}),
     # MEASURED 2026-09-07 (phase-427) to contribute ZERO records: since
     # phase-417 W2.b put the header in the umbrella, all 84 of this TU's unique
     # records are byte-identical to ones the `base` TU already emitted, so the
@@ -315,45 +346,37 @@ CPP_TRANSLATION_UNITS = (
     # entry present the records keep coming from somewhere and the narrowing
     # shows up as changed rows instead of as nothing at all. It also holds
     # `component_node.hpp` to compiling standalone. Cost is one clang run.
-    ("component", '#include "nros/component_node.hpp"\n', (), {"nros"}, {}),
-    ("std", '#include "nros/nros.hpp"\n', ("-DNROS_CPP_STD=1",), {"nros"},
+    ("component", '#include "nros/component_node.hpp"\n', (), OUR_CPP_ROOTS, {}),
+    ("std", '#include "nros/nros.hpp"\n', ("-DNROS_CPP_STD=1",), OUR_CPP_ROOTS,
      {"std_only": True}),
-    # The PORTED surface — what a file including <rclcpp/rclcpp.hpp> reaches.
+    # There WAS a fourth TU here, labelled `compat`, and it is GONE — read this
+    # before adding one back.
     #
-    # It used to be `nros/rclcpp_compat.hpp`, a shim declaring the `rclcpp::`
-    # names over ours. phase-417 stage 6 step A moved every one of those
-    # declarations into the header that owns the concept and DELETED the shim,
-    # so the source here is the umbrella — the same text as the `base` TU, read
-    # for a different namespace. That is the whole point of the step: there is
-    # one set of headers and two vocabularies, not two sets of headers.
+    # It began as `nros/rclcpp_compat.hpp`, a shim declaring the `rclcpp::`
+    # names over ours (issue 1020). phase-417 stage 6 step A moved every one of
+    # those declarations into the header that owns the concept and deleted the
+    # shim, so the TU's source became the umbrella — the same text as `base`,
+    # read for a different namespace. Its whole remaining content was the
+    # NAMESPACE it admitted.
     #
-    # Still `std_only`, and the MEASURED reason is not the one issue 1020
-    # states. The issue says the shim was "reachable only under NROS_CPP_STD";
-    # it was never macro-gated — extracting with and without the flag yielded
-    # identical records. What made it std-only was unconditional `<memory>`,
-    # `<string>`, `<functional>`, `<vector>`, `<chrono>` and `std::shared_ptr`
-    # in public signatures. After the move those includes were `__has_include`-
-    # gated, so the `rclcpp::` names that need them were absent from a
-    # freestanding build — which made the marking TRUE in the way the issue only
-    # claimed it was. phase-438 W2 then removed the discovery arm, so they are
-    # gated on `NROS_CPP_STD` alone and the marking is true on EVERY target, not
-    # only the ones whose include path happened to lack the headers.
+    # One fact from the deleted block survives its TU: phase-438 W2 made the
+    # compat CMake path's own `_nros_compat_apply_force_includes` set
+    # `NROS_CPP_STD`, so the porting flavour is measured as it ships.
     #
-    # Extracted WITH the flag, because that is the flavour the compat CMake path
-    # builds under, and a surface should be measured as it ships. That sentence
-    # was false when it was written — `cmake/compat/NrosRclcppCompat.cmake` set
-    # no compile definition at all — and phase-438 W2 made it true by having the
-    # shim's own `_nros_compat_apply_force_includes` set `NROS_CPP_STD`.
+    # The ruling above takes that content away: `rclcpp` is now in
+    # `OUR_CPP_ROOTS`, so the `std` TU — same source, same `-DNROS_CPP_STD=1`,
+    # a SUPERSET of the roots — already emits every record `compat` could. Its
+    # records de-duplicated away in `ours_cpp` before the `surface` mark was
+    # applied, so it stopped contributing at all. MEASURED, not reasoned:
+    # `ours_cpp` returned 162 records of which 0 carried `surface: ported`.
     #
-    # The `base` and `component` TUs above deliberately do NOT get the flag, and
-    # after W2 that is a stronger statement than it used to be: they measure the
-    # NATIVE surface as a consumer who never asked for the porting flavour sees
-    # it. Verified after W2 — `just check api-parity` green with no ledger
-    # movement, so the native records were never coming from the discovered
-    # macros.
-    ("compat", '#include "nros/nros.hpp"\n', ("-DNROS_CPP_STD=1",),
-     {"rclcpp", "rclcpp_action", "rclcpp_lifecycle"},
-     {"std_only": True, "surface": PORTED}),
+    # A translation unit that can never contribute a record is the gate shape
+    # this repo has been bitten by — it reads as live and answers nothing — so
+    # it is deleted rather than left standing. The `surface` / `native_bucket` /
+    # `--check-ported` machinery STAYS: it is language-neutral, it costs
+    # nothing, and re-admitting a genuinely separate ported header is one row in
+    # this tuple with `{"surface": PORTED}` on it. What has gone is the claim
+    # that our two VOCABULARIES are two surfaces, which the ruling retires.
 )
 
 
@@ -375,10 +398,15 @@ CPP_TRANSLATION_UNITS = (
 # is reachable from) and `native_bucket` (what the correlator said before the
 # shim was admitted), and the report prints both summaries. One extraction, one
 # ledger, two answers.
-SURFACE_NOTE = {
-    NATIVE: "reachable from the nros:: headers",
-    PORTED: "only via rclcpp_compat.hpp",
-}
+#
+# phase-428: with `rclcpp::` ruled our home namespace there is currently no TU
+# marking anything `ported`, so the two answers coincide and the report prints
+# one line (`two_surfaces` is false). The distinction is kept as a MECHANISM,
+# not as a live measurement — see the note where the `compat` TU used to be.
+#
+# There was a `SURFACE_NOTE` table here spelling the two marks in prose. It had
+# no reader anywhere in the tree and never had one, so it is deleted with the TU
+# rather than left to be re-read as documentation of a live split.
 
 
 def ours_cpp(tmpdir):
@@ -1240,7 +1268,7 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
                 print("    ported-file surface (what a file including "
                       "<rclcpp/rclcpp.hpp> reaches):")
                 print("      " + _bucket_line(ported_counts))
-                print("    native API surface (nros:: headers alone, the "
+                print("    native API surface (our own headers alone, the "
                       "denominator this lane used to report):")
                 print("      " + _bucket_line(native_counts))
                 moved = sum(1 for r in rows
@@ -1784,35 +1812,74 @@ def self_test():
         failures.append("a bucketless glob row was accepted")
 
     # ---------------------------------------------------------------- W0.a
-    # issue 1020: the C++ lane must SEE the compat shim, and must not merge
-    # what it sees with the native surface.
+    # issue 1020: the C++ lane must SEE every header that carries our surface,
+    # and must not merge two answers into one number. The shim it named is gone
+    # and its namespace is ours now (phase-428), so what is pinned below is the
+    # ROOTING and the two directions of the widening; the surface MACHINERY is
+    # still pinned further down (`surface_counts`, the per-surface gate).
 
-    # The table itself. A shim TU that quietly reverts to `{"nros"}` roots would
-    # parse the header, extract nothing, and report the fix as done.
-    compat = [t for t in CPP_TRANSLATION_UNITS if t[0] == "compat"]
-    check("the compat shim is a translation unit", len(compat), 1)
-    if compat:
-        _label, source, extra, roots, marks = compat[0]
-        # NOT a filename check any more. phase-417 stage 6 step A moved every
-        # `rclcpp::` declaration into the header that owns the concept and
-        # DELETED `rclcpp_compat.hpp`; the old assertion named that file and so
-        # failed on the step succeeding. What actually matters is that the TU
-        # parses a real header of ours -- a shim TU pointed at nothing would
-        # extract nothing and report the ported surface as empty, which reads
-        # like perfect parity.
-        check("the compat TU reads one of our headers",
+    # Every TU must parse a real header of ours. A TU pointed at nothing
+    # extracts nothing and reports the fix as done -- the failure that made the
+    # old filename assertion worth having, kept after the filename went away.
+    for label, source, _extra, _roots, _marks in CPP_TRANSLATION_UNITS:
+        check("TU %r reads one of our headers" % label,
               source.startswith('#include "nros/') and source.rstrip().endswith('"'),
               True)
-        check("the compat TU admits namespace rclcpp", "rclcpp" in roots, True)
-        # Decision 3: the shim's rows are std-only, the same marking the `std`
-        # TU sets. Not a cosmetic tag -- a `no_std` consumer reaches none of it.
-        check("the compat TU marks its rows std_only", marks.get("std_only"), True)
-        check("the compat TU marks its rows ported", marks.get("surface"), PORTED)
-        check("the compat TU is built under NROS_CPP_STD",
-              "-DNROS_CPP_STD=1" in extra, True)
-    check("the native TUs stay on the nros namespace",
-          [t[3] for t in CPP_TRANSLATION_UNITS if t[0] != "compat"],
-          [{"nros"}, {"nros"}, {"nros"}])
+
+    # ------------------------------------------------- phase-428: two
+    # vocabularies, ONE surface. The maintainer ruled `rclcpp::` the home of our
+    # C++ API, so rooting our side at `nros` alone measured the half we are
+    # deprecating and reported a class we DEFINE as a name only ROS 2 has.
+    #
+    # Pinned in BOTH directions, because the obvious fix -- widen until nothing
+    # is theirs-only -- would make the tool blind in exactly the direction it
+    # exists to see.
+    check("every C++ TU is rooted at the vocabulary we ship",
+          [t[3] for t in CPP_TRANSLATION_UNITS],
+          [OUR_CPP_ROOTS] * len(CPP_TRANSLATION_UNITS))
+    check("our home namespace counts as ours",
+          extract_cxx.in_scope("rclcpp::", OUR_CPP_ROOTS), True)
+    check("the namespace we are phasing out still counts as ours",
+          extract_cxx.in_scope("nros::", OUR_CPP_ROOTS), True)
+    # A NAMED list, not a prefix match: `rclcpp::detail` is upstream's own
+    # internals, and admitting it would import a private surface as ours.
+    check("the widening is a named list, not a wildcard",
+          extract_cxx.in_scope("rclcpp::detail::", OUR_CPP_ROOTS), False)
+
+    # Direction 1 -- a name WE declare in `rclcpp::` is ours, on the NATIVE
+    # surface. Before the widening this record could only reach the correlator
+    # from the compat TU, which stamped `surface: ported`, and its
+    # `native_bucket` read `theirs-only`: the tool disowning our own class.
+    home_ours = correlate.flatten(
+        [{"kind": "type", "qual": "rclcpp::Node", "name": "Node",
+          "members": [{"name": "create_publisher",
+                       "params": [{"type": "const char *"}],
+                       "ret": "", "template": []}]}],
+        "c++", "ours")
+    # Direction 2 -- upstream declares `Waitable` and our headers do not. The
+    # widening must not touch it: `theirs` comes from the recorded upstream
+    # surface, so widening OUR roots can only ever move a name we DECLARE.
+    home_theirs = correlate.flatten(
+        [{"kind": "type", "qual": "rclcpp::Node", "name": "Node",
+          "members": [{"name": "create_publisher",
+                       "params": [{"type": "const std::string &"}],
+                       "ret": "", "template": []}]},
+         {"kind": "type", "qual": "rclcpp::Waitable", "name": "Waitable",
+          "members": [{"name": "is_ready", "params": [], "ret": "bool",
+                       "template": []}]}],
+        "c++", "theirs")
+    home_rows = {r["key"]: r["bucket"]
+                 for r in correlate.compare(home_ours, home_theirs, "c++")}
+    check("a name we define in rclcpp:: is ours, not theirs-only",
+          home_rows.get("Node"), "same")
+    check("its members are ours too", home_rows.get("Node::create_publisher"),
+          "systematic")
+    check("a name only upstream defines stays theirs-only",
+          home_rows.get("Waitable"), "theirs-only")
+    check("and so do its members", home_rows.get("Waitable::is_ready"),
+          "theirs-only")
+    check("an unmarked rclcpp:: record lands on the NATIVE surface",
+          home_ours["Node"].get("surface"), NATIVE)
 
     # Decision 1: a `rclcpp::` alias resolving to a `nros::` type correlates
     # `same` on NAME -- and the row says the shape underneath is ours, because
