@@ -848,8 +848,13 @@ create_timer(NodeT&& node, ::nros::Clock* clock, ::nros::Duration period, Callba
     t->callback = ::std::forward<CallbackT>(callback);
     const int64_t ns = period.nanoseconds();
     const uint64_t ms = ns > 0 ? static_cast<uint64_t>(ns / 1000000) : uint64_t(0);
-    (void)n.create_timer(t->timer, clock != nullptr ? *clock : *n.get_clock(), ms,
-                         &detail::WallTimer::trampoline, t.get());
+    // Same refusal as the seven `create_*` verbs: `rclcpp::create_timer` is a
+    // free function main added after this branch's sweep, and it had the same
+    // discarded `Result`. A dead timer never fires and is never dereferenced,
+    // so nothing downstream would say so.
+    detail::require_created(n.create_timer(t->timer, clock != nullptr ? *clock : *n.get_clock(), ms,
+                                           &detail::WallTimer::trampoline, t.get()),
+                            "create_timer", "");
     // Same ownership rule as `create_wall_timer`: the arena holds `t.get()` and
     // has no unregister, so the node keeps the cell alive and the returned
     // pointer is an ALIASING co-owner of its `nros::Timer` member.
