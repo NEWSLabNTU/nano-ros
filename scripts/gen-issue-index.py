@@ -43,6 +43,15 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from git_hook_env import nros_clear_inherited_git_env  # noqa: E402
+
+# Before the first git call, at module scope so no entry path can skip it. The
+# self-test below builds a throwaway repository, and an inherited `GIT_DIR`
+# overrides both `cwd=` and `git -C` — measured DIRTY against a victim repo in
+# both hook environment shapes before this line existed (issue 0986).
+nros_clear_inherited_git_env()
 INDEX = os.path.join(ROOT, "docs", "issues", "open.md")
 
 # The authored preamble, used when the file does not exist yet. It is here

@@ -8,6 +8,22 @@
 #   not its config, not its index, not its object store, not the mtime of a
 #   tracked file — whatever git puts in the environment.
 #
+# The rule says "a script", not "a shell script". This gate read only
+# `scripts/**/*.sh` and `.githooks/*` until 2026-09-08, so a PYTHON gate that
+# built a throwaway repository was outside its reach entirely — the 0196 shape
+# (a gate narrower than the rule it enforces), noted in issue 1229's "Not done
+# here" and closed here. Measured at the time of widening, over the 251 tracked
+# Python files under `scripts/`: four build a repository, and all four were
+# DIRTY under a hook environment, including the one that cleared by hand. Both
+# languages are enumerated below, run through their own interpreter, and
+# credited by the same identifier — `nros_clear_inherited_git_env`, which now
+# has a Python spelling in `scripts/lib/git_hook_env.py` beside the shell one.
+#
+# The enumeration is still `scripts/**` + `.githooks/*`, and that boundary was
+# measured rather than assumed: no `tests/*.sh` (0 of 17), no `just` recipe body
+# and no workflow `run:` block anywhere in the tree builds a repository. A gate
+# tier reaches those through a script, and the script is what is checked here.
+#
 # WHY IT NEEDS A GATE AND NOT JUST A FIX
 #
 # 0986 was three scripts building throwaway repositories in their selftests. An
@@ -74,7 +90,11 @@ nros_clear_inherited_git_env
 
 REPO="$PWD"
 HOOK=".githooks/pre-push"
+# The two spellings of the clearing helper. Both name the hazard in their own
+# prose, so both match the marker below and both are excluded from it — the
+# helper is what a match is told to CALL.
 LIB="scripts/lib/git-hook-env.sh"
+LIB_PY="scripts/lib/git_hook_env.py"
 CLEAR_FN="nros_clear_inherited_git_env"
 
 fail=0
@@ -90,28 +110,66 @@ ok()  { echo "  ok    $1"; }
 # is only ever about a repository the script is CREATING. Every 0986 offender
 # has one. Text in, verdict out, so the selftest can feed it synthetic input.
 #
+# TWO spellings, because a language that does not write command lines as text
+# does not write `git init` either. Python spells it `["git", "init", …]` or
+# `git(tmp, "init", …)`, and the shell pattern alone found 0 of the 4 real
+# Python offenders — a naive port of this check would have reported a clean
+# sweep over the very files that measured DIRTY. The second alternative is
+# "a line naming git that also carries `init` as a QUOTED ARGUMENT", which is
+# narrow enough to leave prose alone: measured over the 251 tracked Python
+# files it matches exactly those 4, and over the 240 shell files it adds
+# nothing to what the first alternative already found. It also does not fire on
+# `git submodule update --init`, which appears in four gates' user-facing
+# advice — `--init` is not a quoted `init` token.
+#
+# What it deliberately does NOT flag: a script that runs git READ-ONLY against
+# the repository (106 of the 251 Python files invoke git; 4 create one). Reading
+# the wrong repository under an inherited GIT_DIR is a correctness bug and worth
+# clearing for, but it is not a repository side effect, and a marker that fired
+# on all 106 would be a gate nobody could keep green.
+#
 # needs_clear: 0 = builds a throwaway repo, 1 = does not.
-needs_clear() { nros_grep_q -E -- '(^|[^-[:alnum:]])git[[:space:]]+init([[:space:]]|$)'; }
+needs_clear() {
+    nros_grep_q -E -- \
+        '(^|[^-[:alnum:]])git[[:space:]]+init([[:space:]]|$)|git.*['"'"'"]init['"'"'"]'
+}
 # has_clear: 0 = calls the shared clearing helper.
 has_clear() { nros_grep_q -- "$CLEAR_FN"; }
+
+# how_to_clear <file> — the fix, in the language of the file that needs it.
+#
+# ONE identifier in both, deliberately. Crediting "the file pops some GIT_
+# variables" is what let `check-box-sync-covers-tracked-source.py` clear four of
+# git's sixteen names and still leak `GIT_OBJECT_DIRECTORY` into a victim's
+# object store; the helper asks `git rev-parse --local-env-vars`, so the list
+# cannot be a subset and cannot drift.
+how_to_clear() {
+    case "$1" in
+        *.py) printf '%s' "            sys.path.insert(0, os.path.join(ROOT, \"scripts\", \"lib\"))
+            from git_hook_env import $CLEAR_FN
+            $CLEAR_FN()" ;;
+        *) printf '%s' "            . \"\$(cd \"\$(dirname \"\${BASH_SOURCE[0]}\")/…/lib\" && pwd)/git-hook-env.sh\"
+            $CLEAR_FN" ;;
+    esac
+}
 
 echo "check-hook-repo-side-effects: every throwaway-repo builder clears first"
 hazardous=()
 while IFS= read -r f; do
     [ -f "$f" ] || continue
     [ "$f" = "$LIB" ] && continue
+    [ "$f" = "$LIB_PY" ] && continue
     needs_clear < "$f" || continue
     hazardous+=("$f")
     if has_clear < "$f"; then
         ok "$f clears the inherited git environment"
     else
-        bad "$f runs \`git init\` and never calls $CLEAR_FN.
+        bad "$f builds a repository with \`git init\` and never calls $CLEAR_FN.
         An inherited GIT_DIR makes that \`git init\` rewrite the CALLER's
         repository instead of building a temp one (issue 0986). Add:
-            . \"\$(cd \"\$(dirname \"\${BASH_SOURCE[0]}\")/…/lib\" && pwd)/git-hook-env.sh\"
-            $CLEAR_FN"
+$(how_to_clear "$f")"
     fi
-done < <(git ls-files 'scripts/*.sh' 'scripts/**/*.sh' '.githooks/*')
+done < <(git ls-files 'scripts/*.sh' 'scripts/**/*.sh' 'scripts/*.py' 'scripts/**/*.py' '.githooks/*')
 
 if [ "${#hazardous[@]}" -eq 0 ]; then
     bad "no script matched \`git init\` at all — the enumeration is broken,
@@ -228,6 +286,33 @@ self_test() {
     has_clear   < "$t/dirty.sh" && { echo "  selftest: saw a clear that is not there" >&2; errs=1; }
     has_clear   < "$t/clean.sh" || { echo "  selftest: missed the clearing call" >&2; errs=1; }
 
+    # The same four questions in Python, because the shell spelling answered
+    # `no` to all four for every Python file in the tree. `prose.py` is the
+    # false positive that would make this widening unaffordable: four gates
+    # print `git submodule update --init` as advice, and none of them builds a
+    # repository.
+    printf 'import subprocess\nsubprocess.run(["git", "init", "-q", tmp])\n' > "$t/dirty.py"
+    printf 'from git_hook_env import %s\n%s()\nsubprocess.run(["git", "init", tmp])\n' \
+        "$CLEAR_FN" "$CLEAR_FN" > "$t/clean.py"
+    printf 'print("run: git submodule update --init packages/x")\n' > "$t/prose.py"
+    needs_clear < "$t/dirty.py" || {
+        echo "  selftest: missed a Python \`git init\` — this is the widening" >&2; errs=1; }
+    needs_clear < "$t/prose.py" && {
+        echo "  selftest: flagged \`git submodule update --init\` in prose" >&2; errs=1; }
+    has_clear   < "$t/dirty.py" && { echo "  selftest: saw a clear that is not there" >&2; errs=1; }
+    has_clear   < "$t/clean.py" || { echo "  selftest: missed the Python clearing call" >&2; errs=1; }
+
+    # The Python helper the credit above is granted for. It has its own
+    # negative control (does its fallback list still cover what this git calls
+    # repository-local?), and a helper that clears a SUBSET is the defect this
+    # widening measured, so it is run here rather than trusted.
+    if ! python3 "$REPO/$LIB_PY" >/dev/null 2>&1; then
+        echo "  selftest: $LIB_PY --self-test FAILED — the Python clearing helper" >&2
+        echo "       does not hold, so every Python credit above is unearned:" >&2
+        python3 "$REPO/$LIB_PY" 2>&1 | sed 's/^/         /' >&2
+        errs=1
+    fi
+
     # --- dynamic half, both directions ----------------------------------
     # An offender in miniature: 0986's two damage sites, verbatim in shape.
     cat > "$t/offender.sh" <<'EOF'
@@ -262,9 +347,46 @@ EOF
            printf '%s\n' "$verdict" >&2; errs=1 ;;
     esac
 
+    # --- the same, in Python --------------------------------------------
+    #
+    # Not a formality: `subprocess.run(["git", "init", …])` is a different
+    # spelling of the same syscall, and a gate that runs every hazardous file
+    # through `bash` would report a Python offender as a shell SYNTAX error
+    # with a clean victim — i.e. CLEAN, loudly, for the wrong reason.
+    cat > "$t/offender.py" <<'EOF'
+import subprocess
+import tempfile
+
+tmp = tempfile.mkdtemp()
+subprocess.run(["git", "init", "-q", tmp], capture_output=True)
+open(tmp + "/f", "w").write("x\n")
+subprocess.run(["git", "-C", tmp, "add", "f"], capture_output=True)
+EOF
+    for shape in worktree explicit; do
+        verdict="$(run_probe "$shape" "$t" python3 "$t/offender.py")"
+        case "$verdict" in
+            DIRTY*) ;;
+            *) echo "  selftest: a PYTHON offender was reported CLEAN under" >&2
+               echo "       \`$shape\`. The widening to Python catches nothing." >&2
+               errs=1 ;;
+        esac
+    done
+
+    { printf 'import sys\nsys.path.insert(0, %q)\nfrom git_hook_env import %s\n%s()\n' \
+        "$REPO/$(dirname "$LIB_PY")" "$CLEAR_FN" "$CLEAR_FN"
+      cat "$t/offender.py"; } > "$t/fixed.py"
+    verdict="$(run_probe worktree "$t" python3 "$t/fixed.py")"
+    case "$verdict" in
+        CLEAN) ;;
+        *) echo "  selftest: a CLEARED Python script was reported DIRTY — false" >&2
+           echo "       positive, which would make the widening unaffordable:" >&2
+           printf '%s\n' "$verdict" >&2; errs=1 ;;
+    esac
+
     rm -rf "$t"
     [ "$errs" -eq 0 ] || { echo "check-hook-repo-side-effects: SELFTEST FAILED" >&2; return 1; }
-    echo "  ok    selftest: an offender is caught in both shapes, a fixed one is not"
+    echo "  ok    selftest: a shell AND a Python offender are caught in both shapes,
+        their cleared twins are not, and the Python helper's own control holds"
     return 0
 }
 
@@ -283,11 +405,29 @@ self_test || fail=1
 # cannot afford. Against HEAD nothing has moved, so it takes the
 # skipped-unchanged path — after running its selftest, which is the 0986 site
 # this is here to exercise.
+# `gen-issue-index.py` takes `--self-test` for a second reason: its normal path
+# WRITES `docs/issues/open.md` into the real tree, and a gate has no business
+# regenerating a build artifact as a side effect of asking a question about
+# it. `--self-test` is the arm that builds the throwaway repo, which is the
+# 0986 site, and it is what the `issue-index` recipe runs first anyway.
 probe_args() {
     case "$1" in
         scripts/reserve-claim.sh) echo "--selftest" ;;
         scripts/ci/submodule-commits-reachable.sh) echo "--changed HEAD" ;;
+        scripts/gen-issue-index.py) echo "--self-test" ;;
         *) echo "" ;;
+    esac
+}
+
+# interp <file> — the interpreter that file's callers use.
+#
+# The scripts are run rather than sourced, so the shebang would do; naming it
+# keeps the probe's command line explicit and keeps a non-executable checkout
+# (a fresh clone, a CI tarball) from changing the answer.
+interp() {
+    case "$1" in
+        *.py) echo "python3" ;;
+        *) echo "bash" ;;
     esac
 }
 
@@ -299,10 +439,11 @@ for f in "${hazardous[@]}"; do
         # The real repo is the working directory because that is where these run
         # from; the VICTIM is what the environment names, and it is the thing
         # compared. A script that ignored the environment entirely and wrote to
-        # its cwd is out of this gate's reach and in `check fast`'s: these three
-        # are gates themselves and run there every push.
+        # its cwd is out of this gate's reach and in `check fast`'s: all but
+        # `gen-issue-index.py` are gates themselves and run there every push,
+        # and that one runs from the `issue-index` gate beside them.
         # shellcheck disable=SC2046  # deliberate: an empty arg set must vanish
-        verdict="$(run_probe "$shape" "$REPO" bash "$REPO/$f" $(probe_args "$f"))"
+        verdict="$(run_probe "$shape" "$REPO" "$(interp "$f")" "$REPO/$f" $(probe_args "$f"))"
         case "$verdict" in
             CLEAN) ok "$f [$shape]" ;;
             *) bad "$f [$shape] MODIFIED the repository its environment named:

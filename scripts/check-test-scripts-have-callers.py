@@ -39,6 +39,16 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from git_hook_env import nros_clear_inherited_git_env  # noqa: E402
+
+# Before the first git call, at module scope so no entry path can skip it. The
+# self-test below builds a throwaway repository, and an inherited `GIT_DIR`
+# overrides both `cwd=` and `git -C` — measured DIRTY against a victim repo in
+# both hook environment shapes before this line existed (issue 0986). This gate
+# is on `check-fast`, which the pre-push hook runs.
+nros_clear_inherited_git_env()
+
 # Where a caller may live. A script named ONLY inside `tests/` does not count:
 # tests calling each other is not a route from CI or from a developer's `just`.
 CALLER_DIRS = ["just", ".github", "scripts"]
