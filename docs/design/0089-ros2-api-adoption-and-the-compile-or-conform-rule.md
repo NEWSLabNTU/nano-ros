@@ -217,6 +217,64 @@ nothing. A deleted overload produces the migration at the point of failure:
 
 That costs one line and is the highest-leverage documentation in the design.
 
+## The alias rule: where upstream HAS a name and we lack it, the alias is load-bearing (2026-09-09)
+
+A rule that belongs beside the four dispositions, because it constrains which of
+them a name may be given. It was learned by a gate going red, not by review.
+
+> **For a name upstream HAS and we do not, a ported alias onto our nearest
+> equivalent is LOAD-BEARING, not a courtesy — and it must NOT be deprecated.**
+> "Do not take the name" is available only where upstream lacks the name too.
+
+The reason is the campaign's flagship property, which is two-directional and
+easy to state as if it were one-directional. `just colcon-parity` builds the
+example templates against REAL rclcpp under a ROS 2 install, so a template must
+compile **under upstream** as well as here. For any name in a template, the
+useful set is the INTERSECTION of "compiles under real ROS 2" and "compiles
+under nano-ros" — and an alias is what makes that set non-empty when the two
+libraries spell the same concept differently.
+
+Worked, and this is the case that produced the rule. Upstream has
+`rclcpp::TimerBase` and has **no** `rclcpp::Timer` — measured against the
+recorded surface (`docs/reference/api-surface/rclcpp.json`: `TimerBase`,
+`WallTimer`, `GenericTimer` present; `Timer` absent). Ours is `rclcpp::Timer`
+and we have no `TimerBase`. So for a node holding a timer:
+
+| the member is written | under real ROS 2 | under nano-ros |
+| --- | --- | --- |
+| `rclcpp::TimerBase::SharedPtr timer_;` | compiles | compiles ONLY with the alias |
+| `rclcpp::Timer timer_;` | **does not compile** | compiles |
+
+Delete the alias and the intersection is EMPTY: no spelling of a timer member
+satisfies both. That is not a lost convenience, it is the property gone.
+
+Two corollaries, both about what a disposition may then say:
+
+* **A deprecation is a promise to remove**, so deprecating such an alias
+  promises to empty the intersection on a schedule. Deprecation is therefore
+  forbidden here, unlike on a `nros::` transitional alias, where the promise is
+  the point.
+* **The direction matters and only one direction is free.** Where upstream lacks
+  the name too (`spin_once`, `Node::init`), we may take whatever name we like —
+  nothing of upstream's is being shadowed and no template loses a spelling.
+  Where upstream HAS it, the name is not ours to decline.
+
+`colcon-parity` is the gate that measures this, because it is the only lane that
+compiles our text against upstream's headers. A rule about a two-directional
+property needs a two-directional gate, and reasoning from our own headers alone
+cannot see the row that is empty.
+
+### This does not contradict "the one-directional consequence"
+
+Part I says a nano-ros file does not compile against ROS 2, and calls that the
+principle working. Both hold, because they are about different artifacts. A
+nano-ros PROGRAM may use the out-ref `create_*` family and `spin_once` and will
+not build upstream; that is clause 1 outranking clause 2 and it is fine. The
+**example templates** are the one artifact held to both directions, deliberately
+— they are the text a user copies to start from, and a starting text that only
+builds here teaches upstream's users nothing. `colcon-parity` exists to hold
+exactly that line, and this rule is what keeps a name available to it.
+
 ## Where the refusal fires: the earliest point the defect is KNOWABLE
 
 `rclcpp::init(argc, argv)` forced this and it generalises.
@@ -447,6 +505,15 @@ itself.
 Every such name also keeps a ledger row with `disposition: extension` and prose
 saying it is ours in upstream's namespace, so the parity report cannot be read
 as "upstream has this".
+
+**The gate's scope is OURS-ONLY EXTENSIONS, and the word is load-bearing
+(2026-09-09).** A ported ALIAS onto one of our types is a name upstream HAS, so
+it appears in the recorded surface by construction and must not trip the gate —
+`rclcpp::TimerBase` is exactly that, and is required to exist (see "The alias
+rule" in Part I). The two are distinguishable by the ledger, not by the surface
+diff: an extension carries `disposition: extension` and a ported alias does not.
+A gate keyed on "we declare it and upstream declares it" would fire on every
+successful adoption, which is the opposite of what it is for.
 
 ### The cost, stated
 
@@ -1560,6 +1627,14 @@ overstated. Evidence is the recorded upstream surface
 
 ### 1. `Timer` — do NOT adopt upstream's hierarchy; DO adopt its names
 
+> **This item was WITHDRAWN by "Timer, studied against RTOS semantics" below,
+> and it was RIGHT (confirmed 2026-09-09).** Its conclusion — refuse the
+> hierarchy, take the `TimerBase` NAME as a hosted alias — is what stands. The
+> withdrawal weighed only what the name teaches OUR readers; the alias's real
+> job is to keep one template text compiling against real rclcpp AND against
+> nano-ros, which `just colcon-parity` measures and header-reading cannot see.
+> See "The alias rule" in Part I.
+
 Upstream has `TimerBase`, `WallTimer`, `GenericTimer`, `TimerCallbackType`,
 `create_timer`, `create_wall_timer`. `TimerBase` is a POLYMORPHIC base;
 `WallTimer`/`GenericTimer` are templates over clock and callback;
@@ -1686,7 +1761,7 @@ canonical zero-cost API. That stands.
 
 | item | verdict |
 | --- | --- |
-| `rclcpp::Timer` | ported name `TimerBase` added (hosted alias); `Timer` remains ours as the concrete type |
+| `rclcpp::Timer` | ported name `TimerBase` added (hosted alias); `Timer` remains ours as the concrete type. **This row stands** — the withdrawal below was itself withdrawn 2026-09-09 |
 | `rclcpp::spin_once` | **invention, kept** — upstream has no blocking-with-budget verb; `spin_some` already ported |
 | `Node::init` / `Node::ok` | kept; `ok()` matches upstream's spelling, `init()` is the no-exception channel |
 | out-ref `create_*` | **not an invention** — ported name, changed signature, forced by the arena |
@@ -1694,7 +1769,13 @@ canonical zero-cost API. That stands.
 Two of four were mislabelled. What remains genuinely invented is `spin_once`
 and `Node::init`, plus `Timer` as a concrete type behind a ported alias.
 
-## Timer, studied against RTOS semantics (2026-09-05) — no `TimerBase`, no hierarchy
+## Timer, studied against RTOS semantics (2026-09-05) — no hierarchy; the `TimerBase` ALIAS is restored (2026-09-09)
+
+**Read the amendment at the end of this section first.** The study of the
+HIERARCHY stands in full and is the reason `Timer` is flat. Its conclusion about
+the NAME — that we should not take `TimerBase` at all — is overturned: the alias
+is load-bearing for `colcon-parity`, and deleting it empties the set of timer
+spellings that compile in both libraries.
 
 The objection is right and it kills the alias: **`TimerBase` is a name that
 promises children.** A reader who finds it expects `WallTimer` and
@@ -1756,12 +1837,15 @@ already expressed better:
 Inventing `nros::TimerBase` with a single `WallTimer` under it would reproduce
 the misleading promise we just refused to import, and charge a vtable for it.
 
-**Decision: `rclcpp::Timer` stays flat and stays ours.** No `TimerBase`, no
-`WallTimer`, no `GenericTimer`. (LANDED 2026-09-08, phase-430 W7 — the tree had
-a `TimerBase` for a phase in spite of this paragraph; see §"AMENDED 2026-09-08"
-for the ruling and its argument.) A ported file's
-`rclcpp::TimerBase::SharedPtr timer_;` becomes `rclcpp::Timer timer_;` — a
-rename the compiler demands, which is a mechanical edit under the principle.
+**Decision: `rclcpp::Timer` stays flat and stays ours.** No `WallTimer`, no
+`GenericTimer`, and no hierarchy. (LANDED 2026-09-08, phase-430 W7 — the tree had
+a `TimerBase` HIERARCHY for a phase in spite of this paragraph; see §"AMENDED
+2026-09-08" for that ruling and its argument.) This paragraph also said "no
+`TimerBase`" at all, and required a ported `rclcpp::TimerBase::SharedPtr timer_;`
+to be RENAMED to `rclcpp::Timer timer_;`. **That half is overturned 2026-09-09** —
+the rename is mechanical here and impossible upstream, so it is exactly the edit
+that empties the two-library intersection. `TimerBase` returns as a hosted alias
+onto the flat `Timer`; see the amendment below.
 
 The verb is already accurate and already ported: `create_wall_timer` says
 *wall*, and wall is what we schedule on.
@@ -1782,6 +1866,36 @@ still be a vtable no dispatch uses.
 Upstream distinguishes the two cases by TYPE *and* by VERB. The type
 distinction stays unportable; **the verb distinction is portable and it is what
 ported code writes**, so that is what we take.
+
+### AMENDED 2026-09-09 — the ALIAS is restored; only the HIERARCHY stays refused
+
+This section withdrew `TimerBase` on the argument that "`TimerBase` is a name
+that promises children… Either port the hierarchy or do not take the name."
+**The first half stands and the second half is wrong**, and §"Review of the
+invented parts" item 1 — which proposed exactly this alias and was withdrawn
+here — was right.
+
+What the withdrawal did not weigh is that the alias is not for OUR readers. It
+is what lets one template text compile against real rclcpp AND against
+nano-ros: upstream has `TimerBase` and no `Timer`, we have `Timer` and no
+`TimerBase`, so with the alias deleted no spelling of a timer member satisfies
+both and `just colcon-parity` has nothing to build. See "The alias rule" in Part
+I; this is the case that produced it.
+
+So, precisely:
+
+* **`rclcpp::Timer` stays flat and stays the concrete type.** Everything this
+  section measured about the hierarchy holds: our `Timer` is a HANDLE, dispatch
+  is a raw function pointer in the arena, so a base class would be a vtable no
+  dispatch uses; and `GenericTimer`'s clock parameter is a capability we do not
+  have. No `WallTimer`, no `GenericTimer`, no invented one-leaf hierarchy.
+* **`rclcpp::TimerBase` is restored as a hosted ALIAS onto it, and is NOT
+  deprecated.** A ported `rclcpp::TimerBase::SharedPtr timer_;` compiles; a file
+  that tries to DERIVE from it fails to compile, which is honest — we do not
+  have the hierarchy, and the failure is at the line.
+* The name promising children is a real cost, and it is paid down by the doc
+  comment on the alias saying what it is, not by deleting the only spelling that
+  works in both libraries.
 
 ### The condition under which this is revisited
 
