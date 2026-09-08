@@ -57,6 +57,12 @@ struct PubState {
     dds_entity_t topic{0};
     dds_entity_t writer{0};
     const dds_topic_descriptor_t* desc{nullptr};
+    // Issue 1231 — the liveliness kind this writer was CREATED with, kept
+    // because `publisher_assert_liveliness` is a no-op for every kind but the
+    // manual ones, and reading it back per call would mean a `dds_get_qos`
+    // allocation on a keepalive path. Same shape as the zenoh shim's
+    // `liveliness_kind` field.
+    bool manual_liveliness{false};
 };
 
 inline PubState* as_state(const rmw_publisher_t* p) {
@@ -162,6 +168,14 @@ rmw_ret_t publisher_create(const rmw_node_t* node, const rmw_message_type_suppor
     state->topic = topic;
     state->desc = desc;
 
+    // Issue 1231 — MANUAL_BY_NODE folds to MANUAL_BY_TOPIC in `make_dds_qos`
+    // (Cyclone has no BY_NODE), so both spellings are "manual" here. Anything
+    // else — AUTOMATIC, SYSTEM_DEFAULT, a NULL profile — leaves the writer on
+    // Cyclone's default AUTOMATIC, where an assertion has nothing to renew.
+    state->manual_liveliness =
+        qos != nullptr && (qos->liveliness_kind == NROS_RMW_LIVELINESS_MANUAL_BY_TOPIC ||
+                           qos->liveliness_kind == NROS_RMW_LIVELINESS_MANUAL_BY_NODE);
+
     dds_qos_t* dq = (qos != nullptr) ? make_dds_qos(qos) : nullptr;
     dds_entity_t writer = dds_create_writer(pp, topic, dq, nullptr);
     if (dq != nullptr) {
@@ -243,6 +257,60 @@ rmw_ret_t publisher_take_event(const rmw_publisher_t* publisher, rmw_event_type_
         default:
             return NROS_RMW_RET_INVALID_ARGUMENT;
     }
+}
+
+// Issue 1231 — MANUAL_BY_TOPIC liveliness, publisher side. This slot was NULL,
+// under a comment that only ever explained the two `*_event_init` hooks beside
+// it, so its absence read as an oversight and could not be told from a
+// decision. It was an oversight: the mapping is one call.
+//
+// MEASURED in the pinned fork (0.10.5, `67ff7518`), not read off upstream docs:
+//
+//   `dds_assert_liveliness(writer)` (`ddsc/src/dds_entity.c:1558`) pins the
+//   entity and, for `DDS_KIND_WRITER`, calls `write_hb_liveliness`
+//   (`ddsi/src/q_transmit.c:724`). That renews `wr->lease` when the writer's
+//   kind is MANUAL_BY_TOPIC (or the participant's `minl_man` lease for
+//   MANUAL_BY_PARTICIPANT) and then sends a Heartbeat submessage. The lease is
+//   registered at writer creation for any non-AUTOMATIC kind with a finite
+//   duration (`ddsi_endpoint.c:1006`) with NO dependency on a matched reader,
+//   and the housekeeping thread's expiry path runs
+//   `ddsi_writer_set_notalive(wr, true)` -> `DDS_LIVELINESS_LOST_STATUS`
+//   (`q_lease.c:297`, `ddsi_endpoint.c:728`). So the renewal is observable
+//   locally through our own `publisher_take_event`, which is what
+//   `tests/assert_liveliness.cpp` provokes rather than asserting an OK return.
+//
+// Two things follow, and both are why the call is gated on the kind rather
+// than forwarded unconditionally:
+//
+//   * For AUTOMATIC / NONE / SYSTEM_DEFAULT there is no lease to renew, so the
+//     call would reduce to an unsolicited Heartbeat. `rmw_vtable.h` documents
+//     this slot as a no-op returning OK for those kinds and the zenoh shim
+//     implements exactly that; forwarding anyway would make Cyclone the odd
+//     backend AND cost wire traffic for nothing.
+//   * The 0.10.5 writer branch LEAKS on its failure paths: a failed
+//     `dds_entity_lock` returns with the entity still pinned, and a failed
+//     `write_hb_liveliness` returns with it pinned AND locked, which wedges
+//     every later operation on that writer. That is vendored code with its own
+//     patch-line workflow, so the rule available here is the narrow one: only
+//     make the call when it can actually do something.
+//
+// Not established, and deliberately not claimed: whether any nano-ros consumer
+// wants MANUAL_BY_TOPIC on Cyclone. Nothing in the tree asks for it today —
+// but that is an argument about demand, not about correctness, and an
+// unexplained NULL was the worse record either way.
+rmw_ret_t publisher_assert_liveliness(const rmw_publisher_t* publisher) {
+    if (publisher == nullptr || publisher->backend_data == nullptr) {
+        return NROS_RMW_RET_INVALID_ARGUMENT;
+    }
+    PubState* state = as_state(publisher);
+    if (state == nullptr || state->writer <= 0) return NROS_RMW_RET_INVALID_ARGUMENT;
+    if (!state->manual_liveliness) {
+        // The ABI's documented no-op. Not an error: an application that calls
+        // this unconditionally is following the rule upstream states.
+        return NROS_RMW_RET_OK;
+    }
+    return dds_assert_liveliness(state->writer) == DDS_RETCODE_OK ? NROS_RMW_RET_OK
+                                                                  : NROS_RMW_RET_ERROR;
 }
 
 rmw_ret_t publisher_publish_raw(const rmw_publisher_t* publisher,
