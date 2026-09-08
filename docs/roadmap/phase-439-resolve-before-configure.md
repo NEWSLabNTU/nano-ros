@@ -170,6 +170,45 @@ future-mtime arm in `cmake/NanoRosReconfigure.cmake`.
 answers for a built dir; a named image's knobs are byte-identical to today's
 before the deletion and after it.
 
+**PARTIALLY LANDED 2026-09-08 (PR #759).** The phase and `resolved.toml` are in
+and READ; the three-pass fixed point is NOT deleted and **A3 is not met**.
+Remainder is issue 1228.
+
+What landed: stage 3.5 in `plan_builds`, between the preflight bail and the
+driver match, writing `build/<bringup>__<image>/resolved.toml` with
+`schema_version`, `[image]` (incl. a 16-hex digest over every resolved value),
+`[executor]`, `[pools]`, `[entities]` and `[provenance]`. A refusal publishes
+prose and NO numbers. `[executor]`/`[pools]` carry raw demand INCLUDING ZERO —
+the floor stays at the consumer (issues 1015/1033) — and the two hand-set knobs
+name themselves in `[provenance]` with their reason.
+
+The read is `cmake/NanoRosResolved.cmake`, wired at the two sites that READ the
+entity-inventory fragment and deliberately not at the three inside
+`nros_derive_entity_inventory_knobs()`, which is a producer recording its own
+refusal. A lane that ran no resolve phase is unchanged.
+
+Evidence, by pass count rather than by assertion — `just check resolved-seed`,
+9/9:
+
+    A  no resolve        1 re-configure   real answer (baseline unchanged)
+    B  resolve agrees    0 re-configures  real answer
+    C  resolve DISAGREES 1 re-configure   the PRODUCER's answer wins
+    D  resolve refused   1 re-configure   byte-for-byte case A
+
+Case B corrected the implementation: the seed first carried a "seeded from …"
+banner and measured 1 re-configure, because `nros_reconfigure_snapshot` hashes
+CONTENT and one comment line arms the very re-configure the seed exists to
+remove. C is the control — a wrong seed must lose.
+
+**A3 is explicitly NOT claimed.** This host has no `zephyr-workspace` and no
+Zephyr SDK, so neither "one pass" nor "byte-identical knobs" was measured. Given
+phase-392 W5's withdrawn causal claim, saying nothing beats saying it from a
+synthetic. Issue 1228 records what the real acceptance is: a `west build` with
+`check-knob-delivery <build-dir>` green both sides and unrelated values asserted
+unchanged as the control. Its headline is the one differing line between stage
+3.5 and the mid-configure producer — `NROS_ENTITY_INVENTORY_SOURCE` — which is
+why the pass is not yet saved in the real tree.
+
 **Known gap, not a blocker:** `ZPICO_MAX_QUERYABLES` and
 `ZPICO_MAX_LARGE_SUBSCRIBERS` have no declarative derivation (issues 0827, 1061,
 1125). They stay hand-set and `[provenance]` says so, which is strictly better

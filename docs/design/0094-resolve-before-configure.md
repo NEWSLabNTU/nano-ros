@@ -88,7 +88,15 @@ Between stage 3 (preflight) and stage 4 (emit root):
 
     reads   nros-{rmw,board,platform,serdes}.toml   (the descriptors)
             [package.metadata.nros.component] entities
-            nano_ros_node_register(… ENTITIES …)     (the cmake declaration)
+            the contract sidecar, via `EntityInventory::from_model`
+
+**Correction, from phase-439 W2.** An earlier draft named
+`nano_ros_node_register(… ENTITIES …)` as the cmake-side declaration. That
+argument was RETIRED by phase-412 and is now a `FATAL_ERROR`
+(`cmake/NanoRosNodeRegister.cmake:1229`); it stays PARSED only so the refusal can
+name it. The live declarative source is the contract sidecar folded into the
+SystemModel, which is what stage 3.5 reads — still no compiled artifact, which is
+the property that matters.
     runs    EntityInventory::derive                  ONCE, for the whole image
     writes  build/<image>/resolved.toml
 
