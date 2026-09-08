@@ -543,6 +543,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // instance-identity check vs `[[component]]`). `resolved_tiers` stays `None`
     // unless `system.toml` declares `[tiers.*]`.
     let mut node_groups: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
+    // issue 1172 — bare name -> namespace, for the tier filter's node key. Built
+    // from the SAME FQN split that makes each node's `NodeIdentity`, so the
+    // filter names a node exactly as the node is created.
+    let mut node_namespaces: BTreeMap<String, String> = BTreeMap::new();
     let mut node_instances: Vec<String> = Vec::new();
     let mut resolved_tiers: Option<ResolvedTierTable> = None;
     // issue 0438 — the tier names the SYSTEM declared, as opposed to the ones
@@ -875,6 +879,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             if !decls.is_empty() {
                 node_groups.insert(bare.clone(), decls);
             }
+            node_namespaces.insert(bare.clone(), namespace.clone());
             node_instances.push(bare);
         }
         // Issue 0257 — count the callback slots the SLICED node set needs. Same
@@ -1441,7 +1446,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     }
     let entry_call: proc_macro2::TokenStream = match multi_tier {
         Some(table) => {
-            let tiers_ts = tier_specs_tokens(table);
+            let tiers_ts = tier_specs_tokens(table, &node_namespaces);
             quote! {
                 <#board_path>::run_tiers(
                     // Issue #48 cause 1 — thread the deploy overlay into the
@@ -1627,7 +1632,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // plain register+spin scaffold, byte-identical to pre-#128-half-2.
     let zephyr_body_tail: proc_macro2::TokenStream = match multi_tier {
         Some(table) => {
-            let tiers_ts = tier_specs_tokens(table);
+            let tiers_ts = tier_specs_tokens(table, &node_namespaces);
             quote! {
                 return ::nros_board_zephyr::ZephyrBoard::run_tiers(
                     &config,
@@ -3070,12 +3075,39 @@ fn derive_target_rtos(deploy: Option<&str>) -> String {
 /// Emit a `&[TierSpec]` literal from the resolved tier table (Phase 228.G,
 /// RFC-0032 §5). `priority` is the raw per-RTOS value; `groups` is the tier's
 /// distinct callback-group ids (the executor's `active_groups` filter).
-fn tier_specs_tokens(table: &ResolvedTierTable) -> proc_macro2::TokenStream {
+fn tier_specs_tokens(
+    table: &ResolvedTierTable,
+    node_namespaces: &BTreeMap<String, String>,
+) -> proc_macro2::TokenStream {
     let entries = table.tiers.iter().map(|t| {
         let name = &t.name;
-        let mut groups: Vec<&str> = t.members.iter().map(|(_, g)| g.as_str()).collect();
+        // issue 1172 — the group id alone was AMBIGUOUS, and this was the third
+        // producer to drop the node: `map(|(_, g)| g)` threw the node name away
+        // and then deduped, so two nodes declaring `ctrl` on different tiers
+        // collapsed to one entry and the filter admitted both. The key is
+        // `(node name, namespace, group)` now, which cannot collapse.
+        //
+        // The namespace comes from the same FQN split that builds each node's
+        // `NodeIdentity`, so the filter names a node exactly as the node is
+        // created — a filter keyed on a namespace the node does not have would
+        // match nothing and the tier would register nothing.
+        let mut groups: Vec<(&str, &str, &str)> = t
+            .members
+            .iter()
+            .map(|(node, g)| {
+                let ns = node_namespaces
+                    .get(node.as_str())
+                    .map(String::as_str)
+                    .unwrap_or("/");
+                (node.as_str(), ns, g.as_str())
+            })
+            .collect();
         groups.sort();
         groups.dedup();
+        let groups = groups
+            .into_iter()
+            .map(|(n, ns, g)| quote! { (#n, #ns, #g) })
+            .collect::<Vec<_>>();
         let priority = t.priority;
         let stack_bytes = t.stack_bytes.unwrap_or(0) as usize;
         let spin_period_us = t.spin_period_us.unwrap_or(1000);
