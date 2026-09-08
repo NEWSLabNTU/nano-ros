@@ -702,6 +702,26 @@ int8_t  nros_platform_wake_wait_ms(void *w, uint32_t timeout_ms);
 int8_t  nros_platform_wake_signal(void *w);
 int8_t  nros_platform_wake_signal_from_isr(void *w);
 
+/** phase-436 W7 — OPTIONAL microsecond park, the `ParkUntilFn` a port may
+ *  install through `nros_cpp_executor_set_park_primitive`.
+ *
+ *  `nros_platform_wake_wait_ms` above is the required primitive and floors
+ *  every wait at a millisecond through its own signature; this is the same
+ *  wait without that floor, for kernels whose timeout type is finer (issue
+ *  1242). Ports that cannot do better than a millisecond need not define it.
+ *
+ *  `w` MUST be the executor's own wake object — the backend's listener signals
+ *  that one, and a park on anything else cannot be broken by data arriving.
+ *
+ *  Returns 0 when signalled, 1 when the deadline expired, negative when it
+ *  cannot park. */
+int8_t   nros_platform_wake_park_until_us(void *w, uint64_t deadline_us);
+
+/** The finest park `nros_platform_wake_park_until_us` can express, in
+ *  microseconds. An RTOS tick is a coarser limit than the ABI signature and a
+ *  timespec primitive a finer one, so only the port can answer (issue 1242). */
+uint64_t nros_platform_wake_park_granularity_us(void);
+
 /** Opaque-storage sizing. Both helpers are pure functions (no global
  *  state) and may be called before `nros_platform_wake_init`. */
 size_t  nros_platform_wake_storage_size(void);
