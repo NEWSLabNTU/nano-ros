@@ -81,6 +81,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SYNC = ROOT / "scripts/dev/ros2-box-sync.sh"
 
+sys.path.insert(0, str(ROOT / "scripts/lib"))
+from git_hook_env import nros_clear_inherited_git_env  # noqa: E402
+
 # A component that cannot occur in a real path, appended to a DIRECTORY so the
 # directory-only rules (which require more path after the match) evaluate as
 # "this directory is an ancestor of something". See `dir_verdict`.
@@ -202,11 +205,16 @@ def git_env():
     Same hazard `scripts/ci/submodule-pins-check.sh` clears for its fixtures
     (issue 0986): this gate runs from `just`, from CI and from the pre-push
     hook, and a hook is invoked with GIT_DIR already set.
+
+    The list is git's own (`rev-parse --local-env-vars`), through the one
+    shared helper, because the four names this function used to pop by hand
+    were four of sixteen. Measured 2026-09-08: under the `explicit` hook shape
+    the leaked `GIT_OBJECT_DIRECTORY` sent this gate's own fixture `git add`
+    into the victim repository's object store — two loose objects, in the file
+    that cites 0986 for doing the clearing. Popping SOME variables is not what
+    satisfies the rule; asking git is.
     """
-    env = dict(os.environ)
-    for k in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
-        env.pop(k, None)
-    return env
+    return nros_clear_inherited_git_env(dict(os.environ))
 
 
 def is_repo(path):

@@ -508,7 +508,13 @@ workflow-setup-spelling:
 # So this runs them, and the hook, under the environment git actually supplies,
 # against a victim repo compared byte for byte including mtimes — which matters
 # here beyond correctness: anything that rewrites a tracked file re-stales every
-# prebuilt fixture in the tree. ~6 s, no network, no build.
+# prebuilt fixture in the tree. No network, no build.
+#
+# SHELL AND PYTHON since 2026-09-08. The rule is about repository side effects,
+# not about bash, and the enumeration read `scripts/**/*.sh` only — so the four
+# Python gates that build a repository were outside it, and all four measured
+# DIRTY under a hook environment (issue 1229's "Not done here", 0196's shape).
+# Measured cost of the widening: 11.9 s -> 14.6 s warm, on this host.
 [private]
 hook-repo-side-effects:
     @bash scripts/check-hook-repo-side-effects.sh

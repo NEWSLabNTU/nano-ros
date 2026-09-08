@@ -173,3 +173,16 @@ paid only where the trees exist, which is the only host the box sync runs on.
 gate that builds a throwaway repository is outside its reach. This script clears
 `GIT_DIR` & co. itself (issue 0986's hazard) and says so, but the gate's reach
 is narrower than the rule it enforces — the 0196 shape, one series over.
+
+**DONE 2026-09-08.** The gate enumerates `scripts/**/*.py` too, runs each
+hazardous file through its own interpreter, and credits one identifier in both
+languages (`nros_clear_inherited_git_env`, Python spelling in
+`scripts/lib/git_hook_env.py`). Four Python files build a repository and all
+four measured DIRTY against a victim repo under a hook environment — including
+**this one**: the clearing it claims above was a hand-written subset, four of
+git's sixteen repository-local names, so under the `explicit` shape the leaked
+`GIT_OBJECT_DIRECTORY` sent its own fixture's `git add` into the victim's object
+store. That is 0986's own argument (four hand-written copies of a subset)
+reproduced one language over, and it is why "the file pops some `GIT_`
+variables" is not what satisfies the rule. The shell marker alone found 0 of
+the 4, so a naive port would have reported a clean sweep.

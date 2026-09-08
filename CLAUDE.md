@@ -617,7 +617,12 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   Gate: `check-hook-repo-side-effects` (runs the hook and every `git init`-ing
   script under both environment shapes against a victim repo compared byte for
   byte, mtimes included — a hook that rewrites a tracked file re-stales every
-  fixture).
+  fixture). **The rule is about repository side effects, not about bash**: the
+  gate read `scripts/**/*.sh` only until 2026-09-08, and all 4 Python gates that
+  build a repo measured DIRTY — including the one that cleared BY HAND, 4 of
+  git's 16 names, leaking `GIT_OBJECT_DIRECTORY` into the victim's object store.
+  The Python spelling of the helper is `scripts/lib/git_hook_env.py`, same
+  function name; popping some `GIT_*` variables is never what earns the credit.
 - **A red CI lane answers one of two questions and they look identical** — the
   lane RAN and the code is broken (a verdict), or it never ran (no verdict). A
   uniformly-red lane has NO signal capacity: a regression landing in it looks
