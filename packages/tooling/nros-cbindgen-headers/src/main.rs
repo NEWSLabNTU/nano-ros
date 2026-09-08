@@ -18,6 +18,8 @@
 //! by `nros-zpico-build`'s own `generate_header`. All three are tracked, all
 //! three were rewritten by builds, and all three are covered here.
 
+#![forbid(unsafe_code)]
+
 use std::{
     path::{Path, PathBuf},
     process::ExitCode,

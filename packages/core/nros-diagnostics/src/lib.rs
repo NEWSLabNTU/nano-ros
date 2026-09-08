@@ -10,6 +10,7 @@
 //! contract violated on either runtime reports in the SAME words
 //! (cross-runtime parity, RFC-0050/0052).
 
+#![forbid(unsafe_code)]
 #![no_std]
 
 pub use nros_diagnostic_msgs::msg::{DiagnosticArray, DiagnosticStatus, KeyValue};

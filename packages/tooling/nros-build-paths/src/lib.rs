@@ -12,6 +12,8 @@
 //! sub-paths mirror `just/sdk-env.just` — that file is the SSoT for
 //! the relative-path values; if a path moves, fix it there AND here.
 
+#![forbid(unsafe_code)]
+
 use std::path::PathBuf;
 
 /// Walk up from `CARGO_MANIFEST_DIR` until `nros-sdk-index.toml` is

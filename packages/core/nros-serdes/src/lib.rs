@@ -25,6 +25,7 @@
 //! - `std` — Enable standard library support
 //! - `alloc` — Enable heap allocation (`String`, `Vec<T>`)
 
+#![forbid(unsafe_code)]
 #![no_std]
 
 #[cfg(feature = "std")]
