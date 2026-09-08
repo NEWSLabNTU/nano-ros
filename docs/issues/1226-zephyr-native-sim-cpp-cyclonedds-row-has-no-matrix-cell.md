@@ -64,8 +64,8 @@ red they must triage as not-theirs before they can trust the green above it,
 which is issue 0952's warning read from the other end.
 
 This is the fourth pre-existing red on `main` this week, after the two
-`docs/rfc-0094-resolve-before-configure` fixed in `5817d343e` and the
-`cli-clippy` dead-code one in `684e40ab3`.
+`docs/rfc-0094-resolve-before-configure` fixes and the `cli-clippy` dead-code
+one.
 
 ## Fix direction (not applied)
 
