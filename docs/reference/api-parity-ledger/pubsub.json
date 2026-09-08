@@ -252,11 +252,6 @@
     "verdict": "divergence",
     "why": "QoS events. rclcpp routes every event through one `set_on_new_qos_event_callback` plus a `QOSEventHandler` waitable the executor polls; ours are named callbacks per event (`on_liveliness_lost`, `on_offered_deadline_missed`, `on_message_lost`) registered on the entity. Constraint: no allocator for a per-event handler object and no wait-set to poll it from -- the callback is a fn-ptr in the entity's own static storage. The set of events is the same."
   },
-  "c:subscription_init": {
-    "disposition": "adopt",
-    "verdict": "declined",
-    "why": "rcl's options-taking subscription constructor, and the one rcl name in this family we do not define. The CAPABILITY is present under our own spelling: `nros_subscription_init_with_options(sub, node, type_support, topic, const struct nros_subscription_options_t *)` (`nros_generated.h`), and rclc's default form ships under rclc's exact name as `rclc_subscription_init_default`. Ours says `_with_options` where rcl says bare `_init` because rcl has no second constructor to distinguish it from -- its `_init` IS the options-taking form -- while our surface spells the pair `_init_default` / `_init_with_options` across all five entities, so a reader who has seen one has seen them all. See `c:subscription_init_with_options` for the ours-only half and `c:subscription_get_options` for the readback rcl also has and we decline."
-  },
   "c:subscription_init_best_effort": {
     "verdict": "divergence",
     "why": "see `c:publisher_init_best_effort`."
