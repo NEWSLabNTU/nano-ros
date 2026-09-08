@@ -670,8 +670,27 @@ cxx_syntax_check() {
     # a third path (nros-platform-api, the cmake compat shim, or a generated
     # config header under `target/`) was invisible. `-MD` composes with
     # `-fsyntax-only` — no object is produced, the dep list still is.
+    # phase-438 W2 — the std surface is REQUESTED now, never discovered from the
+    # include path, so a snippet that ports rclcpp code has to ask.
+    #
+    # A RULE, not a list, because a list drifts: `platform_hdr_*` snippets exist
+    # to prove `<nros/platform.h>` type-checks on a FREESTANDING target, and
+    # handing them the std surface would weaken exactly what they measure. Every
+    # other snippet here reaches `<rclcpp/rclcpp.hpp>` through
+    # `cmake/compat/include` — the ported flavour — and gets the flag, matching
+    # what `cmake/compat/NrosRclcppCompat.cmake` now sets for a real consumer.
+    #
+    # Measured need: `rclcpp_node_options` (rclcpp::NodeOptions) and
+    # `spin_until_future_complete` (rclcpp::Node) fail without it;
+    # `subscription_with_info` does not. All three are on the same side of the
+    # rule, which is the point of having one.
+    local std_opt=()
+    case "$id" in
+        platform_hdr_*) ;;
+        *) std_opt=(-DNROS_CPP_STD=1) ;;
+    esac
     rm -f "$staged/deps.d"
-    if "$cxx" -std=c++14 -fsyntax-only -MD -MF "$staged/deps.d" "${inc[@]}" "$src"; then
+    if "$cxx" -std=c++14 -fsyntax-only "${std_opt[@]+"${std_opt[@]}"}" -MD -MF "$staged/deps.d" "${inc[@]}" "$src"; then
         date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
         echo "   stamped $staged/.compile-ok"
     else

@@ -1,6 +1,6 @@
 # phase-438 — the C++ std surface is an opt-in PORTING surface, not a discovered capability
 
-**Status (2026-09-08). Opened; feasibility MEASURED.** The C++ half of phase-359's
+**Status (2026-09-09). W0, W1, W2 LANDED — issue 1187 is closed. W3-W5 open.** The C++ half of phase-359's
 argument. Implements RFC-0089's compile-or-conform rule by making the surface that
 rule needs an explicit request rather than a property of the toolchain. Re-cuts
 phase-427 W1, which currently works around this rather than fixing it.
@@ -341,6 +341,11 @@ program — native included — is on the freestanding side already.
 **W0 before W2**, so the gate is the acceptance rather than a casualty — and
 W0 lands with a ratchet rather than a red, because a red fast-line gate on
 `main` blocks every push (see W0).
+
+**W1 before W2**, and it earned its place: W2 landed as a five-line deletion in
+one file instead of a fourteen-site sweep, and the baseline is the count —
+14 entries after W0, 5 after W1, 0 after W2, with no debt paid to get from 14
+to 5.
 
 **The phase before phase-426 and phase-427.** W2 changes what "delete both C++
 parameter stores" is deleting from, and W4 is phase-427 W1 relocated. Doing it

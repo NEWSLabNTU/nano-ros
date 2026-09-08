@@ -1,32 +1,22 @@
-# Hosted STL includes reached with `NROS_CPP_STD` undefined, in the `#elif
-# defined(__has_include)` arm of nros-cpp's capability blocks.
+# Hosted STL includes reached with `NROS_CPP_STD` undefined, in nros-cpp's
+# capability blocks.
 #
 # A RATCHET, not an allowlist. It may only SHRINK: a line here that no longer
 # matches a violation is a FAILURE, so the debt cannot go stale, and a new
 # violation not listed here is a failure too, so it cannot grow.
 #
-# EMPTY as of issue 1240 (2026-09-09). All fourteen entries are paid.
+# EMPTY as of issue 1240 (2026-09-09). All fourteen entries are paid, and
+# phase-438 W1+W2 then removed the shape that produced them.
 #
-# WHAT PAID THEM, AND WHY IT IS NOT WHAT WAS PLANNED
+# WHAT PAID THEM, IN TWO STEPS THAT DISAGREED ABOUT THE INSTRUMENT
 #
-# The plan recorded here was phase-438 W2: "delete the `#elif` arm, so the std
-# surface is reachable only through `NROS_CPP_STD`." That would have been the
-# wrong fix, and `nros.hpp` already says why in its `<chrono>` note — NOTHING
-# THAT SHIPS DEFINES `NROS_CPP_STD`. It appears in no cmake module, no
-# toolchain file, no build.rs and no Kconfig, only in docs and in `check.just`'s
-# own probe TUs. Deleting the arm would not have tightened the gate on
-# freestanding targets; it would have removed `std::string`-taking `get_logger`,
-# `std::shared_ptr` aliases and the `<vector>` options surface from EVERY
-# configuration, hosted ones included. `nros.hpp` made exactly that mistake for
-# `<chrono>` on 2026-09-05 and corrected it two days later.
-#
-# What paid them instead is the corrected predicate from that same note, applied
-# to all fourteen sites at once (issue 1240):
+# Issue 1240 paid all fourteen by CORRECTING the probe in place, at all fourteen
+# sites at once:
 #
 #   #if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ \
 #       && __has_include(<string>))
 #
-# Neither probe alone is sufficient and both are necessary:
+# Neither probe alone is sufficient and both were necessary:
 #
 #   * `__has_include` alone answers "does the header FILE exist", which is TRUE
 #     under `-ffreestanding` for a libstdc++ whose `<string>` begins
@@ -37,15 +27,38 @@
 #     hosted compiler run `-nostdinc++` against Zephyr's minimal libcpp reads
 #     HOSTED and still has no `<string>`.
 #
-# The conjunction covers both lanes; `NROS_CPP_STD` stays as the explicit
-# override for a consumer who knows better than the probes.
+# phase-438 W1 then moved that one predicate to its single definition site,
+# `packages/api/nros-cpp/include/nros/std_detect.hpp`, and W2 DELETED the
+# discovery disjunct there. 1240's objection to deleting it — "nothing that
+# ships defines `NROS_CPP_STD`, so the arm is what gives the hosted build
+# `std::string`-taking `get_logger`, the `SharedPtr` aliases and the `<vector>`
+# options surface" — was correct about the tree as it stood, and W2 is what
+# makes it stop being true: five consumers now make the request out loud (the
+# rclcpp compat shim, the phase-417 ported-surface probes, the four refusal
+# probes, the `cpp_compat_snippets` compile-check arm, and
+# `check-cpp-capability-layout`'s hosted arm). A better probe was still a probe;
+# the macro answers which SURFACE a consumer asked for, which no probe can see.
 #
-# The walker was tightened in the same change so it cannot be satisfied by the
-# TOKEN alone: an `#if`/`#elif` naming NROS_CPP_STD that also reaches
-# `__has_include` without `__STDC_HOSTED__` is NOT a std region. Without that,
-# the broken shape and the corrected one score identically, which is the 0196
-# rule — a gate whose reach is narrower than the rule it enforces.
+# Measured on the toolchain that could not build at all before (arm-none-eabi
+# 13.2, `-std=c++14 -ffreestanding -fno-exceptions -fno-rtti`), per-header
+# standalone parse:
+#
+#     before W2   pass=26 fail=20
+#     after W2    pass=47 fail=0
+#
+# The walker was tightened by 1240 so it cannot be satisfied by the TOKEN alone:
+# an `#if`/`#elif` naming NROS_CPP_STD that also reaches `__has_include` without
+# `__STDC_HOSTED__` is NOT a std region. Without that, the broken shape and the
+# corrected one score identically, which is the 0196 rule — a gate whose reach
+# is narrower than the rule it enforces. After W2 no capability block reaches
+# `__has_include` at all, so the tightened walker has nothing left to reject
+# here; it stays because the rule outlives this file's emptiness.
 #
 # Keyed on FILE and HEADER, not on a line number, so an entry survives edits
 # above it and so a second `<memory>` appearing in a listed file is still
 # caught. Add a line here only with a written reason and a tracked issue id.
+#
+# The file stays rather than being deleted: the gate requires it, and the next
+# genuine hosted-include debt needs somewhere to be recorded with its reason
+# instead of being argued about in a review. An entry that stops offending
+# FAILS, so an empty file cannot quietly refill.
