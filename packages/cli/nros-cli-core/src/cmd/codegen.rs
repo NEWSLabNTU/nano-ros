@@ -373,7 +373,9 @@ fn run_entry(args: EntryArgs) -> Result<()> {
             // — exactly the single-node `threadx_entry_main_c_typed.cpp.in` shape). The
             // cmake side (`nano_ros_entry`) gives the `.out` a `.cpp` extension + links
             // `NanoRosCpp` for an embedded C entry.
-            entry_codegen::Lang::C if !entry_codegen::emit_cpp::board_is_embedded(&plan.board) => {
+            entry_codegen::Lang::C
+                if nros_entry_lower::board_family(&plan.board).has_c_run_components() =>
+            {
                 entry_codegen::emit_c::emit_typed(&plan).map_err(|e| eyre!("{e}"))?
             }
             // phase-432 W3.1 — SAY that the routing fired.

@@ -58,6 +58,10 @@ const TEMPLATES: &[(&str, &str)] = &[
     // --- the C entry pack ---
     ("entry_c.c", include_str!("packs/entry/c/entry.c.jinja")),
     (
+        "boot_wrapper_c.jinja",
+        include_str!("packs/entry/c/boot_wrapper.jinja"),
+    ),
+    (
         "service_trailer_c.jinja",
         include_str!("packs/entry/c/service_trailer.jinja"),
     ),

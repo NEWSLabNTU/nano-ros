@@ -125,9 +125,15 @@ pub struct EntryPackInfo {
 /// W3.1 is the item that would delete this branch, by giving every board a
 /// C-ABI `run_components`.
 pub fn entry_pack_for(language: Language, board: &str) -> Result<EntryPackInfo, String> {
-    let embedded = nros_entry_lower::board_family(board).is_embedded();
+    // phase-432 W3.1 — the question is whether this board HAS a C-ABI
+    // `run_components`, not whether it is embedded. Those agreed only while
+    // `native` was the only family with one; FreeRTOS has one now, so a
+    // family-wide assumption would route a C entry to C++ on a board that no
+    // longer needs it. One predicate, in `nros-entry-lower`, because four
+    // sites must give the same answer.
+    let has_c_runner = nros_entry_lower::board_family(board).has_c_run_components();
     let pack = match language {
-        Language::C if embedded => "cpp",
+        Language::C if !has_c_runner => "cpp",
         Language::C => "c",
         Language::Cpp => "cpp",
         Language::Rust => "rust",
@@ -220,25 +226,56 @@ mod tests {
     }
 
     /// The routing rule, stated as cases rather than re-derived.
+    ///
+    /// phase-432 W3.1 — the rule is now "does this board have a C-ABI
+    /// `run_components`", not "is it embedded". The two agreed while `native`
+    /// was the only family with one; FreeRTOS has one now, so the cases split
+    /// by CAPABILITY rather than by host-vs-embedded. The board list is taken
+    /// from the predicate rather than written out, so a board gaining a runner
+    /// moves between the two arms here automatically instead of leaving a
+    /// stale literal asserting the old answer.
     #[test]
-    fn an_embedded_c_entry_is_rendered_by_the_cpp_pack() {
-        let native = entry_pack_for(Language::C, "native").unwrap();
-        assert_eq!(
-            (native.pack.as_str(), native.extension.as_str()),
-            ("c", "c")
-        );
-        assert!(!native.routed);
-
-        for board in ["zephyr", "nuttx", "freertos", "threadx"] {
+    fn a_c_entry_renders_as_c_exactly_where_the_board_has_a_c_runner() {
+        for board in ["native", "zephyr", "nuttx", "freertos", "threadx"] {
+            let has_runner = nros_entry_lower::board_family(board).has_c_run_components();
             let got = entry_pack_for(Language::C, board).unwrap();
-            assert_eq!(
-                (got.pack.as_str(), got.extension.as_str()),
-                ("cpp", "cpp"),
-                "an embedded C entry on `{board}` must render as C++ — the RTOS \
-                 board runners are C++ only"
-            );
-            assert!(got.routed, "`{board}` must report that routing fired");
+            if has_runner {
+                assert_eq!(
+                    (got.pack.as_str(), got.extension.as_str()),
+                    ("c", "c"),
+                    "`{board}` has a C-ABI run_components, so a C entry must render as C"
+                );
+                assert!(
+                    !got.routed,
+                    "`{board}` must not report routing — none fired"
+                );
+            } else {
+                assert_eq!(
+                    (got.pack.as_str(), got.extension.as_str()),
+                    ("cpp", "cpp"),
+                    "`{board}` has no C-ABI run_components, so a C entry must render as \
+                     C++ — that pack drives the C++ board runner and reaches each C node \
+                     through its `extern \"C\"` seam"
+                );
+                assert!(got.routed, "`{board}` must report that routing fired");
+            }
         }
+    }
+
+    /// The state of the surface, pinned so a board's runner landing is a
+    /// DELIBERATE edit here rather than a silent change of what ships.
+    ///
+    /// ThreadX is the one that is `false` on purpose rather than pending: it
+    /// has no `run_tiers` either, so there is nothing to copy, and it stays
+    /// C++-entry-only with the routing reported rather than refused.
+    #[test]
+    fn the_c_board_surface_is_where_this_phase_left_it() {
+        use nros_entry_lower::BoardFamily;
+        assert!(BoardFamily::Native.has_c_run_components());
+        assert!(BoardFamily::Freertos.has_c_run_components());
+        assert!(!BoardFamily::Zephyr.has_c_run_components());
+        assert!(!BoardFamily::Nuttx.has_c_run_components());
+        assert!(!BoardFamily::Threadx.has_c_run_components());
     }
 
     /// A Rust entry is not a C-family TU, so CMake must not link it as one.

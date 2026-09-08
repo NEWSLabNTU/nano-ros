@@ -50,6 +50,67 @@ struct CEntryView {
     /// `c_service_trailer.c.jinja` where they belong.
     services: ServicesView,
     boot_config: BootConfigView,
+    /// phase-432 W3.1 — the board's entry point and runner, shared with the
+    /// C++ pack's `boot` view in shape so the two wrappers read alike.
+    boot: CBootView,
+    /// Whether the TU includes `<nros/app_main.h>`, which the `app` boot
+    /// shape's `NROS_APP_MAIN_REGISTER_VOID()` needs.
+    app_main_include: bool,
+}
+
+/// The board half of a C entry: which entry point the kernel calls, and which
+/// runner it calls.
+///
+/// phase-432 W3.1. Both were CONSTANTS while the C board surface was
+/// native-only — `int main(argc, argv)` calling `nros_board_native_*` — because
+/// an embedded C entry was routed to the C++ pack before it reached here.
+///
+/// The runner names are carried rather than derived from a prefix: the C ABI
+/// does not name them uniformly (`native` keeps the `_named` suffix its
+/// two-overload history left behind; the RTOS runners have no such pair), so a
+/// prefix rule would be a second, guessing spelling of a fact this module
+/// already holds exactly.
+#[derive(serde::Serialize)]
+struct CBootView {
+    /// `"kernel"` | `"app"` | `"host"` — `BootShape`'s single derivation,
+    /// the same one the C++ pack reads.
+    shape: &'static str,
+    run_components_fn: &'static str,
+    run_tiers_fn: &'static str,
+    tiers: bool,
+    n_tiers: usize,
+}
+
+/// The C-ABI runner names for a board family.
+///
+/// Only families whose `has_c_run_components()` is true can reach here with a
+/// C entry — the emitter refuses the rest above — so the arms for the others
+/// exist to keep this total, not because they are reachable. They name the
+/// symbol each family WOULD export, so adding a board's runner is a one-line
+/// change here and in the predicate rather than a new match.
+fn c_runner_names(board: &str) -> (&'static str, &'static str) {
+    match nros_entry_lower::board_family(board) {
+        nros_entry_lower::BoardFamily::Native => (
+            "nros_board_native_run_components_named",
+            "nros_board_native_run_tiers",
+        ),
+        nros_entry_lower::BoardFamily::Freertos => (
+            "nros_board_freertos_run_components",
+            "nros_board_freertos_run_tiers",
+        ),
+        nros_entry_lower::BoardFamily::Zephyr => (
+            "nros_board_zephyr_run_components",
+            "nros_board_zephyr_run_tiers",
+        ),
+        nros_entry_lower::BoardFamily::Nuttx => (
+            "nros_board_nuttx_run_components",
+            "nros_board_nuttx_run_tiers",
+        ),
+        nros_entry_lower::BoardFamily::Threadx => (
+            "nros_board_threadx_run_components",
+            "nros_board_threadx_run_tiers",
+        ),
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -125,7 +186,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     //
     // W3.1 is the item that lifts this: give each RTOS board a C-ABI
     // `run_components` and the refusal narrows to what still lacks one.
-    if nros_entry_lower::board_family(&plan.board).is_embedded() {
+    if !nros_entry_lower::board_family(&plan.board).has_c_run_components() {
         return Err(format!(
             "typed C entry emit: board `{}` has no C-ABI `run_components` — the C \
              board surface is native-only, so this emitter would name \
@@ -257,6 +318,24 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
                 .collect()
         },
         services: services_view(plan),
+        app_main_include: matches!(
+            nros_entry_lower::board_family(&plan.board).boot_shape(),
+            nros_entry_lower::BootShape::App
+        ),
+        boot: {
+            let (run_components_fn, run_tiers_fn) = c_runner_names(&plan.board);
+            CBootView {
+                shape: match nros_entry_lower::board_family(&plan.board).boot_shape() {
+                    nros_entry_lower::BootShape::Kernel => "kernel",
+                    nros_entry_lower::BootShape::App => "app",
+                    nros_entry_lower::BootShape::Host => "host",
+                },
+                run_components_fn,
+                run_tiers_fn,
+                tiers: tiers_view.is_some(),
+                n_tiers: tiers_view.as_ref().map(|t| t.n).unwrap_or(0),
+            }
+        },
         tiers: tiers_view,
         boot_config,
     };
