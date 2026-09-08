@@ -304,10 +304,6 @@
     "verdict": "divergence",
     "why": "rclcpp's `CallbackGroupType` is a CONCURRENCY policy -- `MutuallyExclusive` or `Reentrant` -- and it only means anything to a multi-threaded executor deciding whether two callbacks from one group may run at once. RFC-0002 puts one executor on one RTOS task with non-preemptive run-to-completion dispatch, so every group is mutually exclusive by construction and `Reentrant` is unrepresentable: there is no second thread to be reentrant from. The axis our group carries instead is a NAME that `system.toml` maps to a scheduling tier (RFC-0047, RFC-0079) -- the thing a mixed-criticality image actually needs from grouping. `automatically_add_to_executor_with_node` (rclcpp's second constructor argument) is meaningless for the same reason as `cpp:Executor::add_node`."
   },
-  "cpp:ComponentNode::create_callback_group": {
-    "verdict": "divergence",
-    "why": "rclcpp's `Node::create_callback_group`, forwarding to the owned node; the divergence itself is recorded in full at `cpp:Node::create_callback_group` -- ours takes the group NAME that `system.toml` maps to a scheduling tier (RFC-0047, RFC-0079), rclcpp's takes a `CallbackGroupType` concurrency policy that a single-task run-to-completion executor cannot represent. This row is the same divergence one type over; the owning TYPE name is the extra question (`cpp:ComponentNode`)."
-  },
   "cpp:Executor::add_callback_group": {
     "verdict": "declined",
     "disposition": "absent",
