@@ -463,19 +463,35 @@ build_workspace() {
             # the gate's path sniff looks for the BOARD; an unmapped platform
             # RAISES rather than passing, so a new one is a decision.
             #
-            # `-print -quit`, NOT `| head -1`. Under this script's
-            # `set -euo pipefail`, a `find` that still has output to write when
-            # `head` exits takes SIGPIPE, the pipeline reports 141, and the
-            # command substitution kills the script. It survived review and a
-            # local run because this tree had exactly ONE match, so `find`
-            # finished before `head` left; CI had more, and the build died
-            # immediately after `built: … native_entry` with no message of its
-            # own — `error: recipe build-workspace-fixtures failed on line 234`
-            # and nothing else. `-quit` stops find itself at the first hit, so
-            # there is no second writer and no pipeline to fail.
+            # `-print -quit`, NOT `| head -1`, and ROOTED AT THE REPO ROOT.
+            # `$dir` is repo-root-relative (`examples/workspaces/rust`) while
+            # this function runs with the WORKSPACE as CWD, so the original
+            # line handed `find` a DOUBLED path
+            # (`examples/workspaces/rust/examples/workspaces/rust/...`) that has
+            # never existed on any host. `find` exits 1, `2>/dev/null` discards
+            # the reason, and `set -euo pipefail` takes the script down with no
+            # message of its own -- `error: recipe build-workspace-fixtures
+            # failed on line 234` and nothing else.
+            #
+            # The earlier fix here read that fingerprint as SIGPIPE (a `find`
+            # still writing when `head` exits) and swapped in `-print -quit`.
+            # MEASURED 2026-09-09, that cause never existed: with the doubled
+            # path `find` exits 1 before writing a byte, so `head` never leaves
+            # early and there is no SIGPIPE to take -- and `pipefail` fails the
+            # pipeline on find's own 1 regardless. Running the pre-`-quit` form
+            # under `set -euo pipefail` against the doubled path dies
+            # identically. `-quit` stays because it is the better shape, not
+            # because it fixed anything.
+            #
+            # So this gate had NEVER RUN, and this build had never got past
+            # here, from the day the block landed (2026-09-07) -- which is why
+            # the live-peer lane could not reach a single cell.
+            #
+            # `|| true` because an ABSENT elf is a legitimate state that the
+            # `[ -n ... ]` below already handles; it must not be a silent abort.
             local _sf_elf
-            _sf_elf="$(find "$dir/$out_root" -type f -name "$entry" \
-                -path "*/$row_profile_dir/*" -print -quit 2>/dev/null)"
+            _sf_elf="$(find "$NROS_REPO_ROOT/$dir/$out_root" -type f -name "$entry" \
+                -path "*/$row_profile_dir/*" -print -quit 2>/dev/null || true)"
             if [ -n "$_sf_elf" ]; then
                 python3 "$NROS_REPO_ROOT/scripts/check-stack-floor.py" \
                     --board-for-row "$platform" "$_sf_elf"
