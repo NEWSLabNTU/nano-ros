@@ -71,6 +71,33 @@
 #define NROS_NODISCARD
 #endif
 
+/// `NROS_CPP_DEPRECATED_MSG(msg)` — the C++ twin of `NROS_DEPRECATED_MSG`
+/// (`<nros/visibility.h>`, nros-c).
+///
+/// Declared here rather than included from there because a C++-only consumer
+/// need not have the C API's include directory on its path, and `result.hpp`
+/// is the one header every other `nros/*.hpp` already pulls in — the same
+/// reason `NROS_NODISCARD` lives above.
+///
+/// Unlike `NROS_NODISCARD` this needs no compiler-specific carve-out: the
+/// `deprecated` attribute on a class and on a function is honoured by gcc and
+/// clang in both the `[[…]]` and GNU spellings, so the ordinary
+/// `__has_cpp_attribute` probe with a GNU fallback is enough.
+#ifndef NROS_CPP_DEPRECATED_MSG
+#if defined(__has_cpp_attribute)
+#if __has_cpp_attribute(deprecated)
+#define NROS_CPP_DEPRECATED_MSG(msg) [[deprecated(msg)]]
+#endif
+#endif
+#endif
+#ifndef NROS_CPP_DEPRECATED_MSG
+#if defined(__GNUC__) || defined(__clang__)
+#define NROS_CPP_DEPRECATED_MSG(msg) __attribute__((deprecated(msg)))
+#else
+#define NROS_CPP_DEPRECATED_MSG(msg)
+#endif
+#endif
+
 namespace nros {
 
 /// Error codes returned by nros-cpp functions.
