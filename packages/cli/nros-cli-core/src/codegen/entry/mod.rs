@@ -335,7 +335,18 @@ pub(crate) fn qos_views(n: &PlanNode) -> Vec<QosRowView> {
 pub(crate) struct TierView {
     pub index: usize,
     pub name: String,
-    pub groups: Vec<String>,
+    /// `(node name, node namespace, group)` per admitted group, FLATTENED to
+    /// 3N strings by the pack — `nros_native_tier_spec_t.n_groups` counts
+    /// TRIPLES and the array holds three entries each.
+    ///
+    /// issue 1172 — this was the group id alone, and the two packs derived it
+    /// DIFFERENTLY: `emit_c` deduped ACROSS tiers (so a group named by two
+    /// tiers emptied the second tier's array, and an empty array is the
+    /// WILDCARD — that tier then ran every callback in the image), `emit_cpp`
+    /// deduped within each tier. Neither was right, because the filter could
+    /// not express the node; with the node in the key there is nothing to
+    /// dedup across tiers and the two rules collapse into one.
+    pub groups: Vec<(String, String, String)>,
     pub priority: i64,
     pub stack_bytes: u64,
     pub spin_period_us: u64,
@@ -351,20 +362,66 @@ pub(crate) struct TierView {
     pub deadline_policy: Option<String>,
 }
 
+/// The `(node name, namespace, group)` key for every group admitted on each
+/// tier — ONE derivation, shared by both entry packs.
+///
+/// issue 1172 — this used to be written twice and differently. `emit_c` deduped
+/// ACROSS tiers, so a group named by two tiers left the SECOND tier's array
+/// empty; an empty array is the WILDCARD (`main.h`: "NULL / 0 means wildcard"),
+/// so that tier stopped filtering and ran every callback in the image at its
+/// own priority. `emit_cpp` deduped WITHIN each tier and kept empty ids. The
+/// C comment claimed "a group named by two tiers belongs to the first", which
+/// is not what its code did — it disabled the second tier's filter.
+///
+/// Neither rule was recoverable, because the filter could not express the
+/// node. With the node in the key there is nothing to dedup across tiers: two
+/// nodes' `ctrl` are two different keys, so the question the old rules
+/// disagreed about does not arise.
+///
+/// The namespace comes from the plan's node, and MUST be the one the entry
+/// creates the node with — a filter naming a namespace the node does not have
+/// matches nothing, and the tier would register nothing.
+pub(crate) fn tier_group_keys(
+    tiers: &nros_orchestration_ir::ResolvedTierTable,
+    plan: &Plan,
+) -> Vec<Vec<(String, String, String)>> {
+    let ns_of = |node_name: &str| -> String {
+        plan.nodes
+            .iter()
+            .find(|n| n.name.as_deref().unwrap_or(&n.exec) == node_name)
+            .and_then(|n| n.namespace.as_deref())
+            .unwrap_or("/")
+            .to_string()
+    };
+    tiers
+        .tiers
+        .iter()
+        .map(|tier| {
+            let mut keys: Vec<(String, String, String)> = tier
+                .members
+                .iter()
+                // An empty group id names no group and never did; it is not a
+                // key, and emitting it would make the tier match an entity
+                // whose group is the empty string.
+                .filter(|(_, group)| !group.is_empty())
+                .map(|(node, group)| (node.clone(), ns_of(node), group.clone()))
+                .collect();
+            // Only an exact repeat of the same triple is a duplicate.
+            keys.sort();
+            keys.dedup();
+            keys
+        })
+        .collect()
+}
+
 /// Build the shared tier rows.
 ///
-/// `groups_per_tier` is a PARAMETER, and that is a defect being carried rather
-/// than a design: the two emitters derive a tier's callback groups
-/// differently. `emit_c` dedups ACROSS tiers (a group named by two tiers
-/// belongs to the first) and drops empty names; `emit_cpp` dedups WITHIN each
-/// tier and keeps empty ones, so the same plan yields a group listed under two
-/// tiers in one language and one tier in the other, and a `""` entry in the
-/// C++ array. One fact, two authored spellings — issue 1172. Reconciling it
-/// moves goldens, so it is its own change; sharing the ROW is what makes the
-/// divergence visible at all.
+/// `groups_per_tier` stays a PARAMETER, but there is now exactly one thing to
+/// pass: [`tier_group_keys`]. It was two authored derivations — issue 1172 —
+/// and sharing the ROW first is what made the divergence visible at all.
 pub(crate) fn tier_views(
     tiers: &nros_orchestration_ir::ResolvedTierTable,
-    groups_per_tier: Vec<Vec<String>>,
+    groups_per_tier: Vec<Vec<(String, String, String)>>,
 ) -> Vec<TierView> {
     tiers
         .tiers
@@ -1522,6 +1579,121 @@ contracts: {}
         assert!(
             plan.nodes[0].sched_context.is_none(),
             "no-tier plan must leave sched_context as None"
+        );
+    }
+    /// issue 1172 — the shape the two derivations disagreed about: ONE group
+    /// id (`ctrl`) named by TWO tiers, because two different nodes each have a
+    /// callback group of that name.
+    ///
+    /// This is the case the corpus never had, which is why the goldens went on
+    /// agreeing while the emitters did not. Under the old rules `emit_c`
+    /// deduped ACROSS tiers, so tier 1's array came out EMPTY — and an empty
+    /// array is the WILDCARD, so that tier stopped filtering and ran every
+    /// callback in the image at its own priority. `emit_cpp` kept both.
+    ///
+    /// The assertions are about the OUTCOME, not the rule: every tier that
+    /// names a group gets a non-empty array, and the two tiers' keys differ.
+    #[test]
+    fn one_group_id_on_two_nodes_is_two_keys_and_neither_tier_is_wildcarded() {
+        use crate::orchestration::cargo_metadata_schema::{
+            CallbackGroupOverride, NodeOverride, TierDef, TierRtosSpec,
+        };
+        use std::path::PathBuf;
+
+        let tier_def = |priority: i64| TierDef {
+            spin_period_us: Some(10_000),
+            posix: Some(TierRtosSpec {
+                priority,
+                stack_bytes: None,
+                preempt_threshold: None,
+                time_slice_us: None,
+                sched_class: None,
+                core: None,
+                deadline_us: None,
+                budget_us: None,
+                period_us: None,
+            }),
+            ..Default::default()
+        };
+        let mut tiers = BTreeMap::new();
+        tiers.insert("high".to_string(), tier_def(80));
+        tiers.insert("low".to_string(), tier_def(10));
+
+        // Both nodes call their group `ctrl`; they sit on different tiers, and
+        // one is namespaced, so name alone is not a key either.
+        let node = |exec: &str, namespace: Option<&str>| PlanNode {
+            pkg: format!("{exec}_pkg"),
+            exec: exec.to_string(),
+            name: Some(exec.to_string()),
+            namespace: namespace.map(str::to_string),
+            class_name: None,
+            class_header: None,
+            lang: Some("c".into()),
+            shape: None,
+            qos_overrides: Vec::new(),
+            params: Vec::new(),
+            remaps: Vec::new(),
+            callback_groups: vec!["ctrl".into()],
+            sched_context: None,
+            group_tiers: BTreeMap::new(),
+        };
+
+        let mut plan = Plan {
+            board: "native".into(),
+            nodes: vec![node("fast", None), node("slow", Some("/bay"))],
+            depfile_paths: vec![],
+            bringup: "demo".into(),
+            launch_file: PathBuf::from("/tmp/x.launch.xml"),
+            lifecycle: None,
+            param_services: false,
+            safety: None,
+            tiers,
+            node_overrides: vec![
+                NodeOverride {
+                    name: "fast".to_string(),
+                    callback_groups: vec![CallbackGroupOverride {
+                        id: "ctrl".to_string(),
+                        tier: "high".to_string(),
+                    }],
+                },
+                NodeOverride {
+                    name: "slow".to_string(),
+                    callback_groups: vec![CallbackGroupOverride {
+                        id: "ctrl".to_string(),
+                        tier: "low".to_string(),
+                    }],
+                },
+            ],
+            resolved_tiers: None,
+        };
+        resolve_plan_sched(&mut plan, "posix").expect("resolve_plan_sched");
+        let table = plan.resolved_tiers.clone().expect("resolved_tiers");
+        assert_eq!(table.tiers.len(), 2, "two tiers");
+
+        let keys = tier_group_keys(&table, &plan);
+        for (ti, tier_keys) in keys.iter().enumerate() {
+            assert!(
+                !tier_keys.is_empty(),
+                "tier {ti} names a group, so its array must not be empty — an \
+                 empty array is the WILDCARD and would run every callback in \
+                 the image at this tier's priority"
+            );
+        }
+        assert_ne!(
+            keys[0], keys[1],
+            "the two tiers admit DIFFERENT nodes' `ctrl`, so their keys must \
+             differ — matching on the group id alone is issue 1172"
+        );
+        // And the namespace is the node's own, not a default: a filter naming
+        // a namespace the node does not have matches nothing.
+        let all: Vec<&(String, String, String)> = keys.iter().flatten().collect();
+        assert!(
+            all.contains(&&("fast".into(), "/".into(), "ctrl".into())),
+            "unnamespaced node normalises to `/`; got {all:?}"
+        );
+        assert!(
+            all.contains(&&("slow".into(), "/bay".into(), "ctrl".into())),
+            "namespaced node keeps its own namespace; got {all:?}"
         );
     }
 }

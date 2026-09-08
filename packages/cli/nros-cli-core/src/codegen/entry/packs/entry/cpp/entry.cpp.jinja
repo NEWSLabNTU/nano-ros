@@ -110,10 +110,16 @@ static int32_t __nros_entry_setup_tier_{{ setup.index }}(void* executor) {
 }
 
 {% endfor -%}
-/* Phase 274.W2 — per-tier groups arrays + tier spec table. */
+/* Phase 274.W2 — per-tier groups arrays + tier spec table.
+ *
+ * issue 1172 — a groups array is FLAT `(node name, node namespace, group)`
+ * triples, and `n_groups` counts TRIPLES, not strings. The filter used to
+ * match on the group id alone, so two nodes' `ctrl` were one key and a tier
+ * naming one of them admitted both. An EMPTY array is the WILDCARD, so a tier
+ * that names groups must never render an empty one. */
 {%- for t in tiers.tiers %}
 {%- if t.groups %}
-static const char* __nros_tier_{{ t.index }}_groups[] = {{ "{" }}{% for g in t.groups %}"{{ g | c_str }}", {% endfor %}};
+static const char* __nros_tier_{{ t.index }}_groups[] = {{ "{" }}{% for g in t.groups %}"{{ g[0] | c_str }}", "{{ g[1] | c_str }}", "{{ g[2] | c_str }}", {% endfor %}};
 {%- endif %}
 {%- endfor %}
 static const ::nros::board::NativeTierSpec __nros_tiers[{{ tiers.n }}] = {

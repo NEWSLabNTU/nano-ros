@@ -1421,17 +1421,28 @@ impl NodeRuntime for ExecutorSink<'_> {
         // and always registers; the degenerate single-tier executor leaves
         // `active_groups == None`, so every entity registers (byte-identical
         // to pre-228 output).
-        if let Some(group) = metadata.callback_group.as_ref()
-            && !self.executor.group_active(group.as_str())
-        {
-            return Ok(());
-        }
+        //
+        // issue 1172 — the lookup moved ABOVE this gate because the gate is now
+        // node-qualified. It used to ask "is this GROUP active", which cannot
+        // tell node A's `ctrl` from node B's `ctrl`: two nodes may legitimately
+        // declare the same group id on different tiers, and the tier then
+        // admitted entities it did not own. Reordering is safe — a missing node
+        // was already `NodeDeclError::Runtime` three lines below, so the only
+        // change is which error wins for an entity that is BOTH off-tier and
+        // owned by an unknown node, and that combination is a bug either way.
         let (node, node_name, node_ns) = {
             let entry = self
                 .lookup_node(metadata.node_id.as_str())
                 .ok_or(NodeDeclError::Runtime)?;
             (entry.node_id, entry.name.clone(), entry.namespace.clone())
         };
+        if let Some(group) = metadata.callback_group.as_ref()
+            && !self
+                .executor
+                .group_active(node_name.as_str(), node_ns.as_str(), group.as_str())
+        {
+            return Ok(());
+        }
         // Phase 305 W3 (issue 0255) — expand `~`/relative source names against
         // the owning node's identity and apply the launch remap rules (shared
         // `node_metadata::resolve_name` seam) before any name reaches the wire.

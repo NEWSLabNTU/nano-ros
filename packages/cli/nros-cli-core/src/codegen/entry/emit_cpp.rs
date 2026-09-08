@@ -511,27 +511,12 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
             })
             .collect();
 
-        // Per-tier callback groups, deduped WITHIN each tier and keeping an
-        // empty name. `emit_c` dedups ACROSS tiers and drops empties — issue
-        // 1172. Preserved verbatim here because W2.3 is byte-for-byte;
-        // reconciling the two moves goldens and is its own change.
-        let groups_per_tier: Vec<Vec<String>> = tiers
-            .tiers
-            .iter()
-            .map(|tier| {
-                let mut seen = std::collections::BTreeSet::new();
-                tier.members
-                    .iter()
-                    .filter_map(|(_, g)| {
-                        if seen.insert(g.clone()) {
-                            Some(g.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect()
-            })
-            .collect();
+        // issue 1172 — ONE derivation now, and it lives in `mod.rs` because the
+        // two packs used to disagree here: `emit_c` deduped ACROSS tiers and
+        // `emit_cpp` within each tier, so the same plan produced two different
+        // filters. With the node in the key there is nothing to dedup across
+        // tiers, and the rule that is left is the same for both.
+        let groups_per_tier = super::tier_group_keys(tiers, plan);
 
         tiers_view = Some(CppTiersView {
             n: tiers.tiers.len(),

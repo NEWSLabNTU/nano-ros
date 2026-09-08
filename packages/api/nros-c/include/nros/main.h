@@ -55,9 +55,18 @@ NROS_PUBLIC int32_t nros_board_native_run_components_named(const char* session_n
  * `nros_board_native_run_tiers`.
  *
  * `name`           — tier name (null-terminated), informational.
- * `groups`         — array of `n_groups` null-terminated callback-group names;
- *                    NULL / 0 means wildcard (accept all groups).
- * `n_groups`       — number of entries in `groups`.
+ * `groups`         — FLAT `(node name, node namespace, group)` triples: 3 ×
+ *                    `n_groups` null-terminated strings. NULL / 0 means
+ *                    wildcard (accept all groups).
+ * `n_groups`       — number of TRIPLES, so the array holds three times this
+ *                    many strings.
+ *
+ *                    issue 1172 — the key used to be the group NAME alone, so
+ *                    two nodes' `ctrl` were one key and a tier naming either
+ *                    admitted both. It is flat rather than an array of structs
+ *                    so this struct stays byte-identical across its eight
+ *                    hand-written mirrors and the three C tier runners, which
+ *                    pass the array through without reading it.
  * `priority`       — raw POSIX nice level (advisory).
  * `stack_bytes`    — informational on native (std::thread manages the stack).
  * `spin_period_us` — sleep between spin_once calls; 0 uses a 1 ms floor.

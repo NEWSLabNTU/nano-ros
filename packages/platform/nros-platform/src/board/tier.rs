@@ -46,10 +46,21 @@ pub struct TierSpec<'a> {
     /// Tier name (matches the `system.toml [tiers.<name>]` key); used
     /// for the spawned task's debug name.
     pub name: &'a str,
-    /// Callback groups admitted on this tier. Passed verbatim to
+    /// Callback groups admitted on this tier, as `(node name, node namespace,
+    /// group)`. Passed verbatim to `Executor::set_active_groups`; an empty
+    /// slice = wildcard.
+    ///
+    /// issue 1172 — the group id ALONE was ambiguous: two nodes may declare
+    /// the same one on different tiers, and the filter admitted both. The C
+    /// side carries the same information as a FLAT array of 3N strings so
+    /// `nros_native_tier_spec_t` stays byte-identical; Rust uses a tuple so
+    /// the compiler enforces the grouping instead of a convention doing it.
+    ///
+    /// (the original note follows)
+    /// Passed verbatim to
     /// `Executor::set_active_groups`; an empty slice = wildcard
     /// (admit every group — the single-tier degenerate case).
-    pub groups: &'a [&'a str],
+    pub groups: &'a [(&'a str, &'a str, &'a str)],
     /// **Raw per-RTOS** task priority — the value passed straight to the
     /// native spawn call. The system author writes it in
     /// `[tiers.<name>.<rtos>].priority`, so it is already in the target

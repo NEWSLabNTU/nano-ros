@@ -3244,7 +3244,24 @@ pub unsafe extern "C" fn nros_cpp_bind_node_name_sched(
         Ok(()) => NROS_CPP_RET_OK,
         // issue 1172 — a binding that does not fit is refused, not dropped: it
         // would leave the node on the wrong sched context silently.
-        Err(()) => NROS_CPP_RET_FULL,
+        Err(e) => bind_err_to_ret(e),
+    }
+}
+
+/// One `BindError` → `nros_cpp_ret_t` mapping, for the four seams that record
+/// a filter or sched binding.
+///
+/// issue 1172 — these all returned `NROS_CPP_RET_FULL` because the executor
+/// answered `Err(())` and "full" was the only guess available. It can now say
+/// WHICH, and the two are different bugs on the caller's side: a name longer
+/// than its fixed storage is bad input, while a full table is an image that
+/// declared more than it sized for (raise `NROS_EXECUTOR_MAX_*`). Written once
+/// so the four sites cannot drift into four vocabularies.
+#[cfg(feature = "rmw-cffi")]
+fn bind_err_to_ret(e: nros_node::BindError) -> nros_cpp_ret_t {
+    match e {
+        nros_node::BindError::NameTooLong => NROS_CPP_RET_INVALID_ARGUMENT,
+        nros_node::BindError::TableFull => NROS_CPP_RET_FULL,
     }
 }
 
@@ -3298,7 +3315,7 @@ pub unsafe extern "C" fn nros_cpp_bind_group_sched(
         nros_node::executor::sched_context::SchedContextId(sc_id),
     ) {
         Ok(()) => NROS_CPP_RET_OK,
-        Err(()) => NROS_CPP_RET_FULL,
+        Err(e) => bind_err_to_ret(e),
     }
 }
 
@@ -3606,7 +3623,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
         // Empty / NULL ⇒ wildcard (clear filter, accept all groups).
         return match ctx.executor.set_active_groups(&[]) {
             Ok(()) => NROS_CPP_RET_OK,
-            Err(()) => NROS_CPP_RET_FULL,
+            Err(e) => bind_err_to_ret(e),
         };
     }
 
@@ -3622,24 +3639,48 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
     if n > MAX_GROUPS_FFI {
         return NROS_CPP_RET_FULL;
     }
-    let mut group_strs = [""; MAX_GROUPS_FFI];
+    // issue 1172 — `groups` is 3N strings: (node name, node namespace, group),
+    // repeated, and `n` counts TRIPLES. Flat rather than a struct array so
+    // `nros_native_tier_spec_t` stays byte-identical — no change to its eight
+    // mirrors, its designated initialisers or the three C tier runners, which
+    // pass the array through without reading it. Rust holds the same data as a
+    // tuple slice, so the grouping is the compiler's job on that side.
+    let mut triples = [("", "", ""); MAX_GROUPS_FFI];
     let mut count = 0usize;
 
-    let ptr_slice = unsafe { core::slice::from_raw_parts(groups, n) };
-    for &raw_ptr in ptr_slice {
-        // A NULL or empty entry is not a group and never was; skipping it is
-        // the documented wildcard-free shape, not a drop.
-        if let Some(s) = unsafe { cstr_to_str(raw_ptr) }
-            && !s.is_empty()
-        {
-            group_strs[count] = s;
-            count += 1;
-        }
+    let ptr_slice = unsafe { core::slice::from_raw_parts(groups, n * 3) };
+    for chunk in ptr_slice.chunks_exact(3) {
+        let (name, ns, group) = (
+            unsafe { cstr_to_str(chunk[0]) },
+            unsafe { cstr_to_str(chunk[1]) },
+            unsafe { cstr_to_str(chunk[2]) },
+        );
+        // A NULL or empty GROUP is not a group and never was; skipping it is
+        // the documented wildcard-free shape, not a drop. A missing node name
+        // IS a malformed triple and is refused — silently treating it as the
+        // empty node would recreate the ambiguity this change removes.
+        let Some(group) = group.filter(|g| !g.is_empty()) else {
+            continue;
+        };
+        let Some(name) = name else {
+            return NROS_CPP_RET_INVALID_ARGUMENT;
+        };
+        triples[count] = (name, ns.unwrap_or("/"), group);
+        count += 1;
     }
 
-    match ctx.executor.set_active_groups(&group_strs[..count]) {
+    // issue 1172 — `n > 0` says the caller HAS a filter, and an empty slice is
+    // the WILDCARD. Letting an array whose groups were all empty fall through
+    // to `set_active_groups(&[])` would turn "your filter was unusable" into
+    // "run everything at this tier's priority", which is the fail-open this
+    // change exists to close.
+    if count == 0 {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    match ctx.executor.set_active_groups(&triples[..count]) {
         Ok(()) => NROS_CPP_RET_OK,
-        Err(()) => NROS_CPP_RET_FULL,
+        Err(e) => bind_err_to_ret(e),
     }
 }
 
@@ -3650,8 +3691,9 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
 /// Per-tier specification for [`nros_board_native_run_tiers`].
 ///
 /// Mirrors `nros_platform::TierSpec` in C-ABI form. `groups` must point to
-/// an array of `n_groups` null-terminated UTF-8 strings; NULL / 0 means
-/// "accept all groups" (wildcard — degenerate single-tier).
+/// FLAT `(node name, node namespace, group)` triples — 3 × `n_groups`
+/// null-terminated UTF-8 strings; NULL / 0 means "accept all groups"
+/// (wildcard — degenerate single-tier). issue 1172: `n_groups` counts TRIPLES.
 ///
 /// `setup` is called once on the tier's thread, with the tier's borrowed
 /// executor handle, AFTER `set_active_groups` — so only the tier's groups'
@@ -3665,7 +3707,8 @@ pub unsafe extern "C" fn nros_cpp_executor_set_active_groups(
 /// # Safety
 ///
 /// `name` must be NULL or a valid null-terminated string.
-/// `groups` must be NULL or point to `n_groups` valid null-terminated strings.
+/// `groups` must be NULL or point to `3 * n_groups` valid null-terminated
+/// strings.
 /// `setup` must be a valid function pointer or NULL (NULL skips setup — only
 /// useful for tiers that register no nodes of their own).
 // phase-359 W10 — `env`, not `std`. The tier runtime below spawns PLATFORM

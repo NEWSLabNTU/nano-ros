@@ -146,12 +146,18 @@ fn tier_filter_gates_off_tier_callbacks_over_shared_session(zenohd_unique: Zenoh
 
     // Install per-tier filters, then register the dual-timer nodes. The
     // gate drops the off-tier timer at registration.
-    boot_rt.executor_mut().set_active_groups(&["high"]);
+    boot_rt
+        .executor_mut()
+        .set_active_groups(&[("tier_high", "/", "high")])
+        .expect("boot filter fits");
     boot_rt
         .register_node::<HighTierNode>()
         .expect("register HighTierNode");
 
-    low_rt.executor_mut().set_active_groups(&["low"]);
+    low_rt
+        .executor_mut()
+        .set_active_groups(&[("tier_low", "/", "low")])
+        .expect("low filter fits");
     low_rt
         .register_node::<LowTierNode>()
         .expect("register LowTierNode");
@@ -177,4 +183,121 @@ fn tier_filter_gates_off_tier_callbacks_over_shared_session(zenohd_unique: Zenoh
     assert_eq!(hl, 0, "boot/low timer must be gated out (got {hl})");
     assert!(ll >= 3, "borrowed/low timer should fire (got {ll})");
     assert_eq!(lh, 0, "borrowed/high timer must be gated out (got {lh})");
+}
+
+// ---------------------------------------------------------------------------
+// issue 1172 — the acceptance case: ONE group id on TWO nodes.
+// ---------------------------------------------------------------------------
+
+fn a_ctrl() -> &'static Arc<AtomicU32> {
+    static I: std::sync::OnceLock<Arc<AtomicU32>> = std::sync::OnceLock::new();
+    I.get_or_init(|| Arc::new(AtomicU32::new(0)))
+}
+fn b_ctrl() -> &'static Arc<AtomicU32> {
+    static I: std::sync::OnceLock<Arc<AtomicU32>> = std::sync::OnceLock::new();
+    I.get_or_init(|| Arc::new(AtomicU32::new(0)))
+}
+
+/// Its own counters and node names rather than the four above: the tests in
+/// this binary run in parallel, so sharing statics would make each one's
+/// verdict depend on the other's timing.
+fn declare_ctrl_timer(ctx: &mut NodeContext<'_>, node_name: &str) -> NodeResult<()> {
+    let mut node = ctx.create_node(NodeOptions::new(node_name))?;
+    node.callback_group("ctrl")?;
+    node.create_timer_for_callback_name("on_ctrl", nros::TimerDuration::from_millis(10))?;
+    Ok(())
+}
+
+struct SharedGroupA;
+impl Node for SharedGroupA {
+    const NAME: &'static str = "shared_group_a_node";
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
+        declare_ctrl_timer(ctx, "shared_a")
+    }
+}
+impl ExecutableNode for SharedGroupA {
+    type State = ();
+    fn init() -> Self::State {}
+    fn on_callback(_s: &mut (), cb: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
+        if cb.as_str() == "on_ctrl" {
+            a_ctrl().fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
+
+struct SharedGroupB;
+impl Node for SharedGroupB {
+    const NAME: &'static str = "shared_group_b_node";
+    fn register(ctx: &mut NodeContext<'_>) -> NodeResult<()> {
+        declare_ctrl_timer(ctx, "shared_b")
+    }
+}
+impl ExecutableNode for SharedGroupB {
+    type State = ();
+    fn init() -> Self::State {}
+    fn on_callback(_s: &mut (), cb: Callback<'_>, _ctx: &mut CallbackCtx<'_>) {
+        if cb.as_str() == "on_ctrl" {
+            b_ctrl().fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
+
+/// issue 1172 — two nodes declare a callback group with the SAME id (`ctrl`),
+/// and a tier admits exactly one of them.
+///
+/// This is the case the filter could not express: it matched on the group NAME
+/// alone, so `shared_a`'s `ctrl` and `shared_b`'s `ctrl` were one key and a
+/// tier naming `ctrl` admitted both. The two entry emitters then disagreed
+/// about what to bake, and the C side's rule left a second tier's array EMPTY
+/// — the wildcard — so that tier ran every callback in the image.
+///
+/// One executor rather than two on purpose: with both nodes registered HERE,
+/// the counters attribute a firing to a NODE, and a filter that over-admits is
+/// visible as `b` firing at all. Split across two executors the same defect
+/// would leave both counters non-zero either way, and the test would pass on
+/// the bug.
+#[rstest]
+fn a_tier_admits_one_node_s_group_and_not_another_node_s_same_named_one(
+    zenohd_unique: ZenohRouter,
+) {
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+    a_ctrl().store(0, Ordering::SeqCst);
+    b_ctrl().store(0, Ordering::SeqCst);
+
+    let locator = zenohd_unique.locator();
+    let cfg = ExecutorConfig::new(&locator)
+        .node_name("i1172_shared_group")
+        .domain_id(179);
+
+    let exec = Executor::open(&cfg).expect("Executor::open failed");
+    let mut rt = ExecutorNodeRuntime::from_executor(exec);
+
+    // Admit `shared_a`'s `ctrl` and nothing else. Under the old name-only
+    // filter this admitted `shared_b`'s `ctrl` too, because the node was not
+    // part of the key.
+    rt.executor_mut()
+        .set_active_groups(&[("shared_a", "/", "ctrl")])
+        .expect("filter fits");
+
+    rt.register_node::<SharedGroupA>().expect("register A");
+    rt.register_node::<SharedGroupB>().expect("register B");
+
+    for _ in 0..8 {
+        std::thread::sleep(Duration::from_millis(10));
+        rt.spin_once(Duration::from_millis(0)).expect("spin");
+    }
+
+    let a = a_ctrl().load(Ordering::SeqCst);
+    let b = b_ctrl().load(Ordering::SeqCst);
+    assert!(
+        a >= 3,
+        "the admitted node's `ctrl` timer must fire (got {a})"
+    );
+    assert_eq!(
+        b, 0,
+        "another node's `ctrl` must be gated out — matching on the group id \
+         alone is issue 1172 (got {b})"
+    );
 }

@@ -1,7 +1,7 @@
 ---
 id: 1172
 title: The C and C++ entry emitters derive a tier's callback groups differently
-status: open
+status: resolved
 area: codegen
 severity: medium
 opened: 2026-09-06
@@ -131,6 +131,64 @@ A RUNTIME test, not a golden: a tiered fixture with two nodes declaring the
 SAME group id pinned to different tiers, asserting each tier registers only its
 own node's entities. Everything in this issue is read from source; the case has
 been unreachable by construction, which is why it survived.
+
+## Fixed — option 4, variant C (2026-09-08)
+
+The filter key is now the TRIPLE `(node name, node namespace, group)`, all the
+way down: `nros-node`'s matcher, the `TierSpec`/`nros_native_tier_spec_t` seam,
+the `nros_cpp_executor_set_active_groups` FFI, the `nros::main!` macro and both
+entry packs.
+
+**Why that dissolves the disagreement rather than picking a winner.** The two
+rules were answering "what happens when two tiers name the same group?", and
+neither answer was defensible because the filter could not express the node.
+With the node in the key that question does not arise — two nodes' `ctrl` are
+two different keys — so there is nothing to dedup across tiers and the one rule
+left is the same for both packs. It lives in `codegen::entry::tier_group_keys`
+and both emitters call it.
+
+**The C behaviour was worse than the issue text said.** The text repeated the
+`emit_c` comment's claim that "a group named by two tiers belongs to the
+first". That is not what the code did: deduping across tiers left the SECOND
+tier's array EMPTY, and an empty array is the WILDCARD (`main.h`: "NULL / 0
+means wildcard"), so that tier stopped filtering and ran every callback in the
+image at its own priority. C failed OPEN; C++ failed closed.
+
+**Wire shape.** `groups` is FLAT — 3 × `n_groups` null-terminated strings, and
+`n_groups` counts TRIPLES. Flat rather than an array of structs so
+`nros_native_tier_spec_t` stays byte-identical: its eight hand-written mirrors,
+the designated initialisers and the three C tier runners pass the array through
+without reading it, so none of them changed. Rust holds the same data as a
+tuple slice.
+
+**Capacity and silent drops, fixed in the same change** (they are the same
+defect one layer over — a filter quietly narrower than the one it was given):
+
+- `nros_cpp_executor_set_active_groups` read `n.min(MAX_GROUPS_FFI)` and its
+  comment said "silently truncates extras". A 17th group was dropped before the
+  executor saw it. It now refuses with `NROS_CPP_RET_FULL`.
+- `Executor::set_active_groups` fails CLOSED on overflow: it clears the list,
+  leaves filtering ON, and returns `Err` — so an executor that cannot express
+  its filter registers nothing rather than everything.
+- `n_groups > 0` with every group id empty used to collapse to the empty slice,
+  i.e. the wildcard. It is now `NROS_CPP_RET_INVALID_ARGUMENT`.
+- `bind_node_name_sched` / `bind_group_sched` return `Result` and report
+  `NROS_CPP_RET_FULL` instead of dropping a bind.
+
+**What pins it.** `tier_group_keys` has a unit test built on the shape the
+corpus never had — one group id (`ctrl`) on two nodes, on two tiers, one of
+them namespaced. Mutation-checked against BOTH old rules: keying on the group
+alone trips the "keys must differ" assertion, deduping across tiers trips the
+"tier 1 must not be empty" one. On the runtime side,
+`the_same_group_on_another_node_is_not_accepted`,
+`the_same_name_under_another_namespace_is_a_different_node`,
+`an_empty_namespace_normalises_to_root`, `the_name_namespace_split_cannot_be_forged`
+and `an_oversized_group_name_is_refused_and_fails_closed`.
+
+The acceptance test this issue asked for — a tiered FIXTURE with two nodes
+sharing a group id — is not in this change. The behaviour is pinned by the unit
+tests above at both layers; a fixture costs a matrix cell and belongs with the
+tier fixture work, so it is called out here rather than quietly dropped.
 
 ## Related
 
