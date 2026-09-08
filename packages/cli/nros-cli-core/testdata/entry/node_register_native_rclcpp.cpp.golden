@@ -12,7 +12,6 @@
 #include <nros/main.hpp>
 #include <nros/nros.hpp>
 #include <new> // placement-new into the component arena slot
-#include <nros/component_node.hpp>
 
 #include "talker_pkg/Talker.hpp"
 
