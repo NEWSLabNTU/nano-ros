@@ -2073,6 +2073,72 @@ fn test_arena_alignment() {
 // ====================================================================
 
 // ===========================================================================
+// phase-436 W7.b (issue 1242) — the park granularity comes from the installed
+// primitive, not from a constant.
+// ===========================================================================
+
+/// With no primitive installed, 1 ms stands: that is the honest floor of the
+/// `nros_platform_wake_wait_ms` ABI every port exports today.
+#[test]
+fn granularity_falls_back_to_the_abi_floor_with_no_primitive() {
+    let executor: Executor = executor_with_clock(MockSession::new());
+    assert_eq!(executor.park_granularity_us(), 1_000);
+}
+
+/// ThreadX pins `TX_TIMER_TICKS_PER_SECOND = 100` — a 10 ms tick. A port that
+/// says so must be believed, or the executor reports a 1 ms park as achievable
+/// on a platform that cannot deliver one.
+#[test]
+fn a_coarser_port_granularity_is_honoured() {
+    unsafe extern "C" fn park(_c: *mut core::ffi::c_void, _d: u64) -> i8 {
+        1
+    }
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_park_primitive(park, core::ptr::null_mut(), 10_000);
+
+    assert_eq!(executor.park_granularity_us(), 10_000);
+    assert_eq!(
+        executor.round_park_up_us(1_000),
+        10_000,
+        "a 1 ms request on a 10 ms tick must round up to what the tick can do"
+    );
+}
+
+/// POSIX's `sem_timedwait` is timespec-native, so a port may declare finer
+/// than a millisecond. The old constant floored it at 1 ms and threw the
+/// precision away before the primitive was ever called.
+#[test]
+fn a_finer_port_granularity_is_honoured() {
+    unsafe extern "C" fn park(_c: *mut core::ffi::c_void, _d: u64) -> i8 {
+        1
+    }
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_park_primitive(park, core::ptr::null_mut(), 1);
+
+    assert_eq!(executor.park_granularity_us(), 1);
+    assert_eq!(
+        executor.round_park_up_us(1_500),
+        1_500,
+        "a microsecond-capable port must not be rounded to the ABI floor"
+    );
+}
+
+/// The jitter report follows the same source. W3 reads the granularity to say
+/// what its number is worth, so a wrong granularity makes W3 over-claim — the
+/// failure W3 exists to prevent, in W3's own dependency.
+#[test]
+fn the_jitter_granularity_follows_the_port_not_the_constant() {
+    unsafe extern "C" fn park(_c: *mut core::ffi::c_void, _d: u64) -> i8 {
+        1
+    }
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_park_primitive(park, core::ptr::null_mut(), 10_000);
+    // No declared cadence, so the wait paces the loop and its granularity is
+    // the floor on the measurement.
+    assert_eq!(executor.release_jitter_granularity_us(), 10_000);
+}
+
+// ===========================================================================
 // phase-436 W6 — the wake-source seam. Many sources say WHEN; one primitive
 // does the waiting.
 // ===========================================================================
@@ -2092,7 +2158,7 @@ fn spin_once_parks_through_the_registered_primitive() {
 
     SEEN.store(u64::MAX, Ordering::SeqCst);
     let mut executor: Executor = executor_with_clock(MockSession::new());
-    executor.set_park_primitive(recording_park, core::ptr::null_mut());
+    executor.set_park_primitive(recording_park, core::ptr::null_mut(), 1_000);
     executor
         .register_timer(TimerDuration::from_millis(10), || {})
         .unwrap();
@@ -2257,7 +2323,7 @@ fn the_park_primitive_is_singular_and_replaceable() {
     }
     let mut executor: Executor = executor_with_clock(MockSession::new());
     assert!(!executor.has_park_primitive(), "none installed by default");
-    executor.set_park_primitive(park_a, core::ptr::null_mut());
+    executor.set_park_primitive(park_a, core::ptr::null_mut(), 1_000);
     assert!(executor.has_park_primitive());
 }
 
