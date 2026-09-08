@@ -3,7 +3,7 @@ id: 1223
 title: "`check-cpp-freestanding-includes` scores every `#elif` and `#else` arm as
   guarded, so the 14 arms that actually break the FreeRTOS build are invisible
   to the gate written to catch them"
-status: open
+status: resolved
 type: bug
 area: [cpp, ci]
 related: [1187, 1023, 0112, 0332, 1204]
@@ -100,6 +100,37 @@ above must FAIL. A gate whose selftest cannot distinguish the arms is the same
 silence with extra steps — and this one currently reports OK on both.
 
 Ordering: this is a prerequisite for phase-438, whose W2 deletes the `#elif`
-arms. Fixed first, the gate turns red on the 14 arms and phase-438 W2 turns it
-green — the gate becomes the acceptance. Fixed after, the arms are gone and the
-blindness ships uncaught for whatever writes the 15th.
+arms. Fixed after them, the arms are gone and the blindness ships uncaught for
+whatever writes the 15th.
+
+Fixed first, the gate sees 14 real violations — and it must NOT simply go red
+on them. It is on the fast line and therefore on the `pre-push` hook, so a red
+one on `main` blocks every push in the repository by every contributor. The fix
+lands with `.config/cpp-freestanding-includes-baseline.txt`, a shrink-only
+ratchet holding the 14 known sites; phase-438 W2 empties it. A baseline line
+that no longer offends FAILS, so the file is still W2's acceptance rather than
+its paperwork.
+
+## Resolution
+
+Landed. `walk_file()` replaces the top frame on `#elif`/`#else` rather than
+leaving it — replaces rather than pops, because at `strict=0` the Cyclone
+backend legitimately takes `<chrono>`/`<thread>` in the `#else` of an
+`NROS_PLATFORM_*` chain, and a pop would make depth 0 there.
+
+Measured: **14 violations across 10 headers**, with `nros.hpp` correctly absent
+— its `STD_CHRONO` block has no `#elif` arm.
+
+The gate had no selftest at all, which is how the first version of this defect
+(issue 1023's `\b`) and this one both survived. It has six cases now, and three
+of them flip when the `#elif` rule is reverted:
+
+```
+SELFTEST FAIL: 'elif __has_include arm' should have been flagged and was not
+SELFTEST FAIL: 'else fallback arm' should have been flagged and was not
+SELFTEST FAIL: 'elif naming NROS_CPP_STD' should be clean, got: 4: #include <string>
+```
+
+Case 5 is the `strict=0` platform-`#else` shape the fix must not break; case 6
+is depth 0. Both ratchet directions are mutation-tested — removing a baseline
+line surfaces the violation it was hiding, adding a paid-off one fails as stale.

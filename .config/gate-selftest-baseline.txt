@@ -26,7 +26,6 @@ scripts/check-cc-build-policy.sh
 scripts/check-cli-fresh.sh
 scripts/check-cmake-find-program-shadowed.py
 scripts/check-cpp-ffi-error-mapping.py
-scripts/check-cpp-freestanding-includes.sh
 scripts/check-decoupling.sh
 scripts/check-deploy-board-resolves.py
 scripts/check-doc-refs.sh

@@ -1,0 +1,51 @@
+# Hosted STL includes reached with `NROS_CPP_STD` undefined, in the `#elif
+# defined(__has_include)` arm of nros-cpp's capability blocks.
+#
+# A RATCHET, not an allowlist. It may only SHRINK: a line here that no longer
+# matches a violation is a FAILURE, so the debt cannot go stale, and a new
+# violation not listed here is a failure too, so it cannot grow.
+#
+# WHY THESE ARE HERE RATHER THAN FIXED IN THE SAME CHANGE
+#
+# `check-cpp-freestanding-includes` could not see any of them until issue 1223.
+# Its walker pushed a guard frame on `#if defined(NROS_CPP_STD)` and popped only
+# on `#endif`; `#elif` and `#else` matched neither rule, so the frame from the
+# opening `#if` survived into the alternative arm — the arm whose condition is
+# false by construction. All fourteen scored as guarded.
+#
+# They are REAL, not a false positive of the new walker. Measured per-header on
+# the FreeRTOS lane's own pinned compiler (arm-none-eabi 13.2, `-std=c++14
+# -ffreestanding -fno-exceptions -fno-rtti`): 19 of 45 nros-cpp headers fail to
+# compile, and `log.hpp`'s `<string>` — the first line below — is the entry
+# point for 17 of the 19. That is issue 1187, and no embedded C++ FreeRTOS
+# image builds today because of it.
+#
+# The fix is phase-438 W2: delete the `#elif` arm, so the std surface is
+# reachable only through `NROS_CPP_STD`. It is deliberately NOT in this change.
+# Landing the walker fix alone would put a red fast-line gate on `main`, which
+# blocks every push in the repository — the exact failure this session already
+# cleaned up once for `check-doc-commit-citations`. So the walker lands first
+# with the debt it can finally see recorded here, and W2 empties this file.
+#
+# Keyed on FILE and HEADER, not on a line number, so the entries survive edits
+# above them and so a second `<memory>` appearing in a listed file is still
+# caught.
+#
+# Ordering note for W2: delete a line here in the same commit that deletes the
+# arm it names. A stale entry FAILS, which is what makes this file W2's
+# acceptance rather than its paperwork.
+
+client.hpp <memory>
+fixed_string.hpp <string>
+heap_string.hpp <string>
+log.hpp <string>
+log.hpp <sstream>
+options.hpp <string>
+options.hpp <vector>
+polling_subscription.hpp <memory>
+publisher.hpp <memory>
+service.hpp <memory>
+subscription.hpp <memory>
+subscription.hpp <functional>
+timer.hpp <memory>
+timer.hpp <functional>

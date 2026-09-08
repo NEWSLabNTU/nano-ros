@@ -163,14 +163,31 @@ program — native included — is on the freestanding side already.
 ## Work items
 
 * **W0 — teach `check-cpp-freestanding-includes` about `#elif` and `#else`
-  (issue 1223).** On either, the current frame's condition no longer holds, so
-  the frame is REPLACED rather than kept: pop and push `"other"`; an `#elif` that
-  itself names `NROS_CPP_STD` pushes `"std"`.
-  *Acceptance:* two negative controls the selftest does not have today — the
-  `#elif __has_include` block and an `#else` fallback include — must both FAIL,
-  and the gate must go RED on the 14 arms in the tracked tree. **W2 then turns it
-  green, so the gate becomes W2's acceptance.** Done in the other order, the arms
-  are gone and the blindness ships uncaught for whatever writes the 15th.
+  (issue 1223). LANDED.** On either, the current frame's condition no longer
+  holds, so the frame is REPLACED rather than kept: `stack[sp]` becomes
+  `"other"`, and an `#elif` that itself names `NROS_CPP_STD` becomes `"std"`.
+  Replaced rather than popped, because at `strict=0` the Cyclone backend
+  legitimately takes `<chrono>`/`<thread>` in the `#else` of an
+  `NROS_PLATFORM_*` chain — a pop would make depth 0 there and break it.
+
+  **Correction to this phase's first draft, which said the gate should go RED
+  and W2 should turn it green.** That is not affordable: this gate is on the
+  fast line, so it is on the `pre-push` hook, and a red one on `main` blocks
+  every push in the repository by every contributor. This session had already
+  spent a turn clearing exactly that state for `check-doc-commit-citations`.
+  The intent survives in the affordable form — W0 lands with
+  `.config/cpp-freestanding-includes-baseline.txt`, a shrink-only ratchet
+  carrying the 14 sites the walker can finally see, and **W2 empties it**. A
+  stale entry FAILS, so the file is still W2's acceptance rather than its
+  paperwork; it just does not hold the tree hostage while W2 is written.
+
+  Measured: exactly **14 violations across 10 headers** — the 14 `#elif` arms,
+  with `nros.hpp` correctly absent, since its `STD_CHRONO` block has no `#elif`
+  arm to be blind to.
+  *Acceptance (met):* six selftest cases, of which three flip when the `#elif`
+  rule is reverted — the negative control this gate had none of. Both ratchet
+  directions mutation-tested: removing a baseline line reports the violation,
+  and adding a paid-off one fails as stale.
 
 * **W1 — one detection site.** Replace the 15 blocks with a single
   `nros/std_detect.hpp` the others include. Measured feasible: **14 of the 15
@@ -321,7 +338,9 @@ program — native included — is on the freestanding side already.
 
 ## Ordering
 
-**W0 before W2**, so the gate is the acceptance rather than a casualty.
+**W0 before W2**, so the gate is the acceptance rather than a casualty — and
+W0 lands with a ratchet rather than a red, because a red fast-line gate on
+`main` blocks every push (see W0).
 
 **The phase before phase-426 and phase-427.** W2 changes what "delete both C++
 parameter stores" is deleting from, and W4 is phase-427 W1 relocated. Doing it
