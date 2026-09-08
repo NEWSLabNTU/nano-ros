@@ -17,6 +17,13 @@
 #                          was supposed to exist there" is a real defect wearing
 #                          the same clothes; issue 1204 is the version of this
 #                          gate that inferred it and passed on absence.
+#   std-only <subject>     the subject does not EXIST hosted with
+#                          `-DNROS_CPP_STD` withheld (phase-438 W4's arm). Same
+#                          argument as `hosted-only`, on a different axis, and
+#                          a SEPARATE kind on purpose: one line must not excuse
+#                          two arms, or a type that starts vanishing on the
+#                          second one is absorbed by an exemption written for
+#                          the first.
 #
 # Subject spellings are the DERIVED ones -- `scripts/check/
 # cpp_capability_subjects.py` prints the list. A line naming a subject the
@@ -62,6 +69,26 @@
 # correct outcome for a type whose whole surface is hosted, and none of them is
 # a layout that two TUs can disagree about.
 
+# --- the `std-only` entries -------------------------------------------------
+#
+# The same three types on the other axis, and for a DIFFERENT reason -- which
+# is why the kinds are separate rather than one line excusing both arms.
+# `hosted-only` is about a toolchain that cannot reach the standard library;
+# `std-only` is about a consumer that did not ASK for the porting surface.
+# Since phase-438 W2 the `NROS_CPP_HAS_*` macros are defined by `NROS_CPP_STD`
+# and by nothing else, so a hosted TU that withholds the flag has none of them
+# and the same three guards close for it.
+#
+# `Rate` / `WallRate` were NOT on this arm when W4 first ran it, and the reason
+# is worth recording. `NROS_CPP_HAS_STD_CHRONO` had a SECOND definition in
+# `node.hpp`, still carrying the `__STDC_HOSTED__ && __has_include(<chrono>)`
+# discovery that W2 deleted from the shared site -- so a hosted TU kept the
+# macro from the copy W2 never reached, and the two `<chrono>`-guarded types
+# went on existing without the flag. phase-438 W1 as it landed on `main`
+# (`cf4b0048a`) folds that copy into `std_detect.hpp`, which is what lets this
+# arm measure the flag rather than the include path. Two definitions of one
+# capability macro is issue 0135's shape; one site is the fix.
+
 diverges ::nros::ComponentNode
 diverges ::nros::GuardCondition
 diverges ::nros::Timer
@@ -70,3 +97,6 @@ diverges ::rclcpp::TimerBase
 hosted-only ::rclcpp::NodeOptions
 hosted-only ::rclcpp::Rate
 hosted-only ::rclcpp::WallRate
+std-only ::rclcpp::NodeOptions
+std-only ::rclcpp::Rate
+std-only ::rclcpp::WallRate

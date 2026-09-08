@@ -38,10 +38,23 @@ a hosted compiler those always succeed. Forcing an already-on macro on is a
 strict no-op, so the gate compared the baseline against itself seven times per
 type and reported OK. Issue 1204 proved it by mutation: an
 `#ifdef NROS_CPP_HAS_SHARED_PTR`-gated `double` member added to a real type left
-the gate green at exit 0. Hence ARM 2 below -- the `-nostdinc++` freestanding
-configuration is the only place the capability macros are genuinely off -- and
-hence the real-header mutation in `selftest`, because a synthetic negative
-control that cannot fail on the real subject is not a control over it.
+the gate green at exit 0. Hence the arms below where the macros are genuinely
+off -- the `-nostdinc++` freestanding one, and since phase-438 W4 a hosted one
+with `-DNROS_CPP_STD` withheld -- and hence the real-header mutation in
+`selftest`, because a synthetic negative control that cannot fail on the real
+subject is not a control over it.
+
+--- WHAT PHASE-438 W4 ADDED -------------------------------------------------
+
+W2 made the std surface a REQUEST, so "hosted, opt-in withheld" became a
+configuration that exists. It is the one every hosted consumer that has not
+opted in now compiles in, and it isolates the FLAG from the toolchain: the
+freestanding arm varies `-std`, `-nostdinc++` and the shim all at once, so on
+its own it cannot tell "the porting surface moved a layout" from "the two
+libc++ shims disagree about a member". W4's acceptance is that
+`sizeof(rclcpp::Node)` does not move between it and the baseline; measured 200
+in all three arms (baseline, no-std, freestanding), over 90 derived subjects
+rather than the five the arm was authored against.
 
 --- WHAT THE SECOND VERSION GOT WRONG (issue 1225) ---------------------------
 
@@ -73,7 +86,7 @@ run, no library.
 The template is named PER SUBJECT rather than a shared `ShowSize`, which is what
 lets all 90 subjects share ONE compile: the index is in the diagnostic next to
 the size, on both g++ and clang++, so one TU per configuration answers for every
-subject at once. Nine compiles, not 810, and the nine run concurrently.
+subject at once. Ten compiles, not 900, and the ten run concurrently.
 
 MEASURED 2026-09-09 on a 24-core host: 9.4 s wall for the whole gate over 90
 subjects, against 65 s for the five-type shell version. The split is ~6.8 s of
@@ -117,6 +130,9 @@ directory over. It records two things the gate must tolerate today:
                          boundary -- but it is declared rather than inferred,
                          because "the type was supposed to exist there" is a
                          real defect wearing the same clothes (issue 1204).
+  std-only <subject>     the type does not EXIST hosted with `-DNROS_CPP_STD`
+                         withheld. The same argument on a different axis, and a
+                         separate kind so one line cannot excuse two arms.
 
 Both directions fail: an unlisted violation cannot land, and a listed one that
 is FIXED must lose its line. A ratchet that tolerates stale entries has stopped
@@ -143,7 +159,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts", "check"))
 import cpp_capability_subjects as subjects_mod  # noqa: E402
 
 BASELINE = os.path.join(ROOT, ".config", "cpp-capability-layout-baseline.txt")
-KINDS = ("diverges", "hosted-only")
+KINDS = ("diverges", "hosted-only", "std-only")
 
 # Every capability macro the public headers define for themselves, plus the
 # consumer-facing opt-in. Forcing one ON is exactly what px4 does.
@@ -182,12 +198,17 @@ CAPS = (
 # Note what this arm is and is not. Forcing an individual `NROS_CPP_HAS_*` ON
 # here is close to a no-op, because the baseline already has them all — that is
 # issue 1204's finding, and the answer to it is the FREESTANDING arm below,
-# which is where the macros are genuinely off. A THIRD arm is now measurable
-# and was not before W2: hosted WITHOUT the opt-in, i.e. the shape a hosted
-# consumer gets by default from here on. It belongs with phase-438 W4, whose
-# acceptance is that `sizeof(rclcpp::Node)` does not move between it and this
-# one.
+# which is where the macros are genuinely off.
+#
+# `HOSTED_NO_STD_FLAGS` is the THIRD arm, added by phase-438 W4 and not
+# measurable before W2: the SAME compiler and the SAME language standard as the
+# baseline, with the opt-in withheld. It is the shape a hosted consumer gets by
+# default from here on, and it is the arm that isolates the FLAG from the
+# toolchain — the freestanding arm changes three things at once (`-std`,
+# `-nostdinc++`, the shim), so on its own it cannot tell "the porting surface
+# moved the layout" from "the two libc++ shims disagree about a member's size".
 HOSTED_FLAGS = ["-std=c++17", "-DNROS_CPP_STD=1"]
+HOSTED_NO_STD_FLAGS = ["-std=c++17"]
 THREADX_SHIM = "packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat"
 FREESTANDING_FLAGS = [
     "-std=c++14",
@@ -299,11 +320,11 @@ def load_baseline():
 # --------------------------------------------------------------------------
 
 
-def compare(subjects, base, forced, freestanding, baseline, check_orphans=True):
+def compare(subjects, base, forced, nostd, freestanding, baseline, check_orphans=True):
     """(errors, seen) -- `seen` is the baseline entries the readings justify.
 
-    `base` is {subject: size}; `forced` is {cap: {subject: size}};
-    `freestanding` is {subject: size or None}, None meaning confirmed absent.
+    `base` is {subject: size}; `forced` is {cap: {subject: size}}; `nostd` and
+    `freestanding` are {subject: size or None}, None meaning confirmed absent.
 
     `check_orphans` is off only when the caller deliberately narrowed the
     subject list (the selftest does, to keep its two extra measurement passes
@@ -353,11 +374,60 @@ def compare(subjects, base, forced, freestanding, baseline, check_orphans=True):
                     f"sizeof({ty}) changes with -D{cap}=1 -- {base[ty]} vs {got}."
                 )
 
-        # ARM 2 -- the freestanding configuration, where the macros are
-        # genuinely off because `__has_include(<memory>)` and its siblings
-        # answer NO against the ThreadX shim. This is the arm with teeth: a
-        # member gated on any of the seven macros is present hosted and absent
-        # here, so the two sizes disagree.
+        # ARM 2 -- hosted, WITHOUT the porting-surface opt-in (phase-438 W4).
+        #
+        # Same compiler, same `-std`, same headers as the baseline; the only
+        # difference is that `-DNROS_CPP_STD=1` is withheld. That makes this
+        # the arm that answers W4's acceptance question directly -- "does
+        # asking for the std surface move a layout" -- with nothing else
+        # varying. It is also the configuration EVERY hosted consumer that has
+        # not opted in now compiles in, which before W2 did not exist at all:
+        # the macros were discovered from the include path, so a hosted TU
+        # always had them.
+        #
+        # A type that does not compile here is NOT excusable by a `hosted-only`
+        # baseline entry. That kind is about types absent on FREESTANDING
+        # targets; a type that vanishes on a hosted compiler merely because the
+        # consumer did not ask for the porting surface is the shape phase-438
+        # W4 exists to remove.
+        without = nostd.get(ty)
+        if without is None:
+            if ("std-only", ty) in baseline:
+                seen.add(("std-only", ty))
+            else:
+                errors.append(
+                    f"{ty} does not compile hosted WITHOUT -DNROS_CPP_STD.\n"
+                    f"      Since phase-438 W2 the std surface is a REQUEST, so this is\n"
+                    f"      the default configuration of every hosted consumer that has\n"
+                    f"      not opted in. A derived subject is expected to exist there;\n"
+                    f"      if this one is legitimately part of the porting surface and\n"
+                    f"      nothing else, add `std-only {ty}` to the baseline with the\n"
+                    f"      reason in its header. A `hosted-only` line does NOT cover\n"
+                    f"      this -- that kind is about FREESTANDING absence."
+                )
+        elif ("std-only", ty) in baseline:
+            # The stale-exemption ratchet, same shape as `hosted-only`'s below.
+            errors.append(
+                f"{ty} is declared std-only but DOES measure without -DNROS_CPP_STD\n"
+                f"      ({without}). Remove its baseline line; the exemption is stale."
+            )
+        elif without != base[ty]:
+            diverged = True
+            if ("diverges", ty) in baseline:
+                seen.add(("diverges", ty))
+            else:
+                errors.append(
+                    f"sizeof({ty}) changes with -DNROS_CPP_STD -- {without} without, "
+                    f"{base[ty]} with.\n"
+                    f"      The porting surface must be ADDITIVE METHODS over a fixed\n"
+                    f"      layout (phase-438 W4), not a second shape of the same class."
+                )
+
+        # ARM 3 -- the freestanding configuration, where the macros are
+        # genuinely off because the ThreadX shim has no `<memory>` and no
+        # `-DNROS_CPP_STD` is given. This is the arm with teeth: a member gated
+        # on any of the seven macros is present hosted and absent here, so the
+        # two sizes disagree.
         fs = freestanding.get(ty)
         if fs is None:
             if ("hosted-only", ty) in baseline:
@@ -415,14 +485,15 @@ def compare(subjects, base, forced, freestanding, baseline, check_orphans=True):
 
 
 def read_all(subjects, include_args, workdir):
-    """(base, forced, freestanding) -- every arm, absences confirmed alone.
+    """(base, forced, nostd, freestanding) -- every arm, absences confirmed alone.
 
-    The nine arms are independent compiles of the same subject list, so they
+    The ten arms are independent compiles of the same subject list, so they
     run concurrently. Serial they are the gate's whole cost; concurrent the
     gate costs its slowest single arm plus the derivation.
     """
     arms = [("base", HOSTED_FLAGS)]
     arms += [(cap, HOSTED_FLAGS + [f"-D{cap}=1"]) for cap in CAPS]
+    arms.append(("nostd", HOSTED_NO_STD_FLAGS))
     arms.append(("freestanding", FREESTANDING_FLAGS))
 
     with futures.ThreadPoolExecutor(max_workers=len(arms)) as pool:
@@ -452,6 +523,15 @@ def read_all(subjects, include_args, workdir):
                     arm[ty] = one
         forced[cap] = arm
 
+    ns = got["nostd"]
+    nostd = {}
+    for ty in subjects:
+        nostd[ty] = (
+            ns[ty]
+            if ty in ns
+            else measure_one(ty, HOSTED_NO_STD_FLAGS, include_args, workdir)
+        )
+
     fs = got["freestanding"]
     freestanding = {}
     for ty in subjects:
@@ -460,7 +540,7 @@ def read_all(subjects, include_args, workdir):
             if ty in fs
             else measure_one(ty, FREESTANDING_FLAGS, include_args, workdir)
         )
-    return base, forced, freestanding
+    return base, forced, nostd, freestanding
 
 
 def run(include_args, workdir, baseline, subjects=None):
@@ -483,9 +563,10 @@ def run(include_args, workdir, baseline, subjects=None):
                 [],
                 {},
             )
-    base, forced, freestanding = read_all(subjects, include_args, workdir)
+    base, forced, nostd, freestanding = read_all(subjects, include_args, workdir)
     errors, _seen = compare(
-        subjects, base, forced, freestanding, baseline, check_orphans=not narrowed
+        subjects, base, forced, nostd, freestanding, baseline,
+        check_orphans=not narrowed,
     )
     return errors, subjects, base
 
@@ -636,6 +717,7 @@ def selftest(baseline):
         {"::nros::Fixed": 8},
         {cap: {"::nros::Fixed": 8} for cap in CAPS},
         {"::nros::Fixed": 8},
+        {"::nros::Fixed": 8},
         {("diverges", "::nros::Fixed")},
     )
     if not any("INVARIANT" in e for e in errs):
@@ -650,6 +732,7 @@ def selftest(baseline):
         ["::nros::Real"],
         {"::nros::Real": 8},
         {cap: {"::nros::Real": 8} for cap in CAPS},
+        {"::nros::Real": 8},
         {"::nros::Real": 8},
         {("hosted-only", "::nros::Gone")},
     )
@@ -666,10 +749,59 @@ def selftest(baseline):
         {"::nros::Moves": 24},
         {cap: {"::nros::Moves": 32 if cap == "NROS_CPP_STD" else 24} for cap in CAPS},
         {"::nros::Moves": 24},
+        {"::nros::Moves": 24},
         set(),
     )
     if not any("24 vs 32" in e for e in errs):
         fail.append("case 6: an unbaselined size divergence did not fail the comparison")
+
+    # Case 7 -- the phase-438 W4 arm on its own. Cases 4-6 drive it with a
+    # reading equal to the baseline, which is what a passing tree looks like;
+    # this drives it with one that is NOT, and with the hosted-only kind set,
+    # because that kind must NOT excuse a hosted failure. The real-header
+    # mutation of case 3 exercises the arm on the normal path, but only where
+    # the mutation happens to diverge in every arm at once.
+    errs, _ = compare(
+        ["::nros::Asks"],
+        {"::nros::Asks": 32},
+        {cap: {"::nros::Asks": 32} for cap in CAPS},
+        {"::nros::Asks": 24},
+        {"::nros::Asks": 32},
+        set(),
+    )
+    if not any("-DNROS_CPP_STD" in e and "24 without" in e for e in errs):
+        fail.append(
+            "case 7: a layout that MOVES when the porting surface is requested did\n"
+            "    not fail. That is phase-438 W4's whole acceptance -- the std surface\n"
+            "    is additive methods over a fixed layout, not a second shape."
+        )
+    errs, _ = compare(
+        ["::nros::Vanishes"],
+        {"::nros::Vanishes": 32},
+        {cap: {"::nros::Vanishes": 32} for cap in CAPS},
+        {"::nros::Vanishes": None},
+        {"::nros::Vanishes": 32},
+        {("hosted-only", "::nros::Vanishes")},
+    )
+    if not any("WITHOUT -DNROS_CPP_STD" in e for e in errs):
+        fail.append(
+            "case 7: a subject that does not compile hosted without the opt-in was\n"
+            "    excused by a `hosted-only` entry. That kind is about FREESTANDING\n"
+            "    absence; it must not cover a hosted consumer who did not opt in."
+        )
+    errs, _ = compare(
+        ["::nros::StdOnly"],
+        {"::nros::StdOnly": 32},
+        {cap: {"::nros::StdOnly": 32} for cap in CAPS},
+        {"::nros::StdOnly": 32},
+        {"::nros::StdOnly": 32},
+        {("std-only", "::nros::StdOnly")},
+    )
+    if not any("stale" in e for e in errs):
+        fail.append(
+            "case 7: a `std-only` entry whose subject DOES measure without the flag\n"
+            "    did not fail. Both ratchet directions or it is an allowlist."
+        )
 
     if fail:
         print("check-cpp-capability-layout --selftest FAILED:", file=sys.stderr)
@@ -677,9 +809,11 @@ def selftest(baseline):
             print(f"  - {f}", file=sys.stderr)
         raise SystemExit(1)
     print(
-        "check-cpp-capability-layout --selftest: 6 case(s) OK (gated member diverges, "
+        "check-cpp-capability-layout --selftest: 7 case(s) OK (gated member diverges, "
         "gated method does not, real ::nros::Node caught when mutated, a fixed "
-        "baseline entry fails, a stale one fails, an unbaselined divergence fails)"
+        "baseline entry fails, a stale one fails, an unbaselined divergence fails, "
+        "a layout that moves with -DNROS_CPP_STD fails, hosted-only does not excuse "
+        "it, and a stale std-only entry fails)"
     )
 
 
@@ -718,11 +852,14 @@ def main():
                 for p in problems:
                     print(f"  - {p}", file=sys.stderr)
                 return 1
-            base, forced, freestanding = read_all(subjects, include_args, workdir)
+            base, forced, nostd, freestanding = read_all(
+                subjects, include_args, workdir
+            )
             for ty in subjects:
-                std = forced["NROS_CPP_STD"].get(ty)
+                without = nostd.get(ty)
                 print(
-                    f"{base.get(ty, '-'):>8}  std={std if std is not None else '-':>8}  "
+                    f"{base.get(ty, '-'):>8}  "
+                    f"no-std={without if without is not None else 'absent':>8}  "
                     f"freestanding={freestanding.get(ty) if freestanding.get(ty) is not None else 'absent':>8}"
                     f"  {ty}"
                 )
@@ -756,8 +893,9 @@ def main():
 
     print(
         f"check-cpp-capability-layout: OK -- {len(subjects)} DERIVED subject(s) "
-        f"x {len(CAPS)} forced capability macro(s) hosted, plus a -nostdinc++ "
-        f"freestanding measurement against the ThreadX shim"
+        f"x {len(CAPS)} forced capability macro(s) hosted, plus "
+        f"hosted-without-NROS_CPP_STD and a -nostdinc++ freestanding measurement "
+        f"against the ThreadX shim"
     )
     return 0
 

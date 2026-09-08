@@ -1,9 +1,11 @@
 # phase-438 — the C++ std surface is an opt-in PORTING surface, not a discovered capability
 
-**Status (2026-09-09). W0, W1, W2 LANDED — issue 1187 is closed. W3-W5 open.** The C++ half of phase-359's
+**Status (2026-09-09). W0, W1, W2, W3, W4 LANDED — issue 1187 is closed; W5 open.** The C++ half of phase-359's
 argument. Implements RFC-0089's compile-or-conform rule by making the surface that
-rule needs an explicit request rather than a property of the toolchain. Re-cuts
-phase-427 W1, which currently works around this rather than fixing it.
+rule needs an explicit request rather than a property of the toolchain. W4 was
+written as a re-cut of phase-427 W1; the node merge landed that implementation
+first, so what this phase contributes there is the MEASUREMENT that its
+acceptance always named and could not run before W2.
 
 **It is also the class fix issue 1187 asks for**, which is the part that changes
 its priority. This was written as tidiness. The measurement says the construct it
@@ -215,7 +217,7 @@ program — native included — is on the freestanding side already.
   `std_detect.hpp` removes the ordering dependency the hand-rolled copies
   preserve.
 
-  *Acceptance:* `sizeof` of every type in `check-cpp-capability-layout`'s `TYPES`
+  *Acceptance:* `sizeof` of every subject `check-cpp-capability-layout` derives
   is unchanged, hosted and freestanding; the per-header parse loop and both
   `-nostdinc++` lanes are unchanged; the `STD_CHRONO` divergence is recorded in
   the new header rather than silently normalised.
@@ -273,44 +275,162 @@ program — native included — is on the freestanding side already.
   loop on arm-none-eabi at `fail=0`; the five porting templates and the compat
   shim build with the flag; `just check cpp` green.
 
-* **W3 — `rclcpp::Node` off the hosted-only list, and the honest reason it is
-  there.** The phase originally claimed the `nros.hpp:454` guard was all that kept
-  the class off freestanding targets. **That is wrong, and the correction is the
-  useful part.** With the guard replaced by `#if 1` and the macros off, the
-  stripped tree fails at the class head itself, `nros.hpp:546`:
+* **W3 — `rclcpp::Node` off the hosted-only list, and the honest reason it was
+  there. LANDED.** The phase originally claimed the `nros.hpp:454` guard was all
+  that kept the class off freestanding targets. **That is wrong, and the
+  correction is the useful part.** With the guard replaced by `#if 1` and the
+  macros off, the stripped tree failed at the class head itself:
 
   ```
   nros.hpp:546:49: error: expected template-name before '<' token
   ```
 
   — that is `class Node : public std::enable_shared_from_this<Node>`.
-  `rclcpp::Node` is not merely *guarded by* std, it is *spelled in* std: inside
-  the guarded block, 23 × `std::string`, 18 × `std::shared_ptr`, 9 ×
+  `rclcpp::Node` was not merely *guarded by* std, it was *spelled in* std:
+  inside the guarded block, 23 × `std::string`, 18 × `std::shared_ptr`, 9 ×
   `std::make_shared`, 4 × `std::vector`, 4 × `std::chrono`, plus the base class.
-  Every factory returns `std::shared_ptr<...>` where the freestanding
-  `nros::Node` takes an out-ref; every name parameter is `const std::string&`
+  Every factory returned `std::shared_ptr<...>` where the freestanding
+  `nros::Node` takes an out-ref; every name parameter was `const std::string&`
   where `nros::Node` takes `const char*`; `Node::SharedPtr` — the alias every
-  ported file names — *is* `std::shared_ptr<Node>`; and `rclcpp::NodeOptions` is
-  a second, separate guard that a freestanding `Node` would need first.
+  ported file names — *is* `std::shared_ptr<Node>`; and `rclcpp::NodeOptions`
+  was a second, separate guard that a freestanding `Node` would need first.
 
-  The in-tree freestanding equivalents cover the *data* (`FixedString`,
-  `HeapString`, `Span`, `FixedSequence`) and not the *ownership shape* — there is
-  no freestanding `shared_ptr`. So W3 is scoped down to what is actually true:
-  the class comes off `hosted_only_reason()` only if W4 makes its layout
-  unconditional, and the exemption's *reason string* is corrected either way.
-  (Minor, same file: the gate prints "guarded by … at nros.hpp:447"; the `#if` is
-  at 454, and 447 is the preceding `} // namespace rclcpp`.)
-  *Acceptance:* the freestanding arm either measures `rclcpp::Node` or the
-  exemption states the ownership-shape reason rather than the guard; the two-way
-  ratchet from phase-427 W0 decides which.
+  So W3's outcome was decided by whether the class reached layout invariance,
+  and phase-427 W1-W3/W5 reached it first — the node merge, not this phase — so
+  the exemption came OFF there, forced by the ratchet phase-427 W0 installed
+  ("listed hosted-only but DOES measure freestanding (200)").
+  `rclcpp::Node` carries no exemption now, and the ratchet is what keeps it
+  that way. The registry itself has since moved out of the script: issue 1225
+  replaced the authored `TYPES` list with a derived one (90 subjects, not 5) and
+  the `hosted_only_reason()` function with
+  `.config/cpp-capability-layout-baseline.txt`, which is not empty — it records
+  the debt the wider gate could finally see, none of it `rclcpp::Node`.
+  Two lessons are recorded in its place, both paid for:
 
-* **W4 — the hosted half becomes additive.** Hosted state moves behind one
-  unconditional `void* hosted_`; the std-flavoured `create_*` become overloads
-  rather than a second shape of the class. **This IS phase-427 W1**, and it
-  belongs here because it is a consequence of W2 rather than of the node merge.
-  *Acceptance:* `sizeof(rclcpp::Node)` is identical with and without
-  `NROS_CPP_STD` — measured on the freestanding arm, which is the only place the
-  macros are genuinely off.
+  * **A reason string must name the CONSTRUCT, never a line.** The removed entry
+    said "at nros.hpp:447", which was wrong when it was written — 447 was the
+    preceding `} // namespace rclcpp` and the `#if` was at 454 — and the line
+    then moved twice more inside this phase alone.
+  * **A reason must say what is MISSING, not what is guarded.** "guarded by
+    `NROS_CPP_HAS_SHARED_PTR` && …" describes the symptom, and a symptom-shaped
+    reason invites the wrong fix (delete the guard), which is what this phase's
+    first draft of W3 proposed before the compile measurement refuted it. The
+    real reason was the ownership shape.
+
+  What this phase adds is the THIRD arm, the one the gate's own `HOSTED_FLAGS`
+  comment had asked for: hosted `-std=c++17` **without** `-DNROS_CPP_STD`. It is
+  the arm that isolates the FLAG from the toolchain — the freestanding arm
+  varies `-std`, `-nostdinc++` and the shim all at once, so on its own it cannot
+  tell "the porting surface moved a layout" from "the two libc++ shims disagree
+  about a member". It was not measurable before W2, because the macros were
+  discovered from the include path and a hosted TU always had them.
+
+  *Acceptance (met):* `rclcpp::Node` measures in all three arms, no exemption;
+  and the arms have teeth on THIS type, mutation-tested — an
+  `#ifdef NROS_CPP_HAS_SHARED_PTR`-gated `double` injected next to `clock_` in a
+  throwaway copy of the include tree reports `200 without, 208 with` on the new
+  arm and `208 vs 200` on the freestanding one. That is the exact mutation issue
+  1204 measured as uncatchable, and the reason it was uncatchable — the whole
+  class sat inside a guard naming that macro, so the `#ifdef` was tautological —
+  is what the node merge removed.
+
+* **W4 — the hosted half becomes additive. LANDED — as phase-427 W1-W3/W5, and
+  what remained here is the MEASUREMENT.** This work item was written as "this
+  IS phase-427 W1", relocated, on the reasoning that it is a consequence of W2
+  rather than of the node merge. The node merge landed first and did the
+  implementation; what phase-438 owed, and pays here, is the arm that proves it.
+
+  `rclcpp::Node` was two different SHAPES of one class: with the capability
+  macros on it had a base class, a `std::vector` member and a full set of
+  `shared_ptr`-returning factories; with them off it did not exist at all. That
+  was tolerable only while the macros were DISCOVERED from the include path,
+  because then "hosted" and "std surface" moved together. W2 made the surface a
+  per-TU request, and px4 sets `-DNROS_CPP_STD` on ONE module of a larger image
+  deliberately, so two shapes of one class in one image became reachable —
+  issues 0135 / 0460.
+
+  What phase-427 changed, stated here because this phase's acceptance is about
+  it:
+
+  * **The layout is unconditional.** `rclcpp::Node` is `using Node =
+    ::nros::Node`, an alias declared outside any capability guard, over a class
+    declared the same way in `node.hpp`. The
+    `std::enable_shared_from_this<Node>` base and the
+    `std::vector<std::shared_ptr<void>>` of owned entities moved into a
+    `detail::NodeHosted` box reached through one unconditional
+    `detail::NodeHostedBase* hosted_`, allocated LAZILY — so a freestanding
+    node, and a hosted node that only ever takes the out-ref `create_*` family,
+    calls `operator new` never.
+  * **The box carries its own deleter**, as a `void (*destroy)(void*)` on
+    `NodeHostedBase` rather than a second pointer in the node. An `#ifdef`
+    inside `~Node()` would have satisfied the `sizeof` rule and still given one
+    inline symbol two bodies across TUs that are allowed to disagree; with the
+    deleter stored, every `~Node()` in the image is the same lines and does the
+    right thing for whichever arm CONSTRUCTED the node.
+  * **The factories became overloads.** `create_publisher(out, "topic", qos)`
+    and its siblings — the out-ref forms mirroring `nros::Node` — are declared
+    always; the `shared_ptr`-returning and `const std::string&`-keyed forms sit
+    beside them under `NROS_CPP_NODE_HOSTED`.
+  * **`shared_from_this` cost no source edit.** The base is gone, and the verb
+    survives as a hosted method returning a pointer that ALIASES `this` with an
+    empty owner: it observes the node without extending its lifetime, where
+    upstream's shares ownership. In this API the node is constructed by a
+    generated entry (or a `main`) and outlives what it is handed to, so the two
+    behave the same; a caller who stores it past the node's scope gets a
+    dangling pointer where upstream would have kept the node alive. Upstream
+    also THROWS `bad_weak_ptr` on an unowned node; this never throws, which is
+    the RFC-0018 direction. (An earlier draft of this work item required an
+    explicit `bind_shared(self)` per ported file and aborted loudly when it was
+    omitted. The merged class needs neither, so the migration line is not
+    there — the templates are unchanged.)
+
+  **What W4 adds: the third arm.** `check-cpp-capability-layout` measured hosted
+  (with the flag, since W2) and freestanding, and the acceptance below is not
+  answerable from those two, because the freestanding arm varies `-std`,
+  `-nostdinc++` and the shim all at once — it cannot tell "the porting surface
+  moved a layout" from "the two libc++ shims disagree about a member". ARM 2 is
+  hosted `-std=c++17` with the opt-in WITHHELD: same compiler, same standard,
+  same headers as the baseline, one variable. It is also the configuration every
+  hosted consumer that has not opted in now compiles in, which before W2 did not
+  exist. A type that fails to compile there is NOT excusable by a `hosted-only`
+  baseline entry — that kind is about types absent on FREESTANDING targets. A
+  subject whose whole surface really is the porting surface gets its own kind,
+  `std-only`, and there is exactly one: `rclcpp::NodeOptions`, which is
+  `std::string` plus `std::vector<Parameter>` and has no smaller shape. The
+  subject DERIVATION asks for the flag too, for the same reason — without it the
+  list is 89 instead of 90 and that subject would silently leave the gate.
+
+  *Acceptance (met), measured:* `sizeof(rclcpp::Node)` is **200** in all three
+  arms — hosted `-std=c++17 -DNROS_CPP_STD=1`, hosted `-std=c++17` with no
+  flag, and `-std=c++14 -ffreestanding -nostdinc++` against the ThreadX shim —
+  and the type carries no exemption. Over the DERIVED subject list that is 90
+  subjects the arm covers, not the 5 it was authored against.
+
+  **The half `sizeof` cannot state, and the second check for it.** Deleting a
+  method moves no layout, so a layout gate is green on one; the unconditional
+  out-ref factories were therefore still a CLAIM — declared, never instantiated,
+  since the lane's other probes all pass `-DNROS_CPP_STD=1` and the per-header
+  loop only PARSES. `packages/api/nros-cpp/tests/compile/
+  rclcpp_node_freestanding_surface.cpp` instantiates them, and derives from the
+  class, in both no-flag arms. Mutation-tested: the out-ref `create_publisher`
+  moved back behind `#ifdef NROS_CPP_HAS_SHARED_PTR` in a throwaway copy of the
+  include tree fails the probe (`no matching function for call to
+  'nros::Node::create_publisher'`) while the capability gate stays green.
+
+  **Where the unconditional line actually falls, measured rather than assumed.**
+  `NROS_CPP_NODE_HOSTED` gates more than the `shared_ptr` factories:
+  `initialized()`, `get_node_options()`, `parameters()` and the WHOLE parameter
+  facade — the `const char*`-keyed forms included — are hosted-only, because the
+  store they read and the options object both live in the hosted box. The probe
+  uses `ok()`, the unconditional answer to the same question as `initialized()`,
+  and does not name the parameter forwarders. A freestanding `rclcpp::Node` is
+  layout-identical, constructible, derivable, and its out-ref factories work; it
+  is not a full freestanding port. `Node::SharedPtr`, `rclcpp::spin(node)` and
+  the `shared_ptr` factories stay on the porting surface because their
+  signatures are spelled in an ownership type this tree does not have
+  freestanding. A freestanding program drives the same executor through
+  `nros::spin()` / `nros::spin_once()`, which are unconditional.
+
 
 * **W5 — say which surface a consumer is on.** The book and
   `docs/reference/c-api-cmake.md` document `NROS_CPP_STD` as the porting surface,

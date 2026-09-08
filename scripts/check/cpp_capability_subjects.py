@@ -235,6 +235,20 @@ FLOOR = (
 )
 
 
+# The derivation asks for the PORTING SURFACE, always (phase-438 W4).
+#
+# Since W2 the `NROS_CPP_HAS_*` macros are a consumer REQUEST, not something a
+# hosted compiler is handed, so a parse without this flag sees a SMALLER API
+# than the gate's baseline arm measures -- `::rclcpp::NodeOptions` is the one
+# such subject today (90 with, 89 without, measured). Deriving without it would
+# narrow the subject list exactly the way issue 1225 exists to prevent, and
+# would silently orphan that subject's baseline line.
+#
+# It is appended rather than left to the caller so the negative control's
+# mutated-tree derivation cannot drift from the real one.
+DERIVE_FLAGS = ["-DNROS_CPP_STD=1"]
+
+
 def derive(args=None):
     """(subjects, template instantiations, problems).
 
@@ -246,7 +260,10 @@ def derive(args=None):
     try:
         with tempfile.TemporaryDirectory() as td:
             ast = extract_cxx.dump_ast(
-                UMBRELLA, "c++", list(args) if args else include_args(), td
+                UMBRELLA,
+                "c++",
+                (list(args) if args else include_args()) + DERIVE_FLAGS,
+                td,
             )
     except RuntimeError as exc:
         return [], [], [str(exc)]
