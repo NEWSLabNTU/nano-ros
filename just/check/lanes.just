@@ -1055,9 +1055,16 @@ cpp: cpp-fmt
         }; \
     done
     echo "  - phase-417: ported-file surface COMPILES (aliases, string interop, graph, actions, executor)"
+    # `-DNROS_CPP_STD` since phase-438 W2. These probes exist to prove that a
+    # PORTED rclcpp file compiles, and that is the surface the flag names — so
+    # asking for it here is not a workaround, it is the probes stating what they
+    # are. Before W2 they got the same surface without asking, because
+    # `__has_include` found libstdc++ on the host; the flag makes the request
+    # explicit and is what a real ported consumer now writes too
+    # (`cmake/compat/NrosRclcppCompat.cmake` sets it for exactly these files).
     for probe in ros2_api_adoption node_graph_forwarders ros2_api_adoption_stage2 ros2_one_dispatch_path \
                  ros2_init_argv_refusal action_goal_uuid executor_cancel; do \
-        c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
             -Itarget/nros-cpp-generated \
             -Itarget/nros-c-generated \
             -Ipackages/api/nros-cpp/include \
@@ -1067,7 +1074,7 @@ cpp: cpp-fmt
     done
     # c++17 alone: it enables NROS_SYSTEM_PARAM_SERVICES in-file, which reaches
     # `ComponentNode::adopt_launch_seed_`'s `if constexpr`.
-    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+    c++ -fsyntax-only -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -Itarget/nros-cpp-generated \
         -Itarget/nros-c-generated \
         -Ipackages/api/nros-cpp/include \
@@ -1086,11 +1093,18 @@ cpp: cpp-fmt
     # non-zero and would read as "the refusal fired". So each is grepped for the
     # marker its message carries, and `test -f` runs first because a missing
     # file compiles to nothing and passes.
+    #
+    # `-DNROS_CPP_STD` since phase-438 W2, and the lane's own guard is why it is
+    # here: without it `ros2_refuse_node_options_probe.cpp` still FAILED, but on
+    # `'NodeOptions' is not a member of 'rclcpp'` rather than on the refusal —
+    # the exact "broke for another reason, so this check proves nothing" case
+    # the grep below exists to catch. A refusal probe must reach the refusal,
+    # which means compiling in the flavour the refusal lives in.
     echo "  - phase-417: the refusals FAIL, each naming its own constraint"
     for probe in node_options system_defaults_qos log_throttle service_callback; do \
         f="packages/api/nros-cpp/tests/compile/ros2_refuse_${probe}_probe.cpp"; \
         test -f "$f" || { echo "ERROR: $f is MISSING -- this check passes on absence." >&2; exit 1; }; \
-        if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+        if c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
                -Itarget/nros-cpp-generated -Itarget/nros-c-generated \
                -Ipackages/api/nros-cpp/include -Ipackages/api/nros-c/include \
                -Ipackages/platform/nros-platform-api/include "$f" 2>"tmp/refuse-$probe.log"; then \

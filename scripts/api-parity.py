@@ -270,13 +270,25 @@ CPP_TRANSLATION_UNITS = (
     # it was never macro-gated — extracting with and without the flag yielded
     # identical records. What made it std-only was unconditional `<memory>`,
     # `<string>`, `<functional>`, `<vector>`, `<chrono>` and `std::shared_ptr`
-    # in public signatures. After the move those includes are `__has_include`-
-    # gated, so the `rclcpp::` names that need them are genuinely absent from a
-    # freestanding build — which makes the marking TRUE now in the way the issue
-    # only claimed it was.
+    # in public signatures. After the move those includes were `__has_include`-
+    # gated, so the `rclcpp::` names that need them were absent from a
+    # freestanding build — which made the marking TRUE in the way the issue only
+    # claimed it was. phase-438 W2 then removed the discovery arm, so they are
+    # gated on `NROS_CPP_STD` alone and the marking is true on EVERY target, not
+    # only the ones whose include path happened to lack the headers.
     #
     # Extracted WITH the flag, because that is the flavour the compat CMake path
-    # builds under, and a surface should be measured as it ships.
+    # builds under, and a surface should be measured as it ships. That sentence
+    # was false when it was written — `cmake/compat/NrosRclcppCompat.cmake` set
+    # no compile definition at all — and phase-438 W2 made it true by having the
+    # shim's own `_nros_compat_apply_force_includes` set `NROS_CPP_STD`.
+    #
+    # The `base` and `component` TUs above deliberately do NOT get the flag, and
+    # after W2 that is a stronger statement than it used to be: they measure the
+    # NATIVE surface as a consumer who never asked for the porting flavour sees
+    # it. Verified after W2 — `just check api-parity` green with no ledger
+    # movement, so the native records were never coming from the discovered
+    # macros.
     ("compat", '#include "nros/nros.hpp"\n', ("-DNROS_CPP_STD=1",),
      {"rclcpp", "rclcpp_action", "rclcpp_lifecycle"},
      {"std_only": True, "surface": PORTED}),
