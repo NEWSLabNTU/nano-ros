@@ -67,7 +67,7 @@ loop {
 }
 ```
 
-Convenience wrappers (`spin(count)`, `spin_blocking(opts)`, `spin_period(duration)`) exist for desktop-style use cases, but each is implemented as a `spin_once()` loop that the user could write by hand. On `no_std` targets they aren't available -- the user writes the loop.
+Convenience wrappers exist for desktop-style use cases -- `spin(SpinOptions)` (rclrs's name and shape: run until cancelled, a timeout expires, or a callback count is reached), `spin_some(max)` (rclcpp's drain verb: execute what is ready, return), `spin_forever(SpinOptions)` (`-> !`, the body of an RTOS task) and `spin_period(duration)` (fixed-rate, drift-compensated) -- but each is implemented as a `spin_once()` loop that the user could write by hand. `spin` and `spin_period` need `alloc`; `spin_once`, `spin_some` and `spin_forever` reach a `no_std` no-alloc target.
 
 This is the reason every blocking API in nros takes `&mut Executor`. `Promise::wait`, `Stream::wait_next`, `Client::call_blocking`, the C++ `Future::wait(executor.handle(), ...)`, and the C `nros_client_call(..., timeout_ms)` all internally call `spin_once()` to keep I/O moving while waiting. They cannot rely on a background thread doing it for them, because there is none.
 

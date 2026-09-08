@@ -382,7 +382,7 @@ fn run_from_config_source(raw: &str, source: &str) -> Result<(), ConfigError> {
     }
 
     // Spin loop: drive each bridge once per executor tick. The
-    // executor's own `spin_blocking` would only drain dispatched
+    // executor's own `spin` would only drain dispatched
     // callbacks; bridges live outside the callback registry by
     // design (they own their handles), so the loop here is explicit.
     use std::time::Duration;

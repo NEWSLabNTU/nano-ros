@@ -40,14 +40,14 @@ configuration knobs address.
 ## Configuration knobs
 
 The knobs live on **`SpinOptions`** (passed to
-`Executor::spin_blocking(opts)`), not on `ExecutorConfig` — the config
+`Executor::spin(opts)`), not on `ExecutorConfig` — the config
 struct carries identity/transport (locator, domain, node name, clock),
 while scheduling shape is a property of each spin call:
 
 | Knob | Default | When to change |
 |------|---------|----------------|
 | `SpinOptions::max_callbacks(n)` | `None` (drain all ready work) | Set to `1` for upstream-`rclcpp`-style "one callback per iteration" — gives the executor a chance to re-check timers / GCs / yield between callbacks |
-| `SpinOptions::timeout_ms(ms)` | `None` (spin forever) | Bound one spin call by wall clock — the time-triggered pattern calls `spin_blocking` once per cycle with the cycle's ROS slot as the timeout |
+| `SpinOptions::timeout_ms(ms)` | `None` (spin forever) | Bound one spin call by wall clock — the time-triggered pattern calls `spin` once per cycle with the cycle's ROS slot as the timeout |
 | `SpinOptions::spin_once()` / `only_next` | off | One round of work then return — the cooperative-loop building block |
 
 Backends opt into one additional behaviour automatically:
@@ -62,7 +62,7 @@ optimization.
 
 ```rust
 // One dedicated task; drain everything each round.
-executor.spin_blocking(SpinOptions::default())?;
+executor.spin(SpinOptions::default())?;
 ```
 
 Drain everything; one task, no fairness concern.
@@ -71,7 +71,7 @@ Drain everything; one task, no fairness concern.
 
 ```rust
 loop {
-    executor.spin_blocking(SpinOptions::new().max_callbacks(1))?;
+    executor.spin(SpinOptions::new().max_callbacks(1))?;
 }
 ```
 
@@ -109,7 +109,7 @@ applies to each `recv().await` continuation, not to a spin loop.
 
 ```rust
 // Called once per cycle from the cyclic frame:
-executor.spin_blocking(SpinOptions::new().timeout_ms(5))?;   // 5 ms ROS slot
+executor.spin(SpinOptions::new().timeout_ms(5))?;   // 5 ms ROS slot
 ```
 
 The cycle gives ROS a fixed wall-clock slot; the `timeout_ms` bound

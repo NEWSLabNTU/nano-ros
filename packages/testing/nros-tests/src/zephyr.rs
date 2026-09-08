@@ -576,7 +576,7 @@ impl ZephyrProcess {
     /// (`SUCCESS`/`COMPLETE`/`session error`/`Failed to create context`), so an
     /// image that keeps spinning always runs to the deadline, and the deadline
     /// kills it *unconditionally* — every return path here passes through
-    /// `kill_process_group`. Aimed at a `spin_blocking` node the timeout is
+    /// `kill_process_group`. Aimed at a `spin`-looping node the timeout is
     /// that node's LIFETIME, and whatever it would have printed afterwards is
     /// unobservable by construction (issue 1013 measured the cost of exactly
     /// this on the RTOS pubsub cell).

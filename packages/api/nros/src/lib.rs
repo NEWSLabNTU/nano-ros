@@ -29,7 +29,7 @@
 //!     println!("Received: {}", msg.data);
 //! })?;
 //!
-//! executor.spin_blocking(SpinOptions::default());
+//! executor.spin(SpinOptions::default());
 //! ```
 //!
 //! ## Executor Sizing

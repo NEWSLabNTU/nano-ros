@@ -91,7 +91,7 @@ middleware stacks.
 | **Interop Path** | Direct DDS peer | Zenoh broker bridge |
 | **Planning Simulator** | Via native Autoware integration | Linux native binary runs in planning simulator (`just launch-autoware-baseline` / `launch-autoware-modified`) |
 | **Zephyr Entry** | `main()` in C++ → instantiate Controller Node → spin | `extern "C" fn main()` in Rust via `zephyr-lang-rust` → `SafetyIsland` + `executor.spin()` |
-| **Linux Entry** | N/A | `src/autoware_sentinel_linux/src/main.rs` → `SafetyIsland` with Linux clock → `executor.spin_blocking()` |
+| **Linux Entry** | N/A | `src/autoware_sentinel_linux/src/main.rs` → `SafetyIsland` with Linux clock → `executor.spin()` |
 
 ## Documentation
 

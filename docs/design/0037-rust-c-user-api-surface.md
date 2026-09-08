@@ -52,7 +52,7 @@ NodeCtx<'_>`. Domain id is in the config / baked (RFC-0036). No `Arc<Node>` —
 
 **Spin** (RFC-0021 blocking rule — helpers take `&mut Executor`):
 `spin_once(timeout) -> SpinOnceResult`, `spin(timeout) -> !`,
-`spin_blocking(SpinOptions)`. Service/action waits: `promise.wait(&mut executor,
+`spin(SpinOptions)`. Service/action waits: `promise.wait(&mut executor,
 timeout)`.
 
 **Message contracts** (`nros-core`): trait `RosMessage: Serialize + Deserialize`,
