@@ -90,6 +90,46 @@ impl BoardFamily {
         self != BoardFamily::Native
     }
 
+    /// Whether this family ships a C-ABI `run_components`, i.e. whether a
+    /// `--lang c` entry can be rendered by the C pack instead of being routed
+    /// to the C++ one.
+    ///
+    /// phase-432 W3.1. This is the predicate the routing rule needs, and it is
+    /// NOT `is_embedded()`, which is what it used to ask. The two agreed only
+    /// while `native` was the sole family with a C runner; they are different
+    /// questions, and conflating them made a family-wide assumption out of a
+    /// per-board fact. The fact is now measurable per family and moves as each
+    /// board's runner lands.
+    ///
+    /// One home, because four sites consume it: the pack router
+    /// (`entry_pack_for`), the emitter's own refusal, the CLI's emit dispatch,
+    /// and the CMake extension/`LANGUAGES` decision. They must agree, and when
+    /// they asked `is_embedded()` separately there was nothing making them.
+    ///
+    /// What is true today:
+    ///
+    /// - `Native` — the C-ABI `nros_board_native_run_components{,_named}`,
+    ///   implemented in Rust in `nros-cpp`.
+    /// - `Freertos` — `nros_board_freertos_run_components`, C, in the board
+    ///   crate's glue (`c/freertos_run_components.c`).
+    /// - `Zephyr`, `Nuttx` — no C runner yet; each is the same shape as the
+    ///   FreeRTOS one and is the remaining W3.1 work.
+    /// - `Threadx` — deliberately none, and not merely unwritten. It has no
+    ///   `run_tiers` either, so there is nothing to copy, and it stays
+    ///   C++-entry-only with the routing REPORTED rather than refused.
+    ///
+    /// The benefit is RMW-CONDITIONAL and this predicate does not encode that:
+    /// a C runner drops the C++ toolchain requirement for zenoh and XRCE, and
+    /// not for cyclonedds or uORB, whose RMW libraries are themselves C++. The
+    /// entry language and the RMW's own language are separate facts, so the
+    /// routing answers only the first.
+    pub fn has_c_run_components(self) -> bool {
+        match self {
+            BoardFamily::Native | BoardFamily::Freertos => true,
+            BoardFamily::Zephyr | BoardFamily::Nuttx | BoardFamily::Threadx => false,
+        }
+    }
+
     /// The boot wrapper this family's entry needs.
     pub fn boot_shape(self) -> BootShape {
         match self {
