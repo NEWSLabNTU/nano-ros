@@ -2073,6 +2073,195 @@ fn test_arena_alignment() {
 // ====================================================================
 
 // ===========================================================================
+// phase-436 W6 — the wake-source seam. Many sources say WHEN; one primitive
+// does the waiting.
+// ===========================================================================
+
+/// A registered park primitive must actually be USED, and handed the bound the
+/// sources agreed on. Storing it without calling it would be the "a slot
+/// exists, therefore it works" shape issue 0800 measured.
+#[test]
+fn spin_once_parks_through_the_registered_primitive() {
+    use portable_atomic::{AtomicU64, Ordering};
+    static SEEN: AtomicU64 = AtomicU64::new(u64::MAX);
+
+    unsafe extern "C" fn recording_park(_c: *mut core::ffi::c_void, deadline_us: u64) -> i8 {
+        SEEN.store(deadline_us, Ordering::SeqCst);
+        1
+    }
+
+    SEEN.store(u64::MAX, Ordering::SeqCst);
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_park_primitive(recording_park, core::ptr::null_mut());
+    executor
+        .register_timer(TimerDuration::from_millis(10), || {})
+        .unwrap();
+
+    executor.spin_once(core::time::Duration::from_millis(50));
+
+    assert_eq!(
+        SEEN.load(Ordering::SeqCst),
+        10_000,
+        "the primitive must be handed the 10 ms timer bound, not the 50 ms budget"
+    );
+}
+
+/// With no primitive installed nothing changes — every existing port keeps the
+/// behaviour it has, which is what makes this seam additive.
+#[test]
+fn no_park_primitive_leaves_the_existing_path_alone() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    assert!(!executor.has_park_primitive());
+    executor.spin_once(core::time::Duration::from_millis(5));
+    assert_eq!(executor.last_park_achieved_us(), 5_000);
+}
+
+/// The BACKEND's next internal event competes in the same `min` and is
+/// attributed to itself. It used to be pre-capped into the budget upstream, so
+/// a park the session actually won was reported as `CallerBudget` — the
+/// attribution named the wrong source.
+#[test]
+fn a_session_deadline_competes_and_is_attributed_to_the_session() {
+    let executor: Executor = executor_with_clock(MockSession::new());
+    let (bound_us, winner) = executor.next_wake_bound_attributed_us(50_000, Some(7_000));
+    assert_eq!(bound_us, 7_000);
+    assert_eq!(
+        winner,
+        super::spin::WakeSourceId::Session,
+        "a park the backend won must say so, not blame the caller's budget"
+    );
+}
+
+/// ... and it loses to a nearer timer like any other member.
+#[test]
+fn a_nearer_timer_beats_the_session_deadline() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor
+        .register_timer(TimerDuration::from_millis(2), || {})
+        .unwrap();
+    let (bound_us, winner) = executor.next_wake_bound_attributed_us(50_000, Some(7_000));
+    assert_eq!(bound_us, 2_000);
+    assert_eq!(winner, super::spin::WakeSourceId::Timer);
+}
+
+/// A platform source with a nearer deadline than the caller's budget wins,
+/// and the attribution names it. This is the extension point that lets a port
+/// contribute `k_poll` / `epoll` / a queue set without the core naming an RTOS.
+#[test]
+fn a_platform_wake_source_can_shorten_the_park() {
+    unsafe extern "C" fn due_in_3ms(_ctx: *mut core::ffi::c_void) -> u64 {
+        3_000
+    }
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let id = executor
+        .register_wake_source(due_in_3ms, core::ptr::null_mut())
+        .expect("the first source must fit");
+
+    let (bound_us, winner) = executor.next_wake_bound_attributed_us(50_000, None);
+    assert_eq!(bound_us, 3_000, "the platform source is due first");
+    assert_eq!(
+        winner, id,
+        "and the attribution names that source, not a generic id"
+    );
+}
+
+/// `u64::MAX` is how a source says "nothing pending" — an async source (a
+/// socket, a DDS listener) contributes no deadline and instead breaks the park
+/// by signalling. It must not collapse the bound to zero.
+#[test]
+fn a_source_with_nothing_pending_does_not_shorten_the_park() {
+    unsafe extern "C" fn nothing(_ctx: *mut core::ffi::c_void) -> u64 {
+        u64::MAX
+    }
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor
+        .register_wake_source(nothing, core::ptr::null_mut())
+        .unwrap();
+
+    let (bound_us, winner) = executor.next_wake_bound_attributed_us(50_000, None);
+    assert_eq!(bound_us, 50_000);
+    assert_eq!(winner, super::spin::WakeSourceId::CallerBudget);
+}
+
+/// The nearest of several sources decides, and the caller's budget is just
+/// another member of the set.
+#[test]
+fn the_nearest_of_several_sources_wins() {
+    unsafe extern "C" fn due_20ms(_c: *mut core::ffi::c_void) -> u64 {
+        20_000
+    }
+    unsafe extern "C" fn due_4ms(_c: *mut core::ffi::c_void) -> u64 {
+        4_000
+    }
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor
+        .register_wake_source(due_20ms, core::ptr::null_mut())
+        .unwrap();
+    let near = executor
+        .register_wake_source(due_4ms, core::ptr::null_mut())
+        .unwrap();
+
+    let (bound_us, winner) = executor.next_wake_bound_attributed_us(50_000, None);
+    assert_eq!(bound_us, 4_000);
+    assert_eq!(winner, near);
+}
+
+/// A timer still beats a platform source that is further out — W1's rule is
+/// not special-cased away by the seam, it becomes one member of the same min.
+#[test]
+fn a_timer_still_competes_with_platform_sources() {
+    unsafe extern "C" fn due_30ms(_c: *mut core::ffi::c_void) -> u64 {
+        30_000
+    }
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor
+        .register_wake_source(due_30ms, core::ptr::null_mut())
+        .unwrap();
+    executor
+        .register_timer(TimerDuration::from_millis(6), || {})
+        .unwrap();
+
+    let (bound_us, winner) = executor.next_wake_bound_attributed_us(50_000, None);
+    assert_eq!(bound_us, 6_000);
+    assert_eq!(winner, super::spin::WakeSourceId::Timer);
+}
+
+/// The table is fixed-capacity (no alloc). Overflow is an error, not a silent
+/// drop — a source that was quietly discarded would leave the executor
+/// sleeping past a deadline it was told about.
+#[test]
+fn registering_past_capacity_is_refused_not_dropped() {
+    unsafe extern "C" fn nothing(_c: *mut core::ffi::c_void) -> u64 {
+        u64::MAX
+    }
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    for _ in 0..super::spin::MAX_WAKE_SOURCES {
+        executor
+            .register_wake_source(nothing, core::ptr::null_mut())
+            .expect("within capacity");
+    }
+    assert!(
+        executor
+            .register_wake_source(nothing, core::ptr::null_mut())
+            .is_err(),
+        "past capacity must refuse rather than silently drop the source"
+    );
+}
+
+/// The park primitive is singular: only one thing can actually block. Setting
+/// it replaces whatever was there, and the executor reports which is live.
+#[test]
+fn the_park_primitive_is_singular_and_replaceable() {
+    unsafe extern "C" fn park_a(_c: *mut core::ffi::c_void, _d: u64) -> i8 {
+        0
+    }
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    assert!(!executor.has_park_primitive(), "none installed by default");
+    executor.set_park_primitive(park_a, core::ptr::null_mut());
+    assert!(executor.has_park_primitive());
+}
+
+// ===========================================================================
 // phase-436 W1 (issue 1192) — the park is bounded by the next TIMER deadline.
 // ===========================================================================
 
