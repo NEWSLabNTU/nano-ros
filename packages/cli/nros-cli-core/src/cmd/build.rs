@@ -871,9 +871,86 @@ pub fn run(args: Args) -> Result<()> {
     crate::abi_guard::check_workspace(&guard_anchor, crate::abi_guard::Verb::Build)?;
 
     let plans = plan_builds(&args)?;
-    for p in &plans {
+    drive(&plans, args.dry_run, &mut perform)
+}
+
+/// How one plan's native command reaches the operating system.
+///
+/// `exec` is RFC-0065 D1's guarantee and it can be spent exactly once per
+/// invocation, because after it this process no longer exists. That is the
+/// whole of issue 1206: [`run`]'s loop execed inside itself, so a plan set of
+/// N produced one build and an exit code that was image 1's verdict.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Handover {
+    /// Run it as a child and wait. Stdio is INHERITED, never piped.
+    Wait,
+    /// Replace this process. Never returns on success — so this is the LAST
+    /// thing the invocation does, and only the last plan may get it.
+    Exec,
+}
+
+/// The handover the plan at `index` of `total` gets.
+///
+/// Stated as a function of position rather than inlined, so "only the last
+/// plan execs" is a thing a test can ask about directly.
+#[must_use]
+fn handover_for(index: usize, total: usize) -> Handover {
+    if index + 1 == total {
+        Handover::Exec
+    } else {
+        Handover::Wait
+    }
+}
+
+/// Perform one handover for real.
+///
+/// The seam [`drive`] is tested through: a test substitutes a recorder here so
+/// it can observe every plan's handover without a compiler, an exec, or a
+/// process that stops existing halfway through the assertions.
+fn perform(hand: &Handoff, mode: Handover) -> Result<()> {
+    match mode {
+        Handover::Wait => {
+            let st = crate::builder::handoff::wait(hand).map_err(|e| eyre::eyre!("{e}"))?;
+            if !st.success() {
+                eyre::bail!("`{}` exited {}", hand.display(), st);
+            }
+            Ok(())
+        }
+        // Never returns on success: this process BECOMES the build.
+        Handover::Exec => {
+            let err = crate::builder::handoff::exec(hand).unwrap_err();
+            eyre::bail!("{err}")
+        }
+    }
+}
+
+/// Stage 5 for every plan: announce it, then hand it over.
+///
+/// Split out of [`run`] for one reason — the loop is the thing that was wrong
+/// (issue 1206) and it was the one part of `nros build` no test could reach.
+/// `plan_builds` is pure and heavily tested; `run` needs a real workspace on
+/// disk; this needs neither.
+///
+/// `handover` performs one plan's command. Production passes [`perform`].
+fn drive(
+    plans: &[ResolvedBuild],
+    dry_run: bool,
+    handover: &mut dyn FnMut(&Handoff, Handover) -> Result<()>,
+) -> Result<()> {
+    let total = plans.len();
+    for (i, p) in plans.iter().enumerate() {
+        // The counter is the ONLY progress a multi-image build can report.
+        // The last plan execs, so no epilogue of any kind can run after it —
+        // a user who sees `[3/7]` as the last line knows where it stopped, and
+        // before this there was nothing that distinguished "built 7" from
+        // "built 1 and said nothing about the other 6".
+        let where_ = if total > 1 {
+            format!("[{}/{total}] ", i + 1)
+        } else {
+            String::new()
+        };
         eprintln!(
-            "nros build: {} -> board {} (platform {}), driver {}",
+            "nros build: {where_}{} -> board {} (platform {}), driver {}",
             p.qualified,
             p.board,
             p.platform,
@@ -891,7 +968,7 @@ pub fn run(args: Args) -> Result<()> {
                 p.qualified
             );
         };
-        if args.dry_run {
+        if dry_run {
             if let Some(cfg) = &p.configure {
                 println!("{}", cfg.display());
             }
@@ -906,9 +983,22 @@ pub fn run(args: Args) -> Result<()> {
         if let Some(cfg) = &p.configure {
             run_configure(cfg)?;
         }
-        // Never returns on success: this process BECOMES the build.
-        let err = crate::builder::handoff::exec(hand).unwrap_err();
-        eyre::bail!("{err}");
+        let outcome = handover(hand, handover_for(i, total));
+        if total > 1 {
+            // Which image failed, and that the rest are NOT built — the two
+            // facts a single-image invocation never had to say and a
+            // multi-image one cannot leave to the reader.
+            outcome.wrap_err_with(|| {
+                format!(
+                    "building `{}` (image {} of {total}) failed; nothing after \
+                     it was attempted",
+                    p.qualified,
+                    i + 1
+                )
+            })?;
+        } else {
+            outcome?;
+        }
     }
     Ok(())
 }
@@ -2960,5 +3050,143 @@ mod selection_wiring_tests {
             "the selection is closed and must not be the complaint: {msg}"
         );
         assert!(msg.contains("[image.*]"), "{msg}");
+    }
+}
+
+/// Issue 1206 — the driver loop, which had no test at all.
+///
+/// `Args { all: false, … }` was the only construction in this file's tests, so
+/// every multi-plan path was reached exclusively through `--dry-run`, which
+/// `continue`s past the handover and therefore cannot see this class. These
+/// assert the non-dry-run path.
+#[cfg(test)]
+mod multi_image_drive_tests {
+    use super::*;
+    use crate::builder::handoff::Handoff;
+
+    fn plan(id: &str, hand: Handoff) -> ResolvedBuild {
+        ResolvedBuild {
+            qualified: format!("demo:{id}"),
+            board: "native".to_string(),
+            platform: "posix".to_string(),
+            driver: Driver::Cargo,
+            handoff: Some(hand),
+            rmw: None,
+            entry_package: None,
+            target: None,
+            profile: None,
+            configure: None,
+        }
+    }
+
+    fn nullary(program: &str) -> Handoff {
+        Handoff::new(program, Vec::<String>::new())
+    }
+
+    /// The bug, stated as the invariant it violated: EVERY plan reaches a
+    /// handover, and only the last one is allowed to be the `exec`.
+    ///
+    /// Before the fix this recorded ONE entry — the loop called
+    /// `handoff::exec` on every iteration, and the first one never returned,
+    /// so plans 2..N were unreachable by construction.
+    #[test]
+    fn every_plan_reaches_a_handover_and_only_the_last_execs() {
+        let plans = vec![
+            plan("one", nullary("true")),
+            plan("two", nullary("true")),
+            plan("three", nullary("true")),
+        ];
+        let mut seen: Vec<(String, Handover)> = Vec::new();
+        drive(&plans, false, &mut |h, mode| {
+            seen.push((h.display(), mode));
+            Ok(())
+        })
+        .expect("three plans, three handovers");
+
+        assert_eq!(
+            seen.len(),
+            3,
+            "one handover per plan, not one per invocation: {seen:?}"
+        );
+        assert_eq!(
+            seen.iter().map(|(_, m)| *m).collect::<Vec<_>>(),
+            vec![Handover::Wait, Handover::Wait, Handover::Exec],
+            "exec is spent once, on the LAST plan: {seen:?}"
+        );
+    }
+
+    /// A single image is unchanged: it execs, which is RFC-0065 D1's
+    /// guarantee and the invocation the RFC's prose describes.
+    #[test]
+    fn a_lone_plan_still_execs() {
+        let plans = vec![plan("only", nullary("true"))];
+        let mut seen = Vec::new();
+        drive(&plans, false, &mut |_, mode| {
+            seen.push(mode);
+            Ok(())
+        })
+        .expect("one plan");
+        assert_eq!(seen, vec![Handover::Exec]);
+    }
+
+    /// `--dry-run` prints and hands over to nothing — the property that keeps
+    /// it a print of the real plan rather than a second code path.
+    #[test]
+    fn a_dry_run_performs_no_handover() {
+        let plans = vec![plan("one", nullary("true")), plan("two", nullary("true"))];
+        let mut count = 0usize;
+        drive(&plans, true, &mut |_, _| {
+            count += 1;
+            Ok(())
+        })
+        .expect("dry run");
+        assert_eq!(count, 0, "a dry run must not run anything");
+    }
+
+    /// A failing non-final image stops the run and names itself.
+    ///
+    /// The exit code used to be image 1's verdict whatever happened later,
+    /// because nothing later ever happened.
+    #[test]
+    fn a_failing_earlier_image_stops_the_run_and_is_named() {
+        let plans = vec![plan("one", nullary("true")), plan("two", nullary("true"))];
+        let mut seen = 0usize;
+        let e = drive(&plans, false, &mut |_, _| {
+            seen += 1;
+            eyre::bail!("boom")
+        })
+        .expect_err("the first handover failed");
+        assert_eq!(seen, 1, "nothing after the failure is attempted");
+        let msg = format!("{e:#}");
+        assert!(msg.contains("demo:one"), "{msg}");
+        assert!(msg.contains("image 1 of 2"), "{msg}");
+    }
+
+    /// The `Wait` handover really runs the command — no compiler, and the
+    /// artifact asserted rather than the intention.
+    ///
+    /// This is as close as a unit test gets to "assert both artifacts exist":
+    /// the project bans compiling inside a test, so the end-to-end form of
+    /// that assertion lives in issue 1206's reproduction rather than here.
+    /// What is checkable here is that a non-final plan's command executes and
+    /// has effects — exactly what did not happen before.
+    #[test]
+    fn a_waited_handover_actually_runs_the_command() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let marker = tmp.path().join("built");
+        perform(
+            &Handoff::new("touch", [marker.clone().into_os_string()]),
+            Handover::Wait,
+        )
+        .expect("touch runs");
+        assert!(marker.is_file(), "the command ran and had its effect");
+    }
+
+    /// And a non-zero exit is a failure, not a silent success — the other half
+    /// of "the exit code carries the first image's verdict".
+    #[test]
+    fn a_waited_handover_fails_on_a_non_zero_exit() {
+        let e = perform(&nullary("false"), Handover::Wait).expect_err("`false` exits 1");
+        assert!(format!("{e:#}").contains("exited"), "{e:#}");
     }
 }
