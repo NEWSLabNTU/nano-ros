@@ -1,12 +1,12 @@
 #pragma once
 
-#include <nros/component_node.hpp>
+#include <nros/nros.hpp>
 
 #include "std_msgs.hpp"
 
 namespace subnode_pkg {
 
-/// Sub-node (RFC-0047): ONE ComponentNode with TWO callback groups.
+/// Sub-node (RFC-0047): ONE node with TWO callback groups.
 ///
 /// This is the RFC-0047 core proof: a single node that splits its callbacks across
 /// two scheduling tiers via callback-group binding. The two groups ("ctrl" and
@@ -20,7 +20,7 @@ namespace subnode_pkg {
 /// The entry emits bind_group_sched("sub_node", "ctrl", SC_HIGH) and
 /// bind_group_sched("sub_node", "telem", SC_LOW) before construction, so both
 /// timers land on their respective sched contexts at registration.
-class SubNode : public ::nros::ComponentNode {
+class SubNode : public ::nros::NodeWithTimers<2> {
     ::rclcpp::Publisher<std_msgs::msg::Int32> ctrl_pub_;
     ::rclcpp::Publisher<std_msgs::msg::Int32> telem_pub_;
     int ctrl_count_ = 0;

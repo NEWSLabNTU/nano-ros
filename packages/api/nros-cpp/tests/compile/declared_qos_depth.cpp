@@ -15,7 +15,7 @@
 // on the include path, which exercises the same `__has_include` pickup.
 //
 // `just check cpp` compiles this with `-fsyntax-only -std=c++17`.
-#include <nros/component_node.hpp>
+#include <nros/nros.hpp>
 
 namespace nros_cpp_declared_qos_compile_test {
 
@@ -89,9 +89,9 @@ static_assert(::nros::detail::qos_from_declared_depth(::nros::declared_depth(Boo
 
 // -- The macro, in the shape a component ctor actually writes ---------------
 
-class Listener : public ::nros::ComponentNode {
+class Listener : public ::nros::Node {
   public:
-    explicit Listener(::nros::NodeHandle h) : ::nros::ComponentNode(h, "listener") {
+    explicit Listener(::nros::NodeHandle h) : ::nros::Node(h, "listener") {
         // Mode 1: the code states the QoS and the declaration agrees.
         NROS_SUBSCRIBE(Int32, on_int, "/chatter", ::nros::QoS(1));
         // Mode 2: the code states no QoS, and the declared depth fills in.

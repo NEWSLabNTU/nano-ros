@@ -1,6 +1,6 @@
 /// @file main.cpp
 /// @brief Phase 242.1 + 242.2 (RFC-0044) proof — the rclcpp-faithful component
-/// model. Each node **IS-A** `nros::ComponentNode`; its **constructor** receives
+/// model. Each node **IS-A** `nros::Node`; its **constructor** receives
 /// the executor-bound node handle and creates its entities (a publisher, a typed
 /// member-callback subscription, a typed member timer) as member calls. No
 /// `configure(Node&)`, no callback names, no raw bytes at the authoring surface.
@@ -15,7 +15,6 @@
 #include <cstring>
 #include <new>
 
-#include <nros/component_node.hpp>
 #include <nros/main.hpp> // LinuxBoard::run_components (real executor)
 #include <nros/nros.hpp>
 
@@ -24,16 +23,16 @@
 using Int32 = std_msgs::msg::Int32;
 
 // ---- Talker: IS-A node; ctor creates a publisher + a typed member timer ----
-class Talker : public nros::ComponentNode {
+class Talker : public nros::NodeWithTimers<1> {
     rclcpp::Publisher<Int32> pub_;
     int count_ = 0;
 
   public:
     // Ctor receives the executor-bound handle and wires entities (rclcpp-style).
     // Creation failure aborts (boot-fatal) — no Result threading here.
-    explicit Talker(nros::NodeHandle h) : nros::ComponentNode(h, "cn_talker") {
-        pub_ = create_publisher<Int32>("/chatter");
-        create_wall_timer<Talker, &Talker::on_tick>(500);
+    explicit Talker(nros::NodeHandle h) : nros::NodeWithTimers<1>(h, "cn_talker") {
+        pub_ = create_publisher_in<Int32>("/chatter");
+        create_wall_timer_in<Talker, &Talker::on_tick>(500);
     }
 
     void on_tick() { // real body, bound by identity (no name)
@@ -46,11 +45,11 @@ class Talker : public nros::ComponentNode {
 };
 
 // ---- Listener: IS-A node; ctor creates a typed member-callback subscription -
-class Listener : public nros::ComponentNode {
+class Listener : public nros::Node {
     int recv_ = 0;
 
   public:
-    explicit Listener(nros::NodeHandle h) : nros::ComponentNode(h, "cn_listener") {
+    explicit Listener(nros::NodeHandle h) : nros::Node(h, "cn_listener") {
         // Typed member-callback subscription (242.2). The macro derives Self from
         // `this`; it registers M::TYPE_NAME (DDS-mangled) + deserializes each
         // sample into a typed Int32 before dispatching to on_msg.
@@ -75,7 +74,7 @@ int main(int argc, char** argv) {
 
     // The board owns init → setup → spin_once loop → shutdown, driving the REAL
     // executor. The components are CONSTRUCTED INSIDE setup (after init), because
-    // a ComponentNode ctor creates its node against the now-valid executor handle.
+    // a component ctor creates its node against the now-valid executor handle.
     return ::nros::board::LinuxBoard::run_components([&]() -> int32_t {
         nros::NodeHandle handle(nros::global_handle());
         if (!handle.valid()) {

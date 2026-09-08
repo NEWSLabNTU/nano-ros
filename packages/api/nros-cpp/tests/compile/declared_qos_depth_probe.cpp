@@ -18,7 +18,7 @@
 // The positive TU beside this one is asserted to compile clean FIRST, for the
 // same reason `qos_deprecation_probe.cpp` is: an expected-failure compile
 // cannot tell "the assertion fired" from "the file is not there".
-#include <nros/component_node.hpp>
+#include <nros/nros.hpp>
 
 namespace nros_cpp_declared_qos_probe {
 
@@ -34,9 +34,9 @@ struct Int32 {
     }
 };
 
-class Listener : public ::nros::ComponentNode {
+class Listener : public ::nros::Node {
   public:
-    explicit Listener(::nros::NodeHandle h) : ::nros::ComponentNode(h, "listener") {
+    explicit Listener(::nros::NodeHandle h) : ::nros::Node(h, "listener") {
         // DECLARED @depth=1. PASSED depth 10. This line is the whole test.
         NROS_SUBSCRIBE(Int32, on_int, "/chatter", ::nros::QoS(10));
     }
