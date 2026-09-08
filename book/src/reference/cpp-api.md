@@ -24,9 +24,10 @@ public surface a user application needs.
 - [`nros::Executor`](../api/cpp/classnros_1_1Executor.html), [`Timer`](../api/cpp/classnros_1_1Timer.html), [`GuardCondition`](../api/cpp/classnros_1_1GuardCondition.html)
 - [`nros::ParameterServer<Cap>`](../api/cpp/classnros_1_1ParameterServer.html) — node-local typed parameter store (`bool` / `int64_t` / `double` / `const char*`); compose alongside a `Node`. See [Differences from ROS 2 §9](../concepts/ros2-comparison.md#9-parameters-node-local-server-no-descriptors-no-callbacks-yet) for what is intentionally smaller than `rclcpp`.
 
-The library is freestanding C++14 — no STL, no exceptions. Define
-`NROS_CPP_STD` if you want the optional `std::string` / `std::function` /
-`std::chrono` overloads.
+The library is freestanding C++14 — no STL, no exceptions. A second,
+std-flavoured surface exists for porting upstream rclcpp code and is reached by
+defining `NROS_CPP_STD`; see [Two surfaces](#two-surfaces-freestanding-and-nros_cpp_std)
+below for whether you need it.
 
 > **Two-layer API.** The `nros::ActionServer<A>` / `ActionClient<A>`
 > templates are L2 callback handles (set callbacks via
@@ -45,6 +46,81 @@ The library is freestanding C++14 — no STL, no exceptions. Define
 > cancel_response,result,feedback}_wake_callback(state, cb, ctx)`
 > methods. Pair an `nros_cpp_wake_state_t`
 > with each entity / channel to wake on rx instead of polling.
+
+## Two surfaces: freestanding, and `NROS_CPP_STD`
+
+One set of headers ships two API shapes, and a build picks one.
+
+**The freestanding surface is the default and it is not a fallback.** It is
+plain C++14 with no standard library, no exceptions and no RTTI: `nros::Node`,
+`create_*` writing through an out-reference and returning an `nros::Result`,
+`const char*` for names, `uint64_t period_ms` for durations. Every nano-ros
+program in this repository is on it — the native/host examples included.
+
+**The std surface is an opt-in and it is reached only by defining
+`NROS_CPP_STD`.** Defining it turns on the six `NROS_CPP_HAS_*` capability
+macros in `nros/std_detect.hpp`, and with them: the `std::string` /
+`std::function` / `std::chrono` / `std::vector` convenience overloads in
+`nros/std_compat.hpp`, the `RCLCPP_*_STREAM` logging macros, and — the piece
+that actually motivates the flag — `rclcpp::Node`, whose factories return
+`std::shared_ptr` and whose name parameters are `const std::string&`.
+
+### Do I need this flag?
+
+**The split is *ported rclcpp code* versus *code written for nano-ros*. It is
+not host versus embedded.** A native Linux build does not want the flag any more
+than a Cortex-M3 build does; a ported node wants it on both.
+
+| You are… | Flag | Why |
+| --- | --- | --- |
+| writing a new node against `nros::Node` / `nros::Publisher<M>` / `nros::Executor` | **no** | The freestanding surface is the whole API you are using. This is the common case on every platform, native included. |
+| compiling an upstream ROS 2 `.cpp` unmodified — it says `class MyNode : public rclcpp::Node`, `std::make_shared<MyNode>()`, `create_publisher<M>(...)` returning a `SharedPtr` | **yes** | Those signatures are *spelled in* `std::shared_ptr` and `std::string`. Without the flag they do not exist and you get a compile error naming a missing overload or an unknown `rclcpp::Node`. |
+| passing a `std::string` topic name or a `std::chrono` period into an otherwise nano-ros-native file | **yes** | Those are the `std_compat.hpp` overloads. |
+| building for Zephyr, FreeRTOS, NuttX, ThreadX, or any `-ffreestanding` toolchain | **no** | And here it is not merely unnecessary: asking for the std surface asks the headers to `#include <string>`, which on those toolchains is either absent or a hard `#error`. |
+
+If you are unsure, build without it. The failure direction is loud: a missing
+overload at compile time, never a silent behaviour change.
+
+### Turning it on
+
+Define it on the **target**, not per file:
+
+```cmake
+target_compile_definitions(my_ported_node PRIVATE NROS_CPP_STD=1)
+```
+
+Per-target rather than per-`#define`-before-include, because the macro changes
+the *layout* of `rclcpp::Node` (it carries hosted-only members and an
+`enable_shared_from_this` base), so two translation units of one image
+disagreeing about it is an ODR/layout break rather than a missing function. That
+disagreement is reachable in practice — `examples/px4/cpp/bridge/` sets the flag
+on one module of a larger image deliberately — so keep the definition at
+target granularity and give every TU of a target the same answer.
+
+**A ported project usually needs none of this.**
+`cmake/compat/NrosRclcppCompat.cmake` sets `NROS_CPP_STD=1` on every target it
+touches. Anything reaching `<rclcpp/rclcpp.hpp>` through the compat shim already
+has the surface it needs; see
+[Porting a ROS 2 C++ node](../getting-started/porting-a-cpp-node.md).
+
+### Why it is not detected for you
+
+It used to be. Until phase-438 the capability macros were *discovered* from the
+include path with `__has_include`, so a hosted compiler handed you the
+std-flavoured API whether you asked for it or not. That was removed because no
+probe answers the question correctly on both embedded lanes:
+
+| | `__STDC_HOSTED__` | `__has_include(<string>)` | `#include <string>` |
+| --- | --- | --- | --- |
+| arm-none-eabi 13.2, `-ffreestanding` (FreeRTOS lane) | 0 | TRUE | hard `#error` |
+| Zephyr `-nostdinc++`, minimal libcpp | 1 | FALSE | absent |
+| hosted g++ 12.3 | 1 | TRUE | works |
+
+Each probe is right on exactly one embedded lane and wrong on the other:
+libstdc++ 13 added `bits/requires_hosted.h`, so header *presence* stopped
+implying *usability*. Only the request is right on both, because it is not a
+probe — it is you saying which surface you want. The full measurement lives in
+`packages/api/nros-cpp/include/nros/std_detect.hpp`.
 
 ## Generating locally
 

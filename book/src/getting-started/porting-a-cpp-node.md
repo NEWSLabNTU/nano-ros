@@ -15,6 +15,38 @@ The canonical proof lives at
 the ROS 2 tutorial's `minimal_publisher.cpp` vendored unmodified, building
 against nano-ros via the three glue lines below.
 
+## The one compile definition, and why you do not type it
+
+A ported file names `rclcpp::Node`, `std::make_shared<MyNode>()` and
+`create_publisher<M>(...)` returning a `SharedPtr`. Those signatures are spelled
+in `std::shared_ptr` and `std::string`, and nano-ros compiles that surface only
+when a build **asks** for it by defining `NROS_CPP_STD`. It is never inferred
+from what your compiler happens to have on its include path.
+
+**`cmake/compat/NrosRclcppCompat.cmake` sets it for you**, on every target it
+applies the compat shim to, so a project following the two layers of glue below
+needs nothing extra. You type it yourself only when you build a ported
+translation unit *outside* the compat path:
+
+```cmake
+target_compile_definitions(my_ported_node PRIVATE NROS_CPP_STD=1)
+```
+
+Two things worth knowing before you reach for it:
+
+* **This is not a host-versus-embedded switch.** Code written against
+  `nros::Node` does not want the flag on a native Linux build either; ported
+  rclcpp code wants it on a Cortex-M3 build just as much. The split is *whose
+  code it is*, not *what it runs on*. See
+  [C++ API — two surfaces](../reference/cpp-api.md#two-surfaces-freestanding-and-nros_cpp_std).
+* **Define it per target, not per file.** It changes the layout of
+  `rclcpp::Node`, so two translation units of one image disagreeing about it is
+  an ODR break rather than a missing function.
+
+If you forget it the failure is loud and at compile time — an unknown
+`rclcpp::Node`, or a `create_publisher` overload that does not match — never a
+silent behaviour change.
+
 ## Two layers of glue
 
 ### Per-package CMakeLists.txt — **zero nano-ros lines**
