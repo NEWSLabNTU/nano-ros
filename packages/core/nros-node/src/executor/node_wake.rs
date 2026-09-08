@@ -119,6 +119,20 @@ impl NodeWake {
 
     /// Block until signaled or `timeout_ms` elapses. Returns
     /// `true` on signal, `false` on timeout or error.
+    /// The raw primitive a PORT must wait on if it installs its own park.
+    ///
+    /// phase-436 W7 — a park primitive that waits on its own fresh object
+    /// cannot be broken by the backend's listener, because the listener
+    /// signals THIS one. Installing such a park makes latency worse, not
+    /// better: `spin_once` drops the transport drain to non-blocking once a
+    /// port has parked, so an unbreakable park sleeps out its whole deadline
+    /// with data already waiting.
+    ///
+    /// A port's `ParkUntilFn` therefore takes this pointer as its `ctx`.
+    pub(crate) fn raw_ptr(&self) -> *mut c_void {
+        self.storage.as_ptr() as *mut c_void
+    }
+
     pub(crate) fn wait_ms(&self, timeout_ms: u32) -> bool {
         let ptr = self.storage.as_ptr() as *mut c_void;
         // SAFETY: ptr was init'd in `new`; the underlying
