@@ -362,7 +362,10 @@ static void* zephyr_tier_task(void* arg) {
      *
      * The SLOT size, not `ctx->stack_bytes`: the shim creates every tier
      * thread with the fixed pool slot and only warns when a declared size
-     * exceeds it, so the declared number describes no real stack here. */
+     * exceeds it, so the declared number describes no real stack here.
+     * That is issue 1232 — this asks for the truth rather than fixing the
+     * contract, and should follow the field once 1232 makes it mean
+     * something. */
     if (nros_cpp_executor_derive_min_stack_headroom(ctx->executor_storage,
                                                     nros_zephyr_tier_stack_size()) != 0) {
         /* Fail LOUD. A bound that was never set leaves `stack-headroom-runtime`

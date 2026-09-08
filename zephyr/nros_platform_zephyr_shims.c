@@ -685,7 +685,7 @@ K_THREAD_STACK_ARRAY_DEFINE(nros_tier_stacks, NROS_ZEPHYR_MAX_TIERS, NROS_ZEPHYR
  * `k_thread_create` below is passed NROS_ZEPHYR_TIER_STACK_SIZE, not the
  * tier's declared `stack_bytes` — the pool slots are fixed at compile time, so
  * a declared size can only be checked against the slot (and warned about),
- * never honoured. Anything deriving a bound FROM the stack has to ask for this
+ * never honoured. That gap is issue 1232. Anything deriving a bound FROM the stack has to ask for this
  * number rather than the declared one, or it measures against a stack that
  * does not exist. */
 size_t nros_zephyr_tier_stack_size(void) {
