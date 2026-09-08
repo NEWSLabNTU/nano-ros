@@ -1,6 +1,8 @@
 # Phase 427 — one node type, named `rclcpp::Node`, compiling freestanding
 
-**Status (2026-09-09). W1, W2, W3, W5, W6 and W8 LANDED (W5's runtime half and W6's book page closed 2026-09-09); W4 NOT STARTED; W7 blocked and re-scoped — see "What landed, and what it measured" below.** Implements RFC-0089 §"The node API, proposed
+**Status (2026-09-09). W1, W2, W3, W4, W5, W6 and W8 LANDED (W5's runtime half
+and W6's book page closed 2026-09-09; W4's freestanding acceptance split out as
+issue 1247); W7 blocked and re-scoped — see "What landed, and what it measured" below.** Implements RFC-0089 §"The node API, proposed
 under the governing principle". Preconditions are met by phase-417: the
 `pump()` blocker is gone, `check-cpp-capability-layout` measures the layout
 rule, and the `-nostdinc++` lane can see a freestanding regression.
@@ -13,7 +15,7 @@ Three C++ node shapes collapse to one type:
 | --- | --- | --- |
 | `nros::Node` — out-ref creation, freestanding, 103 files | one type, both spellings | **DONE** |
 | `rclcpp::Node` — hosted, `shared_ptr`, derivable | the same type, hosted members out of line | **DONE** |
-| `nros::ComponentNode` — derivable, entry-supplied handle, 5 dirs | DELETED; its handle becomes a constructor | **NOT STARTED** |
+| `nros::ComponentNode` — derivable, entry-supplied handle, 5 dirs | DELETED; its handle becomes a constructor | **DONE** |
 
 Both spellings name ONE class — `std::is_same<rclcpp::Node, nros::Node>::value`
 is asserted by `tests/compile/one_node_type.cpp`. Which of the two is the
@@ -25,7 +27,7 @@ remaining call sites are still optional to migrate.
 
 W1, W2, W3, W5 landed together (one merge is not divisible), W6/W8 landed
 first because the merge needed the macro, and phase-430's W6 and W7 landed with
-them because they are the same headers. W4 is untouched. W7 turned out not to
+them because they are the same headers. W4 landed 2026-09-09. W7 turned out not to
 mean what it says; the reason is measured and recorded below rather than worked
 around.
 
@@ -331,78 +333,177 @@ node-lifecycle form of the claim is the nros-node cell.
 Negative control: reverting both accessors to `get_logger` fails both cells
 with `both nodes resolved to ONE logger, named `nros``.
 
-## W4 — NOT STARTED, and what it has to decide first
+## W4 — LANDED 2026-09-09, and what measuring it corrected
 
-W4 is the largest item and it is untouched. Attempting it inside this change
-would have shipped a half-merged `ComponentNode`, which is worse than either
-half. What the next person needs, measured rather than assumed:
+Both blockers the previous pass identified were ruled on by the maintainer, and
+both rulings survived contact with a compiler — but the REASONS moved. What
+follows replaces the "what it has to decide first" analysis; the original
+prediction is kept inline where the measurement contradicts it, because a
+corrected prediction is more useful than a deleted one.
 
-**The delta is 14 members, not a rename.** Already on the merged type and
-deletable outright: `get_name`, `get_namespace`, `get_logger`, `node()`
-(now the identity), `create_callback_group`, the scalar parameter facade and its
-`std::string` overloads, and `adopt_launch_seed_` (whose twin
-`rclcpp::detail::adopt_executor_param_seed` already lives in `nros.hpp` — keep
-ONE). Genuinely missing, and each needing a decision:
+### Blocker 1, the silent collision — resolved by RENAME, and the trigger was
+### not the spelling the item named
 
-1. **The `create_publisher` RETURN SHAPE COLLIDES, and the merge is what creates
-   the collision.** `ComponentNode::create_publisher<M>(const char*, const QoS&)`
-   returns `Publisher<M>` BY VALUE; the merged node's
-   `create_publisher<M>(const std::string&, const QoS&)` returns a
-   `shared_ptr`. On one type, `create_publisher<M>("chatter", 10)` — a string
-   LITERAL — binds the `const char*` overload and returns by value, so a ported
-   `auto pub = node->create_publisher<M>("chatter", 10); pub->publish(…)` stops
-   compiling, or worse binds differently than the author expects. This is
-   compile-and-differ manufactured by the merge itself, and it has to be
-   designed away (drop the value-returning form, or give it a different verb)
-   before anything else moves.
-2. **The error latch is 24 unconditional bytes.** `has_error_` + `error_what_` +
-   `error_code_` cannot live in the hosted block — the boot-halt mechanism
-   (`NanoRosEntityInventory.cmake`, RFC-0044 Q2) is exactly what a freestanding
-   image needs. Decide whether every node pays for it.
-3. **The timer pool is 192 unconditional bytes.** `Timer timers_[8]` +
-   `timer_count_`. Same question, larger number, and `NROS_COMPONENT_MAX_TIMERS`
-   is a knob with an `#error` floor that would move onto the node.
-4. **Do NOT add a virtual destructor.** Upstream's `rclcpp::Node` has one, but
-   the generated entry placement-news each component and never destroys it
-   through a base pointer, so a vtable here would be 8 bytes on every
-   freestanding node with no dispatch that uses it — the same argument that
-   deleted `TimerBase` one file over. Derivation works without it; only
-   `delete base_ptr` is UB, and nothing does that.
-5. `check_declared_depth`, the member-pointer `create_subscription` /
-   `create_subscription_in` family, and the `std::vector<T>` parameter arm all
-   move as-is.
+The ruling: the ours-only family takes a different NAME, because in C++ a
+signature-only difference is resolved silently. Applied as an `_in` suffix —
+`create_publisher_in`, `create_subscription_in`, `create_wall_timer_in`,
+`create_timer_in`. Third application of the rule in this campaign, after the
+reordered C node initialiser and the clock-taking C timer verb.
 
-**RFC-0047's "one component, several named nodes" DOES NOT EXIST.** This is a
-correction, not a scoping note: `ComponentNode` owns exactly one `nros::Node`,
-created once in its constructor, and `packages/cli/nros-cli-core/src/
-entity_inventory.rs` states the invariant — "a `ComponentNode` constructor is
-one `Node::create` is one node NAME". What the subnode packages actually
-exercise is **one node with several NAMED CALLBACK GROUPS bound to different
-sched contexts** (`create_callback_group` + `create_timer_in` +
-`create_subscription_in`), which is RFC-0047's real subject and which the merged
-node already carries. The phase table's row should say so; there is no
-several-named-nodes capability to preserve.
+The item predicted `create_publisher<M>("chatter", 10)` would bind OURS, on the
+reasoning that array-to-pointer decay is a standard conversion while
+`std::string` needs a user-defined one. **Measured on the merged shape (gcc 13,
+`-std=c++17`), that call binds UPSTREAM**: `int -> size_t` is a standard
+conversion and rescues upstream's second argument, so ours is not better in
+every argument and does not win.
 
-**No subnode package builds freestanding today.** All three consuming
-`fixtures.toml` rows are `platform = "linux"`. The workspace that HOSTS
-`subnode_pkg` (`examples/workspaces/realtime-cpp`) already has nuttx, freertos
-and zephyr rows, but they select the `configure`-shape packages via their own
-launch files. The smallest path to W4's "one of them builds for a freestanding
-target" is a new `[image.*_subnode]` pointing at `subnode_system.launch.xml`;
-`subnode_pkg/CMakeLists.txt` carries no platform restriction.
+The spelling that DOES collide is the explicit-QoS one:
 
-**Four gates are keyed on the file by PATH or by namespace** and will need
-moving with it: `scripts/api-parity.py`'s `CPP_TRANSLATION_UNITS` includes
-`component_node.hpp` as its own TU and `extract_cxx` RAISES on any clang error,
-so deleting the file is a hard red; `scripts/check-c-array-guard-probe.py` keys
-a table on the literal path; `scripts/check-cxx-standard-floor.py` names it as
-the C++17 floor's justification (`adopt_launch_seed_`'s `if constexpr` is the
-tree's only one); and 17 ledger rows are keyed `cpp:ComponentNode::*`.
+| ported call | binds | how loud |
+| --- | --- | --- |
+| `create_publisher<M>("chatter", 10)` | UPSTREAM (`shared_ptr`) | correct, silent |
+| `create_publisher<M>("chatter", rclcpp::QoS(10))` | **OURS (by value)** | accepted, note only |
 
-Codegen moves with it too: `entry.cpp.jinja` emits the include,
-`node_body.jinja` placement-news the class from a `::nros::NodeHandle`,
-`emit_cpp.rs` has the `is_rclcpp_node` branch, and two goldens record the
-output.
+gcc takes the second as an extension, emitting nothing but "ISO C++ says that
+these are ambiguous". So the collision is real, it is silent, and it fires on
+the spelling a ported rclcpp file is most likely to carry — which is a stronger
+argument for the rename than the one the item made, not a weaker one.
+`nros::QoS(int)` being `explicit` is what keeps the integer form safe;
+`rclcpp::QoS(size_t)` is not explicit, which is what makes the QoS form unsafe.
+
+Pinned in `tests/compile/one_node_type_ours_only_names.cpp`: the positive half
+asserts (via `decltype` on the call, not a comment) that every ported spelling
+reaches upstream's overload on the real type, and the NEGATIVE CONTROL
+reconstructs the pre-rename shape and asserts it binds the wrong one. Without
+the control the file would pass equally well if the collision had never existed.
+
+### Blocker 2, the unconditional bytes — resolved by SPLITTING, and the number
+### the item cited was 0.4 % of the real one
+
+`sizeof(nros::ComponentNode)` measured **55,784 bytes**. The 24-byte latch and
+the 192-byte timer pool the item asks about are rounding error next to its
+inline `ParameterServer<256, 8, 4096>`, which is ~55.5 KB and which **no
+consumer in the tree uses** (zero `declare_parameter` call sites across all
+three subnode/POC packages). So the parameter facade did not move: components
+inherit `Node`'s existing hosted store, and 55.5 KB per component left with the
+type.
+
+Of the two the ruling did address:
+
+- **The error latch STAYS unconditional**, as ruled. It is the error channel a
+  `-fno-exceptions` target has instead of a throwing constructor, so putting it
+  behind the hosted block would leave the firmware case — the one that cannot
+  throw — with no channel at all.
+- **The timer pool becomes a template parameter defaulting to zero**, as ruled,
+  realized as `template <::size_t MaxTimers> class NodeWithTimers : public Node`.
+  `Node` itself could NOT become the template, and this is measured rather than
+  preferred: `rclcpp::Node` is an alias `one_node_type.cpp` asserts with
+  `std::is_same`; 218 in-tree sites spell `Node` with no argument list, which a
+  class template with a defaulted parameter does not permit; and every `Node&`
+  parameter in the tree would otherwise accept exactly one depth, so a component
+  with a pool would not be a node the executor could take. Deriving keeps the
+  IS-A relation `ComponentNode` never had — it WRAPPED a node, which is the
+  reason this merge exists — while keeping the bytes opt-in.
+
+### The number
+
+`sizeof`, via the layout gate's own `ShowSize<sizeof(T)>` probe:
+
+| | hosted `g++ -std=c++17` | freestanding `-nostdinc++` (ThreadX shim) |
+| --- | --- | --- |
+| before W4 | 200 | 200 |
+| **after W4** | **224** | **224** |
+
++24, exactly the latch, and identical in both configurations — so
+`check-cpp-capability-layout` still passes: a capability probe may gate a
+METHOD, never `sizeof`. `NodeWithTimers<N>` adds its pool on top, opt-in.
+
+### The gates: 14 surfaces, not 4
+
+The previous pass reported four gates keyed on the file. A full sweep
+(`scripts`, `just`, `.config`, `.github`, `cmake`, plus every checker in the
+tree) found **fourteen**, and one of the reported four was not a gate on this
+file at all:
+
+**Nine would have HARD-ERRORED** — `scripts/api-parity.py`'s
+`CPP_TRANSLATION_UNITS` (whose `extract_cxx` RAISES on any clang error);
+`nros.hpp`'s own `#include` of the header, which widens that from one TU to all
+four AND breaks `just check cpp`'s header-glob loop; four compile TUs in
+`just/check/lanes.just` (`declared_qos_depth`, its expected-failure probe,
+`timer_binding_paths`, `ros2_param_launch_seed`); `entry.cpp.jinja`'s emitted
+include; and the example/e2e surfaces.
+
+**Five would have passed VACUOUSLY** — the shape this campaign keeps hitting:
+`check-c-array-guard-probe.py`'s `PROBE_CONTEXT` key (the table is consulted
+only for files the scan DISCOVERS, so a key naming a deleted file is never
+read); its upstream half `check-c-array-pool-floors.py`; the two
+`assert!(src.contains("#include <nros/component_node.hpp>"))` unit tests in
+`emit_cpp.rs`, which assert on EMITTED TEXT and so stay green over a header that
+no longer exists; and 18 ledger rows, which `api-parity.py` has no orphan check
+for.
+
+**One was misreported**: `scripts/check-cxx-standard-floor.py` reads its floor
+from `packages/api/nros-cpp/CMakeLists.txt` via a regex on
+`target_compile_features(nros-cpp-headers INTERFACE cxx_std_NN)`. It never opens
+or names `component_node.hpp`; the mentions are docstring and error-message
+prose. The gate is unaffected.
+
+Each retargeted gate carries a negative control. The guard-probe got a new
+STALE-KEY check (a `PROBE_CONTEXT` entry naming a file that does not exist is
+now a failure) — verified to flag the old `component_node.hpp` key and to find
+zero stale keys today. The `emit_cpp.rs` assertions now pin BOTH directions: the
+placement-new include is present AND `component_node.hpp` is absent.
+
+### One thing W4 did not decide
+
+Deleting `adopt_launch_seed_` removed the tree's **last `if constexpr`**. The
+C++17 floor (`cxx_std_17`, raised deliberately by issue 1118) now has no live
+justification in the header set — the remaining three mentions are comments.
+Lowering it is a separate decision with its own blast radius and is NOT part of
+W4; the fact is recorded in `nros.hpp` beside the surviving helper so whoever
+takes it up finds it.
+
+
+### What the pre-W4 analysis predicted, and how it held up
+
+Kept because a corrected prediction is more useful than a deleted one. The
+pre-W4 pass called the delta **14 members, not a rename**, and that was right:
+`get_name`, `get_namespace`, `get_logger`, `node()`, `create_callback_group` and
+the scalar parameter facade were already on the merged type and were deleted
+outright, and `adopt_launch_seed_` went with its twin
+`rclcpp::detail::adopt_executor_param_seed` kept as the surviving one.
+
+Item by item:
+
+1. **The `create_publisher` collision — REAL, wrong trigger.** See blocker 1
+   above: `("chatter", 10)` binds upstream, `("chatter", rclcpp::QoS(10))` binds
+   ours. Resolved by rename, as ruled.
+2. **The 24-byte error latch — CONFIRMED, and it stays unconditional.** Measured
+   `sizeof(nros::Node)` 200 -> 224.
+3. **The 192-byte timer pool — CONFIRMED, and the framing was too small.**
+   `sizeof(ComponentNode)` is 55,784 bytes; the pool is 0.3 % of it and the
+   inline `ParameterServer<256, 8, 4096>` is ~55.5 KB. No consumer uses that
+   facade, so it did not move. The pool became `NodeWithTimers<N>`.
+4. **"Do NOT add a virtual destructor" — FOLLOWED.** None was added. Derivation
+   works without one; only `delete base_ptr` is UB and nothing does that.
+5. **`check_declared_depth` and the member-pointer families moved as-is** — with
+   `_in` names, and the `std::vector<T>` parameter arm did NOT move, because it
+   belonged to the parameter facade that stayed behind.
+
+**RFC-0047's "one component, several named nodes" DOES NOT EXIST** — a
+correction PR #773 landed, and W4 preserved no such capability. `ComponentNode`
+owned exactly one node; what the subnode packages exercise is one node with
+several NAMED CALLBACK GROUPS, which the merged type already carried. The merge
+is TWO constructors, not three.
+
+**No subnode package builds freestanding**, which is why that acceptance became
+issue 1247 rather than a check W4 could run.
+
+Codegen moved with it: `entry.cpp.jinja` dropped the include, the `is_rclcpp_node`
+branch in `emit_cpp.rs` is unchanged (every symbol `node_body.jinja` names —
+`NodeHandle`, `ok()`, `error_what()`, `error_code()`,
+`detail::report_component_failure` — survived the merge), and the two goldens
+moved with the template.
 
 ## Work items
 
@@ -439,19 +540,21 @@ output.
   failed" is also what a typo produces. All 22 in-tree `bind_timer` call sites
   moved in the same commit.
 
-* **W4 [cpp] — `ComponentNode` deleted. NOT STARTED.** See "W4 — NOT STARTED,
-  and what it has to decide first" above: the `create_publisher` return shape
-  COLLIDES on the merged type, the error latch and timer pool are unconditional
-  bytes on every node, RFC-0047's "several named nodes" turns out not to exist
-  (it is several named CALLBACK GROUPS), and four gates are keyed on the file by
-  path or namespace. Its 5 directories move to the one type. RFC-0044 is
-  amended, not deleted — its Q2 boot-failure reasoning becomes `ok()`'s.
-  *Acceptance (amended 2026-09-09, then SPLIT the same day):* zero
-  `ComponentNode` in the tree; the RFC-0047 subnode packages build and run —
-  **as callback-group packages, which is what they are**; and **the freestanding
-  compile probe stays green**. The clause "one of them builds for a freestanding
-  target" was a NEW PORT rather than a check and moves to **W12**; see (c)
-  below.
+* **W4 [cpp] — `ComponentNode` deleted. DONE (2026-09-09), with the freestanding
+  half split out as W12 (issue 1247).** `packages/api/nros-cpp/include/nros/
+  component_node.hpp` is gone; its members are on `nros::Node`, its pool is the
+  opt-in `nros::NodeWithTimers<N>`, and its macros are in `component.hpp`.
+  RFC-0044 is amended, not deleted — its Q2 boot-failure reasoning is `ok()`'s
+  now. The two blocker rulings and what measuring them changed are below.
+  *Acceptance:* zero `ComponentNode` in the tree — **met**; the RFC-0047 subnode
+  packages build and run — **met** (both migrated to `NodeWithTimers<2>`);
+  **one of them builds for a freestanding target** — **NOT met, and it was never
+  a check.** No subnode package has ever had a freestanding fixture row (all
+  three consumers are `platform = "linux"`), so this acceptance names a PORT
+  that has to be written. It is **W12**, filed as issue 1247, rather than attempted here.
+
+  **The plan W4 was built against** — `main`'s amendments of 2026-09-09,
+  kept as the record of what the migration had to decide:
 
   The first version of this item also required that "RFC-0047's
   several-named-nodes survives as a documented ours-only capability on it".
