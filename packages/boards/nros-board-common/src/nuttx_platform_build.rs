@@ -121,7 +121,7 @@ pub fn run_platform() {
 ///
 /// Gated on the NuttX tree being provisioned (`$NUTTX_DIR/include` present); a
 /// bare host `cargo check` (no NuttX export) skips the cross-compile.
-pub fn compile_run_tiers_seam(seam_src: &std::path::Path) {
+pub fn compile_entry_seams(seam_srcs: &[&std::path::Path]) {
     let nuttx_dir = nros_build_paths::nuttx_dir();
     if !nuttx_dir.join("include").exists() {
         return;
@@ -161,13 +161,17 @@ pub fn compile_run_tiers_seam(seam_src: &std::path::Path) {
         seam.include(nuttx_dir.join(inc));
     }
     seam.include(nuttx_dir.join("sched"));
-    seam.file(seam_src);
+    for src in seam_srcs {
+        seam.file(src);
+    }
     seam.compile("nros_nuttx_run_tiers");
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR set by cargo for build scripts");
     println!("cargo:rustc-link-search=native={out_dir}");
     println!("cargo:rustc-link-lib=static:-bundle,+whole-archive=nros_nuttx_run_tiers");
-    println!("cargo:rerun-if-changed={}", seam_src.display());
+    for src in seam_srcs {
+        println!("cargo:rerun-if-changed={}", src.display());
+    }
     // issue 0491 — `NUTTX_DIR` names a DIRECTORY, and cargo compares an env
     // value as TEXT, so fingerprinting the spelling lets two consumers that
     // spell one directory differently invalidate each other inside a shared

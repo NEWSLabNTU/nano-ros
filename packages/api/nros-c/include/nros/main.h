@@ -176,10 +176,18 @@ NROS_PUBLIC int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t d
                                                   const nros_native_tier_spec_t* tiers,
                                                   size_t n_tiers);
 
-/* phase-432 W3.1 — run a SINGLE-executor embedded C entry on FreeRTOS: the
- * C-ABI twin of `nros::board::FreertosBoard::run_components`, so a C-only
+/* phase-432 W3.1 — run a SINGLE-executor embedded C entry on ANY RTOS board:
+ * the C-ABI twin of `nros::board::<Rtos>Board::run_components`, so a C-only
  * consumer (certified C compiler, MISRA-style, no C++ runtime) can boot an
  * image without a C++ toolchain in the build.
+ *
+ * ONE symbol for every RTOS, where `run_tiers` above is one per board. That
+ * asymmetry is real rather than an inconsistency: `run_tiers` spawns a task
+ * per tier and a FreeRTOS task, a Zephyr `k_thread` and a NuttX pthread are
+ * three different things, while the single-executor path differs only in a
+ * per-tick yield that one `#ifdef` covers. `native` keeps its own spelling
+ * below because its SIGNATURE differs — a host process resolves its locator
+ * and domain at run time, so it takes neither.
  *
  * This is the DOMINANT embedded path — `run_tiers` above is reached only when
  * a plan declares tiers — and it is new code rather than a re-declaration: the
@@ -194,10 +202,12 @@ NROS_PUBLIC int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t d
  *
  * The benefit is RMW-CONDITIONAL: it drops the C++ toolchain requirement for
  * zenoh and XRCE, and NOT for cyclonedds or uORB, whose RMW libraries are
- * themselves C++. Defined in nros-board-freertos (board build.rs glue). */
-NROS_PUBLIC int32_t nros_board_freertos_run_components(const char* locator, uint8_t domain_id,
-                                                       const char* session_name,
-                                                       nros_c_entry_setup_fn setup);
+ * themselves C++. Defined in
+ * `packages/boards/nros-board-common/c/nros_rtos_run_components.c`, compiled
+ * by each RTOS board lane. */
+NROS_PUBLIC int32_t nros_board_rtos_run_components(const char* locator, uint8_t domain_id,
+                                                   const char* session_name,
+                                                   nros_c_entry_setup_fn setup);
 
 /* phase-281 W3a (RFC-0015 Model 1) — run a multi-tier embedded C/C++ entry on
  * Zephyr: open ONE RMW session on the caller's thread (the Zephyr `main()`

@@ -1,10 +1,28 @@
 /*
- * freertos_run_components.c — the C-ABI single-executor entry for FreeRTOS.
+ * nros_rtos_run_components.c — the C-ABI single-executor entry, shared by
+ * EVERY RTOS board.
  *
- * phase-432 W3.1. This is the C twin of `nros::board::FreertosBoard::
+ * phase-432 W3.1. This is the C twin of `nros::board::<Rtos>Board::
  * run_components` in `<nros/main.hpp>`, and it exists so a C-only consumer —
  * a certified C compiler, MISRA-style, no C++ runtime — can boot a nano-ros
  * image without a C++ toolchain in the build.
+ *
+ * ## Why ONE file and ONE symbol, where `run_tiers` has three
+ *
+ * `run_tiers` is genuinely per-RTOS: it spawns a task per tier, and a
+ * FreeRTOS task, a Zephyr `k_thread` and a NuttX pthread are three different
+ * things. `run_components` is the SINGLE-EXECUTOR path — open, set up, spin,
+ * shut down, all on the caller's thread — and there is nothing in it that
+ * differs by kernel except the per-tick yield. Three copies of it would have
+ * been three chances for the copies to drift, which is the defect class this
+ * phase exists to remove, and the C++ side already agrees: `run_components`
+ * is written ONCE per board there only because each board is a class, while
+ * the loop under it (`detail::component_spin_loop`) is one function.
+ *
+ * So the symbol is `nros_board_rtos_run_components`, not one name per board.
+ * `native` keeps its own (`nros_board_native_run_components_named`, Rust)
+ * because it has a genuinely different signature: a host process resolves its
+ * locator and domain at run time, so it takes neither.
  *
  * ## Why this is new code rather than a re-declaration
  *
@@ -40,14 +58,13 @@
  * weak symbol in the C++ header, so a pure C entry failed at link. It lives in
  * `<nros/main.h>` now — one definition, both languages reach it.
  *
- * ## Why the spin loop is repeated here rather than shared
+ * ## Why the spin loop is written again here rather than called
  *
  * `detail::component_spin_loop` cannot be called from C for the same reason
- * `ok()` could not: it is a header-emitted C++ inline. What is shared is the
- * CONTRACT, not the text, and the two are checked against each other by
- * `check-entry-runner-parity` rather than by a reader — the C++ version is the
- * one every shipping image boots through today, so a divergence here is a
- * divergence in what a C-only consumer gets, silently.
+ * `ok()` could not: it is a header-emitted C++ inline. This is the one place
+ * the two languages restate each other, and it is deliberately the SMALLEST
+ * possible restatement — the loop and its two exit conditions — rather than a
+ * per-board copy of the whole entry.
  *
  * ## Scope
  *
@@ -99,9 +116,14 @@ extern void nros_platform_dealloc(void* ptr);
 #endif
 #endif
 #ifdef NROS_CPP_EXECUTOR_STORAGE_SIZE
-#define NROS_FREERTOS_COMPONENT_STORAGE_BYTES ((NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) & ~7u)
+#define NROS_RTOS_COMPONENT_STORAGE_BYTES ((NROS_CPP_EXECUTOR_STORAGE_SIZE + 7u) & ~7u)
+#elif defined(__ZEPHYR__)
+/* Zephyr's `run_tiers` sibling carries 96 KiB rather than 80 — kept, not
+ * averaged: a fallback that is too small is issue #245's heap corruption, and
+ * the extra 16 KiB is only reached when the generated header is invisible. */
+#define NROS_RTOS_COMPONENT_STORAGE_BYTES 98304u
 #else
-#define NROS_FREERTOS_COMPONENT_STORAGE_BYTES 81920u
+#define NROS_RTOS_COMPONENT_STORAGE_BYTES 81920u
 #endif
 
 /* Mirrors `nros_c_entry_setup_fn` in <nros/main.h>. Declared locally for the
@@ -143,8 +165,22 @@ static uint32_t nros_freertos_entry_spin_bound_ms(void) {
 }
 #endif
 
+/* The per-tick cooperative yield, mirroring `detail::entry_tick_yield` in
+ * `<nros/main.hpp>` one for one — same condition, same body, same emptiness
+ * elsewhere. Zephyr is cooperatively scheduled, so each tick must release the
+ * CPU to the network stack and the peer threads; the preemptive kernels do not
+ * need it and the C++ path does not do it there either. */
+#ifdef __ZEPHYR__
+#include <zephyr/kernel.h>
+#endif
+static void nros_rtos_entry_tick_yield(void) {
+#ifdef __ZEPHYR__
+    k_yield();
+#endif
+}
+
 /*
- * The C-ABI single-executor FreeRTOS entry.
+ * The C-ABI single-executor RTOS entry.
  *
  * `locator` and `domain_id` are the compile-time `NROS_ENTRY_LOCATOR` /
  * `NROS_ENTRY_DOMAIN_ID` the generated entry bakes (one ladder, in
@@ -156,12 +192,12 @@ static uint32_t nros_freertos_entry_spin_bound_ms(void) {
  * `setup(executor)`, spin, shutdown. Returns 0 on a graceful exit, else the
  * first non-zero `setup` or spin code.
  *
- * Argument order matches `nros_board_freertos_run_tiers` so the two entry
+ * Argument order matches every `nros_board_<rtos>_run_tiers` so the two entry
  * points read the same way at a call site.
  */
-int32_t nros_board_freertos_run_components(const char* locator, uint8_t domain_id,
-                                           const char* session_name,
-                                           nros_c_component_setup_fn setup) {
+int32_t nros_board_rtos_run_components(const char* locator, uint8_t domain_id,
+                                       const char* session_name,
+                                       nros_c_component_setup_fn setup) {
     /* A NULL setup registers nothing, so the image would boot into a spin loop
      * over an empty executor and look like a working node that publishes
      * nothing. The C++ sibling cannot express this — a callable is required by
@@ -175,11 +211,11 @@ int32_t nros_board_freertos_run_components(const char* locator, uint8_t domain_i
 
     const char* sn = (session_name != NULL && session_name[0] != '\0') ? session_name : "node";
 
-    void* storage = nros_platform_alloc(NROS_FREERTOS_COMPONENT_STORAGE_BYTES);
+    void* storage = nros_platform_alloc(NROS_RTOS_COMPONENT_STORAGE_BYTES);
     if (storage == NULL) {
         return NROS_RUN_COMPONENTS_RET_ERROR;
     }
-    memset(storage, 0, NROS_FREERTOS_COMPONENT_STORAGE_BYTES);
+    memset(storage, 0, NROS_RTOS_COMPONENT_STORAGE_BYTES);
 
     int rc = nros_cpp_init(locator, domain_id, sn, NULL, storage);
     if (rc != 0) {
@@ -200,15 +236,18 @@ int32_t nros_board_freertos_run_components(const char* locator, uint8_t domain_i
              * sibling reaches through `nros::spin(bound_ms)`. */
             out = (int32_t)nros_cpp_spin_for(storage, bound_ms, 10);
         } else {
-            /* Unbounded (production): run until the context stops being live.
+            /* Unbounded (production): run until the context stops being live,
+             * yielding per tick exactly where the C++ sibling does.
              *
-             * No per-tick yield, and that is parity rather than an omission:
-             * `detail::entry_tick_yield()` is `k_yield()` under `__ZEPHYR__`
-             * and empty everywhere else, so the C++ path this replaces yields
-             * nothing on FreeRTOS. The pacing is `nros_cpp_spin_once`'s own
-             * 10 ms blocking wait. Adding a `taskYIELD()` here would be a
-             * behaviour difference between the two entry languages on one
-             * board, which is the class this phase exists to remove. */
+             * `nros_rtos_entry_tick_yield()` mirrors `detail::entry_tick_yield`
+             * one for one, INCLUDING that it is empty off Zephyr. That is not
+             * an oversight in either: FreeRTOS and NuttX are preemptive and
+             * `nros_cpp_spin_once`'s 10 ms blocking wait is the pacing, while
+             * Zephyr is cooperatively scheduled and a tick that never yields
+             * starves the network stack and the peer threads (the class behind
+             * issues 0129/0139). Adding a `taskYIELD()` off Zephyr would make
+             * the C entry behave differently from the C++ one on the same
+             * board, which is what this phase exists to stop. */
             for (;;) {
                 if (!nros_cpp_context_is_live(storage)) {
                     break;
@@ -218,6 +257,7 @@ int32_t nros_board_freertos_run_components(const char* locator, uint8_t domain_i
                     out = last;
                     break;
                 }
+                nros_rtos_entry_tick_yield();
             }
         }
     }

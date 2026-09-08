@@ -9,7 +9,7 @@
 //! | `libfreertos.a`          | kernel core + port + heap_4                       |
 //! | `liblwip.a`              | core + IPv4 + API + netif + ethernet + sys_arch   |
 //! | `libnros_platform_freertos.a` | C port providing the `nros_platform_*` ABI   |
-//! | `libfreertos_glue.a`     | `c/freertos_hooks.c` + `c/network_glue.c` + `c/freertos_task_glue.c` + `c/freertos_run_tiers.c` + `c/freertos_run_components.c` |
+//! | `libfreertos_glue.a`     | `c/freertos_hooks.c` + `c/network_glue.c` + `c/freertos_task_glue.c` + `c/freertos_run_tiers.c` + `../nros-board-common/c/nros_rtos_run_components.c` |
 //!
 //! `c/freertos_c_entry.c` is deliberately NOT in that list: it is the C/C++
 //! lane's boot path (`main`), and on the cargo lane `main` is the Rust entry.
@@ -258,9 +258,13 @@ fn main() {
     glue.file(manifest_dir.join("c/freertos_task_glue.c"));
     glue.file(manifest_dir.join("c/freertos_run_tiers.c"));
     // phase-432 W3.1 — the C-ABI single-executor entry, the C twin of
-    // `FreertosBoard::run_components`. Beside `run_tiers.c` because they are the
-    // two entry points of one board surface; a C-only consumer reaches this one.
-    glue.file(manifest_dir.join("c/freertos_run_components.c"));
+    // `FreertosBoard::run_components`. SHARED with every other RTOS board
+    // (`nros_board_rtos_run_components`): the single-executor path differs only
+    // in a per-tick yield, so three copies would be three chances to drift.
+    glue.file(
+        manifest_dir
+            .join("../nros-board-common/c/nros_rtos_run_components.c"),
+    );
     // issue 0478 — cc-rs would hand arm-none-eabi-gcc the clang-only
     // `-mno-omit-leaf-frame-pointer`, which gcc REJECTS. These sites route
     // through neither shared helper, so the policy has to be named here.
@@ -275,7 +279,7 @@ fn main() {
 
     // --- Rerun triggers ---
     println!("cargo:rerun-if-changed=c/freertos_hooks.c");
-    println!("cargo:rerun-if-changed=c/freertos_run_components.c");
+    println!("cargo:rerun-if-changed=../nros-board-common/c/nros_rtos_run_components.c");
     println!("cargo:rerun-if-changed=c/network_glue.c");
     println!("cargo:rerun-if-changed=c/freertos_run_tiers.c");
     println!("cargo:rerun-if-changed=build.rs");

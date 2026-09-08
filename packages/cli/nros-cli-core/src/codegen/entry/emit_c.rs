@@ -94,20 +94,24 @@ fn c_runner_names(board: &str) -> (&'static str, &'static str) {
             "nros_board_native_run_components_named",
             "nros_board_native_run_tiers",
         ),
+        // Every RTOS shares ONE `run_components` — the single-executor path
+        // differs only in a per-tick yield — while `run_tiers` is genuinely
+        // per-board, because a FreeRTOS task, a Zephyr `k_thread` and a NuttX
+        // pthread are three different things.
         nros_entry_lower::BoardFamily::Freertos => (
-            "nros_board_freertos_run_components",
+            "nros_board_rtos_run_components",
             "nros_board_freertos_run_tiers",
         ),
         nros_entry_lower::BoardFamily::Zephyr => (
-            "nros_board_zephyr_run_components",
+            "nros_board_rtos_run_components",
             "nros_board_zephyr_run_tiers",
         ),
         nros_entry_lower::BoardFamily::Nuttx => (
-            "nros_board_nuttx_run_components",
+            "nros_board_rtos_run_components",
             "nros_board_nuttx_run_tiers",
         ),
         nros_entry_lower::BoardFamily::Threadx => (
-            "nros_board_threadx_run_components",
+            "nros_board_rtos_run_components",
             "nros_board_threadx_run_tiers",
         ),
     }

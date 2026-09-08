@@ -49,6 +49,14 @@ EXEMPT = {
     "packages/boards/nros-board-mps2-an385/src/entry.rs": "single-tier bare-metal entry",
     "packages/boards/nros-board-mps2-an385/src/rtic.rs": "RTIC idle task, no tiers",
     "packages/boards/nros-board-esp32-qemu/src/board_entry.rs": "single-tier entry",
+    # phase-432 W3.1 — the C-ABI `run_components`, i.e. the SINGLE-EXECUTOR
+    # entry, shared by every RTOS. There is exactly one executor by
+    # construction and no second tier for it to starve; the tiers path is
+    # `<rtos>_run_tiers.c`, which does carry the gap. It is swept in here only
+    # because the gate keys on `run_tiers` appearing in the RAW text and this
+    # file's comments name it to say it is the other entry point.
+    "packages/boards/nros-board-common/c/nros_rtos_run_components.c":
+        "single-executor entry, no second tier to starve",
     "packages/platform/nros-platform/src/board/rtic_entry.rs": "RTIC seam, no tiers",
     "packages/platform/nros-platform/src/board/runtime.rs": "the trait, not a loop",
     # The executor itself, and the API surface over it.
