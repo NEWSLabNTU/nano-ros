@@ -391,3 +391,117 @@ cost are unchanged, but it becomes a hosted-only method over a `weak_ptr` behind
 Remaining here after the move: W2 (construction), W3 (one name, two signatures —
 now four, see the conciliation section), W4 (`ComponentNode` deleted), W5
 (`get_logger`), W7 (the `nros::Node` alias). W0 and W8 are landed.
+
+
+## W11 [rust] — the spin family takes upstream's names — LANDED 2026-09-09
+
+`Executor::spin` meant `spin(Duration) -> !`. That squats on rclrs's name with a
+different contract, so a ported rclrs `main` had to write `spin_blocking` — and
+the `rclrs_talker_port` measurement (PR #753) counts it as the ONE edit on the
+tutorial's happy path that no real difference forces. Every other line the port
+changes is a real difference the compiler names: the crate a glob comes from,
+the `main` error type, a `mut`, a `?` where upstream has `.first_error()?`.
+
+Take upstream's names; keep the RTOS-specific forms under honest ours-only ones.
+
+| verb | signature | disposition | was |
+| --- | --- | --- | --- |
+| `spin` | `(&mut self, opts: SpinOptions) -> Result<(), NodeError>` | **adopt-bounded** — rclrs's name, argument and meaning | `spin_blocking` (27 sites migrated) |
+| `spin_once` | `(&mut self, timeout: Duration) -> SpinOnceResult` | ours-only, unchanged — the tick primitive; a blocking wait with a budget, which no upstream has (RFC-0089 §2) | — |
+| `spin_some` | `(&mut self, max: Duration) -> Result<(), NodeError>` | **adopt-bounded** — rclcpp's drain verb, NEW | — |
+| `spin_forever` | `(&mut self, opts: SpinOptions) -> !` | **extension** — a bare-metal entry has no shutdown source and nothing to return to, and `!` drops the epilogue | `spin(Duration) -> !` (2 in-file sites) + `spin_default()` (0 sites, deleted) |
+
+**Nothing is deprecated, because nothing needed to be.** The two old spellings
+were reachable only from inside this tree — `spin_blocking` at 27 sites (18 of
+them doc comments and test names), the `-> !` `spin` at 2, both inside
+`spin.rs` — so the old names are gone outright rather than carried as
+feature-armed `#[cfg_attr(…, deprecated)]` aliases (PR #753's precedent, needed
+only because this workspace's `-D warnings` makes a deprecation a hard error at
+every site). `spin_default()` had ZERO call sites and its 50 ms is now a field.
+
+**`SpinOptions` is where the divergence sits**, deliberately, so a ported file
+meets it in one type it already names instead of on the `spin` line:
+
+* `poll_interval: Duration` (default `DEFAULT_SPIN_POLL_INTERVAL`, 10 ms — the
+  value `spin_blocking` carried as a private const). RFC-0002 makes this a poll
+  loop, so the quantum is real and is the granularity at which `cancel()`,
+  `timeout` and `max_callbacks` are OBSERVED. rclrs's executor has no such
+  quantum and no such field. `Default` is hand-written: `Duration::default()`
+  is ZERO, and the derive would have made every `SpinOptions::default()` a
+  busy-poll that still passed every functional test
+  (`spin_options_default_poll_interval_is_the_named_constant` is the guard).
+* `stop_on_first_error: bool` (default `false`). rclrs's `spin` returns
+  `Vec<RclrsError>` and the caller writes `.first_error()?`; there is no
+  allocator, so ours returns the FIRST error and a one-error channel has to say
+  when it stops looking. The value is REAL — `spin_once_capturing` threads the
+  failing callback's `TransportError` out through the caller's frame, so
+  nothing was added to `SpinOnceResult` (which is `Copy` and public) or to
+  `Executor` (which every no-alloc image pays for).
+
+### `spin_some` did NOT absorb the period verbs, and the reason is not scope
+
+`spin_period` / `spin_one_period` / `spin_one_period_timed` stay ours-only.
+They are RFC-0002's fixed-period dispatch and their contract is the opposite of
+a drain's:
+
+* **They PACE.** `spin_period` sleeps to an *accumulated* deadline
+  (`next += period`, never `now + period`) so a 100 Hz loop does not drift;
+  `spin_one_period_timed` measures the pass and sleeps off the remainder and
+  reports `overrun`. `spin_some` executes what is ready, returns, and never
+  sleeps — folding the two would mean a `spin_some` that blocks, which is the
+  one thing the verb promises not to do.
+* **`spin_one_period` returns a VALUE the caller acts on** — `remaining_ms`,
+  for a caller with no clock to perform the sleep itself. `spin_some`'s
+  `Result<(), NodeError>` has nowhere to put that, and widening it would make
+  the drain verb's return type about pacing.
+
+So they keep their names and their `bucket: ours-only` ledger row. rclrs has no
+counterpart for any of the three: it spins as fast as work arrives.
+
+### Envelopes, both stated in the doc comments
+
+* `spin_some(max)`: `max` is checked BETWEEN passes, so it is a floor on when
+  the call returns and not a ceiling — one long callback overruns it, and there
+  is no preemption here to make it otherwise. `Duration::ZERO` means no limit
+  (rclcpp's own default) and is the spelling a clockless build must use; a
+  non-zero `max` with no clock is `NodeError::NotInitialized`, issue 0709's
+  rule at its third site. It re-drains until a pass does no work — rclcpp's
+  `spin_all` answer rather than its `spin_some` one — because our `spin_once`
+  already dispatches the whole ready set in one pass, so the only work a single
+  pass could leave behind is work a callback enqueued.
+* `spin_forever(opts)`: only `poll_interval` and `stop_on_first_error` can mean
+  anything; `timeout` / `only_next` / `max_callbacks` are ENDING conditions and
+  this verb does not end. Passing one logs at `LOG_ERR` on entry rather than
+  being dropped — a discarded ending condition is exactly the "compiles and
+  differs" case RFC-0089 exists to make loud, and a `-> !` signature has no
+  other channel.
+
+### Gating
+
+`spin_once`, `spin_some` and `spin_forever` are ungated and reach a `no_std`
+no-alloc target; `spin` and the period verbs keep the `alloc` gate they had.
+`SpinOptions`'s import in `spin.rs` stopped being `#[cfg(feature = "alloc")]`
+for `spin_forever`'s sake.
+
+### What this leaves for the next wave
+
+* **The port test.** `packages/testing/nros-tests/tests/rclrs_talker_port.rs`
+  is on PR #753's branch (`phase-427-w10-executor-opens-node-named`), NOT on
+  main, so it was not reachable from this work. Its `EXPECTED` entry for line
+  10 must be re-stated once both land: the ported line becomes
+  `executor.spin(SpinOptions::default())?;`, so the RENAME half of that
+  difference is gone. **The count does not drop** — the line still differs,
+  because ours is `?` where upstream is `.first_error()?`, which is the
+  no-allocator divergence and not a naming one. Whoever rebases owes that
+  comment the edit; the `assert_eq!` on the changed-line SET still passes
+  unchanged.
+* **C++.** Its spin family was already conformed by issue 0338
+  (`Executor::spin` blocks until shutdown, the bounded form is `spin_for`) and
+  RFC-0089 §2 settled that `spin_once(timeout)` STAYS as a kept invention. What
+  is missing there is `Executor::spin_some` as an ADDITION — the ledger row
+  `cpp:Executor::spin_some` had `status: blocked-needs-decision` naming a
+  decision since taken twice, and now reads `blocked-needs-cpp-wave` with the
+  work spelled out. One genuine sweep gap was found and filed rather than
+  fixed, because `nros.hpp` is the header PR #755 is rewriting: **issue 1245** —
+  issue 0338 renamed `Executor::spin(ms)` to `spin_for` and left the FREE
+  `nros::spin(duration_ms, poll_ms)` bounded overload behind.
