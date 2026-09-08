@@ -24,8 +24,8 @@ the design section is not restated to argue back.
 Verdicts: **DONE** (425 shipped it — commit, file:line), **PARTIAL** (what is
 missing, one line), **NOT STARTED**, **NO LONGER APPLIES** (the design settled
 it another way). Commits are on `origin/main`; line numbers are the tree this
-was measured in, `phase-428-w10-qos-ssot` at `c27128a40` (45 commits ahead of
-`main`, none behind).
+was measured in, `phase-428-w10-qos-ssot` as it stood on 2026-09-07 (PR #629,
+then 45 commits ahead of `main` and none behind).
 
 | # | Item (source) | Verdict | Evidence |
 | --- | --- | --- | --- |
