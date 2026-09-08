@@ -144,6 +144,20 @@ board = "threadx-linux"
 [image.zephyr]
 board = "native_sim/native/64"
 conf = ["prj-zenoh.conf"]
+# RFC-0085 D4, the same rule `[image.zephyr_cyclonedds]` below already follows:
+# a Zephyr image NAMES its hand-written entry package. This block did not, and
+# was fine while it was the only one — derivation had a single candidate. Adding
+# `zephyr_cyclonedds_entry` beside it made the derivation ambiguous and the
+# build stopped with
+#
+#   Error: [image.zephyr] matches 2 entry packages, so the application cannot
+#   be derived: .../zephyr_cyclonedds_entry .../zephyr_entry
+#
+# so `just zephyr build-fixtures` could not complete. The sibling's own comment
+# predicted exactly this ("sharing makes that lookup ambiguous"); what neither
+# saw is that the AMBIGUITY lands on the block that stayed implicit, not on the
+# one that was added. Naming it is the fix, and it is what the error asks for.
+entry = "zephyr_entry"
 
 # phase-206 W2, final item — the RTOS image that LINKS Cyclone and carries a
 # bringup config. `[image.zephyr]` above is zenoh, and the bringup ships
