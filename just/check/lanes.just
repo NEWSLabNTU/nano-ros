@@ -1780,7 +1780,16 @@ rmw-xrce:
         exit 0
     fi
     BD="$(nros_build_dir "$NROS_KIND_XRCE_CHECK")"
-    cmake -S packages/rmw/xrce/nros-rmw-xrce -B "$BD" -DCMAKE_BUILD_TYPE=Release
+    # Issue 1238 — the project links the archive the CARGO lane builds instead
+    # of compiling the vendored sources twice, so the configure needs an OUT_DIR
+    # only cargo can name, and it is fingerprint-named: it MOVES whenever the
+    # crate's dependency closure changes. This lane passed no `-D` at all, so it
+    # could only ever pass against a cache primed by hand, and a stale cache
+    # names a directory cargo has replaced. Re-resolved on every run, and passed
+    # explicitly so the cache cannot outlive the path.
+    OUT="$(python3 scripts/build/xrce-cffi-out-dir.py)"
+    cmake -S packages/rmw/xrce/nros-rmw-xrce -B "$BD" -DCMAKE_BUILD_TYPE=Release \
+        -DNROS_XRCE_CFFI_OUT_DIR="$OUT"
     cmake --build "$BD" --parallel
     ctest --test-dir "$BD" --output-on-failure
 
