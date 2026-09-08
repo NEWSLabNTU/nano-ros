@@ -1,22 +1,31 @@
 # Phase 436 — The poll/wake revision: a deadline-driven, platform-agnostic executor
 
-**Status (2026-09-07). ALL FIVE WORK ITEMS IMPLEMENTED.** W1–W5 landed
-test-first; the executor now computes a park deadline rather than accepting a
-timeout. Two things the work changed about the phase as written:
+**Status (2026-09-07). ALL SIX WORK ITEMS IMPLEMENTED.** W1–W5 landed first
+and made the park deadline-driven; W6 added the seam they were shaped for. The
+executor now computes a park deadline as a `min` over registered sources and
+hands it to a platform primitive.
 
+Three things the work changed about the phase as written:
+
+* **W1–W5 met the behaviour and missed the seam.** The first five items
+  hardcoded the source set — caller budget and timers, with the backend
+  deadline pre-capped separately — so nothing could contribute `k_poll`,
+  `epoll`, a queue set or a device ISR. The phase is named for that extension
+  point, and it did not exist until W6. Worth recording because everything
+  passed and every test was green throughout: behaviour is not architecture.
 * **W5's issue was wrong about its own evidence.** Issue 1196 said the
-  unbounded `condvar_wait` had no callers. It has two — the grep that produced
-  that claim searched `nros_platform_cond_wait`, and the symbol is
-  `nros_platform_condvar_wait`. W5's gate found them on its first run. Both are
-  correct as written (they bridge zenoh-pico's own unbounded primitive), so the
-  fix became "confine by path and mark the header" rather than "delete".
-* **The `wake_wait_ns` platform slot was NOT built.** Adding a required symbol
-  to five ports buys less than the rounding contract does: carrying µs through
-  the core and rounding UP at the boundary fixes issue 1193's actual harm — the
-  truncation to zero, and the 33 % short wait — without making every port grow
-  a slot. A port that gains a finer primitive can lower `park_granularity_us()`
-  and nothing above it changes. §1 below describes the ns slot as the eventual
-  shape; it is deferred, not done.
+  unbounded `condvar_wait` had no callers. It has two — the grep behind that
+  claim searched `nros_platform_cond_wait`, and the symbol is
+  `nros_platform_condvar_wait`. W5's gate found them on its first run. Both
+  are correct as written (they bridge zenoh-pico's own unbounded primitive),
+  so the fix became "confine by path and mark the header" rather than
+  "delete".
+* **The `wake_wait_ns` platform slot was NOT built.** Carrying µs through the
+  core and rounding UP at the boundary fixes issue 1193's actual harm — the
+  truncation to zero, and the 33 % short wait — without making five ports grow
+  a required symbol. A port that gains a finer primitive lowers
+  `park_granularity_us()` and nothing above it changes. §1 describes the ns
+  slot as the eventual shape; it is deferred, not done.
 
 Also unbuilt, and deliberately: making the wait loops in `handles.rs` wake off
 the backend's listener rather than a fixed grid. W4 fixes the overshoot half of
@@ -100,46 +109,84 @@ rather than silently waiting 1 ms while the jitter rule judges against 1500.
 A monitor whose yardstick and whose mechanism disagree cannot support a safety
 claim; declaring the rounding makes them agree.
 
-### 2. `WakeSource`: the platform-agnostic seam
+### 2. The wake-source seam: many sources say WHEN, one primitive waits
+
+That split is the design. Conflating them is what produced W1's first shape,
+which hardcoded its sources and left no way for a port to contribute one.
 
 ```rust
-/// Something that knows when it will next need the executor.
-pub trait WakeSource {
-    /// Absolute time of this source's next event in the executor's clock.
-    /// `None` means "nothing pending" — the source does not shorten the park.
-    fn next_deadline_ns(&self) -> Option<u64>;
+/// When this source will next need the executor, microseconds FROM NOW.
+/// `u64::MAX` = nothing pending.
+pub type NextDeadlineFn = unsafe extern "C" fn(ctx: *mut c_void) -> u64;
 
-    /// Whether this source can also signal ASYNCHRONOUSLY (ISR or another
-    /// thread) via the wake primitive. A source may be deadline-only
-    /// (a timer on a tickless port), signal-only (a socket), or both.
-    fn is_async(&self) -> bool;
+/// Park until `deadline_us` from now, or until something signals.
+/// 0 = woken by an event, 1 = deadline expired, <0 = cannot park.
+pub type ParkUntilFn = unsafe extern "C" fn(ctx: *mut c_void, deadline_us: u64) -> i8;
+
+pub const MAX_WAKE_SOURCES: usize = 8;   // inline table, no allocator
+
+executor.register_wake_source(next_fn, ctx)?;   // many
+executor.set_park_primitive(park_fn, ctx);      // one
+```
+
+`WakeSourceId` names the winner: `CallerBudget`, `Timer`, `Session`,
+`Platform(u8)`.
+
+An **async** source contributes `u64::MAX` and instead breaks the park by
+signalling — which `nros_rmw_runtime_wake_cb` already does. So async and
+deadline sources compose without a second mechanism.
+
+Registration **refuses past capacity** rather than dropping silently: a source
+quietly discarded would leave the executor sleeping past a deadline it had
+been told about, which is the failure this phase exists to remove.
+
+`Session` is a **candidate, not a pre-cap**. Folding the backend deadline into
+the budget upstream meant a park the session won was attributed to
+`CallerBudget` — the one number that explains a wake named the wrong source.
+
+#### Per platform
+
+| Platform | Park primitive | Natural extra sources | State |
+|---|---|---|---|
+| **Zephyr** | `k_sem_take(timeout)`, ISR-safe `k_sem_give` | `k_poll` event set | wake ✓, `k_poll` unused |
+| **FreeRTOS** | `xSemaphoreTake(ticks)` | queue set, `xSemaphoreGiveFromISR` | wake ✓ |
+| **NuttX** | POSIX condvar — compiles the *identical* POSIX `platform.c`, no NuttX-specific source | `poll`/`epoll`, same POSIX path | wake ✓ (inherited) |
+| **ThreadX** | `tx_semaphore_get(ticks)` | event-flags group | wake ✓ |
+| **Bare metal** | `wfi` + hardware timer compare | smoltcp poll, device ISRs | **no wake primitive at all** |
+
+#### Bare metal is the case that validates the seam
+
+`nros-baremetal-common/src/sleep.rs` already carries these three pieces, as
+untyped function pointers: `ClockMsFn`, `PollFn` (the smoltcp poll — a wake
+source in embryo) and `IdleFn` (`cortex_m::asm::wfi` — the park primitive).
+Its own note states the constraint:
+
+> *"Without an armed IRQ, leave this unset — `wfi` with no pending interrupt
+> deadlocks."*
+
+That is unsatisfiable through a `sleep(duration)` seam, because the sleeper
+cannot know whether anyone armed an interrupt. It falls out of
+`park_until(deadline)`, because the deadline is exactly what the compare is
+armed to:
+
+```rust
+unsafe extern "C" fn park_until_wfi(_ctx: *mut c_void, deadline_us: u64) -> i8 {
+    if deadline_us == 0 { return 1; }
+    arm_timer_compare(deadline_us);   // guarantees an IRQ — no deadlock
+    cortex_m::asm::wfi();             // core clock-gated until IRQ or deadline
+    0
 }
 ```
 
-Core sources, always present, no platform knowledge:
+Today bare metal **busy-waits** in `sleep_ms`, polling a clock, with `wfi` an
+opt-in a board may forget. Under the seam it parks, and the existing `PollFn`
+becomes a registered source rather than a callback invoked inside a spin loop.
 
-| Source | `next_deadline_ns` | Fixes |
-|---|---|---|
-| `CallerBudget` | the `spin_once` timeout | — |
-| `TimerSource` | `min(period_us - elapsed_us)` over live timer entries | **1192** |
-| `SessionSource` | today's `session.next_deadline_ms()`, promoted | — |
-
-Platform sources, registered by the port, never named by the core:
-
-| Port | Natural source |
-|---|---|
-| Zephyr | `k_poll` event set (sockets, queues, semaphores) |
-| POSIX | `epoll` / `eventfd` |
-| FreeRTOS | queue set |
-| ThreadX | event flags group |
-| **Bare metal** | hardware timer compare + `WFI`/`WFE`, ISR calls `wake_signal_from_isr` |
-
-The bare-metal row is why the seam is a *deadline* and not a *sleep*. On a
-Cortex-R/M with no RTOS, "park until the earlier of a hardware timer compare
-and any interrupt" is precisely `WFI` with the compare programmed — zero CPU,
-no scheduler, no busy loop. Expressed as `sleep(duration)` that idiom is not
-reachable; expressed as `park_until(deadline)` it is the *primary* case rather
-than a degraded one.
+The seam is **additive**: with no primitive installed the path is unchanged and
+every existing port keeps the behaviour it has. When one IS installed the
+transport drain drops to non-blocking, because a park plus a blocking drive
+would sum to up to twice the intended cadence — the same trap as passing a
+period to `spin_once` instead of declaring it (#648).
 
 ### 3. The wait
 
@@ -263,6 +310,13 @@ Each is a filed issue; the issue holds the evidence.
   the unbounded `condvar_wait` in the platform API.** Latent — no callers on
   the executor path — but "no unbounded wait" is only a system property if it
   is an API property.
+* **W6 — the wake-source seam itself. DONE.** W1–W5 delivered the BEHAVIOUR —
+  a deadline-driven park, rounded up, attributed — but hardcoded the sources,
+  so the extension point this phase is named for did not exist. W6 adds
+  `register_wake_source` / `set_park_primitive`, widens `WakeSourceId` with
+  `Session` and `Platform(u8)`, and makes the backend deadline a candidate
+  rather than a pre-cap. No issue: this is the phase's own design, not a
+  defect found in the field.
 
 ## Sequencing
 
