@@ -339,14 +339,6 @@
     "verdict": "gap",
     "why": "rclcpp gives each QoS preset its own type; ours are named constructors on one `QoS` -- but C++ ships only THREE (`default_profile`, `sensor_data`, `services`, qos.hpp:175-181) and no clock preset under any name, while our Rust `QoSProfile` has twelve including `clock_default`. So this is not the preset-as-a-type divergence recorded for `cpp:ServicesQoS::ServicesQoS`; it is a preset our own Rust publishes the clock on and our C++ cannot spell. The qos stage owns the family. Phase 379 W3. COLLAPSE CHECK 2026-09-04 (phase-417): the preset now ships as a type on the ported surface (`rclcpp::ClockQoS`, phase-417 W3.f, ADOPT), so this correlates `same` there. The row survives because `--check` gates the NATIVE bucket, where this is still `theirs-only`: `nros::QoS` still has no clock preset. See `cpp:ClockQoS`."
   },
-  "cpp:ComponentNode::create_timer_in": {
-    "verdict": "extension",
-    "why": "the callback-group form of `cpp:ComponentNode::create_timer` (RFC-0047); see `cpp:Node::create_timer_in` and, for the shape rclcpp passes through options instead, the pubsub stage's `cpp:Node::create_publisher_in`."
-  },
-  "cpp:ComponentNode::create_wall_timer": {
-    "verdict": "divergence",
-    "why": "rclcpp's `Node::create_wall_timer(period, callback)` on the RFC-0044 base: ours is `create_wall_timer<Self, &Self::tick>(period_ms)`, the member bound at compile time for the reason `cpp:ComponentNode::create_subscription` gives, plus a `(period_ms, nros_cpp_timer_callback_t, void* ctx)` escape hatch for non-member handlers. The NAME half of the pair is already recorded: `cpp:Node::create_wall_timer` (rename -- ours should carry rclcpp's name) and `cpp:Node::create_timer` (its ours-only half); this row is that same pair one type over, and the type name is the additional question (`cpp:ComponentNode`). Ours also takes `uint64_t period_ms` rather than a `std::chrono::duration` -- freestanding builds have no `<chrono>`, and the chrono spelling exists as the free `nros::create_timer` under `NROS_CPP_STD` (`cpp:create_timer`) -- and parks the `nros::Timer` in the component's inline pool (`NROS_COMPONENT_MAX_TIMERS`) because there is no allocator to keep it alive in; pool exhaustion sets `ok()=false`.\n\nRENAMED 2026-09-05 (phase-425 W1) with the base: both overloads are thin wrappers over `Node::create_wall_timer`, so they moved with it, as did the macro (`NROS_CREATE_WALL_TIMER`). `create_timer_in` keeps its stem. The type name `ComponentNode` remains the additional, separate question."
-  },
   "cpp:Context::interrupt_all_sleep_for": {
     "verdict": "declined",
     "disposition": "absent",
@@ -1284,5 +1276,13 @@
     "verdict": "gap",
     "disposition": "adopt",
     "why": "phase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. The `reset` half of `cpp:Timer::cancel`: absent from our `rclcpp::TimerBase` (compile error on a ported `timer_->reset()`, with no fix inside the adopted API), and widened `void` -> `Result` on `nros::Timer` (`packages/api/nros-cpp/include/nros/timer.hpp:84`) — loud since `Result` became `[[nodiscard]]`. See that row."
+  },
+  "cpp:NodeWithTimers::create_timer_in": {
+    "verdict": "extension",
+    "why": "the callback-group form of `cpp:ComponentNode::create_timer` (RFC-0047); see `cpp:Node::create_timer_in` and, for the shape rclcpp passes through options instead, the pubsub stage's `cpp:Node::create_publisher_in`. phase-427 W4: `nros::ComponentNode` is DELETED and this row moved onto the merged `nros::Node`. ComponentNode WRAPPED a node (RFC-0044 Q1 chose wrap over derive), so a component was not a `Node` and every verb had to be forwarded; the merged type IS one."
+  },
+  "cpp:NodeWithTimers::create_wall_timer_in": {
+    "verdict": "divergence",
+    "why": "rclcpp's `Node::create_wall_timer(period, callback)` on the RFC-0044 base: ours is `create_wall_timer<Self, &Self::tick>(period_ms)`, the member bound at compile time for the reason `cpp:ComponentNode::create_subscription` gives, plus a `(period_ms, nros_cpp_timer_callback_t, void* ctx)` escape hatch for non-member handlers. The NAME half of the pair is already recorded: `cpp:Node::create_wall_timer` (rename -- ours should carry rclcpp's name) and `cpp:Node::create_timer` (its ours-only half); this row is that same pair one type over, and the type name is the additional question (`cpp:ComponentNode`). Ours also takes `uint64_t period_ms` rather than a `std::chrono::duration` -- freestanding builds have no `<chrono>`, and the chrono spelling exists as the free `nros::create_timer` under `NROS_CPP_STD` (`cpp:create_timer`) -- and parks the `nros::Timer` in the component's inline pool (`NROS_COMPONENT_MAX_TIMERS`) because there is no allocator to keep it alive in; pool exhaustion sets `ok()=false`.\n\nRENAMED 2026-09-05 (phase-425 W1) with the base: both overloads are thin wrappers over `Node::create_wall_timer`, so they moved with it, as did the macro (`NROS_CREATE_WALL_TIMER`). `create_timer_in` keeps its stem. The type name `ComponentNode` remains the additional, separate question. phase-427 W4: `nros::ComponentNode` is DELETED and this row moved onto the merged `nros::Node`. ComponentNode WRAPPED a node (RFC-0044 Q1 chose wrap over derive), so a component was not a `Node` and every verb had to be forwarded; the merged type IS one."
   }
 }
