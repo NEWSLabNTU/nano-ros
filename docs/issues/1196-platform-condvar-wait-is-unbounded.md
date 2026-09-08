@@ -78,3 +78,11 @@ and one in-tree caller legitimately needs unbounded semantics.
    be argued for, rather than inheriting a blanket allowance.
 
 Verified by adding a call outside the shim and watching the gate reject it.
+
+## What would close this
+
+Either the unbounded entry point goes away — every remaining caller bridged
+through a deadline the caller owns — or zenoh-pico gains a bounded
+`_z_condvar_wait_until` upstream and the last legitimate caller disappears with
+it. Until one of those happens the gate is the answer, and this issue is the
+record of why the exemption exists.
