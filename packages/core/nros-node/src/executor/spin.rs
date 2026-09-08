@@ -2543,6 +2543,22 @@ impl<'s> Executor<'s> {
         self.park_granularity_declared_us = granularity_us;
     }
 
+    /// The wake primitive a port must hand its `ParkUntilFn` as `ctx`, or NULL
+    /// when this build has none.
+    ///
+    /// phase-436 W7 — a park that waits on its own fresh object is NOT
+    /// breakable by the backend's listener, and installing one makes latency
+    /// worse: once a port has parked, the transport drain drops to
+    /// non-blocking, so an unbreakable park sleeps out its full deadline with
+    /// data already waiting. Waiting on THIS object keeps the async break.
+    #[cfg(all(feature = "alloc", feature = "rmw-cffi"))]
+    pub fn wake_raw_ptr(&self) -> *mut core::ffi::c_void {
+        match self.node_wake.as_ref() {
+            Some(w) => w.raw_ptr(),
+            None => core::ptr::null_mut(),
+        }
+    }
+
     /// Whether a platform park primitive is installed.
     pub fn has_park_primitive(&self) -> bool {
         self.park_primitive.is_some()

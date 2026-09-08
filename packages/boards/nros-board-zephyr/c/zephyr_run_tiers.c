@@ -170,6 +170,40 @@ extern size_t nros_zephyr_tier_stack_size(void);
  * CONFIG_MAIN_STACK_SIZE) — its spec's `stack_bytes` describes no real
  * thread. */
 extern size_t nros_zephyr_main_stack_size(void);
+/* phase-436 W7 — the wake-source seam's C-ABI surface. Without these the
+ * executor here is an opaque handle and the seam is unreachable from this
+ * arm, which is the arm the Zephyr FVP lane takes. */
+extern void* nros_cpp_executor_wake_handle(void* executor);
+extern int nros_cpp_executor_set_park_primitive(void* executor,
+                                                int8_t (*park)(void*, uint64_t), void* ctx,
+                                                uint64_t granularity_us);
+extern int8_t nros_platform_wake_park_until_us(void* w, uint64_t deadline_us);
+extern uint64_t nros_platform_wake_park_granularity_us(void);
+
+/* Install the microsecond park on `executor`, if this build has a wake object
+ * to park on.
+ *
+ * The ctx is the executor's OWN wake object, deliberately: the backend's
+ * listener signals that one, so parking on it keeps the async break. A park on
+ * a fresh semaphore would sleep its whole deadline with data already waiting,
+ * because `spin_once` drops the transport drain to non-blocking once a port
+ * has parked — worse than not parking at all.
+ *
+ * Silent no-op when no wake object exists; that build keeps the millisecond
+ * `wake_wait_ms` path it already had. */
+static void zephyr_install_park(void* executor, const char* tier_name) {
+    void* wake = nros_cpp_executor_wake_handle(executor);
+    if (wake == NULL) {
+        return;
+    }
+    int rc = nros_cpp_executor_set_park_primitive(executor, nros_platform_wake_park_until_us,
+                                                  wake, nros_platform_wake_park_granularity_us());
+    if (rc != 0) {
+        printk("nros: park primitive NOT installed tier=`%s` rc=%d — falling back to the "
+               "millisecond wake path\n",
+               (tier_name != NULL) ? tier_name : "?", rc);
+    }
+}
 
 extern int nros_cpp_spin_once(void* handle, int32_t timeout_ms);
 
@@ -374,6 +408,7 @@ static void* zephyr_tier_task(void* arg) {
         printk("nros: stack-headroom bound NOT set tier=`%s` — the rule stays off\n",
                (ctx->name != NULL) ? ctx->name : "?");
     }
+    zephyr_install_park(ctx->executor_storage, ctx->name);
 
     /* Run the tier's node-setup function. */
     if (ctx->setup != NULL) {
@@ -596,6 +631,7 @@ int32_t nros_board_zephyr_run_tiers(const char* locator, uint8_t domain_id,
         printk("nros: stack-headroom bound NOT set tier=`%s` (boot) — the rule stays off\n",
                (boot->name != NULL) ? boot->name : "?");
     }
+    zephyr_install_park(boot_storage, boot->name);
 
     /* Boot tier node setup. */
     if (boot->setup != NULL) {

@@ -3564,6 +3564,95 @@ pub struct NativeTierSpecC {
 /// valid for the duration of the call. `session_name` is NULL or a valid
 /// null-terminated string.
 #[cfg(all(feature = "rmw-cffi", feature = "env"))]
+
+/// phase-436 W7.a — register a platform deadline source on this executor.
+///
+/// The seam existed only as a Rust method, so the board entries that go through
+/// this ABI — FreeRTOS, NuttX and the C arm of Zephyr, which is the arm the
+/// Zephyr FVP lane takes — could not reach it at all. They hold an opaque
+/// handle, not a typed `Executor`.
+///
+/// `next` returns microseconds FROM NOW until this source next needs the
+/// executor; `u64::MAX` means nothing pending, which is how an asynchronous
+/// source spells itself while breaking the park by signalling instead.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL. `next` and
+/// `ctx` must outlive the executor.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_register_wake_source(
+    handle: *mut c_void,
+    next: Option<unsafe extern "C" fn(*mut c_void) -> u64>,
+    ctx: *mut c_void,
+) -> nros_cpp_ret_t {
+    let Some(next) = next else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    match cpp.executor.register_wake_source(next, ctx) {
+        Ok(_) => NROS_CPP_RET_OK,
+        // The table is fixed-capacity and refuses rather than dropping: a
+        // source silently discarded would leave the executor sleeping past a
+        // deadline it had been told about.
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// phase-436 W7.a — the wake object a port's park primitive must wait on.
+///
+/// Returns NULL when this build has no wake primitive linked.
+///
+/// A `ParkUntilFn` that waits on its own fresh object cannot be broken by the
+/// backend's listener, because the listener signals THIS one — and installing
+/// such a park makes latency WORSE, since `spin_once` drops the transport
+/// drain to non-blocking once a port has parked. Pass this as the park's
+/// `ctx`.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_wake_handle(handle: *mut c_void) -> *mut c_void {
+    match unsafe { cpp_ctx_checked(handle) } {
+        Some(cpp) => cpp.executor.wake_raw_ptr(),
+        None => core::ptr::null_mut(),
+    }
+}
+
+/// phase-436 W7.a — install THE primitive this executor blocks on.
+///
+/// Singular by nature: only one thing can actually wait. `granularity_us` is
+/// the finest park the primitive can express, and the port states it because
+/// only the port knows — an RTOS tick is a coarser limit than the ABI
+/// signature, a timespec primitive a finer one (issue 1242).
+///
+/// `park` returns 0 when woken by an event, 1 when the deadline expired, and a
+/// negative value when it cannot park.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL. `park` and
+/// `ctx` must outlive the executor.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_set_park_primitive(
+    handle: *mut c_void,
+    park: Option<unsafe extern "C" fn(*mut c_void, u64) -> i8>,
+    ctx: *mut c_void,
+    granularity_us: u64,
+) -> nros_cpp_ret_t {
+    let Some(park) = park else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let Some(cpp) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    cpp.executor.set_park_primitive(park, ctx, granularity_us);
+    NROS_CPP_RET_OK
+}
+
 #[cfg(feature = "rmw-cffi")]
 /// Declare how often this executor's loop intends to come round, in
 /// microseconds. `0` (the default) falls back to the `spin_once` timeout.
@@ -3575,6 +3664,7 @@ pub struct NativeTierSpecC {
 ///
 /// # Safety
 /// `handle` must be a live executor handle from this ABI, or NULL.
+#[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_executor_set_spin_nominal_us(
     handle: *mut c_void,
@@ -3587,6 +3677,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_spin_nominal_us(
     NROS_CPP_RET_OK
 }
 
+#[cfg(all(feature = "rmw-cffi", feature = "env"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_board_native_run_tiers(
     session_name: *const c_char,
