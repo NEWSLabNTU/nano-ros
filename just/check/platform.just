@@ -341,6 +341,15 @@ kconfig-overridden-values:
 ivc-fsp:
     @bash scripts/check-ivc-fsp-compile.sh
 
+#
+# phase-412 #7 — it also owns `FACT_DISPOSITION`: every PUBLISHED `NROS_DERIVED_*`
+# fact states what each of the three roads does with it. Carried, with the names
+# it is delivered under; or deliberately not, QUOTING a comment that already
+# exists in the tree (the gate re-reads the cited file, so deleting the comment
+# fails the gate); or an `OpenGap`, printed on every successful run and carrying
+# a tracked issue id, because a gap nobody has justified must not be invented and
+# must not be silent. Three registries used to describe three different subsets
+# of this and all three were green.
 [group("checks")]
 declared-fact-carriers:
     @python3 scripts/check-declared-fact-carriers.py
@@ -359,6 +368,15 @@ declared-fact-carriers:
 # Self-test only here: the end-to-end assertion needs a CONFIGURED build dir,
 # which the fast tier does not have. Point it at one by hand:
 #     python3 scripts/check-knob-delivery.py <build-dir>
+#
+# phase-412 #7 — the STATIC half runs here too, deliberately. `DERIVED_PAIRS` is
+# an authored map and an authored map drifts (the rmw-api-parity lesson), so
+# `check_registry_against_source` harvests the `_nros_resolve_derivable_knob`
+# call sites out of `nros_cargo_build.cmake` and requires the map to match them
+# in both directions. It reads one cmake file, so it is affordable on this lane;
+# putting it behind the build-dir argument would mean no lane ever ran it. The
+# map also stopped being 1:1 — one fact feeds two resolved knobs twice over, and
+# a value that arrived at one and was dropped at the other used to be green.
 [private]
 knob-delivery:
     @python3 scripts/check-knob-delivery.py --self-test
