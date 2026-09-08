@@ -6,13 +6,14 @@ question, "does this gate report", and both halves have now failed in
 production:
 
   R1 PLACEMENT   Every gate `just check` runs -- the derived fast lane, the
-                 `build-serial:` registry, and the names on `default:` -- must
-                 be reached by SOME workflow event. A gate no event runs is
-                 invisible between local full-tier runs, so its reds accumulate
-                 until whoever next runs the tier finds five at once with five
-                 unrelated owners. `check-api-parity` was exactly this: `grep
-                 -rl api-parity .github/workflows/` returned nothing, and three
-                 unclassified ledger rows landed on main on 2026-09-04 alone.
+                 `build-serial:` registry, and the names on `default:` -- AND
+                 every step of `just ci gate` must be reached by SOME workflow
+                 event. A gate no event runs is invisible between local
+                 full-tier runs, so its reds accumulate until whoever next runs
+                 the tier finds five at once with five unrelated owners.
+                 `check-api-parity` was exactly this: `grep -rl api-parity
+                 .github/workflows/` returned nothing, and three unclassified
+                 ledger rows landed on main on 2026-09-04 alone.
 
   R2 VERDICT     A placement must be able to REPORT. A GitHub `run:` block is
                  `bash -e`, so a `just check <gate>` sequenced after another
@@ -30,6 +31,28 @@ three gates and two of them had no verdict at all. That is issue 0952's
 withdrawal class (`ci::gate` prints what it withdrew for the same reason) one
 level down, in YAML, where no recipe can print anything.
 
+WHY R1's SCOPE IS THE `ci gate` LANE AND NOT JUST `check` NAMES -- issue 1226
+
+The rule was written about gates and the SCOPE was written about `just check`,
+which is narrower than the rule (the recurring shape CLAUDE.md's 2026-07-28
+audit found in four gates at once). `just ci gate` has two steps that are not
+`check::` names -- `test-unit` and `test-lane-contracts` -- and the second of
+them reached NO workflow event, on any trigger.
+
+That is not a hypothetical either. `test-lane-contracts` owns
+`fixture_rows_all_modeled_by_matrix`, which asserts every `examples/fixtures.toml`
+coordinate is modeled by a `matrix::CELLS` cell. `9ae271174` (2026-09-06) added a
+`(zephyr-native-sim, cpp, cyclonedds, workspace)` fixture row and no cell; nothing
+between that commit and its merge asked the question, so the lane every contributor
+is told to run before every push was red on `main` for two days, and each of them
+had to triage a red that was not theirs before they could read the green above it.
+
+A step of that lane is in scope EXACTLY BECAUSE it is that lane: CLAUDE.md tells
+every agent to run it before every push, so a red in it is paid by everyone, and
+a step no event reaches accumulates reds between local full-tier runs for the
+same reason a `check` gate does. `check::*` steps resolve through the lane
+machinery below and were already covered; the rest are matched as `just <recipe>`.
+
 WHAT THIS DOES NOT REQUIRE
 
 Merge-gating. `check-build` is deliberately `schedule`/`workflow_dispatch` only:
@@ -46,6 +69,11 @@ recipe in `just/check.just` that is not in `build-serial:`, not exempt in
 `.config/gate-lane-exempt.txt`, and takes no parameters). A second derivation
 here would be the two-spellings bug this repo has paid for repeatedly -- and it
 would answer from a stale set the day the derivation moves again.
+
+The same rule for the lane: the `just ci gate` step list is READ from the
+`steps=(...)` array in `just/ci.just`, which is where the lane itself reads it.
+An authored copy here would go stale the next time a step is added, and would go
+stale in the safe-looking direction -- reporting OK over a smaller set.
 
 Usage::
 
@@ -229,6 +257,37 @@ def _ci_lane_body(lane):
     return body
 
 
+def ci_gate_steps():
+    """The steps of `just ci gate`, read from the lane's own `steps=(...)` array.
+
+    Issue 1226 — this is R1's second scope. `check::<name>` steps resolve through
+    `lane_gates` like any other gate; the rest are plain recipes (`test-unit`,
+    `test-lane-contracts`) that no `just check` name reaches, so nothing here
+    asked whether a workflow runs them, and one of the two did not.
+
+    Read, never re-derived: an authored copy would answer from a stale set the
+    next time the lane gains a step, and in the direction that reports OK.
+    """
+    for line in _ci_lane_body("gate"):
+        m = re.search(r"^\s*steps=\(([^)]*)\)", line)
+        if m:
+            return m.group(1).split()
+    return []
+
+
+def ci_lane_recipes(lane, recipes):
+    """Which of `recipes` a `just ci <lane>` invocation reaches.
+
+    Bounded to the lane's own body, exactly like `ci_lane_gates` and for the same
+    reason. A forwarder whose body is empty (`l1: gate`) therefore credits
+    nothing, which is the conservative direction: `just ci l1` appears inside a
+    heredoc in `queue-notify.yml`, and crediting a step from a line that only
+    TELLS a human to run it is how a placement gate stops being one.
+    """
+    body = "\n".join(l for l in _ci_lane_body(lane) if not l.lstrip().startswith("#"))
+    return {r for r in recipes if re.search(r"(?<![\w-])%s(?![\w-])" % re.escape(r), body)}
+
+
 def ci_lane_gates(lane, depth, fast, build, default):
     """`just ci <lane> [depth]` -> the gate names it reaches.
 
@@ -256,8 +315,14 @@ def ci_lane_gates(lane, depth, fast, build, default):
     return out
 
 
-def placements(fast, build, default):
-    """{gate: [(workflow, events, shadowed_by)]} over every workflow `run:` block."""
+def placements(fast, build, default, recipes=()):
+    """{gate: [(workflow, events, shadowed_by)]} over every workflow `run:` block.
+
+    `recipes` are the non-`check::` steps of `just ci gate` (issue 1226): they are
+    invoked as a bare `just <recipe>`, and they share R1 and R2 with the gates —
+    a lane step CI never runs is invisible the same way, and one sequenced behind
+    a red step in the same `run:` block reports nothing the same way.
+    """
     found = {}
     for wf, events, cmds in run_blocks():
         seen_gate = None
@@ -272,6 +337,10 @@ def placements(fast, build, default):
             m = re.search(r"\bjust\s+ci\s+([a-z0-9-]+)(?:\s+([a-z0-9-]+))?", cmd)
             if m:
                 hits |= ci_lane_gates(m.group(1), m.group(2), fast, build, default)
+                hits |= ci_lane_recipes(m.group(1), recipes)
+            for r in recipes:
+                if re.search(r"\bjust\s+%s(?![\w-])" % re.escape(r), cmd):
+                    hits.add(r)
             if not hits:
                 continue
             named = sorted(hits)[0] if len(hits) == 1 else None
@@ -305,6 +374,33 @@ def self_test():
         lane_gates("fast", fast, build, default) == set(fast))
     chk("a bare `just check` does not reach the build tier",
         set(build) <= lane_gates("default", fast, build, default))
+
+    # R1's second scope — issue 1226. The step list must PARSE (an empty one
+    # reports OK over nothing, which is how the scope was narrow in the first
+    # place), and it must contain steps that are not `check::` names, since those
+    # are the ones no `just check` lane covers.
+    steps = ci_gate_steps()
+    chk("the `just ci gate` step list did not parse", len(steps) >= 2)
+    recipes = [s for s in steps if not s.startswith("check::")]
+    chk("no non-`check::` step in `ci gate` — R1's second scope is vacuous",
+        bool(recipes))
+    chk("a `ci gate` step name looks wrong",
+        all(re.fullmatch(r"[a-z0-9:-]+", s) for s in steps))
+
+    # A recipe step is credited by a bare `just <recipe>` and NOT by a line that
+    # merely mentions it — `just ci l1` sits inside a heredoc in queue-notify.yml
+    # telling a human what to run, and crediting that is how this stops being a
+    # placement gate.
+    probe_recipes = ["test-lane-contracts"]
+    def _hits(cmd):
+        return {r for r in probe_recipes
+                if re.search(r"\bjust\s+%s(?![\w-])" % re.escape(r), cmd)}
+    chk("a bare `just <recipe>` is not credited as a placement",
+        _hits("just test-lane-contracts") == {"test-lane-contracts"})
+    chk("a longer recipe name is credited to the shorter one",
+        _hits("just test-lane-contracts-extra") == set())
+    chk("prose naming a recipe is credited as a placement",
+        _hits("run `test-lane-contracts` before pushing") == set())
 
     # R2's shadow detection, on the exact shape measured on 2026-09-05.
     blocks = run_blocks()
@@ -348,9 +444,9 @@ def self_test():
     return ok
 
 
-def survey(fast, build, default, place):
+def survey(fast, build, default, recipes, place):
     """gate -> the events that run it. Never fails; this is the measurement."""
-    scope = sorted(set(fast) | set(build) | set(default) | set(place))
+    scope = sorted(set(fast) | set(build) | set(default) | set(recipes) | set(place))
     rows = []
     for gate in scope:
         ev = set()
@@ -358,8 +454,9 @@ def survey(fast, build, default, place):
             ev |= set(events)
         rows.append((gate, ev))
     for gate, ev in rows:
-        lane = "fast" if gate in fast else "build" if gate in build else "other"
-        print(f"  {lane:6s} {gate:44s} {','.join(sorted(ev)) or 'NO EVENT'}")
+        lane = ("fast" if gate in fast else "build" if gate in build
+                else "ci-gate" if gate in recipes else "other")
+        print(f"  {lane:7s} {gate:44s} {','.join(sorted(ev)) or 'NO EVENT'}")
     # Three buckets, because two would hide the interesting one. "not
     # merge-gating" lumps a post-submit gate (a verdict per landed commit)
     # together with a nightly-only one (a verdict per day, attributed to a
@@ -385,10 +482,12 @@ def main() -> int:
         return 1
     fast, build, default = lane_members("fast-serial"), lane_members("build-serial"), default_list()
     default = sorted(lane_gates("default", fast, build, default))
-    place = placements(fast, build, default)
+    steps = ci_gate_steps()
+    recipes = sorted({s for s in steps if not s.startswith("check::")})
+    place = placements(fast, build, default, recipes)
 
     if "--survey" in sys.argv:
-        survey(fast, build, default, place)
+        survey(fast, build, default, recipes, place)
         return 0
 
     scope = sorted(set(fast) | set(build) | set(default))
@@ -408,6 +507,22 @@ def main() -> int:
             f"      per-commit attribution is worth its cost."
         )
 
+    # R1, second scope — a `just ci gate` step no workflow event runs (issue 1226).
+    for step in recipes:
+        if place.get(step) or step in NO_PLACEMENT_NEEDED:
+            continue
+        errs.append(
+            f"`just {step}` is a step of `just ci gate` and runs in NO\n"
+            f"      workflow. That lane is what CLAUDE.md tells every contributor\n"
+            f"      to run before every push, so a red in it is paid by all of\n"
+            f"      them — and with no event reaching it, nothing between a commit\n"
+            f"      and its merge asks the question. `test-lane-contracts` was\n"
+            f"      exactly this: a fixtures.toml row with no `matrix::CELLS` cell\n"
+            f"      landed on 2026-09-06 and the lane stayed red for two days\n"
+            f"      (issue 1226). Give it a step in gate.yml — or, if it cannot\n"
+            f"      run there, say why in NO_PLACEMENT_NEEDED."
+        )
+
     # R2 — a placement that cannot produce a verdict.
     #
     # PER PLACEMENT, not "every placement of this gate": a gate that is heard
@@ -422,8 +537,9 @@ def main() -> int:
         shadowed = sorted({f"{wf} (behind `{sh}`)" for wf, _ev, sh in where if sh})
         if not shadowed:
             continue
+        spelling = f"just {gate}" if gate in recipes else f"just check {gate}"
         errs.append(
-            f"`just check {gate}` is SEQUENCED BEHIND another\n"
+            f"`{spelling}` is SEQUENCED BEHIND another\n"
             f"      gate in the same `run:` block: {', '.join(shadowed)}.\n"
             f"      A `run:` block is `bash -e`, so the earlier gate going red\n"
             f"      means this one never executes — and a gate that did not run\n"
@@ -447,8 +563,9 @@ def main() -> int:
                  if place.get(g) and ev & {"pull_request", "merge_group"})
     print(
         f"check-default-gates-run-somewhere: OK — {len(scope)} gate(s) in "
-        f"`just check`'s lanes, all reached by some workflow event ({gating} on a "
-        f"merge-gating one, {heard - gating} report-only); no placement anywhere "
+        f"`just check`'s lanes plus {len(recipes)} non-`check` step(s) of "
+        f"`just ci gate`, all reached by some workflow event ({gating} gate(s) on "
+        f"a merge-gating one, {heard - gating} report-only); no placement anywhere "
         f"is sequenced behind another gate in its `run:` block. "
         f"`--survey` prints gate -> events."
     )

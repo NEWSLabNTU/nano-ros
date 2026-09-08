@@ -6,16 +6,20 @@
 //! for its (platform, lang, rmw) coordinate — a Runtime cell nothing
 //! builds is a lie in the table.
 //!
-//! Reverse (REPORTED, flips to an assert at phase-295 W3-end): every
-//! fixture row's (platform, lang, rmw) maps onto SOME cell coordinate —
-//! rows outside the matrix are either debt the table must model or
-//! orphans to delete. Reported (not asserted) while W3 migrates the
-//! long tail; the report keeps the count visible in every run's output.
+//! Reverse (ASSERTED since phase-295 W3-end; this header said "REPORTED,
+//! flips to an assert at W3-end" for long enough to contradict the test's
+//! own doc-comment ten lines down): every fixture row's (platform, lang,
+//! rmw) maps onto SOME cell coordinate — rows outside the matrix are
+//! either debt the table must model or orphans to delete.
+//!
+//! The reverse direction is the half that pays: a cell that does not exist
+//! cannot be missing a fixture, so the FORWARD assert stays green through
+//! exactly the defect the reverse one catches (issue 1226).
 //!
 //! Sibling of `examples_fixture_coverage.rs` (which checks example DIRS
 //! have fixture rows); this file checks the MATRIX against the rows.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use nros_tests::{
     interop::{self, NO_TEST},
@@ -54,6 +58,23 @@ fn rmw_from_str(s: &str) -> Option<Rmw> {
 /// (platform_idx, lang_idx, rmw_idx, is_workspace) coordinate key.
 type Coord = (u16, u16, u16, bool);
 
+/// What a coordinate was built from: how to SAY it, and which rows produced it.
+///
+/// Indices are what the cell keys compare by, and they are unreadable in a
+/// failure. Issue 1226's report was four integers, `[(1, 2, 1, true)]`, and
+/// naming them cost a hand-decode against three index tables in `matrix.rs`
+/// before anyone could tell which fixture row was orphaned — on a red sitting in
+/// the lane every contributor runs before every push, i.e. paid by each of them
+/// in turn. The names and the row ids are free here; only the comparison needs
+/// indices.
+#[derive(Default)]
+struct CoordRows {
+    /// `ZephyrNativeSim, Cpp, Cyclonedds, Workspace` — the cell you would write.
+    label: String,
+    /// `fixtures.toml` row ids (or dirs, for a row with no id) at this coordinate.
+    rows: BTreeSet<String>,
+}
+
 /// Coordinates present in fixtures.toml + rows whose strings didn't map.
 ///
 /// # Why this shells out instead of parsing the TOML (issue 0482)
@@ -79,7 +100,7 @@ type Coord = (u16, u16, u16, bool);
 /// in-Rust parser counted. That is the point — a coordinate no build produces
 /// cannot satisfy `every_runtime_cell_has_a_fixture_row`, which claims the cell
 /// is BUILT. (There are none today; the semantics matter for the next one.)
-fn fixture_coords() -> (BTreeSet<Coord>, Vec<String>) {
+fn fixture_coords() -> (BTreeMap<Coord, CoordRows>, Vec<String>) {
     let root = nros_tests::project_root();
     let out = std::process::Command::new("python3")
         .arg(root.join("scripts/build/fixtures-manifest.py"))
@@ -94,24 +115,37 @@ fn fixture_coords() -> (BTreeSet<Coord>, Vec<String>) {
     );
     let stdout = String::from_utf8(out.stdout).expect("coords output is utf-8");
 
-    let mut coords = BTreeSet::new();
+    let mut coords: BTreeMap<Coord, CoordRows> = BTreeMap::new();
     let mut unmapped = Vec::new();
     for line in stdout.lines().filter(|l| !l.is_empty()) {
         // <kind>\x1f<platform>\x1f<lang>\x1f<rmw>\x1f<dir>\x1f<id>\x1f<artifact_root>
-        // (`id`/`artifact_root` are phase-340 W3's run-narrowing columns; this
-        // gate does not read them, but it pins the SHAPE so a column added or
-        // dropped fails here rather than silently shifting `dir`.)
+        // (`artifact_root` is phase-340 W3's other run-narrowing column; this
+        // gate does not read it, but the length assert pins the SHAPE so a
+        // column added or dropped fails here rather than silently shifting
+        // `dir`. `id` IS read now — it is what names the offending row in a
+        // failure instead of leaving four integers to decode.)
         let f: Vec<&str> = line.split('\x1f').collect();
         assert_eq!(
             f.len(),
             8,
             "unexpected `coords` record shape (expected 8 \\x1f-separated fields): {line:?}"
         );
-        let (table, p, l, r, dir) = (f[0], f[1], f[2], f[3], f[4]);
+        let (table, p, l, r, dir, id) = (f[0], f[1], f[2], f[3], f[4], f[5]);
         let is_ws = table == "workspace_fixture";
         match (platform_from_str(p), lang_from_str(l), rmw_from_str(r)) {
             (Some(p), Some(l), Some(r)) => {
-                coords.insert((p.index(), l.port_index(), r.index(), is_ws));
+                let kind = if is_ws { "Workspace" } else { "Example" };
+                let e = coords
+                    .entry((p.index(), l.port_index(), r.index(), is_ws))
+                    .or_default();
+                e.label = format!("{p:?}, {l:?}, {r:?}, {kind}");
+                // A row without an `id` is named by its dir — the manifest
+                // allows either, and an empty string names nothing.
+                e.rows.insert(if id.is_empty() {
+                    dir.to_string()
+                } else {
+                    id.to_string()
+                });
             }
             // Unlike the old parser, a row with an unreadable platform/lang is
             // REPORTED rather than skipped: `continue`-ing past it is how a row
@@ -169,7 +203,7 @@ fn every_runtime_cell_has_a_fixture_row() {
             c.rmw.index(),
             is_ws,
         );
-        if !coords.contains(&key) {
+        if !coords.contains_key(&key) {
             missing.push(format!("{c:?}"));
         }
     }
@@ -198,11 +232,27 @@ fn fixture_rows_all_modeled_by_matrix() {
             )
         })
         .collect();
-    let orphans: Vec<_> = coords.difference(&cell_keys).collect();
+    // Named, not indexed. This message used to be four integers per orphan, and
+    // issue 1226 spent a three-column table decoding ONE of them against the
+    // index tables in `matrix.rs` before it could say which row was orphaned.
+    // The reader of this failure is whoever ran the push lane next, usually on
+    // somebody else's change; give them the cell to write and the row that wants
+    // it.
+    let orphans: Vec<String> = coords
+        .iter()
+        .filter(|(k, _)| !cell_keys.contains(*k))
+        .map(|(_, v)| {
+            format!(
+                "  cell({}, …)  <- fixtures.toml row(s): {:?}",
+                v.label, v.rows
+            )
+        })
+        .collect();
     assert!(
         orphans.is_empty() && unmapped.is_empty(),
-        "fixtures.toml coordinates outside the matrix (model them or delete the rows):\n\
-         orphan (platform_idx, lang_idx, rmw_idx, is_ws): {orphans:?}\nunmapped rows: {unmapped:?}"
+        "fixtures.toml coordinates outside the matrix — model them in \
+         `matrix::CELLS` or delete the rows:\n{}\nunmapped rows: {unmapped:?}",
+        orphans.join("\n")
     );
 }
 

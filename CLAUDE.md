@@ -637,6 +637,20 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `coverage` job's own check-run NAME, so `gh run view` answers it without a log.
   Gated by `check-lane-stage-reporting` — the step→stage map is AUTHORED, so a
   renamed step drifts it in the safe-looking direction.
+- **A gate that WORKS is not a gate that RUNS, and the scope of "runs" is the
+  whole `ci gate` lane, not just `just check` names** (issue 1226).
+  `fixture_rows_all_modeled_by_matrix` caught a `fixtures.toml` row with no
+  `matrix::CELLS` cell instantly and correctly — but it lives in
+  `test-lane-contracts`, which NO workflow ran on any event, so nothing between
+  the commit and its merge asked, and the lane CLAUDE.md tells everyone to run
+  before every push sat red on `main` for two days with each contributor
+  triaging somebody else's red first. `check-default-gates-run-somewhere` (issue
+  1040) is the rule; its SCOPE was `just check` names, which is narrower than
+  the rule (the 2026-07-28 audit shape). It now covers the `ci gate` `steps=(…)`
+  array too, READ from `just/ci.just` so it cannot go stale toward OK. Corollary
+  for the failure TEXT: index tuples are not a diagnosis — the orphan message
+  used to be `[(1, 2, 1, true)]` and cost a hand-decode against three tables;
+  name the cell to write and the row that wants it.
 - **Rust edition 2024:** `unsafe extern "C" {}`, `#[unsafe(no_mangle)]`, explicit `unsafe {}` in
   `unsafe fn`. `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]`.
 - **No POSIX-style Rust ctor sections on Zephyr/native_sim/RTOS** — backend registration is an

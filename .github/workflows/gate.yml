@@ -820,13 +820,23 @@ jobs:
           source ./activate.sh
           just check node-std-tests
 
-      # `check-api-parity` is NOT here yet, and the reason is a prerequisite
-      # rather than a cost.
+      # `check-api-parity` has NO step of its own here, and the reason is a
+      # prerequisite rather than a cost.
       #
-      # It is today the only `just ci gate` step that NO workflow runs, on any
-      # event — not the build tier, not the nightly, nothing. That is how
-      # phase-421's `node_get_serialization_format` accessors landed UNLEDGERED
-      # and stayed that way until someone ran the full local tier.
+      # It is NOT unheard, and this comment used to say it was: "the only `just
+      # ci gate` step that NO workflow runs, on any event". That was already
+      # false when written — `api-parity` is a fast-lane gate, so `just check
+      # fast` two steps up runs it on `pull_request` and `merge_group` alike
+      # (`check-default-gates-run-somewhere.py --survey` prints the events) —
+      # and it was false the other way too, because `test-lane-contracts` was
+      # the step no event reached (issue 1226, fixed by the step above). A
+      # comment naming the wrong step is worse than none: it is the thing a
+      # reader consults to decide the lane is covered.
+      #
+      # What is still true is the phase-421 history: the
+      # `node_get_serialization_format` accessors landed UNLEDGERED, and a
+      # DEDICATED step here is what would report parity as its own verdict
+      # rather than folded into `check fast`'s.
       #
       # It cannot run in this container yet. `api_parity/extract_cxx.py` shells
       # out to `clang -Xclang -ast-dump=json` and the image installed no
@@ -1014,6 +1024,39 @@ jobs:
         run: |
           source ./activate.sh
           just test-unit
+
+      # Issue 1226 — the last step of `just ci gate`, and until now the one step
+      # of that lane NO workflow ran, on any event.
+      #
+      # `test-unit` above excludes `nros-tests` by CRATE, because that crate's
+      # tests generally need `just build-test-fixtures` staged first. These two
+      # targets do not: they read `examples/fixtures.toml`, shell out to
+      # `fixtures-manifest.py`, and finish in 0.25 s (measured). So the property
+      # is per-TARGET while the exclusion is per-CRATE, and the gap is exactly
+      # the bookkeeping that says a fixture row and the matrix agree.
+      #
+      # WHAT THE GAP COST. `fixture_rows_all_modeled_by_matrix` asserts every
+      # fixtures.toml coordinate is modeled by a `matrix::CELLS` cell. On
+      # 2026-09-06 `9ae271174` added a `(zephyr-native-sim, cpp, cyclonedds,
+      # workspace)` row and no cell. Nothing between that commit and its merge
+      # asked the question, so it landed, and every contributor running the
+      # documented push lane then met a red that was not theirs — the signal
+      # cost issue 0952 describes, arriving on the lane everyone runs.
+      #
+      # Admissible here under the `check-lane-contracts` rule, and that is a
+      # property of these targets rather than a hope: they resolve no fixture
+      # stamp and build no fixture. Keep it that way — a target added to
+      # `test-lane-contracts` that needs a staged artifact breaks this step and
+      # the tier's promise with it.
+      #
+      # merge_group, not pull_request: same "PR cheap, batch thorough" split as
+      # `test-unit` directly above, and the same consequence — an orphan row is
+      # caught by the queue, and `queue-notify.yml` comments on the PR.
+      - name: just test-lane-contracts (completes the gate lane)
+        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        run: |
+          source ./activate.sh
+          just test-lane-contracts
 
       # Issue 1080 / #1102 follow-up — the FEATURE-COMBINATION gap, closed on
       # the batch lane.
