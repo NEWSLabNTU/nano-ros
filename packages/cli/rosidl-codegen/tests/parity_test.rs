@@ -4,10 +4,12 @@ use rosidl_codegen::{
 };
 use rosidl_parser::{parse_action, parse_message, parse_service};
 use std::{collections::HashSet, fs, path::Path};
-use walkdir::WalkDir;
 
 mod parity_helpers;
 use parity_helpers::{ros_input, ros_input_dir};
+
+mod parity_ledger;
+use parity_ledger::assert_message_dir_parity;
 
 // Issue 0693 — resolve the INSTALLED distro instead of naming one. Every path
 // in this file was a `/opt/ros/jazzy/...` literal while the project installs
@@ -21,6 +23,16 @@ use parity_helpers::{ros_input, ros_input_dir};
 // now: `None` means "this host cannot supply the input", the message says which
 // of the two reasons it is, and an installed package missing the named file is
 // an assertion failure rather than a green.
+//
+// Issue 1176 — the `test_parse_all_*` walks below are a DIFFERENT class from
+// either of those, and were the worse one: their precondition was met, the work
+// ran, the failures were real and counted, and the verdict was still green,
+// under the comment "Don't panic - just report the failures". They hold to a
+// committed ledger now (`parity_ledger`, `tests/parity-expected-failures.txt`),
+// exactly and in both directions. `bundled_interfaces_have_no_parity_failures`
+// runs the same walk over the vendored sources in `packages/cli/interfaces/`,
+// so the ratchet has a verdict on EVERY host — including the ROS-less
+// `check-cli-tests` lane, where the three tests below can only return.
 
 /// Helper to read a .msg file and parse it
 fn read_and_parse_message(path: &Path) -> Result<rosidl_parser::Message, String> {
@@ -171,55 +183,22 @@ fn test_example_interfaces_action() -> Result<(), GeneratorError> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// The whole-package walks — issue 1176
+// ---------------------------------------------------------------------------
+//
+// Each of these used to end in a swallow: count the failures, print them to a
+// stream libtest captures, and pass. They now hold the walk to
+// `tests/parity-expected-failures.txt`, exactly: a failure that is not listed
+// is red, and a listed entry that now succeeds is red too, so the tolerated set
+// cannot grow or rot without a diff someone reviews.
+
 #[test]
 fn test_parse_all_std_msgs() {
     let Some(ros_share) = ros_input_dir("parity_test", "std_msgs", "msg") else {
         return;
     };
-
-    let mut count = 0;
-    let mut failures = Vec::new();
-
-    for entry in WalkDir::new(ros_share)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "msg"))
-    {
-        count += 1;
-        let path = entry.path();
-
-        match read_and_parse_message(path) {
-            Ok(msg) => {
-                let msg_name = path.file_stem().unwrap().to_str().unwrap();
-                match generate_message_package("std_msgs", msg_name, &msg, &HashSet::new()) {
-                    Ok(_) => {}
-                    Err(e) => failures.push(format!("{}: {:?}", path.display(), e)),
-                }
-            }
-            Err(e) => failures.push(format!("{}: {}", path.display(), e)),
-        }
-    }
-
-    if !failures.is_empty() {
-        eprintln!(
-            "Failed to process {} out of {} std_msgs ({}% success rate):",
-            failures.len(),
-            count,
-            (count - failures.len()) * 100 / count
-        );
-        for failure in &failures {
-            eprintln!("  {}", failure);
-        }
-        // Don't panic - just report the failures
-        eprintln!("Note: Some failures expected due to parser limitations (default values, etc.)");
-    }
-
-    println!(
-        "Successfully processed {} out of {} std_msgs messages ({}% success)",
-        count - failures.len(),
-        count,
-        (count - failures.len()) * 100 / count
-    );
+    assert_message_dir_parity("std_msgs", &ros_share, "test_parse_all_std_msgs");
 }
 
 #[test]
@@ -227,50 +206,7 @@ fn test_parse_all_geometry_msgs() {
     let Some(ros_share) = ros_input_dir("parity_test", "geometry_msgs", "msg") else {
         return;
     };
-
-    let mut count = 0;
-    let mut failures = Vec::new();
-
-    for entry in WalkDir::new(ros_share)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "msg"))
-    {
-        count += 1;
-        let path = entry.path();
-
-        match read_and_parse_message(path) {
-            Ok(msg) => {
-                let msg_name = path.file_stem().unwrap().to_str().unwrap();
-                match generate_message_package("geometry_msgs", msg_name, &msg, &HashSet::new()) {
-                    Ok(_) => {}
-                    Err(e) => failures.push(format!("{}: {:?}", path.display(), e)),
-                }
-            }
-            Err(e) => failures.push(format!("{}: {}", path.display(), e)),
-        }
-    }
-
-    if !failures.is_empty() {
-        eprintln!(
-            "Failed to process {} out of {} geometry_msgs ({}% success rate):",
-            failures.len(),
-            count,
-            (count - failures.len()) * 100 / count
-        );
-        for failure in &failures {
-            eprintln!("  {}", failure);
-        }
-        // Don't panic - just report the failures
-        eprintln!("Note: Some failures expected due to parser limitations (default values, etc.)");
-    }
-
-    println!(
-        "Successfully processed {} out of {} geometry_msgs messages ({}% success)",
-        count - failures.len(),
-        count,
-        (count - failures.len()) * 100 / count
-    );
+    assert_message_dir_parity("geometry_msgs", &ros_share, "test_parse_all_geometry_msgs");
 }
 
 #[test]
@@ -278,48 +214,60 @@ fn test_parse_all_sensor_msgs() {
     let Some(ros_share) = ros_input_dir("parity_test", "sensor_msgs", "msg") else {
         return;
     };
+    assert_message_dir_parity("sensor_msgs", &ros_share, "test_parse_all_sensor_msgs");
+}
 
-    let mut count = 0;
-    let mut failures = Vec::new();
-
-    for entry in WalkDir::new(ros_share)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().is_some_and(|ext| ext == "msg"))
-    {
-        count += 1;
-        let path = entry.path();
-
-        match read_and_parse_message(path) {
-            Ok(msg) => {
-                let msg_name = path.file_stem().unwrap().to_str().unwrap();
-                match generate_message_package("sensor_msgs", msg_name, &msg, &HashSet::new()) {
-                    Ok(_) => {}
-                    Err(e) => failures.push(format!("{}: {:?}", path.display(), e)),
-                }
-            }
-            Err(e) => failures.push(format!("{}: {}", path.display(), e)),
-        }
-    }
-
-    if !failures.is_empty() {
-        eprintln!(
-            "Failed to process {} out of {} sensor_msgs ({}% success rate):",
-            failures.len(),
-            count,
-            (count - failures.len()) * 100 / count
-        );
-        for failure in &failures {
-            eprintln!("  {}", failure);
-        }
-        // Don't panic - just report the failures
-        eprintln!("Note: Some failures expected due to parser limitations (default values, etc.)");
-    }
-
-    println!(
-        "Successfully processed {} out of {} sensor_msgs messages ({}% success)",
-        count - failures.len(),
-        count,
-        (count - failures.len()) * 100 / count
+/// The same walk over the VENDORED interface sources — issue 1176.
+///
+/// The three tests above can only answer on a host that has ROS 2 installed,
+/// and the one lane that runs this suite (`check-cli-tests`) deliberately has
+/// none: "It needs no ROS either, and that is a property of the suite rather
+/// than an assumption" is a documented property of that job. So the ratchet
+/// they carry would have fired on nobody's lane, which is most of the way back
+/// to where issue 1176 started.
+///
+/// `packages/cli/interfaces/` is a vendored copy of the ROS 2 Humble sources
+/// for exactly these packages — it exists so codegen works on a ROS-less host,
+/// which makes it the same corpus, checked in. Walking it gives the ledger a
+/// verdict on EVERY host, including CI.
+///
+/// Measured 2026-09-08, the first time anything asked: 133 `.msg` files across
+/// 10 packages, zero parse failures, zero generate failures. That measurement
+/// is why the ledger is empty, and it also retires the claim the old code
+/// shipped instead of an assertion — `parse_message` handles scalar, string and
+/// array defaults, bounded strings, bounded arrays and constants, so "parser
+/// limitations (default values, etc.)" described nothing that was true.
+#[test]
+fn bundled_interfaces_have_no_parity_failures() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("interfaces");
+    assert!(
+        root.is_dir(),
+        "{} is missing — the bundled interface sources are TRACKED, so this is not \
+         an absent environment (issue 1176)",
+        root.display()
     );
+
+    let mut packages: Vec<String> = fs::read_dir(&root)
+        .expect("read packages/cli/interfaces")
+        .flatten()
+        .filter(|e| e.path().join("msg").is_dir())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    packages.sort();
+    assert!(
+        packages.len() >= 8,
+        "only {} bundled packages carry a msg/ directory ({packages:?}); the vendored \
+         set covers ten, and a shrunken walk reads exactly like a passing one",
+        packages.len()
+    );
+
+    for package in &packages {
+        assert_message_dir_parity(
+            package,
+            &root.join(package).join("msg"),
+            &format!("bundled_interfaces_have_no_parity_failures[{package}]"),
+        );
+    }
 }
