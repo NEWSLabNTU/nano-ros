@@ -983,8 +983,21 @@ mod tests {
             "ctrl_pkg/Controller.hpp",
         )]);
         let src = emit_typed(&plan).expect("rclcpp emit ok");
-        // construct-with-handle headers + arena slot
-        assert!(src.contains("#include <nros/component_node.hpp>"));
+        // construct-with-handle headers + arena slot.
+        //
+        // phase-427 W4 — this asserted `#include <nros/component_node.hpp>`
+        // until the merge deleted that header. The assertion had to MOVE
+        // rather than go: it exists to prove the rclcpp-shape branch emits the
+        // placement-new header the arena slot needs, and a test that keeps
+        // asserting a string the template still emits over a file that no
+        // longer exists stays GREEN while every generated entry fails to
+        // compile. Both directions are pinned here.
+        assert!(src.contains("#include <new> // placement-new into the component arena slot"));
+        assert!(src.contains("#include <nros/nros.hpp>"));
+        assert!(
+            !src.contains("component_node.hpp"),
+            "the rclcpp entry must not include the DELETED component_node.hpp"
+        );
         assert!(src.contains("#include \"ctrl_pkg/Controller.hpp\""));
         assert!(src.contains(
             "alignas(::ctrl_pkg::Controller) static unsigned char __nros_comp_buf_0[sizeof(::ctrl_pkg::Controller)];"
@@ -1041,8 +1054,13 @@ mod tests {
         assert!(src.contains("static ::legacy_pkg::Legacy __nros_comp_1;"));
         assert!(src.contains("__nros_comp_1.configure(__nros_node_1)"));
         assert!(!src.contains("__nros_comp_buf_1"));
-        // rclcpp include present because at least one rclcpp node exists.
-        assert!(src.contains("#include <nros/component_node.hpp>"));
+        // rclcpp placement-new include present because at least one rclcpp
+        // node exists (phase-427 W4 — was `component_node.hpp`, deleted).
+        assert!(src.contains("#include <new> // placement-new into the component arena slot"));
+        assert!(
+            !src.contains("component_node.hpp"),
+            "the rclcpp entry must not include the DELETED component_node.hpp"
+        );
     }
 
     #[test]

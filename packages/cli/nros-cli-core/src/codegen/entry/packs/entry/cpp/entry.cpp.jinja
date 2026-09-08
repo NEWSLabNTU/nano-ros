@@ -50,7 +50,6 @@
 {%- endif %}
 {%- if rclcpp_include %}
 #include <new> // placement-new into the component arena slot
-#include <nros/component_node.hpp>
 {%- endif %}
 
 {% for h in headers %}#include "{{ h }}"
