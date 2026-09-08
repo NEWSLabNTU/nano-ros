@@ -823,6 +823,38 @@ cpp: cpp-fmt
             -Ipackages/platform/nros-platform-api/include \
             "$_nostd_tu" || { echo "check-cpp: $(basename "$hdr") does not parse -nostdinc++ against the ThreadX shim" >&2; exit 1; }
     done
+    # phase-438 W4 — `rclcpp::Node`'s UNCONDITIONAL surface, INSTANTIATED.
+    #
+    # The loop above only PARSES, and every other ported-surface probe passes
+    # `-DNROS_CPP_STD=1`, which is the configuration where the out-ref overloads
+    # are the least interesting. Without this the additive half of W4 would be a
+    # claim: declared, never compiled, green either way — the
+    # `check-required-features-reachable` class one directory over.
+    #
+    # Two arms, and both are needed. Hosted-without-the-flag isolates the FLAG
+    # (same compiler, same std, same headers as the ported probes); `-nostdinc++`
+    # is the target that actually has no `<memory>`. The file names nothing from
+    # the porting surface, so it fails exactly when something moves OFF the
+    # unconditional half.
+    _w4_probe=packages/api/nros-cpp/tests/compile/rclcpp_node_freestanding_surface.cpp
+    test -f "$_w4_probe" || { echo "ERROR: $_w4_probe is MISSING -- this check would pass on absence." >&2; exit 1; }
+    echo "  - phase-438 W4: rclcpp::Node's unconditional surface instantiates (no NROS_CPP_STD; hosted + -nostdinc++)"
+    for _w4_arm in "" "-nostdinc++ -isystem $_threadx_shim"; do
+        # shellcheck disable=SC2086
+        c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti $_w4_arm \
+            -Itarget/nros-cpp-generated \
+            -Itarget/nros-c-generated \
+            -Ipackages/api/nros-cpp/include \
+            -Ipackages/api/nros-c/include \
+            -Ipackages/platform/nros-platform-api/include \
+            "$_w4_probe" || {
+            echo "check-cpp: rclcpp::Node's unconditional surface does not compile (arm: ${_w4_arm:-hosted, no -DNROS_CPP_STD})" >&2
+            echo "  W4's contract is that the std-flavoured create_* are ADDITIVE over out-ref forms" >&2
+            echo "  that exist on every target. A method that moved back behind a capability macro" >&2
+            echo "  fails here; check-cpp-capability-layout only measures sizeof and would stay green." >&2
+            exit 1
+        }
+    done
     # Zephyr layers `zephyr/cxx-compat` OVER zephyr's own minimal libcpp, so it
     # needs the workspace checked out. Skipped LOUDLY when absent rather than
     # silently: a skip that reads like a pass is how the synthesised-libcpp gap
