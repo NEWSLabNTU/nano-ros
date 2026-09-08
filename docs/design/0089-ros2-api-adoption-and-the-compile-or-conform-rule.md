@@ -759,10 +759,13 @@ with `ComponentNode`'s two distinguishing features demoted from a type to
 constructors on it:
 
 * construction from an entry-supplied `NodeHandle` rather than the global
-  executor — a constructor overload;
-* RFC-0047's "one component, several named nodes" — genuinely ours-only,
-  because an rclcpp component IS one node. It stays, as a documented divergence
-  with a disposition, not as a second class.
+  executor — a constructor overload.
+
+That is the whole list. An earlier draft had a second item — "RFC-0047's one
+component, several named nodes", called genuinely ours-only — and **it does not
+exist**; see "The several-named-nodes capability, corrected" below. So
+`ComponentNode` carries exactly one thing that is not already on `Node`, and it
+is a constructor.
 
 This also closes the duplication `nros.hpp` already flags against itself
 ("KNOWN DUPLICATION… There should be ONE helper"): the parameter facade exists
@@ -851,19 +854,65 @@ type. What it really carries is two things, and neither is a node kind:
   equivalent is that a manually-composed node is added to an executor the `main`
   owns. This is a CONSTRUCTOR, and its nearest upstream spelling is passing
   `NodeOptions` and letting the caller do `executor.add_node(...)`.
-* **RFC-0047's one-component-several-named-nodes.** This one IS ours-only: an
-  rclcpp component is one node, and a process wanting two makes two objects.
-  Ours exists because a fixed-arena image benefits from one object owning
-  several node identities. It stays — as a documented divergence with a
-  disposition, on the single node type, not as a second class.
+
+There was a second bullet here — "RFC-0047's one-component-several-named-nodes",
+described as ours-only and as a reason to keep a distinction. **It was a
+misreading of RFC-0047 and the capability is not in the tree**; the correction is
+the next section. `ComponentNode` carries ONE thing, and it is a constructor.
+
+### The several-named-nodes capability, corrected (2026-09-09)
+
+Six places in this RFC and two in phase-427 attributed "one component, several
+named nodes" to **RFC-0047**, and listed it as an ours-only capability the merged
+node type must preserve — including as one of "three constructors" on it, one of
+which existed for no other reason. **Every one of those citations is wrong, and
+the capability they name does not exist.** Measured, not reviewed:
+
+* **RFC-0047 is `docs/design/0047-unified-sched-context-binding.md`, "Unified
+  sched-context binding via callback groups".** Its normative content is that a
+  callback binds to a sched-context at the granularity ROS 2 uses — the CALLBACK
+  GROUP — with group structure in code and group→tier policy in `system.toml`.
+  Grepping it for a second node identity returns nothing. Its one sentence about
+  several nodes is a CITATION OF RFC-0046, not a claim of its own.
+* **`ComponentNode` owns exactly one node.** `component_node.hpp:734` is
+  `Node node_;`, a single member; RFC-0044 Q1 chose WRAP over derive precisely so
+  the component holds one `Node`. Every `create_*` forwards to that one member.
+  There is no second identity to name, and no API that could ask for one.
+* **The packages said to exercise it exercise callback groups.** Both subnode
+  packages (`examples/workspaces/realtime-cpp{,-subnode-portable}/src/subnode_pkg`)
+  say so in their own first line — "ONE ComponentNode with TWO callback groups" —
+  and their body creates `ctrl` and `telem` groups on one `sub_node`. That IS
+  RFC-0047, and it is the reason the citation looked plausible: the packages are
+  the RFC-0047 proof, just not of this.
+
+**What is real, under its real name.** Several named nodes in ONE IMAGE exists,
+and it belongs to the **EXECUTOR**, not to a component: `Executor::create_node`
+and `Executor::node_builder(name)` (`executor.hpp:180`, `:189`; the Rust twin in
+"Context and `init`, settled"). Its source is **RFC-0046** — launch-authoritative
+node identity, the single `node_builder(name)` funnel — whose own summary says a
+multi-component launch yields **per-component graph nodes**, one each. RFC-0047
+cites RFC-0046 for exactly this, which is the likeliest route the misattribution
+took.
+
+So the correct statement of the model is one node per component, several
+components per image, all on one executor — which is upstream's manual
+composition unchanged, and needs no ours-only capability at all.
+
+**Consequences, applied throughout this RFC:**
+
+* the merged type has **TWO** constructors, not three. The third existed only to
+  preserve this;
+* nothing here is an ours-only "several identities" divergence, so no ledger row
+  is owed for one;
+* phase-427 W4's acceptance is amended to match (its subnode-package clause is
+  correct as written and stays — those packages are the callback-group proof).
 
 ### What this means for the merge
 
-One node type, three constructors: the global-executor one (`rclcpp::Node`'s,
-what a ported file writes), the handle-taking one (what a generated entry
-writes), and the several-identities one (ours-only, RFC-0047). The RFC-0043
-typed component keeps taking a node by reference, which is unchanged — it was
-never a node type, only a `configure(Node&)` convention.
+One node type, two constructors: the global-executor one (`rclcpp::Node`'s, what
+a ported file writes) and the handle-taking one (what a generated entry writes).
+The RFC-0043 typed component keeps taking a node by reference, which is unchanged
+— it was never a node type, only a `configure(Node&)` convention.
 
 The thing to NOT do is preserve two types because they have two construction
 paths. `rclcpp::Node` already has several constructors and remains one type;
@@ -2383,9 +2432,11 @@ recommending for firmware**, because it is the only one of the three that needs
 no allocator and no vtable.
 
 *`ComponentNode`* becomes `using ComponentNode = Node;` for one release, then
-goes. Its two real contents are already accounted for: the handle constructor
-(3 above) and RFC-0047's several-named-nodes, which stays as an ours-only
-capability on the single type.
+goes. Its one real content is already accounted for: the handle constructor
+(3 above). (This draft also named "RFC-0047's several-named-nodes" as a second
+content and as constructor 3; corrected 2026-09-09 — see "The several-named-nodes
+capability, corrected". The capability is not in the tree and the citation is
+RFC-0046's, about the EXECUTOR.)
 
 ### What this costs, stated rather than implied
 
@@ -2604,8 +2655,9 @@ They answer different questions, and one image holds one of the first and
 several of the second. `Context` is WHERE this image is connected: locator,
 domain, RMW, session mode, and the source those came from. One per process or
 image; a resolved value, not an entity on the graph. `Node` is a named
-participant with its own entities. RFC-0047 already puts several named nodes
-in one image and the bridge image (`Executor::open_multi`) opens two sessions,
+participant with its own entities. RFC-0046 already puts several named nodes
+in one image — one per component, through the single `node_builder(name)` funnel
+— and the bridge image (`Executor::open_multi`) opens two sessions,
 so folding context into node would either copy session config onto every node
 or force one node per session. Upstream draws the same line: rclrs has an
 explicit `Context` object, rclcpp hides one behind `init()` as the global
@@ -2653,7 +2705,7 @@ impl Context {
     pub fn create_executor_in<'b>(&self, backing: &'b mut [MaybeUninit<u64>]) -> Result<Executor<'b>, InitError>;
 }
 impl Executor<'_> {
-    pub fn create_node(&mut self, name: &str) -> Result<Node, NodeError>;   // several named nodes: RFC-0047
+    pub fn create_node(&mut self, name: &str) -> Result<Node, NodeError>;   // several named nodes: RFC-0046
     pub fn spin(&mut self, opts: SpinOptions) -> Result<(), NodeError>;
     pub fn spin_once(&mut self, timeout_ms: u32) -> Result<(), NodeError>; // ours, kept
 }
