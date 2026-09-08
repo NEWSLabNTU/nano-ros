@@ -162,7 +162,7 @@ set(NROS_PLATFORM_FREERTOS_HEAP_3 ON CACHE BOOL
 set(NROS_PLATFORM_FREERTOS_WITH_BAREMETAL_COMPAT OFF CACHE BOOL
     "freertos-posix: the host C library provides what cyclonedds_compat.c fills in" FORCE)
 
-# Issue 1202 — no wake from Cyclone's own thread on this board.
+# Issue 1237 — no wake from Cyclone's own thread on this board.
 #
 # The kernel port here runs tasks as host pthreads, and Cyclone is the HOST
 # library, so `on_data_available` arrives on a thread the port never registered.
@@ -184,7 +184,7 @@ set(NROS_PLATFORM_FREERTOS_WITH_BAREMETAL_COMPAT OFF CACHE BOOL
 # every other FreeRTOS board keeps the listener, because there Cyclone's threads
 # ARE the platform's threads.
 set(NROS_RMW_CYCLONEDDS_FOREIGN_WAKE OFF CACHE BOOL
-    "freertos-posix: Cyclone's receive thread is not a FreeRTOS thread (issue 1202)" FORCE)
+    "freertos-posix: Cyclone's receive thread is not a FreeRTOS thread (issue 1237)" FORCE)
 
 # Read by `cmake/platform/nano-ros-freertos.cmake` BEFORE it stages the Phase
 # 186 Cyclone flags. Those set `WITH_FREERTOS`/`WITH_LWIP` on ddsrt, which

@@ -125,7 +125,7 @@ rmw_ret_t session_set_wake_callback(rmw_session_t* session,
         return NROS_RMW_RET_INVALID_ARGUMENT;
     }
 #ifdef NROS_RMW_CYCLONEDDS_NO_FOREIGN_WAKE
-    /* Issue 1202 — this build's platform cannot be woken from a thread it does
+    /* Issue 1237 — this build's platform cannot be woken from a thread it does
      * not own, so decline the slot and let the runtime fall back to its
      * poll-only path (`spin.rs`: "Poll-only backends (NULL `set_wake_callback`
      * slot)"). `condvar_wait_until` is bounded, so the cost is wake LATENCY,

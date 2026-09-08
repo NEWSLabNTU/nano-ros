@@ -314,7 +314,7 @@ set_target_properties(nros_rmw_cyclonedds PROPERTIES
 # ddsc objects is fragile — see 204.14); enable with
 # `-DNROS_RMW_CYCLONEDDS_IPO=ON` where the toolchain supports it. Pair with
 # `-DCMAKE_BUILD_TYPE=MinSizeRel` (`-Os`) for the smallest wrapper.
-# Issue 1202 — decline the data-available wake slot on a platform that cannot be
+# Issue 1237 — decline the data-available wake slot on a platform that cannot be
 # woken from a thread it does not own.
 #
 # Cyclone calls `on_data_available` from ITS OWN receive thread. On every board
