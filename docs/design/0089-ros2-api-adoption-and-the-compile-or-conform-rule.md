@@ -378,6 +378,48 @@ The generalisation the three share: **a difference the language RESOLVES is a
 difference the user never sees.** Whether it resolves by warning-not-error, by
 arity, or by conversion rank does not change what the porting reader gets.
 
+## A gate whose subject disappears passes vacuously (2026-09-09)
+
+The campaign deletes things — `rclcpp_compat.hpp`, `pump()`, `ComponentNode`,
+`nros::` as a home — and a deletion is the one edit that can turn a gate green
+without anyone touching the gate.
+
+> **When a deletion removes the file or symbol a gate keys on, the gate is
+> retargeted IN THE SAME COMMIT, with a negative control proving it still fails
+> on the condition it was written for.** A gate that no longer has a subject is
+> not a gate that passes; it is a gate that has stopped answering, and it looks
+> identical from the outside.
+
+The negative control is the non-negotiable half. "I moved the pattern" is a
+claim about the gate's text; "it fails on the mutation it exists to catch" is a
+claim about the gate. This repo has the same rule for tests
+(`check-no-vacuous-tests`) and for the merge-gating lanes
+(`check-lane-contracts`); this states it for the deletion case, where the gate
+was correct until the moment the subject went away.
+
+**This is the campaign's most repeated defect class, and every instance was
+found by measurement rather than by review:**
+
+| where | what had stopped answering |
+| --- | --- |
+| `check-cpp-capability-layout`, W1's acceptance (issue 1204) | the gate forced each capability macro ON against a hosted baseline that self-defines all of them, so it compared the baseline against itself seven times — `3752` and `3752`. A broken implementation satisfied it. Rebuilt with a freestanding arm; the honest mutation is on `::nros::Node`, which sits under no capability guard. |
+| `declared_qos_depth.cpp` / `_probe.cpp` (phase-427 W4) | a pair whose whole value is that the lane requires the SECOND to FAIL and greps its diagnostic. "Zero `ComponentNode` in the tree" is satisfied by a migration that leaves both compiling and proving nothing — which is why W4 now accepts on the probe still failing, with the lane's grep moving in the same commit. |
+| `check-cxx-standard-floor`'s docstring | it names `component_node.hpp`'s `if constexpr` as the reason the floor is 17. Delete the header and the gate explains itself with a file that does not exist — the reason goes vacuous even where the check does not. |
+| W4's RFC-0047 acceptance | *"the several-named-nodes capability survives"* — satisfiable only vacuously, because the capability was never there ("The several-named-nodes capability, corrected"). The subject-less variant: no deletion required, the subject never existed. |
+| the `compat` translation unit in the C++ parity lane | reduced by the shim's deletion to a TU that emits only records the `std` TU already emits — measured, 0 of 162 records marked `ported`. A TU that can never contribute reads live and answers nothing; deleted. |
+| `detail::argv_has_ros_args` | the `--ros-args` refusal, if inlined into `init`, would be observable only by a process that then dies. It is `constexpr` and `static_assert`ed in the ordinary compile lane precisely so it cannot quietly stop refusing — both silencing mutations were tried and both fail their own named assertion. |
+
+Two of those (`declared_qos_depth` and `check-cxx-standard-floor`) are owed by
+phase-427 W4's own deletion, which is what makes this a rule the merge has to
+carry rather than a retrospective.
+
+The rule extends past gates to PROSE that cites a subject, which is how this
+class connects to the two staleness rules the campaign already runs:
+`check-ledger-orphan-refs` (a ledger row may not cite a file that does not
+exist) and issue 1022's class (prose citing a source that does not support it).
+A reason nobody can check and a check nobody can fail are the same failure,
+recorded in two places.
+
 ## Where the refusal fires: the earliest point the defect is KNOWABLE
 
 `rclcpp::init(argc, argv)` forced this and it generalises.
