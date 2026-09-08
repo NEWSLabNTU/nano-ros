@@ -35,6 +35,11 @@ set(_NROS_FREERTOS_SHARED_C
     "${_NROS_FREERTOS_FAMILY_DIR}/c/network_glue.c"
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_task_glue.c"
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_run_tiers.c"
+    # phase-432 W3.1 — the C-ABI single-executor runner, beside the tiers one.
+    # Both are the board's entry surface and the CMake lane compiles the family
+    # glue itself (the cargo lane gets the same two files via `build.rs`), so a
+    # runner listed in only one lane links in only one.
+    "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_run_components.c"
     "${_NROS_FREERTOS_FAMILY_DIR}/c/freertos_c_entry.c"
     "${_NROS_BOARD_DIR}/c/board_s32z270.c")
 

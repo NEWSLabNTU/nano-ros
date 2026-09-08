@@ -1,0 +1,59 @@
+{#-
+  The entry point, in the board's boot shape — the C twin of the C++ pack's
+  `boot_wrapper.jinja`, and deliberately the same shape so the two can be read
+  side by side.
+
+  phase-432 W3.1. Before this, the C pack emitted `int main(int argc, char**
+  argv)` and called `nros_board_native_*` unconditionally, because the C board
+  surface WAS native-only and an embedded C entry was routed to the C++ pack.
+  With a board that has its own C-ABI `run_components` the C pack renders for
+  it directly, and the two things that were constants become the board's:
+  which entry point the kernel calls, and which runner it calls.
+
+  Three shapes, ONE derivation — `nros_entry_lower::BoardFamily::boot_shape`
+  (phase-432 W2.2) — shared with the C++ pack rather than re-decided here.
+
+  The host/embedded split in the CALL is the same one the C++ wrapper draws,
+  and for the same reason: only the HOST board resolves its locator and domain
+  at run time (from the environment), so it is the one runner that takes
+  neither. An embedded image bakes both at compile time through
+  `<nros/entry_config.h>`, the single ladder both entry languages include.
+
+  The runner NAMES are carried rather than assembled from the board key: the C
+  ABI does not name them uniformly (`native` has the `_named` suffix that its
+  two-overload history left behind, the RTOS ones do not), so deriving them
+  from a prefix here would be a second, guessing spelling of a fact `emit_c`
+  already holds exactly.
+-#}
+{%- set call -%}
+{%- if boot.tiers -%}
+{%- if boot.shape == "host" -%}
+{{ boot.run_tiers_fn }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u)
+{%- else -%}
+{{ boot.run_tiers_fn }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), __nros_tiers, {{ boot.n_tiers }}u)
+{%- endif -%}
+{%- elif boot.shape == "host" -%}
+{{ boot.run_components_fn }}(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)
+{%- else -%}
+{{ boot.run_components_fn }}(NROS_ENTRY_LOCATOR, (uint8_t)NROS_ENTRY_DOMAIN_ID, nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup)
+{%- endif -%}
+{%- endset -%}
+{%- if boot.shape == "kernel" -%}
+int main(void) {
+    return (int){{ call }};
+}
+{% elif boot.shape == "app" -%}
+int nros_app_main(int argc, char** argv) {
+    (void)argc;
+    (void)argv;
+    return {{ call }};
+}
+
+NROS_APP_MAIN_REGISTER_VOID();
+{% else -%}
+int main(int argc, char** argv) {
+    (void)argc;
+    (void)argv;
+    return {{ call }};
+}
+{% endif -%}
