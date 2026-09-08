@@ -3310,7 +3310,7 @@ pub fn build_native_workspace_cpp_realtime_entry() -> TestResult<&'static Path> 
 
 /// Phase 272 W3 (RFC-0047, issue #124) — the rclcpp-shape 2-tier realtime workspace
 /// entry (cached). Same tier config as realtime-cpp (ctrl_node 10 ms high,
-/// telem_node 100 ms low) but components are IS-A-node `nros::ComponentNode`
+/// telem_node 100 ms low) but components are IS-A-node `nros::Node` subclasses
 /// subclasses (SHAPE rclcpp). Tier binding via the W2-seeded `node_name →
 /// sched_context` table — the runtime proof that #124 is dissolved.
 /// Consumed by tests/realtime_tiers_cpp_rclcpp_e2e.rs.
@@ -3334,7 +3334,7 @@ pub fn build_native_workspace_cpp_rclcpp_realtime_entry() -> TestResult<&'static
 }
 
 /// Phase 273 W4 (RFC-0047) — the sub-node 2-group realtime workspace entry (cached).
-/// ONE `subnode_pkg::SubNode` (IS-A ComponentNode) declares two callback groups
+/// ONE `subnode_pkg::SubNode` (IS-A Node) declares two callback groups
 /// in code ("ctrl" 10 ms, "telem" 100 ms); `system.toml group_tiers` maps them to
 /// the "high" and "low" tiers. The entry emits `bind_group_sched` for BOTH groups of
 /// the SAME node before construction — proving per-group binding (the capability the

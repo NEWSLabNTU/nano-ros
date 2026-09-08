@@ -26,12 +26,12 @@ void SubNode::on_telem() {
     telem_count_++;
 }
 
-SubNode::SubNode(::nros::NodeHandle h) : ::nros::ComponentNode(h, "sub_node") {
+SubNode::SubNode(::nros::NodeHandle h) : ::nros::NodeWithTimers<2>(h, "sub_node") {
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     auto ctrl_grp = create_callback_group("ctrl");
     auto telem_grp = create_callback_group("telem");
-    ctrl_pub_ = create_publisher<std_msgs::msg::Int32>("/ctrl");
-    telem_pub_ = create_publisher<std_msgs::msg::Int32>("/telem");
+    ctrl_pub_ = create_publisher_in<std_msgs::msg::Int32>("/ctrl");
+    telem_pub_ = create_publisher_in<std_msgs::msg::Int32>("/telem");
     create_timer_in<SubNode, &SubNode::on_ctrl>(ctrl_grp, 10);
     create_timer_in<SubNode, &SubNode::on_telem>(telem_grp, 100);
 }

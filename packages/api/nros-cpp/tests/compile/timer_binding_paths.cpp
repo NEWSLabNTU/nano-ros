@@ -17,7 +17,7 @@
 //   3. `create_timer<C, &C::m>(out, clock, ms, self)`, the clock-taking sibling
 //      (phase-430 W6);
 //   4. `create_timer_in<C, &C::m>(group, out, ms, self)`, the RFC-0047 sibling;
-//   5. `ComponentNode::create_wall_timer<C, &C::m>(ms)`, whose body was the one
+//   5. `NodeWithTimers<N>::create_wall_timer_in<C, &C::m>(ms)`, whose body was the one
 //      remaining in-header caller of the free function.
 //
 // `nros::bind_timer` itself is NOT called here: its deprecation is asserted by
@@ -60,14 +60,17 @@ struct Component {
     }
 };
 
-/// The RFC-0044 derivable shape. Its `create_wall_timer` body used to call the
+/// The RFC-0044 derivable shape. Its storage-free timer body used to call the
 /// free `bind_timer`; it calls the member now, and this is the only place that
-/// body is instantiated.
-class DerivedComponent : public nros::ComponentNode {
+/// body is instantiated. phase-427 W4 moved it off `ComponentNode` onto
+/// `nros::NodeWithTimers<N>` and renamed the verb `create_wall_timer_in` — the
+/// pool-parked form takes no storage argument, so under upstream's bare name it
+/// would differ from `create_wall_timer(duration, callback)` by SIGNATURE alone.
+class DerivedComponent : public nros::NodeWithTimers<1> {
   public:
     explicit DerivedComponent(nros::NodeHandle handle)
-        : nros::ComponentNode(handle, "derived_component") {
-        create_wall_timer<DerivedComponent, &DerivedComponent::on_tick>(100);
+        : nros::NodeWithTimers<1>(handle, "derived_component") {
+        create_wall_timer_in<DerivedComponent, &DerivedComponent::on_tick>(100);
     }
 
     void on_tick() {}

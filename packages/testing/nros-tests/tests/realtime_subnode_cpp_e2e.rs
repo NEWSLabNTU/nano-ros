@@ -3,7 +3,7 @@
 //!
 //! **What this proves (RFC-0047 core capability):**
 //! `examples/workspaces/realtime-cpp` declares ONE C++ component:
-//! `subnode_pkg::SubNode`, a `nros::ComponentNode` subclass that creates TWO
+//! `subnode_pkg::SubNode`, a `nros::NodeWithTimers<2>` subclass that creates TWO
 //! callback groups in its constructor:
 //!
 //!   ```cpp
