@@ -337,5 +337,6 @@ The files OUTSIDE `examples/templates/**` that must move in the same commit:
 4. `multi-node-workspace` gains a lane — it is the one template with none.
 5. `check-no-tracked-workspace-roots` covers `examples/templates/` as well, with
    the self-test updated in both directions.
-6. `just check gate-lists` and `just check fixture-manifest` green; the four
-   fixture rows build and their tests pass.
+6. `just check gate-lists`, `just check fixture-groups` and `just check
+   fixture-binary-names` green; the four fixture rows build and their tests
+   pass.
