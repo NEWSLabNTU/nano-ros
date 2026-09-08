@@ -400,7 +400,7 @@ if [ "$SELF_HOSTED" = 1 ]; then
         echo "[FAIL] no ONLINE self-hosted runner on $REPO." >&2
         echo "       Requiring a self-hosted check now would leave every merge" >&2
         echo "       PENDING forever — that is a frozen repo, not a strict one." >&2
-        echo "       Register one first:  just runner-register <labels>" >&2
+        echo "       Stand one up first:  just runner-up <labels>" >&2
         exit 1
     fi
     for label in "${NEEDED_LABELS[@]}"; do
