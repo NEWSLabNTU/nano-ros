@@ -145,6 +145,37 @@ exclusions=(
     # today (measured), so the narrower rule costs nothing and stays honest if
     # it ever does.
     --include '/third-party/px4/PX4-Autopilot/boards/**/target/***'
+    # issue 1243 — the QEMU submodule does not go to the box, and the exclusion
+    # is the ANSWER rather than a workaround for the rules.
+    #
+    # Its source uses `target/` (CPU architectures), `build/` and `build-*/` as
+    # SOURCE directory names, and it vendors whole other projects that do the
+    # same — edk2, which vendors openssl, which vendors krb5. Rescuing it with
+    # `--include` is open-ended: measured 1936 -> 1032 -> 958 tracked files still
+    # dropped after two rules, with no end in sight. Enumerating another
+    # project's directory conventions is a losing game.
+    #
+    # It does not need rescuing, because NOTHING BUILDS IT HERE. `[tool.qemu]`
+    # provisions a RELEASED TARBALL (11.0.0-nros6) into the store, and the
+    # submodule is absent from `build_sources`. Its one consumer is
+    # `.github/actions/setup-qemu-patched`, which cuts that release on a CI
+    # runner and does `git submodule update --init --depth=1` ITSELF — so it
+    # depends on the submodule pointer, never on the mirror. A box that wants the
+    # source runs the same one-liner.
+    #
+    # `patches/` is deliberately NOT excluded: it is small, tracked, and is what
+    # makes the pin legible.
+    # issue 1243 / RFC-0095 D3 — `external/` is provisioning debris, not this
+    # repo's source: vendored tool sources (kani, colcon-*) plus a stray 23 M
+    # duplicate of the 68 G TRACKED px4 submodule. RFC-0095 retires the whole
+    # directory into the store; excluding it from the mirror is that decision
+    # arriving early, and costs the box nothing it cannot provision itself.
+    --exclude '/external/'
+    --exclude '/third-party/qemu/qemu/'
+    # The ESP32 QEMU fork is the same case, and weaker still: `[tool.esp32-qemu]`
+    # provisions it, and NOTHING under just/, scripts/, cmake/ or .github/ names
+    # this path at all.
+    --exclude '/third-party/esp32/qemu/'
     --exclude 'target/'
     --exclude 'target-*/'
     --exclude 'build/'
@@ -169,6 +200,11 @@ exclusions=(
     # `check-box-sync-covers-tracked-source` runs that sweep so a second one
     # cannot be added silently.
     --include '/packages/cli/build-support/***'
+    # issue 1243 — ESP-IDF's vendored protobuf-c keeps its CMake build FILES in
+    # `build-cmake/` (a `.gitignore` and a `CMakeLists.txt`, both tracked), so
+    # the name is source here. Narrow, so a real `build-*/` output tree
+    # anywhere else is still excluded.
+    --include '/esp-idf-workspace/**/build-cmake/***'
     --exclude 'build-*/'
     # issue 0925 — the GENERATED workspace manifests, which NAME the `build/`
     # members the rule above excludes.
@@ -221,6 +257,11 @@ exclusions=(
     --exclude '/.claude/worktrees/'
     --exclude '/tmp/'
     --exclude '/test-logs/'
+    # issue 1243 — pymavlink VENDORS two generator deps as tracked gitlinks
+    # inside a `node_modules/` directory (`jspack`, `long`), so the name is
+    # source here rather than an npm install tree. Narrow, like the px4
+    # `target/` rule above, so a real `node_modules/` anywhere else still goes.
+    --include '/third-party/px4/PX4-Autopilot/**/node_modules/***'
     --exclude 'node_modules/'
     # issue 0401 follow-up — path-carrying GENERATED files must NOT be mirrored.
     # `nros sync` writes ABSOLUTE paths (RFC-0048 W9), so a copied

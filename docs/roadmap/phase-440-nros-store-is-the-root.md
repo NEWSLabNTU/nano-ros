@@ -1,6 +1,6 @@
 # Phase 440 — the store is the root
 
-**Status (2026-09-09). W2 landed; W1 and W3–W8 are open.** Implements
+**Status (2026-09-09). All work items open; W2 was ATTEMPTED and reverted.** Implements
 [RFC-0095](../design/0095-nros-store-is-the-root.md). The campaign home for
 moving nano-ros from "a repository the user places" to "an artifact the user's
 CLI provisions", and for the provisioning-root cleanup that has to happen first
@@ -46,16 +46,36 @@ store populated, every existing host resolves exactly what it resolved before �
 proven by printing the resolved path on a provisioned host and diffing against
 the pre-change value.
 
-### W2 — the box-sync gate leaves the push lane — **LANDED 2026-09-09**
+### W2 — the box-sync gate's lane — **ATTEMPTED, REVERTED, still open**
 
-Moved to `build-serial`. Not exempted and not retired: it stays in a registry so
-it cannot be deleted unnoticed (issue 1071), and it still runs on the tier
-schedule and dispatch reach. Exempting it would have required shrinking the
-name-set baseline, which asserts a retirement that has not happened — the
-ratchet was right to refuse.
+Moving `box-sync-covers-tracked-source` to `build-serial` is wrong in kind, and
+two gates said so in sequence. `.config/ungated-gates.txt` states the test —
+every gate in the build tier FAILS in a pristine worktree, which is what makes
+that tier its home — and this one PASSES there: one repository, nothing
+provisioned. `check-gate-visibility` then refuses the move on its own ground: a
+gate no pull request runs is a gate that rots (issue 0981).
 
-*Acceptance (met):* `check-gate-lists` OK — 282 fast, 22 in `build-serial`;
-the gate's own comment records why it is not a push-lane property.
+Its subject is the HOST's provisioning state, which is a third axis neither the
+fast lane nor the build tier models. Naming that axis is the open work; three
+candidates, none yet chosen:
+
+* **narrow the sweep** to repositories whose content nano-ros TRACKS. A
+  gitignored provisioning directory's nested index is by definition not this
+  repo's tracked source. Cheapest, and defensible — but it changes a gate's
+  semantics, so it needs its own review rather than riding along;
+* **skip honestly when no box exists.** The destination is
+  `${NROS_BOX_TREE:-<repo>-box}`, so "no mirror on this host" is detectable, and
+  the gate already reports NOT VERIFIED through `nros_check_skip` for trees it
+  could not sweep. Weakness: a rule regression then lands unseen and bites only
+  box users;
+* **do nothing here and land W3/W4**, after which no provisioned tree sits under
+  the sync root and the include rules are unnecessary. Removes the cause rather
+  than the symptom, and is the reason this phase exists.
+
+*Acceptance:* whichever is chosen, a fully provisioned host and a pristine
+worktree must reach the same verdict about the SCRIPT's rules, and the gate must
+still fail when an `--exclude` genuinely drops tracked content — proven by
+mutation, not by the absence of a red.
 
 ### W3 — `third-party/` holds tracked submodules and nothing else
 
@@ -130,7 +150,8 @@ blocker, empties the box-sync backlog, and removes a class of "which of the four
 roots did this rule forget". W6 → W8 is the user-facing half and depends on the
 cleanup, not the reverse.
 
-W2 is landed and was independent of both.
+W2 is independent of both, and is a lane question rather than a move — see
+its own item for why the obvious move is refused.
 
 ## Non-goals
 
