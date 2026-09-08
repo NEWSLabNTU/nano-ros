@@ -38,6 +38,10 @@ pub mod leaf_entity_env;
 /// need the message-bound inventory as well as the entity one. The cargo-leaf
 /// twin of `_nros_bounds_join_subscribed` in `cmake/NanoRosMessageBounds.cmake`.
 pub mod leaf_payload_classes;
+/// phase-439 W2 (RFC-0094 D1/D2) — stage 3.5, the resolve phase: the one place
+/// that decides an image's declared counts, run BEFORE any configure so a
+/// reader early in one sees the final answer on its first pass.
+pub mod resolve;
 // Issue 0363 — the freshness predicate, shared verbatim with `build.rs` via
 // `include!`. One implementation: the build embeds a stamp, the runtime
 // recomputes it. Replaces the mtime comparison that fired on every rebase.

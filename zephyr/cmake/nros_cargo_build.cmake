@@ -23,6 +23,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosMessageBounds.cmake")
 # ladder: a bound inventory prices a TYPE and this one counts the ENTITIES, and
 # `NROS_EXECUTOR_MAX_CBS` is a question only the second can answer.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosEntityInventory.cmake")
+# phase-439 W2 (RFC-0094 D1) -- `nros_resolved_seed_entity_inventory`, the
+# configure-side reader for `nros build`'s resolve phase. FILE scope for the
+# same reason as its neighbours: an include() inside a function frame drops the
+# file's vars when the frame pops.
+include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/NanoRosResolved.cmake")
 # Issue 0991 -- `nros_reconfigure_settle`, for both loaders below. They are the
 # EARLIEST readers of either fragment in a Zephyr configure, which is what makes
 # them the right place to clear a date a previous pass armed. FILE scope, same
@@ -328,6 +333,12 @@ endfunction()
 function(_nros_load_derived_entity_inventory)
     nros_entity_inventory_knobs_file(_knobs)
     if(NOT EXISTS "${_knobs}")
+        # phase-439 W2 (RFC-0094 D1) -- the resolve phase's answer, written
+        # BEFORE this configure, if `nros build` ran one for this image. This is
+        # the EARLIEST reader in a Zephyr configure, so it is the one the
+        # placeholder costs a whole extra pass. A lane that ran no resolve phase
+        # falls through to the placeholder below, unchanged.
+        nros_resolved_seed_entity_inventory("${_knobs}")
         nros_entity_inventory_seed_knobs_file("${_knobs}")
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_knobs}")

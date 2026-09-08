@@ -324,6 +324,34 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
             eyre::bail!("{}", crate::builder::preflight::report(&missing));
         }
 
+        // ---- stage 3.5 — the RESOLVE phase (RFC-0094 D1, phase-439 W2) ---
+        //
+        // ONE PLACE DECIDES A KNOB, every other place reads it. Between "is the
+        // toolchain present" and "emit a root build file", because that is the
+        // last point at which nothing has been generated and the first at which
+        // the image is fully identified.
+        //
+        // It reads DECLARATIONS and never a compiled artifact. That is the
+        // whole point: `nros-rmw-zenoh` is a DEPENDENCY of the leaf, so the
+        // crate that must know the entity counts compiles before the crate
+        // whose source declares them, and no build script, proc macro or
+        // manifest key reaches backwards across that edge (issue 0827).
+        //
+        // It cannot FAIL a build. An image whose declarations this phase cannot
+        // reach gets a `resolved.toml` that says so and no CMake projection, so
+        // every downstream lane behaves exactly as it does today. Making the
+        // resolve phase a new way for a build to stop would be a regression
+        // paid by every image for the benefit of the few that derive.
+        let resolved_dir = resolve_image(
+            &root,
+            &bringup,
+            &bringup_dir,
+            &image_id,
+            &image,
+            &platform,
+            &board,
+        );
+
         // ---- stage 4 ----------------------------------------------------
         let mut cmake_configure: Option<Handoff> = None;
         let mut cargo_prepare: Option<Handoff> = None;
@@ -643,6 +671,18 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 if preamble.is_file() {
                     a.push(format!("-DNROS_WS_PREAMBLE={}", preamble.display()));
                 }
+                // RFC-0094 D1 — where stage 3.5 put this image's answer. The
+                // configure READS it; it does not re-derive it.
+                //
+                // Passed rather than discovered, for the reason the preamble
+                // above is: a generated build file that computes a path into
+                // the caller's tree stops being workspace-agnostic. It is also
+                // what keeps the seam HONEST — a lane that did not run stage
+                // 3.5 (a bare `west build`, `just zephyr build-fixtures`) sets
+                // nothing, finds nothing, and behaves exactly as it does today.
+                if let Some(d) = &resolved_dir {
+                    a.push(format!("-DNROS_RESOLVED_DIR={}", d.display()));
+                }
                 a.extend(args.native_args.iter().cloned());
                 cmake_configure = Some(Handoff::new("cmake", a).in_dir(&root));
                 Some(
@@ -716,10 +756,17 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // arities, and west accepts options after the positional.
                 a.extend(west_extra);
                 let west_opts = crate::builder::zephyr::west_args(&overlays);
-                if !west_opts.is_empty() || !cmake_extra.is_empty() {
+                // RFC-0094 D1 — same seam as the cmake driver, in west's
+                // second argument zone. See the note there.
+                let resolved_opt: Vec<String> = resolved_dir
+                    .as_ref()
+                    .map(|d| vec![format!("-DNROS_RESOLVED_DIR={}", d.display())])
+                    .unwrap_or_default();
+                if !west_opts.is_empty() || !cmake_extra.is_empty() || !resolved_opt.is_empty() {
                     // Everything after `--` is a cmake option for the app.
                     a.push("--".to_string());
                     a.extend(west_opts);
+                    a.extend(resolved_opt);
                     a.extend(cmake_extra);
                 }
                 // Resolved here, ENFORCED at exec. A plan is an answer to
@@ -1655,6 +1702,150 @@ fn entries_for_other_boards(
         }
     }
     out
+}
+
+/// Stage 3.5 for ONE image — RFC-0094 D1, phase-439 W2.
+///
+/// Reads the declarations, runs [`EntityInventory::derive`] once through
+/// [`crate::resolve::write`], and returns the directory the artifacts landed in
+/// so stage 4 can hand it to a configure. `None` means the phase wrote nothing
+/// AT ALL, which happens only when the filesystem refused — a declaration this
+/// phase cannot READ still produces a `resolved.toml` saying so.
+///
+/// # Why this never bails
+///
+/// A `nros build` that worked yesterday must not stop working because a new
+/// phase could not answer for an image. Every failure mode here is a WARNING
+/// plus a refusal recorded in the artifact; the downstream lanes then behave
+/// exactly as they did before this phase existed, because the CMake projection
+/// — the only thing a build READS — is written only for a derived answer.
+///
+/// # What it does NOT read
+///
+/// `${CMAKE_BINARY_DIR}/nros-metadata.json`, which today's
+/// `nros ws entity-inventory` call takes as its component set. That file is
+/// written DURING a configure by `nano_ros_node_register()`, so reading it here
+/// would recreate the producer-after-reader lag this phase exists to remove.
+/// The declaration this phase reads instead is the contract sidecar beside the
+/// launch file (`<bringup>/launch/<stem>.contract.yaml`), folded into the
+/// resolved SystemModel — which is where phase-412 already put the statement of
+/// what an image creates when it retired the `ENTITIES` argument.
+fn resolve_image(
+    root: &std::path::Path,
+    bringup: &str,
+    bringup_dir: &std::path::Path,
+    image_id: &str,
+    image: &crate::orchestration::image::ImageBlock,
+    platform: &str,
+    board: &str,
+) -> Option<std::path::PathBuf> {
+    use crate::{
+        entity_inventory::EntityInventory,
+        orchestration::model_location,
+        resolve::{ImageIdent, write as write_resolved},
+    };
+
+    let ident = ImageIdent {
+        bringup: bringup.to_string(),
+        entry: image_id.to_string(),
+        board: board.to_string(),
+        platform: platform.to_string(),
+        rmw: image.rmw.clone().unwrap_or_default(),
+    };
+    let dir = root.join("build").join(ident.dir_name());
+
+    // (launch, args) → the resolved model, exactly as `generate_entry` reaches
+    // it. `ensure_model` resolves from `system.toml` + the launch file when no
+    // build has produced one, so this needs no build system to have run.
+    let args_vec: Vec<(String, String)> = image
+        .args
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let inventory: Result<EntityInventory, String> = (|| {
+        let model_rel =
+            model_location::launch_to_model_rel(bringup_dir, image.launch.as_deref(), &args_vec)
+                .map_err(|e| format!("cannot resolve the launch for this image: {e}"))?;
+        let (model_path, _inputs) = model_location::ensure_model(bringup_dir, &model_rel)
+            .map_err(|e| format!("cannot resolve the SystemModel: {e}"))?;
+        let raw = std::fs::read_to_string(&model_path)
+            .map_err(|e| format!("reading {}: {e}", model_path.display()))?;
+        let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)
+            .map_err(|e| format!("parsing {}: {e}", model_path.display()))?;
+        // `None` is "no wiring described", which is a DECLARATION GAP and not
+        // an error: 5 of the tree's 114 resolvable models describe wiring, and
+        // they are exactly the 5 with a contract sidecar (issue 0973).
+        EntityInventory::from_model(model_path.display().to_string(), &model).ok_or_else(|| {
+            format!(
+                "the launch tree resolved, and it describes no wiring. Nothing here can \
+                 derive a count. State what each node creates in the contract sidecar \
+                 beside the launch file ({}/launch/<stem>.contract.yaml); until then this \
+                 image keeps its configured pool knobs.",
+                bringup_dir.display()
+            )
+        })
+    })();
+
+    let written = match inventory {
+        Ok(inv) => write_resolved(&dir, ident, &inv),
+        Err(reason) => {
+            let r = crate::resolve::Resolved::unresolvable(
+                ident,
+                bringup_dir.join("launch").display().to_string(),
+                reason,
+            );
+            // Same two writes as the derived path, minus the projection — kept
+            // inline rather than routed through `write` because there is no
+            // inventory to render one from.
+            match std::fs::create_dir_all(&dir)
+                .and_then(|()| {
+                    let stale = dir.join(crate::resolve::RESOLVED_CMAKE_NAME);
+                    if stale.exists() {
+                        std::fs::remove_file(&stale)?;
+                    }
+                    Ok(())
+                })
+                .and_then(|()| {
+                    let p = dir.join(crate::resolve::RESOLVED_TOML_NAME);
+                    crate::atomic_file::atomic_write(&p, &r.to_toml())
+                        .map_err(|e| std::io::Error::other(e.to_string()))
+                        .map(|()| p)
+                }) {
+                Ok(toml_path) => Ok(crate::resolve::Written {
+                    resolved: r,
+                    toml_path,
+                    cmake_path: None,
+                }),
+                Err(e) => Err(e),
+            }
+        }
+    };
+
+    match written {
+        Err(e) => {
+            eprintln!("nros build: warning: stage 3.5 could not write `{image_id}`'s resolve: {e}");
+            None
+        }
+        Ok(w) => {
+            match w.resolved.knobs() {
+                Some(k) => eprintln!(
+                    "nros build:   resolved → {} (max_cbs {}, nodes {}, digest {})",
+                    w.toml_path.display(),
+                    k.max_cbs,
+                    k.max_nodes,
+                    w.resolved.digest()
+                ),
+                // Says WHY, once, at the same volume as the success line. A
+                // refusal that only lives in a file nobody opens is the silent
+                // shape RFC-0094 exists to remove.
+                None => eprintln!(
+                    "nros build:   resolved → {} (no count derived; see [provenance].refused)",
+                    w.toml_path.display()
+                ),
+            }
+            Some(dir)
+        }
+    }
 }
 
 /// The build-tree coordinate for an image — RFC-0070 R2's vocabulary

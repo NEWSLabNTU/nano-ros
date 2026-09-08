@@ -30,6 +30,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/NanoRosMessageBounds.cmake")
 # helpers (`nros_entity_inventory_knobs_file`, `..._seed_knobs_file`) here. The
 # include is a no-op when `nano_ros_entry()` has already pulled it in.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosEntityInventory.cmake")
+# phase-439 W2 (RFC-0094 D1) -- `nros_resolved_seed_entity_inventory`, the
+# configure-side reader for `nros build`'s resolve phase. Beside its sibling for
+# the same reason: this file is reachable from inside a function frame, so both
+# must be included at FILE scope.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosResolved.cmake")
 
 # Issue 0991 -- both fragments above are written LATER in a configure than they
 # are read, and the `CMAKE_CONFIGURE_DEPENDS` recovery every comment in this
@@ -928,6 +933,11 @@ function(nros_find_interfaces)
     #    classes, re-configures, and builds at the derived ones -- and it is
     #    never silent, since the status line says which basis was used.
     nros_entity_inventory_knobs_file(_entity_knobs)
+    # phase-439 W2 (RFC-0094 D1) -- prefer the resolve phase's answer over a
+    # placeholder. Same reason as the Zephyr loader: this reader runs before the
+    # producer, so on a clean build dir the placeholder is what costs the extra
+    # configure. No-op when no resolve phase ran.
+    nros_resolved_seed_entity_inventory("${_entity_knobs}")
     nros_entity_inventory_seed_knobs_file("${_entity_knobs}")
     set_property(DIRECTORY APPEND PROPERTY
         CMAKE_CONFIGURE_DEPENDS "${_entity_knobs}")
