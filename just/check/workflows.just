@@ -44,22 +44,30 @@ activate-shells:
 # repository the mirror copies — 39 on a provisioned host, 1 in a bare worktree.
 # The trees it could not look at are named through the shared skip ledger, so
 # "All checks passed!" never stands for a sweep of one repo out of forty.
-# BUILD TIER, not the push lane (RFC-0095). This asks whether the DISTROBOX
-# mirror would drop tracked source — a question only where a box is in play,
-# and a build system must not assume it is inside a distrobox, a container or a
-# VM. It sweeps every repository the mirror copies (39 on a provisioned host, 1
-# in a bare worktree), so the more SDKs a host has provisioned the likelier it
-# is red about a mirror that may never be built: measured 2914 tracked paths
-# under `esp-idf-workspace/` and `external/`, neither of which
-# `ros2-box-sync.sh` carries an `--include` rule for, while it does for
-# `zephyr-workspace` and `third-party/px4`. The rule set cannot track a
-# provisioning-root count that grows.
+# THE LANE QUESTION, and why it is still on this one (RFC-0095, phase-440 W2).
 #
-# Not exempted and not retired — it stays in a registry so it cannot be deleted
-# unnoticed (issue 1071), and it still runs, deliberately. RFC-0095 removes the
-# cause rather than the symptom by moving provisioned trees out of the
-# repository entirely, at which point nothing provisioned sits under the sync
-# root and the include rules are not needed at all.
+# This asks whether the DISTROBOX mirror would drop tracked source — a question
+# only where a box is in play, and a build system must not assume it is inside a
+# distrobox, a container or a VM. It sweeps every repository the mirror copies
+# (39 on a provisioned host, 1 in a bare worktree), so the MORE a host has
+# provisioned the likelier it is red about a mirror that may never be built:
+# measured 2914 tracked paths under `esp-idf-workspace/` and `external/`,
+# neither of which `ros2-box-sync.sh` carries an `--include` rule for, while it
+# does for `zephyr-workspace` and `third-party/px4`.
+#
+# Moving it to `build-serial` was tried and is WRONG IN KIND.
+# `.config/ungated-gates.txt` states the test: every gate in the build tier
+# FAILS in a pristine worktree, which is what makes that tier its home. This one
+# PASSES there — one repository, nothing provisioned. Its subject is the HOST's
+# provisioning state, a third axis neither lane models, and
+# `check-gate-visibility` refuses the move on exactly that ground: a gate no
+# pull request runs is a gate that rots (issue 0981).
+#
+# So it stays here, and the fix is the CAUSE rather than the lane: RFC-0095 D1/D2
+# move provisioned trees out of the repository, after which nothing provisioned
+# sits under the sync root and the include rules are not needed at all. Until
+# then a provisioned host sees a red whose subject is real — the rule set cannot
+# track a provisioning-root count that grows.
 [private]
 box-sync-covers-tracked-source:
     #!/usr/bin/env bash
