@@ -43,27 +43,65 @@ Overflowing by 45040 puts it near 176 KB, so roughly 83 KB has appeared. That is
 not drift; something is placed in DTCM that was not there before, or is placed
 twice.
 
-## Bisect boundary, established
+## Bisect: four verdicts, and why it could not be finished
 
-Not caused by the change that found it. A control build of clean `origin/main`
-with that change stashed produces the IDENTICAL overflow, to the byte.
+Measured on `mr_canhubk3/s32k344`, wiped build directory each time. BAD is
+always the SAME byte count, which is itself evidence it is one cause:
 
-The last commit known to produce a linking image is `fb94d1896`
-(`fix(zephyr): the C-for-C++ nros-c string must read the C++ one`), measured on
-its own branch at 71.22% DTCM before it merged. The commits merged after it:
+| commit | verdict |
+| --- | --- |
+| `1976727d8` | GOOD -- DTCM 93344 B, 71.22% |
+| `e3786749a` | GOOD -- DTCM 93344 B, 71.22% |
+| `d7e7bb477` | GOOD -- DTCM 93336 B, 71.21% |
+| `fb94d1896` | BAD -- overflowed by 45040 bytes |
+
+`d7e7bb477` (2026-09-06 21:14) is the newest commit known to build, and is the
+floor to search from. The regression is in what `main` gained between it and
+`fb94d1896`.
+
+NOT environmental: `e3786749a` reproduces 71.22% a day after the same tree first
+produced it, and the three GOOD commits agree to within 8 bytes.
+
+### Two wrong readings, recorded so they are not repeated
+
+* **"the first suspect is `dc2416f6e`"** -- from reading subject lines
+  (`the placement arithmetic moves to a crate a build script can call`). It IS
+  bad, but so is every commit below it in that range, including `3e5dc6e4f`,
+  a CI cache fix that cannot move RAM. Reading a subject line is not a bisect.
+* **`01cb87d8f` reported BAD -- RETRACTED.** It built only because it ran before
+  the probe directory was touched, so `sync` skipped metadata regeneration and
+  it consumed metadata emitted by ANOTHER commit's codegen. Its number is not
+  attributable to that commit. Any narrowing that rested on it (an 11-commit
+  range was claimed) is withdrawn.
+
+### What blocks finishing it
+
+Most commits in the range cannot build the CURRENT safety-island tree at all.
+The CLI's `sync` step regenerates the message metadata whenever the CLI
+changes, and at those commits regeneration fails:
 
 ```
-055b84387 fix(check): doc-commit-citations is red on main, in both directions
-56fc7b03c build(#1197): six more leaf locks the gate surfaced once the first 13 were fixed
-a0992e5d8 build(#1197): the 13 leaf locks that carry nros-node gain the new path dep
-dc2416f6e feat(#1197): the placement arithmetic moves to a crate a build script can call
-3e5dc6e4f fix(ci): the CLI cache stored the whole job, not the CLI build
+build/nros-metadata/metadata-probe-cmake/build/nros-ws-nav_msgs/.../nav_msgs_msg_odometry.hpp:99:93:
+error: static assertion failed: NROS_UNBOUNDED__nav_msgs_msg_odometry__field_header_frame_id:
+nav_msgs/Odometry states no serialized-size bound
 ```
 
-`dc2416f6e` is the one to look at first -- it moves the PLACEMENT arithmetic,
-which is what decides what lands in DTCM. The other four are a lockfile sweep, a
-CI cache fix and a docs gate, none of which should reach a linker script. This
-is a reading of the subject lines, NOT a bisect: the bisect was not run.
+Reproduced at `0368d4040`, `5a3cbc008`, `3da478ffb`, `4d6e0da9c`, `09ed8e069`,
+`c89431210`, `29ea7d181`, `e957bc634` -- with and without clearing
+`build/nros-metadata`. ASI's caps are not being applied by those commits'
+codegen, so the consumer's own messages come out unbounded.
+
+Bisecting a library against a fixed consumer assumes the consumer builds at
+every commit. Here it does not, and the commits that do not build are most of
+the interval. Finishing this needs the ASI side moved in lockstep with the
+library, or that codegen incompatibility understood first -- not more builds of
+the same shape.
+
+### Also in the way
+
+Issue 1235: the `sync` step refuses a CORRECTLY paired resolver on these commits, and
+`setup-cli` / `setup-launch-resolve` cannot repair what their own errors name.
+Every bisect step needs this working around before it can even reach a compiler.
 
 ## Why this matters more than the byte count
 
