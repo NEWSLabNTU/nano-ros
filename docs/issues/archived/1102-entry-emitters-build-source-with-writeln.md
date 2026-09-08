@@ -2,7 +2,7 @@
 id: 1102
 title: "The entry emitters build C++/C/Rust with `writeln!`, so the generated
   text has no single shape to read — and issue 1003 is what that costs"
-status: open
+status: resolved
 type: tech-debt
 area: codegen, cli
 related: [issue-1003, issue-1017, rfc-0068, rfc-0091, phase-416]
@@ -92,7 +92,7 @@ understates it. Entry code has **four** producers, and two of them —
 paths to the SAME outcome. Nothing consumes the CLI's Rust entry; cmake asks
 only for `c`/`cpp`.
 
-[RFC-0091](../design/0091-one-entry-codegen-producer-many-language-packs.md)
+[RFC-0091](../../design/0091-one-entry-codegen-producer-many-language-packs.md)
 records the architecture: one producer (a leaf `nros-entry-lower` inside the
 proc-macro's dependency budget) and many language PACKS. Converting the
 emitters, which is what this issue tracks, is Stage 3 of that design — worth
@@ -101,7 +101,7 @@ doing on its own, and not the whole of it.
 ## Follow-ups the RFC-0091 study surfaced
 
 Two items that belong to this issue's area, both evidenced in
-[RFC-0091](../design/0091-one-entry-codegen-producer-many-language-packs.md):
+[RFC-0091](../../design/0091-one-entry-codegen-producer-many-language-packs.md):
 
 1. **The tier spec table is initialised POSITIONALLY** against
    `nros_native_tier_spec_t`, a struct mirrored across NINE files whose own
@@ -146,6 +146,43 @@ So the remaining work under this issue is larger than "convert `emit_cpp`":
 The converted emitters stay: they proved the pipeline, the renderer and the
 goldens. They did not prove neutrality, and converting one language first is
 what made the shortcut visible.
+
+## Fixed — phase-432 Track 2 (2026-09-09)
+
+All four acceptance items hold, and both follow-ups landed with them.
+
+- **No emitter appends source any more.** `emit_c.rs`, `emit_cpp.rs` and
+  `emit_rust.rs` contain ZERO `writeln!`/`write!` between them; each renders
+  through `codegen::entry::render`. `emit_cpp` was the last and largest
+  (W2.3) and was converted byte-for-byte — the goldens did not move on that
+  commit, which is the demonstration this issue asked for rather than assumed.
+- **The view is declared.** `TierView` and its siblings are `serde::Serialize`,
+  so what a template can see is a struct rather than whatever was in scope.
+- **The packs are files.** `codegen/entry/packs/entry/{c,cpp,rust,shared}/`,
+  each with a `pack.toml` manifest, and `render::template_keys()` is checked
+  against the manifests in both directions so a template cannot be registered
+  without being declared or declared without existing.
+
+The scope correction stands and was honoured: converting the emitters is Stage
+3 of RFC-0091, not the whole of it, and the rest of that design is tracked by
+phase-432 rather than here. The one item still open in that phase (W3.1, the
+C-ABI board runner) is not this issue's — it is about which pack renders an
+embedded C entry, not about how any pack is written.
+
+Both follow-ups this issue surfaced are closed:
+
+1. **The tier table is DESIGNATED-initialised now**, in both entry templates,
+   so a field inserted anywhere but the end is a compile error at the
+   generated TU instead of a silent mis-assignment. `check-ffi-struct-mirrors`
+   was extended to cover it — `TIER_CANONICAL` plus the three C mirrors, the
+   two name-only consumers and the two initialiser sites, which is the eight
+   the struct's own comment asks a human to keep in sync.
+2. **The five C goldens no longer record output the pipeline never produces.**
+   They hold the emitter's refusal text, naming W3.1 as the item that would
+   change it — so they pin what they actually prove rather than reading as
+   board coverage. That is the "relabel them" arm of the two this issue
+   offered; routing the harness through the dispatch would have hidden the
+   refusal, which is the fact worth pinning until W3.1 lands.
 
 ## Notes
 
