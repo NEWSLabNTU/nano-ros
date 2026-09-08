@@ -424,6 +424,65 @@ asserts the dump names the shortfall. The instrument is verified in every part
 except the one that runs on silicon, which is the same shape as the defect it
 exists to find. Filed in #1036 rather than claimed here.
 
+## W7 — one fact, three roads, three registries that described three different subsets. LANDED 2026-09-08
+
+A `NROS_DERIVED_*` fact is published by one of two inventories
+(`cmake/NanoRosEntityInventory.cmake`, `cmake/NanoRosMessageBounds.cmake`) and
+then takes zero or more of three roads into a compile — resolver / sidecar /
+declared, the table in
+[issue 1199](../issues/archived/1199-derived-counts-need-the-declared-road.md).
+Three registries described that: `DERIVED_PAIRS` and `C_DEFINE_KNOBS` in
+`scripts/check-knob-delivery.py`, `ROAD_PAIRS` and `ROAD_UNPAIRED` in
+`scripts/check-declared-fact-carriers.py`. **All of them were green and all of
+them were partial**, which is the `rmw-api-parity` shape one domain over: two
+tools agreeing to report success about different halves of one thing.
+
+Measured over the 14 published facts before this item:
+
+| what | count | detail |
+| --- | --- | --- |
+| carried by a road and in NO registry | 2 | `NROS_DERIVED_EXECUTOR_ACTION_CLIENTS` (resolver AND sidecar), `NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE` (resolver) |
+| a fact whose SECOND resolved knob no registry named | 2 | `MAX_SUBSCRIBERS` -> `NROS_XRCE_MAX_SUBSCRIBERS`, `MAX_QUERYABLES` -> `NROS_XRCE_MAX_SERVICE_SERVERS` |
+| published, on no road, unrecorded | 3 | `LARGEST_TYPE`, `LARGEST_RX`, `LARGE_TYPES` — provenance, and correct, but reading identically to a wire nobody connected |
+| road-gaps with no reason anywhere in the tree | 4 | `EXECUTOR_MAX_NODES` and `SUBSCRIPTION_BUFFER_SIZE`, off both cargo roads — [issue 1233](../issues/1233-derived-fact-road-gaps.md) |
+
+**`DERIVED_PAIRS` was 1:1 and the road is not.** `nros_resolve_knobs()` makes
+thirteen `_nros_resolve_derivable_knob` calls over eleven facts. A 1:1 map can
+name only one knob per fact, so a value that ARRIVED at the zenoh slot and was
+dropped at the XRCE one was green by construction. The values are now tuples,
+and the gate checks each knob.
+
+**The registries no longer drift, because they are cross-checked against the
+source on every run.** `resolver_road()` harvests the call sites out of
+`zephyr/cmake/nros_cargo_build.cmake` — including the enclosing
+`if(CONFIG_NROS_RMW_*)` guard — and `check_registry_against_source` requires
+`DERIVED_PAIRS` to match it in both directions. That runs on the `--self-test`
+path too, which is the only path `just check knob-delivery` takes, so a new call
+site is caught the day it lands rather than the next time somebody points the
+gate at a build dir.
+
+The guard harvest also fixed a standing false positive nobody had hit:
+`NROS_SUBSCRIBER_BUFFER_SIZE` is inside `if(CONFIG_NROS_RMW_ZENOH)`, and the old
+rule demanded every mapped knob be present in the cache, so the gate would have
+reported a dropped value on any XRCE build dir.
+
+**`FACT_DISPOSITION` in `check-declared-fact-carriers.py` is the new registry**:
+every published fact, every road, either the names it is delivered under or a
+reason. A `NotCarried` reason must QUOTE a comment that already exists — the
+gate re-reads the cited file and fails if the quote is gone, so a documented
+omission cannot decay into an undocumented one. `ROAD_PAIRS` is now DERIVED from
+it rather than authored beside it. Where no comment exists the entry is an
+`OpenGap`: printed on every successful run, carrying issue 1233, never invented.
+
+Mutation-tested, each restoring green afterwards: dropping the XRCE knob from
+`DERIVED_PAIRS`, renaming the fact at the XRCE call site, dropping
+`NROS_EXECUTOR_ACTION_CLIENTS` from `DERIVED_ENV_KEYS`, deleting the cited
+provenance comment, and publishing a new fact with no disposition.
+
+One background claim did NOT survive checking: `NROS_DECLARED_MAX_QOS_DEPTH`
+does not exist anywhere in the tree (`grep -rn MAX_QOS_DEPTH` over the whole
+repo, zero hits), so there was nothing to add to either map.
+
 ## Acceptance
 
 1. The island board `.conf` states no NROS count or size that W1 covers, and the
