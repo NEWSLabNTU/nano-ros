@@ -2545,12 +2545,45 @@ pub fn init() -> Result<Context, InitError>;   // stays: the C++-symmetric ancho
 | `spin_once` | ours | `extension` (kept, phase-427) |
 | `nros::init` | ours, equals `default_from_env` | kept; the C++ anchor |
 
-A ported rclrs `main` then changes in exactly two places, both `?` on calls
-that can fail here and cannot there (`create_executor`, `spin`); the error
-types differ (`InitError`/`NodeError` for `RclrsError`), invisible under `?`
-and loud under a `match`. The line that is a real design difference —
-`create_executor` needing a backing on a no-alloc target — is the one the
-compiler names.
+### CORRECTED 2026-09-09 — the port is SIX edits, not two, and the count is measured
+
+This section first said a ported rclrs `main` "changes in exactly two places,
+both `?` on calls that can fail here and cannot there". That was a prediction,
+and phase-427 W10 measured it against upstream's own text — the port is held as
+two files and diffed at BUILD time
+(`packages/testing/nros-tests/tests/rclrs_talker_port.rs`; the ported file is
+`include!`d as well as `include_str!`d from one path, so "it ports" is a fact
+about the same bytes the count is computed from). **Six lines differ.** The two
+predicted are there; four more were never counted:
+
+| kind | n | what |
+| --- | ---: | --- |
+| import | 2 | the crate each name comes from (`rclrs` → `nros`, the message crate). Any port has these; a prediction about OUR divergences omitted them, and a user counting edits does not. |
+| error type | 1 | the `main` signature. `RclrsError` → `Box<dyn core::error::Error>` — and this line is possible AT ALL only because W10 gave `NodeError` a `Display` impl (hence `Error`, hence `?`). Before that the port could not keep one error type in `main`, so the original claim was not merely undercounted, it was unreachable. |
+| mutability | 1 | `let mut node`. Ours registers into the executor, so the binding is `mut`; rustc names it. |
+| **predicted** | **2** | the two `?`s — `create_executor` and `spin` can fail here and cannot upstream. |
+
+So the sentence's claim about the ERROR TYPES stands and is one of the six, not
+an invisible extra: the difference is real, `?` absorbs it, and a `match` sees
+it. What was wrong is the number, and the reason it was wrong is instructive —
+the prediction counted only the divergences this RFC is ABOUT, and a porting
+user counts every line they touch. Under the governing principle all six are
+mechanical (each is a compiler-directed edit at the line), which is the property
+that actually had to hold; "two" was never the property, only a proxy for it.
+
+The line that is a real design difference — `create_executor` needing a backing
+on a no-alloc target — is still the one the compiler names.
+
+**A SEVENTH difference exists and is deliberately not in the count: `spin` →
+`spin_blocking`.** It falls on the same line as one of the two `?`s, so it costs
+no extra edit, but it is a genuine divergence and absorbing it into a line that
+was going to change anyway is how a divergence stops being visible.
+`Executor::spin` is taken here by `spin(Duration) -> !` — the body of an RTOS
+task, RFC-0002's one-executor-per-task shape — so upstream's
+`spin(SpinOptions)` has no free name. **Open item:** moving upstream's
+`spin(SpinOptions)` onto `spin` (and renaming ours) is a later wave; until it
+lands, a ported rclrs `main` renames the call. It is not W10's, and it is not
+closed by W10 being green.
 
 ### The C++ shape, and why `init` has two overloads
 

@@ -134,9 +134,28 @@ watched by the collision gate.
   several-named-nodes-per-image (the `node_builder(name)` funnel) is the existing
   capability this lands on — not RFC-0047, which is callback groups; see RFC-0089
   "The several-named-nodes capability, corrected".
-  *Acceptance:* the rclrs talker tutorial ports with exactly two edits (`?` on
-  `create_executor` and `spin`); `rust:Context::create_executor` and
-  `rust:Executor::create_node` carry `adopt-bounded`/`adopt`.
+  *Acceptance (amended 2026-09-09 — MEASURED, and it is not two):* the rclrs
+  talker tutorial ports with **six** edits, in the breakdown below;
+  `rust:Context::create_executor` and `rust:Executor::create_node` carry
+  `adopt-bounded`/`adopt`.
+
+  | kind | n | what |
+  | --- | ---: | --- |
+  | import | 2 | the crate each name comes from. Any port has these. |
+  | error type | 1 | the `main` signature. Possible AT ALL only because this wave gave `NodeError` a `Display` impl. |
+  | mutability | 1 | `let mut node`, which rustc names. |
+  | **predicted** | **2** | the two `?`s RFC-0089 named. These are W10's own, and they are the only two of the six that are. |
+
+  Held as two files diffed at BUILD time
+  (`packages/testing/nros-tests/tests/rclrs_talker_port.rs`), so the count is a
+  fact about the same bytes that compile, not a claim in prose.
+
+  A **seventh** difference is on the same line as one of the `?`s and therefore
+  costs no extra edit, but it is a real divergence and is recorded rather than
+  absorbed: the port writes `spin_blocking` because `Executor::spin` is taken
+  here by `spin(Duration) -> !`, the body of an RTOS task. Moving upstream's
+  `spin(SpinOptions)` onto that name is a later wave — **open item, W10 does not
+  own it.**
 
 ## Not in scope
 
