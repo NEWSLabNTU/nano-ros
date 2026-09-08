@@ -48,6 +48,15 @@ where = "ros2 distrobox, Humble, tree with #684 + #692"
 evidence = "1 case(s) produced a result in ros2_action_e2e.xml"
 
 [[verdict]]
+cell = "native-advertised-state-rust-cyclone-bidir"
+date = "2026-09-08"
+verdict = "pass"
+tests = ["actual_qos_read_back_matches_what_a_stock_peer_reads", "matched_counts_rise_when_a_peer_appears_and_fall_when_it_leaves", "publisher_gid_identifies_us_to_the_peer"]
+run = "cargo nextest run -p nros-tests --test advertised_state_interop"
+where = "ros2 distrobox, Humble"
+evidence = "4/4: matched counts on both edges, GID, actual QoS read back from the peer, serialization format. First run of this cell; a fixture SELECTOR bug had made every case resolve to a skip."
+
+[[verdict]]
 cell = "native-graph-rust-cyclone-r2n"
 date = "2026-09-07"
 verdict = "pass"

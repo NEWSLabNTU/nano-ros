@@ -3677,12 +3677,29 @@ pub fn build_graph_probe_rmw(rmw: Rmw) -> TestResult<&'static Path> {
 /// No `rmw` parameter, unlike [`build_graph_probe_rmw`]: Cyclone is the only
 /// backend that fills any of those slots, so there is one row and one binary.
 /// A zenoh build would assert against NULL pointers.
+///
+/// `select_sole_row` and NOT `select_row(FixtureVariant::rmw(..))`, and the
+/// difference is why this cell could never run. The variant selector asks for
+///
+///   Selector { rmw: "cyclonedds", features: "rmw-cyclonedds", no_default_features: true }
+///
+/// because that is the shape the graph-probe rows have — but this crate has no
+/// `[features]` table at all. It path-deps `nros-rmw-cyclonedds-sys` directly,
+/// which is what its own manifest comment means by "exactly one coordinate".
+/// So the row is correct and the SELECTOR was wrong, and the two are plausible
+/// in isolation: `select_row` reported `no [[fixture]] row … with Selector`,
+/// which reads as a missing row.
+///
+/// Every case then resolved to `[SKIPPED] fixture not built`, and bare
+/// `cargo nextest` renders a `skip!` panic as FAILED — so the cell read as
+/// three live failures against a peer it never reached. Found on its first run
+/// (phase-433, 2026-09-08); adding the feature to the row instead fails with
+/// `the package 'advertised-state-probe' does not contain this feature`.
 pub fn build_advertised_state_probe() -> TestResult<&'static Path> {
     static BIN: OnceCell<PathBuf> = OnceCell::new();
     BIN.get_or_try_init(|| {
-        let row = crate::fixtures::groups::select_row(
+        let row = crate::fixtures::groups::select_sole_row(
             "packages/testing/nros-tests/bins/advertised-state-probe",
-            &crate::fixtures::groups::FixtureVariant::rmw(Rmw::Cyclonedds),
         )?;
         let profile = cargo_target_profile_dir();
         let rel = PathBuf::from(format!("{profile}/advertised-state-probe"));
