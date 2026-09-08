@@ -103,6 +103,62 @@ Issue 1235: the `sync` step refuses a CORRECTLY paired resolver on these commits
 `setup-cli` / `setup-launch-resolve` cannot repair what their own errors name.
 Every bisect step needs this working around before it can even reach a compiler.
 
+## ROOT CAUSE FOUND -- `0368d4040`, and it is a correct fix exposing a real gap
+
+Bisected on the HOST, seconds per step instead of twelve minutes. `nros-node`'s
+`build.rs` derives the arena from the knobs and prints `cargo:arena_size`, so
+the island's number is reproducible with a plain `cargo build -p nros-node` and
+the island's knobs in the environment -- no Zephyr, no board, and every commit
+in the interval builds, which is what made it searchable at all after the board
+route stalled.
+
+| commit | derived arena |
+| --- | --- |
+| `316915dc3` (parent) | 61,936 |
+| **`0368d4040`** | **207,096** |
+| `6e7779b05` (main today) | 207,096 |
+
+`git bisect run` over `d7e7bb477..fb94d1896` names `0368d4040` --
+`fix(#1190): the arena priced a subscription's QoS history at three slots`. The
+arena grows by 145,160 B in one commit and has stayed there since.
+
+### It is not a mistake to revert
+
+That commit CORRECTED an under-count. The old model charged `3 * rx_buf + 512`
+per subscription -- a `TripleBuffer`, the `depth <= 1` case -- while the runtime
+registers `KEEP_LAST(10)`: eleven slots plus a length array. Issue 1190 is the
+symptom of the old number, a zenoh listener taking `BufferTooSmall` on register.
+
+So the island was never really fitting. The model was under-counting what the
+image already allocates, and DTCM at 71.22% measured the wrong quantity.
+
+### The gap it exposes
+
+`PUBSUB_QOS_DEPTH` is a hardcoded `const ... = 10`
+(`packages/core/nros-node/build.rs:27`). It is read neither from the environment
+nor from the image's DECLARED QoS, so every subscription is priced at the ROS
+default whatever the image says.
+
+The island declares no depths at all -- `safety_island.contract.yaml` contains
+zero `depth:` keys -- so today it correctly inherits KEEP_LAST(10) and correctly
+pays for it. But the machinery to know better already exists: the declared-QoS
+producer (issue 1084) emits `nros_declared_qos_generated.h` and
+`check-declared-qos-header` gates it. The arena model is the one consumer that
+does not read it.
+
+Two separable pieces of work:
+
+1. **`nros-node`** -- price each subscription at its DECLARED depth, falling
+   back to the ROS default only where nothing is declared. A per-image constant
+   of 10 makes every shallow subscription pay for a deep one.
+2. **the island** -- declare the depths it actually needs. At depth 1 a
+   subscription is a `TripleBuffer` again, and eleven of those cost a fraction
+   of eleven-slot rings. That is a queueing decision, and it should be made
+   deliberately rather than inherited.
+
+Until one of those lands the image does not fit, and the honest reading is that
+it has not fitted since `0368d4040` started telling the truth about it.
+
 ## Why this matters more than the byte count
 
 Nothing merge-gating builds this image. The regression reached main and the only
@@ -112,7 +168,12 @@ one platform over.
 
 ## Next step
 
-Bisect the five commits above with the island's board-build recipe on a wiped
-directory, and
-if it is `dc2416f6e`, compare the generated linker script and the DTCM section
-list against `fb94d1896`.
+The bisect is DONE. What remains is a decision, not a search: teach the arena
+model to read declared depths, or declare depths on the island, or both.
+
+The board-build route to bisecting this is still broken and worth fixing on its
+own account -- most commits in the interval cannot build the current ASI tree,
+and issue 1235 blocks the rest -- but it is no longer on the path to an answer
+here. The host oracle (`cargo:arena_size`) should be the first tool reached for
+any future memory-derivation bisect: three orders of magnitude cheaper, and it
+does not depend on the consumer building at all.
