@@ -46,6 +46,19 @@
 // `time.hpp` and `duration.hpp`, so a node that stamps a header needs no
 // further include.
 #include "nros/clock.hpp"
+// phase-427 W4 — `ComponentNode` is merged into `Node`, so the two things its
+// header pulled in for the merged members come here with them:
+//   * `log.hpp`  — `NROS_ERROR`, the OVERRIDABLE sink `report_component_failure`
+//     routes through so a freestanding image can be given a boot diagnostic
+//     (issue 1015).
+//   * `declared_qos.hpp` — `nros::declared_depth` + `DECLARED_DEPTH_UNDECLARED`,
+//     read by `Node::check_declared_depth` (phase-403 step 2).
+// Neither includes a nano-ros header of its own, so neither can close a cycle
+// back onto `node.hpp`. `component.hpp` — which DOES include this file — is why
+// the member-pointer `create_subscription_in` family is DECLARED here and
+// DEFINED there.
+#include "nros/declared_qos.hpp"
+#include "nros/log.hpp"
 #include "nros/guard_condition.hpp"
 #include "nros/executor.hpp"
 // phase-417 stage 2b (RFC-0089) — `nros::TopicEndpointInfo` and the visitor
@@ -159,11 +172,26 @@ namespace nros {
 template <typename A> class PollingActionServer;
 template <typename A> class PollingActionClient;
 template <typename M> class PollingSubscription;
-// Phase 242.1 (RFC-0044) — rclcpp-faithful IS-A-node base. It wraps an owned
-// `Node` and creates that node against an executor-bound handle in its ctor, so
-// it needs friend access to set `executor_handle_` + call `Node::create`
-// (the same private-create pattern `Executor` / `NodeBuilder` already use).
-class ComponentNode;
+
+/// Executor-bound node handle the generated entry hands to a node constructor
+/// (RFC-0044 §Design.1, merged onto `Node` by phase-427 W4).
+///
+/// Carries the opaque executor handle the node is created against — the same
+/// pointer `nros::global_handle()` / `Node::executor_handle()` expose. The entry
+/// obtains it post-`init` and placement-news the component with it.
+///
+/// This was `nros::ComponentNode`'s ctor parameter. `ComponentNode` is gone; the
+/// handle is not, because construction against an EXPLICIT executor is a real
+/// capability and the generated entry is its caller. It is the second of the
+/// type's TWO constructors — RFC-0047's "one component, several named nodes"
+/// does not exist (a component owns exactly one node; what the subnode packages
+/// exercise is several named CALLBACK GROUPS), so there is no third.
+struct NodeHandle {
+    void* executor;
+    constexpr NodeHandle() : executor(nullptr) {}
+    explicit constexpr NodeHandle(void* exec) : executor(exec) {}
+    constexpr bool valid() const { return executor != nullptr; }
+};
 
 /// Issue #227 — pass as `domain_id` to request an EXPLICIT domain 0. Plain
 /// `0` is the UNSET sentinel (defers to `ROS_DOMAIN_ID` env on hosted, then
@@ -180,6 +208,68 @@ class ComponentNode;
 constexpr uint8_t kDomainIdExplicitZero = 255;
 
 namespace detail {
+
+/// Boot-failure diagnostic (RFC-0044 Q2, refined in 242.4; moved off
+/// `ComponentNode` onto `Node` by phase-427 W4).
+///
+/// A failed entity/param creation in a node constructor is unrecoverable on
+/// firmware (boot is all-or-nothing) — but the constructor does not abort. It
+/// records the `ok()` latch and the generated entry / single-node carrier checks
+/// it post-construct, then halts boot **naming the failing node** via this
+/// helper. Hosted builds also print to `stderr`; freestanding builds get the
+/// overridable sink and nothing else. NOT `[[noreturn]]` — the caller decides
+/// how to halt.
+inline void report_component_failure(const char* node_name, const char* what, int32_t code) {
+    // Route through the OVERRIDABLE sink first, so a freestanding image can
+    // see this at all. Issue 1015's bisect ran aground here: on Zephyr both
+    // arms below compile to nothing, so a component that failed to register
+    // halted SILENTLY -- the board printed only the Zephyr banner, identical
+    // to a healthy boot, and "is it broken?" had no answer on the target where
+    // it mattered. Issue 0589 fixed exactly this class for the Rust side; the
+    // C++ side still had it.
+    NROS_ERROR("node \"%s\": FAILED at %s (code=%d)", (node_name != nullptr) ? node_name : "?",
+               (what != nullptr) ? what : "?", static_cast<int>(code));
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+    ::std::fprintf(stderr, "[nros] FATAL: node \"%s\" failed to construct at %s (code=%d)\n",
+                   (node_name != nullptr) ? node_name : "?", (what != nullptr) ? what : "?",
+                   static_cast<int>(code));
+#endif
+}
+
+/// phase-403 step 2 — the code `set_error` records when a subscription's QoS
+/// depth disagrees with the depth its system's contract declared.
+///
+/// Named after the phase rather than borrowed from `nros_cpp_ret_t`: this is
+/// not a backend failure, it is the image contradicting its own manifest, and a
+/// code that also means "the RMW said no" would send the reader to the wrong
+/// half of the tree.
+constexpr int32_t DECLARED_DEPTH_MISMATCH = -403;
+
+/// The boot-time diagnostic for that disagreement — the runtime twin of the
+/// `static_assert`, and it prints the same three facts: the topic, the depth
+/// the declaration states, and the depth the code passed.
+inline void report_declared_depth_mismatch(const char* node_name, const char* topic, int declared,
+                                           int passed) {
+    NROS_ERROR("node \"%s\": topic \"%s\" DECLARED depth %d but the QoS "
+               "passed states %d. Depth multiplies the executor arena, so they must agree.",
+               (node_name != nullptr) ? node_name : "?", (topic != nullptr) ? topic : "?", declared,
+               passed);
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+    ::std::fprintf(stderr,
+                   "[nros] FATAL: node \"%s\": topic \"%s\" was DECLARED depth %d in "
+                   "the contract sidecar (<stem>.contract.yaml) but the QoS passed to "
+                   "create_subscription_in states depth %d. Depth multiplies the executor "
+                   "arena (cost is (depth+1)*bound per subscription), so the two must agree. "
+                   "Fix the contract row or the call site.\n",
+                   (node_name != nullptr) ? node_name : "?", (topic != nullptr) ? topic : "?",
+                   declared, passed);
+#else
+    (void)node_name;
+    (void)topic;
+    (void)declared;
+    (void)passed;
+#endif
+}
 
 /// Type-erased head of `Node`'s hosted block — phase-427 W1.
 ///
@@ -415,10 +505,56 @@ class Node {
         return Node::create(*this, name, ns);
     }
 
+    /// Construct against an EXPLICIT executor-bound handle — what a generated
+    /// entry writes, and what `nros::ComponentNode(NodeHandle, name)` was
+    /// before phase-427 W4 merged it here.
+    ///
+    /// This is the SECOND of the type's two constructors. On a null handle or a
+    /// creation failure it latches the error rather than aborting: the entry
+    /// checks `ok()` post-construct and halts naming this node (RFC-0044 Q2).
+    explicit Node(NodeHandle handle, const char* name, const char* ns = nullptr)
+        : handle_(), initialized_(false), executor_handle_(nullptr), clock_(NROS_CLOCK_ROS_TIME),
+          hosted_(nullptr) {
+        if (!handle.valid()) {
+            this->set_error("ctor (null executor handle)", -1);
+            return;
+        }
+        Result r = this->init_on(handle.executor, name, ns);
+        if (!r.ok()) {
+            this->set_error("node create", r.raw());
+        }
+    }
+
     /// `rclcpp::ok()`'s spelling, asked of one node: did this node come up?
     ///
     /// Replaces upstream's throw. See the constructor for the envelope.
-    bool ok() const { return initialized_; }
+    ///
+    /// phase-427 W4 — this now answers for the LATCH as well as for creation.
+    /// A node whose `create_*` failed after a successful open is not ok, which
+    /// is what the generated entry's post-construct check has always meant.
+    ///
+    /// Issue #230 — SMP safety. The failure state is tracked as a `has_error_`
+    /// flag whose HEALTHY value is the zero-initialized default, so a reader on
+    /// a different core than the constructing one (ASI FVP SMP-4) always sees a
+    /// correct "ok" even before the constructor's stores propagate — no spurious
+    /// "failed at ? (code=0)" boot line. A real failure is published with a
+    /// **release** store and read here with an **acquire** load, so the
+    /// dangerous direction (silently MISSING a failure) is closed too.
+    bool ok() const { return initialized_ && !__atomic_load_n(&has_error_, __ATOMIC_ACQUIRE); }
+
+    /// The site of the first failure (`"create_publisher_in"`, `"node create"`,
+    /// …), or `nullptr` when no failure was latched. For the boot diagnostic.
+    const char* error_what() const {
+        // Acquire-fence on the flag so a standalone call (not preceded by
+        // ok()) still sees the released `error_what_` write (issue #230).
+        (void)__atomic_load_n(&has_error_, __ATOMIC_ACQUIRE);
+        return error_what_;
+    }
+    /// The raw error code of the first latched failure, or `0`.
+    int32_t error_code() const {
+        (void)__atomic_load_n(&has_error_, __ATOMIC_ACQUIRE);
+        return error_code_;
+    }
 
     // ==== phase-427 W1/W3 — the HOSTED shape ================================
     //
@@ -1419,6 +1555,131 @@ class Node {
         return Result(ret);
     }
 
+    // ==== phase-427 W4 — the ours-only family, under `_in` names =============
+    //
+    // These came off `nros::ComponentNode`. Every one of them is spelled with
+    // an `_in` SUFFIX rather than upstream's bare verb, and the rename is the
+    // whole point of the item.
+    //
+    // `ComponentNode::create_publisher<M>(const char*, const QoS&)` returned by
+    // value and reported failure through the `ok()` latch; upstream's
+    // `create_publisher<M>(const std::string&, …)` returns a `shared_ptr` and
+    // throws. As OVERLOADS on one type those differ only in SIGNATURE, and C++
+    // resolves a signature-only difference SILENTLY. Measured on the merged
+    // shape before the rename, with gcc 13:
+    //
+    //   create_publisher<M>("chatter", 10)                -> UPSTREAM (shared_ptr)
+    //   create_publisher<M>("chatter", rclcpp::QoS(10))    -> OURS (by value),
+    //                                                         accepted with only
+    //                                                         a -Wextra-ish note
+    //                                                         that ISO calls it
+    //                                                         ambiguous
+    //
+    // So a ported file compiles either way and gets a different type, lifetime
+    // and failure channel depending on which spelling of the depth it used.
+    // That is exactly the compile-and-differ RFC-0089 forbids, and the merge is
+    // what would have manufactured it. The fix is a different NAME, not a
+    // cleverer signature — the third application of that rule in this campaign,
+    // after the reordered C node initialiser and the clock-taking C timer verb.
+    //
+    // `tests/compile/one_node_type_ours_only_names.cpp` pins both halves: that
+    // the ported spellings reach upstream's overload on the real type, and
+    // (the negative control) that the pre-rename shape bound the wrong one.
+
+    /// Create a publisher, returning it BY VALUE — the ours-only shape.
+    ///
+    /// Was `ComponentNode::create_publisher<M>(topic, qos)`. Move it into a
+    /// member: `pub_ = create_publisher_in<M>("/topic")`. Latches `ok()=false`
+    /// on failure instead of throwing.
+    template <typename M>
+    Publisher<M> create_publisher_in(const char* topic, const QoS& qos = QoS::default_profile()) {
+        Publisher<M> pub;
+        Result r = this->create_publisher(pub, topic, qos);
+        if (!r.ok()) {
+            this->set_error("create_publisher_in", r.raw());
+        }
+        return pub;
+    }
+
+    /// Create a **typed member-callback** subscription — the ours-only shape.
+    ///
+    /// Was `ComponentNode::create_subscription<M, C, Method>(topic, qos)`.
+    /// Registers a raw subscription on the executor keyed on `M::TYPE_NAME`
+    /// with a no-alloc deserialize-then-dispatch trampoline; the executor arena
+    /// owns the subscriber, so there is no `Subscription<M>` storage to supply
+    /// and nothing to park.
+    ///
+    /// DECLARED here and DEFINED in `component.hpp`: the body calls
+    /// `nros::bind_subscription`, which lives there, and `component.hpp`
+    /// includes THIS file — so defining it here would close an include cycle.
+    /// `nros.hpp` pulls in `component.hpp`, so the definition is visible
+    /// wherever the umbrella is.
+    template <typename M, class C, void (C::*Method)(const M& msg)>
+    void create_subscription_in(const char* topic, const QoS& qos = QoS::default_profile());
+
+    /// The same, **in** a callback group (RFC-0047) — the group's SchedContext
+    /// is resolved via `group_sched_table`. Also defined in `component.hpp`.
+    template <typename M, class C, void (C::*Method)(const M& msg)>
+    void create_subscription_in(const CallbackGroup& group, const char* topic,
+                                const QoS& qos = QoS::default_profile());
+
+    /// phase-403 step 2 — the BOOT-TIME half of the declared-depth check.
+    ///
+    /// The compile-time half (`NROS_SUBSCRIBE`'s `static_assert`) is the
+    /// primary path and covers every call site whose topic is a string literal,
+    /// which is all of them in this tree. It cannot cover two shapes: a topic
+    /// built at runtime or forwarded through a variable (the lookup key is not
+    /// a constant expression), and a caller that reaches the member directly
+    /// rather than through the macro. Both get the same comparison here,
+    /// against the same table, through the same `nros::declared_depth`.
+    ///
+    /// A disagreement is a named boot failure: it goes through `set_error`,
+    /// which makes the entry's post-construct `ok()` check halt boot. It does
+    /// NOT create the subscription — an entity built at a depth its own image
+    /// did not declare is exactly the arena mis-sizing this step prevents.
+    ///
+    /// Returns true when the subscription may be created.
+    bool check_declared_depth(const char* type_name, const char* topic, const QoS& qos) {
+        const int declared = ::nros::declared_depth(type_name, topic);
+        // Nobody declared this endpoint. Not an error: the image has not opted
+        // in, and anything sizing from depth refuses rather than defaulting.
+        if (declared == ::nros::DECLARED_DEPTH_UNDECLARED) {
+            return true;
+        }
+        if (declared == qos.depth()) {
+            return true;
+        }
+        // The two NUMBERS and the TOPIC go out first: `set_error` records one
+        // `const char*`, which cannot carry them.
+        detail::report_declared_depth_mismatch(this->get_name(), topic, declared, qos.depth());
+        this->set_error("create_subscription_in: QoS depth disagrees with the depth declared for "
+                        "this topic in the contract sidecar. Depth multiplies the arena, so the "
+                        "declaration and the code must state one number, not two.",
+                        detail::DECLARED_DEPTH_MISMATCH);
+        return false;
+    }
+
+    /// Record the first creation failure (RFC-0044 Q2). Idempotent on the
+    /// *first* failure — later failures don't clobber the original diagnostic.
+    ///
+    /// PUBLIC rather than protected, unlike `ComponentNode::set_error`: the
+    /// out-ref `create_*` family reports through `Result`, so a derived node
+    /// that wires entities with it has no other way to join the same latch the
+    /// entry's post-construct check reads.
+    void set_error(const char* what, int32_t code) {
+        // Relaxed read for the first-failure guard: set_error runs during
+        // construction, on the constructing thread, never concurrently with a
+        // reader (issue #230).
+        if (!__atomic_load_n(&has_error_, __ATOMIC_RELAXED)) {
+            error_what_ = what;
+            error_code_ = code;
+            // RELEASE publishes the two plain writes above: a reader that
+            // acquire-observes has_error_ == true is guaranteed to see them.
+            __atomic_store_n(&has_error_, true, __ATOMIC_RELEASE);
+            detail::report_component_failure(this->get_name(), what, code);
+        }
+    }
+
     /// Destructor — releases node resources.
     ///
     /// BYTE-IDENTICAL IN EVERY CONFIGURATION (phase-427 W1). It never names the
@@ -1441,7 +1702,12 @@ class Node {
     // Move semantics (non-copyable)
     Node(Node&& other)
         : handle_(other.handle_), initialized_(other.initialized_),
-          executor_handle_(other.executor_handle_), clock_(other.clock_), hosted_(other.hosted_) {
+          executor_handle_(other.executor_handle_), clock_(other.clock_), hosted_(other.hosted_),
+          // The latch travels with the node: a moved-from node's failure is
+          // still this node's failure, and the entry checks `ok()` on whichever
+          // object it ended up holding.
+          has_error_(other.has_error_), error_what_(other.error_what_),
+          error_code_(other.error_code_) {
         other.initialized_ = false;
         other.executor_handle_ = nullptr;
         other.hosted_ = nullptr;
@@ -1462,6 +1728,9 @@ class Node {
             executor_handle_ = other.executor_handle_;
             clock_ = other.clock_;
             hosted_ = other.hosted_;
+            has_error_ = other.has_error_;
+            error_what_ = other.error_what_;
+            error_code_ = other.error_code_;
             other.initialized_ = false;
             other.executor_handle_ = nullptr;
             other.hosted_ = nullptr;
@@ -1504,9 +1773,28 @@ class Node {
     /// layout-follows-a-probe bug this class already shipped once.
     void* hosted_;
 
+    // phase-427 W4 — the error latch, 24 UNCONDITIONAL bytes on every node.
+    //
+    // These do NOT go behind `hosted_`, and the decision is deliberate rather
+    // than an oversight the layout rule missed. This is the error channel a
+    // `-fno-exceptions` target has INSTEAD of a throwing constructor: the
+    // boot-halt mechanism (`NanoRosEntityInventory.cmake`, RFC-0044 Q2) is
+    // exactly what a freestanding image needs, and a latch reachable only on a
+    // hosted target would leave the firmware case — the one that cannot throw —
+    // with no channel at all. So every node pays 24 bytes, which is the price
+    // of one node type whose failure story works on both.
+    //
+    // Issue #230 — inverted flag: the HEALTHY value is the zero-init default,
+    // so a cross-core reader sees "ok" without waiting for any store. Accessed
+    // via __atomic builtins (release in set_error, acquire in ok()/error_*) —
+    // NOT `<atomic>`, which the Zephyr `-nostdinc++` minimal libcpp may lack
+    // (issue 0112 class). All three fields are zero-init-safe.
+    bool has_error_ = false;
+    const char* error_what_ = nullptr;
+    int32_t error_code_ = 0;
+
     friend class Executor;
     friend class NodeBuilder;
-    friend class ComponentNode; // Phase 242.1 — ctor-creates the owned node
     friend Result init(const char* locator, uint8_t domain_id);
     friend Result init(const char* locator, uint8_t domain_id, const char* session_name);
     friend Result init_with_rmw(const char* rmw, const char* locator, uint8_t domain_id,
@@ -1564,6 +1852,155 @@ class Node {
 // including this header all collapse to a single .bss allocation.
 template <int N>
 alignas(8) uint8_t Node::GlobalStorageHolder<N>::storage[NROS_CPP_EXECUTOR_STORAGE_SIZE] = {};
+
+// ==== phase-427 W4 — the timer pool, as a TEMPLATE PARAMETER ================
+//
+// `ComponentNode` carried `Timer timers_[NROS_COMPONENT_MAX_TIMERS]` — 192
+// unconditional bytes at the default depth of 8. Merging that onto `Node` would
+// have charged every node in the tree for a pool most of them never touch, on
+// targets chosen for having no memory to spare.
+//
+// So the depth is a template parameter and the DEFAULT IS ZERO: `Node` itself
+// carries no pool and is unchanged in size by this half of the merge. A node
+// that wants the storage-free timer verbs derives `NodeWithTimers<N>` and names
+// the depth it needs.
+//
+// Why a derived template and not `template <size_t N> class Node` — measured,
+// not preferred. `Node` has to stay ONE non-template type: `rclcpp::Node` is an
+// alias for it and `tests/compile/one_node_type.cpp` asserts
+// `std::is_same<rclcpp::Node, nros::Node>`; 218 in-tree sites spell `Node` with
+// no argument list, which a class template with a defaulted parameter does not
+// permit; and every `Node&` parameter in the tree — `create_node(Node&)`,
+// `Executor`, `spin` — would otherwise accept only ONE depth, so a component
+// with a pool would not be a node the executor could take. Deriving keeps the
+// IS-A that `ComponentNode` never had (it WRAPPED a node, which is the reason
+// this merge exists at all) while keeping the bytes opt-in.
+//
+// `NodeWithTimers` is NOT a second node type. It adds storage and two verbs;
+// it declares no identity, and every one of its instances IS-A `Node`.
+
+/// Max timers a `NodeWithTimers` may own via the storage-free `create_*_in`
+/// members. Overridable per build with a `#define` before including this
+/// header; it is the DEFAULT depth, not a cap on what a node may ask for.
+#ifndef NROS_COMPONENT_MAX_TIMERS
+#define NROS_COMPONENT_MAX_TIMERS 8
+#endif
+/// Issue 1131 — the pool is a fixed inline C array, and zero is not a smaller
+/// one: `Timer timers_[0]` is not ISO C++ (GCC/Clang accept it only as the
+/// zero-length-array extension). A node that owns no timer does not derive this
+/// template at all, which is the real zero.
+///
+/// Below the `#ifndef`, never above it: an undefined identifier reads as 0 in
+/// `#if`, so a guard above its own default fires on every build (issue 1167).
+#if NROS_COMPONENT_MAX_TIMERS < 1
+#error "NROS_COMPONENT_MAX_TIMERS must be >= 1: it sizes a C array (issue 1015)"
+#endif
+
+/// A `Node` plus an inline pool of `MaxTimers` `nros::Timer` slots.
+///
+/// `nros::Timer`'s destructor cancels its timer, so a timer created in a
+/// constructor must outlive the call. The out-ref `create_wall_timer(Timer&,
+/// …)` / `create_timer_in(group, Timer&, …)` family on `Node` makes that the
+/// caller's problem, which is the right default. This template is for the
+/// component shape, where the storage-free spelling is the ergonomic one:
+///
+/// ```cpp
+/// class Talker : public nros::NodeWithTimers<1> {
+///     nros::Publisher<Int32> pub_;
+///   public:
+///     explicit Talker(nros::NodeHandle h) : nros::NodeWithTimers<1>(h, "talker") {
+///         pub_ = create_publisher_in<Int32>("/chatter");
+///         create_wall_timer_in<Talker, &Talker::on_tick>(500);
+///     }
+///     void on_tick();
+/// };
+/// ```
+template <::size_t MaxTimers = NROS_COMPONENT_MAX_TIMERS> class NodeWithTimers : public Node {
+    static_assert(MaxTimers >= 1, "NodeWithTimers<0> has no pool -- derive Node directly, or use "
+                                  "the out-ref create_wall_timer(Timer&, ...) family");
+
+  public:
+    using Node::Node;
+
+    /// Create a **typed member** repeating wall timer parked in the pool.
+    ///
+    /// Was `ComponentNode::create_wall_timer<C, Method>(period_ms)`; `_in`
+    /// because upstream's `create_wall_timer(duration, callback)` is a
+    /// different shape on the same type and a signature-only difference is
+    /// resolved silently. Latches `ok()=false` on failure or pool exhaustion.
+    template <class C, void (C::*Method)()> void create_wall_timer_in(uint64_t period_ms) {
+        Timer* slot = this->next_timer_slot("create_wall_timer_in");
+        if (slot == nullptr) return;
+        Result r = this->Node::template create_wall_timer<C, Method>(*slot, period_ms,
+                                                                     static_cast<C*>(this));
+        if (!r.ok()) {
+            this->set_error("create_wall_timer_in", r.raw());
+            return;
+        }
+        ++timer_count_;
+    }
+
+    /// The plain C callback + ctx escape hatch, parked in the pool.
+    void create_wall_timer_in(uint64_t period_ms, nros_cpp_timer_callback_t callback,
+                              void* context = nullptr) {
+        Timer* slot = this->next_timer_slot("create_wall_timer_in");
+        if (slot == nullptr) return;
+        Result r = this->Node::create_wall_timer(*slot, period_ms, callback, context);
+        if (!r.ok()) {
+            this->set_error("create_wall_timer_in", r.raw());
+            return;
+        }
+        ++timer_count_;
+    }
+
+    /// A **typed member** repeating timer **in** a callback group (RFC-0047),
+    /// parked in the pool. Was `ComponentNode::create_timer_in<C, Method>`.
+    template <class C, void (C::*Method)()>
+    void create_timer_in(const CallbackGroup& group, uint64_t period_ms) {
+        Timer* slot = this->next_timer_slot("create_timer_in");
+        if (slot == nullptr) return;
+        Result r = this->Node::template create_timer_in<C, Method>(group, *slot, period_ms,
+                                                                   static_cast<C*>(this));
+        if (!r.ok()) {
+            this->set_error("create_timer_in", r.raw());
+            return;
+        }
+        ++timer_count_;
+    }
+
+    /// The plain C callback + ctx form, in a group, parked in the pool.
+    void create_timer_in(const CallbackGroup& group, uint64_t period_ms,
+                         nros_cpp_timer_callback_t callback, void* context = nullptr) {
+        Timer* slot = this->next_timer_slot("create_timer_in");
+        if (slot == nullptr) return;
+        Result r = this->Node::create_timer_in(group, *slot, period_ms, callback, context);
+        if (!r.ok()) {
+            this->set_error("create_timer_in", r.raw());
+            return;
+        }
+        ++timer_count_;
+    }
+
+    // The out-ref forms on `Node` share these names; bring them in so a derived
+    // node can still spell `create_timer_in(group, my_timer_, 100, cb, ctx)`
+    // without the pool overloads hiding the base by name lookup.
+    using Node::create_timer_in;
+    using Node::create_wall_timer;
+
+  private:
+    /// The next free pool slot, or `nullptr` after latching an exhaustion
+    /// error. One place so all four verbs report it identically.
+    Timer* next_timer_slot(const char* what) {
+        if (timer_count_ >= MaxTimers) {
+            this->set_error(what, -1);
+            return nullptr;
+        }
+        return &timers_[timer_count_];
+    }
+
+    Timer timers_[MaxTimers];
+    ::size_t timer_count_ = 0;
+};
 
 // -- Free function implementations --
 

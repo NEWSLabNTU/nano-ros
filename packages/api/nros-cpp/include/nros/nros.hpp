@@ -49,22 +49,20 @@
 #include "nros/polling_action_client.hpp"
 #include "nros/polling_subscription.hpp"
 #include "nros/parameter.hpp"
-// phase-426 W4 — the ONE parameter facade both node types wear. Forwards a
-// node's declare/get/set/has onto the executor's store across the FFI, so
-// `rclcpp::Node` and `nros::ComponentNode` cannot disagree about what a
-// parameter is. Freestanding: `<string>`/`<vector>` behind `NROS_CPP_STD`.
+// phase-426 W4 — the ONE parameter facade. Forwards a node's
+// declare/get/set/has onto the executor's store across the FFI, so a parameter
+// means the same thing wherever it is declared. There is now one node type to
+// wear it (phase-427 W4), which is the other half of that guarantee.
+// Freestanding: `<string>`/`<vector>` behind `NROS_CPP_STD`.
 #include "nros/node_parameters.hpp"
 #include "nros/tick_ctx.hpp"
 #include "nros/lifecycle.hpp"
-// phase-417 W2.b — the component model carries the rclcpp-shaped, value-returning
-// `declare_parameter<T>` / `get_parameter<T>` / `has_parameter` (RFC-0044). It sat
-// OUTSIDE this umbrella, so a ported rclcpp node reaching through <nros/nros.hpp>
-// got `nros::Node`, which has no parameter method at all, while the faithful
-// surface was one include away and only the generated entry pulled it in. That is
-// 26 ledger rows filed as gaps in a capability we ship. Freestanding-safe: its
-// `<string>` use is gated on NROS_CPP_STD (issue 0112) and its placement-new
-// shim is gated on Zephyr's stub <new>.
-#include "nros/component_node.hpp"
+// phase-427 W4 — `nros/component_node.hpp` IS GONE. `nros::ComponentNode` was a
+// type that WRAPPED a node (RFC-0044 Q1's "wrap, not derive"), so a component
+// was not a `Node` and every verb had to be forwarded. Its members are on
+// `nros::Node` now, its pool is the opt-in `nros::NodeWithTimers<N>`, and its
+// macros are in `component.hpp` below. The rclcpp-shaped, value-returning
+// parameter facade phase-417 W2.b pulled in here for is `Node`'s own.
 // phase-417 stage 6 step A — `nros::create_subscription_raw`, the
 // arena-registration entry point `rclcpp::Node::create_subscription`
 // below uses so it has no dispatch of its own.
@@ -653,10 +651,15 @@ inline ::std::shared_ptr<Timer> Node::create_wall_timer(::std::chrono::duration<
 // services answer per node FQN — is phase-426 W3/W6.
 //
 // Where the image declares no `param_services` capability there is no store at
-// all, and every call answers `ErrorCode::Unsupported`. `rclcpp::Node` has no
-// `ok()` flag to record that on, so `declare_parameter` returns the code
-// default; the loud half is `nros::ComponentNode`, whose facade makes it
-// boot-fatal.
+// all, and every call answers `ErrorCode::Unsupported`. This facade wears
+// upstream's value-returning signature, which has nowhere to report that, so
+// `declare_parameter` returns the code default. The loud half USED to be
+// `nros::ComponentNode`, whose own facade recorded the failure on an `ok()`
+// flag and made it boot-fatal; phase-427 W4 deleted that type, so no C++ path
+// is boot-fatal on a missing store any more. `nros::Node` still carries the
+// flag (`set_error` / `ok()`); routing the parameter path back onto it is a
+// separate decision, because it changes what an upstream-shaped
+// `declare_parameter` does.
 
 /// `rclcpp::Node::declare_parameter<T>(name, default)` — declare, then read
 /// back, returning the value in effect.
