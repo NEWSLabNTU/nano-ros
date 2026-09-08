@@ -157,8 +157,17 @@ if [ -x "$reach" ]; then
         # A NEW branch (all-zero remote sha) has no baseline to diff against,
         # so check every pin rather than skipping — a new branch is exactly
         # where a fresh, unpushed submodule commit tends to arrive.
+        # `rc=0; ... || rc=$?` on every arm, NOT a bare assignment. This file
+        # runs under `set -euo pipefail`, so `out="$(cmd)"` where `cmd` exits
+        # non-zero ABORTS THE HOOK AT THE ASSIGNMENT — the `rc=$?` below and the
+        # whole three-outcome handling after it never run, and the push is
+        # refused with NO OUTPUT AT ALL (issue 1246). The rc=2 arm explaining
+        # why an unanswerable question must let the push through had therefore
+        # never executed once since it was written. Measured: driving this hook
+        # by hand for a new branch exits 2 and prints zero lines.
+        rc=0
         case "$remote_sha" in
-            *[!0]*) out="$("$reach" --changed "$remote_sha" 2>&1)" ;;
+            *[!0]*) out="$("$reach" --changed "$remote_sha" 2>&1)" || rc=$? ;;
             *)
                 # A new branch has no remote baseline, but it almost always
                 # DESCENDS from one: anything already on the upstream default
@@ -181,13 +190,12 @@ if [ -x "$reach" ]; then
                     fi
                 fi
                 if [ -n "$base" ]; then
-                    out="$("$reach" --changed "$base" 2>&1)"
+                    out="$("$reach" --changed "$base" 2>&1)" || rc=$?
                 else
-                    out="$("$reach" 2>&1)"
+                    out="$("$reach" 2>&1)" || rc=$?
                 fi
                 ;;
         esac
-        rc=$?
         # 2 = could not ask the remotes. Say so and let the push through: a
         # push is already a network operation, so if the network were truly
         # gone this would not be running — and refusing on an unanswerable
