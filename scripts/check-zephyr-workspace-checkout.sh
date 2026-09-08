@@ -92,16 +92,14 @@ zephyr\`) INTO THAT CHECKOUT. A workspace the checkout owns is the guard's
 "our own checkout" case, so it is silent by construction rather than by
 anyone remembering where to put a directory.
 
-So prefer moving the JOB, not the workspace:
+The fix is to move the JOB, not the workspace:
 
   just runner-up nros-qemu,nros-sdk-zephyr,nros-big
 
-If a bare-host runner is deliberate, then the workspace must not live inside
-a second checkout — point NROS_ZEPHYR_WORKSPACE at a path outside every one
-(a sibling of the checkouts, not a child), which takes the guard's own first
-silent case ("the cwd is not in a checkout"). This check does not guess a
-path for you: it does not know that host's disks, and a wrong suggestion is
-worse than none.
+This check deliberately suggests NO path. A bare-host runner is not a
+supported configuration to repair — it is the configuration that produced
+this — and it does not know that machine's disks, where a wrong suggestion
+is worse than none.
 
 Do NOT reach for NROS_SKIP_STALE_CHECK=1. It silences the guard whose whole
 job is to stop a foreign CLI emitting different codegen under the same

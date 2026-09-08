@@ -2673,11 +2673,19 @@ runner-doctor labels *ARGS:
 runner-provision labels *ARGS:
     @scripts/ci/runner-provision.sh {{labels}} {{ARGS}}
 
-# Register this machine as an EPHEMERAL self-hosted runner (needs `gh` auth).
-# Runs the doctor FIRST and refuses a host that fails it. Installing the systemd
-# service is opt-in (`--with-service`) because it is the only sudo in these
-# scripts — the default registers and prints the commands for a human.
-[group("setup")]
+# Register this machine DIRECTLY as an ephemeral self-hosted runner — the
+# BARE-HOST path, and no longer the way to stand one up. Use `runner-up`.
+#
+# It stays because `runner-loop` drives it (an `--ephemeral` runner exits after
+# one job, and a required check with no runner to satisfy it deadlocks the merge
+# queue), not because a human should reach for it. Keeping the host path as a
+# user-facing option is what produced issue 1158's tier-2 blocker: a runner
+# standing on a machine whose layout nobody declared, with a shared Zephyr
+# workspace inside a SECOND nano-ros checkout, so every `nros` invocation was
+# refused by the phase-431 W1 ownership guard 15 minutes into a fixture build.
+# The container has no such freedom — `nros-runner-work` is a named volume, and
+# `runner-provision.sh` puts the workspace inside the checkout it belongs to.
+[private]
 runner-register labels *ARGS:
     @scripts/ci/runner-register.sh {{labels}} {{ARGS}}
 
