@@ -1,38 +1,39 @@
-# Prose references to an issue id with no file on disk.
 #
-# A RATCHET, not an allowlist: this file may only shrink. Each row is
-# `<path>:<id>`. The legitimate reason to be here is an IN-FLIGHT issue —
-# the citing doc is on main, its issue file is in another open PR — where
-# deleting the correct citation would be the wrong fix.
 #
-# Regenerate: python3 scripts/check-prose-issue-refs.py --write-baseline
 #
-# CLASSIFIED 2026-09-08, because "in flight" is only true of some of these:
 #
-#   1099  IN FLIGHT — `docs/issues/1099-cpp-trigger-transition-crosses-
-#         lifecycle-ids.md` exists on `origin/design/context-init-shape`.
-#         The citation is correct and the file is coming.
 #
-#   9999  NEGATION — the citation is deliberately unresolvable. Issue 1092
-#         describes a mutation test whose control is "a gap reason naming
-#         issue 9999, which DOES NOT EXIST". Filing 9999 would destroy the
-#         control; deleting the sentence would delete the test's description.
-#         The same class `check-doc-recipe-refs` calls NEGATION.
+#
 #
 #   0417  RESERVED, NEVER WRITTEN. `refs/issue-ids/0417` exists on origin, so
 #   1080  the id was claimed with `just issue-new` and no file was ever
+#   1099  IN FLIGHT — `docs/issues/1099-cpp-trigger-transition-crosses-
+#   9999  NEGATION — the citation is deliberately unresolvable. Issue 1092
+# A RATCHET, not an allowlist: this file may only shrink. Each row is
+# CLASSIFIED 2026-09-08, because "in flight" is only true of some of these:
 #         committed — issue 0999's shape ("the id was reserved, the fix
-#         landed, the file never got written"). The citations are honest and
-#         point at nothing, and the fix is to write the file, which needs
-#         whoever claimed the id. Not deleted: a reference removed is a
-#         record lost, and the id is not free either.
-#
+#         control; deleting the sentence would delete the test's description.
+# deleting the correct citation would be the wrong fix.
+#         describes a mutation test whose control is "a gap reason naming
 docs/issues/1092-rmw-shape-gate-licenses-deviation-without-pinning-it.md:9999
 docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
 docs/issues/1163-compile-smoke-checks-nros-c-under-default-features-only.md:1080
 docs/issues/1186-executor-backing-latch-test-races-siblings.md:0417
+docs/issues/1231-cyclone-assert-publisher-liveliness-null.md:1164
 docs/roadmap/phase-428-api-porting-principle-sweep.md:1099
 docs/roadmap/phase-432-codegen-one-producer-many-packs.md:1080
+#         issue 9999, which DOES NOT EXIST". Filing 9999 would destroy the
 just/check/docs.just:1110
 just/check/lanes.just:1099
+#         landed, the file never got written"). The citations are honest and
+#         lifecycle-ids.md` exists on `origin/design/context-init-shape`.
+# `<path>:<id>`. The legitimate reason to be here is an IN-FLIGHT issue —
+#         point at nothing, and the fix is to write the file, which needs
+# Prose references to an issue id with no file on disk.
+#         record lost, and the id is not free either.
+# Regenerate: python3 scripts/check-prose-issue-refs.py --write-baseline
 scripts/build/rustdoc-set.sh:1110
+#         The citation is correct and the file is coming.
+# the citing doc is on main, its issue file is in another open PR — where
+#         The same class `check-doc-recipe-refs` calls NEGATION.
+#         whoever claimed the id. Not deleted: a reference removed is a
