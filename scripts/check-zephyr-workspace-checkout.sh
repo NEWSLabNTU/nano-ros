@@ -79,14 +79,32 @@ guard — not here, but deep inside the fixture build.
 That second checkout has \`packages/cli\`, so the guard resolves ownership to
 IT and expects $owner/packages/cli/target/**/nros — never this tree's build.
 
-Fix by moving the workspace OUT of any checkout, not by pointing it at one:
+WHERE THIS COMES FROM, AND THE FIX THAT IS NOT ABOUT DIRECTORIES
 
-  NROS_ZEPHYR_WORKSPACE=$(dirname "$owner")/zephyr-workspace
+On a self-hosted runner this shape means the job is running DIRECTLY ON THE
+HOST, where the layout is whatever that machine happens to carry. The
+sanctioned way to run one is contained — \`just runner-up <labels>\` /
+\`scripts/ci/runner-container.sh\` — and there the problem cannot arise: the
+work tree is the named volume \`nros-runner-work\` at /home/runner/_work with
+no host bind mounts, and the Zephyr workspace is provisioned by
+\`runner-provision.sh\` (the \`nros-sdk-zephyr\` label runs \`just setup
+zephyr\`) INTO THAT CHECKOUT. A workspace the checkout owns is the guard's
+"our own checkout" case, so it is silent by construction rather than by
+anyone remembering where to put a directory.
 
-A workspace outside every checkout takes the guard's own first silent case
-("the cwd is not in a checkout"), so nothing is weakened and no code changes.
-Setting NROS_SKIP_STALE_CHECK=1 also silences it, but that disables a guard
-whose whole job is to stop a foreign CLI emitting different codegen under the
-same version — a loud failure traded for a quiet wrong answer.
+So prefer moving the JOB, not the workspace:
+
+  just runner-up nros-qemu,nros-sdk-zephyr,nros-big
+
+If a bare-host runner is deliberate, then the workspace must not live inside
+a second checkout — point NROS_ZEPHYR_WORKSPACE at a path outside every one
+(a sibling of the checkouts, not a child), which takes the guard's own first
+silent case ("the cwd is not in a checkout"). This check does not guess a
+path for you: it does not know that host's disks, and a wrong suggestion is
+worse than none.
+
+Do NOT reach for NROS_SKIP_STALE_CHECK=1. It silences the guard whose whole
+job is to stop a foreign CLI emitting different codegen under the same
+version — a loud failure traded for a quiet wrong answer.
 EOF
 exit 1
