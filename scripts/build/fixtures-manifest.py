@@ -106,6 +106,10 @@ def load_workspace_fixtures(path):
 # that tests read or execute.
 COMPILE_CHECK_BUILDERS = (
     "cargo-check",  # stage the tree, `cargo check`, stamp `.compile-ok`
+    # issue 1230 — same staging, `cargo clippy`. For a row whose point is the
+    # LINT verdict on the staged tree (generated code under `#![deny(warnings)]`
+    # + `#![deny(clippy::all)]`), which `cargo check` cannot answer.
+    "cargo-clippy",
     "cargo-build",  # stage the tree, `cargo build`, keep the binary
     "cmake-configure",  # cmake configure (+ build) into build/cmake-fixtures/<id>
     "cross-build",  # `cargo build --target <target>` for one or more profiles

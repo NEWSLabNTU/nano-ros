@@ -86,8 +86,8 @@ west_fixture_stamp() {
 #
 # These four rows are compile-checks that this lane owns because west needs a
 # provisioned Zephyr workspace. `compile-check-fixtures.sh` is the only other
-# writer of `.inputsig`, and its builder loop covers `cargo-check cargo-build
-# cross-build cmake-configure cxx-syntax` — not `west-build` / `west-configure`.
+# writer of `.inputsig`, and its builder loop covers `cargo-check cargo-clippy
+# cargo-build cross-build cmake-configure cxx-syntax` — not `west-build` / `west-configure`.
 # So nothing wrote these, while `check-fixtures-stale.sh` requires them under
 # scope `coords` (tier 2) and `all` (tier 3): a COMPLETE, green
 # `build-test-fixtures lane=tier2` was followed by `ci-matrix` failing at

@@ -3346,6 +3346,29 @@ builder = "cargo-check"
 dir = "packages/testing/nros-tests/fixtures/n9_workspace"
 output = ".compile-ok"
 
+# --- cargo-clippy: the LINT verdict on the staged tree is the point.
+# issue 1230 — the four `cargo check` / `cargo clippy` runs that used to happen
+# inside `packages/cli/rosidl-codegen/tests/compilation_test.rs`, at test time,
+# against the no-compilation-inside-tests rule.
+#
+# The crate does not exist until something generates it, which is what the issue
+# called "a phase, not a patch" — but the INPUTS were four `.msg` string
+# constants in the test bodies, so only the GENERATION had to move, and a
+# `build.rs` that path-depends on `rosidl-codegen` moves it without any new
+# machinery. That path dep is also the staleness edge: cargo writes dep-info
+# naming every emitter source, `compile-check-signature.sh` folds it into
+# `.inputsig`, and an emitter edit re-stales this row on its own.
+#
+# `cargo-clippy` rather than `cargo-check` because two of the four intents are
+# lint verdicts (`#![deny(warnings)]`, `#![deny(clippy::all)]` in the staged
+# crate) and clippy answers the type-check half too. Consumer:
+# `packages/testing/nros-tests/tests/generated_message_code_compiles.rs`.
+[[compile_check_fixture]]
+id = "generated_message_crate"
+builder = "cargo-clippy"
+dir = "packages/testing/nros-tests/fixtures/generated_message_crate"
+output = ".compile-ok"
+
 # --- cargo-build: the binary is the point; tests run it.
 [[compile_check_fixture]]
 id = "orch_tiers_multi"

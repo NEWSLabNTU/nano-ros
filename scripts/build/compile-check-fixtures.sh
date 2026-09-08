@@ -152,6 +152,36 @@ stage_and_check() {
     echo "   stamped $staged/.compile-ok"
 }
 
+# cargo-clippy (issue 1230). Same staging as `cargo-check`, `cargo clippy`
+# instead of `cargo check`, same `.compile-ok` stamp.
+#
+# A separate builder rather than a flag on `cargo-check`, because the two ask
+# different questions and a row should say which one it is: `cargo check`
+# answers "does this type-check", clippy answers "is it clean under the lints".
+# A crate whose lint verdict is the point (`generated_message_crate`: the
+# emitted message code under `#![deny(warnings)]` + `#![deny(clippy::all)]`)
+# would otherwise have to run its lints through a `post_stage` hook, which is
+# where a check goes to be forgotten.
+#
+# Missing clippy is FATAL here, not a lane skip. It is a rustup component
+# (`rustup component add clippy`), the whole `just check` line already requires
+# it, and the test this replaces asserted exactly that (issue 1160: a green over
+# a lint run that never happened is not a trade worth making).
+stage_and_clippy() {
+    local id="$1" src="$2"
+    local staged="$out_root/$id"
+    echo "== compile-clippy: $id =="
+    cargo clippy --version >/dev/null 2>&1 || {
+        echo "compile-clippy: \`cargo clippy\` is not available — install it with \`rustup component add clippy\` (row $id exists to report a LINT verdict; skipping it would report one nobody measured)" >&2
+        exit 2
+    }
+    stage_tree "$id" "$src" "$staged"
+    rm -f "$staged/.compile-ok"
+    ( cd "$staged" && cargo clippy --manifest-path Cargo.toml )
+    date -u +%Y-%m-%dT%H:%M:%SZ > "$staged/.compile-ok"
+    echo "   stamped $staged/.compile-ok"
+}
+
 stage_and_build() {
     local id="$1" src="$2" manifest_dir="${3:-.}" pkg="${4:-demo_entry}"
     local staged="$out_root/$id"
@@ -392,7 +422,7 @@ id_filter="${NROS_FIXTURE_ID:-}"
 # filter already follows one line down: a narrowing that selects nothing must
 # say so rather than "succeed".
 builder_filter="${NROS_FIXTURE_BUILDER:-}"
-_cc_all_builders="cargo-check cargo-build cross-build cmake-configure cxx-syntax"
+_cc_all_builders="cargo-check cargo-clippy cargo-build cross-build cmake-configure cxx-syntax"
 if [ -n "$builder_filter" ]; then
     for _cc_want in ${builder_filter//,/ }; do
         case " $_cc_all_builders " in
@@ -426,7 +456,7 @@ compile_check_records() {
 # broken invocation; the guard owns the distinction.
 if [ -n "$id_filter" ]; then
     _cc_matched=0
-    for _cc_builder in cargo-check cargo-build cross-build cmake-configure cxx-syntax; do
+    for _cc_builder in cargo-check cargo-clippy cargo-build cross-build cmake-configure cxx-syntax; do
         # Deliberately NOT `compile_check_records` — that honours the builder
         # narrowing, and "this id is in a builder you did not ask for" is not
         # the same fact as "this id does not exist" (issue 0406's distinction).
@@ -456,7 +486,7 @@ fi
 # tokens (NROS_JOBSERVER=1) or pinned make 4.4 is absent.
 if [ -z "$id_filter" ] && [ "${NROS_COMPILE_CHECK_POOL:-1}" = "1" ]; then
     _cc_ids=""
-    for _cc_builder in cargo-check cargo-build cross-build cmake-configure cxx-syntax; do
+    for _cc_builder in cargo-check cargo-clippy cargo-build cross-build cmake-configure cxx-syntax; do
         while IFS=$'\x1f' read -r _id _rest; do
             [ -n "$_id" ] || continue
             case " $_cc_ids " in *" $_id "*) continue ;; esac
@@ -568,6 +598,14 @@ while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     run_fixture "$out_root/$id" "$id" "$builder" stage_and_check "$id" "$dir"
     write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
 done < <(_lane_on cargo-check && compile_check_records cargo-check || true)
+
+# cargo-clippy. No target-bearing variant: a cross clippy would need the target
+# toolchain, and no row asks for one.
+while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
+    [ -n "$id" ] || continue
+    run_fixture "$out_root/$id" "$id" "$builder" stage_and_clippy "$id" "$dir"
+    write_compile_check_sig "$id$(printf '\x1f')$builder$(printf '\x1f')$dir$(printf '\x1f')$pkg$(printf '\x1f')$mdir$(printf '\x1f')$target$(printf '\x1f')$profiles$(printf '\x1f')$output" "$out_root/$id"
+done < <(_lane_on cargo-clippy && compile_check_records cargo-clippy || true)
 
 while IFS=$'\x1f' read -r id builder dir pkg mdir target profiles output; do
     [ -n "$id" ] || continue

@@ -1,0 +1,51 @@
+# Issue 1230 — the build-stage home of the four `cargo check` / `cargo clippy`
+# runs that used to happen INSIDE `rosidl-codegen`'s `compilation_test.rs`.
+#
+# The four tests generated a message crate from a fixed `.msg` string with
+# `generate_message_package(...)`, wrote it into a `tempfile` tree and compiled
+# it in place — the thing AGENTS.md "No compilation inside tests" forbids. The
+# inputs were CONSTANTS, so nothing about them needed a running test: the four
+# `.msg` files now live beside this manifest, `build.rs` runs the SAME emitter,
+# and the compile is the build stage's (`[[compile_check_fixture]]` row
+# `generated_message_crate`, builder `cargo-clippy`).
+#
+# `build.rs` path-depends on the emitter DELIBERATELY, rather than shelling a
+# prebuilt tool: cargo then writes dep-info naming every `rosidl-codegen`
+# source, `compile-check-signature.sh` folds that measured closure into the
+# row's `.inputsig`, and an emitter edit re-stales this fixture with no
+# hand-maintained list. A tool invoked through `post_stage` would be a museum
+# artifact by construction (the #182 / issue-1018 class).
+#
+# Standalone `[workspace]` table keeps the crate out of the outer nano-ros
+# workspace (the `one_dep_component_pkg` / `n9_workspace` shape). The
+# `@NANO_ROS_ROOT@` placeholders are rewritten to absolute paths when
+# `compile-check-fixtures.sh` stages the tree.
+[workspace]
+
+[package]
+name = "generated_message_crate"
+version = "0.1.0"
+# The emitter's own `cargo.toml` template says 2021, and the four tests this
+# fixture replaces compiled against that. Same edition, same answer.
+edition = "2021"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# OPTIONAL, behind a feature of the same name, because that is what the emitted
+# code expects: every derive it writes is `#[cfg_attr(feature = "serde", …)]`.
+# Declaring serde as a plain dependency and no feature makes rustc's
+# `unexpected_cfgs` fire on all 48 of them — which `#![deny(warnings)]` turns
+# into a build failure that says nothing about the emitter. The four tests this
+# fixture replaces all passed `--features serde`; the row's builder does too.
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+[features]
+default = ["serde"]
+serde = ["dep:serde"]
+
+[build-dependencies]
+rosidl-codegen = { path = "@NANO_ROS_ROOT@/packages/cli/rosidl-codegen" }
+rosidl-parser = { path = "@NANO_ROS_ROOT@/packages/cli/rosidl-parser" }
