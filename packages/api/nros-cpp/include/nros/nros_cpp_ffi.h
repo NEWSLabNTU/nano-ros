@@ -1401,6 +1401,19 @@ nros_cpp_ret_t nros_cpp_bind_group_sched(void *handle,
 nros_cpp_ret_t nros_cpp_executor_derive_min_stack_headroom(void *handle, size_t stack_bytes);
 
 /**
+ * Declare the minimum stack headroom this executor's thread must keep, in
+ * bytes. `0` (the default) leaves the `stack-headroom-runtime` rule off.
+ *
+ * Exists because the bound cannot be derived from anything the executor can
+ * see. It never receives `stack_bytes` -- that lives in the spawn attr and
+ * goes no further -- and no portable query returns a task's total stack, so
+ * neither an absolute floor nor a percentage can be inferred. The entry that
+ * spawned the thread is the only party that knows what it handed over, and
+ * on a C++ image that entry is on this side of the ABI.
+ *
+ * Call from a tier's `setup(executor)`, beside the other declarations the
+ * generated entry already makes there.
+ *
  * # Safety
  * `handle` must be a live executor handle from this ABI, or NULL.
  */
