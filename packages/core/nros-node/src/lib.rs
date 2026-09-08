@@ -24,7 +24,7 @@
 //! })?;
 //!
 //! // Spin (processes callbacks)
-//! executor.spin_blocking(SpinOptions::default());
+//! executor.spin(SpinOptions::default());
 //! ```
 //!
 //! ## Embedded Example
@@ -51,7 +51,7 @@
 //!
 //! # Features
 //!
-//! - `std` - Enable standard library support (spin_blocking)
+//! - `std` - Enable standard library support (`Executor::spin`)
 //! - `alloc` - Enable heap allocation (parameter service boxed replies)
 
 #![no_std]

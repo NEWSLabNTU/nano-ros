@@ -13,8 +13,8 @@ use super::arena::{
 };
 #[cfg(feature = "rmw-cffi")]
 use super::types::ExecutorConfig;
-#[cfg(feature = "alloc")]
-use super::types::SpinOptions;
+// phase-427 — unconditional: `spin_forever` takes `SpinOptions` and is not
+// `alloc`-gated (a bare-metal entry is exactly the caller that needs it).
 use super::{
     arena::{
         BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, ServiceClientCallbackEntry,
@@ -40,8 +40,8 @@ use super::{
     types::{
         ExecutorSemantics, GuardCondition, HandleId, InvocationMode, NodeError,
         RawMessageDeserializeFn, RawResponseCallback, RawServiceCallback, RawSubscriptionCallback,
-        RawSubscriptionInfoCallback, ReadinessSnapshot, SpinOnceResult, SpinPeriodPollingResult,
-        Trigger, TypedSubscriptionCallback,
+        RawSubscriptionInfoCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
+        SpinPeriodPollingResult, Trigger, TypedSubscriptionCallback,
     },
 };
 
@@ -6342,7 +6342,47 @@ impl<'s> Executor<'s> {
         self.consecutive_io_failures == 0
     }
 
+    /// Drive I/O once, then dispatch EVERY callback that is ready — the tick
+    /// primitive the rest of the family is built from.
+    ///
+    /// OURS-ONLY (RFC-0089): rclcpp's `spin_once` executes the NEXT ready item
+    /// and has no timeout; rclpy's is `spin_once(node, timeout_sec)`. Ours is a
+    /// blocking wait with a budget, which an RTOS task that must not spin-poll
+    /// needs and which neither upstream has a verb for. What it DOES when work
+    /// is ready is rclcpp's `spin_some` — the whole ready set, one pass
+    /// (RFC-0002 §3) — so [`spin_some`](Self::spin_some) is the drain verb and
+    /// this is the waiting one.
+    ///
+    /// `timeout` is the upper bound on the I/O wait, saturated at `i32::MAX`
+    /// ms (~24 days) for the underlying transport call. `Duration` has no
+    /// negative sentinel, which is what the pre-phase-84 `timeout_ms: i32`
+    /// signature used to silently mean "freeze the timers and poll I/O
+    /// forever".
     pub fn spin_once(&mut self, timeout: core::time::Duration) -> SpinOnceResult {
+        let mut discarded = None;
+        self.spin_once_capturing(timeout, &mut discarded)
+    }
+
+    /// [`spin_once`](Self::spin_once), plus the FIRST failing callback's
+    /// error.
+    ///
+    /// phase-427 — [`SpinOnceResult`] counts errors and drops their values,
+    /// and `SpinOnceResult` is `Copy`, so widening it to carry a
+    /// (non-`Copy`, `alloc`-variant-bearing) [`TransportError`] would change a
+    /// public type every consumer copies. The value is needed in exactly one
+    /// place — `SpinOptions::stop_on_first_error`, where `spin` has to return
+    /// the first error rather than a count — so it is threaded out through an
+    /// out-parameter that lives in the caller's frame. Nothing is added to
+    /// `Executor`, so a no-alloc image pays nothing for it.
+    ///
+    /// `first_error` is written at most once: subsequent failures in the same
+    /// pass are counted in the result and their values dropped, exactly as
+    /// before.
+    fn spin_once_capturing(
+        &mut self,
+        timeout: core::time::Duration,
+        first_error: &mut Option<TransportError>,
+    ) -> SpinOnceResult {
         let timeout_ms = timeout.as_millis().min(i32::MAX as u128) as i32;
 
         // phase-425 W3b — bring the `/clock` subscription in line with
@@ -6993,11 +7033,11 @@ impl<'s> Executor<'s> {
         // SAFETY: each `desc_idx` we pop was set above only when the
         // corresponding `entries[i]` slot was `Some`; no Executor
         // mutation happens between that scan and this dispatch.
-        let dispatch_one = |meta: &CallbackMeta,
-                            desc_idx: usize,
-                            arena_ptr: *mut u8,
-                            delta_us: u64,
-                            result: &mut SpinOnceResult| {
+        let mut dispatch_one = |meta: &CallbackMeta,
+                                desc_idx: usize,
+                                arena_ptr: *mut u8,
+                                delta_us: u64,
+                                result: &mut SpinOnceResult| {
             // Phase 141.B.2 — capture T1 at subscription dispatch
             // entry. Probe pairs it with the most recent T0 from
             // `nros_rmw_runtime_wake_cb` (std + alloc variants)
@@ -7027,14 +7067,22 @@ impl<'s> Executor<'s> {
                     EntryKind::GuardCondition => {}
                 },
                 Ok(false) => {}
-                Err(_) => match meta.kind {
-                    EntryKind::Subscription => result.subscription_errors += 1,
-                    EntryKind::Service
-                    | EntryKind::ServiceClient
-                    | EntryKind::ActionServer
-                    | EntryKind::ActionClient => result.service_errors += 1,
-                    EntryKind::Timer | EntryKind::GuardCondition => {}
-                },
+                Err(e) => {
+                    // phase-427 — the first one is kept, the rest are counted.
+                    // `stop_on_first_error` is what reads it; when nobody
+                    // asked, the `Option` is a local the optimiser drops.
+                    if first_error.is_none() {
+                        *first_error = Some(e);
+                    }
+                    match meta.kind {
+                        EntryKind::Subscription => result.subscription_errors += 1,
+                        EntryKind::Service
+                        | EntryKind::ServiceClient
+                        | EntryKind::ActionServer
+                        | EntryKind::ActionClient => result.service_errors += 1,
+                        EntryKind::Timer | EntryKind::GuardCondition => {}
+                    }
+                }
             }
         };
 
@@ -7321,30 +7369,60 @@ impl<'s> Executor<'s> {
         result
     }
 
-    /// Drive I/O and dispatch callbacks in an infinite loop.
+    /// Drive I/O and dispatch callbacks forever — the body of an RTOS task.
     ///
-    /// Each iteration calls [`spin_once(timeout_ms)`](Self::spin_once),
-    /// which pumps the transport and dispatches all registered callbacks.
+    /// EXTENSION (RFC-0089). Not a rename of upstream's `spin`: the `!` is the
+    /// point. A bare-metal entry has no shutdown source to return TO, and
+    /// declaring that lets the compiler drop the epilogue and lets the caller
+    /// write it as the last expression of a `-> !` task body with no
+    /// `unreachable!()`. [`spin`](Self::spin) is the verb that can end, and it
+    /// is upstream's.
     ///
-    /// This is the primary run loop for embedded applications:
+    /// phase-427 — was `spin(Duration) -> !`, which squatted on rclrs's name
+    /// with a different contract (a ported `executor.spin(SpinOptions)` line
+    /// had to be renamed by hand, the one edit on the tutorial's happy path
+    /// that no real difference forced). `spin_default()` went with it: it named
+    /// a 50 ms poll interval and had zero call sites, and the interval is now
+    /// [`SpinOptions::poll_interval`], defaulting to
+    /// [`DEFAULT_SPIN_POLL_INTERVAL`](super::types::DEFAULT_SPIN_POLL_INTERVAL).
+    ///
+    /// **Envelope.** Only `poll_interval` and `stop_on_first_error` can mean
+    /// anything here; `timeout`, `only_next` and `max_callbacks` are ENDING
+    /// conditions and this verb does not end. Passing one is a caller error and
+    /// says so at `LOG_ERR` on entry rather than being quietly dropped — a
+    /// discarded ending condition is precisely the "compiles and differs" case
+    /// RFC-0089 exists to make loud, and a `-> !` signature has no other
+    /// channel. `stop_on_first_error` likewise cannot RETURN the error; it
+    /// logs it and keeps spinning, because a task body has nowhere to put it.
     ///
     /// ```ignore
     /// let mut executor = Executor::open(&config)?;
     /// executor.register_subscription::<Int32, _>("/topic", |msg| { /* ... */ })?;
-    /// executor.spin(10); // never returns
+    /// executor.spin_forever(SpinOptions::default()); // never returns
     /// ```
-    pub fn spin(&mut self, timeout: core::time::Duration) -> ! {
-        loop {
-            self.spin_once(timeout);
+    pub fn spin_forever(&mut self, opts: SpinOptions) -> ! {
+        if opts.timeout.is_some() || opts.only_next || opts.max_callbacks.is_some() {
+            nros_log::log_error!(
+                nros_log::get_logger("nros"),
+                "spin_forever: an ending condition (timeout / only_next / max_callbacks) \
+                 was supplied to a verb that never returns and is being IGNORED \
+                 -- use `Executor::spin` for a loop that can end"
+            );
         }
-    }
-
-    /// Phase 104.C.3.3.c — rclcpp-`spin()`-shape no-arg variant.
-    /// Defaults the per-iteration timeout to 50 ms, which keeps
-    /// idle binaries from busy-spinning while staying responsive
-    /// enough for default-QoS messaging.
-    pub fn spin_default(&mut self) -> ! {
-        self.spin(core::time::Duration::from_millis(50))
+        let poll = opts.poll_interval;
+        let report_errors = opts.stop_on_first_error;
+        loop {
+            let mut first_error = None;
+            self.spin_once_capturing(poll, &mut first_error);
+            if report_errors && let Some(e) = first_error {
+                nros_log::log_error!(
+                    nros_log::get_logger("nros"),
+                    "spin_forever: a callback failed ({:?}); `stop_on_first_error` cannot \
+                     end a `-> !` loop, so this is a report, not a stop",
+                    e
+                );
+            }
+        }
     }
 
     /// Drive I/O and dispatch callbacks asynchronously.
@@ -7379,6 +7457,79 @@ impl<'s> Executor<'s> {
             })
             .await;
         }
+    }
+
+    /// Execute the work that is ready NOW and return — rclcpp's
+    /// `Executor::spin_some(max_duration)`.
+    ///
+    /// ADOPT-BOUNDED (RFC-0089). Upstream's drain verb: collect what is ready,
+    /// execute it, come back. It never waits for new work — that is
+    /// [`spin_once`](Self::spin_once), which takes a budget and blocks on the
+    /// transport until it expires.
+    ///
+    /// **Envelope, two ways it is weaker than rclcpp's:**
+    ///
+    /// * rclcpp collects the ready set ONCE and executes it. One
+    ///   `spin_once(0)` here is already that whole set (RFC-0002 §3), so this
+    ///   would be a single call — except a callback may enqueue work for
+    ///   another entity, which rclcpp's `spin_all` re-collects and its
+    ///   `spin_some` leaves for the next call. Ours re-drains until a pass does
+    ///   NO work, which is `spin_all`'s answer, because the alternative is
+    ///   work sitting in the arena until someone spins again. Bounded by
+    ///   `max`, so a callback that feeds itself cannot wedge the caller.
+    /// * `max` is checked BETWEEN passes, never inside one, so it is a floor on
+    ///   when this returns and not a ceiling: a single long callback overruns
+    ///   it. There is no preemption here to make it a ceiling.
+    ///
+    /// `max` of [`Duration::ZERO`](core::time::Duration::ZERO) means no limit —
+    /// rclcpp's own default — and is the spelling a build with no clock must
+    /// use. A non-zero `max` on a clockless build is an ERROR rather than an
+    /// unbounded drain (issue 0709, the same rule as `spin`'s `timeout`).
+    ///
+    /// The `Result` is about that PRECONDITION and nothing else. A failed
+    /// callback is counted in each pass's `SpinOnceResult` and does not end the
+    /// drain, matching `spin`'s default (`SpinOptions::stop_on_first_error` is
+    /// `false`); rclcpp's `spin_some` returns `void` and reports callback
+    /// failures nowhere at all.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Drain the ready set, then get on with the caller's own work.
+    /// executor.spin_some(core::time::Duration::ZERO)?;
+    /// ```
+    pub fn spin_some(&mut self, max: core::time::Duration) -> Result<(), NodeError> {
+        let bounded = !max.is_zero();
+        let start_us = self.now_us();
+        if bounded && start_us.is_none() {
+            nros_log::log_error!(
+                nros_log::get_logger("nros"),
+                "spin_some: a max duration was requested but this build has no clock \
+                 - install one with `ExecutorConfig::clock_us`, or pass \
+                 `Duration::ZERO` for rclcpp's unbounded default (issue 0709)"
+            );
+            return Err(NodeError::NotInitialized);
+        }
+        let max_us = max.as_micros().min(u64::MAX as u128) as u64;
+
+        // No `enter_spin_loop` here, deliberately: `is_spinning` answers "a
+        // blocking loop is running that a peer's `cancel()` has to reach", and
+        // this verb returns on its own. Raising the flag for the length of a
+        // drain would make a `cancel()` from another task look acted-upon when
+        // nothing was waiting for it.
+        loop {
+            let result = self.spin_once(core::time::Duration::ZERO);
+            if !result.any_work() {
+                break;
+            }
+            if bounded
+                && let (Some(start), Some(now)) = (start_us, self.now_us())
+                && now.saturating_sub(start) >= max_us
+            {
+                break;
+            }
+        }
+        Ok(())
     }
 
     // ========================================================================
@@ -8426,7 +8577,7 @@ impl<'s> Executor<'s> {
     /// Is a spin loop running on this executor right now?
     ///
     /// rclcpp spells this `Executor::is_spinning()`. True between the entry and
-    /// the exit of [`spin_blocking`](Self::spin_blocking),
+    /// the exit of [`spin`](Self::spin),
     /// [`spin_period`](Self::spin_period), the `open_threaded` worker loop, and
     /// the C / C++ API loops — every construct that owns its own iteration.
     ///
@@ -8446,7 +8597,7 @@ impl<'s> Executor<'s> {
     /// The seam the C and C++ APIs use so their loops answer
     /// [`is_spinning()`](Self::is_spinning) without keeping a flag of their own
     /// (RFC-0019: ergonomics may live in the wrapper, state may not). Also
-    /// CLEARS any pending cancel, matching what `spin_blocking` does on entry:
+    /// CLEARS any pending cancel, matching what `spin` does on entry:
     /// a cancel requested before a spin started is not a cancel of THIS spin.
     ///
     /// Pair it with [`exit_spin_loop`](Self::exit_spin_loop) on EVERY exit path,
@@ -8493,28 +8644,53 @@ impl<'s> Executor<'s> {
 // hand-rolling them in its BSP.
 #[cfg(feature = "alloc")]
 impl<'s> Executor<'s> {
-    /// Blocking spin loop with configurable exit conditions.
+    /// Blocking spin loop with configurable exit conditions — rclrs's
+    /// `Executor::spin(SpinOptions)`.
+    ///
+    /// ADOPT-BOUNDED (RFC-0089). Same name, same argument, same meaning: run
+    /// until an exit condition in `opts` says stop. Two bounds, both visible in
+    /// the signature:
+    ///
+    /// * **The error channel is one error, not all of them.** rclrs returns
+    ///   `Vec<RclrsError>` and the caller writes `.first_error()?`; there is no
+    ///   allocator here, so ours returns `Result<(), NodeError>` carrying the
+    ///   FIRST failing callback's error and drops the rest (they are still
+    ///   counted in each pass's [`SpinOnceResult`]). Ported line for line, the
+    ///   edit is `.first_error()?` -> `?`, which the compiler points at.
+    /// * **The loop is a poll loop**, so `opts.poll_interval` is the quantum at
+    ///   which every exit condition is observed — a `cancel()` from another
+    ///   task, the `timeout` expiring, `max_callbacks` being reached. Requesting
+    ///   a `timeout` on a build with no clock is an ERROR, not a silent
+    ///   never-ending loop (issue 0709).
+    ///
+    /// phase-427 — this method was `spin_blocking`. `spin` was taken by the
+    /// `-> !` task body, which is now [`spin_forever`](Self::spin_forever).
     ///
     /// Runs until one of:
-    /// - [`halt()`](Self::halt) is called (from another thread or signal handler)
-    /// - Timeout expires (if set in options)
-    /// - Max callbacks reached (if set in options)
-    /// - `only_next` is true (single iteration)
+    /// - [`cancel()`](Self::cancel) / [`halt()`](Self::halt) is called (from
+    ///   another thread or signal handler)
+    /// - `opts.timeout` expires (if set)
+    /// - `opts.max_callbacks` is reached (if set)
+    /// - `opts.only_next` is true (single iteration)
+    /// - a callback failed and `opts.stop_on_first_error` is set
     ///
     /// # Example
     ///
     /// ```ignore
-    /// // Spin forever until halted
-    /// executor.spin_blocking(SpinOptions::default())?;
+    /// // Spin until cancelled
+    /// executor.spin(SpinOptions::default())?;
     ///
     /// // Spin with 5-second timeout
-    /// executor.spin_blocking(SpinOptions::new().timeout(core::time::Duration::from_secs(5)))?;
+    /// executor.spin(SpinOptions::new().timeout(core::time::Duration::from_secs(5)))?;
     ///
     /// // Single iteration
-    /// executor.spin_blocking(SpinOptions::spin_once())?;
+    /// executor.spin(SpinOptions::spin_once())?;
     /// ```
-    pub fn spin_blocking(&mut self, opts: SpinOptions) -> Result<(), NodeError> {
-        const POLL_INTERVAL: core::time::Duration = core::time::Duration::from_millis(10);
+    pub fn spin(&mut self, opts: SpinOptions) -> Result<(), NodeError> {
+        // phase-427 — was a private `POLL_INTERVAL` const; it is
+        // `SpinOptions::poll_interval` now, defaulting to the same 10 ms, so
+        // `spin` and `spin_forever` read one value instead of two literals.
+        let poll_interval = opts.poll_interval;
 
         // phase-359 W10 — the executor's own clock. `now_us()` reads the
         // PLATFORM's monotonic counter, and nothing else: the platform API is
@@ -8534,13 +8710,13 @@ impl<'s> Executor<'s> {
         // Neither of the two silent readings is honest. An unmet precondition
         // is an ERROR (repo rule, fail-loud): the caller supplied a time
         // quantity this build cannot measure, and only they can decide what to
-        // do about it. An UNTIMED `spin_blocking` still runs until halt, which
+        // do about it. An UNTIMED `spin` still runs until halt, which
         // is a promise this build can keep.
         let start_us = self.now_us();
         if opts.timeout.is_some() && start_us.is_none() {
             nros_log::log_error!(
                 nros_log::get_logger("nros"),
-                "spin_blocking: a timeout was requested but this build has no clock \
+                "spin: a timeout was requested but this build has no clock \
                  — install one with `ExecutorConfig::clock_us` (issue 0709)"
             );
             return Err(NodeError::NotInitialized);
@@ -8570,8 +8746,20 @@ impl<'s> Executor<'s> {
                 break;
             }
 
-            let result = self.spin_once(POLL_INTERVAL);
+            let mut callback_error = None;
+            let result = self.spin_once_capturing(poll_interval, &mut callback_error);
             total_callbacks += result.total();
+
+            // phase-427 — the first error, and only the first: rclrs's
+            // `Vec<RclrsError>` needs an allocator we do not have. The scope is
+            // closed before returning so a caller that reads `is_spinning()`
+            // after an error sees `false`, exactly as after a clean exit.
+            if opts.stop_on_first_error
+                && let Some(e) = callback_error
+            {
+                self.exit_spin_loop();
+                return Err(NodeError::Transport(e));
+            }
 
             if opts.max_callbacks.is_some_and(|max| total_callbacks >= max) {
                 break;
@@ -8639,7 +8827,7 @@ impl<'s> Executor<'s> {
     pub fn spin_period(&mut self, period: core::time::Duration) -> Result<(), NodeError> {
         let period_us = period.as_micros().min(u64::MAX as u128) as u64;
         // Absolute next-deadline in the executor's own clock. issue 0709 — the
-        // sibling of `spin_blocking`'s guard above: with no clock there is no
+        // sibling of `spin`'s guard above: with no clock there is no
         // pacing, and the loop would run as fast as `spin_once` returns while
         // the caller believes it is running at `period`. A requested period
         // this build cannot honour is a configuration error, not a silent
@@ -8795,7 +8983,7 @@ impl<'s> Executor<'s> {
     ///     std::thread::sleep(Duration::from_secs(5));
     ///     halt.store(true, Ordering::SeqCst);
     /// });
-    /// executor.spin_blocking(SpinOptions::default())?;
+    /// executor.spin(SpinOptions::default())?;
     /// ```
     pub fn halt_flag(&self) -> portable_atomic_util::Arc<portable_atomic::AtomicBool> {
         self.halt_flag.clone()
@@ -9706,7 +9894,7 @@ mod cancel_tests {
     }
 
     /// The load-bearing one: `cancel()` from a peer thread TERMINATES a running
-    /// `spin_blocking`, `is_spinning()` is true while the loop runs, and false
+    /// `spin`, `is_spinning()` is true while the loop runs, and false
     /// once it has returned.
     ///
     /// The peer asserts `is_spinning()` from OUTSIDE the spinning thread, which
@@ -9744,15 +9932,15 @@ mod cancel_tests {
         });
 
         let started = Instant::now();
-        exec.spin_blocking(crate::executor::types::SpinOptions::default())
-            .expect("an untimed spin_blocking runs until cancelled");
+        exec.spin(crate::executor::types::SpinOptions::default())
+            .expect("an untimed spin runs until cancelled");
         let elapsed = started.elapsed();
 
         peer.join().expect("peer thread must not panic");
 
         assert!(
             saw_spinning.load(Ordering::SeqCst),
-            "the peer must have run before spin_blocking returned"
+            "the peer must have run before spin returned"
         );
         assert!(
             !exec.is_spinning(),
@@ -9766,14 +9954,14 @@ mod cancel_tests {
         // termination. The peer sleeps 50 ms before cancelling.
         assert!(
             elapsed >= Duration::from_millis(40),
-            "spin_blocking returned in {elapsed:?} — it cannot have spun"
+            "spin returned in {elapsed:?} — it cannot have spun"
         );
         // ...and an UPPER bound, because "terminated" is the claim: without the
         // cancel check this loop never returns and the test would hang rather
         // than fail. 10 s is far past any scheduling noise.
         assert!(
             elapsed < Duration::from_secs(10),
-            "spin_blocking took {elapsed:?} to observe the cancel"
+            "spin took {elapsed:?} to observe the cancel"
         );
     }
 
@@ -9789,7 +9977,7 @@ mod cancel_tests {
         // inside a spin scope — bounded, no thread, no clock dependency beyond
         // the one the fixture installs.
         assert!(!exec.is_spinning());
-        exec.spin_blocking(crate::executor::types::SpinOptions::spin_once())
+        exec.spin(crate::executor::types::SpinOptions::spin_once())
             .expect("a single-iteration spin must succeed");
         assert!(
             !exec.is_spinning(),
@@ -9826,13 +10014,13 @@ mod cancel_tests {
             cancel_bit.store(true, std::sync::atomic::Ordering::SeqCst);
         });
 
-        exec.spin_blocking(crate::executor::types::SpinOptions::default())
-            .expect("an untimed spin_blocking runs until cancelled");
+        exec.spin(crate::executor::types::SpinOptions::default())
+            .expect("an untimed spin runs until cancelled");
         peer.join().expect("peer thread must not panic");
 
         assert!(
             observed.load(std::sync::atomic::Ordering::SeqCst),
-            "is_spinning() must read true while spin_blocking is running"
+            "is_spinning() must read true while spin is running"
         );
     }
 
