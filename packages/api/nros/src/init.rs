@@ -8,7 +8,7 @@
 //!    [`init_with_launch`] for an explicit path). The returned [`Context`]
 //!    carries launch-resolved fields (domain id, locator, RMW choice). User
 //!    code drives its own spin via `Executor::open` +
-//!    `Executor::spin_blocking`.
+//!    `Executor::spin`.
 //! 3. **Application pkg + custom spin** — call [`init()`] (or [`init_with_args`]
 //!    for argv-style overrides). Launch file is ignored; env vars +
 //!    `ExecutorConfig::from_env()` semantics still apply.
@@ -172,7 +172,7 @@ fn read_env_context(source: ContextSource) -> Result<Context, InitError> {
 /// Reads env vars (`ROS_DOMAIN_ID`, `NROS_LOCATOR`, `NROS_SESSION_MODE`,
 /// `NROS_RMW` / `RMW_IMPLEMENTATION`) and returns a [`Context`]. The
 /// caller owns the spin loop — typically `Executor::open(&ctx.config(name))`
-/// followed by `spin_blocking` or a hand-rolled `spin_once` loop.
+/// followed by `spin` or a hand-rolled `spin_once` loop.
 #[cfg(feature = "env")]
 pub fn init() -> Result<Context, InitError> {
     read_env_context(ContextSource::Env)

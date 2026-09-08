@@ -52,7 +52,7 @@ fn main() {
         })
         .expect("Failed to add safety subscription");
     info!("Safety subscriber created for topic: /chatter");
-    if let Err(e) = executor.spin_blocking(SpinOptions::default()) {
+    if let Err(e) = executor.spin(SpinOptions::default()) {
         error!("Spin error: {:?}", e);
     }
 }

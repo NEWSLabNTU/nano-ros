@@ -319,7 +319,7 @@ BASELINE = {
     # phase-359 W10: 47 -> 39 cfg, 34 -> 25 path. The THREAD and SPIN-LOOP
     # cluster. `open_threaded` spawns a platform task instead of a
     # `std::thread` (the third and last executor-owned worker to move), and
-    # `spin_blocking` / `spin_period` / `spin_one_period_timed` pace on the
+    # `spin` / `spin_period` / `spin_one_period_timed` pace on the
     # executor's own `now_us()` plus `nros_platform_sleep_us` instead of
     # `Instant` + `thread::sleep`. `SpinOptions` and `SpinPeriodResult` follow
     # them onto `alloc`.

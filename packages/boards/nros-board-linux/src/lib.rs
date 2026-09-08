@@ -63,7 +63,7 @@
 //! `setup` callback** rather than by `run` itself. Every existing
 //! POSIX Entry pkg `main.rs` (see `examples/native/rust/talker`) opens
 //! its own `Executor`, registers timers / nodes, and calls
-//! `spin_blocking` from inside what becomes the `setup` closure once
+//! `spin` from inside what becomes the `setup` closure once
 //! Phase 212.N.4 codegen lands. `run` would have nothing portable to
 //! say about which `Executor` instance to spin or how, so it stays out
 //! of that decision. The seam is documented under "Open seams" below.
@@ -214,7 +214,7 @@ impl BoardEntry for LinuxBoard {
     /// Native (POSIX) does **not** enter an infinite spin loop after
     /// `setup` returns — POSIX-shaped applications drive their own
     /// spinning inside `setup` (e.g. a codegen `run_plan` that calls
-    /// `Executor::spin_blocking`, or an Entry pkg main that simply
+    /// `Executor::spin`, or an Entry pkg main that simply
     /// exits when the closure finishes). The contract mirrors the
     /// hosted nuttx carve-out and matches the existing
     /// `nros-board-posix` doc comment ("the executor open + spin

@@ -185,7 +185,7 @@ Fallback when exceeded: **split shell into shared core + per-board overlays** (T
 too and only `extern crate std` under `#[cfg(feature = "std")]`. The `std`
 Cargo feature is **opt-in** and merely *forwards* down
 (`nros/std → nros-core/std + nros-node/std + …`), adding std-only conveniences
-(`Clock::now()` via `SystemTime`, `spin_blocking`, `ExecutorConfig::from_env`,
+(`Clock::now()` via `SystemTime`, `spin`, `ExecutorConfig::from_env`,
 `std::error::Error` impls). Per-crate surface: `docs/reference/std-alloc-requirements.md`.
 
 **The std-vs-alloc choice is per-platform, made at the board / Entry layer —

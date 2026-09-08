@@ -51,7 +51,7 @@ fn main() {
     info!("Subscriber created for topic: {topic}");
     info!("Waiting for Int32 messages on {topic}...");
 
-    if let Err(e) = executor.spin_blocking(SpinOptions::default()) {
+    if let Err(e) = executor.spin(SpinOptions::default()) {
         error!("Spin error: {:?}", e);
     }
 }

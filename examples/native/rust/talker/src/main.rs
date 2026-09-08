@@ -5,7 +5,7 @@
 //! `example_portability` gate asserts it).
 //!
 //! `spin = "forever"` (issue 0274) is what the imperative version did with
-//! `executor.spin_blocking(SpinOptions::default())`. Without it the generated
+//! `executor.spin(SpinOptions::default())`. Without it the generated
 //! hosted main uses the env-gated BOUNDED spin and the process exits at once,
 //! having published nothing.
 

@@ -347,7 +347,7 @@ When `NROS_EXECUTOR_MAX_CBS=0` and `NROS_EXECUTOR_ARENA_SIZE=0`, the arrays are 
 |------------------------------------------|----------|--------------------------------------------------------------------|
 | `spin_once(timeout_ms)`                  | Yes      | Single iteration: drive I/O, dispatch ready callbacks              |
 | `spin_one_period(period_ms, elapsed_ms)` | Yes      | Caller-timed loop (caller provides clock + sleep)                  |
-| `spin_blocking(SpinOptions)`             | No       | Loop with optional timeout/max_callbacks                           |
+| `spin(SpinOptions)`             | No       | Loop with optional timeout/max_callbacks                           |
 | `spin_period(Duration)`                  | No       | Wall-clock-timed loop                                              |
 | `spin_async()`                           | Yes      | Yields between iterations via `poll_fn`; works with Embassy, tokio |
 
@@ -429,7 +429,7 @@ graph TD
     subgraph "User Application"
         OPEN["Executor::open(&config)"]
         NODE2["executor.create_node(...)"]
-        SPIN["executor.spin_blocking(...)"]
+        SPIN["executor.spin(...)"]
     end
 
     RUN --> HW --> NET --> PLAT --> SEED

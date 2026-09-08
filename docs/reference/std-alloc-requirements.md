@@ -24,7 +24,7 @@ std or alloc.
 | nros-core   | Time, Duration, Clock (atomic fallback), lifecycle, logger, error types, action types                                                | (none)                                                              | `Clock::now()` via `SystemTime`, `std::error::Error` impls                                |
 | nros-rmw    | All traits, QoS, sync primitives, safety/E2E protocol                                                                                | `handle_request_boxed()` (Box\<Reply\>)                             | (none)                                                                                    |
 | nros-params | `ParameterServer`, `ParameterValue`, all parameter types (heapless)                                                                  | (none)                                                              | `ParameterVariant` impls for `std::string::String`, `std::vec::Vec`                       |
-| nros-node   | `Executor::open()`, `create_node()`, `spin_once()`, `spin_async()`, `Promise`, pub/sub/service/action, timers (fn pointer callbacks) | Boxed timer callbacks, `handle_request_boxed()`, parameter services | `spin_blocking()`, `spin_period()`, `ExecutorConfig::from_env()`, halt flag |
+| nros-node   | `Executor::open()`, `create_node()`, `spin_once()`, `spin_async()`, `Promise`, pub/sub/service/action, timers (fn pointer callbacks) | Boxed timer callbacks, `handle_request_boxed()`, parameter services | `spin()`, `spin_period()`, `ExecutorConfig::from_env()`, halt flag |
 | nros        | Re-exports from above                                                                                                                | (same as above)                                                     | `SpinPeriodResult` re-export                                                |
 
 ### RMW Backend Crates
@@ -134,7 +134,7 @@ protocol layer requires it.
 |---------------------------------------------------------------|----------------------|---------------------------------------------------------|
 | `Clock::now()` (system/steady clock)                          | nros-core/clock.rs   | Uses `std::time::SystemTime` / `UNIX_EPOCH`             |
 | `ExecutorConfig::from_env()`                                  | nros-node/types.rs   | Uses `std::env::var()` + `Box::leak()`                  |
-| `Executor::spin_blocking(options)`                            | nros-node/spin.rs    | Uses `std::thread::sleep()`, `Arc<AtomicBool>`          |
+| `Executor::spin(options)`                            | nros-node/spin.rs    | Uses `std::thread::sleep()`, `Arc<AtomicBool>`          |
 | `Executor::spin_period(duration)`                             | nros-node/spin.rs    | Uses `std::time::Instant`, `std::thread::sleep()`       |
 | `Executor::halt_flag()`                                       | nros-node/spin.rs    | Returns `Arc<AtomicBool>` for cross-thread cancellation |
 | `SpinPeriodResult`                                            | nros-node/types.rs   | Contains `std::time::Duration`                          |
@@ -168,7 +168,7 @@ Adds boxed timer callbacks and `handle_request_boxed()` for large service replie
 ```toml
 nros = { version = "*", features = ["rmw-zenoh", "platform-posix"] }
 ```
-Full API including `spin_blocking()`, `spin_period()`, `from_env()`, system clock.
+Full API including `spin()`, `spin_period()`, `from_env()`, system clock.
 For async, use an external runtime (tokio `current_thread` + `spawn_local` for background spin).
 
 **Desktop with parameter services:**

@@ -1045,7 +1045,7 @@ impl ExecutorNodeRuntime {
     #[cfg(feature = "alloc")]
     pub fn spin(&mut self) -> Result<(), ExecutorError> {
         // 10 ms tick cadence — matches the existing executor spin
-        // budgeting (see `Executor::spin_default`); short enough that
+        // budgeting (see `SpinOptions::poll_interval`); short enough that
         // component `tick` hooks observe latency under one cycle.
         let tick = Duration::from_millis(10);
         while !self.executor.is_halted() {

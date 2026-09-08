@@ -143,6 +143,6 @@ fn main() {
     }
 
     executor
-        .spin_blocking(SpinOptions::default())
-        .expect("spin_blocking error");
+        .spin(SpinOptions::default())
+        .expect("spin error");
 }

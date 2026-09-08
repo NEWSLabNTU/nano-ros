@@ -43,7 +43,7 @@ fn maintainer_xml() -> String {
 /// is not one template. Each variant is modeled on a tracked, compiling example.
 enum PlatformKind {
     /// Hosted std binary: explicit `register_linked_rmw()` +
-    /// `nros::init_with_launch_auto()` + `Executor::open` + `spin_blocking`.
+    /// `nros::init_with_launch_auto()` + `Executor::open` + `spin`.
     /// Models `examples/native/rust/talker`. (native, posix)
     Hosted,
     /// `#![no_std]` `nros::main!()` Form-1 self-bringup — `main.rs` is the
@@ -961,8 +961,8 @@ fn main() {{
         .expect("failed to register publish timer");
 
     executor
-        .spin_blocking(SpinOptions::default())
-        .expect("spin_blocking error");
+        .spin(SpinOptions::default())
+        .expect("spin error");
 }}
 "#
     );
@@ -1429,7 +1429,7 @@ mod tests {
         assert!(toml.contains("nros-board-linux = {"), "{toml}");
         let main = fs::read_to_string(d.path().join("src/main.rs")).unwrap();
         assert!(
-            main.contains("register_linked_rmw()") && main.contains("spin_blocking"),
+            main.contains("register_linked_rmw()") && main.contains("spin(SpinOptions"),
             "hosted main must be the runnable shape:\n{main}"
         );
         assert!(

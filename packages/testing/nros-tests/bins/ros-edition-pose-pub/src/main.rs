@@ -52,6 +52,6 @@ fn main() {
         .expect("Failed to register publish timer");
 
     executor
-        .spin_blocking(SpinOptions::default())
-        .expect("spin_blocking error");
+        .spin(SpinOptions::default())
+        .expect("spin error");
 }
