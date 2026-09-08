@@ -106,7 +106,13 @@ PROBE_CONTEXT = {
     },
     # `nros_cpp_config_generated.h` is supplied per build; the checked-in copy is
     # a stub whose only content is an `#error` saying so.
-    "packages/api/nros-cpp/include/nros/component_node.hpp": {
+    # phase-427 W4 — the NROS_COMPONENT_MAX_TIMERS guard moved here with the
+    # timer pool when `component_node.hpp` was deleted. The KEY had to move in
+    # the same commit: this table is only consulted for files the scan
+    # DISCOVERS, so a key naming a deleted file is dead config that no
+    # direction of this gate reports (see the stale-key check in `main`, added
+    # by the same change for exactly that reason).
+    "packages/api/nros-cpp/include/nros/node.hpp": {
         "mode": "preprocess",
         "cc": "c++",
         "std": "c++14",
@@ -271,6 +277,27 @@ def main():
             "      real TU needs, or `preprocess` naming WHY the headers are not\n"
             "      here and WHICH enclosing conditions the guard sits under."
         )
+
+    # The OTHER direction, and the reason it exists (phase-427 W4).
+    #
+    # The check above asks "is every discovered guard probed?". Nothing asked
+    # the reverse — "does every entry still name a file that exists?" — so when
+    # `component_node.hpp` was deleted, its key became dead config and this gate
+    # kept printing OK over a table with one fewer file. A gate whose subject
+    # disappears passes vacuously; that is the failure this campaign keeps
+    # hitting, and a table key is exactly where it hides.
+    #
+    # Keyed on the FILE existing, not on it being discovered: a header that
+    # exists but has (legitimately) lost its last guard is not an error, while a
+    # key pointing at nothing can only ever be stale.
+    for rel in sorted(PROBE_CONTEXT):
+        if not os.path.exists(os.path.join(ROOT, rel)):
+            problems.append(
+                f"{rel} has a PROBE_CONTEXT entry and DOES NOT EXIST. The entry is\n"
+                "      dead config: this gate only consults the table for files the\n"
+                "      scan discovers, so a key naming a deleted file is never read\n"
+                "      and never reported. Move the entry with the guard, or delete it."
+            )
     files = [f for f in files if f in PROBE_CONTEXT]
 
     # One probe per file at defaults: nothing may fire.

@@ -332,21 +332,32 @@ CPP_TRANSLATION_UNITS = (
     # label, source, extra clang args, namespace roots, marks on every record
     ("base", '#include "nros/nros.hpp"\n', (), OUR_CPP_ROOTS, {}),
     # MEASURED 2026-09-07 (phase-427) to contribute ZERO records: since
-    # phase-417 W2.b put the header in the umbrella, all 84 of this TU's unique
-    # records are byte-identical to ones the `base` TU already emitted, so the
-    # whole-record de-dup in `ours_cpp` drops every one of them. `ours_cpp`
-    # returns 162 items with this entry and 162 without it — there are NO
-    # duplicate ledger rows, and removing it would change no row today.
+    # phase-417 W2.b put the component header in the umbrella, all 84 of this
+    # TU's unique records are byte-identical to ones the `base` TU already
+    # emitted, so the whole-record de-dup in `ours_cpp` drops every one of them.
+    # `ours_cpp` returns the same count with this entry and without it — there
+    # are NO duplicate ledger rows, and removing it would change no row today.
     #
     # It is kept deliberately, with its job changed from SUPPLYING the surface
-    # to GUARDING it. This TU is now the tripwire for issue 0818's actual
-    # failure mode: if the umbrella include is ever dropped or wrapped in an
-    # `#if`, the base TU silently narrows and a green `--check` reports that
-    # silence as agreement, which is exactly what happened before. With this
-    # entry present the records keep coming from somewhere and the narrowing
-    # shows up as changed rows instead of as nothing at all. It also holds
-    # `component_node.hpp` to compiling standalone. Cost is one clang run.
-    ("component", '#include "nros/component_node.hpp"\n', (), OUR_CPP_ROOTS, {}),
+    # to GUARDING it. This TU is the tripwire for issue 0818's actual failure
+    # mode: if the umbrella include is ever dropped or wrapped in an `#if`, the
+    # base TU silently narrows and a green `--check` reports that silence as
+    # agreement, which is exactly what happened before. With this entry present
+    # the records keep coming from somewhere and the narrowing shows up as
+    # changed rows instead of as nothing at all. It also holds the header to
+    # compiling STANDALONE. Cost is one clang run.
+    #
+    # phase-427 W4 — the header it names was `nros/component_node.hpp`, DELETED
+    # with `ComponentNode`. Retargeted to its sibling rather than dropped: the
+    # tripwire above is about the UMBRELLA, not about that one file, and
+    # `component.hpp` still carries a real `nros::` surface of its own
+    # (`bind_subscription`, `create_subscription_raw`, the out-of-line
+    # `Node::create_subscription_in` family and the `NROS_*` macros) — including
+    # the members that moved off `ComponentNode`. `extract_cxx` RAISES on any
+    # clang error, so a row naming a missing header is a hard red rather than a
+    # vacuous pass, which is why this had to move in the same commit as the
+    # deletion.
+    ("component", '#include "nros/component.hpp"\n', (), OUR_CPP_ROOTS, {}),
     ("std", '#include "nros/nros.hpp"\n', ("-DNROS_CPP_STD=1",), OUR_CPP_ROOTS,
      {"std_only": True}),
     # There WAS a fourth TU here, labelled `compat`, and it is GONE — read this

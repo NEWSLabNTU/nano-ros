@@ -997,6 +997,33 @@ cpp: cpp-fmt
         exit 1; \
     fi
 
+    # phase-427 W4 — the ours-only family answers to `_in` NAMES, and the
+    # collision that forced the rename still reproduces.
+    #
+    # Asserted with `decltype` on the call expression, which is the only way to
+    # ask which overload the compiler PICKED. The file carries its own NEGATIVE
+    # CONTROL: it reconstructs the pre-rename shape and asserts that shape binds
+    # the WRONG overload, so the positive assertions cannot quietly become
+    # vacuous if the collision ever stops reproducing.
+    #
+    # It also INSTANTIATES the ergonomic macros (`NROS_SUBSCRIBE`,
+    # `NROS_CREATE_WALL_TIMER`), whose expansions changed verb in this item. A
+    # macro whose expansion no longer names a member is an error only at a call
+    # site — the same way the `bind_timer` retirement below rotted.
+    test -f packages/api/nros-cpp/tests/compile/one_node_type_ours_only_names.cpp || { \
+        echo "ERROR: one_node_type_ours_only_names.cpp is MISSING -- the rename this" >&2; \
+        echo "       lane exists to pin would then be checked by nothing." >&2; \
+        exit 1; \
+    }
+    echo "  - one node type: the ours-only family answers to _in names (c++17)"
+    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/one_node_type_ours_only_names.cpp
+
     # phase-427 W3 — the `bind_timer` RETIREMENT, both halves.
     #
     # Every path that used to reach the free `nros::bind_timer` is a TEMPLATE
