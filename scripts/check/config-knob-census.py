@@ -75,6 +75,15 @@ KNOB_CLASS = {
     # that sizes it: the cache holds a liveliness keyexpr for every entity of
     # every node on the domain, remote included. Not a property of this image,
     # so no inventory can answer it and an operator states it.
+    # phase-412 — the CAPABILITY spelling of the knob below: an operator states
+    # how many entities share the domain, and the bytes follow from the measured
+    # ~141 per keyexpr. Same category — nothing derives it, because the peer
+    # graph is not a property of this image.
+    "NROS_GRAPH_MAX_ENTITIES": (
+        "sizing",
+        "domain entity budget; sizes ZPICO_GRAPH_CACHE_SIZE, which still "
+        "outranks it when someone names the bytes directly",
+    ),
     "ZPICO_GRAPH_CACHE_SIZE": (
         "sizing",
         "per-session graph cache bytes; sized by the PEER graph, so it is "

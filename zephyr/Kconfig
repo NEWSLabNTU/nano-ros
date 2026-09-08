@@ -769,6 +769,32 @@ config NROS_GET_REPLY_BUF_SIZE
       Size of the buffer for get (service call) reply payloads (bytes).
       Maps to ZPICO_GET_REPLY_BUF_SIZE.
 
+config NROS_GRAPH_MAX_ENTITIES
+    int "Entities you expect on this ROS 2 domain (0 = state the bytes instead)"
+    default 0
+    help
+      A DECLARED CAPABILITY, not a derivation. The graph cache holds one
+      liveliness keyexpr for every entity of every node on the domain —
+      remote nodes included — so nothing about this image can answer it.
+      What an operator does know is roughly how many nodes and endpoints
+      share the domain, and this takes that count.
+
+      The bytes follow from a measurement, not a model: a ROS 2 liveliness
+      keyexpr runs ~140 bytes and the cache stores them NUL-separated with
+      no index, so one entity costs 141 bytes. Upstream measured a host
+      running one stock talker plus the ROS 2 daemon carrying 222 tokens.
+
+      0 means "I am stating the bytes instead" — NROS_GRAPH_CACHE_SIZE
+      outranks this and keeps its own default, so nothing that already sets
+      it changes.
+
+      UNDER-STATING IS NOT A SMALLER CACHE. Overflow is counted, never
+      truncated, and a non-zero dropped count makes service_is_ready answer
+      "cannot say", which every caller reads as keep waiting; the node and
+      topic list verbs discard the count entirely and simply under-report.
+      Being generous costs .bss; being short costs a hang and a wrong graph
+      answer.
+
 config NROS_GRAPH_CACHE_SIZE
     int "Graph liveliness cache size"
     default 65536

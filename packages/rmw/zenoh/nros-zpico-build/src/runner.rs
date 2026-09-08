@@ -676,7 +676,7 @@ fn shim_config_from_env() -> ShimConfig {
         // Default matches the C `#ifndef` fallback exactly: the two must agree,
         // because a build that goes through cargo now states the number and one
         // that does not still falls through to the literal in `zpico.c`.
-        graph_cache_size: env_usize("ZPICO_GRAPH_CACHE_SIZE", 65536),
+        graph_cache_size: resolve_graph_cache_size(),
         max_pending_gets: env_usize("ZPICO_MAX_PENDING_GETS", 4),
         max_sessions: env_usize("ZPICO_MAX_SESSIONS", 1),
         // phase-400 W6 — BUILTINS, like the tx pair below: these five are
@@ -751,6 +751,7 @@ const KCONFIG_KNOBS: &[(&str, &str)] = &[
     ("ZPICO_MAX_QUERYABLES", "CONFIG_NROS_MAX_QUERYABLES"),
     ("ZPICO_MAX_LIVELINESS", "CONFIG_NROS_MAX_LIVELINESS"),
     ("ZPICO_GRAPH_CACHE_SIZE", "CONFIG_NROS_GRAPH_CACHE_SIZE"),
+    ("NROS_GRAPH_MAX_ENTITIES", "CONFIG_NROS_GRAPH_MAX_ENTITIES"),
     ("ZPICO_MAX_PENDING_GETS", "CONFIG_NROS_MAX_PENDING_GETS"),
     ("ZPICO_GET_REPLY_BUF_SIZE", "CONFIG_NROS_GET_REPLY_BUF_SIZE"),
     (
@@ -813,6 +814,77 @@ fn declared_floored(name: &str) -> Option<usize> {
         .ok()
         .and_then(|v| v.trim().parse::<usize>().ok())
         .map(|v| v.max(1))
+}
+
+/// Bytes one cached liveliness keyexpr costs: the keyexpr plus its separator.
+///
+/// MEASURED, not modelled. `zpico.c` records it: "A ROS 2 liveliness keyexpr
+/// runs ~140 bytes. Measured against a host running one stock `talker` plus the
+/// ROS 2 daemon, the domain carried 222 tokens — ~31 KB". The cache stores them
+/// NUL-separated with no index and no per-entry struct, so the only overhead
+/// beyond the text is the one separator byte (`zpico_graph_set_apply`).
+const GRAPH_KEYEXPR_BYTES: usize = 141;
+
+/// The graph cache, sized from a CAPABILITY the operator states.
+///
+/// phase-412 — this knob is not derivable and never will be: the cache holds a
+/// liveliness keyexpr for every entity of every node ON THE DOMAIN, remote
+/// included, so no inventory of this image can answer it. The W2 table says so
+/// and the census classifies it `sizing` for that reason.
+///
+/// What was still wrong is that the only way to state it was in BYTES, which is
+/// not the thing an operator knows. They know roughly how many nodes and
+/// endpoints share the domain. `NROS_GRAPH_MAX_ENTITIES` takes that count and
+/// does the arithmetic; `ZPICO_GRAPH_CACHE_SIZE` still wins when someone wants
+/// to name the bytes directly, so nothing that set it changes.
+///
+/// Shape follows `resolve_queryable_default` one function up — the tree's
+/// existing precedent for a bound that is stated rather than derived. There is
+/// no derived FLOOR here, and that is the honest difference: a queryable floor
+/// is provable from the image's own declaration, and nothing about the peer
+/// graph is.
+///
+/// UNDER-SIZING IS NOT A SMALLER CACHE. Overflow is counted, never truncated
+/// (`zpico_graph_set_apply`), and a non-zero `dropped` makes `service_is_ready`
+/// answer `Unsupported` — "cannot say" — which every caller reads as "keep
+/// waiting". `for_each_entity` discards the count entirely, so `ros2 node list`
+/// and the count verbs under-report with no signal at all. Being generous here
+/// costs `.bss`; being short costs a hang and a wrong graph answer.
+/// Bytes needed to cache `entities` liveliness keyexprs.
+///
+/// Pure, with the environment lifted out, so the arithmetic is testable without
+/// a build — the shape `facts_from_model` uses one crate over.
+///
+/// Floored at one keyexpr: `zpico.c` refuses a cache under 1 byte with an
+/// `#error` (issue 1015), and a stated 0 is a claim about the DOMAIN ("no other
+/// entities"), never a request for a zero-length buffer. This image's own
+/// entities are in that domain, so 0 is not reachable in practice anyway.
+fn graph_cache_bytes_for(entities: usize) -> usize {
+    entities
+        .saturating_mul(GRAPH_KEYEXPR_BYTES)
+        .max(GRAPH_KEYEXPR_BYTES)
+}
+
+fn resolve_graph_cache_size() -> usize {
+    // Through `env_usize`, not a bare `env::var`: that helper is what consults
+    // `$DOTCONFIG` for the `KCONFIG_KNOBS` row below, so a Zephyr image gets
+    // `CONFIG_NROS_GRAPH_MAX_ENTITIES` for free. Reading the environment
+    // directly would have given the knob a Kconfig entry that reaches the C
+    // lane and not this one — issue 0460's shape, and the exact defect this
+    // phase keeps finding.
+    //
+    // 0 is the "not stated" spelling, matching the Kconfig default: a domain
+    // with zero entities does not exist (this image's own are on it), so the
+    // value is free to mean absence.
+    let from_entities = match env_usize("NROS_GRAPH_MAX_ENTITIES", 0) {
+        0 => None,
+        n => Some(graph_cache_bytes_for(n)),
+    };
+    // The byte knob outranks the capability, and its default matches the C
+    // `#ifndef` fallback exactly: a build that goes through cargo states the
+    // number and one that does not falls through to the literal in `zpico.c`.
+    // The two must agree or the same source compiles to two sizes.
+    env_usize("ZPICO_GRAPH_CACHE_SIZE", from_entities.unwrap_or(65536))
 }
 
 fn env_usize(name: &str, default: usize) -> usize {
@@ -2867,5 +2939,43 @@ mod platform_watch_tests {
         );
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+#[cfg(test)]
+mod graph_cache_capability_tests {
+    use super::{GRAPH_KEYEXPR_BYTES, graph_cache_bytes_for};
+
+    /// The number an operator states is a COUNT, and the bytes follow from the
+    /// measurement `zpico.c` records — 222 tokens took ~31 KB on a host domain,
+    /// i.e. ~140 bytes each plus the NUL separator.
+    #[test]
+    fn a_stated_entity_count_becomes_its_measured_byte_cost() {
+        assert_eq!(graph_cache_bytes_for(1), GRAPH_KEYEXPR_BYTES);
+        assert_eq!(graph_cache_bytes_for(60), 60 * GRAPH_KEYEXPR_BYTES);
+        // The host-scale measurement the 65536 default was sized for.
+        assert_eq!(graph_cache_bytes_for(222), 222 * GRAPH_KEYEXPR_BYTES);
+        assert!(
+            graph_cache_bytes_for(222) < 65536,
+            "the measured host domain must fit inside the historical default, \
+             or the default was never sized for what its own comment cites"
+        );
+    }
+
+    /// Zero is a claim about the DOMAIN, not a request for a zero-length
+    /// buffer, and `zpico.c` refuses a cache under one byte with an `#error`
+    /// (issue 1015). The floor belongs here, at the consumer that names the
+    /// knob, exactly as it does for the two C-array pools.
+    #[test]
+    fn zero_entities_is_floored_rather_than_refused() {
+        assert_eq!(graph_cache_bytes_for(0), GRAPH_KEYEXPR_BYTES);
+    }
+
+    /// A count large enough to overflow `usize` must saturate rather than wrap
+    /// — wrapping would hand `zpico.c` a SMALL number for a huge claim, which
+    /// is the one direction that under-sizes silently.
+    #[test]
+    fn an_absurd_count_saturates_instead_of_wrapping() {
+        assert_eq!(graph_cache_bytes_for(usize::MAX), usize::MAX);
     }
 }
