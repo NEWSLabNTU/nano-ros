@@ -109,11 +109,30 @@ pub struct SpinPeriodResult {
 // SpinOptions
 // ============================================================================
 
-/// Options controlling blocking spin behavior.
+/// Default per-iteration budget handed to `spin_once` by the spin loops.
 ///
-/// Used with `Executor::spin_blocking`
-/// to control when the spin loop exits.
-#[derive(Debug, Clone, Default)]
+/// phase-427 — the value `spin_blocking` carried as a private `POLL_INTERVAL`
+/// const before [`SpinOptions::poll_interval`] made it a field. It is named
+/// here because two verbs (`Executor::spin`, `Executor::spin_forever`) now
+/// share it, and a second literal is how the two would drift apart.
+pub const DEFAULT_SPIN_POLL_INTERVAL: core::time::Duration = core::time::Duration::from_millis(10);
+
+/// Options controlling a blocking spin loop — rclrs's `SpinOptions`.
+///
+/// Consumed by [`Executor::spin`](crate::Executor::spin) (runs until one of
+/// these conditions ends it) and by
+/// [`Executor::spin_forever`](crate::Executor::spin_forever) (which can only
+/// honour [`poll_interval`](Self::poll_interval) and
+/// [`stop_on_first_error`](Self::stop_on_first_error) — it never returns).
+///
+/// **This type is where the RTOS divergence lives.** phase-427 moved
+/// `Executor::spin` onto rclrs's name and shape so a ported rclrs file needs no
+/// rename on that line; the two things ours must say and rclrs's has no field
+/// for — how long one iteration may wait on the transport, and whether a failed
+/// callback ends the loop — are fields HERE rather than extra verbs. The three
+/// fields rclrs does have (`timeout`, `only_next`, `max_callbacks`) keep their
+/// upstream meaning.
+#[derive(Debug, Clone)]
 pub struct SpinOptions {
     /// Stop after this duration.
     ///
@@ -129,6 +148,34 @@ pub struct SpinOptions {
     pub only_next: bool,
     /// Stop after processing this many callbacks total
     pub max_callbacks: Option<usize>,
+    /// OURS-ONLY — how long one iteration may wait on the transport.
+    ///
+    /// Each pass of the loop is `spin_once(poll_interval)`, so this is the
+    /// granularity at which every OTHER exit condition here is observed: a
+    /// `cancel()` from another task, a `timeout` expiring, `max_callbacks`
+    /// being reached. rclrs has no counterpart because its executor waits on a
+    /// wait-set with no such quantum; ours is a poll loop by RFC-0002, and the
+    /// quantum is a real number a caller has to be able to set.
+    ///
+    /// Defaults to [`DEFAULT_SPIN_POLL_INTERVAL`] (10 ms).
+    pub poll_interval: core::time::Duration,
+    /// OURS-ONLY — end the loop at the first pass in which a callback failed.
+    ///
+    /// rclrs collects every callback error into the `Vec<RclrsError>` its
+    /// `spin` returns and the caller picks with `.first_error()`. There is no
+    /// allocator here, so ours returns `Result<(), NodeError>` carrying the
+    /// FIRST error — and a channel that can hold one error has to say when it
+    /// stops looking. `false` (the default) keeps today's behaviour: a failed
+    /// callback is counted in [`SpinOnceResult`] and the loop continues.
+    pub stop_on_first_error: bool,
+}
+
+impl Default for SpinOptions {
+    /// Not `derive`d: `Duration::default()` is ZERO, which would turn every
+    /// `SpinOptions::default()` spin into a busy-poll.
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SpinOptions {
@@ -138,6 +185,8 @@ impl SpinOptions {
             timeout: None,
             only_next: false,
             max_callbacks: None,
+            poll_interval: DEFAULT_SPIN_POLL_INTERVAL,
+            stop_on_first_error: false,
         }
     }
 
@@ -158,12 +207,28 @@ impl SpinOptions {
             timeout: None,
             only_next: true,
             max_callbacks: None,
+            poll_interval: DEFAULT_SPIN_POLL_INTERVAL,
+            stop_on_first_error: false,
         }
     }
 
     /// Stop after processing N callbacks
     pub const fn max_callbacks(mut self, n: usize) -> Self {
         self.max_callbacks = Some(n);
+        self
+    }
+
+    /// Set the per-iteration transport budget. See
+    /// [`poll_interval`](Self::poll_interval).
+    pub const fn poll_interval(mut self, poll_interval: core::time::Duration) -> Self {
+        self.poll_interval = poll_interval;
+        self
+    }
+
+    /// End the loop at the first failed callback. See
+    /// [`stop_on_first_error`](Self::stop_on_first_error).
+    pub const fn stop_on_first_error(mut self, stop: bool) -> Self {
+        self.stop_on_first_error = stop;
         self
     }
 }

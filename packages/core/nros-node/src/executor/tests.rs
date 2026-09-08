@@ -3366,6 +3366,29 @@ fn test_spin_options_default() {
     assert!(opts.timeout.is_none());
     assert!(!opts.only_next);
     assert!(opts.max_callbacks.is_none());
+    assert!(!opts.stop_on_first_error);
+}
+
+/// phase-427 — `SpinOptions` stopped `derive`ing `Default` when it gained
+/// `poll_interval`, and this is why: `Duration::default()` is ZERO, so the
+/// derive would have turned every `spin(SpinOptions::default())` in the tree
+/// into a busy-poll that still passed every functional test. The only
+/// observable is the value itself.
+#[test]
+fn spin_options_default_poll_interval_is_the_named_constant() {
+    assert_eq!(
+        SpinOptions::default().poll_interval,
+        crate::executor::types::DEFAULT_SPIN_POLL_INTERVAL,
+        "a zero (or divergent) default poll interval is a busy-poll no other \
+         assertion in this suite can see"
+    );
+    assert!(!SpinOptions::default().poll_interval.is_zero());
+    assert_eq!(
+        SpinOptions::spin_once().poll_interval,
+        crate::executor::types::DEFAULT_SPIN_POLL_INTERVAL,
+        "the two const constructors must agree, or `spin_once()` is a second \
+         default nobody knows about"
+    );
 }
 
 #[test]
@@ -3386,18 +3409,18 @@ fn test_spin_options_builders() {
 // ====================================================================
 
 #[test]
-fn test_spin_blocking_only_next() {
+fn test_spin_only_next() {
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
 
     // only_next exits after single iteration
-    let result = executor.spin_blocking(SpinOptions::spin_once());
+    let result = executor.spin(SpinOptions::spin_once());
     assert!(result.is_ok());
 }
 
 #[test]
 #[cfg(feature = "std")] // sleeps or reads wall time
-fn test_spin_blocking_halt() {
+fn test_spin_halt() {
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
 
@@ -3407,13 +3430,13 @@ fn test_spin_blocking_halt() {
     executor.cancel();
     assert!(executor.is_halted());
 
-    // spin_blocking resets halt then checks it — so we need a thread
+    // spin resets halt then checks it — so we need a thread
     let halt = executor.halt_flag();
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(50));
         halt.store(true, portable_atomic::Ordering::SeqCst);
     });
-    let result = executor.spin_blocking(SpinOptions::default());
+    let result = executor.spin(SpinOptions::default());
     assert!(result.is_ok());
 }
 
@@ -3425,27 +3448,27 @@ fn test_spin_blocking_halt() {
 /// different, and only a build with no clock source reaches the second. This
 /// test synthesises that build.
 ///
-/// It is the regression test for a ten-hour hang: `spin_blocking` used to read
+/// It is the regression test for a ten-hour hang: `spin` used to read
 /// "no clock" as "no deadline" and loop until halted, in the one API whose
 /// contract is "returns after N ms".
 #[test]
-fn spin_blocking_with_a_timeout_and_no_clock_errors() {
+fn spin_with_a_timeout_and_no_clock_errors() {
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
     executor.clock_us_fn = None;
 
     let err = executor
-        .spin_blocking(SpinOptions::new().timeout(core::time::Duration::from_millis(50)))
+        .spin(SpinOptions::new().timeout(core::time::Duration::from_millis(50)))
         .expect_err("a timeout with no clock must fail, not spin forever");
     assert_eq!(err, NodeError::NotInitialized);
 }
 
-/// …and an UNTIMED `spin_blocking` still runs, because "until halt" is a
+/// …and an UNTIMED `spin` still runs, because "until halt" is a
 /// promise a clockless build can keep. Halted from a peer thread so the test
 /// cannot hang if the guard is ever widened by mistake.
 #[test]
 #[cfg(feature = "std")] // sleeps or reads wall time
-fn spin_blocking_without_a_timeout_still_runs_with_no_clock() {
+fn spin_without_a_timeout_still_runs_with_no_clock() {
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
     executor.clock_us_fn = None;
@@ -3455,7 +3478,7 @@ fn spin_blocking_without_a_timeout_still_runs_with_no_clock() {
         std::thread::sleep(std::time::Duration::from_millis(50));
         halt.store(true, portable_atomic::Ordering::SeqCst);
     });
-    assert!(executor.spin_blocking(SpinOptions::new()).is_ok());
+    assert!(executor.spin(SpinOptions::new()).is_ok());
 }
 
 /// issue 0709 — the sibling guard: a period that cannot be paced is an error
@@ -3472,12 +3495,140 @@ fn spin_period_with_no_clock_errors() {
     assert_eq!(err, NodeError::NotInitialized);
 }
 
+// ====================================================================
+// spin_some — phase-427
+// ====================================================================
+
+/// `spin_some` executes what is ready and RETURNS. The whole point of the verb
+/// is the return: `spin_once` with the same budget would sit on the transport
+/// for it.
+#[test]
+fn spin_some_dispatches_the_ready_set_and_returns() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    let nid = executor.node_builder("spin_some_drains").build().unwrap();
+    let count = alloc::sync::Arc::new(portable_atomic::AtomicUsize::new(0));
+    let count_cb = count.clone();
+    executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/ready", move |_msg: &TestMsg| {
+            count_cb.fetch_add(1, portable_atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+
+    let (data, len) = encode_test_msg(7);
+    let meta = executor.entries[0].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    unsafe {
+        let sub_ptr = arena_ptr.add(meta.offset) as *const MockSubscriber;
+        (*sub_ptr).load(data, len);
+    }
+
+    executor
+        .spin_some(core::time::Duration::from_millis(500))
+        .expect("a bounded drain on a build with a clock must succeed");
+
+    assert_eq!(
+        count.load(portable_atomic::Ordering::SeqCst),
+        1,
+        "the queued sample was ready, so the drain had to dispatch it"
+    );
+}
+
+/// An idle executor drains in one pass and comes straight back — and it does so
+/// with `Duration::ZERO`, which is rclcpp's own `spin_some` default and the
+/// spelling a clockless build must use.
+#[test]
+fn spin_some_with_zero_max_returns_on_a_clockless_build() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    executor.clock_us_fn = None;
+
+    executor
+        .spin_some(core::time::Duration::ZERO)
+        .expect("ZERO means 'no limit', which needs no clock to honour");
+}
+
+/// issue 0709's rule, third site: a time quantity this build cannot MEASURE is
+/// an error, never a silently unbounded loop. Same guard as `spin`'s `timeout`
+/// and `spin_period`'s `period`.
+#[test]
+fn spin_some_with_a_max_and_no_clock_errors() {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+    executor.clock_us_fn = None;
+
+    let err = executor
+        .spin_some(core::time::Duration::from_millis(50))
+        .expect_err("a bounded drain with no clock must fail, not drain forever");
+    assert_eq!(err, NodeError::NotInitialized);
+}
+
+// ====================================================================
+// SpinOptions::stop_on_first_error — phase-427
+// ====================================================================
+
+/// Load a subscription that always fails its take, so the executor's dispatch
+/// seam produces a real `TransportError` rather than a synthesised one.
+fn executor_with_a_failing_subscription(name: &str) -> Executor<'static> {
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    let nid = executor.node_builder(name).build().unwrap();
+    executor
+        .node_mut(nid)
+        .create_subscription::<TestMsg, _>("/lossy", move |_msg: &TestMsg| {})
+        .unwrap();
+
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let off = executor.entries[0].as_ref().unwrap().offset;
+    unsafe { &*(arena_ptr.add(off) as *const MockSubscriber) }
+        .load_error(nros_rmw::TransportError::MessageTooLarge);
+    executor
+}
+
+/// rclrs returns `Vec<RclrsError>` and the caller writes `.first_error()?`.
+/// There is no allocator here, so the FIRST error IS the return value — and it
+/// has to be the error the callback actually produced, not a stand-in the
+/// executor invented from a count.
+#[test]
+fn spin_returns_the_first_callback_error_when_asked_to_stop() {
+    let mut executor = executor_with_a_failing_subscription("stop_on_first_error");
+
+    let err = executor
+        .spin(SpinOptions::default().stop_on_first_error(true))
+        .expect_err("a failing callback must end a spin that asked to stop");
+    assert_eq!(
+        err,
+        NodeError::Transport(nros_rmw::TransportError::MessageTooLarge),
+        "the value has to survive: a count cannot tell the caller what broke"
+    );
+    assert!(
+        !executor.is_spinning(),
+        "the error exit must close the spin scope like every other exit, or a \
+         peer reading is_spinning() sees a loop that is not running"
+    );
+}
+
+/// The negative control, and the reason the field defaults to `false`: 27 call
+/// sites were migrated from `spin_blocking` on the promise that the default
+/// behaviour did not move. A counted-and-continue error is still the default.
+#[test]
+fn spin_continues_past_a_callback_error_by_default() {
+    let mut executor = executor_with_a_failing_subscription("continue_past_error");
+
+    executor
+        .spin(SpinOptions::spin_once())
+        .expect("the default channel counts a failed callback and keeps going");
+}
+
 /// issue 0709 — `from_session_with` is the seam `from_session` never had: a
 /// caller that brings its own session can bring its own clock.
 ///
 /// Asserted with `spin_once`, which is BOUNDED — it does one round and
 /// returns. Three earlier versions of this test observed the clock through
-/// `spin_blocking`/`spin_one_period_timed` instead and hung under the parallel
+/// `spin`/`spin_one_period_timed` instead and hung under the parallel
 /// harness; a stub clock and a loop that re-reads a clock are a bad pair, and
 /// the guard those versions were reaching for is already covered by the two
 /// tests above. What is left to prove here is only that the constructor
@@ -3506,13 +3657,12 @@ fn from_session_with_installs_the_callers_clock() {
 
 #[test]
 #[cfg(feature = "std")] // sleeps or reads wall time
-fn test_spin_blocking_timeout() {
+fn test_spin_timeout() {
     let session = MockSession::new();
     let mut executor: Executor = executor_with_clock(session);
 
     let start = std::time::Instant::now();
-    let result =
-        executor.spin_blocking(SpinOptions::new().timeout(core::time::Duration::from_millis(50)));
+    let result = executor.spin(SpinOptions::new().timeout(core::time::Duration::from_millis(50)));
     assert!(result.is_ok());
     // Should exit within a reasonable time after 50ms timeout
     assert!(start.elapsed() < std::time::Duration::from_secs(2));
