@@ -11,13 +11,32 @@ Every wave below carries its own state. What is left, in one place:
   `shutdown()` were not C-ABI; the context tag is the session flag now). So the
   runner is unblocked. **Nobody has linked or booted one on FreeRTOS** — that
   measurement is the acceptance and it has not been taken.
-- **W3.5** — a decision for whoever owns the CI budget. The options and their
-  costs are in the item.
-- **Issue 1172** — the two entry packs derive a tier's callback groups
-  differently. Needs a runtime answer about what `run_tiers` does with a group
-  named by two tiers; it is not a style question.
+- **W3.5** — DECIDED 2026-09-08, and no work item: no in-tree reference
+  language, split by WHO owns the language. See the item.
 - **RFC-0091 is still `Draft`**, correctly: W1.3 says to move its status once
-  the RFC is fully implemented, and W3.1 and W3.5 are open.
+  the RFC is fully implemented. W3.5 is answered now, so **W3.1 is the last
+  thing holding it `Draft`.**
+
+**W3.1 is the only open work item in the phase.** Everything else in all three
+tracks is closed and verified against the tree.
+
+Closed since the previous status line, so that this block does not repeat the
+failure it was written to record:
+
+- **Issue 1172** (RESOLVED, archived) — the two entry packs derived a tier's
+  callback groups differently. The runtime answer it was waiting on turned out
+  not to be the question: the filter matched on the group NAME alone, so two
+  nodes' `ctrl` were one key and NEITHER pack's rule was recoverable. C's
+  dedup-across-tiers left the second tier's array EMPTY, which is the WILDCARD,
+  so that tier ran every callback in the image at its own priority — it failed
+  OPEN, while C++ failed closed. With `(node name, node namespace, group)` as
+  the key the disagreement does not arise, and one derivation
+  (`codegen::entry::tier_group_keys`) serves both packs.
+- **Issue 1102** (RESOLVED, archived) — the issue this phase closes. All four
+  acceptance items hold and both follow-ups it surfaced landed: the tier table
+  is designated-initialised with the mirror gate extended to its eight sites,
+  and the five C goldens now record the emitter's refusal instead of output the
+  pipeline never produces.
 
 The earlier status line said "not started as a phase; four commits of it
 already landed ahead of the design". That was true on 2026-09-06 and stopped
@@ -26,7 +45,7 @@ failure mode this phase spent its whole length removing from the code.
 
 **Implements:** [RFC-0091](../design/0091-one-entry-codegen-producer-many-language-packs.md),
 which **amends** [RFC-0068](../design/0068-language-neutral-codegen-ir.md).
-**Closes:** [#1102](../issues/1102-entry-emitters-build-source-with-writeln.md).
+**Closes:** [#1102](../issues/archived/1102-entry-emitters-build-source-with-writeln.md).
 **Touches:** [#1062](../issues/1062-add-node-language-inference.md)
 (two language readers disagreeing — W2.1 removes the second reader).
 
