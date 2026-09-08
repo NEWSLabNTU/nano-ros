@@ -3178,20 +3178,6 @@ pub unsafe extern "C" fn nros_cpp_bind_group_sched(
 /// `node_name`, `from`, `to` must be valid null-terminated UTF-8 strings.
 /// `node_namespace` may be NULL (defaults to `"/"`), otherwise must be a valid
 /// null-terminated UTF-8 string.
-#[cfg(feature = "rmw-cffi")]
-/// Declare the minimum stack headroom this executor's thread must keep, in
-/// bytes. `0` (the default) leaves the `stack-headroom-runtime` rule off.
-///
-/// Exists because the bound cannot be derived from anything the executor can
-/// see. It never receives `stack_bytes` -- that lives in the spawn attr and
-/// goes no further -- and no portable query returns a task's total stack, so
-/// neither an absolute floor nor a percentage can be inferred. The entry that
-/// spawned the thread is the only party that knows what it handed over, and
-/// on a C++ image that entry is on this side of the ABI.
-///
-/// Call from a tier's `setup(executor)`, beside the other declarations the
-/// generated entry already makes there.
-///
 /// Fraction of a thread's stack that must stay unused before
 /// `stack-headroom-runtime` complains: one eighth, 12.5 %.
 ///
@@ -3232,6 +3218,7 @@ pub(crate) fn derive_min_stack_headroom(stack_bytes: usize) -> usize {
 ///
 /// # Safety
 /// `handle` must be a live executor handle from this ABI, or NULL.
+#[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_executor_derive_min_stack_headroom(
     handle: *mut c_void,
@@ -3242,8 +3229,22 @@ pub unsafe extern "C" fn nros_cpp_executor_derive_min_stack_headroom(
     }
 }
 
+/// Declare the minimum stack headroom this executor's thread must keep, in
+/// bytes. `0` (the default) leaves the `stack-headroom-runtime` rule off.
+///
+/// Exists because the bound cannot be derived from anything the executor can
+/// see. It never receives `stack_bytes` -- that lives in the spawn attr and
+/// goes no further -- and no portable query returns a task's total stack, so
+/// neither an absolute floor nor a percentage can be inferred. The entry that
+/// spawned the thread is the only party that knows what it handed over, and
+/// on a C++ image that entry is on this side of the ABI.
+///
+/// Call from a tier's `setup(executor)`, beside the other declarations the
+/// generated entry already makes there.
+///
 /// # Safety
 /// `handle` must be a live executor handle from this ABI, or NULL.
+#[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_executor_set_min_stack_headroom(
     handle: *mut c_void,
@@ -3256,6 +3257,7 @@ pub unsafe extern "C" fn nros_cpp_executor_set_min_stack_headroom(
     NROS_CPP_RET_OK
 }
 
+#[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_declare_remap(
     handle: *mut c_void,
