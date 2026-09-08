@@ -151,16 +151,25 @@ Not every backend can generate every event. Apps must handle
 
 | Backend | `LivelinessChanged` / `Lost` | `DeadlineMissed` | `MessageLost` |
 |---------|------------------------------|------------------|---------------|
-| Cyclone DDS | ✗ Not wired through the nano-ros event API yet | ✗ Not wired yet | ✗ Not wired yet |
+| Cyclone DDS | ✅ Polled `dds_get_liveliness_changed_status` / `_liveliness_lost_status` | ✅ Polled `dds_get_{requested,offered}_deadline_missed_status` (deadline comes from the QoS profile, not the `on_*` argument) | ✅ Polled `dds_get_sample_lost_status` |
 | XRCE-DDS | ✗ Not exposed (xrce-dds-client API limitation) | ✅ Shim-side clock check (sub: `has_data` / `take_serialized`; pub: `publish_raw`) | ✗ Not exposed |
 | zenoh-pico | ✅ Poll-based via zenoh tokens (alive_count ∈ {0,1}) | ✅ Shim-side clock check (`<P as PlatformClock>::clock_ms`) | ✅ Seq-gap detection from RMW attachment |
 | uORB | ✗ No wire-level liveliness | ✗ No rate concept | ✅ Native (host mock + real PX4 via `RustSubscriptionCallback` publish-counter) |
 
 ✓ = wired and tested. 🟡 = surface API works (returns Err while pending), wiring planned. ✗ = not feasible at this layer.
 
-No current backend exposes the full Tier-1 event set through the
-nano-ros event API. Apps should call `Subscriber::supports_event(kind)`
-first or design for graceful fallback.
+Cyclone DDS is the one backend that carries the whole Tier-1 set, and
+it does it by POLLING rather than by calling you back: the backend
+fills the ABI's `*_take_event` slots instead of `*_event_init`, and
+the runtime drains them from the entity's ordinary data path
+(`has_data` / `take_serialized` on a subscription; `publish` /
+`assert_liveliness` on a publisher). That is invisible from the
+application API — you still register with `on_*` and are still called
+back — but it has one consequence worth knowing: a publisher that
+stops publishing stops polling, so a publisher-side event is observed
+on the next publish. Apps should still call
+`Subscriber::supports_event(kind)` first or design for graceful
+fallback.
 
 The `Subscriber::supports_event(kind)` query lets applications check
 support before registering:

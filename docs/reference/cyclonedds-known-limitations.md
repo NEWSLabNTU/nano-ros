@@ -84,25 +84,52 @@ only, and the measurement above was an instrumented run rather than a registered
 test. See
 [#0976](../issues/archived/0976-service-action-adapters-tested-only-against-ourselves.md).
 
-## Phase 108 status events: NULL slots
+## Status events: POLLED, and that is the design
 
-The vtable's three event hooks are NULL:
+The vtable's two `*_event_init` hooks are NULL, and stay NULL:
 
 ```c
-.register_subscription_event   = NULL,
-.register_publisher_event    = NULL,
+.subscription_event_init     = NULL,   /* deliberate */
+.publisher_event_init        = NULL,   /* deliberate */
+.subscription_take_event     = subscription_take_event,
+.publisher_take_event        = publisher_take_event,
 .assert_publisher_liveliness = NULL,
 ```
 
-Liveliness changes, deadline misses, and message-lost events are
-**not delivered to the runtime** even though Cyclone tracks them
-internally via `dds_set_listener`. Apps that rely on
-`add_subscriber_event_callback` will silently see no firings on
-this backend.
+`*_event_init` means *the backend has a safe context and will call
+you*. This backend has none — its `drive_io` is a sleep, and a
+`dds_set_listener` trampoline would fire on Cyclone's own worker
+thread with nowhere to hand the event to, which is the problem issue
+0780 was filed about. So the surface is the other half of the ABI:
+`dds_get_*_status` RESETS the `*_change` counters as it reads them,
+which is exactly `take` semantics, so there is nothing to buffer and
+no lock to take.
 
-**Path forward:** wire Cyclone's reader/writer listener trampolines
-through to `rmw_event_callback_t` in a separate phase. Each
-status callback maps cleanly to one event kind; ~150 LOC.
+**Both halves are live now.** The poll slots were implemented and had
+no caller for two phases, so an application could not observe a status
+event through either half. `nros-rmw-cffi` is the caller:
+`register_event_callback` records the callback when `*_event_init` is
+NULL and a `*_take_event` slot exists, and drains it from the entity's
+ordinary data path — `has_data` / `take_serialized` on a subscription,
+`publish_raw` / `publish_streamed` / `assert_liveliness` on a
+publisher. `has_data` is the executor's per-spin readiness scan, so a
+subscription owned by the dispatch loop is polled every spin. The
+application API is the same `supports_event` / `on_*` pair zenoh uses;
+there is no Cyclone-specific shape to learn.
+
+Two live caveats:
+
+* **`deadline_ms` is not forwarded.** There is no slot to forward it
+  to on this path, and Cyclone derives the deadline from the reader's
+  / writer's QoS. Ask for the deadline in the `QoSProfile`
+  (`deadline_ms`) at create time; the argument to
+  `on_requested_deadline_missed(d)` is ignored by this backend.
+* **A publisher that stops publishing stops polling.** Publisher-side
+  kinds are observed on the NEXT publish or `assert_liveliness`, not
+  at the instant the counter moved. zenoh has the same property.
+
+`assert_publisher_liveliness` is still NULL — manual liveliness is
+unimplemented here, which is a separate gap.
 
 ## Service request-id correlation — done (Phase 117.7.B)
 

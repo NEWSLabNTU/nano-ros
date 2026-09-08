@@ -256,8 +256,23 @@ static rmw_ret_t cyclone_set_log_severity(rmw_log_severity_t severity) {
 
 using namespace nros_rmw_cyclonedds;
 
-// Phase 108 event hooks left NULL until a follow-up phase wires
-// Cyclone listeners through to the runtime's status-event surface.
+// The `*_event_init` half of the status-event surface is NULL, and STAYS NULL.
+//
+// This comment used to read "left NULL until a follow-up phase wires Cyclone
+// listeners through", which had it backwards and cost issue 1164 its first
+// diagnosis. `*_event_init` is the ABI's promise that the BACKEND has a safe
+// context and will call you (`rmw_vtable.h`); this one has none, because its
+// `drive_io` is a sleep and a `dds_set_listener` trampoline fires on Cyclone's
+// own worker thread. Wiring listeners would reintroduce exactly the problem
+// issue 0780 fixed, plus a buffer and a lock.
+//
+// The surface is the OTHER half — `subscription_take_event` /
+// `publisher_take_event` below — and since issue 1164 the runtime is its
+// caller: `nros-rmw-cffi` records a `register_event_callback` whose backend
+// has no `*_event_init`, then drains the poll slot from the entity's ordinary
+// data path and fires the callback on the caller's own thread. So an
+// application registers with the same `on_*` API it uses on zenoh; nothing
+// about a NULL here is a missing capability.
 constexpr rmw_ret_t (*kRegisterSubscriptionEvent)(
     const rmw_subscription_t *, rmw_event_type_t, uint32_t,
     rmw_status_event_callback_t, void *) = nullptr;
@@ -300,14 +315,15 @@ const nros_rmw_vtable_t kVtable = {
     /*send_request*/          service_send_request_raw,
     /*take_response*/            service_take_response,
 
-    /* ---- Phase 108 event hooks (deferred) ---- */
+    /* ---- Status events: POLLED (see the note above kRegisterSubscriptionEvent) ---- */
     /*subscription_event_init*/ kRegisterSubscriptionEvent,
     /* Issue 0780 — the poll half of the status-event surface, IMPLEMENTED.
      * `dds_get_*_status` resets its change counters as it reads them, which is
      * take semantics already, so this needs no listener, no buffer and no
      * lock — and it avoids the thing that made the decline wrong: a listener
      * fires on Cyclone's worker thread and this backend's `drive_io` is a
-     * sleep with nowhere to defer to. `*_event_init` stays NULL. */
+     * sleep with nowhere to defer to. `*_event_init` stays NULL, and issue 1164
+     * gave these two slots the caller they had been missing. */
     /*subscription_take_event*/ subscription_take_event,
     /*publisher_take_event*/  publisher_take_event,
     /*publisher_event_init*/  kRegisterPublisherEvent,

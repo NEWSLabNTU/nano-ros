@@ -23,7 +23,11 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
-use core::{cell::UnsafeCell, ffi::c_void, sync::atomic::Ordering};
+use core::{
+    cell::{Cell, UnsafeCell},
+    ffi::c_void,
+    sync::atomic::Ordering,
+};
 
 // RFC-0054 (phase-299 W1.3) — committed bindgen output from
 // `packages/core/nros-rmw-abi/include/nros/*.h`. This module is the ONLY
@@ -496,6 +500,89 @@ pub fn event_kind_from_c(k: NrosRmwEventKind) -> nros_rmw::EventKind {
         C::NROS_RMW_EVENT_LIVELINESS_LOST => K::LivelinessLost,
         C::NROS_RMW_EVENT_OFFERED_DEADLINE_MISSED => K::OfferedDeadlineMissed,
         _ => K::MessageLost,
+    }
+}
+
+// ============================================================================
+// Issue 1164 — the runtime is the caller of `*_take_event`
+// ============================================================================
+//
+// The status-event surface has two halves in the C ABI and a backend fills
+// exactly one of them (`rmw_vtable.h`, "how the three upstream parts map
+// here"):
+//
+//   * `*_event_init` — the backend has a safe context and will CALL you.
+//     `rust_adapter` fills this for every Rust backend, so zenoh arrives here.
+//   * `*_take_event` — the backend has NOWHERE safe to deliver from, so it
+//     buffers nothing and lets the caller drain its counters. cyclonedds fills
+//     this one, and `subscriber.cpp` says what it expects of us in as many
+//     words: "A caller polls them the way it already polls `has_data`."
+//
+// Nothing polled them. Both cyclonedds slots were implemented, read real
+// `dds_get_*_status` counters, and had no caller anywhere outside the
+// backend's own C++ test — so a Cyclone application could not observe a status
+// event through either half (issue 1164).
+//
+// This is that caller. It deliberately does NOT add a second user-facing
+// shape: `Subscription::register_event_callback` stays the one way to ask for
+// an event, and when the backend leaves `*_event_init` NULL the registration
+// is recorded HERE and satisfied by polling `*_take_event` from the entity's
+// ordinary data path. That is exactly how zenoh already behaves one layer
+// down — its shim fires registered callbacks from `has_data` / `try_recv_raw`
+// and from `publish_raw` — so an application sees the same API and the same
+// delivery points on either backend.
+//
+// **Deadline caveat.** `deadline_ms` is not forwarded on the poll path: there
+// is no slot to forward it to. A backend reached this way derives the deadline
+// from the entity's QoS (`qos.deadline_ms` at create time), so
+// `on_requested_deadline_missed(d)` observes the QoS deadline, not `d`. Ask
+// for the deadline in the QoS profile when the backend is a polled one.
+
+/// One status-event callback the runtime holds on the entity's behalf,
+/// because the backend filled `*_take_event` instead of `*_event_init`.
+///
+/// `cb` is the same nullable C callback `*_event_init` would have received;
+/// `user_ctx` is owned by whoever registered (`nros-node` keeps the boxed
+/// closure alive for the entity's lifetime).
+#[derive(Clone, Copy)]
+struct PolledEventReg {
+    cb: NrosRmwEventCallback,
+    user_ctx: *mut c_void,
+}
+
+/// Subscription-side event kinds, in registry-slot order.
+const SUB_EVENT_KINDS: [nros_rmw::EventKind; 3] = [
+    nros_rmw::EventKind::LivelinessChanged,
+    nros_rmw::EventKind::RequestedDeadlineMissed,
+    nros_rmw::EventKind::MessageLost,
+];
+
+/// Publisher-side event kinds, in registry-slot order.
+const PUB_EVENT_KINDS: [nros_rmw::EventKind; 2] = [
+    nros_rmw::EventKind::LivelinessLost,
+    nros_rmw::EventKind::OfferedDeadlineMissed,
+];
+
+/// Registry slot for a subscription-side kind. `None` for a publisher-side
+/// kind, which is a caller error rather than an unsupported capability — the
+/// backends answer it `INVALID_ARGUMENT` for the same reason.
+fn sub_event_slot(kind: nros_rmw::EventKind) -> Option<usize> {
+    SUB_EVENT_KINDS.iter().position(|k| *k == kind)
+}
+
+/// Registry slot for a publisher-side kind. See [`sub_event_slot`].
+fn pub_event_slot(kind: nros_rmw::EventKind) -> Option<usize> {
+    PUB_EVENT_KINDS.iter().position(|k| *k == kind)
+}
+
+/// A payload union with no member selected yet. The backend writes one of the
+/// two members before setting `taken`; we never read it unless it did.
+fn empty_event_payload() -> NrosRmwEventPayload {
+    NrosRmwEventPayload {
+        count: NrosRmwCountStatus {
+            total_count: 0,
+            total_count_change: 0,
+        },
     }
 }
 
@@ -2202,6 +2289,8 @@ impl Session for CffiSession {
             qos: qos_struct,
             can_loan_messages: false,
             backend_data: core::ptr::null_mut(),
+            polled_events: [const { Cell::new(None) }; PUB_EVENT_KINDS.len()],
+            polling_events: Cell::new(false),
         };
         let topic_ptr = to_c_str(topic.name, &mut pub_state.topic_name_buf);
         let type_ptr = to_c_str(topic.type_name, &mut pub_state.type_name_buf);
@@ -2320,6 +2409,8 @@ impl Session for CffiSession {
             backend_data: core::ptr::null_mut(),
             supports_in_place: false,
             pending_status: None,
+            polled_events: [const { Cell::new(None) }; SUB_EVENT_KINDS.len()],
+            polling_events: Cell::new(false),
         };
         let topic_ptr = to_c_str(topic.name, &mut sub_state.topic_name_buf);
         let type_ptr = to_c_str(topic.type_name, &mut sub_state.type_name_buf);
@@ -2916,6 +3007,18 @@ pub struct CffiPublisher {
     qos: NrosRmwQos,
     can_loan_messages: bool,
     backend_data: *mut c_void,
+    /// Issue 1164 — callbacks the runtime serves by polling
+    /// `publisher_take_event`, indexed by [`PUB_EVENT_KINDS`]. Empty on a
+    /// backend that fills `publisher_event_init`; the registration goes
+    /// straight through in that case.
+    polled_events: [Cell<Option<PolledEventReg>>; PUB_EVENT_KINDS.len()],
+    /// Re-entrancy guard for [`CffiPublisher::poll_status_events`]. A user
+    /// callback is free to publish, and publishing polls — so the drain must
+    /// not call itself. A `Cell`, not a lock: the entity is `!Sync` (it holds
+    /// the backend's raw pointer), so there is no second thread to exclude,
+    /// and a lock here would be one a backend listener could also want, which
+    /// is the self-relock that hangs on POSIX and passes on Zephyr.
+    polling_events: Cell<bool>,
 }
 
 impl CffiPublisher {
@@ -2928,6 +3031,67 @@ impl CffiPublisher {
             _reserved: [0u8; 7],
             backend_data: self.backend_data,
         }
+    }
+
+    /// `make_view` from a shared borrow. The view is a by-value snapshot of
+    /// this publisher's fields; the backend reads it and never writes through
+    /// it, which is the same reasoning `has_data` uses one entity over.
+    fn view_shared(&self) -> NrosRmwPublisher {
+        NrosRmwPublisher {
+            topic_name: self.topic_name_buf.as_ptr().cast(),
+            type_name: self.type_name_buf.as_ptr().cast(),
+            qos: self.qos,
+            can_loan_messages: self.can_loan_messages,
+            _reserved: [0u8; 7],
+            backend_data: self.backend_data,
+        }
+    }
+
+    /// Issue 1164 — drain `publisher_take_event` for every kind this
+    /// publisher has a registered callback for, and fire the callbacks.
+    ///
+    /// Called from the publisher's ordinary data path (`publish_raw`,
+    /// `publish_streamed`, `assert_liveliness`), which is where the zenoh
+    /// shim fires its own publisher-side events from. A publisher that stops
+    /// publishing therefore stops polling — the same limitation zenoh has,
+    /// and the reason `OfferedDeadlineMissed` is observed on the NEXT publish
+    /// rather than at the instant the deadline lapsed.
+    ///
+    /// No callback is invoked while the backend holds anything: `take_event`
+    /// copies the status out and returns, and only then is the user's
+    /// callback called. Nothing here is re-entrant into the backend.
+    fn poll_status_events(&self) {
+        let Some(take) = self.vtable.publisher_take_event else {
+            return;
+        };
+        if self.polling_events.replace(true) {
+            return;
+        }
+        for (slot, kind) in PUB_EVENT_KINDS.iter().enumerate() {
+            let Some(reg) = self.polled_events[slot].get() else {
+                continue;
+            };
+            let Some(cb) = reg.cb else {
+                continue;
+            };
+            let view = self.view_shared();
+            let mut payload = empty_event_payload();
+            let mut taken = false;
+            // SAFETY: `view` is a live snapshot of this publisher, `payload`
+            // and `taken` are stack locals the slot writes through. The slot
+            // writes `payload` only when it sets `taken`.
+            let rc = unsafe { take(&view, event_kind_to_c(*kind), &mut payload, &mut taken) };
+            if rc != NROS_RMW_RET_OK || !taken {
+                continue;
+            }
+            // SAFETY: `cb` and `user_ctx` were supplied together at
+            // registration and the registrant keeps `user_ctx` alive for the
+            // entity's lifetime (`nros-node`'s `EventRegs`). `payload` lives
+            // to the end of this statement, which is the whole contract the
+            // callback gets.
+            unsafe { cb(event_kind_to_c(*kind), &payload, reg.user_ctx) };
+        }
+        self.polling_events.set(false);
     }
 
     /// Topic name. Result is the null-terminated string written at
@@ -2950,6 +3114,25 @@ impl CffiPublisher {
     /// (Phase 99). Mirrors upstream `rmw_publisher_t::can_loan_messages`.
     pub fn can_loan_messages(&self) -> bool {
         self.can_loan_messages
+    }
+
+    /// Issue 1164 — record a callback the runtime will serve by polling
+    /// `publisher_take_event`. Returns `Unsupported` when there is no poll
+    /// slot either, or when `kind` is not a publisher-side kind.
+    fn register_polled_event(
+        &self,
+        kind: nros_rmw::EventKind,
+        cb: NrosRmwEventCallback,
+        user_ctx: *mut c_void,
+    ) -> Result<(), TransportError> {
+        if self.vtable.publisher_take_event.is_none() || cb.is_none() {
+            return Err(TransportError::Unsupported);
+        }
+        let Some(slot) = pub_event_slot(kind) else {
+            return Err(TransportError::Unsupported);
+        };
+        self.polled_events[slot].set(Some(PolledEventReg { cb, user_ctx }));
+        Ok(())
     }
 }
 
@@ -3341,6 +3524,10 @@ impl Publisher for CffiPublisher {
     type Error = TransportError;
 
     fn publish_raw(&self, data: &[u8]) -> Result<(), TransportError> {
+        // Issue 1164 — the publisher's data path is its poll point for a
+        // backend that fills `publisher_take_event`. No-op when nothing is
+        // registered, and no-op for a backend that fills `*_event_init`.
+        self.poll_status_events();
         let mut view = NrosRmwPublisher {
             topic_name: self.topic_name_buf.as_ptr().cast(),
             type_name: self.type_name_buf.as_ptr().cast(),
@@ -3383,6 +3570,10 @@ impl Publisher for CffiPublisher {
         // `Publisher::publish_streamed` default body, which runs a
         // stack staging buffer + `publish_raw`.
         if let Some(f) = self.vtable.publish_streamed {
+            // Issue 1164 — the native arm is a second publish path and needs
+            // its own poll point. The staging fallback below does not: it
+            // ends in `publish_raw`, which polls.
+            self.poll_status_events();
             let mut view = NrosRmwPublisher {
                 topic_name: self.topic_name_buf.as_ptr().cast(),
                 type_name: self.type_name_buf.as_ptr().cast(),
@@ -3468,14 +3659,37 @@ impl Publisher for CffiPublisher {
         // Issue 0349 — a NULL slot means the backend does not implement this
         // OPTIONAL capability (xrce NULLs all three). Report it as
         // `Unsupported`; never panic, and never make it a registration error.
+        //
+        // Issue 1164 — NULL is ALSO the deliberate answer of a backend that
+        // fills `publisher_take_event` instead, and for those the
+        // registration is served here rather than refused. cyclonedds is one:
+        // its `drive_io` is a sleep, so it has nowhere safe to call a
+        // callback from and hands us its counters to drain.
         let Some(register) = self.vtable.publisher_event_init else {
-            return Err(TransportError::Unsupported);
+            return self.register_polled_event(kind, cb, user_ctx);
         };
         let ret = unsafe { register(&view, event_kind_to_c(kind), deadline_ms, cb, user_ctx) };
         if ret != NROS_RMW_RET_OK {
             return Err(error_from_ret(ret));
         }
         Ok(())
+    }
+
+    fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
+        // Issue 1164 — SLOT granularity, not per-kind: the C ABI carries no
+        // capability query, so the honest answer is "a path exists that could
+        // carry this kind for this entity". A backend may still decline the
+        // specific kind at registration, which is why `register_event_callback`
+        // stays the authority.
+        //
+        // This used to be the trait default — a flat `false` for every cffi
+        // backend, including the ones whose events work. `book/src/concepts/
+        // status-events.md` tells applications to gate registration on this
+        // call, so a flat `false` made every backend behind this vtable look
+        // eventless whether it was or not.
+        pub_event_slot(kind).is_some()
+            && (self.vtable.publisher_event_init.is_some()
+                || self.vtable.publisher_take_event.is_some())
     }
 
     fn assert_liveliness(&self) -> Result<(), TransportError> {
@@ -3495,6 +3709,10 @@ impl Publisher for CffiPublisher {
         if ret != NROS_RMW_RET_OK {
             return Err(error_from_ret(ret));
         }
+        // Issue 1164 — asserting liveliness is the other publisher-side data
+        // path, and the one after which `LivelinessLost` is most likely to
+        // have moved. Same poll point the zenoh shim uses.
+        self.poll_status_events();
         Ok(())
     }
 }
@@ -3555,6 +3773,14 @@ pub struct CffiSubscription {
     /// nothing — moved one call later because that is where the contract leaves
     /// room for it.
     pending_status: Option<TransportError>,
+    /// Issue 1164 — callbacks the runtime serves by polling
+    /// `subscription_take_event`, indexed by [`SUB_EVENT_KINDS`]. See the
+    /// note above [`PolledEventReg`].
+    polled_events: [Cell<Option<PolledEventReg>>; SUB_EVENT_KINDS.len()],
+    /// Re-entrancy guard for [`CffiSubscription::poll_status_events`] — a
+    /// user callback is free to take, and taking polls. A `Cell`, not a
+    /// lock; see the publisher's field of the same name.
+    polling_events: Cell<bool>,
 }
 
 impl CffiSubscription {
@@ -3567,6 +3793,82 @@ impl CffiSubscription {
             _reserved: [0u8; 7],
             backend_data: self.backend_data,
         }
+    }
+
+    /// `make_view` from a shared borrow — the view is a by-value snapshot the
+    /// backend reads and never writes through.
+    fn view_shared(&self) -> NrosRmwSubscription {
+        NrosRmwSubscription {
+            topic_name: self.topic_name_buf.as_ptr().cast(),
+            type_name: self.type_name_buf.as_ptr().cast(),
+            qos: self.qos,
+            can_loan_messages: self.can_loan_messages,
+            _reserved: [0u8; 7],
+            backend_data: self.backend_data,
+        }
+    }
+
+    /// Issue 1164 — record a callback the runtime will serve by polling
+    /// `subscription_take_event`. Returns `Unsupported` when there is no poll
+    /// slot either, or when `kind` is not a subscription-side kind.
+    fn register_polled_event(
+        &self,
+        kind: nros_rmw::EventKind,
+        cb: NrosRmwEventCallback,
+        user_ctx: *mut c_void,
+    ) -> Result<(), TransportError> {
+        if self.vtable.subscription_take_event.is_none() || cb.is_none() {
+            return Err(TransportError::Unsupported);
+        }
+        let Some(slot) = sub_event_slot(kind) else {
+            return Err(TransportError::Unsupported);
+        };
+        self.polled_events[slot].set(Some(PolledEventReg { cb, user_ctx }));
+        Ok(())
+    }
+
+    /// Issue 1164 — drain `subscription_take_event` for every kind this
+    /// subscription has a registered callback for, and fire the callbacks.
+    ///
+    /// Driven from `has_data` and `take_serialized`, which is literally what
+    /// `subscriber.cpp` asks of a caller ("A caller polls them the way it
+    /// already polls `has_data`") and the same pair the zenoh shim fires its
+    /// own subscription events from. `has_data` is the executor's per-spin
+    /// readiness scan, so a subscription owned by the dispatch loop is polled
+    /// every spin without the application doing anything.
+    ///
+    /// The status is copied out of the backend before any callback runs, so
+    /// no user code executes while the backend holds a lock of its own.
+    fn poll_status_events(&self) {
+        let Some(take) = self.vtable.subscription_take_event else {
+            return;
+        };
+        if self.polling_events.replace(true) {
+            return;
+        }
+        for (slot, kind) in SUB_EVENT_KINDS.iter().enumerate() {
+            let Some(reg) = self.polled_events[slot].get() else {
+                continue;
+            };
+            let Some(cb) = reg.cb else {
+                continue;
+            };
+            let view = self.view_shared();
+            let mut payload = empty_event_payload();
+            let mut taken = false;
+            // SAFETY: `view` is a live snapshot of this subscription;
+            // `payload` and `taken` are stack locals the slot writes through,
+            // and the slot writes `payload` only when it sets `taken`.
+            let rc = unsafe { take(&view, event_kind_to_c(*kind), &mut payload, &mut taken) };
+            if rc != NROS_RMW_RET_OK || !taken {
+                continue;
+            }
+            // SAFETY: `cb` and `user_ctx` were supplied together at
+            // registration; the registrant keeps `user_ctx` alive for the
+            // entity's lifetime. `payload` outlives the call.
+            unsafe { cb(event_kind_to_c(*kind), &payload, reg.user_ctx) };
+        }
+        self.polling_events.set(false);
     }
 
     /// Phase 231 (RFC-0038) — drive the `process_raw_in_place` vtable slot,
@@ -3745,6 +4047,10 @@ impl nros_rmw::Subscription for CffiSubscription {
     }
 
     fn has_data(&self) -> bool {
+        // Issue 1164 — the readiness scan is the poll point `subscriber.cpp`
+        // names for `subscription_take_event`. No-op unless something is
+        // registered on a backend that fills that slot.
+        self.poll_status_events();
         // has_data takes &mut to match the C signature; cast away const
         // because the predicate is logically read-only — backends must
         // not mutate state from has_data.
@@ -3772,6 +4078,10 @@ impl nros_rmw::Subscription for CffiSubscription {
         if let Some(status) = self.pending_status.take() {
             return Err(status);
         }
+        // Issue 1164 — the second poll point, mirroring the zenoh shim, which
+        // fires its subscription events from `try_recv_raw` as well as from
+        // `has_data`. A caller that only takes still sees its events.
+        self.poll_status_events();
         let mut view = self.make_view();
         // Phase 376 W3.b/W3.d step A — `take` reports through out-parameters.
         // Three arms collapse into one: NO_DATA, a negative error, and the
@@ -3942,14 +4252,28 @@ impl nros_rmw::Subscription for CffiSubscription {
         // Issue 0349 — a NULL slot means the backend does not implement this
         // OPTIONAL capability (xrce NULLs all three). Report it as
         // `Unsupported`; never panic, and never make it a registration error.
+        //
+        // Issue 1164 — NULL is ALSO the deliberate answer of a backend that
+        // fills `subscription_take_event` instead. cyclonedds is one, and
+        // says so where it declines: "So `*_event_init` stays NULL here and
+        // these two slots carry the surface." Serve those here instead of
+        // refusing them.
         let Some(register) = self.vtable.subscription_event_init else {
-            return Err(TransportError::Unsupported);
+            return self.register_polled_event(kind, cb, user_ctx);
         };
         let ret = unsafe { register(&view, event_kind_to_c(kind), deadline_ms, cb, user_ctx) };
         if ret != NROS_RMW_RET_OK {
             return Err(error_from_ret(ret));
         }
         Ok(())
+    }
+
+    fn supports_event(&self, kind: nros_rmw::EventKind) -> bool {
+        // Issue 1164 — slot granularity; see `CffiPublisher::supports_event`
+        // for why that is the honest answer and why a flat `false` was not.
+        sub_event_slot(kind).is_some()
+            && (self.vtable.subscription_event_init.is_some()
+                || self.vtable.subscription_take_event.is_some())
     }
 }
 
