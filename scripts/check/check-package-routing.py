@@ -1,21 +1,42 @@
 #!/usr/bin/env python3
-"""RFC-0094 D3 / phase-439 W0 — the routing diff, as a gate.
+"""RFC-0094 D3 / phase-439 W0+W3 — the routing diff, as a gate.
 
 RFC-0094 D3 says two questions have been conflated at three sites:
 
     <build_type>   -> which DRIVER builds this package, if it is built here
     file presence  -> IS it built here
 
-Today all three sites answer both questions with file presence:
+Until phase-439 W3 all three sites answered both questions with file presence:
 
     packages/cli/nros-cli-core/src/builder/cargo_root.rs   `Cargo.toml`      -> cargo member
     packages/cli/nros-cli-core/src/builder/cmake_root.rs   `CMakeLists.txt`  -> add_subdirectory
     packages/cli/nros-cli-core/src/cmd/build.rs            `CMakeLists.txt`  -> driver choice
 
-W0 is a TEST WRITTEN BEFORE THE FEATURE. It pushes every tracked `package.xml`
-through both rules and refuses any package that changes side for a reason the
-design did not name. The acceptance is not "the diff is empty" — it is "the
-diff is exactly the class RFC-0094 D3 predicted, and nothing else".
+All three now route through `nros_cli_core::routing`, which reads the
+declaration. `SITE_CONTRACT` below is what keeps that true.
+
+W0 was a TEST WRITTEN BEFORE THE FEATURE: it pushed every tracked `package.xml`
+through both rules and refused any package that changed side for a reason the
+design did not name. Measured 2026-09-08, that diff was **21 packages**, all of
+one class.
+
+**W3 landed the feature, so the diff is now EMPTY and this gate's job changed.**
+The three sites read `<build_type>` through one helper,
+`nros_cli_core::routing`, and the file-presence rule survives here only as the
+`--report` column that says what moved and why. What the gate ASSERTS now is
+three things, in increasing order of how easily they rot:
+
+1. **The intersection rule, live over the real tree.** A PARTICIPATING package
+   must carry the file its declared driver needs. Zero offenders today; the
+   selftest plants one in each direction.
+2. **The sites still read the declaration.** Three greps, because a python model
+   of Rust code is worth nothing unless something ties it to the Rust. Delete
+   the `routing::route` call from any of the three, or the `check_declarations`
+   call that makes a misdeclaration loud, and this reds.
+3. **The historical diff is still exactly D3's named class.** A package that
+   would move for a reason the design did not name is still refused — which is
+   what stops someone "fixing" a routing surprise by giving one package a
+   declaration that contradicts its files.
 
 ## The one class that legitimately changes side
 
@@ -27,8 +48,12 @@ generated `[workspace] members` on file presence alone, which is wrong: cargo
 cannot build a west leaf, and `examples/workspaces/rust` says so in the hand-
 written `exclude` that the derivation replaced.
 
-Measured on 2026-09-08: 21 such packages, all declaring `nros_cmake`. They leave
-the cargo members list and stay cmake subdirectories. That is a FIX.
+Measured on 2026-09-08: 21 such packages, all declaring `nros_cmake`. They left
+the cargo members list and stayed cmake subdirectories when W3 landed. That is a
+FIX, and the one with observable consequences is
+`examples/workspaces/mixed/src/rust_heartbeat_pkg` — a cmake-driven Rust node
+carrying its own `[workspace]`, which made the generated cargo root for `mixed`
+unreadable by cargo.
 
 ## The class that must NOT change side, and is the reason routing on the
 ## declaration ALONE was rejected
@@ -39,13 +64,21 @@ and ROS interface packages whose build files `nros sync` generates. They are out
 of both lists today and stay out: participation is file presence, so a
 declaration with no file routes nowhere instead of hard-failing.
 
-## What this gate asserts
+## What "the diff is empty" means, precisely
 
-For every tracked `package.xml`, today's routing and D3's routing AGREE, except
-for dual-file packages declaring a cmake type, which leave the cargo member list.
-Plus D3's own intersection rule: a PARTICIPATING package must carry the file its
-declared driver needs (a package declaring `nros_cargo` with only a
-`CMakeLists.txt` is a real defect that today is silently routed to cmake).
+There are three rules in play and only two of them are code:
+
+    route_file_presence   the PRE-W3 rule. Not implemented anywhere any more;
+                          kept so `--report` can show what W3 moved.
+    route_declaration     RFC-0094 D3. This IS what the three sites do, which
+                          is what assertion 2 above ties down.
+
+W3's acceptance is `route_declaration == what the code does`, and a python
+function cannot prove that about Rust. So the proof is split: the SHAPE check
+here says the sites call the one helper, and the helper's own unit tests
+(`nros_cli_core::routing`, twelve of them, both directions) say what it does.
+Neither half alone is worth anything; a gate claiming otherwise would be the
+"guard that exists but cannot fire" issue 1167 is about.
 
 Deliberately NOT a baseline list. A list of 21 paths would go stale the first
 time a Zephyr leaf is added and would have to be edited by every author who adds
@@ -203,8 +236,13 @@ def read_package(rel: str, root: Path, paths: dict[str, str]) -> dict:
 # ---------------------------------------------------------------------------
 # The two rules
 # ---------------------------------------------------------------------------
-def route_today(pkg: dict) -> frozenset[str]:
-    """What the three sites do now: file presence answers both questions."""
+def route_file_presence(pkg: dict) -> frozenset[str]:
+    """The PRE-W3 rule: file presence answered both questions.
+
+    Nothing implements this any more. It survives so `--report` can name what
+    W3 moved, and so the "changes side for an unnamed reason" refusal keeps
+    working on packages added after W3.
+    """
     sides = set()
     if pkg["has_cargo"]:
         sides.add(CARGO_MEMBER)
@@ -213,24 +251,152 @@ def route_today(pkg: dict) -> frozenset[str]:
     return frozenset(sides)
 
 
-def route_proposed(pkg: dict) -> frozenset[str]:
+def route_declaration(pkg: dict) -> frozenset[str]:
     """RFC-0094 D3: the declaration picks the driver, files pick participation.
 
+    This is what `nros_cli_core::routing::route` does, and `SITE_CONTRACT`
+    below is what says the three sites still call it.
+
     An UNDECLARED package (or one declaring a build type this project does not
-    define) falls back to file presence, which is today's answer. D3 changes
-    what a declaration means; it does not invent one where none was written.
+    define) falls back to file presence. D3 changes what a declaration means;
+    it does not invent one where none was written, and `ament_python` is not
+    ours to interpret.
     """
     if not (pkg["has_cargo"] or pkg["has_cmake"]):
         return frozenset()
     driver = pkg["driver"]
     if driver is None:
-        return route_today(pkg)
+        return route_file_presence(pkg)
     sides = set()
     if driver == "cargo" and pkg["has_cargo"]:
         sides.add(CARGO_MEMBER)
     if driver == "cmake" and pkg["has_cmake"] and not pkg["interface"]:
         sides.add(CMAKE_SUBDIR)
     return frozenset(sides)
+
+
+# ---------------------------------------------------------------------------
+# What ties this python model to the Rust that actually routes (phase-439 W3)
+# ---------------------------------------------------------------------------
+# One helper owns D3's rule, and the three sites call it. Written as a contract
+# rather than checked by re-implementing the Rust, because the second
+# implementation is the failure mode: CLAUDE.md's rmw parity map is two green
+# tools disagreeing by 25 symbols, each confident it had read the other.
+#
+# `must_call` is the routing predicate; `why` is what the site would silently
+# get wrong without it. `cmd/build.rs` additionally has to make a
+# misdeclaration LOUD, which is the acceptance sentence of the work item.
+SITE_CONTRACT = {
+    "packages/cli/nros-cli-core/src/builder/cargo_root.rs": [
+        ("routing::route(", "the [workspace] members list would key on Cargo.toml presence"),
+        ("routing::check_declarations(", "a misdeclared participant would drop out silently"),
+    ],
+    "packages/cli/nros-cli-core/src/builder/cmake_root.rs": [
+        ("routing::route(", "add_subdirectory() would key on CMakeLists.txt presence"),
+        ("routing::check_declarations(", "a misdeclared participant would drop out silently"),
+    ],
+    "packages/cli/nros-cli-core/src/cmd/build.rs": [
+        ("routing::route(", "the cargo-vs-cmake driver choice would key on file presence"),
+        ("routing::check_declarations(", "W3's acceptance: the error must be loud and name it"),
+    ],
+    # The rule itself has exactly one home. If this file stops resolving the
+    # build-type table, the three call sites above are calling something else.
+    "packages/cli/nros-cli-core/src/routing.rs": [
+        ("build_type::{BuildPath, canonical}", "the one reader of the <build_type> vocabulary"),
+        ("pub fn route(", "the predicate the three sites share"),
+    ],
+}
+
+
+# The other half of the contract, and the half that was MEASURED to be needed.
+#
+# A `must_call` needle alone is defeated by reverting the routing predicate
+# while leaving any other call to the helper in the file — demonstrated on this
+# tree: putting `pkg.dir.join("Cargo.toml").is_file()` back as the member test
+# in `cargo_root.rs` left that file's OTHER `routing::route(p)` call (the
+# `exclude` derivation) in place, and this gate stayed GREEN while
+# `a_dual_file_package_declaring_cmake_is_not_a_member` went red in 0.14 s. A
+# gate that cannot fail its own mutation is issue 1167.
+#
+# So in the two EMITTERS, where the retired predicate lived, a build-file probe
+# must say why it is not a routing decision. Both probes are listed rather than
+# one, because the defect was symmetric.
+#
+# `cmd/build.rs` is deliberately NOT in this table: it holds five legitimate
+# probes answering other questions (does a hand-written entry package exist,
+# which ancestor holds a manifest, where is the west application), and
+# annotating those would be noise that trains a reader to ignore the marker.
+# Its retired shape is caught by the exact-line ban below instead.
+FILE_PROBES = ('join("Cargo.toml").is_file()', 'join("CMakeLists.txt").is_file()')
+PROBE_EXEMPT = "nros-routing-exempt:"
+# How far above a probe the marker may sit. Three, so a two-line justification
+# reads as prose above the code rather than a trailing comment rustfmt owns.
+PROBE_EXEMPT_LOOKBEHIND = 3
+PROBE_BANNED_IN = (
+    "packages/cli/nros-cli-core/src/builder/cargo_root.rs",
+    "packages/cli/nros-cli-core/src/builder/cmake_root.rs",
+)
+
+# The exact pre-W3 spelling at the third site. A rename defeats this, and that
+# is STATED rather than hidden: the primary evidence for what the three sites
+# do is `nros_cli_core`'s own unit tests. This table is the drift tripwire.
+BANNED_LINES = {
+    "packages/cli/nros-cli-core/src/cmd/build.rs": [
+        (
+            '.filter(|p| p.dir.join("CMakeLists.txt").is_file())',
+            "the cargo-vs-cmake driver choice, back on file presence",
+        ),
+    ],
+}
+
+
+def _code_lines(body: str) -> list[str]:
+    """Each line with its `//` comment stripped.
+
+    The retired predicates are QUOTED in the comments that explain why they
+    went, so a scanner that read comments would refuse the explanation of its
+    own rule. The exemption marker is read from the RAW text instead.
+    """
+    return [line.split("//", 1)[0] for line in body.splitlines()]
+
+
+def check_sites(read: "callable[[str], str | None]") -> list[str]:
+    """Assertion 2: the Rust still routes on the declaration.
+
+    `read` is injected so the selftest can run this against synthetic sources —
+    a control driven by the tree it checks passes the day the tree changes, for
+    the wrong reason.
+    """
+    out: list[str] = []
+    for rel, needles in SITE_CONTRACT.items():
+        body = read(rel)
+        if body is None:
+            out.append(f"{rel}: gone — RFC-0094 D3's routing has no home there any more")
+            continue
+        for needle, why in needles:
+            if needle not in body:
+                out.append(f"{rel}: no `{needle}` — {why}")
+
+        raw = body.splitlines()
+        code = _code_lines(body)
+        if rel in PROBE_BANNED_IN:
+            for i, line in enumerate(code):
+                if not any(probe in line for probe in FILE_PROBES):
+                    continue
+                window = raw[max(0, i - PROBE_EXEMPT_LOOKBEHIND) : i + 1]
+                if any(PROBE_EXEMPT in w for w in window):
+                    continue
+                out.append(
+                    f"{rel}:{i + 1}: a build-file probe in an emitter that routes "
+                    f"on the DECLARATION (RFC-0094 D3). If it is not a routing "
+                    f"decision, say so with `{PROBE_EXEMPT} <reason>` within "
+                    f"{PROBE_EXEMPT_LOOKBEHIND} lines above it."
+                )
+        for banned, why in BANNED_LINES.get(rel, []):
+            for i, line in enumerate(code):
+                if banned in line:
+                    out.append(f"{rel}:{i + 1}: `{banned}` is the pre-W3 predicate — {why}")
+    return out
 
 
 def missing_declared_file(pkg: dict) -> str | None:
@@ -252,8 +418,13 @@ def missing_declared_file(pkg: dict) -> str | None:
 
 
 def classify(pkg: dict) -> tuple[str, str]:
-    """`("agree" | "fix" | "violation", explanation)` for one package."""
-    today, proposed = route_today(pkg), route_proposed(pkg)
+    """`("agree" | "fix" | "violation", explanation)` for one package.
+
+    "fix" means "W3 MOVED this one" — it is history now, reported and not
+    failed. "violation" is a package whose declaration and files disagree in a
+    way RFC-0094 D3 never named, and it still fails.
+    """
+    today, proposed = route_file_presence(pkg), route_declaration(pkg)
     if today == proposed:
         return "agree", ""
     # The one class RFC-0094 D3 predicted and justified: a dual-file package
@@ -337,22 +508,22 @@ def self_test(quiet: bool = False) -> int:
 
     # 1. declared cargo + has Cargo.toml -> unchanged, both rules agree
     a = p(raw="nros_cargo", driver="cargo", has_cargo=True)
-    assert route_today(a) == frozenset({CARGO_MEMBER}), "cargo leaf left the cargo side"
+    assert route_declaration(a) == frozenset({CARGO_MEMBER}), "cargo leaf left the cargo side"
     assert classify(a)[0] == "agree", "a plain cargo leaf must not move"
     assert missing_declared_file(a) is None
 
     # 2. declared cmake + has BOTH -> the named fix, and ONLY under a cmake
     #    declaration. This is the class the whole work item is about.
     b = p(raw="nros_cmake", driver="cmake", has_cargo=True, has_cmake=True)
-    assert route_today(b) == frozenset({CARGO_MEMBER, CMAKE_SUBDIR})
-    assert route_proposed(b) == frozenset({CMAKE_SUBDIR})
+    assert route_file_presence(b) == frozenset({CARGO_MEMBER, CMAKE_SUBDIR})
+    assert route_declaration(b) == frozenset({CMAKE_SUBDIR})
     assert classify(b)[0] == "fix", "the dual-file cmake leaf is D3's named fix"
 
     # 3. declared cargo + has NEITHER -> routed nowhere by both rules. The 64.
     #    Routing on the declaration ALONE would hard-fail these, which is why
     #    participation stays file presence.
     c = p(raw="nros_cargo", driver="cargo")
-    assert route_today(c) == frozenset() and route_proposed(c) == frozenset()
+    assert route_file_presence(c) == frozenset() and route_declaration(c) == frozenset()
     assert classify(c)[0] == "agree", "a declaration with no build file routes nowhere"
     assert missing_declared_file(c) is None, "a non-participant cannot fail the intersection"
 
@@ -372,16 +543,77 @@ def self_test(quiet: bool = False) -> int:
     #    subdir list. Not a class D3 named, so it must not be waved through as
     #    "a dual-file package" — the fix arm keys on the DECLARATION.
     g = p(raw="nros_cargo", driver="cargo", has_cargo=True, has_cmake=True)
-    assert route_proposed(g) == frozenset({CARGO_MEMBER})
+    assert route_declaration(g) == frozenset({CARGO_MEMBER})
     assert classify(g)[0] == "violation", "only a CMAKE declaration is the named fix"
 
     # 7. An interface package is off the cmake side under BOTH rules (0862).
     h = p(raw="ament_cmake", driver="cmake", has_cmake=True, interface=True)
-    assert route_today(h) == frozenset() and route_proposed(h) == frozenset()
+    assert route_file_presence(h) == frozenset() and route_declaration(h) == frozenset()
     assert classify(h)[0] == "agree"
 
+    # 8. phase-439 W3 — the SHAPE check must be able to go red. A model of the
+    #    Rust that cannot notice the Rust changing is the whole failure mode
+    #    this gate is guarding against one layer down.
+    full = {rel: "\n".join(n for n, _ in needles) for rel, needles in SITE_CONTRACT.items()}
+    assert not check_sites(full.get), "the contract must be satisfiable"
+
+    # 8a. The probe ban, in each emitter and for each retired probe. This is
+    #     the mutation the needle check alone could not catch: reverting the
+    #     routing predicate to a file probe while another call to the helper
+    #     survives elsewhere in the file.
+    for rel in PROBE_BANNED_IN:
+        for probe in FILE_PROBES:
+            reverted = dict(full)
+            reverted[rel] += f"\n        if !pkg.dir.{probe} {{ continue; }}"
+            errs = check_sites(reverted.get)
+            assert errs, f"reverting {rel} to `{probe}` must red the gate"
+            assert all(rel in e for e in errs), errs
+            # And the exemption must ACTUALLY exempt, or the rule is a ban and
+            # the marker is decoration.
+            exempted = dict(full)
+            exempted[rel] += (
+                f"\n        // {PROBE_EXEMPT} measured, not routing"
+                f"\n        if !pkg.dir.{probe} {{ continue; }}"
+            )
+            assert not check_sites(exempted.get), f"{rel}: the marker must exempt"
+        # A marker further above than the lookbehind must NOT exempt, or the
+        # window is unbounded and one marker licenses the whole file.
+        far = dict(full)
+        far[rel] += (
+            f"\n        // {PROBE_EXEMPT} too far away"
+            + "\n        //" * PROBE_EXEMPT_LOOKBEHIND
+            + f'\n        if !pkg.dir.{FILE_PROBES[0]} {{ continue; }}'
+        )
+        assert check_sites(far.get), f"{rel}: an out-of-window marker must not exempt"
+
+    # 8b. `cmd/build.rs`'s retired predicate, by its exact pre-W3 spelling.
+    for rel, banned in BANNED_LINES.items():
+        for line, _ in banned:
+            back = dict(full)
+            back[rel] += f"\n        {line}"
+            assert check_sites(back.get), f"{rel}: `{line}` must red the gate"
+            # In a COMMENT it is the explanation of the rule, not the rule
+            # being broken — the two emitters' own doc comments quote it.
+            quoted = dict(full)
+            quoted[rel] += f"\n        // was `{line}`, which answered both questions"
+            assert not check_sites(quoted.get), f"{rel}: a quoted predicate is prose"
+    for rel, needles in SITE_CONTRACT.items():
+        for needle, _ in needles:
+            broken = dict(full)
+            broken[rel] = broken[rel].replace(needle, "/* deleted */")
+            errs = check_sites(broken.get)
+            assert errs, f"deleting `{needle}` from {rel} must red the gate"
+            assert any(rel in e and needle in e for e in errs), errs
+        # And a site that vanishes entirely is reported, not skipped — a
+        # renamed file must not read as compliance.
+        gone = {k: v for k, v in full.items() if k != rel}
+        assert any(rel in e for e in check_sites(gone.get)), f"{rel} vanishing must red"
+
     if not quiet:
-        print("selftest: 7 cases, each direction pinned")
+        n = sum(len(v) for v in SITE_CONTRACT.values()) + len(SITE_CONTRACT)
+        n += len(PROBE_BANNED_IN) * (2 * len(FILE_PROBES) + 1)
+        n += sum(2 * len(v) for v in BANNED_LINES.values())
+        print(f"selftest: 7 routing cases + {n} site-contract mutations, each direction pinned")
     return 0
 
 
@@ -391,6 +623,29 @@ def main() -> int:
     if "--self-test" in argv:
         return self_test()
     self_test(quiet=True)
+
+    # Assertion 2 — the Rust still routes on the declaration. FIRST, because a
+    # site that stopped reading `<build_type>` makes every number below a
+    # description of a rule nothing implements.
+    def _read(rel: str) -> str | None:
+        f = REPO / rel
+        return f.read_text(encoding="utf-8", errors="replace") if f.is_file() else None
+
+    drift = check_sites(_read)
+    if drift:
+        print(
+            "[FAIL] RFC-0094 D3's routing is no longer read where it is applied:",
+            file=sys.stderr,
+        )
+        for d in drift:
+            print(f"  - {d}", file=sys.stderr)
+        print(
+            "\n  The rule has ONE home, `nros_cli_core::routing`, and three\n"
+            "  callers. A site that re-derives the driver from file presence is\n"
+            "  issue 1207 coming back — see RFC-0094 D3.",
+            file=sys.stderr,
+        )
+        return 1
 
     errors: list[str] = []
     paths = build_path_table(errors)
@@ -426,9 +681,17 @@ def main() -> int:
         f"{len(rows)} tracked package.xml: "
         + ", ".join(f"{n} {k}" for k, n in buckets.items())
     )
+    # Count what was MEASURED, never what is expected. A summary that says
+    # "0 misdeclare" while the block below names one is the shape of a green
+    # tool disagreeing with itself, which is the failure this gate family
+    # exists to stop (CLAUDE.md, the rmw parity map).
     print(
-        f"RFC-0094 D3 routing diff: {len(fixes)} package(s) change side, "
-        "all of them the dual-file cmake leaves D3 names as a fix."
+        f"RFC-0094 D3: routing reads <build_type> at all {len(SITE_CONTRACT) - 1} "
+        f"sites; {len(violations)} package(s) route in a way D3 does not name."
+    )
+    print(
+        f"  (phase-439 W3 moved {len(fixes)} package(s) off file-presence routing, "
+        "all of them the dual-file cmake leaves D3 names.)"
     )
     if violations:
         print(

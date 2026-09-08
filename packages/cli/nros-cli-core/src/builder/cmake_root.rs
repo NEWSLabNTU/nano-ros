@@ -119,9 +119,19 @@ pub fn render(
     // A cmake subdir must carry a CMakeLists. A pure-Rust package in a mixed
     // workspace does not, and reaches the image through corrosion from a
     // package that does — listing it here would be a configure error.
+    // D3's intersection rule first — see `cargo_root::render` for why a
+    // misdeclared package must not simply fall out of the loop below.
+    crate::routing::check_declarations(&discovered.packages)?;
+
     let mut subdirs: Vec<(String, String)> = Vec::new();
     for pkg in &discovered.packages {
-        if spec.excluded.contains(&pkg.dir) || !pkg.dir.join("CMakeLists.txt").is_file() {
+        // RFC-0094 D3 (phase-439 W3) — the declaration picks the driver, file
+        // presence only decides participation. Was
+        // `!pkg.dir.join("CMakeLists.txt").is_file()`: one probe answering both
+        // questions, so a crate whose `CMakeLists.txt` is a sibling harness
+        // became a subdirectory of the workspace root on the strength of the
+        // file existing.
+        if spec.excluded.contains(&pkg.dir) || !crate::routing::route(pkg).cmake_subdir {
             continue;
         }
         // An INTERFACE package has a CMakeLists and still must not be a subdir
@@ -400,7 +410,19 @@ mod tests {
             name: name.to_string(),
             dir,
             depends: Default::default(),
+            build_type: None,
         }
+    }
+
+    /// A package carrying a `<build_type>` declaration (RFC-0094 D3), and
+    /// optionally a `Cargo.toml` beside its `CMakeLists.txt`.
+    fn declared(root: &Path, name: &str, cargo: bool, cmake: bool, bt: &str) -> WorkspacePackage {
+        let mut p = pkg(root, name, cmake);
+        if cargo {
+            std::fs::write(p.dir.join("Cargo.toml"), "[package]\n").unwrap();
+        }
+        p.build_type = Some(bt.to_string());
+        p
     }
 
     fn discovered(packages: Vec<WorkspacePackage>) -> Discovered {
@@ -720,5 +742,71 @@ mod tests {
         write(&d, &dir, &spec(root)).expect("second");
         let m2 = std::fs::metadata(&p).unwrap().modified().unwrap();
         assert_eq!(m1, m2);
+    }
+
+    // -- RFC-0094 D3 / phase-439 W3 -- the DECLARATION picks the driver ----
+
+    /// A dual-file package declaring a CARGO build type is not a cmake
+    /// subdirectory. The mirror of the cargo root's rule, and the direction the
+    /// pre-W3 code got wrong the other way round: a `CMakeLists.txt` beside a
+    /// crate was read as "cmake builds this package" whatever the package said.
+    #[test]
+    fn a_dual_file_package_declaring_cargo_is_not_a_subdir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![
+            declared(root, "c_talker_pkg", false, true, "nros_cmake"),
+            declared(root, "crate_with_harness", true, true, "nros_cargo"),
+        ]);
+        let body = render(&d, &root.join("build/native"), &spec(root)).expect("renders");
+        assert!(body.contains("c_talker_pkg"), "{body}");
+        assert!(
+            !body.contains("crate_with_harness"),
+            "cargo drives it; its CMakeLists is a sibling harness: {body}"
+        );
+    }
+
+    /// The cmake-driven Rust node -- the case that makes `mixed` work. It keeps
+    /// its subdirectory; only its cargo membership went away.
+    #[test]
+    fn a_dual_file_package_declaring_cmake_is_still_a_subdir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![declared(
+            root,
+            "rust_heartbeat_pkg",
+            true,
+            true,
+            "nros_cmake",
+        )]);
+        let body = render(&d, &root.join("build/native"), &spec(root)).expect("renders");
+        assert!(body.contains("rust_heartbeat_pkg"), "{body}");
+    }
+
+    /// Participation is still file presence, so an undeclared package behaves
+    /// exactly as it did before RFC-0094.
+    #[test]
+    fn an_undeclared_cmake_package_is_still_a_subdir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![pkg(root, "legacy_pkg", true)]);
+        let body = render(&d, &root.join("build/native"), &spec(root)).expect("renders");
+        assert!(body.contains("legacy_pkg"), "{body}");
+    }
+
+    /// W3's acceptance, this side: loud, and naming the package.
+    #[test]
+    fn a_cmake_declaration_over_a_cargo_only_package_names_the_package() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let d = discovered(vec![
+            declared(root, "healthy_pkg", false, true, "nros_cmake"),
+            declared(root, "misdeclared_pkg", true, false, "nros_cmake"),
+        ]);
+        let e = render(&d, &root.join("build/native"), &spec(root))
+            .expect_err("a misdeclared participant must not be silently dropped");
+        assert!(e.contains("misdeclared_pkg"), "must NAME the package: {e}");
+        assert!(e.contains("CMakeLists.txt"), "and the missing file: {e}");
+        assert!(!e.contains("healthy_pkg"), "and only the offender: {e}");
     }
 }

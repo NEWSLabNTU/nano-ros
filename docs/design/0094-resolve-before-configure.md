@@ -128,6 +128,11 @@ build at?" is answered by cache-variable archaeology.
 
 ### D3 — `build_type` selects the DRIVER; file presence selects PARTICIPATION
 
+**LANDED, phase-439 W3 (2026-09-08).** `PackageXml` carries `build_type`,
+`WorkspacePackage` carries it to the sites, and the rule has ONE home —
+`nros_cli_core::routing` — which the three sites call. `check-package-routing`
+asserts they still do.
+
 These are two questions and conflating them is a defect in BOTH directions.
 
 Measured over 416 tracked `package.xml` (411 of which carry a `<build_type>`;
@@ -154,7 +159,30 @@ declaration instead of a `Cargo.toml` metadata round-trip.
 The one genuine repair is `examples/workspaces/mixed/src/rust_heartbeat_pkg`: a
 cmake-driven Rust node carrying its own `[workspace]`, which makes the generated
 cargo root unusable the moment `mixed` routes to the cargo driver. This RFC did
-not name it; W0 found it.
+not name it; W0 found it. **Measured on this tree with real cargo**, the two
+member lists differ by exactly that: the pre-W3 list gets `error: multiple
+workspace roots found in the same workspace`, and the post-W3 list — the package
+`exclude`d instead — exits 0.
+
+**The 21st row was neither, and its declaration turned out to be RIGHT** (issue
+1224, resolved by W3). `packages/rmw/cyclonedds/nros-rmw-cyclonedds` declares
+`nros_cmake` while cargo also builds a crate there, and the issue proposed
+changing the declaration. W3 measured the premise instead and found it false:
+the `CMakeLists.txt` is not a test wrapper but the production
+`add_library(nros_rmw_cyclonedds STATIC …)` that the root `add_subdirectory`s
+through the backend's own descriptor, with its CTest harness gated OFF unless
+the project is top-level. `<build_type>` answers "how does a build system enter
+this DIRECTORY as a package", and only cmake does; the crate is reached as a
+path dependency, which routing never touches. No rule widening, no declaration
+change.
+
+**One consequence D3 did not state and W3 had to add.** A package that leaves
+the cargo members list still has a `Cargo.toml` on disk under the root, and
+cargo walks UP from a manifest to find its workspace — so "unlisted" is an error
+and the package must be `exclude`d. In-tree all 21 happen to be covered another
+way (own `[workspace]`, or already an excluded west/idf entry), so the emitter
+derives the exclusion from the ROUTING rather than relying on that coincidence
+holding for the next package someone adds.
 
 **All 64** declare-but-no-file packages would be hard-failed by routing on the
 declaration alone — not the 20 an earlier draft of this RFC claimed, which came
@@ -230,6 +258,15 @@ resulting member/subdirectory lists against today's. Every package that changes
 side is named, and classified as a fix or a regression, before any code lands.
 No build required.
 
+*Met, phase-439 W0 (416 packages, 21 named side-changers, all one class), and
+the diff is EMPTY as of W3: the code implements D3, so `check-package-routing`'s
+verdict moved to the intersection rule plus a contract that the three sites
+still read the declaration. That contract is not decoration — its first version
+was three greps for `routing::route(`, and reverting `cargo_root.rs`'s member
+test to a file probe left the gate GREEN while the Rust unit test went red in
+0.14 s, because another call to the helper survived in the same file. The
+emitters now also refuse an unexplained build-file probe.*
+
 **A2 — a fifth backend costs zero core edits.** Add a provider announcing
 `kind="rmw" name="acme"` with a descriptor, a `CMakeLists.txt` and a C
 `nros_rmw_acme_register`. It must configure and link without editing
@@ -266,7 +303,8 @@ the same studies and filed separately (1208–1221); none blocks this.
 
 ## Issues this closes or unblocks
 
-Closes: 1207 (build_type unread), 1214 (discoverable not dispatchable), 1215
+Closes: 1207 (build_type unread, W3), 1224 (the cyclone declaration — no
+change needed, premise corrected), 1214 (discoverable not dispatchable), 1215
 (root closed list), 1216 (unconsumed dispatch outputs), 1219 (no rmw-agnostic
 gate).
 

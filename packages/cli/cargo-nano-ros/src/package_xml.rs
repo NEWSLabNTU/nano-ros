@@ -61,6 +61,24 @@ pub struct PackageXml {
     /// attributes of the `<nano_ros …/>` sugar desugared into the same list
     /// (RFC-0087 D3). Declaration order, sugar last.
     pub uses: Vec<Selection>,
+    /// `<export><build_type>…</build_type></export>`, VERBATIM — the raw
+    /// spelling, never canonicalised here.
+    ///
+    /// RFC-0094 D3 makes this load-bearing: it selects the DRIVER that builds
+    /// the package, where file presence selects whether it is built here at
+    /// all. Two questions, and conflating them is a defect in both directions
+    /// (issue 1207).
+    ///
+    /// The spelling stays raw because the vocabulary is not this crate's:
+    /// `nros_cli_core::build_type` owns the table that maps six live spellings
+    /// and three retired ones onto two build paths, and it is cross-checked
+    /// against `cmake/NanoRosPackageXml.cmake` by a gate. A parser that
+    /// resolved the value here would be a fourth reader of that table.
+    ///
+    /// `None` for the 5 tracked packages that declare no build type at all —
+    /// which is not an error: a consumer falls back to file presence, which is
+    /// the pre-RFC-0094 answer.
+    pub build_type: Option<String>,
     /// The `deploy=` attribute of `<nano_ros …/>`, verbatim.
     ///
     /// NOT desugared into [`Self::uses`], because `deploy` is **not a provider
@@ -140,6 +158,7 @@ impl PackageXml {
         let mut uses: Vec<Selection> = Vec::new();
         let mut sugar: Vec<Selection> = Vec::new();
         let mut deploy = None;
+        let mut build_type: Option<String> = None;
 
         let mut current_tag = String::new();
         let mut in_export = false;
@@ -231,6 +250,23 @@ impl PackageXml {
                         "depend" | "build_depend" | "exec_depend" | "build_export_depend" => {
                             dependencies.insert(text);
                         }
+                        // FIRST declaration wins, matching every other reader
+                        // of this element: `check-build-type-spelling.py` and
+                        // `NanoRosPackageXml.cmake` both take `[0]` of what
+                        // they find. A second `<build_type>` is a malformed
+                        // package.xml, and disagreeing about WHICH one is
+                        // authoritative is worse than either answer.
+                        //
+                        // NOT gated on `in_export`, deliberately: colcon reads
+                        // it from `<export>` and every tracked file writes it
+                        // there, but the two regex readers this must agree with
+                        // scan the whole file. A reader that were stricter here
+                        // would resolve a package differently from the cmake
+                        // reader that acts on it — the exact drift RFC-0087 D2
+                        // built the shared table to prevent.
+                        "build_type" if build_type.is_none() => {
+                            build_type = Some(text);
+                        }
                         _ => {}
                     }
                 }
@@ -255,6 +291,7 @@ impl PackageXml {
                 uses.extend(sugar);
                 uses
             },
+            build_type,
             deploy,
         })
     }
@@ -577,6 +614,91 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["real"]
         );
+    }
+
+    // ── RFC-0094 D3 / phase-439 W3 — <build_type> is read, not dropped ────
+
+    /// The headline of W3: the element three sites had been re-deriving from
+    /// file presence is now carried by the parser.
+    #[test]
+    fn the_build_type_is_read_verbatim() {
+        let pkg =
+            PackageXml::parse_str(&provider_xml(r#"    <build_type>nros_cmake</build_type>"#))
+                .unwrap();
+        assert_eq!(pkg.build_type.as_deref(), Some("nros_cmake"));
+    }
+
+    /// A package declaring none is not an error — 5 tracked packages do, and
+    /// RFC-0094 D3 falls back to file presence for them rather than inventing
+    /// a declaration.
+    #[test]
+    fn no_build_type_is_none_not_an_error() {
+        let pkg = PackageXml::parse_str(
+            r#"<?xml version="1.0"?>
+<package format="3">
+  <name>undeclared</name>
+</package>"#,
+        )
+        .unwrap();
+        assert_eq!(pkg.build_type, None);
+    }
+
+    /// The value is RAW. Canonicalisation belongs to `nros_cli_core::build_type`,
+    /// whose table is cross-checked against the cmake reader — resolving here
+    /// would make this a fourth, unchecked reader of that vocabulary.
+    #[test]
+    fn a_legacy_or_foreign_spelling_is_carried_not_resolved() {
+        for raw in ["ament_cmake", "ament_python", "nros_entry"] {
+            let pkg = PackageXml::parse_str(&provider_xml(&format!(
+                "    <build_type>{raw}</build_type>"
+            )))
+            .unwrap();
+            assert_eq!(
+                pkg.build_type.as_deref(),
+                Some(raw),
+                "{raw} must survive the parser unchanged"
+            );
+        }
+    }
+
+    /// `<build_type>\n    ament_cargo\n  </build_type>` is the shape a
+    /// hand-indented file takes, and `trim_text` is what makes the two spellings
+    /// one value. Pinned because the routing decision keys on an exact match
+    /// against the table.
+    #[test]
+    fn surrounding_whitespace_does_not_change_the_declaration() {
+        let pkg = PackageXml::parse_str(&provider_xml(
+            "    <build_type>\n      nros_cargo\n    </build_type>",
+        ))
+        .unwrap();
+        assert_eq!(pkg.build_type.as_deref(), Some("nros_cargo"));
+    }
+
+    /// A declaration inside a COMMENT is not a declaration — the same rule the
+    /// provision arms carry, and the one both regex readers of this element had
+    /// to be taught (issue 0516).
+    #[test]
+    fn a_commented_out_build_type_is_not_a_declaration() {
+        let pkg = PackageXml::parse_str(&provider_xml(
+            r#"    <!-- <build_type>nros_cargo</build_type> -->
+    <build_type>nros_cmake</build_type>"#,
+        ))
+        .unwrap();
+        assert_eq!(pkg.build_type.as_deref(), Some("nros_cmake"));
+    }
+
+    /// FIRST wins, matching `check-build-type-spelling.py` and
+    /// `NanoRosPackageXml.cmake`, which both take `[0]`. Two readers
+    /// disagreeing about which of two declarations is authoritative is worse
+    /// than either answer.
+    #[test]
+    fn the_first_declaration_wins() {
+        let pkg = PackageXml::parse_str(&provider_xml(
+            r#"    <build_type>nros_cmake</build_type>
+    <build_type>nros_cargo</build_type>"#,
+        ))
+        .unwrap();
+        assert_eq!(pkg.build_type.as_deref(), Some("nros_cmake"));
     }
 
     /// An unknown attribute on the sugar is a typo, not a new axis — the
