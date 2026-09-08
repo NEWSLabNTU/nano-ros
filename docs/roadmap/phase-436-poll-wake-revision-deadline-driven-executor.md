@@ -1,35 +1,34 @@
 # Phase 436 — The poll/wake revision: a deadline-driven, platform-agnostic executor
 
-**Status (2026-09-07). ALL SIX WORK ITEMS IMPLEMENTED.** W1–W5 landed first
-and made the park deadline-driven; W6 added the seam they were shaped for. The
-executor now computes a park deadline as a `min` over registered sources and
-hands it to a platform primitive.
+**Status (2026-09-07). W1-W6 IMPLEMENTED; W7 — wiring a port through the seam
+— OPEN and prerequisite-blocked.** The executor computes a park deadline as a
+`min` over registered sources and hands it to a platform primitive. **No port
+registers anything through it yet.**
 
-Three things the work changed about the phase as written:
+Four things the work changed about the phase as written:
 
-* **W1–W5 met the behaviour and missed the seam.** The first five items
-  hardcoded the source set — caller budget and timers, with the backend
-  deadline pre-capped separately — so nothing could contribute `k_poll`,
-  `epoll`, a queue set or a device ISR. The phase is named for that extension
-  point, and it did not exist until W6. Worth recording because everything
-  passed and every test was green throughout: behaviour is not architecture.
+* **W1-W5 met the behaviour and missed the seam.** They made the park
+  deadline-driven, rounded and attributed — and hardcoded the source set, so
+  nothing could contribute `k_poll`, `epoll`, a queue set or a device ISR. The
+  phase is named for that extension point and it did not exist until W6,
+  through five green work items and a full test suite. Behaviour is not
+  architecture, and a passing suite does not tell them apart.
+* **The porting axis is C entry vs Rust entry, not per-RTOS.** ThreadX, bare
+  metal and Zephyr's Rust arm hold a typed `Executor`; FreeRTOS, NuttX and
+  Zephyr's C arm hold an opaque `void*` with no export to call — including the
+  arm the ASI lane takes.
+* **`park_granularity_us()` is wrong in both directions** (issue 1242), and
+  W3's jitter-granularity report inherits the error — the failure W3 exists to
+  prevent, reproduced one layer below W3 by its own dependency.
 * **W5's issue was wrong about its own evidence.** Issue 1196 said the
-  unbounded `condvar_wait` had no callers. It has two — the grep behind that
-  claim searched `nros_platform_cond_wait`, and the symbol is
-  `nros_platform_condvar_wait`. W5's gate found them on its first run. Both
-  are correct as written (they bridge zenoh-pico's own unbounded primitive),
-  so the fix became "confine by path and mark the header" rather than
-  "delete".
-* **The `wake_wait_ns` platform slot was NOT built.** Carrying µs through the
-  core and rounding UP at the boundary fixes issue 1193's actual harm — the
-  truncation to zero, and the 33 % short wait — without making five ports grow
-  a required symbol. A port that gains a finer primitive lowers
-  `park_granularity_us()` and nothing above it changes. §1 describes the ns
-  slot as the eventual shape; it is deferred, not done.
+  unbounded `condvar_wait` had no callers; it has two. The grep behind that
+  claim searched `nros_platform_cond_wait`; the symbol is
+  `nros_platform_condvar_wait`.
 
-Also unbuilt, and deliberately: making the wait loops in `handles.rs` wake off
-the backend's listener rather than a fixed grid. W4 fixes the overshoot half of
-issue 1195; the waker half is the larger change and stays open.
+Deferred deliberately: the `wake_wait_ns` platform slot (the rounding contract
+fixes issue 1193's harm without making five ports grow a required symbol), and
+making the `handles.rs` wait loops wake off the backend's listener rather than
+a fixed grid (issue 1195's larger half).
 
 ## The one change this phase is about
 
@@ -144,43 +143,90 @@ been told about, which is the failure this phase exists to remove.
 the budget upstream meant a park the session won was attributed to
 `CallerBudget` — the one number that explains a wake named the wrong source.
 
-#### Per platform
+#### Per platform — surveyed, not assumed
 
-| Platform | Park primitive | Natural extra sources | State |
+Four parallel read-only surveys, one per port domain. The table below replaced
+an earlier one written from a single reading; three of its rows were wrong.
+
+**The real axis is not per-RTOS. It is C entry vs Rust entry.**
+
+| Port | Entry holds a typed `Executor`? | Park primitive available | Native tick |
 |---|---|---|---|
-| **Zephyr** | `k_sem_take(timeout)`, ISR-safe `k_sem_give` | `k_poll` event set | wake ✓, `k_poll` unused |
-| **FreeRTOS** | `xSemaphoreTake(ticks)` | queue set, `xSemaphoreGiveFromISR` | wake ✓ |
-| **NuttX** | POSIX condvar — compiles the *identical* POSIX `platform.c`, no NuttX-specific source | `poll`/`epoll`, same POSIX path | wake ✓ (inherited) |
-| **ThreadX** | `tx_semaphore_get(ticks)` | event-flags group | wake ✓ |
-| **Bare metal** | `wfi` + hardware timer compare | smoltcp poll, device ISRs | **no wake primitive at all** |
+| **ThreadX** | **Yes** — `nros-board-threadx/src/entry.rs`, via `executor_mut()` | `tx_semaphore_get`, contract already `0/1/<0` | **10 ms** (`TX_TIMER_TICKS_PER_SECOND=100`) |
+| **Bare metal** | **Yes** — `nros-board-mps2-an385/src/entry.rs` `boot()` | none — see below | free-running counters only |
+| **Zephyr** | **Both** — Rust `entry_tiers.rs` yes; C `zephyr_run_tiers.c` no | `k_sem_take`, and `k_timeout_t` accepts `K_USEC` | 1 ms via the ABI, finer in the kernel |
+| **FreeRTOS** | **No** — opaque `void*` behind `nros_cpp_*` | `xSemaphoreTake`, contract already `0/1/<0` | 1 ms (`configTICK_RATE_HZ=1000`) |
+| **NuttX** | **No** — same opaque pattern | inherits POSIX | POSIX |
+| **POSIX** | n/a — `nros_board_native_run_tiers` | `sem_timedwait` / `pthread_cond_timedwait`, **timespec-native** | nanosecond-capable |
 
-#### Bare metal is the case that validates the seam
+**There is no `nros_cpp_executor_register_wake_source` or
+`..._set_park_primitive` C-ABI export.** So FreeRTOS, NuttX and the C arm of
+Zephyr — which is the arm the ASI FVP lane actually takes — cannot reach this
+seam at all without new FFI surface. ThreadX, bare metal and Zephyr's Rust arm
+can wire directly today.
 
-`nros-baremetal-common/src/sleep.rs` already carries these three pieces, as
-untyped function pointers: `ClockMsFn`, `PollFn` (the smoltcp poll — a wake
-source in embryo) and `IdleFn` (`cortex_m::asm::wfi` — the park primitive).
-Its own note states the constraint:
+**No port multiplexes.** `k_poll` does not appear anywhere (the single grep hit
+is `nros_platform_network_poll`, a name collision with a no-op body). FreeRTOS
+queue sets are unused and `configUSE_QUEUE_SETS 0` where set at all. ThreadX
+event flags exist but only as zenoh-pico's task-join signal. Every port waits
+on a socket the same way: blocking `recv` with `SO_RCVTIMEO`. So the "natural
+extra sources" a first reading suggests are aspirations, not wiring waiting to
+be connected.
 
-> *"Without an armed IRQ, leave this unset — `wfi` with no pending interrupt
-> deadlocks."*
+#### The deadline sources that do exist
 
-That is unsatisfiable through a `sleep(duration)` seam, because the sleeper
-cannot know whether anyone armed an interrupt. It falls out of
-`park_until(deadline)`, because the deadline is exactly what the compare is
-armed to:
+* **Zephyr has a one-shot timer facility, and it is dead code.**
+  `nros_zephyr_timer_create_oneshot(timeout_us, cb, user_data)` and its
+  periodic sibling, at `zephyr/nros_platform_zephyr_shims.c:220-278`, take
+  **microseconds** and wrap `k_timer`. Written for Phase 110.E.b sporadic-server
+  refill; **zero callers tree-wide**. That is the shape a `NextDeadlineFn`
+  needs, already built and already paid for.
+* **smoltcp could contribute one and does not.** `Interface::poll_at()` returns
+  when the stack next needs servicing — the natural deadline source. It has
+  **zero hits** in this repo; `SmoltcpBridge::poll` calls `iface.poll()` and
+  discards the timing.
+
+#### Bare metal: the argument, corrected
+
+The design's justification was that `park_until(deadline)` lets a board arm a
+timer compare before `wfi`, which `sleep(duration)` cannot express. That
+argument stands. **What does not stand is the implication that any board here
+can do it today.**
+
+No bare-metal board in this tree has a one-shot, deadline-programmable timer:
+
+* **MPS2-AN385** — CMSDK Timer0 as a free-running down-counter,
+  `RELOAD = 0xFFFF_FFFF`, **no `IRQEN`**, compare register never written.
+* **STM32F4** — DWT cycle counter, no match register ever written.
+* **ESP32-QEMU** — clock read only; no compare or alarm facility.
+
+The one interrupt-driving timer that exists is MPS2's RTIC `arm_tick_timer`,
+a **fixed 1 kHz periodic tick** armed once at init to bound `wfi` yield
+granularity. That is a period, not a deadline.
+
+So an earlier sketch in this document showing
 
 ```rust
-unsafe extern "C" fn park_until_wfi(_ctx: *mut c_void, deadline_us: u64) -> i8 {
-    if deadline_us == 0 { return 1; }
-    arm_timer_compare(deadline_us);   // guarantees an IRQ — no deadlock
-    cortex_m::asm::wfi();             // core clock-gated until IRQ or deadline
-    0
-}
+arm_timer_compare(deadline_us);   // ← no such function exists, on any board
+cortex_m::asm::wfi();
 ```
 
-Today bare metal **busy-waits** in `sleep_ms`, polling a clock, with `wfi` an
-opt-in a board may forget. Under the seam it parks, and the existing `PollFn`
-becomes a registered source rather than a callback invoked inside a spin loop.
+presented as available something that must be **written from scratch, per
+board**. The hardware supports it; the code does not exist. Recording that
+plainly, because "a slot exists, therefore it works" is the overstatement this
+phase has now made twice.
+
+Worse than assumed, too: `sleep_ms` in `nros-baremetal-common` **always**
+busy-loops on the clock condition, with `wfi` an optional per-iteration yield
+rather than a block — and the default MPS2 non-RTIC boot never registers the
+idle hook at all, so it spins with no yield whatsoever.
+
+#### POSIX does not need this
+
+POSIX already blocks in `NodeWake::wait_ms` → `sem_timedwait`, bounded by the
+same min-of-sources. Installing a `ParkUntilFn` there would be redundant unless
+paired with a microsecond primitive **and** a non-hardcoded granularity
+(issue 1242). POSIX being well served is the design working, not a gap.
 
 The seam is **additive**: with no primitive installed the path is unchanged and
 every existing port keeps the behaviour it has. When one IS installed the
@@ -317,6 +363,36 @@ Each is a filed issue; the issue holds the evidence.
   `Session` and `Platform(u8)`, and makes the backend deadline a candidate
   rather than a pre-cap. No issue: this is the phase's own design, not a
   defect found in the field.
+
+* **W7 — wire a port through the seam. OPEN, and blocked on two prerequisites.**
+  W6 built the extension point; nothing extends it. Four parallel port surveys
+  established what each port needs, and produced two items that are not
+  per-port work:
+
+  * **W7.a — a C-ABI surface for the seam.** There is no
+    `nros_cpp_executor_register_wake_source` / `..._set_park_primitive` export,
+    so FreeRTOS, NuttX and Zephyr's C arm cannot reach it. That arm is the one
+    the ASI FVP lane takes, so this gates the lane we ship. ThreadX, bare metal
+    and Zephyr's Rust arm need none of it.
+  * **W7.b — [issue 1242](../issues/1242-park-granularity-is-hardcoded-not-queried.md).**
+    `park_granularity_us()` is a hardcoded 1 ms: wrong high on ThreadX (10 ms
+    tick), wrong low on POSIX (timespec-native), and it never consults the
+    installed primitive — so a port supplying a microsecond `ParkUntilFn` still
+    cannot produce a sub-millisecond park. Until this is fixed, wiring any port
+    buys nothing it does not already have.
+
+  Then the per-port work, cheapest first:
+
+  * **Zephyr deadline source** — `nros_zephyr_timer_create_oneshot` already
+    takes microseconds, already exists, and has zero callers. The smallest real
+    `NextDeadlineFn` available.
+  * **ThreadX and Zephyr-Rust park primitives** — both entries hold a typed
+    `Executor`, and both `wake_wait_ms` implementations already return the
+    `0/1/<0` contract `ParkUntilFn` wants. Adapters are a unit change.
+  * **smoltcp deadline source** — capture `Interface::poll_at()`, which the
+    bridge currently discards.
+  * **Bare-metal park primitive** — the largest, and the only one needing new
+    hardware code: a one-shot compare, per board, that exists nowhere today.
 
 ## Sequencing
 
