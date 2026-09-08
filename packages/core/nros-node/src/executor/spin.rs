@@ -1565,6 +1565,10 @@ pub struct Executor<'s> {
     /// The single thing that actually blocks. Many sources say WHEN; one
     /// primitive does the waiting.
     pub(crate) park_primitive: Option<(ParkUntilFn, *mut core::ffi::c_void)>,
+    /// phase-436 W7.b (issue 1242) — the finest park the INSTALLED primitive
+    /// can actually express, in microseconds. `0` = none installed, fall back
+    /// to the `wake_wait_ms` ABI floor.
+    pub(crate) park_granularity_declared_us: u64,
     /// Wakes that were already past their nominal deadline, and wakes total.
     ///
     /// The maximum alone cannot distinguish one bad wake from a loop that is
@@ -1769,6 +1773,7 @@ impl<'s> Executor<'s> {
             wake_sources: [None; MAX_WAKE_SOURCES],
             wake_source_count: 0,
             park_primitive: None,
+            park_granularity_declared_us: 0,
             late_wakes: 0,
             total_wakes: 0,
             report_violations: true,
@@ -2532,8 +2537,18 @@ impl<'s> Executor<'s> {
 
     /// Install THE thing that blocks. Singular by nature — only one primitive
     /// can actually wait — so this replaces whatever was there.
-    pub fn set_park_primitive(&mut self, park: ParkUntilFn, ctx: *mut core::ffi::c_void) {
+    /// `granularity_us` is the finest park this primitive can actually
+    /// express. The port states it because only the port knows: the ABI
+    /// signature is not the limit — an RTOS tick is a second, coarser one, and
+    /// a timespec primitive is a finer one.
+    pub fn set_park_primitive(
+        &mut self,
+        park: ParkUntilFn,
+        ctx: *mut core::ffi::c_void,
+        granularity_us: u64,
+    ) {
         self.park_primitive = Some((park, ctx));
+        self.park_granularity_declared_us = granularity_us;
     }
 
     /// Whether a platform park primitive is installed.
@@ -2628,27 +2643,35 @@ impl<'s> Executor<'s> {
         }
     }
 
-    /// The finest park this build can actually express, in microseconds.    /// The finest park this build can actually express, in microseconds.
+    /// The finest park this build can actually express, in microseconds.
     ///
-    /// Every `nros_platform_wake_*` port today takes `uint32_t timeout_ms`, so
-    /// the floor is one millisecond on every target — microseconds cannot
-    /// reach the primitive at all. A port that grows a finer slot lowers this,
-    /// and nothing above needs to change: callers ask in microseconds and are
-    /// told what was achieved.
+    /// Comes from the INSTALLED primitive, because only the port knows. The
+    /// exported ABI signature is not the limit in either direction (issue
+    /// 1242):
+    ///
+    /// * an RTOS tick is a COARSER limit — ThreadX pins
+    ///   `TX_TIMER_TICKS_PER_SECOND = 100`, a 10 ms tick, so a 1 ms park is not
+    ///   achievable there however the ABI is spelled;
+    /// * a timespec primitive is a FINER one — POSIX's `sem_timedwait` and
+    ///   `pthread_cond_timedwait` are nanosecond-native, and only the
+    ///   `uint32_t timeout_ms` signature floors them at a millisecond.
+    ///
+    /// This was a hardcoded `1_000` justified by "every `nros_platform_wake_*`
+    /// port takes `uint32_t timeout_ms`". That was right for FreeRTOS by
+    /// coincidence and wrong for the other two, and it made the W3 jitter
+    /// report over-claim on ThreadX — the failure W3 exists to prevent,
+    /// reproduced one layer below W3 in its own dependency.
+    ///
+    /// With nothing installed the fallback is 1 ms, which IS the honest floor
+    /// of the `wake_wait_ms` ABI every port exports today.
     pub fn park_granularity_us(&self) -> u64 {
-        // 1 ms — the granularity of `nros_platform_wake_wait_ms`.
-        1_000
+        if self.park_granularity_declared_us != 0 {
+            self.park_granularity_declared_us
+        } else {
+            1_000
+        }
     }
 
-    /// Round a requested park UP to the platform's grid.
-    ///
-    /// Up, not nearest and not down. `as_millis()` truncated, which is how a
-    /// 500 us request became a 0 ms park — the non-blocking path, i.e. a
-    /// 100 % CPU spin with no warning (issue 1193) — and how 1500 us became a
-    /// 1 ms wait that is 33 % short of what was asked.
-    ///
-    /// Zero is preserved exactly: a zero timeout claims no cadence, and
-    /// promoting it to a granule would throttle every deliberate poll.
     pub(crate) fn round_park_up_us(&self, requested_us: u64) -> u64 {
         if requested_us == 0 {
             return 0;
