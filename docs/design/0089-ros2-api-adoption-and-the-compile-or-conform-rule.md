@@ -768,6 +768,70 @@ sweep does not need a flag day. What it does need is the ORDER this RFC already
 states: the compatibility is the work, the rename is cheap, and a type is only
 worth moving once its contract is the one the name promises.
 
+## Settled: state hides behind a pointer only when it EXCEEDS a pointer (2026-09-09)
+
+The node's `void* hosted_` (phase-438 W4) is right, and the two sections above
+give the reason in terms of the node alone. Applied as a habit it is wrong for
+most types, and the C++ sweep was about to apply it as a habit — so the rule is
+stated with both halves.
+
+> **Configuration-dependent state goes out of line behind one unconditional
+> pointer when it is LARGER than a pointer. When it is the SIZE of a pointer,
+> the member stays, unconditionally, in every configuration.**
+
+Both halves are the same arithmetic, and neither is a style preference.
+
+**The large half.** `rclcpp::Node`'s hosted-only state is a `weak_ptr`, the
+owned-entity list and the rest of the shape a ported file reaches, against a
+192-byte freestanding node. Hiding it buys the whole 0135/0460 property: one
+layout in every TU of one image, so a freestanding TU holding a node by value
+and a hosted TU taking `Node&` agree about every member offset. The indirection
+is paid on hosted-shape calls only, and never on a freestanding target, where
+the pointer is null and the block is never allocated. `check-cpp-capability-layout`
+is what measures it.
+
+**The small half, and this is the one that had to be decided.** `nros::Timer`
+and `nros::GuardCondition` each carry exactly one configuration-dependent
+member: a `std::unique_ptr<std::function<void()>>` under `NROS_CPP_STD`
+(`timer.hpp:159-169`, `guard_condition.hpp:119-123`), which owns the closure the
+`NROS_CPP_STD` convenience wrappers heap-allocate. Measured, on the member
+layout the two classes actually declare:
+
+| type | freestanding | `-DNROS_CPP_STD` | delta |
+| --- | ---: | ---: | ---: |
+| `nros::Timer` | 24 | 32 | **8** |
+| `nros::GuardCondition` | 32 | 40 | **8** |
+| `void*` | | | 8 |
+
+The delta IS a pointer. So hiding it behind a pointer costs the same eight
+bytes it was going to cost, adds a dereference on the dispatch path, and adds an
+allocation and its failure mode — in exchange for nothing, because the eight
+bytes were the whole disagreement.
+
+**Decision: both take the member unconditionally, in both configurations.** A
+freestanding image pays eight bytes per timer and per guard condition for a
+layout that is the same everywhere, with no one-definition hazard to reason
+about and no indirection where the executor dispatches. The member is unused
+freestanding — the wrappers that populate it do not exist there — which is
+exactly what "pay eight bytes for one stable layout" means.
+
+The rule, restated as the test to apply to the next type the sweep reaches:
+*measure the delta first.* If it exceeds a pointer, indirection is a saving. If
+it is a pointer, indirection is the same cost plus a dereference plus an
+allocator, and the honest answer is to stop hiding it. If it is SMALLER than a
+pointer — a `bool`, a `uint8_t` — indirection is a net loss and the question does
+not arise.
+
+Two things this deliberately does not do. It does not gate the member on
+`NROS_CPP_STD`, which is the shape that MAKES the hazard (a base or a member
+present in one TU and absent in another is issues 0135 and 0460, and px4 sets
+`-DNROS_CPP_STD` on one module of a larger image on purpose). And it does not
+hand-mirror a standard-library type's size to "equalise" the two
+configurations — this repo has a gate against that shape for FFI structs
+(`check-ffi-struct-mirrors`) and a standard-library internal is a worse thing to
+mirror than our own header, not a better one. Declaring the real member is the
+only way to be sure the two configurations agree about it.
+
 ## Settled: C takes rcl's spellings (2026-09-04)
 
 The question the disposition pass could not answer, because it is a decision and
