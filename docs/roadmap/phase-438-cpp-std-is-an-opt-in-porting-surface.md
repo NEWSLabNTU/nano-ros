@@ -239,7 +239,7 @@ program — native included — is on the freestanding side already.
      `cpp_port_topic_state_monitor`, `local_msg_pkg`, `shadowing`.
   4. `cmake/compat/diagnostic-updater/.../diagnostic_updater.hpp` — covered by
      (3) if the shim target carries the flag.
-  5. `scripts/check-cpp-capability-layout.sh` — **measured to fail without it**,
+  5. `scripts/check-cpp-capability-layout.py` — **measured to fail without it**,
      `rc=1`: *"could not measure sizeof(rclcpp::Node) in the baseline
      configuration"*. Its `HOSTED_FLAGS=(-std=c++17)` baseline TU needs the flag.
   6. `scripts/api-parity.py` — its `base` and `component` TUs. Note the file's

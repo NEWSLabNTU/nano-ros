@@ -11,7 +11,7 @@ related: [0135, 0460, phase-417, phase-427]
 
 ## What
 
-`scripts/check-cpp-capability-layout.sh` enforces "a capability probe may gate a
+`scripts/check-cpp-capability-layout.py` enforces "a capability probe may gate a
 METHOD; it may never change `sizeof`". It compiles a probe TU once per
 capability macro, forcing that macro **on**, and compares `sizeof` against a
 baseline.
