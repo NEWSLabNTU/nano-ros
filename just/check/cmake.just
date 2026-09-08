@@ -187,6 +187,31 @@ reconfigure-on-change:
     fi
     ./tests/cmake-reconfigure-tests.sh
 
+# phase-439 W2 (RFC-0094 D1) -- the resolve phase's CMake seam, measured.
+#
+# Its subject is the PASS COUNT, which is the thing `NanoRosReconfigure.cmake`
+# spends and the thing RFC-0094 A3 wants back. Its case C is the safety
+# property: a seed that DISAGREES with the mid-configure producer must lose, or
+# stage 3.5 could ship a number nothing stood behind.
+#
+# Same skip ledger and the same reason as its sibling above: "the tool is
+# absent" is a different claim from "it passed", and a gate that says the second
+# when it means the first is worth less than no gate.
+resolved-seed:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    _missing=""
+    for _t in cmake ninja; do
+        command -v "$_t" >/dev/null 2>&1 || _missing="$_missing $_t"
+    done
+    if [ -n "$_missing" ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip resolved-seed "missing host tool(s):$_missing"
+        exit 0
+    fi
+    ./tests/cmake-resolved-seed-tests.sh
+
 # Root-workspace rustfmt. `check-example-fmt` and `check-cli-fmt` already sit in
 # the fast tier; the ROOT workspace's `fmt --check` was the one left in the build
 # tier, so an unformatted file you just wrote survived `check-fast` — which is

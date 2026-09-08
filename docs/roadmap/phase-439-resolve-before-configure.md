@@ -2,7 +2,8 @@
 
 **Status (2026-09-08). Opened from RFC-0094. W0 and W1 are the routing diff and
 the digest key — both are PRECONDITIONS and neither changes behaviour. W2–W4 are
-the three landings. **W0, W1 and W4 have LANDED; W2 and W3 are not started.**
+the three landings. **W0, W1 and W4 have LANDED; W2 is PARTIALLY landed (the phase and its
+artifact, not the deletion — issue 1228); W3 is not started.**
 
 W0 corrected three of RFC-0094's own numbers — the count of `package.xml`, the
 size of the declare-but-no-file class, and how many of the 21 side-changers are
@@ -155,7 +156,7 @@ Gate: `check-cargo-dir-knob-key`, which drives the production cmake through
 the normal path — with the knob fields removed the two images must COLLIDE, so a
 green verdict is a demonstration rather than an assertion.
 
-## W2 — Stage 3.5, the resolve phase
+## W2 — Stage 3.5, the resolve phase — **PARTIALLY LANDED 2026-09-08**
 
 The phase itself: read descriptors and declared entities, run
 `EntityInventory::derive` once, write `build/<image>/resolved.toml` with
@@ -173,6 +174,84 @@ before the deletion and after it.
 `ZPICO_MAX_LARGE_SUBSCRIBERS` have no declarative derivation (issues 0827, 1061,
 1125). They stay hand-set and `[provenance]` says so, which is strictly better
 than being hand-set and silent.
+
+### What landed
+
+The **phase and its artifact**, plus the configure-side reader. Not the
+deletion — see "What did not", and issue **1228**, which carries the remainder
+with the measurement that decides it.
+
+* `packages/cli/nros-cli-core/src/resolve.rs` — `Resolved`, `resolved.toml`
+  (D2's shape: `[image]` with a digest, `[executor]`, `[pools]`, `[entities]`,
+  `[provenance]`), and `write()`, which renders the TOML and the `include()`able
+  `resolved.cmake` from ONE composition. `[provenance]` is normative and carries
+  a line per value; `HAND_SET_KNOBS` puts the two undeliverable knobs in it
+  BY NAME with the reason, which is the stated known-gap deliverable.
+* **Stage 3.5** in `cmd/build.rs`'s `plan_builds`, between the preflight bail and
+  the driver match: `resolve_image()`. It reads the image block, the board the
+  catalog resolved, and the launch tree's wiring through the resolved
+  SystemModel — no compile, no configure, no cargo — and runs
+  `EntityInventory::derive` once. **It cannot fail a build:** an image it cannot
+  answer for gets a `resolved.toml` recording the refusal and NO projection, so
+  every downstream lane behaves as it did before the phase existed.
+* `cmake/NanoRosResolved.cmake` — the reader. `nros_resolved_seed_entity_inventory()`
+  seeds the entity-inventory fragment from the resolve where the build would
+  otherwise write a placeholder, at the two sites that READ it
+  (`_nros_load_derived_entity_inventory` in the Zephyr lane, and the
+  entity→bounds join in `NanoRosCodegenCore.cmake`). NOT at the three sites
+  inside `nros_derive_entity_inventory_knobs`, which are a PRODUCER recording its
+  own refusal — seeding those with another composer's answer would publish a
+  number the producer did not stand behind.
+* `-DNROS_RESOLVED_DIR=<dir>` on the cmake and west handoffs. Passed, never
+  guessed: a reader that inferred where a resolve might live would silently pick
+  up another image's answer, which is issue 0616 one directory over. A lane that
+  ran no resolve phase (a bare `west build`, `just zephyr build-fixtures`) sets
+  nothing and is unchanged.
+* `just check resolved-seed` / `tests/cmake-resolved-seed-tests.sh`.
+
+### Measured
+
+**The pass count, on a five-line cmake project** (`just check resolved-seed`,
+9/9). Its subject is the thing `NanoRosReconfigure.cmake` spends:
+
+| case | re-configures | built with |
+| --- | --- | --- |
+| A no resolve phase | 1 | the real answer — today's baseline, unchanged |
+| B resolve AGREES | **0** | the real answer — the pass this phase removes |
+| C resolve DISAGREES | 1 | the **producer's** answer — the safety property |
+| D resolve REFUSED | 1 | byte-for-byte case A |
+
+C is what makes it a test. The two composers do not read the same inputs, so a
+seed that is wrong must lose; a green A and B with a red C would mean stage 3.5
+can ship a number nothing stood behind.
+
+Case B also **corrected the implementation**: the seed first copied the fragment
+under a "seeded from …" banner, and measured `re-runs=1` — `nros_reconfigure_snapshot`
+hashes CONTENT, so a seed differing by one comment line arms exactly the
+re-configure it exists to remove. The seed is verbatim now and the provenance
+lives where a byte comparison cannot reach it.
+
+**The two composers agree on every NUMBER and differ by one LINE**
+(`resolve::tests::stage_3_5_and_the_mid_configure_producer_agree_on_every_number`,
+over the production `merged_per_kind_max` / `to_cmake`): identical values,
+identical bytes except `NROS_ENTITY_INVENTORY_SOURCE`, which names the metadata
+file on the producer's side and the model alone on stage 3.5's. That one line is
+why the pass is not yet saved in the real tree, and it is issue 1228's headline.
+
+### What did NOT land, and what is NOT claimed
+
+* **`nros_reconfigure_settle` and the future-mtime arm are still present and
+  still authoritative.** A3 is not met. Issue 1228.
+* **The message-bound half of the chain is untouched** — it is derived
+  mid-configure from codegen fragments by a pure-CMake composer with no Rust
+  twin, so a second pass survives even once the entity link closes.
+* **No claim about a real Zephyr image.** This host has no `zephyr-workspace`
+  and no Zephyr SDK, so "converges in one pass" and "a named image's knobs are
+  byte-identical" were NOT RUN. phase-392 W5 had to withdraw a causal claim from
+  a before/after that accidentally built the same configuration twice; the
+  deletion's acceptance must be a real `west build` with `check-knob-delivery
+  <build-dir>` green on both sides and the unrelated values asserted UNCHANGED
+  as the control.
 
 ## W3 — `build_type` selects the driver
 
