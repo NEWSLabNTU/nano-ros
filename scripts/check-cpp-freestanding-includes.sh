@@ -15,6 +15,13 @@
 # `NROS_CPP_STD`, never on `__STDC_HOSTED__` alone — a hosted compiler run
 # `-nostdinc++` against that minimal libcpp still has no `<string>`.
 #
+# Issue 1240 completed the predicate rather than replacing it: `__has_include`
+# alone is not enough EITHER, because under `-ffreestanding` a full libstdc++
+# still HAS the file and refuses to be included from it. So the shape this gate
+# accepts is `NROS_CPP_STD` OR the conjunction `__STDC_HOSTED__ &&
+# __has_include(<hdr>)`, and naming the token without `__STDC_HOSTED__` beside
+# a live `__has_include` arm is a violation. See `std_frame` below.
+#
 # The `-ffreestanding` compile probe in `just check cpp` cannot see this: it runs
 # against the host's full libstdc++, so an ungated `#include <string>` compiles
 # clean. A `-nostdinc++` variant would need Zephyr's libcpp on the include path,
@@ -44,8 +51,8 @@ SCAN_DIRS="packages/api/nros-cpp/include/nros packages/rmw/cyclonedds/nros-rmw-c
 # Known debt this walker could not see before issue 1223, as `<file> <header>`
 # pairs. A RATCHET: an unlisted violation fails, and a listed pair that no
 # longer offends ALSO fails, so the file can only shrink and only on purpose.
-# phase-438 W2 empties it. Keyed on file+header rather than line so an edit
-# above a site does not silently move the debt.
+# EMPTY since issue 1240, which paid all fourteen at once. Keyed on file+header
+# rather than line so an edit above a site does not silently move the debt.
 BASELINE=".config/cpp-freestanding-includes-baseline.txt"
 
 
@@ -61,10 +68,38 @@ HOSTED='string|vector|map|unordered_map|unordered_set|set|functional|memory|chro
 walk_file() {
   awk -v hosted="$HOSTED" -v strict="$2" '
         BEGIN { sp = 0 }
-        # Enter an NROS_CPP_STD region: `#ifdef NROS_CPP_STD` or
-        # `#if defined(NROS_CPP_STD)`. Other #if/#ifdef push a neutral level so
-        # a nested #endif does not close the NROS_CPP_STD region prematurely.
-        /^[[:space:]]*#[[:space:]]*(ifdef|if)([[:space:]]|\().*NROS_CPP_STD/ { stack[++sp] = "std"; next }
+        # Does this directive open a region in which a hosted include is SAFE?
+        #
+        # Naming NROS_CPP_STD is necessary and NOT sufficient (issue 1240). The
+        # capability blocks are now written as one conjunction rather than an
+        # `#if`/`#elif` pair:
+        #
+        #   #if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__)
+        #       && __STDC_HOSTED__ && __has_include(<string>))
+        #
+        # and the `||` arm is live whenever the opt-in is absent -- which is
+        # EVERY shipped configuration, since nothing defines NROS_CPP_STD. So
+        # the token alone would score the corrected shape and the broken one
+        # identically, and the broken one is what GCC 16 caught: with
+        # `-ffreestanding` its libstdc++ is genuinely freestanding, so
+        # `__has_include(<string>)` answers TRUE for a header whose first line
+        # is `#error "This header is not available in freestanding mode."`.
+        # `__STDC_HOSTED__` is the only probe that separates those, exactly as
+        # `nros.hpp` measured for <chrono>.
+        #
+        # This is the 0196 rule applied to this gate: its reach must be the
+        # rule it enforces, not the spelling the rule happened to have when it
+        # was written.
+        function std_frame(line) {
+            if (line !~ /NROS_CPP_STD/) { return 0 }
+            if (line ~ /__has_include/ && line !~ /__STDC_HOSTED__/) { return 0 }
+            return 1
+        }
+        # Enter an NROS_CPP_STD region: `#ifdef NROS_CPP_STD`,
+        # `#if defined(NROS_CPP_STD)`, or the conjunction above. Other
+        # #if/#ifdef push a neutral level so a nested #endif does not close the
+        # NROS_CPP_STD region prematurely.
+        /^[[:space:]]*#[[:space:]]*(ifdef|if)([[:space:]]|\().*NROS_CPP_STD/ { stack[++sp] = std_frame($0) ? "std" : "other"; next }
         # `\b` is NOT a word boundary in POSIX ERE — awk reads it as an escape
         # with no such meaning, so these two rules MATCHED NOTHING. The "other"
         # push therefore never happened, which is the very bug the comment above
@@ -88,7 +123,7 @@ walk_file() {
         # NROS_PLATFORM_* chain, and depth must not fall to 0 there.
         /^[[:space:]]*#[[:space:]]*elif([[:space:]]|\()/ {
             if (sp == 0) sp = 1
-            stack[sp] = ($0 ~ /NROS_CPP_STD/) ? "std" : "other"
+            stack[sp] = std_frame($0) ? "std" : "other"
             next
         }
         /^[[:space:]]*#[[:space:]]*else([[:space:]]|$)/ {
@@ -175,6 +210,28 @@ selftest() {
 '
   # 6. Depth 0 is still a violation at both strictnesses.
   _case 'ungated at depth 0' 0 hit '#include <string>
+'
+
+  # 7. Issue 1240 — the corrected capability block. `__STDC_HOSTED__` is what
+  #    makes the `||` arm safe, so this shape is clean.
+  _case 'conjunction with __STDC_HOSTED__' 1 clean '#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<string>))
+#include <string>
+#define NROS_CPP_HAS_STD_STRING 1
+#endif
+'
+  # 8. The shape GCC 16 broke: NROS_CPP_STD is named, but the live arm asks only
+  #    `__has_include`, which answers TRUE for a libstdc++ header that `#error`s
+  #    under `-ffreestanding`. Naming the token is not enough.
+  _case 'conjunction WITHOUT __STDC_HOSTED__' 1 hit '#if defined(NROS_CPP_STD) || __has_include(<string>)
+#include <string>
+#define NROS_CPP_HAS_STD_STRING 1
+#endif
+'
+  # 9. Same omission in an `#elif` arm.
+  _case 'elif __has_include without __STDC_HOSTED__' 1 hit '#if defined(SOMETHING)
+#elif defined(NROS_CPP_STD) || __has_include(<memory>)
+#include <memory>
+#endif
 '
 
   if [ "$rc" -ne 0 ]; then

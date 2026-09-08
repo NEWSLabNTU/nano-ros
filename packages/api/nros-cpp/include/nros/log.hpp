@@ -102,29 +102,21 @@
 
 // `<string>` for `rclcpp::get_logger(const std::string&)` and `<sstream>` for
 // the `_STREAM` family. Gated: this header is reachable from a `no_std` C++
-// build with a minimal libcpp, where neither exists. `__has_include`, not
-// `__STDC_HOSTED__` — issue 0112, rationale in `publisher.hpp`. When they are
+// build with a minimal libcpp, where neither exists — and from a
+// `-ffreestanding` build against a FULL libstdc++, which has both files and
+// refuses to be included from either. `__has_include` AND `__STDC_HOSTED__`:
+// issues 0112 and 1240, rationale in `publisher.hpp`. When they are
 // absent the names below simply do not exist, which is what a freestanding
 // target should see; the un-gated half (the refusal vocabulary, `Logger`, the
 // printf-style macros) still reaches it.
-#if defined(NROS_CPP_STD)
+#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<string>))
 #include <string>
 #define NROS_CPP_HAS_STD_STRING 1
-#elif defined(__has_include)
-#if __has_include(<string>)
-#include <string>
-#define NROS_CPP_HAS_STD_STRING 1
-#endif
 #endif
 
-#if defined(NROS_CPP_STD)
+#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<sstream>))
 #include <sstream>
 #define NROS_CPP_HAS_STD_SSTREAM 1
-#elif defined(__has_include)
-#if __has_include(<sstream>)
-#include <sstream>
-#define NROS_CPP_HAS_STD_SSTREAM 1
-#endif
 #endif
 
 namespace rclcpp {
