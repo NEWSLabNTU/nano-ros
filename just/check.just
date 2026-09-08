@@ -228,6 +228,7 @@ build:
 [private]
 build-serial: \
     borrowed-e2e \
+    box-sync-covers-tracked-source \
     c \
     cli-fresh \
     cli-tests \
