@@ -136,7 +136,12 @@ endif()
 # source twice.
 if(CONFIG_NROS_C_API OR CONFIG_NROS_CPP_API)
     zephyr_library_sources(
-        ${NROS_REPO_DIR}/packages/boards/nros-board-zephyr/c/zephyr_run_tiers.c)
+        ${NROS_REPO_DIR}/packages/boards/nros-board-zephyr/c/zephyr_run_tiers.c
+        # phase-432 W3.1 — the C-ABI single-executor entry, shared by every
+        # RTOS board (`nros_board_rtos_run_components`). Zephyr is the one
+        # kernel whose per-tick `k_yield()` that loop must do, and it does it
+        # behind the same `__ZEPHYR__` guard `detail::entry_tick_yield` uses.
+        ${NROS_REPO_DIR}/packages/boards/nros-board-common/c/nros_rtos_run_components.c)
 endif()
 
 # =============================================================================
