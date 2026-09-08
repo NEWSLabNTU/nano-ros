@@ -32,6 +32,19 @@
 //!   ninja, no zombie child holding a build lock;
 //! * there is no second process in `ps`, so a hung build is attributable.
 //!
+//! ## Why there is a second handover ([`wait`])
+//!
+//! Because `exec` can only be the LAST thing an invocation does, and RFC-0065
+//! D1 also specifies invocations that build several images (`--all`, several
+//! positional images, several `default_images`). A loop that execs inside it
+//! builds exactly one of them and exits 0 — issue 1206, measured.
+//!
+//! [`wait`] is what the non-final plans get. **It is not a pipe**, and the
+//! distinction is the whole point: the guarantee above is "nothing is
+//! capturing it", not "there is exactly one process". A child with inherited
+//! stdio satisfies the first and not the second; `Stdio::piped()` would
+//! satisfy neither and is still banned everywhere in this file.
+//!
 //! ## Non-Unix
 //!
 //! `execvp` does not exist on Windows. nano-ros builds host-side on Unix only,
@@ -127,19 +140,15 @@ impl Handoff {
     }
 }
 
-/// Replace this process with the native build tool. **Never returns on
-/// success.**
-///
-/// The return type says so: an `Ok` value is unconstructible, so a caller
-/// cannot accidentally write code that assumes control comes back. Every
-/// The same command as a `std::process::Command`, for a step that must RETURN.
-///
-/// Stage 5 execs and never comes back, which is the guarantee RFC-0065 D1
-/// rests on. A driver that needs a configure FIRST (cmake: `cmake --build` on
-/// an unconfigured tree fails, and configure+build is two invocations at our
-/// 3.22 floor) needs to run one command and survive it. Same struct, so the
-/// configure a `--dry-run` prints is the configure that runs.
 impl Handoff {
+    /// The same command as a `std::process::Command`, for a step that must
+    /// RETURN.
+    ///
+    /// Stage 5 execs and never comes back, which is the guarantee RFC-0065 D1
+    /// rests on. A driver that needs a configure FIRST (cmake: `cmake --build`
+    /// on an unconfigured tree fails, and configure+build is two invocations at
+    /// our 3.22 floor) needs to run one command and survive it. Same struct, so
+    /// the configure a `--dry-run` prints is the configure that runs.
     #[must_use]
     pub fn command(&self) -> std::process::Command {
         let mut cmd = std::process::Command::new(&self.program);
@@ -154,12 +163,14 @@ impl Handoff {
     }
 }
 
-/// return is an error that happened BEFORE the handover — a missing `cwd`, or
-/// a program `execvp` could not find.
-#[cfg(unix)]
-pub fn exec(handoff: &Handoff) -> Result<std::convert::Infallible, String> {
-    use std::os::unix::process::CommandExt;
-
+/// The `Command` both handovers run, with what must hold BEFORE either one
+/// checked once.
+///
+/// `exec` and [`wait`] differ only in how they reach the operating system;
+/// everything they validate first is the same, so it is validated in one place.
+/// A second copy is how the two would drift into reporting a missing build
+/// directory differently.
+fn prepared(handoff: &Handoff) -> Result<std::process::Command, String> {
     let mut cmd = std::process::Command::new(&handoff.program);
     cmd.args(&handoff.args);
     if let Some(dir) = &handoff.cwd {
@@ -174,6 +185,21 @@ pub fn exec(handoff: &Handoff) -> Result<std::convert::Infallible, String> {
     for (k, v) in &handoff.env {
         cmd.env(k, v);
     }
+    Ok(cmd)
+}
+
+/// Replace this process with the native build tool. **Never returns on
+/// success.**
+///
+/// The return type says so: an `Ok` value is unconstructible, so a caller
+/// cannot accidentally write code that assumes control comes back. Every
+/// return is an error that happened BEFORE the handover — a missing `cwd`, or
+/// a program `execvp` could not find.
+#[cfg(unix)]
+pub fn exec(handoff: &Handoff) -> Result<std::convert::Infallible, String> {
+    use std::os::unix::process::CommandExt;
+
+    let mut cmd = prepared(handoff)?;
 
     // NO Stdio::piped() ANYWHERE. See the module docs: the whole RFC-0024 §2.4
     // amendment rests on this. Inheriting is the default, and it is stated
@@ -186,6 +212,48 @@ pub fn exec(handoff: &Handoff) -> Result<std::convert::Infallible, String> {
         "could not exec `{}`: {err}",
         handoff.program.to_string_lossy()
     ))
+}
+
+/// Run the native build tool as a CHILD and wait for it, returning its exit
+/// status.
+///
+/// For the one case `exec` cannot serve: an invocation that planned SEVERAL
+/// images. `exec` replaces this process, so it can only ever be the LAST thing
+/// an invocation does — and issue 1206 measured what that costs when a loop
+/// forgets it. `nros build native_service_client native_service_server` planned
+/// two images, announced one, built one, and exited 0.
+///
+/// Three ordinary invocations plan more than one image — `--all`, several
+/// positional images, and a `[system] default_images` naming several — and
+/// RFC-0065 D1 specifies all three ("`--all` builds every image"; F10 records
+/// building N images at once as routine). So the choice was never
+/// exec-or-capability; it is which plan gets the exec.
+///
+/// What this keeps of D1, and what it does not:
+///
+/// * **Kept — nothing captures the output.** No `Stdio::piped()` here either.
+///   The child inherits this process's stdout and stderr, so `isatty`, colour
+///   detection and line buffering behave exactly as under a bare `cargo build`,
+///   and a rustc error arrives byte-identical. That is the property RFC-0024
+///   §2.4's objection is actually about, and it is why this is admissible.
+/// * **Kept — the tool's exit status is the answer.** Returned rather than
+///   remapped, so the caller can report it alongside the image that produced
+///   it.
+/// * **Kept — signals reach the compiler.** The child runs in this process's
+///   foreground process group, so Ctrl-C is delivered to it directly.
+/// * **Lost — there are two processes in `ps`.** A hung build is attributable
+///   to `nros build` plus its child rather than to one process.
+///
+/// The last plan still execs, so a single-image `nros build <image>` — the
+/// invocation D1's prose describes — is unchanged in every respect. Only the
+/// non-final plans of a multi-image build pay the fourth point, and they pay it
+/// to be built at all.
+pub fn wait(handoff: &Handoff) -> Result<std::process::ExitStatus, String> {
+    let mut cmd = prepared(handoff)?;
+    // Same rule as `exec`: no `Stdio::piped()`, ever. Inheriting is the
+    // default and is stated so that breaking it requires deleting a comment.
+    cmd.status()
+        .map_err(|e| format!("could not run `{}`: {e}", handoff.program.to_string_lossy()))
 }
 
 /// Non-Unix: refuse rather than silently degrade to spawn-and-wait.
