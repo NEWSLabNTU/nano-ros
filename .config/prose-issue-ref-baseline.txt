@@ -9,10 +9,6 @@
 #
 # CLASSIFIED 2026-09-08, because "in flight" is only true of some of these:
 #
-#   1099  IN FLIGHT — `docs/issues/1099-cpp-trigger-transition-crosses-
-#         lifecycle-ids.md` exists on `origin/design/context-init-shape`.
-#         The citation is correct and the file is coming.
-#
 #   9999  NEGATION — the citation is deliberately unresolvable. Issue 1092
 #         describes a mutation test whose control is "a gap reason naming
 #         issue 9999, which DOES NOT EXIST". Filing 9999 would destroy the
@@ -46,9 +42,7 @@ docs/issues/1092-rmw-shape-gate-licenses-deviation-without-pinning-it.md:9999
 docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
 docs/issues/1163-compile-smoke-checks-nros-c-under-default-features-only.md:1080
 docs/issues/1186-executor-backing-latch-test-races-siblings.md:0417
-docs/roadmap/phase-428-api-porting-principle-sweep.md:1099
 docs/roadmap/phase-431-ship-the-nros-binary.md:1110
 docs/roadmap/phase-432-codegen-one-producer-many-packs.md:1080
 just/check/docs.just:1110
-just/check/lanes.just:1099
 scripts/build/rustdoc-set.sh:1110
