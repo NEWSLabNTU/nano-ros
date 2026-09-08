@@ -98,9 +98,13 @@ STAGE_MARKERS = (
     # The build: real code failures, but not the runtime verdict.
     (BUILD, ("build",)),
     # Everything that has to be true before the lane can build anything.
+    # `ledger` is live-peer.yml's: that lane reads `.config/interop-verdicts.toml`
+    # before it runs anything, and a lane that cannot read its own membership
+    # has not reached a stage.
     (PROVISIONING, ("setup", "set up", "provision", "install", "checkout",
                     "cache", "fetch", "submodule", "labels", "doctor",
-                    "reclaim disk", "free disk", "apt", "rustup", "register")),
+                    "ledger", "reclaim disk", "free disk", "apt", "rustup",
+                    "register")),
 )
 
 # Steps that belong to no stage: housekeeping that runs `if: always()` after the
@@ -215,8 +219,9 @@ def report(lane, steps_json):
         out.append("")
         out.append("  This run answers NOTHING about the code under test. The lane")
         out.append("  stopped before its cells, so a regression landing today would")
-        out.append("  look exactly like this — which is how issues 1075/1098/1104/1114")
-        out.append("  rode in (issue 1158).")
+        out.append("  look exactly like this. On `run-matrix.yml` that is how issues")
+        out.append("  1075/1098/1104/1114 rode in (issue 1158); this reporter exists")
+        out.append("  so no lane has to learn it a second time.")
     print("\n".join(out))
 
     # An annotation, because it is the one thing visible on the run page and in
@@ -383,44 +388,108 @@ HISTORICAL = (
 )
 
 
-WORKFLOW = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    ".github", "workflows", "run-matrix.yml")
+# The one run `live-peer.yml` has had, recorded from
+# `gh run view 34186427723 --json jobs` on 2026-09-09. Verbatim, housekeeping
+# included, and under the step names that run actually used — which is why the
+# fixture step here still says `cells`: this is the evidence for the rename, not
+# a copy of the tree after it.
+_LIVE_PEER_34186427723 = _steps(
+    ("Set up job", "success"),
+    ("Initialize containers", "success"),
+    ("Run actions/checkout@v4", "success"),
+    ("Build the nros CLI", "success"),
+    ("Report what the ledger claims, before running anything", "success"),
+    ("Build the fixtures those cells resolve", "failure"),
+    ("Run the cells with a recorded PASS", "skipped"),
+    ("Ledger after the run", "success"),
+    ("Post Run actions/checkout@v4", "success"),
+    ("Stop containers", "success"),
+    ("Complete job", "success"))
 
-# Every step name `run-matrix.yml` hands to `--report`, and the stage it MUST
-# classify as. Asserted against the workflow itself, both directions.
-EXPECTED_MAP = {
-    "just setup tier2": PROVISIONING,
-    "Verify this runner's labels are true": PROVISIONING,
-    "just build tier2": BUILD,
-    "just ci matrix": CELLS,
-}
+# The same run as the workflow now reports it: four steps, current names.
+_LIVE_PEER_FIXTURES_DIED = _steps(
+    ("Build the nros CLI", "success"),
+    ("Report what the ledger claims, before running anything", "success"),
+    ("Build the fixtures those rows resolve", "failure"),
+    ("Run the cells with a recorded PASS", "skipped"))
+
+
+REPO_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _workflow_path(basename):
+    return os.path.join(REPO_ROOT, ".github", "workflows", basename)
+
+
+# A staged lane, and the step->stage map it MUST produce. Asserted against the
+# workflow itself, both directions — the map is AUTHORED (each workflow hands
+# `--report` a copy of its own `- name:` lines), and an authored map drifts the
+# moment a step is renamed, silently and in the safe-looking direction.
+#
+# `report_job` is the job whose NAME carries the answer, because a check-run
+# name is the last piece of a run that is legible without opening a log.
+LaneSpec = collections.namedtuple(
+    "LaneSpec", "workflow job report_job expected_map")
+
+LANES = (
+    LaneSpec("run-matrix.yml", "matrix", "coverage", {
+        "just setup tier2": PROVISIONING,
+        "Verify this runner's labels are true": PROVISIONING,
+        "just build tier2": BUILD,
+        "just ci matrix": CELLS,
+    }),
+    # phase-433 W5. This lane already told "the run did not happen" from "a cell
+    # regressed" — but only INSIDE the cell loop, by exit code. Everything above
+    # the loop was a flat `failure`, which is the same ambiguity one step
+    # upstream of the guard.
+    LaneSpec("live-peer.yml", "regression", "stage", {
+        "Build the nros CLI": BUILD,
+        "Report what the ledger claims, before running anything": PROVISIONING,
+        "Build the fixtures those rows resolve": BUILD,
+        "Run the cells with a recorded PASS": CELLS,
+    }),
+)
+
+# Kept for `--history`'s default and for anything importing the old name.
+WORKFLOW = _workflow_path("run-matrix.yml")
+EXPECTED_MAP = LANES[0].expected_map
 
 
 def _workflow_consistency(chk):
-    """Cross-check the authored step->stage map against run-matrix.yml.
+    """Cross-check every lane's authored step->stage map against its workflow.
 
-    Returns lines to print when the check could not be made — a REPORTED skip,
+    Returns lines to print when a check could not be made — a REPORTED skip,
     never a silent one (issue 1043's shape: "could not evaluate" is a third
     answer, not a pass).
     """
     try:
         import yaml
     except ModuleNotFoundError:
-        return ["[skip] lane-stage: PyYAML missing — the run-matrix.yml "
-                "consistency arm did NOT run"]
-    if not os.path.exists(WORKFLOW):
-        return [f"[skip] lane-stage: {WORKFLOW} absent — the consistency arm "
-                "did NOT run"]
+        return ["[skip] lane-stage: PyYAML missing — the workflow "
+                "consistency arm did NOT run for ANY lane"]
 
-    with open(WORKFLOW, encoding="utf-8") as fh:
-        doc = yaml.safe_load(fh)
-    steps = doc["jobs"]["matrix"]["steps"]
+    notes = []
+    for lane in LANES:
+        path = _workflow_path(lane.workflow)
+        if not os.path.exists(path):
+            notes.append(f"[skip] lane-stage: {path} absent — the consistency "
+                         f"arm did NOT run for {lane.workflow}")
+            continue
+        with open(path, encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh)
+        notes.extend(_one_lane_consistency(chk, lane, doc))
+    return notes
+
+
+def _one_lane_consistency(chk, lane, doc):
+    w = lane.workflow
+    job = doc["jobs"][lane.job]
+    steps = job["steps"]
     names = [s.get("name", "") for s in steps]
-    reporter = [s for s in steps
-                if "lane-stage.py" in str(s.get("run", ""))]
+    reporter = [s for s in steps if "lane-stage.py" in str(s.get("run", ""))]
 
-    chk("run-matrix.yml has exactly one lane-stage reporter", len(reporter) == 1)
+    chk(f"{w} has exactly one lane-stage reporter", len(reporter) == 1)
     if not reporter:
         return []
 
@@ -429,21 +498,25 @@ def _workflow_consistency(chk):
                reporter[0]["env"]["NROS_LANE_STEPS"]))
     declared_names = [d["name"] for d in declared]
 
-    chk("every step name the workflow reports is a real step in that job",
+    chk(f"{w}: every reported step name is a real step in `{lane.job}`",
         all(n in names for n in declared_names))
-    chk("every staged step of the workflow is reported",
-        set(declared_names) == set(EXPECTED_MAP))
+    chk(f"{w}: every staged step is reported",
+        set(declared_names) == set(lane.expected_map))
     for n in declared_names:
-        chk(f"`{n}` still classifies as {EXPECTED_MAP.get(n)}",
-            stage_of(n) == EXPECTED_MAP.get(n))
-    chk("the reporter runs `if: always()` — a stage report that is skipped when "
-        "the lane dies is no report",
+        chk(f"{w}: `{n}` still classifies as {lane.expected_map.get(n)}",
+            stage_of(n) == lane.expected_map.get(n))
+    chk(f"{w}: the reporter runs `if: always()` — a stage report that is "
+        "skipped when the lane dies is no report",
         "always()" in str(reporter[0].get("if", "")))
-    chk("the matrix job exports the stage label for the coverage job's name",
+    chk(f"{w}: `{lane.job}` exports the stage label for the report job's name",
         "stage.outputs.label" in
-        str(doc["jobs"]["matrix"].get("outputs", {}).get("stage_label", "")))
-    chk("the coverage job's NAME carries the stage",
-        "needs.matrix.outputs.stage_label" in str(doc["jobs"]["coverage"]["name"]))
+        str(job.get("outputs", {}).get("stage_label", "")))
+    chk(f"{w}: the `{lane.report_job}` job's NAME carries the stage",
+        f"needs.{lane.job}.outputs.stage_label" in
+        str(doc["jobs"][lane.report_job]["name"]))
+    chk(f"{w}: the `{lane.report_job}` job runs `if: always()`, so it reports "
+        "on a dead run too",
+        "always()" in str(doc["jobs"][lane.report_job].get("if", "")))
     return []
 
 
@@ -527,6 +600,41 @@ def selftest(verbose=False):
                         ("just build tier2", "success"),
                         ("just ci matrix", "skipped")), "failure").reached_cells
         is False)
+
+    # 8b. live-peer.yml — phase-433 W5. The lane whose ledger says 20 of 20
+    #     cells pass live, and whose single run reached ZERO of them.
+    lp = classify(_LIVE_PEER_FIXTURES_DIED, "failure")
+    chk("34186427723 (2026-09-08) -> no-verdict/build, not a cell regression",
+        lp.kind == "no-verdict" and lp.stage == BUILD)
+    chk("...and it names the step that actually stopped it",
+        lp.failing_step == "Build the fixtures those rows resolve")
+    chk("...and does not claim to have reached the cells",
+        lp.reached_cells is False)
+
+    # The rename is load-bearing, so the old spelling is pinned as the
+    # misclassification it was. `cells` is the CELLS marker and the classifier
+    # takes the most specific stage first, so under the old name a FIXTURE BUILD
+    # failure reported as `VERDICT: cells ran and FAILED` — this lane saying the
+    # one thing it exists to say, about a run that never started a cell.
+    chk("the OLD step name misclassified a fixture build as the cells stage",
+        stage_of("Build the fixtures those cells resolve") == CELLS)
+    chk("...and the current name does not",
+        stage_of("Build the fixtures those rows resolve") == BUILD)
+    chk("the old name turned the real run into a false cell regression",
+        classify(_LIVE_PEER_34186427723, "failure").kind == "verdict-fail")
+
+    chk("`Run the cells with a recorded PASS` is the cells stage",
+        stage_of("Run the cells with a recorded PASS") == CELLS)
+    chk("`Report what the ledger claims, before running anything` is provisioning",
+        stage_of("Report what the ledger claims, before running anything")
+        == PROVISIONING)
+    chk("live-peer cells that RAN and failed are a verdict",
+        classify(_steps(
+            ("Build the nros CLI", "success"),
+            ("Report what the ledger claims, before running anything", "success"),
+            ("Build the fixtures those rows resolve", "success"),
+            ("Run the cells with a recorded PASS", "failure")),
+            "failure").kind == "verdict-fail")
 
     # 9. THE MAP IS AUTHORED, SO IT DRIFTS. `--report` is handed step names by
     #    the workflow, and those names are a copy of the workflow's own `- name:`
