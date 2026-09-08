@@ -2289,6 +2289,157 @@ plus `create_timer_in` / `create_subscription_in` — which is RFC-0047's real
 subject, and which the merged node already carries. There is no
 several-named-nodes capability to preserve when `ComponentNode` is deleted.
 
+## The `spin` family: upstream's names get upstream's contracts (2026-09-09)
+
+Settled. The Rust executor ships five spin verbs and the two upstream names
+among them are attached to the wrong things: `spin` is ours (`Duration -> !`,
+the body of an RTOS task) while upstream's `spin(SpinOptions)` has nowhere to
+go, and the form that CAN end is called `spin_blocking`, a name upstream has
+never had. That is what makes a ported rclrs `main` rename a call — the seventh
+porting difference phase-427 W10 measured and left open.
+
+> **Upstream's names get upstream's contracts. The RTOS-specific forms get
+> honest ours-only names.**
+
+Applied, the family is four verbs:
+
+| verb | signature | disposition |
+| --- | --- | --- |
+| `spin` | `(&mut self, opts: SpinOptions) -> Result<(), NodeError>` | **adopt-bounded** — rclrs returns `Vec<RclrsError>`; there is no allocator here, so the FIRST error |
+| `spin_once` | `(&mut self, timeout: Duration) -> SpinOnceResult` | rclcpp's name and meaning; the tick primitive |
+| `spin_some` | `(&mut self, max: Duration) -> Result<(), NodeError>` | **adopt-bounded** — upstream's drain verb |
+| `spin_forever` | `(&mut self, opts: SpinOptions) -> !` | **extension** — a bare-metal entry has no shutdown source and nothing to return to |
+
+Implementation is phase-427's; this section is the decision and the constraints
+behind it.
+
+### The four constraints, which are the reusable part
+
+The verb table is one library's answer. The constraints are what produce that
+answer, and they will produce the same shape for the next family this campaign
+reaches, so they are recorded rather than the table alone.
+
+1. **No allocator, so no collection can be RETURNED.** rclrs's
+   `Executor::spin(&mut self, SpinOptions) -> Vec<RclrsError>` hands back every
+   error its callbacks produced. Building that needs `alloc`, and `core` /
+   `core+alloc` is the terminal state (ARCHITECTURE §2), so the name is adopted
+   with the return type narrowed to the FIRST error. That is weaker and it does
+   not invert: a caller who checks gets *an* error, at the same point upstream
+   would have given them a batch. `SpinOnceResult`'s per-spin counters remain
+   the surface for the ones not returned, which is what makes this
+   `adopt-bounded` rather than `adopt`.
+2. **No shutdown source, so a DIVERGING form must exist and must be
+   nameable.** A hosted `main` returns to an OS; a Zephyr entry, a ThreadX
+   thread and a bare-metal `app_main` do not. `-> !` is the honest type for
+   that shape, and upstream has no verb with it — so it needs a name of its
+   own, and `spin` cannot be that name without spending it on the case upstream
+   already spells. `spin_forever` says what it does at the call site, which is
+   the property the old `spin(Duration) -> !` did not have.
+3. **Every wait carries an EXPLICIT budget.** RFC-0002 puts one executor on one
+   RTOS task, so an unbounded block in that task starves everything below its
+   priority. Both bounded verbs take their budget as an argument —
+   `spin_once(timeout)` and `spin_some(max)` — rather than reading it from a
+   config, so a reader of the call site can see what the task will hold for.
+   This is also why `SpinOptions::timeout` matching rclrs's spelling is worth
+   something: the budget is upstream's concept too, and only its default is
+   ours.
+4. **The tick primitive must fit inside a loop the APPLICATION already owns.**
+   Firmware usually has a superloop, a control cadence or an RTOS periodic task
+   that is not ours to write. `spin_once` therefore returns a VALUE and does not
+   loop; the fixed-period forms (`spin_period`, `spin_one_period`) are built on
+   it rather than under it, and any of them can be dropped into a loop the
+   application wrote.
+
+Constraints 1 and 2 are clause 1 outranking clause 2 — the same reasoning the
+ledger row `rust:Executor::spin` already carries. Constraints 3 and 4 are why
+the family has four members where rclrs has two.
+
+### `spin_once` is where "each language follows its own upstream" needed a choice
+
+Measured against the recorded surface (`docs/reference/api-surface/rclrs.json`):
+**rclrs's `spin_once` is a `SpinOptions` CONSTRUCTOR**, `SpinOptions::spin_once()
+-> Self`, not a method on the executor at all. rclrs's executor has exactly
+`spin(SpinOptions)` and `spin_async(SpinOptions)`, and no `spin_some`.
+
+So the settled rule "each language follows ITS OWN upstream" does not decide
+this one, it only names the tension: followed strictly on the Rust surface,
+`spin_once` would be a builder that constructs an option, and the tick primitive
+would have no name. **We take rclcpp's spelling instead** — `spin_once` is a
+method that performs one cycle, `spin_some` is the drain verb — because the
+concept is one every ROS user has and the language whose upstream lacks it does
+not get to leave it unnamed. `SpinOptions::spin_once()` remains available as the
+option constructor, so the two do not collide.
+
+This is a deliberate exception, recorded as one. The rule stands where the
+upstreams merely SPELL a shared concept differently (logging is its worked
+case); it does not stretch to a concept one upstream does not have at the level
+the other puts it.
+
+**One thing this does not settle.** The ledger row `cpp:Executor::spin_some`
+records that our `spin_once` dispatches EVERY ready arena entry (RFC-0002 §3)
+where rclcpp's `spin_once` executes the next ONE — the names line up and the
+semantics do not, and that row carries an open `rename` blocker for it. The
+decision above is about which METHOD wears the name; the drain-all/execute-one
+question is that row's and is unchanged by it. Do not read this section as
+closing it.
+
+### `SpinOptions` is where the divergence is put, on purpose
+
+Every RTOS-specific field lives in the one type, so a ported file touches one
+name it already had to touch:
+
+* `timeout: Option<Duration>` — rclrs's own, same spelling, same meaning;
+* `max_callbacks: Option<usize>` — **extension**. A bounded-WCET task needs a
+  bound on WORK, not only on time: a time bound says when to give up, never how
+  much has already been done;
+* `only_next: bool` — **extension**, the single-iteration form;
+* rclrs's `until_promise_resolved(Promise<()>)` is declined
+  (`rust:SpinOptions::until_promise_resolved`), and so is `SpinConditions`.
+
+Putting the divergence in the options rather than in a fifth verb is what keeps
+the verb table readable: three of the four rows are upstream names doing
+upstream's job, and the fourth is the only invention.
+
+### The migration, measured
+
+Recorded because a rename's cost is the argument for doing it now rather than
+later, and because `spin_default()`'s zero is the reason one verb can simply go
+rather than being deprecated:
+
+| call site | sites |
+| --- | ---: |
+| `.spin(` | 12 |
+| `spin_blocking(` | 25 |
+| `spin_period(` | 8 |
+| `spin_one_period` | 26 |
+| `spin_default()` | **0** |
+
+Tens of sites in one workspace, all of them ours, none out of tree — which is
+what makes this a rename rather than a compatibility problem. Re-run the count
+before the wave lands: a grep of `packages/` and `examples/` for the same
+patterns on this branch returns 11 / 25 / 5 / 10 / 0, because the numbers move
+with the branch and with whether docs and the C/C++ mirrors are counted. The
+SHAPE is what the decision rests on and the shape is stable: bounded, in-tree,
+and one of the five verbs has no caller at all.
+
+### What this closes, and what it does not
+
+It closes the **seventh porting difference**: a ported rclrs `main` writes
+`spin`, not `spin_blocking`. RFC-0089's "the port is SIX edits" section and
+phase-427 W10 both record it as an open item and both say W10 does not own it;
+this decision names the owner, and phase-427's spin work item is where it lands.
+
+It does not move the ledger. `rust:Executor::spin` and `rust:Executor::spin*`
+describe the SHIPPED shape and a row reads as the shipped state, so they are
+rewritten when the rename lands and not before. `rust:Executor::spin` is
+`adopt-bounded` today and stays `adopt-bounded` after — but for a different
+reason, and the row has to say which: today it is bounded because ours never
+returns and takes a `Duration`, after the rename it is bounded because the
+error channel is one error rather than a `Vec`. A disposition that survives a
+change of subject is exactly the row a reader would take for unchanged.
+`spin_forever` needs a row of its own, `extension`, and `rust:Executor::spin*`
+loses the two members that stop being ours.
+
 ## Parameters: feature-complete, Rust-side SSoT, and `ros2 param list` must work
 
 Decision 3 says the store lives in Rust. Stating what "feature complete" costs,
@@ -3105,6 +3256,13 @@ task, RFC-0002's one-executor-per-task shape — so upstream's
 `spin(SpinOptions)` onto `spin` (and renaming ours) is a later wave; until it
 lands, a ported rclrs `main` renames the call. It is not W10's, and it is not
 closed by W10 being green.
+
+**DECIDED 2026-09-09 — the later wave has a shape and an owner.** §"The `spin`
+family: upstream's names get upstream's contracts" settles it: `spin` takes
+upstream's `SpinOptions` and returns `Result<(), NodeError>`, the diverging
+`-> !` form becomes `spin_forever`, and phase-427's spin work item is where it
+lands. The item stays OPEN here until that work does — a decision is not a
+rename — but it is no longer unowned, and the port then writes `spin`.
 
 ### The C++ shape, and why `init` has two overloads
 
