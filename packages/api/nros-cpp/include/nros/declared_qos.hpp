@@ -197,7 +197,7 @@ constexpr int declared_depth_or(int declared, int passed) {
 /// `constexpr`, so it answers in a `static_assert` when both arguments are
 /// constant expressions -- which they are at every call site whose topic is a
 /// string literal. It is an ordinary function too, so the boot-time fallback in
-/// `ComponentNode::create_subscription` calls the SAME lookup for a topic that
+/// `Node::check_declared_depth` calls the SAME lookup for a topic that
 /// is only known at runtime. One implementation, two evaluation times.
 constexpr int declared_depth(const char* type, const char* topic) {
     return detail::declared_qos_find(declared_qos::TABLE, declared_qos::COUNT, type, topic);
@@ -227,7 +227,7 @@ constexpr int declared_depth(const char* type, const char* topic) {
 /// REQUIRES `topic_expr` to be a constant expression -- in practice, a string
 /// literal, which is what every call site in this tree uses. A call site whose
 /// topic is built at runtime cannot be looked up at compile time and gets the
-/// boot-time check in `ComponentNode::create_subscription` instead; see
+/// boot-time check in `Node::check_declared_depth` instead; see
 /// `NROS_SUBSCRIBE_DYNAMIC`.
 #define NROS_ASSERT_DECLARED_DEPTH(type_name, topic_expr, qos_expr, topic_text)                    \
     static_assert(::nros::declared_depth((type_name), (topic_expr)) ==                             \

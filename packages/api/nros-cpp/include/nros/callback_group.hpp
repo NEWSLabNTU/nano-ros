@@ -8,7 +8,7 @@
  *
  * A `CallbackGroup` is a name-only token produced by
  * `Node::create_callback_group("name")` or
- * `ComponentNode::create_callback_group("name")`. Pass it to
+ * `Node::create_callback_group("name")`. Pass it to
  * `create_timer_in` / `create_subscription_in` / `create_publisher_in` to
  * associate an entity with a named group whose `SchedContext` binding is
  * resolved at runtime via the executor's `group_sched_table`.
@@ -29,7 +29,7 @@ namespace nros {
 /// Named callback-group token (RFC-0047 / Phase 273).
 ///
 /// Create via `Node::create_callback_group("ctrl")` or
-/// `ComponentNode::create_callback_group("ctrl")`.
+/// `Node::create_callback_group("ctrl")`.
 ///
 /// Pass to `create_timer_in` / `create_subscription_in` /
 /// `create_publisher_in` to bind the entity to the group's SchedContext.
