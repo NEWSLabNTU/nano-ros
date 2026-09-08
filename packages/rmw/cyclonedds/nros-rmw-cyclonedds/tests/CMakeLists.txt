@@ -112,6 +112,30 @@ add_test(
     COMMAND nros_rmw_cyclonedds_status_events
 )
 
+# Issue 1231 — manual liveliness, provoked both ways: a 500 ms lease held open
+# by assertions, then left to lapse. The second half is the first half's
+# negative control. Reuses the test_string descriptor above.
+add_executable(nros_rmw_cyclonedds_assert_liveliness
+    assert_liveliness.cpp
+    ${_test_string_sources}
+)
+target_link_libraries(nros_rmw_cyclonedds_assert_liveliness
+    PRIVATE
+        nros_rmw_cyclonedds
+)
+target_include_directories(nros_rmw_cyclonedds_assert_liveliness
+    PRIVATE
+        ${NROS_RMW_CFFI_DIR}
+        "${CMAKE_CURRENT_BINARY_DIR}/types"
+)
+add_test(
+    NAME nros_rmw_cyclonedds_assert_liveliness
+    COMMAND nros_rmw_cyclonedds_assert_liveliness
+)
+# Phase A + phase B are ~7 s of wall clock by construction; ctest's default
+# 1500 s is ample, but the lease timings mean this is not a sub-second test.
+set_tests_properties(nros_rmw_cyclonedds_assert_liveliness PROPERTIES TIMEOUT 120)
+
 # phase-393 W2 — matched counts and the publisher GID. Asserts the count MOVES
 # when a reader appears, which a stub returning 0 could not fake.
 add_executable(nros_rmw_cyclonedds_graph_counts

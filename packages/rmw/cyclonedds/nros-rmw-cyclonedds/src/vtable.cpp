@@ -273,14 +273,18 @@ using namespace nros_rmw_cyclonedds;
 // data path and fires the callback on the caller's own thread. So an
 // application registers with the same `on_*` API it uses on zenoh; nothing
 // about a NULL here is a missing capability.
+//
+// This note covers the TWO `*_event_init` constants below and nothing else.
+// `kAssertPublisherLiveliness` used to sit under it as a third NULL, which is
+// how issue 1231 got filed: manual liveliness is not an event hook, needs no
+// callback context, and none of the argument above applied to it. That slot is
+// wired now — see `publisher_assert_liveliness` in `publisher.cpp`.
 constexpr rmw_ret_t (*kRegisterSubscriptionEvent)(
     const rmw_subscription_t *, rmw_event_type_t, uint32_t,
     rmw_status_event_callback_t, void *) = nullptr;
 constexpr rmw_ret_t (*kRegisterPublisherEvent)(
     const rmw_publisher_t *, rmw_event_type_t, uint32_t,
     rmw_status_event_callback_t, void *) = nullptr;
-constexpr rmw_ret_t (*kAssertPublisherLiveliness)(
-    const rmw_publisher_t *) = nullptr;
 
 const nros_rmw_vtable_t kVtable = {
     /* ---- Session lifecycle ---- */
@@ -327,7 +331,13 @@ const nros_rmw_vtable_t kVtable = {
     /*subscription_take_event*/ subscription_take_event,
     /*publisher_take_event*/  publisher_take_event,
     /*publisher_event_init*/  kRegisterPublisherEvent,
-    /*publisher_assert_liveliness*/ kAssertPublisherLiveliness,
+    /* Issue 1231 — MANUAL_BY_TOPIC liveliness. This was NULL under the
+     * `*_event_init` comment above, which is about a callback context and
+     * says nothing about this slot: asserting liveliness needs no callback.
+     * It is `dds_assert_liveliness` on the writer, gated on the publisher's
+     * liveliness kind; what was measured in the pinned 0.10.5 to justify both
+     * halves of that is at the definition in `publisher.cpp`. */
+    /*publisher_assert_liveliness*/ publisher_assert_liveliness,
     /* ---- Phase 110.0 + 104.C.6.b hooks (deferred) ---- */
     /*next_deadline_ms*/          nullptr,
     /* Phase 124.B.1 — Cyclone DDS has its own background threads

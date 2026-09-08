@@ -128,8 +128,33 @@ Two live caveats:
   kinds are observed on the NEXT publish or `assert_liveliness`, not
   at the instant the counter moved. zenoh has the same property.
 
-`assert_publisher_liveliness` is still NULL — manual liveliness is
-unimplemented here, which is a separate gap.
+**Manual liveliness is wired (issue 1231).** That slot was NULL under
+the same comment as the `*_event_init` hooks, which is an argument
+about callback context and says nothing about a call that needs no
+callback. `publisher_assert_liveliness` now calls
+`dds_assert_liveliness` on the writer for a `MANUAL_BY_TOPIC` /
+`MANUAL_BY_NODE` publisher, and is the ABI's documented no-op
+(returning OK) for every other kind — there is no lease to renew there,
+and forwarding anyway would only put an unsolicited Heartbeat on the
+wire. `MANUAL_BY_NODE` folds to `MANUAL_BY_TOPIC`, as it already did in
+`make_dds_qos`; Cyclone has no BY_NODE.
+
+Two measurements behind that, both against the pinned 0.10.5:
+
+* The writer's lease is registered at creation for any non-AUTOMATIC
+  kind with a finite duration, independent of whether a reader ever
+  matched, and its expiry raises `LIVELINESS_LOST` on the writer
+  itself. So `tests/assert_liveliness.cpp` can provoke the whole thing
+  with no peer: a 500 ms lease held open by assertions every 100 ms
+  (no event), then left alone (event). Stubbing the implementation to
+  return OK without touching the writer makes it fail at 500 ms, which
+  is how we know the test is about the lease and not about the return
+  code.
+* Cyclone 0.10.5's own writer branch leaks on its failure paths — a
+  failed `dds_entity_lock` returns with the entity pinned, a failed
+  `write_hb_liveliness` with it pinned AND locked. That is vendored
+  code on its own patch line, so what we do here is narrower: never
+  make the call for a kind it cannot help.
 
 ## Service request-id correlation — done (Phase 117.7.B)
 

@@ -181,6 +181,11 @@ rmw_ret_t publisher_create(const rmw_node_t* node,
 rmw_ret_t           publisher_destroy(rmw_publisher_t *publisher);
 rmw_ret_t publisher_publish_raw(const rmw_publisher_t *publisher,
                                      rmw_byte_span_t payload);
+/** Issue 1231 — manual liveliness assertion. `dds_assert_liveliness` on the
+ *  writer for a MANUAL_BY_TOPIC / MANUAL_BY_NODE publisher; the ABI's
+ *  documented no-op (`NROS_RMW_RET_OK`) for every other kind. The rationale,
+ *  and what was measured in the pinned 0.10.5, is at the definition. */
+rmw_ret_t publisher_assert_liveliness(const rmw_publisher_t *publisher);
 
 /* ---- subscriber.cpp ---- */
 rmw_ret_t subscription_create(const rmw_node_t* node,

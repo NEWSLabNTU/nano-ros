@@ -36,7 +36,6 @@ docs/issues/1092-rmw-shape-gate-licenses-deviation-without-pinning-it.md:9999
 docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
 docs/issues/1163-compile-smoke-checks-nros-c-under-default-features-only.md:1080
 docs/issues/1186-executor-backing-latch-test-races-siblings.md:0417
-docs/issues/1231-cyclone-assert-publisher-liveliness-null.md:1164
 docs/roadmap/phase-428-api-porting-principle-sweep.md:1099
 docs/roadmap/phase-432-codegen-one-producer-many-packs.md:1080
 just/check/docs.just:1110
