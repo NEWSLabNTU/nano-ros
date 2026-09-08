@@ -192,6 +192,49 @@ def scan():
     return bad
 
 
+def check_baseline_shape(lines):
+    """A comment may not follow a data row. Returns an error string, or None.
+
+    The baseline's rows are a set and the checker ignores comments entirely, so
+    NOTHING about the gate's verdict depends on their order — which is exactly
+    why the file can be destroyed without any lane noticing. It happened: a
+    conflict resolution ran the whole file through `sort`, and `main` carried a
+    baseline whose first seven lines were seven bare `#` and whose CLASSIFIED
+    block was interleaved among the rows it classifies. Every gate stayed green,
+    because the content that was lost is the content no gate reads.
+
+    That content is the file's entire value. Its rows are `<path>:<id>` and say
+    nothing about WHY; the header is where an IN-FLIGHT citation is told apart
+    from a deliberate NEGATION (issue 9999, whose control issue 1092 would be
+    destroyed by filing it) and from an id reserved but never written (0417,
+    1080). Without it the next reader cannot tell which lines are debt.
+
+    The rule is the weakest one that catches a sort: comments come first. It
+    permits any header a person writes and refuses the shape no person writes.
+    """
+    first_row = next((i for i, l in enumerate(lines)
+                      if l.strip() and not l.startswith("#")), None)
+    if first_row is None:
+        return None
+    late = [i for i, l in enumerate(lines[first_row:], first_row)
+            if l.startswith("#")]
+    if not late:
+        return None
+    return (
+        "check-prose-issue-refs: the baseline's comments are INTERLEAVED with its "
+        "rows.\n"
+        "  %d comment line(s) appear after the first row (line %d), which is the\n"
+        "  shape a `sort` of the whole file leaves behind — see line %d.\n"
+        "  Nothing about this gate's verdict depends on comment order, so this\n"
+        "  cannot be caught by the rows being wrong: the header is the part that\n"
+        "  says which rows are debt and which are deliberate, and it is gone.\n"
+        "  Restore the header from git history, and do not `sort` the whole\n"
+        "  file again. `--write-baseline` is safe: it keeps the header and\n"
+        "  rewrites only the rows.\n"
+        % (len(late), first_row + 1, late[0] + 1)
+    )
+
+
 def load_baseline():
     if not os.path.exists(BASELINE):
         raise SystemExit(
@@ -200,25 +243,61 @@ def load_baseline():
             "  Regenerate deliberately with --write-baseline."
         )
     with open(BASELINE, encoding="utf8") as fh:
-        return {l.strip() for l in fh if l.strip() and not l.startswith("#")}
+        lines = fh.read().split("\n")
+    bad_shape = check_baseline_shape(lines)
+    if bad_shape:
+        raise SystemExit(bad_shape)
+    return {l.strip() for l in lines if l.strip() and not l.startswith("#")}
+
+
+DEFAULT_HEADER = (
+    "# Prose references to an issue id with no file on disk.\n"
+    "#\n"
+    "# A RATCHET, not an allowlist: this file may only shrink. Each row is\n"
+    "# `<path>:<id>`. The legitimate reason to be here is an IN-FLIGHT issue —\n"
+    "# the citing doc is on main, its issue file is in another open PR — where\n"
+    "# deleting the correct citation would be the wrong fix.\n"
+    "#\n"
+    "# Regenerate: python3 scripts/check-prose-issue-refs.py --write-baseline\n"
+    "# — which KEEPS this header and rewrites only the rows below it. Never\n"
+    "# `sort` the file: the rows are a set and sorting them is harmless, but it\n"
+    "# takes the header apart line by line and no gate reads comments.\n"
+)
+
+
+def existing_header():
+    """The comment block at the top of the current file, if there is one.
+
+    Regenerating used to REPLACE the header with the default, which silently
+    deleted whatever classification a person had written — the same content a
+    stray `sort` scrambles, lost the other way. The rows are derived and the
+    header is authored, so only the rows are rewritten.
+    """
+    try:
+        with open(BASELINE, encoding="utf8") as fh:
+            lines = fh.read().split("\n")
+    except OSError:
+        return None
+    head = []
+    for line in lines:
+        if line.startswith("#") or not line.strip():
+            head.append(line)
+        else:
+            break
+    while head and not head[-1].strip():
+        head.pop()
+    return "\n".join(head) + "\n" if head else None
 
 
 def write_baseline(bad):
     os.makedirs(os.path.dirname(BASELINE), exist_ok=True)
+    header = existing_header() or DEFAULT_HEADER
     with open(BASELINE, "w", encoding="utf8") as fh:
-        fh.write(
-            "# Prose references to an issue id with no file on disk.\n"
-            "#\n"
-            "# A RATCHET, not an allowlist: this file may only shrink. Each row is\n"
-            "# `<path>:<id>`. The legitimate reason to be here is an IN-FLIGHT issue —\n"
-            "# the citing doc is on main, its issue file is in another open PR — where\n"
-            "# deleting the correct citation would be the wrong fix.\n"
-            "#\n"
-            "# Regenerate: python3 scripts/check-prose-issue-refs.py --write-baseline\n"
-        )
+        fh.write(header)
         for row in sorted(bad):
             fh.write(row + "\n")
-    print(f"wrote {BASELINE} — {len(bad)} known dangling reference(s)")
+    kept = "kept the existing header" if existing_header() else "wrote the default header"
+    print(f"wrote {BASELINE} — {len(bad)} known dangling reference(s), {kept}")
 
 
 def self_test():
@@ -240,6 +319,28 @@ def self_test():
     # A bare number is NOT a reference — this is what keeps the gate quiet.
     case("bare number ignored", "port 7447 and 0640 bytes", set())
     case("word boundary", "issue 09755 is not an id", set())
+
+    # The shape rule's own negative control. A check whose failure path is never
+    # exercised is the class this gate's own baseline was destroyed by: green
+    # either way, so nobody notices it stopped answering.
+    shape_cases = [
+        ("a header then rows passes",
+         ["# why", "#   0417  reserved", "a.md:0417", "b.md:1080"], False),
+        ("a sorted file fails",
+         ["#", "#   0417  reserved", "a.md:0417", "# why", "b.md:1080"], True),
+        ("rows with no header at all passes",
+         ["a.md:0417"], False),
+        ("comments only passes",
+         ["# just a header"], False),
+        ("a trailing blank line is not a row",
+         ["# why", "a.md:0417", ""], False),
+    ]
+    for name, lines, want_fail in shape_cases:
+        got_fail = check_baseline_shape(lines) is not None
+        if got_fail != want_fail:
+            print(f"  [FAIL] shape: {name}: fails={got_fail}, want {want_fail}",
+                  file=sys.stderr)
+            fails += 1
 
     if fails:
         print(f"check-prose-issue-refs: self-test FAILED ({fails} case(s))", file=sys.stderr)
