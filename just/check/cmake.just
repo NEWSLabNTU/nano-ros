@@ -162,6 +162,26 @@ cpp-fmt:
 cpp-freestanding-includes:
     @bash scripts/check-cpp-freestanding-includes.sh
 
+# phase-417 / issue 1225 — a capability probe may gate a METHOD, never `sizeof`.
+# MEASURED, not grepped: one `sizeof` probe TU per capability configuration over
+# every public type the umbrella exports, DERIVED from a clang AST rather than
+# from an authored list of three names that missed three real violators.
+#
+# WHY THE FAST LANE. It used to run inside `check-cpp`, which is `build-serial`,
+# which no merge-gating event reaches — so the gate that exists to make a silent
+# ABI split impossible gated nothing. It is affordable here now and it was not
+# before: measured 9.4 s wall on a 24-core host against 65 s for the five-type
+# version, because all 90 subjects share ONE compile per arm and the nine arms
+# run concurrently. Nothing here is built — `-DNROS_PLATFORM_NUTTX` selects the
+# COMMITTED sizes header, the same choice `check-api-parity` makes — so it holds
+# to the buildless, source-free contract, and it needs the ci-base image's
+# `clang` for the AST, which that image installs for `check-api-parity` already
+# and which is cheaper here (9.4 s against 28.6 s). In the -P80 fan-out it
+# falls outside the ten slowest gates, so it does not become the lane's floor.
+[private]
+cpp-capability-layout:
+    @python3 scripts/check-cpp-capability-layout.py
+
 # RFC-0088 D5 / phase-421 W6 — `NROS_SERIALIZATION_FORMAT{,_ID}` names the
 # format of THE image's single backend. A bridge image links two and has no
 # single answer, so a bridge-linked TU referencing the macro is a wrong answer

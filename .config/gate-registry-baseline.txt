@@ -71,6 +71,7 @@ config-surface
 core-crates-are-no-std
 core-only-predicate
 cpp
+cpp-capability-layout
 cpp-ffi-error-mapping
 cpp-fmt
 cpp-freestanding-includes
