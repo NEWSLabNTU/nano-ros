@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(service_client_pkg VERSION 0.1.0 LANGUAGES C CXX)
+project(service_client_pkg VERSION 0.1.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)

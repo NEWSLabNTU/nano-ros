@@ -10,7 +10,7 @@
 */
 
 #include <nros/boot_config.h>  /* nros_baked_boot_config + nros_boot_config_node_name */
-#include <nros/main.h>         /* nros_board_native_run_components_named */
+#include <nros/main.h>         /* the board's C-ABI run_components / run_tiers */
 #include <nros/nros_cpp_ffi.h> /* nros_cpp_node_t + nros_cpp_node_create + ret codes */
 
 /* C component factory + configure seam (NROS_C_COMPONENT). The node's
@@ -67,3 +67,4 @@ int main(int argc, char** argv) {
     (void)argv;
     return nros_board_native_run_components_named(nros_boot_config_node_name(&NROS_BOOT_CONFIG), &__nros_entry_setup);
 }
+
