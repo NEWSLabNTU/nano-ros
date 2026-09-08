@@ -1060,6 +1060,44 @@ size_t nros_platform_wake_storage_align(void) {
     return __alignof__(struct k_sem);
 }
 
+/* phase-436 W7 — a `ParkUntilFn` for Zephyr, at MICROSECOND resolution.
+ *
+ * `nros_platform_wake_wait_ms` above already does this job, but its exported
+ * signature is `uint32_t timeout_ms`, so the ABI — not the kernel — is what
+ * floors every wait at a millisecond. `k_sem_take` takes a generic
+ * `k_timeout_t` and `K_USEC` is as available as `K_MSEC`; this exists to stop
+ * throwing that resolution away (issue 1242).
+ *
+ * `w` MUST be the executor's own wake object (`nros_cpp_executor_wake_handle`),
+ * not a fresh semaphore. The backend's listener signals THAT one, so a park on
+ * anything else cannot be broken by data arriving — and `spin_once` drops its
+ * transport drain to non-blocking once a port has parked, which would turn an
+ * unbreakable park into a full deadline slept with data already waiting.
+ * That is worse than not parking at all.
+ *
+ * Contract, matching `ParkUntilFn`: 0 = signalled, 1 = deadline expired,
+ * -1 = cannot park. */
+int8_t nros_platform_wake_park_until_us(void *w, uint64_t deadline_us) {
+    if (w == NULL) return -1;
+    k_timeout_t to = (deadline_us == 0u) ? K_NO_WAIT : K_USEC((int64_t) deadline_us);
+    int rc = k_sem_take((struct k_sem *) w, to);
+    if (rc == 0)       return 0;
+    if (rc == -EAGAIN) return 1;
+    return -1;
+}
+
+/* The finest park the function above can actually express, in microseconds.
+ *
+ * The kernel rounds a `K_USEC` request up to whole ticks, so the tick period
+ * is the real floor — NOT the millisecond the ABI signature suggests, and not
+ * a constant the executor can assume (issue 1242: a hardcoded 1 ms was wrong
+ * high on ThreadX and wrong low on POSIX). Rounded up, so a tick rate that
+ * does not divide a second is never reported finer than it is. */
+uint64_t nros_platform_wake_park_granularity_us(void) {
+    return (uint64_t) ((1000000 + CONFIG_SYS_CLOCK_TICKS_PER_SEC - 1)
+                       / CONFIG_SYS_CLOCK_TICKS_PER_SEC);
+}
+
 /* phase-359 W10 — opaque-storage sizing for `task`, the sibling of the wake
  * probes above. `task_init`'s contract says the implementor decides the size;
  * these let a caller ASK instead of hard-coding it (issue 0570's trap). */

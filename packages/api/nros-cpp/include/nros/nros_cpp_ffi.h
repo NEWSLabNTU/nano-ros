@@ -1519,6 +1519,62 @@ nros_cpp_ret_t nros_cpp_executor_set_active_groups(void *executor,
  * `tiers` must be a valid pointer to `n_tiers` [`NativeTierSpecC`] entries,
  * valid for the duration of the call. `session_name` is NULL or a valid
  * null-terminated string.
+ * phase-436 W7.a — register a platform deadline source on this executor.
+ *
+ * The seam existed only as a Rust method, so the board entries that go through
+ * this ABI — FreeRTOS, NuttX and the C arm of Zephyr, which is the arm the
+ * Zephyr FVP lane takes — could not reach it at all. They hold an opaque
+ * handle, not a typed `Executor`.
+ *
+ * `next` returns microseconds FROM NOW until this source next needs the
+ * executor; `u64::MAX` means nothing pending, which is how an asynchronous
+ * source spells itself while breaking the park by signalling instead.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL. `next` and
+ * `ctx` must outlive the executor.
+ */
+nros_cpp_ret_t nros_cpp_executor_register_wake_source(void *handle,
+                                                      uint64_t (*next)(void*),
+                                                      void *ctx);
+
+/**
+ * phase-436 W7.a — the wake object a port's park primitive must wait on.
+ *
+ * Returns NULL when this build has no wake primitive linked.
+ *
+ * A `ParkUntilFn` that waits on its own fresh object cannot be broken by the
+ * backend's listener, because the listener signals THIS one — and installing
+ * such a park makes latency WORSE, since `spin_once` drops the transport
+ * drain to non-blocking once a port has parked. Pass this as the park's
+ * `ctx`.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL.
+ */
+void *nros_cpp_executor_wake_handle(void *handle);
+
+/**
+ * phase-436 W7.a — install THE primitive this executor blocks on.
+ *
+ * Singular by nature: only one thing can actually wait. `granularity_us` is
+ * the finest park the primitive can express, and the port states it because
+ * only the port knows — an RTOS tick is a coarser limit than the ABI
+ * signature, a timespec primitive a finer one (issue 1242).
+ *
+ * `park` returns 0 when woken by an event, 1 when the deadline expired, and a
+ * negative value when it cannot park.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL. `park` and
+ * `ctx` must outlive the executor.
+ */
+nros_cpp_ret_t nros_cpp_executor_set_park_primitive(void *handle,
+                                                    int8_t (*park)(void*, uint64_t),
+                                                    void *ctx,
+                                                    uint64_t granularity_us);
+
+/**
  * Declare how often this executor's loop intends to come round, in
  * microseconds. `0` (the default) falls back to the `spin_once` timeout.
  *
