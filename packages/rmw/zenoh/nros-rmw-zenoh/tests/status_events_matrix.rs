@@ -103,12 +103,9 @@ fn zenoh_event_matrix() {
     // tier 1 rewrites [SKIPPED] panics to <skipped> and passes, while a real
     // failure still fails.
     let Some(mut sess) = open_session() else {
-        nros_tests::skip!(
-            "zenohd unavailable (looked at the nros setup store and PATH) — the \
-             vendored `build/zenohd` is gone (phase-362 W4, RFC-0075): the router \
-             now comes from ROS, so install `ros-<distro>-rmw-zenoh-cpp` or set \
-             NROS_RMW_ZENOHD"
-        );
+        let why = nros_tests::zenohd_unavailable_reason()
+            .unwrap_or_else(|| "the router resolved but the session did not open".to_string());
+        nros_tests::skip!("{why}");
     };
 
     // ---- Subscriber-side mask ----

@@ -48,3 +48,20 @@ no `rmw_zenoh_cpp/rmw_zenohd` found
 # it deselects as `lane` (nobody acts on those) instead of skipping as a
 # capability here. Issue 0393 is the history.
 second session refused — shim built with ZPICO_MAX_SESSIONS=1
+
+# The SAME missing thing as the `rmw_zenoh_cpp/rmw_zenohd` entry, reached
+# through the other resolver and therefore spelled differently. `nros_tests::zenohd_unavailable_reason`
+# (issue 0982) is what `require_zenohd` consults and what the three
+# `nros-rmw-zenoh` tests now report; `fixtures::zenohd_router` has its own text,
+# which is that other entry. Two resolvers, one absent router, two spellings — a
+# pattern narrow enough to name one missing thing cannot cover both, so both are
+# declared rather than widening either into an allowlist.
+#
+# On a GitHub-hosted runner there is no ROS install at all, so this is the
+# ordinary outcome there rather than a provisioning gap in a lane that could
+# have met it.
+#
+# RETIRES WHEN: the two resolvers share one reason string — at which point the
+# two entries collapse into it — or the merge-queue lane provisions a router.
+# Removing either alone re-opens the hole for the other's callers.
+no ROS zenoh router

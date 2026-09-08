@@ -107,8 +107,11 @@ fn an_over_long_property_value_is_refused_not_clipped() {
 /// nothing.
 #[test]
 fn keys_the_hand_written_map_lacked_are_accepted() {
-    if !nros_tests::fixtures::require_zenohd() {
-        nros_tests::skip!("zenohd not found — cannot open a session to observe acceptance");
+    if let Some(why) = nros_tests::zenohd_unavailable_reason() {
+        // The RESOLVER's reason, not a restatement of it (issue 0982): a skip
+        // that invents its own wording gives one missing thing several names,
+        // and `check-skip-budget`'s baseline is keyed on that text.
+        nros_tests::skip!("{why}");
     }
     let router = nros_tests::fixtures::ZenohRouter::start_unique().expect("start zenohd");
     let locator = router.locator();

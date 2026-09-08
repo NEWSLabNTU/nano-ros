@@ -32,8 +32,8 @@ use std::{thread, time::Duration};
 /// Returns `None` when zenohd is absent so the test can skip rather than fail
 /// on a machine that never provisioned it.
 fn router() -> Option<ZenohRouter> {
-    if !nros_tests::fixtures::require_zenohd() {
-        eprintln!("[SKIP] zenohd not found — run `just build-zenohd`");
+    if let Some(why) = nros_tests::zenohd_unavailable_reason() {
+        eprintln!("[SKIP] {why}");
         return None;
     }
     Some(ZenohRouter::start_unique().expect("failed to start zenohd"))
@@ -669,8 +669,8 @@ fn default_locator_port() -> u16 {
 /// stomping) if something else on this host already holds it.
 #[test]
 fn client_session_with_absent_locator_dials_backend_default() {
-    if !nros_tests::fixtures::require_zenohd() {
-        nros_tests::skip!("zenohd not found — run `just build-zenohd`");
+    if let Some(why) = nros_tests::zenohd_unavailable_reason() {
+        nros_tests::skip!("{why}");
     }
 
     let port = default_locator_port();
