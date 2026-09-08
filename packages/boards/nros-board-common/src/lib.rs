@@ -29,6 +29,7 @@
 //! nros-board-common = { path = "..." }  # default features include build-helpers
 //! ```
 
+#![forbid(unsafe_code)]
 #![cfg_attr(not(feature = "build-helpers"), no_std)]
 
 // Phase 313 W6 (#0243) — the `board_init` module (the legacy `Board` / `BoardInit`

@@ -23,6 +23,8 @@
 //! name — injecting unconditionally would silently discard a user's own
 //! settings.
 
+#![forbid(unsafe_code)]
+
 /// A cargo profile setting, as it appears both in `[profile.<name>]` TOML and
 /// in a `CARGO_PROFILE_<NAME>_<KEY>` environment variable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

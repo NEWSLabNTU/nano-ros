@@ -53,6 +53,8 @@
 //! `_Static_assert(sizeof(ULONG) == 4, …)` so a lost override fails the build
 //! instead of the network.
 
+#![forbid(unsafe_code)]
+
 use std::path::PathBuf;
 
 /// Root of the vendored port tree: `port/`, holding `inc/` and `src/`.

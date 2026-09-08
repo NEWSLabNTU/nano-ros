@@ -9,5 +9,7 @@
 //! `nros-board-common` re-exports both modules, so consumers spelling
 //! `nros_board_common::platform_config::…` keep working unchanged.
 
+#![forbid(unsafe_code)]
+
 pub mod manifest;
 pub mod platform_config;

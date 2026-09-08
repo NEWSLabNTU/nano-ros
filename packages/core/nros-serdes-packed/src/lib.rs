@@ -54,6 +54,7 @@
 //! to transcode from. The walk refuses those by name
 //! (`SchemaError::Unsupported`); no message in `packages/interfaces/*` has one.
 
+#![forbid(unsafe_code)]
 #![no_std]
 
 use nros_serdes::{

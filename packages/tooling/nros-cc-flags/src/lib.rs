@@ -61,6 +61,8 @@
 //! not a supported configuration: a tree that needs it is a tree with a latent
 //! miscompile.
 
+#![forbid(unsafe_code)]
+
 /// Diagnostics that must be errors in every nano-ros C compile.
 pub const STRICT_DECL_FLAGS: &[&str] = &[
     "-Werror=implicit-function-declaration",
