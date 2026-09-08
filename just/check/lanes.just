@@ -860,8 +860,15 @@ cpp: cpp-fmt
     # other use in this recipe, and issue 0726.
     # shellcheck source=scripts/lib/grep-q.sh
     source scripts/lib/grep-q.sh
-    echo "  - one node type: hosted shape + both create families (c++14)"
-    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti \
+    # `-DNROS_CPP_STD=1` since phase-438 W2: this probe is ABOUT the hosted
+    # shape (the `shared_ptr` and `std::string` families, and the parameter
+    # facade behind `NROS_CPP_NODE_HOSTED`), and W2 made that shape a REQUEST
+    # rather than something a hosted compiler is handed. Without the flag the TU
+    # stops compiling at `declare_parameter`, which is W2 working, not a
+    # regression. The freestanding half has its own probe below and correctly
+    # takes no flag.
+    echo "  - one node type: hosted shape + both create families (c++14, -DNROS_CPP_STD)"
+    c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -DNROS_CPP_STD=1 \
         -Itarget/nros-cpp-generated \
         -Itarget/nros-c-generated \
         -Ipackages/api/nros-cpp/include \
@@ -971,8 +978,13 @@ cpp: cpp-fmt
     # is empty for any ported node holding a timer. Deleting it outright is what
     # turned that gate red; this probe is what stops the name regrowing a base
     # underneath it instead.
-    echo "  - rclcpp::TimerBase is a NAME for the flat rclcpp::Timer, not a hierarchy (c++17)"
-    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+    # `-DNROS_CPP_STD=1` since phase-438 W2, same reason as the ported-surface
+    # probes below: `rclcpp::TimerBase` is a name on the PORTING surface (the
+    # `shared_ptr`-returning `create_wall_timer(period, cb)` hands it out), and
+    # W2 made that surface a request. Without the flag this TU fails on the
+    # chrono overload, which says nothing about the hierarchy it probes.
+    echo "  - rclcpp::TimerBase is a NAME for the flat rclcpp::Timer, not a hierarchy (c++17, -DNROS_CPP_STD)"
+    c++ -fsyntax-only -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
         -Itarget/nros-cpp-generated \
         -Itarget/nros-c-generated \
         -Ipackages/api/nros-cpp/include \
