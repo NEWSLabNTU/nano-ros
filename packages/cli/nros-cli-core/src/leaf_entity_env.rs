@@ -331,6 +331,11 @@ fn leaf_name(leaf: &Path) -> String {
 pub const DERIVED_ENV_KEYS: &[&str] = &[
     "NROS_EXECUTOR_ACTION_CLIENTS",
     "NROS_EXECUTOR_MAX_CBS",
+    // issue 1233 — the node table, on the leaf road for the first time. Its
+    // ceiling failure names the knob (`NodeError::NodeTableFull`), which is the
+    // property phase-412 required before deriving it at all, and that property
+    // belongs to the failure rather than to the road it travelled.
+    "NROS_EXECUTOR_MAX_NODES",
     "NROS_RMW_SUBSCRIBER_SLOTS",
     "ZPICO_MAX_PUBLISHERS",
     "ZPICO_MAX_SUBSCRIBERS",
@@ -354,6 +359,18 @@ pub const DERIVED_PAYLOAD_ENV_KEYS: &[&str] = &[
     "ZPICO_MAX_LARGE_SUBSCRIBERS",
     "ZPICO_SUBSCRIBER_LARGE_SIZE",
 ];
+
+/// Issue 1233 — the CLOSURE-basis key, which is a THIRD group for a third
+/// reason.
+///
+/// [`DERIVED_PAYLOAD_ENV_KEYS`] is derived over what the leaf SUBSCRIBES to;
+/// this one may not be. `NROS_SUBSCRIPTION_BUFFER_SIZE` is one global `RX_BUF`
+/// for every entity and is also `DEFAULT_TX_BUF`, so a type the leaf only
+/// PUBLISHES still has to fit — the same rule `NanoRosMessageBounds.cmake`
+/// states at the derivation ("BASIS `closure`, always. Narrowing this one is
+/// the under-derivation."). It therefore refuses on inputs the payload join
+/// accepts, and would be unreadable inside either list above.
+pub const DERIVED_CLOSURE_ENV_KEYS: &[&str] = &["NROS_SUBSCRIPTION_BUFFER_SIZE"];
 
 /// `ZPICO_MAX_QUERYABLES` is never stated here as a COUNT: the consumer
 /// derives it from the FACTS this road carries (RFC-0098 D7, phase-445 W1).
@@ -383,9 +400,10 @@ const QUERYABLES_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_QUERYABLES";
 pub fn render_env_sidecar(
     knobs: &crate::entity_inventory::DerivedEntityKnobs,
     payload: &crate::leaf_payload_classes::PayloadClasses,
+    take: &crate::leaf_take_buffer::TakeBuffer,
     source: &str,
 ) -> String {
-    render_env_sidecar_with_facts(knobs, payload, source, &BTreeMap::new())
+    render_env_sidecar_with_facts(knobs, payload, take, source, &BTreeMap::new())
 }
 
 /// [`render_env_sidecar`], plus the image's `NROS_DECLARED_*` facts as `[env]`
@@ -394,6 +412,7 @@ pub fn render_env_sidecar(
 pub fn render_env_sidecar_with_facts(
     knobs: &crate::entity_inventory::DerivedEntityKnobs,
     payload: &crate::leaf_payload_classes::PayloadClasses,
+    take: &crate::leaf_take_buffer::TakeBuffer,
     source: &str,
     facts: &BTreeMap<String, String>,
 ) -> String {
@@ -442,6 +461,11 @@ pub fn render_env_sidecar_with_facts(
     let vals: BTreeMap<&str, usize> = BTreeMap::from([
         ("NROS_EXECUTOR_ACTION_CLIENTS", knobs.heavy_slots),
         ("NROS_EXECUTOR_MAX_CBS", knobs.max_cbs),
+        // issue 1233 — one node per declared component, unfloored like the
+        // three counts around it: the floor belongs to the consumer that names
+        // the knob, and this one sizes Rust tables where a short count is a
+        // named `NodeTableFull`, not a `#error`.
+        ("NROS_EXECUTOR_MAX_NODES", knobs.max_nodes),
         ("NROS_RMW_SUBSCRIBER_SLOTS", knobs.max_subscribers),
         ("ZPICO_MAX_PUBLISHERS", floor(knobs.max_publishers)),
         ("ZPICO_MAX_SUBSCRIBERS", floor(knobs.max_subscribers)),
@@ -501,6 +525,33 @@ pub fn render_env_sidecar_with_facts(
             s.push_str("\n# Payload classes NOT derived (issue 1125); the crate defaults, which\n");
             s.push_str("# are LARGE rather than wrong, stand. A pool short of what this leaf\n");
             s.push_str("# receives is a SubscriberCreationFailed, not a smaller pool.\n");
+            for line in reason.lines() {
+                s.push_str(&format!("#   {line}\n"));
+            }
+        }
+    }
+
+    // Issue 1233 — the take buffer, over the linked CLOSURE and not over the
+    // subscribed set. Appended to the same `[env]` table for the same reason
+    // the payload classes are: cargo merges nothing across tables.
+    match take {
+        crate::leaf_take_buffer::TakeBuffer::Derived(rx) => {
+            s.push_str(
+                "\n# The runtime take buffer, derived over every type in this leaf's\n\
+                 # `generated/` CLOSURE (issue 1233) -- NOT over what it subscribes to.\n\
+                 # `RX_BUF` is one global size for every entity and aliases DEFAULT_TX_BUF,\n\
+                 # so a type this leaf only PUBLISHES still has to fit. It also feeds\n\
+                 # `nros-node`'s arena model, so the arena moves with it.\n",
+            );
+            s.push_str(&format!("NROS_SUBSCRIPTION_BUFFER_SIZE = \"{rx}\"\n"));
+        }
+        crate::leaf_take_buffer::TakeBuffer::Refused { reason } => {
+            s.push_str(
+                "\n# The take buffer is NOT derived (issue 1233); the crate default stands.\n\
+                 # Refusing keeps the size this leaf already had -- a maximum computed\n\
+                 # from a partial closure can be SMALLER than a type the image sends,\n\
+                 # which is a runtime `BufferTooSmall` rather than a build error.\n",
+            );
             for line in reason.lines() {
                 s.push_str(&format!("#   {line}\n"));
             }
@@ -724,7 +775,20 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
                     leaf.display()
                 );
             }
-            let body = render_env_sidecar_with_facts(&knobs, &payload, &inv.source, &facts);
+            // Issue 1233 — a THIRD basis: the take buffer is derived over the
+            // leaf's whole `generated/` closure, so it refuses on inputs the
+            // payload join accepts and accepts inputs it refuses (a leaf that
+            // subscribes to nothing still links types it publishes).
+            let take = crate::leaf_take_buffer::take_buffer_for_leaf(leaf);
+            if let crate::leaf_take_buffer::TakeBuffer::Refused { reason } = &take {
+                eprintln!(
+                    "{who}: {}: take buffer not derived, so `RX_BUF` keeps the crate \
+                     default (issue 1233): {reason}",
+                    leaf.display()
+                );
+            }
+            let body =
+                render_env_sidecar_with_facts(&knobs, &payload, &take, &inv.source, &facts);
             let env = env_rows(&body);
             LeafEnv {
                 sidecar: Some(body),
@@ -763,6 +827,16 @@ pub fn env_rows(body: &str) -> BTreeMap<String, String> {
 mod tests {
     use super::*;
     use crate::entity_inventory::Derivation;
+
+    /// The take buffer these tests are not about. A REFUSAL rather than a
+    /// derived number: it leaves the rendered `[env]` with no
+    /// `NROS_SUBSCRIPTION_BUFFER_SIZE` row, so a test asserting on the budget
+    /// keys sees exactly what it saw before issue 1233.
+    fn refused_take() -> crate::leaf_take_buffer::TakeBuffer {
+        crate::leaf_take_buffer::TakeBuffer::Refused {
+            reason: "not under test".into(),
+        }
+    }
 
     const TALKER: &str = r#"{
       "version": 1, "package": "native_talker", "component": "talker",
@@ -901,7 +975,7 @@ nros = { version = "*", features = ["std", "param-services"] }
             ("NROS_DECLARED_NODES", "1"),
             ("NROS_DECLARED_SERVICE_SERVERS", "0"),
         ]);
-        let out = render_env_sidecar_with_facts(&k, &payload, "t", &f);
+        let out = render_env_sidecar_with_facts(&k, &payload, &refused_take(), "t", &f);
         let rows = env_rows(&out);
         assert_eq!(rows["NROS_DECLARED_SERVICE_SERVERS"], "0");
         assert_eq!(rows["NROS_DECLARED_INFRA_QUERYABLES"], "none");
@@ -1002,7 +1076,7 @@ nros = { version = "*", features = ["std", "param-services"] }
             panic!("expected a derivation from a stated declaration");
         };
         let payload = crate::leaf_payload_classes::PayloadClasses::Derived(Default::default());
-        let out = render_env_sidecar(&k, &payload, "test");
+        let out = render_env_sidecar(&k, &payload, &refused_take(), "test");
         // Whole rows, matched as text through `contains`, NOT through a local
         // `row(NAME)` helper: `config-knob-census` reads this file as a
         // build-time knob source and refuses an unknown callee taking a knob
@@ -1136,7 +1210,7 @@ nros = { version = "*", features = ["std", "param-services"] }
             panic!()
         };
         let payload = crate::leaf_payload_classes::PayloadClasses::Derived(Default::default());
-        let out = render_env_sidecar(&k, &payload, "metadata/talker.json");
+        let out = render_env_sidecar(&k, &payload, &refused_take(), "metadata/talker.json");
         assert!(out.contains("[env]"));
         for key in DERIVED_ENV_KEYS {
             assert!(out.contains(key), "sidecar omits {key}:\n{out}");
@@ -1175,7 +1249,7 @@ nros = { version = "*", features = ["std", "param-services"] }
             panic!()
         };
         let payload = crate::leaf_payload_classes::PayloadClasses::Derived(Default::default());
-        let out = render_env_sidecar(&k, &payload, "metadata/talker.json");
+        let out = render_env_sidecar(&k, &payload, &refused_take(), "metadata/talker.json");
         assert!(
             out.contains("ZPICO_MAX_LARGE_SUBSCRIBERS = \"0\""),
             "the derived zero must be STATED, not left to the crate default:\n{out}"
@@ -1212,7 +1286,7 @@ nros = { version = "*", features = ["std", "param-services"] }
                 subscribed: 3,
             },
         );
-        let out = render_env_sidecar(&k, &payload, "metadata/talker.json");
+        let out = render_env_sidecar(&k, &payload, &refused_take(), "metadata/talker.json");
         assert!(out.contains("ZPICO_MAX_LARGE_SUBSCRIBERS = \"2\""), "{out}");
         assert!(
             out.contains("ZPICO_SUBSCRIBER_LARGE_SIZE = \"40000\""),
@@ -1242,7 +1316,7 @@ nros = { version = "*", features = ["std", "param-services"] }
         let payload = crate::leaf_payload_classes::PayloadClasses::Refused {
             reason: "std_msgs/msg/String (unbounded)".into(),
         };
-        let out = render_env_sidecar(&k, &payload, "metadata/talker.json");
+        let out = render_env_sidecar(&k, &payload, &refused_take(), "metadata/talker.json");
         for key in DERIVED_PAYLOAD_ENV_KEYS {
             assert!(
                 !out.lines().any(|l| l.starts_with(key)),

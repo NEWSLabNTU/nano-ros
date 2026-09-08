@@ -207,16 +207,8 @@ FACT_DISPOSITION = {
     },
     "NROS_DERIVED_EXECUTOR_MAX_NODES": {
         "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_NODES",),
-        "sidecar": OpenGap(
-            "1233",
-            "on the resolver road only. Nothing in the tree says why a cargo "
-            "leaf should not size its node table from the same count -- no "
-            "comment, no issue, no `NOT_DERIVED_*` constant. Recorded as "
-            "unexplained rather than justified"),
-        "declared": OpenGap(
-            "1233",
-            "same gap on the declared road: a CMake image with no Rust leaf "
-            "takes the crate default for a number its own configure computed"),
+        "sidecar": ("NROS_EXECUTOR_MAX_NODES",),
+        "declared": ("NROS_DECLARED_EXECUTOR_MAX_NODES",),
     },
     # ---- the message-bound inventory's sizes -----------------------------
     "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE": {
@@ -236,17 +228,8 @@ FACT_DISPOSITION = {
     },
     "NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE": {
         "resolver": ("NROS_RESOLVED_NROS_SUBSCRIPTION_BUFFER_SIZE",),
-        "sidecar": OpenGap(
-            "1233",
-            "the take buffer is on the resolver road only, and the tree gives "
-            "no reason. It is derived over the linked CLOSURE, which a cargo "
-            "leaf's own graph does have -- so the usual `a leaf cannot see it` "
-            "argument is not obviously available here, and no comment makes it"),
-        "declared": OpenGap(
-            "1233",
-            "same gap on the declared road. Issue 1122 was exactly this shape "
-            "for the payload trio; this is the fourth size knob and it was "
-            "not swept in with them"),
+        "sidecar": ("NROS_SUBSCRIPTION_BUFFER_SIZE",),
+        "declared": ("NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE",),
     },
     # ---- provenance: published, carried by nothing, and that is correct ---
     "NROS_DERIVED_LARGEST_TYPE": {
@@ -430,7 +413,8 @@ def leaf_keys():
     """The cargo `[env]` keys the leaf sidecar writes -- the SIDECAR road."""
     leaf = (ROOT / LEAF_ENV).read_text(errors="replace")
     keys = set()
-    for const in ("DERIVED_ENV_KEYS", "DERIVED_PAYLOAD_ENV_KEYS"):
+    for const in ("DERIVED_ENV_KEYS", "DERIVED_PAYLOAD_ENV_KEYS",
+                  "DERIVED_CLOSURE_ENV_KEYS"):
         m = re.search(const + r"[^=]*=\s*&\[(.*?)\];", leaf, re.S)
         if m:
             keys |= set(re.findall(r'"([A-Z0-9_]+)"', m.group(1)))

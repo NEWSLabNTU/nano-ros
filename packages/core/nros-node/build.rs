@@ -168,7 +168,23 @@ fn main() {
     // (also 1024). If you change one, change the other — they share the
     // wire-format expectation. Both can be overridden independently via
     // their respective env vars.
-    let rx_buf_size = env_usize("NROS_SUBSCRIPTION_BUFFER_SIZE", 1024);
+    // issue 1233 — the DECLARED take buffer, when cmake measured one.
+    //
+    // The fourth size knob, and the one 1122 left behind when it swept the
+    // payload trio onto this road. Its guard is different and that is why: the
+    // classes need `BASIS subscribed`, while this one is published on the
+    // CLOSURE basis always, because `RX_BUF` is one global size for every
+    // entity and `DEFAULT_TX_BUF` aliases it — "narrowing this one is the
+    // under-derivation", as its producer says.
+    //
+    // So an absent variable means the join refused (some type in the closure
+    // carried no bound), and the crate default stands. A present one is an
+    // upper bound over every type the image could receive OR publish.
+    let rx_buf_size = env_usize_declared(
+        "NROS_SUBSCRIPTION_BUFFER_SIZE",
+        "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE",
+        1024,
+    );
     // phase-446 F3 -- the parameter-service buffer. A rung that STATES a size
     // (env, Kconfig, the board's executor rung) wins. Otherwise the contract's
     // declared parameters bound it -- finished in `parameter_services.rs`
@@ -187,7 +203,14 @@ fn main() {
     // pattern). Most apps run a single Node per Executor; bridge
     // nodes typically need 2 (ingress + egress). Default 4 leaves
     // headroom for multi-Node services with shared spin.
-    let max_nodes = env_usize("NROS_EXECUTOR_MAX_NODES", 4);
+    // issue 1233 — the DECLARED node count. One per component the image
+    // registers, and a short table is `NodeError::NodeTableFull`, which NAMES
+    // the knob — the property phase-412 required before deriving it at all.
+    let max_nodes = env_usize_declared(
+        "NROS_EXECUTOR_MAX_NODES",
+        "NROS_DECLARED_EXECUTOR_MAX_NODES",
+        4,
+    );
     // issue 0790 — shutdown-hook slots, PER PHASE: the executor keeps one table
     // this size for pre-shutdown hooks and a second for on-shutdown hooks.
     //
@@ -862,6 +885,10 @@ fn env_usize(name: &str, default: usize) -> usize {
 fn watch_declared_facts() {
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_CBS");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_ACTION_CLIENTS");
+    // issue 1233 — the node table and the take buffer, the two facts the
+    // declared road was still not carrying after 1199.
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_NODES");
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE");
 }
 
 fn env_usize_declared(name: &str, declared: &str, default: usize) -> usize {

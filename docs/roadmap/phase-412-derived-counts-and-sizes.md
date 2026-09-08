@@ -444,7 +444,7 @@ Measured over the 14 published facts before this item:
 | carried by a road and in NO registry | 2 | `NROS_DERIVED_EXECUTOR_ACTION_CLIENTS` (resolver AND sidecar), `NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE` (resolver) |
 | a fact whose SECOND resolved knob no registry named | 2 | `MAX_SUBSCRIBERS` -> `NROS_XRCE_MAX_SUBSCRIBERS`, `MAX_QUERYABLES` -> `NROS_XRCE_MAX_SERVICE_SERVERS` |
 | published, on no road, unrecorded | 3 | `LARGEST_TYPE`, `LARGEST_RX`, `LARGE_TYPES` — provenance, and correct, but reading identically to a wire nobody connected |
-| road-gaps with no reason anywhere in the tree | 4 | `EXECUTOR_MAX_NODES` and `SUBSCRIPTION_BUFFER_SIZE`, off both cargo roads — [issue 1233](../issues/1233-derived-fact-road-gaps.md) |
+| road-gaps with no reason anywhere in the tree | 4 | `EXECUTOR_MAX_NODES` and `SUBSCRIPTION_BUFFER_SIZE`, off both cargo roads — [issue 1233](../issues/archived/1233-derived-fact-road-gaps.md), all four CLOSED by delivery |
 
 **`DERIVED_PAIRS` was 1:1 and the road is not.** `nros_resolve_knobs()` makes
 thirteen `_nros_resolve_derivable_knob` calls over eleven facts. A 1:1 map can
