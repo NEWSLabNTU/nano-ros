@@ -46,10 +46,27 @@ jobs:
     defaults:
       run:
         shell: bash
+    # WHICH STAGE DID THIS RUN REACH? — issue 1158's third axis, applied here.
+    #
+    # This lane already discriminated "the run did not happen" from "a cell
+    # regressed", but ONLY inside `test-live-peer-regression`'s cell loop, by
+    # exit code (100 = nextest ran and failed; anything else = the run did not
+    # happen). Every step UPSTREAM of that loop reported as a flat lane
+    # `failure` — which is the exact ambiguity the loop was written to remove,
+    # one step above where the guard was put.
+    #
+    # Measured: run 34186427723 (2026-09-08) died in the fixture build and
+    # reached zero cells. `gh run list` said `failure`, indistinguishable from a
+    # recorded-passing cell having regressed — which is the one thing this lane
+    # exists to report.
+    outputs:
+      stage_label: ${{ steps.stage.outputs.label }}
+      reached_cells: ${{ steps.stage.outputs.reached_cells }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Build the nros CLI
+        id: cli
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
@@ -59,11 +76,20 @@ jobs:
           "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
 
       - name: Report what the ledger claims, before running anything
+        id: ledger
         run: |
           source ./activate.sh
           just interop-verdicts
 
-      - name: Build the fixtures those cells resolve
+      # NOT "the fixtures those CELLS resolve", which is what this said until
+      # 2026-09-09. `lane-stage.py` classifies a step by keyword, `cells` is the
+      # marker for the runtime stage, and the classifier takes the most specific
+      # stage first — so the old name made a FIXTURE BUILD failure report as
+      # "the cells ran and failed", i.e. as a live-peer regression. Run
+      # 34186427723 is exactly that failure. The self-test pins the old spelling
+      # as a misclassification so the rename cannot be undone by accident.
+      - name: Build the fixtures those rows resolve
+        id: fixtures
         run: |
           source ./activate.sh
           # Order is load-bearing: the CLI first (above), then anything that runs
@@ -75,6 +101,7 @@ jobs:
           bash scripts/build/fixtures-build.sh linux rust cyclonedds
 
       - name: Run the cells with a recorded PASS
+        id: cells
         run: |
           source ./activate.sh
           just native test-live-peer-regression
@@ -84,3 +111,53 @@ jobs:
         run: |
           source ./activate.sh
           just interop-verdicts || true
+
+      # `steps.<id>.outcome`, not `.conclusion`: the outcome is the step's own
+      # result before any `continue-on-error` rewrite, and it speaks the same
+      # vocabulary `gh run view --json jobs` returns — which is what lets
+      # `--history` classify this lane's past runs with the identical function
+      # this step calls.
+      - name: Which stage did this lane reach?
+        id: stage
+        if: always()
+        env:
+          NROS_LANE_STEPS: >-
+            [{"name": "Build the nros CLI", "conclusion": "${{ steps.cli.outcome }}"},
+             {"name": "Report what the ledger claims, before running anything", "conclusion": "${{ steps.ledger.outcome }}"},
+             {"name": "Build the fixtures those rows resolve", "conclusion": "${{ steps.fixtures.outcome }}"},
+             {"name": "Run the cells with a recorded PASS", "conclusion": "${{ steps.cells.outcome }}"}]
+        run: python3 scripts/ci/lane-stage.py --report --lane "live-peer regression"
+
+  # The job NAME carries the stage, for the same reason `run-matrix.yml`'s
+  # `coverage` job does: a check-run name is the last piece of a run that is
+  # legible without opening a log — `gh run view`, the commit's checks list, the
+  # run list. Everything else this lane knows about how far it got dies in a log
+  # nobody reads until something is already wrong.
+  #
+  # `if: always()` and `needs`, so it reports on a failure and a skip alike;
+  # `|| 'DID NOT START'` covers the run where `regression` produces no outputs
+  # at all, which is neither a verdict nor a lane failure.
+  stage:
+    name: "live-peer — ${{ needs.regression.outputs.stage_label || 'DID NOT START' }}"
+    needs: [regression]
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      # Through `env:`, never interpolated into the script body — a `${{ }}`
+      # expansion is substituted as TEXT before the shell parses the line, so a
+      # label carrying a quote would be a shell injection rather than a string.
+      - name: Say in the run list what the log would have to be opened for
+        env:
+          LABEL: ${{ needs.regression.outputs.stage_label || 'DID NOT START' }}
+          REACHED: ${{ needs.regression.outputs.reached_cells }}
+        run: |
+          label="$LABEL"
+          reached="$REACHED"
+          echo "live-peer regression: $label"
+          if [ "$reached" != "true" ]; then
+              echo ""
+              echo "The cells did not run, so this run says NOTHING about whether"
+              echo "a recorded-passing cell still passes. It is a verdict about"
+              echo "the lane, not about the code. Do not read a green ledger as"
+              echo "guarded until a run reaches its cells."
+          fi
