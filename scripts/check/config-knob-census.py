@@ -208,6 +208,7 @@ KNOB_CLASS = {
     "NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE": ("infra", "a SIZE the resolver passes down, not a knob"),
     "NROS_DECLARED_SUBSCRIBER_LARGE_SIZE": ("infra", "a SIZE the resolver passes down, not a knob"),
     "NROS_DECLARED_EXECUTOR_MAX_CBS": ("infra", "a COUNT the resolver passes down, not a knob"),
+    "NROS_DECLARED_EXECUTOR_MAX_NODES": ("infra", "a COUNT the resolver passes down, not a knob"),
     "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS": ("infra", "a COUNT the resolver passes down, not a knob"),
     # issue 1130 — the per-kind cell registry capacity the image declares; a
     # rung below the board's in `nros/build.rs`, never an override.

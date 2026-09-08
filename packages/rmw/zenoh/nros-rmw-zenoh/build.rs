@@ -16,6 +16,7 @@ fn main() {
     // else forces a rebuild, and the sizing then reads as applied while being
     // stale.
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_LARGE_SUBSCRIBERS");
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_NODES");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_SUBSCRIBER_BUFFER_SIZE");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_SUBSCRIBER_LARGE_SIZE");
     println!("cargo:rerun-if-env-changed=NROS_EXECUTOR_MAX_NODES");
@@ -122,7 +123,22 @@ fn main() {
     // tracks `nros-node`'s `NROS_EXECUTOR_MAX_NODES` (default 4); keep them in
     // sync — set the same env var for both. `.max(1)` so a session always has
     // room for its own primary node.
-    let max_nodes: usize = env_usize_min("NROS_EXECUTOR_MAX_NODES", 4, 1);
+    // issue 1233 — the SECOND reader of this knob, and the delivery asymmetry
+    // it carried. `nros-node` resolves it through a four-rung ladder that
+    // consults `$DOTCONFIG`; this crate's `env_usize` has no Kconfig row for
+    // the name, so on a Zephyr Rust image `CONFIG_NROS_EXECUTOR_MAX_NODES`
+    // reached one crate and not the other — and the comment below already says
+    // "keep them in sync", which nothing enforced.
+    //
+    // Taking the declared rung here closes half of that: both crates now see
+    // the number cmake derived. The floor stays, because the lookup path here
+    // indexes the pool unconditionally (issue 0827) while `nros-node`'s does
+    // not — one derivation, two consumers, two legal minima.
+    let max_nodes: usize = env_usize_min(
+        "NROS_EXECUTOR_MAX_NODES",
+        declared_usize("NROS_DECLARED_EXECUTOR_MAX_NODES").unwrap_or(4),
+        1,
+    );
     // Issue 0813 — per-publisher TX arena capacity for the zero-copy loan path
     // (`SlotLending`). This was a bare `const` in `shim/publisher.rs`, so its
     // 1 KiB ceiling was neither raisable by a consumer nor visible to

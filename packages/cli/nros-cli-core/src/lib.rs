@@ -40,6 +40,11 @@ pub mod leaf_entity_env;
 /// need the message-bound inventory as well as the entity one. The cargo-leaf
 /// twin of `_nros_bounds_join_subscribed` in `cmake/NanoRosMessageBounds.cmake`.
 pub mod leaf_payload_classes;
+/// Issue 1233 — the take buffer over the leaf's linked CLOSURE, a THIRD basis
+/// that refuses independently of the two above. The cargo-leaf twin of the
+/// `NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE` half of
+/// `cmake/NanoRosMessageBounds.cmake`.
+pub mod leaf_take_buffer;
 /// phase-439 W2 (RFC-0094 D1/D2) — stage 3.5, the resolve phase: the one place
 /// that decides an image's declared counts, run BEFORE any configure so a
 /// reader early in one sees the final answer on its first pass.

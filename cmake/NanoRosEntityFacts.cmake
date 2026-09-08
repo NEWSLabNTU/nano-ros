@@ -239,6 +239,56 @@ function(_nros_payload_facts_env _out_var)
     set(${_out_var} "${_out}" PARENT_SCOPE)
 endfunction()
 
+# _nros_take_buffer_env(<out-var>)
+#
+# issue 1233 — the TAKE BUFFER, and it needed its own carrier rather than a row
+# in `_nros_payload_facts_env` above. That is almost certainly why it was left
+# behind when 1122 swept the payload trio onto this road: it does not fit that
+# function's guard, and the guard is not incidental.
+#
+# The payload classes require `BASIS subscribed`, because on the `closure` basis
+# they count large TYPES in the linked closure and under-count an image with two
+# subscriptions on one large type. This knob is the opposite. Its producer says
+# so where it publishes it:
+#
+#     Buffer 1, the runtime-owned take buffer: ONE global size for every ENTITY
+#     in the image (`RX_BUF` is a const generic and the C/C++ path is
+#     type-erased), so it must hold the largest type the image could receive --
+#     and, because `DEFAULT_TX_BUF` aliases it, the largest it could publish.
+#     BASIS `closure`, always. Narrowing this one is the under-derivation.
+#
+# So the correct guard here is the WHOLE-BOUNDS status, not the payload status
+# and not the basis: `NROS_MESSAGE_BOUNDS_STATUS derived` means every type in
+# the closure carried a bound, which is exactly the condition under which the
+# maximum over them is an upper bound. Applying the payload guard would have
+# refused every image whose join answered on the closure basis -- which for this
+# fact is all of them.
+#
+# What a leafless CMake image got before this: the crate default of 1024 for a
+# buffer its own configure had already measured, and `DEFAULT_TX_BUF` aliases
+# it, so the publish side took the same default. Issue 1122's shape, on the
+# fourth size knob.
+function(_nros_take_buffer_env _out_var)
+    set(${_out_var} "" PARENT_SCOPE)
+    if(NOT COMMAND nros_message_bounds_knobs_file)
+        return()
+    endif()
+    nros_message_bounds_knobs_file(_knobs)
+    if(NOT EXISTS "${_knobs}")
+        return()
+    endif()
+    include("${_knobs}")
+    if(NOT NROS_MESSAGE_BOUNDS_STATUS STREQUAL "derived")
+        return()
+    endif()
+    if(NOT DEFINED NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE)
+        return()
+    endif()
+    set(${_out_var}
+        "NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE=${NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE}"
+        PARENT_SCOPE)
+endfunction()
+
 # _nros_entity_budget_env(<out-var>)
 #
 # issue 1199 — the ENTITY budget half of the DECLARED road, sibling of
@@ -259,10 +309,16 @@ endfunction()
 #     failure at boot, not a smaller pool (issues 1061, 0460).
 #     The CMake road completes it through `NROS_DECLARED_INFRA_QUERYABLES`
 #     instead, which is why that fact exists.
-#   * `NROS_EXECUTOR_MAX_NODES` -- phase-412 withheld it from W1 on the ground
-#     that under-counting HALTS the board, and the leaf road still omits it.
-#   * `NROS_SUBSCRIPTION_BUFFER_SIZE` -- not on the leaf road either; it also
-#     feeds the arena derivation, so it is a second decision and not this one.
+#
+# Two exclusions this comment used to list are GONE (issue 1233): both
+# `NROS_EXECUTOR_MAX_NODES` and `NROS_SUBSCRIPTION_BUFFER_SIZE` now travel all
+# three roads. Phase-412 withheld the node table on the ground that
+# under-counting HALTS the board -- but the ceiling failure is a named
+# `NodeError::NodeTableFull`, which is a property of the FAILURE and not of the
+# road the number arrived on, and the same count already reached the resolver
+# road. The take buffer moves on its own carrier below
+# (`_nros_take_buffer_env`) because its guard is the MESSAGE-BOUND status, not
+# this one.
 #
 # The guard is a single status. Unlike message bounds there is no BASIS here:
 # `derived` means every `NROS_DERIVED_*` in the fragment is present, and
@@ -314,7 +370,14 @@ function(_nros_entity_budget_env _out_var)
             "NROS_DECLARED_EXECUTOR_MAX_CBS;NROS_DERIVED_EXECUTOR_MAX_CBS"
             "NROS_DECLARED_RMW_SUBSCRIBER_SLOTS;NROS_DERIVED_RMW_SUBSCRIBER_SLOTS"
             "NROS_DECLARED_MAX_PUBLISHERS;NROS_DERIVED_MAX_PUBLISHERS"
-            "NROS_DECLARED_MAX_SUBSCRIBERS;NROS_DERIVED_MAX_SUBSCRIBERS")
+            "NROS_DECLARED_MAX_SUBSCRIBERS;NROS_DERIVED_MAX_SUBSCRIBERS"
+            # issue 1233 — the node table. Withheld from phase-412 W1 because
+            # under-counting HALTS the board, and admitted to the resolver road
+            # on 2026-09-03 once `NodeError::NodeTableFull` was made to name the
+            # knob. That precondition is a property of the FAILURE, not of the
+            # road, so it holds here too; nothing in the tree ever said why the
+            # other two roads were left out.
+            "NROS_DECLARED_EXECUTOR_MAX_NODES;NROS_DERIVED_EXECUTOR_MAX_NODES")
         list(GET _pair 0 _name)
         list(GET _pair 1 _src)
         if(DEFINED ${_src})
@@ -457,6 +520,10 @@ function(nros_entity_facts_env _target)
     # queryable-table early return rather than after it.
     _nros_payload_facts_env(_payload_env)
     _nros_entity_budget_env(_budget_env)
+    _nros_take_buffer_env(_take_buf_env)
+    if(_take_buf_env)
+        list(APPEND _payload_env "${_take_buf_env}")
+    endif()
     if(_budget_env)
         list(APPEND _payload_env ${_budget_env})
     endif()
