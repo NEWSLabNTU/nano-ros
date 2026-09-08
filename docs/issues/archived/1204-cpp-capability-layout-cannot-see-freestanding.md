@@ -3,11 +3,85 @@ id: 1204
 title: "`check-cpp-capability-layout` forces capability macros ON against a
   baseline where they are already on, so it cannot see the layout divergence it
   exists to catch — proven by mutation"
-status: open
+status: resolved
 type: bug
 area: [cpp, ci]
-related: [0135, 0460, phase-417, phase-427]
+related: [0135, 0460, phase-417, phase-427, phase-438]
+resolved_in: "phase-427 W0 (arms 1-3 of the fix) + phase-427 W1-W3/W5 (the `rclcpp::Node` half) + phase-438 W3/W4 (the measurement)"
 ---
+
+## Resolution
+
+In three parts, because the middle one needed the SUBJECT to change rather than
+the gate.
+
+**phase-427 W0** implemented the three numbered items under "Fix": a
+freestanding measurement arm against the ThreadX `cxx-compat` shim, a per-type
+`hosted_only_reason()` policy replacing the blanket `continue`, and a selftest
+case that mutates a REAL type (`::nros::Node`) in a throwaway copy of the
+include tree.
+
+**phase-427 W1-W3/W5** closed the part W0 could only record as a limit. This
+issue concluded that "`rclcpp::Node` cannot be covered by the freestanding arm
+today, because it does not exist freestanding. Nor can a non-tautological
+mutation be constructed for it" — both true of the class as it then was, and
+both fixed by changing the class rather than the gate. The node merge made
+`rclcpp::Node` an unconditional alias of `::nros::Node`: one class, declared
+outside any capability guard, whose `std::enable_shared_from_this<Node>` base
+and `std::vector<std::shared_ptr<void>>` of owned entities moved into a
+`detail::NodeHosted` box reached through a single unconditional
+`detail::NodeHostedBase* hosted_`, allocated lazily and carrying its own
+deleter. The `shared_ptr`-returning and `std::string`-keyed factories became
+`NROS_CPP_NODE_HOSTED` overloads beside unconditional out-ref forms. The
+ratchet W0 installed is what forced the exemption off: it failed with "listed
+hosted-only but DOES measure freestanding (200)" the moment the merge landed.
+
+**phase-438 W3/W4** is the MEASUREMENT, which is what this issue actually asked
+for. W2 made the std surface a per-TU request, and that made a third arm
+possible for the first time: hosted `-std=c++17` **without** `-DNROS_CPP_STD`.
+It is the arm that isolates the FLAG from the toolchain — the freestanding arm
+varies `-std`, `-nostdinc++` and the shim all at once, so on its own it cannot
+tell "the porting surface moved a layout" from "the two libc++ shims disagree
+about a member". Before W2 the arm did not exist as a configuration at all: the
+macros were discovered from the include path, so a hosted TU always had them.
+
+Measured on the merged class: `sizeof(rclcpp::Node)` is **200** in all three
+arms — hosted `-std=c++17 -DNROS_CPP_STD=1`, hosted `-std=c++17` with no flag,
+and `-std=c++14 -ffreestanding -nostdinc++` against the ThreadX shim. The type
+carries no exemption. (The exemption registry moved out of the script in issue
+1225, which also widened the subject list from 5 authored names to 90 derived
+ones; it is `.config/cpp-capability-layout-baseline.txt` now, and it is not
+empty — but no line in it names `rclcpp::Node`.)
+
+Two lessons were paid for by the removed entry, recorded in the script in its
+place:
+
+  * **NAME THE CONSTRUCT, NEVER A LINE.** The reason string read
+    `"guarded by ... at nros.hpp:447"`, which was WRONG when it was written:
+    447 was the preceding `} // namespace rclcpp` and the `#if` was at 454. It
+    then moved twice more. A stale line number sends the next reader to the
+    wrong place with full confidence.
+  * **SAY WHAT IS MISSING, NOT WHAT IS GUARDED.** "guarded by X" describes the
+    symptom. The reason `rclcpp::Node` could not be measured freestanding was
+    never really the `#if`: every factory returned `std::shared_ptr` and this
+    tree has no freestanding ownership type, so the guard was a CONSEQUENCE. A
+    symptom-shaped reason invites the wrong fix — deleting the guard — which is
+    what phase-438 W3's first draft proposed before a compile measurement
+    refuted it.
+
+**The half `sizeof` cannot state.** A gate that measures only layout is green
+when a method is DELETED, so the unconditional out-ref factories were still a
+claim: declared, never instantiated. `packages/api/nros-cpp/tests/compile/
+rclcpp_node_freestanding_surface.cpp` compiles them in both no-flag arms.
+Mutation-tested against the merged class: moving the out-ref `create_publisher`
+back behind `#ifdef NROS_CPP_HAS_SHARED_PTR` in a throwaway copy of the include
+tree fails the probe with `no matching function for call to
+'nros::Node::create_publisher'` while the capability gate stays green — which
+is why both exist.
+
+The consequence this issue named — "phase-427 W1's acceptance is satisfiable by
+a broken implementation, so the work item cannot currently be verified" — no
+longer holds.
 
 ## What
 
