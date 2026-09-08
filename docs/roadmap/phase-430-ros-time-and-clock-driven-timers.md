@@ -256,3 +256,31 @@ phase-425 brought it; the conclusion ("still flat, a runtime field and a
 second verb, no hierarchy") held in the code 425 landed and is what W4–W6 must
 preserve. Finding A is the one place the tree and the RFC disagree, and W7
 owns the ruling.
+
+## Adjacent, and NOT this phase's: the seventh porting difference closes (2026-09-09)
+
+Recorded here because this phase's W4–W6 are the surfaces a ported file's timer
+verbs land on, and a reader arriving at "which spin verb does a ported `main`
+write?" from that direction should not have to find the answer by accident.
+
+PR #753 (phase-427 W10) measured the rclrs talker port at SIX edits and recorded
+a **seventh** difference deliberately outside the count: the port writes
+`spin_blocking`, because `Executor::spin` is taken here by `spin(Duration) -> !`
+— the body of an RTOS task, RFC-0002's one-executor-per-task shape — so
+upstream's `spin(SpinOptions)` has no free name. It cost no extra edit (it falls
+on the same line as one of the two `?`s), which is exactly why it was recorded
+rather than absorbed.
+
+**That item is now decided and owned, and neither is here.** RFC-0089 §"The
+`spin` family: upstream's names get upstream's contracts" settles the shape —
+`spin(SpinOptions) -> Result<(), NodeError>`, `spin_once(Duration)` as the tick
+primitive, `spin_some(Duration)` as upstream's drain verb, and `spin_forever`
+for the diverging `-> !` form that a bare-metal entry needs and upstream has no
+name for. **phase-427 W12** lands it; when it does, the port writes `spin` and
+the seventh difference is gone.
+
+Nothing in this phase moves. The clock axis reaches the node-level surfaces
+through `register_timer_on_clock` (W4–W6) whatever the spin verbs are called,
+and no acceptance here names a spin verb. This paragraph exists so that "it
+closes in phase-427 W12" has an answer in both documents rather than only in the
+one that raised it.
