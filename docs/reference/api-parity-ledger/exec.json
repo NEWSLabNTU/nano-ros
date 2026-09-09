@@ -273,7 +273,7 @@
   },
   "cpp:CallbackGroup::get_name": {
     "verdict": "extension",
-    "why": "reads the group name back. In RFC-0047 the NAME is the binding -- it is what `system.toml` maps to a tier -- so a helper that forwards a group to `create_timer_in` needs to read it. rclcpp identifies a group by pointer and has no name to read."
+    "why": "reads the group name back. In RFC-0047 the NAME is the binding -- it is what `system.toml` maps to a tier -- so a helper that forwards a group to `create_timer_in_group` needs to read it. rclcpp identifies a group by pointer and has no name to read."
   },
   "cpp:CallbackGroup::get_notify_guard_condition": {
     "verdict": "declined",

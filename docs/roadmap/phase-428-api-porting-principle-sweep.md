@@ -427,7 +427,7 @@ audits' evidence, which was well-cited but is not the same as checked.
 | 14 ✔ | six `*_get_actual_qos` echo the request; `_UNKNOWN` is written nowhere in any implementation | `cyclonedds/qos.cpp:140` | W1 |
 | 15 | `assert_liveliness` — one question, four answers, no wire traffic on zenoh; the header documents a fifth | `zenoh/shim/publisher.rs:413` | W1 |
 | 16 | `get_serialization_format` gives two NULL-slot answers on one type, one of them the `"cdr"` guess the header forbids | `cffi/lib.rs:1712,2001` | W1 |
-| 17 | `SubscriptionOptions::sched_context` is structurally unreachable on the poll overload; `message_info` stored and never read; `create_publisher_in` drops its callback group | `nros-cpp/subscription.hpp:674` | W3 |
+| 17 | `SubscriptionOptions::sched_context` is structurally unreachable on the poll overload; `message_info` stored and never read; `create_publisher_in_group` drops its callback group | `nros-cpp/subscription.hpp:674` | W3 |
 | 18 | `Client::send_request` hardcodes slot 0 and discards the sequence number — two outstanding requests share one unkeyed slot | `nros-cpp/client.hpp:132` | W3 |
 | 19 | `create_action_client`'s QoS is marshalled and named `_qos`; the server side honours the same struct | `nros-cpp/src/action.rs:867` | W3 |
 | 20 | every C node's logger is the catch-all `"nros"` — `get_logger` is lookup-only and C has no registration entry point | `nros-c/node.rs:685` | W2 |

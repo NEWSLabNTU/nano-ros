@@ -63,8 +63,8 @@ the node's default group.
 ```rust
 // Rust (rclrs-shaped)
 let ctrl = node.create_callback_group("ctrl");
-node.create_timer_in(&ctrl, period, on_tick);
-node.create_subscription_in(&ctrl, "/cmd", on_cmd);
+node.create_timer_in_group(&ctrl, period, on_tick);
+node.create_subscription_in_group(&ctrl, "/cmd", on_cmd);
 ```
 ```cpp
 // C++ (rclcpp-shaped, ComponentNode)

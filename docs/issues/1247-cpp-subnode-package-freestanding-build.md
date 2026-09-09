@@ -70,7 +70,7 @@ platform from what the workspace already provisions rather than adding a
 toolchain for this.
 
 Note the two SubNode sources now derive `::nros::NodeWithTimers<2>` and call
-`create_publisher_in` / `create_timer_in`, so the port starts from code that
+`create_publisher_in` / `create_timer_in_group`, so the port starts from code that
 already speaks the merged surface — the change is the fixture row and whatever
 the link surfaces, not the node.
 
