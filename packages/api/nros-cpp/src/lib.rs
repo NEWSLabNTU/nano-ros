@@ -3257,6 +3257,28 @@ pub unsafe extern "C" fn nros_cpp_executor_set_min_stack_headroom(
     NROS_CPP_RET_OK
 }
 
+/// Declare one name remapping for a node, as `ros2 run … --ros-args -r from:=to`
+/// would.
+///
+/// `node_namespace` may be NULL, which is read as `/` — the root, and the
+/// namespace a node gets when nobody names one. The other four are required;
+/// each is checked and answered with `NROS_CPP_RET_INVALID_ARGUMENT` rather
+/// than trusted.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL.
+///
+/// `node_name`, `from` and `to` must each be NULL or a pointer to a
+/// NUL-terminated C string that stays valid for the duration of the call;
+/// `node_namespace` likewise, with NULL meaning `/`. The strings are read, not
+/// retained — the remapping is copied into the executor's own storage before
+/// this returns, so the caller may free them immediately afterwards.
+///
+/// NULL is a legal argument for every parameter here and is refused, not
+/// dereferenced. What this signature cannot check, and therefore what the
+/// caller owes, is that a NON-null pointer really is a valid NUL-terminated
+/// string: a pointer into freed memory or an unterminated buffer is undefined
+/// behaviour in `cstr_to_str`, which is where the scan happens.
 #[cfg(feature = "rmw-cffi")]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_declare_remap(
