@@ -715,6 +715,17 @@ pub enum DeclaredDepths {
         /// and stated none. NOT zero-by-default: this is the number that says
         /// "nobody said" for the rest of the image.
         undeclared: usize,
+        /// The same count restricted to SUBSCRIPTIONS -- issue 1227.
+        ///
+        /// `undeclared` spans every kind that can carry a depth, and a
+        /// publisher's depth "sizes no receive buffer, so nothing reads it yet"
+        /// ([`EntityKind::carries_qos_depth`] says so itself). A consumer that
+        /// sizes only the SUBSCRIPTION term therefore cannot use the broad
+        /// count: on the reference island it is 18 -- fourteen publishers and
+        /// the service endpoints -- while all eleven subscriptions declare, and
+        /// refusing on it keeps that image on the worst case forever for
+        /// endpoints the term does not price.
+        undeclared_subscriptions: usize,
     },
     Refused {
         reason: String,
@@ -1330,6 +1341,7 @@ impl EntityInventory {
 
         let mut rows: Vec<DeclaredDepth> = Vec::new();
         let mut undeclared = 0usize;
+        let mut undeclared_subscriptions = 0usize;
         for c in self.components() {
             for e in c.declaration.entities() {
                 if !e.kind.carries_qos_depth() {
@@ -1347,12 +1359,21 @@ impl EntityInventory {
                     // arena charges a buffer per typed endpoint. It counts as
                     // undeclared rather than being dropped silently, so the
                     // count stays the honest "endpoints this image cannot size".
-                    (Some(_), _, _) | (None, _, _) => undeclared += 1,
+                    (Some(_), _, _) | (None, _, _) => {
+                        undeclared += 1;
+                        if e.kind == EntityKind::Subscription {
+                            undeclared_subscriptions += 1;
+                        }
+                    }
                 }
             }
         }
         rows.sort_by(|a, b| (&a.type_name, &a.topic).cmp(&(&b.type_name, &b.topic)));
-        DeclaredDepths::Resolved { rows, undeclared }
+        DeclaredDepths::Resolved {
+            rows,
+            undeclared,
+            undeclared_subscriptions,
+        }
     }
 
     /// The C++ compile-time table: `nros_declared_qos_generated.h`.
@@ -1419,7 +1440,9 @@ impl EntityInventory {
                 s.push_str("\n */\n");
                 s.push_str("#define NROS_DECLARED_QOS_STATUS \"refused\"\n");
             }
-            DeclaredDepths::Resolved { rows, undeclared } => {
+            DeclaredDepths::Resolved {
+                rows, undeclared, ..
+            } => {
                 let subs: Vec<&DeclaredDepth> = rows
                     .iter()
                     .filter(|r| r.kind == EntityKind::Subscription)
@@ -1591,7 +1614,9 @@ impl EntityInventory {
                 DeclaredDepths::Refused { reason } => {
                     m.insert("reason".into(), reason.clone().into());
                 }
-                DeclaredDepths::Resolved { rows, undeclared } => {
+                DeclaredDepths::Resolved {
+                    rows, undeclared, ..
+                } => {
                     m.insert("undeclared".into(), (*undeclared).into());
                     m.insert(
                         "endpoints".into(),
@@ -1874,7 +1899,11 @@ fn render_declared_depths(d: &DeclaredDepths) -> String {
                  # is indistinguishable from an image whose endpoints all took the default.\n",
             );
         }
-        DeclaredDepths::Resolved { rows, undeclared } => {
+        DeclaredDepths::Resolved {
+            rows,
+            undeclared,
+            undeclared_subscriptions,
+        } => {
             let triples: Vec<String> = rows
                 .iter()
                 .map(|r| format!("{}|{}={}", r.type_name, r.topic, r.depth))
@@ -1889,6 +1918,9 @@ fn render_declared_depths(d: &DeclaredDepths) -> String {
             ));
             s.push_str(&format!(
                 "set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT {undeclared})\n"
+            ));
+            s.push_str(&format!(
+                "set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION                  {undeclared_subscriptions})\n"
             ));
         }
     }
@@ -2170,7 +2202,9 @@ mod tests {
             ],
         ));
         match inv.declared_depths() {
-            DeclaredDepths::Resolved { rows, undeclared } => {
+            DeclaredDepths::Resolved {
+                rows, undeclared, ..
+            } => {
                 assert_eq!(rows.len(), 2);
                 assert_eq!(rows[0].type_name, "nav_msgs/msg/Odometry", "sorted");
                 assert_eq!(rows[0].depth, 10);

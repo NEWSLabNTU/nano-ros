@@ -565,6 +565,34 @@ function(nros_resolve_knobs)
             "${NROS_ENTITY_COUNT_ACTION_SERVER}")
     endif()
 
+    # issue 1227 / phase-403 step 2 -- the DEPTHS, forwarded to the lane that
+    # was emitted for them. `NanoRosEntityInventory.cmake` has published these
+    # since step 2 and nothing consumed them, so `nros-node`'s build script
+    # billed every subscription at the ROS default depth of 10 even on an image
+    # whose code states `QoS(1)` at every call site. On the reference island
+    # that is 207,096 bytes of arena against 71,664.
+    #
+    # Both names or neither: build.rs refuses to size from depth unless the
+    # UNDECLARED count is present and zero, so a half-forwarded pair reads as
+    # "nobody declared" and keeps the worst case rather than summing an arena
+    # too small for endpoints that exist.
+    #
+    # Spelled out, not looped, for the reason the block above states.
+    if(DEFINED NROS_ENTITY_DECLARED_DEPTHS AND
+       NOT "${NROS_ENTITY_UNDECLARED_DEPTH_COUNT}" STREQUAL "")
+        # `;` is cmake's LIST separator, and the cargo env is a flat string:
+        # forwarding the raw value delivers only its first element -- measured,
+        # the lane received one triple of eleven and sized from the worst case
+        # while every knob looked present. Commas cross the boundary intact;
+        # build.rs splits on either.
+        string(REPLACE ";" "," _nros_declared_depths
+            "${NROS_ENTITY_DECLARED_DEPTHS}")
+        _nros_resolve_knob(NROS_ENTITY_DECLARED_DEPTHS
+            "${_nros_declared_depths}")
+        _nros_resolve_knob(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION
+            "${NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION}")
+    endif()
+
     _nros_resolve_derivable_knob(NROS_EXECUTOR_MAX_NODES
         "${CONFIG_NROS_EXECUTOR_MAX_NODES}" NROS_DERIVED_EXECUTOR_MAX_NODES
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")

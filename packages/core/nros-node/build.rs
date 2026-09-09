@@ -26,6 +26,62 @@ const RING_LEN_BYTES: usize = 8;
 /// `executor/arena.rs` is what keeps the two equal.
 const PUBSUB_QOS_DEPTH: usize = 10;
 
+/// The subscription half of the arena, priced per ENDPOINT at the depth that
+/// endpoint DECLARED -- issue 1227, finishing phase-403 step 2's wiring.
+///
+/// `NROS_ENTITY_DECLARED_DEPTHS` carries `type|topic=depth` triples and
+/// `NROS_ENTITY_UNDECLARED_DEPTH_COUNT` says how many endpoints could have
+/// stated one and did not. Both reached cmake and stopped there; this is the
+/// consumer they were emitted for.
+///
+/// Two rules, both from `NanoRosEntityInventory.cmake`'s own header:
+///
+///   * "A consumer that sizes from depth must REFUSE while
+///     [UNDECLARED_DEPTH_COUNT] is non-zero" -- so a partial declaration falls
+///     back to the worst case rather than summing a too-small arena. Absence is
+///     not zero.
+///   * a derived value is a DEFAULT, applied only where nothing else stated a
+///     number.
+///
+/// Measured on the reference island (11 subscriptions, rx 1,496): 207,096 bytes
+/// of arena when every endpoint is billed the ROS default depth of 10, against
+/// 71,664 when the eleven `QoS(1)` declarations its code already makes are
+/// carried through. The image did not fit at the first number and does at the
+/// second, and nothing about the running code changed -- only whether the build
+/// was told what it registers.
+fn subs_arena(
+    subs: usize,
+    pubsub_entry_at_default: usize,
+    rx_recv_size: usize,
+    entry_struct: usize,
+) -> usize {
+    // The SUBSCRIPTION-scoped count, not the broad one. `carries_qos_depth`
+    // admits publishers and services, and says of a publisher that its depth
+    // "sizes no receive buffer, so nothing reads it yet" -- so the broad count
+    // is non-zero on an image whose subscriptions all declare (18 against 11 on
+    // the reference island), and refusing on it would keep that image on the
+    // worst case for endpoints this term does not price.
+    let undeclared = env_opt_usize("NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION");
+    let depths = env_opt_string("NROS_ENTITY_DECLARED_DEPTHS").unwrap_or_default();
+    let declared: Vec<usize> = depths
+        // cmake hands a list over as `;`-separated; be liberal about `,` too.
+        .split([';', ','])
+        .filter_map(|t| t.rsplit_once('=').map(|(_, d)| d))
+        .filter_map(|d| d.trim().parse::<usize>().ok())
+        .collect();
+
+    // Refuse to size from a partial picture. Either every endpoint that could
+    // declare did, and the count matches what we parsed, or we keep the worst
+    // case that every existing image is already built against.
+    if undeclared != Some(0) || declared.len() != subs {
+        return subs * pubsub_entry_at_default;
+    }
+    declared
+        .iter()
+        .map(|&d| buffered_region(d, rx_recv_size) + entry_struct)
+        .sum()
+}
+
 /// Bytes one buffered receive region claims, mirroring
 /// [`executor::arena::buffered_region_size`] — the function the allocator
 /// itself calls.
@@ -391,12 +447,14 @@ fn main() {
         declared_action_clients,
         declared_action_servers,
     ) {
-        (Some(subs), Some(timers), Some(services), Some(acl), Some(asv)) => (subs * pubsub_entry
-            + timers * TIMER_ENTRY
-            + services * service_entry
-            + (acl + asv) * action_client_entry
-            + ARENA_BASE_OVERHEAD)
-            .max(ARENA_FLOOR),
+        (Some(subs), Some(timers), Some(services), Some(acl), Some(asv)) => {
+            (subs_arena(subs, pubsub_entry, rx_recv_size, PUBSUB_ENTRY_STRUCT)
+                + timers * TIMER_ENTRY
+                + services * service_entry
+                + (acl + asv) * action_client_entry
+                + ARENA_BASE_OVERHEAD)
+                .max(ARENA_FLOOR)
+        }
         // Nobody declared, or declared only partly: keep the pre-step-3
         // arithmetic byte for byte, so no existing image moves.
         _ => (action_clients * action_client_entry
@@ -688,6 +746,13 @@ fn rung_value(
 /// operator override still wins: the cargo env, then `$DOTCONFIG` (issue 0460
 /// -- knobs reach the Zephyr Rust lane only through the dotconfig, because
 /// `set(ENV{...})` at configure time does not survive into the cargo build).
+fn env_opt_string(name: &str) -> Option<String> {
+    println!("cargo:rerun-if-env-changed={name}");
+    let v = std::env::var(name).ok()?;
+    let v = v.trim().to_string();
+    (!v.is_empty()).then_some(v)
+}
+
 fn env_opt_usize(name: &str) -> Option<usize> {
     println!("cargo:rerun-if-env-changed={name}");
     if let Some(v) = std::env::var(name).ok().and_then(|v| v.trim().parse().ok()) {
