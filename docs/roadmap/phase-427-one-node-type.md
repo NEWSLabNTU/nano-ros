@@ -1,6 +1,6 @@
 # Phase 427 — one node type, named `rclcpp::Node`, compiling freestanding
 
-**Status (2026-09-08). W1, W2, W3, W5, W6 and W8 LANDED; W4 NOT STARTED; W7 blocked and re-scoped — see "What landed, and what it measured" below.** Implements RFC-0089 §"The node API, proposed
+**Status (2026-09-09). W1, W2, W3, W5, W6 and W8 LANDED (W5's runtime half and W6's book page closed 2026-09-09); W4 NOT STARTED; W7 blocked and re-scoped — see "What landed, and what it measured" below.** Implements RFC-0089 §"The node API, proposed
 under the governing principle". Preconditions are met by phase-417: the
 `pump()` blocker is gone, `check-cpp-capability-layout` measures the layout
 rule, and the `-nostdinc++` lane can see a freestanding regression.
@@ -252,7 +252,7 @@ exist), so the conversion is an overload rather than a constructor.
 | W3 both families, no ambiguity | `one_node_type.cpp` `both_create_families_on_one_object()` |
 | W3 member binding, no allocation | `one_node_type.cpp` `Talker::configure` + the `static_assert` on its shape |
 | W3 ported line FAILS freestanding | `tests/compile/ported_create_publisher_freestanding_probe.cpp`, an expected-failure whose diagnostic the lane GREPS for the out-ref overload's signature — "it failed" is also what a typo produces |
-| W5 distinct logger names | `one_node_type.cpp` `two_nodes_two_logger_names()` (compile-side; the runtime cell is still owed) |
+| W5 distinct logger names | `one_node_type.cpp` `two_nodes_two_logger_names()` compile-side, plus TWO runtime cells: `nros_node::executor::tests::two_nodes_on_one_executor_emit_under_their_own_names` (two nodes on one executor, asserted on the captured `Record`s) and `nros_cpp::node_logger_name_tests::two_cpp_nodes_emit_under_their_own_names` (the accessor `rclcpp::Node::get_logger()` actually calls) |
 | W6/W8 `[[nodiscard]]` | `result.hpp`; the one in-tree discard is fixed |
 | phase-430 W6 | `one_node_type.cpp` `clock_driven_timer_is_humbles_free_verb()` |
 | phase-430 W7 | `ros2_one_dispatch_path.cpp` asserts `!is_polymorphic<detail::WallTimer>` and the return type |
@@ -296,11 +296,40 @@ design question this phase did not ask. `nros::Node` (200/200), `QoS`,
 `Executor`, `Clock`, `Time`, `Duration`, `CallbackGroup`, `NodeBuilder`,
 `LifecycleNode` and `rclcpp::NodeOptions` are clean.
 
-### W5's runtime half is still owed
+### W5's runtime half landed, and the claim was FALSE when it was written
 
-The compile probe proves the logger is built from the node's name. That two
-nodes in one image EMIT under distinct names is a runtime assertion and belongs
-in `nros_tests` beside the other logging cells.
+The compile probe proves the logger is built from the node's name. Writing the
+runtime assertion — *two nodes in one image emit records under distinct logger
+names* — measured that the tree did not do it, and had never done it.
+
+Four accessors answer "which logger is this node's?" —
+`nros_node::executor::Node::logger`, `nros_node_get_logger`,
+`nros_cpp_node_get_logger` and `nros_log_get_logger`. Three of the four called
+`nros_log::get_logger`, which is a LOOKUP: it answers `DEFAULT_LOGGER` for any
+name no `'static` `Logger` was `register_logger`ed under, and nothing on any
+node-creation path registers one. So every node in an image resolved to the one
+catch-all logger and emitted every record under the name `"nros"` — the
+`"nros.compat"` sentinel W5 deleted, reached by a different route, and invisible
+to a probe that only reads the name back off the accessor.
+
+The fix is the answer phase-417 W4.d had already built for the fourth accessor:
+the create-or-fall-back-loudly resolution is now `nros_log::resolve_logger`, ONE
+helper the four call sites share instead of a second spelling in three crates. A
+pre-registered `'static Logger` still wins, because lookup comes first; an
+exhausted arena still falls back to the catch-all, and now says so at WARN
+instead of aliasing silently — once per process, because a C++ `NROS_LOG_*` call
+site asks `node.get_logger()` on every line.
+
+Asserted on the RECORDS, through a real `LogSink`, because a name read off the
+accessor and a name a dispatched `Record` carries are the two answers that were
+disagreeing. Both cells are hosted: `nros-log`'s capture seam works on any
+target, but the buffers are host types. The nros-cpp cell builds its two
+`nros_cpp_node_t` values by hand — the accessor reads exactly one field, and
+node creation needs a live executor and a backend session — so the full
+node-lifecycle form of the claim is the nros-node cell.
+
+Negative control: reverting both accessors to `get_logger` fails both cells
+with `both nodes resolved to ONE logger, named `nros``.
 
 ## W4 — NOT STARTED, and what it has to decide first
 
@@ -423,13 +452,18 @@ output.
   build and run; **one of them builds for a freestanding target**, which is the
   test of whether the merged type still fits.
 
-* **W5 [cpp] — `get_logger()` follows ROS 2. DONE (compile half; runtime half owed).** The `"nros.compat"` sentinel is
+* **W5 [cpp] — `get_logger()` follows ROS 2. DONE.** The `"nros.compat"` sentinel is
   replaced by a logger named for the node (RFC-0089 decision 1).
   *Acceptance:* two nodes in one image emit records under distinct logger names.
-  *Partly met:* the accessor is built from the node's name and
-  `one_node_type.cpp` pins that plus the `nros_logger_t` conversion that kept
-  every native call site compiling. That two nodes EMIT under distinct names is
-  a runtime assertion and still belongs in `nros_tests`.
+  *Met:* the accessor is built from the node's name and `one_node_type.cpp`
+  pins that plus the `nros_logger_t` conversion that kept every native call
+  site compiling. The runtime half is asserted on captured `Record`s by
+  `two_nodes_on_one_executor_emit_under_their_own_names` (nros-node: two nodes
+  on one executor) and `two_cpp_nodes_emit_under_their_own_names` (nros-cpp:
+  the accessor `rclcpp::Node::get_logger()` calls). Writing them measured that
+  the claim was FALSE — three of the four node-logger accessors resolved every
+  node to `DEFAULT_LOGGER`; see "W5's runtime half landed, and the claim was
+  FALSE when it was written" above.
 
 * **W6 [loudness] — the two items the design creates. DONE (first half; second half is documentation, as the item allows).** `[[nodiscard]]` on
   `Result` (`NROS_NODISCARD` for C++14) so a discarded `rclcpp::init(argc,
@@ -442,9 +476,16 @@ output.
   `ResultOf<T>`, and the deprecated `Expected<T>` that still names it; measured
   blast radius
   inside the headers was exactly one discard. **The `ok()` half IS
-  documentation** — it is stated in `Node`'s constructor doc and in the ledger
-  row `cpp:Node::ok`, and the book page is owed. A compiler cannot force a
-  hand-written `main` to ask a question.
+  documentation**, and it is now stated on BOTH pages a hand-written `main`
+  reaches: `book/src/getting-started/porting-a-cpp-node.md` §"`Node::ok()` —
+  nano-ros cannot throw, so YOU have to ask" (landed with the merge) and
+  `book/src/getting-started/first-node-cpp.md` §"If you write the
+  `rclcpp::Node` constructor instead". The second was the real gap — the
+  first-node page teaches a hand-written `main` and showed only the out-ref
+  `nros::create_node` + `NROS_TRY_RET` form, whose `Result` IS checked, so a
+  reader who wrote the rclcpp constructor instead was never told there was a
+  question to ask. Also in `Node`'s constructor doc and the ledger row
+  `cpp:Node::ok`. A compiler cannot force a hand-written `main` to ask.
 
 * **W7 [migration] — `nros::Node` deprecated, then deleted. BLOCKED, and the
   item does not mean what it says.** After the merge `nros::Node` is the
