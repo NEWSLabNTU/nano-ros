@@ -276,11 +276,15 @@ rather than absorbed.
 `spin(SpinOptions) -> Result<(), NodeError>`, `spin_once(Duration)` as the tick
 primitive, `spin_some(Duration)` as upstream's drain verb, and `spin_forever`
 for the diverging `-> !` form that a bare-metal entry needs and upstream has no
-name for. **phase-427 W12** lands it; when it does, the port writes `spin` and
-the seventh difference is gone.
+name for. **phase-427 W11** landed it on `main` (2026-09-09) — this branch had
+queued it as W12 and `main` numbered it W11 first, so W11 is the record — and
+with it the port writes `spin` and the seventh difference is CLOSED. The port's
+EDIT COUNT does not drop with it: the ported line still differs, because ours is
+`?` where upstream is `.first_error()?`, which is the no-allocator divergence
+rather than a naming one.
 
 Nothing in this phase moves. The clock axis reaches the node-level surfaces
 through `register_timer_on_clock` (W4–W6) whatever the spin verbs are called,
 and no acceptance here names a spin verb. This paragraph exists so that "it
-closes in phase-427 W12" has an answer in both documents rather than only in the
+closes in phase-427 W11" has an answer in both documents rather than only in the
 one that raised it.
