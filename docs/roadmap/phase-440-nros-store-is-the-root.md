@@ -86,15 +86,35 @@ gone; `ros2-box-env.sh` is 48 lines from 260 and sets only the store split;
 `check-gate-lists` 283 fast / 21 build-serial and `check-gate-visibility` 21
 acknowledged both green. Issue #0925 closed as moot.
 
-### W3 — `third-party/` holds tracked submodules and nothing else
+### W3 — `third-party/` holds tracked submodules and nothing else — **LANDED, one exception declared**
 
-Move `make/`, `ninja/`, `ros/` to the store; retire `external/` into
-`$NROS_STORE/fetch/`; **delete** the 23 M `external/PX4-Autopilot`, a stray
-duplicate of the 68 G tracked submodule at `third-party/px4/PX4-Autopilot`.
+Measured rather than assumed, and most of it was already done: `make/` and
+`ninja/` provision into the store and their consumers already read it there
+("the store rather than `third-party/make/`", `jobserver-pool.sh`). What
+remained was 1.2 MB of residue and two `.gitignore` lines that made the
+directory look like it still held provisioning.
 
-*Acceptance:* every path under `third-party/` is a tracked submodule or tracked
-content — asserted by a gate, so a fourth provisioning root cannot land there
-quietly. `.gitignore` loses the corresponding entries rather than gaining any.
+`external/` turned out to be provisioned by NOTHING and consumed by NOTHING —
+every apparent consumer is NuttX's own `apps/external/` or prose. It is 287 MB
+of debris on this host; its `.gitignore` entry stays for now because deleting
+another operator's untracked data is not this phase's call to make.
+
+`check-third-party-is-submodules` is the ratchet. Submodule parents come from
+`.gitmodules`, never a directory walk, so an uninitialised submodule still
+counts (a bare clone has empty dirs), and an unreadable `.gitmodules` REFUSES
+rather than reporting OK over a reading that found nothing.
+
+**One declared exception: `ros`.** `[source.rosidl]` has
+`dest = "third-party/ros/rosidl"` and `msg_to_cyclone_idl.py` resolves it as its
+last ladder rung so the cyclone msg→IDL step works with no ROS install. Moving
+it needs `dest` to be able to name the STORE — RFC-0095 D2/D4, which is W4. So
+it is declared with a reason and somewhere to go, rather than the rule being
+weakened to fit it. The list may only shrink.
+
+*Acceptance (met):* gate green (9 submodule parents, 1 exception). Mutations —
+a new provisioning root under `third-party/` → RED naming it and its size; an
+unreadable `.gitmodules` → rc 2, refusing rather than passing. `.gitignore`
+loses two entries and gains none.
 
 ### W4 — provisioned workspaces move to the store, version-keyed
 
