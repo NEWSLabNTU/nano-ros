@@ -39,6 +39,10 @@
     "verdict": "extension",
     "why": "RFC-0002 section 4.2 / RFC-0047 / RFC-0079 -- the SchedContext surface, which ROS 2 has no counterpart for at all. A mixed-criticality image runs a 20 ms control loop and best-effort telemetry on ONE executor on ONE RTOS task, so the criticality ordering has to live in user space: N callbacks must not cost N kernel priority slots (RFC-0002 non-goal 3), and RFC-0079 exists because the raw kernel number is unwritable by hand -- each RTOS has its own range and its own DIRECTION. rclcpp's nearest answer is one `MultiThreadedExecutor` thread per priority, which an MCU cannot pay for. This is the primitive the group table is built on: bind one registered handle to one SchedContext, applied on the next spin cycle."
   },
+  "c:executor_cancel": {
+    "verdict": "extension",
+    "why": "phase-417 W4.c — `cancel`/`is_spinning` under rclcpp's own names, replacing a three-way disagreement: C had `nros_executor_stop` mutating a C-side state enum, C++ could not stop a spin without `shutdown()` tearing down the session, and Rust's `halt`/`is_halted` were `alloc`-GATED, so a core-only image could not stop its own executor at all. One flag, in Rust; C and C++ forward. ADOPT-BOUNDED (RFC-0089): `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it returns before spinning has stopped -- `is_spinning` is the observable that says when it has. `is_halted` (cancel REQUESTED) and `is_spinning` (a loop is RUNNING) stay distinct; all four combinations are reachable."
+  },
   "c:executor_create_sched_context": {
     "verdict": "extension",
     "why": "RFC-0002 section 4.2 / RFC-0047 / RFC-0079 -- the SchedContext surface, which ROS 2 has no counterpart for at all. A mixed-criticality image runs a 20 ms control loop and best-effort telemetry on ONE executor on ONE RTOS task, so the criticality ordering has to live in user space: N callbacks must not cost N kernel priority slots (RFC-0002 non-goal 3), and RFC-0079 exists because the raw kernel number is unwritable by hand -- each RTOS has its own range and its own DIRECTION. rclcpp's nearest answer is one `MultiThreadedExecutor` thread per priority, which an MCU cannot pay for. Registers one SchedContext (class + priority + period/budget/deadline) into the executor's fixed `NROS_EXECUTOR_MAX_SC` table; `NROS_RET_FULL` when it is exhausted."
@@ -77,6 +81,10 @@
   "c:executor_has_param": {
     "verdict": "extension",
     "why": "'is this parameter declared?', asked without the six `rcl_interfaces/srv/*` servers being up. Parameters live on the EXECUTOR here rather than on a node (see the param stage's `c:executor_register_parameter_services`), and a device that bakes its parameter set (RFC-0045) wants a local existence check that costs no queryable slot -- `ZPICO_MAX_QUERYABLES` is 8 on embedded (issue 0460)."
+  },
+  "c:executor_is_spinning": {
+    "verdict": "extension",
+    "why": "phase-417 W4.c — `cancel`/`is_spinning` under rclcpp's own names, replacing a three-way disagreement: C had `nros_executor_stop` mutating a C-side state enum, C++ could not stop a spin without `shutdown()` tearing down the session, and Rust's `halt`/`is_halted` were `alloc`-GATED, so a core-only image could not stop its own executor at all. One flag, in Rust; C and C++ forward. ADOPT-BOUNDED (RFC-0089): `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it returns before spinning has stopped -- `is_spinning` is the observable that says when it has. `is_halted` (cancel REQUESTED) and `is_spinning` (a loop is RUNNING) stay distinct; all four combinations are reachable."
   },
   "c:executor_is_valid": {
     "verdict": "extension",
@@ -330,13 +338,13 @@
     "verdict": "divergence",
     "why": "no allocator: `Executor` is constructed into CALLER storage -- `nros::Executor exec; Executor::create(exec, locator, domain_id)` -- with the session held in an `alignas(8) uint8_t storage_[NROS_CPP_EXECUTOR_STORAGE_SIZE]` inline array sized by the build. rclcpp's executors are constructed normally and shared by `SharedPtr`. Same shape as the pubsub stage's `cpp:Publisher::Publisher<M>`. the executor IS the session and the context here. `Executor::create` opens the middleware connection, nodes are created ON it, and every entity lands in its arena; there is no `rclcpp::Context` to hold, register with, or shut down separately. See `cpp:Context`."
   },
-  "cpp:Executor::create_with_rmw": {
-    "verdict": "extension",
-    "why": "`Executor::create` plus a backend selector -- it names the RMW backend the session opens against. rclc/rclcpp have no counterpart because a ROS 2 desktop process selects its middleware with the `RMW_IMPLEMENTATION` environment variable, and an embedded image has no environment to read -- which is precisely how issue 1050 happened: the selector had an env rung and no baked one, so a PX4 module declaring `BACKENDS uorb` could not say so and the registry's first entry won. The hosted env rung (`$NROS_RMW`) still takes precedence, matching `RMW_IMPLEMENTATION`'s authority; this is the rung beneath it. See `cpp:init_with_rmw`, which is the same rung on the free-function surface."
-  },
   "cpp:Executor::create_node": {
     "verdict": "divergence",
     "why": "static entity storage plus one session: a node is created BY the executor and its entities live in that executor's arena, so it cannot exist before one. rclcpp constructs a `Node` from a `Context` and later hands it to an executor with `add_node`. See `cpp:Executor::add_node` for the declined half and `c:executor_node_init` for the same divergence in C."
+  },
+  "cpp:Executor::create_with_rmw": {
+    "verdict": "extension",
+    "why": "`Executor::create` plus a backend selector -- it names the RMW backend the session opens against. rclc/rclcpp have no counterpart because a ROS 2 desktop process selects its middleware with the `RMW_IMPLEMENTATION` environment variable, and an embedded image has no environment to read -- which is precisely how issue 1050 happened: the selector had an env rung and no baked one, so a PX4 module declaring `BACKENDS uorb` could not say so and the registry's first entry won. The hosted env rung (`$NROS_RMW`) still takes precedence, matching `RMW_IMPLEMENTATION`'s authority; this is the rung beneath it. See `cpp:init_with_rmw`, which is the same rung on the free-function surface."
   },
   "cpp:Executor::get_all_callback_groups": {
     "verdict": "declined",
@@ -689,6 +697,14 @@
     "why": "how many arena bytes an executor was GIVEN and how many its registered entities actually claimed. No upstream analogue because upstream has no arena: rclcpp allocates each entity on the heap, so \"how much of the pre-sized block is in use\" is not a question it can ask. Here `ARENA_SIZE` is derived by budgeting EVERY slot at the ActionClient worst case, and the arena is a BUMP allocator held INLINE in the `Executor` value -- on the task stack, where `mem-report` cannot see it. So the allocator has always known the exact claimed total and had no way to say it: a timer-only executor claims 32 bytes of 74,240. These two accessors are how an image, a test, or the boot advisory finds the number to put in `NROS_EXECUTOR_ARENA_SIZE`. Issue 0900.",
     "bucket": "ours-only"
   },
+  "rust:Executor::cancel": {
+    "verdict": "extension",
+    "why": "phase-417 W4.c — `cancel`/`is_spinning` under rclcpp's own names, replacing a three-way disagreement: C had `nros_executor_stop` mutating a C-side state enum, C++ could not stop a spin without `shutdown()` tearing down the session, and Rust's `halt`/`is_halted` were `alloc`-GATED, so a core-only image could not stop its own executor at all. One flag, in Rust; C and C++ forward. ADOPT-BOUNDED (RFC-0089): `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it returns before spinning has stopped -- `is_spinning` is the observable that says when it has. `is_halted` (cancel REQUESTED) and `is_spinning` (a loop is RUNNING) stay distinct; all four combinations are reachable."
+  },
+  "rust:Executor::clear_release_jitter_stats": {
+    "verdict": "extension",
+    "why": "MERGED 2026-09-04 during the phase-417 rebase onto main, from two independent rows that both landed -- this branch's W-M2 note and main's own filing. JSON keeps the LAST, so one author's reasoning was being discarded silently. Both said `extension`; the prose is combined here and neither is lost.\n\nSibling of `Executor::release_jitter`, same commit, same reason there is no upstream name. Resets the window (`executor/spin.rs:2163`) so monitoring code can log-and-clear per period; without it a single early outlier pins the maximum for the life of the process, which is the failure mode that makes a max-only statistic useless on a long-running image.\n\nphase-417 W-M2 note: see `rust:Executor::release_jitter`. The reset half -- a measurement window is only meaningful if a caller can start one, and without this the counters are since-boot forever. rclcpp has no counterpart for the same reason it has none for the reading."
+  },
   "rust:Executor::close": {
     "verdict": "extension",
     "why": "release the session and the arena without dropping the value, so a caller holding an executor in a `static` can tear the middleware down and report the result. `Drop` cannot return an error, and an embedded slot is never deallocated.",
@@ -713,10 +729,18 @@
     "why": "installs one `from -> to` name remap in the executor's fixed remap table. rclrs remaps through `__ns:=` / `topic:=` arguments on the command line, which no image has (RFC-0045); launch resolves the mapping and it is baked or declared here instead. See `cpp:remove_ros_arguments`.",
     "bucket": "ours-only"
   },
+  "rust:Executor::enter_spin_loop": {
+    "verdict": "extension",
+    "why": "phase-417 W4.c — `cancel`/`is_spinning` under rclcpp's own names, replacing a three-way disagreement: C had `nros_executor_stop` mutating a C-side state enum, C++ could not stop a spin without `shutdown()` tearing down the session, and Rust's `halt`/`is_halted` were `alloc`-GATED, so a core-only image could not stop its own executor at all. One flag, in Rust; C and C++ forward. ADOPT-BOUNDED (RFC-0089): `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it returns before spinning has stopped -- `is_spinning` is the observable that says when it has. `is_halted` (cancel REQUESTED) and `is_spinning` (a loop is RUNNING) stay distinct; all four combinations are reachable."
+  },
   "rust:Executor::epoch_now_us": {
     "verdict": "extension",
     "why": "wall-clock microseconds since the UNIX epoch, or `None` when the target has no epoch source. RFC-0052: `header.stamp` is ROS (wall) time while the executor's own accounting is monotonic, so age monitoring needs both clocks and has to be able to say that one is absent -- a baked `max_age_ms` with no epoch source is a BAKE-time error, never a silently dead monitor. rclcpp assumes an OS clock.",
     "bucket": "ours-only"
+  },
+  "rust:Executor::exit_spin_loop": {
+    "verdict": "extension",
+    "why": "phase-417 W4.c — `cancel`/`is_spinning` under rclcpp's own names, replacing a three-way disagreement: C had `nros_executor_stop` mutating a C-side state enum, C++ could not stop a spin without `shutdown()` tearing down the session, and Rust's `halt`/`is_halted` were `alloc`-GATED, so a core-only image could not stop its own executor at all. One flag, in Rust; C and C++ forward. ADOPT-BOUNDED (RFC-0089): `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it returns before spinning has stopped -- `is_spinning` is the observable that says when it has. `is_halted` (cancel REQUESTED) and `is_spinning` (a loop is RUNNING) stay distinct; all four combinations are reachable."
   },
   "rust:Executor::from_session*": {
     "verdict": "divergence",
@@ -733,10 +757,26 @@
     "why": "request the spin loop to stop and hand out the shared halt flag for a signal handler or another task. rclrs's counterpart is `ExecutorCommands::halt_spinning`, reached through the async command channel this stage declines (see `rust:Executor::commands`); ours is an `AtomicBool` plus a wake, so it works from an ISR with no allocation. OUR LANGUAGES DISAGREE: C spells it `nros_executor_stop`, Rust `halt`, and C++ `Executor::cancel` (phase-417 W4.c -- before that C++ could not do it at all). Three spellings, one capability, no language missing it.",
     "bucket": "ours-only"
   },
+  "rust:Executor::has_park_primitive": {
+    "verdict": "extension",
+    "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436 W7. Whether a platform park primitive is installed. Load-bearing rather than informational: a park that waits on its own fresh object is NOT breakable by the backend's listener, and installing one makes latency WORSE — once a port has parked, the transport drain drops to non-blocking, so an unbreakable park sleeps out its full deadline with data already waiting."
+  },
   "rust:Executor::is_halted": {
     "verdict": "extension",
     "why": "reads the flag `rust:Executor::halt*` sets -- phrased inversely to rclcpp's `is_spinning`, which C++ grew in phase-417 W4.c; C models the state (`nros_executor_state_t`) without exporting a reader, so this and the C++ method are the two ways to ask.",
     "bucket": "ours-only"
+  },
+  "rust:Executor::is_spinning": {
+    "verdict": "extension",
+    "why": "phase-417 W4.c — `cancel`/`is_spinning` under rclcpp's own names, replacing a three-way disagreement: C had `nros_executor_stop` mutating a C-side state enum, C++ could not stop a spin without `shutdown()` tearing down the session, and Rust's `halt`/`is_halted` were `alloc`-GATED, so a core-only image could not stop its own executor at all. One flag, in Rust; C and C++ forward. ADOPT-BOUNDED (RFC-0089): `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it returns before spinning has stopped -- `is_spinning` is the observable that says when it has. `is_halted` (cancel REQUESTED) and `is_spinning` (a loop is RUNNING) stay distinct; all four combinations are reachable."
+  },
+  "rust:Executor::last_park": {
+    "verdict": "extension",
+    "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436. The bound the last park used, and which source won it. Paired with `last_park_achieved_us`; both are reported because a cadence that cannot be waited in must not be presented as if it were met."
+  },
+  "rust:Executor::last_park_achieved_us": {
+    "verdict": "extension",
+    "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436 W2. The park the platform was actually asked for, after rounding the request up to an expressible value. Differs from `last_park().0` exactly when the request did not land on the platform's grid — which is the case the pair exists to make visible."
   },
   "rust:Executor::node*": {
     "verdict": "divergence",
@@ -753,6 +793,10 @@
     "why": "the executor-owned parameter store. Parameters live on the EXECUTOR here rather than on a node, because the six `rcl_interfaces/srv/*` servers are registered once per image against `ZPICO_MAX_QUERYABLES` = 8 (issue 0460), not once per node. See the param stage and `c:executor_has_param`.",
     "bucket": "ours-only"
   },
+  "rust:Executor::park_granularity_us": {
+    "verdict": "extension",
+    "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436 W7. The finest park the installed primitive can express. Replaces a hardcoded `1_000` justified by \"every `nros_platform_wake_*` port takes `uint32_t timeout_ms`\" — right for FreeRTOS by coincidence, wrong for the other two, and it made the W3 jitter report over-claim on ThreadX, reproducing one layer below W3 the failure W3 exists to prevent. With nothing installed the fallback is 1 ms, the honest floor of the `wake_wait_ms` ABI every port exports today."
+  },
   "rust:Executor::ping": {
     "verdict": "extension",
     "why": "see `c:executor_ping`.",
@@ -762,6 +806,18 @@
     "verdict": "divergence",
     "why": "creates the guard condition ON THE EXECUTOR and returns `(HandleId, GuardCondition)`. rclrs constructs a `GuardCondition` from a `Context` and adds it to a wait set; rclrs's wait-set machinery; the reason is stated in full at `cpp:WaitSet`. so the executor has to own the flag -- it lives in the arena, which is what makes the handle `Send + Sync` with no allocation. See `c:guard_condition_set_callback` for the three different owners our three languages create this from.",
     "bucket": "ours-only"
+  },
+  "rust:Executor::register_wake_source": {
+    "verdict": "extension",
+    "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436. A port registers `k_poll`, `epoll`, a queue set or a device ISR here and the executor only ever asks \"when will you next need me?\" — the core never names an RTOS. Refuses past capacity rather than dropping silently: a source quietly discarded would leave the executor sleeping past a deadline it had been told about, which is the failure this phase exists to remove."
+  },
+  "rust:Executor::release_jitter": {
+    "verdict": "extension",
+    "why": "MERGED 2026-09-04 during the phase-417 rebase onto main, from two independent rows that both landed -- this branch's W-M2 note and main's own filing. JSON keeps the LAST, so one author's reasoning was being discarded silently. Both said `extension`; the prose is combined here and neither is lost.\n\nLanded 2026-09-04 (`55324cc33`, sched). Ours-only, and there is no upstream name to align to: neither the recorded rclrs nor rclcpp surface contains `jitter` or `late_wake` at all. Returns `(max_release_jitter_us, late_wakes, total_wakes)` from `spin_period` (`executor/spin.rs:2152`). rclcpp has no counterpart because it does not own the wake: an rclcpp executor blocks in `rmw_wait` and a timer that fires late is simply a timer that fired, with nothing recording how late. Here `spin_period` IS the release, so lateness is measurable and is the figure of merit a periodic RTOS task is judged by. The RATIO is why both counters are returned rather than just the max -- one late wake in ten thousand is a glitch, ten thousand in ten thousand means the period cannot be met.\n\nphase-417 W-M2 note: ledgered here because `--require-disposition` armed the api-parity gate and this landed on main in parallel (`55324cc33 feat(sched): measure release jitter`).\n\nRFC-0052's real-time observability: `(max_release_jitter_us, late_wakes, total_wakes)` for a `spin_period` loop. rclcpp has no counterpart because it does not own the release -- a periodic rclcpp node is a wall timer on a general-purpose executor, and the lateness a scheduler introduces is not a quantity rclcpp is in a position to measure. Ours is, because one executor owns one RTOS task (RFC-0002) and the period is the task's own.\n\nThe RATIO is the point, not the maximum alone: one late wake in ten thousand is a glitch, ten thousand in ten thousand means the period cannot be met -- two different failures that a single max cannot tell apart. Zero on a clockless build, where `spin_period` refuses to run at all (issue 0709), so there is nothing to have measured."
+  },
+  "rust:Executor::release_jitter_granularity_us": {
+    "verdict": "extension",
+    "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436. What the release-jitter number is WORTH, reported rather than applied — silently coarsening a bound could mask real lateness. A declared cadence (`set_spin_nominal_us`) is paced by the caller, as nros-cpp's tiers are with `platform_sleep_us` between spins, and that sleep is finer than the wait, so the measurement really is good to a microsecond and coarsening it would understate it."
   },
   "rust:Executor::remove_on_shutdown_callback": {
     "verdict": "extension",
@@ -806,6 +862,10 @@
     "why": "sets node name and namespace after open, because RFC-0046 makes LAUNCH the authority on node identity and an image is told its name at boot rather than parsing argv (there is none). rclrs fixes identity at `create_node`. See `c:support_init_named`.",
     "bucket": "ours-only"
   },
+  "rust:Executor::set_park_primitive": {
+    "verdict": "extension",
+    "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436 W7. Installs THE thing that blocks — singular by nature, since only one primitive can actually wait, so it replaces whatever was there. Takes the port's `granularity_us` because only the port knows it: the ABI signature is not the limit, an RTOS tick is a coarser one and a timespec primitive a finer one."
+  },
   "rust:Executor::set_primary_identity": {
     "verdict": "divergence",
     "why": "the same for the RMW name and locator; see `rust:Executor::set_node_identity`.",
@@ -815,6 +875,10 @@
     "verdict": "extension",
     "why": "selects interleaved versus Logical Execution Time dispatch; see `rust:ExecutorSemantics`, including the note that C++ cannot do this.",
     "bucket": "ours-only"
+  },
+  "rust:Executor::set_spin_nominal_us": {
+    "verdict": "extension",
+    "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436. Declares how often this executor's loop intends to come round, in microseconds; `0` (the default) falls back to the `spin_once` timeout. Needed because a driver's pacing and its blocking bound are separate numbers: nros-cpp's tier loops sleep `spin_period_us` between spins but pass a fixed 10 ms timeout, so the release-jitter rule judged every tier against 10 ms regardless of the declared contract — too lax for a 1 ms tier and far too strict for a 30 ms one."
   },
   "rust:Executor::set_trigger": {
     "verdict": "extension",
@@ -828,16 +892,6 @@
   "rust:Executor::spin*": {
     "verdict": "divergence",
     "why": "the spin family, and its shape is the divergence. RESHAPED 2026-09-09 (phase-427) so the family carries upstream's names and only the RTOS-specific forms carry ours. `spin(SpinOptions) -> Result<(), NodeError>` is rclrs's name, argument and meaning: it was `spin_blocking`, because `spin` was squatted on by a `spin(Duration) -> !` task body with a different contract -- which made the rename the ONE porting edit on the rclrs tutorial's happy path that no real difference forced. Two bounds, both visible in the signature: rclrs returns `Vec<RclrsError>` and the caller writes `.first_error()?`, ours returns the FIRST error because there is no allocator (the edit is `.first_error()?` -> `?`), and `SpinOptions::poll_interval` is the quantum at which every exit condition is observed, because RFC-0002 makes this a poll loop. `spin_once(Duration)` is UNCHANGED and stays ours-only -- it drives I/O then dispatches EVERY ready arena entry (RFC-0002 section 3) where rclcpp's `spin_once` executes the next ONE, so the name matches and the meaning does not; see `cpp:Executor::spin_some`. `spin_some(max)` is NEW: rclcpp's drain verb, execute what is ready and return, never wait. `spin_forever(SpinOptions) -> !` is the former `spin`, renamed to say what it is -- a bare-metal entry has no shutdown source and nothing to return to, and `!` lets the compiler drop the epilogue; it absorbed `spin_default()` (0 call sites), whose 50 ms is now `SpinOptions::poll_interval`. `spin_period` / `spin_one_period` / `spin_one_period_timed` did NOT fold into `spin_some` and stay ours-only: they are RFC-0002's fixed-period dispatch, which PACES -- sleeps to an accumulated deadline so the rate does not drift -- and reports overrun, where `spin_some` executes what is ready, returns, and never sleeps. `spin_one_period` additionally RETURNS the remaining sleep for a caller with no clock to perform, which is not a value `spin_some`'s `Result` could carry. rclrs has no counterpart for any of the three: it spins as fast as work arrives.",
-    "bucket": "ours-only"
-  },
-  "rust:SpinOptions::poll_interval": {
-    "verdict": "divergence",
-    "why": "phase-427 -- how long ONE iteration of `Executor::spin` / `spin_forever` may wait on the transport. The platform constraint is RFC-0002: one executor per RTOS task, driven by a poll loop, not a wait set an OS can block a thread on. So the quantum is a real number a caller has to be able to set -- it is the granularity at which `cancel()`, `timeout` and `max_callbacks` are OBSERVED -- and rclrs's `SpinOptions` has no field for it because its executor has no such quantum. It lives on the options type rather than becoming a second verb so that the divergence sits in ONE type a ported rclrs file already names, instead of forcing a rename on the `spin` line. Defaults to `DEFAULT_SPIN_POLL_INTERVAL` (10 ms), the value `spin_blocking` carried as a private const; `Default` is hand-written rather than derived because `Duration::default()` is ZERO and the derive would have turned every `SpinOptions::default()` in the tree into a busy-poll that still passed every functional test.",
-    "bucket": "ours-only"
-  },
-  "rust:SpinOptions::stop_on_first_error": {
-    "verdict": "divergence",
-    "why": "phase-427 -- end the spin at the first pass in which a callback failed. The platform constraint is the absence of an allocator: rclrs collects every callback error into the `Vec<RclrsError>` its `spin` returns and the caller picks one with `.first_error()`; we cannot hold a vector, so `Executor::spin` returns `Result<(), NodeError>` carrying the FIRST error and counting the rest in `SpinOnceResult`. A channel that holds one error has to say when it stops looking, which is this flag. `false` by default, which is the pre-phase-427 behaviour and what the 27 migrated `spin_blocking` call sites were promised. On `spin_forever` it can only REPORT -- a `-> !` loop has nowhere to return an error to -- and the doc comment says so rather than dropping the request silently.",
     "bucket": "ours-only"
   },
   "rust:Executor::spin_async": {
@@ -1098,6 +1152,16 @@
     "verdict": "extension",
     "why": "stop after N callbacks in one blocking spin. rclrs bounds a spin by time or by a promise resolving; a bounded-WCET RTOS task needs a bound on WORK, because the time bound only tells it when to give up, not how much it may have already done. See `rust:SpinOptions::timeout_ms`."
   },
+  "rust:SpinOptions::poll_interval": {
+    "verdict": "divergence",
+    "why": "phase-427 -- how long ONE iteration of `Executor::spin` / `spin_forever` may wait on the transport. The platform constraint is RFC-0002: one executor per RTOS task, driven by a poll loop, not a wait set an OS can block a thread on. So the quantum is a real number a caller has to be able to set -- it is the granularity at which `cancel()`, `timeout` and `max_callbacks` are OBSERVED -- and rclrs's `SpinOptions` has no field for it because its executor has no such quantum. It lives on the options type rather than becoming a second verb so that the divergence sits in ONE type a ported rclrs file already names, instead of forcing a rename on the `spin` line. Defaults to `DEFAULT_SPIN_POLL_INTERVAL` (10 ms), the value `spin_blocking` carried as a private const; `Default` is hand-written rather than derived because `Duration::default()` is ZERO and the derive would have turned every `SpinOptions::default()` in the tree into a busy-poll that still passed every functional test.",
+    "bucket": "ours-only"
+  },
+  "rust:SpinOptions::stop_on_first_error": {
+    "verdict": "divergence",
+    "why": "phase-427 -- end the spin at the first pass in which a callback failed. The platform constraint is the absence of an allocator: rclrs collects every callback error into the `Vec<RclrsError>` its `spin` returns and the caller picks one with `.first_error()`; we cannot hold a vector, so `Executor::spin` returns `Result<(), NodeError>` carrying the FIRST error and counting the rest in `SpinOnceResult`. A channel that holds one error has to say when it stops looking, which is this flag. `false` by default, which is the pre-phase-427 behaviour and what the 27 migrated `spin_blocking` call sites were promised. On `spin_forever` it can only REPORT -- a `-> !` loop has nowhere to return an error to -- and the doc comment says so rather than dropping the request silently.",
+    "bucket": "ours-only"
+  },
   "rust:SpinOptions::until_promise_resolved": {
     "verdict": "declined",
     "disposition": "refuse-loud",
@@ -1197,37 +1261,5 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "part of rclrs 0.5's async executor machine: an `ExecutorRuntime` behind the `Executor`, an `ExecutorChannel` carrying work to it, `Worker`s with their own payloads, `ActivityListener`s, and `Waitable`s wrapping each rcl primitive. Three constraints refuse the whole layer at once. RFC-0021: no futures and no async runtime -- rclrs drives `spin_async` on async-std/tokio, and a no_std image has neither. RFC-0002: one executor per RTOS task, dispatching FIFO from a fixed arena, so there is no work to send anywhere and no second thread to send it from. no allocator -- the channels, the `Vec<Waitable>` and the boxed tasks all allocate per item on the dispatch path."
-  },
-    "rust:Executor::release_jitter": {
-    "verdict": "extension",
-    "why": "MERGED 2026-09-04 during the phase-417 rebase onto main, from two independent rows that both landed -- this branch's W-M2 note and main's own filing. JSON keeps the LAST, so one author's reasoning was being discarded silently. Both said `extension`; the prose is combined here and neither is lost.\n\nLanded 2026-09-04 (`55324cc33`, sched). Ours-only, and there is no upstream name to align to: neither the recorded rclrs nor rclcpp surface contains `jitter` or `late_wake` at all. Returns `(max_release_jitter_us, late_wakes, total_wakes)` from `spin_period` (`executor/spin.rs:2152`). rclcpp has no counterpart because it does not own the wake: an rclcpp executor blocks in `rmw_wait` and a timer that fires late is simply a timer that fired, with nothing recording how late. Here `spin_period` IS the release, so lateness is measurable and is the figure of merit a periodic RTOS task is judged by. The RATIO is why both counters are returned rather than just the max -- one late wake in ten thousand is a glitch, ten thousand in ten thousand means the period cannot be met.\n\nphase-417 W-M2 note: ledgered here because `--require-disposition` armed the api-parity gate and this landed on main in parallel (`55324cc33 feat(sched): measure release jitter`).\n\nRFC-0052's real-time observability: `(max_release_jitter_us, late_wakes, total_wakes)` for a `spin_period` loop. rclcpp has no counterpart because it does not own the release -- a periodic rclcpp node is a wall timer on a general-purpose executor, and the lateness a scheduler introduces is not a quantity rclcpp is in a position to measure. Ours is, because one executor owns one RTOS task (RFC-0002) and the period is the task's own.\n\nThe RATIO is the point, not the maximum alone: one late wake in ten thousand is a glitch, ten thousand in ten thousand means the period cannot be met -- two different failures that a single max cannot tell apart. Zero on a clockless build, where `spin_period` refuses to run at all (issue 0709), so there is nothing to have measured."
-  },
-    "rust:Executor::clear_release_jitter_stats": {
-    "verdict": "extension",
-    "why": "MERGED 2026-09-04 during the phase-417 rebase onto main, from two independent rows that both landed -- this branch's W-M2 note and main's own filing. JSON keeps the LAST, so one author's reasoning was being discarded silently. Both said `extension`; the prose is combined here and neither is lost.\n\nSibling of `Executor::release_jitter`, same commit, same reason there is no upstream name. Resets the window (`executor/spin.rs:2163`) so monitoring code can log-and-clear per period; without it a single early outlier pins the maximum for the life of the process, which is the failure mode that makes a max-only statistic useless on a long-running image.\n\nphase-417 W-M2 note: see `rust:Executor::release_jitter`. The reset half -- a measurement window is only meaningful if a caller can start one, and without this the counters are since-boot forever. rclcpp has no counterpart for the same reason it has none for the reading."
-  },
-  "c:executor_cancel": {
-    "verdict": "extension",
-    "why": "phase-417 W4.c — `cancel`/`is_spinning` under rclcpp's own names, replacing a three-way disagreement: C had `nros_executor_stop` mutating a C-side state enum, C++ could not stop a spin without `shutdown()` tearing down the session, and Rust's `halt`/`is_halted` were `alloc`-GATED, so a core-only image could not stop its own executor at all. One flag, in Rust; C and C++ forward. ADOPT-BOUNDED (RFC-0089): `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it returns before spinning has stopped -- `is_spinning` is the observable that says when it has. `is_halted` (cancel REQUESTED) and `is_spinning` (a loop is RUNNING) stay distinct; all four combinations are reachable."
-  },
-  "c:executor_is_spinning": {
-    "verdict": "extension",
-    "why": "phase-417 W4.c — `cancel`/`is_spinning` under rclcpp's own names, replacing a three-way disagreement: C had `nros_executor_stop` mutating a C-side state enum, C++ could not stop a spin without `shutdown()` tearing down the session, and Rust's `halt`/`is_halted` were `alloc`-GATED, so a core-only image could not stop its own executor at all. One flag, in Rust; C and C++ forward. ADOPT-BOUNDED (RFC-0089): `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it returns before spinning has stopped -- `is_spinning` is the observable that says when it has. `is_halted` (cancel REQUESTED) and `is_spinning` (a loop is RUNNING) stay distinct; all four combinations are reachable."
-  },
-  "rust:Executor::cancel": {
-    "verdict": "extension",
-    "why": "phase-417 W4.c — `cancel`/`is_spinning` under rclcpp's own names, replacing a three-way disagreement: C had `nros_executor_stop` mutating a C-side state enum, C++ could not stop a spin without `shutdown()` tearing down the session, and Rust's `halt`/`is_halted` were `alloc`-GATED, so a core-only image could not stop its own executor at all. One flag, in Rust; C and C++ forward. ADOPT-BOUNDED (RFC-0089): `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it returns before spinning has stopped -- `is_spinning` is the observable that says when it has. `is_halted` (cancel REQUESTED) and `is_spinning` (a loop is RUNNING) stay distinct; all four combinations are reachable."
-  },
-  "rust:Executor::enter_spin_loop": {
-    "verdict": "extension",
-    "why": "phase-417 W4.c — `cancel`/`is_spinning` under rclcpp's own names, replacing a three-way disagreement: C had `nros_executor_stop` mutating a C-side state enum, C++ could not stop a spin without `shutdown()` tearing down the session, and Rust's `halt`/`is_halted` were `alloc`-GATED, so a core-only image could not stop its own executor at all. One flag, in Rust; C and C++ forward. ADOPT-BOUNDED (RFC-0089): `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it returns before spinning has stopped -- `is_spinning` is the observable that says when it has. `is_halted` (cancel REQUESTED) and `is_spinning` (a loop is RUNNING) stay distinct; all four combinations are reachable."
-  },
-  "rust:Executor::exit_spin_loop": {
-    "verdict": "extension",
-    "why": "phase-417 W4.c — `cancel`/`is_spinning` under rclcpp's own names, replacing a three-way disagreement: C had `nros_executor_stop` mutating a C-side state enum, C++ could not stop a spin without `shutdown()` tearing down the session, and Rust's `halt`/`is_halted` were `alloc`-GATED, so a core-only image could not stop its own executor at all. One flag, in Rust; C and C++ forward. ADOPT-BOUNDED (RFC-0089): `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it returns before spinning has stopped -- `is_spinning` is the observable that says when it has. `is_halted` (cancel REQUESTED) and `is_spinning` (a loop is RUNNING) stay distinct; all four combinations are reachable."
-  },
-  "rust:Executor::is_spinning": {
-    "verdict": "extension",
-    "why": "phase-417 W4.c — `cancel`/`is_spinning` under rclcpp's own names, replacing a three-way disagreement: C had `nros_executor_stop` mutating a C-side state enum, C++ could not stop a spin without `shutdown()` tearing down the session, and Rust's `halt`/`is_halted` were `alloc`-GATED, so a core-only image could not stop its own executor at all. One flag, in Rust; C and C++ forward. ADOPT-BOUNDED (RFC-0089): `cancel` sets a flag the spin loop observes at the NEXT POLL BOUNDARY, so it returns before spinning has stopped -- `is_spinning` is the observable that says when it has. `is_halted` (cancel REQUESTED) and `is_spinning` (a loop is RUNNING) stay distinct; all four combinations are reachable."
   }
 }
