@@ -1,6 +1,6 @@
 # Phase 440 — the store is the root
 
-**Status (2026-09-09). W2 CLOSED by deletion (issue 1248); W1 and W3-W8 open.** Implements
+**Status (2026-09-09). W1 LANDED; W2 CLOSED by deletion (issue 1248); W3-W8 open.** Implements
 [RFC-0095](../design/0095-nros-store-is-the-root.md). The campaign home for
 moving nano-ros from "a repository the user places" to "an artifact the user's
 CLI provisions", and for the provisioning-root cleanup that has to happen first
@@ -32,19 +32,39 @@ already paying:
 
 ## Work items
 
-### W1 — one resolver, store arm added, behaviour unchanged
+### W1 — one resolver, store arm added, behaviour unchanged — **LANDED**
 
-The Zephyr workspace chain has three copies today (`just/zephyr.just:19`,
+The Zephyr workspace chain had three copies (`just/zephyr.just:19`,
 `scripts/build/west-fixtures.sh`, `scripts/check-tier-preconditions.sh`), which
-is the two-spellings shape this repo keeps paying for. Fold them into one
-helper, add the `$NROS_STORE/workspaces/<name>/<version>` arm **below** the
-existing ones so nothing moves yet.
+is the two-spellings shape this repo keeps paying for. They now read
+`scripts/lib/zephyr-workspace.sh`, which also carries the
+`$NROS_STORE/workspaces/zephyr/<version>` arm **below** the existing ones so
+nothing moves yet. `just` cannot call a shell function, so it CALLS the helper
+as a command (`shell("scripts/lib/zephyr-workspace.sh … resolve-or-default")`)
+rather than restating the ladder.
 
-*Acceptance:* one function; the three call sites read it; `just ci gate` green;
-a gate refuses a fourth spelling (the `check-cli-source-dirs` shape). With no
-store populated, every existing host resolves exactly what it resolved before —
-proven by printing the resolved path on a provisioned host and diffing against
-the pre-change value.
+**What the fold had to decide, because the three DISAGREED.** Measured over a
+9-shape × 2-line matrix of synthetic hosts, before and after: 39 of 54 cells are
+byte-identical, and **all 15 that moved are cells where the three resolvers
+already gave different answers** — nothing the tree agreed on changed. The
+disagreements were real: on the 4.4 line `just zephyr` named the 4.4 sibling
+while west-fixtures resolved the 3.7 in-tree workspace and
+check-tier-preconditions reported no workspace at all; west-fixtures also let a
+set-but-not-yet-created `NROS_ZEPHYR_WORKSPACE` fall THROUGH to a different
+tree. The reconciliation, stated in the helper's header: the override wins
+unconditionally (it is the install target too), a candidate is a workspace when
+it holds `zephyr/`, and the ladder is version-aware one line at a time.
+
+*Acceptance:* one function; the three call sites read it; `just check fast`
+green (276 ran, 9 skipped for absent provisioning, 0 failed);
+`check-zephyr-workspace-resolvers` refuses a fourth spelling, ratcheted through
+`.config/zephyr-workspace-resolvers.txt` and mutation-tested in both directions.
+
+*What W1 did NOT do:* 29 files still spell the ladder themselves — the CLI's own
+Rust resolver, the nros-tests harness, four more shell ladders, three Python
+ones and the `scripts/zephyr/*-patch.sh` legacy-tree rung. They are recorded
+with reasons in the ratchet rather than folded, because most want the store
+inversion (W4) or the D1 generalisation (W5) first. The ratchet only shrinks.
 
 ### W2 — the box-sync gate's lane — **CLOSED by deletion (issue 1248)**
 

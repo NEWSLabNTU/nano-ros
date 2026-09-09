@@ -241,12 +241,19 @@ probe "corrosion in the SDK store is not at the pinned version" \
 # operator learned it from `_lane-gate` twenty minutes later as four missing
 # `.inputsig` files. WARN rather than fail: an unprovisioned host is legitimate
 # for tier 1, and only the wider tiers actually need the lane.
-_zephyr_ws="${NROS_ZEPHYR_WORKSPACE:-}"
-if [ -z "$_zephyr_ws" ]; then
-    for _cand in zephyr-workspace ../nano-ros-workspace; do
-        [ -d "$_cand/zephyr" ] && _zephyr_ws="$_cand" && break
-    done
-fi
+#
+# phase-440 W1 — through the ONE resolver (RFC-0095 D4). The copy that stood
+# here was the shortest of the three and the only one with no 4.4 arm at all,
+# so on the rolling line it reported "no Zephyr workspace" against a workspace
+# `just zephyr` was building in.
+# `resolve`, not `resolve_abs`: this file already reports relative paths and has
+# `cd "$repo_root"` at its head, so the canonical spelling is what a reader of
+# the remedy expects. The `-d` retest below still earns its keep — the OVERRIDE
+# arm is returned unconditionally, so it is the one candidate nothing has
+# checked.
+# shellcheck source=scripts/lib/zephyr-workspace.sh
+source "$repo_root/scripts/lib/zephyr-workspace.sh"
+_zephyr_ws="$(nros_zephyr_ws_resolve "" "$repo_root" || true)"
 if [ -z "$_zephyr_ws" ] || [ ! -d "$_zephyr_ws/zephyr" ]; then
     echo "check-tier-preconditions: WARNING — no Zephyr workspace, so the zephyr" >&2
     echo "  fixture lane will SKIP. Tier 1 does not need it; tier 2+ does — the" >&2

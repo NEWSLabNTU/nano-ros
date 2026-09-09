@@ -705,6 +705,20 @@ zephyr-kconfig-symbols:
 zephyr-knob-agreement:
     @python3 scripts/check-zephyr-knob-agreement.py
 
+# phase-440 W1 / RFC-0095 D4 — the Zephyr workspace chain has ONE spelling,
+# `scripts/lib/zephyr-workspace.sh`. It had three, and they disagreed: on the
+# 4.4 line `just zephyr` named the 4.4 sibling, `west-fixtures.sh` resolved the
+# 3.7 in-tree workspace, and `check-tier-preconditions.sh` reported no workspace
+# at all. Nothing failed loudly — three answers to one question is exactly the
+# drift that stays invisible until a lane dies on it.
+#
+# A ratchet, `.config/zephyr-workspace-resolvers.txt`, and like
+# `check-cli-source-dirs` it names the DIRECTION: a file that GAINED the ladder
+# is a fourth spelling, a listed file that LOST it is a stale licence to delete.
+[private]
+zephyr-workspace-resolvers:
+    @python3 scripts/check-zephyr-workspace-resolvers.py
+
 # Issue 1016 — `require_west_leaf_in_lane` fails OPEN on a build-dir name the
 # manifest does not model, so such a name is a leaf every lane's RUN demands and
 # no lane's BUILD produces. The verdict is a STALE message nobody can tell from a
