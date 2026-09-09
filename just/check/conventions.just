@@ -96,3 +96,17 @@ pipefail-sigpipe-assertions:
 [group("ci")]
 just-recipe-paths:
     @python3 scripts/check-just-recipe-paths.py
+
+# Issue 1249 — a command substitution whose non-zero exit is meant to be
+# INSPECTED, written as a bare `var="$(cmd)"` under `set -e`, so the inspection
+# never runs and the script dies with no message of its own. Two independent
+# instances landed in guard/build infrastructure on ONE DAY (PR #780's
+# `workspace-fixtures-build.sh` find, PR #798's `pre-push` `rc=$?`), which is a
+# fact about the idiom rather than about either site. Keys on the author's own
+# evidence of intent — a `$?` read, or an emptiness test after a command that
+# spells "nothing found" as a non-zero exit — never on a bare assignment alone,
+# because one whose failure SHOULD abort is correct as written. Buildless,
+# source-only, ~0.3 s; self-tests both real cases in both shapes on every run.
+[private]
+set-e-bare-assignment:
+    @python3 scripts/check-set-e-bare-assignment.py

@@ -28,11 +28,15 @@ status=0
 # looked at `docs/issues/`. A gate narrower than the rule it enforces is
 # issue 0196's class — and it went unnoticed here for as long as it did
 # precisely because the check LOOKED like it covered the numbered-doc series.
+# `|| true` — an EMPTY series is what the `[ -n ]` below treats as "no
+# duplicates", and both `find` (missing dir) and `grep` (no input) spell empty
+# as a non-zero exit that pipefail promotes. Without it this gate would die at
+# the assignment with no message of its own (issue 1249).
 design_dups="$(
     find docs/design -maxdepth 1 -name '[0-9][0-9][0-9][0-9]-*.md' -print0 2>/dev/null |
         xargs -0 -r -n1 basename |
         grep -oE '^[0-9]{4}' |
-        sort | uniq -d
+        sort | uniq -d || true
 )"
 if [ -n "$design_dups" ]; then
     status=1
@@ -49,11 +53,12 @@ if [ -n "$design_dups" ]; then
 fi
 
 # --- 1. duplicate ids ------------------------------------------------------
+# `|| true`, same reason as above (issue 1249).
 dups="$(
     find "$issues_dir" -maxdepth 2 -name '[0-9][0-9][0-9][0-9]-*.md' -print0 |
-        xargs -0 -n1 basename |
+        xargs -0 -r -n1 basename |
         grep -oE '^[0-9]{4}' |
-        sort | uniq -d
+        sort | uniq -d || true
 )"
 if [ -n "$dups" ]; then
     status=1

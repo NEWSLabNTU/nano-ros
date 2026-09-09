@@ -179,7 +179,9 @@ BOARD_MAKEDEFS="$(pwd)/${NUTTX_BOARD_MAKEDEFS:-boards/arm/qemu/qemu-armv7a/scrip
 #
 # Derived from the DEFCONFIG, never from `.config` — at decision time the tree
 # may still hold the other architecture, which is exactly the case this fixes.
-NUTTX_ARCH=$(grep -E '^CONFIG_ARCH=' "$DEFCONFIG" 2>/dev/null | cut -d'"' -f2)
+# `|| true` so the "declares no CONFIG_ARCH" message below can be reached:
+# grep spells "no match" as exit 1 (issue 1249).
+NUTTX_ARCH=$(grep -E '^CONFIG_ARCH=' "$DEFCONFIG" 2>/dev/null | cut -d'"' -f2 || true)
 if [ -z "$NUTTX_ARCH" ]; then
     echo "build-nuttx.sh: $DEFCONFIG declares no CONFIG_ARCH — cannot key the export" >&2
     exit 1
@@ -328,7 +330,9 @@ echo "Exporting NuttX..."
 # snapshot (phase-339 W1; the old `rm -rf nuttx-export-*` wiped it).
 rm -rf nuttx-export-*.tar.gz nuttx-export-*/
 make export
-EXPORT_TAR=$(ls nuttx-export-*.tar.gz 2>/dev/null | head -1)
+# `|| true` — `make export` producing no tarball is what the `[ -n ]` below
+# handles; an unmatched glob is `ls` exiting non-zero (issue 1249).
+EXPORT_TAR=$(ls nuttx-export-*.tar.gz 2>/dev/null | head -1 || true)
 if [ -n "$EXPORT_TAR" ]; then
     EXPORT_DIR="${EXPORT_TAR%.tar.gz}"
     rm -rf "$EXPORT_DIR"

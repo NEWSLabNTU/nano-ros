@@ -108,7 +108,9 @@ if [ ! -d "$ARM_FVP_DIR" ]; then
     exit 1
 fi
 
-found="$(find "$ARM_FVP_DIR" -name "$BIN_NAME" -type f -executable 2>/dev/null | head -1)"
+# `|| true` — an `$ARM_FVP_DIR` that does not exist is find's 1, and the
+# multi-line layout hint below is written precisely for it (issue 1249).
+found="$(find "$ARM_FVP_DIR" -name "$BIN_NAME" -type f -executable 2>/dev/null | head -1 || true)"
 if [ -z "$found" ]; then
     cat >&2 <<EOF
 arm-fvp-installer: $BIN_NAME not found anywhere under

@@ -43,8 +43,10 @@ echo "→ Building nros-rmw-cyclonedds for $TARGET (--no-default-features)…"
 cargo build -p nros-rmw-cyclonedds --no-default-features --target "$TARGET" >&2
 
 DEPS_DIR="target/$TARGET/debug/deps"
+# `|| true`: an ABSENT `$DEPS_DIR` is exactly the case the `[[ -z ]]` below
+# reports, and pipefail would otherwise abort here with no message (issue 1249).
 RLIB="$(find "$DEPS_DIR" -maxdepth 1 -name 'libnros_rmw_cyclonedds*.rlib' -printf '%T@ %p\n' \
-        | sort -nr | head -1 | cut -d' ' -f2-)"
+        | sort -nr | head -1 | cut -d' ' -f2- || true)"
 
 if [[ -z "${RLIB:-}" ]]; then
     echo "FAIL: no libnros_rmw_cyclonedds*.rlib found under $DEPS_DIR" >&2

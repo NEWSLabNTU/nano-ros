@@ -83,9 +83,16 @@ if [ ! -f "$TEST_EXEC" ]; then
     exit 1
 fi
 
-# Run the test
-OUTPUT=$("$TEST_EXEC" 2>&1)
-RESULT=$?
+# Run the test.
+#
+# `RESULT=0; ... || RESULT=$?`, NOT a bare assignment: a FAILING test executable
+# is the whole point of reading `$RESULT`, and under `set -e` a bare
+# `OUTPUT=$(...)` would end this script at the assignment — so neither the
+# captured output nor the "failed with exit code" line below would ever be
+# printed, and the only evidence of a failing test would be this script's own
+# bare status (issue 1249).
+RESULT=0
+OUTPUT=$("$TEST_EXEC" 2>&1) || RESULT=$?
 
 echo "$OUTPUT"
 

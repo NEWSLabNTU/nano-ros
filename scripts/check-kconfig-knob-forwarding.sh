@@ -98,8 +98,11 @@ NO_RUST_READER=(
 
 [ -f "$CMAKE" ] || { echo "[FAIL] missing $CMAKE" >&2; exit 1; }
 
+# `|| true`: "no calls found" is this gate's own negative control, and grep
+# reports it as exit 1 — which under pipefail would kill the gate before it
+# could say so, turning a loud [FAIL] into a bare status (issue 1249).
 knobs="$(grep -oE '_nros_resolve_knob\(([A-Z0-9_]+)' "$CMAKE" \
-    | sed 's/^_nros_resolve_knob(//' | sort -u)"
+    | sed 's/^_nros_resolve_knob(//' | sort -u || true)"
 [ -n "$knobs" ] || { echo "[FAIL] no _nros_resolve_knob() calls found in $CMAKE" >&2; exit 1; }
 
 fail=0

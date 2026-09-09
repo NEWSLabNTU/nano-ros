@@ -106,7 +106,9 @@ echo ""
 # --- Find and parse .su files ---
 # GCC .su format: <file>:<line>:<col>:<function>\t<size>\t<type>
 # where type is "static", "dynamic", or "bounded"
-SU_FILES="$(find "$BUILD_DIR" -name '*.su' 2>/dev/null)"
+# `|| true` — a `$BUILD_DIR` that does not exist is find's 1, and the
+# clang-vs-gcc hint below is written for exactly that (issue 1249).
+SU_FILES="$(find "$BUILD_DIR" -name '*.su' 2>/dev/null || true)"
 
 if [[ -z "$SU_FILES" ]]; then
     echo "No .su files found in $BUILD_DIR"
