@@ -741,32 +741,74 @@ Two consequences of the fix, both stated rather than absorbed:
   12 → 9, `differs` 20 → 21, `ours-only` 354 → 360, `theirs-only` 695 → 651.
   Forty-four names we ship stopped being reported as names only ROS 2 has.
 
-### The flip is UNBLOCKED; what remains is a sweep
+### The flip is DONE for nine of the ten (phase-428, 2026-09-09)
 
-Nothing in the tooling now argues for defining a type in `nros::`. What remains
-is mechanical and belongs to the phase-428 sweep: **nine types are defined in
-`nros::` and aliased into upstream's namespace**, and each moves its definition
-across, leaving the alias pointing the other way.
+Nothing in the tooling argued for defining a type in `nros::`, and nine of the
+ten have moved. Each definition now sits in the upstream namespace and the
+`nros::` spelling is the alias.
 
-| aliased as | defined as | header |
+| defined as | alias | header |
 | --- | --- | --- |
-| `rclcpp::Clock` | `nros::Clock` | `clock.hpp:135` |
-| `rclcpp::Duration` | `nros::Duration` | `duration.hpp:164` |
-| `rclcpp::Time` | `nros::Time` | `time.hpp:158` |
-| `rclcpp::Publisher<M>` | `nros::Publisher<M>` | `publisher.hpp:386` |
-| `rclcpp::Subscription<M>` | `nros::Subscription<M>` | `subscription.hpp:880` |
-| `rclcpp::Client<S>` | `nros::Client<S>` | `client.hpp:432` |
-| `rclcpp::Service<S>` | `nros::Service<S>` | `service.hpp:334` |
-| `rclcpp_action::Client<A>` | `nros::ActionClient<A>` | `action_client.hpp:542` |
-| `rclcpp_action::Server<A>` | `nros::ActionServer<A>` | `action_server.hpp:651` |
+| `rclcpp::Clock` | `nros::Clock` | `clock.hpp` |
+| `rclcpp::Duration` | `nros::Duration` | `duration.hpp` |
+| `rclcpp::Time` | `nros::Time` | `time.hpp` |
+| `rclcpp::Publisher<M>` | `nros::Publisher<M>` | `publisher.hpp` |
+| `rclcpp::Subscription<M>` | `nros::Subscription<M>` | `subscription.hpp` |
+| `rclcpp::Client<S>` | `nros::Client<S>` | `client.hpp` |
+| `rclcpp::Service<S>` | `nros::Service<S>` | `service.hpp` |
+| `rclcpp_action::Client<A>` | `nros::ActionClient<A>` | `action_client.hpp` |
+| `rclcpp_action::Server<A>` | `nros::ActionServer<A>` | `action_server.hpp` |
 
-`Node` is the tenth and is the node-type merge's own file, in flight; it is the
-one that surfaced the problem and is not swept here.
+`Node` is the TENTH and is deliberately NOT swept here: PRs #797 and #806 are
+stacked on `node.hpp`, so flipping it in the same change would conflict with two
+landed reviews. It is the one that surfaced the problem, and phase-427 W7 (the
+`nros::Node` deprecation) waits on it.
 
-The move is a one-way rename per type and each is independently landable, so the
-sweep does not need a flag day. What it does need is the ORDER this RFC already
-states: the compatibility is the work, the rename is cheap, and a type is only
-worth moving once its contract is the one the name promises.
+**The two action types are a RENAME as well as a move**, and that is where the
+sweep stopped being mechanical. `rclcpp_action` already says "action", so the
+types are `Client<A>` and `Server<A>` there, not `ActionClient` / `ActionServer`
+— which discharges the divergence `cpp:ActionServer` recorded ("we ship one
+namespace, `nros`, where `Client` is already the service client"). Three
+consequences, each of which the gates caught rather than the author:
+
+* **A member's ledger key follows its type name.** `nros::ActionClient<A>` is an
+  alias now, so the extractor keys our action client's members as `Client::*`.
+  Four rows were re-keyed and **thirty** rows had to be written: the TYPE moved
+  from `ours-only` to `same`, and `lookup` inherits a type's verdict only for
+  members in the type's own bucket, so every ours-only member that used to
+  inherit from `cpp:ActionClient` / `cpp:ActionServer` became its own claim.
+  That is this RFC's own rule working — a gap, or an extension, INSIDE a type we
+  ship is a different statement from one about a type we do not.
+* **`Client::wait_for_action_server` stopped being `theirs-only` and started
+  CORRESPONDING**, which is the case this RFC exists for: name, arity and return
+  agree, a ported file compiles, and nothing says the units are milliseconds
+  rather than `std::chrono` and the return is `Result` rather than `bool`. It
+  carries an `adopt-bounded` disposition now, written because the flip made the
+  question live.
+* **`Client` names two types, so the topic taxonomy needed overrides.**
+  `rclcpp::Client<S>` is the service client and `rclcpp_action::Client<A>` is the
+  action client; `topics.py` read `Client::<member>` as service. Most action
+  members carry an action word and still route correctly; eleven do not and are
+  named in `KEY_OVERRIDES`, with the service client's own members asserted in the
+  self-test so a widened pattern cannot quietly claim them.
+
+**The aliases are NOT deprecated.** They are ours-only names with in-tree reach,
+so they can eventually be removed — unlike an upstream name we lack, where the
+alias is load-bearing — but a bare deprecation attribute warns at every in-tree
+site at once in a workspace that denies warnings. Measured at the flip: **444
+qualified `nros::<Type>` spellings** across `packages/`, `examples/`, `zephyr/`,
+`cmake/`, `book/` and `docs/` (147 of them outside the nine headers themselves).
+Migrating them is its own wave.
+
+**What the flip does NOT do is make our headers coexist with upstream's.**
+Measured deliberately, a TU that includes both `<rclcpp/rclcpp.hpp>` and
+`<nros/nros.hpp>` fails to compile before the flip (388 distinct errors — the
+`rclcpp::Logger` redefinition in `log.hpp` and hundreds of `rcl_*` C-symbol
+clashes from `nros_generated.h`) and after it (285). nros-cpp REPLACES upstream
+rclcpp; it does not sit beside it, which is what "rclcpp:: is the home" means
+here. `just colcon-parity` is the lane that matters and it stays green, because
+its `consumer.cpp` compiles against upstream rclcpp ALONE — the same source that
+also builds under nano-ros, never both header sets at once.
 
 ## Settled: state hides behind a pointer only when it EXCEEDS a pointer (2026-09-09)
 

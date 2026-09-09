@@ -44,6 +44,23 @@ nros_cpp_ret_t nros_cpp_service_server_register(const nros_cpp_node_t* node,
 } // extern "C"
 
 namespace nros {
+// `nros::Node` is named by the friend declaration below and by the out-of-line
+// `Node::create_*` bodies further down. `nros/node.hpp` (included below, after
+// the class, so a consumer pays only for the entities it uses) has the
+// definition; a qualified friend needs the name to EXIST first, which an
+// unqualified `friend class Node;` used to supply implicitly.
+class Node;
+} // namespace nros
+
+// ============================================================================
+// `rclcpp::Service<S>` -- DEFINED here (RFC-0089: rclcpp:: is the home)
+// ============================================================================
+//
+// phase-428: the definition moved from `nros::` to `rclcpp::` and the alias
+// turned around. The nested `SharedPtr` / `ConstSharedPtr` / `UniquePtr`
+// aliases live on the class itself, so the rclcpp way of indexing types
+// (`rclcpp::Service<S>::SharedPtr`) resolves with no wrapper in between.
+namespace rclcpp {
 
 /// Typed service server for a ROS 2 service.
 ///
@@ -111,15 +128,16 @@ template <typename S> class Service {
     /// false here: the server deserializes out of it, so an under-estimate
     /// truncates. See @ref Subscription::take_sized.
     template <size_t Cap> Result try_recv_request_sized(RequestType& req, int64_t& seq_id) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
         uint8_t buf[Cap];
         size_t len = 0;
         int64_t seq = 0;
         nros_cpp_ret_t ret =
             nros_cpp_service_server_take_request_raw(storage_, buf, sizeof(buf), &len, &seq);
         if (ret != 0) return Result(ret);
-        if (len == 0) return Result(ErrorCode::TryAgain);
-        if (RequestType::ffi_deserialize(buf, len, &req) != 0) return Result(ErrorCode::Error);
+        if (len == 0) return Result(::nros::ErrorCode::TryAgain);
+        if (RequestType::ffi_deserialize(buf, len, &req) != 0)
+            return Result(::nros::ErrorCode::Error);
         seq_id = seq;
         return Result::success();
     }
@@ -141,11 +159,11 @@ template <typename S> class Service {
     /// @param resp    Response to send.
     /// @return Result indicating success or failure.
     Result send_response(int64_t seq_id, const ResponseType& resp) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
         uint8_t buf[::nros::detail::buffer_bounds<ResponseType>::tx];
         size_t len = 0;
         if (ResponseType::ffi_serialize(&resp, buf, sizeof(buf), &len) != 0) {
-            return Result(ErrorCode::Error);
+            return Result(::nros::ErrorCode::Error);
         }
         return Result(nros_cpp_service_server_send_response_raw(storage_, seq_id, buf, len));
     }
@@ -222,7 +240,7 @@ template <typename S> class Service {
     Service(const Service&) = delete;
     Service& operator=(const Service&) = delete;
 
-    friend class Node;
+    friend class ::nros::Node;
 
     /// Phase 189.M3.3.e — raw request trampoline matching `RawServiceCallback`
     /// (`bool(req, req_len, resp, resp_cap, resp_len, ctx)`). Deserializes the
@@ -258,6 +276,15 @@ template <typename S> class Service {
     bool callback_mode_ = false;
 };
 
+} // namespace rclcpp
+
+// ============================================================================
+// nros:: -- the in-tree spelling, now the ALIAS (RFC-0089). Declared here,
+// before the out-of-line `Node::create_*` bodies below, which are written in
+// the `nros::` vocabulary.
+// ============================================================================
+namespace nros {
+template <typename S> using Service = ::rclcpp::Service<S>;
 } // namespace nros
 
 // Phase 84.G8: out-of-line definition of Node::create_service<S>().
@@ -308,23 +335,5 @@ Result Node::create_service(Service<S>& out, const char* service_name, F callbac
 }
 
 } // namespace nros
-
-// ============================================================================
-// rclcpp:: — the ROS 2 spelling (RFC-0089 stage 6, step A)
-// ============================================================================
-//
-// Moved here from `nros/rclcpp_compat.hpp`, which no longer carries a surface
-// of its own: RFC-0089 §"Naming: replace, with alias as the migration step"
-// makes the ROS 2 spelling a first-class name declared by the API header that
-// owns the concept, at which point a shim has nothing left to bridge.
-
-// `rclcpp::Service<S>::SharedPtr` — see `publisher.hpp` for why the alias
-// template is the whole adoption. The upstream shared_ptr CALLBACK shape is
-// REFUSE-LOUD, and the refusal lives on `rclcpp::Node::create_service`
-// (`nros/nros.hpp`) because that is the call site it fires at; its diagnostic
-// is `NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK` in `log.hpp`.
-namespace rclcpp {
-template <typename S> using Service = ::nros::Service<S>;
-} // namespace rclcpp
 
 #endif // NROS_CPP_SERVICE_HPP

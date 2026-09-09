@@ -52,6 +52,24 @@ nros_cpp_ret_t nros_cpp_action_client_set_callbacks(
 } // extern "C"
 
 namespace nros {
+// `nros::Node` is named by the friend declaration below and by the out-of-line
+// `Node::create_action_client` body further down. `nros/node.hpp` (included
+// below, after the class) has the definition; a qualified friend needs the name
+// to EXIST first, which an unqualified `friend class Node;` used to supply
+// implicitly.
+class Node;
+} // namespace nros
+
+// ============================================================================
+// `rclcpp_action::Client<A>` -- DEFINED here (RFC-0089: rclcpp_action:: is the home)
+// ============================================================================
+//
+// phase-428: the definition moved from `nros::ActionClient<A>` to
+// `rclcpp_action::Client<A>` and the alias turned around. A RENAME as well as a
+// move -- upstream's namespace already says "action", so the type is `Client`
+// there and `ActionClient` here. Note the two `Client`s do not collide:
+// `rclcpp::Client<S>` is the SERVICE client, in a different namespace.
+namespace rclcpp_action {
 
 /// Typed action client for a ROS 2 action.
 ///
@@ -70,7 +88,7 @@ namespace nros {
 /// typename decltype(client)::ResultType result;
 /// NROS_TRY(client.get_result(goal_id, result));
 /// ```
-template <typename A> class ActionClient {
+template <typename A> class Client {
   public:
     using GoalType = typename A::Goal;
     using ResultType = typename A::Result;
@@ -120,26 +138,26 @@ template <typename A> class ActionClient {
     /// after the wait starts is still seen.
     ///
     /// Spins the executor while probing — not for use inside a callback.
-    Result wait_for_action_server(uint32_t timeout_ms = 5000) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
-        return Result(nros_cpp_action_client_wait_for_action_server(storage_, timeout_ms));
+    ::nros::Result wait_for_action_server(uint32_t timeout_ms = 5000) {
+        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
+        return ::nros::Result(nros_cpp_action_client_wait_for_action_server(storage_, timeout_ms));
     }
 
-    Result send_goal(const GoalType& goal, uint8_t goal_id[16]) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
+    ::nros::Result send_goal(const GoalType& goal, uint8_t goal_id[16]) {
+        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
 
         uint8_t buf[::nros::detail::buffer_bounds<GoalType>::tx];
         size_t len = 0;
         if (GoalType::ffi_serialize(&goal, buf, sizeof(buf), &len) != 0) {
-            return Result(ErrorCode::Error);
+            return ::nros::Result(::nros::ErrorCode::Error);
         }
-        return Result(nros_cpp_action_client_send_goal(storage_, buf, len,
-                                                       reinterpret_cast<uint8_t(*)[16]>(goal_id)));
+        return ::nros::Result(nros_cpp_action_client_send_goal(
+            storage_, buf, len, reinterpret_cast<uint8_t(*)[16]>(goal_id)));
     }
 
     /// @ref send_goal writing the generated id into a `GoalUUID` value
     /// (phase-417 W4.b) — the shape you can put in a map.
-    Result send_goal(const GoalType& goal, GoalUUID& goal_id) {
+    ::nros::Result send_goal(const GoalType& goal, ::nros::GoalUUID& goal_id) {
         return send_goal(goal, goal_id.data());
     }
 
@@ -151,32 +169,33 @@ template <typename A> class ActionClient {
     /// @param goal_id  16-byte goal UUID from send_goal().
     /// @param result   Output result struct (filled on success).
     /// @return Result indicating success, timeout, or failure.
-    Result get_result(const uint8_t goal_id[16], ResultType& result) {
+    ::nros::Result get_result(const uint8_t goal_id[16], ResultType& result) {
         return get_result_sized<::nros::rx_buffer_capacity<ResultType>::value>(goal_id, result);
     }
 
     /// @ref get_result taking a `GoalUUID` value (phase-417 W4.b).
-    Result get_result(const GoalUUID& goal_id, ResultType& result) {
+    ::nros::Result get_result(const ::nros::GoalUUID& goal_id, ResultType& result) {
         return get_result_sized<::nros::rx_buffer_capacity<ResultType>::value>(goal_id.data(),
                                                                                result);
     }
 
     /// @ref get_result with the receive buffer sized by the CALLER.
     /// See @ref Subscription::try_recv_sized (issue 0964).
-    template <size_t Cap> Result get_result_sized(const uint8_t goal_id[16], ResultType& result) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
+    template <size_t Cap>
+    ::nros::Result get_result_sized(const uint8_t goal_id[16], ResultType& result) {
+        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
 
         uint8_t buf[Cap];
         size_t len = 0;
         nros_cpp_ret_t ret = nros_cpp_action_client_get_result(
             storage_, executor_, reinterpret_cast<const uint8_t(*)[16]>(goal_id), buf, sizeof(buf),
             &len);
-        if (ret != 0) return Result(ret);
+        if (ret != 0) return ::nros::Result(ret);
 
         if (ResultType::ffi_deserialize(buf, len, &result) != 0) {
-            return Result(ErrorCode::Error);
+            return ::nros::Result(::nros::ErrorCode::Error);
         }
-        return Result::success();
+        return ::nros::Result::success();
     }
 
     // =================================================================
@@ -199,22 +218,22 @@ template <typename A> class ActionClient {
     /// @param goal  Goal to send.
     /// @return Future that resolves to GoalAccept. Returns a consumed
     ///         (empty) future on serialization or send failure.
-    Future<GoalAccept> send_goal_future(const GoalType& goal) {
-        if (!initialized_) return Future<GoalAccept>();
+    ::nros::Future<GoalAccept> send_goal_future(const GoalType& goal) {
+        if (!initialized_) return ::nros::Future<GoalAccept>();
 
         uint8_t buf[::nros::detail::buffer_bounds<GoalType>::tx];
         size_t len = 0;
         if (GoalType::ffi_serialize(&goal, buf, sizeof(buf), &len) != 0) {
-            return Future<GoalAccept>();
+            return ::nros::Future<GoalAccept>();
         }
 
         uint8_t goal_id[16];
         nros_cpp_ret_t ret = nros_cpp_action_client_send_goal_async(
             storage_, buf, len, reinterpret_cast<uint8_t(*)[16]>(goal_id));
-        if (ret != 0) return Future<GoalAccept>();
+        if (ret != 0) return ::nros::Future<GoalAccept>();
 
-        return Future<GoalAccept>(storage_, &nros_cpp_action_client_try_recv_goal_response,
-                                  0 // slot 0 (single outstanding goal request)
+        return ::nros::Future<GoalAccept>(storage_, &nros_cpp_action_client_try_recv_goal_response,
+                                          0 // slot 0 (single outstanding goal request)
         );
     }
 
@@ -234,12 +253,12 @@ template <typename A> class ActionClient {
     /// @param goal_id  16-byte goal UUID from send_goal() or GoalAccept.
     /// @return Future that resolves to ResultType. Returns a consumed
     ///         (empty) future on send failure.
-    Future<ResultType> get_result_future(const uint8_t goal_id[16]) {
+    ::nros::Future<ResultType> get_result_future(const uint8_t goal_id[16]) {
         return get_result_future_sized<::nros::rx_buffer_capacity<ResultType>::value>(goal_id);
     }
 
     /// @ref get_result_future taking a `GoalUUID` value (phase-417 W4.b).
-    Future<ResultType> get_result_future(const GoalUUID& goal_id) {
+    ::nros::Future<ResultType> get_result_future(const ::nros::GoalUUID& goal_id) {
         return get_result_future_sized<::nros::rx_buffer_capacity<ResultType>::value>(
             goal_id.data());
     }
@@ -250,8 +269,8 @@ template <typename A> class ActionClient {
     /// class template argument: this returns `Future<ResultType, Cap>`
     /// (issue 0964).
     template <size_t Cap>
-    Future<ResultType, Cap> get_result_future_sized(const uint8_t goal_id[16]) {
-        using Fut = Future<ResultType, Cap>;
+    ::nros::Future<ResultType, Cap> get_result_future_sized(const uint8_t goal_id[16]) {
+        using Fut = ::nros::Future<ResultType, Cap>;
         if (!initialized_) return Fut();
 
         nros_cpp_ret_t ret = nros_cpp_action_client_get_result_async(
@@ -271,25 +290,25 @@ template <typename A> class ActionClient {
     ///         ErrorCode::NotInitialized if the client is not initialized;
     ///         ErrorCode::Error if deserialization failed; otherwise the
     ///         FFI error code.
-    Result try_recv_feedback(FeedbackType& feedback) {
+    ::nros::Result try_recv_feedback(FeedbackType& feedback) {
         return try_recv_feedback_sized<::nros::rx_buffer_capacity<FeedbackType>::value>(feedback);
     }
 
     /// @ref try_recv_feedback with the receive buffer sized by the CALLER.
     /// See @ref Subscription::try_recv_sized (issue 0964).
-    template <size_t Cap> Result try_recv_feedback_sized(FeedbackType& feedback) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
+    template <size_t Cap>::nros::Result try_recv_feedback_sized(FeedbackType& feedback) {
+        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
 
         uint8_t buf[Cap];
         size_t len = 0;
         nros_cpp_ret_t ret =
             nros_cpp_action_client_try_recv_feedback(storage_, buf, sizeof(buf), &len);
-        if (ret != 0) return Result(ret);
-        if (len == 0) return Result(ErrorCode::TryAgain);
+        if (ret != 0) return ::nros::Result(ret);
+        if (len == 0) return ::nros::Result(::nros::ErrorCode::TryAgain);
         if (FeedbackType::ffi_deserialize(buf, len, &feedback) != 0) {
-            return Result(ErrorCode::Error);
+            return ::nros::Result(::nros::ErrorCode::Error);
         }
-        return Result::success();
+        return ::nros::Result::success();
     }
 
     /// Get a reference to the action client's feedback stream.
@@ -312,14 +331,14 @@ template <typename A> class ActionClient {
     /// Result r = client.feedback_stream().try_next(fb);
     /// if (r.ok()) { ... }
     /// ```
-    Stream<FeedbackType>& feedback_stream() {
+    ::nros::Stream<FeedbackType>& feedback_stream() {
         if (initialized_ && !feedback_stream_.is_valid()) {
             feedback_stream_.bind(storage_, &nros_cpp_action_client_try_recv_feedback);
         }
         return feedback_stream_;
     }
 
-    const Stream<FeedbackType>& feedback_stream() const { return feedback_stream_; }
+    const ::nros::Stream<FeedbackType>& feedback_stream() const { return feedback_stream_; }
 
     // =================================================================
     // Async (non-blocking) API — callbacks invoked during spin_once()
@@ -353,21 +372,21 @@ template <typename A> class ActionClient {
     /// @param goal     Goal to send.
     /// @param goal_id  Output 16-byte goal UUID (filled on success).
     /// @return Result indicating success or failure.
-    Result send_goal_async(const GoalType& goal, uint8_t goal_id[16]) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
+    ::nros::Result send_goal_async(const GoalType& goal, uint8_t goal_id[16]) {
+        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
 
         uint8_t buf[::nros::detail::buffer_bounds<GoalType>::tx];
         size_t len = 0;
         if (GoalType::ffi_serialize(&goal, buf, sizeof(buf), &len) != 0) {
-            return Result(ErrorCode::Error);
+            return ::nros::Result(::nros::ErrorCode::Error);
         }
-        return Result(nros_cpp_action_client_send_goal_async(
+        return ::nros::Result(nros_cpp_action_client_send_goal_async(
             storage_, buf, len, reinterpret_cast<uint8_t(*)[16]>(goal_id)));
     }
 
     /// @ref send_goal_async writing the generated id into a `GoalUUID` value
     /// (phase-417 W4.b).
-    Result send_goal_async(const GoalType& goal, GoalUUID& goal_id) {
+    ::nros::Result send_goal_async(const GoalType& goal, ::nros::GoalUUID& goal_id) {
         return send_goal_async(goal, goal_id.data());
     }
 
@@ -385,27 +404,29 @@ template <typename A> class ActionClient {
     ///
     /// @param goal_id  16-byte goal UUID from send_goal() / send_goal_async().
     /// @return Result indicating the request was sent.
-    Result cancel_goal(const uint8_t goal_id[16]) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
-        return Result(nros_cpp_action_client_cancel_goal(
+    ::nros::Result cancel_goal(const uint8_t goal_id[16]) {
+        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
+        return ::nros::Result(nros_cpp_action_client_cancel_goal(
             storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id)));
     }
 
     /// @ref cancel_goal taking a `GoalUUID` value (phase-417 W4.b).
-    Result cancel_goal(const GoalUUID& goal_id) { return cancel_goal(goal_id.data()); }
+    ::nros::Result cancel_goal(const ::nros::GoalUUID& goal_id) {
+        return cancel_goal(goal_id.data());
+    }
 
     /// Try to read the reply to a `cancel_goal()` (non-blocking).
     ///
     /// @param out  Receives the RPC return code on success.
     /// @return Result::success() when a reply was consumed;
     ///         ErrorCode::TryAgain when none has arrived yet.
-    Result try_recv_cancel_response(CancelReturnCode& out) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
+    ::nros::Result try_recv_cancel_response(::nros::CancelReturnCode& out) {
+        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
         int8_t code = 0;
         nros_cpp_ret_t ret = nros_cpp_action_client_try_recv_cancel_response(storage_, &code);
-        if (ret != 0) return Result(ret);
-        out = static_cast<CancelReturnCode>(code);
-        return Result::success();
+        if (ret != 0) return ::nros::Result(ret);
+        out = static_cast<::nros::CancelReturnCode>(code);
+        return ::nros::Result::success();
     }
 
     /// Request the result for a goal asynchronously (non-blocking).
@@ -415,23 +436,25 @@ template <typename A> class ActionClient {
     ///
     /// @param goal_id  16-byte goal UUID from send_goal_async().
     /// @return Result indicating success or failure.
-    Result get_result_async(const uint8_t goal_id[16]) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
-        return Result(nros_cpp_action_client_get_result_async(
+    ::nros::Result get_result_async(const uint8_t goal_id[16]) {
+        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
+        return ::nros::Result(nros_cpp_action_client_get_result_async(
             storage_, reinterpret_cast<const uint8_t(*)[16]>(goal_id)));
     }
 
     /// @ref get_result_async taking a `GoalUUID` value (phase-417 W4.b).
-    Result get_result_async(const GoalUUID& goal_id) { return get_result_async(goal_id.data()); }
+    ::nros::Result get_result_async(const ::nros::GoalUUID& goal_id) {
+        return get_result_async(goal_id.data());
+    }
 
     /// Register async callbacks for goal response, feedback, and result.
     ///
     /// @param options  Callback pointers and context.
     /// @return Result::success() on success, ErrorCode::NotInitialized
     ///         if the client is not initialized, or the FFI error code.
-    Result set_callbacks(const SendGoalOptions& options) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
-        return Result(nros_cpp_action_client_set_callbacks(
+    ::nros::Result set_callbacks(const SendGoalOptions& options) {
+        if (!initialized_) return ::nros::Result(::nros::ErrorCode::NotInitialized);
+        return ::nros::Result(nros_cpp_action_client_set_callbacks(
             storage_, options.goal_response, options.feedback, options.result, options.context));
     }
 
@@ -449,31 +472,30 @@ template <typename A> class ActionClient {
     bool is_valid() const { return initialized_; }
 
     /// Destructor — releases action client resources.
-    ~ActionClient() {
+    ~Client() {
         if (initialized_) {
             nros_cpp_action_client_destroy(storage_);
             initialized_ = false;
         }
-        feedback_stream_ = Stream<FeedbackType>();
+        feedback_stream_ = ::nros::Stream<FeedbackType>();
     }
 
     // Move semantics (non-copyable). Relocation goes through the
     // `nros_cpp_action_client_relocate` runtime call (Phase 84.C1).
     // The feedback stream is rebound to the new storage afterwards.
-    ActionClient(ActionClient&& other)
-        : executor_(other.executor_), initialized_(other.initialized_) {
+    Client(Client&& other) : executor_(other.executor_), initialized_(other.initialized_) {
         if (other.initialized_) {
             nros_cpp_action_client_relocate(other.storage_, storage_);
             other.initialized_ = false;
         }
-        other.feedback_stream_ = Stream<FeedbackType>();
+        other.feedback_stream_ = ::nros::Stream<FeedbackType>();
     }
 
-    ActionClient& operator=(ActionClient&& other) {
+    Client& operator=(Client&& other) {
         if (this != &other) {
             if (initialized_) {
                 nros_cpp_action_client_destroy(storage_);
-                feedback_stream_ = Stream<FeedbackType>();
+                feedback_stream_ = ::nros::Stream<FeedbackType>();
             }
             executor_ = other.executor_;
             initialized_ = other.initialized_;
@@ -481,31 +503,40 @@ template <typename A> class ActionClient {
                 nros_cpp_action_client_relocate(other.storage_, storage_);
                 other.initialized_ = false;
             }
-            other.feedback_stream_ = Stream<FeedbackType>();
+            other.feedback_stream_ = ::nros::Stream<FeedbackType>();
         }
         return *this;
     }
 
     /// Default constructor — creates an uninitialized action client.
     /// Use `Node::create_action_client()` to initialize.
-    ActionClient() : executor_(nullptr), initialized_(false) {}
+    Client() : executor_(nullptr), initialized_(false) {}
 
   private:
-    ActionClient(const ActionClient&) = delete;
-    ActionClient& operator=(const ActionClient&) = delete;
+    Client(const Client&) = delete;
+    Client& operator=(const Client&) = delete;
 
-    friend class Node;
+    friend class ::nros::Node;
 
     alignas(8) uint8_t storage_[NROS_CPP_ACTION_CLIENT_STORAGE_SIZE];
     void* executor_; // Stashed executor handle (Phase 82) for blocking helpers
     bool initialized_;
-    Stream<FeedbackType> feedback_stream_;
+    ::nros::Stream<FeedbackType> feedback_stream_;
     // Phase 87.6 put a `char action_name_[256]` here for an accessor that was
     // never written; phase-417 W4.b deleted it. See the matching note in
     // `action_server.hpp` — populated at construction, read by nothing, and a
     // duplicate of a name the runtime already holds.
 };
 
+} // namespace rclcpp_action
+
+// ============================================================================
+// nros:: -- the in-tree spelling, now the ALIAS (RFC-0089). Declared here,
+// before the out-of-line `Node::create_*` bodies below, which are written in
+// the `nros::` vocabulary.
+// ============================================================================
+namespace nros {
+template <typename A> using ActionClient = ::rclcpp_action::Client<A>;
 } // namespace nros
 
 // Phase 84.G8: out-of-line definition of Node::create_action_client<A>().
@@ -527,19 +558,5 @@ Result Node::create_action_client(ActionClient<A>& out, const char* action_name,
 }
 
 } // namespace nros
-
-// ============================================================================
-// rclcpp:: — the ROS 2 spelling (RFC-0089 stage 6, step A)
-// ============================================================================
-//
-// Moved here from `nros/rclcpp_compat.hpp`, which no longer carries a surface
-// of its own: RFC-0089 §"Naming: replace, with alias as the migration step"
-// makes the ROS 2 spelling a first-class name declared by the API header that
-// owns the concept, at which point a shim has nothing left to bridge.
-
-// `rclcpp_action::Client<A>` — a type alias only; see `action_server.hpp`.
-namespace rclcpp_action {
-template <typename A> using Client = ::nros::ActionClient<A>;
-} // namespace rclcpp_action
 
 #endif // NROS_CPP_ACTION_CLIENT_HPP

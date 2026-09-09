@@ -23,7 +23,16 @@
 // `extern "C"` guard.
 #include "nros/clock.h"
 
-namespace nros {
+// ============================================================================
+// `rclcpp::Clock` — DEFINED here (RFC-0089: rclcpp:: is the home)
+// ============================================================================
+//
+// phase-428: the definition moved from `nros::` to `rclcpp::` and the alias
+// turned around. `rclcpp::Node::get_clock()` (`nros/nros.hpp`) hands back a
+// pointer to the node's own, because there is no allocator here to hand back a
+// `SharedPtr` from (RFC-0022); the `node->get_clock()->now()` spelling is
+// unchanged, and so is the type.
+namespace rclcpp {
 
 /// A time source: system, steady, or ROS time.
 ///
@@ -116,23 +125,13 @@ class Clock {
     nros_clock_t clock_;
 };
 
-} // namespace nros
-
-// ============================================================================
-// rclcpp:: — the ROS 2 spelling (RFC-0089 stage 6, step A)
-// ============================================================================
-//
-// Moved here from `nros/rclcpp_compat.hpp`, which no longer carries a surface
-// of its own: RFC-0089 §"Naming: replace, with alias as the migration step"
-// makes the ROS 2 spelling a first-class name declared by the API header that
-// owns the concept, at which point a shim has nothing left to bridge.
-
-// phase-417 W1.d — `rclcpp::Clock` is the nano-ros type UNCHANGED.
-// `rclcpp::Node::get_clock()` (`nros/nros.hpp`) hands back a pointer to the
-// node's own, because there is no allocator here to hand back a `SharedPtr`
-// from (RFC-0022); the `node->get_clock()->now()` spelling is unchanged.
-namespace rclcpp {
-using Clock = ::nros::Clock;
 } // namespace rclcpp
+
+// ============================================================================
+// nros:: — the in-tree spelling, now the ALIAS (RFC-0089)
+// ============================================================================
+namespace nros {
+using Clock = ::rclcpp::Clock;
+} // namespace nros
 
 #endif // NROS_CPP_CLOCK_HPP

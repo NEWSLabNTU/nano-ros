@@ -43,6 +43,23 @@ nros_cpp_ret_t nros_cpp_service_client_register(const nros_cpp_node_t* node,
 } // extern "C"
 
 namespace nros {
+// `nros::Node` is named by the friend declaration below and by the out-of-line
+// `Node::create_*` bodies further down. `nros/node.hpp` (included below, after
+// the class, so a consumer pays only for the entities it uses) has the
+// definition; a qualified friend needs the name to EXIST first, which an
+// unqualified `friend class Node;` used to supply implicitly.
+class Node;
+} // namespace nros
+
+// ============================================================================
+// `rclcpp::Client<S>` -- DEFINED here (RFC-0089: rclcpp:: is the home)
+// ============================================================================
+//
+// phase-428: the definition moved from `nros::` to `rclcpp::` and the alias
+// turned around. The nested `SharedPtr` / `ConstSharedPtr` / `UniquePtr`
+// aliases live on the class itself, so the rclcpp way of indexing types
+// (`rclcpp::Client<S>::SharedPtr`) resolves with no wrapper in between.
+namespace rclcpp {
 
 /// Typed service client for a ROS 2 service.
 ///
@@ -95,7 +112,7 @@ template <typename S> class Client {
     /// @param req  Request to send.
     /// @return Future that resolves to the response. Returns a consumed
     ///         (empty) future on serialization or send failure.
-    Future<ResponseType> send_request(const RequestType& req) {
+    ::nros::Future<ResponseType> send_request(const RequestType& req) {
         return send_request_sized<::nros::rx_buffer_capacity<ResponseType>::value>(req);
     }
 
@@ -109,8 +126,8 @@ template <typename S> class Client {
     ///
     /// @tparam RespCap  Stack bytes the returned future holds for the reply.
     template <size_t RespCap>
-    Future<ResponseType, RespCap> send_request_sized(const RequestType& req) {
-        using Fut = Future<ResponseType, RespCap>;
+    ::nros::Future<ResponseType, RespCap> send_request_sized(const RequestType& req) {
+        using Fut = ::nros::Future<ResponseType, RespCap>;
         if (!initialized_) return Fut();
 
         uint8_t req_buf[::nros::detail::buffer_bounds<RequestType>::tx];
@@ -143,7 +160,7 @@ template <typename S> class Client {
     /// @ref call with the REPLY buffer sized by the caller (issue 0964).
     template <size_t RespCap>
     Result call_sized(const RequestType& req, ResponseType& resp, uint32_t timeout_ms = 5000) {
-        if (!initialized_ || !executor_) return Result(ErrorCode::NotInitialized);
+        if (!initialized_ || !executor_) return Result(::nros::ErrorCode::NotInitialized);
         auto fut = send_request_sized<RespCap>(req);
         return fut.wait(executor_, timeout_ms, resp);
     }
@@ -177,20 +194,20 @@ template <typename S> class Client {
     template <size_t RespCap>
     Result call_polling_sized(const RequestType& req, ResponseType& resp,
                               uint32_t timeout_ms = 100) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
         uint8_t req_buf[::nros::detail::buffer_bounds<RequestType>::tx];
         size_t req_len = 0;
         if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
-            return Result(ErrorCode::Error);
+            return Result(::nros::ErrorCode::Error);
         }
         uint8_t resp_buf[RespCap];
         size_t resp_len = 0;
         nros_cpp_ret_t ret = nros_cpp_service_client_call_raw(
             storage_, req_buf, req_len, resp_buf, sizeof(resp_buf), &resp_len, timeout_ms);
         if (ret != 0) return Result(ret);
-        if (resp_len == 0) return Result(ErrorCode::Timeout);
+        if (resp_len == 0) return Result(::nros::ErrorCode::Timeout);
         if (ResponseType::ffi_deserialize(resp_buf, resp_len, &resp) != 0) {
-            return Result(ErrorCode::Error);
+            return Result(::nros::ErrorCode::Error);
         }
         return Result::success();
     }
@@ -212,16 +229,16 @@ template <typename S> class Client {
     /// inside callbacks. Mirrors `rclcpp::ClientBase::service_is_ready`
     /// but with a tri-state result instead of collapsing
     /// "don't know" and "no" into the same `false`.
-    ResultOf<bool> service_is_ready() const {
-        if (!initialized_) return ResultOf<bool>::error(ErrorCode::NotInitialized);
+    ::nros::ResultOf<bool> service_is_ready() const {
+        if (!initialized_) return ::nros::ResultOf<bool>::error(::nros::ErrorCode::NotInitialized);
         int out = -1;
         nros_cpp_ret_t ret =
             nros_cpp_service_client_server_available(const_cast<uint8_t*>(storage_), &out);
         // A failed CALL and a backend that cannot ANSWER are different facts,
         // and the old `int` form reported both as `-1`. Keep them apart.
-        if (ret != 0) return ResultOf<bool>::error(static_cast<ErrorCode>(ret));
-        if (out < 0) return ResultOf<bool>::error(ErrorCode::Unsupported);
-        return ResultOf<bool>::ok(out != 0);
+        if (ret != 0) return ::nros::ResultOf<bool>::error(static_cast<::nros::ErrorCode>(ret));
+        if (out < 0) return ::nros::ResultOf<bool>::error(::nros::ErrorCode::Unsupported);
+        return ::nros::ResultOf<bool>::ok(out != 0);
     }
 
     /// @deprecated Use `service_is_ready()`.
@@ -230,7 +247,7 @@ template <typename S> class Client {
     /// answer. It cannot distinguish a failed call from an unsupported backend,
     /// which is why it is replaced rather than kept.
     [[deprecated("Client::server_available is deprecated; use "
-                 "Client::service_is_ready, which returns ResultOf<bool>")]] int
+                 "Client::service_is_ready, which returns ::nros::ResultOf<bool>")]] int
     server_available() const {
         auto r = service_is_ready();
         if (!r.ok()) return -1;
@@ -252,7 +269,7 @@ template <typename S> class Client {
     /// Returns ok when the server is visible, `Timeout` when the budget
     /// elapses.
     Result wait_for_service(uint32_t timeout_ms = 5000) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
         return Result(nros_cpp_service_client_wait_for_service(storage_, executor_, timeout_ms));
     }
 
@@ -261,11 +278,11 @@ template <typename S> class Client {
     /// ...)` overload); the reply is delivered to the registered response handler
     /// during `spin_once` (no Future). Returns immediately after sending.
     Result async_send_request(const RequestType& req) {
-        if (!initialized_ || !callback_mode_) return Result(ErrorCode::NotInitialized);
+        if (!initialized_ || !callback_mode_) return Result(::nros::ErrorCode::NotInitialized);
         uint8_t req_buf[::nros::detail::buffer_bounds<RequestType>::tx];
         size_t req_len = 0;
         if (RequestType::ffi_serialize(&req, req_buf, sizeof(req_buf), &req_len) != 0) {
-            return Result(ErrorCode::Error);
+            return Result(::nros::ErrorCode::Error);
         }
         return Result(
             nros_cpp_service_client_send_on_handle(executor_, handle_id_, req_buf, req_len));
@@ -329,7 +346,7 @@ template <typename S> class Client {
     Client(const Client&) = delete;
     Client& operator=(const Client&) = delete;
 
-    friend class Node;
+    friend class ::nros::Node;
 
     /// Phase 189.M3.3.f — raw response trampoline matching `RawResponseCallback`
     /// (`void(data, len, ctx)`). Deserializes the reply, runs the user's typed
@@ -357,6 +374,15 @@ template <typename S> class Client {
     bool callback_mode_ = false;
 };
 
+} // namespace rclcpp
+
+// ============================================================================
+// nros:: -- the in-tree spelling, now the ALIAS (RFC-0089). Declared here,
+// before the out-of-line `Node::create_*` bodies below, which are written in
+// the `nros::` vocabulary.
+// ============================================================================
+namespace nros {
+template <typename S> using Client = ::rclcpp::Client<S>;
 } // namespace nros
 
 // Phase 84.G8: out-of-line definition of Node::create_client<S>().
@@ -408,21 +434,5 @@ Result Node::create_client(Client<S>& out, const char* service_name, F callback,
 }
 
 } // namespace nros
-
-// ============================================================================
-// rclcpp:: — the ROS 2 spelling (RFC-0089 stage 6, step A)
-// ============================================================================
-//
-// Moved here from `nros/rclcpp_compat.hpp`, which no longer carries a surface
-// of its own: RFC-0089 §"Naming: replace, with alias as the migration step"
-// makes the ROS 2 spelling a first-class name declared by the API header that
-// owns the concept, at which point a shim has nothing left to bridge.
-
-// `rclcpp::Client<S>::SharedPtr` — see `publisher.hpp`. As with `Service`, the
-// upstream shared_ptr callback shape is refused on
-// `rclcpp::Node::create_client` (`nros/nros.hpp`).
-namespace rclcpp {
-template <typename S> using Client = ::nros::Client<S>;
-} // namespace rclcpp
 
 #endif // NROS_CPP_CLIENT_HPP

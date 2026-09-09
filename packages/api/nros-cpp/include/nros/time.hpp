@@ -23,7 +23,15 @@
 // wraps. `nros_generated.h` carries its own `extern "C"` guard.
 #include "nros/clock.h"
 
-namespace nros {
+// ============================================================================
+// `rclcpp::Time` — DEFINED here (RFC-0089: rclcpp:: is the home)
+// ============================================================================
+//
+// phase-428: the definition moved from `nros::` to `rclcpp::` and the alias
+// turned around. The type is UNCHANGED — one object, two spellings, one
+// contract — so a ported `rclcpp::Time stamp = node->now();` and an in-tree
+// `nros::Time` still name the same thing.
+namespace rclcpp {
 
 /// A point in time, held as nanoseconds on a named clock.
 ///
@@ -55,7 +63,7 @@ class Time {
     /// rcl_clock_type_t)` shape.
     constexpr Time(int32_t seconds, uint32_t nanoseconds,
                    nros_clock_type_t clock_type = NROS_CLOCK_SYSTEM_TIME)
-        : ns_(static_cast<int64_t>(seconds) * NANOSECONDS_PER_SECOND +
+        : ns_(static_cast<int64_t>(seconds) * ::nros::NANOSECONDS_PER_SECOND +
               static_cast<int64_t>(nanoseconds)),
           clock_type_(clock_type) {}
 
@@ -67,7 +75,7 @@ class Time {
 
     /// (Fractional) seconds since the clock's epoch.
     constexpr double seconds() const {
-        return static_cast<double>(ns_) / static_cast<double>(NANOSECONDS_PER_SECOND);
+        return static_cast<double>(ns_) / static_cast<double>(::nros::NANOSECONDS_PER_SECOND);
     }
 
     /// Which clock this value was read from.
@@ -140,22 +148,13 @@ constexpr Time operator+(const Duration& lhs, const Time& rhs) {
     return rhs + lhs;
 }
 
-} // namespace nros
-
-// ============================================================================
-// rclcpp:: — the ROS 2 spelling (RFC-0089 stage 6, step A)
-// ============================================================================
-//
-// Moved here from `nros/rclcpp_compat.hpp`, which no longer carries a surface
-// of its own: RFC-0089 §"Naming: replace, with alias as the migration step"
-// makes the ROS 2 spelling a first-class name declared by the API header that
-// owns the concept, at which point a shim has nothing left to bridge.
-
-// phase-417 W1.d — `rclcpp::Time stamp = node->now();` is what a ported
-// publisher writes to stamp a header. The nano-ros type UNCHANGED, not a
-// wrapper over it.
-namespace rclcpp {
-using Time = ::nros::Time;
 } // namespace rclcpp
+
+// ============================================================================
+// nros:: — the in-tree spelling, now the ALIAS (RFC-0089)
+// ============================================================================
+namespace nros {
+using Time = ::rclcpp::Time;
+} // namespace nros
 
 #endif // NROS_CPP_TIME_HPP
