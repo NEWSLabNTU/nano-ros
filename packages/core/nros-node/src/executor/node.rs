@@ -1377,8 +1377,8 @@ impl<'n, 'a, 't> GenericPublisherBuilder<'n, 'a, 't> {
 /// A first-class callback group — a **name-only token** (rclcpp/rclrs shape).
 ///
 /// Created via [`NodeCtx::create_callback_group`].  Passed to the `_in`
-/// entity-create variants (`create_timer_in`, `create_subscription_in`,
-/// `create_publisher_in`) to label entities with a group name.
+/// entity-create variants (`create_timer_in_group`, `create_subscription_in_group`,
+/// `create_publisher_in_group`) to label entities with a group name.
 ///
 /// The group is just a name — the actual `SchedContext` binding is seeded at
 /// boot by `Executor::bind_group_sched` (from `system.toml group_tiers`, phase
@@ -1543,14 +1543,14 @@ impl<'e, 's> NodeCtx<'e, 's> {
     /// Create a named callback group — a thin token wrapping the group name.
     ///
     /// Pass the returned [`CallbackGroup`] to the `_in` create variants
-    /// (`create_timer_in`, `create_subscription_in`, `create_publisher_in`)
+    /// (`create_timer_in_group`, `create_subscription_in_group`, `create_publisher_in_group`)
     /// to label entities with this group. The executor binds the entity's
     /// callback to the `SchedContext` seeded via `bind_group_sched` for
     /// `(node_name, namespace, group_name)` (phase 273 W1/W2).
     ///
     /// ```ignore
     /// let ctrl = node.create_callback_group("ctrl");
-    /// node.create_timer_in(&ctrl, TimerDuration::from_millis(10), || { /* … */ })?;
+    /// node.create_timer_in_group(&ctrl, TimerDuration::from_millis(10), || { /* … */ })?;
     /// ```
     ///
     /// Names longer than 32 bytes are silently truncated.
@@ -1572,7 +1572,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     /// `group` in the executor's `group_sched_table` for this node. If no
     /// entry was seeded for the group, the node's default `SchedContext` applies
     /// (same as `register_timer`). `period` fires the callback repeatedly.
-    pub fn create_timer_in<F>(
+    pub fn create_timer_in_group<F>(
         &mut self,
         group: &CallbackGroup,
         period: crate::timer::TimerDuration,
@@ -1590,7 +1590,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     /// [`Executor::register_timer_on_clock`](crate::Executor::register_timer_on_clock)
     /// and the Rust counterpart of C++'s `create_timer(clock, period, cb)`.
     ///
-    /// [`create_timer_in`](Self::create_timer_in) and the executor's
+    /// [`create_timer_in_group`](Self::create_timer_in_group) and the executor's
     /// `register_timer` are the WALL case: they consume the spin delta the
     /// executor already measured, and no simulator can slow them down. A
     /// [`TimerClockSource::Ros`] timer instead follows `/clock`, so it stops
@@ -1599,7 +1599,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     /// `rclcpp::Clock` has.
     ///
     /// The timer is bound to this node, so the node's default `SchedContext`
-    /// applies — [`create_timer_on_clock_in`](Self::create_timer_on_clock_in)
+    /// applies — [`create_timer_on_clock_in_group`](Self::create_timer_on_clock_in_group)
     /// is the callback-group form.
     ///
     /// ```ignore
@@ -1629,11 +1629,11 @@ impl<'e, 's> NodeCtx<'e, 's> {
     }
 
     /// [`create_timer_on_clock`](Self::create_timer_on_clock) **in** a callback
-    /// group — the clock axis on [`create_timer_in`](Self::create_timer_in)
+    /// group — the clock axis on [`create_timer_in_group`](Self::create_timer_in_group)
     /// (phase-430 W4). The two axes are independent: the group decides which
     /// `SchedContext` the callback runs under, the clock decides what advances
     /// the timer towards its next activation.
-    pub fn create_timer_on_clock_in<F>(
+    pub fn create_timer_on_clock_in_group<F>(
         &mut self,
         group: &CallbackGroup,
         period: crate::timer::TimerDuration,
@@ -1658,7 +1658,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     /// The subscription's callback is bound to the `SchedContext` associated
     /// with `group` in the `group_sched_table` for this node. If no entry was
     /// seeded, the node default applies.
-    pub fn create_subscription_in<M, F>(
+    pub fn create_subscription_in_group<M, F>(
         &mut self,
         group: &CallbackGroup,
         topic: &str,
@@ -1686,7 +1686,7 @@ impl<'e, 's> NodeCtx<'e, 's> {
     /// the user via `publish()`). The API is provided for symmetry and
     /// forward-compatibility (intra-process / loaned-message knobs may use
     /// it in the future).
-    pub fn create_publisher_in<M: MessageForRmw>(
+    pub fn create_publisher_in_group<M: MessageForRmw>(
         &mut self,
         _group: &CallbackGroup,
         topic: &str,
@@ -2338,7 +2338,7 @@ impl<'c, 'e, 't, 's, M: MessageForRmw + 'static, const RX: usize>
                 self.topic,
                 self.qos,
                 callback,
-                None, // group threaded via create_subscription_in; builder uses sched override
+                None, // group threaded via create_subscription_in_group; builder uses sched override
                 // phase-392 W3c -- `None` asks the choke point to DERIVE from
                 // `M`; `Some(RX)` is the consumer's own number, and only
                 // `.rx_buffer::<N>()` sets that flag.

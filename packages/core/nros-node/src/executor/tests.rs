@@ -7164,8 +7164,8 @@ fn test_bind_group_sched_group_beats_node_default() {
 
 // Phase 273 W3 — high-level CallbackGroup API tests
 // =========================================================================
-// These tests exercise the user-facing create_callback_group / create_timer_in /
-// create_subscription_in API end-to-end through the NodeCtx, confirming that
+// These tests exercise the user-facing create_callback_group / create_timer_in_group /
+// create_subscription_in_group API end-to-end through the NodeCtx, confirming that
 // the group name is threaded through to apply_node_default_sched and the
 // executor's sched_context_bindings reflect the group's SC (not the node
 // default or SC 0).
@@ -7196,11 +7196,11 @@ fn test_callback_group_timer_in_group_binds_to_group_sc() {
 
     // create_callback_group returns a value type — no borrow conflict.
     let group = executor.node_mut(nid).create_callback_group("ctrl");
-    // create_timer_in threads the group name through register_timer_on.
+    // create_timer_in_group threads the group name through register_timer_on.
     executor
         .node_mut(nid)
-        .create_timer_in(&group, TimerDuration::from_millis(100), || {})
-        .expect("create_timer_in");
+        .create_timer_in_group(&group, TimerDuration::from_millis(100), || {})
+        .expect("create_timer_in_group");
 
     // The timer occupies slot 0; its SC binding must be the group's SC 2.
     assert_eq!(
@@ -7234,8 +7234,8 @@ fn test_callback_group_subscription_in_group_binds_to_group_sc() {
     let group = executor.node_mut(nid).create_callback_group("telem");
     executor
         .node_mut(nid)
-        .create_subscription_in::<TestMsg, _>(&group, "/sensor/data", |_: &TestMsg| {})
-        .expect("create_subscription_in");
+        .create_subscription_in_group::<TestMsg, _>(&group, "/sensor/data", |_: &TestMsg| {})
+        .expect("create_subscription_in_group");
 
     // Subscription occupies slot 0; SC must be the group's SC 2.
     assert_eq!(
@@ -7271,8 +7271,8 @@ fn test_callback_group_unmapped_group_falls_back_to_node_default() {
     let group = executor.node_mut(nid).create_callback_group("unknown");
     executor
         .node_mut(nid)
-        .create_timer_in(&group, TimerDuration::from_millis(50), || {})
-        .expect("create_timer_in");
+        .create_timer_in_group(&group, TimerDuration::from_millis(50), || {})
+        .expect("create_timer_in_group");
 
     // Falls back to node default (SC 2), not SC 0.
     assert_eq!(
@@ -8594,7 +8594,7 @@ fn spin_period_counts_its_wakes_and_keeps_late_within_total() {
 /// `ros_time_timer_follows_the_simulated_clock` above proves the executor's
 /// registrar honours `/clock`; it says nothing about whether a user who writes
 /// nodes the way the workspace examples do can ASK for one. Until W4 they could
-/// not: `NodeCtx`'s only timer verb was `create_timer_in`, which lowers to
+/// not: `NodeCtx`'s only timer verb was `create_timer_in_group`, which lowers to
 /// `register_timer_on` with `TimerClockSource::Steady` hardcoded.
 ///
 /// Both halves are asserted in one test for the reason the sibling gives: the
@@ -8634,7 +8634,7 @@ fn a_node_level_ros_time_timer_follows_the_simulated_clock() {
         )
         .unwrap();
         // The group form takes the same axis, and the two axes are independent.
-        node.create_timer_on_clock_in(
+        node.create_timer_on_clock_in_group(
             &telem,
             TimerDuration::from_millis(100),
             TimerClockSource::Ros,
@@ -8644,7 +8644,7 @@ fn a_node_level_ros_time_timer_follows_the_simulated_clock() {
         )
         .unwrap();
         // The pre-W4 spelling, unchanged: still the wall case.
-        node.create_timer_in(&telem, TimerDuration::from_millis(100), move || {
+        node.create_timer_in_group(&telem, TimerDuration::from_millis(100), move || {
             w.fetch_add(1, Ordering::SeqCst);
         })
         .unwrap();
@@ -8668,7 +8668,7 @@ fn a_node_level_ros_time_timer_follows_the_simulated_clock() {
     );
     assert!(
         wall_ticks.load(Ordering::SeqCst) >= 3,
-        "`create_timer_in` is the WALL spelling and must be unaffected by the \
+        "`create_timer_in_group` is the WALL spelling and must be unaffected by the \
          stopped simulator; fired {} times",
         wall_ticks.load(Ordering::SeqCst)
     );

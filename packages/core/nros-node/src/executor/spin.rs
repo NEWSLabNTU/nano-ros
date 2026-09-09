@@ -4725,7 +4725,7 @@ impl<'s> Executor<'s> {
         // phase-392 W3c -- and `None` no longer means `RX_BUF`, it means DERIVE.
         // This is the one choke point every default registration funnels
         // through, so putting the derivation here is what makes it the default
-        // at all four of them (`create_subscription`, `create_subscription_in`,
+        // at all four of them (`create_subscription`, `create_subscription_in_group`,
         // the builder's `build()`, and the `/clock` time source) instead of at
         // whichever one a wave happened to touch. An explicit `Some(n)` -- what
         // `.rx_buffer::<N>()` and `.rx_buffer_from_type()` pass -- is still
@@ -5518,7 +5518,7 @@ impl<'s> Executor<'s> {
     /// The ONE timer registration in the tree (phase-430 W4).
     ///
     /// Every timer verb — the four `Executor::register_timer*` entry points
-    /// below, `NodeCtx::create_timer_in` / `create_timer_on_clock*`, the
+    /// below, `NodeCtx::create_timer_in_group` / `create_timer_on_clock*`, the
     /// declarative `nros::Node` timer, and the C/C++ FFI that lower to them —
     /// constructs its arena entry HERE. Until W4 there were four copies of this
     /// body differing only in `oneshot`, `clock_source` and whether the sched
@@ -5658,8 +5658,8 @@ impl<'s> Executor<'s> {
     /// the timer's callback to the group's `SchedContext`. When `group` is
     /// `None` the node's `default_sched` applies (phase-272 behavior).
     ///
-    /// This is the executor-level primitive called by the Rust `_in` API
-    /// (`NodeCtx::create_timer_in`) and the C/C++ group-aware timer FFI.
+    /// This is the executor-level primitive called by the Rust `_in_group` API
+    /// (`NodeCtx::create_timer_in_group`) and the C/C++ group-aware timer FFI.
     pub fn register_timer_on<F>(
         &mut self,
         node_id: Option<super::node_record::NodeId>,
