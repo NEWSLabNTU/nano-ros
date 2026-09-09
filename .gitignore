@@ -71,8 +71,6 @@ tools/*
 /.claude/*
 !/.claude/skills/
 /external/
-/third-party/make/
-/third-party/ninja/
 # phase-362 — the vendored zenoh router is retired; the router comes from ROS
 # (`rmw_zenoh_cpp/rmw_zenohd`). An existing checkout still has the submodule's
 # working tree on disk after the gitlink is dropped, and leaving it untracked

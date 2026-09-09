@@ -325,6 +325,23 @@ path-env-fingerprints:
 # Issue 0336 — a retired submodule path must not survive anywhere that a user or
 # a CI job would follow it. RFC-0060's sweep missed scripts/bootstrap.sh, nine
 # doc copies and eight workflow refs; this grep would have caught all of them.
+# phase-440 W3 — `third-party/` holds TRACKED SUBMODULES and nothing else.
+#
+# It carried two kinds of thing at once: 20 submodules whose pins are DECISIONS,
+# and gitignored provisioning `nros setup` writes. "Pinned source or
+# provisioning?" then had no answer from the path, and every consumer that
+# walked the directory had to encode the distinction itself. That is the same
+# shape that made the box mirror unfixable (issue 1248) — rules telling source
+# from build output BY NAME, where the two live together.
+#
+# `make/` and `ninja/` are gone: both provision into the store and their
+# consumers already read it there. One declared exception remains — `ros`, whose
+# `[source.rosidl]` dest cannot name the store until W4 — and the list may only
+# shrink.
+[private]
+third-party-is-submodules:
+    @bash scripts/check-third-party-is-submodules.sh
+
 [private]
 retired-submodule-refs:
     @bash scripts/check-retired-submodule-refs.sh
