@@ -25,23 +25,21 @@ source "$repo_root/scripts/build/zephyr-toolchain.sh"
 out_root="$(nros_build_dir "$NROS_KIND_WEST_FIXTURES")"
 mkdir -p "$out_root"
 
-# ZEPHYR_BASE: discover the provisioned west workspace the same way the
-# `just zephyr` recipes resolve ZEPHYR_WORKSPACE (just/zephyr.just) — an explicit
-# `NROS_ZEPHYR_WORKSPACE`, then the in-repo `zephyr-workspace/`, then the sibling
-# `../nano-ros-workspace[-4.4]/` checkouts a `just zephyr setup` lands. Without
-# this the fixture only saw the in-repo path and skipped whenever the workspace
-# lived in the sibling (the common `just zephyr setup` layout).
+# ZEPHYR_BASE: discover the provisioned west workspace through the ONE resolver
+# (phase-440 W1 / RFC-0095 D4). This block used to be a `for` loop over the same
+# candidates `just/zephyr.just` and `check-tier-preconditions.sh` each spelled
+# separately, and the three did not agree: this one was version-BLIND, so a
+# `NROS_ZEPHYR_VERSION=4.4` run resolved the 3.7 tree while `just zephyr` used
+# the 4.4 sibling, and it let a set-but-not-yet-created `NROS_ZEPHYR_WORKSPACE`
+# fall THROUGH to a different tree instead of honouring the override.
+# `--absolute` keeps ZEPHYR_BASE the absolute `$repo_root/…` string it was.
 if [ -z "${ZEPHYR_BASE:-}" ]; then
-    for _ws in \
-        "${NROS_ZEPHYR_WORKSPACE:-}" \
-        "$repo_root/zephyr-workspace" \
-        "$repo_root/../nano-ros-workspace" \
-        "$repo_root/../nano-ros-workspace-4.4"; do
-        if [ -n "$_ws" ] && [ -d "$_ws/zephyr" ]; then
-            export ZEPHYR_BASE="$_ws/zephyr"
-            break
-        fi
-    done
+    # shellcheck source=scripts/lib/zephyr-workspace.sh
+    source "$repo_root/scripts/lib/zephyr-workspace.sh"
+    _ws="$(nros_zephyr_ws_resolve_abs "" "$repo_root" || true)"
+    if [ -n "$_ws" ]; then
+        export ZEPHYR_BASE="$_ws/zephyr"
+    fi
 fi
 
 # issue 0698 follow-up — the Zephyr venv is this lane's, not the session's.

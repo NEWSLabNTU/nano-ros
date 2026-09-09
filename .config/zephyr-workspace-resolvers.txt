@@ -1,0 +1,61 @@
+# Files that spell the Zephyr workspace resolution chain themselves, instead of
+# calling `scripts/lib/zephyr-workspace.sh`.
+#
+# phase-440 W1, RFC-0095 D4. The chain is
+#
+#     $NROS_ZEPHYR_WORKSPACE
+#       -> the checkout-relative trees for the selected line
+#            3.7:  zephyr-workspace, ../nano-ros-workspace
+#            4.4:  ../nano-ros-workspace-4.4
+#       -> $NROS_STORE/workspaces/zephyr/<version>
+#
+# and until W1 it had THREE spellings that did not agree: on the 4.4 line
+# `just zephyr` named the 4.4 sibling, `scripts/build/west-fixtures.sh` resolved
+# the 3.7 in-tree workspace, and `scripts/check-tier-preconditions.sh` reported
+# no workspace at all. Those three now read the helper. This file is what stops
+# a FOURTH from landing quietly.
+#
+# It is a RATCHET, like `.config/ungated-gates.txt` and
+# `.config/gate-lane-exempt.txt`: it should only ever SHRINK. An entry is not a
+# blessing — most of these are the same fold W1 did, not yet done for a caller
+# in another language or on another lane. Folding them is phase-440 W4/W5 work.
+#
+# FORMAT: one path per line, sorted, `# reason` REQUIRED on every line.
+# `check-zephyr-workspace-resolvers` enforces the format and BOTH directions of
+# drift: a file that gains the ladder and is not listed here fails; a listed
+# file that no longer spells it fails too, so a line cannot outlive its subject.
+#
+# The gate keys on the LEGACY SIBLING literal (`nano-ros-workspace`, not
+# preceded by `-`), outside comment-only lines: nobody writes that path except
+# to state a fallback rung, whereas `zephyr-workspace` is a legitimate path
+# constant all over the tree.
+
+just/zephyr-dev.just  # the two-line sweep has its OWN override pair (NROS_ZEPHYR_WORKSPACE_37/_44) so it can drive BOTH lines in one run — the helper answers for one line at a time
+justfile  # the nextest deselect guard mirrors west-fixtures.sh's ladder inline; it runs before any `source`, inside a just recipe body. Fold with W4
+packages/cli/nros-cli-core/src/cmd/build.rs  # the CLI's own resolver, in Rust, with a `--zephyr-workspace` flag rung the shell chain does not have. RFC-0095 D2 makes this the resolver a USER meets; it needs its own fold, not a shell call
+packages/testing/nros-tests/src/fixtures/binaries/mod.rs  # Rust; picks the west BUILD root, which is the workspace only when that tree is writable — a different question with a shared first half
+packages/testing/nros-tests/src/zephyr.rs  # Rust; keys on `ZEPHYR_NANO_ROS` and accepts a `zephyr-workspace` SYMLINK, so it is a third rung set again
+packages/testing/nros-tests/tests/fvp_runtime_ws.rs  # Rust test-local copy; folds with zephyr.rs
+packages/testing/nros-tests/tests/fvp_smoke.rs  # Rust test-local copy; folds with zephyr.rs
+scripts/build/gc-zephyr-builds.py  # Python; a DEFAULT_WS constant for `--workspace`, not a ladder walk
+scripts/build/zephyr-fixture-leaves.sh  # shell ladder that picks a BUILD root; a straight fold candidate once W4 separates source from build output
+scripts/check-fixtures-stale.sh  # shell ladder inside the staleness probe; a straight fold candidate
+scripts/check-tier-priority-plan-image.py  # Python; sweeps BOTH roots at once looking for images, so it wants the candidate LIST, not the first hit
+scripts/check-zephyr-kconfig-symbols.py  # Python; needs the per-line Kconfig trees and has a `build/zephyr-kconfig/` rung of its own
+scripts/check-zephyr-workspace-checkout.sh  # the RFC-0095 D1 guard: it must sweep EVERY provisioned tree, not resolve one. phase-440 W5 generalises it away
+scripts/check-zephyr-workspace-resolvers.py  # this gate's own pattern and the prose that explains it
+scripts/ci/runner-doctor.sh  # shell ladder in the runner probe; a straight fold candidate
+scripts/lib/zephyr-workspace.sh  # THE resolver — the one place the ladder is allowed to be written
+scripts/zephyr/aarch64-rust-patch.sh  # patch script: wants the LEGACY tree specifically, to patch a checkout that predates the in-tree default
+scripts/zephyr/cargo-features-patch.sh  # patch script; same legacy-tree rung
+scripts/zephyr/check-copy-out.sh  # a WORKSPACE_DEFAULT constant for the 4.4 line, not a ladder walk
+scripts/zephyr/cortex-a9-rust-patch.sh  # patch script; same legacy-tree rung
+scripts/zephyr/cortex-r-rust-patch.sh  # patch script; same legacy-tree rung
+scripts/zephyr/llext-edk-conditional-patch.sh  # patch script; same legacy-tree rung
+scripts/zephyr/native-sim-ipproto-ip-patch.sh  # patch script; same legacy-tree rung
+scripts/zephyr/nsos-adapt-ipproto-ip-patch.sh  # patch script; same legacy-tree rung
+scripts/zephyr/nsos-getifaddrs-patch.sh  # patch script; same legacy-tree rung
+scripts/zephyr/nsos-getsockname-patch.sh  # patch script; same legacy-tree rung
+scripts/zephyr/nsos-mcjoin-mreq-patch.sh  # patch script; same legacy-tree rung
+scripts/zephyr/nsos-recvmsg-patch.sh  # patch script; same legacy-tree rung
+scripts/zephyr/zephyr-lang-rust-gpio-patch.sh  # patch script; same legacy-tree rung
