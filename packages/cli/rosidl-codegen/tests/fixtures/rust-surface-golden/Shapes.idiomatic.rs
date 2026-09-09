@@ -173,8 +173,8 @@ impl From<&Shapes> for crate::msg::rmw::Shapes {
             
             
             
-            // [primitive; N] arrays can be cloned directly
-            arr_fixed: idiomatic.arr_fixed.clone(),
+            // [primitive; N] is Copy for every N — copy, never clone
+            arr_fixed: idiomatic.arr_fixed,
             
             
             
@@ -267,8 +267,8 @@ impl From<&crate::msg::rmw::Shapes> for Shapes {
             
             
             
-            // [primitive; N] arrays can be cloned directly
-            arr_fixed: rmw.arr_fixed.clone(),
+            // [primitive; N] is Copy for every N — copy, never clone
+            arr_fixed: rmw.arr_fixed,
             
             
             

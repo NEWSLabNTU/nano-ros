@@ -32,7 +32,9 @@
 //!   `-W clippy::all` and failed only if clippy's stderr contained the
 //!   substring `"error"` — i.e. every clippy WARNING, which is all that
 //!   invocation could emit, passed. Denying the lints in the crate under check
-//!   is what makes a red possible; the first thing it found is issue 1244.
+//!   is what makes a red possible; the first thing it found is issue 1244
+//!   (four `clone_on_copy` sites on `Copy` arrays), now fixed in the emitter
+//!   with no `#[allow]` left behind.
 //!
 //! What did NOT move: the emitted code is compiled against the same
 //! hand-written `rosidl_runtime_rs` stub the tests used, so this proves the

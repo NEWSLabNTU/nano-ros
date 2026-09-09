@@ -53,6 +53,56 @@ fn test_very_large_array() -> Result<(), GeneratorError> {
     Ok(())
 }
 
+/// Issue 1244 — a `[primitive; N]` field is `Copy`, so neither conversion
+/// direction may call `.clone()` on it (`clippy::clone_on_copy`, denied in the
+/// `generated_message_crate` compile-check fixture).
+///
+/// BOTH array kinds are asserted here on purpose. `PrimitiveArray` (N <= 32) is
+/// covered by `rust_surface_golden` through `Shapes.arr_fixed` /
+/// `Bounded.fixed`; `LargeArray` (N > 32) is covered by NOTHING else — the
+/// fingerprint corpus carries no array past 32, and the compile-check fixture's
+/// `ArrayMsg` stops at exactly 32. So the second half of this test is the only
+/// guard on that branch, and it asserts on the emitted STRING rather than
+/// compiling it because the emitter writes
+/// `#[serde(with = "serde_big_array::BigArray")]` for a large array and the
+/// fixture crate carries no such dependency.
+#[test]
+fn copy_arrays_are_not_cloned_in_either_direction() -> Result<(), GeneratorError> {
+    let msg_def = r#"int32[5] small_array
+int32[40] large_array
+"#;
+    let msg = parse_message(msg_def).unwrap();
+
+    let result = generate_message_package("test_msgs", "CopyArrays", &msg, &HashSet::new())?;
+
+    for field in ["small_array", "large_array"] {
+        for owner in ["idiomatic", "rmw"] {
+            let cloned = format!("{owner}.{field}.clone()");
+            assert!(
+                !result.message_idiomatic.contains(&cloned),
+                "emitted `{cloned}` — `[i32; N]` is `Copy` for every N, so this is \
+                 `clippy::clone_on_copy` (issue 1244)"
+            );
+        }
+        // The copy itself must still be emitted, so the assertions above cannot
+        // pass by the field having dropped out of the conversion entirely.
+        assert!(
+            result
+                .message_idiomatic
+                .contains(&format!("{field}: idiomatic.{field},")),
+            "no idiomatic -> rmw copy for `{field}`"
+        );
+        assert!(
+            result
+                .message_idiomatic
+                .contains(&format!("{field}: rmw.{field},")),
+            "no rmw -> idiomatic copy for `{field}`"
+        );
+    }
+
+    Ok(())
+}
+
 #[test]
 fn test_all_primitive_types() -> Result<(), GeneratorError> {
     let msg_def = r#"bool bool_field

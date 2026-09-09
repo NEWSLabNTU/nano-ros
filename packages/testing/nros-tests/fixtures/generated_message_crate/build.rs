@@ -97,13 +97,13 @@ fn main() {
             "pub mod {module} {{\n{body}\n}}\npub use {module}::*;\n",
             body = generated.message_rmw,
         ));
-        // `#[allow(clippy::clone_on_copy)]` is a MEASURED, TRACKED gap, not a
-        // convenience: the `packs/rust` idiomatic pack writes
-        // `<field>.clone()` for `PrimitiveArray` and `LargeArray` fields, and
-        // an array of primitives is `Copy`, so clippy denies four sites in
-        // `ArrayMsg`'s two conversions. Issue 1244 owns the emitter fix; the
-        // allow names it so this fixture reports the rest of `clippy::all`
-        // instead of being red for a defect it did not introduce.
+        // NO `#[allow]` here, deliberately. This carried
+        // `#[allow(clippy::clone_on_copy)]` naming issue 1244 — the emitter
+        // wrote `<field>.clone()` for `PrimitiveArray` and `LargeArray`, and an
+        // array of primitives is `Copy`, so clippy denied four sites in
+        // `ArrayMsg`'s two conversions. The emitter no longer writes those
+        // clones, so `clippy::all` is denied over the idiomatic layer with
+        // nothing exempted, and a returning clone is a red here.
         //
         // The old `test_clippy_no_warnings` saw none of this twice over: it
         // generated `TestMsg` (`int32` + `string`), which has no array field,
@@ -111,8 +111,7 @@ fn main() {
         // clippy WARNINGS, which is all `-W clippy::all` can produce, read as
         // a pass.
         idiomatic.push_str(&format!(
-            "#[allow(clippy::clone_on_copy)] // issue 1244\n\
-             pub mod {module} {{\n{body}\n}}\npub use {module}::*;\n",
+            "pub mod {module} {{\n{body}\n}}\npub use {module}::*;\n",
             body = generated.message_idiomatic,
         ));
     }
