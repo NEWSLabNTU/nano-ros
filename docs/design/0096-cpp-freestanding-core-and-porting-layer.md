@@ -8,7 +8,7 @@ mechanism; three of its statements are corrected). Reverses one decision of
 phase-427. Supersedes the deferred phase-438 W2, which was the right instinct
 aimed one layer too low. **Deletes the compat layer rather than formalising it.**
 
-Home phase: to be opened. Prior phases: 417 (ROS 2 API adoption), 427 (one node
+Home phase: [phase-442](../roadmap/phase-442-one-freestanding-rclcpp-api.md). Prior phases: 417 (ROS 2 API adoption), 427 (one node
 type), 438 (the std surface as an opt-in), 426 (parameters, Rust SSoT).
 
 ## The decision
@@ -424,6 +424,28 @@ macro that stops being defined — so this needs a changelog entry and a book li
 
 To be cut into a phase. Ordered so that each step is independently green.
 
+* **W0 — MEASURE the two knobs before building the mechanisms.** Neither
+  freestanding replacement can be designed from first principles: both carry a
+  compile-time budget, and a budget guessed wrong is either a wall of
+  `static_assert`s or silent `.bss` growth in every image.
+  - *Capture sizes:* every callback in the tree and in the porting corpus —
+    lambdas passed to `create_subscription` / `create_wall_timer` /
+    `create_service` / `create_client` / guard conditions — sized with
+    `sizeof(decltype(lambda))`, reported as a distribution rather than a
+    maximum. The census already found every capture is `[this]`, `[state]`,
+    `[obj, method]`, `[this, state]` or `[]`, so the distribution is expected to
+    be narrow and the default should be the point that covers it with one
+    pointer of headroom, not the widest thing anyone might write.
+  - *Handle size and copyability:* what `X::SharedPtr` must be to satisfy every
+    use site, including `diagnostic_updater`'s by-value parameter, and whether
+    a copyable non-owning handle suffices (open question 3).
+  - *Cost of the budget:* `.bss` and `.text` delta on a real image at several
+    candidate capacities, via `just mem-report`, so the default is chosen
+    against a number rather than a feeling.
+  *Acceptance:* a table of measured capture sizes; a chosen default with the
+  image-size cost of that choice stated; the knob named, so the `static_assert`
+  has something to point at.
+
 * **W1 — `Timer` / `GuardCondition` `closure_` unconditional.** Ends the shipping
   px4 mixed-layout exposure and empties the layout ratchet's `diverges` list.
   Independent of everything else; land first.
@@ -474,9 +496,9 @@ To be cut into a phase. Ordered so that each step is independently green.
 
 1. **What is the default inplace-callable capacity?** Too small and idiomatic
    `[this]`-plus-one-member captures fail to compile; too large and every
-   subscription pays for it in `.bss`. It should be measured against the capture
-   sizes the corpus actually uses, and it must be a named knob, since the
-   `static_assert` has to point at something.
+   subscription pays for it in `.bss`. **W0 answers this by measurement** — it
+   is listed here as well because the answer is a number this RFC does not yet
+   carry, and reviewers should see that it is owed rather than assumed.
 2. **Is `NuttX`'s missing `-ffreestanding` deliberate?** Traced: both toolchain
    files were created in one commit, FreeRTOS got the flag, and neither NuttX
    file has ever carried it. That reads as an inconsistency rather than a
