@@ -16,7 +16,7 @@
 //      macro hides is not a deprecation;
 //   3. `create_timer<C, &C::m>(out, clock, ms, self)`, the clock-taking sibling
 //      (phase-430 W6);
-//   4. `create_timer_in<C, &C::m>(group, out, ms, self)`, the RFC-0047 sibling;
+//   4. `create_timer_in_group<C, &C::m>(group, out, ms, self)`, the RFC-0047 sibling;
 //   5. `NodeWithTimers<N>::create_wall_timer_in<C, &C::m>(ms)`, whose body was the one
 //      remaining in-header caller of the free function.
 //
@@ -56,7 +56,7 @@ struct Component {
 
     nros::Result bound_in_a_group(rclcpp::Node& node) {
         nros::CallbackGroup group = node.create_callback_group("ctrl");
-        return node.create_timer_in<Component, &Component::on_tick>(group, timer, 100, this);
+        return node.create_timer_in_group<Component, &Component::on_tick>(group, timer, 100, this);
     }
 };
 

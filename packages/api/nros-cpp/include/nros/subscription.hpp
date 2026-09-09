@@ -758,9 +758,9 @@ Result Node::create_subscription(Subscription<M>& out, const char* topic, F call
 // Mirrors create_subscription (callback-style) exactly but passes group.get_name()
 // as `callback_group` so the executor binds the slot via group_sched_table.
 template <typename M, typename F, typename>
-Result Node::create_subscription_in(const CallbackGroup& group, Subscription<M>& out,
-                                    const char* topic, F callback, const QoS& qos,
-                                    const SubscriptionOptions& options) {
+Result Node::create_subscription_in_group(const CallbackGroup& group, Subscription<M>& out,
+                                          const char* topic, F callback, const QoS& qos,
+                                          const SubscriptionOptions& options) {
     // RFC-0088 D5 — one image, one backend, one encoding. Compile-time, so a
     // message the linked backend cannot encode never reaches the wire.
     NROS_CPP_ASSERT_MESSAGE_FORMAT(M);

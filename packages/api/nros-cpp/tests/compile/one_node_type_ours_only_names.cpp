@@ -45,6 +45,12 @@
 //      WRONG overload. Without this the file would pass just as well if the
 //      collision had never existed, which is the failure mode this campaign
 //      keeps hitting — a gate whose subject disappeared.
+//   4. `_in` and `_in_group` are TWO suffixes, not one. W4's `_in` collided with
+//      the one RFC-0047 had used since phase 273 for "in a callback group", so
+//      one class carried two families under one name. The rule now is that a
+//      creation verb whose FIRST parameter is a callback group ends `_in_group`
+//      — and section (4) below asserts both directions, with its own negative
+//      control reconstructing the pre-split shape.
 
 #include <nros/nros.hpp>
 
@@ -78,8 +84,9 @@ struct CounterMsg {
 
 void ported_spellings_bind_upstream(::rclcpp::Node& node) {
     using DepthCall = decltype(node.create_publisher<CounterMsg>(::std::string("chatter"), 10));
-    static_assert(::std::is_same<DepthCall, ::std::shared_ptr<::nros::Publisher<CounterMsg>>>::value,
-                  "create_publisher(topic, depth) must reach UPSTREAM's shared_ptr overload");
+    static_assert(
+        ::std::is_same<DepthCall, ::std::shared_ptr<::nros::Publisher<CounterMsg>>>::value,
+        "create_publisher(topic, depth) must reach UPSTREAM's shared_ptr overload");
 
     // The spelling that USED to bind ours — a string literal plus an explicit
     // QoS. This is the regression test proper: before the rename this exact
@@ -112,8 +119,8 @@ class PooledNode : public ::nros::NodeWithTimers<2> {
         create_subscription_in<CounterMsg, PooledNode, &PooledNode::on_msg>("/chatter");
 
         ::nros::CallbackGroup grp = create_callback_group("ctrl");
-        create_timer_in<PooledNode, &PooledNode::on_tick>(grp, 10);
-        create_subscription_in<CounterMsg, PooledNode, &PooledNode::on_msg>(grp, "/grouped");
+        create_timer_in_group<PooledNode, &PooledNode::on_tick>(grp, 10);
+        create_subscription_in_group<CounterMsg, PooledNode, &PooledNode::on_msg>(grp, "/grouped");
 
         // The ERGONOMIC macros, instantiated. They moved from
         // `component_node.hpp` to `component.hpp` and their expansions changed
@@ -183,5 +190,111 @@ void pre_rename_negative_control(MergedBeforeRename& n) {
                   "NEGATIVE CONTROL: `(\"chatter\", 10)` binds UPSTREAM even before the rename -- "
                   "`10 -> size_t` is a standard conversion and rescues upstream's second argument");
 }
+
+// --- (4) `_in` is ours-only; `_in_group` is the callback-group form ----------
+//
+// phase-427 follow-on. Two suffixes had collapsed into one: `_in` meant "in a
+// callback group" from phase 273 (RFC-0047) and, after W4, also "ours-only /
+// storage-free". Both meanings sat on `nros::Node`, and one overload —
+// `create_subscription_in<M, C, &C::method>(group, topic, qos)` — was in both.
+//
+// The compiler was never confused: `const CallbackGroup&` and `const char*` do
+// not convert to one another, so this was never W4's silent-collision hazard.
+// The READER was. The rule that fixes it is mechanical, which is why it can be
+// asserted here: a creation verb whose FIRST parameter is a callback group ends
+// `_in_group`; `_in` names nothing about scheduling.
+//
+// Detection, not instantiation: these ask whether a call is WELL-FORMED, which
+// is the only way to assert that a spelling is GONE. The `PreSplit*` types are
+// the negative controls — each detector must fire on the shape the split
+// removed, or it is reporting "absent" for the wrong reason and the assertions
+// above it are vacuous.
+
+template <class...> struct make_void_ {
+    using type = void;
+};
+template <class... Ts> using void_t_ = typename make_void_<Ts...>::type;
+
+// Does `create_publisher_in` — the SHORT name — accept a callback group first?
+template <class N, class = void> struct pub_short_name_takes_group : ::std::false_type {};
+template <class N>
+struct pub_short_name_takes_group<
+    N, void_t_<decltype(::std::declval<N&>().template create_publisher_in<CounterMsg>(
+           ::std::declval<const ::nros::CallbackGroup&>(),
+           ::std::declval<::nros::Publisher<CounterMsg>&>(), "t"))>> : ::std::true_type {};
+
+// Does the LONG name exist?
+template <class N, class = void> struct pub_has_group_verb : ::std::false_type {};
+template <class N>
+struct pub_has_group_verb<
+    N, void_t_<decltype(::std::declval<N&>().template create_publisher_in_group<CounterMsg>(
+           ::std::declval<const ::nros::CallbackGroup&>(),
+           ::std::declval<::nros::Publisher<CounterMsg>&>(), "t"))>> : ::std::true_type {};
+
+static_assert(!pub_short_name_takes_group<::nros::Node>::value,
+              "`create_publisher_in` must be the OURS-ONLY form only. A callback group as the "
+              "first parameter is spelled `create_publisher_in_group` -- one suffix, one meaning "
+              "(RFC-0089, \"The `_in` rule, amended\")");
+static_assert(pub_has_group_verb<::nros::Node>::value,
+              "`create_publisher_in_group` must exist: the split renamed the group form, it did "
+              "not delete the capability");
+
+// The timer half, on the type where the two meanings actually overlapped: a
+// pool-parked (storage-free) timer that also takes a group.
+template <class N, class = void> struct timer_short_name_takes_group : ::std::false_type {};
+template <class N>
+struct timer_short_name_takes_group<N, void_t_<decltype(::std::declval<N&>().create_timer_in(
+                                           ::std::declval<const ::nros::CallbackGroup&>(),
+                                           static_cast<uint64_t>(10), nullptr, nullptr))>>
+    : ::std::true_type {};
+
+template <class N, class = void> struct timer_has_group_verb : ::std::false_type {};
+template <class N>
+struct timer_has_group_verb<N, void_t_<decltype(::std::declval<N&>().create_timer_in_group(
+                                   ::std::declval<const ::nros::CallbackGroup&>(),
+                                   static_cast<uint64_t>(10), nullptr, nullptr))>>
+    : ::std::true_type {};
+
+static_assert(!timer_short_name_takes_group<::nros::NodeWithTimers<2>>::value,
+              "`create_timer_in` is gone from the pool type -- the pool-parked group form is "
+              "`create_timer_in_group`, and it is the overload that made the split necessary "
+              "(storage-free AND in a group, so the short name could say neither)");
+static_assert(timer_has_group_verb<::nros::NodeWithTimers<2>>::value,
+              "`create_timer_in_group` must be reachable on the pool type, including the plain "
+              "callback + ctx form");
+
+// NEGATIVE CONTROLS — the pre-split shapes. Each detector must report TRUE on
+// the spelling the split removed. If one of these fires, the detector above it
+// is answering "absent" for some reason other than the rename (a wrong argument
+// list, a changed signature), and its `!` assertion has stopped testing the
+// split.
+
+struct PreSplitPublisherNode {
+    // The group form, under the SHORT name -- what `nros::Node` carried before.
+    template <typename M>
+    ::nros::Result create_publisher_in(const ::nros::CallbackGroup&, ::nros::Publisher<M>&,
+                                       const char*,
+                                       const ::nros::QoS& = ::nros::QoS::default_profile());
+    // The ours-only form, which keeps the short name after the split.
+    template <typename M>
+    ::nros::Publisher<M> create_publisher_in(const char*,
+                                             const ::nros::QoS& = ::nros::QoS::default_profile());
+};
+
+struct PreSplitTimerNode {
+    void create_timer_in(const ::nros::CallbackGroup&, uint64_t, nros_cpp_timer_callback_t,
+                         void* = nullptr);
+};
+
+static_assert(pub_short_name_takes_group<PreSplitPublisherNode>::value,
+              "NEGATIVE CONTROL: on the pre-split shape the SHORT publisher name must accept a "
+              "group. If this fires the detector is broken, not the header, and the assertion "
+              "that `nros::Node` no longer accepts one is proving nothing");
+static_assert(!pub_has_group_verb<PreSplitPublisherNode>::value,
+              "NEGATIVE CONTROL: the pre-split shape had no `_in_group` spelling at all");
+static_assert(timer_short_name_takes_group<PreSplitTimerNode>::value,
+              "NEGATIVE CONTROL: on the pre-split shape the SHORT timer name must accept a group");
+static_assert(!timer_has_group_verb<PreSplitTimerNode>::value,
+              "NEGATIVE CONTROL: the pre-split shape had no `create_timer_in_group`");
 
 } // namespace nros_cpp_ours_only_names_test

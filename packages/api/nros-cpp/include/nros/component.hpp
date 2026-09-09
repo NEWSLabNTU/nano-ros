@@ -383,9 +383,14 @@ inline Result bind_action_client(Node& node, ActionClientStorage& storage, Timer
 // umbrella `nros.hpp` pulls this file in, so the definitions are visible
 // wherever the members are reachable.
 //
-// Both are `_in`-suffixed, and both came off `nros::ComponentNode`. See the
-// rename note on `Node::create_publisher_in` for why a bare `create_subscription`
-// carrying an ours-only signature is the one thing the merge could not ship.
+// Both came off `nros::ComponentNode`. See the rename note on
+// `Node::create_publisher_in` for why a bare `create_subscription` carrying an
+// ours-only signature is the one thing the merge could not ship.
+//
+// The two suffixes are NOT the same word. `_in` is the ours-only/storage-free
+// shape; `_in_group` takes a `CallbackGroup` first and is RFC-0047's binding.
+// The second one below is both — a group form of the storage-free shape — and
+// its name says the half a reader cannot infer from the argument list.
 
 template <typename M, class C, void (C::*Method)(const M& msg)>
 inline void Node::create_subscription_in(const char* topic, const QoS& qos) {
@@ -399,8 +404,8 @@ inline void Node::create_subscription_in(const char* topic, const QoS& qos) {
 }
 
 template <typename M, class C, void (C::*Method)(const M& msg)>
-inline void Node::create_subscription_in(const CallbackGroup& group, const char* topic,
-                                         const QoS& qos) {
+inline void Node::create_subscription_in_group(const CallbackGroup& group, const char* topic,
+                                               const QoS& qos) {
     // phase-403 step 2 — the same boot-time check as the ungrouped form. A
     // grouped subscription costs the arena exactly what an ungrouped one does,
     // so leaving this path out would make the declared depth enforceable
@@ -410,7 +415,7 @@ inline void Node::create_subscription_in(const CallbackGroup& group, const char*
     }
     const nros_cpp_node_t* h = this->ffi_handle();
     if (h == nullptr) {
-        this->set_error("create_subscription_in", -3);
+        this->set_error("create_subscription_in_group", -3);
         return;
     }
     nros_cpp_qos_t ffi_qos = detail::qos_to_ffi(qos);
@@ -430,7 +435,7 @@ inline void Node::create_subscription_in(const CallbackGroup& group, const char*
         },
         self, &handle, &sub_options);
     if (ret != 0) {
-        this->set_error("create_subscription_in", ret);
+        this->set_error("create_subscription_in_group", ret);
     }
 }
 

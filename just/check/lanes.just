@@ -1000,6 +1000,16 @@ cpp: cpp-fmt
     # phase-427 W4 — the ours-only family answers to `_in` NAMES, and the
     # collision that forced the rename still reproduces.
     #
+    # phase-427 follow-on: the file also pins the `_in` / `_in_group` SPLIT.
+    # W4's `_in` collided with the one RFC-0047 had used since phase 273 for
+    # "in a callback group", so one class carried two families under one name.
+    # The rule is now mechanical — a creation verb whose FIRST parameter is a
+    # callback group ends `_in_group` — and section (4) asserts both directions
+    # by DETECTION (is the call well-formed?), which is the only way to assert
+    # a spelling is gone. Each detector carries its own negative control: a
+    # reconstructed pre-split type on which it must report TRUE, so a detector
+    # that answers "absent" for the wrong reason cannot read as a green gate.
+    #
     # Asserted with `decltype` on the call expression, which is the only way to
     # ask which overload the compiler PICKED. The file carries its own NEGATIVE
     # CONTROL: it reconstructs the pre-rename shape and asserts that shape binds
