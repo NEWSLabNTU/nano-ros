@@ -44,6 +44,10 @@ pub mod scaffold_deploy;
 pub mod sdk_front;
 pub mod sdk_path;
 pub mod setup;
+/// phase-440 W6 — `nros store list|gc` (RFC-0095 D11).
+pub mod store;
+/// phase-440 W6 — `nros toolchain uninstall` (RFC-0095 D11).
+pub mod toolchain;
 pub mod version;
 pub mod ws;
 
@@ -143,6 +147,17 @@ pub enum Cmd {
     /// the CLI itself and has no `nros setup` to run until it has.
     #[command(name = "sdk-front")]
     SdkFront(sdk_front::Args),
+
+    /// phase-440 W6 — inspect and shrink the SDK store (RFC-0095 D11). The
+    /// store is additive by design, so `list` says what is in it and `gc`
+    /// proposes what to reclaim — dry-run by default, and it never removes
+    /// anything a pin names.
+    Store(store::Args),
+
+    /// phase-440 W6 — remove one installed nano-ros toolchain (RFC-0095 D11).
+    /// Refuses while a known pin names the version, and refuses equally when no
+    /// pin file could be consulted: unestablished is not the same as false.
+    Toolchain(toolchain::Args),
 
     /// phase-336 — the cargo build-profile table (CMAKE_BUILD_TYPE mapping,
     /// flags, artifact dir, env-injected definitions). The bridge cmake/bash

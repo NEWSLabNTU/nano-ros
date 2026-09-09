@@ -139,6 +139,17 @@ Multi-RMW bridges (one binary, two or more backends) use
   carry their own `install(TARGETS …)` for colcon compatibility.) The
   integration shells under `integrations/<rtos>/` re-export the same
   root CMake under each RTOS's native package manager.
+- **The store only grows, so there are verbs to inspect and shrink it.**
+  Provisioning never overwrites: a new version lands beside the old one, which
+  is what makes going back to a previous toolchain free. `nros store list`
+  prints every entry with its size and when it was last read; `nros store gc
+  --older-than 90d` proposes what to reclaim and **removes nothing unless you
+  add `--delete`**. It never removes an entry a pin names — it reads
+  `nros-sdk-index.toml` / `nros-sdk.lock` from the directory you run it in and
+  its ancestors, and says which files it consulted. `nros toolchain uninstall
+  <version>` removes one nano-ros toolchain under the same rule, and refuses
+  when it cannot find a pin file to check against, rather than assuming nothing
+  needs it.
 - **Generated bindings in-tree.** Message codegen lands under
   `<your-package>/generated/` (or `OUT_DIR` for Cargo builds), not in
   an installed ROS message library.
