@@ -225,23 +225,11 @@ pub unsafe extern "C" fn nros_log_get_logger(name: *const c_char) -> *const c_vo
     let Some(name) = borrowed_str(name).filter(|n| !n.is_empty()) else {
         return nros_log_default_logger();
     };
-    match nros_log::get_or_create_logger(name) {
-        Some(logger) => (logger as *const nros_log::Logger).cast(),
-        None => {
-            let (used, total) = nros_log::dynamic_logger_name_arena();
-            nros_log::log_warn!(
-                &nros_log::DEFAULT_LOGGER,
-                "nros_log_get_logger(\"{name}\"): no logger created — {} of {} slots and {used} \
-                 of {total} name bytes are spent, or the name is over {} bytes. Returning the \
-                 catch-all logger, whose threshold is SHARED: raise `dynamic-loggers-<N>` on \
-                 nros-log rather than calling nros_logger_set_level on this handle.",
-                nros_log::dynamic_loggers_in_use(),
-                nros_log::dynamic_logger_capacity(),
-                nros_log::MAX_LOGGER_NAME_LEN,
-            );
-            nros_log_default_logger()
-        }
-    }
+    // phase-427 W5 — the create-or-fall-back-loudly resolution moved to
+    // `nros_log::resolve_logger`, because three OTHER accessors answering
+    // "which logger is this node's?" were spelled as a bare `get_logger`
+    // lookup and so answered the catch-all. One helper, four call sites.
+    (nros_log::resolve_logger(name) as *const nros_log::Logger).cast()
 }
 
 /// Copy the logger's name into `buf` as a NUL-terminated string.

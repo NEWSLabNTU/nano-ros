@@ -828,7 +828,11 @@ pub unsafe extern "C" fn nros_node_get_logger(
     let name_bytes = &node.name[..];
     let nul = name_bytes.iter().position(|&b| b == 0).unwrap_or(0);
     let name = core::str::from_utf8(&name_bytes[..nul]).unwrap_or("");
-    let logger: &'static nros_log::Logger = nros_log::get_logger(name);
+    // phase-427 W5 — `resolve_logger`, not `get_logger`. The lookup-only form
+    // answered `DEFAULT_LOGGER` for any name nobody registered a `'static`
+    // Logger under, so every node in an image emitted under `"nros"` and no
+    // record said which node wrote it.
+    let logger: &'static nros_log::Logger = nros_log::resolve_logger(name);
     (logger as *const nros_log::Logger).cast()
 }
 

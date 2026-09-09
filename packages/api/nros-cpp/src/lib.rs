@@ -2114,8 +2114,139 @@ pub unsafe extern "C" fn nros_cpp_node_get_logger(
     let name_bytes = unsafe { core::slice::from_raw_parts(name_ptr, (*node).name.len()) };
     let nul = name_bytes.iter().position(|&b| b == 0).unwrap_or(0);
     let name = core::str::from_utf8(&name_bytes[..nul]).unwrap_or("");
-    let logger: &'static nros_log::Logger = nros_log::get_logger(name);
+    // phase-427 W5 — `resolve_logger`, not `get_logger`. `rclcpp::Node::
+    // get_logger()` reaches this; the lookup-only form answered the catch-all
+    // `DEFAULT_LOGGER` for every node name nobody registered, so two nodes in
+    // one image emitted under one name and the accessor could not say which
+    // node wrote a record. That is the sentinel W5 replaced, by another route.
+    let logger: &'static nros_log::Logger = nros_log::resolve_logger(name);
     (logger as *const nros_log::Logger).cast()
+}
+
+/// phase-427 W5 — the runtime half, on the accessor `rclcpp::Node::get_logger()`
+/// actually calls.
+///
+/// `one_node_type.cpp`'s `two_nodes_two_logger_names()` is a COMPILE probe: it
+/// pins the return type and that the name comes off the node, which a lookup
+/// against the catch-all logger also satisfies. What it cannot see is the name
+/// a dispatched `Record` carries, and before this the two disagreed —
+/// `nros_log::get_logger` answers `DEFAULT_LOGGER` for any name no `'static`
+/// Logger was registered under, so every node in a C++ image emitted under
+/// `"nros"`.
+///
+/// The nodes here are `nros_cpp_node_t` values built by hand rather than by
+/// `nros_cpp_node_init`, because the accessor reads exactly one field — the
+/// name — and node creation needs a live executor and a backend session. The
+/// full node-lifecycle form of this claim is
+/// `nros_node::executor::tests::two_nodes_on_one_executor_emit_under_their_own_names`.
+#[cfg(test)]
+mod node_logger_name_tests {
+    use core::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
+
+    use super::*;
+
+    /// Capture, `no_std`: this crate has neither `alloc` nor `std` under a
+    /// workspace build, so the sink records the (pointer, length) of each
+    /// record's logger name instead of copying it.
+    ///
+    /// Sound because these names are `&'static`: `Logger::name` is a
+    /// `&'static str`, and one created by `nros_log::resolve_logger` points
+    /// into nros-log's static name arena, which has no free list.
+    const SLOTS: usize = 8;
+    static SEEN_PTR: [AtomicPtr<u8>; SLOTS] =
+        [const { AtomicPtr::new(core::ptr::null_mut()) }; SLOTS];
+    static SEEN_LEN: [AtomicUsize; SLOTS] = [const { AtomicUsize::new(0) }; SLOTS];
+    static SEEN_N: AtomicUsize = AtomicUsize::new(0);
+
+    struct NameCapturingSink;
+    impl nros_log::LogSink for NameCapturingSink {
+        fn log(&self, record: &nros_log::Record<'_>) {
+            let slot = SEEN_N.fetch_add(1, Ordering::SeqCst);
+            if slot < SLOTS {
+                SEEN_PTR[slot].store(record.logger_name.as_ptr().cast_mut(), Ordering::SeqCst);
+                SEEN_LEN[slot].store(record.logger_name.len(), Ordering::SeqCst);
+            }
+        }
+    }
+    static SINK: NameCapturingSink = NameCapturingSink;
+    static SINKS: &[&dyn nros_log::LogSink] = &[&SINK];
+
+    fn captured_name(slot: usize) -> &'static str {
+        let ptr = SEEN_PTR[slot].load(Ordering::SeqCst);
+        let len = SEEN_LEN[slot].load(Ordering::SeqCst);
+        assert!(!ptr.is_null(), "no record reached the sink for slot {slot}");
+        // SAFETY: written by the sink above from a `&'static str` whose bytes
+        // live in nros-log's static arena or in a `&'static` literal.
+        let bytes = unsafe { core::slice::from_raw_parts(ptr.cast_const(), len) };
+        core::str::from_utf8(bytes).expect("a logger name is UTF-8 by construction")
+    }
+
+    fn node_named(name: &str) -> nros_cpp_node_t {
+        let mut node = nros_cpp_node_t {
+            executor: core::ptr::null_mut(),
+            name: [0u8; NROS_CPP_NAME_LEN],
+            namespace: [0u8; NROS_CPP_NAMESPACE_LEN],
+            node_id: 0,
+            _reserved: [0u8; NROS_CPP_NODE_RESERVED],
+            qos_overrides: core::ptr::null(),
+            qos_overrides_len: 0,
+        };
+        node.name[..name.len()].copy_from_slice(name.as_bytes());
+        node
+    }
+
+    fn logger_of(node: &nros_cpp_node_t) -> &'static nros_log::Logger {
+        let raw = unsafe { nros_cpp_node_get_logger(node) };
+        assert!(!raw.is_null(), "an initialized node must have a logger");
+        // SAFETY: the accessor returns a `&'static nros_log::Logger` cast to
+        // `*const c_void`; this is the inverse of that cast.
+        unsafe { &*raw.cast::<nros_log::Logger>() }
+    }
+
+    /// The acceptance sentence, on the C++ accessor: two nodes, two names, and
+    /// the names the emitted records carry are the nodes' own.
+    #[test]
+    fn two_cpp_nodes_emit_under_their_own_names() {
+        nros_log::init(SINKS);
+
+        const TALKER: &str = "w5_cpp_talker";
+        const LISTENER: &str = "w5_cpp_listener";
+
+        let talker = node_named(TALKER);
+        let listener = node_named(LISTENER);
+        let talker_logger = logger_of(&talker);
+        let listener_logger = logger_of(&listener);
+
+        assert!(
+            !core::ptr::eq(talker_logger, listener_logger),
+            "both nodes resolved to ONE logger, named `{}` — the shape W5 \
+             removed, where no record can say which node emitted it",
+            talker_logger.name()
+        );
+        assert_eq!(talker_logger.name(), TALKER);
+        assert_eq!(listener_logger.name(), LISTENER);
+        assert_ne!(
+            talker_logger.name(),
+            nros_log::DEFAULT_LOGGER.name(),
+            "a node whose logger is the catch-all names no node"
+        );
+
+        nros_log::log_info!(talker_logger, "w5 cpp marker");
+        nros_log::log_info!(listener_logger, "w5 cpp marker");
+
+        assert_eq!(
+            SEEN_N.load(Ordering::SeqCst),
+            2,
+            "expected exactly the two records this test emitted"
+        );
+        assert_eq!(captured_name(0), TALKER);
+        assert_eq!(captured_name(1), LISTENER);
+        assert_ne!(
+            captured_name(0),
+            captured_name(1),
+            "two nodes in one image must emit under DISTINCT logger names"
+        );
+    }
 }
 
 // ============================================================================

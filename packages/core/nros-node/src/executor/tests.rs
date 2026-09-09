@@ -8021,3 +8021,127 @@ fn a_node_level_ros_time_timer_follows_the_simulated_clock() {
         "~40 ms of real time cannot be four activations of a 100 ms wall timer"
     );
 }
+
+// =============================================================================
+// phase-427 W5 — two nodes in one image, two logger names
+// =============================================================================
+
+/// phase-427 W5's RUNTIME acceptance: *two nodes in one image emit records
+/// under distinct logger names*.
+///
+/// The compile probe (`packages/api/nros-cpp/tests/compile/one_node_type.cpp`,
+/// `two_nodes_two_logger_names`) pins that `get_logger()` is BUILT from the
+/// node's name and that the handle still converts to `nros_logger_t`. Neither
+/// is the claim: a name a caller reads off the accessor says nothing about
+/// what a dispatched `Record` carries, and until this landed the two answers
+/// disagreed. `Node::logger` — and the C and C++ accessors beside it — called
+/// `nros_log::get_logger`, a LOOKUP that answers `DEFAULT_LOGGER` for any name
+/// nobody `register_logger`ed. Both nodes below resolved to that one logger,
+/// so every record in the image was emitted under the name `"nros"`: the
+/// `"nros.compat"` sentinel W5 deleted, reached by a different route.
+///
+/// Asserted on the RECORDS, through a real `LogSink`, because that is where
+/// the claim lives. The nodes are created on ONE executor; the handles do not
+/// overlap because `create_node` borrows the executor mutably, but the loggers
+/// are `&'static` and both emits happen after both nodes exist.
+///
+/// Host-only, like every test in this file: capture is a `LogSink` installed
+/// with `nros_log::init`, which works on any target, but the buffer here is a
+/// `std::sync::Mutex<Vec<_>>`.
+#[cfg(feature = "std")]
+#[test]
+fn two_nodes_on_one_executor_emit_under_their_own_names() {
+    use alloc::{string::String, vec::Vec};
+
+    /// One captured record, owned. `(logger name, message)` is the pair the
+    /// claim is about: a name with no message cannot be attributed to a node.
+    static CAPTURED: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+
+    struct CapturingSink;
+    impl nros_log::LogSink for CapturingSink {
+        fn log(&self, record: &nros_log::Record<'_>) {
+            // unwrap: poisoned only if another thread already panicked, which
+            // would be the failure worth reading rather than this one.
+            CAPTURED.lock().unwrap().push((
+                alloc::string::ToString::to_string(record.logger_name),
+                alloc::string::ToString::to_string(record.message),
+            ));
+        }
+    }
+    static SINK: CapturingSink = CapturingSink;
+    static SINKS: &[&dyn nros_log::LogSink] = &[&SINK];
+    nros_log::init(SINKS);
+
+    // Names unique to this test: the sink is process-global and sibling tests
+    // in this binary emit through the catch-all logger while it is installed.
+    const TALKER: &str = "w5_two_names_talker";
+    const LISTENER: &str = "w5_two_names_listener";
+
+    let session = MockSession::new();
+    let mut executor: Executor = executor_with_clock(session);
+
+    let talker_logger = executor
+        .create_node(TALKER)
+        .expect("create the first node")
+        .logger();
+    let listener_logger = executor
+        .create_node(LISTENER)
+        .expect("create the second node")
+        .logger();
+
+    assert!(
+        !core::ptr::eq(talker_logger, listener_logger),
+        "both nodes resolved to ONE logger, named `{}`. That is the shape \
+         phase-427 W5 removed: a lookup-only `get_logger` answers \
+         `DEFAULT_LOGGER` for every name no `'static` Logger was registered \
+         under, so no record can say which node emitted it.",
+        talker_logger.name()
+    );
+    assert_eq!(talker_logger.name(), TALKER);
+    assert_eq!(listener_logger.name(), LISTENER);
+
+    nros_log::log_info!(talker_logger, "w5 marker: talker is up");
+    nros_log::log_info!(listener_logger, "w5 marker: listener is up");
+
+    let records: Vec<(String, String)> = CAPTURED
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(_, message)| message.starts_with("w5 marker:"))
+        .cloned()
+        .collect();
+
+    assert_eq!(
+        records.len(),
+        2,
+        "expected exactly the two marker records this test emitted, got {records:?}"
+    );
+    assert_eq!(
+        records[0],
+        (
+            String::from(TALKER),
+            String::from("w5 marker: talker is up")
+        ),
+        "the first node's record must be attributed to the first node; all \
+         captured records: {records:?}"
+    );
+    assert_eq!(
+        records[1],
+        (
+            String::from(LISTENER),
+            String::from("w5 marker: listener is up")
+        ),
+        "the second node's record must be attributed to the second node; all \
+         captured records: {records:?}"
+    );
+    assert_ne!(
+        records[0].0, records[1].0,
+        "the acceptance criterion itself: two nodes in one image must emit \
+         under DISTINCT logger names"
+    );
+    assert_ne!(
+        records[0].0,
+        nros_log::DEFAULT_LOGGER.name(),
+        "a record emitted under the catch-all logger names no node"
+    );
+}

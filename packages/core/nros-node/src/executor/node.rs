@@ -119,8 +119,7 @@ impl<'a> NodeHandle<'a> {
         nros_rmw::Session::serialization_format(&*self.session)
     }
 
-    /// Phase 88.12 — return the [`nros_log::Logger`] keyed on the
-    /// node name.
+    /// Phase 88.12 — return the [`nros_log::Logger`] NAMED FOR THIS NODE.
     ///
     /// Loggers are interned in nros-log's bounded global table
     /// ([`nros_log::MAX_LOGGERS`] slots). If the caller has
@@ -128,11 +127,20 @@ impl<'a> NodeHandle<'a> {
     /// node's name (via [`nros_log::register_logger`]), this method
     /// returns that exact reference — so subsequent `nros_*!` calls
     /// share per-logger runtime threshold state with any other call
-    /// site that resolves the same name. Otherwise the call returns
-    /// [`nros_log::DEFAULT_LOGGER`], keeping the API total.
+    /// site that resolves the same name.
+    ///
+    /// phase-427 W5 — otherwise one is CREATED under the node's name, in
+    /// nros-log's bounded arena. It used to answer
+    /// [`nros_log::DEFAULT_LOGGER`] instead, which kept the API total by
+    /// making every node in an image share the name `"nros"`: no record could
+    /// say which node emitted it, and `set_level` on one node's handle moved
+    /// every other node's bar with it. [`nros_log::resolve_logger`] is the one
+    /// spelling of this resolution; the catch-all remains the fallback for an
+    /// exhausted arena, and it reports itself when it fires.
     ///
     /// ```ignore
-    /// // Pre-register if you want a dedicated threshold:
+    /// // Pre-register if you want a `'static` logger you can also name
+    /// // from elsewhere in the image:
     /// static MY_NODE_LOGGER: nros_log::Logger =
     ///     nros_log::Logger::new("my_node");
     /// nros_log::register_logger(&MY_NODE_LOGGER);
@@ -143,7 +151,7 @@ impl<'a> NodeHandle<'a> {
     /// ```
     #[must_use]
     pub fn logger(&self) -> &'static nros_log::Logger {
-        nros_log::get_logger(self.name())
+        nros_log::resolve_logger(self.name())
     }
 
     /// Get the domain ID.
