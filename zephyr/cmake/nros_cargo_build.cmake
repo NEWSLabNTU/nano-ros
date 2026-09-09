@@ -538,6 +538,21 @@ function(nros_resolve_knobs)
         set(_nros_zpico_mutex_overhead 22)
         math(EXPR _nros_mutex_floor
              "${NROS_RESOLVED_NROS_RMW_SUBSCRIBER_SLOTS} + ${_nros_zpico_mutex_overhead} + 4")
+        # phase-432 W3.1 — why the zenoh leaves say 64 and not 32.
+        #
+        # 32 was ONE constant hand-copied into 31 `prj-zenoh.conf` leaves,
+        # against a floor this file COMPUTES. It caps an image at 6 subscriber
+        # slots, and images outgrew it: the 8-slot ones stop here asking for
+        # 34, so every one of those leaves was one entity away from the same
+        # stop. 64 is the next value MEASURED to work (11 subscribers fail at
+        # 32 and boot at 64, above) and covers 38 slots.
+        #
+        # It CANNOT be hoisted into a shared board fragment, which is the
+        # obvious way to say it once: those merge LAST-WINS
+        # (`zephyr-fixture-leaves.sh` appends `conf_tail`), so a shared 64
+        # would clobber the cyclonedds leaves 256/2048 DOWNWARD — issue 0876
+        # in reverse. The leaves are RMW-specific and this floor is not, so the
+        # value belongs where the RMW overlay is.
         if(DEFINED CONFIG_MAX_PTHREAD_MUTEX_COUNT
            AND CONFIG_MAX_PTHREAD_MUTEX_COUNT LESS _nros_mutex_floor)
             message(FATAL_ERROR
