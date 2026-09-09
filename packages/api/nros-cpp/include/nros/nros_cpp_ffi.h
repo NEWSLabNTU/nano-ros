@@ -1419,6 +1419,19 @@ nros_cpp_ret_t nros_cpp_executor_derive_min_stack_headroom(void *handle, size_t 
  */
 nros_cpp_ret_t nros_cpp_executor_set_min_stack_headroom(void *handle, size_t bytes);
 
+/**
+ * Declare one `from -> to` remap for a node, from the C++ side of the ABI.
+ *
+ * `node_namespace` may be NULL, which means `/`; every other pointer is
+ * required and a NULL one answers `NROS_CPP_RET_INVALID_ARGUMENT` rather than
+ * faulting. A full remap table answers `NROS_CPP_RET_FULL`.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL.
+ * `node_name`, `from` and `to` must each point at a NUL-terminated C string
+ * that stays valid for the duration of the call; `node_namespace` must too
+ * unless it is NULL.
+ */
 nros_cpp_ret_t nros_cpp_declare_remap(void *handle,
                                       const char *node_name,
                                       const char *node_namespace,
