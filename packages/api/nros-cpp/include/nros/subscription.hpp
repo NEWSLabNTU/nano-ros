@@ -80,10 +80,32 @@ nros_cpp_ret_t nros_cpp_subscription_register_validated(
 
 namespace nros {
 
-/// Maximum topic name length stored inside `nros::Subscription<M>`.
+/// Maximum topic name length stored inside a subscription.
 /// Mirrors `PUBLISHER_TOPIC_NAME_MAX`. Phase 87.6 thin-wrapper refactor:
 /// topic name owned C++-side, not inside a runtime handle.
+///
+/// Stays in `nros::`: RFC-0089's flip moves the nine TYPES, and this is an
+/// implementation bound of one of them, not a name upstream declares.
 static constexpr size_t SUBSCRIPTION_TOPIC_NAME_MAX = 256;
+
+/// `nros::Node` is named by the friend declaration below and by the out-of-line
+/// `Node::create_*` bodies further down. `nros/node.hpp` (included below, after
+/// the class, so a consumer pays only for the entities it uses) has the
+/// definition; a qualified friend needs the name to EXIST first, which an
+/// unqualified `friend class Node;` used to supply implicitly.
+class Node;
+
+} // namespace nros
+
+// ============================================================================
+// `rclcpp::Subscription<M>` -- DEFINED here (RFC-0089: rclcpp:: is the home)
+// ============================================================================
+//
+// phase-428: the definition moved from `nros::` to `rclcpp::` and the alias
+// turned around. The nested `SharedPtr` / `ConstSharedPtr` / `UniquePtr`
+// aliases live on the class itself, so `rclcpp::Subscription<M>::SharedPtr`
+// resolves with no wrapper type in between.
+namespace rclcpp {
 
 /// Typed subscription for a ROS 2 topic.
 ///
@@ -159,14 +181,14 @@ template <typename M> class Subscription {
     /// @tparam Cap  Stack bytes to receive into. A sample larger than this is
     ///              refused by the backend, so under-sizing DROPS messages.
     template <size_t Cap> Result take_sized(M& msg) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
         uint8_t buf[Cap];
         size_t len = 0;
         nros_cpp_ret_t ret =
             nros_cpp_subscription_take_serialized(storage_, buf, sizeof(buf), &len);
         if (ret != 0) return Result(ret);
-        if (len == 0) return Result(ErrorCode::TryAgain);
-        if (M::ffi_deserialize(buf, len, &msg) != 0) return Result(ErrorCode::Error);
+        if (len == 0) return Result(::nros::ErrorCode::TryAgain);
+        if (M::ffi_deserialize(buf, len, &msg) != 0) return Result(::nros::ErrorCode::Error);
         return Result::success();
     }
 
@@ -192,14 +214,14 @@ template <typename M> class Subscription {
     /// @ref take_validated with the receive buffer sized by the CALLER.
     /// See @ref take_sized (issue 0964).
     template <size_t Cap> Result take_validated_sized(M& msg, nros_cpp_integrity_status_t& status) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
         uint8_t buf[Cap];
         size_t len = 0;
         nros_cpp_ret_t ret =
             nros_cpp_subscription_take_validated(storage_, buf, sizeof(buf), &len, &status);
         if (ret != 0) return Result(ret);
-        if (len == 0) return Result(ErrorCode::TryAgain);
-        if (M::ffi_deserialize(buf, len, &msg) != 0) return Result(ErrorCode::Error);
+        if (len == 0) return Result(::nros::ErrorCode::TryAgain);
+        if (M::ffi_deserialize(buf, len, &msg) != 0) return Result(::nros::ErrorCode::Error);
         return Result::success();
     }
 
@@ -216,12 +238,12 @@ template <typename M> class Subscription {
     Result take_serialized(uint8_t* buf, size_t capacity, size_t& out_len) {
         if (!initialized_) {
             out_len = 0;
-            return Result(ErrorCode::NotInitialized);
+            return Result(::nros::ErrorCode::NotInitialized);
         }
         nros_cpp_ret_t ret =
             nros_cpp_subscription_take_serialized(storage_, buf, capacity, &out_len);
         if (ret != 0) return Result(ret);
-        if (out_len == 0) return Result(ErrorCode::TryAgain);
+        if (out_len == 0) return Result(::nros::ErrorCode::TryAgain);
         return Result::success();
     }
 
@@ -245,12 +267,12 @@ template <typename M> class Subscription {
         if (!initialized_) {
             out_len = 0;
             out_att_len = 0;
-            return Result(ErrorCode::NotInitialized);
+            return Result(::nros::ErrorCode::NotInitialized);
         }
         nros_cpp_ret_t ret = nros_cpp_subscription_take_serialized_with_attachment(
             storage_, buf, capacity, &out_len, att, att_capacity, &out_att_len);
         if (ret != 0) return Result(ret);
-        if (out_len == 0) return Result(ErrorCode::TryAgain);
+        if (out_len == 0) return Result(::nros::ErrorCode::TryAgain);
         return Result::success();
     }
 
@@ -308,15 +330,16 @@ template <typename M> class Subscription {
     /// Phase 124.A.7 — try to borrow the next message in place. Returns
     /// `View` with data when a message is ready, empty `View` when not.
     /// On error returns `ResultOf::error`.
-    ResultOf<View> try_borrow() {
-        if (!initialized_) return ResultOf<View>::error(Result(ErrorCode::NotInitialized));
+    ::nros::ResultOf<View> try_borrow() {
+        if (!initialized_)
+            return ::nros::ResultOf<View>::error(Result(::nros::ErrorCode::NotInitialized));
         const uint8_t* buf = nullptr;
         size_t len = 0;
         void* token = nullptr;
         int32_t rc = nros_cpp_subscription_borrow(storage_, &buf, &len, &token);
-        if (rc < 0) return ResultOf<View>::error(Result(rc));
-        if (rc == 0) return ResultOf<View>::ok(View{});
-        return ResultOf<View>::ok(View{storage_, buf, len, token});
+        if (rc < 0) return ::nros::ResultOf<View>::error(Result(rc));
+        if (rc == 0) return ::nros::ResultOf<View>::ok(View{});
+        return ::nros::ResultOf<View>::ok(View{storage_, buf, len, token});
     }
 
     /// Phase 124.D.1 — burst-take.
@@ -335,7 +358,7 @@ template <typename M> class Subscription {
                          size_t& out_count) {
         if (!initialized_) {
             out_count = 0;
-            return Result(ErrorCode::NotInitialized);
+            return Result(::nros::ErrorCode::NotInitialized);
         }
         nros_cpp_ret_t ret = nros_cpp_subscription_take_sequence(storage_, buf, per_msg_cap,
                                                                  max_msgs, out_lens, &out_count);
@@ -425,14 +448,14 @@ template <typename M> class Subscription {
     /// M msg;
     /// NROS_TRY(sub.stream().wait_next(executor.handle(), 1000, msg));
     /// ```
-    Stream<M>& stream() {
+    ::nros::Stream<M>& stream() {
         if (initialized_ && !stream_.is_valid()) {
             stream_.bind(storage_, &nros_cpp_subscription_take_serialized);
         }
         return stream_;
     }
 
-    const Stream<M>& stream() const { return stream_; }
+    const ::nros::Stream<M>& stream() const { return stream_; }
 
     /// Check if the subscription is initialized and valid.
     bool is_valid() const { return initialized_; }
@@ -469,14 +492,14 @@ template <typename M> class Subscription {
             stream_.bind(storage_, &nros_cpp_subscription_take_serialized);
         }
         other.initialized_ = false;
-        other.stream_ = Stream<M>();
+        other.stream_ = ::nros::Stream<M>();
     }
 
     Subscription& operator=(Subscription&& other) {
         if (this != &other) {
             if (initialized_ && !callback_mode_) {
                 nros_cpp_subscription_destroy(storage_);
-                stream_ = Stream<M>();
+                stream_ = ::nros::Stream<M>();
             }
             initialized_ = other.initialized_;
             user_fn_ = other.user_fn_;
@@ -490,7 +513,7 @@ template <typename M> class Subscription {
                 stream_.bind(storage_, &nros_cpp_subscription_take_serialized);
             }
             other.initialized_ = false;
-            other.stream_ = Stream<M>();
+            other.stream_ = ::nros::Stream<M>();
         }
         return *this;
     }
@@ -522,21 +545,21 @@ template <typename M> class Subscription {
     /// backend wires up liveliness detection.
     Result on_liveliness_changed(nros_cpp_liveliness_changed_cb_t cb,
                                  void* user_context = nullptr) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
         return Result(nros_cpp_subscription_set_liveliness_changed(storage_, cb, user_context));
     }
 
     /// Register a callback for requested-deadline-missed events.
     Result on_requested_deadline_missed(uint32_t deadline_ms, nros_cpp_subscriber_count_cb_t cb,
                                         void* user_context = nullptr) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
         return Result(nros_cpp_subscription_set_requested_deadline_missed(storage_, deadline_ms, cb,
                                                                           user_context));
     }
 
     /// Register a callback for message-lost events.
     Result on_message_lost(nros_cpp_subscriber_count_cb_t cb, void* user_context = nullptr) {
-        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
         return Result(nros_cpp_subscription_set_message_lost(storage_, cb, user_context));
     }
 
@@ -544,7 +567,7 @@ template <typename M> class Subscription {
     Subscription(const Subscription&) = delete;
     Subscription& operator=(const Subscription&) = delete;
 
-    friend class Node;
+    friend class ::nros::Node;
 
     /// Phase 189.M3.x — raw message trampoline matching `RawSubscriptionCallback`
     /// (`void(data, len, ctx)`). Deserializes the CDR sample into `M` and runs
@@ -598,9 +621,9 @@ template <typename M> class Subscription {
 #endif // NANO_ROS_SAFETY_E2E
 
     alignas(8) uint8_t storage_[NROS_SUBSCRIBER_SIZE];
-    char topic_name_[SUBSCRIPTION_TOPIC_NAME_MAX];
+    char topic_name_[::nros::SUBSCRIPTION_TOPIC_NAME_MAX];
     bool initialized_;
-    Stream<M> stream_;
+    ::nros::Stream<M> stream_;
     // Phase 189.M3.1 — executor HandleId for sched-context binding, or
     // SIZE_MAX (the default) when no bindable handle exists. The poll-style
     // thin-wrapper create path leaves this unset (see has_sched_handle());
@@ -620,6 +643,15 @@ template <typename M> class Subscription {
 #endif // NANO_ROS_SAFETY_E2E
 };
 
+} // namespace rclcpp
+
+// ============================================================================
+// nros:: -- the in-tree spelling, now the ALIAS (RFC-0089). Declared here,
+// before the out-of-line `Node::create_*` bodies below, which are written in
+// the `nros::` vocabulary.
+// ============================================================================
+namespace nros {
+template <typename M> using Subscription = ::rclcpp::Subscription<M>;
 } // namespace nros
 
 // Phase 84.G8: out-of-line definition of Node::create_subscription<M>().
@@ -861,7 +893,8 @@ Result Node::create_subscription_with_safety(Subscription<M>& out, const char* t
 
 namespace rclcpp {
 
-template <typename M> using Subscription = ::nros::Subscription<M>;
+// The definition lives above, in this namespace. `nros::Subscription<M>` is the
+// migration alias, declared at the bottom of this header.
 
 #ifdef NROS_CPP_HAS_STD_FUNCTION
 namespace detail {
@@ -897,5 +930,9 @@ template <typename M> struct SubscriptionCallback {
 #endif // NROS_CPP_HAS_STD_FUNCTION
 
 } // namespace rclcpp
+
+// ============================================================================
+// nros:: -- the in-tree spelling, now the ALIAS (RFC-0089)
+// ============================================================================
 
 #endif // NROS_CPP_SUBSCRIPTION_HPP

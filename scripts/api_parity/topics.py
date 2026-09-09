@@ -352,6 +352,27 @@ KEY_OVERRIDES = {
     # CDR errors: the serde stage's vocabulary, not the general one.
     "SerError": "serde",
     "DeserError": "serde",
+    # phase-428 (RFC-0089): `Client` is now TWO types. `rclcpp::Client<S>` is the
+    # service client and `rclcpp_action::Client<A>` is the action client, and the
+    # extractor keys both by the unqualified name -- so `Client::<member>` cannot
+    # be read as "service" the way it could while our action client was called
+    # `ActionClient`. Most of the action client's members carry an action word
+    # (`goal`, `cancel`, `feedback`) and the ordered patterns still get them
+    # right; these are the ones that do not, plus the two the ordering sends to
+    # the wrong stage. Overrides rather than a widened pattern: a pattern broad
+    # enough to claim `Client::poll` for action would claim the service client's
+    # too, and the point of the shard is that it is the topic's inventory.
+    "Client::Client<A>": "action",
+    "Client::get_result": "action",
+    "Client::get_result_async": "action",
+    "Client::get_result_future": "action",
+    "Client::get_result_future_sized": "action",
+    "Client::get_result_sized": "action",
+    "Client::poll": "action",
+    "Client::send_goal": "action",
+    "Client::set_callbacks": "action",
+    "Client::try_recv_feedback": "action",
+    "Client::try_recv_feedback_sized": "action",
 }
 
 
@@ -412,6 +433,15 @@ def self_test():
 
     # The ordering decision, stated as tests so changing the order breaks here
     # rather than silently re-filing hundreds of rows.
+    # phase-428: `Client::<member>` is ambiguous now that the action client is
+    # `rclcpp_action::Client`. The action members go to `action`; the service
+    # client's own members must NOT follow them there.
+    check("Client::get_result", "action")
+    check("Client::send_goal", "action")
+    check("Client::poll", "action")
+    check("Client::try_recv_feedback", "action")
+    check("Client::async_send_request", "service")
+    check("Client::wait_for_service", "service")
     check("Node::create_publisher", "pubsub")
     check("Node::create_subscription", "pubsub")
     check("Node::create_service", "service")

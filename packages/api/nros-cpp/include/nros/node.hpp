@@ -130,18 +130,31 @@ static_assert(NROS_CPP_RET_NOT_FOUND == -4 && NROS_CPP_RET_ALREADY_EXISTS == -5 
                   NROS_CPP_RET_UNSUPPORTED == -16,
               "nros_cpp_ret_t diverged from the shared numbering (issue #229)");
 
-namespace nros {
-
 // Phase 84.G8: forward declarations of the heavy entity class
 // templates. Full definitions live in the corresponding `*.hpp`,
 // which also provide the out-of-line `Node::create_X<>` template
 // bodies — consumers only pay for the entities they #include.
+//
+// phase-428 (RFC-0089): six of them are DECLARED in the upstream namespace,
+// because that is where their definition now lives, and this header names them
+// that way. The `nros::` migration alias for each is declared ONCE, beside its
+// type in that type's own header -- repeating it here would give the alias two
+// declaration sites, and `api-parity` attributes a name to the header it is
+// first seen in.
+namespace rclcpp {
 template <typename M> class Publisher;
 template <typename M> class Subscription;
 template <typename S> class Service;
 template <typename S> class Client;
-template <typename A> class ActionServer;
-template <typename A> class ActionClient;
+} // namespace rclcpp
+
+namespace rclcpp_action {
+template <typename A> class Server;
+template <typename A> class Client;
+} // namespace rclcpp_action
+
+namespace nros {
+
 // Phase 122.3.d.b — L1 polling-mode action wrappers.
 template <typename A> class PollingActionServer;
 template <typename A> class PollingActionClient;
@@ -486,22 +499,24 @@ class Node {
 
     /// `create_publisher<M>(topic, qos)` — upstream's shape.
     template <typename M>
-    ::std::shared_ptr<Publisher<M>> create_publisher(const ::std::string& topic, const QoS& qos);
+    ::std::shared_ptr<::rclcpp::Publisher<M>> create_publisher(const ::std::string& topic,
+                                                               const QoS& qos);
 
     /// `create_publisher<M>(topic, depth)` — the integer-depth spelling.
     template <typename M>
-    ::std::shared_ptr<Publisher<M>> create_publisher(const ::std::string& topic, ::size_t depth);
+    ::std::shared_ptr<::rclcpp::Publisher<M>> create_publisher(const ::std::string& topic,
+                                                               ::size_t depth);
 
     /// `create_subscription<M>(topic, qos, callback)` — upstream's shape.
     /// Accepts ANY callable; the executor dispatches it.
     template <typename M, typename Cb>
-    ::std::shared_ptr<Subscription<M>> create_subscription(const ::std::string& topic,
-                                                           const QoS& qos, Cb cb);
+    ::std::shared_ptr<::rclcpp::Subscription<M>> create_subscription(const ::std::string& topic,
+                                                                     const QoS& qos, Cb cb);
 
     /// `create_subscription<M>(topic, depth, callback)`.
     template <typename M, typename Cb>
-    ::std::shared_ptr<Subscription<M>> create_subscription(const ::std::string& topic,
-                                                           ::size_t depth, Cb cb);
+    ::std::shared_ptr<::rclcpp::Subscription<M>> create_subscription(const ::std::string& topic,
+                                                                     ::size_t depth, Cb cb);
 
 #ifdef NROS_CPP_HAS_STD_CHRONO
     /// `create_wall_timer(period, callback)` — upstream's shape.
@@ -513,15 +528,15 @@ class Node {
     /// upstream signature — upstream requires a callback — so it claims
     /// nothing. Drain with `service->take_request(...)`.
     template <typename S>
-    ::std::shared_ptr<Service<S>> create_service(const ::std::string& name,
-                                                 const QoS& qos = QoS::services());
+    ::std::shared_ptr<::rclcpp::Service<S>> create_service(const ::std::string& name,
+                                                           const QoS& qos = QoS::services());
 
     /// Callback-style service server (`void(const S::Request&, S::Response&)`).
     template <typename S, typename F,
               typename = typename std::enable_if<std::is_convertible<
                   F, void (*)(const typename S::Request&, typename S::Response&)>::value>::type>
-    ::std::shared_ptr<Service<S>> create_service(const ::std::string& name, F callback,
-                                                 const QoS& qos = QoS::services());
+    ::std::shared_ptr<::rclcpp::Service<S>> create_service(const ::std::string& name, F callback,
+                                                           const QoS& qos = QoS::services());
 
     /// **REFUSED** — upstream's `shared_ptr` handler shape. See
     /// `NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK`.
@@ -531,20 +546,20 @@ class Node {
                   !std::is_convertible<F, void (*)(const typename S::Request&,
                                                    typename S::Response&)>::value>::type,
               typename = void>
-    ::std::shared_ptr<Service<S>> create_service(const ::std::string&, F,
-                                                 const QoS& = QoS::services());
+    ::std::shared_ptr<::rclcpp::Service<S>> create_service(const ::std::string&, F,
+                                                           const QoS& = QoS::services());
 
     /// Future-style service client — pair with `spin_until_future_complete`.
     template <typename S>
-    ::std::shared_ptr<Client<S>> create_client(const ::std::string& name,
-                                               const QoS& qos = QoS::services());
+    ::std::shared_ptr<::rclcpp::Client<S>> create_client(const ::std::string& name,
+                                                         const QoS& qos = QoS::services());
 
     /// Callback-style service client (`void(const S::Response&)`).
     template <typename S, typename F,
               typename = typename std::enable_if<
                   std::is_convertible<F, void (*)(const typename S::Response&)>::value>::type>
-    ::std::shared_ptr<Client<S>> create_client(const ::std::string& name, F callback,
-                                               const QoS& qos = QoS::services());
+    ::std::shared_ptr<::rclcpp::Client<S>> create_client(const ::std::string& name, F callback,
+                                                         const QoS& qos = QoS::services());
 
     /// **REFUSED** — upstream's `shared_ptr` handler shape.
     template <typename S, typename F,
@@ -552,8 +567,8 @@ class Node {
                   !::rclcpp::detail::is_qos_arg<F>::value &&
                   !std::is_convertible<F, void (*)(const typename S::Response&)>::value>::type,
               typename = void>
-    ::std::shared_ptr<Client<S>> create_client(const ::std::string&, F,
-                                               const QoS& = QoS::services());
+    ::std::shared_ptr<::rclcpp::Client<S>> create_client(const ::std::string&, F,
+                                                         const QoS& = QoS::services());
 
     // -- parameters (bodies in `nros.hpp`) ----------------------------------
     //
@@ -977,7 +992,7 @@ class Node {
     /// @param topic  Topic name (null-terminated).
     /// @param qos    QoS profile (default: reliable, keep-last(10)).
     template <typename M>
-    Result create_publisher(Publisher<M>& out, const char* topic,
+    Result create_publisher(::rclcpp::Publisher<M>& out, const char* topic,
                             const QoS& qos = QoS::default_profile());
 
     /// Create a publisher with rclcpp-style named options (Phase 189.M3.1).
@@ -993,7 +1008,7 @@ class Node {
     /// @param qos      QoS profile.
     /// @param options  Named publisher options.
     template <typename M>
-    Result create_publisher(Publisher<M>& out, const char* topic, const QoS& qos,
+    Result create_publisher(::rclcpp::Publisher<M>& out, const char* topic, const QoS& qos,
                             const PublisherOptions& options);
 
     /// Create a subscription for a topic.
@@ -1003,7 +1018,7 @@ class Node {
     /// @param topic  Topic name (null-terminated).
     /// @param qos    QoS profile (default: reliable, keep-last(10)).
     template <typename M>
-    Result create_subscription(Subscription<M>& out, const char* topic,
+    Result create_subscription(::rclcpp::Subscription<M>& out, const char* topic,
                                const QoS& qos = QoS::default_profile());
 
     /// Create a subscription with rclcpp-style named options (Phase 189.M3.1).
@@ -1019,7 +1034,7 @@ class Node {
     /// @param qos      QoS profile.
     /// @param options  Named subscription options.
     template <typename M>
-    Result create_subscription(Subscription<M>& out, const char* topic, const QoS& qos,
+    Result create_subscription(::rclcpp::Subscription<M>& out, const char* topic, const QoS& qos,
                                const SubscriptionOptions& options);
 
     /// Create a **callback-style** subscription (rclcpp dispatch model; Phase
@@ -1043,7 +1058,7 @@ class Node {
     template <
         typename M, typename F,
         typename = typename std::enable_if<std::is_convertible<F, void (*)(const M&)>::value>::type>
-    Result create_subscription(Subscription<M>& out, const char* topic, F callback,
+    Result create_subscription(::rclcpp::Subscription<M>& out, const char* topic, F callback,
                                const QoS& qos = QoS::default_profile(),
                                const SubscriptionOptions& options = {});
 
@@ -1057,8 +1072,8 @@ class Node {
     template <typename M, typename F,
               typename = typename std::enable_if<
                   std::is_convertible<F, void (*)(const M&, const uint8_t*, size_t)>::value>::type>
-    Result create_subscription_with_info(Subscription<M>& out, const char* topic, F callback,
-                                         const QoS& qos = QoS::default_profile(),
+    Result create_subscription_with_info(::rclcpp::Subscription<M>& out, const char* topic,
+                                         F callback, const QoS& qos = QoS::default_profile(),
                                          const SubscriptionOptions& options = {});
 
 #if defined(NANO_ROS_SAFETY_E2E)
@@ -1079,8 +1094,8 @@ class Node {
     template <typename M, typename F,
               typename = typename std::enable_if<std::is_convertible<
                   F, void (*)(const M&, const nros_cpp_integrity_status_t&)>::value>::type>
-    Result create_subscription_with_safety(Subscription<M>& out, const char* topic, F callback,
-                                           const QoS& qos = QoS::default_profile(),
+    Result create_subscription_with_safety(::rclcpp::Subscription<M>& out, const char* topic,
+                                           F callback, const QoS& qos = QoS::default_profile(),
                                            const SubscriptionOptions& options = {});
 #endif // NANO_ROS_SAFETY_E2E
 
@@ -1091,7 +1106,7 @@ class Node {
     /// @param service_name  Service name (null-terminated).
     /// @param qos           QoS profile (default: services preset).
     template <typename S>
-    Result create_service(Service<S>& out, const char* service_name,
+    Result create_service(::rclcpp::Service<S>& out, const char* service_name,
                           const QoS& qos = QoS::services());
 
     /// Create a **callback-style** service server (rclcpp dispatch model;
@@ -1109,7 +1124,7 @@ class Node {
     template <typename S, typename F,
               typename = typename std::enable_if<std::is_convertible<
                   F, void (*)(const typename S::Request&, typename S::Response&)>::value>::type>
-    Result create_service(Service<S>& out, const char* service_name, F callback,
+    Result create_service(::rclcpp::Service<S>& out, const char* service_name, F callback,
                           const QoS& qos = QoS::services(), const ServiceOptions& options = {});
 
     /// Create a service client.
@@ -1119,7 +1134,7 @@ class Node {
     /// @param service_name  Service name (null-terminated).
     /// @param qos           QoS profile (default: services preset).
     template <typename S>
-    Result create_client(Client<S>& out, const char* service_name,
+    Result create_client(::rclcpp::Client<S>& out, const char* service_name,
                          const QoS& qos = QoS::services());
 
     /// Create a **callback-style** service client (rclcpp async dispatch;
@@ -1135,7 +1150,7 @@ class Node {
     template <typename S, typename F,
               typename = typename std::enable_if<
                   std::is_convertible<F, void (*)(const typename S::Response&)>::value>::type>
-    Result create_client(Client<S>& out, const char* service_name, F callback,
+    Result create_client(::rclcpp::Client<S>& out, const char* service_name, F callback,
                          const QoS& qos = QoS::services(), const ClientOptions& options = {});
 
     /// Create an action server.
@@ -1149,7 +1164,7 @@ class Node {
     /// @param options      Named options; `options.sched_context` (M3.3.c) binds
     ///                     the goal-service dispatch onto a scheduling context.
     template <typename A>
-    Result create_action_server(ActionServer<A>& out, const char* action_name,
+    Result create_action_server(::rclcpp_action::Server<A>& out, const char* action_name,
                                 const QoS& qos = QoS::services(),
                                 const ActionServerOptions& options = {});
 
@@ -1160,7 +1175,7 @@ class Node {
     /// @param action_name  Action name (null-terminated).
     /// @param qos          QoS profile (default: services preset).
     template <typename A>
-    Result create_action_client(ActionClient<A>& out, const char* action_name,
+    Result create_action_client(::rclcpp_action::Client<A>& out, const char* action_name,
                                 const QoS& qos = QoS::services());
 
     /// Phase 122.3.d.b — Create an L1 polling-mode action server.
@@ -1364,7 +1379,7 @@ class Node {
     template <
         typename M, typename F,
         typename = typename std::enable_if<std::is_convertible<F, void (*)(const M&)>::value>::type>
-    Result create_subscription_in(const CallbackGroup& group, Subscription<M>& out,
+    Result create_subscription_in(const CallbackGroup& group, ::rclcpp::Subscription<M>& out,
                                   const char* topic, F callback,
                                   const QoS& qos = QoS::default_profile(),
                                   const SubscriptionOptions& options = {});
@@ -1381,7 +1396,7 @@ class Node {
     /// @param topic  Topic name.
     /// @param qos    QoS profile.
     template <typename M>
-    Result create_publisher_in(const CallbackGroup& /* group */, Publisher<M>& out,
+    Result create_publisher_in(const CallbackGroup& /* group */, ::rclcpp::Publisher<M>& out,
                                const char* topic, const QoS& qos = QoS::default_profile()) {
         return create_publisher<M>(out, topic, qos);
     }

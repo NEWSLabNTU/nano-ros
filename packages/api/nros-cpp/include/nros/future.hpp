@@ -25,6 +25,19 @@ nros_cpp_ret_t nros_cpp_spin_once(void* handle, int32_t timeout_ms);
 uint64_t nros_cpp_time_ns(void);
 }
 
+// phase-428 (RFC-0089): the entity types that reach into this one's private
+// constructor are DEFINED in the upstream namespace now, so the friend
+// declarations below name them there. A qualified friend cannot introduce a
+// name, hence these declarations.
+namespace rclcpp {
+template <typename M> class Subscription;
+template <typename S> class Client;
+} // namespace rclcpp
+
+namespace rclcpp_action {
+template <typename A> class Client;
+} // namespace rclcpp_action
+
 namespace nros {
 
 /// Single-shot deferred result for request/response operations.
@@ -158,8 +171,8 @@ template <typename T, size_t Cap = ::nros::rx_buffer_capacity<T>::value> class F
     Future(const Future&) = delete;
     Future& operator=(const Future&) = delete;
 
-    template <typename S> friend class Client;
-    template <typename A> friend class ActionClient;
+    template <typename S> friend class ::rclcpp::Client;
+    template <typename A> friend class ::rclcpp_action::Client;
 
     using TryRecvFn = nros_cpp_ret_t (*)(void*, uint8_t*, size_t, size_t*);
 
