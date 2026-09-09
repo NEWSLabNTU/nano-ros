@@ -9,8 +9,8 @@
 //!   ```cpp
 //!   auto ctrl_grp  = create_callback_group("ctrl");
 //!   auto telem_grp = create_callback_group("telem");
-//!   create_timer_in<SubNode, &SubNode::on_ctrl>(ctrl_grp, 10);   // 10 ms
-//!   create_timer_in<SubNode, &SubNode::on_telem>(telem_grp, 100); // 100 ms
+//!   create_timer_in_group<SubNode, &SubNode::on_ctrl>(ctrl_grp, 10);   // 10 ms
+//!   create_timer_in_group<SubNode, &SubNode::on_telem>(telem_grp, 100); // 100 ms
 //!   ```
 //!
 //! `system.toml [[component]].group_tiers = { ctrl = "high", telem = "low" }` maps
