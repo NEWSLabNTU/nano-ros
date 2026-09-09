@@ -628,6 +628,29 @@ pub trait PlatformThreading {
     fn wake_signal_from_isr(w: *mut c_void) -> i8 {
         Self::wake_signal(w)
     }
+    /// phase-436 W7 — OPTIONAL microsecond park.
+    ///
+    /// `wake_wait_ms` is the required primitive and floors every wait at a
+    /// millisecond through its own signature; this is the same wait without
+    /// that floor, for kernels whose timeout type is finer (issue 1242).
+    ///
+    /// `w` MUST be the executor's own wake object: the backend's listener
+    /// signals that one, and a park on anything else cannot be broken by data
+    /// arriving.
+    ///
+    /// Default `-1` — "cannot park", which leaves the executor on the
+    /// millisecond path it already had. A port that can do better overrides.
+    fn wake_park_until_us(_w: *mut c_void, _deadline_us: u64) -> i8 {
+        -1
+    }
+    /// The finest park `wake_park_until_us` can express, in microseconds.
+    ///
+    /// Default `0` — "no finer park offered". An RTOS tick is a coarser limit
+    /// than the ABI signature (ThreadX ticks at 100 Hz) and a timespec
+    /// primitive a finer one, so only the port can answer (issue 1242).
+    fn wake_park_granularity_us() -> u64 {
+        0
+    }
     /// Caller-storage size requirement (bytes). Default `0` —
     /// signals "no wake primitive available". May be called before
     /// `wake_init`.
