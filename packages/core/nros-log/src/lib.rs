@@ -430,6 +430,56 @@ pub fn get_or_create_logger(name: &str) -> Option<&'static Logger> {
     INTERN.insert(placed)
 }
 
+/// Resolve `name` to a logger — the TOTAL form of [`get_or_create_logger`],
+/// and the one spelling every node-shaped accessor uses.
+///
+/// phase-427 W5. Four accessors answer "which logger is this node's?" —
+/// `nros_node::executor::Node::logger`, `nros_node_get_logger`,
+/// `nros_cpp_node_get_logger` and `nros_log_get_logger`. All four had the same
+/// job and, before this, three of them called [`get_logger`], which is a
+/// LOOKUP: a node whose name nobody `register_logger`ed resolved to
+/// [`DEFAULT_LOGGER`]. Two nodes in one image therefore emitted every record
+/// under the same name, `"nros"` — the sentinel W5 replaced, arrived at by a
+/// different route.
+///
+/// This creates instead, and falls back to [`DEFAULT_LOGGER`] only when it
+/// cannot — an empty or over-long name, or an exhausted arena — and says so at
+/// WARN when it does, because the catch-all's threshold is SHARED and a silent
+/// alias makes `set_level` on the result move every other unnamed logger's bar
+/// with it. The report is ONE per process: a C++ `NROS_LOG_*` call site asks
+/// `node.get_logger()` on every line, so a per-call report would be a flood.
+///
+/// Lookup comes first, so an image that pre-registered a `'static Logger` under
+/// the node's name still gets that exact reference and its threshold.
+#[must_use]
+pub fn resolve_logger(name: &str) -> &'static Logger {
+    if let Some(logger) = get_or_create_logger(name) {
+        return logger;
+    }
+    // ONE report per process. This is reached from `Node::get_logger()`, which
+    // a C++ call site invokes inside every `NROS_LOG_*` macro — so a node whose
+    // name is longer than `MAX_LOGGER_NAME_LEN` (node names may be 64 bytes,
+    // logger names 48) would otherwise emit a warning per log line, and the
+    // diagnostic would be the flood. The first failure is the informative one:
+    // the arena only ever gets fuller.
+    static REPORTED: AtomicU8 = AtomicU8::new(0);
+    if REPORTED.swap(1, Ordering::Relaxed) != 0 {
+        return &DEFAULT_LOGGER;
+    }
+    let (used, total) = dynamic_logger_name_arena();
+    crate::log_warn!(
+        &DEFAULT_LOGGER,
+        "resolve_logger(\"{name}\"): no logger created — {} of {} slots and {used} of {total} \
+         name bytes are spent, or the name is over {} bytes. Returning the catch-all logger, \
+         whose threshold is SHARED: raise `dynamic-loggers-<N>` on nros-log rather than calling \
+         set_level on this handle. Reported once per process.",
+        dynamic_loggers_in_use(),
+        dynamic_logger_capacity(),
+        MAX_LOGGER_NAME_LEN,
+    );
+    &DEFAULT_LOGGER
+}
+
 // -----------------------------------------------------------------------------
 // Sink list. Set once at `init`; read every dispatch.
 // -----------------------------------------------------------------------------
