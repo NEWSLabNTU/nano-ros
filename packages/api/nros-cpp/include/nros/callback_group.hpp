@@ -9,7 +9,7 @@
  * A `CallbackGroup` is a name-only token produced by
  * `Node::create_callback_group("name")` or
  * `Node::create_callback_group("name")`. Pass it to
- * `create_timer_in` / `create_subscription_in` / `create_publisher_in` to
+ * `create_timer_in_group` / `create_subscription_in_group` / `create_publisher_in` to
  * associate an entity with a named group whose `SchedContext` binding is
  * resolved at runtime via the executor's `group_sched_table`.
  *
@@ -31,8 +31,8 @@ namespace nros {
 /// Create via `Node::create_callback_group("ctrl")` or
 /// `Node::create_callback_group("ctrl")`.
 ///
-/// Pass to `create_timer_in` / `create_subscription_in` /
-/// `create_publisher_in` to bind the entity to the group's SchedContext.
+/// Pass to `create_timer_in_group` / `create_subscription_in_group` /
+/// `create_publisher_in_group` to bind the entity to the group's SchedContext.
 ///
 /// The pointed-at string MUST outlive the group token and every entity that
 /// references it — use compile-time string literals.

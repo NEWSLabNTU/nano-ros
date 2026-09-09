@@ -55,8 +55,8 @@
 //     read by `Node::check_declared_depth` (phase-403 step 2).
 // Neither includes a nano-ros header of its own, so neither can close a cycle
 // back onto `node.hpp`. `component.hpp` — which DOES include this file — is why
-// the member-pointer `create_subscription_in` family is DECLARED here and
-// DEFINED there.
+// the member-pointer `create_subscription_in` / `create_subscription_in_group`
+// family is DECLARED here and DEFINED there.
 #include "nros/declared_qos.hpp"
 #include "nros/log.hpp"
 #include "nros/guard_condition.hpp"
@@ -1432,10 +1432,11 @@ class Node {
     }
 
     /// Bind a member `void C::on_tick()` as a timer IN a callback group
-    /// (RFC-0047) — the member-binding half of `create_timer_in`.
+    /// (RFC-0047) — the member-binding half of `create_timer_in_group`.
     template <class C, void (C::*Method)()>
-    Result create_timer_in(const CallbackGroup& group, Timer& out, uint64_t period_ms, C* self) {
-        return this->create_timer_in(
+    Result create_timer_in_group(const CallbackGroup& group, Timer& out, uint64_t period_ms,
+                                 C* self) {
+        return this->create_timer_in_group(
             group, out, period_ms, [](void* ctx) { (static_cast<C*>(ctx)->*Method)(); }, self);
     }
 
@@ -1465,8 +1466,8 @@ class Node {
 
     /// Create a named callback-group token.
     ///
-    /// The returned `CallbackGroup` may be passed to `create_timer_in`,
-    /// `create_subscription_in`, or `create_publisher_in` to associate entities
+    /// The returned `CallbackGroup` may be passed to `create_timer_in_group`,
+    /// `create_subscription_in_group`, or `create_publisher_in_group` to associate entities
     /// with the group's SchedContext (resolved via `group_sched_table`).
     ///
     /// @param name  Group name — must be a string literal or static-lifetime
@@ -1484,8 +1485,8 @@ class Node {
     /// @param period_ms  Timer period in milliseconds.
     /// @param callback   C function pointer invoked on each tick.
     /// @param context    User context passed to the callback (may be nullptr).
-    Result create_timer_in(const CallbackGroup& group, Timer& out, uint64_t period_ms,
-                           nros_cpp_timer_callback_t callback, void* context = nullptr) {
+    Result create_timer_in_group(const CallbackGroup& group, Timer& out, uint64_t period_ms,
+                                 nros_cpp_timer_callback_t callback, void* context = nullptr) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         size_t handle_id = 0;
         nros_cpp_ret_t ret = nros_cpp_timer_create_in_group(
@@ -1515,10 +1516,10 @@ class Node {
     template <
         typename M, typename F,
         typename = typename std::enable_if<std::is_convertible<F, void (*)(const M&)>::value>::type>
-    Result create_subscription_in(const CallbackGroup& group, ::rclcpp::Subscription<M>& out,
-                                  const char* topic, F callback,
-                                  const QoS& qos = QoS::default_profile(),
-                                  const SubscriptionOptions& options = {});
+    Result create_subscription_in_group(const CallbackGroup& group, ::rclcpp::Subscription<M>& out,
+                                        const char* topic, F callback,
+                                        const QoS& qos = QoS::default_profile(),
+                                        const SubscriptionOptions& options = {});
 
     /// Create a publisher **in** a callback group (API symmetry; RFC-0047).
     ///
@@ -1532,8 +1533,8 @@ class Node {
     /// @param topic  Topic name.
     /// @param qos    QoS profile.
     template <typename M>
-    Result create_publisher_in(const CallbackGroup& /* group */, ::rclcpp::Publisher<M>& out,
-                               const char* topic, const QoS& qos = QoS::default_profile()) {
+    Result create_publisher_in_group(const CallbackGroup& /* group */, ::rclcpp::Publisher<M>& out,
+                                     const char* topic, const QoS& qos = QoS::default_profile()) {
         return create_publisher<M>(out, topic, qos);
     }
 
@@ -1621,8 +1622,8 @@ class Node {
     /// The same, **in** a callback group (RFC-0047) — the group's SchedContext
     /// is resolved via `group_sched_table`. Also defined in `component.hpp`.
     template <typename M, class C, void (C::*Method)(const M& msg)>
-    void create_subscription_in(const CallbackGroup& group, const char* topic,
-                                const QoS& qos = QoS::default_profile());
+    void create_subscription_in_group(const CallbackGroup& group, const char* topic,
+                                      const QoS& qos = QoS::default_profile());
 
     /// phase-403 step 2 — the BOOT-TIME half of the declared-depth check.
     ///
@@ -1901,7 +1902,7 @@ alignas(8) uint8_t Node::GlobalStorageHolder<N>::storage[NROS_CPP_EXECUTOR_STORA
 ///
 /// `nros::Timer`'s destructor cancels its timer, so a timer created in a
 /// constructor must outlive the call. The out-ref `create_wall_timer(Timer&,
-/// …)` / `create_timer_in(group, Timer&, …)` family on `Node` makes that the
+/// …)` / `create_timer_in_group(group, Timer&, …)` family on `Node` makes that the
 /// caller's problem, which is the right default. This template is for the
 /// component shape, where the storage-free spelling is the ergonomic one:
 ///
@@ -1957,35 +1958,35 @@ template <::size_t MaxTimers = NROS_COMPONENT_MAX_TIMERS> class NodeWithTimers :
     /// A **typed member** repeating timer **in** a callback group (RFC-0047),
     /// parked in the pool. Was `ComponentNode::create_timer_in<C, Method>`.
     template <class C, void (C::*Method)()>
-    void create_timer_in(const CallbackGroup& group, uint64_t period_ms) {
-        Timer* slot = this->next_timer_slot("create_timer_in");
+    void create_timer_in_group(const CallbackGroup& group, uint64_t period_ms) {
+        Timer* slot = this->next_timer_slot("create_timer_in_group");
         if (slot == nullptr) return;
-        Result r = this->Node::template create_timer_in<C, Method>(group, *slot, period_ms,
-                                                                   static_cast<C*>(this));
+        Result r = this->Node::template create_timer_in_group<C, Method>(group, *slot, period_ms,
+                                                                         static_cast<C*>(this));
         if (!r.ok()) {
-            this->set_error("create_timer_in", r.raw());
+            this->set_error("create_timer_in_group", r.raw());
             return;
         }
         ++timer_count_;
     }
 
     /// The plain C callback + ctx form, in a group, parked in the pool.
-    void create_timer_in(const CallbackGroup& group, uint64_t period_ms,
-                         nros_cpp_timer_callback_t callback, void* context = nullptr) {
-        Timer* slot = this->next_timer_slot("create_timer_in");
+    void create_timer_in_group(const CallbackGroup& group, uint64_t period_ms,
+                               nros_cpp_timer_callback_t callback, void* context = nullptr) {
+        Timer* slot = this->next_timer_slot("create_timer_in_group");
         if (slot == nullptr) return;
-        Result r = this->Node::create_timer_in(group, *slot, period_ms, callback, context);
+        Result r = this->Node::create_timer_in_group(group, *slot, period_ms, callback, context);
         if (!r.ok()) {
-            this->set_error("create_timer_in", r.raw());
+            this->set_error("create_timer_in_group", r.raw());
             return;
         }
         ++timer_count_;
     }
 
     // The out-ref forms on `Node` share these names; bring them in so a derived
-    // node can still spell `create_timer_in(group, my_timer_, 100, cb, ctx)`
+    // node can still spell `create_timer_in_group(group, my_timer_, 100, cb, ctx)`
     // without the pool overloads hiding the base by name lookup.
-    using Node::create_timer_in;
+    using Node::create_timer_in_group;
     using Node::create_wall_timer;
 
   private:

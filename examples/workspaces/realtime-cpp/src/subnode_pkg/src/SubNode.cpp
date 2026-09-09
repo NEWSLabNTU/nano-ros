@@ -52,9 +52,9 @@ SubNode::SubNode(::nros::NodeHandle h) : ::nros::NodeWithTimers<2>(h, "sub_node"
     telem_pub_ = create_publisher_in<std_msgs::msg::Int32>("/telem");
 
     // Timer in ctrl group  → bound to high tier (10 ms) via bind_group_sched seed.
-    create_timer_in<SubNode, &SubNode::on_ctrl>(ctrl_grp, 10);
+    create_timer_in_group<SubNode, &SubNode::on_ctrl>(ctrl_grp, 10);
     // Timer in telem group → bound to low tier (100 ms) via bind_group_sched seed.
-    create_timer_in<SubNode, &SubNode::on_telem>(telem_grp, 100);
+    create_timer_in_group<SubNode, &SubNode::on_telem>(telem_grp, 100);
 }
 
 } // namespace subnode_pkg
