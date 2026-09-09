@@ -363,3 +363,36 @@ The in-tree cost is bounded and enumerated (W2, six sites). The measurement that
 bounds it is a strip of the tracked headers into `tmp/`, re-running each TU's own
 recorded compile line — not a reasoning exercise, and reproducible by repeating
 it.
+
+
+## Superseded (2026-09-09) — the premise was one layer too low
+
+This phase argued the C++ std surface should be REQUESTED rather than
+discovered. That was right about the defect and wrong about the remedy, and the
+distance between the two is worth recording.
+
+**What was right.** The capability macros make the API's shape a property of the
+toolchain rather than a decision. That diagnosis stands and RFC-0096 inherits
+it, with the measurement this phase never made: all six macros are ON for NuttX
+and off for FreeRTOS and ThreadX, because one toolchain file omits
+`-ffreestanding` and the other carries it.
+
+**What was wrong.** Making the surface an opt-in leaves TWO surfaces and lets a
+consumer pick. The owner's requirement is that there is ONE API, identical on
+every platform, so the user is platform-agnostic — at which point there is
+nothing to opt into. RFC-0096 D1.
+
+**And the opt-in does not even work as specified.** Measured: forcing
+`NROS_CPP_STD` on a `-ffreestanding` build reintroduces issue 1187's `#error`
+exactly, because the macro pulls `<string>` into a build whose libstdc++ refuses
+it. The request had to select a LAYER, not a macro — and under RFC-0096 it
+selects nothing, because there is only one API.
+
+**What landed and stays landed.** W0 (the `#elif`/`#else` blindness in
+`check-cpp-freestanding-includes`, issue 1223), W1 (the fifteen hand-copied
+capability blocks consolidated into `nros/std_detect.hpp`, rebuilt on issue
+1240's predicate after that landed first), and W5 (the surface documented in the
+book and `c-api-cmake.md`). W3 and W4 move to phase-442 as W8 and W3
+respectively.
+
+Issue 1187 was closed by issue 1240's fix on `main`, not by this phase's W2.

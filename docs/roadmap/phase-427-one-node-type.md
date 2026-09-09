@@ -898,3 +898,39 @@ for `spin_forever`'s sake.
   fixed, because `nros.hpp` is the header PR #755 is rewriting: **issue 1245** —
   issue 0338 renamed `Executor::spin(ms)` to `spin_for` and left the FREE
   `nros::spin(duration_ms, poll_ms)` bounded overload behind.
+
+
+## W1 is REVERSED by RFC-0096 / phase-442 (2026-09-09)
+
+W1 moved to phase-438 on 2026-09-08 and is now reversed outright.
+
+**What survives.** "One node type" holds where this phase aimed it:
+`ComponentNode` goes, and the core has exactly one node type. That was the
+owner's stated intent — the node here is always linked into the final image,
+so there is no dynamic-composition distinction to model.
+
+**What does not.** `void* hosted_` was the artefact of trying to give ONE type
+TWO shapes — a freestanding layout and a hosted one — and a type with
+capability-gated members is a type with two layouts. That is the defect
+RFC-0096 removes, not a mechanism to keep. The measurement that made it look
+necessary (`sizeof(rclcpp::Node)` invariant at 3728 both ways) was real; the
+need for it was not, once the API stopped having two shapes to reconcile.
+
+**W2–W7 should be re-read before being implemented.** Several assume the
+hosted/freestanding split phase-442 removes:
+
+* **W2 (construction)** — "upstream's `std::string`/`NodeOptions` constructors
+  hosted" is no longer a category. `NodeOptions` becomes freestanding as it
+  stands (22 of its 23 members need no `std`), so there is one constructor set.
+* **W3 (one name, two signatures)** — the acceptance requires a ported
+  `create_publisher<M>("chatter", 10)` to compile hosted and FAIL freestanding.
+  Under RFC-0096 it must compile EVERYWHERE; that acceptance inverts.
+* **W4 (`ComponentNode` deleted)** — survives, but its RFC-0047 acceptance was
+  already found vacuous: "one component, several named nodes" does not exist in
+  the tree.
+* **W5 (`get_logger` follows ROS 2)** — unaffected.
+* **W6 (loudness)** — its `NROS_NODISCARD` half landed as W8. The `ok()` half
+  is unaffected.
+* **W7 (`nros::Node` deprecated)** — subsumed: RFC-0089 already settled that
+  `nros::` is phased out entirely and ours-only names take `rclcpp::` too,
+  which RFC-0096 D1 makes structural.
