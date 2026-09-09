@@ -464,10 +464,21 @@ mod tests {
 
     #[test]
     fn a_board_the_macro_table_does_not_know_falls_through() {
-        // This function answers for the RUST macro, whose board table is keyed
-        // on deploy tokens like `freertos` and knows nothing of
-        // `mps2-an385-freertos`. So a specific board id falls through to the
-        // one the macro can actually resolve.
+        // This function answers for the RUST macro, whose board table
+        // (`nros_orchestration_ir::board_path_for`) is keyed on deploy tokens
+        // like `freertos` and does not carry every board id the CATALOG does.
+        // So a specific board id it has no key for falls through to the one the
+        // macro can actually resolve.
+        //
+        // The example is `mps3-an536-freertos`, and it USED to be
+        // `mps2-an385-freertos`. phase-437 W5 renamed the retired
+        // `qemu-arm-freertos` key to `mps2-an385-freertos`, which is the very
+        // string this test had been using as its "the table does not know
+        // this one" example — so the table started knowing it and the
+        // fall-through this test exists to pin stopped happening. The premise
+        // expired; the rule did not. `mps3-an536-freertos` and
+        // `s32z270-freertos` are the FreeRTOS board ids the catalog carries and
+        // the macro table has no key for, which is exactly the shape wanted.
         //
         // The CMAKE entry must NOT use this: `nano_ros_add_executable(DEPLOY …)`
         // resolves against the board CATALOG, which does know the specific id,
@@ -476,7 +487,7 @@ mod tests {
         // board's lwIP glue was simply absent at link time —
         // `undefined reference to lwip_setsockopt` (phase-383 W10.a).
         assert_eq!(
-            macro_deploy_token(&["mps2-an385-freertos", "freertos", "freertos"]),
+            macro_deploy_token(&["mps3-an536-freertos", "freertos", "freertos"]),
             "freertos"
         );
     }
