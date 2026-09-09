@@ -23,16 +23,15 @@ use super::sdk_index::{SourcePackage, SourceProvision, ToolPackage};
 /// installed toolset for the workspace it's run in). Single source for the name.
 pub const LOCK_FILE: &str = "nros-sdk.lock";
 
-/// The shared SDK store root: `$NROS_HOME/sdk`, else `~/.nros/sdk`, else
-/// `./.nros/sdk`.
+/// The shared SDK store root: `<store>/sdk` — `$NROS_HOME/sdk`, else
+/// `~/.nros/sdk`, else `./.nros/sdk`.
+///
+/// phase-440 W6: the resolution itself moved to [`super::store::root`], the ONE
+/// spelling of "where is the store" (RFC-0095 D2), which also honours
+/// `$NROS_STORE`. This stays the name every existing consumer calls; it is now
+/// `sdk/` under that root rather than a second copy of the same three arms.
 pub fn store_root() -> PathBuf {
-    if let Some(h) = std::env::var_os("NROS_HOME") {
-        return PathBuf::from(h).join("sdk");
-    }
-    if let Some(h) = std::env::var_os("HOME") {
-        return PathBuf::from(h).join(".nros").join("sdk");
-    }
-    PathBuf::from(".nros").join("sdk")
+    super::store::root().join("sdk")
 }
 
 /// The versioned install prefix for a tool — identical for prebuilt + source.
@@ -128,13 +127,7 @@ pub fn tool_dir_candidates(index: &super::sdk_index::SdkIndex, tool: &str) -> Ve
 /// `scripts/sdk-path-tools.txt`, which exists for binaries something we do not
 /// control invokes by bare name.
 pub fn front_dir() -> PathBuf {
-    if let Some(h) = std::env::var_os("NROS_HOME") {
-        return PathBuf::from(h).join("bin");
-    }
-    if let Some(h) = std::env::var_os("HOME") {
-        return PathBuf::from(h).join(".nros").join("bin");
-    }
-    PathBuf::from(".nros").join("bin")
+    super::store::root().join("bin")
 }
 
 /// Order two store version strings — digit runs numerically, the rest as text.

@@ -193,6 +193,12 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::ModelPath(args) => cmd::model_path::run(args),
         cmd::Cmd::SdkPath(args) => cmd::sdk_path::run(args),
         cmd::Cmd::SdkFront(args) => cmd::sdk_front::run(args),
+        // phase-440 W6 — deliberately NOT in `cmd_name`'s guarded set. These
+        // report on and repair the STORE, which is not a fact about any
+        // checkout, and a store verb has to work on the day the binary is stale
+        // for the same reason `doctor` does: that is when you are looking.
+        cmd::Cmd::Store(args) => cmd::store::run(args),
+        cmd::Cmd::Toolchain(args) => cmd::toolchain::run(args),
         cmd::Cmd::Profile(args) => cmd::profile::run(args),
         cmd::Cmd::Metadata(args) => cmd::metadata::run(args),
         cmd::Cmd::Plan(args) => cmd::plan::run(args),

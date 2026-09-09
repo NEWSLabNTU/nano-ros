@@ -108,7 +108,7 @@ stay exercised (nested → refuse; outside any checkout → silent; second check
 without `packages/cli` → silent; `NROS_SKIP_STALE_CHECK=1` → silent; own tree →
 silent), so it can never be stricter than the ownership guard it front-runs.
 
-### W6 — the store can be inspected and shrunk
+### W6 — the store can be inspected and shrunk — **LANDED**
 
 `nros store list` / `nros store gc --older-than <d>` / `nros toolchain uninstall
 <ver>`. Additive-by-design storage needs a verb to reclaim, and
@@ -118,6 +118,35 @@ so this is explicit and inspectable rather than clever.
 *Acceptance:* `--dry-run` is the DEFAULT and the tests assert it; `uninstall`
 refuses while a known pin names the version; `list` reports size and last-used
 so a human can decide. A test proves gc never removes an entry a pin names.
+
+**What landed** (`orchestration/store.rs` + `cmd/{store,toolchain}.rs`, 12 tests
+in `tests/store_reclaim.rs`):
+
+* the store ROOT has one resolver — `store::root()`, `$NROS_STORE` →
+  `$NROS_HOME` → `~/.nros`, with `sdk_store::{store_root,front_dir}` now derived
+  from it instead of repeating the arms (D2's "never an absolute literal");
+* `gc` removes only entries carrying `.nros-provenance`. The others are LISTED
+  with their size and left alone: the legacy flat prefix `nros sdk-path` still
+  resolves through (issue 0628) and `<version>.src` source trees, which are 1.5 G
+  of the 4.4 G store on the host this was written on — nothing needs them, but a
+  source tree is also where somebody's local patches would be;
+* **`--delete` refuses when NO pin file was consulted**, not just when one names
+  the entry. The store is shared while pins are per-project, so an empty pin set
+  from the wrong cwd means "I looked in the wrong place" at least as often as it
+  means "nothing needs these". `--ignore-pins` is the explicit way past it;
+* **`toolchain uninstall` therefore refuses on today's tree**, which is the
+  honest answer rather than a limitation: `toolchains/<ver>/` and
+  `nros-toolchain.toml` are both W7's, so nothing yet exists that could establish
+  that no project pins a version. The pin reader already accepts
+  `nros-toolchain.toml` and takes ANY string value in it as a version, so W7 may
+  choose its schema without disarming the guard;
+* "last used" is the newest `atime` over an entry's regular files, with the
+  timestamp's PROVENANCE printed beside it (`read` vs `install`) because under
+  `noatime` there is no usage signal at all and the number would otherwise read
+  as one. Two traps found by measuring rather than reasoning: the scan's own
+  read of `.nros-provenance` made every installed entry report "used 1s ago"
+  until those markers were excluded, and at one-second timestamp resolution the
+  test for that passed with the fix removed.
 
 ### W7 — `toolchains/<version>/`, the pin file, and the shim
 

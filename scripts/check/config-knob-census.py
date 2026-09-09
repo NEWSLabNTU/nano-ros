@@ -267,6 +267,10 @@ KNOB_CLASS = {
     "NROS_RMW_SUBSCRIBER_SLOTS": ("derived", "phase-412 W1 — COUNT_SUBSCRIPTION"),
     "NROS_EXTRA_BOARD_PATH": ("infra", "extra board search roots"),
     "NROS_HOME": ("infra", "path"),
+    # phase-440 W6 / RFC-0095 D2 — the store ROOT, of which `NROS_HOME` names
+    # the same directory. A path, not a knob: it configures nothing about an
+    # image, it says where provisioned artifacts live.
+    "NROS_STORE": ("infra", "path"),
     "NROS_MODEL_DIR": ("infra", "path"),
     "NROS_WORKSPACE": ("infra", "path"),
     "NROS_WORKSPACE_ROOT": ("infra", "path"),
