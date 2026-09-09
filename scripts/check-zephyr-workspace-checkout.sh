@@ -40,40 +40,77 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 [ "${NROS_SKIP_STALE_CHECK:-}" = "1" ] && exit 0
 
-ws="${NROS_ZEPHYR_WORKSPACE:-}"
-if [ -z "$ws" ]; then
-    for cand in "$repo_root/zephyr-workspace" "$repo_root/../nano-ros-workspace" \
-                "$repo_root/../nano-ros-workspace-4.4"; do
-        [ -d "$cand/zephyr" ] && ws="$cand" && break
+# EVERY provisioned root, not just Zephyr (phase-440 W5). The ownership guard
+# does not care which tree it is handed: any path inside a FOREIGN checkout is
+# refused, so a check that asks about one root reports a property of that root
+# rather than of the host. esp-idf reached this shape too and nobody would have
+# heard about it until a fixture build fifteen minutes in.
+#
+# Each entry is `NAME:ENV_VAR:candidate[:candidate...]`, and a root with no env
+# override leaves that field empty. `RFC-0095 D2` folds these into one
+# store-resolved root, at which point this list collapses to that root and the
+# per-tree spellings go with it — until then the list is the honest shape,
+# because the tree really does carry four of them.
+PROVISIONED_ROOTS="
+zephyr:NROS_ZEPHYR_WORKSPACE:zephyr-workspace:../nano-ros-workspace:../nano-ros-workspace-4.4
+esp-idf:NROS_ESP_IDF_WORKSPACE:esp-idf-workspace
+external:${NROS_EXTERNAL_DIR_UNSET:-}:external
+"
+
+# The ownership guard's own marker and its lexical walk upward. Kept identical to
+# `stale_guard.rs` on purpose: a check that front-runs a guard must never be
+# STRICTER than the guard, or it refuses a configuration that would have worked.
+owner_of() {
+    local dir="$1" owner=""
+    while [ -n "$dir" ] && [ "$dir" != "/" ]; do
+        if [ -f "$dir/packages/core/nros-core/Cargo.toml" ]; then owner="$dir"; break; fi
+        dir="$(dirname "$dir")"
     done
-fi
-# No workspace at all is not this check's business — the caller already warns.
-[ -n "$ws" ] && [ -d "$ws" ] || exit 0
+    printf '%s' "$owner"
+}
 
-# Resolve symlinks: a `zephyr-workspace` symlinked onto a big disk reaches the
-# same second checkout as an absolute NROS_ZEPHYR_WORKSPACE, and the build tools
-# hand cmake the resolved path either way.
-ws_real="$(cd "$ws" 2>/dev/null && pwd -P)" || exit 0
+problems=0
+while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    name="${entry%%:*}"
+    rest="${entry#*:}"
+    var="${rest%%:*}"
+    cands="${rest#*:}"
 
-# The guard's marker, and its lexical walk upward.
-owner=""
-dir="$ws_real"
-while [ -n "$dir" ] && [ "$dir" != "/" ]; do
-    if [ -f "$dir/packages/core/nros-core/Cargo.toml" ]; then owner="$dir"; break; fi
-    dir="$(dirname "$dir")"
-done
+    root=""
+    [ -n "$var" ] && root="$(eval "printf '%s' \"\${$var:-}\"")"
+    if [ -z "$root" ]; then
+        IFS=':' read -ra _c <<< "$cands"
+        for cand in "${_c[@]}"; do
+            [ -d "$repo_root/$cand" ] && root="$repo_root/$cand" && break
+        done
+    fi
+    # Absent is not this check's business — the caller already warns about that.
+    [ -n "$root" ] && [ -d "$root" ] || continue
 
-[ -n "$owner" ] || exit 0                            # outside any checkout — fine
-[ "$owner" != "$repo_root" ] || exit 0               # our own checkout — fine
-[ -f "$owner/packages/cli/Cargo.toml" ] || exit 0    # no CLI sources — nothing to be foreign to
+    # Resolve symlinks: a root symlinked onto a big disk reaches the same second
+    # checkout as an absolute override, and the build tools hand cmake the
+    # resolved path either way.
+    root_real="$(cd "$root" 2>/dev/null && pwd -P)" || continue
+
+    owner="$(owner_of "$root_real")"
+    [ -n "$owner" ] || continue                          # outside any checkout — fine
+    [ "$owner" != "$repo_root" ] || continue             # our own checkout — fine
+    [ -f "$owner/packages/cli/Cargo.toml" ] || continue  # no CLI sources — nothing to be foreign to
+
+    problems=$((problems + 1))
+    printf '%s\n' "  $name: $root_real" >&2
+    printf '%s\n' "      owned by $owner" >&2
+done <<< "$PROVISIONED_ROOTS"
+
+[ "$problems" -eq 0 ] && exit 0
 
 cat >&2 <<EOF
-The Zephyr workspace sits inside a DIFFERENT nano-ros checkout, so every
-\`nros\` invocation against it will be refused by the phase-431 W1 ownership
-guard — not here, but deep inside the fixture build.
+cat >&2 <<EOF
+The provisioned root(s) listed above sit inside a DIFFERENT nano-ros
+checkout, so every \`nros\` invocation against them will be refused by the
+phase-431 W1 ownership guard — not here, but deep inside the fixture build.
 
-  workspace: $ws_real
-  owned by:  $owner
   this tree: $repo_root
 
 That second checkout has \`packages/cli\`, so the guard resolves ownership to
