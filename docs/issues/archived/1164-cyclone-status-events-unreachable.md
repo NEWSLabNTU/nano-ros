@@ -1,7 +1,7 @@
 ---
 id: 1164
 title: "a Cyclone application cannot observe a status event through either half of the surface — `*_event_init` is NULL and `*_take_event` has no caller"
-status: open
+status: resolved
 type: bug
 area: rmw
 severity: medium
@@ -64,3 +64,37 @@ Two independent pieces, and the first is cheap:
 
 Either makes Cyclone status events observable for the first time. Doing both
 makes the surface match zenoh's.
+
+## Resolved 2026-09-09 — by the FIRST piece only, and the second is now a decision
+
+The headline claim is no longer true: a Cyclone application can observe a status
+event, through the same `on_*` API it uses on zenoh.
+
+**What landed** is piece 1, in `8b8fdb2cf` (*"the poll half of the status-event
+surface had no caller"*). `nros-rmw-cffi` records a `register_event_callback`
+whose backend has no `*_event_init`, drains the poll slot from the entity's
+ordinary data path, and fires the callback on the caller's own thread. The two
+claims that had to hold are proved in two different places, deliberately:
+
+* *the backend's `take_event` reports a counter the DDS stack actually moved* —
+  `packages/rmw/cyclonedds/nros-rmw-cyclonedds/tests/status_events.cpp`, which
+  provokes a real `REQUESTED_DEADLINE_MISSED` out of a live Cyclone reader and
+  fails if the change count is zero.
+* *the runtime polls that slot and delivers to the registered callback* —
+  `packages/rmw/cffi/tests/take_event_poll.rs`, against a stub written to
+  Cyclone's contract, because what is under test is the wiring above the slot.
+
+**What did NOT land** is piece 2, `*_event_init` over Cyclone listeners. Both
+constants are still `nullptr` — and that is now a recorded decision rather than
+the phase-108 deferral this issue was filed about. The reason is at the slot
+(`vtable.cpp`): Cyclone's `drive_io` is a sleep, so it has nowhere safe to call
+a callback from, and the runtime's poll path supplies the same observable
+behaviour without one. The note there also states its own scope — it covers the
+two `*_event_init` constants and nothing else, which is what issue 1231 was
+filed about when `kAssertPublisherLiveliness` sat under it as an unexplained
+third NULL.
+
+So this issue closes on its own stated terms: *"Either makes Cyclone status
+events observable for the first time."* Listener-based events remain a
+legitimate thing to want — they would drop the poll latency — but that is a new
+argument for a new issue, not this one's remainder.
