@@ -56,17 +56,28 @@
 #
 # `rclcpp::Rate` (and `WallRate`, its alias) sit inside `#ifdef
 # NROS_CPP_HAS_STD_CHRONO` at nros.hpp:936 -- the duration constructor and
-# `period()` are spelled in `std::chrono`. `rclcpp::NodeOptions` sits inside
-# `#if defined(NROS_CPP_HAS_STD_STRING) && defined(NROS_CPP_HAS_STD_VECTOR)` at
-# options.hpp:217. All three are absent against the ThreadX shim, which is the
-# correct outcome for a type whose whole surface is hosted, and none of them is
-# a layout that two TUs can disagree about.
+# `period()` are spelled in `std::chrono`. Both are absent against the ThreadX
+# shim, which is the correct outcome for a type whose whole surface is hosted,
+# and neither is a layout that two TUs can disagree about.
+#
+# `rclcpp::NodeOptions` WAS here and is not any more. phase-438 W2 makes the
+# std surface a REQUEST, and `options.hpp`'s guard
+# (`#if defined(NROS_CPP_HAS_STD_STRING) && defined(NROS_CPP_HAS_STD_VECTOR)`)
+# now holds only when a consumer opts in — so the type stops being a DERIVED
+# SUBJECT under this gate's two arms, and the line describes a subject the gate
+# no longer has. Deleted rather than left: the gate says so itself ("a stale
+# entry is inert while reading as tracked debt", the issue-0743 class), and it
+# is the same reason a deleted test target's nextest override has to go.
+#
+# It comes back under a different KIND, not this one: phase-438 W4 adds a third
+# arm — hosted with the opt-in withheld — where `NodeOptions` is again a
+# subject and again absent, and files it as `std-only`. Two arms, two kinds,
+# deliberately, so one line cannot excuse both.
 
 diverges ::nros::ComponentNode
 diverges ::nros::GuardCondition
 diverges ::nros::Timer
 diverges ::rclcpp::Timer
 diverges ::rclcpp::TimerBase
-hosted-only ::rclcpp::NodeOptions
 hosted-only ::rclcpp::Rate
 hosted-only ::rclcpp::WallRate
