@@ -413,6 +413,12 @@ impl nros_platform_api::PlatformThreading for CffiPlatform {
     fn wake_signal_from_isr(w: *mut c_void) -> i8 {
         unsafe { nros_platform_wake_signal_from_isr(w) }
     }
+    fn wake_park_until_us(w: *mut c_void, deadline_us: u64) -> i8 {
+        unsafe { nros_platform_wake_park_until_us(w, deadline_us) }
+    }
+    fn wake_park_granularity_us() -> u64 {
+        unsafe { nros_platform_wake_park_granularity_us() }
+    }
     fn wake_storage_size() -> usize {
         unsafe { nros_platform_wake_storage_size() }
     }
@@ -900,6 +906,17 @@ macro_rules! nros_platform_export_threading {
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_wake_signal_from_isr(w: *mut ::core::ffi::c_void) -> i8 {
             <$ty as ::nros_platform_api::PlatformThreading>::wake_signal_from_isr(w)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_wake_park_until_us(
+            w: *mut ::core::ffi::c_void,
+            deadline_us: u64,
+        ) -> i8 {
+            <$ty as ::nros_platform_api::PlatformThreading>::wake_park_until_us(w, deadline_us)
+        }
+        #[unsafe(no_mangle)]
+        pub extern "C" fn nros_platform_wake_park_granularity_us() -> u64 {
+            <$ty as ::nros_platform_api::PlatformThreading>::wake_park_granularity_us()
         }
         #[unsafe(no_mangle)]
         pub extern "C" fn nros_platform_task_storage_size() -> usize {
