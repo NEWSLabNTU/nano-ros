@@ -1,6 +1,6 @@
 # Phase 440 — the store is the root
 
-**Status (2026-09-09). All work items open; W2 was ATTEMPTED and reverted.** Implements
+**Status (2026-09-09). W2 CLOSED by deletion (issue 1248); W1 and W3-W8 open.** Implements
 [RFC-0095](../design/0095-nros-store-is-the-root.md). The campaign home for
 moving nano-ros from "a repository the user places" to "an artifact the user's
 CLI provisions", and for the provisioning-root cleanup that has to happen first
@@ -46,36 +46,25 @@ store populated, every existing host resolves exactly what it resolved before �
 proven by printing the resolved path on a provisioned host and diffing against
 the pre-change value.
 
-### W2 — the box-sync gate's lane — **ATTEMPTED, REVERTED, still open**
+### W2 — the box-sync gate's lane — **CLOSED by deletion (issue 1248)**
 
-Moving `box-sync-covers-tracked-source` to `build-serial` is wrong in kind, and
-two gates said so in sequence. `.config/ungated-gates.txt` states the test —
-every gate in the build tier FAILS in a pristine worktree, which is what makes
-that tier its home — and this one PASSES there: one repository, nothing
-provisioned. `check-gate-visibility` then refuses the move on its own ground: a
-gate no pull request runs is a gate that rots (issue 0981).
+The lane question had three candidates and the answer was that the gate should
+not exist. `ros2-box-sync.sh` is retired, so there is no mirror to be unfaithful
+to; the gate is deleted rather than relaned, and its name comes out of
+`.config/gate-registry-baseline.txt` as the deliberate retirement that file
+documents.
 
-Its subject is the HOST's provisioning state, which is a third axis neither the
-fast lane nor the build tier models. Naming that axis is the open work; three
-candidates, none yet chosen:
+The principle it violated is now RFC-0095 D12: the build system encodes no
+environment shape, and asks only whether ROS 2 ament packages are discoverable.
+Both attempts recorded here were treating a symptom — moving the gate to
+`build-serial` (refused by `check-gate-visibility`, since a build-tier gate must
+FAIL in a pristine worktree and this one passed) and narrowing its sweep (which
+would have silenced #758's real rescue).
 
-* **narrow the sweep** to repositories whose content nano-ros TRACKS. A
-  gitignored provisioning directory's nested index is by definition not this
-  repo's tracked source. Cheapest, and defensible — but it changes a gate's
-  semantics, so it needs its own review rather than riding along;
-* **skip honestly when no box exists.** The destination is
-  `${NROS_BOX_TREE:-<repo>-box}`, so "no mirror on this host" is detectable, and
-  the gate already reports NOT VERIFIED through `nros_check_skip` for trees it
-  could not sweep. Weakness: a rule regression then lands unseen and bites only
-  box users;
-* **do nothing here and land W3/W4**, after which no provisioned tree sits under
-  the sync root and the include rules are unnecessary. Removes the cause rather
-  than the symptom, and is the reason this phase exists.
-
-*Acceptance:* whichever is chosen, a fully provisioned host and a pristine
-worktree must reach the same verdict about the SCRIPT's rules, and the gate must
-still fail when an `--exclude` genuinely drops tracked content — proven by
-mutation, not by the absence of a red.
+*Acceptance (met):* the gate, the mirror and the `.nros-box-tree` marker are
+gone; `ros2-box-env.sh` is 48 lines from 260 and sets only the store split;
+`check-gate-lists` 283 fast / 21 build-serial and `check-gate-visibility` 21
+acknowledged both green. Issue #0925 closed as moot.
 
 ### W3 — `third-party/` holds tracked submodules and nothing else
 
@@ -150,8 +139,8 @@ blocker, empties the box-sync backlog, and removes a class of "which of the four
 roots did this rule forget". W6 → W8 is the user-facing half and depends on the
 cleanup, not the reverse.
 
-W2 is independent of both, and is a lane question rather than a move — see
-its own item for why the obvious move is refused.
+W2 is closed: the gate it asked about is deleted with the mirror it guarded
+(issue 1248, RFC-0095 D12).
 
 ## Non-goals
 

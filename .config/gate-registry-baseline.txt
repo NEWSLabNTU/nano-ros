@@ -25,7 +25,6 @@ book-links
 book-no-just
 boot-report-layout
 borrowed-e2e
-box-sync-covers-tracked-source
 build-profile-literals
 build-root
 build-rs-rerun-paths

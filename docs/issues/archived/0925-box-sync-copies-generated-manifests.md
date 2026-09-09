@@ -3,11 +3,18 @@ id: 925
 title: "`ros2-box-sync.sh` copies the GENERATED workspace manifests while
   excluding the `build/` members they list, so every box fixture build dies in
   `cargo metadata`"
-status: open
+status: wontfix
 type: bug
 area: tooling
 related: [issue-0759, phase-383]
 ---
+
+> **Superseded by issue 1248 (2026-09-09).** `ros2-box-sync.sh` is retired:
+> the build system does not encode distrobox, and the way to get a second tree
+> is `git clone` inside the box. There is no mirror left to copy the wrong
+> files into, so this cannot recur — and the class it belonged to (rules that
+> tell source from build output BY NAME, in directories where the two live
+> together) is why the mirror could not be made correct.
 
 ## Symptom
 
