@@ -119,6 +119,43 @@ int nros_app_main(int argc, char** argv) {
 expression that failed. Define `NROS_TRY_LOG` once (any sink — here
 `std::fprintf`) and reuse it across every call site.
 
+## If you write the `rclcpp::Node` constructor instead
+
+`nros::create_node(node, "talker")` above returns a `Result`, and
+`NROS_TRY_RET` checks it. The rclcpp-shaped constructor has no return value to
+check — and on a `-fno-exceptions` target, which every nano-ros build is
+(RFC-0018), it cannot throw the way upstream's does either. It records the
+failure and reports it through `ok()`:
+
+```cpp
+rclcpp::Node node("talker");
+if (!node.ok()) return 1;   // this line replaces upstream's try/catch
+```
+
+Skip that line and `main` runs on with a node that never came up. The object
+exists either way, `node.create_publisher(...)` on it still compiles and still
+returns, and nothing ever reaches the wire. There is no diagnostic and no
+crash — not throwing is the point, so asking is your job.
+
+A **generated entry already asks**, and halts naming the node that failed, so a
+workspace component needs none of this. It is only on you in a hand-written
+`main` like the one above.
+
+The two-phase form carries the same obligation:
+
+```cpp
+rclcpp::Node node;
+if (!node.init("talker").ok()) return 1;
+```
+
+with one difference in your favour: `init()` returns a `Result`, which is
+`[[nodiscard]]`, so dropping it on the floor is a compiler warning. `ok()` on a
+constructed node is a question nothing can force you to ask.
+
+Full compatibility notes, including what `shared_from_this()` and
+`rclcpp::TimerBase` do differently here: [Porting a ROS 2 C++
+node](./porting-a-cpp-node.md).
+
 ## Configure
 
 Three runtime knobs:
