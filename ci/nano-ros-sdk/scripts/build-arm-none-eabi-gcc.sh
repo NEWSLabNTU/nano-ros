@@ -34,7 +34,10 @@ cd "$root/work"
 curl -fL --retry 3 -o tc.tar.xz "$url"
 tar -xf tc.tar.xz # ARM's top-dir name varies by release/arch — glob it, don't assume.
 
-topdir="$(find . -maxdepth 1 -type d -name 'arm-gnu-toolchain-*' | head -1)"
+# `|| true` because the `[ -z ]` below IS the handler for "no such dir", and
+# under `set -e` a bare assignment would abort here instead of reaching it
+# (issue 1249).
+topdir="$(find . -maxdepth 1 -type d -name 'arm-gnu-toolchain-*' | head -1 || true)"
 if [ -z "$topdir" ]; then
     echo "build-arm-none-eabi-gcc: no extracted toolchain dir; got:" >&2
     ls -la >&2

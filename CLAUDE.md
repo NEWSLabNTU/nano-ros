@@ -600,6 +600,10 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   conflicting path in three of five open branches, so one merge ejected the rest.
   A custom merge driver cannot fix it: GitHub rebases queue entries SERVER-SIDE,
   where `.gitattributes` drivers do not run.
+- **A status you mean to INSPECT dies at the assignment under `set -e`** (issue 1249) —
+  `out="$(cmd)"` then `rc=$?`/`[ -n "$out" ]` never reaches the handler; write
+  `rc=0; out="$(cmd)" || rc=$?` or `if out="$(cmd)"; then`. Two same-day defects (PR #780's
+  fixture build, PR #798's `pre-push`, each silent). Gate: `check-set-e-bare-assignment`.
 - **A script a git hook reaches must clear the inherited git environment first**
   (issues 0986/0988). `GIT_DIR` & co. override BOTH a path argument and
   `git -C`, so `git init "$tmp/x"` in a selftest builds nothing and instead

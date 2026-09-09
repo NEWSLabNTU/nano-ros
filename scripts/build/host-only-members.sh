@@ -36,7 +36,9 @@ while IFS= read -r manifest; do
     # of these manifests mention "host-only" in prose, and matching that
     # silently skipped three crates when this was first written.
     grep -qE '^host-only[[:space:]]*=[[:space:]]*true' "$manifest" || continue
-    name="$(grep -m1 -E '^name[[:space:]]*=' "$manifest" | sed -E 's/.*"([^"]+)".*/\1/')"
+    # `|| true` — a manifest with no `name =` is what the `[ -n ]` below skips;
+    # grep's 1 under pipefail would end the whole sweep instead (issue 1249).
+    name="$(grep -m1 -E '^name[[:space:]]*=' "$manifest" | sed -E 's/.*"([^"]+)".*/\1/' || true)"
     [ -n "$name" ] || continue
     names+=("$name")
 done < <(git ls-files 'packages/**/Cargo.toml')

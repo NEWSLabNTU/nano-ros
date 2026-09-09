@@ -49,7 +49,9 @@ if [ "${#MANIFESTS[@]}" -eq 0 ]; then
 fi
 
 # The remote is read from the manifests too, so this script has no URL of its own.
-URL="$(grep -hoE 'https://[^"]*ros-launch-manifest[^"]*\.git' "${MANIFESTS[@]}" | sort -u | head -1)"
+# `|| true` so the diagnostic below is reachable: no match is grep's 1, which
+# under pipefail would abort here with no message at all (issue 1249).
+URL="$(grep -hoE 'https://[^"]*ros-launch-manifest[^"]*\.git' "${MANIFESTS[@]}" | sort -u | head -1 || true)"
 if [ -z "$URL" ]; then
     echo "ERROR: could not read the git URL out of the manifests" >&2
     exit 1

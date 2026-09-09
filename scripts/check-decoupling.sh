@@ -51,7 +51,10 @@ check_manifest() {
     # two crates of one name in different layers is itself a defect, and this
     # guard is not the place to discover it.
     local manifest
-    manifest=$(ls -d packages/*/"$crate"/Cargo.toml 2>/dev/null | head -1)
+    # `|| true` — an unmatched glob is `ls` exiting 2, which is the very case
+    # the `[[ -z ]]` below reports; without it the function dies here silently
+    # (issue 1249).
+    manifest=$(ls -d packages/*/"$crate"/Cargo.toml 2>/dev/null | head -1 || true)
 
     if [[ -z "$manifest" || ! -f "$manifest" ]]; then
         echo "FAIL: no packages/*/$crate/Cargo.toml found"

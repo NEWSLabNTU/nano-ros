@@ -60,7 +60,9 @@ if [ -n "$stray" ]; then
 fi
 
 # 2. each probe entry point accounts, reports and clears.
-entries="$(grep -oE 'fn require_prebuilt_binary_fresh[a-z_]*' "$PROBES" | sed 's/^fn //' | sort -u)"
+# `|| true`: finding nothing is this gate's own negative control and grep
+# spells it exit 1, so without this the [FAIL] below never prints (issue 1249).
+entries="$(grep -oE 'fn require_prebuilt_binary_fresh[a-z_]*' "$PROBES" | sed 's/^fn //' | sort -u || true)"
 [ -n "$entries" ] || {
     echo "[FAIL] no \`require_prebuilt_binary_fresh*\` entry points found in $PROBES" >&2
     exit 1

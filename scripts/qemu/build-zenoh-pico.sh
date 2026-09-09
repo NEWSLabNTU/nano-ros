@@ -289,7 +289,9 @@ while read -r kind a b c _extra; do
         # RECURSIVELY, which is the rule the manifest states and every lane
         # expands. A listed directory with no `.c` in it is drift, not an
         # empty set.
-        found=$(find "$ZENOH_PICO_SRC/$c" -name "*.c")
+        # `|| true` — a listed directory that does not exist is find's 1, and
+        # `zenoh_manifest_die` below is the message that case earns (issue 1249).
+        found=$(find "$ZENOH_PICO_SRC/$c" -name "*.c" || true)
         if [ -z "$found" ]; then
             zenoh_manifest_die "lists directory \`$c\`, which holds no .c files"
         fi

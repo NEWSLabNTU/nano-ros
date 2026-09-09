@@ -165,7 +165,9 @@ msg_version_drift_only() {
     for m in "$dir"/generated/*/; do
         [ -d "$m" ] || continue
         n="$(basename "$m")"
-        gv="$(grep -m1 '^version' "$m/Cargo.toml" 2>/dev/null | cut -d'"' -f2)"
+        # `|| true` — a generated crate with no `version` line is what the
+        # `[ -z ]` below skips (issue 1249).
+        gv="$(grep -m1 '^version' "$m/Cargo.toml" 2>/dev/null | cut -d'"' -f2 || true)"
         [ -z "$gv" ] && continue
         lv="$(awk -v n="$n" '/^\[\[package\]\]/{p=0} $0=="name = \""n"\""{p=1} p&&/^version/{gsub(/"/,"",$3); print $3; exit}' "$lock" 2>/dev/null)"
         [ -z "$lv" ] && continue
