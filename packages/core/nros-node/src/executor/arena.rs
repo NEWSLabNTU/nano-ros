@@ -647,6 +647,14 @@ pub(crate) fn maybe_report_arena_headroom(used: usize, capacity: usize) {
 /// flood (issue 0371's shape). `nros_log`, never stdio (issue 0589), and inside
 /// the 256-byte format budget that truncated the first advisory.
 #[cold]
+/// It names `NROS_PUBSUB_QOS_DEPTH` for the same reason, and with the direction
+/// spelled out (issue 1227). That knob's two failure modes are ASYMMETRIC:
+/// stated too high it over-bills the arena and the image fails to LINK, which
+/// is loud and takes minutes to find; stated too low it under-bills and lands
+/// exactly here — at runtime, on a target where a return code may be all there
+/// is. It is a CEILING over the image's subscriptions, not a typical value, and
+/// the mistake it invites ("my subscriptions are shallow, set it to 1") fails in
+/// the quiet direction. So this line has to say which way.
 pub(crate) fn report_arena_exhausted(want: usize, used: usize, capacity: usize) {
     if ARENA_EXHAUSTED_REPORTED.swap(true, portable_atomic::Ordering::Relaxed) {
         return;
@@ -654,8 +662,9 @@ pub(crate) fn report_arena_exhausted(want: usize, used: usize, capacity: usize) 
     nros_log::log_error!(
         nros_log::get_logger("nros"),
         "arena exhausted: {want} more bytes needed, {used}/{capacity} in use. \
-         Raise NROS_EXECUTOR_ARENA_SIZE, or NROS_EXECUTOR_ACTION_CLIENTS if \
-         this image registers action clients. issue 0900"
+         Raise NROS_EXECUTOR_ARENA_SIZE, or NROS_PUBSUB_QOS_DEPTH -- a CEILING, \
+         >= the deepest subscription -- or NROS_EXECUTOR_ACTION_CLIENTS if this \
+         image registers action clients. issues 0900, 1227"
     );
 }
 

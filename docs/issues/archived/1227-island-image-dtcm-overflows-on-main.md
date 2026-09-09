@@ -7,7 +7,8 @@ type: bug
 area: zephyr
 severity: high
 resolved_in: "phase-403 step 2 wiring"
-related: [issue-1197, issue-1132]
+related: [issue-1197, issue-1132, issue-1190, issue-1015]
+resolved: 2026-09-09
 ---
 
 ## Symptom
@@ -167,10 +168,70 @@ reason it is known is that someone tried to verify an unrelated cmake fix
 against a real board image. That is the same coverage hole issue 1177 is about,
 one platform over.
 
-## Next step
+## Resolved — the knob exists, and the report says which way to move it
 
-The bisect is DONE. What remains is a decision, not a search: teach the arena
-model to read declared depths, or declare depths on the island, or both.
+phase-412 W3b landed `NROS_PUBSUB_QOS_DEPTH` (`7ff68c777`), the image-wide
+override that sits at the top of the ladder
+
+    env > Kconfig/board > declared endpoints > ROS 2 default
+
+so an image that over-bills its arena can state the depth it actually needs.
+The remaining half — and the reason this issue stayed open after the knob
+existed — is that the runtime's one channel did not say which way to move it.
+
+## It is a CEILING, and the two directions are asymmetric
+
+This is the sharp edge, and it is not what the failing image alone suggests.
+ONE number covers every subscription in the image, so an image that mixes
+depths must state its **deepest**. The failing image is uniform — 11
+subscription sites across 3 files, every one `::nros::QoS(1)`, verified — but
+its repository is not. Surveyed 2026-09-09:
+
+```
+24 x QoS(1)     35 x QoS(10)     2 x QoS(100)     1 x QoS(0)
+```
+
+So "my subscriptions are shallow, set it to 1" is a mistake this knob actively
+invites, and it fails in the quiet direction:
+
+| stated | arena | failure | how loud |
+| --- | --- | --- | --- |
+| too HIGH | over-billed | a LINK error | loud — this issue, found in minutes |
+| too LOW | under-billed | `NodeError::BufferTooSmall` at `Node::register` | RUNTIME, on a target where a return code may be all there is |
+
+`report_arena_exhausted` therefore names the knob AND the word `CEILING`, so
+the one channel the runtime has says which way to move. A unit test asserts
+both — `an_exhausted_arena_decodes_to_the_knob_an_operator_must_set` — because
+a message naming only the byte-count knob leaves the reader to rediscover the
+ceiling. Mutation-checked: replacing the knob's name in the message fails that
+test with the assertion above.
+
+### Why there is no GUARD, and what one would cost
+
+The obvious guard — refuse a stated depth below what the image's own endpoints
+ask for — has nothing to read. Depth lives in each endpoint's own source
+(`::nros::QoS(1)` at the call site), and the only structured view of it,
+`NROS_ENTITY_DECLARED_DEPTHS`, reports **0 declared / 29 undeclared** for
+exactly this image. A guard over an empty set forecloses nothing while reading
+as protection, which is the trap issue 1015's first fix fell into.
+
+Priced, for when the data exists: it is `max(declared depths) <= stated` in
+`nros-node/build.rs` as a `compile_error!`, ~10 lines, once phase-403 step 2
+carries `NROS_ENTITY_DECLARED_DEPTHS` and `NROS_ENTITY_UNDECLARED_DEPTH_COUNT`
+into the cargo environment (they reach cmake and stop). It must refuse only
+against DECLARED depths and stay silent while any endpoint is undeclared —
+guarding on a partial set would reject correct images. That wiring is the
+prerequisite, not this issue.
+
+Superseded in part by the section below: the forwarding landed, and
+`nros-node/build.rs` now sums the DECLARED depths and refuses to size from
+depth at all unless the subscription-scoped undeclared count is present and
+zero. What is still absent is the other half — a `compile_error!` when a
+STATED `NROS_PUBSUB_QOS_DEPTH` sits below `max(declared depths)`. The survey
+above is why that half still matters: the ceiling's low direction fails at
+runtime, and the data to refuse it now exists.
+
+## What the search left behind
 
 The board-build route to bisecting this is still broken and worth fixing on its
 own account -- most commits in the interval cannot build the current ASI tree,
