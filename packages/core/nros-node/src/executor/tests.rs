@@ -3217,6 +3217,16 @@ fn an_exhausted_arena_decodes_to_the_knob_an_operator_must_set() {
         "the exhaustion line must name the knob, not just say it failed: \
          {exhausted}"
     );
+    // Issue 1227 — and the knob whose WRONG direction lands here. Stated too
+    // high it is a link error found in minutes; stated too low it is this, at
+    // runtime, possibly with no console. A line that names only the byte-count
+    // knob leaves the reader to discover the ceiling on their own.
+    assert!(
+        exhausted.contains("NROS_PUBSUB_QOS_DEPTH") && exhausted.contains("CEILING"),
+        "the exhaustion line must name the QoS-depth ceiling and say it IS a \
+         ceiling — that is the knob whose quiet direction ends here (issue \
+         1227): {exhausted}"
+    );
     assert!(
         !exhausted.contains('\u{2026}'),
         "the exhaustion line overflowed nros_log's format buffer and was \
