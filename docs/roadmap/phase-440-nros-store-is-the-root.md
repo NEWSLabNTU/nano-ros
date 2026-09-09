@@ -86,16 +86,32 @@ output and stays with whoever built it) becomes
 builds; `du` of the store shows one copy; the box-sync gate needs zero
 `--include` rules for provisioned trees, because none sit under the sync root.
 
-### W5 — D1 gated for every provisioned tree
+### W5 — D1 gated for every provisioned tree — **LANDED (generalised ahead of W4)**
 
-`scripts/check-zephyr-workspace-checkout.sh` (landed with W2's commit) already
-refuses a Zephyr workspace inside a foreign checkout at precondition time.
-Generalise it once the trees share a root, and delete the per-tree spelling.
+`scripts/check-zephyr-workspace-checkout.sh` asked about ONE root, so it
+reported a property of that root rather than of the host: `esp-idf-workspace`
+could sit inside a foreign checkout and nobody would hear about it until a
+fixture build fifteen minutes in. It now walks a declared list —
+`zephyr` / `esp-idf` / `external` — and reports EVERY offending root rather than
+stopping at the first.
 
-*Acceptance:* the check names any provisioned root, not one; its five branches
-stay exercised (nested → refuse; outside any checkout → silent; second checkout
-without `packages/cli` → silent; `NROS_SKIP_STALE_CHECK=1` → silent; own tree →
-silent), so it can never be stricter than the ownership guard it front-runs.
+Done before W4 on purpose: the list is the honest shape while the tree really
+carries four roots, and RFC-0095 D2 collapses it to one store-resolved root
+later, at which point the per-tree spellings go with it.
+
+The three silent cases still MIRROR the ownership guard exactly, so this can
+never be stricter than the thing it front-runs — the marker and the lexical walk
+are kept identical to `stale_guard.rs` deliberately.
+
+*Acceptance (met):* six branches exercised — zephyr root in a foreign checkout →
+refuse; **esp-idf root in a foreign checkout → refuse (new coverage)**; outside
+any checkout → silent; foreign checkout with no `packages/cli` → silent;
+`NROS_SKIP_STALE_CHECK=1` → silent; own tree → silent. With two roots foreign at
+once it names both.
+
+*Not done:* the file keeps its `zephyr` name and its registration line, because
+renaming touches `check-tier-preconditions.sh`, which phase-440 W1 (PR #807) is
+editing. Rename when that lands — a conflict there would be self-inflicted.
 
 ### W6 — the store can be inspected and shrunk — **LANDED**
 
