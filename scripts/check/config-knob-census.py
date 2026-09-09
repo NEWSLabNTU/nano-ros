@@ -230,6 +230,15 @@ KNOB_CLASS = {
     "NROS_ENTITY_COUNT_SERVICE_SERVER": ("infra", "declared entity count"),
     "NROS_ENTITY_COUNT_ACTION_CLIENT": ("infra", "declared entity count"),
     "NROS_ENTITY_COUNT_ACTION_SERVER": ("infra", "declared entity count"),
+    # issue 1227 -- the DECLARED QoS depths, and the count that says whether the
+    # subscription half of that table is complete. Infra for the same reason the
+    # counts above are: they carry what the image already declared into the
+    # derivation, rather than offering a number for anyone to set.
+    "NROS_ENTITY_DECLARED_DEPTHS": ("infra", "declared QoS depth table"),
+    "NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION": (
+        "infra",
+        "subscriptions that declared no depth",
+    ),
     # The receive payload class. DERIVED -- it is the largest bound among the
     # types this image subscribes to, which phase-403 W8 computes exactly. Read
     # here so the arena stops billing a subscription at the CLOSURE buffer,
@@ -422,6 +431,10 @@ READ_CALLEES = {
     "env_usize_declared",
     "declared_usize",
     "declared_floored",
+    # issue 1227 -- the declared QoS depth TABLE is a string, not a usize, and
+    # absence is not the empty table: an image that declares nothing must keep
+    # the worst case rather than sum zero endpoints.
+    "env_opt_string",
     "env", "env_get", "env_bool", "env_usize", "env_usize_min",
     "env_usize_compat", "env_or_repo_path", "env_path_or", "flag", "knob",
     "knob_usize", "knob_bool", "req", "list", "var", "var_os",

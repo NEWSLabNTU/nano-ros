@@ -2,10 +2,11 @@
 id: 1227
 title: "The safety-island Zephyr image no longer links on main -- DTCM
   overflowed by 45040 bytes"
-status: open
+status: resolved
 type: bug
 area: zephyr
 severity: high
+resolved_in: "phase-403 step 2 wiring"
 related: [issue-1197, issue-1132]
 ---
 
@@ -177,3 +178,41 @@ and issue 1235 blocks the rest -- but it is no longer on the path to an answer
 here. The host oracle (`cargo:arena_size`) should be the first tool reached for
 any future memory-derivation bisect: three orders of magnitude cheaper, and it
 does not depend on the consumer building at all.
+
+## RESOLVED -- the declared depths now reach the model
+
+The chain phase-403 step 2 left half-built is finished, and the image links:
+
+    DTCM: 98,040 B    128 KB    74.80%
+
+Four changes, no revert of `0368d4040` and no extra RAM granted:
+
+* the vendored `play_launch` pin moves `db4af878` -> `0647131a`. Upstream had
+  already implemented the endpoint QoS merge (`effective_qos(topic_qos,
+  p.qos)`); the vendored copy was 30 commits behind and still carried
+  `qos: None` hardcoded in `sub_contract`. `ros-launch-manifest` needed nothing
+  -- the pinned `v0.1.31` already had `qos: Option<QosDecl>` with
+  `depth: Option<u32>` on endpoints.
+* the inventory publishes `NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION`.
+  The broad count admits publishers and services -- `carries_qos_depth` says of
+  a publisher that its depth "sizes no receive buffer, so nothing reads it yet"
+  -- so it stands at 18 on this image while all eleven subscriptions declare.
+  A consumer that prices only the subscription term cannot refuse on it.
+* `nros_cargo_build.cmake` forwards the depth knobs, converting `;` to `,`
+  first. `;` is cmake's LIST separator and the cargo env is a flat string, so
+  the raw value delivered ONE triple of eleven: every knob looked present, the
+  lane silently kept the worst case, and the image overflowed by exactly the
+  same 45,376 bytes it had before the wiring existed.
+* `nros-node/build.rs` sums the declared depths per endpoint, and refuses to
+  size from depth at all unless the subscription-scoped undeclared count is
+  present and zero.
+
+The island states `qos: { depth: 1 }` on its eleven `sub:` endpoints, which is
+what its code has always passed to `create_subscription`. The boot-time check
+(`check_declared_depth`) requires the two to agree, so the declaration is
+verified against the call sites rather than trusted.
+
+`PUBSUB_QOS_DEPTH` remains as the fallback for an image that declares nothing,
+which is the right value for that case: it is what a normally-written ROS 2 node
+registers (`rmw_qos_profile_default`, KEEP_LAST(10)). Moving that literal into a
+config rung is left open -- see the note in the root-cause section.
