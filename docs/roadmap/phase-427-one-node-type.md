@@ -346,9 +346,14 @@ corrected prediction is more useful than a deleted one.
 
 The ruling: the ours-only family takes a different NAME, because in C++ a
 signature-only difference is resolved silently. Applied as an `_in` suffix —
-`create_publisher_in`, `create_subscription_in`, `create_wall_timer_in`,
-`create_timer_in`. Third application of the rule in this campaign, after the
-reordered C node initialiser and the clock-taking C timer verb.
+`create_publisher_in`, `create_subscription_in`, `create_wall_timer_in`. Third
+application of the rule in this campaign, after the reordered C node initialiser
+and the clock-taking C timer verb.
+
+That suffix was **not free**, and the follow-on below (`_in_group`) is what it
+cost: `_in` already meant "in a callback group" on seven overloads, so W4 gave
+one class two families under one name. Recorded there, not here, because the fix
+is a naming rule and not part of the deletion.
 
 The item predicted `create_publisher<M>("chatter", 10)` would bind OURS, on the
 reasoning that array-to-pointer decay is a standard conversion while
@@ -453,6 +458,56 @@ STALE-KEY check (a `PROBE_CONTEXT` entry naming a file that does not exist is
 now a failure) — verified to flag the old `component_node.hpp` key and to find
 zero stale keys today. The `emit_cpp.rs` assertions now pin BOTH directions: the
 placement-new include is present AND `component_node.hpp` is absent.
+
+### W4's follow-on — `_in` carried two meanings, and the group family is now `_in_group`
+
+LANDED 2026-09-09. W4's `_in` suffix (above) collided with the one RFC-0047 had
+been using since phase 273. Two families, one name, on one class:
+
+| meaning | first parameter | overloads before |
+| --- | --- | --- |
+| in a callback group | `const CallbackGroup&` | 7 |
+| ours-only / storage-free | `const char*` or `uint64_t` | 4 |
+
+The compiler was never in doubt — the first-argument types are disjoint and
+neither converts to the other — so this is not W4's silent-collision hazard
+again. It is the reader's version: the name did not say which family a call had
+joined, and one overload,
+`create_subscription_in<M, C, &C::method>(group, topic, qos)`, was in both.
+
+**The group family renames to `_in_group`; `_in` keeps the ours-only meaning.**
+The predicate is the first parameter's TYPE: a creation verb whose first
+parameter is a callback group ends `_in_group`. Reasoning and the deprecation
+decision are recorded in RFC-0089, "The `_in` rule, amended" — in short: `_in`
+already reads as "in place" everywhere else here (`Executor::open_in`), the
+group form is the one with something to name, and the C ABI beneath already
+spelled it `_in_group` (`nros_cpp_timer_create_in_group`,
+`nros_executor_add_{timer,subscription}_in_group`) so the C++ member calling it
+now agrees with what it calls.
+
+Renamed, measured by first-parameter type and not by name:
+
+* C++ `Node` — `create_timer_in_group` ×2, `create_subscription_in_group` ×2
+  (the out-ref callback-style and the storage-free member-pointer),
+  `create_publisher_in_group` ×1.
+* C++ `NodeWithTimers` — `create_timer_in_group` ×2, plus the
+  `using Node::create_timer_in_group` that keeps the base overloads visible.
+* Rust `NodeCtx` — `create_timer_in_group`, `create_timer_on_clock_in_group`,
+  `create_subscription_in_group`, `create_publisher_in_group`. Rust never had
+  the ambiguity (no overloading), but three languages naming one concept is one
+  vocabulary or it is three, and the C ABI had already chosen the word.
+
+Unchanged, because none of them takes a group: `Node::create_publisher_in`,
+`Node::create_subscription_in`, `NodeWithTimers::create_wall_timer_in`, and the
+three `NROS_SUBSCRIBE` / `NROS_CREATE_WALL_TIMER` macro expansions.
+
+**No deprecated alias.** The only tag in the repo, `nros-v0.5.0`, contains no
+occurrence of any of these names in code; every consumer is in-tree (7 call
+sites, 4 in the `realtime-cpp*` workspaces and 3 in `nros-cpp/tests/compile/`,
+zero in `book/`, zero in codegen) and moves in the same commit; and a deprecated
+`create_timer_in(group, …)` forwarder would put both meanings back into one
+overload set, which is the condition the rename removes.
+
 
 ### One thing W4 did not decide
 

@@ -420,6 +420,110 @@ exist) and issue 1022's class (prose citing a source that does not support it).
 A reason nobody can check and a check nobody can fail are the same failure,
 recorded in two places.
 
+## The `_in` rule, amended: `_in_group` names the callback-group form (2026-09-09)
+
+The `_in` rule above settles that an ours-only family takes a different NAME
+rather than a different signature, and picks `_in` for the suffix. Its
+"The spelling" paragraph closes with one claim that does not survive contact
+with the shipped header:
+
+> the callback group stays an argument of the overload that takes one, not part
+> of what the suffix means.
+
+It was already part of what the suffix meant. `_in` entered this tree in
+phase 273 (RFC-0047) meaning **in a callback group** — `create_timer_in(group,
+Timer&, …)`, `create_subscription_in(group, …)`, `create_publisher_in(group,
+…)`, seven overloads across `Node` and `NodeWithTimers`, every one of them
+taking a `CallbackGroup` first. Generalising the same suffix to the ours-only
+family gave one class two families under one name.
+
+### Why the compiler is not the argument here
+
+It is not the `_in` rule's own hazard, and saying so is the point — this is not
+a fourth application of it. The first arguments are disjoint and there is no
+conversion between them: `const CallbackGroup&` on one side, `const char*` or
+`uint64_t` on the other. Overload resolution is unambiguous, in both standards,
+on both compilers this tree gates with. Nothing compiles-and-differs.
+
+What breaks is the READER. Given `create_subscription_in(…)` at a call site,
+the name does not say which family the call joined, and the answer changes the
+entity's storage, its scheduling tier, and which of two overload sets a later
+edit will land in. One overload carried **both** meanings at once:
+
+```cpp
+// storage-free (the arena owns the subscriber) AND in a callback group
+template <typename M, class C, void (C::*Method)(const M&)>
+void create_subscription_in(const CallbackGroup& group, const char* topic, const QoS&);
+```
+
+For that one, the short suffix could not be made to say which family it was in,
+because it was in both.
+
+### The decision
+
+> **A creation verb whose FIRST parameter is a callback group ends `_in_group`.
+> `_in` means ours-only: caller-supplied storage or none, `Result`/`ok()`
+> channel, no allocation — and nothing about scheduling.**
+
+The predicate is the first parameter's TYPE, not the name, which is what makes
+it checkable and what makes the sweep decidable: the two families were
+separated by reading signatures, not by grepping names.
+
+Four reasons, in the order they decided it:
+
+1. **`_in` already reads as "in place" everywhere else in this tree.**
+   `Executor::open_in` takes caller-provided backing storage (recorded in
+   `api-parity-ledger/exec.json`: *"the `*_in` suffix takes CALLER-provided
+   backing storage — an image places the arena in a static, not on a heap"*).
+   The ours-only family is that same word: the caller's storage, the caller's
+   error channel, no allocator. Keeping `_in` for it costs nothing and keeps
+   one reading of the suffix.
+2. **The group form is the one that benefits from naming what it is in.**
+   "In" alone raises the question "in what?"; the ours-only family has no
+   answer to give, and the group form has exactly one.
+3. **The C ABI underneath has always spelled it this way** —
+   `nros_executor_add_timer_in_group`, `nros_executor_add_subscription_in_group`,
+   `nros_cpp_timer_create_in_group`. Before this amendment the C layer and the
+   C++ layer named one concept two ways, and the C++ header's own group
+   implementation called `nros_cpp_timer_create_in_group` from a member spelled
+   `create_timer_in`. The Rust mirror (`NodeCtx::create_timer_in`,
+   `create_timer_on_clock_in`, `create_subscription_in`, `create_publisher_in`)
+   moved with C++ for the same reason, even though Rust has no overloading and
+   therefore never had the ambiguity: three languages naming one concept is one
+   vocabulary or it is three.
+4. **It stays a different NAME from upstream's**, so the `_in` rule is
+   satisfied and not weakened. rclcpp has no `create_*_in_group`; it passes the
+   group as a field on `SubscriptionOptions` / `PublisherOptions` or as a
+   trailing `CallbackGroup::SharedPtr`. There is no overload set to collide
+   with and no ported line that binds ours by conversion.
+
+### No deprecated alias — and here the alias would be self-defeating
+
+The old spellings are **deleted outright**. `NROS_CPP_DEPRECATED_MSG` exists and
+this phase used it once already (on `nros::bind_timer`), so the choice is a
+decision and not an absence. Measured reach:
+
+* **No release carries them.** The only tag in this repository is
+  `nros-v0.5.0` (2026-06-08); `git grep -l create_timer_in nros-v0.5.0` returns
+  two archived roadmap documents and no code. A deprecation window protects
+  out-of-tree callers of a shipped artifact, and there is no shipped artifact.
+* **Every consumer is in-tree and countable** — 7 call sites: four in the two
+  `realtime-cpp*` example workspaces, three in `nros-cpp/tests/compile/`. Zero
+  in `book/` (`grep -rn create_.*_in book/` is empty), zero in codegen
+  (`packages/cli` has no occurrence), and the Rust group family is used only
+  inside `nros-node`'s own tests. All of them move in the same commit.
+* **The alias would restore the defect.** A deprecated
+  `create_timer_in(const CallbackGroup&, …)` forwarding to
+  `create_timer_in_group` puts both meanings back into one overload set on one
+  class, which is the exact condition this amendment removes. Every day the
+  alias lives, the ambiguity lives. This is the reasoning the ledger already
+  records for `create_timer` → `create_wall_timer`: *"No deprecated alias: it
+  would have kept the ours-only half of this pair alive permanently."*
+* **The phase's own W7 note argues the same way** for the wide case: an
+  attribute that warns at every in-tree site at once, with nobody outside to
+  warn, is "a flag day wearing a migration's clothes". Here every site is
+  in-tree, so the migration IS the commit.
+
 ## Where the refusal fires: the earliest point the defect is KNOWABLE
 
 `rclcpp::init(argc, argv)` forced this and it generalises.
@@ -1682,14 +1786,14 @@ template <class C, void (C::*M)()>
 Result create_wall_timer(Timer& out, uint64_t period_ms, C* self) noexcept;
 
 template <class C, void (C::*M)()>
-Result create_timer_in(const CallbackGroup&, Timer& out, uint64_t, C* self) noexcept;
+Result create_timer_in_group(const CallbackGroup&, Timer& out, uint64_t, C* self) noexcept;
 
 template <typename Msg, class C, void (C::*M)(const Msg&)>
 Result create_subscription(const char* topic, C* self, const QoS& = QoS::default_profile()) noexcept;
 
 template <typename Msg, class C, void (C::*M)(const Msg&)>
-Result create_subscription_in(const CallbackGroup&, const char* topic, C* self,
-                              const QoS& = QoS::default_profile()) noexcept;
+Result create_subscription_in_group(const CallbackGroup&, const char* topic, C* self,
+                                    const QoS& = QoS::default_profile()) noexcept;
 ```
 
 ### Correction 7 — "no vtable budget" was never measured, and the real cost is not bytes
@@ -2327,7 +2431,7 @@ several named nodes either; the phrase originates here.
 
 What the two subnode packages actually exercise is **one node with several NAMED
 CALLBACK GROUPS bound to different sched contexts** — `create_callback_group`
-plus `create_timer_in` / `create_subscription_in` — which is RFC-0047's real
+plus `create_timer_in_group` / `create_subscription_in_group` — which is RFC-0047's real
 subject, and which the merged node already carries. There is no
 several-named-nodes capability to preserve when `ComponentNode` is deleted.
 

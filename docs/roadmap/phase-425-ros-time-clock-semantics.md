@@ -72,11 +72,13 @@ ours-only ledger row alive forever):
 | `ComponentNode::create_timer` (callback+ctx) | `component_node.hpp:406` | `ComponentNode::create_wall_timer` |
 | `NROS_CREATE_TIMER` | `component_node.hpp:834` | `NROS_CREATE_WALL_TIMER` |
 
-`create_timer_oneshot`, `create_timer_in`, `ComponentNode::create_timer_in` and
+`create_timer_oneshot`, `create_timer_in_group`, `ComponentNode::create_timer_in` and
 `bind_timer` KEEP their `timer` stem — recorded here so the stem split is a
 decision and not an oversight. `create_timer_oneshot` is the name rclrs 0.7.0
-independently adopted; `_in` is our callback-group suffix, shared with
-`create_publisher_in` / `create_subscription_in`.
+independently adopted; `_in_group` is our callback-group suffix, shared with
+`create_publisher_in_group` / `create_subscription_in_group` (it was spelled
+`_in` until phase-427, which split that suffix in two -- see RFC-0089
+"`_in` means ours-only; `_in_group` means in a callback group").
 
 Half these sites are invisible to `just check api-parity` — `component_node.hpp`
 is not reachable from `nros.hpp`, and `std_compat.hpp` is a no-op without
