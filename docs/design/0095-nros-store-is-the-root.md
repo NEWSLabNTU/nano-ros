@@ -249,6 +249,33 @@ Decided rather than discovered when a disk fills. `--dry-run` is the default
 because a store holding a 4 G workspace shared by three projects is exactly the
 thing nobody wants deleted by a flag they misread.
 
+## D12 — The build system encodes no environment shape (issue 1248)
+
+The only question it may ask about an environment is **are ROS 2 ament packages
+discoverable, so message packages can be found?** Bare metal, container, VM,
+distrobox — that is the operator's choice, and encoding one of them is how a
+third state gets invented that neither answer covers.
+
+It had. `ros2-box-sync.sh` rsync'd the host tree into a `<checkout>-box`
+sibling, with a marker file, its own env knobs, and a PUSH-LANE gate whose whole
+subject was whether that copy was faithful. The rules excluded build output by
+directory NAME, and this RFC's own finding is why they could not work: **provisioned
+source and build output share directories**, so no name-based rule separates
+them. Five instances, each fixed by anchoring one pattern while the class
+survived — `packages/cli/build-support/` (the box could not compile `nros`),
+Zephyr's `drivers/i2c/target/`, then #1229, #0925 and #1243's four causes.
+
+Retired. **Build where you run**: clone inside the box. That was already the rule
+(0759 refused sharing a checkout outright); the mirror existed to make it
+convenient and reintroduced the hazard one layer over.
+
+What survives is not a box concept: a distrobox **shares `$HOME`**, so `~/.nros`
+is the same directory for two toolchains. That is D2's *a store belongs to one
+toolchain* meeting an environment where a different machine does not imply a
+different `$HOME` — one variable, not a mode. It also makes D2 load-bearing
+sooner than W4: until the store is version- and toolchain-keyed, every
+environment that shares `$HOME` needs a hand-set `NROS_HOME`.
+
 ## What this already broke
 
 * **The tier-2 lane, nightly.** `run-matrix` has produced no runtime verdict in

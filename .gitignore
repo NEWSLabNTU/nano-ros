@@ -239,7 +239,6 @@ packages/core/*/include/nros/.*.tmp.*
 .agents/
 skills-lock.json
 third-party/ros/
-.nros-box-tree
 
 # The Zephyr lane's Python interpreter. `scripts/zephyr/setup.sh` deliberately
 # does NOT install Python prerequisites — choosing between a distro package,
