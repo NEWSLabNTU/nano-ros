@@ -264,6 +264,8 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     pub fn nros_platform_wake_signal_from_isr(w: *mut core::ffi::c_void) -> i8;
+    pub fn nros_platform_wake_park_until_us(w: *mut core::ffi::c_void, deadline_us: u64) -> i8;
+    pub fn nros_platform_wake_park_granularity_us() -> u64;
 }
 unsafe extern "C" {
     #[doc = " Opaque-storage sizing. Both helpers are pure functions (no global\n  state) and may be called before `nros_platform_wake_init`."]
