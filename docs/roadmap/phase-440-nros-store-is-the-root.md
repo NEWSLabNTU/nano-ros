@@ -137,29 +137,54 @@ in `tests/store_reclaim.rs`):
   until those markers were excluded, and at one-second timestamp resolution the
   test for that passed with the fix removed.
 
-### W7 — `toolchains/<version>/`, the pin file, and the shim
+### W7 — the per-project pin, and dispatch by it — **SMALLER THAN WRITTEN**
 
-The rustup-shaped core: `nros-toolchain.toml` in the user's project;
-`$NROS_STORE/toolchains/<ver>/`; a shim whose only jobs are read the pin, ensure
-the toolchain, `exec` it. First build **writes** the pin it used (RFC-0095 D9,
-the `Cargo.lock` rule one layer up). `nros self update` moves the shim and
-nothing else.
+Measured on main rather than assumed, and two thirds of this item already exist.
+
+`scripts/install.sh` (phase-431 W4) downloads a **versioned release asset**
+(`.tar.zst`, `NROS_INSTALL_VERSION`, `NROS_INSTALL_URL` for a mirror or an
+air-gapped host) into `$NROS_HOME/sdk/nros/<version>` and fronts it at
+`$BIN/nros` through the binary's own `sdk-front` — not a symlink written by the
+installer, so there is one implementation.
+
+So the store is ALREADY version-keyed for the CLI, and RFC-0095 D8's open
+question — *release artifact or git checkout?* — is **answered in practice: a
+release artifact.** That settles D6's second row: auto-fetching a toolchain is
+defensible here, because it is a download and not a ten-minute `cargo build`.
+`toolchains/<version>/` in D2 is a RENAME of `sdk/nros/<version>`, not new
+storage.
+
+What is genuinely missing is the half that makes it per-project:
+
+* `nros-toolchain.toml` beside the user's project, and pin-on-first-build
+  (RFC-0095 D9 — the `Cargo.lock` rule of issues 0359/0378, one layer up);
+* dispatch: the fronted `nros` reads that pin, ensures that version, `exec`s it.
+  Three jobs and no more (D8) — it must keep working when it is OLDER than the
+  toolchain it launches.
+
+W6's `toolchain uninstall` already reads `nros-toolchain.toml` and accepts any
+string value, deliberately, so this may pick its schema without disarming that
+guard.
 
 *Acceptance:* two projects pinning two versions build side by side on one host;
 `nros self update` leaves both outputs byte-identical; a pin bump re-stales
 generated code through the existing input signature (#182) rather than a second
-mechanism; rollback to the previous pin re-downloads nothing. The shim keeps
-working when it is OLDER than the toolchain it launches — tested, not assumed.
+mechanism; rollback re-downloads nothing. The shim keeps working when older than
+its toolchain — tested, not assumed.
 
-### W8 — the one-line installer
+### W8 — the one-line installer — **ALREADY LANDED (phase-431 W4)**
 
-`curl … | sh` places the shim and nothing else. Closer than it looks:
-`scripts/bootstrap.sh` already unpacks a CLI with no checkout to build it, and
-`nros sdk-front` already fronts a version at `$NROS_HOME/bin/<name>`.
+`curl -fsSL …/scripts/install.sh | sh` exists and is gated by
+`check-nros-installer` (`tests/nros-installer-tests.sh`), which serves an asset
+over a local HTTP server and installs it into a scratch store.
 
-*Acceptance:* `just probe bootstrap`'s pristine-container flow covers the user
-path, not only the contributor path — a fresh container installs, pins, and
-builds a `nros new` project without cloning nano-ros.
+This phase claimed it as open because the phase doc was written from the RFC
+rather than from the tree. Recorded so nobody builds it twice.
+
+*Remaining, and small:* `just probe bootstrap` covers the CONTRIBUTOR path. The
+user path — install, pin, build a `nros new` project **without cloning
+nano-ros** — is what W7's pin makes testable, so it lands with W7 rather than
+here.
 
 ## Order, and what is worth doing regardless
 

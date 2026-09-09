@@ -299,6 +299,11 @@ environment that shares `$HOME` needs a hand-set `NROS_HOME`.
 * **Where the pin lives for a multi-package workspace.** One
   `nros-toolchain.toml` at the workspace root is the obvious shape, but it must
   survive `nros build` invoked from a subdirectory.
-* **What a release artifact contains.** D8 requires one; whether it carries
-  prebuilt host binaries only, or also the sources codegen needs, decides its
-  size and whether the store can be shared read-only.
+* ~~**What a release artifact contains.**~~ **ANSWERED by the tree, not by this
+  RFC.** `scripts/install.sh` (phase-431 W4) already downloads a versioned
+  `.tar.zst` into `$NROS_HOME/sdk/nros/<version>` and fronts it via the
+  binary's own `sdk-front`. So D8's condition is met — auto-fetching a
+  toolchain is a download, not a `cargo build` — and D2's
+  `toolchains/<version>/` is a RENAME of storage that exists. What its asset
+  should CONTAIN (host binaries only, or the sources codegen needs) is still
+  open and decides whether a store can be shared read-only.
