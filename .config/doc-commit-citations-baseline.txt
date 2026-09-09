@@ -86,3 +86,15 @@ ea9fbfae9
 fe807a999
 # Keep this one permanently — foreign, like its two siblings above:
 d1d88f660
+
+# `docs/issues/1227-island-image-dtcm-overflows-on-main.md`, the DTCM bisect
+# table. Three of its four commits still resolve; `e3786749a` does not, because
+# the merge queue rebases entries SERVER-SIDE and this one's branch was
+# rewritten after the issue was written. DEAD, and deliberately not rewritten:
+# the row is a MEASUREMENT of a specific tree (DTCM 93344 B, 71.22%) and there
+# is no durable name for a commit that no longer exists — a PR number would
+# describe a different tree. The claim it supports survives without it:
+# `1976727d8` measured the identical 93344 B / 71.22% and still resolves, so
+# the "NOT environmental" argument has a live witness.
+e3786749a
+
