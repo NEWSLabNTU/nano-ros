@@ -20,14 +20,11 @@
 #include <memory>
 #endif
 
-// phase-417 W1.a — `<memory>` for the nested pointer aliases. Rationale (and
-// why the test needs BOTH `__has_include` and `__STDC_HOSTED__` — issues
-// 0112 and 1240)
-// lives in `publisher.hpp`.
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<memory>))
-#include <memory>
-#define NROS_CPP_HAS_SHARED_PTR 1
-#endif
+// phase-417 W1.a — `<memory>` for the nested pointer aliases below.
+// `NROS_CPP_HAS_SHARED_PTR` and the other five capability macros have ONE
+// definition site, and the measured reason the predicate needs both probes
+// (issues 0112, 1187, 1240) is stated there.
+#include "nros/std_detect.hpp"
 
 #include "nros_cpp_ffi.h"
 
@@ -243,12 +240,8 @@ class Timer {
 // RFC-0019/RFC-0020 violation class 2. Do not reintroduce a second dispatch
 // loop.
 
-// `<functional>` for the type-erased callback cell. Gated for the same reason
-// `<memory>` is above — issue 0112, rationale in `publisher.hpp`.
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<functional>))
-#include <functional>
-#define NROS_CPP_HAS_STD_FUNCTION 1
-#endif
+// The type-erased callback cell needs `<functional>`, which arrives with
+// `NROS_CPP_HAS_STD_FUNCTION` from the detection site included at the top.
 
 namespace rclcpp {
 

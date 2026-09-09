@@ -189,21 +189,11 @@ struct ClientOptions {
 // claim about a switch that does not exist — the same silent difference one
 // step further from the call site.
 //
-// `<string>` / `<vector>` are GATED (issues 0112 + 1240 — `__has_include` AND
-// `__STDC_HOSTED__`, rationale in `publisher.hpp`), because this header is on
-// the freestanding path. Upstream's
-// `arguments()` signature is spelled in terms of `std::vector<std::string>`, so
-// where those types are absent the class is too; a freestanding build has no
-// `rclcpp::Node` to hand it to either.
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<string>))
-#include <string>
-#define NROS_CPP_HAS_STD_STRING 1
-#endif
-
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<vector>))
-#include <vector>
-#define NROS_CPP_HAS_STD_VECTOR 1
-#endif
+// `<string>` / `<vector>` are GATED, because this header is on the freestanding
+// path. Upstream's `arguments()` signature is spelled in terms of
+// `std::vector<std::string>`, so where those types are absent the class is too;
+// a freestanding build has no `rclcpp::Node` to hand it to either.
+#include "nros/std_detect.hpp"
 
 #if defined(NROS_CPP_HAS_STD_STRING) && defined(NROS_CPP_HAS_STD_VECTOR)
 

@@ -28,12 +28,8 @@
 #include <nros/platform.h>
 
 // phase-417 W1.c — `std::string` interop, gated exactly as `fixed_string.hpp`
-// gates it (`__has_include` AND `__STDC_HOSTED__` — issues 0112 and 1240;
-// rationale in `publisher.hpp`).
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<string>))
-#include <string>
-#define NROS_CPP_HAS_STD_STRING 1
-#endif
+// gates it, on `NROS_CPP_HAS_STD_STRING` from the one detection site.
+#include "nros/std_detect.hpp"
 
 namespace nros {
 

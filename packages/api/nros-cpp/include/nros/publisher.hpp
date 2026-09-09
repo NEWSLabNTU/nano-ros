@@ -28,44 +28,13 @@
 // `<cstdint>`, `<new>`, plus this repo's `zephyr/cxx-compat/`; neither has
 // `<memory>`).
 //
-// Gate on the declared std flavour, else ASK THE COMPILER — with BOTH probes,
-// because each one alone gives a wrong answer on a lane the other gets right.
-//
-// `__STDC_HOSTED__` alone is the WRONG question (issue 0112), and measurably
-// so: the Zephyr XRCE C++ leaves compile with `-fno-freestanding -nostdinc++`,
-// i.e. they read HOSTED while having no `<memory>` at all, and the aarch64
-// workspace leaf has `-nostdinc++` with no `-ffreestanding` either. Only
-// `__has_include` sees that.
-//
-// `__has_include` alone is ALSO wrong, and this half was missing until issue
-// 1240. It answers "does the header FILE exist" — which is TRUE under
-// `-ffreestanding` against a FULL libstdc++, whose `<memory>` / `<string>` /
-// `<vector>` / `<sstream>` open with
-//
-//     #error "This header is not available in freestanding mode."
-//
-// GCC 16 made that unmissable: `just check cpp`'s own `-ffreestanding` probe
-// stopped compiling, ~200 errors deep inside `/usr/include/c++/16` and none in
-// our code, and the `shared_ptr does not name a template type` reports it ended
-// with were a CASCADE — `timer.hpp` includes `<memory>` and always did. The
-// same shape had been failing quietly on the FreeRTOS lane's arm-none-eabi 13.2
-// for longer (issue 1187: 19 of 45 headers, 17 of them entered through
-// `log.hpp`'s `<string>`). `__STDC_HOSTED__` is the only probe that separates
-// "present" from "present and usable"; `nros.hpp` measured the same thing for
-// `<chrono>` two days earlier and this is its class.
-//
-// So: `NROS_CPP_STD` (the explicit consumer opt-in, which nothing that ships
-// defines — do not gate on it ALONE, that removes the surface from the hosted
-// build too) OR the conjunction. Gated by
-// `scripts/check-cpp-freestanding-includes.sh`, which since 1240 rejects an
-// `#if` that names `NROS_CPP_STD` while its live arm asks only
-// `__has_include`.
-//
-// The other entity headers repeat this block; the rationale lives here.
-#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<memory>))
-#include <memory>
-#define NROS_CPP_HAS_SHARED_PTR 1
-#endif
+// This header used to CARRY the detection block and the rationale for it, under
+// the note "the other entity headers repeat this block; the rationale lives
+// here". They no longer repeat it and it no longer lives here: phase-438 W1
+// moved both to `nros/std_detect.hpp`, so a correction lands once instead of
+// fifteen times. Issues 0112, 1187 and 1240 are each a correction to that
+// predicate, and each had to be applied by hand to every copy.
+#include "nros/std_detect.hpp"
 
 namespace nros {
 
