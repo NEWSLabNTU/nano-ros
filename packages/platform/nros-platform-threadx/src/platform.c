@@ -767,6 +767,53 @@ size_t nros_platform_wake_storage_align(void) {
     return __alignof__(nros_wake_t);
 }
 
+/* phase-436 W7 — the optional microsecond park.
+ *
+ * ThreadX has NO sub-tick wait: `tx_semaphore_get` counts in ticks and
+ * `TX_TIMER_TICKS_PER_SECOND` is 100 in both shipped board configs, so the
+ * real floor is 10 ms — an order of magnitude coarser than the millisecond the
+ * ABI signature suggests. That mismatch is issue 1242: the executor used to
+ * assume 1 ms for every port and therefore over-claimed here, and the W3
+ * jitter report inherited the over-claim.
+ *
+ * So this exists to report the truth, not to gain resolution. Rounding is UP,
+ * because a wait shorter than asked is a missed deadline while a longer one is
+ * merely late.
+ *
+ * `w` MUST be the executor's own wake object (`nros_cpp_executor_wake_handle`):
+ * the backend's listener signals that one, and `spin_once` drops its transport
+ * drain to non-blocking once a port has parked, so a park on anything else
+ * sleeps its whole deadline with data already waiting.
+ *
+ * Contract: 0 = signalled, 1 = deadline expired, -1 = cannot park. */
+int8_t nros_platform_wake_park_until_us(void *w, uint64_t deadline_us) {
+    if (w == NULL) return -1;
+    ULONG ticks;
+    if (deadline_us == 0u) {
+        ticks = TX_NO_WAIT;
+    } else {
+        ULONG tps = TX_TIMER_TICKS_PER_SECOND;
+        if (tps == 0u) tps = 100u;
+        /* us -> ticks, rounded UP; never zero for a non-zero request. */
+        uint64_t per_tick_us = 1000000ULL / (uint64_t) tps;
+        uint64_t n = (deadline_us + per_tick_us - 1ULL) / per_tick_us;
+        if (n == 0ULL) n = 1ULL;
+        ticks = (ULONG) n;
+    }
+    UINT rc = tx_semaphore_get((TX_SEMAPHORE *) w, ticks);
+    if (rc == TX_SUCCESS)                              return 0;
+    if (rc == TX_NO_INSTANCE || rc == TX_WAIT_ABORTED) return 1;
+    return -1;
+}
+
+/* The tick period, which is the real floor here — 10 ms on both shipped board
+ * configs, not the millisecond the ABI signature implies (issue 1242). */
+uint64_t nros_platform_wake_park_granularity_us(void) {
+    ULONG tps = TX_TIMER_TICKS_PER_SECOND;
+    if (tps == 0u) tps = 100u;
+    return (uint64_t) ((1000000ULL + (uint64_t) tps - 1ULL) / (uint64_t) tps);
+}
+
 /* phase-359 W10 — opaque-storage sizing for `task`, the sibling of the wake
  * probes above. `task_init`'s contract says the implementor decides the size;
  * these let a caller ASK instead of hard-coding it (issue 0570's trap). */

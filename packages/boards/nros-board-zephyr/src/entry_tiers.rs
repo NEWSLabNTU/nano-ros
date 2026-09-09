@@ -97,6 +97,25 @@ fn apply_tier_deadline(tier: &TierSpec<'_>) {
 #[inline]
 fn apply_tier_deadline(_tier: &TierSpec<'_>) {}
 
+/// phase-436 W7 — Zephyr's microsecond park (`k_sem_take` with `K_USEC`) and
+/// the tick period that is its real floor. Optional in the platform ABI, so a
+/// build without them simply keeps the millisecond `wake_wait_ms` path.
+unsafe extern "C" {
+    fn nros_platform_wake_park_until_us(w: *mut core::ffi::c_void, deadline_us: u64) -> i8;
+    fn nros_platform_wake_park_granularity_us() -> u64;
+}
+
+/// Install the park on `crt`'s executor. Advisory: a build with no wake object
+/// keeps the path it had.
+fn install_park(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime) {
+    let granularity = unsafe { nros_platform_wake_park_granularity_us() };
+    let _ = ::nros::port_park::install_port_park(
+        crt.executor_mut(),
+        nros_platform_wake_park_until_us,
+        granularity,
+    );
+}
+
 /// The BOOT tier's placement attempt (issue 0655).
 ///
 /// phase-296 W5.5 added this as a general "pin the calling thread" consumer,
@@ -250,6 +269,7 @@ where
     let executor = unsafe { ::nros::Executor::open_with_session_handle(ctx.session) };
     let mut crt = ::nros::node_runtime::ExecutorNodeRuntime::from_executor(executor);
     crt.executor_mut().set_active_groups(ctx.tier.groups);
+    install_park(&mut crt);
     // W5.4 — lower this tier's class/budget/period/deadline onto the executor's
     // default SchedContext (Sporadic / EDF / TT), shared with every board.
     crt.apply_tier_sched_policy(
@@ -408,6 +428,7 @@ impl ZephyrBoard {
         // declare-vs-declare races the interest handshake).
         let boot_tier = &tiers[0];
         crt.executor_mut().set_active_groups(boot_tier.groups);
+        install_park(&mut crt);
         crt.apply_tier_sched_policy(
             boot_tier.class,
             boot_tier.period_us,
