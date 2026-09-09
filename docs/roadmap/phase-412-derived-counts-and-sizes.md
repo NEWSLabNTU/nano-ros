@@ -594,3 +594,55 @@ holds the evidence, the item is *close it*.
 | [#1142](../issues/1142-nuttx-standalone-example-has-no-entity-declaration.md) | a standalone copy-out example reaches none of the three declaration channels, so the guessed budget is the only one it can get. This is W5's open design question in its most concrete form; answering W5 closes it |
 | [#1181](../issues/archived/1181-stale-zpico-subscriber-buffer-size-name.md) | `ZPICO_SUBSCRIBER_BUFFER_SIZE` is documented in four places and read by nothing. A knob that sizes nothing is deleted from the docs, not derived — the census is this phase's |
 
+
+## CHECKPOINT 2026-09-09 — what is done, what is in the queue, what is left
+
+Written as a checkpoint because this campaign has crossed several sessions and
+the state was only recoverable by reading seven pull requests. It records the
+state, not new intent; work items above stay the authority on scope.
+
+### On `main`
+
+W1 (five of six), W2's `NROS_EXECUTOR_MAX_NODES` derivation, W4's delivery
+gate, W5's cargo carrier and W6's instrument. The RULE W1 cost — a derived
+value is a DEFAULT, never an override — holds on every rung landed since.
+
+### In the merge queue
+
+| PR | what it closes |
+| --- | --- |
+| 734 | issue 1161 (a capability skip fails unless the lane declared it) + 1131 |
+| 738 | W3, the declared QoS depth reaching the arena |
+| 742 | W3b, that depth becoming a knob (stacked on 738 — the one stack here) |
+| 768 | W7, one fact / three roads / three registries |
+| 769 | #5, the graph cache stated as a capability |
+| 777 | issue 1238, the xrce host lane that could only pass against a hand-primed cache |
+| 779 | issue 1233, the four road-gaps W7 recorded — closed by DELIVERY on both roads |
+
+Nothing in that list is blocked on a decision. 742 is the only stacked entry
+and forfeits the speculative build for it.
+
+### Left, in the order it should be taken
+
+1. **The producerless knobs (#6).** Thirteen build-script env names plus the
+   C-side `NROS_ZEPHYR_MAX_TIERS` / `NROS_ZEPHYR_TIER_STACK_SIZE` whose
+   producer was retired without them. Per knob: DELETE, or wire a producer —
+   a knob nothing sets is indistinguishable from one that is honoured, which
+   is the same unreachable-mechanism shape this phase opened on.
+2. **The five sizing knobs still off the RFC-0049 ladder** (`config-knob-census`
+   counts them under "sizing knobs still to migrate"): `NROS_ENTRY_SPIN_MS`,
+   `NROS_SERVICE_TIMEOUT_MS`, `NROS_XRCE_TRANSPORT_MTU`,
+   `ZPICO_GRAPH_CACHE_SIZE`, and `ZPICO_READ_TASK_PRIORITY` /
+   `ZPICO_LEASE_TASK_PRIORITY`. Read issue 0623 before touching the two
+   priorities: they are RAW FreeRTOS units and share a scheduler with the tier
+   priorities, so a normalised value there is the defect, not the fix.
+3. **`NROS_MAX_LIVELINESS`.** Derivable the same way the graph cache became a
+   capability in 769; the precondition was the liveliness silent-failure class,
+   which PR 749 fixed.
+4. **The arena's host oracle** — the unfinished half of "can the arena be sized
+   PRECISELY?". The inputs now reach the derivation on all three roads, so what
+   is missing is the build-time check that the derived arena covers the model,
+   making an undersized arena a compile error instead of a runtime one. Today
+   only the Zephyr `.bss` backing has that property
+   (`check-executor-backing-arena-pairing`); the heap arm and the caller-supplied
+   arms have nothing.
