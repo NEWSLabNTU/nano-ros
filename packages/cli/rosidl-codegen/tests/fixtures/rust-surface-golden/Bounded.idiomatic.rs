@@ -86,8 +86,8 @@ impl From<&Bounded> for crate::msg::rmw::Bounded {
             
             
             
-            // [primitive; N] arrays can be cloned directly
-            fixed: idiomatic.fixed.clone(),
+            // [primitive; N] is Copy for every N — copy, never clone
+            fixed: idiomatic.fixed,
             
             
             
@@ -132,8 +132,8 @@ impl From<&crate::msg::rmw::Bounded> for Bounded {
             
             
             
-            // [primitive; N] arrays can be cloned directly
-            fixed: rmw.fixed.clone(),
+            // [primitive; N] is Copy for every N — copy, never clone
+            fixed: rmw.fixed,
             
             
             

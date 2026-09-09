@@ -63,8 +63,8 @@ impl From<&{{ message_name }}> for crate::msg::rmw::{{ message_name }} {
             // Nested messages need reference conversion
             {{ field.name }}: (&idiomatic.{{ field.name }}).into(),
             {% elif field.kind == "PrimitiveArray" %}
-            // [primitive; N] arrays can be cloned directly
-            {{ field.name }}: idiomatic.{{ field.name }}.clone(),
+            // [primitive; N] is Copy for every N — copy, never clone
+            {{ field.name }}: idiomatic.{{ field.name }},
             {% elif field.kind == "UnboundedStringArray" %}
             // [String; N] → [rosidl_runtime_rs::String; N] with element conversion
             {{ field.name }}: std::array::from_fn(|i| crate::rosidl_runtime_rs::String::from(idiomatic.{{ field.name }}[i].as_str())),
@@ -81,8 +81,8 @@ impl From<&{{ message_name }}> for crate::msg::rmw::{{ message_name }} {
             // [NestedType; N] → [rmw::NestedType; N] with element conversion
             {{ field.name }}: std::array::from_fn(|i| (&idiomatic.{{ field.name }}[i]).into()),
             {% elif field.kind == "LargeArray" %}
-            // Large arrays (>32 elements) can be cloned directly
-            {{ field.name }}: idiomatic.{{ field.name }}.clone(),
+            // Large [primitive; N] arrays are Copy too — copy, never clone
+            {{ field.name }}: idiomatic.{{ field.name }},
             {% elif field.kind == "BoundedPrimitiveSequence" %}
             // Vec<primitive> → BoundedSequence<primitive> (use try_from)
             {{ field.name }}: crate::rosidl_runtime_rs::BoundedSequence::try_from(idiomatic.{{ field.name }}.clone()).unwrap(),
@@ -169,8 +169,8 @@ impl From<&crate::msg::rmw::{{ message_name }}> for {{ message_name }} {
             // Nested messages need reference conversion
             {{ field.name }}: (&rmw.{{ field.name }}).into(),
             {% elif field.kind == "PrimitiveArray" %}
-            // [primitive; N] arrays can be cloned directly
-            {{ field.name }}: rmw.{{ field.name }}.clone(),
+            // [primitive; N] is Copy for every N — copy, never clone
+            {{ field.name }}: rmw.{{ field.name }},
             {% elif field.kind == "UnboundedStringArray" %}
             // [rosidl_runtime_rs::String; N] → [String; N] with element conversion
             {{ field.name }}: std::array::from_fn(|i| rmw.{{ field.name }}[i].to_string()),
@@ -187,8 +187,8 @@ impl From<&crate::msg::rmw::{{ message_name }}> for {{ message_name }} {
             // [rmw::NestedType; N] → [NestedType; N] with element conversion
             {{ field.name }}: std::array::from_fn(|i| (&rmw.{{ field.name }}[i]).into()),
             {% elif field.kind == "LargeArray" %}
-            // Large [primitive; N] arrays can be cloned directly
-            {{ field.name }}: rmw.{{ field.name }}.clone(),
+            // Large [primitive; N] arrays are Copy too — copy, never clone
+            {{ field.name }}: rmw.{{ field.name }},
             {% elif field.kind == "BoundedPrimitiveSequence" %}
             // BoundedSequence<primitive> → Vec<primitive> (use rosidl_runtime_rs 0.5 API)
             {{ field.name }}: rmw.{{ field.name }}.as_slice().to_vec(),

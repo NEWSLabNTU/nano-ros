@@ -66,7 +66,18 @@ pub enum FieldKind {
     UnboundedWStringArray,
     BoundedWStringArray,
     NestedMessageArray,
-    LargeArray, // Arrays > 32 elements (no Copy/Clone trait)
+    // Arrays > 32 elements. Const generics gave `[T; N]` its `Copy`/`Clone`
+    // impls for every N, so this is NOT "no Copy/Clone" any more (issue 1244
+    // removed the `.clone()` the old comment justified). What still needs the
+    // separate kind is serde: `#[serde(with = "BigArray")]` is only emitted here.
+    //
+    // NOTE the arm is chosen on LENGTH ALONE, whatever the element is, so
+    // `string[40]` lands here and the `packs/rust` branch has no element
+    // conversion for it. That does not compile, and did not before 1244 either
+    // (the `.clone()` was a type error there rather than a `clone_on_copy`) —
+    // pre-existing, untouched, recorded so the next reader does not blame the
+    // copy.
+    LargeArray,
 
     // Bounded sequences (max_size specified: T[<=N])
     BoundedPrimitiveSequence,
