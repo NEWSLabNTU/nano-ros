@@ -1281,6 +1281,11 @@ pub use nros_node::{
 // type a user could name and never receive. RFC-0036's Errors row now describes
 // what these two are.
 // ---------------------------------------------------------------------------
+/// phase-436 W7 — installing a port's park primitive, with the wake-object
+/// constraint stated once. Board entries reach it through this facade because
+/// that is the dependency they already carry.
+pub use nros_node::executor::port_park;
+
 pub use nros_node::NodeError;
 pub use nros_rmw::TransportError;
 

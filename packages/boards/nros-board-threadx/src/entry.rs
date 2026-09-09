@@ -96,6 +96,30 @@ static UART_LOGGER: UartLogger = UartLogger;
 /// Install the UART `log` sink, routing records through `B::println`. Idempotent:
 /// re-arms the print fn each call and ignores a repeated `set_logger` (the second
 /// returns `Err`). Safe to call once per boot before the spin loop.
+
+/// phase-436 W7 — ThreadX's park, and the tick period that is its real floor.
+///
+/// ThreadX has no sub-tick wait: `tx_semaphore_get` counts ticks and
+/// `TX_TIMER_TICKS_PER_SECOND` is 100 on both shipped boards, so the floor is
+/// 10 ms — an order of magnitude coarser than the millisecond the ABI
+/// signature suggests. Installing this does not gain resolution; it makes the
+/// executor stop CLAIMING resolution it never had (issue 1242).
+unsafe extern "C" {
+    fn nros_platform_wake_park_until_us(w: *mut core::ffi::c_void, deadline_us: u64) -> i8;
+    fn nros_platform_wake_park_granularity_us() -> u64;
+}
+
+/// Install the park on `crt`'s executor. Advisory: a build with no wake object
+/// keeps the path it had.
+fn install_park(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime) {
+    let granularity = unsafe { nros_platform_wake_park_granularity_us() };
+    let _ = ::nros::port_park::install_port_park(
+        crt.executor_mut(),
+        nros_platform_wake_park_until_us,
+        granularity,
+    );
+}
+
 fn install_uart_logger<B: BoardPrint>() {
     fn print_via_board<B: BoardPrint>(args: core::fmt::Arguments<'_>) {
         B::println(args);
@@ -222,6 +246,9 @@ struct TierTaskCtx<F> {
 /// every spawned tier so the lowering never diverges.
 fn apply_tier(crt: &mut ::nros::node_runtime::ExecutorNodeRuntime, tier: &TierSpec<'static>) {
     crt.executor_mut().set_active_groups(tier.groups);
+    // phase-436 W7 — one site, shared by the boot tier and every spawned tier,
+    // so the park never diverges from the rest of the lowering.
+    install_park(crt);
     crt.apply_tier_sched_policy(
         tier.class,
         tier.period_us,
