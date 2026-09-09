@@ -88,7 +88,16 @@ The reason `__has_include` cannot be repaired in place, measured directly:
 Each probe is right on exactly one embedded lane and wrong on the other. On the
 FreeRTOS lane `__STDC_HOSTED__` is the correct probe and `__has_include` is the
 wrong one — **the exact reverse of what eleven header comments state.** Only
-`NROS_CPP_STD` is right on both, because it is not a probe.
+`NROS_CPP_STD` is right on both *as a single probe*, because it is not a probe.
+
+**CORRECTION (2026-09-09, measured).** This section then concluded that ANDing
+the two does not work either. That does not follow, and the build disproves it.
+Both wrong answers above are of the same sign — *include it when you must not* —
+so the CONJUNCTION fails closed: the FreeRTOS row dies on `__STDC_HOSTED__ == 0`,
+the Zephyr row on `__has_include` FALSE, and only the hosted row has both. Issue
+1240 shipped exactly that AND, and `fixtures-build.sh freertos cpp zenoh` is
+green on this table's own toolchain with zero `requires_hosted` diagnostics. The
+argument for the opt-in is the API-shape one above, not this one.
 
 ### Those eleven comments cite issue 0112 for something 0112 did not say
 
@@ -138,10 +147,14 @@ program — native included — is on the freestanding side already.
 
 ### What it costs today
 
-* **The FreeRTOS C++ build does not compile at all** (issue 1187), and could not
-  be measured for issue 1146's app-task stack figure, so
-  `cmake/templates/freertos_app_config.c.in`'s 512 KiB serves C and C++ from one
-  number that was only ever measured on the C half.
+* ~~**The FreeRTOS C++ build does not compile at all** (issue 1187)~~ —
+  **no longer true as of 2026-09-09.** Issue 1240's both-probes gate
+  (`NROS_CPP_STD || (__STDC_HOSTED__ && __has_include(<hdr>))`, `c9c861360`)
+  fixed it, MEASURED: `fixtures-build.sh freertos cpp zenoh` is green on the
+  pinned arm-none-eabi 13.2 and all six `cpp_*` images link. Issue 1146's C++
+  app-task stack figure is now takeable — `freertos_app_config.c.in`'s 512 KiB
+  still serves C and C++ from one number measured only on the C half, but
+  nothing structural is in the way any more.
 * **The gate that should have caught it reports green** (issue 1223).
   `check-cpp-freestanding-includes` pushes a guard frame on `#if
   defined(NROS_CPP_STD)` and pops only on `#endif`; `#elif` and `#else` match
@@ -472,9 +485,14 @@ parameter stores" is deleting from, and W4 is phase-427 W1 relocated. Doing it
 after would mean building the node merge on a layout whose conditionality is the
 thing being removed.
 
-Independently: **W0+W1+W2 close issue 1187**, which blocks issue 1146's C++ stack
-measurement. That is reason to land the first three items ahead of the rest
-rather than as one phase-sized change.
+~~Independently: **W0+W1+W2 close issue 1187**~~ — issue 1240 closed it first,
+on 2026-09-09, with the AND this doc argued could not work (see the correction
+under "Neither probe is right on both embedded lanes"). **That removes this
+phase's urgency, not its argument**: the surface is still DISCOVERED rather than
+requested, `rclcpp::Node` is still guarded on the discovered macros, and W0's
+gate blindness (issue 1223) is still real. W0-W4 have since landed on those
+merits rather than on the red lane, which is the status line at the top of this
+doc; the ordering above is recorded as history.
 
 ## Risk
 

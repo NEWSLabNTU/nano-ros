@@ -6,7 +6,8 @@ title: "Every embedded C++ FreeRTOS image fails to compile: `<string>` reaches
 status: resolved
 type: bug
 area: cpp
-related: [0112, 0332, 1146]
+related: [0112, 0332, 1146, 1223, 1240, 1250]
+resolved_in: "(this commit)"
 ---
 
 ## Problem
@@ -187,3 +188,35 @@ after    pass=47 fail=0
 Issue 1146 can now measure the FreeRTOS app-task stack on the C++ path, so
 `cmake/templates/freertos_app_config.c.in`'s 512 KiB — one number serving C and
 C++, measured only on the C half — can be reduced to the measured figure.
+
+## A second, independent measurement — and one correction to the note above
+
+Recorded 2026-09-09 from a build run at `43fcbd964`, a tree containing PR #791
+(`c9c861360`) and **not** phase-438 W1. That tree carries the CONJUNCTION form:
+
+```c++
+#if defined(NROS_CPP_STD) || (defined(__STDC_HOSTED__) && __STDC_HOSTED__ && __has_include(<hdr>))
+```
+
+`bash scripts/build/fixtures-build.sh freertos cpp zenoh` on
+`~/.nros/sdk/arm-none-eabi-gcc/13.2-nros1` (Arm GNU Toolchain 13.2.rel1, the pin
+this issue names) came back **GREEN**: zero `requires_hosted`, zero `error:`,
+and all six role images linked — `cpp_talker` 847 064 B, `cpp_listener`
+846 788 B, `cpp_service_server` 847 184 B, `cpp_service_client` 847 100 B,
+`cpp_action_server` 847 908 B, `cpp_action_client` 847 060 B.
+
+**So the correction above is wrong where it says pairing `__has_include` with
+`__STDC_HOSTED__` "would not have worked either".** Its table is right that each
+probe alone is wrong on one embedded lane — but both wrong answers are *include
+it when you must not*, so the conjunction fails CLOSED and is correct on all
+three lanes: freestanding arm-none-eabi (`__STDC_HOSTED__` 0), Zephyr's
+`-nostdinc++` (`__has_include` false, the header genuinely absent), and hosted
+(both true).
+
+This does not undo phase-438. Its case was never that the conjunction fails —
+it is that a std surface should be **requested** by the consumer rather than
+discovered by a probe, and that argument stands on its own. What phase-438 loses
+is only its urgency: it was not the sole way to make the FreeRTOS C++ images
+build, and #791 had already made them build. Recorded here because a phase doc
+asserting a false technical claim aims the next reader at a dead end, which is
+worse than no note at all.

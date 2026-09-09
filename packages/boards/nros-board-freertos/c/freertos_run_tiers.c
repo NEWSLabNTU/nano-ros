@@ -53,7 +53,6 @@ extern uint64_t nros_tier_spin_gap_step(uint64_t state, uint64_t iter_start_ns, 
                                         uint32_t spin_period_us);
 extern uint64_t nros_platform_clock_ns(void);
 
-
 /* nros_board_network_wait: weak no-op in <nros/main.h> (phase-432 W3.1 moved
  * it there from the C++ sibling main.hpp so a pure C entry links); strong
  * override on boards that need an extra poll-wait after network bring-up. On
@@ -181,6 +180,15 @@ typedef struct {
      * `xTaskCreate`; what was missing was any way to say so. */
     const char* name;
     uint32_t priority;
+    /* issue 1250 — the EFFECTIVE stack this task was created with, in bytes
+     * (`stack_words * 4`), NOT the tier spec's declared `stack_bytes`: an
+     * unset spec still gets the 256 KiB default below, and a headroom bound
+     * derived from `0` would leave the rule off on exactly the tiers that
+     * declared nothing. `freertos_spawn_next_tier` assigns it and
+     * `freertos_tier_task` reads it; both arrived in a6aa0f721 and the field
+     * itself did not, so every FreeRTOS image — C and C++ alike — failed to
+     * compile. */
+    size_t stack_bytes;
 } nros_freertos_tier_ctx_t;
 
 /* RFC-0052 W2/W5.11 — apply and ANNOUNCE the placement dim for one task.
@@ -356,8 +364,7 @@ static void freertos_tier_task(void* arg) {
      * Spawned tiers only. The boot tier runs on the caller (`app_task`, a
      * 512 KiB stack this layer never sized), so a bound derived from its spec
      * would be measured against the wrong stack. */
-    if (nros_cpp_executor_derive_min_stack_headroom(ctx->executor_storage, ctx->stack_bytes)
-        != 0) {
+    if (nros_cpp_executor_derive_min_stack_headroom(ctx->executor_storage, ctx->stack_bytes) != 0) {
         /* Same fail-loud rule as a spawn failure above: a bound that was never
          * set leaves `stack-headroom-runtime` off, and a monitor that silently
          * fails to arm is indistinguishable from a healthy system. */
@@ -664,7 +671,8 @@ int32_t nros_board_freertos_run_tiers(const char* locator, uint8_t domain_id,
      * Nothing here needs the children to exist and no other tier task exists
      * yet to be starved by a self-demotion, so this runs while the boot task
      * still owns the CPU. #144 is untouched: boot's DECLARES already ran. */
-    (void)freertos_apply_tier_priority(boot->name, (uint32_t)((boot->priority < 0) ? 0 : boot->priority));
+    (void)freertos_apply_tier_priority(boot->name,
+                                       (uint32_t)((boot->priority < 0) ? 0 : boot->priority));
 
     /* --- Kick off the chained spawn (tiers[1] carrying tiers[2..]) --- */
     /* A boot-side spawn failure is fatal: tear down boot_storage (which the

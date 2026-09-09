@@ -730,7 +730,10 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   `*** STACK OVERFLOW ***` — heap_4 hands out the stack, so the overflow reaches
   the next block header before `configCHECK_FOR_STACK_OVERFLOW 2` gets a context
   switch. The C/C++ carrier's 512 KiB mirror stays: its C half measures 18 176,
-  its C++ half does not BUILD (issue 1187), and one number serves both.
+  its C++ half was never measured, and one number serves both. The C++ half now
+  BUILDS — issue 1187 was closed by 1240's both-probes gate, measured on the
+  pinned arm-none-eabi 13.2 (six `cpp_*` FreeRTOS images link) — so the C++
+  number is available to take, and has not been taken.
 - **Tier and transport priorities land in ONE scheduler — they now share ONE vocabulary,
   RAW FreeRTOS (issue 0623, FIXED).** `FreertosScheduling`'s `zenoh_read_priority` /
   `zenoh_lease_priority` / `poll_priority` are raw `0..configMAX_PRIORITIES-1`, the same
