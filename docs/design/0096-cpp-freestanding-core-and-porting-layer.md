@@ -1,27 +1,50 @@
-# RFC-0096 — The C++ core is freestanding by construction; porting is a separate hosted layer
+# RFC-0096 — One freestanding `rclcpp` API, identical on every platform
 
-**Status:** Draft (2026-09-09)
+**Status:** Draft (2026-09-09), revised the same day — see "Revision 2".
 
 Restores RFC-0018's freestanding constraint, which the implementation has been
 violating since phase-417. Amends RFC-0089 (its clause 1 is re-armed with a
 mechanism; three of its statements are corrected). Reverses one decision of
 phase-427. Supersedes the deferred phase-438 W2, which was the right instinct
-aimed one layer too low.
+aimed one layer too low. **Deletes the compat layer rather than formalising it.**
 
 Home phase: to be opened. Prior phases: 417 (ROS 2 API adoption), 427 (one node
 type), 438 (the std surface as an opt-in), 426 (parameters, Rust SSoT).
 
 ## The decision
 
-> **The C++ core API is freestanding by construction: no `std` type appears in
-> any signature, alias, base class or data member of any core entity, and the
-> layout of every core type is identical on every target. Compiling ported
-> rclcpp source is a SEPARATE surface that is hosted by declaration, provided as
-> its own header set and its own CMake target, and honestly absent on embedded.**
+> **There is ONE C++ API. It lives in `rclcpp::`, it is freestanding, and it is
+> byte-for-byte the same API on every platform — Zephyr, FreeRTOS, NuttX,
+> ThreadX and native alike. No `std` type appears in any signature, alias, base
+> class or data member. There is no compat layer, no porting layer, and no
+> capability macro. A user copies ROS 2 source in and it is a drop-in
+> replacement.**
 
-The capability macros — all nine gates — are deleted. The split stops being a
-per-translation-unit preprocessor accident and becomes a per-target choice a
-build makes once.
+The user is platform-agnostic. Nothing they write, and nothing they read in the
+documentation, should depend on which target their image is for.
+
+## Revision 2 (2026-09-09) — the first draft proposed a hosted porting layer, and that was wrong
+
+The first draft of this RFC accepted the freestanding core and then put the
+`rclcpp::` spellings in a **separate hosted layer** with `rclcpp::Node` as a
+hosted adapter. That is recorded here rather than deleted, because the reason it
+was wrong is the useful part.
+
+It rested on one census finding: *7 of 9 handle members in the ported corpus
+spell `std::shared_ptr<rclcpp::X>` directly, not `X::SharedPtr`, so redefining
+our alias never reaches them.* True — but that corpus is **our own porting
+templates**, which we control and can rewrite. It is not a fact about upstream
+ROS 2 code, whose house style is the nested alias.
+
+And it applied the wrong success criterion. RFC-0089 does not ask that a ported
+file compile byte-identically; it asks that porting be a **mechanical edit —
+every difference is one the compiler points at, and the fix is local and
+obvious.** Judged against "byte-identical, `std::` spellings included", a hosted
+layer is forced. Judged against "mechanical", it is not needed at all, because
+the two capabilities that seemed to require `std` have freestanding answers.
+
+A design that gives one platform a different API from another has already failed
+the user, whatever it does for the corpus.
 
 ## Why this RFC exists
 
@@ -187,24 +210,31 @@ non-copyable; its move operations exist and no in-tree site uses them. Entities
 are non-copyable value types with inline byte-array storage; `CallbackGroup` is
 a `const char*` and nothing else.
 
-### Porting real rclcpp source inherently requires the standard library
+### What the ported corpus spells, and why it does NOT force a hosted layer
 
-This refutes the obvious escape — "give the porting layer a freestanding
-`SharedPtr` and the whole API can be freestanding". It cannot:
+This is the finding the first draft misread, so it is stated with its correction
+attached.
 
 * **7 of 9 handle members in the ported corpus spell `std::shared_ptr<rclcpp::X>`
-  directly**, not `X::SharedPtr`. Redefining our alias never reaches them.
+  directly**, not `X::SharedPtr`. Redefining our alias does not reach them.
 * Two templates `std::make_shared` a type we do not own
-  (`diagnostic_updater::Updater`), so `<memory>` is in the porting file
-  regardless of anything we do.
+  (`diagnostic_updater::Updater`).
 * `local-msg-package` is compiled **twice** — under nano-ros and under genuine
   ROS 2 Humble via `just colcon-parity` — so its spelling cannot diverge from
-  upstream's at all.
+  upstream's.
 
-**This is the load-bearing fact of the design.** The porting surface is not
-freestanding-able. Trying to make it so is what produced nine gates and a
-shipping layout hazard. Accepting that it is hosted is what lets the core be
-clean.
+The first draft read this as "porting is not freestanding-able" and reached for a
+hosted layer. **The corpus is our own porting templates and our own
+`diagnostic_updater` shim.** It is evidence about what we wrote, not about what
+upstream ROS 2 code requires — upstream house style is the nested alias, which a
+freestanding handle satisfies. Rewriting those members is W9, and it is the last
+work item precisely because it is ours to change rather than a constraint.
+
+The third bullet survives as a genuine constraint and is the sharpest one in the
+tree: `local-msg-package` must keep compiling under real ROS 2 Humble, so
+whatever `X::SharedPtr` becomes, the *spelling at the use site* cannot diverge
+from upstream's. That is a constraint on the alias, not an argument for a second
+surface.
 
 ### The core is 60 % already there, and most of the rest is cheap
 
@@ -235,75 +265,96 @@ Both capabilities are needed only by ported code. Neither is needed by the core.
 
 ## The design
 
-### D1 — The core is freestanding by construction, not by subtraction
+### D1 — One API, freestanding, identical everywhere
 
-No `std` type in any signature, alias, base class or data member of any core
-entity. Not gated: **absent**. The core compiles identically with and without a
-C++ standard library on the include path, and `sizeof` of every core type is a
-constant of the target's ABI, never of a probe.
+`rclcpp::` is the home and the only vocabulary; RFC-0089 already settled that
+`nros::` is phased out and that ours-only names take `rclcpp::` too. No `std`
+type in any signature, alias, base or member. Not gated: **absent**. `sizeof` of
+every public type is a constant of the target ABI and never of a probe, and the
+header set a user reads is the same set on every platform.
 
-The test is mechanical and already has a home: `check-cpp-freestanding-includes`
-becomes a statement about the core headers with no baseline, and
-`check-cpp-capability-layout`'s divergence list becomes structurally empty
-rather than a shrink-only ratchet.
+This applies to **native too**. A native build gets the freestanding API, not a
+richer one. That is the point of the rule: a user who develops on the host and
+deploys to an RTOS must not discover the difference at deployment.
 
-### D2 — Porting is a separate, hosted layer
+### D2 — The two hard capabilities have freestanding answers, and they are measured
 
-The `rclcpp::` spellings that require `std` live in their own header set and
-their own CMake target, enabled by declaration. A build either asks for the
-porting layer or does not; there is no third state in which the compiler decides.
+The census said 50 entities were genuinely hard, in exactly two capabilities.
+Both are constructible without `std`. Measured — a probe carrying an
+rclcpp-shaped node body (`class MinimalPublisher : public rclcpp::Node`, a
+capturing-lambda subscription callback, and `Publisher<M>::SharedPtr` /
+`Subscription<M>::SharedPtr` / `TimerBase::SharedPtr` members) compiles clean in
+all three configurations:
 
-RFC-0089's compile-or-conform rule keeps its full force **scoped to this layer**,
-which is the only layer that can honestly carry it. Clause 1 is satisfied because
-the layer is absent where the constraints bind, and that absence is a
-declaration rather than an accident.
+```
+arm-none-eabi 13.2  -std=c++14 -ffreestanding -fno-exceptions -fno-rtti   rc=0
+ThreadX 10-header shim, -nostdinc++                                       rc=0
+hosted g++ -std=c++17                                                     rc=0
+```
 
-### D3 — `rclcpp::Node` is a hosted adapter over the freestanding core node
+**Ownership → our own handle type.** The census established that shared
+ownership is fiction throughout: `shared_from_this()` already returns an
+empty-owner aliasing pointer, `owned_entities` is an append-only arena with no
+removal path, and the tree has no live `weak_ptr`, no `.lock()`, no custom
+deleter and no lambda capturing a handle. So `X::SharedPtr` becomes a nano-ros
+handle — a name ported code already writes, backed by the lifetime model the
+tree actually has. Nothing is emulated; a mechanism nobody uses is not built.
 
-This is the part that reverses a decision, so it is stated plainly.
+**Type-erased callbacks → a fixed-capacity inplace callable.** The tree already
+has the non-owning half in three ungated freestanding forms (raw
+`void(*)(void*)` + ctx, typed function-pointer aliases, and the
+member-pointer-as-template-parameter `bind_*` family). What is missing is the
+*capturing lambda*, which is what ported source writes. A callable with inline
+storage and a compile-time capacity supplies it with no heap and no
+`<functional>`; an over-large capture is a `static_assert`, i.e. a compiler-
+visible mechanical edit, not a runtime surprise.
 
-C++ has no way to add a data member to a class from another header. A single
-node type with hosted-only members is a single type with two layouts — which is
-precisely the defect. Therefore the porting layer's `rclcpp::Node` is a distinct
-hosted type that derives from or holds the core node, and the core node's layout
-never varies.
+### D3 — The API carries its own minimal traits
 
-phase-427 decided "one node type". **That decision holds where it was aimed** —
-`ComponentNode` still goes, and the core has exactly one node type, which was the
-stated intent ("the Node here is always linked as part of the final image; there
-is no distinction like ROS 2 on Linux"). What changes is that the *porting
-adapter* is not folded into it. `void* hosted_` was the artefact of trying, and
-it goes with the merge.
+Measured, and this is why the API must not lean on the standard library even for
+metaprogramming: the ThreadX shim's `<type_traits>` is a **58-line stub** with
+`enable_if`, `integral_constant` and `is_convertible` and **no `is_same`, no
+`decay`**, while `remove_reference` lives in its `<utility>` instead. Its
+`<new>` **omits the placement forms**, which are freestanding-guaranteed, so
+placement new does not compile against it at all.
 
-### D4 — The refusal precedent already exists and is extended
+A freestanding API cannot assume a shim's shape. It carries the handful of
+traits it needs. (Both shim gaps are ours and should also be fixed — placement
+new especially, since it is guaranteed and its absence is a trap for any future
+in-place construction.)
 
-The project already refuses an upstream ownership shape rather than emulating
-it: upstream's `void h(const std::shared_ptr<Request>, std::shared_ptr<Response>)`
-service callback sits in the tree as a **required-to-fail** compile, because it
-costs a per-request heap allocation. `ported_create_publisher_freestanding_probe.cpp`
-is a second, asserting the ported factory does not exist freestanding.
+### D4 — No compat layer
 
-D2 generalises that: on a freestanding target the porting spellings are absent,
-and absent is a compile error naming the missing name — the loud direction, and
-exactly what RFC-0089 calls mechanical.
+`cmake/compat/` and the whole idea of a second surface go. There is nothing for
+them to bridge once the one API is the ROS 2 API.
 
-### D5 — Three things get deleted rather than ported
+`std_compat.hpp` goes with them (D5 below) — 275 lines behind a macro nothing
+that ships defines, a third orphaned vocabulary predating the phase-427 merge.
 
-* **`std_compat.hpp` — 275 lines, dead in every shipping configuration.** It is
-  entirely behind `#ifdef NROS_CPP_STD`, included from exactly one place which is
-  itself behind the same guard, and nothing that ships defines it. It carries the
-  tree's highest `std::` count (71) and contributes 16 of the 50 bucket-(a)
-  entities: twelve `const std::string&` forwarders and five
-  `std::chrono::milliseconds` forwarders that `.c_str()` / `.count()` into
-  functions which already exist ungated. It is a third, orphaned vocabulary
-  predating the phase-427 merge — neither the core API nor the porting surface.
-  Deleting it costs the shipping product nothing.
-* **The nine gates**, replaced by one target-level choice.
-* **`NROS_CPP_NODE_HOSTED`**, whose only job was to name the conjunction.
+### D5 — What is NOT drop-in, enumerated
+
+Honesty about the boundary is what makes the claim usable. Three things require
+an edit, and every one is a compile error naming the exact site:
+
+1. **An explicit `std::shared_ptr<rclcpp::X>` spelling** where upstream house
+   style writes `rclcpp::X::SharedPtr`. The alias works; the explicit `std::`
+   spelling cannot. This is the edit our own templates need, and it is why
+   examples and fixtures are in scope later rather than now.
+2. **`std::make_shared<MyNode>()` in `main`.** `main` is already not drop-in —
+   RFC-0089 refuses `rclcpp::init(argc, argv)`'s two-argument form loudly today,
+   so a ported `main` already requires attention. The node *class body*, which is
+   the bulk of any port, is what must be drop-in and is.
+3. **A lambda capture larger than the declared budget**, which is a
+   `static_assert` naming the knob.
+
+What this does not promise: an arbitrary third-party ROS 2 package that uses
+`std::string` internally will not become freestanding because our API is. The
+claim is about code written against the rclcpp API, not about the whole ROS
+ecosystem.
 
 ### D6 — Two types are over-gated and become freestanding as they are
 
-Measured, and worth stating because they cost nothing to fix:
+Measured, and they cost nothing to fix:
 
 * **`rclcpp::NodeOptions`** is gated on STD_STRING ∧ STD_VECTOR, yet 22 of its 23
   members are `static_assert`-only and need no `std` at all. Only `arguments()`
@@ -311,16 +362,15 @@ Measured, and worth stating because they cost nothing to fix:
   parameter type is decorative.
 * **`rclcpp::Rate` / `WallRate`** are gated on STD_CHRONO, yet `Rate(double hz)`,
   `sleep()` and `reset()` are pure integer arithmetic. Only the duration
-  constructor and `period()` touch `<chrono>`, and `nros::Duration` already
-  covers both.
+  constructor and `period()` touch `<chrono>`, and `nros::Duration` covers both.
 
 ### D7 — `Timer::closure_` and `GuardCondition::closure_` become unconditional
 
 The tree has already recorded the rule — *state hides behind a pointer only when
 it exceeds a pointer* — and not landed it. The member is 8 bytes either way, so
-making it unconditional removes all five divergent subjects at a cost of zero
-bytes on the types that matter, and ends the px4 mixed-layout exposure
-immediately. This is worth landing ahead of the rest of the RFC.
+making it unconditional removes all five divergent subjects at zero cost and
+ends the px4 mixed-layout exposure immediately. Independent of everything else;
+land it first.
 
 ## What this corrects in existing documents
 
@@ -347,25 +397,28 @@ left for the next reader to trip over.
 
 ## Consequences
 
-**For an embedded user:** none, today. No embedded C++ image has the hosted
-surface now. What changes is that the absence becomes a declaration they can
-read rather than a property of their toolchain file.
+**For an embedded user:** none today, and a guarantee from here. No embedded C++
+image has the hosted surface now; what changes is that its absence stops being a
+property of their toolchain file.
 
-**For a NuttX user:** the API narrows to the freestanding core. This is the one
-real behaviour change in the RFC, and it is the point: NuttX was getting the
-hosted API by accident, and RFC-0018's constraints apply there as much as on
-FreeRTOS. A NuttX build that genuinely wants the porting layer asks for it.
+**For a NuttX user:** the API narrows to the one API. NuttX has been getting the
+hosted shape by accident — its toolchain file has never carried `-ffreestanding`,
+in either NuttX variant, since both toolchain files were created in the same
+commit and only FreeRTOS got the flag. RFC-0018's constraints apply there as much
+as on FreeRTOS.
 
-**For a native user:** none. The porting layer is available; nothing that ships
-uses the hosted node API today outside the porting templates.
+**For a native user:** the API narrows too, and that is deliberate rather than
+collateral. A user who develops on the host and deploys to an RTOS must not
+discover a difference at deployment. This is the clause the first draft did not
+have.
 
-**For a porter:** unchanged in the normal case. `NrosRclcppCompat.cmake` already
-force-includes the compat headers per target, so it is the natural place for the
-layer to be selected, and a ported project keeps needing no manual flag.
+**For a porter:** the node class body ports unedited. `main` needs the same
+attention it already needs. Explicit `std::shared_ptr<...>` spellings become the
+nested alias — one mechanical edit per member, named by the compiler.
 
-**Out-of-tree consumers relying on discovery** get a compile error naming a
-missing overload. There is no deprecation path — nothing can warn on a macro that
-stops being defined — so this needs a changelog entry and a book line.
+**Out-of-tree consumers relying on the discovered macros** get a compile error
+naming a missing overload. There is no deprecation path — nothing can warn on a
+macro that stops being defined — so this needs a changelog entry and a book line.
 
 ## Work items
 
@@ -375,50 +428,62 @@ To be cut into a phase. Ordered so that each step is independently green.
   px4 mixed-layout exposure and empties the layout ratchet's `diverges` list.
   Independent of everything else; land first.
   *Acceptance:* `.config/cpp-capability-layout-baseline.txt` has no `diverges`
-  row; `sizeof` of all five subjects is identical in all nine configurations.
+  row; `sizeof` of all five subjects identical in all nine configurations.
 * **W2 — delete `std_compat.hpp`.** Dead in every shipping configuration.
-  *Acceptance:* the tree builds; `just check cpp` green; 71 `std::` occurrences
-  gone.
-* **W3 — un-gate `NodeOptions` and `Rate`/`WallRate`** (D6), replacing the two
-  genuinely-`std` members with `Span<StringView>` and `nros::Duration`.
-* **W4 — bucket (a): delete the 50 removable entities**, each of which has an
+* **W3 — the two freestanding mechanisms.** The handle type behind the
+  `X::SharedPtr` aliases, and the fixed-capacity inplace callable, both carrying
+  the API's own minimal traits (D3).
+  *Acceptance:* the rclcpp-shaped probe compiles in all three configurations —
+  `arm-none-eabi -ffreestanding`, the ThreadX `-nostdinc++` shim, and hosted —
+  and an over-large capture fails with a `static_assert` naming the knob.
+* **W4 — fix the two shim gaps.** Placement `operator new` in the ThreadX shim's
+  `<new>`, and its `<type_traits>` stub. Independent of W3 because D3 makes the
+  API not depend on them, but both are traps for the next in-place construction.
+* **W5 — un-gate `NodeOptions` and `Rate`/`WallRate`** (D6).
+* **W6 — bucket (a): delete the 50 removable entities**, each of which has an
   ungated sibling or is body-only. No consumer loses a capability.
-* **W5 — bucket (b): replace the 27** with the named freestanding equivalents.
+* **W7 — bucket (b): replace the 27** with the named freestanding equivalents.
   Includes the one gap the census found: `ComponentNode` has no `Seq<T,N>`
   parameter overload, so its `std::vector` form has no sibling to fall back to.
-* **W6 — split the porting layer out** (D2, D3): its own headers, its own target,
-  `rclcpp::Node` as a hosted adapter, the nine gates deleted.
-* **W7 — the gates become structural.** `check-cpp-freestanding-includes` loses
+* **W8 — bucket (c): the hosted `rclcpp::` surface moves onto the freestanding
+  mechanisms**, and the nine gates and `cmake/compat/` are deleted.
+* **W9 — examples and fixtures follow.** Explicit `std::shared_ptr<rclcpp::X>`
+  members in our own porting templates become the nested alias. Deliberately
+  last: the templates are the corpus that made the first draft reach for a hosted
+  layer, and they are ours to change.
+* **W10 — the gates become structural.** `check-cpp-freestanding-includes` loses
   its baseline; `check-cpp-capability-layout` asserts a constant rather than
-  ratcheting a list. A `std` type reaching a core signature becomes a build
+  ratcheting a list. A `std` type reaching any public signature becomes a build
   failure, not a review question.
 
 ## What this RFC does not do
 
-* It does not remove the porting surface. Compiling upstream source unmodified is
-  RFC-0089's goal and it survives intact — it moves to a layer that can honestly
-  provide it.
-* It does not give nano-ros a freestanding `shared_ptr`. The census says nothing
-  in the tree needs shared ownership; inventing a refcounted handle would be
-  building a mechanism for a requirement that does not exist.
+* It does not remove the ROS 2 API. Compiling upstream source is RFC-0089's goal
+  and it survives intact — it stops being conditional on the toolchain.
+* It does not give nano-ros a refcounted smart pointer. The census says nothing
+  in the tree shares; building a mechanism for a requirement that does not exist
+  would be inventing work.
+* It does not promise that an arbitrary third-party ROS 2 package becomes
+  freestanding. The claim is scoped to code written against the rclcpp API.
 * It does not settle `RCLCPP_*_STREAM`. A `FixedString<N>` + `operator<<` builder
-  is plausible but does not exist, and a `<<` chain over arbitrary user types is
-  not fully recoverable without a hosted `ostream`. It stays in the porting layer
-  until someone needs otherwise.
+  is plausible and does not exist; a `<<` chain over arbitrary user types is not
+  fully recoverable without a hosted `ostream`. The printf family is unaffected.
 * It does not touch the C API or the Rust core.
 
 ## Open questions
 
-1. **Does `rclcpp::Node` derive from or hold the core node?** Deriving preserves
-   `class X : public rclcpp::Node` for ported code, which the whole corpus uses.
-   Holding is cleaner but breaks every ported file. Deriving is almost certainly
-   right; it needs one measurement (the core node is non-polymorphic, so the
-   derived-to-base conversion the compat CMake's `dynamic_pointer_cast` performs
-   should be a static upcast needing no RTTI — inferred, not compiled).
-2. **Does the porting layer live in `packages/api/nros-cpp-port/` or in
-   `cmake/compat/`?** The latter already exists and is already per-target; the
-   former is a clearer statement. Not load-bearing for the design.
-3. **Is NuttX's missing `-ffreestanding` deliberate?** It should be answered
-   before W6 narrows that target's API. If NuttX genuinely supports the hosted
-   surface, it may want the porting layer enabled by default — which is a
-   supported configuration under this RFC, just a stated one.
+1. **What is the default inplace-callable capacity?** Too small and idiomatic
+   `[this]`-plus-one-member captures fail to compile; too large and every
+   subscription pays for it in `.bss`. It should be measured against the capture
+   sizes the corpus actually uses, and it must be a named knob, since the
+   `static_assert` has to point at something.
+2. **Is `NuttX`'s missing `-ffreestanding` deliberate?** Traced: both toolchain
+   files were created in one commit, FreeRTOS got the flag, and neither NuttX
+   file has ever carried it. That reads as an inconsistency rather than a
+   decision, but intent and capability come apart here — NuttX ships a fuller
+   libc than FreeRTOS. Under this RFC it stops changing the API either way; the
+   flag should still be made deliberate.
+3. **Does `X::SharedPtr` need to be copyable?** Upstream's is. The corpus stores
+   handles as members and passes one by value (`diagnostic_updater`), so a
+   copyable non-owning handle satisfies it and a move-only one would not —
+   inferred from the signature, not prototyped.
