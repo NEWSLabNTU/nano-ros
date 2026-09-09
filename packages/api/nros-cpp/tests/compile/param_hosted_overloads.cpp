@@ -1,15 +1,14 @@
-// POSITIVE compile probe — the HOSTED parameter overloads, on both node types.
+// POSITIVE compile probe — the HOSTED parameter overloads, on the node type.
 //
 // phase-426 W4. `NROS_CPP_STD` gates the `std::string`-VALUED and
-// `std::vector<T>` parameter overloads on `rclcpp::Node` and
-// `nros::ComponentNode`, and until this file NOTHING IN THE TREE COMPILED THEM:
+// `std::vector<T>` parameter overloads, and until this file NOTHING IN THE TREE
+// COMPILED THEM:
 // `just check cpp` parses every header at `-std=c++14 -ffreestanding` without
 // the macro, the `-nostdinc++` probes are the opposite configuration, and the
 // only in-tree definer is `examples/px4/cpp/bridge/.../CMakeLists.txt:123`, on
-// one module of a build no gate runs. So `ComponentNode`'s
-// `declare_parameter<std::vector<double>>` — the ASI weight-matrix path, and the
-// reason the array half of the parameter FFI exists — shipped unparsed, both
-// before this wave and after it.
+// one module of a build no gate runs. So `declare_parameter<std::vector<double>>`
+// — the ASI weight-matrix path, and the reason the array half of the parameter
+// FFI exists — shipped unparsed, both before this wave and after it.
 //
 // That is the `check-required-features-reachable` class one language over: code
 // behind a switch no lane flips reads as coverage and asserts nothing. W4
@@ -60,15 +59,22 @@ inline void rclcpp_node_string_values(rclcpp::Node& node) {
     (void)node.has_parameter(key);
 }
 
-// --- nros::ComponentNode -----------------------------------------------------
+// --- nros::Node, subclassed --------------------------------------------------
 //
 // The value-returning facade, including the `std::vector<T>` overloads that had
 // never been compiled. Written as a derived ctor because that is where a
 // component declares its parameters, and because a member template is only
 // instantiated when something calls it.
-class HostedParamNode : public ::nros::ComponentNode {
+//
+// phase-427 W4 — this said `nros::ComponentNode`, the type that WRAPPED a node.
+// It is deleted; a component IS-A `nros::Node` now, and the facade this probe
+// compiles is the same one `rclcpp::Node` above wears, because they are one
+// type. So the two halves of this file are no longer two facades that could
+// disagree — they are two call SHAPES (a free function taking a `Node&`, and a
+// ctor on a subclass of it) over one.
+class HostedParamNode : public ::nros::Node {
   public:
-    explicit HostedParamNode(::nros::NodeHandle h) : ::nros::ComponentNode(h, "hosted_params") {
+    explicit HostedParamNode(::nros::NodeHandle h) : ::nros::Node(h, "hosted_params") {
         // Scalars, `const char*` keyed and `std::string` keyed.
         const double period = this->declare_parameter<double>("ctrl_period", 0.15);
         const int64_t depth = this->declare_parameter<int64_t>("queue_depth", 10);
