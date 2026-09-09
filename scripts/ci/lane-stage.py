@@ -101,10 +101,19 @@ STAGE_MARKERS = (
     # `ledger` is live-peer.yml's: that lane reads `.config/interop-verdicts.toml`
     # before it runs anything, and a lane that cannot read its own membership
     # has not reached a stage.
+    #
+    # `submodules` and `check out` are here beside their singular/closed
+    # spellings because the matcher uses WORD BOUNDARIES: `\bsubmodule\b` does
+    # not match "submodules", and `\bcheckout\b` does not match "check out".
+    # A step named `Check out the submodules the fixtures vendor` therefore
+    # matched NOTHING and fell out of every stage — silently, since an
+    # unclassified step is simply not a stage. Caught by the self-test when the
+    # step was added; the same boundary rule that keeps `run` out of `runner`
+    # needs every inflection spelled.
     (PROVISIONING, ("setup", "set up", "provision", "install", "checkout",
-                    "cache", "fetch", "submodule", "labels", "doctor",
-                    "ledger", "reclaim disk", "free disk", "apt", "rustup",
-                    "register")),
+                    "check out", "cache", "fetch", "submodule", "submodules",
+                    "labels", "doctor", "ledger", "reclaim disk", "free disk",
+                    "apt", "rustup", "register")),
 )
 
 # Steps that belong to no stage: housekeeping that runs `if: always()` after the
@@ -406,6 +415,17 @@ _LIVE_PEER_34186427723 = _steps(
     ("Stop containers", "success"),
     ("Complete job", "success"))
 
+# Run 34300486133 (2026-09-09), the first dispatch after PR #780 fixed the silent
+# abort. It got ONE STEP FURTHER and stopped on an honest precondition — the
+# cyclonedds submodule was never checked out — which is the failure the
+# `Check out the submodules the fixtures vendor` step was added for. Recorded
+# under the step names of that run, i.e. WITHOUT that step.
+_LIVE_PEER_34300486133 = _steps(
+    ("Build the nros CLI", "success"),
+    ("Report what the ledger claims, before running anything", "success"),
+    ("Build the fixtures those rows resolve", "failure"),
+    ("Run the cells with a recorded PASS", "skipped"))
+
 # The same run as the workflow now reports it: four steps, current names.
 _LIVE_PEER_FIXTURES_DIED = _steps(
     ("Build the nros CLI", "success"),
@@ -446,6 +466,7 @@ LANES = (
     LaneSpec("live-peer.yml", "regression", "stage", {
         "Build the nros CLI": BUILD,
         "Report what the ledger claims, before running anything": PROVISIONING,
+        "Check out the submodules the fixtures vendor": PROVISIONING,
         "Build the fixtures those rows resolve": BUILD,
         "Run the cells with a recorded PASS": CELLS,
     }),
@@ -622,6 +643,13 @@ def selftest(verbose=False):
         stage_of("Build the fixtures those rows resolve") == BUILD)
     chk("the old name turned the real run into a false cell regression",
         classify(_LIVE_PEER_34186427723, "failure").kind == "verdict-fail")
+
+    lp2 = classify(_LIVE_PEER_34300486133, "failure")
+    chk("34300486133 (2026-09-09) -> no-verdict/build, the run that proved the "
+        "stage report works",
+        lp2.kind == "no-verdict" and lp2.stage == BUILD)
+    chk("the submodule checkout step is provisioning, not a build",
+        stage_of("Check out the submodules the fixtures vendor") == PROVISIONING)
 
     chk("`Run the cells with a recorded PASS` is the cells stage",
         stage_of("Run the cells with a recorded PASS") == CELLS)

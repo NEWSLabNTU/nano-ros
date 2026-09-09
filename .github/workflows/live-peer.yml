@@ -81,6 +81,29 @@ jobs:
           source ./activate.sh
           just interop-verdicts
 
+      # Run 34300486133 (2026-09-09) died here, one step further on than the
+      # abort PR #780 fixed, and said exactly why:
+      #
+      #   ERROR: workspace fixture 'workspace-rust-native-bridge' requires the
+      #          cyclonedds submodule, which is not checked out
+      #          (third-party/dds/cyclonedds is empty).
+      #
+      # `actions/checkout@v4` above takes NO submodules, and the only
+      # `git submodule update` in this lane is the CLI step's `play_launch`.
+      # The lane then asks for cyclonedds fixtures two lines below, so the
+      # requirement was always there and nothing checked it out.
+      #
+      # `--recursive` is the error's own advice, and cyclonedds needs it: this
+      # fixture vendors C++ CycloneDDS by design. NOT `--depth 1` here — the
+      # pin is a chosen release plus our fork's patch commits (issue 0507), and
+      # a shallow clone is what makes `git merge-base --is-ancestor` unable to
+      # answer, which is the shape that cost a false data-loss alarm on
+      # 2026-08-31.
+      - name: Check out the submodules the fixtures vendor
+        id: submodules
+        run: |
+          git submodule update --init --recursive third-party/dds/cyclonedds
+
       # NOT "the fixtures those CELLS resolve", which is what this said until
       # 2026-09-09. `lane-stage.py` classifies a step by keyword, `cells` is the
       # marker for the runtime stage, and the classifier takes the most specific
@@ -124,6 +147,7 @@ jobs:
           NROS_LANE_STEPS: >-
             [{"name": "Build the nros CLI", "conclusion": "${{ steps.cli.outcome }}"},
              {"name": "Report what the ledger claims, before running anything", "conclusion": "${{ steps.ledger.outcome }}"},
+             {"name": "Check out the submodules the fixtures vendor", "conclusion": "${{ steps.submodules.outcome }}"},
              {"name": "Build the fixtures those rows resolve", "conclusion": "${{ steps.fixtures.outcome }}"},
              {"name": "Run the cells with a recorded PASS", "conclusion": "${{ steps.cells.outcome }}"}]
         run: python3 scripts/ci/lane-stage.py --report --lane "live-peer regression"
