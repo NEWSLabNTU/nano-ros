@@ -1284,6 +1284,15 @@ pub use nros_node::{
 /// phase-436 W7 — installing a port's park primitive, with the wake-object
 /// constraint stated once. Board entries reach it through this facade because
 /// that is the dependency they already carry.
+///
+/// Gated like every other `executor::` re-export here, and it has to be: the
+/// module itself is `#[cfg(any(has_rmw, test))]`, and `has_rmw` is emitted by
+/// `nros-node`'s build script exactly when `CARGO_FEATURE_RMW_CFFI` is set. An
+/// ungated `pub use` therefore names a module that does not exist wherever no
+/// RMW seam is compiled in — which is not a hypothetical configuration but the
+/// one `nros build --metadata-mode` uses, where it is `error[E0432]:
+/// unresolved import` before the harness reaches a single component.
+#[cfg(feature = "rmw-cffi")]
 pub use nros_node::executor::port_park;
 
 pub use nros_node::NodeError;
