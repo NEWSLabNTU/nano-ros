@@ -297,12 +297,17 @@ class Decl:
 # Parsing
 
 _COMMENT = re.compile(r"//.*?$", re.MULTILINE)
-_ATTR = re.compile(r"^\s*#(!?)\[[^\n]*\]\s*$", re.MULTILINE)
+# bindgen folds each header comment into a single-line `#[doc = "..."]`, and
+# those strings carry prose parens and braces. The block/paren matchers below
+# do not know about string literals, so an unbalanced one inside a doc string
+# would run the match past the item. Blanked to SAME-LENGTH spaces rather than
+# deleted, so reported line numbers stay exact.
+_DOC_ATTR = re.compile(r'#\[doc\s*=\s*"(?:[^"\\]|\\.)*"\]')
 
 
 def _strip_noise(src: str) -> str:
-    src = _COMMENT.sub("", src)
-    return src
+    src = _DOC_ATTR.sub(lambda m: " " * len(m.group(0)), src)
+    return _COMMENT.sub(lambda m: " " * len(m.group(0)), src)
 
 
 _EXTERN_BLOCK = re.compile(r'(?:\bunsafe\s+)?extern\s+"C"\s*\{')
