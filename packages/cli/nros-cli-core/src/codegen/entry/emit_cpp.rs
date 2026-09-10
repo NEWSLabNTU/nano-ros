@@ -27,8 +27,8 @@
 //! `init → network-wait → register → spin → shutdown` lifecycle.
 
 use super::{
-    BootConfigView, DeclsView, Plan, QosRowView, ServicesView, boot_config_view, decls_view,
-    qos_views, sanitize_pkg, services_view,
+    BootConfigView, DeclsView, ExecutorShape, Plan, QosRowView, ServicesView, boot_config_view,
+    decls_view, qos_views, sanitize_pkg, services_view,
 };
 
 /// The C++ board class an entry calls.
@@ -78,27 +78,10 @@ pub(crate) fn board_is_zephyr(board: &str) -> bool {
     nros_entry_lower::board_family(board) == nros_entry_lower::BoardFamily::Zephyr
 }
 
-/// Phase 274.W3 — FreeRTOS embedded boards support `run_tiers` (one RTOS task per tier
-/// over one shared session). Unlike the other embedded boards (Zephyr, NuttX, ThreadX)
-/// which keep the single-executor sched-context path (W2), `FreertosBoard` has a C
-/// `nros_board_freertos_run_tiers` implementation (nros-board-freertos) that mirrors
-/// the Rust `run_tiers_entry`. The generated entry emits `nros_app_main` +
-/// `NROS_APP_MAIN_REGISTER_VOID`, calling `FreertosBoard::run_tiers` (RFC-0015 §5).
-pub(crate) fn board_is_freertos_embedded(board: &str) -> bool {
-    nros_entry_lower::board_family(board) == nros_entry_lower::BoardFamily::Freertos
-}
-
-/// phase-281 W3 (nuttx) — NuttX embedded boards support `run_tiers` (one pthread
-/// per tier over one shared session). Like `FreertosBoard`, `NuttxBoard` has a C
-/// `nros_board_nuttx_run_tiers` implementation (nros-board-nuttx-qemu) that
-/// mirrors the Rust `run_tiers_entry`; NuttX being POSIX, each non-boot tier is a
-/// `pthread` (SCHED_FIFO at the tier's raw priority). The generated entry uses
-/// the `nros_app_main` + `NROS_APP_MAIN_REGISTER_VOID` shape (the NuttX startup
-/// path calls `app_main`, like FreeRTOS — NOT Zephyr's `main(void)`), calling
-/// `NuttxBoard::run_tiers` (RFC-0015 §5).
-pub(crate) fn board_is_nuttx(board: &str) -> bool {
-    nros_entry_lower::board_family(board) == nros_entry_lower::BoardFamily::Nuttx
-}
+// issue 1283 — `board_is_freertos_embedded` / `board_is_nuttx` existed only to
+// spell "this board has `run_tiers`" inside this pack's branch predicate. That
+// predicate is the plan's now (`Plan::executor_shape`, shared with the C pack),
+// and the board half of it is `board_has_run_tiers` in `mod.rs`.
 
 /// Phase 240.2 (RFC-0043) — **typed** entry emitter. Routes each launch node to
 /// the REAL executor via its component object, instead of the legacy type-erased
@@ -185,7 +168,7 @@ struct CppEntryView {
     tiers: Option<CppTiersView>,
     /// Single-executor path only, and only when the plan declares tiers this
     /// board cannot run as tasks.
-    sched: Option<CppSchedView>,
+    sched: Option<super::SchedView>,
     /// Single-executor path only; empty when `tiers` is set.
     setup_nodes: Vec<CppNodeView>,
     /// The param-services / lifecycle facts. The template includes
@@ -231,44 +214,6 @@ struct CppTierSetupView {
     nodes: Vec<CppNodeView>,
     /// Only tier 0 registers param services and lifecycle.
     emits_services: bool,
-}
-
-/// The sched-context wiring a tiered plan emits when it cannot use
-/// `run_tiers`: an embedded board without one (ThreadX), or an RFC-0047
-/// group-split node, which per-tier setup functions cannot express.
-#[derive(serde::Serialize)]
-struct CppSchedView {
-    n: usize,
-    contexts: Vec<CppSchedContextView>,
-    node_binds: Vec<CppNodeBindView>,
-    group_binds: Vec<CppGroupBindView>,
-}
-
-#[derive(serde::Serialize)]
-struct CppSchedContextView {
-    index: usize,
-    /// `None` = unset; the pack decides that is `nullptr`.
-    class: Option<String>,
-    period_us: u64,
-    budget_us: u64,
-    deadline_us: u64,
-    deadline_policy: Option<String>,
-    os_pri: u8,
-}
-
-#[derive(serde::Serialize)]
-struct CppNodeBindView {
-    name: String,
-    namespace: String,
-    sched_context: u8,
-}
-
-#[derive(serde::Serialize)]
-struct CppGroupBindView {
-    name: String,
-    namespace: String,
-    group: String,
-    tier_index: usize,
 }
 
 #[derive(serde::Serialize)]
@@ -425,39 +370,25 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
         })
         .collect();
 
-    // Phase 269 (W4) / 272 (W2) — sched-context wiring guard.
-    let use_tiers = plan
-        .resolved_tiers
-        .as_ref()
-        .is_some_and(|t| !t.is_single_tier());
-    // Phase 274.W2/W3, phase-281 W3a/W3 — native and the three embedded boards
-    // that declare `run_tiers` take the per-tier-thread path. ThreadX has no
-    // `run_tiers`, so it keeps the single-executor sched-context path.
+    // issue 1283 — the branch is the PLAN's (`Plan::executor_shape`), shared
+    // with the C pack: a multi-tier plan takes `run_tiers` unless a node's
+    // groups span tiers (RFC-0047 group split — per-tier setups construct whole
+    // NODES) or the board has no `run_tiers` (ThreadX, issue 1286); those keep
+    // the single-executor sched-context path.
     //
-    // RFC-0047 follow-up: a node whose callback groups map to MORE THAN ONE
-    // tier cannot be expressed by `run_tiers` — its per-tier setup functions
-    // construct whole NODES, so a group-split node silently landed on
-    // whichever tier iterated last and BOTH its timers ran at that cadence.
-    // Such plans keep the sched-context path, which expresses the split.
-    let has_group_split = plan
-        .resolved_tiers
-        .as_ref()
-        .is_some_and(|t| t.has_group_split_node());
-    // phase-308 W1 — a metadata probe always takes the single-setup shape.
-    // Tiers would be worse than irrelevant: `create_entity` early-returns for
-    // entities whose callback group is inactive on the running tier, so a
-    // per-tier probe would UNDER-count exactly what the sidecar exists to
-    // count.
-    let use_run_tiers = !matches!(tail, EntryTail::MetadataProbe(_))
-        && use_tiers
-        && !has_group_split
-        && (!board_is_embedded(&plan.board)
-            || board_is_freertos_embedded(&plan.board)
-            || board_is_zephyr(&plan.board)
-            || board_is_nuttx(&plan.board));
+    // phase-308 W1 — the one refinement is ours alone: a metadata probe always
+    // takes the single-setup shape. Tiers would be worse than irrelevant:
+    // `create_entity` early-returns for entities whose callback group is
+    // inactive on the running tier, so a per-tier probe would UNDER-count
+    // exactly what the sidecar exists to count.
+    let shape = match (plan.executor_shape(), tail) {
+        (ExecutorShape::Tiers, EntryTail::MetadataProbe(_)) => ExecutorShape::SchedContexts,
+        (shape, _) => shape,
+    };
+    let use_run_tiers = shape == ExecutorShape::Tiers;
 
     let mut tiers_view: Option<CppTiersView> = None;
-    let mut sched_view: Option<CppSchedView> = None;
+    let mut sched_view: Option<super::SchedView> = None;
     let mut setup_nodes: Vec<CppNodeView> = Vec::new();
 
     if use_run_tiers {
@@ -524,74 +455,10 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
             tiers: super::tier_views(tiers, groups_per_tier),
         });
     } else {
-        if use_tiers {
+        if shape == ExecutorShape::SchedContexts {
+            // issue 1283 — ONE derivation, shared with the C pack.
             let tiers = plan.resolved_tiers.as_ref().unwrap();
-            // RFC-0052 (common backend) — the tier's RTOS-agnostic policy goes
-            // through `nros_cpp_create_sched_context_from_policy`, whose body
-            // calls `SchedContext::from_tier_policy` — the SAME lowering the
-            // Rust runtime's `apply_tier_sched_policy` uses. RAW tier fields
-            // only, so a `real_time` tier lowers to the identical Sporadic SC
-            // on every language and the mapping cannot drift between codegen
-            // paths.
-            let contexts = tiers
-                .tiers
-                .iter()
-                .enumerate()
-                .map(|(ti, tier)| CppSchedContextView {
-                    index: ti,
-                    class: tier.class.clone(),
-                    period_us: tier.period_us.unwrap_or(0),
-                    budget_us: tier.budget_us.unwrap_or(0),
-                    deadline_us: tier.deadline_us.unwrap_or(0),
-                    deadline_policy: tier.deadline_policy.clone(),
-                    os_pri: tier.priority.clamp(0, 255) as u8,
-                })
-                .collect();
-
-            let node_ns = |name: &str| -> String {
-                plan.nodes
-                    .iter()
-                    .find(|n| n.name.as_deref().unwrap_or(&n.exec) == name)
-                    .and_then(|n| n.namespace.as_deref())
-                    .unwrap_or("/")
-                    .to_string()
-            };
-
-            let node_binds = plan
-                .nodes
-                .iter()
-                .filter_map(|n| {
-                    n.sched_context.map(|sc| CppNodeBindView {
-                        name: n.name.as_deref().unwrap_or(&n.exec).to_string(),
-                        namespace: n.namespace.as_deref().unwrap_or("/").to_string(),
-                        sched_context: sc,
-                    })
-                })
-                .collect();
-
-            let group_binds = tiers
-                .tiers
-                .iter()
-                .enumerate()
-                .flat_map(|(ti, tier)| {
-                    tier.members
-                        .iter()
-                        .map(move |(node_name, group)| (ti, node_name.clone(), group.clone()))
-                })
-                .map(|(ti, node_name, group)| CppGroupBindView {
-                    namespace: node_ns(&node_name),
-                    name: node_name,
-                    group,
-                    tier_index: ti,
-                })
-                .collect();
-
-            sched_view = Some(CppSchedView {
-                n: tiers.tiers.len(),
-                contexts,
-                node_binds,
-                group_binds,
-            });
+            sched_view = Some(super::sched_view(tiers, plan));
         }
 
         setup_nodes = plan

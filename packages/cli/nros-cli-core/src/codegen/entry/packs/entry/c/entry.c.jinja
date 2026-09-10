@@ -5,10 +5,14 @@
   launch node and hands it to that component's `NROS_C_COMPONENT`
   factory/configure seam; the board owns init, spin and shutdown.
 
-  Two mutually exclusive bodies:
+  Two mutually exclusive bodies, chosen by `Plan::executor_shape` — the SAME
+  branch the C++ pack takes (issue 1283):
     * tiers    — one setup function per tier, a groups array per tier, and the
                  `nros_native_tier_spec_t` table `run_tiers` walks.
-    * setup    — a single `__nros_entry_setup`, the single-tier case.
+    * setup    — a single `__nros_entry_setup`. When `sched` is set it first
+                 creates one sched context per tier and binds nodes and
+                 callback groups to them (a group-split plan, or a board with
+                 no `run_tiers`); otherwise it is the plain single-tier case.
 
   What arrives, and in what form (RFC-0091 §8b):
 
@@ -142,6 +146,25 @@ static int32_t __nros_entry_setup(void* executor) {
     if (executor == NULL) {
         return (int32_t)NROS_CPP_RET_NOT_INIT;
     }
+{%- if sched %}
+    /* issue 1283 — per-tier sched contexts on the single executor (RFC-0047),
+     * the C spelling of the C++ pack's block: one context per tier, then the
+     * node-name and callback-group tables, all seeded BEFORE any node exists
+     * so its entities pick the binding up at register time. */
+    uint8_t __nros_sc_ids[{{ sched.n }}] = {0};
+{%- for c in sched.contexts %}
+    {
+        nros_cpp_ret_t scr = nros_cpp_create_sched_context_from_policy(executor, {% if c.class is none %}NULL{% else %}"{{ c.class|c_str }}"{% endif %}, {{ c.period_us }}ull, {{ c.budget_us }}ull, {{ c.deadline_us }}ull, {% if c.deadline_policy is none %}NULL{% else %}"{{ c.deadline_policy|c_str }}"{% endif %}, {{ c.os_pri }}u, &__nros_sc_ids[{{ c.index }}]);
+        if (scr != NROS_CPP_RET_OK) return (int32_t)scr;
+    }
+{%- endfor %}
+{%- for b in sched.node_binds %}
+    nros_cpp_bind_node_name_sched(executor, "{{ b.name|c_str }}", "{{ b.namespace|c_str }}", __nros_sc_ids[{{ b.sched_context }}]);
+{%- endfor %}
+{%- for b in sched.group_binds %}
+    nros_cpp_bind_group_sched(executor, "{{ b.name|c_str }}", "{{ b.namespace|c_str }}", "{{ b.group|c_str }}", __nros_sc_ids[{{ b.tier_index }}]);
+{%- endfor %}
+{%- endif %}
 {%- for n in setup_nodes %}
     {
 {%- with decls = n.decls %}

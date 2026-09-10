@@ -144,6 +144,42 @@ fn c_tiered_plan(board: &str) -> Plan {
     p
 }
 
+/// RFC-0047 sub-node split of a two-tier plan: `ctrl` gains a second callback
+/// group on the LOW tier, so one node's groups span two tiers. `run_tiers`
+/// cannot express it (its per-tier setups construct whole nodes), so the plan
+/// takes the sched-context path — on native too.
+fn group_split(mut p: Plan) -> Plan {
+    p.nodes[0].group_tiers = BTreeMap::from([
+        ("ctrl_grp".to_string(), "high".to_string()),
+        ("telem_grp".to_string(), "low".to_string()),
+    ]);
+    if let Some(t) = p.resolved_tiers.as_mut() {
+        t.tiers[1].members.push(("ctrl".into(), "telem_grp".into()));
+    }
+    p
+}
+
+/// Callback groups declared, NO `[tiers]` table — resolved through the real
+/// `resolve_plan_sched`, which synthesises ONE `default` tier holding every
+/// group. That is a single-executor plan (issue 1283): the C pack used to see
+/// a non-empty tier list and call `run_tiers` with it.
+fn c_default_tier_plan(board: &str) -> Plan {
+    let mut ctrl = c_node("ctrl_pkg", "ctrl");
+    ctrl.callback_groups = vec!["ctrl_grp".into()];
+    let mut telem = c_node("telem_pkg", "telem");
+    telem.callback_groups = vec!["telem_grp".into()];
+    let mut p = plan(board, vec![ctrl, telem]);
+    let rtos = super::board_to_rtos(board).to_string();
+    super::resolve_plan_sched(&mut p, &rtos).expect("default-tier resolution");
+    assert!(
+        p.resolved_tiers
+            .as_ref()
+            .is_some_and(|t| t.is_single_tier()),
+        "precondition: callback groups with no [tiers] resolve to ONE default tier"
+    );
+    p
+}
+
 /// A `lang == "c"` node inside a C++ entry.
 ///
 /// `emit_cpp` validates `class_name` for EVERY node, C ones included, before
@@ -316,6 +352,23 @@ fn cases() -> Vec<(&'static str, Plan, Lang)> {
     out.push(("c_native_tiers", c_tiered_plan("native"), Lang::C));
     out.push(("c_nuttx_tiers", c_tiered_plan("nuttx"), Lang::C));
 
+    // issue 1283 — the two C shapes that had no golden, and were wrong. A
+    // group-split plan emits the three sched calls (it used to emit none, and
+    // every group ran at the default scheduling); callback groups with no
+    // `[tiers]` call `run_components` (they used to call `run_tiers` with one
+    // synthesised tier). The C twins of `cpp_native_group_split` and of the
+    // C++ pack's single-executor rows.
+    out.push((
+        "c_native_group_split",
+        group_split(c_tiered_plan("native")),
+        Lang::C,
+    ));
+    out.push((
+        "c_native_groups_default_tier",
+        c_default_tier_plan("native"),
+        Lang::C,
+    ));
+
     out.push((
         "rust_native_one",
         plan("native", vec![node("talker_pkg", "talker", None)]),
@@ -441,15 +494,11 @@ fn cases() -> Vec<(&'static str, Plan, Lang)> {
     // `run_tiers` cannot express it (its per-tier setups construct whole
     // nodes), so the plan falls back to the sched-context path ON NATIVE —
     // the one row where a native tiered plan does NOT take `run_tiers`.
-    let mut split = cpp_tiered_plan("native");
-    split.nodes[0].group_tiers = BTreeMap::from([
-        ("ctrl_grp".to_string(), "high".to_string()),
-        ("telem_grp".to_string(), "low".to_string()),
-    ]);
-    if let Some(t) = split.resolved_tiers.as_mut() {
-        t.tiers[1].members.push(("ctrl".into(), "telem_grp".into()));
-    }
-    out.push(("cpp_native_group_split", split, Lang::Cpp));
+    out.push((
+        "cpp_native_group_split",
+        group_split(cpp_tiered_plan("native")),
+        Lang::Cpp,
+    ));
 
     // The metadata probe: the same setup body with the recording tail, which
     // returns BEFORE the boot config and the board wrapper.
@@ -639,4 +688,75 @@ codegen::entry::golden\n",
         "the golden harness compared NOTHING — it would pass whatever the \
 emitters did"
     );
+}
+
+/// Which executor branch a rendered entry took, read from what it CALLS —
+/// not from the predicate, so a pack that re-derives the branch (or renders
+/// half of one) is caught by its output.
+fn branch_of(src: &str) -> super::ExecutorShape {
+    use super::ExecutorShape;
+    let tiers = src.contains("run_tiers(");
+    let sched = src.contains("nros_cpp_create_sched_context_from_policy(")
+        && src.contains("nros_cpp_bind_node_name_sched(")
+        && src.contains("nros_cpp_bind_group_sched(");
+    let any_sched = src.contains("nros_cpp_create_sched_context_from_policy(");
+    // Native C spells its runner `…_run_components_named(`.
+    let components = src.contains("run_components(") || src.contains("run_components_named(");
+    match (tiers, sched, any_sched, components) {
+        (true, false, false, false) => ExecutorShape::Tiers,
+        (false, true, true, true) => ExecutorShape::SchedContexts,
+        (false, false, false, true) => ExecutorShape::Single,
+        _ => panic!(
+            "entry took no recognisable branch (run_tiers={tiers}, full sched \
+             block={sched}, any sched call={any_sched}, run_components={components}):\n{src}"
+        ),
+    }
+}
+
+/// issue 1283 — the SAME plan through BOTH packs takes the SAME branch, and
+/// that branch is the plan's own `executor_shape()`.
+///
+/// Before the fix the packs disagreed on two of these four plans: C asked
+/// `!tiers.is_empty()` where C++ asked `!is_single_tier()` (so callback groups
+/// with no `[tiers]` were `run_tiers` in C, `run_components` in C++), and C
+/// had no sched-context arm (so a group split was plain single-executor in C,
+/// sched contexts in C++).
+///
+/// Boards: every family the C pack renders for. ThreadX is refused by the C
+/// pack (no C-ABI runner), so there is no C side to compare there.
+#[test]
+fn both_entry_packs_take_the_plans_executor_branch() {
+    use super::ExecutorShape::{SchedContexts, Single, Tiers};
+    let mut checked = 0usize;
+    for board in ["native", "zephyr", "nuttx", "freertos"] {
+        let rows = [
+            ("multi-tier", c_tiered_plan(board), Tiers),
+            (
+                "group split",
+                group_split(c_tiered_plan(board)),
+                SchedContexts,
+            ),
+            ("groups, no [tiers]", c_default_tier_plan(board), Single),
+            (
+                "no tiers",
+                plan(board, vec![c_node("c_talker_pkg", "talker")]),
+                Single,
+            ),
+        ];
+        for (what, p, want) in rows {
+            assert_eq!(
+                p.executor_shape(),
+                want,
+                "{board} / {what}: the plan's own predicate"
+            );
+            let c = super::emit_c::emit_typed(&p)
+                .unwrap_or_else(|e| panic!("{board} / {what}: C pack refused: {e}"));
+            let cpp = super::emit_cpp::emit_typed(&p)
+                .unwrap_or_else(|e| panic!("{board} / {what}: C++ pack refused: {e}"));
+            assert_eq!(branch_of(&c), want, "{board} / {what}: C pack branch");
+            assert_eq!(branch_of(&cpp), want, "{board} / {what}: C++ pack branch");
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 16, "every (board x plan) row must be compared");
 }
