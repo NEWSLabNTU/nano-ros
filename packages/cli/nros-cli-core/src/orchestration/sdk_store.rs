@@ -89,6 +89,36 @@ pub fn source_dir(index: &super::sdk_index::SdkIndex, source: &str) -> Option<Pa
     )
 }
 
+/// The directory a `[source.*]` is provisioned into — phase-440, RFC-0095
+/// D1/D2. ONE derivation, so "where is it?" has one answer for the installer,
+/// the presence probe and `nros sdk-path --source`.
+///
+/// It lives HERE, beside the store root it derives from, because the INSTALLER
+/// is in this file and was the one consumer that never called it — the sentence
+/// above was true of two of its three consumers (issue 1276). Moved rather than
+/// called across the layer: `orchestration` reaching up into `cmd` for a path
+/// derivation is how the third consumer gets missed again.
+///
+/// `location = "store"` derives `$NROS_STORE/sources/<name>/<version>` from the
+/// index rather than reading a path out of it; `workspace` (the default) keeps
+/// the historical workspace-relative `dest`, so every existing entry means what
+/// it meant.
+pub fn source_dir_of(
+    name: &str,
+    src: &SourcePackage,
+    workspace: &Path,
+) -> Option<std::path::PathBuf> {
+    match src.location {
+        SourceLocation::Store => Some(
+            super::store::root()
+                .join("sources")
+                .join(name)
+                .join(&src.version),
+        ),
+        SourceLocation::Workspace => src.dest.as_deref().map(|d| workspace.join(d)),
+    }
+}
+
 pub fn tool_dir(index: &super::sdk_index::SdkIndex, tool: &str) -> Option<PathBuf> {
     let version = &index.tool.get(tool)?.version;
     Some(tool_prefix(&store_root(), tool, version))
@@ -975,10 +1005,32 @@ pub fn provision_source(
             Ok(SourceDisposition::Provisioned)
         }
         SourceProvision::Clone => {
-            let git = src.git.as_deref().expect("clone mode has a git url");
-            let git_ref = src.git_ref.as_deref().expect("clone mode has a ref");
-            let dest = src.dest.as_deref().expect("clone mode has a dest");
-            let dest_abs = workspace.join(dest);
+            // The index is USER-EDITABLE, so a malformed entry is an input
+            // error reported to somebody who typed a provisioning command — not
+            // an unreachable state. `SdkIndex::validate` rejects both of these
+            // before we get here; if one ever arrives, say which source and
+            // which key, the way every other failure in this file does.
+            let git = src.git.as_deref().ok_or_else(|| {
+                eyre!("source '{name}' is in clone mode but has no `git` url")
+            })?;
+            let git_ref = src.git_ref.as_deref().ok_or_else(|| {
+                eyre!("source '{name}' is in clone mode but has no `ref`")
+            })?;
+            // ASK THE ONE DERIVATION. This read `dest` directly and panicked
+            // with `expect("clone mode has a dest")` — which is exactly what a
+            // `location = "store"` source has no `dest` to give, because
+            // phase-440 removed it so the store path could not be spelled
+            // twice, and `validate` REFUSES an authored one.
+            //
+            // `rosidl` is that source and rides `[rmw.cyclonedds]`, so
+            // `nros setup <board> --rmw cyclonedds` provisioned six packages
+            // and then aborted on the seventh, on any host that did not already
+            // have the tree (issue 1276).
+            let dest_abs = source_dir_of(name, src, workspace).ok_or_else(|| {
+                eyre!(
+                    "source '{name}' is in clone mode but nothing says where it                      lives: location = \"workspace\" needs a `dest`, and                      location = \"store\" derives one from name + version"
+                )
+            })?;
             // Idempotent: a present, non-empty dest is left as-is (don't clobber
             // a contributor checkout / in-progress work). `nros setup` on a
             // fresh tree provisions; a populated tree is a skip.
@@ -1661,6 +1713,44 @@ mod tests {
             provision_source("lwip", &empty, &ws, true, None).unwrap(),
             SourceDisposition::Planned
         );
+
+        // Clone mode, location = "store", NO dest — issue 1276.
+        //
+        // This is not a hypothetical shape: `SdkIndex::validate` REFUSES a
+        // store source that carries a `dest` (phase-440 removed it so the
+        // store path could not be spelled twice), so "store + no dest" is the
+        // only legal spelling and `[source.rosidl]` is it. This arm used to
+        // `expect("clone mode has a dest")` and panicked — after provisioning
+        // every earlier package in the plan.
+        //
+        // Dry-run, so the assertion is about REACHING the decision rather than
+        // about cloning: a panic cannot be dry-run past.
+        let store_src = SourcePackage {
+            dest: None,
+            location: SourceLocation::Store,
+            ..clone.clone()
+        };
+        assert_eq!(
+            provision_source("rosidl-ish", &store_src, &ws, true, None).unwrap(),
+            SourceDisposition::Planned
+        );
+
+        // And it resolves to the STORE, not to something under the workspace —
+        // a fix that stopped the panic by inventing a workspace path would pass
+        // the assertion above and put the tree in the wrong place.
+        let resolved = source_dir_of("rosidl-ish", &store_src, &ws)
+            .expect("a store source resolves without a dest");
+        assert!(
+            resolved.starts_with(crate::orchestration::store::root()),
+            "store source resolved outside the store: {}",
+            resolved.display()
+        );
+        assert!(
+            resolved.ends_with(Path::new("sources/rosidl-ish/2.2.0")),
+            "store source path is derived from name + version: {}",
+            resolved.display()
+        );
+
         std::fs::remove_dir_all(&ws).ok();
     }
 }
