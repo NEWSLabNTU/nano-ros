@@ -1498,27 +1498,6 @@ nros_cpp_ret_t nros_cpp_executor_set_active_groups(void *executor,
                                                    size_t n);
 
 /**
- * Phase 274.W2 (RFC-0015 Model 1) — run a native multi-tier entry over one
- * shared RMW session.
- *
- * Opens ONE session on the calling (boot) thread; spawns `n_tiers - 1`
- * threads each opening a **borrowed** executor (no second RMW session, no
- * double-close). Each thread:
- *   1. `nros_cpp_executor_open_over_session` — open borrowed executor.
- *   2. `nros_cpp_executor_set_active_groups` — gate to the tier's groups.
- *   3. `setup(executor)` — create + configure nodes (only the tier's
- *      groups' callbacks register).
- *   4. `spin_once` loop at `spin_period_us` until shutdown flag.
- *
- * The boot thread runs the first (highest-priority) tier on the owning
- * executor; it respects the `$NROS_ENTRY_SPIN_MS` bound for test/CI use.
- * When the boot thread exits its spin loop it signals the other tiers (via
- * `Arc<AtomicBool>`) and joins them before closing the session.
- *
- * # Safety
- * `tiers` must be a valid pointer to `n_tiers` [`NativeTierSpecC`] entries,
- * valid for the duration of the call. `session_name` is NULL or a valid
- * null-terminated string.
  * phase-436 W7.a — register a platform deadline source on this executor.
  *
  * The seam existed only as a Rust method, so the board entries that go through
