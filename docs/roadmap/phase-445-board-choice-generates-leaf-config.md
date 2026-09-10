@@ -25,11 +25,17 @@ esp32 stack budgets.
   take buffer only). The CMake road already completes the count with
   `NROS_DECLARED_INFRA_QUERYABLES` from `nros ws entity-facts`; the cargo
   sidecar (`leaf_entity_env.rs`) withholds the knob as
-  `NOT_DERIVED_NEEDS_INFRA_COUNT`. Wire the same fact into the sidecar where a
-  model exists (workspace entries today, every leaf after W3), keep the
-  withholding where it does not. Acceptance: a BUILD of the esp32 talker with
-  its hand-set `ZPICO_MAX_QUERYABLES` removed yields the same shim constant,
-  and `check-declared-fact-carriers` names the fact on both roads.
+  `NOT_DERIVED_NEEDS_INFRA_COUNT`. The consumer already computes the count
+  from `NROS_DECLARED_SERVICE_SERVERS` + `NROS_DECLARED_INFRA_QUERYABLES`
+  (`nros-zpico-build/src/runner.rs`), so the sidecar CARRIES those two facts
+  from `entity_facts::facts_from_model` wherever the leaf has a model — it
+  never states `ZPICO_MAX_QUERYABLES` itself (the consumer owns the cost,
+  issue 0460). A leaf without a model keeps the withholding. Acceptance: a
+  plain `cargo build` of a workspace entry leaf, with no `NROS_DECLARED_*` in
+  the process environment, yields the same shim constant the fixture lane
+  gets by exporting them; `check-declared-fact-carriers` names the facts on the
+  sidecar road. (A single-package leaf has no model until W3 — its hand-set
+  `ZPICO_MAX_QUERYABLES`, e.g. the esp32 talker's `2`, is removed THERE.)
 - [ ] **W2 — complete the board descriptors (D4).** `[build] target` in every
   descriptor whose board has a Rust triple (mps2 first — the 19 hand-written
   leaves); `CC_<triple>`/`CFLAGS_<triple>` from the workspace configs; the
@@ -42,7 +48,10 @@ esp32 stack budgets.
 - [ ] **W3 — `system.toml` in every single-package example (D3, D5, D8).** 178
   leaves (70 Rust, 52 C, 56 C++). `[image.X] board`, `[system] rmw/domain_id/locator`,
   network identity, `[[component]]` with entities where the board cannot be
-  probed (issue 1265). `nros sync` resolves a single-package leaf from it; the
+  probed (issue 1265). With a model per leaf, W1's sidecar facts reach every
+  single-package leaf, so the hand-set `ZPICO_MAX_QUERYABLES` in the esp32
+  leaves goes here — acceptance a BUILD whose shim constant matches the
+  hand-set value it replaces. `nros sync` resolves a single-package leaf from it; the
   `[package.metadata.nros.{entry,deploy.*,node,component}]` keys retire from the
   manifests. The two board spellings for one esp32 (`esp32-c3-baremetal` /
   `esp32-qemu`) collapse to one.
