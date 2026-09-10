@@ -1,0 +1,8 @@
+<launch>
+  <!-- phase-446 F1: `/b` declares no parameters (`params: {}` in
+       declared.contract.yaml), so it carries no launch value. -->
+  <node pkg="demo_pkg" exec="a" name="a">
+    <param name="rate" value="10" />
+  </node>
+  <node pkg="demo_pkg" exec="b" name="b" />
+</launch>
