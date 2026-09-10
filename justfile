@@ -412,9 +412,22 @@ build-all:
     #
     # A `case` on the captured string is fork-free and composes with the chain
     # through a plain variable.
+    #
+    # The pinned make and ninja live in the STORE (RFC-0095 D3), resolved through
+    # `nros sdk-path` — constructed from the index pin, never searched on PATH
+    # (issue 0625) — which is exactly how `build-all-jobserver.sh`, the script this
+    # gates, resolves them. This block read `third-party/make/make` and
+    # `third-party/ninja/ninja` until 2026-09-10, after both had moved: the gate
+    # and the script looked in different places, so on every host that had
+    # migrated, `build-all` silently took the slow static split. The helpers answer
+    # non-zero when a tool is absent, hence `|| …=""` — a bare assignment under
+    # this recipe's `set -e` would end it (issue 1249).
+    source scripts/build/jobserver-pool.sh
+    _nros_make="$(nros_pinned_make)" || _nros_make=""
+    _nros_ninja="$(nros_pinned_ninja)" || _nros_ninja=""
     _nros_make_ver=""
-    if [ -x third-party/make/make ]; then
-        _nros_make_ver=$(third-party/make/make --version 2>/dev/null | head -1)
+    if [ -n "$_nros_make" ]; then
+        _nros_make_ver=$("$_nros_make" --version 2>/dev/null | head -1)
     fi
     case "$_nros_make_ver" in
         *4.4*) _nros_make_44=1 ;;
@@ -422,7 +435,7 @@ build-all:
     esac
     if [ -z "${NROS_NO_JOBSERVER:-}" ] \
        && [ "$_nros_make_44" = 1 ] \
-       && [ -x third-party/ninja/ninja ]; then
+       && [ -n "$_nros_ninja" ]; then
         echo "build-all: unified jobserver path (make 4.4 + ninja 1.13; NROS_NO_JOBSERVER=1 to opt out)"
         exec just build-all-jobserver
     fi

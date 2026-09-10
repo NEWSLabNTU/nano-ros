@@ -53,6 +53,18 @@ nros_pinned_make() {
     printf '%s\n' "$dir/bin/make"
 }
 
+# The pinned ninja's absolute path, or empty — `nros_pinned_make`'s sibling, for
+# the same reason: constructed from the index pin, never searched on PATH. ninja
+# >=1.13 is the half that JOINS make 4.4's fifo jobserver; the index pins 1.13.x,
+# so existence is the check here and the version floor is the pin's.
+nros_pinned_ninja() {
+    command -v nros >/dev/null 2>&1 || return 1
+    local dir
+    dir="$(nros sdk-path ninja 2>/dev/null)" || return 1
+    [ -n "$dir" ] && [ -x "$dir/bin/ninja" ] || return 1
+    printf '%s\n' "$dir/bin/ninja"
+}
+
 nros_pool_available() {
     local units="$2"
     [ "${NROS_JOBSERVER:-}" = "1" ] && return 1
