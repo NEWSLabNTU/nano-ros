@@ -29,23 +29,28 @@ siblings — Zephyr's standard layout.
 west init -m https://github.com/NEWSLabNTU/nano-ros-zephyr-example my-ws
 cd my-ws && west update              # clones Zephyr + nano-ros (NOT submodules)
 
-# 2. nano-ros CLI + provisioning (RMW host daemon + transport submodules)
-#    The `nros` CLI ships in-tree at `packages/cli/` (Phase 218); build it once.
-( cd modules/nano-ros && git submodule update --init packages/cli && just setup-cli )
-. modules/nano-ros/activate.sh                              # puts nros on PATH
+# 2. The `nros` CLI — INSTALL it, do not build it out of `modules/nano-ros`.
+#    This is your workspace, not a nano-ros checkout: `nros` is a tool you
+#    install once per machine, like `west` itself. See the book's Install page.
+curl -fsSL https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/scripts/install.sh | sh
+export PATH="${NROS_HOME:-$HOME/.nros}/bin:$PATH"           # if it says to
+
+# 3. Provisioning (RMW host daemon + transport sources). Run these from the
+#    nano-ros module: `nros setup` reads its index and scripts from the
+#    nano-ros source tree, which `west update` has already placed there.
 ( cd modules/nano-ros && nros setup zephyr --rmw zenoh )   # zenohd + zenoh-pico + mbedtls
 ( cd modules/nano-ros && nros setup --source px4-rs )      # workspace cargo-load dep
 
-# 3. Zephyr SDK — nros setup does NOT provide it; install the SDK the standard
+# 4. Zephyr SDK — nros setup does NOT provide it; install the SDK the standard
 #    Zephyr way and point ZEPHYR_SDK_INSTALL_DIR at it (or register it):
 export ZEPHYR_SDK_INSTALL_DIR=/path/to/zephyr-sdk-0.16.8
 
-# 4. Patches into YOUR workspace (Zephyr 4.x: `west patch apply` instead)
+# 5. Patches into YOUR workspace (Zephyr 4.x: `west patch apply` instead)
 for p in nsos-recvmsg-patch native-sim-ipproto-ip-patch nsos-adapt-ipproto-ip-patch; do
     bash modules/nano-ros/scripts/zephyr/$p.sh "$PWD"
 done
 
-# 5. Build + run. The C codegen resolves std_msgs's .msg via NROS_STD_MSGS_DIR
+# 6. Build + run. The C codegen resolves std_msgs's .msg via NROS_STD_MSGS_DIR
 #    (a ROS install, or any dir with std_msgs/msg/*.msg). The app lives at
 #    nano-ros-app/app (the manifest repo's self.path), NOT ./app.
 export NROS_STD_MSGS_DIR=/opt/ros/humble/share/std_msgs
@@ -57,7 +62,17 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7456"];scouting/multicas
 
 `nros` on PATH is auto-resolved as the codegen tool. A real board (e.g.
 `qemu_cortex_a9`) swaps `-b`, the SDK target, and drops the native_sim overlay;
-see the book. **This exact flow is e2e-verified** (build → `Published: 1`).
+see the book.
+
+> **No nano-ros release has been cut yet**, so `install.sh` will tell you so and
+> point you at the book's
+> [Install](https://github.com/NEWSLabNTU/nano-ros/blob/main/book/src/getting-started/installation.md)
+> page. Until one exists, the way to obtain `nros` is a *separate* nano-ros
+> checkout with `./scripts/bootstrap.sh` — separate on purpose: a nano-ros
+> checkout's own build is only correct against that checkout (RFC-0090), and
+> `modules/nano-ros` is a west module of *your* workspace, not a development
+> tree. Building the CLI out of it is a contributor's workflow in a user's
+> project, and this template used to say to do exactly that.
 
 ## Notes
 

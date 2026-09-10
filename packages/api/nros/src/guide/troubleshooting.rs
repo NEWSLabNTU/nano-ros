@@ -27,12 +27,17 @@
 //! `z_publisher_put failed: -100` (`_Z_ERR_TRANSPORT_TX_FAILED`) followed
 //! by `-73` (`_Z_ERR_SESSION_CLOSED`).
 //!
-//! Build zenohd from the pinned submodule (`just build-zenohd`) or install
-//! the matching version.
+//! The router is the one ROS ships: `ros2 run rmw_zenoh_cpp rmw_zenohd`.
+//! nano-ros vendors none (RFC-0075), and the old `just build-zenohd` recipe
+//! was retired with the vendored copy.
 //!
 //! ## Build issues
 //!
-//! - **Submodule not found** — run `git submodule update --init --recursive`
+//! - **Submodule not found** — init that ONE submodule, scoped:
+//!   `git submodule update --init packages/rmw/zenoh/zpico-sys/zenoh-pico`.
+//!   Never `--recursive` on nano-ros — the transitive closure is large and
+//!   mostly irrelevant to any one task. `nros setup <board> --rmw zenoh`
+//!   provisions it for you, shallow, and is the preferred route.
 //! - **CMake cache stale** (changed env vars not taking effect) — run
 //!   `cargo clean -p zpico-sys` then rebuild
 //!

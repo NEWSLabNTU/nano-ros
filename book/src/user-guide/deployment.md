@@ -61,10 +61,18 @@ cmake -B build && cmake --build build   # C / C++ leaves
 For real hardware, deployment step becomes flash/load/monitor. For QEMU,
 deployment is launching simulator with correct network setup.
 
-There is no `nros deploy` / `nros build` / `nros run` verb — Phase 222
-removed those wrappers. `nros` is provisioner + codegen + metadata only;
-deployment runs on the **vendor's native tools**. The embedded deploy
-contract is a documented three-step sequence (per
+There is no `nros run`, no `nros flash` and no `nros deploy` verb, and none is
+planned: `nros build` ends at an artifact, and how that artifact is flashed or
+started is a property of the board and of your bench. Deployment runs on the
+**vendor's native tools**. See
+[What `nros build` Produces](build-artifacts.md) for where each target family's
+artifact lands and which of the vendor's commands takes it from there.
+
+(`nros build` itself *does* exist — RFC-0065 introduced it after Phase 222 had
+removed an earlier set of wrappers. It generates the root build file and the
+entry and hands off; it does not wrap running or flashing.)
+
+The embedded deploy contract is a documented three-step sequence (per
 [RFC-0003 §4](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0003-rtos-integration-pattern.md)):
 
 1. **Bake** — `nros codegen-system --bringup <pkg>` reads

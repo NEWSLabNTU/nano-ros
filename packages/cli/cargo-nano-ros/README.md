@@ -3,8 +3,11 @@
 Shared codegen library for [nano-ros](https://github.com/NEWSLabNTU/nano-ros) message generation. The canonical user CLI is `nros`, built from the `nros-cli` crate in this repo.
 
 > **Not published.** This crate is `publish = false`; there is no
-> `cargo install`. Build the CLI from a nano-ros checkout with `just setup-cli`,
-> then `source activate.sh` to put `nros` on `PATH`.
+> `cargo install`. To *use* nano-ros, install an `nros` release
+> (`scripts/install.sh`); to *develop* nano-ros, build the CLI from the checkout
+> with `./scripts/bootstrap.sh`, then `source activate.sh` to put `nros` on
+> `PATH`. See [`nros-cli/README.md`](../nros-cli/README.md) for why the two
+> paths are not interchangeable.
 
 ```bash
 nros generate-rust --force
