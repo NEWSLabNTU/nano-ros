@@ -20,22 +20,35 @@ Ordered so no step deletes a value before its new home exists: gitignoring
 `.cargo/` today would drop the only copy of 19 leaves' board triple and the
 esp32 stack budgets.
 
-- [ ] **W1 — `ZPICO_MAX_QUERYABLES` on the cargo road (RFC-0098 D7).** No open
-  issue or PR wires it (checked 2026-09-10; #779 covers `MAX_NODES` and the
-  take buffer only). The CMake road already completes the count with
-  `NROS_DECLARED_INFRA_QUERYABLES` from `nros ws entity-facts`; the cargo
-  sidecar (`leaf_entity_env.rs`) withholds the knob as
-  `NOT_DERIVED_NEEDS_INFRA_COUNT`. The consumer already computes the count
-  from `NROS_DECLARED_SERVICE_SERVERS` + `NROS_DECLARED_INFRA_QUERYABLES`
-  (`nros-zpico-build/src/runner.rs`), so the sidecar CARRIES those two facts
-  from `entity_facts::facts_from_model` wherever the leaf has a model — it
-  never states `ZPICO_MAX_QUERYABLES` itself (the consumer owns the cost,
-  issue 0460). A leaf without a model keeps the withholding. Acceptance: a
-  plain `cargo build` of a workspace entry leaf, with no `NROS_DECLARED_*` in
-  the process environment, yields the same shim constant the fixture lane
-  gets by exporting them; `check-declared-fact-carriers` names the facts on the
-  sidecar road. (A single-package leaf has no model until W3 — its hand-set
-  `ZPICO_MAX_QUERYABLES`, e.g. the esp32 talker's `2`, is removed THERE.)
+- [ ] **W1 — `ZPICO_MAX_QUERYABLES` on the cargo road (RFC-0098 D7). Folded
+  into W3; one question left open.** No open issue or PR wires it (checked
+  2026-09-10; #779 covers `MAX_NODES` and the take buffer only). The consumer
+  already computes the count from `NROS_DECLARED_SERVICE_SERVERS` +
+  `NROS_DECLARED_INFRA_QUERYABLES` + `NROS_DECLARED_NODES`
+  (`nros-zpico-build/src/runner.rs`); the facts come from
+  `entity_facts::facts_from_model`. So the cargo road only has to CARRY those
+  facts, never state the count (issue 0460). Where it can carry them was
+  measured, and it is narrower than the first draft said:
+  - **Single-package leaf** — it is its own patch authority, so the `[env]`
+    sidecar `nros sync` writes is its own. With a model (W3) the sidecar
+    carries the facts and `NOT_DERIVED_NEEDS_INFRA_COUNT` goes. This is done
+    IN W3, and the esp32 leaves' hand-set `ZPICO_MAX_QUERYABLES` goes with it.
+  - **Workspace member — OPEN.** `find_patch_authority` walks to the cargo
+    workspace root, so a member's sidecar is the ROOT's, shared by every image
+    in the workspace (`native`, `esp32`, `freertos`, each with its own launch
+    file and model); and cargo reads `.cargo/` from the invocation's CWD, not
+    per package. Per-image facts therefore cannot live in one `[env]`. Today
+    they reach cargo as PROCESS env, one invocation per image — `nros build`
+    and `workspace-fixtures-build.sh` both do this. A plain `cargo build -p
+    <entry>` from the root gets the consumer's safe fallback (both families
+    assumed, plus headroom), which `nros build`'s own comment measured as a
+    DRAM overflow of 8,804 B on `esp32_entry`. Two candidate answers, not yet
+    chosen: (a) the facts go in the ENTRY's own `.cargo/` beside its board
+    projection, valid when cargo runs from the entry directory — the same
+    condition its `[build] target` already needs; (b) a multi-image workspace
+    is built by `nros build`, and RFC-0098 D2's "any build command" applies to
+    single-package leaves. The fixture lane builds from the workspace root with
+    an explicit `--target` today, so it reads neither.
 - [ ] **W2 — complete the board descriptors (D4).** `[build] target` in every
   descriptor whose board has a Rust triple (mps2 first — the 19 hand-written
   leaves); `CC_<triple>`/`CFLAGS_<triple>` from the workspace configs; the
