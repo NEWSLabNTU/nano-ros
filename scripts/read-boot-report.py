@@ -280,6 +280,13 @@ def report(rec: dict[str, int]) -> int:
             f"  set NROS_EXECUTOR_ARENA_SIZE >= {cap + rec['failed_alloc_shortfall']}\n"
             "  (Zephyr: CONFIG_NROS_EXECUTOR_ARENA_SIZE)\n"
             "\n"
+            "  or, if a subscription was created deeper than the QoS depth the\n"
+            "  arena was budgeted for, raise NROS_PUBSUB_QOS_DEPTH instead\n"
+            "  (Zephyr: CONFIG_NROS_PUBSUB_QOS_DEPTH). The arena is re-derived\n"
+            "  from the depth, so it cannot go stale the way a hand-set size does.\n"
+            "  The console line (`arena exhausted at ...`) names the entity and\n"
+            "  the depth the image budgeted.\n"
+            "\n"
             "That is the FIRST failure, which is the one that explains the boot;\n"
             "later allocations may also have failed as a consequence."
         )

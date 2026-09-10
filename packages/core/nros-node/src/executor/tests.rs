@@ -3732,6 +3732,44 @@ fn an_exhausted_arena_decodes_to_the_knob_an_operator_must_set() {
         "the exhaustion line overflowed nros_log's format buffer and was \
          truncated, so its actionable half never reached the sink: {exhausted}"
     );
+    // The #775 residue. The derived arena prices every subscription at the
+    // budgeted QoS depth (phase-412 W3b), so a subscription deeper than it is
+    // the ordinary way a derived arena runs out, and the line named neither the
+    // knob nor the depth to compare against -- nor which entity ran out.
+    let depth = crate::config::arena_model::BUDGETED_QOS_DEPTH;
+    let budgeted = alloc::format!("NROS_PUBSUB_QOS_DEPTH (budgeted {depth})");
+    assert!(
+        exhausted.contains(&budgeted),
+        "the exhaustion line must name the depth knob AND the depth this image \
+         budgeted (`{budgeted}`): {exhausted}"
+    );
+    assert!(
+        exhausted.contains("arena exhausted at u8:"),
+        "the exhaustion line must name the entity that ran out (`u8` here, the \
+         type this test allocated): {exhausted}"
+    );
+    // The WIDEST line, derived from this one rather than from a second copy of
+    // the format string: every value swapped for its widest realistic width
+    // (10-digit counts, a 5-digit depth, a 32-byte entity -- `entity_label`'s
+    // cap). A line that fits here with room to spare can still truncate on a
+    // board whose numbers are wider, which is how the first advisory was cut.
+    let width = |n: u64| alloc::string::ToString::to_string(&n).len();
+    // The `want` the line printed is the shortfall the record took.
+    let shortfall = u64::from(crate::boot_report::snapshot().failed_alloc_shortfall);
+    let widest = exhausted.len() - "u8".len() + 32
+        - width(shortfall)
+        - width(executor.arena_used() as u64)
+        - width(capacity as u64)
+        - width(u64::from(depth))
+        + 3 * 10
+        + 5;
+    assert!(
+        widest <= nros_log::format_buffer_capacity(),
+        "at its widest the exhaustion line is {widest} bytes, past nros_log's \
+         {}-byte format buffer; it would truncate on a board with larger \
+         numbers: {exhausted}",
+        nros_log::format_buffer_capacity()
+    );
 
     // ---- channel 2: the record, read as BYTES and decoded by the script ---
     let snap = crate::boot_report::snapshot();
