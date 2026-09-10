@@ -15,8 +15,10 @@ kernel of the **main checkout** instead: `/home/aeon/repos/nano-ros/third-party/
 went from `CONFIG_ARCH_BOARD="qemu-armv7a"` to `"rv-virt"`, with its `.config`,
 `include/nuttx/config.h` and `nuttx` binary rewritten at 01:11:18. Nothing in
 the worktree's own `third-party/nuttx` was touched, and nothing said so. The
-main checkout was restored with `just nuttx build` (`build-nuttx.sh` sees the
-board mismatch and reconfigures).
+tree does NOT restore itself: `just nuttx build` in the main checkout exited 0
+and left it at `CONFIG_ARCH_BOARD="rv-virt"` with the 01:11 kernel binary
+(measured), so the next ARM build there starts from the wrong board's config
+unless something reconfigures it.
 
 ## Why
 
