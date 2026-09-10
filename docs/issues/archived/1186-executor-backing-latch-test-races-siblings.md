@@ -1,11 +1,12 @@
 ---
 id: 1186
 title: "`the_static_is_handed_out_once_and_only_once` reads a latch its sibling tests have already claimed"
-status: open
+status: resolved
 type: bug
 area: core, testing
 severity: medium
 found: 2026-09-07
+resolved: 2026-09-07
 related: [1145]
 ---
 
@@ -64,3 +65,22 @@ vacuous test the doc-comment is trying to avoid. Either give this test its own
 process (a `#[test]` in a dedicated integration binary, or a nextest
 `test-group` of one), or make the latch injectable so the test drives its own
 instance and the process-global one is exercised once, deliberately.
+
+## Resolution
+
+Fixed by `605d667eb` ("fix(#1183, #1186): the backing latch test needs a virgin
+process") — the "own process" shape above, without making the latch injectable:
+the test is `#[ignore]`d with its reason in the attribute
+(`packages/core/nros-node/src/executor/backing.rs:237-240`) and `node-std-tests`
+runs it in a dedicated cargo invocation, guarded by `ran_tests` so a renamed
+filter fails instead of running nothing (`just/check/lanes.just:1707-1710`).
+Issue 1183 is the same defect, filed independently.
+
+Re-measured on `origin/main` 2026-09-11, features `std,sim-time,param-services`:
+isolated 5/5 `1 passed`; full `--lib` suite 439 passed, 0 failed, 2 ignored;
+negative control (`--include-ignored`, i.e. back in the shared process) still
+fails at `backing.rs:247`, 2/2 — so it is the isolation, not a changed
+scheduler, that keeps it green.
+
+The "Why it stayed" half is closed separately: `node-std-tests` now runs in the
+`check` job on `pull_request`, not only in schedule-only `check-build`.
