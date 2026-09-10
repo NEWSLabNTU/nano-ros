@@ -994,6 +994,45 @@ def misdeclared_refusals(ledger, lang, rows):
     return sorted(out)
 
 
+def stale_gaps(ledger, lang, rows):
+    """`gap` rows whose subject now CORRELATES and that carry no disposition.
+
+    phase-444 truth pass (2026-09-11). A `gap` says "ROS 2 has it and we do
+    not", so it is written against a `theirs-only` key -- and when someone
+    ships the name, the key moves to `same` (or to `systematic`, where a rule
+    explains the shape) and the row silently stops being true. Nothing asked:
+    a `same` row needs no ledger entry, so `--check` never looks at the one it
+    has. Measured before this gate existed: 18 such rows, every one of them a
+    closed gap still counted in the campaign's work queue (`c:timer_is_ready`,
+    `cpp:FutureReturnCode`, the four C++ parameter methods, ...).
+
+    The DISPOSITION is what separates the two kinds of `gap` that can sit on a
+    corresponding key. phase-428's sweep deliberately filed BEHAVIOUR defects
+    as `gap` on names we share with upstream -- `c:executor_spin_some` compiles
+    and returns TIMEOUT where rclc returns OK -- and every one of those carries
+    the disposition RFC-0089 asks of a same-shaped difference. A `gap` on a
+    corresponding key with no disposition is the other kind: an absence that
+    is no longer absent. Delete the row, or say what behaviour is still owed
+    and give it a disposition.
+
+    Keyed on the NATIVE bucket when the row has one: a subject that correlates
+    only through the compat shim is not closed on our own surface, and several
+    rows argued exactly that before phase-427 merged the two.
+    """
+    out = set()
+    for r in rows:
+        bucket = r.get("native_bucket") or r.get("bucket")
+        if bucket not in ("same", "systematic"):
+            continue
+        entry = ledger.get(ledger_key(lang, r["key"]))
+        if entry is None or entry.get("verdict") != "gap":
+            continue
+        if entry.get("disposition"):
+            continue
+        out.add(ledger_key(lang, r["key"]))
+    return sorted(out)
+
+
 # The C++ refusal messages. Every `static_assert(detail::refuse<...>, MSG)`
 # names one of these, so the macro list IS the list of refusal concepts, and
 # it can be read with a regex where the sites themselves cannot (a site is an
@@ -1245,6 +1284,7 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
     misfiled = []
     same_shaped = []
     misdeclared = []
+    stale = []
     with tempfile.TemporaryDirectory() as tmpdir:
         for lang in langs:
             rows, prov, removed = run_lang(lang, tmpdir, include_internal)
@@ -1267,6 +1307,8 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
             # phase-428 Q1: a refusal is a declaration, so a refuse-loud
             # subject must be on OUR side of the correlation.
             misdeclared.extend(misdeclared_refusals(ledger, lang, rows))
+            # phase-444: a `gap` whose subject now correlates is a closed gap.
+            stale.extend(stale_gaps(ledger, lang, rows))
 
             print("\n=== %s vs %s ===" % (lang, prov.get("package", "?")))
             if prov:
@@ -1401,6 +1443,19 @@ def report(langs, show, check, suggest, include_internal, grep=None, topic=None,
             for key, was, want in misfiled:
                 print("  %s  is in %s.json, belongs in %s.json" % (key, was, want),
                       file=sys.stderr)
+            return 1
+        closed = sorted(set(stale))
+        if closed:
+            print(
+                "\n%d `gap` ledger row(s) name a subject that now CORRELATES (same or "
+                "systematic) and carry no disposition. A gap says ROS 2 has it and we "
+                "do not; this one shipped. Delete the row -- or, if a BEHAVIOUR is "
+                "still owed under the shared name, say what it is and add "
+                "`\"disposition\"` (one of: %s):" % (len(closed), ", ".join(DISPOSITIONS)),
+                file=sys.stderr,
+            )
+            for key in closed:
+                print("  " + key, file=sys.stderr)
             return 1
         if require_disposition:
             missing = undisposed(ledger)
@@ -2158,6 +2213,31 @@ def self_test():
               "cpp", [{"key": "V", "bucket": "theirs-only"},
                       {"key": "V::m", "bucket": "theirs-only"}]),
           ["cpp:V", "cpp:V::m"])
+
+    # phase-444: a `gap` on a subject that now correlates is a closed gap,
+    # unless it carries a disposition (phase-428's behaviour findings do).
+    #   G  gap, same, no disposition           -> MUST be reported
+    #   Y  gap, systematic, no disposition     -> MUST be reported
+    #   B  gap, same, disposition adopt        -> must NOT be (behaviour owed)
+    #   T  gap, theirs-only                    -> must NOT be (still a gap)
+    #   N  gap, theirs-only natively, same only through the shim -> must NOT be
+    #   D  divergence, same                    -> must NOT be (not a gap)
+    gled_stale = {
+        "c:G": {"verdict": "gap", "why": "x"},
+        "c:Y": {"verdict": "gap", "why": "x"},
+        "c:B": {"verdict": "gap", "why": "x", "disposition": "adopt"},
+        "c:T": {"verdict": "gap", "why": "x"},
+        "c:N": {"verdict": "gap", "why": "x"},
+        "c:D": {"verdict": "divergence", "why": "x"},
+    }
+    grows_stale = [{"key": "G", "bucket": "same"},
+                   {"key": "Y", "bucket": "systematic"},
+                   {"key": "B", "bucket": "same"},
+                   {"key": "T", "bucket": "theirs-only"},
+                   {"key": "N", "bucket": "same", "native_bucket": "theirs-only"},
+                   {"key": "D", "bucket": "same"}]
+    check("a gap on a correlating subject with no disposition is a closed gap",
+          stale_gaps(gled_stale, "c", grows_stale), ["c:G", "c:Y"])
 
     # The inverse: every refusal MESSAGE the headers define must be cited by
     # some row, whatever its disposition. Planted both ways, and the reader

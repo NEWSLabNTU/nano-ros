@@ -72,15 +72,6 @@
       "pair": "c:clock_is_valid"
     }
   },
-  "c:difference_times": {
-    "verdict": "gap",
-    "why": "rcl's `rcl_difference_times(const rcl_time_point_t *start, const rcl_time_point_t *finish, rcl_duration_t *delta)` -- **Time - Time -> Duration** (`docs/reference/api-surface/rclc.json`). CORRECTED 2026-08-26 (phase-379 W5, group B): the previous text read \"Same operation\", pairing this with `nros_time_sub` on the grounds that `sub` matches `nros_time_add`. It is NOT the same operation. `nros_time_sub(nros_time_t time, nros_duration_t duration) -> nros_time_t` (`packages/api/nros-c/src/clock.rs:530`, `nros_generated.h:3130`) is **Time - Duration -> Time** -- different operands, different return type, different meaning. Renaming it would have put rcl's name on a function that computes something else, which is why the row could argue for our spelling and call itself a rename at the same time: there was never a rename to make. Contrast `c:clock_valid`, where the operation IS identical and only the spelling differs, so `the drop-in claim is about matching, not about being right` decides it. That clause is absent here because it does not apply. So this is a theirs-only operation our C does not ship at all: a gap. And it is the `our languages disagree` shape of issues 0788 / 0789 rather than a naming question -- C++ ships it as `Time::operator-(const Time&) -> Duration` (`packages/api/nros-cpp/include/nros/time.hpp:85`) and Rust as `impl Sub<Time> for Time { type Output = Duration }` (`packages/core/nros-core/src/time.rs:118`); only C has no way to get a duration out of two timestamps. No target name is proposed: filling a gap is an ADDITION, and what to call the addition is the addition's decision, not this row's.",
-    "rename": {
-      "status": "resolved",
-      "resolution": "RE-VERDICTED rename -> gap. The two functions are different operations (Time-Time->Duration vs Time-Duration->Time), so the rename premise was false and no target name is needed. C lacks the operation that C++ (time.hpp:85) and Rust (time.rs:118) both ship.",
-      "category": "B"
-    }
-  },
   "c:duration_from_nanoseconds": {
     "verdict": "extension",
     "why": "the duration half of `c:time_from_nanoseconds` -- the same `{sec, nanosec}` split, on `nros_duration_t`. rcl's duration is a bare signed nanosecond count (`c:duration_value_t`) so it needs no constructor; ours is the wire struct, and a SIGNED span has to floor rather than truncate (issue 0799). Its absence is what made the C++ `Duration::to_msg` open-code the split."
@@ -247,10 +238,6 @@
     "verdict": "divergence",
     "why": "rcl writes the period through an `int64_t*` and returns a status; ours returns it. Same inversion as `c:clock_get_now_ns`, and the same reason: reading a valid timer's own period cannot fail. This is one of the eight C rows the first report could not explain, and it is explained by the same decision as the clock read rather than by anything specific to timers."
   },
-  "c:timer_get_time_since_last_call": {
-    "verdict": "gap",
-    "why": "Rust has `Timer::time_since_last_call`; C does not. See `c:timer_get_next_call_time`."
-  },
   "c:timer_get_time_until_next_call": {
     "verdict": "gap",
     "disposition": "adopt",
@@ -269,14 +256,6 @@
     "verdict": "declined",
     "disposition": "adopt",
     "why": "rclc's default wrapper; `nros_timer_init` IS the default form. See `c:publisher_init_default`."
-  },
-  "c:timer_is_canceled": {
-    "verdict": "gap",
-    "why": "our C timer has no cancel predicate at all -- neither spelling. C++ and Rust both have one. Phase 379 W3."
-  },
-  "c:timer_is_ready": {
-    "verdict": "gap",
-    "why": "Rust has `Timer::is_ready`; C does not. See `c:timer_get_next_call_time`."
   },
   "c:timer_is_valid": {
     "verdict": "extension",
@@ -334,10 +313,6 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "rclcpp blocks the calling thread until the first `/clock` message arrives. RFC-0021 forbids a blocking helper that does not drive the executor -- a wait that spins nothing stops the transport for as long as the simulator takes to publish, and on a single-threaded executor that is forever. The predicate it waits on IS available (`Clock::started`, issue 0789): a node polls it from a timer, or simply publishes once time is non-zero."
-  },
-  "cpp:ClockQoS::ClockQoS": {
-    "verdict": "gap",
-    "why": "rclcpp gives each QoS preset its own type; ours are named constructors on one `QoS` -- but C++ ships only THREE (`default_profile`, `sensor_data`, `services`, qos.hpp:175-181) and no clock preset under any name, while our Rust `QoSProfile` has twelve including `clock_default`. So this is not the preset-as-a-type divergence recorded for `cpp:ServicesQoS::ServicesQoS`; it is a preset our own Rust publishes the clock on and our C++ cannot spell. The qos stage owns the family. Phase 379 W3. COLLAPSE CHECK 2026-09-04 (phase-417): the preset now ships as a type on the ported surface (`rclcpp::ClockQoS`, phase-417 W3.f, ADOPT), so this correlates `same` there. The row survives because `--check` gates the NATIVE bucket, where this is still `theirs-only`: `nros::QoS` still has no clock preset. See `cpp:ClockQoS`."
   },
   "cpp:Context::interrupt_all_sleep_for": {
     "verdict": "declined",
@@ -1268,14 +1243,14 @@
     "why": "phase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. W2 F11, the header-confirmed half.\n\nUPSTREAM'S CONTRACT, verbatim from `rcl/timer.h`: \"A timer that is already invalid (zero initialized) or `NULL` will not fail.\" Both of the values we return are ones upstream promises never to return.\n\nOURS (`packages/api/nros-c/src/timer.rs:236`): NULL -> `NROS_RET_INVALID_ARGUMENT`; a second `fini` (state UNINITIALIZED or SHUTDOWN) -> `NROS_RET_NOT_INIT`.\n\nHOW A USER FINDS OUT: RUNTIME ERROR on a path upstream defines as success. A ported cleanup that checks the return — which `RCL_WARN_UNUSED` asks it to — reports a failure at shutdown that did not happen. Nothing about a fixed arena forbids accepting the idempotent call, so the disposition is ADOPT. See `c:guard_condition_fini`. Re-verified by hand against the current worktree before this row was written."
   },
   "cpp:Timer::cancel": {
-    "verdict": "gap",
     "disposition": "adopt",
-    "why": "phase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. W3 F15 — \"`rclcpp::TimerBase` adopts the name and none of the methods\" — plus a widening the finding did not name. Two separable halves.\n\n(1) THE ADOPTED NAME IS EMPTY. Our `rclcpp::TimerBase` (`packages/api/nros-cpp/include/nros/timer.hpp:232`) is three `shared_ptr` aliases and a virtual destructor — ZERO methods — where upstream's carries `cancel`, `is_canceled`, `reset`, `time_until_trigger`, `is_steady` and `is_ready`. `rclcpp::Node::create_wall_timer` hands back a `shared_ptr<TimerBase>`, so the ported `timer_->cancel()` is a COMPILE ERROR: \"no member named 'cancel'\". Loud, and therefore permitted by the letter of the rule — but there is NO FIX WITHIN THE ADOPTED API, which is what makes it a finding. (Not literally impossible: `rclcpp::detail::WallTimer` is a public class with a public `::nros::Timer timer;` member, so `std::static_pointer_cast<rclcpp::detail::WallTimer>(timer_)->timer.cancel()` compiles. That is a reach into `detail`, not an API.)\n\n(2) WHERE THE METHOD DOES EXIST, IT IS WIDENED. `nros::Timer::cancel` (`packages/api/nros-cpp/include/nros/timer.hpp:77`) returns `Result` where upstream returns `void`; same for `reset`. RFC-0018 forces an error channel, and `Result` is `[[nodiscard]]` (`packages/api/nros-cpp/include/nros/result.hpp:110`), so the discarded statement now warns — the widening is LOUD and this half is closed. `is_canceled` matches upstream exactly.\n\nDisposition ADOPT: the three methods exist on `nros::Timer` and forwarding them onto the adopted base is a spelling, not a second implementation (RFC-0089, \"who implements an adopted name\"). `time_until_trigger` and `is_ready` are already separate `gap` rows. RFC-0089 also decided (2026-09-05) that a compat class carrying a name and none of its surface should not exist at all — the alternative disposition is to delete `rclcpp::TimerBase` rather than fill it, and that decision belongs to the stage-6 rename, not here. Re-verified by hand against the current worktree before this row was written."
+    "verdict": "divergence",
+    "why": "`rclcpp::TimerBase` is now an ALIAS of `::nros::Timer` (`packages/api/nros-cpp/include/nros/timer.hpp:294`; phase-430 W7 deleted the empty base class this row was filed against), so a ported `timer_->cancel()` compiles and reaches the real method. What remains is the widening: `Result` where upstream returns `void`. RFC-0018 forces an error channel and `Result` is `[[nodiscard]]`, so a discarded call warns — loud. Re-verdicted gap -> divergence by the phase-444 ledger truth pass (2026-09-11)."
   },
   "cpp:Timer::reset": {
-    "verdict": "gap",
     "disposition": "adopt",
-    "why": "phase-428 W5 (2026-09-06) — ledgering a recorded sweep finding. The `reset` half of `cpp:Timer::cancel`: absent from our `rclcpp::TimerBase` (compile error on a ported `timer_->reset()`, with no fix inside the adopted API), and widened `void` -> `Result` on `nros::Timer` (`packages/api/nros-cpp/include/nros/timer.hpp:84`) — loud since `Result` became `[[nodiscard]]`. See that row."
+    "verdict": "divergence",
+    "why": "The `reset` half of `cpp:Timer::cancel`: reachable through `rclcpp::TimerBase` now that it aliases `::nros::Timer`, widened `void` -> `Result` (`[[nodiscard]]`, loud). Re-verdicted gap -> divergence by the phase-444 ledger truth pass (2026-09-11)."
   },
   "cpp:NodeWithTimers::create_timer_in_group": {
     "verdict": "extension",

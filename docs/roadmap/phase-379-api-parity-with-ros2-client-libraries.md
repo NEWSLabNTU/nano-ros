@@ -1,5 +1,10 @@
 # Phase 379 — the user API is rclc / rclcpp / rclrs, and something checks that
 
+**Superseded count (2026-09-11).** The gap numbers below are before a truth pass
+that found 20 closed gaps still in the queue: **149 `gap` rows now**, C 53,
+C++ 61, Rust 35. The pass, the stale-gap gate it added, and the grouped fix-up
+list live in [phase-444](phase-444-rmw-fix-up.md) § "The ROS 2 gap list".
+
 **Status (2026-09-06). Re-measured, and a sixth verdict exists.** The ledger
 now carries **2514 classified rows**: `divergence` 831, `extension` 781,
 `declined` 696, **`gap` 158**, `rename` 41, `their-rename` 7. The correlator's

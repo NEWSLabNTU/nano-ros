@@ -443,9 +443,9 @@
     "why": "OUR LANGUAGES DISAGREE: C has `nros_lifecycle_register_on_*` and `nros_executor_lifecycle_register_on_*`, Rust has `LifecyclePollingNode::register_on_*` and `LifecycleCallbacks`, and C++ exposes only the virtual overrides -- even though `nros::LifecycleNode::register_services()` already CALLS `nros_cpp_lifecycle_register_on_shutdown` internally. rclcpp lets a user register a transition callback instead of subclassing; the capability is present one layer down here and simply not surfaced, and nothing platform-shaped is in the way -- a `bool(*)(void*)`-style overload costs nothing on a freestanding target. Phase 379 W3."
   },
   "cpp:LifecycleNode::shutdown": {
-    "verdict": "gap",
     "disposition": "adopt",
-    "why": "phase-428 W6 remainder (2026-09-06) — ledgered because the correlator's return-type comparison became a VERDICT. `Result` where `rclcpp_lifecycle::LifecycleNode::shutdown()` returns `const State &` — the shared widening argued at `cpp:LifecycleNode::configure`. Filed as `gap` rather than `divergence` because this one has a SECOND defect that is not about the return type at all and is already recorded: `lifecycle.hpp:164` hardcodes transition id 5 (ShutdownUnconfigured), whose only legal source state is Unconfigured, so it cannot shut down an Inactive or Active node. That half belongs to `cpp:LifecycleNode::trigger_transition` / issue 1099; this row exists so the return-type gate does not read as answered when the method is not."
+    "verdict": "divergence",
+    "why": "`Result` where `rclcpp_lifecycle::LifecycleNode::shutdown()` returns `const State &` — the shared widening argued at `cpp:LifecycleNode::configure`, loud because a ported `auto & s = node->shutdown();` does not compile. The SECOND defect this row used to carry is FIXED: `shutdown()` no longer sends transition id 5 unconditionally, it picks the legal shutdown transition for the current state (`packages/api/nros-cpp/include/nros/lifecycle.hpp`, the helper documented at :92-100). Re-verdicted gap -> divergence by the phase-444 ledger truth pass (2026-09-11)."
   },
   "cpp:LifecyclePublisher": {
     "verdict": "gap",

@@ -13,13 +13,9 @@
     "verdict": "declined",
     "why": "rcl's free-function spelling of the above; ours is `nros_node_get_zero_initialized`, a method-style name on the type. The idiom is kept, the spelling follows our own convention."
   },
-  "c:node_get_domain_id": {
-    "verdict": "gap",
-    "why": "the domain is an input to `nros_support_init` and cannot be read back from a node. On a device the value came from the boot ladder (explicit / hosted env / baked), so which domain actually won is genuinely not obvious to the code that wants to log it. Phase 379 W3."
-  },
   "c:node_get_fully_qualified_name": {
-    "verdict": "gap",
-    "why": "namespace + name as one string. We expose `nros_node_get_name` and `nros_node_get_namespace` separately and never their composition, which is the form that matches what appears on the wire. Phase 379 W3."
+    "verdict": "divergence",
+    "why": "SHIPPED (PR #567) as `nros_node_get_fully_qualified_name(node, char *buf, size_t buf_len, size_t *out_len)` (`packages/api/nros-c/src/node.rs:683`). rcl returns a `const char *`, which it can only do by STORING the joined string; with no allocator that is a per-node `MAX_NAME_LEN + MAX_NAMESPACE_LEN` cache holding what two fields already hold, so the caller supplies the buffer. A ported call is a COMPILE ERROR, which is what the rule asks for. Re-verdicted gap -> divergence by the phase-444 ledger truth pass (2026-09-11)."
   },
   "c:node_get_graph_guard_condition": {
     "verdict": "gap",
@@ -87,10 +83,6 @@
     "verdict": "divergence",
     "why": "`rcl_node_options_t` is built, COPIED and FINALISED before `rcl_node_init` consumes it; that lifecycle is what collapses here. Ours (`nros_node_options_t`, `nros_generated.h:1972-2011`) is plain inline storage with no pointer fields, so it is stack-allocatable and memcpy-able and there is nothing to copy or free -- the same collapse `c:init_options_*` records one stage over. CORRECTED 2026-09-04 (phase-417): this row said domain, arguments and the rosout toggle are build-time decisions and that there is no options object at all. `nros_node_options_t` ships, correlates `same`, and carries a RUNTIME `domain_id_override` alongside per-node `rmw_name`, `locator`, `namespace_` and `sched_context_id`. What rcl has and we do not is the copy/fini lifecycle, not the type."
   },
-  "c:node_resolve_name": {
-    "verdict": "gap",
-    "why": "expands a relative topic name against the node's namespace and remap rules. Ours are resolved at codegen/launch time (RFC-0046), so a C caller passing a runtime-built name has no way to ask what it will become. Real for anyone constructing topic names dynamically. Phase 379 W3."
-  },
   "c:node_state_t": {
     "verdict": "extension",
     "why": "an explicit node lifecycle (uninitialised / initialised / finalised) so double-init and use-after-fini return a code instead of being undefined. See `c:support_state_t`."
@@ -127,8 +119,8 @@
     "why": "see `cpp:Node::create_sub_node` -- with no sub-nodes, the effective namespace IS `get_namespace()`."
   },
   "cpp:Node::get_fully_qualified_name": {
-    "verdict": "gap",
-    "why": "see `c:node_get_fully_qualified_name` -- same gap, C++ side."
+    "verdict": "divergence",
+    "why": "SHIPPED as `Result get_fully_qualified_name(char* buf, size_t buf_len, size_t* out_len = nullptr) const` (`packages/api/nros-cpp/include/nros/node.hpp:680`). Same constraint as `c:node_get_fully_qualified_name`: upstream returns a `const char *` into storage it owns, and a caller buffer is the no-allocator form. A ported call is a COMPILE ERROR. Re-verdicted gap -> divergence by the phase-444 ledger truth pass (2026-09-11)."
   },
   "cpp:Node::get_node_base_interface": {
     "bucket": "theirs-only",
