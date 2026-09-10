@@ -354,6 +354,7 @@ if [ "$DO_RUN" -eq 1 ]; then
         -v "nros-runner-nros:/home/runner/.nros" \
         -v "nros-runner-rustup:/home/runner/.rustup" \
         -v "nros-runner-local:/home/runner/.local" \
+        -v "nros-runner-cmake:/home/runner/.cmake" \
         -v "nros-runner-src:/home/runner/src" \
         -e NROS_RUNNER_LABELS="$LABELS" \
         -e GH_REPO="${GH_REPO:-NEWSLabNTU/nano-ros}" \
