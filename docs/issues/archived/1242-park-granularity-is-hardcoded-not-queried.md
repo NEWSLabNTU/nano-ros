@@ -1,9 +1,11 @@
 ---
 id: 1242
 title: "`park_granularity_us()` is a hardcoded 1 ms — wrong high on ThreadX, wrong low on POSIX, and never asks the primitive"
-status: open
+status: resolved
 type: bug
 area: executor
+resolved: 2026-09-10
+resolved_in: "78569eb66 fix(#1242): the park granularity comes from the primitive, not a constant"
 related: [issue-1193, issue-1194, phase-436]
 ---
 
@@ -92,3 +94,34 @@ same time, which is the whole point.
 
 Found by parallel port surveys during phase-436 W6, verified against the
 sources cited above rather than inferred from the ABI.
+
+## Resolution
+
+Resolved by `78569eb66` (2026-09-10); verified against `main` on 2026-09-11.
+Fix-direction items 1 and 2 hold; item 3 was never this issue's to close.
+
+1. **The granularity is the primitive's.** `set_park_primitive(park, ctx,
+   granularity_us)` stores what the port declares
+   (`packages/core/nros-node/src/executor/spin.rs:2546-2554`), and
+   `park_granularity_us()` returns it, falling back to 1 ms only when nothing
+   is installed (`spin.rs:2685-2691`) — the honest floor of the `wake_wait_ms`
+   ABI. No hardcoded `1_000` remains outside that fallback.
+2. **Each port states its tick.** ThreadX derives it from
+   `TX_TIMER_TICKS_PER_SECOND` — 10 ms on both shipped boards
+   (`packages/platform/nros-platform-threadx/src/platform.c:811-815`); Zephyr
+   from `CONFIG_SYS_CLOCK_TICKS_PER_SEC` (`nros-platform-zephyr/src/platform.c:1096`).
+   The board entries hand it to the executor
+   (`nros-board-threadx/src/entry.rs:115`, `nros-board-zephyr/src/entry_tiers.rs:111`,
+   `nros-board-zephyr/c/zephyr_run_tiers.c:199`).
+3. **POSIX / NuttX / FreeRTOS** install no `ParkUntilFn`, so they report the
+   1 ms fallback, which is exactly what their `uint32_t timeout_ms` primitive
+   delivers — no longer an over- or under-claim. Their sub-millisecond park
+   needs the ABI unit change this issue named as a precondition, and that is
+   issue 1193's `wake_wait_us` slot (still open), not a residue here. The cffi
+   shim deliberately forwards neither optional symbol
+   (`nros-platform-cffi/src/lib.rs:416-427`).
+
+Tests from the fix commit, in `executor/tests.rs`: fallback with no primitive
+(`:2085`), a coarser 10 ms port honoured (`:2099`), a finer 1 µs port honoured
+(`:2118`), and the jitter granularity following the port rather than the
+constant (`:2130`).

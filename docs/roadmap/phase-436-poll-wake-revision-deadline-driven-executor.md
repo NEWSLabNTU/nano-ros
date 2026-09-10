@@ -420,7 +420,7 @@ Each is a filed issue; the issue holds the evidence.
     insertion that anchors on the `pub fn` line and walks back past attributes
     without knowing doc comments are attributes.
 
-  * **W7.b — [issue 1242](../issues/1242-park-granularity-is-hardcoded-not-queried.md).
+  * **W7.b — [issue 1242](../issues/archived/1242-park-granularity-is-hardcoded-not-queried.md).
     DONE.** `park_granularity_us()` now reports what the INSTALLED primitive
     declares (`park_granularity_declared_us`), and the port states it because
     only the port knows: ThreadX's 100 Hz tick is 10 ms, coarser than the ABI
