@@ -5,7 +5,7 @@ title: "`the_static_is_handed_out_once_and_only_once` fails IN SUITE and passes
 status: open
 type: bug
 area: [core, testing]
-related: [0417, 1171, phase-392]
+related: [1171, phase-392]
 ---
 
 ## What

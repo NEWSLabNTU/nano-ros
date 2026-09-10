@@ -5,7 +5,7 @@ status: open
 type: bug
 area: ci, c
 severity: high
-related: [1040, 1059, 1080, 1102, 1162, 0417, RFC-0061]
+related: [1040, 1059, 1102, 1162, RFC-0061]
 found: 2026-09-06
 ---
 
@@ -57,7 +57,7 @@ feature shape the lanes compile). This issue is the CI gate.
   since phase-396 — it needs artifacts no merge-gating job builds.
 - `test-unit` on `merge_group` compiles the workspace under default features;
   same blind spot one lane later.
-- Issue 1080 / #1102 closed the `--no-default-features` half of this class on
+- `b9450327d` + `92849933d` / #1102 closed the `--no-default-features` half of this class on
   the batch lane for `nros-node`. This is the other direction — a crate whose
   default (`panic-platform`) compiles almost nothing of its surface, and
   whose shipped shape is a specific positive feature set that every consumer

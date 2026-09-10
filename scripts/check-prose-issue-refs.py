@@ -206,8 +206,8 @@ def check_baseline_shape(lines):
     That content is the file's entire value. Its rows are `<path>:<id>` and say
     nothing about WHY; the header is where an IN-FLIGHT citation is told apart
     from a deliberate NEGATION (issue 9999, whose control issue 1092 would be
-    destroyed by filing it) and from an id reserved but never written (0417,
-    1080). Without it the next reader cannot tell which lines are debt.
+    destroyed by filing it) and from an id reserved but never
+    written. Without it the next reader cannot tell which lines are debt.
 
     The rule is the weakest one that catches a sort: comments come first. It
     permits any header a person writes and refuses the shape no person writes.

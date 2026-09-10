@@ -6,7 +6,7 @@ type: bug
 area: build
 severity: high
 found: 2026-09-05
-related: [0852, 0623, 0196, 1075, 1080]
+related: [0852, 0623, 0196, 1075]
 ---
 
 # Kconfig keeps what it has; a new `default` is not a new value
@@ -75,7 +75,7 @@ changed it.
 The gate that reports it needs BUILT Zephyr images, and it says so — the static
 `check-tier-priority-plan` passes and DEFERS these 8 pins to
 `check-tier-priority-plan-image`. No Zephyr image could be built on this host at
-all until issues **1075** (link) and **1080** (compile) were fixed hours earlier.
+all until issue **1075** (link) and `b9450327d` (compile) were fixed hours earlier.
 Fixing those two is what let this check run for the first time.
 
 Three failures stacked in one lane, each hiding the next.

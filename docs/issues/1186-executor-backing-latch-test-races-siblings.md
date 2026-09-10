@@ -6,7 +6,7 @@ type: bug
 area: core, testing
 severity: medium
 found: 2026-09-07
-related: [0417, 1145]
+related: [1145]
 ---
 
 ## What
@@ -37,7 +37,7 @@ second test would observe an already-consumed latch and assert nothing") and
 guards against SPLITTING the test, which is not the same as guarding against a
 sibling.
 
-Issue 0417's class exactly, one module over: process-global statics shared by
+`b206e02e5`'s class exactly, one module over: process-global statics shared by
 tests in one binary, where the verdict depends on nextest/libtest scheduling.
 
 ## Measured

@@ -7,7 +7,7 @@ area: api, core, build
 severity: high
 found: 2026-09-06
 resolved: 2026-09-06
-related: [0417, 1162, 1163, 1170, 1177, 0952]
+related: [1162, 1163, 1170, 1177, 0952]
 ---
 
 > **DUPLICATE of issue 1177 — retracted 2026-09-07.** Diagnosed and fixed
