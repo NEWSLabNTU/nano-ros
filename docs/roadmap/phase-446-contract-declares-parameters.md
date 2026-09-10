@@ -250,6 +250,16 @@ treats every launch value for that node as undeclared, by the design rule.
 resolves to a `node_params` entry for all of them, and the image derives its
 store; dropping the `{}` refuses again, naming the node.
 
+**Landed** in ros-launch-manifest v0.1.35 (`803db6b`) and play_launch
+`96a1e3f7`, pinned here at play_launch `07f0461e`. `from_model` needed no
+change, as predicted. Proven two ways in nros-cli-core: a unit test on the
+island's four nodes with one entry emptied (declared, 18 names plus 4 seeds
+gives 22 slots; with no entry, "1 of 4 nodes" refuses, naming it), and
+`tests/param_declarations_resolve.rs`, which runs the pinned resolver over two
+fixture contracts that differ only in `/b`'s `params: {}` (sized at 3 slots
+against a refusal naming `/b`). The downstream island resolves with every node
+carrying an entry and no parameter errors.
+
 ### F2 -- descriptions get their own capacity, and an overflow is not silent
 
 `ParameterDescriptor.description` is a `String<MAX_STRING_VALUE_LEN>`

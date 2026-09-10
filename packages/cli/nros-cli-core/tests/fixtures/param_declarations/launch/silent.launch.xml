@@ -1,0 +1,8 @@
+<launch>
+  <!-- phase-446 F1: `/b` states nothing about its parameters
+       (silent.contract.yaml has no `params:` for it). -->
+  <node pkg="demo_pkg" exec="a" name="a">
+    <param name="rate" value="10" />
+  </node>
+  <node pkg="demo_pkg" exec="b" name="b" />
+</launch>

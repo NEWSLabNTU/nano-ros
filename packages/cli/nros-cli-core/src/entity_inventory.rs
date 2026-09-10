@@ -3322,7 +3322,9 @@ mod from_model_tests {
     }
 
     /// A model running `nodes`, whose contract declares `params` per node.
-    /// A node listed in `nodes` and absent from `params` declares nothing.
+    /// A node listed in `nodes` and absent from `params` has no entry (it
+    /// said nothing); one listed with no names gets `{}`, the empty entry the
+    /// resolver writes for `params: {}` (phase-446 F1).
     fn param_model(nodes: &[&str], params: &[(&str, &[(&str, &str)])]) -> SystemModel {
         let mut y = String::from("meta: { version: 1 }\nstructure:\n  nodes:\n");
         for n in nodes {
@@ -3334,6 +3336,10 @@ mod from_model_tests {
         if !params.is_empty() {
             y.push_str("contracts:\n  node_params:\n");
             for (node, ps) in params {
+                if ps.is_empty() {
+                    y.push_str(&format!("    {node}: {{}}\n"));
+                    continue;
+                }
                 y.push_str(&format!("    {node}:\n"));
                 for (name, ty) in *ps {
                     y.push_str(&format!("      {name}: {{ type: {ty} }}\n"));
@@ -3516,6 +3522,59 @@ mod from_model_tests {
             "{c}"
         );
         assert!(!c.contains("NROS_DERIVED_MAX_PARAMETERS"), "{c}");
+    }
+
+    /// phase-446 F1 -- an EMPTY entry is a declaration of none, not silence.
+    /// The same image with `/system/diag_aggregator: {}` is sized, and that
+    /// node gets only its seeded `use_sim_time`; drop the entry and the image
+    /// refuses again, naming it. (`tests/param_declarations_resolve.rs` makes
+    /// the same pair through the pinned resolver.)
+    #[test]
+    fn an_empty_params_entry_declares_none_and_a_missing_one_refuses() {
+        let none: &[(&str, &str)] = &[];
+        let mut ps = island_params();
+        ps[3] = (ISLAND_NODES[3], none);
+        let m = param_model(&ISLAND_NODES, &ps);
+        assert_eq!(
+            m.contracts
+                .node_params
+                .get(ISLAND_NODES[3])
+                .map(|p| p.len()),
+            Some(0),
+            "the fixture carries the empty entry"
+        );
+        let d = ParamDeclarations::from_model(&m);
+        let ParamDeclarations::Declared { nodes, params } = &d else {
+            panic!("an empty entry counts as declared, got {d:?}");
+        };
+        assert!(nodes.iter().any(|n| n == ISLAND_NODES[3]), "{nodes:?}");
+        assert!(
+            params.iter().all(|p| p.node != ISLAND_NODES[3]),
+            "{params:?}"
+        );
+        let z = d
+            .sizing()
+            .expect("every node declares, so the store is sized");
+        assert_eq!(z.declared, 18, "21 less the three DIAG names");
+        assert_eq!(
+            z.max_parameters, 22,
+            "18 declared + 4 seeded; the empty node's one slot is its seed"
+        );
+        let c = with_params(&m).to_cmake();
+        assert!(
+            c.contains("set(NROS_PARAM_DECLARATION_STATUS \"declared\")\n"),
+            "{c}"
+        );
+        assert!(c.contains("set(NROS_DERIVED_MAX_PARAMETERS 22)\n"), "{c}");
+
+        let m = param_model(&ISLAND_NODES, &ps[..3]);
+        match ParamDeclarations::from_model(&m) {
+            ParamDeclarations::Refused { reason } => {
+                assert!(reason.contains(ISLAND_NODES[3]), "{reason}");
+                assert!(reason.starts_with("1 of 4 nodes"), "{reason}");
+            }
+            other => panic!("no entry must refuse, got {other:?}"),
+        }
     }
 
     /// A contract that names `use_sim_time` itself does not get a second

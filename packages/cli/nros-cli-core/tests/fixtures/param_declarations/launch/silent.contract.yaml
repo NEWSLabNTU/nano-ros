@@ -1,0 +1,9 @@
+# phase-446 F1: `/b` has no `params:` key, so it has not said whether it
+# declares any. Differs from declared.contract.yaml only there.
+version: 1
+
+nodes:
+  a:
+    params:
+      rate: { type: integer }
+  b: {}

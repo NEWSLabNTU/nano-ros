@@ -1,0 +1,10 @@
+# phase-446 F1: `/b` says it declares NO parameters. Differs from
+# silent.contract.yaml only in that one `params: {}`.
+version: 1
+
+nodes:
+  a:
+    params:
+      rate: { type: integer }
+  b:
+    params: {}
