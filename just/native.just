@@ -189,7 +189,28 @@ setup:
     #!/usr/bin/env bash
     set -euo pipefail
     nros setup --build-sources
-    just ci provision-zenohd
+    # `provision-zenohd` announces "could not install" through the LANE-SKIP
+    # PROTOCOL (rc 78), and only the fixture-lane driver in `justfile` — the
+    # `build-fixtures` fan-out — interprets that rc. This is not that driver, so
+    # under `set -e` an honest skip arrived here as a hard failure.
+    #
+    # That is not hypothetical: the containerised self-hosted runner is NOT
+    # root, so the recipe took its "workstation" branch, skipped, and exited 78
+    # — failing `just setup tier2`, failing L3, and stalling the merge queue for
+    # every PR in the repo for an hour. The recipe's own header says absence is
+    # not a failure ("the zenoh lanes SKIP and announce it, and
+    # `check-zenohd-router-skips` enforces that they can"), so the caller is
+    # what was wrong.
+    #
+    # 78 is interpreted; any OTHER non-zero is a real error and still fails.
+    # `rc=0; cmd || rc=$?` and not a bare assignment — issue 1249.
+    rc=0
+    just ci provision-zenohd || rc=$?
+    if [ "$rc" -eq 78 ]; then
+        echo "native setup: rmw_zenohd not provisioned — zenoh lanes will SKIP"
+    elif [ "$rc" -ne 0 ]; then
+        exit "$rc"
+    fi
     nros setup --tool qemu --prefix build/qemu --index nros-sdk-index.toml
     nros setup --tool xrce-agent --index nros-sdk-index.toml
     # OPTIONAL, and it says so. The workspace-entry fixtures skip without it;
