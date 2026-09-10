@@ -207,7 +207,6 @@ mod tests {
             repo_dir: Some(tmp.path().to_path_buf()),
             workspace: Some(tmp.path()),
             exe: Some(exe),
-            ..Rungs::default()
         });
         assert_eq!(
             got,
