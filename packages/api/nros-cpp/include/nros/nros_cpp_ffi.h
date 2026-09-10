@@ -1639,6 +1639,20 @@ nros_cpp_ret_t nros_cpp_executor_last_park(void *handle,
                                            uint8_t *platform_index);
 
 /**
+ * phase-436 A3 — reset the release-jitter statistics from a C or C++ entry.
+ *
+ * The executor's maximum, late count and total are since the executor opened,
+ * so a single startup outlier pins the maximum for the life of the process.
+ * Measured on ASI's FVP image: a ~34 ms wake during boot, and nothing in the
+ * steady state could ever show above it. A readout that reports per window
+ * calls this after each report, so every report covers its own window.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL.
+ */
+nros_cpp_ret_t nros_cpp_executor_clear_release_jitter_stats(void *handle);
+
+/**
  * Get current monotonic time in nanoseconds.
  *
  * Used by `nros::Future::wait()` (header-side) to budget its spin loop by

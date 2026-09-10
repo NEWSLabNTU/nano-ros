@@ -3981,6 +3981,28 @@ pub unsafe extern "C" fn nros_cpp_executor_last_park(
     NROS_CPP_RET_OK
 }
 
+/// phase-436 A3 — reset the release-jitter statistics from a C or C++ entry.
+///
+/// The executor's maximum, late count and total are since the executor opened,
+/// so a single startup outlier pins the maximum for the life of the process.
+/// Measured on ASI's FVP image: a ~34 ms wake during boot, and nothing in the
+/// steady state could ever show above it. A readout that reports per window
+/// calls this after each report, so every report covers its own window.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_clear_release_jitter_stats(
+    handle: *mut c_void,
+) -> nros_cpp_ret_t {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    ctx.executor.clear_release_jitter_stats();
+    NROS_CPP_RET_OK
+}
+
 /// Phase 274.W2 (RFC-0015 Model 1) — run a native multi-tier entry over one
 /// shared RMW session.
 ///
@@ -4763,5 +4785,13 @@ mod jitter_readout_tests {
             (7, 7, 7, 7),
             "a refused call wrote its outputs"
         );
+    }
+
+    /// phase-436 A3 — a readout that reports per window must be able to reset
+    /// the statistics, or one boot-time outlier pins the maximum forever.
+    #[test]
+    fn clearing_the_jitter_stats_refuses_a_null_handle() {
+        let rc = unsafe { nros_cpp_executor_clear_release_jitter_stats(core::ptr::null_mut()) };
+        assert_eq!(rc, NROS_CPP_RET_INVALID_ARGUMENT);
     }
 }
