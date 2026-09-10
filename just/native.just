@@ -1141,20 +1141,54 @@ zenohd:
 #
 # Needs ROS 2 and a live bus: run it in the `ros2` distrobox on the box tree
 # (issue 0759), or on a runner whose image carries the distro.
+#
+# phase-441 W4 — THE RUNNER IS NOT IN THE LEDGER, AND MUST NOT BE.
+#
+# Membership follows from a recorded verdict; what it takes to RUN a cell does
+# not. A cell on a board needs that board's SDK, its cross toolchain and — off
+# native_sim — an emulator, none of which the host lane's container carries.
+# `runner=` narrows to the cells whose board IS this machine (`host`) or is not
+# (`board`); the split is computed from each cell's platform coordinate in
+# `interop::CELLS`, so nothing has to be kept in step by hand. `all` is the
+# hand-run default: a developer with everything provisioned wants everything.
+#
+# The two failure modes this recipe keeps apart are the point of it:
+#
+#   exit 1  a cell with a RECORDED PASS produced a real failure. A verdict.
+#   exit 2  the cells did not produce results at all — a fixture that would not
+#           build, a peer that is not installed, a filter that named nothing.
+#           NOT a verdict, and reporting it as a regression is the mislabel
+#           this whole phase kept tripping over.
 [group("debug")]
-test-live-peer-regression verbose="":
+test-live-peer-regression runner="all" verbose="":
     #!/usr/bin/env bash
     set -euo pipefail
-    cells=$(python3 scripts/check-interop-verdicts.py --list-passing)
+    runner="{{runner}}"
+    case "$runner" in
+        host|board|all) ;;
+        *)
+            echo "test-live-peer-regression: runner='$runner' is not one of" >&2
+            echo "  host | board | all. host = the cells whose board is this" >&2
+            echo "  machine; board = the cells that need a board toolchain." >&2
+            exit 2
+            ;;
+    esac
+    cells=$(python3 scripts/check-interop-verdicts.py --list-passing --runner "$runner")
     if [ -z "$cells" ]; then
-        echo "test-live-peer-regression: the ledger records no passing cell, so"
-        echo "  there is nothing whose regression this lane could detect."
-        echo "  Run a cell live and record it: see \`just interop-verdicts\`."
+        echo "test-live-peer-regression: the ledger records no passing cell on the"
+        echo "  '$runner' runner, so there is nothing whose regression this lane"
+        echo "  could detect. Run a cell live and record it: \`just interop-verdicts\`."
         exit 0
     fi
-    echo "== live-peer regression lane — cells with a recorded PASS =="
+    echo "== live-peer regression lane ($runner runner) — cells with a recorded PASS =="
     echo "$cells" | sed 's/^/  /'
-    bins=$(python3 scripts/check-interop-verdicts.py --list-passing --by-binary)
+    bins=$(python3 scripts/check-interop-verdicts.py --list-passing --runner "$runner" --by-binary)
+    # Each binary's junit, kept: `_test-focused` resets the one nextest writes
+    # on every call, so the skipped-membership check below needs its own copies.
+    junit_dir="tmp/live-peer-junit/$runner"
+    rm -rf "$junit_dir"
+    mkdir -p "$junit_dir"
+    source scripts/test/nextest-profile.sh
     failed=0
     broken=0
     for b in $bins; do
@@ -1163,29 +1197,57 @@ test-live-peer-regression verbose="":
         just _test-focused "binary(=$b)" {{verbose}}
         rc=$?
         set -e
-        # A run that could not START is not a verdict. `just` answers 1 for a
-        # missing recipe and nextest answers 1 for a filter it cannot parse
-        # (issue 0743), and calling either "a regression" is the mislabel this
-        # whole phase kept tripping over — a `[SKIPPED] fixture not built`
-        # rendered as FAIL, a `ros2` usage error rendered as a discovery
-        # timeout. 100 is nextest's "tests ran and some failed".
-        case "$rc" in
-            0)   ;;
-            100) failed=1 ;;
-            *)   broken=1; echo "  (exit $rc — the RUN did not happen; not a verdict)" ;;
-        esac
+        junit="$(nros_nextest_junit_path)"
+        real=0
+        if [ -f "$junit" ]; then
+            cp "$junit" "$junit_dir/$b.xml"
+            real="$(just _count-real-failures "$junit")"
+        fi
+        # Classified by what the junit HOLDS, not by the exit code alone.
+        # `_test-focused` answers 1 for a real failure AND 1 for "the filter
+        # named nothing" AND 1 for a build that never produced a junit — it
+        # swallows nextest's own 100, so the `100) failed=1` arm this recipe
+        # used to carry could never fire and every regression would have been
+        # reported as a harness fault.
+        if [ "$rc" -eq 0 ]; then
+            :
+        elif [ "$real" -gt 0 ]; then
+            failed=1
+        else
+            broken=1
+            echo "  (exit $rc with no real failure in the junit — the RUN did not"
+            echo "   happen; not a verdict)"
+        fi
     done
-    if [ "$broken" -ne 0 ]; then
-        echo ""
-        echo "This lane could not run. That is a harness fault, NOT a regression"
-        echo "verdict — fix the invocation and re-run before believing anything"
-        echo "about the cells."
-        exit 2
+    # A SKIP IS NOT A VERDICT, and this lane's own membership is the place that
+    # costs the most: `_rewrite-skipped-junit` turns a missing peer or fixture
+    # into `<skipped>`, `_test-focused` exits 0, and the lane reports that cells
+    # with a recorded PASS still pass — over a run that measured nothing.
+    set +e
+    python3 scripts/check-interop-verdicts.py --assert-ran "$junit_dir" --runner "$runner"
+    ran_rc=$?
+    set -e
+    if [ "$ran_rc" -ne 0 ]; then
+        broken=1
     fi
+    # Precedence: a REAL failure outranks "could not run". A red that is real
+    # must never be relabelled as infrastructure — the other direction (issue
+    # 0445's absorbing verdict) is what the guard above is for, and both are
+    # printed either way.
     if [ "$failed" -ne 0 ]; then
         echo ""
         echo "A cell with a RECORDED PASS did not pass. That is a regression, not"
         echo "a new finding: this lane's membership is exactly what a human has"
         echo "already measured working against a live peer."
+        if [ "$broken" -ne 0 ]; then
+            echo "(Some other cells in this run produced no result at all — see above.)"
+        fi
         exit 1
+    fi
+    if [ "$broken" -ne 0 ]; then
+        echo ""
+        echo "This lane could not run. That is a harness fault, NOT a regression"
+        echo "verdict — fix what the lines above name and re-run before believing"
+        echo "anything about the cells."
+        exit 2
     fi

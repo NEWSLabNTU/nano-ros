@@ -126,6 +126,13 @@ LABELS = {
     "verdict-fail": "VERDICT: cells ran and FAILED",
     "no-verdict-provisioning": "NO VERDICT: stopped in provisioning",
     "no-verdict-build": "NO VERDICT: stopped in the build",
+    # phase-441 W4. The cells STEP ran and failed, and the runner it invoked
+    # said the cells themselves did not produce results — a fixture that would
+    # not build, a peer that is not installed, a membership that only skipped.
+    # Without this, a step outcome is the whole story and every such run reads
+    # as "a recorded-passing cell regressed", which is the one thing the
+    # live-peer lane exists to say.
+    "no-verdict-cells": "NO VERDICT: the cells could not run",
     "no-verdict-none": "NO VERDICT: died before any stage",
     "cancelled": "NO VERDICT: cancelled",
     "running": "still running",
@@ -149,13 +156,21 @@ Result = collections.namedtuple(
     "Result", "kind stage label failing_step reached_cells")
 
 
-def classify(steps, job_conclusion=None):
+def classify(steps, job_conclusion=None, cells_ran=None):
     """Classify one job's ordered steps.
 
     `steps` is [{"name": str, "conclusion": str}] — the shape `gh run view
     --json jobs` returns AND the shape the workflow reports from
     `steps.<id>.outcome`. `job_conclusion` is optional and only used to tell a
     job that died with no failing step from one that never ran.
+
+    `cells_ran` is the FOURTH axis, and only the in-workflow half can supply it
+    (phase-441 W4): a step outcome says the cells step failed, never whether the
+    cells produced results. `just native test-live-peer-regression` already
+    knows — it answers 2 for "this lane could not run" and 1 for a real
+    regression — and the workflow forwards that as `NROS_LANE_CELLS_RAN`.
+    `None` means nobody said, which is what `--history` has for every past run,
+    so the classification there is unchanged.
 
     Returns a Result whose `kind` is one of:
         verdict-pass  verdict-fail  no-verdict  cancelled  running
@@ -176,6 +191,9 @@ def classify(steps, job_conclusion=None):
     if cells == "success":
         return Result("verdict-pass", CELLS, LABELS["verdict-pass"], "", True)
     if cells == "failure":
+        if cells_ran is False:
+            return Result("no-verdict", CELLS, LABELS["no-verdict-cells"],
+                          first_failing, False)
         return Result("verdict-fail", CELLS, LABELS["verdict-fail"],
                       first_failing, True)
 
@@ -215,7 +233,12 @@ def report(lane, steps_json):
     # A step that never ran reports an empty outcome, not `skipped`.
     steps = [{"name": s.get("name", "?"), "conclusion": s.get("conclusion") or "skipped"}
              for s in steps]
-    res = classify(steps)
+    # An UNSET variable is `None`, not False: "nobody said" and "the runner said
+    # the cells did not run" are different answers, and only the second may turn
+    # a red into a no-verdict.
+    said = os.environ.get("NROS_LANE_CELLS_RAN", "").strip().lower()
+    cells_ran = {"true": True, "false": False}.get(said)
+    res = classify(steps, cells_ran=cells_ran)
 
     out = [f"{lane}: {res.label}"]
     if res.failing_step:
@@ -467,8 +490,26 @@ LANES = (
         "Build the nros CLI": BUILD,
         "Report what the ledger claims, before running anything": PROVISIONING,
         "Check out the submodules the fixtures vendor": PROVISIONING,
+        "Provision the declared system closure (phase-413 W3)": PROVISIONING,
         "Build the fixtures those rows resolve": BUILD,
         "Run the cells with a recorded PASS": CELLS,
+    }),
+    # phase-441 W4 — the same lane's board half, split out because these rows
+    # need a board SDK and an emulator the host container does not carry. It is
+    # a SEPARATE LaneSpec rather than more steps in `regression` for the reason
+    # the split exists at all: "the board rows could not be built" and "the
+    # board rows regressed" have to be different sentences, and a stage label
+    # is per JOB.
+    LaneSpec("live-peer.yml", "board", "stage-board", {
+        "Build the nros CLI": BUILD,
+        "Register the baked Zephyr SDK for this HOME": PROVISIONING,
+        "Reclaim disk before the SDK setup": PROVISIONING,
+        "Unblock the rustup clippy-preview conflict": PROVISIONING,
+        "Provision the declared system closure (phase-413 W3)": PROVISIONING,
+        "just setup the scopes those rows need": PROVISIONING,
+        "Install clang + libclang for bindgen": PROVISIONING,
+        "Build the fixtures those rows resolve": BUILD,
+        "Run the board cells with a recorded PASS": CELLS,
     }),
 )
 
@@ -508,7 +549,16 @@ def _one_lane_consistency(chk, lane, doc):
     job = doc["jobs"][lane.job]
     steps = job["steps"]
     names = [s.get("name", "") for s in steps]
-    reporter = [s for s in steps if "lane-stage.py" in str(s.get("run", ""))]
+    # `--report` as well as the filename: a step that merely NAMES this script
+    # is not this script's reporter, and one does — the board lane's setup step
+    # tells the reader to add a scope here. Matching on the filename alone found
+    # it, called the job's reporter ambiguous, and then died on the env of the
+    # wrong step.
+    reporter = [
+        s for s in steps
+        if "lane-stage.py" in str(s.get("run", ""))
+        and "--report" in str(s.get("run", ""))
+    ]
 
     chk(f"{w} has exactly one lane-stage reporter", len(reporter) == 1)
     if not reporter:
@@ -663,6 +713,29 @@ def selftest(verbose=False):
             ("Build the fixtures those rows resolve", "success"),
             ("Run the cells with a recorded PASS", "failure")),
             "failure").kind == "verdict-fail")
+
+    # 8c. phase-441 W4 — the fourth axis. The cells STEP failing is the same
+    #     word for "a recorded-passing cell regressed" and for "the cells never
+    #     produced a result": a fixture that would not build, a peer that is not
+    #     installed, a membership that only skipped. The recipe already knows
+    #     (exit 2 vs 1) and the workflow forwards it.
+    cells_failed = _steps(
+        ("Build the nros CLI", "success"),
+        ("Build the fixtures those rows resolve", "success"),
+        ("Run the board cells with a recorded PASS", "failure"))
+    chk("a cells-step failure with NOTHING said is still a verdict",
+        classify(cells_failed, "failure").kind == "verdict-fail")
+    said_no = classify(cells_failed, "failure", cells_ran=False)
+    chk("...and the SAME steps are a no-verdict when the runner says the cells "
+        "did not run",
+        said_no.kind == "no-verdict" and said_no.stage == CELLS)
+    chk("...which does not claim to have reached the cells",
+        said_no.reached_cells is False)
+    chk("...and says so in its label",
+        said_no.label == LABELS["no-verdict-cells"])
+    chk("cells_ran=True changes nothing about a passing lane",
+        classify(_steps(("Run the board cells with a recorded PASS", "success")),
+                 "success", cells_ran=True).kind == "verdict-pass")
 
     # 9. THE MAP IS AUTHORED, SO IT DRIFTS. `--report` is handed step names by
     #    the workflow, and those names are a copy of the workflow's own `- name:`
