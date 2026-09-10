@@ -9,6 +9,37 @@ severity: high
 related: [issue-0196, issue-0952, issue-0993, issue-1175, phase-395, phase-417]
 ---
 
+## Status 2026-09-11
+
+Re-triaged against `origin/main` because three `fix(#1177)` commits
+(`9fd7e3457`, `04e597288`, `8fdb9631a`) read as if they closed it. They closed
+the BREAK half only — the coverage half is still open, and nothing since has
+decided the tier question:
+
+* No workflow step runs `workspace-features` on a merge-gating event. Its only
+  caller is `check build`, and `no-std` is its own step guarded
+  `contains(fromJSON('["schedule","workflow_dispatch"]'), …)`
+  (`.github/workflows/gate.yml:983-984`).
+* Option B was not taken: `compile-smoke`'s `nros-c` row is still
+  `C_API_SHIPPED_FEATURES` (`std,…`), with no `panic-platform,rmw-cffi,lending`
+  row (`just/check/lanes.just`, `compile-smoke`).
+* `workspace-all` MOVED since this was written — #825 put it on
+  `pull_request` as well as `merge_group`, so the table row below reading
+  "merge_group" is now "pull_request, merge_group". It still does not cover
+  this row: `nros-c` declares `host-only = true` (`packages/api/nros-c/
+  Cargo.toml:258-260`), so its embedded arm passes `--exclude nros-c`.
+  (#875, queued, gives `workspace-all` a real host clippy; it runs `-p nros-c`
+  never, because `nros-c` is in `HOST_UNCHECKABLE`, so it does not bear on
+  this either.)
+* The rows are green today, re-measured on this tree — both `lending`
+  clippies with `-D warnings` (`panic-platform,rmw-cffi,lending` and
+  `std,rmw-cffi,lending,platform-posix`) and the default-features
+  `cargo test --no-run -p nros-c` that was red at `f0f97de42`: rc=0 all three.
+
+So the status is unchanged: a maintainer's choice among A / A-narrow / B / C
+below. Green rows are not coverage — the next break in this class still
+reaches `main` the same way the first two did.
+
 ## Where this stands
 
 Two halves, and only one of them is still open.
