@@ -58,6 +58,7 @@
 // the member-pointer `create_subscription_in` / `create_subscription_in_group`
 // family is DECLARED here and DEFINED there.
 #include "nros/declared_qos.hpp"
+#include "nros/declared_params.hpp" // phase-446 W6 -- each node's DECLARED parameters
 #include "nros/log.hpp"
 #include "nros/guard_condition.hpp"
 #include "nros/executor.hpp"
@@ -268,6 +269,46 @@ inline void report_declared_depth_mismatch(const char* node_name, const char* to
     (void)topic;
     (void)declared;
     (void)passed;
+#endif
+}
+
+/// phase-446 W6 -- the code `set_error` records when a node declares a
+/// parameter its contract does not declare, or with another type.
+constexpr int32_t DECLARED_PARAM_MISMATCH = -446;
+
+/// The boot-time diagnostic for that disagreement. It names the node, the
+/// parameter and the contract, and for a type mismatch both types, because
+/// `set_error` records one `const char*` and a boot failure that says only
+/// "parameter disagrees" leaves the reader to grep two files for the pair.
+inline void report_declared_param_mismatch(const char* fqn, const char* param, const char* contract,
+                                           int declared, int passed) {
+    const char* f = (fqn != nullptr) ? fqn : "?";
+    const char* p = (param != nullptr) ? param : "?";
+    const char* c = (contract != nullptr) ? contract : "?";
+    if (declared == ::nros::DECLARED_PARAM_UNDECLARED) {
+        NROS_ERROR("node \"%s\": parameter \"%s\" is not declared in its contract (%s).", f, p, c);
+    } else {
+        NROS_ERROR("node \"%s\": parameter \"%s\" is declared %s in its contract (%s) but the "
+                   "code declares it as %s.",
+                   f, p, ::nros::declared_param_type_name(declared), c,
+                   ::nros::declared_param_type_name(passed));
+    }
+#if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
+    if (declared == ::nros::DECLARED_PARAM_UNDECLARED) {
+        ::std::fprintf(stderr,
+                       "[nros] FATAL: node \"%s\": parameter \"%s\" is not declared in its "
+                       "contract (%s, `params:`). The parameter store is sized from that "
+                       "declaration, so a parameter it does not name has no slot. Declare it "
+                       "there with its type, or stop declaring it in the code.\n",
+                       f, p, c);
+    } else {
+        ::std::fprintf(stderr,
+                       "[nros] FATAL: node \"%s\": parameter \"%s\" is declared `%s` in its "
+                       "contract (%s) but the code declares it as `%s`. Fix the contract or "
+                       "the code so they state one type.\n",
+                       f, p, ::nros::declared_param_type_name(declared), c,
+                       ::nros::declared_param_type_name(passed));
+    }
 #endif
 }
 
@@ -1658,6 +1699,49 @@ class Node {
                         "this topic in the contract sidecar. Depth multiplies the arena, so the "
                         "declaration and the code must state one number, not two.",
                         detail::DECLARED_DEPTH_MISMATCH);
+        return false;
+    }
+
+    /// phase-446 W6 -- the boot-time check that this node declares a parameter
+    /// the way its contract does.
+    ///
+    /// The parameter store is sized from the contract's `params:` (phase-446
+    /// W4), so a name the contract does not declare has no slot counted for
+    /// it, and a type that differs is a value the contract's reader (and
+    /// play_launch's check of the launch file) would reject. Either one is a
+    /// named boot failure through `set_error`, in the idiom
+    /// `check_declared_depth` set: the node, the parameter and the contract
+    /// are printed first, and the entry's post-construct `ok()` check halts
+    /// boot. The parameter is NOT declared.
+    ///
+    /// A node whose contract has no `params:` is not checked, and neither are
+    /// the names every node carries (`nros::declared_param_exempt`). Runtime
+    /// rather than `static_assert`: the key is the node's fully-qualified
+    /// name, which is a constructor argument, not a constant expression.
+    ///
+    /// Returns true when the parameter may be declared.
+    bool check_declared_param(const char* name, int passed_type) {
+        const char* ns = this->get_namespace();
+        const char* nn = this->get_name();
+        if (name == nullptr || nn == nullptr) {
+            return true;
+        }
+        const ::nros::declared_params::Node* declaring =
+            ::nros::declared_param_node((ns != nullptr) ? ns : "", nn);
+        if (declaring == nullptr || ::nros::declared_param_exempt(name)) {
+            return true;
+        }
+        const int declared = ::nros::declared_param_type(declaring, name);
+        if (declared == passed_type) {
+            return true;
+        }
+        detail::report_declared_param_mismatch(declaring->fqn, name, declaring->contract, declared,
+                                               passed_type);
+        this->set_error("declare_parameter: the code does not declare this parameter the way "
+                        "its contract does (see the line above for the node, the parameter and "
+                        "the contract). The parameter store is sized from the contract's "
+                        "`params:`, so the two must state one name and one type.",
+                        detail::DECLARED_PARAM_MISMATCH);
         return false;
     }
 

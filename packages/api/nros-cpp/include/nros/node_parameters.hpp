@@ -59,7 +59,9 @@
 // `<stddef.h>`; include it so `::size_t` is always resolvable (parameter.hpp
 // precedent).
 #include <stddef.h>
+#include <type_traits> // phase-446 W6 -- `node_param_type`
 
+#include "nros/declared_params.hpp" // phase-446 W6 -- `nros::param_type`
 #include "nros/result.hpp"
 #include "nros_cpp_ffi.h"
 
@@ -270,6 +272,28 @@ inline Result node_param_get(const nros_cpp_node_t* node, const char* name, ::st
 }
 
 #endif // NROS_CPP_STD
+
+// phase-446 W6 -- the contract type a `declare_parameter<T>` declares, as the
+// rcl_interfaces code the declared-parameter table carries. Mirrors the store
+// overloads above: `bool`, any other integer (`int` and `int64_t` both reach
+// the integer slot), a floating-point type, and a string. Lives beside those
+// overloads so the two cannot drift apart; `Node::declare_parameter` passes it
+// to `Node::check_declared_param`.
+template <typename T> struct node_param_type {
+    static constexpr int value = ::std::is_same<T, bool>::value       ? ::nros::param_type::BOOL
+                                 : ::std::is_integral<T>::value       ? ::nros::param_type::INTEGER
+                                 : ::std::is_floating_point<T>::value ? ::nros::param_type::DOUBLE
+                                                                      : ::nros::param_type::STRING;
+};
+#ifdef NROS_CPP_STD
+template <typename T, typename A> struct node_param_type<::std::vector<T, A>> {
+    static constexpr int value = ::std::is_same<T, bool>::value ? ::nros::param_type::BOOL_ARRAY
+                                 : ::std::is_integral<T>::value ? ::nros::param_type::INTEGER_ARRAY
+                                 : ::std::is_floating_point<T>::value
+                                     ? ::nros::param_type::DOUBLE_ARRAY
+                                     : ::nros::param_type::STRING_ARRAY;
+};
+#endif
 
 } // namespace detail
 } // namespace nros

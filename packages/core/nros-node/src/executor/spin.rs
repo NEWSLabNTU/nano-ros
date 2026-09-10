@@ -1458,6 +1458,11 @@ pub struct Executor<'s> {
     pub(crate) signal_fd: Option<WakeSignalFd>,
     #[cfg(feature = "param-services")]
     pub(crate) params: Option<alloc::boxed::Box<crate::parameter_services::ParamState<'s>>>,
+    /// phase-446 W6 -- the parameters each node's contract DECLARES, baked by
+    /// the entry from the SystemModel. Empty (nothing checked) until an entry
+    /// hands one over with [`Self::set_declared_params`].
+    #[cfg(feature = "param-services")]
+    pub(crate) declared_params: nros_params::DeclaredParams,
     /// phase-425 W3b — the `/clock` subscription this image installed, if any.
     /// `None` means no time source; the value is the handle so it can be
     /// cancelled when `use_sim_time` goes false.
@@ -1793,6 +1798,8 @@ impl<'s> Executor<'s> {
             signal_fd: None,
             #[cfg(feature = "param-services")]
             params: None,
+            #[cfg(feature = "param-services")]
+            declared_params: nros_params::DeclaredParams::EMPTY,
             #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
             sim_time_source: None,
             #[cfg(all(feature = "sim-time", any(has_rmw, test)))]
@@ -8889,6 +8896,30 @@ impl<'s> Executor<'s> {
         sm.register(Slot::Shutdown, Some(trampolines::on_shutdown::<T>));
         sm.register(Slot::Error, Some(trampolines::on_error::<T>));
         Ok(())
+    }
+}
+
+// ============================================================================
+// phase-446 W6 -- the contract's declared parameters (cfg param-services)
+// ============================================================================
+
+#[cfg(feature = "param-services")]
+impl<'s> Executor<'s> {
+    /// Hand the executor the parameters each node's contract declares.
+    ///
+    /// The entry calls this before any node registers. It only RECORDS the
+    /// table: the check runs where an application declares a parameter (the
+    /// `nros` node runtime), not in [`Self::declare_parameter_on`], because
+    /// that funnel also carries the launch seed, whose value type is still
+    /// inferred from text and was already held to the contract by the
+    /// resolver.
+    pub fn set_declared_params(&mut self, declared: nros_params::DeclaredParams) {
+        self.declared_params = declared;
+    }
+
+    /// The table [`Self::set_declared_params`] recorded (empty by default).
+    pub fn declared_params(&self) -> nros_params::DeclaredParams {
+        self.declared_params
     }
 }
 

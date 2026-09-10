@@ -58,11 +58,15 @@ pub(crate) mod config;
 // `FileParamStore`), which 0080 ruled a non-goal in July: nano-ros does not
 // persist parameters on-device, and launch-baked defaults are the supported
 // model. Runtime get/set/describe — the `server` module — stay.
+// phase-446 W6 -- what each node's contract declares, looked up when the code
+// declares a parameter.
+pub mod declared;
 pub mod server;
 pub mod typed;
 pub mod types;
 
 // Re-export main types
+pub use declared::{DeclaredParamMismatch, DeclaredParams};
 pub use server::{LegacyParameterBuilder, ParameterServer, ParameterStorage, ParameterTable};
 pub use typed::{
     MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, RangeConvertible,

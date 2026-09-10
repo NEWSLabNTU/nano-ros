@@ -607,6 +607,11 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // by both and compared (see `entry_parity` below). Empty in the
     // self-bringup arm, where the node has no launch facts at all.
     let mut lowered_nodes: Vec<LoweredNode> = Vec::new();
+    // phase-446 W6 -- the parameters the deployed nodes' contracts declare.
+    // Empty in the self-bringup arm (no model) and for a model whose contract
+    // declares none: then nothing is checked, as before.
+    let mut declared_nodes: Vec<nros_orchestration_ir::declared_params::DeclaredNodeParams> =
+        Vec::new();
     // Issue 0257 — callback-slot-consuming entities the model declares for the
     // nodes THIS entry deploys (subs + service servers/clients + action
     // servers/clients). A LOWER bound: the model has no timer/guard-condition
@@ -779,6 +784,10 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 _ => false,
             }
         };
+
+        // phase-446 W6 -- the same nodes the loop below keeps.
+        declared_nodes =
+            nros_orchestration_ir::declared_params::declared_params(&model, |f| keep(f));
 
         // Walk nodes in FQN order (BTreeMap = deterministic, matches the CLI).
         let mut idents = Vec::new();
@@ -1162,6 +1171,40 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // expansion time so the runtime body needs no extra import).
     let num_register_calls = register_calls.len();
 
+    // phase-446 W6 -- hand the executor the parameters each deployed node's
+    // contract declares, BEFORE any node registers, so a node whose code
+    // declares a name its contract does not (or with another type) refuses
+    // registration naming the node, the parameter and the contract. Only with
+    // `[param_services]`: without a store no parameter is declared at all.
+    let declared_params_call: proc_macro2::TokenStream =
+        if param_services_enabled && !declared_nodes.is_empty() {
+            let node_lits = declared_nodes.iter().map(|n| {
+                let f = LitStr::new(&n.fqn, Span::call_site());
+                let c = LitStr::new(&n.contract, Span::call_site());
+                quote! { (#f, #c) }
+            });
+            let row_lits = declared_nodes.iter().flat_map(|n| {
+                n.params.iter().map(move |(name, ty)| {
+                    let f = LitStr::new(&n.fqn, Span::call_site());
+                    let p = LitStr::new(name, Span::call_site());
+                    let t = nros_orchestration_ir::declared_params::ros_type_code(*ty);
+                    quote! { (#f, #p, #t) }
+                })
+            });
+            quote! {
+                runtime
+                    .apply_declared_params(&[ #( #node_lits ),* ], &[ #( #row_lits ),* ])
+                    .map_err(|reason| {
+                        ::nros::__macro_support::nros_platform::RuntimeError::Capability {
+                            name: "param_services",
+                            reason,
+                        }
+                    })?;
+            }
+        } else {
+            quote! {}
+        };
+
     // Phase 264 W2 — `[lifecycle]` wiring: when `system.toml` declares it, register
     // the REP-2002 services + drive boot autostart right after the per-node
     // `register` calls (the executor is built, the nodes are installed). No-op token
@@ -1481,7 +1524,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // `active_groups` filter and owns the spin loop.
                         // W4c — param services BEFORE the node registers, so the store
                         // exists when each cell captures it (cell → `ctx.parameter`).
-                        #param_services_call
+                        #declared_params_call #param_services_call
                         #( #register_calls )*
                         #lifecycle_call
                         ::core::result::Result::Ok(())
@@ -1501,7 +1544,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 {
                     // W4c — param services BEFORE the node registers, so the store
                     // exists when each cell captures it (cell → `ctx.parameter`).
-                    #param_services_call
+                    #declared_params_call #param_services_call
                     #( #register_calls )*
                     #lifecycle_call
                     #[cfg(not(any(target_os = "none", target_os = "nuttx")))]
@@ -1665,7 +1708,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // registers (the store must exist when each cell
                         // captures it), lifecycle AFTER; the board sets each
                         // tier's `active_groups` filter and owns the spin.
-                        #param_services_call
+                        #declared_params_call #param_services_call
                         #( #register_calls )*
                         #lifecycle_call
                         ::core::result::Result::Ok(())
@@ -1695,7 +1738,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             // when system.toml doesn't declare them, and no-ops without the
             // `nros/param-services` / `nros/lifecycle-services` features, so
             // plain pub/sub Zephyr entries are byte-identical to pre-#128.
-            #param_services_call
+            #declared_params_call #param_services_call
             #( #register_calls )*
             #lifecycle_call
             ::log::info!(
@@ -2068,7 +2111,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                         // Issue #128 — OwnedSpin parity: param services before
                         // the registers, lifecycle after. Inert without the
                         // system.toml declarations / cargo features.
-                        #param_services_call
+                        #declared_params_call #param_services_call
                         #( #register_calls )*
                         #lifecycle_call
                         ::core::result::Result::Ok(())

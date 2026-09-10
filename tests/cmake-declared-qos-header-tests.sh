@@ -174,9 +174,24 @@ contracts:
   sub_endpoints:
     /listener/chatter:
       qos: { depth: 1 }
+  node_params:
+    /listener:
+      rate: { type: integer }
 EOF
 
 OUT="$(configure declared "$DECLARED_MODEL")"
+# phase-446 W6 -- the same render writes each node's DECLARED parameters
+# beside the depth table, into the same PRIVATE dir. Without it
+# `ComponentNode::declare_parameter` checks nothing, silently.
+PHDR="$TEST_TMPDIR/declared/build/nros-declared-qos/listener/nros/nros_declared_params_generated.h"
+check
+if [ ! -f "$PHDR" ]; then
+    fail "A: no declared-parameters header at $PHDR -- the contract's \`params:\`
+never reach ComponentNode, so a node declaring a parameter its contract does not
+boots unchecked. Configure said: $OUT"
+elif ! nros_grep_q 'NROS_DECLARED_PARAM_ROW("/listener", "rate", 2)' "$PHDR"; then
+    fail "A: the declared-parameters header carries no row for /listener's \`rate\` -- $(cat "$PHDR")"
+fi
 HDR="$TEST_TMPDIR/declared/build/nros-declared-qos/listener/nros/nros_declared_qos_generated.h"
 check
 if [ ! -f "$HDR" ]; then

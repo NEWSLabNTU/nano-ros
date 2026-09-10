@@ -1192,6 +1192,20 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
         &mut self.executor as *mut Executor<'static> as *mut core::ffi::c_void
     }
 
+    // phase-446 W6 -- record the contract's declared parameters on the owned
+    // executor; `ExecutorSink`'s parameter arm checks each declaration against
+    // them. Without `param-services` there is no store, so the default no-op.
+    #[cfg(feature = "param-services")]
+    fn apply_declared_params(
+        &mut self,
+        nodes: &'static [(&'static str, &'static str)],
+        params: &'static [(&'static str, &'static str, u8)],
+    ) -> Result<(), &'static str> {
+        self.executor
+            .set_declared_params(nros_params::DeclaredParams::new(nodes, params));
+        Ok(())
+    }
+
     // Phase 264 W2 — register the REP-2002 lifecycle services + drive boot
     // autostart on the owned executor (mirrors `generate.rs::render_lifecycle_fn`).
     // Only compiled with `lifecycle-services`; without it the trait default no-op
@@ -1735,6 +1749,41 @@ impl NodeRuntime for ExecutorSink<'_> {
                     }
                     let value = param_default_to_value(metadata.parameter_default.as_ref());
                     let name = metadata.source_name.as_str();
+                    // phase-446 W6 -- the code must declare what the node's
+                    // contract declares: the store was sized from it (W4). A
+                    // node whose contract has no `params:` is not checked.
+                    if let Err(m) = self.executor.declared_params().check(
+                        node_ns.as_str(),
+                        node_name.as_str(),
+                        name,
+                        value.param_type(),
+                    ) {
+                        let passed = nros_params::declared::type_name(value.param_type());
+                        match m.declared {
+                            None => nros_log::log_error!(
+                                nros_log::get_logger("nros"),
+                                "node '{}': parameter '{}' is not declared in its contract \
+                                 ({}, `params:`). The parameter store is sized from that \
+                                 declaration; declare it there with its type, or stop \
+                                 declaring it in the code. (phase-446 W6)",
+                                m.node,
+                                name,
+                                m.contract
+                            ),
+                            Some(declared) => nros_log::log_error!(
+                                nros_log::get_logger("nros"),
+                                "node '{}': parameter '{}' is declared `{}` in its contract \
+                                 ({}) but the code declares it as `{}`. Fix the contract or \
+                                 the code so they state one type. (phase-446 W6)",
+                                m.node,
+                                name,
+                                nros_params::declared::type_name(declared),
+                                m.contract,
+                                passed
+                            ),
+                        }
+                        return Err(NodeDeclError::Runtime);
+                    }
                     // Same rule as `seed_launch_params`: already-declared is
                     // not a refusal (the launch seed may have declared it
                     // first); refused-and-absent is — and it gets its own

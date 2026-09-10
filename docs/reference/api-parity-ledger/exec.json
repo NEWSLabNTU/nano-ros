@@ -1334,5 +1334,13 @@
   "rust:Executor::set_spin_nominal_us": {
     "verdict": "extension",
     "why": "Measured against the recorded upstream surfaces (`docs/reference/api-surface/{rclc,rclcpp,rclrs}.json`): none of them contains `park`, `wake_source`, `spin_nominal` or `granularity` at all, so there is no upstream name to align to. Same basis as the `Executor::release_jitter` pair beside it.\n\nphase-436. Declares how often this executor's loop intends to come round, in microseconds; `0` (the default) falls back to the `spin_once` timeout. Needed because a driver's pacing and its blocking bound are separate numbers: nros-cpp's tier loops sleep `spin_period_us` between spins but pass a fixed 10 ms timeout, so the release-jitter rule judged every tier against 10 ms regardless of the declared contract — too lax for a 1 ms tier and far too strict for a 30 ms one."
+    },
+  "rust:Executor::set_declared_params": {
+    "verdict": "extension",
+    "why": "phase-446 W6. Hands the executor the parameters each node's launch contract declares, baked by `nros::main!` from the SystemModel before any node registers, so the node runtime refuses a declaration the contract does not make. rclrs has no counterpart for the reason given at `cpp:declared_param_node`: upstream's parameters are declared only in code, while ours size a fixed store at build time."
+  },
+  "rust:Executor::declared_params": {
+    "verdict": "extension",
+    "why": "the table `rust:Executor::set_declared_params` recorded (empty, so nothing is checked, until an entry sets one)."
   }
 }

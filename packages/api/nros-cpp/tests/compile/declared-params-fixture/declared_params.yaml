@@ -1,0 +1,32 @@
+# phase-446 W6 -- the SystemModel (named so, and not `*_model.yaml`, because a
+# TRACKED model is banned by check-no-tracked-models; this is a test input, not a
+# build artifact) `declared_params.cpp` is checked against.
+#
+# `nros/nros_declared_params_generated.h` beside this file is what
+#   nros ws entity-inventory \
+#     --metadata packages/api/nros-cpp/tests/compile/declared-qos-fixture/entities.json \
+#     --model packages/api/nros-cpp/tests/compile/declared-params-fixture/declared_params.yaml \
+#     --output-params-header packages/api/nros-cpp/tests/compile/declared-params-fixture/nros/nros_declared_params_generated.h
+# renders from it, and `the_committed_compile_fixture_is_what_this_emitter_renders`
+# (nros-cli-core, declared_params_header.rs) holds the two together. Regenerate;
+# never hand-edit.
+#
+# `/talker` runs with no `params:` in its contract, so it is not in the table
+# and nothing it declares is checked.
+meta: { version: 1 }
+structure:
+  scopes:
+    demo_bringup/demo.launch.xml:
+      file: demo.launch.xml
+  nodes:
+    /system/mrm_handler:
+      { scope: demo_bringup/demo.launch.xml, pkg: demo, exec: mrm_handler, node_name: mrm_handler }
+    /talker:
+      { scope: demo_bringup/demo.launch.xml, pkg: demo, exec: talker, node_name: talker }
+contracts:
+  node_params:
+    /system/mrm_handler:
+      update_rate: { type: integer }
+      timeout_operation_mode_availability: { type: double }
+      use_emergency_holding: { type: bool }
+      gains: { type: double_array }

@@ -1526,6 +1526,10 @@ function(_nros_emit_declared_qos_header _pkg _component _dir)
                 --model "${_nrq_model}"
                 --component "${_pkg}::${_component}"
                 --output-header "${_nrq_hdr}"
+                # phase-446 W6 -- each node's DECLARED parameters, from the
+                # same model, into the same PRIVATE dir; `Node::
+                # declare_parameter` checks against it at boot.
+                --output-params-header "${_dir}/nros/nros_declared_params_generated.h"
         OUTPUT_VARIABLE _nrq_out
         ERROR_VARIABLE _nrq_err
         RESULT_VARIABLE _nrq_rc

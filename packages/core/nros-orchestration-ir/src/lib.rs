@@ -36,6 +36,9 @@ use thiserror::Error;
 // layer, not just resolve authored tiers. No behavior change vs the old
 // `nros_cli_core::orchestration::{mapper_input, rtos_realizer}` location.
 pub mod cyclonedds_type_sizing;
+// phase-446 W6 -- the parameters each node's contract declares, in the one
+// shape the C++ header renderer and the `nros::main!` expansion both read.
+pub mod declared_params;
 pub mod derive;
 // issue 0257 — model-derived executor callback-table sizing, shared by the
 // proc-macro entry bake and the CLI's codegen-system so the two agree on the

@@ -1,7 +1,7 @@
 # Phase 446 -- the contract declares each node's parameters
 
 **Status (2026-09-11). Open. W1 and W2 landed upstream (ros-launch-manifest
-v0.1.34, play_launch 155ed78b) and are pinned; W4 landed; W3, W5, W6 and W7
+v0.1.34, play_launch 155ed78b) and are pinned; W4 and W6 landed; W3, W5 and W7
 open.** The launch contract gains a
 per-node `params:` section that states each parameter's NAME and TYPE. Sizing
 the parameter store and the parameter services moves from built-in worst cases
@@ -193,6 +193,21 @@ what the code declares loud instead of a mis-sized store.
 
 *Acceptance:* a node that declares a parameter missing from its contract, or
 with a different type, refuses boot with that message; a matching node boots.
+
+*Landed.* One derivation, `nros_orchestration_ir::declared_params`, feeds
+both languages. C++: `nros ws entity-inventory --output-params-header`
+renders `<nros/nros_declared_params_generated.h>` beside the declared-QoS
+table, and `Node::declare_parameter` refuses through `set_error`
+(`DECLARED_PARAM_MISMATCH`, -446). Rust: `nros::main!` hands the table to
+the executor (`apply_declared_params`) before any node registers, and the
+node runtime's parameter arm refuses registration. The check covers what the
+APPLICATION declares, not the launch seed, whose value type is still
+inferred from text (W3) and which the resolver already held to the contract.
+Exempt, as play_launch exempts them: `use_sim_time`,
+`start_type_description_service`, `qos_overrides.*`. Proven by the lookups'
+`static_assert`s against a rendered fixture (`declared_params.cpp`) and by
+unit tests of the Rust check; no image has booted a mismatching node yet
+(W7).
 
 ### W7 -- the downstream end to end
 

@@ -830,5 +830,21 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "the default choice function over `rust:AvailableValues`. rclrs's parameter OVERRIDE machinery: a value supplied outside the code (`--ros-args -p`, a params file, a prior declaration) that the declaration then has to reconcile with. Overrides are resolved BEFORE the image runs here -- the launch resolver bakes them into the SystemModel and the generated entry seeds them into the executor store before any component constructor runs (RFC-0045, issue 0745) -- so by declare time there is no second value to reconcile against. Constraint: no runtime env, no argv."
+  },
+  "cpp:declared_param_node": {
+    "verdict": "extension",
+    "why": "phase-446 W6. The declaring node for a namespace + name in the generated `declared_params` table (`nros/declared_params.hpp`), or `nullptr` when the node's launch contract has no `params:`. rclcpp has no counterpart: its parameters are declared nowhere outside the code, so there is nothing to check a declaration against. Ours are declared in the launch contract because the parameter store is a fixed table sized from that contract at build time (no allocator to grow it, phase-446 W4), and `ComponentNode::declare_parameter` uses this lookup to refuse, at boot, a declaration the contract does not make. `constexpr`, so `declared_params.cpp` asserts its answers against a rendered fixture."
+  },
+  "cpp:declared_param_type": {
+    "verdict": "extension",
+    "why": "the declared type (the `rcl_interfaces/msg/ParameterType` code) of one parameter on a declaring node, or `DECLARED_PARAM_UNDECLARED`. See `cpp:declared_param_node`."
+  },
+  "cpp:declared_param_exempt": {
+    "verdict": "extension",
+    "why": "the names no contract has to declare -- `use_sim_time`, `start_type_description_service` and `qos_overrides.*` -- which are exactly the names play_launch exempts when it holds a launch file to the same contract. See `cpp:declared_param_node`."
+  },
+  "cpp:declared_param_type_name": {
+    "verdict": "extension",
+    "why": "the contract's spelling of a type code, for the boot diagnostic that names the declared and the passed type. See `cpp:declared_param_node`."
   }
 }

@@ -26,6 +26,8 @@ pub mod build_output;
 // rmw parity map came to disagree with the vtable by 25 symbols.
 pub mod build_type;
 pub mod cmd;
+/// phase-446 W6 -- the C++ table of each node's declared parameters.
+pub mod declared_params_header;
 // phase-403 W9 (issue 0965) — the ENTITY inventory: WHICH entities an image
 // creates, the half the BOUND inventory (which prices a TYPE) cannot answer.
 // Shaped like `rosidl_codegen::bounds` — one data model, three transports —
