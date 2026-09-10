@@ -113,9 +113,14 @@ mkdir -p "$CONTEXT"
 # where the store accumulates, prefixes resolve newest-first, both paths print
 # success, and the stale one shadows the pin that was just installed. They come
 # from the store with everything else the provisioning step fetches.
+# The list is what `nros setup` REPORTED MISSING on a real bootstrap of this
+# image, not a guess about what a build needs. Its `[MISSING]` lines are
+# non-fatal and scroll past, which is precisely how a runner ends up one apt
+# package short of a label it claims.
 PREREQ_KEYS=(cmake unzip curl zstd python3-dev python3-venv
              python3-pip clang libclang-dev libglib2-dev libpixman-dev
-             libgcrypt-dev socat genromfs kconfig-frontends libmbedtls)
+             libgcrypt-dev socat genromfs kconfig-frontends libmbedtls
+             aria2 doxygen graphviz libz3 gnu-parallel)
 if ! PREREQ_PACKAGES="$(python3 "$REPO_ROOT/scripts/sdk/prereq-packages.py" \
         --manager apt "${PREREQ_KEYS[@]}")"; then
     echo "runner-container: could not resolve the prereq packages from the index." >&2
