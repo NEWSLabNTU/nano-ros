@@ -114,10 +114,11 @@ pub trait NodeDispatchRuntime {
         Ok(())
     }
 
-    /// Phase 264 W4b — register the 6 ROS 2 parameter services on the underlying
-    /// executor + seed a volatile RAM param store with the launch-baked `<param>`
-    /// initials (`params` is the aggregate `(name, value)` slice, value as the raw
-    /// launch string — the impl infers the `ParameterValue` type). After this,
+    /// Phase 264 W4b -- register the 6 ROS 2 parameter services on the underlying
+    /// executor and create its volatile RAM param store. Launch `<param>`
+    /// initials are NOT passed here (issue 1272): each node's are seeded on that
+    /// node as it is built, from the `params` slice `nros::main!` sets before
+    /// the node's `register` call. After this,
     /// `ros2 param list/get/set` works against the running node; reconfigured values
     /// live in RAM until the next boot (RFC-0004 §10; persistence is out of scope,
     /// issue 0080). Default no-op (non-executor runtimes, or `nros` built without
@@ -134,8 +135,7 @@ pub trait NodeDispatchRuntime {
     /// "Network ready" and the cause could only be guessed at. `&'static str`
     /// rather than a typed error because this trait lives below `nros-node` and
     /// cannot name `NodeError`.
-    fn apply_param_services(&mut self, params: &[(&str, &str)]) -> Result<(), &'static str> {
-        let _ = params;
+    fn apply_param_services(&mut self) -> Result<(), &'static str> {
         Ok(())
     }
 
@@ -312,13 +312,15 @@ impl<'a> RuntimeCtx<'a> {
         self.runtime.apply_lifecycle(autostart)
     }
 
-    /// Phase 264 W4b — register the ROS 2 parameter services + seed the volatile
-    /// param store from the launch-baked `<param>` initials (forwards to
-    /// [`NodeDispatchRuntime::apply_param_services`]). `nros::main!` emits this after
-    /// the per-node `register` calls when `system.toml` declares `[param_services]`.
-    /// No-op unless `nros` is built with `param-services`.
-    pub fn apply_param_services(&mut self, params: &[(&str, &str)]) -> Result<(), &'static str> {
-        self.runtime.apply_param_services(params)
+    /// Phase 264 W4b -- register the ROS 2 parameter services and create the
+    /// volatile param store (forwards to
+    /// [`NodeDispatchRuntime::apply_param_services`]). `nros::main!` emits this
+    /// BEFORE the per-node `register` calls when `system.toml` declares
+    /// `[param_services]`, so the store exists when each node is built and that
+    /// node's launch `<param>` initials ([`RuntimeCtx::params`]) are seeded on it
+    /// (issue 1272). No-op unless `nros` is built with `param-services`.
+    pub fn apply_param_services(&mut self) -> Result<(), &'static str> {
+        self.runtime.apply_param_services()
     }
 
     /// Lookup a param by name; first match wins. Linear scan

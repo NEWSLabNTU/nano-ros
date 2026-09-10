@@ -1157,12 +1157,14 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         None => quote! {},
     };
 
-    // Phase 264 W4b — `[param_services]` wiring: when `system.toml` declares it, register
-    // the 6 ROS 2 parameter services + seed the volatile param store with the aggregate
-    // of every node's launch-baked `<param>` initials, right after the per-node `register`
-    // calls. No-op token stream when absent. `apply_param_services` is a no-op unless the
-    // Entry enabled `nros/param-services`, so this is inert without the feature. The seed
-    // values are the raw launch strings; the runtime infers each `ParameterValue` type.
+    // Phase 264 W4b -- `[param_services]` wiring: when `system.toml` declares it, register
+    // the 6 ROS 2 parameter services and create the param store, BEFORE the per-node
+    // `register` calls. No-op token stream when absent. `apply_param_services` is a no-op
+    // unless the Entry enabled `nros/param-services`, so this is inert without the feature.
+    // issue 1272 -- it takes no parameters. Each node's launch `<param>` initials ride
+    // `runtime.params` into that node's `register` call (`render_register_calls`) and are
+    // seeded on the node its `create_node` builds. They used to be flattened into one list
+    // here and all declared on the executor's primary node.
     // issue 0274 — `spin = "forever"` swaps the env-gated bounded spin for an
     // unbounded loop (production hosted entries opt in at source).
     let hosted_spin_call: proc_macro2::TokenStream = if args.spin_forever {
@@ -1172,14 +1174,6 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     };
 
     let param_services_call: proc_macro2::TokenStream = if param_services_enabled {
-        let seed_lits = entry_nodes
-            .iter()
-            .flat_map(|n| n.params.iter())
-            .map(|(name, value)| {
-                let n = LitStr::new(name, Span::call_site());
-                let v = LitStr::new(value, Span::call_site());
-                quote! { (#n, #v) }
-            });
         quote! {
             // phase-314 — the system DECLARED `[param_services]`, so the entry
             // must carry the cargo feature. Without it `apply_param_services`
@@ -1195,7 +1189,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                  silently dropped. Add it to this pkg's nros dependency features."
             );
             // issue 0460 — see the lifecycle twin above.
-            runtime.apply_param_services(&[ #( #seed_lits ),* ]).map_err(|reason| {
+            runtime.apply_param_services().map_err(|reason| {
                 ::nros::__macro_support::nros_platform::RuntimeError::Capability {
                     name: "param_services",
                     reason,

@@ -33,16 +33,16 @@ static int32_t __nros_entry_setup(void* executor) {
         return (int32_t)NROS_CPP_RET_NOT_INIT;
     }
     {
-        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "renamed_talker", "/", &__nros_node_0);
-        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
         {
             nros_cpp_ret_t rrc = nros_cpp_declare_remap(executor, "renamed_talker", "/", "chatter", "/demo/chatter");
             if (rrc != NROS_CPP_RET_OK) return (int32_t)rrc;
         }
         {
-            nros_cpp_ret_t prc = nros_cpp_declare_param(executor, "rate_hz", "10");
+            nros_cpp_ret_t prc = nros_cpp_declare_param(executor, 0, "rate_hz", "10");
             if (prc != NROS_CPP_RET_OK) return (int32_t)prc;
         }
+        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "renamed_talker", "/", &__nros_node_0);
+        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
         void* self = __nros_c_component_c_talker_pkg_create();
         int32_t crc = __nros_c_component_c_talker_pkg_configure(&__nros_node_0, executor, self);
         if (crc != 0) return crc;

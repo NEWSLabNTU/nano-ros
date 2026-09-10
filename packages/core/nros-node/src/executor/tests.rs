@@ -3058,6 +3058,79 @@ fn two_nodes_on_one_executor_keep_their_parameters_apart() {
     );
 }
 
+/// issue 1272 -- launch parameters are seeded BEFORE the node they belong to
+/// is built, keyed by the index `node_builder` will hand that node.
+///
+/// This is the order a generated C++ entry runs in: every node's launch
+/// `<param>` seeds are declared, then the node is constructed, then the next
+/// node's seeds. The seed key is therefore a PREDICTION of a `NodeId` that does
+/// not exist yet, and it is right only because `build()` numbers nodes by table
+/// position. This pins that: seed two nodes with the same parameter name and
+/// different values, build them afterwards, and each node must read its own.
+/// Before the fix every seed went to `NodeId::PRIMARY` and the second one was
+/// refused as a duplicate.
+#[cfg(feature = "param-services")]
+#[test]
+fn launch_seeds_made_before_construction_land_on_the_node_built_later() {
+    use super::node_record::NodeId;
+
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+
+    // The entry's first node: seeded while the node table is empty.
+    assert_eq!(executor.nodes().len(), 0);
+    assert!(executor.declare_parameter_on(
+        NodeId::from_raw(0),
+        "rate",
+        nros_params::ParameterValue::Integer(10)
+    ));
+    let alpha = executor.node_builder("alpha").build().unwrap();
+
+    // The second node: seeded with the first already built.
+    assert_eq!(executor.nodes().len(), 1);
+    assert!(
+        executor.declare_parameter_on(
+            NodeId::from_raw(1),
+            "rate",
+            nros_params::ParameterValue::Integer(20)
+        ),
+        "the same name on a second node is a different parameter"
+    );
+    let beta = executor.node_builder("beta").build().unwrap();
+
+    // The keys the seeds predicted are the keys construction handed out.
+    assert_eq!(alpha, NodeId::from_raw(0));
+    assert_eq!(beta, NodeId::from_raw(1));
+
+    assert_eq!(
+        executor
+            .get_parameter_on(alpha, "rate")
+            .and_then(|v| v.as_integer()),
+        Some(10),
+        "alpha lost its own launch value"
+    );
+    assert_eq!(
+        executor
+            .get_parameter_on(beta, "rate")
+            .and_then(|v| v.as_integer()),
+        Some(20),
+        "beta read a value seeded for another node"
+    );
+
+    // A component constructor declaring the name with its source default must
+    // ADOPT the seed (issue 0745's contract), per node.
+    assert!(
+        !executor.declare_parameter_on(beta, "rate", nros_params::ParameterValue::Integer(99)),
+        "a seeded name is already declared on its own node"
+    );
+    assert_eq!(
+        executor
+            .get_parameter_on(beta, "rate")
+            .and_then(|v| v.as_integer()),
+        Some(20),
+        "the source default beat the launch value"
+    );
+}
+
 /// phase-425 W3b — a non-bool `use_sim_time` attaches nothing.
 ///
 /// ROS 2 lets a node declare the name with a wrong type; what must NOT happen is

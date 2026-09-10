@@ -237,6 +237,12 @@ pub(crate) struct DeclsView {
     /// RAW node name — the pack quotes it.
     pub name: String,
     pub exec: &'static str,
+    /// issue 1272 -- the index this node gets on the executor that builds it,
+    /// i.e. its position among the nodes ONE setup function creates on ONE
+    /// executor (a tier's own, or the process-global one). Its parameter seeds
+    /// are declared on this key before the node exists, so it has to be the
+    /// index `node_builder` hands out next, not the plan-wide node index.
+    pub node: usize,
     pub remaps: Vec<RemapView>,
     pub params: Vec<ParamView>,
 }
@@ -274,11 +280,13 @@ pub(crate) struct QosRowView {
     pub value: u32,
 }
 
-/// The declarations for one node, with the pack's executor expression.
-pub(crate) fn decls_view(n: &PlanNode, exec: &'static str) -> DeclsView {
+/// The declarations for one node, with the pack's executor expression and the
+/// node's index on that executor (see [`DeclsView::node`]).
+pub(crate) fn decls_view(n: &PlanNode, exec: &'static str, node: usize) -> DeclsView {
     DeclsView {
         name: n.name.as_deref().unwrap_or(&n.exec).to_string(),
         exec,
+        node,
         remaps: n
             .remaps
             .iter()
