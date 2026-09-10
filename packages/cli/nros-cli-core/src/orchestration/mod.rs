@@ -37,7 +37,11 @@ pub mod params;
 pub mod pin;
 pub mod plan;
 pub mod planner;
+
 pub mod prereq_resolve;
+/// RFC-0097 D7 / phase-443 W2 — `share/nros/manifest.toml`, what a release
+/// DECLARES about itself instead of asserting three versions equal.
+pub mod release_manifest;
 pub use nros_orchestration_ir::rtos_realizer;
 pub mod schema;
 pub mod sdk_index;

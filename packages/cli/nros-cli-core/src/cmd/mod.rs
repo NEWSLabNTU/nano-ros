@@ -38,6 +38,7 @@ pub mod new_entry;
 pub mod new_node;
 pub mod new_platform;
 pub mod new_system;
+pub mod pin;
 pub mod plan;
 pub mod profile;
 pub mod scaffold_deploy;
@@ -158,6 +159,12 @@ pub enum Cmd {
     /// Refuses while a known pin names the version, and refuses equally when no
     /// pin file could be consulted: unestablished is not the same as false.
     Toolchain(toolchain::Args),
+
+    /// phase-443 W2 — report this project's `nros-toolchain.toml`, or move it.
+    /// A bump reports the CODEGEN DELTA between the two toolchains' declared
+    /// `share/nros/manifest.toml` first, so an upgrade that would invalidate
+    /// already-generated code warns before anything is written (RFC-0097 D7).
+    Pin(pin::Args),
 
     /// phase-336 — the cargo build-profile table (CMAKE_BUILD_TYPE mapping,
     /// flags, artifact dir, env-injected definitions). The bridge cmake/bash

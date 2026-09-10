@@ -11,28 +11,66 @@
 # glibc, its toolchain and whatever was in its environment, and nothing
 # afterwards can tell you which.
 #
-# WHAT A RELEASE MUST ASSERT ABOUT ITSELF
+# WHAT A RELEASE RECORDS ABOUT ITSELF — RFC-0097 D7, phase-443 W2
 #
 # The last time nano-ros shipped a prebuilt `nros`, the binary emitted code
 # that had drifted from the runtime, and drifted generated code COMPILES — so
-# the failure was silent and the download was withdrawn (phase-288 D1/D2). The
-# checks below are what makes shipping safe again, and each one is here because
-# it is the property a user cannot verify for themselves:
+# the failure was silent and the download was withdrawn (phase-288 D1/D2).
+#
+# This workflow used to answer that by ASSERTING three versions equal: the
+# release version, `NROS_CODEGEN_VERSION`, and `[tool.nros].version` in the
+# index. The coupling was mechanised, which is why it never drifted; it is also
+# why nothing could move alone. RFC-0097 measured what that cost — on `main`,
+# 2026-09-10: `packages/cli` 710 commits per 60 days, the runtime crates the CLI
+# compiles 248, `nros-sdk-index.toml` 70, and `NROS_CODEGEN_VERSION` 2, ALL
+# TIME. The axis carrying every compatibility promise moves twice, ever; the
+# artifact carrying it would have moved ~450 times as often.
+#
+# So the release now RECORDS its components instead. `share/nros/manifest.toml`
+# declares all four, and only `codegen` promises anything:
+#
+#     version  = "0.7.9"      the toolchain
+#     codegen  = 7            the ONLY field that can invalidate existing output
+#     index    = "2026-09-10" pointers into nano-ros-sdk
+#     nano_ros = "abc1234"    the runtime commit
+#
+# `0.7.1` and `0.7.9` both declaring `codegen = 7` is the whole feature: a user
+# takes either and re-emits nothing. `nros pin <version>` reads two manifests
+# out of the store and says so before it moves anything.
+#
+# ONE equality survives, because it is the one that is TRUE: the manifest's
+# `codegen` must equal `NROS_CODEGEN_VERSION` in the tree this binary was built
+# from. That is not a coupling between axes — it is the manifest being about the
+# artifact, and it is the assertion phase-288's silent failure actually needed.
+# It cannot be got wrong by construction either: the manifest is stamped by
+# `nros toolchain manifest`, which takes the number from the binary's own
+# `abi_guard::EMITTED_VERSION` and has no `--codegen` flag. `check-release-manifest`
+# gates that this step still exists and that the retired equalities stay retired.
+#
+# The other two are now REPORTED, not enforced: the index's pinned version and
+# the crate version are printed beside the release version so drift is visible.
 #
 #   source-stamp        the binary matches the checkout it was built from
-#   --codegen-version   it equals `NROS_CODEGEN_VERSION` in that same tree
-#   version agreement   the tag, the crate version and `[tool.nros].version`
-#                       in the index describe one artifact
+#   manifest codegen    it equals `NROS_CODEGEN_VERSION` in that same tree
 #
 # WHAT THE ASSET CONTAINS, and why each part is not optional
 #
 #   bin/nros                          the binary
+#   share/nros/manifest.toml          what this release is MADE OF (RFC-0097 D7)
+#                                     — read by `nros pin` and
+#                                     `nros toolchain manifest`, never parsed
+#                                     out of a filename
 #   share/nros/VERSION                the STORE version (`0.5.0-nros1`), which
 #                                     `nros --version` does not print — without
 #                                     it `install.sh` cannot name the prefix the
 #                                     index pins, and a later
 #                                     `nros setup --tool nros` installs a second
-#                                     copy of the same binary
+#                                     copy of the same binary. NOT replaced by
+#                                     the manifest: `install.sh` chooses the
+#                                     prefix in POSIX shell before anything is
+#                                     unpacked, and must not need a TOML parser
+#                                     to do it. The workflow writes both from
+#                                     one input, so they agree by construction
 #   share/nros/nros-sdk-index.toml    a released `nros` has no checkout to find
 #                                     an index in, so `nros setup <board>` fails
 #                                     outright without this (phase-431 W5,
@@ -50,7 +88,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "store version to release, e.g. 0.5.0-nros1 (must equal [tool.nros].version)"
+        description: "store version to release, e.g. 0.5.0-nros1 (recorded, not asserted equal to anything — RFC-0097 D7)"
         required: true
         type: string
       publish:
@@ -94,52 +132,77 @@ jobs:
           # this, so it is asserted here rather than assumed.
           "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
 
-      - name: Verify the release describes itself
+      - name: Record what this release is made of
         run: |
           set -euo pipefail
           nros="$GITHUB_WORKSPACE/packages/cli/target/release/nros"
           want_version='${{ inputs.version }}'
+          stage="$RUNNER_TEMP/prefix"
+          mkdir -p "$stage/share/nros"
 
-          # 1. The codegen version the binary emits must be the one THIS TREE's
-          #    runtime accepts. A release claiming a compatibility it does not
-          #    have is the exact failure that withdrew the last one.
-          emitted="$("$nros" --codegen-version)"
-          declared="$(sed -n 's/^pub const NROS_CODEGEN_VERSION: u32 = \([0-9]\+\);.*/\1/p' \
+          # RECORD. `codegen` is taken by the binary from its own
+          # `abi_guard::EMITTED_VERSION` — there is no flag for it, so this
+          # cannot record a number the binary does not emit. `index` is a DATE
+          # (the index is a table of pointers into `nano-ros-sdk`, which
+          # publishes per-tool and has no version of its own, RFC-0097 D5).
+          #
+          # `actions/checkout@v4` fetches depth 1, so a path-limited `git log`
+          # is empty unless HEAD itself touched the index. Falling back to
+          # HEAD's own date keeps the field HONEST for a shallow clone: "the
+          # index as of this commit" is true either way, where an empty string
+          # would only look like a missing field.
+          index_date="$(git log -1 --format=%cs -- nros-sdk-index.toml || true)"
+          [ -n "$index_date" ] || index_date="$(git log -1 --format=%cs)"
+          "$nros" toolchain manifest \
+              --store-version "$want_version" \
+              --index "$index_date" \
+              --nano-ros "$(git rev-parse --short HEAD)" \
+              --write "$stage/share/nros/manifest.toml"
+          cat "$stage/share/nros/manifest.toml"
+
+          # THE ONE EQUALITY THAT SURVIVES. The manifest promises that code
+          # emitted by this binary compiles against this tree's runtime, and
+          # that promise is checkable here and nowhere downstream: drifted
+          # generated code COMPILES, so a wrong number is silent forever
+          # (phase-288 D1/D2). Everything else this workflow used to assert has
+          # become a printed NOTE below.
+          manifest_codegen="$(sed -n 's/^codegen = \([0-9]\+\)$/\1/p' "$stage/share/nros/manifest.toml")"
+          tree_codegen="$(sed -n 's/^pub const NROS_CODEGEN_VERSION: u32 = \([0-9]\+\);.*/\1/p' \
               packages/core/nros-core/src/codegen_version.rs)"
-          if [ "$emitted" != "$declared" ]; then
-              echo "::error::the binary emits codegen version $emitted, the tree declares $declared" >&2
+          if [ -z "$manifest_codegen" ] || [ -z "$tree_codegen" ]; then
+              echo "::error::could not read the codegen version (manifest '$manifest_codegen', tree '$tree_codegen')" >&2
               exit 1
           fi
-          echo "codegen version: $emitted (binary and tree agree)"
+          if [ "$manifest_codegen" != "$tree_codegen" ]; then
+              echo "::error::the manifest records codegen $manifest_codegen, the tree declares $tree_codegen" >&2
+              exit 1
+          fi
+          echo "codegen $manifest_codegen: the manifest and packages/core/nros-core agree"
 
-          # 2. The index must already pin the version being released. The store
-          #    prefix is named from it, and `install.sh` reads it out of the
-          #    asset — three places, one string.
+          # REPORTED, NOT ENFORCED. These two used to be hard failures, and
+          # they are exactly the couplings D7 removes: an index edit and a CLI
+          # version bump are invisible to already-generated code, so neither may
+          # block a release. They are still worth SEEING, because a surprise
+          # here is usually a mistake — just not one this workflow gets to
+          # decide.
           indexed="$(sed -n '/^\[tool\.nros\]/,/^\[/{s/^version = "\(.*\)"/\1/p}' nros-sdk-index.toml)"
-          if [ "$indexed" != "$want_version" ]; then
-              echo "::error::releasing $want_version but [tool.nros].version is $indexed — bump the index first" >&2
-              exit 1
-          fi
-
-          # 3. The store version is the crate version plus a repackaging
-          #    counter, so the crate version must be its prefix. This catches
-          #    releasing `0.6.0-nros1` off a 0.5.0 tree, which would install
-          #    under a name that promises code the binary does not have.
           crate="$("$nros" --version | awk '{print $NF}')"
-          case "$want_version" in
-              "$crate"-nros*) ;;
-              *)
-                  echo "::error::version $want_version is not <crate>-nrosN for crate version $crate" >&2
-                  exit 1
-                  ;;
-          esac
-          echo "version: $want_version (crate $crate, index agrees)"
+          echo "note: releasing   $want_version"
+          echo "note: crate       $crate"
+          echo "note: index pins  ${indexed:-<none>}"
+          if [ "$indexed" != "$want_version" ]; then
+              printf '::warning::%s\n' \
+                  "[tool.nros].version is '${indexed:-<none>}', not '$want_version' — a later 'nros setup --tool nros' resolves a different prefix until the index is bumped."
+          fi
 
       - name: Stage the prefix
         run: |
           set -euo pipefail
+          # `share/nros/manifest.toml` is already here — the recording step
+          # wrote it into this same prefix, so what was verified is what ships.
           stage="$RUNNER_TEMP/prefix"
           mkdir -p "$stage/bin" "$stage/share/nros"
+          test -f "$stage/share/nros/manifest.toml"
           cp packages/cli/target/release/nros "$stage/bin/nros"
           printf '%s\n' '${{ inputs.version }}' >"$stage/share/nros/VERSION"
           cp nros-sdk-index.toml "$stage/share/nros/nros-sdk-index.toml"
@@ -184,7 +247,14 @@ jobs:
           cd "$RUNNER_TEMP"
           "$installed" --codegen-version
           "$installed" setup --list >/dev/null
-          echo "the asset installs, fronts, and finds its own index"
+          # RFC-0097 D7 — the manifest must survive the install and be READ back
+          # by the installed binary, from the file, at the prefix it landed in.
+          # An asset whose manifest the CLI cannot read is an asset for which
+          # `nros pin` cannot answer the re-emit question, which is the whole
+          # point of shipping it.
+          "$installed" toolchain manifest | tee "$RUNNER_TEMP/read-back.toml"
+          grep -qx "codegen = $("$installed" --codegen-version)" "$RUNNER_TEMP/read-back.toml"
+          echo "the asset installs, fronts, finds its own index, and declares its components"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -207,6 +277,12 @@ jobs:
           # sit where YAML expects a key (CLAUDE.md's pitfall index).
           printf '%s\n' \
             "The \`nros\` CLI, codegen version $("$nros" --codegen-version)." \
+            "" \
+            "Coming from another release that declares the SAME codegen version?" \
+            "Nothing is re-emitted — take it (RFC-0097 D7). \`nros pin <version>\`" \
+            "reads both manifests out of your store and says so before it moves" \
+            "your \`nros-toolchain.toml\`; \`nros toolchain manifest\` prints what" \
+            "an installed toolchain declares." \
             "" \
             "Install:" \
             "" \

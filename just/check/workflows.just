@@ -407,6 +407,21 @@ vendor-fetch-pinned:
 version-lockstep:
     @./scripts/check-version-lockstep.sh
 
+# RFC-0097 D7 / phase-443 W2 — a release RECORDS its components, and blocks on
+# exactly ONE equality. `release-nros.yml` used to assert three versions equal;
+# only `NROS_CODEGEN_VERSION` (2 changes, all time) can invalidate a user's
+# existing generated code, and it is the only one that may fail a release.
+#
+# Gated rather than remembered because the retired assertions are two lines each
+# and each reads as prudence in isolation, which is how a coupling comes back.
+# The manifest's FILENAME is read out of the Rust module that parses it, and the
+# R4 rule is a property of every failing path rather than a ban on the two old
+# wordings — a reintroduction would be written in new words (the 2026-07-28
+# audit's shape). Pure text over one YAML + one Rust file, ~0.05 s.
+[group("main")]
+release-manifest:
+    @python3 scripts/check-release-manifest.py
+
 # phase-413 W2 — a job asserts its runner's labels AFTER `just setup`, never
 # before. `runner-doctor.sh` looks for `build/qemu/bin/qemu-system-arm` FIRST
 # and `just setup tier2` is what creates it, so doctoring first asks the host

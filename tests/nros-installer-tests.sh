@@ -18,6 +18,15 @@
 #   3. bad checksum     -> refuses, and installs NOTHING
 #   4. absent .sha256   -> refuses (unverified is not a fallback)
 #   5. no asset at all  -> refuses, naming the source build as the way forward
+#   6. manifest read    -> the INSTALLED binary reads share/nros/manifest.toml
+#                          back out of its prefix (RFC-0097 D7); no component
+#                          version is ever parsed out of an asset or dir name
+#   7. codegen delta    -> `nros pin` across two installed toolchains: equal
+#                          codegen re-emits nothing and does not warn; a
+#                          different one warns, names `nros sync`, and (under
+#                          --dry-run) has written nothing when it does
+#   8. pre-W2 asset     -> VERSION alone still installs, and the binary reports
+#                          that the release declares nothing rather than guessing
 set -uo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -33,6 +42,11 @@ cli="$root/packages/cli/target/release/nros"
 FAILURES=0
 fail() { echo "FAIL: $*" >&2; FAILURES=$((FAILURES + 1)); }
 ok() { echo "  [OK] $*"; }
+# For an arm whose assertions are a straight sequence rather than an if/else:
+# `ok` after a `fail` would print a pass line for an arm that failed, which is
+# exactly the shape `check-no-vacuous-tests` exists to stop one level up.
+arm_start() { _arm_failures="$FAILURES"; }
+arm_ok() { [ "$FAILURES" -eq "$_arm_failures" ] && ok "$*"; }
 
 [ -x "$cli" ] || { echo "SKIP: no in-tree nros at $cli (just setup-cli)" >&2; exit 0; }
 for tool in python3 curl tar zstd; do
@@ -48,12 +62,41 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Build the asset in the shape a release has: prefix-rooted, with the store
-# version beside the binary.
+# version beside the binary — and, since RFC-0097 D7, the manifest that records
+# what the release is MADE OF.
+#
+# The manifest is stamped by the same verb `release-nros.yml` calls, so this
+# exercises the real emit path rather than a hand-written imitation of it: the
+# `codegen` number comes from the binary's own constant, which is the property
+# that makes the release-time equality check meaningful.
 mkdir -p "$tmp/serve" "$tmp/rel/bin" "$tmp/rel/share/nros"
 cp "$cli" "$tmp/rel/bin/nros"
 echo "9.9.9-nros7" >"$tmp/rel/share/nros/VERSION"
+# The codegen number the PACKAGED binary emits, read here rather than inside
+# arm 6. Arm 7 needs it, and under `set -u` a value defined only on arm 6's
+# success branch takes the whole script down when an EARLIER arm failed — one
+# broken arm would then hide every arm after it, which is the reverse of what a
+# multi-arm test is for. Arm 6 still asserts the INSTALLED binary reports the
+# same number, which is the claim that arm is about.
+emitted="$("$cli" --codegen-version)"
+"$cli" toolchain manifest \
+    --store-version 9.9.9-nros7 \
+    --index 2026-09-10 \
+    --nano-ros abc1234 \
+    --write "$tmp/rel/share/nros/manifest.toml" >/dev/null \
+    || { echo "SKIP: this nros has no \`toolchain manifest\` (rebuild: just setup-cli)" >&2; exit 0; }
 tar --zstd -cf "$tmp/serve/nros-asset.tar.zst" -C "$tmp/rel" bin share
 ( cd "$tmp/serve" && sha256sum nros-asset.tar.zst >nros-asset.tar.zst.sha256 )
+
+# A PRE-W2 asset: `share/nros/VERSION` and no manifest. That is a real state on
+# any host that installed before D7 landed, and the installer must be
+# indifferent to it — `install.sh` chooses the prefix from VERSION, in POSIX
+# shell, before anything is unpacked, and must never need a TOML parser.
+mkdir -p "$tmp/legacy/bin" "$tmp/legacy/share/nros"
+cp "$cli" "$tmp/legacy/bin/nros"
+echo "9.9.8-nros1" >"$tmp/legacy/share/nros/VERSION"
+tar --zstd -cf "$tmp/serve/legacy-asset.tar.zst" -C "$tmp/legacy" bin share
+( cd "$tmp/serve" && sha256sum legacy-asset.tar.zst >legacy-asset.tar.zst.sha256 )
 
 # Port 0 lets the OS choose, so parallel runs of this test cannot collide — the
 # fixed-port version of this file would have been a flake generator.
@@ -136,8 +179,91 @@ else
     ok "a missing release names the source build"
 fi
 
+# --- 6: the installed binary READS its own manifest, from the file ---------
+# RFC-0097 D7's "read by the CLI, not parsed out of a filename": the asset is
+# `nros-asset.tar.zst` and the prefix is `9.9.9-nros7`, so neither name carries
+# a codegen number. The only place it can come from is share/nros/manifest.toml.
+home="$tmp/h1"
+installed="$home/sdk/nros/9.9.9-nros7/bin/nros"
+if [ -x "$installed" ]; then
+    arm_start
+    [ "$("$installed" --codegen-version)" = "$emitted" ] \
+        || fail "6: the installed binary emits a different codegen than the one packaged"
+    "$installed" toolchain manifest >"$tmp/read-back.txt" 2>&1
+    nros_grep_q "^codegen = $emitted$" "$tmp/read-back.txt" \
+        || fail "6: the installed binary does not read back its own codegen
+$(cat "$tmp/read-back.txt")"
+    nros_grep_q "^index = \"2026-09-10\"$" "$tmp/read-back.txt" \
+        || fail "6: the manifest lost its index field in transit"
+    arm_ok "the installed binary reads share/nros/manifest.toml back from the prefix"
+else
+    fail "6: arm 1 left no installed binary to read a manifest from"
+fi
+
+# --- 7: same codegen -> no re-emit; different codegen -> warns FIRST -------
+# D7's acceptance, end to end through the real binary. The second toolchain is
+# fabricated in the store rather than installed, because what is under test is
+# the COMPARISON, and two releases that differ only in `codegen` cannot be built
+# from one checkout.
+arm_start
+store="$home"
+same="$store/sdk/nros/9.9.9-nros8"
+newer="$store/sdk/nros/9.9.9-nros9"
+mkdir -p "$same/share/nros" "$newer/share/nros"
+"$cli" toolchain manifest --store-version 9.9.9-nros8 --write "$same/share/nros/manifest.toml" >/dev/null
+sed "s/^codegen = .*/codegen = $((emitted + 1))/" "$tmp/rel/share/nros/manifest.toml" \
+    | sed 's/^version = .*/version = "9.9.9-nros9"/' >"$newer/share/nros/manifest.toml"
+
+proj="$tmp/proj"
+mkdir -p "$proj"
+printf '[toolchain]\nversion = "9.9.9-nros7"\n' >"$proj/nros-toolchain.toml"
+
+"$cli" pin --dir "$proj" --root "$store" --dry-run 9.9.9-nros8 >"$tmp/pin-same.txt" 2>&1 \
+    || fail "7: \`nros pin\` failed
+$(cat "$tmp/pin-same.txt")"
+if nros_grep_q "warning" "$tmp/pin-same.txt"; then
+    fail "7: two releases declaring the same codegen must not warn
+$(cat "$tmp/pin-same.txt")"
+fi
+nros_grep_q "UNCHANGED" "$tmp/pin-same.txt" \
+    || fail "7: the same-codegen verdict is not stated
+$(cat "$tmp/pin-same.txt")"
+
+"$cli" pin --dir "$proj" --root "$store" --dry-run 9.9.9-nros9 >"$tmp/pin-diff.txt" 2>&1 \
+    || fail "7: \`nros pin\` failed on a codegen change
+$(cat "$tmp/pin-diff.txt")"
+nros_grep_q "^warning: codegen $emitted -> $((emitted + 1))" "$tmp/pin-diff.txt" \
+    || fail "7: a codegen change did not warn
+$(cat "$tmp/pin-diff.txt")"
+nros_grep_q "nros sync" "$tmp/pin-diff.txt" \
+    || fail "7: the warning does not name the remedy"
+# And it warned BEFORE it would have acted: --dry-run wrote nothing.
+nros_grep_q '9\.9\.9-nros7' "$proj/nros-toolchain.toml" \
+    || fail "7: --dry-run moved the pin"
+arm_ok "same codegen: no re-emit; different codegen: warns, names the remedy, writes nothing"
+
+# --- 8: a pre-W2 asset still installs, and says what it cannot answer ------
+home="$tmp/h5"
+if run_install "$home" "$base/legacy-asset.tar.zst"; then
+    # `arm_ok`, not `ok`: measured 2026-09-10 against the S2 mutation below —
+    # with the "declares nothing" sentence removed, this arm printed its FAIL
+    # line AND an `[OK]` line for the same arm. The exit code was still right,
+    # so the lie was only in the transcript, which is the half a reader reads.
+    arm_start
+    legacy="$home/sdk/nros/9.9.8-nros1/bin/nros"
+    [ -x "$legacy" ] || fail "8: an asset with no manifest did not install"
+    "$legacy" toolchain manifest >"$tmp/legacy-manifest.txt" 2>&1
+    nros_grep_q "no share/nros/manifest.toml" "$tmp/legacy-manifest.txt" \
+        || fail "8: a manifest-less release must SAY it declares nothing
+$(cat "$tmp/legacy-manifest.txt")"
+    arm_ok "a pre-RFC-0097 asset installs from VERSION alone, and declares nothing rather than guessing"
+else
+    fail "8: an asset with no manifest failed to install
+$(cat "$home.log")"
+fi
+
 if [ "$FAILURES" -ne 0 ]; then
     echo "nros-installer-tests: $FAILURES failure(s)" >&2
     exit 1
 fi
-echo "nros-installer-tests: OK — installs, fronts, and refuses everything unverified."
+echo "nros-installer-tests: OK — installs, fronts, refuses everything unverified, and declares its components."
