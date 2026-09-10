@@ -921,6 +921,17 @@ pub struct ToolSource {
 ///
 /// A source with no fetch fields at all has no provisioning step (e.g. a
 /// host-built package whose tree already lives in the workspace).
+/// Where a `[source.*]` is provisioned. Defaults to `Workspace` so every
+/// existing entry keeps its meaning with no edit — the migration is opt-in, one
+/// source at a time, which is what makes it reviewable.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SourceLocation {
+    #[default]
+    Workspace,
+    Store,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourcePackage {
@@ -934,8 +945,22 @@ pub struct SourcePackage {
     pub git_ref: Option<String>,
     /// Workspace-relative destination the source is provisioned into. The
     /// index is the SSOT — never a path baked into the `nros` binary.
+    ///
+    /// Ignored when [`Self::location`] is `Store`: a store entry's path is
+    /// DERIVED from name + version, never authored, so two versions cannot
+    /// collide and nobody can spell it two ways (RFC-0095 D2).
     #[serde(default)]
     pub dest: Option<String>,
+    /// WHERE this source is provisioned — phase-440, RFC-0095 D1/D2.
+    ///
+    /// `workspace` (the default) keeps the historical behaviour: a
+    /// workspace-relative `dest`, which for `third-party/*` sits beside PINNED
+    /// SUBMODULE SOURCE and is what phase-440 W3's ratchet exists to stop
+    /// growing. `store` puts it in `$NROS_STORE/sources/<name>/<version>`,
+    /// outside every checkout (D1, so no second checkout can own it) and keyed
+    /// by version (D2, so two versions coexist and two checkouts share one).
+    #[serde(default)]
+    pub location: SourceLocation,
     /// `.gitmodules` path when the canonical source is a committed submodule;
     /// `nros setup` runs `git submodule update --init <path>` instead of a
     /// fresh clone. `git`/`ref` still record the pin (SSOT) in this mode.
@@ -971,6 +996,11 @@ impl Default for SourcePackage {
             git: None,
             git_ref: None,
             dest: None,
+            // phase-440 — matches `#[serde(default)]`, so a hand-built default
+            // and a TOML-parsed entry with no `location` agree. This impl exists
+            // BECAUSE `#[derive(Default)]` would diverge on the bools; a new
+            // field that disagrees here is the same bug one row down.
+            location: SourceLocation::Workspace,
             submodule: None,
             shallow: true,
             recursive: true,
@@ -1281,8 +1311,21 @@ impl SdkIndex {
                     if src.git_ref.is_none() {
                         bail!("source '{name}' has `git` but no `ref` (clone needs a pinned ref)");
                     }
-                    if src.dest.is_none() {
-                        bail!("source '{name}' has `git` but no `dest` (where to provision it)");
+                    // phase-440 — a STORE source derives its path from name +
+                    // version, so `dest` is not merely optional there: it is
+                    // meaningless, and an authored one would be a second
+                    // spelling of a location the store already knows. Both
+                    // directions are refused so the two cannot disagree.
+                    match src.location {
+                        SourceLocation::Workspace if src.dest.is_none() => bail!(
+                            "source '{name}' has `git` but no `dest` (where to provision it). \
+                             A store source needs no `dest` — set location = \"store\"."
+                        ),
+                        SourceLocation::Store if src.dest.is_some() => bail!(
+                            "source '{name}' has location = \"store\" AND a `dest`. The store \
+                             path is DERIVED from name + version; drop the `dest`."
+                        ),
+                        _ => {}
                     }
                 }
                 SourceProvision::Submodule => {

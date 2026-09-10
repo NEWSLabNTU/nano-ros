@@ -30,8 +30,23 @@ use crate::orchestration::{sdk_index::SdkIndex, sdk_store};
 
 #[derive(Debug, Parser)]
 pub struct Args {
-    /// Tool name, as spelled by `[tool.<name>]` in the SDK index.
+    /// Tool name, as spelled by `[tool.<name>]` in the SDK index — or, with
+    /// `--source`, a `[source.<name>]`.
     pub tool: String,
+
+    /// Ask about a `[source.*]` instead of a `[tool.*]` (phase-440).
+    ///
+    /// A source with `location = "store"` is provisioned to
+    /// `$NROS_STORE/sources/<name>/<version>`, DERIVED from the index exactly
+    /// as a tool's prefix is. A consumer that needs to find one must ask rather
+    /// than spell it — the same rule this command exists to enforce for tools,
+    /// and the reason `msg_to_cyclone_idl.py` no longer carries a literal
+    /// `third-party/ros/rosidl`.
+    ///
+    /// A `location = "workspace"` source has no store path, so this reports
+    /// that rather than inventing one.
+    #[arg(long)]
+    pub source: bool,
 
     /// Path to the SDK index.
     #[arg(long, default_value = "nros-sdk-index.toml")]
@@ -44,6 +59,10 @@ pub struct Args {
 
 pub fn run(args: Args) -> Result<()> {
     let index = SdkIndex::load(&crate::cmd::setup::resolve_index(&args.index))?;
+
+    if args.source {
+        return run_source(&index, &args);
+    }
 
     let Some(dir) = sdk_store::tool_dir(&index, &args.tool) else {
         // Name what IS pinned: a typo and an unprovisioned tool look identical
@@ -98,5 +117,48 @@ pub fn run(args: Args) -> Result<()> {
     // installed: the caller asked where the tool goes, and an empty answer is
     // harder to act on than a path that does not exist yet.
     println!("{}", usable.unwrap_or(dir).display());
+    Ok(())
+}
+
+/// `--source` — the store path of a `[source.*]`, phase-440.
+///
+/// Deliberately narrower than the tool arm: there is no legacy flat shape to
+/// fall back to, because store sources are new, so "where it goes" and "where a
+/// consumer reads it" are the same directory and one derivation answers both.
+fn run_source(index: &SdkIndex, args: &Args) -> Result<()> {
+    let Some(src) = index.source.get(&args.tool) else {
+        let known: Vec<&str> = index.source.keys().map(String::as_str).collect();
+        bail!(
+            "no `[source.{}]` in {} — the index names: {}",
+            args.tool,
+            args.index.display(),
+            known.join(", ")
+        );
+    };
+
+    let Some(dir) = sdk_store::source_dir(index, &args.tool) else {
+        // Not an error the caller can fix by provisioning: this source lives in
+        // the workspace by declaration, so say WHICH declaration rather than
+        // printing a store path nothing will ever write.
+        bail!(
+            "`[source.{}]` has location = \"workspace\" (dest = {}), so it has no \
+             store path. Ask for its workspace path, or set location = \"store\" \
+             in {}.",
+            args.tool,
+            src.dest.as_deref().unwrap_or("<unset>"),
+            args.index.display()
+        );
+    };
+
+    if args.require && !dir.is_dir() {
+        bail!(
+            "`[source.{}]` {} is not provisioned at {} — run: nros setup --source {}",
+            args.tool,
+            src.version,
+            dir.display(),
+            args.tool
+        );
+    }
+    println!("{}", dir.display());
     Ok(())
 }
