@@ -9703,7 +9703,8 @@ fn check_deadline_miss(
 // credited each spin the REQUESTED timeout — spin.rs `delta_us` fallback —
 // so shared-session wakes made low-rate timers fire early (a 100 ms timer
 // at ~67 ms on Zephyr native_sim) and tick rounding made fast tiers fire
-// late. Measured on-target; mechanism documented at the fallback site.)
+// late. Measured on that native_sim image; mechanism documented at the
+// fallback site.)
 //
 // Every platform port exports `nros_platform_clock_ns` through the same
 // linkage contract the wake primitives rely on (`nros_platform_export_clock!`

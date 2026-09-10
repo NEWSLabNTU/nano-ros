@@ -37,7 +37,7 @@
 //!
 //! Bespoke interop lanes kept OUT of this consumer (their own binaries):
 //! `xrce_ros2_interop.rs` (XRCE Agent lifecycle specifics) and
-//! `qos_zephyr_ros2_interop_e2e.rs` (the on-target zephyr-image QoS interop,
+//! `qos_zephyr_ros2_interop_e2e.rs` (the zephyr native_sim image QoS interop,
 //! `zephyr-qos-port` nextest group). See the phase-295 W6.c doc for the
 //! introspection/benchmark lanes retired in the reduction.
 //!

@@ -185,9 +185,11 @@ the same build — the shape of a defect only a peer can show.
   W3 (PR #587)**. C/cyclone is what runs; Rust/cyclone is carved. What remains
   after the correction: C++ has exactly one cell (`cpp_multi_node_entry`) and
   it has no focused runner.
-* **Platform.** One on-target cell exists (`zephyr-qos-rust-zenoh`) and no
-  recipe runs it. FreeRTOS, NuttX, ThreadX and esp32 have **zero** live-peer
-  cells. Every claim that an RTOS image interoperates rests on host testing plus
+* **Platform.** One non-Linux cell exists (`zephyr-qos-rust-zenoh`) and no
+  recipe runs it. (This line read "one on-target cell" until phase-441 W5:
+  that cell is `native_sim/native/64`, whose sockets are the host's, so it is
+  not a witness for a device — see phase-441.) FreeRTOS, NuttX, ThreadX and
+  esp32 have **zero** live-peer cells. Every claim that an RTOS image interoperates rests on host testing plus
   the wire being the same, which is an argument, not a measurement.
 * **Direction, for cyclone services.** zenoh has both `nano_server` and
   `ros2_server`; cyclone has only `nano_server`. A nano-ros *client* against a

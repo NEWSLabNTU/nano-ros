@@ -4726,7 +4726,7 @@ skip_probe = true
 # (examples/workspaces/features/src/zephyr_rust_qos_entry): the
 # qos-on-embedded coverage cell. The QoS profiles are declared per-entity in
 # node code (RFC-0041, reliable + transient_local on /qos_chatter); the
-# on-target QoS-matched pair republishes its receive count on /qos_ok.
+# in-image QoS-matched pair republishes its receive count on /qos_ok.
 # Distinct zenohd port (7460). Consumed by tests/entry_e2e.rs
 # (zephyr_rust_qos cell).
 [[workspace_fixture]]
@@ -4748,7 +4748,7 @@ skip_probe = true
 # (examples/workspaces/safety/src/zephyr_rust_safety_entry): the
 # safety-on-embedded coverage cell. The system declares [system].features =
 # ["safety"] → the zenoh backend attaches the E2E CRC + sequence number on
-# publish and validates on receive; the on-target safe_listener republishes
+# publish and validates on receive; the in-image safe_listener republishes
 # its CRC-VALIDATED count on /safe_ok. Distinct zenohd port (7490). Consumed
 # by tests/entry_e2e.rs (zephyr_rust_safety cell).
 [[workspace_fixture]]

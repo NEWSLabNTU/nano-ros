@@ -11,7 +11,7 @@
 //! (`<domain>/<topic>/<type>/TypeHashNotSupported` both sides) and the
 //! direction works — this test pins it so a real regression can't hide again.
 //!
-//! Reuses the phase-276 W5 `ws-qos-rust` Zephyr image (both nodes on-target;
+//! Reuses the phase-276 W5 `ws-qos-rust` Zephyr image (both nodes in-image;
 //! `/qos_ok` republished at 1 Hz) and its baked router port — the
 //! `zephyr-qos-port` nextest group serializes this with
 //! the `entry_e2e` zephyr_rust_qos cell so the routers never collide.

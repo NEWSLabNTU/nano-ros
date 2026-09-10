@@ -12,7 +12,7 @@
 //!      `/qos_chatter` with a NON-DEFAULT profile (reliable + transient_local)
 //!      and the listener subscribes with the byte-identical profile,
 //!   4. exports `rust_main` that gates on the network, opens an `Executor`,
-//!      registers, and spins forever — the on-target QoS-matched pair
+//!      registers, and spins forever — the in-image QoS-matched pair
 //!      republishes its receive count on `/qos_ok` for cross-process observers.
 //!
 //! There is NO Rust `fn main` (Zephyr emits the C `main`).
