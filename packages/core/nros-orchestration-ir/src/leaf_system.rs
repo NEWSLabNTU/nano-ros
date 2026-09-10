@@ -85,6 +85,12 @@ pub struct LeafComponent {
     /// component cannot be host-probed (issue 1265). `None` = not declared;
     /// `Some(vec![])` = declared to have none.
     pub entities: Option<Vec<String>>,
+    /// Dispatch strategy (`"inline"` | `"deferred"` | `"from_isr"`,
+    /// phase-216 A.5), replacing `[package.metadata.nros.node] dispatch`
+    /// (issue 1278). Read by `nros check`'s framework × dispatch lint; `None`
+    /// = the trait default. Validated there, not here, so the lint keeps its
+    /// one diagnostic for a typo.
+    pub dispatch: Option<String>,
 }
 
 /// A leaf's resolved deployment.
@@ -327,6 +333,7 @@ fn from_system_toml(path: &Path) -> Result<LeafSystem, String> {
                 class: str_key(Some(t), "class"),
                 name: str_key(Some(t), "name"),
                 entities: entities_key(t, path)?,
+                dispatch: str_key(Some(t), "dispatch"),
             });
         }
     }
@@ -440,6 +447,7 @@ pub fn from_manifest(dir: &Path) -> Result<Option<LeafSystem>, String> {
             class: str_key(decl, "class"),
             name: str_key(decl, "name"),
             entities,
+            dispatch: str_key(node, "dispatch"),
         });
     }
     Ok(Some(LeafSystem {
@@ -507,6 +515,7 @@ pkg = "esp32_talker"
 class = "esp32_talker::Talker"
 name = "talker"
 entities = ["publisher:std_msgs/msg/String:/chatter", "timer"]
+dispatch = "deferred"
 
 [image.esp32]
 board = "esp32-c3-baremetal"
@@ -533,6 +542,8 @@ locator = "tcp/10.0.2.2:9800"
         assert_eq!(l.network.netmask, None);
         assert_eq!(l.components.len(), 1);
         assert_eq!(l.components[0].pkg.as_deref(), Some("esp32_talker"));
+        // Issue 1278 — the dispatch strategy has a home here too.
+        assert_eq!(l.components[0].dispatch.as_deref(), Some("deferred"));
         assert_eq!(
             l.declared_entities().unwrap(),
             vec!["publisher:std_msgs/msg/String:/chatter", "timer"]
@@ -559,7 +570,8 @@ locator = "tcp/10.0.2.2:9800"
             "Cargo.toml",
             &format!(
                 "{CARGO}\n[package.metadata.nros.entry]\ndeploy = \"freertos\"\n\n\
-                 [package.metadata.nros.node]\nclass = \"t::Talker\"\nname = \"talker\"\n\n\
+                 [package.metadata.nros.node]\nclass = \"t::Talker\"\nname = \"talker\"\n\
+                 dispatch = \"deferred\"\n\n\
                  [package.metadata.nros.deploy.freertos]\nrmw = \"zenoh\"\ndomain_id = 0\n\
                  locator = \"tcp/10.0.2.2:7800\"\nip = \"10.0.2.15\"\n"
             ),
@@ -572,6 +584,7 @@ locator = "tcp/10.0.2.2:9800"
         assert_eq!(l.network.locator.as_deref(), Some("tcp/10.0.2.2:7800"));
         assert_eq!(l.network.ip.as_deref(), Some("10.0.2.15"));
         assert_eq!(l.components[0].class.as_deref(), Some("t::Talker"));
+        assert_eq!(l.components[0].dispatch.as_deref(), Some("deferred"));
         let w = l.deprecation().expect("a fallback warns");
         assert!(!w.contains('\n'), "one line: {w}");
         assert!(w.contains("system.toml"), "names the file to write: {w}");

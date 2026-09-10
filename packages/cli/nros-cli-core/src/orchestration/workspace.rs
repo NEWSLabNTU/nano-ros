@@ -1295,6 +1295,7 @@ fn leaf_system_summaries(
             let component = ComponentMetadata {
                 class: c.class.clone(),
                 name: c.name.clone(),
+                dispatch: c.dispatch.clone(),
                 ..ComponentMetadata::default()
             };
             let key = if keyed { c.name.as_deref() } else { None };

@@ -232,6 +232,7 @@ mod tests {
             params: Default::default(),
             params_files: Vec::new(),
             entities: None,
+            dispatch: None,
         }];
         let map = collect_callback_groups(&cfg, &components);
         let decls = map.get("ctrl_node").expect("ctrl_node must be in map");
