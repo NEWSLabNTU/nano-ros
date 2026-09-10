@@ -177,7 +177,11 @@ FLOOR_PRODUCERS = [
     (
         "packages/cli/nros-cli-core/src/leaf_entity_env.rs",
         r'\("{knob}",\s*floor\(',
-        r'NOT_DERIVED[A-Z_]*: &str = "{knob}"',
+        # The producer's written ABSTENTION from stating this knob as a count.
+        # Two spellings: `NOT_DERIVED_*` (the knob is withheld) and
+        # `*_DERIVED_BY_CONSUMER` (phase-445 W1 — the producer carries the
+        # facts and the consumer floors the count itself, issue 0460).
+        r'(?:NOT_DERIVED[A-Z_]*|[A-Z_]*DERIVED_BY_CONSUMER): &str = "{knob}"',
         "the cargo-leaf `[env]` sidecar",
     ),
 ]
@@ -554,7 +558,7 @@ _nros_c_array_pool_floor(_c "${X}" ZPICO_MAX_QUERYABLES)
 """
 
 GOOD_RUST = """
-const NOT_DERIVED_NEEDS_INFRA_COUNT: &str = "ZPICO_MAX_QUERYABLES";
+const QUERYABLES_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_QUERYABLES";
         ("ZPICO_MAX_PUBLISHERS", floor(knobs.max_publishers)),
         ("ZPICO_MAX_SUBSCRIBERS", floor(knobs.max_subscribers)),
 """
@@ -684,7 +688,7 @@ def selftest() -> int:
     # says this lane does not derive the queryable count and the knob is back to
     # being an unfloored production.
     silent = GOOD_RUST.replace(
-        'const NOT_DERIVED_NEEDS_INFRA_COUNT: &str = "ZPICO_MAX_QUERYABLES";', ""
+        'const QUERYABLES_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_QUERYABLES";', ""
     )
     assert any(
         "ZPICO_MAX_QUERYABLES" in p for p in check_producers(producer_texts(rust=silent))

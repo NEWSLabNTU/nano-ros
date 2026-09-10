@@ -169,6 +169,15 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     let root = std::fs::canonicalize(&root)
         .wrap_err_with(|| format!("resolving workspace root {}", root.display()))?;
 
+    // phase-445 W4b (RFC-0098 D1) — a single-package example is a workspace of
+    // one: its own `Cargo.toml` is the cargo root, and its settings come from
+    // `build/<image>/nros-cargo.toml`. Decided before discovery, because the
+    // workspace road below would treat the package's own `[workspace]` marker
+    // as a root build file to retire (D9) and generate an entry it does not need.
+    if let Some(plans) = plan_single_package(args, &root)? {
+        return Ok(plans);
+    }
+
     // ---- stage 1 --------------------------------------------------------
     let members = discover::cargo_members_or_walk(&root);
     let found = discover::discover(&root, &members).map_err(|e| eyre::eyre!("{e}"))?;
@@ -484,6 +493,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                         target_dir: image_dir.join("target"),
                         env,
                         patches: registry_patches(&root, nros_root, &manifest_dir),
+                        ..Default::default()
                     },
                     &config_path,
                 )
@@ -875,6 +885,150 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         });
     }
     Ok(out)
+}
+
+/// phase-445 W4b — stages 2–4 for a single-package Rust leaf, or `None` when
+/// `root` is not one (`cmd::leaf_settings::resolve`), leaving every other shape
+/// to the workspace road unchanged.
+///
+/// The image is the leaf's own `[image.<id>]`; the build is the leaf's own
+/// manifest, handed its generated settings file:
+///
+/// ```text
+///   cargo build --manifest-path <leaf>/Cargo.toml --config <leaf>/build/<image>/nros-cargo.toml
+/// ```
+///
+/// run from the directory ABOVE the leaf — see `cmd::leaf_settings` for the
+/// measured reason (the leaf's own `.cargo/` would double the board's link
+/// flags until W6 deletes it).
+fn plan_single_package(args: &Args, root: &std::path::Path) -> Result<Option<Vec<ResolvedBuild>>> {
+    let Some(nros_root) = args
+        .nano_ros_path
+        .clone()
+        .or_else(|| std::env::var_os("NROS_REPO_DIR").map(PathBuf::from))
+        .or_else(|| crate::cmd::ws::autodetect_nano_ros_path(root))
+    else {
+        // The workspace road reports a missing checkout in its own words.
+        return Ok(None);
+    };
+    let Some(img) = crate::cmd::leaf_settings::resolve(root, &nros_root)? else {
+        return Ok(None);
+    };
+    let qual = plan::qualified(&img.package, &img.image_id);
+
+    // ---- stage 2 — the image is the leaf's one image ---------------------
+    for want in &args.images {
+        if want != &img.image_id && want != &qual {
+            eyre::bail!(
+                "`{want}` is not an image of {}: it declares only `{}` (RFC-0098 D3). \
+                 Switch board by editing `[image.{}] board` in {} and re-running `nros sync`.",
+                root.display(),
+                img.image_id,
+                img.image_id,
+                img.decl.origin_path().display()
+            );
+        }
+    }
+    for p in args.packages_select.iter().chain(&args.packages_up_to) {
+        if p != &img.package {
+            eyre::bail!(
+                "`{p}` is not a package here: {} is a single-package example (`{}`).",
+                root.display(),
+                img.package
+            );
+        }
+    }
+
+    // ---- stage 3 — preflight ----------------------------------------------
+    let catalog = crate::orchestration::board_descriptor::BoardCatalog::load(&nros_root)
+        .map_err(|e| eyre::eyre!("board catalog under {}: {e}", nros_root.display()))?;
+    let Some(descriptor) = crate::cmd::board_facts::resolve_board(&catalog, &img.board) else {
+        eyre::bail!("board `{}` is claimed by no board descriptor", img.board);
+    };
+    let mut missing = crate::builder::preflight::check(descriptor, root, Some(&nros_root));
+    // The toolchain half only. preflight's sync probe is a WORKSPACE heuristic
+    // (a `src/` with neither `generated/` nor `build/nros/`), and a leaf's
+    // `src/` is its crate's sources: it would refuse a leaf with no message
+    // dependency and no component, which sync gives nothing to write. What this
+    // build actually reads from sync is checked precisely just below.
+    missing.retain(|m| m.remedy != "nros sync");
+    if !missing.is_empty() {
+        eyre::bail!("{}", crate::builder::preflight::report(&missing));
+    }
+    // RFC-0098 D2 — sync runs before the build. The two things it produces that
+    // this build reads: the resolved model (the entity facts) and the generated
+    // message crates the manifest path-depends on. Missing either is ONE line
+    // naming `nros sync`, never cargo's manifest error four frames down.
+    let unsynced: Vec<String> = unsynced_inputs(root, &img);
+    if !unsynced.is_empty() {
+        eyre::bail!(
+            "{} has not been synced — missing {}.\n  Run `nros sync` in {} (RFC-0098 D2), then build again.",
+            root.display(),
+            unsynced.join(", "),
+            root.display()
+        );
+    }
+
+    // ---- stage 4 — the one settings file ------------------------------------
+    let Some(img) = crate::cmd::leaf_settings::write(root, &nros_root, "nros build")? else {
+        eyre::bail!(
+            "{}: resolved as a single-package leaf, then not",
+            root.display()
+        );
+    };
+    eprintln!("nros build:   settings → {}", img.config_path.display());
+
+    let (cwd, mut a) = crate::cmd::leaf_settings::build_command(&img);
+    if args.offline {
+        a.push("--frozen".to_string());
+    }
+    a.extend(args.native_args.iter().cloned());
+    Ok(Some(vec![ResolvedBuild {
+        qualified: qual,
+        board: img.board.clone(),
+        platform: img.platform.clone(),
+        driver: Driver::Cargo,
+        handoff: Some(Handoff::new("cargo", a).in_dir(&cwd)),
+        rmw: img.decl.rmw.clone(),
+        entry_package: Some(img.package.clone()),
+        target: img.target.clone(),
+        profile: None,
+        configure: None,
+    }]))
+}
+
+/// What a single-package build reads that only `nros sync` writes, and is
+/// absent. See [`plan_single_package`].
+fn unsynced_inputs(
+    root: &std::path::Path,
+    img: &crate::cmd::leaf_settings::LeafImage,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    // A leaf with no `[[component]]` has no synthesised launch and so no model;
+    // the facts then stay absent by design and nothing is missing.
+    if !img.decl.components.is_empty() && crate::leaf_entity_env::leaf_model_facts(root).is_none() {
+        out.push("the resolved model under `build/nros/models/`".to_string());
+    }
+    let Ok(doc) = std::fs::read_to_string(root.join("Cargo.toml"))
+        .map_err(|e| e.to_string())
+        .and_then(|t| t.parse::<toml::Table>().map_err(|e| e.to_string()))
+    else {
+        return out;
+    };
+    for key in ["dependencies", "build-dependencies"] {
+        let Some(deps) = doc.get(key).and_then(|d| d.as_table()) else {
+            continue;
+        };
+        for (name, spec) in deps {
+            if let Some(p) = spec.get("path").and_then(|p| p.as_str())
+                && p.split('/').next() == Some("generated")
+                && !root.join(p).join("Cargo.toml").is_file()
+            {
+                out.push(format!("the generated message crate `{name}` ({p})"));
+            }
+        }
+    }
+    out
 }
 
 pub fn run(args: Args) -> Result<()> {
@@ -1683,7 +1837,7 @@ fn derived_pool_env(
 ///
 /// The board descriptor's own `[patch]` rows (the NuttX `libc` fork) are merged
 /// by `cargo_config::render`, not here.
-fn registry_patches(
+pub(crate) fn registry_patches(
     ws_root: &std::path::Path,
     nano_ros_root: &std::path::Path,
     entry_dir: &std::path::Path,
@@ -3493,5 +3647,112 @@ mod pin_report_tests {
                 .is_some(),
             "the user is warned that the project is still unpinned"
         );
+    }
+}
+
+/// phase-445 W4b — a single-package example is a workspace of one.
+#[cfg(test)]
+mod single_package_tests {
+    use super::*;
+
+    /// The nano-ros checkout this crate is built from — its board catalog is
+    /// what resolves `board = "native"`.
+    fn nros_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .canonicalize()
+            .unwrap()
+    }
+
+    /// A leaf with no `[[component]]`: no model is expected, so the plan needs
+    /// no prior `nros sync` and the test needs no resolver.
+    fn leaf(parent: &std::path::Path) -> PathBuf {
+        let leaf = parent.join("talker");
+        std::fs::create_dir_all(leaf.join("src")).unwrap();
+        std::fs::write(
+            leaf.join("Cargo.toml"),
+            "[package]\nname = \"demo_talker\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[workspace]\n",
+        )
+        .unwrap();
+        std::fs::write(leaf.join("src/main.rs"), "fn main() {}\n").unwrap();
+        std::fs::write(
+            leaf.join("system.toml"),
+            "[system]\nname = \"demo\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+             [image.native]\nboard = \"native\"\n",
+        )
+        .unwrap();
+        leaf
+    }
+
+    fn args(leaf: &std::path::Path, images: &[&str]) -> Args {
+        Args {
+            images: images.iter().map(|s| (*s).to_string()).collect(),
+            workspace: Some(leaf.to_path_buf()),
+            nano_ros_path: Some(nros_root()),
+            zephyr_workspace: None,
+            all: false,
+            dry_run: true,
+            offline: false,
+            packages_select: Vec::new(),
+            packages_up_to: Vec::new(),
+            native_args: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn the_leafs_own_manifest_is_built_with_its_generated_settings_from_above() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = leaf(tmp.path());
+        let plans = plan_builds(&args(&leaf, &[])).expect("a single-package leaf plans");
+        assert_eq!(plans.len(), 1);
+        let p = &plans[0];
+        assert_eq!(p.driver, Driver::Cargo);
+        assert_eq!(p.qualified, "demo_talker:native");
+        let shown = p.handoff.as_ref().unwrap().display();
+        assert!(
+            shown.contains(
+                "cargo build --manifest-path talker/Cargo.toml --config \
+                 talker/build/native/nros-cargo.toml"
+            ),
+            "{shown}"
+        );
+        // The leaf's `[workspace]` marker is its own root, not a root build
+        // file to retire (RFC-0098 D9 is about workspaces).
+        assert!(leaf.join("Cargo.toml").is_file());
+
+        let settings = leaf.join("build/native/nros-cargo.toml");
+        let v: toml::Value = std::fs::read_to_string(&settings)
+            .unwrap()
+            .parse()
+            .expect("the settings file is TOML");
+        assert_eq!(v["build"]["target-dir"].as_str(), Some("native/target"));
+        assert_eq!(v["env"]["NROS_BOARD"].as_str(), Some("native"));
+        assert!(
+            v["profile"].get("nros-minsizerel").is_some(),
+            "the presets travel with the file"
+        );
+    }
+
+    #[test]
+    fn an_image_the_leaf_does_not_declare_is_refused_naming_the_one_it_does() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = leaf(tmp.path());
+        let e = plan_builds(&args(&leaf, &["esp32"]))
+            .expect_err("wrong image")
+            .to_string();
+        assert!(e.contains("`native`"), "{e}");
+    }
+
+    #[test]
+    fn a_leaf_whose_components_were_never_synced_names_nros_sync() {
+        let tmp = tempfile::tempdir().unwrap();
+        let leaf = leaf(tmp.path());
+        let mut sys = std::fs::read_to_string(leaf.join("system.toml")).unwrap();
+        sys.push_str("\n[[component]]\npkg = \"demo_talker\"\nname = \"talker\"\n");
+        std::fs::write(leaf.join("system.toml"), sys).unwrap();
+        let e = plan_builds(&args(&leaf, &[]))
+            .expect_err("no model yet")
+            .to_string();
+        assert!(e.contains("nros sync"), "{e}");
     }
 }

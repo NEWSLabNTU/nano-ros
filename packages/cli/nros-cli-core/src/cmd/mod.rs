@@ -30,6 +30,7 @@ pub mod generate;
 pub mod generate_px4;
 pub mod image_facts;
 pub mod init;
+pub mod leaf_settings;
 pub mod leaf_system;
 pub mod materialize;
 pub mod metadata;

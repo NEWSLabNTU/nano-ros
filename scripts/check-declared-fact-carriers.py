@@ -71,11 +71,13 @@ ROAD_PAIRS = {
 # Facts with no leaf-road twin, each for a stated reason.
 ROAD_UNPAIRED = {
     "NROS_DECLARED_INFRA_QUERYABLES":
-        "completes ZPICO_MAX_QUERYABLES, which is DELIBERATELY NOT DERIVED "
-        "(issue 1061): the count excludes the param and lifecycle service "
-        "families a feature enables. A leaf has no such channel.",
+        "completes ZPICO_MAX_QUERYABLES, which no producer states as a count: "
+        "the consumer derives it from the facts (issue 0460). Since phase-445 "
+        "W1 the cargo-leaf road carries this FACT itself "
+        "(`leaf_entity_env::leaf_facts`), so there is no knob to pair.",
     "NROS_DECLARED_SERVICE_SERVERS":
-        "the raw declared count behind the same queryable sizing (phase-392 W5).",
+        "the raw declared count behind the same queryable sizing (phase-392 W5); "
+        "carried as-is on both roads since phase-445 W1.",
     "NROS_DECLARED_QOS_MODELS": "QoS wiring, not a pool size.",
     "NROS_DECLARED_QOS_PENDING": "QoS wiring, not a pool size.",
     "NROS_DECLARED_QOS_SCHEDULED": "QoS wiring, not a pool size.",

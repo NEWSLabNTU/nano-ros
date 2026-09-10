@@ -3136,6 +3136,18 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
 
     refresh_source_metadata(&ws_root, nano_ros_path.clone(), no_metadata, verbose)?;
 
+    // phase-445 W4b (RFC-0098 D1/D2) — a single-package leaf is a workspace of
+    // one, and sync is what a user who drives cargo runs before `cargo build
+    // --config build/<image>/nros-cargo.toml`. LAST, because the file carries
+    // what everything above produced: the derived `[env]` reads the probe's
+    // metadata (refreshed just above) and the model (resolved earlier).
+    if single_pkg_mode
+        && let Some(nrp) = nano_ros_path.as_deref()
+        && let Some(img) = crate::cmd::leaf_settings::write(&ws_root, nrp, "sync")?
+    {
+        println!("sync: settings → {}", img.config_path.display());
+    }
+
     println!("sync: done.");
     Ok(())
 }
@@ -4812,62 +4824,11 @@ fn write_patch_config(
 ///   budget derived from a half-read probe can be SHORT, and short halts the
 ///   board. The leaf keeps the crate defaults, which are large rather than wrong.
 fn render_leaf_env_sidecar(leaf: &Path) -> Option<String> {
-    use crate::{
-        entity_inventory::Derivation,
-        leaf_entity_env::{inventory_for_leaf, render_env_sidecar},
-    };
-
-    let (inv, unprobeable) = match inventory_for_leaf(leaf) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!(
-                "sync: {}: cannot derive pool budgets ({e}); leaving the crate defaults in place",
-                leaf.display()
-            );
-            return None;
-        }
-    };
-    if inv.is_empty() {
-        // An unprobeable component is why a leaf can have `metadata/` and still
-        // get no budget. Say so once rather than leaving it to be inferred from
-        // an absent file (issue 1061).
-        if !unprobeable.is_empty() {
-            eprintln!(
-                "sync: {}: {} component(s) are un-probeable, so pool budgets stay at the crate \
-                 defaults (issue 1061): {}",
-                leaf.display(),
-                unprobeable.len(),
-                unprobeable.join(", ")
-            );
-        }
-        return None;
-    }
-    match inv.derive() {
-        Derivation::Derived(knobs) => {
-            // Issue 1125 — the payload classes need a SECOND inventory (the
-            // per-type bounds `nros sync` has already written into
-            // `generated/`), so they are computed here and refuse
-            // independently: an entity budget can derive while a subscribed
-            // type carries no bound, and the reverse cannot happen.
-            let payload = crate::leaf_payload_classes::payload_classes_for_leaf(leaf, &inv);
-            if let crate::leaf_payload_classes::PayloadClasses::Refused { reason } = &payload {
-                eprintln!(
-                    "sync: {}: payload classes not derived, so `LARGE_PAYLOADS` keeps the \
-                     crate default (issue 1125): {reason}",
-                    leaf.display()
-                );
-            }
-            Some(render_env_sidecar(&knobs, &payload, &inv.source))
-        }
-        other => {
-            eprintln!(
-                "sync: {}: pool budgets not derived ({}); crate defaults stay",
-                leaf.display(),
-                other.tag()
-            );
-            None
-        }
-    }
+    // phase-445 W1 — ONE computation, shared with the image's generated
+    // `build/<image>/nros-cargo.toml` (`cmd::leaf_settings`). It now carries
+    // the image's `NROS_DECLARED_*` facts as well, so a plain `cargo build` in
+    // the leaf derives `ZPICO_MAX_QUERYABLES` the way the settings file does.
+    crate::leaf_entity_env::leaf_env(leaf, "sync").sidecar
 }
 
 /// Issue 0457 — basename of the per-leaf gitignored file holding sync's managed
