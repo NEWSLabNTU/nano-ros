@@ -578,11 +578,7 @@ mod tests {
     }
 
     fn inventory(entities: &[&str]) -> EntityInventory {
-        inventory_from("test://model", entities)
-    }
-
-    fn inventory_from(source: &str, entities: &[&str]) -> EntityInventory {
-        let mut inv = EntityInventory::new(source);
+        let mut inv = EntityInventory::new("test://model");
         inv.insert(ComponentEntities {
             pkg: "talker_pkg".into(),
             component: "talker".into(),
@@ -726,36 +722,59 @@ mod tests {
         }
     }
 
-    /// MEASURED, and it is a finding rather than a guarantee: stage 3.5's
-    /// projection and the mid-configure producer's derive the SAME NUMBERS and
-    /// do NOT write the same BYTES.
+    /// The property the resolve seed's whole value rests on: stage 3.5's
+    /// projection and the mid-configure producer's write the SAME NUMBERS and
+    /// the SAME BYTES when they see the same wiring.
     ///
-    /// This matters because `nros_reconfigure_snapshot` hashes CONTENT. The
-    /// CMake seed (`nros_resolved_seed_entity_inventory`) removes a configure
-    /// pass only when the producer that follows it writes what the seed already
-    /// wrote — case B of `tests/cmake-resolved-seed-tests.sh`, which measures
-    /// exactly that. Here the one differing line is
-    /// `NROS_ENTITY_INVENTORY_SOURCE`: the producer composes over
-    /// `nros-metadata.json` AND the model, so its source names both, while this
-    /// phase reads the model alone (the metadata is written DURING a configure,
-    /// which is the lag this phase exists to remove).
+    /// `nros_reconfigure_snapshot` hashes CONTENT, so the CMake seed
+    /// (`nros_resolved_seed_entity_inventory`) removes a configure pass only
+    /// when the producer that follows it writes what the seed already wrote —
+    /// case B of `tests/cmake-resolved-seed-tests.sh`, which measures exactly
+    /// that on a five-line project.
     ///
-    /// So on today's tree the seed makes pass 1 read a real number instead of a
-    /// placeholder, and the producer still arms one re-configure over a comment
-    /// line. Closing that is what the follow-up needs — and asserting the split
-    /// here is what stops someone claiming the pass is saved without measuring
-    /// it, which is the failure mode this acceptance is most likely to have.
+    /// **This test used to assert the opposite half, and phase-439 W2 was right
+    /// to: they DID differ.** Measured on `demo_bringup:zephyr`
+    /// (native_sim/native/64), the difference was composer-dependent PROVENANCE
+    /// in a hashed file, and it was TWO renderings rather than the one issue
+    /// 1228 named — `NROS_ENTITY_INVENTORY_SOURCE`, and the per-component
+    /// line's PACKAGE (`/talker::talker` from the model, `talker_pkg::talker`
+    /// from the merge). Both are gone from `to_cmake`; the provenance lives in
+    /// `entity_inventory.json` and `resolved.toml`'s `[provenance]`, where a
+    /// byte comparison cannot reach it.
+    ///
+    /// The two composers are set up here the way the real tree produces them —
+    /// a model row's `pkg` is the node FQN, because `EntityInventory::from_model`
+    /// states the node rather than inventing an ament package — so this test
+    /// reproduces the second half. Built with equal `pkg` on both sides it
+    /// would have stayed green through the very defect it now holds.
+    ///
+    /// Both halves stay asserted and they fail in different directions:
+    /// diverging NUMBERS would make the seed able to under-size an image (the
+    /// safety property, which case C of the shell test holds from the other
+    /// side), while diverging BYTES silently costs the configure pass back with
+    /// nothing going red.
     #[test]
-    fn stage_3_5_and_the_mid_configure_producer_agree_on_every_number() {
-        use crate::entity_inventory::Declaration;
-
+    fn stage_3_5_and_the_mid_configure_producer_agree_byte_for_byte() {
         let entities = [
             "sub:std_msgs/msg/String",
             "pub:std_msgs/msg/String",
             "timer",
         ];
-        // What stage 3.5 composes: the model alone.
-        let model_only = inventory_from("model.yaml", &entities);
+        // What stage 3.5 composes: the model alone, whose rows are keyed by the
+        // node FQN — `from_model`'s own choice, and the second half of the
+        // byte difference this test exists to hold.
+        let mut model_only = EntityInventory::new("model.yaml");
+        model_only.insert(ComponentEntities {
+            pkg: "/talker".into(),
+            component: "talker".into(),
+            class: String::new(),
+            declaration: Declaration::Stated(
+                entities
+                    .iter()
+                    .flat_map(|s| EntityDecl::parse(s).expect("parses"))
+                    .collect(),
+            ),
+        });
 
         // What the configure composes: the metadata component set (whose
         // `entities` key is ABSENT since phase-412 retired `ENTITIES`) merged
@@ -778,26 +797,25 @@ mod tests {
              can under-size an image and `nros_resolved_seed_entity_inventory` is unsafe"
         );
 
-        // And the bytes: equal EXCEPT for the source line. Asserting the shape
-        // of the difference, not merely that one exists — "they differ" would
-        // stay green if a whole knob went missing.
-        let strip_source = |s: &str| -> String {
-            s.lines()
-                .filter(|l| !l.contains("NROS_ENTITY_INVENTORY_SOURCE"))
-                .collect::<Vec<_>>()
-                .join("\n")
-        };
+        // And the BYTES, which is what `nros_reconfigure_snapshot` compares. A
+        // whole-string equality rather than a diff of interesting lines: the
+        // class is "content that depends on which composer ran" — a path, an
+        // ordering, a package spelling, a banner — not one named field.
         let ca = model_only.to_cmake();
         let cb = merged.to_cmake();
-        assert_ne!(
-            ca, cb,
-            "if these now agree byte-for-byte, the seed saves the \
-                            configure pass in production and this test should say so"
-        );
         assert_eq!(
-            strip_source(&ca),
-            strip_source(&cb),
-            "the ONLY difference must be the provenance source line"
+            ca, cb,
+            "the seed and the mid-configure producer must render the same bytes for the \
+             same wiring, or `nros_resolved_seed_entity_inventory` arms exactly the \
+             re-configure it exists to remove (issue 1228). Composer-dependent content \
+             belongs in `entity_inventory.json` / `resolved.toml`'s [provenance], not in \
+             this fragment."
+        );
+        // And it must be a REAL fragment, not two empty strings agreeing.
+        assert!(ca.contains("set(NROS_DERIVED_EXECUTOR_MAX_CBS 2)"), "{ca}");
+        assert!(
+            !ca.contains("NROS_ENTITY_INVENTORY_SOURCE ") && !ca.contains("::talker ="),
+            "composer-dependent provenance is back in the hashed fragment:\n{ca}"
         );
     }
 

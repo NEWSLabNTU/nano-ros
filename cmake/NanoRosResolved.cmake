@@ -149,9 +149,19 @@ function(nros_resolved_seed_entity_inventory _path)
     # to remove. Case B of `tests/cmake-resolved-seed-tests.sh` is that
     # measurement, and it reported `re-runs=1` until the banner came off.
     #
-    # The provenance is not lost, it is somewhere a byte comparison cannot
-    # reach: the STATUS line below, and `resolved.toml`'s `[provenance]` table
-    # beside the file this reads.
+    # The same rule cost the pass a SECOND time, from INSIDE the fragment
+    # rather than from this copy (issue 1228, measured on `demo_bringup:zephyr`
+    # / native_sim/native/64): `to_cmake` used to set
+    # `NROS_ENTITY_INVENTORY_SOURCE` and to print the per-component provenance
+    # as `<pkg>::<component>`, and both depend on WHICH COMPOSER ran rather
+    # than on the image -- the model names nodes (`/talker`), the merge names
+    # ament packages (`talker_pkg`). Every NUMBER agreed and those two
+    # renderings were the entire byte difference, so the producer re-armed over
+    # provenance every time. Both are out of the fragment now.
+    #
+    # The provenance is not lost, it is in the places a byte comparison cannot
+    # reach: the STATUS line below, `nros/entity_inventory.json`, and
+    # `resolved.toml`'s `[provenance]` table beside the file this reads.
     file(READ "${_frag}" _body)
     file(WRITE "${_path}" "${_body}")
     if(ARGC GREATER 1)

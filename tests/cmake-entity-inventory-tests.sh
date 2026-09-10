@@ -142,7 +142,9 @@ chmod +x "$STUB"
 DERIVED_BODY="$TEST_TMPDIR/derived.cmake"
 cat > "$DERIVED_BODY" <<'EOF'
 set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 3)
-set(NROS_ENTITY_INVENTORY_SOURCE "meta.json")
+# No NROS_ENTITY_INVENTORY_SOURCE: `to_cmake` stopped emitting it (issue 1228 --
+# it is composer-dependent content in a file whose bytes decide whether cmake
+# runs again), and this fixture mirrors what the producer writes.
 set(NROS_ENTITY_INVENTORY_STATUS "derived")
 set(NROS_ENTITY_INVENTORY_COMPONENT_COUNT 4)
 set(NROS_ENTITY_INVENTORY_ENTITY_TOTAL 33)
