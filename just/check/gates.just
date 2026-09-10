@@ -100,6 +100,16 @@ interlock-visibility:
 lane-contracts:
     @python3 scripts/check-lane-contracts.py
 
+# The lane-skip protocol is only a protocol where the CALLER reads it.
+# `nros_lane_skip` exits 78 and one driver interprets that; a producer reached
+# from anywhere else emits a skip nobody can hear, and 78 lands as a plain
+# failure. `provision-zenohd` did exactly that from `native.just`'s `setup` the
+# day the self-hosted runner stopped being root: an honest skip failed L3 and
+# stalled the merge queue for every PR in the repo.
+[private]
+lane-skip-interpreters:
+    @python3 scripts/check-lane-skip-interpreters.py
+
 # Issue 0584 — an out-of-lane skip must SAY `lane`; a plain `skip!` is read as
 # `capability`, so a fixture the lane deliberately did not build gets counted as
 # a missing capability and the sweep summary lies about which gap a run has.

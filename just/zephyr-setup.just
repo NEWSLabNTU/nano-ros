@@ -290,7 +290,25 @@ run-fvp-ws-entry:
 verify-fvp-runtime:
     #!/usr/bin/env bash
     set -e
-    just zephyr build-fvp-ws-entry
+    # The comment above promises this "skips cleanly (never false-fails) when
+    # the model is absent", and under a bare `set -e` it did the opposite:
+    # `build-fvp-ws-entry` reports an absent model through the LANE-SKIP
+    # PROTOCOL (rc 78), which only `justfile`'s fixture-lane driver interprets.
+    # Everywhere else 78 is a plain failure — the same defect that stalled the
+    # merge queue from `native.just`'s `setup`. 78 is interpreted here; any
+    # other non-zero is a real error and still fails.
+    source scripts/build/lane-skip.sh
+    rc=0
+    just zephyr build-fvp-ws-entry || rc=$?
+    if [ "$rc" -eq 78 ]; then
+        # PROPAGATE, do not swallow. `exit 0` here was the first version and
+        # `check-lane-skip-protocol` refused it, correctly: this recipe ran no
+        # runtime check, so reporting success is issue 0650's false OK. The
+        # skip travels up until something interprets it or a person reads it.
+        nros_lane_skip "FVP model absent — the ws-entry build skipped, so the runtime check did not run"
+    elif [ "$rc" -ne 0 ]; then
+        exit "$rc"
+    fi
     cargo nextest run -p nros-tests --test fvp_runtime_ws --no-capture
 
 # Phase 215.G.1 — build the minimal ASI-shaped board-import fixture
