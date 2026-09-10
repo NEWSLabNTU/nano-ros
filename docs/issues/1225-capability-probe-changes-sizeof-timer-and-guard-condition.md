@@ -204,6 +204,33 @@ caller-owned, the shape `rclcpp::detail::WallTimer` uses — is not needed to
 reach a stable layout under this decision, and it is a bigger change to the
 `std_compat.hpp` surface than an unconditional 8-byte member.
 
+## Status 2026-09-11 — still open; the wave it was handed to had already merged
+
+A triage of open issues whose fix commits had landed found this one. The GATE
+half is done (`d93cc31e6`); the three types are **not**, and nothing is carrying
+them:
+
+* **The divergence is unchanged.** `check-cpp-capability-layout --report` on
+  `origin/main` today: `::nros::Timer` 32 vs 24, `::nros::GuardCondition` 40 vs 32,
+  `::nros::ComponentNode` 496 vs 432 (still exactly 8 × 8 — it shrank from 55784
+  with phase-427, the delta did not), and `rclcpp::Timer` / `TimerBase` with
+  `Timer`. `timer.hpp:160-167` and `guard_condition.hpp:122-123` still carry
+  `closure_` under `#ifdef NROS_CPP_STD`.
+* **The five `diverges` lines are still in the baseline**, and the gate is green —
+  which, because its selftest proves a `diverges` entry on a subject that no
+  longer diverges FAILS, is itself the measurement that all five still diverge.
+* **"For PR #755's wave" cannot happen as written.** #755 merged at
+  2026-09-08 18:25 UTC, 55 minutes BEFORE `d93cc31e6` / `6b1886104` handed it
+  this work. Nothing open cites 1225.
+
+What closes it is unchanged and fully decided above: make `closure_` an
+UNCONDITIONAL member of `nros::Timer` and `nros::GuardCondition` (the
+`std::unique_ptr<std::function<void()>>` needs a freestanding-safe spelling —
+an opaque pointer plus destroyer, the `rclcpp::Node` W1 shape — since the
+freestanding arm has no `<functional>`), then delete the five `diverges` lines
+in the same commit. `ComponentNode` follows. The gate is the acceptance: a
+stale line fails.
+
 ## Repro
 
 ```sh
