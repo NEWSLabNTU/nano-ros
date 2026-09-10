@@ -1,0 +1,42 @@
+[package]
+name = "nros-launcher"
+# NOT `version.workspace = true`, and that is the whole point of RFC-0097 D4.
+#
+# The workspace version is the TOOLCHAIN's version — it moves with every one of
+# the 710 `packages/cli` commits per 60 days. A launcher that shared it would
+# re-release on each of them, which is the coupling this crate exists to break.
+# So this number is the launcher's own axis and moves when the LAUNCHER's
+# behaviour does: the pin schema, the store layout it constructs paths in, or
+# the handover contract. Bump it by hand, and say why in the commit.
+#
+# `scripts/check-version-lockstep.sh` reads `[workspace.package].version` from
+# the two workspace roots and is unaffected by a member that opts out.
+version = "0.1.0"
+publish = false
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The `nros` launcher: read the project's toolchain pin, ensure that toolchain, exec it."
+homepage.workspace = true
+documentation.workspace = true
+
+[lib]
+name = "nros_launcher"
+path = "src/lib.rs"
+
+[[bin]]
+name = "nros-launcher"
+path = "src/main.rs"
+
+# Deliberately tiny. A launcher must build and run on a host with no toolchain
+# installed, and every dependency added here is one more thing that can stop
+# that being true. `clap` is NOT among them — the launcher parses no argv
+# (RFC-0095 D8); see `src/main.rs`.
+[dependencies]
+eyre = "0.6"
+serde = { workspace = true }
+toml = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.10"

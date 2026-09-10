@@ -65,7 +65,7 @@ use std::{
 
 use eyre::{Result, bail};
 
-use super::pin;
+use crate::pin;
 
 /// Set on the child by [`redispatch`]. Its VALUE is the version that was asked
 /// for, so a child that finds it disagreeing with its own store version can say
@@ -125,7 +125,7 @@ pub fn decide(ctx: &Context) -> Result<Decision> {
     // A checkout is the contributor audience (RFC-0095 D0). Asked before the
     // pin, because an in-tree workspace may legitimately carry one for a test
     // and it must not aim a contributor at the store.
-    if crate::abi_guard::find_monorepo_root(&ctx.cwd).is_some() {
+    if crate::checkout::find_monorepo_root(&ctx.cwd).is_some() {
         return Ok(Decision::Proceed("the cwd is inside a nano-ros checkout"));
     }
     let Some((mine, _origin)) = pin::running_version(&ctx.exe) else {
@@ -168,16 +168,28 @@ pub fn bundled_installer(exe: &Path) -> Option<PathBuf> {
 /// D8 job 2, performed: fetch the pinned toolchain through the installer that
 /// shipped with this launcher.
 ///
+/// Takes `exe` and `store` rather than a [`Context`], because the STANDALONE
+/// launcher ([`crate::launch`]) has the same job to do and a different context
+/// type. One implementation of the fetch was the argument for delegating to
+/// `install.sh` in the first place; two callers of it is not a reason to grow a
+/// second.
+///
 /// Returns the binary it installed. `Err` names the pin and the remedy — never
 /// a bare "not found", because at this point the user has a pin they wrote (or
 /// that `nros build` wrote for them) and a store that does not answer it, and
 /// the two commands that fix it are different.
-fn fetch(ctx: &Context, version: &str, pin_path: &Path, looked_in: &[PathBuf]) -> Result<PathBuf> {
+pub fn fetch(
+    exe: &Path,
+    store: &Path,
+    version: &str,
+    pin_path: &Path,
+    looked_in: &[PathBuf],
+) -> Result<PathBuf> {
     let looked = looked_in
         .iter()
         .map(|p| format!("\n\x20     {}", p.display()))
         .collect::<String>();
-    let Some(installer) = bundled_installer(&ctx.exe) else {
+    let Some(installer) = bundled_installer(exe) else {
         bail!(
             "this project pins nano-ros {version} and the store does not have it.{looked}\n\
              \x20   pinned by: {}\n\
@@ -209,7 +221,7 @@ fn fetch(ctx: &Context, version: &str, pin_path: &Path, looked_in: &[PathBuf]) -
             pin_path.display()
         );
     }
-    pin::installed_bin(&ctx.store, version).ok_or_else(|| {
+    pin::installed_bin(store, version).ok_or_else(|| {
         eyre::eyre!(
             "the installer reported success but {version} is still not in the store.{looked}\n\
              \x20   pinned by: {}",
@@ -233,7 +245,7 @@ pub fn redispatch() -> Result<()> {
     let ctx = Context {
         exe,
         cwd,
-        store: super::store::root(),
+        store: crate::store_root::root(),
         dispatched: std::env::var(DISPATCHED_ENV).ok(),
         skip: std::env::var_os(SKIP_ENV).is_some(),
     };
@@ -244,7 +256,7 @@ pub fn redispatch() -> Result<()> {
             version,
             pin_path,
             looked_in,
-        } => fetch(&ctx, &version, &pin_path, &looked_in)?,
+        } => fetch(&ctx.exe, &ctx.store, &version, &pin_path, &looked_in)?,
     };
     let version = pin::running_version(&bin)
         .map(|(v, _)| v)
@@ -254,8 +266,11 @@ pub fn redispatch() -> Result<()> {
 }
 
 /// Become `bin`. Never returns on success.
+///
+/// `pub` because the standalone launcher binary ends here too — the handover is
+/// the one thing both spellings of the launcher must perform identically.
 #[cfg(unix)]
-fn exec(bin: &Path, version: &str, args: &[OsString]) -> Result<()> {
+pub fn exec(bin: &Path, version: &str, args: &[OsString]) -> Result<()> {
     use std::os::unix::process::CommandExt;
     let err = std::process::Command::new(bin)
         .args(args)
@@ -265,7 +280,7 @@ fn exec(bin: &Path, version: &str, args: &[OsString]) -> Result<()> {
 }
 
 #[cfg(not(unix))]
-fn exec(bin: &Path, version: &str, args: &[OsString]) -> Result<()> {
+pub fn exec(bin: &Path, version: &str, args: &[OsString]) -> Result<()> {
     let status = std::process::Command::new(bin)
         .args(args)
         .env(DISPATCHED_ENV, version)

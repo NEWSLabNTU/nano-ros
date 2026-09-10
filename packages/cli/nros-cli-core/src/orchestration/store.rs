@@ -55,31 +55,20 @@ use super::{
 /// [`super::sdk_store::front_dir`] (`<root>/bin`) are its two established
 /// children and now derive from it, so the resolution order has one spelling
 /// rather than three copies that could disagree about `NROS_STORE`.
+///
+/// MOVED to `nros_launcher::store_root` by phase-443 W3 and re-exported here:
+/// the launcher is a separate binary now (RFC-0097 D4) and constructs every
+/// path it touches under this root, so it cannot ask this crate where the root
+/// is — and two implementations is how a launcher comes to look in a different
+/// store from the `nros toolchain` verbs that fill it.
 pub fn root() -> PathBuf {
-    if let Some(s) = std::env::var_os("NROS_STORE") {
-        return PathBuf::from(s);
-    }
-    if let Some(h) = std::env::var_os("NROS_HOME") {
-        return PathBuf::from(h);
-    }
-    if let Some(h) = std::env::var_os("HOME") {
-        return PathBuf::from(h).join(".nros");
-    }
-    PathBuf::from(".nros")
+    nros_launcher::store_root::root()
 }
 
 /// Which environment variable answered [`root`] — for the header line, so a
 /// reader never has to guess whose store they are about to shrink.
 pub fn root_origin() -> &'static str {
-    if std::env::var_os("NROS_STORE").is_some() {
-        "$NROS_STORE"
-    } else if std::env::var_os("NROS_HOME").is_some() {
-        "$NROS_HOME"
-    } else if std::env::var_os("HOME").is_some() {
-        "$HOME/.nros"
-    } else {
-        "./.nros (no $HOME)"
-    }
+    nros_launcher::store_root::root_origin()
 }
 
 /// A top-level directory of the store, and how deep its entries sit.

@@ -40,6 +40,17 @@
 //! `nros self update` — which moves the fronted binary and nothing else
 //! (RFC-0095 D7) — cannot move a pin even by accident.
 //!
+//! ## …except from CI (RFC-0097 D11)
+//!
+//! D9's write is right interactively and wrong in an automated session:
+//! pinning to whatever that runner happens to have installed produces a green
+//! build against a toolchain nobody chose, recorded in a file nobody reviewed.
+//! So [`pin_on_first_build`] takes a [`Session`] and REFUSES to write when it
+//! declares itself automated, naming the file to write and the escape hatch.
+//! The refusal is placed after the three arms that write nothing anyway, so a
+//! CI job on an already-pinned project — the reproducible case, and the common
+//! one — is not touched by it.
+//!
 //! ## What W6 already assumed about this file
 //!
 //! `store::PIN_FILE_NAMES` names `nros-toolchain.toml` and reads any file it
@@ -54,6 +65,8 @@ use std::path::{Path, PathBuf};
 
 use eyre::{Result, WrapErr, bail};
 use serde::Deserialize;
+
+use crate::session::Session;
 
 /// The pin file's name. `store::PIN_FILE_NAMES` names the same constant, so
 /// there is one spelling of it in the crate.
@@ -304,6 +317,32 @@ pub enum PinOutcome {
     /// to write. Reported, not silent: an unpinned project is D9's bug, and the
     /// user needs to know they still have it.
     NoRunningVersion,
+    /// RFC-0097 D11 — everything was in place to write a pin, and the session
+    /// declared itself automated. A pin is a source edit; CI does not make
+    /// those.
+    RefusedInCi {
+        /// The version that WOULD have been written. Carried so the diagnostic
+        /// can print the exact file the user should commit — a refusal that
+        /// makes the reader go and find the version is a worse refusal.
+        version: String,
+        /// Where the pin would have gone.
+        dir: PathBuf,
+        /// The environment variable that declared this automated.
+        var: &'static str,
+    },
+}
+
+impl PinOutcome {
+    /// Whether this outcome must STOP the build rather than print a line.
+    ///
+    /// The other four are advisory — the build proceeds and the message is
+    /// context. [`PinOutcome::RefusedInCi`] is not: proceeding would build
+    /// against a toolchain nobody recorded, which is the reproducibility bug
+    /// the pin exists to prevent, so the caller turns it into an error.
+    #[must_use]
+    pub const fn is_refusal(&self) -> bool {
+        matches!(self, PinOutcome::RefusedInCi { .. })
+    }
 }
 
 /// RFC-0095 D9, performed.
@@ -312,8 +351,8 @@ pub enum PinOutcome {
 /// a pure function of two paths and its tests need no installed store on the
 /// host running them — the same argument `stale_guard::refuse_if_stale` makes
 /// for `workspace`, and `store_reclaim.rs` for the pin search directory.
-pub fn pin_on_first_build(workspace: &Path, exe: &Path) -> Result<PinOutcome> {
-    if let Some(root) = crate::abi_guard::find_monorepo_root(workspace) {
+pub fn pin_on_first_build(workspace: &Path, exe: &Path, session: &Session) -> Result<PinOutcome> {
+    if let Some(root) = crate::checkout::find_monorepo_root(workspace) {
         return Ok(PinOutcome::InCheckout(root));
     }
     if let Some(existing) = find_and_load(workspace)? {
@@ -322,6 +361,19 @@ pub fn pin_on_first_build(workspace: &Path, exe: &Path) -> Result<PinOutcome> {
     let Some((version, _origin)) = running_version(exe) else {
         return Ok(PinOutcome::NoRunningVersion);
     };
+    // RFC-0097 D11, asked HERE and not earlier, which is what keeps the blast
+    // radius honest. The three arms above are the ones that write nothing
+    // anyway: a contributor's checkout, a project that is already pinned, a
+    // binary with no version to name. Refusing before them would turn a
+    // perfectly reproducible CI build — one that reads an existing pin — into
+    // an error, which is the opposite of what D11 asks for.
+    if let Some(var) = session.ci_var() {
+        return Ok(PinOutcome::RefusedInCi {
+            version,
+            dir: workspace.to_path_buf(),
+            var,
+        });
+    }
     let path = write(workspace, &version)?;
     Ok(PinOutcome::Wrote { path, version })
 }
@@ -346,6 +398,42 @@ pub fn describe(outcome: &PinOutcome) -> Option<String> {
         // A contributor is told nothing: their nano-ros is the clone they are
         // standing in, they know it, and a line on every build would be noise.
         PinOutcome::InCheckout(_) => None,
+        // RFC-0097 D11. The text names a fix that EXISTS, and the FILE is the
+        // one thing that always does — `render` is exactly what `nros build`
+        // would have written, printed in full so the fix is a copy-paste rather
+        // than an expedition.
+        //
+        // phase-443's own acceptance asked this to name `nros pin <version>`.
+        // At the time of writing there is no such verb in this tree, and aiming
+        // a blocked CI job at a command that does not run is a worse refusal
+        // than none. W2 (PR #859) adds one; when it lands, this text may name
+        // it BESIDE the file, never instead of it — a user reading a refusal on
+        // a runner cannot run a verb there either, and the file is what they
+        // have to commit.
+        PinOutcome::RefusedInCi { version, dir, var } => Some(format!(
+            "nros build: this project is UNPINNED and ${var} is set, so nothing \
+             was pinned.\n\
+             \x20   A pin is a SOURCE EDIT, and CI does not make those: pinning \
+             here would\n\
+             \x20   record whatever this runner happens to have installed, and a \
+             build green\n\
+             \x20   against an unrecorded toolchain is the bug the pin exists to \
+             prevent\n\
+             \x20   (RFC-0097 D11; the Cargo.lock rule of issues 0359/0378, one \
+             layer up).\n\
+             \x20   Fix it on a developer machine — run `nros build` there once, \
+             or write\n\
+             \x20   {}/{FILE_NAME} by hand:\n\n\
+             {}\n\
+             \x20   then commit it.\n\
+             \x20   To pin from an automated session anyway: {}=1",
+            dir.display(),
+            render(version)
+                .lines()
+                .map(|l| format!("\x20       {l}\n"))
+                .collect::<String>(),
+            crate::session::ALLOW_ENV,
+        )),
         PinOutcome::NoRunningVersion => Some(
             "nros build: warning: this project is UNPINNED and this `nros` has no \
              store version to pin it to.\n\

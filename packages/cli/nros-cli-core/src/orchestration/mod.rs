@@ -11,9 +11,16 @@ pub mod bridge_gen;
 pub mod cargo_metadata_schema;
 pub mod cmake_preset;
 pub mod config;
-/// phase-440 W7 (RFC-0095 D8) — the launcher: read the pin, ensure that
-/// toolchain, `exec` it. Three jobs; a fourth is a bug.
-pub mod dispatch;
+// phase-440 W7 (RFC-0095 D8) — the launcher: read the pin, ensure that
+// toolchain, `exec` it. Three jobs; a fourth is a bug.
+//
+// phase-443 W3 MOVED the file to the `nros-launcher` crate (RFC-0097 D4): the
+// launcher is now its own binary, so the logic that selects a version can stop
+// shipping inside the version being selected. Re-exported at its original path
+// because this binary is still fronted on installed hosts and still calls
+// `redispatch()` before clap — and because one parser of `nros-toolchain.toml`
+// in the tree is the whole point of moving it rather than copying it.
+pub use nros_launcher::dispatch;
 pub mod facade;
 /// phase-383 W1 — `[image.<id>]`, the buildable unit (RFC-0065 D6).
 pub mod image;
@@ -33,8 +40,10 @@ pub mod model_ingest;
 pub mod names;
 pub mod nros_config;
 pub mod params;
-/// phase-440 W7 (RFC-0095 D7/D9) — `nros-toolchain.toml`, the per-project pin.
-pub mod pin;
+// phase-440 W7 (RFC-0095 D7/D9) — `nros-toolchain.toml`, the per-project pin.
+// MOVED to `nros-launcher` by phase-443 W3, re-exported here; see `dispatch`
+// above.
+pub use nros_launcher::pin;
 pub mod plan;
 pub mod planner;
 
