@@ -87,7 +87,6 @@ scripts/check-submodule-pinned-locks.py
 scripts/check-sysdep-remedies.sh
 scripts/check-test-domain-assignment.sh
 scripts/check-tier-preconditions.sh
-scripts/check-tier-priority-plan-image.py
 scripts/check-tier-priority-plan.py
 scripts/check-version-lockstep.sh
 scripts/check-wait-evidence-discarded.py
