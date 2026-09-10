@@ -239,7 +239,7 @@ unsafe extern "C" {
     pub fn nros_platform_condvar_signal_from_isr(cv: *mut core::ffi::c_void) -> i8;
 }
 unsafe extern "C" {
-    #[doc = " Atomically release `m` and block on `cv`. The mutex is re-acquired\n  before this function returns."]
+    #[doc = " Atomically release `m` and block on `cv`. The mutex is re-acquired\n  before this function returns.\n\n  **NOT REAL-TIME — this wait is UNBOUNDED.** Every port implements it with\n  its forever spelling (`TX_WAIT_FOREVER`, `portMAX_DELAY`, `K_FOREVER`), so\n  a caller that blocks here has no deadline and no way to be woken by one.\n  Nothing on the executor path calls it, and nothing new should: the\n  executor's own wait uses the BOUNDED `nros_platform_wake_wait_ms`, and a\n  condvar caller that needs a bound has `condvar_wait_until` directly below.\n\n  Kept rather than deleted because removing an exported symbol breaks\n  out-of-tree ports, and marked here rather than left neutral because\n  `condvar_wait` is the OBVIOUS spelling — the next port reaches for it and\n  loses the bound silently. `scripts/check-no-unbounded-condvar-wait.sh`\n  enforces the \"nothing new\" half; see issue 1196 and phase-436 W5.\n\n  \"No unbounded wait\" is only a property of the system if it is a property of\n  the API."]
     pub fn nros_platform_condvar_wait(cv: *mut core::ffi::c_void, m: *mut core::ffi::c_void) -> i8;
 }
 unsafe extern "C" {
@@ -264,7 +264,13 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     pub fn nros_platform_wake_signal_from_isr(w: *mut core::ffi::c_void) -> i8;
+}
+unsafe extern "C" {
+    #[doc = " phase-436 W7 — OPTIONAL microsecond park, the `ParkUntilFn` a port may\n  install through `nros_cpp_executor_set_park_primitive`.\n\n  `nros_platform_wake_wait_ms` above is the required primitive and floors\n  every wait at a millisecond through its own signature; this is the same\n  wait without that floor, for kernels whose timeout type is finer (issue\n  1242). Ports that cannot do better than a millisecond need not define it.\n\n  `w` MUST be the executor's own wake object — the backend's listener signals\n  that one, and a park on anything else cannot be broken by data arriving.\n\n  Returns 0 when signalled, 1 when the deadline expired, negative when it\n  cannot park."]
     pub fn nros_platform_wake_park_until_us(w: *mut core::ffi::c_void, deadline_us: u64) -> i8;
+}
+unsafe extern "C" {
+    #[doc = " The finest park `nros_platform_wake_park_until_us` can express, in\n  microseconds. An RTOS tick is a coarser limit than the ABI signature and a\n  timespec primitive a finer one, so only the port can answer (issue 1242)."]
     pub fn nros_platform_wake_park_granularity_us() -> u64;
 }
 unsafe extern "C" {
