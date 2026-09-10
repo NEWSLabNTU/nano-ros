@@ -670,6 +670,12 @@ inline ::std::shared_ptr<Timer> Node::create_wall_timer(::std::chrono::duration<
 /// followed by the read-back below, rather than a helper that copied a value
 /// between two stores. On any other failure the code default is returned.
 template <typename T> inline T Node::declare_parameter(const char* name, T default_value) {
+    // phase-446 W6 -- a declaration the contract's `params:` does not make, or
+    // makes with another type, refuses the boot through `set_error` before
+    // anything reaches the store (see `Node::check_declared_param`).
+    if (!this->check_declared_param(name, ::nros::detail::node_param_type<T>::value)) {
+        return default_value;
+    }
     const ::nros_cpp_node_t* h = this->ffi_handle();
     Result r = ::nros::detail::node_param_declare(h, name, default_value);
     if (!r.ok() && r.raw() != NROS_RET_ALREADY_EXISTS) {

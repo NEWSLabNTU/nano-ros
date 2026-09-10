@@ -104,6 +104,17 @@ pub struct EntityInventoryArgs {
     #[arg(long = "output-header", value_name = "PATH")]
     pub output_header: Option<PathBuf>,
 
+    /// Write the C++ table of each node's DECLARED parameters here (phase-446
+    /// W6), read from `--model`'s `contracts.node_params`.
+    ///
+    /// `nros/declared_params.hpp` expands it and
+    /// `Node::declare_parameter` refuses a name the node's contract
+    /// does not declare, or a type that differs. Written even with no model or
+    /// no declaration -- then it defines no table and nothing is checked -- so
+    /// a stale table from an earlier configure can never outlive its contract.
+    #[arg(long = "output-params-header", value_name = "PATH")]
+    pub output_params_header: Option<PathBuf>,
+
     /// Restrict the inventory to ONE component, by `<pkg>::<name>` or `<name>`.
     ///
     /// For `--output-header` from inside `nano_ros_node_register()`, which runs
@@ -212,12 +223,20 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
     // Deliberately a COMBINE and not a replace: the contract has no timer
     // entity, so a model-only inventory under-sizes MAX_CBS by one per timer
     // in the image. See `EntityInventory::merged_per_kind_max`.
+    // phase-446 W6 -- rendered from the same model, when there is one.
+    let mut params_header: Option<String> = None;
     if let Some(model_path) = &args.model {
         let raw = std::fs::read_to_string(model_path)
             .wrap_err_with(|| format!("read model `{}`", model_path.display()))?;
         let model: ros_launch_manifest_model::SystemModel = serde_yaml_ng::from_str(&raw)
             .wrap_err_with(|| format!("parse model `{}`", model_path.display()))?;
         reject_zero_depths(&model).wrap_err_with(|| format!("model `{}`", model_path.display()))?;
+        if args.output_params_header.is_some() {
+            params_header = Some(crate::declared_params_header::render(
+                Some(&model),
+                &model_path.display().to_string(),
+            ));
+        }
         // `from_model` returning None means NO WIRING DESCRIBED. Not an error
         // and not a zero: nobody authored a contract for this image, so the
         // declaration is the only source there is and it stands alone.
@@ -262,6 +281,11 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
     }
     if let Some(p) = &args.output_header {
         write_if_changed(p, &inv.to_declared_qos_header())?;
+    }
+    if let Some(p) = &args.output_params_header {
+        let h = params_header
+            .unwrap_or_else(|| crate::declared_params_header::render(None, "no --model given"));
+        write_if_changed(p, &h)?;
     }
 
     // The env transport goes to stdout, which is what makes this verb

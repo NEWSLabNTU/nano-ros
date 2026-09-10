@@ -1319,6 +1319,23 @@ cpp: cpp-fmt
                exit 1 ;; \
         esac; \
     done
+    # phase-446 W6 -- the DECLARED parameters: every lookup `Node`'s
+    # boot check makes is constexpr, so the TU asserts each answer against the
+    # fixture table (and that the table was found at all).
+    test -f packages/api/nros-cpp/tests/compile/declared-params-fixture/nros/nros_declared_params_generated.h || { \
+        echo "ERROR: the declared-params fixture header is MISSING -- declared_params.cpp" >&2; \
+        echo "       would compile against an empty table and assert nothing real." >&2; \
+        exit 1; \
+    }
+    echo "  - declared parameters: the boot check's lookups agree with the table (c++17)"
+    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+        -Ipackages/api/nros-cpp/tests/compile/declared-params-fixture \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/declared_params.cpp
     # phase-379 W6 decision 1 — the receive verb under its rclcpp name.
     # `Subscription<M>::take` / `take_serialized` / `take_sequence` /
     # `take_validated` and `Service<S>::take_request`, with the `try_recv*`

@@ -154,6 +154,25 @@ pub trait NodeDispatchRuntime {
         core::ptr::null_mut()
     }
 
+    /// phase-446 W6 -- hand the executor the parameters each node's contract
+    /// DECLARES, so a node whose code declares a parameter its contract does
+    /// not (or with another type) refuses the boot naming the node, the
+    /// parameter and the contract.
+    ///
+    /// `nodes` is `(node FQN, contract)`; `params` is `(node FQN, name,
+    /// rcl_interfaces type code)`. Plain tuples because this trait lives below
+    /// `nros-params` and cannot name its types. `nros::main!` calls this before
+    /// any node registers. Default no-op: a runtime with no parameter store
+    /// has nothing to check.
+    fn apply_declared_params(
+        &mut self,
+        nodes: &'static [(&'static str, &'static str)],
+        params: &'static [(&'static str, &'static str, u8)],
+    ) -> Result<(), &'static str> {
+        let _ = (nodes, params);
+        Ok(())
+    }
+
     /// Observability counters from hosted/runtime tests.
     ///
     /// Returns `(all_callbacks, message_callbacks)`. Implementations
@@ -344,6 +363,17 @@ impl<'a> RuntimeCtx<'a> {
     /// Lookup an env entry by name.
     pub fn env_var(&self, name: &str) -> Option<&'a str> {
         self.env.iter().find(|(k, _)| *k == name).map(|(_, v)| *v)
+    }
+
+    /// phase-446 W6 -- the contract's declared parameters (forwards to
+    /// [`NodeDispatchRuntime::apply_declared_params`]). `nros::main!` emits
+    /// this before the per-node `register` calls.
+    pub fn apply_declared_params(
+        &mut self,
+        nodes: &'static [(&'static str, &'static str)],
+        params: &'static [(&'static str, &'static str, u8)],
+    ) -> Result<(), &'static str> {
+        self.runtime.apply_declared_params(nodes, params)
     }
 }
 
