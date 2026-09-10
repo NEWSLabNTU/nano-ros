@@ -198,19 +198,6 @@ pub fn run_nuttx() {
                 let cxx = crate::nuttx_export::include_root(&PathBuf::from(nuttx_dir)).join("cxx");
                 if cxx.is_dir() {
                     build.include(&cxx);
-                    // phase-432 W3.1 — the cargo mirror of the same define the
-                    // CMake NuttX toolchain files set, and it belongs HERE, at
-                    // the site that puts NuttX's `include/cxx` ahead of the
-                    // toolchain's headers, because that placement is what
-                    // creates the need.
-                    //
-                    // NuttX's `ctype.h` gates its `_U`/`_L`/`_N` block on
-                    // `CONFIG_LIBCXXTOOLCHAIN`, and our defconfig leaves the
-                    // libxx choice at `LIBCXXNONE` — so libstdc++'s
-                    // `bits/ctype_base.h` reads macros nobody defined and the
-                    // TU fails to compile. Setting it says what this build
-                    // actually does: compile against the toolchain's libstdc++.
-                    build.define("CONFIG_LIBCXXTOOLCHAIN", "1");
                 }
             }
         }
