@@ -315,6 +315,30 @@ user path — install, pin, build a `nros new` project **without cloning
 nano-ros** — is what W7's pin makes testable, so it lands with W7 rather than
 here.
 
+### Store-aware `dest` — **LANDED. The last mechanism, and W3's exception is retired**
+
+`[source.*]` had one shape, a workspace-relative `dest`, so a provisioned source
+could only land inside a checkout. That is what forced W3 to DECLARE `ros` an
+exception in a ratchet whose whole point is that `third-party/` holds tracked
+submodules and nothing else.
+
+`SourceLocation` is `workspace` (default) or `store`. A store source's path is
+DERIVED — `$NROS_STORE/sources/<name>/<version>`, off W6's `store::root()` so
+there is one spelling — mirroring `tool_dir` rather than inventing path syntax.
+The validator refuses both directions: a workspace source with no `dest`, and a
+store source WITH one.
+
+`nros sdk-path --source <name>` is the consumer bridge, for the reason the tool
+arm exists: a consumer asks, never spells. rosidl flipped, and
+`msg_to_cyclone_idl.py` asks — with the pre-phase-440 `third-party/ros/rosidl`
+kept BELOW the store rung, the same shape W4 used for workspaces, so a host
+provisioned earlier needs no migration step.
+
+**`EXCEPTIONS` in W3's ratchet is now EMPTY** (`0 declared exception(s)`), and
+the gate still refuses a new provisioning root — verified with the list empty,
+because an exemption list that has stopped being exercised is where a rule
+quietly stops applying.
+
 ## Order, and what is worth doing regardless
 
 W1 → W3 → W4 → W5 is the cleanup, and it stands on its own: it fixes the tier-2
