@@ -83,6 +83,58 @@ esp32 stack budgets.
   `[package.metadata.nros.{entry,deploy.*,node,component}]` keys retire from the
   manifests. The two board spellings for one esp32 (`esp32-c3-baremetal` /
   `esp32-qemu`) collapse to one.
+  **W3b landed (2026-09-11, `feat/phase-445-w3b-convert-leaves`) — every
+  SINGLE-PACKAGE leaf; the box stays open for the workspace members below.**
+
+  What converted:
+  - Rust: 42 examples and 3 `nros-tests` bins.
+  - C: 44 leaves. C++: 43 leaves.
+  - The `action-raw-goal-probe` C bin.
+  - With the 11 W3 pilots, 144 leaves resolve through `system.toml`. Each one
+    passes `nros sync` with no deprecation line, and `nros ws leaf-system` and
+    `nros ws entity-facts --bringup-dir` both answer.
+
+  Supporting changes the conversion needed:
+  - `[[component]]` gained `dispatch` (issue 1278, resolved). The 15 leaves
+    that set it keep it, including the W3 pilot talker, which had dropped it.
+  - `[package.metadata.nros.entry] deploy` is optional. RTIC leaves keep the
+    table for `node_pkgs`.
+  - `rv-virt-threadx`, the RFC-0093 name, is now a descriptor name, and every
+    ThreadX RISC-V leaf uses it.
+  - A Zephyr package with `system.toml` beside it is a self-pkg bringup.
+
+  The `<nano_ros deploy= board= rmw=/>` tuple is RETIRED and REFUSED in every
+  reader and producer:
+  - the cmake reader and the `cargo-nano-ros` reader;
+  - `nros setup --workspace`;
+  - the `nros new` scaffolder, which emitted it;
+  - colcon;
+  - two board gates that read it.
+
+  Gate: `check-leaf-deployment-spelling`.
+
+  NOT done, and why:
+  - `leaf_system::from_manifest`, the Rust manifest fallback, is NOT deleted.
+    Workspace entries and members still carry the retiring tables and are read
+    through it: `examples/workspaces` has 7 entries and 24 members, plus
+    `examples/templates` and the nros-tests workspace fixtures. They go with
+    W4/W5, and so does this item's acceptance rg over `examples/`.
+
+  Built in this worktree, each family by its own `just` lane, with 0
+  retired-key deprecation lines in any build log:
+  - native: Rust listener and `entry-poc`, C listener, C++ service-server;
+  - mps2 bare-metal: every Rust leaf, including RTIC, XRCE and serial;
+  - FreeRTOS: all 6 Rust leaves, plus C and C++;
+  - ThreadX-Linux: Rust, C and C++;
+  - ThreadX RISC-V: C and C++, zenoh and Cyclone rows, 17 executables;
+  - NuttX ARM: Rust, C and C++. NuttX RISC-V: C.
+
+  Probe-less board: mps2 `talker-rtic`'s generated zpico `shim_constants.rs`
+  is byte-identical to a twin built from the pre-conversion manifest.
+
+  NOT built: Zephyr. The west workspace's `nano-ros` module is a symlink to
+  another checkout, so a west build from here would compile that checkout,
+  not this one. Its leaves resolve (`nros sync`, `nros ws leaf-system`).
 - [ ] **W4 — one generated settings file per image, under `build/` (D1, D6,
   D7).** `nros sync` / `nros build` write `build/<image>/nros-cargo.toml` (board
   `cargo_config` + per-image `target-dir` + resolved `[env]` incl. the entity
