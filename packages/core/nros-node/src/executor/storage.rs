@@ -837,8 +837,7 @@ mod tests {
         let mut ceiling = 1280
             + size_of::<super::super::spin::SessionStore>()
             + size_of::<
-                [Option<super::super::spin::WakeSourceSlot>;
-                    super::super::spin::MAX_WAKE_SOURCES],
+                [Option<super::super::spin::WakeSourceSlot>; super::super::spin::MAX_WAKE_SOURCES],
             >();
         #[cfg(all(
             feature = "alloc",
