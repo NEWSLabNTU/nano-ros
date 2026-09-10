@@ -324,6 +324,12 @@ impl BuildRungs {
             .filter(|s| !s.is_empty())?;
         println!("cargo:rerun-if-env-changed=NROS_PLATFORM_NAME");
 
+        // phase-445 W2 — WHICH `[[board]]` in the file, for its `[board.knobs]`.
+        // `nros ws board-facts` emits it beside `NROS_BOARD_TOML`; absent is
+        // fine for a file declaring one board (or several that agree).
+        println!("cargo:rerun-if-env-changed=NROS_BOARD");
+        let board_name = std::env::var("NROS_BOARD").ok().filter(|s| !s.is_empty());
+
         let board = std::env::var("NROS_BOARD_TOML")
             .ok()
             .filter(|s| !s.is_empty())
@@ -332,7 +338,7 @@ impl BuildRungs {
                 // `rerun-if-env-changed` on a variable naming a PATH compares
                 // the spelling, and one directory has three spellings here.
                 println!("cargo:rerun-if-changed={raw}");
-                BoardKnobsFile::load(Path::new(&raw))
+                BoardKnobsFile::load_for_board(Path::new(&raw), board_name.as_deref())
                     .unwrap_or_else(|e| panic!("NROS_BOARD_TOML={raw}: {e}"))
             });
 
@@ -1177,6 +1183,19 @@ pub enum ConfigError {
         capability: String,
         boards: String,
     },
+    /// phase-445 W2 — the knob twin of [`Self::AmbiguousBoardCapability`]:
+    /// several `[[board]]` entries state different `[board.knobs]` and no
+    /// `NROS_BOARD` names one.
+    AmbiguousBoardKnobs {
+        path: String,
+        boards: String,
+    },
+    /// phase-445 W2 — a file states knobs both at the top level and under a
+    /// `[[board]]`. Two rungs in one file for the same board, with no rule for
+    /// which wins, is refused rather than merged.
+    BoardKnobsStatedTwice {
+        path: String,
+    },
     /// phase-400 W3 — `transport.kind` outside the `exactly-one-of` group.
     UnknownTransport {
         platform: String,
@@ -1230,6 +1249,17 @@ impl std::fmt::Display for ConfigError {
                 "nros-board.toml declares several boards ({boards}) that disagree about \
                  `[board.capabilities] {capability}`, and no NROS_BOARD names one. \
                  Set NROS_BOARD, or make the entries agree."
+            ),
+            ConfigError::AmbiguousBoardKnobs { path, boards } => write!(
+                f,
+                "{path}: declares several boards ({boards}) whose `[board.knobs]` differ, and \
+                 no NROS_BOARD names one. Set NROS_BOARD, or make the entries agree."
+            ),
+            ConfigError::BoardKnobsStatedTwice { path } => write!(
+                f,
+                "{path}: states `[knobs]` at the top level AND `[board.knobs]` under a board. \
+                 The board rung is `[board.knobs]` (the CLI refuses a top-level `[knobs]`); \
+                 move the top-level table under the board."
             ),
             ConfigError::UnknownTransport {
                 platform,
@@ -2550,11 +2580,60 @@ pub struct BoardEntryFacts {
     /// fact somebody declared.
     #[serde(default)]
     pub capabilities: BTreeMap<String, bool>,
+    /// phase-445 W2 — `[board.knobs]`, the board rung of the RFC-0049 ladder.
+    ///
+    /// Held RAW and typed only once selected ([`BoardKnobsFile::load_for_board`]
+    /// hoists it into [`BoardKnobsFile::knobs`], which every consumer reads).
+    /// Raw because two entries are compared for AGREEMENT when no board is
+    /// named, and `Knobs` has no equality.
+    ///
+    /// Why under the board and not at the top level: the CLI's `BoardFile`
+    /// denies a top-level `[knobs]`, so until this field existed NO shipped
+    /// descriptor could carry a knob at all — the top-level table this reader
+    /// already parsed was unreachable from the one file format that has to
+    /// load. Per-board for the same reason as issue 1143's capabilities: a
+    /// file may declare several boards.
+    #[serde(default)]
+    pub knobs: Option<toml::Value>,
     #[serde(flatten)]
     _rest: BTreeMap<String, toml::Value>,
 }
 
 impl BoardKnobsFile {
+    /// The `[board.knobs]` of the entry this build is, or `None` when that
+    /// entry states none. Same selection rule as [`Self::board_capabilities`]:
+    /// a named board wins; one entry needs no name; several entries must agree
+    /// (an entry stating nothing disagrees with one stating something).
+    fn select_board_knobs(
+        &self,
+        board: Option<&str>,
+        path: &str,
+    ) -> Result<Option<toml::Value>, ConfigError> {
+        if let Some(want) = board
+            && let Some(entry) = self
+                .boards
+                .iter()
+                .find(|b| b.names.iter().any(|n| n == want))
+        {
+            return Ok(entry.knobs.clone());
+        }
+        let Some(first) = self.boards.first() else {
+            return Ok(None);
+        };
+        if self.boards.iter().all(|b| b.knobs == first.knobs) {
+            return Ok(first.knobs.clone());
+        }
+        Err(ConfigError::AmbiguousBoardKnobs {
+            path: path.to_string(),
+            boards: self
+                .boards
+                .iter()
+                .map(|b| b.names.join("/"))
+                .collect::<Vec<_>>()
+                .join(", "),
+        })
+    }
+
     /// `[board.capabilities]` for the named board — see
     /// [`PlatformsTree::capabilities_with_board`] for the selection rule.
     pub fn board_capabilities(
@@ -2601,15 +2680,50 @@ impl BoardKnobsFile {
         Ok(merged)
     }
 
+    /// [`Self::load_for_board`] with no board named — correct whenever the file
+    /// declares one board, or several that agree.
     pub fn load(path: &Path) -> Result<Self, ConfigError> {
+        Self::load_for_board(path, None)
+    }
+
+    /// Load a board file and resolve its knob rung for `board` (`NROS_BOARD`).
+    ///
+    /// [`Self::knobs`] is the one field every consumer reads. It comes from the
+    /// selected entry's `[board.knobs]`; a top-level `[knobs]` (an out-of-tree
+    /// file the CLI never loads) is still honoured when no board states any.
+    pub fn load_for_board(path: &Path, board: Option<&str>) -> Result<Self, ConfigError> {
         let text = fs::read_to_string(path).map_err(|e| ConfigError::Io {
             path: path.display().to_string(),
             source: e,
         })?;
-        toml::from_str(&text).map_err(|e| ConfigError::Parse {
-            path: path.display().to_string(),
-            source: e,
-        })
+        Self::parse_for_board(&text, board, &path.display().to_string())
+    }
+
+    /// [`Self::load_for_board`] over text already read. `path` names the file in
+    /// errors only.
+    pub fn parse_for_board(
+        text: &str,
+        board: Option<&str>,
+        path: &str,
+    ) -> Result<Self, ConfigError> {
+        let parse = |source| ConfigError::Parse {
+            path: path.to_string(),
+            source,
+        };
+        let mut file: Self = toml::from_str(text).map_err(parse)?;
+        if let Some(raw) = file.select_board_knobs(board, path)? {
+            let top_level = text
+                .parse::<toml::Table>()
+                .map(|t| t.contains_key("knobs"))
+                .unwrap_or(false);
+            if top_level {
+                return Err(ConfigError::BoardKnobsStatedTwice {
+                    path: path.to_string(),
+                });
+            }
+            file.knobs = raw.try_into().map_err(parse)?;
+        }
+        Ok(file)
     }
 }
 
@@ -2635,6 +2749,70 @@ mod board_capability_tests {
         assert_eq!(caps.get("heap"), Some(&true));
         // Reading the top-level table instead would find nothing.
         assert!(f.capabilities.is_empty());
+    }
+
+    /// phase-445 W2 — `[board.knobs]` IS the board rung: a single-board file
+    /// needs no name, and the value lands in `knobs`, where every consumer
+    /// (`BuildRungs::*_rungs`, `nros config explain`, zpico's runner) reads.
+    #[test]
+    fn board_knobs_are_the_board_rung() {
+        let f = BoardKnobsFile::parse_for_board(
+            "[[board]]\nnames = [\"e\"]\n\n[board.knobs.net]\nmax_udp_sockets = 2\n",
+            None,
+            "t",
+        )
+        .expect("parse");
+        assert_eq!(f.knobs.net.max_udp_sockets, Some(2));
+        // Negative control: the same number NOT under a board is not read as
+        // this board's — `file()` is the raw parse with no selection.
+        let raw = file("[[board]]\nnames = [\"e\"]\n\n[board.knobs.net]\nmax_udp_sockets = 2\n");
+        assert_eq!(raw.knobs.net.max_udp_sockets, None);
+    }
+
+    /// Several boards that differ are selected by name, and REFUSED unnamed.
+    #[test]
+    fn differing_board_knobs_need_a_name() {
+        let text = "[[board]]\nnames = [\"a\"]\n[board.knobs.net]\nmax_udp_sockets = 1\n\n\
+                    [[board]]\nnames = [\"b\"]\n[board.knobs.net]\nmax_udp_sockets = 3\n";
+        let b = BoardKnobsFile::parse_for_board(text, Some("b"), "t").expect("b");
+        assert_eq!(b.knobs.net.max_udp_sockets, Some(3));
+        let err = BoardKnobsFile::parse_for_board(text, None, "t").expect_err("must refuse");
+        assert!(err.to_string().contains("a, b"), "{err}");
+        // One entry stating knobs and one stating none also disagree.
+        let partial = "[[board]]\nnames = [\"a\"]\n[board.knobs.net]\nmax_udp_sockets = 1\n\n\
+                       [[board]]\nnames = [\"b\"]\n";
+        assert!(BoardKnobsFile::parse_for_board(partial, None, "t").is_err());
+        // And a file whose entries state none is not ambiguous (nuttx today).
+        let none = "[[board]]\nnames = [\"a\"]\n\n[[board]]\nnames = [\"b\"]\n";
+        assert!(BoardKnobsFile::parse_for_board(none, None, "t").is_ok());
+    }
+
+    /// A knob typo under the board fails loud (the tenants deny unknown keys).
+    #[test]
+    fn a_misspelled_board_knob_is_an_error() {
+        let err = BoardKnobsFile::parse_for_board(
+            "[[board]]\nnames = [\"e\"]\n[board.knobs.net]\nmax_udp_sokets = 2\n",
+            None,
+            "t",
+        )
+        .expect_err("typo must not parse");
+        assert!(err.to_string().contains("max_udp_sokets"), "{err}");
+    }
+
+    /// Both spellings in one file is refused, not merged.
+    #[test]
+    fn knobs_stated_twice_are_refused() {
+        let err = BoardKnobsFile::parse_for_board(
+            "[knobs.net]\nmax_udp_sockets = 1\n\n[[board]]\nnames = [\"e\"]\n\
+             [board.knobs.net]\nmax_udp_sockets = 2\n",
+            None,
+            "t",
+        )
+        .expect_err("two rungs in one file");
+        assert!(
+            matches!(err, ConfigError::BoardKnobsStatedTwice { .. }),
+            "{err}"
+        );
     }
 
     /// A file with no `[board.capabilities]` contributes nothing, so the

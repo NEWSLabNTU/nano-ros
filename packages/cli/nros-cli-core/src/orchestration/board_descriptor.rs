@@ -699,6 +699,52 @@ struct BoardFile {
     boards: Vec<BoardDescriptor>,
 }
 
+impl BoardFile {
+    /// Parse one `nros-board.toml`, acknowledging `[board.knobs]`.
+    ///
+    /// phase-445 W2. `[board.knobs]` is the RFC-0049 board rung; its reader is
+    /// `nros-platform-config`'s `BoardKnobsFile`, which a build script reaches
+    /// through `NROS_BOARD_TOML`. This reader does not USE knobs, but it must
+    /// not refuse them — and until now it did, because `BoardDescriptor` denies
+    /// unknown fields. With the top level also denied, no shipped descriptor
+    /// could carry a knob anywhere, so the rung existed only in tests.
+    ///
+    /// The table is VALIDATED here with the ladder's own type (every tenant
+    /// denies unknown keys), so a knob typo fails at catalog load naming the
+    /// descriptor, not in some build script three frames later. It is then
+    /// removed before the typed parse rather than modelled as a
+    /// `BoardDescriptor` field: that struct is built literally in several
+    /// places, and knobs are another reader's schema (the `priority_plan`
+    /// rule — acknowledged here, interpreted elsewhere).
+    ///
+    /// A file with no `[board.knobs]` takes the direct typed parse, so its
+    /// errors keep their line/column spans.
+    fn parse(text: &str) -> Result<Self, toml::de::Error> {
+        let direct = toml::from_str::<BoardFile>(text);
+        let Err(first) = direct else {
+            return direct;
+        };
+        let Ok(mut table) = text.parse::<toml::Table>() else {
+            return Err(first);
+        };
+        let mut had_knobs = false;
+        if let Some(toml::Value::Array(boards)) = table.get_mut("board") {
+            for entry in boards.iter_mut() {
+                if let toml::Value::Table(t) = entry
+                    && let Some(knobs) = t.remove("knobs")
+                {
+                    knobs.try_into::<nros_board_common::platform_config::Knobs>()?;
+                    had_knobs = true;
+                }
+            }
+        }
+        if !had_knobs {
+            return Err(first);
+        }
+        toml::Value::Table(table).try_into()
+    }
+}
+
 /// The `[build]` / `[target.<triple>]` shape of a `cargo_config` template.
 #[derive(Debug, Default, Deserialize)]
 struct CargoConfigTemplate {
@@ -846,7 +892,7 @@ impl BoardCatalog {
             }
             let text = std::fs::read_to_string(&descriptor_path)
                 .map_err(|e| BoardLoadError::Io(descriptor_path.clone(), e))?;
-            let file: BoardFile = toml::from_str(&text)
+            let file = BoardFile::parse(&text)
                 .map_err(|e| BoardLoadError::Parse(descriptor_path.clone(), e))?;
             // Absolute, like an extra root and for the same reason: the
             // workspace-relative form exists so IN-TREE paths in committed
@@ -1003,7 +1049,7 @@ impl BoardCatalog {
             Self::require_announcement(&dir, &descriptor_path)?;
             let text = std::fs::read_to_string(&descriptor_path)
                 .map_err(|e| BoardLoadError::Io(descriptor_path.clone(), e))?;
-            let file: BoardFile = toml::from_str(&text)
+            let file = BoardFile::parse(&text)
                 .map_err(|e| BoardLoadError::Parse(descriptor_path.clone(), e))?;
             // Workspace-relative, forward slashes — it goes into a COMMITTED
             // generated header, so an absolute host path would be drift the
@@ -2218,6 +2264,34 @@ entry_kind = "zephyr-staticlib"
             cat.descriptors.iter().any(|d| d.priority_plan.is_some()),
             "at least one in-tree board declares [board.priority_plan]; if none              does, this test has stopped covering the case it exists for"
         );
+    }
+
+    /// phase-445 W2 — `[board.knobs]` loads (another reader's rung), a knob typo
+    /// under it fails naming the key, and a top-level `[knobs]` is still the
+    /// misplaced table `BoardFile` refuses.
+    #[test]
+    fn board_knobs_are_acknowledged_validated_and_not_top_level() {
+        const HEAD: &str = "[[board]]\nnames = [\"demo\"]\nplatform = \"posix\"\n\
+                            toolchain = \"stable\"\nentry_kind = \"hosted-main\"\n";
+        let ok = BoardFile::parse(&format!("{HEAD}\n[board.knobs.net]\nmax_udp_sockets = 2\n"))
+            .expect("[board.knobs] must load");
+        assert_eq!(ok.boards.len(), 1);
+
+        let typo = BoardFile::parse(&format!("{HEAD}\n[board.knobs.net]\nmax_udp_sokets = 2\n"))
+            .expect_err("a knob typo must not load");
+        assert!(typo.to_string().contains("max_udp_sokets"), "{typo}");
+
+        let top = BoardFile::parse(&format!("[knobs.net]\nmax_udp_sockets = 2\n\n{HEAD}"))
+            .expect_err("top-level [knobs] is the misplaced table");
+        assert!(top.to_string().contains("knobs"), "{top}");
+
+        // The strip only ever removes `knobs`: any OTHER unknown key still
+        // fails, even in a file that also carries knobs.
+        let other = BoardFile::parse(&format!(
+            "{HEAD}supported_netstakcs = []\n\n[board.knobs.net]\nmax_udp_sockets = 2\n"
+        ))
+        .expect_err("a sibling typo must still fail");
+        assert!(other.to_string().contains("supported_netstakcs"), "{other}");
     }
 
     /// The other half of the same claim: a key nobody reads must now FAIL, and
