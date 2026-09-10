@@ -285,8 +285,9 @@ constexpr bool argv_has_ros_args(int argc, char const* const* argv, int i = 0) {
 
 /// What upstream's `throw` becomes here — phase-428 W5 finding 9.
 ///
-/// Seven `create_*` verbs on `rclcpp::Node` used to write
-/// `(void)node_.create_…(…)` and return the `shared_ptr` regardless. The
+/// The `create_*` verbs on `nros::Node` (reached as `rclcpp::Node`, which is an
+/// alias for it since phase-427 W1-W3) used to write
+/// `(void)this->create_…(…)` and return the `shared_ptr` regardless. The
 /// `(void)` was not incidental: `nros::Result` carries `[[nodiscard]]`
 /// (`result.hpp`, phase-428 W6), and the casts SUPPRESSED the one signal that
 /// existed. Measured, because the claim is easy to overstate: no C++ lane in
@@ -319,8 +320,8 @@ constexpr bool argv_has_ros_args(int argc, char const* const* argv, int i = 0) {
 /// is what an uncaught upstream throw actually does to a tutorial `main` —
 /// terminate with a diagnostic, rather than continue with a dead object.
 ///
-/// The failure is still HANDLEABLE: the underlying `nros::Node` verbs return
-/// `nros::Result` into caller-owned storage, and the message names them.
+/// The failure is still HANDLEABLE: the underlying out-ref `nros::Node` verbs
+/// return `nros::Result` into caller-owned storage, and the message names them.
 [[noreturn]] inline void abort_failed_create(const char* verb, const char* name, int32_t code) {
     NROS_ERROR("rclcpp::Node::%s(\"%s\") failed with nros::ErrorCode %d. %s", verb, name,
                static_cast<int>(code), NROS_RCLCPP_ABORT_FAILED_CREATE);
