@@ -16,7 +16,7 @@ use eyre::{Result, WrapErr, bail};
 use crate::{
     cmd::board::find_workspace_root,
     orchestration::{
-        sdk_index::{SdkIndex, ToolPackage, host_key},
+        sdk_index::{SdkIndex, ToolPackage, ZephyrModule, host_key},
         sdk_store::{
             InstallAction, LOCK_FILE, SdkLock, SourceDisposition, execute, plan_install,
             provision_source, store_root, tool_prefix,
@@ -323,6 +323,13 @@ pub fn run(args: Args) -> Result<()> {
         args.rmw.as_deref().unwrap_or("zenoh"),
         packages.len()
     );
+
+    // phase-447 F1 (issue 1275) — a Zephyr board's real cost is not its
+    // `packages` list. `packages = ["zephyr-sdk"]` is a ~1 GB toolchain; the
+    // `west update` that `scripts/zephyr/setup.sh` runs on top of it fetches
+    // the module set, which used to be 2.5 GB of vendor HALs nothing here
+    // targets and which this command could not name, let alone price.
+    report_zephyr_modules(&index, board);
 
     let root = store_root();
     let workspace = index_workspace(&index_path);
@@ -1530,6 +1537,102 @@ fn warn_source_builds(names: &[&str], host: &str) {
          toolchain is downloaded — unless a recipe sets `respect_toolchain = true`."
     );
     eprintln!("  `nros setup … --dry-run` prints the full plan and fetches nothing.");
+}
+
+/// Price the `west update` a Zephyr board will pay (phase-447 F1, issue 1275).
+///
+/// RFC-0099 D10 asks that the provisioner read manifest/index files as its
+/// SSoT. For the Zephyr module set it did not: the set lived only in
+/// `west.yml`'s `name-allowlist`, so this command could not name a single
+/// module, and 2.5 GB of vendor HALs for silicon no board here targets was
+/// fetched by every fresh workspace with nothing to warn a user in advance.
+///
+/// Prints for `[board.*]` rows with `platform = "zephyr"` only — that is the
+/// one board class whose provisioning runs `west update`. Silent for every
+/// other board rather than printing an empty section.
+///
+/// Deliberately printed on the REAL path too, not just `--dry-run`: a user who
+/// did not think to ask for a plan is exactly the one who meets the download as
+/// an unexplained stall (the same argument as [`warn_source_builds`]).
+fn report_zephyr_modules(index: &SdkIndex, board: &str) {
+    let Some(entry) = index.board.get(board) else {
+        return;
+    };
+    if entry.platform.as_deref() != Some("zephyr") {
+        return;
+    }
+    if index.zephyr_module.is_empty() {
+        return;
+    }
+
+    let mut fetched: Vec<(&String, &ZephyrModule)> = index
+        .zephyr_module
+        .iter()
+        .filter(|(_, m)| m.is_fetched())
+        .collect();
+    // Largest first: the point of the list is what it COSTS, and a reader
+    // scanning for the expensive rows should not have to sort alphabetically
+    // ordered megabytes in their head.
+    fetched.sort_by_key(|(name, m)| (std::cmp::Reverse(m.approx_mb.unwrap_or(0)), *name));
+
+    let total: u64 = fetched.iter().filter_map(|(_, m)| m.approx_mb).sum();
+    eprintln!(
+        "  west modules: {} fetched by `west update`, ~{} MB checked out:",
+        fetched.len(),
+        total
+    );
+    for (name, m) in &fetched {
+        // `needed_by` empty on a FETCHED module is the interesting case — it
+        // says we pay for something no board here was measured to need — so it
+        // is called out rather than rendered as an empty list.
+        let who = if m.needed_by.is_empty() {
+            "no measured consumer".to_string()
+        } else {
+            m.needed_by.join(", ")
+        };
+        eprintln!(
+            "    {:<16} {:>6} MB  [{}]  {}",
+            name,
+            m.approx_mb.map(|v| v.to_string()).unwrap_or_default(),
+            m.lines.join("/"),
+            who
+        );
+        if let Some(why) = &m.why {
+            eprintln!("      {why}");
+        }
+    }
+
+    let withheld: Vec<(&String, &ZephyrModule)> = index
+        .zephyr_module
+        .iter()
+        .filter(|(_, m)| !m.is_fetched())
+        .collect();
+    if !withheld.is_empty() {
+        let saved: u64 = withheld.iter().filter_map(|(_, m)| m.approx_mb).sum();
+        eprintln!(
+            "  west modules NOT fetched ({} declared, ~{} MB not paid): {}",
+            withheld.len(),
+            saved,
+            withheld
+                .iter()
+                .map(|(n, _)| n.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        eprintln!(
+            "    A downstream that needs one adds it to its OWN manifest's \
+             name-allowlist — an `import:`ed manifest composes, it does not \
+             inherit ours as a ceiling."
+        );
+    }
+    // Said here rather than in the index comment alone, because this is where
+    // someone reads the number and then measures their own tree. `west update`
+    // does not prune, so a populated workspace shows no change.
+    eprintln!(
+        "    (Sizes are of a populated workspace. `west update` never PRUNES, so \
+         dropping a module reclaims nothing in an existing one — it is a \
+         fresh-workspace saving.)"
+    );
 }
 
 /// One-line description of the planned action (mirrors `disposition`, but for an

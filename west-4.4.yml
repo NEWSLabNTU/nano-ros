@@ -22,6 +22,10 @@ manifest:
       remote: zephyrproject-rtos
       revision: v4.4.0
       import:
+        # DERIVED from `[zephyr_module.*]` in `nros-sdk-index.toml` — a module
+        # belongs here iff its `lines` contains "4.4". Held in step by
+        # `check-zephyr-module-allowlist`; priced by `nros setup zephyr
+        # --dry-run`. See west.yml for the same note at length.
         name-allowlist:
           # Core
           # `cmsis` is the pre-4.x module. Zephyr 4.x moved the Cortex-M core
@@ -40,11 +44,9 @@ manifest:
           # Crypto
           - mbedtls
           - tinycrypt
-          # HALs
-          - hal_stm32
-          - hal_nordic
+          # HALs — see `[zephyr_module.*]` for who needs each, and for the
+          # four that used to sit here. phase-447 F1 / issue 1275.
           - hal_espressif
-          - hal_nxp
           # Bootloader
           - mcuboot
           # Tools
