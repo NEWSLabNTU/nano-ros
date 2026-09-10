@@ -733,6 +733,19 @@ pub(crate) struct AliveState {
     pub violated_last_window: bool,
 }
 
+/// One SchedContext's alive-supervision record: the counter the dispatch
+/// path bumps and the window state the monitor tick reads.
+///
+/// A region of the carved backing (`storage::carve`), one per SC the
+/// executor was sized for — NOT an inline `[_; MAX_SC]` in the header.
+/// `MAX_SC` is a sizing knob, so an inline table grows the `Executor` value
+/// with it, which is the regression issue 0961 exists to prevent.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct AliveSlot {
+    pub dispatches: u32,
+    pub state: AliveState,
+}
+
 /// Report a SchedContext that has not dispatched AT ALL over a full window
 /// while declaring a period that says it should have.
 ///

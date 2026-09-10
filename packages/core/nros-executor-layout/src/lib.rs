@@ -64,6 +64,8 @@ pub struct RegionUnits {
     pub group_name: RegionUnit,
     pub group_sched_entry: RegionUnit,
     pub violation: RegionUnit,
+    /// Alive supervision's per-SchedContext record, one per `sc`.
+    pub alive_slot: RegionUnit,
 }
 
 /// How many of each region the image needs.
@@ -102,6 +104,7 @@ pub struct Offsets {
     pub active_groups: usize,
     pub group_sched_table: usize,
     pub monitor_violations: usize,
+    pub alive_slots: usize,
     pub size: usize,
     pub align: usize,
 }
@@ -171,6 +174,7 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
     let active_groups = place!(node_slots, units.group_name);
     let group_sched_table = place!(cbs, units.group_sched_entry);
     let monitor_violations = place!(violation_slots, units.violation);
+    let alive_slots = place!(sc, units.alive_slot);
 
     Offsets {
         arena: arena_off,
@@ -189,6 +193,7 @@ pub const fn offsets(counts: Counts, units: RegionUnits) -> Offsets {
         active_groups,
         group_sched_table,
         monitor_violations,
+        alive_slots,
         size: align_up(off, max_align),
         align: max_align,
     }
