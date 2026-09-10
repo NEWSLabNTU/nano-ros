@@ -2,7 +2,7 @@
 
 **Status (2026-09-06). Every work item landed.** W1–W5 complete; the two axes
 that already worked were left alone. Implements
-[RFC-0062 amendment 4](../design/0062-unified-dependency-ssot.md), which answers
+[RFC-0062 amendment 4](../../design/0062-unified-dependency-ssot.md), which answers
 phase-413 W6 (rosdep parity) and closes the `ros-<distro>` question phase-422
 left open.
 

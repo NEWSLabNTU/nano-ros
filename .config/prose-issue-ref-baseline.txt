@@ -42,7 +42,7 @@ docs/issues/1092-rmw-shape-gate-licenses-deviation-without-pinning-it.md:9999
 docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
 docs/issues/1163-compile-smoke-checks-nros-c-under-default-features-only.md:1080
 docs/issues/1186-executor-backing-latch-test-races-siblings.md:0417
-docs/roadmap/phase-431-ship-the-nros-binary.md:1110
+docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 docs/roadmap/phase-432-codegen-one-producer-many-packs.md:1080
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110

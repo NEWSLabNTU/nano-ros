@@ -2,15 +2,15 @@
 
 **Status (2026-09-06). Every work item is landed.** No release has been cut:
 W5 is manual dispatch, and cutting one is a decision, not a consequence — the distribution
-mechanics proper. [Phase-429](phase-429-the-codegen-version-is-enforced-everywhere.md)
+mechanics proper. [Phase-429](../phase-429-the-codegen-version-is-enforced-everywhere.md)
 removed the correctness blocker; what remains is distribution mechanics plus one
 hazard that shipping CREATES and that is worth fixing before the first release
 rather than after.
 
-**Implements:** [RFC-0014](../design/0014-nros-setup-toolchain-management.md)
+**Implements:** [RFC-0014](../../design/0014-nros-setup-toolchain-management.md)
 (provisioning) extended to the CLI itself, and
-[RFC-0040](../design/0040-distribution-and-scaffolding-deps.md).
-**Unblocks:** [#0171](../issues/archived/0171-no-external-distribution-path.md)'s
+[RFC-0040](../../design/0040-distribution-and-scaffolding-deps.md).
+**Unblocks:** [#0171](../../issues/archived/0171-no-external-distribution-path.md)'s
 D1/D2 — *"ship the `nros` CLI as an installable artifact … the single
 highest-leverage unlock"*, blocked since phase-287/288.
 **Depends on:** phase-429, which answers *can this binary's output work with this
