@@ -155,6 +155,74 @@ into a sibling lane that does — with the split visible in the stage reporter
 added for issue 1158, so "this lane could not run the on-target cells" and "the
 on-target cells regressed" stay distinguishable.
 
+**LANDED 2026-09-10 — SPLIT, and the split is DERIVED.**
+
+*Which option, and why.* A sibling job (`board`) in the same workflow, gated on
+the ledger actually containing a row that needs one. Provisioning the toolchain
+in `regression` was rejected on this lane's own stated reason: it exists
+separately from `just ci tier1` because "verification must not be hostage to
+everything else being green", and putting a Zephyr SDK, a west update and an
+emulator in front of nineteen host cells that touch none of them re-creates
+exactly that hostage relationship — every provisioning flake would cost the
+whole lane its verdict. The other half of the trade is the cost of a split, and
+both halves of it are paid down rather than accepted: the second lane does not
+exist when there is nothing for it to run (`if: needs.membership.outputs
+.has_board == 'true'`), and it reports through the SAME stage reporter, so the
+run list carries two named answers instead of one job with two meanings.
+
+*The split is computed, never recorded.* A cell's runner follows from its
+PLATFORM coordinate, which `interop::CELLS` already states — so the ledger gains
+no `needs_qemu` field (a second source that drifts the moment a cell moves
+board). `check-interop-cell-runners.py` now parses the platform beside the tier;
+`check-interop-verdicts.py --runner host|board` narrows any listing by it, and
+`--scopes setup|build` / `--narrowing` derive what the board job must provision
+and which fixture leaves it must build. Two authored maps back that, and both
+fail CLOSED: an unmapped board is an error naming the platform, an unmapped cell
+is an error naming the cell, and every scope token is checked against
+`scripts/build/scope.sh` while every narrowing value is checked against
+`examples/fixtures.toml`.
+
+*The lane runs `just native test-live-peer-regression host|board`.* Three things
+that were wrong there had to be fixed for the acceptance to be satisfiable at
+all:
+
+* **The board row was already in the host lane.** `zephyr-qos-rust-zenoh` has
+  had a recorded PASS since the ledger's first entry, and the host container
+  builds no Zephyr image — so that cell resolved no fixture, skipped, and was
+  counted green. Not a future hazard: today's state.
+* **A regression could not be reported as one.** The loop classified `100` as
+  "tests ran and failed", but it calls `_test-focused`, which swallows nextest's
+  100 and answers 1 — so every real failure would have been reported as a
+  harness fault. It now reads the junit (`_count-real-failures`) rather than the
+  exit code alone.
+* **A skipped membership read as a pass.** `--assert-ran` checks that every
+  in-scope cell with a recorded PASS produced a NON-SKIP result, over the junits
+  of the whole run; a membership that only skipped is exit 2, "this lane could
+  not run". Because that exposure is only useful if the absence can be supplied,
+  both jobs now provision the declared system closure — neither CI image bakes
+  `ros-humble-rmw-zenoh-cpp`, so without it every zenoh cell skips.
+
+*The "could not run" case is named, three ways.* `lane-stage.py` gained the
+fourth axis it needed: a cells STEP failing does not say whether the cells
+produced results, so the workflow forwards the recipe's own answer
+(`NROS_LANE_CELLS_RAN`) and the reporter says `NO VERDICT: the cells could not
+run` instead of `VERDICT: cells ran and FAILED`. `stage-board`'s job NAME
+distinguishes the three non-verdicts a skipped board job can mean — the ledger
+could not be split, there was nothing to run, or the job never started — so a
+grey tick never reads as "fine". Both jobs are in `LANES`, and `--selftest`
+cross-checks each against the YAML in both directions.
+
+*Left deliberately.* The board job runs on a GitHub-hosted runner in
+`nano-ros-zephyr-ci` (the image nightly's Zephyr line uses daily) rather than on
+the self-hosted `nros-qemu, nros-sdk-zephyr` fleet: the fleet has the toolchains
+but its ROS story is unverified, and `NROS_SELF_HOSTED_READY` gating would make
+this lane's verdict depend on a fleet variable. When W1's Cortex-M cell lands,
+its `qemu` scope is already derived and provisioned; whether the SDK's own QEMU
+suffices there is W1's measurement, not an assumption made here. A board cell on
+a NON-Zephyr kernel (W3) will ask for a scope this image cannot provision, and
+the setup step FAILS naming it rather than running a green over cells it never
+built.
+
 ### W5 — retire the phrase, or earn it
 
 Whatever W1–W3 land, correct the places that currently call the native_sim cell

@@ -33,8 +33,72 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # phase-441 W4 — WHICH RECORDED ROWS NEED WHICH RUNNER.
+  #
+  # Membership follows from the ledger; the RUNNER does not, and the ledger is
+  # the wrong place to teach it. A cell on a board needs that board's SDK, its
+  # cross toolchain and — off native_sim — an emulator, and the container the
+  # host rows run in has none of them. That is already stated by each cell's
+  # PLATFORM coordinate in `interop::CELLS`, so the split is computed from it
+  # (`--runner host|board`) rather than recorded a second time.
+  #
+  # This job exists so the expensive half can be SKIPPED, not merely fast: with
+  # no board cell in the ledger, `board` never starts and nobody pays for a
+  # Zephyr SDK, a west update and a fixture build to run zero cells. A job-level
+  # `if:` needs an output, and an output needs a job.
+  #
+  # `regression` deliberately does NOT depend on it: the host rows must keep
+  # running when the board mapping is broken. Verification not being hostage to
+  # everything else being green is why this whole lane exists.
+  membership:
+    name: which recorded rows need which runner
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/newslabntu/nano-ros-ci:humble
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      host_cells: ${{ steps.split.outputs.host_cells }}
+      board_cells: ${{ steps.split.outputs.board_cells }}
+      has_board: ${{ steps.split.outputs.has_board }}
+      setup_scopes: ${{ steps.split.outputs.setup_scopes }}
+      build_scopes: ${{ steps.split.outputs.build_scopes }}
+      narrowing: ${{ steps.split.outputs.narrowing }}
+    steps:
+      - uses: actions/checkout@v4
+      # In the container for its `python3-tomli`: the tool reads the ledger with
+      # `tomllib`, which ubuntu-22.04's system python (3.10) does not have.
+      - name: Split the recorded rows by the runner their board needs
+        id: split
+        run: |
+          tool=scripts/check-interop-verdicts.py
+          host="$(python3 "$tool" --list-passing --runner host | tr '\n' ' ')"
+          board="$(python3 "$tool" --list-passing --runner board | tr '\n' ' ')"
+          setup="$(python3 "$tool" --list-passing --runner board --scopes setup | tr '\n' ' ')"
+          build="$(python3 "$tool" --list-passing --runner board --scopes build | tr '\n' ' ')"
+          narrowing="$(python3 "$tool" --list-passing --runner board --narrowing | tr '\n' ' ')"
+          has_board=false
+          [ -n "$(echo $board)" ] && has_board=true
+          printf 'this runner:  %s\n' "$host"
+          printf 'a board:      %s\n' "$board"
+          printf 'setup scopes: %s\n' "$setup"
+          printf 'build scopes: %s\n' "$build"
+          printf 'narrowing:    %s\n' "$narrowing"
+          {
+              printf 'host_cells=%s\n' "$host"
+              printf 'board_cells=%s\n' "$board"
+              printf 'has_board=%s\n' "$has_board"
+              printf 'setup_scopes=%s\n' "$setup"
+              printf 'build_scopes=%s\n' "$build"
+              printf 'narrowing=%s\n' "$narrowing"
+          } >> "$GITHUB_OUTPUT"
+
   regression:
-    name: cells with a recorded live PASS
+    name: rows whose board IS this runner
     runs-on: ubuntu-22.04
     # The distro comes from the image, which is why grepping this file for
     # `ros-humble` finds nothing (that reading cost issue 1127 a wrong revision).
@@ -104,6 +168,22 @@ jobs:
         run: |
           git submodule update --init --recursive third-party/dds/cyclonedds
 
+      # THE PEER — phase-441 W4. Neither CI image bakes
+      # `ros-humble-rmw-zenoh-cpp` (ci-base's own header says the ROS package
+      # set is provisioned per run, "the way a user does"), and without it
+      # `require_ros2()` answers with a `skip!` for every zenoh cell. Until this
+      # branch that was invisible: the junit rewrite turned the skip into
+      # `<skipped>`, `_test-focused` exited 0, and the lane reported that cells
+      # with a recorded PASS still pass. The recipe now refuses to call a
+      # skipped membership a verdict, so the absence has to be supplied rather
+      # than absorbed — and this is the sanctioned spelling for it, installing
+      # what `nros-sdk-index.toml` declares instead of restating it here.
+      - name: Provision the declared system closure (phase-413 W3)
+        id: system
+        run: |
+          source ./activate.sh
+          nros setup --system --sudo
+
       # NOT "the fixtures those CELLS resolve", which is what this said until
       # 2026-09-09. `lane-stage.py` classifies a step by keyword, `cells` is the
       # marker for the runtime stage, and the classifier takes the most specific
@@ -123,11 +203,27 @@ jobs:
           bash scripts/build/fixtures-build.sh linux rust zenoh
           bash scripts/build/fixtures-build.sh linux rust cyclonedds
 
+      # `host`, not everything — phase-441 W4. A board cell's image is built by
+      # an SDK this container does not carry, so running one here resolves no
+      # fixture and `skip!`s; `_rewrite-skipped-junit` then turns that into a
+      # `<skipped>` and the lane reports a cell it never ran as still passing.
+      # That is not hypothetical: `zephyr-qos-rust-zenoh` has been in this
+      # lane's membership since the ledger's first entry.
+      #
+      # The exit code carries the one thing a step outcome cannot — whether the
+      # cells produced RESULTS. 2 is the recipe's "this lane could not run".
       - name: Run the cells with a recorded PASS
         id: cells
         run: |
           source ./activate.sh
-          just native test-live-peer-regression
+          set +e
+          just native test-live-peer-regression host
+          rc=$?
+          set -e
+          ran=false
+          [ "$rc" -le 1 ] && ran=true
+          printf 'cells_ran=%s\n' "$ran" >> "$GITHUB_OUTPUT"
+          exit $rc
 
       - name: Ledger after the run
         if: always()
@@ -148,9 +244,212 @@ jobs:
             [{"name": "Build the nros CLI", "conclusion": "${{ steps.cli.outcome }}"},
              {"name": "Report what the ledger claims, before running anything", "conclusion": "${{ steps.ledger.outcome }}"},
              {"name": "Check out the submodules the fixtures vendor", "conclusion": "${{ steps.submodules.outcome }}"},
+             {"name": "Provision the declared system closure (phase-413 W3)", "conclusion": "${{ steps.system.outcome }}"},
              {"name": "Build the fixtures those rows resolve", "conclusion": "${{ steps.fixtures.outcome }}"},
              {"name": "Run the cells with a recorded PASS", "conclusion": "${{ steps.cells.outcome }}"}]
-        run: python3 scripts/ci/lane-stage.py --report --lane "live-peer regression"
+          # The fourth axis (phase-441 W4): the cells step FAILED tells you the
+          # step failed, never whether the cells produced results. Empty when the
+          # step never ran, which reads as "nobody said" and changes nothing.
+          NROS_LANE_CELLS_RAN: ${{ steps.cells.outputs.cells_ran }}
+        run: python3 scripts/ci/lane-stage.py --report --lane "live-peer regression (host)"
+
+  # phase-441 W4 — THE SIBLING LANE, FOR THE ROWS WHOSE BOARD IS NOT THE RUNNER.
+  #
+  # A split, not "provision an emulator in `regression`", and the reason is the
+  # comment at the top of this file: the host rows must not be hostage to
+  # anything they do not need. Provisioning a Zephyr SDK, a west workspace and
+  # an emulator in the one job would put nineteen host cells behind a toolchain
+  # they never touch — and it would pay for that toolchain on every run,
+  # including the runs where the ledger records no board cell at all.
+  #
+  # The cost of a split is a second lane to keep green and a second place to
+  # notice a red. Both are paid down here rather than accepted: this job is one
+  # `if:` away from not existing when there is nothing for it to run, and it
+  # reports through the SAME stage reporter as its sibling, so the run list
+  # shows "could not run the board rows" and "the board rows regressed" as
+  # different sentences.
+  #
+  # `nano-ros-zephyr-ci`, not `nano-ros-ci`, because the SDK is the expensive
+  # half and that image bakes it (nightly's zephyr line runs on it daily). What
+  # neither image bakes is the ROS side of the peer — `ros-humble-rmw-zenoh-cpp`
+  # is provisioned per run, from what `nros-sdk-index.toml` declares.
+  #
+  # The image is a Zephyr one and the scope list below is derived, so those two
+  # can disagree: a FreeRTOS cell entering the ledger asks for a scope this
+  # image cannot provision. That is checked, loudly, rather than run — see the
+  # `setup` step.
+  board:
+    name: rows whose board is NOT this runner
+    needs: [membership]
+    if: needs.membership.outputs.has_board == 'true'
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/newslabntu/nano-ros-zephyr-ci:humble-sdk0.17.4-r4
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      stage_label: ${{ steps.stage.outputs.label }}
+      reached_cells: ${{ steps.stage.outputs.reached_cells }}
+    env:
+      # The 4.4 line needs a Python >=3.12 venv, which nano-ros refuses to
+      # create on a host it does not own. A CI container IS owned; the image
+      # ships `uv` for exactly this. Ignored by the 3.7 line, which is the
+      # default and what the recorded board cell was measured on.
+      NROS_ZEPHYR_CREATE_VENV: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the nros CLI
+        id: cli
+        run: |
+          git submodule update --init --depth 1 packages/cli/third-party/play_launch
+          cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          "$GITHUB_WORKSPACE/packages/cli/target/release/nros" source-stamp >/dev/null
+
+      # The image registered the SDK CMake package as root; the container runs
+      # with HOME=/github/home → re-register for this HOME.
+      - name: Register the baked Zephyr SDK for this HOME
+        id: sdk
+        run: /opt/zephyr-sdk/setup.sh -c
+
+      # Issue 0078 — container host-disk headroom before the west update + pip.
+      # Mirrors nightly's zephyr line, which measured cells tipping over at 78 MB
+      # free. The baked SDK stays; the build needs it.
+      - name: Reclaim disk before the SDK setup
+        id: disk
+        run: |
+          echo "before:"; df -h / | tail -1
+          apt-get clean 2>/dev/null || true
+          rm -rf /var/lib/apt/lists/* /usr/share/doc /usr/share/man /usr/share/locale 2>/dev/null || true
+          rm -rf "$HOME/.cache/pip" 2>/dev/null || true
+          echo "after:";  df -h / | tail -1
+
+      # The image bakes bin/cargo-clippy from a non-rustup-owner layer, so
+      # `rustup target add` (which `just setup` reaches) trips on the
+      # clippy-preview conflict. Same fix as nightly's zephyr line.
+      - name: Unblock the rustup clippy-preview conflict
+        id: rustup
+        run: |
+          rustup_home="$(rustup show home 2>/dev/null || echo "$HOME/.rustup")"
+          find "$rustup_home/toolchains" -maxdepth 3 -type f \
+              \( -name cargo-clippy -o -name clippy-driver \) -delete 2>/dev/null || true
+          rustup toolchain list 2>/dev/null | awk '{print $1}' | while read -r tc; do
+              [ -z "$tc" ] && continue
+              rustup component add clippy --toolchain "$tc" \
+                  || echo "  (clippy add failed for $tc — non-fatal)"
+          done
+
+      # The PEER. Neither CI image bakes `ros-humble-rmw-zenoh-cpp`, and without
+      # it every zenoh cell answers `require_ros2()` with a skip — which the
+      # junit rewrite turns into a green. `nros-sdk-index.toml` declares the
+      # package; this installs what it declares rather than restating it as an
+      # `apt-get install` line (phase-413 W3's rule).
+      - name: Provision the declared system closure (phase-413 W3)
+        id: system
+        run: |
+          source ./activate.sh
+          nros setup --system --sudo
+
+      # The scopes come from the ROWS, via their platform coordinate — no list
+      # here to keep in step. `--skip-sdk` for zephyr because this image bakes
+      # it; the assertion above the loop is what keeps a scope this image cannot
+      # provision from being run as if it could.
+      - name: just setup the scopes those rows need
+        id: setup
+        env:
+          SCOPES: ${{ needs.membership.outputs.setup_scopes }}
+        run: |
+          source ./activate.sh
+          for s in $SCOPES; do
+              case "$s" in
+                  zephyr|qemu) ;;
+                  *)
+                      echo "This lane runs in a Zephyr image and can provision" >&2
+                      echo "  zephyr and qemu. A row with a recorded PASS needs" >&2
+                      echo "  '$s', which it cannot — so this run would report a" >&2
+                      echo "  green over cells it never built." >&2
+                      echo "Give that board its own job (or its own image) and" >&2
+                      echo "  add it to LANES in scripts/ci/lane-stage.py." >&2
+                      exit 1
+                      ;;
+              esac
+          done
+          for s in $SCOPES; do
+              extra=""
+              [ "$s" = "zephyr" ] && extra="--skip-sdk"
+              echo "=== just setup $s $extra ==="
+              just setup "$s" $extra
+          done
+
+      # zephyr-sys' build.rs runs bindgen over Zephyr headers — needs libclang.so
+      # and clang's resource-dir headers.
+      - name: Install clang + libclang for bindgen
+        id: clang
+        run: |
+          apt-get update -q
+          apt-get install -y --no-install-recommends \
+            $(python3 scripts/sdk/prereq-packages.py --manager apt clang libclang-dev)
+
+      # NARROWED to the leaves these rows resolve. `just build zephyr` is the
+      # whole west lane, and the tree already says what that is worth — on this
+      # very cell: "running the whole west lane to reach one cell is not
+      # something anyone would type" (just/zephyr-dev.just). The narrowing comes
+      # from the same tool that chose the rows.
+      - name: Build the fixtures those rows resolve
+        id: fixtures
+        env:
+          SCOPES: ${{ needs.membership.outputs.build_scopes }}
+          NARROWING: ${{ needs.membership.outputs.narrowing }}
+        run: |
+          source ./activate.sh
+          for kv in $NARROWING; do
+              echo "narrowing: $kv"
+              export "$kv"
+          done
+          for s in $SCOPES; do
+              echo "=== just build $s ==="
+              just build "$s"
+          done
+
+      - name: Run the board cells with a recorded PASS
+        id: cells
+        run: |
+          source ./activate.sh
+          set +e
+          just native test-live-peer-regression board
+          rc=$?
+          set -e
+          ran=false
+          [ "$rc" -le 1 ] && ran=true
+          printf 'cells_ran=%s\n' "$ran" >> "$GITHUB_OUTPUT"
+          exit $rc
+
+      - name: Ledger after the run
+        if: always()
+        run: |
+          source ./activate.sh
+          just interop-verdicts || true
+
+      - name: Which stage did this lane reach?
+        id: stage
+        if: always()
+        env:
+          NROS_LANE_STEPS: >-
+            [{"name": "Build the nros CLI", "conclusion": "${{ steps.cli.outcome }}"},
+             {"name": "Register the baked Zephyr SDK for this HOME", "conclusion": "${{ steps.sdk.outcome }}"},
+             {"name": "Reclaim disk before the SDK setup", "conclusion": "${{ steps.disk.outcome }}"},
+             {"name": "Unblock the rustup clippy-preview conflict", "conclusion": "${{ steps.rustup.outcome }}"},
+             {"name": "Provision the declared system closure (phase-413 W3)", "conclusion": "${{ steps.system.outcome }}"},
+             {"name": "just setup the scopes those rows need", "conclusion": "${{ steps.setup.outcome }}"},
+             {"name": "Install clang + libclang for bindgen", "conclusion": "${{ steps.clang.outcome }}"},
+             {"name": "Build the fixtures those rows resolve", "conclusion": "${{ steps.fixtures.outcome }}"},
+             {"name": "Run the board cells with a recorded PASS", "conclusion": "${{ steps.cells.outcome }}"}]
+          NROS_LANE_CELLS_RAN: ${{ steps.cells.outputs.cells_ran }}
+        run: python3 scripts/ci/lane-stage.py --report --lane "live-peer regression (board)"
 
   # The job NAME carries the stage, for the same reason `run-matrix.yml`'s
   # `coverage` job does: a check-run name is the last piece of a run that is
@@ -162,7 +461,7 @@ jobs:
   # `|| 'DID NOT START'` covers the run where `regression` produces no outputs
   # at all, which is neither a verdict nor a lane failure.
   stage:
-    name: "live-peer — ${{ needs.regression.outputs.stage_label || 'DID NOT START' }}"
+    name: "live-peer host — ${{ needs.regression.outputs.stage_label || 'DID NOT START' }}"
     needs: [regression]
     if: always()
     runs-on: ubuntu-22.04
@@ -177,11 +476,55 @@ jobs:
         run: |
           label="$LABEL"
           reached="$REACHED"
-          echo "live-peer regression: $label"
+          echo "live-peer regression (host): $label"
           if [ "$reached" != "true" ]; then
               echo ""
               echo "The cells did not run, so this run says NOTHING about whether"
               echo "a recorded-passing cell still passes. It is a verdict about"
               echo "the lane, not about the code. Do not read a green ledger as"
               echo "guarded until a run reaches its cells."
+          fi
+
+  # The board half's own name, for the same reason — and with the two answers
+  # this job has that its sibling does not.
+  #
+  # `board` is SKIPPED when the ledger records no cell on a board, which is a
+  # legitimate state and not a failure. But a skipped job is a grey tick, and a
+  # grey tick reads as "fine" — so the fallback chain says WHICH of the three
+  # non-verdicts happened: the split could not be computed, there was nothing to
+  # run, or the job was to run and never started.
+  stage-board:
+    name: "live-peer board — ${{ needs.board.outputs.stage_label || (needs.membership.result != 'success' && 'NO VERDICT: could not split the ledger by runner') || (needs.membership.outputs.has_board == 'true' && 'DID NOT START') || 'no cell on a board has a recorded PASS' }}"
+    needs: [membership, board]
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Say in the run list what the log would have to be opened for
+        env:
+          LABEL: ${{ needs.board.outputs.stage_label }}
+          REACHED: ${{ needs.board.outputs.reached_cells }}
+          HAS_BOARD: ${{ needs.membership.outputs.has_board }}
+          CELLS: ${{ needs.membership.outputs.board_cells }}
+          SPLIT: ${{ needs.membership.result }}
+        run: |
+          label="$LABEL"
+          reached="$REACHED"
+          if [ "$SPLIT" != "success" ]; then
+              echo "The ledger could not be split by runner, so this run does not"
+              echo "know whether it OWED anything. Not a verdict about the code."
+              exit 0
+          fi
+          if [ "$HAS_BOARD" != "true" ]; then
+              echo "No cell on a board has a recorded PASS, so there is nothing"
+              echo "for this lane to guard yet. That is the honest state of the"
+              echo "coverage, not a green: see phase-441 W1-W3."
+              exit 0
+          fi
+          echo "live-peer regression (board): ${label:-DID NOT START}"
+          echo "  rows: $CELLS"
+          if [ "$reached" != "true" ]; then
+              echo ""
+              echo "The board cells did not run, so this run says NOTHING about"
+              echo "whether they still pass. It is a verdict about the lane —"
+              echo "most likely its toolchain, its image or its fixtures."
           fi

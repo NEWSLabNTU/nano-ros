@@ -158,6 +158,186 @@ def test_sources(cells: list[dict]) -> dict[str, str | None]:
     return out
 
 
+# --- which RUNNER a cell needs (phase-441 W4) ----------------------------
+#
+# `live-peer.yml` derives its membership from this ledger, so a cell joins the
+# lane the moment a verdict is recorded. What does NOT follow is the RUNNER: a
+# cell on a board needs that board's SDK, its cross toolchain and — off
+# native_sim — an emulator, and the container the host cells run in has none of
+# them.
+#
+# The ledger is the wrong place to say so. It records that a cell PASSED; what
+# it takes to run one is a property of the cell's COORDINATE, which
+# `interop::CELLS` already states. A `needs_qemu = true` field beside the
+# verdict would be a second source for that fact, drifting the moment a cell
+# moves board — the shape `row_coord()` exists to prevent. So the split is
+# computed from the platform token, here, once.
+#
+# Two classes, and the vocabulary is deliberately NOT "on-target" (phase-441
+# W5): `ZephyrNativeSim` is `native_sim/native/64`, whose sockets are the
+# host's, and calling its lane on-target claims what the artifact does not
+# support. The question this split actually asks is whether the cell's BOARD is
+# the runner itself.
+HOST_PLATFORM = "Linux"
+RUNNERS = ("host", "board", "all")
+
+# platform -> the `just setup <scope>` tokens that provision it, or None for a
+# platform no lane can provision today.
+#
+# AUTHORED, because it is a judgement and not a lookup: `ZephyrQemuCortexM`
+# needs the Zephyr SDK *and* an emulator, which no single existing table says.
+# Two things keep it from drifting quietly — every token is checked against
+# `scripts/build/scope.sh`'s own platform list (a renamed scope fails here), and
+# a platform missing from this map is an ERROR rather than an empty scope set,
+# so recording a verdict for a board nothing provisions tells the next person
+# what to add instead of silently running nothing.
+# Two roles, because they are two different questions and a board can answer
+# them differently: `setup` provisions (the SDK, the cross toolchain, the
+# emulator), `build` owns the fixtures the cells resolve. `ZephyrQemuCortexM`
+# is provisioned by `zephyr` AND `qemu` and its fixtures are `zephyr`'s;
+# collapsing the two would make the lane build QEMU's own baremetal fixtures to
+# run a Zephyr cell.
+BOARD_SCOPES: "dict[str, dict[str, tuple[str, ...]] | None]" = {
+    "ZephyrNativeSim": {"setup": ("zephyr",), "build": ("zephyr",)},
+    "ZephyrQemuCortexM": {"setup": ("zephyr", "qemu"), "build": ("zephyr",)},
+    "FreertosMps2": {"setup": ("freertos", "qemu"), "build": ("freertos",)},
+    "FreertosPosix": {"setup": ("freertos",), "build": ("freertos",)},
+    "NuttxArm": {"setup": ("nuttx", "qemu"), "build": ("nuttx",)},
+    "NuttxRiscv": {"setup": ("nuttx", "qemu"), "build": ("nuttx",)},
+    "ThreadxLinux": {"setup": ("threadx_linux",), "build": ("threadx_linux",)},
+    "ThreadxRiscv64": {
+        "setup": ("threadx_riscv64", "qemu"), "build": ("threadx_riscv64",),
+    },
+    "Esp32Qemu": {"setup": ("esp32",), "build": ("esp32",)},
+    "QemuBaremetal": {"setup": ("qemu",), "build": ("qemu",)},
+    # Neither has a CI story in this tree (phase-441 "What this phase does NOT
+    # promise"): the FVP is x86_64-only and maintainer-run, PX4-SITL is built by
+    # no runner. `None` is not "no provisioning needed" — it is "decide, and
+    # write the decision here".
+    "Fvp": None,
+    "Px4": None,
+}
+
+# cell id -> the (env var, value) that narrows a scope's fixture build to the
+# leaf THAT cell resolves.
+#
+# Needed because `just build zephyr` is the whole west lane, and the tree
+# already says why that is not the answer (`just/zephyr-dev.just`, on this very
+# cell: "running the whole west lane to reach one cell is not something anyone
+# would type"). Nightly builds ONE zephyr example per job for the same reason.
+#
+# Keyed by CELL, because the leaf is a property of the cell and not of its
+# board. A recorded board cell missing from here is an ERROR — the alternative
+# is a lane that builds everything or builds nothing, and both were tried.
+# The value is cross-checked against `examples/fixtures.toml`, so a renamed
+# west build name fails here instead of silently narrowing to nothing.
+BOARD_FIXTURE_NARROWING: "dict[str, tuple[str, str]]" = {
+    "zephyr-qos-rust-zenoh": (
+        "NROS_ZEPHYR_FIXTURE_FILTER", "build-ws-rs-qos-entry-zenoh",
+    ),
+}
+
+FIXTURES_TOML = ROOT / "examples" / "fixtures.toml"
+
+SCOPE_SH = ROOT / "scripts" / "build" / "scope.sh"
+
+
+def known_scopes() -> set[str]:
+    """The scope tokens `just setup <scope>` accepts, read from their source."""
+    m = re.search(
+        r'^_NROS_SCOPE_PLATFORMS="([^"]*)"',
+        SCOPE_SH.read_text(encoding="utf-8"),
+        re.M,
+    )
+    if not m:
+        raise LedgerError(
+            f"{_rel(SCOPE_SH)}: no `_NROS_SCOPE_PLATFORMS=\"...\"` line — the "
+            f"scope vocabulary moved, and this tool validates BOARD_SCOPES "
+            f"against it"
+        )
+    return set(m.group(1).split())
+
+
+def runner_of(platform: str) -> str:
+    """`host` if the cell runs on the runner itself, else `board`."""
+    return "host" if platform == HOST_PLATFORM else "board"
+
+
+def scopes_for(platforms, role: str = "setup") -> list[str]:
+    """The `just <role> <scope>` tokens these platforms need, sorted.
+
+    Raises `LedgerError` naming the platform when the map has no answer — a
+    lane that provisions nothing must say so, not run nothing.
+    """
+    known = known_scopes()
+    out: set[str] = set()
+    for plat in sorted(set(platforms)):
+        if plat == HOST_PLATFORM:
+            continue
+        if BOARD_SCOPES.get(plat) is None:
+            raise LedgerError(
+                f"a cell on `{plat}` has a recorded PASS, and BOARD_SCOPES in "
+                f"scripts/check-interop-verdicts.py does not say what provisions "
+                f"it. Add the `just setup <scope>` tokens for that board (and "
+                f"give the lane a runner that can) — an empty scope set would "
+                f"run nothing and report green."
+            )
+        for tok in BOARD_SCOPES[plat][role]:
+            if tok not in known:
+                raise LedgerError(
+                    f"BOARD_SCOPES maps `{plat}` to scope `{tok}`, which is not a "
+                    f"scope token in {_rel(SCOPE_SH)} ({' '.join(sorted(known))})"
+                )
+            out.add(tok)
+    return sorted(out)
+
+
+def narrowing_for(ids) -> list[str]:
+    """`KEY=value` lines narrowing a fixture build to these cells' leaves.
+
+    Several cells sharing a key are joined with `|`: the one narrowing hook in
+    the tree (`NROS_ZEPHYR_FIXTURE_FILTER`) is a REGEX, so an alternation is its
+    union. A future key whose union is not an alternation must say so here
+    rather than inherit this one's meaning.
+    """
+    fixtures = FIXTURES_TOML.read_text(encoding="utf-8")
+    merged: dict[str, list[str]] = {}
+    for cid in sorted(set(ids)):
+        if cid not in BOARD_FIXTURE_NARROWING:
+            raise LedgerError(
+                f"`{cid}` has a recorded PASS on a board runner and "
+                f"BOARD_FIXTURE_NARROWING in scripts/check-interop-verdicts.py "
+                f"does not say which fixture leaf it resolves. Add it — the lane "
+                f"would otherwise build every leaf of that scope (hours) or none "
+                f"of them (a green over nothing)."
+            )
+        key, value = BOARD_FIXTURE_NARROWING[cid]
+        if value not in fixtures:
+            raise LedgerError(
+                f"BOARD_FIXTURE_NARROWING[{cid}] narrows to `{value}`, which "
+                f"appears nowhere in {_rel(FIXTURES_TOML)} — a renamed leaf "
+                f"would narrow the build to nothing and read as done"
+            )
+        merged.setdefault(key, []).append(value)
+    return [f"{k}={'|'.join(sorted(set(v)))}" for k, v in sorted(merged.items())]
+
+
+def in_runner(cells: list[dict], ids, runner: str) -> list[str]:
+    """The subset of `ids` whose cell runs on `runner` (`all` keeps every id).
+
+    An id the cell table no longer names is dropped, for the reason
+    `--list-passing` already gives: that is the ledger gate's problem, and
+    crashing the regression lane over it helps nobody.
+    """
+    by_id = {c["id"]: c for c in cells}
+    if runner == "all":
+        return [c for c in ids if c in by_id]
+    return [
+        c for c in ids
+        if c in by_id and runner_of(by_id[c]["platform"]) == runner
+    ]
+
+
 # --- which cases can be EVIDENCE ----------------------------------------
 
 
@@ -813,6 +993,66 @@ def after_run(junit: Path, cells: list[dict], sources, owners, entries) -> list[
     return out
 
 
+def assert_ran(
+    junit_dir: Path,
+    passing: list[str],
+    cells: list[dict],
+    sources,
+    owners,
+    runner: str,
+) -> int:
+    """Did every cell with a recorded PASS actually produce a result? — W4.
+
+    The regression lane's failure mode is not a red. It is a GREEN over a run
+    in which every case hit `skip!` for want of the peer or the fixture:
+    `_rewrite-skipped-junit` turns those into `<skipped>`, `_test-focused` exits
+    0 and prints that it did, and the lane reports that cells with a recorded
+    PASS still pass. That is issue 0445's absorbing verdict in the one place it
+    costs the most — the lane whose entire subject is "does what worked still
+    work".
+
+    So a skipped membership is NOT a verdict. Exit 3, which the recipe maps to
+    "this lane could not run" rather than to a regression.
+    """
+    xmls = sorted(junit_dir.glob("*.xml")) if junit_dir.is_dir() else []
+    ran: set[str] = set()
+    skipped: dict[str, list[str]] = {}
+    for x in xmls:
+        seen, _ = observed(x, cells, sources, owners)
+        for cid, row in seen.items():
+            if row["verdict"]:
+                ran.add(cid)
+            for name in row["skipped"]:
+                skipped.setdefault(cid, []).append(name)
+    missing = [c for c in passing if c not in ran]
+    scope = "" if runner == "all" else f" ({runner} runner)"
+    if not missing:
+        print(
+            f"Every cell with a recorded PASS{scope} produced a result in this "
+            f"run ({len(passing)} of {len(passing)}) — the pass/fail below IS "
+            f"about the code."
+        )
+        return 0
+    print(
+        f"{len(missing)} of {len(passing)} cell(s) with a recorded PASS{scope} "
+        f"produced NO result in this run:"
+    )
+    for cid in missing:
+        why = skipped.get(cid)
+        detail = (
+            f"skipped: {', '.join(sorted(why)[:3])}" if why
+            else "no case of its binary reached this junit"
+        )
+        print(f"  {cid} — {detail}")
+    if not xmls:
+        print(f"  (no junit at all under {_rel(junit_dir)})")
+    print("")
+    print("A skip is not evidence about the code, so this run is NOT a")
+    print("regression verdict — it is a verdict about the lane. Fix what the")
+    print("[SKIPPED] lines above name (the peer, or the fixture) and re-run.")
+    return 3
+
+
 # --- writing an entry ----------------------------------------------------
 
 
@@ -1135,8 +1375,105 @@ def self_test(verbose: bool = False, tmp: Path | None = None) -> None:
     # leaked directory per test run is a slow mess nobody would attribute here.
     with tempfile.TemporaryDirectory(prefix="nros-interop-verdicts-") as td:
         _self_test_junit(Path(td) if tmp is None else tmp, cells, src, owners)
+    with tempfile.TemporaryDirectory(prefix="nros-interop-runner-") as td:
+        _self_test_runner_split(Path(td), cells, src, owners)
     if verbose:
         print("check-interop-verdicts: self-test OK")
+
+
+def _self_test_runner_split(
+    tmp: Path, cells: list[dict], src: dict[str, str | None], owners: list[dict]
+) -> None:
+    """phase-441 W4 — the runner split and the skipped-membership guard."""
+    assert runner_of(HOST_PLATFORM) == "host", "selftest: the host board is not host"
+    assert runner_of("ZephyrNativeSim") == "board", (
+        "selftest: native_sim classified as the host runner. Its SOCKETS are "
+        "the host's, but its image is built by the Zephyr SDK, which the host "
+        "lane's container does not carry — that is what the split is about."
+    )
+
+    # Every scope this map names must be a scope `just setup` accepts. This is
+    # the arm that catches a RENAMED scope, which an authored map cannot.
+    for plat, roles in BOARD_SCOPES.items():
+        if roles is None:
+            continue
+        for role, toks in roles.items():
+            assert scopes_for([plat], role) == sorted(set(toks)), (
+                f"selftest: BOARD_SCOPES[{plat}][{role}] does not survive scopes_for"
+            )
+    assert scopes_for(["ZephyrQemuCortexM", "ZephyrNativeSim"]) == ["qemu", "zephyr"], (
+        "selftest: two boards' scopes did not merge"
+    )
+    assert scopes_for(["ZephyrQemuCortexM"], "build") == ["zephyr"], (
+        "selftest: the emulator scope leaked into the BUILD role — that lane "
+        "would build QEMU's own baremetal fixtures to run a Zephyr cell"
+    )
+    assert scopes_for([HOST_PLATFORM]) == [], "selftest: the host board asked for a scope"
+
+    # The narrowing map: present, and pointing at something that exists.
+    assert narrowing_for(["zephyr-qos-rust-zenoh"]) == [
+        "NROS_ZEPHYR_FIXTURE_FILTER=build-ws-rs-qos-entry-zenoh"
+    ], narrowing_for(["zephyr-qos-rust-zenoh"])
+    try:
+        narrowing_for(["a-board-cell-nobody-mapped"])
+    except LedgerError as e:
+        assert "a-board-cell-nobody-mapped" in str(e), e
+    else:
+        raise AssertionError(
+            "selftest: an unmapped board cell was given no fixture narrowing, "
+            "which builds every leaf of its scope or none of them"
+        )
+    for plat, why in (
+        ("Fvp", "a platform mapped to None"),
+        ("Bicycle", "a platform the map has never heard of"),
+    ):
+        try:
+            scopes_for([plat])
+        except LedgerError as e:
+            assert plat in str(e), f"selftest: the error does not name {plat}: {e}"
+        else:
+            raise AssertionError(f"selftest: {why} was given an empty scope set")
+
+    synth = [
+        {"id": "h", "platform": "Linux", "test": "alpha_e2e", "tier": "Runtime"},
+        {"id": "b", "platform": "ZephyrNativeSim", "test": "zed_e2e", "tier": "Runtime"},
+    ]
+    assert in_runner(synth, ["h", "b"], "host") == ["h"], "selftest: host filter"
+    assert in_runner(synth, ["h", "b"], "board") == ["b"], "selftest: board filter"
+    assert in_runner(synth, ["h", "b"], "all") == ["h", "b"], "selftest: all filter"
+    assert in_runner(synth, ["h", "gone"], "all") == ["h"], (
+        "selftest: an id no longer in CELLS crashed the lane instead of being "
+        "dropped"
+    )
+
+    # The guard: a run in which the membership only SKIPPED is not a verdict.
+    (tmp / "skips.xml").write_text(
+        _junit([("alpha_e2e", "meets_a_peer", "skip"),
+                ("alpha_e2e", "cases_bound_to_interop_cells", "pass")])
+    )
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = assert_ran(tmp, ["cell-alpha"], cells, src, owners, "host")
+    assert rc == 3, "selftest: a wholly-skipped membership reported a verdict"
+    assert "cell-alpha" in buf.getvalue(), buf.getvalue()
+
+    (tmp / "real.xml").write_text(
+        _junit([("alpha_e2e", "meets_a_peer", "pass")])
+    )
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = assert_ran(tmp, ["cell-alpha"], cells, src, owners, "host")
+    assert rc == 0, (
+        f"selftest: a cell that DID produce a result was called a skip: "
+        f"{buf.getvalue()}"
+    )
+
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = assert_ran(tmp / "nowhere", ["cell-alpha"], cells, src, owners, "board")
+    assert rc == 3 and "no junit at all" in buf.getvalue(), (
+        f"selftest: an absent junit dir passed the guard: {buf.getvalue()}"
+    )
 
 
 def _self_test_case_map(
@@ -1380,6 +1717,36 @@ def main(argv: list[str]) -> int:
         help="with --list-passing, emit the distinct TEST BINARIES those cells "
         "live in instead of the cell ids (several cells share one binary)",
     )
+    ap.add_argument(
+        "--runner",
+        choices=RUNNERS,
+        default="all",
+        help="phase-441 W4 — narrow to the cells whose BOARD is the runner "
+        "itself (`host`) or is not (`board`). Derived from the cell's platform "
+        "coordinate, never from the ledger",
+    )
+    ap.add_argument(
+        "--scopes",
+        choices=("setup", "build"),
+        help="with --list-passing --runner board, emit the scope tokens those "
+        "cells need for that verb (`just setup <scope>` / `just build <scope>`) "
+        "instead of the cell ids",
+    )
+    ap.add_argument(
+        "--narrowing",
+        action="store_true",
+        help="with --list-passing --runner board, emit the `KEY=value` env "
+        "assignments that narrow the fixture build to the leaves those cells "
+        "resolve",
+    )
+    ap.add_argument(
+        "--assert-ran",
+        metavar="DIR",
+        help="phase-441 W4 — every junit in DIR, together: exit 3 naming the "
+        "cells with a recorded PASS (in --runner scope) that produced no "
+        "non-skip result. A skip is not a verdict, so a lane that skips its "
+        "membership has not guarded it",
+    )
     args = ap.parse_args(argv)
 
     if args.self_test:
@@ -1424,7 +1791,7 @@ def main(argv: list[str]) -> int:
             print(line)
         return 0
 
-    if args.list_passing:
+    if args.list_passing or args.assert_ran:
         try:
             entries = load_ledger(text)
         except LedgerError as e:
@@ -1433,13 +1800,71 @@ def main(argv: list[str]) -> int:
         passing = sorted(
             e["cell"] for e in entries if e.get("verdict") == "pass"
         )
-        if args.by_binary:
-            by_id = {c["id"]: c for c in cells}
+        try:
+            passing = in_runner(cells, passing, args.runner)
+        except LedgerError as e:
+            print(f"check-interop-verdicts: {e}", file=sys.stderr)
+            return 1
+
+    if args.assert_ran:
+        return assert_ran(
+            Path(args.assert_ran), passing, cells, sources, owners, args.runner
+        )
+
+    if args.list_passing:
+        by_id = {c["id"]: c for c in cells}
+        if args.scopes or args.narrowing:
+            try:
+                if args.scopes:
+                    print("\n".join(
+                        scopes_for(
+                            (by_id[c]["platform"] for c in passing), args.scopes
+                        )
+                    ))
+                if args.narrowing:
+                    print("\n".join(narrowing_for(passing)))
+            except LedgerError as e:
+                print(f"check-interop-verdicts: {e}", file=sys.stderr)
+                return 1
+        elif args.by_binary:
             # A cell whose id is no longer in CELLS is the ledger gate's problem,
             # not this lane's — skip it here rather than crash the run that is
-            # supposed to detect regressions.
+            # supposed to detect regressions. (`in_runner` has already dropped
+            # those, so this reads only the cells that survived it.)
+            #
+            # A binary hosting cells of BOTH runners cannot be narrowed by
+            # binary at all — `binary(=x)` runs every case in it — so it is a
+            # hard error rather than a silent mis-assignment. Nothing in the
+            # tree is shaped that way today; a future cell that shares a binary
+            # across boards needs a case-level filter, and this says so at the
+            # moment it is written.
+            mixed = sorted(
+                {
+                    by_id[c]["test"]
+                    for c in passing
+                    if by_id[c].get("test")
+                }
+                & {
+                    by_id[c]["test"]
+                    for c in in_runner(
+                        cells,
+                        [e["cell"] for e in entries if e.get("verdict") == "pass"],
+                        "board" if args.runner == "host" else "host",
+                    )
+                    if by_id[c].get("test")
+                }
+            )
+            if args.runner != "all" and mixed:
+                print(
+                    f"check-interop-verdicts: {', '.join(mixed)} host(s) passing "
+                    f"cells on BOTH runners; `binary(=…)` cannot express that "
+                    f"split. Give the board cell its own test binary, or filter "
+                    f"by case.",
+                    file=sys.stderr,
+                )
+                return 1
             bins = sorted(
-                {by_id[c]["test"] for c in passing if c in by_id and by_id[c].get("test")}
+                {by_id[c]["test"] for c in passing if by_id[c].get("test")}
             )
             print("\n".join(bins))
         else:

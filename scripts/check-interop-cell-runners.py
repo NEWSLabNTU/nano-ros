@@ -256,7 +256,15 @@ def parse_cells(src: str) -> list[dict]:
 
 
 def _parse_cell(arg: str, line: int) -> dict:
-    """The tier out of the row's `c(platform, lang, rmw, workload, kind, tier)`."""
+    """The platform and tier out of `c(platform, lang, rmw, workload, kind, tier)`.
+
+    The PLATFORM is here for phase-441 W4: which runner a cell needs is a
+    property of its coordinate and of nothing else. `.config/interop-verdicts.
+    toml` records that a cell passed, not what it takes to run one, and giving
+    it a `needs_qemu = true` field would be a second source for a fact the
+    coordinate already states -- the shape `row_coord()` exists to prevent.
+    Read it here, once, like the tier.
+    """
     arg = arg.strip()
     if not arg.startswith("c("):
         raise ParseError(
@@ -277,7 +285,12 @@ def _parse_cell(arg: str, line: int) -> dict:
             f"this gate -- an unrecognised tier would silently read as "
             f"not-Runtime and drop its cells out of the check."
         )
-    return {"tier": tier}
+    platform = re.split(r"[\s(]", inner[0].strip(), maxsplit=1)[0]
+    if not platform:
+        raise ParseError(
+            f"{INTEROP_RS.name}:{line}: `c(...)` has an empty platform token"
+        )
+    return {"platform": platform, "tier": tier}
 
 
 def _parse_test(arg: str, line: int) -> dict:
@@ -588,6 +601,11 @@ def self_test(verbose: bool = False) -> None:
     cells = parse_cells(_MINI_RS)
     assert [c["id"] for c in cells] == ["cell-alpha", "cell-beta", "cell-carved"], cells
     assert [c["tier"] for c in cells] == ["Runtime", "Runtime", "CarveOut"], cells
+    # phase-441 W4 -- the platform, which is what says whether a cell's runner
+    # is this host or a board. Asserted here so a `c(...)` shape change that
+    # drops it fails where the parse lives, not in the lane that reads it.
+    assert [c["platform"] for c in cells] == [
+        "Linux", "Linux", "ZephyrNativeSim"], cells
     assert cells[2]["test"] is None, "selftest: NO_TEST was not recognised"
     assert cells[0]["test"] == "alpha_e2e", cells[0]
 
