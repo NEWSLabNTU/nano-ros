@@ -206,6 +206,18 @@ one-producer-per-tool:
 board-alias-unique:
     @python3 scripts/check-board-alias-unique.py
 
+# phase-445 W3b (RFC-0098 D3/D5) — a single-package leaf states its deployment
+# in the `system.toml` beside its manifest. Refuses the two retired spellings:
+# `[package.metadata.nros.{deploy.*,node,component}]` (and an `entry` table
+# holding more than `node_pkgs`/`max_callbacks`/`max_sched_contexts`) in a leaf
+# `Cargo.toml`, and a `<nano_ros deploy= …/>` element in ANY package.xml. A leaf
+# that re-grew a deploy table would still build — the deprecated reader answers
+# for it with a warning — so without this the drift back is silent. Workspace
+# members/entries are skipped and COUNTED until phase-445 W4/W5 moves them.
+[group("checks")]
+leaf-deployment-spelling:
+    @python3 scripts/check-leaf-deployment-spelling.py
+
 [group("checks")]
 prereq-roles:
     @python3 scripts/check-prereq-roles.py
