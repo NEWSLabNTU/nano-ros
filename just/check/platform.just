@@ -216,6 +216,17 @@ board-tiers:
 board-vocabulary:
     @python3 scripts/check-board-vocabulary.py
 
+# phase-447 F1 (issue 1275, RFC-0099 D10) — the west manifests' module
+# allowlists must be exactly what `[zephyr_module.*]` declares, per Zephyr line.
+# The set used to live ONLY in west.yml, so `west update` fetched 2.5 GB of
+# vendor HALs for silicon no board here targets and `nros setup zephyr
+# --dry-run` could not price a byte of it. Checked both directions: a module the
+# index prices but west never fetches is a fiction, and a module west fetches
+# that the index never declares is the original defect.
+[group("checks")]
+zephyr-module-allowlist:
+    @python3 scripts/check-zephyr-module-allowlist.py
+
 # issue 1143 — a `when.capability` row must DECIDE something, and decide it the
 # right way. Six rules over the platform manifests plus the two Rust wires:
 #

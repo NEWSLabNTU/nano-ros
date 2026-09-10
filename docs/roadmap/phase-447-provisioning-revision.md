@@ -152,7 +152,7 @@ is visible for a long download.
 success on BOTH paths), `bin_dirs` PATH order, and per-package output flushed in
 plan order.
 
-### F1 — the Zephyr module set moves under the index
+### F1 — the Zephyr module set moves under the index — **LANDED 2026-09-11**
 
 Closes 1275. Makes board -> module the same mechanism as board -> package, so
 `--dry-run` can price the 2.5 GB of HALs.
@@ -162,6 +162,59 @@ native_sim and one mps2_an385 leaf against the narrowed manifest. A board
 fragment can pull a module with no fixture naming the board (issue 0876's shape).
 Hold `hal_espressif` back deliberately: whether Zephyr's espressif support makes
 our ESP-IDF path a duplicate is a question to measure, not to settle here.
+
+**What landed.** `[zephyr_module.*]` is the SSoT (`why` / `needed_by` /
+`approx_mb` / `lines`); a module is in `west.yml`'s allowlist iff its `lines`
+carries `"3.7"`, and `west-4.4.yml`'s iff `"4.4"`, asserted BOTH ways by
+`check-zephyr-module-allowlist`. The manifests stay COMMITTED rather than
+generated — `west init -m <url>` reads `west.yml` from a bare clone, before any
+`nros` exists to generate one. `hal_nxp`/`hal_stm32`/`hal_nordic` left the
+allowlist: **~2.29 GB off a fresh `west update`**, priced by `nros setup zephyr
+--dry-run`.
+
+**Three things the acceptance found that reading would not have.**
+
+1. The conf-tree sweep came back EMPTY — zero vendor-HAL-pulling CONFIG symbols
+   anywhere. The 0876 shape it was guarding against did not occur.
+2. The board inventory is SIX, not the three `fixtures.toml` names:
+   `qemu_cortex_m3`, `qemu_cortex_a9` and `fvp_baser_aemv8r` are built too. All
+   `cmsis`-or-nothing, so the conclusion holds — but a fixture manifest is not
+   the board inventory.
+3. **`mcuboot` would have been a plausible fourth deletion on a grep, and would
+   have been wrong.** Its consumer is SYSBUILD, not an `#include`;
+   `<build>/sysbuild_modules.txt` names it. This is why acceptance was a build.
+
+`hal_nxp` has a real consumer that is not in this tree — `mr_canhubk3/s32k344`,
+the downstream safety-island board ~40 in-tree comments cite. Its entry names
+the board and states the remedy: a downstream re-enables it in its OWN
+manifest's allowlist, because an `import:`ed manifest composes rather than
+inheriting ours as a ceiling.
+
+`hal_espressif` was held back as instructed, and the index says plainly that it
+has NO measured consumer — questions (1) and (2) of 1275 both came back empty.
+Deleting the line would settle the platform-strategy question by accident, so it
+stays and the question is **issue 1282**. 275 MB of the 2.5 GB is knowingly
+still paid.
+
+*Build evidence, and its limit.* Proven in a topdir where the three HALs are
+absent from disk as well as from the manifest (`west list` returns 10 projects,
+not 13). `c/talker` on `native_sim/native/64` **links** — `zephyr.exe`, 12.2 MB.
+`c/talker` on `mps2_an385` resolves its modules with `cmsis` and no vendor HAL,
+and clears Kconfig, devicetree and the whole C module compile, but does not
+reach a link: it stops in `nros-cpp`, which calls `Executor::wake_raw_ptr`
+(gated `all(alloc, rmw-cffi)`) from a function gated on `rmw-cffi` alone — a
+pre-existing feature gap on `main`, in a file this branch does not touch.
+`rust/talker` is blocked by a second pre-existing break, the executor-sizing
+const assert (the #1172 recurrence); a CONTROLLED run — identical topdir, all
+four HALs present, ORIGINAL manifest — fails identically, which is what
+attributes it away from the manifest change. **So the mps2 half of the
+acceptance is module-resolution-proven, not link-proven.**
+
+*Methodology note worth keeping.* Symlinking `zephyr` into a test topdir does
+NOT work: Zephyr resolves the west topdir from `ZEPHYR_BASE`'s REAL path, so the
+first build silently used a different workspace's unnarrowed manifest and proved
+nothing — `zephyr_modules.txt` is what caught it. `cp -al` gives real
+directories at no disk cost, and is safe because git never writes in place.
 
 ## Order, and what collides
 

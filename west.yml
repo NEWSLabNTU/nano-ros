@@ -26,7 +26,14 @@ manifest:
       remote: zephyrproject-rtos
       revision: v3.7.0
       import:
-        # Import Zephyr's modules, filtered to essentials
+        # Import Zephyr's modules, filtered to essentials.
+        #
+        # THIS LIST IS DERIVED. The SSoT is `[zephyr_module.*]` in
+        # `nros-sdk-index.toml` — a module belongs here iff its `lines`
+        # contains "3.7". `check-zephyr-module-allowlist` holds the two in
+        # step, and `nros setup zephyr --dry-run` prices the set from the
+        # index. Edit the index, then mirror it here; editing only this file
+        # is what RFC-0099 D10 calls the provisioner not reading its own SSoT.
         name-allowlist:
           # Core
           - cmsis
@@ -34,11 +41,9 @@ manifest:
           # Crypto
           - mbedtls
           - tinycrypt
-          # HALs (add more as needed for your boards)
-          - hal_stm32
-          - hal_nordic
+          # HALs — see `[zephyr_module.*]` for who needs each, and for the
+          # four that used to sit here. phase-447 F1 / issue 1275.
           - hal_espressif
-          - hal_nxp
           # Bootloader
           - mcuboot
           # Tools
