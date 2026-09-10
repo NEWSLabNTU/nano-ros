@@ -57,6 +57,28 @@ if [ -n "$tdir_flag" ]; then
     cargo_args="$(nros_fixture_strip_authored_target_dir "$cargo_args")"
 fi
 
+# phase-445 W4b — a single-package leaf builds through its generated
+# `build/<image>/nros-cargo.toml`, from the directory above the leaf. The probe
+# must build it the SAME way `fixtures-build.sh` did — same file, same working
+# directory, same target dir — or it compiles a second configuration and reports
+# permanent false-STALE. One spelling, scripts/build/leaf-settings.sh.
+# shellcheck source=scripts/build/leaf-settings.sh
+source scripts/build/leaf-settings.sh 2>/dev/null || exit 0
+settings=""
+if [ -f "$dir/system.toml" ] && [ -f "$dir/Cargo.toml" ]; then
+    NROS_CLI="${NROS_CLI:-$(nros_cli_bin 2>/dev/null)}"
+    export NROS_CLI
+    if ! settings="$(nros_leaf_settings_path "$dir")"; then
+        printf 'FAILED\t%s\t%s\n' "$dir${cargo_args:+ ($cargo_args)}" \
+            "no generated settings file for this leaf (see the line above; run \`nros sync\`)"
+        exit 0
+    fi
+    if [ -n "$settings" ] && [ -z "$tdir_flag" ]; then
+        tdir_flag="$(nros_leaf_settings_target_dir_flag "$dir" "$cargo_args")"
+        cargo_args="$(nros_fixture_strip_authored_target_dir "$cargo_args")"
+    fi
+fi
+
 # Decide from the ARTIFACT, not from cargo's `"fresh":false` — issue 0835.
 #
 # `"fresh":false` means cargo re-ran a UNIT, which is not the same as "the
@@ -126,9 +148,16 @@ _row_artifacts() {
 # flags; $envstr ("KEY=VAL ...") is exported into the build subshell when present.
 art_before="$(_row_artifacts)"
 
-# shellcheck disable=SC2086
-build_out="$( cd "$dir"; [ -n "$envstr" ] && export $envstr; \
-        cargo build $prof_args $cargo_args $tdir_flag --message-format=json --quiet 2>&1 )"
+if [ -n "$settings" ]; then
+    # shellcheck disable=SC2086
+    build_out="$( cd "$(nros_leaf_settings_cwd "$dir")"; [ -n "$envstr" ] && export $envstr; \
+            cargo build $prof_args $(nros_leaf_settings_args "$dir" "$settings") \
+                $cargo_args $tdir_flag --message-format=json --quiet 2>&1 )"
+else
+    # shellcheck disable=SC2086
+    build_out="$( cd "$dir"; [ -n "$envstr" ] && export $envstr; \
+            cargo build $prof_args $cargo_args $tdir_flag --message-format=json --quiet 2>&1 )"
+fi
 build_rc=$?
 
 if [ -z "$art_before" ] && [ -z "$(_row_artifacts)" ]; then

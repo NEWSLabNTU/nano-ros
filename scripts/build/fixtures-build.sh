@@ -314,6 +314,12 @@ else
               nros_fixture_platform_is_shared \
               nros_fixture_strip_authored_target_dir _nros_fixture_variant_sig \
               nros_build_root nros_build_dir
+    # phase-445 W4b — the settings-file invocation, shared with the staleness
+    # probe so the two cannot build a row two ways.
+    # shellcheck source=scripts/build/leaf-settings.sh
+    source scripts/build/leaf-settings.sh
+    export -f nros_leaf_settings_path nros_leaf_settings_cwd nros_leaf_settings_args \
+              nros_leaf_settings_target_dir_flag
     # Phase 214.I.2 — fail-loud prereq guard: `nros_fixture_build_one`
     # below invokes `nros sync`, absent from the shipped 0.3.7 release.
     # Probe once here in the parent before make fans out workers; pre-probe
@@ -376,17 +382,43 @@ else
         # mechanism across every lane; a leaf that resolves no board (a host
         # bin, a fixture with no deploy metadata) simply gets nothing, which is
         # why a failure here is not fatal.
-        local facts=""
-        if [ -x "$NROS_CLI" ]; then
-            facts="$(NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" ws board-facts "$dir" 2>/dev/null || true)"
+        #
+        # phase-445 W4b — a single-package leaf that states its board in
+        # `system.toml` builds through `build/<image>/nros-cargo.toml`, the
+        # file the presync above wrote and `nros build` uses. That file carries
+        # the triple (so `fixtures-manifest.py` no longer adds `--target`), the
+        # board facts (so they are not exported here), the entity facts and the
+        # derived pools. What the row itself says — `envstr` — is still exported:
+        # a lane's value outranks the file's (RFC-0049: board < app < lane).
+        # The group `--target-dir` still wins over the file's per-image one, so
+        # no artifact path moves. See scripts/build/leaf-settings.sh.
+        local settings=""
+        if ! settings="$(nros_leaf_settings_path "$dir")"; then
+            return 1
         fi
-        # shellcheck disable=SC2086
-        # `if`, not an and-list: the comment above records that a false
-        # and-list is itself a failing command under `.SHELLFLAGS := -eu`.
-        ( cd "$dir"
-          if [ -n "$envstr" ]; then export $envstr; fi
-          if [ -n "$facts" ]; then export $facts; fi
-          cargo build $cargo_profile_args $args $tdir_flag --quiet )
+        if [ -n "$settings" ]; then
+            if [ -z "$tdir_flag" ]; then
+                tdir_flag="$(nros_leaf_settings_target_dir_flag "$dir" "$args")"
+                args="$(nros_fixture_strip_authored_target_dir "$args")"
+            fi
+            # shellcheck disable=SC2086
+            ( cd "$(nros_leaf_settings_cwd "$dir")"
+              if [ -n "$envstr" ]; then export $envstr; fi
+              cargo build $cargo_profile_args $(nros_leaf_settings_args "$dir" "$settings") \
+                  $args $tdir_flag --quiet )
+        else
+            local facts=""
+            if [ -x "$NROS_CLI" ]; then
+                facts="$(NROS_REPO_DIR="$NROS_REPO_ROOT" "$NROS_CLI" ws board-facts "$dir" 2>/dev/null || true)"
+            fi
+            # shellcheck disable=SC2086
+            # `if`, not an and-list: the comment above records that a false
+            # and-list is itself a failing command under `.SHELLFLAGS := -eu`.
+            ( cd "$dir"
+              if [ -n "$envstr" ]; then export $envstr; fi
+              if [ -n "$facts" ]; then export $facts; fi
+              cargo build $cargo_profile_args $args $tdir_flag --quiet )
+        fi
         # Issue 1052 — assert the stack floor HERE, on the row that was just
         # linked, because this is the only place the artifact's directory is
         # known correctly: `$tdir_flag` comes from the row's own `$args` and
