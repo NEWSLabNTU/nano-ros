@@ -176,6 +176,21 @@ pub fn write(dir: &Path, version: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// Write a pin into `dir`, REPLACING one that is already there.
+///
+/// The overwriting spelling of [`write`], and the ONLY caller is `nros pin
+/// <version>` — a user typing that command IS the "a dev means it" [`write`]'s
+/// refusal exists to require, so re-refusing it there would leave editing the
+/// file by hand as the only way to take an upgrade. Nothing automatic reaches
+/// this: `nros build`'s D9 path still goes through [`write`], so
+/// `nros self update` cannot move a pin.
+pub fn set(dir: &Path, version: &str) -> Result<PathBuf> {
+    let path = dir.join(FILE_NAME);
+    std::fs::write(&path, render(version))
+        .wrap_err_with(|| format!("write the toolchain pin {}", path.display()))?;
+    Ok(path)
+}
+
 /// How [`running_version`] learned the version — printed beside it, because a
 /// version with no provenance is a number a reader has to trust.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

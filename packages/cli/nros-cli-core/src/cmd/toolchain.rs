@@ -29,9 +29,12 @@
 use std::path::{Path, PathBuf};
 
 use clap::{Args as ClapArgs, Subcommand};
-use eyre::{Result, bail};
+use eyre::{Result, WrapErr, bail};
 
-use crate::orchestration::store::{self, format_size};
+use crate::orchestration::{
+    pin, release_manifest,
+    store::{self, format_size},
+};
 
 #[derive(Debug, ClapArgs)]
 pub struct Args {
@@ -44,6 +47,45 @@ pub enum Sub {
     /// Remove one nano-ros toolchain from the store. Refuses while a known pin
     /// names the version — or while no pin file could be consulted at all.
     Uninstall(UninstallArgs),
+    /// phase-443 W2 — read, or stamp, `share/nros/manifest.toml`: what a
+    /// release DECLARES it is made of (RFC-0097 D7).
+    Manifest(ManifestArgs),
+}
+
+/// `nros toolchain manifest` — RFC-0097 D7's file, both directions.
+///
+/// With no arguments it READS: the manifest of the toolchain this binary
+/// belongs to. With `--write` it STAMPS one, which is what
+/// `.github/workflows/release-nros.yml` calls while staging the asset.
+///
+/// The release workflow calls the binary it just built rather than `printf`-ing
+/// four lines of YAML, and that is the whole design: `codegen` comes from
+/// [`crate::abi_guard::EMITTED_VERSION`], so a manifest cannot claim a codegen
+/// version its own binary does not emit. There is no `--codegen` flag, and
+/// adding one would give the field back the drift the file exists to remove.
+#[derive(Debug, ClapArgs)]
+pub struct ManifestArgs {
+    /// The STORE version being released (`0.5.0-nros1`) — the string a pin
+    /// names, not the crate version `nros --version` prints.
+    //
+    // Deliberately NOT `--version`: `propagate_version = true` on the binary
+    // generates that flag on every subcommand, so this spelling would collide
+    // at startup. The name is also the more accurate of the two here.
+    #[arg(long, value_name = "VERSION")]
+    pub store_version: Option<String>,
+
+    /// When the `nros-sdk-index.toml` in this asset was last moved (a date).
+    #[arg(long, value_name = "DATE")]
+    pub index: Option<String>,
+
+    /// The nano-ros commit this was built from.
+    #[arg(long = "nano-ros", value_name = "COMMIT")]
+    pub nano_ros: Option<String>,
+
+    /// Write the manifest here instead of printing it. Requires
+    /// `--store-version`.
+    #[arg(long, value_name = "PATH")]
+    pub write: Option<PathBuf>,
 }
 
 #[derive(Debug, ClapArgs)]
@@ -84,7 +126,58 @@ pub fn run(args: Args) -> Result<()> {
     let cwd = std::env::current_dir().ok();
     match args.command {
         Sub::Uninstall(a) => uninstall(a, cwd.as_deref()),
+        Sub::Manifest(a) => manifest(a),
     }
+}
+
+/// RFC-0097 D7's file, read or written.
+pub fn manifest(args: ManifestArgs) -> Result<()> {
+    if let Some(version) = &args.store_version {
+        let m = release_manifest::stamp(version, args.index.as_deref(), args.nano_ros.as_deref());
+        let rendered = release_manifest::render(&m);
+        let Some(out) = &args.write else {
+            print!("{rendered}");
+            return Ok(());
+        };
+        if let Some(parent) = out.parent() {
+            std::fs::create_dir_all(parent)
+                .wrap_err_with(|| format!("create {}", parent.display()))?;
+        }
+        std::fs::write(out, &rendered).wrap_err_with(|| format!("write {}", out.display()))?;
+        println!("wrote {} (codegen {})", out.display(), m.codegen);
+        return Ok(());
+    }
+    if args.write.is_some() {
+        bail!(
+            "--write needs --store-version: a manifest that cannot name its release records nothing."
+        );
+    }
+
+    // Read mode: what does the release this binary belongs to declare?
+    let exe = std::env::current_exe()?;
+    match release_manifest::for_exe(&exe)? {
+        Some(found) => {
+            println!("{}", found.path.display());
+            print!("{}", release_manifest::render(&found.manifest));
+        }
+        None => {
+            // Not an error. A contributor's `packages/cli/target/**` build is
+            // in no release at all, and a pre-W2 asset shipped VERSION alone —
+            // different facts, so they are reported as different sentences.
+            let where_from = pin::running_version(&exe)
+                .map(|(v, o)| format!("{v} (from the {})", o.label()))
+                .unwrap_or_else(|| "none — this is not an installed release".to_string());
+            println!(
+                "no share/nros/{} beside {}\n\
+                 store version: {where_from}\n\
+                 A release cut before RFC-0097 D7 declares no components, so \n\
+                 `nros pin` cannot answer the codegen question for it.",
+                release_manifest::FILE_NAME,
+                exe.display()
+            );
+        }
+    }
+    Ok(())
 }
 
 /// `uninstall`, with the directory pin discovery walks up from passed IN — the
