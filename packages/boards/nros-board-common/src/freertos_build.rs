@@ -29,7 +29,7 @@ use crate::{
 };
 
 /// The platform whose `[arch.*]` profiles supply this family's cflags —
-/// `config/freertos/nros-platform.toml`.
+/// `packages/platform/nros-platform-freertos/nros-platform.toml`.
 // phase-349 W1 — the platform is `freertos`; the stack is a fact declared
 // elsewhere. `freertos-lwip` survives as an alias in the descriptor's `names`.
 const PLATFORM: &str = "freertos";

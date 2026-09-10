@@ -185,13 +185,50 @@ def manifest_offenders(manifest_paths):
 
 
 def tracked_platform_manifests():
+    """Producer 2's files — every `nros-platform.toml`, in BOTH in-tree roots.
+
+    issue 1220 — this globbed `config/*/nros-platform.toml` alone, which was
+    every platform when the rule was written and, by 2026-09-10, none of the
+    three that carry a `rerun_if_env_changed` list. phase-400 W1 moved the
+    ported platforms' descriptors to `packages/platform/nros-platform-<x>/`;
+    `config/` kept `bare-metal` and `generic`, neither of which declares one. So
+    the gate scanned 2 manifests, found 0 lists, and printed OK — including for
+    `threadx`, the file this module's own Scope section names as the reason
+    producer 2 exists. A gate's SCOPE is part of the rule it enforces.
+
+    The vacuity guard is `manifests_declare_something` below: producer 2 having
+    NO data is now a failure, not a quiet pass, so the same silence cannot come
+    back through a third root.
+    """
     listed = subprocess.run(
-        ["git", "ls-files", "config/*/nros-platform.toml"],
+        [
+            "git", "ls-files",
+            "config/*/nros-platform.toml",
+            "packages/platform/*/nros-platform.toml",
+        ],
         capture_output=True,
         text=True,
         cwd=ROOT,
     ).stdout.split()
-    return listed
+    return sorted(listed)
+
+
+def manifests_declare_something(manifests):
+    """Does producer 2 have any data at all in `manifests`?
+
+    Not a style check: producer 2 is a list inside a TOML file, and a glob that
+    stops reaching those files looks exactly like a tree where nobody writes
+    them. The two are told apart here and nowhere else.
+    """
+    for rel in manifests:
+        try:
+            with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
+                text = fh.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if re.search(r"rerun_if_env_changed\s*=\s*\[", text):
+            return True
+    return False
 
 
 def tracked_rust_sources():
@@ -299,6 +336,20 @@ def main():
     self_test()
     sources = tracked_rust_sources()
     manifests = tracked_platform_manifests()
+    if not manifests_declare_something(manifests):
+        sys.stderr.write(
+            "check-path-env-fingerprints: producer 2 is VACUOUS — none of the "
+            f"{len(manifests)} platform manifest(s) reached declares a "
+            "`rerun_if_env_changed` list.\n\n"
+            "  This gate's whole reason for having a second producer is that "
+            "list;\n"
+            "  three descriptors carry one. If they moved again, widen\n"
+            "  `tracked_platform_manifests`. If the key was genuinely retired "
+            "tree-wide,\n"
+            "  delete producer 2 rather than leaving it scanning nothing "
+            "(issue 1220).\n"
+        )
+        sys.exit(1)
     bad = offenders(sources) + manifest_offenders(manifests)
     if bad:
         sys.stderr.write(

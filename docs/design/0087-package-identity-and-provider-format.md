@@ -348,7 +348,7 @@ semantics, over the topological order `provider_scan` already computes.
 | Gate | Asserts |
 | --- | --- |
 | `check-build-type-spelling` | allowed values, and the D2 class boundary — a provider or entry may not declare `ament_*`; an interface package may not declare `nros_*` |
-| `check-provider-announcements` | one row per family; announcements agree with descriptors where both exist |
+| `check-provider-announcements` | one row per family; a descriptor and its announcement sit together and claim the same names (A1/A2/A2n), an announcement has a descriptor (A3), and the family globs reach every descriptor in the tree (A4) |
 | `check-derived-descriptor-fields` | a stated derivable field equals its derived value (ratchet) |
 | `check-vendor-fetch-pinned` | every fetch in a discovered package carries a digest |
 
@@ -358,12 +358,22 @@ semantics, over the topological order `provider_scan` already computes.
   `<nano_ros_uses>` plus a `deploy=` attribute, or kept indefinitely as sugar.
   91 files argue for keeping it; symmetry argues the other way. Deferred until
   the general form has users.
-- Whether `platform` descriptors move from `config/*/nros-platform.toml` beside
-  their packages. They are the one family whose descriptor does not sit next to a
-  `package.xml`, which D4's derivation assumes.
+*(Resolved 2026-09-10, issue 1220 — whether `platform` descriptors move beside
+their packages. Measuring it found the question backwards: the descriptors had
+already moved in phase-400 W1, for the five platforms that HAVE a package, and
+what stayed in `config/<x>/` was the ANNOUNCEMENT, beside nothing. The family
+DID sit next to a `package.xml`; the two halves sat in different directories,
+and `check-provider-announcements` globbed only the directory the announcements
+were in, so both halves were invisible and the gate reported OK. The five
+announcements moved to join their descriptors; `bare-metal` and `generic` keep
+both halves in `config/`, because neither is a port and neither names a package
+to sit beside. D4's derivation now holds for every platform provider, and A3/A4
+are what says so.)*
 
 ## Changelog
 
+- 2026-09-10 — issue 1220: the platform open question resolved, and the
+  `check-provider-announcements` row restated to name all four rules.
 - 2026-09-04 — initial draft. Folds the packaging discussion: one recognition
   rule, `nros_cmake`/`nros_cargo`, three export tags with `<nano_ros_uses>` as
   the general consumption form, derived descriptor fields, vendor packages as

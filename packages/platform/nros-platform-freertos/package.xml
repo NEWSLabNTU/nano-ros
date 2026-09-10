@@ -14,12 +14,25 @@
     platform declares (capabilities, arch profiles, build blocks) lives in the
     sibling `nros-platform.toml` (RFC-0049), read only when this platform is
     the one selected.
+
+    issue 1220: "sibling" became literally true here. phase-400 W1 moved the
+    descriptor beside this package and left the announcement in the `config/` directory it came from,
+    where it sat alone for ten days while `ProviderPackage::descriptor_path`
+    resolved to a file that was not there. This file moved to join it.
   </description>
   <maintainer email="dev@example.com">Developer</maintainer>
   <license>Apache-2.0</license>
 
   <export>
-    <build_type>nros_cargo</build_type>
+    <!--
+      RFC-0094 D3 — the DRIVER, not whether it is built here. This package
+      is a CMake C library implementing the platform ABI: CMakeLists.txt,
+      no Cargo.toml. It read `nros_cargo` while it lived under `config/`
+      beside NEITHER build file, where the declaration routed nowhere and
+      nothing could contradict it; moving beside the package made it a
+      measurable claim, and a false one (issue 1220).
+    -->
+    <build_type>nros_cmake</build_type>
     <!--
       Provision, NOT consumption: this package IS a platform, rather than
       selecting one. Must equal the descriptor's `names`, canonical first —

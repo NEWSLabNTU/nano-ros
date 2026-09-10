@@ -93,8 +93,9 @@ pub struct PlatformConfigFile {
     /// `[priority_plan]` — ACKNOWLEDGED here, interpreted elsewhere.
     ///
     /// phase-375 W8 gave RFC-0079's priority address plan a per-platform home
-    /// (`config/freertos/nros-platform.toml`), and its readers are
-    /// `scripts/lib/priority_plan.py` and its two consumers — not this crate.
+    /// (`packages/platform/nros-platform-freertos/nros-platform.toml`), and
+    /// its readers are `scripts/lib/priority_plan.py` and its two consumers —
+    /// not this crate.
     ///
     /// Modelled as an OPAQUE value on purpose, the same way
     /// `BoardDescriptor::priority_plan` is: `deny_unknown_fields` above must

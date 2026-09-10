@@ -14,6 +14,34 @@
 # itself splits system/freertos/{system.c, lwip/, freertos_plus_tcp/}.
 names = ["freertos", "freertos-lwip"]
 
+# RFC-0079 — the PORT's priority address plan.
+#
+# `tier_key` is the key a `[tiers.<name>.<key>]` pin is written under. FreeRTOS
+# matched its platform name by coincidence; the loader's own comment says that
+# is not a thing to build on, so it is stated.
+#
+# phase-375 W8 created this block to give `[priority_plan]` a per-platform home
+# — the plan is a PLATFORM fact (`range = [1, 7]` is `configMAX_PRIORITIES`,
+# which belongs to the RTOS and not to any board running on it) and two FreeRTOS
+# boards had held byte-identical copies.
+#
+# issue 1220 moved it HERE from `config/freertos/nros-platform.toml`, which was
+# all that file still held after phase-400 W1 moved the descriptor beside its
+# package — and it was DEAD to every `PlatformsTree` consumer:
+# `load_search_path` searches `packages/platform` first and merges with
+# `or_insert`, so THIS file's `freertos` entry won and `config/freertos`'s was
+# skipped in silence. Only `scripts/lib/priority_plan.py` still read it, by
+# globbing `config/*` directly and bypassing `PlatformsTree` — one platform's
+# facts assembled by two readers over two roots, with nothing checking the
+# split held. The plan lives with the rest of this platform's facts now, and
+# that script searches both roots.
+[priority_plan]
+tier_key = "freertos"
+direction = "bigger-is-urgent"
+range = [1, 7]
+reserved.transport = [4, 4]
+pool.app = [1, 3]
+
 # phase-400 W3 / RFC-0086 — software-stack FACTS. A transport that needs a
 # capability this platform declares `false` fails at config time; a capability
 # left undeclared is permitted with a warning, because absent means "nobody has
