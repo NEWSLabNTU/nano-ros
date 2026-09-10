@@ -153,6 +153,11 @@ while read -r f; do
     # IS the binary (src/main.rs / [[bin]]). Only a lib-only node package,
     # which is linked into someone else\'s image, must stay silent.
     grep -q '\[package.metadata.nros.entry\]' "$f" && continue
+    # phase-445 W3 (RFC-0098 D3) — a single-package leaf states its image in a
+    # `system.toml` beside its manifest instead of an `[nros.entry]` table; that
+    # IS the image (rv-virt-threadx's entry is `src/app_main.rs` in a staticlib,
+    # so neither test below sees it).
+    [ -f "$(dirname "$f")/system.toml" ] && continue
     grep -q '^\[\[bin\]\]' "$f" && continue
     [ -f "$(dirname "$f")/src/main.rs" ] && continue
     leaf_hits="${leaf_hits}${f}"$'\n'

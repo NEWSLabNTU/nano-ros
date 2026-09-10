@@ -129,6 +129,9 @@ fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
         | cmd::ws::Sub::BoardFacts(_)
         | cmd::ws::Sub::EntityFacts(_)
         | cmd::ws::Sub::EntityInventory(_)
+        // phase-445 W3 — `find_package(nano_ros)` asks `ws leaf-system` for a
+        // C/C++ leaf's deployment from its build directory.
+        | cmd::ws::Sub::LeafSystem(_)
         | cmd::ws::Sub::RmwDispatch(_) => "ws-build",
         _ => "ws",
     }
