@@ -2,6 +2,8 @@
 
 **Status:** Draft (2026-09-10)
 
+Home phase: [phase-443](../roadmap/phase-443-release-composition.md).
+
 Amends RFC-0090 (which anticipated this: *"a future refactor may split the 'CLI
 version' from the 'runtime ABI version' […]; the call sites here would not
 change"*) and builds on RFC-0095 (the store is the root) + phase-440 W7 (the
@@ -139,67 +141,152 @@ The index is a manifest of pointers into `nano-ros-sdk`, so it belongs with the
 older CLI, because a pointer table has no ABI. This is the cheapest of the
 changes here and removes the second-largest release trigger.
 
-## Simulated workflows
+## D8 — The product is BINARIES. Running them is the user's, and is documented
 
-### The user
+`nros build` ends at an artifact and stops. That is the shape, not a gap: how an
+image is flashed or started is a property of the BOARD and of the user's bench —
+a probe, a bootloader, a QEMU line, a CI fixture — and nano-ros cannot know it
+without inventing a device inventory nobody asked for.
+
+So there is no `nros run` and no `nros flash`. What is owed instead is
+DOCUMENTATION: what `nros build` produces per board, where it lands, and the
+common ways to run it. A missing verb is a design decision; an undocumented
+artifact is a defect.
+
+(An earlier draft of this RFC proposed `nros run`. Rejected: it would have to
+grow a runner per board and a device story per user, to save a command the user
+can write once.)
+
+## D9 — One build verb: `nros build` generates AND compiles
+
+There is no separate `nros sync` step in the user flow. `nros build` is
+"discover packages, resolve the image, preflight, generate the root, and hand
+off to the native tool" — colcon's shape, with codegen inside it. `nros sync`
+remains for editing `.msg` files between builds, not as a step anyone is told to
+run first.
+
+## D10 — Never `--recurse-submodules`, for contributors either
+
+The submodules are large and most are irrelevant to any one task. `scripts/
+bootstrap.sh` initialises only what the in-tree CLI build needs, scoped, and
+`[source.*]` carries `shallow = true` so `nros setup --source <name>` fetches
+`--depth 1` rather than deepening to reach a pin. Recursive checkout would also
+drag in play_launch's layer-3 runtime submodules, which nano-ros never builds.
+
+A document or scaffold that says `git clone --recurse-submodules` is wrong, and
+that includes this RFC's own earlier draft.
+
+## Workflows
+
+### The user — Linux target, ROS 2 present
 
 ```console
-$ curl -fsSL https://nano-ros.dev/install.sh | sh
-  installed: ~/.nros/bin/nros          # the LAUNCHER only, ~2 MB
+$ curl -fsSL .../install.sh | sh          # the LAUNCHER only
+$ nros new talker --name demo && cd demo
+$ nros build                              # codegen + compile, one verb (D9)
+  info: nano-ros 0.7.9  codegen 7
+  → build/demo
+```
 
-$ cd ~/my-robot && cat nros-toolchain.toml
-[toolchain]
-version = "0.7.1"       # the CLI/toolchain bundle
-codegen = 7             # written by nros, not by hand — the compat token
+The binary is the deliverable. Running it is `./build/demo` (D8), and that is
+what the docs must say per board.
 
+### The user — no ROS 2 on the host
+
+Message discovery has no ament install to read, so the vendored `rosidl_adapter`
+is the ladder's last rung. `nros setup --check` reports it (D12) rather than
+letting a build be the discovery:
+
+```console
+$ nros setup --check
+  [MISSING] rosidl (no ROS install found)   → nros setup --source rosidl
+```
+
+### The user — embedded board
+
+```console
 $ nros build
-  info: fetching nano-ros 0.7.1 (release asset, 38 MB)
-  info: index 2026-09-10 (prereq pointers)
   error: missing prerequisites for this build:
     - Zephyr SDK 0.16.8   (board `mps2-an385`)
         run: nros setup mps2-an385
   nothing was built.
-
-$ nros setup mps2-an385     # pulls per-tool assets from nano-ros-sdk
-$ nros build                # artifacts in ~/my-robot/build/
-```
-
-Taking a newer CLI, with no risk to emitted code:
-
-```console
-$ nros toolchain install 0.7.9 && nros pin 0.7.9
+$ nros setup mps2-an385      # per-tool assets from nano-ros-sdk, each with sha256
 $ nros build
-  info: codegen 7 unchanged — generated code is not re-emitted
+  → build/zephyr/zephyr.elf
 ```
 
-Taking a newer codegen, which IS a compatibility event and says so:
+Then the user flashes or emulates it themselves (D8). The docs carry the common
+lines per board; the CLI does not.
+
+### The user — a teammate, and CI
 
 ```console
-$ nros pin 0.8.0
-  warn: codegen 7 -> 8. Generated bindings will be re-emitted; commit the result.
+$ git clone …/demo && cd demo && nros build
+  info: nano-ros 0.7.9 (nros-toolchain.toml)
+```
+
+Reproducible: the pin names the toolchain, the toolchain carries the index, the
+index pins each tool with a checksum.
+
+On an UNPINNED project, CI must refuse rather than pin (D11):
+
+```console
+$ nros build
+  error: no nros-toolchain.toml, and this is not an interactive session.
+         A pin is a source edit. Run `nros pin <version>` and commit it.
+```
+
+### The user — upgrading
+
+```console
+$ nros pin 0.7.9 ; nros build
+  info: codegen 7 unchanged — nothing re-emitted
+$ nros pin 0.8.0 ; nros build
+  warn: codegen 7 -> 8. Bindings re-emitted; commit the result.
 ```
 
 ### The contributor
 
-Unchanged, and deliberately so — RFC-0095 D0/D5. A clone uses its own build:
-
 ```console
-$ git clone --recurse-submodules … && cd nano-ros
-$ direnv allow && just setup-cli && just ci gate
+$ git clone https://github.com/NEWSLabNTU/nano-ros    # NOT --recurse-submodules
+$ cd nano-ros && ./scripts/bootstrap.sh               # scoped, shallow (D10)
+$ direnv allow && just ci gate
 ```
 
-The launcher is not involved: inside a checkout the ownership guard requires
-that checkout's own build, and dispatch declines at its own seam.
+`bootstrap.sh` initialises the CLI's own submodule closure, builds the in-tree
+CLI, and prints the next step. Wider platform work is `just setup <platform>` /
+`nros setup --source <name>`, each shallow.
 
-### Maintaining the four axes
+Inside a checkout the launcher is not involved: the ownership guard requires
+that clone's own build and dispatch declines at its own seam (RFC-0095 D5).
 
-| what changed | what is released | what a user must do |
-| --- | --- | --- |
-| a QEMU patch | `nano-ros-sdk`: `qemu-11.0.0-nros7` | nothing, or `nros setup` for that board |
-| the prereq pointer to it | a new **index** with the toolchain | nothing |
-| an orchestration fix | a new **CLI** | take it whenever; no re-emit |
-| the message format | a new **codegen**, `NROS_CODEGEN_VERSION` + 1 | re-emit, deliberately, on a pin bump |
-| the launcher's three jobs | a new **launcher** (rare) | `nros self update` |
+### The contributor — in a container or VM
+
+Clone INSIDE it and work there; never build on the host and run in the box
+(issue 1248). The one knob is the store split, because a distrobox shares
+`$HOME`.
+
+## D11 — A pin is a source edit, so CI refuses rather than writes one
+
+phase-440 W7's pin-on-first-build (RFC-0095 D9) is right interactively and wrong
+in CI: silently pinning to whatever is latest produces a green build against an
+unrecorded toolchain, which is the reproducibility bug the pin exists to
+prevent.
+
+Write only when the session is interactive; otherwise refuse and name
+`nros pin <version>`. Same rule as a lockfile — it changes when a developer
+means it (issues 0359/0378).
+
+## D12 — `nros setup --check` covers the build stage, not only the board
+
+`rosidl` is pulled in by a target build rather than by a board, so
+`nros setup <board>` cannot pre-empt it and a no-ROS host meets it as a build
+failure. The failure text is already good — `msg_to_cyclone_idl.py` names
+`nros setup --source rosidl` — but the TIMING is wrong: a setup check should
+report what a build will need.
+
+And `nros doctor` with no workspace should verify the INSTALL — launcher, store,
+pin resolution — rather than requiring a workspace it does not have.
 
 ## Order of work
 
