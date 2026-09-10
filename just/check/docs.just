@@ -397,3 +397,20 @@ std-census:
 # wrong fix. Buildless, milliseconds, self-testing.
 prose-issue-refs:
     @python3 scripts/check-prose-issue-refs.py
+
+# Issue 1211 — the `packages/{...}/` layout line in CLAUDE.md and ARCHITECTURE
+# section 1 must match `ls packages/`.
+#
+# Both stated it identically and wrongly, through two directory moves:
+# `zpico`/`xrce`/`dds` had collapsed into `packages/rmw/` and `codegen` into
+# `packages/cli/`, while `api`, `platform`, `rmw` and `tooling` — every platform
+# port and all three language surfaces — appeared in neither. CLAUDE.md's own
+# line carried the tell: "run `ls packages/` for the current crate list", i.e.
+# the list was known untrustworthy and was patched with an instruction to ignore
+# it. A correction with nothing holding it lasts until the next move.
+#
+# Both directions: a missing directory hides a layer, an extra one sends the
+# reader after something that is not there. Buildless, milliseconds, self-testing.
+[group("ci")]
+package-directories:
+    @python3 scripts/check-package-directories.py

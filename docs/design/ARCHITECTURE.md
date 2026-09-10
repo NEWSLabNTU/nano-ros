@@ -13,14 +13,22 @@ that way*.
 
 ## 1. Layered crate stack
 
-nano-ros is a `no_std` ROS 2 client. Crates live under `packages/{core,zpico,xrce,dds,boards,
-drivers,interfaces,testing,verification,reference,codegen,cli}/`. The stack layers, bottom-up:
+nano-ros is a `no_std` ROS 2 client. Crates live under `packages/{api,boards,cli,core,drivers,
+interfaces,platform,reference,rmw,testing,tooling,verification}/` — what each directory holds is
+RFC-0001 §"Directory map". The stack layers, bottom-up:
 
-1. **Platform layer** — sync/timer/yield ABI per RTOS (`nros-platform-*`), exposed as a stable
-   `nros_platform_*` C ABI so transports link against one interface.
-2. **RMW layer** — pluggable middleware backends behind one interface.
+1. **Platform layer** — sync/timer/yield ABI per RTOS (`nros-platform-*` in `packages/platform/`;
+   six of the ports are pure C with no `Cargo.toml`), exposed as a stable `nros_platform_*` C ABI
+   so transports link against one interface.
+2. **RMW layer** — pluggable middleware backends behind one interface (`packages/rmw/`).
 3. **Node/executor layer** — `nros-node`: `Executor`, `Node`, typed entities, spin model.
-4. **Language surfaces** — Rust (mirrors rclrs), C (mirrors rclc), C++ (mirrors rclcpp).
+4. **Language surfaces** — Rust (mirrors rclrs), C (mirrors rclc), C++ (mirrors rclcpp), all
+   three in `packages/api/`.
+
+The directory list above is GATED against `ls packages/` by `check-package-directories`. Issue
+1211: it named `zpico`/`xrce`/`dds`/`codegen` for two consolidations after those directories were
+gone, and pointed a reader away from `packages/platform/` one line above the paragraph describing
+the platform layer.
 
 → RFC-0001 (architecture-overview) is the canonical layer/crate map.
 
@@ -48,6 +56,42 @@ declared, language-agnostic selection** (`system.toml` / deploy override / CLI f
 the toolchain to a Rust cargo feature or a CMake `-DNANO_ROS_RMW`. Scope is per-deploy-binary
 (nodes inherit; in-process multi-RMW only via `[[bridge]]`); the cargo feature is the lowering
 target, not the user-facing knob.
+
+### What "core" means (issue 1212)
+
+Normative, and the noun the contract below is about.
+
+**A core crate is one that must compile for a target with no operating system and no standard
+library.** Its home is `packages/core/`, so the set is DERIVED and not listed: every directory
+under `packages/core/` holding a `Cargo.toml` is core unless it classifies itself out, and there
+are exactly two ways out, both readable from the crate's own manifest — `proc-macro = true`
+(structural: it runs on the build host) and `[package.metadata.nros] host-only = true` with its
+`host-only-reason` (the marker issue 0287 already established, and the same one that excludes a
+member from `check workspace-embedded`). A crate that has NOT declared it is already being
+compiled for `thumbv7em-none-eabihf` by that lane, so the obligation is one it already lives
+under. `scripts/lib/core_crates.py` is the single implementation; `check-core-crates-are-no-std`
+and `just check no-std` both read it, and it prints the current answer when run directly.
+
+Three placements are ruled on rather than left ambiguous:
+
+- **`packages/core/nros-rmw-abi` holds no Rust and belongs there.** It is the RMW C ABI SSoT
+  (RFC-0054) — headers plus a `CMakeLists.txt` — and `packages/core` is the FOUNDATIONAL layer,
+  not "the Rust crates directory". A contract two languages meet at is as core as anything here.
+  It carries no `#![no_std]` obligation, and the derivation skips it structurally (no
+  `Cargo.toml`), never by name.
+- **`nros-macros` is core API and host code, and both are true.** This section already rules that
+  entry macros emitting per-target boot code "legitimately live in `nros`/`nros-macros`";
+  `proc-macro = true` classifies where its code RUNS without anyone maintaining a list.
+- **`nros-orchestration-ir` is the `system.toml` schema shared by the CLI's codegen and
+  `nros::main!`** — it exists to be shared by the host halves of the core, so `packages/tooling`
+  (build-support for this repo) would misfile it. It declares `host-only`.
+
+Before this was written down, five places each answered "what is core" differently and no two
+agreed — the declaration gate said 6, the census said `packages/core` + `packages/api` minus a
+hand-written 2, the build lane said 12, RFC-0001's dependency graph drew 8 (two of them in
+directories that are not `packages/core`), and the agnosticism contract below named 6 including
+`nros-orchestration`, a crate that has never existed under that spelling. `nros-executor-layout`
+was in none of them.
 
 ### The `std` / `alloc` contract (phase-361 W1)
 
@@ -161,9 +205,10 @@ crates themselves. Codegen lowers `system.toml` `[system].rmw` to the **board's*
 (RFC-0031). The `nros` umbrella is itself agnostic — it consumes only the `nros-rmw-cffi` /
 `nros-platform-cffi` vtable shims (phase-248 C5, decided 2026-06-14). These features must NOT be
 declared on, nor `#[cfg]`-branched inside:
-- **core packages** (`nros-core`, `nros-node`, `nros-params`, `nros-log`, `nros-serdes`,
-  `nros-orchestration`),
-- **user-facing libraries** (`nros`, `nros-c`, `nros-cpp` — the umbrella included),
+- **core packages** — every crate under `packages/core/`, no exceptions and no list here
+  (see "What core means" below),
+- **user-facing libraries** (`nros`, `nros-c`, `nros-cpp` — the umbrella included, all in
+  `packages/api/`),
 - **user node/component packages**.
 
 Those crates carry only *functional* features (`std`/`alloc`/`no_std`, `param-services`, `lending`,

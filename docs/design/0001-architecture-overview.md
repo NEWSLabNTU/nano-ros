@@ -15,6 +15,47 @@ nano-ros is a lightweight ROS 2 client library for embedded real-time systems. I
 
 This document presents the overall nano-ros architecture: the layered crate structure, RMW abstraction, executor model, board crates, and how everything composes at compile time.
 
+## Directory map
+
+The layer map below this section is four mermaid diagrams, and a diagram cannot be grepped, read
+in a diff, or checked by a gate. This table is the textual answer — added by issue 1211, which
+found CLAUDE.md and ARCHITECTURE §1 both naming four `packages/` directories that do not exist
+while omitting four that do, so a reader following the pointer from one to the other to here got
+three stale answers and no authoritative list.
+
+| directory | holds | note |
+| --- | --- | --- |
+| `packages/api/` | `nros`, `nros-c`, `nros-cpp` | the three user-facing language surfaces |
+| `packages/boards/` | `nros-board-*` | the RMW × platform selection point (RFC-0012) |
+| `packages/cli/` | the `nros` CLI, `colcon_nano_ros`, orchestration | a **sub-workspace**, own `Cargo.toml`/`Cargo.lock`; `just setup-cli` builds it |
+| `packages/core/` | the crates that must run with no OS, plus `nros-rmw-abi` | membership is derived, not listed — see below |
+| `packages/drivers/` | `net/` `serial/` `ipc/` `sys/` | split by what a crate talks to (`packages/drivers/README.md`) |
+| `packages/interfaces/` | pre-generated core msg packages | committed under `nros-`-prefixed names; the one `generated/` tree that IS tracked |
+| `packages/platform/` | `nros-platform-*` | six of the RTOS ports are pure C, with no `Cargo.toml` |
+| `packages/reference/` | reference / comparison material | |
+| `packages/rmw/` | `zenoh/` `xrce/` `cyclonedds/` `uorb/` `cffi/` `bridge/` `metadata/` `transport-callbacks/` | the three transports that used to be `packages/{zpico,xrce,dds}/` |
+| `packages/testing/` | `nros-tests`, `nros-bench`, `nros-smoke`, `nros-build-profile` | |
+| `packages/tooling/` | `nros-build-*`, `nros-cc-flags`, `nros-zephyr-build`, … | build-support crates for this repo |
+| `packages/verification/` | Kani / Verus harnesses | |
+
+Two of the directories in the old list are gone rather than renamed: `packages/codegen` was
+retired into `packages/cli/`, and `packages/{zpico,xrce,dds}` collapsed into `packages/rmw/`. The
+list in CLAUDE.md and ARCHITECTURE §1 is now gated against `ls packages/` by
+`check-package-directories`.
+
+**"Core" is a property, not a directory listing.** A core crate is one that must compile for a
+target with no operating system and no standard library; `packages/core/` is its home, and
+membership is DERIVED from that directory with a per-crate `host-only` / `proc-macro` opt-out
+rather than enumerated anywhere. `scripts/lib/core_crates.py` is the single implementation and
+prints the current answer when run directly; ARCHITECTURE §2 "What core means" is the normative
+statement, including the rulings on `nros-rmw-abi` (no Rust, correctly placed), `nros-macros` and
+`nros-orchestration-ir` (host, correctly placed).
+
+The diagrams below group crates by LAYER, and a layer does not always match a directory:
+`nros-rmw-cffi` (`packages/rmw/cffi/`) and `nros-c` (`packages/api/nros-c/`) are drawn inside the
+core stack because that is where they sit in the dependency order, not because they live in
+`packages/core/`.
+
 ## High-Level Layer Diagram
 
 ```mermaid
@@ -82,7 +123,7 @@ graph TD
         NROS["nros<br/><i>re-exports + feature gates</i>"]
     end
 
-    subgraph "nano-ros Core Library Stack"
+    subgraph "Core Library Stack (a LAYER, not packages/core/)"
         NODE["nros-node<br/><i>Executor, Node, handles</i>"]
         PARAMS["nros-params<br/><i>ParameterServer</i>"]
         CORE["nros-core<br/><i>RosMessage, RosService, RosAction</i>"]
@@ -494,7 +535,7 @@ Message types are generated from `.msg`/`.srv`/`.action` files — never hand-wr
 
 ```mermaid
 graph LR
-    MSG[".msg / .srv / .action files<br/>(bundled in packages/codegen/interfaces/)"]
+    MSG[".msg / .srv / .action files<br/>(bundled in packages/interfaces/)"]
     PARSER["rosidl-parser<br/><i>logos lexer + chumsky parser</i>"]
     CODEGEN["rosidl-codegen<br/><i>askama templates</i>"]
     BINDGEN["rosidl-bindgen<br/><i>orchestrator</i>"]
@@ -505,7 +546,7 @@ graph LR
     CLI --> BINDGEN --> OUTPUT
 ```
 
-No ROS 2 installation is required — bundled `.msg` files in `packages/codegen/interfaces/` provide all standard message definitions. Generated crate names use the `nros-` code prefix (e.g., `nros-std-msgs`).
+No ROS 2 installation is required — bundled `.msg` files in `packages/interfaces/` provide all standard message definitions. Generated crate names use the `nros-` code prefix (e.g., `nros-std-msgs`).
 
 ## Data Flow: Publish
 

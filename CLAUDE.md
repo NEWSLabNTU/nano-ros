@@ -69,9 +69,16 @@ pointer here — never grow CLAUDE.md with design/impl detail.**
 - **nros** — code shorthand (crates, Rust/C idents, `CONFIG_NROS_*`)
 - **nano_ros** — C header dir, CMake targets (`NanoRos::NanoRos`), CMake fn (`nros_generate_interfaces()`)
 
-Workspace: `packages/{core,zpico,xrce,dds,boards,drivers,interfaces,testing,verification,reference,codegen,cli}/`,
-`examples/`, `third-party/` (gitignored SDKs), `zephyr/` module. Run `ls packages/` for the current
-crate list. Layer map → RFC-0001. `packages/drivers/` is split by what a crate talks
+Workspace: `packages/{api,boards,cli,core,drivers,interfaces,platform,reference,rmw,testing,tooling,verification}/`,
+`examples/`, `third-party/` (gitignored SDKs), `zephyr/` module. Layer map + what each
+directory holds → RFC-0001 §"Directory map"; run `ls packages/<dir>/` for the crates in one.
+**Gated** (`check-package-directories`, issue 1211) — this line and ARCHITECTURE §1 named
+`zpico`/`xrce`/`dds`/`codegen` for two consolidations after those directories were gone, while
+omitting `api`, `platform`, `rmw` and `tooling` — 36 Rust crates plus the six pure-C RTOS ports
+under `platform/`, i.e. every platform port and all three language surfaces. The old
+"run `ls packages/` for the current crate list"
+patch is what a known-untrustworthy line looks like; the list is now checked instead.
+`packages/drivers/` is split by what a crate talks
 to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README.md`
 (phase-321 W2.f). RFC-0012 is board/BSP integration and defines no such split.
 
@@ -904,7 +911,10 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   (`@SYM @_create`) → generated TU fails "stray '@'". `.clang-format-ignore` guards; format
   recipes already exclude them. → issue 0159 (archived).
 - **RMW + platform C ABI: the C headers ARE the SSoT (RFC-0054)** — Rust consumes
-  COMMITTED bindgen output (`packages/core/{nros-rmw-cffi,nros-platform-cffi}/src/generated.rs`).
+  COMMITTED bindgen output — `packages/rmw/cffi/`, `packages/platform/nros-platform-cffi/` and
+  `packages/boards/nros-board-cffi/`, each `src/generated.rs` (issue 1211: this said
+  `packages/core/{nros-rmw-cffi,nros-platform-cffi}/`, a directory neither has ever lived in,
+  and named two of the three surfaces `gen-abi-bindings.sh` writes).
   Header edit ⇒ run `scripts/gen-abi-bindings.sh` (pinned bindgen-cli 0.72.1) + commit both;
   `check-abi-bindings` gates staleness. Never hand-edit `generated.rs`; vtable slots are
   `Option<fn>` (C nullability); no layout tests in generated code (host-64-bit literals
