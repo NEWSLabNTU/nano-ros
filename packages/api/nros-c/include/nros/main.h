@@ -29,6 +29,29 @@
 #include "nros/node_pkg.h"
 #include "nros/visibility.h"
 
+/* phase-432 W3.1 — the compile-time connect configuration, one ladder, in the
+ * header that DECLARES the entry points whose contract names it.
+ *
+ * `nros_board_rtos_run_components` and every `nros_board_<rtos>_run_tiers`
+ * below take a locator and a domain id, and a generated C entry passes
+ * `NROS_ENTRY_LOCATOR` / `NROS_ENTRY_DOMAIN_ID`. Those come from
+ * `<nros/entry_config.h>`, which `main.hpp` and `app_main.h` both include —
+ * and this header, the one a C entry always includes, did not.
+ *
+ * That gap was invisible until a C entry existed for a KERNEL boot shape.
+ * FreeRTOS and NuttX are the `app` shape, so their entries include
+ * `<nros/app_main.h>` for `NROS_APP_MAIN_REGISTER_VOID()` and got the ladder
+ * along the way; Zephyr's entry is a bare `int main(void)` that includes no
+ * such header, so every Zephyr C entry failed to compile:
+ *
+ *     error: 'NROS_ENTRY_LOCATOR' undeclared (first use in this function)
+ *
+ * Including it HERE rather than from the entry template is what keeps it a
+ * property of the DECLARATION instead of something each pack must remember:
+ * the macros are part of how these functions are called. Preprocessor-only and
+ * guarded, so the other two includers are unaffected. */
+#include "nros/entry_config.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
