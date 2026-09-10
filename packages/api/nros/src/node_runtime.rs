@@ -1239,9 +1239,17 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
         self.executor
             .register_parameter_services()
             .map_err(|e| capability_reason(&e))?;
+        // Nothing is declared before this seeding runs, so every `false` here is
+        // a refusal — a full table, or a value its descriptor rejects — and a
+        // launch `<param>` the program would otherwise believe it has.
         for (name, raw) in params {
-            self.executor
-                .declare_parameter(name, infer_param_value(raw));
+            if !self
+                .executor
+                .declare_parameter(name, infer_param_value(raw))
+            {
+                return Err("a launch <param> was refused by the parameter store \
+                            (table full, or a value its descriptor rejects)");
+            }
         }
         Ok(())
     }
@@ -1669,9 +1677,17 @@ impl NodeRuntime for ExecutorSink<'_> {
                             .register_parameter_services()
                             .map_err(decl_err_from_node)?;
                     }
+                    let name = metadata.source_name.as_str();
                     let value = param_default_to_value(metadata.parameter_default.as_ref());
-                    self.executor
-                        .declare_parameter(metadata.source_name.as_str(), value);
+                    // `apply_param_services` seeds launch `<param>` values BEFORE
+                    // this runs, and the launch value must win — so a name that is
+                    // already declared is the expected `false`, not a refusal. Only
+                    // a name that is still absent afterwards was refused.
+                    if !self.executor.declare_parameter(name, value)
+                        && self.executor.get_parameter(name).is_none()
+                    {
+                        return Err(NodeDeclError::Runtime);
+                    }
                 }
                 Ok(())
             }

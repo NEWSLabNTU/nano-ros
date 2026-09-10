@@ -52,7 +52,10 @@ fn main() {
     // parameter is the whole request, exactly as in ROS 2 — the runtime
     // reconciles it on the next spin, once a node exists to hang the
     // subscription on.
-    executor.declare_parameter("use_sim_time", nros::ParameterValue::Bool(true));
+    assert!(
+        executor.declare_parameter("use_sim_time", nros::ParameterValue::Bool(true)),
+        "declare_parameter(use_sim_time) was refused"
+    );
 
     let _nid = executor
         .node_builder("sim_listener")

@@ -29,7 +29,10 @@ fn main() {
     executor
         .register_parameter_services()
         .expect("Failed to register parameter services");
-    executor.declare_parameter("start_value", ParameterValue::Integer(0));
+    assert!(
+        executor.declare_parameter("start_value", ParameterValue::Integer(0)),
+        "declare_parameter(start_value) was refused"
+    );
     info!("Parameter services registered for /talker");
 
     let publisher = {
