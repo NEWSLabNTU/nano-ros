@@ -476,11 +476,9 @@ pub fn run(args: BoardFactsArgs) -> Result<()> {
         .path
         .canonicalize()
         .map_err(|e| eyre!("{}: {e}", args.path.display()))?;
-    let root = args
-        .nano_ros_path
-        .or_else(|| std::env::var_os("NROS_REPO_DIR").map(PathBuf::from))
-        .or_else(|| crate::cmd::ws::autodetect_nano_ros_path(&ws))
-        .ok_or_else(|| eyre!("no nano-ros checkout found (pass --nano-ros-path)"))?;
+    // phase-447 A2 — the shared four-rung ladder (RFC-0099 D3).
+    let root = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path, &ws)
+        .ok_or_else(|| eyre!("{}", crate::orchestration::nano_ros_root::not_found_help()))?;
 
     let facts = resolve(
         &ws,

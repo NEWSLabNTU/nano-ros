@@ -29,6 +29,11 @@ rosidl-bindgen = { path = "../rosidl-bindgen" }
 rosidl-codegen = { path = "../rosidl-codegen" }
 rosidl-parser = { path = "../rosidl-parser" }
 nros-msg-to-idl = { workspace = true }
+# phase-447 A1/A2 — `checkout::shipped_sdk_root`, so the bundled `.msg` share
+# dirs resolve for an INSTALLED binary too. The launcher owns "where is a
+# nano-ros root" (it holds `MONOREPO_MARKER`), and asking it is what keeps this
+# from becoming a second derivation of `<prefix>/share/nano-ros`.
+nros-launcher = { workspace = true }
 rayon = "1.10"
 indicatif = "0.17"
 quick-xml = "0.37"

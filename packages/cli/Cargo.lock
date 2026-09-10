@@ -171,6 +171,7 @@ dependencies = [
  "clap",
  "eyre",
  "indicatif",
+ "nros-launcher",
  "nros-msg-to-idl",
  "quick-xml",
  "rayon",

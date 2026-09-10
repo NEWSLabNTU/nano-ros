@@ -127,6 +127,30 @@ jobs:
         run: |
           git submodule update --init --depth 1 packages/cli/third-party/play_launch
           cargo build --release --manifest-path packages/cli/Cargo.toml --bin nros
+          # phase-447 A1 — the launch resolver, the SECOND artifact a build
+          # needs and the one the SDK root cannot carry (it is a binary, its own
+          # cargo workspace, and it embeds CPython).
+          #
+          # Measured, not assumed: with `share/nano-ros` staged and no checkout
+          # present, `nros new my_robot --workspace` scaffolds and then dies at
+          # cmake configure with "`nros-launch-resolve` not found. Build it with
+          # ./scripts/bootstrap.sh" — a remedy naming a checkout the user does
+          # not have. Every workspace configure goes through it, because
+          # `nano_ros_entry` resolves the bringup's launch file into a
+          # SystemModel.
+          #
+          # `bootstrap.sh` builds exactly this for a contributor, one line below
+          # the CLI, and for the same reason: "a CLI without it fails the FIRST
+          # `nros new --workspace` build". `resolve_launch_resolver` rung 2 is
+          # already "a sibling of the running `nros` — the installed layout", so
+          # staging it into `bin/` beside the CLI needs no code.
+          #
+          # Its own workspace (own lock, own `ros-launch-manifest` pin), hence
+          # its own manifest path. `default-features = false` in that manifest
+          # drops z3/libclang, so this adds no system build dep beyond the
+          # CPython pyo3 already links.
+          cargo build --release \
+              --manifest-path packages/cli/nros-launch-resolve/Cargo.toml
           # phase-429 W5 — the binary must match the checkout it was built from.
           # A release is the one artifact where nobody downstream can re-check
           # this, so it is asserted here rather than assumed.
@@ -204,6 +228,14 @@ jobs:
           mkdir -p "$stage/bin" "$stage/share/nros"
           test -f "$stage/share/nros/manifest.toml"
           cp packages/cli/target/release/nros "$stage/bin/nros"
+          # phase-447 A1 — beside `nros`, which is `resolve_launch_resolver`
+          # rung 2 ("the installed layout"). It links `libpython3.10.so.1.0` as a
+          # hard DT_NEEDED — 22.04's interpreter, which is why the runner is
+          # pinned there — and a host without it gets `verify_resolver_pin`'s
+          # named diagnostic rather than a raw loader message. Declaring and
+          # PROBING that floor before download is RFC-0099 D1, not this line.
+          cp packages/cli/nros-launch-resolve/target/release/nros-launch-resolve \
+              "$stage/bin/nros-launch-resolve"
           printf '%s\n' '${{ inputs.version }}' >"$stage/share/nros/VERSION"
           cp nros-sdk-index.toml "$stage/share/nros/nros-sdk-index.toml"
           # phase-440 W7 / RFC-0095 D8 job 2: the launcher fetches a pinned
@@ -214,6 +246,20 @@ jobs:
           # asset predating this line does not carry it.
           cp scripts/install.sh "$stage/share/nros/install.sh"
           chmod +x "$stage/share/nros/install.sh"
+          # phase-447 A1 / RFC-0099 D2 — the SDK ROOT a build reads.
+          #
+          # Without it the installed journey dead-ends one step from the end:
+          # `nros build` resolves its board catalog from a nano-ros CHECKOUT and
+          # says so, so `install.sh` -> `nros setup` -> `nros new` -> `nros
+          # build` fails on the first release ever cut. It is INSIDE the
+          # toolchain rather than beside it because RFC-0097 D6 already decided
+          # codegen and the runtime are one unit.
+          #
+          # The path list and the reason for every entry live in the script, and
+          # the script VERIFIES what it staged — a set that only this workflow
+          # knew would be checked nowhere, and could not be run by a person
+          # asking "what does the asset carry?".
+          sh scripts/stage-sdk-root.sh "$stage"
           # Prefix-rooted, the mirror shape every other dist in the index uses,
           # so `sdk_store::execute`'s default unpack lands it unchanged.
           tar --zstd -cf "$RUNNER_TEMP/nros-linux-x86_64.tar.zst" -C "$stage" bin share
@@ -247,6 +293,23 @@ jobs:
           cd "$RUNNER_TEMP"
           "$installed" --codegen-version
           "$installed" setup --list >/dev/null
+          # phase-447 A1/A2 — the two things that make the installed journey
+          # reach a BUILD, asked of the INSTALLED prefix rather than of the
+          # staging dir. `sdk-root` walks the same four-rung ladder `nros build`
+          # does, from a directory that is not a checkout and with no
+          # NROS_REPO_DIR, so only the shipped rung can answer; and it prints the
+          # prefix's own `share/nano-ros`, which proves the asset unpacked where
+          # the binary looks rather than merely somewhere.
+          test "$(env -u NROS_REPO_DIR "$installed" sdk-root)" \
+               = "$(readlink -f "$RUNNER_TEMP/probe/sdk/nros/${{ inputs.version }}")/share/nano-ros"
+          # The launch resolver, asked of the FRONT dir — because that is the
+          # rung `model_location::launch_resolver_bin` reads
+          # (`$NROS_HOME/bin/nros-launch-resolve`), and a resolver sitting in the
+          # store that nothing fronted is a resolver no build finds. Run, not
+          # just present: it links libpython, so "the file is there" and "it
+          # starts" are different questions and the loader answers the second
+          # before `main`.
+          "$RUNNER_TEMP/probe/bin/nros-launch-resolve" --version
           # RFC-0097 D7 — the manifest must survive the install and be READ back
           # by the installed binary, from the file, at the prefix it landed in.
           # An asset whose manifest the CLI cannot read is an asset for which

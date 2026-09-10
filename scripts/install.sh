@@ -232,7 +232,25 @@ EOF
 # checkout has no `nros-sdk-index.toml` until this install finishes. The path is
 # the one input the binary cannot supply itself; WHICH version gets linked is
 # still `front_newest`'s decision, reading the store.
-"$prefix/bin/nros" sdk-front nros --front bin/nros >/dev/null \
+#
+# phase-447 A1 — `bin/nros-launch-resolve` is fronted TOO, when the asset
+# carries one. It is a second binary, not part of the SDK root, and
+# `model_location::launch_resolver_bin`'s installed rung is literally
+# `$NROS_HOME/bin/nros-launch-resolve` — so without this link every workspace
+# configure dies at `nros codegen entry` with a remedy naming a checkout the
+# user does not have. Measured against a staged prefix: the SDK root resolves,
+# cmake gets as far as the entry package, and stops there.
+#
+# CONDITIONAL because `front_newest` refuses a declared path that is absent, and
+# an asset predating this line has no resolver — fronting it unconditionally
+# would turn "an older release, installed" into "an older release, uninstallable".
+front_args="--front bin/nros"
+if [ -x "$prefix/bin/nros-launch-resolve" ]; then
+    front_args="$front_args --front bin/nros-launch-resolve"
+fi
+# shellcheck disable=SC2086
+# Word-splitting is intended: $front_args is a flag list built above.
+"$prefix/bin/nros" sdk-front nros $front_args >/dev/null \
     || die "installed $ver at $prefix, but could not front it at $BIN/nros (see above)."
 
 echo "nros-install: installed $ver"

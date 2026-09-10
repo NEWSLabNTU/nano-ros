@@ -800,11 +800,19 @@ pub fn provider_index_path(ws_root: &Path) -> PathBuf {
 /// the two ambient sources, so that function stays a pure one and every test of
 /// it can name its inputs.
 pub fn provider_search_path(workspace: &Path) -> Result<provider_scan::SearchPath> {
-    let nano_ros_root = crate::abi_guard::find_monorepo_root(workspace).or_else(|| {
-        let exe = std::env::current_exe().ok()?;
-        let exe = exe.canonicalize().unwrap_or(exe);
-        crate::abi_guard::find_monorepo_root(&exe)
-    });
+    let nano_ros_root = crate::abi_guard::find_monorepo_root(workspace)
+        .or_else(|| {
+            let exe = std::env::current_exe().ok()?;
+            let exe = exe.canonicalize().unwrap_or(exe);
+            crate::abi_guard::find_monorepo_root(&exe)
+        })
+        // phase-447 A2 — and LAST, this toolchain's own shipped SDK root. The
+        // providers under `packages/interfaces/` are what let `std_msgs` and
+        // friends resolve, so without this rung a released `nros` finds no
+        // message packages at all: the arm above walks up from the binary, and
+        // a store prefix has no checkout above it (that is exactly the case
+        // `runtime_root`'s doc calls "falls through to `None`").
+        .or_else(crate::orchestration::nano_ros_root::shipped);
     provider_search_path_with(nano_ros_root.as_deref(), workspace)
 }
 
@@ -3056,10 +3064,8 @@ pub fn run_sync(args: SyncArgs) -> Result<()> {
             .or_default()
             .push(c.dir.clone());
     }
-    let nano_ros_path = args
-        .nano_ros_path
-        .or_else(|| std::env::var_os("NROS_REPO_DIR").map(PathBuf::from))
-        .or_else(|| autodetect_nano_ros_path(&ws_root));
+    // phase-447 A2 — the shared four-rung ladder (RFC-0099 D3).
+    let nano_ros_path = crate::orchestration::nano_ros_root::resolve(args.nano_ros_path, &ws_root);
 
     // Phase 220.E — collect the union of `nros-*` (+ `nros` + `cyclonedds-sys`)
     // registry-style deps across every Rust consumer pointing at this
@@ -3566,15 +3572,13 @@ fn extract_cargo_path_deps(body: &str) -> Vec<String> {
 /// In-tree fixtures + examples sit several levels below the nano-ros
 /// root, so this turns the most common "I forgot to set NROS_REPO_DIR"
 /// case into a no-op — patches still flow.
+///
+/// phase-447 A2 — the walk was written out here and identically in
+/// `nros_launcher::checkout`, against the same marker file. One spelling now:
+/// this is rung 3 of `orchestration::nano_ros_root`, and the marker it looks
+/// for has a single definition (`MONOREPO_MARKER`).
 pub(crate) fn autodetect_nano_ros_path(ws_root: &Path) -> Option<PathBuf> {
-    let mut cur: Option<&Path> = Some(ws_root);
-    while let Some(p) = cur {
-        if p.join("packages/core/nros-core/Cargo.toml").is_file() {
-            return Some(p.to_path_buf());
-        }
-        cur = p.parent();
-    }
-    None
+    nros_launcher::checkout::find_monorepo_root(ws_root)
 }
 
 fn extract_pkg_deps(body: &str) -> Vec<String> {
@@ -3988,9 +3992,9 @@ fn run_check_board_projections(args: CheckBoardProjectionsArgs) -> Result<()> {
             ws_root.display()
         ));
     }
-    let nano_ros_path = std::env::var_os("NROS_REPO_DIR")
-        .map(PathBuf::from)
-        .or_else(|| autodetect_nano_ros_path(&ws_root));
+    // phase-447 A2 — the shared four-rung ladder (RFC-0099 D3). This site has
+    // no `--nano-ros-path`, so the first rung is simply absent.
+    let nano_ros_path = crate::orchestration::nano_ros_root::resolve(None, &ws_root);
 
     if args.write {
         // phase-351 W3 — sync's board-projection pass, alone. Writing with the

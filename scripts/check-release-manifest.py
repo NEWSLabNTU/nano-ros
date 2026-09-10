@@ -15,9 +15,9 @@ existing generated code wrong, so only the last may block anything.
 D7 replaces asserting with RECORDING, in `share/nros/manifest.toml`. That change
 is easy to make and easy to un-make: the retired assertions are each two lines
 and each looks prudent in isolation, which is exactly how a coupling comes back.
-So the four properties below are gated rather than remembered.
+So the properties below are gated rather than remembered.
 
-## The four rules
+## The five rules
 
 * **R1 — the asset carries the manifest.** The staged prefix must contain
   `share/nros/<FILE_NAME>`, where FILE_NAME is READ OUT of the Rust module that
@@ -36,10 +36,28 @@ So the four properties below are gated rather than remembered.
   property of the fatal paths rather than as a ban on the two old wordings,
   because a reintroduction would be written in new words — the shape the
   2026-07-28 audit found in four gates whose reach was narrower than their rule.
+* **R5 — the asset carries what a BUILD reads** (phase-447 A1, RFC-0099 D2).
+  Two artifacts, both measured absent before phase-447 and each fatal on its
+  own:
+
+  - the **SDK root**, staged by `scripts/stage-sdk-root.sh` — that script owns
+    the path list and VERIFIES what it wrote, so the rule here is that the
+    workflow calls it, not a second copy of its inventory. Without it
+    `nros build` bails "no nano-ros SDK root found, so board ids cannot be
+    resolved."
+  - the **launch resolver** binary, copied into the asset's `bin/`. It is not
+    part of the SDK root (its own cargo workspace, embeds CPython) and every
+    workspace configure goes through it: with the SDK root staged and this
+    missing, `cmake -S . -B build` on a scaffolded project dies at
+    `nros codegen entry` with a remedy naming a checkout the user does not have.
+
+  Both NAMES are read out of the Rust that resolves them — `SHIPPED_SUBDIR` in
+  `nros_launcher::checkout`, `LAUNCH_RESOLVER` in `cmd::ws` — for R1's reason: a
+  gate that spells a path itself goes green while the reader looks elsewhere.
 
 ## Buildless
 
-Pure text over one YAML file and one Rust file. No CLI, no network, no store —
+Pure text over one YAML file, three Rust files and one shell script. No CLI, no network, no store —
 it passes in a pristine worktree, which is the bar for the fast lane.
 
 Run: python3 scripts/check-release-manifest.py [--self-test]
@@ -56,9 +74,18 @@ READER = os.path.join(
     ROOT, "packages", "cli", "nros-cli-core", "src", "orchestration", "release_manifest.rs"
 )
 CODEGEN_SRC = "packages/core/nros-core/src/codegen_version.rs"
+# R5 — the two Rust files that decide where a build looks for what the asset
+# must carry. Read, never spelled here (R1's reason).
+LAUNCHER = os.path.join(ROOT, "packages", "cli", "nros-launcher", "src", "checkout.rs")
+WS = os.path.join(ROOT, "packages", "cli", "nros-cli-core", "src", "cmd", "ws.rs")
+# The script that owns the SDK root's path list and verifies what it staged.
+STAGE_SCRIPT = "scripts/stage-sdk-root.sh"
+STAGE_PATH = os.path.join(ROOT, "scripts", "stage-sdk-root.sh")
 
 # The Rust reader's own name for the file. Read, never spelled here.
 FILE_NAME_RE = re.compile(r'pub const FILE_NAME: &str = "([^"]+)"')
+SHIPPED_SUBDIR_RE = re.compile(r'pub const SHIPPED_SUBDIR: &str = "([^"]+)"')
+LAUNCH_RESOLVER_RE = re.compile(r'const LAUNCH_RESOLVER: &str = "([^"]+)"')
 
 # A shell line that composes the manifest by hand instead of asking the binary.
 HAND_WRITTEN_RE = re.compile(
@@ -71,6 +98,70 @@ def manifest_file_name(reader_text):
     """FILE_NAME as the Rust reader declares it."""
     m = FILE_NAME_RE.search(reader_text)
     return m.group(1) if m else None
+
+
+def sdk_root_violations(workflow_text, launcher_text, ws_text, stage_text):
+    """R5 — the asset carries what a build reads (phase-447 A1, RFC-0099 D2).
+
+    Every clause below is about the STAGED PREFIX (`"$stage"`), never about the
+    bare name appearing somewhere in the file. The first version of this rule
+    asked `f"bin/{resolver}" in workflow_text` and stayed GREEN when the staging
+    `cp` was deleted, because the install probe two steps later mentions the same
+    path — a gate satisfied by the sentence that checks the thing rather than by
+    the thing.
+    """
+    bad = []
+
+    m = SHIPPED_SUBDIR_RE.search(launcher_text)
+    if not m:
+        bad.append(
+            ("R5", f"{LAUNCHER} declares no `pub const SHIPPED_SUBDIR` — nothing "
+                   "says where an installed toolchain's SDK root lives")
+        )
+    else:
+        subdir = m.group(1)
+        # The script owns the path list AND verifies what it wrote, so the
+        # workflow's job is to CALL it against the staged prefix.
+        if f'{STAGE_SCRIPT} "$stage"' not in workflow_text:
+            bad.append(
+                ("R5", f'the release does not run `{STAGE_SCRIPT} "$stage"` — without '
+                       "the SDK root in the asset a released `nros` resolves its board "
+                       "catalog from a checkout it does not have, and `nros build` "
+                       "bails on the first release ever cut")
+            )
+        # …and the script must write where the CLI looks. This is the pair that
+        # can drift silently: both sides are correct in isolation and the asset
+        # lands one directory away from `shipped_sdk_root_beside`.
+        sm = re.search(r'^SHIPPED_SUBDIR="([^"]+)"', stage_text, re.M)
+        if not sm:
+            bad.append(
+                ("R5", f"{STAGE_SCRIPT} declares no SHIPPED_SUBDIR — it and "
+                       f"{LAUNCHER} must name one directory")
+            )
+        elif sm.group(1) != subdir:
+            bad.append(
+                ("R5", f"{STAGE_SCRIPT} stages into {sm.group(1)} but the CLI looks in "
+                       f"{subdir} — the asset would land one directory away from "
+                       "`shipped_sdk_root_beside`, which answers None and reads as "
+                       "'no SDK root found'")
+            )
+
+    m = LAUNCH_RESOLVER_RE.search(ws_text)
+    if not m:
+        bad.append(
+            ("R5", f"{WS} declares no `const LAUNCH_RESOLVER` — nothing names the "
+                   "launch resolver binary")
+        )
+    else:
+        resolver = m.group(1)
+        if f'"$stage/bin/{resolver}"' not in workflow_text:
+            bad.append(
+                ("R5", f'the release copies nothing to "$stage/bin/{resolver}" — it is '
+                       "not part of the SDK root (own workspace, embeds CPython), and "
+                       "every workspace configure resolves its launch file through it, "
+                       "so a scaffolded project dies at `nros codegen entry`")
+            )
+    return bad
 
 
 def fatal_paragraphs(text):
@@ -92,9 +183,10 @@ def fatal_paragraphs(text):
     return out
 
 
-def violations(workflow_text, reader_text):
+def violations(workflow_text, reader_text, launcher_text, ws_text, stage_text):
     """Every rule broken, as (rule, message) pairs."""
     bad = []
+    bad += sdk_root_violations(workflow_text, launcher_text, ws_text, stage_text)
     name = manifest_file_name(reader_text)
     if not name:
         bad.append(("R1", f"{READER} declares no `pub const FILE_NAME` to read the asset path from"))
@@ -205,25 +297,101 @@ NO_EQUALITY = """
 """
 
 READER_STUB = 'pub const FILE_NAME: &str = "manifest.toml";'
+LAUNCHER_STUB = 'pub const SHIPPED_SUBDIR: &str = "share/nano-ros";'
+WS_STUB = 'const LAUNCH_RESOLVER: &str = "nros-launch-resolve";'
+
+# R5's half of the workflow, appended to whichever body a case is about, so the
+# R1–R4 cases keep asserting exactly what they always did.
+STAGES_WHAT_A_BUILD_READS = """
+          sh scripts/stage-sdk-root.sh "$stage"
+          cp packages/cli/nros-launch-resolve/target/release/nros-launch-resolve \\
+              "$stage/bin/nros-launch-resolve"
+"""
+
+# The staging script's half of the R5 pair.
+STAGE_STUB = 'SHIPPED_SUBDIR="share/nano-ros"\n'
+
+# The shape that fooled R5's first version: the staging `cp` is GONE, and the
+# install probe still names the path. A substring rule reads this as OK.
+PROBE_ONLY = """
+          sh scripts/stage-sdk-root.sh "$stage"
+      - name: Prove the asset installs
+        run: |
+          "$RUNNER_TEMP/probe/bin/nros-launch-resolve" --version
+"""
 
 
 def self_test():
+    G = GOOD + STAGES_WHAT_A_BUILD_READS
+    S = STAGE_STUB
     cases = [
-        ("the shipped shape passes", GOOD, READER_STUB, set()),
-        ("a reintroduced index assertion", REINTRODUCED_INDEX_ASSERT, READER_STUB, {"R4"}),
-        ("a reintroduced crate-prefix assertion", REINTRODUCED_CRATE_ASSERT, READER_STUB, {"R4"}),
-        ("a hand-composed manifest", HAND_WRITTEN, READER_STUB, {"R2"}),
-        ("no surviving codegen equality", NO_EQUALITY, READER_STUB, {"R3"}),
+        ("the shipped shape passes", G, READER_STUB, LAUNCHER_STUB, WS_STUB, S, set()),
+        (
+            "a reintroduced index assertion",
+            REINTRODUCED_INDEX_ASSERT + STAGES_WHAT_A_BUILD_READS,
+            READER_STUB, LAUNCHER_STUB, WS_STUB, S, {"R4"},
+        ),
+        (
+            "a reintroduced crate-prefix assertion",
+            REINTRODUCED_CRATE_ASSERT + STAGES_WHAT_A_BUILD_READS,
+            READER_STUB, LAUNCHER_STUB, WS_STUB, S, {"R4"},
+        ),
+        (
+            "a hand-composed manifest",
+            HAND_WRITTEN + STAGES_WHAT_A_BUILD_READS,
+            READER_STUB, LAUNCHER_STUB, WS_STUB, S, {"R2"},
+        ),
+        (
+            "no surviving codegen equality",
+            NO_EQUALITY + STAGES_WHAT_A_BUILD_READS,
+            READER_STUB, LAUNCHER_STUB, WS_STUB, S, {"R3"},
+        ),
         (
             "a renamed manifest file the workflow did not follow",
-            GOOD,
+            G,
             'pub const FILE_NAME: &str = "components.toml";',
-            {"R1"},
+            LAUNCHER_STUB, WS_STUB, S, {"R1"},
+        ),
+        # R5 — one case per artifact, because they fail independently and a
+        # rule written for one of them would have caught only that one.
+        ("no SDK root staged", GOOD, READER_STUB, LAUNCHER_STUB, WS_STUB, S, {"R5"}),
+        (
+            "the SDK root staged but no launch resolver",
+            GOOD + '\n          sh scripts/stage-sdk-root.sh "$stage"\n',
+            READER_STUB, LAUNCHER_STUB, WS_STUB, S, {"R5"},
+        ),
+        # The mutant that beat R5's first version: staging deleted, the install
+        # probe still naming the path. A bare-substring rule reads this as OK.
+        (
+            "only the install probe names the resolver",
+            GOOD + PROBE_ONLY,
+            READER_STUB, LAUNCHER_STUB, WS_STUB, S, {"R5"},
+        ),
+        (
+            "the resolver copied but the SDK root inlined instead of scripted",
+            GOOD + '\n          cp -r cmake config packages "$stage/share/nano-ros/"\n'
+                 + '          cp a/nros-launch-resolve "$stage/bin/nros-launch-resolve"\n',
+            READER_STUB, LAUNCHER_STUB, WS_STUB, S, {"R5"},
+        ),
+        (
+            "the shipped subdir renamed and the workflow left behind",
+            G, READER_STUB,
+            'pub const SHIPPED_SUBDIR: &str = "share/nros-sdk";', WS_STUB, S, {"R5"},
+        ),
+        (
+            "the resolver renamed and the workflow left behind",
+            G, READER_STUB, LAUNCHER_STUB,
+            'const LAUNCH_RESOLVER: &str = "nros-resolve-launch";', S, {"R5"},
+        ),
+        (
+            "the staging script and the CLI name different directories",
+            G, READER_STUB, LAUNCHER_STUB, WS_STUB,
+            'SHIPPED_SUBDIR="share/nros/sdk"\n', {"R5"},
         ),
     ]
     failures = 0
-    for label, wf, reader, want in cases:
-        got = {rule for rule, _ in violations(wf, reader)}
+    for label, wf, reader, launcher, ws, stage, want in cases:
+        got = {rule for rule, _ in violations(wf, reader, launcher, ws, stage)}
         if got != want:
             print(f"  self-test FAIL [{label}]: expected {sorted(want) or 'no violations'}, got {sorted(got)}")
             failures += 1
@@ -243,7 +411,7 @@ def main():
     if self_test() != 0:
         return 1
 
-    for path in (WORKFLOW, READER):
+    for path in (WORKFLOW, READER, LAUNCHER, WS, STAGE_PATH):
         if not os.path.isfile(path):
             print(f"check-release-manifest: {path} is missing — nothing records the release")
             return 1
@@ -251,8 +419,14 @@ def main():
         workflow_text = fh.read()
     with open(READER, encoding="utf-8") as fh:
         reader_text = fh.read()
+    with open(LAUNCHER, encoding="utf-8") as fh:
+        launcher_text = fh.read()
+    with open(WS, encoding="utf-8") as fh:
+        ws_text = fh.read()
+    with open(STAGE_PATH, encoding="utf-8") as fh:
+        stage_text = fh.read()
 
-    bad = violations(workflow_text, reader_text)
+    bad = violations(workflow_text, reader_text, launcher_text, ws_text, stage_text)
     if bad:
         print("check-release-manifest: the release does not record its components (RFC-0097 D7):")
         for rule, msg in bad:
@@ -265,9 +439,12 @@ def main():
 
     name = manifest_file_name(reader_text)
     fatal = len(fatal_paragraphs(workflow_text))
+    subdir = SHIPPED_SUBDIR_RE.search(launcher_text).group(1)
+    resolver = LAUNCH_RESOLVER_RE.search(ws_text).group(1)
     print(
         f"check-release-manifest: OK — the asset records share/nros/{name}, "
-        f"stamped by the binary; {fatal} release-blocking path(s), all about codegen."
+        f"stamped by the binary; {fatal} release-blocking path(s), all about codegen; "
+        f"it carries {subdir} and bin/{resolver}."
     )
     return 0
 

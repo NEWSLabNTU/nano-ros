@@ -45,6 +45,7 @@ pub mod profile;
 pub mod scaffold_deploy;
 pub mod sdk_front;
 pub mod sdk_path;
+pub mod sdk_root;
 pub mod setup;
 /// phase-440 W6 — `nros store list|gc` (RFC-0095 D11).
 pub mod store;
@@ -149,6 +150,13 @@ pub enum Cmd {
     /// the CLI itself and has no `nros setup` to run until it has.
     #[command(name = "sdk-front")]
     SdkFront(sdk_front::Args),
+
+    /// phase-447 A2 — print the nano-ros SDK root this toolchain resolves
+    /// (RFC-0099 D3). The cmake/shell bridge to the four-rung ladder, so a
+    /// scaffolded project ASKS where the runtime is instead of baking in an
+    /// absolute path that is right on exactly one machine.
+    #[command(name = "sdk-root")]
+    SdkRoot(sdk_root::Args),
 
     /// phase-440 W6 — inspect and shrink the SDK store (RFC-0095 D11). The
     /// store is additive by design, so `list` says what is in it and `gc`
