@@ -1,6 +1,6 @@
 # Phase 445 — one board choice generates the leaf's build configuration
 
-**Status (2026-09-10). Opened; no work item started.** Implements
+**Status (2026-09-10). Opened; revised the same day to the colcon shape (RFC-0098 D1/D9); no work item started.** Implements
 [RFC-0098](../design/0098-generated-leaf-build-config.md).
 
 **Prior phases:** 341 (the board `cargo_config` projection), 331 (the
@@ -9,10 +9,12 @@ generated `<entry>_nros_selection` package), 412 (derived counts), 392 W5
 
 ## Goal
 
-A user picks a board in `system.toml`, runs `nros sync`, and builds with
-whatever command they use. Nobody hand-writes a triple, a link flag, a heap
-size, a pool size or an IP address into `Cargo.toml` or `.cargo/config.toml`,
-and no build leaves a tracked file modified.
+A user picks a board in `system.toml`, runs `nros build` (or `nros sync` and
+their own command), and gets an image. Nobody hand-writes a triple, a link
+flag, a heap size, a pool size or an IP address into `Cargo.toml` or
+`.cargo/config.toml`; a workspace is a directory of packages with no root build
+file, like a colcon workspace; everything generated lives in `build/`,
+`dist/` and `log/`; and no build leaves a tracked file modified.
 
 ## Work items
 
@@ -20,35 +22,20 @@ Ordered so no step deletes a value before its new home exists: gitignoring
 `.cargo/` today would drop the only copy of 19 leaves' board triple and the
 esp32 stack budgets.
 
-- [ ] **W1 — `ZPICO_MAX_QUERYABLES` on the cargo road (RFC-0098 D7). Folded
-  into W3; one question left open.** No open issue or PR wires it (checked
+- [ ] **W1 — `ZPICO_MAX_QUERYABLES` on the cargo road (RFC-0098 D7).
+  ANSWERED; implemented by W3 + W4.** No open issue or PR wires it (checked
   2026-09-10; #779 covers `MAX_NODES` and the take buffer only). The consumer
   already computes the count from `NROS_DECLARED_SERVICE_SERVERS` +
   `NROS_DECLARED_INFRA_QUERYABLES` + `NROS_DECLARED_NODES`
-  (`nros-zpico-build/src/runner.rs`); the facts come from
-  `entity_facts::facts_from_model`. So the cargo road only has to CARRY those
-  facts, never state the count (issue 0460). Where it can carry them was
-  measured, and it is narrower than the first draft said:
-  - **Single-package leaf** — it is its own patch authority, so the `[env]`
-    sidecar `nros sync` writes is its own. With a model (W3) the sidecar
-    carries the facts and `NOT_DERIVED_NEEDS_INFRA_COUNT` goes. This is done
-    IN W3, and the esp32 leaves' hand-set `ZPICO_MAX_QUERYABLES` goes with it.
-  - **Workspace member — OPEN.** `find_patch_authority` walks to the cargo
-    workspace root, so a member's sidecar is the ROOT's, shared by every image
-    in the workspace (`native`, `esp32`, `freertos`, each with its own launch
-    file and model); and cargo reads `.cargo/` from the invocation's CWD, not
-    per package. Per-image facts therefore cannot live in one `[env]`. Today
-    they reach cargo as PROCESS env, one invocation per image — `nros build`
-    and `workspace-fixtures-build.sh` both do this. A plain `cargo build -p
-    <entry>` from the root gets the consumer's safe fallback (both families
-    assumed, plus headroom), which `nros build`'s own comment measured as a
-    DRAM overflow of 8,804 B on `esp32_entry`. Two candidate answers, not yet
-    chosen: (a) the facts go in the ENTRY's own `.cargo/` beside its board
-    projection, valid when cargo runs from the entry directory — the same
-    condition its `[build] target` already needs; (b) a multi-image workspace
-    is built by `nros build`, and RFC-0098 D2's "any build command" applies to
-    single-package leaves. The fixture lane builds from the workspace root with
-    an explicit `--target` today, so it reads neither.
+  (`nros-zpico-build/src/runner.rs`) and `entity_facts::facts_from_model`
+  produces them, so the facts are carried, never the count (issue 0460). The
+  first revision's open question — a workspace member's sidecar is the
+  workspace root's, shared by every image — is closed by D1/D9: each image's
+  facts go in its own `build/<image>/nros-cargo.toml`. A single-package leaf
+  gets its model in W3; the generator that writes the facts is W4. The esp32
+  leaves' hand-set `ZPICO_MAX_QUERYABLES` goes when both have landed —
+  acceptance a BUILD whose shim constant matches the hand-set value it
+  replaces.
 - [ ] **W2 — complete the board descriptors (D4).** `[build] target` in every
   descriptor whose board has a Rust triple (mps2 first — the 19 hand-written
   leaves); `CC_<triple>`/`CFLAGS_<triple>` from the workspace configs; the
@@ -61,34 +48,51 @@ esp32 stack budgets.
 - [ ] **W3 — `system.toml` in every single-package example (D3, D5, D8).** 178
   leaves (70 Rust, 52 C, 56 C++). `[image.X] board`, `[system] rmw/domain_id/locator`,
   network identity, `[[component]]` with entities where the board cannot be
-  probed (issue 1265). With a model per leaf, W1's sidecar facts reach every
-  single-package leaf, so the hand-set `ZPICO_MAX_QUERYABLES` in the esp32
-  leaves goes here — acceptance a BUILD whose shim constant matches the
-  hand-set value it replaces. `nros sync` resolves a single-package leaf from it; the
+  probed (issue 1265). `nros sync` resolves a single-package leaf from it; the
   `[package.metadata.nros.{entry,deploy.*,node,component}]` keys retire from the
   manifests. The two board spellings for one esp32 (`esp32-c3-baremetal` /
   `esp32-qemu`) collapse to one.
-- [ ] **W4 — sync writes ONE generated `.cargo/config.toml` (D1, D6).** Board
-  `cargo_config` + resolved `[env]` + in-repo patch rows; no `include`; the
-  `nros-board.toml` projection folds in. The board crate arrives through the
-  generated `<entry>_nros_selection` package. Provisioning paths
+- [ ] **W4 — one generated settings file per image, under `build/` (D1, D6,
+  D7).** `nros sync` / `nros build` write `build/<image>/nros-cargo.toml` (board
+  `cargo_config` + per-image `target-dir` + resolved `[env]` incl. the entity
+  facts + in-repo patch rows) and the generated entry
+  `build/<coord>/<entry>/Cargo.toml` as its own cargo root. Stage 5 runs
+  `cargo build --manifest-path … --config …`; the fixture lane builds through
+  the same file and retires its explicit `--target` and per-invocation
+  `NROS_DECLARED_*` exports. The per-leaf `.cargo/` writers (patch rows, the
+  `nros-managed-{patch,env}.toml` sidecars, the `nros-board.toml` projection,
+  their `include` bookkeeping) are deleted. Provisioning paths
   (`NROS_PLATFORM_*`) leave the leaves.
-- [ ] **W5 — untrack (D1, D2).** Per-example `.gitignore` of `.cargo/`;
-  `git rm --cached` of the 47 configs and 34 projections. Gates: a new
-  refusal of any tracked `examples/**/.cargo/*`; `check-cargo-config-tracked`
-  and `check-board-projections` rewritten for the inverted rule; the build
-  preflight (`_require-leaf-includes`) says `nros sync`. CLAUDE.md's
-  0457 / "never commit the include line" entries are retired with it.
-- [ ] **W6 — the user flow in the book.** `nros sync`, then the build command
-  of the user's choice, for each board family.
+- [ ] **W5 — no workspace root build file (D9).** Stop generating
+  `<ws>/Cargo.toml` (`rust`, `realtime-rust`, `features`, `launch`, `safety`,
+  `sizing`) and retire `builder/cargo_root.rs`'s workspace emitter; delete the
+  tracked root `.cargo/` in `rust` and `realtime-rust`; remove the root build
+  files six templates track (five `CMakeLists.txt`, `multi-node-workspace`'s
+  `Cargo.toml`); finish moving the legacy hand-written `src/*_entry` packages to
+  generated entries (RFC-0065 D13).
+- [ ] **W6 — delete and gate (D1, D2).** `git rm` the 47 leaf
+  `.cargo/config.toml` files and the 34 `nros-board.toml` projections. Gates:
+  refuse any tracked `examples/**/.cargo/*`; refuse a workspace-root
+  `Cargo.toml`/`CMakeLists.txt` under `examples/workspaces/` and
+  `examples/templates/`; `check-cargo-config-tracked` and
+  `check-board-projections` retire with the files they guarded; the build
+  preflight says `nros sync`. CLAUDE.md's 0457 / "never commit the include
+  line" entries go with them.
+- [ ] **W7 — the user flow in the book.** `nros build <image>`, and
+  `nros sync` + `cargo build --config build/<image>/nros-cargo.toml` for a user
+  driving cargo, for each board family.
 
 ## Acceptance
 
-- A fresh clone, `nros sync`, then `cargo build` / `cmake` builds one leaf per
-  board family — a BUILD, not a gate (#393).
+- A fresh clone, then `nros build <image>`, builds one image per board family —
+  a BUILD, not a gate (#393). `nros sync` + plain `cargo build --config
+  build/<image>/nros-cargo.toml` builds the same image.
 - Switching a single-package example to another board is ONE line in
-  `system.toml` plus `nros sync`; `git diff` afterwards shows that line only.
+  `system.toml`; `git diff` afterwards shows that line only.
 - `git status` is clean after `just ci gate` and after a fixture build.
+- `find examples -path '*/.cargo/*'` returns nothing, and no directory under
+  `examples/workspaces/` or `examples/templates/` has a root `Cargo.toml` or
+  `CMakeLists.txt`.
 - `rg '^\[package\.metadata\.nros\.(deploy|entry|node|component)' examples`
   returns nothing.
 
