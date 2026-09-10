@@ -298,6 +298,10 @@ impl<
         let request = match self.send_goal_server.take_request(&mut self.goal_buffer) {
             Ok(opt) => opt,
             Err(TransportError::NoData) => return Ok(None),
+            // issue 1088 — pending but no free reply slot: keep the kind.
+            Err(TransportError::WouldBlock) => {
+                return Err(NodeError::Transport(TransportError::WouldBlock));
+            }
             Err(_) => return Err(NodeError::Transport(TransportError::ServiceRequestFailed)),
         };
 
@@ -753,6 +757,10 @@ impl<
         {
             Ok(Some(r)) => r,
             Ok(None) | Err(TransportError::NoData) => return Ok(None),
+            // issue 1088 — pending but no free reply slot: keep the kind.
+            Err(TransportError::WouldBlock) => {
+                return Err(NodeError::Transport(TransportError::WouldBlock));
+            }
             Err(_) => return Err(NodeError::Transport(TransportError::ServiceRequestFailed)),
         };
 
@@ -845,6 +853,10 @@ impl<
         {
             Ok(Some(r)) => r,
             Ok(None) | Err(TransportError::NoData) => return Ok(None),
+            // issue 1088 — pending but no free reply slot: keep the kind.
+            Err(TransportError::WouldBlock) => {
+                return Err(NodeError::Transport(TransportError::WouldBlock));
+            }
             Err(_) => return Err(NodeError::Transport(TransportError::ServiceRequestFailed)),
         };
 
@@ -914,6 +926,10 @@ impl<
         let request = match self.get_result_server.take_request(&mut self.goal_buffer) {
             Ok(Some(r)) => r,
             Ok(None) | Err(TransportError::NoData) => return Ok(None),
+            // issue 1088 — pending but no free reply slot: keep the kind.
+            Err(TransportError::WouldBlock) => {
+                return Err(NodeError::Transport(TransportError::WouldBlock));
+            }
             Err(_) => return Err(NodeError::Transport(TransportError::ServiceRequestFailed)),
         };
 

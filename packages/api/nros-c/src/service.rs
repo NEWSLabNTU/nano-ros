@@ -700,6 +700,9 @@ pub unsafe extern "C" fn nros_client_set_wake_callback(
 ///
 /// # Returns
 /// * `>= 0` — number of bytes written to `buf` (0 = no request)
+/// * `NROS_RET_TRY_AGAIN` if a request IS pending but every reply slot is
+///   held by a request not yet answered — send a response, then take again
+///   (issue 1088; distinct from the `0` that means nothing is pending)
 /// * `NROS_RET_INVALID_ARGUMENT` if pointers / state wrong
 /// * `NROS_RET_ERROR` on transport failure
 ///
@@ -737,6 +740,12 @@ pub unsafe extern "C" fn nros_service_take_request_raw(
                 copy_len as i32
             }
             Ok(None) => 0,
+            // issue 1088 — "pending, but every reply slot is held" is
+            // `NROS_RET_TRY_AGAIN`, not the generic `NROS_RET_ERROR` and not
+            // the `0` that means nothing is pending.
+            Err(nros_node::NodeError::Transport(nros_rmw::TransportError::WouldBlock)) => {
+                NROS_RET_TRY_AGAIN
+            }
             Err(_) => NROS_RET_ERROR,
         }
     }

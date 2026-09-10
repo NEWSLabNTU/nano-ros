@@ -3054,6 +3054,11 @@ pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: 
             (offset, len, seq)
         }
         Ok(None) => return Ok(false),
+        // issue 1088 — a request is pending and the backend has no free
+        // reply-correlation slot. Keep the KIND: rewriting it to
+        // `ServiceReplyFailed` made a saturated server read as a broken one in
+        // `SpinOnceResult`, and hid the one condition the caller can act on.
+        Err(TransportError::WouldBlock) => return Err(TransportError::WouldBlock),
         Err(_) => return Err(TransportError::ServiceReplyFailed),
     };
 
