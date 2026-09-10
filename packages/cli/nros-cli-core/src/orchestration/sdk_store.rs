@@ -17,7 +17,7 @@ use std::{
 use eyre::{Result, WrapErr, bail, eyre};
 use serde::{Deserialize, Serialize};
 
-use super::sdk_index::{SourcePackage, SourceProvision, ToolPackage};
+use super::sdk_index::{SourceLocation, SourcePackage, SourceProvision, ToolPackage};
 
 /// The lockfile name (written in cwd by `nros setup` / auto-setup — pins the
 /// installed toolset for the workspace it's run in). Single source for the name.
@@ -76,7 +76,7 @@ pub fn tool_prefix(root: &Path, tool: &str, version: &str) -> PathBuf {
 /// does not live in the store.
 pub fn source_dir(index: &super::sdk_index::SdkIndex, source: &str) -> Option<PathBuf> {
     let src = index.source.get(source)?;
-    if src.location != super::sdk_index::SourceLocation::Store {
+    if src.location != SourceLocation::Store {
         return None;
     }
     // The STORE root, not the SDK root: `sources/` is a sibling of `sdk/`,
@@ -1637,6 +1637,10 @@ mod tests {
             git: Some("https://example/lwip.git".into()),
             git_ref: Some("STABLE-2_2_0".into()),
             dest: Some(dest_rel.into()),
+            // Named rather than `..Default::default()`: this literal is
+            // exhaustive on purpose, so a new field makes the test state its
+            // answer instead of inheriting one (phase-440 added this one).
+            location: SourceLocation::Workspace,
             submodule: None,
             shallow: true,
             recursive: true,
