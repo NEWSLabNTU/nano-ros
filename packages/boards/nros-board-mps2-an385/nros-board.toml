@@ -16,9 +16,20 @@ supported_netstacks = ["smoltcp"]
 board_crate = "nros-board-mps2-an385"
 # Phase 252 (issue 0072) — forwards [safety] to its zenoh backend.
 cargo_config = '''
+# phase-445 W2 (RFC-0098 D4) — the board's triple, stated HERE. It was missing,
+# so 19 mps2 leaves (13 on this board) hand-wrote `[build] target` in their
+# own `.cargo/config.toml`, the only board family that had to.
+[build]
+target = "thumbv7m-none-eabi"
+
 [target.thumbv7m-none-eabi]
 runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
 rustflags = [
+    # cortex-m-rt's `link.x`. NOT `mps2_an385.ld`: that script belongs to the
+    # FreeRTOS board (`nros-board-mps2-an385-freertos`), whose C startup
+    # provides the vector table and reset handler cortex-m-rt provides here.
+    # phase-445 W2 measured both directions: this board linked with the other
+    # board's group fails, and vice versa (see that phase's W2 note).
     "-C", "link-arg=-Tlink.x",
     # phase-341 W1 — hoisted from the leaves. 25 of 32 `thumbv7m` leaf
     # configs carried this and 7 did not, which is drift, not a choice:
@@ -27,6 +38,11 @@ rustflags = [
     # because they are `#[used]` (CLAUDE.md records exactly this).
     "-C", "link-arg=--gc-sections",
 ]
+
+# The cc-crate cross compiler for this triple — a board toolchain fact
+# (phase-445 W2; `examples/workspaces/rust/.cargo/config.toml` carried it).
+[env]
+CC_thumbv7m_none_eabi = "arm-none-eabi-gcc"
 '''
 
 [board.entry]

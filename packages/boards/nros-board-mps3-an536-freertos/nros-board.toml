@@ -32,6 +32,10 @@ entry_kind = "board-run"
 supported_netstacks = ["lwip"]
 board_crate = "nros-board-mps3-an536-freertos"
 cargo_config = '''
+# phase-445 W2 (RFC-0098 D4) — every board with a Rust triple states it.
+[build]
+target = "armv8r-none-eabihf"
+
 [target.armv8r-none-eabihf]
 runner = "qemu-system-arm -machine mps3-an536 -nographic -semihosting-config enable=on,target=native -kernel"
 rustflags = [

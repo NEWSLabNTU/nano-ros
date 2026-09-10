@@ -48,3 +48,13 @@ closure_extra = "\n                .clock_us(nros_board_esp32_qemu::nros_platfor
 heap = true
 atomics = true
 threads = true
+
+# phase-445 W2 (RFC-0049 board rung, RFC-0098 D4) — a hardware budget, stated
+# once for the board. All three esp32 images (`esp32-c3-baremetal/rust/{talker,
+# listener}` and `workspaces/rust`'s `esp32_entry`) hand-set the same value in
+# their own `[env]`: it was phase-177's shrink from the old default 4 to fit the
+# esp32-c3 stack (cb8a642ac), and it is the only board that sets it at all.
+# Read by `nros-smoltcp/build.rs` through `BuildRungs::net_rungs`; the env
+# front-end `NROS_SMOLTCP_MAX_UDP_SOCKETS` still wins over it.
+[board.knobs.net]
+max_udp_sockets = 2
