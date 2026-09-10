@@ -625,8 +625,17 @@ if(CONFIG_NROS_CPP_API)
     # launch-param seeds link) + the directory-wide define ComponentNode's
     # seed-adoption gates on. Follow-up: resolve from the entry's BRINGUP
     # like nano_ros_workspace(SYSTEM ...) does.
+    #
+    # Issue 1287 -- `alloc` goes WITH it. `param-services` requires alloc
+    # (nros-node/src/lib.rs `compile_error!`; phase-361 W8.e: a capability
+    # names its requirement, it never switches it on), and the zenoh string
+    # above carries alloc only TRANSITIVELY, through nros-rmw-zenoh -- the
+    # shape the xrce and cyclonedds notes above warn about. The C-for-C++
+    # nros-c build below copies `alloc` only when THIS string spells it, so
+    # a Zephyr zenoh C++ image with param_services built nros-c with
+    # param-services and without alloc, and stopped at that compile_error.
     if("param_services" IN_LIST NANO_ROS_FEATURES)
-        string(APPEND _nros_cpp_features ",param-services")
+        string(APPEND _nros_cpp_features ",alloc,param-services")
         add_compile_definitions(NROS_SYSTEM_PARAM_SERVICES)
     endif()
 
