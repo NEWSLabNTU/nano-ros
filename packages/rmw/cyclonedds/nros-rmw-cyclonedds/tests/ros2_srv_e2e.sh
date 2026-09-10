@@ -6,8 +6,10 @@
 #
 #   1. nano-ros service server ↔ `ros2 service call` (stock client)
 #
-# Skips cleanly with [SKIPPED] (exit 0) when /opt/ros/humble or
-# rmw_cyclonedds_cpp aren't on PATH.
+# Skips with [SKIPPED] (exit 0) when /opt/ros/humble or the ros2 CLI is
+# absent. FAILS at once when the ros2 peer cannot load rmw_cyclonedds_cpp
+# (`nros_require_ros2_rmw_loadable`): this header used to promise a skip there
+# too, nothing implemented it, and the cell timed out instead.
 
 set -u
 
@@ -64,6 +66,10 @@ ros2 daemon stop >/dev/null 2>&1 || true
 NROS_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 ROS_LD_LIBRARY_PATH="${LD_LIBRARY_PATH#*build/install/lib:}"
 
+# Asked BEFORE the server starts, through the path the CLI will actually get.
+# See the helper for the host-tests measurement that put it here.
+nros_require_ros2_rmw_loadable "$RMW_IMPLEMENTATION" "$ROS_LD_LIBRARY_PATH" || exit 1
+
 failed=0
 
 echo "=== 117.12.B.1: ros2 service call → nros server ==="
@@ -86,13 +92,38 @@ timeout 15 env LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" \
     > "$CALL_OUT" 2>&1
 CALL_RC=$?
 
-# Server should reply + exit on its own. Give it a moment.
-wait $SRV_PID
+# The server's own budget is 600 s (`ros2_srv_server.cpp`). Waiting that out
+# is right only while a client might still call. Once `ros2 service call` has
+# RETURNED -- replied, errored, or been killed by `timeout` -- the one request
+# this sub-case sends has either reached the server or never will, so the
+# server gets a short grace to reply and exit and is then stopped. The bare
+# `wait` this replaces cost 600 s on every host-tests run, for a CLI that had
+# died within its first second.
+NROS_E2E_SERVER_GRACE_S="${NROS_E2E_SERVER_GRACE_S:-10}"
+srv_grace_deadline=$(( SECONDS + NROS_E2E_SERVER_GRACE_S ))
+while kill -0 "$SRV_PID" 2>/dev/null && [ "$SECONDS" -lt "$srv_grace_deadline" ]; do
+    sleep 0.2
+done
+srv_abandoned=0
+if kill -0 "$SRV_PID" 2>/dev/null; then
+    srv_abandoned=1
+    kill "$SRV_PID" 2>/dev/null || true
+fi
+wait "$SRV_PID"
 SRV_RC=$?
 
 if [ "$SRV_RC" -ne 0 ]; then
-    echo "  FAIL: nros server exited rc=$SRV_RC"
+    if [ "$srv_abandoned" -eq 1 ]; then
+        echo "  FAIL: nros server still had no request ${NROS_E2E_SERVER_GRACE_S}s after the client returned; stopped it"
+    else
+        echo "  FAIL: nros server exited rc=$SRV_RC"
+    fi
+    echo "    --- nros server ---"
     sed 's/^/    /' "$SERVER_OUT"
+    # The CLIENT is usually why the server saw nothing, and this branch never
+    # printed it -- which is how a dead `ros2` CLI read as a server timeout.
+    echo "    --- ros2 service call (rc=$CALL_RC) ---"
+    sed 's/^/    /' "$CALL_OUT"
     failed=$((failed + 1))
 elif [ "$CALL_RC" -ne 0 ]; then
     echo "  FAIL: ros2 service call exited rc=$CALL_RC"

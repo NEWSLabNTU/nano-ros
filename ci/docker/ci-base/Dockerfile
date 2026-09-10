@@ -106,6 +106,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         `# by NO workflow, on any event. That is how phase-421's two` \
         `# serialization_format accessors landed unledgered.` \
         ros-humble-example-interfaces \
+        ros-humble-rmw-cyclonedds-cpp \
+        `# ^ the STOCK Cyclone RMW the interop cells talk to. ros-base does` \
+        `# not carry it: rmw-implementation depends on "rmw-fastrtps-cpp |` \
+        `# rmw-cyclonedds-cpp | rmw-connextdds" and apt takes the first, so` \
+        `# /opt/ros/humble/lib had librmw_fastrtps_cpp.so and nothing else.` \
+        `# check-rmw-cyclonedds's two ros2 cells (ros2_pubsub_e2e,` \
+        `# ros2_srv_e2e) then failed on EVERY host-tests run that reached` \
+        `# them -- the ros2 peer died in rcl on "librmw_cyclonedds_cpp.so:` \
+        `# cannot open shared object file" and the cells spent 126 s and` \
+        `# 600 s on deadlines. Same package docker/ros-editions installs.` \
+        `# Installs into /opt/ros/humble only; its hooks touch only` \
+        `# AMENT_PREFIX_PATH and PATH, so the ENV snapshot above holds.` \
+        ros-humble-demo-nodes-cpp \
+        `# ^ the stock add_two_ints_server ros2_srv_e2e's B.2 sub-case calls` \
+        `# (nros client -> stock server). Without it B.2 printed "SKIP" and` \
+        `# the cell still passed, so that direction had never run in CI.` \
     && rm -rf /var/lib/apt/lists/*
 
 # uv (Python 3.12 venvs) + just (recipe runner) via their canonical installers.
