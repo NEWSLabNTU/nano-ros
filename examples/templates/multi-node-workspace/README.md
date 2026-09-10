@@ -7,14 +7,17 @@ Copy the whole directory out and rename the packages.
 
 ```
 multi-node-workspace/
-├── Cargo.toml              # [workspace] members = the Rust pkgs; default_system = "demo_bringup"
+├── .colcon_workspace       # marks the workspace root; there is NO root Cargo.toml
 └── src/
     ├── talker_pkg/         # Node pkg  — lib, nros::node!(Talker),   publishes /chatter
     ├── listener_pkg/       # Node pkg  — lib, nros::node!(Listener), subscribes /chatter
-    ├── demo_bringup/       # Bringup pkg — declarative (package.xml + system.toml + launch/);
-    │                       #               NO Cargo.toml, NO src/. Not a workspace member.
-    └── robot_entry/        # Entry pkg — bin, nros::main!(launch = "demo_bringup")
+    └── demo_bringup/       # Bringup pkg — declarative (package.xml + system.toml + launch/);
+                            #               `[image.native]` names the image to build.
 ```
+
+The Entry pkg is GENERATED (RFC-0065 D4): `nros build native` writes it to
+`build/posix/native_entry/`. `nros materialize native` copies it into
+`src/` if you ever need to own it.
 
 ## The three roles
 
@@ -31,7 +34,7 @@ multi-node-workspace/
 | Composable node (`rclcpp_components`)       | **Node pkg** (`nros::node!`)                         |
 | `<pkg>_bringup` with `launch/*.launch.xml`  | **Bringup pkg** (declarative — same launch XML)     |
 | Per-target launch + deploy config           | `system.toml` (`[system]`, `[[component]]`, `[deploy.*]`) |
-| `ros2 launch <pkg> <file>` (ament install)  | `cargo run -p <entry_pkg>`; the Entry binary is the launch product |
+| `ros2 launch <pkg> <file>` (ament install)  | `nros build <image>`, then run the generated Entry binary; it is the launch product |
 | Composition container / main               | **Entry pkg** (`nros::main!(launch = "...")`)        |
 
 The launch file (`src/demo_bringup/launch/system.launch.xml`) is the
@@ -43,19 +46,28 @@ Just Works. (Python `.launch.py` is not supported yet.)
 ## Build
 
 ```bash
-nros sync            # generated bindings + patch table + resolves the
-                     # bringup's SystemModel into build/nros/models/
-cargo build
+nros sync            # generated bindings + resolves the bringup's
+                     # SystemModel into build/nros/models/
+nros build native    # the `[image.native]` declared in demo_bringup/system.toml
 ```
 
-Builds the two Node pkg rlibs + the `robot_entry` binary. The
-`nros::main!(launch = "demo_bringup")` macro in
-`robot_entry/src/main.rs` walks the workspace package index, parses the
-launch XML, and emits one `<node_pkg>::register(runtime)?;` call per
-`<node>` entry — so `robot_entry` links and boots both nodes in a single
-process. The Node pkgs use generated `std_msgs::msg::Int32`, so run
-`nros sync` before the first build and after changing message
-dependencies.
+There is no workspace `Cargo.toml` (RFC-0098 D9): the workspace is a
+directory of packages, as in colcon. `nros build native` GENERATES the entry
+package `build/posix/native_entry/` — a one-line
+`nros::main!(launch = "demo_bringup")` over the node packages the launch file
+names — and writes every cargo setting that image needs to
+`build/posix/native_entry/nros-cargo.toml`. The macro walks the package
+index, reads the launch file, and emits one `<node_pkg>::register(runtime)?;`
+call per `<node>`, so the one binary boots both nodes. The Node pkgs use
+generated `std_msgs::msg::Int32`, so run `nros sync` before the first build and
+after changing message dependencies.
+
+Driving cargo yourself is the same build, named explicitly:
+
+```bash
+cargo build --manifest-path build/posix/native_entry/Cargo.toml \
+            --config build/posix/native_entry/nros-cargo.toml
+```
 
 ## Validate the workspace
 
@@ -76,10 +88,10 @@ the whole topology):
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
 
 # boot the demo system
-cargo run -p robot_entry
+./build/posix/native_entry/target/debug/native_entry
 ```
 
-`robot_entry` opens the executor against the router, registers `talker`
+`native_entry` opens the executor against the router, registers `talker`
 + `listener`, and runs the topology.
 
 ### Caveat on plan generation
