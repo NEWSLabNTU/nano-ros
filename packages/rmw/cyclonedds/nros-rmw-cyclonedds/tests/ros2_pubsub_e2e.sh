@@ -7,8 +7,10 @@
 #   1. nano-ros publisher → `ros2 topic echo` (consumer)
 #   2. `ros2 topic pub` (producer) → nano-ros subscriber
 #
-# Skips cleanly with [SKIPPED] (exit 0) when /opt/ros/humble or
-# rmw_cyclonedds_cpp aren't on PATH.
+# Skips with [SKIPPED] (exit 0) when /opt/ros/humble or the ros2 CLI is
+# absent. FAILS at once when the ros2 peer cannot load rmw_cyclonedds_cpp
+# (`nros_require_ros2_rmw_loadable`): this header used to promise a skip there
+# too, nothing implemented it, and the cell timed out instead.
 #
 # Required env (set by the CTest harness):
 #   NROS_RMW_CYCLONEDDS_PUB_BIN   absolute path to ros2_pub binary
@@ -110,6 +112,10 @@ NROS_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 ROS_LD_LIBRARY_PATH="${LD_LIBRARY_PATH#*build/install/lib:}"
 ros2_run() { LD_LIBRARY_PATH="$ROS_LD_LIBRARY_PATH" ros2 "$@"; }
 nros_run() { LD_LIBRARY_PATH="$NROS_LD_LIBRARY_PATH" "$@"; }
+
+# Asked BEFORE either deadline starts, through the path the CLI will actually
+# get. See the helper for the host-tests measurement that put it here.
+nros_require_ros2_rmw_loadable "$RMW_IMPLEMENTATION" "$ROS_LD_LIBRARY_PATH" || exit 1
 
 failed=0
 

@@ -199,3 +199,67 @@ nros_export_cyclone_config() {
     echo "  bus pinned to loopback (issue 1009; NROS_DDS_ALLOW_LAN=1 to opt out)"
     return 0
 }
+
+# The ros2 PEER must be able to load the RMW this cell names. That is a
+# precondition, not a delivery result, so it is asked up front and fails in
+# milliseconds with the cause -- instead of surfacing as a deadline expiring.
+#
+# Measured on host-tests (run 34432822434, and every run that reached these
+# cells since 2026-09-08): `ghcr.io/newslabntu/nano-ros-ci:humble` is `FROM
+# ros:humble-ros-base`, and apt satisfies `ros-humble-rmw-implementation`'s
+# `rmw-fastrtps-cpp | rmw-cyclonedds-cpp | rmw-connextdds` with the FIRST
+# alternative, so that image had no `librmw_cyclonedds_cpp.so`. Every `ros2`
+# invocation died in rcl with "RMW implementation not installed" and nothing
+# said so until a deadline ran out: 126 s for the pub/sub cell, 600 s for the
+# service cell, whose log showed only the server's "timeout waiting for
+# request" -- the client's dlopen error was never printed at all.
+#
+# The probe is a real dlopen, through the SAME LD_LIBRARY_PATH the scripts give
+# the ros2 CLI, because that is the operation rcl performs
+# (`rcpputils::SharedLibrary("lib<rmw>.so")`). A file-existence check would be
+# a second opinion about the loader's search rules; this asks the loader. The
+# ament index is read only afterwards, to say WHICH cause it is: not installed
+# (a provisioning gap in the image or host), or installed but not loadable from
+# this path (issue 0774's class -- the environment, not the package).
+#
+# FAILS, never skips: a cell that cannot run in an image is a red on that
+# image, not a green (CLAUDE.md, "tests must fail on unmet preconditions").
+#
+# Usage: `nros_require_ros2_rmw_loadable <rmw> <ld-library-path>`. Returns 1,
+# having printed the FAIL reason, when the library does not load.
+nros_require_ros2_rmw_loadable() {
+    local rmw="$1" ld_path="$2"
+    local lib="lib${rmw}.so"
+    local err=""
+    local rc=0
+    err=$(env LD_LIBRARY_PATH="$ld_path" python3 -c \
+        'import ctypes, sys; ctypes.CDLL(sys.argv[1])' "$lib" 2>&1) || rc=$?
+    if [ "$rc" -eq 0 ]; then
+        echo "  ros2 peer can load $lib"
+        return 0
+    fi
+
+    local prefix
+    local installed=""
+    local -a prefixes=()
+    IFS=':' read -r -a prefixes <<< "${AMENT_PREFIX_PATH:-}"
+    for prefix in "${prefixes[@]}"; do
+        [ -n "$prefix" ] || continue
+        if [ -e "$prefix/share/ament_index/resource_index/packages/$rmw" ]; then
+            installed="$prefix"
+            break
+        fi
+    done
+
+    echo "FAIL: precondition -- the ros2 peer cannot load $lib (RMW_IMPLEMENTATION=$rmw)"
+    if [ -n "$installed" ]; then
+        echo "  $rmw IS installed (ament prefix $installed), but $lib does not load"
+        echo "  with the LD_LIBRARY_PATH the ros2 CLI is given here:"
+        echo "    ${ld_path:-<empty>}"
+    else
+        echo "  $rmw is not installed in any AMENT_PREFIX_PATH prefix (${AMENT_PREFIX_PATH:-<unset>})."
+        echo "  Install it -- on apt: ros-${ROS_DISTRO:-<distro>}-${rmw//_/-}"
+    fi
+    echo "  loader: $(printf '%s\n' "$err" | tail -n 1)"
+    return 1
+}
