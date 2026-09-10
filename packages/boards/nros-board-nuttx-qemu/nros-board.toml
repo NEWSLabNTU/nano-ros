@@ -130,10 +130,26 @@ supported_netstacks = []
 board_crate = "nros-board-nuttx-qemu"
 # Phase 252 (issue 0072) — forwards [safety] through the nuttx family to zenoh.
 cargo_config = '''
+# The triple is `riscv32imac-unknown-nuttx-elf`, built from the board's OWN
+# target spec rather than rustc's built-in one. Two deltas, both measured:
+#   - `eh-frame-header: false` — with the built-in spec rustc passes
+#     `-Wl,--eh-frame-hdr`, and the riscv-none-elf ld rejects it
+#     (`ld: unrecognized option '--eh-frame-hdr'`, phase-445, the image link of
+#     `workspace-rust-nuttx-riscv-realtime`). Nothing but the target spec turns
+#     that flag off.
+#   - `panic-strategy: abort` — the built-in riscv spec defaults to unwind.
+# One copy, owned by this board: it used to be duplicated into the realtime-rust
+# workspace root and the FFI subcrate. The file stem is the triple cargo uses
+# for `[target.<triple>]` below and for the target-dir component.
+# Regenerate on toolchain bumps:
+#   rustc -Z unstable-options --print target-spec-json \
+#     --target riscv32imac-unknown-nuttx-elf   (then re-apply the two deltas)
 [build]
-target = "riscv32imac-unknown-nuttx-elf"
+target = "${workspace}/packages/boards/nros-board-nuttx-qemu/riscv32imac-unknown-nuttx-elf.json"
 
 [unstable]
+# A JSON target spec is unstable; without this cargo refuses the `target` above.
+json-target-spec = true
 # phase-359 W7 — was `["std", "panic_abort"]`. The family is `no_std`, so the
 # standard library is no longer compiled from source for this target.
 #
@@ -148,11 +164,46 @@ target = "riscv32imac-unknown-nuttx-elf"
 build-std = ["core", "alloc", "panic_abort"]
 build-std-features = ["compiler-builtins-mem"]
 
+# #127 — STATIC image-link args, the same shape as the arm witness above. The
+# dynamic pieces (processed rv-virt `ld.script` in the board OUT_DIR, the
+# builtins-stub boot archive — riscv has no vectortab head object — and the -L
+# search dirs) PROPAGATE from this board crate's build.rs
+# (`nros_board_common::nuttx_image_link`). ZERO entry build.rs. The -march/-mabi
+# flags pick the gcc driver's rv32imac/ilp32 multilib, so `-lgcc` resolves.
+# The kernel-lib group is what the rv-virt:netnsh export stages: `-laudio`
+# (CONFIG_AUDIO=y in nuttx-config/riscv/defconfig) and no `-lxx` (no C++ in
+# that config — the arm group's `-lxx` would be `cannot find -lxx` here).
+# phase-445: this group lived only in the realtime-rust workspace's tracked
+# `.cargo/config.toml`, which W5 deleted; without it the image does not link.
+# NOT `-Wl,--wrap=poll`: that bridged Rust `std`'s `pollfd` to NuttX's (#167),
+# and `__wrap_poll` lived in the libc fork's `std` path. The family is `no_std`
+# since phase-359 W7, so nothing defines `__wrap_poll` any more.
 [target.riscv32imac-unknown-nuttx-elf]
 linker = "riscv-none-elf-gcc"
 rustflags = [
     "-C", "link-arg=-march=rv32imac",
     "-C", "link-arg=-mabi=ilp32",
+    "-C", "link-arg=-Tld.script",
+    "-C", "link-arg=--entry=__start",
+    "-C", "link-arg=-nostartfiles",
+    "-C", "link-arg=-nodefaultlibs",
+    "-C", "link-arg=-Wl,--start-group",
+    "-C", "link-arg=-lsched",
+    "-C", "link-arg=-ldrivers",
+    "-C", "link-arg=-lboards",
+    "-C", "link-arg=-lc",
+    "-C", "link-arg=-lmm",
+    "-C", "link-arg=-larch",
+    "-C", "link-arg=-lapps",
+    "-C", "link-arg=-lnet",
+    "-C", "link-arg=-lcrypto",
+    "-C", "link-arg=-lfs",
+    "-C", "link-arg=-lbinfmt",
+    "-C", "link-arg=-laudio",
+    "-C", "link-arg=-lopenamp",
+    "-C", "link-arg=-lboard",
+    "-C", "link-arg=-lgcc",
+    "-C", "link-arg=-Wl,--end-group",
 ]
 
 [env]
@@ -169,6 +220,14 @@ NUTTX_ARCH_INCLUDES = "arch/risc-v/src/chip arch/risc-v/src/common"
 NUTTX_LINKER_SCRIPT = "boards/risc-v/qemu-rv/rv-virt/scripts/ld.script"
 NUTTX_BOARD_MAKEDEFS = "boards/risc-v/qemu-rv/rv-virt/scripts/Make.defs"
 NUTTX_DEFCONFIG_DIR = "rv-virt:netnsh"
+# The names `nuttx_image_link` reads (the two above are the FFI helper's). Each
+# defaults to qemu-arm, so an image built without them is an arm link — the
+# realtime lane only got them from `scripts/nuttx/riscv-env.sh`, which a plain
+# `nros build` never sources (issue 0456's class). Empty VECTORTAB = "no head
+# object on this arch".
+NUTTX_LD_SCRIPT = "boards/risc-v/qemu-rv/rv-virt/scripts/ld.script"
+NUTTX_VECTORTAB = ""
+NUTTX_BOARD_LIB_DIR = "arch/risc-v/src/board"
 
 [patch.crates-io]
 libc = { path = "${workspace}/third-party/nuttx/libc" }
