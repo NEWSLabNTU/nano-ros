@@ -975,6 +975,11 @@ function(nros_resolve_knobs)
         _nros_resolve_knob(NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN
             "${NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN}")
     endif()
+    # phase-446 F2 -- a description's capacity. NOT derivable (the contract
+    # declares no descriptions), so it rides the plain ladder like
+    # NROS_PARAM_SERVICE_BUFFER_SIZE: Kconfig states it, the environment wins.
+    _nros_resolve_knob(NROS_MAX_PARAM_DESCRIPTION_LEN
+        "${CONFIG_NROS_MAX_PARAM_DESCRIPTION_LEN}")
 endfunction()
 
 # =============================================================================

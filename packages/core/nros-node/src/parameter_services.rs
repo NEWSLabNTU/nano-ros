@@ -340,6 +340,17 @@ const WIRE_SEQ_CAP: usize = 64;
 /// (`heapless::String<256>`). Same enforcement, same drift guard.
 const WIRE_STRING_CAP: usize = 256;
 
+// phase-446 F2 -- a description longer than the describe reply's string would
+// reach the wire EMPTY (`fit_or_empty`, mirroring the oracle's all-or-nothing
+// `push_str`), after being stored whole and never reported. Refuse the knob
+// instead, where the cap is known: this is the one crate that knows it.
+const _: () = assert!(
+    nros_params::MAX_PARAM_DESCRIPTION_LEN <= WIRE_STRING_CAP,
+    "NROS_MAX_PARAM_DESCRIPTION_LEN is larger than the 256-byte string an \
+     rcl_interfaces ParameterDescriptor carries, so the extra bytes could never \
+     reach `ros2 param describe`. State 256 or less (phase-446 F2)."
+);
+
 #[inline]
 fn ser_failed(_e: SerError) -> TransportError {
     TransportError::SerializationError

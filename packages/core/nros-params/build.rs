@@ -69,6 +69,21 @@ fn main() {
         needs("NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN"),
         256,
     );
+    // phase-446 F2 -- a DESCRIPTION's capacity, its own knob. The contract
+    // declares no descriptions (they are code-supplied text), so nothing here
+    // is derived: a board states it, and 0 is a legitimate statement meaning
+    // "no descriptions". It used to be MAX_STRING_VALUE_LEN, which the
+    // contract derives to 0 for an image with no string parameter -- so such
+    // an image had no room for any description. The default keeps the old
+    // effective 256, which is also the most the describe reply can carry
+    // (`rcl_interfaces` strings are 256 bytes; nros-node refuses a larger
+    // value at compile time).
+    let max_param_description_len = knob(
+        "NROS_MAX_PARAM_DESCRIPTION_LEN",
+        rungs.max_param_description_len,
+        None,
+        256,
+    );
 
     let contents = format!(
         "/// Maximum number of parameters the server can store \
@@ -89,7 +104,12 @@ fn main() {
          \n\
          /// Maximum length for byte array parameters \
          (set via NROS_MAX_BYTE_ARRAY_LEN, default 256).\n\
-         pub const MAX_BYTE_ARRAY_LEN: usize = {max_byte_array_len};\n"
+         pub const MAX_BYTE_ARRAY_LEN: usize = {max_byte_array_len};\n\
+         \n\
+         /// Maximum length for a parameter description, in bytes \
+         (set via NROS_MAX_PARAM_DESCRIPTION_LEN, default 256; 0 = no \
+         descriptions). phase-446 F2.\n\
+         pub const MAX_PARAM_DESCRIPTION_LEN: usize = {max_param_description_len};\n"
     );
 
     std::fs::write(Path::new(&out_dir).join("nros_params_config.rs"), contents).unwrap();

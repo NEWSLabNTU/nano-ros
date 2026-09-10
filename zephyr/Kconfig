@@ -1455,6 +1455,21 @@ config NROS_MAX_BYTE_ARRAY_LEN
       the parameter and this knob, if nothing does. Without a declaration
       the crate default of 256 stands.
 
+config NROS_MAX_PARAM_DESCRIPTION_LEN
+    int "Parameter description capacity in bytes"
+    default 256
+    range 0 256
+    help
+      Longest DESCRIPTION a parameter's descriptor can hold
+      (nros-params build.rs). Paid once per store slot whatever the slot
+      holds, like the other per-slot limits.
+
+      phase-446 F2 -- a board fact, never derived: the contract states a
+      parameter's name and type, not its description. 0 is a real choice
+      meaning "no descriptions". A longer description is truncated at a
+      character boundary and logged once per parameter, naming this knob.
+      256 is the most an rcl_interfaces describe reply carries.
+
 # =============================================================================
 # Common Platform Configuration
 # =============================================================================

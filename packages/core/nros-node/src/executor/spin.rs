@@ -9161,6 +9161,41 @@ impl<'s> Executor<'s> {
             self.refresh_use_sim_time_from_store();
         }
         let _ = handled;
+        self.report_truncated_descriptions();
+    }
+
+    /// phase-446 F2 -- log each parameter whose description did not fit
+    /// `NROS_MAX_PARAM_DESCRIPTION_LEN`, once, naming the knob.
+    ///
+    /// `nros-params` has no logger, so it truncates, records the truncation on
+    /// the stored descriptor, and hands it over here. Asked on every spin
+    /// because a declaration can arrive through builders this executor never
+    /// sees the end of (`parameter::<T>()` returns the store's own builder);
+    /// while nothing is pending the store answers from one flag, without
+    /// walking its table.
+    #[cold]
+    fn report_truncated_descriptions(&mut self) {
+        let Some(params) = self.params.as_mut() else {
+            return;
+        };
+        let nodes = &self.nodes;
+        params.server.take_truncated_descriptions(|key, name| {
+            let (ns, node) = nodes
+                .get(key.index())
+                .map_or(("", "?"), |r| (r.namespace.as_str(), r.name.as_str()));
+            nros_log::log_warn!(
+                nros_log::get_logger("nros"),
+                "parameter `{}` on node {}/{}: its description is longer than \
+                 NROS_MAX_PARAM_DESCRIPTION_LEN ({} bytes), so `ros2 param describe` \
+                 answers it truncated at a character boundary. Raise \
+                 NROS_MAX_PARAM_DESCRIPTION_LEN to keep it whole; 0 stores no \
+                 descriptions. Logged once for this parameter (phase-446 F2).",
+                name,
+                ns.trim_end_matches('/'),
+                node,
+                nros_params::MAX_PARAM_DESCRIPTION_LEN
+            );
+        });
     }
 
     /// Declare a parameter with a value and descriptor on the PRIMARY node.

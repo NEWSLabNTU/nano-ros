@@ -161,6 +161,7 @@ creation timeouts because slots cannot be recycled between separate
 | `NROS_MAX_STRING_VALUE_LEN` | 256 | Max string parameter value length (bytes) |
 | `NROS_MAX_ARRAY_LEN` | 32 | Max parameter array length |
 | `NROS_MAX_BYTE_ARRAY_LEN` | 256 | Max byte array parameter length |
+| `NROS_MAX_PARAM_DESCRIPTION_LEN` | 256 | Max parameter description length (bytes, per slot); 0 = no descriptions |
 | `NROS_EXECUTOR_MAX_HANDLES` | 16 | Max handles in C API executor |
 | `NROS_MAX_SUBSCRIPTIONS` | 8 | Max subscriptions in C API executor |
 | `NROS_MAX_TIMERS` | 8 | Max timers in C API executor |

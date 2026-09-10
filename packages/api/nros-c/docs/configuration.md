@@ -29,6 +29,7 @@ take effect.
 | `NROS_MAX_STRING_VALUE_LEN` | Max string parameter value length | `256` |
 | `NROS_MAX_ARRAY_LEN` | Max parameter array length | `32` |
 | `NROS_MAX_BYTE_ARRAY_LEN` | Max byte array parameter length | `256` |
+| `NROS_MAX_PARAM_DESCRIPTION_LEN` | Max parameter description length (0 = none) | `256` |
 
 ## Transport Buffer Tuning
 
