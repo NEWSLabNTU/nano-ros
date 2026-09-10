@@ -1,676 +1,147 @@
-//! Stage 4a — emit the cargo workspace root (phase-383 W3.a/W3.c, RFC-0065 D3).
+//! The cargo workspace root that no longer exists (RFC-0098 D9, phase-445 W5).
 //!
-//! ## What this replaces
+//! ## What this module used to do
 //!
-//! A hand-written `examples/workspaces/rust/Cargo.toml` listing 19 members plus
-//! an `exclude` for the two west entries. Every one of those lines is derivable
-//! from the tree, and a workspace that gains a package but forgets the line
-//! simply does not build it — silently.
+//! phase-383 W3.a generated `<ws>/Cargo.toml`: a `[workspace]` listing every
+//! node package and every generated entry, with an `exclude` for the west
+//! entries. It sat at the workspace ROOT because cargo resolves a package's
+//! workspace by walking UP and requires members to sit BELOW the root — so a
+//! root under `build/` was refused (measured 2026-08-26). RFC-0065 D3 recorded
+//! that as "the cargo root is `<ws>/Cargo.toml` and nowhere else".
 //!
-//! ## Where it goes — cargo decides, and it is NOT `build/`
+//! ## Why there is no root now
 //!
-//! **RFC-0065 D3/D8 assumed the generated root lives in `build/<coord>/` like
-//! every other build artefact. Cargo forbids it, twice over.** Measured
-//! 2026-08-26 while implementing W3.a:
+//! That constraint is real only while a workspace EXISTS. With no `[workspace]`
+//! anywhere, the generated entry under `build/<coord>/<entry>/` is its own cargo
+//! root and reaches `src/*` as PATH dependencies, which need not sit below
+//! anything (RFC-0098 D9, measured 2026-09-10). Each image then has its own
+//! lock and its own settings file ([`super::cargo_config`]), and a workspace is
+//! a directory of packages, as in colcon.
 //!
-//! ```text
-//! error: package `<ws>/src/helper/Cargo.toml` is a member of the wrong workspace
-//!   expected: <ws>/build/posix-zenoh/Cargo.toml
-//!   actual:   <ws>/Cargo.toml
+//! ## What is left
 //!
-//! error: workspace member `<ws>/src/helper/Cargo.toml` is not hierarchically
-//!        below the workspace root `<ws>/build/posix-zenoh`
-//! ```
-//!
-//! A package belongs to exactly one workspace, resolved by walking UP from the
-//! package; and members must sit BELOW the root. Both rules put the cargo root
-//! at `<ws>/Cargo.toml` and nowhere else. The cmake root has no such
-//! constraint and does live under `build/` (W4), so the two drivers genuinely
-//! differ here — that asymmetry is cargo's, not a design choice of ours.
-//!
-//! ## A tracked root is USED, never clobbered
-//!
-//! Which raises the obvious hazard: the generated path is exactly where a
-//! user's hand-written root already sits. So this module never overwrites one.
-//! If `<ws>/Cargo.toml` declares a `[workspace]`, that is the root and the
-//! build uses it as-is; generation happens only when there is none.
-//!
-//! That is also what makes RFC-0065 D13's migration a DELETION rather than a
-//! cutover: W9 removes the hand-written root, and the next `nros build`
-//! generates the same member set from the tree.
-//!
-//! ## Determinism (W3.c)
-//!
-//! Reproducible builds require bit-identical output across machines, and
-//! generated files depending on host state is the classic breaker. So:
-//! **member paths are RELATIVE to the manifest**, the list is **sorted**, and
-//! nothing carries a timestamp. `emitted_manifest_is_deterministic` and
-//! `no_absolute_paths_in_the_manifest` are the gates — the same shape issue
-//! 0320 used for model paths.
+//! Roots written by the OLD builder still sit, gitignored, in every checkout
+//! that ran it. A stale one is not harmless: its `[workspace]` claims the
+//! generated entries below it, and cargo then refuses them with "current
+//! package believes it's in a workspace when it's not". So [`retire`] deletes a
+//! root carrying [`GENERATED_MARKER`] — our own build output — and REFUSES an
+//! authored one rather than deleting a user's file: D9 says a workspace has no
+//! root build file, and the user is the one who has to remove it.
 
-use std::{
-    collections::BTreeSet,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
-use super::discover::Discovered;
-
-/// Render the workspace manifest for `discovered`, as written to
-/// `manifest_dir/Cargo.toml`.
-///
-/// `excluded` are package directories that must NOT become members — west and
-/// ESP-IDF entries, which are built by their own frameworks and would fail a
-/// host `cargo build`. `examples/workspaces/rust` documents exactly this in its
-/// hand-written `exclude`.
-pub fn render(
-    discovered: &Discovered,
-    manifest_dir: &Path,
-    excluded: &BTreeSet<PathBuf>,
-    extra: &[PathBuf],
-    default_system: Option<&str>,
-) -> Result<String, String> {
-    // D3's intersection rule, BEFORE anything is listed: a participating
-    // package must carry the file its declared driver needs. Without this the
-    // package below is dropped by the `cargo_member` test with no explanation
-    // — which is precisely the pre-W3 silence this work item removes. Checked
-    // here as well as in `cmd::build` so a caller that reached this emitter by
-    // another road cannot get the silent version.
-    crate::routing::check_declarations(&discovered.packages)?;
-
-    let mut members: Vec<String> = Vec::new();
-    // Generated packages — the entry (W3.b) — live under `build/`, which the
-    // discovery walk PRUNES by design. They are members nonetheless, and cargo
-    // accepts them because `build/` is still below the workspace root.
-    for dir in extra {
-        members.push(super::paths::relative_or_err(manifest_dir, dir)?);
-    }
-    for pkg in &discovered.packages {
-        if excluded.contains(&pkg.dir) {
-            continue;
-        }
-        // RFC-0094 D3 (phase-439 W3) — the package's `<build_type>` selects
-        // the DRIVER; file presence only decides whether it participates. This
-        // was `pkg.dir.join("Cargo.toml").is_file()`, which answered both
-        // questions with one probe and therefore swept in 21 dual-file packages
-        // that cmake drives: a Zephyr west leaf's `Cargo.toml` is an
-        // implementation detail INSIDE its cmake build, and cargo cannot build
-        // a staticlib for the board. 13 of them also declare their own
-        // `[workspace]`, which makes listing them here a hard cargo error
-        // (`multiple workspace roots found in the same workspace`), so this is
-        // a repair and not merely a narrowing.
-        if !crate::routing::route(pkg).cargo_member {
-            continue;
-        }
-        let rel = super::paths::relative_or_err(manifest_dir, &pkg.dir)?;
-        members.push(rel);
-    }
-    // Sorted so the output is byte-identical across machines and across runs.
-    // Discovery order is topological, which is right for BUILDING and wrong
-    // for a file that must not churn.
-    members.sort();
-    members.dedup();
-
-    if members.is_empty() {
-        return Err(
-            "no cargo packages in this workspace — nothing for a cargo root to \
-             list. A C/C++ workspace builds through the cmake root instead \
-             (phase-383 W4)."
-                .to_string(),
-        );
-    }
-
-    let mut out = String::new();
-    out.push_str(
-        "# GENERATED by `nros build` (phase-383 W3.a) — DO NOT EDIT.\n\
-         #\n\
-         # Regenerated on every build from the packages discovered in the\n\
-         # workspace. Edit the workspace, not this file: a change here is lost\n\
-         # on the next `nros build`.\n\
-         #\n\
-         # Member paths are RELATIVE and sorted so this file is byte-identical\n\
-         # across machines (phase-383 W3.c).\n\n",
-    );
-    out.push_str("[workspace]\nresolver = \"2\"\nmembers = [\n");
-    for m in &members {
-        out.push_str(&format!("    \"{m}\",\n"));
-    }
-    out.push_str("]\n");
-
-    // `exclude` is NOT optional for a cargo package that sits under the root
-    // and is not a member. A west entry is exactly that: `west build` compiles
-    // it for the board, and cargo — walking UP from it — must be told it is not
-    // part of this workspace, or the macro's pkg-index walk and a host build
-    // both go wrong. The hand-written roots carry this exclusion with a comment
-    // explaining the same thing.
-    //
-    // RFC-0094 D3 (phase-439 W3) MADE THIS BIGGER, and it is not optional. A
-    // dual-file package that declares a cmake build type now leaves `members`
-    // while its `Cargo.toml` stays on disk under this root — exactly the
-    // "unlisted and unexcluded" state the paragraph above calls an error. So
-    // the exclusion is derived from the ROUTING, not only from the caller's
-    // `excluded` set: anything with a manifest that did not become a member is
-    // listed here. In-tree all 21 such packages happen to be covered another
-    // way (13 declare their own `[workspace]`, which stops cargo's walk-up
-    // before it reaches this root; 13 are already in `excluded` as west/idf
-    // entries; six are both), so this is the case that must not depend on that
-    // coincidence holding for the next package someone adds.
-    let mut skipped: Vec<String> = Vec::new();
-    let member_dirs: BTreeSet<&PathBuf> = discovered
-        .packages
-        .iter()
-        .filter(|p| !excluded.contains(&p.dir) && crate::routing::route(p).cargo_member)
-        .map(|p| &p.dir)
-        .collect();
-    for dir in excluded
-        .iter()
-        .chain(discovered.packages.iter().map(|p| &p.dir))
-    {
-        // nros-routing-exempt: not a routing decision — this asks whether cargo
-        // has anything to walk UP from, which is true of a package cmake drives.
-        if dir.join("Cargo.toml").is_file() && !member_dirs.contains(dir) {
-            skipped.push(super::paths::relative_or_err(manifest_dir, dir)?);
-        }
-    }
-    skipped.sort();
-    skipped.dedup();
-    if !skipped.is_empty() {
-        out.push_str(
-            "\n# Built by their own framework (west / idf), never by cargo.\n\
-             # EXCLUDED rather than merely unlisted: cargo walks UP from a\n\
-             # package to find its workspace, so an unlisted-and-unexcluded\n\
-             # package under this root is an error, not an omission.\n",
-        );
-        out.push_str("exclude = [\n");
-        for e in &skipped {
-            out.push_str(&format!("    \"{e}\",\n"));
-        }
-        out.push_str("]\n");
-    }
-
-    // Read by the CLI's workspace discovery; dropping it would make `nros sync`
-    // and friends lose the workspace's default bringup.
-    if let Some(sys) = default_system {
-        out.push_str(&format!(
-            "\n[workspace.metadata.nros]\ndefault_system = \"{sys}\"\n"
-        ));
-    }
-    Ok(out)
-}
-
-/// Whether `root` already carries a hand-written (or previously generated)
-/// cargo workspace root.
-/// The first line of a root this module wrote. A generated root must be
-/// distinguishable from an authored one, or the second build reads its own
-/// output as a user's file and stops regenerating.
+/// The first line of a root the phase-383 builder wrote. How [`retire`] tells
+/// our output from a user's file.
 pub const GENERATED_MARKER: &str = "# GENERATED by `nros build`";
 
+/// What sits at `<ws>/Cargo.toml`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RootState {
+    /// No manifest, or a manifest with no `[workspace]` (a package, not a root).
+    None,
+    /// A root the old builder generated.
+    Generated,
+    /// A `[workspace]` a person wrote.
+    Authored,
+}
+
+/// Classify `<root>/Cargo.toml`.
 #[must_use]
-pub fn has_tracked_root(root: &Path) -> bool {
+pub fn state(root: &Path) -> RootState {
     let Ok(text) = std::fs::read_to_string(root.join("Cargo.toml")) else {
-        return false;
+        return RootState::None;
     };
-    // A root WE wrote is not a tracked root. Without this the builder freezes
-    // after its first run: the generated file has a `[workspace]` table, so the
-    // next build reads it as authored and returns early — and anything the
-    // first run did not know about (the generated entry, a new package) never
-    // reaches `members`. phase-383 W10 hit this on the first workspace.
     if text.starts_with(GENERATED_MARKER) {
-        return false;
+        return RootState::Generated;
     }
-    text.parse::<toml::Value>()
+    let is_workspace = text
+        .parse::<toml::Value>()
         .ok()
-        .is_some_and(|d| d.get("workspace").is_some())
+        .is_some_and(|d| d.get("workspace").is_some());
+    if is_workspace {
+        RootState::Authored
+    } else {
+        RootState::None
+    }
 }
 
-/// Ensure a cargo workspace root exists at `root`, generating one if absent.
+/// Remove a generated workspace root (and the lock it produced); refuse an
+/// authored one.
 ///
-/// Returns the manifest path. **An existing `[workspace]` root is returned
-/// untouched** — see the module docs: this path is a user's file until D13's
-/// migration deletes it.
-pub fn ensure(
-    discovered: &Discovered,
-    root: &Path,
-    excluded: &BTreeSet<PathBuf>,
-    extra: &[PathBuf],
-    default_system: Option<&str>,
-) -> Result<PathBuf, String> {
-    let path = root.join("Cargo.toml");
-    if has_tracked_root(root) {
-        return Ok(path);
+/// Returns the path removed, if any.
+pub fn retire(root: &Path) -> Result<Option<PathBuf>, String> {
+    let manifest = root.join("Cargo.toml");
+    match state(root) {
+        RootState::None => Ok(None),
+        RootState::Generated => {
+            std::fs::remove_file(&manifest)
+                .map_err(|e| format!("removing the stale generated {}: {e}", manifest.display()))?;
+            // The lock beside it resolved THAT root's member list, which no
+            // longer exists; each entry now carries its own.
+            let _ = std::fs::remove_file(root.join("Cargo.lock"));
+            Ok(Some(manifest))
+        }
+        RootState::Authored => Err(format!(
+            "{} declares a cargo `[workspace]`, and a workspace has no root build file \
+             (RFC-0098 D9).\n\
+             \n\
+             `nros build` gives each image its own cargo root — the generated entry under \
+             `build/<coord>/` — and a `[workspace]` above it claims that entry, which cargo \
+             refuses (\"current package believes it's in a workspace when it's not\").\n\
+             \n\
+             Delete {} (and its `Cargo.lock`); the packages under `src/` need nothing else.",
+            manifest.display(),
+            manifest.display()
+        )),
     }
-    write(discovered, root, excluded, extra, default_system)
-}
-
-/// Write the manifest into `manifest_dir`, creating it if needed.
-///
-/// Callers want [`ensure`]; this is the unconditional half, kept separate so
-/// the "never clobber" decision has exactly one home.
-pub fn write(
-    discovered: &Discovered,
-    manifest_dir: &Path,
-    excluded: &BTreeSet<PathBuf>,
-    extra: &[PathBuf],
-    default_system: Option<&str>,
-) -> Result<PathBuf, String> {
-    let body = render(discovered, manifest_dir, excluded, extra, default_system)?;
-    std::fs::create_dir_all(manifest_dir)
-        .map_err(|e| format!("creating {}: {e}", manifest_dir.display()))?;
-    let path = manifest_dir.join("Cargo.toml");
-    // Only rewrite when the content changed: an unchanged mtime keeps cargo
-    // from re-resolving, and this repo's fixture staleness rules make a
-    // gratuitous touch expensive (CLAUDE.md's mtime treadmill).
-    if std::fs::read_to_string(&path).ok().as_deref() != Some(body.as_str()) {
-        std::fs::write(&path, &body).map_err(|e| format!("writing {}: {e}", path.display()))?;
-    }
-    Ok(path)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cargo_nano_ros::provider_scan::WorkspacePackage;
 
-    fn pkg(root: &Path, name: &str, cargo: bool) -> WorkspacePackage {
-        let dir = root.join("src").join(name);
-        std::fs::create_dir_all(&dir).unwrap();
-        if cargo {
-            std::fs::write(dir.join("Cargo.toml"), "[package]\n").unwrap();
-        }
-        WorkspacePackage {
-            name: name.to_string(),
-            dir,
-            depends: Default::default(),
-            // Undeclared, so RFC-0094 D3 falls back to file presence and these
-            // existing cases keep asserting exactly what they asserted before.
-            // The declaration-driven cases are their own tests below.
-            build_type: None,
-        }
-    }
-
-    /// A package carrying a `<build_type>` declaration (RFC-0094 D3).
-    fn declared(root: &Path, name: &str, cargo: bool, cmake: bool, bt: &str) -> WorkspacePackage {
-        let mut p = pkg(root, name, cargo);
-        if cmake {
-            std::fs::write(p.dir.join("CMakeLists.txt"), "project(x)\n").unwrap();
-        }
-        p.build_type = Some(bt.to_string());
-        p
-    }
-
-    fn discovered(packages: Vec<WorkspacePackage>) -> Discovered {
-        Discovered {
-            packages,
-            cargo_only: Default::default(),
-            warnings: Vec::new(),
-        }
+    #[test]
+    fn no_manifest_is_no_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(state(tmp.path()), RootState::None);
+        assert_eq!(retire(tmp.path()).unwrap(), None);
     }
 
     #[test]
-    fn members_are_relative_never_absolute() {
-        // W3.c — an absolute path makes the manifest host-specific, which is
-        // the classic reproducible-build breaker.
+    fn a_generated_root_is_retired_with_its_lock() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![pkg(root, "talker_pkg", true)]);
-        let body = render(
-            &d,
-            &root.join("build/native"),
-            &Default::default(),
-            &[],
-            None,
+        std::fs::write(
+            tmp.path().join("Cargo.toml"),
+            format!("{GENERATED_MARKER} (phase-383 W3.a) — DO NOT EDIT.\n[workspace]\n"),
         )
-        .expect("renders");
-        assert!(
-            body.contains("\"../../src/talker_pkg\""),
-            "members must be relative to the manifest: {body}"
-        );
-        assert!(
-            !body.contains(root.to_str().unwrap()),
-            "no absolute path may appear: {body}"
-        );
+        .unwrap();
+        std::fs::write(tmp.path().join("Cargo.lock"), "version = 4\n").unwrap();
+        assert_eq!(state(tmp.path()), RootState::Generated);
+        assert!(retire(tmp.path()).unwrap().is_some());
+        assert!(!tmp.path().join("Cargo.toml").exists());
+        assert!(!tmp.path().join("Cargo.lock").exists());
     }
 
     #[test]
-    fn output_is_byte_identical_across_runs() {
+    fn an_authored_root_is_refused_and_never_deleted() {
         let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![pkg(root, "zzz_pkg", true), pkg(root, "aaa_pkg", true)]);
-        let dir = root.join("build/native");
-        let a = render(&d, &dir, &Default::default(), &[], None).expect("a");
-        let b = render(&d, &dir, &Default::default(), &[], None).expect("b");
-        assert_eq!(a, b);
-    }
-
-    #[test]
-    fn members_are_sorted_not_in_discovery_order() {
-        // Discovery order is TOPOLOGICAL, which is right for building and wrong
-        // for a file that must not churn when an unrelated dep is added.
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![pkg(root, "zzz_pkg", true), pkg(root, "aaa_pkg", true)]);
-        let body = render(
-            &d,
-            &root.join("build/native"),
-            &Default::default(),
-            &[],
-            None,
-        )
-        .expect("renders");
-        let a = body.find("aaa_pkg").expect("present");
-        let z = body.find("zzz_pkg").expect("present");
-        assert!(a < z, "sorted, not topological: {body}");
-    }
-
-    #[test]
-    fn a_non_cargo_package_is_not_a_member() {
-        // A C/C++ package is part of the system and cannot be a cargo member;
-        // it reaches the image through the cmake root (W4).
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![
-            pkg(root, "rust_pkg", true),
-            pkg(root, "cpp_pkg", false),
-        ]);
-        let body = render(
-            &d,
-            &root.join("build/native"),
-            &Default::default(),
-            &[],
-            None,
-        )
-        .expect("renders");
-        assert!(body.contains("rust_pkg"), "{body}");
-        assert!(!body.contains("cpp_pkg"), "{body}");
-    }
-
-    // -- RFC-0094 D3 / phase-439 W3 -- the DECLARATION picks the driver ----
-
-    /// The 21 packages W0 measured, in one case: a dual-file package declaring
-    /// a cmake build type is not a cargo member, because cmake drives it and
-    /// the `Cargo.toml` is an implementation detail inside that build.
-    ///
-    /// Before W3 the member test was `Cargo.toml` presence, so every one of
-    /// these landed in `members` -- and for 13 of them that is a HARD cargo
-    /// error, not a slow build: they declare their own `[workspace]`, and
-    /// `multiple workspace roots found in the same workspace` is what cargo
-    /// says about a root listing another root as a member.
-    #[test]
-    fn a_dual_file_package_declaring_cmake_is_not_a_member() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![
-            declared(root, "rust_node_pkg", true, false, "nros_cargo"),
-            declared(root, "rust_heartbeat_pkg", true, true, "nros_cmake"),
-        ]);
-        let body = render(
-            &d,
-            &root.join("build/native"),
-            &Default::default(),
-            &[],
-            None,
-        )
-        .expect("renders");
-        let members = &body[body.find("members").unwrap()..];
-        let members = &members[..members.find(']').unwrap()];
-        assert!(members.contains("rust_node_pkg"), "{body}");
-        assert!(
-            !members.contains("rust_heartbeat_pkg"),
-            "a cmake-driven Rust node must leave the members list: {body}"
-        );
-    }
-
-    /// And it must be EXCLUDED, not merely unlisted. Cargo walks UP from a
-    /// package to find its workspace, so a manifest under this root that is in
-    /// neither list is an error rather than an omission -- the same reason the
-    /// west entries are excluded, reached by a different road.
-    #[test]
-    fn a_cmake_driven_package_with_a_manifest_is_excluded() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![
-            declared(root, "rust_node_pkg", true, false, "nros_cargo"),
-            declared(root, "rust_heartbeat_pkg", true, true, "nros_cmake"),
-        ]);
-        let body = render(
-            &d,
-            &root.join("build/native"),
-            &Default::default(),
-            &[],
-            None,
-        )
-        .expect("renders");
-        let excl = body.find("exclude").expect("an exclude block is required");
-        assert!(
-            body[excl..].contains("rust_heartbeat_pkg"),
-            "unlisted-and-unexcluded is a cargo error, not an omission: {body}"
-        );
-    }
-
-    /// A cmake-driven package with NO manifest needs no exclusion -- there is
-    /// nothing for cargo to walk up from. Pinned so the derivation above does
-    /// not grow a spurious entry for every C package in a mixed workspace.
-    #[test]
-    fn a_cmake_only_package_is_not_excluded_because_it_has_nothing_to_exclude() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![
-            declared(root, "rust_node_pkg", true, false, "nros_cargo"),
-            declared(root, "c_talker_pkg", false, true, "nros_cmake"),
-        ]);
-        let body = render(
-            &d,
-            &root.join("build/native"),
-            &Default::default(),
-            &[],
-            None,
-        )
-        .expect("renders");
-        assert!(
-            !body.contains("c_talker_pkg"),
-            "a package with no Cargo.toml belongs in neither list: {body}"
-        );
-    }
-
-    /// The 64 declare-but-no-file packages, and the 5 that declare nothing:
-    /// participation stays file presence, so neither class changes anything.
-    #[test]
-    fn an_undeclared_cargo_package_is_still_a_member() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![pkg(root, "legacy_pkg", true)]);
-        let body = render(
-            &d,
-            &root.join("build/native"),
-            &Default::default(),
-            &[],
-            None,
-        )
-        .expect("renders");
-        assert!(body.contains("legacy_pkg"), "{body}");
-    }
-
-    /// W3's acceptance: a participating package whose declared driver has no
-    /// file is a LOUD error naming it, where before it was silently skipped by
-    /// the file probe that answered both questions.
-    #[test]
-    fn a_cargo_declaration_over_a_cmake_only_package_names_the_package() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![
-            declared(root, "healthy_pkg", true, false, "nros_cargo"),
-            declared(root, "misdeclared_pkg", false, true, "nros_cargo"),
-        ]);
-        let e = render(
-            &d,
-            &root.join("build/native"),
-            &Default::default(),
-            &[],
-            None,
-        )
-        .expect_err("a misdeclared participant must not be silently dropped");
-        assert!(e.contains("misdeclared_pkg"), "must NAME the package: {e}");
-        assert!(e.contains("Cargo.toml"), "and the missing file: {e}");
-        assert!(!e.contains("healthy_pkg"), "and only the offender: {e}");
-    }
-
-    #[test]
-    fn an_excluded_entry_is_not_a_member_but_is_excluded() {
-        // west entries are `exclude`d by hand today for a concrete reason: a
-        // Zephyr staticlib cannot be built for the host. And merely leaving one
-        // OUT of `members` is not enough — cargo walks up from a package to
-        // find its workspace, so an unlisted-and-unexcluded package under the
-        // root is an error rather than an omission.
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let zephyr = pkg(root, "zephyr_entry", true);
-        let d = discovered(vec![pkg(root, "native_entry", true), zephyr.clone()]);
-        let excluded: BTreeSet<PathBuf> = [zephyr.dir.clone()].into_iter().collect();
-        let body = render(&d, &root.join("build/native"), &excluded, &[], None).expect("renders");
-
-        let members = &body[body.find("members").unwrap()..body.find("exclude").unwrap()];
-        assert!(members.contains("native_entry"), "{body}");
-        assert!(!members.contains("zephyr_entry"), "not a member: {body}");
-        assert!(
-            body.contains("exclude = ["),
-            "and cargo must be told so explicitly: {body}"
-        );
-        assert!(
-            body[body.find("exclude").unwrap()..].contains("zephyr_entry"),
-            "{body}"
-        );
-    }
-
-    #[test]
-    fn the_workspace_default_system_survives_generation() {
-        // The hand-written roots carry `[workspace.metadata.nros] default_system`
-        // and the CLI reads it. A generated root that dropped it would break
-        // `nros sync`'s workspace discovery the moment W10 deleted the original.
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![pkg(root, "talker_pkg", true)]);
-        let body = render(
-            &d,
-            &root.join("build/native"),
-            &Default::default(),
-            &[],
-            Some("demo_bringup"),
-        )
-        .expect("renders");
-        assert!(body.contains("[workspace.metadata.nros]"), "{body}");
-        assert!(body.contains("default_system = \"demo_bringup\""), "{body}");
-    }
-
-    #[test]
-    fn a_workspace_with_no_cargo_packages_says_to_use_cmake() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![pkg(root, "cpp_pkg", false)]);
-        let e = render(
-            &d,
-            &root.join("build/native"),
-            &Default::default(),
-            &[],
-            None,
-        )
-        .expect_err("nothing to list");
-        assert!(e.contains("W4"), "points at the cmake root: {e}");
-    }
-
-    #[test]
-    fn writing_twice_does_not_touch_the_file() {
-        // CLAUDE.md's mtime treadmill: a gratuitous rewrite re-stales every
-        // fixture keyed on this tree.
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![pkg(root, "talker_pkg", true)]);
-        let dir = root.join("build/native");
-        let p1 = write(&d, &dir, &Default::default(), &[], None).expect("first");
-        let m1 = std::fs::metadata(&p1).unwrap().modified().unwrap();
-        std::thread::sleep(std::time::Duration::from_millis(20));
-        let p2 = write(&d, &dir, &Default::default(), &[], None).expect("second");
-        let m2 = std::fs::metadata(&p2).unwrap().modified().unwrap();
-        assert_eq!(m1, m2, "unchanged content must not rewrite the file");
-    }
-
-    #[test]
-    fn a_tracked_workspace_root_is_used_not_clobbered() {
-        // The generated path IS where a user's hand-written root sits, so
-        // overwriting one would destroy source. D13's migration is a deletion:
-        // remove the tracked root, and the next build generates it.
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![pkg(root, "talker_pkg", true)]);
-        let authored = "[workspace]\nmembers = [\"src/talker_pkg\"]\n# hand-written\n";
-        std::fs::write(root.join("Cargo.toml"), authored).unwrap();
-
-        let p = ensure(&d, root, &Default::default(), &[], None).expect("uses it");
-        assert_eq!(p, root.join("Cargo.toml"));
+        let authored = "[workspace]\nmembers = [\"src/a\"]\n";
+        std::fs::write(tmp.path().join("Cargo.toml"), authored).unwrap();
+        let e = retire(tmp.path()).expect_err("refused");
+        assert!(e.contains("RFC-0098 D9"), "{e}");
         assert_eq!(
-            std::fs::read_to_string(&p).unwrap(),
+            std::fs::read_to_string(tmp.path().join("Cargo.toml")).unwrap(),
             authored,
-            "a tracked root must survive byte-for-byte"
+            "a user's file survives byte for byte"
         );
     }
 
     #[test]
-    fn a_root_is_generated_when_none_exists() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![pkg(root, "talker_pkg", true)]);
-        let p = ensure(&d, root, &Default::default(), &[], None).expect("generates");
-        let body = std::fs::read_to_string(&p).unwrap();
-        assert!(body.starts_with("# GENERATED"), "{body}");
-        assert!(
-            body.contains("\"src/talker_pkg\""),
-            "relative to the root: {body}"
-        );
-    }
-
-    #[test]
-    fn a_generated_root_is_not_a_tracked_root() {
-        // Otherwise the builder freezes after its first run: the generated file
-        // has a [workspace] table, the next build reads it as authored and
-        // returns early, and the generated ENTRY never reaches `members`.
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![pkg(root, "talker_pkg", true)]);
-        write(&d, root, &Default::default(), &[], None).expect("first");
-        assert!(
-            !has_tracked_root(root),
-            "a root this module wrote must stay regenerable"
-        );
-        // And a second pass still picks up a newly-added member.
-        let d2 = discovered(vec![
-            pkg(root, "talker_pkg", true),
-            pkg(root, "late_pkg", true),
-        ]);
-        ensure(&d2, root, &Default::default(), &[], None).expect("second");
-        let body = std::fs::read_to_string(root.join("Cargo.toml")).unwrap();
-        assert!(body.contains("late_pkg"), "{body}");
-    }
-
-    #[test]
-    fn a_non_workspace_cargo_toml_does_not_count_as_a_root() {
-        // A single-package workspace has a Cargo.toml with no [workspace].
+    fn a_package_manifest_at_the_root_is_not_a_workspace_root() {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("Cargo.toml"), "[package]\nname = \"x\"\n").unwrap();
-        assert!(!has_tracked_root(tmp.path()));
-    }
-
-    #[test]
-    fn the_manifest_says_it_is_generated() {
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let d = discovered(vec![pkg(root, "talker_pkg", true)]);
-        let body = render(
-            &d,
-            &root.join("build/native"),
-            &Default::default(),
-            &[],
-            None,
-        )
-        .expect("renders");
-        assert!(body.starts_with("# GENERATED"), "{body}");
-        assert!(body.contains("DO NOT EDIT"), "{body}");
+        assert_eq!(state(tmp.path()), RootState::None);
+        assert!(retire(tmp.path()).unwrap().is_none());
+        assert!(tmp.path().join("Cargo.toml").exists());
     }
 }

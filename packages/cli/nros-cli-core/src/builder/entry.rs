@@ -243,6 +243,16 @@ pub fn render_manifest(
         spec.image_id, spec.image_id
     ));
 
+    // Its OWN workspace root (RFC-0098 D9). There is no `<ws>/Cargo.toml` any
+    // more, so without this cargo keeps walking up and the first `[workspace]`
+    // it meets claims the entry — in-tree that is the nano-ros root, and cargo
+    // refuses with "current package believes it's in a workspace when it's
+    // not". An empty table stops the walk here, wherever the workspace lives.
+    //
+    // The pkg-index is unaffected: `nros::main!` finds the bringup through the
+    // `.colcon_workspace` marker first, and the settings file hands it
+    // `NROS_WORKSPACE_ROOT` besides (`builder::cargo_config`).
+    out.push_str("[workspace]\n\n");
     out.push_str("[package]\n");
     out.push_str(&format!("name = \"{pkg}\"\n"));
     // A fixed version, deliberately: this package is never published and never

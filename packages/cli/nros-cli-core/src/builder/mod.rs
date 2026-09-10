@@ -14,7 +14,13 @@
 //! hand-written (RFC-0065 D3): west and ESP-IDF apps already have complete
 //! drivers, and a copy-out leaf ships its own root by contract (RFC-0026).
 //! Those targets go 1→2→3→5 with no generation at all.
+//!
+//! Everything stage 4 writes lives under `build/` (RFC-0098 D1/D9): the cmake
+//! root at `build/<coord>/CMakeLists.txt`, and for cargo the entry package
+//! `build/<coord>/<entry>/` — its own cargo root — with its settings file
+//! beside it ([`cargo_config`]). A workspace has no root build file.
 
+pub mod cargo_config;
 pub mod cargo_root;
 pub mod cmake_root;
 pub mod discover;

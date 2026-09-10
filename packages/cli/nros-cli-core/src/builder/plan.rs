@@ -27,7 +27,8 @@ use crate::orchestration::image::ImageBlock;
 /// Which native tool builds this image, and whether stage 4 must emit a root.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Driver {
-    /// `cargo` over a synthesized `[workspace] members` root.
+    /// `cargo` over the generated entry, which is its own cargo root, with its
+    /// settings from `build/<coord>/<entry>/nros-cargo.toml` (RFC-0098 D1/D9).
     Cargo,
     /// `cmake` over a generated `CMakeLists.txt`. Also the answer for a
     /// workspace mixing languages.
@@ -47,35 +48,6 @@ impl Driver {
     #[must_use]
     pub fn needs_generated_root(self) -> bool {
         matches!(self, Driver::Cargo | Driver::CMake)
-    }
-
-    /// Whether this driver's entry package must be EXCLUDED from the cargo
-    /// root rather than listed as a member.
-    ///
-    /// Not the same question as [`Self::needs_generated_root`], though the two
-    /// were conflated until phase-383 W9.b. That one asks whether stage 4 emits
-    /// a root; this one asks whether the package can be a cargo member at all.
-    ///
-    /// Only west: a Zephyr entry is a `staticlib` built by `west` through
-    /// `rust_cargo_application()`, carries its own `CMakeLists.txt`, and
-    /// deliberately declares no `[workspace]` of its own. The eight
-    /// hand-written roots excluded exactly their west entries and nothing else.
-    ///
-    /// An ESP-IDF entry is an ordinary cargo package — `esp32_entry` is a
-    /// `Cargo.toml`, a `package.xml` and `src/`, with no CMakeLists — and
-    /// `idf.py` wraps a cargo build of it. Excluding it broke the fixture row
-    /// that builds the same package directly (`cargo build -p esp32_entry
-    /// --target riscv32imc-unknown-none-elf` → "package ID specification
-    /// `esp32_entry` did not match any packages"), because an excluded package
-    /// is not a member.
-    ///
-    /// Cross-target membership is not itself a reason to exclude: `freertos_entry`
-    /// and `nuttx_entry` are members and always were. What protects a bare
-    /// `cargo build` at the root is that nothing here ever runs one — every
-    /// build names its package with `-p`.
-    #[must_use]
-    pub fn excluded_from_cargo_root(self) -> bool {
-        matches!(self, Driver::West)
     }
 
     /// The program stage 5 execs.
@@ -120,6 +92,31 @@ pub fn driver_for(platform: &str, has_non_rust: bool) -> Driver {
         _ if has_non_rust => Driver::CMake,
         _ => Driver::Cargo,
     }
+}
+
+/// [`driver_for`], refined by the BOARD's entry shape.
+///
+/// `esp32 → idf.py` is right for an ESP-IDF application and wrong for the
+/// board this tree actually ships: `nros-board-esp32-qemu` is esp-hal on bare
+/// metal, its entry is a Rust `board-run` binary (`#[esp_hal::main]`), and
+/// nothing about it involves ESP-IDF. Choosing idf.py for it made `nros build
+/// esp32` exec a tool that has no project to build (`could not exec idf.py`),
+/// which is why the fixture lane built that image by hand with `cargo build -p`
+/// and why it could not stop doing so while the platform alone decided.
+///
+/// So a Rust image on a `board-run` esp32 board is a cargo image. A graph that
+/// crosses languages there still goes to idf.py, as before.
+#[must_use]
+pub fn driver_for_board(
+    platform: &str,
+    entry_kind: crate::orchestration::board_descriptor::EntryKind,
+    has_non_rust: bool,
+) -> Driver {
+    use crate::orchestration::board_descriptor::EntryKind;
+    if platform == "esp32" && entry_kind == EntryKind::BoardRun && !has_non_rust {
+        return Driver::Cargo;
+    }
+    driver_for(platform, has_non_rust)
 }
 
 /// An image id qualified by its bringup, for messages and for `--image`.
@@ -392,6 +389,21 @@ mod tests {
     fn zephyr_and_esp32_need_no_generated_root() {
         assert_eq!(driver_for("zephyr", false), Driver::West);
         assert_eq!(driver_for("esp32", false), Driver::IdfPy);
+        // The BOARD refines it: the in-tree esp32 board is esp-hal bare metal,
+        // whose Rust entry is a cargo bin, not an ESP-IDF app.
+        use crate::orchestration::board_descriptor::EntryKind;
+        assert_eq!(
+            driver_for_board("esp32", EntryKind::BoardRun, false),
+            Driver::Cargo
+        );
+        assert_eq!(
+            driver_for_board("esp32", EntryKind::BoardRun, true),
+            Driver::IdfPy
+        );
+        assert_eq!(
+            driver_for_board("zephyr", EntryKind::ZephyrStaticlib, false),
+            Driver::West
+        );
         assert!(!driver_for("zephyr", false).needs_generated_root());
         assert!(!driver_for("esp32", true).needs_generated_root());
     }

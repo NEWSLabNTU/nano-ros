@@ -333,7 +333,11 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 .map_err(|e| eyre::eyre!("{e}"))?;
         let platform = descriptor.platform.kebab().to_string();
         let board = image.board.clone().unwrap_or_default();
-        let driver = plan::driver_for(&platform, image_has_non_rust(&image, &bringup_dir));
+        let driver = plan::driver_for_board(
+            &platform,
+            descriptor.entry_kind,
+            image_has_non_rust(&image, &bringup_dir),
+        );
 
         // ---- stage 3 ----------------------------------------------------
         // Before anything is generated or compiled: a missing prerequisite
@@ -361,7 +365,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
         // every downstream lane behaves exactly as it does today. Making the
         // resolve phase a new way for a build to stop would be a regression
         // paid by every image for the benefit of the few that derive.
-        let resolved_dir = resolve_image(
+        let resolved = resolve_image(
             &root,
             &bringup,
             &bringup_dir,
@@ -370,12 +374,28 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
             &platform,
             &board,
         );
+        let resolved_dir = resolved.as_ref().map(|(d, _)| d.clone());
 
         // ---- stage 4 ----------------------------------------------------
         let mut cmake_configure: Option<Handoff> = None;
         let mut cargo_prepare: Option<Handoff> = None;
         let handoff = match driver {
             Driver::Cargo => {
+                // RFC-0098 D9 — a workspace has no root build file. A root the
+                // phase-383 builder left behind (gitignored, so every checkout
+                // that ran it still has one) claims the entry below it and
+                // cargo refuses the entry; it is our output, so it goes. An
+                // AUTHORED `[workspace]` is the user's file and is refused.
+                if let Some(p) =
+                    crate::builder::cargo_root::retire(&root).map_err(|e| eyre::eyre!("{e}"))?
+                {
+                    eprintln!(
+                        "nros build:   removed {} — the phase-383 generated workspace root; \
+                         each image is its own cargo root now (RFC-0098 D9)",
+                        p.display()
+                    );
+                }
+
                 // W3.b — generate the entry package. This is D4's headline
                 // claim: the entry stops being hand-written.
                 let generated = generate_entry(
@@ -388,9 +408,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     &platform,
                     nano_ros_root.as_deref(),
                 )?;
-                let entry_dir = generated.as_ref().map(|(d, _)| d.clone());
-                let entity_facts = generated.map(|(_, f)| f).unwrap_or_default();
-                if let Some(d) = &entry_dir {
+                if let Some(d) = &generated.dir {
                     eprintln!("nros build:   entry → {}", d.display());
                 }
 
@@ -411,73 +429,83 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // `build/posix-cyclonedds/` holding a zenoh binary. The facade
                 // now reads the image (`facade::image_rmw`), so the refusal is
                 // gone and the coordinate directory names what it contains.
-                // The cargo root lives at the WORKSPACE root, not under
-                // build/ — cargo requires members to sit below their root and
-                // resolves a package's workspace by walking up. An existing
-                // hand-written root is used as-is, never overwritten.
-                // Did WE write this root? `has_tracked_root` answers it the
-                // same way `cargo_root::ensure` decides whether to write.
-                let generated_root = !crate::builder::cargo_root::has_tracked_root(&root);
-                let excluded = cargo_excluded_entry_dirs(&found, &catalog);
-                // EVERY cargo image's entry, not just this one.
+                // ---- which manifest is this image's cargo root -----------
                 //
-                // The root is a property of the WORKSPACE; making its member
-                // list depend on which image is being built means the list —
-                // and therefore `Cargo.lock` — changes on every image switch.
-                // With the `--locked` the cargo shim injects project-wide, that
-                // is a hard error ("cannot update the lock file ... because
-                // --frozen was passed"), and without it, a silent re-resolve
-                // plus a full fingerprint invalidation on every switch.
+                // The generated entry, or a hand-written / materialised
+                // `src/<entry>` that suppressed generation (RFC-0065 D13). Each
+                // is its own root: there is no workspace to `-p` into
+                // (RFC-0098 D9), so the build names the MANIFEST.
+                let image_dir = root
+                    .join("build")
+                    .join(coordinate(&platform, &image))
+                    .join(&want_entry);
+                let hand_written = root.join("src").join(&want_entry);
+                let lock_is_ours = generated.dir.is_some();
+                let manifest_dir = match &generated.dir {
+                    Some(d) => d.clone(),
+                    None if hand_written.join("Cargo.toml").is_file() => hand_written.clone(),
+                    // `--dry-run` answers "what would run" even when the launch
+                    // cannot be resolved on this host, so it names the path the
+                    // entry WILL be generated at.
+                    None if args.dry_run => image_dir.clone(),
+                    None => eyre::bail!(
+                        "`{qual}` has no entry package: the generated one could not be \
+                         written (see the warning above) and there is no hand-written \
+                         `src/{want_entry}`. With no workspace root (RFC-0098 D9) there is \
+                         nothing else for cargo to build."
+                    ),
+                };
+
+                // ---- the one settings file (RFC-0098 D1/D7) --------------
                 //
-                // Generating them all is cheap (an entry is two small files)
-                // and restores the shape the hand-written roots had: the rust
-                // workspace's listed all seventeen entries and built one with
-                // `-p`. phase-383 W9.b found this the first time a driver built
-                // two images of one workspace in a row.
-                let extra = all_cargo_entry_dirs(
-                    &bringups,
-                    &bringup,
-                    &root,
-                    &catalog,
-                    &image_has_non_rust,
-                    nano_ros_root.as_deref(),
-                    entry_dir.clone(),
-                )?;
-                crate::builder::cargo_root::ensure(
-                    &found,
-                    &root,
-                    &excluded,
-                    &extra,
-                    Some(&bringup),
+                // Everything cargo needs for this image: the board's
+                // `cargo_config` and triple, this image's target dir, its
+                // entity facts and derived pool knobs as `[env]`, and the in-repo
+                // `[patch]` rows. It REPLACES three carriers: the tracked
+                // `<ws>/.cargo/config.toml`, `--target` on this command line,
+                // and the per-invocation `NROS_DECLARED_*` environment the
+                // handoff used to carry (phase-392 W5).
+                let Some(nros_root) = nano_ros_root.as_deref() else {
+                    eyre::bail!("no nano-ros checkout; the board catalog could not have loaded");
+                };
+                let mut env = generated.entity_facts.clone();
+                if let Some((_, r)) = &resolved {
+                    env.extend(derived_pool_env(r));
+                }
+                let config_path = image_dir.join(crate::builder::cargo_config::FILE_NAME);
+                crate::builder::cargo_config::write(
+                    &crate::builder::cargo_config::CargoConfigSpec {
+                        image_id: image_id.clone(),
+                        board: board.clone(),
+                        cargo_config: descriptor.cargo_config.clone(),
+                        target: descriptor.target.clone(),
+                        nano_ros_root: nros_root.to_path_buf(),
+                        workspace: root.clone(),
+                        target_dir: image_dir.join("target"),
+                        env,
+                        patches: registry_patches(&root, nros_root, &manifest_dir),
+                    },
+                    &config_path,
                 )
-                .map_err(|e| eyre::eyre!("{e}"))?;
-                let mut a = vec!["build".to_string()];
-                // Build ONLY this image's entry. A bare `cargo build` at the
-                // root builds every member, and nano-ros-rt-eval's own manifest
-                // records why that is wrong: a cross-target member "would try
-                // [it] for the host and fail".
-                if let Some(d) = &entry_dir
-                    && let Some(name) = d.file_name().and_then(|n| n.to_str())
-                {
-                    a.push("-p".to_string());
-                    a.push(name.to_string());
-                } else if root
-                    .join("src")
-                    .join(&want_entry)
-                    .join("Cargo.toml")
-                    .is_file()
-                {
-                    a.push("-p".to_string());
-                    a.push(want_entry.clone());
-                }
-                // A cross board pins a triple, and dropping it builds the image
-                // for the HOST — silently, since cargo is happy to. phase-383
-                // W9 caught this on the freertos image, whose board declares
-                // thumbv7m-none-eabi.
-                if let Some(triple) = descriptor.target.as_deref() {
-                    a.push("--target".to_string());
-                    a.push(triple.to_string());
-                }
+                .map_err(|e| eyre::eyre!("writing the settings for `{image_id}`: {e}"))?;
+                eprintln!("nros build:   settings → {}", config_path.display());
+
+                // Relative to the workspace root, which is the handoff's cwd, so
+                // the printed command is the one a user can retype.
+                let shown = |p: &std::path::Path| {
+                    p.strip_prefix(&root)
+                        .map(|r| r.display().to_string())
+                        .unwrap_or_else(|_| p.display().to_string())
+                };
+                let manifest_arg = shown(&manifest_dir.join("Cargo.toml"));
+                let config_arg = shown(&config_path);
+                let mut a = vec![
+                    "build".to_string(),
+                    "--manifest-path".to_string(),
+                    manifest_arg.clone(),
+                    "--config".to_string(),
+                    config_arg.clone(),
+                ];
                 if let Some(profile) = image.profile.as_deref() {
                     // `--profile` rather than `--release`: a named profile is
                     // what `[image.<id>].profile` declares, and `release` is
@@ -490,62 +518,56 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     // 0676 records why `--offline` alone is the wrong spelling
                     // (it restricts the cache without pinning resolution).
                     a.push("--frozen".to_string());
-
-                    // A GENERATED root has a GENERATED lock, and `--frozen`
-                    // forbids creating one:
-                    //
-                    //   error: cannot update the lock file … because --frozen
-                    //   was passed to prevent this
-                    //
-                    // `--locked` exists to stop a build silently re-resolving
-                    // an AUTHORED lock — a promise that someone else's build
-                    // resolves what yours did. This lock is build output of a
-                    // root this process just wrote, so there is no promise to
-                    // protect, and the first build after a clone has nothing to
-                    // be frozen against.
-                    //
-                    // So resolve ONCE, offline, before the frozen build. The
-                    // build itself stays frozen, which is the property issue
-                    // 0676 wants. `NROS_CARGO_FLAGS=` because the PATH shim
-                    // injects `--locked` project-wide and would forbid this
-                    // step too.
-                    // Whenever the root is ours — not only when the lock is
-                    // absent. A workspace migrated from a hand-written root
-                    // still carries that root's lock, and it does not describe
-                    // the generated member list, so `--frozen` refuses it just
-                    // the same. `generate-lockfile --offline` is a no-op when
-                    // the lock already satisfies the manifest, so the common
-                    // case costs nothing.
-                    if generated_root {
-                        cargo_prepare = Some(
-                            Handoff::new(
-                                "cargo",
-                                vec!["generate-lockfile".to_string(), "--offline".to_string()],
-                            )
+                }
+                // A GENERATED entry has a GENERATED lock beside it, and the
+                // PATH shim's project-wide `--locked` (or `--frozen` above)
+                // forbids creating or moving one:
+                //
+                //   error: cannot update the lock file … because --frozen
+                //   was passed to prevent this
+                //
+                // `--locked` exists to stop a build silently re-resolving an
+                // AUTHORED lock — a promise that someone else's build resolves
+                // what yours did. This lock is build output of a manifest this
+                // process just wrote, so there is no promise to protect. So
+                // resolve it ONCE before the build, which itself stays locked.
+                //
+                // `update --workspace`, not `generate-lockfile`: it creates a
+                // missing lock and otherwise touches only the entry itself, so
+                // an unchanged image keeps every version it already resolved
+                // instead of re-resolving the world on each build.
+                // `NROS_CARGO_FLAGS=` because the shim would forbid this step
+                // too. A hand-written entry's EXISTING lock is the user's and is
+                // left alone; one with NO lock gets one created, because each
+                // entry is its own cargo root now (RFC-0098 D9) and the lock
+                // that used to cover it was the deleted workspace root's —
+                // `--frozen` cannot build a root that has none.
+                if lock_is_ours || !manifest_dir.join("Cargo.lock").is_file() {
+                    let mut u = vec![
+                        "update".to_string(),
+                        "--workspace".to_string(),
+                        "--manifest-path".to_string(),
+                        manifest_arg,
+                        "--config".to_string(),
+                        config_arg,
+                    ];
+                    if args.offline {
+                        u.push("--offline".to_string());
+                    }
+                    cargo_prepare = Some(
+                        Handoff::new("cargo", u)
                             .in_dir(&root)
                             .with_env("NROS_CARGO_FLAGS", ""),
-                        );
-                    }
+                    );
                 }
                 a.extend(args.native_args.iter().cloned());
-                // Run FROM the workspace root, not the manifest dir: cargo
-                // discovers `.cargo/config.toml` by walking up from the CWD,
-                // and the leaf `[patch.crates-io]` redirects `nros sync` writes
-                // live there. Building from build/<coord> would lose every one
-                // of them and resolve message crates against the public
-                // registry — issue 0378 by a different road.
-                // The ENTITY facts ride the handoff (phase-392 W5). The env is
-                // the only carrier that reaches a build script inside the cargo
-                // invocation, which is what `entity_facts` was designed around —
-                // and this is the cargo half of that delivery, the CMake half
-                // being `NanoRosEntityFacts.cmake`. Without it the zenoh backend
-                // sizes SERVICE_BUFFERS for 8 service servers an image may not
-                // have, which overflows DRAM on esp32.
-                let mut h = Handoff::new("cargo", a).in_dir(&root);
-                for (k, v) in &entity_facts {
-                    h = h.with_env(k, v);
-                }
-                Some(h)
+                // From the workspace root, which no longer carries anything: the
+                // manifest and the settings are both NAMED. cargo still reads
+                // `.cargo/config.toml` from the cwd's ancestors (it always does),
+                // which is where a user's own toolchain preference belongs
+                // (RFC-0098 D1) — and why the per-image settings are never put
+                // in one.
+                Some(Handoff::new("cargo", a).in_dir(&root))
             }
             Driver::CMake => {
                 // Unlike cargo, cmake imposes no root/member hierarchy rule, so
@@ -591,8 +613,9 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                         b == &bringup
                             && crate::orchestration::image::resolve_image_board(&catalog, "", img)
                                 .map(|d| {
-                                    plan::driver_for(
+                                    plan::driver_for_board(
                                         d.platform.kebab(),
+                                        d.entry_kind,
                                         image_has_non_rust(img, bd),
                                     ) == Driver::CMake
                                         && cmake_coordinate(d.platform.kebab(), img) == coord
@@ -1171,31 +1194,15 @@ fn generate_entry(
     descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
     platform: &str,
     nano_ros_root: Option<&std::path::Path>,
-) -> Result<Option<(PathBuf, std::collections::BTreeMap<String, String>)>> {
+) -> Result<GeneratedEntry> {
     use crate::{
         builder::entry::{BoardFacts, EntrySpec},
         orchestration::model_location,
     };
 
     let Some(nros_root) = nano_ros_root else {
-        return Ok(None);
+        return Ok(GeneratedEntry::default());
     };
-
-    // A workspace that still has its hand-written entry keeps it. Generating a
-    // second one would be redundant at best and a conflicting `[[bin]]` name at
-    // worst — and D13's migration is a DELETION: remove the hand-written entry
-    // and the next build generates it. This is what makes the migration
-    // incremental, one entry at a time.
-    // Keyed on the MANIFEST, not the directory. `git rm -r src/<entry>` leaves
-    // gitignored residue behind — `.cargo/` holds the sync-written sidecar —
-    // so a directory-existence check reads a deleted entry as still present and
-    // silently generates nothing. phase-383 W10 tripped over exactly that on
-    // the first workspace it tried.
-    let want = crate::builder::entry::package_name(image_id);
-    let hand_written = root.join("src").join(&want);
-    if hand_written.join("Cargo.toml").is_file() || hand_written.join("CMakeLists.txt").is_file() {
-        return Ok(None);
-    }
 
     // (launch, args) → model → plan → the node packages the launch names.
     let args_vec: Vec<(String, String)> = image
@@ -1211,21 +1218,52 @@ fn generate_entry(
         Ok(r) => r,
         Err(e) => {
             eprintln!("nros build: warning: cannot resolve launch for `{image_id}`: {e}");
-            return Ok(None);
+            return Ok(GeneratedEntry::default());
         }
     };
     let model_path = match model_location::ensure_model(bringup_dir, &model_rel) {
         Ok((p, _inputs)) => p,
         Err(e) => {
             eprintln!("nros build: warning: cannot resolve the model for `{image_id}`: {e}");
-            return Ok(None);
+            return Ok(GeneratedEntry::default());
         }
     };
+
+    // phase-392 W5 — the ENTITY facts, from the SAME model, ONE read. Computed
+    // BEFORE the hand-written check below, because a hand-written entry is
+    // built with the image's settings file too (RFC-0098 D7): the facts belong
+    // to the IMAGE, whoever wrote its `main`. The fixture lane used to fetch
+    // them for exactly those entries with a second `nros ws entity-facts`
+    // invocation and export them per build — a second carrier, now retired.
+    let entity_facts = entity_facts_at(&model_path);
+
+    // A workspace that still has its hand-written entry keeps it. Generating a
+    // second one would be redundant at best and a conflicting `[[bin]]` name at
+    // worst — and D13's migration is a DELETION: remove the hand-written entry
+    // and the next build generates it. This is what makes the migration
+    // incremental, one entry at a time.
+    // Keyed on the MANIFEST, not the directory. `git rm -r src/<entry>` leaves
+    // gitignored residue behind — `.cargo/` holds the sync-written sidecar —
+    // so a directory-existence check reads a deleted entry as still present and
+    // silently generates nothing. phase-383 W10 tripped over exactly that on
+    // the first workspace it tried.
+    let want = crate::builder::entry::package_name(image_id);
+    let hand_written = root.join("src").join(&want);
+    if hand_written.join("Cargo.toml").is_file() || hand_written.join("CMakeLists.txt").is_file() {
+        return Ok(GeneratedEntry {
+            dir: None,
+            entity_facts,
+        });
+    }
+
     let plan = match crate::codegen::entry::plan_from_model(&model_path, image.board.clone()) {
         Ok(p) => p,
         Err(e) => {
             eprintln!("nros build: warning: cannot plan `{image_id}`: {e}");
-            return Ok(None);
+            return Ok(GeneratedEntry {
+                dir: None,
+                entity_facts,
+            });
         }
     };
 
@@ -1552,32 +1590,41 @@ fn generate_entry(
             .map_err(|e| eyre::eyre!("regenerating the entry for `{image_id}`: {e}"))?;
     }
 
-    // phase-392 W5 — the ENTITY facts, from the SAME model resolved above.
-    //
-    // `entity_facts`'s own docs say these are "delivered through the process
-    // environment because that is the only carrier that reaches the cargo
-    // invocation a workspace member is built by" — and until now only
-    // `cmake/NanoRosEntityFacts.cmake` wired them, so the CMake path got
-    // declaration-sized tables and the CARGO path silently kept the undeclared
-    // fallback (32 hosted / 8 embedded).
-    //
-    // That is not a missing optimisation, it is a hard failure on a small
-    // target: `esp32_entry` overflowed DRAM by 8,804 B while carrying
-    // `SERVICE_BUFFERS` sized for 8 service servers it does not have. Measured
-    // on a native talker when the CMake side landed: 144,128 -> 4,504 B.
-    //
-    // Resolved here rather than by a second call so there is ONE model read,
-    // which is the property `entity_facts` was written to have.
-    let entity_facts = match std::fs::read_to_string(&model_path)
+    Ok(GeneratedEntry {
+        dir: Some(dir),
+        entity_facts,
+    })
+}
+
+/// What [`generate_entry`] produced for one image.
+#[derive(Debug, Default)]
+struct GeneratedEntry {
+    /// The generated entry package, or `None` when a hand-written one
+    /// suppressed generation or the launch could not be resolved here.
+    dir: Option<PathBuf>,
+    /// The image's entity facts (`NROS_DECLARED_*`), for its settings file.
+    entity_facts: std::collections::BTreeMap<String, String>,
+}
+
+/// phase-392 W5 — the ENTITY facts of the model at `model_path`.
+///
+/// Until phase-392 only `cmake/NanoRosEntityFacts.cmake` delivered them, so the
+/// CARGO path silently kept the undeclared fallback (32 hosted / 8 embedded) —
+/// a hard failure on a small target: `esp32_entry` overflowed DRAM by 8,804 B
+/// carrying `SERVICE_BUFFERS` sized for 8 service servers it does not have.
+/// The consumer (`nros-zpico-build`) derives `ZPICO_MAX_QUERYABLES` from these;
+/// they are CARRIED, never the count (issue 0460). Since RFC-0098 D7 they go in
+/// the image's settings file rather than the handoff's environment.
+fn entity_facts_at(model_path: &std::path::Path) -> std::collections::BTreeMap<String, String> {
+    match std::fs::read_to_string(model_path)
         .map_err(|e| e.to_string())
         .and_then(|y| {
             ros_launch_manifest_model::SystemModel::from_yaml_str(&y).map_err(|e| e.to_string())
         }) {
         Ok(m) => crate::cmd::entity_facts::facts_from_model(&m),
         Err(e) => {
-            // Not fatal: an unreadable model here means the entry was still
-            // generated, and the undeclared fallback is the historical
-            // behaviour. Say so rather than silently sizing for 8.
+            // Not fatal: the undeclared fallback is the historical behaviour.
+            // Say so rather than silently sizing for 8.
             eprintln!(
                 "nros build: warning: cannot read `{}` for entity facts, so the \
                  backend keeps its undeclared table budget: {e}",
@@ -1585,8 +1632,117 @@ fn generate_entry(
             );
             std::collections::BTreeMap::new()
         }
+    }
+}
+
+/// Issue 0827 — the pool knobs stage 3.5 DERIVED for this image, as `[env]`
+/// rows for its settings file. Empty when the resolve refused (the common case:
+/// only images whose launch carries a contract sidecar describe wiring).
+///
+/// Rendered by `leaf_entity_env::render_env_sidecar` and read back, not
+/// re-spelled here: that renderer is where the knob NAMES, the consumer floors
+/// (issue 1015) and the deliberate omission of `ZPICO_MAX_QUERYABLES` live, and
+/// a second list would be the drift this repository keeps paying for. Payload
+/// classes are not derived on this road (they need a leaf's message-bound
+/// inventory), so the crate defaults stand for them.
+fn derived_pool_env(
+    resolved: &crate::resolve::Resolved,
+) -> std::collections::BTreeMap<String, String> {
+    let Some(knobs) = resolved.knobs() else {
+        return std::collections::BTreeMap::new();
     };
-    Ok(Some((dir, entity_facts)))
+    let body = crate::leaf_entity_env::render_env_sidecar(
+        knobs,
+        &crate::leaf_payload_classes::PayloadClasses::Refused {
+            reason: "not derived for a workspace image (no leaf message-bound inventory)"
+                .to_string(),
+        },
+        &resolved.source,
+    );
+    body.parse::<toml::Value>()
+        .ok()
+        .and_then(|v| v.get("env").and_then(|e| e.as_table()).cloned())
+        .map(|t| {
+            t.into_iter()
+                .filter_map(|(k, v)| v.as_str().map(|s| (k, s.to_string())))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The `[patch.crates-io]` rows an image's cargo graph needs, as crate name →
+/// absolute crate root.
+///
+/// Walks the entry manifest and, through PATH dependencies, every package it
+/// reaches inside the workspace (`src/*`, `generated/*`), collecting the deps
+/// each names REGISTRY-style. A name that is a generated message crate of this
+/// workspace, or an in-repo nano-ros crate, gets a row; anything else is a real
+/// registry crate and gets none. Only names the graph actually spells
+/// registry-style, so cargo never warns about an unused patch — the same rule
+/// sync's managed block follows (RFC-0067 D1).
+///
+/// The board descriptor's own `[patch]` rows (the NuttX `libc` fork) are merged
+/// by `cargo_config::render`, not here.
+fn registry_patches(
+    ws_root: &std::path::Path,
+    nano_ros_root: &std::path::Path,
+    entry_dir: &std::path::Path,
+) -> std::collections::BTreeMap<String, PathBuf> {
+    let mut out = std::collections::BTreeMap::new();
+    let mut seen = std::collections::BTreeSet::new();
+    let mut queue = vec![entry_dir.to_path_buf()];
+    while let Some(dir) = queue.pop() {
+        let dir = dir.canonicalize().unwrap_or(dir);
+        if !seen.insert(dir.clone()) {
+            continue;
+        }
+        let Ok(body) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
+            continue;
+        };
+        for name in crate::cmd::ws::registry_style_dep_names(&body) {
+            let generated = ws_root.join("generated").join(&name);
+            if generated.join("Cargo.toml").is_file() {
+                out.insert(name, generated);
+            } else if let Some(sub) = crate::cmd::ws::nros_crate_subpath(&name) {
+                let root = nano_ros_root.join(sub);
+                if root.join("Cargo.toml").is_file() {
+                    out.insert(name, root);
+                }
+            }
+        }
+        // Follow path deps, but only inside the workspace: the nano-ros crates
+        // path-depend on each other and never registry-name an in-repo crate
+        // a leaf would need patched.
+        let Ok(doc) = body.parse::<toml::Value>() else {
+            continue;
+        };
+        let mut tables: Vec<&toml::Value> = ["dependencies", "build-dependencies"]
+            .iter()
+            .filter_map(|k| doc.get(*k))
+            .collect();
+        if let Some(targets) = doc.get("target").and_then(|t| t.as_table()) {
+            for t in targets.values() {
+                tables.extend(
+                    ["dependencies", "build-dependencies"]
+                        .iter()
+                        .filter_map(|k| t.get(*k)),
+                );
+            }
+        }
+        for deps in tables.into_iter().filter_map(|t| t.as_table()) {
+            for spec in deps.values() {
+                let Some(p) = spec.get("path").and_then(|p| p.as_str()) else {
+                    continue;
+                };
+                let next = dir.join(p);
+                let next = next.canonicalize().unwrap_or(next);
+                if next.starts_with(ws_root) {
+                    queue.push(next);
+                }
+            }
+        }
+    }
+    out
 }
 
 /// The crates a BRIDGE entry must name directly, derived from the bringup.
@@ -1748,66 +1904,6 @@ fn bridge_entry_deps(
     Ok(out)
 }
 
-/// Every cargo-driver entry directory of `bringup`, generated if need be.
-///
-/// The generated root lists all of them (see the call site): a member list that
-/// depends on which image is being built makes `Cargo.lock` churn on every
-/// switch, which `--locked` turns into a hard error.
-///
-/// `already` is the entry this build just generated — passed in rather than
-/// regenerated so the caller's diagnostics and this list cannot disagree.
-/// Images whose driver is west or idf.py contribute nothing: they are not cargo
-/// members, and `framework_entry_dirs` excludes their hand-written packages.
-#[allow(clippy::too_many_arguments)]
-fn all_cargo_entry_dirs(
-    bringups: &[(String, PathBuf, plan::ImageSet)],
-    bringup: &str,
-    root: &std::path::Path,
-    catalog: &crate::orchestration::board_descriptor::BoardCatalog,
-    image_has_non_rust: &dyn Fn(&crate::orchestration::image::ImageBlock, &std::path::Path) -> bool,
-    nano_ros_root: Option<&std::path::Path>,
-    already: Option<PathBuf>,
-) -> Result<Vec<PathBuf>> {
-    let mut out: Vec<PathBuf> = already.into_iter().collect();
-    // `all_images` rather than reading `set.images` directly: it folds
-    // `[image_defaults]` in, and a sibling generated WITHOUT that fold would
-    // differ from the same entry generated as the build target — the same
-    // entry, two contents, depending on which image was asked for.
-    for (b, bringup_dir, id, image) in plan::all_images(bringups) {
-        if b != bringup {
-            continue;
-        }
-        let Ok(descriptor) = crate::orchestration::image::resolve_image_board(catalog, &id, &image)
-        else {
-            // An image whose board does not resolve is reported where it is
-            // BUILT, with the context to explain it. Skipping here keeps a
-            // sibling's misdeclaration from failing an unrelated build.
-            continue;
-        };
-        let platform = descriptor.platform.kebab().to_string();
-        if plan::driver_for(&platform, image_has_non_rust(&image, &bringup_dir)) != Driver::Cargo {
-            continue;
-        }
-        let Some((dir, _facts)) = generate_entry(
-            root,
-            &bringup_dir,
-            bringup,
-            &id,
-            &image,
-            descriptor,
-            &platform,
-            nano_ros_root,
-        )?
-        else {
-            continue;
-        };
-        if !out.contains(&dir) {
-            out.push(dir);
-        }
-    }
-    Ok(out)
-}
-
 /// Deploy tokens a package's entry declaration names, if it is an entry.
 ///
 /// Two spellings, because the two languages declare it in different files:
@@ -1916,7 +2012,7 @@ fn resolve_image(
     image: &crate::orchestration::image::ImageBlock,
     platform: &str,
     board: &str,
-) -> Option<std::path::PathBuf> {
+) -> Option<(std::path::PathBuf, crate::resolve::Resolved)> {
     use crate::{
         entity_inventory::EntityInventory,
         orchestration::model_location,
@@ -2021,7 +2117,7 @@ fn resolve_image(
                     w.toml_path.display()
                 ),
             }
-            Some(dir)
+            Some((dir, w.resolved))
         }
     }
 }
@@ -2308,17 +2404,6 @@ fn framework_entry_dirs(
     entry_dirs_where(found, catalog, |d| !d.needs_generated_root())
 }
 
-/// Entry packages the generated cargo root must EXCLUDE.
-///
-/// A strictly smaller set than [`framework_entry_dirs`] — see
-/// [`Driver::excluded_from_cargo_root`] for why the two questions differ.
-fn cargo_excluded_entry_dirs(
-    found: &crate::builder::discover::Discovered,
-    catalog: &crate::orchestration::board_descriptor::BoardCatalog,
-) -> std::collections::BTreeSet<PathBuf> {
-    entry_dirs_where(found, catalog, Driver::excluded_from_cargo_root)
-}
-
 /// Entry package directories whose resolved driver satisfies `want`.
 fn entry_dirs_where(
     found: &crate::builder::discover::Discovered,
@@ -2343,7 +2428,11 @@ fn entry_dirs_where(
             .and_then(|d| d.as_str());
         let Some(deploy) = deploy else { continue };
         if let DeployResolution::Board(d) = catalog.resolve_deploy(deploy)
-            && want(plan::driver_for(d.platform.kebab(), false))
+            && want(plan::driver_for_board(
+                d.platform.kebab(),
+                d.entry_kind,
+                false,
+            ))
         {
             out.insert(pkg.dir.clone());
         }
