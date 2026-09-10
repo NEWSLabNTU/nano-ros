@@ -74,8 +74,15 @@ probe "cross Rust target(s) declared by this tree are not installed" \
 # fix. That shape cost the tier-2 lane two consecutive nights (2026-09-06/-07).
 # The probe mirrors the guard's three silent cases exactly, so it can never be
 # stricter than the thing it front-runs.
-probe "the Zephyr workspace lives inside a DIFFERENT nano-ros checkout" \
-    "move it out of any checkout — see the message; do NOT reach for NROS_SKIP_STALE_CHECK=1" \
+#
+# It also asks which checkout's Zephyr MODULE the workspace compiles (its west
+# manifest). A workspace provisioned by another checkout builds that tree's
+# `zephyr/` and nros-cpp headers into every image beside this tree's generated
+# entries — tier-2 run 34319241943 failed on exactly that mix. That half does
+# not mirror the CLI guard, so `NROS_SKIP_STALE_CHECK=1` does not silence it
+# (issue 1253).
+probe "the Zephyr workspace belongs to a DIFFERENT nano-ros checkout (location or west manifest)" \
+    "build against a workspace THIS checkout provisioned (runner: just runner-up <labels>) — see the message; do NOT reach for NROS_SKIP_STALE_CHECK=1" \
     bash scripts/check-zephyr-workspace-checkout.sh
 
 probe "a submodule is not at the commit this superproject records" \

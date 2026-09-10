@@ -6,6 +6,11 @@
 # make leaf.
 set -euo pipefail
 
+# A failing leaf prints its FIRST error lines before the tail — the tail alone
+# can be all warnings (tier-2 run 34319241943). One helper, shared with the
+# Zephyr scheduler and the fixture fan-out in `justfile` (issue 1253).
+first_errors_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/log-first-errors.sh"
+
 usage() {
     cat >&2 <<'EOF'
 usage: scripts/build/fixture-make-driver.sh [--dry-run] [--keep] <platform|all|linux-cyclonedds-rust|linux-cmake-rmw|linux-cyclonedds-cmake>
@@ -226,7 +231,7 @@ leaf_details=()
         status_file="$status_dir/$name.status"
         printf '%s:\n' "$target"
         printf '\t+@echo "fixture: %s"\n' "$label"
-        printf '\t+@start=$$(date +%%s); status=0; echo "running" >%s; ( %s ) >%s 2>&1 || status=$$?; end=$$(date +%%s); duration=$$((end - start)); if [ "$$status" -eq 0 ]; then state=ok; else state=fail; fi; printf "target=%%s\\nplatform=%%s\\nlang=%%s\\nrmw=%%s\\nstatus=%%s\\nstart_epoch=%%s\\nend_epoch=%%s\\nduration_s=%%s\\nlog=%%s\\n" "%s" "%s" "%s" "%s" "$$state" "$$start" "$$end" "$$duration" "%s" >%s; printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" "%s" "%s" "%s" "%s" "$$state" "$$start" "$$end" "$$duration" "%s" >>%s; if [ "$$status" -ne 0 ]; then echo "fixture-make-driver: %s failed; tail of %s:" >&2; tail -n "$${NROS_FIXTURE_FAIL_TAIL:-80}" %s >&2 || true; exit "$$status"; fi\n' "$status_file" "$command" "$log" "$target" "$platform" "$lang" "$rmw_value" "$log" "$status_file" "$target" "$platform" "$lang" "$rmw_value" "$log" "$joblog" "$target" "$log" "$log"
+        printf '\t+@start=$$(date +%%s); status=0; echo "running" >%s; ( %s ) >%s 2>&1 || status=$$?; end=$$(date +%%s); duration=$$((end - start)); if [ "$$status" -eq 0 ]; then state=ok; else state=fail; fi; printf "target=%%s\\nplatform=%%s\\nlang=%%s\\nrmw=%%s\\nstatus=%%s\\nstart_epoch=%%s\\nend_epoch=%%s\\nduration_s=%%s\\nlog=%%s\\n" "%s" "%s" "%s" "%s" "$$state" "$$start" "$$end" "$$duration" "%s" >%s; printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" "%s" "%s" "%s" "%s" "$$state" "$$start" "$$end" "$$duration" "%s" >>%s; if [ "$$status" -ne 0 ]; then echo "fixture-make-driver: %s failed" >&2; bash %q %s >&2; echo "fixture-make-driver: tail of %s:" >&2; tail -n "$${NROS_FIXTURE_FAIL_TAIL:-80}" %s >&2 || true; exit "$$status"; fi\n' "$status_file" "$command" "$log" "$target" "$platform" "$lang" "$rmw_value" "$log" "$status_file" "$target" "$platform" "$lang" "$rmw_value" "$log" "$joblog" "$target" "$first_errors_script" "$log" "$log" "$log"
     done <"$leaf_file"
 } >"$makefile"
 
