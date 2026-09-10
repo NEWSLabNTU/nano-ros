@@ -1391,13 +1391,69 @@ config NROS_EXECUTOR_BACKING_U64S
       linker price them.
 
 config NROS_MAX_PARAMETERS
-    int "Maximum declared parameters per image"
-    default 32
+    int "Maximum declared parameters per image (-1 = derive)"
+    default -1
     help
       Static parameter-store pool size (nros-params build.rs). A node
       declaring more parameters than this fails declare_parameter with
       ErrorCode::Full (-5) at boot. The Autoware trajectory follower
       declares ~150.
+
+      phase-446 W4 -- -1 DERIVES it from the contract's `params:`: every
+      declared parameter plus one `use_sim_time` per node, which nano-ros
+      declares on every node. An image whose contract declares no
+      parameters (or declares them on only some nodes) falls through to the
+      crate default of 32. Stating a number here WINS.
+
+config NROS_MAX_PARAM_NAME_LEN
+    int "Longest parameter name in bytes (-1 = derive)"
+    default -1
+    help
+      Per-slot name capacity of the parameter store (nros-params build.rs).
+
+      -1 DERIVES it from the contract's `params:` -- the longest declared
+      name, and never shorter than `use_sim_time`. Without a declaration
+      the crate default of 64 stands.
+
+config NROS_MAX_STRING_VALUE_LEN
+    int "String parameter capacity in bytes (-1 = derive)"
+    default -1
+    help
+      Longest string a `string` or `string_array` parameter can hold, and
+      the capacity of a parameter DESCRIPTION (nros-params build.rs). Every
+      store slot is as large as the largest value the limits allow, so this
+      is paid once per slot whatever the slot holds.
+
+      -1 DERIVES 0 when the contract's `params:` declare no string, which is
+      what takes a scalar-only image's slot from ~8.9 KiB to 168 bytes; at 0
+      no parameter can carry a description either. When a node DOES declare
+      a string the contract cannot say how long it may be -- that is a fact
+      about the board -- so state a number here, and the build refuses,
+      naming the parameter and this knob, if nothing does. Without a
+      declaration the crate default of 256 stands.
+
+config NROS_MAX_ARRAY_LEN
+    int "Array parameter capacity in elements (-1 = derive)"
+    default -1
+    help
+      Elements a `bool_array`, `integer_array`, `double_array` or
+      `string_array` parameter can hold (nros-params build.rs).
+
+      -1 DERIVES 0 when the contract's `params:` declare none of those
+      types. When one is declared, state a number here; the build refuses,
+      naming the parameter and this knob, if nothing does. Without a
+      declaration the crate default of 32 stands.
+
+config NROS_MAX_BYTE_ARRAY_LEN
+    int "Byte-array parameter capacity in bytes (-1 = derive)"
+    default -1
+    help
+      Bytes a `byte_array` parameter can hold (nros-params build.rs).
+
+      -1 DERIVES 0 when the contract's `params:` declare no byte_array.
+      When one is declared, state a number here; the build refuses, naming
+      the parameter and this knob, if nothing does. Without a declaration
+      the crate default of 256 stands.
 
 # =============================================================================
 # Common Platform Configuration

@@ -213,6 +213,19 @@ KNOB_CLASS = {
     # counts beside it: nobody tunes it, it is what the image DECLARED, and the
     # arena derivation multiplies by it.
     "NROS_DECLARED_MAX_QOS_DEPTH": ("infra", "a DEPTH the resolver passes down, not a knob"),
+    # phase-446 W4 -- the parameter store, from the contract's `params:`. Same
+    # category: what the image DECLARED, handed down as a default that every
+    # `NROS_MAX_*` rung outranks. The NEEDS facts are not numbers at all: they
+    # name the declared parameter whose type needs a capacity the board must
+    # state, so the build script can refuse naming it.
+    "NROS_DECLARED_MAX_PARAMETERS": ("infra", "a COUNT the resolver passes down, not a knob"),
+    "NROS_DECLARED_MAX_PARAM_NAME_LEN": ("infra", "a SIZE the resolver passes down, not a knob"),
+    "NROS_DECLARED_MAX_STRING_VALUE_LEN": ("infra", "a SIZE the resolver passes down, not a knob"),
+    "NROS_DECLARED_MAX_ARRAY_LEN": ("infra", "a SIZE the resolver passes down, not a knob"),
+    "NROS_DECLARED_MAX_BYTE_ARRAY_LEN": ("infra", "a SIZE the resolver passes down, not a knob"),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN": ("infra", "names a declared parameter, not a knob"),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN": ("infra", "names a declared parameter, not a knob"),
+    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN": ("infra", "names a declared parameter, not a knob"),
     "NROS_PICOLIBC_SYSROOT": ("infra", "path"),
     "NROS_RISCV64_PREFIX": ("infra", "toolchain prefix"),
     "NROS_SDK_STORE": ("infra", "path"),
@@ -455,6 +468,10 @@ READ_CALLEES = {
     # absence is not the empty table: an image that declares nothing must keep
     # the worst case rather than sum zero endpoints.
     "env_opt_string",
+    # phase-446 W4 -- nros-params' readers. `capacity` resolves a per-slot
+    # capacity over the stated rungs; `declared` and `needs` read what the
+    # contract declared, as a number and as the parameter that needs one.
+    "capacity", "declared", "needs",
     "env", "env_get", "env_bool", "env_usize", "env_usize_min",
     "env_usize_compat", "env_or_repo_path", "env_path_or", "flag", "knob",
     "knob_usize", "knob_bool", "req", "list", "var", "var_os",

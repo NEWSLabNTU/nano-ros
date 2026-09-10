@@ -65,6 +65,16 @@
 #                                into it, so `NROS_SUBSCRIBE` static_asserts the
 #                                QoS at each call site against it.
 #
+#   DERIVABLE HERE, from the SystemModel (phase-446 W4):
+#     the PARAMETER STORE        the contract's `params:` give the slot count
+#                                (every declared name + one `use_sim_time` per
+#                                node) and the longest name. A string / array /
+#                                byte-array capacity is 0 when no declared type
+#                                uses it; when one does, the BOARD states it and
+#                                `NROS_PARAM_NEEDS_<knob>` names the parameter,
+#                                so nros-params' build script can refuse when
+#                                nothing does. No `params:` anywhere = no answer.
+#
 #   NOT YET, and deliberately left alone:
 #     NROS_EXECUTOR_ARENA_SIZE   the type set and the depths are both necessary
 #                                and still not sufficient: the arena needs a
@@ -283,7 +293,14 @@ function(nros_derive_entity_inventory_knobs)
                NROS_ENTITY_INVENTORY_ENTITY_TOTAL
                NROS_ENTITY_DECLARED_DEPTH_STATUS NROS_ENTITY_DECLARED_DEPTH_REASON
                NROS_ENTITY_DECLARED_DEPTHS NROS_ENTITY_DECLARED_DEPTH_COUNT
-               NROS_ENTITY_UNDECLARED_DEPTH_COUNT)
+               NROS_ENTITY_UNDECLARED_DEPTH_COUNT
+               NROS_PARAM_DECLARATION_STATUS NROS_PARAM_DECLARATION_REASON
+               NROS_PARAM_DECLARED_COUNT
+               NROS_DERIVED_MAX_PARAMETERS NROS_DERIVED_MAX_PARAM_NAME_LEN
+               NROS_DERIVED_MAX_STRING_VALUE_LEN NROS_DERIVED_MAX_ARRAY_LEN
+               NROS_DERIVED_MAX_BYTE_ARRAY_LEN
+               NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN NROS_PARAM_NEEDS_MAX_ARRAY_LEN
+               NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN)
         unset(${_v})
         unset(${_v} PARENT_SCOPE)
     endforeach()
@@ -428,6 +445,19 @@ function(nros_derive_entity_inventory_knobs)
             _nros_entity_publish(NROS_ENTITY_${_field} "${NROS_ENTITY_${_field}}")
         endif()
     endforeach()
+    # phase-446 W4 -- the parameter store. Written out in full: a knob name
+    # built by interpolation is the name that silently resolves EMPTY.
+    foreach(_v NROS_PARAM_DECLARATION_STATUS NROS_PARAM_DECLARATION_REASON
+               NROS_PARAM_DECLARED_COUNT
+               NROS_DERIVED_MAX_PARAMETERS NROS_DERIVED_MAX_PARAM_NAME_LEN
+               NROS_DERIVED_MAX_STRING_VALUE_LEN NROS_DERIVED_MAX_ARRAY_LEN
+               NROS_DERIVED_MAX_BYTE_ARRAY_LEN
+               NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN NROS_PARAM_NEEDS_MAX_ARRAY_LEN
+               NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN)
+        if(DEFINED ${_v})
+            _nros_entity_publish(${_v} "${${_v}}")
+        endif()
+    endforeach()
 
     if(_E_QUIET)
         return()
@@ -516,7 +546,18 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_ENTITY_DECLARED_DEPTHS
         NROS_ENTITY_DECLARED_DEPTH_COUNT
         NROS_ENTITY_UNDECLARED_DEPTH_COUNT
-        NROS_ENTITY_DECLARED_DEPTH_REASON)
+        NROS_ENTITY_DECLARED_DEPTH_REASON
+        NROS_PARAM_DECLARATION_STATUS
+        NROS_PARAM_DECLARATION_REASON
+        NROS_PARAM_DECLARED_COUNT
+        NROS_DERIVED_MAX_PARAMETERS
+        NROS_DERIVED_MAX_PARAM_NAME_LEN
+        NROS_DERIVED_MAX_STRING_VALUE_LEN
+        NROS_DERIVED_MAX_ARRAY_LEN
+        NROS_DERIVED_MAX_BYTE_ARRAY_LEN
+        NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN
+        NROS_PARAM_NEEDS_MAX_ARRAY_LEN
+        NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN)
         if(DEFINED ${_v})
             message(STATUS "${_v}=${${_v}}")
         endif()

@@ -373,6 +373,61 @@ function(_nros_qos_depth_env _out_var)
     endif()
 endfunction()
 
+# _nros_param_store_env(<out-var>)
+#
+# phase-446 W4 -- carry the PARAMETER STORE sizing the contract's `params:`
+# derived to nros-params' build script, on the lanes with no Kconfig.
+#
+# Read from the entity-inventory fragment, which is the one derivation
+# (`nros_cli_core::entity_inventory::render_param_store`); this function only
+# forwards what it wrote. Guarded by its own status and not the entity
+# inventory's: the store is sized from the MODEL, and an image whose entity
+# count refuses can still have declared every parameter.
+#
+# The numbers travel as `NROS_DECLARED_*` DEFAULTS, below every stated rung, so
+# an `NROS_MAX_*` in the environment or a board's `[knobs.params]` still wins.
+# A capacity a declared type NEEDS carries no number at all -- a capacity is a
+# board fact -- only the parameter that needs it, and the build script refuses
+# when no rung states one.
+#
+# The cargo-LEAF road carries none of this: a leaf's sidecar is derived from a
+# metadata probe that sees no SystemModel, so there is no declaration there to
+# forward and its store keeps the crate defaults (`check-declared-fact-carriers`
+# records why, in ROAD_UNPAIRED).
+function(_nros_param_store_env _out_var)
+    set(${_out_var} "" PARENT_SCOPE)
+    if(NOT COMMAND nros_entity_inventory_knobs_file)
+        return()
+    endif()
+    nros_entity_inventory_knobs_file(_inv)
+    if(NOT EXISTS "${_inv}")
+        return()
+    endif()
+    include("${_inv}")
+    if(NOT NROS_PARAM_DECLARATION_STATUS STREQUAL "declared")
+        return()
+    endif()
+    # Both names written IN FULL, for the reason `_nros_entity_budget_env`
+    # gives: an interpolated name resolves EMPTY and is invisible to grep.
+    set(_out "")
+    foreach(_pair
+            "NROS_DECLARED_MAX_PARAMETERS;NROS_DERIVED_MAX_PARAMETERS"
+            "NROS_DECLARED_MAX_PARAM_NAME_LEN;NROS_DERIVED_MAX_PARAM_NAME_LEN"
+            "NROS_DECLARED_MAX_STRING_VALUE_LEN;NROS_DERIVED_MAX_STRING_VALUE_LEN"
+            "NROS_DECLARED_MAX_ARRAY_LEN;NROS_DERIVED_MAX_ARRAY_LEN"
+            "NROS_DECLARED_MAX_BYTE_ARRAY_LEN;NROS_DERIVED_MAX_BYTE_ARRAY_LEN"
+            "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN;NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN"
+            "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN;NROS_PARAM_NEEDS_MAX_ARRAY_LEN"
+            "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN;NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN")
+        list(GET _pair 0 _name)
+        list(GET _pair 1 _src)
+        if(DEFINED ${_src})
+            list(APPEND _out "${_name}=${${_src}}")
+        endif()
+    endforeach()
+    set(${_out_var} "${_out}" PARENT_SCOPE)
+endfunction()
+
 # nros_entity_facts_env(<target>)
 #
 # Attach this configure's accumulated entity facts to a Corrosion target's cargo
@@ -391,6 +446,15 @@ function(nros_entity_facts_env _target)
     _nros_qos_depth_env(_depth_env)
     if(_depth_env)
         list(APPEND _payload_env "${_depth_env}")
+    endif()
+
+    # phase-446 W4 -- the parameter store, from the contract's `params:`.
+    _nros_param_store_env(_param_env)
+    if(_param_env)
+        list(APPEND _payload_env ${_param_env})
+        message(STATUS
+            "nano-ros: parameter store sized from the contract -- "
+            "${_param_env} (phase-446 W4)")
     endif()
 
     get_property(_seen GLOBAL PROPERTY NROS_ENTITY_FACTS_SEEN)
