@@ -496,11 +496,56 @@ watched run.
     loop can declare its cadence without over-claiming.
   * **Left for A3:** the ASI side printing these on a cadence.
 
-* **A3 — a loaded FVP cross-check.** Run the control loop under load and
-  compare `release_jitter()` and `last_park()` against an independent CTF
-  capture of the same run. **Exit:** the probe's maximum and the trace's agree
-  within the declared `release_jitter_granularity_us()`, and a disagreement
-  is explained, not averaged away.
+* **A3 — a loaded FVP cross-check. IN PROGRESS: the readout is live on ASI,
+  an idle A/B is measured, and the loaded run is next.** ASI's
+  `controller_pkg::Controller` wrapper prints one `rt-probe:` line per
+  window, behind `CONFIG_ASI_RT_PROBE_REPORT`, which `tracing_stats.conf`
+  turns on. Four things were established before the loaded run, each changing
+  what it can claim:
+
+  * **The probe and the trace share a clock, so the comparison is
+    self-consistent and not absolute.** With
+    `CONFIG_TIMER_HAS_64BIT_CYCLE_COUNTER=y` on the ARM arch timer, the
+    executor's clock is `k_cycle_get_64()` and CTF stamps events with
+    `k_cycle_get_32()` (`ctf_top.h:55`), both CNTVCT. ASI's
+    `rt_evaluation_zephyr.rst` records that the FVP advances that counter
+    during WFI at a rate unrelated to elapsed time, and that the image is SMP
+    while CTF events carry no CPU id. So A3 on FVP can check that the probe
+    measures the right thing in the right place. Absolute latency needs
+    silicon (S32Z), or a short, low-idle capture under the 4.295 s wrap.
+  * **E4 measured.** Same painted image, idle boot, with and without E4:
+
+    | | without E4 | with E4 |
+    |---|---|---|
+    | wakes per second (declared cadence 5 ms) | ~26.7 | ~162 |
+    | `timer-overrun-runtime` | ~6.5/s | ~0.2/s |
+    | `main` CPU (thread analyzer) | 15-19 % | 1 % |
+    | `main` average frame (counter ticks) | ~747 k | ~40 k |
+
+    The analyzer reports 458 992 unused bytes on `main`'s stack, which is the
+    length of every pre-E4 scan. Painted builds on any pin between #529
+    (which arms the bound) and E4 run this way. That includes ASI's pinned
+    `--trace-stats` / `--trace` lanes at the time of writing.
+  * **The since-boot maximum is pinned by boot.** Both runs report
+    `jitter_max_us` of about 34 ms, set at ~10 s and never exceeded, so the
+    cumulative figure describes startup and hides the steady state.
+    `nros_cpp_executor_clear_release_jitter_stats` exposes the existing Rust
+    `clear_release_jitter_stats`, and the ASI readout clears after every
+    report, so each line covers its own `window_ms`.
+  * **A2c — open: `late_wakes` ignores the granularity it reports.** A wake
+    counts as late at `interval - nominal > 0`, one microsecond over. On a
+    loop paced by a relative `spin_once` timeout, every interval is nominal
+    plus work plus tick rounding, so about 99 % of wakes count as late with E4
+    in. A captured example: `park_bound_us=27 park_achieved_us=1000` is a
+    timer 27 us away rounded up to the 1 ms tick by design. The executor
+    already says the figure is worth `granularity_us=1000`; the count should
+    agree with it (for example, a separate count of wakes late beyond one
+    granule). This is A2b's coupling, showing in a number.
+
+  **Exit:** a loaded `--drive` run on an E4 build, with the windowed readout
+  and a CTF capture of the same run. The probe's per-window maximum and the
+  trace's activation lateness must agree within `granularity_us` on the shared
+  counter, and any disagreement must be explained, not averaged away.
 
 ### Path B — Deadline sources: the unused half of the seam.
 
