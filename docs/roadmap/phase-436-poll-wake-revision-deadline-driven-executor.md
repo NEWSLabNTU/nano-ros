@@ -622,11 +622,26 @@ wired, so every other port parks on the millisecond `wake_wait_ms` floor.
   the existing "stack-headroom bound NOT set" line. C entries get it for free
   through `nros_cpp_executor_derive_min_stack_headroom`.
 
+* **E4 — throttle the headroom query. DONE.** On a painted Zephyr stack,
+  `k_thread_stack_space_get` walks from the stack base one byte at a time
+  until the first used byte (`z_stack_space_get`), so a query costs one read
+  per UNUSED byte. The rule ran it on every `spin_once`. ASI's control tier
+  runs on a 512 KiB main stack every 5 ms, which would put roughly half a
+  megabyte of reads inside every iteration of the loop A3 is meant to
+  measure. The high-water mark only grows, so a throttled check sees the same
+  low mark and only sees it later. The query now runs at most once per
+  `STACK_HEADROOM_CHECK_INTERVAL_US` (1 s): immediately the first time, then
+  on the interval, or once per `STACK_HEADROOM_CHECK_SPIN_STRIDE` spins on a
+  build with no clock. Setting a new bound re-arms an immediate check. This
+  is what makes enabling `CONFIG_INIT_STACKS` on ASI's default build
+  affordable (E2's exit).
+
 ### Order
 
 A1 → A2 → A3 first (B1 is decided: no code). Then
 B2 and D in parallel; C whenever — it is breadth, and each port is
-independent. E3 is done; E1 only for images with spawned tiers.
+independent. E3 and E4 are done; ASI's `CONFIG_INIT_STACKS` follows E4.
+E1 only for images with spawned tiers.
 
 ## Sequencing (W1-W7, as delivered)
 
