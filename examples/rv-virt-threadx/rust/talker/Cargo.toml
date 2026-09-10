@@ -26,23 +26,10 @@ rmw-cyclonedds   = ["dep:nros-rmw-cyclonedds-sys"]
 alloc            = ["nros/alloc"]
 
 # Phase 245 — app-node shape; phase-369 moved the entry to `src/app_main.rs`
-# (`app_main!`), and the deploy key below is still what names the board. Reads
-# `[package.metadata.nros.entry] deploy = "threadx-qemu-riscv64"` (the macro maps
-# it to `nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64`) and runs this
-# crate's `register` (from `src/lib.rs`'s `nros::node!()`).
-[package.metadata.nros.entry]
-deploy = "threadx-qemu-riscv64"
-
-# Deploy overlay (Phase 245 B0) — locator / domain thread into the board `Config`
-# via `BoardEntry::run_with_deploy`. CycloneDDS ignores the locator (no router).
-[package.metadata.nros.deploy.threadx-qemu-riscv64]
-board = "threadx-qemu-riscv64"
-rmw = "zenoh"
-domain_id = 0
-locator = "tcp/10.0.2.2:9400"
-ip = "10.0.2.15"
-netmask = "255.255.255.0"
-gateway = "10.0.2.2"
+# (`app_main!`). The board it names (`threadx-qemu-riscv64` →
+# `nros_board_threadx_qemu_riscv64::ThreadxQemuRiscv64`), the network identity
+# and the node declaration live in `system.toml` beside this manifest
+# (RFC-0098 D3/D5).
 
 [dependencies]
 nros-board-threadx-qemu-riscv64 = { version = "*" }

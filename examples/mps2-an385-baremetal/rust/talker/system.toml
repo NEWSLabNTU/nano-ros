@@ -1,0 +1,22 @@
+# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
+# schema a workspace bringup uses. Switching board is editing `[image.*] board`
+# and re-running `nros sync`.
+
+[system]
+name = "qemu_bsp_talker"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "qemu_bsp_talker"
+class = "qemu_bsp_talker::Talker"
+name = "talker"
+
+# Bare-metal MPS2-AN385 (QEMU). The network identity overlays the board's
+# compiled-in `Config::default()` through `BoardEntry::run_with_deploy`.
+[image.mps2-an385-baremetal]
+board = "qemu-mps2-an385"
+locator = "tcp/10.0.2.2:10500"
+ip = "10.0.2.10"
+gateway = "10.0.2.2"
+netmask = "255.255.255.0"

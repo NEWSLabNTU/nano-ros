@@ -91,7 +91,7 @@ args   = { host = "robot2" }
 rmw = "zenoh"
 
 [image.esp32]
-board = "esp32-qemu"
+board = "esp32-c3-baremetal"
 panic = "own"
 
 [image.freertos]
