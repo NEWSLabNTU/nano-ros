@@ -219,7 +219,9 @@ synthetic. Issue 1228 records what the real acceptance is: a `west build` with
 `check-knob-delivery <build-dir>` green both sides and unrelated values asserted
 unchanged as the control. Its headline is the one differing line between stage
 3.5 and the mid-configure producer — `NROS_ENTITY_INVENTORY_SOURCE` — which is
-why the pass is not yet saved in the real tree.
+why the pass is not yet saved in the real tree. *(A3 was measured later, on a
+host that has a Zephyr workspace: see W2.a. Two of the three passes are gone and
+A3 is still not met — the remaining link is issue 1252.)*
 
 **Known gap, not a blocker:** `ZPICO_MAX_QUERYABLES` and
 `ZPICO_MAX_LARGE_SUBSCRIBERS` have no declarative derivation (issues 0827, 1061,
@@ -288,6 +290,10 @@ over the production `merged_per_kind_max` / `to_cmake`): identical values,
 identical bytes except `NROS_ENTITY_INVENTORY_SOURCE`, which names the metadata
 file on the producer's side and the model alone on stage 3.5's. That one line is
 why the pass is not yet saved in the real tree, and it is issue 1228's headline.
+
+*Corrected by W2.a below: on a REAL image it was TWO renderings, not one. The
+test could not see the second because it built both composers with the same
+`pkg`; the tree's model composer uses the node FQN.*
 
 ### W2.a — the entity link closes, and the pass count is MEASURED (2026-09-10)
 
