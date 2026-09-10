@@ -99,9 +99,15 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     **CI runs a SUBSET of it, deliberately, and the subset DIFFERS BY EVENT**
     (phase-395 "PR cheap, batch thorough"; phase-396/399). On `pull_request` the
     required `CI` context is `check-fast` + `check-submodule-commits-reachable` +
-    `check-compile-smoke` + `check-cli-tests`. **`test-unit` is NOT in it** — it
-    runs on `merge_group` (and schedule/dispatch), where it costs a measured
-    ~3.5 min per batch instead of per PR push. So a green `CI` on a pull request
+    `check-compile-smoke` + `check-cli-tests` + `check-workspace-all`.
+    **`test-unit` is NOT in it** — it runs on `merge_group` (and
+    schedule/dispatch), where it costs a measured ~3.5 min per batch instead of
+    per PR push. **`workspace-all` moved the other way on 2026-09-10**, out of
+    the batch lane and onto the PR: it is 28 s against `test-unit`'s 3.5 min, so
+    it never belonged under the same cost argument, and a feature-combination
+    break there costs a batch rather than a PR — `grouping_strategy` is ALLGREEN
+    over 5 entries, so one `clippy::derivable_impls` error took #741, #768 and
+    #779 down 7-8 times each with no defect of their own. So a green `CI` on a pull request
     means "it compiles and the source gates hold", NOT "the unit tests pass";
     nothing broken lands, because the queue runs them before the merge, but the
     feedback arrives at the queue and an ejection is how you hear about it
