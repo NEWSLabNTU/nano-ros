@@ -50,11 +50,24 @@ pub unsafe extern "C" fn nros_cpp_register_parameter_services(
     }
 }
 
-/// Declare a parameter with a string initial value on the C++ executor's node.
+/// Seed a launch parameter, given as a string, on the node the executor will
+/// build NEXT.
 ///
-/// Infers the `ParameterValue` type from the string content: booleans, integers,
-/// floats, and plain strings are all handled (in that priority order). Mirrors the
-/// Rust `nros::main!` W4b inference path.
+/// issue 1272 -- the generated entry calls this for each launch `<param>` of a
+/// node BEFORE it constructs that node (issue 0745: an rclcpp-shape
+/// constructor reads its `declare_parameter` initials immediately), so the
+/// node has no handle yet. `node` is the index the executor's `node_builder`
+/// will give it: its position among the nodes its setup function builds on
+/// this executor. An index that is not the next one is REFUSED with
+/// `NROS_CPP_RET_INVALID_ARGUMENT` and a log line naming the parameter and
+/// both indices. An earlier component that built two nodes, or none, would
+/// otherwise move every later node's values onto a neighbour. Before 1272 the
+/// call carried no node and every seed landed on the executor's primary node.
+///
+/// The value's type is still INFERRED from the string (bool, integer, double,
+/// then string: `infer_param_value`, the same order `nros::main!` uses).
+/// phase-446 carries the declared type from the launch contract instead; the
+/// shim's one `infer_param_value` call is the place that changes.
 ///
 /// # Safety
 /// `executor` must be a valid, live `CppContext*`. `name` and `value` must be
@@ -63,6 +76,7 @@ pub unsafe extern "C" fn nros_cpp_register_parameter_services(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_declare_param(
     executor: *mut c_void,
+    node: u8,
     name: *const c_char,
     value: *const c_char,
 ) -> nros_cpp_ret_t {
@@ -80,8 +94,23 @@ pub unsafe extern "C" fn nros_cpp_declare_param(
         Some(s) => s,
         None => return NROS_CPP_RET_INVALID_ARGUMENT,
     };
+    // The seed predicts a NodeId that does not exist yet; it is right only if
+    // every node built before this one took exactly one table row.
+    let next = ctx.executor.nodes().len();
+    if usize::from(node) != next {
+        nros_log::log_error!(
+            nros_log::get_logger("nros_cpp"),
+            "launch parameter '{name_str}' names node index {node}, but the next node \
+             this executor builds is index {next}: refusing to seed it on another node"
+        );
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    // phase-446 seam: a declared type replaces this inference.
     let pv = infer_param_value(val_str);
-    if ctx.executor.declare_parameter(name_str, pv) {
+    if ctx
+        .executor
+        .declare_parameter_on(nros_node::executor::NodeId::from_raw(node), name_str, pv)
+    {
         NROS_CPP_RET_OK
     } else {
         NROS_CPP_RET_ERROR
@@ -271,19 +300,17 @@ pub unsafe extern "C" fn nros_cpp_get_param_string(
 // executor (RFC-0047). `nros_cpp_node_t` already carries the identity
 // (`node_id`, biased by one since issue 0312), so the handle a C++ node already
 // holds is the whole key. The executor-scoped functions stay: the GENERATED
-// ENTRY seeds launch parameters through `nros_cpp_declare_param` before any
-// component constructor runs, i.e. before the node table has any rows, so it
-// has no node to name and lands on the primary.
+// ENTRY seeds launch parameters through `nros_cpp_declare_param` before each
+// component constructor runs, i.e. before that node has a table row, so it has
+// no handle to pass.
 //
-// WHAT THAT MEANS FOR LAUNCH SEEDS, stated rather than discovered: a
-// single-node C++ image sees no change — its one node IS `NodeId::PRIMARY`, so
-// a `declare_parameter` finds the seeded name already present and adopts it
-// (issue 0745's contract, now for free instead of through a per-facade
-// re-reading helper). In a MULTI-node image only the primary adopts, where
-// before every node adopted the primary's value for a name it shared — which is
-// precisely the collision phase-426 W1 exists to remove. Keying the SEED per
-// node needs the launch resolver to say which node an override belongs to, and
-// the phase doc puts that in RFC-0060 territory.
+// WHAT THAT MEANS FOR LAUNCH SEEDS (issue 1272): the seed names its node by
+// the INDEX the executor will give it, and the shim refuses an index that is
+// not the next one. The node's constructor then finds the seeded name already
+// present under its own key and adopts it (issue 0745's contract), so two
+// nodes that set the same name each read their own value. Before 1272 the
+// seed carried no node and all of them landed on `NodeId::PRIMARY`: node 0
+// adopted every node's values and a second node's identical name was refused.
 //
 // THEY ARE DEFINED UNCONDITIONALLY, unlike their executor-scoped neighbours,
 // and that is a link-time decision. The C++ facades are on `rclcpp::Node` and
@@ -1119,7 +1146,8 @@ mod tests {
         assert_eq!(ret, NROS_CPP_RET_INVALID_ARGUMENT);
         let name = c"p";
         let val = c"v";
-        let ret = unsafe { nros_cpp_declare_param(ptr::null_mut(), name.as_ptr(), val.as_ptr()) };
+        let ret =
+            unsafe { nros_cpp_declare_param(ptr::null_mut(), 0, name.as_ptr(), val.as_ptr()) };
         assert_eq!(ret, NROS_CPP_RET_INVALID_ARGUMENT);
     }
 

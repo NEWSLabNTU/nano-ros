@@ -926,6 +926,7 @@ impl ExecutorNodeRuntime {
             node_identity: None, // direct API — no launch injection
             remaps: &[],         // direct API — no launch remaps
             qos_overrides: &[],  // direct API — no plan overrides
+            launch_params: &[],  // direct API -- no launch params
         };
         let sink_dyn: &mut dyn NodeRuntime = &mut sink;
         let mut context = NodeContext::new(C::NAME, sink_dyn);
@@ -1220,9 +1221,11 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
         Ok(())
     }
 
-    // Phase 264 W4b — register the 6 ROS 2 parameter services on the owned executor
-    // + seed the volatile param store with the launch-baked `<param>` initials
-    // (mirrors `generate.rs::render_param_persistence_fn`, minus persistence). Only
+    // Phase 264 W4b -- register the 6 ROS 2 parameter services on the owned executor
+    // and create the volatile param store. issue 1272 -- it no longer seeds the
+    // launch `<param>` initials: those used to arrive here as one flat list and all
+    // land on the primary node; now `ExecutorSink::seed_launch_params` declares each
+    // node's own on the node `create_node` builds. Only
     // compiled with `param-services`; without it the trait default no-op applies, so a
     // `[param_services]` block is silently inert (the Entry opts in by enabling
     // `nros/param-services`). `nros::main!` calls this when `system.toml` declares
@@ -1235,29 +1238,10 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
     // executor's tick registry, not `self.components`, so a post-pass here wouldn't reach
     // them — capture-at-registration does.)
     #[cfg(feature = "param-services")]
-    fn apply_param_services(&mut self, params: &[(&str, &str)]) -> Result<(), &'static str> {
+    fn apply_param_services(&mut self) -> Result<(), &'static str> {
         self.executor
             .register_parameter_services()
-            .map_err(|e| capability_reason(&e))?;
-        for (name, raw) in params {
-            // phase-428 W6 made `declare_parameter` `#[must_use]`: a `false`
-            // here is a launch parameter the program believes it has. But the
-            // store answers `false` for "name already taken" too, and then the
-            // parameter IS there — so the refusal that matters is `false` AND
-            // still absent afterwards (table full, value rejected).
-            if !self
-                .executor
-                .declare_parameter(name, infer_param_value(raw))
-                && self.executor.get_parameter(name).is_none()
-            {
-                nros_log::log_error!(
-                    nros_log::get_logger("nros"),
-                    "launch parameter '{name}' was refused by the parameter store"
-                );
-                return Err("a launch parameter was refused by the parameter store");
-            }
-        }
-        Ok(())
+            .map_err(|e| capability_reason(&e))
     }
 
     fn observed_callback_counts(&self) -> (usize, usize) {
@@ -1323,6 +1307,12 @@ struct ExecutorSink<'a> {
     /// component declares entities, so `create_publisher`/`create_subscription`
     /// fold the matching ones in. Empty → nothing installed, zero cost.
     qos_overrides: &'static [nros_node::executor::node_record::QoSOverrideCode],
+    /// issue 1272 -- the launch `<param>` initials `nros::main!` baked for this
+    /// component (`RuntimeCtx::params`). `create_node` seeds them on the node it
+    /// builds (see [`ExecutorSink::seed_launch_params`]). Empty for the direct
+    /// API, which has no launch.
+    #[cfg_attr(not(feature = "param-services"), allow(dead_code))]
+    launch_params: &'a [(&'a str, &'a str)],
 }
 
 struct SinkNode {
@@ -1335,6 +1325,47 @@ struct SinkNode {
 impl ExecutorSink<'_> {
     fn lookup_node(&self, stable_id: &str) -> Option<&SinkNode> {
         self.nodes.iter().find(|n| n.stable_id == stable_id)
+    }
+
+    /// issue 1272 -- declare this component's launch `<param>` initials on
+    /// `node`, the node `create_node` has just built.
+    ///
+    /// Before 1272 `nros::main!` flattened every node's initials into one list
+    /// and `apply_param_services` declared them all on `NodeId::PRIMARY`, ahead
+    /// of the `register` calls: node 0 held every node's values, and a second
+    /// node's identical name was refused as a duplicate. Seeding here keys each
+    /// value on the `NodeId` construction actually returned, so no index has
+    /// to be predicted and none can drift.
+    ///
+    /// Only when the executor already has a parameter store, i.e. the system
+    /// declared `[param_services]` and `apply_param_services` ran before this
+    /// `register` call. That is the condition the flat seed had.
+    ///
+    /// A `false` from the store is a refusal only if the name is still absent
+    /// afterwards: the store also answers `false` for "already declared".
+    #[cfg(feature = "param-services")]
+    fn seed_launch_params(&mut self, node: nros_node::executor::NodeId) -> NodeResult<()> {
+        if self.executor.params().is_none() {
+            return Ok(());
+        }
+        let params = self.launch_params;
+        for (name, raw) in params {
+            // phase-446 seam: the value's type is inferred from the launch
+            // string; a type declared in the contract replaces this call.
+            let value = infer_param_value(raw);
+            if !self.executor.declare_parameter_on(node, name, value)
+                && self.executor.get_parameter_on(node, name).is_none()
+            {
+                nros_log::log_error!(
+                    nros_log::get_logger("nros"),
+                    "launch parameter '{name}' for node index {} was refused by the \
+                     parameter store",
+                    node.raw()
+                );
+                return Err(NodeDeclError::Runtime);
+            }
+        }
+        Ok(())
     }
 }
 
@@ -1362,6 +1393,14 @@ impl NodeRuntime for ExecutorSink<'_> {
         if !self.qos_overrides.is_empty() {
             self.executor
                 .set_node_qos_overrides(node_id, self.qos_overrides);
+        }
+        // issue 1272 -- the launch values belong to the component's launch
+        // node, which is the FIRST node it builds (the same node its cell reads
+        // parameters from, see `register_node_borrowed`). Seeded before the
+        // component declares any entity, so its own declarations adopt them.
+        #[cfg(feature = "param-services")]
+        if self.nodes.is_empty() {
+            self.seed_launch_params(node_id)?;
         }
         self.nodes
             .push(SinkNode {
@@ -1685,11 +1724,14 @@ impl NodeRuntime for ExecutorSink<'_> {
                     }
                     let value = param_default_to_value(metadata.parameter_default.as_ref());
                     let name = metadata.source_name.as_str();
-                    // Same rule as `apply_param_services`: already-declared is
-                    // not a refusal (the launch bake may have declared it
-                    // first); refused-and-absent is.
-                    if !self.executor.declare_parameter(name, value)
-                        && self.executor.get_parameter(name).is_none()
+                    // Same rule as `seed_launch_params`: already-declared is
+                    // not a refusal (the launch seed may have declared it
+                    // first); refused-and-absent is. On THIS entity's node,
+                    // not the executor's primary (issue 1272): a second node
+                    // declaring a name the first also declares is its own
+                    // parameter, not a duplicate.
+                    if !self.executor.declare_parameter_on(node, name, value)
+                        && self.executor.get_parameter_on(node, name).is_none()
                     {
                         nros_log::log_error!(
                             nros_log::get_logger("nros"),
@@ -2217,6 +2259,9 @@ where
         remaps,
         // Issue #52 — thread the per-component QoS-override bake.
         qos_overrides,
+        // issue 1272 -- the launch `<param>` initials, seeded on the node
+        // `create_node` builds rather than on the executor's primary node.
+        launch_params: params,
     };
     let sink_dyn: &mut dyn NodeRuntime = &mut sink;
     let mut context = NodeContext::new(C::NAME, sink_dyn);

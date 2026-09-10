@@ -69,11 +69,11 @@ static int32_t __nros_entry_setup_tier_{{ t.index }}(void* executor) {
     if (executor == NULL) return (int32_t)NROS_CPP_RET_NOT_INIT;
 {%- for n in t.nodes %}
     {
-        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "{{ n.name|c_str }}", "/", &__nros_node_{{ n.index }});
-        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
 {%- with decls = n.decls %}
 {%- include "declare_calls.jinja" %}
 {%- endwith %}
+        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "{{ n.name|c_str }}", "/", &__nros_node_{{ n.index }});
+        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
 {%- if n.qos %}
         static const nros_cpp_qos_override_t __nros_qos_{{ n.index }}[] = {
 {%- for q in n.qos %}
@@ -139,11 +139,11 @@ static int32_t __nros_entry_setup(void* executor) {
     }
 {%- for n in setup_nodes %}
     {
-        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "{{ n.name|c_str }}", "/", &__nros_node_{{ n.index }});
-        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
 {%- with decls = n.decls %}
 {%- include "declare_calls.jinja" %}
 {%- endwith %}
+        nros_cpp_ret_t nrc = nros_cpp_node_create(executor, "{{ n.name|c_str }}", "/", &__nros_node_{{ n.index }});
+        if (nrc != NROS_CPP_RET_OK) return (int32_t)nrc;
 {%- if n.qos %}
         static const nros_cpp_qos_override_t __nros_qos_{{ n.index }}[] = {
 {%- for q in n.qos %}

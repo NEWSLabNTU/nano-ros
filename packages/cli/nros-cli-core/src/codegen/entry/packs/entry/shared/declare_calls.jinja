@@ -17,6 +17,14 @@
   emission sat inside the `param_services` gate and AFTER construction, so a
   plan without param services silently dropped every launch param.
 
+  issue 1272 -- a parameter seed NAMES ITS NODE. `decls.node` is the index
+  the executor's `node_builder` will hand this node: its position among the
+  nodes this setup function builds on this executor. Both packs therefore
+  emit these calls BEFORE the node is created, so the seed always names the
+  NEXT node, and the shim refuses a seed whose index is not that next node
+  (a component that built two nodes, or none, would otherwise shift every
+  later node's parameters onto a neighbour).
+
   Indentation is eight spaces because both callers open a node block at four.
   It is written here rather than passed in: a caller that needed a different
   depth would be emitting these somewhere they do not belong.
@@ -29,7 +37,7 @@
 {%- endfor %}
 {%- for p in decls.params %}
         {
-            nros_cpp_ret_t prc = nros_cpp_declare_param({{ decls.exec }}, "{{ p.key | c_str }}", "{{ p.value | c_str }}");
+            nros_cpp_ret_t prc = nros_cpp_declare_param({{ decls.exec }}, {{ decls.node }}, "{{ p.key | c_str }}", "{{ p.value | c_str }}");
             if (prc != NROS_CPP_RET_OK) return (int32_t)prc;
         }
 {%- endfor -%}

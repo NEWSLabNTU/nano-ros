@@ -2998,17 +2998,33 @@ nros_cpp_ret_t nros_cpp_lifecycle_autostart(void *executor, uint8_t autostart_co
 nros_cpp_ret_t nros_cpp_register_parameter_services(void *executor);
 
 /**
- * Declare a parameter with a string initial value on the C++ executor's node.
+ * Seed a launch parameter, given as a string, on the node the executor will
+ * build NEXT.
  *
- * Infers the `ParameterValue` type from the string content: booleans, integers,
- * floats, and plain strings are all handled (in that priority order). Mirrors the
- * Rust `nros::main!` W4b inference path.
+ * issue 1272 -- the generated entry calls this for each launch `<param>` of a
+ * node BEFORE it constructs that node (issue 0745: an rclcpp-shape
+ * constructor reads its `declare_parameter` initials immediately), so the
+ * node has no handle yet. `node` is the index the executor's `node_builder`
+ * will give it: its position among the nodes its setup function builds on
+ * this executor. An index that is not the next one is REFUSED with
+ * `NROS_CPP_RET_INVALID_ARGUMENT` and a log line naming the parameter and
+ * both indices. An earlier component that built two nodes, or none, would
+ * otherwise move every later node's values onto a neighbour. Before 1272 the
+ * call carried no node and every seed landed on the executor's primary node.
+ *
+ * The value's type is still INFERRED from the string (bool, integer, double,
+ * then string: `infer_param_value`, the same order `nros::main!` uses).
+ * phase-446 carries the declared type from the launch contract instead; the
+ * shim's one `infer_param_value` call is the place that changes.
  *
  * # Safety
  * `executor` must be a valid, live `CppContext*`. `name` and `value` must be
  * valid null-terminated UTF-8 strings.
  */
-nros_cpp_ret_t nros_cpp_declare_param(void *executor, const char *name, const char *value);
+nros_cpp_ret_t nros_cpp_declare_param(void *executor,
+                                      uint8_t node,
+                                      const char *name,
+                                      const char *value);
 
 /**
  * Get an integer parameter by name from the C++ executor's parameter store.

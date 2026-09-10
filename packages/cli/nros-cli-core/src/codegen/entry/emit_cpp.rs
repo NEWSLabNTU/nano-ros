@@ -331,7 +331,10 @@ fn node_shape(n: &super::PlanNode) -> &'static str {
     }
 }
 
-fn node_view(n: &super::PlanNode, i: usize, tiered: bool) -> CppNodeView {
+/// `on_executor` is the node's index on the executor its setup function
+/// builds it on (issue 1272): the tier's position for a tiered setup, the plan
+/// position for the single one.
+fn node_view(n: &super::PlanNode, i: usize, on_executor: usize, tiered: bool) -> CppNodeView {
     let exec_expr = if tiered {
         "executor"
     } else {
@@ -344,7 +347,7 @@ fn node_view(n: &super::PlanNode, i: usize, tiered: bool) -> CppNodeView {
         pkg: sanitize_pkg(&n.pkg),
         class: n.class_name.clone(),
         tiered,
-        decls: decls_view(n, exec_expr),
+        decls: decls_view(n, exec_expr, on_executor),
         qos: qos_views(n),
     }
 }
@@ -499,7 +502,10 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
                         let node_name = n.name.as_deref().unwrap_or(&n.exec);
                         node_to_tier.get(node_name).copied() == Some(ti)
                     })
-                    .map(|(i, n)| node_view(n, i, true))
+                    // issue 1272 -- each tier setup builds its nodes on the
+                    // tier's OWN executor, so the index restarts per tier.
+                    .enumerate()
+                    .map(|(k, (i, n))| node_view(n, i, k, true))
                     .collect(),
                 emits_services: ti == 0,
             })
@@ -607,7 +613,7 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
             .nodes
             .iter()
             .enumerate()
-            .map(|(i, n)| node_view(n, i, false))
+            .map(|(i, n)| node_view(n, i, i, false))
             .collect();
     }
 
@@ -1195,7 +1201,7 @@ mod tests {
         let src = emit_typed(&plan).expect("typed cpp emit ok");
         assert!(src.contains("nros_cpp_register_parameter_services(__exec)"));
         assert!(src.contains(
-            "nros_cpp_declare_param(::nros::global_handle(), \"publish_period_ms\", \"250\")"
+            "nros_cpp_declare_param(::nros::global_handle(), 0, \"publish_period_ms\", \"250\")"
         ));
         // issue 0745 — seeding precedes construction.
         let seed_at = src.find("nros_cpp_declare_param").unwrap();
@@ -1389,6 +1395,57 @@ mod tests {
             tiers: vec![high_tier, low_tier],
         });
         plan
+    }
+
+    /// issue 1272 -- two nodes that set the SAME parameter name each seed it on
+    /// their own node index, and each node's seeds come right before that
+    /// node's construction, so the index the seed names is the one the
+    /// executor hands out next.
+    #[test]
+    fn typed_emit_seeds_each_node_on_its_own_index() {
+        let mut plan = fixture_plan_typed(&[
+            ("a_pkg", "alpha", "alpha", "a_pkg::Alpha", "a_pkg/Alpha.hpp"),
+            ("b_pkg", "beta", "beta", "b_pkg::Beta", "b_pkg/Beta.hpp"),
+        ]);
+        plan.nodes[0].params = vec![("rate".into(), "10".into())];
+        plan.nodes[1].params = vec![("rate".into(), "20".into())];
+        let src = emit_typed(&plan).expect("typed cpp emit ok");
+
+        let seed_a = "nros_cpp_declare_param(::nros::global_handle(), 0, \"rate\", \"10\")";
+        let seed_b = "nros_cpp_declare_param(::nros::global_handle(), 1, \"rate\", \"20\")";
+        let create_a = "::nros::create_node(__nros_node_0, \"alpha\")";
+        let create_b = "::nros::create_node(__nros_node_1, \"beta\")";
+        let at = |s: &str| {
+            src.find(s)
+                .unwrap_or_else(|| panic!("missing `{s}`; got:\n{src}"))
+        };
+        assert!(
+            at(seed_a) < at(create_a) && at(create_a) < at(seed_b) && at(seed_b) < at(create_b),
+            "each node's seeds must directly precede its own construction; got:\n{src}"
+        );
+    }
+
+    /// issue 1272 -- each tier setup builds its nodes on the tier's OWN
+    /// executor, so the first node of every tier is index 0 there.
+    #[test]
+    fn typed_emit_tier_seeds_restart_at_zero_per_tier() {
+        let mut plan = fixture_plan_with_tiers();
+        plan.nodes[0].params = vec![("period".into(), "10".into())];
+        plan.nodes[1].params = vec![("period".into(), "100".into())];
+        let src = emit_typed(&plan).expect("typed cpp tier emit ok");
+
+        assert!(
+            src.contains("nros_cpp_declare_param(executor, 0, \"period\", \"10\")"),
+            "ctrl is tier 0's first node; got:\n{src}"
+        );
+        assert!(
+            src.contains("nros_cpp_declare_param(executor, 0, \"period\", \"100\")"),
+            "telem is tier 1's first node, index 0 on tier 1's executor; got:\n{src}"
+        );
+        assert!(
+            !src.contains("nros_cpp_declare_param(executor, 1,"),
+            "no tier builds a second node here; got:\n{src}"
+        );
     }
 
     #[test]
