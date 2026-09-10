@@ -2046,10 +2046,13 @@ platform = "freertos"
 lang = "rust"
 rmw = "zenoh"
 dir = "examples/mps2-an385-freertos/rust/talker"
-# issue #181 — an explicit target, even though the leaf `.cargo/config.toml`
-# now also sets `[build] target`: the row is the SSoT the staleness probe and
-# the group resolver read, and a triple only cargo can see is a triple they
-# cannot check.
+# issue #181 — an explicit target: the row is what the staleness probe and the
+# artifact resolver read, and a triple only cargo can see is a triple they
+# cannot check. phase-445 W4b — it is NO LONGER a cargo argument for these six
+# rows: each leaf states its board in `system.toml`, so the lane builds it
+# through `build/<image>/nros-cargo.toml`, whose `[build] target` comes from the
+# board descriptor (`fixtures-manifest.py` `builds_through_leaf_settings`).
+# The row keeps it only as the locator's `<target_dir>/<triple>/` component.
 target = "thumbv7m-none-eabi"
 
 [[fixture]]
@@ -3279,12 +3282,15 @@ platform = "esp32"
 lang = "rust"
 dir = "examples/esp32-c3-baremetal/rust/talker"
 skip_probe = true
-# Entity budgets are NOT here any more (issue 1052). They live in each leaf's
-# own `.cargo/config.toml [env]`, beside the declarations they are derived from
-# and beside `ZPICO_SUBSCRIBER_LARGE_SIZE`, which was already there for exactly
-# this reason. Stating them here bound them to the FIXTURE build: an example is
-# a standalone copy-out project, and this one did not link on its own — `.bss`
-# overflowed DRAM by 11,184 B. Deriving them rather than stating them is 1061.
+# Entity budgets are NOT here any more (issue 1052). Stating them here bound
+# them to the FIXTURE build: an example is a standalone copy-out project, and
+# this one did not link on its own — `.bss` overflowed DRAM by 11,184 B.
+# phase-445 W1 — the pools are now DERIVED from the leaf's `system.toml`
+# `[[component]] entities` and carried in its `build/<image>/nros-cargo.toml`
+# (the entity facts size `ZPICO_MAX_QUERYABLES`; the inventory sizes
+# `ZPICO_MAX_SUBSCRIBERS`), which this lane builds through. What the leaf's
+# `.cargo/config.toml [env]` still states (the arena, the large-buffer size)
+# has no derivation yet.
 
 [[fixture]]
 id = "esp32-c3-baremetal-listener"

@@ -316,9 +316,31 @@ def cargo_args(entry, *, include_target_dir=True):
     # carrier. Passing it here too was a second spelling of a board fact that
     # could disagree with the first; the row keeps `target` only as the
     # artifact locator's `<target_dir>/<triple>/` component.
-    if entry.get("target") and not entry.get("image"):
+    # phase-445 W4b — the same for a SINGLE-PACKAGE leaf that states its board
+    # in `system.toml`: `nros sync` writes the triple into the leaf's
+    # `build/<image>/nros-cargo.toml`, and `fixtures-build.sh` builds the row
+    # through that file. `target` stays the locator's triple component.
+    if (
+        entry.get("target")
+        and not entry.get("image")
+        and not builds_through_leaf_settings(entry)
+    ):
         args += ["--target", entry["target"]]
     return " ".join(args)
+
+
+def builds_through_leaf_settings(entry):
+    """Does this cargo row build through its leaf's generated settings file?
+
+    ONE predicate, and it is a property of the LEAF, not of the row: a package
+    directory with a `system.toml` beside its `Cargo.toml` (RFC-0098 D3). The
+    builder asks the CLI for the file's path (`nros ws leaf-system` ->
+    `NROS_LEAF_SETTINGS`) and FAILS when a leaf this predicate accepts has none,
+    so the two cannot silently disagree — a row that lost its `--target` here
+    and its settings file there would build for the host.
+    """
+    d = SCRIPT_ROOT / str(entry.get("dir") or "")
+    return (d / "system.toml").is_file() and (d / "Cargo.toml").is_file()
 
 
 def is_cargo_row(entry):
