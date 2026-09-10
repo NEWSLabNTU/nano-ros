@@ -24,5 +24,7 @@
     <nano_ros_provides kind="board" name="threadx"/>
     <nano_ros_provides kind="board" name="threadx-riscv64"/>
     <nano_ros_provides kind="board" name="threadx-qemu-riscv64"/>
+    <!-- phase-445 W3b: the RFC-0093 name, which the descriptor's `names` gained. -->
+    <nano_ros_provides kind="board" name="rv-virt-threadx"/>
   </export>
 </package>
