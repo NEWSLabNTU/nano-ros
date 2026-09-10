@@ -327,7 +327,16 @@ lang = "rust"
 rmw = "zenoh"
 dir = "examples/workspaces/rust"
 bringup = "src/demo_bringup"
-entry = "esp32_entry"
+# phase-445 W4/W5 — built through `nros build demo_bringup:esp32` like every
+# other cargo workspace row: there is no workspace root to `cargo build -p`
+# into any more (RFC-0098 D9). The entry is still the HAND-WRITTEN
+# `src/esp32_entry` (the image's `<image>_entry` name, so `nros build` uses it
+# rather than generating one): its generated replacement needs `esp-hal` as a
+# board dependency and a home for the locator, which W2/W3 give it. Its triple,
+# link flags and entity facts now come from `build/esp32-zenoh/esp32_entry/
+# nros-cargo.toml`, not from `target` below (kept as the artifact locator's
+# `<triple>/` component) nor from a per-invocation environment.
+image = "esp32"
 codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/esp32"
 target = "riscv32imc-unknown-none-elf"

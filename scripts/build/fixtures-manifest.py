@@ -310,7 +310,13 @@ def cargo_args(entry, *, include_target_dir=True):
         args += ["--features", ",".join(feats)]
     if include_target_dir and entry.get("target_dir"):
         args += ["--target-dir", entry["target_dir"]]
-    if entry.get("target"):
+    # phase-445 W4 (RFC-0098 D1) — an IMAGE row's triple is NOT a cargo arg.
+    # `nros build` writes it into the image's `build/<coord>/<entry>/
+    # nros-cargo.toml` from the board descriptor, and that file is the one
+    # carrier. Passing it here too was a second spelling of a board fact that
+    # could disagree with the first; the row keeps `target` only as the
+    # artifact locator's `<target_dir>/<triple>/` component.
+    if entry.get("target") and not entry.get("image"):
         args += ["--target", entry["target"]]
     return " ".join(args)
 
