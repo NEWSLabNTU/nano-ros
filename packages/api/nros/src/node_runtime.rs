@@ -1737,10 +1737,11 @@ impl NodeRuntime for ExecutorSink<'_> {
                     let name = metadata.source_name.as_str();
                     // Same rule as `seed_launch_params`: already-declared is
                     // not a refusal (the launch seed may have declared it
-                    // first); refused-and-absent is. On THIS entity's node,
-                    // not the executor's primary (issue 1272): a second node
-                    // declaring a name the first also declares is its own
-                    // parameter, not a duplicate.
+                    // first); refused-and-absent is — and it gets its own
+                    // variant, not the opaque `Runtime` (issue 1260). On THIS
+                    // entity's node, not the executor's primary (issue 1272):
+                    // a second node declaring a name the first also declares
+                    // is its own parameter, not a duplicate.
                     if !self.executor.declare_parameter_on(node, name, value)
                         && self.executor.get_parameter_on(node, name).is_none()
                     {
@@ -1748,7 +1749,7 @@ impl NodeRuntime for ExecutorSink<'_> {
                             nros_log::get_logger("nros"),
                             "declared parameter '{name}' was refused by the parameter store"
                         );
-                        return Err(NodeDeclError::Runtime);
+                        return Err(NodeDeclError::ParameterRejected);
                     }
                 }
                 Ok(())
