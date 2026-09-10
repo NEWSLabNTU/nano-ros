@@ -104,8 +104,9 @@ class NrosBuildTask(TaskExtensionPoint):
     the package's own manifest — see `colcon_nano_ros.manifest`:
 
     * `<build_type>` says which build system runs (cargo or CMake);
-    * `<export><nano_ros deploy=…/></export>` says which platform, absent
-      meaning the host, the same rule `cmake/NanoRosPackageXml.cmake` applies.
+    * the board the package's `system.toml` names says which platform (the
+      deploy token `nros ws leaf-system` derives, RFC-0098 D3), absent meaning
+      the host — the same reader `find_package(nano_ros)` asks.
 
     Board-specific configuration is handled by the board crate (Rust)
     or CMake platform module (C/C++), not by this task.
@@ -479,8 +480,9 @@ class NrosBuildTask(TaskExtensionPoint):
 
         # RMW + platform for the NanoRos CMake config. RMW comes from the
         # single source (NANO_ROS_RMW env; Phase 172.M) instead of a hardcoded
-        # `zenoh`; platform from the package's own `<nano_ros deploy=…/>`
-        # (phase-420 W4) instead of a build_type token nothing declared.
+        # `zenoh`; platform from the board the package's own `system.toml`
+        # names (phase-445 W3b; the `<nano_ros deploy=…/>` tuple of phase-420
+        # W4 before that) instead of a build_type token nothing declared.
         cmd.append(f"-DNANO_ROS_RMW={resolve_rmw()}")
         cmd.append(f"-DNANO_ROS_PLATFORM={PLATFORM_CMAKE.get(platform, platform)}")
 

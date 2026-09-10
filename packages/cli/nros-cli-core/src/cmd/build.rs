@@ -2650,8 +2650,9 @@ fn check_declared_depends(
         m.push_str(
             "\nA package.xml declares what the package's CONTENT needs. An emulator, \
              cross toolchain or debug probe comes from WHERE the package deploys — \
-             declare that instead:\n\
-             \n  <export><nano_ros deploy=\"<platform>\" board=\"<board>\"/></export>\n\
+             declare that instead, in the `system.toml` that names the image \
+             (RFC-0098 D3):\n\
+             \n  [image.<id>]\n  board = \"<board>\"\n\
              \nand provision it with `nros setup <board>` (see `nros setup --workspace`, \
              which reports what a workspace needs).\n\
              \n  NROS_ALLOW_INFRA_DEPS=1  to continue with a warning.",
@@ -2706,8 +2707,8 @@ fn check_declared_depends(
          (source its setup.bash so AMENT_PREFIX_PATH is set), or a key in the \
          pinned rosdep snapshot `nros-rosdep-snapshot.toml`.\n\
          \nNOTE the role: a key for an emulator, cross toolchain or vendored \
-         source tree is NOT declarable here — that comes from the deploy target \
-         in `<export><nano_ros deploy=.. board=../></export>`. Adding a \
+         source tree is NOT declarable here — that comes from the board the \
+         image names in `system.toml` (`[image.<id>] board`). Adding a \
          `[prereq.*]` entry to make this resolve is the wrong fix if the thing \
          is infrastructure.\n\
          \n  NROS_ALLOW_UNRESOLVED_DEPS=1  to continue with a warning.",

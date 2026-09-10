@@ -63,7 +63,7 @@ Changelog = "https://github.com/azewiusz/colcon-nano-ros/releases"
 # nano-ros-owned package declares. They replace 30 `ros.nros.<lang>.<platform>`
 # keys that no `package.xml` in the tree ever declared, so the path was dead.
 # Language and platform no longer ride in the key: `<build_type>` says which
-# build system runs, and `<export><nano_ros deploy=.../></export>` says which
+# build system runs, and the board the package's `system.toml` names says which
 # platform (see colcon_nano_ros/manifest.py).
 "ros.nros_cargo" = "colcon_nano_ros.task.nros.build:NrosBuildTask"
 "ros.nros_cmake" = "colcon_nano_ros.task.nros.build:NrosBuildTask"

@@ -48,7 +48,7 @@ enum PlatformKind {
     Hosted,
     /// `#![no_std]` `nros::main!()` Form-1 self-bringup — `main.rs` is the
     /// one-line entry, `lib.rs` is the node (`nros::node!`), and
-    /// `[package.metadata.nros.entry] deploy` names the board. The runtime dep
+    /// `system.toml`'s `[image.*] board` names the board. The runtime dep
     /// profile differs: `CortexM` carries the cortex-m trio + a direct
     /// `nros-rmw-zenoh`; `Esp32` carries `esp-hal`/`esp-backtrace` and lets the
     /// board crate own the RMW. Models the baremetal / esp32 single-package
@@ -80,9 +80,9 @@ enum SelfBringupRuntime {
 /// `nros::main!()` reads (`nros-orchestration-ir::board_path_for`).
 struct PlatformSpec {
     board_crate: &'static str,
-    /// `[package.metadata.nros.*] deploy = "…"` token. For `Hosted` it is the
-    /// `application` deploy; for `SelfBringup` it is the `entry` deploy the
-    /// macro resolves to a board.
+    /// Deploy token. For `Hosted` it is the `[package.metadata.nros.application]`
+    /// deploy; for `SelfBringup` it is the `system.toml` `[image.*] board` the
+    /// macro resolves to a board crate.
     deploy_token: &'static str,
     kind: PlatformKind,
 }
@@ -231,25 +231,20 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     // spelling whose only registered readers were 30 colcon entry points that
     // W4 deleted.
     //
-    // The `<nano_ros deploy= rmw=/>` tuple is now emitted for EVERY language,
-    // not just C/C++. It was the CMake reader's input before; since W4 it is
-    // also where the colcon task reads the platform from, because the platform
-    // no longer rides in the build type. Without it a `--platform freertos`
-    // Rust package would declare no deploy, and a colcon build of it would
-    // silently produce a host binary.
-    let deploy = if cfg.platform == "native" {
-        "native"
-    } else {
-        cfg.platform.as_str()
-    };
+    // phase-445 W3b (RFC-0098 D3/D5) — the deployment (board, RMW, domain,
+    // node) is the `system.toml` beside the manifest, for EVERY language. It
+    // replaces the `<nano_ros deploy= rmw=/>` package.xml tuple (retired and
+    // refused by both package.xml readers) and, for the Rust self-bringup, the
+    // `[package.metadata.nros.{entry,node}]` tables: `find_package(nano_ros)`,
+    // `nros::main!()`, `nros sync` and the colcon task all read this one file.
     let is_cxx = matches!(cfg.lang.as_str(), "c" | "cpp");
     let build_type = if is_cxx { "nros_cmake" } else { "nros_cargo" };
-    let nano_ros_export = format!(
-        "\n    <nano_ros deploy=\"{deploy}\" rmw=\"{}\"/>",
-        rmw.cmake_value
-    );
 
     fs::create_dir_all(dir.join("src"))?;
+    fs::write(
+        dir.join("system.toml"),
+        scaffold_system_toml(&cfg.name, &cfg.lang, &cfg.platform, &spec, rmw.cmake_value),
+    )?;
 
     let package_xml = format!(
         r#"<?xml version="1.0"?>
@@ -261,7 +256,7 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
   <license>Apache-2.0</license>
   <depend>std_msgs</depend>
   <export>
-    <build_type>{build_type}</build_type>{nano_ros_export}
+    <build_type>{build_type}</build_type>
   </export>
 </package>
 "#,
@@ -302,6 +297,50 @@ pub fn scaffold_package(cfg: &ScaffoldConfig) -> Result<()> {
     println!("  cargo build           # or: cmake --build build / west build / idf.py build");
 
     Ok(())
+}
+
+/// The `system.toml` a scaffolded package states its deployment in (RFC-0098
+/// D3/D5, phase-445 W3b) — the same schema a workspace bringup and every
+/// in-tree single-package example use.
+///
+/// `board` is the token the package deployed to before: the self-bringup's
+/// `nros::main!()` board key (`board_path_for`), and otherwise the platform
+/// token, whose C/C++ deploy is derived from it by `nros ws leaf-system`
+/// exactly as the retired `deploy=` attribute named it. Only the Rust
+/// self-bringup declares its node: its `main.rs` is `nros::main!()`, which
+/// boots the `[[component]]` this file names. The hosted and C/C++ starters
+/// are plain executables with their own `main`.
+fn scaffold_system_toml(
+    name: &str,
+    lang: &str,
+    platform: &str,
+    spec: &PlatformSpec,
+    rmw_value: &str,
+) -> String {
+    let self_bringup = lang == "rust" && matches!(spec.kind, PlatformKind::SelfBringup { .. });
+    let board = if self_bringup {
+        spec.deploy_token
+    } else {
+        platform
+    };
+    let component = if self_bringup {
+        format!(
+            "\n# The node `nros::main!()` boots — this crate's own `nros::node!(Talker)`.\n\
+             # `dispatch = \"deferred\"`: callbacks hand off to a ring (phase-216 A.5).\n\
+             [[component]]\npkg = \"{name}\"\nclass = \"{}::Talker\"\nname = \"{name}\"\n\
+             dispatch = \"deferred\"\n",
+            name.replace('-', "_")
+        )
+    } else {
+        String::new()
+    };
+    format!(
+        "# What this package deploys to (RFC-0098 D3/D5) — the same schema a workspace\n\
+         # bringup uses. Switching board is editing `[image.*] board` and re-running\n\
+         # `nros sync`.\n\
+         \n[system]\nname = \"{name}\"\nrmw = \"{rmw_value}\"\ndomain_id = 0\n\
+         {component}\n[image.{platform}]\nboard = \"{board}\"\n"
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -534,7 +573,6 @@ fn scaffold_component_cpp(cfg: &ComponentScaffoldConfig) -> Result<()> {
   <depend>std_msgs</depend>
   <export>
     <build_type>nros_cmake</build_type>
-    <nano_ros deploy="native"/>
   </export>
 </package>
 "#,
@@ -702,7 +740,6 @@ fn scaffold_component_c(cfg: &ComponentScaffoldConfig) -> Result<()> {
   <license>Apache-2.0</license>
   <export>
     <build_type>nros_cmake</build_type>
-    <nano_ros deploy="native"/>
   </export>
 </package>
 "#,
@@ -971,8 +1008,8 @@ fn main() {{
 }
 
 /// Self-bringup (baremetal/esp32) — `main.rs` is the one-line `nros::main!()`
-/// Form-1 entry, `lib.rs` is the node. The macro reads
-/// `[package.metadata.nros.entry] deploy` to resolve the board. Models the
+/// Form-1 entry, `lib.rs` is the node. The macro reads the board from the
+/// `system.toml` `scaffold_package` writes beside it. Models the
 /// single-package `examples/mps2-an385-baremetal/rust/talker` / esp32 talker.
 fn scaffold_rust_self_bringup(
     name: &str,
@@ -982,7 +1019,6 @@ fn scaffold_rust_self_bringup(
     platform: &str,
     dir: &Path,
 ) -> Result<()> {
-    let name_snake = name.replace('-', "_");
     let board_crate = spec.board_crate;
     let deploy = spec.deploy_token;
 
@@ -1034,16 +1070,9 @@ bench = false
 path = "src/lib.rs"
 crate-type = ["rlib"]
 
-# `nros::main!()` reads this key to resolve the board (nros-orchestration-ir
-# board_path_for). Every dep below is what that board needs to link + boot.
-[package.metadata.nros.entry]
-deploy = "{deploy}"
-
-[package.metadata.nros.node]
-class = "{name_snake}::Talker"
-name = "{name}"
-default_namespace = "/"
-dispatch = "deferred"
+# `nros::main!()` resolves the board from `system.toml` beside this manifest
+# (`[image.*] board = "{deploy}"`, RFC-0098 D3). Every dep below is what that
+# board needs to link + boot.
 
 [dependencies]
 nros = {{ version = "*", default-features = false, features = ["alloc", "rmw-cffi", "{edition_feature}"] }}
@@ -1201,8 +1230,8 @@ project({name} VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# RFC-0048 — ament shape. Platform + RMW live in package.xml's
-# <export><nano_ros deploy= rmw=/>; find_package(nano_ros) reads it.
+# RFC-0048 — ament shape. Board + RMW live in the system.toml beside this
+# file (RFC-0098 D3); find_package(nano_ros) reads it.
 find_package(nano_ros REQUIRED)
 find_package(std_msgs REQUIRED)
 
@@ -1285,8 +1314,8 @@ project({name} VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# RFC-0048 — ament shape. Platform + RMW live in package.xml's
-# <export><nano_ros deploy= rmw=/>; find_package(nano_ros) reads it.
+# RFC-0048 — ament shape. Board + RMW live in the system.toml beside this
+# file (RFC-0098 D3); find_package(nano_ros) reads it.
 find_package(nano_ros REQUIRED)
 find_package(std_msgs REQUIRED)
 
@@ -1444,9 +1473,9 @@ mod tests {
 
     #[test]
     fn c_and_cpp_scaffold_emit_ament_shape() {
-        // RFC-0048 — the CMakeLists is the ament shape; RMW moved to the
-        // package.xml <nano_ros> tuple (written by scaffold_package), so it no
-        // longer appears in the CMakeLists.
+        // RFC-0048 — the CMakeLists is the ament shape; the RMW lives in the
+        // system.toml `scaffold_package` writes (RFC-0098 D3), so it does not
+        // appear in the CMakeLists.
         let dc = tmp();
         scaffold_c("bar", "native", "cyclonedds", dc.path()).unwrap();
         let cm = fs::read_to_string(dc.path().join("CMakeLists.txt")).unwrap();
@@ -1494,6 +1523,47 @@ mod tests {
         assert!(
             !PathBuf::from(&cfg.name).exists(),
             "no package dir on rejected rmw"
+        );
+    }
+
+    /// phase-445 W3b — a scaffolded package states its deployment in
+    /// system.toml: the self-bringup names the board `nros::main!()` resolves
+    /// and the node it boots; C/C++ name the platform token the retired
+    /// `deploy=` carried; every one parses as the typed schema requires
+    /// (`[system] rmw` and `domain_id` are mandatory).
+    #[test]
+    fn scaffold_system_toml_names_board_rmw_and_node() {
+        let bm = scaffold_system_toml(
+            "my-app",
+            "rust",
+            "baremetal",
+            &platform_spec("baremetal").unwrap(),
+            "zenoh",
+        );
+        let doc: toml::Table = bm.parse().expect("parses");
+        assert_eq!(doc["system"]["rmw"].as_str(), Some("zenoh"));
+        assert_eq!(doc["system"]["domain_id"].as_integer(), Some(0));
+        assert_eq!(
+            doc["image"]["baremetal"]["board"].as_str(),
+            Some("mps2-an385")
+        );
+        let c = &doc["component"].as_array().unwrap()[0];
+        assert_eq!(c["class"].as_str(), Some("my_app::Talker"));
+        assert_eq!(c["dispatch"].as_str(), Some("deferred"));
+
+        let cf = scaffold_system_toml(
+            "c_app",
+            "c",
+            "freertos",
+            &platform_spec("freertos").unwrap(),
+            "xrce",
+        );
+        let doc: toml::Table = cf.parse().expect("parses");
+        assert_eq!(doc["image"]["freertos"]["board"].as_str(), Some("freertos"));
+        assert_eq!(doc["system"]["rmw"].as_str(), Some("xrce"));
+        assert!(
+            doc.get("component").is_none(),
+            "a plain executable declares no node"
         );
     }
 
@@ -1555,9 +1625,11 @@ mod tests {
                 "{platform}:\n{toml}"
             );
             assert!(toml.contains("[lib]"), "{platform}: missing [lib]:\n{toml}");
+            // phase-445 W3b — the board lives in system.toml, never the manifest.
             assert!(
-                toml.contains(r#"deploy = ""#),
-                "{platform}: missing entry deploy token:\n{toml}"
+                !toml.contains("[package.metadata.nros.entry]")
+                    && !toml.contains("[package.metadata.nros.node]"),
+                "{platform}: retired deployment table in the manifest:\n{toml}"
             );
             let main = fs::read_to_string(d.path().join("src/main.rs")).unwrap();
             assert!(main.contains("nros::main!();"), "{platform}:\n{main}");

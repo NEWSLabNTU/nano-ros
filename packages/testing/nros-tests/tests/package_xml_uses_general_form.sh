@@ -5,26 +5,29 @@
 #
 # THE PROPERTY
 #
-# A consumption export has two spellings and they must mean the same thing:
+# A provider selection has ONE spelling:
 #
-#   <nano_ros deploy="freertos" board="mps2-an385-freertos" rmw="zenoh"/>
 #   <nano_ros_uses kind="board" name="mps2-an385-freertos"/>
 #
-# 91 packages use the sugar, so it is not going away; the general form exists so
-# that a NEW provider family — a serializer, phase-421 W4 — costs this reader no
-# fourth attribute and costs `cargo-nano-ros`'s parser no new special case. If
-# the two spellings ever diverged, that promise would be false and the divergence
-# would be invisible: both would still configure, just against different values.
+# The general form exists so that a NEW provider family — a serializer,
+# phase-421 W4 — costs this reader no bespoke attribute and costs
+# `cargo-nano-ros`'s parser no new special case.
+#
+# Its sugar, `<nano_ros deploy="freertos" board="…" rmw="…"/>`, was a SECOND
+# spelling of the board and RMW selections, and phase-445 W3b retired it: a
+# single-package leaf states its board and RMW in `system.toml` (RFC-0098
+# D3/D5), which `nano_ros_read_leaf_system()` reads into the same
+# `NANO_ROS_EXPORT_USES_{BOARD,RMW}` variables. A leftover tuple is REFUSED —
+# silently ignoring it would configure a freertos leaf as a host build.
 #
 # Cases:
 #
 #   T1  the general form sets NANO_ROS_EXPORT_USES_<KIND> for a family this
 #       reader has never heard of;
-#   T2  the sugar desugars into the SAME variables (board/rmw), so a consumer
-#       cannot tell which spelling was used;
-#   T3  `deploy=` does NOT become a selection. It names a `[deploy.*]` block in
-#       system.toml, not a provider, and inventing a `deploy` family would give
-#       it a descriptor lookup that must always fail;
+#   T2  the retired tuple is a hard error naming `system.toml`, not a silent
+#       skip (and not a selection);
+#   T3  a package.xml with no selection reads as no selection, and `deploy`
+#       is never a family;
 #   T4  a commented-out selection is not a selection (issue 0516, re-asserted
 #       for the new tag because the strip covers the FILE, not a tag list);
 #   T5  a selection missing `name=` is a hard error, not a silent skip — the
@@ -54,7 +57,6 @@ cat >"$WORK/general.xml" <<'XML'
 <package format="3">
   <name>general</name>
   <export>
-    <nano_ros deploy="freertos"/>
     <nano_ros_uses kind="board" name="mps2-an385-freertos"/>
     <nano_ros_uses kind="rmw" name="zenoh"/>
     <nano_ros_uses kind="serdes" name="flatbuf"/>
@@ -62,13 +64,13 @@ cat >"$WORK/general.xml" <<'XML'
 </package>
 XML
 
-# T2 — the same selection, written as the sugar.
-cat >"$WORK/sugar.xml" <<'XML'
+# T3 — nothing selected.
+cat >"$WORK/plain.xml" <<'XML'
 <?xml version="1.0"?>
 <package format="3">
-  <name>sugar</name>
+  <name>plain</name>
   <export>
-    <nano_ros deploy="freertos" board="mps2-an385-freertos" rmw="zenoh"/>
+    <build_type>nros_cmake</build_type>
   </export>
 </package>
 XML
@@ -87,9 +89,9 @@ XML
 
 cat >"$WORK/run.cmake" <<CMAKE
 include("$MODULE")
-foreach(_case general sugar commented)
+foreach(_case general plain commented)
     nano_ros_read_package_export(PACKAGE_XML "$WORK/\${_case}.xml")
-    message(STATUS "RESULT \${_case} kinds=[\${NANO_ROS_EXPORT_USES_KINDS}] board=\${NANO_ROS_EXPORT_USES_BOARD} rmw=\${NANO_ROS_EXPORT_USES_RMW} serdes=\${NANO_ROS_EXPORT_USES_SERDES} deploy=\${NANO_ROS_EXPORT_DEPLOY} usesdeploy=[\${NANO_ROS_EXPORT_USES_DEPLOY}]")
+    message(STATUS "RESULT \${_case} kinds=[\${NANO_ROS_EXPORT_USES_KINDS}] board=\${NANO_ROS_EXPORT_USES_BOARD} rmw=\${NANO_ROS_EXPORT_USES_RMW} serdes=\${NANO_ROS_EXPORT_USES_SERDES} deploy=\${NANO_ROS_EXPORT_DEPLOY} usesdeploy=[\${NANO_ROS_EXPORT_USES_DEPLOY}] found=\${NANO_ROS_EXPORT_FOUND}")
 endforeach()
 CMAKE
 
@@ -131,52 +133,56 @@ expect() {
 expect general "serdes=flatbuf"
 expect general "board=mps2-an385-freertos"
 expect general "rmw=zenoh"
+expect general "kinds=[board;rmw;serdes]"
 
-# T2 — the sugar lands in the SAME variables. This is the equivalence.
-expect sugar "board=mps2-an385-freertos"
-expect sugar "rmw=zenoh"
-expect sugar "kinds=[board;rmw]"
-
-# T3 — deploy is read, and is not a selection, in EITHER spelling.
-expect general "deploy=freertos"
+# T3 — no selection reads as none; `deploy` is never a family, and nothing in
+# a package.xml sets it any more (it is derived from system.toml's board).
+expect plain "kinds=[]"
+expect plain "deploy= usesdeploy=[] found=FALSE"
 expect general "usesdeploy=[]"
-expect sugar "deploy=freertos"
-expect sugar "usesdeploy=[]"
 
 # T4 — the comment declares nothing; the real one survives.
 expect commented "serdes=real"
 
-# T5 — a malformed selection must FAIL the configure rather than be skipped.
-cat >"$WORK/broken.xml" <<'XML'
-<?xml version="1.0"?>
-<package format="3">
-  <name>broken</name>
-  <export>
-    <nano_ros_uses kind="serdes"/>
-  </export>
-</package>
-XML
-cat >"$WORK/broken.cmake" <<CMAKE
+# A case that must FAIL the configure, and fail for the reason given.
+expect_fatal() {
+    local label="$1" xml="$2" want="$3"
+    printf '%s\n' "$xml" >"$WORK/$label.xml"
+    cat >"$WORK/$label.cmake" <<CMAKE
 include("$MODULE")
-nano_ros_read_package_export(PACKAGE_XML "$WORK/broken.xml")
-message(STATUS "RESULT broken REACHED")
+nano_ros_read_package_export(PACKAGE_XML "$WORK/$label.xml")
+message(STATUS "RESULT $label REACHED")
 CMAKE
+    local got
+    if got="$(cmake -P "$WORK/$label.cmake" 2>&1)"; then
+        echo "FAIL[$label]: configured successfully; it must not" >&2
+        echo "  got: $got" >&2
+        fail=1
+    # cmake wraps a long `message(FATAL_ERROR …)` across lines, so match a
+    # fragment that survives the wrap rather than the whole sentence.
+    elif ! nros_grep_q -F -- "$want" <<<"$got"; then
+        echo "FAIL[$label]: failed for the wrong reason (wanted '$want')" >&2
+        echo "  got: $got" >&2
+        fail=1
+    fi
+}
 
-if BROKEN_OUT="$(cmake -P "$WORK/broken.cmake" 2>&1)"; then
-    echo "FAIL[broken]: a <nano_ros_uses> with no name= configured successfully" >&2
-    echo "  got: $BROKEN_OUT" >&2
-    fail=1
-# cmake wraps a long `message(FATAL_ERROR …)` across lines, so match a fragment
-# that survives the wrap rather than the whole sentence.
-elif ! nros_grep_q -F -- "needs non-empty kind=" <<<"$BROKEN_OUT"; then
-    echo "FAIL[broken]: failed for the wrong reason" >&2
-    echo "  got: $BROKEN_OUT" >&2
-    fail=1
-fi
+# T2 — the retired tuple, in each of the shapes the tree used to carry.
+expect_fatal tuple \
+    '<package format="3"><name>t</name><export><nano_ros deploy="freertos" board="mps2-an385-freertos" rmw="zenoh"/></export></package>' \
+    "is retired"
+expect_fatal tuple_native \
+    '<package format="3"><name>t</name><export><nano_ros deploy="native"/></export></package>' \
+    "system.toml"
+
+# T5 — a malformed selection.
+expect_fatal broken \
+    '<package format="3"><name>broken</name><export><nano_ros_uses kind="serdes"/></export></package>' \
+    "needs non-empty kind="
 
 if [ "$fail" -ne 0 ]; then
     echo "check-package-xml-uses: FAILED" >&2
     exit 1
 fi
 
-echo "check-package-xml-uses: OK (general form, sugar equivalence, deploy, comments, malformed)"
+echo "check-package-xml-uses: OK (general form, retired tuple refused, no selection, comments, malformed)"

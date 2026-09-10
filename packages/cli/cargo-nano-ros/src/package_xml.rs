@@ -57,9 +57,10 @@ pub struct PackageXml {
     /// Empty for every package that is not a provider, which is almost all of
     /// them — this is the cheap parse the scan does per package.
     pub provides: Vec<Provision>,
-    /// `<export><nano_ros_uses …/></export>` entries, plus the `board=` / `rmw=`
-    /// attributes of the `<nano_ros …/>` sugar desugared into the same list
-    /// (RFC-0087 D3). Declaration order, sugar last.
+    /// `<export><nano_ros_uses …/></export>` entries (RFC-0087 D3), in
+    /// declaration order. The `<nano_ros board= rmw=/>` sugar that used to
+    /// desugar into this list is retired and refused (phase-445 W3b): a
+    /// package's board and RMW are its `system.toml`.
     pub uses: Vec<Selection>,
     /// `<export><build_type>…</build_type></export>`, VERBATIM — the raw
     /// spelling, never canonicalised here.
@@ -79,13 +80,6 @@ pub struct PackageXml {
     /// which is not an error: a consumer falls back to file presence, which is
     /// the pre-RFC-0094 answer.
     pub build_type: Option<String>,
-    /// The `deploy=` attribute of `<nano_ros …/>`, verbatim.
-    ///
-    /// NOT desugared into [`Self::uses`], because `deploy` is **not a provider
-    /// kind**: it names a `[deploy.*]` block in `system.toml`, which
-    /// `NanoRosPackageXml.cmake` maps to the `NANO_ROS_PLATFORM` axis. Folding
-    /// it in would invent a family that has no descriptor and no provider.
-    pub deploy: Option<String>,
 }
 
 /// Read a `(kind, name)` announcement from either announcement tag.
@@ -156,8 +150,6 @@ impl PackageXml {
         let mut dependencies = HashSet::new();
         let mut provides = Vec::new();
         let mut uses: Vec<Selection> = Vec::new();
-        let mut sugar: Vec<Selection> = Vec::new();
-        let mut deploy = None;
         let mut build_type: Option<String> = None;
 
         let mut current_tag = String::new();
@@ -191,46 +183,22 @@ impl PackageXml {
                         uses.push(announcement);
                     }
                 }
-                // The `<nano_ros deploy= board= rmw=/>` sugar (91 packages).
-                // `board=` and `rmw=` ARE provider selections and desugar into
-                // `uses`; `deploy=` is not a kind and stays an attribute.
+                // phase-445 W3b (RFC-0098 D3/D5) — the `<nano_ros deploy= board=
+                // rmw=/>` sugar is RETIRED. A package states its board and RMW in
+                // the `system.toml` beside its manifest, and the cmake reader
+                // (`nano_ros_read_package_export`) refuses the element; this is
+                // its twin, so the two readers cannot disagree about a file.
+                // Refused rather than ignored: ignoring it would drop a board
+                // selection the author believes is in force.
                 Ok(Event::Start(e) | Event::Empty(e)) if e.name().as_ref() == b"nano_ros" => {
-                    if !in_export {
-                        return Err(eyre!(
-                            "<nano_ros> outside <export> — the consumption tuple is \
-                             only read from the export block, so this one would \
-                             never be seen"
-                        ));
-                    }
-                    for attr in e.attributes() {
-                        let attr = attr.map_err(|e| eyre!("bad attribute: {e}"))?;
-                        let value = attr
-                            .unescape_value()
-                            .map_err(|e| eyre!("bad attribute value: {e}"))?
-                            .to_string();
-                        if value.is_empty() {
-                            continue;
-                        }
-                        match attr.key.as_ref() {
-                            b"deploy" => deploy = Some(value),
-                            b"board" => sugar.push(Selection {
-                                kind: "board".to_string(),
-                                name: value,
-                            }),
-                            b"rmw" => sugar.push(Selection {
-                                kind: "rmw".to_string(),
-                                name: value,
-                            }),
-                            other => {
-                                return Err(eyre!(
-                                    "<nano_ros> has unknown attribute {:?} — the sugar \
-                                     carries deploy=, board= and rmw=; anything else is \
-                                     a <nano_ros_uses kind= name=/>",
-                                    String::from_utf8_lossy(other)
-                                ));
-                            }
-                        }
-                    }
+                    return Err(eyre!(
+                        "the <nano_ros deploy= board= rmw=/> element is retired \
+                         (RFC-0098 D3/D5, phase-445) — state the deployment in a \
+                         system.toml beside the package's manifest (`[system] \
+                         rmw/domain_id`, `[image.<id>] board = \"<board>\"`) and \
+                         delete the element; a provider selection with no \
+                         deployment meaning is `<nano_ros_uses kind= name=/>`"
+                    ));
                 }
                 Ok(Event::Start(e)) => {
                     current_tag = String::from_utf8_lossy(e.name().as_ref()).to_string();
@@ -287,12 +255,8 @@ impl PackageXml {
             version: version.unwrap_or_else(|| "0.0.0".to_string()),
             dependencies,
             provides,
-            uses: {
-                uses.extend(sugar);
-                uses
-            },
+            uses,
             build_type,
-            deploy,
         })
     }
 
@@ -306,9 +270,7 @@ impl PackageXml {
         self.provides.iter().filter(move |p| p.kind == kind)
     }
 
-    /// Selections of one kind, in declaration order — the general form and the
-    /// `<nano_ros …/>` sugar together, which is what makes them equivalent to a
-    /// consumer.
+    /// Selections of one kind, in declaration order.
     pub fn uses_of_kind(&self, kind: &str) -> impl Iterator<Item = &Selection> {
         self.uses.iter().filter(move |u| u.kind == kind)
     }
@@ -412,14 +374,15 @@ mod tests {
     #[test]
     fn consumption_export_is_not_a_provision() {
         let pkg = PackageXml::parse_str(&provider_xml(
-            r#"    <nano_ros deploy="native" board="native" rmw="zenoh"/>"#,
+            r#"    <nano_ros_uses kind="rmw" name="zenoh"/>"#,
         ))
         .unwrap();
         assert!(
             pkg.provides.is_empty(),
-            "<nano_ros rmw=…> says what this package CONSUMES; reading it as a \
-             provision would make every consumer advertise itself as a backend"
+            "<nano_ros_uses kind=rmw> says what this package CONSUMES; reading it \
+             as a provision would make every consumer advertise itself as a backend"
         );
+        assert_eq!(pkg.uses_of_kind("rmw").count(), 1);
     }
 
     /// The acceptance criterion's negative half: an ordinary package is not a
@@ -523,46 +486,39 @@ mod tests {
         assert!(pkg.provides.is_empty());
     }
 
-    /// Sugar and general form must be indistinguishable to a consumer, or the
-    /// 91 packages using the tuple would mean something subtly different from
-    /// the packages using the general form.
+    /// phase-445 W3b — the `<nano_ros deploy= board= rmw=/>` sugar is retired
+    /// and REFUSED, in every shape the tree used to carry, with an error naming
+    /// the file to write. The cmake twin (`nano_ros_read_package_export`) refuses
+    /// it too, so no reader can quietly honour a board the other rejects.
     #[test]
-    fn the_sugar_and_the_general_form_resolve_identically() {
-        let sugar = PackageXml::parse_str(&provider_xml(
+    fn the_retired_tuple_is_refused() {
+        for tuple in [
             r#"    <nano_ros deploy="freertos" board="mps2-an385-freertos" rmw="zenoh"/>"#,
-        ))
-        .unwrap();
+            r#"    <nano_ros deploy="native"/>"#,
+            r#"    <nano_ros deploy="native" serdes="flatbuf"/>"#,
+        ] {
+            let err = PackageXml::parse_str(&provider_xml(tuple)).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("retired") && msg.contains("system.toml"),
+                "{msg}"
+            );
+        }
+        // The general form a selection moved to still parses, and `deploy`
+        // is no family of it.
         let general = PackageXml::parse_str(&provider_xml(
-            r#"    <nano_ros deploy="freertos"/>
-    <nano_ros_uses kind="board" name="mps2-an385-freertos"/>
+            r#"    <nano_ros_uses kind="board" name="mps2-an385-freertos"/>
     <nano_ros_uses kind="rmw" name="zenoh"/>"#,
         ))
         .unwrap();
-
-        for kind in ["board", "rmw"] {
-            assert_eq!(
-                sugar.uses_of_kind(kind).collect::<Vec<_>>(),
-                general.uses_of_kind(kind).collect::<Vec<_>>(),
-                "{kind} differs between the sugar and the general form"
-            );
-        }
-        assert_eq!(sugar.deploy.as_deref(), Some("freertos"));
-        assert_eq!(general.deploy.as_deref(), Some("freertos"));
-    }
-
-    /// `deploy` names a `[deploy.*]` block in system.toml, not a provider, so
-    /// it must not appear as a selection of kind `deploy` — a family with no
-    /// descriptor and no provider behind it.
-    #[test]
-    fn deploy_is_not_a_provider_kind() {
-        let pkg =
-            PackageXml::parse_str(&provider_xml(r#"    <nano_ros deploy="native"/>"#)).unwrap();
-        assert_eq!(pkg.deploy.as_deref(), Some("native"));
+        assert_eq!(general.uses_of_kind("board").count(), 1);
+        assert_eq!(general.uses_of_kind("rmw").count(), 1);
+        assert_eq!(general.uses_of_kind("deploy").count(), 0);
+        // A COMMENTED-OUT tuple is not a tuple (issue 0516) — not refused.
         assert!(
-            pkg.uses.is_empty(),
-            "deploy must not desugar into a selection"
+            PackageXml::parse_str(&provider_xml(r#"    <!-- <nano_ros deploy="native"/> -->"#))
+                .is_ok()
         );
-        assert_eq!(pkg.uses_of_kind("deploy").count(), 0);
     }
 
     /// The same rule set as `<nano_ros_provides>`, because it is literally the
@@ -699,17 +655,5 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(pkg.build_type.as_deref(), Some("nros_cmake"));
-    }
-
-    /// An unknown attribute on the sugar is a typo, not a new axis — the
-    /// general form is where a new family goes.
-    #[test]
-    fn the_sugar_rejects_an_unknown_attribute() {
-        let err = PackageXml::parse_str(&provider_xml(
-            r#"    <nano_ros deploy="native" serdes="flatbuf"/>"#,
-        ))
-        .unwrap_err();
-        assert!(err.to_string().contains("serdes"), "{err}");
-        assert!(err.to_string().contains("nano_ros_uses"), "{err}");
     }
 }
