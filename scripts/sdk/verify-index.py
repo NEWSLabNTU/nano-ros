@@ -10,8 +10,10 @@ Run in nano-ros CI on any PR that touches `nros-sdk-index.toml` (or
      `[tool]`/`[source]`/`[gated]` entry (mirrors `SdkIndex::validate`, but
      statically — no `nros` build needed) (Phase 191.x);
    - every `[source.*]` provisioning recipe is coherent: submodule mode needs a
-     `dest`; clone mode (a `git` with no `submodule`) needs both `ref` + `dest`
-     (Phase 195.B);
+     `dest`; clone mode (a `git` with no `submodule`) needs a `ref`, plus a
+     `dest` when it is provisioned into the WORKSPACE and no `dest` when it is
+     provisioned into the STORE, whose path is derived from name + version
+     (Phase 195.B; phase-440 / RFC-0095 D1+D2);
    - every `[source.*].submodule` path is a real submodule in `.gitmodules`, and
      a declared `git` URL matches that submodule's URL — so the index and
      `.gitmodules` **can't drift** (the 195.B SSOT guarantee).
@@ -124,8 +126,28 @@ def verify_structure(index, index_path):
         elif git is not None:  # clone mode
             if ref is None:
                 failures.append(f"source '{name}' has `git` but no `ref` (clone needs a pinned ref)")
-            if dest is None:
-                failures.append(f"source '{name}' has `git` but no `dest`")
+            # phase-440 / RFC-0095 D1+D2 — WHERE decides whether `dest` is
+            # authored at all, and BOTH directions are refused so the index and
+            # the store can never disagree about one source's path. Mirrors
+            # `SdkIndex::validate` in
+            # packages/cli/nros-cli-core/src/orchestration/sdk_index.rs; the two
+            # must move together or the gate passes what the CLI refuses.
+            location = src.get("location", "workspace")
+            if location not in ("workspace", "store"):
+                failures.append(
+                    f"source '{name}' has location = {location!r} "
+                    f"(expected \"workspace\" or \"store\")"
+                )
+            elif location == "workspace" and dest is None:
+                failures.append(
+                    f"source '{name}' has `git` but no `dest` (where to provision "
+                    f"it). A store source needs no `dest` — set location = \"store\"."
+                )
+            elif location == "store" and dest is not None:
+                failures.append(
+                    f"source '{name}' has location = \"store\" AND a `dest`. The "
+                    f"store path is DERIVED from name + version; drop the `dest`."
+                )
     return failures
 
 
@@ -157,7 +179,48 @@ def verify_dist(index):
     return failures, checked
 
 
+def selftest() -> None:
+    """Prove the `location` rule fires in BOTH directions, on the normal path.
+
+    This exists because the rule already drifted once: phase-440 moved
+    `[source.rosidl]` into the store — dropping its `dest`, which the CLI's own
+    validator accepts — and this gate, which claims to mirror that validator,
+    still demanded a `dest` and failed the PR. A gate whose rule lives in two
+    languages needs a case in each, or one of them rots silently.
+
+    Runs on every invocation (it is five dict literals), so there is no lane in
+    which the gate ships unexercised.
+    """
+    import tempfile
+
+    def problems(src):
+        # An empty dir: clone-mode sources never consult `.gitmodules`, and a
+        # missing one is the read `parse_gitmodules` already tolerates.
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "nros-sdk-index.toml")
+            return verify_structure({"source": {"probe": src}}, path)
+
+    git = "https://example.invalid/x"
+    ref = "0" * 40
+    cases = [
+        # (source table, must a `location`/`dest` problem be reported?)
+        ({"git": git, "ref": ref, "dest": "third-party/x"}, False),
+        ({"git": git, "ref": ref}, True),
+        ({"git": git, "ref": ref, "location": "store"}, False),
+        ({"git": git, "ref": ref, "location": "store", "dest": "third-party/x"}, True),
+        ({"git": git, "ref": ref, "location": "elsewhere"}, True),
+    ]
+    for src, want_fail in cases:
+        got = problems(src)
+        if bool(got) != want_fail:
+            raise SystemExit(
+                f"verify-index selftest: source {src!r} expected "
+                f"{'a failure' if want_fail else 'no failure'}, got {got!r}"
+            )
+
+
 def main(path: str, structure_only: bool) -> int:
+    selftest()
     with open(path, "rb") as f:
         index = tomllib.load(f)
 
