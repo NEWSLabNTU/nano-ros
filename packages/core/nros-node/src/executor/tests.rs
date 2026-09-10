@@ -8882,3 +8882,35 @@ fn no_headroom_bound_is_never_blind() {
         "removing the bound clears blindness"
     );
 }
+
+// ===========================================================================
+// phase-436 E4 — on a painted Zephyr stack the headroom query is a byte scan
+// over every UNUSED byte (`z_stack_space_get`), and the rule used to run it on
+// every spin. ASI's control tier runs on a 512 KiB main stack every 5 ms. The
+// high-water mark only grows, so a throttled check sees the same low; it only
+// sees it later.
+// ===========================================================================
+
+private_test_clock!(headroom_throttle_clock);
+
+#[test]
+fn the_headroom_query_runs_at_most_once_per_interval() {
+    headroom_throttle_clock::claim_at_us(1_000_000);
+    let mut executor = executor_with_clock_fn(MockSession::new(), headroom_throttle_clock::now_us);
+    executor.set_min_stack_headroom_bytes(1024);
+    for _ in 0..50 {
+        executor.spin_once(core::time::Duration::ZERO);
+    }
+    assert_eq!(
+        executor.stack_headroom_checks, 1,
+        "fifty spins inside one interval must query the port once, not fifty times"
+    );
+    headroom_throttle_clock::set_us(
+        1_000_000 + crate::executor::monitor::STACK_HEADROOM_CHECK_INTERVAL_US,
+    );
+    executor.spin_once(core::time::Duration::ZERO);
+    assert_eq!(
+        executor.stack_headroom_checks, 2,
+        "one full interval later it queries again"
+    );
+}

@@ -166,6 +166,34 @@ pub struct AgeMonitorSpec {
     pub cell: &'static SubMonitorCell,
 }
 
+/// phase-436 E4 — how often the stack-headroom rule may query the port, in µs.
+///
+/// On a painted Zephyr stack the query walks every UNUSED byte from the stack
+/// base (`z_stack_space_get`), so querying on every spin put that scan inside
+/// the control loop. The high-water mark only grows, so a throttled check sees
+/// the same low mark and only sees it later.
+pub(crate) const STACK_HEADROOM_CHECK_INTERVAL_US: u64 = 1_000_000;
+
+/// The same limit for a build with no clock: once per this many spins.
+pub(crate) const STACK_HEADROOM_CHECK_SPIN_STRIDE: u32 = 1_000;
+
+/// Whether the stack-headroom query is due.
+///
+/// `last_check_us` is `None` until the first check, which is immediate, so a
+/// bound set at boot is checked on the first spin. After that a clocked build
+/// waits one full interval and a clockless build one full stride of spins.
+pub(crate) fn stack_headroom_check_due(
+    now_us: Option<u64>,
+    last_check_us: Option<u64>,
+    spins_since_check: u32,
+) -> bool {
+    match (last_check_us, now_us) {
+        (None, _) => true,
+        (Some(last), Some(now)) => now.saturating_sub(last) >= STACK_HEADROOM_CHECK_INTERVAL_US,
+        (Some(_), None) => spins_since_check >= STACK_HEADROOM_CHECK_SPIN_STRIDE,
+    }
+}
+
 /// Rate-check window (µs). Matches play_launch's ~5 s time-based trigger
 /// so both runtimes converge on comparable cadence.
 pub const RATE_CHECK_INTERVAL_US: u64 = 5_000_000;
@@ -950,5 +978,36 @@ mod timer_overrun_rule_tests {
         let mut last = 0;
         assert!(check_timer_overrun(2, &mut last, 2).is_none());
         assert_eq!(check_timer_overrun(6, &mut last, 2).unwrap().measured, 4);
+    }
+}
+
+// phase-436 E4 — when the stack-headroom query is due. The decision is pure so
+// the three cases are pinned without a clock or a port.
+#[cfg(test)]
+mod stack_headroom_throttle_tests {
+    use super::*;
+
+    #[test]
+    fn the_first_check_is_immediate_with_or_without_a_clock() {
+        assert!(stack_headroom_check_due(Some(5), None, 0));
+        assert!(stack_headroom_check_due(None, None, 0));
+    }
+
+    #[test]
+    fn a_clocked_check_waits_one_full_interval() {
+        let i = STACK_HEADROOM_CHECK_INTERVAL_US;
+        assert!(!stack_headroom_check_due(
+            Some(1_000 + i - 1),
+            Some(1_000),
+            0
+        ));
+        assert!(stack_headroom_check_due(Some(1_000 + i), Some(1_000), 0));
+    }
+
+    #[test]
+    fn a_clockless_build_checks_once_per_stride_of_spins() {
+        let s = STACK_HEADROOM_CHECK_SPIN_STRIDE;
+        assert!(!stack_headroom_check_due(None, Some(0), s - 1));
+        assert!(stack_headroom_check_due(None, Some(0), s));
     }
 }
