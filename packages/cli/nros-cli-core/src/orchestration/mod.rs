@@ -38,6 +38,10 @@ pub mod metadata_probe_cmake;
 pub mod metadata_refresh;
 pub mod model_ingest;
 pub mod names;
+// phase-447 A2 (RFC-0099 D3) — the four-rung ladder to the SDK root. One
+// spelling, so a released toolchain's own `share/nano-ros` is reachable from
+// every site that used to bail with "no nano-ros checkout found".
+pub mod nano_ros_root;
 pub mod nros_config;
 pub mod params;
 // phase-440 W7 (RFC-0095 D7/D9) — `nros-toolchain.toml`, the per-project pin.

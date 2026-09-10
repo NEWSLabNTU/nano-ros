@@ -222,11 +222,14 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     // Zephyr board is spelled `native_sim/native/64`, which says nothing about
     // being Zephyr. Resolving it needs the board catalog, which lives in a
     // nano-ros checkout, NOT in the user's workspace.
-    let nano_ros_root = args
-        .nano_ros_path
-        .clone()
-        .or_else(|| std::env::var_os("NROS_REPO_DIR").map(PathBuf::from))
-        .or_else(|| crate::cmd::ws::autodetect_nano_ros_path(&root));
+    //
+    // phase-447 A2 (RFC-0099 D3) — the ladder moved to
+    // `orchestration::nano_ros_root`, and gained a fourth rung LAST: this
+    // toolchain's own `share/nano-ros`. Before it, all three rungs were a
+    // CHECKOUT, so a released `nros` reached the bail below on the first
+    // release ever cut.
+    let nano_ros_root =
+        crate::orchestration::nano_ros_root::resolve(args.nano_ros_path.clone(), &root);
     // phase-398 W3 — every `<depend>` resolves, or the build stops.
     //
     // Runs once per invocation, before anything is generated, because an
@@ -252,10 +255,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
             crate::orchestration::board_descriptor::BoardCatalog::load_with_packages(r, &pkg_dirs)
                 .map_err(|e| eyre::eyre!("loading board descriptors from {}: {e}", r.display()))?
         }
-        None => eyre::bail!(
-            "no nano-ros checkout found, so board ids cannot be resolved. \
-             Pass --nano-ros-path, or set NROS_REPO_DIR."
-        ),
+        None => eyre::bail!("{}", crate::orchestration::nano_ros_root::not_found_help()),
     };
 
     // Does the package graph cross languages? A CMakeLists is the signal — but

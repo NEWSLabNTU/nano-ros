@@ -187,18 +187,17 @@ pub fn plan_system(options: PlanOptions) -> Result<PlanningOutput> {
     // from the selected image's board rather than copied from a `[deploy.*]`
     // field that is going away.
     //
-    // Resolved exactly as `nros build` resolves it (`--nano-ros-path` →
-    // `NROS_REPO_DIR` → an autodetect walk), because the two must agree about
-    // which descriptors exist. Unlike `build`, a MISSING checkout is not fatal
-    // here: `nros plan` legitimately runs outside a nano-ros tree, and every
-    // plan that needs no triple still works. What is fatal is an image naming a
+    // Resolved exactly as `nros build` resolves it — literally the same
+    // function since phase-447 A2 (`--nano-ros-path` → `NROS_REPO_DIR` → an
+    // autodetect walk → this toolchain's own `share/nano-ros`) — because the
+    // two must agree about which descriptors exist. Unlike `build`, a MISSING
+    // checkout is not fatal here: `nros plan` legitimately runs outside a
+    // nano-ros tree, and every plan that needs no triple still works. What is
+    // fatal is an image naming a
     // board the catalog HAS and cannot resolve — that is a wrong plan, not an
     // absent one, and `schema_build_json` refuses it.
-    let nano_ros_root = options
-        .nano_ros_path
-        .clone()
-        .or_else(|| std::env::var_os("NROS_REPO_DIR").map(PathBuf::from))
-        .or_else(|| crate::cmd::ws::autodetect_nano_ros_path(&options.workspace_root));
+    let nano_ros_root =
+        super::nano_ros_root::resolve(options.nano_ros_path.clone(), &options.workspace_root);
     let catalog = nano_ros_root
         .as_deref()
         .and_then(|r| super::board_descriptor::BoardCatalog::load(r).ok());

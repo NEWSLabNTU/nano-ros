@@ -686,7 +686,22 @@ fn bundled_interfaces_dir() -> Option<PathBuf> {
         }
     }
 
-    None
+    // phase-447 A1/A2 — and LAST, this toolchain's own shipped SDK root.
+    //
+    // The walk above starts at the binary and expects it to sit inside a
+    // checkout (`packages/cli/target/{release,debug}/nros`). An INSTALLED
+    // binary is at `<prefix>/bin/nros`, so every ancestor it visits is a store
+    // directory and the walk answers `None` — which means a scaffolded project
+    // depending on `std_msgs`, as the shipped C++ workspace template does,
+    // could not resolve it on a machine with no checkout.
+    //
+    // Same rung, same reason and same LAST placement as
+    // `orchestration::nano_ros_root`: reached only when the checkout arms found
+    // nothing, so a contributor's resolution is untouched.
+    let dir = nros_launcher::checkout::shipped_sdk_root()?
+        .join("packages/cli")
+        .join(BUNDLED_INTERFACES_DIR);
+    dir.join("std_msgs").is_dir().then_some(dir)
 }
 
 /// Load the ament index, merging bundled interfaces as fallback.

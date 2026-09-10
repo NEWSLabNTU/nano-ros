@@ -446,9 +446,16 @@ pub fn ensure_model(
         ));
     }
     let resolver = launch_resolver_bin().ok_or_else(|| {
-        "cannot resolve the SystemModel: `nros-launch-resolve` not found. Build it with \
-         `./scripts/bootstrap.sh` (contributors: `just setup-launch-resolve`), or point \
-         $NROS_LAUNCH_RESOLVE at one. (Never resolved \
+        // phase-447 A1 — the INSTALLED remedy comes first. Both remedies used to
+        // name a checkout, which is exactly the audience that cannot act on
+        // them: a release now ships this binary beside `nros` and fronts it at
+        // `$NROS_HOME/bin`, so a toolchain missing it is one that predates that
+        // or was installed by hand, and reinstalling is the fix.
+        "cannot resolve the SystemModel: `nros-launch-resolve` not found. A released \
+         toolchain ships it beside `nros` and fronts it at `$NROS_HOME/bin`, so \
+         re-running the installer gets you one. From a checkout: \
+         `./scripts/bootstrap.sh` (contributors: `just setup-launch-resolve`). Either \
+         way, `$NROS_LAUNCH_RESOLVE` points at one explicitly. (Never resolved \
          through $PATH — a stale copy there resolves with an older schema, issue 0285.)"
             .to_string()
     })?;

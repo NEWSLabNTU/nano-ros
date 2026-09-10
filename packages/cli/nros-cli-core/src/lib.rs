@@ -147,6 +147,7 @@ fn cmd_name(cmd: &cmd::Cmd) -> &'static str {
         cmd::Cmd::ModelPath(_) => "model-path",
         cmd::Cmd::SdkPath(_) => "sdk-path",
         cmd::Cmd::SdkFront(_) => "sdk-front",
+        cmd::Cmd::SdkRoot(_) => "sdk-root",
         cmd::Cmd::GenerateRust(_) => "generate-rust",
         cmd::Cmd::Setup(_) => "setup",
         // Everything else stays runnable on a stale binary ON PURPOSE —
@@ -196,6 +197,7 @@ pub fn run(cmd: cmd::Cmd) -> Result<()> {
         cmd::Cmd::ModelPath(args) => cmd::model_path::run(args),
         cmd::Cmd::SdkPath(args) => cmd::sdk_path::run(args),
         cmd::Cmd::SdkFront(args) => cmd::sdk_front::run(args),
+        cmd::Cmd::SdkRoot(args) => cmd::sdk_root::run(args),
         // phase-440 W6 — deliberately NOT in `cmd_name`'s guarded set. These
         // report on and repair the STORE, which is not a fact about any
         // checkout, and a store verb has to work on the day the binary is stale
