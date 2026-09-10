@@ -36,6 +36,41 @@ esp32 stack budgets.
   leaves' hand-set `ZPICO_MAX_QUERYABLES` goes when both have landed —
   acceptance a BUILD whose shim constant matches the hand-set value it
   replaces.
+
+  **Landed for single-package leaves with W4b (2026-09-11,
+  `feat/phase-445-w4b-single-package-settings`). The acceptance as written did
+  NOT hold, and the difference is the finding:**
+  - The facts reach the image through `build/<image>/nros-cargo.toml` (and the
+    per-leaf sidecar, until W6). `NOT_DERIVED_NEEDS_INFRA_COUNT` is now
+    `QUERYABLES_DERIVED_BY_CONSUMER`: the leaf road still never states the
+    count, and the pool-floor gate reads either abstention spelling.
+  - The model alone was not enough. It abstains on
+    `NROS_DECLARED_SERVICE_SERVERS` for every leaf without a contract (all of
+    them), which leaves the consumer at its 8-slot headroom — WORSE than the
+    hand-set 2. The application half therefore comes from the leaf's own
+    inventory (probe, or the D8 `entities` declaration), the source every other
+    derived pool on this road already uses.
+  - A single-package leaf picks the parameter/lifecycle families with CARGO
+    features, which its model cannot see (`native/rust/lifecycle-node` enables
+    `lifecycle-services` with no `[system] features`). The infrastructure fact
+    is the model's UNIONED with the manifest's; without that the table would
+    be five slots short at boot.
+  - Measured on the esp32 talker, both `nros-relwithdebinfo`, same settings
+    file, only the leaf `[env]` line removed:
+    `ZPICO_MAX_QUERYABLES` 2 -> **1**, `ZPICO_MAX_SUBSCRIBERS` 1 -> 1,
+    `.bss` 219,664 -> 215,160 B, `.stack` 94,248 -> 98,752 B (+4,504 B, one
+    `SERVICE_BUFFERS` slot). 1 is the demand: no service server and neither
+    family, floored at one by the consumer. The hand-set 2 was headroom chosen
+    while nothing could state the application count ("2, not 0 … this row is
+    where the image's own author can state it"). Both knobs are removed from
+    the talker and listener `.cargo/config.toml`.
+  - NOT removed: `ZPICO_MAX_QUERYABLES = "2"` on the `workspace-rust-esp32`
+    fixture row. That image is built by the WORKSPACE road, whose facts come
+    from the model alone (no inventory fill), so removing it derives 8 — the
+    8,804 B DRAM overflow the row comment records. Also not removed:
+    `logging-smoke-esp32-qemu`'s hand-set value (no `system.toml`, so no
+    facts), and the talker-xrce `NROS_XRCE_MAX_*` rows (the leaf road derives
+    no XRCE pool).
 - [x] **W2 — complete the board descriptors (D4).** `[build] target` in every
   descriptor whose board has a Rust triple (mps2 first — the 19 hand-written
   leaves); `CC_<triple>`/`CFLAGS_<triple>` from the workspace configs; the
@@ -146,6 +181,53 @@ esp32 stack budgets.
   `nros-managed-{patch,env}.toml` sidecars, the `nros-board.toml` projection,
   their `include` bookkeeping) are deleted. Provisioning paths
   (`NROS_PLATFORM_*`) leave the leaves.
+  **W4b landed (2026-09-11, `feat/phase-445-w4b-single-package-settings`) —
+  single-package leaves; the per-leaf `.cargo/` writers are KEPT for W6.**
+  - One writer: `builder/cargo_config.rs` (W4's) now also takes path-valued
+    `[env]` rows and a header command, and always carries the three
+    `nros-cargo-profile` presets. `cmd/leaf_settings.rs` resolves a leaf (a
+    `[package]` `Cargo.toml` with `system.toml`, a cargo-driven board) and
+    writes `<leaf>/build/<image>/nros-cargo.toml`. `nros sync` writes it last;
+    `nros build` in a leaf writes it and hands over
+    `cargo build --manifest-path <leaf>/Cargo.toml --config <leaf>/build/<image>/nros-cargo.toml`.
+    `nros ws leaf-system` prints `NROS_LEAF_SETTINGS=<path>`.
+  - Layers, later wins: board `cargo_config` < derived pools + entity facts <
+    board facts (`board-facts`, which the lane used to export per row) < the
+    `[env]` rows the leaf's tracked `.cargo/config.toml` still AUTHORS. That
+    last layer is TRANSITIONAL — see below.
+  - Grandparent-relative paths: the writer already writes against the file's
+    grandparent, here `<leaf>/build/`.
+  - The working directory: the `nros-*` profiles now travel in the file, so
+    they no longer need cargo to start inside the checkout. The leaf's own
+    `.cargo/config.toml` is the other half. Its board-projection `include`
+    repeats the file's `[target.<triple>] rustflags`, and cargo JOINS arrays
+    across config files. Measured on the mps2 bare-metal talker:
+    `rust-lld: error: memory.x:19: region 'FLASH' already defined`. So cargo
+    runs from the directory ABOVE the leaf: ancestor configs still apply, the
+    leaf's own does not. Once W6 deletes it, running from the leaf is
+    equivalent.
+  - Fixture lane: a row whose leaf has `system.toml` builds through the file
+    (`scripts/build/leaf-settings.sh`, shared with the staleness probe). It no
+    longer passes `--target` (the six FreeRTOS rows) and no longer exports
+    `board-facts`. The group `--target-dir` still wins, so no artifact path
+    moves. `fixtures-manifest.py builds_through_leaf_settings` is the one
+    predicate. The builder FAILS when that predicate holds but the CLI reports
+    no settings file.
+  - Built, one leaf per family with Rust examples, each through `nros build`
+    AND through `nros sync` + plain cargo from the leaf's parent. The plain
+    build is `Fresh` with 0 units recompiled, i.e. the same configuration.
+    Families: native, mps2 bare-metal, mps2 FreeRTOS, esp32, NuttX ARM,
+    ThreadX-Linux (all talkers), plus the esp32 listener.
+  - **W6 can now delete, per leaf:** `.cargo/nros-board.toml`, the
+    `nros-managed-{patch,env}.toml` sidecars and the `include` bookkeeping. It
+    must first re-home the authored `[env]` rows the settings file carries:
+    - esp32: `NROS_EXECUTOR_ARENA_SIZE`, `NROS_SMOLTCP_MAX_UDP_SOCKETS`,
+      `ZPICO_SUBSCRIBER_LARGE_SIZE`;
+    - mps2 serial and XRCE: `NROS_HEAP_SIZE`, `NROS_LINK_IP`,
+      `ZPICO_NO_SMOLTCP`, the `NROS_XRCE_*` sizes;
+    - FreeRTOS: `NROS_PLATFORM_{FREERTOS_SRC,CFFI_INCLUDE}` (provisioning,
+      already exported by `sdk-env.just`).
+
 - [ ] **W5 — no workspace root build file (D9).** Stop generating
   `<ws>/Cargo.toml` (`rust`, `realtime-rust`, `features`, `launch`, `safety`,
   `sizing`) and retire `builder/cargo_root.rs`'s workspace emitter; delete the
