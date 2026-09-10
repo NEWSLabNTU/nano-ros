@@ -139,17 +139,18 @@ fn no_example_workspace_has_a_root_build_file_on_disk_from_git() {
         if !ws.join("src").is_dir() {
             continue;
         }
-        for f in ["CMakeLists.txt", ".cargo/config.toml"] {
-            let p = ws.join(f);
-            // A generated root may exist on a developer's disk (gitignored);
-            // an authored one is what this forbids.
-            if let Ok(text) = std::fs::read_to_string(&p) {
-                assert!(
-                    text.starts_with("# GENERATED"),
-                    "{} is an authored root build file; a workspace has none (RFC-0098 D9)",
-                    p.display()
-                );
-            }
+        // A generated root may exist on a developer's disk (gitignored); an
+        // authored one is what this forbids. `<ws>/.cargo/config.toml` is not
+        // checked: `nros sync` still writes it, gitignored, until phase-445 W6
+        // retires that writer — whether one is TRACKED is
+        // `check-cargo-config-tracked`'s question, not an on-disk one.
+        let p = ws.join("CMakeLists.txt");
+        if let Ok(text) = std::fs::read_to_string(&p) {
+            assert!(
+                text.starts_with("# GENERATED"),
+                "{} is an authored root build file; a workspace has none (RFC-0098 D9)",
+                p.display()
+            );
         }
         assert_ne!(
             nros_cli_core::builder::cargo_root::state(&ws),
