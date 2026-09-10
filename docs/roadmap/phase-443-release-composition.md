@@ -1,6 +1,7 @@
 # Phase 443 — release composition
 
-**Status (2026-09-10). All work items open.** Implements
+**Status (2026-09-10). All six work items implemented; W1/W5 and W3/W4 are in
+review.** Implements
 [RFC-0097](../design/0097-release-composition-and-version-axes.md). Makes the
 `nano-ros` release say what it contains, so the axis that carries compatibility
 can be read without reading the ones that do not.
@@ -115,6 +116,68 @@ whether an upgrade costs them a re-emit, which is the whole user-visible point.
 W3 is independent. W4 and W5 are small correctness fixes to phase-440's own
 work. W6 is docs and can land any time, but it is what makes the product usable
 by someone who has not read this repository.
+
+## What landed, and where the plan was wrong
+
+| item | PR | note |
+| --- | --- | --- |
+| RFC-0097 | #841 | merged |
+| W6 — product shape | #852 | merged |
+| W2 — the release declares its components | #859 | merged |
+| W1 + W5 — index leaves the binary; `--check` covers the build stage | #854 | in review |
+| W3 + W4 — the launcher is its own crate; CI does not choose a toolchain | #860 | in review |
+
+W1 and W5 shipped together because both edit `cmd/setup.rs`; W3 and W4 because
+both live in the launcher. That was a scheduling choice, not a design one.
+
+### D9 is a decision, not a description — `nros sync` is NOT merged into `nros build`
+
+Measured while writing W6's documentation, on a fresh copy of
+`examples/templates/multi-node-workspace` with `generated/` and `build/` removed:
+
+```
+$ nros build --dry-run
+Error: missing prerequisites for this build:
+  - generated message bindings (this workspace has never been synced)
+      run: nros sync
+```
+
+raised by `builder::preflight::check`. So the docs claiming "`nros build` runs
+`nros sync` for you" were the false ones and were corrected; the ones telling a
+user to sync first are currently right. **D9 remains unimplemented**, and
+nothing in W1–W6 assumes otherwise. Whoever implements it should expect the doc
+edits to move back.
+
+### W4's refusal is at the BUILD seam, not the launcher
+
+W4's acceptance said "non-interactive + no pin ⇒ refuse". The implementation
+splits it, and the split is right: **the launcher parses no `argv`** (D8), so a
+refusal there would also refuse `nros --version`, `nros setup --list` and
+`nros doctor` on every runner — commands that write nothing and have no
+reproducibility to protect. The launcher therefore emits a loud line naming the
+version it took and the pin that would fix it (`Source::DefaultInCi`), and the
+refusal lives where the verb is known.
+
+### A build-stage source needs a RESOLVABLE location, not a `dest`
+
+W5's first rule was `build_stage && dest.is_none() ⇒ refuse`, because the report
+asks whether `dest` is populated. phase-440 (#830) then gave `[source.rosidl]`
+`location = "store"` and REMOVED its `dest` — deliberately, since RFC-0095 D2
+derives a store path so nobody can spell it twice. `rosidl` is simultaneously
+the only build-stage source, so the two correct rules meeting refused the
+SHIPPED index. Measured by restoring the old rule: **9 tests fail, not 2** —
+every test that loads `nros-sdk-index.toml`, i.e. an `nros` that cannot read its
+own manifest. The rule is now "can anything name where this lives".
+
+### The ETXTBSY helper has ONE home, and it is the launcher
+
+Two work items independently hit issue 0476 — a test writes or copies an
+executable and then execs it, and `O_CLOEXEC` closes at exec, not fork, so a
+sibling thread's fork holds a write handle. Measured at 4/60 failures on a
+loaded machine, 0/60 with the fix. Both fixes were correct; the placement is
+decided by layering. `nros-cli-core` DEPENDS on `nros-launcher` after W3, so the
+helper lives in `nros-launcher` and cli-core re-exports it — a helper about a
+race is the worst kind to keep two copies of.
 
 ## Non-goals
 
