@@ -194,7 +194,7 @@ naming the package and the manual step.
 
 | board | driver | stage 4 emits |
 | --- | --- | --- |
-| pure-Rust package set | **cargo** | a synthesized `[workspace] members` root — **at `<ws>/Cargo.toml`, not under `build/`** (see below) |
+| pure-Rust package set | **cargo** | the generated entry `build/<coord>/<entry>/Cargo.toml` as its own root, plus `build/<coord>/nros-cargo.toml` read through `--config` — **no workspace root** (RFC-0098 D9; the 2026-08-26 correction below is superseded) |
 | any C/C++ package in the set | **cmake** | `CMakeLists.txt` calling `nano_ros_workspace(…)` |
 | zephyr | **west** | nothing — sets env, `exec west build -b <board>` |
 | esp32 | **idf.py** | nothing — same shape |
@@ -226,6 +226,22 @@ therefore a deletion, not a cutover. And stage 5 runs **from the workspace
 root** regardless, because cargo finds `.cargo/config.toml` by walking up from
 the CWD, and the leaf `[patch.crates-io]` redirects `nros sync` writes live
 there.
+
+**Superseded, 2026-09-10 (RFC-0098 D1/D9): there is no cargo workspace root at
+all.** The correction above is right about a WORKSPACE — a package finds its
+workspace by walking up, and members must sit below the root — and wrong to
+conclude a root is needed. With no `[workspace]` manifest anywhere, the
+generated entry under `build/<coord>/` is its own cargo root and reaches `src/*`
+as PATH dependencies, which need not sit below anything. Measured: two packages
+in `src/`, an entry in `build/img/entry/`, no root manifest, every setting from
+`--config build/img/nros-cargo.toml` — builds; adding a root `[workspace]`
+`Cargo.toml` to the same tree fails with `error: current package believes it's
+in a workspace when it's not`. So stage 4 emits no `<ws>/Cargo.toml`, stage 5
+runs `cargo build --manifest-path build/<coord>/<entry>/Cargo.toml --config
+build/<coord>/nros-cargo.toml` and the working directory stops mattering, and a
+copy-out example builds the same way after `nros sync` (RFC-0098 D2) rather
+than with no `nros` at all. The workspace is a directory of packages, as in
+colcon.
 
 **The rule that covers every exception:** *stage 4 emits a root only where a root
 would otherwise be hand-written.* west and ESP-IDF apps keep their own files

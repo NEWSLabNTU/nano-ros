@@ -1,13 +1,14 @@
 # RFC-0098 — A leaf's build configuration is generated from one board choice
 
-**Status:** Draft (2026-09-10)
+**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file)
 
 Home phase: [phase-445](../roadmap/phase-445-board-choice-generates-leaf-config.md).
 
 Amends RFC-0049 (gives the board descriptor's `[knobs]` the leaf-level budgets
 it was meant to own), phase-341 / RFC-0032 "third leg" (the board projection is
-no longer committed), and the issue-0457 decision (in-repo patch rows no longer
-live in a tracked file). Supersedes nothing.
+no longer committed), the issue-0457 decision (in-repo patch rows no longer
+live in a tracked file), and **RFC-0065 D3** (the cargo root no longer lives at
+`<ws>/Cargo.toml` — D9 below).
 
 ## The rule
 
@@ -50,21 +51,32 @@ commit that line") that has already been broken twice.
 
 ## Decisions
 
-**D1 — the leaf `.cargo/config.toml` is generated, entirely, and gitignored.**
-`nros sync` writes one file per leaf. It contains the board's `cargo_config`
-(A, B), the resolved `[env]` (D, E), and the in-repo `[patch.crates-io]` rows
-(H). No `include`: one file needs none. The committed `.cargo/nros-board.toml`
-projection (34 files) folds into it and stops being committed. Each example
-leaf ignores `.cargo/` in its own `.gitignore`. A user who wants their own
-Rust-toolchain preference puts it where cargo's config hierarchy already looks
-— a parent directory or `$CARGO_HOME` — never in the generated file.
+**D1 — a leaf's generated build settings live under `build/`, never in the
+source tree.** `nros sync` / `nros build` write one file per image,
+`build/<image>/nros-cargo.toml`: the board's `cargo_config` (A, B) including a
+per-image `target-dir`, the resolved `[env]` (D, E), and the in-repo
+`[patch.crates-io]` rows (H). Cargo reads it through `--config`, so nothing
+generated sits beside a package: no leaf `.cargo/config.toml`, no committed
+`.cargo/nros-board.toml` projection (34 files today), no `include`. Both are
+DELETED, not gitignored. Measured 2026-09-10 (cargo 1.98.1): `cargo build
+--manifest-path <entry>/Cargo.toml --config build/img/nros-cargo.toml` applied
+the `[env]`, the `target-dir` and a `[patch.crates-io]` row from that file, and
+left the package's source directory with no `.cargo/` and no `target/`.
 
-**D2 — `nros sync` runs before `cargo` / `cmake`, and that is the contract.**
-nano-ros does not own the build command: a user types `cargo build`, `cmake`,
-`west`, `idf.py`, or an IDE does. So the generated inputs must exist before any
-of them runs, exactly as `generated/` message crates already must. This
-reverses issue 0457 and phase-341's "a fresh clone links before sync" for
-examples. A leaf built without it fails at the first preflight with one line
+A single-package example builds the same way: `nros build`, or plain
+`cargo build --config build/<image>/nros-cargo.toml` for a user who drives
+cargo themselves. A user's own Rust-toolchain preference goes where cargo's
+config hierarchy already looks — a parent directory or `$CARGO_HOME` — never in
+a generated file.
+
+**D2 — `nros sync` runs before the build, and `nros build` is the colcon-like
+command.** nano-ros does not own the build command a user or an IDE types, so
+the generated inputs must exist before any of them runs — exactly as
+`generated/` message crates already must. `nros build <image>` is the one
+command that needs no flags (RFC-0065); plain `cargo` / `cmake` remain
+supported by pointing at the generated file (`--config`, `-C`/toolchain file).
+This reverses issue 0457 and phase-341's "a fresh clone links before sync" for
+examples. A build without sync fails at the first preflight with one line
 naming `nros sync`, never with cargo's manifest-parse error (issue 0463).
 
 **D3 — every example states its board in `system.toml`, including the 178
@@ -87,23 +99,28 @@ inspectable by where each value came from.
 `[package.metadata.nros.entry] deploy`, `[package.metadata.nros.node]` and
 `[package.metadata.nros.component]` retire from the manifest.
 
-**D6 — the board crate dependency is generated.** The leaf depends on the
-generated `<entry>_nros_selection` package (RFC-0066 / phase-331 already emit it
-for workspace entries), which pulls the board crate the `[image]` names. The
-last hand edit a board switch needed in `Cargo.toml` goes away.
+**D6 — the board crate dependency is generated.** It lives in the generated
+entry (RFC-0065 D4, `build/<coord>/<entry>/Cargo.toml`) and the generated
+`<entry>_nros_selection` package, which pull the board crate the `[image]`
+names. No user manifest names a board crate, so switching board touches no
+`Cargo.toml`.
 
 **D7 — every entity-derived pool is derived on the cargo road too, including
-`ZPICO_MAX_QUERYABLES`.** It is withheld today because a cargo leaf cannot see
-whether the parameter and lifecycle service families are in the image
-(`leaf_entity_env.rs`, `NOT_DERIVED_NEEDS_INFRA_COUNT`). `nros ws entity-facts`
-already answers that from the SystemModel's `execution.features`
-(`NROS_DECLARED_INFRA_QUERYABLES`) for CMake. Once D3 gives every
-single-package leaf a model, its sidecar carries the same facts and the
-consumer derives the knob like the others. A WORKSPACE member is different and
-is not decided here: its sidecar is the workspace root's, shared by every image,
-and cargo reads `.cargo/` from the invocation's working directory, so per-image
-facts cannot sit in one `[env]` — today they travel as per-invocation process
-env (`nros build`, the fixture lane). Phase-445 W1 records the two candidates.
+`ZPICO_MAX_QUERYABLES` — per image.** It is withheld today because a cargo leaf
+cannot see whether the parameter and lifecycle service families are in the
+image (`leaf_entity_env.rs`, `NOT_DERIVED_NEEDS_INFRA_COUNT`). `nros ws
+entity-facts` already answers that from the SystemModel's `execution.features`
+(`NROS_DECLARED_INFRA_QUERYABLES`), and the consumer
+(`nros-zpico-build/src/runner.rs`) already computes the count from
+`NROS_DECLARED_SERVICE_SERVERS` + `NROS_DECLARED_INFRA_QUERYABLES` +
+`NROS_DECLARED_NODES`. So the facts are CARRIED, never the count (issue 0460),
+and they go in that image's own `build/<image>/nros-cargo.toml` `[env]`. This
+closes the question the first revision left open: today a workspace member's
+sidecar is the workspace root's, shared by every image, and cargo reads
+`.cargo/` from the invocation's working directory — so per-image facts could
+only travel as per-invocation process env. With one generated file per image
+(D1) and no workspace root (D9), each image has its own settings and its own
+cargo invocation, and the working directory stops mattering.
 
 **D8 — a board whose component cannot be probed on the host DECLARES its
 entities, as a workaround with an issue.** esp32-c3 and mps2 leaves cannot be
@@ -112,6 +129,26 @@ host build). The declaration moves from `[package.metadata.nros.component]` to
 `system.toml`'s `[[component]]`, same grammar (`EntityDecl::parse`), and stays
 cross-checked against the probe wherever the probe runs. Retiring the
 workaround — probing the cross-built artifact itself — is issue 1265.
+
+**D9 — a workspace has no root build file.** No `<ws>/Cargo.toml`, no
+`<ws>/CMakeLists.txt`: a workspace is a directory of packages, like a colcon
+workspace, and everything generated lives in `build/`, `dist/` and `log/`. The
+cargo root is the generated entry itself, `build/<coord>/<entry>/Cargo.toml`
+(its `Cargo.lock` beside it), reaching `src/*` as PATH dependencies; the cmake
+root is `build/<coord>/CMakeLists.txt`, as RFC-0065 already has it. Each image
+therefore compiles its shared dependencies in its own `target-dir` — the cost
+the fixture lane already pays per group (phase-340).
+
+This supersedes RFC-0065 D3's "the cargo root is `<ws>/Cargo.toml` and nowhere
+else". That constraint is real only while a workspace EXISTS: a package finds
+its workspace by walking up, and members must sit below the root. With no
+workspace root there is nothing to walk up to, and a path dependency need not
+be below anything. Measured 2026-09-10: two packages in `src/`, a generated
+entry in `build/img/entry/`, no root manifest — builds (`app=42`), with every
+setting from `--config`. Negative control: adding a root `[workspace]`
+`Cargo.toml` to the same tree fails with `error: current package believes it's
+in a workspace when it's not`. No example package uses `x.workspace = true`
+inheritance (0 matches), the one feature that would need a root.
 
 ## What is NOT decided here
 
@@ -128,6 +165,14 @@ workaround — probing the cross-built artifact itself — is issue 1265.
   optional = true }]` (measured), which would stop the build-time dirt. It
   keeps hand-written board facts in a leaf and keeps the four-place board
   switch, so it treats the symptom.
+- **(a) A generated `.cargo/config.toml` in each image's entry directory.**
+  Correct when cargo runs from that directory, but it writes generated files
+  into the source tree, depends on the working directory, and `cargo build -p
+  <other>` from inside one entry silently builds the other image with this
+  one's settings.
+- **(b) Workspaces built only by `nros build`, facts as process env.** No new
+  files, but it splits D2 ("any build command") by workspace shape, and a plain
+  cargo build gets the fallback sizes (8,804 B over DRAM on `esp32_entry`).
 - **Gitignore `.cargo/` today.** Drops the only copy of 19 leaves' board
   triple and the esp32 stack budgets (`.bss` overflowed DRAM by 11,184 B
   without them). The homes must exist first; that is phase-445's order.
