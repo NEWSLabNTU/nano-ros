@@ -97,8 +97,13 @@ last hand edit a board switch needed in `Cargo.toml` goes away.
 whether the parameter and lifecycle service families are in the image
 (`leaf_entity_env.rs`, `NOT_DERIVED_NEEDS_INFRA_COUNT`). `nros ws entity-facts`
 already answers that from the SystemModel's `execution.features`
-(`NROS_DECLARED_INFRA_QUERYABLES`) for CMake. Once D3 gives every leaf a model,
-the cargo road carries the same fact and derives the knob like the others.
+(`NROS_DECLARED_INFRA_QUERYABLES`) for CMake. Once D3 gives every
+single-package leaf a model, its sidecar carries the same facts and the
+consumer derives the knob like the others. A WORKSPACE member is different and
+is not decided here: its sidecar is the workspace root's, shared by every image,
+and cargo reads `.cargo/` from the invocation's working directory, so per-image
+facts cannot sit in one `[env]` — today they travel as per-invocation process
+env (`nros build`, the fixture lane). Phase-445 W1 records the two candidates.
 
 **D8 — a board whose component cannot be probed on the host DECLARES its
 entities, as a workaround with an issue.** esp32-c3 and mps2 leaves cannot be
