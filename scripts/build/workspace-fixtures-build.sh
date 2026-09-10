@@ -271,20 +271,52 @@ build_workspace() {
     # nros_board_linux`. Fail LOUD + actionable here instead. Scoped to the host:
     # the embedded cyclonedds lanes (freertos/threadx/zephyr) have their own
     # graceful idlc/submodule skips and must not be turned into hard failures.
-    case "$defs" in
-        *NROS_RMW=cyclonedds*)
-            if [ "$platform" = "linux" ] && \
-               [ ! -e "$repo_root/third-party/dds/cyclonedds/CMakeLists.txt" ]; then
-                echo "ERROR: workspace fixture '$id' requires the cyclonedds submodule," >&2
-                echo "       which is not checked out (third-party/dds/cyclonedds is empty)." >&2
-                echo "       This fixture vendors C++ CycloneDDS by design and cannot build" >&2
-                echo "       without it. Run:" >&2
-                echo "         nros setup --source cyclonedds-src" >&2
-                echo "       (or: git submodule update --init --recursive third-party/dds/cyclonedds)" >&2
-                return 2
-            fi
-            ;;
-    esac
+    # ONE gate over every vendoring backend, not one arm per backend. The
+    # cyclonedds arm was written alone (issue 0120) and the reason it gives —
+    # "the build otherwise fails DEEP and cryptically" — is a property of
+    # VENDORING, not of cyclonedds. XRCE vendors the same way and had no arm,
+    # so on 2026-09-10 the live-peer lane died in a `build.rs` panic four frames
+    # down:
+    #
+    #   thread 'main' panicked at nros-rmw-xrce-cffi/build.rs:129:13:
+    #   vendored `micro-xrce-dds-client` source root .../src/c is missing or
+    #   has no .c files
+    #
+    # which is exactly the failure this gate exists to replace with a sentence
+    # naming the fix. Issue-0196's shape: the gate's REACH was narrower than the
+    # rule it enforces.
+    #
+    # Scoped to the host: the embedded lanes (freertos/threadx/zephyr) have
+    # their own graceful idlc/submodule skips and must not become hard failures.
+    if [ "$platform" = "linux" ]; then
+        _wf_rmw=""
+        case "$defs" in
+            *NROS_RMW=cyclonedds*) _wf_rmw=cyclonedds ;;
+            *NROS_RMW=xrce*)       _wf_rmw=xrce ;;
+            *NROS_RMW=zenoh*)      _wf_rmw=zenoh ;;
+        esac
+        case "$_wf_rmw" in
+            cyclonedds) _wf_probe=third-party/dds/cyclonedds/CMakeLists.txt
+                        _wf_dir=third-party/dds/cyclonedds
+                        _wf_src="nros setup --source cyclonedds-src" ;;
+            xrce)       _wf_probe=packages/rmw/xrce/xrce-sys/micro-xrce-dds-client/CMakeLists.txt
+                        _wf_dir=packages/rmw/xrce/xrce-sys/micro-xrce-dds-client
+                        _wf_src="" ;;
+            zenoh)      _wf_probe=packages/rmw/zenoh/zpico-sys/zenoh-pico/CMakeLists.txt
+                        _wf_dir=packages/rmw/zenoh/zpico-sys/zenoh-pico
+                        _wf_src="" ;;
+            *)          _wf_probe="" ;;
+        esac
+        if [ -n "$_wf_probe" ] && [ ! -e "$repo_root/$_wf_probe" ]; then
+            echo "ERROR: workspace fixture '$id' requires the $_wf_rmw submodule," >&2
+            echo "       which is not checked out ($_wf_dir is empty)." >&2
+            echo "       This fixture vendors $_wf_rmw by design and cannot build" >&2
+            echo "       without it. Run:" >&2
+            [ -n "$_wf_src" ] && echo "         $_wf_src" >&2
+            echo "         git submodule update --init --recursive $_wf_dir" >&2
+            return 2
+        fi
+    fi
 
     # `codegen_out` is required for the BAKE path (`nros codegen-system`). A
     # pure-cargo `nros::main!` entry bakes the system at proc-macro expansion

@@ -102,7 +102,25 @@ jobs:
       - name: Check out the submodules the fixtures vendor
         id: submodules
         run: |
-          git submodule update --init --recursive third-party/dds/cyclonedds
+          # EVERY backend this lane builds, not the one that happened to fail
+          # first. Run 34443301413 fixed cyclonedds and then died on XRCE — the
+          # same requirement one backend over, because the fix had been aimed at
+          # the reported site instead of the class.
+          #
+          # The set is derived from the three build lines below: the workspace
+          # rows cover zenoh/cyclonedds/xrce, and each vendors its own C or C++
+          # source. `zenoh-pico`/`mbedtls` already arrive with the container
+          # image, and re-initialising them is a no-op that costs nothing and
+          # stops this list from depending on that staying true.
+          #
+          # NOT `submodules: recursive` on `actions/checkout` — that is all 20,
+          # including `PX4-Autopilot` and `qemu`, none of which this lane builds.
+          git submodule update --init --recursive \
+              third-party/dds/cyclonedds \
+              packages/rmw/xrce/xrce-sys/micro-xrce-dds-client \
+              packages/rmw/xrce/xrce-sys/micro-cdr \
+              packages/rmw/zenoh/zpico-sys/zenoh-pico \
+              packages/rmw/zenoh/zpico-sys/mbedtls
 
       # NOT "the fixtures those CELLS resolve", which is what this said until
       # 2026-09-09. `lane-stage.py` classifies a step by keyword, `cells` is the
