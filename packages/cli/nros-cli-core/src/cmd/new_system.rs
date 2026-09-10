@@ -335,6 +335,7 @@ fn render_system_toml(pkg_name: &str, components: &[String]) -> Result<String> {
             group_tiers: std::collections::BTreeMap::new(),
             params: Default::default(),
             params_files: Vec::new(),
+            entities: None,
         })
         .collect();
 

@@ -86,6 +86,29 @@ pub struct ImageBlock {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rmw: Option<String>,
 
+    /// Deployment identity (RFC-0098 D5, phase-445 W3) — what this image dials
+    /// and what it IS on the network. Per IMAGE because one board instance has
+    /// one address: the esp32 talker and listener are the same board at
+    /// `10.0.2.50` and `10.0.2.51`.
+    ///
+    /// `domain_id` / `locator` override `[system]`'s; `ip` / `gateway` /
+    /// `netmask` (dotted IPv4) and `transport` overlay the board's compiled-in
+    /// `Config::default()` and have no system-wide default. These replace the
+    /// retiring `[package.metadata.nros.deploy.<board>]` table; the ONE reader
+    /// is `nros_orchestration_ir::leaf_system`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub domain_id: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locator: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ip: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gateway: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub netmask: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transport: Option<String>,
+
     /// Serialization format for this image, by PROVIDER NAME (phase-421 W4,
     /// RFC-0088 D6). Absent ⇒ the system header's `serdes`, then `cdr`.
     ///
@@ -168,6 +191,12 @@ impl ImageBlock {
             },
             panic: pick(&self.panic, &base.panic),
             rmw: pick(&self.rmw, &base.rmw),
+            domain_id: self.domain_id.or(base.domain_id),
+            locator: pick(&self.locator, &base.locator),
+            ip: pick(&self.ip, &base.ip),
+            gateway: pick(&self.gateway, &base.gateway),
+            netmask: pick(&self.netmask, &base.netmask),
+            transport: pick(&self.transport, &base.transport),
             serdes: pick(&self.serdes, &base.serdes),
             ros_edition: pick(&self.ros_edition, &base.ros_edition),
             profile: pick(&self.profile, &base.profile),

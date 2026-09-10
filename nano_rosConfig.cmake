@@ -37,6 +37,11 @@ set(NANO_ROS_ROOT "${CMAKE_CURRENT_LIST_DIR}")
 if(DEFINED ZEPHYR_BASE AND TARGET zephyr_interface)
     include("${NANO_ROS_ROOT}/cmake/NanoRosPackageXml.cmake")
     nano_ros_read_package_export()
+    # phase-445 W3 (RFC-0098 D3) — a leaf's system.toml overrides the tuple.
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/system.toml")
+        include("${NANO_ROS_ROOT}/cmake/NanoRosCodegenCore.cmake")
+    endif()
+    nano_ros_read_leaf_system()
     # deploy="zephyr" (board/RMW stay with Zephyr's own BOARD/Kconfig axes).
     set(NANO_ROS_PLATFORM zephyr)
     set(NROS_DEPLOY "${NANO_ROS_EXPORT_DEPLOY}")
@@ -99,6 +104,28 @@ set(NROS_FIND_PACKAGE_VALIDATE_ONLY TRUE)
 # are only set below when the caller left them at the default).
 include("${NANO_ROS_ROOT}/cmake/NanoRosPackageXml.cmake")
 nano_ros_read_package_export()
+# phase-445 W3 (RFC-0098 D3/D5) — a single-package leaf states its deployment in
+# `system.toml` beside this CMakeLists; when it does, that file (read by the
+# `nros` CLI, the one reader) overrides the tuple variables set just above, and
+# everything below consumes them unchanged. The tuple is the deprecated
+# fallback; retiring it deletes `nano_ros_read_package_export()`'s `<nano_ros>`
+# sugar, not this block.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/system.toml")
+    include("${NANO_ROS_ROOT}/cmake/NanoRosCodegenCore.cmake")
+endif()
+nano_ros_read_leaf_system()
+if(NANO_ROS_LEAF_SYSTEM)
+    # Deployment identity (RFC-0098 D5). Directory scope, never the cache, and
+    # only where no `-D` spoke: an explicit override (every RTOS fixture row
+    # passes `-DNROS_ENTRY_LOCATOR`) still wins, exactly as it wins over the
+    # per-platform defaults in NanoRosEntryLocator.cmake.
+    if(NOT NANO_ROS_LEAF_LOCATOR STREQUAL "" AND NOT DEFINED NROS_ENTRY_LOCATOR)
+        set(NROS_ENTRY_LOCATOR "${NANO_ROS_LEAF_LOCATOR}")
+    endif()
+    if(NOT NANO_ROS_LEAF_DOMAIN_ID STREQUAL "" AND NOT DEFINED NROS_DOMAIN_ID)
+        set(NROS_DOMAIN_ID "${NANO_ROS_LEAF_DOMAIN_ID}")
+    endif()
+endif()
 if(NANO_ROS_EXPORT_FOUND)
     # Tuple values go into the CACHE, not directory scope. The imported root
     # CMakeLists declares `NANO_ROS_PLATFORM`/`NANO_ROS_RMW` with cached posix/

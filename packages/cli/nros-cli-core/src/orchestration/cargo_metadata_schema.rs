@@ -1356,6 +1356,18 @@ pub struct SystemComponentEntry {
     /// shape as a `<param from=…>` launch entry. Resolver-consumed, as `params`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub params_files: Vec<String>,
+    /// RFC-0098 D8 (phase-445 W3) — the entities this component creates, in
+    /// `EntityDecl::parse` grammar (`"publisher:std_msgs/msg/String:/chatter"`,
+    /// `"timer"`, `"sub*2"`), for a board whose component cannot be host-probed
+    /// (esp32-c3, mps2 bare-metal — issue 1265). Cross-checked against the probe
+    /// wherever the probe runs (`leaf_entity_env::reconcile`).
+    ///
+    /// `None` = not declared (the probe is the source); `Some([])` = declared to
+    /// create nothing. Replaces `[package.metadata.nros.component] entities`.
+    /// The resolver's own `[[component]]` reader is lenient, so this key costs
+    /// it nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entities: Option<Vec<String>>,
 }
 
 /// `[deploy.<target>]` block.

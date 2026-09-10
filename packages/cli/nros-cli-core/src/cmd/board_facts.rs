@@ -318,45 +318,24 @@ type PickedDeploy = (String, String);
 /// `board =` key at all — which is why this maps one onto the other rather than
 /// looking for a field that does not exist.
 fn deploys_from_manifest(ws: &Path) -> Result<Option<Vec<PickedDeploy>>> {
-    let manifest = ws.join("Cargo.toml");
-    if !manifest.is_file() {
-        return Ok(None);
-    }
-    let raw = std::fs::read_to_string(&manifest)
-        .map_err(|e| eyre!("read {}: {e}", manifest.display()))?;
-    let doc: toml::Value =
-        toml::from_str(&raw).map_err(|e| eyre!("{}: {e}", manifest.display()))?;
-    let Some(nros) = doc
-        .get("package")
-        .and_then(|p| p.get("metadata"))
-        .and_then(|m| m.get("nros"))
-    else {
+    // phase-445 W3 — the ONE leaf reader. A leaf that states its deployment in
+    // `system.toml` is NOT answered here: `pick_deploys` falls through to
+    // `load_system_toml`, which reads the same file with its site table. Only
+    // the retiring manifest spelling (`[package.metadata.nros.entry] deploy`,
+    // else the single `[package.metadata.nros.deploy.<key>]` table — the
+    // Zephyr leaves' shape, issue 0605) is mapped onto a candidate here, and it
+    // goes when that fallback does.
+    let leaf = nros_orchestration_ir::leaf_system::read(ws).map_err(|e| eyre!(e))?;
+    let Some(leaf) = leaf.filter(|l| l.is_fallback()) else {
         return Ok(None);
     };
-    // `[package.metadata.nros.entry] deploy` when the leaf declares an entry;
-    // otherwise the single `[package.metadata.nros.deploy.<key>]` table. The
-    // Zephyr examples are the second shape — they carry the deploy block with
-    // no `entry` stanza — and requiring the first made them resolve to nothing
-    // (issue 0605: that is the lane this wave was trying to reach).
-    let deploy_tbl = nros.get("deploy").and_then(|d| d.as_table());
-    let deploy_key: String = match nros
-        .get("entry")
-        .and_then(|e| e.get("deploy"))
-        .and_then(|d| d.as_str())
-    {
-        Some(k) => k.to_string(),
-        None => match deploy_tbl {
-            Some(t) if t.len() == 1 => t.keys().next().expect("len == 1").clone(),
-            // Several, and nothing says which this build is: that is a question
-            // for the caller (`--deploy`), not a guess.
-            _ => return Ok(None),
-        },
+    // Several deploy tables and nothing saying which this build is: that is a
+    // question for the caller (`--deploy`), not a guess — the reader leaves
+    // the board unset.
+    let Some(deploy_key) = leaf.board else {
+        return Ok(None);
     };
-    // The deploy KEY is the board here, so the candidate is (key, key). The
-    // per-block `nros` sub-table this used to read is gone with issue 0951 —
-    // and it was already unreachable: `DeployTargetMetadata` is
-    // `deny_unknown_fields` and declares no such field, and no leaf manifest in
-    // the tree carries one.
+    // The deploy KEY is the board here, so the candidate is (key, key).
     let board = deploy_key.clone();
     Ok(Some(vec![(deploy_key, board)]))
 }
