@@ -1471,12 +1471,14 @@ pub struct Executor<'s> {
     /// image; every monitor path below folds away).
     pub(crate) monitor_table: &'static [super::monitor::MonitorSpec],
     pub(crate) monitor_states: [super::monitor::MonitorState; super::monitor::MAX_MONITORS],
-    /// Dispatches per SchedContext, for alive supervision. Counted in the
-    /// dispatch path where the SC index is already resolved, and read once
-    /// per monitor tick. A fixed array like `monitor_states`, not an arena
-    /// allocation: MAX_SC is a build-time constant (8 by default).
-    pub(crate) sc_dispatches: [u32; crate::config::MAX_SC],
-    pub(crate) alive_states: [super::monitor::AliveState; crate::config::MAX_SC],
+    /// Alive supervision, one record per SchedContext: dispatches are counted
+    /// in the dispatch path where the SC index is already resolved, and read
+    /// once per monitor tick. CARVED from the backing like `sporadic_states`.
+    /// It began as an inline `[_; MAX_SC]` pair on the claim that `MAX_SC` is a
+    /// build-time constant; it is a SIZING KNOB (`ExecutorSizing::sc`), so the
+    /// header grew with it and `the_executor_value_does_not_scale_with_the_knobs`
+    /// caught it (issue 0961).
+    pub(crate) alive_slots: &'s mut [super::monitor::AliveSlot],
     /// W3b.5 — baked subscriber age-contract table (empty = none).
     pub(crate) age_table: &'static [super::monitor::AgeMonitorSpec],
     pub(crate) age_states: [super::monitor::AgeState; super::monitor::MAX_MONITORS],
@@ -1632,6 +1634,7 @@ impl<'s> Executor<'s> {
             active_groups,
             group_sched_table,
             monitor_violations,
+            alive_slots,
         } = slices;
         // Slot 0 = the auto-created default Fifo SC (see field doc). carve
         // initialised the whole table to `None`; populate the reserved slot.
@@ -1752,8 +1755,6 @@ impl<'s> Executor<'s> {
             epoch_us_fn: super::types::default_epoch_us_fn(),
             monitor_table: &[],
             monitor_states: [super::monitor::MonitorState::default(); super::monitor::MAX_MONITORS],
-            sc_dispatches: [0; crate::config::MAX_SC],
-            alive_states: [super::monitor::AliveState::default(); crate::config::MAX_SC],
             age_table: &[],
             age_states: [super::monitor::AgeState::default(); super::monitor::MAX_MONITORS],
             fault_fn: None,
@@ -1778,6 +1779,7 @@ impl<'s> Executor<'s> {
             total_wakes: 0,
             report_violations: true,
             monitor_violations,
+            alive_slots,
             // Issue 0790 — both phase tables start empty. An image that
             // registers nothing pays these `None`s and a two-slot scan at
             // teardown, and nothing else.
@@ -2947,19 +2949,16 @@ impl<'s> Executor<'s> {
             // tell a stalled context from a fast one without time.
             return;
         };
-        let n = self.alive_states.len().min(self.sched_contexts.len());
+        let n = self.alive_slots.len().min(self.sched_contexts.len());
         for i in 0..n {
             let period_us = match self.sched_contexts[i].as_ref() {
                 Some(sc) => sc.period_us.get().map(|nz| nz.get() as u64).unwrap_or(0),
                 None => continue,
             };
-            let dispatches = self.sc_dispatches.get(i).copied().unwrap_or(0);
-            if let Some(v) = super::monitor::check_alive(
-                period_us,
-                dispatches,
-                &mut self.alive_states[i],
-                now_us,
-            ) {
+            let slot = &mut self.alive_slots[i];
+            if let Some(v) =
+                super::monitor::check_alive(period_us, slot.dispatches, &mut slot.state, now_us)
+            {
                 if self.report_violations {
                     super::monitor::log_violation(&v);
                 }
@@ -7620,7 +7619,7 @@ impl<'s> Executor<'s> {
              sched_context_bindings: &[super::sched_context::SchedContextId],
              sched_contexts: &[Option<super::sched_context::SchedContext>],
              sporadic_states: &mut [Option<super::sched_context::SporadicState>],
-             sc_dispatches: &mut [u32],
+             alive_slots: &mut [super::monitor::AliveSlot],
              #[cfg(feature = "alloc")] sporadic_atomic_states: &[Option<(
                 portable_atomic_util::Arc<super::sched_context::AtomicSporadicState>,
                 OpaqueTimerHandle,
@@ -7631,8 +7630,8 @@ impl<'s> Executor<'s> {
                 // silent exactly as a sporadic one can, and the rule that
                 // notices must not be scoped to the class that happens to
                 // carry a budget.
-                if let Some(n) = sc_dispatches.get_mut(sc_idx) {
-                    *n = n.wrapping_add(1);
+                if let Some(slot) = alive_slots.get_mut(sc_idx) {
+                    slot.dispatches = slot.dispatches.wrapping_add(1);
                 }
                 let sc_class = sched_contexts
                     .get(sc_idx)
@@ -7748,7 +7747,7 @@ impl<'s> Executor<'s> {
                             &self.sched_context_bindings[..],
                             &self.sched_contexts[..],
                             &mut self.sporadic_states[..],
-                            &mut self.sc_dispatches[..],
+                            &mut self.alive_slots[..],
                             #[cfg(feature = "alloc")]
                             &self.sporadic_atomic_states[..],
                         );
@@ -7789,7 +7788,7 @@ impl<'s> Executor<'s> {
                             &self.sched_context_bindings[..],
                             &self.sched_contexts[..],
                             &mut self.sporadic_states[..],
-                            &mut self.sc_dispatches[..],
+                            &mut self.alive_slots[..],
                             #[cfg(feature = "alloc")]
                             &self.sporadic_atomic_states[..],
                         );

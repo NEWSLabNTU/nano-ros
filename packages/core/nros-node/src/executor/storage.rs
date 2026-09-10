@@ -24,7 +24,7 @@ use core::{
 
 use super::{
     arena::CallbackMeta,
-    monitor::{MAX_VIOLATIONS, Violation},
+    monitor::{AliveSlot, MAX_VIOLATIONS, Violation},
     node_record::NodeRecord,
     sched_context::{SchedContext, SchedContextId, SporadicState},
     spin::{ComponentSlot, DispatchSlot, MAX_REMAPS, RemapRule},
@@ -188,6 +188,7 @@ pub(crate) struct ExecutorStorage<
     active_groups: [MaybeUninit<GroupName>; NODES],
     group_sched_table: [MaybeUninit<GroupSchedEntry>; CBS],
     monitor_violations: [MaybeUninit<Violation>; MAX_VIOLATIONS],
+    alive_slots: [AliveSlot; SC],
 }
 
 /// The typed, mutable sub-slices an [`Executor`](super::spin::Executor) borrows
@@ -226,6 +227,9 @@ pub(crate) struct ExecutorSlices<'s> {
     pub(crate) active_groups: CarvedVec<'s, GroupName>,
     pub(crate) group_sched_table: CarvedVec<'s, GroupSchedEntry>,
     pub(crate) monitor_violations: CarvedVec<'s, Violation>,
+    /// Alive supervision, one record per SC. Initialised by [`carve`] like the
+    /// SC tables above it: a zeroed record is the correct starting state.
+    pub(crate) alive_slots: &'s mut [AliveSlot],
 }
 
 /// Byte offsets of each field within the backing + total size/align. Computed
@@ -249,6 +253,7 @@ struct FieldOffsets {
     active_groups: usize,
     group_sched_table: usize,
     monitor_violations: usize,
+    alive_slots: usize,
     size: usize,
     align: usize,
 }
@@ -283,6 +288,7 @@ pub const NATIVE_UNITS: RegionUnits = RegionUnits {
     group_name: unit_of::<GroupName>(),
     group_sched_entry: unit_of::<GroupSchedEntry>(),
     violation: unit_of::<Violation>(),
+    alive_slot: unit_of::<AliveSlot>(),
 };
 
 /// issue 1197 — publish the backing's TOTAL size as a symbol whose storage size
@@ -360,6 +366,7 @@ const fn compute_offsets_with(sizing: ExecutorSizing, units: RegionUnits) -> Fie
         active_groups: o.active_groups,
         group_sched_table: o.group_sched_table,
         monitor_violations: o.monitor_violations,
+        alive_slots: o.alive_slots,
         size: o.size,
         align: o.align,
     }
@@ -411,7 +418,8 @@ pub struct ExecutorSizing {
     /// Callback-table slots (`entries`, the per-entry SC bindings, and the
     /// per-callback-group sched table). ≤ 64.
     pub cbs: usize,
-    /// Scheduling-context slots (`sched_contexts` + sporadic state tables).
+    /// Scheduling-context slots (`sched_contexts`, the sporadic state tables
+    /// and alive supervision's per-SC records).
     pub sc: usize,
     /// Bump-allocator arena size in bytes.
     pub arena: usize,
@@ -574,6 +582,14 @@ pub(crate) unsafe fn carve<'s>(
         }
         let remaps_s = core::slice::from_raw_parts_mut(remaps_p, MAX_REMAPS);
 
+        let alive_p = base.add(o.alive_slots) as *mut AliveSlot;
+        let mut i = 0;
+        while i < sc {
+            alive_p.add(i).write(AliveSlot::default());
+            i += 1;
+        }
+        let alive_s = core::slice::from_raw_parts_mut(alive_p, sc);
+
         ExecutorSlices {
             arena: arena_s,
             entries: entries_s,
@@ -592,6 +608,7 @@ pub(crate) unsafe fn carve<'s>(
             active_groups: carved!(o.active_groups, node_slots, GroupName),
             group_sched_table: carved!(o.group_sched_table, cbs, GroupSchedEntry),
             monitor_violations: carved!(o.monitor_violations, MAX_VIOLATIONS, Violation),
+            alive_slots: alive_s,
         }
     }
 }
@@ -653,6 +670,7 @@ mod tests {
             group_name: RegionUnit { size: 0, align: 1 },
             group_sched_entry: RegionUnit { size: 0, align: 1 },
             violation: RegionUnit { size: 0, align: 1 },
+            alive_slot: RegionUnit { size: 0, align: 1 },
         };
         let arena_only = executor_storage_layout_with(
             ExecutorSizing {
@@ -722,6 +740,7 @@ mod tests {
         same!(active_groups);
         same!(group_sched_table);
         same!(monitor_violations);
+        same!(alive_slots);
     }
 
     #[test]
@@ -740,6 +759,7 @@ mod tests {
         assert!(align_of::<DispatchSlot>() <= 8);
         assert!(align_of::<ComponentSlot>() <= 8);
         assert!(align_of::<GroupName>() <= 8);
+        assert!(align_of::<AliveSlot>() <= 8);
         assert!(align_of::<GroupSchedEntry>() <= 8);
         assert!(align_of::<Violation>() <= 8);
         assert!(executor_storage_layout(DEFAULT).align() <= 8);
@@ -888,6 +908,13 @@ mod tests {
         assert_eq!(s.active_groups.capacity(), NODES);
         assert_eq!(s.group_sched_table.capacity(), CBS);
         assert_eq!(s.monitor_violations.capacity(), MAX_VIOLATIONS);
+        // Alive supervision: one zeroed record per SC, carved rather than inline.
+        assert_eq!(s.alive_slots.len(), SC);
+        assert!(
+            s.alive_slots
+                .iter()
+                .all(|a| a.dispatches == 0 && !a.state.opened)
+        );
         assert_eq!(s.nodes.len(), 0);
         assert_eq!(s.group_sched_table.len(), 0);
     }
