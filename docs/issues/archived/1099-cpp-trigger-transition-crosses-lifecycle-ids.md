@@ -2,7 +2,8 @@
 id: 1099
 title: "`LifecycleNode::trigger_transition(uint8_t)` takes upstream's exact
   signature over a DIFFERENT id space — `2` activates where ROS 2 cleans up"
-status: open
+status: resolved
+resolved: 2026-09-06
 type: bug
 area: api, cpp
 related: [phase-428, rfc-0089]
@@ -65,3 +66,32 @@ API and the wire agree, and resolve `shutdown()` from the current state. Then
 decide whether our enum's discriminants should simply become upstream's —
 nothing in a fixed arena requires a different numbering, so this looks like a
 preference recorded as a divergence (RFC-0036).
+
+## Resolution
+
+Fixed 2026-09-06 by `0747a4c34`, by renumbering rather than translating: the
+core enum takes `lifecycle_msgs/msg/Transition` ids, because the C side carried
+the same latent defect and a boundary translation would have left
+`NROS_LIFECYCLE_TRANSITION_ACTIVATE` and `trigger_transition(2)` meaning
+different things inside one image. `c1db3a752` (2026-09-10) discharged the
+prose-ratchet rows that cited this issue as in flight. The file itself was
+never archived — the ledger row `cpp:LifecycleNode::trigger_transition` has said
+"issue 1099 archived" since the fix; it is now true. Re-verified on `main`
+2026-09-11:
+
+* Ids are upstream's: `packages/core/nros-core/src/lifecycle.rs:92-101`
+  (`Cleanup = 2`, `Activate = 3`, `Deactivate = 4`); `ErrorRecovery = 60`
+  (`TRANSITION_ON_ERROR_SUCCESS`, `:114`), not upstream's 8 (DESTROY, which we
+  do not implement); `from_u8` rejects the rest (`:44-51`).
+* `shutdown()` resolves from the current state through
+  `shutdown_transition_for(LifecycleState)`
+  (`packages/api/nros-cpp/include/nros/lifecycle.hpp:105`).
+* Pinned: `packages/api/nros-cpp/tests/compile/lifecycle_transition_ids.cpp`
+  static-asserts the C literals against UPSTREAM values, run by `check-cpp`
+  (`just/check/lanes.just:646`); nros-core's lifecycle tests pass (15/15).
+* The dangling cross-reference is gone: `cpp:LifecycleNode::trigger_transition`
+  exists in `lifecycle.json`, and no `.config` baseline row cites 1099.
+
+State ids stay a deliberate divergence (`ErrorProcessing = 5` vs upstream 15;
+5 is unassigned upstream, so it cannot silently mean another state) — recorded
+with a test by the same commit.
