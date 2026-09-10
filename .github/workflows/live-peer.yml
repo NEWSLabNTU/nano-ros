@@ -202,6 +202,27 @@ jobs:
           source ./activate.sh
           nros setup --system --sudo
 
+      # issue 0741 — the XRCE Agent, built against the SOURCED ROS's own
+      # Fast-DDS. Nothing provisioned one here: the probe took whichever Agent
+      # resolved first (build dir, SDK store, PATH), and the store prebuilt carries
+      # a Jazzy-era Fast-DDS whose Fast-CDR 2.x mis-frames a Humble bus's service
+      # replies. `scripts/xrce-agent/build.sh` reads the tag off the installed
+      # libfastcdr and shallow-clones it — no submodule — but only when it can SEE
+      # a sourced ROS. Asserted first: without one, the script would quietly
+      # publish the skewed store Agent instead, which is the bug it exists for.
+      - name: Build the XRCE Agent against the sourced ROS (issue 0741)
+        id: agent
+        run: |
+          source ./activate.sh
+          if [ -z "${AMENT_PREFIX_PATH:-}" ]; then
+              echo "no sourced ROS (AMENT_PREFIX_PATH is empty) — refusing to build an" >&2
+              echo "Agent that would not be ROS-paired (issue 0741)." >&2
+              exit 1
+          fi
+          # The DISPATCHER, not `just xrce setup`: the module spelling skips
+          # `_setup-common` (check-workflow-setup-spelling).
+          just setup xrce
+
       # NOT "the fixtures those CELLS resolve", which is what this said until
       # 2026-09-09. `lane-stage.py` classifies a step by keyword, `cells` is the
       # marker for the runtime stage, and the classifier takes the most specific
@@ -218,8 +239,19 @@ jobs:
           # fixture built before it — then the rows. Building rows first cost a
           # whole box batch on 2026-09-06.
           NROS_CARGO_FLAGS= just native build-workspace-fixtures
-          bash scripts/build/fixtures-build.sh linux rust zenoh
-          bash scripts/build/fixtures-build.sh linux rust cyclonedds
+          # DERIVED, not written: one `fixtures-build.sh linux <lang> <rmw>` per
+          # pair the host cells with a recorded PASS run on. The two builds this
+          # step used to name by hand never included C Cyclone or Rust XRCE, so
+          # those cells skipped for fixtures nothing built (run 34497290149).
+          builds="$(python3 scripts/check-interop-verdicts.py --list-passing --runner host --host-builds)"
+          echo "host fixture builds (derived from the ledger):"
+          printf '  %s\n' "$builds"
+          while IFS= read -r b; do
+              [ -n "$b" ] || continue
+              echo "=== fixtures-build.sh $b ==="
+              # `$b` is `linux <lang> <rmw>`: unquoted on purpose, three args.
+              bash scripts/build/fixtures-build.sh $b
+          done <<< "$builds"
 
       # `host`, not everything — phase-441 W4. A board cell's image is built by
       # an SDK this container does not carry, so running one here resolves no
@@ -243,6 +275,19 @@ jobs:
           printf 'cells_ran=%s\n' "$ran" >> "$GITHUB_OUTPUT"
           exit $rc
 
+      # Keep the evidence. `test-live-peer-regression` writes one junit per test
+      # binary under tmp/live-peer-junit/, and it is the only record of WHY a cell
+      # failed or which precondition a skip named. Run 34497290149 printed seven
+      # real failures and kept nothing to read them from.
+      - name: Upload the cells' junit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-peer-junit-host
+          path: tmp/live-peer-junit/host/
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Ledger after the run
         if: always()
         run: |
@@ -263,6 +308,7 @@ jobs:
              {"name": "Report what the ledger claims, before running anything", "conclusion": "${{ steps.ledger.outcome }}"},
              {"name": "Check out the submodules the fixtures vendor", "conclusion": "${{ steps.submodules.outcome }}"},
              {"name": "Provision the declared system closure (phase-413 W3)", "conclusion": "${{ steps.system.outcome }}"},
+             {"name": "Build the XRCE Agent against the sourced ROS (issue 0741)", "conclusion": "${{ steps.agent.outcome }}"},
              {"name": "Build the fixtures those rows resolve", "conclusion": "${{ steps.fixtures.outcome }}"},
              {"name": "Run the cells with a recorded PASS", "conclusion": "${{ steps.cells.outcome }}"}]
           # The fourth axis (phase-441 W4): the cells step FAILED tells you the
@@ -445,6 +491,19 @@ jobs:
           [ "$rc" -le 1 ] && ran=true
           printf 'cells_ran=%s\n' "$ran" >> "$GITHUB_OUTPUT"
           exit $rc
+
+      # Keep the evidence. `test-live-peer-regression` writes one junit per test
+      # binary under tmp/live-peer-junit/, and it is the only record of WHY a cell
+      # failed or which precondition a skip named. Run 34497290149 printed seven
+      # real failures and kept nothing to read them from.
+      - name: Upload the cells' junit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-peer-junit-board
+          path: tmp/live-peer-junit/board/
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Ledger after the run
         if: always()

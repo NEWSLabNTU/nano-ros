@@ -1188,6 +1188,10 @@ test-live-peer-regression runner="all" verbose="":
     junit_dir="tmp/live-peer-junit/$runner"
     rm -rf "$junit_dir"
     mkdir -p "$junit_dir"
+    # Failure output ON for this lane: a real failure must print why, and a
+    # `skip!` (a panic) must print its reason, or a red here cannot be read
+    # without a rerun. `final` puts it at the end of each binary's run.
+    export NROS_TEST_FAILURE_OUTPUT="${NROS_TEST_FAILURE_OUTPUT:-final}"
     source scripts/test/nextest-profile.sh
     failed=0
     broken=0

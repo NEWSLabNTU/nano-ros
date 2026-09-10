@@ -256,7 +256,7 @@ def parse_cells(src: str) -> list[dict]:
 
 
 def _parse_cell(arg: str, line: int) -> dict:
-    """The platform and tier out of `c(platform, lang, rmw, workload, kind, tier)`.
+    """Platform, lang, rmw and tier out of `c(platform, lang, rmw, workload, kind, tier)`.
 
     The PLATFORM is here for phase-441 W4: which runner a cell needs is a
     property of its coordinate and of nothing else. `.config/interop-verdicts.
@@ -290,7 +290,12 @@ def _parse_cell(arg: str, line: int) -> dict:
         raise ParseError(
             f"{INTEROP_RS.name}:{line}: `c(...)` has an empty platform token"
         )
-    return {"platform": platform, "tier": tier}
+    # lang + rmw for the host lane's fixture builds, which are DERIVED from what
+    # its cells run on rather than written by hand (the hand-written list never
+    # followed the C Cyclone cells in) — same reason the platform is read here.
+    lang = re.split(r"[\s(]", inner[1].strip(), maxsplit=1)[0]
+    rmw = re.split(r"[\s(]", inner[2].strip(), maxsplit=1)[0]
+    return {"platform": platform, "tier": tier, "lang": lang, "rmw": rmw}
 
 
 def _parse_test(arg: str, line: int) -> dict:
