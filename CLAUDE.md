@@ -753,7 +753,8 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   mps2_an385 vs 88,328 B on native_sim/native/64 for ONE conf), so a subtrahend copied
   from `nm` drifts on the next knob move and was never right for both boards.
   Gate: `check-executor-backing-arena-pairing`; a statement below what the executor
-  needs is a compile error naming the knob.
+  needs is a compile error naming the knob — and, since that fails only in an image
+  no merge lane builds, `node-std-tests` checks it against the MEASURED default (issue 1284).
   The companion stale number: `APP_TASK_STACK` was deleted in phase-76, and the
   `app_stack_bytes` that replaced it was **384 KiB by bisection** until issue 1146
   MEASURED it — `uxTaskGetStackHighWaterMark` at the end of the register pass, 8

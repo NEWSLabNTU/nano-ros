@@ -142,6 +142,15 @@ include!(concat!(env!("OUT_DIR"), "/nros_executor_backing.rs"));
 /// that wants to hear about it from the build they just ran, not from a test
 /// suite they may not run at all. `0` is the documented opt-out and is not
 /// reached here — it emits no static, so this whole arm is `cfg`'d away.
+///
+/// **It also goes false the OTHER way, and a const assertion alone cannot see
+/// that** (issue 1284): a conf that STATES the knob stays put while the executor
+/// grows under it. That fails only in the image's own build, which no
+/// merge-gating lane runs, so twelve Zephyr leaves drifted twice in a week. `just
+/// check node-std-tests` now runs this assertion per stated claim at each
+/// claimed board's pointer width, and `tests/executor_backing_claims.rs` checks
+/// the host-width claims against [`EXECUTOR_BACKING_DEFAULT_U64S`] by number;
+/// `check-executor-backing-arena-pairing --claims` says which confs claim what.
 #[cfg(nros_executor_backing_static)]
 const _: () = assert!(
     EXECUTOR_BACKING_U64S >= EXECUTOR_BACKING_DEFAULT_U64S,

@@ -1385,6 +1385,10 @@ config NROS_EXECUTOR_BACKING_U64S
           CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE=960248
 
       check-executor-backing-arena-pairing holds every conf to that arithmetic.
+      That the numbers SUM does not make the stated value ENOUGH: the executor
+      grows, the conf does not, and the image stops compiling. `just check
+      node-std-tests` checks every stated value against the MEASURED default
+      on each board the conf is built for (issue 1284), so restate it there.
 
       0 declines the static entirely and restores the pre-W6 leak, for an image
       that would rather keep the bytes in the allocator arena than have the
