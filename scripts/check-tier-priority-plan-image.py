@@ -89,13 +89,80 @@ def check_one(dotconfig, tier_key, plans):
     return 0, ok
 
 
+def images_from(listing):
+    """`.config` paths for the build dirs named in `listing`, one per line.
+
+    The LANE's mode. `discover()` answers "what does this workspace hold",
+    which on a shared or long-lived workspace includes images no run of this
+    tree produced — and a derived band read off a museum `.config` fails pins
+    that pass against every image the run actually built. Tier 2 was red three
+    nights on exactly that (images still carrying the pre-0852 0-31 zenoh band,
+    transport [14, 14]). The lane knows which leaves it built, so it says so.
+
+    A listed dir with no `.config` is an ERROR, not a skip: the lane only gets
+    here after every listed leaf built, so a missing `.config` means the list
+    and the build disagree, and silently checking fewer images is how a green
+    comes to mean less than it looks.
+    """
+    configs, missing = [], []
+    for raw in Path(listing).read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        p = Path(line)
+        cfg = p if p.name == ".config" else p / "zephyr" / ".config"
+        (configs if cfg.is_file() else missing).append(cfg)
+    return configs, missing
+
+
+def check_many(configs, tier_key, plans, origin):
+    plan = plans.get(tier_key)
+    if plan is None or not plan.get("derived"):
+        print(f"{tier_key!r} has no DERIVED plan")
+        return 2
+    rc, total, failed = 0, 0, []
+    print(f"check-tier-priority-plan-image: {len(configs)} image(s) ({origin})")
+    for c in configs:
+        r, n = check_one(c, tier_key, plans)
+        if r:
+            failed.append(c.parent.parent.name)
+        rc = max(rc, r)
+        total += n
+    verdict = "FAILED" if rc else "OK"
+    print(f"\ntier-priority-plan-image: {verdict} "
+          f"({total} pin-check(s) over {len(configs)} image(s))")
+    if failed:
+        # Named in the LAST lines on purpose: a failing lane prints the tail of
+        # this output, and the per-image [FAIL] blocks are above it. The tier-2
+        # log showed forty `[ok]` lines and a bare FAILED, with every failing
+        # image scrolled off.
+        print(f"  failing image(s): {', '.join(failed)}")
+    return rc
+
+
 def main(argv):
     plans = load_plans()
     tier_key = "zephyr"
+    if len(argv) >= 3 and argv[1] == "--images-from":
+        configs, missing = images_from(argv[2])
+        if len(argv) > 3:
+            tier_key = argv[3]
+        if missing:
+            print("check-tier-priority-plan-image: listed image(s) have no .config:")
+            for m in missing:
+                print(f"  {m}")
+            return 2
+        if not configs:
+            print(f"check-tier-priority-plan-image: {argv[2]} names no image — "
+                  "the caller built nothing, so there is nothing to check")
+            return 2
+        return check_many(configs, tier_key, plans, f"listed in {argv[2]}")
     if len(argv) < 2:
-        # Lane mode: check every image this tree has built. A tree with no
-        # Zephyr workspace SKIPS loudly rather than passing — issue 0599's
-        # rule, and the difference between "checked nothing" and "checked".
+        # Discovery mode (the operator's `just check tier-priority-plan-image`):
+        # every image the workspace holds. A tree with no Zephyr workspace
+        # SKIPS loudly rather than passing — issue 0599's rule, and the
+        # difference between "checked nothing" and "checked". Lanes do NOT use
+        # this mode: they name the images they built (`--images-from`).
         configs = discover()
         if not configs:
             print("check-tier-priority-plan-image: SKIPPED — no built Zephyr image "
@@ -103,19 +170,7 @@ def main(argv):
             print("  The DEFERRED pins reported by check-tier-priority-plan stay "
                   "unchecked on this host.")
             return 0
-        plan = plans.get(tier_key)
-        if plan is None or not plan.get("derived"):
-            print(f"{tier_key!r} has no DERIVED plan")
-            return 2
-        rc, total = 0, 0
-        print(f"check-tier-priority-plan-image: {len(configs)} built image(s)")
-        for c in configs:
-            r, n = check_one(c, tier_key, plans)
-            rc = max(rc, r)
-            total += n
-        print(f"\ntier-priority-plan-image: {'FAILED' if rc else 'OK'} "
-              f"({total} pin-check(s) over {len(configs)} image(s))")
-        return rc
+        return check_many(configs, tier_key, plans, "every image in the workspace")
     dotconfig = Path(argv[1])
     tier_key = argv[2] if len(argv) > 2 else "zephyr"
     if not dotconfig.is_file():

@@ -204,11 +204,11 @@ class LinuxBoard {
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
-            nros::shutdown();
+            (void)nros::shutdown();
             return rc;
         }
         int32_t sc = detail::component_spin_loop();
-        nros::shutdown();
+        (void)nros::shutdown();
         return sc;
     }
 
@@ -310,11 +310,11 @@ class ZephyrBoard {
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
-            nros::shutdown();
+            (void)nros::shutdown();
             return rc;
         }
         int32_t sc = detail::component_spin_loop();
-        nros::shutdown();
+        (void)nros::shutdown();
         return sc;
     }
 
@@ -402,11 +402,11 @@ class NuttxBoard {
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
-            nros::shutdown();
+            (void)nros::shutdown();
             return rc;
         }
         int32_t sc = detail::component_spin_loop();
-        nros::shutdown();
+        (void)nros::shutdown();
         return sc;
     }
 
@@ -490,11 +490,11 @@ class ThreadxBoard {
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
-            nros::shutdown();
+            (void)nros::shutdown();
             return rc;
         }
         int32_t sc = detail::component_spin_loop();
-        nros::shutdown();
+        (void)nros::shutdown();
         return sc;
     }
 
@@ -547,11 +547,11 @@ class FreertosBoard {
         if (!r.ok()) return static_cast<int32_t>(r.raw());
         int32_t rc = setup();
         if (rc != 0) {
-            nros::shutdown();
+            (void)nros::shutdown();
             return rc;
         }
         int32_t sc = detail::component_spin_loop();
-        nros::shutdown();
+        (void)nros::shutdown();
         return sc;
     }
 

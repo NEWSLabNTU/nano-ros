@@ -72,8 +72,12 @@ CLASSIFICATION = {
         "unships whatever the skipped commits fixed, and setup must never "
         "silently pick a side.",
     ),
-    "the Zephyr workspace lives inside a DIFFERENT": (
+    "the Zephyr workspace belongs to a DIFFERENT": (
         "manual",
+        # issue 1253 — the probe now also asks which checkout's Zephyr MODULE
+        # the workspace's west manifest names; the same reasoning applies: the
+        # manifest is fixed when the workspace is provisioned, by whoever ran
+        # `west init -l`, and setup must not re-point someone else's symlink.
         "This is a statement about WHERE THE JOB RUNS, not about a directory "
         "`just setup` could create. On a self-hosted runner it means the job "
         "is on the bare host; the sanctioned path is contained "

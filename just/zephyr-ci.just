@@ -349,13 +349,14 @@ build-fixtures:
         zephyr_leaf_args+=(--filter "$fixture_filter")
     fi
     normal_records=0
-    probe_records="$(mktemp)"
+    # Kept until the end: the tier-priority check below judges exactly the
+    # images THESE records build (field 12 is each leaf's build dir).
+    probe_records="$log_dir/records-$$.tsv"
     if scripts/build/zephyr-fixture-leaves.sh --emit records "${zephyr_leaf_args[@]}" >"$probe_records" 2>/dev/null; then
         if [ -s "$probe_records" ]; then
             normal_records=1
         fi
     fi
-    rm -f "$probe_records"
 
     failures=()
     if [ "$normal_records" = "1" ]; then
@@ -402,4 +403,18 @@ build-fixtures:
     # check `check::tier-priority-plan` DEFERS. Zephyr's reserved transport band
     # is derived per image, so this is the only place it CAN be judged, and a
     # deferral nobody discharges is just an unchecked pin with better wording.
-    python3 scripts/check-tier-priority-plan-image.py
+    #
+    # It judges the images THIS invocation built, named by the records above,
+    # never every `build-*/` the workspace happens to hold. Discovery read a
+    # SHARED workspace: on the tier-2 runner 40 images, some from before issue
+    # 0852 moved the zenoh band to 0-255 (`.config` still saying
+    # `READ_PRIORITY=16` -> transport [14, 14]), so pins that pass against every
+    # image this run produced failed against images no run of this tree made —
+    # three runs red (two on 2026-09-08, one on -10) at a gate the build had
+    # already passed. "A gate may only resolve artifacts the job itself builds."
+    # (issue 1253)
+    images_list="$log_dir/tier-priority-images-$$.txt"
+    awk -F '\t' 'NF >= 12 && $12 != "" { print $12 }' "$probe_records" >"$images_list"
+    rm -f "$probe_records"
+    python3 scripts/check-tier-priority-plan-image.py --images-from "$images_list"
+    rm -f "$images_list"

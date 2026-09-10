@@ -1972,8 +1972,8 @@ build-test-fixtures-leaves lane="all": _require-leaf-includes
             # variable unset, is therefore NAMED, and fails instead. Unset =
             # NAMED is the deliberate default: a driver that forgets this
             # assignment goes red rather than quietly staying green.
-            printf '\t+@start=$$(date +%%s); status=0; echo "== %s =="; ( env %s NROS_LANE_INCLUDED=%q NROS_BUILD_JOBS=%q just %q build-fixtures ) >%q 2>&1 || status=$$?; end=$$(date +%%s); printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" %q "$$start" "$$end" "$$((end - start))" "$$status" >>%q; if [ "$$status" -eq 78 ]; then echo "== %s == SKIPPED ($$(sed -n "s/^NROS_LANE_SKIP: //p" %q | tail -1))"; else if [ "$$status" -ne 0 ]; then echo "== %s == FAILED (rc=$$status); log tail:"; tail -40 %q || true; exit "$$status"; fi; echo "== %s == OK"; fi\n\n' \
-                "$platform" "$NROS_STAGE_ENV" "$platform" "$child_jobs" "$platform" "$log" "$platform" "$joblog" "$platform" "$log" "$platform" "$log" "$platform"
+            printf '\t+@start=$$(date +%%s); status=0; echo "== %s =="; ( env %s NROS_LANE_INCLUDED=%q NROS_BUILD_JOBS=%q just %q build-fixtures ) >%q 2>&1 || status=$$?; end=$$(date +%%s); printf "%%s\\t%%s\\t%%s\\t%%s\\t%%s\\n" %q "$$start" "$$end" "$$((end - start))" "$$status" >>%q; if [ "$$status" -eq 78 ]; then echo "== %s == SKIPPED ($$(sed -n "s/^NROS_LANE_SKIP: //p" %q | tail -1))"; else if [ "$$status" -ne 0 ]; then echo "== %s == FAILED (rc=$$status)"; bash scripts/build/log-first-errors.sh %q; echo "== %s == log tail:"; tail -40 %q || true; exit "$$status"; fi; echo "== %s == OK"; fi\n\n' \
+                "$platform" "$NROS_STAGE_ENV" "$platform" "$child_jobs" "$platform" "$log" "$platform" "$joblog" "$platform" "$log" "$platform" "$log" "$platform" "$log" "$platform"
         done
     } > "$makefile"
     # issue 0762 — run the fan-out under ONE process group, so killing this

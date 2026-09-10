@@ -430,9 +430,37 @@ endfunction()
 # nros_rmw_zenoh.cmake emits its compile definitions at include time.
 # =============================================================================
 function(nros_resolve_knobs)
-    # Drop last configure's list so a backend switch cannot leave stale knobs
-    # behind (the per-knob values are overwritten, but the list would grow).
-    unset(NROS_RESOLVED_KNOBS CACHE)
+    # Drop last configure's list AND every value it names. The per-knob values
+    # are NOT all overwritten: `_nros_resolve_derivable_knob`'s rung 4 resolves
+    # nothing on purpose, so a knob that was stated or derived last configure
+    # and is neither now kept its old `NROS_RESOLVED_<knob>` CACHE INTERNAL
+    # value, and every reader took it as this configure's answer. Measured
+    # (issue 1253): build-cortex-m-c-talker-zenoh logged "NROS_RMW_SUBSCRIBER_SLOTS
+    # left to its crate default" and then failed the phase-412 mutex floor "for
+    # 8 subscribers" — the 8 was a 2026-08-28 configure's. Only a REUSED build
+    # dir shows it, which is every incremental fixture build.
+    #
+    # Enumerated from the CACHE, not from `NROS_RESOLVED_KNOBS`: the list is
+    # unset at the top of every configure, so a configure that dies after this
+    # point (that one did — the floor is a FATAL_ERROR) leaves per-knob values
+    # in the cache with no list naming them, and a list-driven sweep would
+    # clear nothing next time.
+    #
+    # Only INTERNAL entries: `_nros_resolve_knob` writes every value CACHE
+    # INTERNAL, while `NROS_RESOLVED_DIR` (cmake/NanoRosResolved.cmake) shares
+    # the prefix and is a CALLER's `-D` on the cmake/west handoff — clearing it
+    # would discard an input, not a stale answer. Named as well, in case a
+    # handoff ever types it INTERNAL.
+    get_property(_nros_cache_vars GLOBAL PROPERTY CACHE_VARIABLES)
+    foreach(_nros_cache_var IN LISTS _nros_cache_vars)
+        if(_nros_cache_var MATCHES "^NROS_RESOLVED_"
+           AND NOT _nros_cache_var STREQUAL "NROS_RESOLVED_DIR")
+            get_property(_nros_cache_type CACHE ${_nros_cache_var} PROPERTY TYPE)
+            if(_nros_cache_type STREQUAL "INTERNAL")
+                unset(${_nros_cache_var} CACHE)
+            endif()
+        endif()
+    endforeach()
 
     # phase-403 W8 (issue 0940) -- the size knobs' rung-3 values, if this image
     # has an inventory to derive them from. Loaded once, before any resolution,
