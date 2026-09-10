@@ -15,10 +15,13 @@ kernel of the **main checkout** instead: `/home/aeon/repos/nano-ros/third-party/
 went from `CONFIG_ARCH_BOARD="qemu-armv7a"` to `"rv-virt"`, with its `.config`,
 `include/nuttx/config.h` and `nuttx` binary rewritten at 01:11:18. Nothing in
 the worktree's own `third-party/nuttx` was touched, and nothing said so. The
-tree does NOT restore itself: `just nuttx build` in the main checkout exited 0
-and left it at `CONFIG_ARCH_BOARD="rv-virt"` with the 01:11 kernel binary
-(measured), so the next ARM build there starts from the wrong board's config
-unless something reconfigures it.
+tree's ARM builds turned out to be insulated: `just nuttx build` in the main
+checkout reported `NuttX arm export up-to-date (nros-nuttx-export-arm) —
+skipping build/export` and `NOTE: the shared tree stays configured for
+"rv-virt", not "qemu-armv7a"` — ARM images link against a per-architecture
+EXPORT, and the shared tree's configured board is scratch the scripts already
+tolerate. So this incident cost no ARM build. That insulation is specific to
+the NuttX kernel, and it does not answer either harm below.
 
 ## Why
 
@@ -47,7 +50,9 @@ and the second is the worse one:
 
 1. **It writes into another checkout.** The NuttX kernel build is not
    read-only; it reconfigures the tree it is pointed at, so a worktree build
-   silently changes the main checkout's state (and races any build there).
+   silently changes the main checkout's state and RACES any build running
+   there on the same tree (the per-arch export insulates a finished ARM
+   export, not a build in flight).
 2. **It certifies the wrong code.** A worktree exists to test a change. An
    edit to `packages/platform/nros-platform-freertos/src` or
    `packages/api/nros-c/include` in the worktree is NOT what gets compiled —
