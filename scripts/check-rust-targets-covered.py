@@ -86,10 +86,24 @@ def declared_rows():
                 continue
             m = re.match(r'target\s*=\s*"([^"]+)"', s)
             if m:
-                # A custom target is declared by its JSON path; the triple is
-                # the stem, which is what `rustup`/`-Zbuild-std` name.
-                rows.append((re.sub(r"\.json$", "", m.group(1)), rel))
+                rows.append((triple_of_build_target(m.group(1)), rel))
     return rows
+
+
+def triple_of_build_target(value):
+    """The triple a `[build] target` value names.
+
+    A custom target is declared by its JSON PATH, and the triple is the file
+    STEM — what `rustup`/`-Zbuild-std` name and what cargo uses for
+    `[target.<triple>]`. Stripping only the extension kept the directory, so
+    `../riscv32imac-unknown-nuttx-elf.json` (the nuttx-riscv FFI subcrate, once
+    the board owned the one spec, phase-445) read as a target named
+    `../riscv32imac-unknown-nuttx-elf`. Same rule as the CLI's
+    `triple_of_build_target` and `check-board-cargo-config-shape`.
+    """
+    if value.endswith(".json"):
+        return value[: -len(".json")].replace("\\", "/").rsplit("/", 1)[-1]
+    return value
 
 
 def listed():
@@ -260,6 +274,20 @@ def self_test():
     case("build-std listed in index", ["a", "n"], both, 1)
     case("stray index entry", ["a", "zzz"], {"a": "rustup"}, 1)
     case("build-std absent is fine", ["a"], both, 0)
+
+    # A spec PATH names its file stem — the directory is not part of the triple
+    # (phase-445: `../riscv32imac-unknown-nuttx-elf.json` read as a target named
+    # `../riscv32imac-unknown-nuttx-elf` when only the extension was stripped).
+    for value, want in [
+        ("thumbv7m-none-eabi", "thumbv7m-none-eabi"),
+        ("riscv32imac-unknown-nuttx-elf.json", "riscv32imac-unknown-nuttx-elf"),
+        ("../riscv32imac-unknown-nuttx-elf.json", "riscv32imac-unknown-nuttx-elf"),
+        ("${workspace}/packages/boards/b/x-y-z.json", "x-y-z"),
+    ]:
+        got = triple_of_build_target(value)
+        if got != want:
+            ok = False
+            print(f"  self-test FAIL triple_of_build_target({value!r}) = {got!r}, want {want!r}")
 
     print("check-rust-targets-covered --self-test: "
           + ("OK" if ok else "FAILED"))
