@@ -131,6 +131,15 @@ fixture-groups:
 fixture-id-guard:
     @bash scripts/check-fixture-id-guard.sh
 
+# Issue 1264 — `nros_platform_rmws` (and the fixture-id-guard functions above,
+# which share its `nros_manifest_query` helper) must report a manifest parser
+# that failed to even START as a PARSER failure, never as "this platform/id
+# does not exist". Buildless: sources the library and calls its functions
+# directly, once against a fake `python3` that dies the way a python3.10 host
+# with no tomllib/tomli does.
+platform-rmws:
+    @bash scripts/check-platform-rmws.sh
+
 # Issue 0835 — a fixture staleness probe decides from the ARTIFACT's BYTES, not
 # from whether the build did work. Corrosion's cargo step is an always-dirty
 # edge and the phase-340 cargo groups evict rows nobody touched, so an

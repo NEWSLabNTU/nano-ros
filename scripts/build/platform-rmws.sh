@@ -30,23 +30,42 @@
 #
 # Deliberately NOT silent on failure: a platform with no rows is a caller error
 # (a typo'd name), and returning "nothing to provision" for it would reproduce
-# the bug this fixes one level up.
+# the bug this fixes one level up. Issue 1264: that reasoning only held for
+# failures where the PARSER ran — it was reached with `2>/dev/null` ahead of
+# it, so a python3 that cannot even import the manifest parser (no
+# `tomllib`/`tomli`) produced the identical empty `$out` and got the identical
+# confident-but-wrong message. `nros_manifest_query` (scripts/lib/manifest-
+# query.sh) is what now tells the two apart.
+
+_nros_platform_rmws_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/manifest-query.sh
+source "$_nros_platform_rmws_dir/../lib/manifest-query.sh"
 
 # nros_platform_rmws <platform>
 #
 # Echoes one backend per line, sorted and deduped. Exit 1 with a message if the
-# platform has no fixture rows at all.
+# platform has no fixture rows at all, or if the manifest parser itself failed.
 nros_platform_rmws() {
     local platform="${1:?nros_platform_rmws: platform}"
     local root
     root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
-    local out
     # `coords` is the same subcommand the lane filters use, so this reads the
     # manifest through the one parser rather than re-implementing TOML in awk.
+    local coords rc
+    rc=0
+    coords="$(nros_manifest_query "$root/scripts/build/fixtures-manifest.py" coords)" \
+        || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "nros_platform_rmws: the manifest parser failed (above), so it is unknown" >&2
+        echo "  whether '$platform' has fixture rows — not that it doesn't." >&2
+        return 1
+    fi
+
+    local out
     # Its fields are separated by 0x1f, NOT tab — a tab-split silently yields
     # one field and an empty answer, which looks exactly like "no rows".
-    out="$(python3 "$root/scripts/build/fixtures-manifest.py" coords 2>/dev/null \
+    out="$(printf '%s\n' "$coords" \
         | awk -F'\x1f' -v p="$platform" '$2 == p { print $4 }' \
         | grep -v '^$' \
         | sort -u)"

@@ -26,6 +26,16 @@
 #
 # So the loudness is keyed on the spelling, and the spellings keep distinct
 # meanings instead of being merged into one that cannot express both.
+#
+# Issue 1264: both guards below used to run the manifest parser with
+# `2>/dev/null` and read empty output as a definitive "no such id" / "no such
+# platform" — which is also what a python3 with no `tomllib`/`tomli` prints,
+# having raised before reading a byte. `nros_manifest_query` tells the two
+# apart; see scripts/lib/manifest-query.sh.
+
+_nros_fixture_id_guard_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/manifest-query.sh
+source "$_nros_fixture_id_guard_dir/../lib/manifest-query.sh"
 
 # nros_fixture_id_out_of_lane <id> <coords_active> <unnarrowed_rows> <what>
 #
@@ -70,8 +80,14 @@ nros_fixture_id_no_match() {
     # cwd — the three builders run from different directories.
     guard_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     local guard_root="${guard_dir%/scripts/build}"
-    where="$(python3 "$guard_dir/fixtures-manifest.py" \
-        --manifest "$guard_root/examples/fixtures.toml" describe-id --id "$id" 2>/dev/null)"
+    local rc=0
+    where="$(nros_manifest_query "$guard_dir/fixtures-manifest.py" \
+        --manifest "$guard_root/examples/fixtures.toml" describe-id --id "$id")" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "fixtures: could not look up id '${id}' — the manifest parser failed" \
+            "(above), so this is not a claim that the id is wrong." >&2
+        exit 2
+    fi
 
     local other_platform="" other_lang=""
     while IFS=$'\x1f' read -r k p l r; do
@@ -142,12 +158,23 @@ nros_fixture_id_no_match() {
 # anywhere is a typo, and every platform the recipes pass is in the manifest,
 # so rejecting the rest costs nothing.
 nros_fixture_require_known_platform() {
-    local platform="$1" guard_dir guard_root known
+    local platform="$1" guard_dir guard_root known rc=0
     guard_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     guard_root="${guard_dir%/scripts/build}"
-    known="$(python3 "$guard_dir/fixtures-manifest.py" \
-        --manifest "$guard_root/examples/fixtures.toml" list-platforms 2>/dev/null)"
-    [ -n "$known" ] || return 0  # manifest unreadable — not this guard's job
+    known="$(nros_manifest_query "$guard_dir/fixtures-manifest.py" \
+        --manifest "$guard_root/examples/fixtures.toml" list-platforms)" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        # The parser itself failed (issue 1264) — distinct from a genuinely
+        # empty platform list, which `nros_manifest_query` would not produce
+        # for a real `examples/fixtures.toml`. Say so and stop, rather than
+        # silently skipping validation: a typo'd platform sliding past this
+        # guard on the SAME failure that broke the parser is exactly the
+        # confusion this issue was filed over.
+        echo "fixtures: could not check platform '${platform}' — the manifest" \
+            "parser failed (above)." >&2
+        exit 2
+    fi
+    [ -n "$known" ] || return 0  # a real, successfully-parsed empty list
     if ! grep -qxF "$platform" <<< "$known"; then
         {
             echo "fixtures: unknown platform '${platform}' — no row in examples/fixtures.toml declares it."
