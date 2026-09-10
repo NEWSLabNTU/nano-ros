@@ -226,6 +226,152 @@ def _dotconfig_ints(path):
     return out
 
 
+
+# ---------------------------------------------------------------------------
+# Is an image's band EVIDENCE about this tree?  (tier 2, 2026-09-10)
+# ---------------------------------------------------------------------------
+#
+# A `.config` records what Kconfig resolved WHEN THE IMAGE WAS CONFIGURED. If a
+# nano-ros default has moved since, the band it resolves is the old tree's, and
+# judging it is judging a museum. Measured: tier 2 failed nine runs running on
+# six `build-c-*-zenoh` dirs configured 2026-08-27/29 — before issue 0852 moved
+# `NROS_ZENOH_{READ,LEASE}_PRIORITY`'s default from 16 (the 0-31 band) to 200
+# (the 0-255 band). 16 on the new band is k_thread 14, the least urgent
+# preemptive priority, so `pool.app` resolved to [15, 14] — EMPTY — and the
+# gate's own remedy ("move it into pool.app") had no answer. The pins were
+# never wrong; the images were.
+#
+# CONTENT, not mtime, and that choice is measured too. Kconfiglib rewrites
+# `.config` only when its content changes, so an image rebuilt after a default
+# change that does not touch it keeps its OLD mtime, and an mtime test would
+# call it stale forever. A commit-time test on `zephyr/Kconfig` is coarser
+# still: it stales every image on ANY edit to that file, and its last commit
+# (phase-412 W3b) added an unrelated QoS-depth symbol.
+#
+# The rule: a band input nano-ros AUTHORS a default for, whose `.config` value
+# differs from the CURRENT default, and which no conf the image was configured
+# with sets, can only have come from an older default.
+
+KCONFIG = ROOT / "zephyr" / "Kconfig"
+
+# The band inputs nano-ros authors a default for. `CONFIG_NUM_PREEMPT_PRIORITIES`
+# and the two scheduling gates belong to Zephyr and the board, not to us.
+BAND_DEFAULTED = ("CONFIG_NROS_ZENOH_READ_PRIORITY",
+                  "CONFIG_NROS_ZENOH_LEASE_PRIORITY")
+
+_KCONFIG_ENTRY = re.compile(
+    r"^(config|menuconfig|choice|endchoice|menu|endmenu|if|endif|"
+    r"source|rsource|osource|orsource|comment|mainmenu)\b")
+_KCONFIG_DEFAULT = re.compile(r"^\s+default\s+(\S+)(\s+if\s+.+)?\s*$")
+_KCONFIG_HELP = re.compile(r"^\s+(help|---help---)\s*$")
+
+
+def kconfig_default(symbol, kconfig=None):
+    """The unconditional integer default Kconfig gives `symbol`, or None.
+
+    `symbol` as the .config spells it (`CONFIG_` prefix). None when the entry is
+    absent, has a CONDITIONAL default (`default X if Y`), has more than one, or
+    has a non-integer one — the cases where "the default" is not a single fact,
+    so no caller may compare a value against it. Help text is not parsed for
+    attributes, which is Kconfig's own rule: `help` ends the attribute list.
+    """
+    name = symbol[len("CONFIG_"):] if symbol.startswith("CONFIG_") else symbol
+    try:
+        lines = Path(kconfig or KCONFIG).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    inside = in_help = False
+    defaults = []
+    for line in lines:
+        if _KCONFIG_ENTRY.match(line):
+            if inside:
+                break
+            inside = re.match(rf"^config\s+{re.escape(name)}\s*$", line) is not None
+            in_help = False
+            continue
+        if not inside or in_help:
+            continue
+        if _KCONFIG_HELP.match(line):
+            in_help = True
+            continue
+        m = _KCONFIG_DEFAULT.match(line)
+        if m:
+            defaults.append((m.group(1), m.group(2)))
+    if len(defaults) != 1 or defaults[0][1]:
+        return None
+    value = defaults[0][0]
+    return int(value) if value.lstrip("-").isdigit() else None
+
+
+def _image_confs(dotconfig):
+    """The conf files the image at `<build>/zephyr/.config` was configured with.
+
+    From the build's `CMakeCache.txt` — `CONF_FILE`, `EXTRA_CONF_FILE`,
+    `OVERLAY_CONFIG`, relative entries against `APPLICATION_SOURCE_DIR` — plus
+    the app's `boards/*.conf`, which may or may not merge and are counted as
+    possibly-setting so they can only SUPPRESS a stale verdict, never cause one.
+    None when there is no cache: "unknown", which no caller may read as "no conf
+    sets it".
+    """
+    cache = Path(dotconfig).parent.parent / "CMakeCache.txt"
+    try:
+        text = cache.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    vals = {}
+    for line in text.splitlines():
+        m = re.match(r"^([A-Za-z_]+):[A-Z]+=(.*)$", line)
+        if m:
+            vals[m.group(1)] = m.group(2)
+    base = Path(vals.get("APPLICATION_SOURCE_DIR", ""))
+    out = []
+    for key in ("CONF_FILE", "EXTRA_CONF_FILE", "OVERLAY_CONFIG"):
+        for part in re.split(r"[;\s]+", vals.get(key, "")):
+            if part:
+                p = Path(part)
+                out.append(p if p.is_absolute() else base / p)
+    if base.is_dir():
+        out += sorted((base / "boards").glob("*.conf"))
+    return out
+
+
+def _conf_sets(conf, key):
+    try:
+        text = Path(conf).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return re.search(rf"^\s*{re.escape(key)}=", text, re.M) is not None
+
+
+def stale_band_reasons(dotconfig, kconfig=None):
+    """Why this image's band is NOT evidence about the current tree; [] if it is.
+
+    Conservative in exactly one direction: every "cannot tell" — no single
+    default, no cache to read — answers "not stale" and leaves the image to be
+    judged as before. It can suppress a verdict only with a positive reason.
+    """
+    cfg = _dotconfig_ints(dotconfig)
+    confs = None
+    reasons = []
+    for key in BAND_DEFAULTED:
+        have = cfg.get(key)
+        if have is None:
+            continue
+        want = kconfig_default(key, kconfig)
+        if want is None or have == want:
+            continue
+        if confs is None:
+            confs = _image_confs(dotconfig)
+            if confs is None:
+                return []
+        if any(_conf_sets(c, key) for c in confs):
+            continue
+        reasons.append(
+            f"{key}={have}, but zephyr/Kconfig now defaults it to {want} and no "
+            f"conf this image was configured with sets it — the image predates "
+            f"the default change")
+    return reasons
+
 NROS_PLATFORM_PRIORITY_MAX = 255
 
 
@@ -288,8 +434,16 @@ def resolve_zephyr_plan(dotconfig):
     bands = {}
     for name, key in (("read", "CONFIG_NROS_ZENOH_READ_PRIORITY"),
                       ("lease", "CONFIG_NROS_ZENOH_LEASE_PRIORITY")):
-        # issue 0852 — Kconfig's default on the 0-255 band, not the old 0-31 16.
-        band = cfg.get(key, 200)
+        # Absent from the .config means the default applies. Read it from the
+        # one place it is written: this was a literal `200` restating
+        # zephyr/Kconfig, updated BY HAND from 16 when issue 0852 moved the
+        # default — a second copy of the fact whose first copy going stale is
+        # what tier 2 tripped over.
+        band = cfg.get(key)
+        if band is None:
+            band = kconfig_default(key)
+            if band is None:
+                return {"error": f"cannot read {key}'s default from zephyr/Kconfig"}
         posix = zpico_band_to_posix(band, num_preempt)
         bands[name] = {"band": band, "posix": posix,
                        "kthread": posix_rr_to_kthread(posix, num_preempt)}
