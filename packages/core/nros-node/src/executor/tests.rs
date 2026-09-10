@@ -8847,3 +8847,38 @@ fn two_nodes_on_one_executor_emit_under_their_own_names() {
         "a record emitted under the catch-all logger names no node"
     );
 }
+
+// ===========================================================================
+// phase-436 E3 — an armed stack-headroom rule on a port that reports no stack
+// data never judges (`check_stack_headroom_rule` skips on 0), so its silence
+// reads exactly like a clean result. The executor must say which one it is.
+// ===========================================================================
+
+/// Blind exactly when a bound is set AND the port answers 0 — stated against
+/// what this host's port actually answers, so the test holds on any host.
+#[test]
+fn a_headroom_bound_on_a_port_without_stack_data_is_reported_blind() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    executor.set_min_stack_headroom_bytes(1024);
+    assert_eq!(
+        executor.stack_headroom_blind(),
+        nros_platform_api::stack_unused_bytes() == 0,
+        "blind must mean exactly: a bound is set and the port reports no stack data"
+    );
+}
+
+/// A rule that is off cannot be blind, including one switched off again.
+#[test]
+fn no_headroom_bound_is_never_blind() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    assert!(
+        !executor.stack_headroom_blind(),
+        "a fresh executor sets no bound"
+    );
+    executor.set_min_stack_headroom_bytes(1024);
+    executor.set_min_stack_headroom_bytes(0);
+    assert!(
+        !executor.stack_headroom_blind(),
+        "removing the bound clears blindness"
+    );
+}

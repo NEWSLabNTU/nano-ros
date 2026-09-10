@@ -1601,6 +1601,10 @@ pub struct Executor<'s> {
     /// Lowest headroom already reported, so the rule fires on new lows only.
     /// `usize::MAX` = nothing reported yet.
     pub(crate) stack_headroom_reported: usize,
+    /// phase-436 E3 — a minimum is set but the port reports no stack data,
+    /// so `check_stack_headroom_rule` will skip every tick. Recorded when the
+    /// bound is set; see `stack_headroom_blind`.
+    pub(crate) stack_headroom_blind: bool,
     /// The pacing quantum the spin loop was last driven at, in microseconds.
     /// This is the bound the jitter rule judges against -- the caller's own
     /// declared cadence, so nothing further has to be declared.
@@ -1829,6 +1833,7 @@ impl<'s> Executor<'s> {
             jitter_reported_us: 0,
             min_stack_headroom_bytes: 0,
             stack_headroom_reported: usize::MAX,
+            stack_headroom_blind: false,
             spin_nominal_us: 0,
             spin_nominal_declared_us: 0,
             last_park_bound_us: 0,
@@ -3009,6 +3014,32 @@ impl<'s> Executor<'s> {
 
     pub fn set_min_stack_headroom_bytes(&mut self, bytes: usize) {
         self.min_stack_headroom_bytes = bytes;
+        // phase-436 E3 — `check_stack_headroom_rule` treats a 0 from the port as
+        // "not instrumented" and skips, which is right for the rule and wrong
+        // for the reader: an armed rule that can never judge reports nothing,
+        // exactly like one that judged and found the stack healthy. Ask the
+        // port once, here. Entries set the bound at boot on the thread it
+        // describes, so the answer is about the right stack and the warning
+        // lands once per tier, next to the tier's other boot lines.
+        self.stack_headroom_blind = bytes != 0 && nros_platform_api::stack_unused_bytes() == 0;
+        if self.stack_headroom_blind {
+            nros_log::log_warn!(
+                nros_log::get_logger("nros"),
+                "stack-headroom-runtime: a {} B minimum is set but this port reports no stack \
+                 data, so the rule will never check (Zephyr: enable CONFIG_INIT_STACKS)",
+                bytes
+            );
+        }
+    }
+
+    /// phase-436 E3 — whether `stack-headroom-runtime` is armed on a port that
+    /// cannot measure, and so will never report a violation.
+    ///
+    /// `true` means the rule's silence is not evidence of headroom. Zephyr
+    /// answers only with `CONFIG_INIT_STACKS && CONFIG_THREAD_STACK_INFO`;
+    /// POSIX never does.
+    pub fn stack_headroom_blind(&self) -> bool {
+        self.stack_headroom_blind
     }
 
     /// Report a spin thread that has come closer to the end of its stack
