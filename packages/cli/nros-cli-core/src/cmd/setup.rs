@@ -971,10 +971,7 @@ pub(crate) fn source_dir_of(
 ///
 /// Returned rather than printed so the selection is unit-testable — the same
 /// split `source_build_names` uses for issue 0374's reason.
-fn build_stage_report(
-    index: &SdkIndex,
-    workspace: &Path,
-) -> Vec<(String, ProbeResult, String)> {
+fn build_stage_report(index: &SdkIndex, workspace: &Path) -> Vec<(String, ProbeResult, String)> {
     index
         .source
         .iter()
@@ -988,11 +985,7 @@ fn build_stage_report(
             } else {
                 ProbeResult::Missing
             };
-            (
-                name.clone(),
-                state,
-                format!("nros setup --source {name}"),
-            )
+            (name.clone(), state, format!("nros setup --source {name}"))
         })
         .collect()
 }
@@ -1289,7 +1282,9 @@ pub(crate) fn index_from_store(
         return Ok((cache, IndexOrigin::Cached));
     }
     let why: String = if offline {
-        format!("the network was not consulted ($NROS_OFFLINE, or a build rather than `nros setup`), so {url} was not contacted")
+        format!(
+            "the network was not consulted ($NROS_OFFLINE, or a build rather than `nros setup`), so {url} was not contacted"
+        )
     } else {
         match fetch_index(&cache, url) {
             Ok(()) => return Ok((cache, IndexOrigin::Fetched)),
@@ -1369,8 +1364,18 @@ fn fetch_index(cache: &Path, url: &str) -> Result<()> {
             format!("{url} did not answer with an index this `nros` can read (cache left alone)")
         });
     }
-    std::fs::rename(&tmp, cache)
-        .wrap_err_with(|| format!("install the fetched index at {}", cache.display()))?;
+    // The ONE write discipline (issues 0498/0562, gate `check-atomic-sync-writes`).
+    // A hand-rolled rename here would be atomic and nothing else; this is also
+    // write-if-changed, so a refresh that fetches byte-identical content leaves
+    // the cache's mtime alone instead of re-staling everything keyed on it.
+    // The download still lands in `tmp` first, because the parse below must
+    // happen before anything is published — a response this binary cannot read
+    // must never become the cache.
+    let bytes = std::fs::read(&tmp).wrap_err_with(|| format!("read {}", tmp.display()))?;
+    let published = crate::atomic_file::atomic_write_bytes(cache, &bytes)
+        .wrap_err_with(|| format!("install the fetched index at {}", cache.display()));
+    let _ = std::fs::remove_file(&tmp);
+    published?;
     Ok(())
 }
 
@@ -2883,7 +2888,11 @@ mod tests {
         // The path it FETCHED to is the path the helper derives — asserting a
         // prefix instead would let the two drift apart while both still sit
         // somewhere under the store.
-        assert_eq!(got, index_cache_path(&a), "fetched somewhere the helper does not name");
+        assert_eq!(
+            got,
+            index_cache_path(&a),
+            "fetched somewhere the helper does not name"
+        );
         assert!(
             got.starts_with(&a),
             "the cache landed at {} — outside the store root {}",
@@ -2903,7 +2912,10 @@ mod tests {
             got.display(),
             sdk_root.display()
         );
-        assert!(!index_cache_path(&b).exists(), "the other store was written");
+        assert!(
+            !index_cache_path(&b).exists(),
+            "the other store was written"
+        );
     }
 
     /// A warm cache answers without a fetch. Proven by pointing the URL at a
