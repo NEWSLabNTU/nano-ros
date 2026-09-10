@@ -2079,6 +2079,28 @@ test-targets:
     # the host clippy did not previously enforce (the embedded one always did).
     cargo clippy --quiet --workspace --all-targets --no-default-features \
         {{HOST_UNCHECKABLE}} -- -D warnings
+    # Then each crate ALONE, under its own default features. `--workspace`
+    # UNIFIES features across members, so a crate's test target can compile
+    # only because a SIBLING turned on a feature it needs. nros-node is
+    # `#![no_std]` with empty defaults; its `cancel_tests` used `std` and
+    # `alloc`-gated methods with neither in its gate, which the line above passed
+    # (some member unifies `nros-node/std`) while `cargo test -p nros-node`
+    # and `cargo clippy -p nros-node --all-targets` failed with 20 errors.
+    # Same exclusions as above, for the same reason. Every failing crate is
+    # named, not just the first.
+    excl=" {{HOST_UNCHECKABLE}} "
+    members="$(cargo metadata --no-deps --format-version 1 \
+        | python3 -c 'import json,sys; print(" ".join(sorted(p["name"] for p in json.load(sys.stdin)["packages"])))')"
+    failed=""
+    for p in $members; do
+        case "$excl" in *" --exclude $p "*) continue ;; esac
+        cargo clippy --quiet -p "$p" --all-targets -- -D warnings || failed="$failed $p"
+    done
+    if [ -n "$failed" ]; then
+        echo "per-crate clippy (own default features, --all-targets) failed:$failed"
+        echo "  reproduce: cargo clippy -p <crate> --all-targets -- -D warnings"
+        exit 1
+    fi
     # The CLI is its own workspace (own manifest + lock) and its exclusions have
     # a single home in `check-cli-clippy` — call it rather than restate them.
     just check cli-clippy
@@ -2095,13 +2117,17 @@ test-targets:
 # can't resolve its type parameter. Real consumers always specify
 # a platform; the per-feature combinations are covered by
 # `check-workspace-features` further down.
-# Kept as a name others may invoke. Both of its former jobs moved to the FAST
-# tier, where they catch a mistake before a build tier nobody runs per task:
-# host clippy -> `check-test-targets` (now `--all-targets`, `-D warnings`),
-# `fmt --check` -> `check-workspace-fmt`.
+# Kept as a name others may invoke. Its former jobs moved: `fmt --check` ->
+# `check-workspace-fmt` (fast tier), host clippy -> `check-test-targets`.
+# That second move was to the fast tier, then (issue 0466) OUT of it into
+# `build-serial`, which runs on schedule only — and this recipe kept echoing
+# "clippy now run[s] in the fast tier". `workspace-all` called it as its HOST
+# half, so from then until 2026-09-11 no merge-gating lane ran a host clippy at
+# all: 20 errors in nros-node's own test target and a `needless_borrow` in
+# nros-tests reached main. `workspace-all` now calls `test-targets` directly.
 [private]
 workspace: workspace-fmt
-    @echo "check-workspace: fmt + clippy now run in the fast tier."
+    @echo "check-workspace: fmt only; host clippy is check-test-targets."
 
 # Run the host + embedded workspace clippy CONCURRENTLY. They share no
 # target-dir (host = `target/`, embedded = `target-embedded/`), so cargo's
@@ -2115,7 +2141,10 @@ workspace-all:
     set -uo pipefail
     jobs="${NROS_BUILD_JOBS:-$(nproc 2>/dev/null || echo 8)}"
     half=$(( jobs / 2 )); [ "$half" -lt 1 ] && half=1
-    CARGO_BUILD_JOBS="$half" just check workspace &
+    # The HOST half is the real host clippy (`--workspace --all-targets`,
+    # `-D warnings`, then per crate). It was `just check workspace`, an echo —
+    # see that recipe for what that cost.
+    CARGO_BUILD_JOBS="$half" just check test-targets &
     host=$!
     CARGO_BUILD_JOBS="$half" just check workspace-embedded &
     emb=$!

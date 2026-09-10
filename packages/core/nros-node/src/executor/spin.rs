@@ -10620,10 +10620,12 @@ impl<'s> Executor<'s> {
 // ============================================================================
 //
 // Same gate as `executor::tests`, exactly: `ConcreteSession` is `MockSession`
-// only while no rmw-* feature is unified in (see `executor/mod.rs`). No `std`
-// gate — `cfg(test)` already means a hosted harness, and adding one would be a
-// census site phase-359 is spending effort removing.
-#[cfg(all(test, not(feature = "rmw-cffi")))]
+// only while no rmw-* feature is unified in (see `executor/mod.rs`), and
+// `from_session_with` / `halt_flag` are `alloc`. No `std` gate — `cfg(test)`
+// already means a hosted harness, which is why `lib.rs` brings `std` in under
+// `test` as well. (It said "exactly" while missing `alloc`, and `std` was not in
+// scope: 20 errors, hidden by feature unification under `--workspace`.)
+#[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
 mod cancel_tests {
     use super::Executor;
     use crate::{executor::types::ExecutorConfig, mock::MockSession};

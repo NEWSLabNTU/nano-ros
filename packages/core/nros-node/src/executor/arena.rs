@@ -1963,8 +1963,10 @@ fn report_typed_deserialize_failure(rc: i32, len: usize) {
 /// `#[cfg(test)]`: the test module is `not(feature = "rmw-cffi")` too, so under
 /// `test + rmw-cffi` a bare gate leaves this compiled with its only caller
 /// gone, and `-D warnings` turns that into a build failure rather than a lint.
-/// An accessor's gate has to be the gate of the thing that reads it.
-#[cfg(all(test, not(feature = "rmw-cffi")))]
+/// An accessor's gate has to be the gate of the thing that reads it — and
+/// that gate gained `alloc` after this one was written, so under default
+/// features this was compiled with no caller at all.
+#[cfg(all(test, feature = "alloc", not(feature = "rmw-cffi")))]
 pub(crate) fn typed_deserialize_failures() -> u32 {
     TYPED_DESERIALIZE_FAILURES.load(portable_atomic::Ordering::Relaxed)
 }
