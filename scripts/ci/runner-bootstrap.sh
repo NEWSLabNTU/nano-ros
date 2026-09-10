@@ -66,7 +66,12 @@ say() { echo "runner-bootstrap: $*"; }
 # somewhere the runner cannot read is the failure this design exists to avoid.
 BOOTSTRAP_SH='
 set -euo pipefail
-SRC=/home/runner/src
+# Inside the volume, never AT it: the mountpoint is a host directory owned by
+# another UID, and git refuses a repo it does not own ("detected dubious
+# ownership") however the ACLs read. A directory this container creates is
+# owned by this container.
+SRC=/home/runner/src/nano-ros
+mkdir -p "$(dirname "$SRC")"
 if [ -d "$SRC/.git" ]; then
     echo "  fetching $REF into an existing checkout"
     git -C "$SRC" fetch --depth 1 origin "$REF"
@@ -119,6 +124,7 @@ docker run --rm \
     -v "nros-runner-work:/home/runner/_work" \
     -v "nros-runner-cargo:/home/runner/.cargo" \
     -v "nros-runner-rustup:/home/runner/.rustup" \
+    -v "nros-runner-local:/home/runner/.local" \
     -v "nros-runner-sccache:/home/runner/.cache/sccache" \
     -v "nros-runner-nros:/home/runner/.nros" \
     -v "nros-runner-src:/home/runner/src" \

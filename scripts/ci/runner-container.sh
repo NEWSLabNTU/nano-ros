@@ -188,7 +188,15 @@ set -euo pipefail
 # The checkout the label gate reads. A VOLUME, not a layer: the image carries no
 # nano-ros source, so code changes never rebuild it, and `runner-bootstrap`
 # refreshes this with a fetch rather than a 2.8 GB clone per start.
-NROS_SRC="${NROS_SRC:-/home/runner/src}"
+# A SUBDIRECTORY of the volume, not the volume's own mountpoint. The store is
+# bind-backed by a host directory owned by the human who created it, and an ACL
+# grants this UID access — but git's `safe.directory` check is about OWNERSHIP,
+# not access, so a repo AT the mountpoint is refused with "detected dubious
+# ownership" and no amount of ACL fixes it. A directory the container creates
+# inside the mount is owned by the container's UID, so the clone below it is
+# ordinary. The alternatives are worse: chown needs root on the host, and
+# `safe.directory` in ~/.gitconfig dies with the writable layer every job.
+NROS_SRC="${NROS_SRC:-/home/runner/src/nano-ros}"
 
 # --ephemeral: one job, then the registration is spent. A job cannot leave state
 # for the next one, which is also what stops the orphan/disk rot a long-lived
@@ -340,6 +348,7 @@ if [ "$DO_RUN" -eq 1 ]; then
         -v "nros-runner-sccache:/home/runner/.cache/sccache" \
         -v "nros-runner-nros:/home/runner/.nros" \
         -v "nros-runner-rustup:/home/runner/.rustup" \
+        -v "nros-runner-local:/home/runner/.local" \
         -v "nros-runner-src:/home/runner/src" \
         -e NROS_RUNNER_LABELS="$LABELS" \
         -e GH_REPO="${GH_REPO:-NEWSLabNTU/nano-ros}" \
