@@ -15,7 +15,7 @@
 //!
 //! | site | predicate it used |
 //! | --- | --- |
-//! | [`crate::builder::cargo_root`] | `Cargo.toml` exists -> `[workspace] members` |
+//! | `builder::cargo_root` (retired by RFC-0098 D9 — no generated member list) | `Cargo.toml` exists -> `[workspace] members` |
 //! | [`crate::builder::cmake_root`] | `CMakeLists.txt` exists -> `add_subdirectory` |
 //! | [`crate::cmd::build`] | `CMakeLists.txt` exists -> the graph crosses languages |
 //!

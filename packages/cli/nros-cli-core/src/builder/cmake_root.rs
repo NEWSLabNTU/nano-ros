@@ -16,12 +16,12 @@
 //! line simply does not build it, silently, because an absent subdir is not an
 //! error.
 //!
-//! ## Unlike the cargo root, this DOES live under `build/`
+//! ## This root lives under `build/`
 //!
-//! Cargo pins its workspace manifest to the workspace root (a package belongs
-//! to one workspace, found by walking up; members must sit below the root — see
-//! [`super::cargo_root`]). CMake has neither rule: `add_subdirectory` takes an
-//! arbitrary source dir, so the generated root sits at
+//! Like everything stage 4 writes (RFC-0098 D1/D9 — a workspace has no root
+//! build file; the cargo side's entry is its own root, see
+//! [`super::cargo_config`]). CMake has no root/member rule to get in the way:
+//! `add_subdirectory` takes an arbitrary source dir, so the generated root sits at
 //! `build/<coord>/CMakeLists.txt` where RFC-0065 D8 wants it, and switching
 //! board or RMW selects a different coordinate instead of thrashing one tree.
 //!
@@ -119,8 +119,8 @@ pub fn render(
     // A cmake subdir must carry a CMakeLists. A pure-Rust package in a mixed
     // workspace does not, and reaches the image through corrosion from a
     // package that does — listing it here would be a configure error.
-    // D3's intersection rule first — see `cargo_root::render` for why a
-    // misdeclared package must not simply fall out of the loop below.
+    // D3's intersection rule first: a misdeclared package must not simply fall
+    // out of the loop below, silently (RFC-0094 D3, phase-439 W3).
     crate::routing::check_declarations(&discovered.packages)?;
 
     let mut subdirs: Vec<(String, String)> = Vec::new();
