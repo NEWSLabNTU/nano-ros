@@ -175,6 +175,7 @@ docker run --rm \
     -v "nros-runner-cargo:/home/runner/.cargo" \
     -v "nros-runner-rustup:/home/runner/.rustup" \
     -v "nros-runner-local:/home/runner/.local" \
+    -v "nros-runner-cmake:/home/runner/.cmake" \
     -v "nros-runner-sccache:/home/runner/.cache/sccache" \
     -v "nros-runner-nros:/home/runner/.nros" \
     -v "nros-runner-src:/home/runner/src" \
