@@ -411,6 +411,53 @@ QoS interop ──`; phase-433's coverage map inherits the same reading.
 **Acceptance.** Every surviving use of "on-target" names a coordinate whose
 sockets are not the host's, or says which board it means.
 
+**LANDED 2026-09-10 — 169 uses examined, 20 changed.**
+
+The sweep covered every non-archived `on-target` / `on target` / `on_target` in
+the tree (243 including `archived/`, which is a record and was left alone). The
+uses split into four kinds, and only one of them is the overclaim:
+
+1. **Not the phrase.** `non-target`, `json-target-spec`, `corrosion-target`,
+   "depends on target" — the CMake and cargo senses, which is most of the
+   non-hyphenated half. Untouched.
+2. **A real target.** `emulator.rs`'s baremetal MPS2 cells, RFC-0074's cadence
+   "taken from an on-target guest clock" on the FreeRTOS mps2-an385 QEMU lane,
+   phase-372's "on-target smoke when hardware is available". These name a
+   coordinate whose sockets are not the host's. Left.
+3. **A feature, not a coordinate.** RFC-0052's `on-target contract monitors` —
+   `nros-diagnostics`, `executor/monitor.rs`, the parity ledger's `why` text,
+   the generated messages' `STAMP_OFFSET` comments, phase-296 W3b. The phrase
+   there is the RFC's own vocabulary for "checked in the image rather than by an
+   external monitor node subscribing to `/statistics`", it is true on every
+   board the executor runs on, and it makes no claim about a test's reach.
+   24 of the 64 non-phase-441 hyphenated hits, left — rewriting an RFC's
+   vocabulary is the mass rewrite this item was told not to do.
+4. **The overclaim: `native_sim` called on-target.** 20 lines, all in the
+   phase-276 Zephyr entry family and its interop sibling. Fixed.
+
+The replacement word was already in the tree: `entry_e2e.rs` says **in-image**
+three lines from where it said on-target, and that is exactly the distinction
+those sentences are drawing (the nano-ros application vs the test harness and
+the ROS peer). So the fix is one word, not a rephrasing:
+
+| where | was |
+| --- | --- |
+| `interop::CELLS` section header | `── Zephyr on-target QoS interop ──` → `native_sim`, plus why |
+| `entry_e2e.rs` (8) | on-target seeding / endpoints / store / listener → in-image |
+| `qos_zephyr_ros2_interop_e2e.rs`, `interop_e2e.rs`, `zephyr.rs` | "both nodes on-target" → in-image; "the on-target zephyr-image QoS interop" → "the zephyr native_sim image" |
+| `examples/fixtures.toml` (2), the qos + safety entry crates (3) | the on-target pair / safe_listener → in-image |
+| `just/zephyr-dev.just` | "a publisher ON TARGET" → "in a Zephyr NATIVE_SIM image" |
+| `executor/spin.rs` | "Measured on-target" → "Measured on that native_sim image" (the same comment already said native_sim two lines up) |
+| phase-433's coverage map | "One on-target cell exists" → "One non-Linux cell exists", with the correction noted in place |
+
+Left deliberately, beyond kinds 1–3: `spin.rs`'s "a growing count is the
+on-target signal that a tier is not keeping up" (the signal available inside any
+image, contrasted with an external observer differencing timestamps);
+phase-433's W7 heading, which describes the cell this phase is about to build
+and is quoted verbatim above; `docs/issues/README.md`, which is generated.
+W4's own new code uses the phrase twice, both times to say why it is not the
+vocabulary of the runner split.
+
 ## What this phase does NOT promise
 
 **Not real hardware.** Everything above is QEMU. A QEMU MPS2-AN385 is a genuine

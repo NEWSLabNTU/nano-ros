@@ -298,7 +298,7 @@ fn start_image(bin: &Path, locator: &Option<String>, what: &str) -> ZephyrProces
 // The parametrized matrix consumer — 27 (rmw × lang × workload) cells
 // =============================================================================
 
-/// One Zephyr native_sim example cell: boot the on-target pair against the
+/// One Zephyr native_sim example cell: boot the in-image pair against the
 /// cell's isolation resource and prove the workload contract. Case names
 /// carry `<rmw>_<lang>_<workload>_e2e` so the `.config/nextest.toml` groups
 /// can slice by family (e.g. `test(xrce)`, `test(zenoh_cpp_service_e2e)`).

@@ -406,7 +406,8 @@ test-xrce verbose="":
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${args[@]}"
 
-# An nros zenoh-pico publisher ON TARGET reaches a stock `ros2 topic echo`
+# An nros zenoh-pico publisher in a Zephyr NATIVE_SIM image reaches a stock
+# `ros2 topic echo`
 # subscriber (issue #141) — the only `interop::CELLS` cell built through the
 # west leaves rather than native fixtures, so it has TWO build channels and
 # skips on either (phase-433 / issue 1127).

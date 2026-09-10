@@ -22,8 +22,8 @@
 //!   LIVE-reads its launch-baked `publish_period_ms` initial (250) in the
 //!   node callback and publishes it — the `int32-sink` must see
 //!   `Received: 250`, proving bake → store seed (`apply_param_services`) →
-//!   on-target live read.
-//! - **Qos** (phase-276 W5): the on-target reliable+transient_local pair
+//!   in-image live read.
+//! - **Qos** (phase-276 W5): the in-image reliable+transient_local pair
 //!   matches + delivers in-image (`Z_FEATURE_LOCAL_SUBSCRIBER`); the
 //!   listener's republished count on `/qos_ok` reaches an external sink.
 //! - **Lifecycle** (phase-276 W3 / #128): `apply_lifecycle` autostart drives
@@ -281,7 +281,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
                    fold puts the file after the inline `<param>`, so the file wins (rlm phase-54, \
                    issue 0307). 120 is the node-specific block beating the same file's `/**: 999`, \
                    so this value proves the whole chain at once — file projection, specificity \
-                   ranking, on-target seeding and the live re-read. The launch-inline path is what \
+                   ranking, in-image seeding and the live re-read. The launch-inline path is what \
                    the C and C++ params cells assert (they carry no overlay, and still see 250)",
         },
         (MP::ZephyrNativeSim, ML::Rust, MW::Qos) => Exec {
@@ -290,7 +290,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             boot: Boot::ZephyrNativeSim,
             proof: Proof::SinkCount { topic: "/qos_ok" },
             note: "phase-276 W5 (RFC-0041): per-entity reliable+transient_local declared IN NODE \
-                   CODE on both on-target endpoints; in-image delivery rides \
+                   CODE on both in-image endpoints; in-image delivery rides \
                    Z_FEATURE_LOCAL_SUBSCRIBER. The baked qos port is shared with qos_zephyr_ros2_interop_e2e \
                    (issue #141 — the zephyr-qos-port nextest group serializes them)",
         },
@@ -300,7 +300,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             boot: Boot::ZephyrNativeSim,
             proof: Proof::LifecycleActive,
             note: "phase-276 W3 / #128: apply_lifecycle installs the five REP-2002 services and \
-                   drives the boot autostart (Configure→Activate) on-target — no manual set",
+                   drives the boot autostart (Configure→Activate) in-image — no manual set",
         },
         (MP::ZephyrNativeSim, ML::Rust, MW::Safety) => Exec {
             resolver: build_zephyr_workspace_rust_safety_entry,
@@ -309,7 +309,7 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
             proof: Proof::SinkCount { topic: "/safe_ok" },
             note: "phase-276 W4 (RFC-0028): [system].features = [\"safety\"] lowers to the \
                    safety-e2e backend feature — CRC+seq attached per publish, validated on \
-                   receive, CallbackCtx::integrity() read on-target",
+                   receive, CallbackCtx::integrity() read in-image",
         },
         (p, l, w) => panic!(
             "entry_e2e: no execution mapping for matrix cell {p:?}/{l:?}/{w:?} — add an \
@@ -812,7 +812,7 @@ fn run_cell(pcell: &MCell) {
 
             // The published value IS the live param read: ≥3 exact
             // `Received: <value>` lines prove the launch <param> was
-            // compile-baked, seeded into the on-target store, and live-read
+            // compile-baked, seeded into the in-image store, and live-read
             // by the node's callback.
             let line = nros_tests::output::int32_listener_line(value);
             let out = obs
@@ -843,7 +843,7 @@ fn run_cell(pcell: &MCell) {
             let mut obs = spawn_int32_sink(topic, &observer_locator);
             let mut guest = boot_guest(&cell, &entry);
 
-            // `topic` carries the on-target listener's running receive
+            // `topic` carries the in-image listener's running receive
             // count — samples there mean the in-image pair matched,
             // delivered, and the republish reached the wire.
             let _ = obs

@@ -308,7 +308,13 @@ pub const CELLS: &[InteropCell] = &[
        c(Linux, Rust, Zenoh, Lifecycle, Interop, Runtime),
        NativeFixtures, RosEdition(Zenoh), BiDir, "interop_e2e"),
 
-    // ── Zephyr on-target QoS interop ────────────────────────────────────
+    // ── Zephyr native_sim QoS interop ───────────────────────────────────
+    // phase-441 W5 — this header read "Zephyr on-target QoS interop", which
+    // claimed what the coordinate does not support: `ZephyrNativeSim` is
+    // `native_sim/native/64`, where the sockets are OFFLOADED to the host and
+    // the pointer width is the host's, so no RTOS network stack is in the path.
+    // The cell is real coverage (it caught issue #141) and it is not a witness
+    // for a device. `ZephyrQemuCortexM` is the coordinate that would be.
     // Issue 0341 — the ONLY runtime test of this shape
     // (qos_zephyr_ros2_interop_e2e.rs) boots the RUST `ws-qos-rust` zephyr entry
     // over zenoh-pico → rmw_zenoh_cpp. The matrix used to declare Cpp/Cyclonedds,

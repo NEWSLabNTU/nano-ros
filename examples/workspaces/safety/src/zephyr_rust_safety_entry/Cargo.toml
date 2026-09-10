@@ -8,7 +8,7 @@
 # lowers to the `safety-e2e` backend feature — the zenoh backend attaches the
 # E2E CRC + sequence number on publish and validates on receive, and
 # `rust_safety_listener_pkg` reads the per-message `CallbackCtx::integrity()`. Both
-# nodes run on-target; the listener republishes its CRC-VALIDATED receive
+# nodes run in-image; the listener republishes its CRC-VALIDATED receive
 # count on `/safe_ok` for cross-process observers (Track D).
 #
 # Shape mirrors `ws-qos-rust/src/zephyr_rust_safety_entry` (phase-276 W5): RMW flows

@@ -7,7 +7,7 @@
 # The QoS override lives in NODE CODE (declarative per-entity profiles via
 # `create_subscription_for_topic_with_qos` — reliable + transient_local on
 # `/qos_chatter`), so no capability emit is needed: this rides the plain
-# register+spin Zephyr path proven by the base entry. The on-target QoS-matched
+# register+spin Zephyr path proven by the base entry. The in-image QoS-matched
 # pair republishes its receive count on `/qos_ok` for cross-process observers.
 #
 # Shape mirrors `examples/workspaces/rust/src/zephyr_rust_qos_entry` (phase-225.P): RMW
