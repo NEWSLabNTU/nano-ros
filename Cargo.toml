@@ -210,24 +210,22 @@ exclude = [
     "examples/native/rust/action-client",
     # Phase 233.3 — PX4 XRCE-DDS companion (RFC-0039 Track B). Standalone
     # copy-out; carries a trimmed generated `px4_msgs` under `generated/`.
-    # phase-383 W10.a deleted `examples/workspaces/launch`'s workspace ROOT
-    # when it migrated that workspace to `nros build` (generated roots live
-    # under `build/<coord>/` now). Its two leaves resolved against that root,
-    # so with it gone cargo walks up to THIS manifest and claims them —
-    # "current package believes it's in a workspace when it's not", which broke
-    # `just format` for the whole repo. Sibling migrated workspaces still have
-    # a root, so these two are the only ones stranded. See issue 0894.
-    "examples/workspaces/launch/src/listener_pkg",
-    "examples/workspaces/launch/src/talker_pkg",
-    # issue 0948 — the SAME thing happened again to the two bridge workspaces.
-    # 0894 surveyed the siblings and recorded "bridge-cyclonedds: root EXISTS /
-    # bridge-xrce: root EXISTS"; a later migration deleted those roots too and
-    # their `talker_pkg` leaves stranded identically. `check::example-leaf-
-    # workspace-roots` now asks the question on every run instead of on the day
-    # someone surveys, because a deleted root strands leaves in a directory the
-    # deleter is not editing.
-    "examples/workspaces/bridge-cyclonedds/src/talker_pkg",
-    "examples/workspaces/bridge-xrce/src/talker_pkg",
+    # Every package under `examples/workspaces/` — ONE prefix, not a line per
+    # leaf. RFC-0098 D9 (phase-445 W5): a workspace has no root build file, so
+    # cargo's walk-up from ANY of its packages (a node, a hand-written or
+    # generated entry, a west app) passes the workspace and lands here, and
+    # this workspace must not claim it — "current package believes it's in a
+    # workspace when it's not". That is the class issues 0894 and 0948 hit one
+    # deleted root at a time (launch, then both bridges), each fixed by naming
+    # the stranded leaves; the generated roots of rust/realtime-rust/features/
+    # safety/sizing were never tracked, so their leaves were stranded on every
+    # fresh clone all along. Cargo matches `exclude` by path PREFIX, so this
+    # covers the eleven per-leaf lines it replaces and every leaf added later.
+    "examples/workspaces",
+    # The same, for the copy-out workspace TEMPLATES: `multi-node-workspace`
+    # lost its root `Cargo.toml` to D9 too, and its node packages must not be
+    # claimed by this workspace when `cargo fmt` runs inside them.
+    "examples/templates",
     "examples/px4/rust/companion/offboard-companion",
     # Phase 233.4 — fake-PX4 stub publishing /fmu/out/vehicle_odometry so the
     # companion round-trip is CI-able without PX4 SITL. Standalone copy-out.
@@ -342,32 +340,9 @@ exclude = [
     # (phase-350 W3 / issue 0537 — `examples/zephyr/rust/talker-aemv8r` was
     # here. It and its cpp sibling were retired: phase-298 W4 deleted their
     # runners, so both had built an artifact nothing ran ever since.)
-    # Phase 225.P — Zephyr workspace Entry (a `west build` staticlib app).
-    # It lives INSIDE the nested `examples/workspaces/rust` workspace but
-    # is `exclude`d from it (built by west, not plain cargo) and carries
-    # NO own `[workspace]` table (so the `nros::main!` macro's pkg-index
-    # still resolves the sibling node pkgs against that nested workspace
-    # root). Without this repo-root exclude, cargo's workspace walker
-    # would otherwise leak it up to the repo-root workspace and error.
-    "examples/workspaces/rust/src/zephyr_entry",
-    # phase-276 W6 — the multihost robot1 (talker) Zephyr Entry.
-    "examples/workspaces/rust/src/zephyr_entry_robot1",
-    # phase-276 W2 / #128 half 2 — the RT-tiers workspace's Zephyr Entry
-    # (phase-331 W6 renamed the workspace ws-realtime-rust -> realtime-rust).
-    "examples/workspaces/realtime-rust/src/zephyr_entry",
-    # phase-276 W4 -> phase-331 W4 — the E2E-safety (CRC) Zephyr Entry, now a
-    # leaf of the consolidated `safety` workspace.
-    "examples/workspaces/safety/src/zephyr_rust_safety_entry",
-    # The params / lifecycle / qos entries that used to be listed here moved
-    # into `features/` in phase-331 W3 and are excluded below under their new
-    # paths — the ws-* ones were deleted with their workspaces.
-    # phase-331 W3 — the capability-demo (features) workspace's Zephyr
-    # Entries: same west-built shape; excluded from the features workspace
-    # AND needing this repo-root exclude, else cargo's walker leaks them up
-    # here and errors ("believes it's in a workspace when it's not").
-    "examples/workspaces/features/src/zephyr_rust_qos_entry",
-    "examples/workspaces/features/src/zephyr_rust_params_entry",
-    "examples/workspaces/features/src/zephyr_rust_lifecycle_entry",
+    # The workspace Zephyr entries (`examples/workspaces/*/src/zephyr_*entry*`)
+    # used to be listed here one by one; the `examples/workspaces` prefix above
+    # covers them (phase-445 W5).
     # `examples/zephyr/rust/service-client-async` dropped 2026-06-02 per
     # Phase 212.M-F.5 — pending async-`Component` trait decision.
     # Zephyr XRCE examples (require Zephyr workspace + XRCE Agent)

@@ -422,57 +422,19 @@ build_workspace() {
                 echo "     nros ${nros_args[*]}"
                 "$nros_cli" "${nros_args[@]}"
             else
-                # A HAND-WRITTEN entry in a MIGRATED workspace still needs the
-                # generated root to exist: `cargo build -p <entry>` resolves the
-                # package through it, and the root is build output that a fresh
-                # clone does not have —
-                #
-                #   error: package ID specification `esp32_entry` did not match
-                #   any packages
-                #
-                # `--all --dry-run` writes the root and every entry and runs no
-                # build tool, which is exactly the missing step. Only when the
-                # workspace has no tracked root, so an unmigrated workspace is
-                # untouched.
-                if [ ! -f Cargo.toml ]; then
-                    echo "     nros build --all --dry-run   (generate the root)"
-                    "$nros_cli" build --all --dry-run >/dev/null
-                fi
-                # The ENTITY facts, the same way `NanoRosEntityFacts.cmake`
-                # delivers them on the CMake path (phase-392 W5). The process
-                # environment is the only carrier that reaches a build script
-                # inside this cargo invocation, and without it the zenoh backend
-                # falls back to its undeclared budget — 8 service servers on an
-                # embedded target, whether or not the entry has any.
-                #
-                # That is not a lost optimisation: `esp32_entry` declares NO
-                # services and overflowed DRAM by 8,804 B carrying buffers for
-                # eight. Soft on failure, like the CMake side: a model that
-                # cannot be read leaves the historical budget in place and says
-                # so, rather than failing a build over a sizing hint.
-                local entity_env=()
-                if [ -n "$bringup" ] && [ -d "$bringup" ]; then
-                    local facts
-                    if facts="$("$nros_cli" ws entity-facts --bringup-dir "$bringup" 2>/dev/null)"; then
-                        while IFS= read -r line; do
-                            [ -n "$line" ] && entity_env+=("$line")
-                        done <<<"$facts"
-                    else
-                        echo "     (entity facts unavailable for $bringup — backend keeps its undeclared table budget)"
-                    fi
-                fi
-                local cargo_args=(build "${profile_args[@]}" -p "$entry")
-                if [ -n "$target_dir" ]; then
-                    cargo_args+=(--target-dir "$target_dir")
-                fi
-                cargo_args+=("${extra_args[@]}")
-                if [ "${#entity_env[@]}" -gt 0 ]; then
-                    echo "     ${entity_env[*]} cargo ${cargo_args[*]}"
-                    env "${entity_env[@]}" cargo "${cargo_args[@]}"
-                else
-                    echo "     cargo ${cargo_args[*]}"
-                    cargo "${cargo_args[@]}"
-                fi
+                # phase-445 W4/W5 (RFC-0098 D1/D9) — a cargo workspace row MUST
+                # name its `image`. This branch used to `cargo build -p <entry>`
+                # inside a GENERATED `<ws>/Cargo.toml`, exporting the image's
+                # `NROS_DECLARED_*` facts for that one invocation. A workspace has
+                # no root build file now, so there is nothing to `-p` into, and
+                # the facts live in the image's `build/<coord>/<entry>/
+                # nros-cargo.toml` — one carrier, which `nros build` writes and
+                # hands cargo with `--config`, hand-written entry or generated.
+                echo "  !! $id: a cargo workspace row must name its \`image\` (fixtures.toml)." >&2
+                echo "     \`entry = \"$entry\"\` with no image asks for \`cargo build -p\` inside a" >&2
+                echo "     workspace root, and a workspace has none (RFC-0098 D9). Name the image" >&2
+                echo "     whose \`<image>_entry\` this is; a hand-written \`src/$entry\` still builds." >&2
+                return 2
             fi
 
             local out_root="${target_dir:-target}"
