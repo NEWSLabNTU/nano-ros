@@ -66,6 +66,13 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ROADMAP = os.path.join("docs", "roadmap")
 BASELINE = os.path.join(".config", "roadmap-claims-baseline.txt")
+# Module-level so `check-baseline-shape` can hold the file to it.
+BASELINE_HEADER = (
+    "# phase-419 W2 — roadmap phases whose claims contradict their own\n"
+    "# body. RATCHET: this list may only SHRINK. Each line is a finding\n"
+    "# for a person to work, not debt to hide; fix the phase and delete\n"
+    "# the line.\n"
+)
 
 # A status line in any of the shapes `check-roadmap-status.sh` accepts. Kept in
 # step with that gate deliberately: two different ideas of where a status lives
@@ -337,12 +344,7 @@ def main(argv):
     if len(argv) > 1 and argv[1] == "--write-baseline":
         path = os.path.join(ROOT, BASELINE)
         with open(path, "w", encoding="utf-8") as fh:
-            fh.write(
-                "# phase-419 W2 — roadmap phases whose claims contradict their own\n"
-                "# body. RATCHET: this list may only SHRINK. Each line is a finding\n"
-                "# for a person to work, not debt to hide; fix the phase and delete\n"
-                "# the line.\n"
-            )
+            fh.write(BASELINE_HEADER)
             for k in sorted(keys):
                 fh.write(k + "\n")
         print(f"wrote {BASELINE} — {len(keys)} entr(ies)")

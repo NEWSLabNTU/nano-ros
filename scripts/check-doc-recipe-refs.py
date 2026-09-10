@@ -67,6 +67,35 @@ from tracked import tracked  # issue 0721: index lookup, not a walk
 
 REPO = Path(__file__).resolve().parent.parent
 BASELINE = REPO / ".config" / "doc-recipe-refs-baseline.txt"
+# Module-level so `check-baseline-shape` can hold the file to it.
+BASELINE_HEADER = "\n".join([
+    "# `just <recipe>` references in documents that name no recipe.",
+    "#",
+    "# A RATCHET, not an allowlist: this file may only SHRINK. The gate",
+    "# fails when a new dead reference appears AND when a line here stops",
+    "# offending — so the debt cannot grow and cannot go stale.",
+    "#",
+    "# NOT every entry is a defect, and this is the part to read before",
+    "# 'fixing' one. Three classes name a non-existent recipe CORRECTLY,",
+    "# and rewriting them would replace a true sentence with a wrong",
+    "# command:",
+    "#",
+    "#   NEGATION      AGENTS.md: 'there is no supported ... `just",
+    "#                 install-local` flow'. The point IS that it does",
+    "#                 not exist.",
+    "#   PROPOSAL      docs/research/sdk-ux/: '`just monitor <board>`",
+    "#                 that decodes panics' — a UX being argued for, not",
+    "#                 an instruction.",
+    "#   RELEASE NOTE  migration-install-local-removal.md names the",
+    "#                 recipe it documents the REMOVAL of.",
+    "#",
+    "# The rest are stale instructions: a reader copies them and gets",
+    "# `Justfile does not contain recipe`. Those are worth fixing, and",
+    "# each needs the recipe that replaced it — `just --list`, or the",
+    "# module's own list via `just <mod>`.",
+    "#",
+    "# Regenerate deliberately with --write-baseline and read the diff.",
+]) + "\n"
 
 # `just --help`. A flag that takes a value swallows the token after it, which
 # would otherwise read as the recipe name.
@@ -400,35 +429,8 @@ def main() -> int:
     found = set(offenders())
 
     if args.write_baseline:
-        lines = [
-            "# `just <recipe>` references in documents that name no recipe.",
-            "#",
-            "# A RATCHET, not an allowlist: this file may only SHRINK. The gate",
-            "# fails when a new dead reference appears AND when a line here stops",
-            "# offending — so the debt cannot grow and cannot go stale.",
-            "#",
-            "# NOT every entry is a defect, and this is the part to read before",
-            "# 'fixing' one. Three classes name a non-existent recipe CORRECTLY,",
-            "# and rewriting them would replace a true sentence with a wrong",
-            "# command:",
-            "#",
-            "#   NEGATION      AGENTS.md: 'there is no supported ... `just",
-            "#                 install-local` flow'. The point IS that it does",
-            "#                 not exist.",
-            "#   PROPOSAL      docs/research/sdk-ux/: '`just monitor <board>`",
-            "#                 that decodes panics' — a UX being argued for, not",
-            "#                 an instruction.",
-            "#   RELEASE NOTE  migration-install-local-removal.md names the",
-            "#                 recipe it documents the REMOVAL of.",
-            "#",
-            "# The rest are stale instructions: a reader copies them and gets",
-            "# `Justfile does not contain recipe`. Those are worth fixing, and",
-            "# each needs the recipe that replaced it — `just --list`, or the",
-            "# module's own list via `just <mod>`.",
-            "#",
-            "# Regenerate deliberately with --write-baseline and read the diff.",
-            "",
-        ]
+        # The header's trailing newline splits to the blank separator line.
+        lines = BASELINE_HEADER.split("\n")
         lines += [f"{p}\t{r}" for p, r in sorted(found)]
         BASELINE.write_text("\n".join(lines) + "\n")
         print(f"check-doc-recipe-refs: wrote {len(found)} baseline entr(ies)")

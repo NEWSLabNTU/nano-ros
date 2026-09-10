@@ -700,7 +700,7 @@ def read_versions(path=None, errors=None):
     return cur, low
 
 
-HEADER = """\
+BASELINE_HEADER = """\
 # phase-429 W3 — the version-surface stamp for `NROS_CODEGEN_VERSION`.
 #
 # EVIDENCE, NOT THE TOKEN. Nothing compiles this file, nothing compares these
@@ -720,7 +720,7 @@ HEADER = """\
 
 def write_baseline(surface, version, path=None):
     path = path or BASELINE
-    lines = [HEADER, f"version {version}\n"]
+    lines = [BASELINE_HEADER, f"version {version}\n"]
     for key in sorted(surface):
         lines.append(f"{digest(surface[key])} {key}\n")
     with open(path, "w", encoding="utf8") as fh:

@@ -49,6 +49,15 @@ gate-lists:
 gate-selftests:
     @python3 scripts/check-gate-selftests.py
 
+# Issue 1241's class, for EVERY ratchet baseline. A baseline's header is the
+# part no gate reads, so a `sort` that scrambles it leaves every lane green —
+# it did, twice (prose-issue-ref, then gate-selftest). Sorted comment blocks
+# fail everywhere; a baseline whose writer declares `BASELINE_HEADER` must
+# carry exactly that header. Buildless, milliseconds, self-testing.
+[group("hygiene")]
+baseline-shape:
+    @python3 scripts/check-baseline-shape.py
+
 # A gate must exercise its own failure path EVERY time it runs, not once behind
 # a flag on the day it was written. A baseline ratchet: the debt may only
 # shrink, and a script that gains a selftest must leave the baseline.
