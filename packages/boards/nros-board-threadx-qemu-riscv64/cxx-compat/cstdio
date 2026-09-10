@@ -1,9 +1,30 @@
 // C++ compat for picolibc
+//
+// See `cstring` beside this file: this directory is the whole C++ library of a
+// riscv64-threadx build, so the list is the C-library half of <cstdio> — the
+// set `zephyr/cxx-compat/cstdio` has carried on picolibc.
 #ifndef _CXX_CSTDIO
 #define _CXX_CSTDIO
 #include <stdio.h>
 namespace std {
+using ::size_t;
+using ::FILE;
+using ::fclose;
+using ::fflush;
+using ::fopen;
+using ::fprintf;
+using ::fputc;
+using ::fputs;
+using ::fread;
+using ::fwrite;
 using ::printf;
+using ::puts;
 using ::snprintf;
+using ::sprintf;
+using ::sscanf;
+using ::vfprintf;
+using ::vprintf;
+using ::vsnprintf;
+using ::vsprintf;
 }
 #endif

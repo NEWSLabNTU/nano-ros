@@ -162,6 +162,17 @@ cpp-fmt:
 cpp-freestanding-includes:
     @bash scripts/check-cpp-freestanding-includes.sh
 
+# A `cxx-compat/` shim IS the C++ library of the target it serves (ThreadX
+# RISC-V: every C++ TU, `-nostdinc++`), so a `std::` C-library name a served
+# source uses and the shim does not export compiles on the host and fails only
+# on that cross build — the nightly `threadx_riscv64` lane stopped on
+# `std::memchr` in the Cyclone backend while `check cpp`'s `-nostdinc++` probe,
+# which parses only nros-cpp HEADERS, stayed green (issue 0196's shape).
+# Harvested, not restated: uses are read from the sources, exports from the shim.
+[private]
+cxx-compat-shim-coverage:
+    @python3 scripts/check-cxx-compat-shim-coverage.py
+
 # phase-417 / issue 1225 — a capability probe may gate a METHOD, never `sizeof`.
 # MEASURED, not grepped: one `sizeof` probe TU per capability configuration over
 # every public type the umbrella exports, DERIVED from a clang AST rather than
