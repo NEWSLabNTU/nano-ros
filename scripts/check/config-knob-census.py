@@ -158,6 +158,14 @@ KNOB_CLASS = {
     # goldens it rewrites are compared byte-for-byte on every other run.
     "NROS_UPDATE_GOLDEN": ("infra", "test-only golden regeneration"),
     "NROS_CARGO_FLAGS": ("infra", "the --locked shim"),
+    # phase-443 W1 (RFC-0097 D5) — the SDK index is FETCHED and cached in the
+    # store rather than read out of the release asset, so an index that moves 70
+    # times per 60 days stops forcing a CLI release. Both are infrastructure:
+    # one names WHERE to fetch (the sibling of scripts/install.sh's
+    # NROS_INSTALL_URL) and one is a bool. Neither sizes anything, so neither
+    # has a rung.
+    "NROS_INDEX_URL": ("infra", "where the SDK index is fetched from; a mirror or a file:// copy"),
+    "NROS_INDEX_REFRESH": ("infra", "re-fetch even when the cache is warm; a bool, so it has no rung"),
     "NROS_LINK_IP": ("infra", "link toggle"),
     "NROS_PLATFORMS_DIR": ("infra", "the ladder's own search path"),
     "NROS_PLATFORM_NAME": ("infra", "the ladder's own platform rung input"),
@@ -459,6 +467,11 @@ NON_READ_CALLEES = {
     "set_var", "remove_var", "with_env",  # WRITES an environment
     "push", "insert",  # builds a list / a fact map
     "get", "contains", "contains_key", "starts_with",  # inspects one
+    # phase-443 W5. `Some("NROS_X")` CONSTRUCTS an Option holding the name --
+    # in practice an `assert_eq!(probe.env.as_deref(), Some("NROS_X"))` checking
+    # that an index entry declares the right override variable. It cannot be a
+    # read: the environment is never consulted by wrapping a string literal.
+    "Some",
 }
 
 _CALL_RE = r'([A-Za-z_][A-Za-z0-9_:]*)\s*\(\s*&?"({prefix}_[A-Z0-9_]+)"'

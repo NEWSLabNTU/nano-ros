@@ -741,7 +741,10 @@ mod install_report_tests {
         let cwd = project(tmp.path(), "proj", None);
 
         let (lines, problems) = install_report(&store, &exe, &cwd);
-        assert_eq!(problems, 0, "a healthy install has no problems:\n{lines:#?}");
+        assert_eq!(
+            problems, 0,
+            "a healthy install has no problems:\n{lines:#?}"
+        );
         let text = lines.join("\n");
         for needle in ["store", "launcher", "running", "pin"] {
             assert!(

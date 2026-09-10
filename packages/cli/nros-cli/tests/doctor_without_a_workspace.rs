@@ -86,7 +86,11 @@ fn doctor_outside_a_workspace_still_fails_on_an_unresolvable_pin() {
     .unwrap();
 
     let (code, text) = doctor_in(&cwd, &store);
-    assert_ne!(code, Some(0), "an unresolvable pin must not exit 0:\n{text}");
+    assert_ne!(
+        code,
+        Some(0),
+        "an unresolvable pin must not exit 0:\n{text}"
+    );
     assert!(
         text.contains("0.9.9"),
         "it must name the version the project asked for:\n{text}"
