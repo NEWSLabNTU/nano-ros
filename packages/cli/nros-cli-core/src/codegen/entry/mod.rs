@@ -196,6 +196,68 @@ impl PlanNode {
     }
 }
 
+/// How a generated entry drives its executor(s) — the branch BOTH entry packs
+/// take, decided once.
+///
+/// issue 1283 — the C and C++ packs each derived this, and differently. C
+/// asked `!tiers.is_empty()`, C++ asked `!is_single_tier()`; `resolve_tiers`
+/// synthesises one `default` tier whenever a node declares callback groups
+/// without a `[tiers]` table, so for that plan C called `run_tiers` with one
+/// tier while C++ called `run_components`. And C had no [`Self::SchedContexts`]
+/// arm at all, so a group-split plan fell through to [`Self::Single`] and every
+/// group ran at the executor's default scheduling, with nothing reporting it.
+/// Issue 1172 was the same shape one layer down.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExecutorShape {
+    /// One executor, default scheduling: no tiers, or only the synthesised
+    /// `default` one.
+    Single,
+    /// One executor, with one sched context per tier bound by node name and by
+    /// callback group (RFC-0047). The multi-tier plans `run_tiers` cannot
+    /// express: a node whose groups span tiers (its per-tier setups construct
+    /// whole NODES), or a board with no `run_tiers`.
+    SchedContexts,
+    /// One executor per tier, through the board's `run_tiers`.
+    Tiers,
+}
+
+impl Plan {
+    /// Whether the resolved table has real tiers, i.e. is anything but the
+    /// single synthesised `default` tier (see [`ExecutorShape`], issue 1283).
+    pub fn is_multi_tier(&self) -> bool {
+        self.resolved_tiers
+            .as_ref()
+            .is_some_and(|t| !t.is_single_tier())
+    }
+
+    /// The executor branch every entry pack takes for this plan. The packs
+    /// consume it; none re-derives it (issue 1283).
+    ///
+    /// A metadata probe is the one caller-side refinement, and it is C++-only:
+    /// a probe never takes `run_tiers` (see `emit_cpp`), so it maps
+    /// [`ExecutorShape::Tiers`] to [`ExecutorShape::SchedContexts`].
+    pub fn executor_shape(&self) -> ExecutorShape {
+        let Some(tiers) = self
+            .resolved_tiers
+            .as_ref()
+            .filter(|_| self.is_multi_tier())
+        else {
+            return ExecutorShape::Single;
+        };
+        if tiers.has_group_split_node() || !board_has_run_tiers(&self.board) {
+            ExecutorShape::SchedContexts
+        } else {
+            ExecutorShape::Tiers
+        }
+    }
+}
+
+/// Whether the board family has a `run_tiers` runner. ThreadX does not
+/// (issue 1286), so a tiered ThreadX plan keeps the sched-context path.
+fn board_has_run_tiers(board: &str) -> bool {
+    nros_entry_lower::board_family(board) != nros_entry_lower::BoardFamily::Threadx
+}
+
 /// The param-services and lifecycle registrations that close a setup function.
 ///
 /// phase-432 W2.3 — this was a `String` in both views, rendered by Rust from a
@@ -443,6 +505,116 @@ pub(crate) fn tier_views(
             deadline_policy: tier.deadline_policy.clone(),
         })
         .collect()
+}
+
+/// The sched-context wiring for [`ExecutorShape::SchedContexts`] — ONE
+/// derivation, rendered by both entry packs (issue 1283; the
+/// [`tier_group_keys`] pattern from issue 1172). It used to live in `emit_cpp`
+/// alone, so the C pack had nothing to render and emitted nothing.
+///
+/// Every field is a VALUE; strings are RAW and the pack quotes them. `None`
+/// means unset, spelled `NULL` in C and `nullptr` in C++.
+#[derive(serde::Serialize)]
+pub(crate) struct SchedView {
+    pub n: usize,
+    pub contexts: Vec<SchedContextView>,
+    pub node_binds: Vec<NodeBindView>,
+    pub group_binds: Vec<GroupBindView>,
+}
+
+/// One tier's RTOS-agnostic policy, as `nros_cpp_create_sched_context_from_policy`
+/// takes it. RAW tier fields only: the call lowers them through
+/// `SchedContext::from_tier_policy`, the SAME lowering the Rust runtime's
+/// `apply_tier_sched_policy` uses (RFC-0052), so the mapping cannot drift
+/// between languages.
+#[derive(serde::Serialize)]
+pub(crate) struct SchedContextView {
+    pub index: usize,
+    pub class: Option<String>,
+    pub period_us: u64,
+    pub budget_us: u64,
+    pub deadline_us: u64,
+    pub deadline_policy: Option<String>,
+    pub os_pri: u8,
+}
+
+#[derive(serde::Serialize)]
+pub(crate) struct NodeBindView {
+    pub name: String,
+    pub namespace: String,
+    pub sched_context: u8,
+}
+
+#[derive(serde::Serialize)]
+pub(crate) struct GroupBindView {
+    pub name: String,
+    pub namespace: String,
+    pub group: String,
+    pub tier_index: usize,
+}
+
+/// Build the sched-context wiring for a plan whose [`Plan::executor_shape`]
+/// is [`ExecutorShape::SchedContexts`].
+pub(crate) fn sched_view(tiers: &ResolvedTierTable, plan: &Plan) -> SchedView {
+    let contexts = tiers
+        .tiers
+        .iter()
+        .enumerate()
+        .map(|(ti, tier)| SchedContextView {
+            index: ti,
+            class: tier.class.clone(),
+            period_us: tier.period_us.unwrap_or(0),
+            budget_us: tier.budget_us.unwrap_or(0),
+            deadline_us: tier.deadline_us.unwrap_or(0),
+            deadline_policy: tier.deadline_policy.clone(),
+            os_pri: tier.priority.clamp(0, 255) as u8,
+        })
+        .collect();
+
+    let node_ns = |name: &str| -> String {
+        plan.nodes
+            .iter()
+            .find(|n| n.name.as_deref().unwrap_or(&n.exec) == name)
+            .and_then(|n| n.namespace.as_deref())
+            .unwrap_or("/")
+            .to_string()
+    };
+
+    let node_binds = plan
+        .nodes
+        .iter()
+        .filter_map(|n| {
+            n.sched_context.map(|sc| NodeBindView {
+                name: n.name.as_deref().unwrap_or(&n.exec).to_string(),
+                namespace: n.namespace.as_deref().unwrap_or("/").to_string(),
+                sched_context: sc,
+            })
+        })
+        .collect();
+
+    let group_binds = tiers
+        .tiers
+        .iter()
+        .enumerate()
+        .flat_map(|(ti, tier)| {
+            tier.members
+                .iter()
+                .map(move |(node_name, group)| (ti, node_name.clone(), group.clone()))
+        })
+        .map(|(ti, node_name, group)| GroupBindView {
+            namespace: node_ns(&node_name),
+            name: node_name,
+            group,
+            tier_index: ti,
+        })
+        .collect();
+
+    SchedView {
+        n: tiers.tiers.len(),
+        contexts,
+        node_binds,
+        group_binds,
+    }
 }
 
 /// Phase 266 (W5b/W6) — the `NROS_BOOT_CONFIG` blob, as its template sees it.

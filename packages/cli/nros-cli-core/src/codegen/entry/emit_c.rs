@@ -10,8 +10,8 @@
 //! phase-257 Stage-3.
 
 use super::{
-    BootConfigView, DeclsView, Plan, QosRowView, ServicesView, TierView, boot_config_view,
-    decls_view, qos_views, sanitize_pkg, services_view,
+    BootConfigView, DeclsView, ExecutorShape, Plan, QosRowView, SchedView, ServicesView, TierView,
+    boot_config_view, decls_view, qos_views, sanitize_pkg, services_view,
 };
 
 /// Phase 257 (W0-A) — a `lang == "c"` node is a `NROS_C_COMPONENT` typed
@@ -46,6 +46,10 @@ struct CEntryView {
     tiers: Option<CTiersView>,
     /// Single-executor path only; empty when `tiers` is set.
     setup_nodes: Vec<CNodeView>,
+    /// issue 1283 — the per-tier sched contexts a single-executor plan binds
+    /// by node name and callback group (`ExecutorShape::SchedContexts`). The
+    /// SAME view the C++ pack renders; `None` on the other two shapes.
+    sched: Option<SchedView>,
     /// The param-services / lifecycle facts. The template includes
     /// `c_service_trailer.c.jinja` where they belong.
     services: ServicesView,
@@ -225,18 +229,14 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
         }
     }
 
-    let use_tiers = plan
-        .resolved_tiers
-        .as_ref()
-        .is_some_and(|t| !t.tiers.is_empty());
-    // A group-split node needs per-group sched contexts (the tier path can only
-    // construct whole nodes); keep the sched-context path for such plans. See
-    // emit_cpp.rs for the full rationale.
-    let has_group_split = plan
-        .resolved_tiers
-        .as_ref()
-        .is_some_and(|t| t.has_group_split_node());
-    let use_run_tiers = use_tiers && !has_group_split;
+    // issue 1283 — the branch is the PLAN's, shared with the C++ pack. This
+    // pack used to ask `!tiers.is_empty()`, which is true for the ONE `default`
+    // tier `resolve_tiers` synthesises for callback groups declared without a
+    // `[tiers]` table — so it called `run_tiers` where C++ called
+    // `run_components`. And it had no sched-context arm, so a group-split plan
+    // dropped every group's scheduling without a word.
+    let shape = plan.executor_shape();
+    let use_run_tiers = shape == ExecutorShape::Tiers;
 
     let boot_config = boot_config_view(plan)?;
 
@@ -320,6 +320,10 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
                 .enumerate()
                 .map(|(i, n)| node_view(n, i, i))
                 .collect()
+        },
+        sched: match (shape, plan.resolved_tiers.as_ref()) {
+            (ExecutorShape::SchedContexts, Some(tiers)) => Some(super::sched_view(tiers, plan)),
+            _ => None,
         },
         services: services_view(plan),
         app_main_include: matches!(
