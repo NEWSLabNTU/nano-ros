@@ -203,6 +203,20 @@ set -euo pipefail
 # `safe.directory` in ~/.gitconfig dies with the writable layer every job.
 NROS_SRC="${NROS_SRC:-/home/runner/src/nano-ros}"
 
+# The store's own tools go on PATH, here, BEFORE anything reads them.
+#
+# `just`, `west` and the cargo-installed tools live in the persistent volumes —
+# `~/.local/bin` and `~/.cargo/bin` — because they are installable as the runner
+# user (the rule the `.local`, `.rustup` and `.cmake` stores all follow). The
+# image does not put those on PATH, so without this line the label gate asks a
+# correctly provisioned store whether it has `west` and is told no.
+#
+# It matters twice over: `run.sh` inherits this environment and hands it to
+# every job, so a workflow's `run: just …` resolves the same tools the gate
+# just verified. A runner whose PATH differs from the one its labels were
+# checked against is a runner whose labels were checked against nothing.
+export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
+
 # --ephemeral: one job, then the registration is spent. A job cannot leave state
 # for the next one, which is also what stops the orphan/disk rot a long-lived
 # runner accumulates (the design doc records 71 orphaned processes, oldest 10
