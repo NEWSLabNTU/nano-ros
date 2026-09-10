@@ -1,14 +1,43 @@
 // C++ compat for picolibc
+//
+// This directory IS the C++ standard library of a riscv64-threadx build: the
+// toolchain file puts it on the include path with `-nostdinc++` for EVERY C++
+// translation unit — nros-cpp headers, codegen output, examples AND the
+// Cyclone backend's own sources. So a `std::` name missing here is a compile
+// error in whichever of those first spells it, and no host-side probe sees it
+// (the host's libstdc++ always has the name).
+//
+// The list is the C-library half of <cstring> as the standard declares it,
+// less the two locale functions picolibc's <string.h> may not provide
+// (`strcoll`, `strxfrm`) — the same set `zephyr/cxx-compat/cstring` has
+// carried on picolibc. `memchr` was missing until the nightly
+// `threadx_riscv64` lane stopped on `service.cpp:1388`; the gate
+// `check-cxx-compat-shim-coverage` now binds every `std::` C-library name the
+// served sources use to an export here.
 #ifndef _CXX_CSTRING
 #define _CXX_CSTRING
 #include <string.h>
 namespace std {
+using ::size_t;
+using ::memchr;
 using ::memcmp;
 using ::memcpy;
 using ::memmove;
 using ::memset;
+using ::strcat;
+using ::strchr;
 using ::strcmp;
+using ::strcpy;
+using ::strcspn;
+using ::strerror;
 using ::strlen;
+using ::strncat;
+using ::strncmp;
+using ::strncpy;
+using ::strpbrk;
+using ::strrchr;
+using ::strspn;
 using ::strstr;
+using ::strtok;
 }
 #endif
