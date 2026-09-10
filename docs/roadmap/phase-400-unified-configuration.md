@@ -86,6 +86,30 @@ descriptors live in their packages; platform descriptors lived in
   residue: neither names a crate to sit beside, because neither is a port. They
   are the fallbacks a board selects when no port applies, so `config/` is their
   correct home until something owns them.
+
+  **The move took the descriptor and left the ANNOUNCEMENT, and that was not
+  noticed for ten days** (issue 1220, fixed 2026-09-10). Each of the five kept
+  its `package.xml` in `config/<name>/`, so `config/posix/` and `config/zephyr/`
+  held a `package.xml` and nothing else, and the five real descriptors under
+  `packages/platform/` announced nothing at all. `ProviderPackage::
+  descriptor_path(kind)` is `self.dir.join("nros-{kind}.toml")` — it looks
+  BESIDE the announcement — so for four platforms it resolved to a path that did
+  not exist, and selection kept working only because `cmd/board_facts.rs::
+  workspace_platform_roots` bypasses `provider_scan` with a walk of its own.
+  `config/freertos/` was the worse case: it kept a `nros-platform.toml` too,
+  holding `names` and `[priority_plan]` and nothing else, DEAD to every
+  `PlatformsTree` consumer (`packages/platform` is searched first and the merge
+  is `or_insert`) and live to exactly one reader, `scripts/lib/
+  priority_plan.py`, which globbed `config/*` directly. The five announcements
+  now sit beside their descriptors, the plan moved into
+  `packages/platform/nros-platform-freertos/nros-platform.toml`, and that script
+  searches both roots.
+
+  `check-provider-announcements` said OK throughout, because its `platform` row
+  globbed `config/*` — 3 of 8 descriptors — under a comment asserting the
+  opposite of what `default_search_path` does. It globs both roots now, and its
+  A4 rule holds every family's globs to the tracked tree so a row can no longer
+  be narrower than the family it reports on.
 * Resolve by name over a search path. **Done.** The loader keys each descriptor
   on `names.first()`, falling back to the directory, so a package resolves under
   the name it declares rather than the name of the folder someone cloned it
@@ -657,7 +681,10 @@ resolves is a mechanism people still use.
   — **for the five platforms W1 moved**. `config/bare-metal` and
   `config/generic` are not a grace period and must keep resolving: neither has
   a crate to live beside (see W1), so `config/` remains a legitimate rung of
-  the search path rather than the old central file.
+  the search path rather than the old central file. Issue 1220 closed the one
+  file the grace period had actually left behind — `config/freertos/
+  nros-platform.toml`, unread by `PlatformsTree` and read by one script — so
+  `config/` now holds exactly the two descriptors that belong there.
 * A gate asserts no knob has two readers.
 
 **Gate.** For every migrated knob, exactly one reader exists, and

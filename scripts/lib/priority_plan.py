@@ -79,8 +79,24 @@ def _parse_plan_block(text, header, source, platform=None):
     return plan, platform
 
 
+# Both in-tree homes of `nros-platform.toml`, in `PlatformsTree::
+# default_search_path` order. Platform descriptors live beside their package
+# (`packages/platform/nros-platform-<x>/`) since phase-400 W1; `config/` keeps
+# `bare-metal` and `generic`, which name no package to sit beside because
+# neither is a port.
+#
+# issue 1220 — this globbed `config/` alone, which was every platform when
+# phase-375 W8 wrote it and three of eight by the time it was measured. It kept
+# working only because the one platform that states a plan, `freertos`, had left
+# a stub behind in `config/` holding nothing but the plan — a file
+# `PlatformsTree` never read, because `packages/platform` is searched first and
+# the merge is `or_insert`. Reading one root is how a descriptor and its facts
+# come to live in different trees.
+PLATFORM_ROOTS = ("packages/platform", "config")
+
+
 def load_platform_plans():
-    """tier_key -> plan, from `config/*/nros-platform.toml`.
+    """tier_key -> plan, from every `nros-platform.toml` in the tree.
 
     phase-375 W8 — a priority plan is a PLATFORM fact (`range = [1, 7]` is
     FreeRTOS's `configMAX_PRIORITIES`), and stating it on boards meant two
@@ -89,15 +105,21 @@ def load_platform_plans():
     divergence would have been invisible.
     """
     plans = {}
-    for desc in sorted(tracked(ROOT / "config", name="nros-platform.toml")):
-        text = desc.read_text(encoding="utf-8")
-        got = _parse_plan_block(text, "[priority_plan]", desc.relative_to(ROOT))
-        if got is None:
-            continue
-        plan, _ = got
-        key = plan.pop("tier_key", None)
-        if key:
-            plans[key] = plan
+    # Roots in search-path order, sorted WITHIN a root, and `setdefault` so the
+    # FIRST root wins — the same precedence `PlatformsTree::load_search_path`
+    # gets from `or_insert`. Two roots and a plain `plans[key] = plan` would
+    # have made the LAST file win, i.e. the opposite of what the loader does,
+    # and with one plan in the tree nothing would have said so.
+    for root in PLATFORM_ROOTS:
+        for desc in sorted(tracked(ROOT / root, name="nros-platform.toml")):
+            text = desc.read_text(encoding="utf-8")
+            got = _parse_plan_block(text, "[priority_plan]", desc.relative_to(ROOT))
+            if got is None:
+                continue
+            plan, _ = got
+            key = plan.pop("tier_key", None)
+            if key:
+                plans.setdefault(key, plan)
     return plans
 
 

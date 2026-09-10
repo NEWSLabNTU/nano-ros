@@ -5,7 +5,7 @@ names = ["freertos", "freeRTOS", "FreeRTOS"]
 platform = "freertos"
 toolchain = "stable"
 entry_kind = "board-run"
-# phase-351 W4 — the stacks this board can be built with: the `config/freertos` platform manifest builds `system/freertos/lwip/network.c`.
+# phase-351 W4 — the stacks this board can be built with: the `packages/platform/nros-platform-freertos` platform manifest builds `system/freertos/lwip/network.c`.
 supported_netstacks = ["lwip"]
 board_crate = "nros-board-mps2-an385-freertos"
 # Phase 252 (issue 0072) — forwards [safety] through the freertos family to zenoh.
@@ -59,7 +59,7 @@ threads = true
 toolchain_file = "cmake/toolchain/arm-freertos-armcm3.cmake"
 
 # RFC-0079's priority address plan for this port lives with the PLATFORM now
-# (`config/freertos/nros-platform.toml`), not here — `range = [1, 7]` is
+# (`packages/platform/nros-platform-freertos/nros-platform.toml`), not here — `range = [1, 7]` is
 # FreeRTOS's `configMAX_PRIORITIES`, a fact about the RTOS rather than about
 # this board. phase-375 W8; the two FreeRTOS QEMU boards held byte-identical
 # copies, and `load_plans()` keys by platform, so the later one silently won.

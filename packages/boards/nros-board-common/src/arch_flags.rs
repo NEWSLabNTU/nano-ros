@@ -147,7 +147,7 @@ pub fn describe_profiles(config_root: &Path, platform: &str) -> String {
 mod tests {
     use super::*;
 
-    /// The shipped `config/freertos` profiles must resolve for both arches the
+    /// The shipped `nros-platform-freertos` profiles must resolve for both arches the
     /// platform declares. phase-338 W4: `[arch.cortex-m7]` was added and then
     /// ignored by the consumer, so FreeRTOS+lwIP stayed unbuildable on
     /// Cortex-M4F/M7 — this asserts the declaration is actually reachable.

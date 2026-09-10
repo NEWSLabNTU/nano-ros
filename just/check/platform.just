@@ -706,8 +706,8 @@ zephyr-kconfig-symbols:
 
 # issue 0529 — Zephyr's zenoh tx knobs have TWO sources: `zephyr/Kconfig`
 # defaults (forwarded to the C lane by nros_rmw_zenoh.cmake) and
-# `config/zephyr/nros-platform.toml`'s [knobs.zenoh.tx] (the RFC-0049 ladder,
-# Rust lane). They agree today only by coincidence; this compares them so a
+# `packages/platform/nros-platform-zephyr/nros-platform.toml`'s
+# [knobs.zenoh.tx] (the RFC-0049 ladder, Rust lane). They agree today only by coincidence; this compares them so a
 # divergence is loud. Buildless.
 [private]
 zephyr-knob-agreement:

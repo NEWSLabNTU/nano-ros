@@ -47,8 +47,8 @@ board gets it by depending on the crate:
 - the entry driver (`run_entry` / `run_bare` / `run_tiers_entry`) and `Config`
 
 `configure_cflags` resolves your target's compiler flags from the `[arch.*]`
-profiles in `config/freertos-lwip/nros-platform.toml`. Cortex-M3 and Cortex-M7
-are declared there; a new arch is a profile block, not a build-script branch.
+profiles in `packages/platform/nros-platform-freertos/nros-platform.toml`.
+Cortex-M3 and Cortex-M7 are declared there; a new arch is a profile block, not a build-script branch.
 
 ## The files
 
