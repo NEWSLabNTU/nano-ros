@@ -719,24 +719,18 @@ mod publish_stamp_tests {
 }
 
 /// Per-SchedContext liveness accounting, one per SC slot.
-#[derive(Debug, Clone, Copy)]
+///
+/// `Default` is DERIVED, not hand-written: every field's default is its type's
+/// own (`false`, `0`), so a manual impl restates four of them and is one edit
+/// away from disagreeing with the struct — `clippy::derivable_impls` is a
+/// `-D warnings` error in the embedded lane, which is where this was caught.
+#[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct AliveState {
     pub opened: bool,
     pub window_start_us: u64,
     pub count_at_window_start: u32,
     /// Report-once-until-recovery, matching the rate rule.
     pub violated_last_window: bool,
-}
-
-impl Default for AliveState {
-    fn default() -> Self {
-        Self {
-            opened: false,
-            window_start_us: 0,
-            count_at_window_start: 0,
-            violated_last_window: false,
-        }
-    }
 }
 
 /// Report a SchedContext that has not dispatched AT ALL over a full window
