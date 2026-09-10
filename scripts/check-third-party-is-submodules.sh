@@ -13,18 +13,19 @@
 # That is also what made the box mirror unfixable (issue 1248): its rules told
 # source from build output BY NAME, in directories where the two lived together.
 #
-# `make/` and `ninja/` are gone — both are provisioned into the store and their
-# consumers already read it there ("the store rather than `third-party/make/`",
-# jobserver-pool.sh). The residue was 1.2 MB of nothing.
+# `make/` and `ninja/` are gone — both are provisioned into the store, and their
+# consumers read it there. That sentence used to end "already", and it was not
+# true: `build-all`'s gate in `justfile` kept reading `third-party/make/make` and
+# `third-party/ninja/ninja` after the move, so every migrated host silently lost
+# the jobserver path. A directory rule whose READERS are unchecked has a reach
+# narrower than the rule (0196's shape) — hence the reference scan below.
 #
-# THE ONE DECLARED EXCEPTION, and why it is not fixed here
+# THE DECLARED EXCEPTION IS GONE
 #
-# `[source.rosidl]` still has `dest = "third-party/ros/rosidl"`, and
-# `msg_to_cyclone_idl.py` resolves it as its last ladder rung so the cyclone
-# msg->IDL step works with no ROS install. Moving it needs `dest` to be able to
-# name the STORE, which is RFC-0095 D2/D4 and lands with phase-440 W4. Declaring
-# it here rather than deleting the rule keeps the ratchet honest: the exception
-# is visible, has a reason, and has somewhere to go.
+# `ros` was one: `[source.rosidl]` could only name a workspace-relative `dest`.
+# phase-440 let `dest` name the STORE, rosidl moved there, and `EXCEPTIONS` is
+# empty (see the note beside it). Its one READER keeps a documented legacy
+# fallback, which the reference scan declares separately in `REF_EXCEPTIONS`.
 #
 # The list may only SHRINK. A new name here is a new provisioning root inside a
 # directory that is supposed to have none.
@@ -45,6 +46,26 @@ cd "$repo_root" || exit 2
 # provisioning root inside a directory that is supposed to have none.
 EXCEPTIONS=""
 
+# Provisioning roots moved OUT of third-party/: make, ninja, ros (RFC-0095 D3) and
+# zenoh (RFC-0075). The directory scan refuses them as DIRECTORIES; the reference
+# scan refuses CODE that still reads them.
+RETIRED="make ninja ros zenoh"
+# `third-party/<root>` with nothing path-like before it (so the
+# `packages/cli/third-party/...` tree is not this) and a non-name character or
+# end-of-line after it (so `ros-launch-manifest` is not `ros`). No `\b`: it is
+# zero-width, ugrep rejects it outright, and behind a `2>/dev/null` that is a
+# scan reporting "no references" over a tree full of them — measured while this
+# rule was being written.
+RETIRED_PAT="(^|[^/A-Za-z0-9_.-])third-party/($(tr ' ' '|' <<< "$RETIRED"))([^A-Za-z0-9_.-]|\$)"
+
+# Files allowed to READ a retired root, each with its reason. May only SHRINK,
+# and a listed file that no longer reads one is a STALE entry and fails.
+#   scripts/cyclonedds/msg_to_cyclone_idl.py — resolves the STORE first
+#     (`nros sdk-path --source rosidl`) and keeps the pre-phase-440 location
+#     BELOW it, so an earlier-provisioned host keeps working with no migration
+#     step. A documented fallback, not a reader that missed the move.
+REF_EXCEPTIONS="scripts/cyclonedds/msg_to_cyclone_idl.py"
+
 # Submodule PARENTS: the first path component under third-party/ for every
 # declared submodule. Read from .gitmodules, never from a directory walk, so an
 # uninitialised submodule still counts as one (a bare clone has empty dirs).
@@ -63,6 +84,14 @@ fi
 # proving `nros_grep_q` behaves rather than that this gate uses it.
 is_parent()    { nros_grep_q -x -- "$1" <<< "$2"; }
 is_exception() { nros_grep_q -w -- "$1" <<< "$2"; }
+# A CODE line that reads a retired root. A comment is prose, not a read — the
+# retirement is explained in comments in several places, correctly.
+is_retired_ref() {
+    local body="${1#"${1%%[![:space:]]*}"}"
+    case "$body" in \#*|//*) return 1 ;; esac
+    nros_grep_q -E -- "$RETIRED_PAT" <<< "$1"
+}
+is_ref_exception() { case " $2 " in *" $1 "*) return 0 ;; esac; return 1; }
 
 # SELFTEST, called unconditionally below — not behind a flag. A selftest nobody
 # runs decays into a comment (check-gate-selftests). These drive the same two
@@ -79,6 +108,18 @@ selftest() {
     _st "a PREFIX of a parent is not a parent"  1 "$(is_parent dd     "$parents"; echo $?)"
     _st "a declared exception is recognised"    0 "$(is_exception ros    "ros"; echo $?)"
     _st "an undeclared name is not exempt"      1 "$(is_exception notros "ros"; echo $?)"
+    # Built, never written out, so this file does not scan as a reader itself.
+    local tp="third-party"
+    _st "a code read of a retired root"         0 "$(is_retired_ref "    if [ -x $tp/make/make ]; then"; echo $?)"
+    _st "ninja likewise"                        0 "$(is_retired_ref "   && [ -x $tp/ninja/ninja ]; then"; echo $?)"
+    _st "a path in a python string is a read"   0 "$(is_retired_ref "    root / \"$tp/ros/rosidl\""; echo $?)"
+    _st "a '#' comment naming it is prose"      1 "$(is_retired_ref "    # the store rather than $tp/make/"; echo $?)"
+    _st "a '//' comment likewise"               1 "$(is_retired_ref "// $tp/zenoh/zenoh is gone"; echo $?)"
+    _st "packages/cli/$tp is not repo-root"     1 "$(is_retired_ref "git -C packages/cli/$tp/make x"; echo $?)"
+    _st "a longer name is not the root"         1 "$(is_retired_ref "see $tp/ros-launch-manifest"; echo $?)"
+    _st "a submodule parent is not retired"     1 "$(is_retired_ref "cd $tp/dds/cyclonedds"; echo $?)"
+    _st "a listed file is a ref exception"      0 "$(is_ref_exception a/b.py "a/b.py c.sh"; echo $?)"
+    _st "a PREFIX of a listed file is not"      1 "$(is_ref_exception a/b "a/b.py c.sh"; echo $?)"
     return "$fail"
 }
 
@@ -112,5 +153,39 @@ for e in $EXCEPTIONS; do
     }
 done
 
+# REFERENCE scan: one `git grep` over what RUNS — recipes, scripts, cmake,
+# workflows. Its status is branched on like `nros_grep_q`'s: 1 is "none", and
+# past 1 is a scan that did not run, which must never read as a clean tree.
+rc=0
+refs="$(git grep -nE "$RETIRED_PAT" -- justfile 'just/*.just' 'scripts/**' \
+    'cmake/**' '.github/**')" || rc=$?
+case "$rc" in
+    0|1) : ;;
+    *)  echo "check-third-party-is-submodules: the reference scan did not run" >&2
+        echo "    (git grep exit $rc) — refusing to call the tree clean without it." >&2
+        exit 2 ;;
+esac
+refs_seen=" "
+while IFS= read -r hit; do
+    [ -n "$hit" ] || continue
+    file="${hit%%:*}"; rest="${hit#*:}"; line="${rest#*:}"
+    is_retired_ref "$line" || continue
+    if is_ref_exception "$file" "$REF_EXCEPTIONS"; then
+        refs_seen="$refs_seen$file "; continue
+    fi
+    problems=$((problems + 1))
+    echo "check-third-party-is-submodules: $file:${rest%%:*} reads a retired root" >&2
+    echo "    ${line#"${line%%[![:space:]]*}"}" >&2
+    echo "    The tool is in the store now — resolve it with \`nros sdk-path <tool>\`" >&2
+    echo "    (see nros_pinned_make / nros_pinned_ninja). RFC-0095 D3." >&2
+done <<< "$refs"
+for e in $REF_EXCEPTIONS; do
+    is_ref_exception "$e" "$refs_seen" && continue
+    problems=$((problems + 1))
+    echo "check-third-party-is-submodules: '$e' is a declared reference exception but" >&2
+    echo "    no longer reads a retired root — delete it from REF_EXCEPTIONS (the list" >&2
+    echo "    may only shrink)." >&2
+done
+
 [ "$problems" -eq 0 ] || exit 1
-echo "check-third-party-is-submodules: OK ($(wc -l <<< "$parents") submodule parent(s), $(wc -w <<< "$EXCEPTIONS") declared exception(s))"
+echo "check-third-party-is-submodules: OK ($(wc -l <<< "$parents") submodule parent(s), $(wc -w <<< "$EXCEPTIONS") declared exception(s); no code reads a retired root ($RETIRED) outside $(wc -w <<< "$REF_EXCEPTIONS") declared reference exception(s))"
