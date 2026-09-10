@@ -464,29 +464,38 @@ watched run.
 * **A1 — pin ASI to the phase-436 stack.** ASI pins `902ea135e`
   (2026-09-04), 851 commits behind main. Pin to this stack's head for the
   measurement work; re-pin to main once it merges.
-* **A2 — make the jitter probe READABLE from a C entry.** Nothing needs
-  declaring: `release-jitter-runtime`, like timer-overrun and alive
-  supervision, is spec-free — `check_release_jitter_rule` judges against the
-  spin cadence the caller already passes, so it runs on ASI as soon as the pin
-  moves. (An earlier draft of this item said a `MonitorSpec` was missing and
-  "nothing arms the rule". Wrong: only the rate and age rules take a declared
-  table, which the CLI bakes from the system model.)
+* **A2 — make the jitter probe READABLE from a C entry. Accessors DONE; the
+  cadence half is a design question, not the one-line call this said.**
+  Nothing needs declaring: `release-jitter-runtime`, like timer-overrun and
+  alive supervision, is spec-free. It judges against the spin cadence the
+  caller already passes, so it runs on ASI as soon as the pin moves. (An
+  earlier draft said a `MonitorSpec` was missing and "nothing arms the rule";
+  only the rate and age rules take a declared table.) What was missing is a way
+  out: a C entry's only signal was the violation line, at a whole period late.
 
-  What IS missing is a way out. On ASI's C arm the only signal is
-  `log_violation` — `contract violation: release-jitter-runtime …` — and it
-  fires only when a wake is a whole period late. The maximum, which is the
-  figure A3 compares against the trace, has no C or C++ accessor:
-  `release_jitter()` and `last_park()` are Rust-only. So A2 is an
-  `nros_cpp_executor_*` accessor for `(max_us, late, total)` and the park
-  attribution, plus the ASI side printing it on a cadence.
+  * **Delivered:** `nros_cpp_executor_release_jitter(handle, &max_us, &late,
+    &total, &granularity_us)` and `nros_cpp_executor_last_park(handle,
+    &bound_us, &achieved_us, &source, &platform_index)`, with `source` one of
+    `NROS_CPP_WAKE_SOURCE_*`. Every output pointer is optional.
+  * **Found while writing them:** `WakeSourceId`, `NextDeadlineFn`,
+    `ParkUntilFn` and `MAX_WAKE_SOURCES` were never re-exported from
+    `nros_node::executor`. `last_park()` returned a type no other crate could
+    name or match on, and the two registration calls took types nobody could
+    spell. Re-exported.
+  * **Reversed: do NOT make the Zephyr C arm call `set_spin_nominal_us`.** This
+    item said to, so the nominal would stop being inferred from the timeout.
+    But `release_jitter_granularity_us()` reads a declared cadence as "the
+    caller paces itself with a sleep finer than the wait" and reports 1 us. The
+    C arm is paced BY the wait: `spin_once(period_ms)`, which since W7 is the
+    tick-granular park. Declaring would make the report claim resolution the
+    loop does not have, which is issue 1194's failure. The API couples two
+    facts, the nominal to judge against and who paces the loop, and the C arm
+    needs the first without the second. Until they are split, the inferred
+    nominal (timeout == period) is the honest one there.
+  * **A2b — open:** split the nominal from the pacing claim, so a wait-paced
+    loop can declare its cadence without over-claiming.
+  * **Left for A3:** the ASI side printing these on a cadence.
 
-  The nominal it judges against is right on ASI only by coincidence: ASI's
-  FVP lane takes Zephyr's C arm, which does NOT call `set_spin_nominal_us` —
-  `zephyr_run_tiers.c` passes the tier period as the `spin_once` timeout
-  (`period_ms`, floored at `SPIN_PERIOD_FLOOR_MS = 1`), so the nominal is
-  inferred from the timeout and equals the declared 5 ms only because the two
-  are the same number. Make the C arm declare the cadence explicitly as part
-  of A2, so they stop being coupled by accident.
 * **A3 — a loaded FVP cross-check.** Run the control loop under load and
   compare `release_jitter()` and `last_park()` against an independent CTF
   capture of the same run. **Exit:** the probe's maximum and the trace's agree
