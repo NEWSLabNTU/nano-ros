@@ -258,17 +258,33 @@ pub fn init_hardware(config: &Config) {
     //   (mepc=0x9ae65930), the pre-#190 0xffffffff config-pointer fault.
     //   None of them were allocator or zenoh-pico bugs.
     //
-    // 48 KB fits the executor arena AND leaves a ~67 KB stack; both esp32
-    // pair-delivery directions run green on it. Check `.stack` in
-    // `readelf -S` after changing ANY large static — there is no runtime
-    // stack-overflow guard on this target.
+    // 48 KB fitted the executor arena AND left a ~67 KB stack — while the
+    // arena was a HEAP allocation. It is not any more: phase-392 W6 moved the
+    // executor backing into a named `.bss` static
+    // (`nros_node::executor::backing::EXECUTOR_BACKING`, RFC-0002 § 4.4b), and
+    // that is a MOVE, not a saving — the bytes left this heap and became
+    // linker-visible `.bss`. This heap was never reduced to match, so the
+    // backing was paid for twice, and on this board `.bss` is paid for out of
+    // the stack. Measured on `esp32_entry` (the workspace fixture) with the
+    // heap at 48 KB: `EXECUTOR_BACKING` 29,400 B in `.bss`, stack 19,312 B
+    // against the 32,768 B `check-stack-floor` minimum — the nightly `esp32`
+    // lane's red.
+    //
+    // So the TOO-SMALL arm above no longer binds: the 17,032 B allocation that
+    // killed 16 KB at open is now the static. 16 KB it is again, and the
+    // subtraction is the whole 32 KB. The executor only falls back to this heap
+    // when its backing does not fit the reservation (a second executor, or an
+    // entry sized past the default) — and that fails LOUDLY at open ("memory
+    // allocation of N bytes failed"), never as a silent overflow. Check
+    // `.stack` in `readelf -S` after changing ANY large static — there is no
+    // runtime stack-overflow guard on this target.
     // For DDS builds the example crate enables `nros-platform/global-allocator`,
     // which registers a 256 KB static `FreeListHeap` instead — calling
     // `esp_alloc::heap_allocator!` on top of that produces the
     // "the `#[global_allocator]` in nros_platform conflicts with
     // global allocator in: esp_alloc" link error (Phase 101.7).
     #[cfg(not(feature = "dds-heap"))]
-    esp_alloc::heap_allocator!(size: 48 * 1024);
+    esp_alloc::heap_allocator!(size: 16 * 1024);
 
     // Step 3: Register the monotonic clock with the shared busy-wait sleep
     // loop in `nros-baremetal-common`. Without this, `sleep_ms` silently
