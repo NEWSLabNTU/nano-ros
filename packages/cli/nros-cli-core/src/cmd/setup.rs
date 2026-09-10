@@ -3931,12 +3931,31 @@ fn run_workspace_scan(
         }
     }
 
+    // phase-447 D3 — the pinned rosdep snapshot, for names no `[prereq.*]` key
+    // claims. Loaded unconditionally here (unlike `nros build`, which consults
+    // it only when the ladder leaves work) because THIS verb's whole job is to
+    // report what a workspace needs: a name it cannot classify is the answer
+    // the user came for, not an error path.
+    let snapshot = repo_root
+        .map(crate::orchestration::rosdep_snapshot::default_path)
+        .filter(|p| p.is_file())
+        .map(|p| crate::orchestration::rosdep_snapshot::RosdepSnapshot::load(&p))
+        .transpose()?;
+
     // Content dependencies, split by whether this tool can act on them.
     let mut package_role: Vec<(&String, &usize)> = Vec::new();
     let mut buildtool_role: Vec<(&String, &usize)> = Vec::new();
     let mut wrong_role: Vec<(&String, &str)> = Vec::new();
+    let mut from_snapshot: Vec<(&String, &usize)> = Vec::new();
     let mut not_prereq = 0usize;
     for (name, n) in &deps {
+        if !prereqs.contains_key(name)
+            && let Some(snap) = &snapshot
+            && snap.key.contains_key(name)
+        {
+            from_snapshot.push((name, n));
+            continue;
+        }
         match prereqs.get(name) {
             Some(dep) => match dep.role {
                 PrereqRole::Package | PrereqRole::Unclassified => package_role.push((name, n)),
@@ -3980,6 +3999,35 @@ fn run_workspace_scan(
                 ProbeResult::Unknown => "unprobed",
             };
             println!("  {name:<28} x{n:<4} {state}");
+        }
+    }
+
+    // phase-447 D3 — its OWN section, never folded into the one above.
+    //
+    // That separation IS the acceptance criterion: a key resolved from the
+    // vendored database must be visibly distinguishable from one this tree
+    // declares. The rows above carry a `check` and print present/MISSING; these
+    // carry none and can only print what a manager would install, so putting
+    // them in one table would make "unprobed" read as "probe returned unknown".
+    if !from_snapshot.is_empty() {
+        let snap = snapshot.as_ref().expect("populated only when loaded");
+        println!(
+            "\nFROM THE PINNED ROSDEP SNAPSHOT (rosdistro {}):",
+            snap.short_ref()
+        );
+        println!(
+            "{} — nothing here has asked whether these are installed.",
+            crate::orchestration::rosdep_snapshot::RosdepSnapshot::PROVENANCE_NOTE
+        );
+        println!("Declare a `[prereq.*]` key with a `check` to make presence diagnosable.");
+        for (name, n) in &from_snapshot {
+            let entry = &snap.key[*name];
+            let mapped: Vec<String> = ["apt", "dnf", "pacman", "brew"]
+                .into_iter()
+                .filter(|m| !entry.packages_for(m).is_empty())
+                .map(|m| format!("{m}: {}", entry.packages_for(m).join(" ")))
+                .collect();
+            println!("  {name:<28} x{n:<4} {}", mapped.join("   "));
         }
     }
 

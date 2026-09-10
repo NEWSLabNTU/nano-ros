@@ -2574,8 +2574,37 @@ fn check_declared_depends(
     // this tree name a non-`package` key, so this breaks nothing here and the
     // blast radius is entirely out-of-tree.
     let mut wrong_role: Vec<(pr::Unresolved, &'static str)> = Vec::new();
+
+    // phase-447 D3 — the pinned rosdep snapshot, consulted ONLY for names the
+    // ladder above left unresolved, and only if there are any. RFC-0099 D8.
+    let snapshot = pr::rosdep_fallback(
+        &declared,
+        &ws,
+        &generated,
+        &prereq_keys,
+        &ros,
+        &self_buildtools,
+        nano_ros_root,
+    )?;
+    let rosdep_keys = snapshot
+        .as_ref()
+        .map(crate::orchestration::rosdep_snapshot::RosdepSnapshot::keys)
+        .unwrap_or_default();
+    let mut from_snapshot: Vec<String> = Vec::new();
+
     for (name, files) in &declared {
-        let res = pr::classify(name, &ws, &generated, &prereq_keys, &ros, &self_buildtools);
+        let res = pr::classify(
+            name,
+            &ws,
+            &generated,
+            &prereq_keys,
+            &ros,
+            &self_buildtools,
+            &rosdep_keys,
+        );
+        if res == pr::Resolution::RosdepSnapshot {
+            from_snapshot.push(name.clone());
+        }
         if res == pr::Resolution::Unknown {
             unresolved.push(pr::Unresolved {
                 name: name.clone(),
@@ -2623,6 +2652,27 @@ fn check_declared_depends(
         }
     }
 
+    // phase-447 D3 — a snapshot resolution is REPORTED, never silent.
+    //
+    // These names resolved, so the build proceeds; but the snapshot carries no
+    // `check`, so nothing here has asked whether the package is installed. That
+    // is the one RFC-0062 objection a vendored snapshot does not answer, and an
+    // unanswered objection that leaves no trace in the output is
+    // indistinguishable from one nobody had. Naming the pin makes the answer
+    // reproducible: two hosts reading the same ref got the same list.
+    if let (false, Some(snap)) = (from_snapshot.is_empty(), snapshot.as_ref()) {
+        eprintln!(
+            "nros build: {} <depend> name(s) resolved from the pinned rosdep \
+             snapshot (rosdistro {}), {}:\n  {}\n  \
+             Declare a `[prereq.*]` key with a `check` probe to make presence \
+             diagnosable instead.",
+            from_snapshot.len(),
+            snap.short_ref(),
+            crate::orchestration::rosdep_snapshot::RosdepSnapshot::PROVENANCE_NOTE,
+            from_snapshot.join("\n  "),
+        );
+    }
+
     if unresolved.is_empty() {
         return Ok(());
     }
@@ -2641,8 +2691,9 @@ fn check_declared_depends(
     msg.push_str(
         "\nEach must be one of: a package in this workspace, a message package \
          `nros sync` generates, a `[prereq.*]` key in nros-sdk-index.toml whose \
-         `role` is `package`, or a package the ambient ROS install provides \
-         (source its setup.bash so AMENT_PREFIX_PATH is set).\n\
+         `role` is `package`, a package the ambient ROS install provides \
+         (source its setup.bash so AMENT_PREFIX_PATH is set), or a key in the \
+         pinned rosdep snapshot `nros-rosdep-snapshot.toml`.\n\
          \nNOTE the role: a key for an emulator, cross toolchain or vendored \
          source tree is NOT declarable here — that comes from the deploy target \
          in `<export><nano_ros deploy=.. board=../></export>`. Adding a \
