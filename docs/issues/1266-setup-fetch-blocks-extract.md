@@ -8,7 +8,7 @@ type: tech-debt
 area: cli, build
 severity: medium
 found: 2026-09-10
-related: [issue-1267, issue-0374, issue-0385, rfc-0014]
+related: [issue-1267, issue-1273, issue-1274, issue-1275, issue-0374, issue-0385, rfc-0014]
 ---
 
 ## What this is

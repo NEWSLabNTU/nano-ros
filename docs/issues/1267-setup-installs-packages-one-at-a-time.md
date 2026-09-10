@@ -7,7 +7,7 @@ type: tech-debt
 area: cli, build
 severity: medium
 found: 2026-09-10
-related: [issue-1266, issue-0374, issue-0500, rfc-0014]
+related: [issue-1266, issue-1273, issue-1274, issue-0374, issue-0500, rfc-0014]
 ---
 
 ## What this is
@@ -86,6 +86,23 @@ pure.
 Issue 1266 is the cheaper, independent half: overlapping the fetch of one
 package with the unpack of the previous one needs none of the four decisions
 above, because only one package is ever being installed.
+
+## Do the cheaper things first
+
+Two changes reduce what there is to parallelise, and neither needs any of the
+decisions above:
+
+* **issue 1273** — a tool that builds from source does so because the index has
+  no `dist` row for the host. Each source build removed is a serialisation point
+  removed, not just minutes: a source build takes the whole machine while the
+  network is idle, which is the ceiling on any worker pool here.
+* **issue 1274** — ask for the session's system packages ONCE, up front, instead
+  of printing an overlapping `apt install` line per `nros setup` call.
+
+DECIDED (2026-09-10): the same "gather, then do once" idea applies to stages
+beyond apt (`rustup target add`, repeated `--source` provisioning, re-resolved
+tools). Survey them when taking this issue rather than guessing the list — see
+1274.
 
 ## Where this was measured
 
