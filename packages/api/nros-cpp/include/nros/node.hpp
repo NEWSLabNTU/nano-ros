@@ -1592,8 +1592,9 @@ class Node {
     /// member: `pub_ = create_publisher_in<M>("/topic")`. Latches `ok()=false`
     /// on failure instead of throwing.
     template <typename M>
-    Publisher<M> create_publisher_in(const char* topic, const QoS& qos = QoS::default_profile()) {
-        Publisher<M> pub;
+    ::rclcpp::Publisher<M> create_publisher_in(const char* topic,
+                                               const QoS& qos = QoS::default_profile()) {
+        ::rclcpp::Publisher<M> pub;
         Result r = this->create_publisher(pub, topic, qos);
         if (!r.ok()) {
             this->set_error("create_publisher_in", r.raw());
@@ -1906,7 +1907,7 @@ alignas(8) uint8_t Node::GlobalStorageHolder<N>::storage[NROS_CPP_EXECUTOR_STORA
 ///
 /// ```cpp
 /// class Talker : public nros::NodeWithTimers<1> {
-///     nros::Publisher<Int32> pub_;
+///     rclcpp::Publisher<Int32> pub_;
 ///   public:
 ///     explicit Talker(nros::NodeHandle h) : nros::NodeWithTimers<1>(h, "talker") {
 ///         pub_ = create_publisher_in<Int32>("/chatter");
