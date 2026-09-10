@@ -113,8 +113,10 @@ to — `net/` `serial/` `ipc/` `sys/` — documented in `packages/drivers/README
     the batch lane and onto the PR: it is 28 s against `test-unit`'s 3.5 min, so
     it never belonged under the same cost argument, and a feature-combination
     break there costs a batch rather than a PR — `grouping_strategy` is ALLGREEN
-    over 5 entries, so one `clippy::derivable_impls` error took #741, #768 and
-    #779 down 7-8 times each with no defect of their own. So a green `CI` on a pull request
+    over 5 entries, so one red entry ejects every entry behind it. (Measured, it
+    was mostly not that: of 31 ejections of #741, #768 and #779, 27 carried the
+    PR's OWN defect — #741's `result_unit_err`, #768/#779's `declared-fact-carriers`
+    — and `clippy::derivable_impls` appeared in 3.) So a green `CI` on a pull request
     means "it compiles and the source gates hold", NOT "the unit tests pass";
     nothing broken lands, because the queue runs them before the merge, but the
     feedback arrives at the queue and an ejection is how you hear about it
