@@ -452,25 +452,41 @@ W1-W7 built the mechanism. What remains falls into five paths that are
 independent in code but not in value, so the order below is deliberate.
 
 The one fact that shapes all of it: **nothing in this phase has been measured
-on a loaded system.** Every item is unit-tested, and the one system that ships
-this executor — ASI — declares no monitor rule at all, so none of the probes
-are armed there. Path A exists to change that before the other paths add more
-mechanism on top of machinery nobody has watched run.
+on a loaded system.** Every item is unit-tested, and on the one system that
+ships this executor — ASI — the probes that do run cannot be READ: the
+spec-free rules fire, but only as a log line at a whole period late, and
+nothing exports the measurements themselves. Path A exists to change that
+before the other paths add more mechanism on top of machinery nobody has
+watched run.
 
 ### Path A — Prove it (evidence). FIRST.
 
 * **A1 — pin ASI to the phase-436 stack.** ASI pins `902ea135e`
   (2026-09-04), 851 commits behind main. Pin to this stack's head for the
   measurement work; re-pin to main once it merges.
-* **A2 — declare a release-jitter rule on ASI.** Its control tier declares
-  `spin_period_us = 5000`. ASI's FVP lane takes Zephyr's C arm, which does
-  NOT call `set_spin_nominal_us`: `zephyr_run_tiers.c` passes the period as
-  the `spin_once` timeout (`period_ms`, floored at `SPIN_PERIOD_FLOOR_MS = 1`)
-  and paces with `nros_tier_spin_gap_step`. The nominal therefore equals the
-  declared 5 ms by the timeout route — correct here only because the timeout
-  and the period happen to be the same number. What is missing is the
-  `MonitorSpec`; nothing arms the rule. Worth making the C arm declare the
-  cadence explicitly too, so the two stop being coupled by coincidence.
+* **A2 — make the jitter probe READABLE from a C entry.** Nothing needs
+  declaring: `release-jitter-runtime`, like timer-overrun and alive
+  supervision, is spec-free — `check_release_jitter_rule` judges against the
+  spin cadence the caller already passes, so it runs on ASI as soon as the pin
+  moves. (An earlier draft of this item said a `MonitorSpec` was missing and
+  "nothing arms the rule". Wrong: only the rate and age rules take a declared
+  table, which the CLI bakes from the system model.)
+
+  What IS missing is a way out. On ASI's C arm the only signal is
+  `log_violation` — `contract violation: release-jitter-runtime …` — and it
+  fires only when a wake is a whole period late. The maximum, which is the
+  figure A3 compares against the trace, has no C or C++ accessor:
+  `release_jitter()` and `last_park()` are Rust-only. So A2 is an
+  `nros_cpp_executor_*` accessor for `(max_us, late, total)` and the park
+  attribution, plus the ASI side printing it on a cadence.
+
+  The nominal it judges against is right on ASI only by coincidence: ASI's
+  FVP lane takes Zephyr's C arm, which does NOT call `set_spin_nominal_us` —
+  `zephyr_run_tiers.c` passes the tier period as the `spin_once` timeout
+  (`period_ms`, floored at `SPIN_PERIOD_FLOOR_MS = 1`), so the nominal is
+  inferred from the timeout and equals the declared 5 ms only because the two
+  are the same number. Make the C arm declare the cadence explicitly as part
+  of A2, so they stop being coupled by accident.
 * **A3 — a loaded FVP cross-check.** Run the control loop under load and
   compare `release_jitter()` and `last_park()` against an independent CTF
   capture of the same run. **Exit:** the probe's maximum and the trace's agree
