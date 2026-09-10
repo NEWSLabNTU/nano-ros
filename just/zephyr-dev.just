@@ -424,6 +424,24 @@ test-xrce verbose="":
 test-ros2-qos verbose="":
     @just _test-focused 'binary(=qos_zephyr_ros2_interop_e2e)' {{verbose}}
 
+# phase-441 W1 — the same crossing, one BOARD over: an nros zenoh-pico publisher
+# on a 32-bit Cortex-M3 (`mps2_an385`, Zephyr's IN-KERNEL IP stack over
+# `eth_smsc911x`, QEMU SLIRP) reaches a stock `ros2 topic echo` subscriber.
+#
+# Its sibling `test-ros2-qos` runs the same shape on `native_sim/native/64`,
+# where the sockets are the HOST's — so that cell says nothing about an RTOS
+# network stack and this one is the first live-peer cell that does.
+#
+# Same aiming contract as `test-ros2-qos`: deliberately NOT sequenced after
+# `build-fixtures`, because running the whole west lane to reach one cell is not
+# something anyone would type. Build the leaf
+# (`just zephyr build-fixtures`, `build-cortex-m-c-talker-zenoh`), then aim.
+#
+# Needs ROS 2 + `rmw_zenoh_cpp` + `qemu-system-arm`; skips on any of them.
+[group("debug")]
+test-ros2-cortex-m verbose="":
+    @just _test-focused 'binary(=pubsub_zephyr_cortex_m_ros2_interop_e2e)' {{verbose}}
+
 # Run Zephyr C examples test
 [group("debug")]
 test-c:

@@ -48,8 +48,13 @@ pub enum PlatformId {
     /// handler off native_sim, a duplicated cmake feature string, and a board
     /// with no entropy device), every one of them invisible to native_sim.
     ///
-    /// Cells here are C/C++ only: the pinned `zephyr-lang-rust` cannot compile
-    /// for any board whose devicetree has gpio nodes (issue 0432).
+    /// This used to read "cells here are C/C++ only: the pinned
+    /// `zephyr-lang-rust` cannot compile for any board whose devicetree has gpio
+    /// nodes (issue 0432)". **0432 was RESOLVED 2026-08-12 by phase-346 W2/W3**;
+    /// the Rust leaf has built since and `zephyr_cortex_m_rust_zenoh_pubsub_e2e`
+    /// runs it. Corrected phase-441 W1, which read the sentence as a constraint
+    /// and had to measure it to find out otherwise. All three languages are
+    /// live here.
     ZephyrQemuCortexM,
     /// FreeRTOS on QEMU MPS2-AN385 (lwIP).
     FreertosMps2,

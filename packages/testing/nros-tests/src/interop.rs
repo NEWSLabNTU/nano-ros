@@ -32,9 +32,14 @@ pub enum BuildChannel {
     /// Native example / workspace-entry binaries (`just native build-fixtures`
     /// families). Host platform only.
     NativeFixtures,
-    /// Zephyr workspace entry via the west leaves lane
+    /// Zephyr workspace entry or example leaf via the west leaves lane
     /// (`scripts/build/zephyr-fixture-leaves.sh`, driven by `just zephyr
     /// build-fixtures`).
+    ///
+    /// One channel, two BOARDS. The lane emits `native_sim/native/64` leaves and
+    /// `mps2_an385` leaves from the same manifest loop, so both
+    /// `PlatformId::ZephyrNativeSim` and `PlatformId::ZephyrQemuCortexM` are
+    /// producible here (phase-441 W1) — the board is a row field, not a channel.
     ZephyrWestLeaves,
 }
 
@@ -62,7 +67,10 @@ impl BuildChannel {
     pub const fn builds_platform(self, p: PlatformId) -> bool {
         match self {
             BuildChannel::NativeFixtures => matches!(p, PlatformId::Linux),
-            BuildChannel::ZephyrWestLeaves => matches!(p, PlatformId::ZephyrNativeSim),
+            BuildChannel::ZephyrWestLeaves => matches!(
+                p,
+                PlatformId::ZephyrNativeSim | PlatformId::ZephyrQemuCortexM
+            ),
         }
     }
 }
@@ -327,6 +335,39 @@ pub const CELLS: &[InteropCell] = &[
          CarveOut("no zephyr Cpp/Cyclonedds QoS-interop lane; the QoS zephyr \
                    interop test runs Rust/Zenoh (zenoh-pico). File a lane if wanted.")),
        ZephyrWestLeaves, RosEdition(Cyclonedds), BiDir, NO_TEST),
+
+    // ── phase-441 W1 — the live peer, one BOARD over ─────────────────────
+    // The row above is `ZephyrNativeSim`, i.e. `native_sim/native/64`:
+    // `CONFIG_NET_SOCKETS_OFFLOAD=y`, so its sockets, its libc and its 64-bit
+    // pointers are the HOST's and no RTOS network stack is ever in the path.
+    // Until this row, that was the whole of our non-Linux live-peer coverage —
+    // one platform, one language, one RMW, one workload — and calling it
+    // "on-target" was doing work the artifact did not support.
+    //
+    // This cell is `mps2_an385`: a 32-bit Cortex-M3 running Zephyr's IN-KERNEL
+    // IP stack over `eth_smsc911x`, reaching a host router through QEMU SLIRP.
+    // Everything else is deliberately held still — same RMW (zenoh-pico), same
+    // peer, same direction, same crossing mechanism (a baked TCP locator, not
+    // multicast: SLIRP is unicast-only and TAP needs root).
+    //
+    // Two axes move rather than one, and the second is forced. The workload is
+    // `Pubsub`, not the sibling's `Qos`, because no QoS workspace entry exists
+    // for any board but native_sim in ANY language — a QoS cell here would mean
+    // authoring an entry, a `[[workspace_fixture]]` row, a west build name and
+    // a port bake, none of which is the axis W1 exists to move. The C talker
+    // leaf is already built by the west lane at exactly this coordinate
+    // (`build-cortex-m-c-talker-zenoh`, locator `tcp/10.0.2.2:10700`), so this
+    // row adds a live peer and nothing else.
+    //
+    // The language is C, and NOT for the reason phase-441 gives: issue 0432
+    // (`zephyr-lang-rust` cannot build for a board with gpio nodes) was
+    // RESOLVED 2026-08-12 by phase-346 W2/W3 and the Rust leaf has run since.
+    // C is what the existing lane-built leaf is; it also exercises the other
+    // half of our API surface from the Rust sibling above.
+    ic("zephyr-cortex-m-pubsub-c-zenoh",
+       c(ZephyrQemuCortexM, C, Zenoh, Pubsub, Interop, Runtime),
+       ZephyrWestLeaves, RosEdition(Zenoh), NanoToRos,
+       "pubsub_zephyr_cortex_m_ros2_interop_e2e"),
 
     // ── Declarative cross-RMW bridges ───────────────────────────────────
     // The nano bridge is a `ws-bridge-*-rust` native_entry; a ROS 2 peer sits on

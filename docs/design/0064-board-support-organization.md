@@ -760,12 +760,20 @@ all: `mps2_an385` is `cmake/zephyr/mps2-an385.conf`, the FVP is
 `nros-board-zephyr/boards/fvp-aemv8r-smp/`. Adding a Zephyr architecture really
 did become adding a conf bundle.
 
-**One caveat worth carrying forward.** The Cortex-M witness's cells are C and
+~~**One caveat worth carrying forward.** The Cortex-M witness's cells are C and
 C++ only. The pinned `zephyr-lang-rust` cannot compile the `zephyr` crate for ANY
 board whose devicetree has gpio nodes (issue 0432) — essentially every real
-board — so Rust-on-Zephyr remains native_sim-only until that is fixed upstream.
-Nothing in this RFC's structure causes it, and nothing in this RFC's structure can
-fix it.
+board — so Rust-on-Zephyr remains native_sim-only until that is fixed upstream.~~
+
+**The caveat is RETIRED.** Issue 0432 was resolved 2026-08-12 by phase-346 W2/W3
+(`scripts/zephyr/zephyr-lang-rust-gpio-patch.sh` plus a `zephyr/patches.yml`
+entry, the first non-`zephyr` module in that file), and the Cortex-M witness has
+carried a Rust Runtime cell since. Rust-on-Zephyr is not native_sim-only. The
+paragraph above outlived its fact by four weeks in FOUR places at once — this
+RFC, `board-support.toml`, `matrix.rs` and `binaries/mod.rs` — and phase-441 read
+one of them as a design constraint before measuring it. Nothing in this RFC's
+structure caused that either; the lesson is that a caveat naming an OPEN issue
+needs the issue's status re-read before it is quoted, not after.
 
 **Deleted (12):** `native`, `posix` (→ `linux`), `nuttx-qemu-riscv` (→ merged),
 `rtic-mps2-an385` (→ feature), `fvp-aemv8r-smp` (→ conf bundle), `stm32f4`,
