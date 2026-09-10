@@ -221,6 +221,32 @@ xrce-source-manifest:
 zenoh-config-template:
     @python3 scripts/check-zenoh-config-template.py
 
+# Issue 1021 — zenoh-pico 1.8.0 did not COMPILE with `Z_FEATURE_MATCHING=0`,
+# which is what the Zephyr lane passes, and no lane but a Zephyr build could
+# see it: every other lane compiles MATCHING=1. This syntax-checks every TU the
+# shared manifest compiles unconditionally, on the host, in each configuration
+# the Zephyr lane's `zephyr_compile_definitions` really passes (derived, not
+# restated), with implicit declarations as errors. Its self-test undoes the
+# fork's fix (`0343ad1b`) and requires the issue's diagnostic back.
+#
+# Needs the zenoh-pico source and a C compiler, so on the source-free push lane
+# it is a RECORDED skip, not an OK; `gate.yml` provisions zenoh-pico before
+# `check fast` on pull_request / merge_group, where it runs. ~5 s at 4 jobs.
+[private]
+zenoh-feature-off-compile:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rc=0
+    out="$(python3 scripts/check-zenoh-feature-off-compile.py)" || rc=$?
+    if [ "$rc" -eq 78 ]; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip zenoh-feature-off-compile "$out"
+        exit 0
+    fi
+    printf '%s\n' "$out"
+    exit "$rc"
+
 zenohd-flag-invocations:
     @python3 scripts/check-zenohd-flag-invocations.py
 

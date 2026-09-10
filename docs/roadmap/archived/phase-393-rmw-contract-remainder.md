@@ -190,7 +190,7 @@ does.
   `nros_sertype.cpp` includes `<memory>` and `<string>` unconditionally, so
   cyclonedds cannot compile freestanding. Archived issue 0112's class at a new
   site, with the sibling TU in the same directory already carrying the lesson.
-* **[#1021](../../issues/1021-zenoh-pico-1-8-0-matching-off-build-break.md)** —
+* **[#1021](../../issues/archived/1021-zenoh-pico-1-8-0-matching-off-build-break.md)** —
   zenoh-pico 1.8.0 does not compile with `Z_FEATURE_MATCHING=0`, which is
   exactly what nano-ros passes on Zephyr. Upstream's, carried on our patch line.
 
