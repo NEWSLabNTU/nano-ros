@@ -107,7 +107,13 @@ def check_blob(rel, blob):
     build_target = data.get("build", {}).get("target")
     if isinstance(build_target, str):
         configured = set(data.get("target", {}))
-        if configured and build_target not in configured:
+        # A path to a custom target spec names its FILE STEM — the name cargo
+        # reads `[target.<triple>]` under (nuttx-riscv, phase-445). Same rule as
+        # the CLI's `triple_of_build_target`.
+        triple = build_target
+        if triple.endswith(".json"):
+            triple = triple[: -len(".json")].replace("\\", "/").rsplit("/", 1)[-1]
+        if configured and triple not in configured:
             problems.append(
                 f"{rel}: `[build] target = \"{build_target}\"` names a triple this "
                 f"blob does not configure ({', '.join(sorted(configured))}). "

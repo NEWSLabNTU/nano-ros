@@ -800,12 +800,30 @@ struct CargoConfigBuild {
 fn target_from_cargo_config(cargo_config: &str) -> Option<String> {
     let parsed: CargoConfigTemplate = toml::from_str(cargo_config).ok()?;
     if let Some(t) = parsed.build.and_then(|b| b.target) {
-        return Some(t);
+        return Some(triple_of_build_target(&t).to_string());
     }
     let mut keys = parsed.target.into_keys();
     match (keys.next(), keys.next()) {
         (Some(only), None) => Some(only),
         _ => None,
+    }
+}
+
+/// The triple a `[build] target` value names.
+///
+/// A bare triple names itself. A path to a custom target spec
+/// (`…/riscv32imac-unknown-nuttx-elf.json`) names its FILE STEM — which is how
+/// cargo itself names that target: the `[target.<triple>]` table it reads, the
+/// `<target-dir>/<triple>/` component it writes. The nuttx-riscv board states
+/// its triple this way (phase-445), because only its own spec turns off the
+/// `--eh-frame-hdr` the riscv-none-elf ld rejects; everything downstream
+/// (preflight's `config/rust-targets.txt` lookup, artifact locators) wants the
+/// triple, never the path.
+#[must_use]
+pub fn triple_of_build_target(value: &str) -> &str {
+    match value.strip_suffix(".json") {
+        Some(path) => path.rsplit(['/', '\\']).next().unwrap_or(path),
+        None => value,
     }
 }
 
@@ -2025,6 +2043,27 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
     /// on `[[board]]`. Before this, `BoardDescriptor::target` was `None` for
     /// EVERY board in the tree and both readers silently got nothing.
     #[test]
+    fn a_target_spec_path_names_its_file_stem() {
+        assert_eq!(
+            triple_of_build_target("thumbv7m-none-eabi"),
+            "thumbv7m-none-eabi"
+        );
+        assert_eq!(
+            triple_of_build_target(
+                "${workspace}/packages/boards/b/riscv32imac-unknown-nuttx-elf.json"
+            ),
+            "riscv32imac-unknown-nuttx-elf"
+        );
+        assert_eq!(triple_of_build_target("local-spec.json"), "local-spec");
+        let cfg = "[build]\ntarget = \"${workspace}/x/riscv32imac-unknown-nuttx-elf.json\"\n\
+                   [target.riscv32imac-unknown-nuttx-elf]\nlinker = \"riscv-none-elf-gcc\"\n";
+        assert_eq!(
+            target_from_cargo_config(cfg).as_deref(),
+            Some("riscv32imac-unknown-nuttx-elf")
+        );
+    }
+
+    #[test]
     fn shipped_boards_resolve_their_rustc_triple() {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
@@ -2036,6 +2075,9 @@ signature = "#[nros_board_stm32f4::entry]\nfn main() -> !"
             ("mps2-an385-freertos", "thumbv7m-none-eabi"),
             ("mps3-an536-freertos", "armv8r-none-eabihf"),
             ("esp32-qemu", "riscv32imc-unknown-none-elf"),
+            // States `[build] target` as a PATH to its own target spec
+            // (phase-445); the triple is the spec's file stem.
+            ("nuttx-riscv", "riscv32imac-unknown-nuttx-elf"),
         ] {
             let d = match catalog.resolve_deploy(board) {
                 DeployResolution::Board(d) => d,
