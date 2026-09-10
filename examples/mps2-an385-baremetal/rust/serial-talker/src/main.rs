@@ -1,7 +1,7 @@
 //! Serial (UART) talker entry for QEMU MPS2-AN385 (phase-244.D1).
 //!
 //! Collapses to `nros::main!()`: the macro reads
-//! `[package.metadata.nros.entry] deploy = "qemu-mps2-an385"`, resolves the
+//! `[image.*] board = "qemu-mps2-an385"`, resolves the
 //! bare-metal board, and emits the `#[cortex_m_rt::entry]` boot scaffold that
 //! brings up the UART link, opens the executor, registers the linked RMW, and
 //! runs `serial_talker_pkg`'s node. The board is built with the `serial`

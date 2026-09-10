@@ -1,0 +1,28 @@
+# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
+# schema a workspace bringup uses. Switching board is editing `[image.*] board`
+# and re-running `nros sync`.
+
+
+[system]
+name = "threadx_linux_rs_action_server"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "threadx_linux_rs_action_server"
+class = "threadx_linux_rs_action_server::FibonacciServer"
+name = "fibonacci_action_server"
+
+# ThreadX's Linux simulator (a hosted process).
+[image.threadx-linux]
+board = "threadx-linux"
+locator = "tcp/127.0.0.1:9020"
+
+# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
+# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
+# name, because that is what the fact is about (issue 0951). Generated
+# from `just/sdk-env.just`; this gate keeps the two in step. `{env:…}`
+# rather than a literal so the value survives a second checkout.
+[board_config."threadx-linux"]
+netstack = "netxduo"
+sdk = { threadx = "{env:THREADX_DIR}", netxduo = "{env:NETX_DIR}" }

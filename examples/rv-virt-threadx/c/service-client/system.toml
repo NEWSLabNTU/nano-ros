@@ -1,0 +1,21 @@
+# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
+# schema a workspace bringup uses, and the same file a Rust leaf writes.
+# Replaces the `package.xml` `<nano_ros deploy= board= rmw=/>` tuple:
+# `find_package(nano_ros)` reads this through `nros ws leaf-system`, which
+# derives the platform (`threadx`) from the board. Switching board is editing
+# `[image.*] board`.
+
+
+[system]
+name = "riscv64_threadx_c_service_client"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "riscv64_threadx_c_service_client"
+class = "riscv64_threadx_c_service_client::ServiceClient"
+name = "add_two_ints_client"
+
+# ThreadX on the QEMU RISC-V virt machine.
+[image.rv-virt-threadx]
+board = "rv-virt-threadx"

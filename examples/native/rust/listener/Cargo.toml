@@ -16,14 +16,8 @@ name = "native_rs_listener"
 crate-type = ["rlib"]
 path = "src/lib.rs"
 
-# Phase 212.L.2 — Application pkg shape. Native-only deploy target.
-[package.metadata.nros.entry]
-deploy = "native"
-
-[package.metadata.nros.node]
-class = "native_rs_listener::Listener"
-name = "listener"
-default_namespace = "/"
+# The board, network identity and node declaration live in `system.toml` beside
+# this manifest (RFC-0098 D3/D5) — nothing here names a board.
 
 [features]
 # Phase 118 — RMW selected at build time. Default is `rmw-zenoh`

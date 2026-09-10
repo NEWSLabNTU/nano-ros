@@ -107,7 +107,7 @@ impl BoardEntry for Esp32QemuEntry {
     }
 
     /// Phase 244 E5 / issue #48 — overlay the `nros::main!()` deploy block
-    /// (`[package.metadata.nros.deploy.esp32-qemu]`: locator / ip / gateway /
+    /// (`[image.*]` in the leaf's `system.toml`: locator / ip / gateway /
     /// domain_id) onto the board default before boot, so the firmware dials the
     /// deploy-named endpoint instead of the inert compiled-in default. Fields the
     /// deploy block omits keep the board default. (`netmask` maps to the board's

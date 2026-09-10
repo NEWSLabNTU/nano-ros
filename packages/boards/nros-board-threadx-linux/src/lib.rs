@@ -148,7 +148,7 @@ impl nros_platform::BoardEntry for ThreadxLinux {
     }
 
     /// Issue #48 cause 1 / Phase 244 E5 — apply the `nros::main!()` deploy overlay
-    /// (`[package.metadata.nros.deploy.threadx-linux]`: locator / ip / gateway /
+    /// (`[image.*]` in the leaf's `system.toml`: locator / ip / gateway /
     /// netmask / domain_id) onto `Config::default()` before boot, so the firmware
     /// dials the deploy-named endpoint instead of the inert compiled-in default.
     /// Fields the deploy block omits keep the board default. (NSOS routes through

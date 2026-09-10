@@ -67,7 +67,7 @@ fn base_config() -> Config {
 }
 
 /// Build the board boot [`Config`] from the per-link base default, overlaying
-/// any `[package.metadata.nros.deploy.<board>]` fields the Entry pkg supplied
+/// any `[image.*]` fields the leaf's `system.toml` supplied
 /// (issue #48 cause 1). `None` fields keep the board default. The ip/gateway/
 /// netmask overlay is ethernet-only (the serial `Config` has no IP fields); the
 /// locator + domain overlay applies to both links.

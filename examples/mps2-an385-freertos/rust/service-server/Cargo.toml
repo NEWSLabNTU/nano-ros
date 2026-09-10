@@ -45,23 +45,8 @@ example_interfaces = { path = "generated/example_interfaces", default-features =
 # entry runtime owns the sink.
 log = "0.4"
 
-[package.metadata.nros.entry]
-deploy = "freertos"
-
-[package.metadata.nros.node]
-class = "freertos_rs_service_server::AddTwoIntsServer"
-name = "service_server"
-default_namespace = "/"
-
-[package.metadata.nros.deploy.freertos]
-rmw = "zenoh"
-domain_id = 0
-# phase-338 W2 — the ENTRY's locator, not the node's. The role
-# ports are what the e2e harness binds zenohd to; the node block's
-# generic 7447 was never the deployed value.
-locator = "tcp/10.0.2.2:7810"
-ip = "10.0.2.15"
-gateway = "10.0.2.2"
+# The board, network identity and node declaration live in `system.toml` beside
+# this manifest (RFC-0098 D3/D5) — nothing here names a board.
 
 [package.metadata.ament]
 build_depend = ["example_interfaces"]

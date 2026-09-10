@@ -17,24 +17,8 @@ bench = false
 [lib]
 crate-type = ["rlib"]
 
-[package.metadata.nros.entry]
-deploy = "qemu-mps2-an385"
-
-[package.metadata.nros.node]
-class = "qemu_bsp_listener::ListenerNode"
-name = "qemu_bsp_listener"
-default_namespace = "/"
-dispatch = "deferred"
-
-# Issue #48 cause 1 — net config that used to live in the hardcoded `Config`
-# literal now rides here; `nros::main!()` bakes it into a `DeployOverlay` and
-# the board applies it in `run_with_deploy`. Mirrors the old listener Config
-# (ip 10.0.2.11, prefix 24 → netmask 255.255.255.0).
-[package.metadata.nros.deploy.qemu-mps2-an385]
-locator = "tcp/10.0.2.2:10500"
-ip = "10.0.2.11"
-gateway = "10.0.2.2"
-netmask = "255.255.255.0"
+# The board, network identity and node declaration live in `system.toml` beside
+# this manifest (RFC-0098 D3/D5) — nothing here names a board.
 
 [dependencies]
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }

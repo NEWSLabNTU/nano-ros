@@ -18,7 +18,7 @@ QEMU / flashing steps live in the [rv-virt-threadx README](https://github.com/NE
 
 ## Config
 
-Board, RMW, domain and locator: `Cargo.toml` →
-`[package.metadata.nros.deploy.threadx-qemu-riscv64]`.
+Board, RMW, domain and locator: `system.toml` beside `Cargo.toml`
+(`[image.<id>]` + `[system]`, RFC-0098 D3/D5).
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

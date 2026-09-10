@@ -1,0 +1,19 @@
+# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
+# schema a workspace bringup uses. Switching board is editing `[image.*] board`
+# and re-running `nros sync`.
+
+
+[system]
+name = "native_action_client"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "native_action_client"
+class = "native_rs_action_client::FibonacciClient"
+name = "fibonacci_action_client"
+
+# Host build. The locator and domain stay runtime env on native
+# (`NROS_LOCATOR` / `ROS_DOMAIN_ID`); the board applies only the node name.
+[image.native]
+board = "native"

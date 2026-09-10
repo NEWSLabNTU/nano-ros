@@ -62,13 +62,16 @@ GH = "https://github.com/NEWSLabNTU/nano-ros/blob/main"
 
 
 def deploy_target(leaf: pathlib.Path) -> str | None:
-    """The `<target>` in `[package.metadata.nros.deploy.<target>]`, if any."""
-    cargo = leaf / "Cargo.toml"
-    if not cargo.is_file():
+    """The `<id>` of the leaf's `[image.<id>]` in `system.toml`, if any.
+
+    phase-445 W3b (RFC-0098 D3/D5): a single-package leaf states its board and
+    network identity in `system.toml` beside its manifest; the retired
+    `[package.metadata.nros.deploy.<target>]` table is gone.
+    """
+    system = leaf / "system.toml"
+    if not system.is_file():
         return None
-    m = re.search(
-        r"^\[package\.metadata\.nros\.deploy\.([^\]]+)\]", cargo.read_text(), re.M
-    )
+    m = re.search(r"^\[image\.([^\]]+)\]", system.read_text(), re.M)
     return m.group(1) if m else None
 
 
@@ -153,10 +156,10 @@ def render(leaf: pathlib.Path) -> str:
     lines += ["", "## Config", ""]
     tgt = deploy_target(leaf)
     knob = cmake_knob(leaf)
-    if is_rust and tgt:
+    if tgt:
         lines += [
-            "Board, RMW, domain and locator: `Cargo.toml` →",
-            f"`[package.metadata.nros.deploy.{tgt}]`.",
+            "Board, RMW, domain and locator: `system.toml` beside the manifest",
+            f"(`[image.{tgt}]` + `[system]`, RFC-0098 D3/D5).",
         ]
     elif is_rust:
         feats = rmw_features(leaf)

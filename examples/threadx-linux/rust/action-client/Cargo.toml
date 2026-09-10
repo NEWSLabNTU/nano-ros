@@ -24,7 +24,7 @@ crate-type = ["rlib"]
 # obligation was invisible: libstd supplied the items and no one had to notice.
 
 [features]
-# Phase 248 C6e — RMW is selected by config (`[package.metadata.nros.deploy.*].rmw`)
+# Phase 248 C6e — RMW is selected by config (`system.toml`'s `[system] rmw`)
 # and the concrete backend is linked by the board's C port (NetX-Duo BSD / zpico-sys
 # C TU), NOT a Rust `nros/rmw-*` dep. These rows are now inert build-target markers
 # (same pattern as `nros-board-mps2-an385`), kept so existing
@@ -67,19 +67,8 @@ example_interfaces = { path = "generated/example_interfaces", default-features =
 # runtime owns the sink.
 log = "0.4"
 
-[package.metadata.nros.entry]
-deploy = "threadx-linux"
-
-[package.metadata.nros.node]
-class = "threadx_linux_rs_action_client::FibonacciClient"
-name = "fibonacci_action_client"
-default_namespace = "/"
-
-[package.metadata.nros.deploy.threadx-linux]
-board = "threadx-linux"
-rmw = "zenoh"
-domain_id = 0
-locator = "tcp/127.0.0.1:9020"
+# The board, network identity and node declaration live in `system.toml` beside
+# this manifest (RFC-0098 D3/D5) — nothing here names a board.
 
 [package.metadata.ament]
 build_depend = ["example_interfaces"]

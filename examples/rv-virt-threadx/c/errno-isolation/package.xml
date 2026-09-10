@@ -9,6 +9,5 @@
 
   <export>
     <build_type>nros_cmake</build_type>
-    <nano_ros deploy="threadx" board="rv-virt-threadx" rmw="zenoh"/>
   </export>
 </package>

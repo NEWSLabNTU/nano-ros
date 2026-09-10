@@ -17,15 +17,11 @@ bench = false
 [lib]
 crate-type = ["rlib"]
 
-[package.metadata.nros.entry]
-deploy = "rtic-mps2-an385"
-node_pkgs = ["qemu-rtic-main-e2e"]
+# The board, network identity and node declaration live in `system.toml` beside
+# this manifest (RFC-0098 D3/D5) — nothing here names a board.
 
-[package.metadata.nros.node]
-class = "qemu_rtic_main_e2e::E2eNode"
-name = "rtic_run_plan_e2e"
-default_namespace = "/"
-dispatch = "deferred"
+[package.metadata.nros.entry]
+node_pkgs = ["qemu-rtic-main-e2e"]
 
 [dependencies]
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }

@@ -8,7 +8,7 @@
 //! (`nros-board-threadx-qemu-riscv64`, `BoardEntry::run`) owns `nros::init`,
 //! executor open, RMW registration, and the spin loop. RMW selection
 //! (zenoh / cyclonedds) lives in `Cargo.toml [features]`; the locator + domain in
-//! `[package.metadata.nros.deploy.threadx-qemu-riscv64]` — never here.
+//! `system.toml`'s `[image.rv-virt-threadx]` — never here.
 
 #![no_std]
 
@@ -72,4 +72,3 @@ nros::node!(AddTwoIntsServer);
 // executor open, RMW registration, and the spin loop; the `nros::node!()`-emitted
 // `register` declares the server. No manual `Executor::open` / `register_rmw` /
 // spin loop / hardcoded locator in the example.
-

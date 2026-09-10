@@ -155,8 +155,8 @@ impl BoardExit for RticMps2An385 {
     }
 }
 
-/// Phase 244.D1 — overlay a `[package.metadata.nros.deploy.rtic-mps2-an385]`
-/// block onto [`Config::qemu_slirp`], so each RTIC Entry pkg can pin its own
+/// Phase 244.D1 — overlay the leaf `system.toml`'s `[image.*]` deployment
+/// identity onto [`Config::qemu_slirp`], so each RTIC Entry pkg can pin its own
 /// ip / locator / gateway (required when the talker-rtic + listener-rtic
 /// pub/sub pair share this board on one QEMU network). `None` fields keep the
 /// baked default.
@@ -199,7 +199,7 @@ pub struct RticBoot {
 /// #178 — does NOT open the executor (that blocking connect is deferred to
 /// [`RticMps2An385::open_executor`]); returns the `(RticBoot, RticRuntime)` pair.
 ///
-/// `deploy` — the `[package.metadata.nros.deploy.<board>]` overlay; `None` on
+/// `deploy` — the leaf `system.toml`'s `[image.*]` overlay; `None` on
 /// the no-deploy code path.  Issue #98 / RFC-0045 — node name comes from
 /// `deploy.boot_config` (the baked `.nros_boot_config`), falling back to the
 /// board-historical default `"nros-rtic-mps2"`.

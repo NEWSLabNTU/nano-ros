@@ -57,17 +57,8 @@ zephyr-build = "0.1.0"
 # resolved by the `nros sync` leaf-local patch.
 nros-zephyr-build = "*"
 
-# Phase 212.L.1 Component pkg metadata. `class` MUST match the
-# `<pkg-name>::<UserClass>` shape that `nros check` (L.4) enforces.
-[package.metadata.nros.node]
-class = "nros_zephyr_service_client::AddTwoIntsClient"
-name = "service_client"
-default_namespace = "/"
-
-[package.metadata.nros.deploy.zephyr]
-board = "native_sim/native/64"
-rmw = "zenoh"
-domain_id = 0
+# The board, network identity and node declaration live in `system.toml` beside
+# this manifest (RFC-0098 D3/D5) — nothing here names a board.
 
 [package.metadata.ament]
 build_depend = ["example_interfaces"]

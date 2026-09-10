@@ -1,0 +1,29 @@
+# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
+# schema a workspace bringup uses, and the same file a Rust leaf writes.
+# Replaces the `package.xml` `<nano_ros deploy= board= rmw=/>` tuple:
+# `find_package(nano_ros)` reads this through `nros ws leaf-system`, which
+# derives the platform (`nuttx`) from the board. Switching board is editing
+# `[image.*] board`.
+
+
+[system]
+name = "nuttx_cpp_action_server"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "nuttx_cpp_action_server"
+class = "nuttx_cpp_action_server::ActionServer"
+name = "fibonacci_action_server"
+
+# NuttX on the QEMU ARM virt machine.
+[image.qemu-armv7a-nuttx]
+board = "qemu-armv7a-nuttx"
+
+# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
+# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
+# name, because that is what the fact is about (issue 0951). Generated
+# from `just/sdk-env.just`; this gate keeps the two in step. `{env:…}`
+# rather than a literal so the value survives a second checkout.
+[board_config."qemu-armv7a-nuttx"]
+sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }

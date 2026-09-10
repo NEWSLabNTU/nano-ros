@@ -17,14 +17,8 @@ bench = false
 [lib]
 crate-type = ["rlib"]
 
-[package.metadata.nros.entry]
-deploy = "qemu-mps2-an385"
-
-[package.metadata.nros.node]
-class = "qemu_baremetal_main_e2e::E2eNode"
-name = "qemu_baremetal_e2e"
-default_namespace = "/"
-dispatch = "deferred"
+# The board, network identity and node declaration live in `system.toml` beside
+# this manifest (RFC-0098 D3/D5) — nothing here names a board.
 
 [dependencies]
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }
