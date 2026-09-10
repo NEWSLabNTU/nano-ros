@@ -96,6 +96,28 @@ if ! command -v just >/dev/null 2>&1; then
     export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
 fi
 
+# --- Python packages ---------------------------------------------------------
+#
+# nano-ros deliberately does NOT install these: choosing between a distro
+# package, `pip --user` and a venv is a decision about YOUR interpreter, and on
+# a PEP 668 host pip refuses `--user` outright. It reports them and stops.
+#
+# A runner container has no "your interpreter" to respect — the image owns it,
+# it is the python3.10 Ubuntu 22.04 ships, and it is not PEP 668. The decision
+# the repo correctly leaves to an operator is made HERE, once, where it is a
+# property of the image rather than of one contributor laptop. `pip --user` puts it in
+# ~/.local, which is a volume, so it persists exactly like rustup and the SDKs.
+#
+# `tomli` is not optional and does not announce itself. python3.10 has no
+# `tomllib`, so `fixtures-manifest.py` cannot parse `examples/fixtures.toml` —
+# and `nros_platform_rmws` runs it with stderr redirected to /dev/null, so the
+# import error is reported as: no fixture rows for platform threadx-riscv64.
+# That failed `just setup threadx_riscv64` with a message about a platform name
+# that is in fact present, 42 times, in the manifest it could not read.
+echo "  installing the Python packages the image owes its interpreter"
+python3 -m pip install --user --quiet --disable-pip-version-check \
+    tomli PyYAML jsonschema packaging pyelftools pykwalify west
+
 ./scripts/ci/runner-provision.sh "$LABELS"
 
 # The verification is the point of the whole script. `runner-provision` ends
