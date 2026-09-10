@@ -194,12 +194,12 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
 
         let mut descriptor = ParameterDescriptor::new(self.name, T::parameter_type())
             .ok_or(ParameterError::StorageFull)?;
-        descriptor.description.clear();
+        // phase-446 F2 -- a too-long description is truncated and reported,
+        // never a reason to refuse the declaration: the contract derives the
+        // string capacity to 0 for a scalar-only image, and this used to fail
+        // every `.description(..)` there with `StringConversion`.
         if let Some(desc) = self.description {
-            descriptor
-                .description
-                .push_str(desc)
-                .map_err(|_| ParameterError::StringConversion)?;
+            descriptor.set_description(desc);
         }
         descriptor.read_only = true;
         descriptor.range = self.range.unwrap_or_default();
@@ -218,12 +218,12 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
     pub fn mandatory(self) -> Result<MandatoryParameter<'a, 's, T>, ParameterError> {
         let mut descriptor = ParameterDescriptor::new(self.name, T::parameter_type())
             .ok_or(ParameterError::StorageFull)?;
-        descriptor.description.clear();
+        // phase-446 F2 -- a too-long description is truncated and reported,
+        // never a reason to refuse the declaration: the contract derives the
+        // string capacity to 0 for a scalar-only image, and this used to fail
+        // every `.description(..)` there with `StringConversion`.
         if let Some(desc) = self.description {
-            descriptor
-                .description
-                .push_str(desc)
-                .map_err(|_| ParameterError::StringConversion)?;
+            descriptor.set_description(desc);
         }
         descriptor.read_only = self.read_only;
         descriptor.range = self.range.unwrap_or_default();
@@ -240,12 +240,12 @@ impl<'a, 's, T: ParameterVariant> ParameterBuilder<'a, 's, T> {
     pub fn optional(self) -> Result<OptionalParameter<'a, 's, T>, ParameterError> {
         let mut descriptor = ParameterDescriptor::new(self.name, T::parameter_type())
             .ok_or(ParameterError::StorageFull)?;
-        descriptor.description.clear();
+        // phase-446 F2 -- a too-long description is truncated and reported,
+        // never a reason to refuse the declaration: the contract derives the
+        // string capacity to 0 for a scalar-only image, and this used to fail
+        // every `.description(..)` there with `StringConversion`.
         if let Some(desc) = self.description {
-            descriptor
-                .description
-                .push_str(desc)
-                .map_err(|_| ParameterError::StringConversion)?;
+            descriptor.set_description(desc);
         }
         descriptor.read_only = self.read_only;
         descriptor.range = self.range.unwrap_or_default();

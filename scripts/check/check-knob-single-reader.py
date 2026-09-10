@@ -75,6 +75,7 @@ OWNERS: dict[str, str] = {
     "NROS_MAX_STRING_VALUE_LEN": "packages/core/nros-params/build.rs",
     "NROS_MAX_ARRAY_LEN": "packages/core/nros-params/build.rs",
     "NROS_MAX_BYTE_ARRAY_LEN": "packages/core/nros-params/build.rs",
+    "NROS_MAX_PARAM_DESCRIPTION_LEN": "packages/core/nros-params/build.rs",
     # The RMW static-pool tenant (phase-400 W6). `NROS_RMW_SUBSCRIBER_SLOTS`
     # is NOT here: it lives in the same build script and looks identical, but
     # phase-412 W1 derives it from the entity inventory, so the census classes

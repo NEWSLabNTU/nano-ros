@@ -2942,6 +2942,50 @@ fn use_sim_time_declared_with_a_descriptor_attaches_the_clock_source() {
     assert!(crate::time_source::is_active());
 }
 
+/// phase-446 F2 -- a description longer than `NROS_MAX_PARAM_DESCRIPTION_LEN`
+/// is stored truncated and reported by the NEXT spin, once.
+///
+/// The log line itself goes to `nros_log`; what this pins is the handover the
+/// line depends on: the spin drains the store's record, so a second spin has
+/// nothing left to report and the line cannot repeat.
+#[cfg(feature = "param-services")]
+#[test]
+fn a_truncated_description_is_reported_by_the_next_spin_once() {
+    let mut executor: Executor = executor_with_clock(MockSession::new());
+    let long = "x".repeat(nros_params::MAX_PARAM_DESCRIPTION_LEN + 1);
+    let descriptor =
+        nros_params::ParameterDescriptor::new("gain", nros_params::ParameterType::Double)
+            .expect("name fits")
+            .with_description(&long);
+    assert!(executor.declare_parameter_with_descriptor(
+        "gain",
+        nros_params::ParameterValue::Double(1.0),
+        descriptor,
+    ));
+    let stored = executor
+        .params()
+        .and_then(|s| s.get_descriptor(nros_params::NodeKey::PRIMARY, "gain"))
+        .expect("declared with a descriptor");
+    assert_eq!(
+        stored.description.len(),
+        nros_params::MAX_PARAM_DESCRIPTION_LEN,
+        "the prefix is kept, not dropped whole"
+    );
+    assert!(stored.description_truncated(), "not reported before a spin");
+
+    let _ = executor.spin_once(core::time::Duration::from_millis(0));
+    let mut again = 0;
+    let reported = executor
+        .params_mut()
+        .expect("store")
+        .take_truncated_descriptions(|_, _| again += 1);
+    assert_eq!(
+        (reported, again),
+        (0, 0),
+        "the spin reported it; nothing is left to report twice"
+    );
+}
+
 // -- phase-426 W1/W2: the executor's parameter API --
 
 /// phase-426 W2 -- `Executor::set_parameter` IS `ParameterServer::apply`.

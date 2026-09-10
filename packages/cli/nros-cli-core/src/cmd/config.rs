@@ -353,6 +353,7 @@ fn explain(args: ExplainArgs) -> Result<()> {
         ("max_string_value_len", 256),
         ("max_array_len", 32),
         ("max_byte_array_len", 256),
+        ("max_param_description_len", 256),
     ];
     for (name, r) in tree
         .resolve_params(

@@ -446,6 +446,9 @@ impl BuildRungs {
             max_string_value_len: b.max_string_value_len.or(plat.max_string_value_len),
             max_array_len: b.max_array_len.or(plat.max_array_len),
             max_byte_array_len: b.max_byte_array_len.or(plat.max_byte_array_len),
+            max_param_description_len: b
+                .max_param_description_len
+                .or(plat.max_param_description_len),
         }
     }
 
@@ -633,6 +636,11 @@ pub struct ParamKnobs {
     pub max_array_len: Option<usize>,
     #[serde(default)]
     pub max_byte_array_len: Option<usize>,
+    /// phase-446 F2 -- a parameter DESCRIPTION's capacity. A board fact: the
+    /// contract declares no descriptions, so nothing derives it, and 0 means
+    /// "no descriptions".
+    #[serde(default)]
+    pub max_param_description_len: Option<usize>,
 }
 
 /// phase-400 W6 — the RMW static-pool tenant.
@@ -788,6 +796,7 @@ pub const PARAM_KNOBS: &[&str] = &[
     "max_string_value_len",
     "max_array_len",
     "max_byte_array_len",
+    "max_param_description_len",
 ];
 
 /// The env front-end for a parameter knob — the EXISTING names, verbatim.
@@ -798,6 +807,7 @@ pub fn param_env_key(knob: &str) -> &'static str {
         "max_string_value_len" => "NROS_MAX_STRING_VALUE_LEN",
         "max_array_len" => "NROS_MAX_ARRAY_LEN",
         "max_byte_array_len" => "NROS_MAX_BYTE_ARRAY_LEN",
+        "max_param_description_len" => "NROS_MAX_PARAM_DESCRIPTION_LEN",
         other => panic!("unknown param knob `{other}`"),
     }
 }
@@ -1758,6 +1768,10 @@ impl PlatformsTree {
                 (&mut out.max_string_value_len, p.max_string_value_len),
                 (&mut out.max_array_len, p.max_array_len),
                 (&mut out.max_byte_array_len, p.max_byte_array_len),
+                (
+                    &mut out.max_param_description_len,
+                    p.max_param_description_len,
+                ),
             ] {
                 if src.is_some() {
                     *dst = src;
@@ -2116,6 +2130,7 @@ impl PlatformsTree {
             "max_string_value_len" => k.max_string_value_len,
             "max_array_len" => k.max_array_len,
             "max_byte_array_len" => k.max_byte_array_len,
+            "max_param_description_len" => k.max_param_description_len,
             _ => None,
         };
         let mut out = Vec::new();

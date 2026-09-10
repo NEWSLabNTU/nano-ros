@@ -262,6 +262,36 @@ instead of every slot) stays under "Not in this phase".
 `describe` with the code's text; a longer description is truncated with one
 log line naming the knob.
 
+**Landed** (F2 PR, on top of W4 #872). `NROS_MAX_PARAM_DESCRIPTION_LEN`, crate
+default 256, on the per-slot ladder (env > Kconfig / `[knobs.params]
+max_param_description_len` > default) and never derived; Zephyr gains
+`CONFIG_NROS_MAX_PARAM_DESCRIPTION_LEN` (`range 0 256`), forwarded to cargo.
+256 is the old effective capacity, so an image that states nothing keeps every
+description it had, and it is the most the describe reply's
+`rcl_interfaces` string carries; nros-node refuses a larger value at compile
+time. Every description write (`with_description`, the typed builder, the
+legacy builder) goes through one `fit_description`, which cuts at a UTF-8
+boundary and records the cut on the descriptor. The typed builder used to
+REFUSE the whole declaration with `StringConversion` instead. nros-params has
+no logger, so the executor drains the record on each spin
+(`ParameterServer::take_truncated_descriptions`, one flag test while nothing
+is pending) and logs one warning per parameter naming the knob.
+
+The C and C++ APIs have no description road at all (`params_shim.rs` and
+`parameter.h` declare values only, and `ComponentNode` shares that facade), so
+they reach neither the field nor the report. That makes the knob pure cost
+for a C++ image. Measured `size_of`, at the downstream's derived limits (25
+slots, names 35, string / array / byte-array 0):
+
+| description capacity | slot | `ParameterStorage<25>` |
+| --- | --- | --- |
+| before F2 (shared with strings, derived 0) | 168 B | 4,200 B |
+| 0 | 168 B | 4,200 B |
+| 64 | 232 B | 5,800 B |
+| 256 (default) | 424 B | 10,600 B |
+
+So the downstream's C++ board should state `max_param_description_len = 0`.
+
 ### F3 -- the parameter-service buffer is derived from the declarations
 
 W5 shares one request/reply pair per executor at the configured

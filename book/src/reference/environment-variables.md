@@ -217,3 +217,4 @@ env or Kconfig knob. Changing them means editing that header.
 | `NROS_MAX_STRING_VALUE_LEN`     | Max string parameter value length                                                        | `256`   | nros-params |
 | `NROS_MAX_ARRAY_LEN`            | Max parameter array length                                                               | `32`    | nros-params |
 | `NROS_MAX_BYTE_ARRAY_LEN`       | Max byte array parameter length                                                          | `256`   | nros-params |
+| `NROS_MAX_PARAM_DESCRIPTION_LEN` | Max parameter description length; longer is truncated and logged, 0 = none (max 256)   | `256`   | nros-params |

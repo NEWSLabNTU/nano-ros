@@ -238,9 +238,49 @@ pub struct ParameterServer<'s> {
     /// phase-426 W1 — PER NODE, because upstream's is a node option. One node
     /// opting in must not decide what a remote set may do to its sibling.
     allow_undeclared: NodeFlags,
+    /// phase-446 F2 -- a declared descriptor holds a truncated description
+    /// nobody has reported yet. Lets [`Self::take_truncated_descriptions`]
+    /// answer "nothing" without walking the table, which is what lets the
+    /// executor ask on every spin.
+    truncation_pending: bool,
 }
 
 impl<'s> ParameterServer<'s> {
+    /// phase-446 F2 -- report each declared parameter whose description was
+    /// truncated to `NROS_MAX_PARAM_DESCRIPTION_LEN`, ONCE, and forget it.
+    ///
+    /// This crate has no logger, so it records the truncation on the
+    /// descriptor and the executor, which has one, drains it here and logs.
+    /// The truncation itself happens where the text is given
+    /// ([`ParameterDescriptor::set_description`]), and a declaration can come
+    /// through several builders; the store is where every one of them lands.
+    /// Returns how many were reported.
+    pub fn take_truncated_descriptions(&mut self, mut report: impl FnMut(NodeKey, &str)) -> usize {
+        if !self.truncation_pending {
+            return 0;
+        }
+        self.truncation_pending = false;
+        let mut n = 0;
+        for entry in self.table.entries.iter_mut().flatten() {
+            if let Some(d) = entry.descriptor.as_mut()
+                && d.description_truncated()
+            {
+                d.clear_description_truncated();
+                report(entry.node, entry.param.name.as_str());
+                n += 1;
+            }
+        }
+        n
+    }
+
+    /// Note a descriptor entering the store (phase-446 F2).
+    #[inline]
+    fn note_descriptor(&mut self, descriptor: Option<&ParameterDescriptor>) {
+        if descriptor.is_some_and(ParameterDescriptor::description_truncated) {
+            self.truncation_pending = true;
+        }
+    }
+
     /// Create a parameter server over `table`.
     ///
     /// The server ADOPTS whatever the table already holds: `count` is
@@ -257,6 +297,9 @@ impl<'s> ParameterServer<'s> {
             table,
             count,
             allow_undeclared: NodeFlags::new(),
+            // An adopted table may already hold a truncated description, so
+            // the first drain looks rather than assuming none.
+            truncation_pending: true,
         }
     }
 
@@ -387,6 +430,7 @@ impl<'s> ParameterServer<'s> {
             None => return false,
         };
 
+        self.note_descriptor(descriptor.as_ref());
         self.table.entries[slot] = Some(ParameterEntry {
             node,
             param,
@@ -694,6 +738,7 @@ impl<'s> ParameterServer<'s> {
 
         let param = Parameter::new(name, param_value).ok_or(SetParameterResult::StorageFull)?; // name too long
 
+        self.note_descriptor(Some(&descriptor));
         self.table.entries[slot] = Some(ParameterEntry {
             node,
             param,
@@ -761,9 +806,10 @@ impl<'a, 's> LegacyParameterBuilder<'a, 's> {
         if self.descriptor.is_none() {
             self.descriptor = ParameterDescriptor::new(self.name.as_str(), param_type);
         }
+        // phase-446 F2 -- truncated at a character boundary and recorded,
+        // where `let _ = push_str` stored nothing for a too-long description.
         if let Some(ref mut d) = self.descriptor {
-            d.description.clear();
-            let _ = d.description.push_str(desc);
+            d.set_description(desc);
         }
         self
     }
@@ -830,6 +876,69 @@ mod tests {
     /// phase-426 W1 — the node these single-node tests are about.
     const NODE: NodeKey = NodeKey::PRIMARY;
     use crate::types::{ParameterDescriptor, ParameterType};
+
+    // ── phase-446 F2: a truncated description is reported once ──
+
+    /// Every declare path records a truncated description on the stored
+    /// descriptor -- the plain descriptor, the typed builder and the legacy
+    /// builder -- and `take_truncated_descriptions` hands each one over
+    /// exactly once, with its node and name. A description that fits is
+    /// never reported.
+    #[test]
+    fn each_truncated_description_is_handed_over_once() {
+        let long = "y".repeat(crate::MAX_PARAM_DESCRIPTION_LEN + 1);
+        let other = NodeKey::new(1);
+        let mut storage = ParameterStorage::<8>::new();
+        let mut server = ParameterServer::new_in(storage.as_table());
+        assert_eq!(server.take_truncated_descriptions(|_, _| ()), 0);
+
+        let d = ParameterDescriptor::new("plain", ParameterType::Integer)
+            .unwrap()
+            .with_description(&long);
+        assert!(server.declare_with_descriptor(NODE, "plain", ParameterValue::Integer(1), Some(d)));
+        let fits = ParameterDescriptor::new("short", ParameterType::Integer)
+            .unwrap()
+            .with_description("");
+        assert!(server.declare_with_descriptor(
+            NODE,
+            "short",
+            ParameterValue::Integer(1),
+            Some(fits)
+        ));
+        crate::ParameterBuilder::<i64>::new(&mut server, other, "typed")
+            .default(3)
+            .description(&long)
+            .optional()
+            .expect("a long description no longer refuses the declaration");
+        assert!(
+            LegacyParameterBuilder::new(&mut server, NODE, "legacy", ParameterValue::Bool(true))
+                .unwrap()
+                .description(&long)
+                .declare()
+        );
+
+        let mut seen: heapless::Vec<(usize, heapless::String<16>), 8> = heapless::Vec::new();
+        let n = server.take_truncated_descriptions(|node, name| {
+            let mut s = heapless::String::new();
+            s.push_str(name).unwrap();
+            seen.push((node.index(), s)).unwrap();
+        });
+        assert_eq!(n, 3, "{seen:?}");
+        for (node, name) in [(0, "plain"), (1, "typed"), (0, "legacy")] {
+            assert!(
+                seen.iter().any(|(k, s)| *k == node && s.as_str() == name),
+                "{name} on node {node} not reported: {seen:?}"
+            );
+        }
+        assert!(!seen.iter().any(|(_, s)| s.as_str() == "short"));
+        assert_eq!(
+            server.take_truncated_descriptions(|_, _| ()),
+            0,
+            "once per parameter"
+        );
+        let kept = server.get_descriptor(other, "typed").unwrap();
+        assert_eq!(kept.description.len(), crate::MAX_PARAM_DESCRIPTION_LEN);
+    }
 
     // ── phase-426 W1: the store is keyed by NODE ──
 

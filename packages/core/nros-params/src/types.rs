@@ -456,14 +456,46 @@ pub struct ParameterDescriptor {
     pub name: String<MAX_PARAM_NAME_LEN>,
     /// Parameter type
     pub param_type: ParameterType,
-    /// Human-readable description
-    pub description: String<MAX_STRING_VALUE_LEN>,
+    /// Human-readable description.
+    ///
+    /// phase-446 F2 -- its own capacity, `NROS_MAX_PARAM_DESCRIPTION_LEN`. It
+    /// used to share `MAX_STRING_VALUE_LEN`, which the contract derives to 0
+    /// for an image with no string parameter, so such an image could carry no
+    /// description at all. Write it with [`Self::set_description`], which
+    /// truncates and records the truncation instead of dropping the text.
+    pub description: String<MAX_PARAM_DESCRIPTION_LEN>,
     /// Whether the parameter is read-only
     pub read_only: bool,
     /// Whether the parameter type can change dynamically
     pub dynamic_typing: bool,
     /// Range constraints
     pub range: ParameterRange,
+    /// phase-446 F2 -- the description given was longer than
+    /// `NROS_MAX_PARAM_DESCRIPTION_LEN` and `description` holds a prefix of it.
+    /// Read by [`ParameterServer::take_truncated_descriptions`], which reports
+    /// each one once and clears it.
+    ///
+    /// [`ParameterServer::take_truncated_descriptions`]: crate::ParameterServer::take_truncated_descriptions
+    description_truncated: bool,
+}
+
+/// phase-446 F2 -- store as much of `text` as `dst` holds, cut at a UTF-8
+/// character boundary. Returns whether anything was cut.
+///
+/// `heapless::String::push_str` is all-or-nothing, so the old
+/// `let _ = push_str(..)` stored NOTHING for a description one byte too long.
+/// A prefix is what a reader of `ros2 param describe` can still use, and the
+/// `true` return is what lets the caller say it happened.
+pub fn fit_description<const N: usize>(dst: &mut String<N>, text: &str) -> bool {
+    dst.clear();
+    let mut cut = text.len().min(N);
+    while !text.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    // Cannot fail: `cut <= N` bytes into an empty `String<N>`.
+    let stored = dst.push_str(&text[..cut]).is_ok();
+    debug_assert!(stored, "a prefix of at most N bytes fits String<N>");
+    cut < text.len()
 }
 
 impl ParameterDescriptor {
@@ -478,14 +510,35 @@ impl ParameterDescriptor {
             read_only: false,
             dynamic_typing: false,
             range: ParameterRange::None,
+            description_truncated: false,
         })
     }
 
-    /// Set the description
+    /// Set the description. A description longer than
+    /// `NROS_MAX_PARAM_DESCRIPTION_LEN` is truncated at a character boundary
+    /// and recorded (see [`Self::set_description`]).
     pub fn with_description(mut self, desc: &str) -> Self {
-        self.description.clear();
-        let _ = self.description.push_str(desc);
+        self.set_description(desc);
         self
+    }
+
+    /// phase-446 F2 -- set the description, truncating at a character
+    /// boundary when it is longer than `NROS_MAX_PARAM_DESCRIPTION_LEN`.
+    /// Returns whether it was truncated; the descriptor also remembers it, so
+    /// the executor can report it once the parameter is declared.
+    pub fn set_description(&mut self, desc: &str) -> bool {
+        self.description_truncated = fit_description(&mut self.description, desc);
+        self.description_truncated
+    }
+
+    /// Whether the last description set was truncated and not yet reported.
+    pub fn description_truncated(&self) -> bool {
+        self.description_truncated
+    }
+
+    /// Mark the truncation as reported (phase-446 F2 -- once per parameter).
+    pub(crate) fn clear_description_truncated(&mut self) {
+        self.description_truncated = false;
     }
 
     /// Set read-only flag
@@ -1249,5 +1302,72 @@ mod issue_0323_tests {
         let big: alloc::vec::Vec<alloc::string::String> =
             (0..(MAX_ARRAY_LEN + 1)).map(|i| i.to_string()).collect();
         assert!(big.try_to_parameter_value().is_err());
+    }
+
+    // -- phase-446 F2: a description has its own capacity and never vanishes --
+
+    /// A description that fits is stored whole and reports nothing.
+    #[test]
+    fn a_description_that_fits_is_stored_whole() {
+        let mut s: String<16> = String::new();
+        assert!(!fit_description(&mut s, "wheel speed"));
+        assert_eq!(s.as_str(), "wheel speed");
+        // Exactly the capacity is still a fit.
+        assert!(!fit_description(&mut s, "0123456789abcdef"));
+        assert_eq!(s.len(), 16);
+    }
+
+    /// One byte too long used to store NOTHING (`let _ = push_str`, which is
+    /// all-or-nothing). Now it keeps the prefix and says it cut.
+    #[test]
+    fn a_long_description_keeps_its_prefix_and_reports_the_cut() {
+        let mut s: String<8> = String::new();
+        assert!(fit_description(&mut s, "0123456789"));
+        assert_eq!(s.as_str(), "01234567");
+    }
+
+    /// The cut never splits a character: `e-acute` is two bytes and `ruler`
+    /// (U+1F4CF) four, so a cut inside either backs off to the boundary before
+    /// it rather than producing invalid UTF-8.
+    #[test]
+    fn truncation_backs_off_to_a_character_boundary() {
+        let mut s: String<5> = String::new();
+        // "abcd" + e-acute (bytes 4..6): byte 5 is mid-character.
+        assert!(fit_description(&mut s, "abcd\u{e9}f"));
+        assert_eq!(s.as_str(), "abcd");
+        let mut s: String<6> = String::new();
+        // "ab" + a 4-byte character (bytes 2..6) fits exactly at 6.
+        assert!(fit_description(&mut s, "ab\u{1f4cf}z"));
+        assert_eq!(s.as_str(), "ab\u{1f4cf}");
+        let mut s: String<5> = String::new();
+        assert!(fit_description(&mut s, "ab\u{1f4cf}z"));
+        assert_eq!(s.as_str(), "ab");
+    }
+
+    /// Capacity 0 is a stated "no descriptions": nothing is stored, and any
+    /// non-empty description still reports, so the choice is visible.
+    #[test]
+    fn zero_capacity_stores_no_description_and_reports_it() {
+        let mut s: String<0> = String::new();
+        assert!(fit_description(&mut s, "anything"));
+        assert!(s.is_empty());
+        assert!(
+            !fit_description(&mut s, ""),
+            "an empty description loses nothing, so there is nothing to report"
+        );
+    }
+
+    /// The descriptor records the cut, and a fitting description clears it.
+    #[test]
+    fn the_descriptor_remembers_a_truncated_description() {
+        let long = "d".repeat(MAX_PARAM_DESCRIPTION_LEN + 3);
+        let d = ParameterDescriptor::new("p", ParameterType::Bool)
+            .unwrap()
+            .with_description(&long);
+        assert_eq!(d.description.len(), MAX_PARAM_DESCRIPTION_LEN);
+        assert!(d.description_truncated());
+        let mut d = d;
+        assert!(!d.set_description(""));
+        assert!(!d.description_truncated());
     }
 }

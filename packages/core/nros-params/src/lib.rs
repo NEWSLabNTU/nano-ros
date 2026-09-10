@@ -69,7 +69,8 @@ pub use typed::{
     ReadOnlyParameter, UndeclaredParameters,
 };
 pub use types::{
-    FloatingPointRange, IntegerRange, MAX_ARRAY_LEN, MAX_BYTE_ARRAY_LEN, MAX_PARAM_NAME_LEN,
-    MAX_PARAMETERS, MAX_STRING_VALUE_LEN, NodeFlags, NodeKey, Parameter, ParameterDescriptor,
-    ParameterRange, ParameterType, ParameterValue, ParameterVariant, SetParameterResult,
+    FloatingPointRange, IntegerRange, MAX_ARRAY_LEN, MAX_BYTE_ARRAY_LEN, MAX_PARAM_DESCRIPTION_LEN,
+    MAX_PARAM_NAME_LEN, MAX_PARAMETERS, MAX_STRING_VALUE_LEN, NodeFlags, NodeKey, Parameter,
+    ParameterDescriptor, ParameterRange, ParameterType, ParameterValue, ParameterVariant,
+    SetParameterResult, fit_description,
 };
