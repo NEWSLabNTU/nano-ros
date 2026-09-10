@@ -890,7 +890,7 @@ _tier-build:
         let documented = [
             (CiLane::Tier1, 19, 12),
             (CiLane::Tier2, 12, 12),
-            (CiLane::Tier2Nightly, 36, 35),
+            (CiLane::Tier2Nightly, 37, 35),
         ];
         for (lane, want_cells, want_coords) in documented {
             assert_eq!(
