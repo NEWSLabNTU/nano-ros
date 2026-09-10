@@ -410,13 +410,87 @@ it was one.
 
 ### W3 — a second RTOS, not a second Zephyr board
 
-FreeRTOS on MPS2-AN385 (lwIP) is the strongest candidate: it is a different
-kernel, a different IP stack, and it already has QEMU networking. NuttX and
-ThreadX are the alternatives.
+**Status: the cell is LANDED and has NEVER MET A PEER. Kernel taken: FreeRTOS on
+MPS2-AN385.** The declaration, the tripwire, the test and the runner exist; the
+verdict does not, and `.config/interop-verdicts.toml` carries no entry for it —
+which is what "never run" is supposed to look like here, not an oversight.
 
-Pick ONE. The value of this phase is a second *kernel* witness, and picking one
-and finishing it beats three half-configured lanes — the shape phase-433 W2 hit
-when it ran cells before their fixtures could build.
+FreeRTOS on MPS2-AN385 (lwIP) was the strongest candidate: it is a different
+kernel, a different IP stack, and it already has QEMU networking. NuttX and
+ThreadX were the alternatives; nothing was found that argued against the first
+choice, so no switch was made.
+
+The cell is `freertos-mps2-pubsub-c-zenoh-n2r` — `(FreertosMps2, C, Zenoh,
+EntryPubsub, Interop, Runtime)`, peer `RosEdition(Zenoh)`, direction
+`NanoToRos`, test `pubsub_freertos_ros2_interop_e2e`, build channel
+`FreertosMps2Fixtures` (`just freertos build-fixtures`), runner
+`just freertos test-ros2`. It reuses `entry_e2e`'s `workspace-c-freertos` image
+and therefore its baked port, so `.config/nextest.toml` puts it in
+`matrix-consumers-serial` — placed ABOVE the `binary(~freertos)` →
+`qemu-emulated` override, because that substring match would otherwise claim it
+first and two different groups do not serialize against each other (the
+phase-373 W1 defect, one binary over).
+
+Five axes move at once, and the C is not an accident: the existing on-target row
+runs the Rust API, so this one exercises the C ABI, the half of the surface an
+RTOS consumer is most likely to be using.
+
+| axis | `zephyr-qos-rust-zenoh` | this cell |
+| --- | --- | --- |
+| kernel | Zephyr | FreeRTOS |
+| IP stack | host (NSOS offload) | lwIP over emulated LAN9118 |
+| pointers | 64-bit host | 32-bit thumbv7m |
+| libc | host glibc | newlib-nano |
+| API | Rust | C |
+
+**Measured while landing it, on a host with no ROS.**
+
+*The mechanism half is alive.* An MPS2-AN385 FreeRTOS image boots under
+`qemu-system-arm`, brings up lwIP over the emulated LAN9118, opens a zenoh-pico
+session over **slirp** to a router on the host's gateway address, and publishes
+— 23 samples in 45 s, with `[INFO] Publishing: 'Hello World: N'` climbing and no
+kernel fault. So the kernel, the IP stack, the cross toolchain and the emulator
+are not the open question; only the peer is. (Caveat, stated because RFC-0075
+exists: the router in that measurement was the SDK store's upstream `zenohd`
+1.7.2, **not** ROS's `rmw_zenohd`, so it says nothing whatever about
+`rmw_zenoh_cpp` pairing. It answers "does a FreeRTOS guest reach a host router
+through slirp", and only that.)
+
+*The cell needs a ROS host for BOTH halves, not just the peer — and that is
+new information.* The fixture the cell resolves cannot be BUILT here at all:
+
+```
+$ bash scripts/build/workspace-fixtures-build.sh freertos c
+  -> workspace-c-freertos (c) examples/workspaces/c
+     nros build demo_bringup:freertos …
+Error: 2 <depend> name(s) resolve to nothing:
+  example_interfaces — declared by …/service_server_pkg/package.xml, …
+  std_msgs           — declared by …/talker_pkg/package.xml, …
+```
+
+Neither name is a package in that workspace, neither is in
+`packages/interfaces/` (which carries only `diagnostic-msgs`,
+`lifecycle-msgs`, `rcl-interfaces`, `rosgraph-msgs`), and neither is a
+`[prereq.*]` with `role = "package"` in `nros-sdk-index.toml`. They resolve
+through ament or not at all. That is a property of the workspace-fixture lane
+generally, not of this board — it is why `live-peer.yml` builds its fixtures on
+a ROS runner — but it sharpens W4 below from a scheduling question into a
+provisioning one.
+
+*Defects exposed by the second-kernel crossing so far: **zero**, and the number
+is not yet meaningful.* W1 states the falsifiable prediction (phase-337 W2 found
+five defects moving a workload across a comparable boundary). It cannot be
+evaluated from this side of a peer: nothing in this cell has been run against
+`rmw_zenoh_cpp`, so "no defects" here means "no observations", not "no bugs".
+Do not read the green `check-interop-*` gates as evidence — every one of them is
+a statement about the declaration, which is exactly the class
+`check-interop-verdicts` exists to separate from a result.
+
+**What is left, and it is one thing:** run
+`just freertos test-ros2` on a host with ROS 2 + `rmw_zenoh_cpp`,
+`arm-none-eabi-gcc`, `qemu-system-arm` and the FreeRTOS + lwIP submodules, then
+`check-interop-verdicts.py --record freertos-mps2-pubsub-c-zenoh-n2r --junit …`.
+Until that happens the cell is honestly unproven and says so.
 
 ### W4 — say what the lane covers, in the lane
 
@@ -496,6 +570,14 @@ suffices there is W1's measurement, not an assumption made here. A board cell on
 a NON-Zephyr kernel (W3) will ask for a scope this image cannot provision, and
 the setup step FAILS naming it rather than running a green over cells it never
 built.
+
+*What W3 adds to this.* The FreeRTOS/MPS2 cell is exactly the non-Zephyr case in the
+last paragraph: it needs `arm-none-eabi-gcc`, `qemu-system-arm` and the FreeRTOS + lwIP
+submodules, none of which `nano-ros-zephyr-ci` provisions. Written before this split
+landed, W3 had recorded the consequence under the OLD lane — the cell would be selected,
+skip, and read as green. The split and `--assert-ran` retire that: until a scope provides
+those four, the board job fails naming the scope, a NO VERDICT and never a pass. Providing
+them is the one item W3 leaves open here.
 
 ### W5 — retire the phrase, or earn it
 

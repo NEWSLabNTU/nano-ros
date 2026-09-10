@@ -380,6 +380,30 @@ test-all verbose="":
     fi
     cargo nextest run "${cargo_nextest_args[@]}" "${e2e_args[@]}"
 
+# phase-441 W3 — an nros publisher on a SECOND KERNEL reaches a stock
+# `ros2 topic echo` subscriber. The FreeRTOS/MPS2-AN385 C workspace entry boots
+# under QEMU, brings up lwIP over the emulated LAN9118, dials the host router
+# through the slirp gateway 192.0.3.1 and publishes `/chatter`; a stock
+# `rmw_zenoh_cpp` peer on the same router must see it.
+#
+# This is the only `interop::CELLS` cell that is not Zephyr or Linux, and that
+# is its whole point: every other on-target row runs on native_sim, whose
+# sockets, pointer width and libc are the HOST's.
+#
+# Deliberately NOT sequenced after `build-fixtures` the way `just freertos test`
+# is — the same call the zephyr sibling makes (`just zephyr test-ros2-qos`):
+# this is an aimable unit, and running the whole ARM lane to reach one cell is
+# not something anyone would type. Build the fixture
+# (`just freertos build-fixtures`), then aim.
+#
+# Its baked router port is shared with `entry_e2e`'s freertos_c cell, so nextest
+# serializes the two in `matrix-consumers-serial`.
+# Needs ROS 2 + `rmw_zenoh_cpp`, `arm-none-eabi-gcc`, `qemu-system-arm`, the
+# FreeRTOS + lwIP trees and that fixture; skips on each.
+[group("debug")]
+test-ros2 verbose="":
+    @just _test-focused 'binary(=pubsub_freertos_ros2_interop_e2e)' {{verbose}}
+
 # Phase 121.6 — build the FreeRTOS Posix-port smoke test for
 # nros-platform-freertos. Uses the in-tree FreeRTOS-Kernel + a
 # minimal FreeRTOSConfig.h. Excludes net.c (no lwIP in this harness).

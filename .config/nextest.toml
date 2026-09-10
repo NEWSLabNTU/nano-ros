@@ -463,6 +463,31 @@ slow-timeout = { period = "180s", terminate-after = 3 }
 [[profile.default.overrides]]
 filter = "binary(zephyr_cortex_m_qemu) or binary(pubsub_zephyr_cortex_m_ros2_interop_e2e)"
 test-group = "zephyr-cortex-m-baked-port"
+
+# phase-441 W3 — the SECOND-KERNEL live-peer cell
+# (`freertos-mps2-pubsub-c-zenoh-n2r`). It boots the SAME `workspace-c-freertos`
+# image as `entry_e2e`'s freertos_c cell, so it starts a router on the same baked
+# port (`port_of(FreertosMps2, C, EntryPubsub)`) and the two must not run at
+# once — the issue #141 shape, one kernel over.
+#
+# THIS OVERRIDE MUST STAY HERE, ahead of the `binary(~freertos)` one far below.
+# nextest applies the FIRST matching override per setting, and `~freertos` is a
+# SUBSTRING match that also matches `pubsub_freertos_ros2_interop_e2e` — so
+# writing this rule down there instead would leave it in `qemu-emulated` while
+# `entry_e2e` sits in `matrix-consumers-serial`, and DIFFERENT GROUPS DO NOT
+# SERIALIZE AGAINST EACH OTHER. That is exactly the defect phase-373 W1 found in
+# the zephyr sibling directly above, where the protection had been off for two
+# phases while the config parsed cleanly. Verify with `cargo nextest show-config
+# test-groups`, which prints resolved membership; the filter parsing is not
+# evidence that the group applies.
+#
+# 180s x 3 for the same reason the sibling has it: an emulated Cortex-M3 pays a
+# cold boot, an lwIP bring-up and a zenoh-pico session handshake before it
+# publishes, and the group is max-threads=1, so the window cannot be spent
+# contending with the partner it now waits for.
+[[profile.default.overrides]]
+filter = "binary(pubsub_freertos_ros2_interop_e2e)"
+test-group = "matrix-consumers-serial"
 slow-timeout = { period = "180s", terminate-after = 3 }
 
 # Issue #34 — host-integration "compile-shape" tests shell out to cargo / nros
