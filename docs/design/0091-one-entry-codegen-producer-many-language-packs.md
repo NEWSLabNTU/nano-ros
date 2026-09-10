@@ -1,7 +1,7 @@
 ---
 rfc: 0091
 title: "One codegen producer, many language packs — target-agnostic output, pinned representations"
-status: Draft
+status: Stable
 since: 2026-09
 last-reviewed: 2026-09
 implements-tracked-by: [phase-432]
