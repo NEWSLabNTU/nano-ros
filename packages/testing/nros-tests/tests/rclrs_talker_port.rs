@@ -108,15 +108,15 @@ const EXPECTED: &[(usize, &str, &str, Kind)] = &[
     (
         10,
         "    executor.spin(SpinOptions::default()).first_error()?;",
-        "    executor.spin_blocking(SpinOptions::default())?;",
-        // THE SECOND EDIT THE RFC PREDICTS — plus a rename it does not.
-        // `?` replaces `.first_error()?` because ours returns `Result<(),
-        // NodeError>` where upstream returns `Vec<RclrsError>` (no allocator;
-        // ledger row `rust:Executor::spin`). The rename is the part W10 does
-        // not own: `Executor::spin` is TAKEN here by `spin(Duration) -> !`,
-        // the body of an RTOS task, and RFC-0089's target shape moves the
-        // `SpinOptions` form onto that name in a later wave. Until then the
-        // edit is on the same line, so it costs no extra one.
+        "    executor.spin(SpinOptions::default())?;",
+        // THE SECOND EDIT THE RFC PREDICTS, and now only that. `?` replaces
+        // `.first_error()?` because ours returns `Result<(), NodeError>` where
+        // upstream returns `Vec<RclrsError>` (no allocator; ledger row
+        // `rust:Executor::spin`). This line also carried a rename when W10
+        // was written — ours was `spin_blocking`, because `spin` was taken by
+        // `spin(Duration) -> !` — and phase-427 W11 (`cf4b6aada`) gave the
+        // `SpinOptions` form upstream's name, so the method is the same word
+        // on both sides and the line differs only by the `?`.
         Kind::PredictedEdit,
     ),
 ];

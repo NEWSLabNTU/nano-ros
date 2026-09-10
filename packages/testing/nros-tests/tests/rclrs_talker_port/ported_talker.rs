@@ -8,6 +8,6 @@ fn main() -> Result<(), Box<dyn core::error::Error>> {
 
     let publisher = node.create_publisher::<StringMsg>("chatter")?;
 
-    executor.spin_blocking(SpinOptions::default())?;
+    executor.spin(SpinOptions::default())?;
     Ok(())
 }
