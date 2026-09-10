@@ -1015,8 +1015,18 @@ cpp: cpp-fmt
         echo "       lane exists to pin would then be checked by nothing." >&2; \
         exit 1; \
     }
-    echo "  - one node type: the ours-only family answers to _in names (c++17)"
-    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti \
+    #
+    # `-DNROS_CPP_STD` is REQUIRED, not decoration. The assertions ask which
+    # overload the compiler picks between ours and UPSTREAM's, and upstream's
+    # `create_publisher(const std::string&, …)` lives behind
+    # `NROS_CPP_NODE_HOSTED`, which `std_detect.hpp` now grants on
+    # `NROS_CPP_STD` and on nothing else (phase-438 W2 deleted the
+    # `__has_include` discovery arm). Without the flag the hosted half of the
+    # overload set is ABSENT, so the `decltype` calls do not resolve at all and
+    # the lane reports a compile error instead of the collision it exists to
+    # measure.
+    echo "  - one node type: the ours-only family answers to _in names (c++17, -DNROS_CPP_STD)"
+    c++ -fsyntax-only -std=c++17 -fno-exceptions -fno-rtti -DNROS_CPP_STD \
         -Itarget/nros-cpp-generated \
         -Itarget/nros-c-generated \
         -Ipackages/api/nros-cpp/include \
