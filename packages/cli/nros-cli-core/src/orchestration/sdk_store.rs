@@ -1644,6 +1644,8 @@ mod tests {
             submodule: None,
             shallow: true,
             recursive: true,
+            build_stage: false,
+            check: None,
         };
         assert_eq!(
             provision_source("lwip", &clone, &ws, false, None).unwrap(),

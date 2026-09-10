@@ -213,7 +213,7 @@ pub fn run(args: Args) -> Result<()> {
         };
     }
 
-    let index_path = resolve_index(&args.index);
+    let index_path = resolve_index(&args.index)?;
     let index = SdkIndex::load(&index_path)?;
     let host = host_key();
 
@@ -286,7 +286,7 @@ pub fn run(args: Args) -> Result<()> {
         if let Some(notice) = check_board_argument(&index, args.board.as_deref())? {
             eprintln!("{notice}");
         }
-        return run_check_all(&index);
+        return run_check_all(&index, &index_workspace(&index_path));
     }
 
     if let Some(tool) = args.tool.as_deref() {
@@ -947,6 +947,56 @@ pub(crate) fn source_dir_of(
     }
 }
 
+/// RFC-0097 D12 — what a TARGET BUILD will need that no board provisions.
+///
+/// `nros setup <board>` resolves a board's `[tool.*]`/`[source.*]` slice and
+/// the chosen RMW's. `rosidl` rides `[rmw.cyclonedds]`, and the rmw defaults to
+/// zenoh, so a plain board setup never reaches it — which is why a host with no
+/// ROS first learned about it from a cyclone msg→IDL step failing mid-build.
+/// The failure text there names the remedy correctly; the TIMING is what D12
+/// fixes, by asking the question at `--check` time instead.
+///
+/// Presence is an OR over TWO rungs, and both are needed:
+///
+/// * the provisioned copy is populated — the answer `nros setup --source
+///   <name>` produces, and the only one that holds on a host with no ROS. WHERE
+///   that is comes from `source_dir_of`, never from `dest` directly: phase-440
+///   moved `rosidl` to `location = "store"` and removed its `dest`, so a probe
+///   that read the authored path would report the one build-stage source we
+///   have as permanently MISSING;
+/// * the entry's own `check` probe answers Present — a host that has the thing
+///   from somewhere else entirely (ROS sourced, an explicit override). Without
+///   this rung, `--check` would report MISSING and EXIT NONZERO on a correctly
+///   configured host, which is worse than not reporting at all.
+///
+/// Returned rather than printed so the selection is unit-testable — the same
+/// split `source_build_names` uses for issue 0374's reason.
+fn build_stage_report(
+    index: &SdkIndex,
+    workspace: &Path,
+) -> Vec<(String, ProbeResult, String)> {
+    index
+        .source
+        .iter()
+        .filter(|(_, src)| src.build_stage)
+        .map(|(name, src)| {
+            let present =
+                source_present(name, src, workspace)
+                    || run_probe(src.check.as_ref()) == ProbeResult::Present;
+            let state = if present {
+                ProbeResult::Present
+            } else {
+                ProbeResult::Missing
+            };
+            (
+                name.clone(),
+                state,
+                format!("nros setup --source {name}"),
+            )
+        })
+        .collect()
+}
+
 /// #0390 — provision (or with `check`, VERIFY) the repo build stage's source
 /// UNION (the index's top-level `build_sources`). `just test` links every RMW's
 /// `-sys` and `build-test-fixtures` resolves graphs path-depping platform
@@ -1128,29 +1178,228 @@ pub fn activate_store_path(dirs: &[PathBuf]) {
 }
 
 /// Locate the SDK index for auto-setup: cwd, then the passed workspace, then
-/// `$NROS_WORKSPACE`, then the copy SHIPPED BESIDE THE BINARY. `None` ⇒
-/// auto-setup is a no-op (not every build runs near a nano-ros workspace).
-/// Shared with `nros doctor`'s license-gate check (187.7).
+/// `$NROS_WORKSPACE`, then the STORE's cached copy, then the copy SHIPPED
+/// BESIDE THE BINARY. `None` ⇒ auto-setup is a no-op (not every build runs near
+/// a nano-ros workspace). Shared with `nros doctor`'s license-gate check
+/// (187.7).
+///
+/// RFC-0097 D5 — this rung reads the cache and **never fetches**, where
+/// [`resolve_index`] does. The two surfaces ask different questions: `nros
+/// setup` is the verb whose job is provisioning, so reaching the network there
+/// is what the user asked for; a BUILD reaching it is a surprise, and on an
+/// offline host it would be a connect timeout on every single invocation. So a
+/// build sees whatever `nros setup` already warmed, and the shipped copy
+/// otherwise.
 pub(crate) fn locate_index(workspace: Option<&Path>) -> Option<PathBuf> {
-    let cwd = PathBuf::from("nros-sdk-index.toml");
+    let cwd = PathBuf::from(INDEX_FILE);
     if cwd.is_file() {
         return Some(cwd);
     }
     let ws = workspace
         .map(Path::to_path_buf)
         .or_else(|| std::env::var_os("NROS_WORKSPACE").map(PathBuf::from));
-    ws.map(|w| w.join("nros-sdk-index.toml"))
+    ws.map(|w| w.join(INDEX_FILE))
         .filter(|p| p.is_file())
-        .or_else(shipped_index)
+        .or_else(|| store_index(/* fetch */ false).ok().map(|(p, _)| p))
+}
+
+/// The one spelling of the index's file name.
+pub(crate) const INDEX_FILE: &str = "nros-sdk-index.toml";
+
+/// RFC-0097 D5 — where a `nros` with no checkout FETCHES the index from.
+///
+/// The index is a MANIFEST OF POINTERS into `nano-ros-sdk`'s per-tool releases.
+/// It has no ABI, so a newer index is usable by an older CLI — which is the
+/// whole point: 70 index commits per 60 days were each forcing a CLI release
+/// purely because [`shipped_index`] read the copy baked into the release asset.
+///
+/// It tracks the branch rather than a release tag on purpose. A pin here would
+/// re-create the coupling this removes — the index would move only when
+/// something published it — and every artifact the index points at carries its
+/// own `sha256`, which is the integrity that matters. The one thing a moving
+/// index can do to an older CLI is add a SECTION it cannot parse
+/// (`deny_unknown_fields`), and [`fetch_index`] refuses to cache anything this
+/// binary cannot load, so that lands as "kept the copy I already had" rather
+/// than as a broken install.
+///
+/// Override with `$NROS_INDEX_URL` — a mirror, an air-gapped copy, a test
+/// server. Sibling of `scripts/install.sh`'s `NROS_INSTALL_URL`, and it relaxes
+/// the same thing for the same reason: the scheme restriction below holds for
+/// the URL we chose and not for one the operator typed.
+pub(crate) const DEFAULT_INDEX_URL: &str =
+    "https://raw.githubusercontent.com/NEWSLabNTU/nano-ros/main/nros-sdk-index.toml";
+
+/// The store's copy of the index — `<store>/fetch/nros-sdk-index.toml`.
+///
+/// `fetch/` is RFC-0095 D2's download cache (`store::Category::Fetch`), which
+/// is exactly what this is: a file pulled off the network and kept so the next
+/// run need not pull it again. Derived from the store ROOT the caller passes —
+/// never `~/.nros` and never a literal — because the root answers to
+/// `$NROS_STORE`/`$NROS_HOME` and a second spelling here is how the two come to
+/// disagree.
+pub(crate) fn index_cache_path(store: &Path) -> PathBuf {
+    store.join("fetch").join(INDEX_FILE)
+}
+
+/// Which rung answered [`index_from_store`] — so a caller can say so, and so a
+/// test can tell "used the cache" from "fetched it again".
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum IndexOrigin {
+    /// The store already held it.
+    Cached,
+    /// Downloaded from `url` on this call.
+    Fetched,
+    /// The copy inside the release asset (`<prefix>/share/nros/`).
+    Shipped,
+}
+
+/// RFC-0097 D5 — the index, from the store, fetching it if that is allowed.
+///
+/// Every input is a PARAMETER: the store root, the URL, whether the network may
+/// be touched, whether a warm cache should be replaced, and where the shipped
+/// fallback is. [`store_index`] is the thin wrapper that reads those from the
+/// environment. That split is what makes this testable without a test mutating
+/// process env — which in this crate is a cross-thread race, not a nuisance
+/// (`tests/store_reclaim.rs`: "No test here touches `$NROS_HOME`,
+/// `$NROS_STORE`").
+///
+/// Order, and why each rung is where it is:
+///
+/// 1. **the warm cache**, unless `refresh` — nothing is cheaper and nothing is
+///    more predictable.
+/// 2. **the network**, unless `offline` — the D5 behaviour: this CLI resolves
+///    an index it did not ship with.
+/// 3. **the warm cache again**, when a `refresh` fetch failed. A refresh that
+///    cannot reach the network must not DELETE what the store already had.
+/// 4. **the shipped copy** — the first-run-with-no-network case. A binary
+///    installed on an air-gapped host still provisions from the table it was
+///    released with.
+/// 5. **an error that names the way out**, because at this point nothing on
+///    this host can answer and a bare "no such file" would send the reader
+///    looking for a file they were never going to have.
+pub(crate) fn index_from_store(
+    store: &Path,
+    url: &str,
+    offline: bool,
+    refresh: bool,
+    shipped: Option<&Path>,
+) -> Result<(PathBuf, IndexOrigin)> {
+    let cache = index_cache_path(store);
+    if cache.is_file() && !refresh {
+        return Ok((cache, IndexOrigin::Cached));
+    }
+    let why: String = if offline {
+        format!("the network was not consulted ($NROS_OFFLINE, or a build rather than `nros setup`), so {url} was not contacted")
+    } else {
+        match fetch_index(&cache, url) {
+            Ok(()) => return Ok((cache, IndexOrigin::Fetched)),
+            Err(e) => format!("{e:#}"),
+        }
+    };
+    if cache.is_file() {
+        return Ok((cache, IndexOrigin::Cached));
+    }
+    if let Some(s) = shipped {
+        return Ok((s.to_path_buf(), IndexOrigin::Shipped));
+    }
+    bail!(
+        "no SDK index: none in the cwd or workspace, none cached at {}, \
+         and none shipped beside this binary.\n  \
+         {}\n  \
+         Fix any one of:\n    \
+         nros setup --index <path>          a copy you already have\n    \
+         NROS_INDEX_URL=<url>              fetch it from a mirror\n    \
+         unset NROS_OFFLINE                allow the default fetch ({url})",
+        cache.display(),
+        why,
+    )
+}
+
+/// Download `url` into the store's cache, atomically, and only if this binary
+/// can actually READ what came back.
+///
+/// The validation is the load-bearing half. A captive portal answers 200 with
+/// HTML; a mirror can serve a truncated file; and an index from a NEWER tree
+/// may carry a section this build's `deny_unknown_fields` rejects. Any of those
+/// written straight to the cache would poison every later run, including the
+/// ones that would otherwise have been fine — so the download lands beside the
+/// cache under a pid-unique name, is parsed AND validated there, and only then
+/// takes the cache's place.
+fn fetch_index(cache: &Path, url: &str) -> Result<()> {
+    let dir = cache
+        .parent()
+        .ok_or_else(|| eyre::eyre!("index cache path {} has no parent", cache.display()))?;
+    std::fs::create_dir_all(dir).wrap_err_with(|| format!("create {}", dir.display()))?;
+    let tmp = dir.join(format!("{INDEX_FILE}.download-{}", std::process::id()));
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let mut cmd = vec![
+        "curl",
+        "-L",
+        "--fail",
+        "--silent",
+        "--show-error",
+        // An offline host must fail in seconds, not hang: this runs on the way
+        // to a provisioning step, not as the step itself.
+        "--connect-timeout",
+        "10",
+        "--max-time",
+        "60",
+    ];
+    // Same rule as `scripts/install.sh`: the DEFAULT is a URL we chose, so it
+    // holds the https line; a URL the operator typed is one they picked, and
+    // refusing their `file://` mirror only pushes them to `curl` by hand.
+    if url == DEFAULT_INDEX_URL {
+        cmd.extend(["--proto", "=https", "--tlsv1.2"]);
+    }
+    cmd.extend(["-o", &tmp_str, url]);
+    let out = Command::new(cmd[0])
+        .args(&cmd[1..])
+        .output()
+        .wrap_err_with(|| format!("could not run curl to fetch {url}"))?;
+    if !out.status.success() {
+        let _ = std::fs::remove_file(&tmp);
+        bail!(
+            "could not fetch the SDK index from {url}: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+    }
+    if let Err(e) = SdkIndex::load(&tmp) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e).wrap_err_with(|| {
+            format!("{url} did not answer with an index this `nros` can read (cache left alone)")
+        });
+    }
+    std::fs::rename(&tmp, cache)
+        .wrap_err_with(|| format!("install the fetched index at {}", cache.display()))?;
+    Ok(())
+}
+
+/// [`index_from_store`] with the environment read for it, once, here.
+///
+/// `fetch` is the CALLER's decision (see [`locate_index`]); `$NROS_OFFLINE`
+/// vetoes it either way, which is the same escape-hatch shape the rest of this
+/// module uses.
+fn store_index(fetch: bool) -> Result<(PathBuf, IndexOrigin)> {
+    let store = crate::orchestration::store::root();
+    let url = std::env::var("NROS_INDEX_URL").unwrap_or_else(|_| DEFAULT_INDEX_URL.to_string());
+    let offline = !fetch || std::env::var_os("NROS_OFFLINE").is_some();
+    let refresh = std::env::var_os("NROS_INDEX_REFRESH").is_some();
+    let shipped = shipped_index();
+    let got = index_from_store(&store, &url, offline, refresh, shipped.as_deref())?;
+    if got.1 == IndexOrigin::Fetched {
+        eprintln!("nros: fetched the SDK index → {}", got.0.display());
+    }
+    Ok(got)
 }
 
 /// The index shipped inside the release, at `<prefix>/share/nros/` — phase-431
 /// W5.
 ///
-/// Without this a released `nros` cannot run `nros setup <board>` AT ALL: the
-/// index was only ever looked for in the cwd or a workspace, both of which
-/// assume a checkout, and the whole point of shipping a binary is that there
-/// is no checkout. The release asset carries it; this is where it is found.
+/// RFC-0097 D5 demoted this from the answer to the LAST RESORT: it is what a
+/// first run with no network and no cache falls back to, so an air-gapped host
+/// still provisions from the table the binary was released with. Everything
+/// else prefers [`index_from_store`], because a copy inside the asset can only
+/// ever be as new as the asset.
 ///
 /// Resolved from the running executable rather than from `$NROS_HOME`, so a
 /// binary and the index it was released with stay together — two versions in
@@ -1159,7 +1408,7 @@ pub(crate) fn locate_index(workspace: Option<&Path>) -> Option<PathBuf> {
 pub(crate) fn shipped_index() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let prefix = exe.parent()?.parent()?; // <prefix>/bin/nros -> <prefix>
-    let candidate = prefix.join("share/nros/nros-sdk-index.toml");
+    let candidate = prefix.join("share/nros").join(INDEX_FILE);
     candidate.is_file().then_some(candidate)
 }
 
@@ -1167,13 +1416,20 @@ pub(crate) fn shipped_index() -> Option<PathBuf> {
 ///
 /// `--index` defaults to the bare name `nros-sdk-index.toml`, which resolves
 /// against the cwd — right inside a checkout, and unusable for a released
-/// binary. So a DEFAULT that does not resolve falls back to the shipped copy;
-/// a path the user actually typed is never second-guessed.
-pub fn resolve_index(explicit: &Path) -> PathBuf {
-    if explicit != Path::new("nros-sdk-index.toml") || explicit.is_file() {
-        return explicit.to_path_buf();
+/// binary. So a DEFAULT that does not resolve goes to the store (fetching it
+/// if the store has none — RFC-0097 D5), and only then to the shipped copy; a
+/// path the user actually typed is never second-guessed.
+///
+/// Fallible since D5: when no rung answers, the error names the ways out
+/// (`--index`, `$NROS_INDEX_URL`, `$NROS_OFFLINE`). It used to hand back the
+/// bare default name and let `SdkIndex::load` report "no such file
+/// nros-sdk-index.toml", which sends the reader looking in the cwd for a file
+/// that was never going to be there.
+pub fn resolve_index(explicit: &Path) -> Result<PathBuf> {
+    if explicit != Path::new(INDEX_FILE) || explicit.is_file() {
+        return Ok(explicit.to_path_buf());
     }
-    shipped_index().unwrap_or_else(|| explicit.to_path_buf())
+    store_index(/* fetch */ true).map(|(p, _)| p)
 }
 
 /// The workspace root a `[source.*]` `dest` is resolved against: the directory
@@ -1815,6 +2071,32 @@ fn run_probe_in(
             answered_missing = true;
         }
     }
+    // RFC-0097 D12 — "can the build's interpreter import it", the question
+    // `scripts/cyclonedds/msg_to_cyclone_idl.py` asks before choosing a rung.
+    // A host with no `python3` cannot answer it, and "cannot ask" is not
+    // "absent" — same discipline as `pkg_config` above.
+    if let Some(module) = &check.python_import {
+        if let Ok(st) = std::process::Command::new("python3")
+            .args(["-c", &format!("import {module}")])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+        {
+            if st.success() {
+                return ProbeResult::Present;
+            }
+            answered_missing = true;
+        }
+    }
+    // RFC-0097 D12 — an explicit override the build honours. Set-but-nowhere is
+    // NOT satisfaction: that is a misconfiguration, and reporting it as present
+    // is how the build failure lands with no clue attached.
+    if let Some(var) = &check.env {
+        match std::env::var_os(var) {
+            Some(v) if std::path::Path::new(&v).is_dir() => return ProbeResult::Present,
+            _ => answered_missing = true,
+        }
+    }
     if answered_missing {
         ProbeResult::Missing
     } else {
@@ -2255,7 +2537,7 @@ fn run_check_tool(index: &SdkIndex, name: &str) -> Result<()> {
 
 /// phase-327 W3 — the generic walker: probe every declared class and print a
 /// remedy COMPUTED from the entry. Exit 1 when anything is missing.
-fn run_check_all(index: &SdkIndex) -> Result<()> {
+fn run_check_all(index: &SdkIndex, workspace: &Path) -> Result<()> {
     let mut missing = 0usize;
     // Separate from `missing` only because the `report` closure below captures
     // that one mutably; both are summed at the end.
@@ -2327,6 +2609,16 @@ fn run_check_all(index: &SdkIndex) -> Result<()> {
             ProbeResult::Missing
         };
         report("tool", &label, ok, format!("nros setup --tool {name}"));
+    }
+
+    // RFC-0097 D12 — the BUILD stage. Every class above is something a BOARD
+    // pulls in, which is why `nros setup <board>` could pre-empt all of them
+    // and none of them was the one that bit: `rosidl` rides
+    // `[rmw.cyclonedds]`, the rmw defaults to zenoh, and a host with no ROS met
+    // it as a build failure deep inside the cyclone msg→IDL step. A setup check
+    // must report what a BUILD will need, not only what a board will.
+    for (name, ok, remedy) in build_stage_report(index, workspace) {
+        report("build", &name, ok, remedy);
     }
 
     // [rust.toolchain.*] — `rustup toolchain list` + per-component listing.
@@ -2509,7 +2801,7 @@ mod tests {
     #[test]
     fn an_explicit_index_is_never_replaced_by_the_shipped_one() {
         let typed = Path::new("some/other/index.toml");
-        assert_eq!(resolve_index(typed), typed.to_path_buf());
+        assert_eq!(resolve_index(typed).unwrap(), typed.to_path_buf());
 
         // The default, when it resolves in the cwd, is also left alone: inside
         // a checkout the tree's own index must win over any shipped copy.
@@ -2517,8 +2809,422 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let here = dir.join("nros-sdk-index.toml");
         std::fs::write(&here, "").unwrap();
-        assert_eq!(resolve_index(&here), here);
+        assert_eq!(resolve_index(&here).unwrap(), here);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // ---- RFC-0097 D5: the index is fetched into the store, not read out of
+    // the release asset -------------------------------------------------------
+    //
+    // Every test below drives `index_from_store` with EXPLICIT parameters and a
+    // `file://` URL. No process environment is touched (these run as threads —
+    // `tests/store_reclaim.rs`: "No test here touches `$NROS_HOME`,
+    // `$NROS_STORE`"), and no test reaches the network: `curl` speaks `file://`,
+    // so the fetch under test is the REAL fetch, not a mock of one.
+
+    /// A parseable index, distinguishable by the tool name it declares.
+    fn index_text(tool: &str) -> String {
+        format!("[tool.{tool}]\nversion = \"1.0\"\n")
+    }
+
+    /// `file://` URL for a path — what stands in for the network here.
+    fn file_url(p: &Path) -> String {
+        format!("file://{}", p.display())
+    }
+
+    /// D5's headline: **a CLI resolves an index it did not ship with.**
+    ///
+    /// The shipped copy is present and readable, and it still loses — that is
+    /// the whole decision. Before this, `shipped_index()` was the answer, so
+    /// every one of the 70 index commits per 60 days needed a CLI release to
+    /// reach anyone.
+    #[test]
+    fn a_fetched_index_beats_the_copy_shipped_in_the_asset() {
+        let dir = crate::test_support::scratch_dir("d5_fetch_beats_shipped");
+        let store = dir.join("store");
+        let upstream = dir.join("upstream-index.toml");
+        std::fs::write(&upstream, index_text("only-upstream-has-me")).unwrap();
+        let shipped = dir.join("shipped-index.toml");
+        std::fs::write(&shipped, index_text("shipped-and-old")).unwrap();
+
+        let (got, origin) = index_from_store(
+            &store,
+            &file_url(&upstream),
+            /* offline */ false,
+            /* refresh */ false,
+            Some(&shipped),
+        )
+        .expect("a reachable URL resolves");
+
+        assert_eq!(origin, IndexOrigin::Fetched);
+        assert_eq!(got, index_cache_path(&store));
+        let idx = SdkIndex::load(&got).expect("the cached copy parses");
+        assert!(
+            idx.tool.contains_key("only-upstream-has-me"),
+            "the resolved index must be the FETCHED one, not the shipped one: {:?}",
+            idx.tool.keys().collect::<Vec<_>>()
+        );
+    }
+
+    /// The cache lives under the STORE ROOT it was given — never `~/.nros` and
+    /// never any other literal. Two different roots must never share a file.
+    #[test]
+    fn the_cache_is_derived_from_the_store_root_it_was_given() {
+        let dir = crate::test_support::scratch_dir("d5_cache_under_store");
+        let a = dir.join("store-a");
+        let b = dir.join("store-b");
+        assert!(index_cache_path(&a).starts_with(&a));
+        assert_ne!(index_cache_path(&a), index_cache_path(&b));
+
+        let upstream = dir.join("up.toml");
+        std::fs::write(&upstream, index_text("t")).unwrap();
+        let (got, _) =
+            index_from_store(&a, &file_url(&upstream), false, false, None).expect("fetch");
+        // The path it FETCHED to is the path the helper derives — asserting a
+        // prefix instead would let the two drift apart while both still sit
+        // somewhere under the store.
+        assert_eq!(got, index_cache_path(&a), "fetched somewhere the helper does not name");
+        assert!(
+            got.starts_with(&a),
+            "the cache landed at {} — outside the store root {}",
+            got.display(),
+            a.display()
+        );
+        // `starts_with` alone does NOT say this: `<store>/sdk/fetch/...` has the
+        // store as a prefix too, and `<store>/sdk` is exactly where this landed
+        // once already (phase-440 — `sdk_store::store_root()` IS `<store>/sdk`).
+        // The index cache is a store-level artifact and a PEER of the SDK tree,
+        // never a child of it: it describes which SDK to install, so it cannot
+        // live inside the thing it describes.
+        let sdk_root = a.join("sdk");
+        assert!(
+            !got.starts_with(&sdk_root),
+            "the cache landed at {} — inside the SDK tree {}, not beside it",
+            got.display(),
+            sdk_root.display()
+        );
+        assert!(!index_cache_path(&b).exists(), "the other store was written");
+    }
+
+    /// A warm cache answers without a fetch. Proven by pointing the URL at a
+    /// file that does not exist: if anything reached for it, this fails.
+    #[test]
+    fn a_warm_cache_answers_without_fetching() {
+        let dir = crate::test_support::scratch_dir("d5_warm_cache");
+        let store = dir.join("store");
+        let cache = index_cache_path(&store);
+        std::fs::create_dir_all(cache.parent().unwrap()).unwrap();
+        std::fs::write(&cache, index_text("cached")).unwrap();
+
+        let (got, origin) = index_from_store(
+            &store,
+            &file_url(&dir.join("there-is-no-such-file.toml")),
+            /* offline */ false,
+            /* refresh */ false,
+            None,
+        )
+        .expect("the cache alone is enough");
+        assert_eq!(origin, IndexOrigin::Cached);
+        assert_eq!(got, cache);
+    }
+
+    /// `nros setup --check` with a warm cache works with NO network: the
+    /// offline arm never contacts the URL and still resolves. This is also the
+    /// rung `locate_index` uses for every build (it passes `fetch = false`).
+    #[test]
+    fn offline_with_a_warm_cache_resolves_and_never_contacts_the_url() {
+        let dir = crate::test_support::scratch_dir("d5_offline_warm");
+        let store = dir.join("store");
+        let cache = index_cache_path(&store);
+        std::fs::create_dir_all(cache.parent().unwrap()).unwrap();
+        std::fs::write(&cache, index_text("cached")).unwrap();
+
+        // A URL that WOULD resolve, to prove the offline arm is what answered.
+        let upstream = dir.join("up.toml");
+        std::fs::write(&upstream, index_text("upstream")).unwrap();
+
+        let (got, origin) =
+            index_from_store(&store, &file_url(&upstream), true, false, None).expect("warm cache");
+        assert_eq!(origin, IndexOrigin::Cached);
+        assert_eq!(got, cache);
+        let idx = SdkIndex::load(&got).unwrap();
+        assert!(
+            idx.tool.contains_key("cached"),
+            "offline resolved the upstream copy — it must not have looked"
+        );
+    }
+
+    /// The acceptance the shipped copy still exists for: a FIRST run, no cache,
+    /// no network. It must still work.
+    #[test]
+    fn a_first_run_with_no_network_and_no_cache_falls_back_to_the_shipped_copy() {
+        let dir = crate::test_support::scratch_dir("d5_first_run_offline");
+        let store = dir.join("store");
+        let shipped = dir.join("shipped.toml");
+        std::fs::write(&shipped, index_text("shipped")).unwrap();
+
+        // Both shapes of "no network": refused (offline) and attempted-and-failed.
+        for (offline, url) in [
+            (true, file_url(&dir.join("unreachable.toml"))),
+            (false, file_url(&dir.join("unreachable.toml"))),
+        ] {
+            let (got, origin) = index_from_store(&store, &url, offline, false, Some(&shipped))
+                .expect("the shipped copy is the fallback");
+            assert_eq!(origin, IndexOrigin::Shipped, "offline={offline}");
+            assert_eq!(got, shipped, "offline={offline}");
+            assert!(
+                !index_cache_path(&store).exists(),
+                "a failed fetch must leave no cache behind (offline={offline})"
+            );
+        }
+    }
+
+    /// With nothing left to try, the error names the way out — `--index`,
+    /// `$NROS_INDEX_URL`, `$NROS_OFFLINE` — and the cache path it looked at.
+    ///
+    /// The old behaviour handed back the bare name `nros-sdk-index.toml` and
+    /// let `SdkIndex::load` say "no such file", which sends the reader hunting
+    /// in their cwd for a file that was never going to be there.
+    #[test]
+    fn with_nothing_to_fall_back_on_the_error_names_the_offline_path() {
+        let dir = crate::test_support::scratch_dir("d5_no_rung_left");
+        let store = dir.join("store");
+        let err = index_from_store(
+            &store,
+            &file_url(&dir.join("unreachable.toml")),
+            /* offline */ true,
+            false,
+            None,
+        )
+        .expect_err("no cwd index, no cache, no shipped copy — nothing can answer");
+        let msg = format!("{err:#}");
+        for needle in [
+            "NROS_INDEX_URL",
+            "NROS_OFFLINE",
+            "--index",
+            &index_cache_path(&store).display().to_string(),
+        ] {
+            assert!(
+                msg.contains(needle),
+                "the failure text must name `{needle}`:\n{msg}"
+            );
+        }
+    }
+
+    /// A response this binary cannot READ must not become the cache.
+    ///
+    /// Three real shapes collapse into this one: a captive portal answering 200
+    /// with HTML, a truncated mirror, and an index from a newer tree carrying a
+    /// section `deny_unknown_fields` rejects. Any of them written to the cache
+    /// would poison every later run — including the runs that would otherwise
+    /// have been fine, because rung 1 never re-fetches.
+    #[test]
+    fn a_response_this_binary_cannot_parse_never_becomes_the_cache() {
+        let dir = crate::test_support::scratch_dir("d5_garbage_response");
+        let store = dir.join("store");
+        let garbage = dir.join("portal.html");
+        std::fs::write(&garbage, "<html><body>Sign in to the WiFi</body></html>").unwrap();
+        let shipped = dir.join("shipped.toml");
+        std::fs::write(&shipped, index_text("shipped")).unwrap();
+
+        let (got, origin) = index_from_store(
+            &store,
+            &file_url(&garbage),
+            false,
+            false,
+            Some(shipped.as_path()),
+        )
+        .expect("an unreadable answer falls through to the shipped copy");
+        assert_eq!(origin, IndexOrigin::Shipped);
+        assert_eq!(got, shipped);
+        assert!(
+            !index_cache_path(&store).exists(),
+            "the unparseable download was installed as the cache"
+        );
+    }
+
+    /// `$NROS_INDEX_REFRESH` replaces a warm cache — and a refresh that CANNOT
+    /// reach the network keeps what the store already had rather than deleting
+    /// it. A refresh must never leave a host worse off than not asking.
+    #[test]
+    fn a_refresh_replaces_the_cache_but_a_failed_one_keeps_it() {
+        let dir = crate::test_support::scratch_dir("d5_refresh");
+        let store = dir.join("store");
+        let cache = index_cache_path(&store);
+        std::fs::create_dir_all(cache.parent().unwrap()).unwrap();
+        std::fs::write(&cache, index_text("old")).unwrap();
+
+        let upstream = dir.join("new.toml");
+        std::fs::write(&upstream, index_text("new")).unwrap();
+        let (got, origin) =
+            index_from_store(&store, &file_url(&upstream), false, true, None).expect("refetch");
+        assert_eq!(origin, IndexOrigin::Fetched);
+        assert!(
+            SdkIndex::load(&got).unwrap().tool.contains_key("new"),
+            "the refresh did not replace the cache"
+        );
+
+        let (got, origin) = index_from_store(
+            &store,
+            &file_url(&dir.join("gone.toml")),
+            false,
+            /* refresh */ true,
+            None,
+        )
+        .expect("a failed refresh still resolves");
+        assert_eq!(origin, IndexOrigin::Cached);
+        assert!(
+            SdkIndex::load(&got).unwrap().tool.contains_key("new"),
+            "a failed refresh destroyed the cache it could not replace"
+        );
+    }
+
+    // ---- RFC-0097 D12: `setup --check` covers the BUILD stage ---------------
+
+    /// An index declaring one build-stage source with a probe that cannot be
+    /// satisfied on any host. `dest` is relative to the workspace the report
+    /// resolves against.
+    fn build_stage_index(dest: &str) -> SdkIndex {
+        SdkIndex::parse(&format!(
+            "[source.rosidl]\nversion = \"humble\"\n\
+             git = \"https://example/rosidl\"\nref = \"deadbeef\"\n\
+             dest = \"{dest}\"\nbuild_stage = true\n\
+             check = {{ python_import = \"nros_no_such_module_exists\" }}\n"
+        ))
+        .expect("the build-stage schema parses")
+    }
+
+    /// The D12 acceptance: on a host that has neither the vendored copy nor the
+    /// thing itself, `--check` REPORTS it, by name, with the remedy.
+    ///
+    /// The state before this: `run_check_all` walked `[prereq.*]`, `[tool.*]`,
+    /// `[rust.*]` and `[python.*]` and no `[source.*]` at all, so a full
+    /// `nros setup --check` on this tree printed 101 lines and mentioned
+    /// `rosidl` zero times. The first mention a no-ROS host got was a cyclone
+    /// msg→IDL step failing mid-build.
+    #[test]
+    fn a_build_stage_source_neither_vendored_nor_present_is_reported_with_its_remedy() {
+        let ws = crate::test_support::scratch_dir("d12_missing");
+        let index = build_stage_index("third-party/ros/rosidl");
+
+        let got = build_stage_report(&index, &ws);
+        assert_eq!(got.len(), 1, "one build-stage source was declared");
+        let (name, state, remedy) = &got[0];
+        assert_eq!(name, "rosidl");
+        assert_eq!(*state, ProbeResult::Missing);
+        assert_eq!(remedy, "nros setup --source rosidl");
+    }
+
+    /// The vendored copy, once provisioned, satisfies it — the answer the
+    /// remedy actually produces, and the only rung a host with no ROS has.
+    #[test]
+    fn a_provisioned_vendored_copy_satisfies_the_build_stage_check() {
+        let ws = crate::test_support::scratch_dir("d12_vendored");
+        let dest = "third-party/ros/rosidl";
+        std::fs::create_dir_all(ws.join(dest)).unwrap();
+        std::fs::write(ws.join(dest).join("README.md"), "x").unwrap();
+
+        let got = build_stage_report(&build_stage_index(dest), &ws);
+        assert_eq!(got[0].1, ProbeResult::Present);
+    }
+
+    /// The OTHER rung: a host that has the thing from somewhere else needs
+    /// nothing provisioned, and reporting it MISSING there would exit `--check`
+    /// nonzero on a correctly configured host. `sys` stands in for
+    /// `rosidl_adapter` — importable on every host that has python3 at all.
+    #[test]
+    fn a_host_that_already_has_it_is_not_told_to_provision_a_vendored_copy() {
+        let ws = crate::test_support::scratch_dir("d12_probe_rung");
+        let index = SdkIndex::parse(
+            "[source.rosidl]\nversion = \"humble\"\n\
+             git = \"https://example/rosidl\"\nref = \"deadbeef\"\n\
+             dest = \"third-party/ros/rosidl\"\nbuild_stage = true\n\
+             check = { python_import = \"sys\" }\n",
+        )
+        .unwrap();
+        assert!(
+            !ws.join("third-party/ros/rosidl").exists(),
+            "nothing is vendored — the probe must be what answers"
+        );
+        assert_eq!(build_stage_report(&index, &ws)[0].1, ProbeResult::Present);
+    }
+
+    /// A source that is NOT `build_stage` stays off this report. Every
+    /// `[source.*]` in the tree would otherwise be reported — the cross-only
+    /// kernels a native-only user never builds included — and `--check` would
+    /// fail on a host with nothing wrong with it.
+    #[test]
+    fn an_ordinary_source_is_not_a_build_stage_row() {
+        let ws = crate::test_support::scratch_dir("d12_not_build_stage");
+        let index = SdkIndex::parse(
+            "[source.freertos-kernel]\nversion = \"11\"\n\
+             git = \"https://example/f\"\nref = \"v11\"\ndest = \"third-party/f\"\n",
+        )
+        .unwrap();
+        assert!(build_stage_report(&index, &ws).is_empty());
+    }
+
+    /// The DATA half of D12, asserted against the tree's own index — a code
+    /// path with no `build_stage = true` anywhere reports nothing and passes
+    /// every test above.
+    #[test]
+    fn the_shipped_index_declares_rosidl_as_a_build_stage_source() {
+        let index_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../..")
+            .join(INDEX_FILE);
+        let index = SdkIndex::load(&index_path)
+            .unwrap_or_else(|e| panic!("load {}: {e:#}", index_path.display()));
+        let rosidl = index
+            .source
+            .get("rosidl")
+            .expect("[source.rosidl] is in this tree's index");
+        assert!(
+            rosidl.build_stage,
+            "rosidl rides [rmw.cyclonedds], which `nros setup <board>` never \
+             resolves (rmw defaults to zenoh) — it must be on the --check report"
+        );
+        let check = rosidl
+            .check
+            .as_ref()
+            .expect("without a probe, every ROS host reports MISSING and --check exits nonzero");
+        assert_eq!(check.python_import.as_deref(), Some("rosidl_adapter"));
+        assert_eq!(check.env.as_deref(), Some("NROS_ROSIDL_ADAPTER_BIN_DIR"));
+    }
+
+    /// A `build_stage` entry that nothing can LOCATE is refused at LOAD: the
+    /// report asks whether its provisioned directory is populated, so such an
+    /// entry would be reported MISSING forever with a remedy that provisions
+    /// nothing visible.
+    #[test]
+    fn a_build_stage_source_nothing_can_locate_is_refused() {
+        let err = SdkIndex::parse("[source.x]\nversion = \"1\"\nbuild_stage = true\n")
+            .unwrap()
+            .validate()
+            .expect_err("nothing names where it lives");
+        assert!(
+            format!("{err:#}").contains("build_stage"),
+            "the refusal must name the field: {err:#}"
+        );
+    }
+
+    /// The other half of that rule, and the case the FIRST version of it got
+    /// wrong: a store source has no `dest` ON PURPOSE (RFC-0095 D1/D2 — the path
+    /// is derived from name + version so nobody can spell it twice), and
+    /// `rosidl` is simultaneously the only build-stage source we have. A rule
+    /// spelled `build_stage && dest.is_none()` therefore refused the SHIPPED
+    /// index, which is every `nros` failing to read its own manifest.
+    ///
+    /// `the_shipped_index_declares_rosidl_as_a_build_stage_source` loads the
+    /// real file and would have caught it too; this pins the rule directly, so
+    /// the reason survives even if the shipped entry changes shape again.
+    #[test]
+    fn a_build_stage_source_in_the_store_needs_no_dest() {
+        SdkIndex::parse(
+            "[source.x]\nversion = \"1\"\nbuild_stage = true\nlocation = \"store\"\n",
+        )
+        .unwrap()
+        .validate()
+        .expect("a store source derives its path; requiring `dest` here refuses the real index");
     }
 
     /// issue 0603 — a `header` probe answers about the `-dev` package, where
@@ -2803,6 +3509,78 @@ mod probe_kind_tests {
 
     fn probe(c: CheckProbe, base: Option<&std::path::Path>) -> ProbeResult {
         run_probe_in(Some(&c), base)
+    }
+
+    /// RFC-0097 D12 — `python_import` asks the INTERPRETER, not the filesystem.
+    ///
+    /// The distinction it exists for: `scripts/cyclonedds/msg_to_cyclone_idl.py`
+    /// refuses a `rosidl_adapter` whose scripts EXIST but cannot import, because
+    /// "the directory existing is a PROXY; being importable is the property".
+    /// A `path` probe cannot express that, and `runs` cannot express `python3
+    /// -c "import x"` at all — it splits on whitespace and spawns directly, so
+    /// `-c` would receive `'import`.
+    #[test]
+    fn python_import_answers_the_interpreter_not_the_filesystem() {
+        if !command_exists("python3") {
+            // The probe abstains where it cannot ask, and so does this test.
+            return;
+        }
+        assert_eq!(
+            probe(
+                CheckProbe {
+                    python_import: Some("sys".into()),
+                    ..Default::default()
+                },
+                None
+            ),
+            ProbeResult::Present,
+            "a stdlib module must read Present, or the probe is always-missing"
+        );
+        assert_eq!(
+            probe(
+                CheckProbe {
+                    python_import: Some("nros_definitely_not_installed".into()),
+                    ..Default::default()
+                },
+                None
+            ),
+            ProbeResult::Missing
+        );
+    }
+
+    /// RFC-0097 D12 — `env` is present only when the variable names an existing
+    /// DIRECTORY. Set-but-nowhere is a misconfiguration, and calling it present
+    /// is how the build failure lands with no clue attached.
+    #[test]
+    fn env_probe_needs_the_variable_to_name_a_real_directory() {
+        // A test-only name, so no concurrent test can be reading it (the idiom
+        // `doctor.rs`'s gate tests use — this crate has no env lock).
+        const VAR: &str = "NROS_TEST_PROBE_ENV_DIR";
+        let c = || CheckProbe {
+            env: Some(VAR.into()),
+            ..Default::default()
+        };
+        let saved = std::env::var_os(VAR);
+        // SAFETY: a uniquely-named variable this process alone reads; restored
+        // before returning.
+        unsafe { std::env::remove_var(VAR) };
+        assert_eq!(probe(c(), None), ProbeResult::Missing, "unset");
+
+        let dir = crate::test_support::scratch_dir("probe_env_dir");
+        unsafe { std::env::set_var(VAR, &dir) };
+        assert_eq!(probe(c(), None), ProbeResult::Present, "names a directory");
+
+        unsafe { std::env::set_var(VAR, dir.join("no-such-child")) };
+        assert_eq!(
+            probe(c(), None),
+            ProbeResult::Missing,
+            "set to a path that is not there is a misconfiguration, not presence"
+        );
+
+        match saved {
+            Some(v) => unsafe { std::env::set_var(VAR, v) },
+            None => unsafe { std::env::remove_var(VAR) },
+        }
     }
 
     /// `runs` distinguishes three states, and the third is the point: a tool

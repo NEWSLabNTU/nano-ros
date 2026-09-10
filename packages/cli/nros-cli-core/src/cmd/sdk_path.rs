@@ -58,7 +58,7 @@ pub struct Args {
 }
 
 pub fn run(args: Args) -> Result<()> {
-    let index = SdkIndex::load(&crate::cmd::setup::resolve_index(&args.index))?;
+    let index = SdkIndex::load(&crate::cmd::setup::resolve_index(&args.index)?)?;
 
     if args.source {
         return run_source(&index, &args);

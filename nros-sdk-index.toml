@@ -1318,6 +1318,20 @@ packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
 # third-party/ros/rosidl/rosidl_adapter/scripts as its last ladder rung
 # (env override and /opt/ros still win). Python deps ride [python.*]:
 # catkin-pkg, empy (PINNED 3.3.4 — empy 4 breaks rosidl templates), lark.
+#
+# RFC-0097 D12 — `build_stage = true`: a TARGET BUILD pulls this in, not a
+# board. `nros setup <board>` resolves the board's packages plus the chosen
+# rmw's, and the rmw DEFAULTS to zenoh, so a plain board setup never reaches
+# `[rmw.cyclonedds]` and never provisions this. A host with no ROS therefore
+# met it as a BUILD FAILURE, mid-compile. `nros setup --check` reports it now.
+#
+# `check` is the OTHER rung of msg_to_cyclone_idl.py's ladder: a host with ROS
+# sourced (or an explicit override) needs nothing provisioned, and reporting it
+# MISSING there would exit `--check` nonzero on a correctly configured host.
+# `python_import`, not `runs`: `runs` splits on whitespace and spawns directly,
+# so `python3 -c 'import rosidl_adapter'` cannot be written as one. And not a
+# `path` probe either — the directory existing is a PROXY, being importable is
+# the property, which is the distinction the script itself refuses on.
 version = "humble-5621b26"
 git = "https://github.com/ros2/rosidl"
 ref = "5621b26eff54596a356ad8abd72c06e7650d21f7"
@@ -1332,6 +1346,8 @@ ref = "5621b26eff54596a356ad8abd72c06e7650d21f7"
 # derived, and leaving an authored one would be a second spelling of a location
 # the store already knows.
 location = "store"
+build_stage = true
+check = { python_import = "rosidl_adapter", env = "NROS_ROSIDL_ADAPTER_BIN_DIR" }
 
 # --- OS packages (phase-327 W1, RFC-0062) -----------------------------------
 #
