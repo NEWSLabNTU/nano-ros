@@ -124,13 +124,13 @@ fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
         // row instead of being generated at, so the verb runs from a build
         // directory that may sit under a different checkout (issue 1166). The
         // cwd question is meaningless there; the STALENESS guard still applies.
+        // phase-445 W3 added `LeafSystem`: `find_package(nano_ros)` asks it for
+        // a C/C++ leaf's deployment from its build directory.
         cmd::ws::Sub::Providers(_)
         | cmd::ws::Sub::Order(_)
         | cmd::ws::Sub::BoardFacts(_)
         | cmd::ws::Sub::EntityFacts(_)
         | cmd::ws::Sub::EntityInventory(_)
-        // phase-445 W3 — `find_package(nano_ros)` asks `ws leaf-system` for a
-        // C/C++ leaf's deployment from its build directory.
         | cmd::ws::Sub::LeafSystem(_)
         | cmd::ws::Sub::RmwDispatch(_) => "ws-build",
         _ => "ws",
