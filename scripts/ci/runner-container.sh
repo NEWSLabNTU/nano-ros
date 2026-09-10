@@ -107,7 +107,13 @@ mkdir -p "$CONTEXT"
 # requires it there). A hand-written second list beside the index is the drift
 # this repo has already paid for three times — issues 0833, 0500, 0610 — and
 # `runner-provision.sh` refuses to be one for exactly that reason.
-PREREQ_KEYS=(cmake ninja make unzip curl zstd python3-dev python3-venv
+# `make` and `ninja` are deliberately NOT here, and the check-one-producer gate
+# is what says so: the index declares both as TOOLS (`nros setup --tool make`),
+# so apt-installing them as well is two producers for one prefix — issue 0500,
+# where the store accumulates, prefixes resolve newest-first, both paths print
+# success, and the stale one shadows the pin that was just installed. They come
+# from the store with everything else the provisioning step fetches.
+PREREQ_KEYS=(cmake unzip curl zstd python3-dev python3-venv
              python3-pip clang libclang-dev libglib2-dev libpixman-dev
              libgcrypt-dev socat genromfs kconfig-frontends libmbedtls)
 if ! PREREQ_PACKAGES="$(python3 "$REPO_ROOT/scripts/sdk/prereq-packages.py" \
