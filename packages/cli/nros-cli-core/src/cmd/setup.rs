@@ -926,7 +926,6 @@ fn source_present(
         .unwrap_or(false)
 }
 
-
 /// RFC-0097 D12 — what a TARGET BUILD will need that no board provisions.
 ///
 /// `nros setup <board>` resolves a board's `[tool.*]`/`[source.*]` slice and

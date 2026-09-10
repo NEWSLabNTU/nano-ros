@@ -1010,12 +1010,14 @@ pub fn provision_source(
             // an unreachable state. `SdkIndex::validate` rejects both of these
             // before we get here; if one ever arrives, say which source and
             // which key, the way every other failure in this file does.
-            let git = src.git.as_deref().ok_or_else(|| {
-                eyre!("source '{name}' is in clone mode but has no `git` url")
-            })?;
-            let git_ref = src.git_ref.as_deref().ok_or_else(|| {
-                eyre!("source '{name}' is in clone mode but has no `ref`")
-            })?;
+            let git = src
+                .git
+                .as_deref()
+                .ok_or_else(|| eyre!("source '{name}' is in clone mode but has no `git` url"))?;
+            let git_ref = src
+                .git_ref
+                .as_deref()
+                .ok_or_else(|| eyre!("source '{name}' is in clone mode but has no `ref`"))?;
             // ASK THE ONE DERIVATION. This read `dest` directly and panicked
             // with `expect("clone mode has a dest")` — which is exactly what a
             // `location = "store"` source has no `dest` to give, because
