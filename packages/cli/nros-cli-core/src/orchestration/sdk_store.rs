@@ -61,6 +61,34 @@ pub fn tool_prefix(root: &Path, tool: &str, version: &str) -> PathBuf {
 ///
 /// Returns `None` when the index has no such tool; the caller reports it with
 /// the provisioning command, and must NEVER substitute another version.
+/// Where a `[source.*]` with `location = "store"` is provisioned —
+/// `$NROS_STORE/sources/<name>/<version>` (phase-440, RFC-0095 D1/D2).
+///
+/// DERIVED, never authored: the same reason [`tool_dir`] derives rather than
+/// reading a path out of the index. An authored store path is a second spelling
+/// of a location the store already knows, and two spellings of one location is
+/// how the tool prefix ended up with a legacy flat shape nobody meant (issue
+/// 0628).
+///
+/// Returns `None` for a source the index does not have, or one whose
+/// `location` is `workspace` — the caller then wants the workspace-relative
+/// `dest`, and asking here would silently invent a store path for a source that
+/// does not live in the store.
+pub fn source_dir(index: &super::sdk_index::SdkIndex, source: &str) -> Option<PathBuf> {
+    let src = index.source.get(source)?;
+    if src.location != super::sdk_index::SourceLocation::Store {
+        return None;
+    }
+    // The STORE root, not the SDK root: `sources/` is a sibling of `sdk/`,
+    // `workspaces/` and `bin/` (RFC-0095 D2), and W6 gave that one spelling.
+    Some(
+        super::store::root()
+            .join("sources")
+            .join(source)
+            .join(&src.version),
+    )
+}
+
 pub fn tool_dir(index: &super::sdk_index::SdkIndex, tool: &str) -> Option<PathBuf> {
     let version = &index.tool.get(tool)?.version;
     Some(tool_prefix(&store_root(), tool, version))

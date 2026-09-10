@@ -46,11 +46,49 @@ from pathlib import Path
 # cyclone lanes must work on a host with NO ROS install):
 #   1. `NROS_ROSIDL_ADAPTER_BIN_DIR` env (explicit override);
 #   2. the ROS install (`/opt/ros/humble/lib/rosidl_adapter`);
-#   3. the vendored `[source.rosidl]` tree (`third-party/ros/rosidl`,
-#      provisioned by `nros setup --source rosidl`) — its scripts import the
-#      module from source, so PYTHONPATH is injected for that case.
+#   3. the vendored `[source.rosidl]` tree, provisioned by
+#      `nros setup --source rosidl` — its scripts import the module from
+#      source, so PYTHONPATH is injected for that case.
+#
+# Rung 3 is DERIVED, not spelled (phase-440, RFC-0095 D1/D2). `[source.rosidl]`
+# now has `location = "store"`, so it lands in `$NROS_STORE/sources/rosidl/
+# <version>` — outside every checkout and keyed by version — and the path is a
+# function of the index rather than a literal here. A literal would be a second
+# spelling that goes stale the moment the index moves, which is the class
+# `nros sdk-path` exists to prevent for tools.
+#
+# The pre-phase-440 location is kept BELOW it: a host provisioned earlier still
+# has `third-party/ros/rosidl` and keeps working with no migration step, exactly
+# as W4 kept the checkout arm below the store arm for workspaces.
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-_VENDORED_ROSIDL = _REPO_ROOT / "third-party/ros/rosidl"
+
+
+def _vendored_rosidl_candidates() -> "list[Path]":
+    """Store first (derived), then the legacy in-tree location."""
+    out = []
+    try:
+        import subprocess
+
+        r = subprocess.run(
+            ["nros", "sdk-path", "--source", "rosidl"],
+            capture_output=True,
+            text=True,
+            cwd=str(_REPO_ROOT),
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            out.append(Path(r.stdout.strip()))
+    except OSError:
+        # No `nros` on PATH is normal for a consumer that has not sourced
+        # activate.sh; fall through to the legacy rung rather than failing.
+        pass
+    out.append(_REPO_ROOT / "third-party/ros/rosidl")
+    return out
+
+
+_VENDORED_ROSIDL = next(
+    (p for p in _vendored_rosidl_candidates() if p.is_dir()),
+    _REPO_ROOT / "third-party/ros/rosidl",
+)
 
 
 def _adapter_importable(env: "dict") -> bool:

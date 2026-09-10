@@ -911,13 +911,40 @@ fn provision_named_sources(
 /// #0390 — is a `[source.*]` provisioned on disk? An uninitialised submodule is
 /// an absent or EMPTY directory; a provisioned one has entries. `dest` is
 /// workspace-relative.
-fn source_present(src: &crate::orchestration::sdk_index::SourcePackage, workspace: &Path) -> bool {
-    let Some(dest) = src.dest.as_deref() else {
-        return false;
-    };
-    std::fs::read_dir(workspace.join(dest))
+fn source_present(
+    name: &str,
+    src: &crate::orchestration::sdk_index::SourcePackage,
+    workspace: &Path,
+) -> bool {
+    source_dir_of(name, src, workspace)
+        .and_then(|d| std::fs::read_dir(d).ok())
         .map(|mut d| d.next().is_some())
         .unwrap_or(false)
+}
+
+/// The directory a `[source.*]` is provisioned into — phase-440, RFC-0095
+/// D1/D2. ONE derivation, so "where is it?" has one answer for the installer,
+/// the presence probe and `nros sdk-path --source`.
+///
+/// `location = "store"` derives `$NROS_STORE/sources/<name>/<version>` from the
+/// index rather than reading a path out of it; `workspace` (the default) keeps
+/// the historical workspace-relative `dest`, so every existing entry means what
+/// it meant.
+pub(crate) fn source_dir_of(
+    name: &str,
+    src: &crate::orchestration::sdk_index::SourcePackage,
+    workspace: &Path,
+) -> Option<std::path::PathBuf> {
+    use crate::orchestration::sdk_index::SourceLocation;
+    match src.location {
+        SourceLocation::Store => Some(
+            crate::orchestration::store::root()
+                .join("sources")
+                .join(name)
+                .join(&src.version),
+        ),
+        SourceLocation::Workspace => src.dest.as_deref().map(|d| workspace.join(d)),
+    }
 }
 
 /// #0390 — provision (or with `check`, VERIFY) the repo build stage's source
@@ -953,7 +980,7 @@ fn run_build_sources(
         let missing: Vec<&str> = index
             .build_sources
             .iter()
-            .filter(|n| !source_present(&index.source[n.as_str()], &workspace))
+            .filter(|n| !source_present(n.as_str(), &index.source[n.as_str()], &workspace))
             .map(String::as_str)
             .collect();
         if missing.is_empty() {

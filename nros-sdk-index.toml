@@ -1321,7 +1321,17 @@ packages = ["arm-none-eabi-gcc", "qemu", "freertos-kernel", "lwip"]
 version = "humble-5621b26"
 git = "https://github.com/ros2/rosidl"
 ref = "5621b26eff54596a356ad8abd72c06e7650d21f7"
-dest = "third-party/ros/rosidl"
+# phase-440 / RFC-0095 D1+D2. `third-party/` holds TRACKED SUBMODULES and
+# nothing else (W3's ratchet), and this was the one declared exception in it.
+# In the store the path is DERIVED — `$NROS_STORE/sources/rosidl/<version>` —
+# so it is outside every checkout (D1: no second checkout can own it) and keyed
+# by version (D2: two versions coexist, and two checkouts share one copy
+# instead of provisioning it twice).
+#
+# `dest` is deliberately gone rather than kept alongside: a store path is
+# derived, and leaving an authored one would be a second spelling of a location
+# the store already knows.
+location = "store"
 
 # --- OS packages (phase-327 W1, RFC-0062) -----------------------------------
 #
