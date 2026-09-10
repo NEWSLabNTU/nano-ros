@@ -1767,6 +1767,77 @@ node-std-tests:
         cargo test -p nros-node --lib \
         --features std,sim-time,param-services --quiet -- --ignored --exact \
         executor::backing::tests::the_static_is_handed_out_once_and_only_once
+    # Issue 1284 — a STATED executor backing must MEET the executor's default.
+    # `check-executor-backing-arena-pairing` (fast line) holds `arena + 8 *
+    # words == base`, i.e. that the numbers SUM; whether `words` is ENOUGH was
+    # only `executor::backing`'s const assertion, a compile error in an image
+    # no merge-gating lane builds, so twelve Zephyr leaves drifted twice in a
+    # week (11041 vs 11065, 11045 vs 11069) with every gate green.
+    #
+    # The conf side has one home: the pairing gate's `--claims` names every
+    # (conf, board) claim, and refuses what nothing can vouch for. Two
+    # measurements consume it:
+    #   * a board of ANOTHER pointer width — compile nros-node for that board's
+    #     own target with the stated value, so the crate's const assertion rules
+    #     at that width (after a negative control proving it CAN fire there);
+    #   * a board of the host's width — `executor_backing_claims`, which compares
+    #     against `ExecutorSizing::DEFAULT` as compiled here and names the conf
+    #     and both numbers. It refuses a cross-width claim this step did not list
+    #     in NROS_BACKING_CROSS_VERIFIED, so a bare run fails closed.
+    # `alloc,rmw-cffi` is what a Zephyr Rust image hands nros-node via `nros`,
+    # and the backing's layout depends on both. The sizing knobs and rungs the
+    # listing names are UNSET for the compile: the measurement is of an image
+    # that sets none, and the gate has already refused any image that does.
+    rc=0
+    claims="$(python3 scripts/check-executor-backing-arena-pairing.py --claims)" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        printf '%s\n' "$claims" | awk -F'\t' '$1 == "refuse" { print "  " $2 ": " $3 }'
+        echo "node-std-tests: the executor-backing claims listing refused (above) — issue 1284" >&2
+        exit 1
+    fi
+    unset_args=()
+    while IFS=$'\t' read -r _ name; do
+        unset_args+=(-u "$name")
+    done < <(printf '%s\n' "$claims" | awk -F'\t' '$1 == "knob" || $1 == "rung"')
+    cross_verified=""
+    while IFS=$'\t' read -r target words confs; do
+        [ -n "$target" ] || continue
+        backing_check() {
+            env "${unset_args[@]}" NROS_EXECUTOR_BACKING_U64S="$1" \
+                cargo check -p nros-node --lib --target "$target" \
+                --no-default-features --features alloc,rmw-cffi --quiet 2>&1
+        }
+        case ",$cross_verified," in
+            *",$target,"*) ;;
+            *)
+                rc=0; out="$(backing_check 1)" || rc=$?
+                if [ "$rc" -eq 0 ] || [[ "$out" != *"NROS_EXECUTOR_BACKING_U64S is below"* ]]; then
+                    printf '%s\n' "$out"
+                    printf '%s\n' \
+                        "node-std-tests: NEGATIVE CONTROL failed on $target — a backing of 1 word" \
+                        "  compiled (rc=$rc) or failed for another reason, so a pass below would" \
+                        "  say nothing about the stated claims (issue 1284)." >&2
+                    exit 1
+                fi ;;
+        esac
+        rc=0; out="$(backing_check "$words")" || rc=$?
+        if [ "$rc" -ne 0 ]; then
+            printf '%s\n' "$out"
+            printf '%s\n' \
+                "node-std-tests: CONFIG_NROS_EXECUTOR_BACKING_U64S=$words is refused by nros-node" \
+                "  compiled for $target, the target of: $confs" \
+                "  The image will not compile. Restate the backing at or above the executor's" \
+                "  default for that target and re-pair the arena (issue 1284)." >&2
+            exit 1
+        fi
+        cross_verified="${cross_verified:+$cross_verified,}$target"
+    done < <(printf '%s\n' "$claims" \
+        | awk -F'\t' '$1 == "claim" && $6 != "-" { k = $6 "\t" $3; c[k] = c[k] " " $2 }
+                      END { for (k in c) print k "\t" c[k] }' | sort)
+    ran_tests "the executor-backing claims test" \
+        env NROS_BACKING_CROSS_VERIFIED="$cross_verified" \
+        cargo test -p nros-node --features std,rmw-cffi --test executor_backing_claims \
+        --quiet -- --ignored --exact every_stated_executor_backing_meets_the_measured_default
     # `env,std` and NOT `rmw-cffi`: the cffi flavour makes the wall clock an
     # extern the linker wants a platform port for, and this lane links none.
     cargo test -p nros --lib --features env,std --quiet
