@@ -51,6 +51,9 @@ pub mod prereq_resolve;
 /// RFC-0097 D7 / phase-443 W2 — `share/nros/manifest.toml`, what a release
 /// DECLARES about itself instead of asserting three versions equal.
 pub mod release_manifest;
+/// RFC-0099 D8 / phase-447 D3 — the pinned, vendored rosdep snapshot that the
+/// `<depend>` ladder falls back to below `[prereq.*]`.
+pub mod rosdep_snapshot;
 pub use nros_orchestration_ir::rtos_realizer;
 pub mod schema;
 pub mod sdk_index;

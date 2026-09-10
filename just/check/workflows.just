@@ -209,6 +209,24 @@ board-alias-unique:
 prereq-roles:
     @python3 scripts/check-prereq-roles.py
 
+# RFC-0099 D8 / phase-447 D3 — the vendored rosdep snapshot is pinned,
+# normalized, unprobed and MARKED.
+#
+# `nros-rosdep-snapshot.toml` is 150 KB of generated data on the last rung of
+# the `<depend>` ladder. Three of the four things this asks a reviewer could
+# check by eye (a pin, sorted keys, no probe); the fourth is the one that
+# matters and cannot be seen in the file at all — that every CONSUMER of a
+# snapshot key says the key is unprobed. RFC-0062's amendment rejected rosdep
+# partly because it supplies packages and not probes; a fallback that resolves
+# a name without saying so re-creates that objection silently.
+#
+# NOT checked here: whether the committed bytes are what the pinned rosdistro
+# commit projects to. That needs the network, and this tier runs offline —
+# `python3 scripts/gen-rosdep-snapshot.py --verify` is the maintainer check.
+[group("checks")]
+rosdep-snapshot:
+    @python3 scripts/check-rosdep-snapshot.py
+
 # issue 0516 — a COMMENTED-OUT element in a package.xml must not read as a
 # declaration. cmake has no XML parser, so every reader here regexes raw text;
 # before the `nros_read_package_xml_body()` helper, a package.xml that merely
