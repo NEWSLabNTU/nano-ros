@@ -41,6 +41,13 @@ pub enum BuildChannel {
     /// `PlatformId::ZephyrNativeSim` and `PlatformId::ZephyrQemuCortexM` are
     /// producible here (phase-441 W1) — the board is a row field, not a channel.
     ZephyrWestLeaves,
+    /// FreeRTOS workspace entry cross-built for MPS2-AN385 (Cortex-M3) by
+    /// `just freertos build-fixtures` — `scripts/build/workspace-fixtures-build.sh
+    /// freertos <lang>`, driven off the `platform = "freertos"` rows of
+    /// `examples/fixtures.toml`. The artifact is an ELF QEMU boots; the guest's
+    /// lwIP stack dials the baked `tcp/192.0.3.1:<port>` locator through the
+    /// slirp gateway (phase-441 W3).
+    FreertosMps2Fixtures,
 }
 
 impl BuildChannel {
@@ -51,6 +58,7 @@ impl BuildChannel {
         match self {
             BuildChannel::NativeFixtures => "just native build-fixtures",
             BuildChannel::ZephyrWestLeaves => "just zephyr build-fixtures",
+            BuildChannel::FreertosMps2Fixtures => "just freertos build-fixtures",
         }
     }
 
@@ -59,6 +67,7 @@ impl BuildChannel {
         match self {
             BuildChannel::NativeFixtures => "native",
             BuildChannel::ZephyrWestLeaves => "zephyr",
+            BuildChannel::FreertosMps2Fixtures => "freertos",
         }
     }
 
@@ -71,6 +80,7 @@ impl BuildChannel {
                 p,
                 PlatformId::ZephyrNativeSim | PlatformId::ZephyrQemuCortexM
             ),
+            BuildChannel::FreertosMps2Fixtures => matches!(p, PlatformId::FreertosMps2),
         }
     }
 }
@@ -368,6 +378,40 @@ pub const CELLS: &[InteropCell] = &[
        c(ZephyrQemuCortexM, C, Zenoh, Pubsub, Interop, Runtime),
        ZephyrWestLeaves, RosEdition(Zenoh), NanoToRos,
        "pubsub_zephyr_cortex_m_ros2_interop_e2e"),
+
+    // ── phase-441 W3 — the SECOND KERNEL's live peer ────────────────────
+    // tests/pubsub_freertos_ros2_interop_e2e.rs. Every other on-target row in
+    // this list is Zephyr native_sim, whose sockets, pointer width and libc are
+    // the HOST's (`matrix.rs`: "Zephyr native_sim (NSOS host sockets)"). So
+    // before this row the live-peer coverage of the RTOS ports was one kernel,
+    // one board, and a network stack that is not an RTOS network stack.
+    //
+    // This one is a different kernel (FreeRTOS), a different IP stack (lwIP
+    // over the emulated LAN9118), a 32-bit target (thumbv7m), a different libc
+    // (newlib-nano) and a real emulator — and it reaches the host over QEMU
+    // SLIRP, unicast only, which is what makes it affordable: CLAUDE.md forbids
+    // `sudo`, TAP needs `ip tuntap add`, and zenoh-pico's baked
+    // `tcp/192.0.3.1:<port>` locator needs no multicast at all. (Cyclone's SPDP
+    // does; that is issue 1251 and phase-441 W2's measurement, deliberately not
+    // this cell's problem.)
+    //
+    // C rather than Rust, and that is a second axis moved for free: the
+    // existing on-target row runs the Rust API, this one runs the C ABI
+    // (`nros_cpp_publisher_create` out of `examples/workspaces/c`) — the half
+    // of the surface an RTOS consumer is most likely to be using.
+    //
+    // It reuses `entry_e2e`'s freertos_c image and therefore its baked router
+    // port (`port_of(FreertosMps2, C, EntryPubsub)`), exactly as the zephyr QoS
+    // interop cell reuses the `ws-qos-rust` image and port. Two binaries on one
+    // port must not run at once, so `.config/nextest.toml` puts this one in
+    // `matrix-consumers-serial` with `entry_e2e` — and the override has to sit
+    // ABOVE `binary(~freertos)`, or `qemu-emulated` claims it first and the
+    // serialization silently does not happen (the phase-373 W1 defect, one
+    // binary over).
+    ic("freertos-mps2-pubsub-c-zenoh-n2r",
+       c(FreertosMps2, C, Zenoh, EntryPubsub, Interop, Runtime),
+       FreertosMps2Fixtures, RosEdition(Zenoh), NanoToRos,
+       "pubsub_freertos_ros2_interop_e2e"),
 
     // ── Declarative cross-RMW bridges ───────────────────────────────────
     // The nano bridge is a `ws-bridge-*-rust` native_entry; a ROS 2 peer sits on
