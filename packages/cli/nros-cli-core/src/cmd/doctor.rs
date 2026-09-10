@@ -95,6 +95,169 @@ fn report_legacy_unversioned_installs() {
     }
 }
 
+/// RFC-0097 D12 — with no workspace to scope it to, `nros doctor` verifies the
+/// INSTALL: **launcher, store, pin resolution**.
+///
+/// Before this, a `doctor` that could not auto-detect a nano-ros workspace
+/// simply failed — so the one user who most needs a health check, the one who
+/// has just run `install.sh` and has nothing to point it at, was the one user
+/// it refused to answer. "Where is my store, did the launcher land, and does
+/// the pin in this directory resolve" is a question that needs no workspace at
+/// all.
+///
+/// Every input is a PARAMETER, so this is testable against a constructed store
+/// without a test mutating `$NROS_HOME`/`$NROS_STORE` (which in this crate is a
+/// cross-thread race — `tests/store_reclaim.rs`).
+///
+/// Exactly ONE thing here counts as a problem: **a pin naming a nano-ros this
+/// store cannot produce**, which is a project that cannot be built. An absent
+/// store, an unfronted launcher and a binary that is not a store toolchain are
+/// all legitimate states — a contributor running the tree's own build has all
+/// three — and a doctor that fails on a working setup is a doctor people learn
+/// to ignore.
+fn install_report(store: &Path, exe: &Path, cwd: &Path) -> (Vec<String>, usize) {
+    use crate::orchestration::{dispatch, pin, store as store_mod};
+
+    let mut lines = Vec::new();
+    let mut problems = 0usize;
+
+    // --- the store ---------------------------------------------------------
+    if store.is_dir() {
+        let entries = store_mod::scan(store);
+        let bytes: u64 = entries.iter().map(|e| e.size_bytes).sum();
+        lines.push(format!(
+            "  [OK] store      {} ({}, {} entr{})",
+            store.display(),
+            store_mod::format_size(bytes),
+            entries.len(),
+            if entries.len() == 1 { "y" } else { "ies" }
+        ));
+    } else {
+        // Not a problem: a contributor building in the checkout has no store,
+        // and telling them to make one would be wrong.
+        lines.push(format!(
+            "  [--] store      {} does not exist yet — nothing has been provisioned here",
+            store.display()
+        ));
+    }
+
+    // --- the launcher ------------------------------------------------------
+    //
+    // `<store>/bin/nros` is what `install.sh` fronts and what a user's PATH
+    // points at. Reported separately from "am I a store toolchain", because
+    // those come apart in both directions: a contributor's in-tree build is not
+    // a store toolchain and needs no front, while a front pointing at nothing
+    // is an install that half happened.
+    let front = store.join("bin").join("nros");
+    if front.exists() {
+        lines.push(format!("  [OK] launcher   {}", front.display()));
+    } else {
+        lines.push(format!(
+            "  [--] launcher   no {} — install with `curl -fsSL <install.sh> | sh`, \
+             or use a checkout's own build",
+            front.display()
+        ));
+    }
+    match pin::running_version(exe) {
+        Some((v, origin)) => lines.push(format!(
+            "  [OK] running    nano-ros {v} (from the {})",
+            origin.label()
+        )),
+        None => lines.push(format!(
+            "  [--] running    {} is not a store toolchain (a checkout build, or an \
+             unpacked prefix) — it will never dispatch",
+            exe.display()
+        )),
+    }
+
+    // --- pin resolution ----------------------------------------------------
+    //
+    // Asked DIRECTLY, not via `dispatch::decide`. An earlier draft read the
+    // launcher's verdict and counted `Decision::Missing` as the problem, and
+    // an end-to-end run showed that arm is unreachable: if this binary IS a
+    // store toolchain, `redispatch()` has already met the missing version in
+    // `main` and failed before `doctor` parsed anything; and if it is NOT one,
+    // `decide` returns `Proceed("not a launcher")` at rung 4 without ever
+    // looking at the pin. So the verdict a doctor could reuse is exactly the
+    // one it can never see — and the CHECKOUT BUILD case, which is most of
+    // them, learned nothing about whether its project's pin is satisfiable.
+    match pin::find_and_load(cwd) {
+        Err(e) => {
+            problems += 1;
+            lines.push(format!(
+                "  [!!] pin        present but unreadable: {e:#}\n\
+                 \x20              a pin that cannot be parsed is not a floating project, \
+                 it is an unreadable one"
+            ));
+        }
+        Ok(None) => lines.push(
+            "  [--] pin        this project names no toolchain — the build floats \
+             (`nros build` writes one on its first run)"
+                .to_string(),
+        ),
+        Ok(Some(p)) => {
+            let running = pin::running_version(exe).map(|(v, _)| v);
+            if let Some(bin) = pin::installed_bin(store, &p.version) {
+                lines.push(format!(
+                    "  [OK] pin        {} names nano-ros {} → {}",
+                    p.path.display(),
+                    p.version,
+                    bin.display()
+                ));
+            } else if running.as_deref() == Some(p.version.as_str()) {
+                lines.push(format!(
+                    "  [OK] pin        {} names nano-ros {}, which is what is running here",
+                    p.path.display(),
+                    p.version
+                ));
+            } else {
+                problems += 1;
+                lines.push(format!(
+                    "  [!!] pin        {} names nano-ros {}, which is not in this store\n\
+                     \x20              looked in: {}\n\
+                     \x20              install it:  curl -fsSL <install.sh> | sh -s -- --version {}",
+                    p.path.display(),
+                    p.version,
+                    pin::candidate_bins(store, &p.version)
+                        .iter()
+                        .map(|b| b.display().to_string())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    p.version
+                ));
+            }
+        }
+    }
+
+    // --- what the launcher would do ----------------------------------------
+    //
+    // Informational, never a problem: it is `dispatch::decide` itself, so this
+    // line cannot disagree with the launcher about what will happen next — the
+    // rung above says whether the pin CAN be satisfied, this one says whether
+    // this process will hand over.
+    match dispatch::decide(&dispatch::Context {
+        exe: exe.to_path_buf(),
+        cwd: cwd.to_path_buf(),
+        store: store.to_path_buf(),
+        dispatched: std::env::var(dispatch::DISPATCHED_ENV).ok(),
+        skip: std::env::var_os(dispatch::SKIP_ENV).is_some(),
+    }) {
+        Ok(dispatch::Decision::Proceed(why)) => {
+            lines.push(format!("  [--] dispatch   stays in this process — {why}"));
+        }
+        Ok(dispatch::Decision::Exec { version, bin }) => lines.push(format!(
+            "  [OK] dispatch   would exec nano-ros {version} at {}",
+            bin.display()
+        )),
+        Ok(dispatch::Decision::Missing { version, .. }) => lines.push(format!(
+            "  [--] dispatch   would install nano-ros {version} first"
+        )),
+        Err(e) => lines.push(format!("  [--] dispatch   undecidable: {e:#}")),
+    }
+
+    (lines, problems)
+}
+
 pub fn run(args: Args) -> Result<()> {
     report_legacy_unversioned_installs();
 
@@ -130,22 +293,44 @@ pub fn run(args: Args) -> Result<()> {
                 );
                 None
             }
-            Err(e) => {
-                return Err(e).wrap_err(
-                    "could not auto-detect the nano-ros workspace root; \
-                     pass --workspace <path> explicitly",
-                );
-            }
+            // RFC-0097 D12 — no workspace is not a failure, it is a different
+            // QUESTION. A user who has just run `install.sh` has no workspace
+            // to point this at, and refusing them was refusing the only person
+            // who needed the answer.
+            Err(_) => None,
         },
     };
 
-    if let Some(root) = root {
-        run_just_doctor(&root, args.platform.as_deref())?;
-    }
+    let install_problems = match &root {
+        Some(root) => {
+            run_just_doctor(root, args.platform.as_deref())?;
+            0
+        }
+        None => {
+            eprintln!("nros doctor: no nano-ros workspace here — checking the INSTALL instead");
+            let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("nros"));
+            let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let store = crate::orchestration::store::root();
+            eprintln!(
+                "nros doctor: store root {} (from {})",
+                store.display(),
+                crate::orchestration::store::root_origin()
+            );
+            let (lines, problems) = install_report(&store, &exe, &cwd);
+            for line in lines {
+                eprintln!("{line}");
+            }
+            eprintln!(
+                "  (point it at a workspace with `--workspace <path>` for the \
+                 per-platform checks)"
+            );
+            problems
+        }
+    };
 
-    let problems = deploy_problems.unwrap_or(0) + gate_problems;
+    let problems = deploy_problems.unwrap_or(0) + gate_problems + install_problems;
     if problems > 0 {
-        bail!("nros doctor: {problems} problem(s) (images + license gates)");
+        bail!("nros doctor: {problems} problem(s) (images + license gates + install)");
     }
     Ok(())
 }
@@ -496,6 +681,155 @@ fn is_executable(path: &Path) -> bool {
 #[cfg(not(unix))]
 fn is_executable(path: &Path) -> bool {
     path.is_file()
+}
+
+#[cfg(test)]
+mod install_report_tests {
+    use super::*;
+    use crate::orchestration::{dispatch, pin};
+
+    /// A store entry shaped like one `scripts/install.sh` writes.
+    fn install_toolchain(store: &Path, version: &str) -> PathBuf {
+        let bin = store.join("sdk").join("nros").join(version).join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let exe = bin.join("nros");
+        std::fs::write(&exe, b"#!/bin/sh\nexit 0\n").unwrap();
+        exe
+    }
+
+    /// A user's project directory — deliberately NOT inside a checkout, which
+    /// a tempdir root guarantees (`dispatch::decide` proceeds unconditionally
+    /// inside one, so a checkout would make every pin assertion vacuous).
+    fn project(dir: &Path, rel: &str, pin_version: Option<&str>) -> PathBuf {
+        let p = dir.join(rel);
+        std::fs::create_dir_all(&p).unwrap();
+        if let Some(v) = pin_version {
+            pin::write(&p, v).unwrap();
+        }
+        p
+    }
+
+    /// `install_report` asks `dispatch::decide`, which reads these two names
+    /// off the process env. Neither is ever set in a test run; assert it rather
+    /// than let a stray export make the pin assertions vacuous.
+    fn assert_dispatch_env_clean() {
+        for v in [dispatch::DISPATCHED_ENV, dispatch::SKIP_ENV] {
+            assert!(
+                std::env::var_os(v).is_none(),
+                "${v} is set — it would short-circuit the launcher decision \
+                 this test is about"
+            );
+        }
+    }
+
+    /// The D12 acceptance: `nros doctor` with NO workspace answers about the
+    /// INSTALL — launcher, store, pin resolution.
+    ///
+    /// Measured before this landed, from an empty directory:
+    /// `Error: could not auto-detect the nano-ros workspace root; pass
+    /// --workspace <path> explicitly`. A user who has just run `install.sh` has
+    /// no workspace to pass, so the one person who needed the answer was the
+    /// one person refused it.
+    #[test]
+    fn with_no_workspace_the_report_covers_launcher_store_and_pin() {
+        assert_dispatch_env_clean();
+        let tmp = tempfile::tempdir().unwrap();
+        let store = tmp.path().join("store");
+        let exe = install_toolchain(&store, "0.7.9");
+        std::fs::create_dir_all(store.join("bin")).unwrap();
+        std::fs::write(store.join("bin").join("nros"), b"#!/bin/sh\n").unwrap();
+        let cwd = project(tmp.path(), "proj", None);
+
+        let (lines, problems) = install_report(&store, &exe, &cwd);
+        assert_eq!(problems, 0, "a healthy install has no problems:\n{lines:#?}");
+        let text = lines.join("\n");
+        for needle in ["store", "launcher", "running", "pin"] {
+            assert!(
+                text.contains(needle),
+                "the install report must cover `{needle}`:\n{text}"
+            );
+        }
+        assert!(
+            text.contains(&store.display().to_string()),
+            "the report must name the store it looked at:\n{text}"
+        );
+        assert!(
+            text.contains("0.7.9"),
+            "the report must name the version that is running:\n{text}"
+        );
+    }
+
+    /// The one PROBLEM this report counts: a project pins a nano-ros the store
+    /// cannot produce. That is a project which cannot be built, and it is
+    /// exactly what a fresh user hits after cloning someone else's repo.
+    #[test]
+    fn a_pin_naming_an_uninstalled_toolchain_is_the_problem_it_counts() {
+        assert_dispatch_env_clean();
+        let tmp = tempfile::tempdir().unwrap();
+        let store = tmp.path().join("store");
+        let exe = install_toolchain(&store, "0.7.9");
+        let cwd = project(tmp.path(), "proj", Some("0.9.9"));
+
+        let (lines, problems) = install_report(&store, &exe, &cwd);
+        assert_eq!(problems, 1, "the unresolvable pin must count:\n{lines:#?}");
+        let text = lines.join("\n");
+        assert!(text.contains("0.9.9"), "name the version wanted:\n{text}");
+        assert!(
+            text.contains(&cwd.join(pin::FILE_NAME).display().to_string()),
+            "name the pin file that asked for it:\n{text}"
+        );
+        assert!(
+            text.contains("install"),
+            "a problem must carry a remedy:\n{text}"
+        );
+    }
+
+    /// A pin the store CAN satisfy is not a problem, and the report says which
+    /// binary would run. The verdict comes from `dispatch::decide`, so this
+    /// also pins that the doctor and the launcher cannot disagree.
+    #[test]
+    fn a_resolvable_pin_names_the_binary_the_launcher_would_exec() {
+        assert_dispatch_env_clean();
+        let tmp = tempfile::tempdir().unwrap();
+        let store = tmp.path().join("store");
+        let exe = install_toolchain(&store, "0.7.9");
+        let other = install_toolchain(&store, "0.9.9");
+        let cwd = project(tmp.path(), "proj", Some("0.9.9"));
+
+        let (lines, problems) = install_report(&store, &exe, &cwd);
+        assert_eq!(problems, 0, "{lines:#?}");
+        assert!(
+            lines.join("\n").contains(&other.display().to_string()),
+            "the report must name the binary the pin resolves to:\n{}",
+            lines.join("\n")
+        );
+    }
+
+    /// An empty store is a legitimate state — a contributor building the
+    /// tree's own CLI has neither store nor front — so it is REPORTED and not
+    /// counted. A doctor that fails on a working setup gets ignored.
+    #[test]
+    fn an_absent_store_is_reported_and_is_not_a_problem() {
+        assert_dispatch_env_clean();
+        let tmp = tempfile::tempdir().unwrap();
+        let store = tmp.path().join("no-store-here");
+        let exe = tmp.path().join("checkout").join("target/release/nros");
+        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::write(&exe, b"#!/bin/sh\n").unwrap();
+        let cwd = project(tmp.path(), "proj", None);
+
+        let (lines, problems) = install_report(&store, &exe, &cwd);
+        assert_eq!(problems, 0, "{lines:#?}");
+        let text = lines.join("\n");
+        assert!(
+            text.contains("does not exist yet"),
+            "an absent store must be SAID, not silently skipped:\n{text}"
+        );
+        assert!(
+            text.contains("not a store toolchain"),
+            "a checkout build must be named as such:\n{text}"
+        );
+    }
 }
 
 #[cfg(test)]

@@ -606,6 +606,31 @@ pub struct CheckProbe {
     /// declares.
     #[serde(default)]
     pub path: Option<String>,
+    /// RFC-0097 D12 — `python3 -c "import <module>"` succeeds.
+    ///
+    /// Not expressible as [`Self::runs`]: that value is split on whitespace and
+    /// spawned directly, so `python3 -c 'import rosidl_adapter'` becomes four
+    /// argv entries and `-c` receives `'import`. And not expressible as
+    /// [`Self::path`] either — the rung that motivated it is ROS's own
+    /// `rosidl_adapter`, where the directory existing is a PROXY and being
+    /// importable is the property. `scripts/cyclonedds/msg_to_cyclone_idl.py`
+    /// says exactly that, and refuses rather than hand back a findable copy
+    /// that cannot import.
+    ///
+    /// Asked of `python3` on PATH, which is the interpreter the build's own
+    /// python steps run under. A host with no `python3` cannot answer at all,
+    /// so the probe abstains rather than reporting the module absent.
+    #[serde(default)]
+    pub python_import: Option<String>,
+    /// RFC-0097 D12 — an environment variable naming an existing DIRECTORY.
+    ///
+    /// The escape hatch several of our own build steps already honour
+    /// (`NROS_ROSIDL_ADAPTER_BIN_DIR`). Without it a `--check` reports MISSING
+    /// — and exits NONZERO — on a host that is deliberately and correctly
+    /// configured. `[gated.*]` already models presence this way; this is the
+    /// same question asked from a probe.
+    #[serde(default)]
+    pub env: Option<String>,
 }
 
 impl CheckProbe {
@@ -980,6 +1005,31 @@ pub struct SourcePackage {
     /// source to its top tree only. Submodule mode only.
     #[serde(default = "default_true")]
     pub recursive: bool,
+    /// RFC-0097 D12 — a TARGET BUILD pulls this in, so no board provisions it
+    /// and `nros setup <board>` cannot pre-empt it.
+    ///
+    /// `rosidl` is the motivating one: it rides `[rmw.cyclonedds]`, which a
+    /// plain `nros setup <board>` (rmw defaults to zenoh) never resolves, so a
+    /// host with no ROS met it as a BUILD FAILURE deep inside the cyclone
+    /// msg→IDL step. The failure text there is already right; the TIMING was
+    /// wrong. Setting this puts the source on `nros setup --check`, which is
+    /// where "what will a build need" is the question being asked.
+    ///
+    /// This is NOT the top-level `build_sources` set, which is what the ROOT
+    /// workspace needs on every host — and whose own comment explicitly
+    /// excludes the cross-only trees, `rosidl` among them.
+    #[serde(default)]
+    pub build_stage: bool,
+    /// Does the build have this ALREADY, from somewhere that is not our
+    /// vendored copy?
+    ///
+    /// The tree at `dest` is the LAST rung of a ladder, not the only one — a
+    /// host with ROS sourced has `rosidl_adapter` and needs nothing
+    /// provisioned. Without this probe a `--check` would report every such host
+    /// MISSING and exit nonzero. `None` ⇒ the presence test is just "is `dest`
+    /// populated".
+    #[serde(default)]
+    pub check: Option<CheckProbe>,
 }
 
 fn default_true() -> bool {
@@ -1004,6 +1054,8 @@ impl Default for SourcePackage {
             submodule: None,
             shallow: true,
             recursive: true,
+            build_stage: false,
+            check: None,
         }
     }
 }
@@ -1334,6 +1386,30 @@ impl SdkIndex {
                     }
                 }
                 SourceProvision::None => {}
+            }
+        }
+        // RFC-0097 D12 — a build-stage source is REPORTED by `nros setup
+        // --check`, and the report asks whether its provisioned directory is
+        // populated. What it needs is therefore a RESOLVABLE LOCATION, which is
+        // not the same as an authored `dest`: phase-440 (RFC-0095 D1/D2) gives a
+        // store source a DERIVED path and removes its `dest` precisely so nobody
+        // can spell that location twice.
+        //
+        // Requiring `dest` here was the first version of this rule, and it was
+        // wrong in the one case that exists: `rosidl` is both the only
+        // build-stage source and a store source, so the two rules landing
+        // together would have refused the shipped index and left every `nros`
+        // unable to read its own manifest. `source_dir_of` answers both shapes,
+        // so the check is "can anything name where this lives".
+        for (name, src) in &self.source {
+            let resolvable = src.dest.is_some() || src.location == SourceLocation::Store;
+            if src.build_stage && !resolvable {
+                bail!(
+                    "source '{name}' is `build_stage = true` but nothing says where it \
+                     lives — `nros setup --check` reports it by asking whether its \
+                     provisioned directory is populated. Give it a `dest`, or \
+                     location = \"store\" for a version-keyed path the store derives"
+                );
             }
         }
         Ok(())
