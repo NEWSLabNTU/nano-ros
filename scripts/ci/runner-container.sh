@@ -185,6 +185,24 @@ if [ "$DO_RUN" -eq 1 ]; then
     #   --pids-limit         a fork bomb in a job cannot take the host down
     #   --tmpfs /tmp         exec-capable scratch that dies with the container
     #   named volumes        caches persist; nothing else does
+    #
+    # `.nros` is the FOURTH volume and it is not a cache — it is the SDK store
+    # `nros setup` writes (`~/.nros/sdk`, ~9.2 GB with a Zephyr SDK in it).
+    # Without it a `--ephemeral` container loses the toolchain with its writable
+    # layer after ONE job, so `runner-provision.sh` would have to re-run per job
+    # and a label like `nros-sdk-zephyr` would be a claim the image cannot keep.
+    #
+    # Persisting it rather than BAKING it into the image is deliberate: the SDK
+    # versions live in `nros-sdk-index.toml`, so a baked image goes stale the
+    # moment that file moves — and nothing would say so. A volume is refreshed
+    # by the same `nros setup` a contributor runs, which is the property
+    # `runner-provision.sh` exists to preserve ("the same script a contributor
+    # uses, so the two cannot drift").
+    #
+    # It is the RUNNER's store, never a developer's. Point it at a directory
+    # that is not `$HOME/.nros`; sharing one store between a runner and the
+    # human on the same box is how a job's provisioning edits a developer's
+    # toolchain (the class of issue 1166, one layer over).
     # and NOTHING mounts the host filesystem or the docker socket.
     #
     # NOT `--read-only`, deliberately, having measured what it costs here: the
@@ -204,6 +222,7 @@ if [ "$DO_RUN" -eq 1 ]; then
         -v "nros-runner-work:/home/runner/_work" \
         -v "nros-runner-cargo:/home/runner/.cargo" \
         -v "nros-runner-sccache:/home/runner/.cache/sccache" \
+        -v "nros-runner-nros:/home/runner/.nros" \
         -e NROS_RUNNER_LABELS="$LABELS" \
         -e GH_REPO="${GH_REPO:-NEWSLabNTU/nano-ros}" \
         -e RUNNER_TOKEN="$RUNNER_TOKEN" \

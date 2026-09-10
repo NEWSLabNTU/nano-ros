@@ -2761,6 +2761,23 @@ runner-up labels *ARGS:
 runner-loop labels *ARGS:
     @scripts/ci/runner-loop.sh {{labels}} {{ARGS}}
 
+# Inspect or reset the contained runner's four persistent stores (phase — the
+# persist half of the `--ephemeral` design). `.nros` is the SDK store, so it is
+# what makes `nros-sdk-zephyr` true across containers rather than re-provisioned
+# per job; the other three are caches.
+#
+# Persisting beats baking because a baked image goes stale the moment
+# `nros-sdk-index.toml` moves and nothing says so. The cost of persisting is
+# rot, and this is the way back from it — a store that persists with no reset
+# verb is a store that only accumulates.
+#
+#   just runner-store                # report path, size, backing disk
+#   just runner-store --reset nros   # wipe one store, keep dir + ACLs + volume
+#   just runner-store --reset-all
+[group("ci")]
+runner-store *ARGS:
+    @bash scripts/ci/runner-store.sh {{ARGS}}
+
 # Between jobs: reap orphaned process groups and run budgeted disk GC.
 # On a shared runner one leaked peer is every later job's flake. Takes --check.
 [group("setup")]
