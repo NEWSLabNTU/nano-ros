@@ -124,7 +124,7 @@ fn nros_freertos_mps2_publisher_reaches_ros2_topic_echo() {
         .unwrap_or_else(|e| skip!("zenohd failed to start on {FREERTOS_C_ENTRY_PORT}: {e}"));
     let peer_locator = format!("tcp/127.0.0.1:{FREERTOS_C_ENTRY_PORT}");
 
-    let mut guest = QemuProcess::start_mps2_an385_freertos_slirp(&entry)
+    let mut guest = QemuProcess::start_mps2_an385_freertos_slirp(entry)
         .unwrap_or_else(|e| panic!("boot freertos QEMU (mps2-an385): {e}"));
 
     // Poll `ros2 topic echo --once` until a sample lands. Each attempt pays
