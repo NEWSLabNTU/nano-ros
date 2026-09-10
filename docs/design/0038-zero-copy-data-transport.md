@@ -163,7 +163,7 @@ The buffered path is where a DDS backend has something to gain, and for Cyclone
 that gain is large but unrelated to loans: upstream's serialized take is
 `dds_takecdr` → `ddsi_serdata_to_ser` into the caller's buffer, one `memcpy`
 (`rmw_node.cpp:3572`), where ours decodes to a typed struct and re-encodes. See
-[#0969](../issues/0969-cyclone-take-cdr-round-trip.md).
+[#0969](../issues/archived/0969-cyclone-take-cdr-round-trip.md).
 
 ### micro-XRCE-DDS (the production MCU peer — most relevant)
 
@@ -483,7 +483,7 @@ backend calls.
 | zenoh-pico C backend | n/a | **populate** the slot → call the Rust `ZenohSubscriber` leaf |
 | zpico `ZenohSubscriber` (Rust leaf) | implemented (subscriber.rs:1043) | the leaf the slot invokes; gains size-class pools (D1) |
 | xrce (C backend) | no slot | populate the slot over its shared static pool, or leave NULL (buffered) |
-| cyclonedds (C backend) | no slot | leave NULL (buffered) — **permanently**, not "first". Upstream returns `RMW_RET_UNSUPPORTED` for the loan take without shared memory, and its SHM path copies anyway (see the survey amendment). The win for this backend is on the buffered path: [#0969](../issues/0969-cyclone-take-cdr-round-trip.md) |
+| cyclonedds (C backend) | no slot | leave NULL (buffered) — **permanently**, not "first". Upstream returns `RMW_RET_UNSUPPORTED` for the loan take without shared memory, and its SHM path copies anyway (see the survey amendment). The win for this backend is on the buffered path: [#0969](../issues/archived/0969-cyclone-take-cdr-round-trip.md) |
 | mock (Rust, test-only) | falls back | buffered fallback permanently |
 
 Land the executor scaffold first (done, behind the fallback), then the CFFI vtable

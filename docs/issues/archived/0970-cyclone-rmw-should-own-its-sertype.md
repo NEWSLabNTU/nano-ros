@@ -141,7 +141,7 @@ cannot avoid.
 allocations.** This section first went on to say per-message allocation was
 "otherwise gone" from the service and action data path. The ledger does not
 support that claim and the runtime measurement contradicts it — see
-[#0969](../0969-cyclone-take-cdr-round-trip.md), where the allocation COUNT comes
+[#0969](0969-cyclone-take-cdr-round-trip.md), where the allocation COUNT comes
 out unchanged before and after, and the BYTES cross over at ~6 KB rather than
 falling. A site disappearing from a ledger is not a call disappearing at runtime.
 

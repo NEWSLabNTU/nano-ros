@@ -3,7 +3,7 @@ id: 1008
 title: "`wait_for_service` returns `Ok(true)` immediately on every real backend —
   its fast path calls `is_server_ready()`, whose trait default is `true` and
   which only zenoh overrides"
-status: open
+status: resolved
 type: bug
 area: api, rmw
 related: [phase-379, rfc-0018]
@@ -74,3 +74,12 @@ under rclcpp's NAME:
 The call sites become `matches!(…, Ok(true))`, so `Ok(false)` **and** `Err` both
 fall through to the wait loop. That is the behaviour the fast path's comment
 already claims: "already proven once" should mean proven, not assumed.
+
+## Resolution — 2026-09-10
+
+Fixed by `3941b569a2` (phase-379 W6 decision 2): `is_server_ready` is deleted,
+`service_is_ready` returns the two-channel result in all three languages, and
+`wait_for_service` takes `Ok(true)` only (`handles.rs:2192`), so `Ok(false)` and `Err`
+both fall through to the wait loop. `packages/rmw/cffi/tests/server_available.rs` was
+updated in the same commit. The file stayed `open` for a week after the fix shipped;
+found by the phase-444 review.

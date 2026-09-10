@@ -1,7 +1,7 @@
 ---
 id: 969
 title: "The Cyclone RMW deserializes every received sample and re-serializes it, so `take_serialized` costs a decode, an encode and two heap allocations per take"
-status: open
+status: resolved
 area: [rmw, memory]
 severity: high
 related: [0958, 0781, 0896, phase-391, phase-403, rfc-0035, 0038]
@@ -100,7 +100,7 @@ control loop.
 > at ~6 KB. So of the three costs asserted here, the CPU one is real at every
 > size and the allocation one is a trade, not a win.
 
-**Real-time bound.** [phase 391](../roadmap/phase-391-allocation-unification-and-tier-model.md) argues
+**Real-time bound.** [phase 391](../../roadmap/phase-391-allocation-unification-and-tier-model.md) argues
 the heap holds infrastructure while payload buffers stay static, and derives a
 Robson bound from that. Every Cyclone take allocates a *payload-sized* block, and
 the ostream's growth-by-realloc allocates a second one whose size depends on the
@@ -112,7 +112,7 @@ big-endian peer emits big-endian. So the caller does not receive the wire
 representation — it receives a re-encoding, with an encapsulation header we
 synthesized. This is why the sizing work has to reason about
 `MAX_SERIALIZED_SIZE_XCDR1` for this backend while the wire carries XCDR2
-(see [#0964](archived/0964-two-different-sizes-for-the-same-type.md)). Taking the serdata's
+(see [#0964](0964-two-different-sizes-for-the-same-type.md)). Taking the serdata's
 own bytes removes the discrepancy rather than documenting it.
 
 ## Direction
@@ -129,13 +129,13 @@ the same treatment. The request path in `src/service.cpp:657` mirrors it and
 should be checked, not assumed.
 
 **Not in scope here:** the publish direction, which genuinely needs the sertype we
-do not own — that is [#0970](archived/0970-cyclone-rmw-should-own-its-sertype.md), and it
+do not own — that is [#0970](0970-cyclone-rmw-should-own-its-sertype.md), and it
 subsumes this fix if it lands first.
 
 **Also not in scope:** filling the ABI's `take_loaned_message` slot for this
 backend. Upstream returns `RMW_RET_UNSUPPORTED` for it without shared-memory
 support, and even its SHM path ends in a `memcpy`; see the amendment to
-[design 0038](../design/0038-zero-copy-data-transport.md). Removing the round trip
+[design 0038](../../design/0038-zero-copy-data-transport.md). Removing the round trip
 is the whole of the available win on the buffered path.
 
 ## Verification — measured
@@ -161,7 +161,7 @@ real-time budget most dislikes. The after figure is exactly 2.00 across 199
 messages.
 
 **Correcting this section as first written:** it said the
-[phase 394](../roadmap/phase-394-memory-campaign-ledger.md) ledger could report
+[phase 394](../../roadmap/phase-394-memory-campaign-ledger.md) ledger could report
 allocation count per take. It cannot — that instrument reads static RAM out of an
 ELF symbol table. Runtime allocation needed an instrument and did not have one.
 
@@ -183,7 +183,7 @@ the header either. Two consequences survive this issue rather than being removed
 by it — a deserialiser must tolerate trailing bytes (nros-serdes reads by
 position, so it does), and a receive buffer cut to a type's exact
 `MAX_SERIALIZED_SIZE` can be up to 3 bytes short of what a remote peer delivers.
-That belongs to [#0964](archived/0964-two-different-sizes-for-the-same-type.md).
+That belongs to [#0964](0964-two-different-sizes-for-the-same-type.md).
 
 ## The third site was CHECKED 2026-09-03 — still unconverted, and the reason is 0976
 
@@ -199,7 +199,7 @@ assumed". Checked. It is NOT converted:
 
 **And the interesting part: converting it would REMOVE adapters, not conflict
 with them.** The first read of this is that the five action adapters
-([#0976](archived/0976-service-action-adapters-tested-only-against-ourselves.md)) block the
+([#0976](0976-service-action-adapters-tested-only-against-ourselves.md)) block the
 change, because they reshape bytes the typed path produces. The direction matters:
 
 * `strip_goal_id_len_at` and `strip_nested_cdr_at` correct bytes WE generate.
@@ -247,7 +247,7 @@ that witness, converting this path would have changed the action wire format wit
 nothing in the tree able to tell.
 
 **Not measured, and not expected to move:** delivery rate at the fragment sizes
-in [#0917](0917-an536-fragmented-sample-never-syncs.md). That cliff is the
+in [#0917](../0917-an536-fragmented-sample-never-syncs.md). That cliff is the
 LAN9118's RX FIFO capacity and has nothing to do with serialisation. What should
 move on that lane is per-message CPU and allocation, so the rate below the cliff
 and the jitter — an an536 measurement still owed.
@@ -492,7 +492,7 @@ the two curves cross at roughly **8 KB of reply payload**:
 
 Flat-versus-linear is the more useful half. A fixed ~8.4 KB per exchange is easy
 to bound and impossible to shrink; a payload-proportional cost is the opposite.
-For [phase 391](../roadmap/phase-391-allocation-unification-and-tier-model.md)'s
+For [phase 391](../../roadmap/phase-391-allocation-unification-and-tier-model.md)'s
 Robson bound the linear one is the better shape — it is derivable from the type's
 own `MAX_SERIALIZED_SIZE`, which is exactly what issue 0896 makes available —
 whereas the old constant was a number nobody could attribute.
@@ -650,3 +650,11 @@ wrong is worse than no bench — it answers confidently.
 
 The check now prints the decoded length at every point and every run above shows
 it matching. Timings collected before it matched were discarded, not adjusted.
+
+## Resolution — 2026-09-10
+
+Both receive paths now take the wire CDR straight from the serdata: `subscriber.cpp`
+(`dds_takecdr` then `ddsi_serdata_to_ser` into the caller's buffer) and the service
+path's `take_typed_wire` (`41195b84f8`). The publish direction was #0970, resolved. The
+removed cost is measured above (45.5 ns per 36 B reply). Found still `open` by the
+phase-444 review.

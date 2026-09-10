@@ -3,7 +3,7 @@ id: 1237
 title: "Cyclone's receive thread calls FreeRTOS scheduler primitives on the
   freertos-posix lane, and the port asserts: `vPortYield` from a
   non-FreeRTOS thread"
-status: open
+status: resolved
 type: bug
 area: platform, rmw
 severity: high
@@ -148,3 +148,9 @@ Fixed by declining the wake slot on this board (option 1). Verified:
 This filing originally guessed the wrong function and said what would refute
 it. The core named `nros_platform_wake_signal`, so that guess was corrected
 here rather than quietly dropped.
+
+## Resolution — 2026-09-10
+
+Closed on the Status section above: the wake slot is declined on this board, verified
+before and after. The file stayed `open` after the code shipped (`a9a9febcd2` records
+that the code half had already landed); found by the phase-444 review.
