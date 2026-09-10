@@ -3,7 +3,7 @@
 #
 # Phase 225.O — the Entry source is the same one-line
 # `nros::main!(launch = ...)` the native / freertos / threadx / zephyr
-# entries use. The macro routes `deploy = "esp32-qemu"` to the
+# entries use. The macro routes `deploy = "esp32-c3-baremetal"` to the
 # `Framework::Esp32` emit shape, which emits a `#[esp_hal::main] fn
 # main() -> !` (esp-riscv-rt's `_start` requires the esp-hal entry
 # registration — a bare `extern "C" fn main` does not boot) that
@@ -28,13 +28,15 @@ path = "src/main.rs"
 test = false
 bench = false
 
-# Entry pkg metadata — `deploy = "esp32-qemu"` routes the `nros::main!()`
-# proc-macro onto the `Framework::Esp32` emit branch and feeds
-# `nros check`.
+# Entry pkg metadata — `deploy = "esp32-c3-baremetal"` routes the
+# `nros::main!()` proc-macro onto the `Framework::Esp32` emit branch and feeds
+# `nros check`. phase-445 W3 collapsed the second spelling of this one board
+# (`esp32-qemu`) to the name RFC-0093 chose; the image in
+# `demo_bringup/system.toml` names the same board.
 [package.metadata.nros.entry]
-deploy = "esp32-qemu"
+deploy = "esp32-c3-baremetal"
 
-[package.metadata.nros.deploy.esp32-qemu]
+[package.metadata.nros.deploy.esp32-c3-baremetal]
 rmw = "zenoh"
 domain_id = 0
 locator = "tcp/10.0.2.2:9830"

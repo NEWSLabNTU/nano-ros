@@ -1,0 +1,22 @@
+# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
+# schema a workspace bringup uses, and the same file a Rust leaf writes.
+# Replaces the `package.xml` `<nano_ros deploy= board= rmw=/>` tuple:
+# `find_package(nano_ros)` reads this through `nros ws leaf-system`, which
+# derives the platform (`freertos`) from the board. Switching board is editing
+# `[image.*] board`.
+
+[system]
+name = "freertos_cpp_talker"
+rmw = "zenoh"
+domain_id = 0
+# The FreeRTOS entry default; a `-DNROS_ENTRY_LOCATOR=…` (every fixture row
+# passes one) still wins.
+locator = "tcp/192.0.3.1:7447"
+
+[[component]]
+pkg = "freertos_cpp_talker"
+class = "freertos_cpp_talker::Talker"
+name = "talker"
+
+[image.mps2-an385-freertos]
+board = "mps2-an385-freertos"

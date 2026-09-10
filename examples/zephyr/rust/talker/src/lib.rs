@@ -13,8 +13,8 @@
 //! RMW selection still flows through the Kconfig `prj-<rmw>.conf`
 //! overlay (vendor-native per L.12). The example `CMakeLists.txt`
 //! threads the Kconfig `CONFIG_NROS_RMW_*` choice into Cargo feature
-//! selection; `[package.metadata.nros.deploy.zephyr].rmw` is the
-//! planner-side default when the Kconfig is unset.
+//! selection; `system.toml`'s `[system] rmw` is the planner-side
+//! declaration (RFC-0098 D5).
 
 #![no_std]
 

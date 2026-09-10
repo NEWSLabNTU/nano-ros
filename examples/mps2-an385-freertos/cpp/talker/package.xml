@@ -8,6 +8,5 @@
   <depend>std_msgs</depend>
   <export>
     <build_type>nros_cmake</build_type>
-    <nano_ros deploy="freertos" board="mps2-an385-freertos" rmw="zenoh"/>
   </export>
 </package>

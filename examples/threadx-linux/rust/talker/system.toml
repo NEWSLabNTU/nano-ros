@@ -1,0 +1,18 @@
+# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
+# schema a workspace bringup uses. Switching board is editing `[image.*] board`
+# and re-running `nros sync`.
+
+[system]
+name = "threadx_linux_rs_talker"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "threadx_linux_rs_talker"
+class = "threadx_linux_rs_talker::Talker"
+name = "talker"
+
+# ThreadX's Linux simulator (a hosted process).
+[image.threadx-linux]
+board = "threadx-linux"
+locator = "tcp/127.0.0.1:9000"

@@ -1,0 +1,21 @@
+# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
+# schema a workspace bringup uses. Switching board is editing `[image.*] board`
+# and re-running `nros sync`.
+
+[system]
+name = "freertos_rs_talker"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "freertos_rs_talker"
+class = "freertos_rs_talker::Talker"
+name = "talker"
+
+# FreeRTOS on MPS2-AN385 (QEMU). The locator is the ENTRY's role port — what the
+# e2e harness binds zenohd to (phase-338 W2).
+[image.mps2-an385-freertos]
+board = "freertos"
+locator = "tcp/10.0.2.2:7800"
+ip = "10.0.2.15"
+gateway = "10.0.2.2"

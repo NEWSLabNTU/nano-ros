@@ -1,0 +1,24 @@
+# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
+# schema a workspace bringup uses. Switching board is editing `[image.*] board`
+# and re-running `nros sync`.
+
+[system]
+name = "esp32_qemu_listener"
+rmw = "zenoh"
+domain_id = 0
+
+# `entities` — STATED because this leaf cannot be probed (RFC-0098 D8, issue
+# 1265); cross-checked against the probe wherever the probe runs. One
+# subscription.
+[[component]]
+pkg = "esp32_qemu_listener"
+class = "esp32_qemu_listener::Listener"
+name = "listener"
+entities = ["sub:std_msgs/msg/String:/chatter"]
+
+# ESP32-C3 (QEMU, OpenETH) — the same board as the talker, one address up.
+[image.esp32-c3-baremetal]
+board = "esp32-c3-baremetal"
+ip = "10.0.2.51"
+gateway = "10.0.2.2"
+locator = "tcp/10.0.2.2:9800"

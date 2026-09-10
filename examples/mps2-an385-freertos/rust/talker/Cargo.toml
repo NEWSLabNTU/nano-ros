@@ -45,23 +45,8 @@ std_msgs = { path = "generated/std_msgs", default-features = false }
 # the `log` facade; the platform entry runtime owns the sink.
 log = "0.4"
 
-[package.metadata.nros.entry]
-deploy = "freertos"
-
-[package.metadata.nros.node]
-class = "freertos_rs_talker::Talker"
-name = "talker"
-default_namespace = "/"
-
-[package.metadata.nros.deploy.freertos]
-rmw = "zenoh"
-domain_id = 0
-# phase-338 W2 — the ENTRY's locator, not the node's. The role
-# ports are what the e2e harness binds zenohd to; the node block's
-# generic 7447 was never the deployed value.
-locator = "tcp/10.0.2.2:7800"
-ip = "10.0.2.15"
-gateway = "10.0.2.2"
+# The board, RMW, network identity and node declaration live in `system.toml`
+# beside this manifest (RFC-0098 D3/D5) — nothing here names a board.
 
 [package.metadata.ament]
 build_depend = ["std_msgs"]
