@@ -26,6 +26,20 @@ include_guard(GLOBAL)
 
 # issue 0657 — `nros_corrosion_env_target`.
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCorrosionEnv.cmake")
+# issue 1263 -- `nros_resolve_cli`, the one lookup for the CLI. The Zephyr lane
+# calls `nros_resolve_board_facts()` before anything else has loaded it
+# (zephyr/CMakeLists.txt, right after nros_cargo_build.cmake), so a
+# `COMMAND nros_resolve_cli` guard would skip on exactly the lane that needs it.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCodegenCore.cmake")
+# issue 1263 -- the checkout this file belongs to, for `--nano-ros-path`.
+# Resolved here, at file scope: inside the function CMAKE_CURRENT_LIST_DIR
+# names the CALLER. The CLI otherwise searches upward from the entry dir, which
+# finds nothing for a downstream project whose nano-ros sits below it
+# (third-party/nano-ros), and NROS_REPO_DIR is set only after the Zephyr lane
+# has already asked.
+get_filename_component(_nros_board_facts_repo "${CMAKE_CURRENT_LIST_DIR}/.." ABSOLUTE)
+set(_NROS_BOARD_FACTS_REPO "${_nros_board_facts_repo}" CACHE INTERNAL
+    "nano-ros checkout that owns NanoRosBoardFacts.cmake (issue 1263)")
 
 # nros_resolve_board_facts([BOARD <name>] [DEPLOY <name>] [WORKSPACE <dir>])
 #
@@ -61,8 +75,24 @@ function(nros_resolve_board_facts)
     # One cache entry per question asked. `_` is not legal in a cache name
     # position for arbitrary board/deploy spellings, so sanitise.
     string(MAKE_C_IDENTIFIER "NROS_BOARD_FACTS_ENV__${_board}__${_deploy}" _memo)
+    # issue 1263 -- only a RESOLVED answer outlives the configure that found it.
+    # A failure ("no CLI", no workspace, the CLI refusing) describes the build
+    # environment of one configure, not the board, and these used to be cached
+    # too: with the lookup fixed, every build dir configured before still got
+    # an empty answer here, before any check ran, and said nothing. A cached
+    # failure from an older configure is dropped; this run's failures live in a
+    # GLOBAL property, so the several callers of one configure still ask once.
     if(DEFINED ${_memo})
-        set(NROS_BOARD_FACTS_ENV "${${_memo}}" PARENT_SCOPE)
+        get_property(_memo_why CACHE ${_memo} PROPERTY HELPSTRING)
+        if(_memo_why MATCHES "^phase-351 W5: resolved")
+            set(NROS_BOARD_FACTS_ENV "${${_memo}}" PARENT_SCOPE)
+            return()
+        endif()
+        unset(${_memo} CACHE)
+    endif()
+    get_property(_tried GLOBAL PROPERTY ${_memo} SET)
+    if(_tried)
+        set(NROS_BOARD_FACTS_ENV "" PARENT_SCOPE)
         return()
     endif()
 
@@ -78,11 +108,18 @@ function(nros_resolve_board_facts)
         endif()
     endforeach()
 
-    if(NOT DEFINED _NANO_ROS_CODEGEN_TOOL OR NOT EXISTS "${_NANO_ROS_CODEGEN_TOOL}")
+    # issue 1263 -- ask the shared resolver, not one cache name. The CLI lives
+    # under `_NROS_ZEPHYR_CODEGEN_TOOL` on the Zephyr lane and
+    # `_NANO_ROS_CODEGEN_TOOL` elsewhere (NanoRosImageAgreement.cmake records
+    # why a check knowing only one "would silently do nothing on the lane it
+    # was written for"), and on Zephyr neither is set yet when this runs, so
+    # every Zephyr image printed the line below and skipped its board facts.
+    nros_resolve_cli(_nros OPTIONAL CONTEXT "nros_resolve_board_facts")
+    if(NOT _nros OR NOT EXISTS "${_nros}")
         message(STATUS
             "nano-ros: board facts NOT delivered — no nros CLI (build it with "
             "`./scripts/bootstrap.sh`; contributors: `just setup-cli`).")
-        set(${_memo} "" CACHE INTERNAL "phase-351 W5: no CLI")
+        set_property(GLOBAL PROPERTY ${_memo} "")
         set(NROS_BOARD_FACTS_ENV "" PARENT_SCOPE)
         return()
     endif()
@@ -90,7 +127,7 @@ function(nros_resolve_board_facts)
         message(STATUS
             "nano-ros: board facts NOT delivered — no workspace/application dir "
             "to resolve from (pass WORKSPACE).")
-        set(${_memo} "" CACHE INTERNAL "phase-351 W5: no workspace")
+        set_property(GLOBAL PROPERTY ${_memo} "")
         set(NROS_BOARD_FACTS_ENV "" PARENT_SCOPE)
         return()
     endif()
@@ -98,7 +135,7 @@ function(nros_resolve_board_facts)
     # No `--board` when the lane does not know one: the verb then resolves the
     # dir's own deploy, which is exactly right for an entry leaf and for a
     # single-deploy workspace, and reports an ambiguity rather than guessing.
-    set(_args ws board-facts "${_ws}")
+    set(_args ws board-facts "${_ws}" --nano-ros-path "${_NROS_BOARD_FACTS_REPO}")
     if(NOT _board STREQUAL "")
         list(APPEND _args --board "${_board}")
     endif()
@@ -107,7 +144,7 @@ function(nros_resolve_board_facts)
     endif()
 
     execute_process(
-        COMMAND "${_NANO_ROS_CODEGEN_TOOL}" ${_args}
+        COMMAND "${_nros}" ${_args}
         OUTPUT_VARIABLE _out
         ERROR_VARIABLE _err
         RESULT_VARIABLE _rc
@@ -133,7 +170,7 @@ function(nros_resolve_board_facts)
         string(SUBSTRING "${_why}" 0 200 _why)
         message(STATUS
             "nano-ros: board facts NOT delivered from ${_ws} — ${_why}")
-        set(${_memo} "" CACHE INTERNAL "phase-351 W5: nothing to deliver")
+        set_property(GLOBAL PROPERTY ${_memo} "")
         set(NROS_BOARD_FACTS_ENV "" PARENT_SCOPE)
         return()
     endif()
