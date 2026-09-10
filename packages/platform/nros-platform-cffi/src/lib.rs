@@ -413,12 +413,16 @@ impl nros_platform_api::PlatformThreading for CffiPlatform {
     fn wake_signal_from_isr(w: *mut c_void) -> i8 {
         unsafe { nros_platform_wake_signal_from_isr(w) }
     }
-    fn wake_park_until_us(w: *mut c_void, deadline_us: u64) -> i8 {
-        unsafe { nros_platform_wake_park_until_us(w, deadline_us) }
-    }
-    fn wake_park_granularity_us() -> u64 {
-        unsafe { nros_platform_wake_park_granularity_us() }
-    }
+    // `wake_park_until_us` / `wake_park_granularity_us` are deliberately NOT
+    // forwarded. `platform.h` marks them OPTIONAL — only Zephyr and ThreadX
+    // define them — and this impl is linked into EVERY C port, so forwarding
+    // made an optional symbol a required one: `undefined reference to
+    // nros_platform_wake_park_until_us` on POSIX, FreeRTOS, NuttX and every
+    // other C port (`check-staticlib-symbols`, `check-c`). The trait defaults
+    // (-1 "cannot park", 0 "no granularity") are the honest answer for a shim
+    // that cannot know whether the port it is linked beside defines them. The
+    // ports that do are reached directly by their board entries
+    // (`nros::port_park::install_port_park`), never through this impl.
     fn wake_storage_size() -> usize {
         unsafe { nros_platform_wake_storage_size() }
     }
