@@ -854,6 +854,49 @@ fn ensure_submodule_branch_refspec(workspace: &Path, path: &str, shallow: bool) 
     Ok(())
 }
 
+/// RFC-0099 D6 — is this submodule already initialised AT its recorded pin?
+///
+/// The `[source.*]` submodule arm was the one provisioning path with no
+/// presence check, so a repeat `nros setup <board>` re-ran `git submodule
+/// update --init --recursive` over sources that were already correct: measured
+/// **153.82 s** for `mps2-an385-baremetal` on a fully-provisioned host, against
+/// 0.06 s for `native` (which has no submodule sources) and 0.01 s for the same
+/// board under `--dry-run`. The cost was never the installing; it was the git.
+///
+/// `git submodule status` answers it in 0.43 s for that board's two sources,
+/// and it answers it in the vocabulary the tree already reads for pin moves:
+/// column 0 is a space when the checked-out commit IS the recorded one, and
+/// `-` (uninitialised), `+` (checked out commit differs from the pin) or `U`
+/// (merge conflict) otherwise. All three of those mean work is needed, so the
+/// skip is `every line starts with a space`.
+///
+/// `--recursive` only when the source asked for it: descending unasked would
+/// let a nested submodule the index never wanted force a full provision run.
+///
+/// Anything unexpected — git failing, a path that names no submodule, empty
+/// output — is NOT present, so the caller provisions. The fast path may only
+/// ever skip work it has positive evidence is done.
+fn submodule_is_present(workspace: &Path, path: &str, recursive: bool) -> bool {
+    let ws = workspace.to_string_lossy();
+    let mut args: Vec<&str> = vec!["git", "-C", &ws, "submodule", "status"];
+    if recursive {
+        args.push("--recursive");
+    }
+    args.push("--");
+    args.push(path);
+    let Ok(out) = sh_capture_raw(&args, None) else {
+        return false;
+    };
+    let mut saw_a_line = false;
+    for line in out.lines().filter(|l| !l.trim().is_empty()) {
+        saw_a_line = true;
+        if !line.starts_with(' ') {
+            return false;
+        }
+    }
+    saw_a_line
+}
+
 /// Outcome of [`provision_source`] — for the `nros setup` disposition line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SourceDisposition {
@@ -899,6 +942,25 @@ pub fn provision_source(
             let path = src.submodule.as_deref().expect("submodule mode has a path");
             if dry_run {
                 return Ok(SourceDisposition::Planned);
+            }
+            // RFC-0099 D6 — already at the recorded pin? Then there is nothing
+            // to fetch and nothing to check out, so do neither. This is the
+            // same answer the clone arm has always given for a populated
+            // `dest`, arriving late to the arm that needed it most.
+            if submodule_is_present(workspace, path, src.recursive) {
+                // The 0833 refspec repair still runs. It is not part of
+                // provisioning the CHECKOUT — it widens a `--depth 1` clone's
+                // single-branch refspec so the submodule's declared branch can
+                // ever be fetched — and a clean `submodule status` says nothing
+                // about that config. Its comment below records that it is
+                // reached "including the already-initialised no-op, which is
+                // what makes an older tree self-heal": that population is
+                // EXACTLY the one this skip creates, so dropping it here would
+                // silently retire the heal for every tree it was written for.
+                // Cost is four `git config` reads on an already-healed tree,
+                // against the 153 s of fetching this returns early from.
+                ensure_submodule_branch_refspec(workspace, path, shallow)?;
+                return Ok(SourceDisposition::AlreadyPresent);
             }
             // Fast path: `git submodule update --init [--recursive] [--depth 1]`.
             // CAVEAT: `--depth 1` shallow-fetches the submodule's BRANCH TIP, not
@@ -1067,6 +1129,44 @@ fn sh(args: &[&str], cwd: Option<&Path>) -> Result<()> {
     sh_with_toolchain(args, cwd, None)
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Every command this thread spawned, so a test can assert which ones a
+    /// fast path issued — and, more to the point, which ones it did NOT
+    /// (RFC-0099 D6).
+    ///
+    /// THREAD-LOCAL rather than a global with a lock: provisioning runs
+    /// synchronously on the caller's thread and cargo gives each test its own,
+    /// so two tests can never see each other's entries and none has to
+    /// serialise against the others.
+    static COMMAND_LOG: std::cell::RefCell<Vec<Vec<String>>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[cfg(test)]
+fn record_command(args: &[&str]) {
+    COMMAND_LOG.with(|log| {
+        log.borrow_mut()
+            .push(args.iter().map(|a| (*a).to_string()).collect())
+    });
+}
+
+/// Compiled out of the shipped binary: provisioning spawns no differently for
+/// having been observed.
+#[cfg(not(test))]
+#[inline]
+fn record_command(_args: &[&str]) {}
+
+/// Drain this thread's command log, each entry joined back into a command line.
+#[cfg(test)]
+fn take_command_log() -> Vec<String> {
+    COMMAND_LOG
+        .with(|log| std::mem::take(&mut *log.borrow_mut()))
+        .into_iter()
+        .map(|a| a.join(" "))
+        .collect()
+}
+
 /// Issue 0374 direction 4 — run a source recipe under a CHOSEN Rust toolchain.
 ///
 /// A source recipe runs with its cwd inside the upstream checkout, and rustup
@@ -1083,6 +1183,7 @@ fn sh(args: &[&str], cwd: Option<&Path>) -> Result<()> {
 /// compile error.
 fn sh_with_toolchain(args: &[&str], cwd: Option<&Path>, toolchain: Option<&str>) -> Result<()> {
     let (cmd, rest) = args.split_first().ok_or_else(|| eyre!("empty command"))?;
+    record_command(args);
     let mut c = Command::new(cmd);
     c.args(rest);
     if let Some(d) = cwd {
@@ -1115,7 +1216,20 @@ pub fn workspace_rust_channel(workspace: &Path) -> Option<String> {
 
 /// Run a command and capture trimmed stdout (for reading a gitlink SHA, etc.).
 fn sh_capture(args: &[&str], cwd: Option<&Path>) -> Result<String> {
+    Ok(sh_capture_raw(args, cwd)?.trim().to_string())
+}
+
+/// Run a command and capture stdout VERBATIM.
+///
+/// Separate from [`sh_capture`] because `git submodule status` encodes its
+/// answer in COLUMN 0 — a leading space means "at the recorded pin" — and a
+/// trim eats exactly that character on the first line. Reading the trimmed
+/// form there is not a near miss: every clean submodule reads as `+`, the
+/// fast skip never fires, and the bug is invisible because the fallback is
+/// the old (correct, slow) behaviour.
+fn sh_capture_raw(args: &[&str], cwd: Option<&Path>) -> Result<String> {
     let (cmd, rest) = args.split_first().ok_or_else(|| eyre!("empty command"))?;
+    record_command(args);
     let mut c = Command::new(cmd);
     c.args(rest);
     if let Some(d) = cwd {
@@ -1125,7 +1239,7 @@ fn sh_capture(args: &[&str], cwd: Option<&Path>) -> Result<String> {
     if !out.status.success() {
         bail!("`{}` failed ({})", args.join(" "), out.status);
     }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
 }
 
 #[cfg(test)]
@@ -1662,5 +1776,196 @@ mod tests {
             SourceDisposition::Planned
         );
         std::fs::remove_dir_all(&ws).ok();
+    }
+
+    /// Run `cmd` in `dir` with the inherited git environment CLEARED.
+    ///
+    /// Issues 0986/0988: `GIT_DIR` & co. override both a path argument and
+    /// `git -C`, and a session running from a linked worktree — which is how
+    /// the agent sessions here work — has `GIT_DIR` set. Inheriting it would
+    /// point every `git init` in this test at the CALLER's repository. Every
+    /// `GIT_*` name goes, not a hand-picked four of git's sixteen.
+    fn git_sh(dir: &Path, cmd: &str) {
+        let mut c = std::process::Command::new("sh");
+        c.args(["-c", cmd]).current_dir(dir);
+        for (k, _) in std::env::vars_os() {
+            if k.to_string_lossy().starts_with("GIT_") {
+                c.env_remove(&k);
+            }
+        }
+        let ok = c
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@t")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@t")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            // `submodule add` clones the upstream in a CHILD process, and git
+            // has refused the `file` transport for submodules since CVE-2022-
+            // 39253. A `git config` in the superproject does not reach that
+            // child; `GIT_CONFIG_*` does. Setup only — the code under test
+            // never needs it, because a deinit keeps `.git/modules/<name>` and
+            // `submodule update --init` re-checks-out from there with no clone.
+            .env("GIT_CONFIG_COUNT", "1")
+            .env("GIT_CONFIG_KEY_0", "protocol.file.allow")
+            .env("GIT_CONFIG_VALUE_0", "always")
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        assert!(ok, "command failed in {}: {cmd}", dir.display());
+    }
+
+    /// A superproject with one submodule, checked out at its recorded pin.
+    /// Returns (workspace, submodule path relative to it).
+    fn superproject_with_submodule(tag: &str) -> (PathBuf, &'static str) {
+        let root = crate::test_support::scratch_dir(tag);
+        let upstream = root.join("upstream");
+        std::fs::create_dir_all(&upstream).unwrap();
+        git_sh(
+            &upstream,
+            "git init -q . && echo hi > f.txt && git add f.txt && git commit -qm one",
+        );
+
+        let ws = root.join("ws");
+        std::fs::create_dir_all(&ws).unwrap();
+        git_sh(&ws, "git init -q . && git commit -q --allow-empty -m base");
+        git_sh(
+            &ws,
+            "git submodule --quiet add ../upstream third-party/sub \
+             && git commit -qm add-sub",
+        );
+        (ws, "third-party/sub")
+    }
+
+    fn submodule_source(path: &str, recursive: bool) -> SourcePackage {
+        SourcePackage {
+            version: "1".into(),
+            submodule: Some(path.into()),
+            // Exhaustive on purpose, like the clone literal above: a new field
+            // must state its answer rather than inherit one.
+            git: None,
+            git_ref: None,
+            dest: None,
+            location: SourceLocation::Workspace,
+            // The scratch upstream is a local path; `--depth 1` over the file
+            // transport is a different (and irrelevant) question from the one
+            // under test.
+            shallow: false,
+            recursive,
+            build_stage: false,
+            check: None,
+        }
+    }
+
+    /// RFC-0099 D6 — a submodule already at its recorded pin is a SKIP, and
+    /// the skip is asserted as "which commands ran", never as elapsed time.
+    ///
+    /// The measurement that motivated it (153.82 s of repeat `nros setup
+    /// mps2-an385-baremetal`) is a property of this host's clone sizes and its
+    /// network; the DEFECT is that `git submodule update --init --recursive`
+    /// ran at all. So the log is the assertion: a read-only `submodule status`
+    /// probe, and nothing that fetches, clones, checks out or updates.
+    #[test]
+    fn a_submodule_at_its_pin_is_skipped_without_fetching_anything() {
+        let (ws, path) = superproject_with_submodule("submodule-present");
+        let src = submodule_source(path, false);
+
+        let _ = take_command_log();
+        assert_eq!(
+            provision_source("sub", &src, &ws, false, None).unwrap(),
+            SourceDisposition::AlreadyPresent
+        );
+
+        let ran = take_command_log();
+        assert!(
+            ran.iter().any(|c| c.contains("submodule status")),
+            "the skip must be DECIDED by a probe, not assumed: {ran:?}"
+        );
+        for verb in ["submodule update", "fetch", "clone", "checkout"] {
+            assert!(
+                !ran.iter().any(|c| c.contains(verb)),
+                "`{verb}` ran for a submodule already at its pin: {ran:?}"
+            );
+        }
+    }
+
+    /// The negative control, and the reason the test above cannot be satisfied
+    /// by a predicate that always answers "present". An UNINITIALISED submodule
+    /// reads `-` in column 0, which is work, so `submodule update` must run.
+    #[test]
+    fn an_uninitialised_submodule_is_still_provisioned() {
+        let (ws, path) = superproject_with_submodule("submodule-absent");
+        git_sh(&ws, "git submodule deinit -f third-party/sub");
+
+        let src = submodule_source(path, false);
+        let _ = take_command_log();
+        assert_eq!(
+            provision_source("sub", &src, &ws, false, None).unwrap(),
+            SourceDisposition::Provisioned
+        );
+        let ran = take_command_log();
+        assert!(
+            ran.iter().any(|c| c.contains("submodule update")),
+            "an uninitialised submodule must be updated: {ran:?}"
+        );
+        assert!(
+            ws.join(path).join("f.txt").is_file(),
+            "the submodule was reported provisioned but its content is absent"
+        );
+    }
+
+    /// The other half of the discrimination, and the one that would be a
+    /// CORRECTNESS bug rather than a slow one: a checkout that has drifted off
+    /// the recorded pin reads `+`, and must be moved back rather than skipped.
+    /// A probe keyed on "the directory is populated" — the clone arm's test —
+    /// would call this present and leave the wrong commit in place.
+    #[test]
+    fn a_submodule_off_its_recorded_pin_is_not_mistaken_for_present() {
+        let (ws, path) = superproject_with_submodule("submodule-drifted");
+        let sub = ws.join(path);
+        git_sh(
+            &sub,
+            "echo drift > f.txt && git add f.txt && git commit -qm two",
+        );
+
+        let src = submodule_source(path, false);
+        let _ = take_command_log();
+        assert_eq!(
+            provision_source("sub", &src, &ws, false, None).unwrap(),
+            SourceDisposition::Provisioned
+        );
+        assert!(
+            take_command_log()
+                .iter()
+                .any(|c| c.contains("submodule update")),
+            "a drifted pin must be checked back out"
+        );
+        assert_eq!(
+            std::fs::read_to_string(sub.join("f.txt")).unwrap().trim(),
+            "hi",
+            "the recorded pin was not restored"
+        );
+    }
+
+    /// `--recursive` is passed to the PROBE only when the source asked for it.
+    /// Descending unasked would let a nested submodule the index never wanted
+    /// report `-` and force a full provision of a source that is already done.
+    #[test]
+    fn the_probe_descends_only_when_the_source_is_recursive() {
+        let (ws, path) = superproject_with_submodule("submodule-recursive");
+
+        for recursive in [true, false] {
+            let _ = take_command_log();
+            provision_source("sub", &submodule_source(path, recursive), &ws, false, None).unwrap();
+            let probe = take_command_log()
+                .into_iter()
+                .find(|c| c.contains("submodule status"))
+                .expect("the probe ran");
+            assert_eq!(
+                probe.contains("--recursive"),
+                recursive,
+                "probe `{probe}` disagrees with recursive={recursive}"
+            );
+        }
     }
 }
