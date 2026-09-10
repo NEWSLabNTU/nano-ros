@@ -48,6 +48,11 @@ eyre = "0.6"
 # re-exported as `pkg_index` / `launch_parser`.
 nros-pkg-index = { path = "../nros-pkg-index" }
 nros-launch-parser = { path = "../nros-launch-parser" }
+# phase-443 W3 (RFC-0097 D4) — the launcher is its own crate and binary now.
+# This crate re-exports its `pin` / `dispatch` / `store_root` / `checkout`
+# modules at their original paths, so there is ONE parser of
+# `nros-toolchain.toml` and one answer to "where is the store".
+nros-launcher = { workspace = true }
 thiserror = { workspace = true }
 minijinja = { workspace = true }
 nros-entry-lower = { workspace = true }

@@ -74,6 +74,30 @@ launcher does not link the CLI's dependency graph (measured, not asserted); a
 contributor inside a checkout is unaffected, because dispatch declines at its
 own seam.
 
+**Landed.** `packages/cli/nros-launcher` — `dispatch.rs` and `pin.rs` MOVED out
+of `nros-cli-core` (which re-exports them at their old paths, so there is one
+parser of `nros-toolchain.toml`), plus `launch.rs` for the three states a
+launcher meets and a fronted toolchain cannot: an empty store, an unpinned
+project with no CLI to fall back to, and a cwd inside a checkout. The crate
+carries its OWN `version`, which is the point — the workspace version is the
+toolchain's, and sharing it is the coupling the split exists to break.
+
+Measured, not asserted: `tests/launcher_dependency_closure.rs` walks the
+launcher's link closure out of `packages/cli/Cargo.lock` — **27 crates against
+the toolchain's 192**, with `nros-cli-core`, `clap`, `minijinja`,
+`nros-pkg-index`, `nros-launch-parser` and `nros-entry-lower` named as forbidden
+and a ceiling that a new direct dependency trips.
+
+**Not done here, and it is the half a user meets:** `scripts/install.sh` still
+fronts `<store>/bin/nros` at the newest TOOLCHAIN's `bin/nros` through
+`sdk-front`, so nothing installs the launcher yet. Fronting it instead means the
+release asset must carry both binaries and `sdk-front` must learn which one it
+fronts — a change to `release-nros.yml`, which is W2's file. It belongs with
+W2's manifest, not ahead of it. Until then the launcher is a built, tested
+artifact that no install path delivers, and the dispatch a user actually gets is
+still W7's in-toolchain one (`nros-cli/tests/toolchain_dispatch.rs`, which
+still passes).
+
 ### W4 — CI refuses to write a pin (RFC-0097 D11)
 
 Pin-on-first-build is right interactively and wrong in CI: silently pinning to
@@ -83,6 +107,36 @@ the pin exists to prevent.
 *Acceptance:* non-interactive + no pin ⇒ refuse, naming `nros pin <version>`;
 interactive + no pin ⇒ write and say so; a test drives BOTH, since a guard with
 one arm exercised is half a guard.
+
+**Landed, with one correction to the acceptance above.** The refusal does NOT
+name `nros pin <version>`: at the time W4 landed there was no such verb in this
+tree, and a blocked CI job aimed at a command that does not run is a worse
+refusal than none. What always exists is the FILE, so the diagnostic prints
+exactly the `nros-toolchain.toml` that `nros build` would have written, and the
+fix is a copy-paste. Escape hatch: `NROS_ALLOW_PIN_WRITE_IN_CI=1`, named in
+every refusal.
+
+W2 (PR #859) adds `nros pin <version>` and `pin::set`. When it lands the refusal
+may name the verb BESIDE the file, never instead of it — the reader is on a
+runner, where they cannot run a verb either, and the file is what they have to
+commit. W2's `pin::set` belongs in `nros-launcher/src/pin.rs` now; that is the
+one conflict between the two work items, and it is mechanical.
+
+The rule is split across two places on purpose, because they know different
+things:
+
+* **`nros build` REFUSES** (`PinOutcome::RefusedInCi` → an `Err`). It knows it
+  is about to write into the user's source tree.
+* **the launcher WARNS** (`Source::DefaultInCi`), naming the version it took.
+  It parses no `argv` (RFC-0095 D8), so refusing there would refuse
+  `nros --version`, `nros setup --list` and `nros doctor` on every runner —
+  commands that write nothing and have no reproducibility to protect.
+
+The refusal is asked AFTER the three arms that write nothing anyway (a
+contributor's checkout, an already-pinned project, a binary with no store
+version). Ordering it first would fail every build in this repository's own CI,
+which builds inside a checkout; `a_checkout_in_ci_is_not_a_pin_refusal` and
+`an_existing_pin_is_read_identically_in_ci` are what hold it there.
 
 ### W5 — `setup --check` covers the build stage; `doctor` covers the install (D12)
 

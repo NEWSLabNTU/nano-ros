@@ -17,6 +17,9 @@ members = [
     "nros-launch-parser",
     "nros-cli-core",
     "nros-cli",
+    # phase-443 W3 (RFC-0097 D4) — the launcher, its OWN artifact and its own
+    # version. It must not gain dependencies; see its manifest.
+    "nros-launcher",
     "nros-msg-to-idl",
     # Phase 212.N.4 — build-script codegen library for Entry pkgs.
     "nros-build",
@@ -57,6 +60,7 @@ pyo3 = { version = "0.29", features = ["extension-module"] }
 # Workspace member dependencies
 cargo-nano-ros = { path = "cargo-nano-ros" }
 nros-cli-core = { path = "nros-cli-core" }
+nros-launcher = { path = "nros-launcher" }
 rosidl-bindgen = { path = "rosidl-bindgen" }
 rosidl-parser = { path = "rosidl-parser" }
 rosidl-resolve = { path = "rosidl-resolve" }

@@ -902,11 +902,45 @@ fn pin_this_project(args: &Args) -> Result<()> {
     let Ok(exe) = std::env::current_exe() else {
         return Ok(());
     };
-    let outcome = crate::orchestration::pin::pin_on_first_build(&root, &exe)?;
-    if let Some(line) = crate::orchestration::pin::describe(&outcome) {
+    // RFC-0097 D11 — a pin is a source edit, so an automated session does not
+    // make one. The session is DETECTED here and passed in, because
+    // `pin_on_first_build` is a pure function of its arguments and its tests
+    // must not depend on whether the machine running them happens to set `$CI`
+    // (which, in this repo's own CI, it does).
+    let session = nros_launcher::session::Session::detect();
+    let outcome = crate::orchestration::pin::pin_on_first_build(&root, &exe, &session)?;
+    if let Some(line) = report_pin_outcome(&outcome)? {
         eprintln!("{line}");
     }
     Ok(())
+}
+
+/// Turn a [`PinOutcome`](crate::orchestration::pin::PinOutcome) into what the
+/// build does about it: a line to print, nothing, or an ERROR.
+///
+/// Split out from [`pin_this_project`] so RFC-0097 D11's *build* half is
+/// reachable by a test. It is the half that is easy to get wrong and impossible
+/// to see: the refusal already exists as a value one crate over
+/// (`PinOutcome::RefusedInCi`) and `toolchain_pin_dispatch.rs` covers it
+/// thoroughly — but a caller that printed it as a warning and carried on would
+/// pass every one of those tests while doing exactly the thing D11 forbids.
+/// Without this seam the only way to that code path is a full `nros build`
+/// against a real store, which is not a test anyone would keep.
+pub(crate) fn report_pin_outcome(
+    outcome: &crate::orchestration::pin::PinOutcome,
+) -> Result<Option<String>> {
+    let line = crate::orchestration::pin::describe(outcome);
+    if outcome.is_refusal() {
+        // Not a warning. Proceeding would build against a toolchain nobody
+        // recorded, which is precisely the unreproducible build the pin exists
+        // to prevent — and a CI job that goes green on it has hidden the
+        // problem rather than found it.
+        eyre::bail!(
+            "{}",
+            line.unwrap_or_else(|| "refusing to write a toolchain pin".to_string())
+        );
+    }
+    Ok(line)
 }
 
 /// How one plan's native command reaches the operating system.
@@ -3223,5 +3257,89 @@ mod multi_image_drive_tests {
     fn a_waited_handover_fails_on_a_non_zero_exit() {
         let e = perform(&nullary("false"), Handover::Wait).expect_err("`false` exits 1");
         assert!(format!("{e:#}").contains("exited"), "{e:#}");
+    }
+}
+
+/// RFC-0097 D11's BUILD half — phase-443 W4.
+///
+/// `toolchain_pin_dispatch.rs` covers the decision (which outcome each session
+/// produces). This covers what `nros build` DOES with it, which is a separate
+/// claim and the one that carries the acceptance: a refusal that reaches the
+/// user as a printed warning is not a refusal, and every test one crate over
+/// would still pass.
+#[cfg(test)]
+mod pin_report_tests {
+    use super::report_pin_outcome;
+    use crate::orchestration::pin::{Pin, PinOutcome};
+    use std::path::PathBuf;
+
+    /// The refusal STOPS the build, and the error the user sees is the full
+    /// diagnostic — the variable that decided, the file to write, the escape
+    /// hatch — not a summary that sends them looking for it.
+    #[test]
+    fn a_ci_refusal_becomes_an_error_carrying_the_whole_diagnostic() {
+        let outcome = PinOutcome::RefusedInCi {
+            version: "0.5.0-nros1".to_string(),
+            dir: PathBuf::from("/w/my-robot"),
+            var: "CI",
+        };
+        let err = report_pin_outcome(&outcome).expect_err("a refusal must fail the build");
+        let text = format!("{err:#}");
+        assert!(
+            text.contains("$CI"),
+            "name the variable that decided:\n{text}"
+        );
+        assert!(
+            text.contains("version = \"0.5.0-nros1\""),
+            "print the pin to write:\n{text}"
+        );
+        assert!(
+            text.contains("NROS_ALLOW_PIN_WRITE_IN_CI"),
+            "name the escape hatch:\n{text}"
+        );
+    }
+
+    /// The negative control, and the reason the refusal is a single arm rather
+    /// than "is this CI?" asked here: every other outcome is advisory. A
+    /// `report_pin_outcome` that failed on all of them would pass the test
+    /// above and break every build in this repository's own CI, which builds
+    /// inside a checkout.
+    #[test]
+    fn every_other_outcome_lets_the_build_proceed() {
+        let wrote = PinOutcome::Wrote {
+            path: PathBuf::from("/w/my-robot/nros-toolchain.toml"),
+            version: "0.5.0-nros1".to_string(),
+        };
+        assert!(
+            report_pin_outcome(&wrote)
+                .expect("writing a pin is not a failure")
+                .is_some_and(|l| l.contains("0.5.0-nros1")),
+            "a written pin is reported"
+        );
+
+        let already = PinOutcome::Already(Pin {
+            path: PathBuf::from("/w/my-robot/nros-toolchain.toml"),
+            version: "0.5.0-nros1".to_string(),
+        });
+        assert!(
+            report_pin_outcome(&already)
+                .expect("a pinned project builds")
+                .is_some()
+        );
+
+        // A contributor is told nothing at all — their nano-ros is the clone
+        // they are standing in.
+        assert_eq!(
+            report_pin_outcome(&PinOutcome::InCheckout(PathBuf::from("/src/nano-ros")))
+                .expect("a checkout builds"),
+            None
+        );
+
+        assert!(
+            report_pin_outcome(&PinOutcome::NoRunningVersion)
+                .expect("an unpinnable binary still builds")
+                .is_some(),
+            "the user is warned that the project is still unpinned"
+        );
     }
 }

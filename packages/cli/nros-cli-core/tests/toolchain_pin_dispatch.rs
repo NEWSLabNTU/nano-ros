@@ -23,6 +23,15 @@ use nros_cli_core::orchestration::{
     dispatch::{self, Context, Decision},
     pin::{self, PinOutcome},
 };
+use nros_launcher::session::Session;
+
+/// A developer at a keyboard — the session every test here means unless it is
+/// ABOUT RFC-0097 D11. Passed explicitly rather than detected, so a run on a
+/// machine that exports `$CI` (this repo's own CI does) measures the same thing
+/// as a run on a laptop.
+fn dev() -> Session {
+    Session::interactive()
+}
 
 /// A store entry that looks like one `scripts/install.sh` wrote: a prefix with
 /// `bin/nros` in it. Returns the binary path, which is what a launcher execs
@@ -68,7 +77,7 @@ fn first_build_writes_a_pin() {
     let exe = install_toolchain(&store, "0.5.0-nros1");
     let proj = project(tmp.path(), "my-robot");
 
-    let outcome = pin::pin_on_first_build(&proj, &exe).unwrap();
+    let outcome = pin::pin_on_first_build(&proj, &exe, &dev()).unwrap();
     let PinOutcome::Wrote { path, version } = outcome else {
         panic!("expected a pin to be written, got {outcome:?}");
     };
@@ -93,10 +102,10 @@ fn a_second_build_does_not_move_the_pin() {
     let new = install_toolchain(&store, "0.6.0-nros1");
     let proj = project(tmp.path(), "my-robot");
 
-    pin::pin_on_first_build(&proj, &old).unwrap();
+    pin::pin_on_first_build(&proj, &old, &dev()).unwrap();
     let before = std::fs::read_to_string(proj.join("nros-toolchain.toml")).unwrap();
 
-    let outcome = pin::pin_on_first_build(&proj, &new).unwrap();
+    let outcome = pin::pin_on_first_build(&proj, &new, &dev()).unwrap();
     let PinOutcome::Already(p) = &outcome else {
         panic!("a second build must find the pin, not rewrite it: {outcome:?}");
     };
@@ -137,11 +146,11 @@ fn a_pin_is_found_from_a_subdirectory() {
     let root = project(tmp.path(), "my-robot");
     let deep = project(tmp.path(), "my-robot/src/talker_pkg/src");
 
-    pin::pin_on_first_build(&root, &exe).unwrap();
+    pin::pin_on_first_build(&root, &exe, &dev()).unwrap();
     let found = pin::find(&deep).expect("the walk up must reach the root pin");
     assert_eq!(found, root.join("nros-toolchain.toml"));
 
-    let outcome = pin::pin_on_first_build(&deep, &exe).unwrap();
+    let outcome = pin::pin_on_first_build(&deep, &exe, &dev()).unwrap();
     assert!(
         matches!(outcome, PinOutcome::Already(_)),
         "a build from a subdirectory must use the root pin, not write its own: {outcome:?}"
@@ -165,12 +174,133 @@ fn a_binary_with_no_store_version_pins_nothing_and_says_so() {
     std::fs::write(&exe, b"x").unwrap();
     let proj = project(tmp.path(), "my-robot");
 
-    let outcome = pin::pin_on_first_build(&proj, &exe).unwrap();
+    let outcome = pin::pin_on_first_build(&proj, &exe, &dev()).unwrap();
     assert_eq!(outcome, PinOutcome::NoRunningVersion);
     assert!(!proj.join("nros-toolchain.toml").exists());
     assert!(
         pin::describe(&outcome).unwrap().contains("UNPINNED"),
         "the user must be told they still have D9's bug"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// RFC-0097 D11 (phase-443 W4) — CI refuses to WRITE a pin
+// ---------------------------------------------------------------------------
+
+/// The acceptance clause, literally: an automated session does not mutate the
+/// project's source, and the failure text names the fix.
+///
+/// `nros toolchain install` has no pin-writing path of its own — `nros build`
+/// is the only thing in the tree that writes `nros-toolchain.toml` — so this is
+/// where the whole rule lives.
+#[test]
+fn an_automated_session_refuses_to_write_a_pin_and_names_the_fix() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = tmp.path().join("store");
+    let exe = install_toolchain(&store, "0.5.0-nros1");
+    let proj = project(tmp.path(), "my-robot");
+
+    let outcome = pin::pin_on_first_build(&proj, &exe, &Session::automated("CI")).unwrap();
+    let PinOutcome::RefusedInCi { version, var, .. } = &outcome else {
+        panic!("expected a refusal, got {outcome:?}");
+    };
+    assert_eq!(version, "0.5.0-nros1");
+    assert_eq!(*var, "CI");
+    assert!(
+        outcome.is_refusal(),
+        "the caller must be able to turn this into an ERROR — a warning here \
+         goes green against a toolchain nobody recorded"
+    );
+    assert!(
+        !proj.join("nros-toolchain.toml").exists(),
+        "a refusal that leaves the file behind is not a refusal"
+    );
+
+    let text = pin::describe(&outcome).unwrap();
+    assert!(
+        text.contains("$CI"),
+        "name the variable that decided:\n{text}"
+    );
+    assert!(
+        text.contains("version = \"0.5.0-nros1\""),
+        "print the pin to write, so the fix is a copy-paste:\n{text}"
+    );
+    assert!(
+        text.contains("NROS_ALLOW_PIN_WRITE_IN_CI"),
+        "name the escape hatch:\n{text}"
+    );
+}
+
+/// The other half: *"a CI job that resolves a pin gets the same toolchain a
+/// dev's machine does."* An ALREADY-pinned project is untouched by the rule —
+/// that is the reproducible case, and the common one, and refusing it would be
+/// the opposite of what D11 asks for.
+#[test]
+fn an_existing_pin_is_read_identically_in_ci() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = tmp.path().join("store");
+    let exe = install_toolchain(&store, "0.5.0-nros1");
+    let proj = project(tmp.path(), "my-robot");
+    pin::pin_on_first_build(&proj, &exe, &dev()).unwrap();
+    let before = std::fs::read_to_string(proj.join("nros-toolchain.toml")).unwrap();
+
+    let outcome = pin::pin_on_first_build(&proj, &exe, &Session::automated("CI")).unwrap();
+    let PinOutcome::Already(p) = &outcome else {
+        panic!("a pinned project must resolve in CI, not refuse: {outcome:?}");
+    };
+    assert_eq!(p.version, "0.5.0-nros1");
+    assert_eq!(
+        before,
+        std::fs::read_to_string(proj.join("nros-toolchain.toml")).unwrap(),
+        "reading a pin in CI must not rewrite it"
+    );
+}
+
+/// A contributor's checkout is untouched by the rule, and this is not academic:
+/// this repo's OWN CI builds inside a checkout, so a refusal ordered before the
+/// checkout arm would have failed every in-tree build the day it landed.
+#[test]
+fn a_checkout_in_ci_is_not_a_pin_refusal() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = tmp.path().join("store");
+    let exe = install_toolchain(&store, "0.5.0-nros1");
+    let root = project(tmp.path(), "nano-ros");
+    std::fs::create_dir_all(root.join("packages/core/nros-core")).unwrap();
+    std::fs::write(root.join("packages/core/nros-core/Cargo.toml"), "").unwrap();
+    let ws = project(tmp.path(), "nano-ros/examples/workspaces/rust");
+
+    let outcome = pin::pin_on_first_build(&ws, &exe, &Session::automated("CI")).unwrap();
+    assert!(
+        matches!(outcome, PinOutcome::InCheckout(_)),
+        "a checkout must be reported as one, in CI too: {outcome:?}"
+    );
+    assert!(!outcome.is_refusal());
+}
+
+/// "Someone who really means it." With the escape hatch the pin IS written, so
+/// the hatch is a live path rather than a documented intention.
+#[test]
+fn the_escape_hatch_lets_an_automated_session_write_a_pin() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = tmp.path().join("store");
+    let exe = install_toolchain(&store, "0.5.0-nros1");
+    let proj = project(tmp.path(), "my-robot");
+
+    let session = Session::detect_with(|k| match k {
+        "CI" => Some("true".into()),
+        "NROS_ALLOW_PIN_WRITE_IN_CI" => Some("1".into()),
+        _ => None,
+    });
+    let outcome = pin::pin_on_first_build(&proj, &exe, &session).unwrap();
+    assert!(
+        matches!(outcome, PinOutcome::Wrote { .. }),
+        "the hatch must actually write: {outcome:?}"
+    );
+    assert_eq!(
+        pin::load(&proj.join("nros-toolchain.toml"))
+            .unwrap()
+            .version,
+        "0.5.0-nros1"
     );
 }
 
@@ -289,7 +419,7 @@ fn a_checkout_is_never_dispatched_away_from() {
     );
     // And the same directory pins nothing, for the same reason.
     assert!(matches!(
-        pin::pin_on_first_build(&ws, &launcher).unwrap(),
+        pin::pin_on_first_build(&ws, &launcher, &dev()).unwrap(),
         PinOutcome::InCheckout(_)
     ));
 }

@@ -791,6 +791,7 @@ dependencies = [
  "clap_complete",
  "eyre",
  "nros-cli-core",
+ "nros-launcher",
  "tempfile",
 ]
 
@@ -810,6 +811,7 @@ dependencies = [
  "nros-entry-lower",
  "nros-lang",
  "nros-launch-parser",
+ "nros-launcher",
  "nros-msg-to-idl",
  "nros-orchestration-ir",
  "nros-pkg-index",
@@ -864,6 +866,16 @@ dependencies = [
  "nros-pkg-index",
  "quick-xml",
  "tempfile",
+]
+
+[[package]]
+name = "nros-launcher"
+version = "0.1.0"
+dependencies = [
+ "eyre",
+ "serde",
+ "tempfile",
+ "toml",
 ]
 
 [[package]]

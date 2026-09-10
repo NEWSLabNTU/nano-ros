@@ -27,19 +27,19 @@ use std::{
     process::Command,
 };
 
+use nros_launcher::test_support::{copy_executable, write_executable_stub};
+
 /// Install the real binary as the launcher for `version`.
+///
+/// Through `test_support::copy_executable`, never `std::fs::copy`: this test
+/// execs what it just wrote, which is issue 0476's exact shape. Measured while
+/// finishing phase-443 W3 — `an_unpinned_project_runs_in_the_launcher` failed 1
+/// of 4 full `packages/cli` runs and passed 4 of 4 solo.
 fn install_launcher(store: &Path, version: &str) -> PathBuf {
     let bin = store.join("sdk/nros").join(version).join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let exe = bin.join("nros");
-    // NOT `fs::copy` — issue 0476. This binary is EXEC'd a few lines later, and
-    // a write descriptor held in this process is inherited by any sibling
-    // thread's fork until that child execs, which the kernel reports as
-    // ETXTBSY. It passes on an idle machine and fails on a loaded CI runner.
-    nros_cli_core::test_support::copy_executable(
-        std::path::Path::new(env!("CARGO_BIN_EXE_nros")),
-        &exe,
-    );
+    copy_executable(Path::new(env!("CARGO_BIN_EXE_nros")), &exe);
     exe
 }
 
@@ -50,9 +50,7 @@ fn install_stub(store: &Path, version: &str) -> PathBuf {
     let bin = store.join("sdk/nros").join(version).join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let exe = bin.join("nros");
-    // Same rule as `install_launcher`, and this is the shape issue 0476 was
-    // filed against: written here, exec'd there.
-    nros_cli_core::test_support::write_executable_stub(
+    write_executable_stub(
         &exe,
         "#!/bin/sh\n\
          echo \"STUB-TOOLCHAIN\"\n\

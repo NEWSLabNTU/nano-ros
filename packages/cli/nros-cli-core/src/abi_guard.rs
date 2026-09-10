@@ -86,8 +86,12 @@ pub const SKIP_ENV: &str = "NROS_SKIP_VERSION_CHECK";
 /// has told us once has told us for both.
 pub const RUNTIME_ROOT_ENV: &str = "NROS_REPO_DIR";
 
-/// The marker that identifies a nano-ros source tree, relative to its root.
-const MONOREPO_MARKER: &str = "packages/core/nros-core/Cargo.toml";
+// The marker that identifies a nano-ros source tree, relative to its root.
+// Owned by `nros_launcher::checkout` since phase-443 W3 — see
+// `find_monorepo_root` below.
+// Re-exported rather than merely imported: the doc links above name it, and
+// a private import of a constant only the tests read is a warning.
+pub use nros_launcher::checkout::MONOREPO_MARKER;
 
 /// The runtime's own declaration of what it accepts, relative to the tree root.
 const CODEGEN_VERSION_SRC: &str = "packages/core/nros-core/src/codegen_version.rs";
@@ -141,19 +145,14 @@ impl Verb {
 /// Walk up from `start` to find the nano-ros source-tree root — the directory
 /// containing [`MONOREPO_MARKER`]. Returns `None` when `start` is not inside
 /// such a tree.
+///
+/// MOVED to `nros_launcher::checkout` by phase-443 W3 and re-exported here. The
+/// launcher asks this question FIRST (RFC-0097: *"inside a checkout the
+/// launcher is not involved"*), so it has to own the answer; a second walk with
+/// a second marker is how the launcher and the ownership guard would come to
+/// disagree about what a checkout is.
 pub fn find_monorepo_root(start: &Path) -> Option<PathBuf> {
-    let mut cur: Option<&Path> = if start.is_file() {
-        start.parent()
-    } else {
-        Some(start)
-    };
-    while let Some(dir) = cur {
-        if dir.join(MONOREPO_MARKER).is_file() {
-            return Some(dir.to_path_buf());
-        }
-        cur = dir.parent();
-    }
-    None
+    nros_launcher::checkout::find_monorepo_root(start)
 }
 
 /// Locate the nano-ros runtime tree whose acceptance range applies to a
