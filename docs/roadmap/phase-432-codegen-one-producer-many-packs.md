@@ -6,19 +6,32 @@ effort, and **W3.5**, which was always a question rather than a work item.
 
 Every wave below carries its own state. What is left, in one place:
 
-- **W3.1** — the C-ABI `run_components` itself is unwritten. Both original
-  prerequisites are closed, and so is a THIRD the assessment missed (`ok()` and
-  `shutdown()` were not C-ABI; the context tag is the session flag now). So the
-  runner is unblocked. **Nobody has linked or booted one on FreeRTOS** — that
-  measurement is the acceptance and it has not been taken.
+- **W3.1 — DONE (2026-09-10), and MEASURED on all three RTOS families.** The
+  C-ABI `run_components` is written, and it is ONE function for every RTOS
+  (`nros_board_rtos_run_components`) rather than one per board: the
+  single-executor path differs by kernel only in a per-tick yield, where
+  `run_tiers` genuinely differs (a FreeRTOS task, a Zephyr `k_thread` and a
+  NuttX pthread are three things). Three copies would have been this phase's
+  own defect class.
+
+  The acceptance is a BUILD, and all three were taken:
+
+  | family | artifact | evidence |
+  | --- | --- | --- |
+  | freertos | `freertos_entry`, 4.8 MB | 0 C++ runtime symbols; workspace on `LANGUAGES C` |
+  | zephyr | `zephyr.elf`, 30.6 MB | `nros_board_rtos_run_components` GLOBAL, from `nros_rtos_run_components.c`; entry object is the `.c` |
+  | nuttx | `nuttx_entry`, 825 KB | same symbol + `nros_app_main`; 0 C++ runtime symbols |
+
+  ThreadX deliberately gets none — no `run_tiers` to copy, so it stays
+  C++-entry-only with the routing REPORTED rather than refused.
 - **W3.5** — DECIDED 2026-09-08, and no work item: no in-tree reference
   language, split by WHO owns the language. See the item.
-- **RFC-0091 is still `Draft`**, correctly: W1.3 says to move its status once
-  the RFC is fully implemented. W3.5 is answered now, so **W3.1 is the last
-  thing holding it `Draft`.**
+- **RFC-0091 is `Stable`** as of 2026-09-10. W1.3 said to move its status once
+  the RFC is fully implemented; W3.5 was answered by decision and W3.1 by
+  measurement, so nothing holds it at `Draft` any more.
 
-**W3.1 is the only open work item in the phase.** Everything else in all three
-tracks is closed and verified against the tree.
+**Every work item in the phase is now closed**, across all three tracks, each
+verified against the tree rather than read off a marker.
 
 Closed since the previous status line, so that this block does not repeat the
 failure it was written to record:
@@ -408,7 +421,7 @@ RFC-0091 is honest that the codegen cost becomes a pack while the
 with the least design behind it — treat the items as scoped questions, not as
 settled work.
 
-- **W3.1 — complete the C-ABI board surface. DECIDED 2026-09-08: GO.** The
+- **W3.1 — complete the C-ABI board surface. DONE 2026-09-10; decided GO 2026-09-08.** The
   consumer this is for is real — C-only, MISRA-style, a certified C compiler
   and no C++ runtime — so the work is worth its cost and the remaining item is
   to write the runner and BUILD it.
