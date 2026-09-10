@@ -973,7 +973,7 @@ Four open issues describe the gap between what this phase claims and what a
 ported node gets. They had no home; they belong here because each is a place the
 parity CLAIM and the parity MEASUREMENT disagree.
 
-* **[#1008](../issues/1008-wait-for-service-never-waits.md)** — `wait_for_service`
+* **[#1008](../issues/archived/1008-wait-for-service-never-waits.md)** — `wait_for_service`
   returns `Ok(true)` immediately on every real backend. The API is present and
   the behaviour is not, which is the exact failure mode a parity ledger exists to
   catch and did not.

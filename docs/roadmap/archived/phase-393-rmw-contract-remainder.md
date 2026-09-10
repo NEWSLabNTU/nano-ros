@@ -1,6 +1,10 @@
 # Phase 393 — what is left of the RMW contract, and what deliberately is not
 
-**Status (2026-08-30). W1, W2 and W2a DONE; W3 holds. The contract work this
+**Status (2026-09-10). COMPLETE — superseded by [phase-444](../phase-444-rmw-fix-up.md),
+which carries #1021 and the per-backend remainder. The counts below are the 2026-08-30
+reading, kept as history.**
+
+Earlier status (2026-08-30). W1, W2 and W2a DONE; W3 holds. The contract work this
 doc scoped is finished — what remains is VERIFICATION, which is a different
 thing and is called out below.** Measured with `just check rmw-slot-producers`:
 produced 53, default 7, unimplemented 0, **inert 14**, and
@@ -171,9 +175,9 @@ holds the evidence, the item is *close it*.
 
 | issue | why it belongs here |
 | --- | --- |
-| [#0970](../issues/archived/0970-cyclone-rmw-should-own-its-sertype.md) | the Cyclone backend borrows Cyclone's generated sertype instead of registering its own — the contract gap behind the CDR round trip. **RESOLVED**; the removed decode+encode is worth ~46 ns/message (176 ns at 16 KB), measured in 0969. Its allocation-site ledger reads 2 -> 1, which is SITES and not runtime calls — the runtime count did not move |
-| [#0971](../issues/archived/0971-take-sequence-cannot-say-why-it-stopped.md) | `take_sequence` cannot say why a drain stopped, and its two implementations disagree about it |
-| [#0976](../issues/archived/0976-service-action-adapters-tested-only-against-ourselves.md) | five action adapters in the Cyclone service path reshape the CDR to match ROS 2, exercised only by nano-ros talking to itself. This is the VERIFICATION remainder W3 names |
+| [#0970](../../issues/archived/0970-cyclone-rmw-should-own-its-sertype.md) | the Cyclone backend borrows Cyclone's generated sertype instead of registering its own — the contract gap behind the CDR round trip. **RESOLVED**; the removed decode+encode is worth ~46 ns/message (176 ns at 16 KB), measured in 0969. Its allocation-site ledger reads 2 -> 1, which is SITES and not runtime calls — the runtime count did not move |
+| [#0971](../../issues/archived/0971-take-sequence-cannot-say-why-it-stopped.md) | `take_sequence` cannot say why a drain stopped, and its two implementations disagree about it |
+| [#0976](../../issues/archived/0976-service-action-adapters-tested-only-against-ourselves.md) | five action adapters in the Cyclone service path reshape the CDR to match ROS 2, exercised only by nano-ros talking to itself. This is the VERIFICATION remainder W3 names |
 
 
 ## Adopted issues (2026-09-04) — a backend that does not build in a shipped configuration
@@ -182,11 +186,11 @@ Two open issues had no phase and are the same statement: a backend must compile
 in the configurations the platform layer actually selects, and neither of these
 does.
 
-* **[#1023](../issues/archived/1023-sertype-hosted-includes-break-freestanding.md)** —
+* **[#1023](../../issues/archived/1023-sertype-hosted-includes-break-freestanding.md)** —
   `nros_sertype.cpp` includes `<memory>` and `<string>` unconditionally, so
   cyclonedds cannot compile freestanding. Archived issue 0112's class at a new
   site, with the sibling TU in the same directory already carrying the lesson.
-* **[#1021](../issues/1021-zenoh-pico-1-8-0-matching-off-build-break.md)** —
+* **[#1021](../../issues/1021-zenoh-pico-1-8-0-matching-off-build-break.md)** —
   zenoh-pico 1.8.0 does not compile with `Z_FEATURE_MATCHING=0`, which is
   exactly what nano-ros passes on Zephyr. Upstream's, carried on our patch line.
 

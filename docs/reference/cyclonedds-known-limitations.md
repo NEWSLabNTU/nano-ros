@@ -33,7 +33,7 @@ because Cyclone 0.10.5 does not expose `dds_writer_lookup_serdatatype()`, and
 pointed at upstream
 [cyclonedds#1342](https://github.com/eclipse-cyclonedds/cyclonedds/issues/1342)
 as the thing to wait for. Two corrections
-([#0969](../issues/0969-cyclone-take-cdr-round-trip.md),
+([#0969](../issues/archived/0969-cyclone-take-cdr-round-trip.md),
 [#0970](../issues/archived/0970-cyclone-rmw-should-own-its-sertype.md)):
 
 * `dds_takecdr` takes a reader entity and nothing else, so the RECEIVE side was
@@ -72,7 +72,7 @@ running the Rust, C and C++ action clients against a stock ROS 2 server shows
 identical decline counts — three independent producers agreeing the corrections
 have nothing left to correct. The runtime already emits the fixed `octet[16]`
 (publisher.cpp's 233.6 note). So
-[#0969](../issues/0969-cyclone-take-cdr-round-trip.md)'s expectation that
+[#0969](../issues/archived/0969-cyclone-take-cdr-round-trip.md)'s expectation that
 converting this path would DELETE these adapters rather than preserve them is
 measured on the write side.
 
@@ -325,7 +325,7 @@ this in any external integration guide.
 
 **Measured, and 5× lower than this section used to describe.** Per publish+take
 round trip, on the same harness before and after
-[#0969](../issues/0969-cyclone-take-cdr-round-trip.md) /
+[#0969](../issues/archived/0969-cyclone-take-cdr-round-trip.md) /
 [#0970](../issues/archived/0970-cyclone-rmw-should-own-its-sertype.md):
 
 | | allocs @1 msg | allocs @200 msgs | per message |
@@ -354,7 +354,7 @@ allocation pressure" is no longer true, which is why it is no longer here.
 
 **Still allocating per message:** `src/service.cpp` — three sites, one per
 request and two per reply. The take side is
-[#0969](../issues/0969-cyclone-take-cdr-round-trip.md)'s third site
+[#0969](../issues/archived/0969-cyclone-take-cdr-round-trip.md)'s third site
 (`take_typed_wire`, which re-encodes XCDR1 native-endian — a correctness
 question, not only a cost one); the witness situation is
 [#0976](../issues/archived/0976-service-action-adapters-tested-only-against-ourselves.md).
@@ -427,7 +427,7 @@ There is no receive buffer here to size:
 * the destination is the CALLER's buffer, whose capacity arrives on every `take`
   and is authoritative there.
 
-Before [#0969](../issues/0969-cyclone-take-cdr-round-trip.md) there was exactly
+Before [#0969](../issues/archived/0969-cyclone-take-cdr-round-trip.md) there was exactly
 one candidate consumer — the `dds_ostream` that re-serialised the typed sample
 grew by `realloc`, and an initial size would have saved those reallocs. That
 ostream went with the round trip, and with it the last thing a hint could have

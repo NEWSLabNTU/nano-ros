@@ -39,3 +39,12 @@ timeouts. Nothing counts the drop.
 Reserve the correlation slot **before** the destructive take, or peek before
 taking. Report exhaustion as a distinct condition — `WOULD_BLOCK` reaching the
 caller, or a counted-and-logged drop — never as an empty queue.
+
+## Status — 2026-09-10: half fixed
+
+`bd9948e23d` reserves the correlation slot BEFORE the destructive take, so a request is
+no longer consumed and lost. The second half of the Fix above is NOT done: the
+`service_take_request` adapter still maps `WOULD_BLOCK` to `taken = false` with `OK`, so
+a saturated server reads as an empty queue. That is now contract-correct about
+consumption — the sample stays on the reader — but not about observability. No
+regression test was added. Carried as phase-444 W1.
