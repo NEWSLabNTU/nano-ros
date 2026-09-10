@@ -31,11 +31,23 @@ is how `packages/codegen` outlived its own retirement note.
 Run: python3 scripts/check-package-directories.py [--self-test]
 """
 
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+
+sys.path.insert(0, str(REPO / "scripts" / "lib"))
+from git_hook_env import nros_clear_inherited_git_env  # noqa: E402
+
+# Before the first git call, at module scope so no entry path can skip it. The
+# self-test below builds a throwaway repository, and an inherited `GIT_DIR`
+# overrides both `cwd=` and `git -C` (issue 0986). This gate is on
+# `check-fast`, which the pre-push hook runs, so that environment is the
+# NORMAL one here, not an exotic case.
+nros_clear_inherited_git_env()
 
 # Each site states the set once, as a brace list. The regex spans newlines
 # because both files wrap it -- ARCHITECTURE breaks inside the braces.
@@ -48,7 +60,34 @@ BRACE_LIST = re.compile(r"`packages/\{([^}]*)\}/`", re.S)
 
 
 def actual_dirs(repo):
-    return sorted(p.name for p in (Path(repo) / "packages").iterdir() if p.is_dir())
+    """The package directories the REPOSITORY has, from git rather than disk.
+
+    `iterdir()` was the first version and it reported a contributor's local
+    tooling state as a documentation defect: an untracked
+    `packages/.claude/settings.local.json` made this gate red on a docs-only
+    commit, blaming CLAUDE.md and ARCHITECTURE for "omitting .claude" — two
+    files that would be wrong to mention it.
+
+    The documented list describes the workspace, and a directory git tracks
+    nothing in is not part of it. This is also the repo's standing rule for
+    enumerating the tree: ask git, never walk the filesystem.
+
+    A directory holding only ignored or untracked files therefore does not
+    appear, which is the intended difference and not an oversight.
+    """
+    out = subprocess.run(
+        ["git", "-C", str(repo), "ls-files", "-z", "--", "packages/"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    names = set()
+    for rel in out.split("\0"):
+        parts = rel.split("/")
+        # "packages/<name>/..." — a file directly in packages/ names no dir.
+        if len(parts) >= 3 and parts[0] == "packages":
+            names.add(parts[1])
+    return sorted(names)
 
 
 def offenders(repo=None):
@@ -100,7 +139,25 @@ def self_test():
         root = Path(td)
         for name in ("alpha", "beta"):
             (root / "packages" / name).mkdir(parents=True)
+            # A TRACKED file, because `actual_dirs` asks git and a directory
+            # git knows nothing about is deliberately invisible to it.
+            (root / "packages" / name / "Cargo.toml").write_text("[package]\n")
         (root / "docs" / "design").mkdir(parents=True)
+        # A real repository: the enumeration is a `git ls-files`, so a plain
+        # temp tree would exercise a code path that does not exist.
+        env = nros_clear_inherited_git_env(dict(os.environ))
+        for args in (
+            ["init", "-q"],
+            ["-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"],
+        ):
+            subprocess.run(
+                ["git", "-C", str(root), *args], check=True, env=env, capture_output=True
+            )
+        # The local dirt that made this gate red on a docs-only commit: an
+        # untracked dot-directory under `packages/`. It must NOT be reported,
+        # and `iterdir()` reported it.
+        (root / "packages" / ".claude").mkdir()
+        (root / "packages" / ".claude" / "settings.local.json").write_text("{}\n")
         for i, (body, want, want_why, name) in enumerate(cases):
             text = f"Workspace: `packages/{body}/`, examples/.\n" if body.startswith("{") else body
             for rel in SITES:
