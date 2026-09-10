@@ -27,6 +27,21 @@ setup:
     # The recipe must not re-implement that decision: build.sh prints
     # "already built" itself when the stamp matches, so the fast path is
     # preserved without a second, weaker copy of the rule.
+    #
+    # PROVISION FIRST. build.sh prefers the prebuilt agent from the nros store
+    # and, finding neither that nor a checked-out submodule, exits 1 with
+    # "Micro-XRCE-DDS Agent not provisioned. Run: nros setup native --rmw xrce".
+    # It is right to refuse — provisioning is `nros setup`'s job and it says so
+    # — but a verb named "install XRCE prerequisites" that stops to tell you to
+    # run the install command is a step, not a verb. So run it: three packages,
+    # all XRCE (the agent plus the two client submodules a Zephyr XRCE build
+    # needs anyway), idempotent, and it prints "present (skip)" when the store
+    # already has them.
+    #
+    # Found by `just setup zephyr` on a fresh host: it calls this recipe last,
+    # after `west update` and the whole patch set, so a clean provisioning run
+    # failed at the final step with an error naming a command nothing had run.
+    nros setup native --rmw xrce
     ./scripts/xrce-agent/build.sh
 
 # Diagnose XRCE install status (read-only).
