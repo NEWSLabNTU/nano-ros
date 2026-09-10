@@ -1,6 +1,7 @@
 # Phase 441 — the one "on-target" live-peer cell runs on host sockets
 
-**Status (2026-09-09). Not started. Analysis below; work items W1–W5 proposed.**
+**Status (2026-09-10). W2 ANSWERED (yes — see below); W1 and W3–W5 not started.
+Analysis below; work items W1–W5 proposed.**
 
 Phase-433 closed with twenty of twenty Runtime interop cells carrying a live
 verdict, and named its own remainder:
@@ -88,7 +89,8 @@ Cyclone's SPDP discovery is multicast by default; making it work over slirp
 means a configured unicast peer list, which is a different thing to verify and
 may not be worth doing first. zenoh-pico needs no such change. So zenoh goes
 first, and whether Cyclone-on-QEMU is reachable at all over slirp is itself a
-finding this phase should record rather than assume.
+finding this phase should record rather than assume. **W2 has now measured it:
+yes, with four settings and a `hostfwd` — see W2 below.**
 
 ## One constraint that is already written down
 
@@ -133,6 +135,183 @@ never bump it off that, see issue 0507).
 If no, a recorded reason in the same place the declined RMW symbols carry
 theirs, so the absence stops reading as an oversight — the failure mode issues
 1137, 1164 and 1231 each demonstrated.
+
+#### ANSWER (2026-09-10): yes, and it costs four settings and a QEMU flag
+
+Two CycloneDDS 0.10.5 participants — the pinned tree at `67ff7518`, built for
+the host — discovered each other and delivered a sample across a user-mode NAT
+of slirp's shape, in both directions, in **16 ms**. The four settings below are
+each NECESSARY: removing any one of them was measured and produced no discovery
+at all.
+
+**Guest side** (the image; this is the shape `kEmbeddedCycloneConfig` /
+`CONFIG_NROS_CYCLONE_CONFIG_XML` / the bringup's `rmw/cyclonedds.xml` would
+carry):
+
+```xml
+<CycloneDDS><Domain Id="42">
+  <General>
+    <AllowMulticast>false</AllowMulticast>
+    <ExternalNetworkAddress>127.0.0.1</ExternalNetworkAddress>
+  </General>
+  <Discovery>
+    <ParticipantIndex>0</ParticipantIndex>
+    <Peers><Peer Address="10.0.2.2:17912"/></Peers>
+  </Discovery>
+</Domain></CycloneDDS>
+```
+
+**Host side** (the `ros2` peer's `CYCLONEDDS_URI`):
+
+```xml
+<CycloneDDS><Domain Id="42">
+  <General>
+    <AllowMulticast>false</AllowMulticast>
+    <ExternalNetworkAddress>10.0.2.2</ExternalNetworkAddress>
+  </General>
+  <Discovery>
+    <ParticipantIndex>1</ParticipantIndex>
+    <Peers><Peer Address="127.0.0.1:17910"/></Peers>
+  </Discovery>
+</Domain></CycloneDDS>
+```
+
+**QEMU side** — the guest's two unicast ports forwarded in:
+
+```
+-netdev user,id=n0,hostfwd=udp::17910-10.0.2.15:17910,hostfwd=udp::17911-10.0.2.15:17911
+```
+
+The ports are not free parameters; they are DDSI 2.1 §9.6.1 arithmetic, and the
+pinned tree exposes every constant under `Discovery/Ports` (`Base` 7400,
+`DomainGain` 250, `ParticipantGain` 2, `UnicastMetaOffset` 10,
+`UnicastDataOffset` 11). Domain 42 with participant index 0 is therefore meta
+`17910` / data `17911`, and index 1 is `17912` / `17913`. `10.0.2.15` is the
+guest's own address and must match what the board's `Config` bakes
+(`Config::qemu_slirp()` uses `10.0.2.10` on mps2-an385 — the `hostfwd` target
+follows the board, not this example).
+
+#### Why each part is load-bearing
+
+| variant | change from the working config | result |
+| --- | --- | --- |
+| V1 | (the config above), guest publishes | **sample delivered**, 16 ms |
+| V5 | roles swapped, host publishes | **sample delivered** |
+| V1b | host advertises its real LAN address instead of `10.0.2.2` | **sample delivered** |
+| V2 | no `hostfwd` | no discovery |
+| V3 | guest does not rewrite its advertised address | no discovery |
+| V4 | host pinned to loopback (the issue-1009 isolation shape) | no discovery |
+| V6 | `AllowMulticast=false` + `Peers` and nothing else | no discovery |
+| V7 | V1 plus a matching `<Discovery><Tag>` on both sides | **sample delivered** |
+| V8 | V1 with MISMATCHED tags | no discovery |
+
+Two of those are worth spelling out.
+
+**V3 — the guest's advertised locator is the crux.** SPDP carries the sender's
+own unicast locators, and a guest behind NAT advertises `10.0.2.15`, which the
+host cannot dial. `<General><ExternalNetworkAddress>` is the documented NAT knob
+(*"allows explicitly overruling the network address Cyclone DDS advertises in
+the discovery protocol … to allow Cyclone DDS to communicate across a Network
+Address Translation (NAT) device"*), and with it the host's trace shows the
+guest arriving at the forwarded address:
+
+```
+SPDP ST0 110910c:… NEW (pasta-jerry-aeon/0.10.5/Linux/Linux)
+   (data udp/127.0.0.1:17911@2 meta udp/127.0.0.1:17910@2)
+```
+
+while the guest addresses the host through the gateway alias:
+
+```
+setcover: all_addrs udp/10.0.2.2:17912@2
+```
+
+**V4 — the loopback pin and the NAT rewrite are mutually exclusive**, which is
+the one finding that lands on this tree rather than on Cyclone, and is filed as
+[issue 1251](../issues/1251-cyclone-slirp-needs-nat-profile.md).
+`ExternalNetworkAddress` is refused outright when the only selected interface is
+loopback (`q_init.c:398`, *"external network address specification only
+supported if there is a unique non-loopback interface"*), so a host pinned the
+way `dds_isolation` pins it cannot rewrite what it advertises — and `127.0.0.1`
+means the guest's own loopback inside the guest. Worse, it fails SILENTLY:
+both sides log the other's SPDP and neither matches, because Cyclone treats an
+advertised locator equal to its own external locator as "same machine, use the
+real interface address" (`q_ddsi_discovery.c:208-221`), so the guest ends up
+addressing `10.0.2.15` — itself.
+
+`<Discovery><Tag>` (V7/V8) is the isolation mechanism that survives the NAT: a
+domain-id extension both peers must match, independent of interface selection.
+It has to be a build-time constant on the guest, because the guest's config is
+baked into the image.
+
+#### The experiment, and what it does not model
+
+`libslirp` needs a guest, and a guest needs an image, so the decisive shape
+(RTOS image on QEMU, host `rmw_cyclonedds_cpp` peer) was not run. What ran is
+the same constraint applied to real Cyclone participants without root:
+
+- the "guest" is a process in its own network namespace whose only path out is
+  **pasta** (passt), a user-mode NAT configured to slirp's numbering:
+  `pasta --config-net -a 10.0.2.15 -n 24 -g 10.0.2.2 --map-host-loopback 10.0.2.2 -u 17910,17911`
+  — outbound unicast works, `10.0.2.2` maps to the host's loopback, inbound
+  arrives only on forwarded ports, multicast does not cross;
+- both peers are `HelloworldPublisher`/`HelloworldSubscriber` from the pinned
+  submodule, built from `third-party/dds/cyclonedds` at the pin, so the wire
+  behaviour is the version ROS ships and not an approximation of it;
+- the verdict is the example's own: the publisher blocks until a reader is
+  matched, the subscriber blocks until a sample arrives, and a 25 s timeout is
+  the negative.
+
+Measured on the QEMU side separately, because the recipe depends on it: QEMU
+11.0.3 accepts `hostfwd=udp::P-10.0.2.15:P` on `-netdev user` and binds those
+UDP ports on the host (`ss -lunp` shows `0.0.0.0:17910` and `0.0.0.0:17911`
+owned by `qemu-system-arm`). And a Cyclone participant binds its unicast
+sockets to `0.0.0.0`, not to the selected interface's address — so it receives
+whatever address slirp hands it, whichever of the host's addresses that turns
+out to be.
+
+**Not modelled, and each could still bite:**
+
+1. **The RTOS IP stack.** lwIP (FreeRTOS/mps3-an536), NSOS (native_sim), NetX
+   Duo (ThreadX) — none of them were in the path. The guest here ran Linux's
+   stack. Everything above is about ADDRESSING, which is where the NAT question
+   lives, but "does lwIP deliver a 1.2 KB SPDP datagram through slirp's virtual
+   LAN9118" is a separate question this does not answer.
+2. **The embedded Cyclone build.** ddsrt's FreeRTOS/ThreadX ports, the 32-bit
+   pointer width, the composed-config path in `session.cpp`. The config strings
+   above compose the same way there (`cyclone_config.hpp` verifies later tokens
+   win), but that is read, not run.
+3. **`rmw_cyclonedds_cpp`.** The host peer here was plain Cyclone. ROS's RMW is
+   the same library with its own QoS and topic-name mapping; discovery is
+   Cyclone's, so the crossing carries, but a `ros2 topic echo` was not run.
+4. **libslirp vs pasta.** Two implementations of one NAT shape. The properties
+   the experiment leans on (gateway-to-loopback mapping, inbound only via
+   forwarded ports, no multicast) are documented for both, and the QEMU probe
+   above confirms the forwarding half on QEMU itself — but the DDS run was on
+   pasta.
+
+#### What this makes affordable
+
+A W1-shaped Cyclone cell is now a configuration job with a known shape rather
+than an open question. What it still needs, in order:
+
+1. **A slirp-configured Cyclone image.** The FreeRTOS and ThreadX arms of
+   `kEmbeddedCycloneConfig` bake `AllowMulticast=spdp` and no `Peers`; a slirp
+   guest needs `false` plus the two Discovery settings. That is a bringup-XML
+   or Kconfig-blob change, composed over the baseline — no code change.
+2. **`hostfwd` in the launch path.** `scripts/qemu/launch-mps2-an385.sh` has no
+   way to express it today (`--slirp` emits a bare `-nic user,model=lan9118`),
+   and the port numbers follow from the image's domain id.
+3. **A NAT-shaped isolation profile** on the host side — issue 1251.
+4. **One host port block per concurrent cell.** slirp binds the forwarded ports
+   on the HOST, so two cells on one machine collide unless their domain ids
+   differ. The tree already bakes distinct Cyclone domains (50–58) for parallel
+   SPDP, and the port arithmetic turns that straight into distinct host ports.
+
+Ordering advice unchanged from the top of this phase: zenoh still goes first,
+because it needs none of the four. But "Cyclone cannot cross slirp" is not a
+reason to skip it, and this section is here so the next reader does not assume
+it was one.
 
 ### W3 — a second RTOS, not a second Zephyr board
 
