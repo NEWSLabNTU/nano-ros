@@ -96,15 +96,45 @@ duplicate of the 68 G tracked submodule at `third-party/px4/PX4-Autopilot`.
 content — asserted by a gate, so a fourth provisioning root cannot land there
 quietly. `.gitignore` loses the corresponding entries rather than gaining any.
 
-### W4 — provisioned workspaces move to the store, version-keyed
+### W4 — provisioned workspaces move to the store — **RESOLUTION INVERTED; the data move is operational**
 
-`zephyr-workspace/{zephyr,modules}` (4.1 G of source; the sibling 140 G is build
-output and stays with whoever built it) becomes
-`$NROS_STORE/workspaces/zephyr/<version>/`. Same for esp-idf.
+W1 built the store arm and left it last. W4 promotes it, which is RFC-0095 D4:
 
-*Acceptance:* a second checkout on the same host provisions **nothing** and
-builds; `du` of the store shows one copy; the box-sync gate needs zero
-`--include` rules for provisioned trees, because none sit under the sync root.
+```
+$NROS_ZEPHYR_WORKSPACE  ->  $NROS_STORE/workspaces/zephyr/<version>  ->  <checkout-relative>
+```
+
+and moves the INSTALL target (`nros_zephyr_ws_default`) into the store, so the
+next `just zephyr setup` provisions there rather than beside a clone.
+
+**Nothing breaks on a host provisioned before this.** An absent candidate is
+skipped, so a populated `zephyr-workspace/` still resolves exactly as it did —
+measured on this host: `resolved` unchanged for both the 3.7 and 4.4 lines,
+`default` moved to the store. The store starts mattering the first time `setup`
+runs, which is when it becomes the answer.
+
+The checkout arm STAYS, last, on purpose (D4): a host provisioned earlier keeps
+working with no migration step, and a contributor patching a Zephyr module still
+points `NROS_ZEPHYR_WORKSPACE` at their own tree.
+
+*Acceptance (met, for the resolution half):* ladder order asserted directly —
+store above the checkout arms on both version lines, and an override ends the
+ladder. With the store populated it wins over a populated checkout tree; with it
+empty the checkout tree still resolves.
+
+*Not done here, deliberately — the DATA move is operational, not a code change.*
+Relocating 4.1 GB of provisioned source is `mv` plus a re-resolve on whichever
+host runs it, and it is safe to do at any time BECAUSE the ladder now prefers
+the store: a host that moves its tree is answered by the store arm, and one that
+does not is answered by the checkout arm. Neither needs this repo to change
+again. The 140 GB of build output beside it belongs to whoever built it and does
+not move.
+
+*Still open, and it is the last mechanism this phase needs:* `[source.rosidl]`
+has `dest = "third-party/ros/rosidl"`, and `dest` cannot name the store, so the
+`ros` exception W3 declared cannot be retired yet. That is one mechanism —
+store-aware `dest` in `nros-sdk-index.toml` — and it serves every future
+`[source.*]`, not just rosidl.
 
 ### W5 — D1 gated for every provisioned tree — **LANDED (generalised ahead of W4)**
 

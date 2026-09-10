@@ -34,7 +34,7 @@
 #
 # ## The store arm, and why it is LAST
 #
-# RFC-0095 D4 ends at `$NROS_STORE/workspaces/zephyr/<version>` FIRST and the
+# RFC-0095 D4 puts `$NROS_STORE/workspaces/zephyr/<version>` above the
 # checkout-relative arms last. W1 adds the arm at the BOTTOM so that with no
 # store populated — every host today — resolution is unchanged. W4 moves the
 # trees and inverts the order. The checkout-relative arm STAYS last forever
@@ -112,16 +112,26 @@ nros_zephyr_ws_candidates() {
         return 0
     fi
 
-    # 2. The checkout-relative trees `just zephyr setup` lands, for THIS line.
+    # 2. The store (RFC-0095 D2/D4, phase-440 W4). PROMOTED above the checkout
+    #    arms: a provisioned tree belongs to the host, not to one clone, so two
+    #    checkouts share one and neither provisions it twice.
+    #
+    #    Promoting it changes nothing on a host that has not populated it — an
+    #    absent candidate is skipped, so every existing tree still resolves
+    #    exactly as before. It starts mattering the first time `setup` runs,
+    #    which is when the store becomes the answer.
+    nros_zephyr_ws_store_dir "$version"
+
+    # 3. The checkout-relative trees earlier `just zephyr setup` runs landed.
+    #    LAST, and kept, for two reasons: a host provisioned before W4 keeps
+    #    working with no migration step, and a contributor patching a Zephyr
+    #    module still points at their own tree (D4 keeps this arm on purpose).
     if [ "$version" = "4.4" ]; then
         printf '%s\n' "../nano-ros-workspace-4.4"
     else
         printf '%s\n' "zephyr-workspace"
         printf '%s\n' "../nano-ros-workspace"
     fi
-
-    # 3. The store (RFC-0095 D2). Last for now — see the header.
-    nros_zephyr_ws_store_dir "$version"
 }
 
 # Where `just zephyr setup` would INSTALL this line if nothing is provisioned.
@@ -134,11 +144,15 @@ nros_zephyr_ws_default() {
         printf '%s\n' "$NROS_ZEPHYR_WORKSPACE"
         return 0
     fi
-    if [ "$version" = "4.4" ]; then
-        printf '%s\n' "../nano-ros-workspace-4.4"
-    else
-        printf '%s\n' "zephyr-workspace"
-    fi
+    # phase-440 W4 — the store, not the checkout. A workspace `setup` creates is
+    # provisioning, and provisioning belongs to the host: RFC-0095 D1 (never
+    # inside a checkout, so no second checkout can own it) and D2 (version-keyed,
+    # so 3.7 and 4.4 coexist and a project pinning either still builds).
+    #
+    # An ALREADY-provisioned checkout tree keeps resolving — it is still on the
+    # ladder — so this moves where the NEXT install goes rather than orphaning
+    # anything today.
+    nros_zephyr_ws_store_dir "$version"
 }
 
 # The first candidate that IS a workspace, in its canonical spelling.
