@@ -30,8 +30,19 @@ has no presence check at all.
 ### A1 — the SDK root ships inside the toolchain
 
 Stage `share/nano-ros/{cmake,config,packages}` into the release asset (RFC-0099
-D2). Measured payload: **5.9 MB, 2869 tracked files** — use `git ls-files`, not
-`du`, which reports 20 G of build output.
+D2). Measured payload: **30.5 MB, 2906 tracked files** — use `git ls-files`, not
+`du`, which reports 20 G of build output. The three directories named above are
+5.9 MB and are NOT the payload; `packages/cli` cannot be excluded whole
+(`nros-macros` path-deps two of its crates), the root `Cargo.lock` ships, and so
+do `zephyr/`, `scripts/`, `CMakeLists.txt`, `nano_rosConfig.cmake` and the index.
+
+**A second artifact is required and is not the SDK root:** `nros-launch-resolve`.
+Every workspace configure goes through it, and it cannot live inside the SDK root
+— own cargo workspace, own lock, embeds CPython via pyo3. The release builds it
+and stages it beside `nros`; `install.sh` fronts it conditionally, since
+`front_newest` refuses an absent declared path and older assets must stay
+installable. It links `libpython3.10.so.1.0` as a hard `DT_NEEDED`, so it carries
+an ABI floor that D1 owes a declaration for.
 
 *Acceptance:* the asset carries what a build reads; `check-release-manifest`
 asserts its presence; the manifest records it. Version-locked to the toolchain

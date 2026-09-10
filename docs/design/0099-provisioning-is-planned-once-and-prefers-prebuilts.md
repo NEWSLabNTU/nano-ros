@@ -54,10 +54,45 @@ because RFC-0097 **D6** already decided that codegen and the runtime are ONE
 unit. A separately-versioned `[source.nano-ros]` would split exactly the unit D6
 says must not split, and reintroduce the acceptance-range question D6 closed.
 
-Measured, so the cost is not a guess: `cmake/` + `config/` + every tracked file
-under `packages/` is **5.9 MB across 2869 files**. (`du` on the working tree
-reports 20 G; that is build output, and `git ls-files` is the honest measure —
-the repo's own rule for enumerating the tree.)
+Measured — and the first measurement was WRONG, which is worth recording because
+it was wrong in the direction that looks finished. `cmake/` + `config/` + every
+tracked file under `packages/` is 5.9 MB across 2869 files, and that is not the
+payload: it is the three directories this decision first named. What a build
+actually reads was established by BUILDING one with no checkout present
+(phase-447 A1), and it is **30.5 MB across 2906 files**:
+
+* `packages/cli` cannot be excluded whole. `packages/core/nros-macros` path-deps
+  `packages/cli/{nros-pkg-index,nros-entry-lower}`, so cargo cannot LOAD the
+  graph without them and every Rust, C and C++ user project fails before
+  compiling anything. The carve-back set is DERIVED at staging time from every
+  relative `path = "../../cli/<x>"` outside `packages/cli`, not listed by hand.
+  The exclusion still earns its keep: 75.9 MB tracked stays out.
+* The root `Cargo.lock` ships. The SDK root IS a cargo workspace — corrosion
+  builds `nros-c`/`nros-cpp` from it — so without the lock a first build either
+  re-resolves into the install prefix or fails under the project-wide `--locked`
+  the `scripts/bin/cargo` shim injects.
+* Plus `zephyr/`, `scripts/`, the root `CMakeLists.txt`, `nano_rosConfig.cmake`,
+  `nros-sdk-index.toml`, and one NuttX `rust-toolchain.toml`.
+
+(`du` on the working tree reports 20 G; that is build output. `git ls-files` is
+the honest measure — the repo's own rule for enumerating the tree.)
+
+**And the SDK root is not sufficient on its own.** `nros-launch-resolve` is a
+SECOND artifact: every workspace configure goes through it (the bringup's launch
+file becomes a SystemModel), and with `share/nano-ros` staged and no checkout,
+`cmake` still dies at `nano_ros_entry` with "`nros-launch-resolve` not found.
+Build it with ./scripts/bootstrap.sh" — a remedy naming a checkout the user does
+not have. It cannot live IN the SDK root: it is its own cargo workspace with its
+own lock and it embeds CPython through pyo3. The design already anticipated it —
+`model_location::launch_resolver_bin`'s installed rung is
+`$NROS_HOME/bin/nros-launch-resolve` — and had never had anything to find. The
+release builds it, stages it beside `nros`, and `install.sh` fronts it
+conditionally, because `front_newest` refuses an absent declared path and older
+assets must stay installable.
+
+It also carries an ABI floor `nros` alone does not: it links
+`libpython3.10.so.1.0` as a hard `DT_NEEDED`. That is D5's problem, and D5 is
+where it gets declared and probed.
 
 ## D3 — The store rung goes LAST on the resolution ladder
 
