@@ -1,6 +1,6 @@
 # RFC-0098 — A leaf's build configuration is generated from one board choice
 
-**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file)
+**Status:** Draft (2026-09-10; revised 2026-09-10 — generated settings live under `build/`, and a workspace has no root build file; 2026-09-11 — three facts measured by phase-445 W4)
 
 Home phase: [phase-445](../roadmap/phase-445-board-choice-generates-leaf-config.md).
 
@@ -53,7 +53,7 @@ commit that line") that has already been broken twice.
 
 **D1 — a leaf's generated build settings live under `build/`, never in the
 source tree.** `nros sync` / `nros build` write one file per image,
-`build/<image>/nros-cargo.toml`: the board's `cargo_config` (A, B) including a
+`build/<coord>/<entry>/nros-cargo.toml`: the board's `cargo_config` (A, B) including a
 per-image `target-dir`, the resolved `[env]` (D, E), and the in-repo
 `[patch.crates-io]` rows (H). Cargo reads it through `--config`, so nothing
 generated sits beside a package: no leaf `.cargo/config.toml`, no committed
@@ -63,8 +63,26 @@ DELETED, not gitignored. Measured 2026-09-10 (cargo 1.98.1): `cargo build
 the `[env]`, the `target-dir` and a `[patch.crates-io]` row from that file, and
 left the package's source directory with no `.cargo/` and no `target/`.
 
+**Measured while implementing it (phase-445 W4, PR #880), three facts the
+first revision did not have:**
+
+- **The file is per IMAGE, not per coordinate.** Several images share one
+  coordinate directory — nine native images share `build/posix-zenoh/` — and
+  their entity facts differ, so the file sits beside the image's generated
+  entry: `build/<coord>/<entry>/nros-cargo.toml`.
+- **A relative path inside a `--config` file resolves against the file's
+  GRANDPARENT directory** (cargo 1.98.1: for `build/<coord>/<entry>/nros-cargo.toml`,
+  against `build/<coord>/`), not against the file's own directory. The writer
+  emits paths relative to that base, or absolute.
+- **The working directory still matters for one thing.** Cargo still walks up
+  from the invocation directory for `.cargo/config.toml`, and the custom
+  `nros-*` profiles (`nros-relwithdebinfo`, …) live in the repo-root config. A
+  workspace OUTSIDE the checkout therefore loses them. Open: the profiles move
+  into the generated file (cargo accepts `[profile.*]` through `--config`), so
+  nothing depends on where cargo is run from.
+
 A single-package example builds the same way: `nros build`, or plain
-`cargo build --config build/<image>/nros-cargo.toml` for a user who drives
+`cargo build --config build/<coord>/<entry>/nros-cargo.toml` for a user who drives
 cargo themselves. A user's own Rust-toolchain preference goes where cargo's
 config hierarchy already looks — a parent directory or `$CARGO_HOME` — never in
 a generated file.
@@ -114,7 +132,7 @@ entity-facts` already answers that from the SystemModel's `execution.features`
 (`nros-zpico-build/src/runner.rs`) already computes the count from
 `NROS_DECLARED_SERVICE_SERVERS` + `NROS_DECLARED_INFRA_QUERYABLES` +
 `NROS_DECLARED_NODES`. So the facts are CARRIED, never the count (issue 0460),
-and they go in that image's own `build/<image>/nros-cargo.toml` `[env]`. This
+and they go in that image's own `build/<coord>/<entry>/nros-cargo.toml` `[env]`. This
 closes the question the first revision left open: today a workspace member's
 sidecar is the workspace root's, shared by every image, and cargo reads
 `.cargo/` from the invocation's working directory — so per-image facts could
@@ -138,6 +156,12 @@ cargo root is the generated entry itself, `build/<coord>/<entry>/Cargo.toml`
 root is `build/<coord>/CMakeLists.txt`, as RFC-0065 already has it. Each image
 therefore compiles its shared dependencies in its own `target-dir` — the cost
 the fixture lane already pays per group (phase-340).
+
+A workspace with NO bringup — a set of packages and nothing that declares a
+system, e.g. a message package beside its consumers — builds every package in
+dependency order, each with its own driver and its own `build/<pkg>/`: colcon's
+default. `nros build` gains that mode (phase-445 W5); until it does, such a
+workspace is the one shape that still needs a hand root.
 
 This supersedes RFC-0065 D3's "the cargo root is `<ws>/Cargo.toml` and nowhere
 else". That constraint is real only while a workspace EXISTS: a package finds
