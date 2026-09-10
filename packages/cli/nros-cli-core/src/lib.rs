@@ -54,12 +54,8 @@ pub mod stale_guard;
 // Issue 0455 — one `scratch_dir` for every unit test in this crate. Nine
 // hand-written `temp_dir().join(...)` spellings raced each other; the
 // differences between them WERE the bug. Test-only, so it ships nothing.
-// `test-support` additionally exposes it to integration tests in sibling
-// crates (phase-443): `nros-cli`'s launcher tests exec what they write, which
-// is the same ETXTBSY race, and the rule is one helper rather than a second
-// spelling of it.
-#[cfg(any(test, feature = "test-support"))]
-pub mod test_support;
+#[cfg(test)]
+mod test_support;
 // Phase 219.A — Entry-pkg codegen (`nros codegen entry`). The shared
 // pkg-index walk + launch.xml parser also live here so the cmake-fn
 // path (`nano_ros_entry(LAUNCH …)`), the Rust proc-macro

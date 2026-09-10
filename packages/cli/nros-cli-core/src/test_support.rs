@@ -102,63 +102,12 @@ pub fn scratch_dir(tag: &str) -> PathBuf {
 /// A retry-on-`ETXTBSY` loop also works (0 escapes, 141 backoffs in the same
 /// experiment) but masks the race instead of removing it, and pays latency on
 /// every hit.
-/// Issue 0476, the same rule for a binary that already exists.
-///
-/// [`write_executable_stub`] removes the ETXTBSY race by never holding a write
-/// descriptor in THIS process. `std::fs::copy` holds one, so a test that copies
-/// a real binary into a store and then execs it is exposed exactly as a test
-/// that wrote a script would be — and it is the harder case to spot, because
-/// nothing about `fs::copy` looks like writing an executable.
-///
-/// `cp` preserves the mode of a source that is already executable; the explicit
-/// `chmod` is for a source whose mode does not survive (a fixture checked out
-/// without the bit, a `CARGO_BIN_EXE_*` on a filesystem that drops it).
-pub fn copy_executable(src: &std::path::Path, dst: &std::path::Path) {
-    let ok = std::process::Command::new("cp")
-        .arg(src)
-        .arg(dst)
-        .status()
-        .unwrap_or_else(|e| panic!("spawn cp {} -> {}: {e}", src.display(), dst.display()))
-        .success();
-    assert!(
-        ok,
-        "cp failed copying {} -> {}",
-        src.display(),
-        dst.display()
-    );
-
-    let ok = std::process::Command::new("chmod")
-        .arg("755")
-        .arg(dst)
-        .status()
-        .unwrap_or_else(|e| panic!("spawn chmod for {}: {e}", dst.display()))
-        .success();
-    assert!(ok, "chmod failed on {}", dst.display());
-}
-
-pub fn write_executable_stub(path: &std::path::Path, script: &str) {
-    let src = path.with_extension("stub-src");
-    std::fs::write(&src, script)
-        .unwrap_or_else(|e| panic!("write stub source {}: {e}", src.display()));
-
-    let ok = std::process::Command::new("cp")
-        .arg(&src)
-        .arg(path)
-        .status()
-        .unwrap_or_else(|e| panic!("spawn cp for {}: {e}", path.display()))
-        .success();
-    assert!(ok, "cp failed writing stub {}", path.display());
-
-    let ok = std::process::Command::new("chmod")
-        .arg("755")
-        .arg(path)
-        .status()
-        .unwrap_or_else(|e| panic!("spawn chmod for {}: {e}", path.display()))
-        .success();
-    assert!(ok, "chmod failed on stub {}", path.display());
-
-    let _ = std::fs::remove_file(&src);
-}
+/// Issue 0476 — the ONE spelling of "put an executable here safely" now lives in
+/// `nros-launcher`, the lowest crate every launcher test can reach. This crate
+/// depends on it, so re-exporting is what keeps that a single spelling: two
+/// copies of a discipline is how #282 became #326, and a helper about a race is
+/// exactly the kind that must not be forked.
+pub(crate) use nros_launcher::test_support::write_executable_stub;
 
 /// Scope model discovery to the fixture under test, once per test process.
 ///
