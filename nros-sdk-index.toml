@@ -1472,6 +1472,15 @@ pacman = ["unzip"]
 brew = ["unzip"]
 check = { cmd = "unzip" }
 
+[prereq.wget]
+role = "workspace"
+why = """the Zephyr SDK's OWN setup.sh requires it and checks for it by name (`Zephyr SDK setup requires 'wget' to be installed and available in the PATH`), so `nros setup --tool zephyr-sdk` fetches 1.4 GiB successfully and then the SDK's toolchain registration exits 91. Undeclared until 2026-09-10 because Ubuntu ships wget by default; a container built --no-install-recommends does not, which is where it surfaced"""
+apt = ["wget"]
+dnf = ["wget"]
+pacman = ["wget"]
+brew = ["wget"]
+check = { cmd = "wget" }
+
 [prereq.curl]
 role = "workspace"
 why = "every dist download and the [tool.make] source tarball fetch shell out to it"
