@@ -140,6 +140,19 @@ only travel as per-invocation process env. With one generated file per image
 (D1) and no workspace root (D9), each image has its own settings and its own
 cargo invocation, and the working directory stops mattering.
 
+*Implemented for single-package leaves by phase-445 W4b:* the constant is now
+`QUERYABLES_DERIVED_BY_CONSUMER` — the leaf road still never states the count,
+it carries the facts (`leaf_entity_env::leaf_facts`). Two things the first
+revision did not foresee: the model abstains on the APPLICATION count for every
+leaf without a contract, so that half comes from the leaf's own inventory (the
+probe or the D8 declaration, which already sizes every other derived pool);
+and a leaf picks the service families with CARGO features, so the model's
+infrastructure fact is unioned with what the manifest enables. The working
+directory still mattered in one interim respect — see
+`cmd/leaf_settings.rs`: until W6 deletes the leaf `.cargo/`, cargo runs from
+the directory above the leaf, because reading both files joins the board's
+`rustflags` (`region 'FLASH' already defined`, measured).
+
 **D8 — a board whose component cannot be probed on the host DECLARES its
 entities, as a workaround with an issue.** esp32-c3 and mps2 leaves cannot be
 host-probed (foreign `[build] target` + `build-std`, or a board crate with no

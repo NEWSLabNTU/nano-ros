@@ -53,10 +53,25 @@ pub fn deploy_token(catalog: Option<&BoardCatalog>, board: &str) -> String {
 
 /// The `KEY=VALUE` rows, every key always present (empty when unset) so a
 /// consumer never has to distinguish "absent" from "not printed".
-pub fn rows(leaf: &LeafSystem, deploy: &str) -> Vec<(&'static str, String)> {
+///
+/// `NROS_LEAF_SETTINGS` is where `nros sync` / `nros build` write this leaf's
+/// generated cargo settings (phase-445 W4b, `cmd::leaf_settings`), empty for a
+/// leaf that road does not build (a C/C++ leaf, a Zephyr one). The fixture
+/// lane and its staleness probe read it here rather than re-deriving the path.
+pub fn rows(
+    leaf: &LeafSystem,
+    deploy: &str,
+    settings: Option<&std::path::Path>,
+) -> Vec<(&'static str, String)> {
     let s = |v: &Option<String>| v.clone().unwrap_or_default();
     let net = &leaf.network;
     vec![
+        (
+            "NROS_LEAF_SETTINGS",
+            settings
+                .map(|p| p.display().to_string())
+                .unwrap_or_default(),
+        ),
         ("NROS_LEAF_ORIGIN", leaf.origin_path().display().to_string()),
         (
             "NROS_LEAF_FALLBACK",
@@ -108,7 +123,11 @@ pub fn run(args: LeafSystemArgs) -> Result<()> {
         .or_else(|| crate::cmd::ws::autodetect_nano_ros_path(&dir));
     let catalog = root.as_deref().and_then(|r| BoardCatalog::load(r).ok());
     let deploy = deploy_token(catalog.as_ref(), &board);
-    for (k, v) in rows(&leaf, &deploy) {
+    let settings = match root.as_deref() {
+        Some(r) => crate::cmd::leaf_settings::resolve(&dir, r)?.map(|i| i.config_path),
+        None => None,
+    };
+    for (k, v) in rows(&leaf, &deploy, settings.as_deref()) {
         println!("{k}={v}");
     }
     Ok(())
@@ -133,7 +152,12 @@ mod tests {
              [image.freertos]\nboard = \"mps2-an385-freertos\"\n",
         );
         let leaf = leaf_system::read(td.path()).unwrap().unwrap();
-        let rows: std::collections::BTreeMap<_, _> = rows(&leaf, "freertos").into_iter().collect();
+        let rows: std::collections::BTreeMap<_, _> =
+            rows(&leaf, "freertos", None).into_iter().collect();
+        assert_eq!(
+            rows["NROS_LEAF_SETTINGS"], "",
+            "no settings road for a C leaf"
+        );
         assert_eq!(rows["NROS_LEAF_BOARD"], "mps2-an385-freertos");
         assert_eq!(rows["NROS_LEAF_DEPLOY"], "freertos");
         assert_eq!(rows["NROS_LEAF_RMW"], "zenoh");
