@@ -580,7 +580,9 @@ type LcSrv<Svc> =
 /// Holds the five REP-2002 lifecycle service servers for a node.
 ///
 /// Boxed when stored inside the executor to keep 5 × buffer_size out of
-/// stack frames (same argument as `ParameterServiceServers`).
+/// stack frames. (The parameter family made the same argument until issue
+/// 1270 moved its buffers into one pair per executor; these five still own
+/// theirs -- one set per executor, not per node.)
 pub struct LifecycleServiceServers {
     change_state: LcSrv<ChangeState>,
     get_state: LcSrv<GetState>,

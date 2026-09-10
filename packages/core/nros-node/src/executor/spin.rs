@@ -6839,9 +6839,16 @@ impl<'s> Executor<'s> {
         // request routinely arrives before there is a node to publish under
         // (`nros::main!` emits `apply_param_services` ahead of its per-node
         // `register` calls, by design). One length comparison once settled.
+        //
+        // Issue 1271 -- a failure is LOGGED, once, rather than discarded. On
+        // Cyclone this fails on every spin with `Transport(Unsupported)`
+        // (issue 1268), and with the result dropped "this node has no
+        // parameter services" was a fact nothing on the image stated.
         #[cfg(feature = "param-services")]
-        if self.parameter_services_pending() {
-            let _ = self.reconcile_parameter_services();
+        if self.parameter_services_pending()
+            && let Err(e) = self.reconcile_parameter_services()
+        {
+            self.report_parameter_service_reconcile_failure(e);
         }
 
         // Release jitter, measured HERE rather than in `spin_period`, because
@@ -7211,13 +7218,22 @@ impl<'s> Executor<'s> {
                 if let Some(params) = &mut self.params {
                     {
                         let crate::parameter_services::ParamState {
-                            server, services, ..
+                            server,
+                            services,
+                            buffers,
+                            ..
                         } = &mut **params;
                         // phase-426 W3 — one set per node; every set is pumped,
                         // because `ros2 param list` addresses each node's own
                         // six and a set nobody polls times out.
-                        for set in services.iter_mut() {
-                            handled += set.process_services(server).unwrap_or(0);
+                        //
+                        // Issue 1270 -- all of them through ONE buffer pair.
+                        // Issue 1271 -- a request that got no reply is logged
+                        // inside, once per service; there is no error to drop.
+                        if let Some(buffers) = buffers {
+                            for set in services.iter_mut() {
+                                handled += set.process_services(server, buffers);
+                            }
                         }
                     }
                 }
@@ -7837,11 +7853,16 @@ impl<'s> Executor<'s> {
         if let Some(params) = &mut self.params {
             {
                 let crate::parameter_services::ParamState {
-                    server, services, ..
+                    server,
+                    services,
+                    buffers,
+                    ..
                 } = &mut **params;
-                // phase-426 W3 — one set per node; see the sibling site above.
-                for set in services.iter_mut() {
-                    if let Ok(n) = set.process_services(server) {
+                // phase-426 W3 -- one set per node; see the sibling site above,
+                // including why nothing here can discard an error (1270/1271).
+                if let Some(buffers) = buffers {
+                    for set in services.iter_mut() {
+                        let n = set.process_services(server, buffers);
                         result.services_handled += n;
                         handled += n;
                     }
@@ -8143,6 +8164,34 @@ impl<'s> Executor<'s> {
             .is_some_and(|p| p.requested && p.services.len() < self.nodes.len().max(1))
     }
 
+    /// Issue 1271 -- say, once, that the parameter services could not be
+    /// created, instead of discarding the result on every spin.
+    ///
+    /// The spin keeps retrying (a node registered later, or a transport that
+    /// comes up late, may still succeed); this only decides whether anyone is
+    /// told. Cold and out of line: it formats, and `spin_once`'s frame must
+    /// not carry that.
+    #[cold]
+    #[inline(never)]
+    fn report_parameter_service_reconcile_failure(&mut self, e: NodeError) {
+        let Some(params) = self.params.as_mut() else {
+            return;
+        };
+        if params.reconcile_failure_reported {
+            return;
+        }
+        params.reconcile_failure_reported = true;
+        nros_log::log_error!(
+            nros_log::get_logger("nros"),
+            "parameter services could not be created ({:?}): `ros2 param` cannot reach \
+             {} of this image's {} node(s). Retrying on every spin; logged once (issue 1271, \
+             and issue 1268 for the Cyclone case).",
+            e,
+            self.nodes.len().max(1) - params.services.len(),
+            self.nodes.len().max(1)
+        );
+    }
+
     /// phase-426 W3 — publish one set of six under every node that does not
     /// have one yet.
     ///
@@ -8167,10 +8216,13 @@ impl<'s> Executor<'s> {
     /// Cheap in the settled case: one length comparison — but the FRAME is not
     /// cheap, so it is `inline(never)` and the spin site tests
     /// [`parameter_services_pending`](Self::parameter_services_pending) first.
-    /// Building one set materialises six `EmbeddedServiceServer`s by value
-    /// (2 x `PARAM_SERVICE_BUFFER_SIZE` each, ~48 KiB at the 4096 default)
-    /// before they are boxed; inlined into `spin_once` that lands on every
-    /// spin frame whether or not the branch is taken. Issue 0756's rule one
+    /// Building one set used to materialise six `EmbeddedServiceServer`s by
+    /// value (2 x `PARAM_SERVICE_BUFFER_SIZE` each, ~48 KiB at the 4096
+    /// default) before they were boxed; inlined into `spin_once` that landed
+    /// on every spin frame whether or not the branch was taken. Issue 1270
+    /// took the buffers out of the set -- one pair per executor, allocated on
+    /// the heap directly -- but the set still carries six backend handles and
+    /// a name, so the frame stays out of `spin_once`. Issue 0756's rule one
     /// call up — a parameter-service frame does not fit an embedded thread
     /// stack, and `test_open_threaded_spawn_and_halt` died with a bare SIGSEGV
     /// the first time this was reachable from the spin path.
@@ -8207,6 +8259,19 @@ impl<'s> Executor<'s> {
             if todo.push((index as u8, name, namespace)).is_err() {
                 return Err(NodeError::NodeTableFull);
             }
+        }
+        // Issue 1270 -- the ONE buffer pair every set is answered through,
+        // allocated with the first set so an image that declares parameters
+        // and serves none pays nothing for it. `params` is `Some` here: the
+        // scan above returned early otherwise.
+        if let Some(params) = self.params.as_mut()
+            && params.buffers.is_none()
+        {
+            params.buffers = Some(
+                crate::parameter_services::ParamServiceBuffers::with_capacity(
+                    crate::parameter_services::param_service_buffer_bytes(),
+                ),
+            );
         }
         for (index, name, namespace) in todo {
             let servers = self.build_parameter_service_set(
@@ -8249,6 +8314,11 @@ impl<'s> Executor<'s> {
             // entry nor re-marks an application's own declaration as ours.
             self.seed_use_sim_time_default(super::node_record::NodeId::from_raw(index));
         }
+        // Issue 1271 -- every node is served now, so a later failure (a node
+        // registered after this one) is news again and earns its own line.
+        if let Some(params) = self.params.as_mut() {
+            params.reconcile_failure_reported = false;
+        }
         Ok(())
     }
 
@@ -8268,16 +8338,10 @@ impl<'s> Executor<'s> {
     ) -> Result<crate::parameter_services::ParameterServiceServers, NodeError> {
         use crate::parameter_services::{
             DescribeParameters, GetParameterTypes, GetParameters, ListParameters,
-            PARAM_SERVICE_BUFFER_SIZE, ParameterServiceServers, SetParameters,
+            ParamServiceHandle as PSrv, ParameterServiceServers, SetParameters,
             SetParametersAtomically,
         };
         use nros_core::RosService;
-
-        type PSrv<Svc> = super::handles::EmbeddedServiceServer<
-            Svc,
-            PARAM_SERVICE_BUFFER_SIZE,
-            PARAM_SERVICE_BUFFER_SIZE,
-        >;
 
         // The node FQN, from the one implementation. This was the third
         // hand-rolled copy of the same join (`crate::names::fully_qualified_name`
@@ -8382,42 +8446,17 @@ impl<'s> Executor<'s> {
             // serves, so a handler can never read the store without saying
             // whose parameters it means.
             node,
-            PSrv::<GetParameters> {
-                handle: get_handle,
-                req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
-                reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
-                _phantom: core::marker::PhantomData,
-            },
-            PSrv::<SetParameters> {
-                handle: set_handle,
-                req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
-                reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
-                _phantom: core::marker::PhantomData,
-            },
-            PSrv::<SetParametersAtomically> {
-                handle: set_atomic_handle,
-                req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
-                reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
-                _phantom: core::marker::PhantomData,
-            },
-            PSrv::<ListParameters> {
-                handle: list_handle,
-                req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
-                reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
-                _phantom: core::marker::PhantomData,
-            },
-            PSrv::<DescribeParameters> {
-                handle: desc_handle,
-                req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
-                reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
-                _phantom: core::marker::PhantomData,
-            },
-            PSrv::<GetParameterTypes> {
-                handle: types_handle,
-                req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
-                reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
-                _phantom: core::marker::PhantomData,
-            },
+            // Issue 1271 -- carried so a dropped request is reported against
+            // the service a tool actually called.
+            node_fqn,
+            // Issue 1270 -- handles only. The buffers are the executor's one
+            // shared pair (`ParamState::buffers`), not six per node.
+            PSrv::<GetParameters>::new(get_handle),
+            PSrv::<SetParameters>::new(set_handle),
+            PSrv::<SetParametersAtomically>::new(set_atomic_handle),
+            PSrv::<ListParameters>::new(list_handle),
+            PSrv::<DescribeParameters>::new(desc_handle),
+            PSrv::<GetParameterTypes>::new(types_handle),
         ))
     }
 
@@ -8813,6 +8852,9 @@ impl<'s> Executor<'s> {
             // one per node, once the node table is populated.
             services: heapless::Vec::new(),
             requested: false,
+            // Issue 1270 -- allocated with the first set of services, not here.
+            buffers: None,
+            reconcile_failure_reported: false,
             // phase-430 W2 — no node has been auto-declared yet; the caller
             // (`ensure_parameter_store`) seeds PRIMARY immediately after.
             #[cfg(feature = "sim-time")]

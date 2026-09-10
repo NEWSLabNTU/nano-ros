@@ -53,3 +53,20 @@ difference between raising a knob and filing a bug about discovery.
 Found by reading; none of the rows above has been triggered on a running
 image yet. A test that describes N parameters for N past the threshold would
 pin the boundary.
+
+## Progress (with issue 1270)
+
+The first fix-shape item is done. The spin no longer discards the result:
+`ParameterServiceServers::process` classifies a request that got no reply
+(malformed / past a wire cap, request larger than the buffer, reply larger
+than the buffer, transport) and logs it once per service and kind. The log
+line names the cap and, for the buffer cases, `NROS_PARAM_SERVICE_BUFFER_SIZE`.
+A failure no longer ends the pass for the other services.
+`a_reply_past_the_shared_buffer_is_reported_once_and_answered_once_it_fits`
+pins the reply-overflow row. The reconcile that attaches services to nodes
+logs its failure once too, instead of being dropped every spin (the Cyclone
+case, issue 1268).
+
+Still open: answering with `SetParametersResult.reason` instead of dropping,
+flagging `list_parameters` truncation, and sizing the reply buffer from the
+declared parameters (phase-446 W4).

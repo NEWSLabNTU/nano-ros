@@ -108,11 +108,12 @@ pub const RESOLVED_CMAKE_NAME: &str = "resolved.cmake";
 pub const HAND_SET_KNOBS: &[(&str, &str)] = &[
     (
         "ZPICO_MAX_QUERYABLES",
-        "HAND-SET: no declarative derivation. The entity inventory counts the \
-         APPLICATION's service servers and action servers; it cannot see the \
-         infrastructure addend (param_services 6 + lifecycle 5), which an \
-         image-level FEATURE enables and cargo exposes to no other crate. \
-         Issues 0827, 1061, 1125.",
+        "HAND-SET on the cargo-leaf road. `max_queryables` above counts the \
+         runtime's parameter and lifecycle servers when the bringup declares \
+         them (issue 1270), and the Zephyr lane takes it; a cargo leaf's \
+         inventory is built from nros-metadata.json, which carries no bringup \
+         features, so that road still cannot derive this knob. Issues 0827, \
+         1061, 1125, 1270.",
     ),
     (
         "ZPICO_MAX_LARGE_SUBSCRIBERS",
@@ -444,11 +445,10 @@ impl Resolved {
                     s,
                     "max_queryables = {}",
                     toml_str(
-                        "APPLICATION service servers + 3 per action server. Does NOT include \
-                         the parameter (6) or lifecycle (5) service families: an image-level \
-                         FEATURE enables those and this inventory cannot see it, so an image \
-                         carrying them must state the knob. That is why this is a DEFAULT and \
-                         not a ceiling."
+                        "APPLICATION service servers + 3 per action server + the runtime's own \
+                         servers for the families the bringup declares (6 per node for \
+                         param_services, 5 for lifecycle; issue 1270). A DEFAULT and not a \
+                         ceiling: a stated knob wins."
                     )
                 );
                 for (pkg, comp, count, slots) in &k.per_component {

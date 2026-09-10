@@ -252,10 +252,11 @@ endfunction()
 #
 # What that set deliberately EXCLUDES, and why the exclusions are not oversights:
 #
-#   * `ZPICO_MAX_QUERYABLES` -- `max_queryables` counts service servers and
-#     actions and NOT the param (6) or lifecycle (5) service families, which a
-#     FEATURE enables and this inventory cannot see. A short queryable table is
-#     a registration failure at boot, not a smaller pool (issues 1061, 0460).
+#   * `ZPICO_MAX_QUERYABLES` -- `max_queryables` counts the param and lifecycle
+#     service families only when the inventory was built from a model that
+#     declares them (issue 1270); the leaf road's inventory comes from
+#     metadata, which cannot. A short queryable table is a registration
+#     failure at boot, not a smaller pool (issues 1061, 0460).
 #     The CMake road completes it through `NROS_DECLARED_INFRA_QUERYABLES`
 #     instead, which is why that fact exists.
 #   * `NROS_EXECUTOR_MAX_NODES` -- phase-412 withheld it from W1 on the ground
