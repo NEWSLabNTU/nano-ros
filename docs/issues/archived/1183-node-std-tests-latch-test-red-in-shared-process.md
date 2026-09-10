@@ -1,7 +1,8 @@
 ---
 id: 1183
 title: "`check node-std-tests` is red on main — the executor-backing latch test asserts a process-global that 367 sibling tests share"
-status: open
+status: resolved
+resolved: 2026-09-07
 type: bug
 area: testing
 related: [phase-392, issue-1145]
@@ -68,3 +69,23 @@ documents.
 A lane that is red for every input has no signal capacity — a regression landing
 in it looks exactly like this failure. `node-std-tests` is in the derived
 fast-serial gate list, so that is the whole lane.
+
+## Resolution
+
+Fixed by `605d667eb` ("fix(#1183, #1186): the backing latch test needs a virgin
+process"), the second option above: the test is `#[ignore]`d with its reason in
+the attribute (`packages/core/nros-node/src/executor/backing.rs:237-240`) and
+`node-std-tests` runs it in its OWN cargo invocation, through the `ran_tests`
+guard that fails if the filter matches nothing
+(`just/check/lanes.just:1707-1710`). Same issue as 1186, filed independently.
+
+This file was ADDED eleven minutes after that fix landed (`a0435e5db`, 17:14 vs
+17:03 UTC on 2026-09-06), by a parallel session that had not seen it — it was
+never deliberately kept open, just never closed.
+
+Re-measured on `origin/main` 2026-09-11, features `std,sim-time,param-services`:
+the isolated invocation passes 5/5 (`1 passed`); the full `--lib` suite is
+439 passed, 0 failed, 2 ignored; and the negative control — the same test pulled
+back INTO the shared process with `--include-ignored` — still fails at
+`backing.rs:247`, 2/2. So the isolation is load-bearing and the positive control
+is intact.
