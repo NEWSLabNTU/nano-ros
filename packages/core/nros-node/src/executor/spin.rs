@@ -1542,6 +1542,12 @@ pub struct Executor<'s> {
     /// so `check_stack_headroom_rule` will skip every tick. Recorded when the
     /// bound is set; see `stack_headroom_blind`.
     pub(crate) stack_headroom_blind: bool,
+    /// phase-436 E4 — when the headroom query last ran (`None` = never; a
+    /// clockless build stores `Some(0)` to mean "has run"), spins since, and
+    /// how many queries actually reached the port.
+    pub(crate) stack_headroom_last_check_us: Option<u64>,
+    pub(crate) stack_headroom_spins_since_check: u32,
+    pub(crate) stack_headroom_checks: u32,
     /// The pacing quantum the spin loop was last driven at, in microseconds.
     /// This is the bound the jitter rule judges against -- the caller's own
     /// declared cadence, so nothing further has to be declared.
@@ -1771,6 +1777,9 @@ impl<'s> Executor<'s> {
             min_stack_headroom_bytes: 0,
             stack_headroom_reported: usize::MAX,
             stack_headroom_blind: false,
+            stack_headroom_last_check_us: None,
+            stack_headroom_spins_since_check: 0,
+            stack_headroom_checks: 0,
             spin_nominal_us: 0,
             spin_nominal_declared_us: 0,
             last_park_bound_us: 0,
@@ -2907,6 +2916,9 @@ impl<'s> Executor<'s> {
 
     pub fn set_min_stack_headroom_bytes(&mut self, bytes: usize) {
         self.min_stack_headroom_bytes = bytes;
+        // phase-436 E4 — a new bound is checked on the next spin, not up to an
+        // interval later.
+        self.stack_headroom_last_check_us = None;
         // phase-436 E3 — `check_stack_headroom_rule` treats a 0 from the port as
         // "not instrumented" and skips, which is right for the rule and wrong
         // for the reader: an armed rule that can never judge reports nothing,
@@ -2939,12 +2951,27 @@ impl<'s> Executor<'s> {
     /// than `set_min_stack_headroom_bytes` allows.
     ///
     /// Runs on the same tick as the other rules and feeds the same ring.
-    /// Costs one platform query per tick, and nothing at all when no minimum
-    /// was declared.
+    /// Queries the port at most once per `STACK_HEADROOM_CHECK_INTERVAL_US`
+    /// (phase-436 E4): on a painted Zephyr stack the query scans every unused
+    /// byte, so an every-spin query put that scan inside the control loop.
+    /// Nothing at all when no minimum was declared.
     fn check_stack_headroom_rule(&mut self) {
         if self.min_stack_headroom_bytes == 0 {
             return;
         }
+        self.stack_headroom_spins_since_check =
+            self.stack_headroom_spins_since_check.saturating_add(1);
+        let now_us = self.now_us();
+        if !super::monitor::stack_headroom_check_due(
+            now_us,
+            self.stack_headroom_last_check_us,
+            self.stack_headroom_spins_since_check,
+        ) {
+            return;
+        }
+        self.stack_headroom_last_check_us = Some(now_us.unwrap_or(0));
+        self.stack_headroom_spins_since_check = 0;
+        self.stack_headroom_checks = self.stack_headroom_checks.saturating_add(1);
         let unused = nros_platform_api::stack_unused_bytes();
         // 0 means the port does not instrument stacks, not that the stack is
         // full. Reporting a violation there would be a fault invented from an
