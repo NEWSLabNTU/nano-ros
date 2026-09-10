@@ -314,9 +314,9 @@ ROAD_UNPAIRED = {
         "a third raw input to the same queryable sizing (phase-426 W3): the "
         "parameter services register once PER NODE, so the node count is a "
         "term in ZPICO_MAX_QUERYABLES, which is DELIBERATELY NOT DERIVED. It "
-        "is NOT the executor node table -- NROS_DERIVED_EXECUTOR_MAX_NODES's "
-        "declared road is issue 1233's open gap, and only the zpico build "
-        "script reads this.",
+        "is NOT the executor node table -- NROS_DERIVED_EXECUTOR_MAX_NODES "
+        "travels the declared road as NROS_DECLARED_EXECUTOR_MAX_NODES "
+        "(issue 1233) -- and only the zpico build script reads this.",
     "NROS_DECLARED_MAX_QOS_DEPTH":
         "the largest DECLARED QoS depth (phase-412 W3), reduced at the "
         "producer from the inventory's `type|topic=depth` triples and only "
