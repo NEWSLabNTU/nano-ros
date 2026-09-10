@@ -7,7 +7,7 @@ area: api, tooling, ci
 severity: medium
 found: 2026-09-07
 resolved: 2026-09-07
-related: [1040, 1042, 1091, 0417]
+related: [1040, 1042, 1091]
 ---
 
 # 14 symbols whose names match upstream character for character, reported as gaps

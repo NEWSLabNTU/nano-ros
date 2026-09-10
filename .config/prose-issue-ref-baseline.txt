@@ -20,16 +20,7 @@
 #         control while explaining why this header is worth a gate. `archived/`
 #         is not scanned, so only 1092's citation needs a row.
 #
-#   0417  RESERVED, NEVER WRITTEN. `refs/issue-ids/0417` exists on origin, so
-#   1080  the id was claimed with `just issue-new` and no file was ever
-#         committed — issue 0999's shape ("the id was reserved, the fix
-#         landed, the file never got written"). The citations are honest and
-#         point at nothing, and the fix is to write the file, which needs
-#         whoever claimed the id. Not deleted: a reference removed is a
-#         record lost, and the id is not free either.
-#
-#   1110  DELIBERATELY WITHDRAWN — the same end state as 0417/1080, reached
-#         from the opposite direction. The file DID exist, on the phase-431
+#   1110  DELIBERATELY WITHDRAWN. The file DID exist, on the phase-431
 #         branch only: W6 filed it while the rustdoc lane was red, and
 #         phase-431 deletes it because the lane is green and an OPEN issue
 #         against a green lane is a false claim in the series whose job is to
@@ -40,9 +31,6 @@
 #
 docs/issues/1092-rmw-shape-gate-licenses-deviation-without-pinning-it.md:9999
 docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
-docs/issues/1163-compile-smoke-checks-nros-c-under-default-features-only.md:1080
-docs/issues/1186-executor-backing-latch-test-races-siblings.md:0417
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
-docs/roadmap/phase-432-codegen-one-producer-many-packs.md:1080
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110

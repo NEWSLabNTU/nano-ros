@@ -56,7 +56,7 @@ Do not re-do these; they are the evidence the rest is worth doing.
 - The tier table is STRUCTURED (`Vec<TierView>` of values, not C initialiser
   strings), and escaping is the `c_str` FILTER rather than an IR field.
 - `just check workspace-all` runs on `merge_group`, so a no-alloc break cannot
-  reach main again the way issue 1080's did.
+  reach main again the way the alloc-gated stack probe did (`b9450327d`).
 
 ## Track 1 — drop `TargetProfile` (independent, do first)
 

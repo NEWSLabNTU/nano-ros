@@ -7,7 +7,7 @@ area: testing, core
 severity: medium
 found: 2026-09-06
 resolved: 2026-09-06
-related: [0417, 1036, 1168, 1183, 1186]
+related: [1036, 1168, 1183, 1186]
 ---
 
 > **DUPLICATE of issues 1183/1186 — retracted 2026-09-07.** I diagnosed and
@@ -53,7 +53,7 @@ whoever gets there second.
 ## Why the crate's existing fix does not apply
 
 `nros-node` already has this class twice, and both are fixed with a `Mutex`
-guard: `SimTimeGuard`, and `TypedProbeGuard` from issue 0417's
+guard: `SimTimeGuard`, and `TypedProbeGuard` from `b206e02e5`'s
 *"the two typed-probe tests share four process-global statics and race"*.
 
 A lock is the right tool there and the wrong one here. Those statics are

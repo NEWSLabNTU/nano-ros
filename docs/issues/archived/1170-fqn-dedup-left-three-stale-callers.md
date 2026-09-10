@@ -7,7 +7,7 @@ area: api, build
 severity: high
 found: 2026-09-06
 resolved: 2026-09-06
-related: [1162, 1169, 0417, 0196]
+related: [1162, 1169, 0196]
 ---
 
 > **DUPLICATE of issue 1169 — retracted 2026-09-07.** I diagnosed and fixed this

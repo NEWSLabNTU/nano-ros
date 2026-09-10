@@ -6,7 +6,7 @@ type: bug
 area: api, build
 severity: high
 found: 2026-09-06
-related: [0417]
+related: []
 ---
 
 # Two PRs shipped the same capability, and the collision was invisible
