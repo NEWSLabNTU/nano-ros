@@ -6,7 +6,7 @@ type: bug
 area: docs, rmw-zenoh, memory
 severity: low
 found: 2026-09-07
-related: [1125, 0940]
+related: [1125, 0940, phase-412]
 ---
 
 ## What

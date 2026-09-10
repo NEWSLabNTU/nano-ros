@@ -8,7 +8,7 @@ type: bug
 area: [embedded, build]
 severity: low
 found: 2026-09-06
-related: [1145, 1171, 0876, 0163]
+related: [1145, 1171, 0876, 0163, phase-448]
 ---
 
 ## What

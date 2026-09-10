@@ -7,7 +7,7 @@ title: "FreeRTOS still budgets `configTOTAL_HEAP_SIZE` for an executor backing t
 status: open
 type: tech-debt
 area: [embedded, core, build]
-related: [1145, 1171, 1146, 0827, 1061, phase-392]
+related: [1145, 1171, 1146, 0827, 1061, phase-392, phase-448]
 ---
 
 ## What

@@ -1,9 +1,12 @@
 # Phase 392 — 27% of a safety-island image is message buffers nobody can price
 
-**Status (2026-09-07). W1, W2, W3, W4 and W5.a-W5.g landed. W3a/W3b/W3c landed
-here, W3d landed as phase-408 W1, W3g as phase-403 W0/W6, W3e is superseded by
-phase 408 and W3f was delivered as a recorded refusal. W2 IS issue 0900, which
-is RESOLVED. Open: W6, and amendment B's wave.**
+**Status (2026-09-11). W1, W2, W3, W4, W5.a-W5.g and W6 landed. W3a/W3b/W3c
+landed here, W3d landed as phase-408 W1, W3g as phase-403 W0/W6, W3e is
+superseded by phase 408 and W3f was delivered as a recorded refusal. W2 IS issue
+0900, which is RESOLVED. W6 landed 2026-09-06 (the backing is a named `.bss`
+static); its per-port follow-through — pairing that static with each RTOS's
+allocator arena — is now [phase 448](phase-448-exact-executor-backing-on-every-port.md).
+Open: amendment B's wave, and the issues homed at the end of this doc.**
 
 **W3c landed with its acceptance NOT met, and the reason is a finding rather
 than an omission — read its wave entry before quoting it.** The default now
@@ -1591,6 +1594,11 @@ holds the evidence, the item is *close it*.
 | [#0852](../issues/0852-zephyr-serial-rx-is-polled-and-overruns.md) | the zenoh read task inherits the executor's priority on Zephyr |
 | [#0880](../issues/0880-tcm-unused-while-sram-exhausted.md) | 192 KiB of tightly-coupled memory sits at 0 % while SRAM is exhausted |
 | [#0969](../issues/archived/0969-cyclone-take-cdr-round-trip.md) | the Cyclone RMW deserializes every received sample and re-serializes it, so `try_recv_raw` costs a full round trip. **Round trip removed; cost measured** — ~46 ns/message floor (176 ns at 16 KB). The allocation saving this row assumed did NOT appear: count unchanged, bytes a crossover at ~6 KB. Remaining: the third site, per 0976 |
+| [#0810](../issues/0810-executor-arena-sized-by-worst-case-shape.md) | the executor arena was sized at `MAX_CBS x sizeof(ActionClient)` whatever the entity mix. Lever 3 cites it. It predates phase-412 W3, which now derives the arena per KIND — so re-measure against that before working it; what is left may be only the worst-case SHAPE, or nothing |
+| [#0815](../issues/0815-pool-inventory-prices-3-of-46-knobs.md) | the inventory prices 3 of 46 sizing knobs. The W1 amendment answered the ANNOTATION half (measure, do not declare); pricing the remaining knobs is the work |
+| [#1147](../issues/1147-mem-report-cannot-attribute-cpp-executor-storage.md) | `mem-report` counts the C and C++ executor storage but files it under the wrong crate — the third of W6's hand-offs, and the only one without another home |
+| [#1179](../issues/1179-derived-rx-default-unreachable-without-schema.md) | W3c's residue: on zenoh and XRCE the derived RX default is unreachable, because a type-erased registration site sees only `MessageForRmw`. The issue records two designs — the bound carried on `RosMessage`, or a split typed entry point — and asks for a deliberate choice between them |
+| [#1180](../issues/1180-mem-report-baseline-cannot-match-llvm-suffixed-symbols.md) | `mem-report --baseline` reports no delta for LLVM-internalised symbols, so a real saving can read as zero — the instrument this phase measures everything with |
 
 
 ## Adopted issue (2026-09-04)

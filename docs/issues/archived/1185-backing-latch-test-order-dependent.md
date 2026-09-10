@@ -2,7 +2,8 @@
 id: 1185
 title: "`the_static_is_handed_out_once_and_only_once` fails IN SUITE and passes
   solo — the latch it asserts on is process-global and another test takes it first"
-status: open
+status: resolved
+resolved_in: "605d667eb"
 type: bug
 area: [core, testing]
 related: [1171, phase-392]
@@ -71,3 +72,24 @@ binary's parallelism for one test. The shapes worth considering:
 The positive control (`take` actually succeeds once) genuinely needs a fresh
 process, so it cannot be made order-independent — which is the argument for the
 first shape.
+
+## RESOLVED 2026-09-11 — fixed by `605d667eb`; one defect, three ids
+
+`605d667eb fix(#1183, #1186): the backing latch test needs a virgin process`
+(2026-09-06) marks `the_static_is_handed_out_once_and_only_once` `#[ignore]` and
+runs it alone, in its own process, from the lane:
+`just/check/lanes.just:1709` —
+`cargo test … -- --ignored --exact executor::backing::tests::the_static_is_handed_out_once_and_only_once`.
+The latch is process-global, and in a separate process no sibling test can take
+it first.
+
+Checked before archiving, because an ignored test is dead coverage until the
+lane that is meant to run it is shown to run it:
+
+* the test still exists — `packages/core/nros-node/src/executor/backing.rs:240`;
+* `just check node-std-tests` passes, and its dedicated invocation reports
+  `1 passed; 0 failed; … 447 filtered out` — exactly that one test.
+
+Issues 1183, 1185 and 1186 are the same defect filed three times. The fix commit
+named 1183 and 1186 and missed 1185, and it archived none of them, so all three
+stayed open for five days after the fix landed.

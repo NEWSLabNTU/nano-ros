@@ -2,11 +2,11 @@
 id: 1186
 title: "`the_static_is_handed_out_once_and_only_once` reads a latch its sibling tests have already claimed"
 status: resolved
+resolved_in: "605d667eb"
 type: bug
 area: core, testing
 severity: medium
 found: 2026-09-07
-resolved: 2026-09-07
 related: [1145]
 ---
 
@@ -66,21 +66,23 @@ process (a `#[test]` in a dedicated integration binary, or a nextest
 `test-group` of one), or make the latch injectable so the test drives its own
 instance and the process-global one is exercised once, deliberately.
 
-## Resolution
+## RESOLVED 2026-09-11 — fixed by `605d667eb`; one defect, three ids
 
-Fixed by `605d667eb` ("fix(#1183, #1186): the backing latch test needs a virgin
-process") — the "own process" shape above, without making the latch injectable:
-the test is `#[ignore]`d with its reason in the attribute
-(`packages/core/nros-node/src/executor/backing.rs:237-240`) and `node-std-tests`
-runs it in a dedicated cargo invocation, guarded by `ran_tests` so a renamed
-filter fails instead of running nothing (`just/check/lanes.just:1707-1710`).
-Issue 1183 is the same defect, filed independently.
+`605d667eb fix(#1183, #1186): the backing latch test needs a virgin process`
+(2026-09-06) marks `the_static_is_handed_out_once_and_only_once` `#[ignore]` and
+runs it alone, in its own process, from the lane:
+`just/check/lanes.just:1709` —
+`cargo test … -- --ignored --exact executor::backing::tests::the_static_is_handed_out_once_and_only_once`.
+The latch is process-global, and in a separate process no sibling test can take
+it first.
 
-Re-measured on `origin/main` 2026-09-11, features `std,sim-time,param-services`:
-isolated 5/5 `1 passed`; full `--lib` suite 439 passed, 0 failed, 2 ignored;
-negative control (`--include-ignored`, i.e. back in the shared process) still
-fails at `backing.rs:247`, 2/2 — so it is the isolation, not a changed
-scheduler, that keeps it green.
+Checked before archiving, because an ignored test is dead coverage until the
+lane that is meant to run it is shown to run it:
 
-The "Why it stayed" half is closed separately: `node-std-tests` now runs in the
-`check` job on `pull_request`, not only in schedule-only `check-build`.
+* the test still exists — `packages/core/nros-node/src/executor/backing.rs:240`;
+* `just check node-std-tests` passes, and its dedicated invocation reports
+  `1 passed; 0 failed; … 447 filtered out` — exactly that one test.
+
+Issues 1183, 1185 and 1186 are the same defect filed three times. The fix commit
+named 1183 and 1186 and missed 1185, and it archived none of them, so all three
+stayed open for five days after the fix landed.
