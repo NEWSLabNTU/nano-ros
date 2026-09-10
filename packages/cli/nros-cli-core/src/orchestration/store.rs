@@ -524,11 +524,12 @@ pub struct PinSource {
 
 /// The pin files this looks for, walking up from the working directory.
 ///
-/// `nros-toolchain.toml` is phase-440 W7's pin and does not exist yet; it is
-/// named here because W7 must not have to also teach the reclaim verbs about
-/// itself — a delete guard that learns about a new pin file one release LATE is
-/// a delete guard that deleted something.
-pub const PIN_FILE_NAMES: [&str; 3] = ["nros-toolchain.toml", "nros-sdk-index.toml", LOCK_FILE];
+/// `nros-toolchain.toml` was named here before phase-440 W7 wrote it, because
+/// W7 must not have to also teach the reclaim verbs about itself — a delete
+/// guard that learns about a new pin file one release LATE is a delete guard
+/// that deleted something. W7 landed and this now takes the name from
+/// [`super::pin::FILE_NAME`], so there is one spelling of it in the crate.
+pub const PIN_FILE_NAMES: [&str; 3] = [super::pin::FILE_NAME, "nros-sdk-index.toml", LOCK_FILE];
 
 /// Load one pin file, choosing the reader by NAME.
 ///

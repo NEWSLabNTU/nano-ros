@@ -296,9 +296,12 @@ environment that shares `$HOME` needs a hand-set `NROS_HOME`.
 * **Store sharing across users on one machine.** `~/.nros` is per-user; a CI
   host with two accounts provisions everything twice. A shared read-only store
   with a per-user overlay is the usual answer; out of scope here.
-* **Where the pin lives for a multi-package workspace.** One
-  `nros-toolchain.toml` at the workspace root is the obvious shape, but it must
-  survive `nros build` invoked from a subdirectory.
+* ~~**Where the pin lives for a multi-package workspace.**~~ **ANSWERED
+  (phase-440 W7).** One `nros-toolchain.toml` at the workspace root, found by
+  walking UP from wherever the build was invoked — the walk `cargo` does for a
+  workspace root and the one `store::discover_pin_files` already did for the
+  reclaim verbs. `nros build` from a subdirectory therefore uses the root pin
+  and does not write a second one beside itself.
 * ~~**What a release artifact contains.**~~ **ANSWERED by the tree, not by this
   RFC.** `scripts/install.sh` (phase-431 W4) already downloads a versioned
   `.tar.zst` into `$NROS_HOME/sdk/nros/<version>` and fronts it via the

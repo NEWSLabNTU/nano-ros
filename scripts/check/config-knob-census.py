@@ -141,6 +141,18 @@ KNOB_CLASS = {
     "NROS_ALLOW_INFRA_DEPS": ("infra", "policy flag"),
     "NROS_BOOT_REPORT": ("infra", "diagnostic toggle; a bool, so it has no rung"),
     "NROS_BUILD_ROOT": ("infra", "path"),
+    # phase-440 W7 — `orchestration::dispatch` SETS this on the installer it
+    # execs to fetch a pinned toolchain (RFC-0095 D8 job 2). Infra, and the
+    # decision the census forces is worth stating: it is not a size, not a
+    # sizing knob, and NOT ladder material either — a rung gives a global a
+    # per-platform default, and "which nano-ros version" is per-PROJECT
+    # (`nros-toolchain.toml`) rather than per-platform. Its owner is
+    # `scripts/install.sh`, which reads it; nothing here reads it back.
+    "NROS_INSTALL_VERSION": (
+        "infra",
+        "the version handed to scripts/install.sh when the launcher fetches a "
+        "pinned toolchain; the pin is per-project, so it has no rung",
+    ),
     # Issue 1102 — regenerates the entry-codegen goldens. A test-only escape
     # hatch, not a build input: it configures nothing about an image, and the
     # goldens it rewrites are compared byte-for-byte on every other run.

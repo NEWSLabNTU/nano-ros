@@ -258,6 +258,49 @@ generated code through the existing input signature (#182) rather than a second
 mechanism; rollback re-downloads nothing. The shim keeps working when older than
 its toolchain — tested, not assumed.
 
+**LANDED.** `orchestration::pin` is the file, `orchestration::dispatch` is the
+launcher, and it runs from `main` **before clap** — that ordering is what "older
+than what it launches" means in code, not a style choice, and
+`an_older_launcher_execs_the_newer_pinned_toolchain` proves it by handing the
+launcher a flag its OWN clap would reject and asserting the stub received it.
+Four things worth recording, each of which a reading-only implementation would
+have got wrong:
+
+* **The pin names the STORE version (`0.5.0-nros1`), never the crate version
+  (`0.5.0`).** Its whole job is to name a directory, so
+  `pin::running_version` reads it off the running binary's own store prefix —
+  both `toolchains/<v>` and today's `sdk/nros/<v>`, because D2's rename has not
+  happened and a launcher taught only the new name recognises no installed host.
+  A binary in NEITHER shape (a contributor's `packages/cli/target/**` build)
+  has no store version and pins NOTHING, loudly. Inventing one would write a
+  pin whose next build dispatches to a directory nobody can create.
+* **`write` refuses to overwrite, and that is the D9 half easy to leave out.**
+  "Write the version it used" on every build moves the pin on every
+  `nros self update` — the silent rebuild D7 exists to forbid.
+* **D8 job 2 delegates to `scripts/install.sh`, which the release asset now
+  carries at `share/nros/install.sh`** (`release-nros.yml`, one `cp`). A Rust
+  downloader would be a second answer to "which asset, which checksum, which
+  prefix", in the one place that cannot see the store accumulate — the same
+  argument `cmd::sdk_front` already makes for the front. An asset predating that
+  staging carries no installer and REFUSES, naming the pin, the paths it looked
+  in and the `install.sh --version <v>` line; that is the arm the real-binary
+  test exercises, because a copied binary brings no `share/`.
+* **A dispatched child is marked (`NROS_TOOLCHAIN_DISPATCH=<version>`).** A
+  store entry whose directory name disagrees with the binary inside it is
+  otherwise an exec loop — the one failure mode a launcher must not have.
+
+The stale/ownership guard is untouched (RFC-0095 D5, and this phase's own
+non-goal). Dispatch reaches the same conclusion independently and at a different
+seam: it declines whenever `abi_guard::find_monorepo_root` answers, so a
+contributor never meets it.
+
+*Still open, and named rather than implied:* the acceptance line's "a pin bump
+re-stales generated code through #182" is ARGUED, not measured — #182 keys the
+contributor path on the source stamp, and the user path would key on the
+toolchain version, which is the same machinery pointed at a different input but
+has no test on this side of the line. Two projects building side by side needs a
+real release asset, so it belongs with W8's remaining user-path probe.
+
 ### W8 — the one-line installer — **ALREADY LANDED (phase-431 W4)**
 
 `curl -fsSL …/scripts/install.sh | sh` exists and is gated by

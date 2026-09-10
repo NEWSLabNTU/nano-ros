@@ -791,6 +791,7 @@ dependencies = [
  "clap_complete",
  "eyre",
  "nros-cli-core",
+ "tempfile",
 ]
 
 [[package]]

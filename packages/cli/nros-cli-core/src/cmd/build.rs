@@ -871,7 +871,42 @@ pub fn run(args: Args) -> Result<()> {
     crate::abi_guard::check_workspace(&guard_anchor, crate::abi_guard::Verb::Build)?;
 
     let plans = plan_builds(&args)?;
+    pin_this_project(&args)?;
     drive(&plans, args.dry_run, &mut perform)
+}
+
+/// RFC-0095 D9 — the first `nros build` writes the pin it used and says so.
+///
+/// AFTER planning and BEFORE the handoff, and both halves are deliberate. After,
+/// because a directory that turns out not to be a workspace should not be left
+/// carrying a toolchain pin; before, because stage 5 `exec`s and nothing can run
+/// after it (issue 1206's lesson, one line over).
+///
+/// `--dry-run` writes nothing: a flag whose whole promise is "print, change
+/// nothing" cannot be the thing that pins a project.
+///
+/// The workspace root is resolved the same way [`plan_builds`] resolves it. It
+/// is deliberately NOT a second walk: the pin belongs beside the workspace the
+/// build actually ran on, and `pin::find` then walks UP from there, which is how
+/// `nros build` from a subdirectory finds a root-level pin rather than writing a
+/// second one.
+fn pin_this_project(args: &Args) -> Result<()> {
+    if args.dry_run {
+        return Ok(());
+    }
+    let root = match &args.workspace {
+        Some(w) => w.clone(),
+        None => std::env::current_dir().wrap_err("resolving cwd as the workspace root")?,
+    };
+    let root = std::fs::canonicalize(&root).unwrap_or(root);
+    let Ok(exe) = std::env::current_exe() else {
+        return Ok(());
+    };
+    let outcome = crate::orchestration::pin::pin_on_first_build(&root, &exe)?;
+    if let Some(line) = crate::orchestration::pin::describe(&outcome) {
+        eprintln!("{line}");
+    }
+    Ok(())
 }
 
 /// How one plan's native command reaches the operating system.
