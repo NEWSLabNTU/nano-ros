@@ -3117,10 +3117,20 @@ mem-report *args:
 
 # Scaffold-journey: a `nros new` project resolves end-to-end via the generated
 # `[patch.crates-io]` path block (the `scaffold-journey` job in pr-checks.yml).
+#
+# `setup-launch-resolve` too, since phase-445 W3b: the scaffolder emits a
+# `system.toml` (the retired `<nano_ros deploy=/>` tuple is refused), so the
+# scaffolded package is a self-pkg bringup and `nros sync` resolves its
+# SystemModel through `nros-launch-resolve` — which it refuses to skip. That is
+# the documented flow (`scripts/bootstrap.sh` builds both); the journey proves it.
+# Called from the BODY, not listed beside `setup-cli`: a dependency list is an
+# ORDER to `check-lane-contracts` (issue 1030), and "the resolver needs the CLI
+# first" is not true — `_setup-common` calls the two in sequence the same way.
 [group("ci")]
 scaffold-journey: setup-cli
     #!/usr/bin/env bash
     set -e
+    just setup-launch-resolve
     source scripts/build/cargo.sh
     NROS="$(nros_cli_bin)" scripts/ci/scaffold-journey-check.sh
 
@@ -3153,10 +3163,14 @@ colcon-parity:
 # (phase-288 D1/D2: source distribution, no prebuilt nros). Work dir under tmp/
 # (gitignored). Note: the pre-288 recipe drove the Phase-222-removed `nros build`
 # verb — builds go through the platform tool (cargo here), never `nros`.
+# `setup-launch-resolve` for the same reason as `scaffold-journey`, and from the
+# body for the same reason: the scaffold is a `system.toml` bringup, and
+# `nros sync` resolves it through the resolver.
 [group("ci")]
 acceptance: setup-cli
     #!/usr/bin/env bash
     set -e
+    just setup-launch-resolve
     source scripts/build/cargo.sh
     repo="$(pwd)"
     nros="$(nros_cli_bin)"
