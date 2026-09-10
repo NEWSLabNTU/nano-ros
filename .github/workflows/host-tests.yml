@@ -432,3 +432,21 @@ jobs:
           path: target/nextest/default/junit.xml
           if-no-files-found: ignore
           retention-days: 7
+
+      # The fixture and tier logs. Every build step above sends its output to
+      # `build/ci-logs/<step>.log` and echoes a 120-line tail only on FAILURE,
+      # which keeps the job log readable — and left this lane's largest step
+      # with no record at all. "Build workspace fixtures" is 54 of the job's
+      # ~102 minutes (run 34432822434) and wrote 42,882 lines that existed only
+      # on a runner that is then reclaimed: no per-workspace timing, and no way
+      # to tell one slow group serialising the jobserver from fifteen evenly
+      # loaded ones, which call for different fixes. `always()` because these
+      # are most wanted when a LATER step is the one that failed.
+      - name: Upload fixture and tier logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-integration-ci-logs
+          path: build/ci-logs/
+          if-no-files-found: ignore
+          retention-days: 7
