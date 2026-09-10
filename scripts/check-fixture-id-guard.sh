@@ -101,6 +101,69 @@ echo "check-fixture-id-guard: platform vocabulary"
 expect_rc 2 "unknown platform is fatal" \
     bash -c 'source scripts/build/fixture-id-guard.sh; nros_fixture_require_known_platform natve'
 
+echo "check-fixture-id-guard: manifest parser failure (issue 1264)"
+
+# A parser that cannot even start (no tomllib/tomli — the real trigger, on a
+# python3.10 host with neither installed — or any other import-time failure)
+# must be reported as a PARSER failure, never folded into "no such id" / "no
+# such platform". Those are confident claims a dead parser has no evidence
+# for, and reading its empty output as one is exactly issue 1264.
+#
+# Faked with a `python3` shadowing PATH rather than by uninstalling tomllib:
+# the real failure is host-Python-version-dependent (this repo's own dev
+# hosts vary), and this gate must reproduce identically on any of them.
+fake_python_dir="$(mktemp -d)"
+cat >"$fake_python_dir/python3" <<'FAKE_PY'
+#!/usr/bin/env bash
+echo "Traceback (most recent call last):" >&2
+echo "ModuleNotFoundError: No module named 'tomllib'" >&2
+exit 1
+FAKE_PY
+chmod +x "$fake_python_dir/python3"
+
+# expect_dead_parser <label> <command...>
+#
+# Distinct from expect_rc: a dead parser's rc is the PARSER's exit status
+# (not a fixed fatal code), so this checks shape (non-zero, parser's own
+# traceback reached the caller, no "does not exist" claim) rather than one rc.
+expect_dead_parser() {
+    local label="$1"
+    shift
+    local out rc
+    out="$(PATH="$fake_python_dir:$PATH" "$@" 2>&1)"
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+        echo "  FAIL  ${label}: a dead parser returned rc=0"
+        fails=$((fails + 1))
+        return
+    fi
+    case "$out" in
+        *ModuleNotFoundError*) ;;
+        *)
+            echo "  FAIL  ${label}: the parser's own traceback did not reach the caller"
+            echo "        output: ${out}"
+            fails=$((fails + 1))
+            return
+            ;;
+    esac
+    case "$out" in
+        *"no row anywhere carries id"* | *"unknown platform"* | *"no fixture rows for platform"*)
+            echo "  FAIL  ${label}: a dead parser was reported as a real 'does not exist'"
+            echo "        output: ${out}"
+            fails=$((fails + 1))
+            return
+            ;;
+    esac
+    echo "  ok    ${label} (rc=${rc})"
+}
+
+expect_dead_parser "require_known_platform on a dead parser names the parser, not a typo" \
+    bash -c 'source scripts/build/fixture-id-guard.sh; nros_fixture_require_known_platform threadx-linux'
+expect_dead_parser "id_no_match on a dead parser names the parser, not a typo" \
+    bash -c 'source scripts/build/fixture-id-guard.sh; nros_fixture_id_no_match some-id flag fixture linux rust'
+
+rm -rf "$fake_python_dir"
+
 echo "check-fixture-id-guard: wired into the builders"
 # End to end through a real builder — proves the guard is actually reached,
 # not merely present. fixtures-build.sh needs no CLI or SDK to get this far.

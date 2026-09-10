@@ -3,11 +3,12 @@ id: 1264
 title: "`nros_platform_rmws` redirects the manifest parser's stderr to
   /dev/null, so an interpreter that cannot read `fixtures.toml` is reported
   as a platform that does not exist"
-status: open
+status: resolved
 type: bug
 area: build, testing
 severity: medium
 found: 2026-09-10
+resolved_in: "fix(#1264): a dead manifest parser is reported as one, not as a platform/id that does not exist"
 related: [phase-395]
 ---
 
@@ -93,3 +94,51 @@ That the runner image lacked `tomli` is a container-provisioning gap, fixed in
 `scripts/ci/runner-bootstrap.sh` (PR #842). This issue is that the failure was
 unreadable, which would have been just as true on any python3.10 host without
 `tomli` installed.
+
+## Resolution
+
+Added `scripts/lib/manifest-query.sh` — one shared `nros_manifest_query
+<python-script> [args...]` that runs `fixtures-manifest.py`, captures stderr
+into a temp file rather than discarding it, and checks the parser's exit
+status via the `rc=0; out="$(...)" || rc=$?` idiom (issue 1249) rather than a
+bare assignment. On failure it prints the parser's own stderr, indented, and
+returns the parser's status (never 0); on success it prints stdout, empty or
+not, unchanged.
+
+`nros_platform_rmws` (`scripts/build/platform-rmws.sh`) now calls it and
+reports "the manifest parser failed (above), so it is unknown whether
+'\<platform\>' has fixture rows — not that it doesn't" on a parser failure,
+leaving the original "no fixture rows for platform '\<platform\>'" message
+untouched for the genuine-emptiness case.
+
+**Sweep.** Grepping `scripts/` for `2>/dev/null` on a `fixtures-manifest.py`
+invocation found two closely related siblings in `scripts/build/
+fixture-id-guard.sh`, doing the identical thing for a different table:
+
+- `nros_fixture_id_no_match` read a dead parser's empty `describe-id` output
+  as "no row anywhere carries id '\<id\>'" — the exact misdiagnosis, one table
+  over.
+- `nros_fixture_require_known_platform` read a dead parser's empty
+  `list-platforms` output as `return 0` ("manifest unreadable — not this
+  guard's job"), silently disabling platform-typo validation on the same
+  failure that broke the parser — a quieter failure mode, but the same root
+  cause.
+
+Both now use `nros_manifest_query` and fail loud, naming the parser failure,
+with the genuine-typo and genuine-empty messages left exactly as they were.
+
+Other `2>/dev/null` sites against `fixtures-manifest.py` exist
+(`nuttx-libc-pin-guard.sh`, `drop-family-artifacts.sh`,
+`check-fixtures-stale.sh`, `measure-fixture-build.sh`) but read emptiness as
+"nothing to do" rather than emitting a confident wrong claim about a named
+entity — a quieter, lower-severity shape than this issue's title. Left alone
+here to keep the change scoped to the misdiagnosis class; worth a follow-up if
+the quieter shape turns out to matter in practice.
+
+**Tests.** `scripts/check-fixture-id-guard.sh` gained two cases exercising
+both `fixture-id-guard.sh` functions against a fake `python3` that dies the
+way a python3.10 host with no `tomllib`/`tomli` does. A new
+`scripts/check-platform-rmws.sh` (`just check platform-rmws`) does the same
+for `nros_platform_rmws`, plus the two pre-existing cases (real platform,
+typo'd platform). All four cases were verified by mutation: reverting the
+fix reproduces the original misdiagnosis and the new assertions catch it.
