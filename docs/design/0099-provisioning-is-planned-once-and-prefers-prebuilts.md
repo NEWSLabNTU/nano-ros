@@ -255,9 +255,27 @@ key cannot express the alternative. (It is also stale in a second way:
 overrides. Narrower than rosdep's OS-then-version nesting, because the manager is
 what actually installs.
 
-## D10 — The provisioner reads manifest/index files, and today it does not
+## D10 — The provisioner reads manifest/index files — TRUE for Zephyr since phase-447 F1
 
-The claim is not true yet. The Zephyr module set lives in `west.yml`, and
+**Status: satisfied for the Zephyr module set (2026-09-11, phase-447 F1, issue
+1275).** `[zephyr_module.*]` is the SSoT and the two west manifests are the
+derived half — a module is in `west.yml`'s allowlist iff its `lines` carries
+`"3.7"`, `west-4.4.yml`'s iff `"4.4"`, asserted both ways by
+`check-zephyr-module-allowlist`; `nros setup zephyr --dry-run` prices the set.
+The manifests stay COMMITTED rather than generated, because `west init -m <url>`
+reads `west.yml` out of a bare clone before any `nros` exists to generate one —
+the trade `check-abi-bindings` already makes for committed bindgen output.
+
+Three of the four HALs left the allowlist (~2.29 GB off a fresh `west update`).
+`hal_espressif` stayed: measured to have NO consumer, and kept anyway, because
+deleting it settles the platform-strategy question below by accident — that is
+issue 1282. **`west update` does not prune, so this is a fresh-workspace saving
+and reclaims nothing in an existing one.**
+
+The paragraph below is the original statement of the defect, kept because it is
+what the decision argued from.
+
+The claim was not true. The Zephyr module set lives in `west.yml`, and
 `nros-sdk-index.toml` contains **zero** `hal_` mentions — so `west update` pulls
 `hal_nxp` (1.3 G), `hal_stm32` (764 M), `hal_espressif` (275 M) and `hal_nordic`
 (224 M) for silicon no board in `fixtures.toml` targets, and `nros setup

@@ -94,6 +94,69 @@ pub struct SdkIndex {
     /// scattered per module.
     #[serde(default)]
     pub python: BTreeMap<String, PythonDep>,
+    /// phase-447 F1 (issue 1275) — the Zephyr MODULE set west fetches.
+    ///
+    /// RFC-0099 D10: the provisioner reads manifest/index files as its SSoT.
+    /// For this set it did not — the module list lived only in `west.yml`'s
+    /// `name-allowlist`, so `west update` fetched 2.5 GB of vendor HALs for
+    /// silicon no board here targets and `--dry-run` could not price a byte of
+    /// it, because the cost was in a file the provisioner never opened.
+    ///
+    /// The manifests are the DERIVED half now: a module is in `west.yml`'s
+    /// allowlist iff its `lines` contains `"3.7"`, and in `west-4.4.yml`'s iff
+    /// it contains `"4.4"`. `check-zephyr-module-allowlist` asserts that both
+    /// ways. They stay COMMITTED rather than generated because `west init -m
+    /// <url>` reads `west.yml` out of a bare clone, before any `nros` exists.
+    ///
+    /// Not a `[source.*]`: these are west projects in a west-shaped workspace,
+    /// not submodules `nros setup` fetches. Declaring what a `west update`
+    /// COSTS is a different claim from provisioning it, and D10 asks for the
+    /// first.
+    #[serde(default)]
+    pub zephyr_module: BTreeMap<String, ZephyrModule>,
+}
+
+/// One Zephyr west module (phase-447 F1).
+///
+/// An entry with an empty [`lines`](Self::lines) is DECLARED BUT NOT FETCHED:
+/// it records a module we deliberately do not pull and why, which is the
+/// difference between this table and deleting four allowlist lines. A
+/// `west update` that silently stops fetching `hal_nxp` leaves the next reader
+/// to rediscover the whole question.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ZephyrModule {
+    /// One line of intent — what the module is for, or why it is withheld.
+    #[serde(default)]
+    pub why: Option<String>,
+    /// The Zephyr board ids that need it. EMPTY IS MEANINGFUL: it says no
+    /// board in this tree was measured to need the module, which for a module
+    /// still in `lines` is a claim a reader should be able to challenge.
+    #[serde(default)]
+    pub needed_by: Vec<String>,
+    /// Checkout size in MB, measured on a populated workspace — for ordering
+    /// and for telling a user what a fresh `west update` costs. Not a download
+    /// size, so a figure that drifts by a release is fine; a missing one is
+    /// not, which is why `validate` requires it of a fetched module.
+    #[serde(default)]
+    pub approx_mb: Option<u64>,
+    /// Which Zephyr manifest lines carry it (`"3.7"`, `"4.4"`). Empty = in no
+    /// manifest, i.e. declared but not fetched.
+    #[serde(default)]
+    pub lines: Vec<String>,
+}
+
+/// The Zephyr manifest lines this repo carries, and the manifest file each
+/// one's allowlist lives in. One spelling, read by [`SdkIndex::validate`] and
+/// by `check-zephyr-module-allowlist`, so a new line cannot be added to the
+/// index and missed by the gate.
+pub const ZEPHYR_MANIFEST_LINES: &[(&str, &str)] = &[("3.7", "west.yml"), ("4.4", "west-4.4.yml")];
+
+impl ZephyrModule {
+    /// Is this module fetched by any manifest line?
+    pub fn is_fetched(&self) -> bool {
+        !self.lines.is_empty()
+    }
 }
 
 /// phase-327 W1 (RFC-0062) — one OS package, declared by abstract key.
@@ -1245,6 +1308,36 @@ impl SdkIndex {
                          (not a [tool]/[source]/[gated] entry)"
                     );
                 }
+            }
+        }
+        // phase-447 F1 — a Zephyr module may only name a manifest line that
+        // exists, and a module we DO fetch must carry its size. The second
+        // half is what makes `--dry-run` able to price the set at all: an
+        // entry with no `approx_mb` prints as an unknown cost, which is the
+        // state issue 1275 was about, one level up.
+        //
+        // A WITHHELD module (`lines = []`) is exempt from the size rule on
+        // purpose — it costs nothing, so demanding a figure for it would push
+        // authors to invent one.
+        for (name, m) in &self.zephyr_module {
+            for line in &m.lines {
+                if !ZEPHYR_MANIFEST_LINES.iter().any(|(l, _)| l == line) {
+                    let known: Vec<&str> = ZEPHYR_MANIFEST_LINES.iter().map(|(l, _)| *l).collect();
+                    bail!(
+                        "zephyr_module '{name}' names Zephyr line '{line}', \
+                         which is not one this repo carries ({})",
+                        known.join(", ")
+                    );
+                }
+            }
+            if m.is_fetched() && m.approx_mb.is_none() {
+                bail!(
+                    "zephyr_module '{name}' is fetched (lines = {:?}) but has \
+                     no `approx_mb`, so `nros setup zephyr --dry-run` cannot \
+                     price it — which is the hole issue 1275 filed. Measure it \
+                     (`du -sm` on a populated workspace) and record it.",
+                    m.lines
+                );
             }
         }
         // phase-435 W2 — a build type may only name keys that exist. The whole

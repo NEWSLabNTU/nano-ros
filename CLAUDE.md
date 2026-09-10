@@ -594,6 +594,20 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   who owns a `/lib/...` file, query the RESOLVED path: `/lib` is a symlink to `usr/lib`
   on merged-`/usr`, so `dpkg -S /lib/<f>` says "no path found" for a perfectly
   well-owned file — which is how this entry first called that library a stray.
+- **The west manifests are DERIVED — `[zephyr_module.*]` in `nros-sdk-index.toml` is the
+  module SSoT** (phase-447 F1, issues 1275/1282). A module is in `west.yml`'s allowlist iff
+  its `lines` has `"3.7"`, `west-4.4.yml`'s iff `"4.4"`; `check-zephyr-module-allowlist`
+  asserts both directions, and `nros setup zephyr --dry-run` prices the set. Edit the index,
+  then mirror. The manifests stay COMMITTED (a `west init -m <url>` reads `west.yml` from a
+  bare clone, before any `nros` exists). `hal_nxp`/`hal_stm32`/`hal_nordic` left the allowlist
+  — ~2.29 GB no fresh workspace fetches; `hal_espressif` (275 MB) is knowingly kept, see 1282.
+  Two things measured rather than assumed: **`west update` NEVER PRUNES**, so this reclaims
+  nothing in an existing workspace and a reader who measures one sees no change; and a source
+  grep finds no consumer for `mcuboot` either, but **sysbuild** resolves it
+  (`<build>/sysbuild_modules.txt` names it) — which is why acceptance here is a BUILD, not a
+  grep. Also: symlinking `zephyr` into a test topdir does NOT work — Zephyr resolves the west
+  topdir from ZEPHYR_BASE's REAL path, so the build silently used a different workspace's
+  manifest; `cp -al` (git never writes in place) gives real dirs at no disk cost.
 - **Zephyr merges Kconfig fragments LAST-WINS, so a leaf value a later fragment
   also sets is DEAD** (issue 0876). `CONFIG_HEAP_MEM_POOL_SIZE=0` in the c/talker
   conf was measured on mps2/an385 — where `cmake/zephyr/mps2-an385.conf` merges

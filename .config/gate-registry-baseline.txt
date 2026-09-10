@@ -317,5 +317,6 @@ zenohd-resolution-parity
 zenohd-router-skips
 zenohd-spawn-sites
 zephyr-knob-agreement
+zephyr-module-allowlist
 zephyr-workspace-resolvers
 zpico-config-keys

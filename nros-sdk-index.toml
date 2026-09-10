@@ -1252,10 +1252,155 @@ platform = "zephyr"
 # install into a venv. `_setup-common` already reports the python closure, so
 # the split is between two mechanisms that each do what they are for.
 #
-# The Zephyr SOURCES (the `zephyr` repo + the modules west pins) stay outside:
-# they are fetched by `scripts/zephyr/setup.sh` into a west-shaped workspace,
-# which is not a `[source.*]` submodule and would be a fiction as one.
+# The Zephyr SOURCES (the `zephyr` repo + the modules west pins) stay outside
+# `packages`: they are fetched by `scripts/zephyr/setup.sh` into a west-shaped
+# workspace, which is not a `[source.*]` submodule and would be a fiction as
+# one. They ARE declared, in `[zephyr_module.*]` below — declaring what a
+# `west update` costs is a different thing from claiming `nros setup` fetches
+# it, and RFC-0099 D10 asks only for the first.
 packages = ["zephyr-sdk"]
+
+
+# --- the Zephyr MODULE set, as index data (phase-447 F1, issue 1275) --------
+#
+# WHY THIS TABLE EXISTS. RFC-0099 D10: the provisioner reads manifest/index
+# files as its SSoT, and for the Zephyr module set it did not. The set lived
+# only in `west.yml`'s `name-allowlist`; this file had ZERO `hal_` mentions.
+# So `west update` fetched 2.5 GB of vendor HALs for silicon nothing in this
+# repo targets, and `nros setup zephyr --dry-run` could not price one byte of
+# it, because the cost lived in a file the provisioner never opened.
+#
+# The manifests are now the DERIVED half: a module belongs in `west.yml`'s
+# allowlist iff its `lines` contains "3.7", and in `west-4.4.yml`'s iff it
+# contains "4.4". `check-zephyr-module-allowlist` asserts exactly that in both
+# directions, so the two cannot drift. They stay COMMITTED files rather than
+# generated ones because `west init -m <url>` reads `west.yml` out of a bare
+# clone, before any `nros` exists to generate anything.
+#
+# `lines = []` means DECLARED BUT NOT FETCHED — the entry documents a module
+# we deliberately do not pull, and what a downstream that needs it must add.
+# That is the difference between this change and deleting four lines: a
+# `west update` that stops fetching `hal_nxp` with no record of why leaves the
+# next reader to rediscover the whole question.
+#
+# `approx_mb` is the CHECKOUT size measured on this host 2026-09-11 (`du -sh`
+# on a populated workspace), not a download size — it is for ordering and for
+# telling a user what a fresh `west update` will cost them, so a figure that
+# drifts by a release is fine and a missing one is not.
+#
+# NOTE `west update` DOES NOT PRUNE. Dropping a module here reclaims nothing
+# in an EXISTING workspace; it is a fresh-workspace saving. A reader who
+# measures their own populated tree and sees no change has not found a bug.
+
+[zephyr_module.cmsis]
+why = "CMSIS core headers (`cmsis_core.h`) — every Cortex-M/-A arch build"
+needed_by = ["mps2_an385", "qemu_cortex_m3", "qemu_cortex_a53", "fvp_baser_aemv8r"]
+approx_mb = 7
+lines = ["3.7", "4.4"]
+
+[zephyr_module.cmsis_6]
+# 4.4 ONLY, and not interchangeable with `cmsis`. Zephyr 4.x moved the
+# Cortex-M core headers to a separate CMSIS_6 module; allowlisting only
+# `cmsis` on 4.4 imports a module that no longer provides the header and
+# EVERY Cortex-M board dies at `arch/arm/core/offsets/offsets.c` with
+# `fatal error: cmsis_core.h: No such file or directory`.
+why = "CMSIS_6 core headers — the 4.x home of `cmsis_core.h`"
+needed_by = ["mps2_an385", "qemu_cortex_m3"]
+approx_mb = 7
+lines = ["4.4"]
+
+[zephyr_module.picolibc]
+why = "the C library every non-native_sim image links (issue 0163's allocator)"
+needed_by = ["mps2_an385", "qemu_cortex_m3", "qemu_cortex_a53", "fvp_baser_aemv8r"]
+approx_mb = 183
+lines = ["3.7", "4.4"]
+
+[zephyr_module.mbedtls]
+why = "TLS for zenoh-pico and CycloneDDS"
+needed_by = ["native_sim", "mps2_an385", "qemu_cortex_a53", "fvp_baser_aemv8r"]
+approx_mb = 161
+lines = ["3.7", "4.4"]
+
+[zephyr_module.tinycrypt]
+why = "Zephyr's crypto fallback; pulled by the same net/TLS Kconfig closure"
+needed_by = ["native_sim", "mps2_an385"]
+approx_mb = 1
+lines = ["3.7", "4.4"]
+
+[zephyr_module.mcuboot]
+# Its consumer is SYSBUILD, not a `#include` — which is why a grep for
+# `mcuboot` across the tree finds no user and the module is still live.
+# Measured: `build-rust-talker-zenoh/sysbuild_modules.txt` names it. Do not
+# drop this on the strength of a source grep.
+why = "sysbuild resolves it as a domain — see `<build>/sysbuild_modules.txt`"
+needed_by = ["native_sim", "mps2_an385"]
+approx_mb = 16
+lines = ["3.7", "4.4"]
+
+[zephyr_module.net-tools]
+why = "the native_sim networking lanes' host-side tooling"
+needed_by = ["native_sim"]
+approx_mb = 17
+lines = ["3.7", "4.4"]
+
+[zephyr_module.hal_espressif]
+# HELD BACK DELIBERATELY, and the honest statement is that it has no measured
+# consumer. phase-447 F1 measured questions (1) and (2) of issue 1275 and both
+# came back empty: nothing in this tree builds an esp32 image THROUGH Zephyr
+# (all four `platform = "esp32"` fixture rows are cargo/esp-hal bare-metal
+# riscv32; the ESP-IDF coordinates go through `idf.py`), no `prj.conf`,
+# overlay, board crate, CI job or `west build -b` names an Espressif board,
+# and the Zephyr SDK we provision installs no `xtensa-espressif_*` toolchain
+# at all — so a Zephyr esp32 build could not link today even if one existed.
+#
+# It stays anyway. RFC-0099 D10 and phase-447 F1 both say so: whether Zephyr's
+# own espressif support makes our separate ESP-IDF provisioning a duplicate is
+# a platform-strategy question with real costs on both sides, and DELETING
+# this line would settle it by accident in the direction of "we do not do
+# Zephyr esp32". That question is issue 1282; when it is answered this entry
+# either gains a `needed_by` or gets `lines = []`.
+#
+# So 275 MB of issue 1275's 2.5 GB is knowingly still paid.
+why = "Espressif HAL — NO measured consumer; retained pending issue 1282"
+needed_by = []
+approx_mb = 275
+lines = ["3.7", "4.4"]
+
+[zephyr_module.hal_nxp]
+# The one entry with a real, NAMED consumer that is not in this tree.
+# `mr_canhubk3/s32k344` (NXP S32K344, Cortex-M7) is the downstream safety-island
+# board ~40 in-tree comments cite measurements from — issues 0810/0814/0815,
+# archived 0734/0961/1227, `zephyr/Kconfig`, `zephyr/CMakeLists.txt`. There is
+# no board dir, crate, fixture row or conf for it HERE, so no build in this
+# repo needs `hal_nxp`; a downstream one does.
+#
+# That downstream re-enables it by adding `hal_nxp` to its OWN manifest's
+# allowlist — a west manifest that `import:`s ours composes, it does not
+# inherit our allowlist as a ceiling. Stated here so the removal is a decision
+# a reader can find rather than a line that vanished.
+why = "NXP S32/LPC/i.MX-RT HALs — no in-tree board; downstream mr_canhubk3/s32k344"
+needed_by = []
+approx_mb = 1300
+lines = []
+
+[zephyr_module.hal_stm32]
+# Zero consumers of any kind. No Zephyr board string in this tree is an STM32:
+# every `stm32` hit is a Rust HAL crate name in docs (`stm32f4xx_hal`) or the
+# out-of-tree porting worked example in `book/src/porting/stm32f4-out-of-tree.md`.
+why = "STM32 HALs — no in-tree or downstream consumer found"
+needed_by = []
+approx_mb = 764
+lines = []
+
+[zephyr_module.hal_nordic]
+# Zero consumers. The only `nrf52840dk` occurrences in the tree are string
+# literals inside `#[test]` fns in `packages/cli/nros-cli-core/src/builder/
+# dist.rs`, plus two "Untested — supply `-b …` yourself" rows in
+# `book/src/reference/supported-boards.md`.
+why = "Nordic nRF HALs — no in-tree or downstream consumer found"
+needed_by = []
+approx_mb = 224
+lines = []
 
 # --- the CMAKE board vocabulary, as index keys (phase-422 W7) ---------------
 #
