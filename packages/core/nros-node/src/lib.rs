@@ -81,6 +81,19 @@ extern crate nros_platform_cffi as _;
 #[cfg(feature = "std")]
 extern crate std;
 
+// And under `test` without the feature: a test build is a hosted harness, so
+// `std` exists there whatever the features say. Without this a test module's
+// `std::` resolved only when some OTHER workspace member unified
+// `nros-node/std` in — so `--workspace` clippy was green while
+// `cargo clippy -p nros-node --all-targets` (and plain `cargo test -p
+// nros-node`) failed to compile the test target at all.
+//
+// Two items, not `any(feature = "std", test)`: `check-std-census` reads any
+// cfg naming `test` as a test gate and stops counting it, and the line above
+// IS a non-test std site — folding them hid it and read as progress.
+#[cfg(all(test, not(feature = "std")))]
+extern crate std;
+
 #[cfg(feature = "alloc")]
 extern crate alloc;
 

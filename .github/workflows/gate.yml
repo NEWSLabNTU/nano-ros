@@ -1115,7 +1115,20 @@ jobs:
       #
       # `test-unit` deliberately STAYS on the batch lane: 3 m 37 s per push is
       # the cost "PR cheap, batch thorough" was actually written for.
-      - name: just check workspace-all (feature combinations)
+      #
+      # CORRECTION, 2026-09-11. The 28 s above measured the EMBEDDED half only.
+      # The host half was `just check workspace`, which had become an `echo`
+      # claiming host clippy ran "in the fast tier" — it did not: issue 0466
+      # moved `check-test-targets` to `build-serial`, schedule only. So no
+      # merge-gating lane ran a host clippy, and 20 errors in nros-node's own
+      # test target plus a `needless_borrow` in nros-tests reached main. The
+      # host half is now `check-test-targets` — `--workspace --all-targets`
+      # and then every crate ALONE, because `--workspace` unifies features and
+      # hid the nros-node errors behind a sibling's `std`. It costs real time
+      # now; read this step's duration off the run, not off the 28 s. For
+      # scale only: `check-test-targets` alone (workspace + per crate + CLI)
+      # took 113 s locally on a WARM target dir — a cold runner pays more.
+      - name: just check workspace-all (host + embedded clippy)
         if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
           source ./activate.sh
