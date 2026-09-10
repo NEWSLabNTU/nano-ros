@@ -977,9 +977,8 @@ fn build_stage_report(index: &SdkIndex, workspace: &Path) -> Vec<(String, ProbeR
         .iter()
         .filter(|(_, src)| src.build_stage)
         .map(|(name, src)| {
-            let present =
-                source_present(name, src, workspace)
-                    || run_probe(src.check.as_ref()) == ProbeResult::Present;
+            let present = source_present(name, src, workspace)
+                || run_probe(src.check.as_ref()) == ProbeResult::Present;
             let state = if present {
                 ProbeResult::Present
             } else {
@@ -3231,12 +3230,12 @@ mod tests {
     /// the reason survives even if the shipped entry changes shape again.
     #[test]
     fn a_build_stage_source_in_the_store_needs_no_dest() {
-        SdkIndex::parse(
-            "[source.x]\nversion = \"1\"\nbuild_stage = true\nlocation = \"store\"\n",
-        )
-        .unwrap()
-        .validate()
-        .expect("a store source derives its path; requiring `dest` here refuses the real index");
+        SdkIndex::parse("[source.x]\nversion = \"1\"\nbuild_stage = true\nlocation = \"store\"\n")
+            .unwrap()
+            .validate()
+            .expect(
+                "a store source derives its path; requiring `dest` here refuses the real index",
+            );
     }
 
     /// issue 0603 — a `header` probe answers about the `-dev` package, where
