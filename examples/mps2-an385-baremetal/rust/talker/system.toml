@@ -7,10 +7,13 @@ name = "qemu_bsp_talker"
 rmw = "zenoh"
 domain_id = 0
 
+# `dispatch` — callbacks hand off to a ring rather than running inline
+# (phase-216 A.5); read by `nros check`'s framework × dispatch lint (issue 1278).
 [[component]]
 pkg = "qemu_bsp_talker"
 class = "qemu_bsp_talker::Talker"
 name = "talker"
+dispatch = "deferred"
 
 # Bare-metal MPS2-AN385 (QEMU). The network identity overlays the board's
 # compiled-in `Config::default()` through `BoardEntry::run_with_deploy`.
