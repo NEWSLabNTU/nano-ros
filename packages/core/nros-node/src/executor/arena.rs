@@ -1050,7 +1050,7 @@ mod arena_headroom_tests {
 ///
 /// **What this can and cannot say.** The buffer capacity is known here and is
 /// the actionable half — it names the knob to raise
-/// (`NROS_SUBSCRIPTION_BUFFER_SIZE`, or `ZPICO_SUBSCRIBER_BUFFER_SIZE` /
+/// (`NROS_SUBSCRIPTION_BUFFER_SIZE`, or `NROS_SUBSCRIBER_BUFFER_SIZE` /
 /// `ZPICO_SUBSCRIBER_LARGE_SIZE` on zenoh). The SAMPLE size is not: the C ABI
 /// contract is "non-negative = bytes produced, negative = error code"
 /// (`rmw_vtable.h`), with no required-length out-param, so the backend cannot

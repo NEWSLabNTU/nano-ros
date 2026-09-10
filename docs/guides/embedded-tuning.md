@@ -14,7 +14,7 @@ ZPICO_MAX_PUBLISHERS=4 \
 ZPICO_MAX_SUBSCRIBERS=4 \
 ZPICO_FRAG_MAX_SIZE=1400 \
 ZPICO_BATCH_UNICAST_SIZE=1024 \
-ZPICO_SUBSCRIBER_BUFFER_SIZE=512 \
+NROS_SUBSCRIBER_BUFFER_SIZE=512 \
 cargo build --release
 ```
 
@@ -69,7 +69,7 @@ Each subscriber and service server has a static receive buffer.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ZPICO_SUBSCRIBER_BUFFER_SIZE` | 1024 | Per-subscriber receive buffer (bytes) |
+| `NROS_SUBSCRIBER_BUFFER_SIZE` | 1024 | Per-subscriber receive buffer (bytes) |
 | `ZPICO_SERVICE_BUFFER_SIZE` | 1024 | Per-service-server receive buffer (bytes) |
 | `ZPICO_GET_REPLY_BUF_SIZE` | 4096 | Service client reply buffer (bytes) |
 | `ZPICO_GET_POLL_INTERVAL_MS` | 10 | Service call polling interval (ms) |
@@ -162,12 +162,7 @@ creation timeouts because slots cannot be recycled between separate
 | `NROS_MAX_ARRAY_LEN` | 32 | Max parameter array length |
 | `NROS_MAX_BYTE_ARRAY_LEN` | 256 | Max byte array parameter length |
 | `NROS_MAX_PARAM_DESCRIPTION_LEN` | 256 | Max parameter description length (bytes, per slot); 0 = no descriptions |
-| `NROS_EXECUTOR_MAX_HANDLES` | 16 | Max handles in C API executor |
-| `NROS_MAX_SUBSCRIPTIONS` | 8 | Max subscriptions in C API executor |
-| `NROS_MAX_TIMERS` | 8 | Max timers in C API executor |
-| `NROS_MAX_SERVICES` | 4 | Max services in C API executor |
 | `NROS_LET_BUFFER_SIZE` | 512 | LET semantics buffer per handle (bytes) |
-| `NROS_MESSAGE_BUFFER_SIZE` | 4096 | Max subscription/service data buffer (bytes) |
 | `NROS_MAX_CONCURRENT_GOALS` | 4 | Max concurrent goals per action server |
 
 ## Memory Budget Estimation
@@ -218,7 +213,7 @@ ZPICO_MAX_PENDING_GETS=2
 ZPICO_FRAG_MAX_SIZE=1400
 ZPICO_BATCH_UNICAST_SIZE=1024
 ZPICO_BATCH_MULTICAST_SIZE=512
-ZPICO_SUBSCRIBER_BUFFER_SIZE=512
+NROS_SUBSCRIBER_BUFFER_SIZE=512
 ZPICO_SERVICE_BUFFER_SIZE=512
 ZPICO_GET_REPLY_BUF_SIZE=1024
 
@@ -242,7 +237,7 @@ ZPICO_MAX_LIVELINESS=16
 # Moderate buffers
 ZPICO_FRAG_MAX_SIZE=4096
 ZPICO_BATCH_UNICAST_SIZE=2048
-ZPICO_SUBSCRIBER_BUFFER_SIZE=1024
+NROS_SUBSCRIBER_BUFFER_SIZE=1024
 ZPICO_SERVICE_BUFFER_SIZE=1024
 ZPICO_GET_REPLY_BUF_SIZE=4096
 
@@ -267,7 +262,7 @@ ZPICO_MAX_PENDING_GETS=8
 # Large buffers for complex messages
 ZPICO_FRAG_MAX_SIZE=16384
 ZPICO_BATCH_UNICAST_SIZE=8192
-ZPICO_SUBSCRIBER_BUFFER_SIZE=4096
+NROS_SUBSCRIBER_BUFFER_SIZE=4096
 ZPICO_SERVICE_BUFFER_SIZE=4096
 ZPICO_GET_REPLY_BUF_SIZE=8192
 
@@ -381,7 +376,7 @@ uses CycloneDDS on Zephyr with these transport settings:
 | CycloneDDS Setting | Value | zpico Equivalent | Notes |
 |--------------------|-------|------------------|-------|
 | `ReceiveBufferSize` | 16 KB | N/A | zpico uses per-entity buffers instead of a shared pool |
-| `ReceiveBufferChunkSize` | 2 KB | `ZPICO_SUBSCRIBER_BUFFER_SIZE` | Per-entity in zpico vs shared chunks in CycloneDDS |
+| `ReceiveBufferChunkSize` | 2 KB | `NROS_SUBSCRIBER_BUFFER_SIZE` | Per-entity in zpico vs shared chunks in CycloneDDS |
 | `MaxMessageSize` | 1400 B | `ZPICO_BATCH_UNICAST_SIZE` | MTU-aware limit to avoid IP fragmentation |
 | `AllowMulticast` | SPDP only | Cargo feature `link-udp-multicast` | Disabled by default in both |
 | C library heap | 1 MB | 0 | zpico uses only static allocation |
@@ -467,7 +462,7 @@ to `<build>/nros/message_bound_knobs.cmake`.
 
 Precedence, highest first:
 
-1. an environment override (`ZPICO_SUBSCRIBER_BUFFER_SIZE=...`),
+1. an environment override (`NROS_SUBSCRIBER_BUFFER_SIZE=...`),
 2. a Kconfig / board `.conf` value,
 3. the value derived from the message bounds,
 4. the crate's own default, when nothing is stated and nothing is derivable.
@@ -496,7 +491,7 @@ Increase `ZPICO_FRAG_MAX_SIZE` — the message exceeds the reassembly limit.
 
 ### Subscription receives truncated data
 
-Increase `ZPICO_SUBSCRIBER_BUFFER_SIZE` — the per-entity buffer is too small for
+Increase `NROS_SUBSCRIBER_BUFFER_SIZE` — the per-entity buffer is too small for
 the serialized message.
 
 ### Service calls time out

@@ -12,14 +12,13 @@ layer to be delivered intact:
 |-------|---------|---------------|
 | Defragmentation | `ZPICO_FRAG_MAX_SIZE` | 65536 |
 | Batch size | `ZPICO_BATCH_UNICAST_SIZE` | 65536 |
-| Shim buffer | `ZPICO_SUBSCRIBER_BUFFER_SIZE` | 1024 |
-| C API message buffer | `NROS_MESSAGE_BUFFER_SIZE` | 4096 |
+| Shim buffer | `NROS_SUBSCRIBER_BUFFER_SIZE` | 1024 |
 
 For large messages, increase the transport limits (set before building)
-and increase `NROS_MESSAGE_BUFFER_SIZE`:
+and the receive class, `NROS_SUBSCRIBER_BUFFER_SIZE`:
 
 ```bash
-ZPICO_FRAG_MAX_SIZE=131072 NROS_MESSAGE_BUFFER_SIZE=8192 cmake --build build
+ZPICO_FRAG_MAX_SIZE=131072 NROS_SUBSCRIBER_BUFFER_SIZE=8192 cmake --build build
 ```
 
 After changing any buffer variable, clean the build cache:

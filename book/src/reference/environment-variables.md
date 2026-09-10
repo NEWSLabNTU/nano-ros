@@ -108,9 +108,11 @@ guidance and platform guides for target-specific sizing.
 | `ZPICO_MAX_QUERYABLES`             | Max concurrent queryables in zenoh shim                | `8`              | zpico-sys      |
 | `ZPICO_MAX_LIVELINESS`             | Max concurrent liveliness tokens in zenoh shim         | `16`             | zpico-sys      |
 | `ZPICO_MAX_PENDING_GETS`          | Max concurrent in-flight service calls                 | `4`              | zpico-sys      |
-| `ZPICO_SUBSCRIBER_BUFFER_SIZE`     | Per-subscriber static buffer in zenoh shim             | `1024`           | nros-rmw-zenoh |
+| `NROS_SUBSCRIBER_BUFFER_SIZE`      | `small` receive-class slot per subscriber in the zenoh shim; the executor arena reads the same name. (`ZPICO_SUBSCRIBER_BUFFER_SIZE` is a dead spelling — nothing reads it, issue 1181.) | `1024` | nros-rmw-zenoh |
 | `ZPICO_SUBSCRIBER_LARGE_SIZE`      | `large` size-class slot, for subscriptions whose type does not fit the small block | `16384` | nros-rmw-zenoh |
-| `ZPICO_MAX_LARGE_SUBSCRIBERS`      | How many `large`-class blocks this image reserves. **`0` is legal** (phase-403 W4): an image whose subscribed types all fit `ZPICO_SUBSCRIBER_BUFFER_SIZE` declares 0 and stops paying `RING_DEPTH x LARGE_SIZE` — 65,536 B at the defaults — for a class it never routes into. A hint no class can hold then fails `create_subscription` rather than dropping every sample. **DERIVED, on both lanes** — a Zephyr image gets it from Kconfig's `-1` sentinel, and since issue 1125 a cargo leaf gets it from `nros sync`'s gitignored `.cargo/nros-managed-env.toml`, joined over the types the leaf's own components subscribe to. Setting it here still wins. | `2` | nros-rmw-zenoh |
+| `ZPICO_SUBSCRIBER_SIZE_THRESHOLD`  | The small/large class split: a subscription whose `rx_buffer_hint` exceeds it is served from `large`. The cmake message-bound derivation assumes the shipped value (`NROS_MESSAGE_BOUNDS_DEFAULT_SMALL_CEILING`), so moving it can make a derived class count disagree with runtime routing, which surfaces as a failed `create_subscription`. | `2048` | nros-rmw-zenoh |
+| `ZPICO_PUBLISHER_TX_BUFFER_SIZE`   | Per-publisher TX arena for the zero-copy loan path; costs `ZPICO_MAX_PUBLISHERS` x this (issue 0813). | `1024` | nros-rmw-zenoh |
+| `ZPICO_MAX_LARGE_SUBSCRIBERS`      | How many `large`-class blocks this image reserves. **`0` is legal** (phase-403 W4): an image whose subscribed types all fit `NROS_SUBSCRIBER_BUFFER_SIZE` declares 0 and stops paying `RING_DEPTH x LARGE_SIZE` — 65,536 B at the defaults — for a class it never routes into. A hint no class can hold then fails `create_subscription` rather than dropping every sample. **DERIVED, on both lanes** — a Zephyr image gets it from Kconfig's `-1` sentinel, and since issue 1125 a cargo leaf gets it from `nros sync`'s gitignored `.cargo/nros-managed-env.toml`, joined over the types the leaf's own components subscribe to. Setting it here still wins. | `2` | nros-rmw-zenoh |
 | `ZPICO_SERVICE_BUFFER_SIZE`        | Per-service-server static buffer in zenoh shim         | `1024`           | nros-rmw-zenoh |
 | `ZPICO_GET_REPLY_BUF_SIZE`         | Stack buffer for service client replies                | `4096`           | zpico-sys      |
 | `ZPICO_GET_POLL_INTERVAL_MS`       | Single-threaded polling interval in `zenoh_shim_get()` | `10`             | zpico-sys      |
@@ -205,12 +207,7 @@ env or Kconfig knob. Changing them means editing that header.
 | `NROS_EXECUTOR_MAX_CBS`         | Max executor callback slots (compile-time fixed array size)                              | `4`     | nros-node   |
 | `NROS_EXECUTOR_ARENA_SIZE`      | Executor arena size in bytes (compile-time fixed array size)                             | `4096`  | nros-node   |
 | `NROS_SUBSCRIPTION_BUFFER_SIZE` | Default subscription/service buffer size (bytes)                                         | `1024`  | nros-node   |
-| `NROS_EXECUTOR_MAX_HANDLES`     | Max handles in a C API executor                                                          | `16`    | nros-c      |
-| `NROS_MAX_SUBSCRIPTIONS`        | Max subscriptions in a C API executor                                                    | `8`     | nros-c      |
-| `NROS_MAX_TIMERS`               | Max timers in a C API executor                                                           | `8`     | nros-c      |
-| `NROS_MAX_SERVICES`             | Max services in a C API executor                                                         | `4`     | nros-c      |
 | `NROS_LET_BUFFER_SIZE`          | Buffer size for LET semantics per handle                                                 | `512`   | nros-c      |
-| `NROS_MESSAGE_BUFFER_SIZE`      | Max buffer size for subscription/service data                                            | `4096`  | nros-c      |
 | `NROS_MAX_CONCURRENT_GOALS`     | Max concurrent goals per action server (compile-time constant, not env-var configurable) | `4`     | nros-c      |
 | `NROS_MAX_PARAMETERS`           | Max parameters in parameter server                                                       | `32`    | nros-params |
 | `NROS_MAX_PARAM_NAME_LEN`       | Max parameter name length                                                                | `64`    | nros-params |

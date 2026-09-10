@@ -399,6 +399,35 @@ config NROS_ZEPHYR_TASK_SLOTS
       these permanently. Total cost is
       NROS_ZEPHYR_TASK_SLOTS x NROS_ZEPHYR_TASK_STACK_SIZE.
 
+config NROS_ZEPHYR_MAX_TIERS
+    int "nano-ros Zephyr RT-tier thread slots"
+    default 4
+    range 1 64
+    help
+      NROS_ZEPHYR_MAX_TIERS in zephyr/nros_platform_zephyr_shims.c — how many
+      `[tiers.*]` threads `nros_zephyr_tier_task_create` can spawn from its
+      static pool. A tier past the pool fails to spawn and the image logs
+      "pool exhausted? CONFIG_NROS_ZEPHYR_MAX_TIERS". Total cost is
+      NROS_ZEPHYR_MAX_TIERS x NROS_ZEPHYR_TIER_STACK_SIZE, paid only by an
+      image that declares a tier: --gc-sections drops the pool from every
+      tierless image (issue 1131 measured 87 of 91 images carrying none).
+
+      The floor of 1 is the pool's own (issue 1015): zero would make the FIRST
+      tier's spawn fail. Before this symbol existed the C define had no
+      producer at all, so the diagnostic named a knob nobody could set
+      (phase-412).
+
+config NROS_ZEPHYR_TIER_STACK_SIZE
+    int "nano-ros Zephyr RT-tier thread stack size (bytes)"
+    default 16384
+    range 512 16777216
+    help
+      NROS_ZEPHYR_TIER_STACK_SIZE in zephyr/nros_platform_zephyr_shims.c — the
+      stack EVERY tier thread gets. The slots are sized at compile time, so a
+      tier's declared `stack_bytes` cannot resize its slot: a request above
+      this prints "raise CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE" and the tier runs
+      on the slot anyway (issue 1232 tracks honouring the declared size).
+
 config NROS_ZENOH_LEASE_MS
     int "zenoh-pico transport lease (ms)"
     default 10000

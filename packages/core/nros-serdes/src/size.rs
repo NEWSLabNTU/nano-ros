@@ -503,7 +503,7 @@ pub const fn buffer_fits<M: crate::schema::Message>(
 ///
 /// The VALUE behind [`bound_fits`]'s predicate. A subscription that knows its
 /// type's bound can be routed to a size class instead of forcing the GLOBAL
-/// buffer knob up: `ZPICO_SUBSCRIBER_BUFFER_SIZE` multiplies across
+/// buffer knob up: `NROS_SUBSCRIBER_BUFFER_SIZE` multiplies across
 /// `MAX_SUBSCRIBERS x RING_DEPTH`, so raising it from 1024 to 4096 for one
 /// 4 KiB topic costs 98,304 bytes, while the large class that topic belongs in
 /// is already reserved and empty.

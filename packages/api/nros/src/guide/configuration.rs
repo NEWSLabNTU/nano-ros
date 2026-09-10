@@ -25,7 +25,7 @@
 //! | `ZPICO_FRAG_MAX_SIZE` | Max reassembled message size | 65536 | 2048 |
 //! | `ZPICO_BATCH_UNICAST_SIZE` | Max unicast batch before fragmentation | 65536 | 1024 |
 //! | `ZPICO_BATCH_MULTICAST_SIZE` | Max multicast batch size | 8192 | 1024 |
-//! | `ZPICO_SUBSCRIBER_BUFFER_SIZE` | Per-subscriber buffer in zenoh shim | 1024 | 1024 |
+//! | `NROS_SUBSCRIBER_BUFFER_SIZE` | Per-subscriber buffer in zenoh shim | 1024 | 1024 |
 //! | `ZPICO_SERVICE_BUFFER_SIZE` | Per-service-server buffer in zenoh shim | 1024 | 1024 |
 //!
 //! **XRCE-DDS backend (`XRCE_*`):**
@@ -40,11 +40,6 @@
 //!
 //! | Variable | Description | Default |
 //! |----------|-------------|---------|
-//! | `NROS_EXECUTOR_MAX_HANDLES` | Max handles in C API executor | 16 |
-//! | `NROS_MAX_SUBSCRIPTIONS` | Max subscriptions | 8 |
-//! | `NROS_MAX_TIMERS` | Max timers | 8 |
-//! | `NROS_MAX_SERVICES` | Max services | 4 |
-//! | `NROS_MESSAGE_BUFFER_SIZE` | Max buffer for subscription/service data | 4096 |
 //! | `NROS_MAX_PARAMETERS` | Max parameters in parameter server | 32 |
 //!
 //! Example — increase zenoh defrag to 128 KB for large point clouds:

@@ -11,7 +11,7 @@ layer to be delivered intact:
 |-------|---------|---------------|
 | Defragmentation | `ZPICO_FRAG_MAX_SIZE` | 65536 |
 | Batch size | `ZPICO_BATCH_UNICAST_SIZE` | 65536 |
-| Shim buffer | `ZPICO_SUBSCRIBER_BUFFER_SIZE` | 1024 |
+| Shim buffer | `NROS_SUBSCRIBER_BUFFER_SIZE` | 1024 |
 
 For large messages, increase the transport limits before building:
 

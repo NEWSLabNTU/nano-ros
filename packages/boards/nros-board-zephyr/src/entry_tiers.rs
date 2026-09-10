@@ -218,7 +218,7 @@ where
         // to a task; reclaim + drop it here.
         drop(unsafe { Box::from_raw(raw) });
         ::log::error!(
-            "nros: failed to spawn tier `{}` (pool exhausted? NROS_ZEPHYR_MAX_TIERS)",
+            "nros: failed to spawn tier `{}` (pool exhausted? CONFIG_NROS_ZEPHYR_MAX_TIERS)",
             tier.name
         );
         return Err(RuntimeError::Spin);

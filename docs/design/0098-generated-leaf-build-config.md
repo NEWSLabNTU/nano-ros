@@ -30,7 +30,7 @@ files, the 70 Rust example manifests, the 14 board descriptors and the 20
 | C | `NROS_PLATFORM_FREERTOS_SRC`, `NROS_PLATFORM_CFFI_INCLUDE` | leaf `[env]` | 6 | in-tree paths, already exported by `just/sdk-env.just` | provisioning environment, never a leaf |
 | D | `NROS_HEAP_SIZE`, `ZPICO_SUBSCRIBER_LARGE_SIZE`, `NROS_SMOLTCP_MAX_UDP_SOCKETS`, `ZPICO_NO_SMOLTCP`, `ESP_LOG` | leaf `[env]`, `fixtures.toml` | 2–3 each | hardware budgets, netstack choice | board descriptor `[knobs]` (RFC-0049 duty rule) |
 | E | `ZPICO_MAX_SUBSCRIBERS/QUERYABLES`, `NROS_EXECUTOR_ARENA_SIZE`, `NROS_XRCE_MAX_*` | leaf `[env]`, `fixtures.toml` | 2 + 7 | entity-derived pools | derived by `nros sync` (issue 0827's sidecar, already) |
-| F | `ip`, `gateway`, `netmask`, `locator`, `domain_id`, `rmw`; `NROS_LOCAL_IPV4`, `NROS_LINK_IP` | `Cargo.toml [package.metadata.nros.deploy.<board>]`, leaf `[env]` | 24 / 6 / 3 | deployment identity | `system.toml` |
+| F | `ip`, `gateway`, `netmask`, `locator`, `domain_id`, `rmw`; `NROS_LINK_IP` (the six `NROS_LOCAL_IPV4` rows were read by nothing since phase-169 and are deleted, phase-412) | `Cargo.toml [package.metadata.nros.deploy.<board>]`, leaf `[env]` | 24 / 0 / 3 | deployment identity | `system.toml` |
 | G | `deploy`, node `class/name/default_namespace`, `component.entities` | `Cargo.toml [package.metadata.nros.*]` | 75 / 72 / — | board choice, node declaration | `system.toml` `[image.*] board`, `[[component]]` |
 | H | in-repo `[patch.crates-io]` rows | leaf config, `# nros-managed` | 47 | repo layout | generated (already) |
 | I | `include = [...]` | leaf config | 47 | an artifact of splitting one file | gone |
