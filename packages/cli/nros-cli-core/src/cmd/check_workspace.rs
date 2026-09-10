@@ -460,42 +460,74 @@ fn read_board_framework(board_cargo_toml: &Path) -> Framework {
     }
 }
 
-/// Parse `[package.metadata.nros.node] dispatch = "<inline|deferred|from_isr>"`.
+/// Parse a Node pkg's dispatch strategy, `"<inline|deferred|from_isr>"`.
 /// Missing key → `Inline` (matches `Node::DISPATCH` default). Returns
 /// `Err` on an unknown string so the lint surfaces a typo instead of
 /// silently defaulting.
+///
+/// Two spellings, one answer (issue 1278, phase-445 W3b): a package that
+/// states its node in a `system.toml` beside its manifest (RFC-0098 D3/D8)
+/// carries the strategy as `[[component]] dispatch`, read through
+/// `nros_orchestration_ir::leaf_system` — the one reader; a manifest still on
+/// `[package.metadata.nros.node] dispatch` is read as before. A pkg with
+/// neither is not a Node pkg.
 fn read_node_dispatch_strategy(node_cargo_toml: &Path) -> Result<Option<DispatchStrategy>> {
-    let Ok(raw) = fs::read_to_string(node_cargo_toml) else {
-        return Ok(None);
+    let pkg_dir = node_cargo_toml.parent().unwrap_or(Path::new("."));
+    let (ds_str, origin, key): (Option<String>, &Path, &str) = if pkg_dir
+        .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+        .is_file()
+    {
+        let Some(leaf) =
+            nros_orchestration_ir::leaf_system::read(pkg_dir).map_err(|e| eyre::eyre!(e))?
+        else {
+            return Ok(None);
+        };
+        if leaf.is_fallback() || leaf.components.is_empty() {
+            return Ok(None);
+        }
+        // A leaf declares ONE node here; with several, the first stated
+        // strategy stands for the package (the manifest could only ever
+        // spell one).
+        let ds = leaf.components.iter().find_map(|c| c.dispatch.clone());
+        (ds, pkg_dir, "system.toml [[component]] dispatch")
+    } else {
+        let Ok(raw) = fs::read_to_string(node_cargo_toml) else {
+            return Ok(None);
+        };
+        let Ok(value) = toml::from_str::<toml::Value>(&raw) else {
+            return Ok(None);
+        };
+        // Only treat this pkg as a Node pkg if it carries
+        // `[package.metadata.nros.node]`.
+        let node_tbl = value
+            .get("package")
+            .and_then(|p| p.get("metadata"))
+            .and_then(|m| m.get("nros"))
+            .and_then(|n| n.get("node"));
+        let Some(node_tbl) = node_tbl else {
+            return Ok(None);
+        };
+        let ds = node_tbl
+            .get("dispatch")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        (ds, node_cargo_toml, "[package.metadata.nros.node] dispatch")
     };
-    let Ok(value) = toml::from_str::<toml::Value>(&raw) else {
-        return Ok(None);
-    };
-    // Only treat this pkg as a Node pkg if it carries
-    // `[package.metadata.nros.node]`.
-    let node_tbl = value
-        .get("package")
-        .and_then(|p| p.get("metadata"))
-        .and_then(|m| m.get("nros"))
-        .and_then(|n| n.get("node"));
-    let Some(node_tbl) = node_tbl else {
-        return Ok(None);
-    };
-    let Some(ds_str) = node_tbl.get("dispatch").and_then(|v| v.as_str()) else {
+    let Some(ds_str) = ds_str else {
         // Node pkg w/o explicit dispatch → mirror the trait const default.
         return Ok(Some(DispatchStrategy::Inline));
     };
-    match ds_str {
+    match ds_str.as_str() {
         "inline" => Ok(Some(DispatchStrategy::Inline)),
         "deferred" => Ok(Some(DispatchStrategy::Deferred)),
         // Accept both kebab + snake for the ISR variant; mirror the
         // platform enum's Rust name (`FromIsr`).
         "from_isr" | "from-isr" => Ok(Some(DispatchStrategy::FromIsr)),
         other => bail!(
-            "{}: [package.metadata.nros.node] dispatch = \"{}\" — unknown \
+            "{}: {key} = \"{}\" — unknown \
              dispatch strategy (expected one of: \"inline\", \"deferred\", \
              \"from_isr\")",
-            node_cargo_toml.display(),
+            origin.display(),
             other
         ),
     }
@@ -1087,6 +1119,69 @@ mod tests {
         let report = check_workspace(&root).expect("(rtic, deferred) is an allowed matrix cell");
         // 3 pkg dirs visited: board, node, entry — none are bringup.
         assert_eq!(report.pkgs_visited, 3);
+    }
+
+    /// Issue 1278 — a Node pkg that states its node in a `system.toml`
+    /// (RFC-0098 D3/D8) carries `dispatch` on its `[[component]]`, and the
+    /// matrix reads it exactly as it read the manifest key.
+    fn write_node_pkg_system_toml(root: &Path, dir: &str, dispatch: Option<&str>) {
+        let p = root.join(dir);
+        fs::create_dir_all(p.join("src")).unwrap();
+        fs::write(p.join("src/lib.rs"), "// stub\n").unwrap();
+        fs::write(
+            p.join("Cargo.toml"),
+            format!("[package]\nname=\"{dir}\"\nversion=\"0.1.0\"\n"),
+        )
+        .unwrap();
+        let dispatch_line = dispatch
+            .map(|d| format!("dispatch = \"{d}\"\n"))
+            .unwrap_or_default();
+        fs::write(
+            p.join("system.toml"),
+            format!(
+                "[system]\nname = \"{dir}\"\n\n[[component]]\npkg = \"{dir}\"\n\
+                 class = \"{dir}::Stub\"\nname = \"stub\"\n{dispatch_line}\n\
+                 [image.native]\nboard = \"native\"\n"
+            ),
+        )
+        .unwrap();
+    }
+
+    /// The strategy reads the same from both spellings — the matrix consumes
+    /// `read_node_dispatch_strategy`'s answer and nothing else, so equal
+    /// answers are equal reports. (A single-package leaf is never a path-dep
+    /// of another entry, so the workspace walk has no shape that exercises
+    /// this end-to-end; a `system.toml` beside a MEMBER's manifest is refused
+    /// as stray, which is correct.)
+    #[test]
+    fn system_toml_dispatch_reads_like_the_manifest_key() {
+        let root = temp_root("d1_system_toml");
+        for (dir, ds, want) in [
+            ("inline", Some("inline"), DispatchStrategy::Inline),
+            ("deferred", Some("deferred"), DispatchStrategy::Deferred),
+            ("isr", Some("from_isr"), DispatchStrategy::FromIsr),
+            ("default", None, DispatchStrategy::Inline),
+        ] {
+            write_node_pkg_system_toml(&root, &format!("st-{dir}"), ds);
+            write_node_pkg(&root, &format!("mf-{dir}"), ds);
+            let st = read_node_dispatch_strategy(&root.join(format!("st-{dir}/Cargo.toml")))
+                .unwrap()
+                .expect("a [[component]] declares a node");
+            let mf = read_node_dispatch_strategy(&root.join(format!("mf-{dir}/Cargo.toml")))
+                .unwrap()
+                .expect("[package.metadata.nros.node] declares a node");
+            assert_eq!(st, want, "{dir}: system.toml");
+            assert_eq!(mf, want, "{dir}: manifest");
+        }
+        // A typo is refused naming the file and the key it came from.
+        write_node_pkg_system_toml(&root, "st-typo", Some("deffered"));
+        let msg = read_node_dispatch_strategy(&root.join("st-typo/Cargo.toml"))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            msg.contains("[[component]] dispatch") && msg.contains("deffered"),
+            "diag: {msg}"
+        );
     }
 
     #[test]

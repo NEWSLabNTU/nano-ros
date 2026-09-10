@@ -264,13 +264,20 @@ impl PackageMetadataNros {
 /// `[package.metadata.nros.entry]` — Phase 212.N.7.
 ///
 /// Marks an Entry pkg (the firmware bin) so the planner can route it to the
-/// right `[deploy.<target>]` block. Today the only field is `deploy =
-/// "<board>"` (the deploy-target key in the workspace deploy map). The
-/// reader keeps this strict so a typo on `deploy =` surfaces immediately.
+/// right `[deploy.<target>]` block. The reader keeps this strict
+/// (`deny_unknown_fields`) so a typo surfaces immediately.
+///
+/// phase-445 W3b (RFC-0098 D5) — `deploy` is OPTIONAL now. A single-package
+/// leaf names its board in `system.toml` (`[image.<id>] board`), and keeps this
+/// table only for the build facts that are not deployment: `node_pkgs`,
+/// `max_callbacks`, `max_sched_contexts` (the RTIC leaves). Workspace entries
+/// still on the retiring spelling carry `deploy`; an empty string = absent.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EntryMetadata {
-    /// Board / deploy-target key (e.g. `"freertos"`, `"zephyr"`).
+    /// Board / deploy-target key (e.g. `"freertos"`, `"zephyr"`) — the
+    /// retiring spelling; empty when the leaf's `system.toml` names the board.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub deploy: String,
     /// phase-271 (issue #110) — per-entry executor callback-table size. The
     /// `nros::main!` macro reads this to open the executor sized to the entry's
@@ -1368,6 +1375,14 @@ pub struct SystemComponentEntry {
     /// it nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entities: Option<Vec<String>>,
+    /// Issue 1278 (phase-445 W3b) — the component's dispatch strategy,
+    /// `"inline"` | `"deferred"` | `"from_isr"` (phase-216 A.5), replacing
+    /// `[package.metadata.nros.node] dispatch`. Its reader is `nros check`'s
+    /// framework × dispatch lint (`check_workspace::read_node_dispatch_strategy`),
+    /// through `nros_orchestration_ir::leaf_system`. `None` = the trait default
+    /// (`Inline`), exactly as an absent manifest key was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dispatch: Option<String>,
 }
 
 /// `[deploy.<target>]` block.
