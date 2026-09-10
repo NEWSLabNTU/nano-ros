@@ -146,8 +146,14 @@ pub fn render(spec: &CargoConfigSpec, config_path: &Path) -> Result<String, Stri
 
     // ---- [build]: the triple and the per-image target dir -------------------
     let build = table(&mut doc, "build");
+    // A stated target may be a PATH to the board's own target spec (the
+    // nuttx-riscv board, phase-445); the triple it names is the file stem, and
+    // that is what the pinned triple is compared against. The path itself is
+    // written through unchanged — cargo needs the file, not the name.
     match (build.get("target").and_then(Item::as_str), &spec.target) {
-        (Some(stated), Some(pinned)) if stated != pinned => {
+        (Some(stated), Some(pinned))
+            if crate::orchestration::board_descriptor::triple_of_build_target(stated) != pinned =>
+        {
             return Err(format!(
                 "board `{}` states two triples: `[build] target = \"{stated}\"` in its \
                  `cargo_config` and `target = \"{pinned}\"`. One board has one triple; fix \
@@ -414,6 +420,30 @@ build-std = ["core", "alloc"]
         s.target = Some("thumbv7m-none-eabi".into());
         let v = parsed(&render(&s, &cfg_path()).unwrap());
         assert_eq!(v["build"]["target"].as_str(), Some("thumbv7m-none-eabi"));
+    }
+
+    #[test]
+    fn a_target_spec_path_is_written_absolute_and_matches_its_stem() {
+        // The nuttx-riscv board names its own spec; `${workspace}` outside
+        // `[env]` has no config-relative mechanism, so it is written absolute,
+        // and the pinned triple (the stem) must not read as a second triple.
+        let mut s = spec();
+        s.cargo_config = Some(
+            "[build]\ntarget = \"${workspace}/packages/boards/b/riscv32imac-unknown-nuttx-elf.json\"\n\
+             [target.riscv32imac-unknown-nuttx-elf]\nlinker = \"riscv-none-elf-gcc\"\n"
+                .into(),
+        );
+        s.target = Some("riscv32imac-unknown-nuttx-elf".into());
+        let v = parsed(&render(&s, &cfg_path()).expect("stem matches the pinned triple"));
+        assert_eq!(
+            v["build"]["target"].as_str(),
+            Some("/nros/packages/boards/b/riscv32imac-unknown-nuttx-elf.json")
+        );
+        s.target = Some("thumbv7m-none-eabi".into());
+        assert!(
+            render(&s, &cfg_path()).is_err(),
+            "a different stem still disagrees"
+        );
     }
 
     #[test]
