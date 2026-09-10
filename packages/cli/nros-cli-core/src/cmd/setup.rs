@@ -348,7 +348,11 @@ pub fn run(args: Args) -> Result<()> {
                 let disp =
                     provision_source(name, src, &workspace, args.dry_run, shallow_override(&args))
                         .wrap_err_with(|| format!("provision source {name}"))?;
-                eprintln!("  {:<22} {}", name, describe_source(src, &disp));
+                eprintln!(
+                    "  {:<22} {}",
+                    name,
+                    describe_source(name, src, &workspace, &disp)
+                );
                 if matches!(disp, SourceDisposition::Provisioned) {
                     installed = true;
                 }
@@ -902,7 +906,7 @@ fn provision_named_sources(
             .wrap_err_with(|| format!("provision source {name}"))?;
         eprintln!(
             "nros setup --source {name}: {}",
-            describe_source(src, &disp)
+            describe_source(name, src, &workspace, &disp)
         );
     }
     Ok(())
@@ -916,36 +920,12 @@ fn source_present(
     src: &crate::orchestration::sdk_index::SourcePackage,
     workspace: &Path,
 ) -> bool {
-    source_dir_of(name, src, workspace)
+    crate::orchestration::sdk_store::source_dir_of(name, src, workspace)
         .and_then(|d| std::fs::read_dir(d).ok())
         .map(|mut d| d.next().is_some())
         .unwrap_or(false)
 }
 
-/// The directory a `[source.*]` is provisioned into — phase-440, RFC-0095
-/// D1/D2. ONE derivation, so "where is it?" has one answer for the installer,
-/// the presence probe and `nros sdk-path --source`.
-///
-/// `location = "store"` derives `$NROS_STORE/sources/<name>/<version>` from the
-/// index rather than reading a path out of it; `workspace` (the default) keeps
-/// the historical workspace-relative `dest`, so every existing entry means what
-/// it meant.
-pub(crate) fn source_dir_of(
-    name: &str,
-    src: &crate::orchestration::sdk_index::SourcePackage,
-    workspace: &Path,
-) -> Option<std::path::PathBuf> {
-    use crate::orchestration::sdk_index::SourceLocation;
-    match src.location {
-        SourceLocation::Store => Some(
-            crate::orchestration::store::root()
-                .join("sources")
-                .join(name)
-                .join(&src.version),
-        ),
-        SourceLocation::Workspace => src.dest.as_deref().map(|d| workspace.join(d)),
-    }
-}
 
 /// RFC-0097 D12 — what a TARGET BUILD will need that no board provisions.
 ///
@@ -1103,7 +1083,9 @@ pub fn ensure_tools(board: &str, workspace: Option<&Path>) -> Result<Vec<PathBuf
                     Ok(SourceDisposition::Provisioned) => {
                         eprintln!(
                             "nros: provisioned source {name} → {}",
-                            src.dest.as_deref().unwrap_or("-")
+                            crate::orchestration::sdk_store::source_dir_of(name, src, &ws)
+                                .map(|d| d.display().to_string())
+                                .unwrap_or_else(|| "<no location>".to_string())
                         );
                         installed = true;
                     }
@@ -1448,8 +1430,16 @@ fn index_workspace(index: &Path) -> PathBuf {
 }
 
 /// One-line description of a source's provisioning outcome (Phase 195.B).
+///
+/// Takes `name` and `workspace` so the destination can come from
+/// `source_dir_of` — the same derivation the installer uses. Reading `dest`
+/// directly printed `-` for a `location = "store"` source, which has no `dest`
+/// by construction: the line said the tool would provision rosidl to nowhere
+/// (issue 1276, the display half).
 fn describe_source(
+    name: &str,
     src: &crate::orchestration::sdk_index::SourcePackage,
+    workspace: &Path,
     disp: &SourceDisposition,
 ) -> String {
     use crate::orchestration::sdk_index::SourceProvision;
@@ -1470,11 +1460,13 @@ fn describe_source(
         SourceDisposition::NoFetch => "no fetch step",
         SourceDisposition::Planned => "would provision (--dry-run)",
     };
-    format!(
-        "source {} — {mode} → {} [{outcome}]",
-        src.version,
-        src.dest.as_deref().unwrap_or("-")
-    )
+    let where_ = crate::orchestration::sdk_store::source_dir_of(name, src, workspace)
+        .map(|d| d.display().to_string())
+        // Only a malformed entry reaches this, and `SdkIndex::validate` refuses
+        // that shape — but a display helper must not be the thing that decides
+        // a run fails.
+        .unwrap_or_else(|| "<no location>".to_string());
+    format!("source {} — {mode} → {where_} [{outcome}]", src.version)
 }
 
 /// Names of the `[tool.*]` packages in `packages` that this host will BUILD
