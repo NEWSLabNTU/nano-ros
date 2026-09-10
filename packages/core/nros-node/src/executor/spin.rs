@@ -4115,6 +4115,7 @@ impl<'s> Executor<'s> {
             // so on a target where a return code is all you get, arena
             // exhaustion is indistinguishable from a message that did not fit.
             super::arena::report_arena_exhausted(
+                core::any::type_name::<T>(),
                 new_used - self.arena.len(),
                 self.arena_used,
                 self.arena.len(),
@@ -4149,6 +4150,7 @@ impl<'s> Executor<'s> {
             // the half carrying buffered subscriptions and action entries,
             // which is what an island image actually allocates.
             super::arena::report_arena_exhausted(
+                core::any::type_name::<T>(),
                 new_used - self.arena.len(),
                 self.arena_used,
                 self.arena.len(),

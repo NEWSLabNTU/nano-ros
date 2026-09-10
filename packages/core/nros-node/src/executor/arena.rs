@@ -636,7 +636,17 @@ pub(crate) fn maybe_report_arena_headroom(used: usize, capacity: usize) {
 /// `NodeError::BufferTooSmall` is the same code a dozen other paths return, so
 /// on a target where a return code is all you get, exhaustion here is
 /// indistinguishable from a message that did not fit a receive buffer. This
-/// names the two knobs that actually govern it and the numbers involved.
+/// names the entity that failed, the numbers involved, and the knobs that
+/// actually govern it.
+///
+/// `NROS_PUBSUB_QOS_DEPTH` comes FIRST, with the depth this image was budgeted
+/// for. Since phase-412 W3b the derived arena prices every subscription at that
+/// depth, so a subscription created deeper than it is the ordinary way a
+/// derived arena runs out — and raising the depth re-derives the arena, where a
+/// hand-set `NROS_EXECUTOR_ARENA_SIZE` goes stale the next time any other term
+/// moves (the rationale #775 gave for the depth knob). The line named only the
+/// size and the action-client count until then, i.e. not the knob the likeliest
+/// failure needs.
 ///
 /// The counterpart to [`report_arena_headroom`], and the reason lowering
 /// `NROS_EXECUTOR_ACTION_CLIENTS` is safe to suggest: too small fails at
@@ -645,18 +655,77 @@ pub(crate) fn maybe_report_arena_headroom(used: usize, capacity: usize) {
 /// One-shot for the same reason the advisory is — the numbers do not change
 /// between registrations, and a per-registration line on an RTOS target is a
 /// flood (issue 0371's shape). `nros_log`, never stdio (issue 0589), and inside
-/// the 256-byte format budget that truncated the first advisory.
+/// the 256-byte format budget that truncated the first advisory — at the widest
+/// realistic values too (10-digit counts, a 32-byte entity, a 5-digit depth),
+/// which
+/// `executor::tests::an_exhausted_arena_decodes_to_the_knob_an_operator_must_set`
+/// derives from the real line and holds under the buffer.
 #[cold]
-pub(crate) fn report_arena_exhausted(want: usize, used: usize, capacity: usize) {
+pub(crate) fn report_arena_exhausted(
+    entity: &'static str,
+    want: usize,
+    used: usize,
+    capacity: usize,
+) {
     if ARENA_EXHAUSTED_REPORTED.swap(true, portable_atomic::Ordering::Relaxed) {
         return;
     }
+    let entity = entity_label(entity);
+    let depth = crate::config::arena_model::BUDGETED_QOS_DEPTH;
     nros_log::log_error!(
         nros_log::get_logger("nros"),
-        "arena exhausted: {want} more bytes needed, {used}/{capacity} in use. \
-         Raise NROS_EXECUTOR_ARENA_SIZE, or NROS_EXECUTOR_ACTION_CLIENTS if \
-         this image registers action clients. issue 0900"
+        "arena exhausted at {entity}: {want} B short, {used}/{capacity} used. \
+         Raise NROS_PUBSUB_QOS_DEPTH (budgeted {depth}) if a sub is deeper, \
+         else NROS_EXECUTOR_ARENA_SIZE or NROS_EXECUTOR_ACTION_CLIENTS \
+         (Zephyr: CONFIG_*)."
     );
+}
+
+/// The registering entity, short enough for the log budget.
+///
+/// From `core::any::type_name`, whose full spelling carries every generic
+/// argument and runs past 150 bytes. The generics go, and so does all but the
+/// last TWO path segments: most arena entries are a module's `Entry`, so the
+/// last segment alone would name nothing (`sub_buffered::Entry`, not `Entry`).
+/// Capped at 32 bytes; type names are ASCII, so the cut is on a char boundary.
+pub(crate) fn entity_label(full: &'static str) -> &'static str {
+    let path = full.split('<').next().unwrap_or(full);
+    let label = match path.rmatch_indices("::").nth(1) {
+        Some((i, _)) => &path[i + 2..],
+        None => path,
+    };
+    let cut = label.len().min(32);
+    label.get(..cut).unwrap_or(label)
+}
+
+#[cfg(test)]
+mod entity_label_tests {
+    use super::entity_label;
+
+    mod sub_buffered {
+        pub struct Entry<T>(pub T);
+    }
+
+    /// The shape nearly every arena entry has: a module's `Entry`, generic.
+    /// The last segment alone is `Entry` for all of them, which names nothing.
+    #[test]
+    fn a_module_entry_keeps_its_module_and_drops_its_generics() {
+        let full = core::any::type_name::<sub_buffered::Entry<[u8; 1024]>>();
+        assert!(full.contains('<'), "precondition: a generic name: {full}");
+        assert_eq!(entity_label(full), "sub_buffered::Entry");
+    }
+
+    #[test]
+    fn a_primitive_is_itself() {
+        assert_eq!(entity_label(core::any::type_name::<u8>()), "u8");
+    }
+
+    #[test]
+    fn a_long_label_is_capped_for_the_log_budget() {
+        let label = entity_label("a::a_module_name_well_past_the_cap::AnEntryTypeName<X>");
+        assert_eq!(label.len(), 32, "{label}");
+        assert!(label.starts_with("a_module_name_well_past_the_cap"));
+    }
 }
 
 /// One-shot latch for [`report_arena_exhausted`]. A static for the reason
