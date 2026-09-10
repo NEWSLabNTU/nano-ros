@@ -105,6 +105,27 @@ impl PlatformKind {
             PlatformKind::OrinSpe => "orin-spe",
         }
     }
+
+    /// The C/C++ DEPLOY token this platform is built with — the
+    /// `NANO_ROS_PLATFORM` module axis (`cmake/platform/nano-ros-<x>.cmake`,
+    /// with the host spelled `native`), which is a platform FAMILY, not a
+    /// board: both ThreadX platforms are `threadx`, the board beside it picks
+    /// which (RFC-0093 §3).
+    ///
+    /// phase-445 W3: a C/C++ leaf that states its board in `system.toml`
+    /// no longer states this token at all; `nros ws leaf-system` derives it
+    /// here. `None` for a platform with no C/C++ platform module.
+    pub fn cmake_deploy(self) -> Option<&'static str> {
+        Some(match self {
+            PlatformKind::Posix => "native",
+            PlatformKind::Freertos => "freertos",
+            PlatformKind::BareMetal => "baremetal",
+            PlatformKind::Nuttx => "nuttx",
+            PlatformKind::Zephyr => "zephyr",
+            PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => "threadx",
+            PlatformKind::Esp32 | PlatformKind::Stm32 | PlatformKind::OrinSpe => return None,
+        })
+    }
 }
 
 /// Rust toolchain a generated package pins.

@@ -1187,11 +1187,16 @@ fn discover_cargo_component_metadata(
     // metadata harness path-depends on this crate and names its type through
     // it, so a `talker_pkg` / `talker-pkg-component` divergence is load-bearing.
     let crate_name = package.name.replace('-', "_");
-    let Some(metadata) = package.metadata else {
-        return Ok(Vec::new());
-    };
-    let Some(nros) = metadata.nros else {
-        return Ok(Vec::new());
+    let bins: Vec<String> = envelope
+        .bin
+        .iter()
+        .flat_map(|b| b.iter())
+        .filter_map(|b| b.name.clone())
+        .collect();
+    let Some(nros) = package.metadata.and_then(|m| m.nros) else {
+        // phase-445 W3 — no manifest tables at all: a converted single-package
+        // leaf declares its node in the `system.toml` beside the manifest.
+        return leaf_system_summaries(root, &pkg_name, &crate_name, &bins, &cargo_toml);
     };
     // Mirrors `nros_config::normalise_node_alias`: `node` is the post-N.12
     // canonical spelling, `component` is the deprecated alias. We accept
@@ -1214,6 +1219,11 @@ fn discover_cargo_component_metadata(
     // Entry pkg there. Verified across the tree when this landed.
     let deploy_bound = nros.deploy_bound();
     let single = nros.node.as_ref().or(nros.component.as_ref());
+    if single.is_none() && nros.nodes.is_empty() && nros.components.is_empty() {
+        // Tables, but none declaring a node (an `[entry]` table carrying only
+        // `max_callbacks`, say): the node may still be in `system.toml`.
+        return leaf_system_summaries(root, &pkg_name, &crate_name, &bins, &cargo_toml);
+    }
     let multi: Vec<(String, &ComponentMetadata)> = if !nros.nodes.is_empty() {
         nros.nodes.iter().map(|(k, v)| (k.clone(), v)).collect()
     } else {
@@ -1222,13 +1232,6 @@ fn discover_cargo_component_metadata(
             .map(|(k, v)| (k.clone(), v))
             .collect()
     };
-
-    let bins: Vec<String> = envelope
-        .bin
-        .iter()
-        .flat_map(|b| b.iter())
-        .filter_map(|b| b.name.clone())
-        .collect();
 
     let mut out = Vec::new();
     if let Some(component) = single {
@@ -1254,6 +1257,52 @@ fn discover_cargo_component_metadata(
         ));
     }
     Ok(out)
+}
+
+/// phase-445 W3 (RFC-0098 D3/D8) — a single-package leaf declares its node in
+/// the `system.toml` beside its manifest, as `[[component]]` rows, instead of
+/// `[package.metadata.nros.node]`. Such a leaf is deploy-bound by definition
+/// (its `[image.<id>]` names the board it is built for), exactly like the
+/// `[entry]`-carrying manifest it replaces. Rows whose `pkg` names another
+/// package are not this package's declaration and are skipped.
+///
+/// Read through `nros_orchestration_ir::leaf_system`, the one reader; its
+/// manifest fallback is ignored here because serde already read those tables
+/// above, and a leaf carrying both spellings is refused by the reader.
+fn leaf_system_summaries(
+    root: &Path,
+    pkg_name: &str,
+    crate_name: &str,
+    bins: &[String],
+    cargo_toml: &Path,
+) -> Result<Vec<CargoComponentSummary>> {
+    let Some(decl) = nros_orchestration_ir::leaf_system::read(root).map_err(|e| eyre::eyre!(e))?
+    else {
+        return Ok(Vec::new());
+    };
+    if decl.is_fallback() {
+        return Ok(Vec::new());
+    }
+    let rows: Vec<_> = decl
+        .components
+        .iter()
+        .filter(|c| c.pkg.as_deref().is_none_or(|p| p == pkg_name))
+        .collect();
+    let keyed = rows.len() > 1;
+    Ok(rows
+        .into_iter()
+        .map(|c| {
+            let component = ComponentMetadata {
+                class: c.class.clone(),
+                name: c.name.clone(),
+                ..ComponentMetadata::default()
+            };
+            let key = if keyed { c.name.as_deref() } else { None };
+            synthesise_summary(
+                pkg_name, crate_name, true, key, &component, bins, cargo_toml,
+            )
+        })
+        .collect())
 }
 
 /// Build a [`CargoComponentSummary`] for one `[component]` / `[node]`

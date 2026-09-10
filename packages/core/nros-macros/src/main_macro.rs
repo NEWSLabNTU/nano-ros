@@ -475,20 +475,37 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // (form 1). When the user passes `board = X` directly we have no
     // deploy string and default to the `OwnedSpin` framework — RTIC
     // requires the `deploy = "rtic-mps2-an385"` opt-in for now.
-    let (board_path, deploy_for_framework): (SynPath, Option<String>) = match &args.board {
-        Some(p) => (p.clone(), None),
+    //
+    // phase-445 W3 (RFC-0098 D3/D5) — the board, RMW and network identity come
+    // from the ONE leaf reader, `nros_orchestration_ir::leaf_system`: the leaf's
+    // `system.toml` (`[image.<id>] board`), else the retiring
+    // `[package.metadata.nros.{entry,deploy.*}]` keys. This macro used to walk
+    // those manifest tables itself, in three places.
+    let (board_path, deploy_for_framework, leaf_decl): (
+        SynPath,
+        Option<String>,
+        Option<nros_orchestration_ir::leaf_system::LeafSystem>,
+    ) = match &args.board {
+        Some(p) => (p.clone(), None, None),
         None => {
-            let cargo_toml = manifest_dir.join("Cargo.toml");
-            tracked.push(cargo_toml.clone());
-            let deploy = read_entry_deploy(&cargo_toml).map_err(|e| {
+            tracked.push(manifest_dir.join("Cargo.toml"));
+            let leaf = nros_orchestration_ir::leaf_system::read(&manifest_dir)
+                .map_err(|e| syn::Error::new(Span::call_site(), format!("nros::main!: {e}")))?;
+            if let Some(l) = &leaf {
+                tracked.push(l.origin_path().to_path_buf());
+            }
+            let deploy = leaf.as_ref().and_then(|l| l.board.clone()).ok_or_else(|| {
                 syn::Error::new(
                     Span::call_site(),
                     format!(
-                        "nros::main!: failed to read `[package.metadata.nros.entry] deploy` \
-                         from `{}`: {e}\n  Hint: add `[package.metadata.nros.entry] deploy = \
-                         \"<board>\"` (e.g. `\"native\"`, `\"freertos\"`, `\"zephyr\"`) \
-                         to your Cargo.toml, or pass `board = MyBoard` to the macro.",
-                        cargo_toml.display()
+                        "nros::main!: `{}` declares no board.\n  Hint: write `{}` with \
+                         `[image.<id>] board = \"<board>\"` (e.g. `\"native\"`, \
+                         `\"freertos\"`, `\"zephyr\"`; RFC-0098 D3), or pass \
+                         `board = MyBoard` to the macro.",
+                        manifest_dir.display(),
+                        manifest_dir
+                            .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+                            .display()
                     ),
                 )
             })?;
@@ -496,15 +513,17 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                 syn::Error::new(
                     Span::call_site(),
                     format!(
-                        "nros::main!: unknown board `{deploy}` in \
-                         `[package.metadata.nros.entry] deploy`. \
+                        "nros::main!: unknown board `{deploy}` (from `{}`). \
                          Known boards: {}.\n  Pass `board = <YourBoardZst>` explicitly \
                          if your board crate is not in the default table.",
+                        leaf.as_ref()
+                            .map(|l| l.origin_path().display().to_string())
+                            .unwrap_or_default(),
                         known_boards_csv()
                     ),
                 )
             })?;
-            (resolved, Some(deploy))
+            (resolved, Some(deploy), leaf)
         }
     };
     let framework = match deploy_for_framework.as_deref() {
@@ -1206,13 +1225,14 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // per-tier spin. Single-tier / no tiers keeps the unchanged
     // `BoardEntry::run` path (`setup` owns the bounded hosted spin) — so the
     // emitted TU is byte-identical to pre-228 for every current example.
-    // Issue #48 cause 1 — bake the deploy overlay from
-    // `[package.metadata.nros.deploy.<board>]`. Only Form 1 (deploy key present)
-    // has a board key to read; Form 2 (explicit `board = X`) gets an all-`None`
+    // Issue #48 cause 1 — bake the deploy overlay from the leaf's deployment
+    // identity (RFC-0098 D5: `system.toml`, else the retiring
+    // `[package.metadata.nros.deploy.<board>]`). Only Form 1 (board read from
+    // the leaf) has one; Form 2 (explicit `board = X`) gets an all-`None`
     // overlay, so `run_with_deploy` then behaves exactly like `run`.
-    let mut deploy_overlay_lit = match deploy_for_framework.as_deref() {
-        Some(board_key) => read_deploy_overlay(&manifest_dir.join("Cargo.toml"), board_key),
-        None => DeployOverlayLit::default(),
+    let mut deploy_overlay_lit = match (&deploy_for_framework, &leaf_decl) {
+        (Some(_), Some(leaf)) => overlay_from_leaf(leaf),
+        _ => DeployOverlayLit::default(),
     };
     // Issue #98 — a single-node launch names the primary session (the ROS graph
     // node name) after that node, instead of the board default `"node"`. With
@@ -1240,9 +1260,12 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // `Transport(ConnectionFailed)` (NoBackend). The entry deps the concrete
     // backend under its `rmw-<x>` feature (C5b), keeping the crate + this call
     // resolvable; unknown rmw names emit nothing (data-driven fallbacks).
+    // The RMW is the leaf's (RFC-0098 D5 — `system.toml`'s image/system `rmw`,
+    // else the retiring deploy table's), read by the same reader as the board.
     let zephyr_rmw_register_ts: proc_macro2::TokenStream = deploy_for_framework
         .as_deref()
-        .and_then(|board_key| read_deploy_rmw(&manifest_dir.join("Cargo.toml"), board_key))
+        .and(leaf_decl.as_ref())
+        .and_then(|leaf| leaf.rmw.clone())
         .and_then(|rmw| rmw_crate_ident(&rmw).map(|ident| (rmw, ident)))
         .map(|(rmw, crate_ident)| {
             let id = Ident::new(crate_ident, Span::call_site());
@@ -2052,7 +2075,8 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             let deploy = deploy_for_framework.as_deref().ok_or_else(|| {
                 syn::Error::new(
                     Span::call_site(),
-                    "nros::main!: RTIC framework requires `[package.metadata.nros.entry] deploy`",
+                    "nros::main!: RTIC framework requires a board read from the leaf \
+                     (`[image.<id>] board` in `system.toml`)",
                 )
             })?;
             let rtic_spec = rtic_board_spec_for(deploy).ok_or_else(|| {
@@ -2682,24 +2706,6 @@ fn read_entry_node_pkgs(cargo_toml: &Path) -> Result<Option<Vec<String>>, String
     Ok(Some(out))
 }
 
-/// Read `[package.metadata.nros.entry] deploy = "<board>"` from
-/// `Cargo.toml`. The key is mandatory for form-1 (no-arg) invocations.
-fn read_entry_deploy(cargo_toml: &Path) -> Result<String, String> {
-    let raw = std::fs::read_to_string(cargo_toml).map_err(|e| format!("read: {e}"))?;
-    let v: toml::Value = toml::from_str(&raw).map_err(|e| format!("parse toml: {e}"))?;
-    let deploy = v
-        .get("package")
-        .and_then(|p| p.get("metadata"))
-        .and_then(|m| m.get("nros"))
-        .and_then(|n| n.get("entry"))
-        .and_then(|e| e.get("deploy"))
-        .and_then(|d| d.as_str())
-        .ok_or_else(|| {
-            "missing `[package.metadata.nros.entry] deploy = \"<board>\"`".to_string()
-        })?;
-    Ok(deploy.to_string())
-}
-
 /// phase-271 (issue #110) — read the per-entry executor sizing from
 /// `[package.metadata.nros.entry] max_callbacks = N` (+ optional
 /// `max_sched_contexts = M`). Returns `Some((max_callbacks, max_sched_contexts))`
@@ -2905,72 +2911,22 @@ fn parse_ipv4_lit(s: &str) -> Option<[u8; 4]> {
     if n == 4 { Some(out) } else { None }
 }
 
-/// Read `[package.metadata.nros.deploy.<board>]` from the Entry pkg's
-/// `Cargo.toml`. Missing block / keys → all-`None` overlay (the firmware keeps
-/// its compiled-in `Config::default()`). Only the network/locator/domain keys
-/// are consumed here; `rmw` is handled elsewhere (feature/link wiring).
-/// Issue #129 (RFC-0031 C5b amendment) — the entry's deploy RMW key
-/// (`[package.metadata.nros.deploy.<board>].rmw`). The Zephyr framework arm
-/// uses it to emit the explicit `::nros_rmw_<x>::register()` call: Zephyr has
-/// no `BoardEntry` boot path to own registration (the FreeRTOS C5a home), the
-/// board crate is NetworkWait-only, and `.init_array` ctors don't run on
-/// `target_os = "none"` — so per the C5b amendment the ENTRY carries the
-/// direct backend dep and codegen emits the register.
-fn read_deploy_rmw(cargo_toml: &Path, board_key: &str) -> Option<String> {
-    let raw = std::fs::read_to_string(cargo_toml).ok()?;
-    let v = toml::from_str::<toml::Value>(&raw).ok()?;
-    v.get("package")?
-        .get("metadata")?
-        .get("nros")?
-        .get("deploy")?
-        .get(board_key)?
-        .get("rmw")?
-        .as_str()
-        .map(str::to_string)
-}
-
-fn read_deploy_overlay(cargo_toml: &Path, board_key: &str) -> DeployOverlayLit {
-    let Ok(raw) = std::fs::read_to_string(cargo_toml) else {
-        return DeployOverlayLit::default();
-    };
-    let Ok(v) = toml::from_str::<toml::Value>(&raw) else {
-        return DeployOverlayLit::default();
-    };
-    let Some(block) = v
-        .get("package")
-        .and_then(|p| p.get("metadata"))
-        .and_then(|m| m.get("nros"))
-        .and_then(|n| n.get("deploy"))
-        .and_then(|d| d.get(board_key))
-    else {
-        return DeployOverlayLit::default();
-    };
+/// The leaf's deployment identity (RFC-0098 D5), as the overlay the board's
+/// compiled-in `Config::default()` is patched with. Absent keys stay `None`,
+/// so the firmware keeps its default for them. The values come from
+/// `nros_orchestration_ir::leaf_system` — `system.toml` or the retiring
+/// `[package.metadata.nros.deploy.<board>]` table — never from a manifest walk
+/// here.
+fn overlay_from_leaf(leaf: &nros_orchestration_ir::leaf_system::LeafSystem) -> DeployOverlayLit {
+    let net = &leaf.network;
     DeployOverlayLit {
-        locator: block
-            .get("locator")
-            .and_then(|x| x.as_str())
-            .map(str::to_string),
-        ip: block
-            .get("ip")
-            .and_then(|x| x.as_str())
-            .and_then(parse_ipv4_lit),
-        gateway: block
-            .get("gateway")
-            .and_then(|x| x.as_str())
-            .and_then(parse_ipv4_lit),
-        netmask: block
-            .get("netmask")
-            .and_then(|x| x.as_str())
-            .and_then(parse_ipv4_lit),
-        domain_id: block
-            .get("domain_id")
-            .and_then(|x| x.as_integer())
-            .and_then(|i| u32::try_from(i).ok()),
-        transport: block
-            .get("transport")
-            .and_then(|x| x.as_str())
-            .map(str::to_string),
-        // Issue #98 — not a `[deploy.*]` key; the caller fills this from the
+        locator: net.locator.clone(),
+        ip: net.ip.as_deref().and_then(parse_ipv4_lit),
+        gateway: net.gateway.as_deref().and_then(parse_ipv4_lit),
+        netmask: net.netmask.as_deref().and_then(parse_ipv4_lit),
+        domain_id: net.domain_id,
+        transport: net.transport.clone(),
+        // Issue #98 — not a deployment key; the caller fills this from the
         // parsed launch when it declares exactly one node.
         node_name: None,
     }

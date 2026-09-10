@@ -152,47 +152,29 @@ pub fn declaration_from_probe(doc_json: &str) -> Result<(String, String, Declara
     Ok((pkg, comp, declaration))
 }
 
-/// Issue 1061 — the entities a leaf DECLARES in its own manifest.
+/// Issue 1061 / RFC-0098 D8 — the entities a leaf DECLARES.
 ///
-/// `[package.metadata.nros.component] entities = [...]`, each string in the
-/// `nano_ros_node_register(... ENTITIES ...)` grammar. `Ok(None)` means the key
-/// is absent, which is different from an empty list: an empty list is a leaf
+/// `entities = [...]` on the leaf's `system.toml` `[[component]]` rows (the
+/// retiring `[package.metadata.nros.component] entities` is still read, through
+/// the same reader's fallback), each string in the
+/// `nano_ros_node_register(... ENTITIES ...)` grammar. `Ok(None)` means nothing
+/// is declared, which is different from an empty list: an empty list is a leaf
 /// asserting it creates nothing.
 pub fn declared_entities(leaf: &Path) -> Result<Option<Vec<EntityDecl>>> {
-    let manifest = leaf.join("Cargo.toml");
-    let Ok(text) = std::fs::read_to_string(&manifest) else {
-        return Ok(None);
-    };
-    let doc: toml::Value =
-        toml::from_str(&text).wrap_err_with(|| format!("parsing {}", manifest.display()))?;
-    let Some(v) = doc
-        .get("package")
-        .and_then(|p| p.get("metadata"))
-        .and_then(|m| m.get("nros"))
-        .and_then(|n| n.get("component"))
-        .and_then(|c| c.get("entities"))
+    let Some(decl) = nros_orchestration_ir::leaf_system::read(leaf).map_err(|e| eyre::eyre!(e))?
     else {
         return Ok(None);
     };
-    let arr = v.as_array().ok_or_else(|| {
-        eyre::eyre!(
-            "{}: `[package.metadata.nros.component] entities` must be an ARRAY of \
-             declaration strings, e.g. [\"publisher:std_msgs/msg/String:/chatter\", \"timer\"]",
-            manifest.display()
-        )
-    })?;
+    let Some(specs) = decl.declared_entities() else {
+        return Ok(None);
+    };
+    let origin = decl.origin_path().display().to_string();
     let mut out = Vec::new();
-    for item in arr {
-        let spec = item.as_str().ok_or_else(|| {
-            eyre::eyre!(
-                "{}: every `entities` element must be a string; found {item}",
-                manifest.display()
-            )
-        })?;
+    for spec in &specs {
         // The SAME parser the CMake path uses. A private grammar here is how a
         // declaration means one thing in a CMakeLists and another in a manifest.
         let decls = EntityDecl::parse(spec)
-            .map_err(|e| eyre::eyre!("{}: entities entry `{spec}`: {e}", manifest.display()))?;
+            .map_err(|e| eyre::eyre!("{origin}: entities entry `{spec}`: {e}"))?;
         out.extend(decls);
     }
     Ok(Some(out))
@@ -230,11 +212,12 @@ pub fn reconcile(component: &str, declared: &[EntityDecl], probed: &[EntityDecl]
         }
     };
     Err(eyre::eyre!(
-        "{component}: the manifest declares {} but the code creates {}.\n  \
+        "{component}: the leaf declares {} but the code creates {}.\n  \
          Refusing rather than choosing one: a budget from the declaration would be \
          wrong for the image, and silently preferring the probe would let the \
          declaration rot until it reaches a leaf where nothing can check it.\n  \
-         Fix the `[package.metadata.nros.component] entities` list, or drop it and \
+         Fix the `entities` list on the leaf's `system.toml` `[[component]]` (or the \
+         retiring `[package.metadata.nros.component] entities`), or drop it and \
          let the probe answer.",
         fmt(&d),
         fmt(&p)

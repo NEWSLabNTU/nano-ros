@@ -41,6 +41,10 @@ pub mod derive;
 // proc-macro entry bake and the CLI's codegen-system so the two agree on the
 // count, the derivation and the over-capacity diagnostic.
 pub mod executor_sizing;
+// phase-445 W3 (RFC-0098 D3/D5/D8) — the ONE reader of what a single-package
+// leaf deploys to (`<leaf>/system.toml`, with the retiring manifest keys as a
+// deletable fallback), shared by the proc-macro and the CLI.
+pub mod leaf_system;
 pub mod mapper_input;
 // phase-330 W3.b — the ONE place that decides where a SystemModel is read
 // from, shared by the proc-macro, `nros-build` and (via its default) cmake.

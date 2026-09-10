@@ -268,3 +268,111 @@ function(nano_ros_read_package_export)
     list(REMOVE_DUPLICATES _kinds)
     set(NANO_ROS_EXPORT_USES_KINDS "${_kinds}" PARENT_SCOPE)
 endfunction()
+
+# ---------------------------------------------------------------------------
+# nano_ros_read_leaf_system([DIR <dir>])
+#
+# phase-445 W3 (RFC-0098 D3/D5) — a single-package C/C++ leaf states its board,
+# RMW, domain and locator in a `system.toml` beside its CMakeLists.txt, the SAME
+# schema a workspace bringup uses (`[system] rmw/domain_id/locator`,
+# `[image.<id>] board`). That file replaces the `package.xml`
+# `<nano_ros deploy= board= rmw=/>` tuple above, which stays readable as the
+# deprecated fallback while the remaining leaves are converted.
+#
+# The file is read by `nros ws leaf-system` — the CLI front of
+# `nros_orchestration_ir::leaf_system`, the ONE reader `nros::main!` and
+# `nros sync` also use — never by a regex here: a second parser of one file is
+# how a Rust and a C leaf would read it two ways. The DEPLOY token (the
+# NANO_ROS_PLATFORM axis) is derived from the board through the board catalog.
+#
+# Call AFTER nano_ros_read_package_export(): on a leaf with a system.toml this
+# OVERRIDES the tuple variables that call set, so every consumer downstream
+# (the platform/RMW cache writes, the verbs' DEPLOY/BOARD defaults) reads the
+# system.toml values through the variables it already reads. Needs
+# nros_resolve_cli (NanoRosCodegenCore.cmake).
+#
+# A leaf carrying BOTH a system.toml and a `<nano_ros …/>` tuple is refused:
+# one source per fact.
+#
+# Sets in the caller's scope:
+#   NANO_ROS_LEAF_SYSTEM      — TRUE iff the leaf's system.toml was read
+#   NANO_ROS_LEAF_DOMAIN_ID   — `[image] domain_id` > `[system] domain_id`, or ""
+#   NANO_ROS_LEAF_LOCATOR     — `[image] locator` > `[system] locator`, or ""
+#   NANO_ROS_EXPORT_{DEPLOY,BOARD,RMW,FOUND,USES_*} — overridden, as above
+# ---------------------------------------------------------------------------
+function(nano_ros_read_leaf_system)
+    cmake_parse_arguments(_NRL "" "DIR" "" ${ARGN})
+    if(NOT _NRL_DIR)
+        set(_NRL_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    endif()
+    set(NANO_ROS_LEAF_SYSTEM FALSE PARENT_SCOPE)
+    set(NANO_ROS_LEAF_DOMAIN_ID "" PARENT_SCOPE)
+    set(NANO_ROS_LEAF_LOCATOR "" PARENT_SCOPE)
+    if(NOT EXISTS "${_NRL_DIR}/system.toml")
+        return()
+    endif()
+    if(NANO_ROS_EXPORT_FOUND)
+        message(FATAL_ERROR
+            "${_NRL_DIR}/system.toml states this leaf's deployment, and "
+            "${_NRL_DIR}/package.xml still carries a <nano_ros deploy=… board=… "
+            "rmw=…/> tuple — one source per fact (RFC-0098 D5). Delete the "
+            "<nano_ros …/> element from package.xml.")
+    endif()
+
+    nros_resolve_cli(_nros CONTEXT "nano_ros_read_leaf_system (${_NRL_DIR}/system.toml)")
+    execute_process(
+        COMMAND "${_nros}" ws leaf-system "${_NRL_DIR}" --nano-ros-path "${NANO_ROS_ROOT}"
+        OUTPUT_VARIABLE _out
+        ERROR_VARIABLE _err
+        RESULT_VARIABLE _rc
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _rc EQUAL 0)
+        message(FATAL_ERROR "nano-ros: ${_NRL_DIR}/system.toml: ${_err}")
+    endif()
+    # A configure re-runs when the file changes, like package.xml does.
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_NRL_DIR}/system.toml")
+
+    string(REPLACE "\n" ";" _lines "${_out}")
+    foreach(_l IN LISTS _lines)
+        if(_l MATCHES "^(NROS_LEAF_[A-Z_]+)=(.*)$")
+            set(_${CMAKE_MATCH_1} "${CMAKE_MATCH_2}")
+        endif()
+    endforeach()
+    if("${_NROS_LEAF_DEPLOY}" STREQUAL "")
+        message(FATAL_ERROR
+            "nano-ros: `nros ws leaf-system ${_NRL_DIR}` printed no deploy token:\n${_out}")
+    endif()
+
+    # A board that IS its deploy token (`native`, `zephyr`) names no separate
+    # provider — exactly the tuple shape `<nano_ros deploy="native"/>` had.
+    set(_board "${_NROS_LEAF_BOARD}")
+    if(_board STREQUAL _NROS_LEAF_DEPLOY)
+        set(_board "")
+    endif()
+
+    set(_kinds "${NANO_ROS_EXPORT_USES_KINDS}")
+    set(NANO_ROS_EXPORT_FOUND TRUE PARENT_SCOPE)
+    set(NANO_ROS_EXPORT_DEPLOY "${_NROS_LEAF_DEPLOY}" PARENT_SCOPE)
+    set(NANO_ROS_EXPORT_BOARD "${_board}" PARENT_SCOPE)
+    set(NANO_ROS_EXPORT_RMW "${_NROS_LEAF_RMW}" PARENT_SCOPE)
+    # board= and rmw= are provider selections (RFC-0087 D3) — desugar them the
+    # way the tuple reader does, so the two spellings stay indistinguishable.
+    if(NOT _board STREQUAL "")
+        set(NANO_ROS_EXPORT_USES_BOARD "${_board}" PARENT_SCOPE)
+        list(APPEND _kinds board)
+    endif()
+    if(NOT "${_NROS_LEAF_RMW}" STREQUAL "")
+        set(NANO_ROS_EXPORT_USES_RMW "${_NROS_LEAF_RMW}" PARENT_SCOPE)
+        list(APPEND _kinds rmw)
+    endif()
+    list(REMOVE_DUPLICATES _kinds)
+    set(NANO_ROS_EXPORT_USES_KINDS "${_kinds}" PARENT_SCOPE)
+
+    set(NANO_ROS_LEAF_SYSTEM TRUE PARENT_SCOPE)
+    set(NANO_ROS_LEAF_DOMAIN_ID "${_NROS_LEAF_DOMAIN_ID}" PARENT_SCOPE)
+    set(NANO_ROS_LEAF_LOCATOR "${_NROS_LEAF_LOCATOR}" PARENT_SCOPE)
+    message(STATUS
+        "nano-ros: deployment from ${_NRL_DIR}/system.toml — board=${_NROS_LEAF_BOARD} "
+        "deploy=${_NROS_LEAF_DEPLOY} rmw=${_NROS_LEAF_RMW} "
+        "domain_id=${_NROS_LEAF_DOMAIN_ID} locator=${_NROS_LEAF_LOCATOR}")
+endfunction()
