@@ -18,8 +18,13 @@ include = ["../../../../../nros-patch.toml", "nros-board.toml"]
 # Gate: `scripts/check-stack-floor.py` (issue 1052). Deriving these from the
 # declarations instead of stating them is issue 1061.
 # declares exactly 1 subscription.
-ZPICO_MAX_QUERYABLES = "2"
-ZPICO_MAX_SUBSCRIBERS = "1"
+#
+# `ZPICO_MAX_QUERYABLES` and `ZPICO_MAX_SUBSCRIBERS` are no longer stated here
+# (phase-445 W1): both are DERIVED from the `[[component]] entities` in
+# `system.toml`. The subscriber pool comes from the inventory (1); the
+# queryable table from the entity facts `nros sync` writes into
+# `build/<image>/nros-cargo.toml` (no service server, no parameter or
+# lifecycle family), which `nros-zpico-build` sizes to 1 slot.
 NROS_EXECUTOR_ARENA_SIZE = "16384"
 NROS_SMOLTCP_MAX_UDP_SOCKETS = "2"
 # issue 0024: shrink the Phase 231 (RFC-0038) size-class large receive buffer
