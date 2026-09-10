@@ -513,6 +513,10 @@ pub struct EntityInventory {
     /// `nros-metadata.json` path.
     pub source: String,
     components: Vec<ComponentEntities>,
+    /// Issue 1270 -- the runtime's own service families, when the bringup
+    /// declares them. Default (none) for an inventory built from
+    /// `nros-metadata.json` alone, which carries no bringup features.
+    infra: InfraServices,
 }
 
 /// MIRRORS of the action multipliers in
@@ -529,6 +533,81 @@ pub struct EntityInventory {
 const ACTION_SERVER_QUERYABLES: usize = 3;
 const ACTION_SERVER_PUBLISHERS: usize = 2;
 const ACTION_CLIENT_SUBSCRIPTIONS: usize = 1;
+
+/// MIRRORS of `nros_node::parameter_services::PARAM_SERVICE_QUERYABLES` and
+/// `nros_node::lifecycle_services::LIFECYCLE_SERVICE_QUERYABLES`, held to the
+/// creation calls by `check-infra-queryable-counts` exactly as the three above
+/// are (issue 1270).
+const PARAM_SERVICE_QUERYABLES: usize = 6;
+const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;
+
+/// Issue 1270 -- the service servers the RUNTIME creates on an image's behalf.
+///
+/// No component declares them, and for a while that was read as "this
+/// inventory cannot see them". It can: the BRINGUP says so. `[param_services]`
+/// and `[lifecycle]` (or `features = [...]`) land in the model's
+/// `execution.features`, the same fact `nros ws entity-facts` hands the cmake
+/// road as `NROS_DECLARED_INFRA_QUERYABLES`, and both read it through
+/// [`InfraServices::from_model`] so the two roads cannot disagree about
+/// whether a family is in the image.
+///
+/// Counted into the SESSION pool (`max_queryables`) and never into `MAX_CBS`:
+/// both families live outside the executor arena (see the module docs).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct InfraServices {
+    /// The bringup declares `param_services`: six servers on EVERY node
+    /// (phase-426 W3), because `ros2 param` addresses nodes.
+    pub param_services: bool,
+    /// The bringup declares `lifecycle`: five servers, once per executor.
+    pub lifecycle: bool,
+    /// How many nodes the model resolves. [`Self::param_nodes`] takes the
+    /// larger of this and the image's component count, floored at one -- the
+    /// executor's own rule (`nodes.len().max(1)` sets).
+    pub model_nodes: usize,
+}
+
+impl InfraServices {
+    /// What a resolved model declares. An unrecognised feature is not one of
+    /// these and is ignored, as `entity_facts` has always done.
+    pub fn from_model(model: &ros_launch_manifest_model::SystemModel) -> Self {
+        let has = |name: &str| model.execution.features.iter().any(|f| f == name);
+        Self {
+            param_services: has("param_services"),
+            lifecycle: has("lifecycle"),
+            model_nodes: model.structure.nodes.len(),
+        }
+    }
+
+    /// Nodes carrying the parameter family on an image of `components`
+    /// components; zero when the family is not declared.
+    pub fn param_nodes(self, components: usize) -> usize {
+        if self.param_services {
+            self.model_nodes.max(components).max(1)
+        } else {
+            0
+        }
+    }
+
+    /// Queryables (service servers) the two families claim at boot.
+    pub fn queryables(self, components: usize) -> usize {
+        let lifecycle = if self.lifecycle {
+            LIFECYCLE_SERVICE_QUERYABLES
+        } else {
+            0
+        };
+        PARAM_SERVICE_QUERYABLES * self.param_nodes(components) + lifecycle
+    }
+
+    /// Either source declaring a family declares it: this is a fact about the
+    /// bringup, not a count two sources could each get partly right.
+    fn union(self, other: Self) -> Self {
+        Self {
+            param_services: self.param_services || other.param_services,
+            lifecycle: self.lifecycle || other.lifecycle,
+            model_nodes: self.model_nodes.max(other.model_nodes),
+        }
+    }
+}
 
 /// Issue 1015 -- the smallest a pool that SIZES A FIXED C ARRAY may be.
 ///
@@ -592,13 +671,21 @@ pub struct DerivedEntityKnobs {
     /// `NROS_MAX_QUERYABLES` -- a service server IS a queryable, and an action
     /// server is [`ACTION_SERVER_QUERYABLES`] of them.
     ///
-    /// Does NOT include the parameter or lifecycle service families
-    /// (`PARAM_SERVICE_QUERYABLES` 6, `LIFECYCLE_SERVICE_QUERYABLES` 5): those
-    /// are per-image infrastructure enabled by a feature this inventory cannot
-    /// see, so counting them here would guess. An image carrying them must
-    /// still state the knob, and that is why this is a DEFAULT rather than a
-    /// ceiling.
+    /// INCLUDES the runtime's parameter and lifecycle service families when
+    /// the bringup declares them ([`InfraServices`], issue 1270):
+    /// [`PARAM_SERVICE_QUERYABLES`] per node and
+    /// [`LIFECYCLE_SERVICE_QUERYABLES`] per executor. Before that they were
+    /// left out as "a feature this inventory cannot see", so every image
+    /// declaring `param_services` derived a pool short by six per node, and a
+    /// short queryable pool is a registration failure at boot. Still a
+    /// DEFAULT rather than a ceiling: a stated knob wins.
     pub max_queryables: usize,
+    /// Issue 1270 -- the part of [`Self::max_queryables`] that is the
+    /// runtime's own servers rather than the application's. Provenance.
+    pub infra_queryables: usize,
+    /// Issue 1270 -- how many nodes carry the six parameter services; zero
+    /// when the bringup does not declare `param_services`.
+    pub param_service_nodes: usize,
     /// `NROS_EXECUTOR_MAX_NODES` -- one node per declared component.
     ///
     /// A `ComponentNode` constructor is one `Node::create` is one node NAME,
@@ -778,7 +865,20 @@ impl EntityInventory {
         Self {
             source: source.into(),
             components: Vec::new(),
+            infra: InfraServices::default(),
         }
+    }
+
+    /// Issue 1270 -- the runtime's own service families this inventory
+    /// counts.
+    pub fn infra(&self) -> InfraServices {
+        self.infra
+    }
+
+    /// Issue 1270 -- state the families directly, for an inventory whose
+    /// bringup facts arrive by some road other than [`Self::from_model`].
+    pub fn set_infra(&mut self, infra: InfraServices) {
+        self.infra = infra;
     }
 
     /// phase-412 -- build the inventory from a resolved SystemModel's wiring
@@ -956,6 +1056,9 @@ impl EntityInventory {
         }
 
         let mut inv = Self::new(source);
+        // Issue 1270 -- the families the bringup declares ride along, so the
+        // session pools count the servers the runtime creates for them.
+        inv.infra = InfraServices::from_model(model);
         for (node_fqn, entities) in per_node {
             let component = node_fqn.rsplit('/').next().unwrap_or(&node_fqn).to_string();
             inv.insert(ComponentEntities {
@@ -1018,6 +1121,9 @@ impl EntityInventory {
             .collect();
 
         let mut out = Self::new(format!("{} + {}", self.source, model.source));
+        // Issue 1270 -- metadata carries no bringup features, so the model's
+        // declaration is what survives; a union, never a max of two counts.
+        out.infra = self.infra.union(model.infra);
         let mut seen: Vec<&str> = Vec::new();
 
         for decl_row in &self.components {
@@ -1212,8 +1318,17 @@ impl EntityInventory {
             + n(EntityKind::ActionClient.tag()) * ACTION_CLIENT_SUBSCRIPTIONS;
         let max_publishers = n(EntityKind::Publisher.tag())
             + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_PUBLISHERS;
+        // Issue 1270 -- plus the servers the runtime creates for the families
+        // the bringup declares: six per node for `param_services`, five once
+        // for `lifecycle`. Not a guess: the bringup states the feature, and
+        // the multipliers are held to the creation calls by
+        // check-infra-queryable-counts.
+        let components = self.components.len();
+        let infra_queryables = self.infra.queryables(components);
+        let param_service_nodes = self.infra.param_nodes(components);
         let max_queryables = n(EntityKind::ServiceServer.tag())
-            + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_QUERYABLES;
+            + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_QUERYABLES
+            + infra_queryables;
         let max_nodes = self.components().len();
 
         Derivation::Derived(Box::new(DerivedEntityKnobs {
@@ -1223,6 +1338,8 @@ impl EntityInventory {
             max_subscribers,
             max_publishers,
             max_queryables,
+            infra_queryables,
+            param_service_nodes,
             max_nodes,
             per_kind,
             per_component,
@@ -1560,6 +1677,10 @@ impl EntityInventory {
             Derivation::Derived(k) => {
                 doc.insert("entity_total".into(), k.entity_total.into());
                 doc.insert("max_cbs".into(), k.max_cbs.into());
+                // Issue 1270 -- additive: the session queryable demand and the
+                // runtime's share of it.
+                doc.insert("max_queryables".into(), k.max_queryables.into());
+                doc.insert("infra_queryables".into(), k.infra_queryables.into());
                 doc.insert(
                     "per_kind".into(),
                     serde_json::Value::Object(
@@ -1800,7 +1921,7 @@ impl EntityInventory {
                 // claim a session slot, and a declared action claims several
                 // of these for the one entity it declares.
                 s.push_str(
-                    "# Session pools. A declared action is ONE entity that costs\n                     # SEVERAL session slots: a server opens 3 queryables and 2\n                     # publishers, a client 1 subscription. The multipliers live\n                     # beside the calls that decide them and are held there by\n                     # check-infra-queryable-counts.\n                     # NOT included: the parameter (6) and lifecycle (5) service\n                     # families, which a feature enables and this inventory cannot\n                     # see. An image carrying them must state the knob -- which is\n                     # why these are DEFAULTS and not ceilings.\n",
+                    "# Session pools. A declared action is ONE entity that costs\n                     # SEVERAL session slots: a server opens 3 queryables and 2\n                     # publishers, a client 1 subscription. The multipliers live\n                     # beside the calls that decide them and are held there by\n                     # check-infra-queryable-counts.\n                     # INCLUDED since issue 1270: the parameter family (6 per node)\n                     # and the lifecycle family (5), when the bringup declares\n                     # them -- attributed on the line below the knob. These are\n                     # DEFAULTS and not ceilings: a stated knob wins.\n",
                 );
                 s.push_str(&format!(
                     "set(NROS_DERIVED_MAX_SUBSCRIBERS {})\n",
@@ -1817,6 +1938,17 @@ impl EntityInventory {
                 s.push_str(&format!(
                     "set(NROS_DERIVED_MAX_QUERYABLES {})\n",
                     k.max_queryables
+                ));
+                // Issue 1270 -- attribute the runtime's share, so a reader can
+                // tell the application's servers from the ones created FOR it.
+                let param_share = PARAM_SERVICE_QUERYABLES * k.param_service_nodes;
+                s.push_str(&format!(
+                    "#   of which {} are the runtime's own servers: {} for param_services on \
+                     {} node(s), {} for lifecycle.\n",
+                    k.infra_queryables,
+                    param_share,
+                    k.param_service_nodes,
+                    k.infra_queryables - param_share
                 ));
                 s.push_str(
                     "# One node per declared component. Over-counts if two share\n                     # a name (slots are keyed by name); UNDER-counts only for a\n                     # bridge, whose two nodes are runtime strings declared\n                     # nowhere -- that path names this knob when the table fills.\n",
@@ -2733,6 +2865,95 @@ mod tests {
     /// `docs/roadmap/phase-3-canhubk344-real-silicon.md` recorded; 19 is the
     /// callback-slot demand, because the 14 publishers claim no slot. The board
     /// `.conf` pins 36.
+    /// Issue 1270 -- a two-node model with one application service server,
+    /// with `features` as the bringup's `execution.features`.
+    fn infra_model(features: &str) -> ros_launch_manifest_model::SystemModel {
+        let yaml = format!(
+            r#"
+meta:
+  version: 1
+structure:
+  nodes:
+    /a: {{ scope: s.launch.xml, pkg: p, exec: a, node_name: a }}
+    /b: {{ scope: s.launch.xml, pkg: p, exec: b, node_name: b }}
+  services:
+    /add:
+      type: example_interfaces/srv/AddTwoInts
+      server: [/a/add]
+  topics:
+    /chatter:
+      type: std_msgs/msg/String
+      pub: [/b/chatter]
+execution:
+  features: [{features}]
+"#
+        );
+        serde_yaml_ng::from_str(&yaml).expect("model fixture parses")
+    }
+
+    /// Issue 1270 -- `param_services` in the bringup is six queryables PER
+    /// NODE in the session pool, and `lifecycle` five once. Before this the
+    /// inventory left both out, so every image declaring them derived a pool
+    /// short by exactly those servers and failed registration at boot.
+    #[test]
+    fn declared_infrastructure_services_are_counted_into_the_queryable_pool() {
+        let knobs = |features: &str| {
+            EntityInventory::from_model("t", &infra_model(features))
+                .expect("model describes wiring")
+                .derive()
+                .knobs()
+                .expect("derived")
+                .clone()
+        };
+        let none = knobs("");
+        assert_eq!(none.max_queryables, 1, "the application's one server");
+        assert_eq!(none.infra_queryables, 0);
+        assert_eq!(none.param_service_nodes, 0);
+
+        let params = knobs("param_services");
+        assert_eq!(params.param_service_nodes, 2, "one set of six per node");
+        assert_eq!(params.max_queryables, 1 + 2 * PARAM_SERVICE_QUERYABLES);
+
+        let both = knobs("param_services, lifecycle");
+        assert_eq!(
+            both.max_queryables,
+            1 + 2 * PARAM_SERVICE_QUERYABLES + LIFECYCLE_SERVICE_QUERYABLES
+        );
+        assert_eq!(
+            both.max_cbs, none.max_cbs,
+            "both families live outside the executor arena: no callback slot"
+        );
+
+        // `safety` is a real feature and not a queryable question.
+        assert_eq!(knobs("safety").max_queryables, 1);
+    }
+
+    /// Issue 1270 -- the configure's inventory is metadata MERGED with the
+    /// model, and metadata carries no bringup features: the model's
+    /// declaration must survive the merge and reach the CMake knob.
+    #[test]
+    fn the_merge_keeps_the_families_the_model_declares() {
+        let model_inv = EntityInventory::from_model("model", &infra_model("param_services"))
+            .expect("model describes wiring");
+        let mut meta = EntityInventory::new("meta");
+        meta.insert(stated("p", "a", &["timer"]));
+        let merged = meta.merged_per_kind_max(&model_inv);
+        let k = merged.derive().knobs().expect("derived").clone();
+        assert_eq!(k.infra_queryables, 2 * PARAM_SERVICE_QUERYABLES);
+        let cmake = merged.to_cmake();
+        assert!(
+            cmake.contains(&format!(
+                "set(NROS_DERIVED_MAX_QUERYABLES {})\n",
+                1 + 2 * PARAM_SERVICE_QUERYABLES
+            )),
+            "{cmake}"
+        );
+        assert!(
+            cmake.contains("of which 12 are the runtime's own servers"),
+            "the runtime's share is attributed: {cmake}"
+        );
+    }
+
     #[test]
     fn the_island_derives_nineteen_slots_from_thirty_three_entities() {
         let mut inv = EntityInventory::new("island");

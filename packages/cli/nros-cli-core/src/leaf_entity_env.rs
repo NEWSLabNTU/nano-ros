@@ -374,12 +374,11 @@ pub const DERIVED_PAYLOAD_ENV_KEYS: &[&str] = &[
 
 /// `ZPICO_MAX_QUERYABLES` is DELIBERATELY NOT DERIVED.
 ///
-/// `DerivedEntityKnobs::max_queryables` says so itself: it counts service
-/// servers and actions and "does NOT include the parameter or lifecycle service
-/// families (`PARAM_SERVICE_QUERYABLES` 6, `LIFECYCLE_SERVICE_QUERYABLES` 5):
-/// those are per-image infrastructure enabled by a feature this inventory
-/// cannot see". Its own conclusion is that "an image carrying them must still
-/// state the knob".
+/// `DerivedEntityKnobs::max_queryables` counts the runtime's parameter and
+/// lifecycle service families only when the inventory knows the bringup
+/// declares them (issue 1270), and it learns that from the resolved MODEL. The
+/// inventory this road builds comes from `nros-metadata.json`, which carries no
+/// bringup features, so here the count is the application's alone.
 ///
 /// The CMake path completes it with `NROS_DECLARED_INFRA_QUERYABLES`. A cargo
 /// leaf has no such channel, so a sidecar emitting the bare count would state a

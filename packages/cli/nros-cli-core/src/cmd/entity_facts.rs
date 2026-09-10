@@ -199,8 +199,11 @@ fn declared_service_servers(model: &SystemModel) -> Option<usize> {
 /// which is a different thing: that would be a broken channel, not an
 /// unrelated feature.
 fn declared_infra(model: &SystemModel) -> &'static str {
-    let has = |name: &str| model.execution.features.iter().any(|f| f == name);
-    match (has("param_services"), has("lifecycle")) {
+    // Issue 1270 -- the SAME predicate the entity inventory counts from, so
+    // the cmake road and the inventory cannot disagree about whether a family
+    // is in the image.
+    let infra = crate::entity_inventory::InfraServices::from_model(model);
+    match (infra.param_services, infra.lifecycle) {
         (true, true) => "param+lifecycle",
         (true, false) => "param",
         (false, true) => "lifecycle",

@@ -101,7 +101,15 @@ MIRROR = re.compile(
 # on `nros-node` either — it is a host binary and that crate is `no_std` and
 # built for the target — so `nros ws entity-facts` restates the action
 # multiplier and is held to the definition here (phase-392 W5.b2).
-EXTRA_MIRROR_FILES = ["packages/cli/nros-cli-core/src/cmd/entity_facts.rs"]
+#
+# Issue 1270 -- the entity inventory mirrors all three: it counts the
+# parameter and lifecycle servers into the queryable pool when the bringup
+# declares them, and it has carried an action mirror since phase-412 W1 that
+# its own doc said this gate held and the scan never read.
+EXTRA_MIRROR_FILES = [
+    "packages/cli/nros-cli-core/src/cmd/entity_facts.rs",
+    "packages/cli/nros-cli-core/src/entity_inventory.rs",
+]
 
 
 def rmw_rust_files(root, rmw_dir):
@@ -274,7 +282,7 @@ def check(root, rmw_dir="packages/rmw"):
 
 
 def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
-           c_cli_action=3):
+           c_cli_action=3, c_inv_param=6):
     for rel in (SPIN, PARAMS, LIFECYCLE, ACTION, "packages/rmw/zenoh/x/src/service.rs"):
         os.makedirs(os.path.join(root, os.path.dirname(rel)), exist_ok=True)
     body = "".join(f"        let h{i} = create_param_srv::<T>(\n" for i in range(n_param))
@@ -306,6 +314,13 @@ def _write(root, n_param, n_lc, c_param, c_lc, rmw_line, chans=3, c_action=3,
     os.makedirs(os.path.join(root, os.path.dirname(cli)), exist_ok=True)
     open(os.path.join(root, cli), "w").write(
         f"const ACTION_SERVER_QUERYABLES: usize = {c_cli_action};\n")
+    # Issue 1270 -- the entity inventory mirrors all three counts.
+    inv = EXTRA_MIRROR_FILES[1]
+    os.makedirs(os.path.join(root, os.path.dirname(inv)), exist_ok=True)
+    open(os.path.join(root, inv), "w").write(
+        "const ACTION_SERVER_QUERYABLES: usize = 3;\n"
+        f"const PARAM_SERVICE_QUERYABLES: usize = {c_inv_param};\n"
+        "const LIFECYCLE_SERVICE_QUERYABLES: usize = 5;\n")
 
 
 def self_test():
@@ -327,6 +342,8 @@ def self_test():
          "the action constant counted CALL SITES (6) rather than channels (3)"),
         ((6, 5, 6, 5, "// nothing", 3, 3, 4), 1,
          "the CLI mirror drifted — a file OUTSIDE packages/rmw"),
+        ((6, 5, 6, 5, "// nothing", 3, 3, 3, 7), 1,
+         "the entity inventory's parameter mirror drifted (issue 1270)"),
     ]
     failures = 0
     tmp = tempfile.mkdtemp()

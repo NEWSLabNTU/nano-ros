@@ -2,12 +2,54 @@
 id: 1270
 title: "Parameter services cost 48 KiB of buffers per node, and nothing shares
   them, sizes them, or counts their RMW slots"
-status: open
+status: resolved
 type: enhancement
 area: core, rmw
 severity: medium
+resolved_in: "fix(#1270, #1271): one buffer pair per executor, six servers per node counted, and a dropped request says why"
 related: [issue-1268, issue-1271]
 ---
+
+## Resolution
+
+Two of the three items in the fix shape are done. The third, sizing the
+buffer from the declared parameters, is phase-446 W4 and goes through the
+seam this change left for it.
+
+- **Shared.** `ParamServiceBuffers` holds one request and one reply buffer
+  per executor, allocated with the first set of services. Each of a node's
+  six servers holds a backend handle and nothing else
+  (`ParamServiceHandle`). The size goes through one function,
+  `param_service_buffer_bytes()`, which returns `PARAM_SERVICE_BUFFER_SIZE`
+  today.
+- **Counted.** `EntityInventory` reads `param_services` / `lifecycle` from the
+  model's `execution.features` (`InfraServices::from_model`, the predicate
+  `nros ws entity-facts` now uses too). It adds 6 per node and 5 per
+  executor to `max_queryables`, the number that reaches
+  `NROS_DERIVED_MAX_QUERYABLES`, then Zephyr's `NROS_MAX_QUERYABLES` ->
+  `ZPICO_MAX_QUERYABLES`, and `NROS_XRCE_MAX_SERVICE_SERVERS`. `MAX_CBS` is
+  unchanged: both families live outside the arena. The inventory's mirrors
+  of the counts are now held by `check-infra-queryable-counts`.
+
+Measured on the host build (`size_of`, mock backend, default 4096):
+
+| | before | after |
+| --- | --- | --- |
+| one node's boxed set of six | 63,992 B | 14,976 B |
+| of which buffers | 49,152 B | 0 |
+| of which the six mock handles | 14,832 B | 14,832 B |
+| shared pair, per executor | -- | 8,192 B |
+| four-node image, sets + pair | 255,968 B | 68,096 B |
+
+The handle term is the MOCK backend's (2,472 B each, most of it the mock's
+own 256-byte request slot and reply ring). A real image pays its backend's
+`RmwServiceServer` instead, which is still not measured. The 144 B left per
+node after the handles are the node key, the report mask and the node FQN
+(128 B), which a dropped request is now reported against.
+
+The cargo-leaf road still cannot derive `ZPICO_MAX_QUERYABLES`. Its
+inventory comes from `nros-metadata.json`, which carries no bringup
+features. See `leaf_entity_env.rs`.
 
 ## What an image pays
 

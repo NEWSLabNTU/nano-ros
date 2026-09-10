@@ -827,10 +827,11 @@ function(nros_resolve_knobs)
         # needs three of these underneath it, so the raw count would under-size
         # every action image and fail at registration.
         #
-        # Same caveat it carries for zenoh, and it is why this is a DEFAULT and
-        # not a ceiling: the parameter (6) and lifecycle (5) service families
-        # are enabled by a FEATURE the inventory cannot see, so an image
-        # carrying them must state the knob.
+        # Issue 1270 -- that value also carries the parameter (6 per node) and
+        # lifecycle (5) service families when the model the inventory was
+        # built from declares them, which is what XRCE needs too: each is a
+        # served endpoint. Still a DEFAULT and not a ceiling -- a stated knob
+        # wins, and an inventory built without a model counts neither.
         _nros_resolve_derivable_knob(NROS_XRCE_MAX_SERVICE_SERVERS
             "${CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS}" NROS_DERIVED_MAX_QUERYABLES
             "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
