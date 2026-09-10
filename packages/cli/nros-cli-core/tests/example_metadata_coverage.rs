@@ -65,6 +65,14 @@ fn classify(pkg_dir: &Path) -> Shape {
             return Shape::RustNode;
         }
     }
+    // phase-445 W3 (RFC-0098 D3/D8) — a converted single-package Rust leaf
+    // declares its node as a `[[component]]` row in the `system.toml` beside
+    // its manifest, and `Workspace::component_declarations()` reads it from
+    // there. Classifying it NotANode would silently stop checking exactly the
+    // leaves that moved.
+    if !cargo.is_empty() && read("system.toml").contains("[[component]]") {
+        return Shape::RustNode;
+    }
     // Comment-stripped: an entry CMakeLists that MENTIONS the verb in a
     // comment ("their nano_ros_node_register has no DEPLOY") is not a node
     // package, and the CLI's own static parser agrees. Matching raw text made
