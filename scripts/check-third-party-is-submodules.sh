@@ -38,7 +38,12 @@ set -uo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$repo_root" || exit 2
 
-EXCEPTIONS="ros"   # -> phase-440 W4, when `dest` can name the store
+# EMPTY, and that is the point. `ros` was the one declared exception: its
+# `[source.rosidl]` could only name a workspace-relative `dest`, so it had
+# nowhere else to go. `dest` can name the STORE now (phase-440), rosidl went
+# there, and the rule holds with no exemption. A name reappearing here is a new
+# provisioning root inside a directory that is supposed to have none.
+EXCEPTIONS=""
 
 # Submodule PARENTS: the first path component under third-party/ for every
 # declared submodule. Read from .gitmodules, never from a directory walk, so an
