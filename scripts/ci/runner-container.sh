@@ -177,6 +177,16 @@ if [ "$DO_RUN" -eq 1 ]; then
         echo "    gh api -X POST repos/${GH_REPO:-NEWSLabNTU/nano-ros}/actions/runners/registration-token --jq .token" >&2
         echo "  Never bake a token into the image or a file." >&2
         exit 2; }
+    # The stores must exist and be writable by the container's UID BEFORE the
+    # first start; a missing ACL is EACCES inside a job, four layers from its
+    # cause. `--ensure` is idempotent, so this is a precondition made
+    # unforgettable rather than a step in a runbook.
+    if [ "$CHECK" -eq 1 ]; then
+        echo "  would run: runner-store.sh --ensure  (dirs + ACLs + volumes)"
+    else
+        "$(dirname "${BASH_SOURCE[0]}")/runner-store.sh" --ensure
+    fi
+
     echo "runner-container: starting $NAME"
     # Every flag here is a security decision, and each was TESTED, not assumed:
     #   --cap-drop ALL       no capabilities; nothing here needs one

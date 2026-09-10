@@ -2772,8 +2772,15 @@ runner-loop labels *ARGS:
 # verb is a store that only accumulates.
 #
 #   just runner-store                # report path, size, backing disk
+#   just runner-store --ensure       # dirs + ACLs + volumes (idempotent)
 #   just runner-store --reset nros   # wipe one store, keep dir + ACLs + volume
 #   just runner-store --reset-all
+#
+# `--ensure` is called by `runner-container.sh` before it starts anything, so
+# the storage a container needs is a precondition the tooling meets rather than
+# a runbook step someone can skip. The container's UID is MEASURED from the
+# built image (`id -u` inside it) rather than assumed, because a wrong UID is
+# silent until a job writes and then it is EACCES four layers from the cause.
 [group("ci")]
 runner-store *ARGS:
     @bash scripts/ci/runner-store.sh {{ARGS}}
