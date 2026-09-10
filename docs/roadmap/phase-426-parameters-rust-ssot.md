@@ -1,6 +1,23 @@
 # Phase 426 — parameters get a Rust SSoT, and `ros2 param list` works
 
-**Status (2026-09-05). Planned.** Implements RFC-0089 §"Parameters:
+**Status (2026-09-11). W1–W6 each LANDED on main; per-item acceptance not
+re-audited here.** The line read "Planned" for six days after the work went in, so
+the evidence is the commits:
+- W1: 4 commits.
+- W2: `30f5e9f941`.
+- W3: 6 commits.
+- W4: `3bf30405f1` deleted both C++ stores, and `98f0f5de7e` taught the parameter FFI which node is asking.
+- W5: `1505290ecd`.
+- W6: `3e3f1ef2db`.
+
+Run `git log --grep='phase-426 W'` for the full list. There is one known hole in the
+promise this phase makes. On Cyclone, the parameter services never start, so
+`ros2 param list` sees the parameters on zenoh only. That is issue 1268, owned by
+[phase-444](phase-444-rmw-fix-up.md) W6. The remaining user-API parameter gaps (27
+ledger rows: descriptors, callbacks, undeclare) are listed in phase-444 § "The ROS 2
+gap list".
+
+Implements RFC-0089 §"Parameters:
 feature-complete, Rust-side SSoT" and RFC-0019/0020's rule that behaviour lives
 in Rust and the C/C++ APIs are thin wrappers. Closes the C++ half of issue 0793.
 

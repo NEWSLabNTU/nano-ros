@@ -1,6 +1,17 @@
 # Phase 428 — sweep the C, C++ and Rust APIs against the porting principle
 
-**Status (2026-09-05). RMW sweep DONE; findings below. User-API sweep planned.** Audits all three user APIs against RFC-0089's
+**Status (2026-09-11). Both sweeps DONE. The findings are ledgered and the checkable
+ones are gated; the fixes live elsewhere.** The user-API sweep was not "planned"; it
+ran:
+- W1–W4: `f018804434`. The extractor now sees our adopted names, and four audits were filed.
+- W5: `86792f9ead`, 82 ledger rows. Six of the recorded findings were wrong and corrected there.
+- W6's gates landed: the return-type verdict, `--require-disposition`, `#[must_use]` where a bool reports failure, and the orphan-citation gate.
+- W10 (one QoS SSoT) and W13.a/b/d landed.
+
+What is left is FIXING the findings. That work is not this phase's. The 22 behaviour
+defects still live under shared names (re-read in code on 2026-09-11) are listed in
+[phase-444](phase-444-rmw-fix-up.md) § "The ROS 2 gap list", group 1, and belong to
+phase-417 stage 3. Audits all three user APIs against RFC-0089's
 governing principle. Not a rename pass — a conformance review that produces
 findings, each of which becomes a work item somewhere else.
 
