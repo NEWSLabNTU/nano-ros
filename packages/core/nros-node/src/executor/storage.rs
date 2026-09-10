@@ -825,8 +825,21 @@ mod tests {
         //     means), whose size is the backend's, not a knob's;
         //   * `scheduler-os-priority`'s worker pool, a pair of `FnvIndexMap`s
         //     sized by `MAX_PRIORITY_LEVELS` — an opt-in capability.
+        //   * phase-436 W6's wake-source table, a fixed `MAX_WAKE_SOURCES`
+        //     array of two-pointer slots. It is exempted for the same reason
+        //     the two above are — it does not scale with `MAX_CBS` or
+        //     `MAX_NODES` — and it is named rather than folded into the base
+        //     so that raising `MAX_WAKE_SOURCES` shows up as a cost here
+        //     instead of eating another feature's headroom. The rest of
+        //     phase-436's header fields (the park bookkeeping scalars) are
+        //     NOT exempted and fit inside the 1280 as they should.
         #[allow(unused_mut)]
-        let mut ceiling = 1280 + size_of::<super::super::spin::SessionStore>();
+        let mut ceiling = 1280
+            + size_of::<super::super::spin::SessionStore>()
+            + size_of::<
+                [Option<super::super::spin::WakeSourceSlot>;
+                    super::super::spin::MAX_WAKE_SOURCES],
+            >();
         #[cfg(all(
             feature = "alloc",
             feature = "rmw-cffi",
