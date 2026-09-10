@@ -3795,6 +3795,128 @@ pub unsafe extern "C" fn nros_cpp_executor_set_spin_nominal_us(
     NROS_CPP_RET_OK
 }
 
+/// phase-436 A2 — which deadline source bounded a park, as
+/// [`nros_cpp_executor_last_park`] reports it. `PLATFORM` also carries the
+/// index the platform source was registered at.
+pub const NROS_CPP_WAKE_SOURCE_CALLER_BUDGET: u8 = 0;
+/// A registered timer's next expiry bounded the park.
+pub const NROS_CPP_WAKE_SOURCE_TIMER: u8 = 1;
+/// The backend's next internal event (lease, heartbeat) bounded the park.
+pub const NROS_CPP_WAKE_SOURCE_SESSION: u8 = 2;
+/// A platform-registered deadline source bounded the park.
+pub const NROS_CPP_WAKE_SOURCE_PLATFORM: u8 = 3;
+
+/// The C encoding of a `WakeSourceId`: `(code, platform_index)`.
+///
+/// An exhaustive `match`, deliberately: a new wake source fails to compile here
+/// until it is given a code, rather than reaching C as a stale one.
+#[cfg(feature = "rmw-cffi")]
+fn wake_source_code(src: nros_node::executor::WakeSourceId) -> (u8, u8) {
+    use nros_node::executor::WakeSourceId as W;
+    match src {
+        W::CallerBudget => (NROS_CPP_WAKE_SOURCE_CALLER_BUDGET, 0),
+        W::Timer => (NROS_CPP_WAKE_SOURCE_TIMER, 0),
+        W::Session => (NROS_CPP_WAKE_SOURCE_SESSION, 0),
+        W::Platform(i) => (NROS_CPP_WAKE_SOURCE_PLATFORM, i),
+    }
+}
+
+/// phase-436 A2 — read the release-jitter probe from a C or C++ entry.
+///
+/// `max_us` is the worst wake past its nominal release since the executor
+/// opened; `late_wakes` / `total_wakes` separate one bad wake from a loop that
+/// is late every cycle. `granularity_us` is what the measurement is worth: a
+/// loop paced by the blocking wait cannot be judged finer than one park
+/// granule, and the executor says which case this is.
+///
+/// Before this the only signal a C entry had was the `release-jitter-runtime`
+/// violation line, which fires only at a whole period late — so the maximum,
+/// the figure a trace is compared against, could not be read at all.
+///
+/// Every output pointer may be NULL, meaning "not wanted". Nothing is written
+/// when the handle is refused.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL. Each
+/// non-NULL output must point at writable storage of its type.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_release_jitter(
+    handle: *mut c_void,
+    max_us: *mut u64,
+    late_wakes: *mut u32,
+    total_wakes: *mut u32,
+    granularity_us: *mut u64,
+) -> nros_cpp_ret_t {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let (max, late, total) = ctx.executor.release_jitter();
+    let granularity = ctx.executor.release_jitter_granularity_us();
+    unsafe {
+        if !max_us.is_null() {
+            *max_us = max;
+        }
+        if !late_wakes.is_null() {
+            *late_wakes = late;
+        }
+        if !total_wakes.is_null() {
+            *total_wakes = total;
+        }
+        if !granularity_us.is_null() {
+            *granularity_us = granularity;
+        }
+    }
+    NROS_CPP_RET_OK
+}
+
+/// phase-436 A2 — how the last park was bounded, from a C or C++ entry.
+///
+/// `bound_us` is the park the sources agreed on; `achieved_us` is what the
+/// platform was actually asked for after rounding up to what its primitive can
+/// express. They differ exactly when the request did not land on the
+/// platform's grid, and both are reported so the rounding is visible rather
+/// than silent. `source` is one of `NROS_CPP_WAKE_SOURCE_*`; `platform_index`
+/// is meaningful only for `NROS_CPP_WAKE_SOURCE_PLATFORM` and 0 otherwise.
+///
+/// Every output pointer may be NULL. Nothing is written when the handle is
+/// refused.
+///
+/// # Safety
+/// `handle` must be a live executor handle from this ABI, or NULL. Each
+/// non-NULL output must point at writable storage of its type.
+#[cfg(feature = "rmw-cffi")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_executor_last_park(
+    handle: *mut c_void,
+    bound_us: *mut u64,
+    achieved_us: *mut u64,
+    source: *mut u8,
+    platform_index: *mut u8,
+) -> nros_cpp_ret_t {
+    let Some(ctx) = (unsafe { cpp_ctx_checked(handle) }) else {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    };
+    let (bound, src) = ctx.executor.last_park();
+    let achieved = ctx.executor.last_park_achieved_us();
+    let (code, index) = wake_source_code(src);
+    unsafe {
+        if !bound_us.is_null() {
+            *bound_us = bound;
+        }
+        if !achieved_us.is_null() {
+            *achieved_us = achieved;
+        }
+        if !source.is_null() {
+            *source = code;
+        }
+        if !platform_index.is_null() {
+            *platform_index = index;
+        }
+    }
+    NROS_CPP_RET_OK
+}
+
 /// Phase 274.W2 (RFC-0015 Model 1) — run a native multi-tier entry over one
 /// shared RMW session.
 ///
@@ -4502,3 +4624,80 @@ const _: () = {
         i += 1;
     }
 };
+
+// phase-436 A2 — reading the jitter and park probes from a C entry. The encoding
+// is tested directly; the null-handle contract is tested at the ABI. A live
+// executor's numbers are the Rust accessors', covered in `nros-node`.
+#[cfg(all(test, feature = "rmw-cffi"))]
+mod jitter_readout_tests {
+    use super::*;
+    use nros_node::executor::WakeSourceId;
+
+    #[test]
+    fn every_wake_source_maps_to_a_distinct_code() {
+        assert_eq!(
+            wake_source_code(WakeSourceId::CallerBudget),
+            (NROS_CPP_WAKE_SOURCE_CALLER_BUDGET, 0)
+        );
+        assert_eq!(
+            wake_source_code(WakeSourceId::Timer),
+            (NROS_CPP_WAKE_SOURCE_TIMER, 0)
+        );
+        assert_eq!(
+            wake_source_code(WakeSourceId::Session),
+            (NROS_CPP_WAKE_SOURCE_SESSION, 0)
+        );
+        assert_eq!(
+            wake_source_code(WakeSourceId::Platform(5)),
+            (NROS_CPP_WAKE_SOURCE_PLATFORM, 5)
+        );
+        let codes = [
+            NROS_CPP_WAKE_SOURCE_CALLER_BUDGET,
+            NROS_CPP_WAKE_SOURCE_TIMER,
+            NROS_CPP_WAKE_SOURCE_SESSION,
+            NROS_CPP_WAKE_SOURCE_PLATFORM,
+        ];
+        for i in 0..codes.len() {
+            for j in (i + 1)..codes.len() {
+                assert_ne!(codes[i], codes[j], "two wake sources share a code");
+            }
+        }
+    }
+
+    #[test]
+    fn a_null_handle_is_refused_and_writes_nothing() {
+        let (mut max, mut late, mut total, mut gran) = (7u64, 7u32, 7u32, 7u64);
+        let rc = unsafe {
+            nros_cpp_executor_release_jitter(
+                core::ptr::null_mut(),
+                &mut max,
+                &mut late,
+                &mut total,
+                &mut gran,
+            )
+        };
+        assert_eq!(rc, NROS_CPP_RET_INVALID_ARGUMENT);
+        assert_eq!(
+            (max, late, total, gran),
+            (7, 7, 7, 7),
+            "a refused call wrote its outputs"
+        );
+
+        let (mut bound, mut achieved, mut src, mut idx) = (7u64, 7u64, 7u8, 7u8);
+        let rc = unsafe {
+            nros_cpp_executor_last_park(
+                core::ptr::null_mut(),
+                &mut bound,
+                &mut achieved,
+                &mut src,
+                &mut idx,
+            )
+        };
+        assert_eq!(rc, NROS_CPP_RET_INVALID_ARGUMENT);
+        assert_eq!(
+            (bound, achieved, src, idx),
+            (7, 7, 7, 7),
+            "a refused call wrote its outputs"
+        );
+    }
+}
