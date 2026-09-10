@@ -10,14 +10,29 @@ supported_netstacks = ["lwip"]
 board_crate = "nros-board-mps2-an385-freertos"
 # Phase 252 (issue 0072) — forwards [safety] through the freertos family to zenoh.
 cargo_config = '''
+# phase-445 W2 (RFC-0098 D4) — the board's triple, stated HERE rather than in
+# each leaf (6 FreeRTOS leaves hand-wrote it).
+[build]
+target = "thumbv7m-none-eabi"
+
 [target.thumbv7m-none-eabi]
 runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
 rustflags = [
+    # The board's own script (`c/board_mps2.c` startup + FreeRTOS). The
+    # `examples/workspaces/{rust,realtime-rust}` configs mirror THIS group for
+    # their FreeRTOS images — not the bare-metal board's `-Tlink.x`, which is
+    # cortex-m-rt's and a different board (phase-445 W2, measured by build).
     "-C", "link-arg=-Tmps2_an385.ld",
     "-C", "link-arg=--nmagic",
     # phase-341 W1 — hoisted from the leaves (see nros-board-mps2-an385).
     "-C", "link-arg=--gc-sections",
 ]
+
+# The cc-crate cross compiler for this triple — a board toolchain fact
+# (phase-445 W2; `examples/workspaces/rust/.cargo/config.toml` carried it for
+# its FreeRTOS image, `workspace-rust-qemu-freertos`).
+[env]
+CC_thumbv7m_none_eabi = "arm-none-eabi-gcc"
 '''
 
 # Issue 0273 — the C startup (`c/board_mps2.c` `Reset_Handler`) jumps to the Rust

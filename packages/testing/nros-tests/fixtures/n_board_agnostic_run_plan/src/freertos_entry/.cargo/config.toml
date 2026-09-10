@@ -4,6 +4,3 @@
 # Cargo treats a missing include as a hard error during manifest parse, so a
 # stale depth makes the leaf unreadable rather than merely unpatched.
 include = ["../../../../../../../../nros-patch.toml", "nros-board.toml"]
-[build]
-target = "thumbv7m-none-eabi"
-
