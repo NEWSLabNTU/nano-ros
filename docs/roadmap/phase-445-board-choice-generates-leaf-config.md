@@ -45,6 +45,32 @@ esp32 stack budgets.
   and `examples/workspaces/{rust,realtime-rust}/.cargo/config.toml` by BUILD,
   not by picking one. Gate: a descriptor with a Rust triple and no
   `[build] target` fails.
+  **Landed (2026-09-10, `feat/phase-445-w2-board-descriptors`):**
+  - `[build] target` added to mps2-an385, mps2-an385-freertos, s32z270 and
+    mps3-an536. `CC_thumbv7m_none_eabi` added to both mps2 boards; NuttX's
+    `CC_`/`CFLAGS_` were already there, identical to the workspace copies.
+    The 22 deploy leaves whose projection now supplies the triple drop their
+    own `[build]`. That is forced, because sync's conflict check intersects
+    keys; the value stays committed in the projection until W4/W6.
+  - `[board.knobs]` is now READ: the CLI refused any `[knobs]` in a
+    descriptor, so the RFC-0049 board rung existed only in tests.
+  - esp32 `[board.knobs.net] max_udp_sockets = 2`, measured delivered: 2
+    with the leaf's env line removed, 1 without the board facts.
+  - NOT board facts, and not moved:
+    - `NROS_HEAP_SIZE`: the leaf value equals the platform crate's default,
+      and a rung would override `dds-heap`.
+    - `ZPICO_NO_SMOLTCP`: a serial transport choice, set by 3 of 13 leaves on
+      one board.
+    - `ZPICO_SUBSCRIBER_LARGE_SIZE`: derived per image.
+    - `ESP_LOG`: already in `cargo_config` `[env]`; read by esp-println, not a
+      ladder knob.
+  - Link groups: the workspace `-Tmps2_an385.ld --nmagic` is the FreeRTOS
+    board's group, not a rival to bare-metal's `-Tlink.x`. Crossed builds fail
+    both ways (`cannot find linker script`). Both workspace FreeRTOS images
+    link and boot with the descriptor's `+ --gc-sections`. Gate:
+    `check-board-build-target`.
+  - Still owed for the tick: a build of the s32z270 / mps3-an536 images (C++
+    CMake rows only; their triple value is unchanged).
 - [ ] **W3 — `system.toml` in every single-package example (D3, D5, D8).** 178
   leaves (70 Rust, 52 C, 56 C++). `[image.X] board`, `[system] rmw/domain_id/locator`,
   network identity, `[[component]]` with entities where the board cannot be
