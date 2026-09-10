@@ -569,21 +569,37 @@ wired, so every other port parks on the millisecond `wake_wait_ms` floor.
   when that caller is bridged through a caller-owned deadline (or zenoh-pico
   gains `_z_condvar_wait_until`) and the symbol leaves the ABI.
 
-### Path E — Stack placement, then ASI's headroom rule.
+### Path E — Stack headroom: wired, and on ASI blind.
 
 * **E1 — issue 1232.** Zephyr ignores a tier's declared `stack_bytes`: every
-  spawned tier gets the fixed pool slot, and the boot tier runs on `main`'s
-  thread. ASI declares exactly one tier, and it is the boot tier.
-* **E2 — wire `set_min_stack_headroom_bytes` on ASI.** Only after E1. Wired
-  today it would report `main`'s headroom as the control tier's — a
-  plausible number for the wrong thread, the same failure as the jitter probe
-  that reported zero through three reviews. Depends on A1.
+  SPAWNED tier gets the fixed pool slot. It matters for images with spawned
+  tiers. It does not block ASI, whose only tier is the boot tier.
+* **E2 — ASI's headroom rule. Already WIRED; the gap is that it cannot
+  measure.** An earlier draft said wiring it would "report `main`'s headroom as
+  the control tier's, a plausible number for the wrong thread". Wrong: the
+  Zephyr C entry already derives the boot tier's bound from
+  `nros_zephyr_main_stack_size()`, and `stack_unused_bytes()` reads
+  `k_current_get()`, the thread `spin_once` runs on. For the boot tier that is
+  `main`, so the thread measured is the thread sized. Nothing to wire.
+
+  What IS wrong: Zephyr's accessor reports only with
+  `CONFIG_INIT_STACKS && CONFIG_THREAD_STACK_INFO` and returns 0 otherwise,
+  which the rule reads as "not instrumented" and skips. ASI's default FVP
+  build has `THREAD_STACK_INFO` but not `INIT_STACKS`, so the rule is armed
+  and returns early on every check. Only ASI's `--trace-stats` variant
+  (`CONFIG_THREAD_ANALYZER` selects `INIT_STACKS`) measures. **Exit:** ASI
+  decides where stack painting is paid for.
+* **E3 — say so when the rule is blind.** An armed rule that cannot measure
+  reads exactly like a clean result. That is the failure the entry's
+  "stack-headroom bound NOT set" line already guards against for the bound, one
+  step further on. The entry should report once when the port answers 0, the
+  same way.
 
 ### Order
 
 A1 → A2 → A3 first, with B1 alongside it (it is a decision, not code). Then
 B2 and D in parallel; C whenever — it is breadth, and each port is
-independent. E1 before E2, and E2 after A1.
+independent. E3 is small and independent; E1 only for images with spawned tiers.
 
 ## Sequencing (W1-W7, as delivered)
 
