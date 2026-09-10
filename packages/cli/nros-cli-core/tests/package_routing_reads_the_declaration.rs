@@ -1,12 +1,11 @@
 //! RFC-0094 D3 / phase-439 W3 — the routing rule, over the REAL example
 //! workspaces rather than synthetic trees.
 //!
-//! `builder::{cargo_root, cmake_root}`'s own unit tests pin the rule against
-//! packages a test constructs. That is the right place for the rule, and it is
-//! not enough on its own: every one of those trees was written to exercise the
-//! rule, so none of them can tell you the rule matches the tree it governs.
-//! These do, buildlessly — they read `package.xml` and the build files that are
-//! already there.
+//! `routing`'s own unit tests pin the rule against packages a test constructs.
+//! That is the right place for the rule, and it is not enough on its own: every
+//! one of those trees was written to exercise the rule, so none of them can tell
+//! you the rule matches the tree it governs. These do, buildlessly — they read
+//! `package.xml` and the build files that are already there.
 //!
 //! ## The package this exists for
 //!
@@ -15,26 +14,17 @@
 //! Rust node registered with the workspace's CMake build
 //! (`nano_ros_node_register … LANGUAGE RUST SOURCES Cargo.toml`), it declares
 //! `nros_cmake`, and it carries its OWN `[workspace]` table. Under the pre-W3
-//! rule the generated cargo root listed it as a member, and cargo refuses that
-//! root outright — MEASURED on this tree, 2026-09-08:
+//! rule a generated cargo root listed it as a member, and cargo refused that
+//! root outright (`multiple workspace roots found in the same workspace`,
+//! measured 2026-09-08).
 //!
-//! ```text
-//! $ cargo metadata --no-deps       # members = ["build/…", "src/rust_heartbeat_pkg"]
-//! error: multiple workspace roots found in the same workspace:
-//!   …/examples/workspaces/mixed/src/rust_heartbeat_pkg
-//!   …/examples/workspaces/mixed
-//! ```
-//!
-//! With the package excluded instead, the same command exits 0. So the repair
-//! is not a tidier member list — it is the difference between a generated root
-//! cargo can read and one it cannot.
+//! Since RFC-0098 D9 there is no cargo workspace root to list it in — each image
+//! is its own cargo root — so these tests ask the rule directly
+//! (`routing::route(..).cargo_member`), which is what decided that list.
 
-use std::{
-    collections::BTreeSet,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
-use nros_cli_core::builder::{cargo_root, discover};
+use nros_cli_core::builder::discover;
 
 /// `<repo>` — `CARGO_MANIFEST_DIR` is `<repo>/packages/cli/nros-cli-core`.
 fn repo() -> PathBuf {
@@ -49,39 +39,7 @@ fn workspace(name: &str) -> PathBuf {
     repo().join("examples/workspaces").join(name)
 }
 
-/// The generated cargo root for a workspace, with no cargo members passed in
-/// and nothing excluded — so what the member list contains is decided ONLY by
-/// RFC-0094 D3, which is what these tests are about.
-fn cargo_root_for(ws: &Path) -> Result<String, String> {
-    let found = discover::discover(ws, &[]).expect("discovery must succeed");
-    cargo_root::render(
-        &found,
-        &ws.join("build/native"),
-        &BTreeSet::new(),
-        // One synthetic member standing in for the generated entry package
-        // (`builder::entry`, phase-383 W3.b), which a real build always
-        // contributes. Without it a workspace whose only cargo package is
-        // cmake-driven renders an empty member list and errors — a true
-        // answer that would hide the one being tested here.
-        &[ws.join("build/native/entry")],
-        None,
-    )
-}
-
-/// Just the `members = [ … ]` block.
-///
-/// Sliced on the KEY, not on the first `]` — `[workspace]` two lines above
-/// contains one, so a naive `find(']')` returns an empty slice that every
-/// `!contains(…)` assertion passes and every `contains(…)` assertion fails.
-/// Both directions of this test caught it, which is the only reason it is a
-/// helper and not a one-liner.
-fn members_block(body: &str) -> &str {
-    let start = body.find("members = [").expect("a members list");
-    let rest = &body[start..];
-    &rest[..rest.find(']').expect("members list must be closed")]
-}
-
-/// The headline: the cmake-driven Rust node leaves the members list.
+/// The headline: the cmake-driven Rust node is not a cargo package here.
 #[test]
 fn the_mixed_workspaces_cmake_driven_rust_node_is_not_a_cargo_member() {
     let ws = workspace("mixed");
@@ -100,67 +58,50 @@ fn the_mixed_workspaces_cmake_driven_rust_node_is_not_a_cargo_member() {
         "the package under test must still declare a cmake build type"
     );
 
-    let body = cargo_root_for(&ws).expect("the mixed cargo root must render");
-    assert!(
-        !members_block(&body).contains("rust_heartbeat_pkg"),
-        "cmake drives this package; listing it as a member makes the root \
-         unreadable by cargo (`multiple workspace roots`):\n{body}"
-    );
-}
-
-/// And it is EXCLUDED, not merely unlisted. Cargo walks up from a package to
-/// find its workspace; a manifest under the root that is in neither list is an
-/// error rather than an omission. (Here the package's own `[workspace]` would
-/// stop that walk anyway — which is exactly why the exclusion must not depend
-/// on noticing that, for the next package that has no such table.)
-#[test]
-fn the_cmake_driven_rust_node_is_excluded_from_the_generated_root() {
-    let ws = workspace("mixed");
-    let body = cargo_root_for(&ws).expect("renders");
-    let excl = body
-        .find("exclude = [")
-        .expect("a manifest left out of members must be excluded");
-    assert!(
-        body[excl..].contains("rust_heartbeat_pkg"),
-        "unlisted-and-unexcluded is a cargo error:\n{body}"
-    );
+    let found = discover::discover(&ws, &[]).expect("discovery must succeed");
+    let p = found
+        .packages
+        .iter()
+        .find(|p| p.name == "rust_heartbeat_pkg")
+        .expect("discovered");
+    let r = nros_cli_core::routing::route(p);
+    assert!(!r.cargo_member, "cmake drives this package: {r:?}");
+    assert!(r.cmake_subdir, "and cmake builds it: {r:?}");
 }
 
 /// The negative control the headline needs: a Rust node that declares a CARGO
-/// build type is still a member. Without this, a rule that simply dropped every
-/// Rust package would pass the test above.
+/// build type is still a cargo package. Without this, a rule that simply dropped
+/// every Rust package would pass the test above.
 #[test]
-fn a_cargo_declaring_node_in_the_rust_workspace_is_still_a_member() {
+fn a_cargo_declaring_node_in_the_rust_workspace_is_still_a_cargo_member() {
     let ws = workspace("rust");
-    let body = cargo_root_for(&ws).expect("the rust cargo root must render");
-    let members = members_block(&body);
     let found = discover::discover(&ws, &[]).expect("discovery");
-    let expected: Vec<&str> = found
+    let cargo_declaring: Vec<_> = found
         .packages
         .iter()
         .filter(|p| {
             p.dir.join("Cargo.toml").is_file()
                 && p.build_type.as_deref().is_some_and(|b| b.contains("cargo"))
         })
-        .map(|p| p.name.as_str())
         .collect();
     assert!(
-        !expected.is_empty(),
+        !cargo_declaring.is_empty(),
         "the rust workspace must still hold cargo-declaring packages, or this \
          control proves nothing"
     );
-    for name in expected {
+    for p in cargo_declaring {
         assert!(
-            members.contains(name),
-            "{name} declares a cargo build type and must stay a member:\n{body}"
+            nros_cli_core::routing::route(p).cargo_member,
+            "{} declares a cargo build type and must stay a cargo member",
+            p.name
         );
     }
 }
 
-/// Every tracked example workspace renders a root, or reports why — never a
-/// misdeclaration. This is the D3 intersection rule run over the trees the
-/// build actually walks, next to the repo-wide buildless
-/// `check-package-routing.py`, which walks every `package.xml` instead.
+/// Every tracked example workspace passes the D3 intersection rule — never a
+/// misdeclaration. This is the rule run over the trees the build actually walks,
+/// next to the repo-wide buildless `check-package-routing.py`, which walks every
+/// `package.xml` instead.
 #[test]
 fn no_example_workspace_declares_a_driver_it_cannot_be_built_by() {
     let root = repo().join("examples/workspaces");
@@ -186,4 +127,35 @@ fn no_example_workspace_declares_a_driver_it_cannot_be_built_by() {
         checked >= 4,
         "expected the four large language workspaces at least, walked {checked}"
     );
+}
+
+/// RFC-0098 D9 — no example workspace tracks a root build file. The builder
+/// refuses an authored `[workspace]` root, so one committed here would break
+/// every cargo image of that workspace, not merely be untidy.
+#[test]
+fn no_example_workspace_has_a_root_build_file_on_disk_from_git() {
+    for entry in std::fs::read_dir(repo().join("examples/workspaces")).expect("dir") {
+        let ws = entry.expect("dir entry").path();
+        if !ws.join("src").is_dir() {
+            continue;
+        }
+        for f in ["CMakeLists.txt", ".cargo/config.toml"] {
+            let p = ws.join(f);
+            // A generated root may exist on a developer's disk (gitignored);
+            // an authored one is what this forbids.
+            if let Ok(text) = std::fs::read_to_string(&p) {
+                assert!(
+                    text.starts_with("# GENERATED"),
+                    "{} is an authored root build file; a workspace has none (RFC-0098 D9)",
+                    p.display()
+                );
+            }
+        }
+        assert_ne!(
+            nros_cli_core::builder::cargo_root::state(&ws),
+            nros_cli_core::builder::cargo_root::RootState::Authored,
+            "{} carries an authored cargo `[workspace]` root (RFC-0098 D9)",
+            ws.display()
+        );
+    }
 }

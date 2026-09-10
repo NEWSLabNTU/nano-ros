@@ -3651,8 +3651,19 @@ fn find_patch_authority(start: &Path, ws_root: &Path) -> Result<PathBuf> {
                 return Ok(cargo);
             }
         }
+        // RFC-0098 D9 (phase-445 W5) — a colcon-layout workspace has NO root
+        // manifest any more, and its authority stays the workspace DIRECTORY:
+        // `<ws>/.cargo/config.toml`, gitignored, exactly where the generated
+        // root used to put it. Falling back to each package instead scattered
+        // one config per node and left everything that runs cargo from inside
+        // the workspace — the metadata probe under `build/`, a west app's
+        // `rust_cargo_application()` — without the `[patch.crates-io]` rows its
+        // registry-named deps need (`no matching package named nros`, measured
+        // on `examples/templates/multi-node-workspace`). `nros build` itself
+        // does not rely on this: each image's `nros-cargo.toml` carries its own
+        // rows. W6 retires the writer.
         if cur == *ws_root {
-            return Ok(start.join("Cargo.toml"));
+            return Ok(ws_root.join("Cargo.toml"));
         }
         match cur.parent() {
             Some(p) => cur = p.to_path_buf(),
@@ -4229,8 +4240,13 @@ fn write_patch_block(
     //    consumer Cargo.toml (one-time; the patch now lives in config.toml). User
     //    patch rows + the rest of the manifest are preserved. Atomic temp + rename
     //    (the parallel-RMW-variant race the splice writer guarded still applies).
-    let body = std::fs::read_to_string(authority)
-        .wrap_err_with(|| format!("sync: read {}", authority.display()))?;
+    // A colcon-layout workspace's authority is its DIRECTORY and has no
+    // manifest (RFC-0098 D9) — nothing to migrate.
+    let body = match std::fs::read_to_string(authority) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e).wrap_err_with(|| format!("sync: read {}", authority.display())),
+    };
     let migrated = strip_managed_patch_from_cargo(&body);
     if migrated != body {
         // issue 0562 — the fifth private copy of temp+rename; the shared helper
@@ -4447,7 +4463,7 @@ fn extract_consumer_registry_nros_deps(body: &str) -> Vec<String> {
 /// Without this distinction the guard reads `package.xml`'s `<depend>` rows —
 /// which still list `std_msgs` because the leaf genuinely depends on those
 /// messages — and blocks the very narrowing phase-333 performs.
-fn registry_style_dep_names(body: &str) -> Vec<String> {
+pub(crate) fn registry_style_dep_names(body: &str) -> Vec<String> {
     use toml_edit::{DocumentMut, Item, Value};
     let Ok(doc) = body.parse::<DocumentMut>() else {
         return Vec::new();
@@ -4495,7 +4511,7 @@ fn is_managed_runtime_crate_name(name: &str) -> bool {
 /// subpath. Core/RMW crates come from the static [`nros_crate_path_lookup`]
 /// table; board crates follow the uniform `packages/boards/<name>` convention,
 /// so any current or future `nros-board-*` resolves without a table entry.
-fn nros_crate_subpath(name: &str) -> Option<String> {
+pub(crate) fn nros_crate_subpath(name: &str) -> Option<String> {
     if let Some((_, p)) = nros_crate_path_lookup().iter().find(|(n, _)| *n == name) {
         Some((*p).to_string())
     } else if name.starts_with("nros-board-") {
