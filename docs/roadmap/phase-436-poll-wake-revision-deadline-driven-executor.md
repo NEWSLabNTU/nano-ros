@@ -507,16 +507,40 @@ watched run.
 `set_park_primitive` has three callers; `register_wake_source` has none
 outside tests. Every wired port waits; none says WHEN.
 
-* **B1 — decide what a timer source is. Design only, no code.** Both one-shot
-  timers in the tree — `nros_zephyr_timer_create_oneshot`
+* **B1 — what a timer source is. DECIDED (2026-09-11): no timer deadline
+  source.** Both one-shot timers in the tree, `nros_zephyr_timer_create_oneshot`
   (`zephyr/nros_platform_zephyr_shims.c:249`, zero callers) and
-  `nros_platform_timer_create_oneshot` (`platform_timer.h:61`, five ports) —
+  `nros_platform_timer_create_oneshot` (`platform_timer.h:61`, five ports),
   take `(timeout_us, callback, user_data)`. They CALL; a `NextDeadlineFn`
-  TELLS. Either W1's `next_timer_deadline_us()` already owns timer deadlines
-  and no platform source is needed, or the wanted thing is
-  `wake_signal_from_isr` from the callback — a wake source, not a deadline
-  source, which ends a park early rather than bounding it. Write the answer
-  here before anyone writes an adapter.
+  TELLS. So the choice was between two mechanisms:
+
+  * **A deadline source** bounds the park before it starts. W1 already does
+    this for the executor's own timers (`next_timer_deadline_us()`), with
+    attribution (`last_park()` says `Timer`), so the bound can be analysed.
+  * **A wake source** ends a park early: a timer callback calls
+    `wake_signal_from_isr`.
+
+  For the executor's OWN timers a wake source buys nothing, and the reason is
+  structural. The executor is single-owner (`&mut self`), so its timers can
+  only be added by the thread that owns it, which is the thread that is
+  parked. The next park recomputes the bound before anyone could have added an
+  earlier one. The only paths that signal the wake object today are the
+  RMW wake callback and the signal-fd reader, both events from outside the
+  executor. It would not be more precise either: Zephyr's park already waits
+  with `K_USEC(deadline)` on the same tick a `k_timer` fires on. And it costs
+  what W1 does not: two `k_malloc`s per timer, ISR constraints on the
+  callback, a second wake path that races the first, and the loss of
+  attribution, since a signalled park reports only that it was signalled.
+
+  The wake-source mechanism has two legitimate uses, neither of them a timer
+  deadline source:
+  * **The bare-metal park (C3).** `wfi` takes no deadline, so arming a
+    one-shot compare whose interrupt signals the wake object IS the park
+    there.
+  * **A deadline raised mid-park by something outside the executor**, for
+    example a sporadic-server budget refill, the job the Zephyr shim was
+    written for. If that becomes real, it is a wake source with its own
+    attribution code, not a deadline source.
 * **B2 — smoltcp `poll_at()` as the first real `NextDeadlineFn`.**
   `nros-smoltcp/src/bridge.rs:710` calls `iface.poll(timestamp, …)` and
   `poll_at` appears nowhere; the interface knows when it next needs service
@@ -589,17 +613,20 @@ wired, so every other port parks on the millisecond `wake_wait_ms` floor.
   and returns early on every check. Only ASI's `--trace-stats` variant
   (`CONFIG_THREAD_ANALYZER` selects `INIT_STACKS`) measures. **Exit:** ASI
   decides where stack painting is paid for.
-* **E3 — say so when the rule is blind.** An armed rule that cannot measure
-  reads exactly like a clean result. That is the failure the entry's
-  "stack-headroom bound NOT set" line already guards against for the bound, one
-  step further on. The entry should report once when the port answers 0, the
-  same way.
+* **E3 — say so when the rule is blind. DONE.** An armed rule that cannot
+  measure used to read exactly like a clean result. `set_min_stack_headroom_bytes`
+  now asks the port once. If a bound is set and the port answers 0, it logs
+  one warning naming the fix (`CONFIG_INIT_STACKS` on Zephyr) and records it,
+  readable as `Executor::stack_headroom_blind()`. Entries set the bound at
+  boot on the thread it describes, so the warning lands once per tier, beside
+  the existing "stack-headroom bound NOT set" line. C entries get it for free
+  through `nros_cpp_executor_derive_min_stack_headroom`.
 
 ### Order
 
-A1 → A2 → A3 first, with B1 alongside it (it is a decision, not code). Then
+A1 → A2 → A3 first (B1 is decided: no code). Then
 B2 and D in parallel; C whenever — it is breadth, and each port is
-independent. E3 is small and independent; E1 only for images with spawned tiers.
+independent. E3 is done; E1 only for images with spawned tiers.
 
 ## Sequencing (W1-W7, as delivered)
 
