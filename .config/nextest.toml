@@ -440,6 +440,31 @@ filter = "binary(qos_zephyr_ros2_interop_e2e)"
 test-group = "matrix-consumers-serial"
 slow-timeout = { period = "180s", terminate-after = 3 }
 
+# phase-441 W1 — issue-#141-shaped RESOURCE, on the Cortex-M board: one baked
+# image serves two tests. `build-cortex-m-c-talker-zenoh` bakes
+# `CONFIG_NROS_ZENOH_LOCATOR="tcp/10.0.2.2:10700"`, and BOTH
+# `zephyr_cortex_m_qemu::zephyr_cortex_m_c_zenoh_pubsub_e2e` (the baked
+# `matrix::CELLS` cell) and `pubsub_zephyr_cortex_m_ros2_interop_e2e` (the
+# live-peer `interop::CELLS` cell) start a router on that port. That is not a
+# mere collision: `ZenohRouter::start_on` calls `kill_listeners_on_port` first,
+# so whichever starts second KILLS the other test's router mid-run.
+#
+# The filter names both BINARIES rather than the two test NAMES, deliberately.
+# A `test(...)` clause that stops matching goes SILENTLY INERT — that is exactly
+# how the retired `zephyr-qos-port` group lost its protection (see the block
+# above), and `zephyr_cortex_m_qemu`'s other two cells are cheap enough that
+# serializing all four is the conservative choice that cannot be wrong.
+#
+# THIS OVERRIDE MUST STAY AHEAD of the `binary(~zephyr)` → `qemu-emulated` one
+# far below, for the same first-match-wins reason its neighbour above documents:
+# `~zephyr` is a SUBSTRING match and would claim both of these binaries first.
+# Verify membership with `cargo nextest show-config test-groups`, never by
+# reading the filter.
+[[profile.default.overrides]]
+filter = "binary(zephyr_cortex_m_qemu) or binary(pubsub_zephyr_cortex_m_ros2_interop_e2e)"
+test-group = "zephyr-cortex-m-baked-port"
+slow-timeout = { period = "180s", terminate-after = 3 }
+
 # Issue #34 — host-integration "compile-shape" tests shell out to cargo / nros
 # to build a generated crate or workspace, so a COLD build legitimately exceeds
 # the 60s default kill (period 30s × terminate-after 2). Measured: a single
@@ -957,6 +982,14 @@ slow-timeout = { period = "60s", terminate-after = 10 }
 # script; this list is its manual twin and must move with it.
 [test-groups.qemu-emulated]
 max-threads = 4
+
+# phase-441 W1 — RESOURCE: the `build-cortex-m-*-talker-zenoh` leaves' baked
+# router ports (allocator 10600/10700/10800). The live-peer interop cell and the
+# baked pubsub cell of the SAME language start a router on the same port, and
+# `ZenohRouter::start_on` kills whoever holds it. Serialize the family; the
+# override that selects into it is far above, ahead of `binary(~zephyr)`.
+[test-groups.zephyr-cortex-m-baked-port]
+max-threads = 1
 
 [[profile.default.overrides]]
 filter = "binary(~freertos) or binary(~nuttx) or binary(~threadx) or binary(~zephyr) or binary(~esp32) or binary(~fvp)"

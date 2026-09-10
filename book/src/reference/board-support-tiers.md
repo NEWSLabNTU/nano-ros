@@ -33,7 +33,7 @@ Asserted runtime coverage and a nightly lane, but not in `just ci`. Breakage is 
 | `nros-board-nuttx-qemu` | NuttxArm | *unassigned* |  |
 | `nros-board-nuttx-qemu` | NuttxRiscv | *unassigned* | HONEST LABEL: C runtime-proven; Rust and C++ Pubsub are explicit CarveOuts and every EntryPubsub row is BuildOnly. |
 | `nros-board-threadx-qemu-riscv64` | ThreadxRiscv64 | *unassigned* | All three Action rows are BuildOnly by a deliberate wall-clock choice (182.5), not by breakage. |
-| `nros-board-zephyr` | ZephyrQemuCortexM | *unassigned* | C and C++ pubsub are Runtime; service/action are BuildOnly pending the runner's peer half. NO RUST ROW: `zephyr-lang-rust` cannot compile for any board whose devicetree has gpio nodes (issue 0432), so a rust cell would not build and BuildOnly would be a lie. Tier 2 rather than 1 because `just ci` is host-only and this needs QEMU. |
+| `nros-board-zephyr` | ZephyrQemuCortexM | *unassigned* | C, C++ and Rust pubsub are Runtime; service/action are BuildOnly pending the runner's peer half. It also carries the tree's first non-native_sim live-peer interop cell (phase-441 W1, `zephyr-cortex-m-pubsub-c-zenoh`). This note used to say NO RUST ROW, because `zephyr-lang-rust` could not compile for any board whose devicetree has gpio nodes — issue 0432, RESOLVED 2026-08-12 by phase-346 W2/W3, after which the Rust leaf built and `zephyr_cortex_m_rust_zenoh_pubsub_e2e` ran it while four documents still said it could not. Tier 2 rather than 1 because `just ci` is host-only and this needs QEMU. |
 
 ## Tier 3 — build-only
 

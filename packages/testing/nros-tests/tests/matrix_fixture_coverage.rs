@@ -658,33 +658,67 @@ fn interop_bindings_g4_peer_consistent_with_cell() {
 /// that kind reported two false violations while this gate was being written
 /// (`ZephyrNativeSim` → `zephyrnativesim`, which matches nothing).
 ///
-/// # Two exemptions, both load-bearing
+/// # Three backing tables, and one exemption
 ///
-/// **`workspace_fixture` rows count.** They carry a coordinate and narrow
-/// through `attribute_workspace_id` / `require_workspace_in_lane` rather than
-/// by path, which is a different mechanism but the same guarantee. Counting
-/// only `kind = "fixture"` falsely flagged `zephyr-qos-rust-zenoh`, whose
-/// coordinate is backed by seven workspace rows and zero plain ones.
+/// The question is never "does a `[[fixture]]` row exist" — it is "can the
+/// resolver this cell reaches report `[SKIPPED:lane]`". There are three ways to
+/// earn that, and all three count:
+///
+/// **`fixture` rows** narrow by PATH (`attribute_path` → `row_artifact_root`).
+///
+/// **`workspace_fixture` rows** carry a coordinate and narrow through
+/// `attribute_workspace_id` / `require_workspace_in_lane` — a different
+/// mechanism, the same guarantee. Counting only `kind = "fixture"` falsely
+/// flagged `zephyr-qos-rust-zenoh`, whose coordinate is backed by seven
+/// workspace rows and zero plain ones.
+///
+/// **West leaves** narrow by BUILD-DIR NAME. This third arm was missing, and
+/// its absence was written down as a deliberate exemption:
+///
+/// > Note what is NOT exempted: `builder = "west"` rows are absent from
+/// > `manifest_rows()` because west leaves are built module-level and are
+/// > deliberately unattributable. A Runtime cell that could only be backed by a
+/// > west row would therefore still fail here — correctly, because nothing
+/// > could narrow it.
+///
+/// That was true when this gate was written and had already stopped being true:
+/// **issue 0713** put `require_west_leaf_in_lane(build_name, …)` at the head of
+/// `require_prebuilt_binary_fresh_zephyr`, so EVERY zephyr resolver — including
+/// `build_zephyr_cortex_m_example` — narrows by looking the build name up in
+/// `fixtures::lane::west_leaves()`, which is `fixtures-manifest.py west-leaves`,
+/// which is `examples/fixtures.toml`. The rows are absent from `manifest_rows()`
+/// only because that table is the PATH-attribution one; they are not absent
+/// from the manifest, and they are not unnarrowable.
+///
+/// So the gate's REACH was narrower than the rule it enforces (the 0196 shape),
+/// in the direction that reads as correctness: it rejected the first interop
+/// cell whose nano side is a west EXAMPLE leaf (phase-441 W1,
+/// `zephyr-cortex-m-pubsub-c-zenoh`) with a diagnosis — "no lane can narrow
+/// it" — that the resolver contradicts. Note the west arm is only as good as the
+/// build NAME being modelled: `require_west_leaf_in_lane` fails OPEN on a name
+/// it cannot find (issue 1016), which is what `check-west-leaf-vocabulary`
+/// exists to prevent and why matching here is on the manifest's own leaf table
+/// rather than on a name this file invents.
 ///
 /// **`Tier::CarveOut` cells are skipped.** A carve-out records a lane that
 /// deliberately does not exist, so demanding a fixture row for it would be
 /// demanding the thing the carve-out exists to say we do not build. That is
 /// what `zephyr-qos-cpp-cyclone-CARVED` is, and its recorded reason says so.
-///
-/// Note what is NOT exempted: `builder = "west"` rows are absent from
-/// `manifest_rows()` because west leaves are built module-level and are
-/// deliberately unattributable. A Runtime cell that could only be backed by a
-/// west row would therefore still fail here — correctly, because nothing could
-/// narrow it.
 #[test]
 fn interop_bindings_g5_cells_are_lane_narrowable() {
     let rows = nros_tests::fixtures::lane::manifest_rows();
+    let leaves = nros_tests::fixtures::lane::west_leaves();
     // Precondition, not decoration: an empty manifest would make every cell
     // below "unbacked" and this test would fail for the wrong reason — or, if
-    // the loop were inverted, pass having checked nothing.
+    // the loop were inverted, pass having checked nothing. Both tables, because
+    // either one going empty is the same vacuity from the other direction.
     assert!(
         rows.iter().any(|r| r.kind == "fixture"),
         "no fixture rows parsed from the manifest — the check below would be vacuous"
+    );
+    assert!(
+        !leaves.is_empty(),
+        "no west leaves parsed from the manifest — the west arm below would be vacuous"
     );
 
     let mut bad = Vec::new();
@@ -696,17 +730,22 @@ fn interop_bindings_g5_cells_are_lane_narrowable() {
         }
         let platform_tokens = c.cell.platform.fixture_tokens();
         let lang = c.cell.lang.as_str();
+        let coord_matches = |coord: &nros_tests::fixtures::lane::Coord| {
+            platform_tokens.contains(&coord.0.as_str())
+                && coord.1 == lang
+                && rmw_from_str(&coord.2) == Some(c.cell.rmw)
+        };
         let backed = rows.iter().any(|r| {
-            (r.kind == "fixture" || r.kind == "workspace_fixture")
-                && platform_tokens.contains(&r.coord.0.as_str())
-                && r.coord.1 == lang
-                && rmw_from_str(&r.coord.2) == Some(c.cell.rmw)
-        });
+            (r.kind == "fixture" || r.kind == "workspace_fixture") && coord_matches(&r.coord)
+        })
+        // The west arm — see the doc comment. A west leaf narrows by build-dir
+        // NAME through `require_west_leaf_in_lane`, which reads this same table.
+            || leaves.iter().any(|l| coord_matches(&l.coord));
         if !backed {
             bad.push(format!(
-                "{}: coordinate {:?}/{}/{:?} is produced by NO fixtures.toml row, \
-                 so no lane can narrow it — it will be required fresh in every \
-                 lane whose build may not cover it",
+                "{}: coordinate {:?}/{}/{:?} is produced by NO fixtures.toml row and \
+                 NO west leaf, so no lane can narrow it — it will be required fresh \
+                 in every lane whose build may not cover it",
                 c.id, platform_tokens, lang, c.cell.rmw
             ));
         }

@@ -4246,8 +4246,13 @@ fn zephyr_build_root() -> PathBuf {
 ///   is the thing that distinguishes them, and it has to appear in the path or
 ///   the two builds collide in one directory.
 ///
-/// `lang` is `"c"` or `"cpp"`. There is no rust arm: issue 0432 blocks the
-/// `zephyr` crate on any board with gpio nodes.
+/// `lang` is `"rust"`, `"c"` or `"cpp"`. This used to say "there is no rust arm:
+/// issue 0432 blocks the `zephyr` crate on any board with gpio nodes" — **0432
+/// was RESOLVED 2026-08-12 by phase-346 W2/W3**, the west lane has built
+/// `build-cortex-m-rust-talker-zenoh` since, and
+/// `zephyr_cortex_m_rust_zenoh_pubsub_e2e` calls this function with `"rust"`.
+/// The sentence outlived its fact by four weeks and was still being read as a
+/// constraint in phase-441 (corrected there, W1).
 pub fn build_zephyr_cortex_m_example(lang: &str, case: &str, rmw: Rmw) -> TestResult<PathBuf> {
     let root = project_root();
     let example_dir = root.join(format!("examples/zephyr/{}/{}", lang, case));

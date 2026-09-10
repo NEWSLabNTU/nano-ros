@@ -37,10 +37,29 @@
 //!
 //! | lane | selection | cells | coords | cost |
 //! | --- | --- | --- | --- | --- |
-//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k + pairwise l × r | 17 | 12 | 26 % |
-//! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 13 | 13 | 26 % |
-//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 36 | 36 | 72 % |
-//! | tier 3 | everything | 194 | 50 | 100 % |
+//! | [`CiLane::Tier1`] | host-exec, 1-wise p,w,k + pairwise l × r | 19 | 12 | 24 % |
+//! | [`CiLane::Tier2`] | 1-wise p, l, r, k | 12 | 12 | 24 % |
+//! | [`CiLane::Tier2Nightly`] | pairwise p × l × r × k | 36 | 35 | 71 % |
+//! | tier 3 | everything | 205 | 49 | 100 % |
+//!
+//! Re-measured 2026-09-10 (phase-441 W1). FOUR of the six gated numbers had
+//! drifted before that commit touched anything — tier 1's cells (17→19), tier
+//! 2's coords (13→12), nightly's coords (36→35) and the tier-3 denominator
+//! (50→49) — which is the drift this test exists to catch and does catch: it is
+//! excluded from `just ci gate` (`test-unit` passes `--exclude nros-tests`), so
+//! it only fires in a sweep and had been sitting red there. The fifth number
+//! moved WITH phase-441 W1: adding `zephyr-cortex-m-pubsub-c-zenoh` took tier
+//! 2's cell count 13→12, which reads backwards until you remember `cells()` is a
+//! GREEDY set cover — a cell covering more singles at once lets the cover finish
+//! in fewer picks. Cell count is not monotone in the candidate set and never was
+//! (see `the_ladder_is_monotone_in_fixture_cost`, which asserts on coordinates
+//! for exactly this reason).
+//!
+//! NOT updated, and not gated by anything: the prose in `just/ci.just` and
+//! `justfile` that quotes these covers ("14 of 50 coordinates", "37 of 194
+//! cells", "34 of 47", "10 of 50"). Those carry three different denominators and
+//! none of them is current — a separate cleanup, because guessing which era each
+//! sentence describes would make them confidently wrong rather than visibly old.
 //!
 //! **These numbers are GATED, not transcribed** — `documented_lane_table_is_live`
 //! recomputes them and fails if this table drifts (phase-342 W3). They had:
@@ -869,9 +888,9 @@ _tier-build:
 
         // (lane, cells, coords) exactly as the module docs above state them.
         let documented = [
-            (CiLane::Tier1, 17, 12),
-            (CiLane::Tier2, 13, 13),
-            (CiLane::Tier2Nightly, 36, 36),
+            (CiLane::Tier1, 19, 12),
+            (CiLane::Tier2, 12, 12),
+            (CiLane::Tier2Nightly, 36, 35),
         ];
         for (lane, want_cells, want_coords) in documented {
             assert_eq!(
@@ -890,8 +909,8 @@ _tier-build:
             );
         }
         assert_eq!(
-            total_coords, 50,
-            "the table's tier-3 denominator (50 coordinates) is stale; recomputed \
+            total_coords, 49,
+            "the table's tier-3 denominator (49 coordinates) is stale; recomputed \
              {total_coords}"
         );
     }

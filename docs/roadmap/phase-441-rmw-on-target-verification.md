@@ -1,7 +1,9 @@
 # Phase 441 — the one "on-target" live-peer cell runs on host sockets
 
-**Status (2026-09-10). W2 ANSWERED (yes — see below); W1 and W3–W5 not started.
-Analysis below; work items W1–W5 proposed.**
+**Status (2026-09-10). W2 ANSWERED (Cyclone crosses slirp, with four settings — see
+below). W4 and W5 LANDED (the lane split, the phrase audit). W1 and W3 cells WRITTEN —
+#829 Zephyr Cortex-M, #835 FreeRTOS/MPS2 — and unproven by design: no on-target cell
+has met a live peer yet.**
 
 Phase-433 closed with twenty of twenty Runtime interop cells carrying a live
 verdict, and named its own remainder:
@@ -33,6 +35,10 @@ platform, one language, one RMW, one workload.**
 `ThreadxRiscv64`, `Esp32Qemu`, `QemuBaremetal`, `Fvp`, `Px4` and
 `ZephyrQemuCortexM` have **no live-peer cell at all**. Whatever those ports do
 against a stock ROS 2 node is unobserved.
+
+*(As of W1, `ZephyrQemuCortexM` has one — `zephyr-cortex-m-pubsub-c-zenoh`. The
+count above is the pre-W1 measurement and is left as written, because it is the
+argument the phase was opened on. Ten platforms remain.)*
 
 ## The part that changes the argument
 
@@ -94,13 +100,17 @@ yes, with four settings and a `hostfwd` — see W2 below.**
 
 ## One constraint that is already written down
 
-`ZephyrQemuCortexM`'s doc comment: *"Cells here are C/C++ only: the pinned
+~~`ZephyrQemuCortexM`'s doc comment: *"Cells here are C/C++ only: the pinned
 `zephyr-lang-rust` cannot compile for any board whose devicetree has gpio nodes
 (issue 0432)."* So the natural first target — the same QoS workload, moved from
-native_sim to the Cortex-M board — **cannot be the Rust image**. It is a C or
-C++ cell, which also means it exercises a different half of our API surface than
-the existing row. That is a feature, not a problem, but it must be planned for
-rather than discovered.
+native_sim to the Cortex-M board — **cannot be the Rust image**.~~
+
+**REFUTED 2026-09-10 (W1).** Issue 0432 was RESOLVED 2026-08-12 by phase-346
+W2/W3; the Rust leaf has built since and `zephyr_cortex_m_rust_zenoh_pubsub_e2e`
+runs it. The quoted doc comment was stale when this phase quoted it, and so were
+two more copies of the same sentence — see "W1 as built" below. All three are
+corrected. W1 still landed as a C cell, but for a different and smaller reason:
+C is what the west lane already builds at that coordinate.
 
 ## Work items
 
@@ -123,6 +133,91 @@ membership in the `live-peer.yml` lane that follows from that ledger entry.
 five defects moving a non-interop workload across this same boundary. If W1
 finds none, that is itself worth writing down — it would mean the earlier five
 were about the build, not the wire.
+
+### W1 as built (2026-09-10) — two amendments and a gate defect
+
+The cell landed as `zephyr-cortex-m-pubsub-c-zenoh` in `interop::CELLS`
+(`Tier::Runtime`, `RosEdition(Zenoh)`, `NanoToRos`, `ZephyrWestLeaves`), run by
+`tests/pubsub_zephyr_cortex_m_ros2_interop_e2e.rs` and aimable with
+`just zephyr test-ros2-cortex-m`. Two things in the plan above were wrong and
+one thing in the tree was.
+
+**Amendment 1 — the C/C++-only constraint no longer exists.** The section "One
+constraint that is already written down" quotes `ZephyrQemuCortexM`'s doc
+comment on issue 0432. **0432 was RESOLVED 2026-08-12 by phase-346 W2/W3**;
+`build-cortex-m-rust-talker-zenoh` has built since and
+`zephyr_cortex_m_rust_zenoh_pubsub_e2e` runs it. Three places still asserted the
+constraint (`matrix.rs`'s `ZephyrQemuCortexM` doc, `binaries/mod.rs`'s
+`build_zephyr_cortex_m_example` doc — which says "there is no rust arm" in a
+function the Rust cell calls with `"rust"` — and this phase doc); all three are
+corrected. The sentence outlived its fact by four weeks and was still being read
+as a design constraint, which is precisely the W5 problem one series over.
+
+**Amendment 2 — the workload moves, because the board cannot hold the
+workload still.** W1 says "same RMW, same workload, same peer, same crossing
+mechanism, one axis moved". The workload could not stay `Qos`: there is no QoS
+workspace entry for any board but `native_sim/native/64`, in ANY language
+(`examples/workspaces/features/src/` holds `zephyr_rust_{lifecycle,params,qos}_entry`,
+all native_sim). A QoS cell on `mps2_an385` therefore means authoring an entry
+package, a `[[workspace_fixture]]` row, a west build name and a port bake —
+four new artifacts, none of which is the axis W1 exists to move, and all of
+which would ship unbuilt on a host with no Zephyr SDK. So the cell reuses the
+`build-cortex-m-c-talker-zenoh` leaf the west lane ALREADY builds at exactly
+this coordinate (locator `tcp/10.0.2.2:10700` = `port_of(ZephyrQemuCortexM, C,
+Pubsub)`) and adds a live peer and nothing else. **`Pubsub`, not `Qos`.** The
+axis W1 is about — host sockets → Zephyr's in-kernel stack over `eth_smsc911x`,
+64-bit host pointers → 32-bit ARMv7-M — moves exactly as planned.
+
+The test asserts TWO things, and the first is what makes the coordinate a
+witness rather than a second spelling of native_sim: `IPv4 address: 10.0.2.15`
+from Zephyr's own `net_config` (only the in-kernel stack driving a real
+ethernet controller prints it), then `ros2 topic echo --once /chatter` receiving
+a sample. The second is the interop claim and the first alone would not do —
+the existing baked pubsub cell asserts the image PRINTS `Publishing:`, which the
+C talker does whenever `nros_cpp_publish_raw` returns 0, a local return code.
+Nothing in the tree had observed a sample LEAVE this board.
+
+**The gate defect — G5's reach was narrower than its rule.**
+`matrix_fixture_coverage.rs`'s `interop_bindings_g5_cells_are_lane_narrowable`
+rejected the new cell with "produced by NO fixtures.toml row, so no lane can
+narrow it", and its doc comment declared that verdict deliberate: "a Runtime
+cell that could only be backed by a west row would therefore still fail here —
+correctly, because nothing could narrow it". That was true when G5 was written
+and had already stopped being true: **issue 0713** put
+`require_west_leaf_in_lane(build_name, …)` at the head of
+`require_prebuilt_binary_fresh_zephyr`, so every zephyr resolver narrows by
+build-dir NAME against `fixtures::lane::west_leaves()` — the same
+`examples/fixtures.toml`, read through a different subcommand. G5 was checking
+only the PATH-attribution table (`manifest_rows()`), which by construction omits
+west rows. Its diagnosis was one the resolver contradicts. G5 now counts all
+three backing mechanisms (path rows, workspace rows, west leaves), with a
+vacuity precondition on each table. The 0196 shape, in the direction that reads
+as correctness.
+
+**Defect count across the board crossing: ZERO in nano-ros itself.** The
+expected-finding paragraph above is therefore answered, with a caveat that
+weakens it: the crossing was NOT run live here — this host has no `/opt/ros`,
+no Zephyr SDK and no west workspace, so the cell reaches its `require_ros2()`
+skip and stops. What IS established is that the cell is bound and
+coordinate-correct (all 10 `matrix_fixture_coverage` gates, including the
+repaired G5), that its runner is named (`check-interop-cell-runners`: 23/23,
+ledger still empty), that its nextest group resolves and actually holds both
+sharers of the baked port (`cargo nextest show-config test-groups`), and that
+the skip fires for the right reason. The five phase-337 W2 defects were BUILD
+defects — a header conflict, an arch-gated feature, a missing allocator, a
+duplicated cmake string, a missing entropy device — and this cell adds no build,
+which is consistent with finding none. **A live verdict is still owed**: the
+`.config/interop-verdicts.toml` `pass` and the `live-peer.yml` membership that
+W1's acceptance names need a host with ROS 2, a Zephyr SDK and the west lane.
+Until that runs, "zero defects on the wire" is unmeasured, not established.
+
+**Incidental, and pre-existing:** `ci_lane::tests::documented_lane_table_is_live`
+was already red before this work — four of its six gated numbers had drifted.
+It is excluded from `just ci gate` (`test-unit` passes `--exclude nros-tests`),
+so it only fires in a sweep. Recomputed and corrected in the same commit,
+because adding an interop cell moves one of those numbers (tier 2's cell count
+13→12: `cells()` is a greedy set cover, so a cell covering more singles at once
+finishes the cover in FEWER picks).
 
 ### W2 — is Cyclone reachable from a QEMU guest at all?
 
