@@ -6,7 +6,7 @@ title: "The FreeRTOS app-task stack is 384 KiB by bisection, its C/C++ mirror sa
 status: open
 type: tech-debt
 area: boards
-related: [phase-392, phase-76, 0271, 0739, 1145, 1187]
+related: [phase-392, phase-76, 0271, 0739, 1145, 1187, phase-448]
 ---
 
 ## Problem

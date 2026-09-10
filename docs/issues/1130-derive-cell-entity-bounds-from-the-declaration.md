@@ -6,7 +6,7 @@ type: enhancement
 area: api, cli
 severity: medium
 found: 2026-09-06
-related: [0857, 0827, 0900, 0965, 1061]
+related: [0857, 0827, 0900, 0965, 1061, phase-412]
 ---
 
 # The number is derivable and is still hand-written

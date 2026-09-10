@@ -6,7 +6,7 @@ title: "The executor backing is a `.bss` static now, but on an RTOS the allocato
 status: open
 type: tech-debt
 area: core
-related: [phase-392, RFC-0002, 0163, 0880]
+related: [phase-392, RFC-0002, 0163, 0880, phase-448]
 ---
 
 ## Problem

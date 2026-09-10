@@ -2,7 +2,7 @@
 id: 1183
 title: "`check node-std-tests` is red on main — the executor-backing latch test asserts a process-global that 367 sibling tests share"
 status: resolved
-resolved: 2026-09-07
+resolved_in: "605d667eb"
 type: bug
 area: testing
 related: [phase-392, issue-1145]
@@ -70,22 +70,23 @@ A lane that is red for every input has no signal capacity — a regression landi
 in it looks exactly like this failure. `node-std-tests` is in the derived
 fast-serial gate list, so that is the whole lane.
 
-## Resolution
+## RESOLVED 2026-09-11 — fixed by `605d667eb`; one defect, three ids
 
-Fixed by `605d667eb` ("fix(#1183, #1186): the backing latch test needs a virgin
-process"), the second option above: the test is `#[ignore]`d with its reason in
-the attribute (`packages/core/nros-node/src/executor/backing.rs:237-240`) and
-`node-std-tests` runs it in its OWN cargo invocation, through the `ran_tests`
-guard that fails if the filter matches nothing
-(`just/check/lanes.just:1707-1710`). Same issue as 1186, filed independently.
+`605d667eb fix(#1183, #1186): the backing latch test needs a virgin process`
+(2026-09-06) marks `the_static_is_handed_out_once_and_only_once` `#[ignore]` and
+runs it alone, in its own process, from the lane:
+`just/check/lanes.just:1709` —
+`cargo test … -- --ignored --exact executor::backing::tests::the_static_is_handed_out_once_and_only_once`.
+The latch is process-global, and in a separate process no sibling test can take
+it first.
 
-This file was ADDED eleven minutes after that fix landed (`a0435e5db`, 17:14 vs
-17:03 UTC on 2026-09-06), by a parallel session that had not seen it — it was
-never deliberately kept open, just never closed.
+Checked before archiving, because an ignored test is dead coverage until the
+lane that is meant to run it is shown to run it:
 
-Re-measured on `origin/main` 2026-09-11, features `std,sim-time,param-services`:
-the isolated invocation passes 5/5 (`1 passed`); the full `--lib` suite is
-439 passed, 0 failed, 2 ignored; and the negative control — the same test pulled
-back INTO the shared process with `--include-ignored` — still fails at
-`backing.rs:247`, 2/2. So the isolation is load-bearing and the positive control
-is intact.
+* the test still exists — `packages/core/nros-node/src/executor/backing.rs:240`;
+* `just check node-std-tests` passes, and its dedicated invocation reports
+  `1 passed; 0 failed; … 447 filtered out` — exactly that one test.
+
+Issues 1183, 1185 and 1186 are the same defect filed three times. The fix commit
+named 1183 and 1186 and missed 1185, and it archived none of them, so all three
+stayed open for five days after the fix landed.

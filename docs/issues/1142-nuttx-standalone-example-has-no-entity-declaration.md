@@ -5,7 +5,7 @@ title: "A standalone (non-workspace) example declares no entities, so the guesse
 status: open
 type: tech-debt
 area: [rmw, memory, build]
-related: [1028, 0827, 1061, 0460]
+related: [1028, 0827, 1061, 0460, phase-412]
 ---
 
 ## What

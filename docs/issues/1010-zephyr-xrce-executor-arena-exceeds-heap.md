@@ -7,7 +7,7 @@ type: bug
 area: zephyr, platform, examples
 severity: high
 found: 2026-09-03
-related: [issue-0968, issue-1003]
+related: [issue-0968, issue-1003, phase-448]
 ---
 
 ## Measured

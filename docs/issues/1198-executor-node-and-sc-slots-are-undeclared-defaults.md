@@ -6,7 +6,7 @@ title: "`MAX_NODES` and `MAX_SC` are undeclared defaults, so every executor back
 status: open
 type: tech-debt
 area: [core, embedded]
-related: [1145, 1171, 0827, 0857, 0900, 1061, phase-392]
+related: [1145, 1171, 0827, 0857, 0900, 1061, phase-392, phase-448]
 ---
 
 ## What
