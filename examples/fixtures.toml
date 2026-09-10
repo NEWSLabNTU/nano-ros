@@ -449,11 +449,11 @@ env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "cor
 # phase-285 W5 (RFC-0015 Model 1, issue #165) — the rv-virt (riscv32) sibling of the
 # arm row above: `realtime-rust/src/riscv_nuttx_entry`, deploy = "nuttx-riscv" →
 # `<QemuRvVirt>::run_tiers`. Built at `--release` (same 177.8.c-class opt-level dodge
-# as arm until proven otherwise) against the LOCAL riscv32imac-unknown-nuttx-elf.json
-# spec (ws root; resolved relative to the ws dir, needs -Z json-target-spec via env).
-# The NUTTX_* family points the shared board build.rs helpers (platform compile +
-# #127 image link) at the rv-virt export: riscv cross, rv32imac flags, the rv-virt
-# ld.script, EMPTY vectortab (riscv has no head object), the risc-v board-lib dir.
+# as arm until proven otherwise). phase-445 — the target spec, `json-target-spec`,
+# the image link group and the NUTTX_* image-link env all come from the
+# nuttx-riscv board descriptor through the image's `nros-cargo.toml`; `target`
+# below is only the locator's `<target_dir>/<triple>/` component (the spec's
+# file stem, which is how cargo names the directory).
 # Locator port 8691 (arm uses 8291). `skip_probe` — same nightly+build-std env
 # reasoning as the arm row. Consumed by tests/realtime_tiers_riscv_nuttx_e2e.rs.
 [[workspace_fixture]]
@@ -466,12 +466,9 @@ bringup = "src/demo_bringup"
 image = "riscv_nuttx"
 codegen_out = "build-fixtures/demo_bringup"
 target_dir = "target-fixtures/nuttx-riscv"
-target = "riscv32imac-unknown-nuttx-elf.json"
+target = "riscv32imac-unknown-nuttx-elf"
 skip_probe = true
-# NOTE: the multi-word NUTTX_* env (PLATFORM_CFLAGS, ARCH_INCLUDES, …) is
-# exported by the `just nuttx build-riscv-rust` recipe — the lane's env
-# serialization is space-joined and cannot carry values with spaces.
-env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", CARGO_UNSTABLE_JSON_TARGET_SPEC = "true", NROS_LOCATOR = "tcp/10.0.2.2:8691", NROS_DOMAIN_ID = "0" }
+env = { RUSTUP_TOOLCHAIN = "nightly-2026-04-11", CARGO_UNSTABLE_BUILD_STD = "core,alloc,panic_abort", CARGO_UNSTABLE_BUILD_STD_FEATURES = "compiler-builtins-mem", NROS_LOCATOR = "tcp/10.0.2.2:8691", NROS_DOMAIN_ID = "0" }
 
 [[workspace_fixture]]
 id = "workspace-rust-nuttx-realtime"

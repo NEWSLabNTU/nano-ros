@@ -25,8 +25,10 @@
 #
 # `.conf` is Zephyr Kconfig overlay — the SAME input class as issues 0167 and
 # 0466, each of which cost a kernel-dump investigation. `.msg` is codegen input.
-# The single `.json` is `realtime-rust/riscv32imac-unknown-nuttx-elf.json`, the
+# The single `.json` was `realtime-rust/riscv32imac-unknown-nuttx-elf.json`, the
 # custom RISC-V TARGET SPEC: edit it and the ABI moves, and no signature saw it.
+# (phase-445 moved it to the board crate, `nros-board-nuttx-qemu/`, whose
+# descriptor names it — one copy instead of two.)
 # That one is the argument against allowlists in miniature — nobody sat down and
 # decided a target spec was not a build input; it simply was not on the list.
 #
