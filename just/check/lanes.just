@@ -1488,16 +1488,43 @@ no-alloc-image:
     @python3 scripts/check-no-alloc-image.py --selftest
     @python3 scripts/check-no-alloc-image.py --claims
 
-# no_std core-crate compile check across the embedded targets `ci.yml` gates
-# (.github/workflows/ci.yml). Bare portable crates only — no SDKs, no link.
+# no_std core-crate compile check across the embedded targets `gate.yml` runs on
+# schedule/dispatch (`just check no-std`, .github/workflows/gate.yml:982). Bare
+# portable crates only — no SDKs, no link.
 [group("ci")]
 no-std:
     #!/usr/bin/env bash
     set -e
-    crates="-p nros-core -p nros-log -p nros-serdes -p nros-params \
-        -p nros-platform-api -p nros-platform-cffi -p nros-platform-critical-section -p nros-rmw \
-        -p nros-node -p nros-platform -p nros-diagnostics -p nros"
-    # phase-359 W1 — the four crates on the second line joined 2026-08-15. This
+    # The CORE half is DERIVED (issue 1212): every crate under `packages/core`
+    # that has not declared itself host-only. It used to be a literal, and the
+    # literal was one of five disagreeing answers to "what is core" — it named 7
+    # of the 9 core crates, missing `nros-serdes-packed` and
+    # `nros-executor-layout`, the latter of which appeared in no core-crate list
+    # anywhere in the repo. Both build clean on both targets; adding them is a
+    # ratchet, not work. `check-core-crates-are-no-std` reads the same
+    # derivation, so a crate cannot be in one and not the other.
+    core_crates="$(python3 scripts/lib/core_crates.py --cargo-flags)"
+    # Fail loudly on an EMPTY derivation. `set -e` already ends the recipe when
+    # the deriver exits non-zero, but a deriver that succeeded over nothing
+    # would leave `$crates` holding only the five extras below — a lane covering
+    # less than it claims while printing "no-std OK.", which is the exact
+    # failure this issue is about. Same reason `host-only-members.sh` refuses to
+    # emit an empty list.
+    if [ -z "$core_crates" ]; then
+        echo "check-no-std: scripts/lib/core_crates.py derived NO core crates." >&2
+        echo "  Refusing to run a lane that would silently cover only the extras." >&2
+        exit 1
+    fi
+    # And the crates this lane covers BEYOND the core. These stay literal
+    # because they are this lane's reach, not the definition: `nros` is the
+    # façade, `nros-platform` and `nros-platform-critical-section` are the
+    # portable slice of the platform layer, and `nros-platform-api` /
+    # `nros-platform-cffi` are two of the three vtable seams. The third,
+    # `nros-rmw-cffi`, is Cortex-M only (pointer atomics) and is added per
+    # target below.
+    crates="$core_crates -p nros-platform-api -p nros-platform-cffi \
+        -p nros-platform-critical-section -p nros-platform -p nros"
+    # phase-359 W1 — the four platform/façade crates joined 2026-08-15. This
     # lane covered 9 of the 32 crates that DECLARE `no_std`, and `nros-node` —
     # the one with 85 of the ~190 `cfg(feature = "std")` sites, i.e. the crate
     # where a `std::` slip is most likely — was not among them. Until now the

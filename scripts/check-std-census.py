@@ -70,6 +70,7 @@ import sys as _sys
 from pathlib import Path as _Path
 _sys.path.insert(0, str(_Path(__file__).resolve().parent / "lib"))
 from tracked import tracked  # issue 0721: index lookup, not a walk
+from core_crates import host_crate_names  # issue 1212: ONE definition of "core"
 
 REPO = Path(__file__).resolve().parents[1]
 SCOPE = ["packages/core", "packages/api"]
@@ -86,7 +87,15 @@ SCOPE = ["packages/core", "packages/api"]
 #   nros-orchestration-ir  says so itself: "host code (serde + thiserror); it
 #                          carries no runtime/`no_std`". A schema crate for
 #                          `system.toml`, consumed by the CLI.
-EXCLUDE = {"nros-macros", "nros-orchestration-ir"}
+#
+# Both reasons are now recorded where they belong -- in each crate's own
+# manifest, as `proc-macro = true` and `[package.metadata.nros] host-only` --
+# and DERIVED here (issue 1212). This set was one of five disagreeing answers to
+# "what is core" in the tree: it was CORRECT, and it was a second copy, so
+# `check-core-crates-are-no-std` could rule differently on a crate the census had
+# already decided and neither gate would notice. The literal it replaces
+# resolved to exactly these two names on the day it was removed.
+EXCLUDE = host_crate_names()
 
 # Any `feature = "std"` appearing inside a cfg attribute, in ANY nesting.
 #
