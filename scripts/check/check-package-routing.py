@@ -286,11 +286,13 @@ def route_declaration(pkg: dict) -> frozenset[str]:
 # `must_call` is the routing predicate; `why` is what the site would silently
 # get wrong without it. `cmd/build.rs` additionally has to make a
 # misdeclaration LOUD, which is the acceptance sentence of the work item.
+#
+# `builder/cargo_root.rs` WAS the third emitter and is not any more: RFC-0098
+# D9 (phase-445 W5) retired the generated `[workspace] members` list it routed
+# — each cargo image is its own root now, reaching exactly the packages its
+# entry names — so there is no member list left to key on file presence. What
+# remains of that file only retires a stale root.
 SITE_CONTRACT = {
-    "packages/cli/nros-cli-core/src/builder/cargo_root.rs": [
-        ("routing::route(", "the [workspace] members list would key on Cargo.toml presence"),
-        ("routing::check_declarations(", "a misdeclared participant would drop out silently"),
-    ],
     "packages/cli/nros-cli-core/src/builder/cmake_root.rs": [
         ("routing::route(", "add_subdirectory() would key on CMakeLists.txt presence"),
         ("routing::check_declarations(", "a misdeclared participant would drop out silently"),
@@ -333,7 +335,8 @@ PROBE_EXEMPT = "nros-routing-exempt:"
 # reads as prose above the code rather than a trailing comment rustfmt owns.
 PROBE_EXEMPT_LOOKBEHIND = 3
 PROBE_BANNED_IN = (
-    "packages/cli/nros-cli-core/src/builder/cargo_root.rs",
+    # `builder/cargo_root.rs` left with its member list (RFC-0098 D9, see
+    # `SITE_CONTRACT`); the cmake root is the emitter still routing.
     "packages/cli/nros-cli-core/src/builder/cmake_root.rs",
 )
 
