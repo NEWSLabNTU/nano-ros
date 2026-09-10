@@ -61,6 +61,28 @@
 #define NROS_CPP_DOMAIN_ID_INHERIT UINT32_MAX
 
 /**
+ * phase-436 A2 — which deadline source bounded a park, as
+ * [`nros_cpp_executor_last_park`] reports it. `PLATFORM` also carries the
+ * index the platform source was registered at.
+ */
+#define NROS_CPP_WAKE_SOURCE_CALLER_BUDGET 0
+
+/**
+ * A registered timer's next expiry bounded the park.
+ */
+#define NROS_CPP_WAKE_SOURCE_TIMER 1
+
+/**
+ * The backend's next internal event (lease, heartbeat) bounded the park.
+ */
+#define NROS_CPP_WAKE_SOURCE_SESSION 2
+
+/**
+ * A platform-registered deadline source bounded the park.
+ */
+#define NROS_CPP_WAKE_SOURCE_PLATFORM 3
+
+/**
  * Image-local discriminant of the linked backend's serialization format
  * (`nros_serdes::format::SerializationFormatId`). RFC-0088 D2 — image-local:
  * never persist it, never compare it across images.
@@ -1566,6 +1588,55 @@ nros_cpp_ret_t nros_cpp_executor_set_park_primitive(void *handle,
  * `handle` must be a live executor handle from this ABI, or NULL.
  */
 nros_cpp_ret_t nros_cpp_executor_set_spin_nominal_us(void *handle, uint64_t us);
+
+/**
+ * phase-436 A2 — read the release-jitter probe from a C or C++ entry.
+ *
+ * `max_us` is the worst wake past its nominal release since the executor
+ * opened; `late_wakes` / `total_wakes` separate one bad wake from a loop that
+ * is late every cycle. `granularity_us` is what the measurement is worth: a
+ * loop paced by the blocking wait cannot be judged finer than one park
+ * granule, and the executor says which case this is.
+ *
+ * Before this the only signal a C entry had was the `release-jitter-runtime`
+ * violation line, which fires only at a whole period late — so the maximum,
+ * the figure a trace is compared against, could not be read at all.
+ *
+ * Every output pointer may be NULL, meaning "not wanted". Nothing is written
+ * when the handle is refused.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL. Each
+ * non-NULL output must point at writable storage of its type.
+ */
+nros_cpp_ret_t nros_cpp_executor_release_jitter(void *handle,
+                                                uint64_t *max_us,
+                                                uint32_t *late_wakes,
+                                                uint32_t *total_wakes,
+                                                uint64_t *granularity_us);
+
+/**
+ * phase-436 A2 — how the last park was bounded, from a C or C++ entry.
+ *
+ * `bound_us` is the park the sources agreed on; `achieved_us` is what the
+ * platform was actually asked for after rounding up to what its primitive can
+ * express. They differ exactly when the request did not land on the
+ * platform's grid, and both are reported so the rounding is visible rather
+ * than silent. `source` is one of `NROS_CPP_WAKE_SOURCE_*`; `platform_index`
+ * is meaningful only for `NROS_CPP_WAKE_SOURCE_PLATFORM` and 0 otherwise.
+ *
+ * Every output pointer may be NULL. Nothing is written when the handle is
+ * refused.
+ *
+ * # Safety
+ * `handle` must be a live executor handle from this ABI, or NULL. Each
+ * non-NULL output must point at writable storage of its type.
+ */
+nros_cpp_ret_t nros_cpp_executor_last_park(void *handle,
+                                           uint64_t *bound_us,
+                                           uint64_t *achieved_us,
+                                           uint8_t *source,
+                                           uint8_t *platform_index);
 
 /**
  * Get current monotonic time in nanoseconds.

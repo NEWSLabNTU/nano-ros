@@ -141,10 +141,16 @@ pub use node::{CallbackGroup, NodeHandle};
 pub use node_record::{NodeBuilder, NodeId, NodeRecord};
 #[cfg(any(has_rmw, test))]
 pub use spin::Executor;
+// phase-436 — the wake-source seam's types. `Executor::last_park` RETURNS a
+// `WakeSourceId` and `register_wake_source` / `set_park_primitive` TAKE the two
+// fn-pointer types, so all four are already public API; without these a caller
+// outside the crate could receive a value it cannot name or match on.
 #[cfg(any(has_rmw, test))]
 pub use spin::SessionHandle;
 #[cfg(all(any(has_rmw, test), feature = "rmw-cffi"))]
 pub use spin::SessionSpec;
+#[cfg(any(has_rmw, test))]
+pub use spin::{MAX_WAKE_SOURCES, NextDeadlineFn, ParkUntilFn, WakeSourceId};
 #[cfg(any(has_rmw, test))]
 pub use storage::{
     ExecutorInlineStorage, ExecutorSizing, RegionUnit, RegionUnits, executor_storage_layout,
