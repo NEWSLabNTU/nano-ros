@@ -292,13 +292,26 @@ this guide. Copy the whole directory out and rename the packages, then:
 
 ```bash
 nros setup native
+nros sync            # once per workspace — the generated message bindings
 nros build native
 ```
 
 `nros build` walks the packages, resolves the image, checks the toolchain,
 generates the root manifest and the entry, and hands off to cargo. The older
-`nros sync` / `nros codegen-system` / `nros check` sequence still works; it is
-just no longer something you have to type.
+`nros codegen-system` / `nros check` steps still work; they are just no longer
+something you have to type.
+
+`nros sync` is the one that is still yours to run. A workspace that has never
+been synced has no generated message crates, so `nros build` refuses at
+preflight and names it:
+
+```text
+Error: missing prerequisites for this build:
+  - generated message bindings (this workspace has never been synced)
+      run: nros sync
+```
+
+Once per workspace is enough; after that, re-run it when you edit a `.msg`.
 
 The workspace README at `examples/workspaces/rust/README.md`
 documents the exact CLI commands that are verified green today.

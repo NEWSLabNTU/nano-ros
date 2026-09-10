@@ -256,9 +256,19 @@ cargo build
 zenoh-pico submodule not found at /path/to/zenoh-pico. Run: git submodule update --init
 ```
 
-**Solution**:
+**Solution**: init that one submodule, scoped — **not** `--recursive`. The
+transitive closure is large and mostly irrelevant to any one task, and the
+launch toolchain's third-level runtime submodules are never built by nano-ros.
+
 ```bash
-git submodule update --init --recursive
+git submodule update --init packages/rmw/zenoh/zpico-sys/zenoh-pico
+```
+
+Better still, let provisioning do it — this is what `nros setup` is for, and it
+fetches shallow rather than deepening to reach the pin:
+
+```bash
+nros setup <board> --rmw zenoh      # or: nros setup --source zenoh-pico
 ```
 
 ### CMake Cache Stale

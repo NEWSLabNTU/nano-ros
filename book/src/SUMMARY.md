@@ -62,6 +62,7 @@
 - [Logging](./user-guide/logging.md)
 - [Simulated Time](./user-guide/simulated-time.md)
 - [Build Profiles](./user-guide/build-profiles.md)
+- [What `nros build` Produces](./user-guide/build-artifacts.md)
 - [Profiling Your Build](./user-guide/build-profiling.md)
 - [Deployment Workflow](./user-guide/deployment.md)
 - [Cross-backend Bridges](./user-guide/cross-backend-bridges.md)

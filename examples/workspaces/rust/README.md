@@ -21,6 +21,7 @@ From the repository root:
 source ./activate.sh
 cd examples/workspaces/rust
 nros setup native
+nros sync            # once per workspace: generated message bindings
 nros build native
 ```
 
@@ -28,8 +29,10 @@ nros build native
 toolchain, generates what the build system needs, and hands off to
 cargo/cmake/west — so compiler errors are the compiler's, unchanged
 (RFC-0065). `nros build` with no image lists what this workspace
-declares. The old `nros sync` / `codegen-system` / `check` sequence
-still works; it is just no longer something you have to type.
+declares. The old `codegen-system` / `check` steps still work; they are
+just no longer something you have to type — but `nros sync` still is.
+A workspace that has never been synced has no generated message crates,
+so `nros build` refuses at preflight and names `nros sync` as the remedy.
 
 Run the native entry with a Zenoh router available:
 

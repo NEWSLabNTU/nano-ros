@@ -342,9 +342,13 @@ nros build native
 ./build/posix-zenoh-native/cmake/native_entry
 ```
 
-`nros build` runs `nros sync` for you (it resolves the SystemModel via the
-pinned `nros-launch-resolve` helper whenever the launch XML or `system.toml`
-is newer), writes the root, configures, and builds. The coordinate directory
+`nros build` resolves the SystemModel for you (via the pinned
+`nros-launch-resolve` helper, whenever the launch XML or `system.toml` is
+newer), writes the root, configures, and builds. It does **not** run `nros
+sync`: a workspace that has never been synced has no generated message
+bindings, and `nros build` refuses at preflight naming `nros sync` as the
+remedy. Sync once per workspace; after that only a `.msg` edit needs it
+again. The coordinate directory
 names what it contains: platform, RMW, board. Driving `cmake` yourself against
 the generated root still works.
 

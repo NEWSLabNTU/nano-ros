@@ -92,11 +92,20 @@ The box is an ordinary Linux that happens to have ROS. Treat it as one:
 
 ```bash
 distrobox enter ros2
-git clone --recurse-submodules https://github.com/NEWSLabNTU/nano-ros
+git clone https://github.com/NEWSLabNTU/nano-ros      # NOT --recurse-submodules
 cd nano-ros
 . scripts/dev/ros2-box-env.sh      # gives this toolchain its own store
 just setup-cli && just ci gate
 ```
+
+**Never `--recurse-submodules`, here or anywhere** (RFC-0097 D10). The
+submodules are large and most are irrelevant to any one task, and a recursive
+clone also drags in `play_launch`'s layer-3 runtime submodules, which nano-ros
+never builds. `scripts/bootstrap.sh` initialises the one submodule the CLI build
+needs (`packages/cli/third-party/play_launch`), scoped — run it once if you use
+`just setup-cli`, which builds but does not init. Everything else comes from
+`nros setup --source <name>`, which fetches shallow (`--depth 1`) rather than
+deepening to reach a pin.
 
 **Never build on the host and run in the box**, and never mirror one tree into
 the other. Host and box differ in compiler and libc, nothing checks that shared
