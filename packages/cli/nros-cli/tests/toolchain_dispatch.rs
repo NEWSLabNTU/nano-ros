@@ -32,7 +32,14 @@ fn install_launcher(store: &Path, version: &str) -> PathBuf {
     let bin = store.join("sdk/nros").join(version).join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let exe = bin.join("nros");
-    std::fs::copy(env!("CARGO_BIN_EXE_nros"), &exe).unwrap();
+    // NOT `fs::copy` — issue 0476. This binary is EXEC'd a few lines later, and
+    // a write descriptor held in this process is inherited by any sibling
+    // thread's fork until that child execs, which the kernel reports as
+    // ETXTBSY. It passes on an idle machine and fails on a loaded CI runner.
+    nros_cli_core::test_support::copy_executable(
+        std::path::Path::new(env!("CARGO_BIN_EXE_nros")),
+        &exe,
+    );
     exe
 }
 
@@ -43,21 +50,15 @@ fn install_stub(store: &Path, version: &str) -> PathBuf {
     let bin = store.join("sdk/nros").join(version).join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let exe = bin.join("nros");
-    std::fs::write(
+    // Same rule as `install_launcher`, and this is the shape issue 0476 was
+    // filed against: written here, exec'd there.
+    nros_cli_core::test_support::write_executable_stub(
         &exe,
         "#!/bin/sh\n\
          echo \"STUB-TOOLCHAIN\"\n\
          echo \"DISPATCH=${NROS_TOOLCHAIN_DISPATCH:-unset}\"\n\
          for a in \"$@\"; do echo \"ARG=$a\"; done\n",
-    )
-    .unwrap();
-    let mut perms = std::fs::metadata(&exe).unwrap().permissions();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        perms.set_mode(0o755);
-    }
-    std::fs::set_permissions(&exe, perms).unwrap();
+    );
     exe
 }
 

@@ -22,6 +22,13 @@ default = []
 # Maintainer-only release subcommands (`nros release detect|publish|tag`).
 # Hidden from `nros --help` unless this feature is on at build time.
 release = []
+# Issue 0476, phase-443 — makes `test_support` public so an INTEGRATION test in
+# a sibling crate can reach `write_executable_stub`. `tests/toolchain_dispatch.rs`
+# writes a launcher and a stub and then EXECS them, which is exactly the ETXTBSY
+# race that helper exists to remove; without this the only alternative was a
+# second copy of the discipline in that file, and a second spelling of a fix is
+# how #282 became #326. Off by default, so a release build still ships nothing.
+test-support = []
 
 # Issue 0379: `planner.rs` still carries `#[cfg(feature = "play-launch-parser")]`
 # gates around dormant tests for the launch path RFC-0060 retired (the feature
