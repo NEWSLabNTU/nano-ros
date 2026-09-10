@@ -5,7 +5,7 @@
 mirrored pairs**. Nineteen `[board.*]` keys are fourteen (five duplicate pairs
 collapsed, the three W3 added kept). NOT verified: any build — see "What is
 unverified" at the end. Implements
-[RFC-0093](../design/0093-board-naming-states-reach.md). Nothing has moved yet;
+[RFC-0093](../../design/0093-board-naming-states-reach.md). Nothing has moved yet;
 the measurements below are from `main` at `9c0702322`.
 
 Phase-422 W7 made both board vocabularies RESOLVE and deferred the question of
@@ -383,7 +383,7 @@ not.
 retired name appears in the ledger with its replacement.
 
 **LANDED.** The ledger is
-[`docs/reference/retired-board-names.md`](../reference/retired-board-names.md),
+[`docs/reference/retired-board-names.md`](../../reference/retired-board-names.md),
 linked from RFC-0093 §4, from `docs/design/README.md`'s RFC-0093 row and from
 the book's CLI reference. It carries all eleven retired spellings (the nine
 index keys plus the two `mps2-an385` / `esp32-c3` bare names), the two fixture

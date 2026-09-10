@@ -26,7 +26,7 @@ correctness question that blocked it since phase-287/288 — *can this binary's
 output work with this runtime?* — now has an answer asserted at every layer and a
 negative control proving each refusal fires. The remaining work is distribution,
 and it has its own home:
-[phase-431](phase-431-ship-the-nros-binary.md).
+[phase-431](archived/phase-431-ship-the-nros-binary.md).
 
 **Implements:** [RFC-0090](../design/0090-codegen-version-is-the-compatibility-token.md).
 **Closes:** the residue of [#1018](../issues/1018-a-codegen-change-invalidates-generated-interfaces-and-only-a-manual-step-connects-them.md).

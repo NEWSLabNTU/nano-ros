@@ -107,6 +107,6 @@ board, and its name must then not be an arch or an ISA alone.
 ## See also
 
 * [RFC-0093 — A board name states the reach of its build](../design/0093-board-naming-states-reach.md)
-* [phase-437 — rename every board to the reach its build has](../roadmap/phase-437-board-name-reach-rename.md)
+* [phase-437 — rename every board to the reach its build has](../roadmap/archived/phase-437-board-name-reach-rename.md)
 * [Supported boards](../../book/src/reference/supported-boards.md) — the
   user-facing table

@@ -8,6 +8,8 @@ sweep and its ratchet arm), W4 (the nightly zephyr jobs walk the user path), W5
 W6 (the scope verb reports the system closure), W7 (the additive board entries
 plus the gate), W8 (scoped to `infra`).
 
+**Archived 2026-09-10 — the one open decision is closed.** W7's deferred question (which board vocabulary is canonical) was answered by RFC-0093 and applied by [phase-437](phase-437-board-name-reach-rename.md), which collapsed the two namespaces with a rule — a board name states the reach of its build — and landed `check-board-vocabulary` at zero mirrored pairs. The paragraph below is kept as the record of why it was deferred.
+
 **OPEN BY DECISION, not by omission:** W7's true unification — the index
 namespace is what users type while the cmake namespace is what the build uses,
 and neither is obviously the one to keep. That is the only one left: W2's
@@ -358,7 +360,7 @@ finding them: `[prereq.*]` OS packages are a different class with a different
 rule — composing the install command is nano-ros's job and running it is the
 user's (RFC-0062), which `check-sysdep-remedies` enforces. The audit did find
 one thing worth recording there, filed as
-[#1128](../issues/archived/1128-prereq-apt-name-is-distro-parametric-and-the-index-cannot-say-so.md)
+[#1128](../../issues/archived/1128-prereq-apt-name-is-distro-parametric-and-the-index-cannot-say-so.md)
 and **fixed**: `just ci provision-zenohd` composed
 `ros-${ROS_DISTRO}-rmw-zenoh-cpp` itself because the index could only spell one
 distro, and the two agreed only on humble. `{ros_distro}` makes the parameter
