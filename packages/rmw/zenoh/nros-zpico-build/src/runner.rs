@@ -1339,10 +1339,19 @@ pub fn run() {
     // `wire`). It used to live inside the tx arm; a second `load` for the wire
     // knobs would parse the same file twice and could disagree with itself if
     // one call site ever grew an option the other did not.
+    // `NROS_BOARD` rides beside `NROS_BOARD_TOML` from the same seam
+    // (`nros board-facts`) and names WHICH `[[board]]` when a file declares
+    // several — `packages/boards/nros-board-nuttx` declares two that differ in
+    // ISA, so a file-level answer would be issue 0606 one table over. Read
+    // BEFORE the load: phase-445 W2 made `[board.knobs]` per-entry, so the knob
+    // rung needs the name as much as the capabilities below do.
+    println!("cargo:rerun-if-env-changed=NROS_BOARD");
+    let board_name = env_get("NROS_BOARD");
     let board_knobs = env_get("NROS_BOARD_TOML").map(|path| {
         let p = PathBuf::from(&path);
         println!("cargo:rerun-if-changed={}", p.display());
-        platform_config::BoardKnobsFile::load(&p).unwrap_or_else(|e| panic!("{path}: {e}"))
+        platform_config::BoardKnobsFile::load_for_board(&p, board_name.as_deref())
+            .unwrap_or_else(|e| panic!("{path}: {e}"))
     });
     let tx_knobs = match (&platforms_tree, platform_name) {
         (Some(tree), Some(name)) => {
@@ -1490,13 +1499,7 @@ pub fn run() {
     // out-of-tree consumer — is byte-identical to before. See
     // `LinkPolicy::for_board` for why `supported_netstacks = []` is NOT the
     // predicate: four in-tree boards declare it and all four have sockets.
-    //
-    // `NROS_BOARD` rides beside `NROS_BOARD_TOML` from the same seam
-    // (`nros board-facts`) and names WHICH `[[board]]` when a file declares
-    // several — `packages/boards/nros-board-nuttx` declares two that differ in
-    // ISA, so a file-level answer would be issue 0606 one table over.
-    println!("cargo:rerun-if-env-changed=NROS_BOARD");
-    let board_name = env_get("NROS_BOARD");
+    // `board_name` (`NROS_BOARD`) is read above, beside the file it selects in.
     let board_capabilities = match (&platforms_tree, platform_name) {
         (Some(tree), Some(name)) => tree
             .capabilities_with_board(name, board_knobs.as_ref(), board_name.as_deref())
