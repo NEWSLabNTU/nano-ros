@@ -182,6 +182,14 @@ fixture-boards-declared:
 board-cargo-config-shape:
     @python3 scripts/check-board-cargo-config-shape.py
 
+# phase-445 W2 (RFC-0098 D4) — a board with a Rust triple states `[build]
+# target` in its descriptor. The two mps2 boards and both armv8r FreeRTOS boards
+# did not, so 19 mps2 leaves carried the triple in the leaf config RFC-0098
+# deletes. Hosted and Zephyr boards are exempt by kind, and reported as such.
+[private]
+board-build-target:
+    @python3 scripts/check-board-build-target.py
+
 # built (the packages/cli phase215_f integration test still covers it).
 [private]
 board-manifest-drift:
