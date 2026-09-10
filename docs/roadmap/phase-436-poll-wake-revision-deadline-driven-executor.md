@@ -43,13 +43,15 @@ Five things the work changed about the phase as written:
 
 All six of this phase's issues (1192-1196, 1242) are still `status: open`,
 and that is not an oversight: the work lives on the phase-436 stack, which is
-queued to merge as one PR. They move to `docs/issues/archived/` together when
-it lands, not when a branch says DONE.
+queued to merge as one PR. Four close when it lands — 1192, 1193, 1194, 1242.
+Two do NOT, because the stack delivers only part of each: 1195 keeps its larger
+half (Path D1) and 1196 its closing condition (Path D2). Archiving them on
+merge would be a branch saying DONE for work it did not do.
 
 Deferred deliberately: the `wake_wait_ns` platform slot (the rounding contract
-fixes issue 1193's harm without making five ports grow a required symbol), and
-making the `handles.rs` wait loops wake off the backend's listener rather than
-a fixed grid (issue 1195's larger half).
+fixes issue 1193's harm without making five ports grow a required symbol) and
+the bare-metal park primitive (Path C3). Everything else that remains is
+grouped under [Follow-ups, by path](#follow-ups-by-path).
 
 ## The one change this phase is about
 
@@ -255,6 +257,10 @@ same min-of-sources. Installing a `ParkUntilFn` there would be redundant unless
 paired with a microsecond primitive **and** a non-hardcoded granularity
 (issue 1242). POSIX being well served is the design working, not a gap.
 
+*Update after W7.b:* issue 1242 is met, so the second condition now holds and
+the remaining reason to install a POSIX park is the `uint32_t timeout_ms`
+floor. That is Path C2, and it covers NuttX for free.
+
 The seam is **additive**: with no primitive installed the path is unchanged and
 every existing port keeps the behaviour it has. When one IS installed the
 transport drain drops to non-blocking, because a park plus a blocking drive
@@ -437,42 +443,124 @@ Each is a filed issue; the issue holds the evidence.
   allowance there, so raising `MAX_WAKE_SOURCES` shows up as its own cost
   rather than eating the next feature's headroom.
 
-  Still open — and both are DEADLINE sources, the half of the seam nothing
-  uses yet:
+  What W7 leaves open is grouped by path under
+  [Follow-ups, by path](#follow-ups-by-path) below.
 
-  * **A one-shot timer deadline source. Available, and the wrong shape.**
-    `nros_zephyr_timer_create_oneshot`
-    (`zephyr/nros_platform_zephyr_shims.c:249`) exists, takes microseconds,
-    wraps `k_timer`, and has zero callers — as this doc recorded from the
-    start. There is also a platform-ABI sibling,
-    `nros_platform_timer_create_oneshot` (`platform_timer.h:61`), implemented
-    on five ports and reached by `nros_cpp_timer_create_oneshot`.
+## Follow-ups, by path
 
-    Neither is a `NextDeadlineFn`. Both take `(timeout_us, callback,
-    user_data)` and CALL you; the seam needs something that TELLS you when.
-    So the open question is which mechanism this should be:
+W1-W7 built the mechanism. What remains falls into five paths that are
+independent in code but not in value, so the order below is deliberate.
 
-    - the executor may already own the answer via
-      `next_timer_deadline_us()` (W1), in which case no platform deadline
-      source is needed for timers at all; or
-    - the wanted thing is `wake_signal_from_isr` from the timer callback —
-      not a deadline source but a wake source, a different contract that
-      makes the park end early rather than end sooner.
+The one fact that shapes all of it: **nothing in this phase has been measured
+on a loaded system.** Every item is unit-tested, and the one system that ships
+this executor — ASI — declares no monitor rule at all, so none of the probes
+are armed there. Path A exists to change that before the other paths add more
+mechanism on top of machinery nobody has watched run.
 
-    Decide which before writing it. Sizing this as "an adapter over something
-    already built" is what this doc did, and it is the reason the item looked
-    cheap.
+### Path A — Prove it (evidence). FIRST.
 
-  * **smoltcp deadline source.** Verified still open:
-    `nros-smoltcp/src/bridge.rs:710` calls `iface.poll(timestamp, …)` and
-    `poll_at` appears nowhere in the tree. The interface knows when it next
-    needs servicing and the bridge discards it.
+* **A1 — pin ASI to the phase-436 stack.** ASI pins `902ea135e`
+  (2026-09-04), 851 commits behind main. Pin to this stack's head for the
+  measurement work; re-pin to main once it merges.
+* **A2 — declare a release-jitter rule on ASI.** Its control tier declares
+  `spin_period_us = 5000`. ASI's FVP lane takes Zephyr's C arm, which does
+  NOT call `set_spin_nominal_us`: `zephyr_run_tiers.c` passes the period as
+  the `spin_once` timeout (`period_ms`, floored at `SPIN_PERIOD_FLOOR_MS = 1`)
+  and paces with `nros_tier_spin_gap_step`. The nominal therefore equals the
+  declared 5 ms by the timeout route — correct here only because the timeout
+  and the period happen to be the same number. What is missing is the
+  `MonitorSpec`; nothing arms the rule. Worth making the C arm declare the
+  cadence explicitly too, so the two stop being coupled by coincidence.
+* **A3 — a loaded FVP cross-check.** Run the control loop under load and
+  compare `release_jitter()` and `last_park()` against an independent CTF
+  capture of the same run. **Exit:** the probe's maximum and the trace's agree
+  within the declared `release_jitter_granularity_us()`, and a disagreement
+  is explained, not averaged away.
 
-  * **Bare-metal park primitive** — the largest, the only one needing new
-    hardware code (a one-shot compare, per board, that exists nowhere today),
-    and deferred deliberately for now.
+### Path B — Deadline sources: the unused half of the seam.
 
-## Sequencing
+`set_park_primitive` has three callers; `register_wake_source` has none
+outside tests. Every wired port waits; none says WHEN.
+
+* **B1 — decide what a timer source is. Design only, no code.** Both one-shot
+  timers in the tree — `nros_zephyr_timer_create_oneshot`
+  (`zephyr/nros_platform_zephyr_shims.c:249`, zero callers) and
+  `nros_platform_timer_create_oneshot` (`platform_timer.h:61`, five ports) —
+  take `(timeout_us, callback, user_data)`. They CALL; a `NextDeadlineFn`
+  TELLS. Either W1's `next_timer_deadline_us()` already owns timer deadlines
+  and no platform source is needed, or the wanted thing is
+  `wake_signal_from_isr` from the callback — a wake source, not a deadline
+  source, which ends a park early rather than bounding it. Write the answer
+  here before anyone writes an adapter.
+* **B2 — smoltcp `poll_at()` as the first real `NextDeadlineFn`.**
+  `nros-smoltcp/src/bridge.rs:710` calls `iface.poll(timestamp, …)` and
+  `poll_at` appears nowhere; the interface knows when it next needs service
+  and the bridge discards it. The clearest real source in the tree.
+* **Exit for the path:** `register_wake_source` has a non-test caller, and a
+  target run shows `last_park()` attributing a park to `Platform(n)`.
+
+### Path C — Park coverage across ports.
+
+Only Zephyr (both arms) and ThreadX implement
+`nros_platform_wake_park_until_us`. W7.a made the rest reachable; none is
+wired, so every other port parks on the millisecond `wake_wait_ms` floor.
+
+* **C1 — FreeRTOS, and ESP-IDF with it.** `wake_wait_ms` converts with
+  `pdMS_TO_TICKS`, which TRUNCATES: exact at the usual 1000 Hz tick, but at a
+  coarser tick a sub-tick timeout becomes 0 ticks — the non-blocking path, a
+  busy loop — the platform-layer twin of issue 1193. A park needs a ceiling
+  conversion and a granularity from `configTICK_RATE_HZ` (the port already
+  derives `US_PER_TICK`).
+* **C2 — POSIX, which also covers NuttX.** NuttX has no platform source of
+  its own: `nros-platform-nuttx` compiles `nros-platform-posix/src/platform.c`.
+  The §2 note that "POSIX does not need this" was conditional on issue 1242,
+  which W7.b has now met, so the remaining gap is the `uint32_t timeout_ms`
+  ABI floor: a microsecond park on an absolute `CLOCK_MONOTONIC` deadline is
+  what gives POSIX and NuttX sub-millisecond parks.
+* **C3 — bare metal. DEFERRED.** Needs a per-board one-shot compare armed
+  before `wfi`, which exists nowhere today.
+* **Exit:** every port declares a granularity that matches its tick, so no
+  port's jitter report claims resolution it lacks (issue 1242's rule,
+  applied everywhere).
+
+### Path D — Waits that still bypass the waker.
+
+* **D1 — issue 1195's first consequence: MEASURE, then fix or close.** The
+  issue named two harms. W4 fixed the second: `WaitBudget` is now bounded by
+  a clock deadline and `next_spin_interval` never spins past it, so
+  `wait(1ms)` no longer runs a full 10 ms. The first — reply latency
+  quantized to 10 ms on backends with a real listener (Cyclone's
+  `on_data_available`) — is UNVERIFIED either way. The `handles.rs` loops
+  still slice on `DEFAULT_SPIN_INTERVAL_MS = 10`, but each slice is a
+  `spin_once` that parks on the wake object the listener signals, so the
+  slice may already be a ceiling rather than a quantum. Measure a Cyclone
+  reply arriving mid-slice: if it returns early, close 1195; if not, the
+  listener is not reaching the wake object and that is the fix.
+* **D2 — issue 1196's closing condition.** The unbounded
+  `nros_platform_condvar_wait` is still exported by five ports (esp-idf,
+  freertos, posix — and so nuttx — threadx, zephyr), and one caller
+  remains: `zpico-sys/c/zpico/platform_aliases.c:302`.
+  `check-no-unbounded-condvar-wait.sh` holds the line meanwhile. It closes
+  when that caller is bridged through a caller-owned deadline (or zenoh-pico
+  gains `_z_condvar_wait_until`) and the symbol leaves the ABI.
+
+### Path E — Stack placement, then ASI's headroom rule.
+
+* **E1 — issue 1232.** Zephyr ignores a tier's declared `stack_bytes`: every
+  spawned tier gets the fixed pool slot, and the boot tier runs on `main`'s
+  thread. ASI declares exactly one tier, and it is the boot tier.
+* **E2 — wire `set_min_stack_headroom_bytes` on ASI.** Only after E1. Wired
+  today it would report `main`'s headroom as the control tier's — a
+  plausible number for the wrong thread, the same failure as the jitter probe
+  that reported zero through three reviews. Depends on A1.
+
+### Order
+
+A1 → A2 → A3 first, with B1 alongside it (it is a decision, not code). Then
+B2 and D in parallel; C whenever — it is breadth, and each port is
+independent. E1 before E2, and E2 after A1.
+
+## Sequencing (W1-W7, as delivered)
 
 W2 before W3 (W3's contract needs W2's granularity probe). W1 is independent
 and should go first — it is the largest real-time win and touches only the
