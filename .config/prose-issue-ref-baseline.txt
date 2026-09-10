@@ -29,8 +29,15 @@
 #         0319/0896 class — is still worth reading, and `refs/issue-ids/1110`
 #         is claimed either way.
 #
+#   1274  IN FLIGHT, both of them — issue 1279 cites its two siblings and
+#   1276  their files are in PR #870 (docs/provisioning-findings). Same
+#         provisioning study, split across PRs only because #842 was already
+#         queued and frozen. Both rows go when #870 lands.
+#
 docs/issues/1092-rmw-shape-gate-licenses-deviation-without-pinning-it.md:9999
 docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110
 scripts/build/rustdoc-set.sh:1110
+docs/issues/1279-zephyr-setup-skips-sdk-registration-when-workspace-exists.md:1274
+docs/issues/1279-zephyr-setup-skips-sdk-registration-when-workspace-exists.md:1276
