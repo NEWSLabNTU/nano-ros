@@ -1240,8 +1240,22 @@ impl ::nros_platform::NodeDispatchRuntime for ExecutorNodeRuntime {
             .register_parameter_services()
             .map_err(|e| capability_reason(&e))?;
         for (name, raw) in params {
-            self.executor
-                .declare_parameter(name, infer_param_value(raw));
+            // phase-428 W6 made `declare_parameter` `#[must_use]`: a `false`
+            // here is a launch parameter the program believes it has. But the
+            // store answers `false` for "name already taken" too, and then the
+            // parameter IS there — so the refusal that matters is `false` AND
+            // still absent afterwards (table full, value rejected).
+            if !self
+                .executor
+                .declare_parameter(name, infer_param_value(raw))
+                && self.executor.get_parameter(name).is_none()
+            {
+                nros_log::log_error!(
+                    nros_log::get_logger("nros"),
+                    "launch parameter '{name}' was refused by the parameter store"
+                );
+                return Err("a launch parameter was refused by the parameter store");
+            }
         }
         Ok(())
     }
@@ -1670,8 +1684,19 @@ impl NodeRuntime for ExecutorSink<'_> {
                             .map_err(decl_err_from_node)?;
                     }
                     let value = param_default_to_value(metadata.parameter_default.as_ref());
-                    self.executor
-                        .declare_parameter(metadata.source_name.as_str(), value);
+                    let name = metadata.source_name.as_str();
+                    // Same rule as `apply_param_services`: already-declared is
+                    // not a refusal (the launch bake may have declared it
+                    // first); refused-and-absent is.
+                    if !self.executor.declare_parameter(name, value)
+                        && self.executor.get_parameter(name).is_none()
+                    {
+                        nros_log::log_error!(
+                            nros_log::get_logger("nros"),
+                            "declared parameter '{name}' was refused by the parameter store"
+                        );
+                        return Err(NodeDeclError::Runtime);
+                    }
                 }
                 Ok(())
             }
