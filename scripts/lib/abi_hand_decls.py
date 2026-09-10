@@ -45,6 +45,9 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from tracked import tracked  # noqa: E402  (sibling helper, issue 0721)
+
 # ---------------------------------------------------------------------------
 # Scope
 
@@ -389,20 +392,22 @@ def load_canonical(repo: Path, surface: Surface) -> dict[str, Sig]:
 
 
 def iter_rust_files(repo: Path, surface: Surface):
-    for root in SWEEP_ROOTS:
-        base = repo / root
-        if not base.is_dir():
+    """Tracked `.rs` under SWEEP_ROOTS, from the git index.
+
+    Issue 0721 / `check-no-tracked-file-find`: `examples/` and `packages/` hold
+    build output, and an `rglob` descends every `target/` and `build-*/` tree to
+    produce the paths a `parts` filter then discards. A hand mirror is by
+    definition a tracked source file, so the index is both the right scope and
+    ~4 orders of magnitude cheaper.
+    """
+    for path in tracked(*SWEEP_ROOTS, suffix=".rs", repo=repo):
+        rel = path.relative_to(repo)
+        parts = set(rel.parts)
+        if "generated" in parts:
             continue
-        for path in base.rglob("*.rs"):
-            rel = path.relative_to(repo)
-            parts = set(rel.parts)
-            if "target" in parts or any(p.startswith("target-") for p in rel.parts):
-                continue
-            if "third-party" in parts or "generated" in parts:
-                continue
-            if rel == surface.generated or rel in surface.skip:
-                continue
-            yield rel, path
+        if rel == surface.generated or rel in surface.skip:
+            continue
+        yield rel, path
 
 
 # Every `fn nros_platform_*` in the tree, parsed or not. The gate's own
