@@ -821,6 +821,70 @@ pub fn host_python_available() -> bool {
         .is_ok_and(|s| s.success())
 }
 
+/// Did a probe invocation show that a tool can RUN — not merely that it exists?
+///
+/// `Command::status()` is `Err` only when the process cannot be SPAWNED, so a
+/// bare `.status().is_ok()` answers "present" for a binary that exists and
+/// cannot run: a missing shared library (the loader exits 127), an exec failure
+/// (126), a crash on start (a signal). Live-peer run 34497290149 had that shape:
+/// the XRCE Agent probe said "available", the tests went past their `skip!`, and
+/// seven live cells scored REAL failures 0.15 s in — an environment gap reported
+/// as a regression.
+///
+/// Any other exit status counts as "runs": plenty of tools answer a probe with a
+/// non-zero USAGE exit, and `MicroXRCEAgent --help` exits 1 on a HEALTHY agent
+/// (measured on both the ROS-paired build and the SDK-store copy). So this is
+/// deliberately not `.success()`, which would skip every XRCE cell forever.
+#[must_use]
+pub fn probe_ran(result: std::io::Result<std::process::ExitStatus>) -> bool {
+    match result {
+        Err(_) => false,
+        Ok(status) => !matches!(status.code(), None | Some(126) | Some(127)),
+    }
+}
+
+#[cfg(test)]
+mod probe_ran_tests {
+    use super::probe_ran;
+    use std::process::Command;
+
+    fn sh(script: &str) -> bool {
+        probe_ran(Command::new("sh").arg("-c").arg(script).status())
+    }
+
+    #[test]
+    fn a_clean_exit_runs() {
+        assert!(sh("exit 0"));
+    }
+
+    #[test]
+    fn a_usage_exit_still_runs() {
+        assert!(sh("exit 1"), "a healthy `MicroXRCEAgent --help` exits 1");
+    }
+
+    #[test]
+    fn a_loader_failure_does_not_run() {
+        assert!(!sh("exit 127"));
+    }
+
+    #[test]
+    fn an_exec_failure_does_not_run() {
+        assert!(!sh("exit 126"));
+    }
+
+    #[test]
+    fn death_by_signal_does_not_run() {
+        assert!(!sh("kill -9 $$"));
+    }
+
+    #[test]
+    fn a_binary_that_cannot_be_spawned_does_not_run() {
+        assert!(!probe_ran(
+            Command::new("nros-tests-no-such-binary-xyzzy").status()
+        ));
+    }
+}
+
 /// The `nros-launch-resolve` helper, by ABSOLUTE path (issue 0285 — never
 /// `$PATH`, where a stale `~/.nros/bin` copy shadows the in-tree one).
 /// `just setup-launch-resolve` builds it; `None` means it has not been built.

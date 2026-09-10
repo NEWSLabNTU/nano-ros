@@ -965,7 +965,8 @@ test-unit verbose="":
         --exclude nros-build-paths \
           --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.
+        args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
     # issue 0388 — `nros_tests::skip!` panics with `[SKIPPED]` for an unmet
     # precondition, and nextest has no native skip, so those land as FAILURES and
@@ -1098,7 +1099,14 @@ _test-focused filter verbose="":
     cargo_nextest_args=($(nros_cargo_nextest_args))
     args=(-p nros-tests --no-fail-fast -E '{{filter}}')
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        # `--failure-output` honours NROS_TEST_FAILURE_OUTPUT, default `never` —
+        # unchanged for every caller that does not set it. The live-peer lane
+        # sets `final`: with `never`, run 34497290149 reported "7 real failures"
+        # without one line of WHY, and because `nros_tests::skip!` is a panic the
+        # skip REASONS were suppressed too, so the lane's red could not be read
+        # without a rerun. The five sibling recipes take the same hook, so the
+        # knob means one thing wherever it is set.
+        args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
     nros_nextest_junit_reset
     set +e
@@ -1154,7 +1162,8 @@ test-integration verbose="":
     exclude='not (group(=qemu-baremetal) or group(=qemu-freertos) or group(=qemu-nuttx) or group(=qemu-threadx-riscv) or binary(esp32_emulator) or group(=threadx-linux) or group(=qemu-zephyr) or group(=qemu-zephyr-xrce) or group(=zephyr-fvp) or group(=ros2-interop) or binary(xrce_ros2_interop) or binary(rtos_e2e) or binary(zephyr))'
     args=(-p nros-tests --no-fail-fast -E "$exclude")
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.
+        args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
     # `nros_tests::skip!` panics with `[SKIPPED]` for unmet preconditions
     # (missing fixture/binary/emulator/agent/SDK) — nextest has no native skip,
@@ -1305,7 +1314,8 @@ _nextest-platform test_name verbose="" feature_args="" filter="":
         args+=({{feature_args}})
     fi
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.
+        args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
     just _nextest-tolerant "${args[@]}"
 
@@ -1457,7 +1467,8 @@ test-zpico-multisession verbose="":
     args=(-p nros-rmw-zenoh --features platform-posix --test zenoh_integration
           two_sessions --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.
+        args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
     just _nextest-tolerant "${args[@]}"
     # issue 0652 — `loan_e2e` for the same reason, and it is why the feature is
@@ -2352,7 +2363,8 @@ test-all verbose="": _require-fixtures-ready test-zpico-multisession
     just _nextest-platform custom_transport_loopback "{{verbose}}" "--features rmw" || failed=1
     args=(--workspace "${nextest_run_profile_args[@]}" "${nextest_fail_fast_args[@]}")
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
+        # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.
+        args+=(--success-output never --failure-output "${NROS_TEST_FAILURE_OUTPUT:-never}")
     fi
     # Phase 185.2 / 186.4 — toolchain-gated exclusion of embedded-RTOS Cyclone
     # tests. Since Phase 186 the embedded Cyclone backend self-provisions from

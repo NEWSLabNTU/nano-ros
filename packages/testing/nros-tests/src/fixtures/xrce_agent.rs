@@ -383,14 +383,21 @@ pub fn xrce_agent_binary_path() -> std::path::PathBuf {
     xrce_agent_binary_with_provenance().0
 }
 
-/// Check if the XRCE Agent binary is available (local build or system PATH).
+/// Check that the XRCE Agent is present AND runs (local build, store, or PATH).
+///
+/// Through [`crate::probe_ran`], not `.status().is_ok()`: that is true for any
+/// binary that SPAWNS, so an Agent that exists and dies on launch passed this
+/// probe, went past the caller's `skip!`, and turned an environment gap into a
+/// real failure (live-peer run 34497290149). `--help` exits 1 on a healthy
+/// Agent, which is why the helper is not `.success()`.
 pub fn is_xrce_agent_available() -> bool {
-    std::process::Command::new(xrce_agent_binary_path())
-        .arg("--help")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok()
+    crate::probe_ran(
+        std::process::Command::new(xrce_agent_binary_path())
+            .arg("--help")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status(),
+    )
 }
 
 /// Skip test if the XRCE Agent is not available.
@@ -597,13 +604,17 @@ impl Drop for XrceSerialAgent {
 }
 
 /// Check if `socat` is available on the system PATH.
+///
+/// Same flaw as the Agent probe had, fixed through the same helper
+/// ([`crate::probe_ran`]).
 pub fn is_socat_available() -> bool {
-    std::process::Command::new("socat")
-        .arg("-V")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok()
+    crate::probe_ran(
+        std::process::Command::new("socat")
+            .arg("-V")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status(),
+    )
 }
 
 /// Skip test if socat is not available.

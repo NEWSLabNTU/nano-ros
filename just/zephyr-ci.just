@@ -352,10 +352,24 @@ build-fixtures:
     # Kept until the end: the tier-priority check below judges exactly the
     # images THESE records build (field 12 is each leaf's build dir).
     probe_records="$log_dir/records-$$.tsv"
-    if scripts/build/zephyr-fixture-leaves.sh --emit records "${zephyr_leaf_args[@]}" >"$probe_records" 2>/dev/null; then
-        if [ -s "$probe_records" ]; then
-            normal_records=1
-        fi
+    # A probe that FAILED is not a probe that found nothing. This was
+    # `2>/dev/null` with the status read only as a truth value, so a failing
+    # leaves script and a filter selecting nothing printed the same line — "no
+    # Zephyr fixtures matched" — and live-peer run 34497290149's board job died
+    # on it with no way to tell which. Locally the same filter emits its record;
+    # whatever failed in CI now says so here, in its own words.
+    probe_err="$log_dir/records-$$.err"
+    probe_rc=0
+    scripts/build/zephyr-fixture-leaves.sh --emit records "${zephyr_leaf_args[@]}" \
+        >"$probe_records" 2>"$probe_err" || probe_rc=$?
+    if [ "$probe_rc" -ne 0 ]; then
+        echo "  ✗ the Zephyr records probe FAILED (exit $probe_rc) — NOT 'no fixtures" >&2
+        echo "    matched'. Its stderr:" >&2
+        sed 's/^/      /' "$probe_err" | head -30 >&2
+        exit 1
+    fi
+    if [ -s "$probe_records" ]; then
+        normal_records=1
     fi
 
     failures=()

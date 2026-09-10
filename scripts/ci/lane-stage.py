@@ -491,6 +491,7 @@ LANES = (
         "Report what the ledger claims, before running anything": PROVISIONING,
         "Check out the submodules the fixtures vendor": PROVISIONING,
         "Provision the declared system closure (phase-413 W3)": PROVISIONING,
+        "Build the XRCE Agent against the sourced ROS (issue 0741)": BUILD,
         "Build the fixtures those rows resolve": BUILD,
         "Run the cells with a recorded PASS": CELLS,
     }),

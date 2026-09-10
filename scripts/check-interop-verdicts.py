@@ -90,6 +90,7 @@ import datetime
 import importlib.util
 import io
 import re
+import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
@@ -320,6 +321,65 @@ def narrowing_for(ids) -> list[str]:
             )
         merged.setdefault(key, []).append(value)
     return [f"{k}={'|'.join(sorted(set(v)))}" for k, v in sorted(merged.items())]
+
+
+# Which `fixtures-build.sh linux <lang> <rmw>` the HOST cells need, DERIVED from
+# their coordinates. The lane used to name three builds by hand; the C Cyclone
+# cells joined the ledger when phase-433 W3 corrected that half to C and the list
+# never followed, so they skipped for fixtures no step built — and the XRCE cells
+# would have been next, once their Agent ran (run 34497290149). Only pairs the
+# manifest has rows for are emitted, read through the ONE row-coordinate
+# computation (`fixtures-manifest.py coords` / `row_coord()`), never re-derived.
+HOST_BUILD_LANG = {"Rust": "rust", "C": "c", "Cpp": "cpp"}
+HOST_BUILD_RMW = {"Zenoh": "zenoh", "Cyclonedds": "cyclonedds", "Xrce": "xrce"}
+MANIFEST_PY = ROOT / "scripts" / "build" / "fixtures-manifest.py"
+
+
+def _linux_fixture_pairs() -> set:
+    """(lang, rmw) of every `fixture` row on `linux`, from the manifest itself."""
+    out = subprocess.run(
+        [sys.executable, str(MANIFEST_PY), "coords"], capture_output=True, text=True
+    )
+    if out.returncode != 0:
+        raise LedgerError(
+            f"{_rel(MANIFEST_PY)} coords failed (exit {out.returncode}): "
+            f"{out.stderr.strip()[:200]}"
+        )
+    pairs = set()
+    for line in out.stdout.splitlines():
+        f = line.split("\x1f")
+        if len(f) >= 4 and f[0] == "fixture" and f[1] == "linux":
+            pairs.add((f[2], f[3]))
+    if not pairs:
+        raise LedgerError(
+            f"{_rel(MANIFEST_PY)} coords listed no linux fixture rows — refusing "
+            f"to derive an empty build set, which would build nothing and read "
+            f"as done"
+        )
+    return pairs
+
+
+def host_builds_for(cells, ids) -> list[str]:
+    """`linux <lang> <rmw>` lines, one per pair these HOST cells run on."""
+    by_id = {c["id"]: c for c in cells}
+    have = _linux_fixture_pairs()
+    out: set[str] = set()
+    for cid in sorted(set(ids)):
+        c = by_id[cid]
+        if runner_of(c["platform"]) != "host":
+            continue
+        lang = HOST_BUILD_LANG.get(c["lang"])
+        rmw = HOST_BUILD_RMW.get(c["rmw"])
+        if lang is None or rmw is None:
+            raise LedgerError(
+                f"`{cid}` is a host cell on ({c['lang']}, {c['rmw']}), which "
+                f"HOST_BUILD_LANG / HOST_BUILD_RMW do not map to a fixtures-build.sh "
+                f"token — add it; an unmapped pair would build nothing and the "
+                f"cell would skip"
+            )
+        if (lang, rmw) in have:
+            out.add(f"linux {lang} {rmw}")
+    return sorted(out)
 
 
 def in_runner(cells: list[dict], ids, runner: str) -> list[str]:
@@ -1410,6 +1470,27 @@ def _self_test_runner_split(
     )
     assert scopes_for([HOST_PLATFORM]) == [], "selftest: the host board asked for a scope"
 
+    # The host-build derivation: mapped, deduplicated, board cells ignored, and
+    # an unmapped language a LOUD error rather than a silently dropped build.
+    _hc = [
+        {"id": "a", "platform": HOST_PLATFORM, "lang": "C", "rmw": "Cyclonedds"},
+        {"id": "b", "platform": HOST_PLATFORM, "lang": "C", "rmw": "Cyclonedds"},
+        {"id": "c", "platform": HOST_PLATFORM, "lang": "Rust", "rmw": "Xrce"},
+        {"id": "d", "platform": "ZephyrQemuCortexM", "lang": "C", "rmw": "Zenoh"},
+    ]
+    assert host_builds_for(_hc, ["a", "b", "c", "d"]) == [
+        "linux c cyclonedds", "linux rust xrce"
+    ], host_builds_for(_hc, ["a", "b", "c", "d"])
+    try:
+        host_builds_for(
+            [{"id": "x", "platform": HOST_PLATFORM, "lang": "Cobol", "rmw": "Zenoh"}],
+            ["x"],
+        )
+    except LedgerError as e:
+        assert "Cobol" in str(e), e
+    else:
+        raise AssertionError("selftest: an unmapped language was silently dropped")
+
     # The narrowing map: present, and pointing at something that exists.
     assert narrowing_for(["zephyr-qos-rust-zenoh"]) == [
         "NROS_ZEPHYR_FIXTURE_FILTER=build-ws-rs-qos-entry-zenoh"
@@ -1740,6 +1821,13 @@ def main(argv: list[str]) -> int:
         "resolve",
     )
     ap.add_argument(
+        "--host-builds",
+        action="store_true",
+        help="with --list-passing --runner host, emit the `linux <lang> <rmw>` "
+        "fixture builds those cells need, derived from their coordinates and "
+        "narrowed to pairs the manifest has rows for",
+    )
+    ap.add_argument(
         "--assert-ran",
         metavar="DIR",
         help="phase-441 W4 — every junit in DIR, together: exit 3 naming the "
@@ -1813,6 +1901,13 @@ def main(argv: list[str]) -> int:
 
     if args.list_passing:
         by_id = {c["id"]: c for c in cells}
+        if args.host_builds:
+            try:
+                print("\n".join(host_builds_for(cells, passing)))
+            except LedgerError as e:
+                print(f"check-interop-verdicts: {e}", file=sys.stderr)
+                return 1
+            return 0
         if args.scopes or args.narrowing:
             try:
                 if args.scopes:
