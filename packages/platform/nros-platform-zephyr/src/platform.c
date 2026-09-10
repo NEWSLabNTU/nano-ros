@@ -888,8 +888,16 @@ int8_t nros_platform_condvar_wait_until(void *cv, void *m, uint64_t abstime_ms) 
  * and mutexes/condvars above no longer go down with it. */
 #if defined(CONFIG_DYNAMIC_THREAD) && defined(CONFIG_THREAD_STACK_INFO)
 
-#ifndef NROS_ZEPHYR_TASK_STACK_SIZE
-#define NROS_ZEPHYR_TASK_STACK_SIZE 4096
+/* phase-412 — this read `NROS_ZEPHYR_TASK_STACK_SIZE`, a spelling nothing
+ * defines: CONFIG_NROS_ZEPHYR_TASK_STACK_SIZE reaches C as
+ * NROS_ZEPHYR_STACK_SIZE (zephyr/CMakeLists.txt), which is what the shim's task
+ * pool reads. So the Kconfig knob that documents itself as "the stack given to
+ * every task nano-ros creates on Zephyr" never reached this path. Read the
+ * delivered name; 4096 stays the default when the knob is 0 (unset). */
+#ifdef NROS_ZEPHYR_STACK_SIZE
+#define NROS_Z_TASK_STACK_SIZE NROS_ZEPHYR_STACK_SIZE
+#else
+#define NROS_Z_TASK_STACK_SIZE 4096
 #endif
 
 struct nros_z_task {
@@ -910,21 +918,21 @@ int8_t nros_platform_task_init(void *task, void *attr,
                                void *(*entry)(void *), void *arg) {
     /* Only `name` is read here. `priority` and `stack_bytes` remain unhandled
      * on this path -- it hardcodes K_PRIO_PREEMPT(5) and
-     * NROS_ZEPHYR_TASK_STACK_SIZE -- which is a separate gap and is left
+     * NROS_Z_TASK_STACK_SIZE -- which is a separate gap and is left
      * alone rather than half-fixed. This path is the non-CONFIG_POSIX_API
      * build and is not the one CI exercises. */
     const nros_platform_task_attr_t *a = (const nros_platform_task_attr_t *) attr;
     if (task == NULL || entry == NULL) return -1;
     struct nros_z_task *t = nros_platform_alloc(sizeof(struct nros_z_task));
     if (t == NULL) return -1;
-    t->stack = k_thread_stack_alloc(NROS_ZEPHYR_TASK_STACK_SIZE, 0);
+    t->stack = k_thread_stack_alloc(NROS_Z_TASK_STACK_SIZE, 0);
     if (t->stack == NULL) {
         nros_platform_dealloc(t);
         return -1;
     }
     t->entry = entry;
     t->arg = arg;
-    k_thread_create(&t->thread, t->stack, NROS_ZEPHYR_TASK_STACK_SIZE,
+    k_thread_create(&t->thread, t->stack, NROS_Z_TASK_STACK_SIZE,
                     nros_z_task_trampoline, t, NULL, NULL,
                     K_PRIO_PREEMPT(5), 0, K_NO_WAIT);
     /* Best-effort, as on the POSIX path: an unnamed thread is what this did

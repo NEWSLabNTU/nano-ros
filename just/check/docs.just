@@ -101,6 +101,14 @@ codegen-version-surface:
 config-knob-census:
     @python3 scripts/check/config-knob-census.py --check
 
+# phase-412 — a knob has two ends. Every name the env references, `.env.example`,
+# a fixture row or a leaf `[env]` claims can be SET must be READ by something
+# (issue 1181: a renamed knob stayed documented, and a fixture built with it);
+# every build-script knob and Zephyr-C default must have a PRODUCER (the tier
+# pool's two defines were named by diagnostics nothing could set). Buildless.
+knob-ends:
+    @python3 scripts/check/check-knob-ends.py
+
 # Issue 0934 — one fact, up to nine spellings. Most are CARRIERS (how a decision
 # crosses a layer), not decisions; nothing recorded which was which, so a reader
 # saw nine ways to set a locator. This enumerates every Kconfig symbol and

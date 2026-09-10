@@ -237,7 +237,7 @@ forwarding and no codegen.
 ```sh
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
 build/xrce-agent/MicroXRCEAgent udp4 -p 8888 &
-NROS_XRCE_LOCATOR=udp/127.0.0.1:8888 \
+XRCE_LOCATOR=127.0.0.1:8888 \
     cargo run -p native-rs-bridge-tt-zenoh-to-xrce
 ```
 

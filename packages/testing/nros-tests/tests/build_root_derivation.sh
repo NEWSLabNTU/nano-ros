@@ -204,9 +204,9 @@ scenario '
         echo "  ok   a feature set changes the group key"
     fi
     # The env is in the key for the same reason: nros-bench/stress-zenoh has a
-    # bare row and a ZPICO_SUBSCRIBER_BUFFER_SIZE=8192 row, same package, same
+    # bare row and a NROS_SUBSCRIBER_BUFFER_SIZE=8192 row, same package, same
     # binary name.
-    envd="$(nros_fixture_group_slug baremetal "" "ZPICO_SUBSCRIBER_BUFFER_SIZE=8192")"
+    envd="$(nros_fixture_group_slug baremetal "" "NROS_SUBSCRIBER_BUFFER_SIZE=8192")"
     if [ "$bare" = "$envd" ]; then
         echo "  FAIL a build env var must change the group key (same artifact path)"
         rc=1

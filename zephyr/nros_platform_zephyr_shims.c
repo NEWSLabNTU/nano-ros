@@ -720,9 +720,9 @@ static void nros_zephyr_tier_trampoline(void* entry, void* arg, void* unused) {
  * (K_THREAD_STACK_ARRAY_DEFINE), so the request cannot resize them — a
  * request past the slot prints LOUD and the tier runs on the slot
  * anyway (phase-302 W2 / issue 0262: previously the knob was silently
- * ignored). Raise NROS_ZEPHYR_TIER_STACK_SIZE to honor bigger tiers.
+ * ignored). Raise CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE to honor bigger tiers.
  * Returns 0 on success, -1 when the pool is exhausted (more than
- * NROS_ZEPHYR_MAX_TIERS spawns).
+ * CONFIG_NROS_ZEPHYR_MAX_TIERS spawns).
  */
 int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t priority,
                                  const char* name, size_t stack_bytes, uint32_t core_plus1,
@@ -732,7 +732,7 @@ int nros_zephyr_tier_task_create(void* (*entry)(void*), void* arg, int32_t prior
     }
     if (stack_bytes > (size_t)NROS_ZEPHYR_TIER_STACK_SIZE) {
         printk("nros: tier stack request %u > fixed slot %u tier=`%s` — running with the "
-               "slot; raise NROS_ZEPHYR_TIER_STACK_SIZE\n",
+               "slot; raise CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE\n",
                (unsigned)stack_bytes, (unsigned)NROS_ZEPHYR_TIER_STACK_SIZE,
                (name != NULL) ? name : "?");
     }

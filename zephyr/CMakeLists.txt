@@ -97,6 +97,15 @@ endif()
 if(CONFIG_NROS_ZEPHYR_TASK_SLOTS)
     zephyr_compile_definitions(NROS_ZEPHYR_MAX_THREADS=${CONFIG_NROS_ZEPHYR_TASK_SLOTS})
 endif()
+# The RT-tier pool (`nros_zephyr_tier_task_create`). Both tokens are
+# #ifndef-guarded in the shim and, until phase-412, had no producer: the
+# spawn-failure and oversize-stack diagnostics named knobs nothing could set.
+if(CONFIG_NROS_ZEPHYR_MAX_TIERS)
+    zephyr_compile_definitions(NROS_ZEPHYR_MAX_TIERS=${CONFIG_NROS_ZEPHYR_MAX_TIERS})
+endif()
+if(CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE)
+    zephyr_compile_definitions(NROS_ZEPHYR_TIER_STACK_SIZE=${CONFIG_NROS_ZEPHYR_TIER_STACK_SIZE})
+endif()
 if(CONFIG_NROS_ZEPHYR_STACKS_IN_DTCM)
     zephyr_compile_definitions(NROS_ZEPHYR_STACKS_IN_DTCM=1)
 endif()

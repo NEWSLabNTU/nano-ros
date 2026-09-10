@@ -1922,7 +1922,7 @@ dir = "packages/testing/nros-bench/large-msg-xrce"
 platform = "linux"
 lang = "rust"
 dir = "packages/testing/nros-bench/stress-zenoh"
-env = { ZPICO_SUBSCRIBER_BUFFER_SIZE = "8192" }
+env = { NROS_SUBSCRIBER_BUFFER_SIZE = "8192" }
 
 # phase-384 W2 — large-ring variant of stress-xrce. The XRCE receive ring entry
 # is a fixed `uint8_t data[XRCE_BUFFER_SIZE]`, so a subscription's own RX_BUF

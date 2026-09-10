@@ -1016,24 +1016,18 @@ pub fn run() {
     // surfaces as a hard build error, not a runtime surprise after
     // 136.3 plugs the data into cc-rs.
     //
-    // Phase 136.7-E2E.3 — `ZPICO_PLATFORMS_TOML` env var redirects
-    // the manifest to a caller-supplied path. Used by the drift-gate
-    // test (`tests/zpico_drift_gate.rs`) to point at sandboxed
-    // manifests; also a documented out-of-tree override hook for
-    // downstream boards. Empty value falls through to the canonical
-    // in-tree manifest.
     // phase-290 (RFC-0049) — the central `zenoh_platforms.toml` is retired.
     // Each platform package directory carries `nros-platform.toml` with the
     // `[build.zenoh]` block (keys verbatim) + `[capabilities]` + `[knobs]`.
-    // Precedence: `ZPICO_PLATFORMS_TOML` (legacy single-file override — the
-    // drift-gate test + out-of-tree hook) > `NROS_PLATFORMS_DIR` (tree
-    // override) > the in-tree `config/` default.
-    // Both selectors are PATHS, so neither is fingerprinted as a string
-    // (issue 0491) — the manifest FILES they select are watched by
-    // `rerun-if-changed` in both arms of the match below.
-    let legacy_file = env::var_os("ZPICO_PLATFORMS_TOML")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from);
+    // Precedence: `NROS_PLATFORMS_DIR` (tree override) > the in-tree default.
+    // The selector is a PATH, so it is not fingerprinted as a string (issue
+    // 0491) — the manifest FILES it selects are watched by `rerun-if-changed`.
+    //
+    // phase-412 — `ZPICO_PLATFORMS_TOML`, a single-FILE override of the retired
+    // central manifest, used to outrank it. Nothing set it: the drift-gate test
+    // it was added for moved to `NROS_PLATFORMS_DIR`, and a second override for
+    // the same job is a second authority that silently wins. Deleted rather
+    // than kept as an out-of-tree hook `NROS_PLATFORMS_DIR` already is.
     // phase-400 W1 — a SEARCH PATH, not one directory.
     //
     // This used to be `manifest_dir.join("../../../../config")`, a single
@@ -1051,58 +1045,50 @@ pub fn run() {
         env::var("NROS_PLATFORMS_DIR").ok().as_deref(),
     );
 
-    let (platform_manifest, platforms_tree) = match legacy_file {
-        Some(path) => {
-            println!("cargo:rerun-if-changed={}", path.display());
-            let m = manifest::PlatformManifest::load(&path)
-                .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-            (m, None)
-        }
-        None => {
-            let tree = platform_config::PlatformsTree::load_search_path(&platform_search_path)
-                .unwrap_or_else(|e| panic!("platform search path: {e}"));
-            if tree.names().next().is_none() {
-                panic!(
-                    "no nros-platform.toml found on the platform search path: {}. \
+    let (platform_manifest, platforms_tree) = {
+        let tree = platform_config::PlatformsTree::load_search_path(&platform_search_path)
+            .unwrap_or_else(|e| panic!("platform search path: {e}"));
+        if tree.names().next().is_none() {
+            panic!(
+                "no nros-platform.toml found on the platform search path: {}. \
                      A silently empty tree resolves every knob to a builtin and produces a \
                      wrong image with no diagnostic, so this is fatal rather than a warning.",
-                    platform_search_path
-                        .iter()
-                        .map(|p| p.display().to_string())
-                        .collect::<Vec<_>>()
-                        .join(":")
-                );
-            }
-            // Watch every root, not just the one a descriptor happens to live
-            // in today: moving a file between roots must invalidate the build.
-            // issue 0966 — emit only the manifests that EXIST.
-            //
-            // This is a cross product of (search roots) x (platform names), and
-            // a given platform's manifest lives under exactly ONE root: with
-            // `packages/platform` and `config` both on the path, `bare-metal`
-            // (which lives in `config/`) also produced
-            // `packages/platform/bare-metal/nros-platform.toml`, which does not
-            // exist. Cargo treats a MISSING `rerun-if-changed` input as
-            // permanently dirty, so that one path recompiled `zpico-sys` and
-            // everything above it on EVERY invocation — silently, because the
-            // build always succeeded, it was just never fresh
-            // (`stale: missing .../packages/platform/bare-metal/nros-platform.toml`
-            // under `CARGO_LOG=cargo::core::compiler::fingerprint=info`).
-            // Same class as issue 0490.
-            //
-            // The trade in filtering: a manifest CREATED later under a
-            // higher-priority root does not by itself trigger a rebuild. Cargo
-            // cannot watch a nonexistent path without being permanently dirty,
-            // so watching what exists is the only stable option, and authoring a
-            // new platform descriptor is a deliberate act that comes with other
-            // edits. `PlatformsTree` does not record which root each name was
-            // loaded from; if it ever does, watch exactly those instead.
-            for manifest in platform_manifests_to_watch(&platform_search_path) {
-                println!("cargo:rerun-if-changed={}", manifest.display());
-            }
-            let m = tree.as_platform_manifest();
-            (m, Some(tree))
+                platform_search_path
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(":")
+            );
         }
+        // Watch every root, not just the one a descriptor happens to live
+        // in today: moving a file between roots must invalidate the build.
+        // issue 0966 — emit only the manifests that EXIST.
+        //
+        // This is a cross product of (search roots) x (platform names), and
+        // a given platform's manifest lives under exactly ONE root: with
+        // `packages/platform` and `config` both on the path, `bare-metal`
+        // (which lives in `config/`) also produced
+        // `packages/platform/bare-metal/nros-platform.toml`, which does not
+        // exist. Cargo treats a MISSING `rerun-if-changed` input as
+        // permanently dirty, so that one path recompiled `zpico-sys` and
+        // everything above it on EVERY invocation — silently, because the
+        // build always succeeded, it was just never fresh
+        // (`stale: missing .../packages/platform/bare-metal/nros-platform.toml`
+        // under `CARGO_LOG=cargo::core::compiler::fingerprint=info`).
+        // Same class as issue 0490.
+        //
+        // The trade in filtering: a manifest CREATED later under a
+        // higher-priority root does not by itself trigger a rebuild. Cargo
+        // cannot watch a nonexistent path without being permanently dirty,
+        // so watching what exists is the only stable option, and authoring a
+        // new platform descriptor is a deliberate act that comes with other
+        // edits. `PlatformsTree` does not record which root each name was
+        // loaded from; if it ever does, watch exactly those instead.
+        for manifest in platform_manifests_to_watch(&platform_search_path) {
+            println!("cargo:rerun-if-changed={}", manifest.display());
+        }
+        let m = tree.as_platform_manifest();
+        (m, Some(tree))
     };
     for name in platform_manifest.platform.keys() {
         platform_manifest

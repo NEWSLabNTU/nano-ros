@@ -101,8 +101,11 @@ pub fn apply_baremetal_libc(build: &mut cc::Build) {
     }
     // issue 0491 — `NROS_PICOLIBC_SYSROOT` names a DIRECTORY, so it is watched
     // by CONTENT rather than fingerprinted as a string: cargo compares an env
-    // value textually, and one directory reaches this script with a different
-    // spelling from `just`, from a leaf `.cargo/config.toml [env]`, and unset.
+    // value textually, and a directory can reach this script under more than
+    // one spelling. phase-412: nothing in the tree sets it any more (the `just`
+    // export and the leaf `[env]` rows this comment once named are gone); it is
+    // an operator override, and `picolibc_include()` asks the compiler when it
+    // is unset.
     if let Some(include) = picolibc_include() {
         if std::path::Path::new(&include).is_dir() {
             println!("cargo:rerun-if-changed={include}");

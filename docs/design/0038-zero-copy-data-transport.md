@@ -83,7 +83,7 @@ SUBSCRIBER_BUFFERS: [SubscriberBuffer; ZPICO_MAX_SUBSCRIBERS]   // default 8 sub
   └ ring_payload: [[u8; SUBSCRIBER_BUFFER_SIZE]; SUBSCRIBER_RING_DEPTH]  // 1 KB × 4
 ```
 
-≈ 32 KB by default. Raise `ZPICO_SUBSCRIBER_BUFFER_SIZE` to 64 KB for compressed
+≈ 32 KB by default. Raise `NROS_SUBSCRIBER_BUFFER_SIZE` to 64 KB for compressed
 images and it explodes to `8 × 4 × 64 KB = 2 MB` — impossible on any MCU —
 regardless of how many subscribers actually exist or how deep their QoS is.
 
