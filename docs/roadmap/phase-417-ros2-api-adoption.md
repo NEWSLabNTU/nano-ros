@@ -451,6 +451,10 @@ missing one because it forecloses the fix. Three issues, ~140 rows, no code.
 
 ### The `gap` rows are the queue, and they are counted (2026-09-06)
 
+*Re-counted 2026-09-11 after a truth pass: 149 rows, not 158 — 20 were closed
+gaps still queued. Current counts and the grouped list:
+[phase-444](phase-444-rmw-fix-up.md) § "The ROS 2 gap list".*
+
 Phase-379 re-measured the ledger: **158 `gap` rows**, C++ 82, C 41, Rust 35.
 By shard: `param` 32, `graph` 30, `pubsub` 22, `lifecycle` 15, `log` 13,
 `timer` 11, `service` 10, `qos` 8, `action` 6, `node` 6, `exec` 2, one each in

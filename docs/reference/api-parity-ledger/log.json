@@ -81,10 +81,6 @@
     ],
     "why": "rclcpp's `Logger` is a VALUE type holding a `std::string name_`, copied into every macro call, and `get_child` mints a new one by concatenating `parent.child`. Constraints: no allocator, and no `<string>` on a freestanding C++ build -- `nros-cpp` headers are compiled `-nostdinc++` against Zephyr's minimal libcpp, where the rule (RFC-0018, issue 0112) is to gate a std include on `NROS_CPP_STD` rather than `__STDC_HOSTED__`, because a hosted compiler invoked `-nostdinc++` still reports itself hosted. (`log.hpp` itself still gates its `<cstdio>` on `defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)`; that one is the include 0112 explicitly left on the hosted gate, since minimal libcpp does provide `<cstdio>`.) Ours is an OPAQUE `const void*` returned by `Node::get_logger()` (`packages/api/nros-cpp/include/nros/node.hpp`), pointing at a `&'static nros_log::Logger` in a bounded 32-slot intern table keyed on `&'static str`. `Logger::Logger` and `Logger::get_child` follow from that: a `void*` has no constructor and no allocator to build a child name with. What does NOT follow is that the accessors are missing -- see `cpp:Logger::get_name` and `cpp:Logger::set_level`. A named `nros::Logger` wrapper over the same handle would cost one struct and restore the type without restoring the allocation.\n\nphase-428 W6 (2026-09-06) — disposition, required because this row's SHAPE CORRESPONDS: the name exists on the ported surface and the correlator files it `same`, so nothing in a build says the contract differs. That is the class RFC-0089 exists for.\n\nFIRST, A CORRECTION to the text above, which says ours is \"an OPAQUE `const void*` returned by `Node::get_logger()`\". That is no longer the C++ surface. `packages/api/nros-cpp/include/nros/log.hpp:246` declares a real `class rclcpp::Logger` holding a `const char* name_`, with `explicit Logger(const char* name = \"\")` and `get_name()`, alongside `rclcpp::get_logger(const char*)` and a `std::string` overload guarded by `NROS_CPP_HAS_STD_STRING`. The `const void*` is still the C spelling (`c:node_get_logger`); the C++ one moved in RFC-0089 stage 6 step A. The allocator argument above still explains why there is no `std::string` member and no `get_child`.\n\nUPSTREAM'S CONTRACT: the logger NAME reaches the output and keys per-logger level configuration; `get_child` mints a sub-logger by concatenation.\n\nOURS: the name is carried and readable via `get_name()`, but the `RCLCPP_*` macros expand to `NROS_*`, which take no logger — the header says so in as many words: \"The logger NAME is lost (nros has no per-logger dispatch yet)\".\n\nHOW A USER FINDS OUT: `logger.get_child(\"x\")` is a COMPILE ERROR — no such member. The LOST NAME is not loud: a ported `RCLCPP_INFO(rclcpp::get_logger(\"planner\"), ...)` compiles, logs, and attributes the line to nothing. That is the envelope, and it is stated in the header and not only here, which is what ADOPT-BOUNDED requires. `cpp:RCLCPP_FATAL` is the same discard measured on the severity rather than on the name."
   },
-  "cpp:Logger::get_name": {
-    "verdict": "gap",
-    "why": "reads the logger's name. `nros_log::Logger::name()` exists and is `const fn`; the C++ side cannot call it because `Node::get_logger()` hands back a bare `const void*` with no accessor beside it. Not a platform constraint -- the string is a `&'static str` already living in the binary. Phase 379 W3."
-  },
   "cpp:Logger::set_level": {
     "verdict": "gap",
     "why": "see `c:log_levels_add_logger_setting` -- same missing accessor, C++ side. A ported node can raise or lower a logger in rclcpp and cannot here."
@@ -98,10 +94,6 @@
     "verdict": "declined",
     "disposition": "absent",
     "why": "see `cpp:Node::get_node_base_interface` in the node stage -- rclcpp's ~10-way `node_interfaces::Node*Interface` split exists so a component can be handed the slice it needs, and our components are declared rather than constructed with an injected node (RFC-0044), so there is nothing to inject a slice of."
-  },
-  "cpp:get_logger": {
-    "verdict": "gap",
-    "why": "OUR LANGUAGES DISAGREE: rclcpp's free `rclcpp::get_logger(\"name\")` returns a logger without a node. Rust has exactly this function -- `nros_log::get_logger(name)`, total, returning `DEFAULT_LOGGER` when the name is not registered -- and neither C nor C++ can reach it: the only nameless entry point is `nros_log_default_logger()`, which takes no name and always returns the catch-all `\"nros\"` logger. What a C/C++ user loses: per-subsystem loggers. Every call site that is not inside a node lands on one logger and shares its threshold, so the per-logger filtering the severity ladder exists for is unavailable to two of our three languages. The Rust function is already `extern`-able. Phase 379 W3."
   },
   "cpp:get_logging_directory": {
     "verdict": "declined",
@@ -181,10 +173,6 @@
     "verdict": "divergence",
     "why": "rclrs's `Node` is a handle with a `logger()` accessor. Ours is the declarative component model (RFC-0043/0044): `nros::Node` is the TRAIT a user implements, and the handle-side equivalent is `nros_node::NodeHandle`, which DOES have `logger() -> &'static nros_log::Logger`. See `rust:Node` in the node stage for the constraint. Note the accessor does not appear as an ours-only row because `NodeHandle` is re-exported behind `#[cfg(feature = \"rmw-cffi\")]` and the report builds rustdoc with default features (`default = []`) -- see this stage's report, not a property of the API. Note also the type collision it creates: `nros::Logger` and the logger `NodeHandle::logger()` returns are DIFFERENT types with the same short name (`rust:Logger::info`)."
   },
-  "rust:NodeHandle::logger": {
-    "verdict": "gap",
-    "why": "`NodeHandle::logger()` returns the Phase-88 `nros_log::Logger`, which the `nros` facade does not re-export -- so a user can obtain a logger from a node handle and cannot name its type. The facade exports a DIFFERENT `Logger` (`nros_core::logger::Logger`, which forwards to the `log` crate). See the log stage's `rust:Logger::info`. Phase 379 W3."
-  },
   "rust:ThrottleClock": {
     "verdict": "divergence",
     "why": "rclrs picks which clock a throttle measures against (`SteadyTime` / `SystemTime` / a ROS `Clock`). Ours takes no clock: `*_throttle(&mut last_log_ms, current_time_ms, interval_ms, msg)` has the CALLER supply the reading. The constraint is that the logging path has no clock to depend on -- `nros_log::__timestamp_ns()` returns 0 unless the `platform-clock` feature is on, precisely so that logging imposes no link-time requirement on `nros_platform_clock_ns`, and a logger that silently needs a clock would put that requirement on every binary. The timer stage already declined `rust:LogParams::get_throttle_clock` by pointing here."
@@ -197,11 +185,6 @@
   "rust:log": {
     "verdict": "gap",
     "why": "rclrs's severity-taking `log!` macro; see `rust:log_*`. Our nearest equivalent is `nros_log::__nros_log_emit!`, which is `#[doc(hidden)]` and takes a `Severity` -- not a supported spelling."
-  },
-  "rust:log_*": {
-    "verdict": "gap",
-    "bucket": "theirs-only",
-    "why": "OUR LANGUAGES DISAGREE: rclrs's `log_debug!` / `log_info!` / `log_warn!` / `log_error!` / `log_fatal!`. We have the whole family -- `nros_log::{nros_trace, nros_debug, nros_info, nros_warn, nros_error, nros_fatal}!`, six to rclrs's five -- and the `nros` facade does not `pub use nros_log` or re-export a single macro, even though it already depends on the crate. So `use nros::prelude::*` gives a Rust user no way to log, while `#include <nros/nros.hpp>` gives a C++ user six macros; `examples/native/rust/logging/` has to depend on `nros-log` directly, and so does every call site following CLAUDE.md's issue-0589 rule. This is the gap to close first, because it is what makes `std::println!` -- fatal on Zephyr native_sim -- the path of least resistance for anyone using the facade. The names also differ (`nros_info!` vs `log_info!`) and W5 should settle that, but the missing re-export is the real finding, and it is why no matching ours-only row exists for a rename to point at. Phase 379 W3."
   },
   "cpp:Logger::Logger": {
     "verdict": "divergence",
