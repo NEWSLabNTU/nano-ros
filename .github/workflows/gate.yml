@@ -617,8 +617,9 @@ jobs:
       # THE ARRANGEMENT, phase-395. This job is ONE required status context and
       # it deliberately does DIFFERENT WORK per event:
       #
-      #   pull_request  ->  check-fast + compile-smoke + cli-tests  ~5 min
-      #   merge_group   ->  + test-unit + workspace-all             per BATCH
+      #   pull_request  ->  check-fast + compile-smoke + cli-tests
+      #                     + workspace-all                         ~5 min
+      #   merge_group   ->  + test-unit                             per BATCH
       #   schedule      ->  + check-build, no-std — the full tier, daily
       #
       # NOTE `check-build` is schedule/dispatch ONLY. It was on the merge group
@@ -1084,12 +1085,38 @@ jobs:
       # merge-gating event before and could never pass there, which is what
       # `check-lane-contracts` now enforces.
       #
-      # merge_group, deliberately NOT pull_request: same "PR cheap, batch
-      # thorough" split as `test-unit` above. A surprise here ejects a batch,
-      # which is visible and recoverable; on the PR lane it would block every
-      # pull request at once.
+      # ON THE PULL-REQUEST LANE SINCE 2026-09-10, reversing this step's own
+      # earlier reasoning. That reasoning was: "same `PR cheap, batch thorough`
+      # split as `test-unit` above. A surprise here ejects a batch, which is
+      # visible and recoverable; on the PR lane it would block every pull
+      # request at once." Both halves were re-measured and neither survived.
+      #
+      # NOT CHEAP-VERSUS-EXPENSIVE. This step is **28 s** on the runner
+      # (07:39:56 -> 07:40:24 on run 34449411245) inside a `check` job that
+      # takes ~9 minutes. `test-unit` in the same job is 3 m 37 s and
+      # `test-lane-contracts` 1 m 15 s. Grouping it with `test-unit` under one
+      # cost argument was the error: it is ~5 % of the lane, not a tier.
+      #
+      # "VISIBLE AND RECOVERABLE" UNDERCOUNTS BY THE BATCH. An ejection is not
+      # one PR's problem: `grouping_strategy` is ALLGREEN and
+      # `max_entries_to_build` is 5, so a failing entry takes its batch-mates
+      # down and they rebuild. Measured over 2026-09-09/10, when exactly two
+      # entries were at fault: #741 was ejected 8 times, #768 and #779 7 times
+      # each, with no defect of their own. One of the two culprits was a single
+      # `clippy::derivable_impls` error THIS STEP catches — it cost a batch of
+      # five, where on the PR lane it costs one 28 s run.
+      #
+      # "WOULD BLOCK EVERY PULL REQUEST AT ONCE" is a claim about a break that
+      # is already on `main` — a toolchain bump surfacing new `-D warnings`
+      # lints is the real case (CLAUDE.md says so). But that blocks everything
+      # either way: on `merge_group` nothing merges, it just fails later and
+      # louder. Running here does not create that failure mode, it relocates
+      # the report to the PR that caused it.
+      #
+      # `test-unit` deliberately STAYS on the batch lane: 3 m 37 s per push is
+      # the cost "PR cheap, batch thorough" was actually written for.
       - name: just check workspace-all (feature combinations)
-        if: ${{ contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
+        if: ${{ contains(fromJSON('["pull_request","merge_group","schedule","workflow_dispatch"]'), github.event_name) && !cancelled() }}
         run: |
           source ./activate.sh
           just check workspace-all
