@@ -53,13 +53,13 @@ fn scratch_root() -> PathBuf {
 
 /// A unique scratch path that does NOT exist. Nothing is created — for the
 /// callers that want to hand a missing directory to the code under test.
-pub(crate) fn scratch_path(tag: &str) -> PathBuf {
+pub fn scratch_path(tag: &str) -> PathBuf {
     let n = SEQ.fetch_add(1, Ordering::Relaxed);
     scratch_root().join(format!("{tag}-{n}"))
 }
 
 /// A unique, EMPTY scratch directory, created and ready to write into.
-pub(crate) fn scratch_dir(tag: &str) -> PathBuf {
+pub fn scratch_dir(tag: &str) -> PathBuf {
     let dir = scratch_path(tag);
     // Fresh by construction (SEQ never repeats), so this only matters if a
     // previous run of THIS pid left something behind — a pid the OS reused.
@@ -102,7 +102,41 @@ pub(crate) fn scratch_dir(tag: &str) -> PathBuf {
 /// A retry-on-`ETXTBSY` loop also works (0 escapes, 141 backoffs in the same
 /// experiment) but masks the race instead of removing it, and pays latency on
 /// every hit.
-pub(crate) fn write_executable_stub(path: &std::path::Path, script: &str) {
+/// Issue 0476, the same rule for a binary that already exists.
+///
+/// [`write_executable_stub`] removes the ETXTBSY race by never holding a write
+/// descriptor in THIS process. `std::fs::copy` holds one, so a test that copies
+/// a real binary into a store and then execs it is exposed exactly as a test
+/// that wrote a script would be — and it is the harder case to spot, because
+/// nothing about `fs::copy` looks like writing an executable.
+///
+/// `cp` preserves the mode of a source that is already executable; the explicit
+/// `chmod` is for a source whose mode does not survive (a fixture checked out
+/// without the bit, a `CARGO_BIN_EXE_*` on a filesystem that drops it).
+pub fn copy_executable(src: &std::path::Path, dst: &std::path::Path) {
+    let ok = std::process::Command::new("cp")
+        .arg(src)
+        .arg(dst)
+        .status()
+        .unwrap_or_else(|e| panic!("spawn cp {} -> {}: {e}", src.display(), dst.display()))
+        .success();
+    assert!(
+        ok,
+        "cp failed copying {} -> {}",
+        src.display(),
+        dst.display()
+    );
+
+    let ok = std::process::Command::new("chmod")
+        .arg("755")
+        .arg(dst)
+        .status()
+        .unwrap_or_else(|e| panic!("spawn chmod for {}: {e}", dst.display()))
+        .success();
+    assert!(ok, "chmod failed on {}", dst.display());
+}
+
+pub fn write_executable_stub(path: &std::path::Path, script: &str) {
     let src = path.with_extension("stub-src");
     std::fs::write(&src, script)
         .unwrap_or_else(|e| panic!("write stub source {}: {e}", src.display()));

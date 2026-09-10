@@ -32,3 +32,7 @@ nros-cli-core = { path = "../nros-cli-core" }
 # `tests/toolchain_dispatch.rs` builds a fake store in a tempdir: the launcher
 # must be tested against a store that is NOT the developer's `~/.nros`.
 tempfile = "3.10"
+# Issue 0476 — that same test writes a launcher and a stub and then EXECS them.
+# `test-support` exposes the ONE helper that removes the ETXTBSY race, rather
+# than this file growing a second copy of the discipline.
+nros-cli-core = { path = "../nros-cli-core", features = ["test-support"] }
