@@ -134,10 +134,18 @@ fn discover_example_leaves() -> Vec<PathBuf> {
 
 /// Every dir under `examples/` containing a `system.toml` (Path A
 /// bringup pkg).
+///
+/// A `system.toml` beside a package MANIFEST is not a bringup: it is a
+/// single-package leaf stating its own deployment (RFC-0098 D3, phase-445 W3),
+/// the same distinction `nros_orchestration_ir::leaf_system::is_package_dir`
+/// draws.
 fn discover_bringup_dirs() -> Vec<PathBuf> {
     let mut bringups = Vec::new();
     walk(&examples_dir(), |dir| {
-        if dir.join("system.toml").is_file() {
+        if dir.join("system.toml").is_file()
+            && !dir.join("Cargo.toml").is_file()
+            && !dir.join("CMakeLists.txt").is_file()
+        {
             bringups.push(dir.to_path_buf());
         }
     });
@@ -316,14 +324,52 @@ fn parse_cargo_toml(path: &Path) -> Result<ProofKindClassification, String> {
         }
     }
 
-    Ok(ProofKindClassification {
+    let mut cls = ProofKindClassification {
         is_component: component.is_some() || node.is_some(),
         is_application: application.is_some(),
         is_entry: entry.is_some(),
         component_class,
         deploy_targets,
         package_name,
-    })
+    };
+    // phase-445 W3 (RFC-0098 D3/D5/D8) — a single-package leaf states its
+    // board and node in the `system.toml` beside this manifest instead of
+    // `[package.metadata.nros.{entry,deploy.*,node}]`. Its `[image.*] board`
+    // makes it deploy-bound (the `entry` role), a `[[component]]` row is its
+    // node declaration, and the board keys are its deploy targets.
+    if let Some(dir) = path.parent() {
+        read_leaf_system_toml(&dir.join("system.toml"), &mut cls)?;
+    }
+    Ok(cls)
+}
+
+/// Fold a leaf `system.toml` into the classification (see caller).
+fn read_leaf_system_toml(path: &Path, cls: &mut ProofKindClassification) -> Result<(), String> {
+    let Ok(body) = fs::read_to_string(path) else {
+        return Ok(());
+    };
+    let value: toml::Value =
+        toml::from_str(&body).map_err(|e| format!("toml parse {}: {}", path.display(), e))?;
+    if let Some(images) = value.get("image").and_then(|v| v.as_table()) {
+        for img in images.values() {
+            if let Some(b) = img.get("board").and_then(|b| b.as_str()) {
+                cls.is_entry = true;
+                cls.deploy_targets.insert(b.to_owned());
+            }
+        }
+    }
+    if let Some(rows) = value.get("component").and_then(|v| v.as_array())
+        && let Some(first) = rows.first()
+    {
+        cls.is_component = true;
+        if cls.component_class.is_none() {
+            cls.component_class = first
+                .get("class")
+                .and_then(|c| c.as_str())
+                .map(str::to_owned);
+        }
+    }
+    Ok(())
 }
 
 /// Infer the canonical deploy-target name from the platform sub-dir

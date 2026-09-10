@@ -50,15 +50,21 @@ function(_nros_system_resolve_cli outvar)
     endif()
 endfunction()
 
-# Detect M-F.3 self-pkg bringup shape. Returns TRUE in outvar when
-# `<abs>/Cargo.toml` carries `[package.metadata.nros.deploy.zephyr*]`
-# OR `<abs>/package.xml` carries the RFC-0048 §4 tuple
-# `<nano_ros deploy="zephyr" …/>` (the C/C++ deploy SSoT; replaces the
-# retired `nano_ros_deploy(TARGET zephyr …)` CMakeLists grep). A
-# self-pkg eats its own bringup role — workspace AND bringup dir are
-# the pkg itself.
+# Detect M-F.3 self-pkg bringup shape. Returns TRUE in outvar when the dir
+# is a PACKAGE (`Cargo.toml` or `CMakeLists.txt`) with a `system.toml` beside
+# it — a single-package leaf stating its own deployment (RFC-0098 D3,
+# phase-445 W3b; this replaced the package.xml `<nano_ros deploy="zephyr"/>`
+# tuple) — OR, for a workspace entry not yet converted, when
+# `<abs>/Cargo.toml` carries `[package.metadata.nros.deploy.zephyr*]`. A
+# self-pkg eats its own bringup role — workspace AND bringup dir are the pkg
+# itself.
 function(_nros_system_detect_self_pkg abs outvar)
     set(${outvar} FALSE PARENT_SCOPE)
+    if(EXISTS "${abs}/system.toml"
+       AND (EXISTS "${abs}/Cargo.toml" OR EXISTS "${abs}/CMakeLists.txt"))
+        set(${outvar} TRUE PARENT_SCOPE)
+        return()
+    endif()
     if(EXISTS "${abs}/Cargo.toml")
         file(READ "${abs}/Cargo.toml" _toml)
         # Match the bare table OR the per-RMW target-name variants. Each
@@ -69,20 +75,14 @@ function(_nros_system_detect_self_pkg abs outvar)
             return()
         endif()
     endif()
-    if(EXISTS "${abs}/package.xml")
-        file(READ "${abs}/package.xml" _pxml)
-        if(_pxml MATCHES "<nano_ros[^>]*deploy=\"zephyr")
-            set(${outvar} TRUE PARENT_SCOPE)
-        endif()
-    endif()
 endfunction()
 
 # Resolve a bringup-pkg argument to an absolute directory. Accepts an
 # absolute path, a path relative to the app's source dir, or a sibling
 # dir name (walks one level up — workspace shape). Returns a dir that
 # is EITHER a Path A bringup (`system.toml` present) OR an M-F.3
-# self-pkg (Cargo.toml + deploy.zephyr OR package.xml +
-# <nano_ros deploy="zephyr" .../>).
+# self-pkg (a package with `system.toml` beside it, or a Cargo.toml
+# with deploy.zephyr).
 function(_nros_system_resolve_bringup arg outvar)
     if(IS_ABSOLUTE "${arg}" AND IS_DIRECTORY "${arg}")
         set(${outvar} "${arg}" PARENT_SCOPE)
@@ -129,10 +129,10 @@ function(nros_system_generate bringup_pkg)
             "nros_system_generate: bringup pkg '${bringup_pkg}' not "
             "found. Looked relative to ${CMAKE_CURRENT_SOURCE_DIR}, "
             "${CMAKE_SOURCE_DIR}, and their parents. The dir must "
-            "contain system.toml (Path A bringup) OR a Cargo.toml "
-            "with [package.metadata.nros.deploy.zephyr*] / a "
-            "package.xml with a <nano_ros deploy=zephyr .../> tuple "
-            "(M-F.3 self-pkg bringup).")
+            "contain system.toml (a Path A bringup, or a package leaf "
+            "stating its own deployment — RFC-0098 D3) OR a Cargo.toml "
+            "with [package.metadata.nros.deploy.zephyr*] (M-F.3 self-pkg "
+            "bringup).")
     endif()
 
     if(_nros_cli STREQUAL "NROS_CLI-NOTFOUND")

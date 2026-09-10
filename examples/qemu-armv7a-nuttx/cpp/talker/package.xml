@@ -8,6 +8,5 @@
   <depend>std_msgs</depend>
   <export>
     <build_type>nros_cmake</build_type>
-    <nano_ros deploy="nuttx" board="qemu-armv7a-nuttx" rmw="zenoh"/>
   </export>
 </package>

@@ -182,7 +182,7 @@ impl nros_platform::BoardEntry for ThreadxQemuRiscv64 {
     }
 
     /// Phase 245 B0 / issue #48 — apply the `nros::main!()` deploy overlay
-    /// (`[package.metadata.nros.deploy.threadx-qemu-riscv64]`: locator / ip /
+    /// (`[image.*]` in the leaf's `system.toml`: locator / ip /
     /// gateway / netmask / domain_id) onto `Config::default()` before boot, so the
     /// Entry pkg's deploy metadata stops being inert. Fields the deploy block omits
     /// keep the board default.

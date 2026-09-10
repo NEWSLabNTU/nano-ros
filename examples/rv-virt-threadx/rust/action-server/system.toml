@@ -1,0 +1,24 @@
+# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
+# schema a workspace bringup uses. Switching board is editing `[image.*] board`
+# and re-running `nros sync`.
+
+
+[system]
+name = "rv_virt_threadx_action_server"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "rv_virt_threadx_action_server"
+class = "rv_virt_threadx_action_server::FibonacciServer"
+name = "fibonacci_action_server"
+
+# ThreadX on the QEMU RISC-V virt machine. The network identity reaches the
+# board `Config` via `BoardEntry::run_with_deploy`; CycloneDDS ignores the
+# locator (no router).
+[image.rv-virt-threadx]
+board = "rv-virt-threadx"
+locator = "tcp/10.0.2.2:9420"
+ip = "10.0.2.15"
+gateway = "10.0.2.2"
+netmask = "255.255.255.0"

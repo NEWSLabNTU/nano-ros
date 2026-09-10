@@ -16,7 +16,7 @@ name = "talker"
 # board `Config` via `BoardEntry::run_with_deploy`; CycloneDDS ignores the
 # locator (no router).
 [image.rv-virt-threadx]
-board = "threadx-qemu-riscv64"
+board = "rv-virt-threadx"
 locator = "tcp/10.0.2.2:9400"
 ip = "10.0.2.15"
 netmask = "255.255.255.0"

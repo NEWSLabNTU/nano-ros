@@ -12,6 +12,5 @@
 
   <export>
     <build_type>nros_cmake</build_type>
-    <nano_ros deploy="threadx" board="threadx-linux" rmw="zenoh"/>
   </export>
 </package>

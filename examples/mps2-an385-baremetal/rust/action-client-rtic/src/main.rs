@@ -1,7 +1,7 @@
 //! RTIC Fibonacci action-client entry for nros on QEMU MPS2-AN385 (phase-244.D1).
 //!
 //! Collapses to `nros::main!()`: the macro reads
-//! `[package.metadata.nros.entry] deploy = "rtic-mps2-an385"`, resolves the RTIC
+//! `[image.*] board = "rtic-mps2-an385"`, resolves the RTIC
 //! board (`nros-board-mps2-an385`), and emits the `#[rtic::app]` boot
 //! scaffold that brings up hardware/network, opens the executor, registers the
 //! linked RMW, and runs the `action_client_rtic_pkg` node's `register` + RTIC

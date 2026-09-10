@@ -17,23 +17,8 @@ bench = false
 [lib]
 crate-type = ["rlib"]
 
-[package.metadata.nros.entry]
-deploy = "qemu-mps2-an385"
-
-[package.metadata.nros.node]
-class = "qemu_talker_xrce::XrceTalker"
-name = "talker_xrce"
-default_namespace = "/"
-dispatch = "deferred"
-
-# Phase 244.D1 — XRCE deploy: `transport = "xrce"` makes `nros::main!()` call
-# `BoardEntry::setup_transport` (which the board, built `xrce-transport`,
-# overrides to install the XRCE-over-UART vtable) BEFORE `__register_linked_rmw()`
-# — the ordering XRCE needs. `locator = "custom://uart"` selects the custom link.
-[package.metadata.nros.deploy.qemu-mps2-an385]
-transport = "xrce"
-locator = "custom://uart"
-domain_id = 0
+# The board, network identity and node declaration live in `system.toml` beside
+# this manifest (RFC-0098 D3/D5) — nothing here names a board.
 
 [dependencies]
 # nros + the XRCE RMW (rmw-xrce makes `__register_linked_rmw()` register the

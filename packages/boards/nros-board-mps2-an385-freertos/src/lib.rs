@@ -211,7 +211,7 @@ impl nros_platform::BoardEntry for Mps2An385 {
     }
 
     /// Issue #48 cause 1 — apply the `nros::main!()` deploy overlay
-    /// (`[package.metadata.nros.deploy.freertos]`: locator / ip / gateway /
+    /// (`[image.*]` in the leaf's `system.toml`: locator / ip / gateway /
     /// netmask / domain_id) onto `Config::default()` before boot, so the
     /// firmware dials the deploy-named endpoint (e.g. the slirp host alias
     /// `tcp/10.0.2.2:7451` on guest `10.0.2.15`) instead of the inert
@@ -235,7 +235,7 @@ impl nros_platform::BoardEntry for Mps2An385 {
 }
 
 /// Issue #48 cause 1 — overlay the `nros::main!()` deploy block
-/// (`[package.metadata.nros.deploy.freertos]`) onto `Config::default()`. Fields
+/// (the leaf `system.toml`'s `[image.*]`) onto `Config::default()`. Fields
 /// the deploy block omits keep the board default. Shared by the single-tier
 /// [`BoardEntry::run_with_deploy`] and the multi-tier [`Mps2An385::run_tiers`]
 /// entry paths so both stop ignoring the deploy metadata.

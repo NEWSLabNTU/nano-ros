@@ -9,7 +9,7 @@
 //! (`nros-board-threadx-qemu-riscv64`, `BoardEntry::run`) owns `nros::init`,
 //! executor open, RMW registration, and the spin loop. RMW selection
 //! (zenoh / cyclonedds) lives in `Cargo.toml [features]`; the locator + domain
-//! in `[package.metadata.nros.deploy.threadx-qemu-riscv64]` — never here.
+//! in `system.toml`'s `[image.rv-virt-threadx]` — never here.
 //!
 //! phase-394 / issue 0856 — `tick()` also serves the CANCEL path: a goal in
 //! `GoalStatus::Canceling` completes as `Canceled` carrying whatever was

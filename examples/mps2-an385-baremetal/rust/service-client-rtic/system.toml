@@ -1,0 +1,26 @@
+# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
+# schema a workspace bringup uses. Switching board is editing `[image.*] board`
+# and re-running `nros sync`.
+
+
+[system]
+name = "qemu_rtic_service_client"
+rmw = "zenoh"
+domain_id = 0
+
+# `dispatch` — callbacks hand off to a ring rather than running inline
+# (phase-216 A.5); read by `nros check`'s framework × dispatch lint (issue 1278).
+[[component]]
+pkg = "qemu_rtic_service_client"
+class = "qemu_rtic_service_client::AddTwoIntsClient"
+name = "add_two_ints_client"
+dispatch = "deferred"
+
+# RTIC on bare-metal MPS2-AN385 (QEMU). The network identity overlays the
+# board's compiled-in `Config::default()` through `BoardEntry::run_with_deploy`.
+[image.mps2-an385-baremetal]
+board = "rtic-mps2-an385"
+locator = "tcp/10.0.2.2:10210"
+ip = "10.0.2.15"
+gateway = "10.0.2.2"
+netmask = "255.255.255.0"

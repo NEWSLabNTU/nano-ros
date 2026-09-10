@@ -18,7 +18,7 @@ QEMU / flashing steps live in the [mps2-an385-baremetal README](https://github.c
 
 ## Config
 
-Board, RMW, domain and locator: `Cargo.toml` →
-`[package.metadata.nros.deploy.rtic-mps2-an385]`.
+Board, RMW, domain and locator: `system.toml` beside `Cargo.toml`
+(`[image.<id>]` + `[system]`, RFC-0098 D3/D5).
 
 Copy-out contract + the full example matrix: [`examples/README.md`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/README.md).

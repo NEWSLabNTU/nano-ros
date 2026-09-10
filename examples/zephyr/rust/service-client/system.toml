@@ -1,0 +1,24 @@
+# What this example deploys to (RFC-0098 D3/D5, phase-445 W3) — the same
+# schema a workspace bringup uses. Switching board is editing `[image.*] board`
+# and re-running `nros sync`.
+#
+# On Zephyr the RMW actually linked is still chosen by the Kconfig overlay
+# (`prj-<rmw>.conf` → CMakeLists.txt `EXTRA_CARGO_ARGS`); `rmw` here is the
+# declaration the resolver and `nros ws board-facts` read (RFC-0098 "What is NOT
+# decided": Kconfig stays the Zephyr front-end).
+
+
+[system]
+name = "zephyr_rs_service_client"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "zephyr_rs_service_client"
+class = "nros_zephyr_service_client::AddTwoIntsClient"
+name = "service_client"
+
+# The Zephyr family; the concrete Zephyr board (`native_sim/native/64`) is the
+# west `-b` argument, resolved through the board catalog.
+[image.zephyr]
+board = "zephyr"

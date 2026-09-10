@@ -182,13 +182,15 @@ impl NuttxQemu {
 /// `BoardInit::init_hardware` couldn't.
 ///
 /// Defaults are the slirp e2e values (`10.0.2.30/24` via `10.0.2.2`, the same
-/// address the known-good role fixtures push); `[package.metadata.nros.deploy.
-/// nuttx]` `ip` / `netmask` / `gateway` keys override per entry so sibling
+/// address the known-good role fixtures push); the leaf `system.toml`'s
+/// `[image.*]` `ip` / `netmask` / `gateway` keys override per entry so sibling
 /// guests can differ.
 #[cfg(target_os = "nuttx")]
 fn entry_net_init(deploy: Option<&nros_platform::DeployOverlay>) {
     let ip = deploy.and_then(|d| d.ip).unwrap_or(SLIRP_DEFAULT_IP);
-    let gateway = deploy.and_then(|d| d.gateway).unwrap_or(SLIRP_DEFAULT_GATEWAY);
+    let gateway = deploy
+        .and_then(|d| d.gateway)
+        .unwrap_or(SLIRP_DEFAULT_GATEWAY);
     let prefix = deploy
         .and_then(|d| d.netmask)
         .map(|m| u32::from_be_bytes(m).count_ones() as u8)
@@ -209,7 +211,7 @@ fn entry_net_init(deploy: Option<&nros_platform::DeployOverlay>) {
 /// | arm virt | `nuttx-config/arm/defconfig` | `10.0.2.30/24` |
 /// | rv-virt | `nuttx-config/riscv/defconfig` | `10.0.2.15/24` |
 ///
-/// A `DeployOverlay` (`[package.metadata.nros.deploy.*]` `ip`/`netmask`/
+/// A `DeployOverlay` (`system.toml` `[image.*]` `ip`/`netmask`/
 /// `gateway`) overrides it, which is how sibling guests get distinct IPs.
 /// Every guest runs behind its own QEMU slirp, so the two values never meet.
 #[cfg(target_arch = "riscv32")]

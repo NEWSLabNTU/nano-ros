@@ -17,22 +17,8 @@ bench = false
 [lib]
 crate-type = ["rlib"]
 
-[package.metadata.nros.entry]
-deploy = "qemu-mps2-an385"
-
-[package.metadata.nros.node]
-class = "qemu_serial_listener::SerialListenerNode"
-name = "serial_listener"
-default_namespace = "/"
-dispatch = "deferred"
-
-# Phase 244.D1 — serial deploy: the board is built with the `serial` feature
-# (no `ethernet`), so `BoardEntry::run_with_deploy` boots `Config::serial_default`
-# and this overlay only supplies the UART zenoh locator + domain (no ip/gateway —
-# the serial link has no IP).
-[package.metadata.nros.deploy.qemu-mps2-an385]
-locator = "serial/UART_0#baudrate=115200"
-domain_id = 0
+# The board, network identity and node declaration live in `system.toml` beside
+# this manifest (RFC-0098 D3/D5) — nothing here names a board.
 
 [dependencies]
 nros = { version = "*", default-features = false, features = ["alloc", "rmw-cffi", "ros-humble", "macros"] }

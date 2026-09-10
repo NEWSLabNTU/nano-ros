@@ -38,20 +38,8 @@ example_interfaces = { path = "generated/example_interfaces", default-features =
 # entry runtime owns the sink.
 log = "0.4"
 
-[package.metadata.nros.entry]
-deploy = "nuttx"
-
-[package.metadata.nros.node]
-class = "nuttx_rs_service_client::AddTwoIntsClient"
-name = "service_client"
-default_namespace = "/"
-
-[package.metadata.nros.deploy.nuttx]
-board = "qemu-armv7a-nsh"
-target = "armv7a-nuttx-eabihf"
-rmw = "zenoh"
-domain_id = 0
-locator = "tcp/10.0.2.2:8210"
+# The board, network identity and node declaration live in `system.toml` beside
+# this manifest (RFC-0098 D3/D5) — nothing here names a board.
 
 [package.metadata.ament]
 build_depend = ["example_interfaces"]

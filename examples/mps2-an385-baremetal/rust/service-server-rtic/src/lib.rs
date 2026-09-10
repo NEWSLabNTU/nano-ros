@@ -6,7 +6,7 @@
 //! and writes the typed reply. The entry crate's `nros::main!()` + the RTIC board
 //! (`nros-board-mps2-an385`) own hardware/network bring-up, executor open,
 //! RMW registration, and the RTIC dispatch loop. Locator/domain live in the
-//! entry's `[package.metadata.nros.deploy.rtic-mps2-an385]` — never here.
+//! leaf's `system.toml` (`[image.mps2-an385-baremetal]`) — never here.
 
 #![no_std]
 
