@@ -5,7 +5,7 @@ title: "action goals complete between 20 % and 90 % of the time on the same buil
 status: open
 type: bug
 area: rmw
-related: [issue-0882, issue-0879, issue-0852]
+related: [issue-0912, issue-0882, issue-0879, issue-0852, phase-444]
 ---
 
 ## Measurement
@@ -249,3 +249,52 @@ created in order and none is destroyed — `NEXT_SERVICE_BUFFER_INDEX` never
 decrements, but `Queryable::drop` (`zpico.rs:218`) frees the C slot for reuse.
 One dropped service server desynchronises the two permanently. Not reachable in
 this image; one lifecycle transition away.
+
+## Status 2026-09-11 — both leak arms fixed, the symptom never re-measured
+
+Checked against the code on `main`, not against the commit messages.
+
+**Fixed: the reply-slot leak, both arms.** Every release now goes through ONE
+helper, `_zpico_release_reply_slot` (`zpico.c:4083`):
+
+* declined query: `1a032a10b`. `zpico_queryable_take_reply_seq` clears the
+  seq, and `query_handler` releases any clone whose seq is still set when the
+  callback returns (`zpico.c:990`). This covers the empty-payload probe and the
+  ring-full drop.
+* failed reply: `b56e3d50a`. Every error return in `zpico_query_reply`
+  releases the slot, and so does the success path (`zpico.c:4112`, `:4119`,
+  `:4137`).
+
+**What remains, and why this stays open:**
+
+1. **The symptom was never re-measured.** No run after the fixes records a goal
+   completion rate, so nobody knows whether the leak was the whole cause or
+   only part of it. The 09-04 section's "second candidate" (a per-reply
+   transport failure) does not explain the idle soak, but nothing has ruled it
+   out either. `phase-444-rmw-fix-up.md` W2 carries this as its acceptance: the
+   completion rate on a freshly built image, over enough runs to separate it
+   from 20–90 %. That run needs a router and a live peer.
+2. **The two free checks were never recorded.** One: did any goal ever succeed
+   after an earlier failure in the same boot? Two: is there a ~15 B
+   `REPLY_FINAL` between the 82 B query and the 78 B status? Both read data
+   that already exists. They would confirm the MECHANISM on the pre-fix
+   captures, independent of item 1.
+3. **No regression test.** Both fix commits say why: reaching either arm needs
+   a query delivered to a queryable, which needs a router. No test under
+   `packages/testing` references the reply-slot table.
+4. **The latent desync is unchanged.** `shim/service.rs:402` builds
+   `buffer_index` from the Rust counter, and `:246` passes it to
+   `zpico_queryable_take_reply_seq` as the C queryable handle. The comment at
+   `:241` asserts they are equal, and nothing enforces that. Still unreachable
+   in this image; still one dropped server away.
+5. **A correction to the 09-04 section.** `ZPICO_MAX_PENDING_REPLIES` is
+   `#ifndef`-guarded (`zpico.c:265`), so a raw `-D` does override it. No
+   Kconfig, cmake or env knob sets it, which is what the leak analysis relied
+   on.
+
+Also done here: `related:` gains issue 0912, as the 09-04 section asked,
+together with phase-444.
+
+**What would close it:** item 1's measurement at or near 10/10 on a fresh image
+closes the issue. A residual failure rate reopens the second candidate, and
+items 2 and 3 are what would make that residual diagnosable.
