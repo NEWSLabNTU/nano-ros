@@ -79,6 +79,14 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OVERLAY_DIR = os.path.join(ROOT, "cmake", "board")
 BASELINE = os.path.join(ROOT, ".config", "board-name-reach-baseline.txt")
+# Module-level so `check-baseline-shape` can hold the file to it.
+BASELINE_HEADER = (
+    "# phase-437 W1 — board names that do not yet state their reach\n"
+    "# (RFC-0093). A RATCHET: it may only SHRINK. W4-W6 empty it.\n"
+    "#\n"
+    "# Regenerate ONLY to record a rename that removed one:\n"
+    "#     python3 scripts/check-board-name-reach.py --write-baseline\n"
+)
 
 # An ISA or CPU family. Naming one is a claim about every machine that has it.
 ARCH = {
@@ -336,13 +344,7 @@ def main():
 
     if "--write-baseline" in sys.argv:
         with open(BASELINE, "w", encoding="utf8") as fh:
-            fh.write(
-                "# phase-437 W1 — board names that do not yet state their reach\n"
-                "# (RFC-0093). A RATCHET: it may only SHRINK. W4-W6 empty it.\n"
-                "#\n"
-                "# Regenerate ONLY to record a rename that removed one:\n"
-                "#     python3 scripts/check-board-name-reach.py --write-baseline\n"
-            )
+            fh.write(BASELINE_HEADER)
             for b in sorted(violations):
                 fh.write(f"{b}\n")
         print(f"wrote baseline: {len(violations)} known violation(s)")

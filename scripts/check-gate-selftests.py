@@ -48,6 +48,18 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASELINE = os.path.join(ROOT, ".config", "gate-selftest-baseline.txt")
+# Module-level so `check-baseline-shape` can hold the file to it.
+BASELINE_HEADER = (
+    "# Gate scripts that do NOT yet run their own selftest on the normal\n"
+    "# path. A RATCHET, not an allowlist: this file may only shrink.\n"
+    "#\n"
+    "# `check-gate-selftests` fails when a script here gains a selftest\n"
+    "# (remove its line) or disappears (delete its line) — so the debt\n"
+    "# cannot silently grow and cannot silently go stale, which is the\n"
+    "# issue-0743 class.\n"
+    "#\n"
+    "# Regenerate: python3 scripts/check-gate-selftests.py --write-baseline\n"
+)
 
 # A call to a selftest routine. Definitions and flag-dispatch lines are excluded
 # by the caller, not here, so both halves are visible at the use site.
@@ -201,17 +213,7 @@ def load_baseline():
 def write_baseline(states):
     debt = sorted(r for r, (s, _) in states.items() if s != "auto")
     with open(BASELINE, "w", encoding="utf8") as fh:
-        fh.write(
-            "# Gate scripts that do NOT yet run their own selftest on the normal\n"
-            "# path. A RATCHET, not an allowlist: this file may only shrink.\n"
-            "#\n"
-            "# `check-gate-selftests` fails when a script here gains a selftest\n"
-            "# (remove its line) or disappears (delete its line) — so the debt\n"
-            "# cannot silently grow and cannot silently go stale, which is the\n"
-            "# issue-0743 class.\n"
-            "#\n"
-            "# Regenerate: python3 scripts/check-gate-selftests.py --write-baseline\n"
-        )
+        fh.write(BASELINE_HEADER)
         for r in debt:
             fh.write(r + "\n")
     print(f"wrote {BASELINE} — {len(debt)} script(s) of {len(states)} still owe a selftest")

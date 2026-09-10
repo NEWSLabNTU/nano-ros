@@ -70,6 +70,17 @@ EXEMPT_FILE = REPO / ".config" / "gate-lane-exempt.txt"
 # derived fast+build set, so inverting where membership is WRITTEN did not
 # move what the ratchet reads.
 BASELINE = REPO / ".config" / "gate-registry-baseline.txt"
+# Module-level so `check-baseline-shape` can hold the file to it.
+BASELINE_HEADER = (
+    "# The gate names `just/check.just`'s registries have carried.\n"
+    "# May only GROW. A name here and not in a registry fails\n"
+    "# `check-gate-lists` (issue 1071 -- a PR deleted four gates and every\n"
+    "# gate stayed green, because sorted-and-one-per-line is a property a\n"
+    "# deletion satisfies).\n"
+    "#\n"
+    "# Regenerate ONLY for a deliberate retirement, and say which gate went:\n"
+    "#   python3 scripts/check/check-gate-lists.py --write-baseline\n"
+)
 
 # The one lane whose membership is still authored. A build gate is the
 # EXCEPTION — it cannot run without something compiled — so it is listed, and
@@ -341,15 +352,7 @@ def load_baseline() -> set[str] | None:
 def write_baseline(names: set[str]) -> None:
     BASELINE.parent.mkdir(parents=True, exist_ok=True)
     BASELINE.write_text(
-        "# The gate names `just/check.just`'s registries have carried.\n"
-        "# May only GROW. A name here and not in a registry fails\n"
-        "# `check-gate-lists` (issue 1071 -- a PR deleted four gates and every\n"
-        "# gate stayed green, because sorted-and-one-per-line is a property a\n"
-        "# deletion satisfies).\n"
-        "#\n"
-        "# Regenerate ONLY for a deliberate retirement, and say which gate went:\n"
-        "#   python3 scripts/check/check-gate-lists.py --write-baseline\n"
-        + "".join(f"{n}\n" for n in sorted(names)),
+        BASELINE_HEADER + "".join(f"{n}\n" for n in sorted(names)),
         encoding="utf-8",
     )
 

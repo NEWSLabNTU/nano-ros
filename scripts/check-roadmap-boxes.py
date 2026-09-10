@@ -68,6 +68,13 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASELINE = os.path.join(ROOT, ".config", "roadmap-boxes-baseline.txt")
+# Module-level so `check-baseline-shape` can hold the file to it.
+BASELINE_HEADER = (
+    "# Phase sections whose declared `**Files:**` all exist while boxes\n"
+    "# stay open (issue 1103). A ratchet: entries may only be REMOVED.\n"
+    "# An entry here is a claim that the section is genuinely unfinished\n"
+    "# despite its files landing — say why beside it.\n"
+)
 
 SECTION = re.compile(r"^### ")
 OPEN_BOX = re.compile(r"^- \[ \]")
@@ -211,12 +218,7 @@ def main(argv):
     if "--write-baseline" in argv:
         os.makedirs(os.path.dirname(BASELINE), exist_ok=True)
         with open(BASELINE, "w", encoding="utf8") as fh:
-            fh.write(
-                "# Phase sections whose declared `**Files:**` all exist while boxes\n"
-                "# stay open (issue 1103). A ratchet: entries may only be REMOVED.\n"
-                "# An entry here is a claim that the section is genuinely unfinished\n"
-                "# despite its files landing — say why beside it.\n"
-            )
+            fh.write(BASELINE_HEADER)
             for d, h, _, _ in flagged:
                 fh.write(f"{key(d, h)}\n")
         print(f"check-roadmap-boxes: baseline written ({len(flagged)} section(s))")

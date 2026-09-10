@@ -65,6 +65,9 @@ import subprocess
 import re
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from baseline_shape import late_comment_lines
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BASELINE = os.path.join(ROOT, ".config", "prose-issue-ref-baseline.txt")
 
@@ -211,15 +214,15 @@ def check_baseline_shape(lines):
 
     The rule is the weakest one that catches a sort: comments come first. It
     permits any header a person writes and refuses the shape no person writes.
+    It is THIS file's convention, not every baseline's, so it stays here; the
+    rules that hold for all of them are `check-baseline-shape`'s, and the
+    finder is shared (`scripts/lib/baseline_shape.py`).
     """
-    first_row = next((i for i, l in enumerate(lines)
-                      if l.strip() and not l.startswith("#")), None)
-    if first_row is None:
-        return None
-    late = [i for i, l in enumerate(lines[first_row:], first_row)
-            if l.startswith("#")]
+    late = late_comment_lines(lines)
     if not late:
         return None
+    first_row = next(i for i, l in enumerate(lines)
+                     if l.strip() and not l.startswith("#"))
     return (
         "check-prose-issue-refs: the baseline's comments are INTERLEAVED with its "
         "rows.\n"
