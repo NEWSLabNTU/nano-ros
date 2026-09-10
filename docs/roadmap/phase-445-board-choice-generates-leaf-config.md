@@ -36,7 +36,7 @@ esp32 stack budgets.
   leaves' hand-set `ZPICO_MAX_QUERYABLES` goes when both have landed —
   acceptance a BUILD whose shim constant matches the hand-set value it
   replaces.
-- [ ] **W2 — complete the board descriptors (D4).** `[build] target` in every
+- [x] **W2 — complete the board descriptors (D4).** `[build] target` in every
   descriptor whose board has a Rust triple (mps2 first — the 19 hand-written
   leaves); `CC_<triple>`/`CFLAGS_<triple>` from the workspace configs; the
   hardware budgets (`NROS_HEAP_SIZE`, `ZPICO_SUBSCRIBER_LARGE_SIZE`,
@@ -69,8 +69,13 @@ esp32 stack budgets.
     both ways (`cannot find linker script`). Both workspace FreeRTOS images
     link and boot with the descriptor's `+ --gc-sections`. Gate:
     `check-board-build-target`.
-  - Still owed for the tick: a build of the s32z270 / mps3-an536 images (C++
-    CMake rows only; their triple value is unchanged).
+  - Built after the change, one image per changed board:
+    - mps2 bare-metal talker and mps2 FreeRTOS talker (both boot in QEMU);
+    - esp32 talker;
+    - NuttX ARM talker (boots);
+    - both workspace FreeRTOS images (both boot);
+    - `workspace-cpp-{mps3-an536,s32z270}-freertos` (mps3 boots to
+      "Network ready").
 - [ ] **W3 — `system.toml` in every single-package example (D3, D5, D8).** 178
   leaves (70 Rust, 52 C, 56 C++). `[image.X] board`, `[system] rmw/domain_id/locator`,
   network identity, `[[component]]` with entities where the board cannot be
