@@ -120,7 +120,7 @@ mkdir -p "$CONTEXT"
 PREREQ_KEYS=(cmake unzip curl zstd python3-dev python3-venv
              python3-pip clang libclang-dev libglib2-dev libpixman-dev
              libgcrypt-dev socat genromfs kconfig-frontends libmbedtls
-             aria2 doxygen graphviz libz3 gnu-parallel wget)
+             aria2 doxygen graphviz libz3 gnu-parallel wget qemu-system-misc)
 if ! PREREQ_PACKAGES="$(python3 "$REPO_ROOT/scripts/sdk/prereq-packages.py" \
         --manager apt "${PREREQ_KEYS[@]}")"; then
     echo "runner-container: could not resolve the prereq packages from the index." >&2

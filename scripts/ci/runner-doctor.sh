@@ -221,20 +221,42 @@ _nros_runner_check_sdk_zephyr() {
         fail=1
     fi
 
-    # Mirrors `ZEPHYR_WORKSPACE` in just/zephyr.just. Restated rather than
-    # imported because that derivation lives in a `just` variable, which no
-    # shell can read without invoking `just` — and this script must work on a
-    # machine where `just` is not yet installed.
+    # ASK THE ONE RESOLVER. This used to restate `ZEPHYR_WORKSPACE` from
+    # just/zephyr.just, with a comment saying the derivation could not be
+    # imported "because it lives in a `just` variable, which no shell can read".
+    # That stopped being true: the recipe itself shells out to
+    # `scripts/lib/zephyr-workspace.sh`, which is plain shell and needs no
+    # `just` — so the reason for the copy is gone, and the copy had drifted.
+    #
+    # It drifted in the direction that matters. The resolver puts the STORE
+    # location FIRST (`~/.nros/workspaces/zephyr/<version>`, RFC-0095), which is
+    # where `just setup zephyr` installs; the copy did not know that location
+    # exists, so it fell through to `$root/zephyr-workspace` and reported
+    # MISSING for a host that had just provisioned successfully. Measured on a
+    # contained runner: `west update` and the whole patch set completed into
+    # `/home/runner/.nros/workspaces/zephyr/3.7`, and this probe called it
+    # absent.
+    #
+    # A doctor that reports a correct host as broken is worse than no doctor:
+    # it is the failure mode this file exists to prevent, pointed the other way.
     local ws="${NROS_ZEPHYR_WORKSPACE:-}"
     if [ -z "$ws" ]; then
-        if [ "${NROS_ZEPHYR_VERSION:-3.7}" = "4.4" ]; then
-            ws="$root/../nano-ros-workspace-4.4"
-        elif [ -d "$root/zephyr-workspace" ]; then
-            ws="$root/zephyr-workspace"
-        elif [ -d "$root/../nano-ros-workspace" ]; then
-            ws="$root/../nano-ros-workspace"
-        else
-            ws="$root/zephyr-workspace"
+        local _zws_resolver="$root/scripts/lib/zephyr-workspace.sh"
+        if [ -x "$_zws_resolver" ]; then
+            ws="$("$_zws_resolver" --version "${NROS_ZEPHYR_VERSION:-3.7}" resolve-or-default 2>/dev/null || true)"
+        fi
+        # Only if the resolver is absent or silent — a checkout too old to have
+        # it. Never as a second opinion about where the workspace is.
+        if [ -z "$ws" ]; then
+            if [ "${NROS_ZEPHYR_VERSION:-3.7}" = "4.4" ]; then
+                ws="$root/../nano-ros-workspace-4.4"
+            elif [ -d "$root/zephyr-workspace" ]; then
+                ws="$root/zephyr-workspace"
+            elif [ -d "$root/../nano-ros-workspace" ]; then
+                ws="$root/../nano-ros-workspace"
+            else
+                ws="$root/zephyr-workspace"
+            fi
         fi
     fi
 
