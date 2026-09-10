@@ -200,10 +200,11 @@ FACT_DISPOSITION = {
             "registration failure at boot rather than a smaller pool"),
         "declared": NotCarried(
             _LEAF, _QUERYABLES_COMPLETED,
-            "the declared road carries the two RAW inputs "
-            "(NROS_DECLARED_SERVICE_SERVERS + NROS_DECLARED_INFRA_QUERYABLES) "
-            "and the consumer completes the sum, so the derived count itself "
-            "has nothing to carry"),
+            "the declared road carries the three RAW inputs "
+            "(NROS_DECLARED_SERVICE_SERVERS + NROS_DECLARED_INFRA_QUERYABLES "
+            "+ NROS_DECLARED_NODES, the last since phase-426 W3) and the "
+            "consumer completes the sum, so the derived count itself has "
+            "nothing to carry"),
     },
     "NROS_DERIVED_EXECUTOR_MAX_NODES": {
         "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_NODES",),
@@ -306,6 +307,19 @@ ROAD_UNPAIRED = {
     "NROS_DECLARED_SERVICE_SERVERS":
         "the raw declared count behind the same queryable sizing (phase-392 W5); "
         "carried as-is on both roads since phase-445 W1.",
+    "NROS_DECLARED_NODES":
+        "a third raw input to the same queryable sizing (phase-426 W3): the "
+        "parameter services register once PER NODE, so the node count is a "
+        "term in ZPICO_MAX_QUERYABLES, which is DELIBERATELY NOT DERIVED. It "
+        "is NOT the executor node table -- NROS_DERIVED_EXECUTOR_MAX_NODES's "
+        "declared road is issue 1233's open gap, and only the zpico build "
+        "script reads this.",
+    "NROS_DECLARED_MAX_QOS_DEPTH":
+        "the largest DECLARED QoS depth (phase-412 W3), reduced at the "
+        "producer from the inventory's `type|topic=depth` triples and only "
+        "when every endpoint stated one. No inventory publishes it as an "
+        "NROS_DERIVED_* fact and no leaf road carries it; nros-node's build "
+        "script reads it to size from depth.",
     "NROS_DECLARED_QOS_MODELS": "QoS wiring, not a pool size.",
     "NROS_DECLARED_QOS_PENDING": "QoS wiring, not a pool size.",
     "NROS_DECLARED_QOS_SCHEDULED": "QoS wiring, not a pool size.",
