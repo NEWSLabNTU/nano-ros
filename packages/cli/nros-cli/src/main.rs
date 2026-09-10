@@ -45,6 +45,18 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
+    // phase-440 W7 / RFC-0095 D8 — the launcher, BEFORE clap.
+    //
+    // Not an optimisation and not a style choice: D8 requires this binary to
+    // keep working when it is OLDER than the toolchain it launches, and an
+    // older binary does not know a newer one's flags. Anything parsed here
+    // could be parsed wrong on behalf of a binary that would have got it right,
+    // so nothing is parsed here — the decision reads `nros-toolchain.toml` and
+    // this process's own path, and `argv` is forwarded byte for byte.
+    //
+    // Returns when this process should carry on (no pin, the pin names it, a
+    // contributor's checkout, a non-store build); otherwise it never returns.
+    nros_cli_core::orchestration::dispatch::redispatch()?;
     let cli = Cli::parse();
     if cli.codegen_version {
         println!("{}", nros_cli_core::abi_guard::EMITTED_VERSION);

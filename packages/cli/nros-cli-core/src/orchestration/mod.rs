@@ -11,6 +11,9 @@ pub mod bridge_gen;
 pub mod cargo_metadata_schema;
 pub mod cmake_preset;
 pub mod config;
+/// phase-440 W7 (RFC-0095 D8) — the launcher: read the pin, ensure that
+/// toolchain, `exec` it. Three jobs; a fourth is a bug.
+pub mod dispatch;
 pub mod facade;
 /// phase-383 W1 — `[image.<id>]`, the buildable unit (RFC-0065 D6).
 pub mod image;
@@ -30,6 +33,8 @@ pub mod model_ingest;
 pub mod names;
 pub mod nros_config;
 pub mod params;
+/// phase-440 W7 (RFC-0095 D7/D9) — `nros-toolchain.toml`, the per-project pin.
+pub mod pin;
 pub mod plan;
 pub mod planner;
 pub mod prereq_resolve;

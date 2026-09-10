@@ -27,3 +27,8 @@ clap = { workspace = true }
 clap_complete = "4.5"
 eyre = "0.6"
 nros-cli-core = { path = "../nros-cli-core" }
+
+[dev-dependencies]
+# `tests/toolchain_dispatch.rs` builds a fake store in a tempdir: the launcher
+# must be tested against a store that is NOT the developer's `~/.nros`.
+tempfile = "3.10"

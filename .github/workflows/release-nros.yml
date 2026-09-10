@@ -143,6 +143,14 @@ jobs:
           cp packages/cli/target/release/nros "$stage/bin/nros"
           printf '%s\n' '${{ inputs.version }}' >"$stage/share/nros/VERSION"
           cp nros-sdk-index.toml "$stage/share/nros/nros-sdk-index.toml"
+          # phase-440 W7 / RFC-0095 D8 job 2: the launcher fetches a pinned
+          # toolchain by running THIS installer, so the fetch has one
+          # implementation rather than a Rust reimplementation of "which asset,
+          # which checksum, which prefix". `orchestration::dispatch` looks for
+          # it at exactly this path and refuses (naming the remedy) when an
+          # asset predating this line does not carry it.
+          cp scripts/install.sh "$stage/share/nros/install.sh"
+          chmod +x "$stage/share/nros/install.sh"
           # Prefix-rooted, the mirror shape every other dist in the index uses,
           # so `sdk_store::execute`'s default unpack lands it unchanged.
           tar --zstd -cf "$RUNNER_TEMP/nros-linux-x86_64.tar.zst" -C "$stage" bin share
