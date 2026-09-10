@@ -2,8 +2,10 @@
 
 **Status (2026-09-08). Opened from RFC-0094. W0 and W1 are the routing diff and
 the digest key — both are PRECONDITIONS and neither changes behaviour. W2–W4 are
-the three landings. **W0, W1, W3 and W4 have LANDED; W2 is PARTIALLY landed (the phase and its
-artifact, not the deletion — issue 1228).**
+the three landings. **W0, W1, W3 and W4 have LANDED; W2 is PARTIALLY landed (the phase, its
+artifact, and the entity link's byte agreement — not the deletion). Remainder:
+issue 1228 (the second composer) and issue 1252 (the message-bound link, the
+one arm still standing, and the deletion it gates).**
 
 W0 corrected three of RFC-0094's own numbers — the count of `package.xml`, the
 size of the declare-but-no-file class, and how many of the 21 side-changers are
@@ -287,14 +289,63 @@ identical bytes except `NROS_ENTITY_INVENTORY_SOURCE`, which names the metadata
 file on the producer's side and the model alone on stage 3.5's. That one line is
 why the pass is not yet saved in the real tree, and it is issue 1228's headline.
 
+### W2.a — the entity link closes, and the pass count is MEASURED (2026-09-10)
+
+Issue 1228's item (3), landed with the first real-image measurement this phase
+has had. `demo_bringup:zephyr` from `examples/workspaces/cpp`
+(`native_sim/native/64`, zenoh, Zephyr 3.7), clean west build dir each run.
+
+**W2's headline was right about the mechanism and short by one rendering.** The
+seed and the mid-configure producer differed in `NROS_ENTITY_INVENTORY_SOURCE`
+AND in the per-component provenance line's PACKAGE — `/listener::listener` from
+stage 3.5, `listener_pkg::listener` from the merge, because
+`EntityInventory::from_model` states the node FQN rather than inventing an ament
+package. W2's unit test could not see the second half: it built both composers
+with the same `pkg`. So the class is **composer-dependent content in a hashed
+file**, and `to_cmake` now emits none of it — no source variable, per-component
+rows carrying the component only and sorted on the rendered line. The provenance
+is in `entity_inventory.json` and `resolved.toml`'s `[provenance]`, where a byte
+comparison cannot reach it.
+`resolve::tests::stage_3_5_and_the_mid_configure_producer_agree_byte_for_byte`
+asserts whole-string equality between the two production composers, with the
+model side built the way `from_model` builds it; restoring either rendering reds
+it (both mutations run).
+
+| run | resolve seed | `Re-running CMake` | arms in pass 1 |
+| --- | --- | --- | --- |
+| no resolve phase (control) | — | 2 | bounds, entity |
+| before | yes | 1 | bounds, entity |
+| after | yes | **1** | **bounds only** |
+
+Two things that table says and prose kept getting wrong. **The seed already
+removed a pass on a real image** (2 → 1) before this wave — W2 declined to claim
+it and was right to, and it was true. And **this landing removes an ARM, not a
+PASS**: both arms fire in pass 1 and one re-configure discharges both, so the
+count moves only when the LAST arm goes. The seed and the producer's fragment now
+`diff` empty where they had two hunks.
+
+Control: `python3 scripts/check-knob-delivery.py <build-dir>` green on both
+sides; the eight knob values the build reports resolving identical across all
+three runs; the image's `zephyr/.config` byte-identical before and after.
+
+**A3 is still NOT met**, and what blocks it is now exactly one link: the
+message-bound fragment, which has no pre-configure producer and cannot borrow
+the entity link's fix (its composer runs over codegen output during the
+configure). That, and the deletion it gates, are **issue 1252**. Items (1) and
+(2) of issue 1228 — the producer READING the resolve, which needs stage 3.5 to
+gain the refusal guard first — stay on 1228.
+
 ### What did NOT land, and what is NOT claimed
 
 * **`nros_reconfigure_settle` and the future-mtime arm are still present and
-  still authoritative.** A3 is not met. Issue 1228.
+  still authoritative.** A3 is not met. Issues 1228 (the second composer) and
+  1252 (the message-bound link and the deletion).
 * **The message-bound half of the chain is untouched** — it is derived
   mid-configure from codegen fragments by a pure-CMake composer with no Rust
   twin, so a second pass survives even once the entity link closes.
-* **No claim about a real Zephyr image.** This host has no `zephyr-workspace`
+* ~~**No claim about a real Zephyr image.**~~ MEASURED 2026-09-10 on a host that
+  has one — see W2.a above. The original note, which stood while it was true:
+  this host has no `zephyr-workspace`
   and no Zephyr SDK, so "converges in one pass" and "a named image's knobs are
   byte-identical" were NOT RUN. phase-392 W5 had to withdraw a causal claim from
   a before/after that accidentally built the same configuration twice; the

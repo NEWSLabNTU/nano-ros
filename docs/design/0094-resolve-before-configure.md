@@ -283,6 +283,20 @@ uORB middleware, which is a property of that backend and not of the seam.*
 `nros_reconfigure_settle` and the future-mtime arm are deleted, and Zephyr
 converges in one pass.
 
+*Not met. Two of the chain's three passes are gone and the last one is named.
+Measured on `demo_bringup:zephyr` (`native_sim/native/64`, Zephyr 3.7), clean
+build dir: 2 re-configures with no resolve phase, 1 once phase-439 W2's seed
+exists, still 1 once W2.a made the seed and the mid-configure producer
+byte-identical — because the ENTITY arm and the message-BOUND arm fire in the
+same pass and one re-configure discharges both. The bound fragment has no
+pre-configure producer and cannot borrow the entity fix: its composer runs over
+codegen output during the configure. That link, and the deletion it gates, are
+issue 1252; the second composer that survives on the entity side is issue 1228.
+The lesson W2.a paid for, since this RFC's rule is "one place decides a knob":
+where two composers are kept instead, the file they both write is HASHED, so
+every byte of it — a provenance path, an ordering, a package spelling — becomes
+part of the contract, and the cost of a mismatch is a whole configure pass.*
+
 **A4 — two images differing only in a knob do not share a cargo directory.**
 Mutation-tested: revert D4 and the collision reappears.
 

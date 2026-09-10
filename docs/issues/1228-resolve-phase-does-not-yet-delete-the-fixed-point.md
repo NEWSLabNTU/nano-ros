@@ -5,8 +5,62 @@ status: open
 area: build, cmake, cli
 severity: medium
 found: 2026-09-08
-related: [0940, 0965, 0991, 1002, 1119, 1061, 1125, phase-439, phase-403, phase-412]
+related: [0940, 0965, 0991, 1002, 1119, 1061, 1125, 1252, phase-439, phase-403, phase-412]
 ---
+
+# UPDATE 2026-09-10 — item (3) is landed and MEASURED, on a real Zephyr image
+
+The entity link is closed and the numbers below are from a real build, not from
+a five-line probe. What changed in this issue's own analysis is recorded first,
+because the correction matters more than the fix.
+
+**The composers differed by TWO renderings, not one.** This issue said the whole
+difference was `NROS_ENTITY_INVENTORY_SOURCE`, on the strength of a unit test in
+which both composers happened to carry the same `pkg`. On
+`demo_bringup:zephyr` (`examples/workspaces/cpp`, `native_sim/native/64`,
+Zephyr 3.7) the seed and the producer differed in that line AND in the
+per-component provenance line's PACKAGE —
+
+    -#   /listener::listener = 1 entities, 1 slots      (stage 3.5, model alone)
+    +#   listener_pkg::listener = 1 entities, 1 slots   (the merged producer)
+
+because `EntityInventory::from_model` states the node FQN as the package (it
+names nodes, not ament packages) while the merge keeps the declaration's. Every
+NUMBER was identical, as this issue predicted. So the CLASS is
+"composer-dependent content in a hashed file", not one field, and the fix and its
+test are written against the class: `to_cmake` emits neither, the per-component
+rows are sorted on the rendered line, and
+`resolve::tests::stage_3_5_and_the_mid_configure_producer_agree_byte_for_byte`
+asserts whole-string equality between the two production composers — with the
+model side built the way `from_model` builds it, so the second half is actually
+covered. Mutation-tested: restoring either rendering reds it.
+
+**The pass count, measured three ways on a clean build dir each time:**
+
+| run | resolve seed | `Re-running CMake` | arms in pass 1 |
+| --- | --- | --- | --- |
+| no resolve phase (control) | — | 2 | bounds, entity |
+| before this fix | yes | 1 | bounds, entity |
+| after this fix | yes | **1** | **bounds only** |
+
+Two findings in that table. The seed ALREADY removed one pass on a real image
+(2 → 1) before this wave — phase-439 W2 declined to claim it and was right to,
+but it was true. And **this fix removes an ARM, not a PASS**: both arms fire in
+the same pass 1, so one re-configure discharges both, and the count only moves
+when the LAST arm goes. `diff` between `resolved.cmake` and the producer's
+`nros/entity_inventory.cmake` is now empty where it had two hunks.
+
+Control, as phase-392 W5 requires: `python3 scripts/check-knob-delivery.py
+<build-dir>` green on BOTH sides; the eight knob values the build reports
+resolving identical across all three runs; the image's `zephyr/.config`
+byte-identical before and after.
+
+**What is still open here:** items (1) and (2) — making the producer READ the
+resolve, which needs stage 3.5 to gain the refusal guard the producer's
+`nros-metadata.json` component set gives it. That is unchanged by this wave, and
+it is still gated on not trading a correct refusal for a saved pass. The
+message-bound half and the deletion moved to **issue 1252**, which carries the
+acceptance and the reproduction.
 
 # What landed, what did not, and the one measurement that decides the rest
 
@@ -87,7 +141,10 @@ to call before a configure. One pass more.
 So A3 needs both links, and the honest ordering is: (3) then (1), measured with
 `tests/cmake-resolved-seed-tests.sh`; then the bound half; then the deletion.
 
-## Not measured here, deliberately
+## Not measured here, deliberately — SUPERSEDED, see the UPDATE at the top
+
+*(The paragraph below was written on a host with no `zephyr-workspace`. A later
+host had one, and the update at the top of this file carries the real numbers.)*
 
 **No claim is made about a real Zephyr image.** This host has no
 `zephyr-workspace` and no Zephyr SDK, so "converges in one pass" and "a named

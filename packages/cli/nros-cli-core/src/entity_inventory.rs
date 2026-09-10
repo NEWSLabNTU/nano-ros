@@ -1675,10 +1675,38 @@ impl EntityInventory {
         s.push_str(&format!(
             "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION {ENTITY_INVENTORY_SCHEMA_VERSION})\n"
         ));
-        s.push_str(&format!(
-            "set(NROS_ENTITY_INVENTORY_SOURCE \"{}\")\n",
-            cmake_escape(&self.source)
-        ));
+        // WHERE THE COMPOSITION SOURCE WENT, AND WHY IT IS NOT HERE (issue 1228).
+        //
+        // These BYTES are hashed. `nros_reconfigure_snapshot` compares this
+        // file's content to decide whether the mid-configure producer's answer
+        // differs from the one this pass's readers already consumed, and a
+        // difference costs a whole extra configure pass.
+        //
+        // Two renderings here depended on WHICH COMPOSER ran rather than on the
+        // image, and MEASURED on `demo_bringup:zephyr` (native_sim/native/64)
+        // they were the ENTIRE difference between `nros build`'s stage 3.5 seed
+        // and the producer that follows it -- every number identical:
+        //
+        //   * `self.source`. Stage 3.5 reads the model alone; the producer
+        //     reads `nros-metadata.json` merged with the model, so it names
+        //     both.
+        //   * the per-component provenance line's PACKAGE. A model row's `pkg`
+        //     is the node FQN (`/talker`) because the model names nodes, not
+        //     ament packages; a merged row keeps the declaration's (`talker_pkg`).
+        //
+        // Both moved to the two artifacts a byte comparison cannot reach:
+        // `nros/entity_inventory.json`'s `"source"` and `"components"` keys,
+        // rendered from this same data model by the same call, and
+        // `resolved.toml`'s `[provenance]`. The block below is a CONSTANT --
+        // identical from either composer -- because a pointer naming the file
+        // it came from would be this defect again.
+        s.push_str(
+            "# The composing SOURCE is deliberately NOT a variable here: this fragment's\n\
+             # bytes are hashed to decide whether a re-configure is needed, and the source\n\
+             # is composer-dependent rather than image-dependent (issue 1228). Read it from\n\
+             # `nros/entity_inventory.json` (\"source\"), or from `resolved.toml`'s\n\
+             # [provenance] for a build that ran `nros build`'s resolve phase.\n",
+        );
         s.push_str(&format!(
             "set(NROS_ENTITY_INVENTORY_STATUS \"{}\")\n",
             derivation.tag()
@@ -1704,11 +1732,47 @@ impl EntityInventory {
                     let key = name.to_ascii_uppercase();
                     s.push_str(&format!("set(NROS_ENTITY_COUNT_{key} {n})\n"));
                 }
-                s.push_str("# Where the slots came from -- pkg::component = entities/slots.\n");
-                for (pkg, comp, count, slots) in &k.per_component {
-                    s.push_str(&format!(
-                        "#   {pkg}::{comp} = {count} entities, {slots} slots\n"
-                    ));
+                // Issue 1228 -- component, NOT `pkg::component`, and SORTED.
+                //
+                // The package a row belongs to is composer-dependent (a model
+                // row's is the node FQN, a merged row's the ament package) and
+                // so is the order (the merge lists declaration rows first, the
+                // model lists them sorted), and this file's bytes are hashed.
+                // The component NAME is the join key `merged_per_kind_max` uses,
+                // so it is the half that agrees whenever the counts do. Sorting
+                // on the rendered line makes equal content mean equal bytes
+                // with no tie-break left to the composer.
+                // `entity_inventory.json`'s `components` carries the package.
+                //
+                // The REFUSAL reasons below still spell `pkg::component`, and
+                // deliberately: they are what a human reads to find the
+                // declaration to fix, and they cannot cost a configure pass.
+                // A refusal reaching this fragment while the seed derived is a
+                // DISAGREEMENT ON THE NUMBERS -- case C of
+                // `tests/cmake-resolved-seed-tests.sh` -- so the pass is
+                // already spent on the count, not on the prose. Both refusing
+                // means the seed does not exist: stage 3.5 writes no
+                // `resolved.cmake` for an image it could not answer for. The
+                // one shape that would matter -- counts agreeing while the
+                // TYPE sets refuse in both -- needs an entity with no type,
+                // and since phase-412 retired `ENTITIES` every entity in the
+                // merged inventory comes from the model, which always carries
+                // `wiring.msg_type`.
+                s.push_str(
+                    "# Where the slots came from -- component = entities/slots. The PACKAGE is\n\
+                     # in `nros/entity_inventory.json`; it is composer-dependent, and this\n\
+                     # file's bytes decide whether cmake runs again (issue 1228).\n",
+                );
+                let mut rows: Vec<String> = k
+                    .per_component
+                    .iter()
+                    .map(|(_pkg, comp, count, slots)| {
+                        format!("#   {comp} = {count} entities, {slots} slots\n")
+                    })
+                    .collect();
+                rows.sort();
+                for row in rows {
+                    s.push_str(&row);
                 }
                 s.push_str(
                     "# A publisher claims NO callback slot (it writes an RmwPublisher into\n\
@@ -2365,7 +2429,13 @@ mod tests {
         assert!(c.contains("set(NROS_DERIVED_EXECUTOR_MAX_CBS 3)"));
         assert!(c.contains("set(NROS_ENTITY_INVENTORY_ENTITY_TOTAL 7)"));
         assert!(c.contains("set(NROS_ENTITY_COUNT_PUBLISHER 4)"));
-        assert!(c.contains("a::one = 7 entities, 3 slots"));
+        // Issue 1228 — the component, WITHOUT its package. The package a row
+        // belongs to depends on which composer built the inventory (the model
+        // states the node FQN, the merge the ament package), and this file's
+        // bytes decide whether cmake configures again; `entity_inventory.json`
+        // carries it instead.
+        assert!(c.contains("#   one = 7 entities, 3 slots"), "{c}");
+        assert!(!c.contains("#   a::one = "), "{c}");
         assert!(
             c.contains(&format!(
                 "set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION {ENTITY_INVENTORY_SCHEMA_VERSION})"
