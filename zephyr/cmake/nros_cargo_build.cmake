@@ -917,7 +917,49 @@ function(nros_resolve_knobs)
         "${CONFIG_NROS_EXECUTOR_MAX_SHUTDOWN_CBS}")
     _nros_resolve_knob(NROS_PARAM_SERVICE_BUFFER_SIZE
         "${CONFIG_NROS_PARAM_SERVICE_BUFFER_SIZE}")
-    _nros_resolve_knob(NROS_MAX_PARAMETERS "${CONFIG_NROS_MAX_PARAMETERS}")
+    # phase-446 W4 -- the PARAMETER STORE, on the derivable ladder. The entity
+    # inventory reads the contract's `params:`: the slot count and the name
+    # length are derived from what the nodes declare, and a string / array /
+    # byte-array capacity derives to 0 when no declared type uses it. Each
+    # Kconfig row defaults to the `-1` sentinel, so an image whose contract
+    # declares no parameters falls through to rung 4 and the crate default,
+    # exactly as before.
+    #
+    # Spelled out, not looped, for the reason the ENTITY_COUNT block above
+    # states: a computed name is invisible to the gates that read this file.
+    _nros_resolve_derivable_knob(NROS_MAX_PARAMETERS
+        "${CONFIG_NROS_MAX_PARAMETERS}" NROS_DERIVED_MAX_PARAMETERS
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+    _nros_resolve_derivable_knob(NROS_MAX_PARAM_NAME_LEN
+        "${CONFIG_NROS_MAX_PARAM_NAME_LEN}" NROS_DERIVED_MAX_PARAM_NAME_LEN
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+    _nros_resolve_derivable_knob(NROS_MAX_STRING_VALUE_LEN
+        "${CONFIG_NROS_MAX_STRING_VALUE_LEN}" NROS_DERIVED_MAX_STRING_VALUE_LEN
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+    _nros_resolve_derivable_knob(NROS_MAX_ARRAY_LEN
+        "${CONFIG_NROS_MAX_ARRAY_LEN}" NROS_DERIVED_MAX_ARRAY_LEN
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+    _nros_resolve_derivable_knob(NROS_MAX_BYTE_ARRAY_LEN
+        "${CONFIG_NROS_MAX_BYTE_ARRAY_LEN}" NROS_DERIVED_MAX_BYTE_ARRAY_LEN
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+    # A capacity a declared type DOES use gets no derived number -- it is a
+    # board fact -- so the inventory names the parameter instead, and that
+    # name travels to nros-params' build script. The script is where the
+    # environment, Kconfig and the `[knobs.params]` board rung all meet, so
+    # it is the one place "declared a string, and nothing states a length"
+    # can refuse correctly; refusing here would miss the board rung.
+    if(DEFINED NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN)
+        _nros_resolve_knob(NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN
+            "${NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN}")
+    endif()
+    if(DEFINED NROS_PARAM_NEEDS_MAX_ARRAY_LEN)
+        _nros_resolve_knob(NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN
+            "${NROS_PARAM_NEEDS_MAX_ARRAY_LEN}")
+    endif()
+    if(DEFINED NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN)
+        _nros_resolve_knob(NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN
+            "${NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN}")
+    endif()
 endfunction()
 
 # =============================================================================

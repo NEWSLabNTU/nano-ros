@@ -517,6 +517,10 @@ pub struct EntityInventory {
     /// declares them. Default (none) for an inventory built from
     /// `nros-metadata.json` alone, which carries no bringup features.
     infra: InfraServices,
+    /// phase-446 W4 -- the contract's `params:`, read from the SystemModel.
+    /// Independent of `components`: an image whose entity count refuses can
+    /// still have its parameter store sized, and the reverse.
+    params: ParamDeclarations,
 }
 
 /// MIRRORS of the action multipliers in
@@ -835,6 +839,207 @@ impl DeclaredDepths {
     }
 }
 
+/// phase-446 W4 -- the parameter every node carries without declaring it.
+///
+/// `Executor::seed_use_sim_time_default` declares `use_sim_time` on EVERY node
+/// (phase-430 W2, as rclcpp does), so it takes a store slot per node whether
+/// or not the contract names it. It is the only such name: nano-ros declares
+/// no `start_type_description_service`, and it applies `qos_overrides.*` as
+/// QoS rather than as parameters, so the other two names play_launch exempts
+/// from its launch check claim no slot here. (checked with
+/// `git grep -n 'start_type_description_service\|qos_overrides' -- packages/core packages/api`)
+pub const SEEDED_PARAMETER: &str = "use_sim_time";
+
+/// One parameter a node's contract declares (`nodes.<n>.params`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeclaredParam {
+    /// The node FQN, the key `contracts.node_params` uses.
+    pub node: String,
+    pub name: String,
+    pub ty: ros_launch_manifest_model::ParamType,
+}
+
+impl DeclaredParam {
+    /// `<node>:<param>:<type>` -- the one-token spelling that crosses into a
+    /// build script. A ROS name holds no `:`, so the three fields split back
+    /// apart unambiguously, and it has no space or `;` for a cmake list or a
+    /// `cmake -E env` argument to mangle.
+    pub fn token(&self) -> String {
+        format!("{}:{}:{}", self.node, self.name, self.ty.as_str())
+    }
+}
+
+/// What the contract says about the image's parameters, as a SIZING source.
+///
+/// Three states, and the first is not "zero parameters": a bringup whose
+/// contract has no `params:` anywhere keeps every store knob on its default,
+/// exactly as before the contract could say anything.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum ParamDeclarations {
+    /// No node declares `params:`. Nobody said, so nothing is derived.
+    #[default]
+    Absent,
+    /// Some nodes declare and some do not. The store holds every node's
+    /// parameters, so a count over the nodes that declared is a count over a
+    /// subset of the image -- the under-report `derive` refuses for entities.
+    Refused { reason: String },
+    /// Every node in the image declares. Sorted by `(node, name)`.
+    Declared {
+        nodes: Vec<String>,
+        params: Vec<DeclaredParam>,
+    },
+}
+
+/// A per-slot capacity the store needs for some declared type.
+///
+/// There is no `Derived(n)`: a capacity is a BOARD fact (an MCU and a PC want
+/// different string lengths for the same node), so the contract can only say
+/// whether one is needed at all. When it is, the board states the number and
+/// the build refuses when it does not.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParamCapacity {
+    /// No declared parameter has a type that uses it.
+    Unused,
+    /// This declared parameter (the first, in `(node, name)` order) needs it.
+    NeededBy(DeclaredParam),
+}
+
+/// The parameter-store knobs the declarations answer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParamStoreSizing {
+    /// Parameters the contract declares, across every node.
+    pub declared: usize,
+    /// `NROS_MAX_PARAMETERS` -- per node, the declared names plus
+    /// [`SEEDED_PARAMETER`] (once, even when the contract also names it: the
+    /// seed steps aside for an application's own declaration and the two
+    /// share a slot).
+    pub max_parameters: usize,
+    /// `NROS_MAX_PARAM_NAME_LEN` -- the longest of those names, in bytes.
+    pub max_param_name_len: usize,
+    /// `NROS_MAX_STRING_VALUE_LEN` -- `string` and `string_array`.
+    pub string_value_len: ParamCapacity,
+    /// `NROS_MAX_ARRAY_LEN` -- every array type except `byte_array`.
+    pub array_len: ParamCapacity,
+    /// `NROS_MAX_BYTE_ARRAY_LEN` -- `byte_array`.
+    pub byte_array_len: ParamCapacity,
+}
+
+/// The three capacity knobs, the name each goes by, and which types use it.
+/// ONE table, read by the derivation and by every renderer, so a knob cannot
+/// be derived under one name and delivered under another.
+pub const PARAM_CAPACITY_KNOBS: [&str; 3] = [
+    "MAX_STRING_VALUE_LEN",
+    "MAX_ARRAY_LEN",
+    "MAX_BYTE_ARRAY_LEN",
+];
+
+impl ParamStoreSizing {
+    /// `(knob suffix, capacity)` in [`PARAM_CAPACITY_KNOBS`] order.
+    pub fn capacities(&self) -> [(&'static str, &ParamCapacity); 3] {
+        [
+            (PARAM_CAPACITY_KNOBS[0], &self.string_value_len),
+            (PARAM_CAPACITY_KNOBS[1], &self.array_len),
+            (PARAM_CAPACITY_KNOBS[2], &self.byte_array_len),
+        ]
+    }
+}
+
+impl ParamDeclarations {
+    pub fn tag(&self) -> &'static str {
+        match self {
+            ParamDeclarations::Absent => "absent",
+            ParamDeclarations::Refused { .. } => "refused",
+            ParamDeclarations::Declared { .. } => "declared",
+        }
+    }
+
+    /// Read `contracts.node_params` against the nodes the model runs.
+    pub fn from_model(model: &ros_launch_manifest_model::SystemModel) -> Self {
+        let declared = &model.contracts.node_params;
+        if declared.is_empty() {
+            return ParamDeclarations::Absent;
+        }
+        let mut nodes: std::collections::BTreeSet<&String> = model.structure.nodes.keys().collect();
+        nodes.extend(declared.keys());
+        let silent: Vec<&str> = nodes
+            .iter()
+            .filter(|n| !declared.contains_key(n.as_str()))
+            .map(|n| n.as_str())
+            .collect();
+        if !silent.is_empty() {
+            return ParamDeclarations::Refused {
+                reason: format!(
+                    "{} of {} nodes in this image declare no `params:` in their contract: {}. \
+                     The parameter store holds every node's parameters, and sizing it from \
+                     the nodes that did declare would give the rest no slots. Declare \
+                     `params:` on every node, or on none; until then the store knobs keep \
+                     their configured values.",
+                    silent.len(),
+                    nodes.len(),
+                    silent.join(", ")
+                ),
+            };
+        }
+        let params = declared
+            .iter()
+            .flat_map(|(node, ps)| {
+                ps.iter().map(move |(name, c)| DeclaredParam {
+                    node: node.clone(),
+                    name: name.clone(),
+                    ty: c.ty,
+                })
+            })
+            .collect();
+        ParamDeclarations::Declared {
+            nodes: nodes.into_iter().cloned().collect(),
+            params,
+        }
+    }
+
+    /// The store knobs, or `None` when nothing was declared (or refused).
+    pub fn sizing(&self) -> Option<ParamStoreSizing> {
+        use ros_launch_manifest_model::ParamType as T;
+        let ParamDeclarations::Declared { nodes, params } = self else {
+            return None;
+        };
+        let mut max_parameters = 0usize;
+        let mut max_param_name_len = SEEDED_PARAMETER.len();
+        for node in nodes {
+            let names: std::collections::BTreeSet<&str> = params
+                .iter()
+                .filter(|p| &p.node == node)
+                .map(|p| p.name.as_str())
+                .chain([SEEDED_PARAMETER])
+                .collect();
+            max_parameters += names.len();
+            for n in names {
+                max_param_name_len = max_param_name_len.max(n.len());
+            }
+        }
+        let first = |pred: fn(T) -> bool| -> ParamCapacity {
+            params
+                .iter()
+                .find(|p| pred(p.ty))
+                .map_or(ParamCapacity::Unused, |p| {
+                    ParamCapacity::NeededBy(p.clone())
+                })
+        };
+        Some(ParamStoreSizing {
+            declared: params.len(),
+            max_parameters,
+            max_param_name_len,
+            string_value_len: first(|t| matches!(t, T::String | T::StringArray)),
+            array_len: first(|t| {
+                matches!(
+                    t,
+                    T::BoolArray | T::IntegerArray | T::DoubleArray | T::StringArray
+                )
+            }),
+            byte_array_len: first(|t| matches!(t, T::ByteArray)),
+        })
+    }
+}
+
 /// The DDS-mangled spelling a generated C++ message class carries as
 /// `static constexpr const char* TYPE_NAME`.
 ///
@@ -866,6 +1071,7 @@ impl EntityInventory {
             source: source.into(),
             components: Vec::new(),
             infra: InfraServices::default(),
+            params: ParamDeclarations::Absent,
         }
     }
 
@@ -879,6 +1085,18 @@ impl EntityInventory {
     /// bringup facts arrive by some road other than [`Self::from_model`].
     pub fn set_infra(&mut self, infra: InfraServices) {
         self.infra = infra;
+    }
+
+    /// phase-446 W4 -- attach what the model's contract declares about
+    /// parameters. Both composers call this with the same model (`nros build`'s
+    /// resolve seed and the configure-time producer), so the fragment's bytes
+    /// agree between them (issue 1228).
+    pub fn set_param_declarations(&mut self, params: ParamDeclarations) {
+        self.params = params;
+    }
+
+    pub fn param_declarations(&self) -> &ParamDeclarations {
+        &self.params
     }
 
     /// phase-412 -- build the inventory from a resolved SystemModel's wiring
@@ -1172,6 +1390,13 @@ impl EntityInventory {
                 out.insert((*row).clone());
             }
         }
+        // phase-446 W4 -- parameter declarations exist only in the MODEL (a
+        // metadata declaration has no way to state one), so the model's
+        // answer stands whenever it has one.
+        out.params = match &model.params {
+            ParamDeclarations::Absent => self.params.clone(),
+            p => p.clone(),
+        };
         out
     }
 
@@ -1761,6 +1986,30 @@ impl EntityInventory {
             }
             doc.insert("declared_depths".into(), serde_json::Value::Object(m));
         }
+        // phase-446 W4 -- the parameter store, same three-state shape: a
+        // `status` always, the numbers only when every node declared.
+        {
+            let mut m = serde_json::Map::new();
+            m.insert("status".into(), self.params.tag().into());
+            if let ParamDeclarations::Refused { reason } = &self.params {
+                m.insert("reason".into(), reason.clone().into());
+            }
+            if let Some(z) = self.params.sizing() {
+                m.insert("declared".into(), z.declared.into());
+                m.insert("max_parameters".into(), z.max_parameters.into());
+                m.insert("max_param_name_len".into(), z.max_param_name_len.into());
+                for (knob, cap) in z.capacities() {
+                    let v: serde_json::Value = match cap {
+                        ParamCapacity::Unused => 0.into(),
+                        ParamCapacity::NeededBy(p) => {
+                            format!("board must state it (needed by {})", p.token()).into()
+                        }
+                    };
+                    m.insert(knob.to_ascii_lowercase(), v);
+                }
+            }
+            doc.insert("params".into(), serde_json::Value::Object(m));
+        }
         format!(
             "{}\n",
             serde_json::to_string_pretty(&serde_json::Value::Object(doc)).unwrap_or_default()
@@ -1990,6 +2239,9 @@ impl EntityInventory {
         // without it. Emitted in both branches for the same reason they are: an
         // absent variable would read as "every endpoint is depth 0".
         s.push_str(&render_declared_depths(&self.declared_depths()));
+        // phase-446 W4 -- the PARAMETER STORE. Independent of the entity
+        // derivation above, so it renders in either branch.
+        s.push_str(&render_param_store(&self.params));
         s
     }
 
@@ -2127,6 +2379,72 @@ fn render_declared_depths(d: &DeclaredDepths) -> String {
 /// in practice nothing here needs escaping -- which is exactly why it is done
 /// anyway: an unescaped quote or backslash reaching a generated header is a
 /// compile error in a file nobody edits, and the fix would be invisible.
+/// phase-446 W4 -- the parameter store, as CMake.
+///
+/// `NROS_PARAM_DECLARATION_STATUS` is always set. A number is set only when
+/// every node declared, and a capacity some declared type needs gets NO
+/// number at all: it gets `NROS_PARAM_NEEDS_<knob>` naming the parameter, and
+/// the board supplies the number or `nros-params`' build script refuses. That
+/// build script is the one place every rung (environment, Kconfig, the
+/// `[knobs.params]` board rung) meets, so it is the one place the refusal can
+/// be right on every lane.
+fn render_param_store(p: &ParamDeclarations) -> String {
+    let mut s = String::from(
+        "# The PARAMETER STORE (phase-446 W4), sized from the contract's `params:`.\n\
+         # Every slot is as large as the largest value the limits allow, so a\n\
+         # capacity no declared type uses is 0, and a capacity one does use comes\n\
+         # from the BOARD -- a contract states names and types, never sizes.\n\
+         # `absent` is not zero: an image whose contract declares no parameters\n\
+         # keeps every store knob on its configured value.\n",
+    );
+    s.push_str(&format!(
+        "set(NROS_PARAM_DECLARATION_STATUS \"{}\")\n",
+        p.tag()
+    ));
+    if let ParamDeclarations::Refused { reason } = p {
+        s.push_str(&format!(
+            "set(NROS_PARAM_DECLARATION_REASON \"{}\")\n",
+            cmake_escape(reason)
+        ));
+    }
+    let Some(z) = p.sizing() else {
+        return s;
+    };
+    s.push_str(&format!("set(NROS_PARAM_DECLARED_COUNT {})\n", z.declared));
+    s.push_str(&format!(
+        "# {} declared + one `{SEEDED_PARAMETER}` per node (seeded on every node).\n",
+        z.declared
+    ));
+    s.push_str(&format!(
+        "set(NROS_DERIVED_MAX_PARAMETERS {})\n",
+        z.max_parameters
+    ));
+    s.push_str(&format!(
+        "set(NROS_DERIVED_MAX_PARAM_NAME_LEN {})\n",
+        z.max_param_name_len
+    ));
+    for (knob, cap) in z.capacities() {
+        match cap {
+            ParamCapacity::Unused => {
+                s.push_str(&format!("set(NROS_DERIVED_{knob} 0)\n"));
+            }
+            ParamCapacity::NeededBy(d) => {
+                s.push_str(&format!(
+                    "# NROS_{knob}: `{}` on {} is declared `{}`, so the board states it.\n",
+                    d.name,
+                    d.node,
+                    d.ty.as_str()
+                ));
+                s.push_str(&format!(
+                    "set(NROS_PARAM_NEEDS_{knob} \"{}\")\n",
+                    cmake_escape(&d.token())
+                ));
+            }
+        }
+    }
+    s
+}
+
 fn c_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
@@ -3001,6 +3319,231 @@ mod from_model_tests {
     /// sets the hand-written `ENTITIES` lists did.
     fn model_from_yaml(y: &str) -> SystemModel {
         serde_yaml_ng::from_str(y).expect("model fixture parses")
+    }
+
+    /// A model running `nodes`, whose contract declares `params` per node.
+    /// A node listed in `nodes` and absent from `params` declares nothing.
+    fn param_model(nodes: &[&str], params: &[(&str, &[(&str, &str)])]) -> SystemModel {
+        let mut y = String::from("meta: { version: 1 }\nstructure:\n  nodes:\n");
+        for n in nodes {
+            let short = n.rsplit('/').next().unwrap();
+            y.push_str(&format!(
+                "    {n}: {{ scope: s.launch.xml, pkg: p, exec: {short}, node_name: {short} }}\n"
+            ));
+        }
+        if !params.is_empty() {
+            y.push_str("contracts:\n  node_params:\n");
+            for (node, ps) in params {
+                y.push_str(&format!("    {node}:\n"));
+                for (name, ty) in *ps {
+                    y.push_str(&format!("      {name}: {{ type: {ty} }}\n"));
+                }
+            }
+        }
+        model_from_yaml(&y)
+    }
+
+    /// The downstream island in the shape phase-446 W4 was measured on: four
+    /// component nodes, 21 scalar parameters, the longest name 35 bytes.
+    const ISLAND_NODES: [&str; 4] = [
+        "/system/mrm_handler",
+        "/system/stop_mode_operator",
+        "/system/leader_election",
+        "/system/diag_aggregator",
+    ];
+    const MRM: &[(&str, &str)] = &[
+        ("update_rate", "integer"),
+        ("timeout_operation_mode_availability", "double"),
+        ("use_emergency_holding", "bool"),
+        ("turning_hazard_on.emergency", "bool"),
+        ("timeout_emergency_recovery", "double"),
+        ("use_parking_after_stopped", "bool"),
+        ("use_pull_over", "bool"),
+    ];
+    const STOP: &[(&str, &str)] = &[
+        ("stop_hold_acceleration", "double"),
+        ("enable_auto_parking", "bool"),
+        ("timeout_sec", "double"),
+        ("publish_rate", "integer"),
+        ("velocity_threshold", "double"),
+        ("use_brake", "bool"),
+    ];
+    const LEADER: &[(&str, &str)] = &[
+        ("heartbeat_period", "double"),
+        ("election_timeout", "double"),
+        ("node_id", "integer"),
+        ("peers_count", "integer"),
+        ("verbose", "bool"),
+    ];
+    const DIAG: &[(&str, &str)] = &[
+        ("period", "double"),
+        ("min_level", "integer"),
+        ("use_emergency", "bool"),
+    ];
+
+    fn island_params() -> Vec<(&'static str, &'static [(&'static str, &'static str)])> {
+        vec![
+            (ISLAND_NODES[0], MRM),
+            (ISLAND_NODES[1], STOP),
+            (ISLAND_NODES[2], LEADER),
+            (ISLAND_NODES[3], DIAG),
+        ]
+    }
+
+    fn with_params(m: &SystemModel) -> EntityInventory {
+        let mut inv = EntityInventory::new("test");
+        inv.set_param_declarations(ParamDeclarations::from_model(m));
+        inv
+    }
+
+    /// phase-446 W4 acceptance -- 21 declared scalars on four nodes derive 25
+    /// slots (one seeded `use_sim_time` per node), a 35-byte name bound, and
+    /// ZERO for every capacity, because no node declares a string or an array.
+    /// At those limits `ParameterStorage<25>` measured 4,200 bytes against
+    /// 285,440 for the default 32 slots.
+    #[test]
+    fn four_nodes_and_twenty_one_scalars_size_the_store_to_twenty_five_slots() {
+        let m = param_model(&ISLAND_NODES, &island_params());
+        let z = ParamDeclarations::from_model(&m)
+            .sizing()
+            .expect("every node declares, so the store is sized");
+        assert_eq!(z.declared, 21);
+        assert_eq!(z.max_parameters, 25, "21 declared + 4 seeded use_sim_time");
+        assert_eq!(
+            z.max_param_name_len, 35,
+            "timeout_operation_mode_availability"
+        );
+        for (knob, cap) in z.capacities() {
+            assert_eq!(cap, &ParamCapacity::Unused, "{knob}: no node uses it");
+        }
+        let c = with_params(&m).to_cmake();
+        for line in [
+            "set(NROS_PARAM_DECLARATION_STATUS \"declared\")\n",
+            "set(NROS_PARAM_DECLARED_COUNT 21)\n",
+            "set(NROS_DERIVED_MAX_PARAMETERS 25)\n",
+            "set(NROS_DERIVED_MAX_PARAM_NAME_LEN 35)\n",
+            "set(NROS_DERIVED_MAX_STRING_VALUE_LEN 0)\n",
+            "set(NROS_DERIVED_MAX_ARRAY_LEN 0)\n",
+            "set(NROS_DERIVED_MAX_BYTE_ARRAY_LEN 0)\n",
+        ] {
+            assert!(c.contains(line), "missing {line:?} in:\n{c}");
+        }
+        assert!(!c.contains("NROS_PARAM_NEEDS_"), "{c}");
+    }
+
+    /// A declared string gets NO number from the contract: the fragment names
+    /// the parameter and the knob, and the board supplies the size or the
+    /// `nros-params` build refuses. The other capacities stay independent.
+    #[test]
+    fn a_declared_string_asks_the_board_and_derives_no_capacity() {
+        let mut ps = island_params();
+        let extra: &[(&str, &str)] = &[("greeting", "string"), ("rate", "integer")];
+        ps[3] = (ISLAND_NODES[3], extra);
+        let m = param_model(&ISLAND_NODES, &ps);
+        let z = ParamDeclarations::from_model(&m).sizing().unwrap();
+        match &z.string_value_len {
+            ParamCapacity::NeededBy(p) => {
+                assert_eq!(p.token(), "/system/diag_aggregator:greeting:string");
+            }
+            other => panic!("a string is declared, got {other:?}"),
+        }
+        assert_eq!(z.array_len, ParamCapacity::Unused);
+        assert_eq!(z.byte_array_len, ParamCapacity::Unused);
+        let c = with_params(&m).to_cmake();
+        assert!(
+            c.contains(
+                "set(NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN \
+                 \"/system/diag_aggregator:greeting:string\")\n"
+            ),
+            "{c}"
+        );
+        assert!(!c.contains("NROS_DERIVED_MAX_STRING_VALUE_LEN"), "{c}");
+        assert!(c.contains("set(NROS_DERIVED_MAX_ARRAY_LEN 0)\n"), "{c}");
+    }
+
+    /// Each capacity answers to its own types: `string_array` needs a string
+    /// length AND an array length, `byte_array` only the byte-array length.
+    #[test]
+    fn each_array_type_asks_for_the_capacities_it_uses() {
+        let a: &[(&str, &str)] = &[("names", "string_array")];
+        let b: &[(&str, &str)] = &[("blob", "byte_array")];
+        let m = param_model(&["/a", "/b"], &[("/a", a), ("/b", b)]);
+        let z = ParamDeclarations::from_model(&m).sizing().unwrap();
+        assert!(matches!(z.string_value_len, ParamCapacity::NeededBy(ref p) if p.name == "names"));
+        assert!(matches!(z.array_len, ParamCapacity::NeededBy(ref p) if p.name == "names"));
+        assert!(matches!(z.byte_array_len, ParamCapacity::NeededBy(ref p) if p.name == "blob"));
+
+        let i: &[(&str, &str)] = &[("gains", "double_array")];
+        let m = param_model(&["/a"], &[("/a", i)]);
+        let z = ParamDeclarations::from_model(&m).sizing().unwrap();
+        assert_eq!(z.string_value_len, ParamCapacity::Unused);
+        assert!(matches!(z.array_len, ParamCapacity::NeededBy(_)));
+        assert_eq!(z.byte_array_len, ParamCapacity::Unused);
+    }
+
+    /// Absence is not zero: a contract that declares no parameters leaves
+    /// every store knob to its configured value.
+    #[test]
+    fn a_contract_without_params_derives_nothing() {
+        let m = param_model(&ISLAND_NODES, &[]);
+        assert_eq!(ParamDeclarations::from_model(&m), ParamDeclarations::Absent);
+        let c = with_params(&m).to_cmake();
+        assert!(
+            c.contains("set(NROS_PARAM_DECLARATION_STATUS \"absent\")\n"),
+            "{c}"
+        );
+        assert!(!c.contains("NROS_DERIVED_MAX_PARAM"), "{c}");
+        assert!(!c.contains("NROS_DERIVED_MAX_STRING_VALUE_LEN"), "{c}");
+    }
+
+    /// One node that declares nothing makes the whole store unsized: its code
+    /// may declare anything, and a count over the other nodes is short.
+    #[test]
+    fn a_node_that_declares_no_params_refuses_the_store() {
+        let ps = island_params();
+        let m = param_model(&ISLAND_NODES, &ps[..3]);
+        let d = ParamDeclarations::from_model(&m);
+        match &d {
+            ParamDeclarations::Refused { reason } => {
+                assert!(reason.contains("/system/diag_aggregator"), "{reason}");
+            }
+            other => panic!("a silent node must refuse, got {other:?}"),
+        }
+        assert_eq!(d.sizing(), None);
+        let c = with_params(&m).to_cmake();
+        assert!(
+            c.contains("set(NROS_PARAM_DECLARATION_STATUS \"refused\")\n"),
+            "{c}"
+        );
+        assert!(!c.contains("NROS_DERIVED_MAX_PARAMETERS"), "{c}");
+    }
+
+    /// A contract that names `use_sim_time` itself does not get a second
+    /// slot: the seed steps aside for the node's own declaration.
+    #[test]
+    fn a_declared_use_sim_time_shares_the_seeded_slot() {
+        let a: &[(&str, &str)] = &[("use_sim_time", "bool"), ("rate", "integer")];
+        let m = param_model(&["/a"], &[("/a", a)]);
+        let z = ParamDeclarations::from_model(&m).sizing().unwrap();
+        assert_eq!(z.declared, 2);
+        assert_eq!(z.max_parameters, 2);
+        assert_eq!(z.max_param_name_len, "use_sim_time".len());
+    }
+
+    /// The model is the only source of parameter declarations, so the merge
+    /// with a metadata declaration keeps the model's.
+    #[test]
+    fn the_merge_keeps_the_models_parameter_declarations() {
+        let m = param_model(&ISLAND_NODES, &island_params());
+        let model_inv = with_params(&m);
+        let merged = EntityInventory::new("metadata").merged_per_kind_max(&model_inv);
+        assert_eq!(
+            merged
+                .param_declarations()
+                .sizing()
+                .map(|z| z.max_parameters),
+            Some(25)
+        );
     }
 
     #[test]

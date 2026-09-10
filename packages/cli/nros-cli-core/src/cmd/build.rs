@@ -1953,15 +1953,26 @@ fn resolve_image(
         // `None` is "no wiring described", which is a DECLARATION GAP and not
         // an error: 5 of the tree's 114 resolvable models describe wiring, and
         // they are exactly the 5 with a contract sidecar (issue 0973).
-        EntityInventory::from_model(model_path.display().to_string(), &model).ok_or_else(|| {
-            format!(
-                "the launch tree resolved, and it describes no wiring. Nothing here can \
+        //
+        // phase-446 W4 -- the contract's `params:` ride along, exactly as the
+        // configure-time producer attaches them, so the two fragments agree
+        // byte for byte (issue 1228).
+        EntityInventory::from_model(model_path.display().to_string(), &model)
+            .map(|mut inv| {
+                inv.set_param_declarations(crate::entity_inventory::ParamDeclarations::from_model(
+                    &model,
+                ));
+                inv
+            })
+            .ok_or_else(|| {
+                format!(
+                    "the launch tree resolved, and it describes no wiring. Nothing here can \
                  derive a count. State what each node creates in the contract sidecar \
                  beside the launch file ({}/launch/<stem>.contract.yaml); until then this \
                  image keeps its configured pool knobs.",
-                bringup_dir.display()
-            )
-        })
+                    bringup_dir.display()
+                )
+            })
     })();
 
     let written = match inventory {

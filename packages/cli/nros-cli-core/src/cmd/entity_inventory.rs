@@ -226,6 +226,13 @@ pub fn run(args: EntityInventoryArgs) -> Result<()> {
         {
             inv = inv.merged_per_kind_max(&model_inv);
         }
+        // phase-446 W4 -- the contract's `params:` size the parameter store.
+        // Attached whether or not the model describes wiring: the two answers
+        // are independent, and a model with no topics can still declare
+        // parameters.
+        inv.set_param_declarations(crate::entity_inventory::ParamDeclarations::from_model(
+            &model,
+        ));
     }
 
     if let Some(want) = &args.component {

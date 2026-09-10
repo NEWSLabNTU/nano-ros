@@ -1,6 +1,8 @@
 # Phase 446 -- the contract declares each node's parameters
 
-**Status (2026-09-10). Open; W1-W7 not started.** The launch contract gains a
+**Status (2026-09-11). Open. W1 and W2 landed upstream (ros-launch-manifest
+v0.1.34, play_launch 155ed78b) and are pinned; W4 landed; W3, W5, W6 and W7
+open.** The launch contract gains a
 per-node `params:` section that states each parameter's NAME and TYPE. Sizing
 the parameter store and the parameter services moves from built-in worst cases
 to what the contract declares, with board configuration supplying the one
@@ -120,6 +122,16 @@ contract `params:` keeps today's defaults: absence is not zero.
 *Acceptance:* the downstream's four-node image derives 25 slots and a 4,200 B
 store (measured on the linked image), and a string parameter with no board
 capacity fails the build naming both.
+
+*Landed.* `nros_cli_core::entity_inventory::ParamDeclarations` derives the
+numbers; nros-params' build script takes a capacity from a stated rung or
+refuses. Measured with `size_of` against nros-params built at the derived
+limits (25 slots, names 35, capacities 0): 4,200 B. The downstream image
+itself is W7's to measure. Two things W4 did not settle: a node cannot yet
+declare "no parameters" (the resolver drops an empty `params:`), so an image
+with a parameterless node refuses and keeps the defaults; and at a derived 0
+string capacity no parameter description fits, which
+`ParameterDescriptor::with_description` still drops silently.
 
 ### W5 -- the parameter services are sized, shared and counted (issue 1270)
 

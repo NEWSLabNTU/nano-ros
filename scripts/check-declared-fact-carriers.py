@@ -81,6 +81,26 @@ ROAD_UNPAIRED = {
     "NROS_DECLARED_QOS_SCHEDULED": "QoS wiring, not a pool size.",
 }
 
+# phase-446 W4 -- the parameter-store facts come from the SystemModel's
+# `contracts.node_params`. The leaf sidecar is derived from a metadata probe
+# that sees no model, so the leaf road has no declaration to forward and its
+# store keeps the crate defaults: absence, not a smaller store.
+_PARAM_STORE_REASON = (
+    "the parameter store, from the contract's `params:` (phase-446 W4). The "
+    "leaf road reads no SystemModel, so it has no declaration to carry."
+)
+for _fact in (
+    "NROS_DECLARED_MAX_PARAMETERS",
+    "NROS_DECLARED_MAX_PARAM_NAME_LEN",
+    "NROS_DECLARED_MAX_STRING_VALUE_LEN",
+    "NROS_DECLARED_MAX_ARRAY_LEN",
+    "NROS_DECLARED_MAX_BYTE_ARRAY_LEN",
+    "NROS_DECLARED_PARAM_NEEDS_MAX_STRING_VALUE_LEN",
+    "NROS_DECLARED_PARAM_NEEDS_MAX_ARRAY_LEN",
+    "NROS_DECLARED_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN",
+):
+    ROAD_UNPAIRED[_fact] = _PARAM_STORE_REASON
+
 LEAF_ENV = "packages/cli/nros-cli-core/src/leaf_entity_env.rs"
 
 NAME_RE = re.compile(r"\bNROS_DECLARED_[A-Z0-9_]+\b")

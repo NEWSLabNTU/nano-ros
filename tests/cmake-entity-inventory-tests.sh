@@ -166,6 +166,13 @@ set(NROS_ENTITY_DECLARED_DEPTH_STATUS "resolved")
 set(NROS_ENTITY_DECLARED_DEPTHS "nav_msgs/msg/Odometry|/localization/kinematic_state=1;std_msgs/msg/Int32|/chatter=10")
 set(NROS_ENTITY_DECLARED_DEPTH_COUNT 2)
 set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT 3)
+set(NROS_PARAM_DECLARATION_STATUS "declared")
+set(NROS_PARAM_DECLARED_COUNT 21)
+set(NROS_DERIVED_MAX_PARAMETERS 25)
+set(NROS_DERIVED_MAX_PARAM_NAME_LEN 35)
+set(NROS_DERIVED_MAX_STRING_VALUE_LEN 0)
+set(NROS_DERIVED_MAX_ARRAY_LEN 0)
+set(NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN "/system/diag_aggregator:blob:byte_array")
 EOF
 
 REFUSED_BODY="$TEST_TMPDIR/refused.cmake"
@@ -268,11 +275,32 @@ Without it a consumer cannot tell a fully-declared image from a partly-declared 
 one, which is the whole reason the count is published -- $OUT"
 fi
 
+# phase-446 W4. The parameter store's numbers cross the same function boundary,
+# and so does the NEEDS fact: a capacity a declared type uses carries the name
+# of the parameter instead of a number, and nros-params' build script refuses
+# on it. Losing it at the boundary would build the crate default silently.
+check
+if ! nros_grep_q "NROS_DERIVED_MAX_PARAMETERS=25" <<<"$OUT"; then
+    fail "A: the derived parameter-store slot count did not reach the caller -- $OUT"
+fi
+check
+if ! nros_grep_q "NROS_DERIVED_MAX_STRING_VALUE_LEN=0" <<<"$OUT"; then
+    fail "A: a derived ZERO capacity did not reach the caller -- $OUT"
+fi
+check
+if ! nros_grep_q "NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN=/system/diag_aggregator:blob:byte_array" <<<"$OUT"; then
+    fail "A: the parameter that NEEDS a board capacity did not reach the caller -- $OUT"
+fi
+
 # ---------------------------------------------------------------------------
 # B. A refusal publishes the reason and NO number.
 # ---------------------------------------------------------------------------
 log_info "B. a refusal publishes no number"
 OUT="$(derive "$REFUSED_BODY" 0 "$META" "$TEST_TMPDIR/b.cmake")"
+check
+if nros_grep_q "NROS_DERIVED_MAX_PARAMETERS=" <<<"$OUT"; then
+    fail "B: a fragment with no parameter declaration published a store size -- $OUT"
+fi
 check
 if ! nros_grep_q "NROS_ENTITY_INVENTORY_STATUS=refused" <<<"$OUT"; then
     fail "B: status not refused -- $OUT"
