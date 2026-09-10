@@ -295,6 +295,10 @@ pub unsafe extern "C" fn nros_cpp_service_server_take_request_raw(
             }
             NROS_CPP_RET_OK
         }
+        // issue 1088 — "pending, but every reply slot is held" must not read
+        // as the empty `OK` above; `NROS_CPP_RET_TRY_AGAIN` says retry after a
+        // reply is sent.
+        Err(nros_rmw::TransportError::WouldBlock) => NROS_CPP_RET_TRY_AGAIN,
         Err(_) => NROS_CPP_RET_ERROR,
     }
 }

@@ -315,7 +315,16 @@ typedef struct nros_rmw_vtable_t {
      *  (`buf` / `buf_len` / `*out_len`) rather than a typed
      *  `void *ros_request`, and `*seq_out` stands in for
      *  `rmw_service_info_t *` — an RTOS reply needs the sequence
-     *  and nothing else in that struct. */
+     *  and nothing else in that struct.
+     *
+     *  `taken = false` with `NROS_RMW_RET_OK` means NOTHING WAS
+     *  PENDING, and only that (upstream `rmw.h`). A backend that
+     *  holds a request it cannot accept right now — every
+     *  reply-correlation slot held by a request not yet answered
+     *  with `send_response` — returns `NROS_RMW_RET_WOULD_BLOCK`,
+     *  consumes nothing, and leaves the request for a later take.
+     *  Folding that into `taken = false` makes a saturated server
+     *  indistinguishable from an idle one (issue 1088). */
     rmw_ret_t (*take_request)(const rmw_service_t *server,
         rmw_mut_byte_span_t *request, int64_t *seq_out, bool *taken);
     /** Phase 376 W3.d step A — the service-side sibling of

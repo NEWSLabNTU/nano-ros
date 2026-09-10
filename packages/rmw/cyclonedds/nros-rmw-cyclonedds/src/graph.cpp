@@ -48,8 +48,8 @@ constexpr std::size_t kNameCap = sizeof(rmw_dds_common_msg_dds__NodeEntitiesInfo
 // rmw_dds_common Gid is 24 bytes; a DDS GUID is 16. Stock derives the gid by
 // copying the 16-byte GUID into the first 16 bytes (rest zero) and matches the
 // same bytes from SEDP, so endpoints associate with the node. (Distinct from
-// service.cpp::writer_guid_lo64, which takes the *lower 8* for request-id
-// correlation — do not reuse that here.)
+// service.cpp::writer_request_id64, the per-client request-id correlation value
+// — the writer's instance handle, issue 1291 — do not reuse that here.)
 void entity_gid_24(dds_entity_t e, uint8_t out[24]) {
     std::memset(out, 0, 24);
     dds_guid_t g;

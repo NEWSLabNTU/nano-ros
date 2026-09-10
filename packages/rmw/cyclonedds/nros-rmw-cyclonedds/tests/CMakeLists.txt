@@ -365,6 +365,28 @@ if(_addtwoints_sources)
         COMMAND nros_rmw_cyclonedds_service_two_outstanding
     )
 
+    # Issue 1088 — more requests outstanding than the server has correlation
+    # slots (`kRequestSlots`). Asserts none is lost AND that exhaustion is
+    # reported as WOULD_BLOCK rather than as an empty queue. Same single
+    # participant shape as `service_two_outstanding`, so it runs by default.
+    add_executable(nros_rmw_cyclonedds_service_request_slots_exhausted
+        service_request_slots_exhausted.cpp
+        ${_addtwoints_sources}
+    )
+    target_link_libraries(nros_rmw_cyclonedds_service_request_slots_exhausted
+        PRIVATE
+            nros_rmw_cyclonedds
+            pthread
+    )
+    target_include_directories(nros_rmw_cyclonedds_service_request_slots_exhausted
+        PRIVATE
+            ${NROS_RMW_CFFI_DIR}
+    )
+    add_test(
+        NAME nros_rmw_cyclonedds_service_request_slots_exhausted
+        COMMAND nros_rmw_cyclonedds_service_request_slots_exhausted
+    )
+
     # phase-428 W13.c — `service_server_is_available` from the DDS matched
     # sets: false with no server, true once a server on a SECOND participant
     # matches both halves, false again after it is destroyed. Polled, not

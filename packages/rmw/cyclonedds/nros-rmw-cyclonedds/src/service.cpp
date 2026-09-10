@@ -376,17 +376,25 @@ uint32_t cdr_xcdr_version(const uint8_t* bytes) {
     return 1;
 }
 
-// Pull the lower 8 bytes of the 16-byte RTPS GUID from a Cyclone
-// writer. Upstream `rmw_cyclonedds_cpp` stashes a 64-bit guid in
-// `cdds_request_header_t` rather than the full 128-bit RTPS GUID, so
-// we follow the same convention to stay wire-compatible. Returns 0 if
-// dds_get_guid fails — caller must fall back to a random value.
-uint64_t writer_guid_lo64(dds_entity_t writer) {
-    dds_guid_t g{};
-    if (dds_get_guid(writer, &g) != DDS_RETCODE_OK) return 0;
-    uint64_t v = 0;
-    std::memcpy(&v, g.v, 8);
-    return v;
+// The 64-bit client id carried in `cdds_request_header_t.guid` and echoed back
+// by the server, so a client can tell ITS replies from another client's on the
+// shared reply topic. Upstream `rmw_cyclonedds_cpp` puts the request writer's
+// INSTANCE HANDLE there (`pubiid`), not the 128-bit RTPS GUID; the server only
+// echoes it, so any value unique per client is wire-compatible.
+//
+// Issue 1291 — this used to be the FIRST 8 bytes of the writer GUID
+// (`memcpy(&v, g.v, 8)`, under a comment calling them the "lower 8"). Those are
+// the GUID PREFIX's host id + app id: identical for every writer in one
+// process. Two clients of the same service in one image therefore shared an id,
+// and since each client numbers its requests from the same start, a reply to
+// client A's request N was accepted by client B as the answer to B's request N
+// — wrong data, delivered as success. The instance handle is unique per entity
+// within the process, which is the property the filter needs. Returns 0 on
+// failure; the caller falls back to a random value.
+uint64_t writer_request_id64(dds_entity_t writer) {
+    dds_instance_handle_t ih = 0;
+    if (dds_get_instance_handle(writer, &ih) != DDS_RETCODE_OK) return 0;
+    return static_cast<uint64_t>(ih);
 }
 
 // Encode int64 little-endian into 8 bytes.
@@ -912,9 +920,19 @@ rmw_ret_t service_take_request(const rmw_service_t* server, rmw_mut_byte_span_t*
     int32_t n = service_take_request_len(server, buf, buf_len, seq_out);
     if (wire_is_status(n)) {
         const rmw_ret_t st = wire_status_code(n);
-        // An empty queue and a would-block are NOT failures: report
-        // `taken = false` with OK, which is what the shim's contract says.
-        if (st == NROS_RMW_RET_NO_DATA || st == NROS_RMW_RET_WOULD_BLOCK) {
+        // An empty queue is NOT a failure: `taken = false` with OK, which is
+        // upstream's "nothing was pending" (`rmw.h:2348`).
+        //
+        // issue 1088 — WOULD_BLOCK is NOT that, and must not be spelled like
+        // it. It means a request IS pending and every correlation slot is
+        // held by an unanswered one. This arm used to fold it into the empty
+        // case, so a saturated server read as an idle one: the caller could not
+        // tell "nobody is asking" from "you owe 32 replies". The sample stays
+        // on the reader (the slot is reserved before the take), so the status
+        // reaching the caller loses nothing — it is the one thing the caller
+        // can act on (answer something, then take again). The XRCE sibling
+        // has always returned it this way (`xrce/src/service.c`).
+        if (st == NROS_RMW_RET_NO_DATA) {
             *taken = false;
             return NROS_RMW_RET_OK;
         }
@@ -1113,7 +1131,7 @@ rmw_ret_t client_create(const rmw_node_t* node, const rmw_service_type_support_t
     // Use the lower 8 bytes of the writer's RTPS GUID as the client
     // identity. Falls back to a random 64-bit value if dds_get_guid
     // fails or returns an all-zero prefix.
-    state->my_guid = writer_guid_lo64(state->writer);
+    state->my_guid = writer_request_id64(state->writer);
     if (state->my_guid == 0) {
         state->my_guid = random_guid64();
     }

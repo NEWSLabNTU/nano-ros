@@ -1731,6 +1731,12 @@ impl<const REQ_BUF: usize, const RESP_BUF: usize> RawServiceServer<REQ_BUF, RESP
         match self.handle.take_request(&mut self.req_buffer) {
             Ok(Some(req)) => Ok(Some((req.data.len(), req.sequence_number))),
             Ok(None) => Ok(None),
+            // issue 1088 — a request is pending and every reply slot is held by
+            // one not yet answered. Distinct from `Ok(None)` (nothing pending)
+            // and from a failure: answer something, then take again.
+            Err(TransportError::WouldBlock) => {
+                Err(NodeError::Transport(TransportError::WouldBlock))
+            }
             Err(_) => Err(NodeError::Transport(TransportError::ServiceRequestFailed)),
         }
     }

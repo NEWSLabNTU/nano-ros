@@ -6498,6 +6498,9 @@ nros_ret_t nros_client_set_wake_callback(struct nros_client_t *client,
  *
  * # Returns
  * * `>= 0` — number of bytes written to `buf` (0 = no request)
+ * * `NROS_RET_TRY_AGAIN` if a request IS pending but every reply slot is
+ *   held by a request not yet answered — send a response, then take again
+ *   (issue 1088; distinct from the `0` that means nothing is pending)
  * * `NROS_RET_INVALID_ARGUMENT` if pointers / state wrong
  * * `NROS_RET_ERROR` on transport failure
  *
