@@ -913,6 +913,17 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   mirror-only TU passes a SHORTER struct by value → tail field garbage. Gated:
   `check-ffi-struct-mirrors` (push lane) + cross-include TU in `check-c`. Include order is
   one-way: `nros_cpp_ffi.h` BEFORE `component.h`. → issue 0160 (archived).
+- **The FUNCTION side of that class had no gate until issue 1208 (archived).** The platform
+  and board seams are link-time-bound FREE SYMBOLS (not the RMW vtable), so **94 hand-written
+  `extern "C"` declarations across 31 files** legitimately mirror a GENERATED file — and
+  `check-platform-abi-mirror` read three paths, none under `packages/core`. Retired NAMES were
+  policed (#547/#548, `check-retired-platform-clock-symbols`); a SIGNATURE change on a LIVE
+  symbol regenerates `generated.rs`, passes every gate, and `-> u64` → `-> u32` is silent
+  garbage rather than a link error. `check-{platform,board}-abi-mirror` now compare each hand
+  declaration positionally via `scripts/lib/abi_hand_decls.py` (`<surface> [--list]`, plus a
+  `--self-test` negative control on the normal path); a symbol absent from `generated.rs` needs
+  an `out_of_surface` entry WITH a reason. Do NOT consolidate the 94 into one crate —
+  `nros-core` sits below `nros-platform-cffi` and cannot depend on it.
 - **On NuttX `<nros/nros_config_generated.h>` is a COMMITTED SNAPSHOT, not the per-build
   header** (issue 1115) — the stub dispatches to `nros_config_generated_nuttx.h` (and the
   `_cpp_` twin) under `NROS_PLATFORM_NUTTX`, and the per-build file is on NO NuttX include

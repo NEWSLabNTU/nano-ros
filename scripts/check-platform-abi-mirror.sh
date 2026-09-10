@@ -179,3 +179,38 @@ if (( invocation_fail )); then
 fi
 
 echo "platform crate macro invocations clean: ${#PLATFORM_CRATES[@]} crates"
+
+# ---------------------------------------------------------------------------
+# Issue 1208 — the HAND-WRITTEN mirrors, which everything above this line is
+# blind to.
+#
+# Everything above answers "is every header symbol present in the generated
+# file and emitted by a port macro", over three paths. But the platform seam is
+# link-time-bound FREE SYMBOLS, not a vtable, so a crate that sits below
+# `nros-platform-cffi` — `nros-core`, `nros-log`, `nros-node`, and 28 others —
+# reaches it by writing its own `unsafe extern "C"` block. Those are second
+# mirrors of a generated file and no gate read them: `packages/core/**`
+# appeared nowhere in this script, which is the issue-0196 shape (a gate whose
+# coverage is narrower than the rule it enforces).
+#
+# `check-retired-platform-clock-symbols.py` covers RETIRED NAMES only — the
+# #547 / #548 shape, where a hand block compiles and then fails at LINK with
+# `undefined reference`. A SIGNATURE change to a LIVE symbol has no such
+# backstop: it regenerates `generated.rs`, passes `check-abi-bindings` and the
+# name half above, and leaves every hand mirror on a stale prototype. `-> u64`
+# becoming `-> u32` is not even a link error, just garbage in the register.
+#
+# Same gate, wider scope — deliberately not a second tool.
+#
+# The comparator runs its own NEGATIVE CONTROL first, on the normal path and
+# not behind a flag: "94 declarations match" is also exactly what a comparator
+# that can never fail would print. The eight cases assert both directions —
+# five drifts that must be caught (return type first: it is the one with no
+# link error behind it) and three spelling differences that must NOT be, so a
+# normaliser tightened into uselessness fails too.
+abi_hand_decls_self_test() {
+    python3 scripts/lib/abi_hand_decls.py --self-test
+}
+abi_hand_decls_self_test || exit 1
+
+python3 scripts/lib/abi_hand_decls.py platform
