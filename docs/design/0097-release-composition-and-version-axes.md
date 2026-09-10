@@ -224,15 +224,78 @@ that churn is a **compatibility event** for a user — from "every release" to
 "twice, so far". Saying it the other way would over-promise, and the difference
 is the whole value.
 
+## D6 — No acceptance range. Codegen and the runtime stay ONE unit
+
+Decided 2026-09-10. `NROS_CODEGEN_VERSION` remains an exact-match `u32`:
+generated code must match the runtime that consumes it, exactly, and a range is
+not introduced.
+
+That is the cheap and honest choice — a range is a standing compatibility
+commitment across every future emitter change, and nothing in the measurements
+asks for one. Two codegen changes in the project's life do not justify a
+promise that every later change must keep.
+
+## D7 — Which REVERSES D3's binary split: declare the version, do not extract it
+
+The extraction only pays if the CLI can then move without moving codegen. That
+requires the CLI↔codegen seam to be stable. **It is not, and it is
+accelerating:** `cmd/codegen.rs`, the `--args-file` interface described in its
+own help as "the interface the cmake / build.rs consumers speak", changed **13
+times in 60 days** — of **23 changes all time**. The JSON schema itself
+(`CodegenArgs`) has never changed; every one of those is a new subcommand
+(`entry`, `entry-node`, `entry-pack`, `resolve-deps`,
+`cyclonedds-descriptors`), each phase-numbered.
+
+So a newer CLI would routinely require a subcommand an older codegen lacks. The
+two would ship together in practice, and the split would cost a binary boundary
+while buying nothing.
+
+**What the user actually needs is not two binaries. It is to know whether a CLI
+upgrade forces them to re-emit generated code.** A declared field gives exactly
+that, and is immune to the seam churning because the seam stays internal:
+
+```toml
+# share/nros/manifest.toml, inside the release asset
+version  = "0.7.9"      # the toolchain: CLI + codegen + runtime
+codegen  = 7            # the ONLY field that can invalidate existing output
+index    = "2026-09-10"  # pointers into nano-ros-sdk
+nano_ros = "abc1234"     # the runtime commit
+```
+
+`0.7.1` and `0.7.9` both declaring `codegen = 7` is the whole feature: the user
+takes either, and nothing is re-emitted. `0.8.0` declaring `codegen = 8` is a
+compatibility event, and says so before doing anything.
+
+This also reframes the original complaint. "We rebuild the CLI over and over" is
+a MAINTAINER cost — cutting releases — not a user cost, because a user downloads
+rather than builds. The user's cost is re-emitting, and that is what the
+declaration removes. Conflating the two is what made a binary split look
+necessary.
+
+`release-nros.yml` therefore stops ASSERTING the three versions equal and starts
+RECORDING them. That is the whole change on the release side.
+
+## Revised order of work
+
+1. **D5** — the index leaves the binary. Removes 70/60d of release pressure and
+   needs no new artifact.
+2. **D7** — the release declares its components instead of asserting them
+   equal. One file in the asset; unlocks every version claim above.
+3. **D4** — the launcher becomes its own bin target over W7's `dispatch.rs`, so
+   the thing users install stops sharing a lifetime with the thing that churns.
+4. Publish the first `nano-ros` release, now that its composition is declared.
+
+**D2/D3's extraction is NOT scheduled.** The dependency measurement that made it
+look feasible still holds — the ABI crates really are codegen-side — but D7
+delivers the user-visible benefit without it, and the seam measurement says the
+split would not deliver independence today. Revisit only if that seam stabilises.
+
 ## Open
 
-* **Does codegen get an acceptance RANGE?** It is an exact-match `u32` today
-  with no range anywhere. Exact match keeps codegen and the runtime one unit
-  forever, which is fine and is most of the win. A range is what would let a
-  CLI drive several codegen versions, and it is a real compatibility commitment
-  rather than a refactor.
-* **Where the launcher's release lives.** `nano-ros` releases the CLI and
-  codegen; a launcher that must outlive both may want its own repo, the way
-  `nano-ros-sdk` holds tools. Undecided.
-* **Whether the CLI declares the codegen versions it can drive.** Only
-  meaningful if the previous question says yes.
+* **Where the launcher's release lives.** `nano-ros` releases the toolchain; a
+  launcher meant to outlive it may want its own repo, as `nano-ros-sdk` holds
+  tools. Undecided, and D4 does not depend on the answer.
+* **Whether the seam should be stabilised deliberately.** 13 changes in 60 days
+  is a fast-moving internal interface, which is fine while it IS internal. It
+  becomes a problem only if D3 is ever revisited, so the question is parked with
+  D3 rather than open on its own.
