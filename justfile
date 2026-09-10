@@ -2761,6 +2761,43 @@ runner-up labels *ARGS:
 runner-loop labels *ARGS:
     @scripts/ci/runner-loop.sh {{labels}} {{ARGS}}
 
+# ONE-SHOT: populate the contained runner's persistent stores, then PROVE the
+# labels. Run this once before the first runner, and again only when the SDK
+# index moves.
+#
+# It is separate from the runner because the runner is `--ephemeral`: one job,
+# then the container exits. Provisioning inside that lifecycle would run per
+# job — twenty queued jobs would pay for twenty SDK checks — and provisioning is
+# not per-job state, which is why it lives in a volume in the first place.
+#
+# The last thing it does is `runner-doctor`, and that is the point: a bootstrap
+# that "succeeded" without it is a claim. The entrypoint runs the same check
+# again before registering, so a store that rots later still cannot produce a
+# runner that lies about what it can build.
+#
+#   just runner-bootstrap nros-qemu,nros-sdk-zephyr,nros-big
+#   just runner-bootstrap <labels> --check     # print the plan, touch nothing
+[group("ci")]
+runner-bootstrap labels *ARGS:
+    @bash scripts/ci/runner-bootstrap.sh {{labels}} {{ARGS}}
+
+# Keep a CONTAINED ephemeral runner available: fresh container, one job, repeat.
+#
+# `runner-loop` is the bare-host sibling. The difference that matters is that
+# this starts a NEW CONTAINER per job, so nothing a job wrote survives into the
+# next one — the property that stops the orphan and disk rot a persistent runner
+# accumulates (71 orphaned processes, oldest ten days, measured on ours).
+#
+# It stops rather than restarts on exit 78: that code means the labels are not
+# true in the store it was given, and no number of restarts makes them true.
+# Restarting on it would be a storm against whatever is broken.
+#
+#   just runner-loop-container nros-qemu,nros-sdk-zephyr,nros-big
+#   just runner-loop-container <labels> --once   # take exactly one job
+[group("ci")]
+runner-loop-container labels *ARGS:
+    @bash scripts/ci/runner-loop-container.sh {{labels}} {{ARGS}}
+
 # Inspect or reset the contained runner's four persistent stores (phase — the
 # persist half of the `--ephemeral` design). `.nros` is the SDK store, so it is
 # what makes `nros-sdk-zephyr` true across containers rather than re-provisioned

@@ -108,34 +108,34 @@ fi
 GH_REPO="$REPO" RUNNER_TOKEN="$TOKEN" \
     "$REPO_ROOT/scripts/ci/runner-container.sh" "$LABELS"
 
-# --- prove the labels ------------------------------------------------------
-# A runner labelled `nros-sdk-zephyr` without the SDK wins jobs it cannot run,
-# and the red lands on some author's PR looking like a code failure. Checking
-# INSIDE the container is the point: the host's toolchain is not the one jobs
-# will use.
-echo "runner-up: verifying labels inside the container"
-if "$ENGINE" exec "$CONTAINER_NAME" test -x /home/runner/nano-ros/scripts/ci/runner-doctor.sh 2>/dev/null; then
-    "$ENGINE" exec "$CONTAINER_NAME" /home/runner/nano-ros/scripts/ci/runner-doctor.sh "$LABELS" || {
-        echo "runner-up: the runner is UP but does not have what its labels claim." >&2
-        echo "  Provision inside it, or stop it before it wins a job it cannot run:" >&2
-        echo "      $ENGINE exec $CONTAINER_NAME just runner-provision $LABELS" >&2
-        echo "      $ENGINE rm -f $CONTAINER_NAME" >&2
-        exit 1; }
-else
-    # Honest about the gap rather than reporting success: the base image carries
-    # the runner, not this checkout, so there is nothing to run the doctor from
-    # until the labels are provisioned into the image.
-    echo "runner-up: SKIPPED the label check — the container has no nano-ros checkout."
-    echo "  The base image carries the RUNNER only. Until the labels are baked in"
-    echo "  (extend ci/docker/runner/Dockerfile with runner-provision.sh), this"
-    echo "  runner will win jobs whose toolchain it does not have."
-fi
+# --- the label check is no longer HERE ---------------------------------------
+# It used to run after the container was up, against
+# /home/runner/nano-ros/scripts/ci/runner-doctor.sh — a path the image never
+# carried, so the check took its "no checkout" branch every time and reported
+# the gap as a note. A note does not stop anything: the first container started
+# this way won `L3 (cross build + link)` three seconds later with an empty SDK
+# store.
+#
+# So the gate moved INTO the entrypoint, where it runs BEFORE `config.sh`. A
+# runner that appears on GitHub has already passed runner-doctor; one that
+# cannot exits 78 without ever registering. Checking here as well would only be
+# a second, later opinion about a question already answered.
+echo "runner-up: the container proves its labels before registering (entrypoint gate)."
 
 cat <<EOF
 
-runner-up: '${CONTAINER_NAME}' is up (ephemeral — it retires after ONE job).
+runner-up: '${CONTAINER_NAME}' is starting (ephemeral — it retires after ONE job).
   logs:  ${ENGINE} logs -f ${CONTAINER_NAME}
   stop:  ${ENGINE} rm -f ${CONTAINER_NAME}
+
+If it exits 78, the persistent store has not been provisioned — the labels are
+not true, and the container declined to register rather than win a job it cannot
+run. That is a ONE-OFF, not a per-start cost:
+  just runner-bootstrap ${LABELS}
+
+To keep a runner available across jobs (an ephemeral one retires after each, and
+`L3 (cross build + link)` is a REQUIRED check that then waits forever):
+  just runner-loop-container ${LABELS}
 
 Not done automatically, because it changes REPO-WIDE settings and wants a human:
   just merge-queue --apply --self-hosted-ready
