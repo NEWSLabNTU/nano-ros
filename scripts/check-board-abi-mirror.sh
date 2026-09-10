@@ -81,3 +81,19 @@ if (( ${#missing_extern[@]} > 0 || ${#missing_macro[@]} > 0 )); then
 fi
 
 echo "board C ABI mirror clean: ${#SYMBOLS[@]} symbols match"
+
+# Issue 1208 — the hand-written mirrors. Same rationale as the platform gate's
+# closing section: the board-entry seam is free symbols too, so a crate may
+# declare `nros_board_*` itself, and a SIGNATURE drift on a live symbol is
+# invisible to the name check above. No such mirror exists in the tree today;
+# the gate is here so the first one is checked rather than noticed later.
+#
+# The comparator's negative control runs here too, on the normal path — this
+# surface currently checks ZERO declarations, so it is the arm where "clean" is
+# least informative and a live self-test matters most.
+abi_hand_decls_self_test() {
+    python3 scripts/lib/abi_hand_decls.py --self-test
+}
+abi_hand_decls_self_test || exit 1
+
+python3 scripts/lib/abi_hand_decls.py board

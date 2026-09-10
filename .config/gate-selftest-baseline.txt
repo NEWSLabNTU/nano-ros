@@ -10,7 +10,6 @@ scripts/check-activate-shells.sh
 scripts/check-archive-lang-items.sh
 scripts/check-artifact-identity-budget.sh
 scripts/check-atomic-sync-writes.sh
-scripts/check-board-abi-mirror.sh
 scripts/check-board-facts-delivery.py
 scripts/check-board-manifest-drift.sh
 scripts/check-book-identifiers.py
@@ -62,7 +61,6 @@ scripts/check-no-tracked-models.sh
 scripts/check-nuttx-integration-makefile.sh
 scripts/check-nuttx-libc-struct-sizes.py
 scripts/check-nuttx-links-snapshot.sh
-scripts/check-platform-abi-mirror.sh
 scripts/check-platform-provider-features.py
 scripts/check-profile-board-mirror.sh
 scripts/check-ps-zombie-blind.sh
