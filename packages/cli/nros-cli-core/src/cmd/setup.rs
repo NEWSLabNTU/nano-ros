@@ -113,8 +113,9 @@ pub struct Args {
     /// Reads every `package.xml` under the path and answers three questions
     /// the tree already states: what the code depends on (`<depend>`), which
     /// builder must exist (`<build_type>` / `<buildtool_depend>`), and where it
-    /// deploys (`<export><nano_ros deploy=.. board=.. rmw=../></export>`, which
-    /// 90+ packages already carry).
+    /// deploys (the `[image.<id>] board` of the `system.toml` beside a
+    /// package.xml — RFC-0098 D3; the retired `<nano_ros deploy=…/>` tuple
+    /// was the spelling before phase-445 W3b).
     ///
     /// Prints the plan; it does not install. Same contract as `--system`:
     /// composing the command is this tool's job, running it is the user's.
@@ -3706,27 +3707,46 @@ struct DeployTarget {
     rmw: Option<String>,
 }
 
-/// Parse `<nano_ros deploy=".." board=".." rmw=".."/>` from a package.xml.
-fn deploy_targets(xml: &str) -> Vec<DeployTarget> {
-    let attr = |tag: &str, name: &str| -> Option<String> {
-        let pat = format!("{name}=\"");
-        let i = tag.find(&pat)? + pat.len();
-        let rest = tag.get(i..)?;
-        let end = rest.find('"')?;
-        Some(rest[..end].to_string())
+/// The deploy targets a `system.toml` declares: one per `[image.<id>]`.
+///
+/// phase-445 W3b (RFC-0098 D3/D5) — this read `<nano_ros deploy=".."
+/// board=".." rmw=".."/>` off each package.xml until that tuple was retired. A
+/// package (a single-package leaf) or a bringup now names its board per image
+/// in `system.toml`; the DEPLOY token is derived from the board through the
+/// board catalog (`leaf_system::deploy_token`, the same derivation the C/C++
+/// `find_package(nano_ros)` uses), and a board that IS its deploy family
+/// (`native`, `zephyr`) reports no separate board, as the tuple's
+/// `deploy="native"` did. RMW: `[image] rmw` over `[system] rmw`.
+fn deploy_targets(
+    system_toml: &str,
+    catalog: Option<&crate::orchestration::board_descriptor::BoardCatalog>,
+) -> Vec<DeployTarget> {
+    let Ok(doc) = system_toml.parse::<toml::Table>() else {
+        return Vec::new();
     };
+    let sys_rmw = doc
+        .get("system")
+        .and_then(|s| s.get("rmw"))
+        .and_then(|r| r.as_str())
+        .map(str::to_string);
     let mut out = Vec::new();
-    for (i, _) in xml.match_indices("<nano_ros ") {
-        let Some(rest) = xml.get(i..) else { continue };
-        let Some(end) = rest.find('>') else { continue };
-        let tag = &rest[..end];
-        if let Some(deploy) = attr(tag, "deploy") {
-            out.push(DeployTarget {
-                deploy,
-                board: attr(tag, "board"),
-                rmw: attr(tag, "rmw"),
-            });
-        }
+    let Some(images) = doc.get("image").and_then(|i| i.as_table()) else {
+        return out;
+    };
+    for img in images.values() {
+        let Some(board) = img.get("board").and_then(|b| b.as_str()) else {
+            continue;
+        };
+        let deploy = crate::cmd::leaf_system::deploy_token(catalog, board);
+        out.push(DeployTarget {
+            board: (board != deploy).then(|| board.to_string()),
+            deploy,
+            rmw: img
+                .get("rmw")
+                .and_then(|r| r.as_str())
+                .map(str::to_string)
+                .or_else(|| sys_rmw.clone()),
+        });
     }
     out
 }
@@ -3786,6 +3806,10 @@ fn run_workspace_scan(
     let mut builders: BTreeMap<String, usize> = BTreeMap::new();
     let mut targets: BTreeMap<DeployTarget, usize> = BTreeMap::new();
     let mut deps: BTreeMap<String, usize> = BTreeMap::new();
+    // The deploy token is derived from the board through the catalog; without
+    // one (no checkout found) the board passes through verbatim.
+    let catalog =
+        repo_root.and_then(|r| crate::orchestration::board_descriptor::BoardCatalog::load(r).ok());
 
     for f in &files {
         let Ok(text) = std::fs::read_to_string(f) else {
@@ -3797,8 +3821,17 @@ fn run_workspace_scan(
         if let Some(bt) = pr::build_type(&text) {
             *builders.entry(bt).or_default() += 1;
         }
-        for t in deploy_targets(&text) {
-            *targets.entry(t).or_default() += 1;
+        // phase-445 W3b — the deployment is the `system.toml` beside the
+        // package.xml (a single-package leaf, or a bringup), not the retired
+        // `<nano_ros deploy=…/>` tuple.
+        if let Some(sys) = f
+            .parent()
+            .map(|d| d.join("system.toml"))
+            .and_then(|p| std::fs::read_to_string(p).ok())
+        {
+            for t in deploy_targets(&sys, catalog.as_ref()) {
+                *targets.entry(t).or_default() += 1;
+            }
         }
     }
 
@@ -3871,7 +3904,7 @@ fn run_workspace_scan(
         })
         .unwrap_or_default();
 
-    println!("\nDEPLOY TARGETS (from <export><nano_ros deploy=../>) — the scope to provision:");
+    println!("\nDEPLOY TARGETS (from system.toml [image.*] board) — the scope to provision:");
     if targets.is_empty() {
         println!("  (none declared — nothing here says where it deploys)");
     }
@@ -4012,44 +4045,59 @@ fn run_workspace_scan(
 mod workspace_scan_tests {
     use super::*;
 
-    /// The export 90+ package.xml files already carry. All three attributes,
-    /// and a self-closing tag.
+    fn shipped_catalog() -> crate::orchestration::board_descriptor::BoardCatalog {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("repo root");
+        crate::orchestration::board_descriptor::BoardCatalog::load(root)
+            .expect("the shipped board catalog loads")
+    }
+
+    /// A leaf's `[image] board` is its deploy target; the DEPLOY token is
+    /// derived from the board (`rv-virt-threadx` → `threadx`), never authored.
     #[test]
-    fn a_deploy_export_is_parsed_with_board_and_rmw() {
-        let xml = r#"<package><export>
-            <nano_ros deploy="threadx" board="rv-virt-threadx" rmw="zenoh"/>
-        </export></package>"#;
-        let got = deploy_targets(xml);
+    fn an_image_board_yields_its_derived_deploy_and_rmw() {
+        let sys = "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+                   [image.rv-virt-threadx]\nboard = \"rv-virt-threadx\"\n";
+        let catalog = shipped_catalog();
+        let got = deploy_targets(sys, Some(&catalog));
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].deploy, "threadx");
         assert_eq!(got[0].board.as_deref(), Some("rv-virt-threadx"));
         assert_eq!(got[0].rmw.as_deref(), Some("zenoh"));
     }
 
-    /// `deploy=` alone is the common native shape — board and rmw are optional
-    /// and must not be invented.
+    /// A board that IS its deploy family (`native`) names no separate board —
+    /// the shape the retired `<nano_ros deploy="native"/>` had — and an image's
+    /// own `rmw` beats the system default.
     #[test]
-    fn deploy_alone_leaves_board_and_rmw_unset() {
-        let got = deploy_targets(r#"<nano_ros deploy="native"/>"#);
+    fn a_family_board_reports_no_separate_board() {
+        let sys = "[system]\nname = \"t\"\nrmw = \"zenoh\"\ndomain_id = 0\n\n\
+                   [image.native]\nboard = \"native\"\nrmw = \"cyclonedds\"\n";
+        let catalog = shipped_catalog();
+        let got = deploy_targets(sys, Some(&catalog));
         assert_eq!(got.len(), 1);
+        assert_eq!(got[0].deploy, "native");
         assert_eq!(got[0].board, None);
-        assert_eq!(got[0].rmw, None);
+        assert_eq!(got[0].rmw.as_deref(), Some("cyclonedds"));
     }
 
-    /// The sibling exports must not be read as deploy targets: `nano_ros_provides`
-    /// and `nano_ros_uses` also start with `<nano_ros`, and a prefix match would
-    /// silently invent targets from them.
+    /// Without a catalog the board passes through verbatim rather than being
+    /// guessed.
     #[test]
-    fn sibling_exports_are_not_deploy_targets() {
-        let xml = r#"<nano_ros_provides kind="board" name="threadx"/>
-                     <nano_ros_uses kind="serdes" name="cdr"/>"#;
-        assert!(deploy_targets(xml).is_empty());
+    fn no_catalog_passes_the_board_through() {
+        let got = deploy_targets("[image.x]\nboard = \"my-board\"\n", None);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].deploy, "my-board");
+        assert_eq!(got[0].board, None);
     }
 
-    /// A package with no deploy export contributes nothing rather than a default.
+    /// A system.toml with no image contributes nothing rather than a default.
     #[test]
-    fn no_export_yields_no_target() {
-        assert!(deploy_targets("<package><name>x</name></package>").is_empty());
+    fn no_image_yields_no_target() {
+        assert!(deploy_targets("[system]\nname = \"x\"\n", None).is_empty());
+        assert!(deploy_targets("not toml [", None).is_empty());
     }
 
     /// Issue 1038's `--tool <name> --sudo` must PARSE.

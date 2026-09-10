@@ -73,16 +73,38 @@ class TestBuildPath:
 
 
 class TestDeploy:
-    """The platform comes from the package's own consumption tag."""
+    """The platform comes from the board the package's system.toml names."""
 
-    def test_deploy_attribute_is_the_platform(self, tmp_path):
+    def test_the_system_toml_board_is_the_platform(self, tmp_path, monkeypatch):
+        # The deploy token is DERIVED by `nros ws leaf-system` (the one reader,
+        # RFC-0098 D3), never parsed here; stub the verb so the rule under test
+        # is which file decides, not the CLI's catalog.
+        d = write_pkg(tmp_path, "threadx_pkg", "<build_type>nros_cmake</build_type>")
+        (d / "system.toml").write_text(
+            '[system]\nname = "threadx_pkg"\nrmw = "zenoh"\ndomain_id = 0\n\n'
+            '[image.rv-virt-threadx]\nboard = "rv-virt-threadx"\n'
+        )
+        asked = []
+
+        def fake(pkg_path):
+            asked.append(Path(pkg_path))
+            return {"NROS_LEAF_BOARD": "rv-virt-threadx", "NROS_LEAF_DEPLOY": "threadx"}
+
+        monkeypatch.setattr(manifest, "leaf_system", fake)
+        assert manifest.deploy(d) == "threadx"
+        assert asked == [d], "the CLI must be asked about THIS package"
+
+    def test_the_retired_tuple_is_refused(self, tmp_path):
+        # phase-445 W3b — both package.xml readers refuse it; reading it as the
+        # host would build a cross package for Linux with no diagnostic.
         d = write_pkg(
             tmp_path,
             "threadx_pkg",
             "<build_type>nros_cmake</build_type>\n"
             '<nano_ros deploy="threadx" board="rv-virt-threadx" rmw="zenoh"/>',
         )
-        assert manifest.deploy(d) == "threadx"
+        with pytest.raises(ValueError, match="system.toml"):
+            manifest.deploy(d)
 
     def test_absent_deploy_is_the_host(self, tmp_path):
         # The identical rule `_nros_deploy_to_platform` applies in

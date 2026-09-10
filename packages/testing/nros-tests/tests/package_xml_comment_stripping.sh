@@ -50,13 +50,20 @@ MODULE="$ROOT/cmake/NanoRosPackageXml.cmake"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# T1 — the declaration is inside a comment.
+# The elements below are the general selection form, `<nano_ros_uses>`
+# (RFC-0087 D3). The `<nano_ros deploy= board= rmw=/>` tuple these cases used
+# to quote is retired and now REFUSED (phase-445 W3b) — which makes T1 sharper
+# than before: a commented-out tuple must not reach that refusal either.
+
+# T1 — the declaration is inside a comment (and so is a retired tuple, which
+# would be a hard error if the strip missed it).
 cat >"$WORK/commented.xml" <<'XML'
 <?xml version="1.0"?>
 <package format="3">
   <name>commented</name>
   <export>
-    <!-- <nano_ros deploy="native" board="native" rmw="zenoh"/> -->
+    <!-- <nano_ros_uses kind="rmw" name="zenoh"/> -->
+    <!-- retired: <nano_ros deploy="native" board="native" rmw="zenoh"/> -->
   </export>
 </package>
 XML
@@ -69,8 +76,8 @@ cat >"$WORK/real.xml" <<'XML'
 <package format="3">
   <name>real</name>
   <export>
-    <!-- example only: <nano_ros deploy="native" board="native" rmw="zenoh"/> -->
-    <nano_ros deploy="native" board="native" rmw="cyclonedds"/>
+    <!-- example only: <nano_ros_uses kind="rmw" name="zenoh"/> -->
+    <nano_ros_uses kind="rmw" name="cyclonedds"/>
   </export>
 </package>
 XML
@@ -82,7 +89,8 @@ cat >"$WORK/between.xml" <<'XML'
   <name>between</name>
   <export>
     <!-- first comment, with a - dash -->
-    <nano_ros deploy="freertos" board="mps2-an385-freertos" rmw="xrce"/>
+    <nano_ros_uses kind="board" name="mps2-an385-freertos"/>
+    <nano_ros_uses kind="rmw" name="xrce"/>
     <!-- second comment -->
   </export>
 </package>
@@ -92,7 +100,7 @@ cat >"$WORK/run.cmake" <<CMAKE
 include("$MODULE")
 foreach(_case commented real between)
     nano_ros_read_package_export(PACKAGE_XML "$WORK/\${_case}.xml")
-    message(STATUS "RESULT \${_case} found=\${NANO_ROS_EXPORT_FOUND} rmw=\${NANO_ROS_EXPORT_RMW} board=\${NANO_ROS_EXPORT_BOARD}")
+    message(STATUS "RESULT \${_case} kinds=[\${NANO_ROS_EXPORT_USES_KINDS}] rmw=\${NANO_ROS_EXPORT_USES_RMW} board=\${NANO_ROS_EXPORT_USES_BOARD}")
 endforeach()
 CMAKE
 
@@ -134,12 +142,12 @@ expect() {
     fi
 }
 
-# T1: a comment declares nothing.
-expect commented "found=FALSE"
+# T1: a comment declares nothing (and a commented retired tuple is not refused).
+expect commented "kinds=[] rmw= board="
 # T2: the real element is still read, and with ITS value not the comment's.
-expect real "found=TRUE rmw=cyclonedds"
-# T3: the greedy-strip failure mode — the element between two comments survives.
-expect between "found=TRUE rmw=xrce board=mps2-an385-freertos"
+expect real "kinds=[rmw] rmw=cyclonedds"
+# T3: the greedy-strip failure mode — the elements between two comments survive.
+expect between "kinds=[board;rmw] rmw=xrce board=mps2-an385-freertos"
 
 if [ "$fail" -ne 0 ]; then
     echo >&2

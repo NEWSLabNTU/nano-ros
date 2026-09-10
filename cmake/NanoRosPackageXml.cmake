@@ -1,21 +1,23 @@
-# cmake/NanoRosPackageXml.cmake — RFC-0048 §4 (phase-287 W4): package.xml is the SSoT.
+# cmake/NanoRosPackageXml.cmake — the consumer's package.xml and system.toml.
 #
-# The per-package platform delta lives where ament already expects package
-# metadata — `package.xml`'s `<export>`:
+# The per-package platform delta keeps the `CMakeLists.txt` byte-identical
+# across platforms. It used to be one `package.xml` line (RFC-0048 §4,
+# phase-287 W4):
 #
-#   <export>
-#     <build_type>ament_cmake</build_type>
-#     <nano_ros deploy="freertos" board="mps2-an385-freertos" rmw="zenoh"/>
-#   </export>
+#   <nano_ros deploy="freertos" board="mps2-an385-freertos" rmw="zenoh"/>
 #
-# This is what keeps the `CMakeLists.txt` byte-identical across platforms: only
-# `package.xml` differs, and only in the one `<nano_ros>` line. `deploy="native"`
-# needs no board.
+# and is now the leaf's `system.toml` (RFC-0098 D3/D5, phase-445 W3b):
 #
-# `find_package(nano_ros)` calls `nano_ros_read_package_export()` on the
-# consumer's package.xml BEFORE it imports nano-ros, so the deploy/rmw values
-# reach `NANO_ROS_PLATFORM` / `NANO_ROS_RMW` in time for the `add_subdirectory`
-# body; the verbs read the same tuple for their DEPLOY/BOARD defaults.
+#   [system]                    [image.mps2-an385-freertos]
+#   rmw = "zenoh"               board = "mps2-an385-freertos"
+#
+# `find_package(nano_ros)` calls `nano_ros_read_package_export()` (build type,
+# `<nano_ros_uses>` selections) and then `nano_ros_read_leaf_system()` on the
+# consumer BEFORE it imports nano-ros, so the deploy/rmw values reach
+# `NANO_ROS_PLATFORM` / `NANO_ROS_RMW` in time for the `add_subdirectory` body;
+# the verbs read the same variables for their DEPLOY/BOARD defaults. A leftover
+# `<nano_ros deploy= …/>` element is REFUSED, naming the file to write — a
+# silently ignored tuple would configure a freertos leaf as a host build.
 
 include_guard(GLOBAL)
 
@@ -147,10 +149,10 @@ endfunction()
 #
 # Parse a package.xml's consumption exports (default
 # `${CMAKE_CURRENT_SOURCE_DIR}/package.xml`). Sets, in the caller's scope:
-#   NANO_ROS_EXPORT_DEPLOY   — deploy attr verbatim (e.g. native / freertos), or ""
-#   NANO_ROS_EXPORT_BOARD    — board attr, or ""
-#   NANO_ROS_EXPORT_RMW      — rmw attr, or ""
-#   NANO_ROS_EXPORT_FOUND    — TRUE iff a <nano_ros …/> element was present
+#   NANO_ROS_EXPORT_DEPLOY   — "" (set by nano_ros_read_leaf_system())
+#   NANO_ROS_EXPORT_BOARD    — "" (set by nano_ros_read_leaf_system())
+#   NANO_ROS_EXPORT_RMW      — "" (set by nano_ros_read_leaf_system())
+#   NANO_ROS_EXPORT_FOUND    — FALSE (TRUE once a leaf system.toml was read)
 #   NANO_ROS_EXPORT_USES_KINDS      — every selected family, declaration order
 #   NANO_ROS_EXPORT_USES_<KIND>     — the name selected for that family
 #   NANO_ROS_EXPORT_BUILD_TYPE      — <build_type> in RFC-0087 D2 spelling, or ""
@@ -161,24 +163,22 @@ endfunction()
 # diagnostic has to quote back for the user to find the line. An unrecognised
 # value leaves the canonical empty while the raw still reports it.
 #
-# RFC-0087 D3 / phase-420 W1 — two spellings, one meaning:
+# RFC-0087 D3 / phase-420 W1 — the general selection form:
 #
-#   <nano_ros deploy="freertos" board="mps2-an385-freertos" rmw="zenoh"/>
 #   <nano_ros_uses kind="serdes" name="flatbuf"/>
 #
-# `board=` and `rmw=` are provider selections and desugar into
-# `NANO_ROS_EXPORT_USES_{BOARD,RMW}` alongside their legacy variables, so the
-# two spellings are indistinguishable to a consumer. `deploy=` does NOT: it
-# names a `[deploy.*]` block in system.toml (mapped to the NANO_ROS_PLATFORM
-# axis below), not a provider, and folding it in would invent a family with no
-# descriptor behind it.
-#
 # The point of the general form is that **a new provider family costs this
-# reader nothing** — selecting a serializer needs no fourth attribute here and
+# reader nothing** — selecting a serializer needs no new attribute here and
 # no new special case in `cargo-nano-ros`'s parser.
 #
-# A package with no `<nano_ros>` element (or no package.xml) leaves FOUND FALSE
-# and the strings empty — callers fall back to their prior defaults.
+# The `<nano_ros deploy= board= rmw=/>` sugar this reader used to desugar into
+# the same variables is RETIRED (phase-445 W3b): the board and RMW are the
+# leaf's `system.toml`, and `nano_ros_read_leaf_system()` fills the
+# DEPLOY/BOARD/RMW/FOUND/USES_{BOARD,RMW} variables from it. A leftover element
+# is a FATAL_ERROR naming the file to write.
+#
+# A package with no system.toml (or no package.xml) leaves FOUND FALSE and the
+# strings empty — callers fall back to their prior defaults.
 # ---------------------------------------------------------------------------
 function(nano_ros_read_package_export)
     cmake_parse_arguments(_NRP "" "PACKAGE_XML" "" ${ARGN})
@@ -245,24 +245,17 @@ function(nano_ros_read_package_export)
         list(APPEND _kinds "${_kind}")
     endforeach()
 
-    # Then the sugar. Isolate the <nano_ros …/> element (self-closing or
-    # paired). Attribute order is free, so pull each attribute independently
-    # rather than positionally.
+    # phase-445 W3b (RFC-0098 D3/D5) — the `<nano_ros deploy= board= rmw=/>`
+    # sugar is RETIRED: the leaf's `system.toml` states its deployment, read by
+    # `nano_ros_read_leaf_system()`. Refused rather than ignored — ignoring it
+    # would configure a freertos leaf as a host build with no diagnostic.
     if(_body MATCHES "<nano_ros[ \t\r\n]+([^>]*)/?>")
-        set(_attrs "${CMAKE_MATCH_1}")
-        set(NANO_ROS_EXPORT_FOUND TRUE PARENT_SCOPE)
-
-        foreach(_key deploy board rmw)
-            if(_attrs MATCHES "${_key}[ \t]*=[ \t]*\"([^\"]*)\"")
-                string(TOUPPER "${_key}" _KEY)
-                set(NANO_ROS_EXPORT_${_KEY} "${CMAKE_MATCH_1}" PARENT_SCOPE)
-                # board= and rmw= ARE provider selections; deploy= is not.
-                if(NOT _key STREQUAL "deploy" AND NOT CMAKE_MATCH_1 STREQUAL "")
-                    set(NANO_ROS_EXPORT_USES_${_KEY} "${CMAKE_MATCH_1}" PARENT_SCOPE)
-                    list(APPEND _kinds "${_key}")
-                endif()
-            endif()
-        endforeach()
+        message(FATAL_ERROR
+            "${_NRP_PACKAGE_XML}: the <nano_ros ${CMAKE_MATCH_1}/> element is retired "
+            "(RFC-0098 D3/D5, phase-445). State the deployment in a system.toml "
+            "beside the package's CMakeLists.txt — `[system] rmw/domain_id`, "
+            "`[image.<id>] board = \"<board>\"`, one `[[component]]` — and delete "
+            "the element.")
     endif()
 
     list(REMOVE_DUPLICATES _kinds)
@@ -311,14 +304,8 @@ function(nano_ros_read_leaf_system)
     if(NOT EXISTS "${_NRL_DIR}/system.toml")
         return()
     endif()
-    if(NANO_ROS_EXPORT_FOUND)
-        message(FATAL_ERROR
-            "${_NRL_DIR}/system.toml states this leaf's deployment, and "
-            "${_NRL_DIR}/package.xml still carries a <nano_ros deploy=… board=… "
-            "rmw=…/> tuple — one source per fact (RFC-0098 D5). Delete the "
-            "<nano_ros …/> element from package.xml.")
-    endif()
-
+    # (A leftover `<nano_ros …/>` tuple never reaches here:
+    # nano_ros_read_package_export() refuses it — phase-445 W3b.)
     nros_resolve_cli(_nros CONTEXT "nano_ros_read_leaf_system (${_NRL_DIR}/system.toml)")
     execute_process(
         COMMAND "${_nros}" ws leaf-system "${_NRL_DIR}" --nano-ros-path "${NANO_ROS_ROOT}"

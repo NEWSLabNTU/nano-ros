@@ -31,13 +31,13 @@ set(NANO_ROS_ROOT "${CMAKE_CURRENT_LIST_DIR}")
 # `zephyr/` dir, Kconfig-selected — it owns the runtime import, the RMW
 # feature choice, and `nros_find_interfaces`). `find_package(nano_ros)` here
 # must NOT `add_subdirectory` the checkout again; it only supplies the ament
-# surface: the package.xml tuple, the find-package stubs, and the verbs.
-# The leaf keeps `find_package(Zephyr)` first — Zephyr owns the build, so a
-# Zephyr leaf is deliberately NOT byte-identical to native (RFC-0048 §3).
+# surface: the leaf's system.toml deployment, the find-package stubs, and the
+# verbs. The leaf keeps `find_package(Zephyr)` first — Zephyr owns the build,
+# so a Zephyr leaf is deliberately NOT byte-identical to native (RFC-0048 §3).
 if(DEFINED ZEPHYR_BASE AND TARGET zephyr_interface)
     include("${NANO_ROS_ROOT}/cmake/NanoRosPackageXml.cmake")
     nano_ros_read_package_export()
-    # phase-445 W3 (RFC-0098 D3) — a leaf's system.toml overrides the tuple.
+    # phase-445 W3 (RFC-0098 D3) — the leaf's system.toml names its board.
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/system.toml")
         include("${NANO_ROS_ROOT}/cmake/NanoRosCodegenCore.cmake")
     endif()
@@ -95,21 +95,21 @@ endif()
 # for a C example. Setting this flag keeps `find_package(<msg>)` a pure validate.
 set(NROS_FIND_PACKAGE_VALIDATE_ONLY TRUE)
 
-# --- package.xml is the SSoT (RFC-0048 §4) -----------------------------------
-# Read the consumer's `<export><nano_ros deploy= board= rmw=/></export>` tuple
-# NOW, before importing nano-ros, so deploy→NANO_ROS_PLATFORM and rmw→
-# NANO_ROS_RMW reach the `add_subdirectory` body. This is what lets the leaf's
-# CMakeLists stay byte-identical across platforms — the delta is one line of
-# package.xml. Explicit `-DNANO_ROS_PLATFORM` / `-DNANO_ROS_RMW` still win (they
-# are only set below when the caller left them at the default).
+# --- the leaf's system.toml is the SSoT (RFC-0098 D3/D5) ---------------------
+# Read the consumer's deployment NOW, before importing nano-ros, so the board's
+# deploy token → NANO_ROS_PLATFORM and rmw → NANO_ROS_RMW reach the
+# `add_subdirectory` body. This is what lets the leaf's CMakeLists stay
+# byte-identical across platforms — the delta is the `system.toml` beside it.
+# Explicit `-DNANO_ROS_PLATFORM` / `-DNANO_ROS_RMW` still win (they are only set
+# below when the caller left them at the default).
+#
+# `nano_ros_read_package_export()` reads the package.xml's build type and
+# `<nano_ros_uses>` selections, and REFUSES the retired `<nano_ros deploy=
+# board= rmw=/>` tuple (RFC-0048 §4's spelling, retired by phase-445 W3b);
+# `nano_ros_read_leaf_system()` then fills the NANO_ROS_EXPORT_* variables from
+# `system.toml` through the `nros` CLI, the one reader.
 include("${NANO_ROS_ROOT}/cmake/NanoRosPackageXml.cmake")
 nano_ros_read_package_export()
-# phase-445 W3 (RFC-0098 D3/D5) — a single-package leaf states its deployment in
-# `system.toml` beside this CMakeLists; when it does, that file (read by the
-# `nros` CLI, the one reader) overrides the tuple variables set just above, and
-# everything below consumes them unchanged. The tuple is the deprecated
-# fallback; retiring it deletes `nano_ros_read_package_export()`'s `<nano_ros>`
-# sugar, not this block.
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/system.toml")
     include("${NANO_ROS_ROOT}/cmake/NanoRosCodegenCore.cmake")
 endif()
@@ -127,26 +127,26 @@ if(NANO_ROS_LEAF_SYSTEM)
     endif()
 endif()
 if(NANO_ROS_EXPORT_FOUND)
-    # Tuple values go into the CACHE, not directory scope. The imported root
-    # CMakeLists declares `NANO_ROS_PLATFORM`/`NANO_ROS_RMW` with cached posix/
-    # zenoh defaults; a directory-scope set here would shadow them only on the
-    # FIRST configure — on any reconfigure the stale cached default is visible
-    # to the `NOT NANO_ROS_*` guards, the tuple is skipped, and a freertos leaf
-    # silently reconfigures as posix (Threads_FOUND death on a cross
-    # toolchain). Writing the tuple into the cache on first parse makes
+    # The leaf's values go into the CACHE, not directory scope. The imported
+    # root CMakeLists declares `NANO_ROS_PLATFORM`/`NANO_ROS_RMW` with cached
+    # posix/zenoh defaults; a directory-scope set here would shadow them only
+    # on the FIRST configure — on any reconfigure the stale cached default is
+    # visible to the `NOT NANO_ROS_*` guards, the leaf's value is skipped, and a
+    # freertos leaf silently reconfigures as posix (Threads_FOUND death on a
+    # cross toolchain). Writing them into the cache on first parse makes
     # reconfigures stable; an explicit `-D` still wins (the guard sees it).
     if(NANO_ROS_EXPORT_DEPLOY AND NOT NANO_ROS_PLATFORM)
-        _nros_deploy_to_platform("${NANO_ROS_EXPORT_DEPLOY}" _nros_tuple_platform)
-        set(NANO_ROS_PLATFORM "${_nros_tuple_platform}" CACHE STRING
-            "nano-ros platform (from the package.xml <nano_ros deploy=…> tuple)")
+        _nros_deploy_to_platform("${NANO_ROS_EXPORT_DEPLOY}" _nros_leaf_platform)
+        set(NANO_ROS_PLATFORM "${_nros_leaf_platform}" CACHE STRING
+            "nano-ros platform (derived from the leaf system.toml board)")
     endif()
     if(NANO_ROS_EXPORT_RMW AND NOT NANO_ROS_RMW)
         set(NANO_ROS_RMW "${NANO_ROS_EXPORT_RMW}" CACHE STRING
-            "RMW backend (from the package.xml <nano_ros rmw=…> tuple)")
+            "RMW backend (from the leaf system.toml rmw)")
     endif()
     if(NANO_ROS_EXPORT_BOARD AND NOT NANO_ROS_BOARD)
         set(NANO_ROS_BOARD "${NANO_ROS_EXPORT_BOARD}" CACHE STRING
-            "nano-ros board (from the package.xml <nano_ros board=…> tuple)")
+            "nano-ros board (from the leaf system.toml [image] board)")
     endif()
     # The verbs pick DEPLOY/BOARD up from these directory-scope vars.
     set(NROS_DEPLOY "${NANO_ROS_EXPORT_DEPLOY}")

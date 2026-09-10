@@ -25,8 +25,9 @@ class NrosTestTask(TaskExtensionPoint):
 
     Which runner applies is decided by the platform alone, which is why this
     task never needed the language half of the retired
-    `ros.nros.<lang>.<platform>` key. The platform is the package's own
-    `<export><nano_ros deploy=…/></export>` (RFC-0087 D3 / phase-420 W4).
+    `ros.nros.<lang>.<platform>` key. The platform is derived from the board
+    the package's own `system.toml` names (RFC-0098 D3, phase-445 W3b — the
+    retired `<nano_ros deploy=…/>` tuple before that).
 
     - native: execute binary directly, check exit code
     - freertos/baremetal/nuttx: launch QEMU, capture semihosting output, timeout

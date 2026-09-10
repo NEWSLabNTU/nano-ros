@@ -24,11 +24,14 @@ lives:
   drives the build and the crate is a staticlib CMake imports), and
   ``lang == "rust"`` would have routed every one of them to ``cargo build``.
 
-* **Which platform?** — the package's own ``<export><nano_ros deploy=…/></export>``
-  tag (RFC-0087 D3), which is the tag that names a ``[deploy.*]`` block in
-  ``system.toml``. `cmake/NanoRosPackageXml.cmake` already maps exactly this
-  attribute onto the ``NANO_ROS_PLATFORM`` axis; this module is the same rule
-  for the colcon path, not a second one.
+* **Which platform?** — the board the package's own ``system.toml`` names
+  (``[image.<id>] board``, RFC-0098 D3), whose deploy token ``nros ws
+  leaf-system`` derives through the board catalog. That verb is the ONE reader
+  `find_package(nano_ros)` also asks, so this module is the same rule for the
+  colcon path, not a second one. (Until phase-445 W3b the platform was the
+  ``<export><nano_ros deploy=…/></export>`` tuple; it is retired, and a
+  manifest still carrying it is refused, as both package.xml readers refuse
+  it.)
 
 **The language is not recoverable, and is not faked.** ``nros_cmake`` says
 CMake; it does not say C, C++ or Rust-imported-by-CMake, and no manifest tag
@@ -113,9 +116,61 @@ def nano_ros_export(pkg_path):
     return attributes
 
 
+def leaf_system(pkg_path):
+    """``nros ws leaf-system <pkg_path>`` as a ``{KEY: VALUE}`` dict.
+
+    The CLI is the one reader of a leaf's ``system.toml`` (RFC-0098 D3); a
+    second parser here would be the drift RFC-0087 D2 built its shared table to
+    prevent. Resolved by ``$NROS_CLI``, else ``nros`` on PATH.
+    """
+    import os
+    import shutil
+    import subprocess
+
+    nros = os.environ.get("NROS_CLI") or shutil.which("nros")
+    if not nros:
+        raise RuntimeError(
+            f"{pkg_path}/system.toml names this package's board, and reading it "
+            "needs the `nros` CLI — put it on PATH (source the nano-ros "
+            "activate.sh) or set NROS_CLI."
+        )
+    proc = subprocess.run(
+        [nros, "ws", "leaf-system", str(pkg_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"nros ws leaf-system {pkg_path}: {proc.stderr.strip()}")
+    rows = {}
+    for line in proc.stdout.splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            rows[key] = value
+    return rows
+
+
 def deploy(pkg_path):
-    """The platform this package deploys to, from its own ``deploy=``."""
-    return nano_ros_export(pkg_path).get("deploy") or DEFAULT_DEPLOY
+    """The platform this package deploys to.
+
+    From the board its ``system.toml`` names (``NROS_LEAF_DEPLOY`` of ``nros
+    ws leaf-system``); a package with no ``system.toml`` requests no
+    cross-compilation and is the host build, ``DEFAULT_DEPLOY``. A leftover
+    ``<nano_ros deploy=…/>`` tuple is REFUSED (phase-445 W3b) — reading it as
+    the host would build a freertos package for Linux with no diagnostic.
+    """
+    retired = nano_ros_export(pkg_path)
+    if retired:
+        raise ValueError(
+            f"{pkg_path}/package.xml: the <nano_ros "
+            + " ".join(f'{k}="{v}"' for k, v in sorted(retired.items()))
+            + "/> element is retired (RFC-0098 D3/D5, phase-445) — state the "
+            "deployment in a system.toml beside the package (`[image.<id>] "
+            "board`, `[system] rmw`) and delete the element."
+        )
+    if not (Path(pkg_path) / "system.toml").is_file():
+        return DEFAULT_DEPLOY
+    return leaf_system(pkg_path).get("NROS_LEAF_DEPLOY") or DEFAULT_DEPLOY
 
 
 def needs_rust_bindings(pkg_type, pkg_path):

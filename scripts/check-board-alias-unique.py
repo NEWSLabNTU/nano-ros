@@ -27,17 +27,19 @@ fixtures, exactly one name is claimed twice: `threadx`, by
 `nros-board-threadx-linux` and `nros-board-threadx-qemu-riscv64`. That looked
 like the defect the gate was written for, and it is not.
 
-`threadx` is a DEPLOY FAMILY, not a board. 25 `package.xml` files carry
-`<nano_ros deploy="threadx" board="rv-virt-threadx"/>` or `board="threadx-linux"`,
-and per RFC-0087 D3 `deploy=` names a `[deploy.*]` block rather than a provider —
-the `board=` attribute beside it is what selects the implementation. So a family
-name appearing in two boards' `names` lists is the vocabulary working: both
-boards ARE threadx, and nothing resolves on the family alone.
+`threadx` is a DEPLOY FAMILY, not a board. 25 leaves deploy to the threadx
+family — their `system.toml` names `board = "rv-virt-threadx"` or
+`board = "threadx-linux"` (until phase-445 W3b, a package.xml
+`<nano_ros deploy="threadx" board=…/>` tuple) — and the deploy token is the
+C/C++ platform module the board selects, not a provider: the BOARD is what
+selects the implementation. So a family name appearing in two boards' `names`
+lists is the vocabulary working: both boards ARE threadx, and nothing resolves
+on the family alone.
 
 The rule is therefore narrower than "a name claims one board": **a name that is
 not a deploy family must claim one board.** A family name is exempt by
 derivation, not by an allow-list entry somebody has to maintain — the families
-are read from the same `package.xml` exports that use them.
+are read from the `cmake/platform/` modules a deploy token selects.
 
 WHAT IS DELIBERATELY ALLOWED
 
@@ -97,25 +99,33 @@ def descriptors():
 
 
 def deploy_families():
-    """Every `deploy="…"` a package.xml export declares.
+    """Every deploy FAMILY — a C/C++ platform module the deploy token selects.
 
     Read rather than listed: a family name is exempt because something uses it
     as one, and an allow-list would go stale the moment a family is added or
     retired.
+
+    phase-445 W3b — this used to read `deploy="…"` off the package.xml
+    `<nano_ros>` tuples. Those are retired: a leaf's deploy token is now
+    DERIVED from its `system.toml` board (`PlatformKind::cmake_deploy`), and
+    every value it can take names a `cmake/platform/nano-ros-<family>.cmake`
+    module — `native` being the host deploy that maps to the `posix` module
+    (`_nros_deploy_to_platform`). So the families are read from the modules
+    themselves: the set a deploy token can select, whether or not a leaf
+    happens to select it today.
     """
-    listing = subprocess.run(
-        ["git", "-C", ROOT, "ls-files", "*package.xml"],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.split()
+    d = os.path.join(ROOT, "cmake", "platform")
+    try:
+        names = os.listdir(d)
+    except OSError:
+        return set()
     out = set()
-    for rel in listing:
-        with open(os.path.join(ROOT, rel), encoding="utf8", errors="replace") as fh:
-            for tag in re.findall(r"<nano_ros ([^/]*)/>", fh.read()):
-                m = re.search(r'deploy="([^"]+)"', tag)
-                if m:
-                    out.add(m.group(1))
+    for n in names:
+        m = re.fullmatch(r"nano-ros-(.+)\.cmake", n)
+        if m:
+            out.add(m.group(1))
+    if "posix" in out:
+        out.add("native")
     return out
 
 

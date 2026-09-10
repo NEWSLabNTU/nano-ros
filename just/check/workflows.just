@@ -135,11 +135,11 @@ dist-runtime-deps:
 package-xml-comments:
     @bash packages/testing/nros-tests/tests/package_xml_comment_stripping.sh
 
-# RFC-0087 D3 / phase-420 W1 — `<nano_ros_uses kind= name=/>` and the
-# `<nano_ros deploy= board= rmw=/>` sugar must mean the same thing to the cmake
-# reader, and `deploy=` must NOT become a selection (it names a system.toml
-# block, not a provider). Divergence between the two spellings would be
-# invisible: both still configure, against different values. Buildless.
+# RFC-0087 D3 / phase-420 W1 — `<nano_ros_uses kind= name=/>` is the one
+# selection spelling the cmake reader accepts, and the retired
+# `<nano_ros deploy= board= rmw=/>` sugar is REFUSED naming `system.toml`
+# (phase-445 W3b / RFC-0098 D3) rather than silently configuring a host build.
+# Buildless.
 [private]
 package-xml-uses:
     @bash packages/testing/nros-tests/tests/package_xml_uses_general_form.sh
@@ -197,10 +197,11 @@ one-producer-per-tool:
 # whichever descriptor the scan read first.
 #
 # Running it the first time answered its own question: the only real clash was
-# `threadx`, which is a deploy FAMILY (RFC-0087 D3 — `deploy=` names a
-# `[deploy.*]` block, and the `board=` beside it selects). Families are exempt by
-# DERIVATION, read from the same package.xml exports that use them, so the
-# exemption cannot go stale the way a list would.
+# `threadx`, which is a deploy FAMILY — the C/C++ platform module a board's
+# deploy token selects, not a board. Families are exempt by DERIVATION, read
+# from the `cmake/platform/` modules themselves (phase-445 W3b retired the
+# package.xml tuples they used to be read from), so the exemption cannot go
+# stale the way a list would.
 [group("checks")]
 board-alias-unique:
     @python3 scripts/check-board-alias-unique.py

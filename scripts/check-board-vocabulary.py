@@ -59,15 +59,50 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def exports(text):
-    """[(deploy, board)] from `<nano_ros deploy=".." board=".."/>` tags."""
+    """[board] from a leaf `system.toml`'s `[image.<id>]` tables.
+
+    phase-445 W3b — this read `<nano_ros deploy=".." board=".."/>` package.xml
+    tags until those were retired for `system.toml` (RFC-0098 D3/D5). The
+    deploy token is no longer AUTHORED — `nros ws leaf-system` derives it from
+    the board through the board catalog — so there is no deploy value left to
+    misspell, and only the board is read. Section-scoped: a `board` key outside
+    an `[image.*]` table is not an image's board.
+    """
     out = []
-    for m in re.finditer(r"<nano_ros\s([^>]*)>", text):
-        tag = m.group(1)
-        d = re.search(r'deploy="([^"]*)"', tag)
-        if not d:
+    in_image = False
+    for line in text.split("\n"):
+        st = line.strip()
+        if st.startswith("["):
+            in_image = re.match(r"^\[image\.[^\]]+\]$", st) is not None
             continue
-        b = re.search(r'board="([^"]*)"', tag)
-        out.append((d.group(1), b.group(1) if b else None))
+        if in_image:
+            m = re.match(r'^board\s*=\s*"([^"]+)"', st)
+            if m:
+                out.append(m.group(1))
+    return out
+
+
+def cxx_leaf_system_tomls(root):
+    """Tracked `system.toml` of the C/C++ single-package leaves.
+
+    The population this gate has always covered: until phase-445 W3b those
+    leaves carried the package.xml tuple. A leaf is a dir with `package.xml` +
+    `CMakeLists.txt` beside the file and no `Cargo.toml` (the Rust leaves' boards
+    are the proc-macro's vocabulary, which `check-deploy-board-resolves`
+    covers).
+    """
+    files = subprocess.run(
+        ["git", "ls-files", "*system.toml"], cwd=root, capture_output=True, text=True
+    ).stdout.split()
+    out = []
+    for f in files:
+        d = os.path.join(root, os.path.dirname(f))
+        if (
+            os.path.isfile(os.path.join(d, "package.xml"))
+            and os.path.isfile(os.path.join(d, "CMakeLists.txt"))
+            and not os.path.isfile(os.path.join(d, "Cargo.toml"))
+        ):
+            out.append(f)
     return out
 
 
@@ -195,12 +230,25 @@ def scopes(root):
 
 
 def self_test():
-    got = exports('<nano_ros deploy="threadx" board="rv-virt-threadx" rmw="zenoh"/>')
-    assert got == [("threadx", "rv-virt-threadx")], got
-    assert exports('<nano_ros deploy="native"/>') == [("native", None)]
-    # Siblings are not deploy exports.
-    assert exports('<nano_ros_provides kind="board" name="threadx"/>') == []
+    got = exports('[system]\nname = "t"\n\n[image.rv]\nboard = "rv-virt-threadx"\nip = "1.2.3.4"\n')
+    assert got == ["rv-virt-threadx"], got
+    # A `board` key outside an `[image.*]` table is not an image's board.
+    assert exports('[board_config."x"]\nboard = "nope"\n') == []
+    assert exports('[image.a]\nboard = "native"\n[image.b]\nboard = "zephyr"\n') == [
+        "native",
+        "zephyr",
+    ]
+    # The population is really read from the tree, so a rename of the files
+    # cannot make this gate pass vacuously.
+    assert cxx_leaf_system_tomls(ROOT), "no C/C++ leaf system.toml found"
     sys.stdout.write("check-board-vocabulary self-test: OK\n")
+
+
+# A board that IS its deploy family (`native`, `zephyr`) names no separate
+# board — exactly the old `<nano_ros deploy="native"/>` shape, which carried no
+# `board=` and so was never checked here. `nano_ros_read_leaf_system()` blanks
+# it on the same rule.
+FAMILY_BOARDS = {"native", "zephyr"}
 
 
 def main():
@@ -209,9 +257,7 @@ def main():
         return 0
     self_test()
 
-    files = subprocess.run(
-        ["git", "ls-files", "*package.xml"], cwd=ROOT, capture_output=True, text=True
-    ).stdout.split()
+    files = cxx_leaf_system_tomls(ROOT)
     idx, crates, fixtures, scope_set, cmakeb = (
         index_boards(ROOT),
         board_crates(ROOT),
@@ -260,14 +306,15 @@ def main():
                 text = fh.read()
         except OSError:
             continue
-        for deploy, board in exports(text):
-            seen_deploy.setdefault(deploy, f)
-            # A deploy is a scope, or splits into `<deploy>_*` scopes by board.
-            if deploy not in scope_set and not any(
-                s.startswith(deploy + "_") for s in scope_set
-            ):
-                bad_deploy.setdefault(deploy, f)
-            if board is None:
+        for board in exports(text):
+            if board in FAMILY_BOARDS:
+                # The deploy family IS a scope; keep asserting that much, since
+                # `nros setup --workspace` still prints a command from it.
+                seen_deploy.setdefault(board, f)
+                if board not in scope_set and not any(
+                    s.startswith(board + "_") for s in scope_set
+                ):
+                    bad_deploy.setdefault(board, f)
                 continue
             seen_board.setdefault(board, f)
             if (
