@@ -197,7 +197,7 @@ naming the package and the manual step.
 | pure-Rust package set | **cargo** | the generated entry `build/<coord>/<entry>/Cargo.toml` as its own root, plus `build/<coord>/nros-cargo.toml` read through `--config` — **no workspace root** (RFC-0098 D9; the 2026-08-26 correction below is superseded) |
 | any C/C++ package in the set | **cmake** | `CMakeLists.txt` calling `nano_ros_workspace(…)` |
 | zephyr | **west** | nothing — sets env, `exec west build -b <board>` |
-| esp32 | **idf.py** | nothing — same shape |
+| esp32 on ESP-IDF (`framework = "espidf"`) | **idf.py** | nothing — same shape. **The esp-hal bare-metal esp32-c3 board is NOT this row: it is a cargo image.** The driver follows the board descriptor's kind, not the chip family (`plan::driver_for_board`, phase-445 W4 / PR #880 — `nros build esp32` had been exec'ing `idf.py` for an esp-hal image). |
 
 Mixed is not a fourth case. RFC-0024 §6.3 already settled it: *"cargo can be
 consumed as a cmake target (via Corrosion); cmake cannot be consumed as a cargo
