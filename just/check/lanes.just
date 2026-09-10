@@ -510,8 +510,20 @@ compile-smoke:
     # A `check`, not a build: the header generation `check-c` needs from the
     # build stays where it is.
     cargo check -p nros-c -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}}" --quiet
+    # Issue 1260 -- and once more WITH `param-services`, the capability every
+    # image that calls declare_parameter needs since phase-426 W4. Its arms in
+    # the `nros` facade are `#[cfg(feature = "param-services")]`, and the only
+    # lane that compiled them was `check-c`, on schedule, so phase-428 W6's
+    # `#[must_use]` on `Executor::declare_parameter` landed with two callers
+    # still discarding the result and every such image failed to compile.
+    # Rustc's own lints DO apply to this check: `[workspace.lints.rust]
+    # warnings = "deny"` reaches a plain `cargo check`, which is what lets this
+    # line catch that class. Verified by reverting the fix: it fails on both
+    # call sites. Measured 10 s cold, 2 s warm.
+    cargo check -p nros-c -p nros-cpp --no-default-features --features "{{C_API_SHIPPED_FEATURES}},param-services" --quiet
     echo "compile smoke: workspace + all targets check clean (no lints; see check-build);"
-    echo "  nros-c + nros-cpp check clean in the shipped shape ({{C_API_SHIPPED_FEATURES}})."
+    echo "  nros-c + nros-cpp check clean in the shipped shape ({{C_API_SHIPPED_FEATURES}}),"
+    echo "  and with param-services (issue 1260)."
 
 # Check C++ headers: formatting + freestanding syntax + nros-cpp clippy. The
 # clippy (rmw-zenoh-cffi) + syntax probe COMPILE nros-cpp/nros-c (zpico-sys pulls

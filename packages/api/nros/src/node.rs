@@ -112,6 +112,16 @@ pub enum NodeDeclError {
     /// removed one level out, where discarding the result made "the timer never
     /// fired" and "every publish failed" the same observation.
     UnknownPublisher,
+    /// The parameter store refused a declaration and the name is still absent:
+    /// the store is full, or it rejected the value. A name already declared is
+    /// NOT this — the store answers `false` for that too, but the parameter is
+    /// there.
+    ///
+    /// Split out of [`Self::Runtime`] for the reason [`Self::UnknownPublisher`]
+    /// was (issue 0736): a refused parameter and a rejected transport handle are
+    /// different faults with different fixes, and one opaque variant made them
+    /// the same line on a serial console.
+    ParameterRejected,
 }
 
 impl NodeDeclError {
@@ -132,6 +142,9 @@ impl NodeDeclError {
             Self::MissingExport => MISSING_NODE_EXPORT_ERROR,
             Self::Runtime => "component runtime rejected declaration",
             Self::UnknownPublisher => "no publisher declared for that entity",
+            Self::ParameterRejected => {
+                "the parameter store refused the declaration (the store is full, or it rejected the value)"
+            }
             Self::ExecutorFull => {
                 "executor callback table full — raise NROS_EXECUTOR_MAX_CBS \
                  (build-time, default 4)"
