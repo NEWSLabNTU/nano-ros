@@ -118,7 +118,29 @@ echo "  installing the Python packages the image owes its interpreter"
 python3 -m pip install --user --quiet --disable-pip-version-check \
     tomli PyYAML jsonschema packaging pyelftools pykwalify west
 
-./scripts/ci/runner-provision.sh "$LABELS"
+# PROVISIONING AND LABEL TRUTH ARE DIFFERENT QUESTIONS, and the second one is
+# the contract. A provisioning step can fail for a reason that has nothing to do
+# with the labels this runner claims — issue 1276 is exactly that: a panic in
+# `nros setup rv-virt-threadx --rmw cyclonedds` on the SEVENTH package, after
+# the toolchain and QEMU the `nros-qemu` label actually names were already
+# installed and reported `present (skip)`.
+#
+# So the failure is reported LOUDLY and then the doctor is asked anyway. What it
+# must never do is launder the failure: an unread non-zero here is the bug this
+# repo keeps paying for, so the status is captured explicitly (issue 1249 — a
+# status meant for inspection dies at the assignment under `set -e`) and printed
+# whatever the doctor says.
+provision_rc=0
+./scripts/ci/runner-provision.sh "$LABELS" || provision_rc=$?
+if [ "$provision_rc" -ne 0 ]; then
+    echo ""
+    echo "runner-bootstrap: PROVISIONING REPORTED FAILURES (exit $provision_rc)." >&2
+    echo "  Asking runner-doctor anyway — the labels are the contract, and a" >&2
+    echo "  step can fail for a reason none of them depend on. If the doctor" >&2
+    echo "  passes, this runner is honest about what it can build; the failure" >&2
+    echo "  above is still real and still wants fixing." >&2
+    echo ""
+fi
 
 # The verification is the point of the whole script. `runner-provision` ends
 # with the same check, which is deliberate duplication of the CHEAP half: this
@@ -126,6 +148,12 @@ python3 -m pip install --user --quiet --disable-pip-version-check \
 # check the entrypoint runs before registering, so "provisioned" and "actually
 # has it" cannot be different answers at any of the three points.
 ./scripts/ci/runner-doctor.sh "$LABELS"
+
+if [ "$provision_rc" -ne 0 ]; then
+    echo ""
+    echo "runner-bootstrap: the labels hold, but provisioning exited $provision_rc."
+    echo "  Read the failure above — it is not about these labels, and it is not fixed."
+fi
 '
 
 if [ "$CHECK" -eq 1 ]; then
