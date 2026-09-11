@@ -336,6 +336,28 @@ no-tracked-file-find:
 path-env-fingerprints:
     @python3 scripts/check-path-env-fingerprints.py
 
+# issue 1280 — the OTHER thing a path-valued variable does wrong. 0491 is about
+# how its SPELLING is fingerprinted; this is about the spelling being right at
+# all. Every such variable resolves ENV-FIRST, and a linked git worktree
+# inherits its parent shell's environment where each of them is an absolute
+# path into the checkout that shell activated. Measured live: 24 of them, all
+# naming the main checkout, in a session whose purpose was to test a change in
+# the worktree. So a worktree build compiled the main checkout's FreeRTOS,
+# ThreadX, NuttX, platform sources and public headers; `just nuttx build-riscv-c`
+# RECONFIGURED the main checkout's NuttX kernel; and an inherited NROS_REPO_DIR
+# sent four `check::build` gates' fixtures into the main checkout's `build/`, so
+# those gates ran and measured the wrong tree. Agent sessions work in worktrees
+# by default here, so this is the common case.
+#
+# Env-first still stands where it earns its keep — a path OUTSIDE any nano-ros
+# checkout is a real out-of-tree SDK and is kept untouched. The gate drives all
+# three rows of the rule through the shell helper, `nros_build_root` AND `just`
+# itself against synthetic checkouts, because reading the source would pass an
+# implementation that never looks at the filesystem.
+[private]
+inherited-checkout-paths:
+    @python3 scripts/check-inherited-checkout-paths.py
+
 # Issue 0336 — a retired submodule path must not survive anywhere that a user or
 # a CI job would follow it. RFC-0060's sweep missed scripts/bootstrap.sh, nine
 # doc copies and eight workflow refs; this grep would have caught all of them.

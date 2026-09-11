@@ -232,25 +232,44 @@ nros_sizes_probe_dir() {
     # An INHERITED `NROS_REPO_DIR` may name a different checkout.
     #
     # It is exported by `activate.sh` (phase-218.C), so a shell that activated
-    # another nano-ros — or a git worktree, the case `build-root.sh` already
-    # warns about — carries it in. This used to be trusted blindly and then
+    # another nano-ros — or a git worktree, which is how parallel agent sessions
+    # work here — carries it in. This used to be trusted blindly and then
     # `source`d, so pointing at a checkout without `scripts/build/build-root.sh`
     # produced a raw bash error plus `nros_build_dir: command not found` on
     # stderr. Harmless to the build, but it is UNCONDITIONAL noise: any gate
     # asserting a command prints nothing then fails on output it did not cause,
     # and the failure names the gate rather than the stale variable.
     #
-    # So validate the inherited value the same way `build-root.sh` reasons about
-    # its own fallback: `scripts/build/` is two levels below the root by
-    # construction, so deriving from `BASH_SOURCE` always names the checkout
-    # this file was read from.
+    # ISSUE 1280 — that probe ("does it have build-root.sh?") accepted the very
+    # value it should refuse: another nano-ros CHECKOUT has that file, so the
+    # worktree case passed it and the sizes probe cached under the other tree.
+    # It answered only the malformed-value case. The rule is shared now, and it
+    # asks the question that separates the two: a path outside any nano-ros
+    # checkout is kept (a real out-of-tree layout), one inside a DIFFERENT
+    # checkout is re-rooted here.
+    #
+    # `scripts/build/` is two levels below the root by construction, so
+    # deriving from `BASH_SOURCE` always names the checkout this file was read
+    # from — which is what an inherited value is re-rooted ONTO.
+    local _self="${BASH_SOURCE[0]:-$0}"
+    local _here
+    _here="$(cd "$(dirname "$_self")/../.." 2>/dev/null && pwd)" || _here=""
     local repo_root="${NROS_REPO_DIR:-}"
+    if [ -n "$repo_root" ] && [ -n "$_here" ]; then
+        # `build-root.sh` usually got here first, and this function is called
+        # inside a command substitution on hot paths — re-reading the file each
+        # time would be a per-call cost for nothing.
+        if ! command -v nros_reroot_checkout_path >/dev/null 2>&1; then
+            # shellcheck source=scripts/lib/checkout-paths.sh
+            . "$_here/scripts/lib/checkout-paths.sh"
+        fi
+        repo_root="$(nros_reroot_checkout_path "$repo_root" "$_here")"
+    fi
     if [ -n "$repo_root" ] && [ ! -f "$repo_root/scripts/build/build-root.sh" ]; then
         repo_root=""
     fi
     if [ -z "$repo_root" ]; then
-        local _self="${BASH_SOURCE[0]:-$0}"
-        repo_root="$(cd "$(dirname "$_self")/../.." 2>/dev/null && pwd)" || repo_root=""
+        repo_root="$_here"
     fi
     if [ -n "$repo_root" ] && [ -f "$repo_root/scripts/build/build-root.sh" ]; then
         # phase-334 W2.b step 2 — derived, not a second spelling of the root.

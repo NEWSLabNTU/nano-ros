@@ -39,6 +39,14 @@
 export _NROS_BUILD_ROOT_REPO
 _NROS_BUILD_ROOT_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# Issue 1280 — the rule for an inherited absolute path naming ANOTHER nano-ros
+# checkout. Sourced (not respelled) so `nros_build_root` below can apply it;
+# `checkout-paths.sh` `export -f`s its two functions for the same reason this
+# file exports `nros_build_root`, so a `make` leaf that never sources either
+# still gets all three.
+# shellcheck source=scripts/lib/checkout-paths.sh
+. "$_NROS_BUILD_ROOT_REPO/scripts/lib/checkout-paths.sh"
+
 # nros_build_root
 # The root every build cache lives under. Absolute.
 #
@@ -51,14 +59,41 @@ _NROS_BUILD_ROOT_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # `BASH_SOURCE`; falling back to `$PWD` would have made the emitted path depend
 # on the caller's cwd, which is the very failure the paragraph above describes.
 # `scripts/build/` is two levels below the repo root by construction, so this
-# fallback is always the checkout the script was read from — including in a git
-# worktree, where an inherited `NROS_REPO_DIR` may still name the main checkout.
+# fallback is always the checkout the script was read from.
+#
+# ISSUE 1280 — and being the LAST rung was not enough. In a linked worktree the
+# inherited `NROS_REPO_DIR` names the main checkout and outranks it, so four
+# `check::build` gates wrote their fixtures into the main checkout's `build/`
+# while the tests read the worktree's: the gates RAN, and measured the wrong
+# tree, which is worse than failing. The comment above this function used to
+# note that hazard and leave it standing; the two REPO rungs are re-rooted now,
+# so an inherited root belonging to another nano-ros checkout lands back here.
+#
+# `NROS_BUILD_ROOT` is deliberately NOT re-rooted, and the reason is the MIRROR
+# rather than the rule. `nros_tests::build_root` is the Rust half (a resolver
+# cannot source a bash function), it is pinned byte-for-byte to this one by
+# `build_root_derivation.sh`, and it reads `NROS_BUILD_ROOT` with no re-root —
+# it cannot have the 1280 bug on its OTHER rung, because that one is
+# `project_root()`, a compile-time `CARGO_MANIFEST_DIR`. Re-rooting only here
+# would make the writer and the reader disagree about where a fixture lives,
+# which is the split R3 forbids and a fresh instance of the bug being fixed.
+# `NROS_BUILD_ROOT` is also not in the INHERITED set — nothing exports it, not
+# `activate.sh` and not `sdk-env.just` — so it is always an explicit operator
+# choice (the "move the whole cache to a faster volume" knob), never an
+# ancestor checkout's leftover. The two REPO rungs are the opposite on both
+# counts, which is why they are the ones that move.
 nros_build_root() {
     if [ -n "${NROS_BUILD_ROOT:-}" ]; then
         printf '%s' "${NROS_BUILD_ROOT%/}"
         return 0
     fi
-    printf '%s/build' "${NROS_REPO_ROOT:-${NROS_REPO_DIR:-$_NROS_BUILD_ROOT_REPO}}"
+    local _repo="${NROS_REPO_ROOT:-${NROS_REPO_DIR:-}}"
+    if [ -n "$_repo" ]; then
+        _repo="$(nros_reroot_checkout_path "$_repo" "$_NROS_BUILD_ROOT_REPO")"
+    else
+        _repo="$_NROS_BUILD_ROOT_REPO"
+    fi
+    printf '%s/build' "$_repo"
 }
 
 # RFC-0070 R5 — the build-cache KIND vocabulary, one definition each.
