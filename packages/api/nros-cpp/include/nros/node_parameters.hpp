@@ -59,7 +59,6 @@
 // `<stddef.h>`; include it so `::size_t` is always resolvable (parameter.hpp
 // precedent).
 #include <stddef.h>
-#include <type_traits> // phase-446 W6 -- `node_param_type`
 
 #include "nros/declared_params.hpp" // phase-446 W6 -- `nros::param_type`
 #include "nros/result.hpp"
@@ -279,19 +278,46 @@ inline Result node_param_get(const nros_cpp_node_t* node, const char* name, ::st
 // the integer slot), a floating-point type, and a string. Lives beside those
 // overloads so the two cannot drift apart; `Node::declare_parameter` passes it
 // to `Node::check_declared_param`.
+//
+// Spelled as explicit specializations, not `std::is_integral` & co.: this
+// header is parsed under `-nostdinc++` (the ThreadX shim probe in
+// `check-cpp`), where `<type_traits>` is not available. Anything not listed
+// is a string, which is also what the `const char*` overload stores.
 template <typename T> struct node_param_type {
-    static constexpr int value = ::std::is_same<T, bool>::value       ? ::nros::param_type::BOOL
-                                 : ::std::is_integral<T>::value       ? ::nros::param_type::INTEGER
-                                 : ::std::is_floating_point<T>::value ? ::nros::param_type::DOUBLE
-                                                                      : ::nros::param_type::STRING;
+    static constexpr int value = ::nros::param_type::STRING;
 };
+#define NROS_NODE_PARAM_TYPE_(T, CODE)                                                             \
+    template <> struct node_param_type<T> {                                                        \
+        static constexpr int value = ::nros::param_type::CODE;                                     \
+    }
+NROS_NODE_PARAM_TYPE_(bool, BOOL);
+NROS_NODE_PARAM_TYPE_(char, INTEGER);
+NROS_NODE_PARAM_TYPE_(signed char, INTEGER);
+NROS_NODE_PARAM_TYPE_(unsigned char, INTEGER);
+NROS_NODE_PARAM_TYPE_(short, INTEGER);
+NROS_NODE_PARAM_TYPE_(unsigned short, INTEGER);
+NROS_NODE_PARAM_TYPE_(int, INTEGER);
+NROS_NODE_PARAM_TYPE_(unsigned int, INTEGER);
+NROS_NODE_PARAM_TYPE_(long, INTEGER);
+NROS_NODE_PARAM_TYPE_(unsigned long, INTEGER);
+NROS_NODE_PARAM_TYPE_(long long, INTEGER);
+NROS_NODE_PARAM_TYPE_(unsigned long long, INTEGER);
+NROS_NODE_PARAM_TYPE_(float, DOUBLE);
+NROS_NODE_PARAM_TYPE_(double, DOUBLE);
+NROS_NODE_PARAM_TYPE_(long double, DOUBLE);
+#undef NROS_NODE_PARAM_TYPE_
+
+/// The array code for a scalar code: `std::vector<T>` declares the array of
+/// whatever `T` declares.
+constexpr int node_param_array_type(int scalar) {
+    return (scalar == ::nros::param_type::BOOL)      ? ::nros::param_type::BOOL_ARRAY
+           : (scalar == ::nros::param_type::INTEGER) ? ::nros::param_type::INTEGER_ARRAY
+           : (scalar == ::nros::param_type::DOUBLE)  ? ::nros::param_type::DOUBLE_ARRAY
+                                                     : ::nros::param_type::STRING_ARRAY;
+}
 #ifdef NROS_CPP_STD
 template <typename T, typename A> struct node_param_type<::std::vector<T, A>> {
-    static constexpr int value = ::std::is_same<T, bool>::value ? ::nros::param_type::BOOL_ARRAY
-                                 : ::std::is_integral<T>::value ? ::nros::param_type::INTEGER_ARRAY
-                                 : ::std::is_floating_point<T>::value
-                                     ? ::nros::param_type::DOUBLE_ARRAY
-                                     : ::nros::param_type::STRING_ARRAY;
+    static constexpr int value = node_param_array_type(node_param_type<T>::value);
 };
 #endif
 
