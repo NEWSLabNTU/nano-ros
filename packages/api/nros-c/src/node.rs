@@ -516,9 +516,15 @@ pub unsafe extern "C" fn nros_node_init_ex(
 /// * `node` - Pointer to an initialized node
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
+/// * `NROS_RET_OK` on success, AND for a node that was never initialised or is
+///   already finalised — `fini` is IDEMPOTENT (phase-417 stage 3, the same
+///   sweep as `rcl_guard_condition_fini`). `rcl/src/rcl/node.c` @ humble says
+///   it in words: `if (!node->impl) { // Repeat calls to fini or calling fini
+///   on a zero initialized node is ok. return RCL_RET_OK; }`. Ours returned
+///   `NROS_RET_NOT_INIT`, so a ported cleanup path that checks the return —
+///   `rcl_node_fini` is `RCL_WARN_UNUSED` upstream — reported a shutdown
+///   failure that had not happened.
 /// * `NROS_RET_INVALID_ARGUMENT` if node is NULL
-/// * `NROS_RET_NOT_INIT` if not initialized
 ///
 /// # Safety
 /// * `node` must be a valid pointer to an initialized nros_node_t
@@ -531,7 +537,8 @@ pub unsafe extern "C" fn rcl_node_fini(node: *mut nros_node_t) -> nros_ret_t {
     let node = &mut *node;
 
     if node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
+        // Nothing to retire. Idempotent, per rcl.
+        return NROS_RET_OK;
     }
 
     // phase-379 W4 — retire the slot BEFORE marking shutdown, so any entity
@@ -1553,6 +1560,36 @@ mod node_ref_tests {
 #[cfg(test)]
 mod accessor_tests {
     use super::*;
+
+    /// phase-417 stage 3 — the `fini` idempotence sweep (the reported site was
+    /// `rcl_guard_condition_fini`; this is its sibling). `rcl/src/rcl/node.c` @
+    /// humble: `if (!node->impl) { // Repeat calls to fini or calling fini on a
+    /// zero initialized node is ok. return RCL_RET_OK; }`. Ours returned
+    /// `NROS_RET_NOT_INIT`.
+    #[test]
+    fn node_fini_is_idempotent() {
+        unsafe {
+            let mut node = rcl_get_zero_initialized_node();
+            assert_eq!(
+                rcl_node_fini(&mut node),
+                NROS_RET_OK,
+                "fini on a zero-initialised node is not an error"
+            );
+
+            node.state = nros_node_state_t::NROS_NODE_STATE_SHUTDOWN;
+            assert_eq!(
+                rcl_node_fini(&mut node),
+                NROS_RET_OK,
+                "a repeated fini is not an error"
+            );
+
+            assert_eq!(
+                rcl_node_fini(ptr::null_mut()),
+                NROS_RET_INVALID_ARGUMENT,
+                "a NULL pointer is still an argument error, as in rcl"
+            );
+        }
+    }
 
     /// A node on the legacy (`rclc_node_init_default`) path: initialised, not bound
     /// to an executor.

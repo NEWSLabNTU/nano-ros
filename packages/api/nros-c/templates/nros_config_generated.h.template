@@ -80,6 +80,13 @@ NROS_STACK_MIN_ACKNOWLEDGE if this image builds its executor off the main thread
 #define GUARD_HANDLE_OPAQUE_U64S @GUARD_HANDLE_OPAQUE_U64S@
 #define NROS_LIFECYCLE_CTX_OPAQUE_U64S @LIFECYCLE_CTX_OPAQUE_U64S@
 
+/* Handle-table width, = NROS_EXECUTOR_MAX_CBS. cbindgen prints the Rust
+ * constant's NAME for a fixed-size array member, so nros_executor_t's
+ * `_handle_entities[NROS_EXECUTOR_MAX_HANDLES]` (phase-417 stage 3: the entity
+ * pointer per handle slot that rclc_executor_trigger_one compares against)
+ * needs this spelled as a C macro, exactly like the *_OPAQUE_U64S above. */
+#define NROS_EXECUTOR_MAX_HANDLES @NROS_EXECUTOR_MAX_HANDLES@
+
 /* ── Type-compatible opaque definition of ActionServerRawHandle ──
  * Public C handle struct. The runtime owns the body; the C API
  * never lets callers reach into `_internal.handle` directly,

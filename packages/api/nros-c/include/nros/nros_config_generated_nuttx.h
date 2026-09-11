@@ -57,6 +57,20 @@
 #define EXECUTOR_OPAQUE_U64S 12288
 #define GUARD_HANDLE_OPAQUE_U64S 3
 #define NROS_LIFECYCLE_CTX_OPAQUE_U64S 8
+/* phase-417 stage 3 — width of `nros_executor_t._handle_entities`, the entity
+ * pointer per handle slot that `rclc_executor_trigger_one` compares its `obj`
+ * against. The per-build header states NROS_EXECUTOR_MAX_CBS; this snapshot
+ * states the CEILING instead, 64, which is the most handles the executor can
+ * ever have (its readiness set is a `u64` bitmask).
+ *
+ * Over-stating it is safe here for the same reason the *_OPAQUE_U64S bounds
+ * above are: no C code reads that array — it is written and read only by the
+ * Rust side, at the Rust layout's own offsets — and every field a C caller DOES
+ * read sits before it. A bound that is too LARGE only makes the C object bigger
+ * than the Rust view needs, which is exactly the slack `_opaque` already
+ * carries. A bound that is too SMALL would be the unsafe direction, and 64
+ * cannot be. */
+#define NROS_EXECUTOR_MAX_HANDLES 64
 #undef SUBSCRIPTION_OPAQUE_U64S
 #define SUBSCRIPTION_OPAQUE_U64S 205
 #undef SERVICE_SERVER_OPAQUE_U64S

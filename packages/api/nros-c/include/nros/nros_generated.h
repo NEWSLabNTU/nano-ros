@@ -1068,22 +1068,61 @@ typedef struct nros_support_t {
 } nros_support_t;
 
 /**
+ * One registered handle, as a trigger predicate sees it.
+ *
+ * This is the array element `nros_executor_trigger_t` walks — rclc's
+ * `rclc_executor_handle_t` narrowed to the two things a trigger may
+ * legitimately read. It deliberately does NOT take rclc's name (RFC-0089: an
+ * upstream name may be adopted only if the contract is the same), so a ported
+ * custom trigger that reaches for `handles[i].subscription` fails to COMPILE
+ * rather than reading a field that is not there.
+ *
+ * phase-417 stage 3: the array exists so `rclc_executor_trigger_one` can
+ * compare its `obj` against the ENTITY POINTER, which is upstream's contract.
+ * The previous shape passed only a `const bool *` readiness array, which
+ * carried no entity identity at all — see `rclc_executor_trigger_one`.
+ */
+typedef struct nros_executor_trigger_handle_t {
+  /**
+   * The entity this handle was registered from: the `nros_subscription_t *`,
+   * `nros_timer_t *`, `nros_service_t *`, `nros_client_t *`,
+   * `nros_guard_condition_t *`, `nros_action_server_t *` or
+   * `nros_action_client_t *` that was passed to the matching
+   * `nros_executor_add_*` / `rclc_executor_add_*` call.
+   *
+   * NULL for a handle whose registering entity is not a C object (nothing in
+   * the current surface), which a trigger must treat as "matches nothing".
+   */
+  void *entity;
+  /**
+   * Whether this handle has data to process in the cycle being decided.
+   */
+  bool data_available;
+} nros_executor_trigger_handle_t;
+
+/**
  * Trigger function type for executor.
  *
- * A trigger function receives a boolean array indicating which handles have
- * data ready, along with the count of handles. It returns true if the executor
- * should process callbacks.
+ * A trigger function receives the executor's registered handles, each carrying
+ * its entity pointer and whether it has data this cycle. It returns true if
+ * the executor should process callbacks.
+ *
+ * Mirrors rclc's `rclc_executor_trigger_t`
+ * (`bool (*)(rclc_executor_handle_t *, unsigned int, void *)`), with our
+ * narrower handle element and a `size_t` count.
  *
  * # Parameters
- * * `ready` - Pointer to boolean array (one per handle)
- * * `count` - Number of elements in the array
- * * `context` - User-provided context pointer
+ * * `handles` - Pointer to an array of `size` registered handles
+ * * `size` - Number of elements in the array
+ * * `obj` - User-provided object pointer (rclc's `trigger_object`)
  *
  * # Returns
  * * `true` if executor should process callbacks
  * * `false` if executor should skip processing
  */
-typedef bool (*nros_executor_trigger_t)(const bool *ready, size_t count, void *context);
+typedef bool (*nros_executor_trigger_t)(const struct nros_executor_trigger_handle_t *handles,
+                                        size_t size,
+                                        void *obj);
 
 /**
  * Executor structure.
@@ -1151,6 +1190,27 @@ typedef struct nros_executor_t {
    * etc.) check this flag and return `NROS_RET_REENTRANT` if set.
    */
   bool in_dispatch;
+  /**
+   * Entity pointer per registered handle slot, indexed by the executor's
+   * handle id (phase-417 stage 3).
+   *
+   * Written by every `..._add_*` that registers a handle, read only when
+   * building the [`nros_executor_trigger_handle_t`] array a trigger
+   * predicate walks. This is the storage that makes
+   * `rclc_executor_trigger_one`'s upstream contract — "fire iff `obj` is one
+   * of MY entities and that entity has data" — expressible at all: the
+   * readiness array alone carries no entity identity.
+   *
+   * NULL means "no entity recorded for this slot".
+   *
+   * Placed BEFORE `_opaque` on purpose. No C code reads it — it is written
+   * and read only here, at the Rust layout's offsets — and every field a C
+   * caller does read sits above it, so a committed fallback config header
+   * that states a different `NROS_EXECUTOR_MAX_HANDLES` (the NuttX snapshot
+   * states the 64-handle ceiling) only changes how much slack the C object
+   * carries, exactly like the `_opaque` bounds.
+   */
+  void *_handle_entities[NROS_EXECUTOR_MAX_HANDLES];
   /**
    * Inline opaque storage for the executor.
    * Managed by nros_executor_init/fini — no heap allocation needed.
@@ -4734,8 +4794,15 @@ nros_ret_t nros_executor_node_init(struct nros_executor_t *executor,
 /**
  * Set the trigger condition for the executor.
  *
+ * `context` is rclc's `trigger_object`: it is handed to `trigger` unchanged on
+ * every cycle. For `rclc_executor_trigger_one` it is the ENTITY pointer —
+ * `rclc_executor_set_trigger(&exec, rclc_executor_trigger_one, &my_sub)`.
+ *
  * # Safety
  * * `executor` must be a valid pointer to an initialized executor
+ * * `executor` must not be moved or copied while the trigger is installed —
+ *   the internal executor holds its address so the trigger can be given the
+ *   handle array.
  */
 NROS_PUBLIC
 nros_ret_t rclc_executor_set_trigger(struct nros_executor_t *executor,
@@ -4745,46 +4812,107 @@ nros_ret_t rclc_executor_set_trigger(struct nros_executor_t *executor,
 /**
  * Built-in trigger: fire when ANY handle has data ready.
  *
+ * rclc's `rclc_executor_trigger_any`. `obj` is unused; an empty handle array
+ * does not fire.
+ *
  * # Safety
- * * `ready` must point to a valid array of at least `count` booleans
+ * * `handles` must point to a valid array of at least `size` elements
  */
-NROS_PUBLIC bool rclc_executor_trigger_any(const bool *ready, size_t count, void *context);
+NROS_PUBLIC
+bool rclc_executor_trigger_any(const struct nros_executor_trigger_handle_t *handles,
+                               size_t size,
+                               void *obj);
 
 /**
  * Built-in trigger: fire when ALL handles have data ready.
  *
+ * rclc's `rclc_executor_trigger_all`. `obj` is unused.
+ *
+ * An EMPTY handle array fires, because "every handle has data" is vacuously
+ * true — upstream's loop simply does not execute and returns `true`. Ours
+ * returned `false` for that case until phase-417 stage 3; it was the same
+ * compile-and-differ class as `rclc_executor_trigger_one` one function over,
+ * found by sweeping the siblings rather than by a report.
+ *
  * # Safety
- * * `ready` must point to a valid array of at least `count` booleans
+ * * `handles` must point to a valid array of at least `size` elements
  */
-NROS_PUBLIC bool rclc_executor_trigger_all(const bool *ready, size_t count, void *context);
+NROS_PUBLIC
+bool rclc_executor_trigger_all(const struct nros_executor_trigger_handle_t *handles,
+                               size_t size,
+                               void *obj);
 
 /**
  * Built-in trigger: always fire (unconditionally).
  *
+ * rclc's `rclc_executor_trigger_always`.
+ *
  * # Safety
- * * `ready` and `count` are unused
+ * * `handles`, `size` and `obj` are unused
  */
-NROS_PUBLIC bool rclc_executor_trigger_always(const bool *ready, size_t count, void *context);
+NROS_PUBLIC
+bool rclc_executor_trigger_always(const struct nros_executor_trigger_handle_t *handles,
+                                  size_t size,
+                                  void *obj);
 
 /**
- * Built-in trigger: fire when the handle at the index stored in context has data.
+ * Built-in trigger: fire when the handle registered from the entity `obj` has
+ * data.
  *
- * `context` must point to a caller-owned `size_t` holding the handle
- * index. Passing `(void*)(size_t)idx` directly is NOT supported — that
- * pattern is UB on strict-alignment targets and CHERI, and the function
- * will dereference the pointer.
+ * rclc's `rclc_executor_trigger_one`: `obj` is the ENTITY POINTER, and the
+ * predicate walks the handle array looking for a handle that both has data and
+ * was registered from that entity.
  *
- * Recommended usage:
+ * ```c
+ * rclc_executor_set_trigger(&exec, rclc_executor_trigger_one, &my_subscription);
+ * ```
+ *
+ * Until phase-417 stage 3 this function read `*(size_t *)obj` and used it as an
+ * INDEX into the readiness array. The upstream spelling above compiled with no
+ * warning and then reinterpreted the entity's address as an index, which is
+ * essentially always out of range — so the trigger never fired, the executor
+ * dispatched nothing, and nothing said so (RFC-0089: never compile and differ).
+ * The index form still exists under its own name,
+ * [`nros_executor_trigger_index`].
+ *
+ * A NULL `obj`, or an entity this executor never registered, matches nothing
+ * and the trigger never fires — upstream's behaviour for an unknown object.
+ *
+ * # Safety
+ * * `handles` must point to a valid array of at least `size` elements
+ */
+NROS_PUBLIC
+bool rclc_executor_trigger_one(const struct nros_executor_trigger_handle_t *handles,
+                               size_t size,
+                               void *obj);
+
+/**
+ * Built-in trigger: fire when the handle at the index stored in `obj` has data.
+ *
+ * OURS, not rclc's — ROS 2 has no counterpart. It is the pre-phase-417
+ * behaviour of `rclc_executor_trigger_one`, kept under a name that cannot be
+ * confused with upstream's entity-pointer contract. Reach for it only when the
+ * image genuinely knows its registration order; naming the entity is safer and
+ * is what a ported node does.
+ *
+ * `obj` must point to a caller-owned `size_t` holding the handle index.
+ * Passing `(void*)(size_t)idx` directly is NOT supported — that pattern is UB
+ * on strict-alignment targets and CHERI, and the function will dereference the
+ * pointer.
+ *
  * ```c
  * static size_t my_trigger_index = 2;
- * rclc_executor_set_trigger(&exec, rclc_executor_trigger_one, &my_trigger_index);
+ * rclc_executor_set_trigger(&exec, nros_executor_trigger_index, &my_trigger_index);
  * ```
  *
  * # Safety
- * * `ready` must point to a valid array of at least `count` booleans.
- * * `context` must point to a valid `size_t` alive for the trigger's lifetime.
+ * * `handles` must point to a valid array of at least `size` elements.
+ * * `obj` must point to a valid `size_t` alive for the trigger's lifetime.
  */
-NROS_PUBLIC bool rclc_executor_trigger_one(const bool *ready, size_t count, void *context);
+NROS_PUBLIC
+bool nros_executor_trigger_index(const struct nros_executor_trigger_handle_t *handles,
+                                 size_t size,
+                                 void *obj);
 
 /**
  * Add a subscription to the executor.
@@ -5113,6 +5241,11 @@ nros_ret_t nros_executor_add_action_client(struct nros_executor_t *executor,
  *
  * Drives middleware I/O, then dispatches ready callbacks.
  *
+ * # Returns
+ * `NROS_RET_OK` for any completed cycle, whether or not a callback ran —
+ * rclc discards the wait's timeout, so an idle tick is a success. See
+ * [`spin_cycle_ret`].
+ *
  * # Safety
  * * `executor` must be a valid pointer to an initialized executor
  */
@@ -5197,6 +5330,14 @@ NROS_PUBLIC bool nros_executor_is_spinning(const struct nros_executor_t *executo
 
 /**
  * Finalize an executor.
+ *
+ * IDEMPOTENT: a zero-initialised executor is not an error and returns
+ * `NROS_RET_OK` (phase-417 stage 3, the same sweep as
+ * `rcl_guard_condition_fini` / `rcl_node_fini`). rclc says so in a comment of
+ * its own — `rclc/src/rclc/executor.c` @ humble:
+ * `} else { // Repeated calls to fini or calling fini on a zero initialized
+ * executor is ok }` followed by `return RCL_RET_OK;`. Ours returned
+ * `NROS_RET_NOT_INIT`.
  *
  * # Safety
  * * `executor` must be a valid pointer
@@ -5388,6 +5529,30 @@ NROS_PUBLIC bool nros_guard_condition_is_valid(const struct nros_guard_condition
 
 /**
  * Finalize a guard condition.
+ *
+ * IDEMPOTENT: a zero-initialised or already-finalised handle is not an error
+ * and returns `NROS_RET_OK`. A NULL pointer is still
+ * `NROS_RET_INVALID_ARGUMENT`.
+ *
+ * That is rcl's contract, MEASURED rather than assumed (phase-417 stage 3 —
+ * the ledger row carried an explicit evidence bound because the host it was
+ * written on had only the Humble headers, which do not state the guarantee in
+ * words). `rcl/src/rcl/guard_condition.c` @ humble:
+ *
+ * ```text
+ * rcl_guard_condition_fini(rcl_guard_condition_t * guard_condition)
+ * {
+ *   RCL_CHECK_ARGUMENT_FOR_NULL(guard_condition, RCL_RET_INVALID_ARGUMENT);
+ *   rcl_ret_t result = RCL_RET_OK;
+ *   if (guard_condition->impl) { … }
+ *   return result;
+ * }
+ * ```
+ *
+ * so NULL errors and `impl == NULL` — a zero-initialised or already-finalised
+ * handle — returns OK. Ours returned `NROS_RET_NOT_INIT` for the second case,
+ * and since `rcl_*_fini` is `RCL_WARN_UNUSED` upstream, a ported cleanup path
+ * that checks its return reported a shutdown failure that had not happened.
  */
 NROS_PUBLIC nros_ret_t rcl_guard_condition_fini(struct nros_guard_condition_t *guard);
 
@@ -5712,9 +5877,15 @@ nros_ret_t nros_node_init_ex(struct nros_node_t *node,
  * * `node` - Pointer to an initialized node
  *
  * # Returns
- * * `NROS_RET_OK` on success
+ * * `NROS_RET_OK` on success, AND for a node that was never initialised or is
+ *   already finalised — `fini` is IDEMPOTENT (phase-417 stage 3, the same
+ *   sweep as `rcl_guard_condition_fini`). `rcl/src/rcl/node.c` @ humble says
+ *   it in words: `if (!node->impl) { // Repeat calls to fini or calling fini
+ *   on a zero initialized node is ok. return RCL_RET_OK; }`. Ours returned
+ *   `NROS_RET_NOT_INIT`, so a ported cleanup path that checks the return —
+ *   `rcl_node_fini` is `RCL_WARN_UNUSED` upstream — reported a shutdown
+ *   failure that had not happened.
  * * `NROS_RET_INVALID_ARGUMENT` if node is NULL
- * * `NROS_RET_NOT_INIT` if not initialized
  *
  * # Safety
  * * `node` must be a valid pointer to an initialized nros_node_t

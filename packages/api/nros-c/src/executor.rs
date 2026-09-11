@@ -128,22 +128,59 @@ unsafe fn set_executor_node_identity(
 // C types (kept for API compatibility)
 // ============================================================================
 
+/// One registered handle, as a trigger predicate sees it.
+///
+/// This is the array element `nros_executor_trigger_t` walks — rclc's
+/// `rclc_executor_handle_t` narrowed to the two things a trigger may
+/// legitimately read. It deliberately does NOT take rclc's name (RFC-0089: an
+/// upstream name may be adopted only if the contract is the same), so a ported
+/// custom trigger that reaches for `handles[i].subscription` fails to COMPILE
+/// rather than reading a field that is not there.
+///
+/// phase-417 stage 3: the array exists so `rclc_executor_trigger_one` can
+/// compare its `obj` against the ENTITY POINTER, which is upstream's contract.
+/// The previous shape passed only a `const bool *` readiness array, which
+/// carried no entity identity at all — see `rclc_executor_trigger_one`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nros_executor_trigger_handle_t {
+    /// The entity this handle was registered from: the `nros_subscription_t *`,
+    /// `nros_timer_t *`, `nros_service_t *`, `nros_client_t *`,
+    /// `nros_guard_condition_t *`, `nros_action_server_t *` or
+    /// `nros_action_client_t *` that was passed to the matching
+    /// `nros_executor_add_*` / `rclc_executor_add_*` call.
+    ///
+    /// NULL for a handle whose registering entity is not a C object (nothing in
+    /// the current surface), which a trigger must treat as "matches nothing".
+    pub entity: *mut core::ffi::c_void,
+    /// Whether this handle has data to process in the cycle being decided.
+    pub data_available: bool,
+}
+
 /// Trigger function type for executor.
 ///
-/// A trigger function receives a boolean array indicating which handles have
-/// data ready, along with the count of handles. It returns true if the executor
-/// should process callbacks.
+/// A trigger function receives the executor's registered handles, each carrying
+/// its entity pointer and whether it has data this cycle. It returns true if
+/// the executor should process callbacks.
+///
+/// Mirrors rclc's `rclc_executor_trigger_t`
+/// (`bool (*)(rclc_executor_handle_t *, unsigned int, void *)`), with our
+/// narrower handle element and a `size_t` count.
 ///
 /// # Parameters
-/// * `ready` - Pointer to boolean array (one per handle)
-/// * `count` - Number of elements in the array
-/// * `context` - User-provided context pointer
+/// * `handles` - Pointer to an array of `size` registered handles
+/// * `size` - Number of elements in the array
+/// * `obj` - User-provided object pointer (rclc's `trigger_object`)
 ///
 /// # Returns
 /// * `true` if executor should process callbacks
 /// * `false` if executor should skip processing
 pub type nros_executor_trigger_t = Option<
-    unsafe extern "C" fn(ready: *const bool, count: usize, context: *mut core::ffi::c_void) -> bool,
+    unsafe extern "C" fn(
+        handles: *const nros_executor_trigger_handle_t,
+        size: usize,
+        obj: *mut core::ffi::c_void,
+    ) -> bool,
 >;
 
 /// Callback invocation mode
@@ -226,6 +263,25 @@ pub struct nros_executor_t {
     /// callbacks. Blocking helpers (`nros_client_call`, `nros_action_send_goal`,
     /// etc.) check this flag and return `NROS_RET_REENTRANT` if set.
     pub in_dispatch: bool,
+    /// Entity pointer per registered handle slot, indexed by the executor's
+    /// handle id (phase-417 stage 3).
+    ///
+    /// Written by every `..._add_*` that registers a handle, read only when
+    /// building the [`nros_executor_trigger_handle_t`] array a trigger
+    /// predicate walks. This is the storage that makes
+    /// `rclc_executor_trigger_one`'s upstream contract — "fire iff `obj` is one
+    /// of MY entities and that entity has data" — expressible at all: the
+    /// readiness array alone carries no entity identity.
+    ///
+    /// NULL means "no entity recorded for this slot".
+    ///
+    /// Placed BEFORE `_opaque` on purpose. No C code reads it — it is written
+    /// and read only here, at the Rust layout's offsets — and every field a C
+    /// caller does read sits above it, so a committed fallback config header
+    /// that states a different `NROS_EXECUTOR_MAX_HANDLES` (the NuttX snapshot
+    /// states the 64-handle ceiling) only changes how much slack the C object
+    /// carries, exactly like the `_opaque` bounds.
+    pub _handle_entities: [*mut core::ffi::c_void; NROS_EXECUTOR_MAX_HANDLES],
     /// Inline opaque storage for the executor.
     /// Managed by nros_executor_init/fini — no heap allocation needed.
     pub _opaque: [u64; EXECUTOR_OPAQUE_U64S],
@@ -247,6 +303,7 @@ impl Default for nros_executor_t {
             service_count: 0,
             invocation_time_ns: 0,
             in_dispatch: false,
+            _handle_entities: [ptr::null_mut(); NROS_EXECUTOR_MAX_HANDLES],
             #[allow(clippy::large_stack_arrays)] // Intentional: inline opaque storage avoids heap
             _opaque: [0u64; EXECUTOR_OPAQUE_U64S],
         }
@@ -356,6 +413,7 @@ pub unsafe extern "C" fn nros_executor_init(
 
     executor.max_handles = max_handles.min(NROS_EXECUTOR_MAX_HANDLES);
     executor.handle_count = 0;
+    executor._handle_entities = [ptr::null_mut(); NROS_EXECUTOR_MAX_HANDLES];
     executor.support = support;
     executor.timeout_ns = 100_000_000; // 100ms default
     executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
@@ -1227,10 +1285,84 @@ pub unsafe extern "C" fn nros_executor_node_init(
     NROS_RET_OK
 }
 
+/// Record the entity a handle slot was registered from, so a trigger predicate
+/// can be handed the entity pointer rclc's `rclc_executor_trigger_one` compares
+/// against (phase-417 stage 3).
+///
+/// One spelling, called from every `..._add_*` that registers a handle: an
+/// unrecorded slot presents a NULL entity to the trigger, which is the "matches
+/// nothing" case, i.e. exactly the silent never-fires this pass exists to
+/// remove. Out-of-range ids are dropped rather than panicking — the executor's
+/// own capacity check already bounds them.
+#[inline]
+fn record_trigger_entity(
+    table: &mut [*mut core::ffi::c_void; NROS_EXECUTOR_MAX_HANDLES],
+    handle_id: nros_node::HandleId,
+    entity: *mut core::ffi::c_void,
+) {
+    if let Some(slot) = table.get_mut(handle_id.0) {
+        *slot = entity;
+    }
+}
+
+/// Bridge from the internal executor's readiness snapshot to the C trigger ABI.
+///
+/// `context` is the owning `nros_executor_t *`. The internal executor knows
+/// which slots have data but nothing about C entities; the C executor knows the
+/// entities but not the readiness. This joins them into the
+/// [`nros_executor_trigger_handle_t`] array the user's predicate walks, which is
+/// what lets `rclc_executor_trigger_one` be upstream's function rather than a
+/// different one wearing its name.
+///
+/// # Safety
+/// * `ready` must point to at least `count` booleans.
+/// * `context` must be the live `nros_executor_t` this trigger was set on.
+unsafe extern "C" fn trigger_bridge(
+    ready: *const bool,
+    count: usize,
+    context: *mut core::ffi::c_void,
+) -> bool {
+    if context.is_null() {
+        return false;
+    }
+    let executor = &*(context as *const nros_executor_t);
+    let Some(trigger) = executor.trigger else {
+        // No user trigger: `rclc_executor_set_trigger(exec, NULL, …)` maps to
+        // the internal `Any` and never reaches this bridge. Reaching it anyway
+        // means the executor was rewritten under us; dispatch nothing.
+        return false;
+    };
+
+    // Bounded by BOTH ends of the join: our entity table is
+    // `NROS_EXECUTOR_MAX_HANDLES` wide, and the readiness array the internal
+    // executor builds is 64 (its readiness set is a `u64` bitmask, so a slot
+    // above 63 has no bit and no element). Taking the smaller keeps a
+    // hypothetical `NROS_EXECUTOR_MAX_CBS > 64` from reading past either.
+    const READY_LEN: usize = 64;
+    let n = count.min(NROS_EXECUTOR_MAX_HANDLES).min(READY_LEN);
+    let mut handles = [nros_executor_trigger_handle_t {
+        entity: ptr::null_mut(),
+        data_available: false,
+    }; NROS_EXECUTOR_MAX_HANDLES];
+    for (i, handle) in handles.iter_mut().enumerate().take(n) {
+        handle.entity = executor._handle_entities[i];
+        handle.data_available = *ready.add(i);
+    }
+
+    trigger(handles.as_ptr(), n, executor.trigger_context)
+}
+
 /// Set the trigger condition for the executor.
+///
+/// `context` is rclc's `trigger_object`: it is handed to `trigger` unchanged on
+/// every cycle. For `rclc_executor_trigger_one` it is the ENTITY pointer —
+/// `rclc_executor_set_trigger(&exec, rclc_executor_trigger_one, &my_sub)`.
 ///
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
+/// * `executor` must not be moved or copied while the trigger is installed —
+///   the internal executor holds its address so the trigger can be given the
+///   handle array.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_set_trigger(
     executor: *mut nros_executor_t,
@@ -1239,6 +1371,7 @@ pub unsafe extern "C" fn rclc_executor_set_trigger(
 ) -> nros_ret_t {
     validate_not_null!(executor);
 
+    let executor_ptr = executor;
     let executor = &mut *executor;
 
     if executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
@@ -1250,13 +1383,15 @@ pub unsafe extern "C" fn rclc_executor_set_trigger(
     executor.trigger = trigger;
     executor.trigger_context = context;
 
-    // Forward to the internal executor
+    // Forward to the internal executor. The RAW predicate is always OUR bridge,
+    // never the user's function directly: the user's function needs the entity
+    // pointers, which live on this side.
     let rust_exec = get_executor(&mut executor._opaque);
     match trigger {
-        Some(cb) => {
+        Some(_) => {
             rust_exec.set_trigger(nros_node::Trigger::RawPredicate {
-                callback: cb,
-                context,
+                callback: trigger_bridge,
+                context: executor_ptr as *mut core::ffi::c_void,
             });
         }
         None => {
@@ -1273,17 +1408,23 @@ pub unsafe extern "C" fn rclc_executor_set_trigger(
 
 /// Built-in trigger: fire when ANY handle has data ready.
 ///
+/// rclc's `rclc_executor_trigger_any`. `obj` is unused; an empty handle array
+/// does not fire.
+///
 /// # Safety
-/// * `ready` must point to a valid array of at least `count` booleans
+/// * `handles` must point to a valid array of at least `size` elements
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_trigger_any(
-    ready: *const bool,
-    count: usize,
-    context: *mut core::ffi::c_void,
+    handles: *const nros_executor_trigger_handle_t,
+    size: usize,
+    obj: *mut core::ffi::c_void,
 ) -> bool {
-    let _ = context;
-    for i in 0..count {
-        if *ready.add(i) {
+    let _ = obj;
+    if handles.is_null() {
+        return false;
+    }
+    for i in 0..size {
+        if (*handles.add(i)).data_available {
             return true;
         }
     }
@@ -1292,20 +1433,28 @@ pub unsafe extern "C" fn rclc_executor_trigger_any(
 
 /// Built-in trigger: fire when ALL handles have data ready.
 ///
+/// rclc's `rclc_executor_trigger_all`. `obj` is unused.
+///
+/// An EMPTY handle array fires, because "every handle has data" is vacuously
+/// true — upstream's loop simply does not execute and returns `true`. Ours
+/// returned `false` for that case until phase-417 stage 3; it was the same
+/// compile-and-differ class as `rclc_executor_trigger_one` one function over,
+/// found by sweeping the siblings rather than by a report.
+///
 /// # Safety
-/// * `ready` must point to a valid array of at least `count` booleans
+/// * `handles` must point to a valid array of at least `size` elements
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_trigger_all(
-    ready: *const bool,
-    count: usize,
-    context: *mut core::ffi::c_void,
+    handles: *const nros_executor_trigger_handle_t,
+    size: usize,
+    obj: *mut core::ffi::c_void,
 ) -> bool {
-    let _ = context;
-    if count == 0 {
+    let _ = obj;
+    if handles.is_null() {
         return false;
     }
-    for i in 0..count {
-        if !*ready.add(i) {
+    for i in 0..size {
+        if !(*handles.add(i)).data_available {
             return false;
         }
     }
@@ -1314,46 +1463,95 @@ pub unsafe extern "C" fn rclc_executor_trigger_all(
 
 /// Built-in trigger: always fire (unconditionally).
 ///
+/// rclc's `rclc_executor_trigger_always`.
+///
 /// # Safety
-/// * `ready` and `count` are unused
+/// * `handles`, `size` and `obj` are unused
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rclc_executor_trigger_always(
-    ready: *const bool,
-    count: usize,
-    context: *mut core::ffi::c_void,
+    handles: *const nros_executor_trigger_handle_t,
+    size: usize,
+    obj: *mut core::ffi::c_void,
 ) -> bool {
-    let _ = (ready, count, context);
+    let _ = (handles, size, obj);
     true
 }
 
-/// Built-in trigger: fire when the handle at the index stored in context has data.
+/// Built-in trigger: fire when the handle registered from the entity `obj` has
+/// data.
 ///
-/// `context` must point to a caller-owned `size_t` holding the handle
-/// index. Passing `(void*)(size_t)idx` directly is NOT supported — that
-/// pattern is UB on strict-alignment targets and CHERI, and the function
-/// will dereference the pointer.
+/// rclc's `rclc_executor_trigger_one`: `obj` is the ENTITY POINTER, and the
+/// predicate walks the handle array looking for a handle that both has data and
+/// was registered from that entity.
 ///
-/// Recommended usage:
+/// ```c
+/// rclc_executor_set_trigger(&exec, rclc_executor_trigger_one, &my_subscription);
+/// ```
+///
+/// Until phase-417 stage 3 this function read `*(size_t *)obj` and used it as an
+/// INDEX into the readiness array. The upstream spelling above compiled with no
+/// warning and then reinterpreted the entity's address as an index, which is
+/// essentially always out of range — so the trigger never fired, the executor
+/// dispatched nothing, and nothing said so (RFC-0089: never compile and differ).
+/// The index form still exists under its own name,
+/// [`nros_executor_trigger_index`].
+///
+/// A NULL `obj`, or an entity this executor never registered, matches nothing
+/// and the trigger never fires — upstream's behaviour for an unknown object.
+///
+/// # Safety
+/// * `handles` must point to a valid array of at least `size` elements
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rclc_executor_trigger_one(
+    handles: *const nros_executor_trigger_handle_t,
+    size: usize,
+    obj: *mut core::ffi::c_void,
+) -> bool {
+    if handles.is_null() || obj.is_null() {
+        return false;
+    }
+    for i in 0..size {
+        let handle = &*handles.add(i);
+        if handle.data_available && !handle.entity.is_null() && handle.entity == obj {
+            return true;
+        }
+    }
+    false
+}
+
+/// Built-in trigger: fire when the handle at the index stored in `obj` has data.
+///
+/// OURS, not rclc's — ROS 2 has no counterpart. It is the pre-phase-417
+/// behaviour of `rclc_executor_trigger_one`, kept under a name that cannot be
+/// confused with upstream's entity-pointer contract. Reach for it only when the
+/// image genuinely knows its registration order; naming the entity is safer and
+/// is what a ported node does.
+///
+/// `obj` must point to a caller-owned `size_t` holding the handle index.
+/// Passing `(void*)(size_t)idx` directly is NOT supported — that pattern is UB
+/// on strict-alignment targets and CHERI, and the function will dereference the
+/// pointer.
+///
 /// ```c
 /// static size_t my_trigger_index = 2;
-/// rclc_executor_set_trigger(&exec, rclc_executor_trigger_one, &my_trigger_index);
+/// rclc_executor_set_trigger(&exec, nros_executor_trigger_index, &my_trigger_index);
 /// ```
 ///
 /// # Safety
-/// * `ready` must point to a valid array of at least `count` booleans.
-/// * `context` must point to a valid `size_t` alive for the trigger's lifetime.
+/// * `handles` must point to a valid array of at least `size` elements.
+/// * `obj` must point to a valid `size_t` alive for the trigger's lifetime.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rclc_executor_trigger_one(
-    ready: *const bool,
-    count: usize,
-    context: *mut core::ffi::c_void,
+pub unsafe extern "C" fn nros_executor_trigger_index(
+    handles: *const nros_executor_trigger_handle_t,
+    size: usize,
+    obj: *mut core::ffi::c_void,
 ) -> bool {
-    if context.is_null() {
+    if handles.is_null() || obj.is_null() {
         return false;
     }
-    let index = *(context as *const usize);
-    if index < count {
-        *ready.add(index)
+    let index = *(obj as *const usize);
+    if index < size {
+        (*handles.add(index)).data_available
     } else {
         false
     }
@@ -1462,6 +1660,11 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
                 // Store the handle ID in the subscription for later reference
                 let sub_mut = &mut *subscription;
                 sub_mut.set_handle_id(handle_id);
+                record_trigger_entity(
+                    &mut executor._handle_entities,
+                    handle_id,
+                    subscription as *mut core::ffi::c_void,
+                );
 
                 // Set invocation mode
                 if invocation == nros_executor_handle_invocation_t::NROS_EXECUTOR_ALWAYS {
@@ -1715,6 +1918,11 @@ pub unsafe extern "C" fn nros_executor_add_subscription_typed_sized(
             Ok(handle_id) => {
                 let sub_mut = &mut *subscription;
                 sub_mut.set_handle_id(handle_id);
+                record_trigger_entity(
+                    &mut executor._handle_entities,
+                    handle_id,
+                    subscription as *mut core::ffi::c_void,
+                );
 
                 if invocation == nros_executor_handle_invocation_t::NROS_EXECUTOR_ALWAYS {
                     rust_exec.set_invocation(handle_id, nros_node::InvocationMode::Always);
@@ -1960,6 +2168,11 @@ pub unsafe extern "C" fn rclc_executor_add_timer(
                 let timer_mut = &mut *timer;
                 timer_mut.set_handle_id(handle_id);
                 timer_mut.set_executor_ptr(executor._opaque.as_mut_ptr() as *mut core::ffi::c_void);
+                record_trigger_entity(
+                    &mut executor._handle_entities,
+                    handle_id,
+                    timer as *mut core::ffi::c_void,
+                );
 
                 executor.handle_count += 1;
                 executor.timer_count += 1;
@@ -2067,6 +2280,11 @@ pub unsafe extern "C" fn nros_executor_add_subscription_in_group(
             Ok(handle_id) => {
                 let sub_mut = &mut *subscription;
                 sub_mut.set_handle_id(handle_id);
+                record_trigger_entity(
+                    &mut executor._handle_entities,
+                    handle_id,
+                    subscription as *mut core::ffi::c_void,
+                );
 
                 // Apply invocation override if not the default (on-new-data = 0).
                 if invocation == nros_executor_handle_invocation_t::NROS_EXECUTOR_ALWAYS {
@@ -2150,6 +2368,11 @@ pub unsafe extern "C" fn nros_executor_add_timer_in_group(
                 let timer_mut = &mut *timer;
                 timer_mut.set_handle_id(handle_id);
                 timer_mut.set_executor_ptr(executor._opaque.as_mut_ptr() as *mut core::ffi::c_void);
+                record_trigger_entity(
+                    &mut executor._handle_entities,
+                    handle_id,
+                    timer as *mut core::ffi::c_void,
+                );
 
                 executor.handle_count += 1;
                 executor.timer_count += 1;
@@ -2257,6 +2480,11 @@ pub unsafe extern "C" fn nros_executor_add_service(
 
         match result {
             Ok(handle_id) => {
+                record_trigger_entity(
+                    &mut executor._handle_entities,
+                    handle_id,
+                    service as *mut core::ffi::c_void,
+                );
                 // Phase 189.M3.3.a — apply a scheduling-context binding requested
                 // via `nros_service_init_with_options`. Done *before* the
                 // `executor as *mut _` store below so `rust_exec`'s borrow of
@@ -2415,6 +2643,11 @@ pub unsafe extern "C" fn nros_executor_add_client(
 
         match result {
             Ok(handle_id) => {
+                record_trigger_entity(
+                    &mut executor._handle_entities,
+                    handle_id,
+                    client as *mut core::ffi::c_void,
+                );
                 // Phase 189.M3.3.a — apply a sched-context binding requested via
                 // `nros_client_init_with_options`, *before* the `executor as
                 // *mut _` store below so `rust_exec`'s `executor._opaque` borrow
@@ -2492,6 +2725,11 @@ pub unsafe extern "C" fn nros_executor_add_guard_condition(
                 let guard_mut = &mut *guard;
                 guard_mut.set_handle_id(handle_id);
                 guard_mut.set_guard_handle(guard_handle);
+                record_trigger_entity(
+                    &mut executor._handle_entities,
+                    handle_id,
+                    guard as *mut core::ffi::c_void,
+                );
 
                 executor.handle_count += 1;
                 NROS_RET_OK
@@ -2618,6 +2856,11 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
 
         match result {
             Ok(handle) => {
+                record_trigger_entity(
+                    &mut executor._handle_entities,
+                    handle.handle_id(),
+                    server as *mut core::ffi::c_void,
+                );
                 // Phase 189.M3.3.b — bind the action's goal-service handle to the
                 // requested sched context (governs the action's callback
                 // dispatch). `0` = inherit (no-op); an unknown slot fails
@@ -2754,6 +2997,11 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
 
         match result {
             Ok(handle) => {
+                record_trigger_entity(
+                    &mut executor._handle_entities,
+                    nros_node::executor::HandleId(handle.entry_index()),
+                    client as *mut core::ffi::c_void,
+                );
                 let client_mut = &mut *client;
                 client_mut._internal.arena_entry_index = handle.entry_index() as i32;
                 client_mut._internal.executor_ptr = opaque_ptr;
@@ -2847,9 +3095,57 @@ unsafe extern "C" fn result_trampoline(
 // Spin functions — delegated to nros-node executor
 // ============================================================================
 
+/// What a COMPLETED spin cycle returns, as a function of whether it did any
+/// work (phase-417 stage 3).
+///
+/// It returns `NROS_RET_OK` either way, and `any_work` is a parameter only so
+/// the case that used to differ has a name. rclc's `rclc_executor_spin_some`
+/// does `rc = rcl_wait(…); RCLC_UNUSED(rc);` — it DISCARDS the wait's
+/// `RCL_RET_TIMEOUT` — so an idle tick is a success upstream, and its own
+/// callers (`rclc_executor_spin`, `rclc_executor_spin_one_period`) accept
+/// `RCL_RET_TIMEOUT` as well. Ours returned `NROS_RET_TIMEOUT` on every idle
+/// tick, so the ported and legal
+/// `if (rclc_executor_spin_some(&exec, t) != RCL_RET_OK) error();` fired the
+/// first time the transport was quiet.
+///
+/// The idle/busy distinction is deliberately NOT re-exposed under another name:
+/// the two in-tree readers of it were both REMOVED as wrong (issues 0324 and
+/// 0355 — a live-but-idle transport is not a failing one), and no caller in the
+/// tree wants it. Session health is `session_io_failures()`.
+#[inline]
+fn spin_cycle_ret(any_work: bool) -> nros_ret_t {
+    let _ = any_work;
+    NROS_RET_OK
+}
+
+/// The WAIT BUDGET a period spin hands to `rclc_executor_spin_some`
+/// (phase-417 stage 3).
+///
+/// Upstream's `rclc_executor_spin_one_period` calls
+/// `rclc_executor_spin_some(executor, executor->timeout_ns)` and uses `period`
+/// for nothing but sleeping until the next invocation point: the wait budget
+/// and the invocation RATE are two knobs a caller sets independently. Ours
+/// passed `period_ns` as the timeout, which conflated them — a node that set a
+/// short `rclc_executor_set_timeout` and a long period had its wait stretched
+/// to the whole period, and `rclc_executor_set_timeout` was honoured by
+/// `rclc_executor_spin` and silently ignored by both period spins.
+///
+/// `period_ns` is taken and ignored so that a future edit re-conflating them has
+/// to go through this function and its test.
+#[inline]
+fn period_spin_wait_ns(executor: &nros_executor_t, period_ns: u64) -> u64 {
+    let _ = period_ns;
+    executor.timeout_ns
+}
+
 /// Spin the executor once.
 ///
 /// Drives middleware I/O, then dispatches ready callbacks.
+///
+/// # Returns
+/// `NROS_RET_OK` for any completed cycle, whether or not a callback ran —
+/// rclc discards the wait's timeout, so an idle tick is a success. See
+/// [`spin_cycle_ret`].
 ///
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
@@ -2886,11 +3182,7 @@ pub unsafe extern "C" fn rclc_executor_spin_some(
         let result = rust_exec.spin_once(core::time::Duration::from_millis(timeout_ms));
         executor.in_dispatch = false;
 
-        if result.any_work() {
-            NROS_RET_OK
-        } else {
-            NROS_RET_TIMEOUT
-        }
+        spin_cycle_ret(result.any_work())
     }
 }
 
@@ -3006,13 +3298,18 @@ pub unsafe extern "C" fn rclc_executor_spin_period(
     while executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
         && !get_executor(&mut executor_ref._opaque).is_halted()
     {
-        // `period_ns` is an upper bound on how long `drive_io` will block.
+        // phase-417 stage 3 — the WAIT is `timeout_ns`
+        // (`rclc_executor_set_timeout`), never `period_ns`; the period is the
+        // invocation RATE and is spent in the sleep below. See
+        // `period_spin_wait_ns`.
+        //
         // The timer delta credited to spin_once is the *real* wall-clock
         // elapsed inside drive_io (measured via std::time::Instant when
-        // available), not `period_ns` itself — transports like zenoh-pico's
+        // available), not the requested timeout — transports like zenoh-pico's
         // condvar wake early on data arrival, and treating the requested
         // timeout as the delta would tick timers faster than wall-clock.
-        let ret = rclc_executor_spin_some(executor, period_ns);
+        let wait_ns = period_spin_wait_ns(executor_ref, period_ns);
+        let ret = rclc_executor_spin_some(executor, wait_ns);
         // issue 0355 — bail only on genuine SESSION death, read from the real
         // `drive_io` health counter, NOT from `spin_some`'s idle
         // `NROS_RET_TIMEOUT`. See `rclc_executor_spin` for the full rationale:
@@ -3070,10 +3367,12 @@ pub unsafe extern "C" fn rclc_executor_spin_one_period(
 
     let start = crate::platform::get_time_ns();
 
-    // `period_ns` bounds how long `drive_io` may block. spin_once
-    // measures the actual elapsed wall-clock and credits that — not
-    // `period_ns` — to timers. See `rclc_executor_spin_period` above.
-    let _ = rclc_executor_spin_some(executor, period_ns);
+    // phase-417 stage 3 — the WAIT is `timeout_ns`, not `period_ns`; upstream's
+    // `rclc_executor_spin_one_period` calls
+    // `rclc_executor_spin_some(executor, executor->timeout_ns)` and spends the
+    // period on the sleep below. See `period_spin_wait_ns`.
+    let wait_ns = period_spin_wait_ns(executor_ref, period_ns);
+    let _ = rclc_executor_spin_some(executor, wait_ns);
 
     // Sleep for remaining time in period
     let elapsed = crate::platform::get_time_ns().saturating_sub(start);
@@ -3173,6 +3472,14 @@ pub unsafe extern "C" fn nros_executor_is_spinning(executor: *const nros_executo
 
 /// Finalize an executor.
 ///
+/// IDEMPOTENT: a zero-initialised executor is not an error and returns
+/// `NROS_RET_OK` (phase-417 stage 3, the same sweep as
+/// `rcl_guard_condition_fini` / `rcl_node_fini`). rclc says so in a comment of
+/// its own — `rclc/src/rclc/executor.c` @ humble:
+/// `} else { // Repeated calls to fini or calling fini on a zero initialized
+/// executor is ok }` followed by `return RCL_RET_OK;`. Ours returned
+/// `NROS_RET_NOT_INIT`.
+///
 /// # Safety
 /// * `executor` must be a valid pointer
 #[unsafe(no_mangle)]
@@ -3181,8 +3488,15 @@ pub unsafe extern "C" fn rclc_executor_fini(executor: *mut nros_executor_t) -> n
 
     let executor = &mut *executor;
 
-    if executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED {
-        return NROS_RET_NOT_INIT;
+    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        && executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+    {
+        // No live internal executor in `_opaque`: either one was never
+        // constructed (UNINITIALIZED) or this fini already dropped it and
+        // zeroed the storage (SHUTDOWN). Nothing to drop — and `drop_in_place`
+        // on the zeroed storage is UB, which the old `== UNINITIALIZED` guard
+        // let a second `fini` call reach. Idempotent, per rclc.
+        return NROS_RET_OK;
     }
 
     // Drop the internal executor in-place — arena entries are cleaned up
@@ -3192,6 +3506,7 @@ pub unsafe extern "C" fn rclc_executor_fini(executor: *mut nros_executor_t) -> n
         executor._opaque = [0u64; EXECUTOR_OPAQUE_U64S];
     }
     executor.handle_count = 0;
+    executor._handle_entities = [ptr::null_mut(); NROS_EXECUTOR_MAX_HANDLES];
     executor.subscription_count = 0;
     executor.timer_count = 0;
     executor.service_count = 0;
@@ -3689,125 +4004,281 @@ pub unsafe extern "C" fn nros_executor_remove_on_shutdown_callback(
 mod tests {
     use super::*;
 
+    /// Stand-in for a registered C entity (`nros_subscription_t`, …). Only its
+    /// ADDRESS is ever compared, but the payload is deliberately a `usize` that
+    /// looks like a plausible handle index: the pre-phase-417
+    /// `rclc_executor_trigger_one` read exactly this word and used it as one.
+    struct FakeEntity(usize);
+
+    /// The address of a stand-in entity, as the executor would record it.
+    fn entity_ptr(e: &mut FakeEntity) -> *mut core::ffi::c_void {
+        e as *mut FakeEntity as *mut core::ffi::c_void
+    }
+
+    /// One handle array element.
+    fn handle(
+        entity: *mut core::ffi::c_void,
+        data_available: bool,
+    ) -> nros_executor_trigger_handle_t {
+        nros_executor_trigger_handle_t {
+            entity,
+            data_available,
+        }
+    }
+
+    /// An empty handle array, spelled once so the `[]` has a type.
+    const NO_HANDLES: [nros_executor_trigger_handle_t; 0] = [];
+
     #[test]
-    fn test_trigger_any_matches_behavior() {
+    fn trigger_any_fires_when_one_handle_has_data() {
         unsafe {
-            let ready = [true, false, true];
+            let (mut a, mut b, mut c) = (FakeEntity(0), FakeEntity(1), FakeEntity(2));
+            let (pa, pb, pc) = (entity_ptr(&mut a), entity_ptr(&mut b), entity_ptr(&mut c));
+
+            let h = [handle(pa, true), handle(pb, false), handle(pc, true)];
             assert!(rclc_executor_trigger_any(
-                ready.as_ptr(),
-                ready.len(),
+                h.as_ptr(),
+                h.len(),
                 ptr::null_mut()
             ));
 
-            let ready = [false, false, false];
+            let h = [handle(pa, false), handle(pb, false), handle(pc, false)];
             assert!(!rclc_executor_trigger_any(
-                ready.as_ptr(),
-                ready.len(),
+                h.as_ptr(),
+                h.len(),
                 ptr::null_mut()
             ));
 
-            assert!(!rclc_executor_trigger_any([].as_ptr(), 0, ptr::null_mut()));
+            // rclc: an empty handle array does not fire `any`.
+            assert!(!rclc_executor_trigger_any(
+                NO_HANDLES.as_ptr(),
+                0,
+                ptr::null_mut()
+            ));
         }
     }
 
     #[test]
-    fn test_trigger_all_matches_behavior() {
+    fn trigger_all_fires_only_when_every_handle_has_data() {
         unsafe {
-            let ready = [true, true, true];
+            let (mut a, mut b, mut c) = (FakeEntity(0), FakeEntity(1), FakeEntity(2));
+            let (pa, pb, pc) = (entity_ptr(&mut a), entity_ptr(&mut b), entity_ptr(&mut c));
+
+            let h = [handle(pa, true), handle(pb, true), handle(pc, true)];
             assert!(rclc_executor_trigger_all(
-                ready.as_ptr(),
-                ready.len(),
+                h.as_ptr(),
+                h.len(),
                 ptr::null_mut()
             ));
 
-            let ready = [true, false, true];
+            let h = [handle(pa, true), handle(pb, false), handle(pc, true)];
             assert!(!rclc_executor_trigger_all(
-                ready.as_ptr(),
-                ready.len(),
+                h.as_ptr(),
+                h.len(),
                 ptr::null_mut()
             ));
 
-            let ready = [false, false, false];
+            let h = [handle(pa, false), handle(pb, false), handle(pc, false)];
             assert!(!rclc_executor_trigger_all(
-                ready.as_ptr(),
-                ready.len(),
+                h.as_ptr(),
+                h.len(),
                 ptr::null_mut()
             ));
+        }
+    }
 
-            assert!(!rclc_executor_trigger_all([].as_ptr(), 0, ptr::null_mut()));
+    /// phase-417 stage 3 — the sibling `rclc_executor_trigger_one` was reported
+    /// for. rclc's `trigger_all` loop does not execute for an empty array and
+    /// returns `true`; ours special-cased `count == 0` to `false`.
+    #[test]
+    fn trigger_all_fires_on_an_empty_handle_array_like_rclc() {
+        unsafe {
+            assert!(
+                rclc_executor_trigger_all(NO_HANDLES.as_ptr(), 0, ptr::null_mut()),
+                "rclc_executor_trigger_all over zero handles is vacuously true upstream"
+            );
         }
     }
 
     #[test]
-    fn test_trigger_always_matches_behavior() {
+    fn trigger_always_fires_regardless_of_readiness() {
         unsafe {
+            let (mut a, mut b) = (FakeEntity(0), FakeEntity(1));
+            let (pa, pb) = (entity_ptr(&mut a), entity_ptr(&mut b));
+
             assert!(rclc_executor_trigger_always(
-                [].as_ptr(),
+                NO_HANDLES.as_ptr(),
                 0,
                 ptr::null_mut()
             ));
 
-            let ready = [false, false];
+            let h = [handle(pa, false), handle(pb, false)];
             assert!(rclc_executor_trigger_always(
-                ready.as_ptr(),
-                ready.len(),
+                h.as_ptr(),
+                h.len(),
                 ptr::null_mut()
             ));
         }
     }
 
+    /// phase-417 stage 3 / ledger row `c:executor_trigger_one`.
+    ///
+    /// rclc's contract: `obj` is the ENTITY POINTER, and the predicate fires iff
+    /// some handle registered from that entity has data. Before this pass `obj`
+    /// was read as `*(size_t *)obj` and used as an INDEX, so the documented
+    /// upstream idiom
+    /// `rclc_executor_set_trigger(&exec, rclc_executor_trigger_one, &my_sub)`
+    /// compiled with no warning and then never fired.
     #[test]
-    fn test_trigger_one_matches_behavior() {
+    fn trigger_one_fires_for_the_entity_whose_handle_has_data() {
         unsafe {
-            let ready = [false, true, false];
-            let mut idx: usize = 1;
-            assert!(rclc_executor_trigger_one(
-                ready.as_ptr(),
-                ready.len(),
-                &mut idx as *mut usize as *mut core::ffi::c_void,
+            let (mut a, mut b, mut c) = (FakeEntity(0), FakeEntity(1), FakeEntity(2));
+            let (pa, pb, pc) = (entity_ptr(&mut a), entity_ptr(&mut b), entity_ptr(&mut c));
+
+            let h = [handle(pa, false), handle(pb, true), handle(pc, false)];
+
+            // The entity whose handle has data fires...
+            assert!(
+                rclc_executor_trigger_one(h.as_ptr(), h.len(), pb),
+                "obj is the entity pointer: handle 1 is b's and has data"
+            );
+            // ...and the entities whose handles do not, do not.
+            assert!(!rclc_executor_trigger_one(h.as_ptr(), h.len(), pa));
+            assert!(!rclc_executor_trigger_one(h.as_ptr(), h.len(), pc));
+
+            // An entity this executor never registered matches nothing.
+            let mut stranger = FakeEntity(1);
+            assert!(!rclc_executor_trigger_one(
+                h.as_ptr(),
+                h.len(),
+                entity_ptr(&mut stranger),
             ));
 
-            idx = 0;
+            // NULL obj matches nothing and dereferences nothing.
             assert!(!rclc_executor_trigger_one(
-                ready.as_ptr(),
-                ready.len(),
-                &mut idx as *mut usize as *mut core::ffi::c_void,
-            ));
-
-            idx = 10;
-            assert!(!rclc_executor_trigger_one(
-                ready.as_ptr(),
-                ready.len(),
-                &mut idx as *mut usize as *mut core::ffi::c_void,
-            ));
-
-            // NULL context returns false (no dereference).
-            assert!(!rclc_executor_trigger_one(
-                ready.as_ptr(),
-                ready.len(),
-                core::ptr::null_mut(),
+                h.as_ptr(),
+                h.len(),
+                ptr::null_mut()
             ));
         }
     }
 
+    /// The identity half, arranged so that reading the entity's FIRST WORD as
+    /// an index — the pre-phase-417 body — gets BOTH answers wrong rather than
+    /// coincidentally right.
+    ///
+    /// `a` holds the word `0` and owns handle 1, which HAS data.
+    /// `b` holds the word `1` and owns handle 0, which has NOT.
+    /// By identity: `obj = &a` fires, `obj = &b` does not. By first-word index:
+    /// `&a` → handle 0 → false, `&b` → handle 1 → true. Exactly inverted.
     #[test]
-    fn test_trigger_all_matches_rust_behavior() {
-        let test_cases: &[(&[bool], bool)] = &[
-            (&[true, true, true], true),
-            (&[true, false, true], false),
-            (&[false, false, false], false),
-            (&[true], true),
-            (&[false], false),
-            (&[], false),
-        ];
+    fn trigger_one_keys_on_identity_not_on_the_first_word_of_the_entity() {
+        unsafe {
+            let (mut a, mut b) = (FakeEntity(0), FakeEntity(1));
+            let pa = entity_ptr(&mut a);
+            let pb = entity_ptr(&mut b);
 
-        for (case, expected) in test_cases {
-            let c_result =
-                unsafe { rclc_executor_trigger_all(case.as_ptr(), case.len(), ptr::null_mut()) };
+            let h = [handle(pb, false), handle(pa, true)];
+
+            assert!(
+                rclc_executor_trigger_one(h.as_ptr(), h.len(), pa),
+                "a owns handle 1, which has data — reading a's first word (0) would say otherwise"
+            );
+            assert!(
+                !rclc_executor_trigger_one(h.as_ptr(), h.len(), pb),
+                "b owns handle 0, which has none — reading b's first word (1) would say otherwise"
+            );
+        }
+    }
+
+    /// Ours, not rclc's: the index form the old `rclc_executor_trigger_one`
+    /// implemented, under a name that does not claim upstream's contract.
+    #[test]
+    fn trigger_index_selects_the_handle_at_the_stored_index() {
+        unsafe {
+            let (mut a, mut b, mut c) = (FakeEntity(0), FakeEntity(1), FakeEntity(2));
+            let h = [
+                handle(entity_ptr(&mut a), false),
+                handle(entity_ptr(&mut b), true),
+                handle(entity_ptr(&mut c), false),
+            ];
+
+            // A fresh binding per case: the index is read through a raw
+            // pointer, which the unused-assignment lint cannot see.
+            let mut ready_slot: usize = 1;
+            assert!(nros_executor_trigger_index(
+                h.as_ptr(),
+                h.len(),
+                &mut ready_slot as *mut usize as *mut core::ffi::c_void,
+            ));
+
+            let mut idle_slot: usize = 0;
+            assert!(!nros_executor_trigger_index(
+                h.as_ptr(),
+                h.len(),
+                &mut idle_slot as *mut usize as *mut core::ffi::c_void,
+            ));
+
+            let mut out_of_range: usize = 10;
+            assert!(!nros_executor_trigger_index(
+                h.as_ptr(),
+                h.len(),
+                &mut out_of_range as *mut usize as *mut core::ffi::c_void,
+            ));
+
+            assert!(!nros_executor_trigger_index(
+                h.as_ptr(),
+                h.len(),
+                ptr::null_mut()
+            ));
+        }
+    }
+
+    /// phase-417 stage 3 / ledger row `c:executor_spin_some`. rclc discards
+    /// `rcl_wait`'s `RCL_RET_TIMEOUT`, so a cycle that did nothing is still OK;
+    /// ours returned `NROS_RET_TIMEOUT` and broke the ported
+    /// `if (rclc_executor_spin_some(...) != RCL_RET_OK) error();`.
+    #[test]
+    fn spin_some_returns_ok_for_an_idle_cycle() {
+        assert_eq!(spin_cycle_ret(false), NROS_RET_OK);
+        assert_eq!(spin_cycle_ret(true), NROS_RET_OK);
+    }
+
+    /// phase-417 stage 3 / ledger rows `c:executor_spin_period` +
+    /// `c:executor_set_timeout`. Upstream's period spins wait for
+    /// `executor->timeout_ns` and spend `period` on the sleep; ours passed the
+    /// period as the wait, so `rclc_executor_set_timeout` was obeyed by
+    /// `rclc_executor_spin` and ignored by both period spins.
+    #[test]
+    fn period_spins_wait_for_the_configured_timeout_not_the_period() {
+        let mut executor = rclc_executor_get_zero_initialized_executor();
+        executor.timeout_ns = 5_000_000; // 5 ms, as rclc_executor_set_timeout writes it
+        let period_ns = 1_000_000_000; // 1 s invocation rate
+
+        assert_eq!(
+            period_spin_wait_ns(&executor, period_ns),
+            5_000_000,
+            "the wait budget is the executor timeout, not the invocation period"
+        );
+    }
+
+    /// phase-417 stage 3 — the `fini` idempotence sweep. rclc's own comment:
+    /// "Repeated calls to fini or calling fini on a zero initialized executor
+    /// is ok".
+    #[test]
+    fn executor_fini_is_idempotent() {
+        unsafe {
+            let mut executor = rclc_executor_get_zero_initialized_executor();
+            assert_eq!(rclc_executor_fini(&mut executor), NROS_RET_OK);
+            // And again, now that the state says SHUTDOWN — the old guard let
+            // this reach `drop_in_place` on zeroed storage.
+            executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN;
+            assert_eq!(rclc_executor_fini(&mut executor), NROS_RET_OK);
+
             assert_eq!(
-                c_result, *expected,
-                "trigger_all mismatch for {:?}: got {}, expected {}",
-                case, c_result, expected
+                rclc_executor_fini(ptr::null_mut()),
+                NROS_RET_INVALID_ARGUMENT,
+                "a NULL handle is still an argument error, as in rcl"
             );
         }
     }
