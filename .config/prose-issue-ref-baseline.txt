@@ -15,10 +15,12 @@
 #         control; deleting the sentence would delete the test's description.
 #         The same class `check-doc-recipe-refs` calls NEGATION.
 #
-#         TWO documents cite it now: issue 1092, which describes the test, and
-#         issue 1241 (archived — it landed resolved), which quotes 1092's
-#         control while explaining why this header is worth a gate. `archived/`
-#         is not scanned, so only 1092's citation needs a row.
+#         TWO documents cite it: issue 1092, which describes the test, and
+#         issue 1241, which quotes 1092's control. BOTH are archived now
+#         (1092 landed resolved in phase-444 W4.a) and `archived/` is not
+#         scanned, so the row this note explained is gone. The live tools
+#         spell the control as "an id with no file (9999)", which the ref
+#         regex does not read as a citation.
 #
 #   1110  DELIBERATELY WITHDRAWN. The file DID exist, on the phase-431
 #         branch only: W6 filed it while the rustdoc lane was red, and
@@ -29,7 +31,6 @@
 #         0319/0896 class — is still worth reading, and `refs/issue-ids/1110`
 #         is claimed either way.
 #
-docs/issues/1092-rmw-shape-gate-licenses-deviation-without-pinning-it.md:9999
 docs/issues/1116-rustdoc-diagnostics-outside-the-published-crate-set.md:1110
 docs/roadmap/archived/phase-431-ship-the-nros-binary.md:1110
 just/check/docs.just:1110

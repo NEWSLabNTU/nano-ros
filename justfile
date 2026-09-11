@@ -3135,9 +3135,9 @@ rmw-ret-sign:
     @python3 scripts/check-rmw-ret-sign.py
 
 # Phase 376 W2 — how far our vtable is from mirroring upstream, slot by slot and
-# arg by arg. REPORTING ONLY, deliberately not on the `check` line: `--check`
-# fails by construction until the W3+ migration lands, and a gate that cannot
-# pass is a gate people learn to skip. It joins `check` at the end of W3.
+# arg by arg. The REPORT, without `--check`; the gate is `just check
+# rmw-abi-shape` on the fast line (it joined when W3 landed, and since issue
+# 1092 every declared deviation pins both shapes it licenses).
 [group("check")]
 rmw-abi-shape:
     @python3 scripts/rmw-abi-shape.py
