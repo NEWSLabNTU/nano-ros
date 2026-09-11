@@ -1789,13 +1789,13 @@ class Node {
         if (declared == passed_type) {
             return true;
         }
-        detail::report_declared_param_mismatch(declaring->fqn, name, declaring->contract, declared,
-                                               passed_type);
+        ::nros::detail::report_declared_param_mismatch(declaring->fqn, name, declaring->contract,
+                                                       declared, passed_type);
         this->set_error("declare_parameter: the code does not declare this parameter the way "
                         "its contract does (see the line above for the node, the parameter and "
                         "the contract). The parameter store is sized from the contract's "
                         "`params:`, so the two must state one name and one type.",
-                        detail::DECLARED_PARAM_MISMATCH);
+                        ::nros::detail::DECLARED_PARAM_MISMATCH);
         return false;
     }
 
