@@ -3,7 +3,7 @@ rfc: 0068
 title: "Language-neutral codegen IR — parse → resolve → lower → render"
 status: Stable
 since: 2026-08
-last-reviewed: 2026-08-04
+last-reviewed: 2026-09-11
 implements-tracked-by: [phase-335]
 supersedes: []
 superseded-by: null
@@ -16,11 +16,15 @@ superseded-by: null
 > env-invariant crate identity of [RFC-0067](0067-env-invariant-msg-dep-identity.md) unchanged.
 > The RIHS engine ([RFC-0056]) and the C-ABI layout SSoT ([RFC-0054]) become **stages** here
 > rather than helpers reached during emission. Tracked by **phase-335**. Issue: **#402**.
+> **Amended by [RFC-0091](0091-one-entry-codegen-producer-many-language-packs.md)** —
+> see **Amendments** at the end. The original text is kept; passages an amendment
+> supersedes are marked *[Amendment N]*.
 
 **Goal.** Adding a target language to codegen becomes **dropping a data pack**, never a Rust
 package change — while every embedded/target-critical fact (type hash, fixed-capacity storage,
 `repr(C)` layout, plainness, serialized size) is still computed once by trusted Rust and can
-never be recomputed wrong by a template.
+never be recomputed wrong by a template. *[Amendment 2: "never a Rust package change" held
+for type spelling only.]*
 
 ## The problem
 
@@ -75,6 +79,10 @@ language-neutral Rust stages, then make emission a data-driven consumer of those
    generated Rust / nros / C / C++ / Cyclone-IDL / <new-language>
 ```
 
+*[Amendment 1]* Stage 2 no longer takes a `TargetProfile`, and `LoweredType` is
+target-AGNOSTIC: the diagram's "⊗ TargetProfile", "TARGET-specific" and "every
+embedded/target fact lives HERE" are superseded.
+
 ### Stage 0 — Parse (keep as-is)
 `rosidl-parser` already emits a faithful, `serde`-serializable, recursively-typed AST. It is a
 strength (stronger than a flat `base_type: String`) and does not change.
@@ -89,25 +97,13 @@ per-package tension of issue #378).
 
 ### Stage 2 — Lower (new: `rosidl-lower`)
 > **Amended by [RFC-0091](0091-one-entry-codegen-producer-many-language-packs.md)
-> (2026-09): `TargetProfile` is retired.** It shipped but never became
-> load-bearing — measured in the tree, it has one consumer outside its own
-> crate, which passes `TargetProfile::host()` UNCONDITIONALLY; `enum_width` is
-> read nowhere; `ptr_width` is read once as a "conservative stand-in" on a path
-> whose own comment says the result changes no outcome. The hazard it was built
-> for cannot occur in the current emitters either — the C and Rust packs emit no
-> `enum` at all, so there is nothing for the short-enums ABI to disagree about.
->
-> The replacement is not a better profile but a different principle: generated
-> code stays TARGET-AGNOSTIC and the compiler resolves the target, while any
-> representation two languages must share is PINNED in the source (`uint8_t`
-> against `#[repr(u8)]`) and gated by compiling both for a non-host target and
-> comparing sizes. A pinned representation is target-agnostic by construction;
-> a profile is a model of the toolchain, and a model can be wrong silently.
->
-> Everything else in this stage — storage, plainness, serialized size — is
-> unaffected: those are CDR and capacity-config facts, not target facts.
+> (2026-09): `TargetProfile` is retired, and this stage is target-AGNOSTIC.**
+> The paragraph below is the original design, kept as written. What replaced
+> each fact it names, why, and the commits are in **Amendment 1** at the end of
+> this RFC. Storage, plainness and serialized size are unaffected: they are CDR
+> and capacity-config facts, not target facts.
 
-
+*[Amendment 1 — superseded: no `TargetProfile`; layout is the compiler's.]*
 `ResolvedType ⊗ CodegenConfig ⊗ TargetProfile → LoweredType`. This is where the embedded facts
 are baked: per-field storage from the `CapacityResolver`/`StorageMode` config; plainness;
 alignment and `repr(C)` field order and serialized-size under a `TargetProfile`
@@ -125,7 +121,8 @@ packs/<language>/
   *.jinja         templates over the LoweredType context (minijinja — RUNTIME engine)
 ```
 
-`render(LoweredType, pack) → files`. No Rust per language. A **runtime** template engine
+`render(LoweredType, pack) → files`. No Rust per language *[Amendment 2: a filter set
+and a generator per kind are Rust]*. A **runtime** template engine
 (`minijinja`) is required so a pack is *data*, not a compiled artifact: default packs are bundled
 via `include_dir!` (fast, no I/O), and a `--template-dir` override loads a drop-in language with
 **zero rebuild**. Templates never compute a layout fact — they read the facts Stage 2 already put
@@ -133,7 +130,9 @@ in `LoweredType`.
 
 ## What stays in Rust (and why that is correct)
 All *computation*: dependency resolution, RIHS hashing, capacity resolution, target layout
-(`repr(C)` order, alignment, serialized-size, plainness). Templates only *spell*. This is the
+(`repr(C)` order, alignment, serialized-size, plainness). Templates only *spell*.
+*[Amendment 1: target layout — `repr(C)` order and alignment — is the compiler's, not
+codegen's; serialized size and plainness stay here.]* This is the
 load-bearing correction over a naïve "emit a JSON manifest like a hosted stack": a manifest that
 models only the ROS type system (no storage/plainness/layout) is useless to a `no_std` /
 32-bit / short-enum C or C++ emitter. **The IR content — the embedded facts — is what makes the
@@ -144,6 +143,9 @@ data-driven boundary safe here, not the serialization format.**
 - Resolve vs Lower — resolve is target-neutral (one hash for all targets); lower is target-specific
   (short-enum layout differs per arch). Merging them recomputes hashes per target or bakes
   host-64-bit layout into the hash. Keeping them apart gives **hash once, lower per target**.
+  *[Amendment 1: Lower is no longer target-specific. The split stands on the other
+  ground: Lower applies the build's `CodegenConfig` (capacity, storage mode), which
+  the hash must not depend on.]*
 - Lower vs Render — neutral facts vs language spelling. That split *is* the fix.
 
 ## Serialization
@@ -170,6 +172,7 @@ common languages ride the data path; only exotic ones pay Rust.
    confirm perf against `rosidl-codegen/benches/generation_benchmark.rs`.
 2. **Multi-target in one run.** Lower N times (cheap; resolve/hash shared) vs a target-conditional
    `LoweredType`. Default: lower per active target (the build already knows it).
+   *[Amendment 1: dissolved — there is no target input to lower per.]*
 3. **Pack distribution.** Bundled-only vs `--template-dir` external packs vs both. Both, with
    bundled as the default, is the working assumption.
 4. **Fingerprint inputs.** `fingerprint.rs` must hash the pack files (a template edit ⇒ stale);
@@ -178,4 +181,72 @@ common languages ride the data path; only exotic ones pay Rust.
 ## Migration
 Staged, fingerprint-guarded, no big-bang — see **phase-335**. After the first backend is emitted
 from a data pack with zero Rust, the per-language-burden claim is disproven; after all five, it
-is gone.
+is gone. *[Amendment 2: all five render from packs; "zero Rust" did not hold.]*
+
+## Amendments
+
+### Amendment 1 (2026-09-06, RFC-0091 / phase-432 Track 1) — `TargetProfile` is retired
+
+**What it was.** Stage 2 was specified as
+`ResolvedType ⊗ CodegenConfig ⊗ TargetProfile → LoweredType`, the profile being
+`{ ptr_width, enum_width / short_enums, alignment rules }`, so that `repr(C)`
+field order, alignment and serialized size would be computed for the target
+being built. What shipped (phase-335 W1.b(ii), `b20ed2edb`) was
+`TargetProfile { ptr_width, enum_width }` plus a `LoweredType.target` field, and
+"hash once, lower per target" rested on it.
+
+**Why it went.** Measured before it was deleted (RFC-0091 §5):
+
+- one consumer outside `rosidl-lower`, and it passed `TargetProfile::host()`
+  unconditionally. No caller ever supplied an embedded profile, so every ARM
+  build was lowered as the host, and nothing broke;
+- `enum_width` was read nowhere. The hazard it existed for (short enums: a
+  `repr(C)` enum is 1 byte on armv7a-nuttx and 4 on x86_64) cannot occur,
+  because the C and Rust message packs emit no `enum`;
+- `ptr_width` was read once, as a nested field's stand-in alignment. `align`
+  feeds only `plain`, and a nested field is never plain, so the value changed
+  no outcome;
+- `LoweredType.target` was written and never read.
+
+**Where each fact went.**
+
+| Fact | Now |
+| --- | --- |
+| `ptr_width` (nested-field align) | `NESTED_ALIGN_STANDIN` in `rosidl-lower/src/lowered.rs`, a named constant whose doc says its value cannot matter. `a_nested_field_is_never_plain_so_its_align_cannot_matter` fails if that stops being true |
+| `enum_width` / short enums | not needed: no pack emits an `enum`. If one ever does, its representation is PINNED in the source (`uint8_t` against `#[repr(u8)]`) |
+| `repr(C)` field order, alignment | the COMPILER, per target. That the two `repr(C)` surfaces (`packs/rmw`, `packs/cpp`) agree with the C header is MEASURED by `just check repr-memory-agreement`, which cross-compiles both for a non-host target and compares symbol sizes |
+| `LoweredType.target` | deleted |
+| storage, plainness, serialized size | unchanged: CDR and capacity-config facts, never target facts |
+
+The principle that replaces the profile: generated code is target-agnostic,
+the compiler resolves the target, and a representation two languages share is
+pinned in the source and gated by measurement. A profile is a model of the
+toolchain, and a model can be wrong silently.
+
+**Commits.** `1e2db5242` (W1.1, delete `TargetProfile`), `8773f03e4` (W1.2,
+the memory-agreement gate), `e4487c0d1` (the decision in RFC-0091 §5 and the
+note at Stage 2 above). Phase-432 Track 1.
+
+**Superseded here**, each marked *[Amendment 1]* in place and otherwise left as
+written: the Stage 2 line of the design diagram; Stage 2's
+`⊗ TargetProfile → LoweredType` paragraph; "target layout" under "What stays in
+Rust"; the Resolve-vs-Lower rationale under "Why four stages" (the split
+stands, on the `CodegenConfig` ground); and open question 2, which dissolves.
+
+### Amendment 2 (2026-09-11, RFC-0091 §9) — "no Rust per language" held for type spelling only
+
+The Goal ("never a Rust package change"), Stage 3 ("No Rust per language") and
+Migration ("zero Rust") describe the target, not the result. Measured after
+phase-335 and phase-432, a message language's Rust is:
+
+- a **filter set** for its type spellings (`rosidl_codegen::filters::FILTER_SETS`).
+  This is Rust by design: a spelling is a correctness property, and RFC-0091 §6b
+  keys the set by the pack that calls it;
+- a **generator per kind** (`generator/{msg,srv,action,cpp}.rs`) that assembles
+  the surface's context and names its files, and an arm in `nros generate`.
+
+Entries, which this RFC did not scope, need more: each entry language has a
+Rust emitter that builds its view (RFC-0091 §8). The Escape hatch above is
+closer to how entries work today than Stage 3 is. No code changed with this
+amendment; it corrects the claim. The procedure is in
+`book/src/internals/codegen-packs.md`.

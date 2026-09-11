@@ -793,9 +793,12 @@ language first is what made the shortcut visible at all.
 
 ## 11. Open questions
 
-- Retiring `TargetProfile` amends RFC-0068, which is **Stable**. Does that edit
-  land there or here? Recorded as an amendment above; the mechanics are a
-  maintainer call.
+- ~~Retiring `TargetProfile` amends RFC-0068, which is **Stable**. Does that edit
+  land there or here?~~ ANSWERED 2026-09-11: THERE, as RFC-0068's
+  **Amendment 1**, following the repo's `## Amendment` convention (RFC-0060,
+  RFC-0062). It records what the profile carried, where each fact went, and the
+  commits, and marks the superseded passages in place. The original text is
+  kept. This RFC's §5 stays the decision record.
 - ~~`nros_board_threadx_run_components` does not exist and neither does its
   `run_tiers` — is pure-C ThreadX worth the shim, or is the declaration
   enough?~~ ANSWERED by issue 1286: no shim was needed. ThreadX takes the
