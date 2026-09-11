@@ -109,40 +109,75 @@ pub fn resolve_system_tiers(
     )
 }
 
-/// Best-effort RTOS name for tier resolution from the selected target.
+/// The board id the selected target names, and where it was written.
 ///
-/// Defaults to `posix` (native); embedded targets refine it from a board hint.
+/// Issue 0951 — `[image.<t>].board` first, then the DEPRECATED
+/// `[deploy.<t>].board`, then `[deploy.<t>].kind`. Images are the buildable
+/// unit, so a workspace that has migrated has its board only there. The `kind`
+/// rung is last because it is the coarsest: it was only ever a stand-in for a
+/// board name, and it cannot separate the two boards it would need to
+/// (`qemu-armv7a-nuttx` vs `rv-virt-nuttx`).
 ///
-/// Issue 0951 — the hint comes from `[image.<t>].board` first, then the
-/// DEPRECATED `[deploy.<t>].board`, then `[deploy.<t>].kind`. Images are the
-/// buildable unit, so a workspace that has migrated has its board only there;
-/// the `kind` rung is last because it is the coarsest — it was only ever a
-/// stand-in for a board name, and the two boards it has to separate
-/// (`qemu-armv7a-nuttx` vs `rv-virt-nuttx`) it cannot.
+/// `None` when there is no target, or when the target names no image or
+/// deploy block. The Zephyr module's `nros_system_generate()` passes
+/// `--target zephyr-<rmw>`, which is the second case for every in-tree bringup
+/// it bakes.
+pub fn target_board_id(system: &SystemToml, target: Option<&str>) -> Option<(String, String)> {
+    let t = target?;
+    if let Some(board) = system.image_for(t).and_then(|img| img.board) {
+        return Some((format!("[image.{t}] board"), board));
+    }
+    let deploy = system.deploy.get(t)?;
+    if let Some(board) = deploy.board.clone() {
+        return Some((format!("[deploy.{t}] board"), board));
+    }
+    // `kind` is the DEPLOY-kind vocabulary, not a board id. `self` is its word
+    // for "this host", which 22 in-tree `system.toml`s use. It names no board,
+    // so it gets the host default, which is the right answer for it and not a
+    // guess. Any other kind (`zephyr`) is treated as a stand-in for a board id
+    // and resolved strictly through the catalog. So `embedded` with no board is
+    // refused, where the substring match quietly called it the host.
+    match deploy.kind.as_deref() {
+        None | Some(DEPLOY_KIND_SELF) => None,
+        Some(kind) => Some((format!("[deploy.{t}] kind"), kind.to_string())),
+    }
+}
+
+/// The deploy kind meaning "the host this runs on" (`[deploy.<t>] kind`).
+const DEPLOY_KIND_SELF: &str = "self";
+
+/// The `[tiers.<name>.<rtos>]` key for the selected target, read from the BOARD
+/// CATALOG (issue 1285 follow-up).
 ///
-/// Still a SUBSTRING match on the hint rather than a board-catalog lookup. The
-/// catalog would answer properly — `BoardDescriptor::platform` is exactly this
-/// axis — but taking one here means threading a `&BoardCatalog` through
-/// `codegen_system`, which is a larger change than this rung deserves; see the
-/// issue.
-pub fn derive_target_rtos(system: &SystemToml, target: Option<&str>) -> String {
-    target
-        .and_then(|t| {
-            system
-                .image_for(t)
-                .and_then(|img| img.board)
-                .or_else(|| system.deploy.get(t).and_then(|d| d.board.clone()))
-                .or_else(|| system.deploy.get(t).and_then(|d| d.kind.clone()))
-        })
-        .map(|hint| {
-            for rtos in ["freertos", "zephyr", "threadx", "nuttx"] {
-                if hint.contains(rtos) {
-                    return rtos.to_string();
-                }
-            }
-            "posix".to_string()
-        })
-        .unwrap_or_else(|| "posix".to_string())
+/// The board id from [`target_board_id`] is an IMAGE board id. That is the
+/// catalog's namespace (`native_sim/native/64`, `qemu-armv7a-nsh`,
+/// `esp32c3`), not the entry key table. So it resolves through
+/// [`resolve_board_id`](super::image::resolve_board_id), the same rule
+/// `nros build` uses for the image. The descriptor's `platform` then gives the
+/// key through [`PlatformKind::tier_rtos_key`](super::board_descriptor::PlatformKind::tier_rtos_key).
+///
+/// This used to be a SUBSTRING match on the id with a `posix` fallback. That
+/// read `native_sim/native/64`, a Zephyr board, as the host, and so would have
+/// baked `[tiers.*.posix]` priorities into a Zephyr image. The same happened to
+/// `qemu-cortex-a53`, `s32z270` and `an536`.
+///
+/// - No board id (no `--target`, or a target naming no image or deploy): the
+///   host's `posix`. That is the documented default, and nothing here is a guess
+///   about a board.
+/// - An id the catalog does not know, or one several descriptors claim: an
+///   ERROR naming the known boards. `codegen-system` is a verb and can refuse,
+///   and a wrong sub-table is a silent scheduling bug.
+/// - A known board with no RTOS (`bare-metal`, `esp32`): `NO_RTOS_TIER_KEY`.
+pub fn derive_target_rtos(
+    system: &SystemToml,
+    target: Option<&str>,
+    catalog: &super::board_descriptor::BoardCatalog,
+) -> Result<&'static str, String> {
+    let Some((origin, board)) = target_board_id(system, target) else {
+        return Ok(nros_entry_lower::BoardFamily::Native.tier_rtos_key());
+    };
+    let descriptor = super::image::resolve_board_id(catalog, &origin, &board)?;
+    Ok(descriptor.platform.tier_rtos_key())
 }
 
 #[cfg(test)]
@@ -162,10 +197,22 @@ mod tests {
             .expect("fixture parses")
         }
 
+        /// The in-tree board catalog, with no `$NROS_EXTRA_BOARD_PATH` roots
+        /// (env is process-global and racy under a parallel runner).
+        fn catalog() -> crate::orchestration::board_descriptor::BoardCatalog {
+            let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+            crate::orchestration::board_descriptor::BoardCatalog::load_with_extra(&root, &[])
+                .expect("in-tree board catalog")
+        }
+
+        fn rtos(s: &SystemToml, target: Option<&str>) -> Result<&'static str, String> {
+            derive_target_rtos(s, target, &catalog())
+        }
+
         #[test]
         fn an_image_board_decides() {
             let s = sys("[image.fw]\nboard=\"mps2-an385-freertos\"\n");
-            assert_eq!(derive_target_rtos(&s, Some("fw")), "freertos");
+            assert_eq!(rtos(&s, Some("fw")), Ok("freertos"));
         }
 
         #[test]
@@ -175,29 +222,35 @@ mod tests {
             // the RTOS of a block that is about to be deleted.
             let s = sys("[image.fw]\nboard=\"qemu-armv7a-nuttx\"\n\
                  [deploy.fw]\nkind=\"embedded\"\nboard=\"mps2-an385-freertos\"\n");
-            assert_eq!(derive_target_rtos(&s, Some("fw")), "nuttx");
+            assert_eq!(rtos(&s, Some("fw")), Ok("nuttx"));
         }
 
         #[test]
         fn a_deploy_board_still_answers_when_no_image_exists() {
             let s = sys("[deploy.fw]\nkind=\"embedded\"\nboard=\"threadx-linux\"\n");
-            assert_eq!(derive_target_rtos(&s, Some("fw")), "threadx");
+            assert_eq!(rtos(&s, Some("fw")), Ok("threadx"));
         }
 
         /// The coarsest rung, and the reason it is last: `kind` was only ever a
-        /// stand-in for a board name.
+        /// stand-in for a board name. It resolves through the catalog like
+        /// every other rung (`zephyr` is a descriptor name).
         #[test]
         fn kind_is_the_last_resort() {
             let s = sys("[deploy.fw]\nkind=\"zephyr\"\n");
-            assert_eq!(derive_target_rtos(&s, Some("fw")), "zephyr");
+            assert_eq!(rtos(&s, Some("fw")), Ok("zephyr"));
         }
 
+        /// No board id means the documented host default. It is not a lookup,
+        /// so it needs no catalog. `zephyr-zenoh` is what the Zephyr module's
+        /// `nros_system_generate()` passes, and it names no block.
         #[test]
-        fn an_unknown_or_absent_target_is_posix() {
+        fn no_board_id_is_the_host_default() {
             let s = sys("[image.fw]\nboard=\"native\"\n");
-            assert_eq!(derive_target_rtos(&s, Some("fw")), "posix");
-            assert_eq!(derive_target_rtos(&s, Some("nope")), "posix");
-            assert_eq!(derive_target_rtos(&s, None), "posix");
+            let empty = crate::orchestration::board_descriptor::BoardCatalog::default();
+            assert_eq!(rtos(&s, Some("fw")), Ok("posix"));
+            for target in [Some("nope"), Some("zephyr-zenoh"), None] {
+                assert_eq!(derive_target_rtos(&s, target, &empty), Ok("posix"));
+            }
         }
 
         /// `[image_defaults]` folds under the block here as everywhere else —
@@ -206,7 +259,104 @@ mod tests {
         fn the_defaults_table_supplies_a_board_the_block_omits() {
             let s =
                 sys("[image_defaults]\nboard=\"rv-virt-nuttx\"\n[image.fw]\nprofile=\"release\"\n");
-            assert_eq!(derive_target_rtos(&s, Some("fw")), "nuttx");
+            assert_eq!(rtos(&s, Some("fw")), Ok("nuttx"));
+        }
+
+        /// Issue 1285 follow-up. Every image board id an in-tree `system.toml`
+        /// names, with the key its descriptor's platform gives. `""` is a board
+        /// with no RTOS (bare-metal, ESP32).
+        #[test]
+        fn every_in_tree_image_board_reads_its_platform() {
+            for (id, want) in [
+                ("native", "posix"),
+                ("zephyr", "zephyr"),
+                ("native_sim/native/64", "zephyr"),
+                ("threadx-linux", "threadx"),
+                ("rv-virt-threadx", "threadx"),
+                ("mps2-an385-freertos", "freertos"),
+                ("freertos", "freertos"),
+                ("freertos-posix", "freertos"),
+                ("s32z270-freertos", "freertos"),
+                ("mps3-an536-freertos", "freertos"),
+                ("qemu-armv7a-nuttx", "nuttx"),
+                ("qemu-armv7a-nsh", "nuttx"),
+                ("nuttx", "nuttx"),
+                ("rv-virt-nuttx", "nuttx"),
+                ("nuttx-riscv", "nuttx"),
+                ("rtic-mps2-an385", ""),
+                ("qemu-mps2-an385", ""),
+                ("esp32-c3-baremetal", ""),
+                ("esp32c3", ""),
+            ] {
+                let s = sys(&format!("[image.fw]\nboard=\"{id}\"\n"));
+                assert_eq!(rtos(&s, Some("fw")), Ok(want), "`{id}`");
+            }
+        }
+
+        /// Ids the substring match answered wrongly. `native_sim/native/64`
+        /// is a Zephyr board (`packages/boards/zephyr`), and `native` in its
+        /// name is the ROLE (a host process), not the platform. So its tiers
+        /// are Zephyr `k_thread`s and read `[tiers.*.zephyr]`.
+        #[test]
+        fn substring_victims_read_their_platform() {
+            for (id, was, now) in [
+                ("native_sim/native/64", "posix", "zephyr"),
+                ("qemu-cortex-a53", "posix", "zephyr"),
+                ("mps2-an385-zephyr", "zephyr", "zephyr"),
+                ("s32z270", "posix", "freertos"),
+                ("an536", "posix", "freertos"),
+                ("rtic-mps2-an385", "posix", ""),
+                ("esp32c3", "posix", ""),
+            ] {
+                let s = sys(&format!("[image.fw]\nboard=\"{id}\"\n"));
+                assert_eq!(rtos(&s, Some("fw")), Ok(now), "`{id}` (was `{was}`)");
+            }
+        }
+
+        /// An id no descriptor claims is refused, naming the line and the known
+        /// boards. That includes an id whose NAME contains an RTOS: the old
+        /// match read `my-freertos-board` as FreeRTOS.
+        #[test]
+        fn an_unknown_board_is_refused_naming_the_known_ones() {
+            let s = sys("[image.fw]\nboard=\"my-freertos-board\"\n");
+            let err = rtos(&s, Some("fw")).expect_err("an unknown board must not resolve");
+            assert!(
+                err.contains("`[image.fw] board = \"my-freertos-board\"` matches no board"),
+                "{err}"
+            );
+            // Descriptor NAMES. (`mps2-an385-freertos` resolves too, through
+            // the directory alias, but the list names only `names` entries.)
+            for known in ["freertos", "native_sim/native/64", "native"] {
+                assert!(err.contains(known), "message omits `{known}`: {err}");
+            }
+            let s = sys("[deploy.fw]\nkind=\"embedded\"\n");
+            let err = rtos(&s, Some("fw")).expect_err("`embedded` is no board");
+            assert!(err.contains("[deploy.fw] kind"), "{err}");
+        }
+
+        /// `kind` is the deploy-KIND vocabulary. `self` (22 in-tree
+        /// `system.toml`s, and the `codegen_system` test workspaces) means "this
+        /// host": it names no board, and it gets the host default with no
+        /// catalog. Any other kind is a stand-in for a board id and resolves
+        /// strictly.
+        #[test]
+        fn deploy_kind_self_is_the_host_and_names_no_board() {
+            let s = sys("[deploy.native]\nkind=\"self\"\n");
+            assert_eq!(target_board_id(&s, Some("native")), None);
+            let empty = crate::orchestration::board_descriptor::BoardCatalog::default();
+            assert_eq!(derive_target_rtos(&s, Some("native"), &empty), Ok("posix"));
+            // A board beside `self` still decides.
+            let s = sys("[deploy.native]\nkind=\"self\"\nboard=\"native_sim/native/64\"\n");
+            assert_eq!(rtos(&s, Some("native")), Ok("zephyr"));
+        }
+
+        /// `threadx` names both the Linux simulation and the riscv64 board. An
+        /// id several descriptors claim is refused, as `nros build` refuses it.
+        #[test]
+        fn a_board_several_descriptors_claim_is_refused() {
+            let s = sys("[image.fw]\nboard=\"threadx\"\n");
+            let err = rtos(&s, Some("fw")).expect_err("ambiguous");
+            assert!(err.contains("ambiguous"), "{err}");
         }
     }
     use crate::orchestration::{

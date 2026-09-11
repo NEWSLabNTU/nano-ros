@@ -208,3 +208,118 @@ from the ENTRY namespace this table models:
 - `emit_rust::emit` falls back to `LinuxBoard` for a key `board_path_for` does
   not know. Only the golden harness reaches it, because the Rust entry verb is
   retired (phase-432 W2.4).
+
+## Follow-up (2026-09-11): the three siblings, plus two the sweep missed
+
+Branch `fix/1285-followup-rtos-substring`. Each site now derives its RTOS from
+the authority for the namespace it reads. There is ONE lookup per namespace,
+and neither lookup reads the spelling of a key.
+
+| namespace | authority | the lookup |
+| --- | --- | --- |
+| entry board key (`nros::main!` deploy key, `plan_from_model`) | `BOARD_KEYS` | `nros_entry_lower::tier_rtos_key_for` (lenient) or `board_family` (strict) |
+| image board id (`[image.*] board`, deprecated `[deploy.*] board/kind`) | the board catalog (`packages/boards/**/nros-board.toml`) | `image::resolve_board_id` (the catalog's `resolve_deploy` rule, split out of `resolve_image_board`) then `PlatformKind::board_family` / `tier_rtos_key` |
+
+A board with no RTOS family has ONE spelling in both namespaces:
+`nros_entry_lower::NO_RTOS_TIER_KEY` (`""`). It selects no sub-table.
+`resolve_tiers` refuses an authored tier on such a board with the new
+`TierResolveError::NoRtosFamily`, instead of printing `[tiers.x.]`. Before
+this, `plan_from_model` spelled that result `unwrap_or("")` while the macro
+spelled it `"posix"`, so the two Rust producers disagreed on the same keys.
+
+### Per site
+
+- **`nros-macros` `derive_target_rtos`.** `Some(key)` reads
+  `tier_rtos_key_for`. The worry recorded above does not arise. A key only
+  reaches this function after `board_path_for` accepted it (an unknown key is
+  a compile error first), so an out-of-tree key never reaches it by name. An
+  out-of-tree board arrives as an explicit `board = X`, which is `None`. `None`
+  keeps its documented host default (`posix`): there is no key to look up, and
+  moving it would move every explicit-`LinuxBoard` entry that authors host
+  tiers. What changed in-tree: the six no-RTOS Rust keys (`esp32-qemu`,
+  `esp32-c3-baremetal`, `rtic-mps2-an385`, `qemu-rtic-mps2-an385`,
+  `qemu-mps2-an385`, `mps2-an385`) go from `posix` to `""`. None of their
+  leaves declares `[tiers]` or contracts (measured), so no image moves.
+- **`tier_resolver::derive_target_rtos`** now takes a `&BoardCatalog` and
+  returns `Result`. The board-id rungs (image, then deploy board, then deploy
+  kind) are split into `target_board_id`.
+  - No board id means the host default `posix`, and no catalog is loaded, so
+    no SDK root is needed. That covers no `--target`, and a target that names
+    no block.
+  - An id the catalog does not know, or one several descriptors claim
+    (`threadx`), is an error naming the line and the known boards.
+    `codegen-system` is a verb and can refuse. A wrong sub-table is a silent
+    scheduling bug, which is worse.
+  - `codegen_system` loads the catalog only when a board id exists, with the
+    workspace's own packages, as `nros build` does.
+  - The `[deploy.*] kind` rung is the DEPLOY-kind vocabulary, not a board id.
+    The first cut resolved it through the catalog and broke three
+    `codegen_system` tests, because 22 in-tree `system.toml`s write
+    `kind = "self"`. `self` means "this host", so it names no board and gets
+    the host default. That was the old answer, and it is right for `self`.
+    Any other kind (`zephyr`) resolves strictly, so a bare
+    `kind = "embedded"` is refused. No in-tree block has that.
+- **`native_sim/native/64` → `zephyr`, not `posix`.** It is a Zephyr board: it
+  is `packages/boards/zephyr/nros-board.toml`, `platform = "zephyr"`. By the
+  naming rule, `native` in it names the ROLE (a host process), not the REACH or
+  the platform. Its tiers are Zephyr `k_thread`s and must read
+  `[tiers.*.zephyr]`. `freertos-posix` is the same shape, and `BOARD_KEYS`
+  already calls it FreeRTOS.
+- **`emit_rust::emit` / `emit_lowered`** return `Result`. A key with no Rust
+  ZST is an error naming the Rust pack's keys, via the new
+  `nros_orchestration_ir::board_path_keys_csv`, which the macro's
+  `known_boards_csv` now calls too, so the list has one spelling. It used to
+  render `LinuxBoard`.
+- **Two more siblings, in the TIER-KEY vocabulary** (the grep above matched
+  them, and the list did not name them).
+  - `rtos_realizer::sched_caps_for` had substring arms that accepted board keys
+    (`threadx-linux`).
+  - `derive::derive_tiers_from_contracts` had substring arms, and its `_` arm
+    wrote the POSIX sub-table for anything else, including `""`.
+  - Both now match the five tier keys EXACTLY. For a target with no RTOS,
+    `sched_caps_for` gives the bare-metal caps, and `derive` puts no tier on
+    the node and records a `tier` degradation. Every in-tree caller already
+    passed a tier key.
+
+### Keys and ids that changed answer
+
+Every other in-tree key and id answers as before.
+
+| site | key / id | before | after |
+| --- | --- | --- | --- |
+| macro | `esp32-qemu`, `esp32-c3-baremetal`, `rtic-mps2-an385`, `qemu-rtic-mps2-an385`, `qemu-mps2-an385`, `mps2-an385` | `posix` | `""` (no RTOS) |
+| `codegen-system` | `native_sim/native/64`, `qemu-cortex-a53` | `posix` | `zephyr` |
+| `codegen-system` | `s32z270`, `an536` | `posix` | `freertos` |
+| `codegen-system` | `rtic-mps2-an385`, `qemu-mps2-an385`, `esp32-c3-baremetal`, `esp32c3` | `posix` | `""` (no RTOS) |
+| `codegen-system` | `threadx` | `threadx` | error: ambiguous (as `nros build`) |
+| `codegen-system` | an unknown id, e.g. `my-freertos-board` | substring (`freertos`) | error naming the known boards |
+| `emit_rust` | any key without a Rust ZST, e.g. `freertos-posix` | `LinuxBoard` | error naming the Rust pack's keys |
+| `sched_caps_for` / `derive` | a board key instead of a tier key | its substring | bare-metal / no tier |
+
+### One golden changed, and why
+
+The parity corpus case `dashed_and_rooted` named `freertos-posix`, a board
+with no Rust ZST (the crate is C-only). Its golden therefore asserted a
+FreeRTOS host board booting through `LinuxBoard`, which no build produces.
+The case is about package names and namespaces, not the board, and the macro
+side of the parity gate compares only the per-node block. So the corpus now
+names `mps2-an385-freertos`, and the golden's header and `board_path` lines
+say so (`::nros_board_mps2_an385_freertos::Mps2An385`). The per-node block
+the gate compares is byte-identical.
+
+### Corrected, and left open
+
+The note above says the in-tree `codegen-system` invocations pass no
+`--target`. That is wrong. `zephyr/cmake/nros_system_generate.cmake` passes
+`--target zephyr-<rmw>`. That target names no image and no deploy block (the
+fixtures' image is `[image.zephyr_native_sim]`; the self-pkg's deploy is
+`zephyr`), so it resolves to the host default `posix` before this change and
+after it. Reading `zephyr` out of `zephyr-zenoh` would be the substring match
+again, so it was not done.
+
+The bringups that module bakes today (`multi_pkg_workspace_zephyr`,
+`zephyr_self_pkg`) declare no tiers, so nothing observable moves. A Zephyr
+bringup WITH tiers baked through that module would read `[tiers.*.posix]`.
+The fix belongs in the module: pass the image id, or a `--board`, rather than
+a `<platform>-<rmw>` string. It is not filed here because issue ids are
+claimed on origin.

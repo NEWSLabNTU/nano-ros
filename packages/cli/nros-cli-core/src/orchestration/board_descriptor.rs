@@ -126,6 +126,44 @@ impl PlatformKind {
             PlatformKind::Esp32 | PlatformKind::Stm32 | PlatformKind::OrinSpe => return None,
         })
     }
+
+    /// The RTOS family this platform runs, or `None` for a platform with no
+    /// RTOS.
+    ///
+    /// Issue 1285 follow-up. This bridges the board-CATALOG namespace (an
+    /// `[image.*] board` id resolved to its descriptor) to the tier vocabulary.
+    /// The tier key is then `BoardFamily::tier_rtos_key`, the same spelling
+    /// the entry namespace reads out of `BOARD_KEYS`. The CLI's `codegen-system`
+    /// used to take a SUBSTRING of the image board id instead, and read
+    /// `native_sim/native/64` (a Zephyr board) as the host.
+    ///
+    /// `Posix` is the host platform, whose family is `Native` and whose tier key
+    /// is `posix`. `freertos-posix` is `Freertos` here, because its nodes run
+    /// as FreeRTOS tasks. Exhaustive, so a new kind has to choose.
+    pub fn board_family(self) -> Option<nros_entry_lower::BoardFamily> {
+        use nros_entry_lower::BoardFamily as F;
+        match self {
+            PlatformKind::Posix => Some(F::Native),
+            PlatformKind::Freertos => Some(F::Freertos),
+            PlatformKind::Zephyr => Some(F::Zephyr),
+            PlatformKind::Nuttx => Some(F::Nuttx),
+            PlatformKind::ThreadxLinux | PlatformKind::ThreadxRiscv64 => Some(F::Threadx),
+            PlatformKind::BareMetal
+            | PlatformKind::Esp32
+            | PlatformKind::Stm32
+            | PlatformKind::OrinSpe => None,
+        }
+    }
+
+    /// The `[tiers.<name>.<rtos>]` key this platform's images read.
+    /// [`NO_RTOS_TIER_KEY`](nros_entry_lower::NO_RTOS_TIER_KEY) for a
+    /// platform with no RTOS.
+    pub fn tier_rtos_key(self) -> &'static str {
+        self.board_family().map_or(
+            nros_entry_lower::NO_RTOS_TIER_KEY,
+            nros_entry_lower::BoardFamily::tier_rtos_key,
+        )
+    }
 }
 
 /// Rust toolchain a generated package pins.

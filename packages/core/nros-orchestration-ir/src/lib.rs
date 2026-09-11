@@ -211,6 +211,13 @@ pub fn board_path_for(key: &str) -> Option<&'static str> {
         .map(|(_, path)| *path)
 }
 
+/// The keys of [`BOARD_PATHS`], comma-separated: the "known boards" list both
+/// Rust producers print when they refuse a key. One spelling, because
+/// `nros::main!` and the CLI's Rust renderer refuse the same keys.
+pub fn board_path_keys_csv() -> String {
+    board_path_keys().collect::<Vec<_>>().join(", ")
+}
+
 /// The keys of [`BOARD_PATHS`], in table order.
 pub fn board_path_keys() -> impl Iterator<Item = &'static str> {
     BOARD_PATHS.iter().map(|(key, _)| *key)
@@ -539,6 +546,16 @@ pub enum TierResolveError {
     },
     #[error("tier `{tier}` has no `[tiers.{tier}.{rtos}]` sub-table for the target RTOS")]
     MissingRtosSpec { tier: String, rtos: String },
+    /// Issue 1285 follow-up. The target board has no RTOS family (tier key
+    /// `""`, `nros_entry_lower::NO_RTOS_TIER_KEY`). This is its own variant
+    /// because `MissingRtosSpec` would print `[tiers.x.]` and advise adding a
+    /// sub-table that does not exist.
+    #[error(
+        "tier `{tier}` is declared, but the target board has no RTOS family, so there \
+         is no `[tiers.{tier}.<rtos>]` sub-table to read and no task to run the tier \
+         on. Tiers need a board whose platform is an RTOS or the host."
+    )]
+    NoRtosFamily { tier: String },
     #[error("`[[node_overrides]]` targets node `{node}` which is not a component in the system")]
     UnknownOverrideNode { node: String },
 }
@@ -631,11 +648,18 @@ pub fn resolve_tiers(
                 tier: name.clone(),
             }
         })?;
-        let spec =
-            rtos_spec(def, target_rtos).ok_or_else(|| TierResolveError::MissingRtosSpec {
-                tier: name.clone(),
-                rtos: target_rtos.to_string(),
-            })?;
+        let spec = rtos_spec(def, target_rtos).ok_or_else(|| {
+            // Issue 1285 follow-up — `""` is the tier key of a board with NO
+            // RTOS family, not a sub-table someone forgot to write.
+            if target_rtos.is_empty() {
+                TierResolveError::NoRtosFamily { tier: name.clone() }
+            } else {
+                TierResolveError::MissingRtosSpec {
+                    tier: name.clone(),
+                    rtos: target_rtos.to_string(),
+                }
+            }
+        })?;
         out.push(ResolvedTier {
             name,
             priority: spec.priority,

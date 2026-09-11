@@ -122,10 +122,17 @@ pub struct RtosPlan {
 
 /// The board seam (W5.3): the per-platform [`SchedCaps`] the realizer targets.
 /// Grounded in the platform scheduler survey (RFC-0052 §"Scheduling model
-/// evolution"). `target` is the RTOS name (`posix`/`native`/`freertos`/
-/// `zephyr`/`threadx`/`nuttx`/`nuttx-riscv`/bare-metal aliases), normalized like
-/// `nros_orchestration_ir`'s board routing. Kept consistent with W2's
+/// evolution"). `target` is a TIER KEY: `posix` (or `native`), `freertos`,
+/// `zephyr`, `threadx` or `nuttx`. That is `BoardFamily::tier_rtos_key`'s
+/// output, and it is matched EXACTLY. Anything else, including `""` (a board
+/// with no RTOS family), gets the bare-metal caps. Kept consistent with W2's
 /// applicability table (e.g. preemption-threshold is ThreadX-only).
+///
+/// Issue 1285 follow-up: this used to be a SUBSTRING match that also accepted
+/// board keys (`mps2-an385-freertos`, `threadx-linux`). Every in-tree caller
+/// already passes a tier key, so the substring bought nothing, and it would
+/// have read an out-of-tree `my-freertos-board` as FreeRTOS. Board keys are
+/// resolved to a tier key once, upstream, by the one lookup per namespace.
 ///
 /// `n_priorities` is a conservative platform default; a board descriptor can
 /// refine it (Kconfig `CONFIG_NUM_PREEMPT_PRIORITIES` / `configMAX_PRIORITIES`
@@ -169,7 +176,7 @@ pub fn sched_caps_for(target: &str) -> SchedCaps {
             low_number_is_high: true,
         },
         // FreeRTOS: fixed-priority only; SMP core affinity; high = high.
-        f if f.contains("freertos") => SchedCaps {
+        "freertos" => SchedCaps {
             edf: false,
             reservation: false,
             preempt_threshold: false,
@@ -181,7 +188,7 @@ pub fn sched_caps_for(target: &str) -> SchedCaps {
         },
         // ThreadX: native preemption-threshold; SMP core exclude
         // (296-W5.13 consumer, fail-loud on non-SMP ports); low = high.
-        f if f.contains("threadx") => SchedCaps {
+        "threadx" => SchedCaps {
             edf: false,
             reservation: false,
             preempt_threshold: true,
@@ -192,7 +199,7 @@ pub fn sched_caps_for(target: &str) -> SchedCaps {
             low_number_is_high: true,
         },
         // NuttX: POSIX SCHED_SPORADIC (reservation); SMP affinity; high = high.
-        f if f.contains("nuttx") => SchedCaps {
+        "nuttx" => SchedCaps {
             edf: false,
             reservation: true,
             preempt_threshold: false,
@@ -807,20 +814,43 @@ mod tests {
         assert!(sched_caps_for("zephyr").edf);
         assert!(!sched_caps_for("zephyr").reservation);
         assert!(sched_caps_for("zephyr").low_number_is_high);
-        assert!(!sched_caps_for("mps2-an385-freertos").edf);
-        assert!(sched_caps_for("threadx-linux").preempt_threshold);
-        assert!(sched_caps_for("threadx-linux").low_number_is_high);
+        assert!(!sched_caps_for("freertos").edf);
+        assert_eq!(sched_caps_for("freertos").n_priorities, 16);
+        assert!(sched_caps_for("threadx").preempt_threshold);
+        assert!(sched_caps_for("threadx").low_number_is_high);
         assert!(sched_caps_for("nuttx").reservation);
         assert!(!sched_caps_for("nuttx").low_number_is_high);
         // phase-302 W1 (issue 0261): posix caps describe what nano-ros
         // DELIVERS — nothing native on posix until phase-162 consumers land.
         let posix = sched_caps_for("native");
         assert!(!posix.edf && !posix.reservation && !posix.low_number_is_high);
+        assert_eq!(posix, sched_caps_for("posix"));
         // 296-W5.13 consumers: affinity is genuinely delivered on both.
         assert!(posix.affinity);
-        assert!(sched_caps_for("threadx-linux").affinity);
-        // Unknown → bare-metal defaults (single-core, no EDF).
-        assert!(!sched_caps_for("stm32f4-rtic").affinity);
+        assert!(sched_caps_for("threadx").affinity);
+        // No RTOS family (`""`) → bare-metal defaults (single-core, no EDF).
+        assert!(!sched_caps_for("").affinity);
+        assert_eq!(sched_caps_for("").n_priorities, 8);
+    }
+
+    /// Issue 1285 follow-up — `target` is a tier KEY, matched exactly. A board
+    /// key, or any name that merely CONTAINS an RTOS, is not one: the old
+    /// substring match read `threadx-linux` as ThreadX and would have read an
+    /// out-of-tree `my-freertos-board` as FreeRTOS. Board keys are resolved to
+    /// a tier key upstream, by the one lookup per namespace.
+    #[test]
+    fn a_board_key_is_not_a_tier_key() {
+        let bare = sched_caps_for("");
+        for key in [
+            "mps2-an385-freertos",
+            "threadx-linux",
+            "nuttx-riscv",
+            "my-freertos-board",
+            "zephyr-custom",
+            "stm32f4-rtic",
+        ] {
+            assert_eq!(sched_caps_for(key), bare, "`{key}`");
+        }
     }
 
     #[test]

@@ -99,7 +99,8 @@ fn every_parity_case_matches_its_golden() {
     let mut checked = 0usize;
 
     for (name, entry) in cases() {
-        let got = super::emit_rust::emit_lowered(&entry);
+        let got = super::emit_rust::emit_lowered(&entry)
+            .unwrap_or_else(|e| panic!("parity case `{name}`: {e}"));
         let path = golden_path(&name);
 
         if update {

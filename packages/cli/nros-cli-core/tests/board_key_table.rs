@@ -76,6 +76,67 @@ fn substring_victims_get_their_real_rtos() {
     }
 }
 
+/// Issue 1285 follow-up. There are TWO board namespaces with two authorities:
+/// entry board keys (`BOARD_KEYS`) and image board ids (the board catalog,
+/// `packages/boards/**/nros-board.toml`). `nros::main!` and `plan_from_model`
+/// read the first, and `codegen-system` reads the second. Many spellings are
+/// in both. Where one is, both authorities must name the same RTOS, or an
+/// image's tiers would depend on which verb baked it.
+///
+/// A Rust-pack key the family table leaves out, because the board has no RTOS,
+/// must resolve in the catalog to a platform with no RTOS family too.
+#[test]
+fn a_spelling_in_both_namespaces_names_the_same_rtos() {
+    use nros_cli_core::orchestration::board_descriptor::{BoardCatalog, DeployResolution};
+
+    let catalog = BoardCatalog::load_with_extra(&repo_root(), &[]).expect("in-tree board catalog");
+    let resolve = |key: &str| match catalog.resolve_deploy(key) {
+        DeployResolution::Board(d) => Some(d.platform),
+        _ => None,
+    };
+
+    let mut shared = 0;
+    for &(key, family) in BOARD_KEYS {
+        let Some(platform) = resolve(key) else {
+            continue;
+        };
+        shared += 1;
+        assert_eq!(
+            platform.board_family(),
+            Some(family),
+            "`{key}`: BOARD_KEYS says {}, the catalog says platform `{}`",
+            family.as_str(),
+            platform.kebab()
+        );
+        assert_eq!(platform.tier_rtos_key(), family.tier_rtos_key(), "`{key}`");
+    }
+    // Measured 2026-09-11: 18 of the 21 keys resolve in the catalog. The
+    // exceptions are `armfvp` and `freertos-qemu-mps2-an385`, which it does not
+    // know, and `threadx`, which two descriptors claim. A floor, so the
+    // comparison cannot quietly become vacuous.
+    assert!(shared >= 15, "only {shared} keys resolve in the catalog");
+
+    let mut no_rtos = 0;
+    for key in nros_orchestration_ir::board_path_keys().filter(|k| board_family(k).is_err()) {
+        let Some(platform) = resolve(key) else {
+            continue;
+        };
+        no_rtos += 1;
+        assert_eq!(
+            platform.board_family(),
+            None,
+            "`{key}` has no row in BOARD_KEYS, but the catalog gives it an RTOS platform `{}`",
+            platform.kebab()
+        );
+        assert_eq!(
+            platform.tier_rtos_key(),
+            nros_entry_lower::tier_rtos_key_for(key),
+            "`{key}`"
+        );
+    }
+    assert!(no_rtos >= 4, "only {no_rtos} no-RTOS Rust keys resolve");
+}
+
 /// The board family each Rust board ZST belongs to. `None` means the board has
 /// no RTOS, so no C or C++ entry family: ESP32, RTIC and bare-metal MPS2.
 ///

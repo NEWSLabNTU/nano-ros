@@ -134,13 +134,33 @@ pub fn derive_tiers_from_contracts(
             core: n.core,
             ..Default::default()
         };
-        match target_rtos {
-            t if t.contains("zephyr") => def.zephyr = Some(spec),
-            t if t.contains("freertos") => def.freertos = Some(spec),
-            t if t.contains("threadx") => def.threadx = Some(spec),
-            t if t.contains("nuttx") => def.nuttx = Some(spec),
-            _ => def.posix = Some(spec),
-        }
+        // Issue 1285 follow-up. `target_rtos` is a tier KEY (the output of
+        // `tier_rtos_key`, or `""` for a board with no RTOS), so it is matched
+        // EXACTLY. This used to be a substring match, and its `_` arm wrote the
+        // POSIX sub-table for anything else. For a no-RTOS board, that put
+        // host priorities into a table `resolve_tiers` would then fail to read.
+        // Now such a node stays on the default tier, and the realizer's
+        // degradation record says so.
+        let slot = match target_rtos {
+            "zephyr" => &mut def.zephyr,
+            "freertos" => &mut def.freertos,
+            "threadx" => &mut def.threadx,
+            "nuttx" => &mut def.nuttx,
+            "posix" | "native" => &mut def.posix,
+            other => {
+                out.degradations.push(Degradation {
+                    node: n.name.clone(),
+                    dim: "tier",
+                    reason: format!(
+                        "the target (tier key {other:?}) has no RTOS family, so a derived \
+                         tier has no `[tiers.<name>.<rtos>]` sub-table and no task to run \
+                         on; the node stays on the default tier"
+                    ),
+                });
+                continue;
+            }
+        };
+        *slot = Some(spec);
         out.tiers.insert(tier_name.clone(), def);
         out.overrides.push(NodeOverride {
             name: node,
@@ -290,6 +310,54 @@ mod tests {
             ctrl < telem,
             "control tier must precede telem: {:?}",
             table.tiers
+        );
+    }
+
+    /// Issue 1285 follow-up. The target is a tier KEY, matched exactly. A board
+    /// with no RTOS (`""`) and anything that is not a tier key derive no tier,
+    /// and each placed node is recorded as a `tier` degradation. The old
+    /// substring match wrote the POSIX sub-table for `""` and read
+    /// `mps2-an385-freertos` as FreeRTOS.
+    #[test]
+    fn a_target_with_no_rtos_derives_no_tier_and_says_why() {
+        let model = contract_model();
+        let mut groups: BTreeMap<String, Vec<CallbackGroupDecl>> = BTreeMap::new();
+        groups.insert("control_node".into(), vec![cbg("ctrl", "high")]);
+        groups.insert("telem_node".into(), vec![cbg("telem", "low")]);
+
+        for target in ["", "mps2-an385-freertos", "zephyr-zenoh"] {
+            let derived = derive_tiers_from_contracts(&model, target, &groups);
+            assert!(derived.tiers.is_empty(), "{target:?}: {:?}", derived.tiers);
+            assert!(derived.overrides.is_empty(), "{target:?}");
+            let notes = derived
+                .degradations
+                .iter()
+                .filter(|d| d.dim == "tier")
+                .count();
+            assert_eq!(notes, 2, "{target:?}: {:?}", derived.degradations);
+        }
+
+        // A real key still lands in its own sub-table, and only there.
+        let z = derive_tiers_from_contracts(&model, "zephyr", &groups);
+        let ctrl = &z.tiers["derived-control_node"];
+        assert!(ctrl.zephyr.is_some() && ctrl.posix.is_none() && ctrl.freertos.is_none());
+
+        // Resolving that table for a board with NO RTOS is refused BY NAME.
+        // Not `MissingRtosSpec`, whose message would print `[tiers.x.]` and
+        // advise adding a sub-table that does not exist. A real key with no
+        // sub-table keeps the old error.
+        let component_names: BTreeSet<&str> = ["control_node", "telem_node"].into_iter().collect();
+        let no_rtos = resolve_tiers(&z.tiers, &z.overrides, &component_names, &groups, "")
+            .expect_err("an authored tier on a no-RTOS board");
+        assert!(
+            matches!(no_rtos, crate::TierResolveError::NoRtosFamily { .. }),
+            "{no_rtos:?}"
+        );
+        let missing = resolve_tiers(&z.tiers, &z.overrides, &component_names, &groups, "posix")
+            .expect_err("a zephyr-only tier resolved for posix");
+        assert!(
+            matches!(missing, crate::TierResolveError::MissingRtosSpec { .. }),
+            "{missing:?}"
         );
     }
 

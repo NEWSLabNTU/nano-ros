@@ -608,7 +608,7 @@ fn render(p: &Plan, lang: Lang) -> Result<String, String> {
             },
         ),
         Lang::C => super::emit_c::emit_typed(p),
-        Lang::Rust => Ok(super::emit_rust::emit(p)),
+        Lang::Rust => super::emit_rust::emit(p),
     }
 }
 

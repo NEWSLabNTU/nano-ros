@@ -137,7 +137,43 @@ pub fn run(args: Args) -> Result<()> {
     // `[[node_overrides]]` map them to RTOS tasks. No tiers/groups declared →
     // the single `default` tier (today's single-task output, unchanged).
     let callback_groups = collect_callback_groups(&cfg, &bringup.system.components);
-    let target_rtos = derive_target_rtos(&bringup.system, args.target.as_deref());
+    // Issue 1285 follow-up — the tier RTOS is read from the BOARD CATALOG, which
+    // is loaded only when the target actually names a board. With no board
+    // id (no `--target`, or the Zephyr module's `--target zephyr-<rmw>`, which
+    // names no block) nothing is looked up, so those bakes need no SDK root.
+    // The workspace's own packages can carry descriptors, exactly as for
+    // `nros build`, so a workspace-declared board resolves here too.
+    let target_rtos = {
+        let catalog = if crate::orchestration::tier_resolver::target_board_id(
+            &bringup.system,
+            args.target.as_deref(),
+        )
+        .is_some()
+        {
+            let root = crate::orchestration::nano_ros_root::resolve(None, &workspace).ok_or_else(
+                || {
+                    eyre::eyre!(
+                        "codegen-system: {}",
+                        crate::orchestration::nano_ros_root::not_found_help()
+                    )
+                },
+            )?;
+            let pkg_dirs: Vec<PathBuf> = cfg
+                .component_packages
+                .values()
+                .filter_map(|p| p.manifest_path.parent().map(Path::to_path_buf))
+                .collect();
+            crate::orchestration::board_descriptor::BoardCatalog::load_with_packages(
+                &root, &pkg_dirs,
+            )
+            .map_err(|e| eyre::eyre!("board catalog under {}: {e}", root.display()))?
+        } else {
+            crate::orchestration::board_descriptor::BoardCatalog::default()
+        };
+        derive_target_rtos(&bringup.system, args.target.as_deref(), &catalog)
+            .map_err(|e| eyre::eyre!("codegen-system: {e}"))?
+            .to_string()
+    };
     // phase-304 W2 (RFC-0056) — resolve + VALIDATE the declared ROS edition
     // (typo guard: an unknown `[system].ros_edition` fails the bake loudly, not
     // a silent humble fallback). Recorded so the operator sees the axis the
