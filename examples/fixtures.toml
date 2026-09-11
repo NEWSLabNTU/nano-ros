@@ -1497,7 +1497,10 @@ dir = "packages/testing/nros-tests/bins/param-chatter-talker"
 id = "param-two-node-talker"
 platform = "linux"
 lang = "rust"
+rmw = "zenoh"
 dir = "packages/testing/nros-tests/bins/param-two-node-talker"
+no_default_features = true
+features = ["rmw-zenoh"]
 
 # issue 1268 / phase-444 W6 — the SAME two-node image on Cyclone.
 #
