@@ -31,6 +31,16 @@ else
 fi
 _nros_sdk_env_root="$(cd "$(dirname "${_nros_sdk_env_script}")/.." && pwd)"
 
+# Issue 1280 — an inherited value that names a DIFFERENT nano-ros checkout is
+# re-rooted onto this one. `_nros_sdk_env_pairs` below prefers an already-set
+# value over the default, which is what makes an out-of-tree SDK override work
+# and is also exactly how a linked worktree ends up building the main
+# checkout's trees: `activate.sh` sourced in the worktree used to leave all 22
+# of these pointing at wherever the parent shell activated. The rule (keep an
+# out-of-tree path, keep our own, re-root a foreign checkout's) is in one file.
+# shellcheck source=scripts/lib/checkout-paths.sh
+. "${_nros_sdk_env_root}/scripts/lib/checkout-paths.sh"
+
 # Portable "is this variable set / what is its value", for bash AND zsh.
 # `${!name}` is bash-only indirect expansion; zsh spells it `${(P)name}` and
 # reports `bad substitution` for the bash form — which is how the whole SDK
@@ -93,7 +103,8 @@ _nros_sdk_env_pairs() {
             *) continue ;;
         esac
         if _nros_sdk_env_is_set "$name"; then
-            value="$(_nros_sdk_env_get "$name")"
+            value="$(nros_reroot_checkout_path \
+                "$(_nros_sdk_env_get "$name")" "$_nros_sdk_env_root")"
         else
             value="${line#*:= \"}"
             value="${value%\"}"

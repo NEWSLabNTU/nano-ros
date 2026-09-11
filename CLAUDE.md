@@ -671,6 +671,20 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   git's 16 names, leaking `GIT_OBJECT_DIRECTORY` into the victim's object store.
   The Python spelling of the helper is `scripts/lib/git_hook_env.py`, same
   function name; popping some `GIT_*` variables is never what earns the credit.
+- **An inherited absolute path outranks the checkout you are building, and a
+  linked worktree inherits 24 of them** (issue 1280). Every path-valued
+  variable here resolves ENV-FIRST — which is how a real out-of-tree SDK gets
+  used — so a worktree build compiled the MAIN checkout's FreeRTOS/ThreadX/
+  NuttX/platform sources and headers, reconfigured its NuttX kernel, and sent
+  four `check::build` gates' fixtures into its `build/`: those gates RAN and
+  measured the wrong tree. The discriminator is not "is the variable set", it
+  is where the value points — **outside any checkout → KEEP** (the reason
+  env-first exists), **a DIFFERENT checkout → RE-ROOT here**, this one → keep.
+  ONE rule, `scripts/lib/checkout-paths.sh`, mirrored in `just/sdk-env.just`
+  (one prefix rewrite covers every export) and
+  `nros_build_paths::reroot_foreign` (every `build.rs`); "which checkout" is
+  the marker walk, never `.git` — a worktree's `.git` is a FILE (issue 1336).
+  Gate: `check-inherited-checkout-paths`.
 - **A red CI lane answers one of two questions and they look identical** — the
   lane RAN and the code is broken (a verdict), or it never ran (no verdict). A
   uniformly-red lane has NO signal capacity: a regression landing in it looks

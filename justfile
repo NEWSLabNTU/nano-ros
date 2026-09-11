@@ -959,10 +959,19 @@ test-unit verbose="":
     # gated, and `cargo nextest run --workspace` activates no features.
     # Real coverage of these shims comes from their per-feature
     # invocations under `check::workspace-features`.
+    # `nros-build-paths` is NOT excluded, and used to be. Its exclusion was
+    # written for the EMBEDDED clippy lane (issue 208: the crate is `std`-only,
+    # `check::workspace-embedded` builds the workspace for `thumbv7em-none-eabihf`,
+    # which has no `std`) and was copied onto this list with it. This lane is a
+    # HOST `cargo nextest run`, so that reason does not reach it — and the
+    # effect was that a unit test in the crate ran in no lane at all, which is
+    # the shape CLAUDE.md's "a target no recipe enables" rule names. The
+    # embedded lane still excludes it, derived from the crate's own
+    # `host-only = true` (scripts/build/host-only-members.sh), which is where
+    # the reason belongs.
     args=(--workspace --exclude nros-tests \
           --exclude nros-rmw-xrce-cffi \
           --exclude nros-rmw-xrce-cffi-staticlib \
-        --exclude nros-build-paths \
           --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         # NROS_TEST_FAILURE_OUTPUT (default `never`) — see `_test-focused`.

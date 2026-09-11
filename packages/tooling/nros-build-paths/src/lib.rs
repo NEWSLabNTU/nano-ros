@@ -53,9 +53,118 @@ pub fn try_repo_root() -> Option<PathBuf> {
     }
 }
 
+/// The file whose presence marks a nano-ros source tree.
+///
+/// One string, three spellings, because the three build systems cannot call
+/// each other — the same reason [`riscv64`] carries a shell and a cmake twin.
+/// The others are `nros_launcher::checkout::MONOREPO_MARKER` (the `packages/cli`
+/// workspace, which this crate may not depend on: it sits BELOW it) and
+/// `NROS_CHECKOUT_MARKER` in `scripts/lib/checkout-paths.sh`.
+/// `check-inherited-checkout-paths.py` pins the three to each other.
+pub const CHECKOUT_MARKER: &str = "packages/core/nros-core/Cargo.toml";
+
+/// Which nano-ros checkout does `path` belong to? `None` when it belongs to
+/// none — which is the answer that keeps a real out-of-tree SDK working.
+///
+/// Purely LEXICAL: the path need not exist (an unprovisioned SDK dir is still
+/// attributable to a checkout) and may name a file rather than a directory. A
+/// relative path answers `None` on purpose — it is resolved against the
+/// caller's own cwd, so it cannot have been inherited from another checkout.
+///
+/// Not `.git`: a linked worktree's `.git` is a FILE, not a directory (issue
+/// 1336), and `git rev-parse` answers about the caller's repository rather than
+/// about an arbitrary path.
+#[must_use]
+pub fn checkout_root_of(path: &std::path::Path) -> Option<PathBuf> {
+    if !path.is_absolute() {
+        return None;
+    }
+    let mut cur = Some(path);
+    while let Some(dir) = cur {
+        if dir.join(CHECKOUT_MARKER).is_file() {
+            return Some(dir.to_path_buf());
+        }
+        cur = dir.parent();
+    }
+    None
+}
+
+/// The issue-1280 rule, as a pure function: an inherited absolute path that
+/// belongs to a nano-ros checkout OTHER than `here` is re-rooted onto `here`;
+/// everything else is returned unchanged.
+///
+/// ## Why this outranks "the environment said so"
+///
+/// Every resolver here is ENV-FIRST, and that order is what makes an
+/// out-of-tree SDK usable. It is also how a build in a LINKED GIT WORKTREE
+/// compiles the other checkout's sources: a worktree inherits its parent
+/// shell's environment, and every SDK path in it is an ABSOLUTE path rooted at
+/// the checkout that shell activated. A worktree exists to test a change, so an
+/// edit to `packages/platform/nros-platform-freertos/src` here was not what got
+/// compiled — the build read the main checkout's copy, linked, passed, and
+/// reported the change as verified. CLAUDE.md prescribes worktrees for parallel
+/// sessions, so that is the default shape of agent work.
+///
+/// Both trees are nano-ros checkouts, so the relative sub-path is identical by
+/// construction and re-rooting is exact. The three outcomes are the whole rule:
+///
+/// * outside any checkout → KEEP (a real out-of-tree SDK — what env-first is for)
+/// * inside `here` → KEEP (nothing to decide)
+/// * inside a different checkout → RE-ROOT, and say so with `cargo::warning`
+///
+/// Emits no rerun directive and changes no fingerprint (issue 0491): what a
+/// build script depends on is the CONTENT it reads, and the caller declares
+/// that with [`watch_path`].
+#[must_use]
+pub fn reroot_foreign(value: &std::path::Path, here: &std::path::Path) -> PathBuf {
+    let Some(owner) = checkout_root_of(value) else {
+        return value.to_path_buf();
+    };
+    // Resolve both sides: a checkout reached through a symlinked parent is the
+    // same tree under a second name, and comparing spellings would call it
+    // foreign (issue 0375's two-names-for-one-tree).
+    let owner_real = owner.canonicalize().unwrap_or_else(|_| owner.clone());
+    let here_real = here.canonicalize().unwrap_or_else(|_| here.to_path_buf());
+    if owner_real == here_real {
+        return value.to_path_buf();
+    }
+    let Ok(rel) = value.strip_prefix(&owner) else {
+        return value.to_path_buf();
+    };
+    here_real.join(rel)
+}
+
+/// [`reroot_foreign`] against `try_repo_root()`, announcing any rewrite.
+///
+/// The announcement is a `cargo::warning` and it fires ONLY in the broken case,
+/// so it costs a correct build nothing — and the alternative is the silence
+/// that let a worktree certify the wrong tree for a whole phase.
+fn reroot_env_value(env_name: &str, value: PathBuf) -> PathBuf {
+    // No repo root to re-root ONTO — an out-of-tree consumer with no nano-ros
+    // checkout above their crate. Keep whatever they supplied.
+    let Some(here) = try_repo_root() else {
+        return value;
+    };
+    let rerooted = reroot_foreign(&value, &here);
+    if rerooted != value {
+        println!(
+            "cargo::warning=nano-ros: ${env_name} named another nano-ros checkout \
+             ({}); building this one instead ({}). A linked worktree inherits the \
+             parent shell's absolute SDK paths — issue 1280.",
+            value.display(),
+            rerooted.display()
+        );
+    }
+    rerooted
+}
+
 /// Resolve an env-overridable path: if `env_name` is set, use it,
 /// otherwise return `repo_root().join(rel)`. The returned path is
 /// CANONICAL (see [`canonical`]).
+///
+/// An env value naming a DIFFERENT nano-ros checkout is re-rooted onto this one
+/// — see [`reroot_foreign`] for why that outranks env-first, and why a path
+/// outside any checkout still wins.
 ///
 /// Emits NO rerun directive. `rerun-if-env-changed` on a path variable is
 /// forbidden (issue 0491 — read [`canonical`] for why); what the build script
@@ -68,7 +177,7 @@ pub fn try_repo_root() -> Option<PathBuf> {
 /// every dependent build script permanently dirty.
 pub fn env_or_repo_path(env_name: &str, rel: &str) -> PathBuf {
     let raw = match std::env::var(env_name) {
-        Ok(v) if !v.is_empty() => PathBuf::from(v),
+        Ok(v) if !v.is_empty() => reroot_env_value(env_name, PathBuf::from(v)),
         _ => repo_root().join(rel),
     };
     canonical(&raw)
@@ -140,9 +249,14 @@ pub fn watch_path(path: &std::path::Path) -> PathBuf {
 /// in-repo default (`THREADX_DIR`, a board's `*_CONFIG_DIR`, …). Emits no
 /// directive; `None` when unset or empty, so the caller keeps its own
 /// diagnostic.
+///
+/// Re-rooted like [`env_or_repo_path`]: having no in-repo DEFAULT does not make
+/// an inherited foreign-checkout value any more correct. `NUTTX_EXPORT_DIR`
+/// reaches here, and it picks which kernel snapshot an image's headers come
+/// from — the 0135/0460 class if it names another tree's.
 pub fn env_path(env_name: &str) -> Option<PathBuf> {
     match std::env::var(env_name) {
-        Ok(v) if !v.is_empty() => Some(canonical(std::path::Path::new(&v))),
+        Ok(v) if !v.is_empty() => Some(canonical(&reroot_env_value(env_name, PathBuf::from(v)))),
         _ => None,
     }
 }
@@ -416,5 +530,143 @@ pub mod riscv64 {
                 })
             })
             .unwrap_or(false)
+    }
+}
+
+/// Issue 1280 — the rule, exercised on real directories.
+///
+/// Real directories because the rule is a filesystem question: the marker file
+/// has to be *there* for a path to be attributed to a checkout, and a test that
+/// stubs that away would pass against an implementation that never looks.
+///
+/// No `tempfile`: this crate has no dev-dependencies and adding one would move
+/// `Cargo.lock` for a test helper (issues 0359/0378 — a lock moves when a dev
+/// means it). The scratch tree is a few lines.
+#[cfg(test)]
+mod reroot_tests {
+    use super::*;
+    use std::path::Path;
+
+    struct Scratch(PathBuf);
+
+    impl Scratch {
+        fn new(tag: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "nros-1280-{tag}-{}-{:?}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+
+        /// A directory that answers "yes" to [`checkout_root_of`].
+        fn checkout(&self, name: &str) -> PathBuf {
+            let root = self.0.join(name);
+            let marker = root.join(CHECKOUT_MARKER);
+            std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+            std::fs::write(&marker, "[package]\nname = \"nros-core\"\n").unwrap();
+            root
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// The bug: an inherited SDK path from ANOTHER checkout is re-rooted here,
+    /// sub-path intact. This is the FreeRTOS-source case from the issue's
+    /// acceptance — the edit in the worktree is what must get compiled.
+    #[test]
+    fn a_path_in_another_checkout_is_rerooted_onto_this_one() {
+        let s = Scratch::new("foreign");
+        let main = s.checkout("main");
+        let worktree = s.checkout("worktree");
+
+        let inherited = main.join("packages/platform/nros-platform-freertos/src");
+        assert_eq!(
+            reroot_foreign(&inherited, &worktree),
+            worktree.join("packages/platform/nros-platform-freertos/src")
+        );
+
+        // It does not need to EXIST to be attributed — an unprovisioned SDK
+        // directory is still that checkout's.
+        let sdk = main.join("third-party/nuttx/nuttx");
+        assert!(!sdk.exists());
+        assert_eq!(
+            reroot_foreign(&sdk, &worktree),
+            worktree.join("third-party/nuttx/nuttx")
+        );
+
+        // The checkout ROOT itself (`NROS_REPO_DIR`), with an empty sub-path.
+        assert_eq!(reroot_foreign(&main, &worktree), worktree);
+    }
+
+    /// The reason env-first exists, and the row the fix must not regress: a
+    /// path OUTSIDE any nano-ros checkout is a real out-of-tree SDK. Kept.
+    #[test]
+    fn a_path_outside_any_checkout_is_kept() {
+        let s = Scratch::new("outside");
+        let worktree = s.checkout("worktree");
+        let vendor = s.0.join("opt/vendor/nuttx");
+        std::fs::create_dir_all(&vendor).unwrap();
+
+        assert_eq!(reroot_foreign(&vendor, &worktree), vendor);
+        assert_eq!(checkout_root_of(&vendor), None);
+    }
+
+    /// Our own checkout is not foreign to itself — including when it is reached
+    /// through a symlinked parent, which is two names for one tree (issue 0375)
+    /// rather than two trees.
+    #[test]
+    fn this_checkout_is_never_foreign_to_itself() {
+        let s = Scratch::new("self");
+        let here = s.checkout("here");
+        let inside = here.join("third-party/freertos/kernel");
+        assert_eq!(reroot_foreign(&inside, &here), inside);
+
+        #[cfg(unix)]
+        {
+            let alias = s.0.join("alias");
+            std::os::unix::fs::symlink(&here, &alias).unwrap();
+            // Same tree, second spelling: comparing the strings would call it
+            // foreign and re-root a path onto itself through the alias.
+            assert_eq!(reroot_foreign(&alias.join("third-party"), &here), {
+                alias.join("third-party")
+            });
+        }
+    }
+
+    /// A relative value cannot have been inherited from another checkout — it
+    /// resolves against the caller's own cwd — so it is never attributed.
+    #[test]
+    fn a_relative_path_is_not_attributed_to_any_checkout() {
+        assert_eq!(checkout_root_of(Path::new("third-party/nuttx")), None);
+    }
+
+    /// The walk stops at the INNERMOST checkout. Agent worktrees live under
+    /// `.claude/worktrees/` INSIDE the main checkout here, so a nested tree is
+    /// the normal shape and the outer marker must not win.
+    #[test]
+    fn the_innermost_checkout_owns_a_nested_path() {
+        let s = Scratch::new("nested");
+        let outer = s.checkout("outer");
+        let inner = s.checkout("outer/.claude/worktrees/agent-x");
+
+        assert_eq!(
+            checkout_root_of(&inner.join("third-party/nuttx")).as_deref(),
+            Some(inner.as_path())
+        );
+        // …and a path in the OUTER tree is still foreign to the inner one,
+        // even though the outer root is a prefix of it.
+        assert_eq!(
+            reroot_foreign(&outer.join("third-party/nuttx"), &inner),
+            inner.join("third-party/nuttx")
+        );
     }
 }
