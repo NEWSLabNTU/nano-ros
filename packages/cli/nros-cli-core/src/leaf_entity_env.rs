@@ -824,8 +824,7 @@ pub fn leaf_env(leaf: &Path, who: &str) -> LeafEnv {
                     leaf.display()
                 );
             }
-            let body =
-                render_env_sidecar_with_facts(&knobs, &payload, &take, &inv.source, &facts);
+            let body = render_env_sidecar_with_facts(&knobs, &payload, &take, &inv.source, &facts);
             let env = env_rows(&body);
             LeafEnv {
                 sidecar: Some(body),
