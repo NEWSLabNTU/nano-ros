@@ -285,6 +285,15 @@ foreach(_zp MAX_PUBLISHERS MAX_SUBSCRIBERS MAX_QUERYABLES)
             "configure on a clean build dir always lands here, issue 0991)")
     endif()
 endforeach()
+# phase-412 W2 -- the liveliness pool joined the three above on the DERIVE
+# sentinel, so it needs the same rescue, and its literal is zpico.c's 16, not 8.
+if(NOT DEFINED NROS_RESOLVED_ZPICO_MAX_LIVELINESS OR
+   "${NROS_RESOLVED_ZPICO_MAX_LIVELINESS}" STREQUAL "")
+    set(NROS_RESOLVED_ZPICO_MAX_LIVELINESS 16)
+    message(STATUS
+        "nros: ZPICO_MAX_LIVELINESS left at the zpico literal default 16 -- "
+        "nothing stated it and the entity inventory derived nothing")
+endif()
 
 zephyr_compile_definitions(
     ZPICO_MAX_PUBLISHERS=${NROS_RESOLVED_ZPICO_MAX_PUBLISHERS}

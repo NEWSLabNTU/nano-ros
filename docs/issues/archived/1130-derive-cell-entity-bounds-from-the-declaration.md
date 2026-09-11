@@ -1,11 +1,12 @@
 ---
 id: 1130
 title: "A component's cell registries are sized by a const the author must write, so an out-of-tree image still pays the worst case"
-status: open
+status: resolved
 type: enhancement
 area: api, cli
 severity: medium
 found: 2026-09-06
+resolved_in: "feat(phase-412 W2, #1130): the liveliness pool and the cell registry bound derive from the declaration"
 related: [0857, 0827, 0900, 0965, 1061, phase-412]
 ---
 

@@ -188,6 +188,23 @@ FACT_DISPOSITION = {
         "sidecar": ("NROS_RMW_SUBSCRIBER_SLOTS",),
         "declared": ("NROS_DECLARED_RMW_SUBSCRIBER_SLOTS",),
     },
+    # phase-412 W2 -- the liveliness pool. Every token is declared by THIS
+    # session (one per node name, one per publisher/subscriber/service server
+    # and client), so the demand is the inventory's own count; the C define
+    # `ZPICO_MAX_LIVELINESS` is floored from the resolved value.
+    "NROS_DERIVED_MAX_LIVELINESS": {
+        "resolver": ("NROS_RESOLVED_NROS_MAX_LIVELINESS",),
+        "sidecar": ("NROS_MAX_LIVELINESS",),
+        "declared": ("NROS_DECLARED_MAX_LIVELINESS",),
+    },
+    # issue 1130 -- the knob-capped cell registries. Per-IMAGE, composed across
+    # entries by MAX; an explicit per-CLASS `ENTITY_BOUNDS` is always tighter
+    # and keeps winning.
+    "NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES": {
+        "resolver": ("NROS_RESOLVED_NROS_RUNTIME_MAX_CELL_ENTITIES",),
+        "sidecar": ("NROS_RUNTIME_MAX_CELL_ENTITIES",),
+        "declared": ("NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES",),
+    },
     "NROS_DERIVED_MAX_QUERYABLES": {
         "resolver": ("NROS_RESOLVED_NROS_MAX_QUERYABLES",
                      "NROS_RESOLVED_NROS_XRCE_MAX_SERVICE_SERVERS"),

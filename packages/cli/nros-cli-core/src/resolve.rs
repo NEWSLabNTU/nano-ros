@@ -315,6 +315,8 @@ impl Resolved {
                 ("rmw_subscriber_slots", k.max_subscribers),
                 ("max_publishers", k.max_publishers),
                 ("max_queryables", k.max_queryables),
+                ("max_liveliness", k.max_liveliness),
+                ("max_cell_entities", k.max_cell_entities),
             ],
         }
     }
@@ -397,6 +399,19 @@ impl Resolved {
                 let _ = writeln!(s, "rmw_subscriber_slots = {}", k.max_subscribers);
                 let _ = writeln!(s, "max_publishers = {}", k.max_publishers);
                 let _ = writeln!(s, "max_queryables = {}", k.max_queryables);
+                // phase-412 W2 -- one liveliness token per session entity, plus
+                // the node names. Local tokens only; the peer graph is not here.
+                let _ = writeln!(s, "max_liveliness = {}", k.max_liveliness);
+                s.push('\n');
+
+                // Issue 1130 -- the component runtime's knob-capped cell
+                // registries: the largest single kind in any one component.
+                s.push_str(
+                    "# The component runtime. Per-kind capacity of a cell whose class\n\
+                     # states no ENTITY_BOUNDS; an explicit ENTITY_BOUNDS still wins.\n",
+                );
+                s.push_str("[runtime]\n");
+                let _ = writeln!(s, "max_cell_entities = {}", k.max_cell_entities);
                 s.push('\n');
 
                 s.push_str("[entities]\n");
@@ -702,6 +717,11 @@ mod tests {
             ("rmw_subscriber_slots", "NROS_DERIVED_RMW_SUBSCRIBER_SLOTS"),
             ("max_publishers", "NROS_DERIVED_MAX_PUBLISHERS"),
             ("max_queryables", "NROS_DERIVED_MAX_QUERYABLES"),
+            ("max_liveliness", "NROS_DERIVED_MAX_LIVELINESS"),
+            (
+                "max_cell_entities",
+                "NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES",
+            ),
         ];
         let rows: BTreeMap<&str, usize> = r.value_rows().into_iter().collect();
         for (toml_key, cmake_var) in pairs {

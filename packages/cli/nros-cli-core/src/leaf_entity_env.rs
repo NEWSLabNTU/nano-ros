@@ -332,6 +332,9 @@ pub const DERIVED_ENV_KEYS: &[&str] = &[
     "NROS_EXECUTOR_ACTION_CLIENTS",
     "NROS_EXECUTOR_MAX_CBS",
     "NROS_RMW_SUBSCRIBER_SLOTS",
+    // issue 1130 — the per-kind capacity of a knob-capped component cell. An
+    // explicit `ENTITY_BOUNDS` on a class still wins: it is per CLASS.
+    "NROS_RUNTIME_MAX_CELL_ENTITIES",
     "ZPICO_MAX_PUBLISHERS",
     "ZPICO_MAX_SUBSCRIBERS",
 ];
@@ -378,6 +381,26 @@ pub const DERIVED_PAYLOAD_ENV_KEYS: &[&str] = &[
 /// and the consumer keeps its undeclared budget (8 embedded / 32 hosted) —
 /// large, never short.
 const QUERYABLES_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_QUERYABLES";
+
+/// `ZPICO_MAX_LIVELINESS` is not stated here either — with the same cause as
+/// the knob above and WITHOUT its remedy.
+///
+/// `DerivedEntityKnobs::max_liveliness` is one token per session entity, and
+/// every parameter or lifecycle service server is a session entity: it
+/// declares a token exactly as an application server does. This road's
+/// inventory cannot see those families, so the count would be SHORT for any
+/// image carrying them. Short is not a boot failure here -- the entity works
+/// and is invisible to `ros2 node list`, with a log line naming the knob -- but
+/// it is the silent graph outage issue 0283 exists to prevent, and the crate
+/// default (16) is larger and safe.
+///
+/// The difference from [`QUERYABLES_DERIVED_BY_CONSUMER`] is the whole reason
+/// these are two constants and not one. That knob is withheld as a COUNT and
+/// completed by `nros-zpico-build` from the `NROS_DECLARED_*` facts this road
+/// does carry; no consumer completes the liveliness pool from facts, so there
+/// is nothing to hand it and it keeps the zpico default outright. The Zephyr
+/// resolver road derives it, from an inventory composed with the model.
+const NOT_DERIVED_LIVELINESS_NEEDS_INFRA_COUNT: &str = "ZPICO_MAX_LIVELINESS";
 
 /// Render the gitignored `[env]` sidecar for a derived budget.
 pub fn render_env_sidecar(
@@ -430,6 +453,17 @@ pub fn render_env_sidecar_with_facts(
         s.push_str("# so nothing says whether the image carries the parameter or lifecycle\n");
         s.push_str("# service families, and the consumer keeps its undeclared budget.\n\n");
     }
+    // phase-412 W2 — the liveliness pool sits one step behind its queryable
+    // sibling above and says so. Both counts need the parameter and lifecycle
+    // families this road cannot see; the difference is that the queryable
+    // count has a CONSUMER that completes it from the `NROS_DECLARED_*` facts,
+    // and the liveliness pool has none, so it keeps the zpico default outright.
+    s.push_str(&format!(
+        "# `{NOT_DERIVED_LIVELINESS_NEEDS_INFRA_COUNT}` is not stated either, and has no such\n"
+    ));
+    s.push_str("# consumer-side completion: every one of those runtime servers also\n");
+    s.push_str("# declares a liveliness token, so a count from this road would be short\n");
+    s.push_str("# and nothing downstream could add the difference back.\n\n");
     s.push_str(
         "# The two `ZPICO_*` rows are FLOORED AT ONE: they size fixed C arrays in\n\
          # `zpico.c`, where zero is not a smaller pool (issue 1015). The floor is\n\
@@ -443,6 +477,9 @@ pub fn render_env_sidecar_with_facts(
         ("NROS_EXECUTOR_ACTION_CLIENTS", knobs.heavy_slots),
         ("NROS_EXECUTOR_MAX_CBS", knobs.max_cbs),
         ("NROS_RMW_SUBSCRIBER_SLOTS", knobs.max_subscribers),
+        // issue 1130 — unfloored: the cell registries are Rust arrays, and a
+        // zero-capacity one is an empty registry, not a `#error`.
+        ("NROS_RUNTIME_MAX_CELL_ENTITIES", knobs.max_cell_entities),
         ("ZPICO_MAX_PUBLISHERS", floor(knobs.max_publishers)),
         ("ZPICO_MAX_SUBSCRIBERS", floor(knobs.max_subscribers)),
     ]);
@@ -1147,6 +1184,17 @@ nros = { version = "*", features = ["std", "param-services"] }
         assert!(
             !out.lines().any(|l| l.starts_with("ZPICO_MAX_QUERYABLES")),
             "the sidecar states a queryable count it cannot complete:\n{out}"
+        );
+        // phase-412 W2 -- and the liveliness count, for the same reason.
+        assert!(
+            !out.lines().any(|l| l.starts_with("ZPICO_MAX_LIVELINESS")),
+            "the sidecar states a liveliness count it cannot complete:\n{out}"
+        );
+        // Issue 1130 -- the cell capacity IS stated: this leaf's one component
+        // declares one publisher, so its registries need one slot per kind.
+        assert!(
+            out.contains("NROS_RUNTIME_MAX_CELL_ENTITIES = \"1\""),
+            "{out}"
         );
         // No `force = true` KEY: a value the caller states must win. Checked
         // line-wise, because the header prose explains `force` and a substring

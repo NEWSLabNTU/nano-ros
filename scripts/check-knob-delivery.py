@@ -100,6 +100,9 @@ DERIVED_PAIRS = {
     "NROS_DERIVED_EXECUTOR_ACTION_CLIENTS": (
         "NROS_RESOLVED_NROS_EXECUTOR_ACTION_CLIENTS",
     ),
+    # phase-412 W2 -- the liveliness pool, whose C define (ZPICO_MAX_LIVELINESS,
+    # above) is floored from this resolved value.
+    "NROS_DERIVED_MAX_LIVELINESS": ("NROS_RESOLVED_NROS_MAX_LIVELINESS",),
     # This pair is why the gate exists in the form it does. It used to land in
     # NROS_RESOLVED_ZPICO_SUBSCRIBER_BUFFER_SIZE, which no pairing here names,
     # so a derived 880 delivered as 1496 for four consecutive island builds and

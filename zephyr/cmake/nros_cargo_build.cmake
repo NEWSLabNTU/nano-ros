@@ -512,6 +512,14 @@ function(nros_resolve_knobs)
     _nros_resolve_derivable_knob(NROS_MAX_QUERYABLES
         "${CONFIG_NROS_MAX_QUERYABLES}" NROS_DERIVED_MAX_QUERYABLES
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+    # phase-412 W2 -- the LIVELINESS pool: every token this session declares,
+    # which the inventory already counts (the session pools above plus node
+    # names and service clients). Resolved beside its siblings rather than in
+    # the zenoh block below so a non-zenoh image still resolves what the
+    # fragment derived, which is what `check-knob-delivery` compares.
+    _nros_resolve_derivable_knob(NROS_MAX_LIVELINESS
+        "${CONFIG_NROS_MAX_LIVELINESS}" NROS_DERIVED_MAX_LIVELINESS
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
     # phase-412 -- the POSIX mutex pool bounds the subscriber count, and nothing
     # said so until an island image spent days failing at the eleventh
     # subscription.
@@ -663,7 +671,13 @@ function(nros_resolve_knobs)
         _nros_resolve_knob(ZPICO_MAX_PUBLISHERS "${_nros_zpico_pubs}")
         _nros_resolve_knob(ZPICO_MAX_SUBSCRIBERS "${_nros_zpico_subs}")
         _nros_resolve_knob(ZPICO_MAX_QUERYABLES "${_nros_zpico_qrys}")
-        _nros_resolve_knob(ZPICO_MAX_LIVELINESS "${CONFIG_NROS_MAX_LIVELINESS}")
+        # phase-412 W2 -- a fourth fixed C array (`liveliness[ZPICO_MAX_LIVELINESS]`,
+        # `#if < 1 / #error` in zpico.c), so the same consumer-side floor. The
+        # derived demand is never below 1 (the session's own node token), but
+        # the floor is the rule, not an inference from today's formula.
+        _nros_c_array_pool_floor(_nros_zpico_lvl
+            "${NROS_RESOLVED_NROS_MAX_LIVELINESS}" ZPICO_MAX_LIVELINESS)
+        _nros_resolve_knob(ZPICO_MAX_LIVELINESS "${_nros_zpico_lvl}")
         _nros_resolve_knob(ZPICO_MAX_PENDING_GETS "${CONFIG_NROS_MAX_PENDING_GETS}")
         _nros_resolve_knob(ZPICO_GET_REPLY_BUF_SIZE "${CONFIG_NROS_GET_REPLY_BUF_SIZE}")
         _nros_resolve_knob(ZPICO_GET_POLL_INTERVAL_MS "${CONFIG_NROS_GET_POLL_INTERVAL_MS}")

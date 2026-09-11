@@ -185,7 +185,12 @@ FLOOR_PRODUCERS = [
         "the cargo-leaf `[env]` sidecar",
     ),
 ]
-FLOORED_KNOBS = ["ZPICO_MAX_PUBLISHERS", "ZPICO_MAX_QUERYABLES", "ZPICO_MAX_SUBSCRIBERS"]
+FLOORED_KNOBS = [
+    "ZPICO_MAX_LIVELINESS",  # phase-412 W2 -- derived since, same C-array rule
+    "ZPICO_MAX_PUBLISHERS",
+    "ZPICO_MAX_QUERYABLES",
+    "ZPICO_MAX_SUBSCRIBERS",
+]
 
 # The shared derivation, and the slice of it that computes the pools. Nothing in
 # that slice may raise a count: it is the image's DEMAND, and two consumers read
@@ -555,10 +560,12 @@ GOOD_CMAKE = """
 _nros_c_array_pool_floor(_a "${X}" ZPICO_MAX_PUBLISHERS)
 _nros_c_array_pool_floor(_b "${X}" ZPICO_MAX_SUBSCRIBERS)
 _nros_c_array_pool_floor(_c "${X}" ZPICO_MAX_QUERYABLES)
+_nros_c_array_pool_floor(_d "${X}" ZPICO_MAX_LIVELINESS)
 """
 
 GOOD_RUST = """
 const QUERYABLES_DERIVED_BY_CONSUMER: &str = "ZPICO_MAX_QUERYABLES";
+const NOT_DERIVED_LIVELINESS_NEEDS_INFRA_COUNT: &str = "ZPICO_MAX_LIVELINESS";
         ("ZPICO_MAX_PUBLISHERS", floor(knobs.max_publishers)),
         ("ZPICO_MAX_SUBSCRIBERS", floor(knobs.max_subscribers)),
 """
@@ -692,6 +699,23 @@ def selftest() -> int:
     )
     assert any(
         "ZPICO_MAX_QUERYABLES" in p for p in check_producers(producer_texts(rust=silent))
+    )
+    # phase-412 W2 -- the same two controls for the fourth pool: the cmake
+    # bridge must floor the derived liveliness count, and the leaf lane's
+    # abstention must stay written down.
+    lvl_dropped = GOOD_CMAKE.replace(
+        '_nros_c_array_pool_floor(_d "${X}" ZPICO_MAX_LIVELINESS)', ""
+    )
+    assert any(
+        "produces ZPICO_MAX_LIVELINESS without the C-array floor" in p
+        for p in check_producers(producer_texts(cmake=lvl_dropped))
+    )
+    lvl_silent = GOOD_RUST.replace(
+        'const NOT_DERIVED_LIVELINESS_NEEDS_INFRA_COUNT: &str = "ZPICO_MAX_LIVELINESS";', ""
+    )
+    assert any(
+        "ZPICO_MAX_LIVELINESS" in p
+        for p in check_producers(producer_texts(rust=lvl_silent))
     )
     # The regression this gate was written after: the floor back in the shared
     # derivation, where it also reaches the XRCE pools.

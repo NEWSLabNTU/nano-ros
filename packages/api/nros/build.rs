@@ -80,7 +80,24 @@ fn main() {
     // ~152 B) — 4 components ate ~80 KiB of the 128 KiB bare-metal arena.
     // 8 is per-component-shaped (a component declaring more than 8 entities of
     // ONE KIND is rare and gets a loud registration error + this knob).
-    let max_cell_entities = env_usize("NROS_RUNTIME_MAX_CELL_ENTITIES", rungs.max_cell_entities, 8);
+    //
+    // Issue 1130 -- the image's DECLARED answer is a rung of its own, BELOW
+    // the platform/board one and above the builtin: a derived value is a
+    // default, never an override, so env / Kconfig / a board that states the
+    // knob all still win. It is the largest single kind in any one component
+    // (`nros_cli_core::entity_inventory`), carried by `corrosion_set_env_vars`
+    // from a CMake image; a cargo leaf's sidecar writes the knob itself.
+    // Zero is legal: an image whose components create none of the five cell
+    // kinds carries empty registries.
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES");
+    let declared_cells = env::var("NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok());
+    let max_cell_entities = env_usize(
+        "NROS_RUNTIME_MAX_CELL_ENTITIES",
+        rungs.max_cell_entities.or(declared_cells),
+        8,
+    );
 
     let contents = format!(
         "/// Component pool slots (set via `NROS_RUNTIME_MAX_COMPONENTS`, default 4).\n\

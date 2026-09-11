@@ -749,11 +749,26 @@ config NROS_MAX_QUERYABLES
       Two nodes already need 12, which is over the historical default of 8.
 
 config NROS_MAX_LIVELINESS
-    int "Maximum concurrent liveliness tokens"
-    default 16
+    int "Maximum concurrent liveliness tokens (-1 = derive)"
+    default -1
     help
       Maximum number of concurrent liveliness tokens in the shim layer.
       Maps to ZPICO_MAX_LIVELINESS.
+
+      phase-412 W2 -- `-1` DERIVES this from the image's entity inventory,
+      on the same ladder as NROS_MAX_QUERYABLES. Stating a number here WINS.
+
+      Every token is declared by THIS session, never by a peer: one for the
+      session's own node, one per node name, and one per publisher,
+      subscriber, service server and service client (three per action
+      client, which the derivation multiplies). The graph cache's own
+      subscriber takes no slot. An image with no inventory (nothing
+      declared) keeps the zpico default of 16.
+
+      Short is not a boot failure: the entity works and is invisible to
+      `ros2 node list`, and the shim logs the exhaustion naming this knob.
+      An image that BRIDGES (runtime-named nodes, declared nowhere) must
+      state it.
 
 config NROS_MAX_PENDING_GETS
     int "Maximum concurrent pending get operations"

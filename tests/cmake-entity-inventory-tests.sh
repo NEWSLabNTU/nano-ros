@@ -154,6 +154,14 @@ set(NROS_ENTITY_COUNT_TIMER 4)
 set(NROS_ENTITY_COUNT_SERVICE_SERVER 2)
 set(NROS_ENTITY_COUNT_SERVICE_CLIENT 2)
 set(NROS_DERIVED_EXECUTOR_MAX_CBS 19)
+# phase-412 W2 / issue 1130 -- the liveliness pool and the per-kind cell
+# registry bound. The cell bound is deliberately ZERO here: an image whose
+# components create none of the five cell kinds derives 0, and the registries
+# are Rust arrays where 0 is an empty registry rather than a `#error`. A
+# publish that treats 0 as "nothing to publish" drops it silently and the
+# consumer compiles the builtin 8 instead.
+set(NROS_DERIVED_MAX_LIVELINESS 15)
+set(NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES 0)
 set(NROS_ENTITY_SUBSCRIBED_TYPES_STATUS "resolved")
 set(NROS_ENTITY_SUBSCRIBED_TYPES "nav_msgs/msg/Odometry;std_msgs/msg/Int32")
 set(NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS "nav_msgs/msg/Odometry=1;std_msgs/msg/Int32=2")
@@ -226,6 +234,22 @@ fi
 check
 if ! nros_grep_q "NROS_DERIVED_EXECUTOR_MAX_CBS=19" <<<"$OUT"; then
     fail "A: MAX_CBS did not reach the caller's scope -- $OUT"
+fi
+# phase-412 W2 -- the liveliness pool crosses the same boundary. It sizes a
+# fixed C array in `zpico.c`, and a value lost here leaves the image on the
+# zpico literal 16 with no diagnostic: the entities are created and WORK, and
+# are simply absent from `ros2 node list`.
+check
+if ! nros_grep_q "NROS_DERIVED_MAX_LIVELINESS=15" <<<"$OUT"; then
+    fail "A: the liveliness pool did not reach the caller's scope -- $OUT"
+fi
+# Issue 1130 -- and so does the cell registry bound, AT ZERO. Zero is a derived
+# ANSWER here (no component creates a publisher, service or action), not an
+# absence, and it is the value most likely to be dropped by a publish that
+# tests truthiness instead of DEFINED.
+check
+if ! nros_grep_q "NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES=0" <<<"$OUT"; then
+    fail "A: a derived ZERO cell-registry bound did not reach the caller -- $OUT"
 fi
 check
 if ! nros_grep_q "NROS_ENTITY_INVENTORY_ENTITY_TOTAL=33" <<<"$OUT"; then
@@ -315,6 +339,17 @@ fi
 check
 if nros_grep_q "NROS_DERIVED_EXECUTOR_MAX_CBS=" <<<"$OUT"; then
     fail "B: a refusal published a MAX_CBS -- $OUT"
+fi
+# phase-412 W2 / issue 1130 -- and neither of the two counts this wave added.
+# Both size pools whose exhaustion is survivable-but-silent-ish, which makes a
+# number published over a PARTIAL image worse than no number at all.
+check
+if nros_grep_q "NROS_DERIVED_MAX_LIVELINESS=" <<<"$OUT"; then
+    fail "B: a refusal published a liveliness pool size -- $OUT"
+fi
+check
+if nros_grep_q "NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES=" <<<"$OUT"; then
+    fail "B: a refusal published a cell-registry bound -- $OUT"
 fi
 check
 if ! nros_grep_q "declare no entities" <<<"$OUT"; then
