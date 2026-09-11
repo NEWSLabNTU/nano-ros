@@ -260,7 +260,17 @@ inline void rate_loop() {
     rclcpp::WallRate rate(10.0); // 10 Hz
     rclcpp::Rate from_period(std::chrono::milliseconds(100));
     rate.reset();
-    const std::chrono::nanoseconds period = rate.period();
+    // issue 1331 / phase-442 W5 — `period()` returns `nros::Duration`, not
+    // `std::chrono::nanoseconds`. That is the divergence W5 chose deliberately:
+    // a return type that exists only where `<chrono>` does would keep the whole
+    // `Rate` class hostage to the toolchain, which is what W5 removed. The
+    // ledger row `cpp:Rate::period` states it.
+    //
+    // This line is the shape a PORTER writes after the one-word edit, and it is
+    // written here rather than adapted so the probe measures our surface. The
+    // adapter, for a ported file that must keep a chrono type, is one call:
+    // `std::chrono::nanoseconds(rate.period().nanoseconds())`.
+    const nros::Duration period = rate.period();
     (void)period;
     while (rclcpp::ok()) {
         const bool on_time = rate.sleep();
