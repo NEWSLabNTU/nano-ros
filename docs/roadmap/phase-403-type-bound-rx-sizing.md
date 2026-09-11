@@ -1,10 +1,18 @@
 # Phase 403 — the type's bound sizes every receive buffer, and third parties can say what they need
 
-**Status (2026-09-04). W1, W4 (one half), W6, W7, W7b, W8, W9 and steps 1-3
-are LANDED; W0, W2, W3 and W5 remain.** The 2026-08-30 line said "design,
-nothing landed" and outlived that by five days and eleven commits -- the body
-below had been recording `LANDED` per wave the whole time, so the phase read as
-unstarted to anyone who stopped at the header. Opened because
+**Status (2026-09-11). W0, W1, W4 (one half), W6, W7, W7b, W8, W9 and steps 1-3
+are LANDED; W2, W3 (the caller-supplied-buffer half) and W5 remain.** The
+2026-08-30 line said "design, nothing landed" and outlived that by five days and
+eleven commits -- the body below had been recording `LANDED` per wave the whole
+time, so the phase read as unstarted to anyone who stopped at the header. The
+2026-09-04 line then listed W0 as remaining while the body at "W0 -- (landed
+2026-08-31)" said otherwise; the header was wrong, not the body.
+
+Two further corrections, 2026-09-11. The "W0's blocker" section below is
+SUPERSEDED and now says so -- it was reversed the day after it was written and
+missed when its sibling was marked. And step 3's residue ("what is still owed is
+step 2's actual wiring") is CLOSED: phase-412 W3 carried the declared depths into
+the cargo env in `e4b576489`, which this doc never recorded. Opened because
 [phase 402](archived/phase-402-c-subscription-options-struct.md) delivered the PLUMBING
 for a per-type receive hint and stopped there: the hint now reaches the backend
 and changes nothing's size. Depends on
@@ -208,7 +216,33 @@ is RENAMED, not deleted, into `an_unbounded_type_is_refused_rather_than_defaulte
 and the compile-time half is a `compile_fail` doctest with a compiling positive
 control beside it.
 
-### W0's blocker: the `cap` escape hatch does not reach the bound
+### W0's blocker: the `cap` escape hatch does not reach the bound (2026-08-31, SUPERSEDED)
+
+> **This blocker was lifted the day after it was written, and this section was
+> missed when its sibling was marked.** The re-ruling is "The re-ruling: a cap
+> DOES set the bound (owner, 2026-08-31)" below, and the wiring shipped in
+> `1b3923523` ("an inline `cap` sets the bound"). The ruling now lives in code as
+> `StorageMode::cap_bounds_the_wire()`
+> (`packages/cli/rosidl-lower/src/config.rs`).
+>
+> Kept, not deleted, for the same reason the sibling section is kept: "a cap
+> cannot reach the bound" was load-bearing prose for a day, and a reader who
+> finds only the answer cannot tell which question it settles.
+>
+> **Every piece of evidence below is now false or misleading.** The
+> `diagnostic-msgs` claim is flatly false —
+> `generated/humble/nros-diagnostic-msgs/src/msg/key_value.rs` reads
+> `ty: ::nros_serdes::FieldType::BoundedString(32)`. The
+> `fingerprint-corpus` claim is true for the opposite reason: `Shapes.text` is
+> `mode = "view"`, so it stays unbounded deliberately, and the same corpus now
+> carries `inline` entries that DO bound. Consequence 1 ("codegen cannot be made
+> to REFUSE an unbounded type") is retired — W0 landed as "one build names every
+> unbounded member". Consequence 3 (the C++ `compute_serialized_size_max` never
+> reports unboundedness) was fixed by phase-408's C++ pack work (`5f3c08545`).
+>
+> Mechanically checkable: `git log -L 211,270` on this file returns exactly one
+> commit, `ac9e23969` — the commit before the reversal. The section has never
+> been edited since it was written.
 
 Decision 2 says a user MUST bound a type "in the `.msg` or as a `cap` in
 `nros-codegen.toml`". **The second half is not true today**, and until it is, the
