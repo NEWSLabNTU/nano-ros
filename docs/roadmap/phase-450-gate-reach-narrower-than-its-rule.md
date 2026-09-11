@@ -1,10 +1,17 @@
 # Phase 450 — a gate whose reach is narrower than the rule it enforces
 
-**Status (2026-09-11). Opened to give five homeless issues one owner. W2 was
-already LANDED when the phase was written — issue 1161 closed via PR #734 on
-2026-09-08, which the opening survey read while the PR was still open. W1, W3,
-W4 and W5 are open. Every remaining member issue was measured against the tree
-rather than read off the gate's own description.**
+**Status (2026-09-11). W2, W3, W4 and W5 LANDED; W1's gate half landed and its
+site conversion is the one open box.** Every landed item was mutation-tested —
+the defect it exists for was planted, the gate went red naming it, and the tree
+was restored — because a gate of this shape is green while the defect is
+present, which is the whole premise of the phase.
+
+**Three of the four found something the issue had not.** W3's fourth
+declaration site exposed four unlisted triples, not one. W4's third cause was
+reproduced on this session's own `pre-push` failure. W5's census reaches 36
+crates and 636 unsafe sites that a `cargo metadata` enumeration cannot see,
+because the root workspace excludes them — this phase's own subject arriving
+inside a gate written for it.
 
 ## Why this phase exists
 
@@ -69,6 +76,17 @@ that must not be fixed by adding a second spelling to the matcher.
       it. Not a widened regex.
 - [ ] `check-skip-budget` keys on the helper, so a new site that bypasses it is
       the thing that fails.
+- [x] `check-skip-budget` keys on the SPELLINGS rather than one spelling. It
+      read `not prebuilt` only, while **57 of the tree's 61 laundering sites say
+      `not built`** — the rule stated fully and enforced on 4 of 61.
+- [x] A negative control: six `FIXTURE_RE` cases in `--self-test`, four positive
+      and two that must NOT match. Mutation-tested by reverting the regex, which
+      fails two cases.
+- [ ] The sites converted. Deliberately last and deliberately not a sweep: the
+      resolver honours `NROS_FIXTURES_OPTIONAL` and the out-of-lane skip
+      INTERNALLY, so most call-site `Err` arms can only fire on a real failure —
+      but some are west/SDK host facts, and each wants its lane checked against
+      the manifest before it becomes `.expect(...)`.
 - [ ] The sweep command is in the commit message and re-runs clean.
 
 ### W2 — a capability skip is budgeted like a fixture skip — LANDED
@@ -96,9 +114,20 @@ was already being worked, and it is the shape the other four should follow.
 `git ls-files` globs; two further sites declare a target, including
 `zephyr/cmake/nros_cargo_build.cmake`'s `set(NROS_RUST_TARGET …)`.
 
-- [ ] The declaration set is derived from one place, or the gate fails when it
-      finds a target declared somewhere it does not scan.
-- [ ] The target that had no row has one, and removing that row is a red.
+- [x] The fourth site (`NROS_RUST_TARGET` in `zephyr/cmake/*.cmake` and its
+      shell mirror) is scanned. Scanning it found **four** more unlisted
+      triples, not one: `thumbv7em-none-eabi`, `thumbv8m.main-none-eabi{,hf}`
+      and `i686-unknown-linux-gnu` — each the no-FPU or alternate-profile
+      sibling of a triple already listed, reachable by a real Zephyr board.
+- [x] All four added to the three lists the gate cross-checks
+      (`config/rust-targets.txt`, the SDK index, `rust-toolchain.toml`); 12 rows
+      to 16. Removing one is a red, mutation-tested.
+- [x] **The issue's third site was refuted rather than implemented.** 1153 names
+      `ci/docker/*/Dockerfile`; that image installs a hardcoded set AND the
+      SSoT's rows, and its comment states the asymmetry is intended — "dropping
+      them here would be a silent capability loss". Scanning it reported 4
+      intentional targets as undeclared. The reasoning is recorded in the gate
+      so the next reader does not re-add it.
 
 ### W4 — `check-submodule-pinned-locks` measures which cause it has
 
@@ -119,12 +148,19 @@ red here on 2026-09-11 naming the lock, and the cause was a drifted
 `play_launch` checkout that `git submodule update` cleared. A gate this phase
 is about, caught while checking the commit that files it.
 
-- [ ] The gate distinguishes the two by measuring the checkout against the
-      recorded pointer before it prints anything.
-- [ ] Each cause prints its own remedy; the drifted-checkout arm says
-      `git submodule update <path>` and never `just lock-update`.
-- [ ] The remedy the drifted-checkout arm prints cannot produce a rewind —
-      checked by following it, not by reading it.
+- [x] `_submodule_drift` compares the submodule's `HEAD` against the gitlink the
+      superproject records, and only a real difference produces the third
+      verdict. It clears the inherited git environment first — this runs under
+      `pre-push`, where `GIT_DIR` overrides `git -C`, so without that the probe
+      would read the superproject's HEAD and report no drift ALWAYS
+      (issues 0986/0988): a gate that cannot fire, in the phase about gates that
+      cannot fire.
+- [x] The drifted arm prints `git submodule update <path>`, per entry rather
+      than once, and never `just lock-update`.
+- [x] Followed rather than read: reproduced on this session's own failure
+      (`play_launch` at `db4af878` against a pinned `155ed78b`), which before
+      the change printed "pointer moved, run lock-update". `git submodule
+      update` clears it.
 
 ### W5 — the 62 crates that cannot `forbid` get a direction of travel
 
@@ -133,11 +169,24 @@ Issue 1221 put `#![forbid(unsafe_code)]` on the ten shipped crates measured at
 literal zero. `forbid` is a property, not a budget, so it says nothing about the
 62 crates carrying all 5,047 occurrences.
 
-- [ ] A per-crate census with a ratchet that may only SHRINK, in the shape the
-      other ratchets in this tree already use.
-- [ ] The baseline is generated, not hand-authored — a hand-authored inventory
-      is W1's and W3's defect.
-- [ ] A new `unsafe` in a crate at its budget is a red.
+- [x] `just check unsafe-census` — per-crate, shrink-only, counting SYNTAX
+      (`unsafe {}` / `fn` / `impl` / `extern` / `trait`) after stripping
+      comments and string literals. **4,411 syntactic sites**, against the
+      issue's 5,047 token occurrences; the issue said the two differ and this
+      measures which.
+- [x] The baseline is generated (`--write-baseline`) and says so.
+- [x] A planted `unsafe { }` in `nros-node` reds it (`unsafe block 374 -> 375`).
+- [x] **The obvious enumeration was the wrong one.** `cargo metadata --no-deps`
+      reports workspace MEMBERS and sees 37 crates / 3,775 sites; the tree
+      excludes ~130 paths, several of them real crates no lane compiles
+      (issue 1309), so `git ls-files` sees 73 / 4,411. A members-only census
+      would have inherited that blind spot and reported a cleaner number than
+      the truth.
+
+Not done, and it is a decision rather than work: 1236's second half asks for a
+recorded POSITION on the remaining core ("these crates carry unsafe and here is
+the ceiling"). The census makes that statable with real numbers; it does not
+make the statement.
 
 ## Acceptance for the phase
 
