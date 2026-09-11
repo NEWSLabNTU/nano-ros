@@ -1,5 +1,15 @@
 # Phase 427 — one node type, named `rclcpp::Node`, compiling freestanding
 
+**ARCHIVED 2026-09-11. Every work item is landed with evidence in this
+document and the one acceptance that could not be checked in place — issue
+1247, W12's freestanding subnode build — is resolved and archived.** The
+audit that moved it: W1–W8 per the status line below, W9 (`Context` on every
+target) DONE 2026-09-07 in its own section, W10 the rclrs talker port (PR #753),
+W11 the `spin` family (2026-09-09), W12 (2026-09-11, PR #916). W1 is
+additionally recorded as RELOCATED to phase-438 W4 in "W1 moves to phase-438";
+phase-438's status reads "W0–W5 LANDED", so the item is landed on either
+reading. Nothing here is owed.
+
 **Status (2026-09-11). W1, W2, W3, W4, W5, W6, W7 and W8 LANDED (W5's runtime
 half and W6's book page closed 2026-09-09; W4's freestanding acceptance split
 out as issue 1247; W7 landed 2026-09-11 once its blocker cleared — see "W7

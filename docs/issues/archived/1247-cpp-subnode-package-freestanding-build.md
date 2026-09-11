@@ -78,7 +78,7 @@ the link surfaces, not the node.
 
 ## Related
 
-- `docs/roadmap/phase-427-one-node-type.md` — W4, where this acceptance was
+- `docs/roadmap/archived/phase-427-one-node-type.md` — W4, where this acceptance was
   split off.
 - RFC-0047 — what the subnode packages exercise is several named CALLBACK
   GROUPS on one node, not several named nodes (a correction PR #773 landed).
