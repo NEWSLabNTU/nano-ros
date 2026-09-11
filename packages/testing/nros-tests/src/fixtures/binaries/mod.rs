@@ -561,10 +561,20 @@ pub(crate) fn require_prebuilt_binary(binary_path: &Path) -> TestResult<PathBuf>
 /// Everything both chokepoints do once the path is final: existence, the
 /// build-failure marker, and the tier-aware skip. Split out so the row-keyed
 /// entry point cannot drift from the path-keyed one.
-fn require_prebuilt_binary_checks(binary_path: &Path) -> TestResult<PathBuf> {
-    if binary_path.exists() {
-        return Ok(binary_path.to_path_buf());
-    }
+/// The verdict for an ABSENT fixture, shared by every resolver.
+///
+/// issue 1129 / phase-450 W1 — this was inline in `require_prebuilt_binary_checks`
+/// and `require_prebuilt_workspace_binary` had NONE of it: no `.build-failed`
+/// marker check, no `NROS_FIXTURES_OPTIONAL` skip, and — the one that matters —
+/// no `gate_promised_fixtures()` panic. So for every workspace-fixture call site
+/// a GATED run returned a plain `Err`, which the call site turned into
+/// `[SKIPPED] … not built`, and the lane greened having run nothing. That is the
+/// exact silent-green this block exists to prevent, surviving in the sibling
+/// resolver because the block was copied nowhere rather than shared.
+///
+/// One helper, called by both. A second spelling is what this repo keeps paying
+/// for (the #282 / #326 class), so the fix is not to paste it across.
+fn absent_fixture_verdict(binary_path: &Path, remedy: &str) -> TestResult<PathBuf> {
     // Tier-aware (#25): the LIGHT host-integration lane (`NROS_FIXTURES_OPTIONAL=1`)
     // does not build every native fixture variant (TLS / cyclonedds / zero-copy /
     // workspace-entry need extra system deps + tools). There an unstaged fixture
@@ -595,7 +605,7 @@ fn require_prebuilt_binary_checks(binary_path: &Path) -> TestResult<PathBuf> {
     }
     if std::env::var_os("NROS_FIXTURES_OPTIONAL").is_some() {
         crate::skip!(
-            "fixture binary not prebuilt: {} (light tier; run `just build-test-fixtures` for full coverage)",
+            "fixture binary not prebuilt: {} (light tier; run `{remedy}` for full coverage)",
             binary_path.display()
         );
     }
@@ -665,9 +675,16 @@ fn require_prebuilt_binary_checks(binary_path: &Path) -> TestResult<PathBuf> {
     }
     Err(TestError::FixtureNotBuilt(format!(
         "Test fixture binary not prebuilt: {}\n\
-         Run `just build-test-fixtures` first.",
+         Run `{remedy}` first.",
         binary_path.display()
     )))
+}
+
+fn require_prebuilt_binary_checks(binary_path: &Path) -> TestResult<PathBuf> {
+    if binary_path.exists() {
+        return Ok(binary_path.to_path_buf());
+    }
+    absent_fixture_verdict(binary_path, "just build-test-fixtures")
 }
 
 /// Did something already PROMISE that this lane's fixtures are present?
@@ -1907,11 +1924,14 @@ fn require_prebuilt_workspace_binary(
     // `dir`, so `id` is the exact key where a path prefix would be ambiguous.
     crate::fixtures::lane::require_workspace_in_lane(fixture_id)?;
     if !binary_path.exists() {
-        return Err(TestError::FixtureNotBuilt(format!(
-            "Workspace fixture binary not prebuilt: {}\n\
-             Run `just native build-workspace-fixtures` first.",
-            binary_path.display()
-        )));
+        // issue 1129 / phase-450 W1 — the same verdict the binary/row resolvers
+        // give. This branch used to return a bare `Err`, with no `.build-failed`
+        // marker check, no `NROS_FIXTURES_OPTIONAL` skip and no
+        // `gate_promised_fixtures()` panic — so on a GATED run every workspace
+        // call site laundered it into `[SKIPPED] … not built` and the lane
+        // greened having run nothing. 21 of the tree's 61 laundering sites
+        // resolve through here.
+        return absent_fixture_verdict(binary_path, "just native build-workspace-fixtures");
     }
 
     let expected = current_workspace_fixture_signature(fixture_id)?;
