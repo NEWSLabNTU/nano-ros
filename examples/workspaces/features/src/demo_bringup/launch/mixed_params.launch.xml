@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<!-- phase-426 W5 — the cross-language parameter image. One node; its C++ half
+     declares `publish_period_ms` (adopting the 250 below) and reads `scale`,
+     its C half declares `scale` and reads `publish_period_ms`. It publishes the
+     product on /chatter, so a listener seeing 750 has proved both crossings
+     reached the executor's one `nros_params::ParameterServer`. -->
+<launch>
+  <node pkg="mixed_param_talker_pkg" exec="mixed_param_talker" name="param_talker">
+    <param name="publish_period_ms" value="250"/>
+  </node>
+</launch>

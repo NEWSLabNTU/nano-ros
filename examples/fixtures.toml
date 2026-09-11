@@ -3784,6 +3784,25 @@ image = "native_cpp_params"
 codegen_out = "build-workspace-codegen/demo_bringup"
 build_subdir = "build/posix-zenoh-native/cmake"
 
+# phase-426 W5 — the CROSS-LANGUAGE parameter image, and the acceptance W5
+# stated but never built. `workspace-features-{c,cpp}-params` above are two
+# single-language images that each read a launch-seeded value; neither crosses,
+# so "C and C++ cannot disagree about what a node's parameters are" was a claim
+# with no cell behind it. This one has ONE node whose C++ half declares
+# `publish_period_ms` and reads `scale`, and whose C half declares `scale` and
+# reads `publish_period_ms`. Consumed by tests/cpp_c_param_live_read_e2e.rs
+# (the `mixed` arm), which asserts the published product (250 * 3 = 750).
+[[workspace_fixture]]
+id = "workspace-features-mixed-params"
+platform = "linux"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/features"
+bringup = "src/demo_bringup"
+image = "native_mixed_params"
+codegen_out = "build-workspace-codegen/demo_bringup"
+build_subdir = "build/posix-zenoh-native/cmake"
+
 [[workspace_fixture]]
 id = "workspace-features-cpp-lifecycle"
 platform = "linux"

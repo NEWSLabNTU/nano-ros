@@ -80,6 +80,15 @@ pkg = "cpp_param_talker_pkg"
 class = "cpp_param_talker_pkg::ParamTalker"
 name = "cpp_params_param_talker"
 
+# phase-426 W5 — the cross-language parameter node: a C++ component with a C
+# translation unit beside it, each declaring one parameter and reading the
+# other's on the SAME node. Named `mixed_*` by the `features/` convention for a
+# package where languages coexist (examples/workspaces/README-layout.md).
+[[component]]
+pkg = "mixed_param_talker_pkg"
+class = "mixed_param_talker_pkg::ParamTalker"
+name = "mixed_params_param_talker"
+
 [[component]]
 pkg = "cpp_qos_listener_pkg"
 class = "cpp_qos_listener_pkg::QosListener"
@@ -223,6 +232,10 @@ out    = "mixed_custom_msg_talker_model.yaml"
 launch = "mixed_custom_msg_listener.launch.xml"
 out    = "mixed_custom_msg_listener_model.yaml"
 
+[[model]]
+launch = "mixed_params.launch.xml"
+out    = "mixed_params_model.yaml"
+
 # --- phase-383 W9 (RFC-0065 D6) — images are the buildable unit.
 # Derived from the entry packages that existed at migration time; each
 # entry's `deploy` token picked its board, and its `launch` its topology.
@@ -291,6 +304,10 @@ launch = "mixed_qos_listener.launch.xml"
 [image.native_mixed_qos_talker]
 board = "native"
 launch = "mixed_qos_talker.launch.xml"
+
+[image.native_mixed_params]
+board = "native"
+launch = "mixed_params.launch.xml"
 
 [image.native_rust_custom_msg]
 board = "native"
