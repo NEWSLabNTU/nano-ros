@@ -153,6 +153,16 @@ rv-virt-threadx, zenoh, xPack `riscv-none-elf-gcc` 14.2:
   `nros_board_rtos_run_components` in the `app` shape.
 - `c_threadx_tiers` (new): the three sched calls plus the same runner.
 
+**Left open here, since landed** — the C template's banner said
+"`nros_board_native_run_components` owns init/spin/shutdown" in every C
+golden, which has been wrong for every RTOS board since phase-432 W3.1 (they
+call `nros_board_rtos_run_components`; native calls
+`nros_board_native_run_components_named`). Fixed by `fix(entry): the C entry
+banner names the runner the entry calls`: the banner now renders the same
+`boot.run_tiers_fn` / `boot.run_components_fn` value, under the same
+`boot.tiers` predicate, that `boot_wrapper.jinja` uses for the call, so the
+two cannot drift apart. Every C golden moved, in the banner comment only.
+
 **Runtime (threadx-linux).** PASSED, solo. The command was
 `cargo test -p nros-tests --test entry_e2e entry_matrix`, and it printed
 `entry_matrix: 1 ran, 15 skipped, 0 failed`. The cell that ran is
