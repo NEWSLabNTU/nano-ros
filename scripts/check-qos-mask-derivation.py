@@ -50,8 +50,30 @@ typed twice:
   asked for it, and a bit that function can never set is an error here;
 * the BACKEND LIST is every `impl Session for` in `packages/**/src`, so a new
   backend is in scope the moment it exists;
-* a multiplexing session (the cffi route) names the crates it routes to and
-  its union is checked against THEIR claims.
+* a multiplexing session (the cffi route) names the crates it routes to, and
+  EACH of them is checked against its own claims.
+
+WHAT ISSUE 1329 CHANGED HERE
+
+W9 could only check the cffi route's UNION — the vtable had no slot to ask a C
+backend through, so the route answered the union of what any backend it routes
+to honours, and a union over-claims for every member of it. An application
+asking cyclonedds for `avoid_ros_namespace_conventions`, or XRCE for a
+deadline, was admitted and then ignored downstream.
+
+There is a slot now (`nros_rmw_vtable_t::supported_qos_policies`), so the rules
+here changed shape with it:
+
+* a `nros-qos-mux:` session must ROUTE, not author a mask (R6);
+* each routed backend's C mask must EQUAL its evidenced claims, in BOTH
+  directions (R7) — an extra bit is the old over-claim, a missing one refuses a
+  policy the backend implements;
+* a backend that honours anything and fills no slot is an error, because the
+  ABI reads a NULL slot as "honours nothing" and every affected create fails;
+* and the two halves of the policy vocabulary — `NROS_RMW_QOS_POLICY_*` in
+  `rmw_entity.h` and `QoSPolicyMask`'s consts — must agree name for name and
+  bit for bit (R0). A backend setting one bit while the runtime reads another
+  ACCEPTS the wrong profile, which is silent.
 
 An implementation that honours nothing says so with `nros-qos-exempt:` and a
 reason — the mock and the metadata recorder, neither of which carries traffic.
@@ -63,9 +85,11 @@ notice a real regression, because a synthetic file is written by the same hand
 that wrote the matcher. So the controls below MUTATE THE REAL SOURCES in
 memory — delete the depth read from the zenoh admission function, delete a
 claim, move a claim into the discovery-only file, re-advertise the withdrawn
-liveliness bit — and require a red each time. They run on the normal path
-(`check-gate-selftests`), so "someone once demonstrated a red" stays a
-measurement.
+liveliness bit, re-advertise a policy a C backend never reads, make a
+backend's slot disagree with its claims, empty a slot, put the union back,
+move a C bit out from under its Rust twin — and require a red each time. They
+run on the normal path (`check-gate-selftests`), so "someone once demonstrated
+a red" stays a measurement.
 
 Usage::
 
@@ -84,6 +108,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TRAITS = ROOT / "packages" / "core" / "nros-rmw" / "src" / "traits.rs"
+ENTITY_H = ROOT / "packages" / "core" / "nros-rmw-abi" / "include" / "nros" / "rmw_entity.h"
 
 SOURCE_SUFFIXES = (".rs", ".c", ".cc", ".cpp", ".h", ".hpp")
 
@@ -93,6 +118,18 @@ MUX = re.compile(r"nros-qos-mux:\s*(\S.*)")
 DISCOVERY_ONLY = re.compile(r"nros-qos-discovery-only:")
 
 IMPL_SESSION = re.compile(r"^\s*impl\s+(?:[\w:]+::)?Session\s+for\s+(\w+)", re.M)
+
+# The vtable slot a C backend answers through (issue 1329), in both spellings a
+# backend initialises it with: designated (`.slot = fn`) and the annotated
+# positional form (`/*slot*/ fn`).
+C_SLOT = "supported_qos_policies"
+C_SLOT_DESIGNATED = re.compile(r"\." + C_SLOT + r"\s*=\s*(?:&)?(\w+)\s*,")
+C_SLOT_POSITIONAL = re.compile(r"/\*\s*" + C_SLOT + r"\s*\*/\s*(\w+)\s*,")
+C_POLICY_MACRO = re.compile(
+    r"^#define\s+NROS_RMW_QOS_POLICY_([A-Z0-9_]+)\s+(.+?)\s*(?:\\)?$", re.M
+)
+C_POLICY_TOKEN = re.compile(r"NROS_RMW_QOS_POLICY_([A-Z0-9_]+)")
+C_COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
 
 
 class Fail(Exception):
@@ -138,6 +175,121 @@ def parse_bits(traits: str) -> tuple[dict[str, int], dict[str, set[str]]]:
     if not atomic:
         raise Fail("traits.rs: `impl QoSPolicyMask` declares no `Self(1 << n)` policy bits")
     return atomic, alias
+
+
+def parse_c_bits(header: str) -> tuple[dict[str, int], dict[str, set[str]]]:
+    """`#define NROS_RMW_QOS_POLICY_<NAME> …` in `rmw_entity.h`.
+
+    Same split by SHAPE as `parse_bits`: `(1u << n)` is a policy, a union of
+    other `NROS_RMW_QOS_POLICY_*` names is an alias, `0u` is the empty mask.
+    This is the C half of a vocabulary written twice, and it is what a C
+    backend's mask is spelled in — so it is read, never assumed to agree.
+    """
+    atomic: dict[str, int] = {}
+    alias: dict[str, set[str]] = {}
+    # Join line continuations first: a union alias wraps, and a regex that
+    # stops at the newline reads its body as the backslash.
+    header = re.sub(r"\\\n\s*", " ", header)
+    for m in C_POLICY_MACRO.finditer(header):
+        name, rhs = m.group(1), " ".join(m.group(2).split())
+        shift = re.fullmatch(r"\(1u\s*<<\s*(\d+)\)", rhs)
+        if shift:
+            atomic[name] = 1 << int(shift.group(1))
+            continue
+        if re.fullmatch(r"0u", rhs):
+            alias[name] = set()
+            continue
+        parts = C_POLICY_TOKEN.findall(rhs)
+        if parts:
+            alias[name] = set(parts)
+            continue
+        raise Fail(
+            f"rmw_entity.h: `NROS_RMW_QOS_POLICY_{name}` has a shape this gate cannot read "
+            f"({rhs!r}). Bits are `(1u << n)`, aliases a union of other policy macros, "
+            "empty is `0u`."
+        )
+    if not atomic:
+        raise Fail(
+            "rmw_entity.h declares no `NROS_RMW_QOS_POLICY_*` bits — the C half of the "
+            "vocabulary has moved, and a gate that examines nothing reports a pass it "
+            "never established."
+        )
+    return atomic, alias
+
+
+def expand_c_alias(names, atomic, alias, where: str) -> set[str]:
+    """Policy macro names -> the atomic bits they stand for."""
+    out: set[str] = set()
+    for n in names:
+        if n in atomic:
+            out.add(n)
+        elif n in alias:
+            out |= expand_c_alias(alias[n], atomic, alias, where)
+        else:
+            raise Fail(f"{where}: `NROS_RMW_QOS_POLICY_{n}` is not a declared policy or alias")
+    return out
+
+
+def _c_fn_body(text: str, fn: str) -> str | None:
+    """The braced body of C/C++ function `fn`, comments stripped.
+
+    Comments go because the doc block ABOVE such a function legitimately names
+    the policies it does NOT claim, and the reason it does not — which is
+    exactly what a naive token scan would read as a claim.
+    """
+    for m in re.finditer(r"\b" + re.escape(fn) + r"\s*\(", text):
+        rest = text[m.end() :]
+        close = rest.find(")")
+        if close < 0:
+            continue
+        after = rest[close + 1 :]
+        stripped = after.lstrip()
+        if not stripped.startswith("{"):
+            continue  # a declaration or a call, not the definition
+        body = _impl_block(after, "{")
+        if body is not None:
+            return C_COMMENT.sub(" ", body)
+    return None
+
+
+def c_backend_mask(files, scope: str, atomic, alias) -> tuple[set[str] | None, str]:
+    """(bits, where) for the `supported_qos_policies` a C backend installs.
+
+    `None` means the backend fills no slot, which the ABI defines as "has not
+    said" and the runtime resolves to NONE.
+    """
+    for rel in sorted(files):
+        if not (rel == scope or rel.startswith(scope + "/")):
+            continue
+        if not rel.endswith((".c", ".cc", ".cpp")):
+            continue
+        text = files[rel]
+        for pat in (C_SLOT_DESIGNATED, C_SLOT_POSITIONAL):
+            m = pat.search(text)
+            if not m:
+                continue
+            fn = m.group(1)
+            if fn in ("NULL", "nullptr", "0"):
+                return None, rel
+            for src in sorted(files):
+                if not (src == scope or src.startswith(scope + "/")):
+                    continue
+                body = _c_fn_body(files[src], fn)
+                if body is None:
+                    continue
+                names = C_POLICY_TOKEN.findall(body)
+                if not names:
+                    raise Fail(
+                        f"{src}: `{fn}` is installed as the {C_SLOT} slot but its body names "
+                        "no `NROS_RMW_QOS_POLICY_*` macro. Write the mask as a union of "
+                        "those names so it can be compared with the backend's claims."
+                    )
+                return expand_c_alias(names, atomic, alias, src), src
+            raise Fail(
+                f"{rel}: the {C_SLOT} slot is filled with `{fn}`, whose definition is not "
+                f"under {scope}. The mask must live with the code it describes."
+            )
+    return None, scope
 
 
 def _impl_block(text: str, header: str) -> str | None:
@@ -230,8 +382,14 @@ def load_tree() -> dict[str, str]:
             "A gate that examines no files reports a pass it never established."
         )
     files: dict[str, str] = {}
+    entity_h = str(ENTITY_H.relative_to(ROOT))
     for rel in out.stdout.decode("utf8", "replace").split("\0"):
-        if not rel or "/src/" not in rel or not rel.endswith(SOURCE_SUFFIXES):
+        if not rel or not rel.endswith(SOURCE_SUFFIXES):
+            continue
+        # `/src/` plus the ONE public header that carries the C half of the
+        # policy vocabulary (issue 1329). Loaded through the same dict as
+        # everything else so the live-tree mutation controls can reach it.
+        if "/src/" not in rel and rel != entity_h:
             continue
         if "/generated/" in rel:
             continue
@@ -262,6 +420,9 @@ class Backend:
         self.all_bits = False  # `QoSPolicyMask(u32::MAX)`
         self.exempt: str | None = None
         self.mux: list[str] = []
+        # issue 1329 — a multiplexing session ROUTES the question to the
+        # backend that registered instead of authoring a mask for it.
+        self.routes = False
 
     def scopes(self) -> list[str]:
         return [self.crate] + self.mux
@@ -311,6 +472,12 @@ def _read_mask(be: Backend, block: str, atomic, alias) -> None:
     if not names:
         if re.search(r"QoSPolicyMask\(\s*0\s*\)", body):
             be.bits = set()
+            return
+        if be.mux:
+            # issue 1329 — a mux that names no bit is ROUTING, which is the
+            # shape this item exists to produce. Its answer is each backend's
+            # own, checked per crate below.
+            be.routes = True
             return
         raise Fail(
             f"{be.type_name} ({be.file}): supported_qos_policies returns an expression this\n"
@@ -374,6 +541,43 @@ def check(files: dict[str, str]) -> tuple[list[str], list[Backend]]:
     backends = find_backends(files, atomic, alias)
     errs: list[str] = []
 
+    # R0 — the C vocabulary IS the Rust vocabulary (issue 1329). A C backend
+    # spells its mask in `NROS_RMW_QOS_POLICY_*` and the runtime reads the
+    # result as `QoSPolicyMask`; a name or a bit position that differs between
+    # the two is a wrong ACCEPTANCE at entity create, which is silent. The
+    # `nros-rmw-cffi` crate asserts the same pair at compile time; this is the
+    # buildless half, for the fast lane and for a target that runs no gates.
+    header = files.get(str(ENTITY_H.relative_to(ROOT)))
+    if header is None:
+        raise Fail(f"{ENTITY_H.relative_to(ROOT)} not found — the C half cannot be read")
+    c_atomic, c_alias = parse_c_bits(header)
+    if set(c_atomic) != set(atomic):
+        only_c = sorted(set(c_atomic) - set(atomic))
+        only_rust = sorted(set(atomic) - set(c_atomic))
+        errs.append(
+            "the C and Rust policy vocabularies disagree: "
+            f"C-only {only_c}, Rust-only {only_rust}. `NROS_RMW_QOS_POLICY_*` in "
+            "rmw_entity.h and `QoSPolicyMask`'s consts are one vocabulary written twice."
+        )
+    for name in sorted(set(c_atomic) & set(atomic)):
+        if c_atomic[name] != atomic[name]:
+            errs.append(
+                f"policy {name} is bit {c_atomic[name]:#x} in C and {atomic[name]:#x} in "
+                "Rust. A backend setting one bit and the runtime reading another accepts "
+                "the wrong profile, silently."
+            )
+    for a_name, members in sorted(c_alias.items()):
+        rust_members = alias.get(a_name)
+        want = expand_c_alias(members, c_atomic, c_alias, "rmw_entity.h")
+        if rust_members is None:
+            errs.append(
+                f"`NROS_RMW_QOS_POLICY_{a_name}` has no `QoSPolicyMask::{a_name}` counterpart"
+            )
+        elif rust_members != want:
+            errs.append(
+                f"alias {a_name} covers {sorted(want)} in C and {sorted(rust_members)} in Rust"
+            )
+
     # R1 — every declared bit is one a caller can actually request. A bit
     # `required_policies` never sets is a claim nothing can exercise.
     for bit in sorted(set(atomic) - set(fields)):
@@ -387,8 +591,66 @@ def check(files: dict[str, str]) -> tuple[list[str], list[Backend]]:
     if not backends:
         errs.append("no `impl Session for` found under packages/**/src — the scan is broken")
 
+    # R6 — a MULTIPLEXING session routes; it does not author a mask (issue
+    # 1329). Its answer has to be the registered backend's, because which
+    # backend it is talking to is a run-time fact. A union over the crates it
+    # routes to is an over-claim for every one of them, which is the shape this
+    # rule exists to keep out once the vtable slot made routing possible.
+    for be in backends:
+        if not be.mux:
+            continue
+        if not be.routes:
+            errs.append(
+                f"{be.type_name} ({be.file}) declares nros-qos-mux and still AUTHORS a mask. "
+                "A multiplexing session must ask the registered backend through the "
+                f"`{C_SLOT}` vtable slot and return what it said; a union over "
+                f"{', '.join(be.mux)} over-claims for each of them (issue 1329)."
+            )
+            continue
+        # R7 — each routed backend answers for itself, and its answer must be
+        # exactly the set of policies its own code is evidenced to honour.
+        # BOTH directions: a bit with no claim is the over-claim this campaign
+        # keeps finding, and a claim with no bit is a policy the backend
+        # implements and then refuses at create.
+        for scope in be.mux:
+            claims = {
+                bit
+                for bit, sites in claims_in(files, [scope]).items()
+                if any(reads_field(files[s], *fields.get(bit, (None, None))) for s in sites)
+                if bit in atomic
+            }
+            try:
+                mask, where = c_backend_mask(files, scope, c_atomic, c_alias)
+            except Fail as exc:
+                errs.append(str(exc))
+                continue
+            if mask is None:
+                if claims:
+                    errs.append(
+                        f"{scope} honours {sorted(claims)} and fills no `{C_SLOT}` slot. "
+                        "A NULL slot DECLARES that the backend honours nothing, so every "
+                        "entity stating one of those policies is refused at create. Fill "
+                        "the slot with the mask its claims add up to."
+                    )
+                continue
+            extra = sorted(mask - claims)
+            missing = sorted(claims - mask)
+            if extra:
+                errs.append(
+                    f"{where}: the {C_SLOT} mask advertises {extra} with no evidenced "
+                    f"`nros-qos-honours:` claim under {scope}. A bit is earned by code that "
+                    "reads the mapped profile field and applies or refuses it."
+                )
+            if missing:
+                errs.append(
+                    f"{where}: {scope} claims to honour {missing} and the {C_SLOT} mask "
+                    "omits them, so the runtime refuses a policy this backend implements."
+                )
+
     claimed_anywhere: dict[str, set[str]] = {}
     for be in backends:
+        if be.routes:
+            continue  # answered per routed backend above
         if be.bits is None:
             continue  # trait default: NONE, nothing to justify
         if be.exempt:
@@ -440,6 +702,16 @@ def check(files: dict[str, str]) -> tuple[list[str], list[Backend]]:
     for be in backends:
         if be.bits and not be.exempt:
             advertised |= be.bits
+        # issue 1329 — a routed C backend advertises through its own vtable
+        # slot, not through the mux's Rust body. Without this the whole C side
+        # would read as advertising nothing and every C claim would report as
+        # stale, which is R5 firing on the fix rather than on a defect.
+        for scope in be.mux if be.routes else []:
+            try:
+                mask, _where = c_backend_mask(files, scope, c_atomic, c_alias)
+            except Fail:
+                continue  # already reported by R7
+            advertised |= mask or set()
     for rel, text in files.items():
         for bit in set(CLAIM.findall(text)):
             if bit not in atomic:
@@ -579,6 +851,72 @@ def _mutation_self_test(files: dict[str, str], verbose: bool) -> int:
     )
     red("exempt session claiming a subset", m, "declares nros-qos-exempt but advertises a SUBSET")
 
+    # ---- issue 1329: the per-backend answer ----------------------------
+    #
+    # Same discipline as above — the shipped sources with one thing changed.
+    # The four below are the ways the new shape can go wrong, and each has a
+    # plausible authoring mistake behind it.
+
+    cffi = "packages/rmw/cffi/src/lib.rs"
+    entity_h = str(ENTITY_H.relative_to(ROOT))
+    xrce_session = "packages/rmw/xrce/nros-rmw-xrce/src/session.c"
+    cyclone_vtable = "packages/rmw/cyclonedds/nros-rmw-cyclonedds/src/vtable.cpp"
+    uorb_vtable = "packages/rmw/uorb/nros-rmw-uorb/src/vtable.cpp"
+    for required in (cffi, entity_h, xrce_session, cyclone_vtable, uorb_vtable):
+        if required not in files:
+            raise Fail(
+                f"selftest: {required} is missing, so the issue-1329 mutations cannot run. "
+                "A control that silently examines nothing is the vacuous-test class."
+            )
+
+    # 7. A backend re-advertises a policy its own code never reads — the
+    #    over-claim the union used to make for every C backend at once.
+    m = dict(files)
+    m[xrce_session] = m[xrce_session].replace(
+        "*out_mask = NROS_RMW_QOS_POLICY_RELIABILITY",
+        "*out_mask = NROS_RMW_QOS_POLICY_DEADLINE | NROS_RMW_QOS_POLICY_RELIABILITY",
+        1,
+    )
+    red("xrce advertises a deadline it cannot serve", m, "advertises ['DEADLINE'] with no")
+
+    # 8. The slot DISAGREES with the claims the other way: a policy the
+    #    backend implements and the mask forgets, so the runtime refuses it.
+    m = dict(files)
+    m[cyclone_vtable] = m[cyclone_vtable].replace("NROS_RMW_QOS_POLICY_LIFESPAN |", "", 1)
+    red("cyclonedds drops LIFESPAN from its mask", m, "claims to honour ['LIFESPAN']")
+
+    # 9. The slot is left NULL while the backend still honours things. This is
+    #    the shape a new C backend arrives in, and the ABI reads it as
+    #    "honours nothing" — so it has to be loud here rather than at some
+    #    application's first create.
+    m = dict(files)
+    m[uorb_vtable] = m[uorb_vtable].replace(
+        "/*supported_qos_policies*/ supported_qos_policies,",
+        "/*supported_qos_policies*/ nullptr,",
+        1,
+    )
+    red("uorb fills no slot while claiming policies", m, "fills no `supported_qos_policies` slot")
+
+    # 10. The mux goes back to AUTHORING a union — issue 1329 itself.
+    m = dict(files)
+    m[cffi] = m[cffi].replace(
+        "    fn supported_qos_policies(&self) -> nros_rmw::QoSPolicyMask {\n        self.qos_policies\n    }",
+        "    fn supported_qos_policies(&self) -> nros_rmw::QoSPolicyMask {\n"
+        "        nros_rmw::QoSPolicyMask::CORE\n    }",
+        1,
+    )
+    red("the cffi route authors a union again", m, "still AUTHORS a mask")
+
+    # 11. The two halves of the vocabulary drift apart. A backend then sets one
+    #     bit and the runtime reads another, which ACCEPTS the wrong profile.
+    m = dict(files)
+    m[entity_h] = m[entity_h].replace(
+        "#define NROS_RMW_QOS_POLICY_DEADLINE                     (1u << 5)",
+        "#define NROS_RMW_QOS_POLICY_DEADLINE                     (1u << 12)",
+        1,
+    )
+    red("a C policy bit moves under the Rust one", m, "in C and")
+
     if verbose:
         print(f"  {ran} live-tree mutation controls passed")
     return ran
@@ -597,10 +935,30 @@ def self_test(files: dict[str, str], verbose: bool = False) -> None:
 def audit(files: dict[str, str]) -> int:
     traits = files[str(TRAITS.relative_to(ROOT))]
     atomic, alias = parse_bits(traits)
+    c_atomic, c_alias = parse_c_bits(files[str(ENTITY_H.relative_to(ROOT))])
     fields = parse_policy_fields(traits)
     backends = find_backends(files, atomic, alias)
     print(f"{len(atomic)} policy bits, {len(backends)} Session impl(s)\n")
     for be in sorted(backends, key=lambda b: b.file):
+        if be.routes:
+            # issue 1329 — the interesting rows: one per C backend, each
+            # answering for itself through the vtable slot.
+            print(f"{be.type_name:24} {be.crate}\n    routes to {len(be.mux)} C backend(s)")
+            for scope in be.mux:
+                mask, where = c_backend_mask(files, scope, c_atomic, c_alias)
+                claims = claims_in(files, [scope])
+                label = where if mask is not None else "(no slot — honours nothing)"
+                print(f"  {scope}  [{label}]")
+                for bit in sorted(atomic):
+                    field, variant = fields.get(bit, (None, None))
+                    sites = [
+                        s for s in claims.get(bit, []) if reads_field(files[s], field, variant)
+                    ]
+                    yes = mask is not None and bit in mask
+                    site = ", ".join(sorted({os.path.basename(s) for s in sites})) or "-"
+                    print(f"    {'yes' if yes else ' no'}  {bit:36} {site}")
+            print()
+            continue
         if be.bits is None:
             print(f"{be.type_name:24} {be.crate}\n    (trait default — advertises nothing)")
             continue
