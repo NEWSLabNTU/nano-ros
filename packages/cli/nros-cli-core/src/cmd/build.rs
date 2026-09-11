@@ -512,6 +512,21 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 if let Some((_, r)) = &resolved {
                     env.extend(derived_pool_env(r));
                 }
+                // phase-445 W6 — what the image's declared TRANSPORT implies,
+                // then the APP rung. Same two layers, same order and the same
+                // reasons as the single-package road
+                // (`cmd::leaf_settings::{transport_implications, write}`): a
+                // schema key that is read on one of two roads is a key that
+                // silently stops being true on the other, which is the defect
+                // `leaf_system`'s own header records for the retired manifest
+                // tables. `[image] env` is LAST, so it outranks the
+                // implication and the derived pools and is outranked only by
+                // the calling environment (nothing here writes `force`).
+                if image.transport.as_deref() == Some("serial") {
+                    env.insert("ZPICO_NO_SMOLTCP".to_string(), "1".to_string());
+                    env.insert("NROS_LINK_IP".to_string(), "0".to_string());
+                }
+                env.extend(image.env.clone());
                 let config_path = image_dir.join(crate::builder::cargo_config::FILE_NAME);
                 crate::builder::cargo_config::write(
                     &crate::builder::cargo_config::CargoConfigSpec {
