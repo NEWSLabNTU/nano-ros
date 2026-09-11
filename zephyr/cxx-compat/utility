@@ -4,22 +4,13 @@
 #elif !defined(NROS_ZEPHYR_CXX_COMPAT_UTILITY)
 #define NROS_ZEPHYR_CXX_COMPAT_UTILITY
 
+// phase-442 W4 — `remove_reference` used to be DEFINED here, which is not where
+// the standard puts it: a source including only `<type_traits>` found nothing.
+// It lives in `<type_traits>` now and this header consumes it, so there is one
+// definition and it is in the right place. Same change as the ThreadX shim.
+#include <type_traits>
+
 namespace std {
-
-template <class T>
-struct remove_reference {
-    using type = T;
-};
-
-template <class T>
-struct remove_reference<T&> {
-    using type = T;
-};
-
-template <class T>
-struct remove_reference<T&&> {
-    using type = T;
-};
 
 template <class T>
 constexpr typename remove_reference<T>::type&& move(T&& value) noexcept {

@@ -83,7 +83,7 @@ the rest and do not depend on each other.
   `static_assert` naming the knob. A prototype already does; this is that
   prototype made real.
 
-* **W4 [boards] — fix the two shim gaps.** The ThreadX `cxx-compat` shim's
+* **W4 [boards] — fix the two shim gaps. LANDED 2026-09-11.** The ThreadX `cxx-compat` shim's
   `<new>` omits the PLACEMENT forms, which are freestanding-guaranteed, so
   placement new does not compile against it at all; its `<type_traits>` is a
   58-line stub with `enable_if` but no `is_same` and no `decay`, and its
@@ -91,7 +91,26 @@ the rest and do not depend on each other.
   makes the API not depend on them — but both are traps for the next in-place
   construction, and one of them is a guaranteed facility.
   *Acceptance:* placement new compiles against the shim; a probe using the
-  freestanding-guaranteed `<type_traits>` contents compiles.
+  freestanding-guaranteed `<type_traits>` contents compiles. **Met, and the
+  reach widened twice on measurement.** The gaps were not two but three:
+  Zephyr's own minimal libcpp `<new>` is a stub that declares `nothrow_t` and
+  nothing else, so a Zephyr C++ build could not do placement new either —
+  `zephyr/cxx-compat/new` now supplies the forms, layered with `include_next`
+  and guarded on `__GLIBCXX__` / `_LIBCPP_VERSION` so it never replaces a real
+  library's. And the trait widening is MIRRORED into `zephyr/cxx-compat`,
+  whose own comment says it mirrors the board shim: two fallbacks that are one
+  implementation under two names, where a trait added to one and not the other
+  is a difference between boards nothing measures. `remove_reference` moved
+  from `<utility>` to `<type_traits>` in both, with `<utility>` including it,
+  so there is one definition and it is where the standard puts it.
+  Gated by `check-cxx-compat-shim-facilities` on the FAST line — its sibling
+  `cxx-compat-shim-coverage` asks whether every `std::` C-library name a source
+  spells is exported, which is a different question and cannot see a facility
+  nobody has written code against yet. It MEASURES by compiling a probe rather
+  than scanning text, because `decay` written as
+  `remove_cv_t<remove_reference_t<T>>` is right for scalars and wrong for
+  exactly the function and array types a callback signature uses, and runs two
+  negative controls on the normal path.
 
 * **W5 [cpp] — un-gate `NodeOptions` and `Rate`/`WallRate`. LANDED
   2026-09-12.** 22 of `NodeOptions`' 23 members are `static_assert`-only and

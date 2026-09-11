@@ -1,0 +1,60 @@
+// `<new>`'s PLACEMENT forms for the nano-ros Zephyr module.
+//
+// Zephyr's minimal libcpp ships a `<new>`
+// (`zephyr/lib/cpp/minimal/include/new`) that is, in its own words, a "stub
+// header allowing compilation of `#include <new>`": it declares `nothrow_t`,
+// `nothrow` and `align_val_t` and NOTHING else. No allocation forms, and — the
+// part that matters here — no placement forms.
+//
+// [new.delete.placement] puts those in the FREESTANDING subset of `<new>`, so
+// code targeting freestanding is entitled to assume them, and a Zephyr C++
+// build could not do placement new at all. Same gap as the threadx-qemu-riscv64
+// board shim had (phase-442 W4); both are fixed together, because one fixed and
+// one not is a difference between two boards that nothing measures.
+//
+// Layered, not substituted: this defers to whatever real `<new>` is reachable
+// and only fills the gap when the header that answered was not a standard
+// library's. Defining these over a libstdc++ or libc++ that already defines
+// them would be a replacement the standard forbids, so the guard is on the
+// library's own version macro rather than on a probe of our own.
+#ifndef NROS_ZEPHYR_CXX_COMPAT_NEW
+#define NROS_ZEPHYR_CXX_COMPAT_NEW
+
+#if defined(__has_include_next) && __has_include_next(<new>)
+#include_next <new>
+#endif
+
+#include <cstddef>
+
+#if !defined(__GLIBCXX__) && !defined(_LIBCPP_VERSION)
+
+// `std::size_t` rather than a hand-written width. Declaring these with the
+// wrong first parameter type is accepted on a 64-bit target and REJECTED on a
+// 32-bit one —
+//
+//     error: 'operator new' takes type 'size_t' ('unsigned int')
+//            as first parameter
+//
+// so the mistake is right on two of this project's three toolchains and
+// silently wrong on the embedded one (measured, phase-442 W0).
+//
+// They allocate nothing: the caller supplies the storage. The placement
+// DELETES exist so a constructor that throws during a placement new has a
+// matching deallocation function to unwind through; every build here is
+// `-fno-exceptions`, so they are never called, and their absence would still be
+// a diagnostic on a build that is not.
+inline void* operator new(std::size_t, void* place) noexcept {
+    return place;
+}
+
+inline void* operator new[](std::size_t, void* place) noexcept {
+    return place;
+}
+
+inline void operator delete(void*, void*) noexcept {}
+
+inline void operator delete[](void*, void*) noexcept {}
+
+#endif // no standard library <new> answered
+
+#endif // NROS_ZEPHYR_CXX_COMPAT_NEW
