@@ -246,7 +246,7 @@ pub fn declared_depends(ws_root: &Path) -> BTreeMap<String, Vec<String>> {
 
 /// Directories a `package.xml` scan must not descend into.
 ///
-/// Issue 1318 — this predicate used to be written out twice, once in each
+/// Issue 1337 — this predicate used to be written out twice, once in each
 /// walk below, and both copies pruned `build` and `target-*` but not
 /// `build-*`. The two OTHER `package.xml` walkers in this CLI
 /// ([`crate::pkg_index::build_pkg_index`] and
@@ -414,7 +414,7 @@ pub fn package_name(xml: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    /// Issue 1318 — an out-of-source build tree beside `src/` is not part of
+    /// Issue 1337 — an out-of-source build tree beside `src/` is not part of
     /// the workspace, and a `package.xml` scan that walks into one reads a
     /// copy of every package it already found.
     ///

@@ -1,12 +1,12 @@
 ---
-id: 1318
+id: 1337
 title: "The prereq scan's package.xml walk descends into every out-of-source
   build tree, because it prunes `build` and `target-*` but not `build-*`"
 status: resolved
 type: bug
 area: cli, orchestration, performance
 severity: high
-resolved_in: "fix(#1318): one pruning predicate for both package.xml walks, and it knows build-"
+resolved_in: "fix(#1337): one pruning predicate for both package.xml walks, and it knows build-"
 related: [issue-0363]
 ---
 
