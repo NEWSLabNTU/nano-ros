@@ -5,7 +5,7 @@ title: "`nros new` scaffold tests grep the emitted text and never build it, so a
 status: open
 type: bug
 area: cli, api
-related: [phase-417, rfc-0043]
+related: [phase-417, rfc-0043, phase-452]
 ---
 
 ## Problem

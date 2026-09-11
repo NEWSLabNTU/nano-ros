@@ -5,7 +5,7 @@ status: open
 type: enhancement
 area: docs
 severity: low
-related: [phase-188]
+related: [phase-188, phase-452]
 found: 2026-09-06
 ---
 

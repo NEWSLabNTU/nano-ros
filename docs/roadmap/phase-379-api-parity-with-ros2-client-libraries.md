@@ -987,9 +987,15 @@ parity CLAIM and the parity MEASUREMENT disagree.
   port that compiles and says nothing. RESOLVED 2026-09-11 (phase-417 stage 3
   W3.a): the family routes at `NROS_LOG_*` and reaches `nros_log` on every
   target.
-* **[#1020](../issues/1020-parity-cpp-lane-cannot-see-the-compat-shim.md)** — the
-  C++ parity lane measures the NATIVE API against rclcpp and cannot see the
-  compat shim, so the number it reports is about the wrong surface.
+* **[#1020](../issues/archived/1020-parity-cpp-lane-cannot-see-the-compat-shim.md)**
+  (RESOLVED 2026-09-11) — the C++ parity lane measured the NATIVE API against
+  rclcpp and could not see the compat shim, so the number it reported was about
+  the wrong surface. Closed by a route the issue did not propose:
+  `rclcpp_compat.hpp` is deleted (phase-417 stage 6 moved its declarations into
+  the owning headers) and `api-parity.py`'s `OUR_CPP_ROOTS` now covers
+  `rclcpp`/`rclcpp_action`/`rclcpp_lifecycle`, so the `std` TU already emits
+  every record a fourth compat TU could. The fourth TU was landed and then
+  deliberately deleted as one that can never contribute.
 * **[#1012](../issues/archived/1012-ledger-prose-cites-renamed-symbols.md)** — 15 ledger
   rows describe symbols a rename retired. The ledger is the artifact this phase
   reasons from, so prose that names dead symbols is a measurement error, not a

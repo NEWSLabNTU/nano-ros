@@ -6,7 +6,7 @@ title: "The root workspace `exclude` list is unaudited: one host-buildable crate
 status: open
 type: tech-debt
 area: [build, ci, rmw]
-related: [0895, 0948, 0894, 0386]
+related: [0895, 0948, 0894, 0386, phase-451]
 ---
 
 ## What

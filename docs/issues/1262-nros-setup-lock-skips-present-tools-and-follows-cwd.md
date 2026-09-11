@@ -7,7 +7,7 @@ status: open
 type: bug
 area: tooling
 severity: medium
-related: [issue-1254, issue-1259]
+related: [issue-1254, issue-1259, phase-447]
 ---
 
 ## Symptom

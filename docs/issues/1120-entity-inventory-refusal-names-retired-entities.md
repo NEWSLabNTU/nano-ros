@@ -6,7 +6,7 @@ type: bug
 area: cli, docs
 severity: medium
 found: 2026-09-06
-related: [0965, 1121]
+related: [0965, 1121, phase-412]
 ---
 
 # Two halves of one phase disagree, and a new user meets the wrong half first

@@ -5,7 +5,7 @@ status: open
 type: bug
 area: ci, testing
 severity: high
-related: [0968, 1016, 1029, 1043, 1075, 1098, 1104, 1114, 1127, RFC-0061]
+related: [0968, 1016, 1029, 1043, 1075, 1098, 1104, 1114, 1127, RFC-0061, phase-416]
 found: 2026-09-06
 ---
 

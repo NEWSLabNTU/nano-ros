@@ -6,7 +6,7 @@ status: open
 type: bug
 area: core
 severity: medium
-related: [issue-1270]
+related: [issue-1270, phase-446]
 ---
 
 ## What happens

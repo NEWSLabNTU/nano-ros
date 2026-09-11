@@ -158,3 +158,13 @@ holds the evidence, the item is *close it*.
 | --- | --- |
 | [#0910](../issues/0910-zenoh-pico-1-10-migration.md) | migrating to zenoh-pico 1.10: the serial layer moved and `config.h` is no longer generated the same way — carried-fork debt coming due |
 
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1039](../issues/1039-nuttx-stdbool-nonconforming-breaks-zenoh-pico.md) | NuttX's `stdbool.h` defines `true` as `(bool)1`, which is not an integer constant expression, and zenoh-pico will not build against it. phase-444 excludes platform build issues by name, so it lands here as vendored-toolchain debt — the fix is a patch line, not a nano-ros change |

@@ -1326,3 +1326,14 @@ holds the evidence, the item is *close it*.
 | --- | --- |
 | [#0736](../issues/0736-realtime-tiers-timer-overrun-red-on-main.md) | `realtime_tiers` nuttx-arm/rust: the fast tier outruns the slow one. Mentioned in passing here; making it a work item so it has an owner |
 
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1209](../issues/1209-std-census-ratchet-blind-to-multiline-cfg-attributes.md) | the `std` census counts `feature = "std"` only on lines containing the token, so a rustfmt-wrapped `cfg` hides a site from the instrument this phase depends on |
+| [#1210](../issues/1210-architecture-std-contract-cites-a-grants-example-that-no-longer-grants.md) | ARCHITECTURE §2's normative `std`/`alloc` contract is this phase's artifact, and its worked example stopped granting `std` — the document teaches the opposite of the rule it states |

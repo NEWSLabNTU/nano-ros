@@ -6,7 +6,7 @@ type: bug
 area: cli, tooling
 severity: medium
 found: 2026-09-06
-related: [1120, 0475, 1018]
+related: [1120, 0475, 1018, phase-424]
 ---
 
 # The file that sizes the image is not an input to the thing that reads it

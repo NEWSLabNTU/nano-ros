@@ -1,7 +1,7 @@
 ---
 id: 1207
 title: "`nros build` re-derives each package's build path from `CMakeLists.txt` presence at three sites and never reads `<build_type>` — the field 411 package.xml declare says exactly that, and colcon routes on it"
-status: open
+status: resolved
 area: [cli, build]
 severity: medium
 related: [phase-420, phase-383, "RFC-0087", "RFC-0065"]
@@ -134,3 +134,26 @@ and correct shape, and any gate must permit it.
   the build pipeline calls.
 * `scripts/check-build-type-spelling.py:260-284` — the four rules, none about
   file agreement.
+
+## Resolved (verified 2026-09-11)
+
+`PackageXml` gained `build_type: Option<String>` (`cargo-nano-ros/src/package_xml.rs:82`),
+and the three re-derivation sites are gone:
+
+* **Site 1** — `cmd/build.rs:283` is now `.filter(|p| routing::route(p).cmake_subdir)`;
+  the `CMakeLists.txt").is_file()` filter is deleted.
+* **Site 2** — the `Cargo.toml").is_file()` skip loop is absent from
+  `builder/cargo_root.rs` entirely. The member emitter it belonged to was
+  retired (`b9ee2d71f`, RFC-0098 D9), so the site is deleted rather than
+  converted.
+* **Site 3** — `builder/cmake_root.rs:134` likewise, with the retired probe
+  quoted in the comment at `:130`.
+
+`routing::check_declarations` is called at `build.rs:248` and
+`cmake_root.rs:124`, so a misdeclaration is loud instead of a silent skip —
+this issue's suggested shape, option 2. Contract test:
+`packages/cli/nros-cli-core/tests/package_routing_reads_the_declaration.rs`.
+
+One loose end, recorded rather than filed: `Routing::cargo_member` has no
+production consumer left — only that contract test — because the cargo-root
+emitter it was written for was retired one commit later.

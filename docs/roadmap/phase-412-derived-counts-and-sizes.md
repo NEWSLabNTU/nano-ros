@@ -594,6 +594,18 @@ holds the evidence, the item is *close it*.
 | [#1142](../issues/archived/1142-nuttx-standalone-example-has-no-entity-declaration.md) | a standalone copy-out example reaches none of the three declaration channels, so the guessed budget is the only one it can get. This is W5's open design question in its most concrete form; answering W5 closes it |
 | [#1181](../issues/archived/1181-stale-zpico-subscriber-buffer-size-name.md) | `ZPICO_SUBSCRIBER_BUFFER_SIZE` is documented in four places and read by nothing. A knob that sizes nothing is deleted from the docs, not derived — the census is this phase's |
 
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1120](../issues/1120-entity-inventory-refusal-names-retired-entities.md) | the entity inventory's refusal tells the user to add `ENTITIES`, which this phase retired. The two halves of the retirement disagree, and the CLI half is this phase's own tail |
+| [#1140](../issues/1140-describes-wiring-misses-timer-only-contract.md) | two predicates ask whether a contract was authored and disagree on a timer-only contract. This phase owns the inventory and its authoring test, so it owns the disagreement |
+| [#1256](../issues/1256-contract-qos-carries-depth-only.md) | contract QoS reaches the build as DEPTH only — reliability, history and durability are dropped. `entity_inventory`'s declaration grammar left the room; this phase owns that grammar |
 
 ## CHECKPOINT 2026-09-09 — what is done, what is in the queue, what is left
 

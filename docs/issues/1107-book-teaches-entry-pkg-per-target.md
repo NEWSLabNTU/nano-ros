@@ -6,7 +6,7 @@ type: bug
 area: docs
 severity: high
 found: 2026-09-06
-related: [1108, 1109, rfc-0065, phase-383]
+related: [1108, 1109, rfc-0065, phase-383, phase-452]
 ---
 
 # A book page is what a new user copies, so a stale one propagates

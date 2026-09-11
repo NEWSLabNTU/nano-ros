@@ -5,7 +5,7 @@ title: "`check-leaf-lockfiles` skips two leaves for a SUBMODULE, not for a sync 
 status: open
 type: bug
 area: build
-related: [1178, 0359, 0466, 1171]
+related: [1178, 0359, 0466, 1171, phase-413]
 ---
 
 ## What this adds to 1178

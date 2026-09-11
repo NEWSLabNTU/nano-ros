@@ -8,7 +8,7 @@ type: bug
 area: build, setup
 severity: medium
 found: 2026-09-11
-related: [issue-1274, issue-1276, rfc-0095]
+related: [issue-1274, issue-1276, rfc-0095, phase-449]
 ---
 
 ## What this is

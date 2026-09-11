@@ -424,3 +424,17 @@ esp32 stack budgets.
   one.
 - Issues 0457, 0463, 0827, 1061 — the decisions this phase revisits or
   completes.
+
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1117](../issues/1117-cross-build-accepts-unpinned-host-toolchain.md) | a cross build silently accepted an unpinned host toolchain — the pin said one thing and the build fell through to the distribution's `arm-none-eabi-gcc`. The board descriptor is what should carry it, and preflight is what should print it |
+| [#1261](../issues/1261-capabilities-decided-by-two-sources-disagree-at-link.md) | an image's capabilities are decided in two places and a disagreement is silent. Generated from the entry's BRINGUP is this phase's shape; restated per consumer as `-DNANO_ROS_FEATURES` is the state it replaces |
+| [#1265](../issues/1265-cross-only-leaves-cannot-be-probed.md) | the metadata probe cannot run for a cross-only leaf, so esp32 and mps2 examples must DECLARE their entities. W3 cites this as the reason leaves declare; owning the probe is the fix the citation stands in for |
+| [#1277](../issues/1277-preflight-build-std-board-demands-rust-std.md) | `nros build` preflight demands a prebuilt `rust-std` for a board that builds its own core. The preflight must require `rust-src` instead, against W4's rendered `nros-cargo.toml` |

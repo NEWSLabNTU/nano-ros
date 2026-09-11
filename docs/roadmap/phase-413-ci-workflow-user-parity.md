@@ -693,3 +693,22 @@ true nor false.
 They are one class: **a gate whose result is unavailable is not a gate**, and
 this repo has now hit it four separate times (the `declared-qos-header` recipe
 lost in a rebase, `check-test-scripts-have-callers`'s own subject, and these).
+
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0930](../issues/0930-built-qemu-can-be-stale-against-its-pin.md) | the built QEMU can be older than the commit `third-party/qemu/qemu` pins. It is already an adopted bullet above; this row is the work item that bullet never became — a probe that fails on a stale build, not a note that one is possible |
+| [#0996](../issues/0996-ci-workflow-audit-tier-promises.md) | the workflow audit that OPENED this phase. Its measured findings — the same lane passing in the queue and failing after merge — still carry no numbered item, so the phase's own premise is the part of it nobody owns |
+| [#1038](../issues/1038-nightly-job-does-not-provision-its-lane.md) | filed explicitly under W2 item 3: three of six nightly cell failures are ONE class, the platform job building a different package set. A prose pointer inside a work item is not the item |
+| [#1040](../issues/1040-gating-lanes-that-report-nothing-accumulate-reds.md) | `check-api-parity` runs in no workflow and `check-build` only on dispatch. Adopted above as a bullet; the residue needing an item is the PLACEMENT — api-parity is post-submit where it has to be pre-merge |
+| [#1066](../issues/1066-api-parity-runs-in-no-workflow.md) | the same residue as #1040 filed a second time, after both measured causes were fixed. What is left is one `gate.yml` step. Close one into the other when either is worked — phase-428 should hand this over rather than keep citing it |
+| [#1155](../issues/1155-arch-flags-tests-in-no-lane.md) | `nros-board-common`'s `arch_flags` tests activate no feature under `test-unit`, so they run in no lane at all. Exactly W4's question — what a green required check promises — one crate down |
+| [#1163](../issues/1163-compile-smoke-checks-nros-c-under-default-features-only.md) | `compile-smoke` checks `nros-c` under its DEFAULT features, so a duplicate `#[no_mangle]` is invisible. Items 1 and 3 landed; item 2 is the same pre-merge placement as #1040/#1066 |
+| [#1177](../issues/1177-no-alloc-nros-c-lane-runs-only-on-schedule.md) | `check::workspace-features` gates no merge, so its reds are found by hand four at a time. The break half is fixed; the coverage half is W4's tier choice |
+| [#1182](../issues/1182-leaf-lockfiles-skips-for-a-submodule-not-a-sync.md) | `check-leaf-lockfiles` skips two leaves for a SUBMODULE rather than for a sync. The issue names itself a lane question — what a merge-gating job would have to sync |

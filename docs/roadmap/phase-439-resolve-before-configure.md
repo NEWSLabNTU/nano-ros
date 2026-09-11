@@ -502,3 +502,15 @@ decide are recorded in the issue.
 Per-package independent builds (RFC-0094 "Out of scope"), the `std` deletion,
 the unsafe census, and workspace membership. Filed as 1208–1221; none blocks
 this phase.
+
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1228](../issues/1228-resolve-phase-does-not-yet-delete-the-fixed-point.md) | W2 landed the resolve phase and its own text says 'Remainder is issue 1228'. That is a hand-off, and the remainder is this phase's unmet A3 |
+| [#1252](../issues/1252-message-bound-knobs-have-no-pre-configure-twin.md) | the message-bound half of the same chain has no pre-configure producer. Without it RFC-0094 A3 cannot be met, which makes it a work item here rather than a note |

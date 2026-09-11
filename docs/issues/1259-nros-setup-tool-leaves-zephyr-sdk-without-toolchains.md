@@ -7,7 +7,7 @@ status: open
 type: bug
 area: tooling, zephyr
 severity: medium
-related: [issue-1254, issue-1258]
+related: [issue-1254, issue-1258, phase-447]
 ---
 
 ## Symptom

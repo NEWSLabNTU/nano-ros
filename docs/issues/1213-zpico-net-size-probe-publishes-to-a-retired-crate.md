@@ -8,7 +8,7 @@ type: bug
 area: rmw, build
 severity: low
 found: 2026-09-08
-related: [issue-0135, issue-0207, issue-0963]
+related: [issue-0135, issue-0207, issue-0963, phase-451]
 ---
 
 ## Problem

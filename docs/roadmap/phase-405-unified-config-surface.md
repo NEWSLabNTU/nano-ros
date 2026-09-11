@@ -300,3 +300,16 @@ decide.
   twelve instances and then says what W6 does not change: a consumer that asks
   for facts about a board it cannot resolve still gets silence rather than an
   error. Filed with no phase; it belongs to the surface W6 is cleaning.
+
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#0931](../issues/0931-retire-model-and-default-launch.md) | `nano_ros_entry` has eleven arguments; W4 landed eleven → six keywords and the DEPLOY/BOARD derivation is still open. This phase cites the issue three times and owns none of it |
+| [#0934](../issues/0934-config-redundancy-map.md) | the config-redundancy survey this phase was OPENED from: one fact authored in up to five surfaces, no SSoT declared for rmw, board or deploy. Opening a phase from a survey is not homing the survey |
+| [#0941](../issues/0941-board-facts-soft-failure-hides-unreachable-site-config.md) | `nros_resolve_board_facts` fails SOFT, so an unreachable site-config block is silent. Already an 'Adopted issue' prose section here; this row promotes it to a work item |

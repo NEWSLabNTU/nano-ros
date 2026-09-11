@@ -63,3 +63,14 @@ each fix lands with no way to demonstrate it.
 Real esp32 hardware. Every issue here is about the QEMU board, and a hardware
 lane has different provisioning, different timing and no shared evidence with
 these four.
+
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1006](../issues/1006-esp32-qemu-configure-nondeterministic-deps.md) | esp32-qemu's configure does not disable the backends it never uses. This phase already orders it as item 4; the gate landed (`137c820a6`) and the configure-flag pin still needs a rebuild to prove |

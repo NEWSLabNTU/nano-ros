@@ -2,7 +2,7 @@
 id: 1020
 title: "The C++ parity lane measures the NATIVE API against rclcpp and cannot see
   `rclcpp_compat.hpp` — 589 lines whose entire purpose is the thing being measured"
-status: open
+status: resolved
 type: bug
 area: docs, api
 related: [phase-379, issue-0818, issue-0254]
@@ -110,3 +110,23 @@ Found by reading the shim directly, none of them ledgered:
 `examples/templates/cpp-port-minimal-publisher/` is the in-tree measurement of
 all this and its README claims the source is vendored "verbatim". It is not —
 three lines differ, and each is one of the defects above.
+
+## Resolved (verified 2026-09-11)
+
+The close condition was a fourth parity translation unit that sees the compat
+shim. It is met by a different route than the issue proposed, and the route is
+the finding: `rclcpp_compat.hpp` is **deleted** — phase-417 stage 6 moved its
+declarations into the owning headers — and `api-parity.py:329` now sets
+`OUR_CPP_ROOTS = {nros, rclcpp, rclcpp_action, rclcpp_lifecycle}`, so the `std`
+TU already emits every record a compat TU could. The fourth TU was landed and
+then deliberately deleted as a TU that can never contribute; `api-parity.py:363-391`
+records that. The `surface` / `native_bucket` / `--check-ported` machinery this
+issue asked for is kept (`:394-416`), and the self-test pins BOTH widening
+directions (`:1826-1845`).
+
+Named sub-defects fixed with it: the nested `SharedPtr` at `publisher.hpp:97`
+and `subscription.hpp:140`, `--ros-args` refusal (`ros2_init_argv_refusal.cpp`),
+and the template README's verbatim claim, which is now true.
+
+`RCLCPP_INFO_STREAM` is NOT part of this — it is issue 1019, still open,
+homed at phase-417 W3.a.

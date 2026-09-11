@@ -8,7 +8,7 @@ type: bug
 area: [build, testing]
 severity: medium
 found: 2026-09-06
-related: [0853, 1025]
+related: [0853, 1025, phase-449]
 ---
 
 ## What

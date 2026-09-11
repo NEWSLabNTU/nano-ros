@@ -5,7 +5,7 @@ title: "CI audit: the same lane passes in the queue and fails after merge, four 
 status: open
 type: bug
 area: ci, tooling
-related: [0992, 0876, 0883]
+related: [0992, 0876, 0883, phase-413]
 ---
 
 Audit of all 11 workflows against the four properties they are supposed to have:

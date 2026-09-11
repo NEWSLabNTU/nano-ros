@@ -6,7 +6,7 @@ type: bug
 area: ci, tooling
 severity: medium
 found: 2026-09-08
-related: [1161, 1184, 0584]
+related: [1161, 1184, 0584, phase-449]
 ---
 
 # Two checkouts, one skip ledger

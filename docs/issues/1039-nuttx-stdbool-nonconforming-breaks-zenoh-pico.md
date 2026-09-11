@@ -6,7 +6,7 @@ status: open
 type: bug
 area: nuttx, rmw-zenoh, build
 severity: high
-related: [issue-1007]
+related: [issue-1007, phase-355]
 found: 2026-09-04
 ---
 

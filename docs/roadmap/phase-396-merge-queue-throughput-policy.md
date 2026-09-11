@@ -218,3 +218,14 @@ holds the evidence, the item is *close it*.
 | [#0872](../issues/0872-pr-arm-example-check-needs-nros-sync.md) | the PR/nightly check arm has never run to completion — each fix exposes the next environment gap. The pattern this phase keeps meeting |
 | [#0874](../issues/0874-sccache-ghac-v1-sunset-breaks-every-rustc.md) | sccache 0.8.2 speaks a GitHub cache API that no longer exists, so the compile tier pays full cost on every run |
 
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1072](../issues/1072-every-pr-conflicts-on-five-shared-append-targets.md) | 22 of 51 open pull requests conflicted and none of them on code. A shared append target that every PR touches IS queue throughput; the `check.just` half is fixed and four surfaces remain |
+| [#1091](../issues/1091-ledger-shards-conflict-on-sorted-key-insert.md) | the api-parity ledger is the largest remaining cluster of #1072's measurement — 17 sorted shards. Same fix family, and it is the one still serialising merges |

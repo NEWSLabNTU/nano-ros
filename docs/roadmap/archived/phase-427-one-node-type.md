@@ -1515,3 +1515,15 @@ hosted/freestanding split phase-442 removes:
   is what RFC-0096 D1 would otherwise have had to do first: the class is in
   `rclcpp::` and the `nros::` spelling warns. Nothing here is re-read; the
   deletion of the alias is the wave RFC-0096 can assume.
+
+## Issues homed here (survey 2026-09-11)
+
+Every open issue was checked for a home phase; these had none, or were mentioned
+here only in passing. A mention is not an owner — an issue with no work item is
+an issue nobody is accountable for. Each row is a work item: the issue holds the
+evidence, the item is *close it*.
+
+| issue | why it belongs here |
+| --- | --- |
+| [#1245](../issues/1245-cpp-free-spin-bounded-overload-outlived-issue-0338.md) | the free `nros::spin(duration_ms, poll_ms)` is the C++ half of W11's spin-family rename, deferred only because PR #755 was rewriting `nros.hpp`. The deferral reason has a shelf life; the item does not |
+| [#1257](../issues/1257-declare-parameter-must-use-red-on-main.md) | `packages/api/nros` does not compile under `-D warnings`: two `declare_parameter` results unused. Introduced by W11 (`ea96be9fb`), red on main now, same parameter store as #1203 |

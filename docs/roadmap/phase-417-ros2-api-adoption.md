@@ -628,6 +628,7 @@ owner.
 | 1022 | correction | ~95 rows corrected; RFC-0036 gains the rule that a divergence's cause must not be one the compared surface also operates under |
 | 0793 | stage 2 (W2.a) | one parameter store in C; the unfiled C++ twin filed and fixed with it |
 | 0829 | stage 5 | `SYSTEM_DEFAULT` stops disagreeing with itself; folds into the named-profile transcription |
+| 1042 | correction (homed 2026-09-11) | nine rows went false because the rclrs pin moved 0.5.1 → 0.7.0 and nothing re-measured them. Closing it means the ledger records the pin it was measured against, so the next bump invalidates rows instead of silently outdating them |
 | 0589 | stage 4 (W4.d) | the façade re-exports `nros_log`, so it is the easy path rather than `std::println!` |
 | 1126 | correction — CLOSED | `nros_publisher_publish_streamed`'s doc (the raw entry point was never the site) stopped promising a `NROS_RET_`-prefixed `BUFFER_TOO_SMALL`; correct-the-doc won, no caller needs the two failures apart. The sweep found two more live sites and the class is now gated |
 

@@ -2,7 +2,7 @@
 id: 1059
 title: "two reds sit on `main` in `check-build`, which no merge-gating event runs
   — a half-landed `type Format` and a clippy `format!`-in-`assert!`"
-status: open
+status: resolved
 type: bug
 area: ci, core
 related: [phase-421, phase-395, issue-1013]
@@ -108,3 +108,20 @@ this issue's own remedy.
 
 Landed on `ci/land-node-std-gate`. This issue stays open until
 that merges.
+
+## Resolved (verified 2026-09-11)
+
+This issue's own close condition was literal: *"Landed on
+`ci/land-node-std-gate`. This issue stays open until that merges."* It merged —
+the branch no longer exists on origin.
+
+Measured on `origin/main`:
+
+* `git grep -c node-std-tests origin/main -- .github/workflows/gate.yml` = **3**
+  (it was 0 when the correction was written). `gate.yml:816-822` runs the lane
+  on `pull_request` AND `merge_group`, each with its own `if:`, and the comment
+  at `:786` cites this issue.
+* Both reds are gone, by deletion rather than by landing the trait:
+  `git grep "type Format" origin/main -- packages/core/nros-serdes` and
+  `-- packages/core/nros-node` are both empty, and no `assert!(…format!` remains
+  in `rtos_e2e.rs`.

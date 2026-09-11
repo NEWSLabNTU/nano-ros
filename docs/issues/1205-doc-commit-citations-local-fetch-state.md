@@ -6,7 +6,7 @@ title: "`check-doc-commit-citations` resolves hashes against whatever the local
 status: open
 type: bug
 area: [ci, docs]
-related: [1178, 0359]
+related: [1178, 0359, phase-419]
 ---
 
 ## What

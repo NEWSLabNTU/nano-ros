@@ -6,7 +6,7 @@ type: tech-debt
 area: docs, core
 severity: low
 found: 2026-09-06
-related: [1110, 0319, 0896]
+related: [1110, 0319, 0896, phase-452]
 ---
 
 # What issue 1110 fixed, and what it deliberately did not

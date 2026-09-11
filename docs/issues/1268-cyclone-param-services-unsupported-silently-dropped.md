@@ -7,7 +7,7 @@ status: open
 type: bug
 area: rmw, core
 severity: high
-related: [issue-0745, issue-1269, issue-1270]
+related: [issue-0745, issue-1269, issue-1270, phase-444]
 ---
 
 ## Symptom

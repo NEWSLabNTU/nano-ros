@@ -5,7 +5,7 @@ status: open
 area: build, api
 severity: low
 found: 2026-08-30
-related: [phase-330, phase-392, RFC-0063, RFC-0065]
+related: [phase-330, phase-392, RFC-0063, RFC-0065, phase-405]
 ---
 
 # `nano_ros_entry`'s MODEL parameter is dead, and LAUNCH is half-ceremony
