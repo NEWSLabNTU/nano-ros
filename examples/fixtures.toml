@@ -999,6 +999,49 @@ cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-free
 # too slow to finish the session handshake in the e2e budget; the Rust tiers
 # fixture builds release for the same reason.
 
+# phase-427 W12 (issue 1247) — the FREESTANDING consumer of a `SHAPE rclcpp`
+# package. RFC-0089 correction 1 MEASURED that deriving costs nothing on a
+# freestanding target (`-std=c++14 -fno-exceptions -fno-rtti -ffreestanding
+# -nostdinc++`, `__is_polymorphic` false for base and derived); correction 8
+# recorded that the capability had NO in-tree consumer, because every fixture
+# over a `SHAPE rclcpp` package was `platform = "linux"`. This row is that
+# consumer: `subnode_pkg::SubNode` IS-A `nros::NodeWithTimers<2>` IS-A
+# `rclcpp::Node`, cross-built for thumbv7m-none-eabi.
+#
+# The PORTABLE workspace and not `realtime-cpp`, deliberately: the package names
+# only its group IDs ("ctrl" / "telem"), so the move onto an RTOS board is a
+# deploy-side edit (`[tiers.*.freertos]` priorities + `[image.freertos]` in
+# deploy_bringup/system.toml) with no change to the component. That is the same
+# property the native `-portable` row exists to prove, re-measured against a
+# cross toolchain instead of a second tier vocabulary.
+#
+# A node whose callback GROUPS span two tiers cannot take `run_tiers` — per-tier
+# setup functions construct whole NODES (`Plan::executor_shape` →
+# `ExecutorShape::SchedContexts`), so this entry is `FreertosBoard::run_components`
+# plus `nros_cpp_create_sched_context_from_policy` / `nros_cpp_bind_group_sched`,
+# a different emitted shape from its `workspace-{c,cpp}-freertos-realtime`
+# siblings below. That is the second thing this row measures.
+#
+# BUILD-ONLY: no `matrix::CELLS` entry, because the acceptance (phase-427 W12) is
+# that the package BUILDS freestanding. The coordinate (freertos, cpp, zenoh) is
+# the one its siblings already occupy, so the row is lane-attributable via
+# `row_coord()` and its `build_subdir` gives it a `row_artifact_root()` of its
+# own under this workspace dir.
+[[workspace_fixture]]
+id = "workspace-cpp-freertos-realtime-subnode-portable"
+platform = "freertos"
+lang = "cpp"
+rmw = "zenoh"
+dir = "examples/workspaces/realtime-cpp-subnode-portable"
+bringup = "src/deploy_bringup"
+image = "freertos"
+build_subdir = "build/freertos-zenoh-mps2-an385-freertos/cmake"
+cmake_defs = { NANO_ROS_PLATFORM = "freertos", NANO_ROS_BOARD = "mps2-an385-freertos", NROS_ENTRY_LOCATOR = "tcp/192.0.3.1:8092", CMAKE_BUILD_TYPE = "Release" }
+# CMAKE_BUILD_TYPE=Release, like every other mps2 row (#126). The locator is
+# baked but never dialled — nothing runs this image yet; 8092 is free beside the
+# 8091 `workspace-cpp-freertos-realtime` bakes, so adding a runtime cell later
+# needs no port shuffle.
+
 # phase-281 W2 (RFC-0015 Model 1 embedded) — 2-tier C realtime workspace on
 # FreeRTOS/mps2-an385 (QEMU), the C sibling of workspace-cpp-freertos-realtime.
 # The codegen routes embedded-C through the C++ emitter, so the same

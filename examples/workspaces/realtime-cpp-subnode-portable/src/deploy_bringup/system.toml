@@ -19,11 +19,20 @@ group_tiers = { ctrl = "fast", telem = "bulk" }
 spin_period = "10000us"
 [tiers.fast.posix]
 priority = 80
+# phase-427 W12 — RAW FreeRTOS priority for the mps2-an385 image below. The
+# port's address plan (`packages/platform/nros-platform-freertos/
+# nros-platform.toml` `[priority_plan]`) reserves 4 for the transport band and
+# hands `pool.app = [1, 3]` to tiers, so `fast` takes the top app slot and
+# still sits strictly BELOW the link it publishes over (RFC-0079, issue 0623).
+[tiers.fast.freertos]
+priority = 3
 
 [tiers.bulk]
 spin_period = "100000us"
 [tiers.bulk.posix]
 priority = 10
+[tiers.bulk.freertos]
+priority = 1
 
 
 # Issue 0951 — the implicit machine this system runs on. A host says WHERE a
@@ -36,3 +45,24 @@ rmw = "zenoh"
 
 [image.native]
 board = "native"
+
+# phase-427 W12 (issue 1247) — the FREESTANDING image of the same package.
+# RFC-0089 correction 1 measured that deriving `rclcpp::Node` costs nothing on a
+# freestanding target (no allocator, no exceptions, no vtable), and correction 8
+# recorded that the capability had no in-tree consumer: every fixture over a
+# `SHAPE rclcpp` package was `platform = "linux"`. This image is the consumer.
+#
+# It is this workspace and not `realtime-cpp` because the portability proof is
+# exactly what the port needs: `subnode_pkg` names only the group IDs "ctrl" and
+# "telem", so moving it onto an RTOS board is a deploy-side edit — the tier
+# table above gains a `[tiers.*.freertos]` priority and nothing in the package
+# changes. Same launch file, same component, different board.
+[image.freertos]
+board = "mps2-an385-freertos"
+
+# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the SDK
+# roots it builds against. Keyed by BOARD, not by an image name, because that is
+# what the fact is about (issue 0951).
+[board_config."mps2-an385-freertos"]
+netstack = "lwip"
+sdk = { freertos = "{env:FREERTOS_DIR}", lwip = "{env:LWIP_DIR}" }
