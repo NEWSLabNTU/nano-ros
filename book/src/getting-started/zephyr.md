@@ -116,7 +116,11 @@ cd zephyr-workspace
 
 # Rust — `nros sync` first, once per checkout location. It writes the
 # generated message bindings and the [patch.crates-io] table the leaf's
-# .cargo/config.toml includes. This applies to cargo under WEST too: west
+# (GITIGNORED, never committed — phase-445 W6) .cargo/config.toml
+# includes. Zephyr is the one lane that still needs that file rather than
+# build/<image>/nros-cargo.toml: west drives cargo through
+# zephyr-lang-rust's rust_cargo_application, which passes no --config
+# (issue 1288). This applies to cargo under WEST too: west
 # drives the same leaf, so without sync the build fails while PARSING the
 # manifest, with an error that never names sync (issue 0694).
 #

@@ -63,16 +63,25 @@ nros-rmw-zenoh = { version = "*",
 ```
 
 nano-ros crates are declared **registry-style** (phase-277 W6): they are
-not on crates.io, so the example's tracked `.cargo/config.toml` carries
-the `# nros-managed` `[patch.crates-io]` block resolving them into the
-checkout. After adding/renaming nros deps or msg `<depend>` rows, re-run
-`NROS_REPO_DIR=<repo root> nros sync` in the example dir and commit the
-rewritten `.cargo/config.toml`. This is what makes the copy-out promise
-real — a copied example re-runs `nros sync` at its new location.
+not on crates.io, so a `[patch.crates-io]` block has to resolve them into
+the checkout. That block is GENERATED — phase-445 W6 / RFC-0098 D1 — into
+`build/<image>/nros-cargo.toml`, together with the board's triple, link
+group and pool budgets. Nothing about the build lives beside the package:
+there is no `.cargo/` under `examples/**`, and a tracked one is refused
+(`check-example-cargo-dirs`). After adding or renaming nros deps or msg
+`<depend>` rows, re-run `NROS_REPO_DIR=<repo root> nros sync` in the
+example dir; there is nothing to commit. This is what makes the copy-out
+promise real — a copied example re-runs `nros sync` at its new location.
 
-`cargo build` / `cargo run` from inside the example directory is the
-canonical invocation. There is no workspace-wide `cargo build` that
-picks up examples — they are explicitly out-of-workspace.
+`nros build` from inside the example directory is the canonical
+invocation. A user who drives cargo themselves passes the generated file:
+
+```bash
+cargo build --config build/<image>/nros-cargo.toml
+```
+
+There is no workspace-wide `cargo build` that picks up examples — they are
+explicitly out-of-workspace.
 
 ### C / C++ (CMake)
 
@@ -120,8 +129,10 @@ with `just install-local`, every `install(...)` rule, and every
 examples/<plat>/<lang>/<example>/
 ├── package.xml                    # ROS-style manifest for the example
 ├── Cargo.toml | CMakeLists.txt    # Rust or C/C++ build entry
-├── .cargo/config.toml             # Rust only — target + .cargo patches
+├── system.toml                    # the ONE board choice + node declaration
 ├── src/                           # main.rs / main.c / main.cpp
+├── build/<image>/nros-cargo.toml  # GENERATED: triple, link group, [env],
+│                                  #   patches. Never committed.
 ├── generated/                     # codegen output for any custom msgs
 └── README.md                      # usage instructions
 ```
@@ -142,8 +153,9 @@ source /opt/ros/humble/setup.sh        # for rosidl tooling
 nros generate-rust            # or generate-c / generate-cpp / generate-all
 ```
 
-For BSP / cross-target examples that maintain their own
-`.cargo/config.toml`, pass `--config --nano-ros-path <relative>`:
+For an out-of-tree consumer that maintains its own `.cargo/config.toml`
+(an example in this repo does not — RFC-0098 D1), pass
+`--config --nano-ros-path <relative>`:
 
 ```bash
 nros generate-rust --config --nano-ros-path ../../../packages

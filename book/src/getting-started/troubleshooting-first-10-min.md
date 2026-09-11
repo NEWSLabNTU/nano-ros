@@ -23,11 +23,12 @@ error: no matching package named `nros` found
 
 The example's `Cargo.toml` declares nano-ros crates registry-style
 (`nros = { version = "*" }` — they are not published to crates.io);
-the example's `.cargo/config.toml` carries the `# nros-managed`
-`[patch.crates-io]` block that resolves them into a nano-ros
-checkout. This error means the patch block is missing or its
-relative paths no longer reach a checkout (typical right after
-copying the example somewhere else). Fix:
+the `[patch.crates-io]` block that resolves them into a nano-ros
+checkout is GENERATED, into `build/<image>/nros-cargo.toml`, which
+`nros build` hands cargo with `--config` (RFC-0098 D1). This error
+means that file has not been written yet, or its relative paths no
+longer reach a checkout (typical right after copying the example
+somewhere else). Fix:
 
 ```bash
 cd <the example dir>
@@ -83,7 +84,8 @@ Add it:
 
 ```bash
 rustup target add thumbv7m-none-eabi
-# or whichever target the example's `.cargo/config.toml` names
+# or whichever target the example's board names: `nros ws leaf-system .`
+# prints NROS_LEAF_BOARD, and the board's descriptor pins the triple
 ```
 
 ### A4. Cross linker not found

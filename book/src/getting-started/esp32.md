@@ -100,7 +100,7 @@ and pack the flash image:
 NROS_REPO_DIR=<path-to-nano-ros> nros sync
 
 # nightly because the board config builds core/alloc from source
-# ([unstable] build-std in .cargo/nros-board.toml). The pinned channel
+# ([unstable] build-std, from the board descriptor). The pinned channel
 # is tools/rust-toolchain.toml's; any recent nightly with the rust-src
 # component works:
 #   rustup toolchain install nightly && rustup component add rust-src --toolchain nightly

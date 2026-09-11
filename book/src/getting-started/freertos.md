@@ -45,7 +45,7 @@ standalone Cargo (Rust) or CMake (C / C++) project under
 examples/mps2-an385-freertos/
 ├── rust/talker/             # Cargo package, cross-compile target = thumbv7m-none-eabi
 │   ├── Cargo.toml                  # deps + [package.metadata.nros.deploy.freertos]
-│   ├── .cargo/config.toml          # target + QEMU runner
+│   ├── system.toml                 # the board this image is built for
 │   ├── package.xml
 │   ├── generated/                  # codegen output — build.rs runs
 │   │                               #   `nros generate-rust` on first
@@ -110,12 +110,13 @@ Ports: the shipped examples dial host port **7447**.
 
 ```bash
 # Rust — `nros sync` first, once per checkout location. It writes the
-# generated message bindings and the [patch.crates-io] table the leaf's
-# .cargo/config.toml includes; without it cargo fails while PARSING the
-# manifest, with an error that never names sync (see below).
+# generated message bindings AND build/<image>/nros-cargo.toml, which
+# carries this board's triple, link group and [patch.crates-io] table
+# (RFC-0098 D1). Without it cargo builds for the host, or fails while
+# PARSING the manifest with an error that never names sync (see below).
 cd examples/mps2-an385-freertos/rust/talker
 nros sync
-cargo build --release
+nros build          # or: cargo build --config build/<image>/nros-cargo.toml
 
 # C / C++ — use the cross-toolchain CMake invocation (the `nros` CLI
 # on PATH auto-resolves the codegen tool — no `-D_NANO_ROS_CODEGEN_TOOL=`
@@ -145,16 +146,17 @@ for why the requirement is per language rather than per platform.
 
 ```bash
 # 1. Start the router (ROS's `rmw_zenohd`) on the host, on port 7447 —
-#    the deploy locator the example bakes in its Cargo.toml
-#    ([package.metadata.nros.deploy.freertos] locator, shown above).
+#    the locator the example bakes from its system.toml
+#    ([image.<id>] locator, shown above).
 #    Slirp forwards guest 10.0.2.2:<p> → host:<p>.
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd &
 
-# 2. Boot the talker in QEMU. The leaf's .cargo/config.toml runner
-#    wraps qemu-system-arm with the LAN9118 + Slirp wiring:
+# 2. Boot the talker in QEMU. The BOARD's `cargo_config` runner (carried
+#    into build/<image>/nros-cargo.toml) wraps qemu-system-arm with the
+#    LAN9118 + Slirp wiring:
 cd examples/mps2-an385-freertos/rust/talker
-cargo run --release
+cargo run --config build/<image>/nros-cargo.toml --release
 
 # 3. Verify from stock ROS 2:
 source /opt/ros/humble/setup.bash

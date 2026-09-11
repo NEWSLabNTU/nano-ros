@@ -49,7 +49,7 @@ source ./activate.sh        # OR: direnv allow / source ./activate.fish
 nros setup native --rmw zenoh
 
 # 3. Generate message bindings, then build + run an example
-#    (generated/ and .cargo/config.toml are gitignored — a fresh
+#    (generated/ and build/ are gitignored — a fresh
 #    clone cannot build without this step):
 nros sync
 cd examples/native/rust/talker
