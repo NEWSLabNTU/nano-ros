@@ -312,6 +312,27 @@ ps-zombie-blind:
 ros-env-spelling:
     @python3 scripts/check-ros-env-spelling.py
 
+# Issue 1333 — the sibling of the gate above, one layer in. That one asks WHICH
+# environment a `ros2` peer gets; this one asks whether a graph QUERY is allowed
+# to answer from a daemon that does not share it.
+#
+# ros2cli keys its daemon on `ROS_DOMAIN_ID` alone (`11511 + ROS_DOMAIN_ID`) and
+# reuses whatever is bound to that port. The discovery configuration is NOT in
+# the key, so `CYCLONEDDS_URI` / `FASTRTPS_DEFAULT_PROFILES_FILE` /
+# `ZENOH_SESSION_CONFIG_URI` — the very variables issue 1009 pins the interop bus
+# with, per process, into a tempdir — are taken from whoever started the daemon.
+# Measured on Humble: a daemon primed under an isolating profile answers
+# `ros2 node list` with nothing and `ros2 param list` with `Node not found`, for
+# a node that is live and that the same command finds with `--no-daemon`.
+#
+# The flag was already on 14 query helpers and missing from the 15th, which is
+# the copy-paste failure the "fix the CLASS" rule names; `ros2_query_cmd` is now
+# the one spelling and this gate keeps the next site from going around it.
+# Buildless: greps tracked source, self-testing.
+[private]
+ros2-daemon-queries:
+    @python3 scripts/check-ros2-daemon-queries.py
+
 # Issue 0980 — `runner-doctor` answered "where is the Zephyr SDK?" from the job
 # CHECKOUT while the build answers it from the CMake user package registry.
 # `scripts/zephyr/sdk/` is gitignored and `actions/checkout` runs
