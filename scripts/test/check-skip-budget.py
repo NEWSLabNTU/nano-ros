@@ -22,6 +22,10 @@ declaration file to drift:
     `"not prebuilt"`); they are unreachable in a gated run, but they encode the
     old rule and will be copied. If one ever fires again, this says so.
 
+    The matcher reads `not prebuilt` AND `not built` (issue 1129). It read only
+    the first until 2026-09-11, while 57 of the tree's 61 laundering sites used
+    the second — so the rule was stated fully and enforced on 4 of 61.
+
 Deliberately NOT asserted: an expected COUNT per class. Counts drift with the
 host's toolchains and with every added test, so they would be edited to match
 reality on every red — which is the failure mode `#0196` describes for gates
@@ -45,7 +49,22 @@ from pathlib import Path
 
 # `out_of_lane_coord` in packages/testing/nros-tests/src/fixtures/lane.rs.
 COORD_RE = re.compile(r"is at coordinate ([^,]+),([^,]+),([^\s,]+)")
-FIXTURE_RE = re.compile(r"not prebuilt|fixture binary MISSING", re.I)
+# issue 1129 / phase-450 W1 — the SPELLINGS, not one spelling.
+#
+# This matched `not prebuilt` only. Measured 2026-09-11 over
+# `packages/testing/nros-tests/tests`: **61** sites launder a fixture-resolver
+# `Err` into a `skip!`, and only **4** say `not prebuilt`. The other **57** say
+# `not built`, so the gate written to catch this laundering could not see 93 %
+# of it — the 0196 shape, landed on the gate rather than on the rule.
+#
+# `not built` is matched on its own rather than requiring the word "fixture"
+# nearby: 14 of the 57 name the ARTIFACT instead ("nros-launch-resolve not
+# built", "riscv-nuttx C talker not built", "zephyr qos workspace entry not
+# built (west)"), and a fixture named by its artifact is still a fixture. A
+# reason that legitimately says "not built" about something else is what the
+# per-site conversion and the baseline are for, not what a narrower regex is
+# for — narrowing is how this gate got here.
+FIXTURE_RE = re.compile(r"not prebuilt|not built|fixture binary MISSING", re.I)
 
 # issue 1161 — the declared capability skips. See the file's own header.
 CAPABILITY_BASELINE = Path(__file__).resolve().parents[2] / ".config" / "capability-skip-baseline.txt"
@@ -198,6 +217,27 @@ def self_test() -> int:
     cap_failures += 0 if ok else 1
 
     failures = cap_failures
+
+    # issue 1129 / phase-450 W1 — FIXTURE_RE, both directions. The matcher read
+    # one of the two spellings for months while the rule named the class, so the
+    # spelling it missed is asserted here rather than left to a future reader.
+    fixture_cases = [
+        ("native_entry fixture not built: Io(...)", True),
+        ("qos-override-pubsub fixture not prebuilt (Io)", True),
+        ("nros-launch-resolve not built (run `just setup-launch-resolve`)", True),
+        ("fixture binary MISSING at /x/y", True),
+        # negative control: a precondition that is NOT a fixture. If this ever
+        # starts matching, the widening has over-reached and the gate will
+        # convert real capability skips into laundering reports.
+        ("idlc not found on PATH", False),
+        ("no ROS 2 installation detected", False),
+    ]
+    for text, want in fixture_cases:
+        got = bool(FIXTURE_RE.search(text))
+        if got != want:
+            print(f"  self-test FAIL: FIXTURE_RE({text[:40]!r}) -> {got}, want {want}")
+            failures += 1
+
     for text, want in cases:
         got = reason_of(text)
         if got != want:
