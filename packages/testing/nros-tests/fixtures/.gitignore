@@ -18,11 +18,16 @@
 # leaf `.cargo/`, pointing at a gitignored, host-specific central patch file.
 **/.cargo/config.toml
 
-# …except these three, which are hand-authored SOURCE: they select the
+# …except these two, which are hand-authored SOURCE: they select the
 # cross-compilation target for a FreeRTOS entry (`[build] target =
 # thumbv7m-none-eabi`), not sync output. `nros sync` appends its patch block to
 # them, so they show as modified during a run — that is expected, and they stay
 # tracked.
+#
+# phase-445 W6 dropped a third line, `n_board_agnostic_run_plan/freertos_entry/
+# .cargo/config.toml`. It had been dead since that leaf moved one level deeper
+# to `src/freertos_entry/` (issue 0683) and named a path that no longer exists;
+# the file it meant held sync's `include` and the board projection's, both of
+# which W6 retired.
 !multi_pkg_workspace_freertos/firmware/.cargo/config.toml
-!n_board_agnostic_run_plan/freertos_entry/.cargo/config.toml
 !orchestration_tiers_freertos/.cargo/config.toml

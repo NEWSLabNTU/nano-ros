@@ -114,11 +114,25 @@ capability-flavour-guards:
     @python3 scripts/check-std-census.py --self-test
     @python3 scripts/check-std-census.py --check-guards
 
-# A leaf `.cargo/config.toml` is tracked iff it holds content `nros sync`
-# cannot regenerate. `**/.cargo/config.toml` is gitignored (most are pure sync
-# output); this is the discrimination the blanket rule cannot make.
+# A leaf `.cargo/config.toml` under `packages/` or `tests/` is tracked iff it
+# holds content `nros sync` cannot regenerate. `**/.cargo/config.toml` is
+# gitignored (most are pure sync output); this is the discrimination the blanket
+# rule cannot make. `examples/**` is NOT its business any more — phase-445 W6
+# gave that tree the stronger rule below.
 cargo-config-tracked:
     @bash scripts/check-cargo-config-tracked.sh
+
+# phase-445 W6 (RFC-0098 D1) — an example TRACKS nothing under `.cargo/`. Its
+# build configuration is generated into `build/<image>/nros-cargo.toml` from the
+# one board its `system.toml` names.
+example-cargo-dirs:
+    @python3 scripts/check-example-cargo-dirs.py
+
+# phase-445 W6 (RFC-0098 D9) — a workspace is a directory of packages with no
+# root `Cargo.toml` / `CMakeLists.txt`. A single-package example under
+# `examples/templates/` is exempt by SHAPE (a `package.xml` at its root).
+workspace-root-build-files:
+    @python3 scripts/check-workspace-root-build-files.py
 
 # issue 0820 — a cmake custom command that RUNS cargo must carry a `DEPFILE`.
 #

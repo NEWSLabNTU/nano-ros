@@ -69,7 +69,7 @@ EXEMPT_SUBSTRINGS = (
 )
 
 # Previously an exemption list. The six sites it held — `check-abi-bindings`
-# without bindgen, `dep-chain` without ROS 2, `check-board-projections` without
+# without bindgen, `dep-chain` without ROS 2, `check-cli-tests` without
 # the in-tree CLI, `colcon-parity`, and the two doxygen recipes — now go through
 # `nros_check_skip`, the CHECK-side ledger (scripts/build/check-skip.sh). They
 # keep their exit code, because `check-fast` is documented to run green on a

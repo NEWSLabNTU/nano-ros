@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
-# A leaf `.cargo/config.toml` is tracked if and only if it carries content
-# `nros sync` cannot reproduce.
+# A leaf `.cargo/config.toml` under `packages/` or `tests/` is tracked if and
+# only if it carries content `nros sync` cannot reproduce.
+#
+# SCOPE, phase-445 W6: `examples/` left this gate. An example now tracks NOTHING
+# under `.cargo/` at all (RFC-0098 D1) — its build configuration is generated
+# into `build/<image>/nros-cargo.toml` from the board its `system.toml` names —
+# and `check-example-cargo-dirs` states that stronger rule. Keeping `examples/`
+# here as well would mean two gates answering one question, and the weaker one
+# would go on reporting OK for a file the tree no longer allows at all.
+#
+# What is left is real and is NOT examples: 23 tracked configs under
+# `packages/{boards,interfaces,reference,testing}` and `tests/simple-workspace`,
+# several of them genuinely hand-authored (a `[build] target` for a cross leaf,
+# a QEMU `runner`, `DEFMT_LOG`). Those are outside phase-445's reach and keep
+# this discrimination.
 #
 # Sync writes these files (RFC-0048 W9): an `include = ["…/nros-patch.toml"]`
 # line pointing at a gitignored, host-specific central file, and a
@@ -34,10 +47,6 @@ cd "$repo_root"
 # segment is a subshell where `exit 2` would end only the segment and hand the
 # caller back a status it cannot tell from "no match".
 #
-# Note `projection_missing` is called once with `2>&1 >/dev/null` (the lazy
-# header probe) before the real call, so a FATAL message from that first call is
-# discarded. The exit status still ends the gate, which is the property that
-# matters; the second, unredirected call is simply never reached.
 # shellcheck source=scripts/lib/grep-q.sh
 source scripts/lib/grep-q.sh
 
@@ -115,81 +124,33 @@ has_uncommitted_generated_patch() {
 # #457 recorded the opposite — "cargo ignores a missing include SILENTLY" — and
 # built on it; measured on cargo 1.97.1 it does not.)
 #
-# Exactly three targets are generated: the central `nros-patch.toml`, the
-# per-leaf `nros-managed-patch.toml` sidecar, and the per-leaf `nros-board.toml`
-# board-`cargo_config` projection (phase-341 W2). The first two are gitignored,
-# so a fresh clone has neither and `_require-leaf-includes` sends the developer
-# to `nros sync`; the third is COMMITTED precisely so a clone can LINK without
-# running sync. An include naming anything ELSE has no generator at all, so no
+# Exactly TWO targets are generated now: the central `nros-patch.toml` and the
+# per-leaf `nros-managed-patch.toml` sidecar. Both are gitignored, so a fresh
+# clone has neither and `_require-leaf-includes` sends the developer to
+# `nros sync`. An include naming anything ELSE has no generator at all, so no
 # sync run will ever satisfy it — that leaf is bricked for everyone, forever.
+#
+# phase-445 W6 removed two from that list, and BOTH directions matter. The
+# per-leaf board projection `nros-board.toml` (phase-341 W2) and the derived
+# `[env]` sidecar `nros-managed-env.toml` (issue 0827) are no longer written by
+# anything, so an include naming one is exactly the bricked leaf above — and
+# `render_patch_config_with` evicts both on the next sync so an old config
+# repairs itself rather than failing at manifest parse.
 # This gate catches that at authoring time, which the sync-time check in
 # `cmd/ws.rs` cannot: that one only validates the central entry it just wrote.
 orphan_includes=0
-untracked_projection=0
 
-# issue 0559 / phase-341 — a TRACKED config that `include`s `nros-board.toml`
-# must have that projection COMMITTED beside it.
+# phase-341's two projection arms stood here: `projection_missing` (a tracked
+# config that `include`s `nros-board.toml` must have that file committed, issue
+# 0559) and `includes_committed_projection` (its DUAL — including a committed
+# projection is content, so such a config stays tracked even when it holds
+# nothing else).
 #
-# The comment above states the rule ("the third is COMMITTED precisely so a
-# clone can LINK without running sync") and nothing enforced it, which is how
-# `examples/threadx-linux/rust/talker` shipped with the include and without the
-# file: `nros sync` rewrote both on every fixture build, so the tree was dirty
-# after every run and `git pull --rebase` refused until you discarded them.
-#
-# This became load-bearing when `**/.cargo/nros-board.toml` was gitignored: the
-# ignore is what silences the ~39 projections whose leaf config is ITSELF
-# generated (nothing tracked references those), and gitignore cannot express
-# "…unless a tracked config includes you". This arm is that condition, the same
-# shape `check-cargo-config-tracked` already uses to stop the blanket
-# `config.toml` ignore swallowing a hand-authored one.
-projection_missing() {
-    local cfg="$1" dir
-    dir="$(dirname "$cfg")"
-    [ -r "$cfg" ] || return 1
-    nros_grep_q '^include' "$cfg" || return 1
-    local includes
-    includes="$(sed -n '/^\[/q;p' "$cfg" | grep -oE '^include *= *\[[^]]*\]')" || true
-    nros_grep_q 'nros-board\.toml' <<<"$includes" || return 1
-    git ls-files --error-unmatch "$dir/nros-board.toml" >/dev/null 2>&1 && return 1
-    echo "    $cfg" >&2
-    echo "      include -> 'nros-board.toml' — but $dir/nros-board.toml is NOT committed" >&2
-    return 0
-}
-
-# phase-351 W3 — the DUAL of `projection_missing`, and the reason a config can
-# be "pure sync output" and still have to stay tracked.
-#
-# W3 moved the last hand-authored rows out of twelve embedded leaves (the NuttX
-# `libc` patch, the ThreadX `[env]` block) into their board descriptor, which
-# `nros sync` now delivers. Those configs then held nothing but the `include`
-# line and the managed patch block — "pure artifact" by the test above, so the
-# gate demanded they be untracked.
-#
-# That would be wrong, and in exactly the direction issue 0559 was about. The
-# include names `nros-board.toml`, which IS committed, and which carries the
-# leaf's `[build] target` and link rustflags. Drop the config from git and a
-# fresh clone has the projection with nothing reaching it: the leaf builds for
-# the host, or not at all — the failure the header at the top of this file
-# describes. Sync could recreate the line, but "run sync first" is precisely
-# what committing the projection exists to avoid.
-#
-# So: including a COMMITTED projection is content, even though sync wrote it.
-#
-# Used in ONE direction only — it stops the gate demanding these be UNTRACKED.
-# It deliberately does not demand the converse (track every config that includes
-# a committed projection): a WORKSPACE MEMBER's `.cargo/config.toml` is never
-# read for the builds we run, because cargo discovers config from the invocation
-# CWD upward and corrosion invokes cargo from the workspace root
-# (`workspace_toml_dir`). Demanding those be committed would be policy about a
-# file that does not govern — phase-349 W2.0 measured exactly that.
-includes_committed_projection() {
-    local cfg="$1" dir
-    dir="$(dirname "$cfg")"
-    local includes
-    includes="$(sed -n '/^\[/q;p' "$cfg" | grep -oE '^include *= *\[[^]]*\]')" || true
-    nros_grep_q 'nros-board\.toml' <<<"$includes" || return 1
-    git ls-files --error-unmatch "$dir/nros-board.toml" >/dev/null 2>&1
-}
+# phase-445 W6 retired the projection, so both arms lost their subject: no
+# tracked file names `nros-board.toml`, and the board's `cargo_config` reaches a
+# leaf through the generated `build/<image>/nros-cargo.toml` instead. The
+# `has_orphan_include` arm above now REFUSES that basename rather than allowing
+# it, which is the same question with the answer inverted.
 
 has_orphan_include() {
     local cfg="$1" entry base
@@ -199,11 +160,7 @@ has_orphan_include() {
         [ -n "$entry" ] || continue
         base="$(basename "$entry")"
         case "$base" in
-            # `nros-managed-env.toml` is issue 0827's per-leaf derived `[env]`
-            # sidecar: same generator, same gitignore, same
-            # appear-and-disappear-together rule as the patch one.
-            nros-patch.toml | nros-managed-patch.toml | nros-board.toml \
-                | nros-managed-env.toml) continue ;;
+            nros-patch.toml | nros-managed-patch.toml) continue ;;
         esac
         echo "    $cfg" >&2
         echo "      include -> '$entry' — no generator writes this" >&2
@@ -275,14 +232,6 @@ while IFS= read -r -d '' cfg; do
             orphan_includes=$((orphan_includes + 1))
         fi
 
-        if [ "$untracked_projection" -eq 0 ]; then
-            if projection_missing "$cfg" >/dev/null 2>&1; then
-                echo "check-cargo-config-tracked: tracked config includes an UNCOMMITTED board projection:" >&2
-            fi
-        fi
-        if projection_missing "$cfg"; then
-            untracked_projection=$((untracked_projection + 1))
-        fi
     fi
 
     if has_authored_content "$cfg"; then
@@ -293,14 +242,14 @@ while IFS= read -r -d '' cfg; do
             echo "  $cfg" >&2
             untracked_authored=$((untracked_authored + 1))
         fi
-    elif [ "$tracked" -eq 1 ] && ! includes_committed_projection "$cfg"; then
+    elif [ "$tracked" -eq 1 ]; then
         if [ "$tracked_pure" -eq 0 ]; then
             echo "check-cargo-config-tracked: pure sync-output cargo config IS tracked:" >&2
         fi
         echo "  $cfg" >&2
         tracked_pure=$((tracked_pure + 1))
     fi
-done < <(find examples packages tests "${NROS_FIND_PRUNE[@]}" -o -path '*/.cargo/config.toml' -print0 2>/dev/null)
+done < <(find packages tests "${NROS_FIND_PRUNE[@]}" -o -path '*/.cargo/config.toml' -print0 2>/dev/null)
 
 rc=0
 if [ "$untracked_authored" -ne 0 ]; then
@@ -324,18 +273,6 @@ if [ "$ament_rows_tracked" -ne 0 ]; then
     } >&2
     rc=1
 fi
-if [ "$untracked_projection" -ne 0 ]; then
-    echo "" >&2
-    echo "  A clone gets the include and not the file, so the leaf cannot LINK" >&2
-    echo "  until someone runs \`nros sync\` — and every sync that does run" >&2
-    echo "  rewrites a TRACKED file, leaving the tree dirty (issue 0559)." >&2
-    # `-f`: the blanket `**/.cargo/nros-board.toml` ignore covers the generated
-    # majority, so adding a committed one needs the override. Saying `git add`
-    # plainly here would hand the reader a command that refuses.
-    echo "  Commit the projection:  git add -f <leaf>/.cargo/nros-board.toml" >&2
-    exit 1
-fi
-
 if [ "$orphan_includes" -ne 0 ]; then
     {
         echo

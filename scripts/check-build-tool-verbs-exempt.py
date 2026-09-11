@@ -29,9 +29,10 @@ HOW IT DECIDES
   invoked  — `COMMAND "${TOOL}" <verb> [<sub>]` in `cmake/**/*.cmake`, plus the
              `set(_args <verb> <sub> …)` indirection `NanoRosBoardFacts.cmake`
              uses, which a `COMMAND`-anchored regex misses. Comment lines are
-             dropped: `ws model-dims` and `ws check-board-projections` appear
-             only in prose, and a gate that cannot tell a command from a
-             sentence about a command is worse than no gate
+             dropped: `ws model-dims` appears only in prose, and so did
+             `ws check-board-projections` for as long as that verb existed
+             (phase-445 W6 retired it) — a gate that cannot tell a command from
+             a sentence about a command is worse than no gate
              (`check-workflow-repo-env`'s rule).
 
   exempt   — read from `ws_cmd_name`'s match arms and

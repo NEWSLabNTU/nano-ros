@@ -175,19 +175,35 @@ FAMILIES = {
 #
 # (pattern, reason, forbid_key) — `pattern` is fnmatch against the repo-relative
 # path.
+#
+# phase-445 W6 deleted the row this list was written for — `*/.cargo/
+# nros-board.toml`, the per-leaf cargo-config PROJECTION, a name collision with
+# the board descriptor rather than one of them. The projection is retired
+# (RFC-0098 D1), and this gate's own stale-exemption arm said so in exactly the
+# words it was given: "matched nothing … delete the row". The `forbid_key`
+# MECHANISM it exercised does NOT retire with it — the self-test installs a
+# synthetic row (`SELF_TEST_EXEMPT`) so that control keeps running on the
+# normal path.
 REACH_EXEMPT = (
-    (
-        "*/.cargo/nros-board.toml",
-        "a cargo config PROJECTION `nros sync` writes into a leaf's `.cargo/` "
-        "(RFC-0032 third leg / phase-341) — `[target.*]` runner and rustflags, "
-        "a name collision with the board descriptor rather than one of them",
-        "board",
-    ),
     (
         "packages/cli/nros-cli-core/tests/fixtures/*",
         "a test workspace's own provider tree, built and asserted by the tests "
         "that own it; it is a FIXTURE, not a provider this tree ships",
         None,
+    ),
+)
+
+# SELF-TEST ONLY, prepended to [`REACH_EXEMPT`] for the duration of the control
+# run. It is the shape no shipped row has any more: an exemption whose PREMISE
+# is "this file's name collides with a descriptor and it is not one". Without
+# it the `forbid_key` arm would still be code and would be exercised by nothing,
+# which is the "a negative control nobody runs decays into a comment" failure
+# `check-gate-selftests` exists for.
+SELF_TEST_EXEMPT = (
+    (
+        "leaf/nros-board.toml",
+        "SELF-TEST ONLY — a name collision with the board descriptor, not one",
+        "board",
     ),
 )
 
@@ -287,6 +303,13 @@ def self_test(quiet=False):
     import shutil
     import tempfile
 
+    # Install the synthetic row. Restored after the control block below; an
+    # assertion in between ends the process, so there is no path that leaves it
+    # installed for the real scan.
+    global REACH_EXEMPT
+    shipped_exempt = REACH_EXEMPT
+    REACH_EXEMPT = SELF_TEST_EXEMPT + shipped_exempt
+
     def build(tmp):
         """A minimal tree that PASSES every rule, so a mutation names itself."""
         for kind, (pattern, _) in FAMILIES.items():
@@ -298,9 +321,10 @@ def self_test(quiet=False):
             # ... and its announcement, so the baseline is clean and each
             # assertion below names exactly one offender.
             _write(os.path.join(os.path.dirname(dest), "package.xml"), _pkg_xml(kind))
-        # One file per REACH_EXEMPT row, so the "stale exemption" arm is
-        # exercised by taking them away rather than only asserted about.
-        _write(os.path.join(tmp, "leaf/.cargo/nros-board.toml"), "[target.x]\n")
+        # One file per REACH_EXEMPT row — the shipped one and the synthetic
+        # one — so the "stale exemption" arm is exercised by taking them away
+        # rather than only asserted about.
+        _write(os.path.join(tmp, "leaf/nros-board.toml"), "[target.x]\n")
         _write(
             os.path.join(
                 tmp, "packages/cli/nros-cli-core/tests/fixtures/w/nros-board.toml"
@@ -363,11 +387,11 @@ def self_test(quiet=False):
         )
         shutil.rmtree(os.path.join(tmp, "elsewhere"))
 
-        # A4 — an exemption that claims "name collision" is MEASURED. A
-        # `.cargo/nros-board.toml` that really did declare a board would
-        # otherwise ride the exemption out of every rule here.
+        # A4 — an exemption that claims "name collision" is MEASURED. A file
+        # that really did declare a board would otherwise ride the exemption
+        # out of every rule here.
         _write(
-            os.path.join(tmp, "leaf/.cargo/nros-board.toml"),
+            os.path.join(tmp, "leaf/nros-board.toml"),
             '[[board]]\nnames = ["x"]\n',
         )
         only(
@@ -375,7 +399,7 @@ def self_test(quiet=False):
             "it IS a descriptor",
             "A4 must refuse an exemption whose premise stopped holding",
         )
-        _write(os.path.join(tmp, "leaf/.cargo/nros-board.toml"), "[target.x]\n")
+        _write(os.path.join(tmp, "leaf/nros-board.toml"), "[target.x]\n")
 
         # A5 — a package.xml a regex reads and a parser rejects. Written with
         # the exact mistake that produced it: a bare `<x>` in prose.
@@ -400,6 +424,7 @@ def self_test(quiet=False):
             "A4 must refuse a REACH_EXEMPT row with no files left under it",
         )
 
+    REACH_EXEMPT = shipped_exempt
     if not quiet:
         print("check-provider-announcements self-test: OK")
     return 0

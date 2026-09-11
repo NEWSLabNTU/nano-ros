@@ -118,8 +118,9 @@ use eyre::Result;
 /// grep -rhoE '\bws [a-z-]+' cmake/ --include='*.cmake' | sort -u
 /// ```
 ///
-/// It reports seven; `ws model-dims` and `ws check-board-projections` appear
-/// only inside comments, so five is the invoked set.
+/// It reports seven; `ws model-dims` appears only inside comments (so does the
+/// retired `ws check-board-projections`, in prose that outlived it), so the
+/// invoked set is smaller than the grep's.
 fn ws_cmd_name(args: &cmd::ws::Args) -> &'static str {
     match args.command {
         // phase-439 W4 added `RmwDispatch`: cmake ASKS for the rmw descriptor

@@ -11,7 +11,7 @@
 # — so a gate that hard-fails on a missing optional tool would break the very
 # guarantee that makes the fast tier worth running. Six such gates therefore
 # printed a skip line and exited 0: `check-abi-bindings` without `bindgen`,
-# `dep-chain` without ROS 2, `check-board-projections` without the in-tree CLI,
+# `dep-chain` without ROS 2, `check-cli-tests` without the in-tree CLI,
 # `colcon-parity` without colcon, and the two doxygen recipes.
 #
 # The defect is not the exit code. It is that `just check` then prints

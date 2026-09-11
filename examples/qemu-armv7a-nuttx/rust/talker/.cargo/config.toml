@@ -1,9 +1,0 @@
-include = [ "../../../../../nros-patch.toml", "nros-board.toml"]
-
-
-
-
-[patch.crates-io]
-libc = { path = "../../../../third-party/nuttx/libc" }  # nros-managed
-nros-board-nuttx-qemu = { path = "../../../../packages/boards/nros-board-nuttx-qemu" }  # nros-managed
-nros-platform = { path = "../../../../packages/platform/nros-platform" }  # nros-managed
