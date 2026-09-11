@@ -80,12 +80,23 @@ DERIVED_TOKENS = {
 }
 
 # Env names the manifest binds that `nros_cargo_build.cmake` does NOT forward,
-# with the reason. Both are env / `[knobs.xrce]`-rung only; neither has a
-# Kconfig option, so neither can be mis-forwarded.
-NO_KCONFIG_OPTION = {
-    "NROS_XRCE_CUSTOM_TRANSPORT_MTU": "phase-207.6 — env + [knobs.xrce] rung; no Kconfig option",
-    "NROS_XRCE_SUBSCRIBER_RING_DEPTH": "phase-237 — env only; no Kconfig option",
-}
+# with the reason. An entry here is an EXEMPTION, and the entries this gate
+# shipped with were both stale in the direction that reads as OK:
+#
+#   * `NROS_XRCE_SUBSCRIBER_RING_DEPTH` gained a Kconfig option and a
+#     `_nros_resolve_knob` line in issue 1033;
+#   * `NROS_XRCE_CUSTOM_TRANSPORT_MTU` gained both in issue 1010, which is
+#     also what that exemption cost: it is the ONLY MTU a Zephyr image links
+#     (UCLIENT_PROFILE_UDP is `posix_ip`), so "no Kconfig option" meant every
+#     Zephyr XRCE image carried 2 x 4096 x 16 = 131,072 bytes of stream
+#     buffer against a 65,536-byte heap and no conf could say otherwise.
+#
+# Both are forwarded now, so the exemption is never consulted for either and
+# the list is empty. Add a name here only with a reason that is a PROPERTY of
+# the knob ("this one cannot be a Kconfig option because ..."), never a
+# statement about what happens to be wired today — that is the form that goes
+# stale silently.
+NO_KCONFIG_OPTION: dict[str, str] = {}
 
 # A `UCLIENT_*` or `XRCE_*` literal a lane may legitimately name, with why.
 LANE_VALUE_ALLOWLIST = {
