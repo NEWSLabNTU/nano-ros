@@ -45,7 +45,7 @@ from typing import NamedTuple
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
-from issue_status import issue_status  # noqa: E402
+from issue_status import deferral, issue_status  # noqa: E402
 VTABLE = os.path.join(ROOT, "packages", "core", "nros-rmw-abi", "include", "nros", "rmw_vtable.h")
 SIGS = os.path.join(ROOT, "docs", "reference", "rmw-implementation-signatures.txt")
 CONTRACT = os.path.join(ROOT, "docs", "reference", "rmw-implementation-contract.txt")
@@ -1051,23 +1051,10 @@ LAYERED = {
 # `issue 0776`, resolved and archived — the very exemplar this comment, the
 # error text and the self-test all cited — both deferred a gap, so the
 # exception mechanism could hold a gap nobody was tracking.
-_ISSUE_REF = re.compile(r"\bissue[ -]?(\d{4})\b", re.I)
-
-
-def deferral(why, status_of=issue_status):
-    """`(issue id, None)` when `why` defers to an OPEN issue, else `(None, why not)`."""
-    m = _ISSUE_REF.search(why)
-    if not m:
-        return None, "names no issue"
-    num = m.group(1)
-    st = status_of(num)
-    if st != "open":
-        return None, (
-            f"names issue {num}, which is "
-            + (f"`{st}`" if st else "not a file under docs/issues/")
-            + " — a deferral to an issue nobody holds open is an exemption"
-        )
-    return num, None
+#
+# The rule itself lives in `scripts/lib/issue_status.py` (phase-428 W11), the
+# one place a deferral is judged, because it is asked in three RMW gates and
+# the two spellings that existed had different reaches.
 
 
 DEFERRED, REFUSED_DEFERRAL = {}, {}
