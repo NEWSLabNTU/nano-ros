@@ -35,16 +35,10 @@ nano = "borrow_loaned_message"
 [rmw_client_request_publisher_get_actual_qos]
 where = "vtable"
 nano = "client_request_publisher_get_actual_qos"
-status = "not-implemented"
-issue = 1327
-reason = "client_request_publisher_get_actual_qos — the slot exists, cyclonedds FILLS it, and NOTHING READS IT. Classified `not-implemented` rather than `same` because the capability a caller wants — being told the QoS the middleware GRANTED, which is the single most common reason a pub/sub pair does not communicate — is not delivered by a body no dispatch site reaches. Issue 0823 closed the publisher and subscription halves (`create_publisher` reads the slot and calls `report_qos_downgrade`) and left these four as 'not done here'; they were filled afterwards and never wired. Surfaced by phase-428 W8, which made READING the first question `check-rmw-slot-producers` asks — under the old ordering a backend body alone read as covered"
 
 [rmw_client_response_subscription_get_actual_qos]
 where = "vtable"
 nano = "client_response_subscription_get_actual_qos"
-status = "not-implemented"
-issue = 1327
-reason = "client_response_subscription_get_actual_qos — the slot exists, cyclonedds FILLS it, and NOTHING READS IT. Classified `not-implemented` rather than `same` because the capability a caller wants — being told the QoS the middleware GRANTED, which is the single most common reason a pub/sub pair does not communicate — is not delivered by a body no dispatch site reaches. Issue 0823 closed the publisher and subscription halves (`create_publisher` reads the slot and calls `report_qos_downgrade`) and left these four as 'not done here'; they were filled afterwards and never wired. Surfaced by phase-428 W8, which made READING the first question `check-rmw-slot-producers` asks — under the old ordering a backend body alone read as covered"
 
 [rmw_client_set_on_new_response_callback]
 where = "declined"
@@ -344,16 +338,10 @@ reason = "nros-serdes (`Serialize`/`Deserialize`/`DeserializeView`) plus the per
 [rmw_service_request_subscription_get_actual_qos]
 where = "vtable"
 nano = "service_request_subscription_get_actual_qos"
-status = "not-implemented"
-issue = 1327
-reason = "service_request_subscription_get_actual_qos — the slot exists, cyclonedds FILLS it, and NOTHING READS IT. Classified `not-implemented` rather than `same` because the capability a caller wants — being told the QoS the middleware GRANTED, which is the single most common reason a pub/sub pair does not communicate — is not delivered by a body no dispatch site reaches. Issue 0823 closed the publisher and subscription halves (`create_publisher` reads the slot and calls `report_qos_downgrade`) and left these four as 'not done here'; they were filled afterwards and never wired. Surfaced by phase-428 W8, which made READING the first question `check-rmw-slot-producers` asks — under the old ordering a backend body alone read as covered"
 
 [rmw_service_response_publisher_get_actual_qos]
 where = "vtable"
 nano = "service_response_publisher_get_actual_qos"
-status = "not-implemented"
-issue = 1327
-reason = "service_response_publisher_get_actual_qos — the slot exists, cyclonedds FILLS it, and NOTHING READS IT. Classified `not-implemented` rather than `same` because the capability a caller wants — being told the QoS the middleware GRANTED, which is the single most common reason a pub/sub pair does not communicate — is not delivered by a body no dispatch site reaches. Issue 0823 closed the publisher and subscription halves (`create_publisher` reads the slot and calls `report_qos_downgrade`) and left these four as 'not done here'; they were filled afterwards and never wired. Surfaced by phase-428 W8, which made READING the first question `check-rmw-slot-producers` asks — under the old ordering a backend body alone read as covered"
 
 [rmw_service_server_is_available]
 where = "vtable"
