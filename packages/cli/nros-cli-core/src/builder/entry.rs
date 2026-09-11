@@ -60,11 +60,9 @@ use crate::orchestration::board_descriptor::{BoardDescriptor, EntryKind};
 /// no discovery of its own and stays testable without a workspace.
 #[derive(Debug, Clone)]
 pub struct EntrySpec {
-    /// `[image.<id>]` key — names the package (`<id>_entry`).
+    /// `[image.<id>]` key — names the package (`<id>_entry`), which is how
+    /// `nros::main!` finds the image again (`leaf_system::for_entry`).
     pub image_id: String,
-    /// The `deploy` token recorded in `[package.metadata.nros.entry]`, which
-    /// `nros check` and the macro's board resolution both read.
-    pub deploy: String,
     /// `"<bringup>:<file.launch.xml>"`, or just `"<bringup>"` for its default.
     pub launch: String,
     /// Launch arguments bound at resolve time — how an image selects a machine.
@@ -148,33 +146,6 @@ pub fn macro_board_crate(candidates: &[&str]) -> Option<String> {
     None
 }
 
-/// The `deploy` token to record, from the same candidate list as the crate.
-///
-/// **These two must agree, and that is the whole point of sharing the search.**
-/// `deploy` is what `nros::main!` looks up in its own board table at expansion
-/// time; the crate is what must be in scope for the path that lookup returns.
-/// Writing the image id unconditionally worked only while an image happened to
-/// be NAMED after a board — `[image.native]` does, `[image.native_service_server]`
-/// does not, and the generated entry failed with "unknown board
-/// `native_service_server` in `[package.metadata.nros.entry] deploy`". A
-/// hand-written entry never hit this because a human wrote `deploy = "native"`
-/// and named the package whatever they liked.
-///
-/// Falls back to the first candidate so the error, when nothing resolves, still
-/// names what the author wrote rather than an empty string.
-#[must_use]
-pub fn macro_deploy_token(candidates: &[&str]) -> String {
-    for key in candidates {
-        if !key.is_empty() && nros_orchestration_ir::board_path_for(key).is_some() {
-            return (*key).to_string();
-        }
-    }
-    candidates
-        .iter()
-        .find(|k| !k.is_empty())
-        .map_or_else(String::new, |k| (*k).to_string())
-}
-
 impl BoardFacts {
     /// Lift from a descriptor, taking the board crate from the MACRO's mapping.
     ///
@@ -218,10 +189,11 @@ impl BoardFacts {
     }
 }
 
-/// Package name for an image's entry.
+/// Package name for an image's entry. The rule lives beside its other reader,
+/// `leaf_system::for_entry`, which maps a generated entry back to its image.
 #[must_use]
 pub fn package_name(image_id: &str) -> String {
-    format!("{}_entry", image_id.replace(['-', '.', '/'], "_"))
+    nros_orchestration_ir::leaf_system::entry_package_name(image_id)
 }
 
 /// Render `Cargo.toml`.
@@ -286,8 +258,11 @@ pub fn render_manifest(
         }
     }
 
-    out.push_str("[package.metadata.nros.entry]\n");
-    out.push_str(&format!("deploy = \"{}\"\n\n", spec.deploy));
+    // The table marks this package as an ENTRY (the selection facade keys on
+    // it). It carries no `deploy`: that key retired with RFC-0098 D5, and the
+    // image this entry is generated for is found by NAME — `<id>_entry` —
+    // through `leaf_system::for_entry`, the one reader `nros::main!` asks.
+    out.push_str("[package.metadata.nros.entry]\n\n");
 
     out.push_str("[dependencies]\n");
 
@@ -346,15 +321,29 @@ pub fn render_manifest(
     // reason is feature unification: a board crate's own default may not select
     // the platform when the entry's graph differs, and an unselected platform
     // is a link error a long way from its cause.
-    let plat_rel = relative_or_err(
-        entry_dir,
-        &spec.nano_ros_root.join("packages/platform/nros-platform"),
-    )?;
-    out.push_str(&format!(
-        "nros-platform = {{ path = \"{plat_rel}\", default-features = false, \
-         features = [\"{}\"] }}\n",
-        board.platform_feature
-    ));
+    //
+    // EXCEPT the bare-metal family. `platform_feature` is the `nros/` UMBRELLA's
+    // feature, and there it is the no-op marker `platform-bare-metal` for
+    // esp32, mps2 bare-metal and every other no-RTOS kind — a name
+    // `nros-platform` does not have, because its concrete platform
+    // (`platform-esp32-qemu`, `platform-mps2-an385`) is BOARD-specific and the
+    // board crate selects it unconditionally. The two crates share every other
+    // platform's name, which is how naming the marker on `nros-platform` went
+    // unnoticed until the first generated esp32 entry (phase-445 W5) failed
+    // resolution with "`nros-platform` does not have that feature". The
+    // hand-written esp32 entry it replaced never named `nros-platform` at all.
+    let marker = crate::orchestration::board_descriptor::PlatformKind::BareMetal.platform_feature();
+    if board.platform_feature != marker {
+        let plat_rel = relative_or_err(
+            entry_dir,
+            &spec.nano_ros_root.join("packages/platform/nros-platform"),
+        )?;
+        out.push_str(&format!(
+            "nros-platform = {{ path = \"{plat_rel}\", default-features = false, \
+             features = [\"{}\"] }}\n",
+            board.platform_feature
+        ));
+    }
 
     // Whatever the board's crate-root items need. Emitted right before the node
     // packages so a reader sees it beside the `use` it serves — and emitted at
@@ -472,76 +461,37 @@ fn write_if_changed(path: &Path, body: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
 
-    #[test]
-    fn a_board_the_macro_table_does_not_know_falls_through() {
-        // This function answers for the RUST macro, whose board table
-        // (`nros_orchestration_ir::board_path_for`) is keyed on deploy tokens
-        // like `freertos` and does not carry every board id the CATALOG does.
-        // So a specific board id it has no key for falls through to the one the
-        // macro can actually resolve.
-        //
-        // The example is `mps3-an536-freertos`, and it USED to be
-        // `mps2-an385-freertos`. phase-437 W5 renamed the retired
-        // `qemu-arm-freertos` key to `mps2-an385-freertos`, which is the very
-        // string this test had been using as its "the table does not know
-        // this one" example — so the table started knowing it and the
-        // fall-through this test exists to pin stopped happening. The premise
-        // expired; the rule did not. `mps3-an536-freertos` and
-        // `s32z270-freertos` are the FreeRTOS board ids the catalog carries and
-        // the macro table has no key for, which is exactly the shape wanted.
-        //
-        // The CMAKE entry must NOT use this: `nano_ros_add_executable(DEPLOY …)`
-        // resolves against the board CATALOG, which does know the specific id,
-        // and the hand-written entry said `DEPLOY mps2-an385-freertos`. Routing
-        // it through here picked the generic `freertos` board and the mps2
-        // board's lwIP glue was simply absent at link time —
-        // `undefined reference to lwip_setsockopt` (phase-383 W10.a).
-        assert_eq!(
-            macro_deploy_token(&["mps3-an536-freertos", "freertos", "freertos"]),
-            "freertos"
-        );
-    }
-
-    #[test]
-    fn the_deploy_token_falls_back_when_the_image_is_not_a_board_name() {
-        // phase-383 W9.b, found by migrating `examples/workspaces/rust`.
-        // `[image.native_service_server]` is a perfectly good image id and not a
-        // board token; writing it as `deploy` made the generated entry fail with
-        // "unknown board `native_service_server`". `[image.native]` hid it,
-        // because there the id and the token coincide.
-        assert_eq!(
-            macro_deploy_token(&["native", "native_service_server", "posix"]),
-            "native"
-        );
-        assert_eq!(macro_deploy_token(&["", "native_robot1", "posix"]), "posix");
-    }
-
-    #[test]
-    fn the_deploy_token_and_the_board_crate_come_from_one_search() {
-        // They must agree: `deploy` is what `nros::main!` looks up, and the
-        // crate is what its answer needs in scope. Two searches could disagree,
-        // and the disagreement is an entry that does not compile.
-        let candidates = ["robot1", "native", "posix"];
-        let token = macro_deploy_token(&candidates);
-        let krate = macro_board_crate(&candidates).expect("resolves");
-        let from_token = macro_board_crate(&[token.as_str()]).expect("resolves");
-        assert_eq!(
-            krate, from_token,
-            "token {token} must select the same crate"
-        );
-    }
-
     use super::*;
 
     #[test]
-    fn an_unresolvable_candidate_list_still_names_what_the_author_wrote() {
-        assert_eq!(macro_deploy_token(&["", "nonesuch", ""]), "nonesuch");
+    fn the_board_crate_follows_the_first_candidate_the_macro_resolves() {
+        // `[image.native_service_server] board = "native"`: the id is not a
+        // board key, the board is — and the macro resolves the SAME way
+        // (`nros::main!` tries the image's board, then its id).
+        assert_eq!(
+            macro_board_crate(&["native", "native_service_server", "posix"]).as_deref(),
+            Some("nros-board-linux")
+        );
+    }
+
+    #[test]
+    fn a_generated_manifest_states_no_deploy() {
+        // RFC-0098 D5 retired `[package.metadata.nros.entry] deploy`; the
+        // image is found by the entry's NAME (`leaf_system::for_entry`). The
+        // table itself stays — the selection facade keys on it.
+        let m = render_manifest(
+            &spec(),
+            &hosted(),
+            Path::new("/ws/build/posix/native_entry"),
+        )
+        .unwrap();
+        assert!(m.contains("[package.metadata.nros.entry]"), "{m}");
+        assert!(!m.contains("deploy"), "{m}");
     }
 
     fn spec() -> EntrySpec {
         EntrySpec {
             image_id: "native".to_string(),
-            deploy: "native".to_string(),
             launch: "demo_bringup:system.launch.xml".to_string(),
             args: BTreeMap::new(),
             panic: None,
@@ -679,6 +629,22 @@ mod tests {
         let m = render_manifest(&spec(), &hosted(), Path::new(DIR)).expect("renders");
         assert!(m.contains("nros-platform = "), "{m}");
         assert!(m.contains("\"platform-posix\""), "{m}");
+    }
+
+    #[test]
+    fn the_bare_metal_marker_is_never_named_on_nros_platform() {
+        // esp32's umbrella feature is the marker `platform-bare-metal`;
+        // `nros-platform` has no such feature (the board crate selects
+        // `platform-esp32-qemu` itself), so naming it fails resolution.
+        let mut esp = freertos();
+        esp.board_crate = Some("nros-board-esp32-qemu".to_string());
+        esp.platform_feature = "platform-bare-metal".to_string();
+        let m = render_manifest(&spec(), &esp, Path::new(DIR)).expect("renders");
+        assert!(!m.contains("nros-platform = "), "{m}");
+        assert!(
+            m.contains("nros-board-esp32-qemu = "),
+            "the board crate still is: {m}"
+        );
     }
 
     #[test]

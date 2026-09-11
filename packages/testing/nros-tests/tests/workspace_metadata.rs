@@ -47,15 +47,16 @@ fn cmake_workspace_metadata_emits_components_cmake() -> nros_tests::TestResult<(
             && body.contains("\"class\": \"listener_pkg::Listener\""),
         "metadata missing listener component entry:\n{body}"
     );
-    // `robot_entry`, not `native_entry` — phase-383 W10.a moved this fixture off
-    // `examples/workspaces/cpp`, whose root is now GENERATED under
-    // `build/<coord>/`, onto the template that keeps a hand-written one by
-    // design. The property is unchanged: the metadata lists the APPLICATION
-    // entry alongside the node components, and the two component assertions
-    // above hold verbatim because the template uses the same talker/listener.
+    // `native_entry` — the entry `nros build` GENERATES for the template's
+    // `[image.native]`. phase-383 W10.a moved this fixture onto the template
+    // because it kept a hand-written root; phase-445 W5 removed that root too
+    // (RFC-0098 D9), and with it the hand-written `robot_entry`. The property is
+    // unchanged: the metadata lists the APPLICATION entry alongside the node
+    // components, and the two component assertions above hold verbatim because
+    // the template uses the same talker/listener.
     assert!(
-        body.contains("\"name\": \"robot_entry\""),
-        "metadata missing robot_entry application entry:\n{body}"
+        body.contains("\"name\": \"native_entry\""),
+        "metadata missing native_entry application entry:\n{body}"
     );
     assert!(
         body.contains("\"native\""),

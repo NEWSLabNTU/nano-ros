@@ -346,7 +346,11 @@ def call_sites(repo_root=None):
     """Every tracked CMakeLists.txt that CALLS `nano_ros_workspace`."""
     repo_root = Path(repo_root) if repo_root else ROOT
     out = []
-    for p in tracked(repo_root, name="CMakeLists.txt", repo=repo_root):
+    # The repository is read through its index; any other root (the
+    # self-test's temp tree) has none, and `tracked()` walks it when it is
+    # not given as its own `repo`.
+    index_repo = repo_root if repo_root == ROOT else None
+    for p in tracked(repo_root, name="CMakeLists.txt", repo=index_repo):
         text = Path(p).read_text(encoding="utf-8", errors="replace")
         if "nano_ros_workspace" not in text:
             continue
@@ -402,12 +406,25 @@ def _one(tmp, name, cmake, toml=None, toml_rel=None):
 
 def self_test():
     """The negative controls. A gate that has never been red is a comment."""
-    # 1. Discovery on the REAL tree. If the call regex stops matching, every
-    #    arm below still passes on its temp files while the gate reports a
-    #    cheerful zero over the repository — the gen-config-surface lesson.
-    sites = call_sites()
-    assert sites, ("no nano_ros_workspace() call site found in the tree — the "
-                   "discovery regex is broken, not the repository")
+    # 1. Discovery, end to end — the index walk, the file filter and the call
+    #    regex together. If any of them stops matching, every arm below still
+    #    passes on its temp files while the gate reports a cheerful zero over
+    #    the repository — the gen-config-surface lesson.
+    #
+    #    Proven on a SYNTHETIC tree, not the real one: since phase-445 W5
+    #    (RFC-0098 D9) the repository tracks no workspace root at all — the last
+    #    three, the C/C++ templates', were deleted — so "zero call sites" is the
+    #    CORRECT answer on the real tree now and cannot tell a broken regex from
+    #    a finished migration. A temp dir outside the repository is walked, not
+    #    indexed (`tracked()`), so this exercises the same `call_sites()`.
+    with tempfile.TemporaryDirectory() as disc:
+        _write(disc, "ws/CMakeLists.txt",
+               "nano_ros_workspace(BACKEND zenoh SYSTEM demo_bringup SUBDIRS src/a)\n")
+        _write(disc, "ws/src/a/CMakeLists.txt", "project(a)\n")
+        found = call_sites(disc)
+        assert len(found) == 1 and found[0][2].get("BACKEND") == "zenoh", (
+            f"discovery found {len(found)} call site(s) in a tree holding exactly "
+            "one — the index walk or the call regex is broken")
 
     # 2. The definition and the two sibling functions must NOT be call sites.
     src = (ROOT / "cmake" / "NanoRosWorkspace.cmake").read_text()
@@ -553,6 +570,17 @@ def main():
             file=sys.stderr)
         return 1
 
+    if not fs:
+        # Not vacuous by accident: the self-test above proved discovery finds a
+        # call site where one exists. Zero here is phase-445 W5's end state —
+        # every workspace root is GENERATED under `build/` (RFC-0098 D9), and
+        # a generated root's `BACKEND` is the image's resolved rmw by
+        # construction (`builder::cmake_root`), so there is no second authored
+        # copy left to disagree. `check-no-tracked-workspace-roots` keeps a
+        # hand-written one from coming back; if one does, this gate reads it.
+        print("workspace-rmw-agreement OK — 0 call sites: no tracked workspace root "
+              "calls nano_ros_workspace() (roots are generated, RFC-0098 D9)")
+        return 0
     print(f"workspace-rmw-agreement OK — {len(fs)} call site(s): {summary}")
     return 0
 

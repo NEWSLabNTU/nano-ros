@@ -462,7 +462,8 @@ fn test_native_to_esp32() {
 // Workspace Entry E2E (Phase 225.O)
 // =============================================================================
 //
-// The workspace Entry (`examples/workspaces/rust/src/esp32_entry`) is the
+// The workspace Entry (the one `nros build` generates for `[image.esp32]` in
+// `examples/workspaces/rust/src/demo_bringup/system.toml`) is the
 // ESP32-C3 QEMU sibling of the native / FreeRTOS / ThreadX / Zephyr
 // workspace Entries: a SINGLE bare-metal image hosting the whole
 // launch-defined node set — talker AND listener — in one process via
@@ -484,8 +485,8 @@ fn test_native_to_esp32() {
 // all use the allocator's esp32 EntryPubsub slot.
 
 /// The allocator's (esp32, rust, EntryPubsub) slot — the ws Entry's baked
-/// locator port (`examples/workspaces/rust/src/esp32_entry` deploy
-/// metadata bakes the same number).
+/// locator port (`[image.esp32] locator` in the rust workspace's
+/// `demo_bringup/system.toml` bakes the same number).
 const ESP32_WS_ENTRY_PORT: u16 = port_of(
     nros_tests::matrix::PlatformId::Esp32Qemu,
     nros_tests::matrix::Lang::Rust,

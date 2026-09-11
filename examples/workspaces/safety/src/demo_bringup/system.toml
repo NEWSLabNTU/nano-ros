@@ -110,7 +110,11 @@ launch = "rust_safety_listener.launch.xml"
 board = "native"
 launch = "rust_safety_talker.launch.xml"
 
+# Claims the hand-written west entry `zephyr_rust_safety_entry` by its
+# `<id>_entry` name; its locator was that entry's
+# `[package.metadata.nros.deploy.zephyr]` table (phase-445 W5).
 [image.zephyr_rust_safety]
 board = "zephyr"
 conf = ["prj-zenoh.conf"]
 launch = "rust_safety.launch.xml"
+locator = "tcp/10.0.2.2:7467"

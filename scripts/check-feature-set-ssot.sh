@@ -306,7 +306,9 @@ fi
 # 8. issue 0358 — "is this package deploy-bound?" is asked in ONE place.
 #
 #    `[package.metadata.nros.entry]` and `[package.metadata.nros.deploy.<target>]`
-#    both mean it. A consumer that reaches for either field alone is already
+#    both mean it (the second is retired since phase-445 W5, and still read so
+#    an out-of-tree manifest is not host-probed). A consumer that reaches for
+#    either field alone is already
 #    wrong: the source-metadata probe checked only `entry`, so 27 packages fell
 #    through to a host build they cannot survive and surfaced as `DOTCONFIG must
 #    be set by wrapper` on a Zephyr leaf (issue 0318) — several layers from the

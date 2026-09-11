@@ -27,24 +27,29 @@ cargo build -p native_entry
 cmake -S . -B build && cmake --build build
 ```
 
-The Rust workspace ships several Entry packages that all reuse the same Node
-and Bringup packages: `src/native_entry/` (host), `src/qemu_freertos_entry/`,
-`src/threadx_linux_entry/`, `src/esp32_entry/` (ESP32-C3 QEMU, OpenETH), and
-`src/zephyr_entry/` (every Zephyr board). Each picks the board / RMW at build
-time; the Entry source is the same one-line
-`nros::main!(launch = "demo_bringup:system.launch.xml")`.
+The Rust workspace's images all reuse the same Node and Bringup packages, and
+every one but Zephyr has NO entry package in `src/`: `nros build <image>`
+GENERATES it under `build/<coord>/<image>_entry/` from the image's
+`[image.<id>]` in `demo_bringup/system.toml` (RFC-0065 D4, phase-445 W5) — the
+one-line `nros::main!(launch = "demo_bringup:system.launch.xml")` plus whatever
+the board descriptor's `[board.entry]` says the board needs. `src/zephyr_entry/`
+(every Zephyr board) stays hand-written because a west application's Kconfig
+overlays are not derivable (RFC-0065 D5); its board, RMW and locator are still
+its image's.
 
-## ESP32-C3 QEMU Entry
+## ESP32-C3 QEMU image
 
-`src/esp32_entry/` is a single bare-metal image that hosts the whole launch
+`[image.esp32]` is a single bare-metal image that hosts the whole launch
 graph (talker + listener) in one process on the CI-runnable OpenETH board.
 It builds for `riscv32imc-unknown-none-elf` with the pinned nightly + `-Z
-build-std` (the workspace fixture lane supplies both); the macro routes
-`deploy = "esp32-qemu"` to a `#[esp_hal::main]` entry that drives the
-board's real-runtime `Esp32QemuEntry`. Build + run via:
+build-std` (the workspace fixture lane supplies both). Its generated entry is
+`#[esp_hal::main]`-shaped and drives the board's real-runtime
+`Esp32QemuEntry`; the esp32 board descriptor's `[board.entry]` supplies the
+`esp-hal` / `esp-backtrace` dependencies and the app descriptor, and the image
+states the locator it dials. Build + run via:
 
 ```sh
-just esp32 build-examples        # builds src/esp32_entry through the workspace lane
+just esp32 build-examples        # builds [image.esp32] through the workspace lane
 just esp32 zenohd &              # router on port 7454
 # flash + boot the image under the Espressif qemu fork, then observe /chatter
 ```

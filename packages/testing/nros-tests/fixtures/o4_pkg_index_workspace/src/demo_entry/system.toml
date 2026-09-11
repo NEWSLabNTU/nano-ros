@@ -1,0 +1,13 @@
+# What this entry deploys to (RFC-0098 D3/D5). It was the manifest's
+# `[package.metadata.nros.entry] deploy = "native"` until phase-445 W5 retired
+# the key. Stated beside the entry rather than in `demo_bringup`, which this
+# fixture deliberately keeps to `package.xml` + a launch file (the pkg-index
+# walk is what it exercises).
+
+[system]
+name = "demo_entry"
+rmw = "zenoh"
+domain_id = 0
+
+[image.native]
+board = "native"

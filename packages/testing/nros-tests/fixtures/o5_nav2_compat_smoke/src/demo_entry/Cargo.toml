@@ -25,7 +25,6 @@ name = "demo_entry"
 path = "src/main.rs"
 
 [package.metadata.nros.entry]
-deploy = "native"
 
 [dependencies]
 # `nros::main!()` macro lives here; we wire `BoardEntry` /

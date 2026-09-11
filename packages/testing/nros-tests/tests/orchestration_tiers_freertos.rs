@@ -34,14 +34,16 @@ const ROUTER_PORT: u16 = port_of(
 /// Issue 0342 — fail loudly if the fixture's baked locator and [`ROUTER_PORT`]
 /// disagree.
 ///
-/// A `Cargo.toml` literal cannot call the allocator, so this pairing is a hand
+/// A `system.toml` literal cannot call the allocator, so this pairing is a hand
 /// mirror — the class that silently rots. Checking it here costs a file read and
 /// turns "the firmware dials a port nobody is listening on" (which looks like a
-/// network or timing failure) into a named mismatch.
+/// network or timing failure) into a named mismatch. The locator lives in the
+/// bringup's `[image.freertos]` since phase-445 W5 retired the entry's
+/// `[package.metadata.nros.deploy.freertos]` table.
 fn assert_fixture_port() {
     let manifest = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/fixtures/orchestration_tiers_freertos/entry/Cargo.toml"
+        "/fixtures/orchestration_tiers_freertos/src/demo_bringup/system.toml"
     );
     let toml = std::fs::read_to_string(manifest)
         .unwrap_or_else(|e| panic!("read fixture manifest {manifest}: {e}"));

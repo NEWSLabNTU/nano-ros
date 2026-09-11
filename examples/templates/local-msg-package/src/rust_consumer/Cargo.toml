@@ -23,22 +23,13 @@ path = "src/main.rs"
 # `nros sync` (block lives at the bottom of this file).
 [workspace]
 
-# Entry pkg deploy key — `nros::main!()` maps "native" →
-# `nros_board_linux::LinuxBoard` + the host emit shape.
+# Marks this package as an ENTRY. What it deploys to — `[image.native] board =
+# "native"`, which `nros::main!()` maps to `nros_board_linux::LinuxBoard` — and
+# the node it registers are stated in the `system.toml` beside this manifest
+# (RFC-0098 D3/D5). phase-445 W5 moved the `deploy` key, the
+# `[package.metadata.nros.deploy.native]` overlay and the
+# `[package.metadata.nros.node]` table there.
 [package.metadata.nros.entry]
-deploy = "native"
-
-[package.metadata.nros.node]
-class = "rust_consumer::Consumer"
-name = "rust_consumer"
-default_namespace = "/"
-
-# Deploy-target overlay (network endpoint + domain). The native board's
-# force-linked zenoh backend connects to this locator.
-[package.metadata.nros.deploy.native]
-rmw = "zenoh"
-domain_id = 0
-locator = "tcp/127.0.0.1:7447"
 
 [dependencies]
 # Board crate — hosted Linux native board. Supplies the

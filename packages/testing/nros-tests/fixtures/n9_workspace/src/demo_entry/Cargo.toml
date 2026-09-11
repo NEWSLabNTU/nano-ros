@@ -9,10 +9,10 @@ name = "demo_entry"
 path = "src/main.rs"
 
 # Phase 212.N.9 — single-node form-1 fallback. `nros::main!()` with
-# no args reads `deploy = "native"` here and maps to
-# `::nros_board_linux::LinuxBoard`.
+# no args reads `[image.native] board = "native"` from the `system.toml`
+# beside this manifest (phase-445 W5; the `deploy` key that lived here is
+# retired) and maps it to `::nros_board_linux::LinuxBoard`.
 [package.metadata.nros.entry]
-deploy = "native"
 
 [lib]
 path = "src/lib.rs"

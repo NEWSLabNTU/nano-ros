@@ -175,9 +175,13 @@ panic = "platform"
 [image.threadx]
 board = "threadx-linux"
 
+# Claims the hand-written west entry `zephyr_entry` by its `<id>_entry` name;
+# the locator was that entry's `[package.metadata.nros.deploy.zephyr]` table
+# (phase-445 W5).
 [image.zephyr]
 board = "zephyr"
 conf = ["prj-zenoh.conf"]
+locator = "tcp/10.0.2.2:7471"
 
 # SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image

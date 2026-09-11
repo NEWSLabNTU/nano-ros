@@ -20,7 +20,6 @@ name = "freertos_entry"
 path = "src/main.rs"
 
 [package.metadata.nros.entry]
-deploy = "freertos"
 
 [dependencies]
 # Board impl for the FreeRTOS / MPS2-AN385 family.

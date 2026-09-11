@@ -33,20 +33,17 @@ crate-type = ["staticlib", "rlib"]
 default = ["rmw-zenoh"]
 # Issue #129 (RFC-0031 C5b amendment) — a REAL backend dep, not an inert
 # marker: on a Rust Zephyr app the entry owns the backend link + register
-# (the `nros::main!` Zephyr arm emits `::nros_rmw_zenoh::register()` from the
-# deploy metadata's `rmw` key; nothing else registers on `target_os = "none"`).
+# (the `nros::main!` Zephyr arm emits `::nros_rmw_zenoh::register()` from its
+# image's `rmw`; nothing else registers on `target_os = "none"`).
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
 
-# Entry pkg metadata — `deploy = "zephyr"` routes the `nros::main!()`
-# proc-macro onto the `Framework::Zephyr` emit branch.
+# Marks this package as an ENTRY. Its board, RMW, domain and locator are the
+# bringup's `[image.zephyr_rust_lifecycle]`, which names it (`entry =`);
+# `nros::main!` reads them from there (`leaf_system::for_entry`, phase-445 W5),
+# which also routes it onto the `Framework::Zephyr` emit branch. The retired
+# `deploy` key and `[package.metadata.nros.deploy.zephyr]` table that used to
+# live here moved to that image.
 [package.metadata.nros.entry]
-deploy = "zephyr"
-
-[package.metadata.nros.deploy.zephyr]
-board = "native_sim/native/64"
-rmw = "zenoh"
-domain_id = 0
-locator = "tcp/10.0.2.2:7463"
 
 [package.metadata.ament]
 exec_depend = ["rust_lifecycle_talker_pkg", "demo_bringup"]

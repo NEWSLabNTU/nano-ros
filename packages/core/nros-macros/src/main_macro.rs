@@ -413,6 +413,13 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
     // canonicalised so the paths survive cargo's relocation tricks.
     let mut tracked: Vec<PathBuf> = Vec::new();
 
+    // phase-445 W5 — the bringup this entry boots. A workspace entry states no
+    // deployment of its own; the bringup's `[image.<id>]` that claims it does
+    // (`leaf_system::for_entry`), so the board resolution below needs to know
+    // which bringup that is. Taken from `launch =` here, or from the
+    // deprecated `model =` just below.
+    let mut entry_bringup: Option<PathBuf> = None;
+
     // --- phase-330 W7: `launch = "<bringup>[:<file.launch.xml>]"` is the
     // INPUT-ADDRESSED spelling — the user names their launch file, never the
     // model artifact. Normalize it here into the `model =` flow: map
@@ -456,6 +463,7 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
             tracked.push(bringup_dir.join("launch").join(f));
         }
         tracked.push(bringup_dir.join("system.toml"));
+        entry_bringup = Some(bringup_dir.to_path_buf());
         let launch_args: Vec<(String, String)> = args.args.clone();
         let model_rel = nros_orchestration_ir::model_location::launch_to_model_rel(
             bringup_dir,
@@ -489,19 +497,49 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
         Some(p) => (p.clone(), None, None),
         None => {
             tracked.push(manifest_dir.join("Cargo.toml"));
-            let leaf = nros_orchestration_ir::leaf_system::read(&manifest_dir)
-                .map_err(|e| syn::Error::new(Span::call_site(), format!("nros::main!: {e}")))?;
+            // The deprecated `model = "<bringup>[:file]"` names the bringup too;
+            // resolve it here so an entry spelled that way finds its image.
+            if entry_bringup.is_none()
+                && let Some(model_lit) = &args.model
+            {
+                let name = model_lit
+                    .value()
+                    .split(':')
+                    .next()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
+                if !name.is_empty() {
+                    entry_bringup = nros_pkg_index::detect_workspace_root(&manifest_dir)
+                        .ok()
+                        .and_then(|ws| nros_pkg_index::build_pkg_index(&ws).ok())
+                        .and_then(|idx| idx.resolve_pkg(&name).ok().map(|p| p.to_path_buf()));
+                }
+            }
+            // A leaf's own `system.toml`, else the bringup image that claims
+            // this entry (phase-445 W5) — keyed on the PACKAGE name cargo is
+            // compiling, which is `<id>_entry` for a generated entry.
+            let entry_pkg = std::env::var("CARGO_PKG_NAME").unwrap_or_default();
+            let leaf = match &entry_bringup {
+                Some(b) => {
+                    nros_orchestration_ir::leaf_system::for_entry(&manifest_dir, &entry_pkg, b)
+                }
+                None => nros_orchestration_ir::leaf_system::read(&manifest_dir),
+            }
+            .map_err(|e| syn::Error::new(Span::call_site(), format!("nros::main!: {e}")))?;
             if let Some(l) = &leaf {
                 tracked.push(l.origin_path().to_path_buf());
             }
-            let deploy = leaf.as_ref().and_then(|l| l.board.clone()).ok_or_else(|| {
+            let declared = leaf.as_ref().and_then(|l| l.board.clone()).ok_or_else(|| {
                 syn::Error::new(
                     Span::call_site(),
                     format!(
                         "nros::main!: `{}` declares no board.\n  Hint: write `{}` with \
                          `[image.<id>] board = \"<board>\"` (e.g. `\"native\"`, \
-                         `\"freertos\"`, `\"zephyr\"`; RFC-0098 D3), or pass \
-                         `board = MyBoard` to the macro.",
+                         `\"freertos\"`, `\"zephyr\"`; RFC-0098 D3) — or, for an entry in \
+                         a workspace, give the bringup an image that builds it \
+                         (`entry = \"{entry_pkg}\"`) — or pass `board = MyBoard` to the \
+                         macro.",
                         manifest_dir.display(),
                         manifest_dir
                             .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
@@ -509,6 +547,18 @@ fn build_main(mut args: MainArgs) -> MacroResult<proc_macro2::TokenStream> {
                     ),
                 )
             })?;
+            // The board as declared, else the image id: an image may be named
+            // after a board key (`[image.zephyr]`) while its `board` spells the
+            // framework's own name. The SAME order `nros build` records a
+            // generated entry's deploy token in (`builder::entry`).
+            let deploy = if board_path_for(&declared).is_some() {
+                declared
+            } else {
+                leaf.as_ref()
+                    .and_then(|l| l.image.clone())
+                    .filter(|id| board_path_for(id).is_some())
+                    .unwrap_or(declared)
+            };
             let resolved = board_path_for(&deploy).ok_or_else(|| {
                 syn::Error::new(
                     Span::call_site(),

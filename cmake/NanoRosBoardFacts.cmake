@@ -98,9 +98,11 @@ function(nros_resolve_board_facts)
 
     # Where to resolve FROM, most specific first. `APPLICATION_SOURCE_DIR` is
     # the Zephyr arm: that lane never sets `NANO_ROS_BOARD` (it names boards the
-    # Zephyr way), but its application dir IS an entry leaf, which carries
-    # `[package.metadata.nros.entry] deploy` — the second site home `nros ws
-    # board-facts` reads. Without this the Zephyr lane resolved nothing at all.
+    # Zephyr way), but its application dir IS an entry leaf, and `nros ws
+    # board-facts` resolves an entry's board from the bringup image that claims
+    # it (`leaf_system::for_entry`, phase-445 W5 — it was the entry's retired
+    # `[package.metadata.nros.entry] deploy`). Without this the Zephyr lane
+    # resolved nothing at all.
     set(_ws "${_A_WORKSPACE}")
     foreach(_cand "${NROS_WORKSPACE_DIR}" "${APPLICATION_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}")
         if(_ws STREQUAL "" AND NOT _cand STREQUAL "")

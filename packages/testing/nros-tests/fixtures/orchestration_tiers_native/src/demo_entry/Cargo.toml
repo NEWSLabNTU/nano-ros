@@ -9,7 +9,6 @@ name = "demo_entry"
 path = "src/main.rs"
 
 [package.metadata.nros.entry]
-deploy = "native"
 
 [dependencies]
 nros = { path = "@NANO_ROS_ROOT@/packages/api/nros", default-features = false, features = [

@@ -83,30 +83,12 @@ def deploy_values():
                 out.setdefault(defaults["board"], []).append(
                     f"{os.path.relpath(path, ROOT)} [image_defaults]"
                 )
-    # Standalone leaves: the deploy KEY is the board (no `board =` there).
-    # issue 0721 / 0726 — the INDEX, not a walk. `examples/` holds build output
-    # (measured 5769 Cargo.toml on disk against 237 git tracks), and a recursive
-    # glob must descend every `target/` and `build-*/` tree to produce the paths
-    # it then discards. Warm that costs seconds; cold it is minutes, and this
-    # gate was measured at 23-24 MINUTES inside `check-fast -P32` twice.
-    for path in tracked("examples", "packages/testing", name="Cargo.toml"):
-        if True:
-            try:
-                with open(path, "rb") as fh:
-                    doc = tomllib.load(fh)
-            except Exception:
-                continue
-            nros = (doc.get("package", {}).get("metadata", {}) or {}).get("nros", {}) or {}
-            key = (nros.get("entry") or {}).get("deploy")
-            if key:
-                out.setdefault(key, []).append(
-                    f"{os.path.relpath(path, ROOT)} [entry] deploy"
-                )
-            for dname, blk in (nros.get("deploy") or {}).items():
-                if isinstance(blk, dict) and blk.get("board"):
-                    out.setdefault(blk["board"], []).append(
-                        f"{os.path.relpath(path, ROOT)} [deploy.{dname}]"
-                    )
+    # Manifests carry no board any more. The standalone-leaf arm that read
+    # `[package.metadata.nros.entry] deploy` / `[package.metadata.nros.deploy.*]`
+    # here went with those keys (phase-445 W5, RFC-0098 D5): every board is an
+    # `[image.*]` board in a `system.toml` — a leaf's own or a bringup's — which
+    # the loop above reads, and `check-leaf-deployment-spelling` refuses the
+    # retired keys wherever they reappear.
     return out
 
 
