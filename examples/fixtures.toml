@@ -1604,7 +1604,14 @@ features = ["rmw-cyclonedds"]
 # to the official single-goal demo, so the concurrent-goals stress role moved
 # here). Built per-RMW: Zenoh variant consumed by tests/rmw_interop.rs, XRCE
 # variant by tests/xrce_ros2_interop.rs.
+# phase-455 W2 gave this row an `id` so the live-peer completion probe's
+# fixtures can be built one at a time (`fixtures-build.sh linux rust --id …`).
+# Without one the only narrowing available is the whole linux/rust lane, which
+# is ~115 GiB of target dirs for a two-binary pair. The id is not part of the
+# artifact-dir key — that is (platform, cargo args, env), issue 1025 — so this
+# adds a handle and moves nothing.
 [[fixture]]
+id = "action-server-concurrent-zenoh"
 platform = "linux"
 lang = "rust"
 rmw = "zenoh"
@@ -1626,6 +1633,7 @@ features = ["rmw-xrce"]
 # assertion is about the server's goal table, which is backend-independent, so
 # a second RMW build would add sweep time without adding coverage.
 [[fixture]]
+id = "action-client-multigoal-zenoh"
 platform = "linux"
 lang = "rust"
 rmw = "zenoh"

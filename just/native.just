@@ -943,6 +943,23 @@ test-ros2-action verbose="":
 test-ros2-action-zenoh verbose="":
     @just _test-focused 'binary(=ros2_action_e2e) and test(zenoh)' {{verbose}}
 
+# Every ACCEPTED action goal returns a RESULT, and the zenoh reply-slot table
+# refused nothing — issue 0902 / phase-455 W2. A live-peer cell, so it needs a
+# runner rather than a sweep: an unmet precondition inside one renders as
+# `<skipped>`, which nobody can tell from a pass. `_test-focused` carries the
+# shared skip accounting (see the block above — a second copy of that tail is
+# the #282 -> #326 shape).
+#
+# The rate this run measures is EVIDENCE, printed on stdout; the assertions are
+# `completed == sent` and `reply-slot: refusals=0`, which are statements rather
+# than samples. Runs ~1 min: a 20 s idle soak plus three peer up/down cycles,
+# because issue 0902's countdown is spent by elapsed time with a peer present,
+# not by goal traffic.
+# Runs `action_multigoal`; needs a `rmw_zenohd` router + the native action fixtures.
+[group("debug")]
+test-action-completion verbose="":
+    @just _test-focused 'binary(=action_multigoal)' {{verbose}}
+
 # A QoS STATUS EVENT fires against a live peer and reaches an application
 # callback — phase-433 W6. The four event slots are `produced` and had never met
 # one, and they are the family least able to be tested in isolation: a QoS

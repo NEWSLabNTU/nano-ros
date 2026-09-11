@@ -44,10 +44,10 @@ use zpico_sys::{
     zpico_declare_subscriber_with_attachment, zpico_get_zid, zpico_init, zpico_init_with_config,
     zpico_is_open, zpico_open, zpico_publish, zpico_publish_with_attachment,
     zpico_publish_with_attachment_aliased, zpico_query_reply, zpico_queryable_take_reply_seq,
-    zpico_reply_slot_stats, zpico_reply_slot_take_announcement, zpico_session_acquire,
-    zpico_session_release, zpico_session_t, zpico_spin_once, zpico_undeclare_liveliness,
-    zpico_undeclare_publisher, zpico_undeclare_queryable, zpico_undeclare_subscriber,
-    zpico_uses_polling,
+    zpico_reply_slot_refusals_total, zpico_reply_slot_stats, zpico_reply_slot_take_announcement,
+    zpico_session_acquire, zpico_session_release, zpico_session_t, zpico_spin_once,
+    zpico_undeclare_liveliness, zpico_undeclare_publisher, zpico_undeclare_queryable,
+    zpico_undeclare_subscriber, zpico_uses_polling,
 };
 
 // ============================================================================
@@ -121,6 +121,23 @@ impl core::fmt::Display for ZpicoError {
 
 /// Result type for shim operations
 pub type Result<T> = core::result::Result<T, ZpicoError>;
+
+/// issue 0902 / phase-455 — every reply-slot refusal in this PROCESS, summed.
+///
+/// A refusal means the C shim had no free slot to clone an incoming query
+/// into, so the request was accepted and can never be answered. **Zero is a
+/// statement**, not the absence of one: this process has never run out. That
+/// is the distinction `zpico_queryable_take_reply_seq`'s `-1` could not make,
+/// and issue 0902's whole complaint — a 20-90 % goal-completion spread with no
+/// observable cause is not measurable as a regression gate.
+///
+/// The per-server answer is [`Context::reply_slot_stats`], which needs the
+/// session and queryable handles. This one needs neither, because the callers
+/// that most want it — a probe binary holding an `Executor` and a node — have
+/// neither. Never reset.
+pub fn reply_slot_refusals_total() -> u32 {
+    unsafe { zpico_reply_slot_refusals_total() }
+}
 
 // ============================================================================
 // ZenohId

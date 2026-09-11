@@ -348,6 +348,17 @@ unsafe extern "C" {
         queryable_handle: i32,
     ) -> i32;
 
+    /// issue 0902 / phase-455 W2 — every reply-slot refusal in this process,
+    /// summed, with NO session argument.
+    ///
+    /// The companion to `zpico_reply_slot_stats`, which answers "WHICH server
+    /// saturated" and needs both handles to do it. A probe binary holds
+    /// neither — it owns an `Executor` and a node, and the zenoh `Context` is
+    /// several layers below the API it was written against — so the question
+    /// it can ask is "did ANY reply slot get refused here", which is what
+    /// phase-455 W2's acceptance asserts is zero. Never reset.
+    pub fn zpico_reply_slot_refusals_total() -> u32;
+
     /// issue 0902 / phase-455 W1 — the PURE half of the reply-slot
     /// allocation, exported like `zpico_entry_at` / `zpico_graph_set_apply` so
     /// the accounting is reachable from a host test with no session, no router

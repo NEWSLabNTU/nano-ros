@@ -590,12 +590,35 @@ pub const ACTION_SENDING_GOAL_MARKER: &str = "Sending goal";
 /// `active_goals` table holds `MAX_GOALS` (4), a 6-goal run must report
 /// `accepted=4 rejected=2`. Before the fix it reported `accepted=6 rejected=0`
 /// — the overflow goals were acknowledged and then dropped.
+/// phase-455 W2 GAINS fields on this line rather than changing its meaning:
+/// `completed=<n> sent=<n> result_missing=<n>` follow `of <total>`, and both
+/// consumers parse by KEY, so issue 0322's `accepted=`/`rejected=` assertion is
+/// untouched.
 pub const MULTIGOAL_SUMMARY_PREFIX: &str = "multigoal: summary accepted=";
 
 /// The exact summary line for a completed multi-goal run.
-pub fn multigoal_summary_line(accepted: usize, rejected: usize, total: usize) -> String {
-    format!("{MULTIGOAL_SUMMARY_PREFIX}{accepted} rejected={rejected} of {total}")
+pub fn multigoal_summary_line(
+    accepted: usize,
+    rejected: usize,
+    total: usize,
+    completed: usize,
+    result_missing: usize,
+) -> String {
+    format!(
+        "{MULTIGOAL_SUMMARY_PREFIX}{accepted} rejected={rejected} of {total} \
+         completed={completed} sent={total} result_missing={result_missing}"
+    )
 }
+
+/// issue 0902 / phase-455 W2 — the heartbeat `bins/action-server-concurrent`
+/// prints with its zenoh reply-slot refusal count.
+///
+/// The count belongs to the SERVER's queryable, so the client cannot report it
+/// however it is asked. `refusals=0` is the acceptance; `refusals=n/a
+/// no-zenoh-shim` is what a non-zenoh build prints, and asserting `=0` is
+/// therefore red on a build that could never have answered rather than green on
+/// one that never looked.
+pub const REPLY_SLOT_REPORT_PREFIX: &str = "reply-slot: refusals=";
 
 /// Action client log PREFIX once the server accepts the goal
 /// (`"Goal accepted by server"`). The stock demo continues

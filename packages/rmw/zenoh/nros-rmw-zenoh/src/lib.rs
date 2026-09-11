@@ -41,7 +41,7 @@ pub const DEFAULT_LOCATOR: &str = "tcp/127.0.0.1:7447";
 pub mod shim;
 
 // Re-export zpico types (always available)
-pub use zpico::{ZenohId, ZpicoError};
+pub use zpico::{ZenohId, ZpicoError, reply_slot_refusals_total};
 
 // Phase 214.G — link-graph anchor for POSIX.
 //
