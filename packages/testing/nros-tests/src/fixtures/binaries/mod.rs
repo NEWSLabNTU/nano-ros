@@ -343,6 +343,12 @@ static FREERTOS_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// (`realtime-cpp`), run by `realtime_tiers_cpp_freertos_e2e.rs`.
 static FREERTOS_WORKSPACE_CPP_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// phase-427 W12 (issue 1247) — cached path to the FREESTANDING subnode entry
+/// (`realtime-cpp-subnode-portable`), inspected by
+/// `subnode_freestanding_link.rs`. BUILD-ONLY: nothing boots it under QEMU, so
+/// it has no `matrix::CELLS` row; the test reads the linked image.
+static FREERTOS_WORKSPACE_CPP_SUBNODE_PORTABLE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// phase-281 W2 — cached path to the 2-tier C realtime FreeRTOS entry
 /// (`realtime-c`), run by `realtime_tiers_c_freertos_e2e.rs`.
 static FREERTOS_WORKSPACE_C_REALTIME_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -3128,6 +3134,32 @@ pub fn build_freertos_workspace_cpp_realtime_entry() -> TestResult<&'static Path
             build_workspace_cmake_entry_in(
                 "workspace-cpp-freertos-realtime",
                 "realtime-cpp",
+                "build-workspace-fixtures-freertos",
+                "freertos_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-427 W12 (issue 1247) — the FREESTANDING `SHAPE rclcpp` entry
+/// (`realtime-cpp-subnode-portable`): ONE `subnode_pkg::SubNode`, which IS-A
+/// `nros::NodeWithTimers<2>` IS-A `rclcpp::Node`, with two callback groups on
+/// two tiers, cross-linked for `thumbv7m-none-eabi`.
+///
+/// Its groups span tiers, so the plan's `ExecutorShape` is `SchedContexts` and
+/// not `Tiers` — the generated entry is `FreertosBoard::run_components` plus
+/// the sched-context ABI, unlike the `run_tiers` siblings above.
+///
+/// Resolving it here rather than only building it is what makes the freshness
+/// of the image a CHECKED property: this goes through the same staleness probe
+/// as every other fixture, so a museum binary is a STALE verdict with its
+/// `probe:` accounting rather than a quietly passing assertion.
+pub fn build_freertos_workspace_cpp_subnode_portable_entry() -> TestResult<&'static Path> {
+    FREERTOS_WORKSPACE_CPP_SUBNODE_PORTABLE_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-cpp-freertos-realtime-subnode-portable",
+                "realtime-cpp-subnode-portable",
                 "build-workspace-fixtures-freertos",
                 "freertos_entry",
             )
