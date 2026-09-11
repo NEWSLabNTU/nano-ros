@@ -144,7 +144,7 @@ This is a design question before it is code, and the issue lists it:
 
 ### W7 — each subscription priced at its own type
 
-[Issue 1255](../issues/1255-arena-prices-every-subscription-slot-at-one-global-type-bound.md).
+[Issue 1255](../issues/archived/1255-arena-prices-every-subscription-slot-at-one-global-type-bound.md).
 `subs_arena()` bills every declared subscription at one image-wide bound — 880 B
 on the reference island — although the per-type bound is generated and reaches
 the build script: the declared-depth triples are `type|topic=depth`, and the
@@ -160,7 +160,7 @@ DTCM.
 
 ### W8 — the per-entry arena scales by a ratio that stopped being the model
 
-[Issue 1290](../issues/1290-arena-size-for-halves-a-declared-model.md), found by
+[Issue 1290](../issues/archived/1290-arena-size-for-halves-a-declared-model.md), found by
 phase-412 item 4's oracle on the day it landed — which is the argument for
 having built the oracle at all.
 

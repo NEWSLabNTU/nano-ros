@@ -157,6 +157,13 @@
 #   NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE   /   never a substituted default
 #   NROS_DERIVED_LARGEST_TYPE / _LARGEST_RX  provenance for the two above
 #   NROS_DERIVED_LARGE_TYPES                 which types drove MAX_LARGE
+#   NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS      `type=rx` for EVERY subscribed
+#                                     type (issue 1255) -- the class knobs above
+#                                     are the maximum over it, and a consumer
+#                                     that allocates PER SUBSCRIPTION (the
+#                                     executor arena) needs the table instead.
+#                                     `subscribed` basis only: on the closure
+#                                     basis there is no subscribed set.
 #
 # A derived value is a DEFAULT. Every consumer applies it only where nothing
 # else stated a number -- see `_nros_resolve_derivable_knob` in
@@ -356,6 +363,26 @@ macro(_nros_bounds_publish_payload_classes)
     if(_sub_large_count GREATER 0)
         _nros_bounds_publish(NROS_DERIVED_SUBSCRIBER_LARGE_SIZE "${_sub_large_max}")
     endif()
+
+    # issue 1255 -- the PER-TYPE table, beside the three class knobs it was
+    # computed with.
+    #
+    # The class knobs are a MAXIMUM over the subscribed set, which is what a
+    # shared pool needs. The executor arena needs the other shape: it allocates
+    # one receive region PER SUBSCRIPTION, and billing each of them the maximum
+    # over-prices every subscription but the largest (on the reference island,
+    # eleven slots at the 880-byte class where most carry small control
+    # messages). Its consumer is `nros-node/build.rs::subs_arena`, which joins
+    # this against the declared-depth triples -- the two halves meet there
+    # because that is the one scope holding both.
+    #
+    # `subscribed` basis ONLY, which is what this macro's caller guarantees: on
+    # the closure basis there is no subscribed set, so there is no per-
+    # subscription table to publish and the consumer keeps the image-wide bound.
+    if(_basis STREQUAL "subscribed")
+        _nros_bounds_publish(NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS
+            "${_sub_type_bounds}")
+    endif()
 endmacro()
 
 function(nros_derive_message_bound_knobs)
@@ -399,6 +426,7 @@ function(nros_derive_message_bound_knobs)
         NROS_DERIVED_LARGEST_TYPE
         NROS_DERIVED_LARGEST_RX
         NROS_DERIVED_LARGE_TYPES
+        NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS
         NROS_MESSAGE_BOUNDS_BASIS)
         unset(${_v})
         unset(${_v} PARENT_SCOPE)
@@ -546,7 +574,8 @@ function(nros_derive_message_bound_knobs)
     # early changes no output on the path that then refuses everything.
     _nros_bounds_join_subscribed("${_B_ENTITY_INVENTORY}" "${_ceiling}"
         _basis _payload_status _payload_why _sub_count
-        _sub_small _sub_large_types _sub_large_max _sub_large_count)
+        _sub_small _sub_large_types _sub_large_max _sub_large_count
+        _sub_type_bounds)
 
     if(_open)
         list(LENGTH _open _open_count)
@@ -697,7 +726,7 @@ endfunction()
 # _nros_bounds_join_subscribed(<entity_fragment> <ceiling>
 #                              <out_basis> <out_status> <out_why> <out_count>
 #                              <out_small> <out_large_types> <out_large_max>
-#                              <out_large_count>)
+#                              <out_large_count> <out_type_bounds>)
 #
 # phase-403 step 1 -- the JOIN. Reads the ENTITY inventory's subscribed-type
 # set and classifies each of those types against the bounds this frame has
@@ -716,7 +745,7 @@ endfunction()
 # NEVER degrades to `closure` -- see the header.
 function(_nros_bounds_join_subscribed _frag _ceiling
          _o_basis _o_status _o_why _o_count _o_small _o_large_types _o_large_max
-         _o_large_count)
+         _o_large_count _o_type_bounds)
     set(${_o_basis} "" PARENT_SCOPE)
     set(${_o_status} "derived" PARENT_SCOPE)
     set(${_o_why} "" PARENT_SCOPE)
@@ -725,6 +754,7 @@ function(_nros_bounds_join_subscribed _frag _ceiling
     set(${_o_large_types} "" PARENT_SCOPE)
     set(${_o_large_max} 0 PARENT_SCOPE)
     set(${_o_large_count} 0 PARENT_SCOPE)
+    set(${_o_type_bounds} "" PARENT_SCOPE)
 
     # No fragment named, or none written yet. The image declared nothing, which
     # is every image built before phase-403 W9. Keep W8's closure answer and
@@ -849,6 +879,11 @@ function(_nros_bounds_join_subscribed _frag _ceiling
     set(_large_max 0)
     set(_large_count 0)
     set(_unpriced "")
+    # issue 1255 -- `type=rx` for every subscribed type, so the arena can price
+    # each subscription at its own type instead of at the maximum over all of
+    # them. Built in this loop rather than in a second pass: this is where the
+    # per-type `_RX` is already in hand.
+    set(_type_bounds "")
     foreach(_entry IN LISTS NROS_ENTITY_SUBSCRIBED_TYPE_COUNTS)
         string(REGEX REPLACE "=[0-9]+$" "" _t "${_entry}")
         string(REGEX REPLACE "^.*=" "" _n "${_entry}")
@@ -877,6 +912,7 @@ function(_nros_bounds_join_subscribed _frag _ceiling
             continue()
         endif()
         set(_rx "${NROS_MESSAGE_BOUND_${_key}_RX}")
+        list(APPEND _type_bounds "${_t}=${_rx}")
         if(_rx GREATER _ceiling)
             list(APPEND _large_types "${_t}=${_rx}")
             math(EXPR _large_count "${_large_count} + ${_n}")
@@ -924,7 +960,30 @@ function(_nros_bounds_join_subscribed _frag _ceiling
     set(${_o_large_types} "${_large_types}" PARENT_SCOPE)
     set(${_o_large_max} "${_large_max}" PARENT_SCOPE)
     set(${_o_large_count} "${_large_count}" PARENT_SCOPE)
+    set(${_o_type_bounds} "${_type_bounds}" PARENT_SCOPE)
 endfunction()
+
+# _nros_bounds_append_type_bounds(<content-var>)
+#
+# issue 1255 -- append the per-type table to the fragment being written, when
+# the join produced one.
+#
+# A MACRO so it reads `NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS` through the caller's
+# own scope, the way every other value in the writer is read, and appends in
+# place. Two call sites (the payload-classes-despite-a-closure-refusal branch and
+# the fully-derived one) because the table is published in exactly the cases the
+# three class knobs are, and a second spelling of the `set()` line is how the two
+# come to differ.
+macro(_nros_bounds_append_type_bounds _content)
+    if(DEFINED NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS)
+        string(APPEND ${_content}
+            "# issue 1255 -- the bound of EACH subscribed type, for a consumer that\n"
+            "# allocates per subscription rather than from a shared pool. The class\n"
+            "# knobs above are the maximum over this table.\n")
+        string(APPEND ${_content}
+            "set(NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS \"${NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS}\")\n")
+    endif()
+endmacro()
 
 # _nros_message_bounds_write_output(<path> <status> <reason> <ceiling>)
 #
@@ -1006,6 +1065,7 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
                 string(APPEND _c
                     "set(NROS_DERIVED_SUBSCRIBER_LARGE_SIZE ${NROS_DERIVED_SUBSCRIBER_LARGE_SIZE})\n")
             endif()
+            _nros_bounds_append_type_bounds(_c)
         else()
             string(APPEND _c "# No knob is derived. Every one keeps its configured value.\n")
         endif()
@@ -1074,6 +1134,7 @@ function(_nros_message_bounds_write_output _path _status _reason _ceiling)
                     "# Zero large-class blocks, so the pool is zero bytes whatever size it\n"
                     "# would name -- NROS_SUBSCRIBER_LARGE_SIZE is deliberately not derived.\n")
             endif()
+            _nros_bounds_append_type_bounds(_c)
         endif()
     endif()
     set(_write TRUE)
@@ -1134,7 +1195,8 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_DERIVED_MAX_LARGE_SUBSCRIBERS
         NROS_DERIVED_SUBSCRIBER_LARGE_SIZE
         NROS_DERIVED_LARGEST_TYPE
-        NROS_DERIVED_LARGE_TYPES)
+        NROS_DERIVED_LARGE_TYPES
+        NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS)
         if(DEFINED ${_v})
             message(STATUS "${_v}=${${_v}}")
         endif()

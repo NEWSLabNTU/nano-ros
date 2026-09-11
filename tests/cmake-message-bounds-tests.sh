@@ -867,8 +867,10 @@ set(NROS_MESSAGE_BOUND_std_msgs_msg_Int32_STATE "bounded")
 set(NROS_MESSAGE_BOUND_std_msgs_msg_Int32_RX 12)
 set(NROS_MESSAGE_BOUND_demo_msg_Open_STATE "unbounded")
 set(NROS_MESSAGE_BOUND_demo_msg_Open_RX "")
-_nros_bounds_join_subscribed("\${FRAG}" 2048 b st why cnt small ltypes lmax lcount)
+_nros_bounds_join_subscribed("\${FRAG}" 2048 b st why cnt small ltypes lmax lcount
+                             tbounds)
 message(STATUS "basis=\${b} status=\${st} why=\${why}")
+message(STATUS "tbounds=[\${tbounds}]")
 EOF
 # The join iterates TYPE_COUNTS (it needs each type's count), NOT TYPES -- so a
 # fixture that lists a type only in TYPES is never visited and the case passes
@@ -902,6 +904,24 @@ fi
 check
 if ! nros_grep_q "demo/msg/Open" <<<"$_o_out"; then
     fail "O: the refusal does not name the offending type:"
+    printf '%s\n' "$_o_out"
+fi
+check
+# issue 1255 -- the join also hands back the PER-TYPE table, which is what lets
+# the arena price each subscription at its own type instead of at the maximum
+# over all of them. Same loop, so it is exercised by the same fixtures.
+_o_out=$(cmake -DFRAG="$T/o-ok.cmake" -P "$T/o-join.cmake" 2>&1)
+if ! nros_grep_q "tbounds=\[std_msgs/msg/Int32=12\]" <<<"$_o_out"; then
+    fail "O: the join did not hand back the per-type bound table (issue 1255):"
+    printf '%s\n' "$_o_out"
+fi
+check
+# A REFUSED join publishes no table. The table is only meaningful over a set the
+# join actually resolved; handing back a partial one would price the
+# subscriptions it happened to cover and silently leave the rest.
+_o_out=$(cmake -DFRAG="$T/o-bad.cmake" -P "$T/o-join.cmake" 2>&1)
+if ! nros_grep_q "tbounds=\[\]" <<<"$_o_out"; then
+    fail "O: a refused join still published a per-type table (issue 1255):"
     printf '%s\n' "$_o_out"
 fi
 check
@@ -1005,6 +1025,16 @@ fi
 check
 if ! nros_grep_q 'NROS_MESSAGE_BOUNDS_BASIS "subscribed"' "$T/p-out.cmake"; then
     fail "P: the file does not record WHICH basis the payload classes used:"
+    cat "$T/p-out.cmake"
+fi
+check
+# issue 1255 -- and so does the PER-TYPE table, on the same branch and for the
+# same reason: the file is the transport, and the arena's consumer
+# (nros-node/build.rs, through nros_cargo_build.cmake) reads nothing else.
+if ! nros_grep_q 'NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS "std_msgs/msg/Int32=12"' \
+        "$T/p-out.cmake"; then
+    fail "P: the per-type bound table is not in the OUTPUT FILE, so the arena \
+will keep pricing every subscription at the class maximum (issue 1255):"
     cat "$T/p-out.cmake"
 fi
 check

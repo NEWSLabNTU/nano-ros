@@ -644,6 +644,45 @@ function(nros_resolve_knobs)
             "${NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION}")
     endif()
 
+    # issue 1255 -- the OTHER half of the per-subscription price. The triples
+    # above carry a TYPE and a depth; this carries each type's own receive
+    # bound, so `subs_arena` can charge a subscription for what it receives
+    # rather than for the largest thing this image receives anywhere. On the
+    # reference island that is eleven slots billed at the 880-byte class while
+    # most of them carry small control/status messages.
+    #
+    # It is the message-bound inventory's JOIN (`NanoRosMessageBounds.cmake`)
+    # that produces it, so it is in scope here for the same reason
+    # NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE is: `_nros_load_derived_message_bounds()`
+    # ran at the top of `nros_resolve_knobs`.
+    #
+    # On the DERIVABLE ladder, with the sentinel passed literally, because
+    # there is no `CONFIG_NROS_SUBSCRIBED_TYPE_BOUNDS` -- a per-type table is
+    # not a number a person states, so the Kconfig rung is permanently "nobody
+    # stated". Every other rung still applies: an environment value wins, an
+    # absent derivation leaves the knob unresolved and build.rs keeps the
+    # image-wide bound for every type (which is what every subscription was
+    # billed before this, so absence reproduces the old number exactly).
+    #
+    # It also has to be THIS call and not `_nros_resolve_knob`, because the
+    # resolver road is HARVESTED from `_nros_resolve_derivable_knob` call sites
+    # (`check-knob-delivery.py::resolver_road`) -- a fact delivered by any other
+    # spelling is invisible to `check-declared-fact-carriers`, which is the gate
+    # that answers "is this wire connected at all".
+    #
+    # The `;` -> `,` conversion happens IN PLACE on the derived variable rather
+    # than into a second name: the call site must spell the fact's own name for
+    # that harvest to see it. cmake's list separator does not survive into a
+    # flat cargo environment value, and delivering only the first pair would
+    # price ten subscriptions of eleven at the fallback while the knob looked
+    # present -- measured once already on the depths above.
+    if(DEFINED NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS)
+        string(REPLACE ";" "," NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS
+            "${NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS}")
+    endif()
+    _nros_resolve_derivable_knob(NROS_SUBSCRIBED_TYPE_BOUNDS
+        "${NROS_KNOB_DERIVE_SENTINEL}" NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS)
+
     _nros_resolve_derivable_knob(NROS_EXECUTOR_MAX_NODES
         "${CONFIG_NROS_EXECUTOR_MAX_NODES}" NROS_DERIVED_EXECUTOR_MAX_NODES
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
