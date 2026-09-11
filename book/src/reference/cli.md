@@ -140,18 +140,25 @@ use the CMake integration.
 | `<lang>` | `rust`, `c`, `cpp`, `all` | (required) |
 | `--manifest` | path to `package.xml` | `package.xml` |
 | `--output` | output directory | `generated` |
-| `--ros-edition` | `humble`, `iron` | `humble` |
-| `--generate-config` | emit `.cargo/config.toml` patches (Rust only) | off |
+| `--ros-edition` | `humble`, `iron`, `jazzy` | `humble` |
+| `--codegen-config` | explicit per-field capacity config (`nros-codegen.toml`) | discovered by walking up |
+| `--generate-config` | **legacy** — emit a `.cargo/config.toml` patch table (Rust only). Use `nros sync` | off |
 
-### `nros generate-rust [--manifest <path>] [--output <dir>] [--generate-config] [--nano-ros-path <p> | --nano-ros-git] [--force] [--verbose]`
+### `nros generate-rust [--manifest <path>] [--output <dir>] [--ros-edition <e>] [--codegen-config <f>] [--rename <old=new>] [--force] [--verbose]`
 
 The Rust-only codegen **primitive**. Same binding generation as
-`nros generate rust`, but with **no side-effects** unless asked:
-`--generate-config` (alias `--config`) additionally writes the
-`[patch.crates-io]` entries, pointing at a local checkout
-(`--nano-ros-path`) or the GitHub repo (`--nano-ros-git`). Most
-in-tree workflows use `nros sync` instead, which wraps this plus the
-patch write per consumer.
+`nros generate rust`, and with **no side-effects**: it writes `generated/` and
+nothing else. Use it when you want bindings and only bindings; use `nros sync`
+for an actual project, because a leaf also needs its generated build settings.
+
+`--generate-config` (alias `--config`), `--nano-ros-path` and `--nano-ros-git`
+still parse and are **legacy**. They wrote a leaf `.cargo/config.toml` — the
+file [RFC-0098](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0098-generated-leaf-build-config.md)
+retired. The patch rows now live in the generated
+`build/<image>/nros-cargo.toml` that `nros sync` writes, alongside the board's
+cargo settings and the image's derived `[env]`, and cargo reads that through
+`--config`. (`nros sync`'s own `--nano-ros-path` is documented in its help as a
+no-op kept for back-compat.)
 
 ### `nros generate-px4-msgs`
 
@@ -227,23 +234,97 @@ a `system.toml`.
 
 > The legacy `nros config show/check --config <path>` reader for `config.toml`
 > was removed: `config.toml` is retired (RFC-0004 §8) and no example
-> ships one. Embedded runtime config lives in `[package.metadata.nros.deploy.<t>]`.
+> ships one. Embedded runtime config — board, RMW, domain, locator, IP — lives
+> in `system.toml`: `[image.<id>]` and `[system]`. The
+> `[package.metadata.nros.deploy.<board>]` manifest table that used to hold it
+> is retired by RFC-0098 D5 and refused wherever it still appears.
 
-### `nros sync`
+### `nros config explain --platform <name> [--board-toml <f>] [--platforms-dir <d>]`
 
-Codegen all `*.msg` packages + write the `[patch.crates-io]` config to match
-the declared deps — for a **standalone package** or a **colcon-style workspace**
-(picks single-pkg vs workspace mode by layout). The patch lands in each Rust
-consumer's `.cargo/config.toml` (never edits `Cargo.toml`).
-Pre-cargo step; run once after editing `*.msg` files, then `cargo build` works.
+Print the resolved BUILD-time knob ladder for a platform: every knob's final
+value plus the rung that set it (`builtin` / `platform` / `board` / `env`,
+RFC-0049). This is the provenance tool for anything generated — when a pool
+size or a hardware budget is not what you expected, it says which rung decided.
+`--board-toml` supplies the board rung's `[knobs]` deltas by explicit path.
+
+### `nros sync [<workspace>] [--build-dir <d>] [--ros-edition <e>] [--dry-run] [--check] [--base-paths <p>…]`
+
+The pre-build step. Codegen every `*.msg` package the declared deps name, and
+write the generated build settings for each declared image — for a **standalone
+package** or a **colcon-style workspace** (it picks single-pkg vs workspace mode
+by layout). Run it after editing `*.msg`, `package.xml` or `system.toml`.
 
 ```sh
 eval "$(nros ws env)"   # add src/ to NROS_INTERFACE_SEARCH_PATH
-nros sync               # codegen msg pkgs + write [patch.crates-io] → .cargo/config.toml
+nros sync               # generated/ msg crates + build/<image>/nros-cargo.toml
+nros build              # or: nros build <image-id>
 ```
 
-`nros generate-rust` stays the low-level codegen-only primitive (no patch side
-effects).
+What it writes into `build/<image>/nros-cargo.toml`
+([RFC-0098](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0098-generated-leaf-build-config.md)
+D1): the board's `cargo_config` (its `[build] target`, `[target.*]`
+rustflags/linker, `[unstable]`), this image's `target-dir`, its entity facts
+and derived pool knobs as `[env]`, the in-repo `[patch.crates-io]` rows, and the
+nano-ros cargo profiles. Nothing generated is written beside the package, and
+`[env]` never uses `force = true`, so a value you set in the environment wins.
+
+Transitionally, sync also still maintains the `[patch.crates-io]` block in each
+Rust consumer's patch-authority `.cargo/config.toml` (never in `Cargo.toml`) —
+that is the road phase-445 W6 removes, and it is what the `ws clean` / `ws
+doctor` subcommands below still talk about.
+
+`--check` exits non-zero when anything is missing or stale — the CI hook, and
+what `nros ws status` reports non-fatally. `--dry-run` prints what it would do.
+
+`nros generate-rust` stays the low-level codegen-only primitive (no side
+effects beyond `generated/`).
+
+### `nros build [<image>…] [--workspace <dir>] [--all] [--dry-run] [--offline] [--packages-select <p>…] [--packages-up-to <p>…] [-- <native args>]`
+
+The colcon-like build verb: discover packages, resolve the image, preflight,
+generate the build root, then hand off to the native tool. The final stage is an
+`exec`, so compiler diagnostics are byte-identical to running cargo / cmake /
+west yourself. With no image argument it builds `[system] default_images`;
+`--all` builds every declared image.
+
+```sh
+cd <leaf-or-workspace>
+nros sync
+nros build                       # every default image
+nros build native                # one image by id
+nros build native -- --release   # arguments after `--` go to the native tool
+```
+
+A build without a sync fails at the first preflight with one line naming
+`nros sync`, rather than four frames down in cargo's manifest parser. `--dry-run`
+prints the stages and the command that would run, and performs no I/O.
+
+Two gaps worth knowing: `nros build` does **not** work in a single-package C/C++
+leaf today (the synthesised bringup is named after the leaf directory and the
+cmake driver asks for `[system] name` —
+[issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1296-nros-build-c-leaf-bringup-name-mismatch.md));
+use that leaf's own `cmake -B build && cmake --build build`. And Zephyr keeps
+`west build` as its build verb, with `nros sync` still run first.
+
+Driving cargo yourself is supported — point it at the generated file, from the
+directory above the package:
+
+```sh
+cargo build --manifest-path <leaf>/Cargo.toml \
+            --config <leaf>/build/<image-id>/nros-cargo.toml
+```
+
+The working-directory rule is temporary: until phase-445 W6 deletes the leaf's
+`.cargo/`, running cargo inside the leaf reads it a second time and joins the
+board's `rustflags` onto themselves.
+
+### `nros materialize <image> [--workspace <dir>] [--force]`
+
+Take ownership of a generated entry package (RFC-0065 D5) — the last resort,
+after which `nros build` stops regenerating it. `panic` and `profile` are
+declarations on the image and need no materialising. A second run without
+`--force` is refused, because it would discard the edits the first one existed
+to enable.
 
 ### `nros ws <subcommand>`
 
@@ -323,10 +404,11 @@ Emit shell completion scripts to stdout.
 | Want to … | Use |
 |---|---|
 | Scaffold a project | `nros new …` |
-| Generate Rust bindings (+ `.cargo` patches) | `nros sync` (primitive: `nros generate-rust`) |
+| Generate bindings + the image's build settings | `nros sync` (primitive: `nros generate-rust`) |
+| Build | `nros build` — or the platform tool pointed at the generated settings (`cargo --config …`, `cmake --build`, `west build`) |
 | Plan + check a multi-component system from a ROS 2 launch file | `nros metadata` → `nros plan` → `nros check` |
-| Build / flash / run | Platform tools: `cargo`, `cmake --build`, `west`, `idf.py`, `probe-rs`, or focused `just <platform> …` recipes |
-| Orchestrate the workspace (setup, doctor, CI, multi-platform sweeps) | `just …` |
+| Flash / run | Platform tools: `espflash`, `probe-rs`, `qemu-system-*`, `idf.py` |
+| Orchestrate the checkout (contributor: setup, doctor, CI, multi-platform sweeps) | `just …` |
 
 `nros` routes through the `nros-cli-core` library. `just` recipes that
 wrap user-flow operations call into `nros` for consistency; internal

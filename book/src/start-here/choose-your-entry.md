@@ -72,8 +72,8 @@ Zephyr or NuttX workspace? Two-step path:
 
 1. **Linux first** — [First Project](../getting-started/first-project.md)
    on your host verifies the whole stack in ~10 minutes, with no daemon
-   and no ROS 2 install (`nros setup native --rmw cyclonedds`, one
-   scaffold command, `cmake`).
+   and no ROS 2 install: `nros setup native --rmw cyclonedds`, one
+   scaffold command, then `nros sync` and `nros build`.
 2. **Then your target** — start at
    **[How Integration Works](../getting-started/how-integration-works.md)**:
    your RTOS keeps its own build tool (west, make, idf.py, your IDE) and
@@ -98,10 +98,12 @@ first, then move it to your target.
 
 1. **[Install](../getting-started/installation.md)** — three commands:
    `./scripts/bootstrap.sh`, `source ./activate.sh` (every new shell),
-   then `nros setup native --rmw cyclonedds`.
+   then `nros setup native --rmw cyclonedds`. Those set up the machine;
+   the per-project step comes next.
 2. **[First Project](../getting-started/first-project.md)** — one
-   scaffolded workspace, C++ and CMake, publishing with nothing else
-   running. Rust variant on the same page.
+   scaffolded workspace, then `nros sync` and `nros build`, publishing
+   with nothing else running. Rust variant on the same page: same two
+   commands, same `system.toml`, only the node bodies differ.
 3. **[Anatomy of What You Just Built](../getting-started/anatomy.md)**
    — the three package roles and the one configuration file; every
    later addition is another instance of these.

@@ -68,9 +68,11 @@ When a project grows beyond one node, continue with
   wire-compatible with stock ROS 2) at compile time. Same application
   code regardless of backend.
 - **The same source runs on every supported target** — a node body written for
-  one platform compiles unchanged on the others; what differs is build
-  configuration (`Cargo.toml`, `.cargo/config.toml`, `CMakeLists.txt`), not the
-  code you write. This is asserted, not asserted-about: the
+  one platform compiles unchanged on the others; what differs is one line of
+  configuration, the `board =` in the image's `system.toml`, not the code you
+  write. Everything that choice implies — the triple, the linker flags, the
+  backend, the pool sizes — is generated from it, so the build files stay free
+  of target facts too. This is asserted, not asserted-about: the
   `example_portability` test normalizes every platform's copy of each example
   and fails if any two differ, so the claim is checked on every run rather than
   maintained by hope. Two execution models are declared exceptions with written
@@ -148,7 +150,7 @@ supported** (AGENTS.md, phase-260).
 ## RMW Backends
 
 nano-ros supports several middleware backends, selected at compile
-time by adding the backend crate as a dependency:
+time by naming one in `system.toml`:
 
 - **Zenoh** (`nros-rmw-zenoh`) — peer-to-peer via zenoh-pico. No agent
   process. Compatible with ROS 2 `rmw_zenoh_cpp`.
@@ -157,8 +159,9 @@ time by adding the backend crate as a dependency:
 - **Cyclone DDS** (`nros-rmw-cyclonedds`) — C++ shim; full RTPS wire-compat
   with stock `rmw_cyclonedds_cpp`.
 
-Application code is identical regardless of backend — switch with a single
-Cargo feature flag or Zephyr Kconfig option.
+Application code is identical regardless of backend — switching is editing
+`[system] rmw` and re-running `nros sync`. (Zephyr keeps Kconfig as its own
+front-end, as it does for every other build knob.)
 
 ## Project Status
 

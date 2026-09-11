@@ -58,63 +58,124 @@ use panic_semihosting as _;
 nros::main!();
 ```
 
-The `nros::main!()` proc-macro reads `[package.metadata.nros.entry]
-deploy = "rtic-mps2-an385"` from the Entry pkg's `Cargo.toml`, sees that
-the board's metadata declares `framework = "rtic"`, and emits a full
-`#[rtic::app]` module — including `#[init]`, `__nros_spin`, and (if any
-deployed Node declares `DispatchStrategy::Deferred`) `__nros_dispatch`.
+The `nros::main!()` proc-macro reads the image's board out of
+`system.toml` — `[image.<id>] board = "rtic-mps2-an385"` — resolves that
+board to the `rtic` framework, and emits a full `#[rtic::app]` module,
+including `#[init]`, `__nros_spin`, and (if any deployed Node declares
+`DispatchStrategy::Deferred`) `__nros_dispatch`.
+
+The framework is a property of the **board**, never something you spell in
+a manifest: `rtic-mps2-an385` and `qemu-rtic-mps2-an385` resolve to `rtic`,
+`zephyr` to Zephyr, `esp32-qemu` and `esp32-c3-baremetal` to the ESP32
+shape, and every other board — native, FreeRTOS, NuttX, ThreadX,
+non-RTIC bare-metal — to the default owned-spin `fn main`. An out-of-tree
+board crate that is not in that table declares its own framework in
+`[package.metadata.nros.board]`. So moving a program between RTIC and a
+plain spin loop is a board change, not a code change — no `main.rs`, no
+node source, and no build command moves with it.
+
+One caveat for a **single package**: it is its own entry, so it still names
+its board crate in `[dependencies]`, and that dependency is not generated
+yet. Change `board` there and you must change the board crate beside it or
+the build fails in your own `main.rs` with `cannot find <board crate> in
+the crate root` — the image resolved the new board while the manifest still
+pins the old one, and `nros sync` reports success either way. That is
+[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md).
+A workspace's generated entry has no such seam.
 
 Pick `nros::main!()` whenever:
 
 - You want a one-line `main.rs` and don't need custom RTIC tasks.
 - Your Node logic is portable across boards (the Node pkg is
-  framework-agnostic; only the Entry pkg picks RTIC).
+  framework-agnostic; only the image's board picks RTIC).
 - You're happy with the default dispatcher list from the board crate.
 
 Keep Pattern A when:
 
 - You need fine-grained control of dispatcher priorities, monotonic
   setup, or hand-tuned `#[shared]` state.
-- You're shipping a one-off bring-up binary and don't want the
-  Node-pkg / Entry-pkg split overhead.
+- You're shipping a one-off bring-up binary and don't want a
+  `system.toml` and a Node-pkg split at all.
 
 Both paths stay supported. The escape hatch is the "I want full
 control" path; `nros::main!()` is the ergonomic path on top.
 
-## The three pkg roles
+## Where the pieces live
 
-A nano-ros RTIC workspace is three packages (the [3-pkg-role
+Two shapes, and the RTIC choice is made in the same place in both: one
+`[image.<id>] board` in `system.toml` naming an RTIC board.
+
+**A single package** is what every in-tree RTIC example is — see
+`examples/mps2-an385-baremetal/rust/talker-rtic`:
+
+```text
+talker-rtic/
+├── package.xml
+├── Cargo.toml       # dependencies, incl. the board crate's `rtic` feature
+├── system.toml      # the board, the RMW, the components
+└── src/
+    ├── lib.rs       # impl Node for Talker + nros::node!(Talker)
+    └── main.rs      # nros::main!();
+```
+
+**A workspace** is node packages plus a bringup (the [3-pkg-role
 taxonomy](../user-guide/component-and-entry-pkg.md), per
-`docs/design/0024-multi-node-workspace-layout.md` §11):
+`docs/design/0024-multi-node-workspace-layout.md` §11). There is no root
+build file and **no Entry package to write** — the entry is generated per
+`[image.*]` under `build/`:
 
 ```text
 my_rtic_robot/
-├── Cargo.toml                         # [workspace] members = [...]
+├── .colcon_workspace                  # marks the root; no root build file
 └── src/
     ├── talker_pkg/                    # Node pkg — board-agnostic
     │   ├── package.xml
     │   ├── Cargo.toml
     │   └── src/lib.rs                 # impl Node for Talker + nros::node!(Talker)
-    └── talker_entry/                  # Entry pkg — picks RTIC board
-        ├── package.xml
-        ├── Cargo.toml                 # [package.metadata.nros.entry] deploy = "rtic-mps2-an385"
-        └── src/main.rs                # nros::main!();
+    └── demo_bringup/                  # Bringup pkg — no code
+        ├── system.toml
+        └── launch/
 ```
 
 - **Node pkg** — declares what the node does (publishers,
   subscriptions, services, actions). No `main`, no `#[rtic::app]`, no
-  board choice. Builds as `rlib + staticlib` and gets linked into one
-  or more Entry pkgs.
-- **Entry pkg** — picks the board crate (`nros-board-mps2-an385`, `rtic`
-  feature),
-  pins the deploy target, and runs `nros::main!();`.
-- **Bringup pkg** — optional, only when ≥2 Entry pkgs share the same
-  `launch/*.launch.xml` topology. Skipped here because we have one
-  binary.
+  board choice. Builds as `rlib + staticlib` and gets linked into the
+  generated entry.
+- **Bringup pkg** — holds `system.toml` and the launch files. This is
+  where the board, and therefore RTIC, is chosen.
+- **Entry** — generated, not authored. It is the `#[rtic::app]` shell,
+  derived from the image; you never see it unless you go looking under
+  `build/`.
 
 The split exists so the same `talker_pkg/` can be deployed under RTIC
 on bare-metal Cortex-M, under FreeRTOS on QEMU, and under POSIX on a Linux host
 without any per-target Node-pkg fork.
+
+### The `system.toml` that makes it RTIC
+
+```toml
+[system]
+name      = "my_rtic_robot"
+rmw       = "zenoh"
+domain_id = 0
+
+# `dispatch` — callbacks hand off to a ring rather than running inline;
+# read by `nros check`'s framework × dispatch lint.
+[[component]]
+pkg      = "talker_pkg"
+class    = "talker_pkg::Talker"
+name     = "talker"
+dispatch = "inline"
+
+[image.rtic]
+board   = "rtic-mps2-an385"
+locator = "tcp/192.168.1.10:7447"
+```
+
+`board` is the only line that says RTIC. Point it at `mps2-an385-freertos`
+and the same components build as a FreeRTOS image — in a workspace, with
+nothing else to change; in a single package, together with the board crate
+in `[dependencies]` (issue 1305 above).
 
 ### A minimal Node pkg — pub-only Talker
 
@@ -178,56 +239,37 @@ edition = "2024"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-nros      = { workspace = true, default-features = false }
-std_msgs  = { workspace = true }
-
-[package.metadata.nros.node]
-class = "talker_pkg::Talker"
+nros     = { version = "*", default-features = false }
+std_msgs = { path = "generated/std_msgs", default-features = false }
 ```
 
-### The Entry pkg
+Dependencies and nothing else. The class name, the node name and the
+dispatch strategy are the `[[component]]` row in `system.toml`, and there
+is no root manifest to inherit `workspace = true` from.
 
-```toml
-# File: src/talker_entry/Cargo.toml
-[package]
-name    = "talker_entry"
-version = "0.1.0"
-edition = "2024"
+### The entry
 
-[[bin]]
-name = "talker_entry"
-path = "src/main.rs"
-
-[dependencies]
-nros                       = { workspace = true, default-features = false }
-nros-board-mps2-an385      = { workspace = true, features = ["rtic"] }
-talker_pkg                 = { path = "../talker_pkg" }
-
-[package.metadata.nros.entry]
-deploy = "rtic-mps2-an385"
-
-[package.metadata.nros.deploy.rtic-mps2-an385]
-board     = "rtic-mps2-an385"
-rmw       = "zenoh"
-domain_id = 0
-locator   = "tcp/192.168.1.10:7447"
-```
+In a workspace there is nothing to write — the entry is generated from the
+image. In a single-package example it is one file:
 
 ```rust
-// File: src/talker_entry/src/main.rs
+// File: src/main.rs
 #![no_std]
 #![no_main]
 
-use defmt_rtt as _;
-use panic_probe as _;
+use panic_semihosting as _;
 
 nros::main!();
 ```
 
-That's the whole Entry pkg. The proc-macro reads `deploy =
-"rtic-mps2-an385"`, looks up the board crate's `framework = "rtic"`
-metadata, and expands into a `#[rtic::app(device = mps2_an385_pac, dispatchers = [UARTRX0, UARTTX0])]` module with auto-generated `#[init]`,
-`__nros_spin`, and per-Node state slots.
+Either way the proc-macro reads the board from `system.toml`, resolves it
+to the `rtic` framework, and expands into a
+`#[rtic::app(device = mps2_an385_pac, dispatchers = [UARTRX0, UARTTX0])]`
+module with auto-generated `#[init]`, `__nros_spin`, and per-Node state
+slots. A single-package leaf still names the board crate's `rtic` feature
+in its own `[dependencies]`
+(`nros-board-mps2-an385 = { version = "*", features = ["rtic"] }`), because
+it is its own entry; a workspace's generated entry pulls it in for you.
 
 ## `DispatchStrategy::Inline` vs `Deferred`
 
@@ -361,12 +403,11 @@ dedicated `my_adc` task to poll an ADC into a `#[shared]` buffer, or a
 `#[rtic::app]` module:
 
 ```rust
-// File: src/talker_entry/src/main.rs (with custom tasks)
+// File: src/main.rs (with custom tasks)
 #![no_std]
 #![no_main]
 
-use defmt_rtt as _;
-use panic_probe as _;
+use panic_semihosting as _;
 
 nros::main!(custom_tasks = [my_adc, my_ui]);
 

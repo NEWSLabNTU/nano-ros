@@ -6,23 +6,25 @@ verify ROS 2 communication.
 
 ## Native (host)
 
-Three equivalent entry points; pick by workspace shape:
+Two commands, whatever the workspace shape:
 
 ```bash
-# Per-example (Pattern B or any single binary):
+# A single Rust package:
 cd examples/native/rust/talker
-cargo run
+nros sync
+nros build
+./build/native/target/debug/talker
 
-# Multi-component system orchestration:
-nros metadata my_system
-nros plan my_system launch/my_system.launch.py
-nros check
-nros build          # generates and builds one entry per [image.*]
-
-# Colcon consumer workspace (Pattern A):
-colcon build && source install/setup.bash
-ros2 run my_pkg my_node
+# A workspace — same two commands, one entry generated per [image.*]:
+cd my_robot
+nros sync
+nros build
+./build/posix-native/cmake/native_entry
 ```
+
+`nros metadata` / `nros plan` / `nros check` are the inspection path, not
+the build path — they produce and validate a plan you can read with
+`nros explain`. You do not need them to build.
 
 For interop with stock ROS 2 over Zenoh, run **the router ROS ships** and point
 ROS 2 at it:
@@ -47,12 +49,17 @@ See [Native host build](../platform-guides/native-host.md).
 
 ## RTOS and Bare-Metal
 
-RTOS targets usually produce firmware images or simulator binaries,
-built with the platform's own tool from the example / package dir:
+RTOS targets usually produce firmware images or simulator binaries. The
+commands are the same as on the host — the board in `system.toml` is what
+makes them cross-compile:
 
 ```bash
-cargo build --release          # Rust leaves (after `nros sync`)
-cmake -B build && cmake --build build   # C / C++ leaves
+# Rust leaf or workspace:
+nros sync
+nros build                     # or: nros build <image-id>
+
+# C / C++ single package — its own CMake, no sync needed:
+cmake -B build && cmake --build build
 ```
 
 > **Contributors:** the in-tree fixture build/test lanes are in
@@ -75,13 +82,14 @@ entry and hands off; it does not wrap running or flashing.)
 The embedded deploy contract is a documented three-step sequence (per
 [RFC-0003 §4](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/design/0003-rtos-integration-pattern.md)):
 
-1. **Bake** — `nros codegen-system --bringup <pkg>` reads
-   `system.toml` + `[image.<id>]` + `launch/*.xml` and emits the
-   baked tree under `build/<board>/`.
-2. **Build** — the vendor tool builds it: `cargo build` / `cmake --build`
-   / `west build` / `idf.py build` (**contributors:** the in-tree
-   `just <plat> build*` recipes wrap these with the right `-D` args
-   derived from `[image.<id>]`).
+1. **Sync** — `nros sync` reads `system.toml` + `[image.<id>]` +
+   `launch/*.xml` and emits, per image, the generated message crates, the
+   resolved system model and the image's build settings under
+   `build/<image-id>/`. Keyed on the image, not on the board: several
+   images can name one board and still differ in what they contain.
+2. **Build** — `nros build` generates that image's entry and hands off to
+   the vendor tool — `cargo` / `cmake` / `west` / `idf.py` — which you
+   can equally drive yourself against the generated settings.
 3. **Flash + monitor** — the vendor tool again: `probe-rs run` /
    `west flash` / `idf.py flash monitor`, or the platform's QEMU runner.
 
@@ -103,9 +111,18 @@ nros setup zephyr --rmw zenoh
 # **Contributors (in-tree checkout):** `just setup zephyr` creates
 # zephyr-workspace/ (west init + SDK) — then:
 source zephyr-workspace/env.sh      # in-tree workspace layout
+nros sync
 west build -b native_sim/native/64 nros/examples/zephyr/rust/talker
 ./build/zephyr/zephyr.exe
 ```
+
+Zephyr is the one target that still names its board on the command line.
+Everywhere else the board comes from `system.toml` and `nros build` hands
+it to the tool; here the west *application* around the entry is not yet
+generated
+([issue 1288](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1288-zephyr-rust-workspace-entries-not-generated.md)),
+so west's own `-b` is what selects the board. `nros sync` still runs
+first, for the message crates and the resolved model.
 
 Bringing your own west workspace instead? Follow
 [Zephyr Integration](../getting-started/integration-zephyr.md) — the

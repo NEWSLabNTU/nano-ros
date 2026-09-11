@@ -10,15 +10,17 @@
 > Embassy emit branch, plus `nros ws check`'s Deferred-dispatch lint, which
 > routes on the board crate's `framework = "embassy"` metadata.
 >
-> Two consequences for this chapter. **(1)** Every path below names a board YOU
-> write — see [Worked Example — STM32F4 Out of
-> Tree](../porting/stm32f4-out-of-tree.md) for the board-crate shape. **(2)**
-> `nros::main!()` currently picks the framework from a hardcoded deploy-key
-> table, so an out-of-tree Embassy board falls through to `OwnedSpin` rather
-> than the Embassy emit; **issue 0415** tracks teaching that table to read the
-> same `framework` metadata `nros ws check` already reads. Until it closes, use
-> Pattern A. (The RTIC twin of this integration is complete and runtime-tested
-> on `mps2-an385` — see [RTIC Integration](rtic-integration.md).)
+> One consequence for this chapter: every path below names a board YOU write —
+> see [Worked Example — STM32F4 Out of
+> Tree](../porting/stm32f4-out-of-tree.md) for the board-crate shape. Reaching
+> the Embassy emit from out of tree does work (issue 0415, resolved by
+> phase-346): the board crate declares
+> `[package.metadata.nros.board] framework = "embassy"`, and a one-line
+> `build.rs` calling `nros_build::emit_board_framework()` hands that to macro
+> expansion. The in-tree board table covers in-tree boards only, and maps none
+> of them to Embassy. (The RTIC twin of this integration is complete and
+> runtime-tested on `mps2-an385` — see
+> [RTIC Integration](rtic-integration.md).)
 
 [Embassy](https://embassy.dev) is an async/await framework for embedded
 Rust, built around a cooperative executor that polls futures from a
@@ -56,7 +58,7 @@ lines and each author re-derives the spawn topology. The 216.C.4 board-entry
 path collapses it to:
 
 ```rust
-// File: <your entry pkg>/src/main.rs
+// File: src/main.rs
 #![no_std]
 #![no_main]
 
@@ -66,12 +68,17 @@ use panic_halt as _;
 nros::main!();
 ```
 
-The proc-macro reads `[package.metadata.nros.entry] deploy =
-"<your-embassy-board>"` from the Entry pkg's `Cargo.toml`, sees that the
-board's metadata declares `framework = "embassy"`, and expands into a
-full `#[embassy_executor::main] async fn main(spawner: Spawner)`
-including the spin task spawn, the dispatch task spawn, and the
-`run_plan` registration call.
+The proc-macro reads the image's board out of `system.toml` —
+`[image.<id>] board = "<your-embassy-board>"` — finds that board declaring
+`framework = "embassy"`, and expands into a full
+`#[embassy_executor::main] async fn main(spawner: Spawner)` including the
+spin task spawn, the dispatch task spawn, and the `run_plan` registration
+call.
+
+The framework is a property of the **board**, not something you spell in a
+manifest. For a board in the in-tree table the name alone decides it; for
+your own board crate the declaration travels through the `build.rs` line in
+the banner above.
 
 ## Why sync `on_callback` even on Embassy
 
@@ -97,68 +104,62 @@ spawn-from-sync pattern below.
 design slot — see [When to wait for
 `AsyncNode`](#when-to-wait-for-asyncnode) at the end of this chapter.
 
-## The three pkg roles
+## Where the pieces live
 
-The workspace shape is identical to RTIC (the [3-pkg-role
+The shape is identical to RTIC (the [3-pkg-role
 taxonomy](./component-and-entry-pkg.md), per
-`docs/design/0024-multi-node-workspace-layout.md` §11):
+`docs/design/0024-multi-node-workspace-layout.md` §11): node packages plus
+a bringup, no root build file, and **no Entry package to write** — the
+entry is generated per `[image.*]` under `build/`.
 
 ```text
 my_embassy_robot/
-├── Cargo.toml                           # [workspace] members = [...]
+├── .colcon_workspace                    # marks the root; no root build file
 └── src/
     ├── listener_pkg/                    # Node pkg — board-agnostic
     │   ├── package.xml
     │   ├── Cargo.toml
     │   └── src/lib.rs                   # impl Node for Listener + nros::node!(Listener)
-    └── listener_entry/                  # Entry pkg — picks Embassy board
-        ├── package.xml
-        ├── Cargo.toml                   # [package.metadata.nros.entry] deploy = "<your-embassy-board>"
-        └── src/main.rs                  # nros::main!();
+    └── demo_bringup/                    # Bringup pkg — no code
+        ├── system.toml
+        └── launch/
 ```
 
 The Node pkg stays board-agnostic — `listener_pkg/` from the RTIC
-chapter could be deployed under Embassy by swapping the Entry pkg.
-That's the point of the split.
+chapter could be deployed under Embassy by changing one word in
+`system.toml`. That's the point of the split.
 
-### Entry pkg
+### The `system.toml` that makes it Embassy
 
 ```toml
-# File: src/listener_entry/Cargo.toml
-[package]
-name    = "listener_entry"
-version = "0.1.0"
-edition = "2024"
-
-[[bin]]
-name = "listener_entry"
-path = "src/main.rs"
-
-[dependencies]
-nros                       = { workspace = true, default-features = false }
-my-embassy-board           = { path = "../../boards/my-embassy-board" }
-listener_pkg               = { path = "../listener_pkg" }
-
-[package.metadata.nros.entry]
-deploy = "my-embassy-board"
-
-[package.metadata.nros.deploy.my-embassy-board]
-board     = "my-embassy-board"
+[system]
+name      = "my_embassy_robot"
 rmw       = "zenoh"
 domain_id = 0
-locator   = "tcp/192.168.1.10:7447"
+
+[[component]]
+pkg      = "listener_pkg"
+class    = "listener_pkg::Listener"
+name     = "listener"
+dispatch = "deferred"
+
+[image.embassy]
+board   = "my-embassy-board"
+locator = "tcp/192.168.1.10:7447"
 ```
 
-```rust
-// File: src/listener_entry/src/main.rs
-#![no_std]
-#![no_main]
+`board` is the only line that says Embassy. The RMW, the domain and the
+network identity live beside it, and nothing about any of them appears in a
+`Cargo.toml`.
 
-use defmt_rtt as _;
-use panic_halt as _;
-
-nros::main!();
-```
+A **single-package** Embassy project — one crate holding `system.toml`,
+`src/lib.rs` and `src/main.rs` — works too; it is the shape every in-tree
+RTIC example takes. Such a package is its own entry, so it does still name
+the board crate in its own `[dependencies]`, and that dependency is not
+generated yet: change `board` there and you must change the board crate
+beside it, or the build fails in your own `main.rs` with
+`cannot find <board crate> in the crate root`. That is
+[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md).
 
 ## `DispatchStrategy::Deferred` is the common case
 

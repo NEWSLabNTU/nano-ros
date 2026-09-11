@@ -58,18 +58,19 @@ For a host application package:
 ```text
 my_native_node/
 ├── package.xml
+├── system.toml         # board, rmw, domain, components
 ├── Cargo.toml          # Rust path
 ├── CMakeLists.txt      # C / C++ path
 └── src/
     └── main.rs         # or main.c / main.cpp
 ```
 
-Examples are copy-out ready: for Rust, `cp -r` the example, run
-`NROS_REPO_DIR=<nano-ros checkout> nros sync`, and `cargo build`;
-for C/C++, `cp -r` and configure with
-`-DNANO_ROS_ROOT=<nano-ros checkout>` (or export `NROS_REPO_DIR`) —
-the example `CMakeLists.txt` resolves the checkout via its
-`NANO_ROS_ROOT` guard.
+Examples are copy-out ready, and nothing in a copied one names a path back
+into the checkout. For Rust, `cp -r` the example, then
+`NROS_REPO_DIR=<nano-ros checkout> nros sync` and `nros build`. For C/C++,
+`cp -r` and configure with `-Dnano_ros_ROOT=<nano-ros checkout>` (or export
+`NROS_REPO_DIR`) — a single-package C/C++ leaf needs no `nros sync`, because
+its message bindings are a CMake-time output.
 
 ## Code Example
 
@@ -109,8 +110,9 @@ zenoh:
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd
 ```
 
-Run the node directly via `cargo run` (Rust) or
-`cmake --build build && ./build/<binary>` (C/C++), or via
+Run the node directly — `nros build` then
+`./build/<image-id>/target/debug/<binary>` (Rust), or
+`cmake --build build && ./build/<binary>` (C/C++) — or via
 `colcon build && source install/setup.bash && ros2 run …` if the
 package lives in a colcon consumer workspace.
 

@@ -48,13 +48,24 @@ source ./activate.sh        # OR: direnv allow / source ./activate.fish
 # 2. Provision a board + RMW (analogous to `rosdep install`):
 nros setup native --rmw zenoh
 
-# 3. Generate message bindings, then build + run an example
-#    (generated/ and build/ are gitignored — a fresh
-#    clone cannot build without this step):
-nros sync
+# 3. Build and run something (analogous to `colcon build`):
+#    `nros sync` generates the message bindings and the build settings
+#    the target implies; both live under gitignored directories, so a
+#    fresh clone cannot build without this step.
 cd examples/native/rust/talker
-cargo run
+nros sync
+nros build
+./build/native/target/debug/talker
 ```
+
+Step 3 is the one that maps most directly onto ROS 2, and it maps
+better than it used to. `nros sync` + `nros build` plays the part
+`colcon build` plays: you declare the system once, in a file, and one
+command works out what to compile and drives the language toolchain.
+What you declare is `system.toml` — the board, the RMW, the domain,
+the components — and nothing in `Cargo.toml` or `CMakeLists.txt`
+mentions a target (RFC-0098). Changing target is editing the `board =`
+line and re-running `nros sync`.
 
 For embedded targets, name the board instead of `native`; `nros setup`
 fetches the matching prebuilt cross-toolchain + emulator + SDK:
@@ -79,23 +90,29 @@ Useful flags: `nros setup --list` (every package + version),
 
 Unlike standard ROS 2, RMW and platform are **compile-time** choices —
 there is no runtime `RMW_IMPLEMENTATION` switch on embedded targets
-(no `dlopen`). The pair is selected via CMake cache vars + Cargo
-features:
+(no `dlopen`). What replaces `RMW_IMPLEMENTATION` is two lines in
+`system.toml`, and they are the *only* place the choice appears:
 
-```cmake
-# Each example is a standalone CMake project that pulls nano-ros in
-# via add_subdirectory.
-set(NANO_ROS_PLATFORM freertos)
-set(NANO_ROS_RMW      zenoh)
-set(NANO_ROS_BOARD    mps2-an385-freertos)
-add_subdirectory(<repo-root>  nano_ros)
+```toml
+[system]
+name = "my_app"
+rmw  = "zenoh"                 # zenoh | cyclonedds | xrce
 
-target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
-if(COMMAND nros_platform_link_app)   # defined by zephyr/threadx platforms only
-    nros_platform_link_app(my_app)
-endif()
-nano_ros_link_rmw(my_app RMW zenoh)
+[image.board]
+board = "mps2-an385-freertos"  # the platform follows from the board
 ```
+
+Then `nros sync && nros build`. There is no cache variable to set and
+no Cargo feature to name: the board descriptor already knows the
+triple, the linker flags and the platform module, and `nros build`
+writes them into the build root it generates. A second `[image.*]` row
+is a second target from the same sources — `nros build <image-id>`
+picks one.
+
+The reason this looks like `colcon` rather than like a cross-compile
+recipe is deliberate: the decision a ROS 2 user makes at runtime,
+nano-ros makes in one declarative file, and everything downstream is
+derived rather than restated (RFC-0098).
 
 Multi-RMW bridges (one binary, two or more backends) use
 `Executor::open_with_rmw("<name>", ...)` + `node_builder.rmw("<name>")`
@@ -107,9 +124,10 @@ Multi-RMW bridges (one binary, two or more backends) use
 - Package metadata: downstream packages still use `package.xml`.
 - ROS vocabulary: nodes, publishers, subscriptions, services, actions,
   QoS profiles, parameters, and message packages keep ROS-shaped names.
-- `colcon build` still works as a consumer-side build for POSIX
-  workspaces that already use it; embedded targets use `cmake`,
-  `cargo`, `west`, or `idf.py` directly.
+- `colcon build` still works as a consumer-side build for POSIX C++
+  workspaces that already use it; `nros build` is the equivalent that
+  also reaches embedded targets, driving `cmake`, `cargo`, `west` or
+  `idf.py` for you.
 - Interop: POSIX nano-ros nodes can communicate with standard ROS 2
   nodes through compatible RMW backends (Zenoh, Cyclone DDS, XRCE).
 
@@ -128,10 +146,10 @@ Multi-RMW bridges (one binary, two or more backends) use
   install (`ros2 run rmw_zenoh_cpp rmw_zenohd`, RFC-0075), so the zenoh
   path needs ROS 2 on the router host; xrce and cyclonedds do not.
   (The `just <module> setup` recipes call the same command for contributors.)
-- **Compile-time RMW + platform.** Embedded targets can't `dlopen`,
-  so the RMW and platform combination is locked in by CMake cache
-  vars (`NANO_ROS_PLATFORM`, `NANO_ROS_RMW`) and Cargo features at
-  build time.
+- **Compile-time RMW + platform.** Embedded targets can't `dlopen`, so
+  the combination is locked in at build time — stated once as
+  `[system] rmw` and `[image.<id>] board` in `system.toml`, and derived
+  from there into the build.
 - **No install prefix.** Phase 140 removed `just install-local`; there
   is no `cmake --install` step for nano-ros itself — consumers pull it
   into their build via `add_subdirectory(<repo-root>)` or
@@ -155,10 +173,10 @@ Multi-RMW bridges (one binary, two or more backends) use
   an installed ROS message library.
 - **Configuration is build-time on embedded.** Runtime env vars
   (`ROS_DOMAIN_ID`, `NROS_LOCATOR` — legacy alias `ZENOH_LOCATOR`,
-  …) work on POSIX; embedded targets bake config from
-  `[package.metadata.nros.deploy.<t>]` (Rust) / the package.xml
-  `<nano_ros deploy=…/>` tuple (C/C++)
-  (CMake), plus Kconfig on Zephyr.
+  …) work on POSIX; embedded targets bake the same values from their
+  `[image.<id>]` row in `system.toml` (`locator`, `ip`, `gateway`,
+  `netmask`) and `[system]` (`rmw`, `domain_id`) — one file, and the
+  same one in every language — plus Kconfig on Zephyr.
 
 ## Next Step
 

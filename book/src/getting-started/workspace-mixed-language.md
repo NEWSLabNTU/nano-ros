@@ -17,7 +17,7 @@ For a pure-C workspace, use
 
 ```text
 my_ws/
-├── .colcon_workspace             # tracked marker; the root CMakeLists.txt is GENERATED
+├── .colcon_workspace             # tracked marker; there is no root build file
 └── src/
     ├── c_talker_pkg/             # C Node pkg
     ├── cpp_listener_pkg/         # C++ Node pkg
@@ -32,14 +32,16 @@ consumable from cmake, and nothing makes cmake consumable from cargo (RFC-0024
 
 ```console
 $ cd examples/workspaces/mixed
+$ nros sync
 $ nros build native
 ```
 
-`nros build` writes the root `CMakeLists.txt` — a `nano_ros_workspace(…)` call
-listing the discovered packages, plus one `nano_ros_add_executable(…)` per
-image on that coordinate — into `build/<coordinate>/`, configures it into
-`build/<coordinate>/cmake/`, and builds. Neither the root nor the entry is
-yours to write.
+`nros build` writes a `CMakeLists.txt` — a `nano_ros_workspace(…)` call listing
+the discovered packages, plus one `nano_ros_add_executable(…)` per image on
+that coordinate — into `build/<coordinate>/`, configures it into
+`build/<coordinate>/cmake/`, and builds. That generated file is the cmake root;
+the workspace itself has no build file at all (RFC-0098 D9), and neither the
+root nor the entry is yours to write.
 
 ## C Node pkg
 

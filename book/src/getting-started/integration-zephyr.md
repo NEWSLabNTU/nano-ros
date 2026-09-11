@@ -444,9 +444,9 @@ conf  = ["prj-zenoh.conf"]      # the RMW overlay this app requires
 * **`board`** is the Zephyr board target — and also a name nano-ros must know.
   See below.
 * **`entry`** names the application package. Normally leave it out: an entry
-  declares the deploy target it serves — `[package.metadata.nros.entry] deploy`
-  in `Cargo.toml`, `nano_ros_add_executable(... DEPLOY zephyr)` in
-  `CMakeLists.txt` — and one package usually claims a given board. Set it when
+  declares the deploy target it serves — its own `system.toml` in Rust,
+  `nano_ros_add_executable(... DEPLOY zephyr)` in `CMakeLists.txt` — and one
+  package usually claims a given board. Set it when
   several do (`realtime-cpp` has `zephyr_entry` and `fvp_entry`, both
   `DEPLOY zephyr`, on the same board, for two images that differ in payload).
   Deriving there is a coin flip, so `nros build` refuses and lists the
@@ -669,15 +669,12 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
    ["staticlib"]`) — a `zephyr-lang-rust` contract: its `rust_cargo_application()`
    links `librustapp.a`. The Cargo *package* name is free.
 
-2. **Generate the interface crates + the `[patch.crates-io]` wiring for YOUR
-   layout** — do **not** copy an in-repo example's `.cargo/config.toml`: its
-   `../../../../packages/core/...` paths are repo-relative and break in a
-   copied-out app. From your app dir, run (after the [Prerequisites](#prerequisites)
+2. **Generate the interface crates and the dependency wiring for YOUR
+   layout.** From your app dir, run (after the [Prerequisites](#prerequisites)
    `nros setup`, which provides the codegen toolchain + message sources):
 
    ```bash
-   nros generate-rust --generate-config \
-       --nano-ros-path "$PWD/../../modules/nano-ros/packages/core"
+   NROS_REPO_DIR=<path-to-your-nano-ros-module> nros sync
    ```
 
    This writes `generated/<pkg>/` (the message crates) and a `.cargo/config.toml`

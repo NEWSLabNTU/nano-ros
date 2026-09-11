@@ -43,56 +43,79 @@ standalone Cargo (Rust) or CMake (C / C++) project under
 
 ```text
 examples/mps2-an385-freertos/
-├── rust/talker/             # Cargo package, cross-compile target = thumbv7m-none-eabi
-│   ├── Cargo.toml                  # deps + [package.metadata.nros.deploy.freertos]
-│   ├── system.toml                 # the board this image is built for
+├── rust/talker/             # Cargo package
+│   ├── system.toml                 # WHAT this deploys to — the one file you edit
+│   ├── Cargo.toml                  # Rust deps only; nothing here names a board
 │   ├── package.xml
-│   ├── generated/                  # codegen output — build.rs runs
-│   │                               #   `nros generate-rust` on first
-│   │                               #   `cargo build`; gitignored.
+│   ├── generated/                  # generated message bindings (gitignored)
+│   ├── build/                      # everything `nros sync` generates (gitignored)
 │   └── src/lib.rs                  # the component class; nros::main! generates the entry
 ├── c/talker/                 # CMake project, add_subdirectory consumption
-│   ├── CMakeLists.txt              # targets (deploy tuple in package.xml)
+│   ├── system.toml                 # the same file, same schema
+│   ├── CMakeLists.txt              # targets only
 │   ├── package.xml
 │   └── src/Talker.c
 └── cpp/talker/               # CMake C++14 project
+    ├── system.toml
     ├── CMakeLists.txt
     ├── package.xml
     └── src/Talker.cpp
 ```
 
+All three languages state their deployment in the same `system.toml`, and
+nothing else does. The Rust leaf has no `.cargo/` to edit — the
+`thumbv7m-none-eabi` triple, the `-Tmps2_an385.ld --nmagic --gc-sections` link
+group, the QEMU runner and the `[patch.crates-io]` rows all come from the board
+and are written by `nros sync` into
+`build/mps2-an385-freertos/nros-cargo.toml` (RFC-0098). The C / C++ leaves have
+no `<nano_ros deploy=… board=… rmw=…/>` tuple in their `package.xml`:
+`find_package(nano_ros)` reads `system.toml` instead, and derives the platform
+from the board.
+
 The Rust `Cargo.toml` pulls the FreeRTOS board crate
-(`nros-board-mps2-an385-freertos`) which wraps the kernel + lwIP +
+(`nros-board-mps2-an385-freertos`), which wraps the kernel + lwIP +
 LAN9118 driver build. The C / C++ `CMakeLists.txt` follows the
 canonical `add_subdirectory(<repo-root>) +
-nano_ros_link_rmw(<target> RMW zenoh)` pattern with
-`NANO_ROS_BOARD = mps2-an385-freertos`.
+nano_ros_link_rmw(<target> RMW zenoh)` pattern.
 
 ## Configure
 
-Deploy config (router locator, domain, RMW) is declared in the build
-manifest and **baked at compile time** — there is no config file on the
-device. Verbatim from the in-tree
-[`examples/mps2-an385-freertos/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-freertos/rust/talker/Cargo.toml):
+Board, RMW, domain and network identity are declared in `system.toml` and
+**baked at compile time** — there is no config file on the device. Verbatim
+from the in-tree
+[`examples/mps2-an385-freertos/rust/talker/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-freertos/rust/talker/system.toml):
 
 ```toml
-[package.metadata.nros.deploy.freertos]
-board     = "qemu-mps2-an385"
-rmw       = "zenoh"
+[system]
+name = "freertos_rs_talker"
+rmw = "zenoh"
 domain_id = 0
-locator   = "tcp/10.0.2.2:7447"
+
+[[component]]
+pkg = "freertos_rs_talker"
+class = "freertos_rs_talker::Talker"
+name = "talker"
+
+[image.mps2-an385-freertos]
+board = "freertos"
+locator = "tcp/10.0.2.2:7800"
+ip = "10.0.2.15"
+gateway = "10.0.2.2"
 ```
 
-The C / C++ trees declare the same in their `package.xml` `<export>` tuple
-(RFC-0048 §4); the connect locator rides the build config
-(`-DNROS_ENTRY_LOCATOR` / the fixture row), not the tuple:
+The C and C++ leaves carry the *same* file, in the same schema — only the
+names and the locator differ. Nothing about the deployment lives in
+`Cargo.toml`, in `CMakeLists.txt`, or in the `package.xml` `<export>` block
+any more.
 
-```xml
-<export>
-  <build_type>ament_cmake</build_type>
-  <nano_ros deploy="freertos" board="mps2-an385-freertos" rmw="zenoh"/>
-</export>
-```
+For a C or C++ leaf, switching board really is editing `[image.<id>] board`
+(a cross build still passes its own `-DCMAKE_TOOLCHAIN_FILE`). For the **Rust**
+leaf it is two lines, not one: a single-package leaf is its own entry, so it
+still names the board crate in `[dependencies]`, and `nros sync` writes its
+patch rows from the manifest rather than from the image. Move
+`nros-board-mps2-an385-freertos` with the `board =` line or the build fails
+inside your own `src/main.rs` — that is
+[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md).
 
 Task stacks / priorities come from the board crate's defaults (Cargo
 features), not a config file — see the
@@ -101,7 +124,9 @@ features), not a config file — see the
 The `10.0.2.0/24` subnet is QEMU Slirp's default; `10.0.2.2` is the
 Slirp gateway that forwards to host loopback. No TAP, no sudo.
 
-Ports: the shipped examples dial host port **7447**.
+Ports: read your image's own `locator`. The shipped Rust talker dials host
+port **7800**; the C and C++ talkers declare a `[system] locator` of their
+own.
 
 > **Contributors:** the prebuilt test fixtures bake different ports —
 > see [Per-Platform Contributor Lanes](../internals/platform-lanes.md#freertos).
@@ -118,10 +143,11 @@ cd examples/mps2-an385-freertos/rust/talker
 nros sync
 nros build          # or: cargo build --config build/<image>/nros-cargo.toml
 
-# C / C++ — use the cross-toolchain CMake invocation (the `nros` CLI
-# on PATH auto-resolves the codegen tool — no `-D_NANO_ROS_CODEGEN_TOOL=`
-# needed):
-toolchain="$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake"
+# C / C++ — the leaf's own CMake, with the cross-toolchain file (the `nros`
+# CLI on PATH auto-resolves the codegen tool — no `-D_NANO_ROS_CODEGEN_TOOL=`
+# needed, and no `-DNANO_ROS_BOARD=` / `-DNROS_RMW=`: both come from
+# system.toml). The toolchain file path is relative to the nano-ros checkout:
+toolchain="$NROS_REPO_DIR/cmake/toolchain/arm-freertos-armcm3.cmake"
 cd examples/mps2-an385-freertos/c/talker
 cmake -B build -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
               -DCMAKE_BUILD_TYPE=Release
@@ -131,32 +157,50 @@ cmake --build build --parallel
 > **Contributors:** the in-tree fixture build lanes for this platform are in
 > [Per-Platform Contributor Lanes](../internals/platform-lanes.md#freertos).
 
-First Rust build pulls + cross-compiles deps (~5 min). C / C++ build
-also compiles FreeRTOS kernel + lwIP — first run ~3 min.
+First Rust build pulls + cross-compiles deps (~5 min); the ELF lands at
+`build/mps2-an385-freertos/target/thumbv7m-none-eabi/debug/talker`. The
+C / C++ build also compiles FreeRTOS kernel + lwIP — first run ~3 min.
 
-If you skipped `nros sync`, the Rust build stops before it starts, with
-`failed to load config include '../../../../../nros-patch.toml'` and
-`No such file or directory`. That file is generated, not committed —
-run `nros sync` in the leaf and build again. The C / C++ builds above do
-not need it; see
+**Driving cargo yourself** (an IDE, a CI step, `--release`) is supported:
+run `nros sync` first, then point cargo at the generated settings file. Run it
+from the directory *above* the package, so the package's own `.cargo/` is not
+read a second time — phase-445 W6 deletes that directory, after which the
+working directory stops mattering:
+
+```bash
+cd examples/mps2-an385-freertos/rust
+cargo build --manifest-path talker/Cargo.toml \
+            --config talker/build/mps2-an385-freertos/nros-cargo.toml
+```
+
+If you skipped `nros sync`, the Rust build stops at its preflight with one
+line naming what is missing and telling you to run sync in that directory —
+not with a cargo error four frames down. The single-package C / C++ builds
+above do not need sync at all: their message bindings are a CMake-time output.
+See
 [Workflow by Platform and Language](../user-guide/workflow-by-platform.md)
 for why the requirement is per language rather than per platform.
 
 ## Run
 
 ```bash
-# 1. Start the router (ROS's `rmw_zenohd`) on the host, on port 7447 —
-#    the locator the example bakes from its system.toml
-#    ([image.<id>] locator, shown above).
+# 1. Start the router (ROS's `rmw_zenohd`) on the host, on port 7800 —
+#    the locator the Rust example bakes from its system.toml
+#    ([image.mps2-an385-freertos] locator, shown above).
 #    Slirp forwards guest 10.0.2.2:<p> → host:<p>.
-ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' \
+ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7800"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd &
 
-# 2. Boot the talker in QEMU. The BOARD's `cargo_config` runner (carried
-#    into build/<image>/nros-cargo.toml) wraps qemu-system-arm with the
-#    LAN9118 + Slirp wiring:
+# 2. Boot the talker in QEMU. Invoke qemu-system-arm directly, with the
+#    LAN9118 + Slirp wiring the example expects — the board's own cargo
+#    runner is bare `-kernel`, so booting through it gives you QEMU
+#    without networking:
 cd examples/mps2-an385-freertos/rust/talker
-cargo run --config build/<image>/nros-cargo.toml --release
+qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+    -icount shift=auto \
+    -semihosting-config enable=on,target=native \
+    -kernel build/mps2-an385-freertos/target/thumbv7m-none-eabi/debug/talker \
+    -nic user,model=lan9118
 
 # 3. Verify from stock ROS 2:
 source /opt/ros/humble/setup.bash
@@ -180,8 +224,8 @@ session open typically takes 10–15 s. If no `Publishing:` line in
 30 seconds:
 
 1. Confirm the router is running on the host on the port the image
-   dials (7447 for the copy-out example — Slirp forwards
-   `10.0.2.2:7447` → host:7447). Without it the talker retries the
+   dials — the `locator` in its `system.toml` (7800 for the Rust
+   talker; Slirp forwards `10.0.2.2:7800` → host:7800). Without it the talker retries the
    zenoh handshake until QEMU is killed.
 2. Check the talker's early log for `lwIP DHCP timeout` or
    `Failed to open session`.

@@ -27,9 +27,10 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 
 ```bash
 # Terminal 2: Run the nano-ros talker
-nros sync                            # materialize generated/ bindings (once)
 cd examples/native/rust/talker
-RUST_LOG=info cargo run
+nros sync                            # generated/ bindings + build settings (once)
+nros build
+RUST_LOG=info ./build/native/target/debug/talker
 ```
 
 ```bash
@@ -56,7 +57,8 @@ ROS 2 publishers also work with nano-ros subscribers:
 ```bash
 # Terminal 2: Run the nano-ros listener instead
 cd examples/native/rust/listener
-RUST_LOG=info cargo run
+nros sync && nros build
+RUST_LOG=info ./build/native/target/debug/listener
 
 # Terminal 3: ROS 2 talker
 source /opt/ros/humble/setup.bash
@@ -86,12 +88,13 @@ ros2 node list         # Shows nano-ros nodes
 
 Both sides must use the same ROS domain ID. On the **native** (host) build
 nano-ros reads `ROS_DOMAIN_ID` from the environment (default: `0`). On
-**embedded** targets the domain ID is fixed at compile time — per-example
-`config.toml` / `package.xml` deploy metadata, or `CONFIG_NROS_DOMAIN_ID`
-on Zephyr (see [Workflow](../user-guide/workflow.md)):
+**embedded** targets the domain ID is fixed at compile time — `system.toml`
+`[system] domain_id` (or an image's own), a hand-written `config.toml` on a
+direct-mode app, or `CONFIG_NROS_DOMAIN_ID` on Zephyr (see
+[Workflow](../user-guide/workflow.md)):
 
 ```bash
-ROS_DOMAIN_ID=42 cargo run    # nano-ros side
+ROS_DOMAIN_ID=42 ./build/native/target/debug/talker   # nano-ros side
 ROS_DOMAIN_ID=42 ros2 topic echo /chatter ...  # ROS 2 side
 ```
 

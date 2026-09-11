@@ -16,13 +16,13 @@ changes language-side is the cmake-fn / macro surface.
 
 | Role | Rust | C / C++ |
 |---|---|---|
-| **Node pkg** | `lib.rs` with `nros::node!(MyNode)` + `[package.metadata.nros.node]` in `Cargo.toml` | `Talker.{hpp,cpp}` with a `configure(::rclcpp::Node&)` component method (C++) / `NROS_C_COMPONENT` (C); `CMakeLists.txt` calling `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057) |
+| **Node pkg** | `lib.rs` with `nros::node!(MyNode)`, declared by a `[[component]]` row in the bringup's `system.toml` | `Talker.{hpp,cpp}` with a `configure(::rclcpp::Node&)` component method (C++) / `NROS_C_COMPONENT` (C); `CMakeLists.txt` calling `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057) |
 | **Bringup pkg** | `package.xml` + `system.toml` + `launch/*.launch.xml` (no `Cargo.toml`) | identical (language-agnostic) |
 | **Image** | `[image.native] board = "native"` in the bringup's `system.toml` | identical (language-agnostic) |
 | **The entry** | GENERATED into `build/<coord>/native_entry/` — a `Cargo.toml` and a `nros::main!(launch = "demo_bringup")` | GENERATED into `build/<coord>/CMakeLists.txt` — a `nano_ros_add_executable(native_entry BOARD … BRINGUP … LAUNCH … LANG cpp TYPED DEPLOY native)` call, plus the `main` TU the verb emits |
-| **Workspace root** | GENERATED `Cargo.toml [workspace] members = […]` | GENERATED `CMakeLists.txt` calling `nano_ros_workspace(WORKSPACE_ROOT … BACKEND zenoh PLATFORM posix SYSTEM demo_bringup SUBDIRS …)` |
-| **Build** | `nros build native` | `nros build native` |
-| **Boot** | the binary under `target/` | `./build/posix-zenoh-native/cmake/native_entry` |
+| **Workspace root** | none — the generated entry's own `Cargo.toml` is the cargo root | none — the generated `build/<coord>/CMakeLists.txt` is the cmake root, calling `nano_ros_workspace(WORKSPACE_ROOT … BACKEND zenoh PLATFORM posix SYSTEM demo_bringup SUBDIRS …)` |
+| **Build** | `nros sync` then `nros build native` | `nros sync` then `nros build native` |
+| **Boot** | `./build/posix/native_entry/target/debug/native_entry` | `./build/posix-zenoh-native/cmake/native_entry` |
 
 The reference C++ workspace ships in-tree at
 [`examples/workspaces/cpp/`](https://github.com/NEWSLabNTU/nano-ros/tree/main/examples/workspaces/cpp).
@@ -35,7 +35,7 @@ Identical structure to the Rust template, swapping `Cargo.toml` →
 
 ```text
 my_ws/
-├── .colcon_workspace             # tracked marker; the root CMakeLists.txt is GENERATED
+├── .colcon_workspace             # tracked marker; there is no root build file
 └── src/
     ├── talker_pkg/               # Node pkg (C++)
     │   ├── package.xml
@@ -51,17 +51,20 @@ my_ws/
         └── launch/system.launch.xml
 ```
 
-No entry package. `nros build <image>` writes the root `CMakeLists.txt` and the
+No entry package, and nothing at the root: a workspace is a directory of
+packages (RFC-0098 D9). `nros build <image>` writes a `CMakeLists.txt` and the
 entry's `nano_ros_add_executable(…)` call into `build/<coordinate>/`, configures
 that into `build/<coordinate>/cmake/`, and builds — see
 [Images](./workspace-entry-pkg.md). The exception is a Zephyr application,
 which keeps a package because west needs a real application directory.
 
-## The generated workspace root
+## The generated cmake root
 
 You do not write this; `nros build` does, from the packages it discovered and
-the image it resolved. It is worth reading once, because everything below
-happens inside it:
+the image it resolved. It is the cmake root — and it lives in
+`build/<coordinate>/`, not at the workspace root, which is why its first
+argument says where the workspace actually is. It is worth reading once,
+because everything below happens inside it:
 
 ```cmake
 cmake_minimum_required(VERSION 3.22)
@@ -277,7 +280,7 @@ rmw = "zenoh"
 board = "native"
 ```
 
-— and `nros build native` emits this into the generated root. `BOARD` and
+— and `nros build native` emits this into that generated root. `BOARD` and
 `DEPLOY` come from the resolved image, so a generated entry cannot disagree
 with the board it was generated for; there is no `SOURCES`, because the verb
 generates the translation unit carrying `main`:
@@ -338,19 +341,21 @@ body, the user's TU is documentation + IDE hint.
 ## Build + boot
 
 ```bash
+nros sync
 nros build native
 ./build/posix-zenoh-native/cmake/native_entry
 ```
 
 `nros build` resolves the SystemModel for you (via the pinned
 `nros-launch-resolve` helper, whenever the launch XML or `system.toml` is
-newer), writes the root, configures, and builds. It does **not** run `nros
-sync`: a workspace that has never been synced has no generated message
-bindings, and `nros build` refuses at preflight naming `nros sync` as the
-remedy. Sync once per workspace; after that only a `.msg` edit needs it
-again. The coordinate directory
-names what it contains: platform, RMW, board. Driving `cmake` yourself against
-the generated root still works.
+newer), writes `build/<coordinate>/CMakeLists.txt`, configures, and builds. It
+does **not** run `nros sync`: a workspace that has never been synced has no
+generated message bindings, and `nros build` refuses at preflight naming `nros
+sync` as the remedy. Sync once per workspace; after that only a `.msg` edit
+needs it again. The coordinate directory names what it contains: platform, RMW,
+board. Driving `cmake` yourself against that generated root —
+`build/<coordinate>/CMakeLists.txt`, never a file at the workspace root — still
+works.
 
 The build produces:
 
@@ -382,7 +387,7 @@ syntax the user types into the two package roles.
 |---|---|
 | `nros new --component <name> --lang cpp --use-case talker` | C++ Node pkg; `--component` is the compatibility scaffold flag |
 | `nros new system <name>_bringup --components a,b` | Bringup pkg (language-agnostic — works for both Rust and C++ workspaces) |
-| `nros new <name> --lang cpp --platform native` | A standalone single-package *project* with its own root — the copy-out shape, not a workspace member |
+| `nros new <name> --lang cpp --platform native` | A standalone single-package *project* — its own `CMakeLists.txt` and its own `system.toml`; the copy-out shape, not a workspace member |
 | `nros new entry <name> --platform zephyr` | A Zephyr application package + its `[image.*]` row. The verb accepts no other platform: everywhere else the entry is generated |
 
 The C-side compatibility scaffold (`nros new --component … --lang c`) is
