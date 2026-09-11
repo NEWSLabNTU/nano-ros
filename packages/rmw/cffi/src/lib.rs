@@ -326,6 +326,30 @@ impl Eq for rmw_qos_profile_t {}
 // `reliability: 0` from BEST_EFFORT to SYSTEM_DEFAULT. A comment is not a
 // binding. They name the generated constant now, so the next renumbering is a
 // compile error or nothing at all.
+//
+// issue 1256 / phase-454 W1 — and the DEPTHS now name the SSoT for the same
+// reason the policies name the generated enums. They were bare integers
+// (`depth: 10`, `depth: 5`, `depth: 1000`) with the upstream profile in a doc
+// comment above, which is the shape the paragraph above is about, one field
+// over. `QoSProfile::QOS_PROFILE_*` is the tree's one statement of what
+// upstream's profiles are (`nros-rmw/src/traits.rs`, gated field-by-field
+// against `docs/reference/rmw-qos-profiles.txt`), so these read it.
+
+/// The SSoT's depth, narrowed to the width the C ABI carries.
+///
+/// `as u16` would be a silent truncation, and `PARAMETERS` sits at 1000 — one
+/// decimal place from a value this ABI cannot hold. Const-evaluated, so a table
+/// depth past the ABI's reach is a COMPILE error at the profile that states it
+/// rather than a subscription silently created at `depth % 65536`. The same
+/// refusal `NrosRmwQos::try_from` makes at runtime (issue 0241), made where the
+/// value is a constant and the check therefore costs nothing.
+const fn abi_depth(depth: u32) -> u16 {
+    assert!(
+        depth <= u16::MAX as u32,
+        "a QoS profile states a history depth the RMW C ABI's u16 cannot carry",
+    );
+    depth as u16
+}
 
 /// Standard `rmw_qos_profile_default`-equivalent.
 pub const NROS_RMW_QOS_PROFILE_DEFAULT: NrosRmwQos = NrosRmwQos {
@@ -336,7 +360,7 @@ pub const NROS_RMW_QOS_PROFILE_DEFAULT: NrosRmwQos = NrosRmwQos {
     // and `_sensor_data` both leave liveliness at the sentinel. Issue 0829
     // corrected this on SYSTEM_DEFAULT and left the siblings; phase-428 W10.
     liveliness_kind: rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_SYSTEM_DEFAULT as u8,
-    depth: 10,
+    depth: abi_depth(nros_rmw::QoSProfile::QOS_PROFILE_DEFAULT.depth),
     _reserved0: 0,
     deadline_ms: 0,
     lifespan_ms: 0,
@@ -354,7 +378,7 @@ pub const NROS_RMW_QOS_PROFILE_SENSOR_DATA: NrosRmwQos = NrosRmwQos {
     // and `_sensor_data` both leave liveliness at the sentinel. Issue 0829
     // corrected this on SYSTEM_DEFAULT and left the siblings; phase-428 W10.
     liveliness_kind: rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_SYSTEM_DEFAULT as u8,
-    depth: 5,
+    depth: abi_depth(nros_rmw::QoSProfile::QOS_PROFILE_SENSOR_DATA.depth),
     _reserved0: 0,
     deadline_ms: 0,
     lifespan_ms: 0,
@@ -375,7 +399,7 @@ pub const NROS_RMW_QOS_PROFILE_SERVICES_DEFAULT: NrosRmwQos = NrosRmwQos {
 
 /// Standard `rmw_qos_profile_parameters`-equivalent.
 pub const NROS_RMW_QOS_PROFILE_PARAMETERS: NrosRmwQos = NrosRmwQos {
-    depth: 1000,
+    depth: abi_depth(nros_rmw::QoSProfile::QOS_PROFILE_PARAMETERS.depth),
     ..NROS_RMW_QOS_PROFILE_DEFAULT
 };
 
@@ -397,7 +421,7 @@ pub const NROS_RMW_QOS_PROFILE_SYSTEM_DEFAULT: NrosRmwQos = NrosRmwQos {
     durability: generated::NROS_RMW_DURABILITY_SYSTEM_DEFAULT as u8,
     history: generated::NROS_RMW_HISTORY_SYSTEM_DEFAULT as u8,
     liveliness_kind: generated::rmw_liveliness_kind_t::NROS_RMW_LIVELINESS_SYSTEM_DEFAULT as u8,
-    depth: 0,
+    depth: abi_depth(nros_rmw::QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT.depth),
     _reserved0: 0,
     deadline_ms: 0,
     lifespan_ms: 0,

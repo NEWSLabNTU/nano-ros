@@ -84,20 +84,52 @@ pub struct nros_qos_t {
     pub tx_express: u8,
 }
 
+// phase-454 W1 — the `NROS_QOS_*` statics below are bound to
+// `QoSProfile::QOS_PROFILE_*` two ways. Their DEPTHS are read from it directly
+// (`c_depth`, immediately below), so the compiler is the binding; their
+// POLICIES are still literals, and `scripts/check-qos-profile-ssot.py` compares
+// them field-by-field. Both halves are needed: a Rust file can consume a const
+// and a C header cannot, so the gate has to exist anyway, and where a value CAN
+// be consumed it should be, because a derived value cannot drift between gate
+// runs.
+//
+// nros-qos-mirror-deviation: profile=* field=liveliness_kind ours=AUTOMATIC ssot=SYSTEM_DEFAULT ref="phase-428 W10"
+//   Every profile here carries AUTOMATIC where the SSoT carries the sentinel.
+//   `profile=*` rather than three lines because there is ONE cause, not three:
+//   upstream leaves liveliness unset in all five concrete profiles, W10 moved
+//   the Rust table and `rmw_entity.h` onto the sentinel, and the C/C++
+//   application surfaces were not moved. They cannot move alone — the value
+//   crosses the C ABI as its discriminant, so a C caller's `NROS_QOS_DEFAULT`
+//   and a Rust caller's `QOS_PROFILE_DEFAULT` would then differ in a field
+//   cyclonedds puts on the wire.
+
+/// The SSoT's depth, narrowed to the width this C API's `depth` field carries.
+///
+/// issue 1256 / phase-454 W1. The depths below are read out of
+/// `QoSProfile::QOS_PROFILE_*`, whose field is a `u32`, and `as c_int` would
+/// reinterpret rather than refuse. Const-evaluated, so a profile stating a
+/// depth past `c_int` is a COMPILE error at that profile instead of a negative
+/// queue depth handed to a backend.
+const fn c_depth(depth: u32) -> c_int {
+    assert!(
+        depth <= c_int::MAX as u32,
+        "a QoS profile states a history depth the C API's `int` cannot carry",
+    );
+    depth as c_int
+}
+
 impl Default for nros_qos_t {
+    /// The same ten fields `NROS_QOS_DEFAULT` states, by naming it.
+    ///
+    /// phase-454 W1 — this WAS a second ten-field initialiser, field-identical
+    /// to the static below it and held that way by nothing. A hand-mirror at a
+    /// distance of thirty lines is still a hand-mirror (issue 0160): the
+    /// `tx_express` append reached both only because one author touched both in
+    /// one sitting. `nros_qos_t` is `Copy`, so naming the static costs a
+    /// register move and removes the copy outright, which is better than
+    /// gating it.
     fn default() -> Self {
-        Self {
-            reliability: nros_qos_reliability_t::NROS_QOS_RELIABILITY_RELIABLE,
-            durability: nros_qos_durability_t::NROS_QOS_DURABILITY_VOLATILE,
-            history: nros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST,
-            liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_AUTOMATIC,
-            depth: 10,
-            deadline_ms: 0,
-            lifespan_ms: 0,
-            liveliness_lease_ms: 0,
-            avoid_ros_namespace_conventions: 0,
-            tx_express: 0,
-        }
+        NROS_QOS_DEFAULT
     }
 }
 
@@ -108,7 +140,7 @@ pub static NROS_QOS_DEFAULT: nros_qos_t = nros_qos_t {
     durability: nros_qos_durability_t::NROS_QOS_DURABILITY_VOLATILE,
     history: nros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST,
     liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_AUTOMATIC,
-    depth: 10,
+    depth: c_depth(nros_node::QoSProfile::QOS_PROFILE_DEFAULT.depth),
     deadline_ms: 0,
     lifespan_ms: 0,
     liveliness_lease_ms: 0,
@@ -123,7 +155,7 @@ pub static NROS_QOS_SENSOR_DATA: nros_qos_t = nros_qos_t {
     durability: nros_qos_durability_t::NROS_QOS_DURABILITY_VOLATILE,
     history: nros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST,
     liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_AUTOMATIC,
-    depth: 5,
+    depth: c_depth(nros_node::QoSProfile::QOS_PROFILE_SENSOR_DATA.depth),
     deadline_ms: 0,
     lifespan_ms: 0,
     liveliness_lease_ms: 0,
@@ -138,7 +170,7 @@ pub static NROS_QOS_SERVICES: nros_qos_t = nros_qos_t {
     durability: nros_qos_durability_t::NROS_QOS_DURABILITY_VOLATILE,
     history: nros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST,
     liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_AUTOMATIC,
-    depth: 10,
+    depth: c_depth(nros_node::QoSProfile::QOS_PROFILE_SERVICES_DEFAULT.depth),
     deadline_ms: 0,
     lifespan_ms: 0,
     liveliness_lease_ms: 0,

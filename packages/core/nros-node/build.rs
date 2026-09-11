@@ -21,10 +21,23 @@ const RING_LEN_BYTES: usize = 8;
 /// KEEP_LAST(10). Issue 1190 — modelling this as 1 (the triple-buffer case) is
 /// what under-sized the arena by 8,560 bytes per subscription.
 ///
-/// RESTATED here because a build script cannot read a const out of the crate it
-/// is building; `the_modelled_qos_depth_is_the_runtime_default` in
-/// `executor/arena.rs` is what keeps the two equal.
-const PUBSUB_QOS_DEPTH: usize = 10;
+/// READ, not restated — issue 1256 / phase-454 W1.
+///
+/// This was `= 10` for four phases behind a comment saying a build script
+/// cannot read a const out of the crate it is building. That sentence is true
+/// and the conclusion drawn from it was not: the const does not live in the
+/// crate being built. It lives in `nros-rmw`, and a `[build-dependencies]`
+/// entry is how a build script reaches another crate's consts. The number is
+/// now the SSoT's own, so it cannot drift from it at all — where before it
+/// could drift until somebody ran `the_modelled_qos_depth_is_the_runtime_default`
+/// in `executor/arena.rs`, which is a unit test and therefore not on the push
+/// lane.
+///
+/// That test stays. It asserts a DIFFERENT thing now — that the value this
+/// build emitted is the value the runtime resolves — and it is the negative
+/// control proving this const really is the table's: point it elsewhere and
+/// the test goes red.
+const PUBSUB_QOS_DEPTH: usize = nros_rmw::QoSProfile::QOS_PROFILE_DEFAULT.depth as usize;
 
 /// The subscription half of the arena, priced per ENDPOINT at the depth that
 /// endpoint DECLARED -- issue 1227, finishing phase-403 step 2's wiring.
