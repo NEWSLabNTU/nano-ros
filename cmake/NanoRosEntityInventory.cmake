@@ -289,7 +289,7 @@ function(nros_derive_entity_inventory_knobs)
     foreach(_v NROS_DERIVED_EXECUTOR_MAX_CBS NROS_DERIVED_EXECUTOR_ACTION_CLIENTS
                NROS_DERIVED_MAX_SUBSCRIBERS NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
                NROS_DERIVED_MAX_PUBLISHERS NROS_DERIVED_MAX_QUERYABLES
-               NROS_DERIVED_EXECUTOR_MAX_NODES
+               NROS_DERIVED_EXECUTOR_MAX_NODES NROS_DERIVED_EXECUTOR_MAX_SC
                NROS_DERIVED_MAX_LIVELINESS NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES
                NROS_ENTITY_INVENTORY_ENTITY_TOTAL
                NROS_ENTITY_DECLARED_DEPTH_STATUS NROS_ENTITY_DECLARED_DEPTH_REASON
@@ -412,7 +412,7 @@ function(nros_derive_entity_inventory_knobs)
     # a derived value or reads nothing.
     foreach(_pool NROS_DERIVED_MAX_SUBSCRIBERS NROS_DERIVED_RMW_SUBSCRIBER_SLOTS
                   NROS_DERIVED_MAX_PUBLISHERS NROS_DERIVED_MAX_QUERYABLES
-                  NROS_DERIVED_EXECUTOR_MAX_NODES
+                  NROS_DERIVED_EXECUTOR_MAX_NODES NROS_DERIVED_EXECUTOR_MAX_SC
                   NROS_DERIVED_MAX_LIVELINESS NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES)
         if(DEFINED ${_pool})
             _nros_entity_publish(${_pool} "${${_pool}}")
@@ -530,6 +530,7 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_DERIVED_MAX_PUBLISHERS
         NROS_DERIVED_MAX_QUERYABLES
         NROS_DERIVED_EXECUTOR_MAX_NODES
+        NROS_DERIVED_EXECUTOR_MAX_SC
         # phase-412 W2 / issue 1130 -- the liveliness pool and the cell
         # registry bound. Listed here because this dump IS the module's own
         # diagnostic surface and the one `tests/cmake-entity-inventory-tests.sh`

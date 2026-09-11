@@ -686,6 +686,16 @@ function(nros_resolve_knobs)
     _nros_resolve_derivable_knob(NROS_EXECUTOR_MAX_NODES
         "${CONFIG_NROS_EXECUTOR_MAX_NODES}" NROS_DERIVED_EXECUTOR_MAX_NODES
         "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
+    # issue 1198 -- the executor's OTHER fixed table, on the same ladder and
+    # from the same inventory. Resolved HERE, beside its sibling, rather than
+    # down in the nros-node block where a plain `_nros_resolve_knob` used to
+    # sit: that call re-resolves from the raw Kconfig value, which is now the
+    # `-1` DERIVE SENTINEL, and the sentinel would win as though someone had
+    # stated it. Fourth instance of that shape in this file; the comment left
+    # at the old site records the other three.
+    _nros_resolve_derivable_knob(NROS_EXECUTOR_MAX_SC
+        "${CONFIG_NROS_EXECUTOR_MAX_SC}" NROS_DERIVED_EXECUTOR_MAX_SC
+        "entity inventory" "${CMAKE_BINARY_DIR}/nros/entity_inventory.cmake")
 
     # Zenoh transport tuning (zpico-sys build.rs + zpico.c defines).
     #
@@ -972,13 +982,14 @@ function(nros_resolve_knobs)
     _nros_resolve_derivable_knob(NROS_SUBSCRIPTION_BUFFER_SIZE
         "${CONFIG_NROS_SUBSCRIPTION_BUFFER_SIZE}"
         NROS_DERIVED_SUBSCRIPTION_BUFFER_SIZE)
-    _nros_resolve_knob(NROS_EXECUTOR_MAX_SC "${CONFIG_NROS_EXECUTOR_MAX_SC}")
-    # phase-412 W2 -- resolved ABOVE, with the other derivable knobs. A second
-    # _nros_resolve_knob here re-resolves it from the raw Kconfig value, which
-    # is the `-1` DERIVE SENTINEL, and the sentinel wins as though someone had
-    # stated it. Third instance of this exact shape in this file
-    # (NROS_RMW_SUBSCRIBER_SLOTS was the second); check-knob-delivery caught
-    # all of them, and none was visible to any other gate.
+    # phase-412 W2 / issue 1198 -- NROS_EXECUTOR_MAX_SC is resolved ABOVE, with
+    # the other derivable knobs, and the `_nros_resolve_knob(NROS_EXECUTOR_MAX_SC
+    # ...)` that stood on this line is GONE. A second resolve here re-resolves
+    # from the raw Kconfig value, which is the `-1` DERIVE SENTINEL, and the
+    # sentinel wins as though someone had stated it. Fourth instance of this
+    # exact shape in this file (NROS_RMW_SUBSCRIBER_SLOTS was the second);
+    # check-knob-delivery caught the first three, and none was visible to any
+    # other gate.
     # issue 0790 — shutdown-hook slots per phase. Read by nros-node/build.rs
     # through the derived CONFIG_<name> lookup, like its five siblings above.
     _nros_resolve_knob(NROS_EXECUTOR_MAX_SHUTDOWN_CBS

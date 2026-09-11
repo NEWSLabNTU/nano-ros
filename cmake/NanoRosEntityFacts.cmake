@@ -330,6 +330,26 @@ endfunction()
 # (`_nros_take_buffer_env`) because its guard is the MESSAGE-BOUND status, not
 # this one.
 #
+# ADDED by issue 1198 (phase-448 W6): `NROS_EXECUTOR_MAX_SC`, the executor's
+# other fixed table, which travelled on NO road and was not even published as a
+# fact. Same test as its sibling: its one undeclared source is application code
+# calling `create_sched_context` by hand, and every such path now NAMES the knob
+# (`NodeError::NoSchedContextSlot`) instead of returning a bare `RET_FULL`.
+#
+# INCLUDED since issue 1198 (phase-448 W6), and the reason the exclusion was
+# dropped rather than re-argued: `NROS_EXECUTOR_MAX_NODES` was withheld by
+# phase-412 W1 "on the ground that under-counting HALTS the board". That ground
+# is now measured rather than assumed. Under-counting nodes has exactly ONE
+# source -- `nros_pubsub_bridge_create`, whose two nodes are runtime strings
+# declared nowhere -- and that path NAMES this knob when the table fills, as do
+# the executor's own `NodeTableFull` and the zenoh session's per-node liveliness
+# table. Every other node is a component the inventory counted. The same test
+# applied to `NROS_EXECUTOR_MAX_SC` (on NO road before W6): its one undeclared
+# source is application code calling `create_sched_context` by hand, and all
+# three FFI wrappers now name the knob instead of returning a bare `RET_FULL`.
+# Withholding them cost 12,416 B of every FreeRTOS executor backing, identical
+# to the byte across leaves whose declarations differ.
+#
 # The guard is a single status. Unlike message bounds there is no BASIS here:
 # `derived` means every `NROS_DERIVED_*` in the fragment is present, and
 # `refused` means none is (`NanoRosEntityInventory.cmake`).
@@ -378,6 +398,8 @@ function(_nros_entity_budget_env _out_var)
             "NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES;NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES"
             "NROS_DECLARED_EXECUTOR_ACTION_CLIENTS;NROS_DERIVED_EXECUTOR_ACTION_CLIENTS"
             "NROS_DECLARED_EXECUTOR_MAX_CBS;NROS_DERIVED_EXECUTOR_MAX_CBS"
+            "NROS_DECLARED_EXECUTOR_MAX_NODES;NROS_DERIVED_EXECUTOR_MAX_NODES"
+            "NROS_DECLARED_EXECUTOR_MAX_SC;NROS_DERIVED_EXECUTOR_MAX_SC"
             "NROS_DECLARED_RMW_SUBSCRIBER_SLOTS;NROS_DERIVED_RMW_SUBSCRIBER_SLOTS"
             "NROS_DECLARED_MAX_PUBLISHERS;NROS_DERIVED_MAX_PUBLISHERS"
             "NROS_DECLARED_MAX_SUBSCRIBERS;NROS_DERIVED_MAX_SUBSCRIBERS"

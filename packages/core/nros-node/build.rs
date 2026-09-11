@@ -222,7 +222,14 @@ fn main() {
     // issue 1199 — the executor callback budget cmake derived for this image,
     // on the DECLARED road. Mirrors `DERIVED_ENV_KEYS` on the cargo-leaf road.
     let max_cbs = env_usize_declared("NROS_EXECUTOR_MAX_CBS", "NROS_DECLARED_EXECUTOR_MAX_CBS", 4);
-    let max_sc = env_usize("NROS_EXECUTOR_MAX_SC", 8);
+    // issue 1198 -- scheduling-context slots. Slot 0 is the reserved default
+    // Fifo context; the schedule creates the rest, and the image's own
+    // inventory derives how many (1 + the larger of its authored tier count and
+    // its node count). The literal 8 is what stands when nothing derived, and
+    // it was every image's answer until phase-448 W6. Too small is a
+    // `NodeError::NoSchedContextSlot` at `create_sched_context`, which names
+    // this knob, not a link error.
+    let max_sc = env_usize_declared("NROS_EXECUTOR_MAX_SC", "NROS_DECLARED_EXECUTOR_MAX_SC", 8);
     // Phase 214.C.3 — default coordinated with
     // `packages/rmw/zenoh/nros-rmw-zenoh/build.rs::ZPICO_SUBSCRIBER_BUFFER_SIZE`
     // (also 1024). If you change one, change the other — they share the
@@ -266,6 +273,9 @@ fn main() {
     // issue 1233 — the DECLARED node count. One per component the image
     // registers, and a short table is `NodeError::NodeTableFull`, which NAMES
     // the knob — the property phase-412 required before deriving it at all.
+    // Measured (issue 1198): 1,224 B a slot on thumbv7m-none-eabi, because it
+    // multiplies SEVEN tables, so a single-node talker was paying 3,672 B for
+    // three node slots it can never fill.
     let max_nodes = env_usize_declared(
         "NROS_EXECUTOR_MAX_NODES",
         "NROS_DECLARED_EXECUTOR_MAX_NODES",
@@ -950,6 +960,8 @@ fn watch_declared_facts() {
     // declared road was still not carrying after 1199.
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_NODES");
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_SUBSCRIPTION_BUFFER_SIZE");
+    // issue 1198 -- and the SCHEDULING table, which was on no road at all.
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_EXECUTOR_MAX_SC");
 }
 
 fn env_usize_declared(name: &str, declared: &str, default: usize) -> usize {

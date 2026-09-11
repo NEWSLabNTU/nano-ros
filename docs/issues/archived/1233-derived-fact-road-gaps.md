@@ -6,7 +6,7 @@ type: tech-debt
 area: cmake, core, memory
 severity: medium
 found: 2026-09-08
-related: [1122, 1125, 1199, 0827, 0900, 0963]
+related: [1122, 1125, 1198, 1199, 0827, 0900, 0963, phase-448]
 resolved: 2026-09-09
 ---
 
@@ -121,3 +121,11 @@ Measured ladders (`nros_node_config.rs` consts, host build):
 
 `env > Kconfig/board > derived > crate default` holds on both: a derived value
 is a DEFAULT, never an override.
+
+**Postscript (2026-09-11, phase-448 W6 / [issue 1198](1198-executor-node-and-sc-slots-are-undeclared-defaults.md)).**
+The executor's OTHER fixed table, `MAX_SC`, was never one of the four gaps here
+because it was never PUBLISHED as a fact at all — so no registry could record
+it as missing a road. It travels all three roads now, on the same terms this
+issue settled for the node table: the exhaustion path NAMES the knob, which is
+a property of the failure and not of the road. Worth 672 B of a FreeRTOS
+executor backing on top of the 3,672 B the node table gave back here.

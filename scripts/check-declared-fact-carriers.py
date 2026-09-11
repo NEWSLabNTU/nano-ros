@@ -259,6 +259,16 @@ FACT_DISPOSITION = {
         "sidecar": ("NROS_EXECUTOR_MAX_NODES",),
         "declared": ("NROS_DECLARED_EXECUTOR_MAX_NODES",),
     },
+    # issue 1198 / phase-448 W6 -- the executor's OTHER fixed table, and the one
+    # that was on NO road: `MAX_SC` was not even published as a fact. It is the
+    # scheduling half, so it comes from the SCHEDULE (`execution.tiers`) rather
+    # than from the entity count its sibling above uses. Worth 672 B of every
+    # FreeRTOS executor backing on top of what the node table gave back.
+    "NROS_DERIVED_EXECUTOR_MAX_SC": {
+        "resolver": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_SC",),
+        "sidecar": ("NROS_EXECUTOR_MAX_SC",),
+        "declared": ("NROS_DECLARED_EXECUTOR_MAX_SC",),
+    },
     # ---- the message-bound inventory's sizes -----------------------------
     "NROS_DERIVED_SUBSCRIBER_BUFFER_SIZE": {
         "resolver": ("NROS_RESOLVED_NROS_SUBSCRIBER_BUFFER_SIZE",),

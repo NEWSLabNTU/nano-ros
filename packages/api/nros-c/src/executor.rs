@@ -3457,7 +3457,23 @@ pub unsafe extern "C" fn nros_executor_create_sched_context(
             *out_sc_id = id.0;
             NROS_RET_OK
         }
-        Err(_) => NROS_RET_FULL,
+        // issue 1198 — NAME THE KNOB. `NROS_EXECUTOR_MAX_SC` is derived per
+        // image since phase-448 W6 (slot 0 plus one per tier the schedule can
+        // create), and the one thing that derivation cannot see is a caller
+        // creating scheduling contexts BY HAND through this function. A bare
+        // `NROS_RET_FULL` made that under-count silent, which is exactly the
+        // condition under which a count must not be derived. The text is
+        // `NodeError::NoSchedContextSlot`'s own Display, so it is written once.
+        Err(e) => {
+            nros_log::log_error!(
+                nros_log::get_logger("nros-c"),
+                "nros_executor_create_sched_context: {} — this image's \
+                 NROS_EXECUTOR_MAX_SC is derived from its schedule, and a \
+                 context created by hand is declared nowhere. State the knob.",
+                e
+            );
+            NROS_RET_FULL
+        }
     }
 }
 
