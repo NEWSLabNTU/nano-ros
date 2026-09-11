@@ -173,7 +173,32 @@ jobs:
           #
           # Already-armed is also not an error, and `synchronize` will re-run
           # this on every push, so the common case is a no-op.
-          if gh pr merge "$NUMBER" --auto --rebase 2>&1 | tee /tmp/arm.log; then
+          # issue 1338 — TWO faults lived in the single line this replaces, and
+          # they compounded in the worst direction: one made it always fail,
+          # the other made it always report success.
+          #
+          #   * No `--repo`. This job checks out NOTHING, on purpose (see the
+          #     `pull_request_target` note above — do not add a checkout to fix
+          #     this). `gh pr merge` resolves the repository from the local git
+          #     remote, so with no local git it died on EVERY run with
+          #     `failed to run git: fatal: not a git repository`.
+          #   * `if cmd | tee ...` tests the PIPELINE's status, which is
+          #     `tee`'s and is 0 either way. The `else` below was unreachable,
+          #     so the `::warning::` had never once been emitted and the run
+          #     printed `armed #N` three lines under the git error.
+          #
+          # So the workflow written to fix "16 of 23 PRs are not armed" had
+          # never armed one, and the only visible evidence was a green check
+          # saying it had. Issue 1226's shape with the sign flipped.
+          #
+          # `rc=0; cmd || rc=$?` is this repo's ONE spelling for a status you
+          # mean to INSPECT under `set -e` (issue 1249) — and a pipe destroys
+          # it, which is why the redirect replaces the `tee`.
+          rc=0
+          gh pr merge "$NUMBER" --repo "$GITHUB_REPOSITORY" --auto --rebase \
+            > /tmp/arm.log 2>&1 || rc=$?
+          sed 's/^/  /' /tmp/arm.log
+          if [ "$rc" -eq 0 ]; then
             echo "armed #$NUMBER"
           else
             # Never fail the workflow for this. A PR that cannot be armed yet
@@ -181,5 +206,4 @@ jobs:
             # on someone's pull request -- and a red check here would be a
             # second, confusing signal beside the real `CI` one.
             echo "::warning::could not arm auto-merge on #$NUMBER"
-            sed 's/^/  /' /tmp/arm.log
           fi
