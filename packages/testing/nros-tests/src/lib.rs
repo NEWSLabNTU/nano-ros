@@ -382,6 +382,82 @@ fn domain_discovery_port_busy(_domain: u8) -> bool {
     false
 }
 
+/// Is a ros2cli DAEMON already bound to this domain's XML-RPC port?
+///
+/// Issue 1333 — the second half of "is somebody on domain d", and the half
+/// [`domain_discovery_port_busy`] structurally cannot answer.
+///
+/// ros2cli keys its daemon on `ROS_DOMAIN_ID` alone: `ros2cli.daemon.get_port()`
+/// is literally `11511 + ROS_DOMAIN_ID`. Nothing else is in that key — in
+/// particular the DISCOVERY CONFIGURATION is not, so a daemon serves every later
+/// caller on its domain a graph computed under whatever `CYCLONEDDS_URI` /
+/// `FASTRTPS_DEFAULT_PROFILES_FILE` / `ZENOH_SESSION_CONFIG_URI` the process
+/// that STARTED it happened to hold. Since issue 1009 those are exactly the
+/// variables this repo pins the bus with, per process, into a tempdir that is
+/// gone by the time a later test inherits the daemon.
+///
+/// Why the SPDP probe cannot cover this, measured on Humble (issue 1333):
+///
+/// | daemon's RMW        | SPDP `7400+250*d` | daemon port `11511+d` |
+/// | ------------------- | ----------------- | --------------------- |
+/// | `rmw_cyclonedds_cpp`| bound             | listening             |
+/// | `rmw_fastrtps_cpp`  | bound             | listening             |
+/// | `rmw_zenoh_cpp`     | **unbound**       | listening             |
+///
+/// A zenoh daemon is not an RTPS participant and binds no SPDP port at all, so
+/// the discovery probe reports the domain FREE and hands out a domain that
+/// already carries a foreign daemon. zenoh is this project's default RMW, which
+/// makes the blind spot exactly coincident with the common case.
+///
+/// This matters more here than for a single-domain user, not less:
+/// [`unique_ros_domain_id`] RECYCLES domains, and a daemon lingers for two hours
+/// after its last use (`ros2cli.daemon.serve`'s inactivity timeout), so a later
+/// test landing on a recycled domain is the expected case rather than a rare one.
+///
+/// TCP rather than UDP, and loopback only — the daemon binds `127.0.0.1`. Same
+/// degradation rule as its sibling: `/proc` unreadable, or not Linux, answers
+/// "not busy". A probe that cannot see must not invent.
+#[cfg(target_os = "linux")]
+fn domain_daemon_port_busy(domain: u8) -> bool {
+    let want = 11511u32 + u32::from(domain);
+    for table in ["/proc/net/tcp", "/proc/net/tcp6"] {
+        let Ok(body) = std::fs::read_to_string(table) else {
+            continue;
+        };
+        for line in body.lines().skip(1) {
+            // `sl  local_address rem_address st …` — st 0A is TCP_LISTEN.
+            let mut f = line.split_whitespace();
+            let (Some(local), Some(_rem), Some(st)) = (f.nth(1), f.next(), f.next()) else {
+                continue;
+            };
+            if !st.eq_ignore_ascii_case("0A") {
+                continue;
+            }
+            let Some((_, port_hex)) = local.rsplit_once(':') else {
+                continue;
+            };
+            if u32::from_str_radix(port_hex, 16).ok() == Some(want) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[cfg(not(target_os = "linux"))]
+fn domain_daemon_port_busy(_domain: u8) -> bool {
+    false
+}
+
+/// Is anything at all occupying this domain — a DDS participant, or a ros2cli
+/// daemon? The predicate [`unique_ros_domain_id`] actually wants.
+///
+/// Issue 1333 — the two probes answer different questions and neither implies
+/// the other. See [`domain_daemon_port_busy`] for the measured table.
+fn domain_busy(domain: u8) -> bool {
+    domain_discovery_port_busy(domain) || domain_daemon_port_busy(domain)
+}
+
 /// [`domain_in_slot`], stepping to the next block while the domain is occupied.
 ///
 /// Split out from [`unique_ros_domain_id`] so the stepping is testable without
@@ -423,10 +499,10 @@ pub fn unique_ros_domain_id() -> u8 {
         // engineer does when retesting a red solo (which CLAUDE.md prescribes),
         // i.e. the moment they are most likely to be chasing a ghost is the one
         // guaranteed to reuse the bus that produced it.
-        return domain_avoiding_busy(slot, seq, domain_discovery_port_busy);
+        return domain_avoiding_busy(slot, seq, domain_busy);
     }
     let pid = std::process::id();
-    domain_avoiding_busy(pid, seq, domain_discovery_port_busy)
+    domain_avoiding_busy(pid, seq, domain_busy)
 }
 
 /// Poll a file descriptor for readability using poll(2).
@@ -1100,6 +1176,66 @@ mod tests {
         let got = super::domain_avoiding_busy(0, 0, |d| d == first);
         assert_ne!(got, first, "stayed on the occupied domain");
         assert!((1..=super::TEST_DOMAIN_MAX as u8).contains(&got));
+    }
+
+    // ---- issue 1333: a ros2cli daemon occupies a domain too ----------------
+
+    /// The reproduction, with no ROS 2 install required.
+    ///
+    /// A ros2cli daemon is just a TCP listener on `127.0.0.1:11511+domain`
+    /// (`ros2cli.daemon.get_port()`), so binding that port IS the hazard as far
+    /// as the probe is concerned — and binding it ourselves makes the test
+    /// deterministic instead of dependent on a daemon somebody left running.
+    ///
+    /// Negative control is the same domain a moment earlier: the assertion is
+    /// that the probe CHANGES its answer when the port is taken, not merely
+    /// that it says "busy" (a probe stuck at `true` would pass the second half
+    /// alone, and that is the failure mode issue 1043 records for this shape).
+    #[test]
+    fn a_bound_daemon_port_makes_the_domain_busy() {
+        use std::net::TcpListener;
+
+        // Find a domain whose daemon port is genuinely free right now, so a
+        // daemon a previous run left behind cannot make this vacuous.
+        let Some(domain) = (1..=super::TEST_DOMAIN_MAX as u8).find(|d| {
+            !super::domain_daemon_port_busy(*d) && !super::domain_discovery_port_busy(*d)
+        }) else {
+            crate::skip!(
+                "every test domain's daemon port is already bound; nothing free \
+                 to measure against"
+            );
+        };
+
+        // Negative control FIRST — the probe must be capable of saying "free".
+        assert!(
+            !super::domain_busy(domain),
+            "domain {domain} was picked for being free and did not read free"
+        );
+
+        let listener = TcpListener::bind(("127.0.0.1", 11511 + u16::from(domain)))
+            .expect("could not bind the daemon port the probe is about to read");
+
+        assert!(
+            super::domain_daemon_port_busy(domain),
+            "a LISTENING socket on 127.0.0.1:{} was invisible to the probe — \
+             this is the zenoh case, where no SPDP port is ever bound and the \
+             daemon port is the only evidence there is",
+            11511 + u16::from(domain)
+        );
+        assert!(
+            super::domain_busy(domain),
+            "domain_daemon_port_busy saw it but domain_busy did not — the \
+             allocator consults the latter, so only that one matters"
+        );
+
+        // And the allocator must actually move off it.
+        let stepped = super::domain_avoiding_busy(0, 0, |d| d == domain || super::domain_busy(d));
+        assert_ne!(
+            stepped, domain,
+            "the allocator handed out a domain carrying a foreign daemon"
+        );
+
+        drop(listener);
     }
 
     #[test]
