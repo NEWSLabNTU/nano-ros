@@ -15,7 +15,7 @@ void Listener::on_msg(const ::std_msgs::msg::Int32& msg) {
                 ++recv_);
 }
 
-::rclcpp::Result Listener::configure(::nros::Node& node) {
+::rclcpp::Result Listener::configure(::rclcpp::Node& node) {
     // Typed member binding (RFC-0044): keyexpr + deserialize come from the
     // generated `std_msgs::msg::Int32` (issue #218 — hand-decode retired).
     ::rclcpp::Result r =

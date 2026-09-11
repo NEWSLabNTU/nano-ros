@@ -63,7 +63,7 @@
  * Obtain the handle from a Node via `node.get_logger()`:
  *
  * ```cpp
- * nros::Node node;
+ * rclcpp::Node node;
  * NROS_TRY(nros::create_node(node, "my_node"));
  * auto logger = node.get_logger();
  * NROS_LOG_INFO(logger, "started; domain=%u", 42);
@@ -176,7 +176,8 @@ template <typename T> struct refuse {
     "statistics collector and no /rosout topic, so there is nothing for these knobs to switch. "   \
     "Use: node->declare_parameter<T>(name, default) for parameter overrides; the launch file "     \
     "for remaps; and drop the option chain. `rclcpp::NodeOptions{}` itself still constructs, so "  \
-    "the `Node(name, options)` constructor shape a composable node needs keeps compiling."
+    "the `::rclcpp::Node(name, options)` constructor shape a composable node needs keeps "         \
+    "compiling."
 
 #define NROS_RCLCPP_REFUSE_INIT_ARGV                                                               \
     "rclcpp::init(argc, argv) was given --ros-args, which nano-ros cannot honour "                 \
@@ -255,7 +256,7 @@ class Logger {
     explicit Logger(const char* name = "") : name_(name), handle_(nullptr) {}
 
     /// phase-427 W5 — the name PLUS the opaque `nros_log::Logger` handle the
-    /// `NROS_LOG_*` macros dispatch through. `nros::Node::get_logger()` builds
+    /// `NROS_LOG_*` macros dispatch through. `rclcpp::Node::get_logger()` builds
     /// one of these; `rclcpp::get_logger("free")` leaves the handle null,
     /// because a free-standing name has no node behind it.
     Logger(const char* name, const void* handle) : name_(name), handle_(handle) {}
@@ -266,7 +267,7 @@ class Logger {
     ///
     /// This is what let `get_logger()` become ONE accessor with upstream's
     /// return type without breaking the native call sites. Before the merge
-    /// there were two: `nros::Node::get_logger() -> const void*` for
+    /// there were two: `rclcpp::Node::get_logger() -> const void*` for
     /// `NROS_LOG_INFO(logger, …)`, and the shim's `-> rclcpp::Logger` for
     /// `RCLCPP_INFO(get_logger(), …)`. Two overloads differing only in return
     /// type are ill-formed, so the ported channel won (RFC-0089 clause 2) and

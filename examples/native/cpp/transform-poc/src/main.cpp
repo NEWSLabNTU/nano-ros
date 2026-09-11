@@ -43,7 +43,7 @@ class Source {
     }
 
   public:
-    rclcpp::Result configure(nros::Node& node) {
+    rclcpp::Result configure(rclcpp::Node& node) {
         std::setvbuf(stdout, nullptr, _IONBF, 0);
         rclcpp::Result r = node.create_publisher(pub_, "/in");
         if (!r.ok()) return r;
@@ -65,7 +65,7 @@ class Relay {
     }
 
   public:
-    rclcpp::Result configure(nros::Node& node) {
+    rclcpp::Result configure(rclcpp::Node& node) {
         std::setvbuf(stdout, nullptr, _IONBF, 0);
         rclcpp::Result r = node.create_publisher(out_, "/out");
         if (!r.ok()) return r;
@@ -82,7 +82,7 @@ class Sink {
     }
 
   public:
-    rclcpp::Result configure(nros::Node& node) {
+    rclcpp::Result configure(rclcpp::Node& node) {
         std::setvbuf(stdout, nullptr, _IONBF, 0);
         rclcpp::Result r =
             nros::bind_subscription_raw<Sink, &Sink::on_out>(node, "/out", Int32::TYPE_NAME, this);
@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
     const char* role = (argc > 1) ? argv[1] : "relay";
     std::printf("transform-poc role=%s\n", role);
 
-    nros::Node node;
+    rclcpp::Node node;
     Source source;
     Relay relay;
     Sink sink;

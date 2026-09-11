@@ -97,7 +97,7 @@ int nros_app_main(int argc, char** argv) {
     // (`$NROS_LOCATOR` / `$ROS_DOMAIN_ID`) active today.
     NROS_TRY_RET(nros::init_with_launch_auto(argc, argv), 1);
 
-    nros::Node node;
+    rclcpp::Node node;
     NROS_TRY_RET(nros::create_node(node, "fibonacci_action_client_cb"), 1);
     printf("Node created: %s\n", node.get_name());
 

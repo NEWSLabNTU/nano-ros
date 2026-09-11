@@ -22,7 +22,7 @@ void ReadingTalker::on_tick() {
     count_++;
 }
 
-::rclcpp::Result ReadingTalker::configure(::nros::Node& node) {
+::rclcpp::Result ReadingTalker::configure(::rclcpp::Node& node) {
     // `::setvbuf` (C global): line-buffer stdout so each `sent seq=` flushes live.
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     ::rclcpp::Result r = node.create_publisher(pub_, "/reading");

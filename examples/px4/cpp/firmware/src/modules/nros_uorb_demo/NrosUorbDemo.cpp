@@ -54,7 +54,7 @@ namespace {
 
 // Type tags, not message definitions.
 //
-// nros::Node::create_publisher<M> needs M::TYPE_NAME and M::TYPE_HASH; the typed
+// rclcpp::Node::create_publisher<M> needs M::TYPE_NAME and M::TYPE_HASH; the typed
 // publish() path would additionally need M::ffi_publish, and we never call it.
 // On uORB both strings are IGNORED — topic identity is the orb_metadata pointer
 // registered below — so the ROS type name is carried for documentation and for
@@ -96,7 +96,7 @@ class NrosUorbDemo : public ModuleBase<NrosUorbDemo>, public px4::ScheduledWorkI
   private:
     void Run() override;
 
-    nros::Node _node{};
+    rclcpp::Node _node{};
     rclcpp::Publisher<DebugKeyValueTag> _debug_pub{};
     rclcpp::Subscription<VehicleStatusTag> _status_sub{};
 

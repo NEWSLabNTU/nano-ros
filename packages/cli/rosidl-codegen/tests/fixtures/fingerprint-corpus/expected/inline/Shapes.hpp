@@ -19,8 +19,8 @@
 
 #include <nros/nros_config_generated.h>
 
-/* RFC-0090 — emitted by nano-ros codegen version 3. */
-#define NROS_EMITTED_CODEGEN_VERSION 3
+/* RFC-0090 — emitted by nano-ros codegen version 4. */
+#define NROS_EMITTED_CODEGEN_VERSION 4
 
 #ifndef NROS_CODEGEN_VERSION
 #error "nros: the generated config header did not define NROS_CODEGEN_VERSION. This generated artifact cannot tell whether the runtime accepts it; rebuild the nano-ros runtime so its config header is regenerated."
@@ -143,7 +143,7 @@ struct Shapes {
 // which is a fact about the GENERATOR, and a future non-CDR pack specializes the
 // same slot instead of silently riding the default.
 //
-// `nros::Node::create_publisher` / `create_subscription` static_assert on this
+// `rclcpp::Node::create_publisher` / `create_subscription` static_assert on this
 // against the format the linked backend speaks — one image, one backend, one
 // encoding.
 namespace nros {

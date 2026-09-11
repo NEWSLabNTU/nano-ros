@@ -940,8 +940,13 @@ cpp: cpp-fmt
     # stops compiling at `declare_parameter`, which is W2 working, not a
     # regression. The freestanding half has its own probe below and correctly
     # takes no flag.
+    # `-Wno-deprecated-declarations`: this TU names `nros::Node` ON PURPOSE --
+    # it is the one file in the tree left un-migrated by phase-427 W7, because
+    # its whole subject is that BOTH spellings name one type. The negative twin
+    # below asserts the attribute fires.
     echo "  - one node type: hosted shape + both create families (c++14, -DNROS_CPP_STD)"
     c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -DNROS_CPP_STD=1 \
+        -Wno-deprecated-declarations \
         -Itarget/nros-cpp-generated \
         -Itarget/nros-c-generated \
         -Ipackages/api/nros-cpp/include \
@@ -957,6 +962,44 @@ cpp: cpp-fmt
         -Ipackages/api/nros-c/include \
         -Ipackages/platform/nros-platform-api/include \
         packages/api/nros-cpp/tests/compile/one_node_type_freestanding.cpp
+    # phase-427 W7 — ...and the deprecated `nros::Node` spelling WARNS.
+    #
+    # The positive twin is `one_node_type.cpp` above: one type, two names. This
+    # is the other half — one of those names is on its way out, and a
+    # deprecation nobody is told about is just an alias. NEGATIVE assertion,
+    # because a clean compile is exactly what a silently-dropped attribute looks
+    # like, and asserted-present first, because a missing file is also a
+    # non-zero `c++` and reads as a pass.
+    test -f packages/api/nros-cpp/tests/compile/node_deprecation_probe.cpp || { \
+        echo "ERROR: node_deprecation_probe.cpp is MISSING -- the expected-failure" >&2; \
+        echo "       check below would PASS on a missing file." >&2; \
+        exit 1; \
+    }
+    echo "  - ...and the deprecated nros::Node spelling WARNS"
+    mkdir -p tmp
+    if c++ -fsyntax-only -std=c++14 -fno-exceptions -fno-rtti -DNROS_CPP_STD=1 \
+        -Werror=deprecated-declarations \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-cpp/tests/compile/node_deprecation_probe.cpp \
+        > tmp/refuse-nros-node.log 2>&1; then \
+        echo "ERROR: nros::Node no longer warns. RFC-0089 phases the nros:: vocabulary" >&2; \
+        echo "       out, and this attribute is the only thing telling a consumer who" >&2; \
+        echo "       copied examples/templates/** out of nros-v0.5.0 to write" >&2; \
+        echo "       rclcpp::Node instead." >&2; \
+        exit 1; \
+    fi
+    # "It failed" is also what a typo produces: the diagnostic must name the
+    # replacement, because that naming IS the migration.
+    nros_grep_q 'write rclcpp::Node' tmp/refuse-nros-node.log && _rc=0 || _rc=$?
+    if [ "$_rc" -ne 0 ]; then \
+        echo "ERROR: the nros::Node deprecation no longer names its replacement." >&2; \
+        echo "       See tmp/refuse-nros-node.log." >&2; \
+        exit 1; \
+    fi
     # Expected-failure, asserted-present first for the reason every other
     # probe of this shape is: a missing file is also a non-zero c++, and reads
     # as a pass.

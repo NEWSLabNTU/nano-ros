@@ -35,7 +35,7 @@ target_compile_definitions(my_ported_node PRIVATE NROS_CPP_STD=1)
 Two things worth knowing before you reach for it:
 
 * **This is not a host-versus-embedded switch.** Code written against
-  `nros::Node` does not want the flag on a native Linux build either; ported
+  `rclcpp::Node` does not want the flag on a native Linux build either; ported
   rclcpp code wants it on a Cortex-M3 build just as much. The split is *whose
   code it is*, not *what it runs on*. See
   [C++ API — two surfaces](../reference/cpp-api.md#two-surfaces-freestanding-and-nros_cpp_std).
@@ -138,7 +138,7 @@ The compat surface covers the patterns a typical ROS 2 C++ node uses:
 
 | rclcpp surface | nano-ros mapping | Notes |
 |---|---|---|
-| `class MyNode : public rclcpp::Node` | `rclcpp::Node` IS `nros::Node` — one type, both spellings | Ctor takes `(name)`, `(name, options)` or `(name, ns, options)`. |
+| `class MyNode : public rclcpp::Node` | `rclcpp::Node` — ours, and the same name. (`nros::Node` is a deprecated alias for it; write `rclcpp::`.) | Ctor takes `(name)`, `(name, options)` or `(name, ns, options)`. |
 | `std::make_shared<MyNode>()` | works | `shared_from_this()` works too, with one caveat — see "Two things the compiler will not tell you" below. |
 | `create_publisher<M>(topic, qos)` | shared_ptr-returning wrapper | `qos` can be `rclcpp::QoS(10)` or an int. |
 | `create_subscription<M>(topic, qos, callback)` | registered on the executor arena; dispatched by **any** spin verb | **Capturing lambdas + `std::function` all work**. |

@@ -102,7 +102,7 @@ inline bool comparisons_and_container_use(const uint8_t raw_a[16], const uint8_t
 
 // ── 3. The callback tier: verbs + both id spellings ───────────────────────
 
-inline ::nros::Result callback_tier_server(::nros::Node& node) {
+inline ::nros::Result callback_tier_server(::rclcpp::Node& node) {
     ::nros::ActionServer<Fib> server;
     ::nros::Result r = node.create_action_server(server, "/fib");
 
@@ -136,7 +136,7 @@ inline ::nros::Result callback_tier_server(::nros::Node& node) {
     return r;
 }
 
-inline ::nros::Result callback_tier_client(::nros::Node& node) {
+inline ::nros::Result callback_tier_client(::rclcpp::Node& node) {
     ::nros::ActionClient<Fib> client;
     ::nros::Result r = node.create_action_client(client, "/fib");
 
@@ -169,7 +169,7 @@ inline ::nros::Result callback_tier_client(::nros::Node& node) {
 
 // ── 4. The polling (L1) tier — the same four surfaces ─────────────────────
 
-inline ::nros::Result polling_tier_server(::nros::Node& node) {
+inline ::nros::Result polling_tier_server(::rclcpp::Node& node) {
     ::nros::PollingActionServer<Fib> server;
     ::nros::Result r = node.create_polling_action_server(server, "/fib");
 
@@ -202,7 +202,7 @@ inline ::nros::Result polling_tier_server(::nros::Node& node) {
     return r;
 }
 
-inline ::nros::Result polling_tier_client(::nros::Node& node) {
+inline ::nros::Result polling_tier_client(::rclcpp::Node& node) {
     ::nros::PollingActionClient<Fib> client;
     ::nros::Result r = node.create_polling_action_client(client, "/fib");
 

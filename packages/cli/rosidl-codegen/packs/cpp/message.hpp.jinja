@@ -195,7 +195,7 @@ static constexpr {{ constant.c_type }} {{ message_name }}_{{ constant.name }} = 
 // which is a fact about the GENERATOR, and a future non-CDR pack specializes the
 // same slot instead of silently riding the default.
 //
-// `nros::Node::create_publisher` / `create_subscription` static_assert on this
+// `rclcpp::Node::create_publisher` / `create_subscription` static_assert on this
 // against the format the linked backend speaks — one image, one backend, one
 // encoding.
 namespace nros {

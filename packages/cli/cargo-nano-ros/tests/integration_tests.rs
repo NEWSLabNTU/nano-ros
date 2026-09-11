@@ -853,7 +853,7 @@ mod component_scaffold {
 
         // Header at include/<pkg>/<Class>.hpp (typed Entry includes it by that path).
         let hpp = fs::read_to_string(dir.join("include/cpp_talker/Talker.hpp")).unwrap();
-        assert!(hpp.contains("::nros::Result configure(::nros::Node& node);"));
+        assert!(hpp.contains("::nros::Result configure(::rclcpp::Node& node);"));
         assert!(hpp.contains("#include <nros/component.hpp>"));
         assert!(
             !hpp.contains("register_node") && !hpp.contains("NodeContext"),
@@ -861,7 +861,7 @@ mod component_scaffold {
         );
 
         let cpp = fs::read_to_string(dir.join("src/Talker.cpp")).unwrap();
-        assert!(cpp.contains("::nros::Result Talker::configure(::nros::Node& node)"));
+        assert!(cpp.contains("::nros::Result Talker::configure(::rclcpp::Node& node)"));
         assert!(cpp.contains("create_wall_timer<Talker, &Talker::on_tick>"));
         assert!(
             !cpp.contains("NROS_NODE_REGISTER") && !cpp.contains("DeclaredNode"),

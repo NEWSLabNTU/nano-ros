@@ -97,7 +97,7 @@ NROS_TRY(nros::Executor::create(executor, "tcp/127.0.0.1:7447"));
 ### Node
 
 ```cpp
-nros::Node node;
+rclcpp::Node node;
 NROS_TRY(nros::create_node(node, "my_node"));
 
 // Or with explicit executor:
@@ -309,7 +309,7 @@ guard.trigger();
 nros::Executor executor;
 NROS_TRY(nros::Executor::create(executor));
 
-nros::Node node;
+rclcpp::Node node;
 NROS_TRY(executor.create_node(node, "my_node"));
 
 // Create publishers, subscriptions, etc. on node...
@@ -371,7 +371,7 @@ below, plus `rclcpp::Node` and its `std::shared_ptr`-returning factories.
 
 **Ask for it when you are compiling ported rclcpp code; do not ask for it
 otherwise.** The split is *whose code it is*, not *what it runs on* — a native
-Linux build of a node written against `nros::Node` stays on the freestanding
+Linux build of a node written against `rclcpp::Node` stays on the freestanding
 surface, and a ported upstream node wants this flag on a Cortex-M3 build just
 as much as on a host. Nothing detects it for you: the headers do not probe the
 include path, because no probe answers correctly on both embedded lanes (the
@@ -473,7 +473,7 @@ int main(void)
     nros::Result ret = nros::init(CONFIG_NROS_ZENOH_LOCATOR, CONFIG_NROS_DOMAIN_ID);
     if (!ret.ok()) return 1;
 
-    nros::Node node;
+    rclcpp::Node node;
     NROS_TRY(nros::create_node(node, "my_node"));
 
     // ... create publishers, subscriptions, etc.

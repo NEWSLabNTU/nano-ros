@@ -22,7 +22,7 @@ class QosListener {
     void on_msg(const ::std_msgs::msg::Int32& msg); // typed member callback
 
   public:
-    ::rclcpp::Result configure(::nros::Node& node);
+    ::rclcpp::Result configure(::rclcpp::Node& node);
 };
 
 } // namespace cpp_qos_listener_pkg

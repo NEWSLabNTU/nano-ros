@@ -14,7 +14,7 @@ int main() {
     NROS_TRY(nros::init("tcp/127.0.0.1:7447"));
 
     // 2. Create a node.
-    nros::Node node;
+    rclcpp::Node node;
     NROS_TRY(nros::create_node(node, "cpp_talker"));
 
     // 3. Create a typed publisher.
@@ -44,7 +44,7 @@ The C++ API is organised into the following module groups (see the
 | Group | Description |
 |-------|-------------|
 | @ref grp_init "init"           | Library initialisation, global session, `nros::ok()` |
-| @ref grp_node "node"           | Node creation and lifecycle (`nros::Node`) |
+| @ref grp_node "node"           | Node creation and lifecycle (`rclcpp::Node`) |
 | @ref grp_pubsub "pubsub"       | Publishers and subscriptions (`nros::Publisher<M>`, `nros::Subscription<M>`) |
 | @ref grp_service "service"     | Service servers and clients (`nros::Service<S>`, `nros::Client<S>`) |
 | @ref grp_action "action"       | Action servers and clients (`nros::ActionServer<A>`, `nros::ActionClient<A>`) |

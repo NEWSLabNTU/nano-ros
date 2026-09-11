@@ -21,7 +21,7 @@ class Talker {
     void on_tick(); // real body, bound by identity
 
   public:
-    ::rclcpp::Result configure(::nros::Node& node);
+    ::rclcpp::Result configure(::rclcpp::Node& node);
 };
 
 } // namespace zephyr_cpp_talker

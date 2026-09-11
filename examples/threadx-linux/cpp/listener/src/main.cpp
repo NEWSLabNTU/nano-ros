@@ -49,7 +49,7 @@ int nros_app_main(int argc, char** argv) {
     // from `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` at runtime.
     NROS_TRY_RET(nros::init(), 1);
 
-    nros::Node node;
+    rclcpp::Node node;
     NROS_TRY_RET(nros::create_node(node, "listener"), 1);
     printf("Node created: %s\n", node.get_name());
 

@@ -4,7 +4,7 @@
 /**
  * @file node.hpp
  * @ingroup grp_node
- * @brief `nros::Node` and global session helpers.
+ * @brief `rclcpp::Node` and global session helpers.
  */
 
 #ifndef NROS_CPP_NODE_HPP
@@ -475,7 +475,7 @@ inline void* global_handle();
 // ============================================================================
 // rclcpp:: — the HOME of the C++ node type (RFC-0089 §"Settled: `rclcpp::` is
 // the HOME, not an alias onto `nros::`"). phase-427 W7 flipped the direction:
-// the class is DEFINED here and `nros::Node` below is the migration alias, the
+// the class is DEFINED here and `rclcpp::Node` below is the migration alias, the
 // same shape the other nine types already carry (`clock.hpp`, `duration.hpp`,
 // `time.hpp`, `publisher.hpp`, `subscription.hpp`, `client.hpp`, `service.hpp`,
 // `action_client.hpp`, `action_server.hpp`).
@@ -495,7 +495,7 @@ inline void* global_handle();
 // re-merged by a using-directive.
 // ============================================================================
 namespace rclcpp {
-/// The node — `rclcpp::Node`, and `nros::Node`, which are ONE TYPE
+/// The node — `rclcpp::Node`, and `rclcpp::Node`, which are ONE TYPE
 /// (phase-427). The primary interface for creating ROS entities: publishers,
 /// subscriptions, services, timers are all created through it, and it holds a
 /// reference to the parent executor session.
@@ -508,12 +508,12 @@ namespace rclcpp {
 ///
 /// Three shapes collapsed here: the freestanding out-ref node, the hosted
 /// `shared_ptr` node that used to be a separate `rclcpp::Node` in `nros.hpp`,
-/// and (from RFC-0044) the derivable component base. `nros::Node` is declared
+/// and (from RFC-0044) the derivable component base. `rclcpp::Node` is declared
 /// as an alias for this class at the bottom of this header, so
-/// `std::is_same<rclcpp::Node, nros::Node>::value` is true and there is exactly
+/// `std::is_same<rclcpp::Node, rclcpp::Node>::value` is true and there is exactly
 /// one set of entities, one arena registration path and one parameter facade.
 ///
-/// THE CLASS IS DEFINED HERE, in `rclcpp::`, and `nros::Node` is the alias —
+/// THE CLASS IS DEFINED HERE, in `rclcpp::`, and `rclcpp::Node` is the alias —
 /// RFC-0089 §"Settled: `rclcpp::` is the HOME, not an alias onto `nros::`", and
 /// the tenth and last type of the phase-428 flip. It was held back for two
 /// reasons, both now gone: two landed reviews (PRs #797, #806) were stacked on
@@ -2019,16 +2019,37 @@ namespace nros {
 /// `std::is_same<rclcpp::Node, nros::Node>::value` is true: one class, one set
 /// of entities, one arena registration path, one parameter facade.
 ///
-/// RFC-0089 §"Settled: `nros::` is phased out entirely" makes `rclcpp::` the
-/// vocabulary a user writes, and this alias is the migration step, not a second
-/// name to choose between. It is UNCONDITIONAL, unlike the shim class it
-/// replaced: that one lived inside `#if defined(NROS_CPP_HAS_SHARED_PTR) && …`,
-/// so a freestanding target had the node and not its ROS 2 name.
-using Node = ::rclcpp::Node;
-
-} // namespace nros
-
-namespace nros {
+/// **DEPRECATED — phase-427 W7.** RFC-0089 §"Settled: `nros::` is phased out
+/// entirely" makes `rclcpp::` the vocabulary a user writes, and this alias is
+/// the migration step, not a second name to choose between. Write
+/// `rclcpp::Node`; the change is textual, because it is the same class.
+///
+/// The attribute is UNCONDITIONAL, and so was the alias before it: the shim
+/// class this replaced lived inside `#if defined(NROS_CPP_HAS_SHARED_PTR) && …`,
+/// so a freestanding target had the node and NOT its ROS 2 name.
+///
+/// WHY IT IS NOT BEHIND A FEATURE MACRO, which is the question PR #753's Rust
+/// `#[cfg_attr(feature = …, deprecated)]` raises. #753 armed its deprecation
+/// because the tree had NOT migrated — 65 hard errors across 47 files — and
+/// `#[allow(deprecated)]` at every one of them would have suppressed the signal
+/// in exactly the code the deprecation was aimed at. That argument does not
+/// apply here: the same commit migrates all 258 in-tree C++ spellings, so the
+/// attribute costs no in-tree diagnostic at all. Every other deprecation this
+/// API ships is unconditional for the same reason (`nros::Expected<T>`,
+/// `nros::bind_timer`, `QoS::Liveliness`, the `QoS::*_ms(uint32_t)` family,
+/// `LifecycleNode::trigger(uint8_t)`). And a macro nothing in-tree defines
+/// would leave the probe as the only compiler that ever sees the attribute,
+/// which is a gate whose subject disappears.
+///
+/// OUT-OF-TREE REACH IS THE POINT, not a reason to hide it. `nros-v0.5.0`
+/// (2026-06-08) shipped `nros::Node` in six `examples/templates/**` files a
+/// user copies out, so copies of it exist that this checkout cannot reach. A
+/// warning naming `rclcpp::Node` is what those copies get; silence is what a
+/// feature-armed attribute would give them.
+using Node NROS_CPP_DEPRECATED_MSG(
+    "nros::Node is deprecated (phase-427 W7): write rclcpp::Node. Same type, so "
+    "the change is textual -- nros:: is the vocabulary RFC-0089 phases out and "
+    "rclcpp:: is the home.") = ::rclcpp::Node;
 
 // ==== phase-427 W4 — the timer pool, as a TEMPLATE PARAMETER ================
 //
@@ -2045,7 +2066,7 @@ namespace nros {
 // Why a derived template and not `template <size_t N> class Node` — measured,
 // not preferred. `Node` has to stay ONE non-template type: `rclcpp::Node` is an
 // alias for it and `tests/compile/one_node_type.cpp` asserts
-// `std::is_same<rclcpp::Node, nros::Node>`; 218 in-tree sites spell `Node` with
+// `std::is_same<rclcpp::Node, rclcpp::Node>`; 218 in-tree sites spell `Node` with
 // no argument list, which a class template with a defaulted parameter does not
 // permit; and every `Node&` parameter in the tree — `create_node(Node&)`,
 // `Executor`, `spin` — would otherwise accept only ONE depth, so a component
@@ -2092,12 +2113,14 @@ namespace nros {
 ///     void on_tick();
 /// };
 /// ```
-template <::size_t MaxTimers = NROS_COMPONENT_MAX_TIMERS> class NodeWithTimers : public Node {
-    static_assert(MaxTimers >= 1, "NodeWithTimers<0> has no pool -- derive Node directly, or use "
-                                  "the out-ref create_wall_timer(Timer&, ...) family");
+template <::size_t MaxTimers = NROS_COMPONENT_MAX_TIMERS>
+class NodeWithTimers : public ::rclcpp::Node {
+    static_assert(MaxTimers >= 1,
+                  "NodeWithTimers<0> has no pool -- derive ::rclcpp::Node directly, or use "
+                  "the out-ref create_wall_timer(Timer&, ...) family");
 
   public:
-    using Node::Node;
+    using ::rclcpp::Node::Node;
 
     /// Create a **typed member** repeating wall timer parked in the pool.
     ///
@@ -2161,8 +2184,8 @@ template <::size_t MaxTimers = NROS_COMPONENT_MAX_TIMERS> class NodeWithTimers :
     // The out-ref forms on `Node` share these names; bring them in so a derived
     // node can still spell `create_timer_in_group(group, my_timer_, 100, cb, ctx)`
     // without the pool overloads hiding the base by name lookup.
-    using Node::create_timer_in_group;
-    using Node::create_wall_timer;
+    using ::rclcpp::Node::create_timer_in_group;
+    using ::rclcpp::Node::create_wall_timer;
 
   private:
     /// The next free pool slot, or `nullptr` after latching an exhaustion
@@ -2264,8 +2287,8 @@ inline Result init(const char* locator, uint8_t domain_id, const char* session_n
 #else
     const char* rmw = nullptr;
 #endif
-    nros_cpp_ret_t ret =
-        nros_cpp_init_rmw(rmw, locator, domain_id, session_name, nullptr, Node::global_storage());
+    nros_cpp_ret_t ret = nros_cpp_init_rmw(rmw, locator, domain_id, session_name, nullptr,
+                                           ::rclcpp::Node::global_storage());
     // No flag to set: `nros_cpp_init_rmw` stamps the context tag, and
     // `global_initialized()` reads it.
     return Result(ret);
@@ -2291,20 +2314,20 @@ inline Result init_with_rmw(const char* rmw, const char* locator, uint8_t domain
     // No `NROS_ENTRY_RMW` fallback here: an explicit argument that resolves to
     // nullptr is the caller saying "no selector", and quietly substituting the
     // bake would make this overload unable to express that.
-    nros_cpp_ret_t ret =
-        nros_cpp_init_rmw(rmw, locator, domain_id, session_name, nullptr, Node::global_storage());
+    nros_cpp_ret_t ret = nros_cpp_init_rmw(rmw, locator, domain_id, session_name, nullptr,
+                                           ::rclcpp::Node::global_storage());
     // No flag to set: `nros_cpp_init_rmw` stamps the context tag, and
     // `global_initialized()` reads it.
     return Result(ret);
 }
 
 inline Result shutdown() {
-    if (!Node::global_initialized()) {
+    if (!::rclcpp::Node::global_initialized()) {
         return Result::success();
     }
     // No flag to clear: `nros_cpp_fini` unstamps the tag, which is what
     // `global_initialized()` reads. One owner of the fact.
-    return Result(nros_cpp_fini(Node::global_storage()));
+    return Result(nros_cpp_fini(::rclcpp::Node::global_storage()));
 }
 
 // -- Phase 212.L.5 launch-aware init --
@@ -2353,7 +2376,7 @@ inline Result init_with_launch(const char* path, int argc, char** argv, const ch
 
 /// Check if the nros session is initialized.
 inline bool ok() {
-    return Node::global_initialized();
+    return ::rclcpp::Node::global_initialized();
 }
 
 /// Create a node (convenience — uses the global executor).
@@ -2363,12 +2386,12 @@ inline bool ok() {
 /// @param out   Receives the initialized node.
 /// @param name  Node name.
 /// @param ns    Node namespace, or nullptr for "/".
-inline Result create_node(Node& out, const char* name, const char* ns = nullptr) {
-    if (!Node::global_initialized()) {
+inline Result create_node(::rclcpp::Node& out, const char* name, const char* ns = nullptr) {
+    if (!::rclcpp::Node::global_initialized()) {
         return Result(ErrorCode::NotInitialized);
     }
-    out.executor_handle_ = Node::global_storage();
-    return Node::create(out, name, ns);
+    out.executor_handle_ = ::rclcpp::Node::global_storage();
+    return ::rclcpp::Node::create(out, name, ns);
 }
 
 /// Phase 274.W2 — create a node on an explicit executor handle.
@@ -2382,31 +2405,31 @@ inline Result create_node(Node& out, const char* name, const char* ns = nullptr)
 /// @param executor_handle  Explicit executor handle (from a tier setup param).
 /// @param name             Node name.
 /// @param ns               Node namespace, or nullptr for "/".
-inline Result create_node_on(Node& out, void* executor_handle, const char* name,
+inline Result create_node_on(::rclcpp::Node& out, void* executor_handle, const char* name,
                              const char* ns = nullptr) {
     if (executor_handle == nullptr) {
         return Result(ErrorCode::NotInitialized);
     }
     out.executor_handle_ = executor_handle;
-    return Node::create(out, name, ns);
+    return ::rclcpp::Node::create(out, name, ns);
 }
 
 /// Phase 123.B.4 — value-returning factory. Wraps `create_node`
 /// in the `ResultOf<Node>` envelope so users can write
 /// `auto n = nros::make_node("foo");` in the rclcpp-style.
-inline ResultOf<Node> make_node(const char* name, const char* ns = nullptr) {
-    Node n;
+inline ResultOf<::rclcpp::Node> make_node(const char* name, const char* ns = nullptr) {
+    ::rclcpp::Node n;
     Result r = create_node(n, name, ns);
-    if (!r.ok()) return ResultOf<Node>::error(r);
-    return ResultOf<Node>::ok(::std::move(n));
+    if (!r.ok()) return ResultOf<::rclcpp::Node>::error(r);
+    return ResultOf<::rclcpp::Node>::ok(::std::move(n));
 }
 
 // -- Executor::create_node implementation (requires full Node definition) --
 
-inline Result Executor::create_node(Node& out, const char* name, const char* ns) {
+inline Result Executor::create_node(::rclcpp::Node& out, const char* name, const char* ns) {
     if (!initialized_) return Result(ErrorCode::NotInitialized);
     out.executor_handle_ = storage_;
-    return Node::create(out, name, ns);
+    return ::rclcpp::Node::create(out, name, ns);
 }
 
 // -- Phase 104.C.9 — NodeBuilder ----------------------------------------
@@ -2419,7 +2442,7 @@ inline Result Executor::create_node(Node& out, const char* name, const char* ns)
 //
 // Usage:
 // ```cpp
-// nros::Node node;
+// rclcpp::Node node;
 // NROS_TRY(executor.node_builder("egress")
 //              .rmw("cyclonedds")
 //              .domain_id(0)
@@ -2470,7 +2493,7 @@ class NodeBuilder {
     }
 
     /// Materialize the Node.
-    Result build(Node& out) const {
+    Result build(::rclcpp::Node& out) const {
         if (!executor_handle_) return Result(ErrorCode::NotInitialized);
         out.executor_handle_ = executor_handle_;
         nros_cpp_ret_t ret =

@@ -13,7 +13,7 @@ not in node code.
 
 Tiers live in `src/demo_bringup/system.toml` (`[tiers.high]` / `[tiers.low]` +
 `[[component]].group_tiers`); the components are configure-shape
-(`Result configure(nros::Node&)`).
+(`Result configure(rclcpp::Node&)`).
 
 ## Run
 

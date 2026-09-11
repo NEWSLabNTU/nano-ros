@@ -141,12 +141,12 @@ class PooledNode : public ::nros::NodeWithTimers<2> {
     ::nros::Publisher<CounterMsg> pub_;
 };
 
-static_assert(::std::is_base_of<::nros::Node, PooledNode>::value,
+static_assert(::std::is_base_of<::rclcpp::Node, PooledNode>::value,
               "a component IS-A Node now -- ComponentNode only ever wrapped one");
 
 // The pool is opt-in, and that is the whole point of making its depth a
 // template parameter: a plain `Node` must not carry the bytes.
-static_assert(sizeof(::nros::NodeWithTimers<2>) > sizeof(::nros::Node),
+static_assert(sizeof(::nros::NodeWithTimers<2>) > sizeof(::rclcpp::Node),
               "NodeWithTimers<N> is the node PLUS a pool");
 
 // --- (3) NEGATIVE CONTROL — the pre-rename shape binds the wrong overload ----
@@ -195,7 +195,7 @@ void pre_rename_negative_control(MergedBeforeRename& n) {
 //
 // phase-427 follow-on. Two suffixes had collapsed into one: `_in` meant "in a
 // callback group" from phase 273 (RFC-0047) and, after W4, also "ours-only /
-// storage-free". Both meanings sat on `nros::Node`, and one overload —
+// storage-free". Both meanings sat on `rclcpp::Node`, and one overload —
 // `create_subscription_in<M, C, &C::method>(group, topic, qos)` — was in both.
 //
 // The compiler was never confused: `const CallbackGroup&` and `const char*` do
@@ -231,11 +231,11 @@ struct pub_has_group_verb<
            ::std::declval<const ::nros::CallbackGroup&>(),
            ::std::declval<::nros::Publisher<CounterMsg>&>(), "t"))>> : ::std::true_type {};
 
-static_assert(!pub_short_name_takes_group<::nros::Node>::value,
+static_assert(!pub_short_name_takes_group<::rclcpp::Node>::value,
               "`create_publisher_in` must be the OURS-ONLY form only. A callback group as the "
               "first parameter is spelled `create_publisher_in_group` -- one suffix, one meaning "
               "(RFC-0089, \"The `_in` rule, amended\")");
-static_assert(pub_has_group_verb<::nros::Node>::value,
+static_assert(pub_has_group_verb<::rclcpp::Node>::value,
               "`create_publisher_in_group` must exist: the split renamed the group form, it did "
               "not delete the capability");
 
@@ -270,7 +270,7 @@ static_assert(timer_has_group_verb<::nros::NodeWithTimers<2>>::value,
 // split.
 
 struct PreSplitPublisherNode {
-    // The group form, under the SHORT name -- what `nros::Node` carried before.
+    // The group form, under the SHORT name -- what `rclcpp::Node` carried before.
     template <typename M>
     ::nros::Result create_publisher_in(const ::nros::CallbackGroup&, ::nros::Publisher<M>&,
                                        const char*,
@@ -289,7 +289,7 @@ struct PreSplitTimerNode {
 static_assert(pub_short_name_takes_group<PreSplitPublisherNode>::value,
               "NEGATIVE CONTROL: on the pre-split shape the SHORT publisher name must accept a "
               "group. If this fires the detector is broken, not the header, and the assertion "
-              "that `nros::Node` no longer accepts one is proving nothing");
+              "that `rclcpp::Node` no longer accepts one is proving nothing");
 static_assert(!pub_has_group_verb<PreSplitPublisherNode>::value,
               "NEGATIVE CONTROL: the pre-split shape had no `_in_group` spelling at all");
 static_assert(timer_short_name_takes_group<PreSplitTimerNode>::value,

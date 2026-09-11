@@ -55,7 +55,7 @@ static constexpr size_t PUBLISHER_TOPIC_NAME_MAX = 256;
 ///
 /// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
 /// An elaborated `class Node;` in `nros::` would now declare a SECOND, distinct
-/// class and collide with the `nros::Node` alias.
+/// class and collide with the `rclcpp::Node` alias.
 namespace rclcpp {
 class Node;
 }
@@ -391,7 +391,7 @@ namespace nros {
 /// `auto pub = nros::create_publisher<Int32>(node, "/chatter");`
 /// in the rclcpp-style.
 template <typename M>
-inline ResultOf<Publisher<M>> create_publisher(Node& node, const char* topic,
+inline ResultOf<Publisher<M>> create_publisher(::rclcpp::Node& node, const char* topic,
                                                const QoS& qos = QoS::default_profile()) {
     Publisher<M> p;
     Result r = node.create_publisher<M>(p, topic, qos);

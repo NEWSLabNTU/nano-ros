@@ -34,9 +34,9 @@ struct Int32 {
     }
 };
 
-class Listener : public ::nros::Node {
+class Listener : public ::rclcpp::Node {
   public:
-    explicit Listener(::nros::NodeHandle h) : ::nros::Node(h, "listener") {
+    explicit Listener(::nros::NodeHandle h) : ::rclcpp::Node(h, "listener") {
         // DECLARED @depth=1. PASSED depth 10. This line is the whole test.
         NROS_SUBSCRIBE(Int32, on_int, "/chatter", ::nros::QoS(10));
     }

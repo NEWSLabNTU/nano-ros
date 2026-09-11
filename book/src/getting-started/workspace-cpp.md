@@ -16,7 +16,7 @@ changes language-side is the cmake-fn / macro surface.
 
 | Role | Rust | C / C++ |
 |---|---|---|
-| **Node pkg** | `lib.rs` with `nros::node!(MyNode)` + `[package.metadata.nros.node]` in `Cargo.toml` | `Talker.{hpp,cpp}` with a `configure(::nros::Node&)` component method (C++) / `NROS_C_COMPONENT` (C); `CMakeLists.txt` calling `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057) |
+| **Node pkg** | `lib.rs` with `nros::node!(MyNode)` + `[package.metadata.nros.node]` in `Cargo.toml` | `Talker.{hpp,cpp}` with a `configure(::rclcpp::Node&)` component method (C++) / `NROS_C_COMPONENT` (C); `CMakeLists.txt` calling `nano_ros_auto_add_library` + `nros_components_register_node` (RFC-0057) |
 | **Bringup pkg** | `package.xml` + `system.toml` + `launch/*.launch.xml` (no `Cargo.toml`) | identical (language-agnostic) |
 | **Image** | `[image.native] board = "native"` in the bringup's `system.toml` | identical (language-agnostic) |
 | **The entry** | GENERATED into `build/<coord>/native_entry/` — a `Cargo.toml` and a `nros::main!(launch = "demo_bringup")` | GENERATED into `build/<coord>/CMakeLists.txt` — a `nano_ros_add_executable(native_entry BOARD … BRINGUP … LAUNCH … LANG cpp TYPED DEPLOY native)` call, plus the `main` TU the verb emits |
@@ -101,7 +101,7 @@ workspace; the per-pkg CMakeLists doesn't change between modes.
 ## Node pkg
 
 A **typed component** (RFC-0043) — no `main()`. The pkg ships a class with a
-`configure(::nros::Node&)` method that creates real entities (a `Publisher`, a
+`configure(::rclcpp::Node&)` method that creates real entities (a `Publisher`, a
 `Timer`) and binds member callbacks **by identity** (member-fn-pointer template
 param, no string callback name, no interpreter). The generated entry constructs
 the object and calls `configure(node)`; the executor dispatches the callbacks.
@@ -206,7 +206,7 @@ class Talker {
     void on_tick();  // real body; bound via &Talker::on_tick (no name)
 
   public:
-    ::nros::Result configure(::nros::Node& node);
+    ::nros::Result configure(::rclcpp::Node& node);
 };
 
 }  // namespace talker_pkg
@@ -224,7 +224,7 @@ void Talker::on_tick() {
     (void)pub_.publish(m);
 }
 
-::nros::Result Talker::configure(::nros::Node& node) {
+::nros::Result Talker::configure(::rclcpp::Node& node) {
     ::nros::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) return r;
     // Member-fn-pointer-as-template-param → no-alloc trampoline; `this` is ctx.
@@ -368,7 +368,7 @@ launch.xml / `package.xml` / Node pkg edit re-runs codegen.
 
 | Concern | Lives in |
 |---|---|
-| Node entities + real callbacks | Node pkg `configure(::nros::Node&)` |
+| Node entities + real callbacks | Node pkg `configure(::rclcpp::Node&)` |
 | Topology + launch args + per-target deploy | Bringup pkg `system.toml` + `launch/*.launch.xml` |
 | `int main()` + executor init + spin | Generated TU emitted by the entry's cmake fn |
 | Board + RMW selection | The image's `board` and `rmw`, which become the generated `BOARD` / `DEPLOY` args |

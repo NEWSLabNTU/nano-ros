@@ -44,7 +44,7 @@ bool AddTwoIntsServer::handle_add(const uint8_t* req, size_t req_len, uint8_t* r
     return true;
 }
 
-::rclcpp::Result AddTwoIntsServer::configure(::nros::Node& node) {
+::rclcpp::Result AddTwoIntsServer::configure(::rclcpp::Node& node) {
     // Unbuffered stdout — a full-buffered console can swallow the final
     // line(s) when the harness kills the QEMU before a flush.
     // `::setvbuf` (global) not `std::setvbuf` — Zephyr's minimal libcpp/picolibc

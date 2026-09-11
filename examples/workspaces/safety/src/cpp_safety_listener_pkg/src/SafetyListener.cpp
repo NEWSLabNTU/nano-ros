@@ -49,7 +49,7 @@ void SafetyListener::on_chatter(const std_msgs::msg::Int32& msg,
     }
 }
 
-::rclcpp::Result SafetyListener::configure(::nros::Node& node) {
+::rclcpp::Result SafetyListener::configure(::rclcpp::Node& node) {
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     g_safety_listener_self = this;
 

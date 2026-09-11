@@ -19,7 +19,7 @@
 ///     int count_ = 0;
 ///     void on_tick() { Int32 m; m.data = count_++; pub_.publish(m); }  // real body
 ///   public:
-///     nros::Result configure(nros::Node& node) {
+///     nros::Result configure(rclcpp::Node& node) {
 ///         NROS_TRY(node.create_publisher(pub_, "/chatter"));
 ///         return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 1000, this);
 ///     }
@@ -49,7 +49,8 @@ namespace nros {
 /// typed header. `ctx` is carried through to the callback. The executor owns the
 /// subscription (no storage object needed on the caller side); it dispatches the
 /// callback during `spin_once`. (Thin wrapper over `nros_cpp_subscription_register`.)
-inline Result create_subscription_raw(Node& node, const char* topic, const char* type_name,
+inline Result create_subscription_raw(::rclcpp::Node& node, const char* topic,
+                                      const char* type_name,
                                       void (*callback)(const uint8_t* data, size_t len, void* ctx),
                                       void* ctx, const QoS& qos = QoS::default_profile(),
                                       size_t rx_bytes = 0) {
@@ -77,8 +78,8 @@ inline Result create_subscription_raw(Node& node, const char* topic, const char*
 /// parameter, so the trampoline is a non-capturing lambda (decays to a function
 /// pointer — no heap, no `std::function`). `self` is the executor `ctx`.
 template <class C, void (C::*Method)(const uint8_t* data, size_t len)>
-inline Result bind_subscription_raw(Node& node, const char* topic, const char* type_name, C* self,
-                                    const QoS& qos = QoS::default_profile()) {
+inline Result bind_subscription_raw(::rclcpp::Node& node, const char* topic, const char* type_name,
+                                    C* self, const QoS& qos = QoS::default_profile()) {
     return create_subscription_raw(
         node, topic, type_name,
         [](const uint8_t* data, size_t len, void* ctx) {
@@ -105,7 +106,7 @@ inline Result bind_subscription_raw(Node& node, const char* topic, const char* t
 /// `Node::create_subscription_in` member + `NROS_SUBSCRIBE` macro hide the
 /// spelling.
 template <typename M, class C, void (C::*Method)(const M& msg)>
-inline Result bind_subscription(Node& node, const char* topic, C* self,
+inline Result bind_subscription(::rclcpp::Node& node, const char* topic, C* self,
                                 const QoS& qos = QoS::default_profile()) {
     // phase-403 W3 -- `M` is still in scope here, so the type's own bound can be
     // spent on the arena slot. This is the point the type is erased: everything
@@ -143,8 +144,8 @@ inline Result bind_subscription(Node& node, const char* topic, C* self,
 /// larger samples are refused. The C sibling of this is the generated
 /// `{Msg}_subscribe_sized` macro.
 template <typename M, class C, void (C::*Method)(const M& msg)>
-inline Result bind_subscription_sized(Node& node, const char* topic, C* self, size_t rx_bytes,
-                                      const QoS& qos = QoS::default_profile()) {
+inline Result bind_subscription_sized(::rclcpp::Node& node, const char* topic, C* self,
+                                      size_t rx_bytes, const QoS& qos = QoS::default_profile()) {
     return create_subscription_raw(
         node, topic, M::TYPE_NAME,
         [](const uint8_t* data, size_t len, void* ctx) {
@@ -172,7 +173,7 @@ inline Result bind_subscription_sized(Node& node, const char* topic, C* self, si
 template <class C, void (C::*Method)()>
 NROS_CPP_DEPRECATED_MSG("nros::bind_timer is retired (phase-427 W3): write "
                         "node.create_wall_timer<C, &C::method>(out, period_ms, self)")
-inline Result bind_timer(Node& node, Timer& out, uint64_t period_ms, C* self) {
+inline Result bind_timer(::rclcpp::Node& node, Timer& out, uint64_t period_ms, C* self) {
     return node.template create_wall_timer<C, Method>(out, period_ms, self);
 }
 
@@ -182,7 +183,7 @@ inline Result bind_timer(Node& node, Timer& out, uint64_t period_ms, C* self) {
 /// `*resp_len`; return `true` to send the reply, `false` to drop. `ctx` is
 /// carried through. The executor owns the server; it dispatches the handler
 /// during `spin_once`. (Thin wrapper over `nros_cpp_service_server_register`.)
-inline Result create_service_raw(Node& node, const char* service, const char* type_name,
+inline Result create_service_raw(::rclcpp::Node& node, const char* service, const char* type_name,
                                  nros_cpp_service_request_callback_t callback, void* ctx,
                                  const QoS& qos = QoS::services()) {
     const nros_cpp_node_t* h = node.ffi_handle();
@@ -201,8 +202,8 @@ inline Result create_service_raw(Node& node, const char* service, const char* ty
 /// trampoline; `self` is the executor `ctx`.
 template <class C, bool (C::*Method)(const uint8_t* req, size_t req_len, uint8_t* resp,
                                      size_t resp_cap, size_t* resp_len)>
-inline Result bind_service_raw(Node& node, const char* service, const char* type_name, C* self,
-                               const QoS& qos = QoS::services()) {
+inline Result bind_service_raw(::rclcpp::Node& node, const char* service, const char* type_name,
+                               C* self, const QoS& qos = QoS::services()) {
     return create_service_raw(
         node, service, type_name,
         [](const uint8_t* req, size_t req_len, uint8_t* resp, size_t resp_cap, size_t* resp_len,
@@ -229,7 +230,7 @@ inline Result bind_service_raw(Node& node, const char* service, const char* type
 /// `std::function`. A reply larger than `resp_cap`, or a malformed request,
 /// drops the reply (returns `false`).
 template <typename Svc, class C, typename Svc::Response (C::*Method)(const typename Svc::Request&)>
-inline Result bind_service(Node& node, const char* service, C* self,
+inline Result bind_service(::rclcpp::Node& node, const char* service, C* self,
                            const QoS& qos = QoS::services()) {
     return create_service_raw(
         node, service, Svc::TYPE_NAME,
@@ -262,7 +263,7 @@ struct ActionServerStorage {
 /// goal is accepted, complete it with `nros_cpp_action_server_complete_goal(
 /// storage, node.executor_handle(), goal_id, result_cdr, len)` (and feedback via
 /// `nros_cpp_action_server_publish_feedback`).
-inline Result create_action_server_raw(Node& node, void* storage, const char* action_name,
+inline Result create_action_server_raw(::rclcpp::Node& node, void* storage, const char* action_name,
                                        const char* type_name, nros_cpp_goal_callback_t goal_cb,
                                        nros_cpp_cancel_callback_t cancel_cb, void* ctx,
                                        const QoS& qos = QoS::services()) {
@@ -286,7 +287,7 @@ inline Result create_action_server_raw(Node& node, void* storage, const char* ac
 template <class C,
           int32_t (C::*GoalMethod)(const uint8_t goal_id[16], const uint8_t* data, size_t len),
           int32_t (C::*CancelMethod)(const uint8_t goal_id[16])>
-inline Result bind_action_server_raw(Node& node, void* storage, const char* action_name,
+inline Result bind_action_server_raw(::rclcpp::Node& node, void* storage, const char* action_name,
                                      const char* type_name, C* self,
                                      const QoS& qos = QoS::services()) {
     return create_action_server_raw(
@@ -308,7 +309,7 @@ struct ServiceClientStorage {
 };
 
 /// Create a raw poll-style service client into the component-owned `storage`.
-inline Result create_service_client_raw(Node& node, void* storage, const char* service,
+inline Result create_service_client_raw(::rclcpp::Node& node, void* storage, const char* service,
                                         const char* type_name, const QoS& qos = QoS::services()) {
     const nros_cpp_node_t* h = node.ffi_handle();
     if (h == nullptr) return Result(ErrorCode::NotInitialized);
@@ -326,7 +327,7 @@ struct ActionClientStorage {
 /// `nros_cpp_action_client_try_recv_goal_response` /
 /// `nros_cpp_action_client_get_result`. (Poll opt-in — for callback dispatch use
 /// `bind_action_client` below.)
-inline Result create_action_client_raw(Node& node, void* storage, const char* action_name,
+inline Result create_action_client_raw(::rclcpp::Node& node, void* storage, const char* action_name,
                                        const char* type_name, const QoS& qos = QoS::services()) {
     const nros_cpp_node_t* h = node.ffi_handle();
     if (h == nullptr) return Result(ErrorCode::NotInitialized);
@@ -352,9 +353,9 @@ template <class C, void (C::*OnGoalResponse)(bool accepted, const uint8_t goal_i
           void (C::*OnFeedback)(const uint8_t goal_id[16], const uint8_t* data, size_t len),
           void (C::*OnResult)(const uint8_t goal_id[16], int32_t status, const uint8_t* data,
                               size_t len)>
-inline Result bind_action_client(Node& node, ActionClientStorage& storage, Timer& poll_timer,
-                                 const char* action_name, const char* type_name, C* self,
-                                 uint64_t poll_ms = 20, const QoS& qos = QoS::services()) {
+inline Result bind_action_client(::rclcpp::Node& node, ActionClientStorage& storage,
+                                 Timer& poll_timer, const char* action_name, const char* type_name,
+                                 C* self, uint64_t poll_ms = 20, const QoS& qos = QoS::services()) {
     Result r = create_action_client_raw(node, storage.bytes, action_name, type_name, qos);
     if (!r.ok()) return r;
     nros_cpp_ret_t ret = nros_cpp_action_client_set_callbacks(
@@ -598,7 +599,7 @@ inline void operator delete[](void*, void*) noexcept {}
 
 // -- NROS_COMPONENT(Class) ---------------------------------------------------
 //
-// Marks a `nros::Node`-derived class as the pkg's rclcpp-faithful (IS-A-node)
+// Marks a `rclcpp::Node`-derived class as the pkg's rclcpp-faithful (IS-A-node)
 // component. Parallels `NROS_NODE_REGISTER` (node_pkg.hpp), but for the
 // construct-with-handle ctor shape.
 //
@@ -625,22 +626,22 @@ inline void operator delete[](void*, void*) noexcept {}
 #define _NROS_COMP_CLASS_SYM(pkg) _NROS_COMP_CAT(__nros_component_class_, pkg)
 #define _NROS_COMP_SHAPE_SYM(pkg) _NROS_COMP_CAT(__nros_component_shape_, pkg)
 
-/// Register a `nros::Node`-derived class as the pkg's component. Emits:
+/// Register a `rclcpp::Node`-derived class as the pkg's component. Emits:
 ///  - `__nros_component_factory_<pkg>(void* storage, void* node_handle)` — a
 ///    C-ABI factory that placement-news `Class(nros::NodeHandle(node_handle))`
-///    into the entry-owned arena slot and returns it as `nros::Node*`.
+///    into the entry-owned arena slot and returns it as `rclcpp::Node*`.
 ///  - `__nros_component_class_<pkg>` — the `"<pkg>::<Class>"` string for lint.
 ///  - `__nros_component_shape_<pkg>` — the `"rclcpp"` shape marker.
 ///
 /// The derived class MUST have an `explicit Class(nros::NodeHandle)` ctor (it
 /// forwards the handle + the node name to the `Node` base).
 ///
-/// The factory returns `::nros::Node*` — phase-427 W4. It used to return
+/// The factory returns `::rclcpp::Node*` — phase-427 W4. It used to return
 /// `::nros::ComponentNode*`, a type that WRAPPED a node; the merged type IS one,
 /// so the entry's post-construct `ok()` check now reads the node itself.
 #define NROS_COMPONENT(Class)                                                                      \
-    extern "C" ::nros::Node* _NROS_COMP_FACTORY_SYM(NROS_PKG_NAME)(void* storage,                  \
-                                                                   void* node_handle) {            \
+    extern "C" ::rclcpp::Node* _NROS_COMP_FACTORY_SYM(NROS_PKG_NAME)(void* storage,                \
+                                                                     void* node_handle) {          \
         return new (storage) Class(::nros::NodeHandle(node_handle));                               \
     }                                                                                              \
     extern "C" const char _NROS_COMP_CLASS_SYM(NROS_PKG_NAME)[] =                                  \

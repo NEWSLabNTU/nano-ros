@@ -79,7 +79,7 @@ class PortedNode : public rclcpp::Node {
         publisher_ = this->create_publisher<StringMsg>("topic", 10);
         timer_ = this->create_wall_timer(std::chrono::milliseconds(500), [this]() { tick(); });
 
-        // W1.d — identity and clock, forwarded to `nros::Node`.
+        // W1.d — identity and clock, forwarded to `rclcpp::Node`.
         const char* name = this->get_name();
         const char* ns = this->get_namespace();
         rclcpp::Time stamp = this->now();
@@ -197,7 +197,7 @@ static_assert(std::is_same<rclcpp::Duration, ::nros::Duration>::value,
 static_assert(std::is_same<rclcpp::Clock, ::nros::Clock>::value,
               "rclcpp::Clock must BE nros::Clock");
 
-// The shim's accessors have the shapes `nros::Node` has, since they forward.
+// The shim's accessors have the shapes `rclcpp::Node` has, since they forward.
 static_assert(
     std::is_same<decltype(std::declval<const rclcpp::Node&>().get_name()), const char*>::value,
     "rclcpp::Node::get_name() must return const char*, as upstream does");

@@ -202,7 +202,7 @@ struct CppEntryView {
 struct CppStorageView {
     index: usize,
     /// `"rclcpp"` gets an aligned arena slot; anything else gets a
-    /// `::nros::Node`, plus a component object when `class` is set (a C node
+    /// `::rclcpp::Node`, plus a component object when `class` is set (a C node
     /// keeps its state in its own TU, so it has none).
     shape: &'static str,
     class: Option<String>,
@@ -365,7 +365,7 @@ pub fn emit_typed_with_tail(plan: &Plan, tail: &EntryTail<'_>) -> Result<String,
     }
 
     // Static per-node storage. Shape-branched (RFC-0044): an rclcpp component
-    // OWNS its node, so it gets an arena slot and no `::nros::Node`; a C node
+    // OWNS its node, so it gets an arena slot and no `::rclcpp::Node`; a C node
     // keeps its state in its own TU, so it gets no component object; a Rust
     // node self-creates and gets nothing at all.
     let storage: Vec<CppStorageView> = plan
@@ -543,7 +543,7 @@ fn is_c_node(n: &super::PlanNode) -> bool {
 
 /// Phase 257 (W0-B) — a `lang == "rust"` node is installed via the uniform
 /// `__nros_component_<pkg>_install` seam onto the shared executor; it self-creates
-/// its node (no entry-created `::nros::Node`, no C++ class, no qos-override — D7
+/// its node (no entry-created `::rclcpp::Node`, no C++ class, no qos-override — D7
 /// Option C).
 fn is_rust_node(n: &super::PlanNode) -> bool {
     n.lang.as_deref() == Some("rust")
@@ -722,7 +722,7 @@ mod tests {
         assert!(src.contains("#include \"listener_pkg/Listener.hpp\""));
         assert!(src.contains("#include <nros/component.hpp>"));
         // static component + node storage
-        assert!(src.contains("static ::nros::Node __nros_node_0;"));
+        assert!(src.contains("static ::rclcpp::Node __nros_node_0;"));
         assert!(src.contains("static ::talker_pkg::Talker __nros_comp_0;"));
         assert!(src.contains("static ::listener_pkg::Listener __nros_comp_1;"));
         // setup constructs the node + configures the component
@@ -877,7 +877,7 @@ mod tests {
         assert!(src.contains("if (!__nros_comp_0->ok()) {"));
         assert!(src.contains("report_component_failure(\"controller\""));
         // The rclcpp shape does NOT default-construct a Node or call configure.
-        assert!(!src.contains("static ::nros::Node __nros_node_0;"));
+        assert!(!src.contains("static ::rclcpp::Node __nros_node_0;"));
         assert!(!src.contains("__nros_comp_0.configure"));
         assert!(!src.contains("create_node(__nros_node_0"));
         // still routes to the real executor via the named overload (phase 266)
@@ -914,9 +914,9 @@ mod tests {
         assert!(
             src.contains("__nros_comp_0 = new (__nros_comp_buf_0) ::ctrl_pkg::Controller(__h);")
         );
-        assert!(!src.contains("static ::nros::Node __nros_node_0;"));
+        assert!(!src.contains("static ::rclcpp::Node __nros_node_0;"));
         // node 1 = configure: Node + configure, no arena slot.
-        assert!(src.contains("static ::nros::Node __nros_node_1;"));
+        assert!(src.contains("static ::rclcpp::Node __nros_node_1;"));
         assert!(src.contains("static ::legacy_pkg::Legacy __nros_comp_1;"));
         assert!(src.contains("__nros_comp_1.configure(__nros_node_1)"));
         assert!(!src.contains("__nros_comp_buf_1"));

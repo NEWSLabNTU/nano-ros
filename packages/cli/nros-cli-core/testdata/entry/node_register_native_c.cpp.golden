@@ -23,7 +23,7 @@ extern "C" {
 
 
 // Static per-node storage (outlives the spin loop; no heap).
-static ::nros::Node __nros_node_0;
+static ::rclcpp::Node __nros_node_0;
 
 static int32_t __nros_entry_setup() {
     {

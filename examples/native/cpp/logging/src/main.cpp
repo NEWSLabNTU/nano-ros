@@ -1,5 +1,5 @@
 /// @file main.cpp
-/// @brief Phase 88.13 — minimal nros::Node logging demo.
+/// @brief Phase 88.13 — minimal rclcpp::Node logging demo.
 ///
 /// Walks the Phase-88 macros (`NROS_LOG_TRACE` … `NROS_LOG_FATAL`)
 /// against the Node's Logger handle. The first emit auto-installs
@@ -36,7 +36,7 @@ int nros_app_main(int argc, char** argv) {
         return 1;
     }
 
-    nros::Node node;
+    rclcpp::Node node;
     auto created = nros::create_node(node, "demo");
     if (!created.ok()) {
         fprintf(stderr, "create_node failed: %d\n", created.raw());

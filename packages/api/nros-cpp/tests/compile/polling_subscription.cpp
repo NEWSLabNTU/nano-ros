@@ -29,7 +29,7 @@ struct Int32 {
 };
 
 // Force template instantiation (bodies type-checked at compile).
-inline ::nros::Result instantiate(::nros::Node& node) {
+inline ::nros::Result instantiate(::rclcpp::Node& node) {
     ::nros::PollingSubscription<Int32> sub;
     ::nros::Result r = node.create_polling_subscription(sub, "/count");
 

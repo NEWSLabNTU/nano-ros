@@ -15,7 +15,7 @@ void Talker::on_tick() {
     }
 }
 
-::rclcpp::Result Talker::configure(::nros::Node& node) {
+::rclcpp::Result Talker::configure(::rclcpp::Node& node) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) return r;

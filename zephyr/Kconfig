@@ -30,7 +30,7 @@ config NROS_CPP_API
     select CPP
     help
       Build and link the nros C++ API library (libnros_cpp.a).
-      Uses nros::init(), nros::Node, nros::Publisher<M>, etc.
+      Uses nros::init(), rclcpp::Node, rclcpp::Publisher<M>, etc.
       Requires C++ support (automatically selected).
 
 config NROS_RUST_API

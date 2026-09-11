@@ -291,9 +291,9 @@ node->declare_parameter<double>("ctrl_period", 0.15);
 double v = node->get_parameter("ctrl_period").as_double();
 
 // nano-ros
-nros::Node node;
+rclcpp::Node node;
 nros::ParameterServer<8> params;
-NROS_TRY(nros::Node::create(node, "ctrl"));
+NROS_TRY(rclcpp::Node::create(node, "ctrl"));
 NROS_TRY(params.declare_parameter<double>("ctrl_period", 0.15));
 double v;
 NROS_TRY(params.get_parameter<double>("ctrl_period", v));

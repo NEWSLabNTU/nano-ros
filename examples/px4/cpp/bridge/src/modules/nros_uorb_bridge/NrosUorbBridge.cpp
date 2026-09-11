@@ -129,8 +129,8 @@ class NrosUorbBridge : public ModuleBase<NrosUorbBridge>, public px4::ScheduledW
   private:
     void Run() override;
 
-    nros::Node _in_node{};
-    nros::Node _out_node{};
+    rclcpp::Node _in_node{};
+    rclcpp::Node _out_node{};
     rclcpp::Subscription<px4_msgs::msg::DebugKeyValue> _in_sub{};
     rclcpp::Publisher<px4_msgs::msg::DebugKeyValue> _out_pub{};
 
@@ -174,7 +174,7 @@ bool NrosUorbBridge::init() {
     PX4_INFO("outward %s locator: %s", NROS_BRIDGE_RMW, out_locator);
     // Issue 0436 — `nros_cpp_init_multi` (NOT `nros_init_multi`/`MultiExecutor`):
     // it opens the sessions into a real `CppContext`, which is the handle type
-    // `nros::Node` / `NodeBuilder` expect. The bridge crate's handle is a different
+    // `rclcpp::Node` / `NodeBuilder` expect. The bridge crate's handle is a different
     // struct behind the same `void*`; both start with an `Executor` so the cast
     // reads fine and then writes over the box's `Vec` — PX4 dumped core.
     //

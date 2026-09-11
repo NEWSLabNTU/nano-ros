@@ -21,7 +21,7 @@ class Talker {
     void on_tick(); // real body; bound via &Talker::on_tick (no callback name)
 
   public:
-    ::rclcpp::Result configure(::nros::Node& node);
+    ::rclcpp::Result configure(::rclcpp::Node& node);
 };
 
 } // namespace talker_pkg

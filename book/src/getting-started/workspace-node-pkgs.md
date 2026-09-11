@@ -231,7 +231,7 @@ Declare the service in `Node::register` and handle requests in the node body.
   AddTwoInts::Response on_add(const AddTwoInts::Request& req) {
       AddTwoInts::Response r; r.sum = req.a + req.b; return r;
   }
-  ::nros::Result configure(::nros::Node& node) {
+  ::nros::Result configure(::rclcpp::Node& node) {
       return ::nros::bind_service<AddTwoInts, MyServer, &MyServer::on_add>(
           node, "/add_two_ints", this);   // service-type name from AddTwoInts::TYPE_NAME
   }

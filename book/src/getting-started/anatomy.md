@@ -15,7 +15,7 @@ If you come from ROS 2, each role is something you already know:
 ## Node packages — the code
 
 A node package is one node as a reusable library. The C++ shape is a
-class with a `configure(nros::Node&)` method that binds real member
+class with a `configure(rclcpp::Node&)` method that binds real member
 callbacks:
 
 ```text

@@ -22,7 +22,7 @@ void Aux::on_tick() {
     count_++;
 }
 
-::rclcpp::Result Aux::configure(::nros::Node& node) {
+::rclcpp::Result Aux::configure(::rclcpp::Node& node) {
     // Line-buffer stdout so each tick flushes immediately when piped.
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     ::rclcpp::Result r = node.create_publisher(pub_, "/aux");

@@ -98,7 +98,7 @@ static constexpr size_t SUBSCRIPTION_TOPIC_NAME_MAX = 256;
 ///
 /// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
 /// An elaborated `class Node;` in `nros::` would now declare a SECOND, distinct
-/// class and collide with the `nros::Node` alias.
+/// class and collide with the `rclcpp::Node` alias.
 namespace rclcpp {
 class Node;
 }
@@ -866,7 +866,7 @@ namespace nros {
 /// with `create_publisher` so the full pub/sub create dance is
 /// expressible as a chain of `auto`-typed factories.
 template <typename M>
-inline ResultOf<Subscription<M>> create_subscription(Node& node, const char* topic,
+inline ResultOf<Subscription<M>> create_subscription(::rclcpp::Node& node, const char* topic,
                                                      const QoS& qos = QoS::default_profile()) {
     Subscription<M> s;
     Result r = node.create_subscription<M>(s, topic, qos);

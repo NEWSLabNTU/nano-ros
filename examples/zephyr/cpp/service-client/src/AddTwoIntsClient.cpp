@@ -50,7 +50,7 @@ void AddTwoIntsClient::on_tick() {
     }
 }
 
-::rclcpp::Result AddTwoIntsClient::configure(::nros::Node& node) {
+::rclcpp::Result AddTwoIntsClient::configure(::rclcpp::Node& node) {
     // Unbuffered stdout — a full-buffered console can swallow the final
     // line(s) when the harness kills the QEMU before a flush.
     // `::setvbuf` (global) not `std::setvbuf` — Zephyr's minimal libcpp/picolibc

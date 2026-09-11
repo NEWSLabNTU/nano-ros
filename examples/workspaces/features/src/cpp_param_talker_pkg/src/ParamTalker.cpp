@@ -24,7 +24,7 @@ void ParamTalker::on_tick() {
     }
 }
 
-::rclcpp::Result ParamTalker::configure(::nros::Node& node) {
+::rclcpp::Result ParamTalker::configure(::rclcpp::Node& node) {
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     executor_handle_ = node.executor_handle();
     ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");

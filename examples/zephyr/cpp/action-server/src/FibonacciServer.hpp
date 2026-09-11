@@ -33,7 +33,7 @@ class FibonacciServer {
     void on_tick();
 
   public:
-    ::rclcpp::Result configure(::nros::Node& node);
+    ::rclcpp::Result configure(::rclcpp::Node& node);
 };
 
 } // namespace zephyr_cpp_action_server

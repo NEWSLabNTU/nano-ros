@@ -21,7 +21,7 @@ macro to short-circuit on the first error.
 ## NROS_TRY
 
 ```cpp
-nros::Result init_pubsub(nros::Node& node) {
+nros::Result init_pubsub(rclcpp::Node& node) {
     nros::Publisher<MyMsg> pub;
     NROS_TRY(node.create_publisher(pub, "/topic"));   // early-return on error
     NROS_TRY(pub.publish(seed_msg));

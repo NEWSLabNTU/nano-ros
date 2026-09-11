@@ -584,7 +584,7 @@ def run(include_args, workdir, baseline, subjects=None):
 # honestly while the real types were being compared against themselves, so the
 # control has to reach a real type in a real header. It copies the whole
 # `nros-cpp` include tree to a temp dir, injects a capability-gated member into
-# `nros::Node`, and runs the SAME `run()` the gate runs. No tracked header is
+# `rclcpp::Node`, and runs the SAME `run()` the gate runs. No tracked header is
 # touched.
 #
 # Cases 4 and 5 are issue 1225's: a RATCHET that tolerates a stale entry has
@@ -672,11 +672,12 @@ def selftest(baseline):
         # of 2 x 90, which is the difference between a gate that runs on the
         # fast lane and one that doubles its wall clock.
         #
-        # The subject is `::nros::Node` and not `rclcpp::Node` for the reason
-        # in the header comment: `rclcpp::Node` is an ALIAS of it, so the two
-        # are one layout, and a mutation there would be measuring the alias.
+        # The subject is `::rclcpp::Node`, which is where the CLASS is
+        # (phase-427 W7 flipped the direction; `::nros::Node` is the alias now).
+        # The two are one layout either way, so this narrows the mutation to the
+        # DEFINITION rather than to a name that resolves to it.
         before, subjects, _base = run(
-            args, workdir, baseline, subjects=["::nros::Node"]
+            args, workdir, baseline, subjects=["::rclcpp::Node"]
         )
         if before:
             fail.append(
@@ -699,11 +700,12 @@ def selftest(baseline):
                 after, _s, _b = run(args, workdir, baseline, subjects=subjects)
                 if not after:
                     fail.append(
-                        "case 3: a capability-gated MEMBER injected into ::nros::Node did\n"
+                        "case 3: a capability-gated MEMBER injected into ::rclcpp::Node\n"
+                        "    did\n"
                         "    not fail the gate. This is issue 1204 exactly -- the\n"
                         "    measurement is comparing a configuration against itself."
                     )
-                elif not any("::nros::Node" in e for e in after):
+                elif not any("::rclcpp::Node" in e for e in after):
                     fail.append(
                         "case 3: the gate failed on the injected member but its message\n"
                         f"    does not name the type. Reported: {after[0]}"
@@ -810,7 +812,7 @@ def selftest(baseline):
         raise SystemExit(1)
     print(
         "check-cpp-capability-layout --selftest: 7 case(s) OK (gated member diverges, "
-        "gated method does not, real ::nros::Node caught when mutated, a fixed "
+        "gated method does not, real ::rclcpp::Node caught when mutated, a fixed "
         "baseline entry fails, a stale one fails, an unbaselined divergence fails, "
         "a layout that moves with -DNROS_CPP_STD fails, hosted-only does not excuse "
         "it, and a stale std-only entry fails)"

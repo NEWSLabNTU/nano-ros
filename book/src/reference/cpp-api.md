@@ -15,10 +15,10 @@ public surface a user application needs.
 
 - [`nros/nros.hpp`](../api/cpp/nros_8hpp.html) — convenience umbrella include
 - [`nros::init`](../api/cpp/namespacenros.html) / `nros::shutdown` — session lifetime
-- [`nros::Node`](../api/cpp/classnros_1_1Node.html) — node + create_publisher/subscription/service/client/action_*
-- [`nros::Publisher<M>`](../api/cpp/classnros_1_1Publisher.html) / [`Subscription<M>`](../api/cpp/classnros_1_1Subscription.html)
-- [`nros::Service<S>`](../api/cpp/classnros_1_1Service.html) / [`Client<S>`](../api/cpp/classnros_1_1Client.html)
-- [`nros::ActionServer<A>`](../api/cpp/classnros_1_1ActionServer.html) / [`ActionClient<A>`](../api/cpp/classnros_1_1ActionClient.html) — L2 callback model (executor-arena registered).
+- [`rclcpp::Node`](../api/cpp/classrclcpp_1_1Node.html) — node + create_publisher/subscription/service/client/action_*
+- [`rclcpp::Publisher<M>`](../api/cpp/classrclcpp_1_1Publisher.html) / [`Subscription<M>`](../api/cpp/classrclcpp_1_1Subscription.html)
+- [`rclcpp::Service<S>`](../api/cpp/classrclcpp_1_1Service.html) / [`Client<S>`](../api/cpp/classrclcpp_1_1Client.html)
+- [`rclcpp_action::Server<A>`](../api/cpp/classrclcpp__action_1_1Server.html) / [`Client<A>`](../api/cpp/classrclcpp__action_1_1Client.html) — L2 callback model (executor-arena registered). `nros::ActionServer<A>` / `nros::ActionClient<A>` are the same two types.
 - [`nros::PollingActionServer<A>`](../api/cpp/classnros_1_1PollingActionServer.html) / [`PollingActionClient<A>`](../api/cpp/classnros_1_1PollingActionClient.html) — L1 polling model. Caller drives `take_*` / `accept_goal` / `complete_goal` from a spin loop.
 - [`nros::Future<T>`](../api/cpp/classnros_1_1Future.html) — async result handle
 - [`nros::Executor`](../api/cpp/classnros_1_1Executor.html), [`Timer`](../api/cpp/classnros_1_1Timer.html), [`GuardCondition`](../api/cpp/classnros_1_1GuardCondition.html)
@@ -52,7 +52,7 @@ below for whether you need it.
 One set of headers ships two API shapes, and a build picks one.
 
 **The freestanding surface is the default and it is not a fallback.** It is
-plain C++14 with no standard library, no exceptions and no RTTI: `nros::Node`,
+plain C++14 with no standard library, no exceptions and no RTTI: `rclcpp::Node`,
 `create_*` writing through an out-reference and returning an `nros::Result`,
 `const char*` for names, `uint64_t period_ms` for durations. Every nano-ros
 program in this repository is on it — the native/host examples included.
@@ -73,7 +73,7 @@ than a Cortex-M3 build does; a ported node wants it on both.
 
 | You are… | Flag | Why |
 | --- | --- | --- |
-| writing a new node against `nros::Node` / `nros::Publisher<M>` / `nros::Executor` | **no** | The freestanding surface is the whole API you are using. This is the common case on every platform, native included. |
+| writing a new node against `rclcpp::Node` / `rclcpp::Publisher<M>` / `nros::Executor` | **no** | The freestanding surface is the whole API you are using. This is the common case on every platform, native included. |
 | compiling an upstream ROS 2 `.cpp` unmodified — it says `class MyNode : public rclcpp::Node`, `std::make_shared<MyNode>()`, `create_publisher<M>(...)` returning a `SharedPtr` | **yes** | Those signatures are *spelled in* `std::shared_ptr` and `std::string`. Without the flag they do not exist and you get a compile error naming a missing overload or an unknown `rclcpp::Node`. |
 | passing a `std::string` topic name or a `std::chrono` period into an otherwise nano-ros-native file | **yes** | Those are the `std_compat.hpp` overloads. |
 | building for Zephyr, FreeRTOS, NuttX, ThreadX, or any `-ffreestanding` toolchain | **no** | And here it is not merely unnecessary: asking for the std surface asks the headers to `#include <string>`, which on those toolchains is either absent or a hard `#error`. |

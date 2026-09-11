@@ -24,7 +24,7 @@ class ReadingTalker {
     void on_tick(); // real body; bound via &ReadingTalker::on_tick
 
   public:
-    ::rclcpp::Result configure(::nros::Node& node);
+    ::rclcpp::Result configure(::rclcpp::Node& node);
 };
 
 } // namespace cpp_reading_talker_pkg

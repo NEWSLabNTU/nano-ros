@@ -60,7 +60,7 @@
 // phase-427 W4 — `nros/component_node.hpp` IS GONE. `nros::ComponentNode` was a
 // type that WRAPPED a node (RFC-0044 Q1's "wrap, not derive"), so a component
 // was not a `Node` and every verb had to be forwarded. Its members are on
-// `nros::Node` now, its pool is the opt-in `nros::NodeWithTimers<N>`, and its
+// `rclcpp::Node` now, its pool is the opt-in `nros::NodeWithTimers<N>`, and its
 // macros are in `component.hpp` below. The rclcpp-shaped, value-returning
 // parameter facade phase-417 W2.b pulled in here for is `Node`'s own.
 // phase-417 stage 6 step A — `nros::create_subscription_raw`, the
@@ -77,8 +77,8 @@ namespace nros {
 ///
 /// @return Executor handle, or nullptr if not initialized.
 inline void* global_handle() {
-    if (!Node::global_initialized()) return nullptr;
-    return Node::global_storage();
+    if (!::rclcpp::Node::global_initialized()) return nullptr;
+    return ::rclcpp::Node::global_storage();
 }
 
 /// Drive transport I/O and dispatch callbacks.
@@ -89,10 +89,10 @@ inline void* global_handle() {
 /// @param timeout_ms  Maximum time to block waiting for I/O (default: 10ms).
 /// @return Result indicating success or failure.
 inline Result spin_once(int32_t timeout_ms = 10) {
-    if (!Node::global_initialized()) {
+    if (!::rclcpp::Node::global_initialized()) {
         return Result(ErrorCode::NotInitialized);
     }
-    return Result(nros_cpp_spin_once(Node::global_storage(), timeout_ms));
+    return Result(nros_cpp_spin_once(::rclcpp::Node::global_storage(), timeout_ms));
 }
 
 /// Register a callback to run BEFORE the global session's entities are torn
@@ -171,12 +171,12 @@ inline bool remove_on_shutdown_callback(OnShutdownCallbackHandle handle) {
 /// Returns the first non-success `spin_once` result, or
 /// `Result::success()` after a clean shutdown.
 inline Result spin() {
-    if (!Node::global_initialized()) {
+    if (!::rclcpp::Node::global_initialized()) {
         return Result(ErrorCode::NotInitialized);
     }
     Result last = Result::success();
     while (ok()) {
-        last = Result(nros_cpp_spin_once(Node::global_storage(), 10));
+        last = Result(nros_cpp_spin_once(::rclcpp::Node::global_storage(), 10));
         if (!last.ok()) return last;
     }
     return last;
@@ -191,7 +191,7 @@ inline Result spin() {
 /// @param poll_ms      Individual spin_once timeout (default: 10ms).
 /// @return Result from the last spin_once call.
 inline Result spin(uint32_t duration_ms, int32_t poll_ms = 10) {
-    if (!Node::global_initialized()) {
+    if (!::rclcpp::Node::global_initialized()) {
         return Result(ErrorCode::NotInitialized);
     }
     // Issue 0329 — forward to the single budgeted-spin CFFI entry point. This
@@ -199,7 +199,7 @@ inline Result spin(uint32_t duration_ms, int32_t poll_ms = 10) {
     // collapsed to milliseconds when `spin_once` returned early on a signaled
     // wake — the exact bug `Executor::spin` fixed in Phase 118.C. The correct
     // wall-clock budget now lives once, Rust-side, in `nros_cpp_spin_for`.
-    return Result(nros_cpp_spin_for(Node::global_storage(), duration_ms, poll_ms));
+    return Result(nros_cpp_spin_for(::rclcpp::Node::global_storage(), duration_ms, poll_ms));
 }
 
 } // namespace nros
@@ -283,7 +283,7 @@ constexpr bool argv_has_ros_args(int argc, char const* const* argv, int i = 0) {
 
 /// What upstream's `throw` becomes here — phase-428 W5 finding 9.
 ///
-/// The `create_*` verbs on `nros::Node` (reached as `rclcpp::Node`, which is an
+/// The `create_*` verbs on `rclcpp::Node` (reached as `rclcpp::Node`, which is an
 /// alias for it since phase-427 W1-W3) used to write
 /// `(void)this->create_…(…)` and return the `shared_ptr` regardless. The
 /// `(void)` was not incidental: `nros::Result` carries `[[nodiscard]]`
@@ -318,7 +318,7 @@ constexpr bool argv_has_ros_args(int argc, char const* const* argv, int i = 0) {
 /// is what an uncaught upstream throw actually does to a tutorial `main` —
 /// terminate with a diagnostic, rather than continue with a dead object.
 ///
-/// The failure is still HANDLEABLE: the underlying out-ref `nros::Node` verbs
+/// The failure is still HANDLEABLE: the underlying out-ref `rclcpp::Node` verbs
 /// return `nros::Result` into caller-owned storage, and the message names them.
 [[noreturn]] inline void abort_failed_create(const char* verb, const char* name, int32_t code) {
     NROS_ERROR("rclcpp::Node::%s(\"%s\") failed with nros::ErrorCode %d. %s", verb, name,
@@ -466,7 +466,7 @@ namespace detail {
 // --- Node ---------------------------------------------------------------------
 //
 // phase-427 W1-W3 — THE NODE TYPES ARE MERGED. `rclcpp::Node` is not a class
-// here any more; it is an ALIAS for `nros::Node`, and the hosted call shape
+// here any more; it is an ALIAS for `rclcpp::Node`, and the hosted call shape
 // that used to be a separate adapter class in this file is now a set of
 // overloads on that one type (declared in `node.hpp`, defined below).
 //
@@ -483,7 +483,7 @@ namespace detail {
 //     merge forced the decision W5 records.
 //   * THE TWO-VOCABULARY SPLIT. A ported file wrote `rclcpp::Node` and got a
 //     type with no graph queries, no lifecycle, no callback groups, no action
-//     entities and no out-ref creators; a native file wrote `nros::Node` and
+//     entities and no out-ref creators; a native file wrote `rclcpp::Node` and
 //     got no `shared_ptr` creators and no parameters. Neither list was a
 //     design; both were what the other file happened to have.
 //
@@ -500,7 +500,7 @@ namespace detail {
 
 namespace nros {
 
-// The HOSTED half of `nros::Node`, defined here rather than in `node.hpp`
+// The HOSTED half of `rclcpp::Node`, defined here rather than in `node.hpp`
 // because every body below needs a complete entity type (`Publisher<M>`,
 // `Subscription<M>`, `Service<S>`, `Client<S>`) or a helper the umbrella pulls
 // in (`create_subscription_raw` from `component.hpp`, the callback cells from
@@ -683,7 +683,7 @@ namespace nros {
 // `declare_parameter` returns the code default. The loud half USED to be
 // `nros::ComponentNode`, whose own facade recorded the failure on an `ok()`
 // flag and made it boot-fatal; phase-427 W4 deleted that type, so no C++ path
-// is boot-fatal on a missing store any more. `nros::Node` still carries the
+// is boot-fatal on a missing store any more. `rclcpp::Node` still carries the
 // flag (`set_error` / `ok()`); routing the parameter path back onto it is a
 // separate decision, because it changes what an upstream-shaped
 // `declare_parameter` does.
@@ -914,13 +914,13 @@ namespace detail {
 /// `NodeT` in upstream's signature is anything node-shaped — `this`, a
 /// `shared_ptr`, a reference. One overload set, so the free function does not
 /// need three copies.
-inline ::nros::Node& as_node_ref(::nros::Node& n) {
+inline ::rclcpp::Node& as_node_ref(::rclcpp::Node& n) {
     return n;
 }
-inline ::nros::Node& as_node_ref(::nros::Node* n) {
+inline ::rclcpp::Node& as_node_ref(::rclcpp::Node* n) {
     return *n;
 }
-inline ::nros::Node& as_node_ref(const ::std::shared_ptr<::nros::Node>& n) {
+inline ::rclcpp::Node& as_node_ref(const ::std::shared_ptr<::rclcpp::Node>& n) {
     return *n;
 }
 
@@ -933,7 +933,7 @@ inline ::nros::Node& as_node_ref(const ::std::shared_ptr<::nros::Node>& n) {
 template <typename NodeT, typename CallbackT>
 inline ::std::shared_ptr<::nros::Timer>
 create_timer(NodeT&& node, ::nros::Clock* clock, ::nros::Duration period, CallbackT&& callback) {
-    ::nros::Node& n = detail::as_node_ref(node);
+    ::rclcpp::Node& n = detail::as_node_ref(node);
     auto t = ::std::make_shared<detail::WallTimer>();
     t->callback = ::std::forward<CallbackT>(callback);
     const int64_t ns = period.nanoseconds();

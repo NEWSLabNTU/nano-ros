@@ -33,7 +33,7 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicas
 
 ## Gap surfaced (filed against Phase 209.A)
 
-`nros::Node::create_subscription`'s **callback overload is SFINAE-restricted
+`rclcpp::Node::create_subscription`'s **callback overload is SFINAE-restricted
 to plain `void(*)(const M&)` function pointers** (`std::enable_if<
 std::is_convertible<F, void(*)(const M&)>::value>`). rclcpp accepts capturing
 lambdas / `std::function`. A direct line-for-line port of upstream

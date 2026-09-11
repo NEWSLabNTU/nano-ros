@@ -21,7 +21,7 @@ void Talker::on_tick() {
     NROS_LOG_INFO(nros_log_default_logger(), "cpp_talker logging seq=%d", m.data);
 }
 
-::rclcpp::Result Talker::configure(::nros::Node& node) {
+::rclcpp::Result Talker::configure(::rclcpp::Node& node) {
     // `::setvbuf` (C global), not `std::setvbuf` — Zephyr's picolibc <cstdio> does not put
     // setvbuf in namespace std; the C global is available on every platform.
     ::setvbuf(stdout, nullptr, _IONBF, 0);

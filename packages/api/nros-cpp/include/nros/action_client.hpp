@@ -59,7 +59,7 @@ nros_cpp_ret_t nros_cpp_action_client_set_callbacks(
 ///
 /// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
 /// An elaborated `class Node;` in `nros::` would now declare a SECOND, distinct
-/// class and collide with the `nros::Node` alias.
+/// class and collide with the `rclcpp::Node` alias.
 namespace rclcpp {
 class Node;
 }

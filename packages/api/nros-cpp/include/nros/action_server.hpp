@@ -188,7 +188,7 @@ enum class GoalStatus : int8_t {
 ///
 /// phase-427 W7 — declared in `rclcpp::`, which is where the definition moved.
 /// An elaborated `class Node;` in `nros::` would now declare a SECOND, distinct
-/// class and collide with the `nros::Node` alias.
+/// class and collide with the `rclcpp::Node` alias.
 namespace rclcpp {
 class Node;
 }
