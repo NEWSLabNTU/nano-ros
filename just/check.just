@@ -235,11 +235,23 @@ build:
 # The BUILD gate list, and the serial runner — mirrors `fast-serial` above.
 # `run-gates-parallel.sh` derives its list from this dependency line, so the
 # list has exactly one home.
+#
+# issue 1320 — `cli-fresh` LEFT this list, which is how it joins the fast lane
+# (a recipe here is a fast gate unless `build-serial` names it). It reads a
+# stamp and nothing else: 0.024 s measured, and it SKIPS when no in-tree binary
+# exists yet, so a fresh clone is unaffected.
+#
+# It belongs on the lane `pre-push` runs because that is where the cost landed.
+# A stale CLI does not announce itself there — `check-declared-qos-header` fails
+# instead, reporting it as `CMake Error at NanoRosNodeRegister.cmake:1542`, four
+# frames from the remedy and naming the QoS header machinery rather than the
+# CLI. Four times in one day on one branch: three from rebases, once from an
+# ordinary edit to a codegen source. This script's own header says what it
+# contributes is POSITION; this is that argument, one lane earlier.
 [private]
 build-serial: \
     borrowed-e2e \
     c \
-    cli-fresh \
     cli-tests \
     cpp \
     embedded-feature-unification \

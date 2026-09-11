@@ -3,7 +3,7 @@ id: 1315
 title: "`HOST_UNCHECKABLE` is the hand-written exclude list issue 0287 retired on
   the embedded side and nobody retired on the host side — 5 of its 8 entries are
   already stale, and it is why four cross-only crates cannot be workspace members"
-status: open
+status: resolved
 type: tech-debt
 area: [ci, build, tooling]
 severity: medium
@@ -115,3 +115,41 @@ work, and it is this issue.
 exclusion from the WORKSPACE justified". This one answers "is this exclusion
 from a LANE justified". Both are shrink-only ratchets in spirit; only the first
 one exists.
+
+## Resolved (phase-451 W4, 2026-09-11)
+
+`HOST_UNCHECKABLE` is DERIVED. `scripts/build/embedded-only-members.sh` is the
+mirror of `host-only-members.sh`, reading
+`[package.metadata.nros] embedded-only = true` from each crate's own manifest,
+and `just/check.just` calls it instead of carrying the string.
+
+**The five stale entries are gone**, on the measurement this issue recorded:
+`nros-c`, `nros-rmw-xrce-cffi`, `nros-build-helpers`, `nros-zpico-build` and
+`nros-build-paths` are clippy-clean under the per-crate command the lane runs.
+
+**The three real ones declare it beside the `crate-type` that causes it.** They
+were not derived from `crate-type` in the end, and the reason is worth keeping:
+all three were ALREADY `host-only`, so each was excluded from the embedded lane
+by its manifest and from the host lane by a string in the justfile — a workspace
+member that NO lane compiled. Both sides are stated in one table now, which is
+the thing a derivation would have hidden rather than fixed.
+
+**What this did NOT unblock, and that is the finding.** Issue 1309 expected the
+mirror to make its four `cortex-m` / `esp-hal` crates members. It does not:
+`cortex-m`, `esp-hal` and `nros-platform-critical-section` each select a
+different `critical-section` restore-state width, and critical-section refuses
+more than one —
+
+    error: You must set at most one of these Cargo features: restore-state-none, ...
+
+Upstream exclusivity, so no workspace build can hold them. Established by trying
+three arrangements (all four, the cortex-m pair, the esp32 pair); the embedded
+lane fails inside `critical-section` every time, a crate none of them names.
+`Cargo.toml` carries that measured reason now instead of the guess.
+
+Two things landed on the way: `nros-platform/src/resolve.rs`'s nine identical
+`#[cfg(feature = "platform-<x>")] ConcretePlatform` arms collapsed to one
+`cfg(any(...))` — mutually exclusive by convention only, so two platform
+features at once was E0428, which nothing hit until crates became members — and
+both member-list scripts moved off `grep -q` onto `nros_grep_q` (issue 0726),
+shrinking that ratchet by one.

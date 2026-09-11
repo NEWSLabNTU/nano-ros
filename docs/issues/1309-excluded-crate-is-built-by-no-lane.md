@@ -240,7 +240,7 @@ every one of these is a member that declares which lane it cannot enter, and
 
 ## The missing mirror is now its own issue
 
-[Issue 1315](1315-host-uncheckable-is-a-hand-written-list.md) files the blocker
+[Issue 1315](archived/1315-host-uncheckable-is-a-hand-written-list.md) files the blocker
 named above, with the measurement: `HOST_UNCHECKABLE` is a hand-written string
 of 8 crates and **5 of them are already stale** — clean under the exact
 per-crate command `check::test-targets` runs. The three real ones share one
