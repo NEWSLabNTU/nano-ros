@@ -109,6 +109,24 @@ package-routing:
 # needs — which cfg gates a given `std::` line — and a second spelling of that
 # walk is the antipattern this repo keeps paying for. The counting path is
 # untouched; this is a separate mode, with its own `--self-test`.
+# issue 1236 / phase-450 W5 — the per-crate `unsafe` census, a shrink-only
+# ratchet. `forbid(unsafe_code)` (issue 1221) is a PROPERTY, so it fits the ten
+# crates at literal zero and says nothing about the 60-odd that legitimately
+# carry unsafe — which is where all of it is. This records DIRECTION instead: a
+# new unsafe site should be a decision someone made, not a normal-looking diff
+# nobody objected to.
+#
+# Counts SYNTAX (`unsafe {}` / `fn` / `impl` / `extern` / `trait`) after
+# stripping comments and string literals, not the token — a grep is satisfied by
+# a rename and counts doc examples. Enumerates from `git ls-files`, NOT
+# `cargo metadata`: the root workspace excludes ~130 paths (issue 1217) and
+# several are real crates nothing else compiles (issue 1309), so a members-only
+# census reports a smaller, cleaner number than the truth — measured, 37 crates
+# against 73. Self-tests 13 cases on the normal path. Buildless, ~2 s.
+[private]
+unsafe-census:
+    @python3 scripts/check-unsafe-census.py
+
 [group("ci")]
 capability-flavour-guards:
     @python3 scripts/check-std-census.py --self-test
