@@ -169,7 +169,20 @@ fn main() {
     // wire-format expectation. Both can be overridden independently via
     // their respective env vars.
     let rx_buf_size = env_usize("NROS_SUBSCRIPTION_BUFFER_SIZE", 1024);
-    let param_svc_buf = env_usize("NROS_PARAM_SERVICE_BUFFER_SIZE", 4096);
+    // phase-446 F3 -- the parameter-service buffer. A rung that STATES a size
+    // (env, Kconfig, the board's executor rung) wins. Otherwise the contract's
+    // declared parameters bound it -- finished in `parameter_services.rs`
+    // against nros-params' resolved capacities -- and with no declaration the
+    // 4096 default stands. Probed with a sentinel no rung can produce, as
+    // `env_usize_declared` does, so the ladder keeps ONE implementation.
+    let param_svc_probe = env_usize("NROS_PARAM_SERVICE_BUFFER_SIZE", usize::MAX);
+    let param_svc_stated = param_svc_probe != usize::MAX;
+    let param_svc_buf = if param_svc_stated {
+        param_svc_probe
+    } else {
+        4096
+    };
+    let param_svc_shapes = declared_param_service_shapes();
     // Phase 104.C.2 — multi-Node-per-Executor (rclcpp `add_node`
     // pattern). Most apps run a single Node per Executor; bridge
     // nodes typically need 2 (ingress + egress). Default 4 leaves
@@ -521,8 +534,21 @@ fn main() {
          pub const DEFAULT_RX_BUF_SIZE: usize = {rx_buf_size};\n\
          \n\
          /// Parameter service request/reply buffer size in bytes \
-         (set via NROS_PARAM_SERVICE_BUFFER_SIZE, default 4096).\n\
+         (set via NROS_PARAM_SERVICE_BUFFER_SIZE, default 4096). phase-446 \
+         F3: the FALLBACK -- the buffer is `param_service_buffer_bytes()`, \
+         which derives it from the contract when nothing states it.\n\
          pub const PARAM_SERVICE_BUFFER_SIZE: usize = {param_svc_buf};\n\
+         \n\
+         /// phase-446 F3 -- whether a rung STATED NROS_PARAM_SERVICE_BUFFER_SIZE \
+         (env, Kconfig, the board). A stated size wins over a derived one.\n\
+         pub const PARAM_SERVICE_BUFFER_STATED: bool = {param_svc_stated};\n\
+         \n\
+         /// phase-446 F3 -- per node, the contract's declared parameters as \
+         the parameter services see them: [params, name_bytes, prefixes, \
+         prefix_bytes, strings, byte_arrays, bool_arrays, word_arrays, \
+         string_arrays] (NROS_DECLARED_PARAM_SERVICE_SHAPE). `None` when the \
+         contract does not declare every node's parameters.\n\
+         pub const DECLARED_PARAM_SERVICE_SHAPES: Option<&[[usize; 9]]> = {param_svc_shapes};\n\
          \n\
          /// Maximum number of Nodes attached to a single Executor \
          (set via NROS_EXECUTOR_MAX_NODES, default 4). Phase 104.C.2.\n\
@@ -855,4 +881,61 @@ fn env_usize_declared(name: &str, declared: &str, default: usize) -> usize {
         v if v == probe => from_cmake().unwrap_or(default),
         v => v,
     }
+}
+
+/// phase-446 F3 -- `NROS_DECLARED_PARAM_SERVICE_SHAPE`, as the Rust literal
+/// `DECLARED_PARAM_SERVICE_SHAPES` is written from.
+///
+/// Carried by the entity inventory (`ParamServiceShape::token` in
+/// nros-cli-core): one node per `,`, each nine `:`-separated counts. Absent
+/// or empty is `None` -- no declaration, so the configured size stands. A
+/// MALFORMED value refuses the build: a mis-read shape would size the buffer
+/// too small, and the first symptom would be a `ros2 param` call timing out.
+fn declared_param_service_shapes() -> String {
+    // Both spellings are literal, and each is a gate's evidence: the watch is
+    // what `check-declared-fact-carriers` looks for, and the name being an
+    // ARGUMENT rather than written at the `env::var` call is what
+    // `check-kconfig-knob-forwarding` requires. A literal
+    // `env::var("<forwarded knob>")` is issue 0460's shape -- on a Zephyr Rust
+    // image it yields the crate default whatever Kconfig says. This fact has
+    // no `CONFIG_` symbol to miss (cmake forwards it through the environment
+    // and nowhere else), so the environment is the right and only rung. Same
+    // shape as nros-params' build script, which reads W4's
+    // `NROS_DECLARED_PARAM_NEEDS_*` facts off the same road.
+    println!("cargo:rerun-if-env-changed=NROS_DECLARED_PARAM_SERVICE_SHAPE");
+    let raw = declared_fact("NROS_DECLARED_PARAM_SERVICE_SHAPE").unwrap_or_default();
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return "None".into();
+    }
+    let rows: Vec<String> = raw
+        .split(',')
+        .map(|node| {
+            let fields: Option<Vec<usize>> =
+                node.split(':').map(|v| v.trim().parse().ok()).collect();
+            match fields {
+                Some(f) if f.len() == 9 => format!(
+                    "[{}]",
+                    f.iter()
+                        .map(usize::to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+                _ => panic!(
+                    "\n\nnros-node: NROS_DECLARED_PARAM_SERVICE_SHAPE=`{raw}` is malformed at \
+                     `{node}`: each node must be nine `:`-separated counts. It is written by \
+                     the entity inventory (phase-446 F3); a stale or hand-set value would size \
+                     the parameter-service buffer wrongly, so the build stops here.\n"
+                ),
+            }
+        })
+        .collect();
+    format!("Some(&[{}])", rows.join(", "))
+}
+
+/// A declared FACT the cmake road forwards through the environment: present
+/// and non-blank, or absent. The key is a parameter for the reason
+/// [`declared_param_service_shapes`] gives.
+fn declared_fact(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|v| !v.trim().is_empty())
 }

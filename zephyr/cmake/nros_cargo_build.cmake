@@ -930,8 +930,23 @@ function(nros_resolve_knobs)
     # through the derived CONFIG_<name> lookup, like its five siblings above.
     _nros_resolve_knob(NROS_EXECUTOR_MAX_SHUTDOWN_CBS
         "${CONFIG_NROS_EXECUTOR_MAX_SHUTDOWN_CBS}")
-    _nros_resolve_knob(NROS_PARAM_SERVICE_BUFFER_SIZE
-        "${CONFIG_NROS_PARAM_SERVICE_BUFFER_SIZE}")
+    # phase-446 F3 -- the parameter-service buffer is DERIVABLE, but not to a
+    # number here: the bound needs the store's capacities, and those are
+    # resolved by nros-params' build script (where the `[knobs.params]` board
+    # rung meets Kconfig and the environment). So a STATED size is forwarded
+    # as before, and the `-1` sentinel forwards nothing: nros-node's build
+    # script then derives it from the declaration shape below, or keeps its
+    # default when there is none.
+    if(NOT "${CONFIG_NROS_PARAM_SERVICE_BUFFER_SIZE}" STREQUAL "${NROS_KNOB_DERIVE_SENTINEL}"
+       OR (DEFINED ENV{NROS_PARAM_SERVICE_BUFFER_SIZE}
+           AND NOT "$ENV{NROS_PARAM_SERVICE_BUFFER_SIZE}" STREQUAL ""))
+        _nros_resolve_knob(NROS_PARAM_SERVICE_BUFFER_SIZE
+            "${CONFIG_NROS_PARAM_SERVICE_BUFFER_SIZE}")
+    else()
+        message(STATUS
+            "nros: NROS_PARAM_SERVICE_BUFFER_SIZE not stated -- nros-node derives "
+            "it from the contract's params, or keeps its default (phase-446 F3)")
+    endif()
     # phase-446 W4 -- the PARAMETER STORE, on the derivable ladder. The entity
     # inventory reads the contract's `params:`: the slot count and the name
     # length are derived from what the nodes declare, and a string / array /
@@ -980,6 +995,12 @@ function(nros_resolve_knobs)
     # NROS_PARAM_SERVICE_BUFFER_SIZE: Kconfig states it, the environment wins.
     _nros_resolve_knob(NROS_MAX_PARAM_DESCRIPTION_LEN
         "${CONFIG_NROS_MAX_PARAM_DESCRIPTION_LEN}")
+    # phase-446 F3 -- the parameter services' declaration shape, for
+    # nros-node's build script (see NROS_PARAM_SERVICE_BUFFER_SIZE above).
+    if(DEFINED NROS_PARAM_SERVICE_SHAPE)
+        _nros_resolve_knob(NROS_DECLARED_PARAM_SERVICE_SHAPE
+            "${NROS_PARAM_SERVICE_SHAPE}")
+    endif()
 endfunction()
 
 # =============================================================================

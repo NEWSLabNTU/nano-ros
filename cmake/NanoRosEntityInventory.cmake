@@ -300,7 +300,8 @@ function(nros_derive_entity_inventory_knobs)
                NROS_DERIVED_MAX_STRING_VALUE_LEN NROS_DERIVED_MAX_ARRAY_LEN
                NROS_DERIVED_MAX_BYTE_ARRAY_LEN
                NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN NROS_PARAM_NEEDS_MAX_ARRAY_LEN
-               NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN)
+               NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN
+               NROS_PARAM_SERVICE_SHAPE)
         unset(${_v})
         unset(${_v} PARENT_SCOPE)
     endforeach()
@@ -453,7 +454,8 @@ function(nros_derive_entity_inventory_knobs)
                NROS_DERIVED_MAX_STRING_VALUE_LEN NROS_DERIVED_MAX_ARRAY_LEN
                NROS_DERIVED_MAX_BYTE_ARRAY_LEN
                NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN NROS_PARAM_NEEDS_MAX_ARRAY_LEN
-               NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN)
+               NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN
+               NROS_PARAM_SERVICE_SHAPE)
         if(DEFINED ${_v})
             _nros_entity_publish(${_v} "${${_v}}")
         endif()
@@ -557,7 +559,8 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_DERIVED_MAX_BYTE_ARRAY_LEN
         NROS_PARAM_NEEDS_MAX_STRING_VALUE_LEN
         NROS_PARAM_NEEDS_MAX_ARRAY_LEN
-        NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN)
+        NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN
+        NROS_PARAM_SERVICE_SHAPE)
         if(DEFINED ${_v})
             message(STATUS "${_v}=${${_v}}")
         endif()

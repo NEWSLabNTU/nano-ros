@@ -173,6 +173,7 @@ set(NROS_DERIVED_MAX_PARAM_NAME_LEN 35)
 set(NROS_DERIVED_MAX_STRING_VALUE_LEN 0)
 set(NROS_DERIVED_MAX_ARRAY_LEN 0)
 set(NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN "/system/diag_aggregator:blob:byte_array")
+set(NROS_PARAM_SERVICE_SHAPE "8:170:1:17:0:0:0:0:0")
 EOF
 
 REFUSED_BODY="$TEST_TMPDIR/refused.cmake"
@@ -290,6 +291,12 @@ fi
 check
 if ! nros_grep_q "NROS_PARAM_NEEDS_MAX_BYTE_ARRAY_LEN=/system/diag_aggregator:blob:byte_array" <<<"$OUT"; then
     fail "A: the parameter that NEEDS a board capacity did not reach the caller -- $OUT"
+fi
+# phase-446 F3 -- the parameter services' shape crosses the same boundary;
+# losing it would leave nros-node on its configured buffer silently.
+check
+if ! nros_grep_q "NROS_PARAM_SERVICE_SHAPE=8:170:1:17:0:0:0:0:0" <<<"$OUT"; then
+    fail "A: the parameter services' declaration shape did not reach the caller -- $OUT"
 fi
 
 # ---------------------------------------------------------------------------

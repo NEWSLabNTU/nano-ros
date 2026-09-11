@@ -944,6 +944,69 @@ impl ParamStoreSizing {
     }
 }
 
+/// phase-446 F3 -- what one node's declared parameters put through the six
+/// parameter services, before any capacity is known.
+///
+/// The service buffer is bounded by the largest message those parameters can
+/// produce, and every message is linear in two kinds of number: what the
+/// CONTRACT decides (how many names, how long, which types -- this) and what
+/// the BOARD decides (how long a string, an array or a description may be).
+/// The board's numbers are resolved by `nros-params`' build script, where
+/// the environment, Kconfig and `[knobs.params]` rungs meet, and nowhere
+/// earlier, so the inventory carries this half and nros-node finishes the
+/// bound against the resolved capacities (`param_service_bound` in
+/// `parameter_services.rs`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ParamServiceShape {
+    /// Parameters on the node: its declared names plus [`SEEDED_PARAMETER`].
+    pub params: usize,
+    /// The sum of those names' lengths, in bytes.
+    pub name_bytes: usize,
+    /// Distinct prefixes `list_parameters` reports: each name up to its last
+    /// `.`, deduplicated, as `stream_list_parameters` computes them.
+    pub prefixes: usize,
+    /// The sum of those prefixes' lengths, in bytes.
+    pub prefix_bytes: usize,
+    /// `string` parameters.
+    pub strings: usize,
+    /// `byte_array` parameters.
+    pub byte_arrays: usize,
+    /// `bool_array` parameters.
+    pub bool_arrays: usize,
+    /// `integer_array` and `double_array` parameters: both are 8-byte words
+    /// on the wire, so they cost the same.
+    pub word_arrays: usize,
+    /// `string_array` parameters.
+    pub string_arrays: usize,
+}
+
+impl ParamServiceShape {
+    /// `NROS_DECLARED_PARAM_SERVICE_SHAPE` -- one node per `,`, each the nine
+    /// counts above joined by `:`, in field order. No space and no `;`, so a
+    /// cmake list or a `cmake -E env` argument carries it intact. nros-node's
+    /// build script parses exactly this and refuses anything else.
+    pub fn token(shapes: &[ParamServiceShape]) -> String {
+        shapes
+            .iter()
+            .map(|s| {
+                format!(
+                    "{}:{}:{}:{}:{}:{}:{}:{}:{}",
+                    s.params,
+                    s.name_bytes,
+                    s.prefixes,
+                    s.prefix_bytes,
+                    s.strings,
+                    s.byte_arrays,
+                    s.bool_arrays,
+                    s.word_arrays,
+                    s.string_arrays
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+}
+
 impl ParamDeclarations {
     pub fn tag(&self) -> &'static str {
         match self {
@@ -994,6 +1057,49 @@ impl ParamDeclarations {
             nodes: nodes.into_iter().cloned().collect(),
             params,
         }
+    }
+
+    /// phase-446 F3 -- each node's [`ParamServiceShape`], in node order, or
+    /// `None` when nothing was declared (or refused). Same name set as
+    /// [`Self::sizing`]: the declared names plus the seeded `use_sim_time`,
+    /// once, typed `bool` unless the contract types it.
+    pub fn service_shapes(&self) -> Option<Vec<ParamServiceShape>> {
+        use ros_launch_manifest_model::ParamType as T;
+        let ParamDeclarations::Declared { nodes, params } = self else {
+            return None;
+        };
+        let shapes = nodes
+            .iter()
+            .map(|node| {
+                let mut names: std::collections::BTreeMap<&str, T> = params
+                    .iter()
+                    .filter(|p| &p.node == node)
+                    .map(|p| (p.name.as_str(), p.ty))
+                    .collect();
+                names.entry(SEEDED_PARAMETER).or_insert(T::Bool);
+                let mut s = ParamServiceShape::default();
+                let mut prefixes = std::collections::BTreeSet::new();
+                for (name, ty) in &names {
+                    s.params += 1;
+                    s.name_bytes += name.len();
+                    if let Some(dot) = name.rfind('.') {
+                        prefixes.insert(&name[..dot]);
+                    }
+                    match ty {
+                        T::String => s.strings += 1,
+                        T::ByteArray => s.byte_arrays += 1,
+                        T::BoolArray => s.bool_arrays += 1,
+                        T::IntegerArray | T::DoubleArray => s.word_arrays += 1,
+                        T::StringArray => s.string_arrays += 1,
+                        T::Bool | T::Integer | T::Double => {}
+                    }
+                }
+                s.prefixes = prefixes.len();
+                s.prefix_bytes = prefixes.iter().map(|p| p.len()).sum();
+                s
+            })
+            .collect();
+        Some(shapes)
     }
 
     /// The store knobs, or `None` when nothing was declared (or refused).
@@ -2008,6 +2114,13 @@ impl EntityInventory {
                     m.insert(knob.to_ascii_lowercase(), v);
                 }
             }
+            // phase-446 F3 -- the parameter services' half of the declaration.
+            if let Some(shapes) = self.params.service_shapes() {
+                m.insert(
+                    "service_shape".into(),
+                    ParamServiceShape::token(&shapes).into(),
+                );
+            }
             doc.insert("params".into(), serde_json::Value::Object(m));
         }
         format!(
@@ -2441,6 +2554,22 @@ fn render_param_store(p: &ParamDeclarations) -> String {
                 ));
             }
         }
+    }
+    // phase-446 F3 -- the parameter SERVICES. Not a buffer size: the size
+    // also needs the capacities above, and those are the board's, so what
+    // crosses is the part the contract decides. nros-node finishes it.
+    if let Some(shapes) = p.service_shapes() {
+        s.push_str(
+            "# The PARAMETER SERVICES (phase-446 F3): per node, what the declared\n\
+             # names and types put on the wire before any capacity, as\n\
+             # params:name_bytes:prefixes:prefix_bytes:strings:byte_arrays:\n\
+             # bool_arrays:word_arrays:string_arrays. nros-node bounds its\n\
+             # service buffer from these and the store's RESOLVED capacities.\n",
+        );
+        s.push_str(&format!(
+            "set(NROS_PARAM_SERVICE_SHAPE \"{}\")\n",
+            ParamServiceShape::token(&shapes)
+        ));
     }
     s
 }
@@ -3544,6 +3673,76 @@ mod from_model_tests {
                 .map(|z| z.max_parameters),
             Some(25)
         );
+    }
+
+    /// phase-446 F3 -- the parameter services' half of the declaration, one
+    /// shape per node in node order. The island fixture is all scalars, so
+    /// only the counts, the name bytes and `mrm_handler`'s one dotted prefix
+    /// (`turning_hazard_on`) move; `use_sim_time` is counted once per node.
+    #[test]
+    fn each_node_carries_its_parameter_service_shape() {
+        let m = param_model(&ISLAND_NODES, &island_params());
+        let d = ParamDeclarations::from_model(&m);
+        let shapes = d.service_shapes().expect("every node declares");
+        // `/system/diag_aggregator`, `leader_election`, `mrm_handler`,
+        // `stop_mode_operator`: 3 + 5 + 7 + 6 declared, each + use_sim_time.
+        let token = "4:40:0:0:0:0:0:0:0,6:69:0:0:0:0:0:0:0,8:170:1:17:0:0:0:0:0,\
+                     7:103:0:0:0:0:0:0:0";
+        assert_eq!(ParamServiceShape::token(&shapes), token);
+        let c = with_params(&m).to_cmake();
+        assert!(
+            c.contains(&format!("set(NROS_PARAM_SERVICE_SHAPE \"{token}\")\n")),
+            "{c}"
+        );
+        assert!(with_params(&m).to_json().contains(token));
+    }
+
+    /// Every type lands in its own counter -- integer and double arrays
+    /// share one, being the same 8-byte words on the wire -- and a declared
+    /// `use_sim_time` is not counted twice.
+    #[test]
+    fn each_parameter_type_lands_in_its_service_shape_counter() {
+        let a: &[(&str, &str)] = &[
+            ("names", "string_array"),
+            ("blob", "byte_array"),
+            ("gains", "double_array"),
+            ("ids", "integer_array"),
+            ("flags", "bool_array"),
+            ("label", "string"),
+            ("ctl.kp", "double"),
+            ("ctl.ki", "double"),
+            ("use_sim_time", "bool"),
+        ];
+        let m = param_model(&["/a"], &[("/a", a)]);
+        let shapes = ParamDeclarations::from_model(&m).service_shapes().unwrap();
+        assert_eq!(
+            shapes,
+            vec![ParamServiceShape {
+                params: 9,
+                name_bytes: 5 + 4 + 5 + 3 + 5 + 5 + 6 + 6 + 12,
+                prefixes: 1,
+                prefix_bytes: 3,
+                strings: 1,
+                byte_arrays: 1,
+                bool_arrays: 1,
+                word_arrays: 2,
+                string_arrays: 1,
+            }]
+        );
+        assert_eq!(ParamServiceShape::token(&shapes), "9:51:1:3:1:1:1:2:1");
+    }
+
+    /// Absence is not a shape: no `params:` anywhere, or a node that states
+    /// none, carries no service shape, so nros-node keeps its configured size.
+    #[test]
+    fn no_declaration_carries_no_service_shape() {
+        let absent = param_model(&ISLAND_NODES, &[]);
+        let refused = param_model(&ISLAND_NODES, &island_params()[..3]);
+        for m in [absent, refused] {
+            assert_eq!(ParamDeclarations::from_model(&m).service_shapes(), None);
+            let c = with_params(&m).to_cmake();
+            assert!(!c.contains("NROS_PARAM_SERVICE_SHAPE"), "{c}");
+        }
     }
 
     #[test]
