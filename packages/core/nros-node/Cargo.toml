@@ -256,6 +256,16 @@ libc = { version = "0.2", optional = true }
 # `NROS_EXECUTOR_MAX_CBS` and friends compiled their crate defaults whatever
 # Kconfig said. Build-only, dependency-free, host-compiled like every build dep.
 nros-zephyr-build = { path = "../../tooling/nros-zephyr-build" }
+# issue 1256 / phase-454 W1 — the QoS SSoT, so the arena derivation READS ROS 2's
+# default depth instead of restating it.
+#
+# "A build script cannot read a const out of the crate it is building" was true
+# and was read as "a build script cannot read this const". It can: the const
+# lives in `nros-rmw`, a DIFFERENT crate, and a build-dependency is how a build
+# script reaches one. `default-features = false` keeps this the same no_std
+# graph the target build already compiles (nros-core + nros-serdes + heapless),
+# so the host copy costs a re-check of four crates and no new dependency.
+nros-rmw = { workspace = true, default-features = false }
 
 # phase-400 W6 — the RFC-0049 knob ladder, so the eight `NROS_EXECUTOR_*`
 # sizing knobs get their platform and board rungs instead of env → Kconfig →

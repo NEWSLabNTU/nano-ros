@@ -146,7 +146,25 @@ typedef struct nros_cpp_qos_t {
 #endif /* NROS_CPP_FFI_H */
 
 /** Default profile: best-effort-free reliable, volatile, keep-last(10) — matches
- *  the C++ `QoS::default_profile()` the C++ components use. */
+ *  the C++ `QoS::default_profile()` the C++ components use.
+ *
+ *  phase-454 W1 — bound field-by-field to `QoSProfile::QOS_PROFILE_DEFAULT` by
+ *  `scripts/check-qos-profile-ssot.py`, which is why the one field that does
+ *  NOT agree has to say so below rather than sit in a comment.
+ *
+ *  nros-qos-mirror-deviation: profile=* field=liveliness_kind
+ *  ours=AUTOMATIC ssot=SYSTEM_DEFAULT ref="phase-428 W10"
+ *
+ *  (The record above is DATA and wraps; the paragraph below is the reason, kept
+ *  behind a blank comment line so clang-format cannot reflow prose into it.)
+ *
+ *  Upstream's `rmw_qos_profile_default` leaves liveliness at the sentinel and
+ *  W10 moved the Rust table and `rmw_entity.h` onto it. The C and C++
+ *  application surfaces were not moved, and cannot be moved alone: the value
+ *  crosses the C ABI as its discriminant, so flipping one surface makes a C
+ *  caller's default and a Rust caller's default differ in a field cyclonedds
+ *  puts on the wire — the very defect W10 exists to close. All the remaining
+ *  surfaces move together or none do. */
 static inline nros_cpp_qos_t nros_c_qos_default(void) {
     nros_cpp_qos_t q;
     q.reliability = NROS_C_QOS_RELIABLE;
