@@ -530,7 +530,7 @@ pub fn execute(
 ) -> Result<Provenance> {
     let provenance = execute_install(action, tool, version, prefix)?;
     for link in front_newest(&store_root(), tool, front)? {
-        eprintln!("    → {} (newest installed)", link.display());
+        super::step_log::say(format!("    → {} (newest installed)", link.display()));
     }
     Ok(provenance)
 }
@@ -568,20 +568,7 @@ fn execute_install(
             std::fs::create_dir_all(prefix)
                 .wrap_err_with(|| format!("create {}", prefix.display()))?;
             let archive = prefix.with_extension("download");
-            sh(
-                &[
-                    "curl",
-                    "-L",
-                    "--fail",
-                    "--silent",
-                    "--show-error",
-                    "-o",
-                    &archive.to_string_lossy(),
-                    url,
-                ],
-                None,
-            )
-            .wrap_err_with(|| format!("download {url}"))?;
+            download(url, &archive).wrap_err_with(|| format!("download {url}"))?;
             verify_sha256(&archive, sha256)?;
             // Default: the mirror shape (a prefix-rooted tar). An UPSTREAM
             // asset often is not that — ninja publishes a zip holding a bare
@@ -683,20 +670,7 @@ fn execute_install(
                     std::fs::create_dir_all(&src)
                         .wrap_err_with(|| format!("create {src_str} ({tool})"))?;
                     let archive = prefix.with_extension("src.download");
-                    sh(
-                        &[
-                            "curl",
-                            "-L",
-                            "--fail",
-                            "--silent",
-                            "--show-error",
-                            "-o",
-                            &archive.to_string_lossy(),
-                            url,
-                        ],
-                        None,
-                    )
-                    .wrap_err_with(|| format!("download {url} ({tool})"))?;
+                    download(url, &archive).wrap_err_with(|| format!("download {url} ({tool})"))?;
                     verify_sha256(&archive, sha256)?;
                     sh(
                         &[
@@ -724,11 +698,11 @@ fn execute_install(
             }
             if let Some(inst) = install {
                 if let Some(tc) = toolchain {
-                    eprintln!(
+                    super::step_log::say(format!(
                         "nros setup: building {tool} with the workspace Rust channel \
                          ({tc}) rather than the checkout's own pin — set \
                          `respect_toolchain = true` on this recipe if it needs its own."
-                    );
+                    ));
                 }
                 sh_with_toolchain(
                     &["sh", "-c", &inst.replace("{prefix}", &prefix_abs)],
@@ -926,9 +900,9 @@ fn ensure_submodule_branch_refspec(workspace: &Path, path: &str, shallow: bool) 
         // Non-fatal: an offline host still gets the durable config, and the
         // next fetch materialises the ref. Failing provisioning over this
         // would be worse than the state we are repairing.
-        eprintln!(
+        super::step_log::say(format!(
             "nros setup: {path}: added fetch refspec for `{branch}`, but fetching it failed ({e}). It will resolve on the next `git fetch`."
-        );
+        ));
     }
     Ok(())
 }
@@ -1295,11 +1269,53 @@ fn sh_with_toolchain(args: &[&str], cwd: Option<&Path>, toolchain: Option<&str>)
     if let Some(tc) = toolchain {
         c.env("RUSTUP_TOOLCHAIN", tc);
     }
-    let status = c.status().wrap_err_with(|| format!("spawn {cmd}"))?;
+    // Routed through the step's sink when a session is executing this step
+    // (phase-447 E3), so a concurrent install's `tar`/`git`/`make` output
+    // lands in plan order instead of interleaving; inherited stdio otherwise.
+    let status = super::step_log::status(&mut c).wrap_err_with(|| format!("spawn {cmd}"))?;
     if !status.success() {
         bail!("`{}` failed ({status})", args.join(" "));
     }
     Ok(())
+}
+
+/// Download `url` to `dest` — the ONE spelling of a store fetch (a prebuilt
+/// dist and a source tarball used to carry a copy each).
+///
+/// `curl --silent --show-error` is right for a short fetch and wrong for a long
+/// one: a 1.4 GB Zephyr SDK was fifteen minutes of a log that looked hung
+/// (issue 1266). So curl stays silent — its own progress bar is a
+/// carriage-return repaint, one very long line in a CI log — and
+/// [`super::step_log::watch_download`] prints a byte-count line once the fetch
+/// has run long enough to need one. `cmd/setup.rs::fetch_index` is not this: it
+/// fetches a small TOML with fail-fast timeouts, and stays silent on purpose.
+fn download(url: &str, dest: &Path) -> Result<()> {
+    let what = url
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(url);
+    super::step_log::watch_download(
+        dest,
+        what,
+        super::step_log::ProgressPolicy::DEFAULT,
+        std::time::Duration::from_secs(1),
+        || {
+            sh(
+                &[
+                    "curl",
+                    "-L",
+                    "--fail",
+                    "--silent",
+                    "--show-error",
+                    "-o",
+                    &dest.to_string_lossy(),
+                    url,
+                ],
+                None,
+            )
+        },
+    )
 }
 
 /// The workspace's pinned Rust channel, read from `rust-toolchain.toml`.

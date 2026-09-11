@@ -67,6 +67,7 @@ pub mod sdk_store;
 /// phase-351 W1 — the SITE half of a deploy target (RFC-0072 §5).
 pub mod site_config;
 pub mod source_metadata;
+pub mod step_log;
 /// phase-440 W6 — the store's inventory, pin predicate and gc plan (RFC-0095
 /// D2 + D11). `sdk_store` is where a version GOES; this is what is there.
 pub mod store;

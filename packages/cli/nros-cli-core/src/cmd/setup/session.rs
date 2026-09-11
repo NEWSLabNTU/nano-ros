@@ -8,8 +8,9 @@
 //!
 //! Resolution is pure: a probe is injected, so the plan is a function of the
 //! index, the host and what the probes answer (the property issue 0374 gave
-//! `plan_install`). Execution is sequential in E2. E3 replaces
-//! [`run_sequential`] with a pipeline bounded by the CPU count, and the four
+//! `plan_install`). Execution is a pipeline bounded by the host's CPU count
+//! ([`run_pipelined`], phase-447 E3, which replaced E2's sequential loop and
+//! nothing else), and the four
 //! things that must stay ORDERED under that concurrency are properties of the
 //! types here rather than of the loop, so a pipeline cannot break them by
 //! accident:
@@ -28,8 +29,10 @@
 //!    accumulated by whoever finishes first.
 //! 4. **Per-package output in plan order.** Every per-step line goes through an
 //!    [`OrderedLog`], which emits a step's lines only once every earlier step
-//!    has closed. Sequentially that is live output; under a pipeline it is
-//!    buffering, with the same text in the same order.
+//!    has closed. The earliest unfinished step streams live; the steps ahead
+//!    of it buffer, and release the same text in the same order. What
+//!    `sdk_store` prints and what its children write reach the same log
+//!    through the step's sink (`orchestration/step_log.rs`).
 //!
 //! # One ask per SESSION, across processes
 //!
@@ -48,6 +51,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
+    sync::{Arc, Condvar, Mutex, MutexGuard},
 };
 
 use eyre::{Result, bail};
@@ -59,6 +63,7 @@ use crate::orchestration::{
         InstallAction, Provenance, SdkLock, SourceDisposition, plan_install, provision_source,
         tool_prefix,
     },
+    step_log::{self, StepSink},
 };
 
 /// The environment variable naming this session's ledger file.
@@ -654,6 +659,61 @@ impl OrderedLog {
 // Execution.
 // ---------------------------------------------------------------------------
 
+/// Where released lines go — stderr in a real run, a buffer in a test.
+pub(super) type Emit = Box<dyn FnMut(&str) + Send>;
+
+/// The plan-order log and its emitter, behind one lock so a release of lines is
+/// atomic with respect to every other step's: the lines of step `n` can never
+/// be split by step `n+1`'s.
+///
+/// Shared (`Arc`) because a step's lines come from several threads — the
+/// worker, a spawned child's reader threads, a download's progress watcher —
+/// and every one of them reaches it through the step's [`StepSink`].
+pub(super) struct PlanOutput {
+    state: Mutex<(OrderedLog, Emit)>,
+}
+
+impl PlanOutput {
+    fn new(emit: Emit) -> Arc<Self> {
+        Arc::new(Self {
+            state: Mutex::new((OrderedLog::default(), emit)),
+        })
+    }
+
+    fn say(&self, step: usize, line: String) {
+        let mut g = lock(&self.state);
+        let (log, emit) = &mut *g;
+        for l in log.push(step, line) {
+            emit(&l);
+        }
+    }
+
+    fn close(&self, step: usize) {
+        let mut g = lock(&self.state);
+        let (log, emit) = &mut *g;
+        for l in log.close(step) {
+            emit(&l);
+        }
+    }
+
+    /// A line that belongs to no step — printed before any step runs.
+    fn note(&self, line: &str) {
+        (lock(&self.state).1)(line);
+    }
+
+    /// Step `step`'s sink: what `sdk_store` and its children write into.
+    fn sink(self: &Arc<Self>, step: usize) -> StepSink {
+        let me = Arc::clone(self);
+        Arc::new(move |line| me.say(step, line))
+    }
+}
+
+/// A poisoned lock is a step that panicked while holding it; the data is still
+/// the log and the schedule, and the run must still finish and report.
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// What one step produced. Nothing here touches the lock.
 #[derive(Default)]
 pub(super) struct Outcome {
@@ -667,8 +727,13 @@ pub(super) struct Outcome {
 /// order, and [`SessionRun::finish`] is the one writer of the lock.
 pub(super) struct SessionRun<'p, 'i> {
     plan: &'p SessionPlan<'i>,
-    log: OrderedLog,
+    out: Arc<PlanOutput>,
     outcomes: Vec<Option<Outcome>>,
+    /// The order steps actually finished in. Nothing may be derived from it —
+    /// it exists so a test can prove a run finished OUT of plan order, which is
+    /// what makes "the result is in plan order" a claim rather than a tautology.
+    #[cfg_attr(not(test), allow(dead_code))]
+    completed: Vec<usize>,
 }
 
 /// What a finished run amounts to.
@@ -679,38 +744,47 @@ pub(super) struct SessionReport {
     pub(super) smoke: SmokeFailures,
     /// `(package, error)`, in plan order.
     pub(super) errors: Vec<(String, String)>,
+    /// Store `bin/` dirs in PLAN order — what the emitted CMakePreset's `PATH`
+    /// and `ensure_tools`'s PATH prepend are folded from (RFC-0099 D7).
+    pub(super) bin_dirs: Vec<PathBuf>,
 }
 
 impl<'p, 'i> SessionRun<'p, 'i> {
     pub(super) fn new(plan: &'p SessionPlan<'i>) -> Self {
-        Self {
-            plan,
-            log: OrderedLog::default(),
-            outcomes: plan.steps.iter().map(|_| None).collect(),
-        }
+        Self::with_emitter(plan, Box::new(|l: &str| eprintln!("{l}")))
     }
 
-    /// A per-step line, routed through the plan-order log.
-    pub(super) fn say(&mut self, step: usize, line: String) {
-        for l in self.log.push(step, line) {
-            eprintln!("{l}");
+    pub(super) fn with_emitter(plan: &'p SessionPlan<'i>, emit: Emit) -> Self {
+        Self {
+            plan,
+            out: PlanOutput::new(emit),
+            outcomes: plan.steps.iter().map(|_| None).collect(),
+            completed: Vec::new(),
         }
     }
 
     pub(super) fn complete(&mut self, step: usize, outcome: Outcome) {
         self.outcomes[step] = Some(outcome);
-        for l in self.log.close(step) {
-            eprintln!("{l}");
-        }
+        self.completed.push(step);
+        self.out.close(step);
     }
 
-    /// The single writer: walk the steps in PLAN order, record every locked
-    /// provenance, save the lock ONCE, and fold smoke verdicts and failures in
-    /// the same order. Recorded before any verdict on purpose — the files are
-    /// on disk whatever the probes say, and a lock that omitted them would make
-    /// the next run re-download the same broken dist to reach the same answer.
+    #[cfg(test)]
+    pub(super) fn completion_order(&self) -> &[usize] {
+        &self.completed
+    }
+
+    /// The single writer, and the ONE plan-order fold: walk the steps in PLAN
+    /// order, record every locked provenance, save the lock ONCE, and fold
+    /// smoke verdicts, failures and `bin_dirs` in the same order. Recorded
+    /// before any verdict on purpose — the files are on disk whatever the
+    /// probes say, and a lock that omitted them would make the next run
+    /// re-download the same broken dist to reach the same answer.
     pub(super) fn finish(self, lock_path: Option<&Path>) -> Result<SessionReport> {
-        let mut report = SessionReport::default();
+        let mut report = SessionReport {
+            bin_dirs: self.plan.bin_dirs(),
+            ..SessionReport::default()
+        };
         let mut lock: Option<SdkLock> = None;
         for (step, outcome) in self.plan.steps.iter().zip(self.outcomes) {
             let Some(outcome) = outcome else {
@@ -769,128 +843,424 @@ impl SessionReport {
     }
 }
 
-/// Execute `plan` one step at a time, in plan order. E3 replaces this loop and
-/// nothing else.
+// ---------------------------------------------------------------------------
+// How many at once.
+// ---------------------------------------------------------------------------
+
+/// The environment variable that overrides the concurrency — the only spelling
+/// the lazy `ensure_tools` path (under `nros build`) and the `just` recipes can
+/// reach, since neither passes `--jobs`.
+pub(super) const JOBS_ENV: &str = "NROS_SETUP_JOBS";
+
+/// How many steps may be in flight, and where that number came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct Jobs {
+    pub(super) n: usize,
+    pub(super) from: &'static str,
+}
+
+impl Jobs {
+    /// `--jobs`, else `$NROS_SETUP_JOBS`, else the host's CPU count (RFC-0099
+    /// D7: bounded by the host). Pure — the caller supplies all three.
+    ///
+    /// Zero is refused rather than read as "default": `-j0` means "unlimited"
+    /// to make and "default" to cargo, and a flag that silently means one of
+    /// the two is worse than one that says it means neither.
+    pub(super) fn resolve(
+        flag: Option<usize>,
+        env: Option<&str>,
+        host: Option<usize>,
+    ) -> Result<Self> {
+        if let Some(n) = flag {
+            if n == 0 {
+                bail!("nros setup: --jobs must be at least 1");
+            }
+            return Ok(Self { n, from: "--jobs" });
+        }
+        if let Some(raw) = env.map(str::trim).filter(|v| !v.is_empty()) {
+            return match raw.parse::<usize>() {
+                Ok(n) if n > 0 => Ok(Self { n, from: JOBS_ENV }),
+                _ => bail!("nros setup: {JOBS_ENV}={raw:?} is not a positive integer"),
+            };
+        }
+        Ok(match host {
+            Some(n) if n > 0 => Self {
+                n,
+                from: "this host's CPU count",
+            },
+            _ => Self {
+                n: 1,
+                from: "the host's CPU count is unknown",
+            },
+        })
+    }
+
+    /// [`Jobs::resolve`] against this process's environment and host.
+    pub(super) fn from_env(flag: Option<usize>) -> Result<Self> {
+        let env = std::env::var(JOBS_ENV).ok();
+        let host = std::thread::available_parallelism().ok().map(usize::from);
+        Self::resolve(flag, env.as_deref(), host)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The pipeline.
+// ---------------------------------------------------------------------------
+
+/// Steps that must not run beside each other, whatever the concurrency.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Lane {
+    /// A `[source.*]` step writes the WORKSPACE's git state: the submodule arm
+    /// runs `git -C <workspace> submodule update` (which takes the
+    /// superproject's `index.lock`) and rewrites `.git/config` refspecs. Two at
+    /// once would fail on the lock, or lose a config write.
+    Workspace,
+    /// A `[tool.*]` built from source already uses the whole machine through
+    /// its own cargo/make/ninja. Two at once mostly moves CPU contention around
+    /// (issue 1267); one build beside other packages' DOWNLOADS is the overlap
+    /// that pays.
+    Build,
+}
+
+pub(super) fn lane_of(step: &Step<'_>) -> Option<Lane> {
+    match &step.kind {
+        StepKind::Source(_) => Some(Lane::Workspace),
+        StepKind::Tool {
+            action: InstallAction::Source { .. },
+            blocked_on,
+            ..
+        } if blocked_on.is_empty() => Some(Lane::Build),
+        _ => None,
+    }
+}
+
+/// Which steps have been handed out, which lanes are held, which steps closed.
+struct Schedule {
+    lanes: Vec<Option<Lane>>,
+    dispatched: Vec<bool>,
+    closed: Vec<bool>,
+    busy: Vec<Lane>,
+}
+
+impl Schedule {
+    /// The EARLIEST undispatched step whose lane is free. Earliest, so the
+    /// step the log is streaming is always among those running; "whose lane is
+    /// free", so a queue of source builds never holds a worker idle while a
+    /// download behind them could be moving.
+    fn pick(&mut self) -> Option<usize> {
+        let i = (0..self.lanes.len()).find(|&i| {
+            !self.dispatched[i] && self.lanes[i].is_none_or(|l| !self.busy.contains(&l))
+        })?;
+        self.dispatched[i] = true;
+        if let Some(l) = self.lanes[i] {
+            self.busy.push(l);
+        }
+        Some(i)
+    }
+
+    fn all_dispatched(&self) -> bool {
+        self.dispatched.iter().all(|&d| d)
+    }
+}
+
+struct Pool {
+    sched: Mutex<Schedule>,
+    changed: Condvar,
+}
+
+/// What a step's work sees: its place in the plan, and its output.
+pub(super) struct StepCtx<'s, 'p, 'i> {
+    pub(super) index: usize,
+    pub(super) step: &'p Step<'i>,
+    out: &'s PlanOutput,
+    #[cfg_attr(not(test), allow(dead_code))]
+    pool: &'s Pool,
+}
+
+impl StepCtx<'_, '_, '_> {
+    pub(super) fn say(&self, line: String) {
+        self.out.say(self.index, line);
+    }
+
+    /// Block until step `other` has CLOSED — the tests' way to force an
+    /// out-of-order finish by handshake instead of by sleeping. A test that
+    /// asserted on wall-clock time would measure the machine.
+    ///
+    /// The deadline is a deadlock guard, not a measurement: a scheduler that
+    /// cannot run `other` while this step waits (the naive "block on the lane
+    /// in plan order" shape) fails the test instead of hanging it.
+    #[cfg(test)]
+    pub(super) fn wait_closed(&self, other: usize) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        let mut s = lock(&self.pool.sched);
+        while !s.closed[other] {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            assert!(
+                !left.is_zero(),
+                "step {} waited for step {other}, which never closed — the executor \
+                 cannot run it while this one is in flight",
+                self.index
+            );
+            s = self
+                .pool
+                .changed
+                .wait_timeout(s, left)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
+        }
+    }
+}
+
+/// Execute `run`'s plan with up to `jobs` steps in flight. `work` does one step
+/// and returns its outcome; it may run on any worker, in any order.
+///
+/// What this owns is the ORDER of nothing: every ordered property is somebody
+/// else's — the lock and `bin_dirs` are [`SessionRun::finish`]'s plan-order
+/// fold, output is the [`OrderedLog`]'s, and one-install-per-tool (and so one
+/// `front_newest` per tool) is [`SessionPlan::resolve`]'s. So this is free to
+/// finish steps in whatever order they finish. The two things it does own:
+///
+/// * **no step is dropped or run twice** — [`Schedule::pick`] hands each index
+///   out exactly once, and a step that PANICS is an error outcome, not a lost
+///   one (`finish` refuses a step that never completed);
+/// * **a failure stops nothing** — a step's error is its own outcome; no
+///   worker stops taking steps because another failed.
+pub(super) fn execute_plan<'p, 'i, W>(
+    run: SessionRun<'p, 'i>,
+    jobs: usize,
+    work: W,
+) -> SessionRun<'p, 'i>
+where
+    W: Fn(&StepCtx<'_, 'p, 'i>) -> Outcome + Sync,
+{
+    let plan = run.plan;
+    let n = plan.steps.len();
+    let out = Arc::clone(&run.out);
+    let run = Mutex::new(run);
+    let pool = Pool {
+        sched: Mutex::new(Schedule {
+            lanes: plan.steps.iter().map(lane_of).collect(),
+            dispatched: vec![false; n],
+            closed: vec![false; n],
+            busy: Vec::new(),
+        }),
+        changed: Condvar::new(),
+    };
+    let workers = jobs.clamp(1, n.max(1));
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| {
+                loop {
+                    let next = {
+                        let mut s = lock(&pool.sched);
+                        loop {
+                            if let Some(i) = s.pick() {
+                                break Some(i);
+                            }
+                            if s.all_dispatched() {
+                                break None;
+                            }
+                            // Everything left waits on a held lane.
+                            s = pool.changed.wait(s).unwrap_or_else(|e| e.into_inner());
+                        }
+                    };
+                    let Some(i) = next else { break };
+                    let ctx = StepCtx {
+                        index: i,
+                        step: &plan.steps[i],
+                        out: &out,
+                        pool: &pool,
+                    };
+                    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        step_log::with_step_sink(out.sink(i), || work(&ctx))
+                    }))
+                    .unwrap_or_else(|p| Outcome {
+                        error: Some(format!("the installer panicked: {}", panic_text(&*p))),
+                        ..Outcome::default()
+                    });
+                    lock(&run).complete(i, outcome);
+                    let mut s = lock(&pool.sched);
+                    s.closed[i] = true;
+                    if let Some(l) = s.lanes[i] {
+                        s.busy.retain(|&b| b != l);
+                    }
+                    drop(s);
+                    pool.changed.notify_all();
+                }
+            });
+        }
+    });
+    run.into_inner().unwrap_or_else(|e| e.into_inner())
+}
+
+fn panic_text(p: &(dyn std::any::Any + Send)) -> String {
+    p.downcast_ref::<&str>()
+        .map(|s| (*s).to_string())
+        .or_else(|| p.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "(no message)".to_string())
+}
+
+/// Execute `plan` as a pipeline of up to `jobs` steps — RFC-0099 D7 /
+/// phase-447 E3. Replaces E2's `run_sequential`, and nothing else changed
+/// around it: resolution, the ask and [`SessionRun::finish`] are as E2 left
+/// them.
+///
+/// Fetch, verify and unpack stay serial WITHIN a package (verify needs the
+/// whole archive) and overlap ACROSS packages: while one unpacks, the next
+/// downloads (issue 1266), and a source build runs beside other packages'
+/// downloads (issue 1267).
+pub(super) fn run_pipelined<'p, 'i>(
+    plan: &'p SessionPlan<'i>,
+    workspace: &Path,
+    shallow: Option<bool>,
+    dry_run: bool,
+    jobs: Jobs,
+) -> SessionRun<'p, 'i> {
+    run_pipelined_into(SessionRun::new(plan), workspace, shallow, dry_run, jobs)
+}
+
+/// [`run_pipelined`] into a given run — a test passes one whose emitter
+/// captures, and gets the real install path with its output readable.
+pub(super) fn run_pipelined_into<'p, 'i>(
+    run: SessionRun<'p, 'i>,
+    workspace: &Path,
+    shallow: Option<bool>,
+    dry_run: bool,
+    jobs: Jobs,
+) -> SessionRun<'p, 'i> {
+    let plan = run.plan;
+    let host = crate::orchestration::sdk_index::host_key();
+    let installs = plan
+        .steps
+        .iter()
+        .filter(|s| {
+            matches!(&s.kind, StepKind::Tool { action, blocked_on, .. }
+                if will_install(action) && blocked_on.is_empty())
+        })
+        .count();
+    let workers = jobs.n.min(plan.steps.len());
+    if plan.mode != Mode::Lazy && !dry_run && installs > 1 && workers > 1 {
+        run.out.note(&format!(
+            "nros setup: {installs} package(s) to install, up to {workers} at a time ({}; \
+             override with --jobs or {JOBS_ENV}). Each package's output is shown whole, in plan \
+             order.",
+            jobs.from
+        ));
+    }
+    execute_plan(run, jobs.n, |ctx| {
+        run_step(plan.mode, ctx, &host, workspace, shallow, dry_run)
+    })
+}
+
+/// One step of the real install path.
 ///
 /// Every `[tool.*]` install goes through [`SmokeFailures::execute_and_probe`] —
 /// the ONE place installing and asking "does it run?" are paired. Reaching
 /// `sdk_store::execute` from here without it is the regression
 /// `a_board_install_smokes_every_package_and_a_broken_one_stops_nothing`
 /// exists to catch.
-pub(super) fn run_sequential<'p, 'i>(
-    plan: &'p SessionPlan<'i>,
+fn run_step(
+    mode: Mode,
+    ctx: &StepCtx<'_, '_, '_>,
+    host: &str,
     workspace: &Path,
     shallow: Option<bool>,
     dry_run: bool,
-) -> SessionRun<'p, 'i> {
-    let host = crate::orchestration::sdk_index::host_key();
-    let mut run = SessionRun::new(plan);
-    for (i, step) in plan.steps.iter().enumerate() {
-        let mut out = Outcome::default();
-        match &step.kind {
-            StepKind::Tool {
-                tool,
-                prefix,
-                action,
-                blocked_on,
-                ..
-            } => {
-                // The lazy path runs under `nros build`: it speaks only when it
-                // does something, never to list what is already there.
-                if plan.mode != Mode::Lazy {
-                    let what = super::describe(action, &tool.version, &host);
-                    run.say(i, tool_line(plan.mode, step.name, &what, prefix));
+) -> Outcome {
+    let step = ctx.step;
+    let mut out = Outcome::default();
+    match &step.kind {
+        StepKind::Tool {
+            tool,
+            prefix,
+            action,
+            blocked_on,
+            ..
+        } => {
+            // The lazy path runs under `nros build`: it speaks only when it
+            // does something, never to list what is already there.
+            if mode != Mode::Lazy {
+                let what = super::describe(action, &tool.version, host);
+                ctx.say(tool_line(mode, step.name, &what, prefix));
+            }
+            if dry_run {
+                return out;
+            }
+            match action {
+                InstallAction::Present => {}
+                InstallAction::Unavailable if mode == Mode::Lazy => {
+                    ctx.say(format!(
+                        "nros: {} {} unavailable for {host} (no prebuilt, no source) — \
+                         install it yourself if the build needs it",
+                        step.name, tool.version
+                    ));
                 }
-                if dry_run {
-                    run.complete(i, out);
-                    continue;
+                InstallAction::Unavailable => {
+                    out.error = Some(format!(
+                        "{} has no prebuilt for {host} and no source recipe",
+                        tool.version
+                    ));
                 }
-                match action {
-                    InstallAction::Present => {}
-                    InstallAction::Unavailable if plan.mode == Mode::Lazy => {
-                        run.say(
-                            i,
-                            format!(
-                                "nros: {} {} unavailable for {host} (no prebuilt, no source) — \
-                                 install it yourself if the build needs it",
-                                step.name, tool.version
-                            ),
-                        );
-                    }
-                    InstallAction::Unavailable => {
-                        out.error = Some(format!(
-                            "{} has no prebuilt for {host} and no source recipe",
-                            tool.version
+                _ if !blocked_on.is_empty() => {
+                    out.error = Some(format!(
+                        "not installed — needs system package(s) this host is missing: {} \
+                         (the one ask for them is printed above; declared as \
+                         [tool.{}] system = [..])",
+                        blocked_on.join(", "),
+                        step.name
+                    ));
+                }
+                other => {
+                    if mode == Mode::Lazy {
+                        ctx.say(format!(
+                            "nros: auto-installing {} {} (set NROS_NO_AUTO_SETUP to skip)",
+                            step.name, tool.version
                         ));
                     }
-                    _ if !blocked_on.is_empty() => {
-                        out.error = Some(format!(
-                            "not installed — needs system package(s) this host is missing: {} \
-                             (the one ask for them is printed above; declared as \
-                             [tool.{}] system = [..])",
-                            blocked_on.join(", "),
-                            step.name
-                        ));
-                    }
-                    other => {
-                        if plan.mode == Mode::Lazy {
-                            run.say(
-                                i,
-                                format!(
-                                    "nros: auto-installing {} {} (set NROS_NO_AUTO_SETUP to skip)",
-                                    step.name, tool.version
-                                ),
-                            );
+                    match out.smoke.execute_and_probe(other, step.name, tool, prefix) {
+                        Ok(prov) => {
+                            out.provenance = Some(prov);
+                            out.installed = true;
+                            ctx.say(format!("    → {}", prefix.display()));
                         }
-                        match out.smoke.execute_and_probe(other, step.name, tool, prefix) {
-                            Ok(prov) => {
-                                out.provenance = Some(prov);
-                                out.installed = true;
-                                run.say(i, format!("    → {}", prefix.display()));
-                            }
-                            Err(e) => {
-                                out.error = Some(format!("install {}: {e:#}", tool.version));
-                            }
+                        Err(e) => {
+                            out.error = Some(format!("install {}: {e:#}", tool.version));
                         }
                     }
-                }
-            }
-            StepKind::Source(src) => {
-                match provision_source(step.name, src, workspace, dry_run, shallow) {
-                    Ok(disp) => {
-                        out.installed = matches!(disp, SourceDisposition::Provisioned);
-                        if plan.mode != Mode::Lazy || out.installed {
-                            let text = super::describe_source(step.name, src, workspace, &disp);
-                            run.say(i, source_line(plan.mode, step.name, &text));
-                        }
-                    }
-                    Err(e) => {
-                        let msg = format!("provision source: {e:#}");
-                        if plan.mode == Mode::Lazy {
-                            // Best-effort, as before: the build names the miss.
-                            run.say(
-                                i,
-                                format!(
-                                    "nros: source {} provisioning failed ({msg}) — provide it \
-                                     yourself if the build needs it",
-                                    step.name
-                                ),
-                            );
-                        } else {
-                            out.error = Some(msg);
-                        }
-                    }
-                }
-            }
-            StepKind::Other(disposition) => {
-                if plan.mode != Mode::Lazy {
-                    run.say(i, format!("  {:<22} {disposition}", step.name));
                 }
             }
         }
-        run.complete(i, out);
+        StepKind::Source(src) => {
+            match provision_source(step.name, src, workspace, dry_run, shallow) {
+                Ok(disp) => {
+                    out.installed = matches!(disp, SourceDisposition::Provisioned);
+                    if mode != Mode::Lazy || out.installed {
+                        let text = super::describe_source(step.name, src, workspace, &disp);
+                        ctx.say(source_line(mode, step.name, &text));
+                    }
+                }
+                Err(e) => {
+                    let msg = format!("provision source: {e:#}");
+                    if mode == Mode::Lazy {
+                        // Best-effort, as before: the build names the miss.
+                        ctx.say(format!(
+                            "nros: source {} provisioning failed ({msg}) — provide it \
+                             yourself if the build needs it",
+                            step.name
+                        ));
+                    } else {
+                        out.error = Some(msg);
+                    }
+                }
+            }
+        }
+        StepKind::Other(disposition) => {
+            if mode != Mode::Lazy {
+                ctx.say(format!("  {:<22} {disposition}", step.name));
+            }
+        }
     }
-    run
+    out
 }
 
 fn tool_line(mode: Mode, name: &str, what: &str, prefix: &Path) -> String {
@@ -1250,7 +1620,7 @@ mod tests {
         )
         .unwrap();
 
-        let report = run_sequential(&plan, &dir, None, false)
+        let report = run_pipelined(&plan, &dir, None, false, three_at_once())
             .finish(Some(&lock))
             .unwrap();
 
@@ -1305,7 +1675,7 @@ mod tests {
         .unwrap();
         assert_eq!(plan.system.os["libfoo"], ["needy"]);
 
-        let report = run_sequential(&plan, &dir, None, false)
+        let report = run_pipelined(&plan, &dir, None, false, three_at_once())
             .finish(Some(&dir.join("lock")))
             .unwrap();
         assert!(
@@ -1388,5 +1758,361 @@ mod tests {
             panic!("an uncompleted step must be refused");
         };
         assert!(format!("{err}").contains("never completed"), "{err}");
+    }
+
+    // ---- E3: the pipeline --------------------------------------------------
+    //
+    // Every test below forces its completion order by HANDSHAKE
+    // (`StepCtx::wait_closed`) and asserts on order and outcomes, never on
+    // elapsed time — a timing assertion measures the machine. Each also asserts
+    // that the order really was out of plan order, so "the result is in plan
+    // order" is a claim and not a tautology of a run that happened to be
+    // sequential.
+
+    fn three_at_once() -> Jobs {
+        Jobs::resolve(Some(3), None, None).unwrap()
+    }
+
+    /// A `[tool.*]` with a dist for this host: `Prebuilt`, no lane. The URL is
+    /// never fetched where the work is injected.
+    fn prebuilt_entry(name: &str) -> String {
+        format!(
+            "[tool.{name}]\nversion = \"1\"\n\
+             dist.{host} = {{ url = \"file:///nowhere/{name}\", sha256 = \"00\" }}\n",
+            host = host_key()
+        )
+    }
+
+    /// A `[tool.*]` built from source: the Build lane.
+    fn source_build_entry(name: &str) -> String {
+        format!("[tool.{name}]\nversion = \"1\"\n[tool.{name}.source]\ngit = \"x\"\nref = \"y\"\n")
+    }
+
+    /// A `[source.*]`: the Workspace lane.
+    fn workspace_source_entry(name: &str) -> String {
+        format!("[source.{name}]\nversion = \"1\"\ngit = \"x\"\nref = \"y\"\ndest = \"d/{name}\"\n")
+    }
+
+    type Seen = Arc<Mutex<Vec<String>>>;
+
+    fn capturing<'p, 'i>(plan: &'p SessionPlan<'i>) -> (SessionRun<'p, 'i>, Seen) {
+        let seen: Seen = Arc::new(Mutex::new(Vec::new()));
+        let s = Arc::clone(&seen);
+        let run = SessionRun::with_emitter(
+            plan,
+            Box::new(move |l: &str| s.lock().unwrap().push(l.to_string())),
+        );
+        (run, seen)
+    }
+
+    fn source_prov(v: &str) -> Provenance {
+        Provenance {
+            kind: crate::orchestration::sdk_store::ProvenanceKind::Source,
+            version: v.into(),
+            sha256: None,
+        }
+    }
+
+    /// The four ordered properties, under a run that finishes in EXACTLY
+    /// reverse plan order:
+    ///
+    /// * output — every line of a step, including what a spawned CHILD printed
+    ///   and what `sdk_store` said through `step_log::say` (the gap E2 named),
+    ///   leaves in plan order, each step's block whole;
+    /// * the lock — no step writes it, even after every later step has
+    ///   completed; `finish` writes it once;
+    /// * `bin_dirs` — in plan order;
+    /// * the fold — failures and smoke verdicts in plan order.
+    #[cfg(unix)]
+    #[test]
+    fn under_concurrency_every_ordered_thing_leaves_in_plan_order() {
+        let names = ["a", "b", "c", "d"];
+        let idx = index(&names.iter().map(|n| prebuilt_entry(n)).collect::<String>());
+        let dir = crate::test_support::scratch_dir("e3_plan_order");
+        let host = host_key();
+        let plan = SessionPlan::resolve(
+            &idx,
+            &names,
+            &inputs(&dir, &host, Mode::Board),
+            &mut |_| PrereqState::Present,
+            &no_asks(),
+        )
+        .unwrap();
+        let lock = dir.join("lock");
+        let (run, seen) = capturing(&plan);
+        let run = execute_plan(run, names.len(), |ctx| {
+            let (i, name) = (ctx.index, ctx.step.name);
+            ctx.say(format!("{name}-start"));
+            // Finish in REVERSE plan order: each step waits for the one after.
+            if i + 1 < names.len() {
+                ctx.wait_closed(i + 1);
+            }
+            // Output from BELOW the session: a child's stdout, and a note the
+            // way `sdk_store` prints one.
+            let st = step_log::status(
+                std::process::Command::new("sh").args(["-c", &format!("echo {name}-child")]),
+            )
+            .unwrap();
+            assert!(st.success());
+            step_log::say(format!("{name}-store"));
+            // Every later step has completed by now, and none wrote the lock.
+            assert!(!lock.exists(), "a step wrote the lock");
+            ctx.say(format!("{name}-end"));
+            let mut out = Outcome {
+                installed: true,
+                ..Outcome::default()
+            };
+            if i % 2 == 0 {
+                out.provenance = Some(source_prov(&format!("v{i}")));
+                out.smoke.passed.push(name.to_string());
+            } else {
+                out.error = Some(format!("{name} broke"));
+            }
+            out
+        });
+        assert_eq!(
+            run.completion_order(),
+            [3, 2, 1, 0],
+            "the run must really have finished out of plan order"
+        );
+        let report = run.finish(Some(&lock)).unwrap();
+
+        let expected: Vec<String> = names
+            .iter()
+            .flat_map(|n| ["start", "child", "store", "end"].map(|w| format!("{n}-{w}")))
+            .collect();
+        assert_eq!(*seen.lock().unwrap(), expected, "output in plan order");
+
+        assert!(report.lock_written);
+        let l = SdkLock::load(&lock).unwrap();
+        assert_eq!(l.tool["a"].version, "v0");
+        assert_eq!(l.tool["c"].version, "v2");
+        assert_eq!(l.tool.len(), 2, "only the steps that produced a provenance");
+
+        assert_eq!(
+            report.bin_dirs,
+            names.map(|n| dir.join(n).join("1").join("bin")),
+            "bin_dirs in plan order"
+        );
+        assert_eq!(
+            report
+                .errors
+                .iter()
+                .map(|(n, _)| n.as_str())
+                .collect::<Vec<_>>(),
+            ["b", "d"],
+            "failures folded in plan order"
+        );
+        assert_eq!(
+            report.smoke.passed,
+            ["a", "c"],
+            "smoke folded in plan order"
+        );
+    }
+
+    /// One broken package does not abort the rest, under concurrency — neither
+    /// a step that FAILS nor one that PANICS. Every step runs exactly once
+    /// (none skipped, none run twice: two runs of one tool would be two
+    /// `front_newest` passes racing for its link, which is what a plan holding
+    /// one step per package exists to prevent), the run finishes, and each
+    /// failure is reported against its own package.
+    #[test]
+    fn a_failing_or_panicking_step_stops_none_of_its_siblings() {
+        let names = ["a", "b", "c", "d", "e"];
+        let idx = index(&names.iter().map(|n| prebuilt_entry(n)).collect::<String>());
+        let dir = crate::test_support::scratch_dir("e3_failure_isolation");
+        let host = host_key();
+        let plan = SessionPlan::resolve(
+            &idx,
+            &names,
+            &inputs(&dir, &host, Mode::Board),
+            &mut |_| PrereqState::Present,
+            &no_asks(),
+        )
+        .unwrap();
+        let runs: Vec<std::sync::atomic::AtomicUsize> =
+            names.iter().map(|_| Default::default()).collect();
+        let (run, _seen) = capturing(&plan);
+        let run = execute_plan(run, 2, |ctx| {
+            runs[ctx.index].fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            match ctx.index {
+                0 => Outcome {
+                    error: Some("boom".into()),
+                    ..Outcome::default()
+                },
+                1 => panic!("kaput"),
+                i => {
+                    // The later steps start only after the failures closed —
+                    // so they were dispatched AFTER a sibling failed.
+                    ctx.wait_closed(0);
+                    ctx.wait_closed(1);
+                    Outcome {
+                        provenance: Some(source_prov(&format!("v{i}"))),
+                        installed: true,
+                        ..Outcome::default()
+                    }
+                }
+            }
+        });
+        let lock = dir.join("lock");
+        let report = run
+            .finish(Some(&lock))
+            .expect("every step completed — none was dropped after a failure");
+        for (i, r) in runs.iter().enumerate() {
+            assert_eq!(
+                r.load(std::sync::atomic::Ordering::SeqCst),
+                1,
+                "step {i} ran exactly once"
+            );
+        }
+        assert_eq!(report.errors.len(), 2, "{:?}", report.errors);
+        assert_eq!(report.errors[0], ("a".to_string(), "boom".to_string()));
+        assert_eq!(report.errors[1].0, "b");
+        assert!(
+            report.errors[1].1.contains("panicked: kaput"),
+            "{:?}",
+            report.errors
+        );
+        let l = SdkLock::load(&lock).unwrap();
+        assert_eq!(
+            l.tool.keys().map(String::as_str).collect::<Vec<_>>(),
+            ["c", "d", "e"]
+        );
+    }
+
+    /// Two source BUILDS never overlap, two `[source.*]` steps (which write the
+    /// workspace's git state) never overlap — and neither lane holds a worker
+    /// idle: the download queued BEHIND a waiting build still runs.
+    ///
+    /// Each lane's second step waits on something that closes only after the
+    /// first, so without the lanes both would be in flight at once (the
+    /// counters would read 2), and a scheduler that blocked on the lane in
+    /// plan order would deadlock here (the wait's guard fails it instead).
+    #[test]
+    fn steps_that_share_a_lane_never_overlap_and_the_rest_flow_around_them() {
+        let idx = index(&format!(
+            "{}{}{}{}{}",
+            source_build_entry("s0"),
+            source_build_entry("s1"),
+            prebuilt_entry("p2"),
+            workspace_source_entry("w3"),
+            workspace_source_entry("w4"),
+        ));
+        let dir = crate::test_support::scratch_dir("e3_lanes");
+        let host = host_key();
+        let names = ["s0", "s1", "p2", "w3", "w4"];
+        let plan = SessionPlan::resolve(
+            &idx,
+            &names,
+            &inputs(&dir, &host, Mode::Board),
+            &mut |_| PrereqState::Present,
+            &no_asks(),
+        )
+        .unwrap();
+        assert_eq!(
+            plan.steps.iter().map(lane_of).collect::<Vec<_>>(),
+            [
+                Some(Lane::Build),
+                Some(Lane::Build),
+                None,
+                Some(Lane::Workspace),
+                Some(Lane::Workspace)
+            ]
+        );
+        use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+        let (build, build_max) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        let (ws, ws_max) = (AtomicUsize::new(0), AtomicUsize::new(0));
+        let (run, _seen) = capturing(&plan);
+        let run = execute_plan(run, names.len(), |ctx| {
+            let (now, max, waits_on) = match ctx.index {
+                0 | 1 => (&build, &build_max, Some(2)),
+                3 | 4 => (&ws, &ws_max, Some(1)),
+                _ => return Outcome::default(),
+            };
+            max.fetch_max(now.fetch_add(1, SeqCst) + 1, SeqCst);
+            if let Some(j) = waits_on {
+                ctx.wait_closed(j);
+            }
+            now.fetch_sub(1, SeqCst);
+            Outcome::default()
+        });
+        assert_eq!(build_max.load(SeqCst), 1, "two source builds overlapped");
+        assert_eq!(ws_max.load(SeqCst), 1, "two [source.*] steps overlapped");
+        assert_eq!(
+            run.completion_order(),
+            [2, 0, 1, 3, 4],
+            "the download behind the waiting build ran first"
+        );
+        run.finish(None).unwrap();
+    }
+
+    /// Concurrency defaults from the host and is overridable, flag over env over
+    /// host; a zero or a non-number is refused by name rather than guessed at.
+    #[test]
+    fn concurrency_defaults_to_the_host_cpu_count_and_can_be_overridden() {
+        let j = Jobs::resolve(None, None, Some(12)).unwrap();
+        assert_eq!((j.n, j.from), (12, "this host's CPU count"));
+        let j = Jobs::resolve(None, Some("3"), Some(12)).unwrap();
+        assert_eq!((j.n, j.from), (3, JOBS_ENV));
+        let j = Jobs::resolve(Some(2), Some("3"), Some(12)).unwrap();
+        assert_eq!((j.n, j.from), (2, "--jobs"));
+        assert_eq!(Jobs::resolve(None, Some("  "), Some(4)).unwrap().n, 4);
+        assert_eq!(Jobs::resolve(None, None, None).unwrap().n, 1);
+        for (flag, env) in [(Some(0), None), (None, Some("0")), (None, Some("many"))] {
+            let Err(e) = Jobs::resolve(flag, env, Some(4)) else {
+                panic!("{flag:?}/{env:?} must be refused");
+            };
+            let msg = format!("{e}");
+            assert!(
+                msg.contains("--jobs") || msg.contains(JOBS_ENV),
+                "names its source: {msg}"
+            );
+        }
+    }
+
+    /// The real install path at concurrency 3 — download, sha256, `tar -xf`,
+    /// smoke — prints each package's lines whole and in plan order, whatever
+    /// order the three installs finished in.
+    #[cfg(unix)]
+    #[test]
+    fn the_real_install_path_prints_each_package_whole_and_in_plan_order() {
+        let dir = crate::test_support::scratch_dir("e3_real_output");
+        let (url, sha) = pack(&dir, "good", "widget 1.0");
+        let names = ["w-one", "w-two", "w-three"];
+        let idx = index(
+            &names
+                .iter()
+                .map(|n| widget_entry(n, &url, &sha))
+                .collect::<String>(),
+        );
+        let root = dir.join("store");
+        let host = host_key();
+        let plan = SessionPlan::resolve(
+            &idx,
+            &names,
+            &inputs(&root, &host, Mode::Board),
+            &mut |_| PrereqState::Present,
+            &no_asks(),
+        )
+        .unwrap();
+        let (run, seen) = capturing(&plan);
+        let report = run_pipelined_into(run, &dir, None, false, three_at_once())
+            .finish(Some(&dir.join("lock")))
+            .unwrap();
+        assert!(report.errors.is_empty(), "{:?}", report.errors);
+        assert_eq!(report.smoke.passed, names);
+
+        let lines = seen.lock().unwrap().clone();
+        assert!(
+            lines[0].contains("3 package(s) to install, up to 3 at a time"),
+            "{lines:?}"
+        );
+        let owner = |l: &str| {
+            names
+                .iter()
+                .position(|n| l.contains(&format!("{n}/")) || l.contains(&format!("{n} ")))
+        };
+        let owners: Vec<usize> = lines[1..].iter().filter_map(|l| owner(l)).collect();
+        assert_eq!(owners, [0, 0, 1, 1, 2, 2], "{lines:#?}");
     }
 }

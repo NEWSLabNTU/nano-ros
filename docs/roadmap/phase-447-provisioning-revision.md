@@ -1,6 +1,7 @@
 # Phase 447 — provisioning revision
 
-**Status (2026-09-11). E1 and E2 landed (below); other items as marked.** Implements
+**Status (2026-09-11). E1, E2 and E3 landed (below) — E3 was the last E item;
+other items as marked.** Implements
 [RFC-0099](../design/0099-provisioning-is-planned-once-and-prefers-prebuilts.md).
 Makes the installed path reach a build, makes a repeated `nros setup` cheap, and
 makes "prefer a prebuilt" a rule instead of an intention.
@@ -321,6 +322,70 @@ is visible for a long download.
 (issue 0500's newest-first rule, where a stale entry shadowing a fresh one prints
 success on BOTH paths), `bin_dirs` PATH order, and per-package output flushed in
 plan order.
+
+**Landed** — `run_pipelined` replaced `run_sequential`, and nothing around it
+changed. A worker pool over the resolved plan, as many workers as the host has
+CPUs, overridable with `nros setup -j/--jobs N` or `NROS_SETUP_JOBS`; zero or a
+non-number is refused by name. The pool owns the order of nothing — the four
+ordered things stay where E2 put them — and owns two properties of its own: no
+step is dropped or run twice, and a step that fails or PANICS is its own outcome.
+`SessionReport::bin_dirs`, folded by `finish` beside the lock, is what the
+CMakePreset `PATH` and `ensure_tools` now read.
+
+* **The gap E2 named is closed.** `orchestration/step_log.rs` installs a
+  per-step sink on the worker thread: `sdk_store`'s three `eprintln!`s go
+  through `step_log::say`, and every child it spawns (`curl`, `tar`, `git`,
+  `configure`, `make`) has its stdout/stderr routed line by line into the same
+  plan-order log. With no sink both behave exactly as before, so `sdk_store`
+  kept its signatures.
+* **Two lanes, not a smaller pool.** `[tool.*]` source builds run one at a time
+  (each already uses the whole machine), and so do `[source.*]` steps (the
+  submodule arm takes the superproject's `index.lock` and rewrites
+  `.git/config` — a hazard the plan's one-step-per-package does not cover). The
+  scheduler hands out the EARLIEST step whose lane is free, so a waiting build
+  never idles a worker a download could use.
+* **Progress for a long download** (1266): the two `curl` copies are one
+  `download` helper; curl stays silent (its bar is a carriage-return repaint,
+  one long line in a CI log) and `step_log::watch_download` prints a plain
+  byte-count line after 10 s and every 30 s after, then a closing line. A short
+  fetch prints nothing. `cmd/setup.rs::fetch_index` stays silent on purpose.
+
+*Tested under concurrency*, completion forced out of plan order by handshake
+(`StepCtx::wait_closed`) and asserted on order and outcome, never on time; each
+test also asserts the completion order it forced, so "in plan order" is a claim:
+
+| property | test |
+| --- | --- |
+| output (incl. child stdio and `step_log::say`), lock never written by a step, `bin_dirs`, error + smoke fold | `under_concurrency_every_ordered_thing_leaves_in_plan_order` (completion `[3,2,1,0]`) |
+| one broken package stops nothing; each step runs exactly once | `a_failing_or_panicking_step_stops_none_of_its_siblings` |
+| lanes never overlap; the rest flow around a waiting build | `steps_that_share_a_lane_never_overlap_and_the_rest_flow_around_them` (completion `[2,0,1,3,4]`) |
+| real path at concurrency 3: each package's lines whole, in plan order | `the_real_install_path_prints_each_package_whole_and_in_plan_order` |
+| C1/E2's board-path test, now at concurrency 3 | `a_board_install_smokes_every_package_and_a_broken_one_stops_nothing` |
+
+*Mutation pass* (each applied, the session + step_log tests run, source restored):
+
+| mutant | result |
+| --- | --- |
+| fold (lock, smoke, errors) in completion order | RED |
+| record ONLY the lock in completion order | survives — **equivalent**: `SdkLock` is a map keyed by tool name and a plan holds one step per name, so recording order is unobservable in the file |
+| derive `bin_dirs` from completion order | RED |
+| `OrderedLog` releases a step's lines as it finishes | RED |
+| `OrderedLog` streams every step live | RED |
+| a failing step aborts its siblings | RED |
+| no lanes | RED |
+| scheduler blocks on a held lane in plan order | RED (the deadlock guard) |
+| child output bypasses the step sink (E2's gap reopened) | RED |
+| a long download never reports progress | RED |
+| install without the smoke probe (C1's) | RED |
+
+The pass also caught two defects in the first draft, which surfaced as one hang
+(read from the stuck test binary's thread names): a download test raced its
+watcher's first tick, and a `fetch` that panicked then DEADLOCKED the watcher,
+because the stop sender outlived the scope that joins it. Both are fixed and
+tested. Looking for the same class found a third: a child that leaves a
+background process holding its pipes (a build server) would have hung the step
+on EOF, where inherited stdio never did — so the drain after a child exits is
+bounded, and says when it gave up.
 
 ### F1 — the Zephyr module set moves under the index — **LANDED 2026-09-11**
 

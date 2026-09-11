@@ -265,6 +265,23 @@ long before the cores do, and two concurrent source builds mostly move contentio
 around. The win is overlapping a BUILD with another package's DOWNLOAD — which is
 also why D4 comes first.
 
+**How it executes** (phase-447 E3). A worker pool over the resolved plan, as many
+workers as the host has CPUs, overridable with `nros setup -j/--jobs N` or
+`NROS_SETUP_JOBS` (the lazy `ensure_tools` path reaches only the variable). The
+pool owns the order of nothing: each ordered thing above is somebody else's — the
+lock and `bin_dirs` are `SessionRun::finish`'s single plan-order fold, output is
+the plan-order log's, and one-install-per-tool is the plan's. What the pool does
+own is that no step is dropped or run twice and that a failure (or a panic) is
+that step's outcome, never a reason to stop its siblings. Two LANES serialise
+what must not overlap even under a free CPU: `[tool.*]` source builds (each
+already uses the whole machine) and `[source.*]` steps (they share the
+workspace's `index.lock` and `.git/config`); the scheduler hands out the earliest
+step whose lane is free, so a waiting build never idles a worker a download
+could use. Output a step produces BELOW the session — `sdk_store`'s notes and
+its children's stdio — reaches the same log through a per-step sink
+(`orchestration/step_log.rs`), and a long download reports its progress there
+(issue 1266).
+
 `--tool` becomes repeatable. `--source` already is, and that asymmetry is the
 whole reason `ninja` and `make` are two processes in `workspace.just`.
 
