@@ -1,7 +1,7 @@
 # Phase 448 — the executor backing, sized exactly and paid for once, on every port
 
 **Status (2026-09-11). Opened to give the exact-size work a home. Nothing in
-this phase has landed; W1–W7 are open. Zephyr's pairing (issue 1145, landed
+this phase has landed; W1–W8 are open. Zephyr's pairing (issue 1145, landed
 2026-09-06) predates the phase and is the template the other ports follow.**
 
 ## Why this phase exists
@@ -158,12 +158,52 @@ DTCM.
 - [ ] The host oracle (`cargo:arena_size`) and the island's linked
       `EXECUTOR_BACKING` agree, measured before and after.
 
+### W8 — the per-entry arena scales by a ratio that stopped being the model
+
+[Issue 1290](../issues/1290-arena-size-for-halves-a-declared-model.md), found by
+phase-412 item 4's oracle on the day it landed — which is the argument for
+having built the oracle at all.
+
+`nros_node::config::arena_size_for(cbs)` sizes a per-entry executor's arena as
+`ARENA_SIZE * cbs / MAX_CBS`, floored at `ARENA_SIZE / MAX_CBS`. Its doc says
+why: *"the same per-slot arena budget the global default used"*. That was true
+while `ARENA_SIZE` WAS a per-slot budget. Since phase-403 step 3 it is not on an
+image that declares its entities: `build.rs` sums the model per KIND and
+`MAX_CBS` is a separate knob, so `ARENA_SIZE / MAX_CBS` means nothing and
+scaling it by `cbs` can hand an image's ONE executor a fraction of what its own
+entities need.
+
+MEASURED on `nros-bench/large-msg-baremetal` with one declared subscription:
+
+| | bytes |
+| --- | ---: |
+| `cargo:arena_size` (the derived default, = the model) | 14,424 |
+| `arena_size_for(2)` with `MAX_CBS` = 4 | **7,212** |
+
+Half. Nothing in the tree is broken TODAY because the bench declares no
+entities, and the oracle now refuses the build rather than letting it die at
+registration with `BufferTooSmall`. So this is a latent trap for the next image
+that declares entities and sizes a per-entry executor — which is what W6 and W7
+both make more common.
+
+- [ ] `arena_size_for` asks the model when the image declares one, and keeps the
+      ratio only for the undeclared case (where `ARENA_SIZE` still IS a per-slot
+      budget) — or the ratio goes and the undeclared case states its own floor.
+- [ ] The bench declares its entities, so the path is exercised rather than
+      merely reasoned about.
+- [ ] A positive control: the oracle fires on the old arithmetic and does not on
+      the new.
+
+Take it WITH W7 — both are "the arena's number stopped matching the model", one
+per entry and one per subscription, and they touch the same derivation.
+
 ## Order
 
 W1 and then W2 first, because an image that does not boot outranks one that
 wastes bytes. Then W3 and then W4, together, because they reduce one budget.
-W5 is one port at a time, in any order. W6 and W7 are tightness work and can go
-in parallel with the rest.
+W5 is one port at a time, in any order. W6, W7 and W8 are tightness work and can
+go in parallel with the rest — W7 and W8 together, since both are the arena's
+number having stopped matching the model.
 
 ## Not owned here
 
