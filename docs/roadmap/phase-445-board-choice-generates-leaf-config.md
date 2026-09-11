@@ -1,6 +1,9 @@
 # Phase 445 — one board choice generates the leaf's build configuration
 
-**Status (2026-09-10). Opened; revised the same day to the colcon shape (RFC-0098 D1/D9); no work item started.** Implements
+**Status (2026-09-11). W1, W2, W3b, W4b, W5 and W6 landed; W3 stays open for the
+workspace members, W7 (the book's user flow) is the remainder.** The tree now has
+no `examples/**/.cargo/` at all and no workspace root build file, both gated.
+Opened 2026-09-10; revised the same day to the colcon shape (RFC-0098 D1/D9). Implements
 [RFC-0098](../design/0098-generated-leaf-build-config.md).
 
 **Prior phases:** 341 (the board `cargo_config` projection), 331 (the
