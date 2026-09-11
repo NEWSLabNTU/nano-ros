@@ -554,4 +554,4 @@ evidence, the item is *close it*.
 | --- | --- |
 | [#1259](../issues/1259-nros-setup-tool-leaves-zephyr-sdk-without-toolchains.md) | `nros setup --tool zephyr-sdk-1-0-1` reports success and leaves an SDK that cannot run: the index pins the minimal bundle with no post-install. This is C1's 'installs but cannot run' and C2's dist-or-reason, and neither names the id |
 | [#1262](../issues/1262-nros-setup-lock-skips-present-tools-and-follows-cwd.md) | `--tool` records a tool in `nros-sdk.lock` only when it installs, and follows the cwd. E2's 'one plan, one lock write' is the stated fix |
-| [#1273](../issues/1273-prefer-prebuilt-dist-over-source-build.md) | tools build from source because the index has no `dist` row. C2 IS this issue's fix; the item should name the id so closing one closes the other |
+| [#1273](../issues/archived/1273-prefer-prebuilt-dist-over-source-build.md) (RESOLVED 2026-09-11, archived upstream while this table was being written) | tools build from source because the index has no `dist` row. C2 IS this issue's fix; the item should name the id so closing one closes the other |
