@@ -2781,6 +2781,7 @@ rmw = "cyclonedds"
 dir = "examples/native/cpp/action-client"
 
 [[fixture]]
+id = "cpp-parameters"
 platform = "linux"
 lang = "cpp"
 rmw = "zenoh"
@@ -2790,6 +2791,7 @@ target = "cpp_parameters"
 # phase-277 W5 — C sibling of cpp/parameters (the parameter/clock demo block
 # extracted from native/c/talker when the talker slimmed to chatter-only).
 [[fixture]]
+id = "c-parameters"
 platform = "linux"
 lang = "c"
 rmw = "zenoh"
