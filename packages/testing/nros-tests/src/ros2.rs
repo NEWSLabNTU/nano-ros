@@ -858,10 +858,52 @@ fn wait_child_data(remaining: Duration) {
 // Discovery Helpers
 // =============================================================================
 
+/// THE spelling of a graph-reading `ros2` invocation — issue 1333.
+///
+/// Every daemon-consulting verb goes through here, so `--no-daemon` is decided
+/// ONCE rather than remembered fifteen times. It was remembered fourteen times
+/// and forgotten in [`service_present_on_domain`], which is the shape of every
+/// entry in CLAUDE.md's "fix the CLASS" list: a rule enforced by copy-paste
+/// holds until the first copy that skips a line.
+///
+/// Why the flag is not optional here: the ros2cli daemon is keyed on
+/// `ROS_DOMAIN_ID` ALONE (`ros2cli.daemon.get_port()` is literally
+/// `11511 + ROS_DOMAIN_ID`). The DISCOVERY CONFIGURATION is not in that key —
+/// `CYCLONEDDS_URI`, `FASTRTPS_DEFAULT_PROFILES_FILE` and
+/// `ZENOH_SESSION_CONFIG_URI` are captured from whichever process started the
+/// daemon and silently override every later caller's on that domain. Since
+/// issue 1009 this repo pins the bus with exactly those variables, per PROCESS,
+/// into a tempdir that is deleted when that test ends — so the leaked config is
+/// guaranteed to differ between tests and may not even exist any more.
+///
+/// Measured on Humble (issue 1333): a daemon primed under an isolating
+/// `CYCLONEDDS_URI` answers `ros2 node list` with nothing and `ros2 param list`
+/// with `Node not found`, for a talker that is live on that domain and that the
+/// very same command finds with `--no-daemon`. The reverse priming is a false
+/// POSITIVE — the daemon reports a node the caller's own config cannot reach.
+///
+/// `args` is the verb and its arguments with NO `--no-daemon`; the flag is
+/// appended in trailing position, which every verb this repo calls accepts
+/// (measured: `node {list,info}`, `topic {list,info}`, `topic info --verbose`,
+/// `service list`, `param {list,get,set,describe}`, `lifecycle nodes`).
+///
+/// The one verb that does NOT accept it is `ros2 action list`, which answers
+/// `error: unrecognized arguments: --no-daemon` — so it cannot route through
+/// here and is defended one layer down instead, by
+/// `nros_tests::unique_ros_domain_id` refusing a domain whose daemon port is
+/// already bound.
+pub fn ros2_query_cmd(env_setup: &str, timeout_s: u32, args: &str) -> String {
+    debug_assert!(
+        !args.contains("--no-daemon"),
+        "`--no-daemon` is this helper's job, not the caller's: {args}"
+    );
+    format!("{env_setup} && timeout --foreground {timeout_s} ros2 {args} --no-daemon 2>&1")
+}
+
 /// Run `ros2 node list` and return the output
 pub fn ros2_node_list(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 node list --no-daemon 2>&1");
+    let cmd = ros2_query_cmd(&env_setup, 10, "node list");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -882,7 +924,7 @@ pub fn ros2_node_list_rmw_with_domain(
     domain_id: u8,
 ) -> TestResult<String> {
     let env_setup = ros2_env_setup_rmw_with_domain(distro, rmw, domain_id);
-    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 node list --no-daemon 2>&1");
+    let cmd = ros2_query_cmd(&env_setup, 10, "node list");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -895,7 +937,7 @@ pub fn ros2_node_list_rmw_with_domain(
 /// Run `ros2 topic list` and return the output
 pub fn ros2_topic_list(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 topic list --no-daemon 2>&1");
+    let cmd = ros2_query_cmd(&env_setup, 10, "topic list");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -916,9 +958,7 @@ pub fn ros2_topic_list(locator: &str, distro: &str) -> TestResult<String> {
 /// connect".
 pub fn ros2_topic_info_verbose(locator: &str, distro: &str, topic: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!(
-        "{env_setup} && timeout --foreground 15 ros2 topic info --verbose --no-daemon {topic} 2>&1"
-    );
+    let cmd = ros2_query_cmd(&env_setup, 15, &format!("topic info --verbose {topic}"));
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -1081,9 +1121,7 @@ pub fn ros2_topic_info_verbose_cyclonedds(
     topic: &str,
 ) -> TestResult<String> {
     let env_setup = ros2_env_setup_cyclonedds_with_domain(distro, domain_id);
-    let cmd = format!(
-        "{env_setup} && timeout --foreground 15 ros2 topic info --verbose --no-daemon {topic} 2>&1"
-    );
+    let cmd = ros2_query_cmd(&env_setup, 15, &format!("topic info --verbose {topic}"));
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -1153,7 +1191,7 @@ pub fn endpoint_gid_bytes(block: &str) -> Option<Vec<u8>> {
 /// Run `ros2 service list` and return the output
 pub fn ros2_service_list(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout --foreground 10 ros2 service list --no-daemon 2>&1");
+    let cmd = ros2_query_cmd(&env_setup, 10, "service list");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -1166,9 +1204,7 @@ pub fn ros2_service_list(locator: &str, distro: &str) -> TestResult<String> {
 /// Run `ros2 node info` for a specific node
 pub fn ros2_node_info(node_name: &str, locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!(
-        "{env_setup} && timeout --foreground 10 ros2 node info --no-daemon {node_name} 2>&1"
-    );
+    let cmd = ros2_query_cmd(&env_setup, 10, &format!("node info {node_name}"));
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -1181,9 +1217,7 @@ pub fn ros2_node_info(node_name: &str, locator: &str, distro: &str) -> TestResul
 /// Run `ros2 param list` for a specific node
 pub fn ros2_param_list(node_name: &str, locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!(
-        "{env_setup} && timeout --foreground 15 ros2 param list --no-daemon {node_name} 2>&1"
-    );
+    let cmd = ros2_query_cmd(&env_setup, 15, &format!("param list {node_name}"));
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -1206,7 +1240,7 @@ pub fn ros2_param_list(node_name: &str, locator: &str, distro: &str) -> TestResu
 /// graph rather than with the node under test.
 pub fn ros2_param_list_all(locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!("{env_setup} && timeout --foreground 25 ros2 param list --no-daemon 2>&1");
+    let cmd = ros2_query_cmd(&env_setup, 25, "param list");
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -1224,8 +1258,10 @@ pub fn ros2_param_get(
     distro: &str,
 ) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!(
-        "{env_setup} && timeout --foreground 15 ros2 param get --no-daemon {node_name} {param_name} 2>&1"
+    let cmd = ros2_query_cmd(
+        &env_setup,
+        15,
+        &format!("param get {node_name} {param_name}"),
     );
 
     let output = Command::new("bash")
@@ -1245,8 +1281,10 @@ pub fn ros2_param_set(
     distro: &str,
 ) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!(
-        "{env_setup} && timeout --foreground 15 ros2 param set --no-daemon {node_name} {param_name} {value} 2>&1"
+    let cmd = ros2_query_cmd(
+        &env_setup,
+        15,
+        &format!("param set {node_name} {param_name} {value}"),
     );
 
     let output = Command::new("bash")
@@ -1265,8 +1303,10 @@ pub fn ros2_param_describe(
     distro: &str,
 ) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd = format!(
-        "{env_setup} && timeout --foreground 15 ros2 param describe --no-daemon {node_name} {param_name} 2>&1"
+    let cmd = ros2_query_cmd(
+        &env_setup,
+        15,
+        &format!("param describe {node_name} {param_name}"),
     );
 
     let output = Command::new("bash")
@@ -1280,8 +1320,7 @@ pub fn ros2_param_describe(
 /// Run `ros2 topic info` for a specific topic
 pub fn ros2_topic_info(topic: &str, locator: &str, distro: &str) -> TestResult<String> {
     let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
-    let cmd =
-        format!("{env_setup} && timeout --foreground 10 ros2 topic info --no-daemon {topic} 2>&1");
+    let cmd = ros2_query_cmd(&env_setup, 10, &format!("topic info {topic}"));
 
     let output = Command::new("bash")
         .args(["-c", &cmd])
@@ -2325,17 +2364,14 @@ pub fn dds_bus_snapshot(distro: &str, domain_id: u8) -> String {
     // "SECOND /add_two_ints" the comment above hopes for never appears as a
     // second row. Fixing the daemon leak is necessary, not sufficient.
     for (label, sub) in [
-        ("nodes", "node list --no-daemon"),
-        ("services", "service list -t --no-daemon"),
+        ("nodes", "node list"),
+        ("services", "service list -t"),
         // Hidden topics included: a service's request/reply pair is hidden, and
         // hiding them is precisely what would keep a foreign endpoint invisible.
-        (
-            "topics",
-            "topic list -t --include-hidden-topics --no-daemon",
-        ),
+        ("topics", "topic list -t --include-hidden-topics"),
     ] {
         let out = std::process::Command::new("bash")
-            .args(["-c", &format!("{env} && timeout 10 ros2 {sub} 2>&1")])
+            .args(["-c", &ros2_query_cmd(&env, 10, sub)])
             .output();
         match out {
             Ok(o) => {
@@ -2381,10 +2417,7 @@ pub fn dds_bus_snapshot(distro: &str, domain_id: u8) -> String {
 pub fn service_present_on_domain(distro: &str, domain_id: u8, service: &str) -> Option<bool> {
     let env = ros2_env_setup_dds_with_domain(distro, domain_id);
     let out = std::process::Command::new("bash")
-        .args([
-            "-c",
-            &format!("{env} && timeout 10 ros2 service list 2>/dev/null"),
-        ])
+        .args(["-c", &ros2_query_cmd(&env, 10, "service list")])
         .output()
         .ok()?;
     if !out.status.success() {
