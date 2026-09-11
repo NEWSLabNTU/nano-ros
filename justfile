@@ -2530,7 +2530,25 @@ rust-rtos-link-check: _codegen
     # the threadx line below already uses, it is globally gitignored, and it
     # keeps ONE workspace root per target dir — which is the constraint issue
     # 0616 is about, and the reason these must not simply share a directory.
+    source scripts/build/codegen-stamp.sh
     echo "== Phase 146.3 — embedded-RTOS Rust link check =="
+    # phase-445 W6 (`9af7e5230`) DELETED every example leaf's `.cargo/`, so the
+    # `[patch.crates-io]` table that resolves `nros`, `nros-platform` and the
+    # board crate is pure `nros sync` OUTPUT now. A bare `cargo build` in a leaf
+    # therefore resolves `nros = { version = "*" }` against the public registry
+    # and dies `no matching package named 'nros' found` — which is how this lane
+    # took the merge queue's L3 job down (run 34634922404) within four hours of
+    # W6 landing. Every other lane that builds a leaf already syncs it first
+    # (`just/px4.just`, `just/freertos.just`, and `scripts/ci/dep-chain-check.sh`
+    # since #971); this was the last site without the precondition.
+    nros_cli="$(nros_cli_bin)"
+    for dir in examples/mps2-an385-freertos/rust/talker \
+               examples/qemu-armv7a-nuttx/rust/talker \
+               examples/threadx-linux/rust/talker; do
+        NROS_REPO_DIR="$PWD" nros_codegen_stamp_check_or_wipe "$dir"
+        NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
+        NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
+    done
     if command -v arm-none-eabi-gcc >/dev/null; then
         echo "  freertos talker ($(nros_cargo_platform_profile freertos)):"
         # #60 T5: the freertos talker Node pkg is platform/RMW-agnostic now —
