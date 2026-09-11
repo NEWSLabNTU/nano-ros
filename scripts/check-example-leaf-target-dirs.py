@@ -304,9 +304,43 @@ def self_test():
         for b in bad:
             sys.stderr.write(b + "\n")
         sys.exit(2)
+    _walk_self_test()
 
 
-def existing_leaf_target_dirs():
+def _walk_self_test():
+    """The filesystem walk, both directions, on a synthetic tree.
+
+    `self_test()` above covered only the STATIC scan, so the walk — the half
+    that finds what the regexes cannot — had no selftest at all, and a prune
+    that blinded it would have looked exactly like a clean tree. Three cases:
+
+      (a) a leaf's own plain `target/` beside its Cargo.toml MUST be found —
+          the property a descent prune could silently destroy;
+      (b) a dash-named per-coordinate dir is legitimate and is not reported;
+      (c) a crate with its own `target/` NESTED inside a `target-*` dir is
+          cargo-internal, not a leaf. Without the `target-*` prune the walk
+          descends into it and reports it, so the prune is load-bearing for
+          correctness and not only for speed.
+    """
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        leaf = os.path.join(td, "examples", "plat", "rust", "talker")
+        os.makedirs(os.path.join(leaf, "target", "debug"))
+        with open(os.path.join(leaf, "Cargo.toml"), "w") as f:
+            f.write("[package]\n")
+        os.makedirs(os.path.join(leaf, "target-zenoh", "debug", "deps"))
+        nested = os.path.join(leaf, "target-zenoh", "package", "x")
+        os.makedirs(os.path.join(nested, "target"))
+        with open(os.path.join(nested, "Cargo.toml"), "w") as f:
+            f.write("[package]\n")
+        got = existing_leaf_target_dirs(root=td)
+        want = [os.path.join("examples", "plat", "rust", "talker", "target")]
+        if got != want:
+            sys.stderr.write(f"self-test: walk found {got!r}, want {want!r}\n")
+            sys.exit(2)
+
+
+def existing_leaf_target_dirs(root=None):
     """Plain `examples/**/target/` directories that EXIST on disk.
 
     The scan above is a static reading of build COMMANDS: it proves no
@@ -328,8 +362,9 @@ def existing_leaf_target_dirs():
     So the check is on the artifact, which is the observable the rule is
     actually about.
     """
+    root = root or ROOT
     found = []
-    root_examples = os.path.join(ROOT, "examples")
+    root_examples = os.path.join(root, "examples")
     # walk-ok: hunts UNTRACKED leaf target/ dirs — the index cannot see them; prunes build* at descent
     for dirpath, dirnames, _ in os.walk(root_examples):
         # Prune `build*` at DESCENT, not at report time. The scoping rule below
@@ -337,16 +372,29 @@ def existing_leaf_target_dirs():
         # a leaf's own dir — but discovering that after the walk means descending
         # every cmake build tree under examples/, which is most of 828 GB. The
         # walk did not finish inside 90 s; pruning here it is seconds.
+        #
+        # And prune `target-*` for the same reason. A dash-named dir is a leaf's
+        # LEGITIMATE per-coordinate cargo target (phase-340 P2's own spelling —
+        # `target-zenoh`, `target-safety`), and the plain `target/` this gate
+        # hunts is its SIBLING beside the leaf's Cargo.toml, never inside it —
+        # so descending loses nothing and costs everything. Measured with the
+        # prune above and nothing else: the walk had not finished after 60 s,
+        # and 94.9% of the 1529 directories it had entered were under a
+        # `target-*` root — it cleared four of them in that minute, because a
+        # cargo `deps/` holds tens of thousands of entries and os.walk lists
+        # every one before this loop discards them. That was the tail gate of
+        # every `check fast` on a loaded host: 7.7 min on one push, 27 on another.
         dirnames[:] = [
             x for x in dirnames
             if x not in (".git", "third-party")
             and not (x == "build" or x.startswith("build-"))
+            and not x.startswith("target-")
         ]
         if os.path.basename(dirpath) != "target":
             continue
         # Do not descend into it; one report per directory.
         dirnames[:] = []
-        rel = os.path.relpath(dirpath, ROOT)
+        rel = os.path.relpath(dirpath, root)
         parts = rel.split(os.sep)
         # Only a LEAF's own default dir counts. A `target` nested inside a cmake
         # build tree — `…/build-cyclonedds/corrosion/required_libs/target` — is
