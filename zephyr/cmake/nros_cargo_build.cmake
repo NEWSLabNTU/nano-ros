@@ -1144,8 +1144,10 @@ endfunction()
 function(_nros_cargo_workspace_root manifest out_var)
     get_filename_component(_manifest_real "${manifest}" REALPATH)
 
+    # Issue 1304 — see cmake/NanoRosRustTool.cmake (via nros-rtos-helpers).
+    nros_rust_tool(_nros_cargo cargo)
     execute_process(
-        COMMAND cargo locate-project --workspace --message-format plain
+        COMMAND "${_nros_cargo}" locate-project --workspace --message-format plain
                 --manifest-path "${_manifest_real}"
         OUTPUT_VARIABLE _root
         OUTPUT_STRIP_TRAILING_WHITESPACE

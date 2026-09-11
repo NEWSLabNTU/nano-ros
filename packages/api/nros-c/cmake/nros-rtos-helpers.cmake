@@ -63,9 +63,15 @@ set(_NROS_RTOS_HELPERS_INCLUDED TRUE)
 #
 # `rustc -vV`'s `host:` line is the only authority for the triple —
 # CMAKE_HOST_SYSTEM_PROCESSOR spells it differently and would not match.
+# Issue 1304 — `nros_rust_tool`: rustc/cargo by name where the name resolves,
+# else where FindRust found them. FILE scope (an include() inside a function
+# resolves CMAKE_CURRENT_LIST_DIR against the caller).
+include("${CMAKE_CURRENT_LIST_DIR}/../../../../cmake/NanoRosRustTool.cmake")
+
 function(nros_host_rustlib_bin out_var)
+    nros_rust_tool(_rustc rustc)
     execute_process(
-        COMMAND rustc --print sysroot
+        COMMAND "${_rustc}" --print sysroot
         OUTPUT_VARIABLE _rust_sysroot
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET)
@@ -88,8 +94,9 @@ endfunction()
 # spells the arch differently (`aarch64` vs `arm64` across platforms) and says
 # nothing about vendor/libc, so it cannot produce a triple rustc will accept.
 function(nros_host_rust_triple out_var)
+    nros_rust_tool(_rustc rustc)
     execute_process(
-        COMMAND rustc -vV
+        COMMAND "${_rustc}" -vV
         OUTPUT_VARIABLE _rustc_vv
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET)

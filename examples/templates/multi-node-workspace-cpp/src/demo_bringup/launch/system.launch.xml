@@ -4,11 +4,20 @@
 <launch>
   <!-- Phase 211.H (issue #52) — a per-topic QoS override on the talker. The
        typed C++ entry codegen bakes a `set_qos_overrides` call before
-       `configure(node)`, so the talker's /chatter publisher is created
-       best_effort. Exercises the full cmake C++ pipeline: launch param →
-       emit_cpp bake → built entry honours the override at create time. -->
+       `configure(node)`, so the talker's /chatter publisher is created with a
+       history depth of 5. Exercises the full cmake C++ pipeline: launch param
+       → emit_cpp bake → built entry honours the override at create time.
+
+       Issue 1304 — this used to override RELIABILITY to best_effort, and the
+       listener's subscription stays reliable. A DDS RMW never matches a
+       reliable reader to a best-effort writer, so on CycloneDDS — this
+       workspace's default RMW — the listener received nothing, silently,
+       while first-project.md promises interleaved `Received:` lines. Only the
+       zenoh test ran this template, and zenoh has no reliability matching. A
+       depth override demonstrates the same plumbing and cannot break matching
+       on any RMW. -->
   <node pkg="talker_pkg" exec="talker" name="talker">
-    <param name="qos_overrides./chatter.publisher.reliability" value="best_effort"/>
+    <param name="qos_overrides./chatter.publisher.depth" value="5"/>
   </node>
   <node pkg="listener_pkg" exec="listener" name="listener"/>
 </launch>

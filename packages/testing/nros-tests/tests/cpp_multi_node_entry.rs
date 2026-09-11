@@ -106,10 +106,14 @@ fn multi_node_workspace_cpp_typed_configures_and_builds() -> nros_tests::TestRes
     assert!(link_body.contains("listener_pkg_listener_component"));
 
     // Phase 211.H (issue #52) — the talker node's launch `<param
-    // name="qos_overrides./chatter.publisher.reliability" value="best_effort"/>`
+    // name="qos_overrides./chatter.publisher.depth" value="5"/>`
     // is baked by emit_cpp into a `set_qos_overrides` call BEFORE
     // `configure(node_0)`, with role/policy/value mapped to the C-ABI codes
-    // (publisher=0, reliability=0, best_effort=0). Codegen-on-a-real-cmake-build
+    // (publisher=0, depth=3, value 5). Issue 1304: the override was
+    // `reliability=best_effort`, which a DDS RMW never matches to the listener's
+    // reliable reader — this test runs zenoh, which has no such rule, so the
+    // template's default (CycloneDDS) received nothing and nothing here could
+    // see it. Codegen-on-a-real-cmake-build
     // evidence (the bake runs in `emit_typed`, driven by `nano_ros_entry`'s
     // `nros codegen entry --typed` shell-out) — the one path the nros-cli-core
     // unit tests can't reach. The build above linking proves the bake compiles
@@ -119,8 +123,8 @@ fn multi_node_workspace_cpp_typed_configures_and_builds() -> nros_tests::TestRes
         "generated TU missing the baked qos_overrides table:\n{gen_body}"
     );
     assert!(
-        gen_body.contains("{ \"/chatter\", 0, 0, 0 }"),
-        "qos_overrides table missing the best_effort publisher override (codes 0,0,0):\n{gen_body}"
+        gen_body.contains("{ \"/chatter\", 0, 3, 5 }"),
+        "qos_overrides table missing the depth=5 publisher override (codes 0,3,5):\n{gen_body}"
     );
     assert!(
         gen_body.contains("__nros_node_0.set_qos_overrides(__nros_qos_0, 1)"),

@@ -416,6 +416,8 @@ function(nros_nuttx_build_example)
                 bash "${NROS_NUTTX_PROVISION_SCRIPT}")
     endif()
 
+    # Issue 1304 — see NanoRosRustTool.cmake (arrives via nros-rtos-helpers).
+    nros_rust_tool(_nnbe_cargo cargo)
     add_custom_command(
         OUTPUT "${_output_binary}"
         ${_provision_cmd}
@@ -430,7 +432,7 @@ function(nros_nuttx_build_example)
             "NUTTX_DIR=${NUTTX_DIR}"
             "NUTTX_APPS_DIR=${NUTTX_APPS_DIR}"
             "CARGO_TARGET_DIR=${_cargo_target_dir}"
-            cargo build --profile ${_NROS_NUTTX_PROFILE} ${_artifact_dir_arg}
+            "${_nnbe_cargo}" build --profile ${_NROS_NUTTX_PROFILE} ${_artifact_dir_arg}
         ${_depfile_retarget_cmd}
         # Issue 0159 — make `cmake --build` itself honest: an exit-0 build with
         # no kernel ELF (up-to-date skip edge / a sub-step whose failure isn't

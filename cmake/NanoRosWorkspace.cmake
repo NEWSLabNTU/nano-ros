@@ -403,6 +403,22 @@ function(nano_ros_workspace)
         _nano_ros_order_subdirs("${_NRW_WORKSPACE_ROOT}" "${_NRW_SUBDIRS}" _NRW_SUBDIRS)
     endif()
 
+    # Issue 1304 — every member opens with `find_package(nano_ros REQUIRED)`,
+    # and nano_rosConfig.cmake was located through `nano_ros_ROOT`, which only
+    # `activate.sh` exports. So a workspace configured anywhere else — an
+    # installed toolchain's (whose root came from `nros sdk-root`), or the
+    # book's `-DNANO_ROS_ROOT=<checkout>` from an un-activated shell — resolved
+    # the root, imported it, and then failed in its first member with "Could not
+    # find a package configuration file provided by nano_ros". It passed only in
+    # a sourced shell, which is every shell anyone who could notice had.
+    #
+    # The workspace has ALREADY resolved and imported one root; its members must
+    # find that one, not whatever the environment names (a second root would be
+    # a second import of a different tree). `nano_ros_DIR` is where find_package
+    # looks first, and nano_rosConfig.cmake sits at the root itself. Function
+    # scope, so it reaches exactly the add_subdirectory() calls below.
+    set(nano_ros_DIR "${_nros_root}")
+
     # A source dir OUTSIDE this build tree needs an explicit BINARY dir.
     #
     # phase-383 W10.a — the generated root sits in `build/<coord>/` and its

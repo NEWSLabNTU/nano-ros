@@ -22,6 +22,9 @@ include_guard(GLOBAL)
 # Included here rather than in each generator so both lanes register their
 # fragments through one function and `nros_find_interfaces()` below can compose
 # them without knowing which generator produced them.
+# Issue 1304 — `nros_rust_tool`, the one spelling of which cargo/rustc an
+# emitted command runs. FILE scope, like its neighbours.
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosRustTool.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosMessageBounds.cmake")
 
 # phase-403 step 1 -- and its second input. `nros_find_interfaces()` below hands
@@ -443,8 +446,9 @@ function(_nros_resolve_rust_target _out)
     if(_t STREQUAL "")
         # No Corrosion in this configure (a pure C++ consumer can reach the
         # codegen path without it). Ask rustc for its own host triple.
+        nros_rust_tool(_nros_rustc rustc)
         execute_process(
-            COMMAND rustc -vV
+            COMMAND "${_nros_rustc}" -vV
             OUTPUT_VARIABLE _vv
             RESULT_VARIABLE _rc
             ERROR_QUIET

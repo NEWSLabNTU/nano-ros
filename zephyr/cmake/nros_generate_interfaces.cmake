@@ -522,9 +522,11 @@ targets = [\"${NROS_RUST_TARGET}\"]
       # `lib.rs`, so neither the GENERATED message sources nor any nano-ros
       # Rust crate had an edge on this archive. The DEPFILE covers both, from
       # the graph cargo already computes.
+      # Issue 1304 — see cmake/NanoRosRustTool.cmake (via NanoRosCodegenCore).
+      nros_rust_tool(_ffi_cargo cargo)
       add_custom_command(
         OUTPUT "${_ffi_lib}"
-        COMMAND ${_ffi_env} cargo ${_cargo_ffi_args}
+        COMMAND ${_ffi_env} "${_ffi_cargo}" ${_cargo_ffi_args}
         DEPENDS "${_ffi_crate_dir}/Cargo.toml" "${_ffi_crate_src}/lib.rs"
         DEPFILE "${_ffi_dep_file}"
         WORKING_DIRECTORY "${_ffi_crate_dir}"

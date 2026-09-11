@@ -601,9 +601,13 @@ function(nros_generate_interfaces target)
       # Without it, editing the CDR serializer left every generated message
       # staticlib holding the previous build's code, with a fresh mtime — the
       # museum-archive shape 0820 hit one seam over, on NuttX.
+      # Issue 1304 — by name where the name resolves (the contributor's
+      # `--locked` shim), else the rustup proxy FindRust found; see
+      # NanoRosRustTool.cmake.
+      nros_rust_tool(_ffi_cargo cargo)
       add_custom_command(
         OUTPUT "${_ffi_lib}"
-        COMMAND ${_ffi_env} cargo ${_ffi_cargo_prefix} ${_ffi_cargo_args}
+        COMMAND ${_ffi_env} "${_ffi_cargo}" ${_ffi_cargo_prefix} ${_ffi_cargo_args}
         DEPENDS ${_generated_rs_files} "${_ffi_crate_dir}/Cargo.toml" "${_ffi_crate_src}/lib.rs"
         DEPFILE "${_ffi_dep_file}"
         WORKING_DIRECTORY "${_ffi_crate_dir}"
