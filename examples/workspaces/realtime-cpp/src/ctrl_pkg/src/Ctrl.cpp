@@ -21,7 +21,7 @@ void Ctrl::on_tick() {
     count_++;
 }
 
-::rclcpp::Result Ctrl::configure(::nros::Node& node) {
+::rclcpp::Result Ctrl::configure(::rclcpp::Node& node) {
     // Line-buffer stdout so each tick flushes immediately when piped.
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     ::rclcpp::Result r = node.create_publisher(pub_, "/ctrl");

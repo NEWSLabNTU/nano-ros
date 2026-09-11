@@ -80,7 +80,7 @@ extern "C" {
 alignas(::{{ s.class }}) static unsigned char __nros_comp_buf_{{ s.index }}[sizeof(::{{ s.class }})];
 static ::{{ s.class }}* __nros_comp_{{ s.index }} = nullptr;
 {%- else %}
-static ::nros::Node __nros_node_{{ s.index }};
+static ::rclcpp::Node __nros_node_{{ s.index }};
 {%- if s.class %}
 static ::{{ s.class }} __nros_comp_{{ s.index }};
 {%- endif %}

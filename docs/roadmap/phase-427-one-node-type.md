@@ -1,8 +1,9 @@
 # Phase 427 — one node type, named `rclcpp::Node`, compiling freestanding
 
-**Status (2026-09-09). W1, W2, W3, W4, W5, W6 and W8 LANDED (W5's runtime half
-and W6's book page closed 2026-09-09; W4's freestanding acceptance split out as
-issue 1247); W7 blocked and re-scoped — see "What landed, and what it measured" below.** Implements RFC-0089 §"The node API, proposed
+**Status (2026-09-11). W1, W2, W3, W4, W5, W6, W7 and W8 LANDED (W5's runtime
+half and W6's book page closed 2026-09-09; W4's freestanding acceptance split
+out as issue 1247; W7 landed 2026-09-11 once its blocker cleared — see "W7
+LANDED" below).** Implements RFC-0089 §"The node API, proposed
 under the governing principle". Preconditions are met by phase-417: the
 `pump()` blocker is gone, `check-cpp-capability-layout` measures the layout
 rule, and the `-nostdinc++` lane can see a freestanding regression.
@@ -95,7 +96,13 @@ missed (`book/src/getting-started/workspace-cpp.md`, the model-1 slides)
 migrated too: a book page teaching a deprecated call is a call site with extra
 reach.
 
-### The namespace direction is the opposite of the RFC's end state, and it is measured
+### The namespace direction was the opposite of the RFC's end state — RESOLVED by W7, 2026-09-11
+
+**Superseded.** Everything below was true of the node-type merge and is kept as
+the record of why the direction was inverted for two days; W7 flipped it, the
+class is `rclcpp::Node`, and both blockers named here are gone (phase-428 fixed
+the extractor's roots; PRs #797 and #806 merged). Read it for the reasoning, not
+for the current shape.
 
 RFC-0089 describes `rclcpp::Node` as the class and `nros::Node` as the migration
 alias. **It is the other way round here, because of the parity tool's own
@@ -121,7 +128,61 @@ The alias is UNCONDITIONAL, which the shim class was not: it lived inside
 node and not its ROS 2 name — the two vocabularies split exactly where the port
 matters most.
 
-### W7 cannot mean what it says, and the blocker is the line above
+### W7 LANDED 2026-09-11 — the flip first, then the deprecation
+
+Both blockers below cleared, and W7 landed as one branch in two commits: the
+namespace flip, then the migration and the attribute together.
+
+**The flip.** `class Node` is DEFINED in `rclcpp::` now and `nros::Node` is the
+alias, the tenth and last of RFC-0089's table. PRs #797 and #806 merged, so the
+stacking objection is gone; the extractor objection is gone too, because
+phase-428 made `OUR_CPP_ROOTS` name both halves of the vocabulary we ship. Three
+mechanics the other nine types did not need are recorded in RFC-0089 §"The flip
+is DONE — all ten": forward declarations must move (an elaborated `class Node;`
+in `nros::` would declare a second class), friend declarations must be qualified
+AND parenthesized (`friend Result(::nros::init)(...)`, because a
+nested-name-specifier is parsed greedily), and all sixteen out-of-line
+`Node::create_*` bodies move with the class. The near-miss worth repeating is
+`QoS`: `rclcpp::QoS` is a SUBCLASS of `nros::QoS`, so a bare `QoS` inside
+`namespace rclcpp` would have re-typed every `create_*` parameter to the derived
+class — compiling, non-erroring, and wrong.
+
+**The deprecation, and the migration in the same commit** — which is what the
+paragraph below demanded. 258 in-tree C++ spellings migrated; the attribute is
+`NROS_CPP_DEPRECATED_MSG` and UNCONDITIONAL, not feature-armed. The evidence for
+that choice, since PR #753 set the armed precedent in Rust: #753 armed BECAUSE
+its tree had not migrated (65 hard errors across 47 files), and that argument
+inverts here. Every other C++ deprecation this API ships is unconditional. And a
+macro nothing in-tree defines leaves the probe as the only compiler that ever
+sees the attribute, which is a gate whose subject disappears. The reach it is
+for is out-of-tree and it is real: `nros-v0.5.0` (2026-06-08) shipped
+`nros::Node` in six `examples/templates/**` files a user copies out.
+
+**What did NOT migrate, and why.** The raw grep is 561 sites; 258 are C++ code.
+The rest split three ways, each deliberate:
+
+* **`nros::Node` also names a RUST TRAIT** (`nros-macros`, `impl nros::Node for
+  Talker`, 58 `.rs` sites). Different symbol, different language, untouched.
+* **`docs/roadmap`, `docs/issues` and the dated paragraphs of the api-parity
+  ledger are historical record.** "`nros::Node` WAS the definition" is true as
+  written; rewriting it would turn a record into a falsehood. Left alone, this
+  file's own history included.
+* **`book/src`, `docs/guides`, the example READMEs and RFC-0018's code
+  blocks teach the name a reader should WRITE**, so those migrated — 28 sites.
+  RFC-0044 did not: its subject is `ComponentNode`, which is deleted, so it is
+  history too.
+
+**One pre-existing tool defect fell out of it.** `correlate.canon_type`'s
+namespace strips are `^`-anchored, so a LEADING `::` made one type canonicalise
+two ways — `::std::string` never reduced to `string`. Our hosted overloads are
+spelled `::std::string` and upstream's `std::string`, so SEVEN C++ rows reported
+`systematic` over an overload we actually ship. same 131 -> 138, systematic
+14 -> 7, nothing the other way. Two ledger rows also changed shard,
+`cpp:spin_once` and `cpp:global_handle` (`exec`/`other` -> `node`): their
+declarations genuinely live in `node.hpp` now, which is what the qualified
+friendship requires, and the taxonomy files a top-level name by its header.
+
+### What blocked it, recorded as it stood before the flip
 
 W7 is "`nros::Node` deprecated with `NROS_DEPRECATED_MSG`, not deleted". A
 deprecation attaches to the ALIAS, and after the merge the alias is
@@ -735,15 +796,21 @@ moved with the template.
   question to ask. Also in `Node`'s constructor doc and the ledger row
   `cpp:Node::ok`. A compiler cannot force a hand-written `main` to ask.
 
-* **W7 [migration] — `nros::Node` deprecated, then deleted. BLOCKED, and the
-  item does not mean what it says.** After the merge `nros::Node` is the
-  DEFINITION and `rclcpp::Node` the alias (see the namespace-direction section
-  above), so a deprecation would land on the name a user is supposed to write.
-  What shipped: `NROS_CPP_DEPRECATED_MSG` exists and is used on the one
-  ours-only name this phase retired, `nros::bind_timer`. The `Node` half waits
-  on phase-428's namespace flip, and whoever lands it must migrate the 218
-  in-tree `nros::Node` sites in the same commit — a bare attribute warns at all
-  of them at once, which this doc's own "Not in scope" forbids.
+* **W7 [migration] — `nros::Node` deprecated. LANDED 2026-09-11.** The item
+  could not mean what it said until the namespace flipped, because a
+  deprecation attaches to the ALIAS and the alias was `rclcpp::Node` — the name
+  a user is supposed to write. Both halves landed together: the flip (the class
+  is `rclcpp::Node`, `nros::Node` is the alias, the tenth of RFC-0089's table)
+  and then the deprecation WITH the migration in one commit, which is what this
+  doc's "Not in scope" requires. 258 in-tree C++ spellings migrated; the
+  attribute is unconditional, and the evidence for not arming it is in the "W7
+  LANDED" section above. Probe:
+  `packages/api/nros-cpp/tests/compile/node_deprecation_probe.cpp`, greped for
+  the replacement. `one_node_type.cpp` is the one TU deliberately left
+  un-migrated — its subject IS both spellings naming one type — and its lane
+  line carries `-Wno-deprecated-declarations` saying so.
+  DELETION is a later wave: the alias stays for at least one release, for the
+  out-of-tree copies of `examples/templates/**` that `nros-v0.5.0` shipped.
 
 * **W11 [rust] — the `spin` family takes upstream's names. LANDED 2026-09-09.**
   Queued here as W12 while it was still work; `main` landed it as W11 before
@@ -1274,7 +1341,7 @@ cost are unchanged, but it becomes a hosted-only method over a `weak_ptr` behind
 
 Remaining here after the move: W2 (construction), W3 (one name, two signatures —
 now four, see the conciliation section), W4 (`ComponentNode` deleted), W5
-(`get_logger`), W7 (the `nros::Node` alias). W0 and W8 are landed.
+(`get_logger`). W0, W7 and W8 are landed.
 
 
 ## W11 [rust] — the spin family takes upstream's names — LANDED 2026-09-09
@@ -1428,6 +1495,7 @@ hosted/freestanding split phase-442 removes:
 * **W5 (`get_logger` follows ROS 2)** — unaffected.
 * **W6 (loudness)** — its `NROS_NODISCARD` half landed as W8. The `ok()` half
   is unaffected.
-* **W7 (`nros::Node` deprecated)** — subsumed: RFC-0089 already settled that
-  `nros::` is phased out entirely and ours-only names take `rclcpp::` too,
-  which RFC-0096 D1 makes structural.
+* **W7 (`nros::Node` deprecated)** — LANDED 2026-09-11, before RFC-0096, and it
+  is what RFC-0096 D1 would otherwise have had to do first: the class is in
+  `rclcpp::` and the `nros::` spelling warns. Nothing here is re-read; the
+  deletion of the alias is the wave RFC-0096 can assume.

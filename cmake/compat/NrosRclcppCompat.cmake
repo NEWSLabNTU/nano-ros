@@ -124,7 +124,7 @@ function(_nros_compat_apply_force_includes target)
     # This target is exactly the right place and nowhere else is: the shim is
     # applied per-target and is deliberately NOT auto-applied on Zephyr (see
     # below), so the opt-in follows the porting surface instead of leaking to
-    # images that use `nros::Node` directly.
+    # images that use `rclcpp::Node` directly.
     #
     # Until now this function set NO compile definition at all, and the whole
     # ported-code path worked only because a hosted compiler happened to find
@@ -139,7 +139,7 @@ endfunction()
 # `<memory>` / `<string>` / `<functional>` / `<vector>` / `<chrono>`
 # — Zephyr's minimal C++ stdlib doesn't ship most of those (only
 # `<chrono>` is shimmed under `zephyr/cxx-compat/`). Existing Zephyr
-# cpp examples use `nros::Node` directly (NOT rclcpp); polluting them
+# cpp examples use OUR `rclcpp::Node` directly (NOT upstream rclcpp); polluting them
 # with rclcpp_compat.hpp would break their build for no benefit.
 #
 # A user who actually ports rclcpp source to Zephyr opts in by adding

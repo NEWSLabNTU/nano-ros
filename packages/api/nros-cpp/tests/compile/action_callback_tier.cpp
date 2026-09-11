@@ -48,7 +48,7 @@ struct UserState {
     int accepted_count{0};
 };
 
-inline ::nros::Result instantiate_server(::nros::Node& node) {
+inline ::nros::Result instantiate_server(::rclcpp::Node& node) {
     ::nros::ActionServer<Fib> server;
     ::nros::Result r = node.create_action_server(server, "/fib");
 
@@ -72,7 +72,7 @@ inline ::nros::Result instantiate_server(::nros::Node& node) {
     return r;
 }
 
-inline ::nros::Result instantiate_client(::nros::Node& node) {
+inline ::nros::Result instantiate_client(::rclcpp::Node& node) {
     ::nros::ActionClient<Fib> client;
     ::nros::Result r = node.create_action_client(client, "/fib");
 

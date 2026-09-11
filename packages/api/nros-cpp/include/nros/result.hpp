@@ -315,7 +315,7 @@ using Result = ResultOf<void>;
 ///
 /// Usage:
 /// ```cpp
-/// auto node_r = nros::Node::make("my_node");
+/// auto node_r = rclcpp::Node::make("my_node");
 /// if (!node_r.ok()) return node_r.error_as_result();
 /// auto& node = node_r.value();
 /// ```

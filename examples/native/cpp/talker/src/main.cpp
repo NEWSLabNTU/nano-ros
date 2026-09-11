@@ -79,7 +79,7 @@ int nros_app_main(int argc, char** argv) {
     // defaults match the prior hand-rolled env reads.
     NROS_TRY_RET(nros::init(), 1);
 
-    nros::Node node;
+    rclcpp::Node node;
     NROS_TRY_RET(nros::create_node(node, "talker"), 1);
     printf("Node created: %s\n", node.get_name());
 

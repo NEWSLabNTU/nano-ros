@@ -16,7 +16,7 @@ void QosListener::on_msg(const ::std_msgs::msg::Int32& msg) {
     ++recv_;
 }
 
-::rclcpp::Result QosListener::configure(::nros::Node& node) {
+::rclcpp::Result QosListener::configure(::rclcpp::Node& node) {
     // `::setvbuf` (C global): line-buffer stdout so each `Received:` flushes live.
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     // Byte-identical to the talker's profile — both endpoints must declare the same

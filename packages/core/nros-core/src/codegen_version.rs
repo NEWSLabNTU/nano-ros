@@ -35,7 +35,7 @@
 ///
 /// Gated by `check-codegen-version-surface`, which fails when the surface
 /// generated code names changes and this constant does not.
-pub const NROS_CODEGEN_VERSION: u32 = 3;
+pub const NROS_CODEGEN_VERSION: u32 = 4;
 
 /// The oldest codegen version this runtime still accepts.
 ///
@@ -63,6 +63,22 @@ pub const NROS_CODEGEN_VERSION: u32 = 3;
 /// was withdrawn: it compiles against the corrected `nros/view.h` and picks the
 /// fix up for free, because the view helpers are `static inline` in the header
 /// rather than symbols the generated code defines.
+///
+/// Still 2 while [`NROS_CODEGEN_VERSION`] moved to 4 (phase-427 W7). That move
+/// is a SPELLING change and nothing else: `nros::bind_subscription_sized` — the
+/// one demanded C++ signature that names the node type — now writes its
+/// parameter `::rclcpp::Node&` where it wrote `Node&`, because the class moved
+/// to `rclcpp::` and `nros::Node` became a deprecated alias for it. The two
+/// spellings are ONE TYPE (`std::is_same<rclcpp::Node, nros::Node>` is asserted
+/// by `tests/compile/one_node_type.cpp`), so a version-3 tree — which declares
+/// its node `static ::nros::Node __nros_node_0;` — still compiles and still
+/// links, with a deprecation warning naming its replacement. Nothing it names
+/// was withdrawn, which is the window the doc above describes.
+///
+/// The version moves anyway because the gate is fail-closed on the TEXT of a
+/// demanded declaration and should stay that way: it cannot know that two
+/// spellings are one type, and a gate that tried to would be one that misses a
+/// real rename.
 ///
 /// The range `[NROS_CODEGEN_VERSION_MIN, NROS_CODEGEN_VERSION]` is expressed to
 /// C and C++ as a SET OF DEFINED SYMBOLS rather than as a comparison — see

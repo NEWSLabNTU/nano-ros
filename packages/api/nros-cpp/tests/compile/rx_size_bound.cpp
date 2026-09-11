@@ -105,7 +105,7 @@ class Listener {
   public:
     // Instantiates the changed template BODY: the hint reaching
     // `create_subscription_raw` is the derived bound.
-    ::nros::Result configure(::nros::Node& node) {
+    ::nros::Result configure(::rclcpp::Node& node) {
         ::nros::Result r =
             ::nros::bind_subscription<Bounded, Listener, &Listener::on_msg>(node, "/chatter", this);
         if (!r.ok()) return r;
@@ -115,7 +115,7 @@ class Listener {
     }
 };
 
-inline ::nros::Result instantiate(::nros::Node& node) {
+inline ::nros::Result instantiate(::rclcpp::Node& node) {
     static Listener listener;
     (void)sizeof(Unbounded); // included, never asked for its bound
     return listener.configure(node);

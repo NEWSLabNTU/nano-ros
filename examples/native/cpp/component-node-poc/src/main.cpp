@@ -1,6 +1,6 @@
 /// @file main.cpp
 /// @brief Phase 242.1 + 242.2 (RFC-0044) proof — the rclcpp-faithful component
-/// model. Each node **IS-A** `nros::Node`; its **constructor** receives
+/// model. Each node **IS-A** `rclcpp::Node`; its **constructor** receives
 /// the executor-bound node handle and creates its entities (a publisher, a typed
 /// member-callback subscription, a typed member timer) as member calls. No
 /// `configure(Node&)`, no callback names, no raw bytes at the authoring surface.
@@ -45,11 +45,11 @@ class Talker : public nros::NodeWithTimers<1> {
 };
 
 // ---- Listener: IS-A node; ctor creates a typed member-callback subscription -
-class Listener : public nros::Node {
+class Listener : public rclcpp::Node {
     int recv_ = 0;
 
   public:
-    explicit Listener(nros::NodeHandle h) : nros::Node(h, "cn_listener") {
+    explicit Listener(nros::NodeHandle h) : rclcpp::Node(h, "cn_listener") {
         // Typed member-callback subscription (242.2). The macro derives Self from
         // `this`; it registers M::TYPE_NAME (DDS-mangled) + deserializes each
         // sample into a typed Int32 before dispatching to on_msg.

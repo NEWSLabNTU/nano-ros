@@ -20,7 +20,7 @@ void Telem::on_tick() {
     count_++;
 }
 
-::rclcpp::Result Telem::configure(::nros::Node& node) {
+::rclcpp::Result Telem::configure(::rclcpp::Node& node) {
     // Line-buffer stdout so each tick flushes immediately when piped.
     ::setvbuf(stdout, nullptr, _IOLBF, 0);
     ::rclcpp::Result r = node.create_publisher(pub_, "/telem");

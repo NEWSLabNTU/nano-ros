@@ -53,7 +53,7 @@ void FibonacciClient::on_result(const uint8_t* /*goal_id*/, int32_t /*status*/, 
     print_sequence("Result received: ", data, len);
 }
 
-::rclcpp::Result FibonacciClient::configure(::nros::Node& node) {
+::rclcpp::Result FibonacciClient::configure(::rclcpp::Node& node) {
     // Unbuffered stdout — the callback prints only on transitions, so a
     // full-buffered console would swallow them when the harness kills the QEMU.
     // `::setvbuf` (global) not `std::setvbuf` — Zephyr's minimal libcpp/picolibc

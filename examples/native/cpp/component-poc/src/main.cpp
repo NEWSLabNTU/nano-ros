@@ -34,7 +34,7 @@ class Talker {
     }
 
   public:
-    rclcpp::Result configure(nros::Node& node) {
+    rclcpp::Result configure(rclcpp::Node& node) {
         rclcpp::Result r = node.create_publisher(pub_, "/chatter");
         if (!r.ok()) return r;
         return node.create_wall_timer<Talker, &Talker::on_tick>(timer_, 500, this);
@@ -57,7 +57,7 @@ class Listener {
     }
 
   public:
-    rclcpp::Result configure(nros::Node& node) {
+    rclcpp::Result configure(rclcpp::Node& node) {
         // NB: the wire keyexpr uses the DDS-mangled type name the typed
         // `Publisher<Int32>` registers (`std_msgs::msg::dds_::Int32_`), not the
         // ROS slash form — so the raw sub must pass `Int32::TYPE_NAME` to match.
@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
     // spin loop (which runs inside `run_components` and holds `&member` as the
     // dispatch context). The codegen Entry (240.2b) will own them in static
     // storage; the lifetime contract is the same.
-    nros::Node node;
+    rclcpp::Node node;
     Talker talker;
     Listener listener;
 

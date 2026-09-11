@@ -21,7 +21,7 @@
 // phase-427 W7 — `Node` is DEFINED in `rclcpp::` (RFC-0089: that namespace is
 // the home), so the forward declaration has to be there too: an elaborated
 // `class Node;` inside `nros::` would declare a second, distinct class and
-// collide with the `nros::Node` alias `node.hpp` declares.
+// collide with the `rclcpp::Node` alias `node.hpp` declares.
 namespace rclcpp {
 class Node;
 }
@@ -100,7 +100,7 @@ class OnShutdownCallbackHandle : public ShutdownCallbackHandle {
 /// nros::Executor executor;
 /// NROS_TRY(nros::Executor::create(executor));
 ///
-/// nros::Node node;
+/// rclcpp::Node node;
 /// NROS_TRY(executor.create_node(node, "my_node"));
 ///
 /// // Create publishers, subscriptions, etc. on node...

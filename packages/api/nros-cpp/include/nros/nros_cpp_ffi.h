@@ -788,7 +788,7 @@ nros_cpp_ret_t nros_cpp_init_rmw(const char *rmw,
  *
  * The two surfaces need ONE handle type. This is that: same storage contract as
  * [`nros_cpp_init`] (caller owns the buffer, executor carved in place), so every
- * existing C++ path — `nros::Node`, `NodeBuilder().rmw(name)`, publishers,
+ * existing C++ path — `rclcpp::Node`, `NodeBuilder().rmw(name)`, publishers,
  * subscriptions — works against a multi-session executor unchanged.
  *
  * `specs[0]` is the primary session; the rest become extras, each findable by its

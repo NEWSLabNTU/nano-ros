@@ -79,7 +79,7 @@ inline std::string get_fully_qualified_name(const char* node_name, const char* n
 /// @param period    Timer period.
 /// @param callback  Callable invoked on each tick.
 /// @return Result indicating success or failure.
-inline Result create_wall_timer(Node& node, Timer& out, std::chrono::milliseconds period,
+inline Result create_wall_timer(::rclcpp::Node& node, Timer& out, std::chrono::milliseconds period,
                                 std::function<void()> callback) {
     auto fn =
         std::unique_ptr<std::function<void()>>(new std::function<void()>(std::move(callback)));
@@ -108,7 +108,7 @@ inline Result create_wall_timer(Node& node, Timer& out, std::chrono::millisecond
 /// @param period    Timer period, ON THAT CLOCK.
 /// @param callback  Callable invoked on each tick.
 /// @return Result indicating success or failure.
-inline Result create_timer(Node& node, Timer& out, const Clock& clock,
+inline Result create_timer(::rclcpp::Node& node, Timer& out, const Clock& clock,
                            std::chrono::milliseconds period, std::function<void()> callback) {
     auto fn =
         std::unique_ptr<std::function<void()>>(new std::function<void()>(std::move(callback)));
@@ -125,7 +125,8 @@ inline Result create_timer(Node& node, Timer& out, const Clock& clock,
 ///
 /// Same ownership rules as `create_wall_timer`: the closure lives with the
 /// Timer and is freed on destruction.
-inline Result create_timer_oneshot(Node& node, Timer& out, std::chrono::milliseconds delay,
+inline Result create_timer_oneshot(::rclcpp::Node& node, Timer& out,
+                                   std::chrono::milliseconds delay,
                                    std::function<void()> callback) {
     auto fn =
         std::unique_ptr<std::function<void()>>(new std::function<void()>(std::move(callback)));
@@ -141,7 +142,7 @@ inline Result create_timer_oneshot(Node& node, Timer& out, std::chrono::millisec
 /// Create a guard condition with a std::function callback.
 ///
 /// Same ownership rules as `create_wall_timer`.
-inline Result create_guard_condition(Node& node, GuardCondition& out,
+inline Result create_guard_condition(::rclcpp::Node& node, GuardCondition& out,
                                      std::function<void()> callback) {
     auto fn =
         std::unique_ptr<std::function<void()>>(new std::function<void()>(std::move(callback)));
@@ -163,7 +164,7 @@ inline Result init(const std::string& locator, uint8_t domain_id = 0) {
 }
 
 /// Create a node (std::string overload).
-inline Result create_node(Node& out, const std::string& name,
+inline Result create_node(::rclcpp::Node& out, const std::string& name,
                           const std::string& ns = std::string()) {
     return create_node(out, name.c_str(), ns.empty() ? nullptr : ns.c_str());
 }
@@ -172,43 +173,43 @@ inline Result create_node(Node& out, const std::string& name,
 
 /// Create a publisher (std::string topic overload).
 template <typename M>
-Result create_publisher(Node& node, Publisher<M>& out, const std::string& topic,
+Result create_publisher(::rclcpp::Node& node, Publisher<M>& out, const std::string& topic,
                         const QoS& qos = QoS::default_profile()) {
     return node.create_publisher(out, topic.c_str(), qos);
 }
 
 /// Create a subscription (std::string topic overload).
 template <typename M>
-Result create_subscription(Node& node, Subscription<M>& out, const std::string& topic,
+Result create_subscription(::rclcpp::Node& node, Subscription<M>& out, const std::string& topic,
                            const QoS& qos = QoS::default_profile()) {
     return node.create_subscription(out, topic.c_str(), qos);
 }
 
 /// Create a service server (std::string name overload).
 template <typename S>
-Result create_service(Node& node, Service<S>& out, const std::string& service_name,
+Result create_service(::rclcpp::Node& node, Service<S>& out, const std::string& service_name,
                       const QoS& qos = QoS::services()) {
     return node.create_service(out, service_name.c_str(), qos);
 }
 
 /// Create a service client (std::string name overload).
 template <typename S>
-Result create_client(Node& node, Client<S>& out, const std::string& service_name,
+Result create_client(::rclcpp::Node& node, Client<S>& out, const std::string& service_name,
                      const QoS& qos = QoS::services()) {
     return node.create_client(out, service_name.c_str(), qos);
 }
 
 /// Create an action server (std::string name overload).
 template <typename A>
-Result create_action_server(Node& node, ActionServer<A>& out, const std::string& action_name,
-                            const QoS& qos = QoS::services()) {
+Result create_action_server(::rclcpp::Node& node, ActionServer<A>& out,
+                            const std::string& action_name, const QoS& qos = QoS::services()) {
     return node.create_action_server(out, action_name.c_str(), qos);
 }
 
 /// Create an action client (std::string name overload).
 template <typename A>
-Result create_action_client(Node& node, ActionClient<A>& out, const std::string& action_name,
-                            const QoS& qos = QoS::services()) {
+Result create_action_client(::rclcpp::Node& node, ActionClient<A>& out,
+                            const std::string& action_name, const QoS& qos = QoS::services()) {
     return node.create_action_client(out, action_name.c_str(), qos);
 }
 
@@ -220,7 +221,7 @@ inline Result create_executor(Executor& out, const std::string& locator, uint8_t
 }
 
 /// Create a node on an executor (std::string overload).
-inline Result create_node(Executor& exec, Node& out, const std::string& name,
+inline Result create_node(Executor& exec, ::rclcpp::Node& out, const std::string& name,
                           const std::string& ns = std::string()) {
     return exec.create_node(out, name.c_str(), ns.empty() ? nullptr : ns.c_str());
 }

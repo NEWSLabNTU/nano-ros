@@ -92,7 +92,7 @@ void FibClient::on_tick() {
     }
 }
 
-::rclcpp::Result FibClient::configure(::nros::Node& node) {
+::rclcpp::Result FibClient::configure(::rclcpp::Node& node) {
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     phase_ = Idle;
     waits_ = 0;

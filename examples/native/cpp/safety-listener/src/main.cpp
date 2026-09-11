@@ -35,7 +35,7 @@ int nros_app_main(int argc, char** argv) {
     // `$NROS_LOCATOR` / `$ROS_DOMAIN_ID` at runtime.
     NROS_TRY_RET(nros::init(), 1);
 
-    nros::Node node;
+    rclcpp::Node node;
     NROS_TRY_RET(nros::create_node(node, "cpp_safety_listener"), 1);
 
     // Poll-mode subscription — the validated receive path is poll-only.

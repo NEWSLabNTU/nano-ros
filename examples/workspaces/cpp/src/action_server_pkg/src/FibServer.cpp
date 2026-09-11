@@ -69,7 +69,7 @@ void FibServer::on_tick() {
     }
 }
 
-::rclcpp::Result FibServer::configure(::nros::Node& node) {
+::rclcpp::Result FibServer::configure(::rclcpp::Node& node) {
     // `::setvbuf` (C global), not `std::setvbuf` — Zephyr picolibc lacks the std:: name.
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     executor_ = node.executor_handle();

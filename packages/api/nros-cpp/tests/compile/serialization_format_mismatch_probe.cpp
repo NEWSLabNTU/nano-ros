@@ -50,7 +50,7 @@ static_assert(::nros::linked_format() == ::nros::SerializationFormat::Cdr,
 // THIS is what must not compile: a typed entity created over a uORB message in
 // a CDR image. The assertion lives in `Node::create_publisher`'s body, so the
 // instantiation below is what evaluates it.
-inline ::nros::Result instantiate(::nros::Node& node) {
+inline ::nros::Result instantiate(::rclcpp::Node& node) {
     ::nros::Publisher<VehicleStatus> pub;
     return node.create_publisher(pub, "/fmu/out/vehicle_status");
 }

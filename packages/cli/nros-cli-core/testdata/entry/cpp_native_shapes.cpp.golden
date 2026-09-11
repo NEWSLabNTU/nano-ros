@@ -32,12 +32,12 @@ extern "C" {
 }
 
 // Static per-node storage (outlives the spin loop; no heap).
-static ::nros::Node __nros_node_0;
+static ::rclcpp::Node __nros_node_0;
 static ::talker_pkg::TALKER __nros_comp_0;
-static ::nros::Node __nros_node_1;
+static ::rclcpp::Node __nros_node_1;
 static ::talker_pkg::TALKER2 __nros_comp_1;
-static ::nros::Node __nros_node_2;
-static ::nros::Node __nros_node_3;
+static ::rclcpp::Node __nros_node_2;
+static ::rclcpp::Node __nros_node_3;
 alignas(::rclcpp_pkg::RCL_ONE) static unsigned char __nros_comp_buf_6[sizeof(::rclcpp_pkg::RCL_ONE)];
 static ::rclcpp_pkg::RCL_ONE* __nros_comp_6 = nullptr;
 

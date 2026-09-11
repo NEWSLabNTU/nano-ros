@@ -845,7 +845,7 @@ Two consequences of the fix, both stated rather than absorbed:
   12 → 9, `differs` 20 → 21, `ours-only` 354 → 360, `theirs-only` 695 → 651.
   Forty-four names we ship stopped being reported as names only ROS 2 has.
 
-### The flip is DONE for nine of the ten (phase-428, 2026-09-09)
+### The flip is DONE — all ten (nine phase-428 2026-09-09, `Node` phase-427 W7 2026-09-11)
 
 Nothing in the tooling argued for defining a type in `nros::`, and nine of the
 ten have moved. Each definition now sits in the upstream namespace and the
@@ -862,11 +862,61 @@ ten have moved. Each definition now sits in the upstream namespace and the
 | `rclcpp::Service<S>` | `nros::Service<S>` | `service.hpp` |
 | `rclcpp_action::Client<A>` | `nros::ActionClient<A>` | `action_client.hpp` |
 | `rclcpp_action::Server<A>` | `nros::ActionServer<A>` | `action_server.hpp` |
+| **`rclcpp::Node`** | **`nros::Node`** (DEPRECATED) | **`node.hpp`** |
 
-`Node` is the TENTH and is deliberately NOT swept here: PRs #797 and #806 are
-stacked on `node.hpp`, so flipping it in the same change would conflict with two
-landed reviews. It is the one that surfaced the problem, and phase-427 W7 (the
-`nros::Node` deprecation) waits on it.
+`Node` was the TENTH and was held out of phase-428 because PRs #797 and #806
+were stacked on `node.hpp`. Both merged, and phase-427 W7 landed it on
+2026-09-11 together with the deprecation the item was actually about.
+
+**Three mechanics the node needed that the other nine did not**, recorded
+because the next type to move in a header this size will meet them:
+
+* An elaborated `class Node;` in `nros::` declares a SECOND, distinct class once
+  the alias exists, so every forward declaration moves too — twelve headers.
+* A friend declaration inside `namespace rclcpp` must be QUALIFIED or it
+  befriends a `rclcpp::` function that does not exist, and a qualified friend
+  names an EXISTING entity, so `node.hpp` forward-declares the six `nros::` free
+  functions the node befriends. The declarator-id is parenthesized —
+  `friend Result(::nros::init)(...)` — because a nested-name-specifier is parsed
+  greedily and `Result ::nros::init` reads as `Result::nros::init`.
+* Out-of-line member definitions may only be written in a namespace ENCLOSING
+  the class, so all sixteen `Result Node::create_*` bodies moved with it.
+
+**`QoS` was the one place the flip could have changed behaviour silently, and
+that is general.** `rclcpp::QoS` is a SUBCLASS of `nros::QoS`, not an alias, so
+an unqualified `QoS` inside `namespace rclcpp` would have quietly re-typed every
+`create_*` parameter to the derived class — a compiling, non-erroring signature
+change. Every such name in a moved body is `::nros::`-qualified, which is also
+what lets a reader tell an adopted name from an ours-only one. Before moving a
+definition into `rclcpp::`, check each unqualified name for a `rclcpp::`
+homonym: `QoS`, `Logger`, `NodeOptions` and `Rate` are the four that exist here,
+and only `QoS` is a different type.
+
+**`nros::Node` is DEPRECATED, and it is the first of the ten to be** — the
+others are still plain aliases for the reason two paragraphs down. What made it
+affordable is that the same commit migrated all 258 in-tree C++ spellings, so
+the attribute costs no in-tree diagnostic. It is UNCONDITIONAL: every other
+deprecation this API ships is (`nros::Expected<T>`, `nros::bind_timer`,
+`QoS::Liveliness`, the `QoS::*_ms(uint32_t)` family,
+`LifecycleNode::trigger(uint8_t)`), and a macro nothing in-tree defines would
+leave the probe as the only compiler that ever sees it. The reach it is FOR is
+out-of-tree: `nros-v0.5.0` shipped the old spelling in six
+`examples/templates/**` files a user copies out. Probe:
+`tests/compile/node_deprecation_probe.cpp`, greped for the replacement, because
+"it failed" is also what a typo produces.
+
+**One more tool defect the flip surfaced, and it was pre-existing.**
+`correlate.canon_type`'s namespace strips are `^`-anchored, so a LEADING `::`
+made two spellings of one type canonicalise differently: `::std::string` never
+reduced to `string`. Our hosted overloads are spelled `::std::string` and
+upstream's `std::string`, so SEVEN C++ rows — `Node::Node`,
+`Node::create_client`, `Node::create_service`, `Node::declare_parameter`,
+`Node::get_parameter`, `Node::has_parameter`, `QoS::QoS` — reported `systematic`
+over an overload we actually ship. Fixed at the canonicaliser and pinned in
+`--self-test` in both directions (an INNER `::` is not noise). C++ buckets: same
+131 -> 138, systematic 14 -> 7, nothing moved the other way. Same shape as the
+`OUR_CPP_ROOTS` fix above: the instrument was measuring its own spelling
+convention.
 
 **The two action types are a RENAME as well as a move**, and that is where the
 sweep stopped being mechanical. `rclcpp_action` already says "action", so the
@@ -896,13 +946,24 @@ consequences, each of which the gates caught rather than the author:
   named in `KEY_OVERRIDES`, with the service client's own members asserted in the
   self-test so a widened pattern cannot quietly claim them.
 
-**The aliases are NOT deprecated.** They are ours-only names with in-tree reach,
-so they can eventually be removed — unlike an upstream name we lack, where the
-alias is load-bearing — but a bare deprecation attribute warns at every in-tree
-site at once in a workspace that denies warnings. Measured at the flip: **444
-qualified `nros::<Type>` spellings** across `packages/`, `examples/`, `zephyr/`,
-`cmake/`, `book/` and `docs/` (147 of them outside the nine headers themselves).
-Migrating them is its own wave.
+**The other nine aliases are NOT deprecated** (`nros::Node` is — see above).
+They are ours-only names with in-tree reach, so they can eventually be removed —
+unlike an upstream name we lack, where the alias is load-bearing — but a bare
+deprecation attribute warns at every in-tree site at once in a workspace that
+denies warnings. Measured at the flip: **444 qualified `nros::<Type>`
+spellings** across `packages/`, `examples/`, `zephyr/`, `cmake/`, `book/` and
+`docs/` (147 of them outside the nine headers themselves). Migrating them is its
+own wave.
+
+**What the `Node` wave measured, for whoever takes the other nine.** The
+deprecation is affordable exactly when the migration lands in the same commit,
+and the migration is a smaller job than the raw count suggests: of `Node`'s 561
+tree-wide spellings only **258 were C++ code**, because `nros::Node` also names
+a RUST TRAIT (`nros-macros`, every `impl nros::Node for …`) that the C++
+deprecation does not touch and must not be swept, and because `docs/roadmap`,
+`docs/issues` and the dated paragraphs of the ledger are historical record that
+would be FALSIFIED by rewriting. The split that matters is code vs prose, then
+C++ vs Rust — not a grep total.
 
 **What the flip does NOT do is make our headers coexist with upstream's.**
 Measured deliberately, a TU that includes both `<rclcpp/rclcpp.hpp>` and

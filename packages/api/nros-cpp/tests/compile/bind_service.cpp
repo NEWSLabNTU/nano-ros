@@ -44,14 +44,14 @@ class Server {
         resp.sum = req.a + req.b;
         return resp;
     }
-    ::nros::Result configure(::nros::Node& node) {
+    ::nros::Result configure(::rclcpp::Node& node) {
         return ::nros::bind_service<AddTwoInts, Server, &Server::on_add>(node, "/add_two_ints",
                                                                          this);
     }
 };
 
 // Force template instantiation (body type-checked at compile).
-inline ::nros::Result instantiate(::nros::Node& node, Server* s) {
+inline ::nros::Result instantiate(::rclcpp::Node& node, Server* s) {
     return s->configure(node);
 }
 

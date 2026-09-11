@@ -28,7 +28,7 @@ class SafetyListener {
     void on_chatter(const std_msgs::msg::Int32& msg, const nros_cpp_integrity_status_t& status);
 
   public:
-    ::rclcpp::Result configure(::nros::Node& node);
+    ::rclcpp::Result configure(::rclcpp::Node& node);
 };
 
 } // namespace cpp_safety_listener_pkg

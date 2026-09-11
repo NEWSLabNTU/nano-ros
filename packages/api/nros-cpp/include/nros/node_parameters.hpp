@@ -30,7 +30,7 @@
  * The `nros_cpp_node_t*` — its `node_id` IS the key (phase-426 W1). So two
  * nodes on one executor may declare the same name with different values, and
  * `ros2 param list` enumerates per node. Pass a node's `ffi_handle()`; a null
- * handle (an `nros::Node` that was never opened) is an error, never a silent
+ * handle (an `rclcpp::Node` that was never opened) is an error, never a silent
  * write to some other node's parameters.
  *
  * ## Freestanding

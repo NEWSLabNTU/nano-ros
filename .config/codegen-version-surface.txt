@@ -12,8 +12,8 @@
 #
 # Regenerate after a DELIBERATE surface move (bump the constant first):
 #     python3 scripts/check-codegen-version-surface.py --write-baseline
-version 3
-2415963024c63037 cpp|fn|component.hpp|bind_subscription_sized
+version 4
+9a40c1a1fadbae06 cpp|fn|component.hpp|bind_subscription_sized
 4e2616f1497bc854 cpp|struct|fixed_sequence.hpp|FixedSequence
 05b2ecfd67796b30 cpp|struct|fixed_string.hpp|FixedString
 c2bd21803d713aa0 cpp|struct|heap_sequence.hpp|HeapSequence

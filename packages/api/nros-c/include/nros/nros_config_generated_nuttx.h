@@ -25,7 +25,7 @@
  * Fourth recurrence of this file's documented drift class (#167, #464, 0954
  * below are the others), and the first that is a hard compile error rather
  * than a silent under-size. Gated now: `check-nuttx-fallback-config-macros`. */
-#define NROS_CODEGEN_VERSION 3
+#define NROS_CODEGEN_VERSION 4
 #define NROS_CODEGEN_VERSION_MIN 2
 /* #167 — safe upper bound (was 79296, stale): current codegen needs ~80704 on
  * rv-virt; too-small here overflows the executor storage buffer. Keep above the
@@ -96,7 +96,7 @@
  * tree the runtime rejects. Gated by `check-config-fallback-macros`, which
  * requires every macro a generated artifact reads to be defined here AND
  * requires these two to equal the Rust constants. */
-#define NROS_CODEGEN_VERSION 3
+#define NROS_CODEGEN_VERSION 4
 #define NROS_CODEGEN_VERSION_MIN 2
 
 /* Issue 0464 — this file is a hand-maintained SNAPSHOT, so the pairs below can

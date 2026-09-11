@@ -63,7 +63,7 @@ static_assert(::nros::format_of<Unspecialized>::value == ::nros::SerializationFo
 
 // Force instantiation of the entity creators, so the `static_assert` inside
 // their bodies is evaluated rather than merely parsed.
-inline ::nros::Result instantiate(::nros::Node& node) {
+inline ::nros::Result instantiate(::rclcpp::Node& node) {
     ::nros::Publisher<Int32> pub;
     ::nros::Result rp = node.create_publisher(pub, "/count");
 

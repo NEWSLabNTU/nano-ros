@@ -5043,7 +5043,7 @@ book:
     #!/usr/bin/env bash
     set -e
     rm -rf target/doc target/doxygen
-    # `nros::Executor`, `nros::Promise`, `nros::Node`, etc. only re-export
+    # `nros::Executor`, `nros::Promise`, `rclcpp::Node`, etc. only re-export
     # under an rmw feature, so pass an rmw + platform combo or the deployed
     # rustdoc omits the public-facing types and the reference stub's
     # `[Executor](struct.Executor.html)` link 404s.

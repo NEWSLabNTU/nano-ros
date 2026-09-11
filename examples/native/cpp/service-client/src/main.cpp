@@ -52,7 +52,7 @@ int nros_app_main(int argc, char** argv) {
     }
 #endif
 
-    nros::Node node;
+    rclcpp::Node node;
     NROS_TRY_RET(nros::create_node(node, "add_two_ints_client"), 1);
     printf("Node created: %s\n", node.get_name());
 

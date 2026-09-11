@@ -18,7 +18,7 @@ void LifecycleTalker::on_tick() {
     }
 }
 
-::rclcpp::Result LifecycleTalker::configure(::nros::Node& node) {
+::rclcpp::Result LifecycleTalker::configure(::rclcpp::Node& node) {
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) return r;

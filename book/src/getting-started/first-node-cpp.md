@@ -105,7 +105,7 @@ wrappers over the C ABI:
 int nros_app_main(int argc, char** argv) {
     NROS_TRY_RET(nros::init("tcp/127.0.0.1:7447", 0), 1);
 
-    nros::Node node;
+    rclcpp::Node node;
     NROS_TRY_RET(nros::create_node(node, "talker"), 1);
 
     nros::Publisher<std_msgs::msg::String> pub;

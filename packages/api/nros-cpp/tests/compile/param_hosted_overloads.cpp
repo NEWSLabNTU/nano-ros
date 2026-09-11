@@ -59,7 +59,7 @@ inline void rclcpp_node_string_values(rclcpp::Node& node) {
     (void)node.has_parameter(key);
 }
 
-// --- nros::Node, subclassed --------------------------------------------------
+// --- rclcpp::Node, subclassed --------------------------------------------------
 //
 // The value-returning facade, including the `std::vector<T>` overloads that had
 // never been compiled. Written as a derived ctor because that is where a
@@ -67,14 +67,14 @@ inline void rclcpp_node_string_values(rclcpp::Node& node) {
 // instantiated when something calls it.
 //
 // phase-427 W4 — this said `nros::ComponentNode`, the type that WRAPPED a node.
-// It is deleted; a component IS-A `nros::Node` now, and the facade this probe
+// It is deleted; a component IS-A `rclcpp::Node` now, and the facade this probe
 // compiles is the same one `rclcpp::Node` above wears, because they are one
 // type. So the two halves of this file are no longer two facades that could
 // disagree — they are two call SHAPES (a free function taking a `Node&`, and a
 // ctor on a subclass of it) over one.
-class HostedParamNode : public ::nros::Node {
+class HostedParamNode : public ::rclcpp::Node {
   public:
-    explicit HostedParamNode(::nros::NodeHandle h) : ::nros::Node(h, "hosted_params") {
+    explicit HostedParamNode(::nros::NodeHandle h) : ::rclcpp::Node(h, "hosted_params") {
         // Scalars, `const char*` keyed and `std::string` keyed.
         const double period = this->declare_parameter<double>("ctrl_period", 0.15);
         const int64_t depth = this->declare_parameter<int64_t>("queue_depth", 10);

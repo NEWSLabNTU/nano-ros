@@ -92,7 +92,7 @@ static void on_tick(void* ctx_ptr) {
 int main() {
     NROS_TRY(nros::init("tcp/127.0.0.1:7447"));
 
-    nros::Node node;
+    rclcpp::Node node;
     NROS_TRY(nros::create_node(node, "cpp_talker"));
 
     nros::Publisher<std_msgs::msg::Int32> pub;

@@ -83,7 +83,7 @@ int main(void) {
 int main() {
     nros::init("tcp/127.0.0.1:7447", 0);
 
-    nros::Node node;
+    rclcpp::Node node;
     nros::create_node(node, "my_node");
 
     auto logger = node.get_logger();

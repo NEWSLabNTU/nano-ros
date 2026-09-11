@@ -1,8 +1,8 @@
 // phase-438 W4 — `rclcpp::Node`'s UNCONDITIONAL surface, instantiated.
 //
-// phase-427 W1-W3/W5 made `rclcpp::Node` one class (`= ::nros::Node`) with a
+// phase-427 W1-W3/W5 made `rclcpp::Node` one class (`= ::rclcpp::Node`) with a
 // fixed layout on every target, and made the std-flavoured factories ADDITIVE
-// overloads beside out-ref forms that mirror `nros::Node`.
+// overloads beside out-ref forms that mirror `rclcpp::Node`.
 // `check-cpp-capability-layout` measures the layout half; nothing measured the
 // method half, and it could not have:
 //
@@ -100,7 +100,7 @@ inline ::nros::Result instantiate() {
     (void)node.get_clock();
 
     // The out-ref factories — caller-owned storage, `Result` channel, `const
-    // char*` names. Exactly `nros::Node`'s shape, which is what 27 of the 28
+    // char*` names. Exactly `rclcpp::Node`'s shape, which is what 27 of the 28
     // in-tree `create_*` call sites already write.
     ::nros::Publisher<Int32> pub;
     ::nros::Result r = node.create_publisher(pub, "/count", ::nros::QoS(10));

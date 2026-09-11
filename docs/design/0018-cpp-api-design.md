@@ -23,7 +23,7 @@ embedded systems with no heap allocation. The C++ layer wraps the Rust
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  User code (C++)                                            │
-│  nros::Node, nros::Publisher<M>, nros::Subscription<M>      │
+│  rclcpp::Node, rclcpp::Publisher<M>, rclcpp::Subscription<M>│
 ├─────────────────────────────────────────────────────────────┤
 │  nros-cpp  (header-only, freestanding C++)                  │
 │  Thin wrappers: type safety, RAII, templates                │
@@ -195,8 +195,8 @@ Usage:
 nros::Result init_system() {
     NROS_TRY(nros::init());
 
-    nros::Node node;
-    NROS_TRY(nros::Node::create(node, "my_node"));
+    rclcpp::Node node;
+    NROS_TRY(rclcpp::Node::create(node, "my_node"));
 
     nros::Publisher<std_msgs::msg::Int32> pub;
     NROS_TRY(node.create_publisher(pub, "/chatter"));
@@ -217,7 +217,7 @@ opt-in and never the default.
 
 | rclcpp                     | nros-cpp                | Notes  |
 |----------------------------|-------------------------|--------|
-| `rclcpp::Node`             | `nros::Node`            |        |
+| `rclcpp::Node`             | `rclcpp::Node`          | RFC-0089: ours is DEFINED in `rclcpp::`. `nros::Node` is a deprecated alias. |
 | `rclcpp::Publisher<M>`     | `nros::Publisher<M>`    |        |
 | `rclcpp::Subscription<M>`  | `nros::Subscription<M>` |        |
 | `rclcpp::Service<S>`       | `nros::Service<S>`      | Server |
@@ -839,8 +839,8 @@ void timer_callback(void* ctx) {
 int main() {
     NROS_TRY(nros::init());
 
-    nros::Node node;
-    NROS_TRY(nros::Node::create(node, "talker"));
+    rclcpp::Node node;
+    NROS_TRY(rclcpp::Node::create(node, "talker"));
 
     nros::Publisher<std_msgs::msg::Int32> pub;
     NROS_TRY(node.create_publisher(pub, "/chatter"));

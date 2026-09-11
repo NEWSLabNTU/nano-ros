@@ -19,7 +19,7 @@ class Ctrl {
     void on_tick();
 
   public:
-    ::rclcpp::Result configure(::nros::Node& node);
+    ::rclcpp::Result configure(::rclcpp::Node& node);
 };
 
 } // namespace ctrl_pkg

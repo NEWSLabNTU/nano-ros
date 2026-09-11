@@ -22,7 +22,7 @@ struct Component {
     nros::Timer timer;
     void on_tick() {}
 
-    nros::Result the_retired_spelling(nros::Node& node) {
+    nros::Result the_retired_spelling(rclcpp::Node& node) {
         return nros::bind_timer<Component, &Component::on_tick>(node, timer, 100, this);
     }
 };

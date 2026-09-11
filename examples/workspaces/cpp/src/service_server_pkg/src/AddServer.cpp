@@ -16,7 +16,7 @@ AddServer::on_request(const example_interfaces::srv::AddTwoInts::Request& req) {
     return resp;
 }
 
-::rclcpp::Result AddServer::configure(::nros::Node& node) {
+::rclcpp::Result AddServer::configure(::rclcpp::Node& node) {
     // `::setvbuf` (C global), not `std::setvbuf` — Zephyr picolibc lacks the std:: name.
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     ::rclcpp::Result r =

@@ -353,7 +353,7 @@ pub struct ComponentScaffoldConfig {
     /// Source language. `rust` lands the planned-mode `nros::Component` shape;
     /// `c` / `cpp` land the typed component shape (RFC-0043) in the RFC-0048
     /// ament spelling: `find_package(nano_ros REQUIRED)` +
-    /// `nano_ros_add_node(...)` + a `configure(::nros::Node&)` (C++) /
+    /// `nano_ros_add_node(...)` + a `configure(::rclcpp::Node&)` (C++) /
     /// `NROS_C_COMPONENT` (C) seam.
     pub lang: String,
     pub force: bool,
@@ -534,7 +534,7 @@ source_metadata = "metadata/{module}.json"
 
 /// Scaffold a **C++ Node pkg** — typed component (RFC-0043). Emits the
 /// RFC-0048 ament surface (`find_package(nano_ros)` + `nano_ros_add_node`) and a
-/// `<UserClass>::configure(::nros::Node&)` real-callback body in the
+/// `<UserClass>::configure(::rclcpp::Node&)` real-callback body in the
 /// `<pkg>::` namespace per §212.L.4 (class prefix must equal `PROJECT_NAME`).
 /// `configure` creates a `Publisher` + binds a member timer callback by
 /// identity (no string descriptor, no interpreter) — the typed Entry
@@ -641,7 +641,7 @@ class {class_name} {{
     void on_tick(); // real body; bound via &{class_name}::on_tick (no name)
 
   public:
-    ::nros::Result configure(::nros::Node& node);
+    ::nros::Result configure(::rclcpp::Node& node);
 }};
 
 }} // namespace {pkg_sym}
@@ -675,7 +675,7 @@ void {class_name}::on_tick() {{
     }}
 }}
 
-::nros::Result {class_name}::configure(::nros::Node& node) {{
+::nros::Result {class_name}::configure(::rclcpp::Node& node) {{
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     ::nros::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) return r;
@@ -1350,7 +1350,7 @@ int main(int argc, char** argv) {{
         return 1;
     }}
 
-    nros::Node node;
+    rclcpp::Node node;
     if (auto r = nros::create_node(node, "{name}"); !r.ok()) {{
         std::fprintf(stderr, "create_node failed: %d\n", r.raw());
         return 1;

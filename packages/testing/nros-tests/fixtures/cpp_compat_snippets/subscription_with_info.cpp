@@ -32,7 +32,7 @@ struct FakeString {
 } // namespace
 
 int main() {
-    nros::Node node;
+    rclcpp::Node node;
     rclcpp::Subscription<FakeString> info_sub;
     (void)node.create_subscription_with_info<FakeString>(
         info_sub, "/chatter_info",

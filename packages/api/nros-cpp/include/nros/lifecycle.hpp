@@ -268,7 +268,7 @@ class LifecycleNode {
     // receiver, because there is one session per image (RFC-0002) — and does
     // nothing else: no state, no loop, no caching, no name construction.
     // RFC-0019 keeps the behaviour in Rust. The bodies are the same one-line
-    // forwards `nros::Node` carries; see `node.hpp` for the per-call
+    // forwards `rclcpp::Node` carries; see `node.hpp` for the per-call
     // documentation.
     //
     // On an UNBOUND node (default-constructed, `bind()` not yet called) they
@@ -323,7 +323,7 @@ class LifecycleNode {
 
     /// What one named node SUBSCRIBES to, with the types. `subscription`, not
     /// `subscriber` — the C++ surface takes rclcpp's vocabulary and this
-    /// matches `nros::Node` / `nros::Executor` rather than adding a third
+    /// matches `rclcpp::Node` / `nros::Executor` rather than adding a third
     /// spelling.
     Result get_subscription_names_and_types_by_node(const char* node_name,
                                                     const char* node_namespace,

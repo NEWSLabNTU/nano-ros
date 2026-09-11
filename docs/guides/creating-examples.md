@@ -667,7 +667,7 @@ int main() {
     nros::Result ret = nros::init("tcp/127.0.0.1:7447", 0);
     if (!ret.ok()) return 1;
 
-    nros::Node node;
+    rclcpp::Node node;
     NROS_TRY(nros::create_node(node, "my_node"));
 
     nros::Publisher<std_msgs::msg::Int32> pub;

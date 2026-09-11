@@ -65,7 +65,7 @@ template <typename M> struct format_of {
 ///
 /// **Only meaningful in a single-backend image.** A bridge image links two
 /// backends and has no single answer; it asks per session instead, with
-/// `nros::Node::serialization_format()`. `check-format-macro-scope` refuses a
+/// `rclcpp::Node::serialization_format()`. `check-format-macro-scope` refuses a
 /// bridge-linked translation unit that reaches the underlying macro.
 constexpr SerializationFormat linked_format() {
     return static_cast<SerializationFormat>(NROS_CPP_SERIALIZATION_FORMAT_ID);

@@ -33,7 +33,7 @@ class ManagedTalker : public ::nros::LifecycleNode {
     ::nros::CallbackReturn on_deactivate(::nros::LifecycleState previous) override;
 
     // Component install hook.
-    ::rclcpp::Result configure(::nros::Node& node);
+    ::rclcpp::Result configure(::rclcpp::Node& node);
 };
 
 } // namespace cpp_lifecycle_talker_pkg

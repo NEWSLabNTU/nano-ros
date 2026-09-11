@@ -19,7 +19,7 @@ void QosTalker::on_tick() {
     }
 }
 
-::rclcpp::Result QosTalker::configure(::nros::Node& node) {
+::rclcpp::Result QosTalker::configure(::rclcpp::Node& node) {
     // `::setvbuf` (C global): line-buffer stdout so each `Published:` flushes
     // immediately when piped (the test reads the output live).
     ::setvbuf(stdout, nullptr, _IOLBF, 0);

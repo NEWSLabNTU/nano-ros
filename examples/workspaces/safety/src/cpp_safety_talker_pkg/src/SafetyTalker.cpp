@@ -18,7 +18,7 @@ void SafetyTalker::on_tick() {
     }
 }
 
-::rclcpp::Result SafetyTalker::configure(::nros::Node& node) {
+::rclcpp::Result SafetyTalker::configure(::rclcpp::Node& node) {
     ::setvbuf(stdout, nullptr, _IONBF, 0);
     ::rclcpp::Result r = node.create_publisher(pub_, "/chatter");
     if (!r.ok()) return r;

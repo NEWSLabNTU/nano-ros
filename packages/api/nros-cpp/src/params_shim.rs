@@ -327,7 +327,7 @@ pub unsafe extern "C" fn nros_cpp_get_param_string(
 ///
 /// `None` for a null handle, a handle whose executor pointer is not one of ours
 /// (the issue 0436 tag check), or a handle carrying no registered node — a
-/// zero-initialised `nros::Node` that was never opened. Guessing
+/// zero-initialised `rclcpp::Node` that was never opened. Guessing
 /// `NodeId::PRIMARY` for the last case would write another node's parameters.
 #[cfg(all(feature = "param-services", feature = "rmw-cffi"))]
 unsafe fn node_param_target<'a>(
@@ -1368,7 +1368,7 @@ mod tests {
         assert!(ParameterValue::from_bool_array(&bools[..cap + 1]).is_none());
     }
 
-    /// A zero-initialised `nros_cpp_node_t`, the shape a C++ `nros::Node` has
+    /// A zero-initialised `nros_cpp_node_t`, the shape a C++ `rclcpp::Node` has
     /// before `nros_cpp_node_create` runs.
     fn zeroed_node_handle() -> crate::nros_cpp_node_t {
         crate::nros_cpp_node_t {

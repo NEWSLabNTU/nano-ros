@@ -1119,7 +1119,7 @@ pub(crate) fn node_error_to_cpp_ret(err: nros_node::NodeError) -> nros_cpp_ret_t
 ///
 /// The two surfaces need ONE handle type. This is that: same storage contract as
 /// [`nros_cpp_init`] (caller owns the buffer, executor carved in place), so every
-/// existing C++ path — `nros::Node`, `NodeBuilder().rmw(name)`, publishers,
+/// existing C++ path — `rclcpp::Node`, `NodeBuilder().rmw(name)`, publishers,
 /// subscriptions — works against a multi-session executor unchanged.
 ///
 /// `specs[0]` is the primary session; the rest become extras, each findable by its
@@ -4667,7 +4667,7 @@ fn entry_spin_ms() -> u64 {
 //
 // **Only meaningful in a single-backend image** (RFC-0088 D5). A bridge image
 // links two backends and has no single answer; it asks per session, with
-// `nros::Node::serialization_format()`. `scripts/check-format-macro-scope.py`
+// `rclcpp::Node::serialization_format()`. `scripts/check-format-macro-scope.py`
 // refuses a bridge-linked translation unit that references the macro.
 
 /// Image-local discriminant of the linked backend's serialization format
