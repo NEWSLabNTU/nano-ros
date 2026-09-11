@@ -409,7 +409,6 @@ mod tests {
                 origin: leaf_system::Origin::SystemToml("/w/examples/talker/system.toml".into()),
                 image: Some("native".into()),
                 board: Some("native".into()),
-                board_from: None,
                 rmw: None,
                 network: Default::default(),
                 components: Vec::new(),

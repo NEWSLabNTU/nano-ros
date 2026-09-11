@@ -859,7 +859,7 @@ mod tests {
     #[test]
     fn manifest_infra_reads_dependency_and_feature_tables() {
         let td = tempfile::tempdir().unwrap();
-        write_leaf(
+        write_manifest(
             td.path(),
             r#"
 [package]
@@ -872,7 +872,7 @@ nros = { version = "*", features = ["std", "param-services"] }
 "#,
         );
         assert_eq!(manifest_infra(td.path()), (true, true));
-        write_leaf(
+        write_manifest(
             td.path(),
             "[package]\nname = \"p\"\n# param-services in a comment is not a feature\n\
              [dependencies]\nnros = { version = \"*\", features = [\"std\"] }\n",
@@ -1030,6 +1030,18 @@ nros = { version = "*", features = ["std", "param-services"] }
 
     /// A leaf whose `system.toml` declares one component with `entities`
     /// (`None` = the key absent).
+    /// Just the manifest, with the caller's own body.
+    ///
+    /// Sibling of [`write_leaf`] and deliberately NOT a parameter on it: that
+    /// one writes a FIXED manifest plus the `system.toml` whose `entities` the
+    /// entity tests vary, while `manifest_infra` reads the manifest's own
+    /// `[features]` / `[dependencies]` and needs no `system.toml` at all.
+    /// Folding the two would make every entity test state a manifest it does
+    /// not care about.
+    fn write_manifest(dir: &std::path::Path, body: &str) {
+        std::fs::write(dir.join("Cargo.toml"), body).unwrap();
+    }
+
     fn write_leaf(dir: &std::path::Path, entities: Option<&str>) {
         std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"p\"\n").unwrap();
         let decl = entities
