@@ -87,6 +87,10 @@ fn main() {
     // knob all still win. It is the largest single kind in any one component
     // (`nros_cli_core::entity_inventory`), carried by `corrosion_set_env_vars`
     // from a CMake image; a cargo leaf's sidecar writes the knob itself.
+    // The Zephyr RESOLVER road carries no such fact and wants no Kconfig
+    // symbol: a Zephyr entry is a CMake image, so it already receives the
+    // declared fact here, and a CONFIG_ spelling would be a second rung for
+    // one number -- issue 0460's shape, with the halves free to disagree.
     // Zero is legal: an image whose components create none of the five cell
     // kinds carries empty registries.
     println!("cargo:rerun-if-env-changed=NROS_DECLARED_RUNTIME_MAX_CELL_ENTITIES");
