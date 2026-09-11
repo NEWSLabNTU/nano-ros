@@ -252,14 +252,14 @@ impl Plan {
     }
 }
 
-/// Whether the board family has a `run_tiers` runner. ThreadX does not
-/// (issue 1286), so a tiered ThreadX plan keeps the sched-context path.
+/// Whether the board family has a `run_tiers` runner. ThreadX does not, so a
+/// tiered ThreadX plan takes the sched-context path in BOTH packs.
 ///
 /// Issue 1285: this reads the `run_tiers` half of
 /// `BoardFamily::c_abi_runners`, the one record of which runners each family
-/// exports. It no longer names ThreadX. When issue 1286 gives ThreadX a
-/// `run_components` and no `run_tiers`, this stays `false` without an edit.
-/// Both packs' `run_tiers` sit on those C-ABI symbols.
+/// exports, and it names no board. Issue 1286 gave ThreadX a
+/// `run_components` and no `run_tiers`, and this stayed `false` for it
+/// without an edit. Both packs' `run_tiers` sit on those C-ABI symbols.
 ///
 /// An unknown key answers `false` here rather than guessing a family. Every
 /// emitter refuses such a key, naming the known ones, before it renders

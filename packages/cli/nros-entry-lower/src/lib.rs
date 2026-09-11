@@ -114,12 +114,21 @@ impl BoardFamily {
     ///   NuttX pthread are three different things. The three are
     ///   `nros_board_{freertos,zephyr,nuttx}_run_tiers`, in each board crate's
     ///   `c/<rtos>_run_tiers.c`.
-    /// - `Threadx` — none. It has no `run_tiers` either, so it stays
-    ///   C++-entry-only, and the routing is REPORTED rather than refused.
+    /// - `Threadx` — the same shared `nros_board_rtos_run_components`, and NO
+    ///   `run_tiers` (issue 1286). ThreadX's C++ `run_components` is the
+    ///   FreeRTOS one line for line, and the shared runner already has no
+    ///   per-tick yield off Zephyr, so there was nothing ThreadX-specific to
+    ///   write. The CMake lane compiles the TU into the app target (both
+    ///   `cmake/board/nano-ros-board-*threadx*.cmake`). The cargo lane does
+    ///   not: `nros-board-threadx-linux`'s glue is `+whole-archive`
+    ///   (issue 0582), so the runner there would pull `nros_cpp_*` into every
+    ///   Rust ThreadX image.
     ///
     /// Each half is its own `Option` because the two land independently.
-    /// Issue 1286 gives ThreadX a `run_components` with no `run_tiers`, and
-    /// that is a `Some` with one `None` in it, not a lie in either direction.
+    /// ThreadX is the family that uses that: a `Some` with one `None` in it.
+    /// A multi-tier ThreadX plan therefore takes the single-executor
+    /// sched-context path in the C pack, exactly as it does in the C++ one
+    /// (`Plan::executor_shape` reads the `run_tiers` half).
     ///
     /// `nros-cli-core/tests/board_key_table.rs` checks that every name here is
     /// defined in the tree.
@@ -141,7 +150,10 @@ impl BoardFamily {
                 run_components: Some("nros_board_rtos_run_components"),
                 run_tiers: Some("nros_board_nuttx_run_tiers"),
             }),
-            BoardFamily::Threadx => None,
+            BoardFamily::Threadx => Some(CAbiRunners {
+                run_components: Some("nros_board_rtos_run_components"),
+                run_tiers: None,
+            }),
         }
     }
 
@@ -210,7 +222,7 @@ impl BoardFamily {
 /// [`BoardFamily::c_abi_runners`].
 ///
 /// Each half is independently optional. A family may ship `run_components`
-/// without `run_tiers`: ThreadX will, issue 1286.
+/// without `run_tiers`: ThreadX does (issue 1286).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CAbiRunners {
     /// The single-executor runner: `(…, setup) -> int32_t`.
@@ -377,13 +389,32 @@ mod tests {
         }
     }
 
-    /// Where issue 1285 left the surface. ThreadX has NO C-ABI runner, so a C
-    /// entry for it is still routed to the C++ pack. Issue 1286 is the change
-    /// that moves it, and it must edit this test to do so.
+    /// Issue 1286. ThreadX has the shared `run_components` and NO `run_tiers`.
+    /// So a C entry renders as C, and a multi-tier plan takes the
+    /// sched-context path, not `run_tiers`. Both halves are pinned: a
+    /// `run_tiers` named here would be a symbol defined nowhere, which is the
+    /// defect issue 1285 removed.
     #[test]
-    fn threadx_has_no_c_abi_runner_yet() {
-        assert_eq!(BoardFamily::Threadx.c_abi_runners(), None);
-        assert!(!BoardFamily::Threadx.has_c_run_components());
+    fn threadx_has_run_components_and_no_run_tiers() {
+        assert_eq!(
+            BoardFamily::Threadx.c_abi_runners(),
+            Some(CAbiRunners {
+                run_components: Some("nros_board_rtos_run_components"),
+                run_tiers: None,
+            })
+        );
+        assert!(BoardFamily::Threadx.has_c_run_components());
+    }
+
+    /// Every family now has a C-ABI `run_components` (issue 1286 closed the
+    /// last one), so a `--lang c` entry renders as C on every board. A new
+    /// family without one fails here and must decide, rather than silently
+    /// routing to the C++ pack.
+    #[test]
+    fn every_family_has_a_c_run_components() {
+        for f in BoardFamily::ALL {
+            assert!(f.has_c_run_components(), "{}", f.as_str());
+        }
     }
 
     /// `freertos-posix` is the trap this table exists to hold. It is a host

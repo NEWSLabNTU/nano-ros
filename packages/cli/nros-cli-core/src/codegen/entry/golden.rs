@@ -354,6 +354,12 @@ fn cases() -> Vec<(&'static str, Plan, Lang)> {
     out.push(("c_native_tiers", c_tiered_plan("native"), Lang::C));
     out.push(("c_nuttx_tiers", c_tiered_plan("nuttx"), Lang::C));
 
+    // issue 1286 — ThreadX has a C `run_components` and NO `run_tiers`, so a
+    // two-tier C plan takes the single-executor sched-context path: the three
+    // sched calls plus `nros_board_rtos_run_components`. The C twin of
+    // `cpp_threadx_tiers`.
+    out.push(("c_threadx_tiers", c_tiered_plan("threadx"), Lang::C));
+
     // issue 1283 — the two C shapes that had no golden, and were wrong. A
     // group-split plan emits the three sched calls (it used to emit none, and
     // every group ran at the default scheduling); callback groups with no
@@ -724,15 +730,23 @@ fn branch_of(src: &str) -> super::ExecutorShape {
 /// had no sched-context arm (so a group split was plain single-executor in C,
 /// sched contexts in C++).
 ///
-/// Boards: every family the C pack renders for. ThreadX is refused by the C
-/// pack (no C-ABI runner), so there is no C side to compare there.
+/// Boards: every family the C pack renders for. That includes ThreadX since
+/// issue 1286. ThreadX has no `run_tiers`, so its multi-tier row takes
+/// sched contexts in both packs rather than `run_tiers`.
 #[test]
 fn both_entry_packs_take_the_plans_executor_branch() {
     use super::ExecutorShape::{SchedContexts, Single, Tiers};
     let mut checked = 0usize;
-    for board in ["native", "zephyr", "nuttx", "freertos"] {
+    for board in ["native", "zephyr", "nuttx", "freertos", "threadx"] {
+        // Written out, not derived from `board_has_run_tiers`: this test
+        // checks that predicate too.
+        let multi_tier = if board == "threadx" {
+            SchedContexts
+        } else {
+            Tiers
+        };
         let rows = [
-            ("multi-tier", c_tiered_plan(board), Tiers),
+            ("multi-tier", c_tiered_plan(board), multi_tier),
             (
                 "group split",
                 group_split(c_tiered_plan(board)),
@@ -760,5 +774,5 @@ fn both_entry_packs_take_the_plans_executor_branch() {
             checked += 1;
         }
     }
-    assert_eq!(checked, 16, "every (board x plan) row must be compared");
+    assert_eq!(checked, 20, "every (board x plan) row must be compared");
 }

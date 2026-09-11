@@ -22,8 +22,11 @@ Every wave below carries its own state. What is left, in one place:
   | zephyr | `zephyr.elf`, 30.6 MB | `nros_board_rtos_run_components` GLOBAL, from `nros_rtos_run_components.c`; entry object is the `.c` |
   | nuttx | `nuttx_entry`, 825 KB | same symbol + `nros_app_main`; 0 C++ runtime symbols |
 
-  ThreadX deliberately gets none — no `run_tiers` to copy, so it stays
-  C++-entry-only with the routing REPORTED rather than refused.
+  ThreadX got none here, on the reasoning that it had no `run_tiers` to
+  copy. Issue 1286 reversed that after this item landed: once the runner was
+  one shared TU there was nothing ThreadX-specific to copy, so ThreadX takes
+  `nros_board_rtos_run_components`, has no `run_tiers`, and a tiered plan uses
+  sched contexts (issue 1283). `workspace-c-threadx-linux` is a pure C image.
 - **W3.5** — DECIDED 2026-09-08, and no work item: no in-tree reference
   language, split by WHO owns the language. See the item.
 - **RFC-0091 is `Stable`** as of 2026-09-10. W1.3 said to move its status once
@@ -430,10 +433,10 @@ settled work.
   than in a surprise later. The headline benefit is **RMW-conditional**: it
   drops a C++ toolchain requirement for zenoh and XRCE, and NOT for cyclonedds
   or uORB, whose RMW libraries are themselves C++ — so the acceptance fixture
-  is pinned to zenoh or it measures a claim it cannot support. And ThreadX
-  still gets no C runner: it has no `run_tiers` either, so there is nothing to
-  copy, and it stays C++-entry-only with the routing REPORTED rather than
-  refused.
+  is pinned to zenoh or it measures a claim it cannot support. ThreadX was
+  left without a C runner on the grounds that it had no `run_tiers` either,
+  so "nothing to copy". Issue 1286 later showed that did not hold once the
+  runner was one shared TU (see W3.1's result).
 
   Assessed in depth; the
   CONCLUSION survives and the JUSTIFICATION did not. Correct the reasoning
@@ -588,6 +591,11 @@ settled work.
   **ThreadX: do NOT** build it a C runner. It has no C entry runner at all — no
   `nros_board_threadx_run_tiers` either — so it needs a new TU plus `build.rs`
   wiring with nothing to copy.
+
+  *Superseded by issue 1286.* The premise was a per-board runner. W3.1 made it
+  ONE shared TU, so ThreadX needed no new TU, only the CMake wiring (and no
+  `build.rs` change, deliberately: that glue is `+whole-archive`, issue 0582).
+  It has no `run_tiers`, so a tiered plan takes sched contexts (issue 1283).
 
   **But the prescribed `FATAL_ERROR` was wrong, and is not what landed.** Half
   the reasoning holds: "a ThreadX C entry silently becomes a `.cpp` with no

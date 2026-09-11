@@ -370,39 +370,32 @@ fn run_entry(args: EntryArgs) -> Result<()> {
         let family = nros_entry_lower::board_family(&plan.board).map_err(|e| eyre!("{e}"))?;
         entry_codegen::resolve_plan_sched(&mut plan, family.tier_rtos_key())?;
         match lang {
-            // phase-263 C2 (issue 0097) — the C emitter is native-only (it emits a
-            // pure-`.c` TU calling the C `nros_board_native_run_components`). The
-            // embedded board runners are C++ only (`ThreadxBoard::run_components`, …), so
-            // an embedded C entry routes through the C++ emitter (which produces a `.cpp`
-            // TU that invokes each C node via its `extern "C"` `__nros_c_component_*` seam
-            // — exactly the single-node `threadx_entry_main_c_typed.cpp.in` shape). The
-            // cmake side (`nano_ros_entry`) gives the `.out` a `.cpp` extension + links
-            // `NanoRosCpp` for an embedded C entry.
+            // The C emitter renders a pure-`.c` TU that calls the board family's
+            // C-ABI runner (`BoardFamily::c_abi_runners`). phase-432 W3.1 gave
+            // FreeRTOS, Zephyr and NuttX one (`nros_board_rtos_run_components`)
+            // and issue 1286 gave it to ThreadX, so every family takes this arm
+            // today. The one CMake asks (`nros codegen entry-pack`) and this one
+            // read the same predicate, so the TU's extension and its contents
+            // agree.
             entry_codegen::Lang::C if family.has_c_run_components() => {
                 entry_codegen::emit_c::emit_typed(&plan).map_err(|e| eyre!("{e}"))?
             }
             // phase-432 W3.1 — SAY that the routing fired.
             //
-            // The phase doc asked for a configure-time FATAL_ERROR on ThreadX,
-            // on the grounds that "a ThreadX C entry silently becomes a `.cpp`
-            // with no diagnostic, which is worse than a refusal". Half of that
-            // is right and half is not: the silence was the defect, but the
-            // routing WORKS — the C++ board runner drives the entry and reaches
-            // each C node through its `extern "C"` seam — so refusing would
-            // break something that ships. ThreadX is not special here either;
-            // every embedded board routes the same way.
-            //
-            // So: a line on stderr, not a refusal. The author of a `--lang c`
-            // entry learns their TU is C++ and why, and nothing that worked
-            // stops working.
+            // No family in `BOARD_KEYS` reaches this arm since issue 1286 gave
+            // ThreadX a C runner. It stays for a future family that ships none:
+            // the routing WORKS there (the C++ board runner drives the entry
+            // and reaches each C node through its `extern "C"` seam), so it is
+            // a line on stderr, not a refusal. The author of a `--lang c` entry
+            // learns their TU is C++ and why, and nothing that worked stops
+            // working.
             entry_codegen::Lang::C => {
                 eprintln!(
-                    "nros codegen entry: board `{}` has no C-ABI `run_components`, so this \
-                     `--lang c` entry is rendered by the C++ pack (a `.cpp` TU that drives \
-                     the C++ board runner and calls each C node through its `extern \"C\"` \
-                     seam). phase-432 W3.1 is the item that would give this board a C \
-                     runner; `nros codegen entry-pack --lang c --board {}` reports the \
-                     routing.",
+                    "nros codegen entry: board `{}` has no C-ABI `run_components` \
+                     (`BoardFamily::c_abi_runners`), so this `--lang c` entry is \
+                     rendered by the C++ pack (a `.cpp` TU that drives the C++ board \
+                     runner and calls each C node through its `extern \"C\"` seam). \
+                     `nros codegen entry-pack --lang c --board {}` reports the routing.",
                     plan.board, plan.board,
                 );
                 entry_codegen::emit_cpp::emit_typed(&plan).map_err(|e| eyre!("{e}"))?
