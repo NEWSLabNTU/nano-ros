@@ -941,6 +941,15 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   NOT applied in `ManagedProcess::spawn_command` on purpose — `DockerRosEnv` peers cannot
   read a host profile path, so those pairs are symmetric-UNPINNED and pinning our half of
   one would CREATE the bug.
+- **A graph-reading `ros2` query needs `--no-daemon`, because the daemon is keyed on
+  `ROS_DOMAIN_ID` ALONE** (issue 1333) — `11511 + ROS_DOMAIN_ID` is the whole key, so the
+  DISCOVERY CONFIG (`CYCLONEDDS_URI`/`FASTRTPS_DEFAULT_PROFILES_FILE`/`ZENOH_SESSION_CONFIG_URI`,
+  i.e. exactly what 1009 pins per PROCESS into a deleted tempdir) comes from whoever STARTED it:
+  measured, a live node reads as empty `node list` + `Node not found`, and the same command with
+  the flag finds it. Build queries with `nros_tests::ros2::ros2_query_cmd` (gate
+  `check-ros2-daemon-queries`); `ros2 action list` REJECTS the flag and is defended instead by
+  `unique_ros_domain_id` now refusing a domain whose DAEMON port is bound — a zenoh daemon binds
+  no SPDP port, so 0707's probe was blind to it on our default RMW. Not `ros2 daemon stop` (0763).
 - **Manual native_sim pair repros need distinct `--seed`** — unseeded processes share the test
   entropy source → identical GUIDs/ports → discovery sees the peer as itself → false-negative
   "no delivery". The test harness seeds automatically; hand-run repros must too. → issue 0157
