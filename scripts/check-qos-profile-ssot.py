@@ -1663,10 +1663,10 @@ _MIRROR_SOURCE_PROBE = {
     ),
     "nros-c/qos.rs": (
         "    history: nros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST,\n"
-        "    liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_AUTOMATIC,\n"
+        "    liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_NONE,\n"
         "    depth: c_depth(nros_node::QoSProfile::QOS_PROFILE_SENSOR_DATA.depth),",
         "    history: nros_qos_history_t::NROS_QOS_HISTORY_KEEP_ALL,\n"
-        "    liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_AUTOMATIC,\n"
+        "    liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_NONE,\n"
         "    depth: c_depth(nros_node::QoSProfile::QOS_PROFILE_SENSOR_DATA.depth),",
         "NROS_QOS_SENSOR_DATA",
         "history",

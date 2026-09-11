@@ -1084,8 +1084,19 @@ qos_profiles! {
 // where 42 values were reason strings against a membership test and nothing
 // checked that the reason was still true.
 //
-//   Every upstream-mirroring preset states AUTOMATIC where upstream states the
-//   SYSTEM_DEFAULT sentinel. MEASURED consequences, 2026-09-05:
+//   The liveliness deviation is CLOSED (issue 1329, 2026-09-12) and is
+//   recorded here because the reason it survived two phases is worth keeping.
+//
+//   Every application-facing preset used to state AUTOMATIC where upstream
+//   states the SYSTEM_DEFAULT sentinel. W10 moved this table and
+//   `rmw_entity.h` onto the sentinel and could not move the remaining three —
+//   `nros-c`'s `NROS_QOS_*`, `nros_c_qos_default()` and `nros::QoS`'s
+//   constructor — because `liveliness_kind` crosses the C ABI as its
+//   discriminant, so flipping one surface alone makes a C caller's default and
+//   a Rust caller's default differ in a field cyclonedds puts on the wire. All
+//   three moved together instead.
+//
+//   MEASURED consequences of the move, 2026-09-05 and re-read 2026-09-12:
 //     - cyclonedds: wire-identical. `nros_rmw_cyclonedds::make_dds_qos`
 //       (`qos.cpp`; the name here read `nros_rmw_cyclonedds_qos_apply` until
 //       phase-428 W9 went looking for it — no such symbol has ever existed)
@@ -1097,18 +1108,20 @@ qos_profiles! {
 //       emits `"{rel}:{dur}:{hist},{depth}:,:,:,,"` — the liveliness and lease
 //       positions are EMPTY for every profile, so the value never reaches a
 //       peer's graph parse.
-//   The one live consequence is `required_policies()`, which sets
-//   `LIVELINESS_AUTOMATIC` for these presets where upstream would demand
-//   nothing — an over-demand, so it can only turn an acceptance into a
-//   rejection, and it flips no verdict today because every
-//   `supported_qos_policies()` in the tree advertises that bit.
-//   NOT fixed here on purpose: the same AUTOMATIC is hand-written into
-//   `rmw_entity.h`'s `NROS_RMW_QOS_PROFILE_*` macros and `nros::qos::DEFAULT`,
-//   and `liveliness_kind` crosses the C ABI as its discriminant. Flipping the
-//   Rust half alone would make a C caller's `NROS_RMW_QOS_PROFILE_DEFAULT` and
-//   a Rust caller's `QOS_PROFILE_DEFAULT` differ in a field cyclonedds puts on
-//   the wire — i.e. it would create the very defect W10 exists to close. All
-//   four sites move together or none do.
+//     - xrce: invisible. `uxrQoS_t` has no liveliness field at all.
+//   The one live consequence was `required_policies()`, which set
+//   `LIVELINESS_AUTOMATIC` for presets upstream leaves unset — an over-demand,
+//   so it could only turn an acceptance into a rejection. It flipped no
+//   verdict while every `supported_qos_policies()` in the tree advertised the
+//   bit, and issue 1329 is exactly the change that stops them doing so: XRCE
+//   honours no liveliness and now says so, which would have refused every C
+//   application on that backend over a policy nobody asked for. The fix is to
+//   stop asking, not to let a backend claim what it does not implement.
+//
+//   The `BEST_EFFORT` / `RELIABLE` / `QOS_PROFILE_PX4` shorthands still state
+//   AUTOMATIC. They mirror no upstream constant — their doc strings say so —
+//   so they are choices rather than deviations, and a caller picking one is
+//   asking for automatic liveliness on purpose.
 //
 // nros-qos-absent: upstream=rmw_qos_profile_unknown ref="phase-428 W10"
 //   No nano-ros counterpart, deliberately. `rmw_qos_profile_unknown` is what an

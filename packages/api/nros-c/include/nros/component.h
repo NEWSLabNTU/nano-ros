@@ -149,28 +149,25 @@ typedef struct nros_cpp_qos_t {
  *  the C++ `QoS::default_profile()` the C++ components use.
  *
  *  phase-454 W1 — bound field-by-field to `QoSProfile::QOS_PROFILE_DEFAULT` by
- *  `scripts/check-qos-profile-ssot.py`, which is why the one field that does
- *  NOT agree has to say so below rather than sit in a comment.
+ *  `scripts/check-qos-profile-ssot.py`. Every field agrees now; the
+ *  `nros-qos-mirror-deviation` this carried for `liveliness_kind` is gone.
  *
- *  nros-qos-mirror-deviation: profile=* field=liveliness_kind
- *  ours=AUTOMATIC ssot=SYSTEM_DEFAULT ref="phase-428 W10"
- *
- *  (The record above is DATA and wraps; the paragraph below is the reason, kept
- *  behind a blank comment line so clang-format cannot reflow prose into it.)
- *
- *  Upstream's `rmw_qos_profile_default` leaves liveliness at the sentinel and
- *  W10 moved the Rust table and `rmw_entity.h` onto it. The C and C++
- *  application surfaces were not moved, and cannot be moved alone: the value
- *  crosses the C ABI as its discriminant, so flipping one surface makes a C
- *  caller's default and a Rust caller's default differ in a field cyclonedds
- *  puts on the wire — the very defect W10 exists to close. All the remaining
- *  surfaces move together or none do. */
+ *  It said AUTOMATIC where the SSoT says the sentinel, and the reason it stood
+ *  was that "all the remaining surfaces move together or none do". They moved
+ *  together, in one commit (issue 1329): this function, `nros-c`'s
+ *  `NROS_QOS_*` statics and `nros-cpp`'s `QoS` constructor. The forcing
+ *  argument was that issue 1329 gives each C backend its own QoS mask, and
+ *  XRCE honours no liveliness — so stating AUTOMATIC here would have had
+ *  `required_policies()` refuse every C default profile on that backend over a
+ *  policy upstream leaves unset. See `nros-c/src/qos.rs` for the wire
+ *  measurements (none of the three backends puts this field anywhere a peer
+ *  can see for the sentinel-vs-AUTOMATIC pair). */
 static inline nros_cpp_qos_t nros_c_qos_default(void) {
     nros_cpp_qos_t q;
     q.reliability = NROS_C_QOS_RELIABLE;
     q.durability = NROS_C_QOS_VOLATILE;
     q.history = NROS_C_QOS_KEEP_LAST;
-    q.liveliness_kind = NROS_C_QOS_LIVELINESS_AUTOMATIC;
+    q.liveliness_kind = NROS_C_QOS_LIVELINESS_NONE;
     q.depth = 10;
     q.deadline_ms = 0;
     q.lifespan_ms = 0;
