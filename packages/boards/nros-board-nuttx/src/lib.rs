@@ -14,8 +14,9 @@
 //!
 //! ## 152.4.A scaffolding
 //!
-//! Opt-in `reference-qemu` feature pulls the board overlay crate
-//! `nros-board-nuttx-qemu` (one crate, both QEMU witnesses) so overlays
+//! The `reference-qemu` feature is GONE (issue 1309 / phase-451 W4): it named
+//! an optional dep on `nros-board-nuttx-qemu`, which depends on this crate, so
+//! it formed a package CYCLE and nothing ever enabled it. Overlays
 //! (`nros-board-px4-fmu-v5-nuttx`, `nros-board-<vendor>-<board>-nuttx`)
 //! depend on this crate name + can extend the `Config` shape +
 //! patch board-specific init via `#[no_mangle]` hooks.
@@ -80,7 +81,7 @@
 
 // phase-359 W7 — `no_std`, unconditionally.
 //
-// This used to read `cfg_attr(not(any(feature = "reference-qemu", target_os =
+// This used to read `cfg_attr(not(any(feature = "reference-qemu" [removed], target_os =
 // "nuttx")), no_std)`: std when the target was NuttX, `no_std` otherwise. The
 // predicate existed because the bodies below reached for `std::io::stdout`,
 // `std::thread` and `std::process::exit`, so the crate's FLAVOUR had to follow
@@ -363,9 +364,11 @@ macro_rules! nros_nuttx_println {
 
 /// Crate-local spelling, so no call site below had to change.
 ///
-/// Unused off-target: every caller sits behind the `reference-qemu` /
-/// `target_os = "nuttx"` gate, which a host build (e.g. `nros sync`'s
-/// source-metadata probe) does not satisfy.
+/// Unused off-target: every caller sits behind the `target_os = "nuttx"` gate,
+/// which a host build (e.g. `nros sync`'s source-metadata probe) does not
+/// satisfy. (That gate read `any(feature = "reference-qemu", target_os =
+/// "nuttx")` until the feature was removed; nothing enabled it, so the
+/// disjunct was already dead.)
 #[allow(unused_macros)]
 macro_rules! println {
     ($($arg:tt)*) => { $crate::nros_nuttx_println!($($arg)*) };
@@ -373,7 +376,7 @@ macro_rules! println {
 
 // Phase 313 W-nuttx (#0243) — the legacy `nros_board_common::board_init` path is
 // RETIRED for the NuttX family: the generic `run_generic<B>` shim, the
-// `nros_board_common::BoardInit` re-export it consumed, and the `reference-qemu`
+// `nros_board_common::BoardInit` re-export it consumed, and the (since removed) `reference-qemu`
 // scaffolding re-export of the per-board free `run` are all gone. The live entries
 // are the `nros_platform`-shaped `run_entry` / `run_tiers` below (consumed by
 // `nros::main!` via each board's `impl nros_platform::BoardEntry`).
@@ -443,9 +446,8 @@ macro_rules! println {
 /// ## SDK availability
 ///
 /// Compiled only when `std` is reachable — gated on the same
-/// `reference-qemu` / `target_os = "nuttx"` predicate as
-/// [`run_generic`] so a bare `cargo check` without a NuttX target
-/// + without the reference feature skips this body. The `run_entry`
+/// `target_os = "nuttx"` predicate as [`run_generic`], so a bare
+/// `cargo check` without a NuttX target skips this body. The `run_entry`
 /// symbol therefore only exists in builds that can actually call it.
 /// Route panics to STDOUT (issue 0572; extended to `run_tiers` by issue 0583).
 ///
@@ -533,7 +535,7 @@ pub extern "C" fn nros_platform_panic(msg: *const u8, len: usize) -> ! {
 // compiled; with the family on `no_std` it stops compiling off-target and its
 // gated helpers vanish out from under it. The host build that surfaced this is
 // `nros sync`'s source-metadata probe, which builds these leaves for the host.
-#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
+#[cfg(target_os = "nuttx")]
 pub fn run_entry<B, F, E>(
     boot_config: Option<&'static nros_platform::BakedBootConfig>,
     setup: F,
@@ -729,7 +731,7 @@ fn apply_tier_priority(_tier: &nros_platform::TierSpec<'_>) {}
 /// `CONFIG_PTHREAD_STACK_DEFAULT` (64 KiB): the executor arena lives on the
 /// heap (`nros_platform_alloc`), so this only carries the zenoh-pico/executor
 /// call frames. `TierSpec::stack_bytes` (when non-zero) overrides it.
-#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
+#[cfg(target_os = "nuttx")]
 const NUTTX_TIER_STACK_DEFAULT_BYTES: usize = 65536;
 
 /// Self-apply the tier's kernel sporadic policy (no-op off-target and when
@@ -821,7 +823,7 @@ fn apply_tier_affinity(_tier: &nros_platform::TierSpec<'_>) {}
 /// `&setup`); it must register entities only — this fn owns each tier's
 /// `active_groups` filter + the spin loop. Blocks forever (the boot tier's spin
 /// never returns); returns only if the boot tier's `setup` fails before spin.
-#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
+#[cfg(target_os = "nuttx")]
 pub fn run_tiers<B, F, E>(
     boot_config: Option<&'static nros_platform::BakedBootConfig>,
     tiers: &[nros_platform::TierSpec<'_>],
@@ -1192,7 +1194,7 @@ where
 /// its lifetime intact. Soundness rests on the invariant stated at the spawn
 /// site: `run_tiers` never returns, so everything pointed at here outlives the
 /// task.
-#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
+#[cfg(target_os = "nuttx")]
 struct TierCtx<F, E> {
     /// The boot executor's session, shared by every tier (see
     /// [`NuttxSharedSession`] for why sharing it is sound).
@@ -1210,7 +1212,7 @@ struct TierCtx<F, E> {
 ///
 /// Generic, so each `(F, E)` pair gets its own monomorphised entry — the
 /// closure type is what a `void *` cannot carry.
-#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
+#[cfg(target_os = "nuttx")]
 unsafe extern "C" fn nuttx_tier_trampoline<F, E>(
     arg: *mut core::ffi::c_void,
 ) -> *mut core::ffi::c_void
@@ -1239,24 +1241,24 @@ where
 /// backend serializes concurrent access through its own locks (zenoh-pico
 /// `Z_FEATURE_MULTI_THREAD = 1` on NuttX), and `thread::scope` guarantees no
 /// spawned tier outlives the owner.
-#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
+#[cfg(target_os = "nuttx")]
 struct NuttxSharedSession<T>(*mut T);
-#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
+#[cfg(target_os = "nuttx")]
 impl<T> Clone for NuttxSharedSession<T> {
     fn clone(&self) -> Self {
         *self
     }
 }
-#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
+#[cfg(target_os = "nuttx")]
 impl<T> Copy for NuttxSharedSession<T> {}
 // SAFETY: the per-tier model shares one RMW session across tier tasks by design;
 // concurrent access is serialized inside the backend.
-#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
+#[cfg(target_os = "nuttx")]
 unsafe impl<T> Send for NuttxSharedSession<T> {}
 
 /// Register + spin one tier on a freshly-opened borrowed-session executor
 /// (spawned-tier path).
-#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
+#[cfg(target_os = "nuttx")]
 fn nuttx_run_one_tier<F, E>(
     exec: ::nros::Executor<'static>,
     tier: &nros_platform::TierSpec<'_>,
@@ -1302,7 +1304,7 @@ fn nuttx_run_one_tier<F, E>(
 }
 
 /// Drive a tier executor's `spin_once` at its declared period, forever.
-#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
+#[cfg(target_os = "nuttx")]
 fn nuttx_spin_tier_forever(
     crt: &mut ::nros::node_runtime::ExecutorNodeRuntime,
     tier: &nros_platform::TierSpec<'_>,
@@ -1430,7 +1432,7 @@ fn nuttx_spin_tier_forever(
 /// and the rtos_e2e harness could not observe pub/sub delivery even though the
 /// transport worked. Idempotent — the `log` crate ignores a second
 /// `set_logger`, and the `Once` guard avoids the racey double-set path.
-#[cfg(any(feature = "reference-qemu", target_os = "nuttx"))]
+#[cfg(target_os = "nuttx")]
 fn install_stdout_logger() {
     struct StdoutLogger;
     impl log::Log for StdoutLogger {

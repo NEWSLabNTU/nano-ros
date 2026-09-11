@@ -18,6 +18,12 @@ name = "nros_board_threadx"
 # build glue out of the per-board build.rs into this crate's own
 # build.rs, overlays depend on this name + the wiring switches
 # transparently.
+# issue 1309 / phase-451 W4 — the 152.2.A back-edges to the per-board crates are
+# GONE. Both depend on this crate unconditionally, so these optional deps made a
+# package CYCLE, and cargo refuses a cycle whether or not the feature enabling it
+# is on. Their only users were `reference-linux` / `reference-qemu-riscv64`
+# re-exports kept "during the .A -> .B transition"; that transition is over,
+# nothing enabled either feature, and no `cfg` outside the re-exports read them.
 [dependencies]
 # issue 0708 — the boot funnels publish the nros_log sink list (`init_default`).
 # issue 0710 follow-up — a board IS the platform console, so it turns on the
@@ -55,8 +61,6 @@ nros = { path = "../../api/nros", default-features = false, features = ["alloc",
 # `log::info!`, which is dropped without a registered logger (no std stdout on
 # this bare-metal target). Mirrors the nuttx board's stdout logger.
 log = { version = "0.4", default-features = false }
-nros-board-threadx-linux = { path = "../nros-board-threadx-linux", optional = true }
-nros-board-threadx-qemu-riscv64 = { path = "../nros-board-threadx-qemu-riscv64", optional = true }
 # #131 — concrete Rust CFFI backend, registered explicitly in the boot path.
 # ThreadX is `target_os = "none"`: the `nros_rmw_register_backend!` `.init_array`
 # ctor is a no-op + the flat image runs no static ctors, so nothing registers the
@@ -93,9 +97,7 @@ nros-cc-flags = { path = "../../tooling/nros-cc-flags" }
 [features]
 default = []
 # Linux simulation port (ThreadX over pthreads + NSOS shim).
-reference-linux = ["dep:nros-board-threadx-linux"]
 # Bare-metal RISC-V64 QEMU port (full NetX-Duo + virtio-net).
-reference-qemu-riscv64 = ["dep:nros-board-threadx-qemu-riscv64"]
 # #131 — link + register the zenoh CFFI backend in the boot path. Forwarded by the
 # per-board overlay (which the example forwards to from its own `rmw-zenoh`), so a
 # zenoh build registers a backend and a cyclonedds build (feature off) does not.
