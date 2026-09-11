@@ -433,22 +433,57 @@ pub enum InstallAction {
         /// Issue 0374 d4 — build with the checkout's own `rust-toolchain.toml`
         /// rather than the workspace channel.
         respect_toolchain: bool,
+        /// phase-447 D1 — set when a prebuilt EXISTS for this host and was
+        /// refused by its floor before any download; the text is why. `None` is
+        /// the ordinary "no dist row for this host" source build.
+        refused: Option<String>,
     },
+    /// A prebuilt exists, this host is below its floor, and there is no source
+    /// recipe to fall back to (phase-447 D1). Nothing was downloaded.
+    Refused { reason: String },
     /// No prebuilt for this host and no source recipe.
     Unavailable,
 }
 
 /// Decide how to install `tool` on `host`, given the prefix's current state.
-/// Pure — does no I/O beyond reading the provenance marker.
+///
+/// Reads the provenance marker and, when `host` is THIS machine, the cached
+/// host facts the dist floor is compared against (phase-447 D1) — so a dist
+/// this host cannot run is refused HERE, before `execute` would download it.
+/// For a foreign `host` the facts are unknown and the floor abstains.
 pub fn plan_install(tool: &ToolPackage, host: &str, prefix: &Path) -> InstallAction {
+    plan_install_on(tool, host, prefix, &super::host_floor::facts_for(host))
+}
+
+/// [`plan_install`] against explicit host facts — the pure core, and the seam
+/// the floor's tests drive.
+pub fn plan_install_on(
+    tool: &ToolPackage,
+    host: &str,
+    prefix: &Path,
+    facts: &super::host_floor::HostFacts,
+) -> InstallAction {
     if Provenance::read(prefix).is_some() {
         return InstallAction::Present;
     }
+    let mut refused = None;
     if let Some(d) = tool.dist_for(host) {
-        return InstallAction::Prebuilt {
-            url: d.url.clone(),
-            sha256: d.sha256.clone(),
-            install: d.install.clone(),
+        // The floor is decided in the PLAN, which runs before any fetch: a
+        // refusal here means `execute` is never handed the URL at all.
+        match super::host_floor::refusal(d, &tool.system_deps, facts) {
+            None => {
+                return InstallAction::Prebuilt {
+                    url: d.url.clone(),
+                    sha256: d.sha256.clone(),
+                    install: d.install.clone(),
+                };
+            }
+            Some(reason) => refused = Some(format!("the {host} prebuilt was refused: {reason}")),
+        }
+    }
+    if refused.is_some() && tool.source.is_none() {
+        return InstallAction::Refused {
+            reason: refused.unwrap_or_default(),
         };
     }
     if let Some(s) = &tool.source {
@@ -471,6 +506,7 @@ pub fn plan_install(tool: &ToolPackage, host: &str, prefix: &Path) -> InstallAct
             configure: s.configure.clone(),
             install: s.install.clone(),
             respect_toolchain: s.respect_toolchain,
+            refused,
         };
     }
     InstallAction::Unavailable
@@ -587,7 +623,14 @@ fn execute_install(
             configure,
             install,
             respect_toolchain,
+            refused,
         } => {
+            if let Some(why) = refused {
+                eprintln!(
+                    "nros setup: {tool} {version}: {why}\n    \
+                     Nothing was downloaded; falling back to the source recipe."
+                );
+            }
             // Issue 0374 d4 — build with the workspace's pinned channel unless
             // the recipe opts out. `None` (unreadable pin, or opted out) keeps
             // the old behaviour: rustup resolves from the checkout, which may
@@ -701,6 +744,12 @@ fn execute_install(
             };
             p.write(prefix)?;
             Ok(p)
+        }
+        InstallAction::Refused { reason } => {
+            bail!(
+                "{tool} {version}: {reason}\n  Nothing was downloaded, and the index has no \
+                 source recipe for {tool} to fall back to."
+            )
         }
         InstallAction::Unavailable => {
             bail!("{tool} {version}: no prebuilt for this host and no source recipe in the index")
@@ -1739,6 +1788,96 @@ mod tests {
             InstallAction::Present
         );
         std::fs::remove_dir_all(&present).ok();
+    }
+
+    /// phase-447 D1 — a host below a dist's floor is refused IN THE PLAN, so
+    /// the URL never reaches `execute`. The primary mutation this pins is "the
+    /// floor probe runs after the download": that plan would still hand back
+    /// `Prebuilt`, and every assertion below goes red.
+    #[test]
+    fn floor_refusal_happens_before_download_and_falls_back_to_source() {
+        use super::super::host_floor::{HostFacts, Libc};
+        let idx = SdkIndex::parse(
+            "[tool.q]\nversion=\"1\"\n\
+             dist.linux-x86_64={url=\"file:///nonexistent/q.tar.zst\",sha256=\"h\",floor={glibc=\"2.35\"}}\n\
+             [tool.q.source]\ngit=\"g\"\nref=\"r\"\n\
+             [tool.nosrc]\nversion=\"1\"\n\
+             dist.linux-x86_64={url=\"file:///nonexistent/n.tar.zst\",sha256=\"h\",floor={glibc=\"2.35\"}}\n",
+        )
+        .unwrap();
+        let old = HostFacts {
+            libc: Libc::Glibc("2.31".into()),
+            ..HostFacts::default()
+        };
+        let new = HostFacts {
+            libc: Libc::Glibc("2.39".into()),
+            ..HostFacts::default()
+        };
+        let fresh = tmp("floor-fresh");
+        let _ = std::fs::remove_dir_all(&fresh);
+
+        // At/above the floor: the prebuilt, unchanged.
+        assert!(matches!(
+            plan_install_on(&idx.tool["q"], "linux-x86_64", &fresh, &new),
+            InstallAction::Prebuilt { .. }
+        ));
+        // Below it, with a source recipe: a source build carrying the reason.
+        match plan_install_on(&idx.tool["q"], "linux-x86_64", &fresh, &old) {
+            InstallAction::Source {
+                refused: Some(why), ..
+            } => assert!(
+                why.contains("glibc >= 2.35") && why.contains("Remedy"),
+                "{why}"
+            ),
+            other => panic!("below the floor must fall back to source, got {other:?}"),
+        }
+        // Below it, with no source: refused, and executing that downloads
+        // nothing — the archive path `execute` would write never appears.
+        let action = plan_install_on(&idx.tool["nosrc"], "linux-x86_64", &fresh, &old);
+        let InstallAction::Refused { reason } = &action else {
+            panic!("no source to fall back to must be Refused, got {action:?}");
+        };
+        assert!(reason.contains("2.31"), "{reason}");
+        let err = execute_install(&action, "nosrc", "1", &fresh).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("Nothing was downloaded"),
+            "{err:#}"
+        );
+        assert!(!fresh.with_extension("download").exists());
+        assert!(
+            !fresh.exists(),
+            "a refused install must not create its prefix"
+        );
+
+        // A host that cannot be read abstains: the prebuilt is still offered.
+        assert!(matches!(
+            plan_install_on(
+                &idx.tool["nosrc"],
+                "linux-x86_64",
+                &fresh,
+                &HostFacts::unknown()
+            ),
+            InstallAction::Prebuilt { .. }
+        ));
+    }
+
+    /// phase-447 D1 — the ordinary "no dist row for this host" source build is
+    /// NOT a refusal, so it must not print one.
+    #[test]
+    fn a_missing_dist_row_is_not_a_refusal() {
+        let idx =
+            SdkIndex::parse("[tool.q]\nversion=\"1\"\n[tool.q.source]\ngit=\"g\"\nref=\"r\"\n")
+                .unwrap();
+        let fresh = tmp("floor-norow");
+        match plan_install_on(
+            &idx.tool["q"],
+            "linux-x86_64",
+            &fresh,
+            &super::super::host_floor::HostFacts::unknown(),
+        ) {
+            InstallAction::Source { refused: None, .. } => {}
+            other => panic!("expected an unrefused Source, got {other:?}"),
+        }
     }
 
     /// Issue 0833 follow-on — the refspec predicate behind

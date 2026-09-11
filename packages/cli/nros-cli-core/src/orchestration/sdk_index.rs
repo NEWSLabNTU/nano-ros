@@ -255,6 +255,129 @@ pub enum PrereqRole {
     Unclassified,
 }
 
+/// One package manager's names for a `[prereq.*]` key — RFC-0099 D9 /
+/// phase-447 D2.
+///
+/// Two spellings, and the flat one is unchanged:
+///
+/// ```toml
+/// apt = ["libssl3"]                                         # every release
+/// apt = { default = ["libssl3"], noble = ["libssl3t64"] }   # one override
+/// ```
+///
+/// Why a `default` key INSIDE the table rather than `apt = [..]` beside
+/// `apt.noble = [..]`: TOML cannot hold both — `apt` is either an array or a
+/// table, never both — so the spelling RFC-0099 D9 sketched is unwritable
+/// exactly when it is needed, which is an entry with an ordinary name AND one
+/// release that renamed it (`libssl3` -> `libssl3t64` on noble).
+///
+/// Keyed by the MANAGER first and the release second — narrower than rosdep's
+/// OS-then-version nesting on purpose: the manager is what installs, and the
+/// release names are the manager's own (`VERSION_CODENAME` from
+/// `/etc/os-release`, else `VERSION_ID`; see [`host_os_release`]).
+///
+/// An explicitly EMPTY list for a release is a real answer, and a different one
+/// from "not named": it says the manager does not package this on that release
+/// (`libpython3.10` on noble). The dist floor probe (phase-447 D1) reads exactly
+/// that to refuse a prebuilt before downloading it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ManagerPackages {
+    /// The same names on every release.
+    Every(Vec<String>),
+    /// Per-release names; the [`Self::DEFAULT_KEY`] entry, if any, covers every
+    /// release the table does not name.
+    ByRelease(BTreeMap<String, Vec<String>>),
+}
+
+impl Default for ManagerPackages {
+    fn default() -> Self {
+        Self::Every(Vec::new())
+    }
+}
+
+impl From<Vec<String>> for ManagerPackages {
+    fn from(v: Vec<String>) -> Self {
+        Self::Every(v)
+    }
+}
+
+impl ManagerPackages {
+    /// The key a per-release table uses for "every other release".
+    pub const DEFAULT_KEY: &'static str = "default";
+
+    /// The names for a release this entry does not single out.
+    #[must_use]
+    pub fn every(&self) -> &[String] {
+        match self {
+            Self::Every(v) => v,
+            Self::ByRelease(m) => m.get(Self::DEFAULT_KEY).map_or(&[], Vec::as_slice),
+        }
+    }
+
+    /// The list the table names for `release` EXPLICITLY, or `None` when it
+    /// does not single that release out. `Some(&[])` is "not packaged there".
+    #[must_use]
+    pub fn named_for(&self, release: Option<&str>) -> Option<&[String]> {
+        match (self, release) {
+            (Self::ByRelease(m), Some(r)) if r != Self::DEFAULT_KEY => m.get(r).map(Vec::as_slice),
+            _ => None,
+        }
+    }
+
+    /// The names that apply on `release`: its override, else the default.
+    #[must_use]
+    pub fn for_release(&self, release: Option<&str>) -> &[String] {
+        self.named_for(release).unwrap_or_else(|| self.every())
+    }
+
+    /// No names under any release — the entry does not map this manager.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::Every(v) => v.is_empty(),
+            Self::ByRelease(m) => m.values().all(Vec::is_empty),
+        }
+    }
+
+    /// Every release key a per-release table names (never `default`).
+    pub fn releases(&self) -> impl Iterator<Item = &str> {
+        let keys: Vec<&str> = match self {
+            Self::Every(_) => Vec::new(),
+            Self::ByRelease(m) => m
+                .keys()
+                .map(String::as_str)
+                .filter(|k| *k != Self::DEFAULT_KEY)
+                .collect(),
+        };
+        keys.into_iter()
+    }
+}
+
+/// This host's OS release, in the vocabulary [`ManagerPackages`] keys on:
+/// `VERSION_CODENAME` from `/etc/os-release` (`jammy`, `noble`, `bookworm`),
+/// else `VERSION_ID` (Fedora's `40`); `None` where neither exists (Arch is
+/// rolling and has no release to name).
+#[must_use]
+pub fn host_os_release() -> Option<String> {
+    let raw = std::fs::read_to_string("/etc/os-release").ok()?;
+    os_release_key(&raw)
+}
+
+/// The pure half of [`host_os_release`], so the precedence has a test.
+#[must_use]
+pub fn os_release_key(os_release: &str) -> Option<String> {
+    let field = |name: &str| {
+        os_release.lines().find_map(|l| {
+            l.strip_prefix(name)
+                .and_then(|v| v.strip_prefix('='))
+                .map(|v| v.trim().trim_matches('"').to_string())
+                .filter(|v| !v.is_empty())
+        })
+    };
+    field("VERSION_CODENAME").or_else(|| field("VERSION_ID"))
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PrereqDep {
@@ -279,14 +402,16 @@ pub struct PrereqDep {
     pub providers: Vec<Provider>,
     #[serde(default)]
     pub provider: Provider,
+    /// Per-manager package names — a flat list for every OS release, or a
+    /// per-release table (RFC-0099 D9 / phase-447 D2). See [`ManagerPackages`].
     #[serde(default)]
-    pub apt: Vec<String>,
+    pub apt: ManagerPackages,
     #[serde(default)]
-    pub dnf: Vec<String>,
+    pub dnf: ManagerPackages,
     #[serde(default)]
-    pub pacman: Vec<String>,
+    pub pacman: ManagerPackages,
     #[serde(default)]
-    pub brew: Vec<String>,
+    pub brew: ManagerPackages,
     /// Every soname this entry satisfies, when it satisfies more than the one
     /// `check.sharedlib` probes — issue 0926. `libssl3` provides BOTH
     /// `libssl.so.3` and `libcrypto.so.3`; `libglib2` provides four.
@@ -338,15 +463,24 @@ impl PrereqDep {
     /// The native package list for `manager`, **as declared** — placeholders
     /// unexpanded. For anything a user acts on, use [`Self::packages_for`].
     ///
-    /// Exists for the gates, which have to read what the index SAYS.
+    /// Exists for the gates, which have to read what the index SAYS. The
+    /// every-release list; a per-release override is read through
+    /// [`Self::manager_packages`].
     #[must_use]
     pub fn packages_declared(&self, manager: &str) -> &[String] {
+        self.manager_packages(manager)
+            .map_or(&[], ManagerPackages::every)
+    }
+
+    /// The whole declaration for `manager`, release overrides included.
+    #[must_use]
+    pub fn manager_packages(&self, manager: &str) -> Option<&ManagerPackages> {
         match manager {
-            "apt" => &self.apt,
-            "dnf" => &self.dnf,
-            "pacman" => &self.pacman,
-            "brew" => &self.brew,
-            _ => &[],
+            "apt" => Some(&self.apt),
+            "dnf" => Some(&self.dnf),
+            "pacman" => Some(&self.pacman),
+            "brew" => Some(&self.brew),
+            _ => None,
         }
     }
 
@@ -366,7 +500,12 @@ impl PrereqDep {
     /// derivable prefix per row. A literal list still wins where one is given.
     #[must_use]
     pub fn packages_for(&self, manager: &str, ctx: &PrereqContext) -> Vec<String> {
-        let declared = self.packages_declared(manager);
+        // phase-447 D2 — the host's release picks an override where the entry
+        // names one; every other release reads the default, so a flat list is
+        // byte-for-byte the old behaviour.
+        let declared = self
+            .manager_packages(manager)
+            .map_or(&[][..], |m| m.for_release(ctx.os_release.as_deref()));
         if !declared.is_empty() {
             // An explicit list WINS over the derivation — the escape hatch for
             // a distro rename or a split (phase-435 W3).
@@ -389,6 +528,10 @@ impl PrereqDep {
 pub struct PrereqContext {
     /// The ROS distribution whose packages are being named.
     pub ros_distro: String,
+    /// The host's OS release (`jammy`, `noble`) — picks a per-release
+    /// override in a [`ManagerPackages`] table (phase-447 D2). `None` reads
+    /// every entry's default, which is exactly the pre-D2 behaviour.
+    pub os_release: Option<String>,
 }
 
 impl PrereqContext {
@@ -406,7 +549,10 @@ impl PrereqContext {
             .ok()
             .filter(|v| !v.trim().is_empty())
             .unwrap_or_else(|| Self::DEFAULT_ROS_DISTRO.to_string());
-        Self { ros_distro }
+        Self {
+            ros_distro,
+            os_release: host_os_release(),
+        }
     }
 
     /// The OS package name for a ROS package under `manager` — phase-435 W3.
@@ -443,10 +589,10 @@ impl From<&SystemDep> for PrereqDep {
             role: PrereqRole::Unclassified,
             providers: Vec::new(),
             provider: Provider::System,
-            apt: d.apt.clone(),
-            dnf: d.dnf.clone(),
-            pacman: d.pacman.clone(),
-            brew: d.brew.clone(),
+            apt: d.apt.clone().into(),
+            dnf: d.dnf.clone().into(),
+            pacman: d.pacman.clone().into(),
+            brew: d.brew.clone().into(),
             // Empty, and that is not a dropped field: `[system.*]` has no
             // `provides` to map. The legacy shape predates it, and phase-398
             // W4 retired `[system.*]` outright — an entry arriving here is a
@@ -561,7 +707,7 @@ pub fn extract_version(text: &str, marker: Option<&str>) -> Option<String> {
 /// Compare dotted numeric versions component-wise. Missing components are 0,
 /// so `0.12` and `0.12.0` compare equal.
 #[must_use]
-fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+pub(crate) fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     let parts = |v: &str| -> Vec<u64> {
         v.split('.')
             .map(|p| p.parse::<u64>().unwrap_or(0))
@@ -850,6 +996,17 @@ pub struct ToolPackage {
     /// fails on (phase-431 W2) and `nros build` refuses (W1).
     #[serde(default)]
     pub front: Vec<String>,
+    /// `system` resolved to its `[prereq.*]` entries — filled by
+    /// [`SdkIndex::parse`], never authored.
+    ///
+    /// phase-447 D1: the floor probe runs where the install is PLANNED, and the
+    /// planner is handed one tool. Its soname half ("does this host lack a lib
+    /// the dist links, which its package manager does not even package on this
+    /// release?") needs the prereq rows, so they travel with the tool rather than
+    /// widening every planner call site. A `ToolPackage` deserialized outside
+    /// `parse` carries none, and that half then abstains — never refuses.
+    #[serde(skip)]
+    pub system_deps: Vec<(String, PrereqDep)>,
 }
 
 /// `[build_type.<name>]` — the host tools a builder needs present.
@@ -929,6 +1086,98 @@ pub struct DistArtifact {
     /// downloaded file, `{prefix}` the install prefix.
     #[serde(default)]
     pub install: Option<String>,
+    /// phase-447 D1 (RFC-0099 D5) — the oldest HOST this artifact runs on,
+    /// MEASURED from its own binaries by `scripts/sdk/measure-dist-floor.py`.
+    ///
+    /// `nros setup` compares the host against it BEFORE downloading, and a host
+    /// below it falls back to the source recipe with the reason printed —
+    /// instead of paying for the download, unpacking, and dying at the loader.
+    /// `check-dist-floors` requires every dist row to carry one (a ratchet).
+    #[serde(default)]
+    pub floor: Option<DistFloor>,
+}
+
+/// What a host must provide for one prebuilt artifact to RUN — phase-447 D1.
+///
+/// Compatibility is a RANGE, not an identity (RFC-0099 D5 rejected a
+/// `linux-x86_64-glibc2.35` host key for exactly that reason): a glibc 2.39
+/// host runs a 2.35 binary. So a floor is a set of MINIMUMS against the half of
+/// the runtime that `nano-ros-sdk`'s `bundle.sh` deliberately does NOT bundle —
+/// the loader/libc family and the C++ runtime — plus, for macOS, the deployment
+/// target.
+///
+/// The OTHER half — a named dep a newer host no longer ships (`libpython3.10`
+/// on noble) — is not a number and is not here: it is the tool's `system = [..]`
+/// list read against the prereq's per-release package names (phase-447 D2).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DistFloor {
+    /// Highest `GLIBC_x.y` symbol version any ELF in the dist references.
+    #[serde(default)]
+    pub glibc: Option<String>,
+    /// Highest `GLIBCXX_3.4.N` referenced against a libstdc++ the dist does
+    /// NOT bundle — i.e. the host's. Written as `3.4.N`.
+    #[serde(default)]
+    pub glibcxx: Option<String>,
+    /// Highest macOS deployment target (`LC_BUILD_VERSION.minos`).
+    #[serde(default)]
+    pub macos: Option<String>,
+    /// MEASURED to have no floor — e.g. a static musl binary (no `PT_INTERP`,
+    /// no `DT_NEEDED`). The value is the reason, so "none" is never a blank.
+    #[serde(default)]
+    pub none: Option<String>,
+}
+
+impl DistFloor {
+    /// Shape rules, per host column. A floor field that cannot apply to the
+    /// host it sits on (`macos` on a Linux artifact) is refused rather than
+    /// ignored: an ignored floor is a floor nobody is checking.
+    pub fn validate(&self, tool: &str, host: &str) -> Result<()> {
+        let is_mac = host.starts_with("macos-");
+        let numeric = |v: &str| !v.is_empty() && v.split('.').all(|p| p.parse::<u64>().is_ok());
+        let fields = [
+            ("glibc", &self.glibc),
+            ("glibcxx", &self.glibcxx),
+            ("macos", &self.macos),
+        ];
+        let set: Vec<&str> = fields
+            .iter()
+            .filter(|(_, v)| v.is_some())
+            .map(|(n, _)| *n)
+            .collect();
+        if let Some(reason) = &self.none {
+            if reason.trim().is_empty() {
+                bail!("[tool.{tool}] dist.{host}: `floor.none` must say WHY there is no floor");
+            }
+            if !set.is_empty() {
+                bail!(
+                    "[tool.{tool}] dist.{host}: `floor.none` excludes {}",
+                    set.join("/")
+                );
+            }
+            return Ok(());
+        }
+        if set.is_empty() {
+            bail!(
+                "[tool.{tool}] dist.{host}: an empty `floor = {{}}` says nothing — measure it \
+                 (scripts/sdk/measure-dist-floor.py) or write `none = \"<why>\"`"
+            );
+        }
+        for (name, v) in fields {
+            let Some(v) = v else { continue };
+            if !numeric(v) {
+                bail!("[tool.{tool}] dist.{host}: `floor.{name} = {v:?}` is not a dotted version");
+            }
+            let applies = if name == "macos" { is_mac } else { !is_mac };
+            if !applies {
+                bail!(
+                    "[tool.{tool}] dist.{host}: `floor.{name}` cannot apply to a {host} \
+                     artifact — a floor nobody can check is not a floor"
+                );
+            }
+        }
+        Ok(())
+    }
 }
 
 /// The source-build fallback recipe — installs into the same prefix as `dist`.
@@ -1277,7 +1526,19 @@ impl SdkIndex {
     /// Parse from a string (schema only — no cross-reference validation, so unit
     /// tests can parse partial fixtures). [`load`] additionally [`validate`]s.
     pub fn parse(raw: &str) -> Result<Self> {
-        toml::from_str(raw).wrap_err("invalid nros-sdk-index.toml schema")
+        let mut idx: Self = toml::from_str(raw).wrap_err("invalid nros-sdk-index.toml schema")?;
+        // phase-447 D1 — resolve each tool's `system` keys once, so the floor
+        // probe can read them with only the tool in hand. An unknown key is
+        // skipped here and refused by `validate`, which names it.
+        let prereqs = idx.prereqs();
+        for tool in idx.tool.values_mut() {
+            tool.system_deps = tool
+                .system
+                .iter()
+                .filter_map(|k| prereqs.get(k).map(|d| (k.clone(), d.clone())))
+                .collect();
+        }
+        Ok(idx)
     }
 
     /// Phase 191.4 — every `[board.*].packages` name must be a defined
@@ -1359,7 +1620,36 @@ impl SdkIndex {
         // satisfied by either spelling while both exist, or the W4 rename of
         // `[system.*]` → `[prereq.*]` would break every such reference at once.
         let prereq_keys = self.prereqs();
+        // phase-447 D2 — a per-release table names releases, and a key that is
+        // not a plausible release name (a typo'd manager nested one level too
+        // deep, an uppercase codename) would silently never match a host.
+        for (key, dep) in &prereq_keys {
+            for mgr in ["apt", "dnf", "pacman", "brew"] {
+                let Some(pk) = dep.manager_packages(mgr) else {
+                    continue;
+                };
+                for rel in pk.releases() {
+                    let ok = rel
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || ".-_".contains(c));
+                    if rel.is_empty() || !ok {
+                        bail!(
+                            "[prereq.{key}] {mgr}.{rel:?} is not a release name — use the \
+                             host's VERSION_CODENAME (`noble`) or VERSION_ID (`40`), or \
+                             `default` for every other release"
+                        );
+                    }
+                }
+            }
+        }
         for (name, tool) in &self.tool {
+            // phase-447 D1 — a floor's SHAPE; its presence is the ratchet's job
+            // (`check-dist-floors`), so an index mid-migration still loads.
+            for (host, d) in &tool.dist {
+                if let Some(f) = &d.floor {
+                    f.validate(name, host)?;
+                }
+            }
             for key in &tool.system {
                 if !prereq_keys.contains_key(key) {
                     bail!(
@@ -1872,6 +2162,7 @@ check = { cmd = "west" }
         };
         let jazzy = PrereqContext {
             ros_distro: "jazzy".to_string(),
+            os_release: None,
         };
         assert_eq!(dep.packages_for("apt", &jazzy), ["ros-jazzy-rmw-zenoh-cpp"]);
 
@@ -1890,7 +2181,7 @@ check = { cmd = "west" }
         // An explicit list WINS — the escape hatch for a rename or a split.
         let pinned = PrereqDep {
             ros_package: Some("rmw_zenoh_cpp".to_string()),
-            apt: vec!["ros-humble-rmw-zenoh-cpp-legacy".to_string()],
+            apt: vec!["ros-humble-rmw-zenoh-cpp-legacy".to_string()].into(),
             ..PrereqDep::default()
         };
         assert_eq!(
@@ -1900,7 +2191,7 @@ check = { cmd = "west" }
 
         // A key with neither derives nothing, rather than an empty name.
         let plain = PrereqDep {
-            apt: vec!["doxygen".to_string()],
+            apt: vec!["doxygen".to_string()].into(),
             ..PrereqDep::default()
         };
         assert_eq!(plain.packages_for("apt", &jazzy), ["doxygen"]);
@@ -1912,6 +2203,7 @@ check = { cmd = "west" }
         assert_eq!(PrereqContext::DEFAULT_ROS_DISTRO, "humble");
         let ctx = PrereqContext {
             ros_distro: PrereqContext::DEFAULT_ROS_DISTRO.to_string(),
+            os_release: None,
         };
         assert_eq!(
             ctx.ros_os_package("apt", "rmw_zenoh_cpp").as_deref(),
@@ -1943,8 +2235,118 @@ check = { cmd = "west" }
         );
         let iron = PrereqContext {
             ros_distro: "iron".to_string(),
+            os_release: None,
         };
         assert_eq!(dep.packages_for("apt", &iron), ["ros-iron-rmw-zenoh-cpp"]);
+    }
+
+    /// phase-447 D2 — the flat spelling is unchanged, and a per-release table
+    /// overrides exactly the release it names.
+    #[test]
+    fn manager_packages_take_a_per_release_override() {
+        let idx = SdkIndex::parse(
+            "[prereq.flat]\napt = [\"libx1\"]\n\
+             [prereq.libssl3]\napt = { default = [\"libssl3\"], noble = [\"libssl3t64\"] }\n\
+             [prereq.gone]\napt = { jammy = [\"libpython3.10\"], noble = [] }\n",
+        )
+        .unwrap();
+        let ctx = |r: Option<&str>| PrereqContext {
+            ros_distro: "humble".into(),
+            os_release: r.map(str::to_string),
+        };
+        let ssl = &idx.prereq["libssl3"];
+        assert_eq!(ssl.packages_for("apt", &ctx(Some("jammy"))), ["libssl3"]);
+        assert_eq!(ssl.packages_for("apt", &ctx(Some("noble"))), ["libssl3t64"]);
+        assert_eq!(ssl.packages_for("apt", &ctx(None)), ["libssl3"]);
+        assert_eq!(
+            ssl.packages_declared("apt"),
+            ["libssl3"],
+            "the every-release list"
+        );
+
+        let flat = &idx.prereq["flat"];
+        for r in [None, Some("jammy"), Some("noble")] {
+            assert_eq!(
+                flat.packages_for("apt", &ctx(r)),
+                ["libx1"],
+                "flat = every release"
+            );
+        }
+
+        // An explicit empty list is "not packaged there" — and is distinct from
+        // a release the table does not name at all.
+        let gone = idx.prereq["gone"].manager_packages("apt").unwrap();
+        assert_eq!(gone.named_for(Some("noble")), Some(&[][..]));
+        assert_eq!(gone.named_for(Some("oracular")), None);
+        assert_eq!(gone.named_for(Some("default")), None);
+        assert!(
+            idx.prereq["gone"]
+                .packages_for("apt", &ctx(Some("noble")))
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn os_release_key_prefers_the_codename() {
+        assert_eq!(
+            os_release_key("ID=ubuntu\nVERSION_ID=\"24.04\"\nVERSION_CODENAME=noble\n").as_deref(),
+            Some("noble")
+        );
+        assert_eq!(
+            os_release_key("ID=fedora\nVERSION_ID=40\nVERSION_CODENAME=\"\"\n").as_deref(),
+            Some("40")
+        );
+        assert_eq!(os_release_key("ID=arch\nBUILD_ID=rolling\n"), None);
+    }
+
+    #[test]
+    fn a_release_key_must_look_like_one() {
+        let bad = SdkIndex::parse("[prereq.x]\napt = { Noble = [\"x\"] }\n").unwrap();
+        let err = format!("{:#}", bad.validate().unwrap_err());
+        assert!(err.contains("not a release name"), "{err}");
+        let ok = SdkIndex::parse("[prereq.x]\napt = { default = [\"x\"], \"24.04\" = [\"y\"] }\n");
+        ok.unwrap().validate().unwrap();
+    }
+
+    /// phase-447 D1 — a floor's SHAPE is refused at load when it cannot mean
+    /// anything; its PRESENCE is `check-dist-floors`' job.
+    #[test]
+    fn dist_floor_shape_is_validated_per_host() {
+        let with = |host: &str, floor: &str| {
+            SdkIndex::parse(&format!(
+                "[tool.t]\nversion=\"1\"\ndist.{host}={{url=\"u\",sha256=\"h\",floor={floor}}}\n"
+            ))
+            .unwrap()
+            .validate()
+        };
+        with("linux-x86_64", "{glibc=\"2.35\",glibcxx=\"3.4.30\"}").unwrap();
+        with("macos-arm64", "{macos=\"11.0\"}").unwrap();
+        with("linux-x86_64", "{none=\"static musl\"}").unwrap();
+        for (host, floor, why) in [
+            ("linux-x86_64", "{macos=\"11.0\"}", "cannot apply"),
+            ("macos-arm64", "{glibc=\"2.35\"}", "cannot apply"),
+            ("linux-x86_64", "{}", "says nothing"),
+            ("linux-x86_64", "{none=\" \"}", "WHY"),
+            ("linux-x86_64", "{none=\"x\",glibc=\"2.17\"}", "excludes"),
+            ("linux-x86_64", "{glibc=\"2.35-ubuntu\"}", "dotted version"),
+        ] {
+            let err = format!("{:#}", with(host, floor).unwrap_err());
+            assert!(err.contains(why), "{host} {floor}: {err}");
+        }
+    }
+
+    /// The parse step resolves `system` so the planner, handed one tool, can
+    /// read the prereq rows the floor's soname half needs.
+    #[test]
+    fn parse_resolves_tool_system_deps() {
+        let idx = SdkIndex::parse(
+            "[prereq.libz1]\napt=[\"zlib1g\"]\n[tool.t]\nversion=\"1\"\nsystem=[\"libz1\"]\n",
+        )
+        .unwrap();
+        let deps = &idx.tool["t"].system_deps;
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].0, "libz1");
+        assert_eq!(deps[0].1.packages_declared("apt"), ["zlib1g"]);
     }
 
     #[test]

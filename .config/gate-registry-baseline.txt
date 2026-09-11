@@ -96,6 +96,7 @@ default-gates-run-somewhere
 deferred-call-args
 deploy-board-resolves
 derived-descriptor-fields
+dist-floors
 doc-commit-citations
 doc-recipe-refs
 doc-refs

@@ -596,6 +596,14 @@ One-liners; detail in the linked doc. (Many also captured in agent memory.)
   who owns a `/lib/...` file, query the RESOLVED path: `/lib` is a symlink to `usr/lib`
   on merged-`/usr`, so `dpkg -S /lib/<f>` says "no path found" for a perfectly
   well-owned file — which is how this entry first called that library a stray.
+- **A dist row carries a MEASURED `floor`, and `apt` may be per-release** (phase-447 D1/D2,
+  RFC-0099 D5/D9). `host_key()` has no OS version, so `nros setup` compares the host with
+  `floor = { glibc/glibcxx/macos }` BEFORE downloading and falls back to source with the
+  reason; read the number off the artifact (`scripts/sdk/measure-dist-floor.py`), never off
+  the runner. Gate `check-dist-floors` (ratchet). `apt = { default = [..], noble = [..] }` —
+  TOML cannot hold `apt = [..]` beside `apt.noble`; `noble = []` means "not packaged there".
+  Python reads it only via `scripts/lib/index_packages.py` (`entry.get("apt")` on a table
+  iterates RELEASE NAMES).
 - **The west manifests are DERIVED — `[zephyr_module.*]` in `nros-sdk-index.toml` is the
   module SSoT** (phase-447 F1, issues 1275/1282). A module is in `west.yml`'s allowlist iff
   its `lines` has `"3.7"`, `west-4.4.yml`'s iff `"4.4"`; `check-zephyr-module-allowlist`

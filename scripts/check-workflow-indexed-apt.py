@@ -45,6 +45,9 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import index_packages  # noqa: E402 — phase-447 D2: the one manager-field reader
+
 WORKFLOWS = os.path.join(ROOT, ".github", "workflows")
 INDEX = os.path.join(ROOT, "nros-sdk-index.toml")
 
@@ -61,7 +64,10 @@ def indexed_apt_packages(path=INDEX):
         index = toml.load(fh)
     out = {}
     for key, entry in (index.get("prereq") or {}).items():
-        for pkg in entry.get("apt") or []:
+        # Every release's names: a workflow installing noble's `libssl3t64` is
+        # installing an indexed package. `entry.get("apt")` on a per-release
+        # table would iterate the RELEASE NAMES instead (phase-447 D2).
+        for pkg in index_packages.all_names(entry.get("apt")):
             out.setdefault(pkg, key)
     return out
 

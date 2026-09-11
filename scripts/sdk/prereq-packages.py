@@ -28,6 +28,9 @@ import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+import index_packages  # noqa: E402 — phase-447 D2: the one manager-field reader
+
 INDEX = os.path.join(ROOT, "nros-sdk-index.toml")
 MANAGERS = ("apt", "dnf", "pacman", "brew")
 
@@ -53,11 +56,19 @@ def load(path=INDEX):
 DEFAULT_ROS_DISTRO = "humble"
 
 
-def prereq_context(env=None):
-    """The values a derivation needs, read once from the environment."""
-    env = os.environ if env is None else env
+def prereq_context(env=None, release=None):
+    """The values a derivation needs, read once from the environment.
+
+    `release` is the host's OS release (phase-447 D2), which picks a
+    per-release override; `None` reads `/etc/os-release` when `env` is the real
+    environment, and nothing (every entry's default) when a test passes a dict.
+    """
+    real = env is None
+    env = os.environ if real else env
     distro = (env.get("ROS_DISTRO") or "").strip()
-    return {"ros_distro": distro or DEFAULT_ROS_DISTRO}
+    if release is None and real:
+        release = index_packages.host_release()
+    return {"ros_distro": distro or DEFAULT_ROS_DISTRO, "release": release}
 
 
 def ros_os_package(manager, ros_package, ctx):
@@ -87,7 +98,7 @@ def packages_for(index, manager, keys, ctx=None):
         if entry is None:
             missing.append(k)
             continue
-        pkgs = entry.get(manager) or []
+        pkgs = index_packages.for_release(entry.get(manager), ctx.get("release"))
         if not pkgs and entry.get("ros_package"):
             derived = ros_os_package(manager, entry["ros_package"], ctx)
             pkgs = [derived] if derived else []
@@ -163,6 +174,17 @@ def self_test():
     if packages_for(index, "apt", ["doxygen"], jazzy) != ["doxygen"]:
         print("  FAIL: a literal name was rewritten")
         failures += 1
+
+    # phase-447 D2 — a per-release table: the host's release picks its
+    # override, every other release its default.
+    index["prereq"]["ssl"] = {"apt": {"default": ["libssl3"], "noble": ["libssl3t64"]}}
+    for release, want in (("noble", ["libssl3t64"]), ("jammy", ["libssl3"]), (None, ["libssl3"])):
+        got = packages_for(index, "apt", ["ssl"], prereq_context({}, release=release))
+        if got != want:
+            print(f"  FAIL: per-release {release}: {got} != {want}")
+            failures += 1
+
+    index_packages.self_test()
 
     for keys, why in ((["nope"], "unknown key"), (["graphviz"], "unmapped manager")):
         manager = "apt" if why == "unknown key" else "dnf"

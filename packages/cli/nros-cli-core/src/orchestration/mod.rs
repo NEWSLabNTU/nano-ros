@@ -59,6 +59,8 @@ pub mod release_manifest;
 /// `<depend>` ladder falls back to below `[prereq.*]`.
 pub mod rosdep_snapshot;
 pub use nros_orchestration_ir::rtos_realizer;
+/// phase-447 D1 (RFC-0099 D5) — is this host at or above a dist's floor?
+pub mod host_floor;
 pub mod schema;
 pub mod sdk_index;
 pub mod sdk_store;

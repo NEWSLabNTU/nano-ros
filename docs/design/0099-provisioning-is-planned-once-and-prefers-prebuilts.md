@@ -174,6 +174,31 @@ a RANGE, not an identity — a 2.39 host runs a 2.35 binary — so exact-match k
 are wrong, "highest key <= host" is a new resolution mechanism, and it still
 misses the interpreter-linked half.
 
+**Status: move 3 landed (2026-09-11, phase-447 D1).** Every `dist.<host>` row
+carries `floor = { glibc, glibcxx, macos }` or `none = "<why>"`, and
+`plan_install` compares the host with it IN THE PLAN — so a refused prebuilt's
+URL never reaches `execute` — falling back to the source recipe with the reason,
+or refusing outright when there is none. Both halves are covered: the floor
+numbers are the forward half; the backward half is `system = [..]` read against
+D9's per-release names, refusing only when a soname is ABSENT and the index
+says the manager does not package it on this release. A probe that cannot
+answer abstains. `check-dist-floors` is the floor-or-reason ratchet.
+
+Measured with `scripts/sdk/measure-dist-floor.py` (ELF `verneed`/`NEEDED`/
+`INTERP`, Mach-O `minos`, cross-checked against `objdump -T`), and the numbers
+corrected three assumptions this section was written on:
+
+* **No dist needs glibc 2.35.** The runner has 2.35; every `nano-ros-sdk` dist
+  references at most `GLIBC_2.34`. What a runner HAS is not what a binary USES.
+* **The C++ runtime is a real floor.** `riscv-none-elf-gcc` and `xrce-agent`
+  need `GLIBCXX_3.4.30` (GCC 12, jammy) from a libstdc++ they do not bundle.
+* **A dist can bring its own libc.** The Zephyr SDK host tools are a Yocto
+  sysroot on their own `ld.so` + glibc; counting them against the host floor
+  would have been wrong, so the measurement excludes self-hosted ELF and says
+  how many it excluded.
+
+Move 2 (smoke on the install path) is phase-447 C1.
+
 ## D6 — Repeated `nros setup` is made CHEAP rather than restructured away
 
 A bootstrap makes ~24 `nros setup` invocations. The obvious fix — collapse them
@@ -289,6 +314,32 @@ key cannot express the alternative. (It is also stale in a second way:
 `apt = [...]` stays valid and means "every version"; `apt.noble = [...]`
 overrides. Narrower than rosdep's OS-then-version nesting, because the manager is
 what actually installs.
+
+**Status: landed (2026-09-11, phase-447 D2) — with the spelling corrected.**
+The sketch above is unwritable exactly when it is needed: TOML cannot hold
+`apt = [..]` beside `apt.noble = [..]`, since a key is an array or a table,
+never both. So the override table carries its own default:
+
+```toml
+apt = ["libssl3"]                                         # every release, unchanged
+apt = { default = ["libssl3"], noble = ["libssl3t64"] }   # one release renamed it
+```
+
+Release keys are the host's `VERSION_CODENAME`, else `VERSION_ID`
+(`host_os_release`); `validate` refuses one that cannot be a release name.
+An explicitly EMPTY list — `noble = []` — means "not packaged on that
+release", which is a different answer from "not named", and D5's floor probe
+reads exactly that. Python readers go through `scripts/lib/index_packages.py`,
+because `entry.get("apt")` on the table shape iterates RELEASE NAMES.
+
+**`libpython310` was misnamed, not merely stale.** Its only consumer is the
+`play_launch_parser` SOURCE build, and a source build links the host's own
+CPython — so the requirement is "this host's libpython3", and a key naming
+3.10 asked every non-jammy host for something it could not have. It is now
+`[prereq.libpython3]` (`default = libpython3-dev`, `jammy = libpython3.10`,
+`noble = libpython3.12t64`, probe `sharedlib = "libpython3."`). A soname-EXACT
+requirement belongs to a prebuilt that links one minor; it gets its own key the
+day such a dist row exists, and `check-dist-runtime-deps` will demand it.
 
 ## D10 — The provisioner reads manifest/index files — TRUE for Zephyr since phase-447 F1
 
