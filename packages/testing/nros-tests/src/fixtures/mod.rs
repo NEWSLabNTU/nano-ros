@@ -10,6 +10,7 @@ mod binaries;
 pub mod cache_key;
 pub mod groups;
 pub mod lane;
+pub mod require;
 pub mod staleness;
 pub mod tls_certs;
 #[allow(hidden_glob_reexports)] // rstest fixture creates a module matching the fn name
@@ -17,6 +18,7 @@ mod xrce_agent;
 mod zenohd_router;
 
 pub use binaries::*;
+pub use require::{FIXTURE_NOT_BUILT_MARKER, RequireFixture};
 pub use tls_certs::*;
 pub use xrce_agent::*;
 pub use zenohd_router::*;

@@ -71,6 +71,7 @@
 //! Interop cell: `native-advertised-state-rust-cyclone-bidir` (`interop::CELLS`).
 //! Focused runner: `just native test-ros2-advertised-state`.
 
+use nros_tests::fixtures::RequireFixture;
 use std::{path::Path, process::Command, time::Duration};
 
 use nros_tests::{
@@ -142,8 +143,7 @@ fn require_probe() -> &'static Path {
              (`ros-$ROS_DISTRO-rmw-cyclonedds-cpp`)."
         );
     }
-    build_advertised_state_probe()
-        .unwrap_or_else(|e| skip!("advertised-state-probe fixture not built: {e:?}"))
+    build_advertised_state_probe().require("advertised-state-probe")
 }
 
 /// Spawn the probe on `domain`, holding its entities open for `hold`.

@@ -41,7 +41,7 @@
 use nros_tests::{
     TestResult,
     fixtures::{
-        ManagedProcess, ZenohRouter, build_native_workspace_c_action_client_entry,
+        ManagedProcess, RequireFixture, ZenohRouter, build_native_workspace_c_action_client_entry,
         build_native_workspace_c_action_server_entry,
         build_native_workspace_c_service_client_entry,
         build_native_workspace_c_service_server_entry,
@@ -516,13 +516,12 @@ fn run_cell(pcell: &MCell) {
 #[test]
 fn two_template_built_entries_register_distinct_names() {
     let server = build_native_workspace_c_service_server_entry()
-        .unwrap_or_else(|e| nros_tests::skip!("service-server entry not prebuilt: {e:?}"))
+        .require("service-server entry")
         .to_path_buf();
     let client = build_native_workspace_c_service_client_entry()
-        .unwrap_or_else(|e| nros_tests::skip!("service-client entry not prebuilt: {e:?}"))
+        .require("service-client entry")
         .to_path_buf();
-    let probe = nros_tests::fixtures::build_graph_probe()
-        .unwrap_or_else(|e| nros_tests::skip!("graph-probe not prebuilt: {e:?}"));
+    let probe = nros_tests::fixtures::build_graph_probe().require("graph-probe");
 
     let router = ZenohRouter::start_unique()
         .unwrap_or_else(|e| nros_tests::skip!("zenohd failed to start: {e}"));

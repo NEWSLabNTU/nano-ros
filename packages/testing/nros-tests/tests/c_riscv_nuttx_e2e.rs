@@ -23,7 +23,7 @@
 use nros_tests::{
     alloc::port_of,
     fixtures::{
-        ManagedProcess, QemuProcess, ZenohRouter, build_native_listener,
+        ManagedProcess, QemuProcess, RequireFixture, ZenohRouter, build_native_listener,
         build_nuttx_riscv_c_talker, require_zenohd,
     },
     matrix::{Lang, PlatformId, Workload},
@@ -46,10 +46,10 @@ fn c_riscv_nuttx_talker_delivers_cross_process() {
 
     let talker = build_nuttx_riscv_c_talker()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("riscv-nuttx C talker not built: {e}"));
+        .require("riscv-nuttx C talker");
     let listener = build_native_listener()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
+        .require("native listener");
 
     // Router on the baked port; listen on 0.0.0.0 so the slirp guest
     // (10.0.2.2 gateway) can reach it.

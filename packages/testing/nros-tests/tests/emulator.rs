@@ -32,14 +32,14 @@
 use nros_tests::{
     assert_output_contains, assert_output_excludes, count_pattern,
     fixtures::{
-        QemuProcess, SocatPtyPair, XrceSerialAgent, ZenohRouter, build_qemu_bsp_listener,
-        build_qemu_bsp_talker, build_qemu_lan9118, build_qemu_rtic_action_client,
-        build_qemu_rtic_action_server, build_qemu_rtic_listener, build_qemu_rtic_mixed_listener,
-        build_qemu_rtic_mixed_talker, build_qemu_rtic_service_client,
-        build_qemu_rtic_service_server, build_qemu_rtic_talker, build_qemu_serial_listener,
-        build_qemu_serial_talker, build_qemu_talker_xrce, build_qemu_wcet_bench,
-        is_arm_toolchain_available, is_qemu_available, is_socat_available, or_skip,
-        parse_test_results, qemu_binary, require_xrce_agent, require_zenoh_pico_arm,
+        QemuProcess, RequireFixture, SocatPtyPair, XrceSerialAgent, ZenohRouter,
+        build_qemu_bsp_listener, build_qemu_bsp_talker, build_qemu_lan9118,
+        build_qemu_rtic_action_client, build_qemu_rtic_action_server, build_qemu_rtic_listener,
+        build_qemu_rtic_mixed_listener, build_qemu_rtic_mixed_talker,
+        build_qemu_rtic_service_client, build_qemu_rtic_service_server, build_qemu_rtic_talker,
+        build_qemu_serial_listener, build_qemu_serial_talker, build_qemu_talker_xrce,
+        build_qemu_wcet_bench, is_arm_toolchain_available, is_qemu_available, is_socat_available,
+        or_skip, parse_test_results, qemu_binary, require_xrce_agent, require_zenoh_pico_arm,
     },
     platform, wait_for_port,
 };
@@ -188,7 +188,7 @@ fn test_qemu_wcet_benchmark() {
         nros_tests::skip!("qemu-system-arm or ARM toolchain not available");
     }
 
-    let binary = build_qemu_wcet_bench().expect("Failed to build qemu-wcet-bench");
+    let binary = build_qemu_wcet_bench().require("qemu-wcet-bench");
 
     let mut qemu = QemuProcess::start_cortex_m3(binary).expect("Failed to start QEMU");
 
@@ -236,7 +236,7 @@ fn test_qemu_lan9118_driver() {
         nros_tests::skip!("qemu-system-arm or ARM toolchain not available");
     }
 
-    let binary = build_qemu_lan9118().expect("Failed to build qemu-lan9118");
+    let binary = build_qemu_lan9118().require("qemu-lan9118");
 
     let mut qemu = QemuProcess::start_mps2_an385(binary).expect("Failed to start QEMU");
 
@@ -323,8 +323,8 @@ fn test_qemu_bsp_pubsub_e2e() {
     }
 
     let port = nros_tests::alloc::BAREMETAL_BSP_PORT; // the baked BSP locator port
-    let talker_bin = build_qemu_bsp_talker().expect("Failed to build qemu-bsp-talker");
-    let listener_bin = build_qemu_bsp_listener().expect("Failed to build qemu-bsp-listener");
+    let talker_bin = build_qemu_bsp_talker().require("qemu-bsp-talker");
+    let listener_bin = build_qemu_bsp_listener().require("qemu-bsp-listener");
 
     // zenohd (host) is the broker both slirp-isolated instances connect out to.
     eprintln!("Starting zenohd (slirp) on {port}...");
@@ -393,8 +393,8 @@ fn test_qemu_serial_pubsub_e2e() {
     }
 
     // Build both binaries
-    let talker_bin = build_qemu_serial_talker().expect("Failed to build serial-talker");
-    let listener_bin = build_qemu_serial_listener().expect("Failed to build serial-listener");
+    let talker_bin = build_qemu_serial_talker().require("serial-talker");
+    let listener_bin = build_qemu_serial_listener().require("serial-listener");
 
     // Create socat PTY pairs: one for listener, one for talker.
     // Each pair links QEMU's UART0 to zenohd's serial listener.
@@ -497,7 +497,7 @@ fn test_qemu_xrce_pubsub_e2e() {
         nros_tests::skip!("MicroXRCEAgent not available (run `nros setup --rmw xrce`)");
     }
 
-    let talker_bin = build_qemu_talker_xrce().expect("Failed to build talker-xrce");
+    let talker_bin = build_qemu_talker_xrce().require("talker-xrce");
 
     // Start the XRCE serial agent first (socat PTY pair + MicroXRCEAgent on
     // one end). The talker connects to the other end.
@@ -549,8 +549,8 @@ fn test_qemu_rtic_pubsub_e2e() {
     }
 
     // Build both binaries
-    let talker_bin = build_qemu_rtic_talker().expect("Failed to build rtic-talker");
-    let listener_bin = build_qemu_rtic_listener().expect("Failed to build rtic-listener");
+    let talker_bin = build_qemu_rtic_talker().require("rtic-talker");
+    let listener_bin = build_qemu_rtic_listener().require("rtic-listener");
 
     // Start zenohd (firmware connects via slirp gateway to host)
     let _zenohd = or_skip(ZenohRouter::start_slirp(
@@ -635,8 +635,8 @@ fn test_qemu_rtic_service_e2e() {
     }
 
     // Build both binaries
-    let server_bin = build_qemu_rtic_service_server().expect("Failed to build rtic-service-server");
-    let client_bin = build_qemu_rtic_service_client().expect("Failed to build rtic-service-client");
+    let server_bin = build_qemu_rtic_service_server().require("rtic-service-server");
+    let client_bin = build_qemu_rtic_service_client().require("rtic-service-client");
 
     // Start zenohd (firmware connects via slirp gateway to host)
     let _zenohd = or_skip(ZenohRouter::start_slirp(
@@ -719,8 +719,8 @@ fn test_qemu_rtic_action_e2e() {
     }
 
     // Build both binaries
-    let server_bin = build_qemu_rtic_action_server().expect("Failed to build rtic-action-server");
-    let client_bin = build_qemu_rtic_action_client().expect("Failed to build rtic-action-client");
+    let server_bin = build_qemu_rtic_action_server().require("rtic-action-server");
+    let client_bin = build_qemu_rtic_action_client().require("rtic-action-client");
 
     // Start zenohd (firmware connects via slirp gateway to host)
     let _zenohd = or_skip(ZenohRouter::start_slirp(
@@ -817,9 +817,8 @@ fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
     }
 
     // Build both binaries
-    let talker_bin = build_qemu_rtic_mixed_talker().expect("Failed to build rtic-mixed-talker");
-    let listener_bin =
-        build_qemu_rtic_mixed_listener().expect("Failed to build rtic-mixed-listener");
+    let talker_bin = build_qemu_rtic_mixed_talker().require("rtic-mixed-talker");
+    let listener_bin = build_qemu_rtic_mixed_listener().require("rtic-mixed-listener");
 
     // Start zenohd (firmware connects via slirp gateway to host). The mixed
     // pair bakes its own allocator aux slot (phase-295 W4) — no sharing with

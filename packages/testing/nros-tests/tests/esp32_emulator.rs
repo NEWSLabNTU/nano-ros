@@ -32,8 +32,8 @@ use nros_tests::{
     count_pattern,
     esp32::*,
     fixtures::{
-        ManagedProcess, ZenohRouter, build_esp32_qemu_listener, build_esp32_qemu_talker,
-        build_int32_sink, build_native_listener, build_native_talker,
+        ManagedProcess, RequireFixture, ZenohRouter, build_esp32_qemu_listener,
+        build_esp32_qemu_talker, build_int32_sink, build_native_listener, build_native_talker,
         get_prebuilt_esp32_qemu_workspace_entry, require_zenohd,
     },
     output::LISTENER_READY_MARKER,
@@ -67,7 +67,7 @@ fn test_esp32_qemu_talker_boots() {
         nros_tests::skip!("espflash not available");
     }
 
-    let elf = build_esp32_qemu_talker().expect("Failed to build esp32-qemu-talker");
+    let elf = build_esp32_qemu_talker().require("esp32-qemu-talker");
 
     // Create flash image
     // issue 0535 — the packed image has no manifest row (it is a postprocess of
@@ -114,8 +114,8 @@ fn test_esp32_qemu_talker_boots() {
 
 /// Helper: build and create flash images for talker and listener
 fn build_esp32_flash_images() -> (std::path::PathBuf, std::path::PathBuf) {
-    let talker_elf = build_esp32_qemu_talker().expect("Failed to build esp32-qemu-talker");
-    let listener_elf = build_esp32_qemu_listener().expect("Failed to build esp32-qemu-listener");
+    let talker_elf = build_esp32_qemu_talker().require("esp32-qemu-talker");
+    let listener_elf = build_esp32_qemu_listener().require("esp32-qemu-listener");
 
     let esp32_qemu = nros_tests::build_dir(nros_tests::kind::ESP32_QEMU, &[]);
     let talker_bin = esp32_qemu.join("esp32-qemu-talker.bin");
@@ -281,7 +281,7 @@ fn test_esp32_talker_listener_e2e() {
 
 /// Helper: build ESP32 talker flash image only
 fn build_esp32_talker_flash() -> std::path::PathBuf {
-    let talker_elf = build_esp32_qemu_talker().expect("Failed to build esp32-qemu-talker");
+    let talker_elf = build_esp32_qemu_talker().require("esp32-qemu-talker");
     let talker_bin =
         nros_tests::build_dir(nros_tests::kind::ESP32_QEMU, &[]).join("esp32-qemu-talker.bin");
     create_esp32_flash_image(talker_elf, &talker_bin).expect("Failed to create talker flash image");
@@ -290,7 +290,7 @@ fn build_esp32_talker_flash() -> std::path::PathBuf {
 
 /// Helper: build ESP32 listener flash image only
 fn build_esp32_listener_flash() -> std::path::PathBuf {
-    let listener_elf = build_esp32_qemu_listener().expect("Failed to build esp32-qemu-listener");
+    let listener_elf = build_esp32_qemu_listener().require("esp32-qemu-listener");
     let listener_bin =
         nros_tests::build_dir(nros_tests::kind::ESP32_QEMU, &[]).join("esp32-qemu-listener.bin");
     create_esp32_flash_image(listener_elf, &listener_bin)
@@ -309,7 +309,7 @@ fn test_esp32_to_native() {
 
     // Only need talker flash + native listener
     let talker_bin = build_esp32_talker_flash();
-    let native_listener = build_native_listener().expect("Failed to build native listener");
+    let native_listener = build_native_listener().require("native listener");
 
     // Start zenohd on the baked pubsub port (kills any orphaned zenohd first)
     let _router =
@@ -389,7 +389,7 @@ fn test_native_to_esp32() {
 
     // Only need listener flash + native talker
     let listener_bin = build_esp32_listener_flash();
-    let native_talker = build_native_talker().expect("Failed to build native talker");
+    let native_talker = build_native_talker().require("native talker");
 
     // Start zenohd on the baked pubsub port (kills any orphaned zenohd first)
     let _router =
@@ -532,9 +532,7 @@ fn test_esp32_workspace_entry_e2e() {
     // skip-budget check kept naming ("Something is still laundering the
     // resolver's Err into a [SKIPPED]") — its own two sibling tests twenty
     // lines up already `.expect()` their native peers.
-    let native_listener = build_int32_sink()
-        .expect("Failed to build int32-sink")
-        .to_path_buf();
+    let native_listener = build_int32_sink().require("int32-sink").to_path_buf();
     let mut listener_cmd = Command::new(native_listener);
     listener_cmd
         .env(

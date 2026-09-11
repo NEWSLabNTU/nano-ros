@@ -48,10 +48,10 @@ use nros_tests::{
     checker::assert_delivery,
     count_pattern,
     fixtures::{
-        DEFAULT_ROS_DISTRO, ManagedProcess, Rmw as FixtureRmw, Ros2DdsProcess, Ros2Process,
-        ZenohRouter, build_native_c_example_rmw, build_ros2_string_interop, lifecycle_node_binary,
-        listener_binary, require_ros2, require_ros2_cyclonedds, ros2_env_setup_with_locator,
-        service_client_binary, service_server_binary, talker_binary,
+        DEFAULT_ROS_DISTRO, ManagedProcess, RequireFixture, Rmw as FixtureRmw, Ros2DdsProcess,
+        Ros2Process, ZenohRouter, build_native_c_example_rmw, build_ros2_string_interop,
+        lifecycle_node_binary, listener_binary, require_ros2, require_ros2_cyclonedds,
+        ros2_env_setup_with_locator, service_client_binary, service_server_binary, talker_binary,
     },
     matrix::{Lang, PlatformId, Rmw, Workload},
     output, skip,
@@ -425,7 +425,7 @@ fn interop(#[case] cell: Cell) {
             let locator = router.locator();
             let sub_bin = build_ros2_string_interop()
                 .map(|p| p.to_path_buf())
-                .unwrap_or_else(|e| skip!("ros2-string-interop fixture not built: {e}"));
+                .require("ros2-string-interop");
 
             // nano subscriber first, so its /chatter subscription is declared
             // before the stock talker publishes.

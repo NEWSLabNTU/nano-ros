@@ -52,6 +52,7 @@
 //!
 //! Interop cell: `native-qos-event-rust-zenoh-r2n` (`interop::CELLS`).
 
+use nros_tests::fixtures::RequireFixture;
 use std::process::Command;
 
 use nros_tests::{
@@ -118,7 +119,7 @@ fn stock_ros2_publisher_raises_a_liveliness_event() {
     let _talker = Ros2Process::demo_nodes_cpp_talker(&locator, DEFAULT_ROS_DISTRO)
         .expect("start the stock talker");
 
-    let probe = fixtures::build_qos_event_probe().expect("prebuilt qos-event-probe");
+    let probe = fixtures::build_qos_event_probe().require("prebuilt qos-event-probe");
     let out = Command::new(probe)
         .env("NROS_LOCATOR", &locator)
         .env("QOS_EVENT_PROBE_TOPIC", "/chatter")

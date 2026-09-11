@@ -313,6 +313,15 @@ skippable-tests-tolerant:
 staleness-probe-exemptions:
     @bash scripts/check-staleness-probe-exemptions.sh
 
+# issue 1129 / phase-450 W1 — converting a fixture-resolver `Err` is ONE
+# decision and belongs in one place. This keys on the CALL (`require`), not on
+# the wording a site chose, because keying on wording is exactly what it
+# replaces: `check-skip-budget` grepped `not prebuilt` and saw 4 of 61 sites,
+# because 57 said `not built`. A 62nd wording cannot reopen a rule that never
+# read the words.
+fixture-require:
+    @python3 scripts/check-fixture-require.py
+
 # Issue 0580 — a test must ASSIGN its ROS domain, never name one: a literal is a
 # shared bus, and two concurrent runs colliding on it presents as WRONG DATA
 # rather than as a collision.

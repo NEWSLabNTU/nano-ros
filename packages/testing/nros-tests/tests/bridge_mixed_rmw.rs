@@ -41,8 +41,8 @@ use std::{path::PathBuf, process::Command, time::Duration};
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, XrceAgent, ZenohRouter, build_bridge_zenoh_to_xrce_fwd, require_xrce_agent,
-        require_zenohd, talker_binary, xrce_listener_binary, zenohd_unique,
+        ManagedProcess, RequireFixture, XrceAgent, ZenohRouter, build_bridge_zenoh_to_xrce_fwd,
+        require_xrce_agent, require_zenohd, talker_binary, xrce_listener_binary, zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -69,7 +69,7 @@ fn test_zenoh_to_xrce_bridge_e2e(
     // arm is unreachable there. What is left is a missing / stale / failed-build
     // IN-LANE fixture, which issue 0584 makes a hard failure.
     let bridge_bin = build_bridge_zenoh_to_xrce_fwd()
-        .expect("bridge-zenoh-to-xrce-fwd fixture (bins/bridge-zenoh-to-xrce-fwd)")
+        .require("bridge-zenoh-to-xrce-fwd (bins/bridge-zenoh-to-xrce-fwd)")
         .to_path_buf();
 
     let zenoh_locator = zenohd_unique.locator();

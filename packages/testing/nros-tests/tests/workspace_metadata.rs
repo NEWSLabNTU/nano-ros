@@ -22,6 +22,7 @@
 //! with the standard prebuilt-fixture hint when the build-fixtures stage
 //! has not run.
 
+use nros_tests::fixtures::RequireFixture;
 use std::{fs, process::Command, time::Duration};
 
 #[test]
@@ -74,7 +75,7 @@ fn cmake_workspace_metadata_emits_components_cmake() -> nros_tests::TestResult<(
 #[test]
 fn rust_workspace_entry_fixture_is_prebuilt() {
     let entry = nros_tests::fixtures::build_native_workspace_rust_entry()
-        .expect("native Rust workspace Entry fixture");
+        .require("native Rust workspace Entry");
     assert!(
         entry.is_file(),
         "missing Rust workspace Entry pkg binary at {}",
@@ -85,7 +86,7 @@ fn rust_workspace_entry_fixture_is_prebuilt() {
 #[test]
 fn cmake_pure_cpp_workspace_entry_fixture_is_prebuilt() {
     let entry = nros_tests::fixtures::build_native_workspace_cpp_entry()
-        .expect("native C++ workspace Entry fixture");
+        .require("native C++ workspace Entry");
     assert!(
         entry.is_file(),
         "missing C++ workspace Entry pkg binary at {}",
@@ -96,7 +97,7 @@ fn cmake_pure_cpp_workspace_entry_fixture_is_prebuilt() {
 #[test]
 fn cmake_mixed_c_cpp_workspace_entry_fixture_is_prebuilt() {
     let entry = nros_tests::fixtures::build_native_workspace_mixed_entry()
-        .expect("native mixed C/C++ workspace Entry fixture");
+        .require("native mixed C/C++ workspace Entry");
     assert!(
         entry.is_file(),
         "missing mixed C/C++ workspace Entry pkg binary at {}",
@@ -106,8 +107,8 @@ fn cmake_mixed_c_cpp_workspace_entry_fixture_is_prebuilt() {
 
 #[test]
 fn cmake_pure_c_workspace_entry_fixture_is_prebuilt() {
-    let entry = nros_tests::fixtures::build_native_workspace_c_entry()
-        .expect("native C workspace Entry fixture");
+    let entry =
+        nros_tests::fixtures::build_native_workspace_c_entry().require("native C workspace Entry");
     assert!(
         entry.is_file(),
         "missing C workspace Entry pkg binary at {}",
@@ -122,9 +123,9 @@ fn rust_workspace_entry_runs_prebuilt_pubsub_e2e() {
     }
 
     let entry = nros_tests::fixtures::build_native_workspace_rust_entry()
-        .expect("native Rust workspace Entry fixture");
+        .require("native Rust workspace Entry");
     let talker = nros_tests::fixtures::build_native_talker()
-        .expect("native Rust talker fixture for workspace E2E publisher");
+        .require("native Rust talker for workspace E2E publisher");
     let router = nros_tests::fixtures::or_skip(nros_tests::fixtures::ZenohRouter::start_unique());
 
     let mut cmd = Command::new(entry);
@@ -171,7 +172,7 @@ fn rust_workspace_entry_runs_prebuilt_pubsub_e2e() {
 #[test]
 fn cmake_cpp_workspace_entry_starts_prebuilt_runtime() {
     let entry = nros_tests::fixtures::build_native_workspace_cpp_entry()
-        .expect("native C++ workspace Entry fixture");
+        .require("native C++ workspace Entry");
     let mut proc =
         nros_tests::process::ManagedProcess::spawn(entry, &[], "C++ workspace native_entry")
             .expect("spawn C++ workspace Entry fixture");

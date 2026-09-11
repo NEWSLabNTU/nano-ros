@@ -68,7 +68,8 @@
 use nros_tests::{
     alloc::port_of,
     fixtures::{
-        QemuProcess, ZenohRouter, build_freertos_workspace_c_entry, freertos, is_qemu_available,
+        QemuProcess, RequireFixture, ZenohRouter, build_freertos_workspace_c_entry, freertos,
+        is_qemu_available,
     },
     matrix::{Lang, PlatformId, Workload},
     ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator},
@@ -114,8 +115,7 @@ fn nros_freertos_mps2_publisher_reaches_ros2_topic_echo() {
         skip!("qemu-system-arm not found");
     }
 
-    let entry = build_freertos_workspace_c_entry()
-        .unwrap_or_else(|e| skip!("freertos C workspace entry not built: {e}"));
+    let entry = build_freertos_workspace_c_entry().require("freertos C workspace entry");
 
     // 0.0.0.0, not 127.0.0.1: the guest reaches this router through the slirp
     // gateway 192.0.3.1, which is a DIFFERENT host address than loopback. The

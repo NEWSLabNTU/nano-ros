@@ -31,8 +31,8 @@
 //! Run with: `cargo nextest run -p nros-tests --test realtime_subnode_cpp_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_workspace_cpp_subnode_realtime_entry, require_zenohd,
-    zenohd_unique,
+    ManagedProcess, RequireFixture, ZenohRouter, build_native_workspace_cpp_subnode_realtime_entry,
+    require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
 use std::{process::Command, time::Duration};
@@ -54,7 +54,7 @@ fn realtime_subnode_cpp_two_groups_on_two_tiers(zenohd_unique: ZenohRouter) {
     }
     let entry = build_native_workspace_cpp_subnode_realtime_entry()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("realtime-cpp entry fixture not built: {e}"));
+        .require("realtime-cpp entry");
     let locator = zenohd_unique.locator();
 
     let mut ctrl = nros_tests::fixtures::spawn_int32_sink(Some("/ctrl"), &locator);

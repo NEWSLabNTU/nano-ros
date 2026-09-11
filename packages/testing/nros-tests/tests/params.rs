@@ -6,7 +6,7 @@
 
 use nros_tests::{
     fixtures::{
-        ManagedProcess, ZenohRouter, build_int32_sink, build_native_param_talker,
+        ManagedProcess, RequireFixture, ZenohRouter, build_int32_sink, build_native_param_talker,
         build_native_workspace_rust_params_entry, require_ros2, require_zenohd, zenohd_unique,
     },
     output::param_talker,
@@ -31,7 +31,7 @@ fn test_talker_uses_default_param(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let binary = build_native_param_talker().expect("Failed to build");
+    let binary = build_native_param_talker().require("fixture");
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(binary);
@@ -79,7 +79,7 @@ fn test_talker_param_declaration(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let binary = build_native_param_talker().expect("Failed to build");
+    let binary = build_native_param_talker().require("fixture");
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(binary);
@@ -132,7 +132,7 @@ fn test_talker_param_declaration(zenohd_unique: ZenohRouter) {
 
 /// Helper to start a talker and wait for parameter services to register
 fn start_talker_with_params(locator: &str) -> ManagedProcess {
-    let binary = build_native_param_talker().expect("Failed to build");
+    let binary = build_native_param_talker().require("fixture");
 
     let mut cmd = Command::new(binary);
     cmd.env("RUST_LOG", "info")
@@ -395,7 +395,7 @@ fn test_param_integer_type(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let binary = build_native_param_talker().expect("Failed to build");
+    let binary = build_native_param_talker().require("fixture");
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(binary);
@@ -457,7 +457,7 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
     // nros `/chatter` subscriber (prints `Received: <data>`).
     let listener_bin = build_int32_sink()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
+        .require("native listener");
     let mut lis_cmd = Command::new(listener_bin);
     lis_cmd
         .env("RUST_LOG", "info")
@@ -474,7 +474,7 @@ fn test_ros2_param_set_reconfigures_live_read(zenohd_unique: ZenohRouter) {
     // The parameterised workspace entry (`ctx.parameter` live-read node).
     let entry_bin = build_native_workspace_rust_params_entry()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("params workspace entry fixture not built: {e}"));
+        .require("params workspace entry");
     let mut entry_cmd = Command::new(entry_bin);
     entry_cmd
         .env("RUST_LOG", "info")

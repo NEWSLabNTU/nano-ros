@@ -36,7 +36,7 @@ fn require_prebuilt(
 ) -> &'static std::path::Path {
     match result {
         Ok(p) => p,
-        Err(nros_tests::TestError::BuildFailed(msg)) if msg.contains("not prebuilt") => {
+        Err(nros_tests::TestError::FixtureNotBuilt(msg)) => {
             nros_tests::skip!("{name}: {msg}")
         }
         Err(e) => panic!("Failed to build {name}: {e:?}"),

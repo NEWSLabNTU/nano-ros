@@ -64,8 +64,8 @@ use std::{
 use nros_tests::{
     count_pattern,
     fixtures::{
-        DEFAULT_ROS_DISTRO, ManagedProcess, Rmw, Ros2DdsProcess, ZenohRouter, build_int32_sink_rmw,
-        build_native_talker_header, build_native_workspace_rust_bridge_entry,
+        DEFAULT_ROS_DISTRO, ManagedProcess, RequireFixture, Rmw, Ros2DdsProcess, ZenohRouter,
+        build_int32_sink_rmw, build_native_talker_header, build_native_workspace_rust_bridge_entry,
         require_ros2_cyclonedds, require_zenohd,
     },
 };
@@ -90,7 +90,7 @@ const CYCLONE_NODE: &str = "S1";
 fn nano_cyclone_listener() -> PathBuf {
     build_int32_sink_rmw(Rmw::Cyclonedds)
         .map(Path::to_path_buf)
-        .expect("int32-sink cyclonedds fixture (row `int32-sink-cyclonedds`)")
+        .require("int32-sink cyclonedds (row `int32-sink-cyclonedds`)")
 }
 
 fn spawn_cyclone_listener(binary: &Path, domain: u8) -> ManagedProcess {
@@ -142,10 +142,7 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener() {
     // `Err` here means the fixture is missing or stale in a lane that selected
     // it — hard failure (issue 1124).
     let bridge_bin = build_native_workspace_rust_bridge_entry()
-        .expect(
-            "bridge-cyclonedds native_entry fixture (row `workspace-rust-native-bridge`); run \
-             `just native build-workspace-fixtures` (needs `just cyclonedds setup`)",
-        )
+        .require("bridge-cyclonedds native_entry (row `workspace-rust-native-bridge`); run \\ `just native build-workspace-fixtures` (needs `just cyclonedds setup`)")
         .to_path_buf();
     let listener_bin = nano_cyclone_listener();
 
@@ -179,7 +176,7 @@ fn declarative_zenoh_to_cyclonedds_bridge_to_nano_listener() {
     std::thread::sleep(Duration::from_secs(2));
 
     let talker_binary = build_native_talker_header()
-        .expect("talker `header` fixture (row `header-chatter-talker`)")
+        .require("talker `header` (row `header-chatter-talker`)")
         .to_path_buf();
     let mut talker = spawn_zenoh_talker(&talker_binary, &zenoh_locator);
 
@@ -225,10 +222,10 @@ fn declarative_zenoh_to_cyclonedds_nested_header_to_ros2() {
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
     }
     let bridge_bin = build_native_workspace_rust_bridge_entry()
-        .expect("bridge-cyclonedds native_entry fixture (row `workspace-rust-native-bridge`)")
+        .require("bridge-cyclonedds native_entry (row `workspace-rust-native-bridge`)")
         .to_path_buf();
     let talker_bin = build_native_talker_header()
-        .expect("talker `header` fixture (row `header-chatter-talker`)")
+        .require("talker `header` (row `header-chatter-talker`)")
         .to_path_buf();
 
     let zenohd = nros_tests::fixtures::or_skip(ZenohRouter::start_unique());

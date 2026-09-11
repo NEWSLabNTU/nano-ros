@@ -25,6 +25,7 @@
 //!
 //! Interop cell: `native-graph-rust-zenoh-r2n` (`interop::CELLS`).
 
+use nros_tests::fixtures::RequireFixture;
 use std::{process::Command, time::Duration};
 
 use nros_tests::{
@@ -95,7 +96,7 @@ fn nano_ros_enumerates_a_stock_ros2_node() {
     // distinction is the whole point: issue 0903 presented as "zero topics",
     // which is indistinguishable from "no topics exist" unless something
     // asserts a peer must be visible.
-    let probe = fixtures::build_graph_probe().expect("prebuilt graph-probe");
+    let probe = fixtures::build_graph_probe().require("prebuilt graph-probe");
     let out = Command::new(probe)
         .env("NROS_LOCATOR", &locator)
         .env("GRAPH_PROBE_EXPECT_NODE", "talker")
@@ -189,7 +190,7 @@ fn cyclone_enumerates_a_stock_ros2_node() {
             .expect("start the stock talker on cyclone");
 
     let probe = fixtures::build_graph_probe_rmw(nros_tests::fixtures::Rmw::Cyclonedds)
-        .expect("prebuilt cyclone graph-probe");
+        .require("prebuilt cyclone graph-probe");
     let mut cmd = Command::new(probe);
     cmd.env("GRAPH_PROBE_EXPECT_NODE", "talker")
         .env("GRAPH_PROBE_TIMEOUT_MS", "20000")

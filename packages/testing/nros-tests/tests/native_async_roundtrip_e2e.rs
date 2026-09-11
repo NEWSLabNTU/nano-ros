@@ -15,8 +15,9 @@
 //! Run: `cargo nextest run -p nros-tests --test native_async_roundtrip_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_action_server, build_native_async_action_client,
-    build_native_async_service_client, build_native_service_server, require_zenohd, zenohd_unique,
+    ManagedProcess, RequireFixture, ZenohRouter, build_native_action_server,
+    build_native_async_action_client, build_native_async_service_client,
+    build_native_service_server, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
 use std::{process::Command, time::Duration};
@@ -36,7 +37,7 @@ fn native_async_service_client_awaits_reply(zenohd_unique: ZenohRouter) {
     }
     let server = build_native_service_server()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("native service-server fixture not built: {e}"));
+        .require("native service-server");
     let client = build_native_async_service_client()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|e| {
@@ -84,10 +85,10 @@ fn native_async_action_client_awaits_goal_and_result(zenohd_unique: ZenohRouter)
     }
     let server = build_native_action_server()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("native action-server fixture not built: {e}"));
+        .require("native action-server");
     let client = build_native_async_action_client()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("native async action-client fixture not built: {e}"));
+        .require("native async action-client");
     let locator = zenohd_unique.locator();
 
     let mut srv = spawn(&server, &locator, "action-server");

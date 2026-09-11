@@ -29,8 +29,8 @@
 
 use nros_tests::{
     fixtures::{
-        ManagedProcess, ZenohRouter, build_native_param_two_node_talker, require_ros2,
-        require_zenohd, zenohd_unique,
+        ManagedProcess, RequireFixture, ZenohRouter, build_native_param_two_node_talker,
+        require_ros2, require_zenohd, zenohd_unique,
     },
     output::PARAM_SERVICE_NODE_PREFIX,
     ros2::DEFAULT_ROS_DISTRO,
@@ -76,8 +76,7 @@ impl Drop for TwoNodeImage {
 /// puts the failure where the cause is, and the diagnostic carries what the
 /// process actually printed.
 fn start_two_node_image(locator: &str) -> TwoNodeImage {
-    let binary = build_native_param_two_node_talker()
-        .unwrap_or_else(|e| nros_tests::skip!("param-two-node-talker fixture not built: {e}"));
+    let binary = build_native_param_two_node_talker().require("param-two-node-talker");
 
     let mut cmd = Command::new(binary);
     cmd.env("RUST_LOG", "info")
