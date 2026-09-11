@@ -685,7 +685,9 @@ Two things differ for a **Rust** app (C/C++ apps skip this section):
    `modules/nano-ros/packages/core/*` and the generated interfaces at
    `generated/*`. Adjust `--nano-ros-path` to your workspace's
    `modules/nano-ros/packages/core` (the dir holding `nros-core`, `nros-node`, …).
-   The example apps' committed `.cargo/config.toml` is for the in-tree build only.
+   In-tree examples commit no `.cargo/config.toml` at all (phase-445 W6): their
+   equivalent is generated into `build/<image>/nros-cargo.toml` and is likewise
+   repo-relative, so it is no more copyable than the old file was.
 
 ## Run
 
