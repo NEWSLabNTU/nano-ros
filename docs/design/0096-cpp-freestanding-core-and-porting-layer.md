@@ -438,6 +438,64 @@ the parameter instead.
 returns rather than parameters, so a caller writing `auto` is unaffected while a
 caller writing `std::string s = ...` is not. That is W8's to enumerate.
 
+### D9 — Entity STORAGE is the open problem W8 has to solve first (amendment, 2026-09-12)
+
+The handle in D2 answers *what `X::SharedPtr` is*. It does not answer *what the
+handle points at*, and on the hosted path today that second question has an
+answer this design removes.
+
+**What the hosted path does now.** `create_publisher<M>(topic, qos)` calls
+`std::make_shared<Publisher<M>>(...)` and pushes the result into
+`detail::NodeHosted::owned_entities`, a `std::vector<std::shared_ptr<void>>`
+with eight `push_back` sites across `nros.hpp`, `node.hpp` and `timer.hpp`, no
+`erase`, no `clear`, and one drain in `~Node()`. The census already established
+that this models ADDRESS STABILITY rather than shared ownership. But address
+stability is a real requirement, not a fiction: the executor arena holds a raw
+pointer as its dispatch context and has no unregister path, so the entity must
+outlive the caller's handle whatever the caller does with it.
+
+**So a freestanding `create_*` needs somewhere to put the entity**, and neither
+`make_shared` nor an unbounded vector is available. This is not a detail of W8;
+it is W8's first decision, and the sizes make it consequential:
+
+| entity | `sizeof` (all three arms) |
+| --- | --- |
+| `Timer` | 32 |
+| `Service<int>` | 560 |
+| `Publisher<int>` | 824 |
+| `Subscription<int>` | 888 |
+| `Client<int>` | **4 672** |
+
+A fixed pool sized for the worst case in every node would be the wrong default
+by an order of magnitude — one unused `Client` slot costs more than a node.
+
+**Three candidates, and the tree already contains material for the third.**
+
+1. *Caller-owned storage, no pool.* The out-ref family
+   (`create_publisher(out, topic, qos)`) already works this way and is ungated
+   today. It is the cheapest and it is NOT drop-in: the ported spelling is
+   `auto pub = node->create_publisher<M>(...)`, which needs a returned handle.
+2. *One fixed pool per entity kind, a template parameter on the node.*
+   `nros::NodeWithTimers<N>` is exactly this shape already, and phase-427 W4
+   introduced it for exactly this reason. Generalising it means the node type a
+   user writes carries its entity counts, which upstream's does not.
+3. *Counts DERIVED from the contract, not authored.* phase-412's derived-counts
+   machinery already computes per-image entity counts from declarations, and
+   `NROS_CPP_EXECUTOR_STORAGE_SIZE` is already a generated number in
+   `nros_cpp_config_generated.h`. An entity arena sized the same way costs the
+   user nothing to write and is measured per image rather than guessed.
+
+(3) is the direction that fits what this repository already does, and it is the
+one that keeps `auto pub = node->create_publisher<M>(...)` drop-in. It is also
+the one with a real cost to measure — `just mem-report` on a node before and
+after — which is why it is stated here as a decision to make with numbers rather
+than made here.
+
+**W8 does not start until this is settled.** Recording it as an open decision is
+deliberate: the rest of W8 is mechanical once it is answered, and mechanical
+work done on top of an unanswered lifetime question is how a use-after-free
+ships.
+
 ## What this corrects in existing documents
 
 Three statements are wrong in the tree today and are corrected here rather than
