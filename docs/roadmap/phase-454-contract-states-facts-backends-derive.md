@@ -338,11 +338,83 @@ Also stale and worth fixing while here: the hint text at
 Acceptance: the gate lists each retired knob with its single legitimate reader,
 and a second reader is a hard red.
 
-### W10 — the C and Rust halves of the declared-QoS check
+### W10 — the C and Rust halves of the declared-QoS check — **LANDED**
 
 `_nros_declared_qos_arm` returns early for Rust and INTERFACE targets, and there
 is no C equivalent of `NROS_ASSERT_DECLARED_DEPTH`. The descriptor is
 language-neutral, so this is where that closes.
+
+**One of those two premises was wrong, and measuring it changed the shape of
+the wave.** The descriptor is language-neutral and C already receives it —
+`_nros_declared_qos_arm()` returns early for RUST components and for INTERFACE
+targets, and a C component is a STATIC library like a C++ one, so a C component
+has had `nros_declared_qos_generated.h` on its PRIVATE include path all along
+and only lacked the check. **Rust cannot receive it at all**, and not for want
+of wiring: `nano_ros_node_register(LANGUAGE RUST)` creates an *empty INTERFACE
+library* (`NanoRosNodeRegister.cmake:626-651`) whose sources are compiled by the
+workspace runtime crate, so there is no preprocessor in that lane and no
+include path to put a header on. "Arm the header for Rust targets" is not a
+thing that can be done. The two halves therefore travel different roads.
+
+**C — compile time, plus registration.** `nros/declared_qos.h`, with
+`NROS_ASSERT_DECLARED_DEPTH(type, topic, depth, topic_text)` mirroring the C++
+macro's four arguments. Three measurements decided the mechanism:
+
+* `"abc"[0]` is **not** an integer constant expression (gcc: *expression in
+  static assertion is not constant*; clang: *not an integral constant
+  expression*), so a character-wise macro chain cannot reach `_Static_assert`.
+  `__builtin_strcmp` over two literals **does** fold — under `-std=c11
+  -pedantic`, `-ffreestanding`, `-fno-builtin`, and on the pinned
+  `arm-none-eabi-gcc 13.2`.
+* A macro parameter of the caller is **not** substituted inside a separately
+  defined row macro, so the obvious port of the C++ X-macro reads
+  `use of undeclared identifier 'q_type'`. The query has to travel THROUGH the
+  list, which is why the generator now emits a second, query-parameterised
+  `NROS_DECLARED_QOS_ROWS_Q` beside the C++ `NROS_DECLARED_QOS_ROWS` — same
+  rows, one loop, one assertion holding the two row counts equal.
+* A `_Static_assert` message is a string literal and cannot interpolate an
+  `int`, exactly as in C++. C's answer to what C++ does with
+  `declared_depth_agrees<Declared, Passed>` is a pair of `extern char` array
+  declarations of one name sized `declared` and `passed`: equal depths give
+  `char[1]` twice and nothing happens, unequal ones give
+  `conflicting types … have 'char[10]' / previous declaration … 'char[1]'`.
+  The topic comes from the macro, the numbers from a type.
+
+A C call site whose depth is not a constant expression — every
+`nros_cpp_qos_t` built in a helper function — takes the registration check
+instead.
+
+**Rust — registration.** There is no macro seam at the subscribe site
+(`nros::main!` emits only the boot scaffold; there is no `nros::subscribe!`)
+and the topic is a runtime `&str`, so no `const` assertion is possible.
+`NROS_ENTITY_DECLARED_DEPTHS` (`type|topic=depth`) now reaches every lane —
+the Zephyr cargo lane already forwarded it, and
+`_nros_declared_depth_table_env` adds the rest — `nros-node/build.rs` renders
+it as `config::DECLARED_QOS_ROWS` with **both** type spellings, and
+`declared_qos::check` refuses a disagreement with
+`NodeError::DeclaredDepthMismatch` at every one of the 14 places a
+subscription is created from a topic and a QoS. The C/C++ FFI registration
+seams call the same function, which is how a C component reaches it —
+`nros_cpp_subscription_register` is what a C configure function calls, and it
+returns the same `-403` the C++ boot check already used.
+
+Note the two guards on one carrier, which is the reason
+`_nros_declared_depth_table_env` is a sibling of `_nros_qos_depth_env` rather
+than an extension of it: SIZING must refuse a partial picture (the arena bills
+every slot the same price, so a table over the endpoints that happen to be
+declared sizes an image from a subset of itself), while CHECKING per endpoint
+does not — whether `/chatter`'s declared depth matches the depth registered on
+`/chatter` is a question about `/chatter`. Every in-tree contract leaves at
+least one subscription silent, so requiring the sizing guard would have meant
+no image in the tree was checked at all.
+
+Gates: `check-declared-qos-header` grew case F2 (the C negative control against
+the header a real configure just rendered — 25 assertions, from 16),
+`just check c` grew the positive/expected-failure pair, and
+`check-declared-qos-registration` is new: it builds nros-node twice and asserts
+that the declared-image test passes WITH `NROS_ENTITY_DECLARED_DEPTHS` and does
+not exist without it, so a cfg that was always on cannot make the lane green
+over nothing.
 
 ## Acceptance for the phase
 

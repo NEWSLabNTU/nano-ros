@@ -25,6 +25,17 @@
     NROS_DECLARED_QOS_ROW("std_msgs::msg::dds_::Int32_", "/chatter", 1) \
     NROS_DECLARED_QOS_ROW("std_msgs/msg/Int32", "/chatter", 1) \
     /* end */
+
+/* X-macro, QUERY form (phase-454 W10) -- the same rows, with the
+ * row macro AND the queried (type, topic) passed in, so
+ * `nros/declared_qos.h` can expand the table into ONE constant
+ * expression a C11 `_Static_assert` accepts. C++ reads the form
+ * above; C reads this one. */
+#define NROS_DECLARED_QOS_ROWS_Q(NROS_DECLARED_QOS_ROW_Q, \
+        nros_q_type, nros_q_topic) \
+    NROS_DECLARED_QOS_ROW_Q("std_msgs::msg::dds_::Int32_", "/chatter", 1, nros_q_type, nros_q_topic) \
+    NROS_DECLARED_QOS_ROW_Q("std_msgs/msg/Int32", "/chatter", 1, nros_q_type, nros_q_topic) \
+    /* end */
 #define NROS_DECLARED_QOS_ROW_COUNT 2
 
 #endif /* NROS_DECLARED_QOS_GENERATED_H */

@@ -4886,6 +4886,11 @@ impl<'s> Executor<'s> {
         }
         // W3b.5 — contracted-endpoint age hook (None = free).
         let age_mon = self.age_lookup::<M>(topic_name);
+        // phase-454 W10 — the depth this registration asks for against the
+        // depth this system DECLARED for the topic. Before the backend call,
+        // so a disagreement costs no subscription; `Ok` when nothing was
+        // declared, which is every image with no contract sidecar.
+        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -5050,6 +5055,11 @@ impl<'s> Executor<'s> {
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
+        // phase-454 W10 — the depth this registration asks for against the
+        // depth this system DECLARED for the topic. Before the backend call,
+        // so a disagreement costs no subscription; `Ok` when nothing was
+        // declared, which is every image with no contract sidecar.
+        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -5115,6 +5125,11 @@ impl<'s> Executor<'s> {
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
+        // phase-454 W10 — the depth this registration asks for against the
+        // depth this system DECLARED for the topic. Before the backend call,
+        // so a disagreement costs no subscription; `Ok` when nothing was
+        // declared, which is every image with no contract sidecar.
+        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -5197,6 +5212,11 @@ impl<'s> Executor<'s> {
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
+        // phase-454 W10 — the depth this registration asks for against the
+        // depth this system DECLARED for the topic. Before the backend call,
+        // so a disagreement costs no subscription; `Ok` when nothing was
+        // declared, which is every image with no contract sidecar.
+        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -5276,6 +5296,11 @@ impl<'s> Executor<'s> {
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
+        // phase-454 W10 — the depth this registration asks for against the
+        // depth this system DECLARED for the topic. Before the backend call,
+        // so a disagreement costs no subscription; `Ok` when nothing was
+        // declared, which is every image with no contract sidecar.
+        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -5423,6 +5448,11 @@ impl<'s> Executor<'s> {
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
+        // phase-454 W10 — the depth this registration asks for against the
+        // depth this system DECLARED for the topic. Before the backend call,
+        // so a disagreement costs no subscription; `Ok` when nothing was
+        // declared, which is every image with no contract sidecar.
+        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -5501,6 +5531,11 @@ impl<'s> Executor<'s> {
         if !node_name.is_empty() {
             topic = topic.with_node_name(&node_name);
         }
+        // phase-454 W10 — the depth this registration asks for against the
+        // depth this system DECLARED for the topic. Before the backend call,
+        // so a disagreement costs no subscription; `Ok` when nothing was
+        // declared, which is every image with no contract sidecar.
+        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -5943,6 +5978,11 @@ impl<'s> Executor<'s> {
         if rx_buffer_hint != 0 {
             topic = topic.with_rx_buffer_hint(rx_buffer_hint);
         }
+        // phase-454 W10 — the depth this registration asks for against the
+        // depth this system DECLARED for the topic. Before the backend call,
+        // so a disagreement costs no subscription; `Ok` when nothing was
+        // declared, which is every image with no contract sidecar.
+        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -6084,6 +6124,11 @@ impl<'s> Executor<'s> {
         if rx_buffer_hint != 0 {
             topic = topic.with_rx_buffer_hint(rx_buffer_hint);
         }
+        // phase-454 W10 — the depth this registration asks for against the
+        // depth this system DECLARED for the topic. Before the backend call,
+        // so a disagreement costs no subscription; `Ok` when nothing was
+        // declared, which is every image with no contract sidecar.
+        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -6194,6 +6239,11 @@ impl<'s> Executor<'s> {
         if rx_buffer_hint != 0 {
             topic = topic.with_rx_buffer_hint(rx_buffer_hint);
         }
+        // phase-454 W10 — the depth this registration asks for against the
+        // depth this system DECLARED for the topic. Before the backend call,
+        // so a disagreement costs no subscription; `Ok` when nothing was
+        // declared, which is every image with no contract sidecar.
+        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)
@@ -6306,6 +6356,11 @@ impl<'s> Executor<'s> {
         if rx_buffer_hint != 0 {
             topic = topic.with_rx_buffer_hint(rx_buffer_hint);
         }
+        // phase-454 W10 — the depth this registration asks for against the
+        // depth this system DECLARED for the topic. Before the backend call,
+        // so a disagreement costs no subscription; `Ok` when nothing was
+        // declared, which is every image with no contract sidecar.
+        crate::declared_qos::check(topic.type_name, topic.name, qos.depth)?;
         let handle = {
             let session = self
                 .session_at_mut(session_idx)

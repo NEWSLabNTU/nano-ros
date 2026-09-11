@@ -282,6 +282,62 @@ c: c-fmt
             -Ipackages/platform/nros-platform-api/include \
             "packages/api/nros-c/tests/compile/$probe.c" || exit 1; \
     done
+    # phase-454 W10 — the DECLARED QoS depth, C's half.
+    #
+    # Same shape as the C++ pair at the bottom of `check cpp`, and for the same
+    # reason: a compile-time check is the easiest kind to leave vacuous, because
+    # a table that never matches, an `#if` arm never selected and a topic
+    # spelled differently all look exactly like "no mismatch here".
+    #
+    # The table is the SAME committed artifact the C++ probes read — one
+    # generated descriptor, two languages, which is the claim W10 exists to
+    # make. The positive TU is compiled FIRST so a missing include path or a
+    # table that matches nothing shows up there rather than as a silent pass on
+    # the expected-failure below.
+    echo "  - declared QoS depth: the lookups and the three cases COMPILE (c11)"
+    test -f packages/api/nros-c/tests/compile/declared_qos_depth.c || { \
+        echo "ERROR: declared_qos_depth.c is MISSING -- this check passes on absence." >&2; \
+        exit 1; \
+    }
+    cc -fsyntax-only -std=c11 -Wall -Wextra \
+        -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/declared_qos_depth.c
+    test -f packages/api/nros-c/tests/compile/declared_qos_depth_probe.c || { \
+        echo "ERROR: declared_qos_depth_probe.c is MISSING -- the expected-failure check" >&2; \
+        echo "       below would PASS on a missing file, which is why this asserts first." >&2; \
+        exit 1; \
+    }
+    echo "  - declared QoS depth: a MISMATCH fails the build (c11, expected failure)"
+    _dqc_out="$(cc -fsyntax-only -std=c11 -Wall -Wextra \
+        -Ipackages/api/nros-cpp/tests/compile/declared-qos-fixture \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        packages/api/nros-c/tests/compile/declared_qos_depth_probe.c 2>&1)" && { \
+        echo "ERROR: declared_qos_depth_probe.c COMPILED. The fixture declares" >&2; \
+        echo "       sub:std_msgs/msg/Int32:/chatter@depth=1 and the call site passes 10;" >&2; \
+        echo "       NROS_ASSERT_DECLARED_DEPTH's _Static_assert did not fire, so the" >&2; \
+        echo "       declared depth is not reaching the C compiler and nothing is checked." >&2; \
+        exit 1; \
+    }
+    # A rejection is not enough: it must be OUR rejection, naming the topic and
+    # BOTH depths. The topic can only come from the macro (a _Static_assert
+    # message is a string literal); the numbers can only come from a TYPE, which
+    # is why the conflicting `char[N]` declarations exist beside it.
+    for _want in '\"/chatter\"' 'char[1]' 'char[10]' 'nros_declared_depth_vs_passed_at_line_'; do \
+        case "$_dqc_out" in \
+            *"$_want"*) ;; \
+            *) echo "ERROR: the C declared-depth diagnostic does not contain: $_want" >&2; \
+               echo "       It must name the TOPIC and BOTH depths, or a reader cannot tell" >&2; \
+               echo "       which subscription is wrong or which of the two numbers to fix." >&2; \
+               echo "--- compiler said ---" >&2; echo "$_dqc_out" >&2; \
+               exit 1 ;; \
+        esac; \
+    done
+
     # The typed SERVICE probe includes the committed golden output of the
     # service codegen pack, so a pack edit that emits uncompilable C fails here
     # in seconds rather than during a fixture build.

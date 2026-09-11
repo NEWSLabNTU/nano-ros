@@ -44,6 +44,13 @@
 #include <stdint.h>
 
 #include "nros/types.h" /* nros_ret_t */
+/* phase-454 W10 — `NROS_ASSERT_DECLARED_DEPTH`, for a C component that states a
+ * QoS depth on a `nros_cpp_subscription_register()` call. The C component
+ * surface is where a C node writes its subscriptions, so the check has to be
+ * here as well as on `<nros/subscription.h>`; the header is self-guarding and
+ * C-only, so a C++ TU that pulls this in (the cross-include syntax check does)
+ * sees nothing and keeps `<nros/declared_qos.hpp>`. */
+#include "nros/declared_qos.h"
 
 /* phase-263 A4 — the C component storage buffers below MUST be at least as large
  * as the REAL per-build runtime structs. Those exact sizes live in the generated

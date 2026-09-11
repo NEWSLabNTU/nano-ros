@@ -352,6 +352,23 @@ fn main() {
         4096
     };
     let param_svc_shapes = declared_param_service_shapes();
+    // phase-454 W10 — the per-endpoint declared depths, for the REGISTRATION
+    // check. Same carrier `subs_arena` sizes from, different guard: see
+    // `declared_qos_rows`.
+    let declared_qos_rows = declared_qos_rows();
+    // phase-454 W10 — "this build was handed a contract's depths".
+    //
+    // Emitted so the declared-image half of `declared_qos`'s tests can EXIST
+    // only where there is a table to test against. An in-tree unit-test build
+    // reaches no contract, so a test that read `DECLARED_QOS_ROWS` directly
+    // would assert the empty case and read as coverage of the lookup; this cfg
+    // is what lets `just check declared-qos-registration` build the same crate
+    // WITH a table and prove the check fires. A cfg rather than a runtime
+    // branch because a branch nothing takes is exactly the vacuous shape.
+    println!("cargo:rustc-check-cfg=cfg(nros_declared_qos_table)");
+    if declared_qos_rows != "None" {
+        println!("cargo:rustc-cfg=nros_declared_qos_table");
+    }
     // Phase 104.C.2 — multi-Node-per-Executor (rclcpp `add_node`
     // pattern). Most apps run a single Node per Executor; bridge
     // nodes typically need 2 (ingress + egress). Default 4 leaves
@@ -742,6 +759,21 @@ fn main() {
          contract does not declare every node's parameters.\n\
          pub const DECLARED_PARAM_SERVICE_SHAPES: Option<&[[usize; 9]]> = {param_svc_shapes};\n\
          \n\
+         /// phase-454 W10 -- the QoS history DEPTH this image's system \
+         DECLARED, per endpoint: `(type name, topic, depth)`. Read by \
+         `declared_qos::check` at every subscription registration \
+         (NROS_ENTITY_DECLARED_DEPTHS).\n\
+         ///\n\
+         /// Both TYPE spellings appear per declared endpoint -- the ROS \
+         `pkg/msg/Name` and the DDS-mangled `pkg::msg::dds_::Name_` -- because \
+         which one a generated message class carries is a property of the \
+         codegen that produced it.\n\
+         ///\n\
+         /// `None` is \"nobody declared\", never \"declared zero\": an image \
+         with no contract sidecar checks nothing and behaves exactly as it did \
+         before.\n\
+         pub const DECLARED_QOS_ROWS: Option<&[(&str, &str, u32)]> = {declared_qos_rows};\n\
+         \n\
          /// Maximum number of Nodes attached to a single Executor \
          (set via NROS_EXECUTOR_MAX_NODES, default 4). Phase 104.C.2.\n\
          pub const MAX_NODES: usize = {max_nodes};\n\
@@ -1129,6 +1161,100 @@ fn declared_param_service_shapes() -> String {
         })
         .collect();
     format!("Some(&[{}])", rows.join(", "))
+}
+
+/// phase-454 W10 -- `NROS_ENTITY_DECLARED_DEPTHS`, as the Rust literal
+/// `DECLARED_QOS_ROWS` is written from.
+///
+/// The SAME carrier `subs_arena` above reads, and deliberately so: a second
+/// name for the same fact is how a producer and a consumer of one table quietly
+/// stop meeting. What differs is the GUARD. Arena sizing refuses a partial
+/// picture -- it prices every subscription or none, so it needs
+/// `NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION == 0`. The per-endpoint
+/// CHECK has no such need: an endpoint the contract declares is checkable
+/// whether or not its neighbour is, and requiring the whole image to declare
+/// before any of it is checked would turn one silent endpoint into no checking
+/// at all.
+///
+/// Both TYPE spellings are emitted per row -- the ROS `pkg/msg/Name` the
+/// inventory carries and the DDS-mangled `pkg::msg::dds_::Name_` a generated
+/// Rust message class reports as `TYPE_NAME`. Which one a call site's `M`
+/// carries is a property of the CODEGEN that produced it, not something a
+/// lookup should have to predict; the C/C++ header takes the same two-row
+/// approach for the same reason.
+///
+/// Absent or empty is `None` -- no declaration, so nothing is checked, which is
+/// every image that has not opted in. A MALFORMED row refuses the build rather
+/// than being dropped: a row silently skipped is a check silently disabled, and
+/// that is indistinguishable from an image whose depths all agree.
+fn declared_qos_rows() -> String {
+    // The name is an ARGUMENT and not written at the `env::var` call, for the
+    // reason `declared_param_service_shapes` records: a literal
+    // `env::var("<forwarded knob>")` is issue 0460's shape.
+    println!("cargo:rerun-if-env-changed=NROS_ENTITY_DECLARED_DEPTHS");
+    let raw = declared_fact("NROS_ENTITY_DECLARED_DEPTHS").unwrap_or_default();
+    let mut rows: Vec<String> = Vec::new();
+    // cmake hands a list over as `;`-separated; be liberal about `,` too --
+    // the Zephyr lane converts one to the other on its way through
+    // `nros_cargo_build.cmake`.
+    for entry in raw.split([';', ',']) {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        // `type|topic=depth`. The depth follows the LAST `=`, so a topic
+        // containing one does not shift the field -- the same rule
+        // `_nros_qos_depth_env` states in `cmake/NanoRosEntityFacts.cmake` and
+        // `subs_arena` follows above.
+        let malformed = || -> ! {
+            panic!(
+                "\n\nnros-node: NROS_ENTITY_DECLARED_DEPTHS=`{raw}` is malformed at `{entry}`: \
+                 each row must be `type|topic=depth` with a non-negative integer depth. It is \
+                 written by the entity inventory from the contract sidecar (phase-454 W10); a \
+                 row dropped here would disable the declared-depth check for that endpoint \
+                 while every gate stayed green, so the build stops instead.\n"
+            )
+        };
+        let Some((head, depth)) = entry.rsplit_once('=') else {
+            malformed()
+        };
+        let Some((type_name, topic)) = head.split_once('|') else {
+            malformed()
+        };
+        let Ok(depth) = depth.trim().parse::<u32>() else {
+            malformed()
+        };
+        let type_name = type_name.trim();
+        let topic = topic.trim();
+        if type_name.is_empty() || topic.is_empty() {
+            malformed()
+        }
+        rows.push(format!("({type_name:?}, {topic:?}, {depth})"));
+        let dds = dds_type_name(type_name);
+        if dds != type_name {
+            rows.push(format!("({dds:?}, {topic:?}, {depth})"));
+        }
+    }
+    if rows.is_empty() {
+        return "None".into();
+    }
+    format!("Some(&[{}])", rows.join(", "))
+}
+
+/// `pkg/msg/Name` -> `pkg::msg::dds_::Name_`, the spelling a generated message
+/// class carries as `TYPE_NAME`. Anything that is not a three-segment ROS name
+/// is returned unchanged -- including a name already in the DDS spelling.
+///
+/// The same mapping `nros_cli_core::entity_inventory::dds_type_name` applies
+/// when it renders the C/C++ header. Two implementations of one mapping is a
+/// drift surface; this one exists because a build script cannot depend on the
+/// CLI, and `declared_qos::rows_carry_both_spellings` pins the shape.
+fn dds_type_name(ros: &str) -> String {
+    let parts: Vec<&str> = ros.split('/').collect();
+    if parts.len() != 3 || parts.iter().any(|p| p.is_empty()) {
+        return ros.to_string();
+    }
+    format!("{}::{}::dds_::{}_", parts[0], parts[1], parts[2])
 }
 
 /// A declared FACT the cmake road forwards through the environment: present

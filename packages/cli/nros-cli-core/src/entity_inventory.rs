@@ -2514,7 +2514,14 @@ impl EntityInventory {
         }
     }
 
-    /// The C++ compile-time table: `nros_declared_qos_generated.h`.
+    /// The C and C++ compile-time table: `nros_declared_qos_generated.h`.
+    ///
+    /// TWO X-macro lists, the same rows in both (phase-454 W10):
+    /// `NROS_DECLARED_QOS_ROWS`, read by `nros/declared_qos.hpp`, and
+    /// `NROS_DECLARED_QOS_ROWS_Q`, read by `nros/declared_qos.h`. The second
+    /// exists because C has no `constexpr`, so a C lookup is built by the
+    /// PREPROCESSOR and the queried `(type, topic)` has to travel through the
+    /// list to reach each row -- see the comment beside its emission below.
     ///
     /// SUBSCRIPTIONS only, and that is the scope of the consumer rather than a
     /// shortcut. `NROS_SUBSCRIBE` is the one macro that asserts against this
@@ -2616,6 +2623,52 @@ impl EntityInventory {
                         if dds != r.type_name {
                             s.push_str(&format!(
                                 "    NROS_DECLARED_QOS_ROW(\"{}\", \"{}\", {}) \\\n",
+                                c_escape(&r.type_name),
+                                c_escape(&r.topic),
+                                r.depth
+                            ));
+                        }
+                    }
+                    s.push_str("    /* end */\n");
+                    // phase-454 W10 -- the SAME rows, in the shape a C lookup
+                    // can consume. Not a second table: one loop below writes
+                    // both, from `subs`, so they cannot say different things.
+                    //
+                    // Why a second SPELLING is unavoidable. C++ reads the form
+                    // above by defining `NROS_DECLARED_QOS_ROW` and evaluating
+                    // a `constexpr` search over the array it builds. C has no
+                    // `constexpr`, so a C lookup has to be built by the
+                    // PREPROCESSOR -- and a macro parameter of the caller is
+                    // not substituted inside a separately-defined row macro:
+                    // `#define ROW(t, tp, d) ... q_type ...` sees `q_type` as
+                    // an ordinary identifier, never as `LOOKUP`'s argument.
+                    // Measured on gcc 15 and clang 20: `use of undeclared
+                    // identifier 'q_type'`. The query therefore has to travel
+                    // THROUGH the list, which means the list takes it.
+                    s.push_str(
+                        "\n/* X-macro, QUERY form (phase-454 W10) -- the same rows, with the\n \
+                         * row macro AND the queried (type, topic) passed in, so\n \
+                         * `nros/declared_qos.h` can expand the table into ONE constant\n \
+                         * expression a C11 `_Static_assert` accepts. C++ reads the form\n \
+                         * above; C reads this one. */\n",
+                    );
+                    s.push_str(
+                        "#define NROS_DECLARED_QOS_ROWS_Q(NROS_DECLARED_QOS_ROW_Q, \\\n        \
+                         nros_q_type, nros_q_topic) \\\n",
+                    );
+                    for r in &subs {
+                        let dds = dds_type_name(&r.type_name);
+                        s.push_str(&format!(
+                            "    NROS_DECLARED_QOS_ROW_Q(\"{}\", \"{}\", {}, nros_q_type, \
+                             nros_q_topic) \\\n",
+                            c_escape(&dds),
+                            c_escape(&r.topic),
+                            r.depth
+                        ));
+                        if dds != r.type_name {
+                            s.push_str(&format!(
+                                "    NROS_DECLARED_QOS_ROW_Q(\"{}\", \"{}\", {}, nros_q_type, \
+                                 nros_q_topic) \\\n",
                                 c_escape(&r.type_name),
                                 c_escape(&r.topic),
                                 r.depth
@@ -4008,6 +4061,75 @@ mod tests {
         let h = none.to_declared_qos_header();
         assert!(!h.contains("#define NROS_DECLARED_QOS_ROWS"));
         assert!(h.contains("#define NROS_DECLARED_QOS_UNDECLARED_COUNT 1"));
+    }
+
+    /// phase-454 W10 — the C list carries the SAME rows as the C++ one.
+    ///
+    /// Two lists exist because C has no `constexpr` and its lookup has to be
+    /// built by the preprocessor, which means the queried `(type, topic)` must
+    /// travel through the list to reach each row. What must never differ is
+    /// WHICH rows: one loop writes both, and this is the assertion that keeps
+    /// it one loop. A C table that carried fewer rows than the C++ one would
+    /// leave exactly those endpoints unchecked in C while `just check cpp`
+    /// stayed green over them.
+    #[test]
+    fn the_c_query_list_carries_the_same_rows_as_the_cpp_list() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated(
+            "a",
+            "one",
+            &[
+                "sub:std_msgs/msg/Int32:/chatter@depth=1",
+                "sub:std_msgs/msg/Bool:/flag@depth=5",
+            ],
+        ));
+        let h = inv.to_declared_qos_header();
+
+        // The row macro AND the query are parameters, which is the whole
+        // reason this list exists: `#define ROW(t, tp, d) ... q_type ...` does
+        // not see a caller's `q_type`, so the query has to be passed in.
+        assert!(
+            h.contains(
+                "#define NROS_DECLARED_QOS_ROWS_Q(NROS_DECLARED_QOS_ROW_Q, \\\n        \
+                 nros_q_type, nros_q_topic)"
+            ),
+            "the C list must take the row macro and the queried (type, topic): {h}"
+        );
+
+        // Same four rows -- two endpoints, two type spellings each.
+        for (ty, topic, depth) in [
+            ("std_msgs::msg::dds_::Int32_", "/chatter", 1),
+            ("std_msgs/msg/Int32", "/chatter", 1),
+            ("std_msgs::msg::dds_::Bool_", "/flag", 5),
+            ("std_msgs/msg/Bool", "/flag", 5),
+        ] {
+            assert!(
+                h.contains(&format!(
+                    "NROS_DECLARED_QOS_ROW(\"{ty}\", \"{topic}\", {depth})"
+                )),
+                "the C++ list is missing ({ty}, {topic}, {depth}): {h}"
+            );
+            assert!(
+                h.contains(&format!(
+                    "NROS_DECLARED_QOS_ROW_Q(\"{ty}\", \"{topic}\", {depth}, nros_q_type, \
+                     nros_q_topic)"
+                )),
+                "the C list is missing ({ty}, {topic}, {depth}): {h}"
+            );
+        }
+        assert_eq!(
+            h.matches("NROS_DECLARED_QOS_ROW(\"").count(),
+            h.matches("NROS_DECLARED_QOS_ROW_Q(\"").count(),
+            "the two lists must have the same number of rows, or one language checks \
+             endpoints the other does not: {h}"
+        );
+
+        // Nothing declared: NEITHER list is defined, so C gets an empty table
+        // the same way C++ does and every call site compiles unchecked.
+        let mut none = EntityInventory::new("test");
+        none.insert(stated("a", "one", &["sub:std_msgs/msg/Int32:/t"]));
+        let h = none.to_declared_qos_header();
+        assert!(!h.contains("#define NROS_DECLARED_QOS_ROWS_Q"));
     }
 
     /// [`dds_type_name`] MIRRORS `packs/cpp/message.hpp.jinja`, so it is held
