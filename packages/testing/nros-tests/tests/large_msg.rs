@@ -335,14 +335,19 @@ fn xrce_roundtrip(binary: &std::path::Path, payload: &str, topic: &str) -> Strin
     output
 }
 
-/// A payload over `XRCE_BUFFER_SIZE` must be refused by NAME.
+/// A payload over `XRCE_SUBSCRIBER_BUFFER_SIZE` must be refused by NAME.
 ///
-/// The ceiling is ours — `XRCE_BUFFER_SIZE` (1024) in
+/// The ceiling is ours — `XRCE_SUBSCRIBER_BUFFER_SIZE` in
 /// `packages/rmw/xrce/nros-rmw-xrce/src/internal.h`, checked in the topic
-/// callback as `len + XRCE_CDR_HEADER_LEN > XRCE_BUFFER_SIZE`. The stress
-/// binary's `PAYLOAD_SIZE` includes the 4-byte CDR header that the publish side
-/// strips, so the predicate is exactly `PAYLOAD_SIZE > 1024` and 1025 is the
-/// first refused size.
+/// callback as `len + XRCE_CDR_HEADER_LEN > XRCE_SUBSCRIBER_BUFFER_SIZE`. The
+/// stress binary's `PAYLOAD_SIZE` includes the 4-byte CDR header that the
+/// publish side strips, so the predicate is exactly `PAYLOAD_SIZE > 1024` and
+/// 1025 is the first refused size.
+///
+/// 1024 rather than a family-specific number because phase-454 W6.b left
+/// `XRCE_BUFFER_SIZE` as the DEFAULT of the three receive families, and this
+/// fixture declares no endpoints for the build to derive one from. That is why
+/// `NROS_XRCE_BUFFER_SIZE=8192` still raises it, in the sibling test below.
 ///
 /// What this test actually guards is the ERROR NAME, not the refusal. Before
 /// phase-384 W1 the backend's `MessageTooLarge` was rewritten to
@@ -439,8 +444,8 @@ fn xrce_raising_the_ring_delivers_the_same_payload(xrce_stress_test_large_buf_bi
 /// distance — a count-only assertion passes through the truncation, and a
 /// `MessageTooLarge`-only assertion passes through the regression.
 ///
-/// The ring is raised so `XRCE_BUFFER_SIZE` is NOT the constraint — otherwise
-/// this would pass for phase-384's reason rather than this one.
+/// The ring is raised so `XRCE_SUBSCRIBER_BUFFER_SIZE` is NOT the constraint —
+/// otherwise this would pass for phase-384's reason rather than this one.
 #[rstest]
 fn xrce_fragmented_payload_is_delivered_intact(xrce_stress_test_large_buf_binary: PathBuf) {
     if !require_xrce_agent() {

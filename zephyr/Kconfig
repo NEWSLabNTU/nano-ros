@@ -1133,6 +1133,57 @@ config NROS_XRCE_BUFFER_SIZE
       Size of the static buffer for each subscriber/service slot (bytes).
       Maps to XRCE_BUFFER_SIZE.
 
+      phase-454 W6.b — this is the DEFAULT of the three per-family sizes
+      below, not an array size of its own. It stays the one lever that
+      moves every receive buffer at once; state a family option instead
+      when only one of them needs the room.
+
+config NROS_XRCE_SUBSCRIBER_BUFFER_SIZE
+    int "Subscriber ring entry size"
+    default -1
+    help
+      Size of one subscriber ring entry (bytes).
+      Maps to XRCE_SUBSCRIBER_BUFFER_SIZE.
+
+      The biggest of the three families by a wide margin: a slot is
+      NROS_XRCE_SUBSCRIBER_RING_DEPTH entries and the image holds
+      NROS_XRCE_MAX_SUBSCRIBERS slots, so 32 x 8 copies of this number
+      against 4 and 1 for the two service families. Sharing one size with
+      them meant every subscriber entry paid for the largest type a
+      SERVICE carries, and the other way round.
+
+      -1 is the DERIVE sentinel (phase-403 W8): the build takes the
+      largest wire bound over the subscriptions this image declares, plus
+      the 4-byte CDR header, and falls back to NROS_XRCE_BUFFER_SIZE when
+      the declaration does not price every one of them. It moves together
+      with the ring depth or not at all — see
+      XRCE_SUBSCRIBER_RING_DEPTH in nros-rmw-xrce/src/internal.h for why
+      one of the two alone can make the pool LARGER.
+
+config NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE
+    int "Service-server request ring entry size"
+    default -1
+    help
+      Size of one service-server request inbox entry (bytes).
+      Maps to XRCE_SERVICE_REQUEST_BUFFER_SIZE.
+
+      Settable, and NOT derived: the parameter (6 per node) and lifecycle
+      (5) families open service servers that no `[[endpoint]]` row in the
+      sizing descriptor itemises, and an action server opens three more.
+      A size taken from the declared service rows alone would be short for
+      exactly those, in the UNDER direction. Falls back to
+      NROS_XRCE_BUFFER_SIZE.
+
+config NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE
+    int "Service-client reply slot size"
+    default -1
+    help
+      Size of one service-client reply inbox (bytes).
+      Maps to XRCE_SERVICE_REPLY_BUFFER_SIZE.
+
+      Settable, and not derived, for the same reason as the request size
+      above. Falls back to NROS_XRCE_BUFFER_SIZE.
+
 config NROS_XRCE_STREAM_HISTORY
     int "Reliable stream history depth"
     default 16

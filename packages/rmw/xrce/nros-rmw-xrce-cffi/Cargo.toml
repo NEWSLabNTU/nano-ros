@@ -67,6 +67,12 @@ nros-cc-flags = { path = "../../../tooling/nros-cc-flags" }
 # RUST image inherits none of cmake's `set(ENV{...})` exports. One spelling of
 # the `$DOTCONFIG` fallback, shared with the zenoh shim.
 nros-zephyr-build = { path = "../../../tooling/nros-zephyr-build" }
+# phase-454 W6.b (RFC-0100 D4/D5) — the ONE reader of
+# `<build>/nros/sizing/<entry>.toml`. Never hand-parse it: six hand-written TOML
+# parsers over one schema is six answers to "what does an absent `depth` mean",
+# and the three the reader gives (stated / refused / absent) are the whole
+# point.
+nros-sizing-descriptor = { path = "../../../tooling/nros-sizing-descriptor" }
 
 [lints]
 workspace = true

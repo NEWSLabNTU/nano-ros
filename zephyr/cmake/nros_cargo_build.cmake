@@ -963,6 +963,46 @@ function(nros_resolve_knobs)
         _nros_resolve_knob(NROS_XRCE_BUFFER_SIZE "${CONFIG_NROS_XRCE_BUFFER_SIZE}")
         _nros_resolve_knob(NROS_XRCE_STREAM_HISTORY
             "${CONFIG_NROS_XRCE_STREAM_HISTORY}")
+        # phase-454 W6.b — the three per-family receive buffers. Each defaults
+        # to the DERIVE sentinel, and the derivation they fall through to is
+        # `nros-rmw-xrce-cffi/build.rs` reading the sizing descriptor
+        # (RFC-0100 D4/D5), NOT a `NROS_DERIVED_*` this resolver could supply.
+        # So the third argument names a variable this file deliberately never
+        # sets: at the sentinel nothing is forwarded, the build script keeps
+        # ownership of the answer, and a STATED number still wins here exactly
+        # as it does for every other knob on this ladder.
+        #
+        # `_nros_resolve_knob` would have been wrong: it forwards the Kconfig
+        # value verbatim, so the `-1` sentinel would reach the build script as
+        # a rung-1 environment value and `stated()` would panic on it.
+        #
+        # The variable is deliberately NOT spelled `NROS_DERIVED_*`.
+        # `check-knob-delivery` harvests that prefix out of this file as "a
+        # fact this road carries to a knob", and then checks the fact ARRIVED
+        # in the CMake cache. This road carries no such fact — the derivation
+        # is `XrceDemand` on the cargo side, past the point that gate can see —
+        # so naming one here would claim a delivery nothing performs.
+        #
+        # Spelled one call per knob rather than a `foreach` over the three:
+        # `check-xrce-config-manifest` reads the forwarded set out of THIS FILE
+        # by matching `_nros_resolve*_knob(NROS_XRCE_...`, so a loop variable
+        # would leave all three reading as unforwarded — a gate blind in the
+        # safe-looking direction.
+        _nros_resolve_derivable_knob(NROS_XRCE_SUBSCRIBER_BUFFER_SIZE
+            "${CONFIG_NROS_XRCE_SUBSCRIBER_BUFFER_SIZE}"
+            _NROS_XRCE_FAMILY_DERIVED_BY_BUILD_SCRIPT
+            "the sizing descriptor, which only the cargo lane reads"
+            "${CMAKE_BINARY_DIR}/nros/sizing")
+        _nros_resolve_derivable_knob(NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE
+            "${CONFIG_NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE}"
+            _NROS_XRCE_FAMILY_DERIVED_BY_BUILD_SCRIPT
+            "the sizing descriptor, which only the cargo lane reads"
+            "${CMAKE_BINARY_DIR}/nros/sizing")
+        _nros_resolve_derivable_knob(NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE
+            "${CONFIG_NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE}"
+            _NROS_XRCE_FAMILY_DERIVED_BY_BUILD_SCRIPT
+            "the sizing descriptor, which only the cargo lane reads"
+            "${CMAKE_BINARY_DIR}/nros/sizing")
     endif()
 
     # Executor limits (nros-node build.rs, shared by both Rust and C APIs)
