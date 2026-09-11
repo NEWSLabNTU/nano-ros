@@ -871,6 +871,9 @@ pub const CELLS: &[Cell] = &[
     cell(ThreadxLinux, C,     Zenoh, EntryPubsub, Workspace, Runtime),
     cell(ThreadxLinux, Cpp,   Zenoh, EntryPubsub, Workspace, Runtime),
     cell(ThreadxLinux, Mixed, Zenoh, EntryPubsub, Workspace, Runtime),
+    // issue 1286 follow-up — the pure-C ThreadX entry off the host sim:
+    // rv-virt (riscv64 QEMU virt, slirp), `workspace-c-threadx-riscv64`.
+    cell(ThreadxRiscv64, C, Zenoh, EntryPubsub, Workspace, Runtime),
     cell(FreertosMps2, Mixed, Zenoh, EntryPubsub, Workspace, Runtime),
     cell(NuttxArm,     Rust,  Zenoh, EntryPubsub, Workspace, Runtime),
     // See the nuttx-riscv correction above — the rust riscv workspace row
@@ -1046,6 +1049,8 @@ pub fn w1_consumer_of(cell: &Cell) -> Option<W1Consumer> {
         (PlatformId::ThreadxLinux, Lang::C | Lang::Cpp | Lang::Mixed, Workload::EntryPubsub, _) => {
             Some(Entry)
         }
+        // issue 1286 follow-up — the rv-virt pure-C workspace entry (QEMU virt).
+        (PlatformId::ThreadxRiscv64, Lang::C, Workload::EntryPubsub, _) => Some(Entry),
         (PlatformId::FreertosMps2, Lang::C | Lang::Cpp | Lang::Mixed, Workload::EntryPubsub, _) => {
             Some(Entry)
         }

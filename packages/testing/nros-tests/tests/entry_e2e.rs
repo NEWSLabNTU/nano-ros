@@ -58,12 +58,14 @@ use nros_tests::{
         build_freertos_workspace_mixed_entry, build_int32_sink, build_native_listener,
         build_native_workspace_c_entry_robot2, build_nuttx_workspace_c_entry,
         build_threadx_linux_workspace_c_entry, build_threadx_linux_workspace_cpp_entry,
-        build_threadx_linux_workspace_mixed_entry, build_zephyr_workspace_c_entry,
-        build_zephyr_workspace_cpp_entry, build_zephyr_workspace_mixed_entry,
-        build_zephyr_workspace_rust_lifecycle_entry, build_zephyr_workspace_rust_params_entry,
-        build_zephyr_workspace_rust_qos_entry, build_zephyr_workspace_rust_safety_entry, freertos,
-        is_qemu_available, nuttx, require_zenohd,
+        build_threadx_linux_workspace_mixed_entry, build_threadx_riscv64_workspace_c_entry,
+        build_zephyr_workspace_c_entry, build_zephyr_workspace_cpp_entry,
+        build_zephyr_workspace_mixed_entry, build_zephyr_workspace_rust_lifecycle_entry,
+        build_zephyr_workspace_rust_params_entry, build_zephyr_workspace_rust_qos_entry,
+        build_zephyr_workspace_rust_safety_entry, freertos, is_qemu_available,
+        is_qemu_riscv64_available, nuttx, require_zenohd,
         threadx_linux::{is_nsos_netx_available, is_threadx_available},
+        threadx_riscv64,
     },
     matrix::{
         Cell as MCell, Lang as ML, PlatformId as MP, Tier as MT, W1Consumer, Workload as MW,
@@ -96,6 +98,9 @@ enum Boot {
     ZephyrNativeSim,
     /// NuttX QEMU arm-virt guest (slirp gateway 10.0.2.2 → host router).
     NuttxArm,
+    /// ThreadX QEMU riscv64 virt guest (NetX Duo over virtio-net, static
+    /// 10.0.2.40 on user-mode slirp; gateway 10.0.2.2 → host router).
+    ThreadxRiscv64,
 }
 
 /// The per-cell workload contract, preserved 1:1 from the
@@ -148,6 +153,7 @@ fn plat_str(p: MP) -> &'static str {
         MP::FreertosMps2 => "freertos",
         MP::ZephyrNativeSim => "zephyr",
         MP::NuttxArm => "nuttx-arm",
+        MP::ThreadxRiscv64 => "threadx-riscv64",
         _ => "?",
     }
 }
@@ -256,6 +262,15 @@ fn exec_for(platform: MP, lang: ML, workload: MW) -> Exec {
                    nros_platform_link_app (ferried into the cc-rs entry-TU compile at CONFIGURE \
                    time) — the old 'console issue' was this missing bake",
         },
+        (MP::ThreadxRiscv64, ML::C, MW::EntryPubsub) => Exec {
+            resolver: threadx_riscv64_c_entry,
+            port: port_of(MP::ThreadxRiscv64, ML::C, MW::EntryPubsub),
+            boot: Boot::ThreadxRiscv64,
+            proof: chatter_c(60000, 90),
+            note: "issue 1286: a `--lang c` ThreadX entry is PURE C — the shared \
+                   nros_board_rtos_run_components runner compiled in the app target \
+                   (THREADX_STARTUP_SOURCE) against the per-build nros_cpp_config_generated.h",
+        },
         (MP::NuttxArm, ML::Rust, MW::EntryPubsub) => Exec {
             // #130: the nuttx rust entry historically bakes the classic Pubsub
             // port band, not the EntryPubsub band — preserved verbatim.
@@ -328,6 +343,9 @@ fn threadx_cpp_entry() -> TestResult<PathBuf> {
 }
 fn threadx_mixed_entry() -> TestResult<PathBuf> {
     build_threadx_linux_workspace_mixed_entry().map(|p| p.to_path_buf())
+}
+fn threadx_riscv64_c_entry() -> TestResult<PathBuf> {
+    build_threadx_riscv64_workspace_c_entry().map(|p| p.to_path_buf())
 }
 fn freertos_c_entry() -> TestResult<PathBuf> {
     build_freertos_workspace_c_entry().map(|p| p.to_path_buf())
@@ -420,6 +438,17 @@ fn require_cell_env(cell: &Exec) {
         Boot::NuttxArm => {
             if !is_qemu_available() {
                 nros_tests::skip!("qemu-system-arm not found");
+            }
+        }
+        Boot::ThreadxRiscv64 => {
+            if !threadx_riscv64::is_threadx_available() {
+                nros_tests::skip!("THREADX_DIR not set or invalid");
+            }
+            if !threadx_riscv64::is_netx_available() {
+                nros_tests::skip!("NETX_DIR not set or invalid");
+            }
+            if !is_qemu_riscv64_available() {
+                nros_tests::skip!("qemu-system-riscv64 not found");
             }
         }
         Boot::ZephyrNativeSim => {}
@@ -520,6 +549,12 @@ fn boot_guest(cell: &Exec, entry: &PathBuf) -> Guest {
         Boot::NuttxArm => Guest::Qemu(
             QemuProcess::start_nuttx_virt(entry, true)
                 .unwrap_or_else(|e| panic!("boot NuttX QEMU: {e}")),
+        ),
+        // Peer index 0 = the board's default identity (10.0.2.40, MAC :56),
+        // the one the board's generated `NROS_APP_CONFIG` bakes.
+        Boot::ThreadxRiscv64 => Guest::Qemu(
+            QemuProcess::start_riscv64_virt(entry, 0)
+                .unwrap_or_else(|e| panic!("boot ThreadX riscv64 QEMU: {e}")),
         ),
     }
 }
@@ -735,7 +770,7 @@ fn run_cell(pcell: &MCell) {
     // observer always dials the host loopback.
     let bind_host = match cell.boot {
         Boot::ThreadxLinux | Boot::ZephyrNativeSim => "127.0.0.1",
-        Boot::FreertosMps2 | Boot::NuttxArm => "0.0.0.0",
+        Boot::FreertosMps2 | Boot::NuttxArm | Boot::ThreadxRiscv64 => "0.0.0.0",
     };
     // Bound to `_router` (NOT `let _ = router` — that pattern drops the
     // guard, and Drop kills zenohd) so the router lives for the whole cell.

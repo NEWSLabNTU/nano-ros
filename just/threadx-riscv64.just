@@ -355,6 +355,11 @@ build-fixture-extras:
     export NROS_CMAKE_EXTRA_DEFS="$base_defs"
     bash scripts/build/fixtures-build.sh threadx-riscv64 c zenoh
     bash scripts/build/fixtures-build.sh threadx-riscv64 cpp zenoh
+    # issue 1286 follow-up — the pure-C WORKSPACE entry (`workspace-c-threadx-riscv64`,
+    # image `riscv_threadx`), consumed by tests/entry_e2e.rs. A migrated row:
+    # `nros build` generates the root and resolves the board's own toolchain file,
+    # so none of the -D set above reaches it (NROS_CMAKE_EXTRA_DEFS is not read).
+    bash scripts/build/workspace-fixtures-build.sh threadx-riscv64 c
 
     cyclonedds_prefix="$root/build/cyclonedds-threadx-rv64-install"
     # Phase 203 decision — build the ThreadX-RV64 Cyclone fixtures BY DEFAULT so a

@@ -320,6 +320,9 @@ static FREERTOS_POSIX_WORKSPACE_CPP_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::
 /// phase-263 C2a — cached path to the threadx-linux C workspace EMBEDDED entry
 /// (`nano_ros_entry(BOARD threadx-linux …)`, the first embedded LAUNCH entry).
 static THREADX_LINUX_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+/// issue 1286 follow-up — the rv-virt (riscv64 QEMU virt) sibling of the entry
+/// above: the same pure-C `demo_bringup` entry, cross-built for the board.
+static THREADX_RISCV64_WORKSPACE_C_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// phase-263 C2b — cached path to the FreeRTOS (QEMU MPS2-AN385) C workspace embedded
 /// entry (`nano_ros_entry(BOARD mps2-an385-freertos …)`, the first QEMU-cross entry).
@@ -2828,6 +2831,23 @@ pub fn build_threadx_linux_workspace_c_entry() -> TestResult<&'static Path> {
                 // along: a missing binary and an absent toolchain look identical
                 // from here.
                 "threadx_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// issue 1286 follow-up — the rv-virt (riscv64 QEMU virt) C workspace EMBEDDED
+/// entry (cached). A migrated row: `nros build` generates the root, so the
+/// entry lands at the top of the row's `build_subdir`, with a compile-time-baked
+/// `tcp/10.0.2.2:<port>` locator the slirp guest dials.
+pub fn build_threadx_riscv64_workspace_c_entry() -> TestResult<&'static Path> {
+    THREADX_RISCV64_WORKSPACE_C_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry_in(
+                "workspace-c-threadx-riscv64",
+                "c",
+                "build/threadx-riscv64-zenoh-rv-virt-threadx/cmake",
+                "riscv_threadx_entry",
             )
         })
         .map(|p| p.as_path())

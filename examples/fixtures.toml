@@ -611,6 +611,24 @@ image = "threadx"
 build_subdir = "build/threadx-linux-zenoh/cmake"
 cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "threadx-linux", NROS_ENTRY_LOCATOR = "tcp/127.0.0.1:9130" }
 
+# issue 1286 follow-up — the rv-virt (riscv64 QEMU virt, NetX Duo over
+# virtio-net) sibling of the row above: the same pure-C `demo_bringup` entry,
+# cross-built with the board's riscv64 toolchain. The guest runs QEMU user-mode
+# (slirp) networking, so it dials the router through the gateway 10.0.2.2.
+# Port 9530 = `alloc::port_of(ThreadxRiscv64, C, EntryPubsub)`. Built by
+# `just threadx_riscv64 build-fixtures` (build-fixture-extras). Consumed by
+# tests/entry_e2e.rs (threadx-riscv64/c/entry_pubsub cell).
+[[workspace_fixture]]
+id = "workspace-c-threadx-riscv64"
+platform = "threadx-riscv64"
+lang = "c"
+rmw = "zenoh"
+dir = "examples/workspaces/c"
+bringup = "src/demo_bringup"
+image = "riscv_threadx"
+build_subdir = "build/threadx-riscv64-zenoh-rv-virt-threadx/cmake"
+cmake_defs = { NANO_ROS_PLATFORM = "threadx", NANO_ROS_BOARD = "rv-virt-threadx", NROS_ENTRY_LOCATOR = "tcp/10.0.2.2:9530" }
+
 # phase-263 C2b (issue 0097) — the FIRST QEMU-cross embedded C workspace entry:
 # `nano_ros_entry(BOARD mps2-an385-freertos LAUNCH …)`, the FreeRTOS sibling to the C2a
 # threadx-linux host sim. The workspace root maps the board to its arm-none-eabi

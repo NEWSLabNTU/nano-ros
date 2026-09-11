@@ -140,6 +140,13 @@ launch = "service_server.launch.xml"
 [image.nuttx]
 board = "qemu-armv7a-nuttx"
 
+# issue 1286 follow-up — the rv-virt (riscv64, bare-metal QEMU virt) sibling of
+# `threadx`. Same default topology; `riscv_` prefix as `realtime-cpp`'s
+# `riscv_nuttx`. A `--lang c` ThreadX entry is pure C since #1286, and this is
+# the image that measures it off the host sim.
+[image.riscv_threadx]
+board = "rv-virt-threadx"
+
 [image.threadx]
 board = "threadx-linux"
 
@@ -164,5 +171,12 @@ sdk = { nuttx = "{env:NUTTX_DIR}", nuttx_apps = "{env:NUTTX_APPS_DIR}" }
 # SDK roots it builds against. Keyed by BOARD, not by a deploy or image
 # name, because that is what the fact is about (issue 0951).
 [board_config."threadx-linux"]
+netstack = "netxduo"
+sdk = { threadx = "{env:THREADX_DIR}", netxduo = "{env:NETX_DIR}" }
+
+# SITE config for this board (RFC-0072 §5): where THIS checkout keeps the
+# SDK roots it builds against. Keyed by BOARD, not by a deploy or image
+# name, because that is what the fact is about (issue 0951).
+[board_config."rv-virt-threadx"]
 netstack = "netxduo"
 sdk = { threadx = "{env:THREADX_DIR}", netxduo = "{env:NETX_DIR}" }
