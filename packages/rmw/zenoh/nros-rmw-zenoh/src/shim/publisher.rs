@@ -134,6 +134,10 @@ impl ZenohPublisher {
             _liveliness: liveliness,
             #[cfg(feature = "lending")]
             lend_arena: lending::LendArena::new(),
+            // nros-qos-honours: DEADLINE — carried onto the publisher and
+            // checked in `check_offered_deadline`, which fires
+            // `OfferedDeadlineMissed` (rate-limited to one per window). 0 and
+            // DURATION_INFINITE_MS both mean "no check".
             deadline_ms: qos.deadline_ms,
             last_publish_at_ms: core::cell::Cell::new(now),
             last_deadline_fire_ms: core::cell::Cell::new(now),
