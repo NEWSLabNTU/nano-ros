@@ -1250,7 +1250,6 @@ pub fn ros2_param_list_all(locator: &str, distro: &str) -> TestResult<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-/// Run `ros2 param get` for a specific parameter on a node
 // issue 1268 / phase-444 W6 — the DOMAIN-addressed siblings of the three
 // parameter verbs and the service listing, for a peer that is not zenoh.
 //
@@ -1336,6 +1335,7 @@ fn run_ros2_capture(cmd: &str, what: &str) -> TestResult<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+/// Run `ros2 param get` for a specific parameter on a node
 pub fn ros2_param_get(
     node_name: &str,
     param_name: &str,
