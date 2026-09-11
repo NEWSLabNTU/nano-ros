@@ -62,6 +62,8 @@ rmw_ret_t xrce_publisher_create(const rmw_node_t* node,
     uxrObjectId pub_oid   = xrce_alloc_entity_id(st, UXR_PUBLISHER_ID);
     uxrObjectId dw_oid    = xrce_alloc_entity_id(st, UXR_DATAWRITER_ID);
 
+    /* nros-qos-honours: AVOID_ROS_NAMESPACE_CONVENTIONS — drops the `rt/`
+     * prefix from the DDS topic name (`xrce_dds_topic_name`). */
     int avoid_ros = 0;
     if (qos != NULL) {
         avoid_ros = qos->avoid_ros_namespace_conventions != 0;

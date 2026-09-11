@@ -272,6 +272,16 @@ uxrQoS_t xrce_map_qos(const rmw_qos_profile_t* qos) {
      * supplies its own. This backend genuinely has no depth of its own to
      * offer: every default on this path is the Agent's, so deferring is the
      * honest answer rather than a gap. */
+    /* nros-qos-honours: DURABILITY_VOLATILE
+     * nros-qos-honours: DURABILITY_TRANSIENT_LOCAL
+     * nros-qos-honours: RELIABILITY
+     * nros-qos-honours: HISTORY
+     * nros-qos-honours: DEPTH
+     *
+     * The four fields `uxrQoS_t` has. They ride the CREATE submessage to the
+     * Agent, whose DDS layer applies them (`create_entities_bin.c` sets the
+     * `qos_flags` bits and the optional depth). Deadline, lifespan and
+     * liveliness have no field here and are NOT claimed — phase-428 W9. */
     out.durability = (qos->durability == NROS_RMW_DURABILITY_TRANSIENT_LOCAL)
                          ? UXR_DURABILITY_TRANSIENT_LOCAL
                          : UXR_DURABILITY_VOLATILE;

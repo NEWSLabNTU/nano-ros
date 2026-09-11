@@ -2994,20 +2994,41 @@ impl Session for CffiSession {
         }
     }
 
-    /// Phase 115.K.2.5.1.2 — declare a permissive QoS-policy mask
-    /// here so backends behind the cffi vtable don't get rejected by
-    /// the runtime's pre-validate step before they ever see the
-    /// `create_publisher` / `create_subscription` call. The vtable
-    /// doesn't expose a per-backend policy mask yet; until it does,
-    /// the cffi route has to assume the registered backend supports
-    /// the union of every policy any nros-supported RMW honours.
-    /// Backends that don't support a policy MUST surface
-    /// `NROS_RMW_RET_INCOMPATIBLE_QOS` from `create_publisher` etc.
-    /// to keep the no-silent-degradation contract.
+    /// This session MULTIPLEXES: it has no QoS behaviour of its own, and the
+    /// mask is the UNION of what the backends it routes to honour.
     ///
-    /// TODO 115.K.2.x: extend `nros_rmw_vtable_t` with a
-    /// `supported_qos_policies()` callback so the runtime queries
-    /// the backend instead of guessing.
+    /// nros-qos-mux: packages/rmw/cyclonedds packages/rmw/xrce packages/rmw/uorb
+    ///
+    /// phase-428 W9 makes that union derived rather than guessed. Every bit
+    /// below is claimed by a `nros-qos-honours:` site in one of the crates
+    /// named above, and `check-qos-mask-derivation` re-measures it; the line
+    /// this replaced said the route "has to assume the registered backend
+    /// supports the union of every policy any nros-supported RMW honours",
+    /// which was an assumption nothing checked and which was wrong:
+    /// `LIVELINESS_MANUAL_BY_NODE` is advertised here and honoured by no
+    /// backend in the tree. cyclonedds folds it onto MANUAL_BY_TOPIC
+    /// (`qos.cpp`), xrce lowers no liveliness field at all, uorb reads no QoS
+    /// field whatever. It is withdrawn (issue 1328).
+    ///
+    /// # A union is still an OVER-claim for any one backend
+    ///
+    /// Measured 2026-09-11, per backend:
+    ///
+    /// | policy | cyclonedds | xrce | uorb |
+    /// | --- | --- | --- | --- |
+    /// | reliability / durability / history / depth | yes | yes (to the Agent) | no |
+    /// | deadline / lifespan | yes | no | no |
+    /// | liveliness kind + lease | yes (AUTOMATIC, MANUAL_BY_TOPIC) | no | no |
+    /// | avoid_ros_namespace_conventions | no | pub + sub only | no |
+    ///
+    /// So an app asking cyclonedds for `avoid_ros_namespace_conventions`, or
+    /// xrce for a deadline, is admitted here and then silently ignored
+    /// downstream — the no-silent-downgrade contract broken one layer below
+    /// where it is enforced. Closing it needs a per-backend answer, and the
+    /// vtable has no slot to ask through: that is **issue 1329**, which also
+    /// records why narrowing the union without one is not the fix (xrce would
+    /// lose `LIVELINESS_AUTOMATIC`, which every C default profile states, so
+    /// every C app on xrce would fail at create).
     fn supported_qos_policies(&self) -> nros_rmw::QoSPolicyMask {
         use nros_rmw::QoSPolicyMask;
         QoSPolicyMask::CORE
@@ -3017,7 +3038,6 @@ impl Session for CffiSession {
             | QoSPolicyMask::LIFESPAN
             | QoSPolicyMask::LIVELINESS_AUTOMATIC
             | QoSPolicyMask::LIVELINESS_MANUAL_BY_TOPIC
-            | QoSPolicyMask::LIVELINESS_MANUAL_BY_NODE
             | QoSPolicyMask::LIVELINESS_LEASE
     }
 }

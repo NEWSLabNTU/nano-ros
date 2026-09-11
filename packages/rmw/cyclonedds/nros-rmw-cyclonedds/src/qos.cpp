@@ -35,6 +35,7 @@ dds_qos_t *make_dds_qos(const rmw_qos_profile_t *src) {
     // `RELIABILITY_SYSTEM_DEFAULT` on the `RELIABLE` case by fallthrough.
     // Cyclone is the backend that meets real ROS peers, and it was the one
     // picking the less safe side.
+    // nros-qos-honours: RELIABILITY
     dds_qset_reliability(
         q,
         src->reliability == NROS_RMW_RELIABILITY_BEST_EFFORT
@@ -50,6 +51,8 @@ dds_qos_t *make_dds_qos(const rmw_qos_profile_t *src) {
         // it through the reserved bytes if a tighter bound matters.
         DDS_SECS(1));
 
+    // nros-qos-honours: DURABILITY_VOLATILE
+    // nros-qos-honours: DURABILITY_TRANSIENT_LOCAL
     dds_qset_durability(
         q,
         src->durability == NROS_RMW_DURABILITY_TRANSIENT_LOCAL
@@ -76,6 +79,8 @@ dds_qos_t *make_dds_qos(const rmw_qos_profile_t *src) {
     // KEEP_ALL keeps its 0: it carries one legitimately (upstream's
     // `rmw_qos_profile_parameter_events` does) and the validator constrains
     // only the KEEP_LAST case.
+    // nros-qos-honours: HISTORY
+    // nros-qos-honours: DEPTH
     const bool keep_all = (src->history == NROS_RMW_HISTORY_KEEP_ALL);
     uint32_t depth = src->depth;
     if (!keep_all && depth == 0) {
@@ -89,13 +94,23 @@ dds_qos_t *make_dds_qos(const rmw_qos_profile_t *src) {
     // Phase-301 (issue 0241): `NROS_RMW_DURATION_INFINITE_MS` is the
     // explicit infinite spelling — semantically identical to 0 (no
     // check) at every duration comparison.
+    // nros-qos-honours: DEADLINE
     if (src->deadline_ms != 0 && src->deadline_ms != NROS_RMW_DURATION_INFINITE_MS) {
         dds_qset_deadline(q, DDS_MSECS(src->deadline_ms));
     }
+    // nros-qos-honours: LIFESPAN
     if (src->lifespan_ms != 0 && src->lifespan_ms != NROS_RMW_DURATION_INFINITE_MS) {
         dds_qset_lifespan(q, DDS_MSECS(src->lifespan_ms));
     }
 
+    // nros-qos-honours: LIVELINESS_AUTOMATIC
+    // nros-qos-honours: LIVELINESS_MANUAL_BY_TOPIC
+    // nros-qos-honours: LIVELINESS_LEASE
+    //
+    // MANUAL_BY_NODE is NOT claimed: the fold below serves it as
+    // MANUAL_BY_TOPIC, which asserts per topic where the caller asked for per
+    // node. phase-428 W9 withdrew the bit from every mask in the tree
+    // (issue 1328) rather than keep advertising a policy nobody implements.
     if (src->liveliness_kind != NROS_RMW_LIVELINESS_SYSTEM_DEFAULT) {
         dds_liveliness_kind_t k = DDS_LIVELINESS_AUTOMATIC;
         switch (src->liveliness_kind) {
