@@ -17,7 +17,6 @@
   "scripts/build/fixture-id-guard.sh": 1,
   "scripts/build/fixture-make-driver.sh": 1,
   "scripts/build/fixtures-build.sh": 1,
-  "scripts/build/host-only-members.sh": 1,
   "scripts/build/jobserver-pool.sh": 1,
   "scripts/build/zephyr-fixture-leaves.sh": 1,
   "scripts/build/zephyr-fixture-run-one.sh": 1,

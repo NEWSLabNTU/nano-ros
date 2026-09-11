@@ -30,13 +30,29 @@
 # Reads the git index, not a walk (`check-no-tracked-file-find`).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
+# shellcheck source=scripts/lib/grep-q.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/grep-q.sh"
 
 names=()
 while IFS= read -r manifest; do
     # The KEY, not the string anywhere in the file — these manifests discuss
     # "embedded-only" in prose, and matching that is how the sibling script
     # silently skipped three crates on its first version.
-    grep -qE '^embedded-only[[:space:]]*=[[:space:]]*true' "$manifest" || continue
+    # issue 0726 — `nros_grep_q`, not `grep -q`: grep exits 1 for NO MATCH and
+    # >=2 for an ERROR, and `|| continue` cannot tell them apart. A forked grep
+    # that fails to start under a 32-way fan-out would silently drop a crate
+    # from this exclude list, and the lane would then fail in an unrelated
+    # no_std crate — the confusing E0463 this script exists to prevent.
+    # issue 1249 — `rc=0; cmd || rc=$?`, never a bare call then `$?`: under
+    # `set -e` a non-zero status the script means to INSPECT kills it before
+    # the `case` is reached, and the failure is silent.
+    rc=0
+    nros_grep_q -E '^embedded-only[[:space:]]*=[[:space:]]*true' "$manifest" || rc=$?
+    case "$rc" in
+        0) ;;              # declared
+        1) continue ;;     # not declared
+        *) echo "embedded-only-members.sh: grep failed reading $manifest" >&2; exit 2 ;;
+    esac
     # `|| true` — a manifest with no `name =` is skipped by the `[ -n ]` below;
     # grep's exit 1 under pipefail would end the whole sweep instead (issue 1249).
     name="$(grep -m1 -E '^name[[:space:]]*=' "$manifest" | sed -E 's/.*"([^"]+)".*/\1/' || true)"
