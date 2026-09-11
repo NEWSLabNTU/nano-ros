@@ -1,7 +1,7 @@
 ---
 id: 1129
 title: "58 more sites launder a fixture-resolver `Err` into a `skip!`, and 54 of them use a spelling `check-skip-budget` cannot see"
-status: open
+status: resolved
 area: testing
 severity: medium
 related: [0584, 1112, 1124, 0196, phase-450]
@@ -82,3 +82,35 @@ Exactly issue 1124's, which is worked end to end in that issue:
 
 Doing (1) — the regex — first is worth it: it turns the sweep from a reading
 exercise into a lane that tells you which sites actually fire.
+
+## Resolved (phase-450 W1, 2026-09-11)
+
+Both halves, in the order the issue asked for.
+
+**The gate.** `FIXTURE_RE` read `not prebuilt` only; 57 of the tree's 61
+laundering sites say `not built`, so the rule was stated fully and enforced on
+4 of 61. Widened, with six `--self-test` cases (four positive, two that must NOT
+match) and mutation-tested by reverting the regex.
+
+**A structural finding the conversion survey turned up, which had to land
+first.** `require_prebuilt_workspace_binary` carried NONE of the tier block its
+sibling has — no `.build-failed` marker check, no `NROS_FIXTURES_OPTIONAL` skip,
+no `gate_promised_fixtures()` panic. 21 of the 61 sites resolve through it, so
+for those the call-site `skip!` was not laundering a verdict, it was the only
+accommodation that had ever existed — and on a gated run the only thing between
+CI and a silent green. One shared helper (`absent_fixture_verdict`) now, called
+by both, with the per-resolver remedy threaded through.
+
+**The sites.** 51 converted, 10 kept, 0 unsure. The keeps are not fixture
+resolvers at all: `launch_resolver_bin` is a host tool (6 sites),
+`zephyr_leaf_staleness` probes a west dir with a bare `is_file()` (2), and
+`zenoh_header_parity` / `zenoh_archive_symbols` already guard on the opt-out and
+panic in the else.
+
+One override of this issue's prose, on the evidence:
+`qos_zephyr_ros2_interop_e2e` is listed here as a west/SDK keep, and it goes
+through `require_prebuilt_binary_fresh_zephyr`, which resolves both the west lane
+and the opt-out. Converted.
+
+Three reasons named the wrong binary ("native listener fixture" while resolving
+`build_int32_sink`) and now name `packages/testing/nros-tests/bins/int32-sink`.

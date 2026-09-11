@@ -3,7 +3,7 @@ id: 1236
 title: "The 62 shipped crates that CANNOT `forbid(unsafe_code)` carry all 5 047
   of the tree's unsafe occurrences, and nothing records their direction of
   travel"
-status: open
+status: resolved
 type: tech-debt
 area: [core, ci]
 related: [1221, 0196, phase-450]
@@ -86,3 +86,25 @@ legitimate outcome; leaving it unmeasured is not.
   the argument for why `forbid` is the gate for that population and cannot be
   for this one.
 * `scripts/check-std-census.py` — the ratchet shape this would follow.
+
+## Resolved (phase-450 W5, 2026-09-11)
+
+`just check unsafe-census` — per-crate, shrink-only, counting SYNTAX
+(`unsafe {}` / `fn` / `impl` / `extern` / `trait`) after stripping comments and
+string literals. **4,411 syntactic sites over 73 crates**, against this issue's
+5,047 token occurrences over 62; the issue said the two differ and this measures
+which. 13 self-test cases on the normal path, and a planted `unsafe { }` in
+`nros-node` reds it.
+
+**The obvious enumeration was the wrong one, and that is the finding.**
+`cargo metadata --no-deps` reports workspace MEMBERS — 37 crates, 3,775 sites.
+The root workspace excludes ~130 paths (issue 1217), several of them real crates
+no lane compiles (issue 1309), so a members-only census would have inherited that
+blind spot and reported a smaller, cleaner number than the truth. Enumerated from
+`git ls-files` instead: 73 crates, 4,411 sites — 36 crates and 636 sites that
+would otherwise have been invisible.
+
+Still open as a DECISION, not work: this issue's second half asks for a recorded
+position on the remaining core ("these crates carry unsafe and here is the
+ceiling"). The census makes that statable with real numbers; it does not make the
+statement. Filed forward rather than left implicit.

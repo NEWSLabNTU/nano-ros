@@ -1,7 +1,7 @@
 # Phase 450 — a gate whose reach is narrower than the rule it enforces
 
-**Status (2026-09-11). W2, W3, W4 and W5 LANDED; W1's gate half landed and its
-site conversion is the one open box.** Every landed item was mutation-tested —
+**Status (2026-09-11). COMPLETE — W1 through W5 all landed, and all five member
+issues are resolved and archived (1129, 1153, 1236, 1051+1294).** Every landed item was mutation-tested —
 the defect it exists for was planted, the gate went red naming it, and the tree
 was restored — because a gate of this shape is green while the defect is
 present, which is the whole premise of the phase.
@@ -32,11 +32,11 @@ stays in the table as the worked example:
 
 | issue | the rule | what the instrument actually reaches |
 | --- | --- | --- |
-| [#1153](../issues/1153-rust-targets-covered-blind-to-zephyr-and-docker.md) | every declared Rust target has a row | three declaration globs of five — a target the tree builds for had no row at all |
-| [#1129](../issues/1129-fixture-err-laundered-into-skip-wider-class.md) | a fixture `Err` may not become a `skip!` | one spelling — 54 of 58 remaining sites say `not built`, which `check-skip-budget` cannot see |
+| [#1153](../issues/archived/1153-rust-targets-covered-blind-to-zephyr-and-docker.md) | every declared Rust target has a row | three declaration globs of five — a target the tree builds for had no row at all |
+| [#1129](../issues/archived/1129-fixture-err-laundered-into-skip-wider-class.md) | a fixture `Err` may not become a `skip!` | one spelling — 54 of 58 remaining sites say `not built`, which `check-skip-budget` cannot see |
 | [#1161](../issues/archived/1161-required-features-tests-counts-skips-as-failures.md) (RESOLVED 2026-09-08) | a lane's pass means its tests ran | a missing FIXTURE is forbidden, a missing CAPABILITY is not — the lane reported pass having run 7 of 20. Closed by PR #734 before this phase was written; W2 records it |
-| [#1051](../issues/1051-pinned-locks-gate-suggests-a-destructive-fix.md) + [#1294](../issues/1294-submodule-pinned-locks-remedy-points-at-a-rewind.md) | a red names its cause | one of two causes asserted as the only one, with a remedy that would rewrite a CORRECT lock to match a drifted checkout — and following it records a submodule REWIND |
-| [#1236](../issues/1236-unsafe-census-ratchet-for-crates-that-cannot-forbid.md) | `unsafe` does not grow unnoticed | `forbid(unsafe_code)` on the ten crates at literal zero; the 62 crates holding all 5,047 occurrences have no instrument at all |
+| [#1051](../issues/archived/1051-pinned-locks-gate-suggests-a-destructive-fix.md) + [#1294](../issues/archived/1294-submodule-pinned-locks-remedy-points-at-a-rewind.md) | a red names its cause | one of two causes asserted as the only one, with a remedy that would rewrite a CORRECT lock to match a drifted checkout — and following it records a submodule REWIND |
+| [#1236](../issues/archived/1236-unsafe-census-ratchet-for-crates-that-cannot-forbid.md) | `unsafe` does not grow unnoticed | `forbid(unsafe_code)` on the ten crates at literal zero; the 62 crates holding all 5,047 occurrences have no instrument at all |
 
 #1051 is in this set deliberately. It is not a coverage gap — the gate fires
 correctly — but it is the same failure of fidelity one step later: the verdict
@@ -64,7 +64,7 @@ one that reports a false cause, then the census that does not exist yet.
 
 ### W1 — the fixture-skip rule reaches the defect, not one spelling
 
-[Issue 1129](../issues/1129-fixture-err-laundered-into-skip-wider-class.md).
+[Issue 1129](../issues/archived/1129-fixture-err-laundered-into-skip-wider-class.md).
 Issue 1124 converted the twelve sites matching its grep; the sweep afterwards
 found the scope had been the SPELLING. 4 more sites say `not prebuilt` in files
 1124's table did not list, and **54 say `not built`, across 43 files**.
@@ -82,12 +82,26 @@ that must not be fixed by adding a second spelling to the matcher.
 - [x] A negative control: six `FIXTURE_RE` cases in `--self-test`, four positive
       and two that must NOT match. Mutation-tested by reverting the regex, which
       fails two cases.
-- [ ] The sites converted. Deliberately last and deliberately not a sweep: the
-      resolver honours `NROS_FIXTURES_OPTIONAL` and the out-of-lane skip
-      INTERNALLY, so most call-site `Err` arms can only fire on a real failure —
-      but some are west/SDK host facts, and each wants its lane checked against
-      the manifest before it becomes `.expect(...)`.
-- [ ] The sweep command is in the commit message and re-runs clean.
+- [x] The sites converted, per-site: **51 CONVERT, 10 KEEP, 0 unsure.** The
+      keeps are not fixture resolvers at all — `launch_resolver_bin` is a host
+      tool (6), `zephyr_leaf_staleness` probes a west dir with a bare
+      `is_file()` (2), and two zenoh tests already guard on the opt-out and
+      panic in the else.
+- [x] **A structural finding that had to land first.**
+      `require_prebuilt_workspace_binary` carried NONE of the tier block its
+      sibling has — no `.build-failed` check, no `NROS_FIXTURES_OPTIONAL` skip,
+      no `gate_promised_fixtures()` panic. 21 of the 61 sites resolve through
+      it, so there the call-site `skip!` was the ONLY accommodation that had
+      ever existed, and on a gated run the only thing between CI and a silent
+      green. One shared helper now (`absent_fixture_verdict`), not a second
+      spelling, with the per-resolver remedy threaded through.
+- [x] The sweep command is in the commit message and re-runs clean.
+
+One override of 1129's prose, recorded because it contradicts the issue:
+`qos_zephyr_ros2_interop_e2e` is listed there as a west/SDK keep and its
+resolver already answers both the west lane and the opt-out, so it converted.
+Three reasons also named the wrong binary ("native listener" while resolving
+`build_int32_sink`) — the W4 defect in a diagnostic instead of a remedy.
 
 ### W2 — a capability skip is budgeted like a fixture skip — LANDED
 
@@ -109,7 +123,7 @@ was already being worked, and it is the shape the other four should follow.
 
 ### W3 — every Rust-target declaration site is reached
 
-[Issue 1153](../issues/1153-rust-targets-covered-blind-to-zephyr-and-docker.md).
+[Issue 1153](../issues/archived/1153-rust-targets-covered-blind-to-zephyr-and-docker.md).
 `check-rust-targets-covered.py` collects "every declaration" from three
 `git ls-files` globs; two further sites declare a target, including
 `zephyr/cmake/nros_cargo_build.cmake`'s `set(NROS_RUST_TARGET …)`.
@@ -131,8 +145,8 @@ was already being worked, and it is the shape the other four should follow.
 
 ### W4 — `check-submodule-pinned-locks` measures which cause it has
 
-[Issue 1051](../issues/1051-pinned-locks-gate-suggests-a-destructive-fix.md) and
-[issue 1294](../issues/1294-submodule-pinned-locks-remedy-points-at-a-rewind.md).
+[Issue 1051](../issues/archived/1051-pinned-locks-gate-suggests-a-destructive-fix.md) and
+[issue 1294](../issues/archived/1294-submodule-pinned-locks-remedy-points-at-a-rewind.md).
 Two causes produce one message: the pointer moved and the lock did not follow,
 or the pointer did not move and the WORKTREE drifted from it. The printed
 remedy is correct for the first and destructive for the second.
@@ -164,7 +178,7 @@ is about, caught while checking the commit that files it.
 
 ### W5 — the 62 crates that cannot `forbid` get a direction of travel
 
-[Issue 1236](../issues/1236-unsafe-census-ratchet-for-crates-that-cannot-forbid.md).
+[Issue 1236](../issues/archived/1236-unsafe-census-ratchet-for-crates-that-cannot-forbid.md).
 Issue 1221 put `#![forbid(unsafe_code)]` on the ten shipped crates measured at
 literal zero. `forbid` is a property, not a budget, so it says nothing about the
 62 crates carrying all 5,047 occurrences.

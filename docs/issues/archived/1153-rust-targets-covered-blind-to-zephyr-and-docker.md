@@ -1,7 +1,7 @@
 ---
 id: 1153
 title: "`check-rust-targets-covered` reads three declaration sites and misses two more, so a Rust target the tree builds for had no row at all"
-status: open
+status: resolved
 type: bug
 area: tooling, ci
 severity: medium
@@ -67,3 +67,20 @@ independent spellings AGREE for a given triple — `config/rust-targets.txt`,
 `nros-sdk-index.toml` `[rust.target.*]`, and `rust-toolchain.toml` `targets` —
 rather than only that a declared target appears somewhere. A triple listed in
 two of the three is the same defect one step later.
+
+## Resolved (phase-450 W3, 2026-09-11)
+
+The fourth declaration site — `NROS_RUST_TARGET` in `zephyr/cmake/*.cmake` and
+its shell mirror — is scanned. Scanning it found **four** unlisted triples, not
+one: `thumbv7em-none-eabi`, `thumbv8m.main-none-eabi`,
+`thumbv8m.main-none-eabihf` and `i686-unknown-linux-gnu`, each the no-FPU or
+alternate-profile sibling of a triple already listed and reachable by a real
+Zephyr board. All four added to the three lists the gate cross-checks; 12 rows
+to 16. Mutation-tested by deleting one row.
+
+**This issue's third site was refuted rather than implemented.**
+`ci/docker/*/Dockerfile` is not a missed declaration: that image installs a
+hardcoded set AND the SSoT's own rows, and its comment states the asymmetry is
+deliberate — "Additive on purpose... dropping them here would be a silent
+capability loss". Scanning it reported 4 intentional targets as undeclared. The
+reasoning is recorded in the gate so the next reader does not re-add it.
