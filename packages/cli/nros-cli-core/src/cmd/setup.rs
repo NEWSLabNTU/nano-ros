@@ -339,6 +339,9 @@ pub fn run(args: Args) -> Result<()> {
     // RFC-0048 §6 / phase-287 W5 — store bin dirs to fold onto the emitted
     // CMakePreset's environment.PATH (so the cross-compiler resolves).
     let mut bin_dirs: Vec<PathBuf> = Vec::new();
+    // phase-447 C1 / RFC-0099 D5 — every package this run UNPACKS is asked
+    // whether it runs, and the answers are reported together at the end.
+    let mut smoke = SmokeFailures::default();
 
     // issue 0374 — resolve the whole plan first so the source builds can be
     // announced together, before the first fetch. The loop below prints and
@@ -386,7 +389,11 @@ pub fn run(args: Args) -> Result<()> {
                 );
             }
             other => {
-                let provenance = execute(&other, name, &tool.version, &prefix, &tool.front)
+                // phase-447 C1 — the probe is COLLECTED, not raised: the other
+                // packages in this board's set are still worth installing, and
+                // the report at the end names every one that cannot run.
+                let provenance = smoke
+                    .execute_and_probe(&other, name, tool, &prefix)
                     .wrap_err_with(|| format!("install {name} {}", tool.version))?;
                 lock.record(name, &provenance);
                 installed = true;
@@ -399,6 +406,10 @@ pub fn run(args: Args) -> Result<()> {
         eprintln!("(--dry-run: nothing installed)");
     } else if installed {
         lock.save(&lock_path)?;
+        // phase-447 C1 — BEFORE the `ready` line, because a set containing a
+        // package that cannot run is not ready and must never say so. The lock
+        // is saved first: those files are on disk whatever the probes say.
+        smoke.report(&index)?;
         eprintln!(
             "nros setup: {board} ready; locked in {}",
             lock_path.display()
@@ -878,15 +889,23 @@ fn install_single_tool(
             tool.version
         ),
         other => {
-            let prov = execute(&other, name, &tool.version, &prefix, &tool.front)
+            // phase-447 C1 — installed AND probed, in one call, at the prefix
+            // this invocation chose (which `--prefix` moves out of the store).
+            let mut smoke = SmokeFailures::default();
+            let prov = smoke
+                .execute_and_probe(&other, name, tool, &prefix)
                 .wrap_err_with(|| format!("install {name} {}", tool.version))?;
             // Only the shared store is tracked by the lock; --prefix is local.
+            // Recorded BEFORE the verdict on purpose: the files really are
+            // there, and a lock that omitted them would make the next run
+            // re-download the same broken dist to reach the same answer.
             if prefix_override.is_none() {
                 let lock_path = PathBuf::from(LOCK_FILE);
                 let mut lock = SdkLock::load(&lock_path)?;
                 lock.record(name, &prov);
                 lock.save(&lock_path)?;
             }
+            smoke.report(index)?;
         }
     }
     Ok(())
@@ -1064,6 +1083,8 @@ pub fn ensure_tools(board: &str, workspace: Option<&Path>) -> Result<Vec<PathBuf
     let mut lock = SdkLock::load(&lock_path)?;
     let mut installed = false;
     let mut bin_dirs = Vec::new();
+    // phase-447 C1 / RFC-0099 D5 — same contract as `nros setup <board>`.
+    let mut smoke = SmokeFailures::default();
 
     // Unknown board ⇒ no known package set — warn + skip (lazy auto-setup is
     // best-effort; the user provides tools). `nros setup` errors instead.
@@ -1120,7 +1141,14 @@ pub fn ensure_tools(board: &str, workspace: Option<&Path>) -> Result<Vec<PathBuf
                     "nros: auto-installing {name} {} (set NROS_NO_AUTO_SETUP to skip)",
                     tool.version
                 );
-                let prov = execute(&action, name, &tool.version, &prefix, &tool.front)
+                // phase-447 C1 — the lazy path unpacks the same dists, so it
+                // owes the same answer. Auto-setup is best-effort about what it
+                // CANNOT install (an unavailable tool warns and continues); a
+                // tool it DID install and that cannot run is not that case —
+                // it is the silent success D5 exists to remove, and the build
+                // about to start is what would otherwise report it, worse.
+                let prov = smoke
+                    .execute_and_probe(&action, name, tool, &prefix)
                     .wrap_err_with(|| format!("auto-setup {name} {}", tool.version))?;
                 lock.record(name, &prov);
                 installed = true;
@@ -1135,6 +1163,7 @@ pub fn ensure_tools(board: &str, workspace: Option<&Path>) -> Result<Vec<PathBuf
     if installed {
         lock.save(&lock_path)?;
     }
+    smoke.report(&index)?;
     Ok(bin_dirs)
 }
 
@@ -2503,21 +2532,45 @@ fn failing_smoke(
     let _ = index;
     let store = crate::orchestration::sdk_store::store_root();
     let prefix = crate::orchestration::sdk_store::tool_prefix(&store, name, &tool.version);
+    failing_smoke_at(&prefix, tool)
+}
+
+/// The caller's environment a smoke probe must NOT inherit — correctness, not
+/// hygiene, and each name is here for a measured reason.
+///
+/// A smoke check must measure the DIST, not the caller's shell. On a host with
+/// ROS sourced, `LD_LIBRARY_PATH` shadows a bundled library and `PYTHONPATH` /
+/// `PYTHONHOME` redirect an embedded interpreter — both measured while
+/// diagnosing 0929, where the ROS path in gdb's error text sent the first
+/// diagnosis down a blind alley (issue 0774's class). Since phase-447 C1 this
+/// also runs on the INSTALL path, where inheriting them would let a dist that
+/// only works because of the caller's environment install as if it were fine.
+///
+/// A list rather than three chained calls so it can be asserted on: dropping a
+/// name from it is the mutation this must not survive.
+const SMOKE_STRIPPED_ENV: [&str; 3] = ["LD_LIBRARY_PATH", "PYTHONPATH", "PYTHONHOME"];
+
+/// The same question asked of an EXPLICIT prefix — phase-447 C1's second caller.
+///
+/// [`failing_smoke`] derives the SHARED STORE prefix, which is the right one for
+/// `--check`. The install path knows where it just unpacked, and that is not
+/// always the store: `--tool <name> --prefix build/qemu` places a tool
+/// workspace-locally on purpose, so a store-derived path would probe a
+/// DIFFERENT copy (or, on a host that has never run `nros setup`, nothing at
+/// all) and report a verdict about neither.
+fn failing_smoke_at(
+    prefix: &Path,
+    tool: &crate::orchestration::sdk_index::ToolPackage,
+) -> Option<(String, String)> {
     for probe in &tool.smoke {
         let mut argv = probe.run.split_whitespace();
         let Some(exe) = argv.next() else { continue };
-        let out = std::process::Command::new(prefix.join(exe))
-            .args(argv)
-            // A smoke check must measure the DIST, not the caller's shell. On a
-            // host with ROS sourced, `LD_LIBRARY_PATH` shadows a bundled
-            // library and `PYTHONPATH` redirects an embedded interpreter — both
-            // measured while diagnosing 0929, where the ROS path in gdb's error
-            // text sent the first diagnosis down a blind alley (issue 0774's
-            // class).
-            .env_remove("LD_LIBRARY_PATH")
-            .env_remove("PYTHONPATH")
-            .env_remove("PYTHONHOME")
-            .output();
+        let mut cmd = std::process::Command::new(prefix.join(exe));
+        cmd.args(argv);
+        for var in SMOKE_STRIPPED_ENV {
+            cmd.env_remove(var);
+        }
+        let out = cmd.output();
         let (text, note) = match out {
             Ok(o) => (
                 format!(
@@ -2545,6 +2598,158 @@ fn failing_smoke(
         }
     }
     None
+}
+
+/// Smoke failures observed while INSTALLING — phase-447 C1 / RFC-0099 D5.
+///
+/// A dist is ABI-bound and `host_key()` is `<os>-<arch>`: no OS version, no
+/// libc. The dists are built on `ubuntu-22.04`, so every Linux x86_64 host is
+/// offered them, including hosts that cannot run them. Download → verify sha256
+/// → unpack → record answers "did the bytes arrive", never "do they run here",
+/// so an unrunnable dist installed SUCCESSFULLY and the user met it later,
+/// somewhere else, as a bare loader error with no mention of provisioning.
+///
+/// Moving `failing_smoke` onto this path prevents nothing. It converts a silent
+/// success into a loud failure at the moment and the place the cause is known.
+///
+/// COLLECTED rather than raised, because a board resolves ~20 packages and the
+/// nineteen that are fine are worth having on disk: bailing at the first bad one
+/// would make the whole set hostage to it, and E3 (pipelined installs) makes
+/// that worse. So every failure is reported together, at the end, and the run
+/// still exits non-zero.
+///
+/// Only probed after an install ACTUALLY ran. An already-present prefix is not
+/// re-probed — `--check` is the verb that asks about what is already there
+/// (RFC-0099 D6 keeps a repeated `nros setup` cheap).
+#[derive(Default)]
+struct SmokeFailures {
+    /// `(package, prefix, probe argv, what it printed)`.
+    rows: Vec<(String, PathBuf, String, String)>,
+    /// Packages whose probes were run and passed — the evidence that a clean
+    /// report means "measured", not "asked nothing".
+    passed: Vec<String>,
+    /// Packages installed with no `smoke` at all. Absent `smoke` is no opinion,
+    /// not a pass (`check-smoke-or-reason` is the ratchet that shrinks this).
+    unprobed: Vec<String>,
+}
+
+impl SmokeFailures {
+    /// Probe one just-installed tool at the prefix it was installed INTO.
+    fn observe(&mut self, name: &str, prefix: &Path, tool: &ToolPackage) {
+        if tool.smoke.is_empty() {
+            self.unprobed.push(name.to_string());
+            return;
+        }
+        match failing_smoke_at(prefix, tool) {
+            Some((cmd, why)) => self
+                .rows
+                .push((name.to_string(), prefix.to_path_buf(), cmd, why)),
+            None => self.passed.push(name.to_string()),
+        }
+    }
+
+    /// The whole report as text — built rather than printed so a test can read
+    /// it. The acceptance for C1 is about what the message SAYS (the probe, and
+    /// what it printed), which an `eprintln!`-only path cannot assert.
+    ///
+    /// `index` is read for the one thing that decides what a user can DO about
+    /// it: whether the package has a `[tool.<name>.source]` recipe to fall back
+    /// to. Saying "install it another way" without knowing whether another way
+    /// exists is the shape of advice that wastes an afternoon.
+    fn render(&self, index: &SdkIndex) -> String {
+        use std::fmt::Write as _;
+        let mut out = String::new();
+        // Silence is stated, not implied. `failing_smoke`'s own contract is
+        // that absent `smoke` is NO OPINION — so a run that installed five
+        // unprobed packages and printed nothing would read as five that passed.
+        // `check-smoke-or-reason` is the ratchet that shrinks this list; this
+        // line is what makes its size visible to whoever is standing there.
+        if !self.unprobed.is_empty() {
+            let _ = writeln!(
+                out,
+                "nros setup: {} installed package(s) declare no `smoke` probe, so nothing \
+                 measured whether they run: {}",
+                self.unprobed.len(),
+                self.unprobed.join(", ")
+            );
+        }
+        if self.rows.is_empty() {
+            return out;
+        }
+        let _ = writeln!(
+            out,
+            "\nnros setup: {} of {} newly installed package(s) do NOT run on this host:",
+            self.rows.len(),
+            self.rows.len() + self.passed.len()
+        );
+        for (name, prefix, cmd, why) in &self.rows {
+            let _ = writeln!(out, "  [BROKEN]  {name} — `{cmd}` does not work");
+            for line in why.lines().take(4) {
+                let _ = writeln!(out, "            {line}");
+            }
+            let _ = writeln!(out, "            installed at {}", prefix.display());
+            let fallback = index
+                .tool
+                .get(name.as_str())
+                .is_some_and(|t| t.source.is_some());
+            if fallback {
+                let _ = writeln!(
+                    out,
+                    "            [tool.{name}.source] exists — building from source is the \
+                     fallback"
+                );
+            } else {
+                let _ = writeln!(
+                    out,
+                    "            [tool.{name}] has no source recipe, so this host has no \
+                     second way to get it"
+                );
+            }
+        }
+        let _ = writeln!(
+            out,
+            "\n  The download verified and unpacked; the binaries do not RUN here. A dist is\n  \
+             ABI-bound and the host key is `<os>-<arch>` — no OS version, no libc (RFC-0099 D5),\n  \
+             so it was offered to this host without anything proving it fits.\n  \
+             Report it with the line above; the files are left in place to diagnose."
+        );
+        out
+    }
+
+    /// Install one tool and immediately ask whether it RUNS.
+    ///
+    /// The ONE place the two steps are paired. Three paths install a
+    /// `[tool.*]` — `nros setup <board>`, `nros setup --tool`, and the lazy
+    /// `ensure_tools` — and wiring the probe into each separately is exactly
+    /// how #222 fixed four resolvers and left thirty (CLAUDE.md's "one shared
+    /// helper, never a second spelling"). Reaching `execute` without coming
+    /// through here is what a reviewer should look for.
+    fn execute_and_probe(
+        &mut self,
+        action: &InstallAction,
+        name: &str,
+        tool: &ToolPackage,
+        prefix: &Path,
+    ) -> Result<crate::orchestration::sdk_store::Provenance> {
+        let prov = execute(action, name, &tool.version, prefix, &tool.front)?;
+        self.observe(name, prefix, tool);
+        Ok(prov)
+    }
+
+    /// Print the report; non-zero when anything failed.
+    fn report(self, index: &SdkIndex) -> Result<()> {
+        let text = self.render(index);
+        if !text.is_empty() {
+            eprint!("{text}");
+        }
+        if self.rows.is_empty() {
+            return Ok(());
+        }
+        bail!(
+            "{} newly installed package(s) failed their smoke check",
+            self.rows.len()
+        );
+    }
 }
 
 /// Issue 0466 finding (b) — is ONE tool at the version the index pins?
@@ -3644,6 +3849,299 @@ mod tests {
             "sdk 0.12.0-nros2"
         );
         assert_eq!(provider_label(Provider::Submodule, None), "submodule");
+    }
+
+    // ---- phase-447 C1 / RFC-0099 D5: smoke runs on the INSTALL path ---------
+    //
+    // Every test below builds a real prefix with a real executable in it, so
+    // the probe spawns a process exactly as it does against a dist. A mock of
+    // `failing_smoke_at` would assert only that the collector calls what it
+    // calls.
+
+    /// A fake dist prefix: `<dir>/bin/<name>` is a shell script printing `says`.
+    ///
+    /// Through `write_executable_stub` — issue 0476: holding the write
+    /// descriptor while another test thread forks makes the exec `ETXTBSY`,
+    /// 245 times in 1200 on this machine.
+    #[cfg(unix)]
+    fn fake_dist(dir: &Path, name: &str, says: &str) -> PathBuf {
+        let bin = dir.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        crate::test_support::write_executable_stub(
+            &bin.join(name),
+            &format!("#!/bin/sh\necho '{says}'\n"),
+        );
+        dir.to_path_buf()
+    }
+
+    #[cfg(unix)]
+    fn tool_with_probe(run: &str, expect: &str) -> ToolPackage {
+        let raw = format!(
+            "[tool.t]\nversion = \"1.0\"\nsmoke = [{{ run = \"{run}\", expect = \"{expect}\" }}]\n"
+        );
+        SdkIndex::parse(&raw).unwrap().tool.remove("t").unwrap()
+    }
+
+    /// The probe measures the prefix it is GIVEN, not the shared store.
+    ///
+    /// `--tool <name> --prefix build/qemu` installs outside the store on
+    /// purpose, so a store-derived path would answer about a different copy —
+    /// or, on a host that has never run `nros setup`, about nothing.
+    #[cfg(unix)]
+    #[test]
+    fn a_smoke_probe_measures_the_prefix_it_is_given() {
+        let dir = crate::test_support::scratch_dir("c1_prefix_is_honoured");
+        let good = fake_dist(&dir.join("good"), "widget", "widget 1.0");
+        let bad = fake_dist(&dir.join("bad"), "widget", "Segmentation fault");
+        let tool = tool_with_probe("bin/widget --version", "widget 1.0");
+
+        assert!(failing_smoke_at(&good, &tool).is_none());
+        let (cmd, why) = failing_smoke_at(&bad, &tool).expect("the bad prefix must fail");
+        assert_eq!(cmd, "bin/widget --version");
+        assert!(why.contains("Segmentation fault"), "{why}");
+
+        // A prefix with nothing in it is a FAILURE, never a pass: that is the
+        // "installed successfully, cannot run" case in its purest form.
+        let (_, why) = failing_smoke_at(&dir.join("empty"), &tool).expect("absent binary fails");
+        assert!(why.contains("could not run it"), "{why}");
+    }
+
+    /// The probe does not inherit the caller's loader environment — MEASURED,
+    /// through the real spawn, by asking the child what it can see.
+    ///
+    /// This is correctness, not hygiene: with ROS sourced, `LD_LIBRARY_PATH`
+    /// shadows a bundled library, so a dist that cannot run on its own passes
+    /// because the caller's host lent it one. On the install path that is worse
+    /// than on `--check` — it writes the lock and reports success.
+    ///
+    /// `PYTHONPATH`/`PYTHONHOME` are asserted against the list rather than
+    /// through a spawn: poisoning either in this process reaches every other
+    /// test's children too, and the interpreter half is exactly what took gdb's
+    /// diagnosis down a blind alley in 0929.
+    #[cfg(unix)]
+    #[test]
+    fn a_smoke_probe_does_not_inherit_the_callers_loader_environment() {
+        assert!(SMOKE_STRIPPED_ENV.contains(&"LD_LIBRARY_PATH"));
+        assert!(SMOKE_STRIPPED_ENV.contains(&"PYTHONPATH"));
+        assert!(SMOKE_STRIPPED_ENV.contains(&"PYTHONHOME"));
+
+        let dir = crate::test_support::scratch_dir("c1_env_stripping");
+        // The stub reports what it INHERITED, so the assertion is on the
+        // child's own view rather than on the parent's intent.
+        std::fs::create_dir_all(dir.join("bin")).unwrap();
+        crate::test_support::write_executable_stub(
+            &dir.join("bin").join("widget"),
+            "#!/bin/sh\necho \"saw:[$LD_LIBRARY_PATH]\"\n",
+        );
+        let tool = tool_with_probe("bin/widget", "saw:[]");
+
+        // A directory that does not exist: the loader skips it, so a sibling
+        // test's child inheriting this for the length of the call is harmless.
+        let poison = dir.join("no-such-lib-dir");
+        let restore = std::env::var_os("LD_LIBRARY_PATH");
+        unsafe { std::env::set_var("LD_LIBRARY_PATH", &poison) };
+        let verdict = failing_smoke_at(&dir, &tool);
+        match restore {
+            Some(v) => unsafe { std::env::set_var("LD_LIBRARY_PATH", v) },
+            None => unsafe { std::env::remove_var("LD_LIBRARY_PATH") },
+        }
+
+        // `expect` is `saw:[]`, so a probe that inherited the poison fails —
+        // and the failure text is what the child actually saw.
+        assert!(
+            verdict.is_none(),
+            "the probe inherited the caller's LD_LIBRARY_PATH: {verdict:?}"
+        );
+    }
+
+    /// Acceptance, first half: the report NAMES the probe and what it printed.
+    /// Second half: one broken package does not abort the other twenty.
+    #[cfg(unix)]
+    #[test]
+    fn a_broken_package_is_reported_at_the_end_and_never_stops_the_others() {
+        let dir = crate::test_support::scratch_dir("c1_report_at_the_end");
+        let tool = tool_with_probe("bin/widget --version", "widget 1.0");
+        let index = SdkIndex::parse(
+            "[tool.broken]\nversion = \"1.0\"\n\
+             [tool.fine]\nversion = \"1.0\"\n\
+             [tool.fine.source]\ngit = \"https://example.invalid/x\"\nref = \"v1\"\n\
+             install = \"true\"\n",
+        )
+        .unwrap();
+
+        let mut smoke = SmokeFailures::default();
+        smoke.observe(
+            "first-ok",
+            &fake_dist(&dir.join("a"), "widget", "widget 1.0"),
+            &tool,
+        );
+        smoke.observe(
+            "broken",
+            &fake_dist(
+                &dir.join("b"),
+                "widget",
+                "libfoo.so.1: cannot open shared object file",
+            ),
+            &tool,
+        );
+        // The loop reached this one, which is the whole point of collecting.
+        smoke.observe(
+            "later-ok",
+            &fake_dist(&dir.join("c"), "widget", "widget 1.0"),
+            &tool,
+        );
+
+        assert_eq!(smoke.rows.len(), 1, "only the broken one fails");
+        assert_eq!(smoke.passed, vec!["first-ok", "later-ok"]);
+
+        let text = smoke.render(&index);
+        assert!(text.contains("[BROKEN]  broken"), "{text}");
+        // The probe that was run …
+        assert!(
+            text.contains("`bin/widget --version` does not work"),
+            "{text}"
+        );
+        // … and what it printed. Without this the user is told a name and a
+        // verdict, and has to reproduce the run to learn anything.
+        assert!(text.contains("cannot open shared object file"), "{text}");
+        // A remedy that knows whether one exists. `broken` has no source recipe.
+        assert!(text.contains("has no source recipe"), "{text}");
+        assert!(smoke.report(&index).is_err(), "the run must exit non-zero");
+    }
+
+    /// A package with a `source` recipe is told so — the remedy differs, and
+    /// the report must not offer a fallback that does not exist (nor withhold
+    /// one that does).
+    #[cfg(unix)]
+    #[test]
+    fn the_remedy_names_the_source_recipe_only_when_there_is_one() {
+        let dir = crate::test_support::scratch_dir("c1_remedy");
+        let index = SdkIndex::parse(
+            "[tool.fine]\nversion = \"1.0\"\n\
+             [tool.fine.source]\ngit = \"https://example.invalid/x\"\nref = \"v1\"\n\
+             install = \"true\"\n",
+        )
+        .unwrap();
+        let tool = tool_with_probe("bin/widget --version", "widget 1.0");
+        let mut smoke = SmokeFailures::default();
+        smoke.observe("fine", &fake_dist(&dir, "widget", "nope"), &tool);
+        let text = smoke.render(&index);
+        assert!(text.contains("[tool.fine.source] exists"), "{text}");
+    }
+
+    /// The acceptance, end to end and through the REAL install path: a dist
+    /// that downloads, verifies and unpacks and then does not run fails HERE,
+    /// at unpack, not at first use.
+    ///
+    /// It drives `install_single_tool` with a `file://` dist, so download →
+    /// sha256 → `tar -xf` → provenance all really happen. A test that called
+    /// the collector directly would prove the collector works and say nothing
+    /// about whether anything calls it — which is the whole of C1.
+    ///
+    /// `--prefix` keeps it out of the shared store (and is the case
+    /// `failing_smoke_at` exists for: a store-derived path would probe some
+    /// other copy of `widget`, or none).
+    #[cfg(unix)]
+    #[test]
+    fn a_dist_that_unpacks_and_cannot_run_fails_at_install() {
+        let dir = crate::test_support::scratch_dir("c1_install_path_e2e");
+        let stage = dir.join("stage");
+        std::fs::create_dir_all(stage.join("bin")).unwrap();
+
+        let pack = |says: &str, tag: &str| -> (PathBuf, String) {
+            crate::test_support::write_executable_stub(
+                &stage.join("bin").join("widget"),
+                &format!("#!/bin/sh\necho '{says}'\n"),
+            );
+            let archive = dir.join(format!("{tag}.tar.gz"));
+            let ok = std::process::Command::new("tar")
+                .args([
+                    "-czf".as_ref(),
+                    archive.as_os_str(),
+                    "-C".as_ref(),
+                    stage.as_os_str(),
+                    ".".as_ref(),
+                ])
+                .status()
+                .expect("spawn tar (the install path itself needs it)");
+            assert!(ok.success(), "tar failed building the fake dist");
+            let out = std::process::Command::new("sha256sum")
+                .arg(&archive)
+                .output()
+                .expect("spawn sha256sum (the install path itself needs it)");
+            let sha = String::from_utf8_lossy(&out.stdout)
+                .split_whitespace()
+                .next()
+                .unwrap_or_default()
+                .to_string();
+            (archive, sha)
+        };
+        let index_for = |archive: &Path, sha: &str| {
+            SdkIndex::parse(&format!(
+                "[tool.widget]\nversion = \"1.0\"\n\
+                 dist.{host} = {{ url = \"file://{url}\", sha256 = \"{sha}\" }}\n\
+                 smoke = [{{ run = \"bin/widget --version\", expect = \"widget 1.0\" }}]\n",
+                host = host_key(),
+                url = archive.display(),
+            ))
+            .unwrap()
+        };
+
+        // POSITIVE CONTROL FIRST. Without it, a red below could just as well
+        // mean the fake dist never installed at all, and the test would "prove"
+        // C1 while measuring a broken tarball.
+        let (archive, sha) = pack("widget 1.0", "good");
+        let good_prefix = dir.join("good-prefix");
+        install_single_tool(
+            &index_for(&archive, &sha),
+            "widget",
+            Some(&good_prefix),
+            false,
+            false,
+        )
+        .expect("a dist that runs must install cleanly");
+        assert!(good_prefix.join("bin/widget").is_file());
+
+        // The case: same shape, and the binary does not do what it claims.
+        let (archive, sha) = pack("widget: error while loading shared libraries", "bad");
+        let bad_prefix = dir.join("bad-prefix");
+        let err = install_single_tool(
+            &index_for(&archive, &sha),
+            "widget",
+            Some(&bad_prefix),
+            false,
+            false,
+        )
+        .expect_err("a dist that cannot run must NOT install successfully");
+        assert!(
+            format!("{err:#}").contains("failed their smoke check"),
+            "{err:#}"
+        );
+        // The files stay where they are — deleting them would destroy the one
+        // copy anyone can diagnose.
+        assert!(bad_prefix.join("bin/widget").is_file());
+    }
+
+    /// Absent `smoke` is NO OPINION, and the report says so out loud.
+    ///
+    /// This is the hole `check-smoke-or-reason` ratchets shut: without the
+    /// line, a run that installed only unprobed packages prints nothing about
+    /// running them and reads exactly like a run that measured them all.
+    #[cfg(unix)]
+    #[test]
+    fn a_package_with_no_probe_is_named_rather_than_counted_as_passing() {
+        let index = SdkIndex::parse("[tool.silent]\nversion = \"1.0\"\n").unwrap();
+        let silent = index.tool["silent"].clone();
+        let mut smoke = SmokeFailures::default();
+        smoke.observe("silent", Path::new("/nonexistent"), &silent);
+
+        assert!(smoke.passed.is_empty(), "silence is not a pass");
+        assert!(smoke.rows.is_empty(), "silence is not a failure either");
+        let text = smoke.render(&index);
+        assert!(text.contains("declare no `smoke` probe"), "{text}");
+        assert!(text.contains("silent"), "{text}");
+        // …and it does not fail the install: no opinion means no verdict.
+        assert!(smoke.report(&index).is_ok());
     }
 }
 

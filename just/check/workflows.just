@@ -252,6 +252,19 @@ prereq-roles:
 rosdep-snapshot:
     @python3 scripts/check-rosdep-snapshot.py
 
+# phase-447 C1 / RFC-0099 D5 — every `[tool.*]` proves it RUNS, or says why not.
+#
+# `nros setup` runs a tool's `smoke` probes on the INSTALL path now, so a dist
+# that downloads, verifies and unpacks and then cannot run fails at unpack
+# instead of at first use. That covers the tools that DECLARE a probe, and
+# absent `smoke` is no opinion rather than a pass — so the other 13 owe a
+# reason, in a baseline that may only shrink.
+#
+# Fast line: two tracked files and no host state.
+[group("checks")]
+smoke-or-reason:
+    @python3 scripts/check-smoke-or-reason.py
+
 # issue 0516 — a COMMENTED-OUT element in a package.xml must not read as a
 # declaration. cmake has no XML parser, so every reader here regexes raw text;
 # before the `nros_read_package_xml_body()` helper, a package.xml that merely
