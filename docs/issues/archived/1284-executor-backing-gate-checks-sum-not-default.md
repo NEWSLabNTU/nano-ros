@@ -103,8 +103,8 @@ and the test's doc each point to the others.
 Measured on the base (`045c689f8`): `DEFAULT = 11069` words on the 64-bit host.
 The lane went red there on exactly the twelve `native_sim/native/64` claims
 (`11045 … 24 short`), while the mps2 claim passed its 32-bit compile. The
-restatement to 11069 is PR #898's; this branch carries its commit unchanged so
-the lane is green here, and it drops by patch-id if #898 lands first.
+restatement to 11069 is PR #898's, merged 2026-09-10; with it on `main` the lane
+is green.
 
 ### Mutation
 
