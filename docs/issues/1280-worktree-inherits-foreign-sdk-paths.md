@@ -84,3 +84,28 @@ checkout, `just nuttx build` either builds the worktree's tree or refuses
 naming both paths; and a FreeRTOS example built there compiles the worktree's
 `nros-platform-freertos/src` (check with a deliberate `#error` in the worktree
 copy).
+
+## A 20th variable, and it is not an SDK path (2026-09-12, phase-454 W3)
+
+`NROS_REPO_DIR` behaves the same way and is not in the 19. Inherited from the
+main checkout into a linked worktree, it sent **four gates' fixtures into the
+main checkout's `build/`** — so the gates ran, and measured the wrong tree.
+
+This widens the issue's own framing. The title says "SDK trees" and the census
+counted `just/sdk-env.just`'s `env(...)` defaults, but the RULE is about any
+absolute path inherited from an ancestor checkout that outranks the worktree's
+own. An SDK path is the case that was found first, not the boundary — the same
+reach-narrower-than-the-rule shape issue 0196 keeps turning up.
+
+Two consequences for the fix direction above:
+
+* the enumeration cannot be "the 19 in `sdk-env.just`". It has to be every
+  variable that names a path INSIDE a nano-ros checkout, wherever it is
+  exported, or the next one lands the same way.
+* `NROS_REPO_DIR` is the sharpest case, because it is the variable that *defines
+  which checkout we are in*. Every path derived from it inherits the error, so
+  it wins arguments it should never have entered.
+
+Acceptance gains a row: in a linked worktree with `NROS_REPO_DIR` exported to the
+main checkout, a gate that writes fixtures writes them under the WORKTREE's
+`build/`, or refuses naming both paths.
