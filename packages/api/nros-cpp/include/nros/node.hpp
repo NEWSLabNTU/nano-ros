@@ -786,20 +786,47 @@ class Node {
     ::std::shared_ptr<::rclcpp::Client<S>>
     create_client(const ::std::string&, F, const ::nros::QoS& = ::nros::QoS::services());
 
+    /// @internal Hand the node co-ownership of an arena-registered cell.
+    ///
+    /// The executor arena stores a raw pointer as its dispatch context and has
+    /// no unregister path, so the cell must outlive the registration whatever
+    /// the caller does with the `shared_ptr` we hand back. The `create_*`
+    /// members do this through the hosted block directly; this is the same
+    /// thing for a FREE function that registers on a node
+    /// (`rclcpp::create_timer`), which cannot reach a private member.
+    void own_entity(const ::std::shared_ptr<void>& cell) {
+        this->hosted().owned_entities.push_back(cell);
+    }
+
+#endif // NROS_CPP_NODE_HOSTED
+
     // -- parameters (bodies in `nros.hpp`) ----------------------------------
     //
-    // Forwarders onto THE parameter store — the `nros_params::ParameterServer`
+    // Forwarders onto THE parameter store - the `nros_params::ParameterServer`
     // the EXECUTOR owns, reached across the FFI by `nros/node_parameters.hpp`.
     // Declared here with the class and DEFINED in `nros.hpp` beside the other
     // out-of-line members, which is where the reasoning lives.
     //
     // Until phase-426 W4 these read an inline `ParameterServer` member on the
     // hosted block instead: a second store, node-local, that the six
-    // `rcl_interfaces/srv/*` servers could not read — so a parameter declared
+    // `rcl_interfaces/srv/*` servers could not read - so a parameter declared
     // through this facade was invisible to `ros2 param get` and a sibling node
-    // did not share it. That member is gone, and with it the last thing that
-    // made `NROS_CPP_NODE_HOSTED` decide whether a node HAS parameters rather
-    // than whether it can spell them.
+    // did not share it.
+    //
+    // OUTSIDE `NROS_CPP_NODE_HOSTED`, and that is the rest of W4 rather than a
+    // tidy-up. The member leaving was "the last thing that made
+    // `NROS_CPP_NODE_HOSTED` decide whether a node HAS parameters rather than
+    // whether it can spell them" - but the declarations stayed inside the gate,
+    // so a freestanding node still had no parameter method, and
+    // `nros::ParameterServer<Cap>` (deleted with this wave) was the only C++
+    // parameter surface it had. Deleting that class while the gate stood would
+    // have removed the capability from freestanding C++ instead of moving it,
+    // which is what W4's ordering rule exists to prevent. The scalar FFI is
+    // `<cstdint>` and a `const char*`; nothing about it needs the STL, and
+    // `nros::Seq<T, N>` gives the array form the same reach. Only the
+    // `std::string`-KEYED overloads below need it, and they keep the gate - a
+    // gate on METHODS, never on a member, which is what
+    // `check-cpp-capability-layout` asks.
 
     /// `rclcpp::Node::declare_parameter<T>(name, default)`.
     template <typename T> T declare_parameter(const char* name, T default_value = T());
@@ -815,6 +842,7 @@ class Node {
     /// `rclcpp::Node::has_parameter(name)`.
     bool has_parameter(const char* name) const;
 
+#ifdef NROS_CPP_NODE_HOSTED
     /// `std::string`-keyed overloads. rclcpp keys on `std::string`, which does
     /// not implicitly convert to `const char*`, so a ported call site needs
     /// these to bind at all.
@@ -833,19 +861,6 @@ class Node {
     bool has_parameter(const ::std::string& name) const {
         return this->has_parameter(name.c_str());
     }
-
-    /// @internal Hand the node co-ownership of an arena-registered cell.
-    ///
-    /// The executor arena stores a raw pointer as its dispatch context and has
-    /// no unregister path, so the cell must outlive the registration whatever
-    /// the caller does with the `shared_ptr` we hand back. The `create_*`
-    /// members do this through the hosted block directly; this is the same
-    /// thing for a FREE function that registers on a node
-    /// (`rclcpp::create_timer`), which cannot reach a private member.
-    void own_entity(const ::std::shared_ptr<void>& cell) {
-        this->hosted().owned_entities.push_back(cell);
-    }
-
 #endif // NROS_CPP_NODE_HOSTED
 
     /// Create a new node.

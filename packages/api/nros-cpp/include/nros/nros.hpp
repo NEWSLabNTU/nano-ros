@@ -656,120 +656,21 @@ namespace nros {
 
 // -- parameters ---------------------------------------------------------------
 //
-// Forwarders onto THE parameter store — the `nros_params::ParameterServer` the
-// EXECUTOR owns, reached through `nros/node_parameters.hpp`. There is no other
-// one any more.
+// MOVED OUT OF THIS BLOCK (phase-426 W4). The definitions are below, after
+// `#endif // NROS_CPP_HAS_SHARED_PTR && ...`, because a node's parameters are
+// not a hosted capability: the scalar FFI is `<cstdint>` and a `const char*`,
+// and `nros::Seq<T, N>` carries arrays with no STL either. Only the
+// `std::string`-KEYED overloads (declared on the class in `node.hpp`) need the
+// STL, and only those keep the gate.
 //
-// What changed in phase-426 W4, and why it is not a detail: these used to
-// forward to an inline `nros::ParameterServer<NROS_RCLCPP_MAX_PARAMS>` member
-// on the hosted block — a second store, node-local, which the six
-// `rcl_interfaces/srv/*` servers could not read. So a parameter declared here
-// was invisible to `ros2 param get`, a sibling node did not share it, and the
-// launch seed had to be copied across by a helper because the two stores could
-// not be the same object. The member is deleted; the seam is one FFI call;
-// `ros2 param get <node> <name>` sees what `declare_parameter` wrote. Issue
-// 0793 / RFC-0089 §"Parameters".
-//
-// ADOPT-BOUNDED still, and the envelope is now about TYPES rather than scope:
-// bool / int / int64_t / double reach the store, `std::string` and
-// `std::vector<T>` do under `NROS_CPP_STD`, and rclcpp's `ParameterDescriptor`
-// / `ignore_override` / callback arguments remain absent (the
-// compile-time-options rule). The WIRE half of the acceptance — that the six
-// services answer per node FQN — is phase-426 W3/W6.
-//
-// Where the image declares no `param_services` capability there is no store at
-// all, and every call answers `ErrorCode::Unsupported`. This facade wears
-// upstream's value-returning signature, which has nowhere to report that, so
-// `declare_parameter` returns the code default. The loud half USED to be
-// `nros::ComponentNode`, whose own facade recorded the failure on an `ok()`
-// flag and made it boot-fatal; phase-427 W4 deleted that type, so no C++ path
-// is boot-fatal on a missing store any more. `rclcpp::Node` still carries the
-// flag (`set_error` / `ok()`); routing the parameter path back onto it is a
-// separate decision, because it changes what an upstream-shaped
-// `declare_parameter` does.
-
-/// `rclcpp::Node::declare_parameter<T>(name, default)` — declare, then read
-/// back, returning the value in effect.
-///
-/// Re-declaring is not an error: a launch-seeded parameter is DECLARED before
-/// user code runs, and upstream's contract is that `declare` adopts the
-/// override. That adoption is now the store's own `ALREADY_EXISTS` answer
-/// followed by the read-back below, rather than a helper that copied a value
-/// between two stores. On any other failure the code default is returned.
-} // namespace nros
-
-namespace rclcpp {
-template <typename T> inline T Node::declare_parameter(const char* name, T default_value) {
-    // phase-446 W6 -- a declaration the contract's `params:` does not make, or
-    // makes with another type, refuses the boot through `set_error` before
-    // anything reaches the store (see `Node::check_declared_param`).
-    if (!this->check_declared_param(name, ::nros::detail::node_param_type<T>::value)) {
-        return default_value;
-    }
-    const ::nros_cpp_node_t* h = this->ffi_handle();
-    Result r = ::nros::detail::node_param_declare(h, name, default_value);
-    if (!r.ok() && r.raw() != NROS_RET_ALREADY_EXISTS) {
-        return default_value;
-    }
-    T out = T();
-    if (!::nros::detail::node_param_get(h, name, out).ok()) {
-        return default_value;
-    }
-    return out;
-}
-} // namespace rclcpp
-
-namespace nros {} // namespace nros
-
-namespace rclcpp {
-template <typename T> inline bool Node::get_parameter(const char* name, T& out) const {
-    return ::nros::detail::node_param_get(this->ffi_handle(), name, out).ok();
-}
-} // namespace rclcpp
-
-namespace nros {} // namespace nros
-
-namespace rclcpp {
-template <typename T> inline T Node::get_parameter(const char* name) const {
-    T out = T();
-    (void)::nros::detail::node_param_get(this->ffi_handle(), name, out);
-    return out;
-}
-} // namespace rclcpp
-
-namespace nros {
-
-/// phase-426 W4 — `set_parameter` now goes through the SAME
-/// `ParameterServer::apply` a remote `ros2 param set` does, so a read-only
-/// parameter is refused here exactly as it is on the wire, and the value a
-/// service reports back is the value this wrote.
-} // namespace nros
-
-namespace rclcpp {
-template <typename T> inline Result Node::set_parameter(const char* name, T value) {
-    return ::nros::detail::node_param_set(this->ffi_handle(), name, value);
-}
-} // namespace rclcpp
-
-namespace nros {} // namespace nros
-
-namespace rclcpp {
-inline bool Node::has_parameter(const char* name) const {
-    return ::nros::detail::node_param_has(this->ffi_handle(), name);
-}
-} // namespace rclcpp
-
-namespace nros {
-
 // `parameters()` IS GONE (phase-426 W4). It handed out a reference to the node's
 // own `nros::ParameterServer`, described as the escape hatch for "the C-API
-// helpers that take an `nros_parameter_server_t*`" — and no such helper
+// helpers that take an `nros_parameter_server_t*`" - and no such helper
 // existed: `nros_executor_register_parameter_services` takes the executor,
-// never a standalone store, which the ledger row for `cpp:ParameterServer` had
-// already recorded. With the member deleted there is nothing to return, and
-// nothing that took it. A node's parameters are reached through
-// `declare_parameter` / `get_parameter` / `set_parameter`, which now name the
-// store the services actually read.
+// never a standalone store. That class is deleted now too, so there is nothing
+// to return and nothing that took it. A node's parameters are reached through
+// `declare_parameter` / `get_parameter` / `set_parameter`, which name the store
+// the services actually read.
 
 // -- services and clients -----------------------------------------------------
 //
@@ -1050,6 +951,116 @@ inline FutureReturnCode spin_until_future_complete(const Node::SharedPtr& node,
 } // namespace rclcpp
 
 #endif // NROS_CPP_HAS_SHARED_PTR && ...
+
+// --- node parameters ---------------------------------------------------------
+//
+// Out here rather than in the hosted block above: see the note at the
+// `-- parameters --` marker there, and `node.hpp` for why the gate moved to
+// the `std::string`-keyed overloads alone (phase-426 W4).
+
+// -- parameters ---------------------------------------------------------------
+//
+// Forwarders onto THE parameter store — the `nros_params::ParameterServer` the
+// EXECUTOR owns, reached through `nros/node_parameters.hpp`. There is no other
+// one any more.
+//
+// What changed in phase-426 W4, and why it is not a detail: these used to
+// forward to an inline `nros::ParameterServer<NROS_RCLCPP_MAX_PARAMS>` member
+// on the hosted block — a second store, node-local, which the six
+// `rcl_interfaces/srv/*` servers could not read. So a parameter declared here
+// was invisible to `ros2 param get`, a sibling node did not share it, and the
+// launch seed had to be copied across by a helper because the two stores could
+// not be the same object. The member is deleted; the seam is one FFI call;
+// `ros2 param get <node> <name>` sees what `declare_parameter` wrote. Issue
+// 0793 / RFC-0089 §"Parameters".
+//
+// ADOPT-BOUNDED still, and the envelope is now about TYPES rather than scope:
+// bool / int / int64_t / double reach the store, `std::string` and
+// `std::vector<T>` do under `NROS_CPP_STD`, and rclcpp's `ParameterDescriptor`
+// / `ignore_override` / callback arguments remain absent (the
+// compile-time-options rule). The WIRE half of the acceptance — that the six
+// services answer per node FQN — is phase-426 W3/W6.
+//
+// Where the image declares no `param_services` capability there is no store at
+// all, and every call answers `ErrorCode::Unsupported`. This facade wears
+// upstream's value-returning signature, which has nowhere to report that, so
+// `declare_parameter` returns the code default. The loud half USED to be
+// `nros::ComponentNode`, whose own facade recorded the failure on an `ok()`
+// flag and made it boot-fatal; phase-427 W4 deleted that type, so no C++ path
+// is boot-fatal on a missing store any more. `rclcpp::Node` still carries the
+// flag (`set_error` / `ok()`); routing the parameter path back onto it is a
+// separate decision, because it changes what an upstream-shaped
+// `declare_parameter` does.
+
+/// `rclcpp::Node::declare_parameter<T>(name, default)` — declare, then read
+/// back, returning the value in effect.
+///
+/// Re-declaring is not an error: a launch-seeded parameter is DECLARED before
+/// user code runs, and upstream's contract is that `declare` adopts the
+/// override. That adoption is now the store's own `ALREADY_EXISTS` answer
+/// followed by the read-back below, rather than a helper that copied a value
+/// between two stores. On any other failure the code default is returned.
+
+namespace rclcpp {
+template <typename T> inline T Node::declare_parameter(const char* name, T default_value) {
+    // phase-446 W6 -- a declaration the contract's `params:` does not make, or
+    // makes with another type, refuses the boot through `set_error` before
+    // anything reaches the store (see `Node::check_declared_param`).
+    if (!this->check_declared_param(name, ::nros::detail::node_param_type<T>::value)) {
+        return default_value;
+    }
+    const ::nros_cpp_node_t* h = this->ffi_handle();
+    Result r = ::nros::detail::node_param_declare(h, name, default_value);
+    if (!r.ok() && r.raw() != NROS_RET_ALREADY_EXISTS) {
+        return default_value;
+    }
+    T out = T();
+    if (!::nros::detail::node_param_get(h, name, out).ok()) {
+        return default_value;
+    }
+    return out;
+}
+} // namespace rclcpp
+
+namespace nros {} // namespace nros
+
+namespace rclcpp {
+template <typename T> inline bool Node::get_parameter(const char* name, T& out) const {
+    return ::nros::detail::node_param_get(this->ffi_handle(), name, out).ok();
+}
+} // namespace rclcpp
+
+namespace nros {} // namespace nros
+
+namespace rclcpp {
+template <typename T> inline T Node::get_parameter(const char* name) const {
+    T out = T();
+    (void)::nros::detail::node_param_get(this->ffi_handle(), name, out);
+    return out;
+}
+} // namespace rclcpp
+
+namespace nros {
+
+/// phase-426 W4 — `set_parameter` now goes through the SAME
+/// `ParameterServer::apply` a remote `ros2 param set` does, so a read-only
+/// parameter is refused here exactly as it is on the wire, and the value a
+/// service reports back is the value this wrote.
+} // namespace nros
+
+namespace rclcpp {
+template <typename T> inline Result Node::set_parameter(const char* name, T value) {
+    return ::nros::detail::node_param_set(this->ffi_handle(), name, value);
+}
+} // namespace rclcpp
+
+namespace nros {} // namespace nros
+
+namespace rclcpp {
+inline bool Node::has_parameter(const char* name) const {
+    return ::nros::detail::node_param_has(this->ffi_handle(), name);
+}
+} // namespace rclcpp
 
 // --- Rate / WallRate (phase-417 W2.d) ----------------------------------------
 //
