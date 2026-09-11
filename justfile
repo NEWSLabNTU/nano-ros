@@ -2549,16 +2549,46 @@ rust-rtos-link-check: _codegen
         NROS_REPO_DIR="$PWD" "$nros_cli" sync "$dir" >/dev/null
         NROS_REPO_DIR="$PWD" nros_codegen_stamp_write "$dir"
     done
+    # ...and the same W6 move took the leaf's `[build] target` with it. That key
+    # lived in the generated-and-committed `.cargo/nros-board.toml`; it is now in
+    # `<leaf>/build/<image>/nros-cargo.toml`, which cargo reads only when the
+    # caller passes `--config` (RFC-0098 D1/D9, `cmd/leaf_settings.rs`). A bare
+    # `cargo build` therefore resolves the PATCHES — those still come from the
+    # checkout root's `.cargo/config.toml`, found by cargo's walk up — and builds
+    # the leaf for the HOST anyway. Measured on the merge queue's L3 job
+    # (run 34646952925) and reproduced here: without the flag the board script
+    # reports `TARGET=x86_64-unknown-linux-gnu ... skipping the cross-compile`,
+    # and the bin dies `cannot find 'std' in the crate root` +
+    # `#[panic_handler] function required`; with it, `CC_thumbv7m_none_eabi =
+    # Some(arm-none-eabi-gcc)`. `--target-dir` stays on the command line, which
+    # beats the file's own value and keeps this lane's separate dir (0616).
+    #
+    # Resolved rather than spelled: the settings file is the only
+    # `nros-cargo.toml` under `<leaf>/build/`, so nothing here restates an image
+    # id that `system.toml` owns. Missing it is FATAL — silently building for the
+    # host is the defect this exists to stop.
+    leaf_cargo_config() {
+        local leaf="$1" found
+        found="$(find "$leaf/build" -mindepth 2 -maxdepth 2 -name nros-cargo.toml 2>/dev/null | head -1)"
+        if [ -z "$found" ]; then
+            echo "rust-rtos-link-check: no build/<image>/nros-cargo.toml under $leaf" >&2
+            echo "  \`nros sync $leaf\` writes it; without it cargo builds for the host." >&2
+            exit 1
+        fi
+        printf '%s\n' "${found#"$leaf"/}"
+    }
     if command -v arm-none-eabi-gcc >/dev/null; then
         echo "  freertos talker ($(nros_cargo_platform_profile freertos)):"
         # #60 T5: the freertos talker Node pkg is platform/RMW-agnostic now —
         # the `rmw-zenoh` parity feature was removed (RMW flows from the board
         # crate). Build with default features, mirroring the nuttx talker below.
         mapfile -t freertos_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile freertos)")
-        ( cd examples/mps2-an385-freertos/rust/talker && cargo build "${freertos_profile[@]}" --target-dir target-link-check ) >/dev/null
+        freertos_settings="$(leaf_cargo_config examples/mps2-an385-freertos/rust/talker)"
+        ( cd examples/mps2-an385-freertos/rust/talker && cargo build "${freertos_profile[@]}" --config "$freertos_settings" --target-dir target-link-check ) >/dev/null
         echo "  nuttx talker ($(nros_cargo_platform_profile nuttx)):"
         mapfile -t nuttx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile nuttx)")
-        ( cd examples/qemu-armv7a-nuttx/rust/talker && cargo build "${nuttx_profile[@]}" --target-dir target-link-check ) >/dev/null
+        nuttx_settings="$(leaf_cargo_config examples/qemu-armv7a-nuttx/rust/talker)"
+        ( cd examples/qemu-armv7a-nuttx/rust/talker && cargo build "${nuttx_profile[@]}" --config "$nuttx_settings" --target-dir target-link-check ) >/dev/null
     else
         echo "  [SKIPPED] freertos + nuttx: arm-none-eabi-gcc not installed"
     fi
@@ -2568,8 +2598,9 @@ rust-rtos-link-check: _codegen
     # future carve-out reaches this one without an edit here.
     echo "  threadx-linux talker ($(nros_cargo_platform_profile threadx-linux)):"
     mapfile -t threadx_profile < <(nros_cargo_profile_args_for "$(nros_cargo_platform_profile threadx-linux)")
+    threadx_settings="$(leaf_cargo_config examples/threadx-linux/rust/talker)"
     ( cd examples/threadx-linux/rust/talker && \
-        cargo build "${threadx_profile[@]}" --no-default-features --features rmw-zenoh --target-dir target-zenoh ) >/dev/null
+        cargo build "${threadx_profile[@]}" --config "$threadx_settings" --no-default-features --features rmw-zenoh --target-dir target-zenoh ) >/dev/null
     echo "Rust-RTOS link check OK."
 
 # Run CI: format check + clippy + every test tier (never modifies code).
