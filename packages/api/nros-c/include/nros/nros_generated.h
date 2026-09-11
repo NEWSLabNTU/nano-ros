@@ -5887,18 +5887,33 @@ NROS_PUBLIC const void *nros_node_get_logger(const struct nros_node_t *node);
  * `nros_support_is_valid` for the support object; the node had no predicate
  * that read its own state, which is the whole of gap `c:node_is_valid`.
  *
- * Two questions, both answered, because either one alone is a lie:
+ * THREE questions, all answered, because any one alone is a lie (the count was
+ * two until phase-417 stage 3 — ledger row `c:node_is_valid` — and the missing
+ * one is the one that separates this from `rcl_node_is_valid_except_context`):
  *
  * * the handle's own state is `INITIALIZED` — `rcl_node_fini` sets
- *   `SHUTDOWN`, so a finalised node reports false; and
+ *   `SHUTDOWN`, so a finalised node reports false;
+ * * the CONTEXT it names is still valid. `rcl_node_is_valid` is false once the
+ *   node's context is invalid; that is the whole of what
+ *   `rcl_node_is_valid_except_context` exists to opt out of, and we decline
+ *   that name precisely because this one answers the context question.
+ *   `rclc_support_fini` drops the inline session, zeroes `_opaque` and marks
+ *   the SUPPORT shut down while touching no node, so a node built by
+ *   `rclc_node_init_default` still reads `INITIALIZED` over a dead session —
+ *   the guard passed and the next publish dereferenced the zeroed `_opaque`.
+ *   [`crate::support::nros_support_is_valid`] is the predicate that knows, so
+ *   it is consulted rather than re-derived; and
  * * the executor slot it is bound to still carries the generation it was
  *   bound at (phase-379 W4). C has no move semantics, so
  *   `nros_node_t copy = original;` is legal and silent — the copy keeps
  *   `state == INITIALIZED` after the original is finalised, and only the
  *   generation catches that.
  *
- * A legacy (`rclc_node_init_default`) node is not executor-bound, so only the first
- * question applies to it.
+ * The last two apply to different SHAPES of node and neither is skipped
+ * silently: a legacy (`rclc_node_init_default`) node records its support and
+ * is not executor-bound, while `nros_executor_add_node` leaves `support` NULL
+ * on purpose (the multi-Node paths key off `node_id` + executor, phase-156
+ * sub-bug D) and the generation is what stands in for the context there.
  *
  * # Safety
  * * `node` must be NULL or point to a valid `nros_node_t`.
@@ -6303,18 +6318,23 @@ NROS_PUBLIC nros_ret_t nros_publisher_fini(struct nros_publisher_t *publisher);
  * * `publisher` - Pointer to a publisher
  *
  * # Returns
- * * Pointer to topic name (null-terminated), or NULL if invalid
+ * * Pointer to topic name (null-terminated), or NULL if the handle is not
+ *   usable (see [`nros_publisher_t::is_usable`]) or NULL
  */
 NROS_PUBLIC const char *rcl_publisher_get_topic_name(const struct nros_publisher_t *publisher);
 
 /**
- * Check if publisher is valid (initialized).
+ * Is this publisher handle usable?
+ *
+ * rcl's `rcl_publisher_is_valid`, whose contract is "true for any handle that
+ * can be used" — the ported idiom is a guard. See
+ * [`nros_publisher_t::is_usable`] for which states those are.
  *
  * # Parameters
  * * `publisher` - Pointer to a publisher
  *
  * # Returns
- * * `true` if valid, `false` if invalid or NULL
+ * * `true` if usable, `false` if finalised, uninitialised or NULL
  */
 NROS_PUBLIC bool rcl_publisher_is_valid(const struct nros_publisher_t *publisher);
 
@@ -6554,18 +6574,23 @@ NROS_PUBLIC void nros_service_typed_report_error(int32_t error, const char *type
  * * `service` - Pointer to a service
  *
  * # Returns
- * * Pointer to service name (null-terminated), or NULL if invalid
+ * * Pointer to service name (null-terminated), or NULL if the handle is not
+ *   usable (see [`nros_service_t::is_usable`]) or NULL
  */
 NROS_PUBLIC const char *rcl_service_get_service_name(const struct nros_service_t *service);
 
 /**
- * Check if service is valid (initialized).
+ * Is this service handle usable?
+ *
+ * rcl's `rcl_service_is_valid`, whose contract is "true for any handle that
+ * can be used" — the ported idiom is a guard. See
+ * [`nros_service_t::is_usable`] for which states those are.
  *
  * # Parameters
  * * `service` - Pointer to a service
  *
  * # Returns
- * * `true` if valid, `false` if invalid or NULL
+ * * `true` if usable, `false` if finalised, uninitialised or NULL
  */
 NROS_PUBLIC bool rcl_service_is_valid(const struct nros_service_t *service);
 
@@ -6857,18 +6882,23 @@ nros_ret_t nros_client_call(struct nros_client_t *client,
  * * `client` - Pointer to a client
  *
  * # Returns
- * * Pointer to service name (null-terminated), or NULL if invalid
+ * * Pointer to service name (null-terminated), or NULL if the handle is not
+ *   usable (see [`nros_client_t::is_usable`]) or NULL
  */
 NROS_PUBLIC const char *rcl_client_get_service_name(const struct nros_client_t *client);
 
 /**
- * Check if client is valid (initialized).
+ * Is this client handle usable?
+ *
+ * rcl's `rcl_client_is_valid`, whose contract is "true for any handle that can
+ * be used" — the ported idiom is a guard. See [`nros_client_t::is_usable`] for
+ * which states those are.
  *
  * # Parameters
  * * `client` - Pointer to a client
  *
  * # Returns
- * * `true` if valid, `false` if invalid or NULL
+ * * `true` if usable, `false` if finalised, uninitialised or NULL
  */
 NROS_PUBLIC bool rcl_client_is_valid(const struct nros_client_t *client);
 
@@ -7225,19 +7255,24 @@ NROS_PUBLIC nros_ret_t nros_subscription_fini(struct nros_subscription_t *subscr
  * * `subscription` - Pointer to a subscription
  *
  * # Returns
- * * Pointer to topic name (null-terminated), or NULL if invalid
+ * * Pointer to topic name (null-terminated), or NULL if the handle is not
+ *   usable (see [`nros_subscription_t::is_usable`]) or NULL
  */
 NROS_PUBLIC
 const char *rcl_subscription_get_topic_name(const struct nros_subscription_t *subscription);
 
 /**
- * Check if subscription is valid (initialized).
+ * Is this subscription handle usable?
+ *
+ * rcl's `rcl_subscription_is_valid`, whose contract is "true for any handle
+ * that can be used" — the ported idiom is a guard. See
+ * [`nros_subscription_t::is_usable`] for which states those are.
  *
  * # Parameters
  * * `subscription` - Pointer to a subscription
  *
  * # Returns
- * * `true` if valid, `false` if invalid or NULL
+ * * `true` if usable, `false` if finalised, uninitialised or NULL
  */
 NROS_PUBLIC bool rcl_subscription_is_valid(const struct nros_subscription_t *subscription);
 
@@ -7487,13 +7522,21 @@ NROS_PUBLIC nros_ret_t rcl_timer_reset(struct nros_timer_t *timer);
 /**
  * Finalize a timer.
  *
+ * IDEMPOTENT, per `rcl/timer.h` verbatim: "A timer that is already invalid
+ * (zero initialized) or `NULL` will not fail." Both of the codes this used to
+ * return on those paths — `NROS_RET_INVALID_ARGUMENT` for NULL,
+ * `NROS_RET_NOT_INIT` for a second `fini` — are values upstream promises never
+ * to produce, and `RCL_WARN_UNUSED` asks the caller to check, so a ported
+ * cleanup reported a shutdown failure that had not happened (phase-417 stage 3,
+ * ledger row `c:timer_fini`). Nothing about a fixed arena forbids accepting the
+ * call: there is no allocation to release and the release is already idempotent.
+ *
  * # Parameters
- * * `timer` - Pointer to an initialized timer
+ * * `timer` - Pointer to a timer, or NULL
  *
  * # Returns
- * * `NROS_RET_OK` on success
- * * `NROS_RET_INVALID_ARGUMENT` if timer is NULL
- * * `NROS_RET_NOT_INIT` if not initialized
+ * * `NROS_RET_OK` — always. A NULL timer and an already-finalised one are
+ *   successes with nothing to do, not errors.
  */
 NROS_PUBLIC nros_ret_t rcl_timer_fini(struct nros_timer_t *timer);
 
@@ -7520,18 +7563,52 @@ NROS_PUBLIC bool nros_timer_is_valid(const struct nros_timer_t *timer);
 NROS_PUBLIC uint64_t nros_timer_get_period(const struct nros_timer_t *timer);
 
 /**
- * Get the time until next timer firing.
+ * Nanoseconds until this timer next fires — NEGATIVE if it is overdue.
  *
- * # Parameters
- * * `timer` - Pointer to a timer
- * * `current_time_ns` - Current time in nanoseconds
+ * rcl's `rcl_timer_get_time_until_next_call(timer, int64_t *)`, marked
+ * `RCL_WARN_UNUSED`. phase-417 stage 3 (ledger row
+ * `c:timer_get_time_until_next_call`) and issue 1049 are the same defect seen
+ * from two sides, and the old shape — `uint64_t f(timer, uint64_t now)` — lost
+ * three things at once:
+ *
+ * * the ERROR CHANNEL. The doc comment said the result was "0 if ready now or
+ *   invalid", so ready-now, NULL, uninitialised, finalised and unregistered
+ *   were one value and a caller could not tell a due timer from a dead one.
+ * * OVERDUE. rcl's header: "a negative value indicates the timer call is
+ *   overdue by that amount". Unsigned cannot express it, so lateness read as
+ *   `0` — which is also what "fires now" reads as.
+ * * the SOURCE OF TRUTH. It computed from `nros_timer_t::last_call_time_ns`,
+ *   which `nros_timer_init` and `rcl_timer_reset` write and no dispatch path
+ *   ever updates, so for any timer the executor was actually running the
+ *   answer was permanently `0` (issue 1049). It forwards to the arena now, the
+ *   same way W5.c's [`nros_timer_get_time_since_last_call`] and
+ *   [`rcl_timer_is_ready`] do, and the caller-supplied "now" is gone with it —
+ *   a second time base is what let the two drift apart.
+ *
+ * **Divergence from rcl, inherited from the sibling accessors:** the arena's
+ * timer accounting is MICROSECOND-based (issue #505), so this nanosecond value
+ * is a microsecond quantity scaled by 1000. The unit is rcl's; the resolution
+ * is ours.
+ *
+ * `RCL_RET_TIMER_INVALID` and `RCL_RET_TIMER_CANCELED` have no counterpart in
+ * `nros_ret_t` and `<nros/rcl_compat.h>` deliberately does not map them, so
+ * the four rcl outcomes reach a caller as three: those two and "not
+ * registered" all arrive as `NROS_RET_NOT_INIT`.
  *
  * # Returns
- * * Time until next firing in nanoseconds, or 0 if ready now or invalid
+ * * `NROS_RET_OK` with `*time_until_next_call_ns` written
+ * * `NROS_RET_INVALID_ARGUMENT` if either pointer is NULL
+ * * `NROS_RET_NOT_INIT` if the timer is uninitialised, finalised, or not
+ *   registered with an executor — nothing is advancing its clock, so it has no
+ *   time until its next call rather than a time of zero
+ *
+ * # Safety
+ * * `timer` must be NULL or point to a valid `nros_timer_t`.
+ * * `time_until_next_call_ns` must be NULL or writable.
  */
 NROS_PUBLIC
-uint64_t nros_timer_get_time_until_next_call(const struct nros_timer_t *timer,
-                                             uint64_t current_time_ns);
+nros_ret_t nros_timer_get_time_until_next_call(const struct nros_timer_t *timer,
+                                               int64_t *time_until_next_call_ns);
 
 /**
  * Has this timer been cancelled?

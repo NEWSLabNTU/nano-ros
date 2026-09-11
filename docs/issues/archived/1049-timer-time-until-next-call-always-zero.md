@@ -2,11 +2,39 @@
 id: 1049
 title: "`nros_timer_get_time_until_next_call` returns 0 for every registered timer,
   and correlates `same` against rcl so the ledger has no row watching it"
-status: open
+status: resolved
 type: bug
 area: api
-related: [phase-417, issue-1008, rfc-0087]
+resolved: 2026-09-11
+related: [phase-417, issue-1008, rfc-0087, rfc-0089]
 ---
+
+## Resolution (phase-417 stage 3, 2026-09-11)
+
+Fixed as proposed, with ONE change to the proposed signature: the out-param is
+`int64_t *`, not `uint64_t *`.
+
+```c
+nros_ret_t nros_timer_get_time_until_next_call(const nros_timer_t *timer,
+                                               int64_t *time_until_next_call_ns);
+```
+
+The ledger row `c:timer_get_time_until_next_call` — written after this issue,
+and now deleted — recorded the third loss this issue did not: rcl's header says
+"a negative value indicates the timer call is overdue by that amount", so
+unsigned cannot carry lateness and reports it as `0`, which is also what "fires
+now" reports as. Upstream's type is `int64_t` and so is ours.
+
+The body forwards to `Executor::timer_period_us` + `Executor::timer_elapsed_us`,
+the same arena accounting W5.c's siblings read, and the caller-supplied "now" is
+gone. That inherits the sibling accessors' microsecond-resolution envelope
+(issue #505), which is stated on the function.
+
+The section above is otherwise unchanged and still correct — including its
+general point, which RFC-0089 has since adopted: **`same` is a claim about the
+signature, never about the behaviour.** The row this issue said did not exist
+was filed by phase-428's by-hand sweep, which is the answer to "nothing was
+watching it".
 
 ## Problem
 

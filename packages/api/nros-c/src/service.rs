@@ -929,13 +929,33 @@ pub unsafe extern "C" fn nros_service_typed_report_error(error: i32, type_name: 
     );
 }
 
+impl nros_service_t {
+    /// Can this handle be USED? — the one predicate behind both
+    /// `rcl_service_is_valid` and `rcl_service_get_service_name`.
+    ///
+    /// phase-417 stage 3, ledger row `c:service_is_valid`. `rcl_*_is_valid` is
+    /// upstream's guard, true for any handle a call can be made on, so the test
+    /// is over EVERY live state and not just the first one. `POLLING` is an L1
+    /// service (`nros_service_init_polling`) whose transport entity is live
+    /// inline in `_opaque`; testing `state == INITIALIZED` exactly made the
+    /// ported guard reject it and made the accessor hand back NULL for it.
+    pub(crate) const fn is_usable(&self) -> bool {
+        matches!(
+            self.state,
+            nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
+                | nros_service_state_t::NROS_SERVICE_STATE_POLLING
+        )
+    }
+}
+
 /// Get the service name.
 ///
 /// # Parameters
 /// * `service` - Pointer to a service
 ///
 /// # Returns
-/// * Pointer to service name (null-terminated), or NULL if invalid
+/// * Pointer to service name (null-terminated), or NULL if the handle is not
+///   usable (see [`nros_service_t::is_usable`]) or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_service_get_service_name(
     service: *const nros_service_t,
@@ -945,28 +965,31 @@ pub unsafe extern "C" fn rcl_service_get_service_name(
     }
 
     let service = &*service;
-    if service.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
+    if !service.is_usable() {
         return ptr::null();
     }
 
     service.service_name.as_ptr() as *const c_char
 }
 
-/// Check if service is valid (initialized).
+/// Is this service handle usable?
+///
+/// rcl's `rcl_service_is_valid`, whose contract is "true for any handle that
+/// can be used" — the ported idiom is a guard. See
+/// [`nros_service_t::is_usable`] for which states those are.
 ///
 /// # Parameters
 /// * `service` - Pointer to a service
 ///
 /// # Returns
-/// * `true` if valid, `false` if invalid or NULL
+/// * `true` if usable, `false` if finalised, uninitialised or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_service_is_valid(service: *const nros_service_t) -> bool {
     if service.is_null() {
         return false;
     }
 
-    let service = &*service;
-    service.state == nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
+    (*service).is_usable()
 }
 
 // ============================================================================
@@ -2125,13 +2148,34 @@ pub unsafe extern "C" fn nros_client_call(
     NROS_RET_TIMEOUT
 }
 
+impl nros_client_t {
+    /// Can this handle be USED? — the one predicate behind both
+    /// `rcl_client_is_valid` and `rcl_client_get_service_name`.
+    ///
+    /// phase-417 stage 3, ledger row `c:client_is_valid`. `REGISTERED` is the
+    /// ORDINARY callback-mode state, set by `nros_executor_add_client`, and
+    /// `POLLING` is the L1 one; a client sends requests from all three live
+    /// states. Testing `state == INITIALIZED` exactly meant the upstream guard
+    /// `if (!rcl_client_is_valid(&c)) { bail; }` rejected a working client,
+    /// and the name accessor returned NULL into whatever `%s` printed it.
+    pub(crate) const fn is_usable(&self) -> bool {
+        matches!(
+            self.state,
+            nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED
+                | nros_client_state_t::NROS_CLIENT_STATE_REGISTERED
+                | nros_client_state_t::NROS_CLIENT_STATE_POLLING
+        )
+    }
+}
+
 /// Get the service name of a client.
 ///
 /// # Parameters
 /// * `client` - Pointer to a client
 ///
 /// # Returns
-/// * Pointer to service name (null-terminated), or NULL if invalid
+/// * Pointer to service name (null-terminated), or NULL if the handle is not
+///   usable (see [`nros_client_t::is_usable`]) or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_client_get_service_name(
     client: *const nros_client_t,
@@ -2141,28 +2185,31 @@ pub unsafe extern "C" fn rcl_client_get_service_name(
     }
 
     let client = &*client;
-    if client.state != nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED {
+    if !client.is_usable() {
         return ptr::null();
     }
 
     client.service_name.as_ptr() as *const c_char
 }
 
-/// Check if client is valid (initialized).
+/// Is this client handle usable?
+///
+/// rcl's `rcl_client_is_valid`, whose contract is "true for any handle that can
+/// be used" — the ported idiom is a guard. See [`nros_client_t::is_usable`] for
+/// which states those are.
 ///
 /// # Parameters
 /// * `client` - Pointer to a client
 ///
 /// # Returns
-/// * `true` if valid, `false` if invalid or NULL
+/// * `true` if usable, `false` if finalised, uninitialised or NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rcl_client_is_valid(client: *const nros_client_t) -> bool {
     if client.is_null() {
         return false;
     }
 
-    let client = &*client;
-    client.state == nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED
+    (*client).is_usable()
 }
 
 // ============================================================================
@@ -2707,5 +2754,160 @@ mod verification {
     fn client_name_getter_null() {
         let result = unsafe { rcl_client_get_service_name(ptr::null()) };
         assert!(result.is_null());
+    }
+}
+
+// ============================================================================
+// phase-417 stage 3 — the validity predicates and their name accessors.
+//
+// Ledger rows `c:client_is_valid` / `c:service_is_valid` /
+// `c:client_get_service_name` / `c:service_get_service_name`. `rcl_*_is_valid`
+// is upstream's GUARD — true for any handle that can be USED — and the ported
+// idiom is `if (!rcl_client_is_valid(&c)) { bail; }`.
+// ============================================================================
+
+#[cfg(test)]
+mod validity_tests {
+    use super::*;
+
+    /// Every state a client can be USED in. `REGISTERED` is the ordinary
+    /// callback-mode path (`nros_executor_add_client`), `POLLING` the L1 one
+    /// (`nros_client_init_polling`) — neither is an opt-in curiosity.
+    const LIVE_CLIENT_STATES: [nros_client_state_t; 3] = [
+        nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED,
+        nros_client_state_t::NROS_CLIENT_STATE_REGISTERED,
+        nros_client_state_t::NROS_CLIENT_STATE_POLLING,
+    ];
+
+    const DEAD_CLIENT_STATES: [nros_client_state_t; 2] = [
+        nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
+        nros_client_state_t::NROS_CLIENT_STATE_SHUTDOWN,
+    ];
+
+    const LIVE_SERVICE_STATES: [nros_service_state_t; 2] = [
+        nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED,
+        nros_service_state_t::NROS_SERVICE_STATE_POLLING,
+    ];
+
+    const DEAD_SERVICE_STATES: [nros_service_state_t; 2] = [
+        nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED,
+        nros_service_state_t::NROS_SERVICE_STATE_SHUTDOWN,
+    ];
+
+    fn named_client(state: nros_client_state_t) -> nros_client_t {
+        let mut c = nros_client_t::default();
+        c.service_name[..10].copy_from_slice(b"/add_two_i");
+        c.service_name_len = 10;
+        c.state = state;
+        c
+    }
+
+    fn named_service(state: nros_service_state_t) -> nros_service_t {
+        let mut s = nros_service_t::default();
+        s.service_name[..10].copy_from_slice(b"/add_two_i");
+        s.service_name_len = 10;
+        s.state = state;
+        s
+    }
+
+    /// Answering `false` for a REGISTERED client makes the ported guard reject
+    /// a client that is sending requests.
+    #[test]
+    fn client_is_valid_accepts_every_state_a_client_works_in() {
+        for state in LIVE_CLIENT_STATES {
+            let c = named_client(state);
+            assert!(
+                unsafe { rcl_client_is_valid(&c) },
+                "{state:?} is a state a client sends requests from"
+            );
+        }
+        for state in DEAD_CLIENT_STATES {
+            let c = named_client(state);
+            assert!(!unsafe { rcl_client_is_valid(&c) }, "{state:?}");
+        }
+        assert!(!unsafe { rcl_client_is_valid(ptr::null()) });
+    }
+
+    /// The accessor half. NULL out of `rcl_client_get_service_name` lands in a
+    /// `printf("%s")` or a `strcmp`, so the wrong answer here is a segfault
+    /// rather than a bail.
+    #[test]
+    fn client_name_is_readable_in_every_state_the_client_works_in() {
+        for state in LIVE_CLIENT_STATES {
+            let c = named_client(state);
+            assert!(
+                !unsafe { rcl_client_get_service_name(&c) }.is_null(),
+                "{state:?}"
+            );
+        }
+        for state in DEAD_CLIENT_STATES {
+            let c = named_client(state);
+            assert!(
+                unsafe { rcl_client_get_service_name(&c) }.is_null(),
+                "{state:?}"
+            );
+        }
+        assert!(unsafe { rcl_client_get_service_name(ptr::null()) }.is_null());
+    }
+
+    /// A handle the guard admits and the accessor refuses is the crash this
+    /// row is about, so the two must answer alike in every state.
+    #[test]
+    fn the_client_predicate_and_its_accessor_agree_in_every_state() {
+        for state in LIVE_CLIENT_STATES.iter().chain(DEAD_CLIENT_STATES.iter()) {
+            let c = named_client(*state);
+            assert_eq!(
+                unsafe { rcl_client_is_valid(&c) },
+                !unsafe { rcl_client_get_service_name(&c) }.is_null(),
+                "{state:?}: is_valid and get_service_name must answer alike"
+            );
+        }
+    }
+
+    #[test]
+    fn service_is_valid_accepts_every_state_a_service_works_in() {
+        for state in LIVE_SERVICE_STATES {
+            let s = named_service(state);
+            assert!(
+                unsafe { rcl_service_is_valid(&s) },
+                "{state:?} is a state a service answers requests in"
+            );
+        }
+        for state in DEAD_SERVICE_STATES {
+            let s = named_service(state);
+            assert!(!unsafe { rcl_service_is_valid(&s) }, "{state:?}");
+        }
+        assert!(!unsafe { rcl_service_is_valid(ptr::null()) });
+    }
+
+    #[test]
+    fn service_name_is_readable_in_every_state_the_service_works_in() {
+        for state in LIVE_SERVICE_STATES {
+            let s = named_service(state);
+            assert!(
+                !unsafe { rcl_service_get_service_name(&s) }.is_null(),
+                "{state:?}"
+            );
+        }
+        for state in DEAD_SERVICE_STATES {
+            let s = named_service(state);
+            assert!(
+                unsafe { rcl_service_get_service_name(&s) }.is_null(),
+                "{state:?}"
+            );
+        }
+        assert!(unsafe { rcl_service_get_service_name(ptr::null()) }.is_null());
+    }
+
+    #[test]
+    fn the_service_predicate_and_its_accessor_agree_in_every_state() {
+        for state in LIVE_SERVICE_STATES.iter().chain(DEAD_SERVICE_STATES.iter()) {
+            let s = named_service(*state);
+            assert_eq!(
+                unsafe { rcl_service_is_valid(&s) },
+                !unsafe { rcl_service_get_service_name(&s) }.is_null(),
+                "{state:?}: is_valid and get_service_name must answer alike"
+            );
+        }
     }
 }

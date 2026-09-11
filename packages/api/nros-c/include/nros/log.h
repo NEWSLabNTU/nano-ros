@@ -37,17 +37,57 @@ extern "C" {
 #endif
 
 /**
- * Severity levels — match `nros_log::Severity::as_u8()` discriminant.
- * Lower value = more verbose.
+ * Severity levels, on **rcutils's number line**. Lower value = more verbose.
+ *
+ * phase-417 stage 3 (ledger row `c:log_severity_t`). rcutils — which
+ * `rcl_log_severity_t` mirrors — numbers `UNSET=0, DEBUG=10, INFO=20, WARN=30,
+ * ERROR=40, FATAL=50`, and these values cross ABIs as plain integers: read from
+ * a configuration file, read from the environment, or written by a ported file
+ * as an `RCUTILS_LOG_SEVERITY_*` constant. These were a dense `0..=5` until
+ * stage 3, so `0` collided with rcutils's `UNSET` and a ported `UNSET` silently
+ * selected the most verbose level.
+ *
+ * **The gaps are load-bearing** — they are how a caller writes a threshold
+ * BETWEEN two named levels. A value in a gap resolves to the named level at or
+ * below it, and a value outside the range resolves rather than being rejected,
+ * so any `int` a C caller can produce here is defined.
+ *
+ * `NROS_LOG_SEVERITY_TRACE` is ours; rcutils has no trace level. It takes `5`,
+ * inside rcutils's own `UNSET`..`DEBUG` gap, which is what that gap is for.
  */
 typedef enum nros_log_severity_t {
-    NROS_LOG_SEVERITY_TRACE = 0,
-    NROS_LOG_SEVERITY_DEBUG = 1,
-    NROS_LOG_SEVERITY_INFO = 2,
-    NROS_LOG_SEVERITY_WARN = 3,
-    NROS_LOG_SEVERITY_ERROR = 4,
-    NROS_LOG_SEVERITY_FATAL = 5,
+    NROS_LOG_SEVERITY_UNSET = 0,
+    NROS_LOG_SEVERITY_TRACE = 5,
+    NROS_LOG_SEVERITY_DEBUG = 10,
+    NROS_LOG_SEVERITY_INFO = 20,
+    NROS_LOG_SEVERITY_WARN = 30,
+    NROS_LOG_SEVERITY_ERROR = 40,
+    NROS_LOG_SEVERITY_FATAL = 50,
 } nros_log_severity_t;
+
+/* ── Width guard ──────────────────────────────────────────────────────────────
+ * This `enum` is HAND-MIRRORED in Rust (`packages/api/nros-c/src/log.rs`), which
+ * is the class `check-ffi-struct-mirrors` polices one layer over. The mirror is
+ * `#[repr(transparent)]` over `c_int`; it was `#[repr(u8)]` until phase-417
+ * stage 3, so one side passed a byte where the other passed four and the values
+ * survived only by how the ABIs in play happen to pass small integers. Nothing
+ * asserted the width anywhere in `include/` or `src/`. It does now. */
+#if defined(__cplusplus) && __cplusplus >= 201103L
+static_assert(sizeof(nros_log_severity_t) == sizeof(int),
+              "nros_log_severity_t must be int-sized: the Rust mirror is repr(transparent) "
+              "over c_int");
+static_assert(NROS_LOG_SEVERITY_INFO == 20, "nros_log_severity_t must stay on rcutils's numbering");
+static_assert(NROS_LOG_SEVERITY_FATAL == 50,
+              "nros_log_severity_t must stay on rcutils's numbering");
+#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+_Static_assert(sizeof(nros_log_severity_t) == sizeof(int),
+               "nros_log_severity_t must be int-sized: the Rust mirror is repr(transparent) "
+               "over c_int");
+_Static_assert(NROS_LOG_SEVERITY_INFO == 20,
+               "nros_log_severity_t must stay on rcutils's numbering");
+_Static_assert(NROS_LOG_SEVERITY_FATAL == 50,
+               "nros_log_severity_t must stay on rcutils's numbering");
+#endif /* static_assert */
 
 /**
  * Opaque handle to a `&'static nros_log::Logger`. Obtain via

@@ -409,10 +409,21 @@ typedef struct nros_support_t rclc_support_t;
  *   `size_t id; rcl_node_get_domain_id(&node, &id);` would compile and leave
  *   half of `id` uninitialised. The out-parameter type is authored at the
  *   CALL SITE, which is what separates this from the typesupport case above.
- * * `rcl_timer_get_period` / `rcl_timer_get_time_until_next_call` — upstream
- *   returns the value through an `int64_t *` out-parameter; ours return it,
- *   and `nros_timer_get_time_until_next_call` additionally takes the current
- *   time IN. Different data flow, not a different word.
+ * * `rcl_timer_get_period` — upstream returns the value through an `int64_t *`
+ *   out-parameter; ours returns it. Different data flow, not a different word.
+ * * `rcl_timer_get_time_until_next_call` — was in the bullet above and is NOT
+ *   any more. phase-417 stage 3 gave ours upstream's shape exactly,
+ *   `nros_ret_t (const nros_timer_t *, int64_t *)`: the caller-supplied "now"
+ *   is gone, the value moved to a SIGNED out-parameter so overdue is
+ *   expressible, and the status return carries the error channel the old
+ *   `uint64_t` had spent on `0`. What remains between it and the NAME is the
+ *   entry-point rename, which is stage 6's step and not a contract difference.
+ *   Two envelopes a ported caller should know, both stated on the function:
+ *   the arena's timer accounting is microsecond-based (issue #505), so the
+ *   nanosecond value is a microsecond quantity scaled by 1000; and
+ *   `RCL_RET_TIMER_INVALID` / `RCL_RET_TIMER_CANCELED` have no counterpart
+ *   here (see the constant block), so those and "not registered with an
+ *   executor" all arrive as `NROS_RET_NOT_INIT`.
  * * `rcl_timer_get_time_since_last_call` — same shape, but `uint64_t *`
  *   against upstream's `int64_t *`; caller-authored out-parameter again.
  * * `rcl_clock_get_now` — upstream writes an `int64_t` nanosecond count, ours
