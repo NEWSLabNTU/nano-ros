@@ -324,9 +324,9 @@ upstream = "0.17.0" # = source.ref (mozilla/sccache release tag, without the `v`
 smoke = [
     { run = "bin/sccache --version", expect = "sccache 0.17.0" },
 ]
-dist.linux-x86_64 = { url = "https://github.com/mozilla/sccache/releases/download/v0.17.0/sccache-v0.17.0-x86_64-unknown-linux-musl.tar.gz", sha256 = "67c4a96dd237c1f518f6b36083f270f9976d516f1e57fce891755ea782e50006", install = "mkdir -p {prefix}/bin && tar -xOf {archive} sccache-v0.17.0-x86_64-unknown-linux-musl/sccache > {prefix}/bin/sccache && chmod +x {prefix}/bin/sccache" }
-dist.linux-arm64 = { url = "https://github.com/mozilla/sccache/releases/download/v0.17.0/sccache-v0.17.0-aarch64-unknown-linux-musl.tar.gz", sha256 = "821a86343191aa1cbab74bd42f9e93c9a63bf85e4742945f40d3ae84193c1c77", install = "mkdir -p {prefix}/bin && tar -xOf {archive} sccache-v0.17.0-aarch64-unknown-linux-musl/sccache > {prefix}/bin/sccache && chmod +x {prefix}/bin/sccache" }
-dist.macos-arm64 = { url = "https://github.com/mozilla/sccache/releases/download/v0.17.0/sccache-v0.17.0-aarch64-apple-darwin.tar.gz", sha256 = "0c560bfba31aef5bdfb4fb3d2677f6e61d71c5c00952f2a83344f47aa31f00f1", install = "mkdir -p {prefix}/bin && tar -xOf {archive} sccache-v0.17.0-aarch64-apple-darwin/sccache > {prefix}/bin/sccache && chmod +x {prefix}/bin/sccache" }
+dist.linux-x86_64 = { url = "https://github.com/mozilla/sccache/releases/download/v0.17.0/sccache-v0.17.0-x86_64-unknown-linux-musl.tar.gz", sha256 = "67c4a96dd237c1f518f6b36083f270f9976d516f1e57fce891755ea782e50006", install = "mkdir -p {prefix}/bin && tar -xOf {archive} sccache-v0.17.0-x86_64-unknown-linux-musl/sccache > {prefix}/bin/sccache && chmod +x {prefix}/bin/sccache", floor = { none = "statically linked (x86_64-unknown-linux-musl): no PT_INTERP, no DT_NEEDED" } }
+dist.linux-arm64 = { url = "https://github.com/mozilla/sccache/releases/download/v0.17.0/sccache-v0.17.0-aarch64-unknown-linux-musl.tar.gz", sha256 = "821a86343191aa1cbab74bd42f9e93c9a63bf85e4742945f40d3ae84193c1c77", install = "mkdir -p {prefix}/bin && tar -xOf {archive} sccache-v0.17.0-aarch64-unknown-linux-musl/sccache > {prefix}/bin/sccache && chmod +x {prefix}/bin/sccache", floor = { none = "statically linked (aarch64-unknown-linux-musl): no PT_INTERP, no DT_NEEDED" } }
+dist.macos-arm64 = { url = "https://github.com/mozilla/sccache/releases/download/v0.17.0/sccache-v0.17.0-aarch64-apple-darwin.tar.gz", sha256 = "0c560bfba31aef5bdfb4fb3d2677f6e61d71c5c00952f2a83344f47aa31f00f1", install = "mkdir -p {prefix}/bin && tar -xOf {archive} sccache-v0.17.0-aarch64-apple-darwin/sccache > {prefix}/bin/sccache && chmod +x {prefix}/bin/sccache", floor = { macos = "11.0" } }
 [tool.sccache.source]
 git = "https://github.com/mozilla/sccache"
 ref = "v0.17.0"
@@ -778,9 +778,9 @@ upstream = "v4.5.0" # = source.ref (esp-rs/espflash release tag)
 smoke = [
     { run = "bin/espflash --version", expect = "espflash 4.5.0" },
 ]
-dist.linux-x86_64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-x86_64-unknown-linux-musl.zip", sha256 = "542c5cc81f0cca384cbead1cacb7ccc9f35072a989b2de0fb95333d814272c22", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash" }
-dist.linux-arm64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-aarch64-unknown-linux-gnu.zip", sha256 = "2d5972b9c18fc89bf253e60fe6df6a4f8db3aee5db0166b2c97b53bd21c01f09", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash" }
-dist.macos-arm64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-aarch64-apple-darwin.zip", sha256 = "6614ff70e523a6bce5f4ccc6459b77275f5e7e900429004bb7eec463c95db28a", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash" }
+dist.linux-x86_64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-x86_64-unknown-linux-musl.zip", sha256 = "542c5cc81f0cca384cbead1cacb7ccc9f35072a989b2de0fb95333d814272c22", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash", floor = { none = "statically linked (x86_64-unknown-linux-musl): no PT_INTERP, no DT_NEEDED" } }
+dist.linux-arm64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-aarch64-unknown-linux-gnu.zip", sha256 = "2d5972b9c18fc89bf253e60fe6df6a4f8db3aee5db0166b2c97b53bd21c01f09", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash", floor = { glibc = "2.34" } }
+dist.macos-arm64 = { url = "https://github.com/esp-rs/espflash/releases/download/v4.5.0/espflash-aarch64-apple-darwin.zip", sha256 = "6614ff70e523a6bce5f4ccc6459b77275f5e7e900429004bb7eec463c95db28a", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/espflash", floor = { macos = "11.0" } }
 system = ["unzip"]
 [tool.espflash.source]
 git = "https://github.com/esp-rs/espflash"

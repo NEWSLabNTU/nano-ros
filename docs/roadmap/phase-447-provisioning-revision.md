@@ -168,11 +168,13 @@ cross-checked against `objdump -T` on `xrce-agent`: both say 2.34 / 3.4.30):
 | cargo-nextest | 2.27 | 2.27 | — |
 | clang-format | 2.16, 3.4.19 | 2.17, 3.4.19 | arm64 11.0 |
 | cyclonedds | 2.34 | 2.34 | arm64 14.0 |
+| espflash (C2) | none (static musl) | 2.34 (a `-gnu` build) | arm64 11.0 |
 | mdbook | none (static musl) | none (static musl) | arm64 11.0, x86_64 10.12 |
 | ninja | 2.15, 3.4.21 | 2.17, 3.4.21 | arm64 11.0 |
 | openocd | 2.34 | 2.34 | arm64 14.0 |
 | qemu | 2.34 | 2.34 | arm64 14.0 |
 | riscv-none-elf-gcc | 2.27, 3.4.30 | 2.27, 3.4.30 | arm64 11.0 |
+| sccache (C2) | none (static musl) | none (static musl) | arm64 11.0 |
 | verus | 2.34, 3.4.26 | — | arm64 11.0, x86_64 11.0 |
 | xrce-agent | 2.34, 3.4.30 | 2.34, 3.4.30 | arm64 14.0 |
 | zephyr-sdk (0.16.8) | 2.27, 3.4.21 | 2.27, 3.4.21 | arm64 11.0, x86_64 11.0 |
@@ -202,12 +204,23 @@ cross-check between the two methods. All three needed a resumed download (curl
 92, an HTTP/2 stream reset mid-transfer), which is why the measuring script's
 fetch now resumes (`-C -`, `--retry`).
 
-**Not covered, deliberately.** `nros-launch-resolve` links `libpython3.10.so.1.0`
-(issue 0897) but ships INSIDE the release asset via `install.sh`, not as an index
-dist, so `plan_install` never sees it. It is covered the day `[tool.nros]` gains
+**The ratchet caught its first rows the same day.** C2 (#1273) landed first and
+added six dist rows (`sccache`, `espflash`) with no floor; on the rebase
+`check-dist-floors` named exactly those six and nothing else. Measured and
+stamped in a third commit — `espflash` is the instructive one: its x86_64 asset
+is a static musl build (no floor) while its arm64 asset is `-gnu` (glibc 2.34),
+so two columns of ONE tool need different answers, which a per-tool floor could
+not have said. 49 dist rows across 17 tools, every one floored, debt 0.
+
+**What D1 owes `nros-launch-resolve` (A1's note), and how much of it is paid.**
+It links `libpython3.10.so.1.0` (issue 0897) but ships INSIDE the release asset
+via `install.sh`, not as an index dist, so `plan_install` never sees it. The
+DECLARATION is paid: `[prereq.libpython310]` is now the soname-exact key for that
+binary, with `apt = { jammy = [..], noble = [] }` — the "not packaged there"
+signal the backward half reads. The ENFORCEMENT waits for `[tool.nros]` to gain
 `dist.<host>` rows (phase-431 W5): the ratchet then demands a floor, and its
-`system` must name a soname-exact libpython key so the backward half can refuse
-it on noble.
+`system = ["libpython310"]` makes the backward half refuse it on noble before
+the download.
 
 **Side finding, not fixed here.** The `arm-none-eabi-gcc` linux-arm64 dist
 bundles focal's CPython 3.8, whose `lib-dynload/_ssl` module needs
