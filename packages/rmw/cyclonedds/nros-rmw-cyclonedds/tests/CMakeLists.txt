@@ -838,6 +838,54 @@ add_test(
 set_tests_properties(nros_rmw_cyclonedds_config_compose PROPERTIES
     ENVIRONMENT "${_nros_rmw_test_env}")
 
+# phase-454 W6.c — RFC-0100 D11: the derived heap floor, and the boot check that
+# reads it.
+#
+# A pure header test: `heap_budget.hpp` computes, `session.cpp` acts. Pinning the
+# image knobs inside the TU keeps the assertions about the FORMULA rather than
+# about whatever the enclosing build derived, and lets one binary exercise the
+# predicate at both ends — including the negative control, without which a
+# check that can never fire would pass everything.
+add_executable(nros_rmw_cyclonedds_heap_budget heap_budget_check.cpp)
+target_link_libraries(nros_rmw_cyclonedds_heap_budget
+    PRIVATE
+        nros_rmw_cyclonedds
+)
+target_include_directories(nros_rmw_cyclonedds_heap_budget
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${NROS_RMW_CFFI_DIR}
+)
+add_test(
+    NAME nros_rmw_cyclonedds_heap_budget
+    COMMAND nros_rmw_cyclonedds_heap_budget
+)
+set_tests_properties(nros_rmw_cyclonedds_heap_budget PROPERTIES
+    ENVIRONMENT "${_nros_rmw_test_env}")
+
+# phase-454 W6.c — the descriptor table holds what the model says it registers.
+#
+# The consumer half of the derivation: `descriptors.cpp` is compiled into the
+# library under whatever cap the enclosing build derived, so this asserts the
+# PROPERTY at any size (nothing lost below the cap, dropping reported above it)
+# rather than pinning a number that would only be true for one build.
+add_executable(nros_rmw_cyclonedds_descriptor_table_capacity descriptor_table_capacity.cpp)
+target_link_libraries(nros_rmw_cyclonedds_descriptor_table_capacity
+    PRIVATE
+        nros_rmw_cyclonedds
+)
+target_include_directories(nros_rmw_cyclonedds_descriptor_table_capacity
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../src
+        ${NROS_RMW_CFFI_DIR}
+)
+add_test(
+    NAME nros_rmw_cyclonedds_descriptor_table_capacity
+    COMMAND nros_rmw_cyclonedds_descriptor_table_capacity
+)
+set_tests_properties(nros_rmw_cyclonedds_descriptor_table_capacity PROPERTIES
+    ENVIRONMENT "${_nros_rmw_test_env}")
+
 # phase-206 W2 — the bringup's own config is baked and reaches the backend.
 #
 # The test drives the REAL generator (`nros_bake_rmw_user_config`) against a

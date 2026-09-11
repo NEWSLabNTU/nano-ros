@@ -467,6 +467,145 @@ pub fn sequence_chains(fields: &[Field]) -> Vec<SequenceChain> {
     kept
 }
 
+/// phase-454 W6.c (RFC-0100 D5) — the three shape counters CycloneDDS's
+/// descriptor builder sizes its STACK arrays from.
+///
+/// `nros-rmw-cyclonedds`'s `SchemaWalker` flattens a schema into
+/// `[NrosFieldDescriptor; MAX_FIELDS]` and `[NrosFieldKindDescriptor; MAX_KINDS]`
+/// plus a `NAME_SLOT_LEN`-byte name slot each — about 20 KiB of stack at the
+/// hand-authored defaults (64 / 256 / 8). Those three numbers are a property of
+/// the SCHEMAS an image uses, and codegen already walks every one of them, so
+/// this is the walk that answers them rather than a knob anybody sets.
+///
+/// # This mirrors `SchemaWalker::push_field_type`, and the mirror is the risk
+///
+/// Every rule below is that function's, and each one is a place a plausible
+/// reading is wrong:
+///
+/// * a kind is one `FieldType` **node**, not one distinct type. Nothing dedups,
+///   so two fields of the same nested message cost two full sub-trees;
+/// * `Array`, `Sequence` and `BoundedSequence` each add a level of DEPTH exactly
+///   as `Nested` does — depth is per type constructor, not per message;
+/// * a flat message of primitives has depth **1**, not 0: the guard is
+///   `depth >= MAX_NESTED_DEPTH` on ENTRY, so a node entered at depth `d` needs
+///   a cap of `d + 1`;
+/// * both `MAX_FIELDS` and `MAX_KINDS` are compared with `>` / `>=` such that
+///   the counts returned here are EXACTLY sufficient — a consumer that floors
+///   them floors a demand, which is the consumer's business (D7).
+///
+/// It does NOT add the two service-header fields; that depends on the type NAME
+/// rather than the schema, and [`schema_shape_for`] applies it where the name is
+/// in scope.
+pub fn schema_shape(fields: &[Field]) -> SchemaShape {
+    /// Kinds and depth contributed by one `FieldType` node and everything under
+    /// it. `depth` is this node's own level count, the `D(..)` of the docs above.
+    fn descend(ty: &SerdeFieldType) -> (usize, usize) {
+        match ty {
+            SerdeFieldType::Nested(n) => {
+                let mut kinds = 1;
+                let mut deepest = 0;
+                for f in n.fields {
+                    let (k, d) = descend(&f.ty);
+                    kinds += k;
+                    deepest = deepest.max(d);
+                }
+                (kinds, 1 + deepest)
+            }
+            SerdeFieldType::Array(_, inner)
+            | SerdeFieldType::Sequence(inner)
+            | SerdeFieldType::BoundedSequence(_, inner) => {
+                let (k, d) = descend(inner);
+                (1 + k, 1 + d)
+            }
+            // Every leaf -- primitives, strings, bounded strings -- is one kind
+            // at one level.
+            _ => (1, 1),
+        }
+    }
+
+    let mut shape = SchemaShape {
+        fields: fields.len(),
+        kinds: 0,
+        nested_depth: 0,
+    };
+    for f in fields {
+        let (kinds, depth) = descend(&f.ty);
+        shape.kinds += kinds;
+        shape.nested_depth = shape.nested_depth.max(depth);
+    }
+    shape
+}
+
+/// What one type costs the CycloneDDS descriptor builder's stack arrays.
+///
+/// Each field is the EXACT requirement for that type, so an image's knob is the
+/// maximum over its types and nothing more. Demand, never floored (RFC-0100 D7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SchemaShape {
+    /// Top-level fields in the descriptor, service header included.
+    pub fields: usize,
+    /// Flattened kind nodes over the whole tree.
+    pub kinds: usize,
+    /// Deepest type-constructor nesting, `1` for a flat message.
+    pub nested_depth: usize,
+}
+
+impl SchemaShape {
+    /// The per-image knob is the MAX over types, per field independently — the
+    /// deepest type and the widest type need not be the same type.
+    pub fn max(self, other: Self) -> Self {
+        Self {
+            fields: self.fields.max(other.fields),
+            kinds: self.kinds.max(other.kinds),
+            nested_depth: self.nested_depth.max(other.nested_depth),
+        }
+    }
+}
+
+/// Distinct DDS type names whose descriptor carries the two RMW service-header
+/// fields (`rmw_writer_guid`, `rmw_sequence_number`).
+///
+/// `is_service_request_or_reply` in `dynamic_type.rs` decides this from the type
+/// NAME, so the producer has to read the name the same way: strip a trailing NUL,
+/// then a trailing `_` (the DDS mangling), then match case-sensitively.
+fn carries_service_header(type_name: &str) -> bool {
+    let n = type_name.trim_end_matches('\0');
+    let n = n.strip_suffix('_').unwrap_or(n);
+    n.ends_with("_Request") || n.ends_with("_Response") || n.ends_with("_Reply")
+}
+
+/// [`schema_shape`] over the schema `bound_message` would build for `msg`, plus
+/// the name-dependent service-header adjustment.
+///
+/// `None` when the schema cannot be built at all — a type whose nested types are
+/// unreachable has no shape to report, and the bound's own `Unresolved` already
+/// says so. A consumer must REFUSE on `None`, never drop the type out of a
+/// maximum: a missing row and a zero row are different facts (RFC-0100 D6).
+pub fn schema_shape_for(
+    owner: &str,
+    msg: &Message,
+    caps: &CapacityResolver,
+    lookup: &MsgLookup<'_>,
+) -> Option<SchemaShape> {
+    let fields = build_schema(owner, msg, caps, lookup).ok()?;
+    let mut shape = schema_shape(fields);
+    if carries_service_header(owner) {
+        // Two `Uint64`/`Int64` leaves: two fields, two kinds, depth 1 -- which
+        // cannot raise a depth already at least 1.
+        shape.fields += SERVICE_HEADER_FIELD_COUNT;
+        shape.kinds += SERVICE_HEADER_FIELD_COUNT;
+        shape.nested_depth = shape.nested_depth.max(1);
+    }
+    Some(shape)
+}
+
+/// `SERVICE_HEADER_FIELDS.len()` in `nros-rmw-cyclonedds`'s `dynamic_type.rs`.
+///
+/// Two, and it is a mirror rather than a shared constant because that crate is a
+/// BACKEND: codegen must not depend on one RMW to price a schema. The parity test
+/// in `tests/cyclone_schema_shape_parity.rs` is what holds the two equal.
+const SERVICE_HEADER_FIELD_COUNT: usize = 2;
+
 /// [`sequence_chains`] over the schema `bound_message` would build for `msg`.
 ///
 /// Returns an empty list when the schema cannot be built at all: a type whose
@@ -514,6 +653,141 @@ mod tests {
 
     fn no_lookup(_: &str) -> Option<Message> {
         None
+    }
+
+    // --- phase-454 W6.c: the CycloneDDS schema shape -----------------------
+
+    fn shape_of(src: &str) -> SchemaShape {
+        let m = parse_message(src).unwrap();
+        schema_shape_for("p/msg/M", &m, &no_caps(), &no_lookup).expect("schema builds")
+    }
+
+    /// A flat message costs one kind per field and sits at depth ONE.
+    ///
+    /// The 1 is the part worth pinning. `SchemaWalker` checks
+    /// `depth >= MAX_NESTED_DEPTH` on ENTRY, so a node entered at depth 0 needs
+    /// a cap of 1 — a "flat message needs depth 0" reading is off by one in the
+    /// direction that makes every build fail.
+    #[test]
+    fn a_flat_message_is_one_kind_per_field_at_depth_one() {
+        assert_eq!(
+            shape_of("int32 a\nuint8 b\nfloat64 c\n"),
+            SchemaShape {
+                fields: 3,
+                kinds: 3,
+                nested_depth: 1,
+            }
+        );
+    }
+
+    /// Depth counts TYPE CONSTRUCTORS, not messages: an array of primitives is
+    /// a level, exactly as a nested struct is.
+    ///
+    /// This is where a mirror of `push_field_type` most plausibly goes wrong —
+    /// "nested depth" reads as "how many messages deep", and the walker does not
+    /// agree. `sequence_chains` one function over makes the OTHER choice
+    /// deliberately ("a nested struct is not a level of its own"), so the two
+    /// walks in this file legitimately disagree and neither may be derived from
+    /// the other.
+    #[test]
+    fn a_container_of_primitives_is_a_level() {
+        assert_eq!(
+            shape_of("int32[4] a\n"),
+            SchemaShape {
+                fields: 1,
+                kinds: 2, // the array node, then its element
+                nested_depth: 2,
+            }
+        );
+        assert_eq!(
+            shape_of("int32[] a\n"),
+            SchemaShape {
+                fields: 1,
+                kinds: 2,
+                nested_depth: 2,
+            }
+        );
+        assert_eq!(
+            shape_of("int32[<=4] a\n"),
+            SchemaShape {
+                fields: 1,
+                kinds: 2,
+                nested_depth: 2,
+            }
+        );
+    }
+
+    /// A nested message contributes its OWN node plus its whole sub-tree, and
+    /// nothing dedups: two fields of one type cost two sub-trees.
+    ///
+    /// The no-dedup rule is the second place a mirror goes wrong, and it goes
+    /// wrong toward UNDER-counting, which is the direction that ships a stack
+    /// array too small.
+    #[test]
+    fn nested_types_are_counted_per_occurrence_not_per_distinct_type() {
+        let inner = parse_message("int32 x\nint32 y\n").unwrap();
+        let lookup = |name: &str| (name == "p/Inner").then(|| inner.clone());
+        let outer = parse_message("Inner one\nInner two\n").unwrap();
+        let shape = schema_shape_for("p/msg/Outer", &outer, &no_caps(), &lookup).unwrap();
+        assert_eq!(
+            shape,
+            SchemaShape {
+                fields: 2,
+                // two Nested nodes + two children each
+                kinds: 2 + 4,
+                nested_depth: 2,
+            }
+        );
+    }
+
+    /// A service request/response carries the two RMW header fields the
+    /// descriptor builder PREPENDS, and the producer has to see them.
+    ///
+    /// They come from the type NAME, not the schema, so a walk over the fields
+    /// alone under-counts a service by exactly two — invisible until a service
+    /// type is the widest type in an image.
+    #[test]
+    fn a_service_request_pays_for_the_prepended_rmw_header() {
+        let src = "int64 a\nint64 b\n";
+        let plain = shape_of(src);
+        let m = parse_message(src).unwrap();
+        let req = schema_shape_for("p/srv/AddTwoInts_Request", &m, &no_caps(), &no_lookup).unwrap();
+        assert_eq!(req.fields, plain.fields + 2);
+        assert_eq!(req.kinds, plain.kinds + 2);
+        assert_eq!(
+            req.nested_depth, plain.nested_depth,
+            "two leaves add no depth"
+        );
+        // The DDS-mangled spelling ends in `_` and must match too -- that is the
+        // form the registry actually holds.
+        let mangled =
+            schema_shape_for("p/srv/AddTwoInts_Response_", &m, &no_caps(), &no_lookup).unwrap();
+        assert_eq!(mangled.fields, plain.fields + 2);
+        // And an ordinary message is NOT a service.
+        assert_eq!(shape_of("int64 a\nint64 b\n").fields, 2);
+    }
+
+    /// An image's knob is the max per FIELD, not the max of one type.
+    #[test]
+    fn the_image_maximum_is_taken_per_field_independently() {
+        // Widest type: 5 flat fields. Deepest type: one triply-nested array.
+        let wide = shape_of("int32 a\nint32 b\nint32 c\nint32 d\nint32 e\n");
+        let deep = shape_of("int32[4] a\n");
+        let both = wide.max(deep);
+        assert_eq!(both.fields, 5, "from the wide type");
+        assert_eq!(both.nested_depth, 2, "from the deep type");
+        assert_eq!(both.kinds, 5, "from whichever has more, here the wide one");
+    }
+
+    /// A type whose nested types cannot be resolved has NO shape, and says so
+    /// with `None` rather than with a zero (RFC-0100 D6).
+    #[test]
+    fn an_unresolvable_nested_type_has_no_shape_rather_than_a_zero_one() {
+        let m = parse_message("Missing thing\n").unwrap();
+        assert_eq!(
+            schema_shape_for("p/msg/M", &m, &no_caps(), &no_lookup),
+            None
+        );
     }
 
     #[test]

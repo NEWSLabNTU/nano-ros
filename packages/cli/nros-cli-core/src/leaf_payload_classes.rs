@@ -110,6 +110,19 @@ impl PayloadClasses {
 /// One level deep: `nros sync --build-dir generated` writes one directory per
 /// ament package with the artifact at its root.
 pub fn leaf_bound_inventory(leaf: &Path) -> Result<Vec<(String, BoundState)>, String> {
+    Ok(leaf_bound_rows(leaf)?
+        .into_iter()
+        .map(|r| (r.type_name, r.bound))
+        .collect())
+}
+
+/// The WHOLE row, for a consumer that needs more of it than the bound.
+///
+/// phase-454 W6.c wants `cyclone_schema_shape` from the same files, and reading
+/// them twice is how the two answers come to describe different trees. So the
+/// read lives here once and [`leaf_bound_inventory`] projects, rather than the
+/// other way round.
+pub fn leaf_bound_rows(leaf: &Path) -> Result<Vec<rosidl_codegen::bounds::TypeBoundEntry>, String> {
     let dir = leaf.join(GENERATED_DIR);
     let Ok(rd) = std::fs::read_dir(&dir) else {
         // No generated tree at all. Not an error here: a leaf with no message
@@ -131,7 +144,7 @@ pub fn leaf_bound_inventory(leaf: &Path) -> Result<Vec<(String, BoundState)>, St
         // than contributing a subset: a partial table turns a priced type into
         // an unpriced one, and the two refusals say different things.
         let rows = bounds_from_json(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-        out.extend(rows.into_iter().map(|r| (r.type_name, r.bound)));
+        out.extend(rows);
     }
     Ok(out)
 }

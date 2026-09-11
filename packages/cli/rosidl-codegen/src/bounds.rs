@@ -141,11 +141,40 @@ pub fn bounds_from_json(doc: &str) -> Result<Vec<TypeBoundEntry>, String> {
                 ));
             }
         };
+        // phase-454 W6.c — read back the CycloneDDS shape when the row carries
+        // one. ABSENT is a legitimate row state, and it has two causes that a
+        // consumer handles identically: the producer could not build the schema,
+        // or the `generated/` tree predates this field. Both mean "no number
+        // here", which RFC-0100 D6 says to refuse on — never to read as zero.
+        // A row that carries the key and is missing a member of it is malformed
+        // rather than old, so it refuses the whole artifact like a `bounded` row
+        // with no size does.
+        let shape = match row.get("cyclone_schema_shape") {
+            None => None,
+            Some(s) => {
+                let num = |k: &str| s.get(k).and_then(|n| n.as_u64()).map(|n| n as usize);
+                let (Some(fields), Some(kinds), Some(nested_depth)) =
+                    (num("fields"), num("kinds"), num("nested_depth"))
+                else {
+                    return Err(format!(
+                        "{type_name} carries a `cyclone_schema_shape` missing one of \
+                         fields/kinds/nested_depth. The artifact is malformed; regenerate \
+                         it with `nros sync`."
+                    ));
+                };
+                Some(crate::schema_value::SchemaShape {
+                    fields,
+                    kinds,
+                    nested_depth,
+                })
+            }
+        };
         out.push(TypeBoundEntry {
             type_name,
             bound,
             chains: Vec::new(),
             budget: None,
+            shape,
         });
     }
     Ok(out)
@@ -298,6 +327,19 @@ pub struct TypeBoundEntry {
     /// is NEVER the exported size: a budget under the derived bound is a build
     /// error, and a budget over it changes nothing.
     pub budget: Option<usize>,
+    /// phase-454 W6.c (RFC-0100 D5) — the three shape counters CycloneDDS's
+    /// descriptor builder sizes its stack arrays from.
+    ///
+    /// `None` means the schema could not be BUILT (an unreachable nested type),
+    /// which a consumer must refuse on rather than drop out of a maximum — a
+    /// missing row and a zero row are different facts (D6). It is also `None` on
+    /// a row read back from a `generated/` tree older than this field, for the
+    /// same reason and with the same handling.
+    ///
+    /// Derived from the SAME schema the bound is
+    /// (`schema_value::schema_shape_for`, one `build_schema` call), which is the
+    /// rule this module exists to hold.
+    pub shape: Option<crate::schema_value::SchemaShape>,
 }
 
 /// phase-403 W7b (issue 0961) — a derived bound that exceeds the budget its
@@ -433,18 +475,37 @@ impl BoundInventory {
         chains: Vec<crate::schema_value::SequenceChain>,
         budget: Option<usize>,
     ) {
+        self.insert_full_with_shape(type_name, bound, chains, budget, None)
+    }
+
+    /// [`Self::insert_full`] plus the CycloneDDS schema shape (phase-454 W6.c).
+    ///
+    /// A separate entry point rather than a fifth parameter on the public one:
+    /// only [`Self::record_message`] can answer the shape (it is the one site
+    /// holding the parsed message and the nested-type lookup at once), and every
+    /// other caller would have to pass `None` to say nothing.
+    pub fn insert_full_with_shape(
+        &mut self,
+        type_name: impl Into<String>,
+        bound: BoundState,
+        chains: Vec<crate::schema_value::SequenceChain>,
+        budget: Option<usize>,
+        shape: Option<crate::schema_value::SchemaShape>,
+    ) {
         let type_name = type_name.into();
         match self.entries.iter_mut().find(|e| e.type_name == type_name) {
             Some(existing) => {
                 existing.bound = bound;
                 existing.chains = chains;
                 existing.budget = budget;
+                existing.shape = shape;
             }
             None => self.entries.push(TypeBoundEntry {
                 type_name,
                 bound,
                 chains,
                 budget,
+                shape,
             }),
         }
     }
@@ -498,7 +559,7 @@ impl BoundInventory {
         caps: &crate::CapacityResolver,
         lookup: &crate::schema_value::MsgLookup<'_>,
     ) {
-        use crate::schema_value::{bound_message, chains_for};
+        use crate::schema_value::{bound_message, chains_for, schema_shape_for};
         use nros_serdes::cdr::EncodingVersion;
         let x1 = bound_message(type_name, message, EncodingVersion::Xcdr1, caps, lookup);
         let x2 = bound_message(type_name, message, EncodingVersion::Xcdr2, caps, lookup);
@@ -507,11 +568,16 @@ impl BoundInventory {
         // independent and computed once; the budget is read with the same
         // `pkg/Msg` key the capacity entries beside it use.
         let (pkg, msg) = config_key_of(type_name);
-        self.insert_full(
+        // phase-454 W6.c — the CycloneDDS shape rides the same walk, for the
+        // same reason the chains do: it is a property of the SHAPE, so it is
+        // encoding-independent and derived from the one schema this record
+        // already builds.
+        self.insert_full_with_shape(
             type_name,
             BoundState::classify(&x1, &x2),
             chains_for(type_name, message, caps, lookup),
             caps.max_serialized(&pkg, &msg),
+            schema_shape_for(type_name, message, caps, lookup),
         );
     }
 
@@ -585,6 +651,21 @@ impl BoundInventory {
                 // exported size -- see `CapacityResolver::max_serialized`.
                 if let Some(b) = e.budget {
                     m.insert("max_serialized_budget".into(), b.into());
+                }
+                // phase-454 W6.c -- what this type costs the CycloneDDS
+                // descriptor builder's stack arrays. Omitted when the schema
+                // could not be built, which is the same statement the row's
+                // `unresolved` bound makes; a consumer refuses on the absence
+                // rather than reading it as zero (RFC-0100 D6).
+                if let Some(s) = e.shape {
+                    m.insert(
+                        "cyclone_schema_shape".into(),
+                        serde_json::json!({
+                            "fields": s.fields,
+                            "kinds": s.kinds,
+                            "nested_depth": s.nested_depth,
+                        }),
+                    );
                 }
                 serde_json::Value::Object(m)
             })
@@ -813,6 +894,62 @@ mod json_reader_tests {
         assert_eq!(small.bound, BoundState::Bounded { tx: 5, rx: 12 });
         let open = back.iter().find(|e| e.type_name.ends_with("Open")).unwrap();
         assert_eq!(open.bound.tag(), "unbounded");
+    }
+
+    /// phase-454 W6.c — the CycloneDDS schema shape survives the artifact, and
+    /// its ABSENCE survives it too.
+    ///
+    /// Both directions matter and they say different things. A row that carries
+    /// a shape must read back with the same three numbers, or the descriptor
+    /// builder's stack arrays are sized from a column the writer and reader
+    /// disagree about. A row that carries none must read back as `None` — the
+    /// state of every `generated/` tree written before this field existed, and
+    /// the one a consumer must REFUSE on rather than read as zero (RFC-0100 D6).
+    #[test]
+    fn the_cyclone_schema_shape_round_trips_and_so_does_its_absence() {
+        use crate::schema_value::SchemaShape;
+        let shape = SchemaShape {
+            fields: 14,
+            kinds: 63,
+            nested_depth: 4,
+        };
+        let mut inv = BoundInventory::new("test_msgs");
+        inv.insert_full_with_shape(
+            "test_msgs/msg/Shaped",
+            BoundState::Bounded { tx: 5, rx: 12 },
+            Vec::new(),
+            None,
+            Some(shape),
+        );
+        // Written by a producer that could not build the schema -- the same row
+        // shape an older `generated/` tree has.
+        inv.insert(
+            "test_msgs/msg/Unshaped",
+            BoundState::Bounded { tx: 1, rx: 4 },
+        );
+
+        let back = bounds_from_json(&inv.to_json()).expect("reads back");
+        let shaped = back
+            .iter()
+            .find(|e| e.type_name.ends_with("Shaped"))
+            .unwrap();
+        assert_eq!(shaped.shape, Some(shape));
+        let unshaped = back
+            .iter()
+            .find(|e| e.type_name.ends_with("Unshaped"))
+            .unwrap();
+        assert_eq!(unshaped.shape, None, "absence is carried, not defaulted");
+
+        // A row that CARRIES the key and is missing a member of it is malformed
+        // rather than old, and refuses the artifact -- the same rule a `bounded`
+        // row with no size follows. Without this the two states collapse and a
+        // truncated artifact reads as a pre-W6.c one.
+        let err = bounds_from_json(&doc(
+            r#"{"type_name":"t/msg/M","state":"bounded","tx_max_serialized_size":1,
+                "rx_max_serialized_size":4,"cyclone_schema_shape":{"fields":3}}"#,
+        ))
+        .expect_err("must refuse");
+        assert!(err.contains("cyclone_schema_shape"), "{err}");
     }
 
     /// The compact transport is the same document, so it reads too.

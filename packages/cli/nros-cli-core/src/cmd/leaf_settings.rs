@@ -283,9 +283,19 @@ pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<Leaf
     // `nros_sizing_descriptor::load_for_build_script`.
     let descriptor = crate::sizing_descriptor::write_for_leaf(&img, &path_env, who)
         .map_err(|e| eyre!("{}: sizing descriptor: {e}", leaf.display()))?;
+    // phase-454 W6.c — the four CycloneDDS facts that cannot be read from the
+    // file where they are needed. A `cc::Build` compiling `descriptors.cpp` has
+    // only a compile line, so the STATED ones ride the `[env]` table as well; a
+    // refused or absent one emits no row and the consumer keeps its default
+    // (RFC-0100 D6). Inserted BEFORE layer 4, so an image that states one of
+    // these in `[image.<id>] env` still outranks the derivation.
+    for (k, v) in descriptor.cyclonedds_env() {
+        path_env.remove(&k);
+        env.insert(k, v);
+    }
     path_env.insert(
         nros_sizing_descriptor::DESCRIPTOR_ENV.to_string(),
-        descriptor,
+        descriptor.path,
     );
 
     // Layer 4 — the APP rung: what this IMAGE states (`[image.<id>] env`).

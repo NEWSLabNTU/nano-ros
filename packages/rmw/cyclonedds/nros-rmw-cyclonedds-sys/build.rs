@@ -161,6 +161,7 @@ fn vendored_build() {
         .flag_if_supported("-fdata-sections")
         .flag_if_supported("-Wno-unused-parameter")
         .flag_if_supported("-Wno-pedantic");
+    forward_derived_knobs(&mut cc_cpp);
     for f in cpp_files {
         cc_cpp.file(backend_src.join(f));
     }
@@ -182,6 +183,58 @@ fn vendored_build() {
 
     // The cmake project's `target_compile_definitions` are only relevant
     // for embedded RTOS targets — on hosted POSIX we leave them off.
+}
+
+/// phase-454 W6.c (RFC-0100 D5) — carry the model-derived CycloneDDS sizes into
+/// the C++ TUs.
+///
+/// The Rust half of this backend reads the same numbers with `option_env!`, which
+/// rustc resolves straight out of cargo's `[env]`. A C++ TU has no such reach:
+/// the value has to become a `-D` on the compile line, which is what this does.
+/// Both halves therefore read ONE source — the `[env]` table `nros
+/// codegen-system` manages — rather than a knob each.
+///
+/// **Absence leaves the header default alone, deliberately.** An image nobody has
+/// run `nros codegen-system` for states nothing, and every consumer keeps its own
+/// default (RFC-0100 D6); `descriptors.cpp` keeps its `#ifndef ... 256`, so such
+/// an image compiles byte-identically to before this wave.
+///
+/// `rerun-if-env-changed` and NOT a path: these are plain integers, so cargo's
+/// compare-as-text is exactly right for them. Issue 0491 is about PATH variables,
+/// which have three spellings for one directory; a count has one.
+#[cfg(feature = "vendored")]
+fn forward_derived_knobs(cc: &mut cc::Build) {
+    // `MAX_DESCRIPTOR_TYPES` is the static `Entry g_entries[N]` in
+    // `descriptors.cpp`. Over the cap, `register_descriptor` DROPS a type from a
+    // static constructor that cannot report, and the operator meets it much later
+    // as `publisher_create` returning UNSUPPORTED. The other three size the
+    // descriptor builder's stack arrays; they are Rust-side today, forwarded here
+    // so a C++ consumer of the same numbers reads the same table.
+    const KNOBS: &[&str] = &[
+        "NROS_CYCLONEDDS_MAX_DESCRIPTOR_TYPES",
+        "NROS_CYCLONEDDS_MAX_FIELDS",
+        "NROS_CYCLONEDDS_MAX_KINDS",
+        "NROS_CYCLONEDDS_MAX_NESTED_DEPTH",
+    ];
+    for knob in KNOBS {
+        println!("cargo:rerun-if-env-changed={knob}");
+        let Ok(raw) = std::env::var(knob) else {
+            continue;
+        };
+        let value = raw.trim();
+        // A non-numeric value is a hard failure rather than a silent skip: the
+        // producer emits digits, so anything else is a hand-edit, and compiling
+        // with the DEFAULT while the user believes they set a size is the exact
+        // silent-default shape this campaign removes.
+        if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+            panic!(
+                "nros-rmw-cyclonedds-sys: {knob} is set to {raw:?}, which is not a count. \
+                 It is written by `nros codegen-system` from the SystemModel; unset it to \
+                 let nros size it."
+            );
+        }
+        cc.define(knob, value);
+    }
 }
 
 /// Drive `idlc -t -l c` over `idl_path`, emit a tiny register TU per
