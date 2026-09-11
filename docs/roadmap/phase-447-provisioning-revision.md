@@ -340,6 +340,72 @@ first build silently used a different workspace's unnarrowed manifest and proved
 nothing — `zephyr_modules.txt` is what caught it. `cp -al` gives real
 directories at no disk cost, and is safe because git never writes in place.
 
+## Checkpoint (2026-09-11)
+
+Written so the campaign can be resumed on another machine. Everything below is on
+the remote; the one thing that is NOT — a poller on the original host — is named
+where it matters.
+
+### Merged
+
+| PR | item | result |
+| --- | --- | --- |
+| #883 | RFC-0099 + this phase | — |
+| #890 | B1 submodule fast-skip | `nros setup mps2-an385-baremetal` 153.82 s -> ~0.5 s |
+| #891 | B2 parser stderr | closes 1264 |
+| #895 | D3 pinned rosdep snapshot | 1788 keys, `provider = "system"` fallback, unprobed |
+| #896 | A1+A2 SDK root ships; store rung LAST | 30.5 MB / 2906 files + `nros-launch-resolve` |
+| #906 | F1 Zephyr modules under the index | closes 1275 |
+| #909 | payload correction + issue 1294 | — |
+| #911 | leaf-target gate prunes `target-*` | 27 min -> 0.5 s |
+| #914 | C2 dist-or-reason ratchet | 15 -> 17 of 25 tools carry a dist; closes 1273 |
+| #918 | C1 smoke on the install path | 14 of 25 tools declare a `smoke` probe, the other 11 a reason. Left the queue twice, neither time for a defect in C1 (see findings) |
+| #925 | A3 clean-host probe | red nightly until #1304 lands, and it fails at a different step than a #896 regression would |
+| #930 | lane-skip needs an interpreter | the L3 fix: `provision-zenohd` rc 78 on the container runner |
+| #931 | D1+D2 floors + OS-version dimension | 49 floors measured, none guessed; no dist needs glibc 2.35 |
+| #932 | `no-find` gate sees `dir/**` | `config-header-single-writer` 37 min -> 1 s |
+
+### In the merge queue or armed
+
+| PR | item | note |
+| --- | --- | --- |
+| #927 | E1+E2 session plan | closes 1274. Re-armed by the poller once #918 landed; rebased onto main, 2 -> 1 commit |
+| #933 | E3 pipelined executor | closes 1266 and 1267. Rebased 4 -> 2 (C1 and its fix dropped by patch-id); still carries E1+E2 until #927 lands. Armed |
+
+### In flight at this checkpoint
+
+| work | branch | state |
+| --- | --- | --- |
+| #1304 (A4) | `work/1304-installed-setup-provisions-without-a-checkout` | the agent stopped at the API session limit mid-change. Its tree is pushed as-is: A3's probe commit `b7ec5e55a`, two `wip(#1304)` commits (unreviewed, untested), and a fix to `cargo-target-spelling`'s no-triple arm — the WIP's rustup fallback defeated that PATH-only negative control, which is what first refused the push. No PR yet |
+
+### What is left
+
+- **#1304 (A4)** — the installed path dead-ends at `nros setup`: submodule pins read from a git history a release does not have, no Rust toolchain provisioned, CMake cannot find the Cyclone package. The phase's headline acceptance — an installed `nros` builds a scaffolded project — depends on it, and so does A3's pass direction.
+
+### Open findings, not fixed here
+
+- The **arm64 `arm-none-eabi-gcc` dist's bundled Python `_ssl` needs `libssl.so.1.1`**, which jammy does not ship — `import ssl` fails inside that gdb. Needs a re-cut in `nano-ros-sdk`.
+- **`nros-launch-resolve`'s floor is declared but not enforced** until `[tool.nros]` carries dist rows (phase-431 W5).
+- **`nros::init::ros_args_refusal_tests`** reads `ROS_DOMAIN_ID` with no lock while `env.rs`'s tests mutate it under `env_lock()`, in the same binary. A flake, observed once under a full parallel run.
+- **`just queue-triage` looks back 15 runs, not a time window**, so a minutes-old ejection had already scrolled out of it on a busy queue. #918's was found with `gh` directly.
+- **Ratchet collisions between two correct PRs.** Three ratchets now guard `[tool.*]` (dist-or-reason, smoke-or-reason, dist-floors). Two PRs each green alone can be ejected together when the queue combines them; carrying the parent does not prevent it. Satisfy all three when adding a tool.
+- **A force-push did not fire `pull_request`.** #918's fixed head received only `arm auto-merge`; `gate.yml` has a bare `pull_request:` trigger, yet no `synchronize` run appeared, so there was no `CI` context and the queue dropped the PR with no failing run anywhere to read. Close/reopen fired `reopened` and ran it. After force-pushing a PR, confirm its required check actually ran on the new head before trusting auto-merge. `workflow_dispatch` is not a substitute — it runs the full lane, including `check-build`, which cannot pass in CI.
+- **Subagents are not woken by a watch or monitor.** Two ended their turns waiting on one. Briefs say to block with `timeout 590 tail --pid=<pid> -f /dev/null`.
+
+### Resuming on another machine
+
+1. Clone `nano-ros` and read this section. Every PR above is on the remote.
+2. **#927 is already re-armed** (the poller fired when #918 landed). Nothing to do unless the queue ejects it; `just queue-triage` or `gh pr view 927` says.
+2a. **Resume #1304:** check out `work/1304-installed-setup-provisions-without-a-checkout`, read the newest `wip(#1304)` commit (its diff is where the agent stopped), finish, squash the two `wip` commits, then `just ci gate`, open the PR and arm it. `just probe` via A3's clean-host probe is its acceptance: the probe must go green.
+3. `nano-ros-sdk`: branch `work/phase-447-c2-play-launch-parser-dist` (`9babb72`) is pushed. Fast-forward it to `main` and cut a release to seed the `play_launch_parser` dist; until then it stays on the dist-or-reason list.
+4. A3's revert-direction mutant was not pushed — it is derived, not work. #896
+   landed as TWO commits through the rebase-merging queue (no merge commit), so
+   revert both, newest first:
+   `git checkout -b probe-mutant-revert-896 origin/main && git revert --no-edit e4f3d5add04d~1..434b121aeffa`
+   (e4f3d5add04d is A1+A2 itself; 434b121aeffa is its follow-up clippy fix. Reverting only
+   the newer one leaves the feature in place and proves nothing.)
+5. Local-only branches on the original host were NOT pushed; they are scratch from other sessions, not this campaign. The largest is `split/config-surface` (21 commits); others include `integrate/phase-206-w5`, `rb10`, `local-pre-rebase`, `pr48`. If any matter, push them from that host.
+
 ## Order, and what collides
 
 `cmd/setup.rs` is touched by C1/E1/E2/E3 and `sdk_store.rs` by B1/D1/E3. Group by
