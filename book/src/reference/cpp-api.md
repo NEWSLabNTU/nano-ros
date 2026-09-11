@@ -22,7 +22,7 @@ public surface a user application needs.
 - [`nros::PollingActionServer<A>`](../api/cpp/classnros_1_1PollingActionServer.html) / [`PollingActionClient<A>`](../api/cpp/classnros_1_1PollingActionClient.html) — L1 polling model. Caller drives `take_*` / `accept_goal` / `complete_goal` from a spin loop.
 - [`nros::Future<T>`](../api/cpp/classnros_1_1Future.html) — async result handle
 - [`nros::Executor`](../api/cpp/classnros_1_1Executor.html), [`Timer`](../api/cpp/classnros_1_1Timer.html), [`GuardCondition`](../api/cpp/classnros_1_1GuardCondition.html)
-- [`nros::ParameterServer<Cap>`](../api/cpp/classnros_1_1ParameterServer.html) — node-local typed parameter store (`bool` / `int64_t` / `double` / `const char*`); compose alongside a `Node`. See [Differences from ROS 2 §9](../concepts/ros2-comparison.md#9-parameters-node-local-server-no-descriptors-no-callbacks-yet) for what is intentionally smaller than `rclcpp`.
+- Parameters are methods ON the node — `declare_parameter<T>` / `get_parameter<T>` / `set_parameter<T>` / `has_parameter`, upstream's names, forwarding to the one store the `rcl_interfaces` services read. [`nros::Seq<T, N>`](../api/cpp/classnros_1_1Seq.html) is the array VALUE a freestanding node declares with (`std::vector<T>` under `NROS_CPP_STD`). The standalone `nros::ParameterServer<Cap>` is GONE (phase-426 W4): it was a second store, and what it held was invisible to `ros2 param get`. See [Differences from ROS 2 §9](../concepts/ros2-comparison.md#9-parameters-node-local-server-no-descriptors-no-callbacks-yet) for what is intentionally smaller than `rclcpp`.
 
 The library is freestanding C++14 — no STL, no exceptions. A second,
 std-flavoured surface exists for porting upstream rclcpp code and is reached by

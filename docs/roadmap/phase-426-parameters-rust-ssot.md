@@ -1,14 +1,17 @@
 # Phase 426 — parameters get a Rust SSoT, and `ros2 param list` works
 
-**Status (2026-09-11). W1–W6 each LANDED on main. Per-item acceptance RE-AUDITED
-2026-09-11: W1, W2, W3 and W6 MET; W4 and W5 each have one half outstanding, so
-this phase is NOT archivable yet.** The line read "Planned" for six days after the
-work went in, so the evidence is the commits:
+**Status (2026-09-12). W1–W6 landed, and the two items the 2026-09-11 re-audit
+found PARTIAL — W4 and W5 — are now CLOSED.** The re-audit below is kept in
+full: it is the record of what each acceptance actually measured, and its W4 and
+W5 bullets are what this wave answered. Each carries a `CLOSED 2026-09-12` note
+naming what landed. The line before the re-audit read "per-item acceptance not
+re-audited here", which is what let two unmet acceptances sit for four months.
+Commits for the original waves:
 - W1: 4 commits.
 - W2: `30f5e9f941`.
 - W3: 6 commits.
-- W4: `3bf30405f1` deleted both C++ stores, and `98f0f5de7e` taught the parameter FFI which node is asking.
-- W5: `1505290ecd`.
+- W4: `3bf30405f1` deleted both C++ stores, `98f0f5de7e` taught the parameter FFI which node is asking; the second half is 2026-09-12 (below).
+- W5: `1505290ecd` (the C surface); the acceptance is 2026-09-12 (below).
 - W6: `3e3f1ef2db`.
 
 ### The re-audit (2026-09-11) — what each acceptance actually measures
@@ -53,6 +56,15 @@ the difference.
   both C++ stores" is met for the members and not for the class. Whether the
   class should stay is a decision, not an oversight; it needs stating either way
   before this item reads DONE.
+
+  **CLOSED 2026-09-12.** The decision is stated and it is DELETE:
+  `nros::ParameterServer<Cap>` is ABSENT, the three shipped examples that used
+  the caller-storage store are on `rclcpp::Node` / `nros_executor_*_param_*`,
+  `nros::Seq<T, N>` moved onto the node API so the freestanding array
+  capability moved rather than went, the node's parameter methods left
+  `#ifdef NROS_CPP_NODE_HOSTED`, and `check-example-parameter-stores` keeps the
+  class of defect out of `examples/`. Full argument and measurements in the W4
+  work item below.
 * **W5 — PARTIAL, and the missing half is the acceptance itself.** The C surface
   does point at the same table and can name a node — fourteen `_on` spellings
   (`nros-c/include/nros/parameter.h:491`–`548`) onto
@@ -70,6 +82,15 @@ the difference.
   (`nros-c/src/parameter.rs:136`) and still what the shipped C example uses
   (`examples/native/c/parameters/src/main.c:34`), so "C and C++ cannot disagree"
   holds for the `nros_executor_*` path and is untested across a single image.
+
+  **CLOSED 2026-09-12.** `mixed_param_talker_pkg` is the missing image: one
+  node, a C++ component and a C translation unit, C++ declaring
+  `publish_period_ms` and reading `scale` while C declares `scale` and reads
+  `publish_period_ms`. Row `workspace-features-mixed-params`, test
+  `cpp_c_param_live_read_e2e::mixed_c_cpp_param_declare_and_read_cross_languages`.
+  The legacy divergent C store is still exported — deliberately, see the W4
+  item — but no example uses it any more. Measurements in the W5 work item
+  below.
 * **W6 — MET.** Cell `native-params-per-node-rust-zenoh`
   (`nros-tests/src/interop.rs:457`) runs `list` / `get` / `set` against a
   running two-node image and asserts the FQNs
@@ -87,6 +108,14 @@ the difference.
   (`node_parameters.hpp:246`, read side `:260`, type map `:319`), with the
   previously-unowned caller named at `:207`–`218` and `std::vector<bool>`
   deliberately still absent (`:217`).
+
+**The lesson, since it is the third time in this repo:** "landed" is a claim
+about commits and "accepted" is a claim about the tree, and writing the first
+where the second belongs makes the gap invisible. W4's acceptance named
+`rclcpp::Node::declare_parameter` and `check-cpp-capability-layout`, and both
+stayed true while `examples/native/cpp/parameters` went on demonstrating a
+different store. A phase line that says "acceptance not re-audited" is a phase
+line that says nobody checked.
 
 Run `git log --grep='phase-426 W'` for the full list. There is one known hole in the
 promise this phase makes. On Cyclone, the parameter services never start, so
@@ -174,11 +203,152 @@ store before its replacement exists is how a capability disappears quietly.
   `NROS_RCLCPP_MAX_PARAMS` is gone or documented as an arena bound, not a
   second store.
 
+  **DONE — first half 2026-09-07, second half 2026-09-12.** The first half
+  deleted the two node-owned stores and met the acceptance as written. What it
+  left standing was a THIRD one: `nros::ParameterServer<Cap>`
+  (`packages/api/nros-cpp/include/nros/parameter.hpp`), the C++ wrapper over
+  the caller-storage C `nros_parameter_server_t` — and
+  `examples/native/cpp/parameters`, the shipped example a user copies out,
+  was nothing BUT that class. Its parameters are invisible to `ros2 param
+  get`, which is the defect this phase exists to remove, live in the file
+  that answers "how do I use parameters in C++".
+
+  **`nros::ParameterServer<Cap>` is ABSENT now — deleted.** The disposition
+  is RFC-0089's fourth, and it is available here only because upstream never
+  had the name (the alias rule binds where rclcpp HAS a name and we lack it).
+  Three measurements decided it: (1) after the first half of W4, `grep -rn
+  "ParameterServer<" packages examples book docs` found the class
+  CONSTRUCTED in exactly one place in the tree — the example that documented
+  it, so the "caller-owned store with no executor" caller does not exist;
+  (2) it was the defect, shipped, and an example is copied out (RFC-0026);
+  (3) it is wrapper-side BEHAVIOUR — a ~600-line header with a name table
+  and a bump-allocated element pool — which RFC-0019/0020 and RFC-0089
+  §"Parameters" forbid.
+
+  **Two things moved with it, because deleting a store before its
+  replacement exists is how a capability disappears quietly.**
+  - `nros::Seq<T, N>` SURVIVES as a value and is now the node API's array
+    form: `node.declare_parameter(name, Seq<double, 8>{…})` /
+    `get_parameter` / `set_parameter` route through
+    `nros_cpp_node_{declare,get,set}_param_{double,integer,bool}_array`. It
+    was the only way a `-nostdinc++` node could express an array parameter
+    (`std::vector<T>` reaches that FFI only under `NROS_CPP_STD`), and it is
+    now strictly MORE than the deleted class had: a sequence parameter is
+    visible to `ros2 param get` for the first time. The three
+    `nros_cpp_node_set_param_*_array` entry points are new — the declare/get
+    pair had landed with no setter, so an array parameter was writable from
+    the wire and from nowhere in C++.
+  - The node's parameter METHODS left `#ifdef NROS_CPP_NODE_HOSTED`. They
+    were inside it, so a freestanding C++ node had no parameter method at
+    all and `ParameterServer<Cap>` was its only parameter surface; deleting
+    the class with the gate in place would have removed the capability from
+    freestanding C++ rather than moving it. `node.hpp` already said the
+    member leaving was "the last thing that made `NROS_CPP_NODE_HOSTED`
+    decide whether a node HAS parameters rather than whether it can spell
+    them" — the declarations had simply not followed. Only the
+    `std::string`-KEYED overloads keep the gate, which is a gate on METHODS
+    and what `check-cpp-capability-layout` permits.
+
+  **The C example was the same defect one language over**, and
+  `examples/native/c/custom-transport-loopback` built a
+  caller-storage store it then never touched. All three are on
+  `nros_executor_*_param_*` now.
+
+  *Measured 2026-09-12* (two shipped examples, one `rmw_zenohd`, ROS 2 Humble
+  `rmw_zenoh_cpp`; `--no-daemon`, because a `ros2` daemon caches the graph
+  across domains and answers "Node not found" for a node that is right
+  there):
+
+  ```
+  ### ros2 node list
+  /c_parameters
+  /cpp_parameters
+  ### ros2 param list /cpp_parameters
+    ctrl_period / frame_id / max_iters / mpc_weights / verbose
+  ### ros2 param get /cpp_parameters mpc_weights
+  Double values are: array('d', [4.0, 5.0, 6.0, 7.0])
+  ### ros2 param set /cpp_parameters ctrl_period 0.25
+  Set parameter successful
+  ### ros2 param list /c_parameters
+    publish_rate_hz / scale_factor / topic_name / verbose
+  ### ros2 param get /c_parameters scale_factor
+  Double value is: 1.0
+  ### ros2 param set /c_parameters scale_factor 2.5
+  Set parameter successful
+  ```
+
+  `mpc_weights` is the `Seq<double, 8>`: the array the deleted class could
+  not have shown to `ros2 param get` at all.
+
+  **The gate, because a gate would have caught this and there was none.**
+  `check-example-parameter-stores` (fast lane) refuses any reference from
+  `examples/` to the caller-storage family. It is not a ban on the API —
+  `nros-c` implements it and its compile test pins the entry points — it is a
+  rule about what we SHOW. It self-tests its pattern against the three files
+  that carried the defect, so it cannot pass vacuously once they are fixed.
+
 * **W5 [c] — the C surface follows.** `nros_parameter_*` keeps its shape and
   points at the same table, so C and C++ cannot disagree about what a node's
   parameters are.
   *Acceptance:* a mixed C/C++ workspace fixture declares from one language and
   reads from the other.
+
+  **DONE — surface 2026-09-07 (`1505290ecd`), ACCEPTANCE 2026-09-12.** The
+  surface landed and the acceptance did not exist. Two corrections to the
+  item as written, both worth recording because the wording misleads:
+  - It is NOT `nros_parameter_*` that points at the table. That family is
+    still the caller-storage store and still node-local. What W5 added is
+    the `_on` half of `nros_executor_*_param_*` (`parameter.h`, the
+    "Per-node spellings (phase-426 W5)" block), which names a node bound to
+    the executor. `nros_parameter_*`'s shape is unchanged because nothing
+    changed about it.
+  - `workspace-features-{c,cpp}-params` are two SINGLE-LANGUAGE images.
+    Each reads a launch-seeded `publish_period_ms` through
+    `nros_cpp_get_param_integer` and publishes it; neither crosses, so "C
+    and C++ cannot disagree" had no cell behind it.
+    `examples/workspaces/mixed` declares no parameters at all.
+    `packages/api/nros-c/tests/run/executor_param_node_keying.c` (also W5)
+    proves the C `_on` family keys by node, which is a different claim.
+
+  **What the acceptance is.** `mixed_param_talker_pkg` in
+  `examples/workspaces/features` — ONE package, ONE node, two translation
+  units and two languages. `src/ParamTalker.cpp` is the component;
+  `src/param_probe.c` is C, handed the same `nros_cpp_node_t*`. Each
+  language declares one parameter and reads the other's:
+  C++ declares `publish_period_ms` (adopting the launch `<param>` seed of
+  250) and reads `scale`; C declares `scale` (3.0) and reads
+  `publish_period_ms`, live, on every tick. The image publishes the PRODUCT
+  on `/chatter`, so the number on the wire is the conjunction of both
+  crossings and is a value neither language writes down. A failed crossing
+  also fails the BOOT: `configure` checks both directions and refuses, so a
+  broken store shows up as a diagnostic rather than as a wrong integer.
+
+  *Coordinate:* `linux / cpp / zenoh / workspace`, fixture row
+  `workspace-features-mixed-params`, image `native_mixed_params`, launch
+  `mixed_params.launch.xml`. Same cell as `workspace-features-cpp-params`,
+  so it needs no new `matrix::CELLS` entry. Test:
+  `tests/cpp_c_param_live_read_e2e.rs`'s third arm,
+  `mixed_c_cpp_param_declare_and_read_cross_languages`.
+
+  *Measured 2026-09-12* (build: `scripts/build/workspace-fixtures-build.sh
+  linux cpp --id workspace-features-mixed-params` →
+  `built: examples/workspaces/features/build/posix-zenoh-native/cmake/native_mixed_params_entry`):
+
+  ```
+  ### entry stdout
+  Crossed: cpp declared publish_period_ms=250, c read 250; c declared scale=3.0, cpp read 3.0
+  Published: 750     (x many)
+
+  ### ros2 node list                 -> /param_talker
+  ### ros2 param list /param_talker  -> publish_period_ms, scale
+  ### ros2 param get  /param_talker scale              -> Double value is: 3.0    (declared in C)
+  ### ros2 param get  /param_talker publish_period_ms  -> Integer value is: 250   (declared in C++)
+  ### ros2 topic echo /chatter --once                  -> data: 750
+  ```
+
+  ```
+  PASS nros-tests::cpp_c_param_live_read_e2e mixed_c_cpp_param_declare_and_read_cross_languages
+  ```
 
 * **W6 [test] — the cell that would have caught this.** An interop cell that
   runs `ros2 param list` / `get` / `set` against a running nano-ros image and
