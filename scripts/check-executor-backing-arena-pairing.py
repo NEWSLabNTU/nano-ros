@@ -116,6 +116,7 @@ SIZING_KNOBS = {
     "NROS_EXECUTOR_MAX_CBS": "`cbs`, and every per-slot arena term",
     "NROS_DECLARED_EXECUTOR_MAX_CBS": "the declared rung of `cbs` (issue 1199)",
     "NROS_EXECUTOR_MAX_SC": "`sc`",
+    "NROS_DECLARED_EXECUTOR_MAX_SC": "the declared rung of `sc` (issue 1198)",
     "NROS_EXECUTOR_MAX_NODES": "`nodes`",
     "NROS_DECLARED_EXECUTOR_MAX_NODES": "the declared rung of `nodes` (issue 1233)",
     "NROS_EXECUTOR_ARENA_SIZE": "`arena`, directly",

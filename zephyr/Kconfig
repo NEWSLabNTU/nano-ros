@@ -1265,11 +1265,22 @@ config NROS_BOOT_REPORT
       built before the feature existed.
 
 config NROS_EXECUTOR_MAX_SC
-    int "Maximum scheduling-context slots per executor"
-    default 8
+    int "Maximum scheduling-context slots per executor (-1 = derive)"
+    default -1
     help
       SchedContext slots per executor (nros-node build.rs MAX_SC,
       RFC-0052 / Phase 110.B).
+
+      issue 1198 -- `-1` DERIVES this from the image's entity inventory:
+      slot 0 is the reserved default Fifo context (create_sched_context
+      searches 1..MAX_SC), plus one per scheduling context the schedule can
+      create. The Rust runtime creates NONE -- apply_tier_sched_policy ends
+      in set_default_sched_context, which mutates slot 0 -- while the C/C++
+      entry pack creates one per tier. A stated number wins, in both
+      directions. The old default was 8 for every image whatever it
+      declared, worth 112 bytes a slot in the executor backing on
+      thumbv7m-none-eabi. Too small is NodeError::NoSchedContextSlot at
+      create_sched_context, which names this knob.
 
 config NROS_EXECUTOR_MAX_SHUTDOWN_CBS
     int "Shutdown-hook slots per phase"

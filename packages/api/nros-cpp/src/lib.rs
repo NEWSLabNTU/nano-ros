@@ -3087,7 +3087,21 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context(
             unsafe { *out_sc_id = id.0 };
             NROS_CPP_RET_OK
         }
-        Err(_) => NROS_CPP_RET_FULL,
+        // issue 1198 — NAME THE KNOB. `NROS_EXECUTOR_MAX_SC` is derived per
+        // image since phase-448 W6 (slot 0 plus one per tier the schedule can
+        // create); a context created by hand through this entry point is
+        // declared nowhere, and a bare `NROS_CPP_RET_FULL` made that
+        // under-count silent. The text is `NodeError::NoSchedContextSlot`'s
+        // own Display, written once.
+        Err(e) => {
+            cpp_diag!(
+                "create_sched_context: {} — this image's NROS_EXECUTOR_MAX_SC \
+                 is derived from its schedule, and a context created by hand \
+                 is declared nowhere. State the knob.",
+                e
+            );
+            NROS_CPP_RET_FULL
+        }
     }
 }
 
@@ -3165,7 +3179,21 @@ pub unsafe extern "C" fn nros_cpp_create_sched_context_from_policy(
             unsafe { *out_sc_id = id.0 };
             NROS_CPP_RET_OK
         }
-        Err(_) => NROS_CPP_RET_FULL,
+        // issue 1198 — NAME THE KNOB. `NROS_EXECUTOR_MAX_SC` is derived per
+        // image since phase-448 W6 (slot 0 plus one per tier the schedule can
+        // create); a context created by hand through this entry point is
+        // declared nowhere, and a bare `NROS_CPP_RET_FULL` made that
+        // under-count silent. The text is `NodeError::NoSchedContextSlot`'s
+        // own Display, written once.
+        Err(e) => {
+            cpp_diag!(
+                "create_sched_context: {} — this image's NROS_EXECUTOR_MAX_SC \
+                 is derived from its schedule, and a context created by hand \
+                 is declared nowhere. State the knob.",
+                e
+            );
+            NROS_CPP_RET_FULL
+        }
     }
 }
 

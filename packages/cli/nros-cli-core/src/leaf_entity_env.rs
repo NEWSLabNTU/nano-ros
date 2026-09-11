@@ -336,6 +336,13 @@ pub const DERIVED_ENV_KEYS: &[&str] = &[
     // property phase-412 required before deriving it at all, and that property
     // belongs to the failure rather than to the road it travelled.
     "NROS_EXECUTOR_MAX_NODES",
+    // issue 1198 — the executor's OTHER fixed table, which travelled on NO
+    // road: 8 scheduling-context slots in every image whatever its schedule
+    // created, and the Rust runtime creates NONE of them. Same terms as its
+    // sibling above: a DEFAULT (cargo `[env]` without `force`, so a stated
+    // value still wins), and exhaustion NAMES the knob
+    // (`NodeError::NoSchedContextSlot`).
+    "NROS_EXECUTOR_MAX_SC",
     "NROS_RMW_SUBSCRIBER_SLOTS",
     // issue 1130 — the per-kind capacity of a knob-capped component cell. An
     // explicit `ENTITY_BOUNDS` on a class still wins: it is per CLASS.
@@ -500,6 +507,10 @@ pub fn render_env_sidecar_with_facts(
         // the knob, and this one sizes Rust tables where a short count is a
         // named `NodeTableFull`, not a `#error`.
         ("NROS_EXECUTOR_MAX_NODES", knobs.max_nodes),
+        // issue 1198 — unfloored for the same reason, and it cannot reach zero
+        // anyway: the derivation refuses an image with no components, so
+        // `max_sc >= 2` (the reserved slot 0 plus that image's one).
+        ("NROS_EXECUTOR_MAX_SC", knobs.max_sc),
         ("NROS_RMW_SUBSCRIBER_SLOTS", knobs.max_subscribers),
         // issue 1130 — unfloored: the cell registries are Rust arrays, and a
         // zero-capacity one is an empty registry, not a `#error`.

@@ -310,6 +310,8 @@ impl Resolved {
                 ("max_cbs", k.max_cbs),
                 ("action_clients", k.heavy_slots),
                 ("max_nodes", k.max_nodes),
+                // Issue 1198 -- the executor's other fixed table.
+                ("max_sc", k.max_sc),
                 ("entity_total", k.entity_total),
                 ("max_subscribers", k.max_subscribers),
                 ("rmw_subscriber_slots", k.max_subscribers),
@@ -378,12 +380,19 @@ impl Resolved {
                     "# The executor's own table. A PUBLISHER CLAIMS NO SLOT — it writes an\n\
                      # RmwPublisher into caller storage and never reaches\n\
                      # Executor::next_entry_slot — so `entity_total` is larger than\n\
-                     # `max_cbs`, and the gap is the finding rather than a discrepancy.\n",
+                     # `max_cbs`, and the gap is the finding rather than a discrepancy.\n\
+                     #\n\
+                     # `max_nodes` and `max_sc` size the executor's two FIXED TABLES,\n\
+                     # which are charged to the backing beside the arena. `max_sc`\n\
+                     # counts the reserved default Fifo slot plus one per scheduling\n\
+                     # context the schedule can create, so it is never below 2 (issue\n\
+                     # 1198).\n",
                 );
                 s.push_str("[executor]\n");
                 let _ = writeln!(s, "max_cbs = {}", k.max_cbs);
                 let _ = writeln!(s, "action_clients = {}", k.heavy_slots);
                 let _ = writeln!(s, "max_nodes = {}", k.max_nodes);
+                let _ = writeln!(s, "max_sc = {}", k.max_sc);
                 let _ = writeln!(s, "entity_total = {}", k.entity_total);
                 s.push('\n');
 
@@ -713,6 +722,7 @@ mod tests {
             ("max_cbs", "NROS_DERIVED_EXECUTOR_MAX_CBS"),
             ("action_clients", "NROS_DERIVED_EXECUTOR_ACTION_CLIENTS"),
             ("max_nodes", "NROS_DERIVED_EXECUTOR_MAX_NODES"),
+            ("max_sc", "NROS_DERIVED_EXECUTOR_MAX_SC"),
             ("max_subscribers", "NROS_DERIVED_MAX_SUBSCRIBERS"),
             ("rmw_subscriber_slots", "NROS_DERIVED_RMW_SUBSCRIBER_SLOTS"),
             ("max_publishers", "NROS_DERIVED_MAX_PUBLISHERS"),

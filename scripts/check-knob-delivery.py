@@ -92,6 +92,12 @@ DERIVED_PAIRS = {
     "NROS_DERIVED_RMW_SUBSCRIBER_SLOTS": ("NROS_RESOLVED_NROS_RMW_SUBSCRIBER_SLOTS",),
     "NROS_DERIVED_EXECUTOR_MAX_CBS": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_CBS",),
     "NROS_DERIVED_EXECUTOR_MAX_NODES": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_NODES",),
+    # issue 1198 -- the executor's OTHER fixed table, derivable since
+    # phase-448 W6. It sat on a plain `_nros_resolve_knob` with a Kconfig
+    # default of 8, so every Zephyr image carried 8 scheduling-context slots
+    # whatever its schedule created -- and the Rust runtime creates NONE of
+    # them (`apply_tier_sched_policy` mutates the reserved slot 0).
+    "NROS_DERIVED_EXECUTOR_MAX_SC": ("NROS_RESOLVED_NROS_EXECUTOR_MAX_SC",),
     # phase-412 #7 -- carried by the resolver AND by the leaf sidecar
     # (`DERIVED_ENV_KEYS`), and named in no registry until now. Issue 0900's
     # arena budget reads it beside MAX_CBS and the two are only meaningful

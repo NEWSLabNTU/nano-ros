@@ -144,7 +144,7 @@ through the `NROS_*` build environment.
 
 ### W6 — the fixed tables shrink to what the image declares
 
-[Issue 1198](../issues/1198-executor-node-and-sc-slots-are-undeclared-defaults.md).
+[Issue 1198](../issues/archived/1198-executor-node-and-sc-slots-are-undeclared-defaults.md).
 `MAX_NODES` and `MAX_SC` are undeclared defaults. Every FreeRTOS backing carries
 a constant **12,416 B** of tables, identical to the byte across leaves with
 different declarations. `MAX_NODES` is the heavier of the two: it multiplies

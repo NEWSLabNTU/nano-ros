@@ -534,6 +534,14 @@ pub struct EntityInventory {
     /// Independent of `components`: an image whose entity count refuses can
     /// still have its parameter store sized, and the reverse.
     params: ParamDeclarations,
+    /// Issue 1198 -- how many SCHEDULING TIERS the bringup authors
+    /// (`execution.tiers`), which is a different declaration from the entity
+    /// one and the only artifact that says anything about scheduling contexts.
+    /// Zero for an inventory built from a probe, which sees no model.
+    ///
+    /// See [`DerivedEntityKnobs::max_sc`] for what it is a term in and why the
+    /// node count is the other term.
+    tiers: usize,
 }
 
 /// MIRRORS of the action multipliers in
@@ -780,6 +788,42 @@ pub struct DerivedEntityKnobs {
     /// knob. An explicit `ENTITY_BOUNDS` still wins: it is per CLASS, and the
     /// knob only sizes the classes that state nothing.
     pub max_cell_entities: usize,
+    /// `NROS_EXECUTOR_MAX_SC` -- scheduling-context slots (issue 1198).
+    ///
+    /// NOT an entity count, and that is the finding rather than an obstacle:
+    /// an SC is not created by any component, it is created by the image's
+    /// SCHEDULE. Measured over the tree, there are exactly two producers, and
+    /// they disagree about how many slots a tier costs:
+    ///
+    /// * the RUST runtime creates **none**. `apply_tier_sched_policy` ends in
+    ///   `set_default_sched_context`, which MUTATES slot 0 -- so a tiered Rust
+    ///   boot, which opens one executor per tier, spends one reserved slot per
+    ///   executor and no table entry at all.
+    /// * the C / C++ entry pack creates **one per tier**, through
+    ///   `nros_cpp_create_sched_context_from_policy` into `__nros_sc_ids[N]`,
+    ///   where `N` is the resolved tier table's length (`SchedView::n`).
+    ///
+    /// So the demand is `1 + <SCs the schedule creates>`: the `1` is slot 0,
+    /// which `create_sched_context` reserves for the default Fifo context and
+    /// never hands out (it searches `1..MAX_SC`).
+    ///
+    /// The second term is bounded by `max(authored tiers, nodes)`, not by the
+    /// authored tier count alone, because a bringup that authors NO tiers does
+    /// not thereby have one: `derive_tiers_from_contracts` synthesises a
+    /// `derived-<node>` tier per schedulable node, so a model with an empty
+    /// `[tiers.*]` can still resolve to one tier per node. Taking the larger
+    /// of the two covers both shapes and over-counts for the Rust one, which
+    /// is the safe direction.
+    ///
+    /// UNDER-counting has one source, and it is the same shape as
+    /// [`Self::max_nodes`]'s bridge: application code calling
+    /// `create_sched_context` (or `nros_executor_create_sched_context`) by
+    /// hand, which no artifact describes. Every such path NAMES this knob when
+    /// the table is full -- `NodeError::NoSchedContextSlot` spells it, and the
+    /// three FFI wrappers log it rather than returning a bare `RET_FULL` --
+    /// which is what makes deriving it safe. An image that hand-creates
+    /// scheduling contexts states this knob.
+    pub max_sc: usize,
     /// Per-kind counts across the image, in [`ALL_ENTITY_KINDS`] order.
     pub per_kind: BTreeMap<&'static str, usize>,
     /// Per-component `(pkg, component, entities, slots)`, so the output records
@@ -1268,6 +1312,7 @@ impl EntityInventory {
             components: Vec::new(),
             infra: InfraServices::default(),
             params: ParamDeclarations::Absent,
+            tiers: 0,
         }
     }
 
@@ -1293,6 +1338,17 @@ impl EntityInventory {
 
     pub fn param_declarations(&self) -> &ParamDeclarations {
         &self.params
+    }
+
+    /// Issue 1198 -- state the authored tier count for an inventory whose
+    /// bringup facts arrive by some road other than [`Self::from_model`].
+    pub fn set_tiers(&mut self, tiers: usize) {
+        self.tiers = tiers;
+    }
+
+    /// Issue 1198 -- the authored tier count this inventory was given.
+    pub fn tiers(&self) -> usize {
+        self.tiers
     }
 
     /// phase-412 -- build the inventory from a resolved SystemModel's wiring
@@ -1495,6 +1551,12 @@ impl EntityInventory {
         // Issue 1270 -- the families the bringup declares ride along, so the
         // session pools count the servers the runtime creates for them.
         inv.infra = InfraServices::from_model(model);
+        // Issue 1198 -- the SCHEDULING declaration rides along too. It is not
+        // an entity fact and is deliberately kept apart from `infra`: the
+        // service families are what the runtime creates FOR the image, while
+        // this is what the integrator authored about how it runs (RFC-0016
+        // tiers, `[tiers.*]` in `system.toml`).
+        inv.tiers = model.execution.tiers.len();
         for (node_fqn, entities) in per_node {
             let component = node_fqn.rsplit('/').next().unwrap_or(&node_fqn).to_string();
             inv.insert(ComponentEntities {
@@ -1560,6 +1622,10 @@ impl EntityInventory {
         // Issue 1270 -- metadata carries no bringup features, so the model's
         // declaration is what survives; a union, never a max of two counts.
         out.infra = self.infra.union(model.infra);
+        // Issue 1198 -- the tier table is the model's alone (a probe sees no
+        // `system.toml`), so this is a max for the same reason `infra` is a
+        // union: whichever side saw the declaration is the one that knows.
+        out.tiers = self.tiers.max(model.tiers);
         let mut seen: Vec<&str> = Vec::new();
 
         for decl_row in &self.components {
@@ -1789,6 +1855,12 @@ impl EntityInventory {
             + n(EntityKind::ActionServer.tag()) * ACTION_SERVER_QUERYABLES
             + infra_queryables;
         let max_nodes = self.components().len();
+        // Issue 1198 -- slot 0 is RESERVED for the default Fifo context
+        // (`create_sched_context` searches `1..MAX_SC`), so the demand is one
+        // plus whatever the schedule creates. See `DerivedEntityKnobs::max_sc`
+        // for why the second term is the larger of the authored tier count and
+        // the node count rather than the tier count alone.
+        let max_sc = 1 + self.tiers.max(max_nodes);
 
         // phase-412 W2 -- the liveliness pool. Terms and their call sites are
         // on the field; every one is a count this derivation already made.
@@ -1812,6 +1884,7 @@ impl EntityInventory {
             max_nodes,
             max_liveliness,
             max_cell_entities,
+            max_sc,
             per_kind,
             per_component,
         }))
@@ -2505,6 +2578,14 @@ impl EntityInventory {
                     "set(NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES {})\n",
                     k.max_cell_entities
                 ));
+                // Issue 1198 -- the SCHEDULING half. Slot 0 is reserved for the
+                // default Fifo context, so the demand is 1 + what the schedule
+                // creates; the Rust runtime creates none (it mutates slot 0),
+                // the C/C++ entry pack creates one per tier.
+                s.push_str(
+                    "# Scheduling-context slots: slot 0 is the reserved default Fifo\n                     # context, plus one per tier the schedule can create. A bringup\n                     # that authors no tiers can still resolve one per node\n                     # (derive_tiers_from_contracts), so the second term is the LARGER\n                     # of the authored tier count and the node count.\n",
+                );
+                s.push_str(&format!("set(NROS_DERIVED_EXECUTOR_MAX_SC {})\n", k.max_sc));
             }
         }
 
@@ -2897,6 +2978,87 @@ mod tests {
         // And no transport may carry a number.
         assert!(!inv.to_cmake().contains("NROS_DERIVED_EXECUTOR_MAX_CBS"));
         assert_eq!(inv.to_env(), "");
+    }
+
+    /// Issue 1198 — the executor's two FIXED TABLES follow the declaration.
+    ///
+    /// Deltas rather than absolutes where it matters: the point is that the
+    /// numbers MOVE with what the image says, because the defect was that they
+    /// did not — 4 node slots and 8 scheduling-context slots in every image,
+    /// identical to the byte across leaves whose declarations differ.
+    #[test]
+    fn the_fixed_tables_follow_the_declaration() {
+        let mut one = EntityInventory::new("test");
+        one.insert(stated("a", "talker", &["publisher", "timer"]));
+        let k = one.derive();
+        let k = k.knobs().expect("derived");
+        assert_eq!(k.max_nodes, 1, "one component is one node slot");
+        // Slot 0 is RESERVED for the default Fifo context, so a single-node
+        // image with no authored tiers still needs two.
+        assert_eq!(k.max_sc, 2, "the reserved slot 0 plus this image's one");
+
+        let mut three = EntityInventory::new("test");
+        three.insert(stated("a", "one", &["timer"]));
+        three.insert(stated("b", "two", &["timer"]));
+        three.insert(stated("c", "three", &["timer"]));
+        let k3 = three.derive();
+        let k3 = k3.knobs().expect("derived");
+        assert_eq!(k3.max_nodes, 3);
+        assert_eq!(k3.max_sc, 4);
+
+        // An AUTHORED tier table outranks the node count when it is larger:
+        // the C/C++ entry pack creates one scheduling context per tier, and a
+        // two-node image on five tiers needs five.
+        let mut tiered = EntityInventory::new("test");
+        tiered.insert(stated("a", "one", &["timer"]));
+        tiered.insert(stated("b", "two", &["timer"]));
+        tiered.set_tiers(5);
+        assert_eq!(
+            tiered.derive().knobs().expect("derived").max_sc,
+            6,
+            "five tiers is five contexts, plus the reserved slot 0"
+        );
+        // ... and never LOWERS it: a bringup that authors no tiers can still
+        // resolve one per node (`derive_tiers_from_contracts`).
+        assert_eq!(
+            tiered.derive().knobs().expect("derived").max_nodes,
+            2,
+            "tiers do not change the node table"
+        );
+    }
+
+    /// The other half of issue 1198: the numbers reach the CARRIER a build
+    /// reads, not just the struct. `MAX_NODES` was correct on this road's
+    /// producer for two phases while nothing carried it, and `MAX_SC` was not
+    /// published at all.
+    #[test]
+    fn the_fixed_tables_reach_both_cargo_roads() {
+        let mut inv = EntityInventory::new("test");
+        inv.insert(stated("a", "talker", &["publisher", "timer"]));
+        let c = inv.to_cmake();
+        assert!(c.contains("set(NROS_DERIVED_EXECUTOR_MAX_NODES 1)"), "{c}");
+        assert!(c.contains("set(NROS_DERIVED_EXECUTOR_MAX_SC 2)"), "{c}");
+
+        let k = inv.derive();
+        let k = k.knobs().expect("derived");
+        let sidecar = crate::leaf_entity_env::render_env_sidecar(
+            k,
+            &crate::leaf_payload_classes::PayloadClasses::Refused {
+                reason: "test".into(),
+            },
+            &crate::leaf_take_buffer::TakeBuffer::Refused {
+                reason: "test".into(),
+            },
+            "test",
+        );
+        assert!(
+            sidecar.contains("NROS_EXECUTOR_MAX_NODES = \"1\""),
+            "{sidecar}"
+        );
+        assert!(
+            sidecar.contains("NROS_EXECUTOR_MAX_SC = \"2\""),
+            "{sidecar}"
+        );
     }
 
     /// Issue 0900 — the heavy-slot count is what stops a talker carrying an
