@@ -529,8 +529,14 @@ mod tests {
 
     #[test]
     fn typed_emit_param_services_registration_is_non_fatal_both_paths() {
-        // Issue 0745 — registration builds six service servers and fails outright on
-        // an RMW without service-server support (cyclonedds today). Launch params are
+        // Issue 0745 — registration builds six service servers, and a backend can
+        // refuse the whole set. The stated cause here was WRONG and issue 1268
+        // corrected it: cyclonedds has service-server support and serves an image's
+        // own services. What it refused was the rcl_interfaces TYPES, which nothing
+        // registered a descriptor for; it now registers them with the rest. The
+        // non-fatal shape below is unchanged and still right — a backend that cannot
+        // serve the six must cost the runtime get/set RPC and nothing else. Launch
+        // params are
         // seeded pre-construction by `emit_declare_params`, so a failed registration
         // must cost the runtime get/set RPC and nothing else. The C++ emitter moved to
         // the non-fatal shape with 0745; BOTH C paths kept the pre-0745 block, which

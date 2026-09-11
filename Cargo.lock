@@ -2068,6 +2068,8 @@ version = "0.5.0"
 dependencies = [
  "critical-section",
  "heapless 0.8.0",
+ "nros-lifecycle-msgs",
+ "nros-rcl-interfaces",
  "nros-rmw",
  "nros-serdes",
  "spin",

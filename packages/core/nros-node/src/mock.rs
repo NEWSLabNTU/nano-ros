@@ -229,12 +229,36 @@ pub struct MockSession {
     /// test functions on parallel threads, and one shared counter would make
     /// every close in the suite look like this test's.
     close_observer: Option<&'static core::sync::atomic::AtomicUsize>,
+    /// Issue 1268 — make `create_service` fail, so a test can watch what the
+    /// executor does with a backend that will not serve the parameter services.
+    /// The real one that does this is Cyclone with no registered descriptor for
+    /// the `rcl_interfaces` types, which answers `Unsupported`.
+    service_create_error: Option<TransportError>,
+    /// Issue 1268 — counts `create_service` calls, which is how a test tells
+    /// "asked once and gave up" from "asks again on every spin". A `&'static`
+    /// the TEST owns, for the reason `close_observer` documents above.
+    service_create_attempts: Option<&'static core::sync::atomic::AtomicUsize>,
 }
 
 impl MockSession {
     pub fn new() -> Self {
         Self {
             close_observer: None,
+            service_create_error: None,
+            service_create_attempts: None,
+        }
+    }
+
+    /// Issue 1268 — a session whose `create_service` always fails with `error`,
+    /// counting each attempt into `attempts`.
+    pub fn with_failing_service_create(
+        error: TransportError,
+        attempts: &'static core::sync::atomic::AtomicUsize,
+    ) -> Self {
+        Self {
+            close_observer: None,
+            service_create_error: Some(error),
+            service_create_attempts: Some(attempts),
         }
     }
 
@@ -242,6 +266,8 @@ impl MockSession {
     pub fn with_close_observer(observer: &'static core::sync::atomic::AtomicUsize) -> Self {
         Self {
             close_observer: Some(observer),
+            service_create_error: None,
+            service_create_attempts: None,
         }
     }
 }
@@ -281,6 +307,12 @@ impl Session for MockSession {
         _service: &ServiceInfo,
         _qos: QoSProfile,
     ) -> Result<MockServiceServer, TransportError> {
+        if let Some(attempts) = self.service_create_attempts {
+            attempts.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+        }
+        if let Some(e) = self.service_create_error.as_ref() {
+            return Err(e.clone());
+        }
         Ok(MockServiceServer::new())
     }
 

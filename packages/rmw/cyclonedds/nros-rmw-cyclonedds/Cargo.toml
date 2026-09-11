@@ -85,5 +85,15 @@ critical-section = { version = "1.2", default-features = false }
 [target.'cfg(not(target_os = "none"))'.dependencies]
 spin = { version = "0.9", default-features = false, features = ["mutex", "spin_mutex"] }
 
+# Issue 1268 — the executor's OWN services (the six `rcl_interfaces` parameter
+# ones) must have a Cyclone descriptor, or `create_service` fails `Unsupported`
+# and `ros2 param` reaches no node of the image. `infra_service_descriptors`
+# builds each of their types here, where a rejection is a test failure rather
+# than a runtime one. Both crates are pre-generated and committed
+# (`packages/interfaces/*`), so this needs no codegen and no ROS.
+[dev-dependencies]
+nros-rcl-interfaces = { version = "0.5.0", path = "../../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces", default-features = false }
+nros-lifecycle-msgs = { version = "0.5.0", path = "../../../interfaces/lifecycle-msgs/generated/humble/nros-lifecycle-msgs", default-features = false }
+
 [lints]
 workspace = true
