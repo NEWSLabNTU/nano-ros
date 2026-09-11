@@ -54,13 +54,15 @@ nros new node talker_pkg
 ```
 
 `nros new node` writes the package under `src/` and adds its `[[component]]`
-row to the bringup. There is no member list to maintain: `nros build`
-discovers the packages under `src/` and writes the workspace root's
-`Cargo.toml` (or `CMakeLists.txt`) itself, which is why neither is tracked.
+row to the bringup. There is no member list to maintain and no workspace root
+to maintain it in: a workspace is a directory of packages (RFC-0098 D9), and
+`nros build` discovers them under `src/`, generating the entry that names them
+as path dependencies under `build/`.
 
 (`nros new <name> --platform native --lang rust` is the other verb, and a
-different output — a standalone *runnable project* with its own root, which
-pins a board crate. Use it for a copy-out example, not for a workspace member.)
+different output — a standalone *runnable project* that states its own board
+in its own `system.toml`. Use it for a copy-out example, not for a workspace
+member.)
 
 ---
 
@@ -71,7 +73,7 @@ A Node pkg has three files:
 ```
 src/talker_pkg/
 ├── package.xml          # ROS 2 manifest — <exec_depend> per message package
-├── Cargo.toml           # [lib] + [package.metadata.nros.node] metadata
+├── Cargo.toml           # [lib] + dependencies — Rust-toolchain facts only
 └── src/lib.rs           # impl Node + ExecutableNode; ends with nros::node!(Talker);
 ```
 
@@ -81,33 +83,45 @@ No `fn main()` here — a Node pkg is a library linked into the entry that
 
 ---
 
-## `Cargo.toml` — the `[package.metadata.nros.node]` block
+## Declaring the node — the `[[component]]` row
 
-The metadata block is what the `nros` CLI reads to discover, name, and
-wire this node into a topology.
-From [`examples/workspaces/rust/src/talker_pkg/Cargo.toml`](../../../examples/workspaces/rust/src/talker_pkg/Cargo.toml):
+A Node pkg's `Cargo.toml` is an ordinary Rust manifest: a `[lib]` target and
+its dependencies, and nothing that describes a deployment. Who this node *is*
+— which package provides it, which type implements it, what it is called — is
+one `[[component]]` row in the Bringup pkg's `system.toml`, beside the rows for
+every other node in the system (RFC-0098 D5). From
+[`examples/workspaces/rust/src/demo_bringup/system.toml`](../../../examples/workspaces/rust/src/demo_bringup/system.toml):
+
+```toml
+[[component]]
+pkg = "talker_pkg"
+class = "talker_pkg::Talker"
+name = "talker"
+```
+
+| Field | Purpose |
+|---|---|
+| `pkg` | The package that provides the node (matches `<name>` in its `package.xml`) |
+| `class` | Fully-qualified path to the type that `impl`s `Node + ExecutableNode` |
+| `name` | Default ROS 2 node name (remappable at launch) |
+| `dispatch` | Optional — the dispatch shape, when it is not the default |
+
+> The in-tree workspace node packages still carry a
+> `[package.metadata.nros.node]` table in their `Cargo.toml`. Nothing reads it
+> any more — the `[[component]]` row above is the declaration — and
+> [issue 1289](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1289-workspace-node-tables-still-in-manifests.md)
+> removes it from the examples.
+
+The manifest beside `src/lib.rs` is then just this:
 
 ```toml
 [lib]
 path = "src/lib.rs"
 
-[package.metadata.nros.node]
-class = "talker_pkg::Talker"
-name = "talker"
-default_namespace = "/"
-
 [dependencies]
 nros = { path = "../../../../../packages/api/nros", default-features = false,
          features = ["alloc", "rmw-cffi"] }
 ```
-
-The three fields in `[package.metadata.nros.node]`:
-
-| Field | Purpose |
-|---|---|
-| `class` | Fully-qualified Rust path to the type that `impl`s `Node + ExecutableNode` |
-| `name` | Default ROS 2 node name (remappable at launch) |
-| `default_namespace` | Default namespace (remappable at launch) |
 
 A Node pkg names **no** platform and **no** RMW. `alloc` is the universal
 baseline and `rmw-cffi` is the vtable seam; the concrete backend and the
@@ -278,8 +292,12 @@ Node pkgs its launch file names:
 
 ```bash
 # From examples/workspaces/rust/ (or your workspace root):
+nros sync
 nros build native
 ```
+
+`nros sync` writes the generated message crates and the build settings each
+image needs; run it once per workspace, and again after editing a `.msg`.
 
 No per-Node-pkg invocation is needed, and no cross-compile flags either: the
 image's `board` carries the rustc triple, so building for an embedded target is

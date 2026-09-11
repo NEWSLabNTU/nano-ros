@@ -1,21 +1,37 @@
 # Build Profiles
 
 nano-ros builds both C/C++ and Rust code on your behalf. You choose the
-optimization level **once, in your own build system**, and nano-ros propagates
-it to every crate and library it builds for you.
+optimization level **once**, and nano-ros propagates it to every crate and
+library it builds for you.
 
-There are two knobs, not one, because the two languages have different option
-vocabularies and collapsing them would mean inventing a lossy middle language:
+The image is where you say it, beside the board it is built for:
 
-| You are building with | You set | nano-ros propagates it to |
-| --- | --- | --- |
-| CMake | `CMAKE_BUILD_TYPE` | your C/C++ code, and (mapped) the Rust it builds |
-| Cargo only | a cargo profile | every nano-ros crate, as a normal path dependency |
+```toml
+[image_defaults]
+profile = "nros-relwithdebinfo"   # the base every image folds over
+
+[image.native]
+board = "native"
+
+[image.mps2]
+board   = "qemu-mps2-an385"
+profile = "nros-minsizerel"       # this one is going on a board
+```
+
+`nros build` carries that through to whichever tool builds the image — the
+cargo profile flag on the cargo driver, `CMAKE_BUILD_TYPE` on the cmake one.
+You do not repeat it on the command line, and you do not define the `nros-*`
+profiles anywhere: `nros sync` writes them into the image's generated cargo
+settings file under `build/` (`build/native/nros-cargo.toml` for a
+single-package project), along with everything else the board choice
+implies.
 
 ## From a CMake build type
 
-Set `CMAKE_BUILD_TYPE` as you would in any CMake project. nano-ros derives the
-cargo profile from it:
+When you drive CMake yourself — a single-package C or C++ project builds
+with its own `cmake -B build`, and needs no sync — set `CMAKE_BUILD_TYPE`
+as you would in any CMake project. nano-ros derives the cargo profile for
+the Rust it builds underneath from it:
 
 | `CMAKE_BUILD_TYPE` | cargo profile | what it means |
 | --- | --- | --- |
@@ -54,28 +70,25 @@ profiles, **you own the definition** — nano-ros passes the name through and
 injects nothing, so your settings are authoritative:
 
 ```toml
-# your-workspace/Cargo.toml
 [profile.prod]
 inherits = "release"
 opt-level = 3
 lto = "fat"
 ```
 
+Put that where cargo already looks for a profile: the package's own
+`Cargo.toml` for a single-package project, or a `.cargo/config.toml` in a
+directory above your project. There is no workspace-root `Cargo.toml` to
+put it in — a nano-ros workspace has no root build file, and the cargo root
+is the generated entry under `build/`, which is regenerated on every build.
+
+A config file is a first-class home for a profile, not a workaround: it is
+exactly how the `nros-*` presets reach cargo. An undefined name still fails
+the way it always did — `error: profile 'prod' is not defined` — while a
+name the generated settings file defines resolves and builds.
+
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DNROS_CARGO_PROFILE=prod
-```
-
-If the profile is not defined, cargo reports
-`error: profile 'prod' is not defined` and points at your manifest — which is
-the right file to fix.
-
-## A pure-Cargo workspace
-
-Nothing to configure. nano-ros crates are ordinary path dependencies, so your
-workspace-root profile already governs them:
-
-```bash
-cargo build --profile prod
 ```
 
 ## Which profile is active?

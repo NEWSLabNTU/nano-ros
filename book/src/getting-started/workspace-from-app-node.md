@@ -46,10 +46,15 @@ my_robot_ws/
     └── robot_bringup/          # Bringup pkg: launch XML + system.toml + [image.*]
 ```
 
-Two kinds of package, and that is the whole tracked tree. There is no root
-`Cargo.toml` or `CMakeLists.txt` to write and no binary package to write:
-`nros build` generates both from the packages it discovers plus the
-`[image.*]` table in the Bringup pkg (RFC-0065 D3/D4).
+Two kinds of package, and that is the whole tree. A workspace has **no root
+build file at all** — no `Cargo.toml`, no `CMakeLists.txt` — the way a colcon
+workspace is just a directory of packages (RFC-0098 D9). There is no binary
+package to write either: from the `[image.*]` table in the Bringup pkg,
+`nros build` generates the entry and the build root that compiles it, both
+under `build/`. The cargo root is the generated entry itself,
+`build/<coordinate>/<entry>/Cargo.toml`; the cmake root is
+`build/<coordinate>/CMakeLists.txt`. Nothing generated is ever written beside
+your source.
 
 | Role | Owns | Does not own |
 |---|---|---|
@@ -109,9 +114,10 @@ nros setup native --rmw zenoh
 ## The three roles in practice
 
 **Node pkg** — a `lib` crate that contains one node's logic. It
-declares `nros::node!(T)` and carries
-`[package.metadata.nros.node]` in its `Cargo.toml`. It has no
-`fn main()` — no package you write has one. One Node pkg per node.
+declares `nros::node!(T)`; its `Cargo.toml` carries Rust-toolchain facts
+only, and the node's identity — which package, which class, what it is
+called — is a `[[component]]` row in the Bringup pkg's `system.toml`. It
+has no `fn main()` — no package you write has one. One Node pkg per node.
 Think of it as a composable building block: the same `talker_pkg` lib
 can be assembled into a native binary *and* an embedded binary without
 any source change.
@@ -124,16 +130,29 @@ row per program), and a `launch/` directory with ROS 2 launch XML. **No
 matching nav2 / Autoware / turtlebot3.
 
 **Image** — not a package. `[image.native] board = "native"` is a row in
-that `system.toml`, and `nros build native` turns it into a program:
-`nros build` generates the root build file *and* the entry that links the
-Node pkgs and the board crate and hands control to the nano-ros runtime.
-A second board is a second row, not a second directory.
+that `system.toml`, and `nros build native` turns it into a program: it
+generates, under `build/`, the entry that links the Node pkgs and the board
+crate and hands control to the nano-ros runtime. A second board is a second
+row, not a second directory.
+
+Two commands, in this order, and they are the same two everywhere in this
+group:
+
+```bash
+nros sync      # generated message bindings + the generated build settings
+nros build     # every [image.*]; or name one: nros build native
+```
+
+`nros sync` is yours to run once per workspace, and again whenever you edit
+a `.msg` or move the checkout. A workspace that has never been synced makes
+`nros build` stop at preflight with one line naming it.
 
 The app-node shape you already know (`examples/native/rust/talker/`) is a
-single package that is both the logic and the boot point — no bringup, no
-images, `nros::main!()` reading its own `Cargo.toml`. That fusion is fine —
-and encouraged — for single-node work. Only split when you actually need
-the flexibility.
+single package that is both the logic and the boot point — no bringup and
+no entry, but the same `system.toml` beside its `Cargo.toml`, stating its
+board in an `[image.*]` row (RFC-0098 D3). `nros::main!()` reads it. That
+fusion is fine — and encouraged — for single-node work. Only split when you
+actually need the flexibility.
 
 ## ROS 2 ↔ nano-ros command map
 
@@ -143,7 +162,7 @@ already know:
 | ROS 2 | nano-ros | Notes |
 |---|---|---|
 | `ros2 pkg create` | `nros new node <name>` | scaffolds a Node pkg and adds its `[[component]]` row |
-| `colcon build` | `nros build <image>` | resolves the image, generates the root, hands off to cargo / cmake / west / idf.py |
+| `colcon build` | `nros sync` once, then `nros build <image>` | resolves the image, generates the entry and its build root under `build/`, hands off to cargo / cmake / west / idf.py |
 | `ros2 launch <pkg> <file>` | run the image's binary | the image IS the launch product; the old launch wrapper was removed in nros 0.5.0 |
 | (plan/validate) | `nros plan` → `nros check` | resolve + statically check the topology |
 | `ros2 run <pkg> <exe>` | run the image's binary | one `[image.*]` row per board |

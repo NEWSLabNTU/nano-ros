@@ -60,32 +60,55 @@ Each example is a standalone Cargo package targeting
 
 ```text
 examples/esp32-c3-baremetal/rust/talker/
-├── Cargo.toml                 # deps + [package.metadata.nros.deploy.esp32-c3-baremetal]
-├── .cargo/                    # config.toml + nros-board.toml
-│                              # (target = riscv32imc-unknown-none-elf lives in nros-board.toml)
+├── system.toml                # WHAT this deploys to — the one file you edit
+├── Cargo.toml                 # Rust deps only; nothing here names a board
 ├── package.xml
-├── generated/                 # codegen output — build.rs runs
-│                              #   `nros generate-rust` on first
-│                              #   `cargo build`; gitignored.
+├── generated/                 # generated message bindings (gitignored)
+├── build/                     # everything `nros sync` generates (gitignored)
 └── src/                       # lib.rs component class + main.rs entry
 ```
 
+There is no `.cargo/` to edit. The `riscv32imc-unknown-none-elf` triple, the
+`-Tlinkall.x` link group, the `[unstable] build-std` that compiles `core` and
+`alloc` from source, `ESP_LOG`, the DRAM budgets and the `[patch.crates-io]`
+rows all come from the board, and `nros sync` writes them into
+`build/esp32-c3-baremetal/nros-cargo.toml` — a generated file the build reads
+with `--config` (RFC-0098).
+
 ## Configure
 
-Deploy config lives in the app's `Cargo.toml` (baked at compile time;
-the board's default `Config` supplies the remaining smoltcp knobs like
-the MAC). The QEMU ESP32 board uses OpenETH ethernet via
+The whole deployment statement is `system.toml`, beside the manifest, and it is
+baked at compile time; the board's default `Config` supplies the remaining
+smoltcp knobs like the MAC. The QEMU ESP32 board uses OpenETH ethernet via
 `nros-board-esp32-qemu`. Verbatim from
-[`examples/esp32-c3-baremetal/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/esp32-c3-baremetal/rust/talker/Cargo.toml):
+[`examples/esp32-c3-baremetal/rust/talker/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/esp32-c3-baremetal/rust/talker/system.toml):
 
 ```toml
-[package.metadata.nros.deploy.esp32-c3-baremetal]
-rmw       = "zenoh"
+[system]
+name = "esp32_qemu_talker"
+rmw = "zenoh"
 domain_id = 0
-ip        = "10.0.2.50"
-gateway   = "10.0.2.2"
-locator   = "tcp/10.0.2.2:9800"
+
+[[component]]
+pkg = "esp32_qemu_talker"
+class = "esp32_qemu_talker::Talker"
+name = "talker"
+entities = ["publisher:std_msgs/msg/String:/chatter", "timer"]
+
+[image.esp32-c3-baremetal]
+board = "esp32-c3-baremetal"
+ip = "10.0.2.50"
+gateway = "10.0.2.2"
+locator = "tcp/10.0.2.2:9800"
 ```
+
+The `entities` line is this board's one extra obligation. Pool sizes are
+normally *probed* from a host build of the component, and this leaf has no
+host build — a foreign triple, `build-std`, and a board crate that only exists
+for the target. So the image states what the node creates, and `nros sync`
+sizes the pools from that (RFC-0098 D8). On `.bss`-tight ESP32-C3 that matters:
+the stack is whatever the linker leaves after `.bss`, so a pool sized for an
+entity this node never creates is stack it cannot use.
 
 ## Build
 
@@ -96,21 +119,39 @@ Copy the example out, generate bindings, build with the pinned nightly,
 and pack the flash image:
 
 ```bash
-# once per checkout location — bindings + the [patch.crates-io] table:
+# once per checkout location — message bindings + the generated
+# build/esp32-c3-baremetal/nros-cargo.toml:
 NROS_REPO_DIR=<path-to-nano-ros> nros sync
 
-# nightly because the board config builds core/alloc from source
-# ([unstable] build-std, from the board descriptor). The pinned channel
-# is tools/rust-toolchain.toml's; any recent nightly with the rust-src
-# component works:
+# nros build hands cargo the generated settings file. That file asks for
+# `[unstable] build-std`, so a nightly carrying `rust-src` must be the ACTIVE
+# toolchain — nros build picks no channel for you. The pinned channel is
+# tools/rust-toolchain.toml's; any recent nightly works:
 #   rustup toolchain install nightly && rustup component add rust-src --toolchain nightly
 #   rustup target add riscv32imc-unknown-none-elf --toolchain nightly
-cargo +nightly build --release
+#   rustup override set nightly          # in this directory
+# Release, because ESP32-C3 DRAM is tight: anything after `--` goes to cargo
+# verbatim.
+nros build -- --release
 
 # pack the ELF into the flash image QEMU boots (espflash comes from
 # `nros setup esp32-c3-baremetal`, on PATH via activate):
 espflash save-image --chip esp32c3 --flash-size 4mb --merge \
-    target/riscv32imc-unknown-none-elf/release/esp32_qemu_talker talker.bin
+    build/esp32-c3-baremetal/target/riscv32imc-unknown-none-elf/release/esp32_qemu_talker \
+    talker.bin
+```
+
+**Driving cargo yourself** — for an IDE or a CI step — run `nros sync` first,
+then point cargo at the same generated file. Run it from the directory *above*
+the package, so the package's own `.cargo/` is not read a second time;
+phase-445 W6 deletes that directory, after which the working directory stops
+mattering:
+
+```bash
+cd examples/esp32-c3-baremetal/rust
+cargo +nightly build --release \
+      --manifest-path talker/Cargo.toml \
+      --config talker/build/esp32-c3-baremetal/nros-cargo.toml
 ```
 
 First build cross-compiles core/alloc + every dep (~5 min); rebuilds are
@@ -130,7 +171,7 @@ nros setup --tool esp32-qemu    # clones + builds espressif/qemu (needs
 
 ```bash
 # 1. Bring up the router (ROS's `rmw_zenohd`) on the port the example
-#    dials (9800 — the deploy `locator` above):
+#    dials (9800 — the image's `locator` above):
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:9800"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd &
 
@@ -162,9 +203,11 @@ If no `Publishing:` line:
 
 1. Wrong locator → talker logs `zenoh open failed` and retries.
    Confirm the router is reachable on the host IP (`10.0.2.2:9800`).
-2. Confirm `.cargo/nros-board.toml` sets `target =
-   "riscv32imc-unknown-none-elf"` (ESP32-C3). The tutorial does not
-   support ESP32-S3 (Xtensa) yet.
+2. Confirm the image really is the C3 one — `[image.<id>] board` should
+   read `esp32-c3-baremetal`, and the `[build] target` in the generated
+   `build/esp32-c3-baremetal/nros-cargo.toml` should read
+   `riscv32imc-unknown-none-elf`. The tutorial does not support ESP32-S3
+   (Xtensa) yet.
 3. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 ## GitHub source

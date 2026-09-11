@@ -42,27 +42,27 @@ $NUTTX_APPS_DIR/                             # sibling: apps tree
         ├── CMakeLists.txt               #   (cmake-driven NuttX builds)
         └── Kconfig
 my_app/                                  # your application
+├── system.toml                          # WHAT this deploys to — the one file you edit
 ├── package.xml
-├── Cargo.toml | CMakeLists.txt
-├── generated/                           # Rust codegen — build.rs runs
-│                                        #   `nros generate-rust` on first
-│                                        #   `cargo build`; gitignored.
+├── Cargo.toml | CMakeLists.txt          # language-toolchain facts only
+├── generated/                           # generated message bindings (gitignored)
 └── src/main.{rs,c,cpp}
 ```
 
-Wire the shell into your NuttX apps tree. Easiest path:
+Wire the shell into your NuttX apps tree. Two commands, both run once:
 
 ```bash
-just setup nuttx        # contributor helper: stages the shell +
-                        # example apps into $NUTTX_APPS_DIR/external/
-                        # (delegates to `nros setup qemu-armv7a-nuttx`
-                        # for the toolchain/SDK provisioning)
+nros setup qemu-armv7a-nuttx --rmw zenoh    # toolchain + NuttX sources + SDK
+# from the nano-ros checkout:
+scripts/nuttx/stage-external-apps.sh "$NUTTX_APPS_DIR"
 ```
 
-This runs `scripts/nuttx/stage-external-apps.sh`, which writes
-`$NUTTX_APPS_DIR/external/Make.defs` + `Kconfig` and symlinks the
-integration shell in as `external/nano-ros`. Menuconfig surfaces it
-under `Application Configuration → External Modules`.
+The staging script writes `$NUTTX_APPS_DIR/external/Make.defs` + `Kconfig`
+and symlinks the integration shell in as `external/nano-ros`. Menuconfig
+surfaces it under `Application Configuration → External Modules`.
+
+> **Contributors (in-tree checkout):** `just setup nuttx` runs both of the
+> above in one step against this repository's own NuttX checkout.
 
 Passing `--bringup <dir>` additionally stages a per-bringup app
 (`external/<bringup>/`, with the bringup tree symlinked alongside as
@@ -100,32 +100,42 @@ Networking Kconfig requirements live under
 `CONFIG_NET_IPv4`. For QEMU `nsh_smp` configurations the defaults
 already include these.
 
-Deploy config (RMW / domain id, plus an optional `locator` override) is
-declared in the build manifest and baked at compile time. Verbatim from
-the in-tree
-[`examples/qemu-armv7a-nuttx/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-armv7a-nuttx/rust/talker/Cargo.toml):
+Those Kconfig knobs govern what the integration shell compiles into
+`libnros_c.a` — NuttX's build owns that, the way Zephyr's Kconfig owns its
+lane. They are not where *your application* states its deployment, and the two
+must name the same RMW.
+
+Your *application's* deployment — board, RMW, domain id, and an optional
+`locator` — is declared in `system.toml` beside the package and baked at
+compile time. Verbatim from the in-tree
+[`examples/qemu-armv7a-nuttx/rust/talker/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/qemu-armv7a-nuttx/rust/talker/system.toml):
 
 ```toml
-[package.metadata.nros.deploy.nuttx]
-board     = "qemu-armv7a-nsh"
-target    = "armv7a-nuttx-eabihf"
-rmw       = "zenoh"
+[system]
+name = "nuttx_talker"
+rmw = "zenoh"
 domain_id = 0
+
+[[component]]
+pkg = "nuttx_talker"
+class = "nuttx_rs_talker::Talker"
+name = "talker"
+
+[image.qemu-armv7a-nuttx]
+board = "nuttx"
+locator = "tcp/10.0.2.2:8200"
 ```
 
-The C / C++ variants declare the same in their `package.xml` `<export>`
-tuple (RFC-0048 §4):
-
-```xml
-<export>
-  <build_type>ament_cmake</build_type>
-  <nano_ros deploy="nuttx" board="qemu-armv7a-nuttx" rmw="zenoh"/>
-</export>
-```
+The C / C++ variants carry the same file, in the same schema — their
+`package.xml` has no `<nano_ros …/>` tuple and their `CMakeLists.txt` names no
+board. Nor does anything here name a target triple: `armv7a-nuttx-eabihf` is a
+fact about the board, and it lives in the board descriptor. Run `nros sync` in
+the application directory after editing this file; it writes the generated
+message bindings and the build settings the board choice implies.
 
 The guest network shape (eth0 `10.0.2.30`, Slirp gateway `10.0.2.2`)
 comes from the board crate; add a `locator = "tcp/10.0.2.2:<port>"`
-field to dial a non-default router port. The prebuilt *test fixtures*
+field to `[image.<id>]` to dial a non-default router port. The prebuilt *test fixtures*
 bake distinct per-language allocator ports so parallel suites don't
 collide on one router. Start the router (ROS's `rmw_zenohd`) on the
 port your app dials — it must listen on `0.0.0.0`, not loopback,
@@ -138,7 +148,15 @@ ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/0.0.0.0:8200"];scouting/multicast/
 
 ## Build
 
+NuttX owns the build verb here — `make`, from the configured kernel — the way
+Zephyr owns `west build`. `nros sync` still runs first, in the application
+directory, because the generated message bindings must exist before anything
+compiles against them:
+
 ```bash
+cd my_app
+nros sync                           # bindings + settings from system.toml
+
 cd $NUTTX_DIR
 make                                # full kernel + apps build
 ```
@@ -209,7 +227,7 @@ count at 1, matching the official ROS 2 demo talker. If no
 2. Confirm networking — `ifconfig` shows a configured interface.
    With the virtio-net + Slirp wiring above, `eth0` comes up at
    `10.0.2.30` (the board crate's default for the qemu-armv7a-nuttx examples).
-3. Confirm `zenohd` reachable; the deploy locator (or the
+3. Confirm `zenohd` reachable; the image's `locator` (or the
    `nros_init` arguments) must match the router's listen port.
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 

@@ -32,7 +32,8 @@ workspace crosses languages:
 
 | platform / shape | driver | the artifact |
 | --- | --- | --- |
-| Rust-only, any non-Zephyr non-ESP32 board | `cargo` | `<ws>/target/[<triple>/]<profile>/<image>_entry` |
+| Rust single package, any non-Zephyr non-ESP32 board | `cargo` | `<leaf>/build/<image-id>/target/[<triple>/]<profile>/<bin>` |
+| Rust-only workspace, the same boards | `cargo` | `<ws>/build/<coordinate>/<image>_entry/target/[<triple>/]<profile>/<image>_entry` |
 | any workspace containing C or C++ | `cmake` | `<ws>/build/<coordinate>/cmake/<image>_entry` |
 | a `zephyr` board | `west` | `<ws>/build/zephyr/zephyr.{elf,bin,exe}` |
 | an `esp32` board | `idf.py` | ESP-IDF's own `build/` in the project directory |
@@ -41,6 +42,12 @@ The **coordinate** is the platform and the RMW — `posix-zenoh`,
 `freertos-cyclonedds` — plus, for CMake, the board, because CMake pins one
 compiler per configure and two boards on one platform would otherwise share a
 cache: `posix-zenoh-native`, `freertos-zenoh-mps2-an385-freertos`.
+
+Everything above is under `build/`, and that is the rule rather than a
+coincidence: a workspace has **no root `Cargo.toml` and no root
+`CMakeLists.txt`** (RFC-0098 D9). It is a directory of packages, like a
+colcon workspace, and every generated thing — the entry, the root build
+file, the cargo settings, the compiled output — lives in `build/`.
 
 One path the build *does* print is easy to mistake for the binary:
 
@@ -52,26 +59,51 @@ That is the generated **entry package** — source that nano-ros wrote for you,
 under `build/` because it is build output. The compiled program is elsewhere;
 see below.
 
-## Native host (cargo)
+## cargo
 
-`nros build` runs `cargo build -p <image>_entry` from the workspace root and
-passes no `--target-dir`, so cargo's own default applies:
+Every image gets its own cargo settings file, `build/<image-id>/nros-cargo.toml`
+for a single package and `build/<coordinate>/<entry>/nros-cargo.toml` for a
+workspace, and `nros build` points cargo at it:
 
 ```text
-<ws>/target/<profile-dir>/<image>_entry
+cargo build --manifest-path talker/Cargo.toml --config talker/build/native/nros-cargo.toml
 ```
+
+That file states the image's `target-dir`, so each image compiles into its
+own tree rather than sharing one `target/`. It also carries the board's
+triple, linker flags and cross compiler, the resolved pool budgets as
+`[env]`, the in-repo `[patch.crates-io]` rows, and the `nros-*` build
+profiles. It is generated on every sync and build — read it, never edit it.
+
+For a single package the artifact is that package's own binary:
+
+```text
+<leaf>/build/<image-id>/target/[<triple>/]<profile-dir>/<bin>
+```
+
+`examples/native/rust/talker` lands at `build/native/target/debug/talker`;
+its bare-metal sibling `examples/mps2-an385-baremetal/rust/talker` at
+`build/mps2-an385-baremetal/target/thumbv7m-none-eabi/debug/qemu-bsp-talker`.
+The triple level appears whenever the board pins one — which it does in the
+generated `[build] target`, not on your command line.
+
+For a workspace the binary is the generated entry, inside that entry's own
+target dir — the Rust scaffold's `native` image is
+`build/posix/native_entry/target/debug/native_entry`.
 
 `<profile-dir>` is `debug` unless the image declares
 `[image.<id>] profile = …`, in which case it is that profile's directory
-(`nros profile dir <name>` prints it). A board that pins a cross triple adds a
-level — `target/<triple>/<profile-dir>/<image>_entry` — because `nros build`
-passes `--target` for it.
+(`nros profile dir <name>` prints it).
 
-**Next step:** run it. It is an ordinary host executable.
+**Next step:** on a host board, run it. It is an ordinary executable.
 
 ```bash
-./target/debug/native_entry
+./build/native/target/debug/talker
 ```
+
+For a QEMU board, the generated settings file also carries that board's
+`runner`, so `cargo run` through the same `--config` boots the image —
+see [Build Profiles](build-profiles.md) for driving cargo yourself.
 
 A multi-process zenoh example also needs a router; that is ROS's `rmw_zenohd`,
 not something nano-ros ships — see
@@ -151,15 +183,16 @@ idf.py -p /dev/ttyUSB0 flash monitor
 
 See [ESP32 (ESP-IDF component)](../getting-started/integration-esp-idf.md).
 
-**Rust bare-metal (esp-hal)** — these are standalone cargo leaves rather than
-`nros build` images, so the artifact is an ordinary cargo one: the ELF at
-`target/<triple>/<profile-dir>/<name>`. `espflash` turns it into a flash image
-or writes it to a board:
+**Rust bare-metal (esp-hal)** — a single-package image on the cargo driver
+like any other, so the ELF is under that image's own target dir:
+`build/<image-id>/target/<triple>/<profile-dir>/<name>`. `espflash` turns it
+into a flash image or writes it to a board:
 
 ```bash
-espflash flash --monitor target/riscv32imc-unknown-none-elf/release/talker
+espflash flash --monitor \
+    build/esp32-c3-baremetal/target/riscv32imc-unknown-none-elf/release/talker
 espflash save-image --chip esp32c3 --flash-size 4mb --merge \
-    target/riscv32imc-unknown-none-elf/release/talker talker.bin
+    build/esp32-c3-baremetal/target/riscv32imc-unknown-none-elf/release/talker talker.bin
 ```
 
 See [ESP32 (esp-hal)](../getting-started/esp32.md).

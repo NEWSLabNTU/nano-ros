@@ -39,16 +39,19 @@ nros setup mps2-an385-baremetal --rmw zenoh
 
 ```text
 examples/mps2-an385-baremetal/rust/talker/
-├── Cargo.toml                 # deps + [package.metadata.nros.deploy.qemu-mps2-an385]
-├── .cargo/                    # config.toml + nros-board.toml
-│                              # (nros-board.toml carries target = thumbv7m-none-eabi
-│                              #  and the qemu-system-arm ... -kernel runner)
-├── package.xml
-├── generated/                 # codegen output — build.rs runs
-│                              #   `nros generate-rust` on first
-│                              #   `cargo build`; gitignored.
+├── system.toml                # WHAT this deploys to — the one file you edit
+├── Cargo.toml                 # Rust deps only; nothing here names a board
+├── package.xml                # ROS-style manifest (drives codegen tooling)
+├── generated/                 # generated message bindings (gitignored)
+├── build/                     # everything `nros sync` generates (gitignored)
 └── src/                       # lib.rs component class + main.rs entry
 ```
+
+There is no `.cargo/` to edit. The target triple, the linker script, the
+`--gc-sections` flag, the QEMU runner and the `[patch.crates-io]` rows that
+resolve nano-ros's crates all come from the board, and `nros sync` writes them
+into `build/mps2-an385-baremetal/nros-cargo.toml` — a generated file `nros
+build` hands cargo with `--config` (RFC-0098).
 
 The board crate is `nros-board-mps2-an385` (note: no `-freertos`
 suffix — this is the bare-metal variant) which provides:
@@ -59,13 +62,18 @@ suffix — this is the bare-metal variant) which provides:
 
 ### Direct-exec or RTIC — one crate, two entry shapes
 
-The same crate serves both bare-metal entry models; you pick with a
-Cargo feature, not a different board crate:
+The same crate serves both bare-metal entry models. Both are names of the
+*same* board descriptor, so you pick the entry shape in `system.toml` and the
+matching Cargo feature — never a different board crate:
 
-| Entry pkg wants | `deploy =` | board dep |
+| Entry shape | `[image.<id>] board =` | board dep |
 |---|---|---|
 | direct-exec (inline spin loop) | `"qemu-mps2-an385"` | `nros-board-mps2-an385 = { version = "*", features = ["board-entry"] }` |
 | RTIC (framework-owned `#[rtic::app]`, deferred dispatch) | `"rtic-mps2-an385"` | `nros-board-mps2-an385 = { version = "*", features = ["rtic"] }` |
+
+The in-tree RTIC peers (`listener-rtic/`, `service-client-rtic/`,
+`action-server-rtic/`, …) differ from their direct-exec siblings in exactly
+those two lines.
 
 The RTIC surface used to be a separate `nros-board-rtic-mps2-an385`
 crate; phase-337 W6.a folded it in, because it depended on this crate
@@ -77,24 +85,54 @@ Which network the defaults describe is now explicit rather than
 implied. `Config::default()` is the bridge plan (`192.0.3.10/24`,
 gateway `192.0.3.1`); `Config::qemu_slirp()` is QEMU's user-mode NAT
 (`10.0.2.10/24`, gateway `10.0.2.2`) and is what the RTIC entry boots
-from. Either way, an Entry pkg that sets `ip`/`gateway`/`locator` in
-its `[package.metadata.nros.deploy.<board>]` block overrides the
-default — which every in-tree example does, and which you should too.
+from. Either way, an image that sets `ip`/`gateway`/`locator` in its
+`[image.<id>]` table overrides the default — which every in-tree example
+does, and which you should too.
 
 ## Configure
 
-Deploy config lives in the app's `Cargo.toml` and is baked at compile
-time — `nros::main!()` folds it into a `DeployOverlay` the board's boot
-`Config` applies. Verbatim from the in-tree
-[`examples/mps2-an385-baremetal/rust/talker/Cargo.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-baremetal/rust/talker/Cargo.toml):
+The whole deployment statement is `system.toml`, beside the manifest — the
+same schema a multi-node workspace's bringup package uses. It is baked at
+compile time: `nros::main!()` folds the image's network identity into a
+`DeployOverlay` the board's boot `Config` applies. Verbatim from the in-tree
+[`examples/mps2-an385-baremetal/rust/talker/system.toml`](https://github.com/NEWSLabNTU/nano-ros/blob/main/examples/mps2-an385-baremetal/rust/talker/system.toml):
 
 ```toml
-[package.metadata.nros.deploy.qemu-mps2-an385]
+[system]
+name = "qemu_bsp_talker"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "qemu_bsp_talker"
+class = "qemu_bsp_talker::Talker"
+name = "talker"
+dispatch = "deferred"
+
+[image.mps2-an385-baremetal]
+board = "qemu-mps2-an385"
 locator = "tcp/10.0.2.2:10500"
-ip      = "10.0.2.10"
+ip = "10.0.2.10"
 gateway = "10.0.2.2"
 netmask = "255.255.255.0"
 ```
+
+`board` picks the silicon and everything that follows from it; `rmw` picks the
+backend. Everything the board implies — triple, linker script, runner, cross
+compiler, `[patch.crates-io]` — follows the `board =` line on the next
+`nros sync`, so no linker flag and no triple ever moves by hand.
+
+One thing does not follow yet. A single-package leaf *is* its own entry, so it
+still names its board crate in `[dependencies]`
+(`nros-board-mps2-an385 = { … }`), and `nros sync` writes its patch rows from
+what the manifest names rather than from what the image names. Change the
+`board =` line alone and sync reports success while the build fails inside
+your own `src/main.rs` with an unresolved board crate. **On a single-package
+Rust leaf the `board =` line and the `[dependencies]` row move together** —
+that is
+[issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md).
+In a workspace the entry is generated, so there the board line really is the
+only edit.
 
 QEMU Slirp networking — no host TAP / bridge / sudo. The zenoh
 default port is 7447; this example dials **10500** (the `locator`
@@ -111,21 +149,35 @@ or edit the `locator` above to the port you prefer.
 
 ```bash
 cd examples/mps2-an385-baremetal/rust/talker
-nros sync            # once per checkout location; writes the generated
-                     # bindings + the [patch.crates-io] table the leaf's
-                     # .cargo/config.toml includes
-cargo build --release
+nros sync            # message bindings + build/mps2-an385-baremetal/nros-cargo.toml
+nros build           # builds the image `[image.mps2-an385-baremetal]` declares
 ```
 
 First build (~5 min) cross-compiles all of nano-ros's Rust deps for
-`thumbv7m-none-eabi`. Re-builds finish in seconds.
+`thumbv7m-none-eabi`. Re-builds finish in seconds. The ELF lands at
+`build/mps2-an385-baremetal/target/thumbv7m-none-eabi/debug/qemu-bsp-talker` —
+under `build/`, never beside your sources.
 
-**Contributors (in-tree checkout):** the `just … build-fixtures`
-recipes run `nros sync` for you. A
-hand-run `cargo build` in a leaf does not — without it cargo fails
-while *parsing the manifest*, with
-`failed to load config include '…/nros-patch.toml'` and no mention of
-sync. See
+**Driving cargo yourself** (an IDE, a CI step, `--release`) is supported: run
+`nros sync` first, then point cargo at the generated settings file. Run it from
+the directory *above* the package, so the package's own `.cargo/` is not read a
+second time — phase-445 W6 deletes that directory, after which the working
+directory stops mattering:
+
+```bash
+cd examples/mps2-an385-baremetal/rust
+cargo build --manifest-path talker/Cargo.toml \
+            --config talker/build/mps2-an385-baremetal/nros-cargo.toml
+```
+
+Skipping `nros sync` is not a mysterious failure: `nros build` stops at its
+preflight with one line naming the file it could not find and telling you to
+run sync in this directory.
+
+That settings file is regenerated on every `nros sync`; never edit it, and
+never add a `.cargo/config.toml` of your own to carry board facts. Your own
+Rust-toolchain preferences go where cargo already looks for them — a parent
+directory or `$CARGO_HOME`. See
 [Workflow by Platform and Language](../user-guide/workflow-by-platform.md).
 
 ## Run
@@ -133,20 +185,20 @@ sync. See
 ```bash
 # 1. Bring up the router on the host (Slirp forwards 10.0.2.2:10500 →
 #    host 127.0.0.1:10500). This example dials 10500, NOT zenoh's
-#    default 7447 — edit the deploy `locator` in Cargo.toml if you
-#    want 7447:
+#    default 7447 — edit `[image.mps2-an385-baremetal] locator` in
+#    system.toml if you want 7447:
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:10500"];scouting/multicast/enabled=false' \
     ros2 run rmw_zenoh_cpp rmw_zenohd &
 
 # 2. Boot the talker in QEMU. Invoke qemu-system-arm directly with the
-#    LAN9118 networking wiring the example expects (a plain `cargo run`
-#    boots QEMU without networking — the example's runner is bare
-#    `-kernel`). The patched qemu-system-arm is provisioned by
+#    LAN9118 networking wiring the example expects — the board's own
+#    runner is bare `-kernel`, so it boots QEMU without networking. The
+#    patched qemu-system-arm is provisioned by
 #    `nros setup mps2-an385-baremetal` and reaches PATH via activate.sh:
 qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
     -icount shift=auto \
     -semihosting-config enable=on,target=native \
-    -kernel target/thumbv7m-none-eabi/release/qemu-bsp-talker \
+    -kernel build/mps2-an385-baremetal/target/thumbv7m-none-eabi/debug/qemu-bsp-talker \
     -nic user,model=lan9118
 # Expected serial-over-semihosting output (per src/lib.rs):
 #   Publishing: 'Hello World: 1'
@@ -173,12 +225,12 @@ talker. If no `Publishing:` line:
 1. Router not running — talker spins on smoltcp poll until
    killed.
 2. Wrong LAN9118 emulation flag — `qemu-system-arm` needs
-   `-nic user,model=lan9118` (or equivalent). The example's
-   `.cargo/config.toml` runner is bare `-kernel` (so a plain `cargo
-   run` boots QEMU without networking); the direct `qemu-system-arm`
-   invocation shown above carries the LAN9118 wiring and is the
-   working invocation for this tutorial. If you copy the runner out,
-   mirror those flags.
+   `-nic user,model=lan9118` (or equivalent). The board's runner (in
+   the generated `build/mps2-an385-baremetal/nros-cargo.toml`) is bare
+   `-kernel`, so booting through it gives you QEMU without networking;
+   the direct `qemu-system-arm` invocation shown above carries the
+   LAN9118 wiring and is the working invocation for this tutorial. If
+   you copy the runner out, mirror those flags.
 3. Cooperative spin starvation — if you added a long-running
    callback, the entire executor stalls; bare-metal has no
    preemption.

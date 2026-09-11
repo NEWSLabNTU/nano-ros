@@ -10,67 +10,96 @@ the commands vary along a different axis than the pages do: the builder
 follows from your **language**, and the toolchain follows from your
 **platform**. Neither table below is a summary of the other.
 
+## Where the target comes from
+
+**Every leaf, in every language, states what it deploys to in one file:
+`system.toml`, beside its `Cargo.toml` or `CMakeLists.txt`** (RFC-0098).
+`[system]` carries the RMW and the domain, `[[component]]` carries what
+runs, and one `[image.<id>]` per target carries its `board` and, on an
+embedded image, its network identity:
+
+```toml
+[system]
+rmw       = "zenoh"
+domain_id = 0
+
+[image.mps2]
+board   = "qemu-mps2-an385"
+locator = "tcp/10.0.2.2:10500"
+ip      = "10.0.2.10"
+```
+
+Everything that choice implies — the target triple, the linker flags,
+the QEMU runner, the cross compiler for the `cc` crate, the pool sizes
+derived from the components, the `[patch.crates-io]` table that resolves
+nano-ros's registry-style names into your checkout — is **generated**,
+never written by hand. Retargeting is editing the `board` line: in a
+workspace that is the whole edit, and in a single-package Rust leaf the
+board crate in `[dependencies]` moves with it, because such a leaf is
+its own entry
+([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md)).
+
 ## The step that is easy to miss
 
 **Rust leaves need `nros sync` before their first build. C and C++
 leaves do not.**
 
-A Rust leaf resolves its nano-ros dependencies through a
-`[patch.crates-io]` table in its own `.cargo/config.toml`, and that
-table is generated — `.gitignore` excludes it, so a fresh clone does not
-have it. Sixty-seven Rust example leaves have such a file on a synced
-checkout; fifty of them are committed shells that `include` the
-generated central table:
+That split is a property of the two languages, not an inconsistency.
+CMake generates a C/C++ leaf's message bindings *during configure*, so
+there is nothing to prepare first. Cargo has no such stage: the message
+crates a Rust leaf path-depends on, and the settings file that carries
+its board facts, both have to exist before cargo parses the manifest.
+`nros sync` produces them:
 
-```toml
-include = [ "../../../../../nros-patch.toml", "nros-board.toml"]
+```text
+<leaf>/generated/<pkg>/                  # message crates
+<leaf>/build/<image>/nros-cargo.toml     # every cargo setting the board implies
 ```
 
-**Skipping the sync fails in two different ways, and the quieter one is
-worse.** Where the config is committed, cargo treats the missing
-`include` as a hard error while *parsing the manifest* — before it
-builds anything, and before any message about nano-ros could appear:
+**Skipping it fails in three ways, and they read very differently.**
+`nros build` says so in one line and names the remedy:
 
+```text
+Error: <leaf> has not been synced — missing the resolved model under
+`build/nros/models/`, the generated message crate `std_msgs`
+(generated/std_msgs).
+  Run `nros sync` in <leaf> (RFC-0098 D2), then build again.
 ```
-error: failed to parse manifest at `<leaf>/Cargo.toml`
 
+A plain `cargo build` gets as far as the manifest and stops on the
+missing message crate, without mentioning nano-ros at all:
+
+```text
+error: failed to load manifest for dependency `std_msgs`
 Caused by:
-  could not load Cargo configuration
-
-Caused by:
-  failed to load config include `../../../../../nros-patch.toml` from `<leaf>/.cargo/config.toml`
-
-Caused by:
-  failed to read configuration file `<...>/nros-patch.toml`
-
+  failed to read `<leaf>/generated/std_msgs/Cargo.toml`
 Caused by:
   No such file or directory (os error 2)
 ```
 
-Nothing in those five frames says `nros sync`. If you see it, this is
-what it means.
+And a `cargo build --config <leaf>/build/<image>/nros-cargo.toml` whose
+settings file does not exist yet produces the one that does not look
+like a missing file at all — cargo falls back to reading the argument as
+an inline setting:
 
-Where the whole config is generated — the native leaves, for instance —
-there is no file at all in a fresh clone, so there is no error to read.
-The patch table simply is not there, and the nano-ros crates your leaf
-names go looking for themselves on crates.io instead of in your
-checkout. That one does not announce itself.
+```text
+error: failed to parse value from --config argument
+`<leaf>/build/<image>/nros-cargo.toml` as a dotted key expression
+Caused by:
+  TOML parse error at line 1, column 39
+  key with no value, expected `=`
+```
+
+If you see any of the three, run `nros sync`.
 
 **Contributors (in-tree checkout):** the `just` recipes —
-`just <module> build-fixtures` and friends — run
-`nros sync` for you, so they work from a fresh clone. It is the
-hand-run `cd <leaf> && cargo build` that needs you to run it yourself.
-
-C and C++ leaves have no `.cargo/config.toml` at all — not committed,
-not generated. Their message bindings are produced inside CMake by
-`nros_find_interfaces()`, and the cargo builds CMake drives resolve
-against the repo-root config, which carries no `include`. Running
-`nros sync` for a C/C++ build is harmless but buys nothing.
+`just <module> build-fixtures` and friends — run `nros sync` for you, so
+they work from a fresh clone. It is the hand-run build in a leaf that
+needs you to run it yourself.
 
 You need it **once per checkout location**, not once per build. Re-run
-it after editing a `.msg`, `.srv`, or `.action` file, and — because the
-central table it writes holds absolute paths — after moving the
-checkout, or after one of the patched crates moves *within* it.
+it after editing a `.msg`, `.srv`, or `.action` file, after changing
+`system.toml`, and after moving the checkout.
 
 ## Which builder your cell uses
 
@@ -117,15 +146,29 @@ nros setup <board> --rmw zenoh  # toolchain + SDK for the target
 
 cd <leaf>
 nros sync                       # ← the step above; once per checkout
-cargo build --release
+nros build                      # every [image.*]; or: nros build <image-id>
 ```
 
-Some leaves also pin their cross target in that same
-`.cargo/config.toml` (`[build] target = "thumbv7m-none-eabi"` on the
-Cortex-M ones), so no `--target` on the command line. Others get it from
-the platform's recipe instead — **contributors:** in an in-tree
-checkout, `just --list <module>` shows which
-recipe builds what, and using the recipe avoids having to know.
+The artifact lands under `build/`, keyed on the image:
+`<leaf>/build/<image-id>/target/[<triple>/]<profile>/<bin>`. **No
+`--target` on the command line, on any platform** — the board's triple
+is in the generated settings file, which is also where its linker flags
+and its QEMU runner live.
+
+If you would rather drive cargo yourself — an IDE, a CI step,
+`--release` — run `nros sync` and then point cargo at that file. Run it
+from the directory *above* the package, so the package's own `.cargo/`
+is not read a second time; phase-445 W6 deletes that directory, and then
+the working directory stops mattering:
+
+```bash
+cd <leaf-parent>
+cargo build --manifest-path <leaf>/Cargo.toml \
+            --config <leaf>/build/<image-id>/nros-cargo.toml
+```
+
+`cargo run` through the same file works for a QEMU board — the runner is
+in it.
 
 ### cmake — C and C++
 
@@ -139,17 +182,24 @@ cmake -B build -DCMAKE_TOOLCHAIN_FILE=<toolchain> -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ```
 
-No `nros sync`. The toolchain file is per platform — see the starter
-page. `-D_NANO_ROS_CODEGEN_TOOL=` is not needed when `nros` is on PATH;
-CMake resolves it.
+No `nros sync`, and no `-DNANO_ROS_BOARD` / `-DNROS_RMW` either:
+`find_package(nano_ros)` reads the leaf's `system.toml` and derives the
+platform from the board it names. The toolchain file is still per
+platform — see the starter page. `-D_NANO_ROS_CODEGEN_TOOL=` is not
+needed when `nros` is on PATH; CMake resolves it.
+
+`nros build` does not yet work in a *single-package* C or C++ leaf
+([issue 1296](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1296-nros-build-c-leaf-bringup-name-mismatch.md));
+it is the verb for a C/C++ **workspace**, where it drives exactly this
+cmake pair for you.
 
 ### west — Zephyr single-node examples
 
 Zephyr owns the build. See
 [Zephyr (west module)](../getting-started/integration-zephyr.md) for the
 module wiring; the Rust leaves under `examples/zephyr/rust/` still need
-`nros sync` first, because west drives cargo and cargo reads the leaf
-config either way.
+`nros sync` first, because west drives cargo and cargo needs the
+generated message crates either way.
 
 ### In the checkout, or copied out?
 
@@ -159,17 +209,17 @@ beyond that, copy the example directory out — examples are standalone
 copy-out projects with no workspace walk-up, so a copied one builds on
 its own.
 
-The distinction matters for one reason: a bare `cargo build` writes
-`target/` next to the leaf. In *your* project that is exactly right. In
-the nano-ros checkout it is residue the repo's own gate rejects
-(`check-example-leaf-target-dirs`) — in-tree builds are expected to go
-through the contributor recipes (`just <module> …`), which write into a
-shared build directory
-instead. One in-repo `cargo build --release` of a Cortex-M example
-leaves 269 MB behind.
+Either way the build output goes to the same place — `build/<image>/`,
+under the leaf, because the generated settings file names that
+`target-dir` — so an in-tree build leaves no `target/` beside the
+sources for the repo's own gate to reject
+(`check-example-leaf-target-dirs`). A copied-out example carries no path
+into the checkout at all: `NROS_REPO_DIR` is the only thing tying it to
+one, and it is on the command line rather than in a file.
 
-So: exploring in the checkout, prefer the recipe. Building your own
-thing, copy the example out and `cargo build` normally.
+So: exploring in the checkout, `cd <leaf> && nros sync && nros build`.
+Building your own thing, copy the example out and run the same two
+commands there.
 
 ## Per platform
 
@@ -205,9 +255,11 @@ just --list zephyr
 ## More than one node
 
 The sequence above builds one leaf. A project with several nodes adds a
-Bringup package and an Entry package on top of it, and the build is
-still one of the three shapes above — see
-[Project layout](../getting-started/workspace-from-app-node.md).
+Bringup package carrying the same `system.toml` — and nothing else: no
+root build file, and no entry package to write, because the entry is
+generated per `[image.*]`. The commands stay `nros sync` and
+`nros build`, which then drive one of the three shapes above for you.
+See [Project layout](../getting-started/workspace-from-app-node.md).
 
 ## If it does not work
 

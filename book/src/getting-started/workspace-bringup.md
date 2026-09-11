@@ -53,10 +53,14 @@ where they deploy. Naming convention: `<system>_bringup` (aliased `<system>_laun
 matching nav2 / Autoware / turtlebot3.
 
 A multi-node workspace needs exactly one per logical system. It is where
-`[image.*]` lives, so it is the package a buildable workspace cannot do
-without — `nros build` reads that table to decide what programs exist. (The
+`[image.*]` lives, so it is the package that gives a workspace images to
+build — `nros build` reads that table to decide what programs exist. A
+workspace with no bringup still builds, colcon-style: every package in
+dependency order, each into its own `build/<pkg>/`, with no images. (The
 single-package copy-out shape under `examples/<platform>/<lang>/` has no
-bringup and no images; it boots itself with a bare `nros::main!()`.)
+bringup *package*, but it writes the same `system.toml` beside its own
+`Cargo.toml` or `CMakeLists.txt` — one schema either way, RFC-0098 D3 — and
+boots itself with a bare `nros::main!()`.)
 
 ---
 
@@ -242,28 +246,43 @@ No `<build_depend>` entries — there is nothing to compile.
 
 ---
 
-## Workflow: check → run
+## Workflow: sync → check → run
 
-Once your Bringup pkg is written, `nros check` validates it and `nros build`
-turns one of its images into a program:
+Once your Bringup pkg is written, `nros sync` prepares what the build needs,
+`nros check` validates the declarations, and `nros build` turns one of its
+images into a program:
 
 ```bash
-# 1. Lint the bringup pkg (pure-declarative check — no Cargo.toml, stray files, etc.)
+# 1. Sync. Once per workspace, and again after editing a .msg: it writes the
+#    generated message crates and each image's generated build settings.
+nros sync
+
+# 2. Lint the bringup pkg (pure-declarative check — no Cargo.toml, stray files, etc.)
 nros check --bringup src/demo_bringup
 
-# 2. Lint the whole workspace (pkg/class rows, duplicate system.toml, etc.)
+# 3. Lint the whole workspace (pkg/class rows, duplicate system.toml, etc.)
 nros check --workspace .
 
-# 3. Build an image. With no name, `nros build` lists what this workspace declares.
+# 4. Build an image. With no name, `nros build` lists what this workspace declares.
 nros build native
 
-# 4. Run it. Zenoh needs a router first, in another shell:
+# 5. Run it. Zenoh needs a router first, in another shell:
 ZENOH_CONFIG_OVERRIDE='listen/endpoints=["tcp/127.0.0.1:7447"];scouting/multicast/enabled=false' ros2 run rmw_zenoh_cpp rmw_zenohd &
 ```
 
+Sync comes first because everything after it reads what it wrote. A workspace
+that has never been synced makes `nros build` stop at preflight with one line
+naming it:
+
+```text
+Error: missing prerequisites for this build:
+  - generated message bindings (this workspace has never been synced)
+      run: nros sync
+```
+
 The binary boots every node the launch file names, composed into one process.
-It lands beside the build `nros build` drove — under `target/` on the cargo
-driver, `build/<coordinate>/cmake/` on the cmake one.
+It lands under `build/`, never beside your source: `build/<coordinate>/cmake/`
+on the cmake driver, `build/<coordinate>/<entry>/target/` on the cargo one.
 
 Both `nros check` forms pass for the canonical template at
 `examples/workspaces/rust/`.
@@ -292,26 +311,14 @@ this guide. Copy the whole directory out and rename the packages, then:
 
 ```bash
 nros setup native
-nros sync            # once per workspace — the generated message bindings
+nros sync            # once per workspace — message bindings + build settings
 nros build native
 ```
 
 `nros build` walks the packages, resolves the image, checks the toolchain,
-generates the root manifest and the entry, and hands off to cargo. The older
-`nros codegen-system` / `nros check` steps still work; they are just no longer
-something you have to type.
-
-`nros sync` is the one that is still yours to run. A workspace that has never
-been synced has no generated message crates, so `nros build` refuses at
-preflight and names it:
-
-```text
-Error: missing prerequisites for this build:
-  - generated message bindings (this workspace has never been synced)
-      run: nros sync
-```
-
-Once per workspace is enough; after that, re-run it when you edit a `.msg`.
+generates the entry and the build root that compiles it — both under `build/`,
+neither beside your source — and hands off to cargo. `nros check` still works
+and is worth running; it is just no longer something you have to type.
 
 The workspace README at `examples/workspaces/rust/README.md`
 documents the exact CLI commands that are verified green today.

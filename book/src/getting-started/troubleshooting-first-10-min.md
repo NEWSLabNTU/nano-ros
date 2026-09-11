@@ -13,12 +13,12 @@ one to try.
 
 ## A. Build failures (cargo / cmake)
 
-### A1. nros crates don't resolve (missing / stale patch block)
+### A1. You built before `nros sync`
 
 ```
-error[E0432]: unresolved import `nros`
-error: failed to load source for dependency `nros`
-error: no matching package named `nros` found
+… has not been synced — missing the resolved model under `build/nros/models/`,
+the generated message crate `std_msgs` (generated/std_msgs).
+  Run `nros sync` in … (RFC-0098 D2), then build again.
 ```
 
 The example's `Cargo.toml` declares nano-ros crates registry-style
@@ -35,8 +35,11 @@ cd <the example dir>
 NROS_REPO_DIR=/path/to/nano-ros nros sync
 ```
 
-which regenerates the message crates and rewrites the patch block
-for the example's current location.
+Driving cargo directly skips that refusal and gets cargo's own version of it
+instead — `no matching package named 'nros' found`, or an unresolved import.
+Same cause, same fix: sync, then pass the generated file with `--config`.
+`NROS_REPO_DIR` is what ties a copied-out example to a checkout, so re-run sync
+after moving the directory.
 
 This is **not** an `nros setup` issue — `nros setup` only fetches
 the SDK / source-package payload (zenoh-pico, mbedtls, cyclonedds,
@@ -84,9 +87,12 @@ Add it:
 
 ```bash
 rustup target add thumbv7m-none-eabi
-# or whichever target the example's board names: `nros ws leaf-system .`
-# prints NROS_LEAF_BOARD, and the board's descriptor pins the triple
 ```
+
+The triple is the board's, not the example's — you will not find it in any
+file you wrote. Read it back from the `[build] target` line of the generated
+`build/<image-id>/nros-cargo.toml`, which `nros sync` writes from the board
+your `system.toml` names.
 
 ### A4. Cross linker not found
 
@@ -124,39 +130,51 @@ undefined reference to `dds_create_participant`
 `rmw-cyclonedds` cannot link from cargo alone — the Cyclone backend
 is C++ + CMake, registered via `nros_rmw_cffi_register` from a
 CMake-built target — wired through `CMakeLists.txt` +
-Corrosion. Use the cmake build path instead:
+Corrosion. Use the cmake build path instead, and choose the backend where
+backends are chosen: `[system] rmw` in the leaf's `system.toml`.
+
+```toml
+[system]
+rmw = "cyclonedds"
+```
 
 ```bash
-cd examples/native/c/talker        # (or cpp / rust)
-cmake -B build-cyclone -DNROS_RMW=cyclonedds
+cd examples/native/c/talker        # (or cpp)
+cmake -B build-cyclone
 cmake --build build-cyclone
 ```
+
+A single-package C / C++ leaf needs no `nros sync` — its message bindings are
+a CMake-time output. There is no `-DNROS_RMW=` to pass: a backend selected on
+the command line disagrees with the one the rest of the build resolves from
+`system.toml`, which is the drift RFC-0098 removes.
 
 The pure `cargo build --features rmw-cyclonedds` only succeeds for
 the zenoh-pico + xrce backends today.
 
-### A7. "current package believes it's in a workspace"
+### A7. The board name is a typo
 
 ```
-error: current package believes it's in a workspace when it's not:
-current:   …/Cargo.toml
-workspace: /…/nano-ros/Cargo.toml
+…/system.toml: board `mps2-an358` is claimed by no board descriptor under /…/nano-ros
 ```
 
-cargo walks up the directory tree looking for a workspace root and
-adopts the example into the outer nano-ros workspace. Per-example
-`Cargo.toml`s don't ship an empty `[workspace]` table yet (tracked
-as a known follow-up).
+`[image.<id>] board` is where a leaf names its board, and a typo there is
+refused by name rather than guessed at. The legal spellings are the
+`names = [...]` arrays of the board descriptors, one per board crate at
+`packages/boards/*/nros-board.toml`; several are aliases for the same board
+(`qemu-mps2-an385` and `rtic-mps2-an385` are two entry shapes on one
+descriptor).
 
-Hits on:
+The neighbouring refusals, when the image is missing rather than misspelt:
 
-- nested clones / worktrees of nano-ros that share an ancestor path
-  with the outer `nano-ros/Cargo.toml`;
-- a user vendoring an example into their *own* workspace.
+```
+this workspace declares no `[image.*]`. An image is the buildable unit — see RFC-0065 D6.
+…/system.toml: names no board (RFC-0098 D3: `[image.<id>] board = "<board>"`)
+```
 
-Workaround on a regular clone: build from the nano-ros root, e.g.
-`cargo build -p qemu-bsp-talker`, instead of `cd`'ing into the
-example dir.
+The first means there is no `system.toml` beside the package at all — a leaf
+without one is not a leaf `nros build` can plan. The second means the file is
+there and its `[image.<id>]` table has no `board` key.
 
 ### A8. `direnv allow` reminder
 
@@ -232,9 +250,9 @@ ROS_DOMAIN_ID=7 ./build/c_talker         # also overridable
 
 The native Rust / C / C++ talkers all read `NROS_LOCATOR` first, fall
 back to `ZENOH_LOCATOR`, then to the build-time default. Embedded
-targets have no runtime env — their locator is compile-baked from the
-deploy config (`[package.metadata.nros.deploy.<t>]` /
-the package.xml tuple), so a rebuild is the override.
+targets have no runtime env — their locator is compile-baked from
+`system.toml` (`[image.<id>] locator`, or `[system] locator` for an image that
+does not state one), so editing that file and rebuilding is the override.
 
 ### B5. Binary exits immediately, no error printed
 

@@ -46,26 +46,63 @@ See [Install + first build (Linux)](./installation.md) for more.
 ## Project layout
 
 The talker is a **standalone Cargo package** that pulls nano-ros in
-via a path dependency. Three files matter:
+via a path dependency. Four files matter:
 
 ```text
 examples/native/rust/talker/
-├── Cargo.toml          # registry-style deps + `nros sync` patch table
+├── system.toml         # WHAT this deploys to — the one file you edit
+├── Cargo.toml          # registry-style deps; no board facts
 ├── package.xml         # ROS-style manifest (drives codegen tooling)
 ├── generated/          # auto-generated message bindings (gitignored)
+├── build/              # everything `nros sync` generates (gitignored)
 └── src/
     ├── main.rs         # one line: nros::main!(spin = "forever")
     └── lib.rs          # the ~65-line talker node body
 ```
 
-Native (host) talkers read the locator / domain from environment variables
-(`NROS_LOCATOR` — legacy alias `ZENOH_LOCATOR` — and `ROS_DOMAIN_ID`)
-— no config file is needed. Embedded targets bake their config from
-`[package.metadata.nros.deploy.<target>]` instead — the shape shows up
-under the Embedded Starters section.
+`system.toml` is the whole deployment statement — the same schema a
+multi-node workspace's bringup package uses (RFC-0098):
+
+```toml
+[system]
+name = "native_talker"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg   = "native_talker"
+class = "native_rs_talker::Talker"
+name  = "talker"
+
+[image.native]
+board = "native"
+```
+
+**You never hand-write a build setting.** No target triple, no linker
+flag, no `[patch.crates-io]` table, no `.cargo/config.toml`: `nros sync`
+derives every one of those from `board = "native"` and writes them to
+`build/native/nros-cargo.toml`, which `nros build` hands cargo with
+`--config`.
+
+Retargeting is therefore almost entirely one line. *Almost*: a
+single-package leaf is its own entry, so it still names its board crate
+in `[dependencies]`, and that line has to move with the `board =` one
+until the dependency is generated too
+([issue 1305](https://github.com/NEWSLabNTU/nano-ros/blob/main/docs/issues/1305-single-package-board-crate-dep-not-generated.md)).
+Everything else the board implies — the triple, the link group, the
+QEMU runner, the cross compiler — follows the `system.toml` edit on its
+own. A multi-node workspace has no such caveat: its entry is generated,
+so there the board really is one line.
+
+Native (host) images read the locator / domain from environment
+variables (`NROS_LOCATOR` — legacy alias `ZENOH_LOCATOR` — and
+`ROS_DOMAIN_ID`). Embedded images bake theirs from the same
+`[image.<id>]` table (`locator`, `ip`, `gateway`, `netmask`) — the shape
+shows up under the Embedded Starters section.
 
 The `Cargo.toml` is the contract that wires nano-ros into your
-package. Every example is its own standalone Cargo root (an empty
+package, and it holds Rust facts only. Every example is its own
+standalone Cargo root (an empty
 `[workspace]` table stops `cargo` walking up the filesystem), and
 nano-ros crates are declared **registry-style** (`version = "*"`);
 the `[patch.crates-io]` block that resolves them into a nano-ros
@@ -119,8 +156,13 @@ directory lives now:
 ```bash
 cp -r examples/native/rust/talker ~/my-talker && cd ~/my-talker
 NROS_REPO_DIR=/path/to/nano-ros nros sync
-RUST_LOG=info nros build --run
+NROS_REPO_DIR=/path/to/nano-ros nros build
+RUST_LOG=info ./build/native/target/debug/talker
 ```
+
+Nothing in the copied directory names a path into the checkout, so the
+copy is a checkout-independent starter: `NROS_REPO_DIR` is the only
+thing tying it to one, and it is on the command line, not in a file.
 
 Prefer vendoring instead? `examples/templates/multi-package-workspace/`
 documents the path-dep workspace layout.
@@ -135,21 +177,41 @@ Three runtime knobs, each an env override on a built-in default:
 | ROS domain ID | `0` | `ROS_DOMAIN_ID` |
 | Zenoh mode | client | `NROS_SESSION_MODE` (legacy alias: `ZENOH_MODE`) |
 
-No config file on native. Embedded targets bake these from
-`[package.metadata.nros.deploy.<target>]` instead — see the
+On native these stay environment variables — `[image.native]` declares
+no `locator`. An embedded image bakes them from its own `[image.<id>]`
+table instead; see the
 [Configuration Guide](../user-guide/configuration.md).
 
 ## Build
 
 ```bash probe=30
 cd examples/native/rust/talker
-nros sync             # once per checkout location: writes the generated/
-                      # message bindings + the [patch.crates-io] table
-cargo build           # or: cargo build --release
+nros sync             # writes generated/ message bindings and
+                      # build/native/nros-cargo.toml from system.toml
+nros build            # builds the image `[image.native]` declares
 ```
 
 First build pulls dependencies (~3 minutes). Re-builds finish in
-seconds.
+seconds. The binary lands at `build/native/target/debug/talker` —
+under `build/`, never beside your sources.
+
+**Driving cargo yourself** (an IDE, a CI step, `--release`) is
+supported: run `nros sync` first, then point cargo at the generated
+settings file. Run it from the directory *above* the package, so the
+package's own `.cargo/` is not read a second time — phase-445 W6
+deletes that directory, after which the working directory stops
+mattering:
+
+```bash
+cd examples/native/rust
+cargo build --manifest-path talker/Cargo.toml \
+            --config talker/build/native/nros-cargo.toml
+```
+
+That file is regenerated on every `nros sync`; never edit it, and never
+add a `.cargo/config.toml` of your own to carry board facts. Your own
+Rust-toolchain preferences go where cargo already looks for them — a
+parent directory or `$CARGO_HOME`.
 
 ## Run
 
@@ -164,7 +226,7 @@ ros2 run rmw_zenoh_cpp rmw_zenohd    # or: just zenohd
 # RUST_LOG=info — without it `env_logger` only shows errors and the
 # `Publishing:` lines stay hidden.
 cd examples/native/rust/talker
-RUST_LOG=info cargo run
+RUST_LOG=info ./build/native/target/debug/talker
 # Expected output (on stderr):
 #   [INFO  talker] Publishing: 'Hello World: 1'
 #   [INFO  talker] Publishing: 'Hello World: 2'
@@ -189,7 +251,7 @@ If `ros2 topic echo` shows no output despite the talker printing
 `Publishing:`, the routers aren't peering — confirm both processes
 point at the same port (default `tcp/127.0.0.1:7447`).
 
-**Readiness signal.** Within ~6 seconds of `RUST_LOG=info cargo run`
+**Readiness signal.** Within ~6 seconds of starting the binary
 (session open + the first 1 s timer tick), the talker should print
 `Publishing: 'Hello World: 1'` — the count starts at 1, matching the
 official ROS 2 `demo_nodes_cpp` talker. If no `Publishing:` line in 30
@@ -200,8 +262,8 @@ seconds:
    silent even when it's working.
 2. Confirm the router is running (terminal 1). Without it, the talker
    blocks on `Executor::open` indefinitely.
-3. Re-run with `RUST_LOG=debug cargo run` and look for "RMW session
-   open failed" — usually a wrong locator or wrong port.
+3. Re-run with `RUST_LOG=debug` and look for "RMW session open
+   failed" — usually a wrong locator or wrong port.
 4. See [Troubleshooting — First 10 Minutes](./troubleshooting-first-10-min.md).
 
 ## GitHub source
@@ -211,6 +273,9 @@ Canonical, copy-out:
 
 Copy the directory, run `NROS_REPO_DIR=<nano-ros checkout> nros sync`
 inside it, rename the package, and your starter is ready to modify.
+To aim it at a board, change `[image.native] board` in `system.toml` to
+that board's name (`nros board list` prints them), swap the board crate
+in `[dependencies]` to match (issue 1305), and re-run `nros sync`.
 
 ## Next
 
