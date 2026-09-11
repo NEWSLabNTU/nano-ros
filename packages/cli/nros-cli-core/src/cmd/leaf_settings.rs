@@ -121,11 +121,13 @@ fn package_name(leaf: &Path) -> Option<String> {
 
 /// The leaf this road builds, or `None` when `leaf` is not one.
 ///
-/// Not one: no `system.toml` beside a `[package]` manifest, a leaf still on the
-/// retiring manifest keys, or a board whose driver is not cargo (a Zephyr leaf
-/// is a west application with its own build). A leaf that IS one but names a
-/// board no descriptor claims is an error, not a `None`: that is a typo in the
-/// one line RFC-0098 D3 says a user edits.
+/// Not one: no `system.toml` beside a `[package]` manifest, or a board whose
+/// driver is not cargo (a Zephyr leaf is a west application with its own
+/// build). A leaf that IS one but names a board no descriptor claims is an
+/// error, not a `None`: that is a typo in the one line RFC-0098 D3 says a user
+/// edits. (A leaf still on the retiring manifest keys used to land here too;
+/// phase-445 W5 made `leaf_system::read` refuse it instead, so it never
+/// reaches this function.)
 pub fn resolve(leaf: &Path, nano_ros_root: &Path) -> Result<Option<LeafImage>> {
     if !leaf.join(leaf_system::SYSTEM_TOML).is_file() {
         return Ok(None);
@@ -136,9 +138,6 @@ pub fn resolve(leaf: &Path, nano_ros_root: &Path) -> Result<Option<LeafImage>> {
     let Some(decl) = leaf_system::read(leaf).map_err(|e| eyre!(e))? else {
         return Ok(None);
     };
-    if decl.is_fallback() {
-        return Ok(None);
-    }
     let Some(board) = decl.board.clone() else {
         bail!(
             "{}: names no board (RFC-0098 D3: `[image.<id>] board = \"<board>\"`)",
