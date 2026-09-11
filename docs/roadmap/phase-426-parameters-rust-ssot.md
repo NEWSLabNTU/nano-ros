@@ -1,14 +1,92 @@
 # Phase 426 — parameters get a Rust SSoT, and `ros2 param list` works
 
-**Status (2026-09-11). W1–W6 each LANDED on main; per-item acceptance not
-re-audited here.** The line read "Planned" for six days after the work went in, so
-the evidence is the commits:
+**Status (2026-09-11). W1–W6 each LANDED on main. Per-item acceptance RE-AUDITED
+2026-09-11: W1, W2, W3 and W6 MET; W4 and W5 each have one half outstanding, so
+this phase is NOT archivable yet.** The line read "Planned" for six days after the
+work went in, so the evidence is the commits:
 - W1: 4 commits.
 - W2: `30f5e9f941`.
 - W3: 6 commits.
 - W4: `3bf30405f1` deleted both C++ stores, and `98f0f5de7e` taught the parameter FFI which node is asking.
 - W5: `1505290ecd`.
 - W6: `3e3f1ef2db`.
+
+### The re-audit (2026-09-11) — what each acceptance actually measures
+
+Done because the status line's own caveat ("per-item acceptance not re-audited
+here") is a claim about the AUDIT, not about the work, and archiving turns on
+the difference.
+
+* **W1 — MET.** `NodeKey` is a per-entry node identity
+  (`nros-params/src/types.rs:34`); `declare` / `get` / `set` / `apply` all take
+  it (`nros-params/src/server.rs:392`, `:524`, `:547`, `:504`). The acceptance's
+  exact case is a test: `two_nodes_hold_independent_values_for_one_name`
+  (`server.rs:950`, 10 vs 20, `total_len() == 2` at `:975`), and the pre-change
+  collision is asserted rather than described (`server.rs:957`–`960`).
+* **W2 — MET.** `Executor::set_parameter` (`executor/spin.rs:9307`), node-named
+  form `:9316`, through `ParameterServer::apply` at `:9338`. Atomic all-or-none
+  with the SECOND parameter failing, as written:
+  `parameter_services.rs:3003`, good value first (`:3009`), typo second
+  (`:3013`), the good half asserted not applied (`:3023`–`3027`). The
+  `ros2 param set` half is on the wire in W6's cell
+  (`params_per_node_interop.rs:280`–`292`).
+* **W3 — MET, including the part written to force a BUILD error.** Six services
+  register per node FQN (`executor/spin.rs:8334`, reconciled `:8388`,
+  enumerated `:8667`); both FQNs appear to `ros2 param list`
+  (`params_per_node_interop.rs:224`, `:229`). The ceiling is a build-time panic
+  naming the knob — `check_queryable_override`
+  (`nros-zpico-build/src/runner.rs:272`, message at `:286`) — and the
+  acceptance's own three-node case is a test:
+  `a_three_node_image_on_the_default_table_is_refused_at_build_time`
+  (`runner.rs:460`, `#[should_panic(expected = "CONFIG_NROS_MAX_QUERYABLES")]`).
+* **W4 — PARTIAL.** The MEMBERS are gone, which was the SSoT defect: no inline
+  `ParameterServer` on `rclcpp::Node` (the facade forwards to the executor
+  store, `nros-cpp/include/nros/node.hpp:791`–`802`, stated at `:70`–`74`),
+  `ComponentNode`'s facade went with the type (phase-427 W4), and
+  `NROS_RCLCPP_MAX_PARAMS` is gone with its history documented (`node.hpp:113`–
+  `124`). What is NOT gone is the standalone caller-owned
+  `nros::ParameterServer<Cap>`, retained on purpose (`node.hpp:73`–`76`) and
+  still reading its own `server_` rather than the table
+  (`nros-cpp/include/nros/parameter.hpp:385`) — and the shipped C++ example is
+  still written against it (`examples/native/cpp/parameters/src/main.cpp:20`),
+  so THAT example's parameters remain invisible to `ros2 param get`. "Delete
+  both C++ stores" is met for the members and not for the class. Whether the
+  class should stay is a decision, not an oversight; it needs stating either way
+  before this item reads DONE.
+* **W5 — PARTIAL, and the missing half is the acceptance itself.** The C surface
+  does point at the same table and can name a node — fourteen `_on` spellings
+  (`nros-c/include/nros/parameter.h:491`–`548`) onto
+  `Executor::declare_parameter_on` / `get_parameter_on` / `set_parameter_on`
+  (`nros-c/src/parameter.rs:936`, `:984`, `:1036`). But **no mixed C/C++
+  workspace fixture declares from one language and reads from the other**: the
+  features workspace ships `c_params` and `cpp_params` as separate
+  single-language images (`examples/fixtures.toml:3709` and `:3775`;
+  `examples/workspaces/features/src/demo_bringup/launch/{c,cpp}_params.launch.xml`,
+  with no `mixed_params` sibling), `examples/workspaces/mixed/` declares no
+  parameters at all (`.../mixed/src/demo_bringup/system.toml:17` is a services
+  demo), and the nearest test is one-language-per-entry
+  (`packages/testing/nros-tests/tests/cpp_c_param_live_read_e2e.rs:34`). The
+  legacy divergent C store is also still exported
+  (`nros-c/src/parameter.rs:136`) and still what the shipped C example uses
+  (`examples/native/c/parameters/src/main.c:34`), so "C and C++ cannot disagree"
+  holds for the `nros_executor_*` path and is untested across a single image.
+* **W6 — MET.** Cell `native-params-per-node-rust-zenoh`
+  (`nros-tests/src/interop.rs:457`) runs `list` / `get` / `set` against a
+  running two-node image and asserts the FQNs
+  (`params_per_node_interop.rs:198`, whole-graph `:224`/`:229`, per-node
+  `:241`/`:249`, `get` `:266`/`:271`, `set` isolation `:281`–`292`), with the
+  coordinate tripwire at `:378` and the fixture at
+  `examples/fixtures.toml:1485`. The literal "fails on a tree with W1 reverted"
+  is not recorded as a run; the assertions are structurally the ones a flat
+  table fails.
+* **Both items W4 "inherits and nobody owns" are now OWNED and present.**
+  `has_parameter` has its FFI (`nros-cpp/src/params_shim.rs:793`, header
+  `nros_cpp_ffi.h:3395`, declared `node.hpp:816` with the `std::string` overload
+  at `:833`), resolving against the executor store (`params_shim.rs:806`); and
+  `declare_parameter<std::vector<T>>` has its forwarding target
+  (`node_parameters.hpp:246`, read side `:260`, type map `:319`), with the
+  previously-unowned caller named at `:207`–`218` and `std::vector<bool>`
+  deliberately still absent (`:217`).
 
 Run `git log --grep='phase-426 W'` for the full list. There is one known hole in the
 promise this phase makes. On Cyclone, the parameter services never start, so
