@@ -69,6 +69,14 @@ const VENDOR_BUILD_POINTER: &str = "nros-xrce-vendor-build.txt";
 // lanes had already stopped agreeing.
 
 fn main() {
+    // phase-454 W6.b — the derivation's negative controls, on the NORMAL path.
+    // A control nobody runs decays into a comment (`check-gate-selftests`
+    // holds the same line for the Python gates), and this one guards a rule
+    // whose failure is silent in the expensive direction: an image whose pool
+    // grew because half the formula came from a declaration and half from a
+    // literal still builds, boots and passes every knob gate.
+    xrce_demand_selftest();
+
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     // phase-321 W2.d — FOUR parents, not three. The crate sits at
     // packages/rmw/xrce/nros-rmw-xrce-cffi/, one level deeper than the old
@@ -339,8 +347,18 @@ fn main() {
     // it in an `#ifndef`, and that is the one statement of it. Nothing stated
     // ⇒ nothing defined ⇒ the header's default stands, identically in both
     // lanes.
+    //
+    // phase-454 W6.b — rung 3.5 sits between them: what the image's own
+    // declarations imply, read from the sizing descriptor (RFC-0100 D4/D5). A
+    // stated value still wins, and an image with no descriptor reaches exactly
+    // the bytes it did before this wave.
+    let demand = XrceDemand::derive(sizing_descriptor().as_ref());
+    demand.report();
     for row in &config.defines {
-        if let Some(n) = knobs.stated(&row.env, row.min, &config_path) {
+        let value = knobs
+            .stated(&row.env, row.min, &config_path)
+            .or_else(|| demand.for_knob(&row.env));
+        if let Some(n) = value {
             build.define(&row.macro_name, n.to_string().as_str());
         }
     }
@@ -872,4 +890,467 @@ impl ConfigManifest {
     fn flags_for(&self, template: &str) -> impl Iterator<Item = &FlagRow> {
         self.flags.iter().filter(move |r| r.template == template)
     }
+}
+
+// ---------------------------------------------------------------------------
+// phase-454 W6.b — what this image's own declarations imply for the XRCE pools.
+//
+// RFC-0100 D5: "the backend owns its formula, in its own build". So the
+// arithmetic is here, beside the `cc::Build` that applies it, rather than in the
+// shared reader — adding a fifth backend must touch no shared code, and a
+// maintainer of this backend must not have to read another crate to find out
+// how its buffers are sized.
+//
+// D2 gives the shape, one line per pool:
+//
+//   pool_bytes = COUNT(class) x SLOTS(class) x SLOT_BYTES(class) + fixed
+//
+//   reliable stream buffers  COUNT 1 per session  SLOTS history   SLOT_BYTES MTU
+//   subscriber slots         COUNT subscriptions  SLOTS ring depth SLOT_BYTES bound
+//
+// The COUNT terms are already derived, on a road that predates this one
+// (`NROS_XRCE_MAX_SUBSCRIBERS` and its two siblings, issue 1033, where ZERO is
+// the answer and worth 33,296 bytes a slot). What this adds is the other two
+// factors.
+// ---------------------------------------------------------------------------
+
+use nros_sizing_descriptor::{Basis, Endpoint, EndpointKind, Reliability, SizingDescriptor};
+use std::collections::BTreeMap;
+
+// The 4-byte CDR header `internal.h` names, and `xrce_stage_inbound` refuses a
+// payload unless `len + header <= cap` — so a buffer sized at the bound alone
+// is four bytes short of every message that actually reaches the bound.
+const CDR_HEADER_LEN: usize = 4;
+
+// The reliable streams' history when no endpoint declares reliable delivery.
+//
+// Not zero, and the reason is in `internal.h` beside the knob: both reliable
+// streams stay LIVE on a best-effort-only image, because every control message
+// this backend sends rides the output reliable stream and `uxr_buffer_request_data`
+// names the input reliable stream as the Agent's delivery stream for every
+// reader whatever its QoS. A declaration about DATA delivery is not a licence to
+// make session setup lossy. Four is the protocol floor the header's `#error`
+// states (reliable retransmit headroom), and upstream splits the buffer into
+// `history` blocks, so an MTU-sized message still fits at 4.
+const RELIABLE_CONTROL_HISTORY: usize = 4;
+
+// Both buffers, at the default history and the default MTU — the number a
+// declaration is worth, quoted in the refusal that says so.
+const RELIABLE_STREAM_SAVING_BYTES: usize = 2 * (16 - RELIABLE_CONTROL_HISTORY) * 4096;
+
+const ENV_STREAM_HISTORY: &str = "NROS_XRCE_STREAM_HISTORY";
+const ENV_SUBSCRIBER_BUFFER: &str = "NROS_XRCE_SUBSCRIBER_BUFFER_SIZE";
+const ENV_SUBSCRIBER_RING_DEPTH: &str = "NROS_XRCE_SUBSCRIBER_RING_DEPTH";
+
+/// Rung 3.5 of the ladder in `packages/rmw/xrce/xrce-config.txt`.
+///
+/// Keyed on the ENV name a `define` row carries, never on the C macro: the
+/// macro is a configuration value and `check-xrce-config-manifest` refuses a
+/// lane that states one of its own (phase-420 W9). The env name is the row's
+/// own field, so this is a lookup into the manifest rather than a second copy
+/// of it.
+#[derive(Default)]
+struct XrceDemand {
+    values: BTreeMap<&'static str, usize>,
+    /// What was NOT derived, and why. D6: *"always the safe direction and
+    /// always loud — the build prints what declaring would save"*.
+    notes: Vec<String>,
+}
+
+impl XrceDemand {
+    /// The value this image's declarations imply for `env`, if any.
+    fn for_knob(&self, env: &str) -> Option<usize> {
+        self.values.get(env).copied()
+    }
+
+    fn note(&mut self, what: impl Into<String>) {
+        self.notes.push(what.into());
+    }
+
+    fn report(&self) {
+        for n in &self.notes {
+            println!("cargo::warning=nros-rmw-xrce: {n}");
+        }
+    }
+
+    fn derive(desc: Option<&SizingDescriptor>) -> Self {
+        let mut d = Self::default();
+        // No descriptor: nobody ran `nros sync` for this image. Every number
+        // below stays exactly where it was before this wave — the acceptance
+        // criterion, not a convenience.
+        let Some(desc) = desc else {
+            return d;
+        };
+
+        // A `closure` basis describes every type the link closure can reach,
+        // not the set this image creates. D6 forbids silently widening it, and
+        // it cuts both ways here: sizing a POOL from the closure over-states,
+        // while sizing a QoS-gated buffer from it can UNDER-state, because a
+        // closure row carries no endpoint's QoS.
+        if desc.meta.basis != Basis::Contract {
+            d.note(format!(
+                "the sizing descriptor states `basis = {}`, which describes the link closure \
+                 rather than what this image creates, so no pool is derived from it \
+                 (RFC-0100 D6)",
+                desc.meta.basis
+            ));
+            return d;
+        }
+        // "Absence is not zero" — D6's second trigger. An endpoint that stated
+        // no QoS at all is one whose reliability and depth this table cannot
+        // speak for, and both derivations below are ALL-endpoint predicates.
+        match desc.meta.undeclared_endpoints().get() {
+            Some(0) => {}
+            Some(n) => {
+                d.note(format!(
+                    "{n} endpoint(s) declare no QoS at all, so this image's reliability and \
+                     depth are not attributable and the XRCE pools keep their defaults. \
+                     Declaring them is worth up to {RELIABLE_STREAM_SAVING_BYTES} bytes of \
+                     session heap"
+                ));
+                return d;
+            }
+            None => {
+                d.note(
+                    "the sizing descriptor refuses `undeclared_endpoints`, so it cannot say \
+                     whether an endpoint stayed silent; the XRCE pools keep their defaults",
+                );
+                return d;
+            }
+        }
+        if desc.endpoints.is_empty() {
+            return d;
+        }
+
+        d.derive_stream_history(desc);
+        d.derive_subscriber_family(desc);
+        d
+    }
+
+    /// Reliability gates the two reliable stream buffers.
+    ///
+    /// The predicate is ALL, and "undeclared implies reliable" is what makes it
+    /// the safe direction: an endpoint whose reliability nobody stated keeps
+    /// the full history, so the saving needs a declaration rather than a
+    /// silence.
+    ///
+    /// Services and actions count as reliable without asking. A ROS service is
+    /// reliable by construction and an action expands into services — so a row
+    /// of either kind means this stream carries traffic that must be
+    /// retransmitted, which is exactly what phase 130.4's default of 16 was
+    /// measured for (feedback + result + status_array + replies fanned out
+    /// inside one user handler).
+    fn derive_stream_history(&mut self, desc: &SizingDescriptor) {
+        let is_best_effort = |e: &Endpoint| {
+            matches!(e.kind, EndpointKind::Publisher | EndpointKind::Subscription)
+                && e.reliability().stated() == Some(&Reliability::BestEffort)
+        };
+        if desc.endpoints.iter().all(is_best_effort) {
+            self.values
+                .insert(ENV_STREAM_HISTORY, RELIABLE_CONTROL_HISTORY);
+            return;
+        }
+        // One declaration away from the saving: every endpoint that DID state a
+        // reliability said best_effort, and the rest said nothing. Worth a line,
+        // because this is the largest single number in the backend and nothing
+        // else would tell them.
+        let stated_any = desc.endpoints.iter().any(|e| e.reliability().is_stated());
+        let none_reliable = desc
+            .endpoints
+            .iter()
+            .all(|e| e.reliability().stated() != Some(&Reliability::Reliable));
+        let pubsub_only = desc
+            .endpoints
+            .iter()
+            .all(|e| matches!(e.kind, EndpointKind::Publisher | EndpointKind::Subscription));
+        if stated_any && none_reliable && pubsub_only {
+            self.note(format!(
+                "no endpoint declares `reliability = reliable` and some declare nothing, so \
+                 both reliable stream buffers keep the full history — an undeclared \
+                 reliability is assumed reliable (RFC-0100 D6). Declaring `best_effort` on \
+                 every endpoint is worth {RELIABLE_STREAM_SAVING_BYTES} bytes of session heap"
+            ));
+        }
+    }
+
+    /// The subscriber pool's two remaining factors, TOGETHER or not at all.
+    ///
+    /// The coupling is the whole reason this cannot make an image bigger. The
+    /// pool is one product (D2) and the two factors move in opposite directions
+    /// on a typical image: a declared `std_msgs/msg/String` prices its entry at
+    /// 1,174 bytes against the literal 1,024, while a declared `depth = 10`
+    /// prices the ring at 10 entries against the literal 32. Taking the first
+    /// without the second is a 15% GROWTH; taking both is a 64% saving. A pool
+    /// sized from one declaration and one literal describes no image at all.
+    ///
+    /// Refused outright when the image declares an action of either role: an
+    /// action client opens a subscription underneath itself that no
+    /// `[[endpoint]]` row itemises, so the maximum over the declared
+    /// subscriptions would be short for it — the UNDER direction, which is the
+    /// one that ships a runtime failure (issue 1319's lesson, one pool over).
+    fn derive_subscriber_family(&mut self, desc: &SizingDescriptor) {
+        let subs: Vec<&Endpoint> = desc
+            .endpoints
+            .iter()
+            .filter(|e| e.kind == EndpointKind::Subscription)
+            .collect();
+        // No subscriptions: no demand. The slot COUNT is already derived to 0
+        // on the other road, so the array is gone and its entry size prices
+        // nothing. D7 — an abstention, not a floor.
+        if subs.is_empty() {
+            return;
+        }
+        if desc.endpoints.iter().any(|e| {
+            matches!(
+                e.kind,
+                EndpointKind::ActionServer | EndpointKind::ActionClient
+            )
+        }) {
+            self.note(
+                "this image declares an action, which opens subscriptions the endpoint table \
+                 does not itemise, so the subscriber ring keeps its default size and depth \
+                 rather than being sized from the declared subscriptions alone",
+            );
+            return;
+        }
+
+        let mut bound = 0usize;
+        let mut depth = 0usize;
+        for e in &subs {
+            let (Some(b), Some(n)) = (e.wire_bound_bytes().get(), e.depth().get()) else {
+                self.note(format!(
+                    "subscription `{}` states {}, so the subscriber ring keeps its defaults: \
+                     the pool is COUNT x DEPTH x BOUND and half a formula prices no image",
+                    e.topic,
+                    missing_half(e)
+                ));
+                return;
+            };
+            // A depth of 0 is this backend's SYSTEM_DEFAULT sentinel on the
+            // wire (`session.c` leaves it unresolved so the Agent's DDS layer
+            // supplies its own), not a queue of nothing. It cannot size a ring.
+            if n == 0 {
+                self.note(format!(
+                    "subscription `{}` states `depth = 0`, which is the defer-to-the-Agent \
+                     sentinel rather than a queue length, so the subscriber ring keeps its \
+                     defaults",
+                    e.topic
+                ));
+                return;
+            }
+            bound = bound.max(b);
+            depth = depth.max(n as usize);
+        }
+        self.values
+            .insert(ENV_SUBSCRIBER_BUFFER, bound + CDR_HEADER_LEN);
+        self.values.insert(ENV_SUBSCRIBER_RING_DEPTH, depth);
+    }
+}
+
+/// Which half of the product this endpoint is missing, in prose.
+fn missing_half(e: &Endpoint) -> String {
+    let mut missing = Vec::new();
+    if !e.wire_bound_bytes().is_stated() {
+        missing.push(match e.wire_bound_bytes().refusal() {
+            Some(r) => format!("no wire bound ({r})"),
+            None => "no wire bound".to_string(),
+        });
+    }
+    if !e.depth().is_stated() {
+        missing.push(match e.depth().refusal() {
+            Some(r) => format!("no depth ({r})"),
+            None => "no depth".to_string(),
+        });
+    }
+    missing.join(" and ")
+}
+
+/// The descriptor this build was pointed at, or `None`.
+///
+/// Same three outcomes as `nros-node/build.rs` (phase-454 W4) and for the same
+/// reasons: no descriptor keeps every literal, a refused field keeps its
+/// literal loudly, and a descriptor that does not parse — or names a schema
+/// this reader does not know — is a hard build error. A descriptor EXISTS in
+/// that last case, so defaulting would size from numbers a user believes they
+/// supplied.
+fn sizing_descriptor() -> Option<SizingDescriptor> {
+    match nros_sizing_descriptor::from_build_env() {
+        Ok(d) => d,
+        Err(e) => panic!("nros-rmw-xrce-cffi: {e}"),
+    }
+}
+
+// --- negative controls, run on the normal path -----------------------------
+
+fn xrce_demand_selftest() {
+    use nros_sizing_descriptor::{History, RegistrationPath, Status};
+
+    // A descriptor shaped like a real one: contract basis, nothing undeclared.
+    let image = |eps: Vec<Endpoint>| -> SizingDescriptor {
+        let mut d = SizingDescriptor::new("selftest", Status::Derived, Basis::Contract);
+        d.meta.set_undeclared_endpoints(Some(0));
+        d.endpoints = eps;
+        d
+    };
+    let endpoint = |kind: EndpointKind,
+                    topic: &str,
+                    rel: Option<Reliability>,
+                    depth: Option<u32>,
+                    bound: Option<usize>| {
+        let mut e = Endpoint::new(kind, "std_msgs/msg/String", topic);
+        e.set_history(Some(History::KeepLast))
+            .set_reliability(rel)
+            .set_depth(depth)
+            .set_wire_bound_bytes(bound)
+            .set_registration_path(Some(RegistrationPath::RustTypedSchemaless));
+        e
+    };
+    let be = Some(Reliability::BestEffort);
+
+    // 1. No descriptor derives nothing. Every existing image builds unchanged.
+    let none = XrceDemand::derive(None);
+    assert!(
+        none.values.is_empty(),
+        "a build with no descriptor must move no knob"
+    );
+    assert!(none.notes.is_empty(), "and must say nothing about it");
+
+    // 2. Best-effort-only pub/sub: the reliable streams drop to the protocol
+    //    floor. The wave's headline number.
+    let d = XrceDemand::derive(Some(&image(vec![
+        endpoint(EndpointKind::Publisher, "/chatter", be, Some(1), Some(1170)),
+        endpoint(EndpointKind::Subscription, "/echo", be, Some(1), Some(1170)),
+    ])));
+    assert_eq!(
+        d.for_knob(ENV_STREAM_HISTORY),
+        Some(RELIABLE_CONTROL_HISTORY),
+        "every endpoint declared best_effort, so the reliable streams carry control only"
+    );
+
+    // 3. ONE reliable endpoint and the whole image pays, because one stream
+    //    serves them all.
+    let d = XrceDemand::derive(Some(&image(vec![
+        endpoint(EndpointKind::Publisher, "/chatter", be, Some(1), Some(1170)),
+        endpoint(
+            EndpointKind::Subscription,
+            "/echo",
+            Some(Reliability::Reliable),
+            Some(1),
+            Some(1170),
+        ),
+    ])));
+    assert_eq!(d.for_knob(ENV_STREAM_HISTORY), None);
+
+    // 4. Undeclared reliability is ASSUMED RELIABLE — the safe direction. A
+    //    mutation to "assume best_effort" is a silent under-size on the one
+    //    path that retransmits, and it would pass tests 2 and 3.
+    let d = XrceDemand::derive(Some(&image(vec![
+        endpoint(EndpointKind::Publisher, "/chatter", be, Some(1), Some(1170)),
+        endpoint(
+            EndpointKind::Subscription,
+            "/echo",
+            None,
+            Some(1),
+            Some(1170),
+        ),
+    ])));
+    assert_eq!(d.for_knob(ENV_STREAM_HISTORY), None);
+    assert!(
+        d.notes.iter().any(|n| n.contains("assumed reliable")),
+        "and it says so: {:?}",
+        d.notes
+    );
+
+    // 5. A service is reliable by construction, so a service image keeps the
+    //    full history even with best_effort on everything it declares.
+    let d = XrceDemand::derive(Some(&image(vec![endpoint(
+        EndpointKind::ServiceServer,
+        "/add",
+        be,
+        Some(10),
+        Some(64),
+    )])));
+    assert_eq!(d.for_knob(ENV_STREAM_HISTORY), None);
+
+    // 6. The subscriber family: both factors, from the declaration.
+    let d = XrceDemand::derive(Some(&image(vec![
+        endpoint(EndpointKind::Subscription, "/a", be, Some(10), Some(1170)),
+        endpoint(EndpointKind::Subscription, "/b", be, Some(4), Some(96)),
+    ])));
+    assert_eq!(
+        d.for_knob(ENV_SUBSCRIBER_BUFFER),
+        Some(1170 + CDR_HEADER_LEN),
+        "the entry must hold the largest declared payload PLUS its CDR header"
+    );
+    assert_eq!(
+        d.for_knob(ENV_SUBSCRIBER_RING_DEPTH),
+        Some(10),
+        "the ring must hold the deepest declared queue"
+    );
+
+    // 7. THE COUPLING. Bounds without depths derives NEITHER. Mutating this to
+    //    emit the buffer alone makes the pool 15% LARGER than the defaults it
+    //    replaced (1,174 x 32 against 1,024 x 32) — a regression that builds,
+    //    boots and passes every knob gate.
+    let d = XrceDemand::derive(Some(&image(vec![endpoint(
+        EndpointKind::Subscription,
+        "/a",
+        be,
+        None,
+        Some(1170),
+    )])));
+    assert_eq!(d.for_knob(ENV_SUBSCRIBER_BUFFER), None);
+    assert_eq!(d.for_knob(ENV_SUBSCRIBER_RING_DEPTH), None);
+    // The reliability half is a different fact and must NOT be degraded by it
+    // — D6: a refusal "never degrades another consumer's facts".
+    assert_eq!(
+        d.for_knob(ENV_STREAM_HISTORY),
+        Some(RELIABLE_CONTROL_HISTORY)
+    );
+
+    // 8. An action opens subscriptions this table does not itemise.
+    let d = XrceDemand::derive(Some(&image(vec![
+        endpoint(EndpointKind::Subscription, "/a", be, Some(10), Some(1170)),
+        endpoint(EndpointKind::ActionClient, "/fib", be, Some(10), Some(96)),
+    ])));
+    assert_eq!(d.for_knob(ENV_SUBSCRIBER_BUFFER), None);
+    assert_eq!(d.for_knob(ENV_SUBSCRIBER_RING_DEPTH), None);
+
+    // 9. "Absence is not zero": one silent endpoint refuses every derivation,
+    //    including the reliability one the others would have satisfied.
+    let mut d9 = image(vec![endpoint(
+        EndpointKind::Subscription,
+        "/a",
+        be,
+        Some(10),
+        Some(1170),
+    )]);
+    d9.meta.set_undeclared_endpoints(Some(1));
+    let d = XrceDemand::derive(Some(&d9));
+    assert!(d.values.is_empty(), "{:?}", d.values);
+    assert!(!d.notes.is_empty(), "and it is loud about it");
+
+    // 10. A closure basis sizes nothing.
+    let mut d10 = image(vec![endpoint(
+        EndpointKind::Subscription,
+        "/a",
+        be,
+        Some(10),
+        Some(1170),
+    )]);
+    d10.meta.basis = Basis::Closure;
+    assert!(XrceDemand::derive(Some(&d10)).values.is_empty());
+
+    // 11. Zero survives unfloored (D7, issues 1015/1033). An empty message is
+    //     the CDR header and nothing else, and the floor that keeps that legal
+    //     lives at the array rather than here.
+    let d = XrceDemand::derive(Some(&image(vec![endpoint(
+        EndpointKind::Subscription,
+        "/tick",
+        be,
+        Some(1),
+        Some(0),
+    )])));
+    assert_eq!(d.for_knob(ENV_SUBSCRIBER_BUFFER), Some(CDR_HEADER_LEN));
+    assert_eq!(d.for_knob(ENV_SUBSCRIBER_RING_DEPTH), Some(1));
 }

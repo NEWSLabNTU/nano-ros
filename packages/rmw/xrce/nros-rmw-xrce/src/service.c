@@ -50,7 +50,8 @@ void xrce_request_callback(uxrSession* session, uxrObjectId object_id, uint16_t 
         xrce_service_request_entry* e = &slot->req_ring[slot->req_write_idx];
         /* Issue 0819 — one staging path for every inbound payload, fragments
          * included; see `xrce_stage_inbound`. */
-        e->overflow = !xrce_stage_inbound(e->data, XRCE_BUFFER_SIZE, ub, len, &e->len);
+        e->overflow =
+            !xrce_stage_inbound(e->data, XRCE_SERVICE_REQUEST_BUFFER_SIZE, ub, len, &e->len);
         e->sample_id = *sample_id;
         slot->req_write_idx =
             (uint16_t)((slot->req_write_idx + 1) % XRCE_SERVICE_REQUEST_RING_DEPTH);
@@ -77,7 +78,8 @@ void xrce_reply_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
         slot->reply_request_id = request_id;
         /* Issue 0819 — one staging path for every inbound payload, fragments
          * included; see `xrce_stage_inbound`. */
-        slot->overflow = !xrce_stage_inbound(slot->data, XRCE_BUFFER_SIZE, ub, len, &slot->len);
+        slot->overflow =
+            !xrce_stage_inbound(slot->data, XRCE_SERVICE_REPLY_BUFFER_SIZE, ub, len, &slot->len);
         slot->has_reply = true;
         return;
     }

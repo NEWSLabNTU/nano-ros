@@ -92,6 +92,11 @@ ZEPHYR_C = re.compile(
 )
 ZEPHYR_FORWARDERS = re.compile(r"^zephyr/(CMakeLists\.txt|cmake/[^/]+\.cmake)$")
 
+# The XRCE backend's configuration, whose `knob` and `define` rows ARE the read
+# sites for its env knobs — neither lane spells a name. See
+# `xrce_manifest_readers`.
+XRCE_CONFIG_MANIFEST = "packages/rmw/xrce/xrce-config.txt"
+
 TEXT_EXT = (
     ".rs", ".c", ".h", ".cpp", ".hpp", ".cc", ".in", ".cmake", ".txt", ".sh",
     ".just", ".py", ".toml", ".md", ".conf", ".yml", ".yaml", ".example",
@@ -142,10 +147,43 @@ def _strip_comments(path: str, text: str) -> str:
     return text
 
 
+def xrce_manifest_readers(text: str) -> set[str]:
+    """The env names `packages/rmw/xrce/xrce-config.txt` binds — phase-454 W6.b.
+
+    A READ TABLE, exactly like the `(env, "CONFIG_*")` pair tables the Rust arm
+    below already credits: both XRCE lanes walk these rows and resolve each
+    row's `<env>` column through the knob ladder, so a name here is consumed by
+    two build lanes even though neither spells it.
+
+    Before this arm the XRCE knobs were credited by ACCIDENT — the reader the
+    gate found for `NROS_XRCE_BUFFER_SIZE` was its own name inside an error
+    STRING in `session.c`, which is precisely the mention-is-not-a-read shape
+    this file's header says the first version of the method got wrong. Editing
+    that diagnostic's wording was enough to make a live knob read as dead.
+
+    The grammar is not re-implemented here: `check-xrce-config-manifest.py` is
+    the gate over that file and already owns the parser, and a second copy is
+    how two readers come to disagree about a record the gate accepts.
+    """
+    mod = xrce_manifest_readers.__dict__.get("_mod")
+    if mod is None:
+        spec = importlib.util.spec_from_file_location(
+            "_knob_ends_xrce_manifest",
+            os.path.join(ROOT, "scripts", "check-xrce-config-manifest.py"),
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        xrce_manifest_readers._mod = mod
+    _values, knobs, _flags, defines = mod.parse_manifest(text, XRCE_CONFIG_MANIFEST)
+    return {env for _t, _token, env, _d, _m in knobs} | {env for _m, env, _min in defines}
+
+
 def readers_in(path: str, text: str, read_callees: set[str]) -> set[str]:
     """Names read from the environment, or consumed as a C macro, in one file."""
     if is_doc(path):
         return set()
+    if path == XRCE_CONFIG_MANIFEST:
+        return xrce_manifest_readers(text)
     t = _strip_comments(path, text)
     out: set[str] = set()
     if path.endswith(".rs"):
@@ -301,6 +339,21 @@ def self_test() -> None:
     # a `.cargo/config.toml` [env] key is a claim; a [patch] key is not
     cfg = '[env]\nNROS_A = "1"\n\n[patch.crates-io]\nNROS_B = { path = "x" }\n'
     assert claims_in("ex/.cargo/config.toml", cfg) == {"NROS_A"}, "selftest: [env] scoping"
+
+    # the XRCE manifest is a READ TABLE (phase-454 W6.b). Both record types
+    # bind an env name; `value` and `flag` rows bind none, and a name in a
+    # COMMENT is a mention rather than a read, exactly as everywhere else here.
+    man = (
+        "# NROS_XRCE_MENTIONED_ONLY in prose\n"
+        "value  ucdr CONFIG_MACHINE_ENDIANNESS 1\n"
+        "knob   uxr  UCLIENT_UDP_TRANSPORT_MTU NROS_XRCE_TRANSPORT_MTU 4096 128\n"
+        "flag   uxr  UCLIENT_PROFILE_UDP posix_ip\n"
+        "define XRCE_BUFFER_SIZE NROS_XRCE_BUFFER_SIZE 64\n"
+    )
+    got = readers_in(XRCE_CONFIG_MANIFEST, man, callees)
+    assert got == {"NROS_XRCE_TRANSPORT_MTU", "NROS_XRCE_BUFFER_SIZE"}, (
+        f"selftest: xrce manifest reads {sorted(got)}"
+    )
 
 
 def load_census():

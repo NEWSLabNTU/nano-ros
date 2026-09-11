@@ -306,7 +306,7 @@ maintainer of that backend reads it.
 | --- | --- | --- | --- |
 | executor | counts; per-endpoint `depth`+`history`; rx class; `[target]` | `MAX_CBS`, `ARENA_SIZE`, `BACKING_U64S` | partly derived; rx class is the dead knob above |
 | zenoh | counts; `depth`; small/large bounds; service req/resp bounds; `[policy]` | `ZPICO_MAX_*`, `SUBSCRIBER_RING_DEPTH`, payload pools, `SERVICE_BUFFERS` | counts and payload classes derived; ring depth DERIVED from the declared depths (phase-454 W6.a, −124,032 B measured); `SERVICE_BUFFERS`'s slot size takes the declared service bound as its default and carries a stated non-annotation — but **no service or action type has a bound row to read** (`record_message` runs for `.msg` only), so it refuses on every image today |
-| XRCE | counts (**zero legal**); per-family bounds; `depth`; MTU; `reliability` | `MAX_*`, per-family `BUFFER_SIZE`, ring depths, `STREAM_HISTORY` | two counts derivable via `-1`; one global `BUFFER_SIZE = 1024` serves three families; reliability unread |
+| XRCE | counts (**zero legal**); per-family bounds; `depth`; MTU; `reliability` | `MAX_*`, per-family `BUFFER_SIZE`, ring depths, `STREAM_HISTORY` | phase-454 W6.b: `BUFFER_SIZE` split into three family knobs; `reliability` gates `STREAM_HISTORY` down to its protocol floor; the SUBSCRIBER family's bound and ring depth derive together (separately they can GROW the pool — measured). The two SERVICE families are split and not derived: the parameter and lifecycle server families are not `[[endpoint]]` rows |
 | Cyclone | `[types]`, `[target].heap_budget_bytes`. **Nothing else** | `MAX_TYPES`, `MAX_DESCRIPTOR_TYPES`, `MAX_FIELDS`, `MAX_KINDS`, heap assertion | **all derived, phase-454 W6.c** |
 | uORB | distinct topic count; subscription count | `REGISTRY_CAPACITY`, `PX4_MAX_CALLBACKS` | **both derived, phase-454 W6.d** |
 | cffi | subscription count; node count; backend count | `RMW_SUBSCRIBER_SLOTS`, `MAX_NODES`, `MAX_BACKENDS` | **all three derived, phase-454 W6.e** |
@@ -549,7 +549,7 @@ state, and "nobody said" is not "too small" (D6).
 | gap | bytes | direction | cause |
 | --- | --- | --- | --- |
 | Rust typed on a schemaless backend | 1,848 per subscription | **UNDER** (issue 1319) | the registration path decides the slot size and the build cannot see it |
-| XRCE reliable streams | ~131,072 per session | over | reliability declared but unread |
+| XRCE reliable streams | ~131,072 per session, **98,304 of it recoverable** | over | reliability declared but unread. Recovered by phase-454 W6.b, measured: the two buffers drop to `SLOTS = 4` on a best-effort-only image. The residue is not a leak — both streams carry session CONTROL (every entity CREATE/DELETE, and the `uxr_buffer_request_data` that names the input stream for every reader whatever its QoS), so the `SLOTS` term shrinks to the protocol floor and the pool does not vanish |
 | zenoh `SERVICE_BUFFERS` | 144,128 on a native talker | over | not derived, not in the inventory |
 | island arena, depth 10 vs declared | 135,432 | over | 207,096 against 71,664 with the eleven `QoS(1)` declarations the code already makes |
 

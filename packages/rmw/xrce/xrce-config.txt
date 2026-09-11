@@ -98,7 +98,17 @@
 #   1. the environment variable          — a person, right now
 #   2. `CONFIG_<env>` in `$DOTCONFIG`    — a person, in the tree (Kconfig)
 #   3. the `[knobs.xrce]` rung           — RUST LANE ONLY, see below
+#   3.5 the SIZING DESCRIPTOR            — RUST LANE ONLY, phase-454 W6.b
 #   4. the `<default>` column here       — nobody stated one
+#
+# Rung 3.5 is a DERIVED default under every stated rung above it, which is
+# RFC-0100 D1's rule ("a policy fact is stated, and a derived fact may supply
+# its default") and RFC-0049's ladder rather than a new mechanism. It is
+# cargo-only for the same mechanical reason rung 3 is: reading
+# `<build>/nros/sizing/<entry>.toml` needs the `nros-sizing-descriptor` crate,
+# which the CMake lane cannot link. It reaches `define` rows only — a template
+# `knob` is upstream's configuration, not ours to derive. What it decides, and
+# what it refuses to decide, is in `nros-rmw-xrce-cffi/build.rs`'s `XrceDemand`.
 #
 # Rung 3 (`nros_platform_config`'s `[knobs.xrce]` in a platform/board TOML) is
 # a CARGO build-script front-end: reading it needs a TOML parser, which the
@@ -228,6 +238,24 @@ define  XRCE_MAX_SERVICE_SERVERS   NROS_XRCE_MAX_SERVICE_SERVERS   0
 define  XRCE_MAX_SERVICE_CLIENTS   NROS_XRCE_MAX_SERVICE_CLIENTS   0
 define  XRCE_SUBSCRIBER_RING_DEPTH NROS_XRCE_SUBSCRIBER_RING_DEPTH 1
 define  XRCE_BUFFER_SIZE           NROS_XRCE_BUFFER_SIZE           64
+# phase-454 W6.b (RFC-0100 D2/D5) — one number served three receive families
+# and none of them describes the other two. `XRCE_BUFFER_SIZE` above is now the
+# DEFAULT of these three (in `internal.h`'s `#ifndef`, so unset still means one
+# number for all three and an image that states nothing builds byte-identically
+# to before the split).
+#
+# Their <min> is 1 rather than the 64 above, and the difference is about WHO
+# produces the number. 64 guards a person typing one: `xrce_stage_inbound` needs
+# `len + XRCE_CDR_HEADER_LEN <= cap`, and a hand-picked 8 is a mistake with no
+# feedback. These three also have a DERIVING producer — the cargo lane's
+# `XrceDemand`, which computes exactly `max(wire_bound) + XRCE_CDR_HEADER_LEN`
+# over the family's declared endpoints — and for that producer any value above 0
+# is exact rather than a guess. The array's real floor is the `#if < 1 / #error`
+# beside each array in `internal.h` (issues 1015/1131), which is where a floor
+# belongs (D7).
+define  XRCE_SUBSCRIBER_BUFFER_SIZE      NROS_XRCE_SUBSCRIBER_BUFFER_SIZE      1
+define  XRCE_SERVICE_REQUEST_BUFFER_SIZE NROS_XRCE_SERVICE_REQUEST_BUFFER_SIZE 1
+define  XRCE_SERVICE_REPLY_BUFFER_SIZE   NROS_XRCE_SERVICE_REPLY_BUFFER_SIZE   1
 # Phase 130.6 — reliable-stream history. `internal.h` documents why 16 is the
 # default; 4 is the floor (reliable retransmission needs at least 2 unACK'd
 # messages outstanding plus headroom).

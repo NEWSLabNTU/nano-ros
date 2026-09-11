@@ -218,7 +218,7 @@ One sub-wave per consumer; they are independent and can run in parallel.
 | sub-wave | backend | lands |
 | --- | --- | --- |
 | W6.a | zenoh | `SUBSCRIBER_RING_DEPTH` from declared depth (authored today); `SERVICE_BUFFERS` derived from request/response bounds and given a `// nros-pool:` annotation or a stated reason — it is 144,128 B on a native talker and in neither |
-| W6.b | XRCE | `reliability` gates the two 64 KiB `*_reliable_buf`; one global `BUFFER_SIZE = 1024` splits into three per-family sizes; ring depths take declared depth as their default |
+| W6.b | XRCE | **Landed.** `reliability` gates the two 64 KiB `*_reliable_buf`; one global `BUFFER_SIZE = 1024` splits into three per-family sizes; the subscriber ring takes declared bound and depth. See the correction below — the streams shrink to a protocol floor rather than vanishing, and two of the three families are split but not derived |
 | W6.c | Cyclone | **LANDED** — `MAX_DESCRIPTOR_TYPES` derived from the same count as `MAX_TYPES` (silent-drop overflow at ~86 types today); `MAX_FIELDS`/`MAX_KINDS`/`MAX_NESTED_DEPTH` from the schema walk codegen already does; heap budget asserted at boot (D11) |
 | W6.d | uORB | **LANDED.** `REGISTRY_CAPACITY` and `PX4_MAX_CALLBACKS` — both trivially derivable, neither wired |
 | W6.e | cffi | **LANDED.** `MAX_NODES` from `components().len()`, which is already computed and discarded |
@@ -292,6 +292,46 @@ Three outcomes, the same three W4 established: no descriptor → byte-identical 
 every build before this wave (verified: both constants unchanged, no warning
 printed); a refused field → the builtin plus a `cargo::warning` naming the
 refusal; a corrupt descriptor → a hard build error naming the file.
+
+#### W6.b — XRCE — **LANDED**
+
+**"Stops paying both buffers" was not available, and the reason is structural.**
+Both reliable streams stay LIVE on a best-effort-only image, because this
+backend sends *every control message* on `st->output_reliable` — participant,
+topic, publisher, datawriter and datareader CREATE, DELETE,
+`uxr_buffer_request_data` — and `uxr_buffer_request_data` names
+`st->input_reliable` as the stream the Agent delivers on, for **every reader,
+whatever its QoS**. A declaration about data delivery is not a licence to make
+session setup lossy, so what `reliability` gates is the `SLOTS` term, down to
+the protocol floor of 4 that D2 already writes into its own table. Measured on
+`xrce_session_state_t` (x86-64, defaults otherwise): **427,968 → 329,664**, i.e.
+**98,304 bytes of the 131,072**, and the residue is a protocol requirement
+rather than money on the table.
+
+**Only the subscriber family is derived; the two service families are split and
+not.** The parameter (6 per node) and lifecycle (5) families open service
+servers that no `[[endpoint]]` row itemises, and an action server opens three
+more — so a size taken from the declared service rows alone is short for exactly
+those, in the UNDER direction. That is D6's `undeclared_endpoints != 0` rule
+reaching a set the field does not count. The split still lands in full: three
+macros, three arrays, three knobs, each settable.
+
+**The subscriber pool's two factors move TOGETHER or not at all,** and the
+mutation control is measured rather than argued: a declared `std_msgs/msg/String`
+prices its ring entry at 1,174 bytes against the literal 1,024 while a declared
+`depth = 10` prices the ring at 10 entries against the literal 32, so taking the
+bound WITHOUT the depth is **427,968 → 466,880, a 38,912-byte growth**. Taking
+both, at depth 1: **427,968 → 72,960**, and with the reliability gate as well
+**→ 72,960 from 171,264**. A pool sized from one declaration and one literal
+describes no image at all.
+
+**`mem-report --baseline` cannot show any of this**, and that is a property of
+the pool rather than of the tool: `xrce_session_state_t` is ONE
+`nros_platform_alloc` at session open, and `mem-report` joins declared pools to
+ELF SYMBOLS. The figures above are `sizeof` under the two `-D` sets. The knobs
+themselves ARE enumerable — all three reach `static-pool-inventory.md` with
+their defaults, which needed `gen-pool-inventory.py` to follow a `#ifndef`
+default that is another guarded MACRO rather than a literal.
 
 #### W6.c — Cyclone — **LANDED**
 
@@ -521,7 +561,7 @@ named image, each with a before/after from `just mem-report --baseline`:
 | gap | direction | acceptance |
 | --- | --- | --- |
 | Rust typed on a schemaless backend (issue 1319) | **UNDER**, 1,848 B per subscription | a reproduction that fails with `BufferTooSmall` FIRST, then passes |
-| XRCE reliable streams | over, ~131,072 B per session | a best-effort-only image stops paying both buffers |
+| XRCE reliable streams | over, ~131,072 B per session | **MET at 98,304 B** (W6.b, measured): a best-effort-only image drops both buffers to the protocol floor. It cannot drop them entirely — both streams carry session control for every image, whatever its QoS; see "W6.b, as built" |
 | zenoh `SERVICE_BUFFERS` | over, 144,128 B (native talker) | derived, and either annotated or given a stated reason |
 | island arena, declared vs default depth | over, 135,432 B (207,096 → 71,664) | already true on the Zephyr road; holds on the cargo road too |
 

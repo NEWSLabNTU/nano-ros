@@ -56,7 +56,8 @@ void xrce_topic_callback(uxrSession* session, uxrObjectId object_id, uint16_t re
          * `xrce_stage_inbound`, shared with the two service inboxes because all
          * three had the same fragment bug. A refusal sets the entry's overflow
          * flag, which the take reports as NROS_RMW_RET_MESSAGE_TOO_LARGE. */
-        entry->overflow = !xrce_stage_inbound(entry->data, XRCE_BUFFER_SIZE, ub, len, &entry->len);
+        entry->overflow =
+            !xrce_stage_inbound(entry->data, XRCE_SUBSCRIBER_BUFFER_SIZE, ub, len, &entry->len);
         slot->write_idx = (uint16_t)((slot->write_idx + 1) % XRCE_SUBSCRIBER_RING_DEPTH);
         slot->count++;
         return;

@@ -110,6 +110,37 @@ static inline void nros_xrce_free(void* ptr) {
 #ifndef XRCE_BUFFER_SIZE
 #define XRCE_BUFFER_SIZE 1024
 #endif
+/* phase-454 W6.b (RFC-0100 D2/D5) — ONE number served THREE families, and the
+ * three have nothing to do with each other.
+ *
+ * `XRCE_BUFFER_SIZE` sized the subscriber ring entry, the service-server
+ * request entry and the service-client reply slot alike, so every family paid
+ * for the largest type ANY of them carries. D2's formula is per-pool
+ * (`COUNT x SLOTS x SLOT_BYTES`), and `SLOT_BYTES` is a property of the types
+ * THAT family receives — the subscriber ring is by far the biggest pool
+ * (`XRCE_MAX_SUBSCRIBERS x XRCE_SUBSCRIBER_RING_DEPTH` entries against the
+ * service families' 4 and 1), so the shared number is paid ~32x over there and
+ * once here.
+ *
+ * `XRCE_BUFFER_SIZE` stays as the DEFAULT of all three rather than being
+ * deleted, for two reasons that are both about not moving bytes nobody asked to
+ * move: an image that states nothing derives byte-identically to before this
+ * wave, and `NROS_XRCE_BUFFER_SIZE` remains the one lever that raises every
+ * receive buffer at once (`large_msg.rs` is built on exactly that, and the
+ * backend's own MESSAGE_TOO_LARGE diagnostic names it).
+ *
+ * Only the SUBSCRIBER family is derived from declarations today
+ * (`nros-rmw-xrce-cffi/build.rs`). The two service families are settable and
+ * not derived, and the reason is stated there rather than guessed here. */
+#ifndef XRCE_SUBSCRIBER_BUFFER_SIZE
+#define XRCE_SUBSCRIBER_BUFFER_SIZE XRCE_BUFFER_SIZE
+#endif
+#ifndef XRCE_SERVICE_REQUEST_BUFFER_SIZE
+#define XRCE_SERVICE_REQUEST_BUFFER_SIZE XRCE_BUFFER_SIZE
+#endif
+#ifndef XRCE_SERVICE_REPLY_BUFFER_SIZE
+#define XRCE_SERVICE_REPLY_BUFFER_SIZE XRCE_BUFFER_SIZE
+#endif
 /* Phase 130.4 — bumped default from 4 to 16. Action server callbacks
  * that publish feedback + result + status_array + service replies
  * in a single user-handler invocation could exhaust 4 unACK'd slots
@@ -125,7 +156,28 @@ static inline void nros_xrce_free(void* ptr) {
  * RAM RTOS targets can drop to 8 (32 KiB) when the application
  * doesn't run server-side action callbacks that fan out replies.
  * Lower than 4 is rejected — reliable retransmission needs at
- * least 2 unACK'd messages outstanding plus headroom. */
+ * least 2 unACK'd messages outstanding plus headroom.
+ *
+ * phase-454 W6.b — the floor below is a PROTOCOL requirement and the
+ * default above is a statement about ENDPOINTS, which is why only the
+ * second one moves. Read the 130.4 justification again: every message
+ * it names (feedback, result, status_array, service replies) is
+ * ENDPOINT traffic. An image whose every endpoint declares
+ * `reliability = best_effort` fans out none of it on this stream, so
+ * `nros-rmw-xrce-cffi/build.rs` derives 4 for it from the sizing
+ * descriptor — the RFC-0100 D1 shape, a policy that is stated and a
+ * derived fact supplying its default.
+ *
+ * What it does NOT derive is 0, and that is not conservatism. Both
+ * reliable streams stay LIVE on a best-effort-only image: every
+ * control message this backend sends rides `st->output_reliable`
+ * (participant/topic/publisher/datawriter/datareader CREATE, DELETE,
+ * `uxr_buffer_request_data`), and `uxr_buffer_request_data` names
+ * `st->input_reliable` as the stream the Agent delivers on, for every
+ * reader, whatever its QoS. A declaration about DATA delivery is not a
+ * licence to make session setup lossy. The buffer therefore shrinks
+ * with the history and does not go away; the block size is
+ * `size / history`, so an MTU-sized message still fits at 4. */
 #ifndef XRCE_STREAM_HISTORY
 #define XRCE_STREAM_HISTORY 16
 #endif
@@ -162,7 +214,7 @@ static inline void nros_xrce_free(void* ptr) {
  * back-to-back publish burst doesn't silently overwrite unread
  * messages (root cause of `test_xrce_throughput_{100hz,burst}` only
  * receiving 1 of 100 msgs). Each ring entry carries its own
- * `data[XRCE_BUFFER_SIZE]` + `len`; the topic callback writes to
+ * `data[XRCE_SUBSCRIBER_BUFFER_SIZE]` + `len`; the topic callback writes to
  * `entries[write_idx]` and advances, `take_serialized` reads from
  * `entries[read_idx]` and advances. `count` distinguishes empty (0)
  * from full (XRCE_SUBSCRIBER_RING_DEPTH). On full, the callback
@@ -186,19 +238,37 @@ static inline void nros_xrce_free(void* ptr) {
  * publishes 100 msgs back-to-back; depth 32 caps the visible burst
  * at the head 32 (matches the `test_xrce_throughput_*` expectations
  * of ≥3 / ≥10) without paying the memory cost of a 100+ entry
- * ring. Memory cost: 32 × XRCE_BUFFER_SIZE per subscriber × 8
- * max = 256 KB. Tight-RAM RTOS targets can override via
- * `-DXRCE_SUBSCRIBER_RING_DEPTH=...` at build time. */
+ * ring. Memory cost: 32 × XRCE_SUBSCRIBER_BUFFER_SIZE per
+ * subscriber × 8 max = 256 KB. Tight-RAM RTOS targets can override
+ * via `-DXRCE_SUBSCRIBER_RING_DEPTH=...` at build time.
+ *
+ * phase-454 W6.b — still a POLICY and still stated, exactly as
+ * `zephyr/Kconfig` argues: no inventory knows how deep a burst a
+ * subscriber must survive. What changed is where its DEFAULT comes
+ * from when the image declared one (RFC-0100 D1: "a policy fact is
+ * stated, and a derived fact may supply its default"). A subscription
+ * declaring `qos.depth = 10` is a KEEP_LAST(10) queue that drops past
+ * ten anyway, so 10 is a better default for that image than a literal
+ * chosen for a 100-message burst test.
+ *
+ * The derivation moves this knob and XRCE_SUBSCRIBER_BUFFER_SIZE
+ * TOGETHER or not at all, and that coupling is the whole reason it
+ * cannot make an image bigger: this pool is one product
+ * (`MAX_SUBSCRIBERS x RING_DEPTH x BUFFER_SIZE`, RFC-0100 D2), and a
+ * declared bound of 1,174 bytes against a literal depth of 32 prices a
+ * pool 15% LARGER than the defaults it replaced. Supplying one factor
+ * from the declaration and the other from a literal prices a pool
+ * neither describes. */
 #define XRCE_SUBSCRIBER_RING_DEPTH 32
 #endif
 
-/* ---- Smallest legal size for the four PER-SLOT arrays (issue 1131) ---
+/* ---- Smallest legal size for the PER-SLOT arrays (issue 1131) ---
  *
  * BELOW the `#ifndef` fallbacks above, never before one: in `#if` an undefined
  * identifier reads as 0, so a guard placed above its own default fires on every
  * build instead of protecting anything (issue 1167).
  *
- * These four are CAPACITIES INSIDE a slot, and that is what separates them from
+ * These are CAPACITIES INSIDE a slot, and that is what separates them from
  * the three slot COUNTS above, which issue 1033 ruled zero-legal. An image that
  * wants none of an entity sets its COUNT to 0 and the whole slot array goes
  * away — that is the 33,296-bytes-a-subscriber saving. Setting a capacity to 0
@@ -206,9 +276,20 @@ static inline void nros_xrce_free(void* ptr) {
  *
  *   XRCE_BUFFER_SIZE=0          `xrce_stage_inbound` needs `len + 4 <= cap`, so
  *                               every inbound payload fails to stage and every
- *                               take reports MESSAGE_TOO_LARGE. The only
+ *                               take reports MESSAGE_TOO_LARGE. Its human
  *                               producer, `nros-rmw-xrce-cffi/build.rs`, already
- *                               refuses anything under 64.
+ *                               refuses anything under 64. It sizes no array
+ *                               directly since phase-454 W6.b — it is the
+ *                               DEFAULT of the three family knobs below, so a 0
+ *                               here reaches all three and the guard still has
+ *                               work to do.
+ *   XRCE_SUBSCRIBER_BUFFER_SIZE=0 / XRCE_SERVICE_REQUEST_BUFFER_SIZE=0 /
+ *   XRCE_SERVICE_REPLY_BUFFER_SIZE=0
+ *                               the same `xrce_stage_inbound` arm, one family at
+ *                               a time. Guarded each rather than by analogy with
+ *                               the line above: the analogy is what issue 1131
+ *                               ruled out, and a derived producer reaching one
+ *                               of these is exactly the 1015 shape.
  *   XRCE_SUBSCRIBER_RING_DEPTH=0  `count >= depth` is true at 0, so the topic
  *                               callback takes its ring-full drop arm for every
  *                               message and the subscriber receives nothing —
@@ -222,7 +303,16 @@ static inline void nros_xrce_free(void* ptr) {
  *                               so the server can never answer anything.
  */
 #if XRCE_BUFFER_SIZE < 1
-#error "XRCE_BUFFER_SIZE must be >= 1: it sizes a C array (issue 1015)"
+#error "XRCE_BUFFER_SIZE must be >= 1: it is the default of the family buffers (issue 1015)"
+#endif
+#if XRCE_SUBSCRIBER_BUFFER_SIZE < 1
+#error "XRCE_SUBSCRIBER_BUFFER_SIZE must be >= 1: it sizes a C array (issue 1015)"
+#endif
+#if XRCE_SERVICE_REQUEST_BUFFER_SIZE < 1
+#error "XRCE_SERVICE_REQUEST_BUFFER_SIZE must be >= 1: it sizes a C array (issue 1015)"
+#endif
+#if XRCE_SERVICE_REPLY_BUFFER_SIZE < 1
+#error "XRCE_SERVICE_REPLY_BUFFER_SIZE must be >= 1: it sizes a C array (issue 1015)"
 #endif
 #if XRCE_SUBSCRIBER_RING_DEPTH < 1
 #error "XRCE_SUBSCRIBER_RING_DEPTH must be >= 1: it sizes a C array (issue 1015)"
@@ -235,7 +325,7 @@ static inline void nros_xrce_free(void* ptr) {
 #endif
 
 typedef struct xrce_subscriber_ring_entry {
-    uint8_t data[XRCE_BUFFER_SIZE];
+    uint8_t data[XRCE_SUBSCRIBER_BUFFER_SIZE];
     size_t len;
     bool overflow;
 } xrce_subscriber_ring_entry;
@@ -262,7 +352,7 @@ typedef struct xrce_reply_token {
 
 /* One buffered request in the service-server inbox ring. */
 typedef struct xrce_service_request_entry {
-    uint8_t data[XRCE_BUFFER_SIZE];
+    uint8_t data[XRCE_SERVICE_REQUEST_BUFFER_SIZE];
     size_t len;
     bool overflow;
     SampleIdentity sample_id;
@@ -286,7 +376,7 @@ typedef struct xrce_service_server_slot {
 
 /* Service-client slot — reply inbox. */
 typedef struct xrce_service_client_slot {
-    uint8_t data[XRCE_BUFFER_SIZE];
+    uint8_t data[XRCE_SERVICE_REPLY_BUFFER_SIZE];
     size_t len;
     bool has_reply;
     bool overflow;

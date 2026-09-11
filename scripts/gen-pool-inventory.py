@@ -199,6 +199,39 @@ _IFNDEF_DEFAULT = re.compile(
     r"^#ifndef\s+([A-Za-z_][A-Za-z0-9_]*)\s*$.*?^#define\s+\1\s+([0-9]+)\s*$",
     re.M | re.S,
 )
+# The same pair whose default is ANOTHER guarded macro rather than a literal —
+# phase-454 W6.b. `XRCE_SUBSCRIBER_BUFFER_SIZE` and its two siblings default to
+# `XRCE_BUFFER_SIZE`, because one number legitimately serves three families
+# until an image says otherwise. Writing 1024 beside each of them would be the
+# fourth, fifth and sixth home for a figure this file exists to stop copying;
+# following the alias publishes what the compiler actually computes.
+_IFNDEF_ALIAS = re.compile(
+    r"^#ifndef\s+([A-Za-z_][A-Za-z0-9_]*)\s*$.*?"
+    r"^#define\s+\1\s+([A-Za-z_][A-Za-z0-9_]*)\s*$",
+    re.M | re.S,
+)
+
+
+def xrce_guarded_defaults(header_text):
+    """macro -> its `#ifndef` default, following one macro-valued alias chain.
+
+    An alias whose target has no guarded default of its own resolves to
+    NOTHING, deliberately: "say `computed`, never invent one" is the rule the
+    literal case already holds to, and an alias is not a reason to guess.
+    """
+    numeric = {m: int(n) for m, n in _IFNDEF_DEFAULT.findall(header_text)}
+    alias = {m: t for m, t in _IFNDEF_ALIAS.findall(header_text) if m not in numeric}
+    for macro, target in alias.items():
+        seen = {macro}
+        # Bounded walk. A cycle is a header that would not compile, but this
+        # reads a file rather than trusting one, and an unbounded walk over a
+        # cycle is a hang with no message.
+        while target in alias and target not in seen:
+            seen.add(target)
+            target = alias[target]
+        if target in numeric:
+            numeric[macro] = numeric[target]
+    return numeric
 
 
 def _xrce_parse_manifest(text, where):
@@ -229,7 +262,7 @@ def xrce_knobs(manifest_text, header_text, manifest_rel=XRCE_MANIFEST):
     no guarded default reports no figure rather than inventing one.
     """
     _values, knob_rows, _flags, define_rows = _xrce_parse_manifest(manifest_text, manifest_rel)
-    guarded = {m: int(n) for m, n in _IFNDEF_DEFAULT.findall(header_text)}
+    guarded = xrce_guarded_defaults(header_text)
 
     line_of = {}
     for n, raw in enumerate(manifest_text.splitlines(), 1):
@@ -487,7 +520,7 @@ def self_test():
     # broken wire moves only one.
     man_text, hdr_text = xrce_sources()
     _v, knob_rows, _f, define_rows = _xrce_parse_manifest(man_text, XRCE_MANIFEST)
-    guarded = {m: int(n) for m, n in _IFNDEF_DEFAULT.findall(hdr_text)}
+    guarded = xrce_guarded_defaults(hdr_text)
     assert define_rows and knob_rows, (
         f"{XRCE_MANIFEST} parsed to no `define`/`knob` rows — the relation below "
         "would hold vacuously, which is the shape `check-no-vacuous-tests` bans"
@@ -560,11 +593,17 @@ def self_test():
         "define XRCE_BUFFER_SIZE  NROS_XRCE_BUFFER_SIZE  64\n"
         "define XRCE_MAX_SUBSCRIBERS NROS_XRCE_MAX_SUBSCRIBERS 0\n"
         "define XRCE_UNGUARDED    NROS_XRCE_UNGUARDED    1\n"
+        "define XRCE_SUB_ALIAS    NROS_XRCE_SUB_ALIAS    1\n"
+        "define XRCE_DANGLING     NROS_XRCE_DANGLING     1\n"
     )
     hdr = (
         "#ifndef XRCE_BUFFER_SIZE\n/* prose */\n#define XRCE_BUFFER_SIZE 1024\n#endif\n"
         "#ifndef XRCE_MAX_SUBSCRIBERS\n#define XRCE_MAX_SUBSCRIBERS 8\n#endif\n"
         "#define XRCE_UNGUARDED 77\n"  # not overridable ⇒ not a knob's default
+        # phase-454 W6.b — a guarded default that IS another guarded macro.
+        "#ifndef XRCE_SUB_ALIAS\n/* prose */\n#define XRCE_SUB_ALIAS XRCE_BUFFER_SIZE\n#endif\n"
+        # …and one whose target has no guarded default. Still `computed`.
+        "#ifndef XRCE_DANGLING\n#define XRCE_DANGLING XRCE_UNGUARDED\n#endif\n"
     )
     xk = xrce_knobs(man, hdr, "M")
     assert xk["NROS_XRCE_BUFFER_SIZE"][0] == 1024, (
@@ -580,6 +619,16 @@ def self_test():
     assert xk["NROS_XRCE_UNGUARDED"][0] is None, (
         "a macro with no `#ifndef` guard is not overridable, so this file has no "
         "default to publish — say `computed`, never invent one"
+    )
+    assert xk["NROS_XRCE_SUB_ALIAS"][0] == 1024, (
+        "a guarded default that is another guarded MACRO must resolve to what the "
+        "compiler computes; publishing nothing would drop the three phase-454 W6.b "
+        "family knobs out of this table, and writing 1024 beside each of them would "
+        "be the copy this file exists to prevent"
+    )
+    assert xk["NROS_XRCE_DANGLING"][0] is None, (
+        "…and an alias whose target has no guarded default resolves to NOTHING. An "
+        "alias is not a reason to guess"
     )
     assert "NROS_XRCE_STREAM_HISTORY" not in xk, "only rows in the manifest"
     assert "CONFIG_MACHINE_ENDIANNESS" not in xk and "UCLIENT_PROFILE_UDP" not in xk, (
