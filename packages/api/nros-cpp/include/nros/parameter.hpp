@@ -1,45 +1,58 @@
-// nros-cpp: Parameter server wrapper
-// Freestanding C++ — no exceptions, no STL required, no heap
+// nros-cpp: the fixed-capacity sequence VALUE used by array parameters
+// Freestanding C++ - no exceptions, no STL required, no heap
 
 /**
  * @file parameter.hpp
  * @ingroup grp_parameter
- * @brief `nros::ParameterServer<Cap>` — node-local typed parameter store.
+ * @brief `nros::Seq<T, N>` - the fixed-capacity, inline sequence VALUE a
+ *        freestanding node declares an array parameter with.
  *
- * Wraps the C `nros_parameter_server_t` (see `nros/parameter.h`) with a
- * fixed-capacity storage array and rclcpp-shape `declare_parameter<T>` /
- * `get_parameter<T>` / `set_parameter<T>` template methods.
+ * ## What this file used to be, and why it is not that any more (phase-426 W4)
  *
- * The server is purely local — no ROS 2 service exposure. For
- * service-backed parameters, use the `param-services` Cargo feature on
- * `nros-c` and the `nros_executor_*_param_*` C functions directly.
+ * Until now this header also defined `nros::ParameterServer<Capacity,
+ * SeqSlots, SeqPoolBytes>`: a second parameter STORE, inline on the caller,
+ * over the caller-storage C `nros_parameter_server_t`. The first half of W4
+ * deleted the two node-owned stores (`rclcpp::Node`'s inline member and
+ * `ComponentNode`'s facade) so a parameter declared in C++ lands in the one
+ * `nros_params::ParameterServer` the six `rcl_interfaces/srv/*` servers read
+ * - and left this one standing, still shipped and still the whole of
+ * `examples/native/cpp/parameters`. Its parameters were invisible to
+ * `ros2 param get`, which is the exact defect phase-426 exists to remove.
  *
- * ## Sequence parameters (Phase 242.3 / RFC-0044 Q3)
+ * A caller-owned store with no executor turned out to have no consumer:
+ * nothing in the tree constructed one except the example that documented it.
+ * RFC-0019/0020 and RFC-0089 §"Parameters" put storage, typing, the
+ * read-only and range rules and the node keying in Rust and leave the C++
+ * API a call-shape adapter, so the class is ABSENT now - RFC-0089's fourth
+ * disposition, and the honest one here because rclcpp never had the name, so
+ * no ported alias is load-bearing. A node's parameters are
+ * `rclcpp::Node::declare_parameter<T>` / `get_parameter<T>` /
+ * `set_parameter<T>` / `has_parameter`, forwarded by
+ * `nros/node_parameters.hpp`.
  *
- * `declare_parameter` / `get_parameter` / `set_parameter` also accept a
- * fixed-capacity sequence value `nros::Seq<T, N>` (`T` = `double`,
- * `int64_t`, or `bool`). This unblocks rclcpp-faithful nodes that declare
- * `std::vector<double>` weight matrices (ASI's MPC) without a heap.
+ * ## What did NOT go, and why this file survives
  *
- * **Capacity model (RFC-0044 Q3 — compile-time `N`, no shared dynamic
- * arena).** The per-parameter capacity is the compile-time `N` of the
- * `Seq<T, N>` the caller declares. The server owns the element bytes in
- * an inline, statically-sized pool (`SeqPoolBytes`) bump-allocated at
- * declare time. Both are compile-time bounds — no heap, no STL
- * `std::vector` in storage. The value type may be *built* from a
- * `std::vector<T>` under `NROS_CPP_STD`, but the storage is always the
- * fixed pool. Over-`N` and over-pool conditions are rejected with an
- * error code, never UB.
+ * `Seq<T, N>` is a VALUE, not a store, and it was the only way a
+ * freestanding (`-nostdinc++`) caller could express an array parameter:
+ * `std::vector<T>` reaches the array FFI only under `NROS_CPP_STD`. Deleting
+ * the store without it would have dropped that capability quietly, which is
+ * the failure mode W4's ordering rule exists to prevent. So `Seq` moved ONTO
+ * the store instead - `node_parameters.hpp` declares and reads it through
+ * `nros_cpp_node_{declare,get}_param_{double,integer,bool}_array`, and a
+ * sequence parameter is now visible to `ros2 param get` like every scalar.
+ * That is strictly more than the deleted class had: the pre-#226 header hid
+ * sequences from the C server entirely, and the post-#226 one exposed them
+ * only through a `raw()` accessor documented for C helpers that do not
+ * exist.
  *
- * **Storage split (issue #226).** The C array-parameter FFI
- * (`nros_parameter_*_array`) stores a *borrowed* pointer + length — the
- * caller must own stable bytes. This wrapper's inline pool IS that stable
- * owner: element bytes live in the pool (each allocation prefixed by its
- * element capacity), while the RECORDS (name → type → pointer/len) live
- * in the C server like every scalar. No parallel name table, no duplicate
- * lookup — and sequence parameters are visible through `raw()` to the
- * param services like everything else. (The pre-#226 header kept its own
- * record table and hid sequences from the C server entirely.)
+ * ## Capacity model (RFC-0044 Q3) - unchanged
+ *
+ * The per-parameter capacity is the compile-time `N` of the `Seq<T, N>` the
+ * caller declares. The ELEMENTS are owned by the Rust store now (a
+ * `heapless::Vec` in its slot), not by an inline bump pool here, so there is
+ * no borrow for the caller to keep alive. Over-`N` construction truncates
+ * and records `overflowed()`; a read into a too-small `Seq` is rejected with
+ * an error code, never UB.
  */
 
 #ifndef NROS_CPP_PARAMETER_HPP
@@ -53,54 +66,8 @@
 // below instead of `std::size_t`) is always resolvable.
 #include <stddef.h>
 
-#include "nros/result.hpp"
-
 #ifdef NROS_CPP_STD
-#include <string>
 #include <vector>
-#endif
-
-extern "C" {
-#include "nros/parameter.h"
-}
-
-// Issue #226 — the array-parameter FFI is macro-generated in nros-c
-// (paste! expansion), which cbindgen cannot expand into nros_generated.h.
-// Declare the six entry points used below locally (client.hpp precedent).
-extern "C" {
-nros_ret_t nros_parameter_declare_double_array(nros_parameter_server_t* server, const char* name,
-                                               const double* data, size_t len);
-nros_ret_t nros_parameter_declare_integer_array(nros_parameter_server_t* server, const char* name,
-                                                const int64_t* data, size_t len);
-nros_ret_t nros_parameter_declare_bool_array(nros_parameter_server_t* server, const char* name,
-                                             const bool* data, size_t len);
-nros_ret_t nros_parameter_get_double_array(const nros_parameter_server_t* server, const char* name,
-                                           const double** data, size_t* len);
-nros_ret_t nros_parameter_get_integer_array(const nros_parameter_server_t* server, const char* name,
-                                            const int64_t** data, size_t* len);
-nros_ret_t nros_parameter_get_bool_array(const nros_parameter_server_t* server, const char* name,
-                                         const bool** data, size_t* len);
-nros_ret_t nros_parameter_set_double_array(nros_parameter_server_t* server, const char* name,
-                                           const double* data, size_t len);
-nros_ret_t nros_parameter_set_integer_array(nros_parameter_server_t* server, const char* name,
-                                            const int64_t* data, size_t len);
-nros_ret_t nros_parameter_set_bool_array(nros_parameter_server_t* server, const char* name,
-                                         const bool* data, size_t len);
-} // extern "C"
-
-// Issue #229 pin (cross-space, C half): ErrorCode must stay value-identical
-// to the C nros_ret_t codes this header feeds straight into Result().
-// Guarded: the NROS_RET_* macros arrive via the generated C header, which
-// some include orders pull in after us.
-#ifdef NROS_RET_ALREADY_EXISTS
-static_assert(static_cast<int32_t>(::nros::ErrorCode::NotFound) == NROS_RET_NOT_FOUND &&
-                  static_cast<int32_t>(::nros::ErrorCode::AlreadyExists) ==
-                      NROS_RET_ALREADY_EXISTS &&
-                  static_cast<int32_t>(::nros::ErrorCode::Full) == NROS_RET_FULL &&
-                  static_cast<int32_t>(::nros::ErrorCode::NotInitialized) == NROS_RET_NOT_INIT &&
-                  static_cast<int32_t>(::nros::ErrorCode::TryAgain) == NROS_RET_TRY_AGAIN &&
-                  static_cast<int32_t>(::nros::ErrorCode::Unsupported) == NROS_RET_UNSUPPORTED,
-              "ErrorCode diverged from nros_ret_t (issue #229)");
 #endif
 
 namespace nros {
@@ -199,399 +166,6 @@ template <typename T, ::size_t N> class Seq {
     T data_[N];
     ::size_t size_;
     bool overflow_ = false;
-};
-
-namespace detail {} // namespace detail
-
-/// Fixed-capacity, node-local typed parameter server.
-///
-/// Capacity is compile-time; storage lives inline. No heap allocation.
-/// Bool / int64 / double / string scalar types supported, plus
-/// fixed-capacity `Seq<T, N>` sequences (`T` = double / int64 / bool).
-///
-/// @tparam Capacity     Max scalar/string parameters (C-side storage).
-/// @tparam SeqSlots     Retained for source compatibility (issue #226):
-///                      sequence records now live in the C server, so the
-///                      declare count is bounded by `Capacity` like every
-///                      scalar; this parameter no longer bounds anything.
-/// @tparam SeqPoolBytes Inline byte pool backing all sequence element
-///                      storage (default 256 B ≈ 32 doubles).
-///
-/// Strings are copied into a 128-byte slot inside the server; callers do
-/// not need to keep the source buffer alive past the call. Sequence
-/// elements are copied into the inline pool — the server owns them; the
-/// caller's `Seq` / `std::vector` need not outlive the call.
-///
-/// Usage:
-/// ```cpp
-/// nros::ParameterServer<16> params;
-/// NROS_TRY(params.declare_parameter<double>("ctrl_period", 0.15));
-/// double v = 0.0;
-/// NROS_TRY(params.get_parameter<double>("ctrl_period", v));
-///
-/// // Sequence (MPC weight matrix):
-/// NROS_TRY(params.declare_parameter("mpc_weights",
-///                                   nros::Seq<double, 8>{1.0, 2.0, 3.0}));
-/// nros::Seq<double, 8> w;
-/// NROS_TRY(params.get_parameter("mpc_weights", w));
-/// ```
-template <::size_t Capacity, ::size_t SeqSlots /* unused, see above */ = 4,
-          ::size_t SeqPoolBytes = 256>
-class ParameterServer {
-  public:
-    ParameterServer() : server_(nros_parameter_server_get_zero_initialized()) {
-        nros_parameter_server_init(&server_, storage_, Capacity);
-    }
-
-    ~ParameterServer() { nros_parameter_server_fini(&server_); }
-
-    ParameterServer(const ParameterServer&) = delete;
-    ParameterServer& operator=(const ParameterServer&) = delete;
-    ParameterServer(ParameterServer&&) = delete;
-    ParameterServer& operator=(ParameterServer&&) = delete;
-
-    /// Declare a parameter with a default value.
-    ///
-    /// @tparam T  bool, int64_t, double, or const char*.
-    /// @param name           Parameter name (null-terminated).
-    /// @param default_value  Default value used until overridden.
-    template <typename T> Result declare_parameter(const char* name, T default_value) {
-        return declare_impl(name, default_value);
-    }
-
-    /// Declare a fixed-capacity sequence parameter (Phase 242.3).
-    ///
-    /// The element bytes are copied into the server's inline pool — the
-    /// server owns them; `default_value` need not outlive the call.
-    ///
-    /// @tparam T  double, int64_t, or bool.
-    /// @tparam N  Per-parameter compile-time capacity.
-    /// @retval ErrorCode::Ok            on success.
-    /// @retval NROS_RET_ALREADY_EXISTS  name already declared.
-    /// @retval NROS_RET_FULL            sequence-slot or element-pool full.
-    /// @retval NROS_RET_INVALID_ARGUMENT  null name.
-    template <typename T, ::size_t N>
-    Result declare_parameter(const char* name, const Seq<T, N>& default_value) {
-        return declare_seq_impl<T>(name, default_value.data(), default_value.size(), N);
-    }
-
-#ifdef NROS_CPP_STD
-    /// Declare a sequence parameter from a `std::vector<T>` (hosted).
-    /// `N` is the fixed storage capacity and must be given explicitly:
-    /// `declare_parameter<double, 8>("w", vec)`. Elements past `N` are
-    /// rejected (`NROS_RET_INVALID_ARGUMENT`).
-    template <typename T, ::size_t N>
-    Result declare_parameter(const char* name, const std::vector<T>& default_value) {
-        if (default_value.size() > N) {
-            return Result(NROS_RET_INVALID_ARGUMENT);
-        }
-        return declare_seq_impl<T>(name, default_value.data(), default_value.size(), N);
-    }
-#endif
-
-    /// Get a parameter value.
-    ///
-    /// @tparam T  bool, int64_t, or double.
-    /// @param name  Parameter name.
-    /// @param out   Receives the value on success.
-    /// @retval ErrorCode::Ok       on success.
-    /// @retval Other code (raw)    NROS_RET_NOT_FOUND if undeclared.
-    template <typename T> Result get_parameter(const char* name, T& out) const {
-        return get_impl(name, out);
-    }
-
-    /// Get a string parameter into a caller-provided buffer.
-    ///
-    /// @param name      Parameter name.
-    /// @param out       Output buffer (null-terminated on success).
-    /// @param max_len   Buffer capacity in bytes.
-    Result get_parameter(const char* name, char* out, ::size_t max_len) const {
-        return Result(nros_parameter_get_string(&server_, name, out, max_len));
-    }
-
-    /// Get a sequence parameter into a caller `Seq<T, N>` (Phase 242.3).
-    ///
-    /// Bounds-checked: if the stored element count exceeds the caller's
-    /// `N`, the value is **not** truncated — `NROS_RET_INVALID_ARGUMENT`
-    /// is returned (over-capacity rejected, never UB).
-    ///
-    /// @retval ErrorCode::Ok            on success.
-    /// @retval NROS_RET_NOT_FOUND       no such sequence parameter.
-    /// @retval NROS_RET_INVALID_ARGUMENT  element-type mismatch or `out`
-    ///                                  too small.
-    template <typename T, ::size_t N> Result get_parameter(const char* name, Seq<T, N>& out) const {
-        const T* src = nullptr;
-        ::size_t len = 0;
-        nros_ret_t rc = seq_get_ffi(&server_, name, &src, &len);
-        if (rc != NROS_RET_OK) {
-            return Result(rc);
-        }
-        if (len > N) {
-            return Result(NROS_RET_INVALID_ARGUMENT);
-        }
-        out.clear();
-        for (::size_t i = 0; i < len; ++i) {
-            out.push_back(src[i]);
-        }
-        return Result(NROS_RET_OK);
-    }
-
-    /// Borrow a sequence parameter's storage in place (zero-copy).
-    ///
-    /// `data` points into the server's inline pool and is valid until the
-    /// parameter is overwritten or the server is destroyed.
-    template <typename T>
-    Result get_parameter(const char* name, const T*& data, ::size_t& len) const {
-        return Result(seq_get_ffi(&server_, name, &data, &len));
-    }
-
-#ifdef NROS_CPP_STD
-    /// Get a sequence parameter into a `std::vector<T>` (hosted).
-    template <typename T> Result get_parameter(const char* name, std::vector<T>& out) const {
-        const T* src = nullptr;
-        ::size_t len = 0;
-        nros_ret_t rc = seq_get_ffi(&server_, name, &src, &len);
-        if (rc != NROS_RET_OK) {
-            return Result(rc);
-        }
-        out.assign(src, src + len);
-        return Result(NROS_RET_OK);
-    }
-#endif
-
-    /// Set an existing parameter's value.
-    template <typename T> Result set_parameter(const char* name, T value) {
-        return set_impl(name, value);
-    }
-
-    /// Set an existing sequence parameter (Phase 242.3).
-    ///
-    /// Bounds-checked: if `value` has more than the parameter's declared
-    /// capacity, `NROS_RET_INVALID_ARGUMENT` is returned (never UB).
-    template <typename T, ::size_t N>
-    Result set_parameter(const char* name, const Seq<T, N>& value) {
-        return set_seq_impl<T>(name, value.data(), value.size());
-    }
-
-#ifdef NROS_CPP_STD
-    /// Set an existing sequence parameter from a `std::vector<T>` (hosted).
-    template <typename T> Result set_parameter(const char* name, const std::vector<T>& value) {
-        return set_seq_impl<T>(name, value.data(), value.size());
-    }
-#endif
-
-    /// Check whether a parameter has been declared (scalar or sequence —
-    /// both live in the C server since issue #226).
-    bool has_parameter(const char* name) const { return nros_parameter_has(&server_, name); }
-
-    /// Number of declared parameters (scalars + sequences).
-    ::size_t parameter_count() const { return nros_parameter_server_get_count(&server_); }
-
-    /// Get the underlying C server pointer.
-    ///
-    /// Useful for handing the server to C-API helpers (e.g. ROS 2
-    /// service registration when the `param-services` feature is on).
-    /// Since issue #226 sequence parameters are recorded here too.
-    nros_parameter_server_t* raw() { return &server_; }
-    const nros_parameter_server_t* raw() const { return &server_; }
-
-  private:
-    /* declare overloads dispatch by argument type */
-    Result declare_impl(const char* name, bool v) {
-        return Result(nros_parameter_declare_bool(&server_, name, v));
-    }
-    Result declare_impl(const char* name, int64_t v) {
-        return Result(nros_parameter_declare_integer(&server_, name, v));
-    }
-    Result declare_impl(const char* name, double v) {
-        return Result(nros_parameter_declare_double(&server_, name, v));
-    }
-    Result declare_impl(const char* name, const char* v) {
-        return Result(nros_parameter_declare_string(&server_, name, v));
-    }
-    /* int / uint literals collapse to int64_t */
-    Result declare_impl(const char* name, int v) {
-        return Result(nros_parameter_declare_integer(&server_, name, static_cast<int64_t>(v)));
-    }
-
-    Result get_impl(const char* name, bool& out) const {
-        return Result(nros_parameter_get_bool(&server_, name, &out));
-    }
-    Result get_impl(const char* name, int64_t& out) const {
-        return Result(nros_parameter_get_integer(&server_, name, &out));
-    }
-    Result get_impl(const char* name, double& out) const {
-        return Result(nros_parameter_get_double(&server_, name, &out));
-    }
-    /* int reads go through the int64_t slot, then narrow — symmetric with the
-       int declare_impl/set_impl above (rclcpp nodes declare_parameter<int>). */
-    Result get_impl(const char* name, int& out) const {
-        int64_t v = 0;
-        Result r(nros_parameter_get_integer(&server_, name, &v));
-        if (r.ok()) {
-            out = static_cast<int>(v);
-        }
-        return r;
-    }
-
-    Result set_impl(const char* name, bool v) {
-        return Result(nros_parameter_set_bool(&server_, name, v));
-    }
-    Result set_impl(const char* name, int64_t v) {
-        return Result(nros_parameter_set_integer(&server_, name, v));
-    }
-    Result set_impl(const char* name, double v) {
-        return Result(nros_parameter_set_double(&server_, name, v));
-    }
-    Result set_impl(const char* name, const char* v) {
-        return Result(nros_parameter_set_string(&server_, name, v));
-    }
-    Result set_impl(const char* name, int v) {
-        return Result(nros_parameter_set_integer(&server_, name, static_cast<int64_t>(v)));
-    }
-
-#ifdef NROS_CPP_STD
-    /* 242.7 (fifth wall) — scalar std::string-VALUE params. 242.7 added
-       std::string-keyed names + std::vector values; rclcpp also declares
-       std::string *values* (ASI's MPC: declare_parameter<std::string>(name,
-       "mpc") for the controller-mode / solver-type / slope-source knobs). Copy
-       through the existing const char* string slot (128 bytes). */
-    Result declare_impl(const char* name, const ::std::string& v) {
-        return declare_impl(name, v.c_str());
-    }
-    Result set_impl(const char* name, const ::std::string& v) { return set_impl(name, v.c_str()); }
-    Result get_impl(const char* name, ::std::string& out) const {
-        char buf[128];
-        Result r(nros_parameter_get_string(&server_, name, buf, sizeof(buf)));
-        if (r.ok()) {
-            out.assign(buf);
-        }
-        return r;
-    }
-#endif // NROS_CPP_STD
-
-    /* -------- sequence parameters (issue #226): bytes in the pool below,
-       records in the C server. Each pool allocation is prefixed by a
-       uint64_t element-capacity header so `set_parameter` can bounds-check
-       without a parallel record table; both the header and the element
-       block are 8-aligned (every supported element type has alignment
-       <= 8). Pool bytes are permanent for the server's lifetime, exactly
-       what the borrow-semantics C array FFI requires of its caller. A
-       declare that fails at the FFI (duplicate name racing in, server
-       full) does not advance the pool cursor. -------- */
-
-    static ::size_t align_up(::size_t off, ::size_t a) { return (off + (a - 1)) & ~(a - 1); }
-
-    /* C-FFI dispatch by element type (double / int64 / bool). */
-    static nros_ret_t seq_declare_ffi(nros_parameter_server_t* s, const char* n, const double* d,
-                                      ::size_t l) {
-        return nros_parameter_declare_double_array(s, n, d, l);
-    }
-    static nros_ret_t seq_declare_ffi(nros_parameter_server_t* s, const char* n, const int64_t* d,
-                                      ::size_t l) {
-        return nros_parameter_declare_integer_array(s, n, d, l);
-    }
-    static nros_ret_t seq_declare_ffi(nros_parameter_server_t* s, const char* n, const bool* d,
-                                      ::size_t l) {
-        return nros_parameter_declare_bool_array(s, n, d, l);
-    }
-    static nros_ret_t seq_get_ffi(const nros_parameter_server_t* s, const char* n, const double** d,
-                                  ::size_t* l) {
-        return nros_parameter_get_double_array(s, n, d, l);
-    }
-    static nros_ret_t seq_get_ffi(const nros_parameter_server_t* s, const char* n,
-                                  const int64_t** d, ::size_t* l) {
-        return nros_parameter_get_integer_array(s, n, d, l);
-    }
-    static nros_ret_t seq_get_ffi(const nros_parameter_server_t* s, const char* n, const bool** d,
-                                  ::size_t* l) {
-        return nros_parameter_get_bool_array(s, n, d, l);
-    }
-    static nros_ret_t seq_set_ffi(nros_parameter_server_t* s, const char* n, const double* d,
-                                  ::size_t l) {
-        return nros_parameter_set_double_array(s, n, d, l);
-    }
-    static nros_ret_t seq_set_ffi(nros_parameter_server_t* s, const char* n, const int64_t* d,
-                                  ::size_t l) {
-        return nros_parameter_set_integer_array(s, n, d, l);
-    }
-    static nros_ret_t seq_set_ffi(nros_parameter_server_t* s, const char* n, const bool* d,
-                                  ::size_t l) {
-        return nros_parameter_set_bool_array(s, n, d, l);
-    }
-
-    template <typename T>
-    Result declare_seq_impl(const char* name, const T* src, ::size_t len, ::size_t cap_n) {
-        static_assert(alignof(T) <= 8, "sequence element alignment exceeds pool alignment");
-        if (name == nullptr || len > cap_n) {
-            return Result(NROS_RET_INVALID_ARGUMENT);
-        }
-        /* Layout: [uint64_t cap][T x cap_n], both 8-aligned. */
-        const ::size_t hdr = align_up(seq_pool_used_, 8);
-        const ::size_t base = hdr + sizeof(uint64_t);
-        const ::size_t end = base + cap_n * sizeof(T);
-        if (end > SeqPoolBytes) {
-            return Result(NROS_RET_FULL);
-        }
-        *reinterpret_cast<uint64_t*>(&seq_pool_[hdr]) = static_cast<uint64_t>(cap_n);
-        T* dst = reinterpret_cast<T*>(&seq_pool_[base]);
-        for (::size_t i = 0; i < len; ++i) {
-            dst[i] = src[i];
-        }
-        /* The C server owns the record (duplicate-name + capacity checks
-           happen there); only commit the pool cursor on success. */
-        nros_ret_t rc = seq_declare_ffi(&server_, name, dst, len);
-        if (rc != NROS_RET_OK) {
-            return Result(rc);
-        }
-        seq_pool_used_ = end;
-        return Result(NROS_RET_OK);
-    }
-
-    template <typename T> Result set_seq_impl(const char* name, const T* src, ::size_t len) {
-        const T* cur = nullptr;
-        ::size_t cur_len = 0;
-        /* Existence + element-type validation happen in the C server. */
-        nros_ret_t rc = seq_get_ffi(&server_, name, &cur, &cur_len);
-        if (rc != NROS_RET_OK) {
-            return Result(rc);
-        }
-        /* issue 0340 — the capacity word sits immediately BEFORE the block
-           (see `declare_seq_impl`'s layout comment), and reading it via
-           `cur[-1]` is only valid because `cur` is the very pointer this
-           header handed the C server: `nros_parameter_declare_*_array` stores the
-           caller's pointer verbatim (borrow semantics, stated in
-           `nros/parameter.h`) and `nros_parameter_get_*_array` returns it
-           unchanged.
-           That contract is now documented on the C side, but documentation
-           does not stop a future change from copying arrays or returning
-           server-owned storage — at which point `cur[-1]` would read whatever
-           precedes an unrelated buffer. So verify the pointer really is one of
-           our pool blocks first. A violation becomes a loud
-           INVALID_ARGUMENT instead of a silent out-of-bounds read. */
-        const unsigned char* blk = reinterpret_cast<const unsigned char*>(cur);
-        /* Upper bound is INCLUSIVE: a zero-capacity array declared at the end
-           of the pool yields `dst == seq_pool_ + SeqPoolBytes` (base == end),
-           which is a legitimate block whose capacity word still precedes it. */
-        if (blk < seq_pool_ + sizeof(uint64_t) || blk > seq_pool_ + SeqPoolBytes) {
-            return Result(NROS_RET_INVALID_ARGUMENT);
-        }
-        const ::size_t cap = static_cast<::size_t>(reinterpret_cast<const uint64_t*>(cur)[-1]);
-        if (len > cap) {
-            return Result(NROS_RET_INVALID_ARGUMENT);
-        }
-        T* dst = const_cast<T*>(cur); /* pool bytes are ours */
-        for (::size_t i = 0; i < len; ++i) {
-            dst[i] = src[i];
-        }
-        return Result(seq_set_ffi(&server_, name, dst, len));
-    }
-
-    nros_parameter_server_t server_;
-    nros_parameter_t storage_[Capacity];
-
-    alignas(8) unsigned char seq_pool_[SeqPoolBytes];
-    ::size_t seq_pool_used_ = 0;
 };
 
 } // namespace nros
