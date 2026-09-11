@@ -280,9 +280,14 @@ fn is_pruned_dir(name: &str, path: &Path) -> bool {
     if name.starts_with("build-") || name.starts_with("target-") {
         return true;
     }
-    ["COLCON_IGNORE", "AMENT_IGNORE", "NROS_IGNORE", ".nros-ignore"]
-        .iter()
-        .any(|marker| path.join(marker).exists())
+    [
+        "COLCON_IGNORE",
+        "AMENT_IGNORE",
+        "NROS_IGNORE",
+        ".nros-ignore",
+    ]
+    .iter()
+    .any(|marker| path.join(marker).exists())
 }
 
 /// `<depend>`, `<build_depend>`, `<exec_depend>`, `<test_depend>` … all of them.
