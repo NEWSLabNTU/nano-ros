@@ -108,6 +108,28 @@ declared-qos-header:
 qos-profile-ssot:
     @python3 scripts/check-qos-profile-ssot.py
 
+# phase-428 W9 — a backend may only advertise a QoS policy its code honours.
+#
+# `supported_qos_policies()` was a hand-written constant per backend, so it
+# claimed whatever it had claimed when it was written. Measured:
+# `LIVELINESS_MANUAL_BY_NODE` was advertised by the zenoh shim AND the cffi
+# route and implemented by neither (cyclonedds folds it onto MANUAL_BY_TOPIC in
+# as many words; xrce lowers no liveliness field), and the zenoh shim's four
+# CORE policies were read in exactly one place — the DISCOVERY keyexpr — under
+# a comment saying all four were honoured at the subscriber buffer.
+#
+# Every subject list is derived: the policy vocabulary from `QoSPolicyMask`,
+# what each bit MEANS from `QoSProfile::required_policies`, the backend list
+# from every `impl Session for` under packages/**/src. The negative control
+# mutates the REAL sources in memory (delete the depth read, delete a claim,
+# move a claim into the discovery-only file, re-advertise the withdrawn bit)
+# and requires a red each time, on the normal path.
+#
+# Buildless and ~0.4 s — it reads sources, nothing else.
+[private]
+qos-mask-derivation:
+    @python3 scripts/check-qos-mask-derivation.py
+
 # phase-403 W9 (issue 0965) — the per-kind CALLBACK SLOT cost has ONE
 # definition, tied to the registration sites that actually claim a slot.
 #
