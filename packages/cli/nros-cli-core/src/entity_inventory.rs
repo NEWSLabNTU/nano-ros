@@ -127,7 +127,20 @@ use std::collections::BTreeMap;
 /// version-2 fragment carries no depth at all, and a reader that took the
 /// absent list for "every endpoint is depth 0" would size an arena an order of
 /// magnitude short. Absence has to be distinguishable from zero here too.
-pub const ENTITY_INVENTORY_SCHEMA_VERSION: u32 = 3;
+///
+/// **4** (phase-454 W2): the depth table SPLIT BY KIND. A publisher's declared
+/// depth now travels, in `NROS_ENTITY_DECLARED_DEPTHS_PUBLISHER` beside its own
+/// `_COUNT` and `NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER`, and
+/// `NROS_ENTITY_DECLARED_DEPTHS` is correspondingly SUBSCRIPTIONS only. Two
+/// reasons to bump rather than to add quietly. The second variable is the
+/// familiar one: a reader that took its absence from a version-3 fragment for
+/// "no publisher in this image declared a depth" would be reading an older
+/// CLI's silence as an answer. The first is the narrowing -- a version-3
+/// fragment's `NROS_ENTITY_DECLARED_DEPTHS` was defined over every
+/// depth-carrying kind, and while no in-tree producer ever put a non-
+/// subscription row in one, the variable's DEFINITION changed and a reader
+/// cannot tell which definition it is holding without the version.
+pub const ENTITY_INVENTORY_SCHEMA_VERSION: u32 = 4;
 
 /// Canonical artifact name.
 pub const ENTITY_INVENTORY_JSON_NAME: &str = "nros_entity_inventory.json";
@@ -863,7 +876,10 @@ pub struct DeclaredDepth {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeclaredDepths {
     Resolved {
-        /// Sorted by `(type_name, topic)` so the artifact is byte-stable.
+        /// Sorted by `(kind, type_name, topic)` so the artifact is byte-stable.
+        /// The kind leads because a publisher and a subscription on one topic
+        /// agree on the other two (phase-454 W2), and every consumer of this
+        /// table narrows to one kind.
         rows: Vec<DeclaredDepth>,
         /// Endpoints that COULD carry a depth ([`EntityKind::carries_qos_depth`])
         /// and stated none. NOT zero-by-default: this is the number that says
@@ -880,6 +896,17 @@ pub enum DeclaredDepths {
         /// refusing on it keeps that image on the worst case forever for
         /// endpoints the term does not price.
         undeclared_subscriptions: usize,
+        /// The same count restricted to PUBLISHERS -- phase-454 W2.
+        ///
+        /// A publisher's depth now travels (`PubContract::qos.depth`), and the
+        /// consumer that will price it -- publisher-side sample retention for
+        /// `transient_local` durability -- is a different term from the
+        /// subscription arena, over a different set of endpoints. It therefore
+        /// needs its own "did EVERY publisher declare?" question, for the exact
+        /// reason issue 1227 gave the subscription term one: a count over the
+        /// whole image answers neither term, because one unannotated endpoint
+        /// of the OTHER kind pins both on the worst case forever.
+        undeclared_publishers: usize,
     },
     Refused {
         reason: String,
@@ -1359,10 +1386,32 @@ impl EntityInventory {
         // A subscriber endpoint's declared history depth, when the contract
         // states one. `None` is "not declared" and stays `None`; see the note
         // on `EntityDecl::depth` for why it must never become `0`.
-        let depth_of = |ep: &str| -> Option<u32> {
+        let sub_depth_of = |ep: &str| -> Option<u32> {
             model
                 .contracts
                 .sub_endpoints
+                .get(ep)
+                .and_then(|c| c.qos.as_ref())
+                .and_then(|q| q.depth)
+        };
+
+        // phase-454 W2 -- and the PUBLISHER's, from the other endpoint map.
+        //
+        // This read did not exist: every publisher row was built with
+        // `depth: None`, so a contract stating `pub: { /chatter: { qos: {
+        // depth: 8 } } }` reached `PubContract::qos.depth` in the model, was
+        // never looked at, and the build saw an image whose publishers had
+        // declared nothing. The grammar had already admitted the field --
+        // `EntityKind::carries_qos_depth` returns true for a publisher and says
+        // why ("it is a real QoS field and forbidding it here would make the
+        // grammar say something false") -- so the declaration was legal to
+        // write, legal to parse and dropped on the floor, which is the shape
+        // this module's own rule calls a declaration the author believes they
+        // made.
+        let pub_depth_of = |ep: &str| -> Option<u32> {
+            model
+                .contracts
+                .pub_endpoints
                 .get(ep)
                 .and_then(|c| c.qos.as_ref())
                 .and_then(|q| q.depth)
@@ -1374,7 +1423,7 @@ impl EntityInventory {
                     kind: EntityKind::Subscription,
                     type_name: Some(wiring.msg_type.clone()),
                     name: Some(topic.clone()),
-                    depth: depth_of(ep),
+                    depth: sub_depth_of(ep),
                 });
             }
             for ep in &wiring.publishers {
@@ -1382,7 +1431,7 @@ impl EntityInventory {
                     kind: EntityKind::Publisher,
                     type_name: Some(wiring.msg_type.clone()),
                     name: Some(topic.clone()),
-                    depth: None,
+                    depth: pub_depth_of(ep),
                 });
             }
         }
@@ -1881,6 +1930,7 @@ impl EntityInventory {
         let mut rows: Vec<DeclaredDepth> = Vec::new();
         let mut undeclared = 0usize;
         let mut undeclared_subscriptions = 0usize;
+        let mut undeclared_publishers = 0usize;
         for c in self.components() {
             for e in c.declaration.entities() {
                 if !e.kind.carries_qos_depth() {
@@ -1900,18 +1950,29 @@ impl EntityInventory {
                     // count stays the honest "endpoints this image cannot size".
                     (Some(_), _, _) | (None, _, _) => {
                         undeclared += 1;
-                        if e.kind == EntityKind::Subscription {
-                            undeclared_subscriptions += 1;
+                        match e.kind {
+                            EntityKind::Subscription => undeclared_subscriptions += 1,
+                            EntityKind::Publisher => undeclared_publishers += 1,
+                            _ => {}
                         }
                     }
                 }
             }
         }
-        rows.sort_by(|a, b| (&a.type_name, &a.topic).cmp(&(&b.type_name, &b.topic)));
+        // Sorted by `(kind, type, topic)`, not by `(type, topic)`: a publisher
+        // and a subscription on ONE topic are now two rows that agree on both
+        // of the old keys, so the old ordering left their relative position to
+        // the sort's stability and the component iteration order -- which is a
+        // byte-unstable artifact for the two consumers that split the table by
+        // kind. The kind leads so each consumer's slice is contiguous.
+        rows.sort_by(|a, b| {
+            (a.kind.tag(), &a.type_name, &a.topic).cmp(&(b.kind.tag(), &b.type_name, &b.topic))
+        });
         DeclaredDepths::Resolved {
             rows,
             undeclared,
             undeclared_subscriptions,
+            undeclared_publishers,
         }
     }
 
@@ -2161,9 +2222,24 @@ impl EntityInventory {
                     m.insert("reason".into(), reason.clone().into());
                 }
                 DeclaredDepths::Resolved {
-                    rows, undeclared, ..
+                    rows,
+                    undeclared,
+                    undeclared_subscriptions,
+                    undeclared_publishers,
                 } => {
                     m.insert("undeclared".into(), (*undeclared).into());
+                    // Per-kind, because the broad number answers no consumer's
+                    // question: each term prices one kind and must refuse on
+                    // its own kind's silence (issue 1227 for subscriptions,
+                    // phase-454 W2 for publishers).
+                    m.insert(
+                        "undeclared_subscriptions".into(),
+                        (*undeclared_subscriptions).into(),
+                    );
+                    m.insert(
+                        "undeclared_publishers".into(),
+                        (*undeclared_publishers).into(),
+                    );
                     m.insert(
                         "endpoints".into(),
                         rows.iter()
@@ -2540,17 +2616,46 @@ fn render_received(what: &str, prose: &str, r: &ReceivedTypes) -> String {
 
 /// The declared-depth view, as CMake (phase-403 step 2).
 ///
-/// Publishes four things, and the last two are the point:
+/// Publishes these, and the counts are the point:
 ///
-///   `NROS_ENTITY_DECLARED_DEPTHS`        `type|topic=depth` triples, `;`-joined
-///   `NROS_ENTITY_DECLARED_DEPTH_COUNT`   how many endpoints stated one
-///   `NROS_ENTITY_UNDECLARED_DEPTH_COUNT` how many COULD have and did not
-///   `NROS_ENTITY_DECLARED_DEPTH_STATUS`  resolved | refused
+///   `NROS_ENTITY_DECLARED_DEPTHS`                   SUBSCRIPTION `type|topic=depth`
+///                                                   triples, `;`-joined
+///   `NROS_ENTITY_DECLARED_DEPTH_COUNT`              how many subscriptions stated one
+///   `NROS_ENTITY_UNDECLARED_DEPTH_COUNT`            how many endpoints of ANY
+///                                                   depth-carrying kind could have
+///                                                   and did not
+///   `NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION`  the same, subscriptions only
+///   `NROS_ENTITY_DECLARED_DEPTHS_PUBLISHER`         PUBLISHER triples (phase-454 W2)
+///   `NROS_ENTITY_DECLARED_DEPTH_COUNT_PUBLISHER`    how many publishers stated one
+///   `NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER`  the same, publishers only
+///   `NROS_ENTITY_DECLARED_DEPTH_STATUS`             resolved | refused
 ///
-/// A consumer that sizes from depth must read the UNDECLARED count and refuse
-/// when it is non-zero. Reading only the list would size an image from the
-/// subset of its endpoints that happened to be annotated, which is the exact
-/// under-report `ENTITIES NONE` exists to prevent one level up.
+/// A consumer that sizes from depth must read the UNDECLARED count for ITS OWN
+/// KIND and refuse when it is non-zero. Reading only the list would size an
+/// image from the subset of its endpoints that happened to be annotated, which
+/// is the exact under-report `ENTITIES NONE` exists to prevent one level up.
+///
+/// # Why the publisher list is a SEPARATE VARIABLE (phase-454 W2)
+///
+/// `NROS_ENTITY_DECLARED_DEPTHS` is not a general depth table; it is the input
+/// to ONE term, `nros-node/build.rs::subs_arena`, which refuses to size unless
+/// `declared.len() == subs` -- the number of SUBSCRIPTIONS. That equality is
+/// how the lane distinguishes "every subscription declared" from "some did",
+/// and it is the whole guard: when it fails, every declaring image silently
+/// falls back to `subs * pubsub_entry_at_default`, an arena measured at
+/// 207,096 bytes against 71,664 on the reference island. Appending publisher
+/// triples to the same list would break it for every image that declares both
+/// -- not loudly, but as a large silent regression in exactly the images that
+/// took the trouble to declare.
+///
+/// So the split is structural rather than cosmetic, and the legacy name keeps
+/// the scope its one consumer already assumed. Two other consumers assumed it
+/// too and narrowed BY HAND: `to_declared_qos_header` filters
+/// `kind == Subscription` before emitting a row (a publisher and a subscription
+/// on one topic would be two rows with one key), and `_nros_qos_depth_env` in
+/// `cmake/NanoRosEntityFacts.cmake` takes a MAX over the list to bill a
+/// subscription's receive region. A depth for a kind none of them price
+/// belongs in a variable none of them read.
 fn render_declared_depths(d: &DeclaredDepths) -> String {
     let mut s = String::from(
         "# phase-403 step 2 -- the DECLARED QoS history depths. Depth is a MULTIPLIER on\n\
@@ -2581,24 +2686,49 @@ fn render_declared_depths(d: &DeclaredDepths) -> String {
             rows,
             undeclared,
             undeclared_subscriptions,
+            undeclared_publishers,
         } => {
-            let triples: Vec<String> = rows
-                .iter()
-                .map(|r| format!("{}|{}={}", r.type_name, r.topic, r.depth))
-                .collect();
+            let triples = |kind: EntityKind| -> Vec<String> {
+                rows.iter()
+                    .filter(|r| r.kind == kind)
+                    .map(|r| format!("{}|{}={}", r.type_name, r.topic, r.depth))
+                    .collect()
+            };
+            let subs = triples(EntityKind::Subscription);
             s.push_str(&format!(
                 "set(NROS_ENTITY_DECLARED_DEPTHS \"{}\")\n",
-                triples.join(";")
+                subs.join(";")
             ));
             s.push_str(&format!(
                 "set(NROS_ENTITY_DECLARED_DEPTH_COUNT {})\n",
-                rows.len()
+                subs.len()
             ));
             s.push_str(&format!(
                 "set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT {undeclared})\n"
             ));
             s.push_str(&format!(
-                "set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION                  {undeclared_subscriptions})\n"
+                "set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION {undeclared_subscriptions})\n"
+            ));
+            // phase-454 W2 -- the publisher half, in its OWN names. See the
+            // function's doc comment for why appending to the list above would
+            // be a silent arena regression rather than an extension.
+            let publishers = triples(EntityKind::Publisher);
+            s.push_str(
+                "# phase-454 W2 -- the PUBLISHER depths. A separate list because the one\n\
+                 # above is the input to a SUBSCRIPTION term whose guard is\n\
+                 # `declared.len() == <subscription count>`. Nothing prices these yet;\n\
+                 # publisher-side retention for `transient_local` durability is what will.\n",
+            );
+            s.push_str(&format!(
+                "set(NROS_ENTITY_DECLARED_DEPTHS_PUBLISHER \"{}\")\n",
+                publishers.join(";")
+            ));
+            s.push_str(&format!(
+                "set(NROS_ENTITY_DECLARED_DEPTH_COUNT_PUBLISHER {})\n",
+                publishers.len()
+            ));
+            s.push_str(&format!(
+                "set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER {undeclared_publishers})\n"
             ));
         }
     }
@@ -4381,6 +4511,262 @@ contracts:
                 (Some("/deep".to_string()), Some(20)),
                 (Some("/plain".to_string()), None),
             ]
+        );
+    }
+
+    /// A model whose one topic has a declaring publisher, a declaring
+    /// subscriber and a silent one of each -- the shape every depth test below
+    /// needs.
+    fn model_with_publisher_depths() -> ros_launch_manifest_model::SystemModel {
+        model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /talker:
+      { scope: s.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+      sub: [/listener/chatter]
+    /quiet:
+      type: std_msgs/msg/Int32
+      pub: [/talker/quiet]
+      sub: [/listener/quiet]
+contracts:
+  pub_endpoints:
+    /talker/chatter:
+      qos: { depth: 8 }
+  sub_endpoints:
+    /listener/chatter:
+      qos: { depth: 3 }
+"#,
+        )
+    }
+
+    /// phase-454 W2 -- a PUBLISHER's declared depth reaches the inventory.
+    ///
+    /// `from_model` hardcoded `depth: None` on every publisher row, so a
+    /// contract stating `pub: { /chatter: { qos: { depth: 8 } } }` parsed into
+    /// `PubContract::qos.depth`, was never read, and the build saw an image
+    /// whose publishers had declared nothing. The grammar had admitted the
+    /// field since phase-403 step 2 -- `carries_qos_depth` returns true for a
+    /// publisher -- so this was a declaration that was legal to write and
+    /// silently dropped.
+    #[test]
+    fn a_publishers_declared_depth_reaches_the_inventory() {
+        let inv = EntityInventory::from_model("test", &model_with_publisher_depths())
+            .expect("model describes wiring");
+        let mut rows: Vec<(&str, Option<String>, Option<u32>)> = inv
+            .components()
+            .iter()
+            .flat_map(|c| c.declaration.entities())
+            .filter(|e| e.kind == EntityKind::Publisher)
+            .map(|e| (e.kind.tag(), e.name.clone(), e.depth))
+            .collect();
+        rows.sort();
+        assert_eq!(
+            rows,
+            vec![
+                ("publisher", Some("/chatter".to_string()), Some(8)),
+                // Still `None` and never `0`: the publisher that stated nothing
+                // has not opted in, which is a different claim from depth 0.
+                ("publisher", Some("/quiet".to_string()), None),
+            ]
+        );
+    }
+
+    /// phase-454 W2 -- and it reaches the DECLARED-DEPTH table, tagged.
+    ///
+    /// The row carries its kind, so the two consumers that price one kind can
+    /// narrow. A publisher and a subscription on ONE topic are two rows that
+    /// agree on `(type, topic)`, which is why the sort key gained the kind.
+    #[test]
+    fn the_depth_table_carries_a_publisher_row_beside_the_subscription_row() {
+        let inv = EntityInventory::from_model("test", &model_with_publisher_depths())
+            .expect("model describes wiring");
+        let DeclaredDepths::Resolved {
+            rows,
+            undeclared,
+            undeclared_subscriptions,
+            undeclared_publishers,
+        } = inv.declared_depths()
+        else {
+            panic!("a composed inventory resolves its depths");
+        };
+        assert_eq!(
+            rows.iter()
+                .map(|r| (r.kind.tag(), r.topic.as_str(), r.depth))
+                .collect::<Vec<_>>(),
+            vec![
+                ("publisher", "/chatter", 8),
+                ("subscription", "/chatter", 3),
+            ]
+        );
+        // One silent publisher and one silent subscriber. The broad count is
+        // their sum and answers NEITHER term -- each prices one kind.
+        assert_eq!(undeclared, 2);
+        assert_eq!(undeclared_subscriptions, 1);
+        assert_eq!(undeclared_publishers, 1);
+    }
+
+    /// phase-454 W2 -- and it does NOT reach `NROS_ENTITY_DECLARED_DEPTHS`.
+    ///
+    /// THE regression test for this wave. `nros-node/build.rs::subs_arena`
+    /// refuses to size unless `declared.len()` equals the SUBSCRIPTION count,
+    /// so a publisher triple appended to that list breaks the equality for
+    /// every image that declares both kinds -- and the failure is not an error
+    /// but a silent fall back to `subs * pubsub_entry_at_default`, measured at
+    /// 207,096 bytes of arena against 71,664 on the reference island. The
+    /// publisher depth therefore rides its own variable, which nothing that
+    /// sizes a subscription reads.
+    #[test]
+    fn a_publisher_depth_stays_out_of_the_subscription_sizing_list() {
+        let inv = EntityInventory::from_model("test", &model_with_publisher_depths())
+            .expect("model describes wiring");
+        let cmake = inv.to_cmake();
+        assert!(
+            cmake.contains("set(NROS_ENTITY_DECLARED_DEPTHS \"std_msgs/msg/Int32|/chatter=3\")\n"),
+            "the legacy list is the SUBSCRIPTION depths and nothing else: {cmake}"
+        );
+        assert!(
+            cmake.contains("set(NROS_ENTITY_DECLARED_DEPTH_COUNT 1)\n"),
+            "its count must match its own list, not the whole table: {cmake}"
+        );
+        assert!(
+            cmake.contains(
+                "set(NROS_ENTITY_DECLARED_DEPTHS_PUBLISHER \"std_msgs/msg/Int32|/chatter=8\")\n"
+            ),
+            "the publisher depth travels, in its own name: {cmake}"
+        );
+        assert!(
+            cmake.contains("set(NROS_ENTITY_DECLARED_DEPTH_COUNT_PUBLISHER 1)\n"),
+            "{cmake}"
+        );
+        assert!(
+            cmake.contains("set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER 1)\n"),
+            "a publisher-side consumer refuses on its OWN kind's silence: {cmake}"
+        );
+    }
+
+    /// phase-454 W2 -- the ARENA does not move when a publisher declares.
+    ///
+    /// The acceptance, measured rather than asserted by construction: take one
+    /// image, read every input `nros-node/build.rs::subs_arena` and
+    /// `_nros_qos_depth_env` use to size the subscription arena, then add a
+    /// publisher depth to the SAME image and read them again. Every one of
+    /// them must be byte-identical -- the publisher's declaration is invisible
+    /// to the subscription terms, which is the whole point of the split.
+    ///
+    /// The set below is the FULL read set of those two consumers, which is why
+    /// the broad `NROS_ENTITY_UNDECLARED_DEPTH_COUNT` is NOT in it: this test
+    /// first failed on exactly that line (1 -> 0, because the publisher that
+    /// declared stopped being silent), which is a true statement about the
+    /// image and would have been a false input to a subscription price.
+    /// `_nros_qos_depth_env` was the one consumer still guarding on it and now
+    /// reads `..._SUBSCRIPTION`, so no publisher fact reaches a subscription
+    /// number. Adding the broad count back here would re-assert the coupling
+    /// this wave removed.
+    ///
+    /// The reader below is `subs_arena`'s own parse, transcribed: split the
+    /// list on `;`/`,`, take the depth after the LAST `=`, and the guard
+    /// `declared.len() == subs`. A test that only compared strings would pass
+    /// on a list that still parses into the wrong number of entries.
+    #[test]
+    fn a_publisher_declaration_moves_no_input_the_subscription_arena_reads() {
+        /// Every line of the fragment a subscription-sizing consumer reads.
+        fn arena_inputs(model: &ros_launch_manifest_model::SystemModel) -> Vec<String> {
+            let cmake = EntityInventory::from_model("test", model)
+                .expect("model describes wiring")
+                .to_cmake();
+            cmake
+                .lines()
+                .filter(|l| {
+                    l.starts_with("set(NROS_ENTITY_DECLARED_DEPTHS ")
+                        || l.starts_with("set(NROS_ENTITY_DECLARED_DEPTH_COUNT ")
+                        || l.starts_with("set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION ")
+                        || l.starts_with("set(NROS_ENTITY_DECLARED_DEPTH_STATUS ")
+                })
+                .map(str::to_string)
+                .collect()
+        }
+
+        let silent_publishers = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /talker:
+      { scope: s.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+      sub: [/listener/chatter]
+contracts:
+  sub_endpoints:
+    /listener/chatter:
+      qos: { depth: 3 }
+"#,
+        );
+        let declaring_publishers = model_from_yaml(
+            r#"
+meta: { version: 1 }
+structure:
+  nodes:
+    /talker:
+      { scope: s.launch.xml, pkg: talker_pkg, exec: talker, node_name: talker }
+    /listener:
+      { scope: s.launch.xml, pkg: listener_pkg, exec: listener,
+        node_name: listener }
+  topics:
+    /chatter:
+      type: std_msgs/msg/Int32
+      pub: [/talker/chatter]
+      sub: [/listener/chatter]
+contracts:
+  pub_endpoints:
+    /talker/chatter:
+      qos: { depth: 8 }
+  sub_endpoints:
+    /listener/chatter:
+      qos: { depth: 3 }
+"#,
+        );
+        let before = arena_inputs(&silent_publishers);
+        let after = arena_inputs(&declaring_publishers);
+        assert_eq!(
+            before, after,
+            "a publisher's depth must not move any value a subscription term reads"
+        );
+
+        // ...and the guard those inputs feed still holds. One subscription,
+        // one parsed triple -- so `subs_arena` sizes from the declaration
+        // rather than falling back to the worst case.
+        let depths = after
+            .iter()
+            .find_map(|l| l.strip_prefix("set(NROS_ENTITY_DECLARED_DEPTHS \""))
+            .and_then(|l| l.strip_suffix("\")"))
+            .expect("the subscription list is published");
+        let declared: Vec<(&str, usize)> = depths
+            .split([';', ','])
+            .filter_map(|t| t.rsplit_once('='))
+            .filter_map(|(head, d)| {
+                let ty = head.split_once('|').map_or(head, |(ty, _topic)| ty).trim();
+                d.trim().parse::<usize>().ok().map(|d| (ty, d))
+            })
+            .collect();
+        assert_eq!(
+            declared,
+            vec![("std_msgs/msg/Int32", 3)],
+            "`declared.len() == subs` is subs_arena's whole guard"
         );
     }
 

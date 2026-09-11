@@ -1,0 +1,8 @@
+<launch>
+  <!-- phase-454 W2: `talker` publishes /chatter and /quiet, `listener`
+       subscribes to both. depths.contract.yaml states a QoS depth on ONE
+       publisher and ONE subscriber, so the fixture carries both the declaring
+       and the silent case on each side of a topic. -->
+  <node pkg="demo_pkg" exec="talker" name="talker" />
+  <node pkg="demo_pkg" exec="listener" name="listener" />
+</launch>

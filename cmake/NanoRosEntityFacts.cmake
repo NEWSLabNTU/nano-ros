@@ -356,11 +356,34 @@ endfunction()
 # would hand the build script a table it has no way to attribute to slots.
 #
 # TWO GUARDS, and the second is the producer's own instruction. The status must
-# be `resolved`, and `NROS_ENTITY_UNDECLARED_DEPTH_COUNT` must be ZERO --
+# be `resolved`, and the UNDECLARED count must be ZERO --
 # `NanoRosEntityInventory.cmake` calls it "what a consumer must refuse on",
 # because a table over the endpoints that happened to be annotated sizes an
 # image from a subset of itself. One unannotated subscription and the max is a
 # lower bound rather than a bound, which is the under-size direction.
+#
+# phase-454 W2 -- and the count is the SUBSCRIPTION-scoped one, because the list
+# it guards is the subscription list. Two reasons, and the second is the one
+# that made this move now:
+#
+#   * it is issue 1227's ruling applied to this function's sibling. The broad
+#     count spans every depth-carrying kind, so on the reference island it is 18
+#     against 11 while all eleven subscriptions declare, and refusing on it keeps
+#     that image on the worst case forever for endpoints this number does not
+#     price. `subs_arena` was moved off the broad count for exactly that; this
+#     was the one consumer left on it.
+#   * a publisher can now DECLARE a depth (phase-454 W2), so the broad count is
+#     something a publisher's contract can move. Guarding a subscription number
+#     on it would mean a publisher declaration flips a subscription lane -- a
+#     coupling in the one direction this wave exists to rule out, since nothing
+#     prices a publisher's depth yet.
+#
+# Measured: no in-tree image moves. Every in-tree contract leaves at least one
+# subscription silent (`demo_bringup`'s says `sub: { chatter: {} }`), so both
+# spellings of the guard return early on all of them. And where the new guard
+# DOES pass, `subs_arena`'s own guard passes with it -- it is the same predicate
+# -- so `NROS_DECLARED_MAX_QOS_DEPTH` only reaches `pubsub_entry`, which is that
+# function's FALLBACK price and unused on the branch that took it.
 function(_nros_qos_depth_env _out_var)
     set(${_out_var} "" PARENT_SCOPE)
     if(NOT COMMAND nros_entity_inventory_knobs_file)
@@ -374,8 +397,8 @@ function(_nros_qos_depth_env _out_var)
     if(NOT NROS_ENTITY_DECLARED_DEPTH_STATUS STREQUAL "resolved")
         return()
     endif()
-    if(NOT DEFINED NROS_ENTITY_UNDECLARED_DEPTH_COUNT
-            OR NOT NROS_ENTITY_UNDECLARED_DEPTH_COUNT EQUAL 0)
+    if(NOT DEFINED NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION
+            OR NOT NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION EQUAL 0)
         return()
     endif()
     if(NOT DEFINED NROS_ENTITY_DECLARED_DEPTHS)

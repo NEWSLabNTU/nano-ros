@@ -155,11 +155,23 @@
 #   NROS_DERIVED_EXECUTOR_MAX_CBS         unset when not derivable -- ABSENT
 #                                         means "no answer", never a default
 #   NROS_ENTITY_DECLARED_DEPTH_STATUS     resolved | refused (phase-403 step 2)
-#   NROS_ENTITY_DECLARED_DEPTHS           `type|topic=depth` triples
-#   NROS_ENTITY_DECLARED_DEPTH_COUNT      endpoints that stated a depth
-#   NROS_ENTITY_UNDECLARED_DEPTH_COUNT    endpoints that COULD have and did not.
-#                                         A consumer that sizes from depth must
-#                                         refuse while this is non-zero
+#   NROS_ENTITY_DECLARED_DEPTHS           SUBSCRIPTION `type|topic=depth` triples
+#   NROS_ENTITY_DECLARED_DEPTH_COUNT      subscriptions that stated a depth
+#   NROS_ENTITY_UNDECLARED_DEPTH_COUNT    endpoints of ANY depth-carrying kind
+#                                         that COULD have and did not
+#   NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION
+#                                         the same, subscriptions only (1227)
+#   NROS_ENTITY_DECLARED_DEPTHS_PUBLISHER PUBLISHER triples (phase-454 W2)
+#   NROS_ENTITY_DECLARED_DEPTH_COUNT_PUBLISHER
+#                                         publishers that stated a depth
+#   NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER
+#                                         the same, publishers only
+#
+# A consumer that sizes from depth must refuse while the UNDECLARED count FOR
+# ITS OWN KIND is non-zero. The broad count answers no term's question: one
+# unannotated endpoint of the other kind would pin both terms on the worst case
+# forever, which is what issue 1227 measured (18 against 11 on the reference
+# island, all eleven subscriptions declaring).
 #
 # A derived value is a DEFAULT. Every consumer applies it only where nothing
 # else stated a number -- see `_nros_resolve_derivable_knob` in
@@ -190,7 +202,16 @@ include_guard(GLOBAL)
 # the same argument again: depth is a MULTIPLIER on the type bound, so a reader
 # that took an absent list for "every endpoint is depth 0" would size an arena
 # an order of magnitude short.
-set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED 3 CACHE INTERNAL
+#
+# **4** (phase-454 W2) SPLIT the depth table by kind. `NROS_ENTITY_DECLARED_
+# DEPTHS` is now SUBSCRIPTIONS only -- which is what its one sizing consumer,
+# `nros-node/build.rs::subs_arena`, always required, since it refuses unless the
+# list's length equals the SUBSCRIPTION count -- and a publisher's declared
+# depth rides `NROS_ENTITY_DECLARED_DEPTHS_PUBLISHER` with its own counts. Bumps
+# because the first variable's DEFINITION narrowed and the second one's absence
+# in a version-3 fragment is an older CLI's silence, not "no publisher
+# declared".
+set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED 4 CACHE INTERNAL
     "phase-403 W9: the nros_entity_inventory fragment schema this tree reads")
 
 # nros_entity_inventory_knobs_file(<out_var>)
@@ -295,6 +316,10 @@ function(nros_derive_entity_inventory_knobs)
                NROS_ENTITY_DECLARED_DEPTH_STATUS NROS_ENTITY_DECLARED_DEPTH_REASON
                NROS_ENTITY_DECLARED_DEPTHS NROS_ENTITY_DECLARED_DEPTH_COUNT
                NROS_ENTITY_UNDECLARED_DEPTH_COUNT
+               NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION
+               NROS_ENTITY_DECLARED_DEPTHS_PUBLISHER
+               NROS_ENTITY_DECLARED_DEPTH_COUNT_PUBLISHER
+               NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER
                NROS_PARAM_DECLARATION_STATUS NROS_PARAM_DECLARATION_REASON
                NROS_PARAM_DECLARED_COUNT
                NROS_DERIVED_MAX_PARAMETERS NROS_DERIVED_MAX_PARAM_NAME_LEN
@@ -442,8 +467,25 @@ function(nros_derive_entity_inventory_knobs)
     # beside the list and is the one a size consumer reads FIRST: a list over
     # the endpoints that happened to be annotated is a subset of the image, and
     # sizing from a subset is the under-report this module exists to prevent.
+    #
+    # phase-454 W2 -- a PER-KIND count beside the broad one, and the publisher
+    # list beside the subscription one. A consumer prices ONE kind and must
+    # refuse on that kind's silence; the broad count answers neither term.
+    #
+    # `UNDECLARED_DEPTH_COUNT_SUBSCRIPTION` was missing from this list since
+    # issue 1227 published it -- a fourth instance of the drift
+    # `_nros_load_derived_entity_inventory` in `zephyr/cmake/nros_cargo_build.
+    # cmake` lists three of ("the symbol loaded here, died at the function
+    # boundary, and the consumer fell back to a default that looked
+    # deliberate"). It reached the Zephyr lane only because that twin gave up on
+    # a whitelist and PARSES the fragment for names. Nothing had read it through
+    # this path, so nothing failed; a whitelist that is silently short is the
+    # shape, not the symptom.
     foreach(_field DECLARED_DEPTH_STATUS DECLARED_DEPTH_REASON DECLARED_DEPTHS
-                   DECLARED_DEPTH_COUNT UNDECLARED_DEPTH_COUNT)
+                   DECLARED_DEPTH_COUNT UNDECLARED_DEPTH_COUNT
+                   UNDECLARED_DEPTH_COUNT_SUBSCRIPTION
+                   DECLARED_DEPTHS_PUBLISHER DECLARED_DEPTH_COUNT_PUBLISHER
+                   UNDECLARED_DEPTH_COUNT_PUBLISHER)
         if(DEFINED NROS_ENTITY_${_field})
             _nros_entity_publish(NROS_ENTITY_${_field} "${NROS_ENTITY_${_field}}")
         endif()
@@ -558,6 +600,10 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_ENTITY_DECLARED_DEPTHS
         NROS_ENTITY_DECLARED_DEPTH_COUNT
         NROS_ENTITY_UNDECLARED_DEPTH_COUNT
+        NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION
+        NROS_ENTITY_DECLARED_DEPTHS_PUBLISHER
+        NROS_ENTITY_DECLARED_DEPTH_COUNT_PUBLISHER
+        NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER
         NROS_ENTITY_DECLARED_DEPTH_REASON
         NROS_PARAM_DECLARATION_STATUS
         NROS_PARAM_DECLARATION_REASON

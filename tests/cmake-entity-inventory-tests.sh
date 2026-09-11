@@ -141,7 +141,7 @@ chmod +x "$STUB"
 
 DERIVED_BODY="$TEST_TMPDIR/derived.cmake"
 cat > "$DERIVED_BODY" <<'EOF'
-set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 3)
+set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 4)
 # No NROS_ENTITY_INVENTORY_SOURCE: `to_cmake` stopped emitting it (issue 1228 --
 # it is composer-dependent content in a file whose bytes decide whether cmake
 # runs again), and this fixture mirrors what the producer writes.
@@ -174,6 +174,10 @@ set(NROS_ENTITY_DECLARED_DEPTH_STATUS "resolved")
 set(NROS_ENTITY_DECLARED_DEPTHS "nav_msgs/msg/Odometry|/localization/kinematic_state=1;std_msgs/msg/Int32|/chatter=10")
 set(NROS_ENTITY_DECLARED_DEPTH_COUNT 2)
 set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT 3)
+set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION 0)
+set(NROS_ENTITY_DECLARED_DEPTHS_PUBLISHER "std_msgs/msg/Int32|/chatter=8")
+set(NROS_ENTITY_DECLARED_DEPTH_COUNT_PUBLISHER 1)
+set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER 3)
 set(NROS_PARAM_DECLARATION_STATUS "declared")
 set(NROS_PARAM_DECLARED_COUNT 21)
 set(NROS_DERIVED_MAX_PARAMETERS 25)
@@ -186,7 +190,7 @@ EOF
 
 REFUSED_BODY="$TEST_TMPDIR/refused.cmake"
 cat > "$REFUSED_BODY" <<'EOF'
-set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 3)
+set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 4)
 set(NROS_ENTITY_INVENTORY_STATUS "refused")
 set(NROS_ENTITY_INVENTORY_COMPONENT_COUNT 4)
 set(NROS_ENTITY_INVENTORY_REASON "1 of 4 components in this image declare no entities:\n    demo::legacy (demo::Legacy)")
@@ -201,9 +205,10 @@ EOF
 # A schema this reader does NOT understand. Written as "one past supported"
 # rather than a literal, because the literal was `2` until phase-403 step 1
 # made 2 the supported version -- at which point the case silently stopped
-# testing anything it claimed to. Step 2 moved it again, to 3/4.
+# testing anything it claimed to. Step 2 moved it to 3/4 and phase-454 W2, which
+# split the depth table by kind, to 4/5.
 BAD_SCHEMA_BODY="$TEST_TMPDIR/bad-schema.cmake"
-sed 's/SCHEMA_VERSION 3/SCHEMA_VERSION 4/' "$DERIVED_BODY" > "$BAD_SCHEMA_BODY"
+sed 's/SCHEMA_VERSION 4/SCHEMA_VERSION 5/' "$DERIVED_BODY" > "$BAD_SCHEMA_BODY"
 
 NO_SCHEMA_BODY="$TEST_TMPDIR/no-schema.cmake"
 grep -v SCHEMA_VERSION "$DERIVED_BODY" > "$NO_SCHEMA_BODY"
@@ -298,6 +303,25 @@ if ! nros_grep_q "NROS_ENTITY_UNDECLARED_DEPTH_COUNT=3" <<<"$OUT"; then
     fail "A: the UNDECLARED depth count did not reach the caller's scope. \
 Without it a consumer cannot tell a fully-declared image from a partly-declared \
 one, which is the whole reason the count is published -- $OUT"
+fi
+# phase-454 W2. The PUBLISHER half crosses too, in its own names -- and the
+# separation is the point: a publisher's depth must never be an element of the
+# list a subscription term counts against its subscription count, because that
+# equality IS `subs_arena`'s guard and breaking it drops every declaring image
+# back to the worst case silently.
+check
+if ! nros_grep_q "NROS_ENTITY_DECLARED_DEPTHS_PUBLISHER=std_msgs/msg/Int32|/chatter=8" <<<"$OUT"; then
+    fail "A: the declared PUBLISHER depths did not reach the caller's scope -- $OUT"
+fi
+check
+if ! nros_grep_q "NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER=3" <<<"$OUT"; then
+    fail "A: the publisher-scoped UNDECLARED count did not reach the caller's \
+scope. A publisher-side consumer must refuse on its OWN kind's silence, not on \
+a count spanning kinds it does not price -- $OUT"
+fi
+check
+if nros_grep_q "NROS_ENTITY_DECLARED_DEPTHS=.*=8" <<<"$OUT"; then
+    fail "A: a publisher depth reached the SUBSCRIPTION sizing list -- $OUT"
 fi
 
 # phase-446 W4. The parameter store's numbers cross the same function boundary,
@@ -412,7 +436,7 @@ log_info "D. an unrecognised schema refuses to be read"
 flat() { tr '\n' ' ' | tr -s ' '; }
 OUT="$(derive "$BAD_SCHEMA_BODY" 0 "$META" "$TEST_TMPDIR/d1.cmake" | flat)"
 check
-if ! nros_grep_q "states entity-inventory schema version 4" <<<"$OUT"; then
+if ! nros_grep_q "states entity-inventory schema version 5" <<<"$OUT"; then
     fail "D: a future schema was read rather than refused -- $OUT"
 fi
 check
@@ -517,17 +541,28 @@ log_header "the declared QoS DEPTH crosses the lane boundary (phase-412 W3)"
 # itself, so one unannotated endpoint must mean "no answer" — the max would
 # otherwise be a lower bound presented as a bound, which is the under-size
 # direction the arena cannot survive.
+#
+# phase-454 W2 — the count guarding this is `..._COUNT_SUBSCRIPTION`, not the
+# broad one, so `depth_env`'s second argument writes that name. The list is the
+# SUBSCRIPTION depths and a guard must range over the same set as the thing it
+# guards; and since a publisher can now declare a depth, a guard on the broad
+# count would let a publisher's contract resize a subscription. The last case
+# below is that regression: publisher facts in the fragment, no effect here.
 FACTS="$PROJECT_ROOT/cmake/NanoRosEntityFacts.cmake"
 
 depth_env() {
-    # depth_env <status> <undeclared-count> <depths…>
+    # depth_env <status> <undeclared-subscription-count> <depths…>
+    #
+    # NROS_DEPTH_ENV_EXTRA, when set, is appended to the fragment verbatim —
+    # used to put publisher-side facts in it and assert they change nothing.
     local dir="$TEST_TMPDIR/depth"
     rm -rf "$dir"; mkdir -p "$dir/nros"
     {
         printf 'set(NROS_ENTITY_DECLARED_DEPTH_STATUS "%s")\n' "$1"
-        [ "$2" != "-" ] && printf 'set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT %s)\n' "$2"
+        [ "$2" != "-" ] && printf 'set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION %s)\n' "$2"
         shift 2
         [ "$#" -gt 0 ] && printf 'set(NROS_ENTITY_DECLARED_DEPTHS "%s")\n' "$*"
+        [ -n "${NROS_DEPTH_ENV_EXTRA:-}" ] && printf '%s\n' "$NROS_DEPTH_ENV_EXTRA"
     } > "$dir/nros/entity_inventory.cmake"
     cat > "$dir/run.cmake" <<EOF
 include("$MODULE")
@@ -571,6 +606,20 @@ _want "a missing undeclared COUNT carries nothing" \
 _want "the depth is what follows the LAST '='" \
     "NROS_DECLARED_MAX_QOS_DEPTH=7" \
     "$(depth_env resolved 0 'a|/odd=name=7')"
+
+# phase-454 W2 — a PUBLISHER's declaration is invisible here, in both
+# directions. Nothing prices a publisher's depth yet, so a publisher that
+# declares must not change a subscription number, and a publisher that stays
+# SILENT must not suppress one. The second half is the defect issue 1227
+# measured for `subs_arena` and this function was the last consumer still
+# carrying: the broad count is 18 on the reference island against 11
+# subscriptions that all declare.
+_want "a declaring publisher does not enter the subscription maximum" \
+    "NROS_DECLARED_MAX_QOS_DEPTH=1" \
+    "$(NROS_DEPTH_ENV_EXTRA=$'set(NROS_ENTITY_DECLARED_DEPTHS_PUBLISHER "p|/t9=50")\nset(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER 0)\nset(NROS_ENTITY_UNDECLARED_DEPTH_COUNT 0)' depth_env resolved 0 'a|/t1=1')"
+_want "a silent publisher does not suppress the subscription maximum" \
+    "NROS_DECLARED_MAX_QOS_DEPTH=1" \
+    "$(NROS_DEPTH_ENV_EXTRA=$'set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER 4)\nset(NROS_ENTITY_UNDECLARED_DEPTH_COUNT 4)' depth_env resolved 0 'a|/t1=1')"
 
 # ---------------------------------------------------------------------------
 if [ "$FAILURES" -eq 0 ]; then
