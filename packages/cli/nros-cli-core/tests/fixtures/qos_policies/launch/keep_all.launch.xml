@@ -1,0 +1,8 @@
+<launch>
+  <!-- phase-454 W3 (issue 1256): the same two nodes, with keep_all.contract.yaml
+       declaring `history: keep_all` on ONE subscription. That endpoint's queue
+       has no static bound, so the depth table must REFUSE and name it rather
+       than price it at the `depth: 1` stated beside it. -->
+  <node pkg="demo_pkg" exec="talker" name="talker" />
+  <node pkg="demo_pkg" exec="listener" name="listener" />
+</launch>

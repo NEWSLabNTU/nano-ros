@@ -1,0 +1,8 @@
+<launch>
+  <!-- phase-454 W3 (issue 1256): `talker` publishes /chatter and /quiet,
+       `listener` subscribes to both. policies.contract.yaml states all FOUR
+       QoS policies on one pair and leaves the other pair silent, so the
+       fixture carries "said everything" and "said nothing" side by side. -->
+  <node pkg="demo_pkg" exec="talker" name="talker" />
+  <node pkg="demo_pkg" exec="listener" name="listener" />
+</launch>

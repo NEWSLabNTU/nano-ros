@@ -130,12 +130,15 @@ pub fn declaration_from_probe(doc_json: &str) -> Result<(String, String, Declara
                         ));
                     }
                 };
-                decls.push(EntityDecl {
-                    kind: *kind,
-                    type_name: ent.interface.as_ref().and_then(qualified_type),
-                    name: ent.id,
-                    depth: None,
-                });
+                // No QoS at all on this road: the leaf probe reports what the
+                // code CREATES, and a `create_subscription(qos)` argument is a
+                // runtime value this metadata never carried. The contract file
+                // is the QoS surface (RFC-0100 D3).
+                decls.push(EntityDecl::bare(
+                    *kind,
+                    ent.interface.as_ref().and_then(qualified_type),
+                    ent.id,
+                ));
             }
         }
     }

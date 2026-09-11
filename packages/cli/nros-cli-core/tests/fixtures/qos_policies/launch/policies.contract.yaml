@@ -1,0 +1,53 @@
+# phase-454 W3 (issue 1256) -- an endpoint states ALL FOUR QoS policies.
+#
+# Before this wave `EntityInventory::from_model` read `qos.depth` and nothing
+# else, so `reliability`, `durability` and `history` parsed into the SystemModel
+# and were read by nobody: a declaration that is legal to write, legal to
+# resolve and silently dropped.
+#
+# The two sides state DIFFERENT policies on purpose. The publisher's
+# `transient_local` is the retention case (publisher-side memory, which is why
+# W2 had to make the publisher's depth travel first); the subscriber's
+# `best_effort` is the one that gates XRCE's two 64 KiB reliable buffers. A
+# fixture stating the same profile on both sides could not catch a reader that
+# looked in the wrong endpoint map.
+#
+# `/quiet` states nothing on either side, because "nobody said" and "said a
+# value" license opposite actions and only a fixture carrying both can tell a
+# dropped declaration from a silent one.
+#
+# No endpoint here says `keep_all` -- that one REFUSES the depth table, and its
+# fixture is `qos_keep_all` beside this one.
+
+version: 1
+
+nodes:
+  talker:
+    pub:
+      chatter:
+        qos:
+          depth: 8
+          reliability: reliable
+          durability: transient_local
+          history: keep_last
+      quiet: {}
+
+  listener:
+    sub:
+      chatter:
+        qos:
+          depth: 3
+          reliability: best_effort
+          durability: volatile
+          history: keep_last
+      quiet: {}
+
+topics:
+  /chatter:
+    type: std_msgs/msg/Int32
+    pub: [talker/chatter]
+    sub: [listener/chatter]
+  /quiet:
+    type: std_msgs/msg/Int32
+    pub: [talker/quiet]
+    sub: [listener/quiet]
