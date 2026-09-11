@@ -316,6 +316,7 @@ dependencies = [
  "nros-rmw",
  "nros-rmw-cffi",
  "nros-serdes",
+ "nros-sizing-descriptor",
  "nros-zephyr-build",
  "portable-atomic",
  "portable-atomic-util",
@@ -431,6 +432,14 @@ name = "nros-serdes"
 version = "0.5.0"
 dependencies = [
  "heapless",
+]
+
+[[package]]
+name = "nros-sizing-descriptor"
+version = "0.5.0"
+dependencies = [
+ "serde",
+ "toml",
 ]
 
 [[package]]

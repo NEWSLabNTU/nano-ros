@@ -33,6 +33,10 @@ members = [
     # build` succeed in a fresh shell (the audit blocker P1).
     "packages/tooling/nros-build-paths",
     "packages/tooling/nros-platform-config",
+    # phase-454 W4 (RFC-0100 D4) — the sizing descriptor `nros sync` writes per
+    # entry, and the ONE reader every consumer shares. Leaf by construction so a
+    # `no_std` crate's build script can depend on it.
+    "packages/tooling/nros-sizing-descriptor",
     # phase-336 — the build-profile table (CMAKE_BUILD_TYPE mapping, cargo
     # flags, artifact dir, env-injected preset definitions). One implementation
     # behind `nros profile`, so bash/cmake/just/Rust stop each spelling their

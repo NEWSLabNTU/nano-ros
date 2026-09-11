@@ -279,6 +279,13 @@ nros-board-common = { path = "../../boards/nros-board-common", features = [
 # issue 0491 — a PATH must be fingerprinted by its CONTENT, never by
 # `rerun-if-env-changed` on the variable naming it. This is the one spelling.
 nros-build-paths = { path = "../../tooling/nros-build-paths" }
+# phase-454 W4 (RFC-0100 D4) — the sizing descriptor `nros sync` writes per
+# entry. The ONE place this build gets a TARGET fact from: `size_of` here
+# measures the host (phase-118-E), and the `NROS_*` carriers that reach this
+# script through the environment carry no target ABI at all. Leaf by
+# construction (serde + toml), so it costs this graph nothing it did not
+# already compile.
+nros-sizing-descriptor = { path = "../../tooling/nros-sizing-descriptor" }
 
 # Phase 214.F.2 — target-gate every dev-dep that pulls a `std` /
 # `platform-posix` feature path. The `--edges=features` audit at

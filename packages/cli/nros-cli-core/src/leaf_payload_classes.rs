@@ -109,7 +109,7 @@ impl PayloadClasses {
 ///
 /// One level deep: `nros sync --build-dir generated` writes one directory per
 /// ament package with the artifact at its root.
-pub(crate) fn leaf_bound_inventory(leaf: &Path) -> Result<Vec<(String, BoundState)>, String> {
+pub fn leaf_bound_inventory(leaf: &Path) -> Result<Vec<(String, BoundState)>, String> {
     let dir = leaf.join(GENERATED_DIR);
     let Ok(rd) = std::fs::read_dir(&dir) else {
         // No generated tree at all. Not an error here: a leaf with no message
