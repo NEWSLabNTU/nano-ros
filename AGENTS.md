@@ -816,6 +816,26 @@ and verified.
   one cannot be fixed by generating it because the digests are prose. Read the
   list with `just issues --all --status resolved`, which is derived from the
   files and so cannot drift.
+- **`git stash` is SHARED ACROSS WORKTREES, and it is not a scratch buffer.**
+  The stash lives in the common `.git` dir, so `git stash` in one agent's
+  worktree pops into the same list every other worktree sees — two agents
+  stashing concurrently interleave entries nobody can attribute, and a
+  `git stash pop` in the wrong tree applies someone else's diff. Even
+  single-session it is sharper than it looks: it REWRITES every tracked file it
+  touches, so it is one of the fixture-mtime treadmill's triggers (same class as
+  a pull, a rebase or a `just format`), and an accidental `git stash` with
+  uncommitted work is a silent loss until you notice the tree is clean. Use a
+  branch and a commit, or `git diff > $project/tmp/x.patch`. If you do stash,
+  `git stash list` before and after, and pop immediately.
+- **An agent worktree INHERITS the parent checkout's `activate.sh` exports, so
+  gates measure the WRONG TREE.** `NROS_C_INCLUDE` / `NROS_CPP_INCLUDE` and the
+  rest are absolute paths baked into the environment when `activate.sh` ran;
+  entering a `git worktree` does not re-resolve them. A gate then reads headers
+  from the shared checkout while compiling sources from the worktree, and the
+  two disagree in whichever direction is hardest to see — a green that describes
+  someone else's tree. Re-source `./activate.sh` FROM the worktree after
+  entering it, and `just setup-cli` as well, for the same reason a branch switch
+  needs one (issue 0466: the CLI's source stamp is what fixtures key on).
 - **Write full logs of background builds/tests to files** and grep afterwards;
   `cmd | tail -N` swallows the mid-log error that explains the failure.
 - **`pkill -f <pattern>` matches your OWN wrapper shell** when the pattern
