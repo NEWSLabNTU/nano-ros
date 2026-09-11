@@ -63,6 +63,21 @@ typedef enum nros_log_severity_t {
     NROS_LOG_SEVERITY_WARN = 30,
     NROS_LOG_SEVERITY_ERROR = 40,
     NROS_LOG_SEVERITY_FATAL = 50,
+    /* NOT a level — a WIDTH PIN (issue 1330). Every ARM EABI compiler defaults
+     * to `-fshort-enums` (it is the AAPCS default, not a flag this tree picks),
+     * so an enum whose largest value is 50 is packed to ONE byte there. That
+     * contradicts both the Rust mirror (`repr(transparent)` over `c_int`) and
+     * this enum's own promise above that any `int` a C caller can produce is
+     * representable — and it turned the `_Static_assert` below into a hard
+     * build error for every cross C/C++ image the day the guard landed.
+     * `-fno-short-enums` is not the fix: it would have to reach every consumer
+     * in and out of tree, and a TU that forgot would disagree about the width
+     * of a type in a shared header, silently. The pin belongs in the header.
+     *
+     * Trailing underscore: reserved, never emitted, never switched on.
+     * `to_facade` is TOTAL, so a caller that somehow passed it resolves to
+     * FATAL like any other out-of-range `int` rather than being rejected. */
+    NROS_LOG_SEVERITY_FORCE_INT_WIDTH_ = 0x7fffffff,
 } nros_log_severity_t;
 
 /* ── Width guard ──────────────────────────────────────────────────────────────

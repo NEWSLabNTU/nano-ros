@@ -20,6 +20,7 @@
  * `Reset_Handler` calls `main()` either way.
  */
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -221,8 +222,118 @@ static void seed_platform_rng(const uint8_t ip[4], const uint8_t mac[6]) {
     nros_platform_freertos_seed_rng(seed);
 }
 
+/* ---- App-task stack peak reporter (issue 1146 part 2) ----
+ *
+ * The Rust lane has said how deep its app task ever got since issue 1146 part 1
+ * (`report_stack_peak` in `nros-board-freertos/src/entry.rs`), and that print is
+ * what made `app_stack_bytes` derivable there instead of bisected. This carrier
+ * — which serves BOTH the C and the C++ typed images — said nothing, so its
+ * `.app_stack_bytes` stayed at a number nobody had measured for either
+ * language.
+ *
+ * Why a WATCHER task and not a call where the Rust lane makes its one: on this
+ * lane the register pass happens inside the user's `nros_app_main`, which then
+ * spins for the firmware's lifetime. There is no point in this file that runs
+ * after registration for the images that matter. So the observer has to be
+ * somebody else, and `uxTaskGetStackHighWaterMark` takes a handle, which makes
+ * that legal.
+ *
+ * It has TWO call sites, because "the app spins forever" is not true of every
+ * image and each site alone under-reports the other's shape:
+ *
+ *   - the watcher task, for an app that never returns (talker, listener, both
+ *     servers) — which is the case the Rust lane's single call site cannot
+ *     serve here;
+ *   - `app_task_entry` right after `nros_app_main` returns, for an app that
+ *     finishes (`cpp/service-client` does its one round-trip and exits). That
+ *     image exits through the semihosting trap BEFORE the watcher's first
+ *     sample, so with the watcher alone it printed nothing at all. This is the
+ *     site that corresponds exactly to the Rust lane's "closure returned Ok".
+ *
+ * `report_app_stack_peak` is one-shot, so whichever gets there first prints and
+ * the other is a no-op.
+ *
+ * Priority 0 — strictly below the app (3), the transport band (4) and the net
+ * poll (4) — so the watcher never takes the CPU from work that is running. It
+ * samples until the number STOPS MOVING for a while rather than after a fixed
+ * delay: the watermark is monotone (it is the minimum free ever seen), so a
+ * later sample can only be a better answer, and a fixed delay is a guess that a
+ * slow router turns into an under-report. Then it prints ONCE and DELETES
+ * ITSELF, because the scan is O(unused bytes) — on a 512 KiB stack that is
+ * ~515 K byte compares a sample, affordable a few dozen times at boot and not
+ * affordable forever. Same reason the Rust lane calls it once.
+ */
+static TaskHandle_t s_app_task = NULL;
+static bool s_stack_peak_reported = false;
+
+/* Sampling shape. The first sample lands after the 2 s netif wait plus room for
+ * the session handshake; the value must then hold for STABLE_SAMPLES seconds
+ * before it is believed, which is a stability CLAIM rather than a hope; the cap
+ * stops a wedged image sampling forever. */
+#define NROS_STACK_PEAK_FIRST_MS 4000u
+#define NROS_STACK_PEAK_PERIOD_MS 1000u
+#define NROS_STACK_PEAK_STABLE_SAMPLES 10u
+#define NROS_STACK_PEAK_MAX_SAMPLES 45u
+
+/* Print the app task's high-water peak, at most once per boot. Safe to call
+ * from the app task itself or from the watcher below. */
+static void report_app_stack_peak(void) {
+    if (s_stack_peak_reported || s_app_task == NULL) {
+        return;
+    }
+    const uint32_t total = NROS_APP_CONFIG.scheduling.app_stack_bytes;
+    const uint32_t unused =
+        (uint32_t)uxTaskGetStackHighWaterMark(s_app_task) * (uint32_t)sizeof(StackType_t);
+    /* 0 means "this port does not instrument stacks", not "no headroom" — say
+     * nothing rather than print a zero that reads as an overflow. Same guard as
+     * the Rust lane's. */
+    if (unused == 0 || total <= unused) {
+        return;
+    }
+    s_stack_peak_reported = true;
+    /* One `printf` of a prebuilt line: the console is shared with the app task
+     * and the log writer, and a single `_write` cannot interleave. */
+    char line[160];
+    snprintf(line, sizeof(line),
+             "nros: app task stack peak %lu of %lu bytes (%lu free) "
+             "- raise with `[node.rt] app_stack_bytes`\n",
+             (unsigned long)(total - unused), (unsigned long)total, (unsigned long)unused);
+    printf("%s", line);
+}
+
+static void stack_peak_task_entry(void *arg) {
+    (void)arg;
+
+    vTaskDelay(pdMS_TO_TICKS(NROS_STACK_PEAK_FIRST_MS));
+
+    uint32_t prev_unused = 0xffffffffu;
+    uint32_t stable = 0;
+
+    for (uint32_t i = 0; i < NROS_STACK_PEAK_MAX_SAMPLES; i++) {
+        const uint32_t unused =
+            (uint32_t)uxTaskGetStackHighWaterMark(s_app_task) * (uint32_t)sizeof(StackType_t);
+        if (unused == prev_unused) {
+            if (++stable >= NROS_STACK_PEAK_STABLE_SAMPLES) break;
+        } else {
+            stable = 0;
+            prev_unused = unused;
+        }
+        vTaskDelay(pdMS_TO_TICKS(NROS_STACK_PEAK_PERIOD_MS));
+    }
+
+    report_app_stack_peak();
+    vTaskDelete(NULL);
+}
+
 static void app_task_entry(void *arg) {
     (void)arg;
+
+    /* Issue 1146 part 2 — record our own handle so the reporter above can ask
+     * about THIS task. `nros_freertos_create_task` discards the handle
+     * `xTaskCreate` returns, and widening that shared wrapper's signature to
+     * carry it out would touch every caller on every FreeRTOS board for one
+     * consumer. A task can always name itself. */
+    s_app_task = xTaskGetCurrentTaskHandle();
 
     /* phase-370 W4 (issue 0733) — run the static constructors FIRST. This flat
      * bare-metal image has no crt0, so nothing else walks `.init_array`, and
@@ -251,6 +362,12 @@ static void app_task_entry(void *arg) {
     nros_freertos_create_task(poll_task_entry, "poll", 256, 0,
                               clamp_prio(NROS_APP_CONFIG.scheduling.poll_priority));
 
+    /* Issue 1146 part 2 — the one-shot app-task stack peak reporter. Priority
+     * 0 so it cannot preempt anything; 512 words because `snprintf` on newlib
+     * wants room; it deletes itself after its single line, so both costs are
+     * paid once at boot. */
+    nros_freertos_create_task(stack_peak_task_entry, "stkpeak", 512, 0, 0);
+
     /* Initialise semihosting stdio so printf() routes to QEMU stdout.
      * Disable buffering so output is visible immediately (important for
      * test harnesses that capture stdout from QEMU processes). */
@@ -270,6 +387,13 @@ static void app_task_entry(void *arg) {
 
     /* Run user application */
     app_main();
+
+    /* Issue 1146 part 2 — the Rust lane's exact call site: the register pass
+     * is over and the deepest frame has been and gone. Reached only by an app
+     * that RETURNS, which on this board means one that finished its work
+     * (cpp/service-client) rather than one that spins; the watcher above covers
+     * the rest, and whichever arrives first is the one that prints. */
+    report_app_stack_peak();
 
     /* Semihosting exit */
     {
