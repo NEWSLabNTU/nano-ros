@@ -113,12 +113,10 @@ esp32 stack budgets.
 
   Gate: `check-leaf-deployment-spelling`.
 
-  NOT done, and why:
-  - `leaf_system::from_manifest`, the Rust manifest fallback, is NOT deleted.
-    Workspace entries and members still carry the retiring tables and are read
-    through it: `examples/workspaces` has 7 entries and 24 members, plus
-    `examples/templates` and the nros-tests workspace fixtures. They go with
-    W4/W5, and so does this item's acceptance rg over `examples/`.
+  NOT done in W3b, and why:
+  - `leaf_system::from_manifest`, the Rust manifest fallback, was NOT deleted:
+    workspace entries still carried the retiring tables. **W5 deleted it** (see
+    below); the acceptance rg is issue 1289.
 
   Built in this worktree, each family by its own `just` lane, with 0
   retired-key deprecation lines in any build log:
@@ -153,6 +151,29 @@ esp32 stack budgets.
   files six templates track (five `CMakeLists.txt`, `multi-node-workspace`'s
   `Cargo.toml`); finish moving the legacy hand-written `src/*_entry` packages to
   generated entries (RFC-0065 D13).
+  **W5 remainder landed (2026-09-11, `feat/phase-445-w5-generated-entries`)**,
+  on top of #880's root/settings work:
+  - `examples/workspaces/rust/src/esp32_entry` deleted; `[image.esp32]`
+    generates it. `esp-hal` joined the esp32 descriptor's `[board.entry]
+    crate_root_deps`, the locator moved to the image, and the generator stopped
+    naming the umbrella's `platform-bare-metal` marker on `nros-platform` (no
+    such feature; the board crate selects `platform-esp32-qemu`).
+  - A workspace entry's deployment is the image that claims it
+    (`leaf_system::for_entry`, RFC-0098 amendment); the generated entry writes
+    no `deploy`. `from_manifest` and its call are deleted; the retired keys are
+    refused by the reader, `nros check` (`entry-deploy-retired`) and
+    `check-leaf-deployment-spelling`, which stopped skipping workspace
+    manifests (their node/component tables are counted — issue 1289).
+  - The eight Rust Zephyr entries and every nros-tests workspace fixture lost
+    their manifest deployment keys (bringup images, or a leaf `system.toml`
+    where the fixture has no bringup or tests a Form-1 `nros::main!()`); the
+    Zephyr entries stay hand-written west apps (issue 1288) and were NOT built
+    (the west module symlinks another checkout, issue 1253).
+  - `nros build` with no bringup builds package by package (RFC-0065 D1); the
+    five template root `CMakeLists.txt` and the three C/C++ `robot_entry`
+    packages are deleted, `check-no-tracked-workspace-roots` covers
+    `examples/templates/`, and `nros new --workspace --lang cpp` scaffolds no
+    root and no entry.
 - [ ] **W6 — delete and gate (D1, D2).** `git rm` the 47 leaf
   `.cargo/config.toml` files and the 34 `nros-board.toml` projections. Gates:
   refuse any tracked `examples/**/.cargo/*`; refuse a workspace-root
