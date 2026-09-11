@@ -393,7 +393,8 @@ endfunction()
 # The cargo-LEAF road carries none of this: a leaf's sidecar is derived from a
 # metadata probe that sees no SystemModel, so there is no declaration there to
 # forward and its store keeps the crate defaults (`check-declared-fact-carriers`
-# records why, in ROAD_UNPAIRED).
+# records why: FACT_DISPOSITION for the five capacities, ROAD_UNPAIRED for the
+# three `PARAM_NEEDS_*` inputs).
 function(_nros_param_store_env _out_var)
     set(${_out_var} "" PARENT_SCOPE)
     if(NOT COMMAND nros_entity_inventory_knobs_file)
