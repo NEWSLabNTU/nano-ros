@@ -45,8 +45,8 @@
 //! ## What is deliberately NOT in a manifest
 //!
 //! Which pack renders for a given (language, board) is a rule with a reason —
-//! the RTOS board runners are C++ only, so an embedded C entry must be
-//! rendered as C++ — and a rule belongs in reviewed Rust, not in data a
+//! a C entry can be rendered as C only where the board exports a C-ABI
+//! `run_components` — and a rule belongs in reviewed Rust, not in data a
 //! template author can edit. RFC-0091 draws the same line for target facts.
 
 use std::collections::BTreeMap;
@@ -119,13 +119,15 @@ pub struct EntryPackInfo {
 
 /// The one routing decision: which pack renders `language` on `board`.
 ///
-/// The rule and its reason: the RTOS board runners
-/// (`ThreadxBoard::run_components` and siblings) are C++ only, so an embedded
-/// C entry is rendered by the C++ pack, which drives the C++ runner and calls
-/// each C node through its `extern "C"` seam. Native C stays C.
+/// The rule and its reason: a C entry is rendered by the C pack only where the
+/// board family exports a C-ABI `run_components`. Where it does not, the C++
+/// pack renders it, driving the C++ board runner and calling each C node
+/// through its `extern "C"` seam.
 ///
-/// W3.1 is the item that would delete this branch, by giving every board a
-/// C-ABI `run_components`.
+/// Since issue 1286 every family has one (ThreadX was the last), so the
+/// C-to-C++ arm is reached by no board in `BOARD_KEYS`. It stays as the
+/// answer for a future family that ships no C runner, rather than being
+/// deleted and re-derived.
 pub fn entry_pack_for(language: Language, board: &str) -> Result<EntryPackInfo, String> {
     // phase-432 W3.1 — the question is whether this board HAS a C-ABI
     // `run_components`, not whether it is embedded. Those agreed only while
@@ -271,9 +273,9 @@ mod tests {
     /// The state of the surface, pinned so a board's runner landing is a
     /// DELIBERATE edit here rather than a silent change of what ships.
     ///
-    /// ThreadX is the one that is `false` on purpose rather than pending: it
-    /// has no `run_tiers` either, so there is nothing to copy, and it stays
-    /// C++-entry-only with the routing reported rather than refused.
+    /// Issue 1286 moved ThreadX, the last family routed to C++. It has the
+    /// shared `run_components` and no `run_tiers`, so a tiered ThreadX C plan
+    /// takes the sched-context path rather than being refused.
     #[test]
     fn the_c_board_surface_is_where_this_phase_left_it() {
         use nros_entry_lower::BoardFamily;
@@ -281,7 +283,22 @@ mod tests {
         assert!(BoardFamily::Freertos.has_c_run_components());
         assert!(BoardFamily::Zephyr.has_c_run_components());
         assert!(BoardFamily::Nuttx.has_c_run_components());
-        assert!(!BoardFamily::Threadx.has_c_run_components());
+        assert!(BoardFamily::Threadx.has_c_run_components());
+    }
+
+    /// Issue 1286 — both ThreadX board keys CMake passes answer `pack=c`, with
+    /// no routing reported. CMake asks this before any plan exists, which is
+    /// why the answer cannot depend on whether the plan declares tiers.
+    #[test]
+    fn a_threadx_c_entry_renders_as_c() {
+        for board in ["threadx", "threadx-linux", "rv-virt-threadx"] {
+            let got = entry_pack_for(Language::C, board).unwrap();
+            assert_eq!(
+                (got.pack.as_str(), got.extension.as_str(), got.routed),
+                ("c", "c", false),
+                "{board}"
+            );
+        }
     }
 
     /// A Rust entry is not a C-family TU, so CMake must not link it as one.

@@ -348,7 +348,9 @@ still links `stdc++` however the entry is written. The gain is real and it is
 not universal; do not state it unqualified.
 
 The reason is an accident of which entry points were declared, not a design
-decision. The C-callable board surface:
+decision. The C-callable board surface as this section found it (phase-432
+W3.1 and issue 1286 have since filled the `run_components` column; see the
+end of this section):
 
 | board | `run_components` | `run_tiers` |
 | --- | --- | --- |
@@ -377,8 +379,22 @@ them as `""` and `0` — a pure-C entry would compile, link, boot and dial
 nothing, which is issue #174 exactly; one ladder now lives in
 `<nros/entry_config.h>`, included by both languages. See phase-432 W3.1. That deletes the language-crossing branch from
 `cmd/codegen.rs` and lets the C pack serve every board the C++ one does.
-**ThreadX has no C board API at all and is declared C++-entry-only**, rather
-than silently routed.
+
+**ThreadX has a C entry too (issue 1286).** This section used to declare it
+C++-entry-only, on the grounds that it had neither runner and so "nothing to
+copy". That stopped being true once W3.1 made `run_components` ONE shared TU
+(`nros_board_rtos_run_components`): ThreadX's C++ `run_components` is
+FreeRTOS's line for line, and the shared TU's per-tick yield is empty off
+Zephyr, which is what ThreadX needs. So ThreadX takes that runner and has NO
+`run_tiers`. A multi-tier ThreadX plan takes the single-executor
+sched-context path in the C pack, exactly as it does in the C++ one; issue
+1283 is what gave the C pack that path. The surface now:
+
+| board | `run_components` | `run_tiers` |
+| --- | --- | --- |
+| native | yes (+`_named`) | yes |
+| freertos / zephyr / nuttx | yes (shared) | yes |
+| threadx | yes (shared) | — (sched contexts) |
 
 ---
 
@@ -746,8 +762,12 @@ language first is what made the shortcut visible at all.
 - Retiring `TargetProfile` amends RFC-0068, which is **Stable**. Does that edit
   land there or here? Recorded as an amendment above; the mechanics are a
   maintainer call.
-- `nros_board_threadx_run_components` does not exist and neither does its
-  `run_tiers` — is pure-C ThreadX worth the shim, or is the declaration enough?
+- ~~`nros_board_threadx_run_components` does not exist and neither does its
+  `run_tiers` — is pure-C ThreadX worth the shim, or is the declaration
+  enough?~~ ANSWERED by issue 1286: no shim was needed. ThreadX takes the
+  shared `nros_board_rtos_run_components`, has no `run_tiers`, and a tiered
+  plan uses sched contexts. `workspace-c-threadx-linux` builds with no C++
+  runtime.
 - ~~Does the designated-initialiser change land with the C++ pack conversion or
   ahead of it?~~ ANSWERED: its own branch immediately after W2.3, with its own
   goldens diff (8 goldens, tier rows only).
@@ -769,3 +789,9 @@ does for those boards — an embedded C entry routes to the C++ emitter. They ar
 byte-identical to the native rows except a comment and read as board coverage
 they do not have. Route the harness through the dispatch, or relabel them to pin
 what they actually prove. Tracked on issue 1102.
+
+Since phase-432 W3.1 and issue 1286 every family has a C runner, so the
+dispatch DOES call `emit_c` for all five boards. The rows now record what the
+pipeline produces: each calls its family's runner in its boot shape.
+`c_threadx_one` used to pin the refusal text; `c_threadx_tiers` pins the
+sched-context path a tiered ThreadX C plan takes.

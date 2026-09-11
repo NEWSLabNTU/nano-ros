@@ -199,9 +199,20 @@ set(THREADX_STARTUP_SOURCE
     "${_NROS_BOARD_STARTUP_C}"
     CACHE INTERNAL "ThreadX / threadx-linux startup TU")
 
+# issue 1286 — the C-ABI single-executor runner, SHARED by every RTOS board
+# (`nros_board_rtos_run_components`). A `--lang c` ThreadX entry calls it, so
+# the entry is a pure C image with no C++ runtime. It compiles IN the app
+# target, like the rest of this list, because only there is the per-build
+# `<nros/nros_cpp_config_generated.h>` on the include path: the runner sizes
+# its executor storage from it, and the fallback size is issue 0245's heap
+# corruption. The TU references `nros_cpp_*`, which every threadx-linux C/C++
+# image links (`libnros_cpp.a`, issue 0425). The CARGO lane deliberately does
+# NOT compile it: `nros-board-threadx-linux`'s glue is `+whole-archive`
+# (issue 0582), which would pull those references into every Rust image.
 set(THREADX_APP_DEFINE_SOURCE
     "${_NROS_BOARD_APP_DEFINE_C}"
     "${_NROS_BOARD_THREADX_HOOKS_C}"
+    "${_NROS_BOARD_ROOT}/packages/boards/nros-board-common/c/nros_rtos_run_components.c"
     CACHE INTERNAL "ThreadX / threadx-linux app_define TU")
 
 set(THREADX_STARTUP_INCLUDES

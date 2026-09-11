@@ -454,10 +454,30 @@ file(WRITE "${_NROS_APP_CONFIG_DEF_C}"
 # the curated link order). Exporting THREADX_APP_DEFINE_SOURCE empty
 # tells nros_platform_link_app to skip the per-app add.
 # ---------------------------------------------------------------------------
+# issue 1286 — the C-ABI single-executor runner, SHARED by every RTOS board
+# (`nros_board_rtos_run_components`), which a `--lang c` ThreadX entry calls.
+#
+# It goes HERE, in the app target, and NOT into `threadx_glue` above with the
+# other board glue, for two measured reasons:
+#   - `threadx_glue` sees no nros-cpp include path, so the runner's
+#     `__has_include(<nros/nros_cpp_config_generated.h>)` finds nothing and it
+#     silently takes its 81920-byte fallback where the per-build header says
+#     more. An undersized executor buffer is issue 0245's heap corruption. In
+#     the app target the per-build header is on the path, and without it the
+#     in-tree stub `#error`s. So a wrong size is a compile error, never a
+#     silent one.
+#   - `threadx_glue` is an ARCHIVE, reached through `threadx_platform` after
+#     `libnros_cpp.a`, so the runner's `nros_cpp_*` references would come
+#     unresolved in ld's single pass (the Phase 112.E.fix class this file's
+#     THREADX_APP_DEFINE note describes).
+# An image that never calls it (a plain C/C++ example, a Rust image) drops it:
+# `nros_board_link_app` links every app with `--gc-sections`, and an unreferenced
+# section's undefined references are not reported. The cargo lane is untouched.
 set(THREADX_STARTUP_SOURCE
     "${_NROS_BOARD_STARTUP_C}"
     "${_NROS_APP_CONFIG_DEF_C}"
-    CACHE INTERNAL "ThreadX / rv-virt-threadx startup TU + NROS_APP_CONFIG def")
+    "${_NROS_BOARD_ROOT}/packages/boards/nros-board-common/c/nros_rtos_run_components.c"
+    CACHE INTERNAL "ThreadX / rv-virt-threadx startup TU + NROS_APP_CONFIG def + C runner")
 
 set(THREADX_APP_DEFINE_SOURCE ""
     CACHE INTERNAL "Empty — RV64's app_define.c lives in threadx_glue STATIC")

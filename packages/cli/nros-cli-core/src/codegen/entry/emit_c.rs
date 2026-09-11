@@ -3,8 +3,11 @@
 //! Maps a [`Plan`] (see `super::mod`) onto a generated typed `main.c`: per launch
 //! node it creates a `nros_cpp_node_t` (`nros_cpp_node_create`) and calls the
 //! node's `NROS_C_COMPONENT` factory/configure seam
-//! (`__nros_c_component_<pkg>_{create,configure}`) on the real executor; `main`
-//! drives `nros_board_native_run_components`. The C counterpart of
+//! (`__nros_c_component_<pkg>_{create,configure}`) on the real executor; the
+//! board's entry point drives the family's C-ABI runner
+//! (`BoardFamily::c_abi_runners`: `nros_board_native_*` on the host,
+//! `nros_board_rtos_run_components` and the per-RTOS `run_tiers` elsewhere).
+//! The C counterpart of
 //! [`super::emit_cpp::emit_typed`]. The legacy non-typed emitter (the
 //! `EntryNodeRuntime` interpreter via `nros_board_native_run`) was retired in
 //! phase-257 Stage-3.
@@ -137,28 +140,21 @@ fn node_view(n: &super::PlanNode, i: usize, on_executor: usize) -> CNodeView {
 }
 
 pub fn emit_typed(plan: &Plan) -> Result<String, String> {
-    // phase-432 W3.1 — this emitter is NATIVE-ONLY, and now says so.
+    // phase-432 W3.1 — the board call is the FAMILY's runner, never a
+    // hardcoded `nros_board_native_*`.
     //
-    // Every board call it renders is hardcoded `nros_board_native_*`, because
-    // that is the whole C-ABI board surface that exists: native has
-    // `run_components`, `run_components_named` and `run_tiers`; the three RTOS
-    // boards have `run_tiers` alone; ThreadX has neither.
+    // This emitter used to render `nros_board_native_*` for every board, and
+    // so produced source that NAMED A SYMBOL THE TARGET DID NOT HAVE:
+    // `c_freertos_one.c.golden` called `nros_board_native_run_components_named`
+    // for `board = freertos`. Nothing shipped through it, because the dispatch
+    // routed an embedded C entry to the C++ emitter, so the wrong bytes sat in
+    // a file nobody compiled.
     //
-    // Emitting anyway is what it used to do, and it produced source that
-    // NAMES A SYMBOL THE TARGET DOES NOT HAVE — `c_freertos_one.c.golden`
-    // called `nros_board_native_run_components_named` for `board = freertos`,
-    // and `c_nuttx_tiers` called `nros_board_native_run_tiers` for
-    // `board = nuttx`. Five goldens recorded that as if it were coverage.
-    //
-    // Nothing shipped through it: the dispatch routes an embedded C entry to
-    // the C++ emitter, so only the golden harness ever called this with an
-    // embedded board. That is exactly why it survived — the bytes were wrong
-    // in a file nobody compiled. Refusing turns five silent wrong records into
-    // five true ones, and makes the routing rule load-bearing instead of
-    // merely observed.
-    //
-    // W3.1 is the item that lifts this: give each RTOS board a C-ABI
-    // `run_components` and the refusal narrows to what still lacks one.
+    // The runner names now come from `BoardFamily::c_abi_runners`, the same
+    // record the routing reads, so the two cannot disagree. Every family has a
+    // `run_components` since issue 1286 (ThreadX was the last). The refusal
+    // below stays for a family that ships none, which the routing would send
+    // to the C++ pack before it got here.
     let family = nros_entry_lower::board_family(&plan.board)
         .map_err(|e| format!("typed C entry emit: {e}"))?;
     let Some(runners) = family
@@ -166,13 +162,11 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
         .filter(|r| r.run_components.is_some())
     else {
         return Err(format!(
-            "typed C entry emit: board `{}` has no C-ABI `run_components` — the C \
-             board surface is native-only, so this emitter would name \
-             `nros_board_native_*` on a target that does not have it. An embedded \
-             C entry is rendered by the C++ pack (which drives the C++ board runner \
-             and calls each C node through its `extern \"C\"` seam); that routing is \
-             what `nros codegen entry-pack --lang c --board {}` reports. phase-432 \
-             W3.1 is the item that would give this board a C runner.",
+            "typed C entry emit: board `{}` has no C-ABI `run_components` \
+             (`BoardFamily::c_abi_runners`), so the C pack has no runner to call. \
+             A C entry for it is rendered by the C++ pack (which drives the C++ \
+             board runner and calls each C node through its `extern \"C\"` seam); \
+             `nros codegen entry-pack --lang c --board {}` reports that routing.",
             plan.board, plan.board,
         ));
     };
