@@ -121,6 +121,15 @@ the rest and do not depend on each other.
   `remove_cv_t<remove_reference_t<T>>` is right for scalars and wrong for
   exactly the function and array types a callback signature uses, and runs two
   negative controls on the normal path.
+  **And one thing the fix BROKE, caught before it merged.** `component.hpp`
+  carried its own hand-rolled placement `operator new` behind Zephyr's include
+  guard (issue 1317's workaround), so the moment the shim supplied the real
+  ones the two collided — `redefinition of 'void* operator new(size_t, void*)'`
+  on every Zephyr C++ component build. The local workaround is deleted, which
+  is the class fix 1317 could not make from inside one header, and the gate
+  gained a CONSUMER probe: it now compiles `nros/component.hpp` against the
+  Zephyr shim, not only a synthetic TU. The synthetic probe stayed green
+  through the whole collision, which is the argument for the second probe.
 
 * **W5 [cpp] — un-gate `NodeOptions` and `Rate`/`WallRate`. LANDED
   2026-09-12.** 22 of `NodeOptions`' 23 members are `static_assert`-only and
