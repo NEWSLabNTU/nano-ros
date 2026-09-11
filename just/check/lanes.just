@@ -1602,6 +1602,18 @@ dep-chain:
             nros_check_skip dep-chain "ROS 2 not sourced (AMENT_PREFIX_PATH unset)"; exit 0
         fi
     fi
+    # `setup-launch-resolve` too, since phase-445 W3b, for the reason
+    # `scaffold-journey` states: an example leaf carries a `system.toml`, so
+    # `nros sync` — which step 2b of the script runs to write the leaf's
+    # `[patch.crates-io]` table — resolves its SystemModel through
+    # `nros-launch-resolve` and REFUSES to skip it. Without the resolver every
+    # cell reported `no matching package named 'nros' found` from `cargo tree`,
+    # three steps downstream of the actual refusal; post-submit was red on all
+    # 8 cells from 2026-09-10 to 2026-09-11 with that as its only symptom.
+    # Called from the BODY, not listed beside a dependency: a dependency list is
+    # an ORDER to `check-lane-contracts` (issue 1030), and nothing here needs to
+    # run before it.
+    just setup-launch-resolve
     source scripts/build/cargo.sh
     NROS="$(nros_cli_bin)" scripts/ci/dep-chain-check.sh
 

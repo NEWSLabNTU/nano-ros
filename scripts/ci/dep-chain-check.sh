@@ -129,10 +129,18 @@ for cell in "${CELLS[@]}"; do
         #     named 'nros' found`. The check has to perform the setup step it is
         #     validating, exactly as it already does for `nros setup` above.
         if [ -f "$ex/package.xml" ] || [ -f "$ex/Cargo.toml" ]; then
-            if ( cd "$ex" && NROS_SKIP_VERSION_CHECK=1 "$NROS" sync >/dev/null 2>&1 ); then
+            sync_out=""
+            if sync_out="$( cd "$ex" && NROS_SKIP_VERSION_CHECK=1 "$NROS" sync 2>&1 )"; then
                 : # .cargo/config.toml patch table now present
             else
+                # PRINT the refusal. Swallowing it cost a day: `nros sync`
+                # refusing for want of `nros-launch-resolve` surfaced only as
+                # `cargo tree` saying `no matching package named 'nros' found`
+                # three steps later, which reads like a manifest defect and is
+                # not one. The reason a step failed belongs in the log of the
+                # run that failed.
                 echo "  [warn] nros sync did not complete for $ex (dep resolution may fail below)"
+                printf '%s\n' "$sync_out" | sed 's/^/      /'
             fi
         fi
 
