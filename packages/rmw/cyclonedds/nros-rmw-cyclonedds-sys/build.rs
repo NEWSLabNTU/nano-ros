@@ -122,6 +122,9 @@ fn vendored_build() {
         "service.cpp",
         "descriptors.cpp",
         "graph.cpp",
+        // phase-444 W3 — the graph READ slots. Added to BOTH lists in one
+        // change, which is what issue 0984 is about.
+        "graph_query.cpp",
         "qos.cpp",
         // issue 0984 — added by #0970 to the CMake list and NOT to this one, so
         // the cmake path linked and the cargo path did not. `check-cyclone-backend-sources`

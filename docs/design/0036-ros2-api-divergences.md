@@ -121,6 +121,14 @@ Each divergence: **what ROS 2 does → what nano-ros does → why → owner**.
   what issue 0791 filed and phase-381 closed: twelve `rmw` graph slots, filled
   on zenoh and (for node names) on Cyclone, reachable from all three languages.
 
+  **Cyclone answers the same eleven as of phase-444 W3** — the DDS builtin
+  topics (`DCPSPublication` / `DCPSSubscription`) say which endpoints exist, on
+  what topic, with what type and granted QoS, and `ros_discovery_info` says
+  which NODE owns each, which is the edge DDS itself does not have. The twelfth,
+  `node_get_graph_guard_condition`, is filled by NO backend and is classified
+  `inert`: it would have to fire from Cyclone's own receive thread, which is the
+  context the status-event slots decline for the same reason.
+
   Three properties a caller must know, because they are what makes this
   honest rather than a claim of parity:
 

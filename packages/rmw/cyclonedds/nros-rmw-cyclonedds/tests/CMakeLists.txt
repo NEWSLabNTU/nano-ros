@@ -172,6 +172,28 @@ add_test(
     COMMAND nros_rmw_cyclonedds_graph_node_set
 )
 
+# phase-444 W3 — the graph READ slots, asked from a SECOND participant so the
+# answers cross the wire. The service half needs the generated AddTwoInts
+# sources (`rosidl_adapter`); where they exist it drives the real
+# `create_service` / `create_client` path, and where they do not the topic half
+# still runs rather than the whole test disappearing.
+add_executable(nros_rmw_cyclonedds_graph_query
+    graph_query.cpp
+    ${_test_string_sources}
+)
+target_link_libraries(nros_rmw_cyclonedds_graph_query PRIVATE nros_rmw_cyclonedds)
+target_include_directories(nros_rmw_cyclonedds_graph_query
+    PRIVATE
+        ${NROS_RMW_CFFI_DIR}
+        "${CMAKE_CURRENT_BINARY_DIR}/types"
+)
+add_test(
+    NAME nros_rmw_cyclonedds_graph_query
+    COMMAND nros_rmw_cyclonedds_graph_query
+)
+set_tests_properties(nros_rmw_cyclonedds_graph_query PROPERTIES
+    ENVIRONMENT "${_nros_rmw_test_env}")
+
 # Issue 0823 — the QoS read-back. Pre-loads the out-struct with values the
 # entity cannot have, so an echoing or zeroing implementation is visible.
 add_executable(nros_rmw_cyclonedds_actual_qos
@@ -289,6 +311,13 @@ if(_addtwoints_sources)
         NAME nros_rmw_cyclonedds_service_smoke
         COMMAND nros_rmw_cyclonedds_service_smoke
     )
+
+    # phase-444 W3 — the graph query test's SERVICE half, wired here because
+    # this is where the generated AddTwoInts sources become available. With
+    # them it drives the real `create_service` / `create_client`; without them
+    # the target above still builds and its topic assertions still run.
+    target_sources(nros_rmw_cyclonedds_graph_query PRIVATE ${_addtwoints_sources})
+    target_compile_definitions(nros_rmw_cyclonedds_graph_query PRIVATE NROS_TEST_HAS_SERVICE=1)
 
     # Phase 117.7 service request/reply data round-trip — Phase
     # 117.X.3 reshapes wire to include cdds_request_header_t.

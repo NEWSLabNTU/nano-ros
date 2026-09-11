@@ -133,6 +133,8 @@ add_library(nros_rmw_cyclonedds STATIC
     src/service.cpp
     src/descriptors.cpp
     src/graph.cpp
+    # phase-444 W3 — the graph READ slots (builtin topics + ros_discovery_info).
+    src/graph_query.cpp
     src/qos.cpp
     src/nros_sertype.cpp
     # Phase 212.K.7.4 — C++ bridge for the Rust DescriptorBuilder.

@@ -12,6 +12,9 @@
 #include "nros/rmw_entity.h"
 #include "nros/rmw_event.h"
 #include "nros/rmw_ret.h"
+// phase-444 W3 — the graph slots' visitor types (`rmw_names_and_types_visitor_t`
+// and friends) are declared with the vtable, not with the entities.
+#include "nros/rmw_vtable.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -133,6 +136,45 @@ int graph_node_of(const rmw_node_t *node);
 rmw_ret_t node_create(rmw_session_t *session, const char *name, const char *namespace_,
                       rmw_node_t *out);
 rmw_ret_t node_destroy(rmw_node_t *node);
+
+/* ---- graph_query.cpp — phase-444 W3, the graph READ slots ----------------
+ *
+ * The DDS builtin topics (`DCPSPublication` / `DCPSSubscription`) supply topic,
+ * type, QoS and endpoint GUID; `ros_discovery_info` supplies the node the
+ * endpoint belongs to. Each reports what has been DISCOVERED and never blocks;
+ * an inactive graph answers UNSUPPORTED, which stays distinct from empty. */
+rmw_ret_t graph_get_topic_names_and_types(const rmw_session_t *session, bool no_demangle,
+                                          rmw_names_and_types_visitor_t visitor);
+rmw_ret_t graph_get_service_names_and_types(const rmw_session_t *session,
+                                            rmw_names_and_types_visitor_t visitor);
+rmw_ret_t graph_get_publisher_names_and_types_by_node(const rmw_session_t *session,
+                                                      const char *node_name,
+                                                      const char *node_namespace,
+                                                      bool no_demangle,
+                                                      rmw_names_and_types_visitor_t visitor);
+rmw_ret_t graph_get_subscriber_names_and_types_by_node(const rmw_session_t *session,
+                                                       const char *node_name,
+                                                       const char *node_namespace,
+                                                       bool no_demangle,
+                                                       rmw_names_and_types_visitor_t visitor);
+rmw_ret_t graph_get_service_names_and_types_by_node(const rmw_session_t *session,
+                                                    const char *node_name,
+                                                    const char *node_namespace,
+                                                    rmw_names_and_types_visitor_t visitor);
+rmw_ret_t graph_get_client_names_and_types_by_node(const rmw_session_t *session,
+                                                   const char *node_name,
+                                                   const char *node_namespace,
+                                                   rmw_names_and_types_visitor_t visitor);
+rmw_ret_t graph_get_publishers_info_by_topic(const rmw_session_t *session, const char *topic_name,
+                                             bool no_mangle,
+                                             rmw_topic_endpoint_info_visitor_t visitor);
+rmw_ret_t graph_get_subscriptions_info_by_topic(const rmw_session_t *session,
+                                                const char *topic_name, bool no_mangle,
+                                                rmw_topic_endpoint_info_visitor_t visitor);
+rmw_ret_t graph_count_publishers(const rmw_session_t *session, const char *topic_name,
+                                 std::size_t *count);
+rmw_ret_t graph_count_subscribers(const rmw_session_t *session, const char *topic_name,
+                                  std::size_t *count);
 
 /* ---- publisher.cpp / subscriber.cpp helpers ---- */
 /** Return the Cyclone writer handle for a publisher created by
