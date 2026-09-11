@@ -1,10 +1,29 @@
 # Phase 444 — RMW fix-up: what the contract report shows, and what the issue records hid
 
-**Status (2026-09-11). Not started. Opened from a review of the RMW report; supersedes
-phase-393, which is archived in the same change. Scope grew on 2026-09-11 in two
-ways: W6 and W7 add two RMW-level defects that a downstream image found (#1268 and #1269),
-and § "The ROS 2 gap list" gathers the user-API gap reviews in one place, after a
-truth pass on their ledger. Order of work: W1, W6, W7, W4, W5, then W2 and W3.**
+**Status (2026-09-11). FIVE of seven items are done, not "not started" — W1, W4,
+W5 and W7 are complete and their issues archived (#1088, #1092, #1219, #1021,
+#1269), and W6 is half done. The three that remain all need a LIVE PEER, which
+is why they are the three that remain.**
+
+Re-read against the issue files rather than against this line, which had said
+"Not started" while five of its items landed:
+
+| item | issue | state |
+| --- | --- | --- |
+| W1 | #1088 | done — archived |
+| W2 | #0902 | **open** — needs a router and a live peer, over enough runs to separate the rate from the 20–90 % recorded |
+| W3 | — | **open** — a Cyclone graph READER for 11 slots; the item itself says "phase-sized and may be split out" |
+| W4 | #1092, #1219 | done — both archived |
+| W5 | #1021 | done — archived |
+| W6 | #1268 | **half done**: the "report a failed registration once and stop retrying" half landed with issue 1271 (`ParamState::reconcile_failure_reported`, consumed at `executor/spin.rs:8377`). The remaining half is the Cyclone backend registering the six `rcl_interfaces` descriptors, and its acceptance reads a parameter back with `ros2 param get` against a live peer |
+| W7 | #1269 | done — archived |
+
+Opened from a review of the RMW report; supersedes phase-393, which is archived
+in the same change. Scope grew on 2026-09-11 in two ways: W6 and W7 added two
+RMW-level defects a downstream image found (#1268 and #1269), and § "The ROS 2
+gap list" gathers the user-API gap reviews in one place, after a truth pass on
+their ledger. Remaining order of work: W6's backend half, then W3 (W7 is done,
+so the reader it was waiting on is unblocked), then W2.**
 
 Implements RFC-0054 (the C headers are the ABI SSoT). Continues phase-393 (archived).
 

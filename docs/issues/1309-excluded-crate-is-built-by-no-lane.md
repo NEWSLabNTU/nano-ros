@@ -247,3 +247,42 @@ per-crate command `check::test-targets` runs. The three real ones share one
 cause (a `staticlib`/`cdylib` with no host panic runtime), which is a manifest
 fact a derived rule could read. Closing 1315 is what makes this issue's
 remaining four crates members.
+
+## Correction (phase-451 W4, 2026-09-11) — the mirror was necessary and is not why these four are excluded
+
+Issue 1315's `embedded-only` mirror is implemented, and `HOST_UNCHECKABLE` is
+derived from it (five of its eight hand-written entries were stale). That was
+real work and it fixed a real thing.
+
+**It did not unblock the four crates this issue said it would**, and finding
+that out required doing it. `cortex-m`, `esp-hal` and
+`nros-platform-critical-section` each select a different `critical-section`
+restore-state width, and critical-section refuses more than one:
+
+    error: You must set at most one of these Cargo features: restore-state-none,
+           restore-state-bool, restore-state-u8, ...
+
+That is UPSTREAM exclusivity, not a nano-ros omission. Three shapes were tried —
+all four as members, the cortex-m pair alone, the esp32 pair alone — and the
+embedded lane fails inside `critical-section` every time, a crate none of them
+names. They stay excluded, and `Cargo.toml` carries the measured reason.
+
+**The cost this issue records is now a measurement, not an inference.** While
+`nros-platform-stm32f4` was briefly a member, its three `detect_phy_type` tests
+ran for the first time: `3 passed`. Reaching them permanently needs a per-crate
+test lane rather than workspace membership.
+
+**Two more crates left the blocked list.** `nros-board-threadx` and
+`nros-board-nuttx` were kept out by package CYCLES (optional deps on per-board
+crates that depend on them). Both back-edges were dead — nothing enabled the
+features, and nuttx's `any(feature = "reference-qemu", target_os = "nuttx")`
+was already equivalent to `target_os = "nuttx"` — so both are removed. What
+stops their membership now is measured rather than structural: **20 latent
+`-D warnings` errors** (12 nuttx, 8 threadx) that surface the moment the host
+lane compiles them, which is this issue's thesis holding rather than failing.
+
+Also fixed on the way: `nros-platform/src/resolve.rs` carried NINE identical
+`#[cfg(feature = "platform-<x>")] pub type ConcretePlatform = …` arms, mutually
+exclusive by convention only, so two platform features at once was E0428.
+Collapsed to one `cfg(any(...))`. Nothing hit it until crates became members,
+because `--workspace` unifies features.

@@ -1,9 +1,11 @@
 # Phase 451 — a dead build declaration that reads as authoritative
 
-**Status (2026-09-11). W1, W2 and W3 landed the day the phase was opened; all
-three of its original issues are resolved and archived. W4 is OPEN — it was
-opened BY W3's fallout (issue 1309), three of its nine crates are done and the
-rest wait on one missing mechanism.** Each work item found
+**Status (2026-09-11). W1–W3 landed the day the phase was opened; W4's
+structural work is done and what remains is measured rather than blocked.** The
+`embedded-only` mirror exists (issue 1315), the threadx and nuttx package cycles
+are removed, and the four `cortex-m`/`esp-hal` crates turn out to be excluded by
+an UPSTREAM feature exclusivity rather than by the missing mirror — which
+refutes what issue 1309 assumed, and was found by implementing it. Each work item found
 its subject understated: the dead cmake module could not have RUN had anything
 included it (its `find_package` targets were deleted years apart), the dead
 `cargo:` carriers were two of three rather than a stray, and the exclude list
@@ -177,10 +179,29 @@ reached only as somebody else's path dependency.
       errors**, including an orphaned `# Safety` doc block that `1778ba8c0`
       (issue 1146, three days earlier) had detached from a raw-pointer
       `extern "C"` entry point.
-- [ ] `nros-board-threadx` / `nros-board-nuttx` — same cycle, but their
-      `reference-*` features have live `cfg` readers, so it is a change rather
-      than a deletion.
-- [ ] The four `cortex-m` / `esp-hal` crates — blocked on a missing mirror. The
+- [x] `nros-board-threadx` / `nros-board-nuttx` — both cycles REMOVED. The
+      `cfg` readers turned out not to be an obstacle: nothing enabled
+      `reference-qemu`, so `any(feature = "reference-qemu", target_os = "nuttx")`
+      was already equivalent to `target_os = "nuttx"` in every build that
+      exists, and dropping the disjunct at 12 sites is a no-op rather than a
+      behaviour change. threadx's two features gated only re-exports from a
+      transition that is over.
+- [ ] Membership itself, which is no longer STRUCTURAL and is now measured:
+      with the cycles gone both build clean on the host, and entering the host
+      lane surfaces **20 latent `-D warnings` errors** (12 nuttx, 8 threadx) in
+      crates nothing has ever compiled. That is what promotion costs.
+- [x] The mirror exists: `[package.metadata.nros] embedded-only = true`, derived
+      by `scripts/build/embedded-only-members.sh`, and `HOST_UNCHECKABLE` is
+      derived from it. Five of its eight hand-written entries were STALE.
+- [ ] ~~The four `cortex-m` / `esp-hal` crates — blocked on a missing mirror.~~
+      **Refuted by doing it.** They are not waiting on the mirror: `cortex-m`,
+      `esp-hal` and `nros-platform-critical-section` each select a different
+      `critical-section` restore-state width, and critical-section refuses more
+      than one outright. Upstream exclusivity, so no workspace build can hold
+      them — tried as all four, as the cortex-m pair, and as the esp32 pair.
+      `nros-platform-stm32f4`'s three `detect_phy_type` tests DID run while it
+      was briefly a member (`3 passed`), so issue 1309's cost is measured now;
+      reaching them permanently needs a per-crate test lane, not membership. The
       host lane's exclusions are `HOST_UNCHECKABLE` in `just/check.just:36`, a
       hand-written string: the 20-line hand list 0287 retired on the embedded
       side and nobody retired on this one. `nros-platform-stm32f4`'s three
