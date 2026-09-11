@@ -141,7 +141,7 @@ chmod +x "$STUB"
 
 DERIVED_BODY="$TEST_TMPDIR/derived.cmake"
 cat > "$DERIVED_BODY" <<'EOF'
-set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 4)
+set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 5)
 # No NROS_ENTITY_INVENTORY_SOURCE: `to_cmake` stopped emitting it (issue 1228 --
 # it is composer-dependent content in a file whose bytes decide whether cmake
 # runs again), and this fixture mirrors what the producer writes.
@@ -178,6 +178,23 @@ set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_SUBSCRIPTION 0)
 set(NROS_ENTITY_DECLARED_DEPTHS_PUBLISHER "std_msgs/msg/Int32|/chatter=8")
 set(NROS_ENTITY_DECLARED_DEPTH_COUNT_PUBLISHER 1)
 set(NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER 3)
+# phase-454 W3 (issue 1256) -- the other three QoS policies. `history` is
+# deliberately resolved here WITH a keep_last on the subscription side: the
+# depth table above is what `keep_all` refuses, and this block keeps resolving
+# either way (RFC-0100 D6 -- refusal is per fact, never global).
+set(NROS_ENTITY_DECLARED_QOS_STATUS "resolved")
+set(NROS_ENTITY_DECLARED_RELIABILITY "std_msgs/msg/Int32|/chatter=best_effort")
+set(NROS_ENTITY_DECLARED_RELIABILITY_PUBLISHER "std_msgs/msg/Int32|/chatter=reliable")
+set(NROS_ENTITY_UNDECLARED_RELIABILITY_COUNT_SUBSCRIPTION 10)
+set(NROS_ENTITY_UNDECLARED_RELIABILITY_COUNT_PUBLISHER 13)
+set(NROS_ENTITY_DECLARED_DURABILITY "")
+set(NROS_ENTITY_DECLARED_DURABILITY_PUBLISHER "std_msgs/msg/Int32|/chatter=transient_local")
+set(NROS_ENTITY_UNDECLARED_DURABILITY_COUNT_SUBSCRIPTION 11)
+set(NROS_ENTITY_UNDECLARED_DURABILITY_COUNT_PUBLISHER 13)
+set(NROS_ENTITY_DECLARED_HISTORY "std_msgs/msg/Int32|/chatter=keep_last")
+set(NROS_ENTITY_DECLARED_HISTORY_PUBLISHER "")
+set(NROS_ENTITY_UNDECLARED_HISTORY_COUNT_SUBSCRIPTION 10)
+set(NROS_ENTITY_UNDECLARED_HISTORY_COUNT_PUBLISHER 14)
 set(NROS_PARAM_DECLARATION_STATUS "declared")
 set(NROS_PARAM_DECLARED_COUNT 21)
 set(NROS_DERIVED_MAX_PARAMETERS 25)
@@ -190,7 +207,7 @@ EOF
 
 REFUSED_BODY="$TEST_TMPDIR/refused.cmake"
 cat > "$REFUSED_BODY" <<'EOF'
-set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 4)
+set(NROS_ENTITY_INVENTORY_SCHEMA_VERSION 5)
 set(NROS_ENTITY_INVENTORY_STATUS "refused")
 set(NROS_ENTITY_INVENTORY_COMPONENT_COUNT 4)
 set(NROS_ENTITY_INVENTORY_REASON "1 of 4 components in this image declare no entities:\n    demo::legacy (demo::Legacy)")
@@ -200,15 +217,18 @@ set(NROS_ENTITY_RECEIVED_TYPES_STATUS "refused")
 set(NROS_ENTITY_RECEIVED_TYPES_REASON "the entity inventory itself did not compose")
 set(NROS_ENTITY_DECLARED_DEPTH_STATUS "refused")
 set(NROS_ENTITY_DECLARED_DEPTH_REASON "the entity inventory itself did not compose")
+set(NROS_ENTITY_DECLARED_QOS_STATUS "refused")
+set(NROS_ENTITY_DECLARED_QOS_REASON "the entity inventory itself did not compose")
 EOF
 
 # A schema this reader does NOT understand. Written as "one past supported"
 # rather than a literal, because the literal was `2` until phase-403 step 1
 # made 2 the supported version -- at which point the case silently stopped
-# testing anything it claimed to. Step 2 moved it to 3/4 and phase-454 W2, which
-# split the depth table by kind, to 4/5.
+# testing anything it claimed to. Step 2 moved it to 3/4, phase-454 W2, which
+# split the depth table by kind, to 4/5, and phase-454 W3, which added the
+# other three QoS policies, to 5/6.
 BAD_SCHEMA_BODY="$TEST_TMPDIR/bad-schema.cmake"
-sed 's/SCHEMA_VERSION 4/SCHEMA_VERSION 5/' "$DERIVED_BODY" > "$BAD_SCHEMA_BODY"
+sed 's/SCHEMA_VERSION 5/SCHEMA_VERSION 6/' "$DERIVED_BODY" > "$BAD_SCHEMA_BODY"
 
 NO_SCHEMA_BODY="$TEST_TMPDIR/no-schema.cmake"
 grep -v SCHEMA_VERSION "$DERIVED_BODY" > "$NO_SCHEMA_BODY"
@@ -324,6 +344,60 @@ if nros_grep_q "NROS_ENTITY_DECLARED_DEPTHS=.*=8" <<<"$OUT"; then
     fail "A: a publisher depth reached the SUBSCRIPTION sizing list -- $OUT"
 fi
 
+# phase-454 W3 (issue 1256). The other three policies cross the same boundary,
+# in the same per-kind shape and with the same per-POLICY undeclared counts.
+# Losing one at the function boundary is the drift this module's own comment
+# lists four instances of ("the symbol loaded here, died at the function
+# boundary, and the consumer fell back to a default that looked deliberate") --
+# and here the default a consumer would fall back to is RELIABLE, which is two
+# 64 KiB buffers per XRCE session that the image said it did not want.
+check
+if ! nros_grep_q "NROS_ENTITY_DECLARED_QOS_STATUS=resolved" <<<"$OUT"; then
+    fail "A: the declared-QoS status did not reach the caller's scope -- $OUT"
+fi
+check
+if ! nros_grep_q "NROS_ENTITY_DECLARED_RELIABILITY=std_msgs/msg/Int32|/chatter=best_effort" <<<"$OUT"; then
+    fail "A: the declared reliability did not reach the caller's scope -- $OUT"
+fi
+check
+if ! nros_grep_q "NROS_ENTITY_DECLARED_RELIABILITY_PUBLISHER=std_msgs/msg/Int32|/chatter=reliable" <<<"$OUT"; then
+    fail "A: the PUBLISHER reliability did not reach the caller's scope -- $OUT"
+fi
+check
+if ! nros_grep_q "NROS_ENTITY_DECLARED_DURABILITY_PUBLISHER=std_msgs/msg/Int32|/chatter=transient_local" <<<"$OUT"; then
+    fail "A: the declared durability did not reach the caller's scope -- $OUT"
+fi
+check
+if ! nros_grep_q "NROS_ENTITY_DECLARED_HISTORY=std_msgs/msg/Int32|/chatter=keep_last" <<<"$OUT"; then
+    fail "A: the declared history did not reach the caller's scope -- $OUT"
+fi
+# An EMPTY list is a published fact and must survive the boundary too: it says
+# "this image stated none of this policy", which is different from the variable
+# being absent, and the count beside it is what quantifies the gap.
+check
+if ! nros_grep_q "NROS_ENTITY_DECLARED_DURABILITY=$" <<<"$OUT"; then
+    fail "A: an EMPTY policy list did not reach the caller's scope. Absent and \
+empty are different claims and only one of them is this image's -- $OUT"
+fi
+# Per POLICY, not one count for all three. An image can state reliability on
+# every endpoint and durability on none; one number would pin the reliability
+# consumer on its worst case for a gap that is not its own.
+check
+if ! nros_grep_q "NROS_ENTITY_UNDECLARED_RELIABILITY_COUNT_SUBSCRIPTION=10" <<<"$OUT"; then
+    fail "A: the per-policy UNDECLARED count did not reach the caller's scope -- $OUT"
+fi
+check
+if ! nros_grep_q "NROS_ENTITY_UNDECLARED_HISTORY_COUNT_PUBLISHER=14" <<<"$OUT"; then
+    fail "A: the per-policy, per-kind UNDECLARED count did not reach the \
+caller's scope -- $OUT"
+fi
+# And no policy value leaks into the DEPTH list, which is the list whose length
+# is `subs_arena`'s guard.
+check
+if nros_grep_q "NROS_ENTITY_DECLARED_DEPTHS=.*best_effort" <<<"$OUT"; then
+    fail "A: a QoS policy value reached the SUBSCRIPTION depth list -- $OUT"
+fi
+
 # phase-446 W4. The parameter store's numbers cross the same function boundary,
 # and so does the NEEDS fact: a capacity a declared type uses carries the name
 # of the parameter instead of a number, and nros-params' build script refuses
@@ -374,6 +448,17 @@ fi
 check
 if nros_grep_q "NROS_DERIVED_RUNTIME_MAX_CELL_ENTITIES=" <<<"$OUT"; then
     fail "B: a refusal published a cell-registry bound -- $OUT"
+fi
+# phase-454 W3 -- and no policy list. A partial one reads as "these are the
+# only endpoints that asked for best_effort", which is how an XRCE image stops
+# paying for buffers endpoints nobody enumerated still need.
+check
+if nros_grep_q "NROS_ENTITY_DECLARED_RELIABILITY=" <<<"$OUT"; then
+    fail "B: a refusal published a reliability list -- $OUT"
+fi
+check
+if ! nros_grep_q "NROS_ENTITY_DECLARED_QOS_STATUS=refused" <<<"$OUT"; then
+    fail "B: the declared-QoS refusal did not reach the caller -- $OUT"
 fi
 check
 if ! nros_grep_q "declare no entities" <<<"$OUT"; then
@@ -436,7 +521,7 @@ log_info "D. an unrecognised schema refuses to be read"
 flat() { tr '\n' ' ' | tr -s ' '; }
 OUT="$(derive "$BAD_SCHEMA_BODY" 0 "$META" "$TEST_TMPDIR/d1.cmake" | flat)"
 check
-if ! nros_grep_q "states entity-inventory schema version 5" <<<"$OUT"; then
+if ! nros_grep_q "states entity-inventory schema version 6" <<<"$OUT"; then
     fail "D: a future schema was read rather than refused -- $OUT"
 fi
 check

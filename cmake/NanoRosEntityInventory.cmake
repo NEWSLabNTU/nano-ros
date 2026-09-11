@@ -166,12 +166,31 @@
 #                                         publishers that stated a depth
 #   NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER
 #                                         the same, publishers only
+#   NROS_ENTITY_DECLARED_QOS_STATUS       resolved | refused (phase-454 W3)
+#   NROS_ENTITY_DECLARED_QOS_REASON       prose, when refused
+#   NROS_ENTITY_DECLARED_<P>              SUBSCRIPTION `type|topic=value`, for
+#                                         P in RELIABILITY, DURABILITY, HISTORY
+#   NROS_ENTITY_DECLARED_<P>_PUBLISHER    the publisher list
+#   NROS_ENTITY_UNDECLARED_<P>_COUNT_SUBSCRIPTION
+#   NROS_ENTITY_UNDECLARED_<P>_COUNT_PUBLISHER
+#                                         endpoints of that kind that did NOT
+#                                         state that policy
 #
 # A consumer that sizes from depth must refuse while the UNDECLARED count FOR
 # ITS OWN KIND is non-zero. The broad count answers no term's question: one
 # unannotated endpoint of the other kind would pin both terms on the worst case
 # forever, which is what issue 1227 measured (18 against 11 on the reference
-# island, all eleven subscriptions declaring).
+# island, all eleven subscriptions declaring). The same rule applies per POLICY
+# to the three lists above -- an image can state `reliability` on every
+# subscription and `durability` on none.
+#
+# phase-454 W3 -- NROS_ENTITY_DECLARED_DEPTH_STATUS can now read `refused` for a
+# reason that has nothing to do with the composition: some endpoint declared
+# `history: keep_all`, which has NO STATIC BOUND, so a depth stated beside it
+# prices nothing (RFC-0100 D6). The refusal is per FACT -- the policy lists and
+# the entity counts stay resolved, and `NROS_ENTITY_DECLARED_QOS_REASON` is not
+# set -- so a consumer must read the status of the fact IT reads, never one
+# status for the fragment.
 #
 # A derived value is a DEFAULT. Every consumer applies it only where nothing
 # else stated a number -- see `_nros_resolve_derivable_knob` in
@@ -211,7 +230,18 @@ include_guard(GLOBAL)
 # because the first variable's DEFINITION narrowed and the second one's absence
 # in a version-3 fragment is an older CLI's silence, not "no publisher
 # declared".
-set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED 4 CACHE INTERNAL
+#
+# **5** (phase-454 W3, issue 1256) added the OTHER THREE QoS policies --
+# `NROS_ENTITY_DECLARED_{RELIABILITY,DURABILITY,HISTORY}[_PUBLISHER]` with a
+# per-policy, per-kind undeclared count and their own `_QOS_STATUS`. The
+# contract has stated them per endpoint for four phases and nano-ros dropped
+# them at `depth_of`. Bumps for the usual reason -- an absent list in a
+# version-4 fragment is an older CLI's silence, not "nobody declared one" --
+# and for one that is NOT merely additive: `NROS_ENTITY_DECLARED_DEPTH_STATUS`
+# can now say `refused` because an endpoint declared `history: keep_all`, and a
+# version-4 reader that had never seen that reason would keep sizing from a
+# depth that has stopped bounding anything.
+set(NROS_ENTITY_INVENTORY_SCHEMA_SUPPORTED 5 CACHE INTERNAL
     "phase-403 W9: the nros_entity_inventory fragment schema this tree reads")
 
 # nros_entity_inventory_knobs_file(<out_var>)
@@ -320,6 +350,24 @@ function(nros_derive_entity_inventory_knobs)
                NROS_ENTITY_DECLARED_DEPTHS_PUBLISHER
                NROS_ENTITY_DECLARED_DEPTH_COUNT_PUBLISHER
                NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER
+               # phase-454 W3 -- the other three policies. Written out here and
+               # in the republish loop below rather than built by
+               # interpolation: a knob name assembled from a variable is the
+               # name that silently resolves EMPTY (the rule the parameter
+               # block at the end of this list already states).
+               NROS_ENTITY_DECLARED_QOS_STATUS NROS_ENTITY_DECLARED_QOS_REASON
+               NROS_ENTITY_DECLARED_RELIABILITY
+               NROS_ENTITY_DECLARED_RELIABILITY_PUBLISHER
+               NROS_ENTITY_UNDECLARED_RELIABILITY_COUNT_SUBSCRIPTION
+               NROS_ENTITY_UNDECLARED_RELIABILITY_COUNT_PUBLISHER
+               NROS_ENTITY_DECLARED_DURABILITY
+               NROS_ENTITY_DECLARED_DURABILITY_PUBLISHER
+               NROS_ENTITY_UNDECLARED_DURABILITY_COUNT_SUBSCRIPTION
+               NROS_ENTITY_UNDECLARED_DURABILITY_COUNT_PUBLISHER
+               NROS_ENTITY_DECLARED_HISTORY
+               NROS_ENTITY_DECLARED_HISTORY_PUBLISHER
+               NROS_ENTITY_UNDECLARED_HISTORY_COUNT_SUBSCRIPTION
+               NROS_ENTITY_UNDECLARED_HISTORY_COUNT_PUBLISHER
                NROS_PARAM_DECLARATION_STATUS NROS_PARAM_DECLARATION_REASON
                NROS_PARAM_DECLARED_COUNT
                NROS_DERIVED_MAX_PARAMETERS NROS_DERIVED_MAX_PARAM_NAME_LEN
@@ -485,7 +533,23 @@ function(nros_derive_entity_inventory_knobs)
                    DECLARED_DEPTH_COUNT UNDECLARED_DEPTH_COUNT
                    UNDECLARED_DEPTH_COUNT_SUBSCRIPTION
                    DECLARED_DEPTHS_PUBLISHER DECLARED_DEPTH_COUNT_PUBLISHER
-                   UNDECLARED_DEPTH_COUNT_PUBLISHER)
+                   UNDECLARED_DEPTH_COUNT_PUBLISHER
+                   # phase-454 W3 (issue 1256) -- the other three policies, on
+                   # the same terms. `reliability` gates XRCE's two 64 KiB
+                   # `*_reliable_buf`, `durability` is publisher-side retention
+                   # and `history` is the one that REFUSES: `keep_all` has no
+                   # static bound, so the depth table above says `refused` and
+                   # these lists stay resolved (RFC-0100 D6, refusal per fact).
+                   DECLARED_QOS_STATUS DECLARED_QOS_REASON
+                   DECLARED_RELIABILITY DECLARED_RELIABILITY_PUBLISHER
+                   UNDECLARED_RELIABILITY_COUNT_SUBSCRIPTION
+                   UNDECLARED_RELIABILITY_COUNT_PUBLISHER
+                   DECLARED_DURABILITY DECLARED_DURABILITY_PUBLISHER
+                   UNDECLARED_DURABILITY_COUNT_SUBSCRIPTION
+                   UNDECLARED_DURABILITY_COUNT_PUBLISHER
+                   DECLARED_HISTORY DECLARED_HISTORY_PUBLISHER
+                   UNDECLARED_HISTORY_COUNT_SUBSCRIPTION
+                   UNDECLARED_HISTORY_COUNT_PUBLISHER)
         if(DEFINED NROS_ENTITY_${_field})
             _nros_entity_publish(NROS_ENTITY_${_field} "${NROS_ENTITY_${_field}}")
         endif()
@@ -606,6 +670,24 @@ if(CMAKE_SCRIPT_MODE_FILE AND
         NROS_ENTITY_DECLARED_DEPTH_COUNT_PUBLISHER
         NROS_ENTITY_UNDECLARED_DEPTH_COUNT_PUBLISHER
         NROS_ENTITY_DECLARED_DEPTH_REASON
+        # phase-454 W3 (issue 1256) -- the other three QoS policies. Printed
+        # for the reason the block above says: a value that crosses the
+        # function boundary and is NOT printed here is untestable and
+        # invisible, which is how half a publish survives a review.
+        NROS_ENTITY_DECLARED_QOS_STATUS
+        NROS_ENTITY_DECLARED_QOS_REASON
+        NROS_ENTITY_DECLARED_RELIABILITY
+        NROS_ENTITY_DECLARED_RELIABILITY_PUBLISHER
+        NROS_ENTITY_UNDECLARED_RELIABILITY_COUNT_SUBSCRIPTION
+        NROS_ENTITY_UNDECLARED_RELIABILITY_COUNT_PUBLISHER
+        NROS_ENTITY_DECLARED_DURABILITY
+        NROS_ENTITY_DECLARED_DURABILITY_PUBLISHER
+        NROS_ENTITY_UNDECLARED_DURABILITY_COUNT_SUBSCRIPTION
+        NROS_ENTITY_UNDECLARED_DURABILITY_COUNT_PUBLISHER
+        NROS_ENTITY_DECLARED_HISTORY
+        NROS_ENTITY_DECLARED_HISTORY_PUBLISHER
+        NROS_ENTITY_UNDECLARED_HISTORY_COUNT_SUBSCRIPTION
+        NROS_ENTITY_UNDECLARED_HISTORY_COUNT_PUBLISHER
         NROS_PARAM_DECLARATION_STATUS
         NROS_PARAM_DECLARATION_REASON
         NROS_PARAM_DECLARED_COUNT
