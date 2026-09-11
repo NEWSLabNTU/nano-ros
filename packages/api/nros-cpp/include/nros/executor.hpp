@@ -14,6 +14,11 @@
 #include <cstddef>
 
 #include "nros/result.hpp"
+// phase-417 stage 3 — the refusal vocabulary (`NROS_RCLCPP_REFUSE_*`,
+// `rclcpp::detail::refuse`, `rclcpp::detail::log_handle`) and the routed
+// `NROS_LOG_*` family both live here. `log.hpp` includes nothing of ours but
+// `std_detect.hpp`, so this cannot cycle.
+#include "nros/log.hpp"
 #include "nros/nros_cpp_config_generated.h"
 
 #include "nros_cpp_ffi.h"
@@ -200,11 +205,56 @@ class Executor {
     /// Processes pending subscriptions, timers, services, and guard conditions.
     /// Call this periodically in your main loop.
     ///
-    /// @param timeout_ms  Maximum time to block waiting for I/O.
+    /// **The budget is REQUIRED** — phase-417 stage 3. Upstream's
+    /// `spin_once(std::chrono::nanoseconds timeout = -1)` blocks indefinitely
+    /// by default; this one cannot, so there is no default to give that would
+    /// not be a budget the caller never chose. It used to be `= 10`, and a
+    /// ported argument-free `spin_once()` therefore returned after 10 ms where
+    /// upstream was still waiting — silently. The no-argument form is now a
+    /// compile error carrying `NROS_RCLCPP_REFUSE_UNBOUNDED_SPIN`; a negative
+    /// `timeout_ms` is refused at the call, for the same reason under the same
+    /// message.
+    ///
+    /// ADOPT-BOUNDED envelope (RFC-0089 W3.d), and it is the part no signature
+    /// carries: this dispatches EVERY ready arena entry, where upstream's
+    /// `spin_once` executes the next ONE. RFC-0002 §3 computes the ready bitmap
+    /// once per cycle, so "one item" is not a shape this executor has. A
+    /// `spin_once(0)` here is therefore upstream's `spin_some`. That naming
+    /// question is open and lives on the `cpp:Executor::spin_some` ledger row.
+    ///
+    /// @param timeout_ms  Maximum time to block waiting for I/O. `0` polls;
+    ///                    negative is REFUSED (see above).
     /// @return Result indicating success or failure.
-    Result spin_once(int32_t timeout_ms = 10) {
+    Result spin_once(int32_t timeout_ms) {
+        // FIRST, before the `initialized_` check: the defect is in the VALUE,
+        // so it is knowable without a session and a caller must not have to
+        // stand one up to be told (RFC-0089 §"Where the refusal fires"). It
+        // used to be `timeout_ms.max(0)` Rust-side, which turned upstream's
+        // "block forever" into a 0 ms poll with no diagnostic at all.
+        //
+        // `NROS_RCLCPP_SAY_REFUSED`, not the legacy `NROS_ERROR`: the legacy
+        // sink is a no-op on every freestanding target, and a refusal nobody
+        // can read on the targets nano-ros exists for is issue 1019 again. It
+        // is also not the `"%s"` printf path, whose 256-byte buffer would cut
+        // the message off before the alternative.
+        if (timeout_ms < 0) {
+            NROS_RCLCPP_SAY_REFUSED(NROS_RCLCPP_REFUSE_UNBOUNDED_SPIN_RUNTIME);
+            return Result(ErrorCode::Unsupported);
+        }
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_spin_once(storage_, timeout_ms));
+    }
+
+    /// **REFUSED** — `spin_once()` with no budget. phase-417 stage 3.
+    ///
+    /// A member template with a defaulted parameter, not `= delete`: these
+    /// headers are parsed as C++14, where a deleted function carries no
+    /// message (`= delete("reason")` is C++26). The `static_assert` fires on
+    /// INSTANTIATION, so the name stays declarable and only USING it fails,
+    /// with the migration attached.
+    template <typename T = void> Result spin_once() {
+        static_assert(::rclcpp::detail::refuse<T>::value, NROS_RCLCPP_REFUSE_UNBOUNDED_SPIN);
+        return Result(ErrorCode::Unsupported);
     }
 
     /// Phase 124.F.3 — session-level connectivity probe.

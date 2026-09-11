@@ -580,6 +580,66 @@ cpp: cpp-fmt
         -o target/nros-cpp-tests/failed_create_aborts \
         packages/api/nros-cpp/tests/compile/failed_create_aborts.cpp
     ./target/nros-cpp-tests/failed_create_aborts
+    # phase-417 stage 3 — `Publisher::publish` must refuse an UNINITIALISED
+    # publisher. RUNTIME for the same reason as the probe above: the defect was
+    # that nothing stopped, and `-fsyntax-only` is green either way. It asserts
+    # both halves — the return code AND that the runtime seam is never entered,
+    # because a guard that returned the right code after already handing zeroed
+    # storage to `nros_cpp_publish_raw` would satisfy the first and still be the
+    # bug.
+    #
+    # The TU DEFINES the five `nros_cpp_publisher_*` entry points as recording
+    # stubs, so no FUNCTION symbol is unresolved.
+    # `--unresolved-symbols=ignore-all` covers only the issue-0360 variant
+    # anchors (data); with a missing function the loader refuses the binary
+    # outright (`unexpected PLT reloc type`), so the stubs are load-bearing.
+    # `test -f` first — a missing TU must not read as a pass (issue 0196).
+    test -f packages/api/nros-cpp/tests/compile/publisher_publish_guards_initialized.cpp || { \
+        echo "ERROR: publisher_publish_guards_initialized.cpp is MISSING -- this check" >&2; \
+        echo "       would pass on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - publish refuses an uninitialised publisher (runtime, c++14)"
+    c++ -std=c++14 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -Wl,--unresolved-symbols=ignore-all \
+        -o target/nros-cpp-tests/publisher_publish_guards_initialized \
+        packages/api/nros-cpp/tests/compile/publisher_publish_guards_initialized.cpp
+    ./target/nros-cpp-tests/publisher_publish_guards_initialized
+    # phase-417 stage 3 — the loudness a RUN is the only witness for: issue 1019
+    # (the `RCLCPP_*` family reaching `nros_log` at the RIGHT SEVERITY, carrying
+    # its message and its logger name) and the VALUE half of
+    # `cpp:Executor::spin_once` (`-1` refused at the call instead of clamped to
+    # a 0 ms poll).
+    #
+    # This one LINKS `libnros_cpp.a` — the archive the `cargo build` at the head
+    # of this recipe produced — because a real sink installed through
+    # `nros_log_add_sink` is the only observer that can tell "the record reached
+    # nros_log at FATAL" from "something printed to stderr", and that is exactly
+    # the distinction issue 1019 is about. No session, no backend, no router.
+    test -f packages/api/nros-cpp/tests/compile/ros2_loudness_runtime.cpp || { \
+        echo "ERROR: ros2_loudness_runtime.cpp is MISSING -- this check would pass" >&2; \
+        echo "       on absence." >&2; \
+        exit 1; \
+    }
+    echo "  - RCLCPP_* reach nros_log at the right severity; spin_once(-1) is refused (runtime)"
+    # profile-literal-ok: unprofiled: the archive is from the plain `cargo build`
+    # at the top of this recipe, so `target/debug/` IS its derived output dir.
+    nros_cpp_lib=target/debug/libnros_cpp.a
+    c++ -std=c++17 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \
+        -Itarget/nros-cpp-generated \
+        -Itarget/nros-c-generated \
+        -Ipackages/api/nros-cpp/include \
+        -Ipackages/api/nros-c/include \
+        -Ipackages/platform/nros-platform-api/include \
+        -o target/nros-cpp-tests/ros2_loudness_runtime \
+        packages/api/nros-cpp/tests/compile/ros2_loudness_runtime.cpp \
+        "$nros_cpp_lib" -lpthread -ldl -lm
+    ./target/nros-cpp-tests/ros2_loudness_runtime
     # issue 0730 — the (zephyr-embedded × C++ × cyclonedds) coordinate is a
     # pairwise-class gap no runtime tier covers (cyclone fixtures run on
     # native_sim, which appends `,std`), and it failed E0599 at COMPILE time:
@@ -1297,7 +1357,8 @@ cpp: cpp-fmt
     # the grep below exists to catch. A refusal probe must reach the refusal,
     # which means compiling in the flavour the refusal lives in.
     echo "  - phase-417: the refusals FAIL, each naming its own constraint"
-    for probe in node_options system_defaults_qos log_throttle service_callback; do \
+    for probe in node_options system_defaults_qos log_throttle service_callback \
+                 unbounded_spin unbounded_wait unbounded_action_wait; do \
         f="packages/api/nros-cpp/tests/compile/ros2_refuse_${probe}_probe.cpp"; \
         test -f "$f" || { echo "ERROR: $f is MISSING -- this check passes on absence." >&2; exit 1; }; \
         if c++ -fsyntax-only -std=c++14 -DNROS_CPP_STD=1 -fno-exceptions -fno-rtti \

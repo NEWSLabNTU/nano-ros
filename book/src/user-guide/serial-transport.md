@@ -245,7 +245,7 @@ Higher baud rates increase throughput but may cause framing errors on noisy or l
 
 zenoh-pico serial uses a 1500-byte MTU with COBS framing. The maximum wire frame is 1516 bytes. `zpico-serial` uses a 2048-byte RX ring buffer per port, which accommodates one full frame plus overhead.
 
-For high-throughput scenarios, ensure the MCU's UART FIFO is drained frequently by calling `executor.spin_once()` in a tight loop.
+For high-throughput scenarios, ensure the MCU's UART FIFO is drained frequently by calling `executor.spin_once(0)` in a tight loop. The budget is required (phase-417 stage 3): `0` drains what is ready and returns, which is what a tight loop wants; a millisecond value sleeps until work arrives or the budget expires.
 
 ## Troubleshooting
 

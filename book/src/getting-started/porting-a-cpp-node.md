@@ -145,7 +145,8 @@ The compat surface covers the patterns a typical ROS 2 C++ node uses:
 | `create_wall_timer(period, callback)` | registered on the executor arena; dispatched by **any** spin verb | `std::chrono::duration` arg, capturing-lambda callback. Returns `rclcpp::TimerBase::SharedPtr`, which is `rclcpp::Timer::SharedPtr` — one flat type, two names. See below. |
 | `rclcpp::create_timer(node, clock, period, cb)` | the clock-taking verb; a `NROS_CLOCK_ROS_TIME` clock follows `/clock` | Humble's only form. `create_wall_timer` stays on the steady clock. |
 | `rclcpp::init(argc, argv) / shutdown() / ok() / spin(n) / spin_some(n)` | wraps `nros::init/shutdown/ok/spin_once` | argc/argv ignored. |
-| `RCLCPP_INFO / WARN / ERROR / DEBUG / FATAL` | dispatched through `NROS_*` macros | `_THROTTLE` variants degrade to plain log. |
+| `RCLCPP_INFO / WARN / ERROR / DEBUG / FATAL` | dispatched through the `NROS_LOG_*` family into `nros_log` | Carries the logger, so `get_logger("x")` selects a real per-logger level, and `FATAL` is a distinct severity. Reaches `LOG_ERR`/`printk` on embedded, where the legacy `NROS_*` sink is a no-op (issue 1019). `_THROTTLE` variants are REFUSE-LOUD. |
+| `executor.spin_once() / client->wait_for_service() / action_client->wait_for_action_server()` | **the budget is required** | Upstream defaults all three to "block forever", which nano-ros has no form of; the no-argument call is a compile error naming the alternative rather than a silently substituted 10 ms / 5 s budget. Write `spin_once(10)`, `wait_for_service(10000)`. |
 | `rclcpp::QoS / KeepLast(n) / SystemDefaultsQoS()` | subclass of `nros::QoS` with the `(depth)` ctor | Chainable setters inherited. |
 | `diagnostic_updater::Updater` + `DiagnosticStatusWrapper` | `nros-diagnostic-updater` shim | Publishes `/diagnostics`. |
 | `rclcpp_action::Server<A> / Client<A>` | aliases for `nros::ActionServer/Client<A>` | The action call shapes (send_goal_async etc.) match. |

@@ -155,6 +155,30 @@ ways a ported program can compile and differ.
 
 * W3.a — issue 1019: `RCLCPP_*_STREAM` discards its message; the family routes
   to a sink that is a no-op on every embedded target. Fix or refuse loudly.
+  **LANDED 2026-09-11**, together with three more loudness items found beside it
+  — see the issue table below for 1019, 1302 and 1303:
+  * `cpp:RCLCPP_FATAL` — the family routes at `NROS_LOG_*`, carries the logger,
+    and FATAL stops lowering to ERROR.
+  * `cpp:Publisher::publish` — the one entry point on the class with no
+    `initialized_` guard; it reinterpreted zeroed storage as an `RmwPublisher`.
+    The class was swept, not just the site: it was the only unguarded one.
+  * `cpp:Executor::spin_once` — the DEFAULT (10 ms where upstream blocks) and the
+    `-1` SENTINEL (clamped to a 0 ms poll) were the two silent differences, and
+    both are refused now: the signature half with a `static_assert`, the value
+    half at the call. The drain-all/execute-one question is NOT closed by this
+    and belongs to `cpp:Executor::spin_some`, per RFC-0089's own instruction not
+    to read its `spin_once` decision as settling it.
+  * `cpp:Client::wait_for_service` and its sibling
+    `rclcpp_action::Client::wait_for_action_server` — a 5000 ms default standing
+    in for upstream's "wait forever". One refusal concept, two sites, fixed
+    together.
+
+  Two things this work measured that the next loudness item needs: a runtime
+  refusal longer than ~160 bytes is DROPPED by `nros_log`'s format buffer rather
+  than truncated (so it reaches the console as a lone ellipsis —
+  `rclcpp::detail::RUNTIME_REFUSAL_MAX` now `static_assert`s against it), and a
+  `decltype(...)` assertion cannot see a refusal at all, because it does not
+  instantiate a template body. `spin_verbs.cpp` carried exactly that shape.
 * W3.b **[rust-first]** — `rclcpp::init(argc, argv)` drops `--ros-args`
   silently (`rclcpp_compat.hpp:238`), turning a remap into a wrong-topic bug at
   runtime. Honour them on posix boards, or refuse the two-argument form.
@@ -564,7 +588,9 @@ owner.
 | issue | track | closing it means |
 | --- | --- | --- |
 | 1012 | correction | 15 rows re-worded; a decision on whether tense becomes machine-readable |
-| 1019 | correction + loudness (W3.a) | `RCLCPP_*` reaches `nros_log` on embedded, or refuses; `_STREAM` stops discarding its message |
+| 1019 | correction + loudness (W3.a) — **CLOSED 2026-09-11** | the whole `RCLCPP_*` family routes at `NROS_LOG_*`, so it reaches `nros_log` (and therefore `LOG_ERR`/`printk`) on embedded, carries the logger it was handed, and emits `RCLCPP_FATAL` at `NROS_LOG_SEVERITY_FATAL`; `get_logger(name)` resolves the name through `nros_log_get_logger`. `_STREAM` stopped discarding its message earlier and now inherits the routing. `_THROTTLE` stays REFUSE-LOUD — the refusal is still right (upstream's `clock` argument is load-bearing and `nros_log_throttle_admit` measures on its own clock), but its stated REASON went stale when W4.d shipped `NROS_LOG_*_THROTTLE`: issue 1302. Held by `ros2_loudness_runtime.cpp`, a sink-installing run TU on `just check cpp`; negative control 12 failures / 0 records |
+| 1302 | loudness (W3.a) — filed by it | `NROS_RCLCPP_REFUSE_THROTTLE` names the clock argument as the constraint instead of claiming no C throttle exists, and the five `cpp:RCLCPP_*_THROTTLE` rows agree |
+| 1303 | loudness (W3.a) — filed by it | the two RUNTIME refusals (`init(argc,argv)`, `abort_failed_create`) stop emitting through the legacy no-op sink, so an RTOS image says why it aborted; needs a short runtime form each, and a decision on `failed_create_aborts.cpp`'s link model |
 | 1020 | stage 0 | the C++ lane sees the compat shim; native-API distance and ported-file distance are distinguishable |
 | 1022 | correction | ~95 rows corrected; RFC-0036 gains the rule that a divergence's cause must not be one the compared surface also operates under |
 | 0793 | stage 2 (W2.a) | one parameter store in C; the unfiled C++ twin filed and fixed with it |

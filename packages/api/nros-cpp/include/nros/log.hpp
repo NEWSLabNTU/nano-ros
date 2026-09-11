@@ -230,6 +230,50 @@ template <typename T> struct refuse {
     "Rust already owns (RFC-0019). Rate-limit at the call site, or use the un-throttled "          \
     "RCLCPP_INFO / RCLCPP_WARN / RCLCPP_ERROR."
 
+// phase-417 stage 3 (W3.a). ONE concept: "spin until work arrives, with no
+// budget". It backs BOTH halves of `Executor::spin_once`'s loudness, because
+// both are the same request written two ways — the no-argument form (upstream's
+// default IS -1) and an explicit negative timeout. The first is knowable from
+// the SIGNATURE, so it is a `static_assert`; the second only from the VALUE, so
+// it is a loud return at the call (RFC-0089 §"Where the refusal fires").
+#define NROS_RCLCPP_REFUSE_UNBOUNDED_SPIN                                                          \
+    "an UNBOUNDED rclcpp::Executor::spin_once is REFUSED by nano-ros (RFC-0089 stage 3, "          \
+    "phase-417 W3.a). Upstream's spin_once(timeout = -1) BLOCKS INDEFINITELY and executes ONE "    \
+    "ready item. nano-ros takes a millisecond budget and returns when it expires. Nothing here "   \
+    "can block forever: building that out of this call would be a polling loop inside the "        \
+    "wrapper, which is RFC-0020 violation class 2 -- the loop belongs Rust-side, where `spin()` "  \
+    "already is. Two silent differences used to live here: the no-argument form substituted a "    \
+    "10 ms budget nobody chose, and a -1 was clamped to 0, so the call POLLED where upstream "     \
+    "blocks. NAME YOUR BUDGET: spin_once(10) sleeps up to 10 ms and then returns; spin_once(0) "   \
+    "is upstream's spin_some -- drain what is ready, never wait; spin() blocks until cancel(). "   \
+    "ENVELOPE, unchanged by this refusal: our spin_once DRAINS every ready arena entry "           \
+    "(RFC-0002 section 3 computes the ready bitmap once) where upstream executes the next one; "   \
+    "that is `cpp:Executor::spin_some`'s open question, not this one."
+
+// The RUNTIME form of the same refusal, for `spin_once(-1)`. SHORT because it
+// has to be: `nros_log`'s format buffer drops a body that does not fit rather
+// than truncating it (see `rclcpp::detail::RUNTIME_REFUSAL_MAX`, which enforces
+// the bound). It still names the constraint and the alternative; the long text
+// above is what the compiler prints for the no-argument form.
+#define NROS_RCLCPP_REFUSE_UNBOUNDED_SPIN_RUNTIME                                                  \
+    "spin_once(negative) REFUSED by nano-ros: no unbounded spin (RFC-0089/RFC-0020). Use "         \
+    "spin_once(0) to drain, spin_once(ms) to wait, spin() until cancel()."
+
+// phase-417 stage 3 (W3.a). ONE concept, TWO call sites: `Client::wait_for_service`
+// and `rclcpp_action::Client::wait_for_action_server` had the identical defect
+// (a 5000 ms default standing in for upstream's -1), so they share the message.
+#define NROS_RCLCPP_REFUSE_UNBOUNDED_WAIT                                                          \
+    "an UNBOUNDED wait_for_service / wait_for_action_server is REFUSED by nano-ros (RFC-0089 "     \
+    "stage 3, phase-417 W3.a). Upstream's default timeout is -1, which means WAIT FOREVER. "       \
+    "These helpers drive the executor cooperatively while they probe, and RFC-0021 is why that "   \
+    "cannot be unbounded: a wait that never returns starves every other entity on a "              \
+    "single-threaded transport. The budget is an unsigned millisecond count, so there is no "      \
+    "value to port -1 to either. The no-argument form used to substitute 5000 ms -- a budget "     \
+    "the caller did not choose, silently, which is exactly what the compile-or-conform rule "      \
+    "forbids. NAME YOUR BUDGET: wait_for_service(10000) / wait_for_action_server(10000). To "      \
+    "keep doing other work while you wait, poll Client::service_is_ready() from your own spin "    \
+    "loop, or call the action form with a short budget inside a loop you control."
+
 #define NROS_RCLCPP_REFUSE_SHARED_PTR_SERVICE_CALLBACK                                             \
     "the shared_ptr service-callback shape is REFUSED by nano-ros (RFC-0089, phase-417 W2.c). "    \
     "rclcpp's create_service/create_client callback takes std::shared_ptr<Request> and "           \
@@ -283,19 +327,89 @@ class Logger {
     const void* handle_;
 };
 
+/// `rclcpp::get_logger(name)` — issue 1019, phase-417 W3.a.
+///
+/// RESOLVES the name now. It used to build a name-only sentinel with a null
+/// handle, so `rclcpp::get_logger("planner")` selected nothing and every
+/// `RCLCPP_*` call through it shared one threshold with every other logger in
+/// the image — issue 1019's third defect. `nros_log_get_logger` (phase-417
+/// W4.d, `<nros/log.h>`) is the C surface that made this possible; it is
+/// TOTAL, so this is too, and a NULL or over-long name answers the catch-all
+/// logger rather than a null handle.
 inline Logger get_logger(const char* name) {
-    return Logger(name);
+    return Logger(name, name != nullptr ? nros_log_get_logger(name) : nros_log_default_logger());
 }
 
 #ifdef NROS_CPP_HAS_STD_STRING
 /// `std::string`-keyed overload. Present only where `<string>` is — a
 /// freestanding target has no `std::string` to take.
 inline Logger get_logger(const std::string& name) {
-    return Logger(name.c_str());
+    return get_logger(name.c_str());
 }
 #endif
 
 namespace detail {
+
+/// The handle the `NROS_LOG_*` dispatcher takes, from whatever a `RCLCPP_*`
+/// call site was handed — issue 1019.
+///
+/// Two overloads rather than one, and the fallback is the point.
+/// `nros_log_emit_fmt_at` RETURNS EARLY on a null handle, so routing the
+/// `RCLCPP_*` family at it without this would have swapped one silent drop for
+/// another: a `Logger` built from a name alone, or from an uninitialised node,
+/// carries a null handle. Those records go to the catch-all `nros` logger
+/// instead, which is where a record with no owner belongs.
+///
+/// The `const void*` overload exists because `nros_logger_t` IS `const void*`
+/// and a native call site may hand one straight in; `Logger` binds the
+/// reference overload by identity, so the two never compete.
+inline nros_logger_t log_handle(const void* handle) {
+    return handle != nullptr ? handle : nros_log_default_logger();
+}
+
+inline nros_logger_t log_handle(const Logger& logger) {
+    return log_handle(static_cast<const void*>(logger));
+}
+
+/// The longest a RUNTIME refusal may be — phase-417 stage 3, MEASURED.
+///
+/// `nros_log`'s formatting buffer is 256 bytes by default
+/// (`nros_log::format_buffer_capacity`, and `buffer-size-128` makes it 128),
+/// and `heapless::String::push_str` is ALL-OR-NOTHING: a body that does not fit
+/// is not truncated, it is DROPPED, and the console shows the header plus a
+/// lone `…`. So a long runtime refusal is not a shortened refusal, it is an
+/// INVISIBLE one — measured on this host at 1050 bytes, which printed
+/// `[ERROR] nros: [ts] …` and nothing else.
+///
+/// 160 leaves room for the `[LEVEL] logger: [timestamp] ` prefix inside the
+/// same buffer, with margin for the 128-byte build.
+///
+/// The long form of each message stays where it works: the `static_assert`
+/// text, which the compiler prints in full.
+const size_t RUNTIME_REFUSAL_MAX = 160;
+
+/// Say a `NROS_RCLCPP_REFUSE_*_RUNTIME` message at runtime — phase-417 stage 3.
+///
+/// Takes the literal BY REFERENCE so its length is a compile-time constant, and
+/// then refuses at compile time to emit one that would vanish. A runtime
+/// refusal nobody can read is the defect this whole stage exists to remove, so
+/// it must not be possible to add one by accident.
+///
+/// `nros_log_emit_at`, not the `NROS_LOG_*` printf path: that one renders
+/// through its own 256-byte stack buffer as well, and there is no reason to pay
+/// two truncation risks for a message that needs no formatting.
+///
+/// ERROR rather than FATAL: the call REFUSES and returns, so the process is
+/// still alive and still able to do the right thing.
+template <size_t N>
+inline void say_refused(const char (&message)[N], const char* file, uint32_t line) {
+    static_assert(N - 1 <= RUNTIME_REFUSAL_MAX,
+                  "a RUNTIME refusal must fit nros_log's format buffer. Longer than that it is "
+                  "not truncated, it is DROPPED, and the reader sees a lone ellipsis. Keep the "
+                  "long text on the static_assert, which the compiler prints in full, and give "
+                  "the runtime site a short form that still names the alternative.");
+    nros_log_emit_at(log_handle(nullptr), NROS_LOG_SEVERITY_ERROR, message, N - 1, file, line);
+}
 
 /// **REFUSED** — the target of every `RCLCPP_*_THROTTLE` macro. Variadic so
 /// the macro can forward `logger`, `clock`, the period and the whole format
@@ -314,13 +428,34 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
 //
 // Same call shape as rclcpp.
 //
-// ADOPT-BOUNDED on ONE point, shared by the whole family: the logger argument
-// is evaluated and then DISCARDED. `rclcpp::Logger` here is a name-only
-// sentinel and the sink is keyed on `__FILE__` / `__LINE__`, so two loggers in
-// one file are indistinguishable in the output and a per-logger level cannot be
-// set. Named loggers exist Rust-side; re-exporting them is phase-417 W4.d.
-// Nothing is lost that the call site did not already have — the message and its
-// arguments all reach the sink.
+// THE LOGGER IS CARRIED, NOT DISCARDED (issue 1019, phase-417 W3.a). The family
+// used to expand to `(void)(logger); NROS_<LEVEL>(__VA_ARGS__)`, and that one
+// line was three defects at once:
+//
+//   1. `NROS_INFO` is the legacy printf family, whose sink is `fprintf(stderr)`
+//      on a hosted build and a NO-OP on a freestanding one — so on Zephyr,
+//      FreeRTOS, NuttX and ThreadX, the targets nano-ros exists for, a ported
+//      node's entire log output was compiled away with no diagnostic. It worked
+//      on the host, which is where anyone would test the port.
+//   2. the logger was cast to `void`, so per-logger levels applied to none of
+//      the family and `rclcpp::get_logger("planner")` selected nothing.
+//   3. `RCLCPP_FATAL` lowered to `NROS_ERROR`, because the legacy family has no
+//      fatal level at all — a fatal line survived an ERROR-threshold filter
+//      upstream would have treated as a different severity.
+//
+// All three are one fix: route at `NROS_LOG_*` (`<nros/log.h>`), which
+// dispatches through `nros_log` and therefore reaches `LOG_ERR`/`printk` on
+// exactly the targets where the legacy sink is a no-op, honours the per-logger
+// threshold, and has a distinct `NROS_LOG_SEVERITY_FATAL`.
+//
+// `NROS_INFO` and friends are UNCHANGED and still the right thing for a board's
+// own console print: the hosted/freestanding split is a feature there. What was
+// wrong was routing `RCLCPP_*` through it — a ported node calling `RCLCPP_INFO`
+// is asking for the ROS logger, not for a board console.
+//
+// One consequence worth naming: `RCLCPP_DEBUG` no longer compiles out under
+// `NDEBUG`. It is runtime-filtered by the logger's threshold now, which is what
+// upstream does.
 //
 // `_STREAM` no longer discards its message (issue 1019). It used to expand to
 // `RCLCPP_INFO(logger, "%s", "")` with `args` NEVER REFERENCED, which is the
@@ -340,30 +475,25 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
 // The whole family sits behind `#ifndef RCLCPP_INFO` so a translation unit that
 // somehow also has real rclcpp keeps rclcpp's own definitions.
 #ifndef RCLCPP_INFO
+#define RCLCPP_DEBUG(logger, ...)                                                                  \
+    do {                                                                                           \
+        NROS_LOG_DEBUG(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                         \
+    } while (0)
 #define RCLCPP_INFO(logger, ...)                                                                   \
     do {                                                                                           \
-        (void)(logger);                                                                            \
-        NROS_INFO(__VA_ARGS__);                                                                    \
+        NROS_LOG_INFO(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                          \
     } while (0)
 #define RCLCPP_WARN(logger, ...)                                                                   \
     do {                                                                                           \
-        (void)(logger);                                                                            \
-        NROS_WARN(__VA_ARGS__);                                                                    \
+        NROS_LOG_WARN(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                          \
     } while (0)
 #define RCLCPP_ERROR(logger, ...)                                                                  \
     do {                                                                                           \
-        (void)(logger);                                                                            \
-        NROS_ERROR(__VA_ARGS__);                                                                   \
-    } while (0)
-#define RCLCPP_DEBUG(logger, ...)                                                                  \
-    do {                                                                                           \
-        (void)(logger);                                                                            \
-        NROS_DEBUG(__VA_ARGS__);                                                                   \
+        NROS_LOG_ERROR(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                         \
     } while (0)
 #define RCLCPP_FATAL(logger, ...)                                                                  \
     do {                                                                                           \
-        (void)(logger);                                                                            \
-        NROS_ERROR(__VA_ARGS__);                                                                   \
+        NROS_LOG_FATAL(::rclcpp::detail::log_handle(logger), __VA_ARGS__);                         \
     } while (0)
 
 // REFUSED. The arguments are still forwarded so they are parsed and
@@ -379,6 +509,16 @@ void throttle_is_refused(Logger&&, Clock&&, Period&&, Rest&&...) {
 #define RCLCPP_FATAL_THROTTLE(logger, clock, period_ms, ...)                                       \
     ::rclcpp::detail::throttle_is_refused((logger), (clock), (period_ms), __VA_ARGS__)
 #endif // RCLCPP_INFO
+
+/// Emit a refusal message, with the call site — phase-417 stage 3.
+///
+/// The RUNTIME half of REFUSE-LOUD, for the cases where only the VALUE carries
+/// the defect and a `static_assert` therefore cannot reach it (RFC-0089
+/// §"Where the refusal fires"). The argument must be a string LITERAL, which
+/// every `NROS_RCLCPP_REFUSE_*_RUNTIME` is, and must fit
+/// `rclcpp::detail::RUNTIME_REFUSAL_MAX` — enforced there, not here.
+#define NROS_RCLCPP_SAY_REFUSED(msg)                                                               \
+    ::rclcpp::detail::say_refused((msg), __FILE__, (uint32_t)__LINE__)
 
 // The stream family, carrying its message. `NROS_RCLCPP_STREAM_` builds the
 // text once and forwards it as a single `%s` argument, so a `%` inside the

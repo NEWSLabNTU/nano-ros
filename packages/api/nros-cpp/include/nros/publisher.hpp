@@ -111,7 +111,20 @@ template <typename M> class Publisher {
     ///
     /// Calls the codegen-generated `M::ffi_publish()` which serializes the
     /// message to CDR and publishes it.
-    Result publish(const M& msg) { return Result(M::ffi_publish(storage_, &msg)); }
+    ///
+    /// phase-417 stage 3 — the `initialized_` guard. `publish` was the ONLY
+    /// entry point on this class without one, and the one that matters most:
+    /// `M::ffi_publish` reaches `nros_cpp_publish_raw`, whose only check is
+    /// `storage.is_null()`, and `storage_` is an in-object array that is never
+    /// null. So an uninitialised publisher reinterpreted zero-initialised bytes
+    /// as an `RmwPublisher` — silently wrong, then UB, with no diagnostic at any
+    /// warning level. That is reachable straight from `create_publisher`, which
+    /// returns a `Result` a ported node may not read and leaves `out` untouched
+    /// on failure.
+    Result publish(const M& msg) {
+        if (!initialized_) return Result(::nros::ErrorCode::NotInitialized);
+        return Result(M::ffi_publish(storage_, &msg));
+    }
 
     /// Publish raw CDR bytes.
     Result publish_raw(const uint8_t* data, size_t len) {
