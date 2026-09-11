@@ -241,10 +241,22 @@ read-only, dynamic typing), `set_parameter` returning a
 launch file or CLI, and a service-backed remote-introspection surface
 (`/<node>/get_parameters`, `/<node>/set_parameters`, …).
 
-nano-ros's `nros::ParameterServer<Cap>` (C++) and the equivalent C
-`nros_parameter_server_t` keep the **vocabulary** (`declare_parameter<T>`,
-`get_parameter<T>`, `set_parameter<T>`, `has_parameter`) but trim the
-surface aggressively for embedded use.
+nano-ros keeps the **vocabulary** (`declare_parameter<T>`,
+`get_parameter<T>`, `set_parameter<T>`, `has_parameter`) but trims the
+surface for embedded use. There is ONE store, and it is in Rust: the
+`nros_params::ParameterServer` the executor owns, which is also what the six
+`rcl_interfaces/srv/*` servers read. C++ reaches it through methods on
+`rclcpp::Node`; C through `nros_executor_*_param_*` (the `_on` spellings name a
+node when an image composes several); Rust through `Executor::declare_parameter`
+and `NodeCtx::parameter`.
+
+> **If you have older nano-ros code:** `nros::ParameterServer<Cap>` is gone
+> (phase-426 W4), and so is the caller-storage store it wrapped as a thing to
+> reach for. Both were node-LOCAL: the parameter services read a different
+> object, so `ros2 param list` never saw what you declared. The C
+> `nros_parameter_server_t` family still exists for a caller who genuinely wants
+> a private store, but no example uses it and its contents do not reach the ROS
+> graph.
 
 **What we keep**
 
@@ -269,20 +281,21 @@ surface aggressively for embedded use.
 | `set_parameters_atomically` | not exposed | atomic multi-set requires transaction log; not justified by current embedded use |
 | `declare_parameters` (multi-declare with namespace) | not exposed | one-by-one declare is fine for compile-time-known parameter sets |
 | Parameter overrides from CLI / launch / yaml | not exposed | embedded apps configure via Kconfig / `Config` struct; runtime overrides come over the wire via `~/set_parameters` (when `param-services` is on) |
-| Storage allocation policy | compile-time `<Capacity>`, inline storage | no heap; capacity sizing belongs in the application's startup code, same as the executor arena |
+| Storage allocation policy | one executor-owned table, `NROS_MAX_PARAMETERS` slots, keyed by node | no per-node heap; capacity is a build knob, sized once like the executor arena rather than multiplied by the node count |
 
 **Storage shape difference**
 
 | | rclcpp | nano-ros |
 |---|---|---|
-| Container | `std::map<string, ParameterValue>` (heap) | `nros_parameter_t storage[Capacity]` (caller-owned, inline) |
-| String value | `std::string` (heap) | fixed 128-byte slot, copy semantics |
-| Array params | `std::vector<T>` (heap) | caller-owned pointer + length (caller keeps storage alive) |
-| Total fixed cost | unbounded | `Capacity × sizeof(nros_parameter_t)` known at compile time |
+| Container | `std::map<string, ParameterValue>` per node (heap) | one fixed table on the executor, keyed by `(node, name)` |
+| String value | `std::string` (heap) | fixed slot, copy semantics |
+| Array params | `std::vector<T>` (heap) | `nros::Seq<T, N>` in, elements copied into the store's own slot — nothing for the caller to keep alive |
+| Total fixed cost | unbounded | `NROS_MAX_PARAMETERS` slots, known at build time, shared by every node |
 
 **Class shape difference**
 
-`rclcpp::Node` owns the parameter store. nano-ros splits them:
+`rclcpp::Node` owns the parameter store; nano-ros's node borrows one the
+EXECUTOR owns. The call shape is upstream's:
 
 ```cpp
 // rclcpp
@@ -292,20 +305,25 @@ double v = node->get_parameter("ctrl_period").as_double();
 
 // nano-ros
 rclcpp::Node node;
-nros::ParameterServer<8> params;
 NROS_TRY(rclcpp::Node::create(node, "ctrl"));
-NROS_TRY(params.declare_parameter<double>("ctrl_period", 0.15));
-double v;
-NROS_TRY(params.get_parameter<double>("ctrl_period", v));
+double period = node.declare_parameter<double>("ctrl_period", 0.15);
+double v = 0.0;
+node.get_parameter<double>("ctrl_period", v);
+
+// an array parameter, with no heap: `Seq<T, N>` is the value, the store
+// owns the elements
+nros::Seq<double, 8> w = node.declare_parameter("mpc_weights",
+                                                nros::Seq<double, 8>{1.0, 2.0});
 ```
 
-**Why split.** Adding a parameter store to `Node` would require
-templating `Node` on capacity, which propagates through every
-`create_publisher` / `create_subscription` site. Composing
-`ParameterServer<N>` alongside the node keeps `Node` non-templated and
-matches the rest of the freestanding C++14 surface (callers own
-storage). `params.raw()` exposes the underlying
-`nros_parameter_server_t*` for future ROS 2 service-backed registration.
+**Why the executor owns it.** Templating `Node` on a capacity would propagate
+through every `create_publisher` / `create_subscription` site, so the store
+cannot be a member; and a store per node is a store per node's worth of fixed
+arena on a target that has one. One executor-owned table, keyed by node, is both
+— `/talker`'s `rate` is not `/listener`'s, and the arena is sized once
+(`NROS_MAX_PARAMETERS`). It is also the table the services answer from, which is
+the property the split shape could not have: the parameter you declare is the
+parameter `ros2 param get` returns.
 
 **Why no `Box<dyn FnMut>` callback yet.** The same constraint that
 shapes the QoS event callbacks applies here: nano-ros's
