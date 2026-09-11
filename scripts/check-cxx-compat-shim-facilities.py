@@ -65,6 +65,8 @@ THREADX_SHIM = "packages/boards/nros-board-threadx-qemu-riscv64/cxx-compat"
 ZEPHYR_SHIM = "zephyr/cxx-compat"
 ZEPHYR_MINIMAL = "zephyr-workspace/zephyr/lib/cpp/minimal/include"
 PLATFORM_API = "packages/platform/nros-platform-api/include"
+CPP_INCLUDE = "packages/api/nros-cpp/include"
+C_INCLUDE = "packages/api/nros-c/include"
 
 # The probe. Every assertion here is a facility the standard puts in the
 # freestanding subset, or a trait phase-442 W3's inplace callable and handle
@@ -108,6 +110,23 @@ extern "C" int nros_shim_facilities_probe() {
 }
 """
 
+# The CONSUMER probe. The synthetic probe above asks whether the shim supplies a
+# facility; this asks whether our own header that USES that facility still
+# compiles against it. The two are not the same question, and the gap between
+# them is measured rather than hypothetical: `component.hpp` carried its own
+# hand-rolled placement `operator new` behind Zephyr's include guard, so the
+# moment `zephyr/cxx-compat/new` supplied the real ones the two collided —
+#
+#     component.hpp:501: error: redefinition of 'void* operator new(size_t, void*)'
+#
+# — on every Zephyr C++ component build, while the synthetic probe stayed green.
+# `component.hpp` is the header whose factory uses placement new, so it is the
+# one this compiles.
+CONSUMER_PROBE = """
+#define __ZEPHYR__ 1
+#include <nros/component.hpp>
+"""
+
 # (label, compiler, extra include dirs beyond the shim). The ThreadX board is
 # built with `riscv64-unknown-elf-g++` (`cmake/toolchain/riscv64-threadx.cmake`);
 # the host `c++` is used where the cross compiler is absent, which still answers
@@ -126,14 +145,17 @@ def first_available(candidates):
     return None
 
 
-def compile_probe(cc, shim, extra_includes, workdir):
-    src = os.path.join(workdir, "shim_facilities_probe.cpp")
+def compile_probe(cc, shim, extra_includes, workdir, source=None, name="shim_facilities_probe"):
+    src = os.path.join(workdir, name + ".cpp")
     with open(src, "w", encoding="utf8") as fh:
-        fh.write(PROBE)
+        fh.write(PROBE if source is None else source)
     cmd = [cc] + FLAGS + ["-isystem", shim]
     for inc in extra_includes:
         cmd += ["-isystem", inc]
-    cmd += ["-I", os.path.join(ROOT, PLATFORM_API), src]
+    cmd += ["-I", os.path.join(ROOT, PLATFORM_API),
+            "-I", os.path.join(ROOT, CPP_INCLUDE),
+            "-I", os.path.join(ROOT, C_INCLUDE),
+            "-DNROS_PLATFORM_NUTTX", src]
     proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     return proc.returncode, proc.stdout + proc.stderr
 
@@ -234,13 +256,24 @@ def main():
 
         zephyr_min = os.path.join(ROOT, ZEPHYR_MINIMAL)
         if os.path.isdir(zephyr_min):
-            rc, out = compile_probe(first_available(ZEPHYR_CC),
-                                    os.path.join(ROOT, ZEPHYR_SHIM), [zephyr_min], workdir)
+            zcc = first_available(ZEPHYR_CC)
+            zshim = os.path.join(ROOT, ZEPHYR_SHIM)
+            rc, out = compile_probe(zcc, zshim, [zephyr_min], workdir)
             if rc != 0:
                 failures.append("Zephyr shim over the minimal libcpp: the freestanding "
                                 "facility probe does NOT compile.\n%s" % out.strip())
             else:
                 notes.append("Zephyr shim + minimal libcpp: probe compiles")
+            rc, out = compile_probe(zcc, zshim, [zephyr_min], workdir,
+                                    source=CONSUMER_PROBE, name="consumer_probe")
+            if rc != 0:
+                failures.append("Zephyr shim over the minimal libcpp: `nros/component.hpp` -- "
+                                "the header whose factory USES placement new -- does NOT "
+                                "compile against it. A shim that supplies a facility our own "
+                                "header also supplies is a REDEFINITION, not a fix.\n%s"
+                                % out.strip())
+            else:
+                notes.append("Zephyr shim + minimal libcpp: nros/component.hpp compiles")
         else:
             notes.append("Zephyr arm SKIPPED: %s absent (west workspace not checked out)"
                          % ZEPHYR_MINIMAL)

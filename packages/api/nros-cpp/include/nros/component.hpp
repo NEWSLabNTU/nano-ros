@@ -482,30 +482,31 @@ constexpr ::nros::QoS qos_from_declared_depth(int declared) {
 
 // Zephyr's minimal libcpp ships a STUB <new> (guard
 // ZEPHYR_SUBSYS_CPP_INCLUDE_NEW_) that declares nothrow_t but NOT placement
-// new — the NROS_COMPONENT factory's `new (storage) Class(...)` then fails
+// new — the NROS_COMPONENT factory's `new (storage) Class(...)` then failed
 // "no matching operator new(sizetype, void*&)" (first hit porting real
 // Autoware components to a Zephyr image; ASI's FVP build used a full-libcpp
-// toolchain and never saw it). Provide the standard non-allocating forms.
+// toolchain and never saw it).
 //
-// Issue 1317 — `<new>` is INCLUDED here rather than waited for. The guard
-// below is Zephyr's own include guard, so it is defined only once something
-// else has already pulled `<new>` in, and a translation unit that reaches
-// this header first got the shim compiled away and the factory failing. That
-// is a property of the CONSUMER's include order, which this header cannot
-// see: measured on a downstream where three of four component sources
-// happened to include `<new>` transitively and the fourth did not.
+// This header used to supply the missing forms ITSELF, behind Zephyr's own
+// include guard, and issue 1317 records why that could not work: the guard is
+// defined only once something else has pulled `<new>` in, so whether the fix
+// applied was a property of the CONSUMER's include order, which this header
+// cannot see. Measured on a downstream where three of four component sources
+// included `<new>` transitively and the fourth did not.
+//
+// phase-442 W4 fixed the CLASS instead: `zephyr/cxx-compat/new` supplies the
+// placement forms for every Zephyr C++ translation unit, layered over whatever
+// real `<new>` is reachable, and `check-cxx-compat-shim-facilities` compiles a
+// probe that proves it. So the local workaround is not merely redundant now —
+// it is a REDEFINITION, measured:
+//
+//     component.hpp:501: error: redefinition of 'void* operator new(size_t, void*)'
+//     zephyr/cxx-compat/new:46: note: previously defined here
+//
+// `<new>` is still included, because this header's factory uses placement new
+// and a header that needs a facility should say so rather than inherit it.
 #ifdef __ZEPHYR__
 #include <new>
-#endif
-#ifdef ZEPHYR_SUBSYS_CPP_INCLUDE_NEW_
-inline void* operator new(::std::size_t, void* ptr) noexcept {
-    return ptr;
-}
-inline void* operator new[](::std::size_t, void* ptr) noexcept {
-    return ptr;
-}
-inline void operator delete(void*, void*) noexcept {}
-inline void operator delete[](void*, void*) noexcept {}
 #endif
 
 /// Inside a node constructor: subscribe `void Self::method(const Msg&)` to
