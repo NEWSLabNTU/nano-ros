@@ -3,7 +3,7 @@ id: 1092
 title: "`rmw-abi-shape` licenses a deviation without pinning it — 7 of 24
   mutations left every RMW gate green, including a `void` return and a gutted
   slot"
-status: open
+status: resolved
 type: bug
 area: ci, rmw
 related: [phase-393, phase-428, rfc-0089]
@@ -104,3 +104,78 @@ a different `generated.rs`, so it would go red — on a host that has bindgen; t
 recipe skips when it is absent. The snapshot files were not mutated; the
 contract half re-derives byte-identically on this Humble install and nothing is
 claimed about other distros.
+
+## Resolution — every declaration pins what it licenses (2026-09-11, phase-444 W4.a)
+
+All four ranked fixes landed in `scripts/rmw-abi-shape.py`, plus the parity
+map's half of fix 4 in `scripts/rmw-api-parity.py`.
+
+1. **`ADDED` entries are `Added(ret, args, why)`.** Each key must be a live
+   slot (else `orphan_pin`) whose return and argument list equal the pin (else
+   `added_drift`), and an `ADDED` slot that turns out to have an upstream
+   counterpart is refused. Closes both `has_data` mutations.
+2. **`ARG_DEVIATIONS` / `RET_DEVIATIONS` entries are `ArgPin(upstream, ours,
+   why)` / `RetPin(upstream, ours, why)`**, in the normalised spelling the
+   comparison uses. A declared slot passes only while BOTH sides still read
+   exactly the pin; any change to the header or to the upstream snapshot is
+   `pin_drift` and prints the current shape to paste. There is deliberately no
+   flag that rewrites pins — a gate you clear by regenerating its expectation
+   is the staleness gate this issue found `rmw-api-comparison` to be. The
+   stale-pin check (a pin on a slot that now matches) moved out of
+   `--self-test` into `compare()`, so `--check` fails on it too, and a pin no
+   comparison ever consults is `orphan_pin`.
+3. **Grouped-ONLY targets are compared** against the upstream symbol grouped
+   onto them: `create_session` ← `rmw_init`, `destroy_session` ← `rmw_shutdown`
+   and `rmw_context_fini`, `subscription_take_event` ← `rmw_take_event`. The
+   first two gained pins with reasons; the third's entry already existed and
+   had never been read.
+4. **Deferral ids resolve.** `scripts/lib/issue_status.py` is the one resolver;
+   a `gap` reason defers only to an issue whose file says `status: open`, and a
+   `not-implemented` row's `issue =` must do the same (`9999`, `0776` and
+   `"banana"` are all refused now). The docstring/error exemplar is no longer
+   the resolved 0776.
+
+### What the pins found on the way in
+
+* `ARG_DEVIATIONS["subscription_get_network_flow_endpoints"]` declared a
+  deviation on a slot that has never existed (both network-flow symbols are
+  `declined`, issue 0956), "as" a sibling entry that did not exist either.
+  Deleted; `orphan_pin` is the check that would have caught it.
+* `take`'s reason listed `(sub, buf, buf_len, size_t *out_len, bool *taken)`
+  — five arguments, the pre-phase-406 shape — beside a header that takes
+  three `(sub, rmw_mut_byte_span_t *, bool *)`. Reason corrected. That is the
+  argument for pinning in one line: the prose had been false since phase-406
+  and nothing could see it.
+
+### Coverage, recomputed
+
+| | slots |
+| --- | ---: |
+| identical to upstream | 15 |
+| name matches upstream, difference PINNED | 39 |
+| grouped-only target, difference PINNED | 3 |
+| RTOS addition, signature PINNED | 11 |
+| **compared with no licence to vary** | **68 of 68** |
+
+### Acceptance (phase-428 W7: all seven surviving mutations fail)
+
+Executable, not recorded: `--self-test` replays the seven mutations above
+against the REAL header on every run (`MUTATIONS`), and fails if any one adds
+no `--check` failure the unmutated tree lacks — `OK (71 slot(s) parsed, 28
+case(s), 7 of issue 1092's mutations caught)`. The planted cases cover an
+unchanged pin passing, an appended argument / a retyped handle / a `void`
+return / upstream moving under a pin each failing, and stale ARG and RET pins
+being reported.
+
+Negative control on the real tree: `take` given a trailing `uint64_t
+bogus_extra` in `rmw_vtable.h` → `just check rmw-abi-shape` rc=1 with
+
+```
+take: the args changed under a PINNED deviation
+    pinned ours: ("const rmw_subscription_t *", "rmw_mut_byte_span_t *", "bool *")
+    header now : ("const rmw_subscription_t *", "rmw_mut_byte_span_t *", "bool *", "uint64_t")
+```
+
+while `origin/main`'s copy of the script, run against the same mutated
+header, printed `name matches, args DECLARED : 39` and exited 0. Header
+restored.

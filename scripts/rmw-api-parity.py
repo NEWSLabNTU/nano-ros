@@ -54,6 +54,8 @@ import re
 import importlib.util as _util
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
+from issue_status import issue_status  # noqa: E402
 
 # `librmw_zenoh_cpp.so`, not `librmw_dds_common__rosidl_typesupport_fastrtps_cpp.so`.
 IMPL_LIB = re.compile(r"librmw_[a-z0-9]+_cpp\.so")
@@ -115,15 +117,20 @@ STATUSES = ("same", "re-shaped", "re-mapped", "not-supported", "not-implemented"
 DERIVED_ONLY = ("same", "re-shaped")
 
 
-def check_status():
+def check_status(rows=None, status_of=None):
     """The `status` axis: vocabulary, and the rules that keep it honest.
 
     Added because `where` was doing two jobs. `declined` covered `rmw_wait`,
     decomposed into five live slots, and `rmw_init_publisher_allocation`, where
     nothing crosses the seam — opposite facts under one word.
+
+    `rows` / `status_of` default to the real map and the real issue tree; the
+    self-test passes planted ones.
     """
+    rows = MAP_ROWS if rows is None else rows
+    status_of = issue_status if status_of is None else status_of
     bad = []
-    for sym, row in sorted(MAP_ROWS.items()):
+    for sym, row in sorted(rows.items()):
         status, where = row.get("status"), row["where"]
         if status is None:
             if where in ("layer", "declined"):
@@ -152,6 +159,18 @@ def check_status():
                 "gap is indistinguishable from a decision, and silence turns the "
                 "first into the second"
             )
+        elif status == "not-implemented":
+            # Issue 1092: this tested TRUTHINESS, so `issue = 9999` (no such
+            # file) and `issue = "banana"` were both accepted. The id has to
+            # name an issue somebody holds OPEN, or the gap is an exemption.
+            st = status_of(row["issue"])
+            if st != "open":
+                bad.append(
+                    f"{sym}: `issue = {row['issue']!r}` must name an OPEN issue under "
+                    "docs/issues/ — it resolves to "
+                    + (f"a `{st}` one" if st else "no issue file")
+                    + ". A deferral to an issue nobody holds open is an exemption"
+                )
         if status == "not-supported" and row.get("issue"):
             bad.append(f"{sym}: `not-supported` is a decision, so it takes no `issue`")
     return bad
@@ -333,6 +352,18 @@ def self_test():
     # The `status` axis: vocabulary, and the rules that stop a gap from
     # decaying into a decision by silence.
     bad.extend(check_status())
+    # ... and a `not-implemented` row's `issue` must RESOLVE to an open issue
+    # (issue 1092), planted, since the real map has no such row today.
+    def fake(n):
+        s = str(n)
+        return {"1092": "open", "0776": "resolved"}.get(f"{int(s):04d}") if s.isdigit() else None
+
+    for issue, want_ok in (("1092", True), (1092, True), ("0776", False),
+                           ("9999", False), ("banana", False)):
+        row = {"where": "gap", "status": "not-implemented", "issue": issue}
+        got_ok = not check_status({"rmw_planted": row}, fake)
+        if got_ok != want_ok:
+            bad.append(f"check_status: `issue = {issue!r}` accepted={got_ok}, want {want_ok}")
     if bad:
         for b in bad:
             sys.stderr.write("rmw-api-parity --self-test: " + b + "\n")
@@ -340,7 +371,7 @@ def self_test():
     n_status = sum(1 for r in MAP_ROWS.values() if r.get("status"))
     print(
         f"rmw-api-parity --self-test: OK ({len(MAP)} mapping(s), "
-        f"{n_status} authored status(es), 2 case(s))"
+        f"{n_status} authored status(es), 7 case(s))"
     )
     return 0
 
