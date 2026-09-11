@@ -3603,8 +3603,14 @@ mod selection_wiring_tests {
     }
 
     /// And a well-formed selection is NOT refused here — it passes stage 1b and
-    /// fails later, on the image, which is a different message. Without this,
-    /// the two tests above would pass on a `select` that refused everything.
+    /// fails later, which is a different message. Without this, the two tests
+    /// above would pass on a `select` that refused everything.
+    ///
+    /// "Later" is package mode (RFC-0065 D1, phase-445 W5): this workspace has
+    /// no bringup, so `nros build` builds each package with its own build file
+    /// — and these fixture packages carry only a `package.xml`, so that is the
+    /// refusal. It used to be "declares no [image.*]", from the time a
+    /// bringup-less workspace was an error rather than colcon's shape.
     #[test]
     fn a_closed_selection_passes_stage_1b() {
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -3612,13 +3618,13 @@ mod selection_wiring_tests {
         pkg(tmp.path(), "talker_pkg", &[]);
 
         let e = plan_builds(&args_for(tmp.path(), &[], &["entry"]))
-            .expect_err("this workspace declares no image");
+            .expect_err("these packages carry no build file");
         let msg = format!("{e:#}");
         assert!(
             !msg.contains("no such package") && !msg.contains("needs talker_pkg"),
             "the selection is closed and must not be the complaint: {msg}"
         );
-        assert!(msg.contains("[image.*]"), "{msg}");
+        assert!(msg.contains("no buildable package"), "{msg}");
     }
 }
 
