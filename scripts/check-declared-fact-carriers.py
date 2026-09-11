@@ -312,6 +312,22 @@ FACT_DISPOSITION = {
             "NROS_ENTITY_COUNT_*, so the arena's per-kind sum is never reached "
             "and there is nothing for a bound table to refine"),
     },
+    # issue 1255 -- the PER-TYPE bound table, for the one consumer that
+    # allocates per subscription rather than from a shared pool.
+    "NROS_DERIVED_SUBSCRIBED_TYPE_BOUNDS": {
+        "resolver": ("NROS_RESOLVED_NROS_SUBSCRIBED_TYPE_BOUNDS",),
+        "sidecar": NotCarried(
+            _FACTS, _ARENA_COUNTS_FIRST,
+            "its only consumer is the executor arena's per-kind sum, which "
+            "runs only where NROS_ENTITY_COUNT_* arrive -- the Zephyr resolver "
+            "road alone. A leaf's model is 0, so a table delivered there would "
+            "price nothing"),
+        "declared": NotCarried(
+            _FACTS, _ARENA_COUNTS_FIRST,
+            "same reason, same road-order: the declared road carries no "
+            "NROS_ENTITY_COUNT_*, so the arena's per-kind sum is never reached "
+            "and there is nothing for a bound table to refine"),
+    },
     # ---- provenance: published, carried by nothing, and that is correct ---
     "NROS_DERIVED_LARGEST_TYPE": {
         "resolver": _provenance(_PROV_TYPE),
