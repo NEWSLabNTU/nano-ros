@@ -855,7 +855,13 @@ test-ros2-params verbose="":
 # defect is invisible through — the six parameter services were published under
 # the executor's identity, so a single node reads the same before and after.
 # This one drives a two-node image and asserts each node's own FQN answers with
-# its own value. Same prerequisites: the distro's `rmw_zenoh_cpp` plus zenohd.
+# its own value.
+#
+# Since issue 1268 / phase-444 W6 the binary carries a CYCLONE case too, and the
+# two halves have different preconditions: the zenoh pair wants the distro's
+# `rmw_zenoh_cpp` plus a `rmw_zenohd`, the Cyclone case wants
+# `rmw_cyclonedds_cpp` and no router. Each skips on its own; this runs all three.
+# Runs `params_per_node_interop`; needs ROS 2 + `rmw_zenoh_cpp`/zenohd + `rmw_cyclonedds_cpp`.
 [group("debug")]
 test-ros2-params-per-node verbose="":
     #!/usr/bin/env bash
