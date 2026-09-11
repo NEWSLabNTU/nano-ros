@@ -499,6 +499,27 @@ impl ExecutorSizing {
     pub const fn u64_len(&self) -> usize {
         executor_storage_u64_len(*self)
     }
+
+    /// phase-412 #4 — refuse, at COMPILE time, a sizing whose arena is below
+    /// what this image's declared entities are modelled to need.
+    ///
+    /// For a caller that supplies its own `const` sizing for the image's ONE
+    /// executor (`open_in` over a `static` sized with [`u64_len`](Self::u64_len)),
+    /// so its arena is held to the same model the build-time default is:
+    ///
+    /// ```ignore
+    /// const SIZING: nros::ExecutorSizing = nros::ExecutorSizing { .. };
+    /// const _: () = SIZING.assert_covers_model("SIZING.arena");
+    /// ```
+    ///
+    /// Opt-in, deliberately: an executor that holds a SUBSET of the image (one
+    /// tier of a tiered boot) legitimately carries less than the whole model,
+    /// and only its author knows which kind it is. See
+    /// [`arena_oracle`](super::arena_oracle) for the arms and why each is or is
+    /// not checked here.
+    pub const fn assert_covers_model(&self, source: &'static str) {
+        super::arena_oracle::assert_covers_model(self.arena, source)
+    }
 }
 
 /// The exact `#[repr(C)]` byte layout the C/C++ FFI's inline executor buffer must

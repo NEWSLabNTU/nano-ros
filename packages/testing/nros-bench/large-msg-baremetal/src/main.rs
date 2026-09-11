@@ -29,6 +29,11 @@ const EXEC_SIZING: nros::ExecutorSizing = nros::ExecutorSizing {
     // can check.
     nodes: nros::ExecutorSizing::DEFAULT.nodes,
 };
+// phase-412 #4 — this is the image's ONE executor, so its caller-supplied arena
+// must hold everything the image declares. Held at compile time against the
+// same model `nros-node/build.rs` derives the default arena from; inert (the
+// model is 0) while the image declares no entities, as it does today.
+const _: () = EXEC_SIZING.assert_covers_model("EXEC_SIZING.arena");
 static mut EXEC_BACKING: [core::mem::MaybeUninit<u64>; EXEC_SIZING.u64_len()] =
     [const { core::mem::MaybeUninit::uninit() }; EXEC_SIZING.u64_len()];
 

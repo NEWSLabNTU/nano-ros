@@ -1343,8 +1343,14 @@ config NROS_EXECUTOR_ARENA_SIZE
       derivation itself did, and an image sized from that arithmetic dies at
       entity creation with NodeError::BufferTooSmall.
 
-      Set it only with that arithmetic in hand; too small fails at runtime,
-      not at link.
+      Set it only with that arithmetic in hand. On an image that DECLARES its
+      entities (every NROS_ENTITY_COUNT_* reached the build), a value below
+      what they are modelled to need does not build: nros-node refuses it at
+      compile time, naming this option, both numbers and the shortfall
+      (phase-412, executor::arena_oracle). On an image that declares nothing
+      the derivation is a worst-case budget, not a requirement, so a smaller
+      value is accepted -- and too small still fails at runtime, at the first
+      registration that does not fit, not at link.
 
 config NROS_EXECUTOR_BACKING_U64S
     int "Executor backing reservation in 64-bit words (-1 = derive, 0 = none)"
