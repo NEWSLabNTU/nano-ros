@@ -321,6 +321,14 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
     # The installer a user curls — the branch's own, so the asset and the
     # script that unpacks it come from one commit.
     git -C "$REPO_ROOT" show "$under_test:scripts/install.sh" >"$workdir/release/install.sh"
+    # The index — issue 1304. A released `nros` FETCHES its index from `main`
+    # (RFC-0097 D5), and the commit under test is not `main` yet: without this,
+    # the probe would provision against whatever `main` declares today and a
+    # change to the index would go untested until after it merged. The
+    # commit's own index stands in for "the index as of this release", through
+    # the CLI's own documented knob — the same substitution the curl line
+    # makes for install.sh, and nothing the user types changes.
+    git -C "$REPO_ROOT" show "$under_test:nros-sdk-index.toml" >"$workdir/release/nros-sdk-index.toml"
 
     echo "probe: installed track — user container $PROBE_IMAGE, mounting the asset and nothing else"
     # No repo mount, no git dir, no PROBE_BRANCH: the user container sees the
@@ -331,6 +339,7 @@ if [[ "$PROBE_TRACK" = "installed" ]]; then
         -v "$workdir/probe.sh:/probe.sh:ro" \
         -v "$workdir/release:$RELEASE_MOUNT:ro" \
         -e PROBE_SHELL="$PROBE_SHELL" \
+        -e NROS_INDEX_URL="file://$RELEASE_MOUNT/nros-sdk-index.toml" \
         -w /root \
         "$PROBE_IMAGE" \
         sh -c "$install_shim && \"\$PROBE_SHELL\" /probe.sh"

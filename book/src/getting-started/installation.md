@@ -404,6 +404,14 @@ RMW daemon + board SDK sources. `--rmw` defaults to `zenoh`.
 | `nros setup zephyr` | the Zephyr west workspace + Zephyr SDK bits |
 | `nros setup mps2-an385-baremetal` / `stm32f4` | bare-metal `arm-none-eabi-gcc` + qemu |
 
+Every board also needs a **Rust toolchain**, whatever language you write:
+the runtime your project links is compiled from source when you first
+configure. If the host has neither `rustup` nor `rustc` + `cargo`,
+`nros setup` installs rustup (a pinned, checksum-verified installer)
+into `~/.cargo` with the stable toolchain as the default — where
+`cmake` finds it without any PATH change. A host that already has Rust
+is left as it is. For `cargo` in a shell afterwards: `. "$HOME/.cargo/env"`.
+
 Useful flags:
 
 ```bash

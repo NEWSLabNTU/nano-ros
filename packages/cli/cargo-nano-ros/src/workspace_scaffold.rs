@@ -324,7 +324,12 @@ pub fn scaffold_workspace(cfg: &WorkspaceScaffold) -> Result<()> {
     );
     let next = match cfg.lang.as_str() {
         "cpp" => format!(
-            "Next steps:\n  cd {0}\n  cmake -S . -B build -DNANO_ROS_ROOT=<path-to-nano-ros>\n  cmake --build build\n  ./build/src/robot_entry/robot_entry",
+            // Issue 1304 — the scaffolded CMakeLists resolves the SDK root
+            // itself (-DNANO_ROS_ROOT, $NROS_REPO_DIR, then `nros sdk-root`), so
+            // an installed toolchain passes nothing and has no value to pass.
+            "Next steps:\n  cd {0}\n  cmake -S . -B build\n  cmake --build build\n  ./build/src/robot_entry/robot_entry\n\
+             (configure finds nano-ros by itself: `nros sdk-root --explain` says where. From a\n\
+             checkout shell without activate.sh, add -DNANO_ROS_ROOT=<path-to-your-checkout>.)",
             cfg.dir.display()
         ),
         _ => format!(

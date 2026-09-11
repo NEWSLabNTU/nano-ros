@@ -710,7 +710,7 @@ fn execute_install(
 
 /// Verify `path`'s sha256 equals `expected` (shells out to `sha256sum`, falling
 /// back to `shasum -a 256` on macOS).
-fn verify_sha256(path: &Path, expected: &str) -> Result<()> {
+pub(crate) fn verify_sha256(path: &Path, expected: &str) -> Result<()> {
     let out = Command::new("sha256sum")
         .arg(path)
         .output()
@@ -927,6 +927,172 @@ fn submodule_is_present(workspace: &Path, path: &str, recursive: bool) -> bool {
     saw_a_line
 }
 
+/// Issue 1304 — the file an INSTALLED SDK root carries in place of gitlinks.
+///
+/// Every `[source.*]` with `submodule = "<path>"` is DEFINED as "the checkout's
+/// `.gitmodules` + gitlink" (issue 0602 removed the index's own copy of the
+/// pin, because git holds it authoritatively). A release has no checkout, and
+/// the SDK root it ships is a `git archive`, which drops gitlinks by design —
+/// so the installed `nros setup native` ran `git ls-tree` in a directory that
+/// is not a repository and stopped, for every RMW.
+///
+/// `scripts/stage-sdk-root.sh` writes this file at release time from the
+/// commit being released: the pins are version-locked to the toolchain
+/// (RFC-0097 D6) rather than re-derived from a history the user does not have.
+/// Its presence is also what separates an installed root from a checkout —
+/// a checkout never carries it, so the checkout arm below is unchanged.
+///
+/// Kept in step with the staging script and `nros-rmw-provision.cmake` by
+/// `check-release-manifest` R6.
+pub const SUBMODULE_PINS_FILE: &str = "nros-submodule-pins.toml";
+
+/// One recorded gitlink: where the submodule's repository is, and the commit.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub struct RecordedPin {
+    pub url: String,
+    pub commit: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct PinsFile {
+    #[serde(default)]
+    submodule: BTreeMap<String, RecordedPin>,
+}
+
+/// The recorded pin for `path`, if `workspace` is an installed SDK root.
+///
+/// `Ok(None)` means "no pins file here" — a checkout, whose gitlinks answer.
+/// A pins file that does not name `path` is an ERROR, not a fall-through: the
+/// checkout arm cannot work in a directory that has no repository, and the
+/// cause is specific — the index (fetched, so possibly newer than this
+/// release) names a submodule source this release never recorded.
+pub fn recorded_pin(workspace: &Path, path: &str) -> Result<Option<RecordedPin>> {
+    let file = workspace.join(SUBMODULE_PINS_FILE);
+    if !file.is_file() {
+        return Ok(None);
+    }
+    let raw =
+        std::fs::read_to_string(&file).wrap_err_with(|| format!("read {}", file.display()))?;
+    let mut pins: PinsFile =
+        toml::from_str(&raw).wrap_err_with(|| format!("parse {}", file.display()))?;
+    pins.submodule.remove(path).map(Some).ok_or_else(|| {
+        eyre!(
+            "{} records no pin for `{path}`: this toolchain was released before \
+             the index named that source, so it has nothing to fetch it at. \
+             Install a newer toolchain, or provision it by hand into {}",
+            file.display(),
+            workspace.join(path).display()
+        )
+    })
+}
+
+/// Is every NESTED submodule of the clone at `dest` at its own recorded pin?
+///
+/// Unlike [`submodule_is_present`], empty output is a yes: that probe asks
+/// about one named submodule, which must print a line; this one asks about
+/// whatever the clone happens to nest, and most nest nothing.
+fn nested_submodules_clean(dest: &Path) -> bool {
+    let d = dest.to_string_lossy();
+    match sh_capture_raw(
+        &["git", "-C", &d, "submodule", "status", "--recursive"],
+        None,
+    ) {
+        Ok(out) => out
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .all(|l| l.starts_with(' ')),
+        Err(_) => false,
+    }
+}
+
+/// Issue 1304 — provision a submodule source into an installed SDK root, from
+/// the pin the release recorded.
+///
+/// Lands at `<workspace>/<path>` — the same checkout-relative location a
+/// checkout holds it at — so cmake's defaults (`nros-rmw-provision.cmake`) and
+/// every `build.rs` presence gate (zpico-sys) find it with no change.
+///
+/// Same fetch shape as the checkout arm's by-SHA fallback, and the same
+/// idempotence the RFC-0099 D6 fast path gives a checkout: a clone already AT
+/// the recorded commit, with its nested submodules at theirs, runs one
+/// `rev-parse` and nothing that touches the network.
+fn provision_at_recorded_pin(
+    name: &str,
+    path: &str,
+    pin: &RecordedPin,
+    workspace: &Path,
+    shallow: bool,
+    recursive: bool,
+) -> Result<SourceDisposition> {
+    let dest = workspace.join(path);
+    let dest_s = dest.to_string_lossy().into_owned();
+    if dest.join(".git").exists() {
+        let at_pin = sh_capture(&["git", "-C", &dest_s, "rev-parse", "HEAD"], None)
+            .map(|head| head == pin.commit)
+            .unwrap_or(false);
+        if at_pin && (!recursive || nested_submodules_clean(&dest)) {
+            return Ok(SourceDisposition::AlreadyPresent);
+        }
+    } else {
+        // A populated directory that is not a clone is somebody's tree, and
+        // writing a repository into it would mix the two.
+        let populated = dest
+            .read_dir()
+            .map(|mut d| d.next().is_some())
+            .unwrap_or(false);
+        if populated {
+            bail!(
+                "{} exists and is not a git clone, so source {name} cannot be \
+                 checked out at its recorded commit {} there. Remove it and re-run.",
+                dest.display(),
+                pin.commit
+            );
+        }
+        std::fs::create_dir_all(&dest)
+            .wrap_err_with(|| format!("create source dest {}", dest.display()))?;
+        sh(&["git", "init", "-q", &dest_s], None)
+            .wrap_err_with(|| format!("git init {dest_s} (source {name})"))?;
+        sh(
+            &["git", "-C", &dest_s, "remote", "add", "origin", &pin.url],
+            None,
+        )
+        .wrap_err_with(|| format!("git remote add origin {} (source {name})", pin.url))?;
+    }
+    // By commit, not by branch: the pin is routinely BEHIND its branch tip, and
+    // GitHub serves any reachable commit — the checkout arm's fallback relies
+    // on the same property.
+    let mut fetch: Vec<&str> = vec!["git", "-C", &dest_s, "fetch", "-q"];
+    if shallow {
+        fetch.extend(["--depth", "1"]);
+    }
+    fetch.extend(["origin", &pin.commit]);
+    sh(&fetch, None).wrap_err_with(|| {
+        format!(
+            "git fetch {} {} (source {name}, recorded pin for {path})",
+            pin.url, pin.commit
+        )
+    })?;
+    sh(&["git", "-C", &dest_s, "checkout", "-q", &pin.commit], None)
+        .wrap_err_with(|| format!("git checkout {} (source {name})", pin.commit))?;
+    if recursive {
+        let mut sub: Vec<&str> = vec![
+            "git",
+            "-C",
+            &dest_s,
+            "submodule",
+            "update",
+            "--init",
+            "--recursive",
+        ];
+        if shallow {
+            sub.extend(["--depth", "1"]);
+        }
+        sh(&sub, None)
+            .wrap_err_with(|| format!("git submodule update --recursive (source {name})"))?;
+    }
+    Ok(SourceDisposition::Provisioned)
+}
+
 /// Outcome of [`provision_source`] — for the `nros setup` disposition line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SourceDisposition {
@@ -972,6 +1138,20 @@ pub fn provision_source(
             let path = src.submodule.as_deref().expect("submodule mode has a path");
             if dry_run {
                 return Ok(SourceDisposition::Planned);
+            }
+            // Issue 1304 — an INSTALLED SDK root has no gitlinks to read: the
+            // release staged it with `git archive`, which drops them, and
+            // recorded each one as data instead. Everything below this branch
+            // is a checkout's arm, and a checkout never carries the file.
+            if let Some(pin) = recorded_pin(workspace, path)? {
+                return provision_at_recorded_pin(
+                    name,
+                    path,
+                    &pin,
+                    workspace,
+                    shallow,
+                    src.recursive,
+                );
             }
             // RFC-0099 D6 — already at the recorded pin? Then there is nothing
             // to fetch and nothing to check out, so do neither. This is the
@@ -1179,7 +1359,7 @@ fn command_on_path(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn sh(args: &[&str], cwd: Option<&Path>) -> Result<()> {
+pub(crate) fn sh(args: &[&str], cwd: Option<&Path>) -> Result<()> {
     sh_with_toolchain(args, cwd, None)
 }
 
@@ -1269,7 +1449,7 @@ pub fn workspace_rust_channel(workspace: &Path) -> Option<String> {
 }
 
 /// Run a command and capture trimmed stdout (for reading a gitlink SHA, etc.).
-fn sh_capture(args: &[&str], cwd: Option<&Path>) -> Result<String> {
+pub(crate) fn sh_capture(args: &[&str], cwd: Option<&Path>) -> Result<String> {
     Ok(sh_capture_raw(args, cwd)?.trim().to_string())
 }
 
@@ -2059,5 +2239,145 @@ mod tests {
                 "probe `{probe}` disagrees with recursive={recursive}"
             );
         }
+    }
+
+    /// Issue 1304 — an INSTALLED SDK root: a plain directory, NOT a repository,
+    /// carrying the release's recorded pins. The pin deliberately LAGS the
+    /// upstream tip, which is the normal state of a submodule pin and the case
+    /// a fetch-by-branch would get wrong.
+    ///
+    /// Returns (sdk root, submodule path, pinned commit).
+    fn installed_root_with_pin(tag: &str) -> (PathBuf, &'static str, String) {
+        let root = crate::test_support::scratch_dir(tag);
+        let upstream = root.join("upstream");
+        std::fs::create_dir_all(&upstream).unwrap();
+        // allowAnySHA1InWant: a property of the SERVER, which GitHub has and a
+        // bare local repository does not — the pin below is not a ref tip.
+        git_sh(
+            &upstream,
+            "git init -q . && git config uploadpack.allowAnySHA1InWant true \
+             && echo pinned > f.txt && git add f.txt && git commit -qm one \
+             && git rev-parse HEAD > ../pinned \
+             && echo tip > f.txt && git commit -qam two",
+        );
+        let pinned = std::fs::read_to_string(root.join("pinned"))
+            .unwrap()
+            .trim()
+            .to_string();
+
+        let sdk = root.join("sdk-root");
+        std::fs::create_dir_all(&sdk).unwrap();
+        let path = "third-party/sub";
+        std::fs::write(
+            sdk.join(SUBMODULE_PINS_FILE),
+            format!(
+                "[submodule.\"{path}\"]\nurl = \"file://{}\"\ncommit = \"{pinned}\"\n",
+                upstream.display()
+            ),
+        )
+        .unwrap();
+        (sdk, path, pinned)
+    }
+
+    /// The defect itself: with no repository in the workspace, the source is
+    /// cloned AT the recorded commit — not the tip — into the same
+    /// checkout-relative path a checkout would hold it at. And nothing in the
+    /// checkout arm ran: `submodule status`, `submodule update` and `ls-tree`
+    /// all need a superproject that does not exist here.
+    #[test]
+    fn an_installed_root_clones_a_submodule_source_at_its_recorded_pin() {
+        let (sdk, path, pinned) = installed_root_with_pin("pins-provision");
+        let src = SourcePackage {
+            shallow: true,
+            ..submodule_source(path, true)
+        };
+
+        let _ = take_command_log();
+        assert_eq!(
+            provision_source("sub", &src, &sdk, false, None).unwrap(),
+            SourceDisposition::Provisioned
+        );
+        let ran = take_command_log();
+        assert!(
+            ran.iter()
+                .any(|c| c.contains("fetch") && c.contains("--depth 1") && c.ends_with(&pinned)),
+            "the source must be fetched BY the recorded commit: {ran:?}"
+        );
+        // The checkout arm is `git -C <workspace> …` in every command it runs
+        // (`submodule status`, `submodule update … -- <path>`, `ls-tree`); here
+        // the workspace is not a repository, so nothing may address it.
+        let at_root = format!("-C {} ", sdk.display());
+        assert!(
+            !ran.iter()
+                .any(|c| c.contains(&at_root) || c.contains("ls-tree")),
+            "a checkout-arm command ran against an installed root that has no repository: {ran:?}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(sdk.join(path).join("f.txt"))
+                .unwrap()
+                .trim(),
+            "pinned",
+            "checked out something other than the recorded commit"
+        );
+    }
+
+    /// RFC-0099 D6's promise, kept on the installed arm: a second `nros setup`
+    /// over a source already at its pin touches nothing on the network.
+    #[test]
+    fn an_installed_source_at_its_pin_is_skipped_without_fetching() {
+        let (sdk, path, _) = installed_root_with_pin("pins-repeat");
+        let src = submodule_source(path, true);
+        provision_source("sub", &src, &sdk, false, None).unwrap();
+
+        let _ = take_command_log();
+        assert_eq!(
+            provision_source("sub", &src, &sdk, false, None).unwrap(),
+            SourceDisposition::AlreadyPresent
+        );
+        let ran = take_command_log();
+        for verb in ["fetch", "clone", "checkout", "init"] {
+            assert!(
+                !ran.iter().any(|c| c.contains(verb)),
+                "`{verb}` ran for an installed source already at its pin: {ran:?}"
+            );
+        }
+    }
+
+    /// A pins file that does not name the source is a named failure — not a
+    /// fall-through into the checkout arm, which is issue 1304's `git ls-tree`
+    /// in a non-repository all over again.
+    #[test]
+    fn an_installed_root_without_a_pin_for_the_source_says_so() {
+        let (sdk, _, _) = installed_root_with_pin("pins-missing");
+        let err = provision_source(
+            "other",
+            &submodule_source("third-party/other", false),
+            &sdk,
+            false,
+            None,
+        )
+        .unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("records no pin for `third-party/other`"),
+            "the error must name the missing pin: {msg}"
+        );
+    }
+
+    /// The contributor's arm is untouched: a CHECKOUT carries no pins file, so
+    /// its sources still come from its own gitlinks — the property the
+    /// ownership guard (phase-431 W1) exists for, one layer down.
+    #[test]
+    fn a_checkout_never_reads_recorded_pins() {
+        let (ws, path) = superproject_with_submodule("pins-checkout");
+        assert!(recorded_pin(&ws, path).unwrap().is_none());
+        let _ = take_command_log();
+        provision_source("sub", &submodule_source(path, false), &ws, false, None).unwrap();
+        assert!(
+            take_command_log()
+                .iter()
+                .any(|c| c.contains("submodule status")),
+            "a checkout's source must still be decided by its gitlink"
+        );
     }
 }

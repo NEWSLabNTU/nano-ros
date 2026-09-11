@@ -1841,6 +1841,24 @@ check = { cmd = "kconfig-conf" }
 # setup/doctor derive from one file. cargo-nextest was required by `just
 # test-all` and declared nowhere (issue 0368 F7).
 
+# Issue 1304 — how a host with NO Rust toolchain gets one. Every board needs
+# it: the runtime a project links is compiled from the SDK root by Corrosion at
+# configure time. A checkout gets rustup from `scripts/bootstrap.sh`; an
+# INSTALLED `nros` had nothing, so the book's first build stopped in Corrosion's
+# FindRust. `nros setup <board>` now runs this pinned, sha256-verified
+# `rustup-init` when neither rustup nor a `rustc`+`cargo` pair is found (the
+# same places FindRust looks: PATH, then ~/.cargo/bin), and installs `toolchain`
+# as the default with `--profile minimal` — a build needs rustc and cargo, not
+# the contributor components listed under that alias. A host that already has
+# rustup keeps its own choices; only a rustup with no default toolchain at all
+# gets one. Bump: the `.sha256` beside each `archive/<version>/<triple>/rustup-init`.
+[rust.rustup]
+version = "1.29.1"
+toolchain = "stable"
+dist.linux-x86_64 = { url = "https://static.rust-lang.org/rustup/archive/1.29.1/x86_64-unknown-linux-gnu/rustup-init", sha256 = "dda7234360b7f578ca8b0ddcb80145646fa61a67c1720a5abc7051b35c9fcb71" }
+dist.linux-arm64 = { url = "https://static.rust-lang.org/rustup/archive/1.29.1/aarch64-unknown-linux-gnu/rustup-init", sha256 = "15f6e4ce9f583b929c996c91562bad6d4454f3281de858b02cdfdef615fac433" }
+dist.macos-arm64 = { url = "https://static.rust-lang.org/rustup/archive/1.29.1/aarch64-apple-darwin/rustup-init", sha256 = "ec1b9233e7f72990ecd8e62063fa7f6c3dfc2bec8e97f88bff165f9100ac696a" }
+
 [rust.toolchain.stable]
 channel = "stable"
 components = ["rustfmt", "clippy", "rust-src", "llvm-tools"]

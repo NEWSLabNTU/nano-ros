@@ -347,6 +347,17 @@ pub fn run(args: Args) -> Result<()> {
     let source_builds = source_build_names(&index, &packages, &root, &host);
     warn_source_builds(&source_builds, &host);
 
+    // Issue 1304 — every board builds the Rust runtime (Corrosion compiles
+    // `nros-c`/`nros-cpp` out of the SDK root at configure), so a host with no
+    // Rust toolchain cannot build anything this command provisions for. First,
+    // because a `[tool.*]` source recipe below may be a cargo build too.
+    let rust = crate::orchestration::rust_toolchain::ensure(&index, &host, args.dry_run)
+        .wrap_err("provision a Rust toolchain (every board's runtime is compiled by cargo)")?;
+    eprintln!("  {:<22} {}", "rust", rust.line);
+    if rust.changed {
+        installed = true;
+    }
+
     for name in &packages {
         // `[tool.*]` packages install into the shared store; `[source.*]` are
         // provisioned into their index-declared `dest` (Phase 195.B);
@@ -1428,12 +1439,47 @@ pub fn resolve_index(explicit: &Path) -> Result<PathBuf> {
 /// The workspace root a `[source.*]` `dest` is resolved against: the directory
 /// containing the index (Phase 195.B — `dest` is workspace-relative index data,
 /// never a path baked into the binary). Falls back to `.` for a bare index name.
+///
+/// Issue 1304 — that holds only when the index sits IN a nano-ros root. An
+/// index read from the store (`<store>/fetch/`, RFC-0097 D5) or out of the
+/// release asset (`<prefix>/share/nros/`) sits in neither, so its parent said
+/// nothing about where a source belongs, and an installed `nros setup native`
+/// ran `git ls-tree` in `~/.nros/fetch`. For those two the answer is the SDK
+/// root a BUILD will read — the same four-rung ladder `nros build` and
+/// `nros sdk-root` walk (RFC-0099 D3), so a checkout still wins for a
+/// contributor and an installed toolchain gets its own `share/nano-ros`.
 fn index_workspace(index: &Path) -> PathBuf {
-    index
+    let store_cache = index_cache_path(&crate::orchestration::store::root());
+    source_workspace(index, &[Some(store_cache), shipped_index()], || {
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        crate::orchestration::nano_ros_root::resolve(None, &cwd)
+    })
+}
+
+/// [`index_workspace`] with its inputs as parameters — the store/shipped copies
+/// of the index, and the ladder — so the choice is testable without the
+/// environment.
+fn source_workspace(
+    index: &Path,
+    detached: &[Option<PathBuf>],
+    ladder: impl FnOnce() -> Option<PathBuf>,
+) -> PathBuf {
+    let beside = index
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
         .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let canon = |p: &Path| std::fs::canonicalize(p).ok();
+    let this = canon(index);
+    let is_detached = this.is_some()
+        && detached
+            .iter()
+            .flatten()
+            .any(|d| canon(d).is_some_and(|d| Some(d) == this));
+    if is_detached && let Some(root) = ladder() {
+        return root;
+    }
+    beside
 }
 
 /// One-line description of a source's provisioning outcome (Phase 195.B).
@@ -4332,5 +4378,63 @@ mod workspace_scan_tests {
         // `--sudo` alone parses now — it is rejected in `run()` with a message
         // naming both valid forms, which a clap `requires` cannot express.
         assert!(Cli::try_parse_from(["nros", "--sudo"]).is_ok());
+    }
+}
+
+/// Issue 1304 — where `[source.*]` provisioning lands, by where the index came
+/// from.
+#[cfg(test)]
+mod source_workspace_tests {
+    use super::*;
+
+    fn index_in(dir: &Path) -> PathBuf {
+        std::fs::create_dir_all(dir).unwrap();
+        let p = dir.join(INDEX_FILE);
+        std::fs::write(&p, "").unwrap();
+        p
+    }
+
+    /// The contributor's arm: an index read out of a checkout is IN a nano-ros
+    /// root, so its directory is the answer and the ladder is never consulted.
+    #[test]
+    fn an_index_in_a_checkout_keeps_its_own_directory() {
+        let root = crate::test_support::scratch_dir("srcws-checkout");
+        let idx = index_in(&root.join("checkout"));
+        let cache = index_in(&root.join("store/fetch"));
+        let got = source_workspace(&idx, &[Some(cache)], || {
+            panic!("the ladder must not be consulted for a checkout's own index")
+        });
+        assert_eq!(got, root.join("checkout"));
+    }
+
+    /// The defect: a fetched (store) or shipped index sits in no root, so the
+    /// SDK root the ladder answers is where sources go — not `~/.nros/fetch`.
+    #[test]
+    fn a_store_or_shipped_index_provisions_into_the_sdk_root() {
+        let root = crate::test_support::scratch_dir("srcws-detached");
+        let cache = index_in(&root.join("store/fetch"));
+        let shipped = index_in(&root.join("prefix/share/nros"));
+        let sdk = root.join("prefix/share/nano-ros");
+        for idx in [&cache, &shipped] {
+            let got = source_workspace(idx, &[Some(cache.clone()), Some(shipped.clone())], || {
+                Some(sdk.clone())
+            });
+            assert_eq!(
+                &got,
+                &sdk,
+                "index {} provisioned outside the SDK root",
+                idx.display()
+            );
+        }
+    }
+
+    /// With no rung answering, the historical answer stands rather than a
+    /// guess — and the provisioning error that follows names that directory.
+    #[test]
+    fn with_no_sdk_root_to_answer_the_old_directory_stands() {
+        let root = crate::test_support::scratch_dir("srcws-none");
+        let cache = index_in(&root.join("store/fetch"));
+        let got = source_workspace(&cache, &[Some(cache.clone())], || None);
+        assert_eq!(got, root.join("store/fetch"));
     }
 }

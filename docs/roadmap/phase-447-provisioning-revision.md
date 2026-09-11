@@ -101,6 +101,45 @@ reach, filed as [issue 1304](../issues/1304-installed-setup-cannot-provision-sub
 - **Still open:** "passes after" — blocked on 1304 (sources, a Rust toolchain
   on the installed path, a configure that finds the installed Cyclone dist).
 
+### A4 — the installed path provisions without a checkout
+
+Closes [issue 1304](../issues/1304-installed-setup-cannot-provision-submodule-sources.md).
+**Blocks A3's pass direction and this phase's headline acceptance**: with A1+A2
+in place, the installed journey still dead-ended at `nros setup`, one step
+EARLIER than D1 described, for every RMW.
+
+Three defects, all measured by A3's probe in one container state:
+
+1. **Submodule pins were read from git history.** Every `[source.*]` a board
+   pulls in by `submodule = "<path>"` (zenoh-pico, mbedtls, cyclonedds-src) was
+   defined as "the checkout's gitlink", and the SDK root is a `git archive`,
+   which drops gitlinks. The fix RECORDS them: `scripts/stage-sdk-root.sh`
+   writes `share/nano-ros/nros-submodule-pins.toml` (url + commit of every
+   gitlink in the released commit) and verifies every index `submodule =` path
+   has one. The submodule arm clones at the recorded commit when the workspace
+   carries that file — into the same checkout-relative `dest`, so cmake and
+   every `build.rs` find the tree unchanged. And an index read from the store
+   or the asset no longer names the workspace: its parent (`~/.nros/fetch`,
+   `share/nros`) is not a root, so sources go where the SDK-root ladder says.
+2. **Nothing installed a Rust toolchain.** `[rust.rustup]` in the index pins a
+   sha256-verified `rustup-init` per host; `nros setup <board>` runs it when
+   neither rustup nor `rustc`+`cargo` is where Corrosion looks, and gives a
+   rustup with no default toolchain one. A host with Rust is left alone.
+3. **Configure missed the provisioned Cyclone.** For an INSTALLED root only
+   (the pins file marks one), `nros-rmw-provision.cmake` asks
+   `nros sdk-path cyclonedds --require` and puts that prefix on
+   `CMAKE_PREFIX_PATH`. A checkout keeps building the fork submodule it may be
+   editing — D3's ownership argument, one layer down.
+
+*Acceptance:* `just probe installed` passes end to end in a pristine
+container — install, `nros setup native --rmw cyclonedds`, scaffold, build,
+run — and still FAILS with #896 reverted. The probe asserts the build linked
+the provisioned Cyclone, because the source fallback would also produce a
+working binary and hide a regression of (3). `check-release-manifest` R6
+holds the pins file's three spellings (writer, reader, cmake) to one name.
+
+*Status (2026-09-11): in progress.*
+
 ### B1 — the submodule arm skips what is already there
 
 `git submodule status --recursive -- <path>`: skip iff every line's prefix is a

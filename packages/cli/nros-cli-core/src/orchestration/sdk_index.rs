@@ -723,6 +723,34 @@ pub struct RustSection {
     /// `cargo install`ed tools, keyed by binary-ish alias.
     #[serde(default, rename = "cargo-tool")]
     pub cargo_tool: BTreeMap<String, RustCargoTool>,
+    /// Issue 1304 — how a host with NO Rust toolchain gets one.
+    #[serde(default)]
+    pub rustup: Option<RustupInstaller>,
+}
+
+/// Issue 1304 — the pinned `rustup-init` `nros setup <board>` runs on a host
+/// that has no Rust toolchain at all.
+///
+/// Every board needs one: the runtime a project links (`nros-c`/`nros-cpp`) is
+/// compiled from the SDK root by Corrosion at configure time. A checkout gets
+/// rustup from `scripts/bootstrap.sh`; an installed toolchain had nothing, and
+/// its configure stopped in Corrosion's `FindRust` with `rustc` not found while
+/// `nros setup` had printed only a remedy.
+///
+/// A dist row like any other: a pinned URL + sha256, verified before it runs,
+/// so what executes is what the index names — not whatever `sh.rustup.rs`
+/// serves that day.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RustupInstaller {
+    /// rustup's own release — the `archive/<version>/` the dist URLs pin.
+    pub version: String,
+    /// Alias of the `[rust.toolchain.*]` installed as the host's DEFAULT
+    /// toolchain, which is the one Corrosion builds with.
+    pub toolchain: String,
+    /// `rustup-init`, per host key.
+    #[serde(default)]
+    pub dist: BTreeMap<String, DistArtifact>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -1429,6 +1457,20 @@ impl SdkIndex {
                 bail!(
                     "[rust.target.{alias}] references undefined toolchain alias '{tc}' \
                      (not a [rust.toolchain.*] entry)"
+                );
+            }
+        }
+        if let Some(r) = &self.rust.rustup {
+            if !self.rust.toolchain.contains_key(&r.toolchain) {
+                bail!(
+                    "[rust.rustup] installs toolchain alias '{}', which is not a \
+                     [rust.toolchain.*] entry",
+                    r.toolchain
+                );
+            }
+            if r.dist.is_empty() {
+                bail!(
+                    "[rust.rustup] declares no dist — a host with no Rust toolchain has nothing to run"
                 );
             }
         }
