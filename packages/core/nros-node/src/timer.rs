@@ -192,6 +192,57 @@ impl TimerClockSource {
     pub(crate) fn now_ns(self) -> i64 {
         self.clock().map(|c| c.now().to_nanos()).unwrap_or(0)
     }
+
+    /// Whether the time left on a timer with this source is a quantity of WALL
+    /// microseconds — issue 1321.
+    ///
+    /// The executor asks this in two places, and both are asking the same
+    /// thing: `period_us - elapsed_us` is offered to
+    /// `next_wake_bound_attributed_us` as a park bound, and `period_us` is
+    /// compared against the declared spin period by
+    /// `audit_spin_quantization`. Both quantities on the other side of those
+    /// comparisons are wall microseconds — what the port's park primitive
+    /// waits and what the tier loop paces — so a timer whose `elapsed_us`
+    /// advances on some OTHER clock must take part in neither.
+    ///
+    /// * [`Steady`](Self::Steady) — **yes.** It consumes the executor's own
+    ///   spin delta, which is wall time by construction. This is phase-436 W1
+    ///   / issue 1192, and it is unchanged.
+    /// * [`System`](Self::System) — **yes**, and it is decided separately
+    ///   rather than by "not `Steady`". Its clock IS wall time (the port's
+    ///   `nros_platform_time_now_ns`), so there is no rate indirection and
+    ///   nothing can hold it still. It can STEP — NTP, `settimeofday` — and a
+    ///   step makes the bound an estimate rather than a fact, but a bounded
+    ///   one in both directions: the bound only ever shortens a park (it is
+    ///   one member of a `min` whose first member is the caller's budget) and
+    ///   `timer_try_process` re-reads the clock before dispatching, so a step
+    ///   costs at worst one extra wake and can never fire a callback early.
+    /// * [`Ros`](Self::Ros) — **no.** Its `elapsed_us` advances by the
+    ///   `/clock` step, so the remainder is SIMULATED microseconds, related to
+    ///   wall time by the bag's replay rate — which the executor does not know
+    ///   and by design cannot. On a paused `/clock` the remainder freezes and
+    ///   the image would wake once per timer period forever. Contributing
+    ///   nothing restores the pre-436 bound for these timers, which is the
+    ///   caller's budget — never unbounded, because
+    ///   `next_wake_bound_attributed_us` seeds the `min` with it — and that
+    ///   bound IS property 1 of phase-430: a ROS-time timer's wake source is a
+    ///   `/clock` MESSAGE, and a message wakes `drive_io` like any sample, so
+    ///   the timer's own deadline tells the executor nothing it does not
+    ///   already have.
+    ///
+    ///   The answer does not become "yes" when no `/clock` source is attached,
+    ///   even though `ClockType::RosTime` is documented as falling back to the
+    ///   wall: measured, that fallback reads `nros_core`'s in-image STEADY
+    ///   COUNTER, and nothing outside `nros-core`'s own tests advances it, so
+    ///   the remainder is a constant there too. A rule that flipped with
+    ///   whether a publisher happened to be running would also make the park
+    ///   bound change under an image for reasons no declaration named.
+    pub(crate) fn remaining_is_wall_time(self) -> bool {
+        match self {
+            TimerClockSource::Steady | TimerClockSource::System => true,
+            TimerClockSource::Ros => false,
+        }
+    }
 }
 
 /// Timer mode (repeating, one-shot, or inert)
