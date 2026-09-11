@@ -88,3 +88,50 @@ scaffold "next steps" that follow the same ladder the CMakeLists does.
 -> `nros new my_robot --workspace` -> `cmake` -> the entry prints `Published:`
 and `Received:`, with no checkout on the host. That probe is the gate; it is red
 on this issue today.
+
+## Work in progress (2026-09-11) — pick up here
+
+A fix is **written but not finished** on branch
+`work/1304-installed-setup-provisions-without-a-checkout` (no PR). Its agent
+stopped at an API session limit mid-change; the tree was committed as-is so it
+would not be lost. Treat it as a draft: **unreviewed, and `just ci gate` has not
+been run on it.** Pre-push `check-fast` is green on its head (`6cdb02124`).
+
+Commits on the branch, oldest first:
+
+- `b7ec5e55a` — phase-447 A3's probe. Already on `main` via #925; it drops by
+  patch-id on rebase. Check the commit count after rebasing.
+- `4c5b1b0ca` `wip(#1304)` — the fix. It takes the **"carry the pins"**
+  candidate above, plus items 1–3:
+  - **Pins:** `scripts/stage-sdk-root.sh` records url + gitlink SHA for every
+    submodule-backed source into `nros-submodule-pins.toml` in the SDK root.
+    `sdk_store.rs` (`recorded_pin`, `provision_at_recorded_pin`) clones at that
+    SHA when there is no checkout, and skips a source that is already at its
+    pin. `check-release-manifest.py` is extended to match.
+  - **Item 1, Rust:** a new `orchestration/rust_toolchain.rs`, and
+    `[rust.rustup]` in `nros-sdk-index.toml`, which pins a sha256-verified
+    `rustup-init` for each host. `nros setup` runs it only when neither rustup
+    nor a `rustc`+`cargo` pair is found. A host that already has rustup keeps
+    its own settings.
+  - **Item 2, Cyclone:** `nros-rmw-provision.cmake` asks `nros sdk-path` for
+    the prefix `nros setup` already unpacked. It does not glob the store
+    (issue 0625).
+  - **Item 3, scaffold:** `workspace_scaffold.rs` no longer prints
+    `-DNANO_ROS_ROOT` to an installed user.
+- `2f2707639` `wip(#1304)` — the agent's uncommitted tree at the stop. It adds
+  `cmake/NanoRosRustTool.cmake` (`nros_rust_tool`): the `cargo`/`rustc` that
+  nano-ros's own custom commands run. It uses the name when that resolves on
+  PATH, which keeps the `--locked` shim. Otherwise it uses the rustup proxies
+  in `$CARGO_HOME/bin` / `~/.cargo/bin`, because an installed host has no
+  PATH edit, and the build died at 92 % in the first message package's FFI
+  glue. It is applied in codegen, generate-interfaces, NuttX, the RTOS
+  helpers, the Zephyr cargo build, and the cpp multi-node template and test.
+  **This is the part most likely to be incomplete.**
+- `6cdb02124` — `cargo-target-spelling`'s "no triple available" arm now hides
+  `$HOME`/`$CARGO_HOME` as well as PATH. The fallback above found rustc
+  through them, so the must-fail configure succeeded.
+
+To resume: rebase onto `main` and squash the two `wip` commits. The branch also
+edits this file and the phase-447 doc, so drop this section in that rebase.
+Then run `just ci gate`, and `just probe installed` for acceptance (below).
+Then open the PR and arm it.
