@@ -272,6 +272,7 @@ static NATIVE_WORKSPACE_C_QOS_LISTENER_ENTRY_BINARY: OnceCell<PathBuf> = OnceCel
 /// Phase 269 W1 — cached paths to the parameterised C/C++ workspace entries.
 static NATIVE_WORKSPACE_C_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NATIVE_WORKSPACE_MIXED_PARAMS_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Phase 269 W2 — cached paths to the managed-node (lifecycle) C/C++ workspace entries.
 static NATIVE_WORKSPACE_C_LIFECYCLE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static NATIVE_WORKSPACE_CPP_LIFECYCLE_ENTRY_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -3274,6 +3275,24 @@ pub fn build_native_workspace_cpp_params_entry() -> TestResult<&'static Path> {
                 "workspace-features-cpp-params",
                 "features",
                 "native_cpp_params_entry",
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// phase-426 W5 — the CROSS-LANGUAGE parameter entry (`features`,
+/// `native_mixed_params`). One node whose C++ half declares `publish_period_ms`
+/// and reads `scale`, and whose C half declares `scale` and reads
+/// `publish_period_ms` — the acceptance W5 stated and did not build, because
+/// `c_params` / `cpp_params` are single-language images that never cross.
+/// Consumed by tests/cpp_c_param_live_read_e2e.rs.
+pub fn build_native_workspace_mixed_params_entry() -> TestResult<&'static Path> {
+    NATIVE_WORKSPACE_MIXED_PARAMS_ENTRY_BINARY
+        .get_or_try_init(|| {
+            build_workspace_cmake_entry(
+                "workspace-features-mixed-params",
+                "features",
+                "native_mixed_params_entry",
             )
         })
         .map(|p| p.as_path())
