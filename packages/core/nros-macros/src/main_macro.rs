@@ -3161,9 +3161,16 @@ fn board_path_for(deploy: &str) -> Option<SynPath> {
     syn::parse_str::<SynPath>(path_str).ok()
 }
 
-fn known_boards_csv() -> &'static str {
-    "native, freertos, threadx-linux, threadx-qemu-riscv64, nuttx, nuttx-riscv, esp32-qemu, \
-     zephyr, rtic-mps2-an385, qemu-mps2-an385, mps2-an385"
+/// The keys [`board_path_for`] accepts, for the "unknown board" diagnostic.
+///
+/// Issue 1285 — DERIVED from `nros_orchestration_ir::BOARD_PATHS`, the table
+/// the lookup itself reads. It was a hand-written list of eleven, which named
+/// keys the lookup accepted and silently omitted eight it also accepted, so the
+/// message could not be trusted as the answer to "what may I write here?".
+fn known_boards_csv() -> String {
+    nros_orchestration_ir::board_path_keys()
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Phase 244.D1 — does this deploy key name a pure bare-metal Cortex-M

@@ -69,56 +69,21 @@ struct CEntryView {
 /// native-only — `int main(argc, argv)` calling `nros_board_native_*` — because
 /// an embedded C entry was routed to the C++ pack before it reached here.
 ///
-/// The runner names are carried rather than derived from a prefix: the C ABI
-/// does not name them uniformly (`native` keeps the `_named` suffix its
-/// two-overload history left behind; the RTOS runners have no such pair), so a
-/// prefix rule would be a second, guessing spelling of a fact this module
-/// already holds exactly.
+/// The runner names come from `BoardFamily::c_abi_runners` in
+/// `nros-entry-lower` (issue 1285), which is also where the routing predicate
+/// reads them from. Each is `Option` because a family may ship one runner and
+/// not the other (issue 1286). The template names `run_tiers_fn` only inside
+/// its `boot.tiers` branch, and the emitter refuses a tiered plan whose family
+/// has none, so a `None` is never rendered.
 #[derive(serde::Serialize)]
 struct CBootView {
     /// `"kernel"` | `"app"` | `"host"` — `BootShape`'s single derivation,
     /// the same one the C++ pack reads.
     shape: &'static str,
-    run_components_fn: &'static str,
-    run_tiers_fn: &'static str,
+    run_components_fn: Option<&'static str>,
+    run_tiers_fn: Option<&'static str>,
     tiers: bool,
     n_tiers: usize,
-}
-
-/// The C-ABI runner names for a board family.
-///
-/// Only families whose `has_c_run_components()` is true can reach here with a
-/// C entry — the emitter refuses the rest above — so the arms for the others
-/// exist to keep this total, not because they are reachable. They name the
-/// symbol each family WOULD export, so adding a board's runner is a one-line
-/// change here and in the predicate rather than a new match.
-fn c_runner_names(board: &str) -> (&'static str, &'static str) {
-    match nros_entry_lower::board_family(board) {
-        nros_entry_lower::BoardFamily::Native => (
-            "nros_board_native_run_components_named",
-            "nros_board_native_run_tiers",
-        ),
-        // Every RTOS shares ONE `run_components` — the single-executor path
-        // differs only in a per-tick yield — while `run_tiers` is genuinely
-        // per-board, because a FreeRTOS task, a Zephyr `k_thread` and a NuttX
-        // pthread are three different things.
-        nros_entry_lower::BoardFamily::Freertos => (
-            "nros_board_rtos_run_components",
-            "nros_board_freertos_run_tiers",
-        ),
-        nros_entry_lower::BoardFamily::Zephyr => (
-            "nros_board_rtos_run_components",
-            "nros_board_zephyr_run_tiers",
-        ),
-        nros_entry_lower::BoardFamily::Nuttx => (
-            "nros_board_rtos_run_components",
-            "nros_board_nuttx_run_tiers",
-        ),
-        nros_entry_lower::BoardFamily::Threadx => (
-            "nros_board_rtos_run_components",
-            "nros_board_threadx_run_tiers",
-        ),
-    }
 }
 
 #[derive(serde::Serialize)]
@@ -194,7 +159,12 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
     //
     // W3.1 is the item that lifts this: give each RTOS board a C-ABI
     // `run_components` and the refusal narrows to what still lacks one.
-    if !nros_entry_lower::board_family(&plan.board).has_c_run_components() {
+    let family = nros_entry_lower::board_family(&plan.board)
+        .map_err(|e| format!("typed C entry emit: {e}"))?;
+    let Some(runners) = family
+        .c_abi_runners()
+        .filter(|r| r.run_components.is_some())
+    else {
         return Err(format!(
             "typed C entry emit: board `{}` has no C-ABI `run_components` — the C \
              board surface is native-only, so this emitter would name \
@@ -205,7 +175,7 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
              W3.1 is the item that would give this board a C runner.",
             plan.board, plan.board,
         ));
-    }
+    };
 
     for n in &plan.nodes {
         if !is_c_node(n) {
@@ -326,20 +296,23 @@ pub fn emit_typed(plan: &Plan) -> Result<String, String> {
             _ => None,
         },
         services: services_view(plan),
-        app_main_include: matches!(
-            nros_entry_lower::board_family(&plan.board).boot_shape(),
-            nros_entry_lower::BootShape::App
-        ),
+        app_main_include: matches!(family.boot_shape(), nros_entry_lower::BootShape::App),
         boot: {
-            let (run_components_fn, run_tiers_fn) = c_runner_names(&plan.board);
+            if tiers_view.is_some() && runners.run_tiers.is_none() {
+                return Err(format!(
+                    "typed C entry emit: board `{}` has a C-ABI `run_components` but no \
+                     C-ABI `run_tiers`, so a tiered C entry has no runner to call",
+                    plan.board
+                ));
+            }
             CBootView {
-                shape: match nros_entry_lower::board_family(&plan.board).boot_shape() {
+                shape: match family.boot_shape() {
                     nros_entry_lower::BootShape::Kernel => "kernel",
                     nros_entry_lower::BootShape::App => "app",
                     nros_entry_lower::BootShape::Host => "host",
                 },
-                run_components_fn,
-                run_tiers_fn,
+                run_components_fn: runners.run_components,
+                run_tiers_fn: runners.run_tiers,
                 tiers: tiers_view.is_some(),
                 n_tiers: tiers_view.as_ref().map(|t| t.n).unwrap_or(0),
             }

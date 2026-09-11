@@ -254,8 +254,21 @@ impl Plan {
 
 /// Whether the board family has a `run_tiers` runner. ThreadX does not
 /// (issue 1286), so a tiered ThreadX plan keeps the sched-context path.
+///
+/// Issue 1285: this reads the `run_tiers` half of
+/// `BoardFamily::c_abi_runners`, the one record of which runners each family
+/// exports. It no longer names ThreadX. When issue 1286 gives ThreadX a
+/// `run_components` and no `run_tiers`, this stays `false` without an edit.
+/// Both packs' `run_tiers` sit on those C-ABI symbols.
+///
+/// An unknown key answers `false` here rather than guessing a family. Every
+/// emitter refuses such a key, naming the known ones, before it renders
+/// anything, so this answer is never used.
 fn board_has_run_tiers(board: &str) -> bool {
-    nros_entry_lower::board_family(board) != nros_entry_lower::BoardFamily::Threadx
+    nros_entry_lower::board_family(board)
+        .ok()
+        .and_then(nros_entry_lower::BoardFamily::c_abi_runners)
+        .is_some_and(|r| r.run_tiers.is_some())
 }
 
 /// The param-services and lifecycle registrations that close a setup function.
@@ -741,7 +754,17 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
 
     let model = model_ingest::load_model(model_path)?;
     let board = board.unwrap_or_else(|| "native".to_string());
-    let target_rtos = board_to_rtos(&board).to_string();
+    // Issue 1285 — only a key the entry table knows HAS a tier sub-table.
+    //
+    // This function is shared: `nros codegen entry` (C/C++, where the key must
+    // name a family) and `nros build`'s Rust entry generation, where the key is
+    // any Rust board — `esp32-c3-baremetal`, an out-of-tree board — and only
+    // the node list is read. So an unknown key is NOT refused here; its tiers
+    // are resolved from their platform-neutral head (`TierDef::platform("")`
+    // selects no sub-table) rather than from `posix`'s, which the old substring
+    // fallback silently picked. Every consumer that needs the family asks
+    // `board_family`/`board_to_rtos` itself and refuses the key there.
+    let target_rtos = board_to_rtos(&board).unwrap_or("");
 
     // phase-315 / issue 0288 — does the model place ANYTHING on this board?
     //
@@ -880,7 +903,7 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
         .map(|(name, t)| {
             (
                 name.clone(),
-                crate::orchestration::model_ingest::tier_from_model(t, &target_rtos),
+                crate::orchestration::model_ingest::tier_from_model(t, target_rtos),
             )
         })
         .collect();
@@ -917,18 +940,17 @@ pub fn plan_from_model(model_path: &Path, board: Option<String>) -> Result<Plan>
     })
 }
 
-/// Phase 269 (W4) — derive the RTOS key recognised by [`resolve_tiers`] from a
-/// board deploy key. The mapping mirrors the `rtos_spec` function in
-/// `nros-orchestration-ir` (`"posix" | "native"`, `"freertos"`, …).
-pub fn board_to_rtos(board: &str) -> &str {
-    match board {
-        "native" | "posix" => "posix",
-        b if b.starts_with("freertos") || b.contains("freertos") => "freertos",
-        b if b.starts_with("zephyr") || b.contains("zephyr") => "zephyr",
-        b if b.starts_with("nuttx") || b.contains("nuttx") => "nuttx",
-        b if b.starts_with("threadx") || b.contains("threadx") => "threadx",
-        _ => "posix",
-    }
+/// Phase 269 (W4): the RTOS key [`resolve_tiers`] recognises, derived from a
+/// board deploy key. It is the key `rtos_spec` in `nros-orchestration-ir`
+/// reads (`"posix"`, `"freertos"`, …).
+///
+/// Issue 1285: read from `nros_entry_lower::BOARD_KEYS`, the one key →
+/// family table. This used to be a SUBSTRING match with a `posix` fallback,
+/// so `s32z270`, `an536` (FreeRTOS) and `armfvp`, `fvp-aemv8r-smp` (Zephyr)
+/// all silently got the POSIX tier sub-table. An unknown key is now an error
+/// naming the known ones.
+pub fn board_to_rtos(board: &str) -> Result<&'static str, nros_entry_lower::UnknownBoard> {
+    nros_entry_lower::board_family(board).map(nros_entry_lower::BoardFamily::tier_rtos_key)
 }
 
 /// Phase 269 (W4) — resolve `[tiers.*]` + `[[node_overrides]]` + per-node

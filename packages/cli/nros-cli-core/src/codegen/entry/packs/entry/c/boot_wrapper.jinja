@@ -22,8 +22,9 @@
   The runner NAMES are carried rather than assembled from the board key: the C
   ABI does not name them uniformly (`native` has the `_named` suffix that its
   two-overload history left behind, the RTOS ones do not), so deriving them
-  from a prefix here would be a second, guessing spelling of a fact `emit_c`
-  already holds exactly.
+  from a prefix here would be a second, guessing spelling of a fact
+  `BoardFamily::c_abi_runners` in `nros-entry-lower` already holds exactly
+  (issue 1285).
 -#}
 {%- set call -%}
 {%- if boot.tiers -%}

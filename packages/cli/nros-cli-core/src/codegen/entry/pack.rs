@@ -29,12 +29,14 @@
 //! not, because its fixture rows set `NANO_ROS_PLATFORM = "freertos"`, so both
 //! sides say embedded.
 //!
-//! What is wrong is structural: nothing MAKES them agree. They read different
-//! inputs, `board_family` answers `Native` for any key it has not learned, and
+//! What was wrong is structural: nothing MADE them agree. They read different
+//! inputs, `board_family` answered `Native` for any key it had not learned, and
 //! the failure if they ever diverged is a C++ TU written into a `.c` file — a
 //! compile error at best, and at worst a `.c` file that happens to compile.
-//! The `freertos-posix` comment in `board_family` records that this table has
-//! already produced one silent wrong answer of exactly that kind.
+//! The `freertos-posix` row in `nros_entry_lower::BOARD_KEYS` records that the
+//! fallback already produced one silent wrong answer of exactly that kind.
+//! Issue 1285 removed the fallback: an unknown key is now an error naming the
+//! known keys, which `nros codegen entry-pack` returns and CMake reports.
 //!
 //! So the manifest holds the DATA and this module holds the DECISION, and both
 //! answers are served to CMake through `nros codegen entry-pack` — one
@@ -131,7 +133,9 @@ pub fn entry_pack_for(language: Language, board: &str) -> Result<EntryPackInfo, 
     // family-wide assumption would route a C entry to C++ on a board that no
     // longer needs it. One predicate, in `nros-entry-lower`, because four
     // sites must give the same answer.
-    let has_c_runner = nros_entry_lower::board_family(board).has_c_run_components();
+    let has_c_runner = nros_entry_lower::board_family(board)
+        .map_err(|e| e.to_string())?
+        .has_c_run_components();
     let pack = match language {
         Language::C if !has_c_runner => "cpp",
         Language::C => "c",
@@ -237,7 +241,9 @@ mod tests {
     #[test]
     fn a_c_entry_renders_as_c_exactly_where_the_board_has_a_c_runner() {
         for board in ["native", "zephyr", "nuttx", "freertos", "threadx"] {
-            let has_runner = nros_entry_lower::board_family(board).has_c_run_components();
+            let has_runner = nros_entry_lower::board_family(board)
+                .unwrap()
+                .has_c_run_components();
             let got = entry_pack_for(Language::C, board).unwrap();
             if has_runner {
                 assert_eq!(
