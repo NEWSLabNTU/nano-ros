@@ -55,7 +55,7 @@ import importlib.util as _util
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scripts", "lib"))
-from issue_status import issue_status  # noqa: E402
+from issue_status import issue_status, refused_deferrals  # noqa: E402
 
 # `librmw_zenoh_cpp.so`, not `librmw_dds_common__rosidl_typesupport_fastrtps_cpp.so`.
 IMPL_LIB = re.compile(r"librmw_[a-z0-9]+_cpp\.so")
@@ -159,20 +159,18 @@ def check_status(rows=None, status_of=None):
                 "gap is indistinguishable from a decision, and silence turns the "
                 "first into the second"
             )
-        elif status == "not-implemented":
-            # Issue 1092: this tested TRUTHINESS, so `issue = 9999` (no such
-            # file) and `issue = "banana"` were both accepted. The id has to
-            # name an issue somebody holds OPEN, or the gap is an exemption.
-            st = status_of(row["issue"])
-            if st != "open":
-                bad.append(
-                    f"{sym}: `issue = {row['issue']!r}` must name an OPEN issue under "
-                    "docs/issues/ — it resolves to "
-                    + (f"a `{st}` one" if st else "no issue file")
-                    + ". A deferral to an issue nobody holds open is an exemption"
-                )
         if status == "not-supported" and row.get("issue"):
             bad.append(f"{sym}: `not-supported` is a decision, so it takes no `issue`")
+        # EVERY authored `issue =` resolves, whatever the status (phase-428
+        # W11). Issue 1092 made this test truthiness, so `issue = 9999` (no
+        # such file) and `issue = "banana"` were accepted; its fix bound the
+        # id but only on the `not-implemented` arm, which is narrower than the
+        # rule it enforces — the 0196 shape. An `issue =` on any other row was
+        # unread, and a field nothing reads is the thing this campaign keeps
+        # finding. The subject is the FIELD, so a status added later inherits
+        # the check.
+        for num, why in refused_deferrals(row.get("issue"), status_of):
+            bad.append(f"{sym}: `issue = {num!r}` {why}")
     return bad
 
 # `global` is distinct from `vtable`: a slot is per-BACKEND, a global is
@@ -364,6 +362,19 @@ def self_test():
         got_ok = not check_status({"rmw_planted": row}, fake)
         if got_ok != want_ok:
             bad.append(f"check_status: `issue = {issue!r}` accepted={got_ok}, want {want_ok}")
+    # phase-428 W11 — the REACH, not just the rule: an `issue =` on a row that
+    # is not `not-implemented` was unread until now, so the mutation that
+    # restores the old `elif` must fail here. `re-mapped` because it is the
+    # status the real map actually carries beside `not-supported`.
+    for issue, want_ok in (("1092", True), ("0776", False), ("9999", False)):
+        row = {"where": "vtable", "status": "re-mapped", "answers": ["take"],
+               "issue": issue}
+        got_ok = not check_status({"rmw_planted": row}, fake)
+        if got_ok != want_ok:
+            bad.append(
+                f"check_status: `re-mapped` + `issue = {issue!r}` accepted={got_ok}, "
+                f"want {want_ok} — the issue rule must reach every status"
+            )
     if bad:
         for b in bad:
             sys.stderr.write("rmw-api-parity --self-test: " + b + "\n")
@@ -371,20 +382,31 @@ def self_test():
     n_status = sum(1 for r in MAP_ROWS.values() if r.get("status"))
     print(
         f"rmw-api-parity --self-test: OK ({len(MAP)} mapping(s), "
-        f"{n_status} authored status(es), 7 case(s))"
+        f"{n_status} authored status(es), 10 case(s))"
     )
     return 0
 
 
 
-def _slot_kinds():
-    """`{slot: produced|default|unimplemented|inert}` from the producer scan."""
+def _producers_module():
     spec = _util.spec_from_file_location(
         "_producers", os.path.join(ROOT, "scripts", "check-rmw-slot-producers.py")
     )
     mod = _util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod.scan()
+    return mod
+
+
+def _slot_kinds():
+    """`{slot: produced|default|unimplemented|inert}` from the producer scan."""
+    return _producers_module().scan()
+
+
+def _slot_producers():
+    """The slots SOME backend fills — orthogonal to the kind since phase-428
+    W8, where `inert` became "nothing reads it" and stopped implying "nothing
+    writes it" too."""
+    return _producers_module().scan_detail()[1]
 
 
 def _slot_for(symbol):
@@ -446,16 +468,18 @@ def _producer_note(contract):
     lines = [
         "  NOTE  `vtable` counts a SLOT, not a backend that fills one. Of "
         f"{len(kinds)} slots:",
-        f"        {counts.get('produced', 0)} filled by some backend, "
+        f"        {counts.get('produced', 0)} filled by some backend AND read, "
         f"{counts.get('default', 0)} NULL with documented behaviour, "
-        f"{counts.get('inert', 0)} written and read by nothing.",
+        f"{counts.get('inert', 0)} READ BY NOTHING (some of those have a body).",
         "        `just check rmw-slot-producers` is that dimension (issue 0800).",
         "",
         f"  Of the {live_syms + len(inert_syms)} contract symbol(s) in the `vtable` "
         f"column, {live_syms} are answered by a slot something",
-        f"  writes or reads, and {len(inert_syms)} by an INERT one (issue 0785). "
-        "An inert slot is a reserved shape,",
-        "  not a working capability — see the declared families in "
+        f"  READS, and {len(inert_syms)} by an INERT one (issue 0785). An inert "
+        "slot is a reserved shape, not a working",
+        "  capability — and some of them DO have a backend body, which is an "
+        "implementation no caller reaches",
+        "  rather than a capability (phase-428 W8). See the declared families in "
         "check-rmw-slot-producers.py.",
     ]
     if inert_syms:

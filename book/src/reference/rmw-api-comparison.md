@@ -69,8 +69,10 @@ itself runs on **types**, so a name never colours a row.
 absent, or *answered elsewhere* when the capability ships outside the RMW seam —
 in the executor, in codegen, or inside a backend. Both carry the reason.
 
-**A dimmed right-hand cell** is an *inert* slot: declared in the vtable, written
-and read by nothing. A reserved shape, not a working capability (issue 0800).
+**A dimmed right-hand cell** is an *inert* slot: declared in the vtable and
+**read by nothing**. A reserved shape, not a working capability (issue 0800) —
+and some of them ARE filled by a backend, which is an implementation no caller
+reaches rather than a capability (phase-428 W8).
 
 ## What is being compared
 
@@ -88,10 +90,11 @@ rmw must provide" than any reading of the headers.
 
 | | vtable | global | executor | platform | build time | serdes | runtime | none | **total** |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| same | 12 | 1 |  |  |  |  |  |  | **13** |
+| same | 8 | 1 |  |  |  |  |  |  | **9** |
 | re-shaped | 33 | 1 |  |  |  |  |  |  | **34** |
 | re-mapped | 16 |  | 4 | 1 | 3 | 3 | 1 |  | **28** |
 | not supported — *by decision* |  |  |  |  |  |  |  | 13 | **13** |
+| not implemented — *tracked* | 4 |  |  |  |  |  |  |  | **4** |
 | **total** | **61** | **2** | **4** | **1** | **3** | **3** | **1** | **13** | **88** |
 
 Read a row for what we did, a column for where it lives. Only
@@ -205,7 +208,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
 <span class=pu>)</span></pre></td>
 <td class=why><div class='st s-re-shaped'>● re-shaped</div><b>types are resolved at BUILD time</b> — Upstream resolves a type through a runtime typesupport pointer. Ours are resolved by codegen before the image exists, so the seam carries bytes and a type hash rather than a pointer to a type description that would have to be walked at runtime.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.</td>
 </tr>
-<tr>
+<tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_client_request_publisher_get_actual_qos</span><span class=pu>(</span>
   <span class='ty'>const rmw_client_t * client</span><span class=pu>,</span>
@@ -216,9 +219,9 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>const rmw_client_t *client</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-same'>● same</div></td>
+<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div><b>inert</b> — declared and READ BY NOTHING, though a backend fills it.</td>
 </tr>
-<tr>
+<tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_client_response_subscription_get_actual_qos</span><span class=pu>(</span>
   <span class='ty'>const rmw_client_t * client</span><span class=pu>,</span>
@@ -229,7 +232,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>const rmw_client_t *client</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-same'>● same</div></td>
+<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div><b>inert</b> — declared and READ BY NOTHING, though a backend fills it.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -495,7 +498,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
 <span class='fn'>rmw_feature_supported</span><span class=pu>(</span><span class='ty'>rmw_feature_t feature</span><span class=pu>)</span></pre></td>
 <td class=c><pre><span class=ret>bool</span>
 <span class=pu>(*</span><span class='fn'>feature_supported</span><span class=pu>)</span><span class=pu>(</span><span class='ty'>rmw_feature_t feature</span><span class=pu>)</span></pre></td>
-<td class=why><div class='st s-re-mapped'>◆ re-mapped</div><div class=answers><div class=ans>per-capability slots, answered by nullity or a dedicated probe</div></div><b>inert</b> — declared, written and read by nothing.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped</div><div class=answers><div class=ans>per-capability slots, answered by nullity or a dedicated probe</div></div><b>inert</b> — declared and READ BY NOTHING, and filled by nothing.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -545,7 +548,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
 <span class='fn'>rmw_get_implementation_identifier</span><span class=pu>(</span><span class=ty>void</span><span class=pu>)</span></pre></td>
 <td class=c><pre><span class=ret>const char *</span>
 <span class=pu>(*</span><span class='fn'>get_implementation_identifier</span><span class=pu>)</span><span class=pu>(</span><span class=ty>void</span><span class=pu>)</span></pre></td>
-<td class=why><div class='st s-re-mapped'>◆ re-mapped · runtime</div><div class=answers><div class=ans>runtime: the registry name</div></div><b>inert</b> — declared, written and read by nothing.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · runtime</div><div class=answers><div class=ans>runtime: the registry name</div></div><b>inert</b> — declared and READ BY NOTHING, and filled by nothing.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -787,7 +790,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty add'>rmw_event_callback_t callback</span><span class=pu>,</span>
   <span class='ty add'>const void *user_data</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div><b>inert</b> — declared, written and read by nothing.<br><br><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
+<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div><b>inert</b> — declared and READ BY NOTHING, and filled by nothing.<br><br><b>the SESSION is the seam</b> — Upstream passes the node into almost every call. Our vtable is scoped to a session handle that already knows its node, so re-passing it would ask the caller to carry an identity the callee holds — the same argument that decided `handle-owns-node` in the C API, one layer down.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -903,7 +906,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>const rmw_publisher_t *publisher</span><span class=pu>,</span>
   <span class='ty add'>uint32_t timeout_ms</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div><b>inert</b> — declared, written and read by nothing.<br><br><b>milliseconds, not a struct</b> — `rmw_time_t` is a `{sec, nsec}` pair. This ABI carries `uint32_t` milliseconds throughout — the resolution every supported platform clock actually offers, and the unit the deadline arithmetic already uses.</td>
+<td class=why><div class='st s-not-supported'>✕ not-supported · by decision</div><b>inert</b> — declared and READ BY NOTHING, and filled by nothing.<br><br><b>milliseconds, not a struct</b> — `rmw_time_t` is a `{sec, nsec}` pair. This ABI carries `uint32_t` milliseconds throughout — the resolution every supported platform clock actually offers, and the unit the deadline arithmetic already uses.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -990,7 +993,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
 <td class=c><span class=nosig>—</span></td>
 <td class=why><div class='st s-re-mapped'>◆ re-mapped · 1 → 2</div><div class=answers><div class=ans>nros-serdes: Serialize</div><div class=ans>codegen packs</div></div>nros-serdes (`Serialize`/`Deserialize`/`DeserializeView`) plus the per-language codegen packs; CDR for an IDL type is fixed by ROS interop, so a per-backend answer would be a DEFECT. Not a slot for the same reason it is not per-backend, and because upstream&#x27;s parameters are two things this ABI declined anyway — a typesupport pointer and an `rmw_serialized_message_t`, which is an `rcutils_uint8_array_t` carrying an ALLOCATOR, at a seam with no allocator</td>
 </tr>
-<tr>
+<tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_service_request_subscription_get_actual_qos</span><span class=pu>(</span>
   <span class='ty'>const rmw_service_t * service</span><span class=pu>,</span>
@@ -1001,9 +1004,9 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>const rmw_service_t *service</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-same'>● same</div></td>
+<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div><b>inert</b> — declared and READ BY NOTHING, though a backend fills it.</td>
 </tr>
-<tr>
+<tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
 <span class='fn'>rmw_service_response_publisher_get_actual_qos</span><span class=pu>(</span>
   <span class='ty'>const rmw_service_t * service</span><span class=pu>,</span>
@@ -1014,7 +1017,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>const rmw_service_t *service</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-same'>● same</div></td>
+<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div><b>inert</b> — declared and READ BY NOTHING, though a backend fills it.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1202,7 +1205,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>bool *taken</span><span class=pu>,</span>
   <span class='ty'>rmw_message_info_t *message_info</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-re-mapped'>◆ re-mapped · 1 → 2</div><div class=answers><div class=ans>take_loaned_message</div><div class=ans>the attachment on the message already taken</div></div><b>inert</b> — declared, written and read by nothing.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 1 → 2</div><div class=answers><div class=ans>take_loaned_message</div><div class=ans>the attachment on the message already taken</div></div><b>inert</b> — declared and READ BY NOTHING, and filled by nothing.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1291,7 +1294,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>bool *taken</span><span class=pu>,</span>
   <span class='ty'>rmw_message_info_t *message_info</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><div class=answers><div class=ans>take</div><div class=ans>the attachment on the message already taken</div></div><b>renamed</b> — the slot is <code>take_with_info</code>.<br><br><b>inert</b> — declared, written and read by nothing.<br><br><b>no allocator at this seam</b> — `rmw_serialized_message_t` is an `rcutils_uint8_array_t`, which carries an allocator. The byte range and its length cross instead.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><div class=answers><div class=ans>take</div><div class=ans>the attachment on the message already taken</div></div><b>renamed</b> — the slot is <code>take_with_info</code>.<br><br><b>inert</b> — declared and READ BY NOTHING, and filled by nothing.<br><br><b>no allocator at this seam</b> — `rmw_serialized_message_t` is an `rcutils_uint8_array_t`, which carries an allocator. The byte range and its length cross instead.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
 </tr>
 <tr class=inert>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1309,7 +1312,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>bool *taken</span><span class=pu>,</span>
   <span class='ty'>rmw_message_info_t *message_info</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><div class=answers><div class=ans>take</div><div class=ans>the attachment on the message already taken</div></div><b>inert</b> — declared, written and read by nothing.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
+<td class=why><div class='st s-re-mapped'>◆ re-mapped · 2 upstream → 1 slot</div><div class=answers><div class=ans>take</div><div class=ans>the attachment on the message already taken</div></div><b>inert</b> — declared and READ BY NOTHING, and filled by nothing.<br><br><b>bytes, not an untyped pointer</b> — Upstream&#x27;s `void *` is the message, interpreted through the typesupport pointer beside it. With types resolved at build time there is nothing to interpret it WITH, so the seam carries an explicit byte range and its length — which is also what makes the buffer&#x27;s capacity checkable at the call.<br><br><b>pre-allocation declined ABI-wide</b> — `rmw_publisher_allocation_t` / `rmw_subscription_allocation_t` are upstream&#x27;s pre-sizing handles. Declined at this seam because their first parameters are a typesupport pointer and a sequence bound, both declined ABI-wide. The CAPABILITY question — can a backend pre-size — is live for cyclonedds alone, and issue 0777 is CLOSED, so it is no longer a place to route it: 0777 resolved with the finding that every deviation reason built on &quot;pools are baked&quot; was false, which settles the reason and not the capability. Anyone who wants pre-sizing for cyclonedds needs a NEW issue; a citation to a resolved one is not a reason.</td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
