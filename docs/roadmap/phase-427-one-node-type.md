@@ -684,6 +684,8 @@ moved with the template.
     `check-cpp-capability-layout`'s freestanding arm. This is a regression
     check on work W4 does, and it can fail on the day W4 lands.
   * *moves to W12:* **a subnode package BUILDS for a freestanding target.**
+    (W12 LANDED 2026-09-11 — FreeRTOS/mps2-an385, no `nros-cpp` change needed;
+    see W12 below.)
     Measured, **no embedded fixture derives `ComponentNode` today** — the only
     `SHAPE rclcpp` packages are the two `subnode_pkg`s and every fixture
     consuming them is `platform = "linux"` (RFC-0089 correction 8). So this is
@@ -762,7 +764,8 @@ moved with the template.
   is `?` where upstream is `.first_error()?` — the no-allocator divergence, not
   a naming one.
 
-* **W12 [cpp, fixture] — a subnode package builds for a freestanding target.**
+* **W12 [cpp, fixture] — a subnode package builds for a freestanding target.
+  LANDED 2026-09-11 (issue 1247 resolved).**
   Split out of W4's acceptance on 2026-09-09, because it is a NEW PORT and not a
   check on existing work. Measured: no embedded fixture derives `ComponentNode`
   today — the only `SHAPE rclcpp` packages are the two `subnode_pkg`s under
@@ -778,6 +781,87 @@ moved with the template.
   (`row_coord()` / `row_artifact_root()`), so it is neither unattributable nor
   silently skipped. A fixture that only ever resolves STALE is not this
   acceptance met — read the `probe:` lines.
+
+  **LANDED 2026-09-11 — and the port needed no `nros-cpp` change, which is the
+  one result worth saying first.** The capability was a recorded measurement
+  with no consumer; adding the consumer neither contradicted nor extended it.
+  The build is `workspace-cpp-freertos-realtime-subnode-portable`, FreeRTOS on
+  mps2-an385 (`arm-none-eabi-g++` 13.2, `thumbv7m-none-eabi`), and it compiled
+  and linked on the first attempt.
+
+  **Platform chosen from what the workspace already provisions**, as issue 1247
+  asked: the tree has a C++ realtime FreeRTOS/mps2 family
+  (`workspace-{c,cpp}-freertos-realtime`), so the toolchain, the board
+  descriptor, the netstack and the SDK keys were all in place and the port added
+  no provisioning. It is also the only candidate that is genuinely FREESTANDING
+  in the sense correction 1 measured — `threadx-linux` is a Linux process and
+  would have proved much less.
+
+  **The workspace is `realtime-cpp-subnode-portable`, not `realtime-cpp`**, a
+  departure from issue 1247's "smallest path". Two reasons, both about what the
+  fixture then measures. `realtime-cpp` already spends `[image.freertos]` on its
+  3-node `configure`-shape launch, so a subnode image there is a *second* image
+  over a workspace whose other packages come along for the configure; the
+  portable workspace holds exactly `subnode_pkg` + `deploy_bringup`, so the
+  image is the subject and nothing else. And the portable workspace exists to
+  prove the RFC-0047 coupling is deploy-side — which is exactly the claim the
+  port re-measures against a cross toolchain: `src/subnode_pkg/` is BYTE-FOR-BYTE
+  unchanged, and the whole port is `[tiers.fast.freertos] priority = 3` /
+  `[tiers.bulk.freertos] priority = 1` (RFC-0079 `pool.app = [1, 3]`, below the
+  transport band at 4) plus an `[image.freertos]` block and a `[board_config]`
+  row.
+
+  **What the generated entry turned out to be, and it is not the siblings'
+  shape.** A node whose callback GROUPS span tiers cannot take `run_tiers` —
+  per-tier setup functions construct whole *nodes* — so `Plan::executor_shape`
+  returns `ExecutorShape::SchedContexts` and the entry is
+  `FreertosBoard::run_components` plus
+  `nros_cpp_create_sched_context_from_policy` ×2 /
+  `nros_cpp_bind_node_name_sched` / `nros_cpp_bind_group_sched` ×2, against the
+  `FreertosBoard::run_tiers` that `workspace-{c,cpp}-freertos-realtime` emit. So
+  the row covers a second embedded executor shape, not a third copy of the first
+  one. The two sched contexts carry `os_pri` 3 and 1 — the tier table reached
+  the bake.
+
+  *Measured on the linked image* (`arm-none-eabi-size` / `-nm -C`):
+  text 528 492, data 3 168, bss 3 629 616. `subnode_pkg::SubNode::SubNode(
+  nros::NodeHandle)` is defined; both group-bound timer trampolines
+  (`create_timer_in_group<…::on_ctrl>`, `…::on_telem>`) are present; and the
+  image carries **ZERO** `vtable for` / `typeinfo for` symbols — RFC-0089
+  correction 1's `__is_polymorphic` claim re-measured at LINK scope over a whole
+  firmware image rather than as a `static_assert` in one TU.
+
+  *Lane:* `row_coord()` = `freertos,cpp,zenoh`, which `lane-coords` puts in
+  **tier2-nightly** (pairwise) and not in tier 2 (1-wise picks `freertos,c,zenoh`) —
+  the same lane as its `workspace-cpp-freertos-realtime` sibling.
+  `row_artifact_root()` is `<ws>/build/freertos-zenoh-mps2-an385-freertos/cmake`,
+  shared with no other row. Verified in both directions: under tier-2 coords the
+  resolver prints `[SKIPPED:lane] … is at coordinate freertos,cpp,zenoh`, and
+  `fixtures-manifest.py list-workspaces --coords-from <nightly>` contains the row.
+
+  *Not STALE, and that is a measurement.* A workspace row resolves through
+  `require_prebuilt_workspace_binary`, whose verdict is the
+  `.nros-workspace-fixture.<id>.inputsig` comparison — NOT the mtime probe in
+  `fixtures::staleness`, so there is no `probe:` accounting line on this path and
+  the acceptance's wording does not literally apply. What was checked instead is
+  the same property from both sides: appending one line to `SubNode.cpp` turns
+  all three tests into `BuildFailed("… is stale: …inputsig")`, and reverting it
+  returns them to green with no rebuild. A verdict that can be flipped is not a
+  default.
+
+  *Consumer:* `packages/testing/nros-tests/tests/subnode_freestanding_link.rs`
+  (3 tests) reads the ELF. **BUILD-ONLY — no `matrix::CELLS` row**, deliberately:
+  the acceptance is a build, nothing boots the image under QEMU, and the
+  coordinate is already modelled by the sibling `cell(FreertosMps2, Cpp, Zenoh,
+  RealtimeTiers, Workspace, Runtime)`, so `fixture_rows_all_modeled_by_matrix`
+  is satisfied without inventing a duplicate cell. Each assertion was falsified
+  before landing (mutate the method name, the vtable filter, a sched symbol —
+  each fails with its own message).
+
+  *One thing the build surfaced that is NOT this item's:* the mps2 link emits
+  `implicit declaration of function 'nros_freertos_net_register_drain_task'`
+  from `packages/boards/nros-board-freertos/c/freertos_c_entry.c:196`. It is
+  pre-existing and fires on every FreeRTOS image, not only this one.
 
 ## What stays invented — REVISED after review (2026-09-05)
 
