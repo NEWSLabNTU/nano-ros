@@ -93,15 +93,27 @@ pub struct nros_qos_t {
 // be consumed it should be, because a derived value cannot drift between gate
 // runs.
 //
-// nros-qos-mirror-deviation: profile=* field=liveliness_kind ours=AUTOMATIC ssot=SYSTEM_DEFAULT ref="phase-428 W10"
-//   Every profile here carries AUTOMATIC where the SSoT carries the sentinel.
-//   `profile=*` rather than three lines because there is ONE cause, not three:
-//   upstream leaves liveliness unset in all five concrete profiles, W10 moved
-//   the Rust table and `rmw_entity.h` onto the sentinel, and the C/C++
-//   application surfaces were not moved. They cannot move alone — the value
-//   crosses the C ABI as its discriminant, so a C caller's `NROS_QOS_DEFAULT`
-//   and a Rust caller's `QOS_PROFILE_DEFAULT` would then differ in a field
-//   cyclonedds puts on the wire.
+// The liveliness deviation is GONE (issue 1329, 2026-09-12). Every profile
+// here carried AUTOMATIC where the SSoT carries the sentinel, declared with a
+// mirror-deviation record for `liveliness_kind` and left standing because the
+// three application surfaces "move together or not at all". They moved
+// together, in one commit: this file,
+// `nros-c/include/nros/component.h`'s `nros_c_qos_default()` and
+// `nros-cpp`'s `QoS` constructor.
+//
+// What forced it: issue 1329 gives each C backend its OWN QoS mask instead of
+// the union, and XRCE honours no liveliness at all. Stating AUTOMATIC made
+// `required_policies()` DEMAND `LIVELINESS_AUTOMATIC` for every C default
+// profile — an over-demand against a policy upstream leaves unset — so every C
+// application on XRCE would have been refused at entity create by a bit it
+// never asked for. The fix is not to let XRCE claim a policy it does not
+// implement; it is to stop asking for one.
+//
+// Wire effect, re-reading W10's own measurements: none. cyclonedds calls
+// `dds_qset_liveliness` only for a non-sentinel kind and its own default IS
+// `DDS_LIVELINESS_AUTOMATIC`; zenoh's `QosKeyExpr::to_qos_string` leaves the
+// liveliness positions empty for every profile; XRCE lowers no liveliness
+// field. A caller that WANTS automatic liveliness still states it.
 
 /// The SSoT's depth, narrowed to the width this C API's `depth` field carries.
 ///
@@ -139,7 +151,7 @@ pub static NROS_QOS_DEFAULT: nros_qos_t = nros_qos_t {
     reliability: nros_qos_reliability_t::NROS_QOS_RELIABILITY_RELIABLE,
     durability: nros_qos_durability_t::NROS_QOS_DURABILITY_VOLATILE,
     history: nros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST,
-    liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_AUTOMATIC,
+    liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_NONE,
     depth: c_depth(nros_node::QoSProfile::QOS_PROFILE_DEFAULT.depth),
     deadline_ms: 0,
     lifespan_ms: 0,
@@ -154,7 +166,7 @@ pub static NROS_QOS_SENSOR_DATA: nros_qos_t = nros_qos_t {
     reliability: nros_qos_reliability_t::NROS_QOS_RELIABILITY_BEST_EFFORT,
     durability: nros_qos_durability_t::NROS_QOS_DURABILITY_VOLATILE,
     history: nros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST,
-    liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_AUTOMATIC,
+    liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_NONE,
     depth: c_depth(nros_node::QoSProfile::QOS_PROFILE_SENSOR_DATA.depth),
     deadline_ms: 0,
     lifespan_ms: 0,
@@ -169,7 +181,7 @@ pub static NROS_QOS_SERVICES: nros_qos_t = nros_qos_t {
     reliability: nros_qos_reliability_t::NROS_QOS_RELIABILITY_RELIABLE,
     durability: nros_qos_durability_t::NROS_QOS_DURABILITY_VOLATILE,
     history: nros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST,
-    liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_AUTOMATIC,
+    liveliness_kind: nros_qos_liveliness_t::NROS_QOS_LIVELINESS_NONE,
     depth: c_depth(nros_node::QoSProfile::QOS_PROFILE_SERVICES_DEFAULT.depth),
     deadline_ms: 0,
     lifespan_ms: 0,

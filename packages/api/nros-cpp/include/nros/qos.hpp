@@ -214,7 +214,7 @@ class QoS {
     /// liveliness, no deadline / lifespan / lease.
     constexpr QoS()
         : reliability_(Reliable), durability_(Volatile), history_(KeepLast),
-          liveliness_(::nros::LivelinessAutomatic), depth_(10), deadline_ms_(0), lifespan_ms_(0),
+          liveliness_(::nros::LivelinessNone), depth_(10), deadline_ms_(0), lifespan_ms_(0),
           liveliness_lease_ms_(0), avoid_ros_namespace_conventions_(0), tx_express_(0) {}
 
     /// rclcpp-shape depth ctor: `QoS(1)` == default profile with
@@ -483,22 +483,21 @@ namespace detail {
 // Three fields are identical in EVERY upstream profile and are therefore folded
 // into `QoS`'s default constructor rather than spelled per row:
 //   * `avoid_ros_namespace_conventions` is `false` upstream, `0` here.
-//   * liveliness is `RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT` upstream;
-//     `nros::QoS` defaults to `LivelinessAutomatic`, which is what every
-//     reference RMW folds that sentinel to. Declared, not just described:
+//   * liveliness is `RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT` upstream, and
+//     `nros::QoS` now defaults to `LivelinessNone`, which is our spelling of
+//     that sentinel. It defaulted to `LivelinessAutomatic` — "what every
+//     reference RMW folds that sentinel to" — under a
+//     `nros-qos-mirror-deviation` record whose own reason was that this
+//     surface and `nros-c`'s "move together with the C ABI or not at all".
+//     They moved together (issue 1329): this constructor, `nros-c`'s
+//     `NROS_QOS_*` statics and `nros_c_qos_default()`.
 //
-// nros-qos-mirror-deviation: profile=* field=liveliness_kind
-// ours=AUTOMATIC ssot=SYSTEM_DEFAULT ref="phase-428 W10"
-//
-//     The record above is DATA and is allowed to wrap; this paragraph is the
-//     reason, and sits behind a blank comment line so clang-format cannot
-//     reflow it into the record.
-//
-//     `profile=*` because there is ONE cause for all six rows — the ctor — not
-//     six. The fold is defensible and the divergence is still real: a C++
-//     caller's `QoS::default_profile()` and a Rust caller's
-//     `QOS_PROFILE_DEFAULT` differ in a field cyclonedds puts on the wire, so
-//     this surface and `nros-c`'s move together with the C ABI or not at all.
+//     The forcing argument is issue 1329's per-backend QoS mask. XRCE honours
+//     no liveliness, so an AUTOMATIC default would have made
+//     `required_policies()` demand `LIVELINESS_AUTOMATIC` and refuse every C++
+//     default profile on that backend — over a policy upstream leaves unset
+//     and the application never asked for. A caller that wants automatic
+//     liveliness states `.liveliness(nros::LivelinessAutomatic)`.
 //
 //   * deadline and the liveliness lease are `RMW_QOS_*_DEFAULT` (infinite)
 //     upstream and `0` here, which `qos_window_ms` above documents as infinite.
