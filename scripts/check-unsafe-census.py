@@ -182,6 +182,53 @@ def tracked_rs_by_dir():
     return by_dir
 
 
+def changed_crates(crates):
+    """Crate names whose sources THIS BRANCH changed, or None if unknowable.
+
+    Measured on PR #947: a shrink-only ratchet over a counter that every crate
+    can move cannot be judged against an ABSOLUTE total, because the total is
+    not a property of the pull request. A merge
+    group builds `main` + the PR, so a concurrently-merging PR that adds one
+    `unsafe` block ejects THIS one — and the queue's ALLGREEN strategy ejects
+    everything behind it too. #947 was ejected exactly that way
+    (`nros-rmw-zenoh: unsafe block 109 -> 110`) by a commit it does not
+    contain, after four re-baselines in one day that were each obsolete before
+    CI finished.
+
+    The rule the gate states is "a NEW unsafe site should be a DECISION SOMEONE
+    MADE". The person who made it is the one whose change touches the crate, so
+    that is what this measures. Growth in a crate the branch never touched is
+    reported and recorded, not blamed.
+
+    Returns None when the comparison point cannot be established (no
+    `origin/main`, a shallow clone with no merge base). Then every crate is
+    enforced: failing CLOSED is the safe direction for a ratchet, and the
+    alternative — treating "I could not tell" as "nothing changed" — is how a
+    ratchet silently stops ratcheting.
+    """
+    base = subprocess.run(
+        ["git", "merge-base", "origin/main", "HEAD"],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    if base.returncode != 0 or not base.stdout.strip():
+        return None
+    diff = subprocess.run(
+        ["git", "diff", "--name-only", base.stdout.strip(), "--"],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    if diff.returncode != 0:
+        return None
+    touched = [ln.strip() for ln in diff.stdout.split("\n") if ln.strip()]
+    names = set()
+    for name, src in crates:
+        prefix = str(src.relative_to(REPO)) if src.is_absolute() else str(src)
+        for path in touched:
+            if path == prefix or path.startswith(prefix + "/"):
+                names.add(name)
+                break
+    return names
+
+
 def census():
     """{crate: {kind: n}} — a crate whose source cannot be read is an ERROR."""
     crates = workspace_crates()
@@ -326,6 +373,33 @@ def main():
             elif n[k] < b[k]:
                 shrank.append((name, k, b[k], n[k]))
 
+    # Growth in a crate this branch never touched is INHERITED — see
+    # `changed_crates`. It is still recorded, and the baseline still has to move,
+    # but it is not this branch's decision and must not fail it.
+    mine = changed_crates(workspace_crates() or [])
+    if mine is None:
+        inherited_grew, inherited_new = [], []
+        scope = "every crate (no merge base with origin/main — failing closed)"
+    else:
+        inherited_grew = [g for g in grew if g[0] not in mine]
+        inherited_new = [a for a in appeared if a[0] not in mine]
+        grew = [g for g in grew if g[0] in mine]
+        appeared = [a for a in appeared if a[0] in mine]
+        scope = f"{len(mine)} crate(s) this branch touched"
+
+    if inherited_grew or inherited_new:
+        print(
+            f"check-unsafe-census: {len(inherited_grew) + len(inherited_new)} row(s) grew in "
+            "crates this branch did not touch — inherited from `main`, not blamed here:"
+        )
+        for name, k, was, is_ in inherited_grew:
+            print(f"    {name}: unsafe {k} {was} -> {is_}")
+        for name, n in inherited_new:
+            kinds = ", ".join(f"{k}={n[k]}" for k in KINDS if n[k])
+            print(f"    {name}: NEW crate carrying unsafe ({kinds})")
+        print("  Record them with --write-baseline; the decision was made in the "
+              "commit that made it.")
+
     if grew or appeared:
         print("check-unsafe-census: FAIL\n", file=sys.stderr)
         for name, k, was, is_ in grew:
@@ -348,7 +422,8 @@ def main():
     if shrank:
         note = (f"  {len(shrank)} row(s) SHRANK — re-run with --write-baseline to record it.")
         print(note)
-    print(f"check-unsafe-census: OK — {len(now)} crate(s), {total} unsafe site(s), none grew.")
+    print(f"check-unsafe-census: OK — {len(now)} crate(s), {total} unsafe site(s), "
+          f"none grew in {scope}.")
     return 0
 
 
