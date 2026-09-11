@@ -102,6 +102,20 @@ impl Session for MetadataSession {
     type ServiceHandle = MetadataService;
     type ClientHandle = MetadataClient;
 
+    /// nros-qos-exempt: this session carries no traffic, so no policy can be
+    /// honoured OR violated — it exists to RECORD which entities an image
+    /// declares (`nros::metadata_mode`) and never opens a transport.
+    ///
+    /// phase-428 W9 — it inherited the trait's old `CORE` default, which was
+    /// the wrong answer in both directions: it claimed four policies it does
+    /// not implement, and the new empty default would refuse every entity the
+    /// recorder exists to see, turning a build-time inventory into a build-time
+    /// failure. Accepting everything is right HERE and nowhere else, because
+    /// admitting a profile costs a peer nothing when there is no peer.
+    fn supported_qos_policies(&self) -> nros_rmw::QoSPolicyMask {
+        nros_rmw::QoSPolicyMask(u32::MAX)
+    }
+
     fn create_publisher(
         &mut self,
         topic: &TopicInfo<'_>,

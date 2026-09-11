@@ -279,9 +279,15 @@ impl Session for MockSession {
     type ServiceHandle = MockServiceServer;
     type ClientHandle = MockServiceClient;
 
-    /// The mock (test) backend supports every QoS policy, so QoS validation
-    /// never rejects a test entity (the default `CORE` mask can't even admit
-    /// the default profile's liveliness bit).
+    /// nros-qos-exempt: a TEST double with no transport. It delivers nothing,
+    /// so it can neither honour nor violate a policy, and admitting every
+    /// profile is what keeps a test about something else from being a test
+    /// about QoS validation.
+    ///
+    /// The comment here used to justify this by the default mask being too
+    /// narrow for the default profile's liveliness bit. That reason is gone —
+    /// phase-428 W9 made the default EMPTY — and the real reason was never
+    /// the default's width.
     fn supported_qos_policies(&self) -> nros_rmw::QoSPolicyMask {
         nros_rmw::QoSPolicyMask(u32::MAX)
     }

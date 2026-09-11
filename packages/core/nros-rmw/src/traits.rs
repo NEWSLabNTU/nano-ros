@@ -1086,8 +1086,10 @@ qos_profiles! {
 //
 //   Every upstream-mirroring preset states AUTOMATIC where upstream states the
 //   SYSTEM_DEFAULT sentinel. MEASURED consequences, 2026-09-05:
-//     - cyclonedds: wire-identical. `nros_rmw_cyclonedds_qos_apply`
-//       (`qos.cpp:99-121`) calls `dds_qset_liveliness` only when the kind is
+//     - cyclonedds: wire-identical. `nros_rmw_cyclonedds::make_dds_qos`
+//       (`qos.cpp`; the name here read `nros_rmw_cyclonedds_qos_apply` until
+//       phase-428 W9 went looking for it — no such symbol has ever existed)
+//       calls `dds_qset_liveliness` only when the kind is
 //       NOT the sentinel, and Cyclone's own reader/writer default IS
 //       `DDS_LIVELINESS_AUTOMATIC` — so both spellings put AUTOMATIC on the
 //       wire.
@@ -1598,11 +1600,33 @@ pub trait Session {
     /// includes a policy the backend can't enforce. **No silent
     /// downgrade.**
     ///
-    /// Default returns [`QoSPolicyMask::CORE`] — reliability +
-    /// durability VOLATILE + history + depth. Backends override per
-    /// supported policy.
+    /// # The mask is DERIVED, not authored — phase-428 W9
+    ///
+    /// Every bit an implementation sets must be backed by a
+    /// `nros-qos-honours:` claim sited on the code that honours the policy,
+    /// and `check-qos-mask-derivation` re-measures those claims on every
+    /// push. Deleting the code deletes the claim, which is the property this
+    /// item exists to buy: before W9 this was a hand-written constant, so a
+    /// backend could advertise a policy it had never implemented and nothing
+    /// noticed. Three did — `LIVELINESS_MANUAL_BY_NODE` was advertised by
+    /// every backend in the tree and implemented by none.
+    ///
+    /// "Honours" means the backend reads the field and either APPLIES it or
+    /// REFUSES a value it cannot serve. Passing the field on to someone else
+    /// (a discovery keyexpr, a lowered C struct) is not honouring it, and the
+    /// gate does not count it: see `nros-qos-discovery-only`.
+    ///
+    /// # The default is EMPTY, deliberately
+    ///
+    /// It returned [`QoSPolicyMask::CORE`] until phase-428 W9 — four policies
+    /// granted to any implementation that had written no code at all, which
+    /// is precisely the lie above with the trait as its author. An
+    /// implementation now states what it honours or is told it honours
+    /// nothing; the failure is loud (`IncompatibleQos` at create) rather than
+    /// a silent downgrade at runtime, which is the direction this trait has
+    /// chosen everywhere else.
     fn supported_qos_policies(&self) -> QoSPolicyMask {
-        QoSPolicyMask::CORE
+        QoSPolicyMask::NONE
     }
 
     /// Phase 110.0 — backend's next internal-event deadline in
@@ -1896,9 +1920,11 @@ pub struct GraphEndpointInfo<'a> {
 /// Bitmask of QoS policies a backend can honour. See
 /// [`Session::supported_qos_policies`].
 ///
-/// `CORE` covers the policies every nano-ros backend implements:
-/// reliability, durability=VOLATILE, history, depth. Backends opt
-/// into additional policies by OR-ing the relevant flags.
+/// One bit per value `QoSProfile::required_policies` can request, and that
+/// function is the definition of what each bit MEANS — `check-qos-mask-
+/// derivation` reads the bit->field mapping out of its body rather than
+/// restating it, so a policy that gains a bit here and no arm there is a gate
+/// failure instead of a bit nothing can ever ask for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QoSPolicyMask(pub u32);
 
@@ -1916,7 +1942,18 @@ impl QoSPolicyMask {
     pub const LIVELINESS_LEASE: Self = Self(1 << 10);
     pub const AVOID_ROS_NAMESPACE_CONVENTIONS: Self = Self(1 << 11);
 
-    /// Policies every nano-ros backend implements.
+    /// Honours nothing. The default answer for an implementation that has not
+    /// said otherwise — phase-428 W9, see [`Session::supported_qos_policies`].
+    pub const NONE: Self = Self(0);
+
+    /// The four policies every `QoSProfile` states a value for.
+    ///
+    /// NOT "policies every nano-ros backend implements", which is what this
+    /// said until phase-428 W9 measured it: the zenoh shim honoured exactly
+    /// none of the four, serialising all four into a discovery keyexpr and
+    /// enforcing a build-time ring depth. The name describes the SHAPE of a
+    /// profile — a caller who states nothing else still states these — and a
+    /// backend still has to earn each bit.
     pub const CORE: Self =
         Self(Self::RELIABILITY.0 | Self::DURABILITY_VOLATILE.0 | Self::HISTORY.0 | Self::DEPTH.0);
 
@@ -1962,11 +1999,15 @@ impl QoSProfile {
     /// just never reached the four CORE ones.
     ///
     /// This RELAXES the mask, so it can only turn a rejection into an
-    /// acceptance, never the reverse — and it flips no verdict today: every
-    /// `supported_qos_policies` impl in the tree returns at least `CORE`
-    /// (`traits.rs` default impl, `nros-node/src/mock.rs:259`,
-    /// `nros-rmw-cffi/src/lib.rs:2580`, `nros-rmw-zenoh/src/shim/session.rs:1245`),
-    /// so a CORE bit has never been the reason for a failure.
+    /// acceptance, never the reverse.
+    ///
+    /// It used to say it flipped no verdict "because every
+    /// `supported_qos_policies` impl in the tree returns at least `CORE`".
+    /// That stopped being true in phase-428 W9: the trait default is
+    /// [`QoSPolicyMask::NONE`] now, so an implementation that claims nothing
+    /// is refused on the first CORE bit a caller states — which is the whole
+    /// point, and which makes THIS function's sentinel handling the thing
+    /// standing between `QOS_PROFILE_SYSTEM_DEFAULT` and a hard refusal.
     pub fn required_policies(&self) -> QoSPolicyMask {
         let mut mask = QoSPolicyMask(0);
         if self.reliability != QoSReliabilityPolicy::SystemDefault {
@@ -3352,6 +3393,68 @@ mod tests {
             QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT
                 .validate_against(QoSPolicyMask(0))
                 .is_ok()
+        );
+    }
+
+    /// phase-428 W9 — the roadmap predicted that deriving zenoh's mask would
+    /// drop `DEPTH` and that "nothing that works today breaks". The second
+    /// half is FALSE, and this is the measurement that says so.
+    ///
+    /// `QOS_PROFILE_DEFAULT` states `depth: 10`, so it REQUIRES `DEPTH`; a
+    /// mask without that bit refuses it, and that profile is what every
+    /// `create_publisher` / `create_subscription` with no explicit QoS passes
+    /// (`nros-node/src/executor/node.rs:238,372`). Withdrawing the bit would
+    /// therefore refuse every default entity on the backend, not just the ones
+    /// asking for more depth than the ring holds.
+    ///
+    /// So the zenoh shim EARNS the bit instead of withdrawing it (phase-428
+    /// W9: `shim/qos.rs` reads the depth, grants what the ring can hold, and
+    /// publishes the GRANTED value to the graph). Which is the honest reading
+    /// of the mask anyway: the bit says "I will not silently ignore this
+    /// policy", and a depth lie lives in the VALUE, not in the bit.
+    #[test]
+    fn withdrawing_depth_would_refuse_the_default_profile() {
+        let without_depth = QoSPolicyMask(!QoSPolicyMask::DEPTH.0);
+        assert!(
+            QoSProfile::QOS_PROFILE_DEFAULT
+                .validate_against(without_depth)
+                .is_err(),
+            "QOS_PROFILE_DEFAULT states depth 10; a mask without DEPTH must refuse it"
+        );
+        // And the same for the two other presets a default caller reaches.
+        for qos in [
+            QoSProfile::QOS_PROFILE_SERVICES_DEFAULT,
+            QoSProfile::QOS_PROFILE_SENSOR_DATA,
+        ] {
+            assert!(qos.validate_against(without_depth).is_err());
+        }
+        // The sentinel profile is the one that survives, because it states no
+        // depth at all.
+        assert!(
+            QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT
+                .validate_against(without_depth)
+                .is_ok()
+        );
+    }
+
+    /// phase-428 W9 — the trait default advertises NOTHING, so an
+    /// implementation that has written no QoS code refuses any stated policy.
+    ///
+    /// The default was `CORE` until W9: four policies granted to a backend
+    /// that had implemented none of them, by the trait itself.
+    #[test]
+    fn the_empty_mask_refuses_every_stated_policy_and_nothing_else() {
+        assert_eq!(QoSPolicyMask::NONE.0, 0);
+        assert!(
+            QoSProfile::QOS_PROFILE_DEFAULT
+                .validate_against(QoSPolicyMask::NONE)
+                .is_err()
+        );
+        assert!(
+            QoSProfile::QOS_PROFILE_SYSTEM_DEFAULT
+                .validate_against(QoSPolicyMask::NONE)
+                .is_ok(),
+            "an absence demands nothing, so it is admissible anywhere"
         );
     }
 
