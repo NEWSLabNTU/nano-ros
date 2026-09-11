@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <string.h> // memcpy — `<cstring>` isn't in Zephyr's minimal libcpp
 
+#include "nros/traits.hpp"
 #include "nros/config.hpp"
 #include "nros/result.hpp"
 #include "nros/size_bound.hpp" // nros::rx_buffer_capacity<M> — the receive-buffer size
@@ -871,7 +872,7 @@ inline ResultOf<Subscription<M>> create_subscription(::rclcpp::Node& node, const
     Subscription<M> s;
     Result r = node.create_subscription<M>(s, topic, qos);
     if (!r.ok()) return ResultOf<Subscription<M>>::error(r);
-    return ResultOf<Subscription<M>>::ok(std::move(s));
+    return ResultOf<Subscription<M>>::ok(::nros::tr::forward_rvalue(s));
 }
 
 #if defined(NANO_ROS_SAFETY_E2E)

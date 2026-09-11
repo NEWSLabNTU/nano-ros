@@ -37,10 +37,10 @@ namespace nros {
 ///     reinterpret_cast<MyUart*>(ctx)->open(); return 0;
 /// };
 /// ops.close = [](void* ctx) { reinterpret_cast<MyUart*>(ctx)->close(); };
-/// ops.write = [](void* ctx, const uint8_t* buf, std::size_t len) -> int {
+/// ops.write = [](void* ctx, const uint8_t* buf, size_t len) -> int {
 ///     return reinterpret_cast<MyUart*>(ctx)->write(buf, len);
 /// };
-/// ops.read  = [](void* ctx, uint8_t* buf, std::size_t len, uint32_t to) -> std::int32_t {
+/// ops.read  = [](void* ctx, uint8_t* buf, size_t len, uint32_t to) -> int32_t {
 ///     return reinterpret_cast<MyUart*>(ctx)->read(buf, len, to);
 /// };
 /// nros::set_custom_transport(ops);
@@ -52,10 +52,8 @@ struct TransportOps {
     void* user_data = nullptr;
     nros_cpp_transport_ret_t (*open)(void* user_data, const void* params) = nullptr;
     void (*close)(void* user_data) = nullptr;
-    nros_cpp_transport_ret_t (*write)(void* user_data, const std::uint8_t* buf,
-                                      std::size_t len) = nullptr;
-    std::int32_t (*read)(void* user_data, std::uint8_t* buf, std::size_t len,
-                         std::uint32_t timeout_ms) = nullptr;
+    nros_cpp_transport_ret_t (*write)(void* user_data, const uint8_t* buf, size_t len) = nullptr;
+    int32_t (*read)(void* user_data, uint8_t* buf, size_t len, uint32_t timeout_ms) = nullptr;
 };
 
 /// Phase 115.D — register a custom transport. Must be called before

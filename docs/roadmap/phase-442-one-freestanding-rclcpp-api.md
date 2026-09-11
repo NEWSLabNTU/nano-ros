@@ -182,8 +182,33 @@ the rest and do not depend on each other.
   resolve. Recorded rather than left, because a gated method is exactly the
   residue that reads as finished work.
 
-* **W6 [cpp] — delete the 50 removable entities.** Each has an ungated
-  freestanding sibling already, or is body-only. No consumer loses a capability.
+* **W6 [cpp] — delete the 50 removable entities. LANDED 2026-09-12.** Each has
+  an ungated freestanding sibling already, or is body-only. No consumer loses a
+  capability.
+  *What it removed, counted as SITES rather than as the RFC's entity buckets,
+  because sites are what a grep can re-measure.* 27 `std::` uses across eight
+  headers, plus the `component.hpp` placement-new workaround that W4's class fix
+  made redundant:
+  - 13 `std::move` -> `nros::tr::forward_rvalue`;
+  - 3 `std::forward` -> `nros::tr::relay`, which is a SEPARATE helper and not a
+    synonym: forwarding preserves an lvalue as an lvalue where a move hands the
+    callee an rvalue it may gut, and collapsing the two is the classic way a
+    forwarding wrapper steals from its caller;
+  - 14 `std::size_t` / `std::uint8_t` / `std::int32_t` / `std::uint32_t` ->
+    the bare spellings the rest of this API already writes. `transport.hpp` is
+    now entirely `std`-free;
+  - `result.hpp`'s `<utility>` include, verified unused by removing it and
+    recompiling rather than by reading.
+  *What it deliberately did NOT remove:* the hosted diagnostics (`fprintf`,
+  `fopen`, `getenv`, `ostringstream`, `abort`, 13 sites), which are genuinely
+  body-only and already carry a freestanding `#else` -- `result.hpp`'s
+  `NROS_TRY_LOG` is the pattern. Those are not the phase's target; a `std` call
+  inside a hosted-only body changes no signature and no layout.
+  *Acceptance:* all three arms compile (hosted, hosted with `-DNROS_CPP_STD=1`,
+  `-nostdinc++` freestanding against the ThreadX shim), `just check fast` green.
+  Remaining after this pass, and each is W7's or W8's by construction:
+  `shared_ptr`/`unique_ptr`/`make_shared` 38, `string`/`vector`/
+  `initializer_list` ~55, `chrono` 9, `function` 2.
 
 * **W7 [cpp] — replace the 27 with in-tree freestanding equivalents**
   (`Span`, `StringView`, `FixedString`, `Seq`, `Duration`). Includes the one gap

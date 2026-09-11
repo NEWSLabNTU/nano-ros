@@ -13,7 +13,8 @@
 #define NROS_CPP_RESULT_HPP
 
 #include <cstdint>
-#include <utility>
+
+#include "nros/traits.hpp"
 #if defined(NROS_CPP_STD) || (__STDC_HOSTED__ + 0)
 #include <cstdio>
 #endif
@@ -329,7 +330,7 @@ template <typename T> class NROS_NODISCARD ResultOf {
     static ResultOf ok(T value) {
         ResultOf e;
         e.ok_ = true;
-        e.value_ = ::std::move(value);
+        e.value_ = ::nros::tr::forward_rvalue(value);
         return e;
     }
     static ResultOf error(ErrorCode code) {
@@ -345,7 +346,7 @@ template <typename T> class NROS_NODISCARD ResultOf {
 
     T& value() & { return value_; }
     const T& value() const& { return value_; }
-    T&& value() && { return ::std::move(value_); }
+    T&& value() && { return ::nros::tr::forward_rvalue(value_); }
 
     ErrorCode error() const { return error_; }
     Result error_as_result() const { return Result(error_); }
@@ -377,7 +378,7 @@ class NROS_NODISCARD [[deprecated("nros::Expected<T> is now nros::ResultOf<T>; o
     : public ResultOf<T> {
   public:
     Expected(const ResultOf<T>& r) : ResultOf<T>(r) {}
-    Expected(ResultOf<T>&& r) : ResultOf<T>(::std::move(r)) {}
+    Expected(ResultOf<T>&& r) : ResultOf<T>(::nros::tr::forward_rvalue(r)) {}
 };
 
 } // namespace nros

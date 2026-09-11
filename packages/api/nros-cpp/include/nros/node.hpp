@@ -25,6 +25,7 @@
 // its local redefinitions.
 #include "nros_cpp_ffi.h"
 
+#include "nros/traits.hpp"
 #include "nros/result.hpp"
 #include "nros/hosted_block.hpp"
 #include "nros/nros_cpp_config_generated.h"
@@ -2413,7 +2414,7 @@ inline ResultOf<::rclcpp::Node> make_node(const char* name, const char* ns = nul
     ::rclcpp::Node n;
     Result r = create_node(n, name, ns);
     if (!r.ok()) return ResultOf<::rclcpp::Node>::error(r);
-    return ResultOf<::rclcpp::Node>::ok(::std::move(n));
+    return ResultOf<::rclcpp::Node>::ok(::nros::tr::forward_rvalue(n));
 }
 
 // -- Executor::create_node implementation (requires full Node definition) --
