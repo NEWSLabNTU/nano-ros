@@ -1,8 +1,26 @@
 # Phase 432 — one codegen producer, many language packs
 
-**Status (2026-09-08).** Tracks 1 and 2 are COMPLETE. Track 3 is complete
-except **W3.1**, which is partly done and blocked on a decision rather than on
-effort, and **W3.5**, which was always a question rather than a work item.
+**Status (2026-09-11). Complete; archived.** Every work item in all three
+tracks is closed, each checked against the tree: `TargetProfile` is gone and
+the memory-agreement gate replaces it (Track 1, recorded as RFC-0068's
+Amendment 1); one `Language`, one structured `LoweredEntry`, and entry and
+message packs under `packs/<surface>/` (Track 2); a C-ABI runner for every RTOS
+family, pack manifests, a conformance gate and a documented procedure
+(Track 3). RFC-0091 is Stable. Closing the phase found one overclaim, and it
+was fixed in the same change: RFC-0091 §8/§9, the book and W3.4/W3.5 said an
+entry language needs no Rust beyond a pack and a `Language` variant. It also
+needs a view-building emitter and its dispatch arms, and the dispatch's `_ =>`
+arm had been sending any non-C language to the C++ emitter without a word.
+That arm is now an exhaustive `typed_entry_emitter`. Two follow-ups did NOT
+land here and are out of scope: 1306, the CLI's `build.rs` missing a linked
+worktree's git index, and 1307, the sizes build's nested cargo rewriting the
+root `Cargo.lock`. Both are filed on branch `docs/issues-1306-1307`, which is
+not yet on main.
+
+**Status (2026-09-08), kept as the record it was.** Tracks 1 and 2 are
+COMPLETE. Track 3 is complete except **W3.1**, which is partly done and blocked
+on a decision rather than on effort, and **W3.5**, which was always a question
+rather than a work item.
 
 Every wave below carries its own state. What is left, in one place:
 
@@ -59,10 +77,10 @@ already landed ahead of the design". That was true on 2026-09-06 and stopped
 being true within two days, while the doc went on saying it — which is the
 failure mode this phase spent its whole length removing from the code.
 
-**Implements:** [RFC-0091](../design/0091-one-entry-codegen-producer-many-language-packs.md),
-which **amends** [RFC-0068](../design/0068-language-neutral-codegen-ir.md).
-**Closes:** [#1102](../issues/archived/1102-entry-emitters-build-source-with-writeln.md).
-**Touches:** [#1062](../issues/1062-add-node-language-inference.md)
+**Implements:** [RFC-0091](../../design/0091-one-entry-codegen-producer-many-language-packs.md),
+which **amends** [RFC-0068](../../design/0068-language-neutral-codegen-ir.md).
+**Closes:** [#1102](../../issues/archived/1102-entry-emitters-build-source-with-writeln.md).
+**Touches:** [#1062](../../issues/1062-add-node-language-inference.md)
 (two language readers disagreeing — W2.1 removes the second reader).
 
 ## Why this phase exists
