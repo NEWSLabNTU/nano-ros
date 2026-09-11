@@ -2272,6 +2272,18 @@ The premise below ("the clock it is generic over does not exist here") is
 scheduled to change: **phase-430 brings ROS time**, for rosbag replay. The
 reasoning above was correct and one of its two legs is being removed.
 
+> **CORRECTED 2026-09-11 (phase-430 W7).** The attribution in that sentence is
+> wrong and was wrong four days before this note: **phase-425 brought ROS
+> time** — `rosgraph_msgs/msg/Clock`, the `/clock` source, `use_sim_time`,
+> clock-driven timers and an end-to-end fixture, landed while this amendment
+> was being written, which is how the two collided. phase-430 measured that,
+> rescoped itself to the REACH delta (the clock axis on the Rust, C and C++
+> node-level surfaces) and closed it; see
+> [`phase-430`](../roadmap/phase-430-ros-time-and-clock-driven-timers.md) §
+> "Re-measured (2026-09-11)". Nothing below this note changes — the conclusion
+> it draws held in the code phase-425 landed, which is the point the amendment
+> was making.
+
 **The conclusion does not change.** The clock becomes a RUNTIME FIELD on the
 flat `Timer` plus a second verb (`create_timer(clock, period, cb)` beside
 `create_wall_timer`), not a type parameter and not a hierarchy — because the
