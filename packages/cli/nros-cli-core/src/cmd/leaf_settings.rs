@@ -272,6 +272,22 @@ pub fn write(leaf: &Path, nano_ros_root: &Path, who: &str) -> Result<Option<Leaf
     // Layer 3.5 — what the image's declared transport implies.
     transport_implications(&img.decl, &mut env);
 
+    // phase-454 W4 (RFC-0100 D4) — the sizing descriptor, written HERE because
+    // this is the one place that has all three of its inputs at once: the
+    // leaf's inventories, the board facts just resolved above (which carry
+    // `NROS_BOARD_TOML`, and therefore the `[board.knobs.memory]` rung), and
+    // the image's declared backend.
+    //
+    // The variable below names a PATH and nothing watches the VARIABLE — issue
+    // 0491. The rebuild edge is on the file's CONTENT, in
+    // `nros_sizing_descriptor::load_for_build_script`.
+    let descriptor = crate::sizing_descriptor::write_for_leaf(&img, &path_env, who)
+        .map_err(|e| eyre!("{}: sizing descriptor: {e}", leaf.display()))?;
+    path_env.insert(
+        nros_sizing_descriptor::DESCRIPTOR_ENV.to_string(),
+        descriptor,
+    );
+
     // Layer 4 — the APP rung: what this IMAGE states (`[image.<id>] env`).
     // Last, so it outranks the board and the implications above and is
     // outranked only by the calling environment.

@@ -11,10 +11,75 @@ use std::{env, path::Path};
 /// `TripleBuffer::SLOT_COUNT` — the slot count a `KEEP_LAST(<=1)` history uses.
 const TRIPLE_BUFFER_SLOTS: usize = 3;
 
-/// `size_of::<usize>()` for the `SpscRing`'s per-slot length array, taken at
-/// its 64-bit width. A 32-bit target spends 4, so this over-states there by
-/// `(depth + 1) * 4` — the one direction that cannot under-size an arena.
-const RING_LEN_BYTES: usize = 8;
+/// `size_of::<usize>()` for the `SpscRing`'s per-slot length array, at its
+/// 64-bit width — the value used when nothing tells this build the target's.
+///
+/// A 32-bit target spends 4, so this over-states there by `(depth + 1) * 4`,
+/// which is the one direction that cannot under-size an arena. That is why it is
+/// the FALLBACK rather than the answer: see [`ring_len_bytes`], and RFC-0100 D1
+/// for why a build script cannot work the real number out for itself.
+const RING_LEN_BYTES_DEFAULT: usize = 8;
+
+/// The per-slot length word, in TARGET bytes — phase-454 W4, RFC-0100 D1/D4.
+///
+/// **This is the one number in this file that a build script structurally cannot
+/// answer.** Build scripts run for the host (phase-118-E): `size_of::<usize>()`
+/// here measures the machine doing the compiling, not the board being compiled
+/// for, and the entity/bound facts that reach this script through the
+/// environment carry no target ABI at all. So the constant above has been an
+/// admitted over-statement, in a comment, for as long as it has existed.
+///
+/// The sizing descriptor carries it, from the BOARD
+/// (`build/nros/sizing/<entry>.toml`, `[target] pointer_bytes`). The rebuild
+/// edge is on that file's CONTENT — never on the variable that names it, which
+/// is issue 0491 — and `load_for_build_script` emits it.
+///
+/// Three outcomes, and the middle one is the point:
+///
+/// * **no descriptor** — nobody ran `nros sync` for this image, so nothing
+///   changes: `RING_LEN_BYTES_DEFAULT`, byte-identical to every build before
+///   this wave;
+/// * **a descriptor that REFUSES `[target]`** — the fallback, and LOUD. RFC-0100
+///   D6: *"Worst case when refused, always the safe direction and always loud —
+///   the build prints what declaring would save."* The safe direction here is
+///   the over-statement;
+/// * **a descriptor that does not parse, or names a schema this reader does not
+///   know** — a hard build error. A descriptor EXISTS, so defaulting would size
+///   from numbers a user believes they supplied.
+fn ring_len_bytes(desc: Option<&nros_sizing_descriptor::SizingDescriptor>) -> usize {
+    let Some(desc) = desc else {
+        return RING_LEN_BYTES_DEFAULT;
+    };
+    let (v, why) = desc
+        .target
+        .pointer_bytes()
+        .or_report("target.pointer_bytes", RING_LEN_BYTES_DEFAULT);
+    if let Some(why) = why {
+        println!(
+            "cargo::warning=nros-node: {why}; the receive-ring length word is priced at \
+             {RING_LEN_BYTES_DEFAULT} bytes (64-bit), which over-states a 32-bit target rather \
+             than under-sizing it"
+        );
+    }
+    v
+}
+
+/// The descriptor this build was pointed at, or `None`.
+///
+/// A parse or schema failure PANICS, which is a build error naming the file.
+/// That is the negative control for the whole transport: corrupt a field and the
+/// consumer refuses, rather than silently keeping its own literal.
+fn sizing_descriptor() -> Option<nros_sizing_descriptor::SizingDescriptor> {
+    match nros_sizing_descriptor::from_build_env() {
+        Ok(d) => d,
+        Err(e) if e.is_missing() => {
+            // The variable named a path and nothing is there. Loud, because
+            // somebody pointed this build at a descriptor.
+            panic!("{e}");
+        }
+        Err(e) => panic!("{e}"),
+    }
+}
 
 /// The QoS history depth an undeclared subscription actually gets:
 /// `QoSProfile::QOS_PROFILE_DEFAULT.depth`, i.e. `rmw_qos_profile_default`'s
@@ -83,6 +148,7 @@ fn subs_arena(
     pubsub_entry_at_default: usize,
     rx_recv_size: usize,
     entry_struct: usize,
+    ring_len_bytes: usize,
 ) -> usize {
     // The SUBSCRIPTION-scoped count, not the broad one. `carries_qos_depth`
     // admits publishers and services, and says of a publisher that its depth
@@ -116,7 +182,7 @@ fn subs_arena(
         .iter()
         .map(|&(ty, d)| {
             let slot = type_bound(&bounds, ty).unwrap_or(rx_recv_size);
-            buffered_region(d, slot) + entry_struct
+            buffered_region(d, slot, ring_len_bytes) + entry_struct
         })
         .sum()
 }
@@ -162,17 +228,24 @@ fn type_bound(bounds: &[(String, usize)], ty: &str) -> Option<usize> {
 /// `depth <= 1` is a `TripleBuffer`: three slots, no length array. Anything
 /// deeper is an `SpscRing` with `depth + 1` slots (Lamport's extra slot) and a
 /// `usize` length beside each.
-const fn buffered_region(depth: usize, slot: usize) -> usize {
+const fn buffered_region(depth: usize, slot: usize, ring_len_bytes: usize) -> usize {
     if depth <= 1 {
         TRIPLE_BUFFER_SLOTS * slot
     } else {
-        (depth + 1) * slot + (depth + 1) * RING_LEN_BYTES
+        (depth + 1) * slot + (depth + 1) * ring_len_bytes
     }
 }
 
 fn main() {
     watch_declared_facts();
     let out_dir = env::var("OUT_DIR").unwrap();
+
+    // phase-454 W4 (RFC-0100 D4) -- the ONE artifact this build's target facts
+    // come from. Read by PATH, with a `rerun-if-changed` edge on its CONTENT.
+    // `None` when nobody ran `nros sync` for this image, which leaves every
+    // number below exactly where it was.
+    let sizing = sizing_descriptor();
+    let ring_len_bytes = ring_len_bytes(sizing.as_ref());
 
     println!("cargo:rustc-check-cfg=cfg(has_rmw)");
     // Emitted from the `needs-type-descriptors` capability feature (no dep
@@ -523,7 +596,7 @@ fn main() {
         "NROS_PUBSUB_QOS_DEPTH",
         declared_max_qos_depth().unwrap_or(PUBSUB_QOS_DEPTH),
     );
-    let pubsub_region = buffered_region(pubsub_depth, rx_recv_size);
+    let pubsub_region = buffered_region(pubsub_depth, rx_recv_size, ring_len_bytes);
     let pubsub_entry = pubsub_region + PUBSUB_ENTRY_STRUCT;
 
     // phase-403 step 3 -- SUM OVER WHAT THE IMAGE DECLARES, when it declares.
@@ -588,8 +661,13 @@ fn main() {
         declared_action_servers,
     ) {
         (Some(subs), Some(timers), Some(services), Some(acl), Some(asv)) => Some(
-            subs_arena(subs, pubsub_entry, rx_recv_size, PUBSUB_ENTRY_STRUCT)
-                + timers * TIMER_ENTRY
+            subs_arena(
+                subs,
+                pubsub_entry,
+                rx_recv_size,
+                PUBSUB_ENTRY_STRUCT,
+                ring_len_bytes,
+            ) + timers * TIMER_ENTRY
                 + services * service_entry
                 + (acl + asv) * action_client_entry
                 + ARENA_BASE_OVERHEAD,

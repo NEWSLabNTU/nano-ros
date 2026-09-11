@@ -157,6 +157,20 @@ pub enum Sub {
     #[command(name = "entity-inventory")]
     EntityInventory(crate::cmd::entity_inventory::EntityInventoryArgs),
 
+    /// phase-454 W4 (RFC-0100 D4) — read back the sizing descriptor `nros sync`
+    /// wrote for an entry: `<build>/nros/sizing/<entry>.toml`.
+    ///
+    /// The READ side of the one artifact every backend sizes from. A Rust build
+    /// script links `nros-sizing-descriptor` and needs no verb; cmake cannot,
+    /// so it asks here and gets an `include()`able projection
+    /// (`--output-cmake`). Plain stdout is the human report, refusals included.
+    ///
+    /// A MISSING descriptor is an error, not an empty answer: the caller named
+    /// a path, and "it wasn't there so I said nothing" is the silent default
+    /// D6 exists to forbid.
+    #[command(name = "sizing-descriptor")]
+    SizingDescriptor(crate::cmd::sizing_descriptor::SizingDescriptorArgs),
+
     /// phase-348 W1 — list packages that announce a provision
     /// (`<export><nano_ros_provides kind="rmw" name="zenoh"/></export>`),
     /// across the search path.
@@ -483,6 +497,7 @@ pub fn run(args: Args) -> Result<()> {
         Sub::EntityFacts(a) => crate::cmd::entity_facts::run(a),
         Sub::LeafSystem(a) => crate::cmd::leaf_system::run(a),
         Sub::EntityInventory(a) => crate::cmd::entity_inventory::run(a),
+        Sub::SizingDescriptor(a) => crate::cmd::sizing_descriptor::run(a),
         Sub::Providers(a) => run_providers(a),
         Sub::Order(a) => run_order(a),
         Sub::RmwDispatch(a) => run_rmw_dispatch(a),

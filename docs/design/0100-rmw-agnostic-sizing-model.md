@@ -163,14 +163,21 @@ transient-local pricing and is a prerequisite, not a nicety.
 
 ## D4 — one descriptor, read by path
 
-`nros sync` writes one file per entry; consumers read it by path, never by
-environment. Env transport is what produced issues 0460 (a knob reaching the
-Zephyr C lane and not the Rust one) and 0491 (a path variable compared as text),
-and it cannot carry per-endpoint structure without encoding it in a string.
+**Landed, phase-454 W4.** `nros sync` writes one file per entry; consumers read
+it by path, never by environment. Env transport is what produced issues 0460 (a
+knob reaching the Zephyr C lane and not the Rust one) and 0491 (a path variable
+compared as text), and it cannot carry per-endpoint structure without encoding it
+in a string.
+
+The schema as SHIPPED — `packages/tooling/nros-sizing-descriptor` is the one
+reader; do not hand-parse this anywhere:
 
 ```toml
 # build/nros/sizing/<entry>.toml
+schema_version = 1
+
 [meta]
+entry  = "talker"
 status = "derived" | "partial" | "refused"
 basis  = "contract" | "closure"
 undeclared_endpoints = 0
@@ -181,22 +188,35 @@ max_align = 8
 heap_budget_bytes = 65536
 
 [[endpoint]]
-kind = "subscription"
+kind = "subscription"          # publisher | subscription | service_{server,client}
+                               # | action_{server,client}
 type = "std_msgs/msg/String"
 topic = "/chatter"
 history = "keep_last"
 depth = 10
 reliability = "reliable"
 durability = "volatile"
-buffer = "queue"
-storage_bytes = 280
+registration_path = "rust_typed_schemaless"
+storage_bytes = 12914
 wire_bound_bytes = 1170
+
+# A second endpoint, showing how a field with no number travels.
+[[endpoint]]
+kind = "subscription"
+type = "sensor_msgs/msg/Image"
+topic = "/image"
+history = "keep_all"
+wire_bound_bytes = 4096
+
+[endpoint.refused]
+depth = "history = keep_all on subscription /image: a KEEP_ALL queue has no static bound (RFC-0100 D6)"
+storage_bytes = "`depth` is refused (history = keep_all), and a receive region is sized from it"
 
 [types]
 distinct_count = 7
-max_fields = 12
-max_kinds = 48
-max_nested_depth = 3
+
+[types.refused]
+max_fields = "not derived here: the per-type schema walk that prices it runs in codegen ..."
 
 [policy]
 graph_max_entities = 64
@@ -204,9 +224,49 @@ transport_mtu = 4096
 sessions = 1
 ```
 
-A cargo consumer gets a real `rerun-if-changed` edge on this path. A cmake
-consumer that reads it at CONFIGURE time must register it in
-`CMAKE_CONFIGURE_DEPENDS` (issue 1018's rule).
+**Per-field status is spelled as a `refused` sub-table beside each section's
+values** (D6). A fully derived image's descriptor therefore reads exactly like
+the sketch above it and costs no ceremony, while a refusal carries its prose to
+the consumer that needs it rather than to a build log nobody kept. Three rules
+are enforced at PARSE, and each is a shape that would otherwise read as derived:
+
+* a key in BOTH the value slot and `refused` is a contradiction and an error;
+* a `refused` key naming a field the section does not have is an error — a
+  refusal nobody can read is worse than none, because the consumer defaults
+  silently while the producer believes it warned;
+* an unknown key, an unknown vocabulary spelling, and a `schema_version` this
+  reader does not know are all errors. Never a best effort.
+
+The reader's API has three states, not two: `Fact::Stated` / `Refused(reason)` /
+`Absent`. `Absent` is "nobody said" — `EntityDecl::depth`'s own rule, *"`None`
+means NOBODY SAID … It must never read as 0"* — and `Refused` is "I looked and
+there is no number, here is why". `Fact::stated()` is the only accessor that
+yields a value, so there is no spelling of "read it, and if that fails use 10"
+that does not go through a `match`.
+
+**Three fields the sketch above did not have, and one it did.**
+`schema_version` and `[meta] entry` are new: the first because a reader that kept
+going on a version it does not know sizes from numbers whose meaning has moved
+(the rule that took the entity inventory to 5), the second so a copied file still
+says what it is about. `registration_path` replaces the sketch's `buffer`, which
+D9 rules out as a `SLOTS` source anyway; it is REQUIRED, and D1 says why.
+
+A cargo consumer gets a real `rerun-if-changed` edge on this path —
+`nros_sizing_descriptor::load_for_build_script` emits it, on the file's CONTENT
+and never on the variable that names it (issue 0491). A cmake consumer reads it
+through `nros_sizing_descriptor_read()` in `cmake/NanoRosSizingDescriptor.cmake`,
+which registers BOTH the descriptor and the CLI in `CMAKE_CONFIGURE_DEPENDS`
+(issue 1018's rule — `execute_process()` has already run by the time ninja
+decides anything, so that list is the only thing that makes the emitted fragment
+fresh). The descriptor is registered even when it does not exist yet, so the
+first `nros sync` after a configure is what re-triggers one.
+
+**The descriptor carries no absolute path** — issue 0320's rule. Two checkouts of
+one tree at different paths render byte-identical bytes, which is what keeps
+every freshness comparison against it honest;
+`sizing_descriptor_portable.rs` measures it and `render` carries a tripwire for
+the way it would actually go wrong (an interpolated `Path::display()` in a
+refusal reason).
 
 **One descriptor collapses the two roads, which retires a gate by construction.**
 `check-declared-fact-carriers.py` exists to keep the cmake road and the cargo

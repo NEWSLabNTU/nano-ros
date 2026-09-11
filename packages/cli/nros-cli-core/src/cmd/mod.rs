@@ -49,6 +49,7 @@ pub mod sdk_path;
 pub mod sdk_root;
 pub mod setup;
 /// phase-440 W6 — `nros store list|gc` (RFC-0095 D11).
+pub mod sizing_descriptor;
 pub mod store;
 /// phase-440 W6 — `nros toolchain uninstall` (RFC-0095 D11).
 pub mod toolchain;

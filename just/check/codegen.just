@@ -206,6 +206,27 @@ entity-inventory-knobs:
     fi
     ./tests/cmake-entity-inventory-tests.sh
 
+# phase-454 W4 (RFC-0100 D4) — the CMake reader for the sizing descriptor.
+#
+# Same shape and same argument as `entity-inventory-knobs` above: the schema,
+# the per-field refusal and the CMake projection are unit-tested in Rust, and
+# this gates what CMAKE owns. Four of the five assertions are failures this tree
+# has already paid for once — publishing into the function frame instead of the
+# caller's, a refused field leaving a value variable behind, a configure-time
+# emitter with no `CMAKE_CONFIGURE_DEPENDS` edge (issue 1018), and a broken
+# input that configures cleanly. The CLI is STUBBED, so this needs cmake and
+# nothing else.
+sizing-descriptor-reader:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cmake >/dev/null 2>&1; then
+        # shellcheck source=scripts/build/check-skip.sh
+        source scripts/build/check-skip.sh
+        nros_check_skip sizing-descriptor-reader "missing host tool(s): cmake"
+        exit 0
+    fi
+    ./tests/cmake-sizing-descriptor-tests.sh
+
 # issue 0946 — the connect locator has exactly ONE producer.
 #
 # `NROS_ENTRY_LOCATOR` (the address an embedded image dials) was computed by two

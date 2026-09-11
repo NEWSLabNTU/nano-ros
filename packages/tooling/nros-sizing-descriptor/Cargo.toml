@@ -1,0 +1,28 @@
+[package]
+name = "nros-sizing-descriptor"
+version = "0.5.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "RFC-0100 D4: the one sizing descriptor `nros sync` writes per entry, and the one reader every consumer shares."
+
+[package.metadata.nros]
+host-only = true
+host-only-reason = "build-time sizing descriptor reader, runs on the host"
+
+[lib]
+path = "src/lib.rs"
+
+# LEAF BY CONSTRUCTION, for the same reason `nros-platform-config` is.
+#
+# Every consumer RFC-0100 D5 names reads this: `nros-node`'s build script, each
+# backend's build script, the CLI that writes it, and (through the verb) cmake.
+# A build script of a `no_std` crate must be able to depend on it without
+# dragging a graph behind, so nothing here may gain a workspace dependency.
+# `serde` + `toml` is the whole of it, and both are already in the build graph
+# through `nros-platform-config`.
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+
+[dev-dependencies]
+tempfile = "3"

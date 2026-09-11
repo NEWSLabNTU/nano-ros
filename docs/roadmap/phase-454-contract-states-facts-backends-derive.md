@@ -102,7 +102,7 @@ one.
 Acceptance: a `keep_all` endpoint refuses with a message naming it; a
 four-policy contract round-trips into the descriptor; issue 1256 closes.
 
-### W4 — the descriptor artifact
+### W4 — the descriptor artifact — **LANDED**
 
 `nros sync` writes `build/nros/sizing/<entry>.toml` per RFC-0100 D4. Schema,
 writer, and a reader crate the consumers share. Per-field status (D6), not one
@@ -116,6 +116,67 @@ Acceptance: descriptor is byte-identical across two checkouts of the same tree a
 different paths (the issue-0320 portability rule); a cargo consumer gets a
 `rerun-if-changed` edge; a cmake consumer reading it at configure time registers
 it in `CMAKE_CONFIGURE_DEPENDS` (issue 1018).
+
+**What landed.** The schema is in RFC-0100 D4, updated to what is written rather
+than what was sketched; later waves are briefed from there.
+
+| piece | where |
+| --- | --- |
+| schema + the one reader | `packages/tooling/nros-sizing-descriptor` — leaf by construction (`serde` + `toml`), so a `no_std` crate's build script can depend on it |
+| producer | `nros_cli_core::sizing_descriptor` — joins the entity inventory, the bound inventory and the board facts; nothing is re-derived |
+| write site | `cmd::leaf_settings::write`, so every `nros sync` and every `nros build` refreshes it beside `build/<image>/nros-cargo.toml` |
+| cargo consumer | `nros-node/build.rs` takes the receive-ring length word from `[target] pointer_bytes` |
+| cmake consumer | `cmake/NanoRosSizingDescriptor.cmake` → `nros ws sizing-descriptor --output-cmake` |
+
+**The cargo consumer is the smallest honest one, and it closes a stated defect.**
+`nros-node/build.rs` priced an `SpscRing`'s per-slot length array at a hard
+`RING_LEN_BYTES = 8` under its own comment: *"taken at its 64-bit width. A 32-bit
+target spends 4, so this over-states there."* That is not an oversight — it is
+the correct answer for a build script, which structurally cannot know the target
+ABI (phase-118-E), and the over-statement is the safe direction. The descriptor
+carries the board's number, so the same image on `thumbv7em` now prices
+`(depth + 1) * 4` where it used to pay `* 8`. With no descriptor the constant
+stands and the build is byte-identical to every build before this wave.
+
+Three outcomes, and the middle one is D6 working:
+
+| state | result |
+| --- | --- |
+| no descriptor | `RING_LEN_BYTES_DEFAULT`, unchanged |
+| `[target]` refused | the default, plus a `cargo::warning` naming the refusal — *"always the safe direction and always loud"* |
+| corrupt / unknown schema | a hard build error naming the file. The NEGATIVE CONTROL: a descriptor exists, so defaulting would size from numbers a user believes they supplied |
+
+**`[policy]` is empty and that is the W4 answer, not an omission.** D1: policy is
+the kind of fact *nobody* can derive, so it is stated — and no image states a
+burst depth, a graph size or an MTU today. The first consumers that want one
+(W6.a's `SUBSCRIBER_RING_DEPTH`, W6.b's XRCE stream history) bring the rung that
+states it. Writing a derived number there now would be the category error D1
+exists to prevent.
+
+**`[types]`'s `max_fields` / `max_kinds` / `max_nested_depth` are REFUSED with a
+reason, not left absent.** They are derivable — from the schema walk codegen
+already does — and W6.c is the wave that reaches it. A refusal says that; an
+absence would say nobody ever asked.
+
+**What W5 is handed.** `registration_path` is on every endpoint row, as one of
+issue 1319's four measured values, composed from two halves the build script
+cannot see (the entry's language, and whether the linked backend carries type
+descriptors). `RegistrationPath::claims_closure_buffer()` is the predicate W5's
+arena term wants. Where either half is unknown the field is REFUSED rather than
+guessed — the two schemaless rows are 1,848 bytes per subscription in the UNDER
+direction, so a guess there is the failure, not a conservative default.
+
+One limit W5 should know: a C/C++ entry is credited with `c_typed_hint`, because
+whether an individual call site passes `rx_size_bound<M>` is a property of that
+call site and nothing this writer reads distinguishes them. W10 — which closes
+the C half of the declared-QoS check — is where a per-call-site answer becomes
+available.
+
+Gates and tests: `just check sizing-descriptor-reader`
+(`tests/cmake-sizing-descriptor-tests.sh`, CLI stubbed, 16 assertions),
+`nros-sizing-descriptor`'s 18 unit tests (round-trip, the three parse rules, the
+`keep_all` per-field refusal, zero surviving unfloored), the producer's 10, the
+verb's 4, and `sizing_descriptor_portable.rs` for the issue-0320 acceptance.
 
 ### W5 — the executor reads the descriptor, and the model learns the registration path
 
