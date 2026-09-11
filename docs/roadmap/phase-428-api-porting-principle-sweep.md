@@ -248,6 +248,126 @@ W1–W6 stand for the user-facing C/C++/Rust APIs. The RMW layer adds:
   gated (a doc naming a slot that does not exist is mechanically checkable).
 
 
+## W9 outcome (2026-09-12) — the mask is derived, and the prediction was half wrong
+
+Landed: `check-qos-mask-derivation.py` (fast line, buildless, ~0.4 s). A bit may
+be advertised only if the backend carries a `nros-qos-honours: <BIT>` claim
+sited on code that READS the mapped profile field. Honouring is "applies the
+request or refuses a value it cannot serve" — both read the field, which is what
+makes the rule mechanical; handing the field to somebody else is not, so a file
+marked `nros-qos-discovery-only:` contributes no evidence.
+
+Every subject list is derived, because an authored one is what this campaign
+keeps finding broken: the policy vocabulary from `QoSPolicyMask`'s `pub const`
+block, the bit→(field, variant) mapping from `QoSProfile::required_policies`
+(a bit that function can never set is an error), the backend list from every
+`impl Session for` under `packages/**/src`. The cffi route declares
+`nros-qos-mux:` with the crates it routes to, and its union is checked against
+THEIR claims.
+
+**The negative control is the live tree, not a synthetic file.** Six mutations
+run on the normal path, each against the shipped sources in memory: delete the
+depth read from the zenoh admission function; delete the HISTORY claim; move
+the RELIABILITY claim into the discovery keyexpr; re-advertise the withdrawn
+liveliness bit; leave a stale claim; make an exempt session claim a subset.
+A synthetic backend only proves the matcher matches what its author wrote.
+
+### Measured per backend
+
+`--audit` prints this; it is not asserted anywhere else.
+
+| policy | zenoh | cffi union (cyclonedds / xrce / uorb) |
+| --- | --- | --- |
+| RELIABILITY | yes — `shim/qos.rs`, granted RELIABLE, over-delivery reported | cyclonedds `qos.cpp:38`, xrce `session.c` |
+| DURABILITY_VOLATILE | yes — `shim/qos.rs` | cyclonedds, xrce |
+| DURABILITY_TRANSIENT_LOCAL | **no** (unchanged) | cyclonedds, xrce |
+| HISTORY | yes — KEEP_ALL refused | cyclonedds, xrce |
+| DEPTH | yes — granted to the ring, grant published | cyclonedds, xrce (deferred to the Agent) |
+| DEADLINE | yes — `publisher.rs`, `subscriber.rs` | cyclonedds only |
+| LIFESPAN | yes — `subscriber.rs` | cyclonedds only |
+| LIVELINESS_AUTOMATIC | yes | cyclonedds only |
+| LIVELINESS_MANUAL_BY_TOPIC | yes | cyclonedds only |
+| **LIVELINESS_MANUAL_BY_NODE** | **withdrawn** | **withdrawn** |
+| LIVELINESS_LEASE | yes — publisher-side; a subscription lease is reported | cyclonedds only |
+| AVOID_ROS_NAMESPACE_CONVENTIONS | no (unchanged) | xrce pub+sub only |
+
+**The one withdrawal is `LIVELINESS_MANUAL_BY_NODE`, advertised by both masks in
+the tree and implemented by neither** (issue 1328). zenoh matches
+`ManualByTopic | ManualByNode` in one arm; cyclonedds folds the value onto
+MANUAL_BY_TOPIC in as many words; xrce lowers no liveliness field. The downgrade
+is in the LOSING direction — an application that correctly asserts once per node
+watches its other publishers cross the lease — which is exactly what the mask
+exists to refuse. Nothing in the tree requested it, so no build changed.
+
+### Where this item's own prediction was wrong
+
+The work item said the derived zenoh mask is `RELIABILITY | DURABILITY_VOLATILE
+| HISTORY`, that **`DEPTH` drops out**, and that "nothing that works today
+breaks". The first half is a fair reading of the tree as it stood — the four
+CORE policies had exactly one read between them, in `QosKeyExpr::to_qos_string`,
+under a comment claiming all four were honoured at the subscriber buffer. The
+second half is false, and `withdrawing_depth_would_refuse_the_default_profile`
+in `nros-rmw/src/traits.rs` is the measurement:
+
+`QOS_PROFILE_DEFAULT` states `depth: 10`, so `required_policies()` REQUIRES
+`DEPTH`; that profile is what every `create_publisher`/`create_subscription`
+with no explicit QoS passes. Withdrawing the bit refuses **every default entity
+on the backend**, not just the ones asking for more depth than the ring holds.
+Same for `QOS_PROFILE_SERVICES_DEFAULT` and `QOS_PROFILE_SENSOR_DATA`. Only
+`QOS_PROFILE_SYSTEM_DEFAULT` survives, because it states no depth at all.
+
+So the shim EARNS the bit instead of withdrawing it, which is also the honest
+reading: the bit says "I will not silently ignore this policy", and a depth lie
+lives in the VALUE. `shim/qos.rs::admit` returns the GRANTED profile, the entity
+is configured from it, and `create_*` puts THAT profile — not the request — into
+the `@ros2_lv` liveliness token. A peer reading our graph entry now sees the
+queue we keep; before, a caller asking for 100 got a four-slot ring and a graph
+entry advertising a hundred. History and depth are not RxO policies, so this
+changes no matching.
+
+### The `let _ = qos;` sites
+
+Two, both zenoh, both the service pair (`create_service`, `create_client`),
+under `TODO(193.1b)`. They discarded the caller's profile AND then built the
+liveliness token from a hardcoded `QoSProfile::services_default()` — so the
+graph advertised a profile nobody had asked for.
+
+"The requested service QoS cannot be applied" was narrower than the TODO
+claimed. zenoh-pico has no per-endpoint QoS slot on a queryable, so nothing
+reaches the WIRE — but the request ring is ours, the refusals are ours, and the
+graph declaration is ours. All three are applied now, and the token carries the
+admitted profile. This is a no-op for every default caller (`nros-node` passes
+`services_default()` at all ten service/action create sites) and correct for an
+explicit one.
+
+### A too-deep request
+
+Refused where refusing is honest, reported where it cannot be. `KEEP_ALL` and
+`TRANSIENT_LOCAL` and `MANUAL_BY_NODE` are refused with `IncompatibleQos` and a
+log line naming the policy. Depth cannot be refused — every stock preset asks
+for more than the default four-slot ring (10, 10, 1000) — so it is GRANTED down
+and the grant is (a) returned to the caller's entity, (b) published to the
+graph, and (c) reported once per process at WARN, naming the entity, both
+numbers and `ZPICO_SUBSCRIBER_RING_DEPTH`. Once per process, not per entity:
+the knob is global and a line per entity is a line a reader learns to skip.
+A BEST_EFFORT request is granted RELIABLE and reported at INFO — the severity
+encodes the direction, over-delivery being safe and under-delivery lossy.
+
+### Carried forward
+
+* **The trait default is `QoSPolicyMask::NONE`** (was `CORE`): four policies
+  granted by the trait to any implementation that had written no code. The two
+  sessions that relied on it — the mock and the metadata recorder — now declare
+  `nros-qos-exempt:` with a reason, and the gate requires an exemption to be
+  all-or-nothing, since "carries no traffic" cannot be true of a subset.
+* **The cffi mask is a UNION, so it over-claims for each backend** — issue 1329,
+  with the measured per-backend table. An app asking cyclonedds for
+  `avoid_ros_namespace_conventions`, or xrce for a deadline, is admitted and
+  then ignored downstream. The fix is the vtable slot the TODO has wanted since
+  phase 115; narrowing the union without one was checked and rejected, because
+  xrce would lose `LIVELINESS_AUTOMATIC` and every C default profile states it,
+  so every C app on xrce would fail at create.
+
 ## W10 outcome (2026-09-05) — one gate, and the sources it does not yet reach
 
 Landed: the SSoT is a `qos_profiles!` fence in `nros-rmw/src/traits.rs` stating
