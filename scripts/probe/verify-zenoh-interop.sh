@@ -55,8 +55,19 @@ done
 exec 3>&- 3<&- || true
 
 # Terminal 2 — the nano-ros talker (built by the extracted first-node step).
+#
+# Run the ARTIFACT, not `cargo run`. Step 30 is now `nros sync` + `nros build`
+# (RFC-0098, phase-445 W7), so `cargo run` here would exercise a road the book
+# no longer teaches — and W6 deletes the leaf `.cargo/`, after which a bare
+# `cargo run` in this directory does not resolve at all. The path is the one
+# the page prints.
 cd examples/native/rust/talker
-RUST_LOG=info timeout 120 cargo run >/tmp/talker.log 2>&1 &
+bin=build/native/target/debug/talker
+[ -x "$bin" ] || {
+    echo "PROBE FAIL: $bin missing — step 30's \`nros build\` did not produce it"
+    exit 1
+}
+RUST_LOG=info timeout 120 "./$bin" >/tmp/talker.log 2>&1 &
 talker_pid=$!
 
 pattern="Publishing: 'Hello World: 1'"
