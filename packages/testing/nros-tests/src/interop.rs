@@ -312,6 +312,35 @@ pub const CELLS: &[InteropCell] = &[
        c(Linux, Rust, Cyclonedds, Action, Interop, Runtime),
        NativeFixtures, RosEdition(Cyclonedds), NanoToRos, "ros2_action_e2e"),
 
+    // ── phase-455 W3 — the SAME two directions over zenoh ────────────────
+    // The rows above are the whole of the ACTIONS family's live-peer
+    // coverage and both are Cyclone, so the backend phase-455 is about —
+    // zenoh-pico, whose `ZPICO_MAX_PENDING_REPLIES` reply-slot table is the
+    // bounded resource issue 0902 exhausted — had never met a stock ROS 2
+    // peer on the action path at all. The only zenoh action coverage is
+    // `ros_editions_e2e`, which is the docker EDITION axis and deliberately
+    // outside this list (see the module header).
+    //
+    // Not a duplicate of the Cyclone pair: the two backends share none of
+    // the code under test on this path. Cyclone's action wire goes through
+    // `service.cpp`'s five CDR adapters; zenoh's goes through a queryable
+    // per service, which is what makes a SendGoal, a GetResult and a
+    // CancelGoal each consume one of the four reply slots — the resource
+    // whose exhaustion has no observable today (phase-455 W1). A green on
+    // one backend is no evidence about the other, the same argument
+    // `native-graph-rust-{zenoh,cyclone}-r2n` already carries one workload
+    // over.
+    //
+    // BOTH directions, ONE coordinate, exactly as above: `coords_for`
+    // collapses direction, so `assert_test_bound` in `ros2_action_e2e.rs`
+    // names `(Linux, Rust, Zenoh, Action)` once for the pair.
+    ic("native-action-rust-zenoh-r2n",
+       c(Linux, Rust, Zenoh, Action, Interop, Runtime),
+       NativeFixtures, RosEdition(Zenoh), RosToNano, "ros2_action_e2e"),
+    ic("native-action-rust-zenoh-n2r",
+       c(Linux, Rust, Zenoh, Action, Interop, Runtime),
+       NativeFixtures, RosEdition(Zenoh), NanoToRos, "ros2_action_e2e"),
+
     // ── Native nano XRCE ↔ Agent ↔ fastrtps ─────────────────────────────
     // tests/xrce_ros2_interop.rs.
     ic("native-pubsub-rust-xrce-n2r",
@@ -561,9 +590,15 @@ pub const NO_CELL: &str = "(no cell — evidence for none)";
 /// One CASE of a shared interop binary and the cell it is evidence FOR —
 /// issue 1191.
 ///
-/// Eleven binaries host the nineteen Runtime cells, and four of them host more
-/// than one: `interop_e2e` (5), `graph_interop` (2), `ros2_action_e2e` (2),
-/// `xrce_ros2_interop` (2). Until this table existed, the verdict ledger
+/// Several binaries host more than one Runtime cell, and those are the ones
+/// [`CASE_CELLS`] must map: `interop_e2e`, `graph_interop`,
+/// `rust_multi_node_per_node_graph`, `ros2_action_e2e` (four cells since
+/// phase-455 W3 added the zenoh pair) and `xrce_ros2_interop`. A TOTAL is not
+/// written here on purpose — this sentence carried "eleven binaries host the
+/// nineteen Runtime cells" while the list held 27, which is what a hand-kept
+/// count does. The mapping itself is gated from both ends, below.
+///
+/// Until this table existed, the verdict ledger
 /// (`scripts/check-interop-verdicts.py`) attributed a junit case to the BINARY,
 /// so every case of `interop_e2e` was evidence — and counter-evidence — for all
 /// five of its cells at once: one failing case (issue 1190's
@@ -665,13 +700,27 @@ pub const CASE_CELLS: &[CaseOwner] = &[
     co("rust_multi_node_per_node_graph", "rust_multi_node_entry_per_node_graph_nodes_cyclonedds",
        "native-multinode-rust-cyclone"),
 
-    // ── ros2_action_e2e — ONE coordinate, two directions ────────────────
+    // ── ros2_action_e2e — TWO coordinates, two directions each ──────────
     // The pair no coordinate can separate: which side drives is the whole
-    // difference between the two cells, and it is what each case does.
+    // difference between the two cells of a backend, and it is what each
+    // case does. phase-455 W3 added the zenoh backend, so this binary now
+    // hosts four Runtime cells and the map is what keeps a zenoh result
+    // from being recorded as Cyclone evidence.
+    //
+    // The two Cyclone cases are NOT renamed to match the `_over_zenoh`
+    // suffix, and that asymmetry is deliberate: `.config/interop-verdicts.toml`
+    // cites them by name, and this file's own gate treats a cited case whose
+    // `fn` no longer exists as INERT evidence that still reads as coverage
+    // (the issue-0743 class). A cosmetic rename would silently retract two
+    // recorded passes.
     co("ros2_action_e2e", "a_stock_ros2_client_drives_the_nano_ros_action_server",
        "native-action-rust-cyclone-r2n"),
     co("ros2_action_e2e", "the_nano_ros_action_client_drives_a_stock_ros2_server",
        "native-action-rust-cyclone-n2r"),
+    co("ros2_action_e2e", "a_stock_ros2_client_drives_the_nano_ros_action_server_over_zenoh",
+       "native-action-rust-zenoh-r2n"),
+    co("ros2_action_e2e", "the_nano_ros_action_client_drives_a_stock_ros2_server_over_zenoh",
+       "native-action-rust-zenoh-n2r"),
 
     // ── xrce_ros2_interop — pubsub, service, and three cases with no cell ─
     co("xrce_ros2_interop", "test_xrce_to_ros2_pubsub",      "native-pubsub-rust-xrce-n2r"),
