@@ -25,3 +25,11 @@ locator        = "tcp/10.0.2.2:7447"
 # `launch/` prefix: an image's value is resolved against that directory.
 [image.qemu-mps2-an385]
 board = "qemu-mps2-an385"
+
+# The FreeRTOS firmware `src/firmware` builds. It was that entry's
+# `[package.metadata.nros.entry] deploy = "freertos"` until phase-445 W5
+# retired the key; `nros sync` reads this image (`leaf_system::for_entry`) to
+# project the FreeRTOS board's `cargo_config` into the firmware leaf.
+[image.freertos]
+board = "freertos"
+entry = "firmware"

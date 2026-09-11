@@ -375,6 +375,27 @@ function(nano_ros_workspace)
 
     _nros_import_once("${_nros_root}")
 
+    # phase-445 W5 — the rclcpp compat surface, at WORKSPACE scope, before any
+    # SUBDIRS package is added.
+    #
+    # A plain `find_package(nano_ros)` in a package includes this module, which
+    # is how a nano-ros package (the features workspace's `find_package(nano_ros)`
+    # then `find_package(custom_msgs)`) resolves a workspace interface package.
+    # A STOCK ROS 2 package never calls it: `local-msg-package/src/consumer` and
+    # `workspace-shadowing/src/consumer` go straight to `find_package(rclcpp)` /
+    # `find_package(<msg pkg>)`, and relied on their hand-written umbrella to
+    # have included this first — the umbrella RFC-0098 D9 deleted. Without it,
+    # `find_package(local_msgs)` finds no config and the workspace's shadowing
+    # `std_msgs` loses to the ambient one, because the workspace Find-stubs
+    # (`_nros_emit_workspace_find_stubs`, run at include time against
+    # `NROS_INTERFACE_SEARCH_PATH`) are never emitted.
+    #
+    # AFTER the import (the module asserts nros-cpp is loaded) and inside this
+    # function, so the SUBDIRS added below inherit its `CMAKE_MODULE_PATH`. Its
+    # include guard is inherited too, so a package's own `find_package(nano_ros)`
+    # re-include is the no-op it already was on a second include.
+    include("${_nros_root}/cmake/compat/NrosRclcppCompat.cmake")
+
     # Optional: workspace metadata for `nros plan` consumption. SYSTEM
     # arg threads through; if absent we skip — workspaces without a
     # Bringup pkg are valid (single-Entry self-bringup mode).

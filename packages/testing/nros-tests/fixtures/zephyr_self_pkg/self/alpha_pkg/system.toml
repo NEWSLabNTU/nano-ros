@@ -1,0 +1,15 @@
+# What this self-pkg deploys to (RFC-0098 D3/D5) — formerly this package's
+# `[package.metadata.nros.{component,deploy.zephyr}]` tables (phase-445 W5).
+
+[system]
+name = "alpha_pkg"
+rmw = "zenoh"
+domain_id = 0
+
+[[component]]
+pkg = "alpha_pkg"
+class = "alpha_pkg::Node"
+name = "selfpkg"
+
+[image.zephyr]
+board = "native_sim/native/64"

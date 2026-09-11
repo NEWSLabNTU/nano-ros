@@ -329,11 +329,11 @@ dir = "examples/workspaces/rust"
 bringup = "src/demo_bringup"
 # phase-445 W4/W5 — built through `nros build demo_bringup:esp32` like every
 # other cargo workspace row: there is no workspace root to `cargo build -p`
-# into any more (RFC-0098 D9). The entry is still the HAND-WRITTEN
-# `src/esp32_entry` (the image's `<image>_entry` name, so `nros build` uses it
-# rather than generating one): its generated replacement needs `esp-hal` as a
-# board dependency and a home for the locator, which W2/W3 give it. Its triple,
-# link flags and entity facts now come from `build/esp32-zenoh/esp32_entry/
+# into any more (RFC-0098 D9). The entry is GENERATED
+# (`build/esp32-zenoh/esp32_entry/`): the hand-written `src/esp32_entry` it
+# replaced is deleted, `esp-hal` comes from the esp32 descriptor's
+# `[board.entry] crate_root_deps`, and the locator from `[image.esp32]`. Its
+# triple, link flags and entity facts come from `build/esp32-zenoh/esp32_entry/
 # nros-cargo.toml`, not from `target` below (kept as the artifact locator's
 # `<triple>/` component) nor from a per-invocation environment.
 image = "esp32"
@@ -3461,35 +3461,44 @@ builder = "cmake-configure"
 dir = "examples/templates/topic-state-monitor-port"
 output = "topic_state_monitor"
 
+# phase-445 W5 (RFC-0098 D9, issue 1108) — the five WORKSPACE templates below
+# have no root build file any more, so `cmake-configure` builds them the way a
+# user does: a staged copy, `nros sync` + `nros build` (see
+# `build_cmake_fixture`). The three with a bringup build their one
+# `[image.native]` through the generated root (`build/posix-native/cmake`,
+# its generated entry `native_entry` in place of the deleted `src/robot_entry`,
+# node packages under `pkg/<name>/`); the two with none build package by
+# package (`build/<pkg>/cmake`, the package under `pkg/<pkg>/`). The ids keep
+# their names so the tests and stamps that name them stay put.
 [[compile_check_fixture]]
 id = "cpp_robot_entry"
 builder = "cmake-configure"
 dir = "examples/templates/multi-node-workspace-cpp"
-output = "src/robot_entry/robot_entry"
+output = "build/posix-native/cmake/native_entry"
 
 [[compile_check_fixture]]
 id = "c_mixed_workspace"
 builder = "cmake-configure"
 dir = "examples/templates/c-and-cpp-mixed-workspace"
-output = "nros-metadata.json"
+output = "build/posix-native/cmake/native_entry"
 
 [[compile_check_fixture]]
 id = "pure_c_workspace"
 builder = "cmake-configure"
 dir = "examples/templates/pure-c-workspace"
-output = "nros-metadata.json"
+output = "build/posix-native/cmake/native_entry"
 
 [[compile_check_fixture]]
 id = "shadowing"
 builder = "cmake-configure"
 dir = "examples/templates/workspace-shadowing"
-output = "src/consumer/consumer"
+output = "build/consumer/cmake/pkg/consumer/consumer"
 
 [[compile_check_fixture]]
 id = "local_msg_pkg"
 builder = "cmake-configure"
 dir = "examples/templates/local-msg-package"
-output = "nros-metadata.json"
+output = "build/consumer/cmake/pkg/consumer/consumer"
 
 [[compile_check_fixture]]
 id = "cmake_add_subdir"
@@ -3503,14 +3512,15 @@ output = "smoke"
 # that particular workspace, and a compile-check must configure from SOURCE, so
 # pointing it at build output would be wrong twice over.
 #
-# The template keeps a hand-written root by design (it is what `nros new`
-# scaffolds and what a user copies), so this holds after every example workspace
-# has migrated.
+# phase-445 W5 overturned "the template keeps a hand-written root by design":
+# the template lost its root too (RFC-0098 D9), and the configure `nros build`
+# runs for its image writes `nros-metadata.json` beside the generated root's
+# build tree.
 [[compile_check_fixture]]
 id = "metadata_cpp"
 builder = "cmake-configure"
 dir = "examples/templates/multi-node-workspace-cpp"
-output = "nros-metadata.json"
+output = "build/posix-native/cmake/nros-metadata.json"
 
 [[compile_check_fixture]]
 id = "node_register_cpp"

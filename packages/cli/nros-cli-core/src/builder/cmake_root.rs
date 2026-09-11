@@ -216,9 +216,18 @@ pub fn render(
          include(\"${NROS_WS_PREAMBLE}\")\nendif()\n\n",
     );
 
+    // A root for ONE package of a bringup-less workspace (`nros build`'s package
+    // mode, phase-445 W5) names no system; it takes the package's name.
+    let project = if spec.system.is_empty() {
+        subdirs
+            .first()
+            .map_or_else(|| "workspace".to_string(), |(_, n)| n.clone())
+    } else {
+        spec.system.clone()
+    };
     out.push_str(&format!(
         "project({}_nros_workspace LANGUAGES C CXX)\n\n",
-        sanitize(&spec.system)
+        sanitize(&project)
     ));
     // BOARD and PLATFORM before `find_package(nano_ros)`, not after.
     //
@@ -325,7 +334,12 @@ pub fn render(
     out.push_str(&format!("    WORKSPACE_ROOT \"{ws_rel}\"\n"));
     out.push_str(&format!("    BACKEND  {}\n", spec.rmw));
     out.push_str(&format!("    PLATFORM \"{}\"\n", cmake_platform));
-    out.push_str(&format!("    SYSTEM   {}\n", spec.system));
+    // No SYSTEM for a bringup-less workspace: `nano_ros_workspace` skips the
+    // capability axes and the metadata step without one ("workspaces without a
+    // Bringup pkg are valid"), which is exactly that case.
+    if !spec.system.is_empty() {
+        out.push_str(&format!("    SYSTEM   {}\n", spec.system));
+    }
     out.push_str("    ORDER_FROM_DEPENDS\n");
     out.push_str("    SUBDIRS\n");
     for (rel, name) in &subdirs {

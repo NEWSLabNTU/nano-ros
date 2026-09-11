@@ -23,6 +23,14 @@ class = "telem_pkg::Telem"
 name = "telem_node"
 group_tiers = { telem = "low" }
 
+# The image `src/demo_entry` boots — claimed by its `<id>_entry` name
+# (`leaf_system::for_entry`). It was the entry's `[package.metadata.nros.entry]
+# deploy = "native"` until phase-445 W5 retired the key. ABOVE the tier tables
+# on purpose: the `orch_tiers_single` staging keeps only what precedes the first
+# `[tiers.` line.
+[image.demo]
+board = "native"
+
 # Two priority tiers (RFC-0015 §4.2). Only the `posix` sub-table is needed for
 # the native deploy; priorities are raw POSIX (advisory on native).
 [tiers.high]

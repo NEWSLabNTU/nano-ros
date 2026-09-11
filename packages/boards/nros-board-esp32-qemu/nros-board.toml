@@ -38,9 +38,16 @@ build-std = ["core", "alloc"]
 [board.entry]
 signature = "#[esp_hal::main]\nfn main() -> !"
 crate_root_extra = "use esp_backtrace as _;\nnros_board_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();"
-# `esp_backtrace` is the panic handler; `nros_board_esp32_qemu` is the board
-# crate the emitter already depends on, so only the former is listed.
-crate_root_deps = ["esp-backtrace = { version = \"~0.18.0\", features = [\"esp32c3\", \"panic-handler\", \"println\"] }"]
+# `esp_backtrace` is the panic handler; `esp_hal` is the crate `signature`'s
+# `#[esp_hal::main]` names (esp-riscv-rt's `_start` needs that registration —
+# a bare `fn main` does not boot); `nros_board_esp32_qemu` is the board crate
+# the emitter already depends on, so it is not listed. phase-445 W5 added
+# `esp-hal`: the hand-written `workspaces/rust` esp32 entry carried it by hand,
+# and its generated replacement has no other way to get it.
+crate_root_deps = [
+    "esp-hal = { version = \"~1.0.0\", features = [\"esp32c3\", \"unstable\"] }",
+    "esp-backtrace = { version = \"~0.18.0\", features = [\"esp32c3\", \"panic-handler\", \"println\"] }",
+]
 closure_extra = "\n                .clock_us(nros_board_esp32_qemu::nros_platform_esp32_qemu::clock::clock_us)"
 
 # RFC-0042 D2 / phase-241 wave C — declared capabilities (SSoT).

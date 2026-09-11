@@ -17,19 +17,23 @@ that preceded it are REFUSED:
       before a configure is needed to find out.
 
 WHY A GATE. The conversion was mechanical over 133 leaves, and both old
-spellings are what every copied-out example and every older doc shows. A leaf
-re-growing a `[package.metadata.nros.deploy.*]` table still BUILDS — the
-deprecated reader (`leaf_system::from_manifest`) answers for it with a warning
-nobody reads — so nothing else would notice the drift back.
+spellings are what every copied-out example and every older doc shows. Since
+phase-445 W5 deleted the manifest fallback, a leaf re-growing a
+`[package.metadata.nros.deploy.*]` table no longer builds (the reader refuses
+it) — but only once something compiles it, and this is the push-time answer.
 
-WHAT IS NOT A SINGLE-PACKAGE LEAF (and so not R1's business yet). Workspace
-members and entries — `examples/workspaces/**`, `examples/templates/**`, and
-the workspace fixtures under `packages/testing/nros-tests/fixtures/**` and
-`packages/cli/**/tests/fixtures/**` — still carry the retiring keys, and the
-deprecated reader stays for them until phase-445 W4/W5 moves workspaces under
-`build/`. They are listed below as WORKSPACE_ROOTS and REPORTED as skipped,
-never silently. R2 has no such carve-out: no package.xml anywhere may carry
-the tuple, because the reader that understood it is gone.
+WORKSPACE MANIFESTS (phase-445 W5). Workspace members and entries —
+`examples/workspaces/**`, `examples/templates/**`, the workspace fixtures under
+`packages/testing/nros-tests/fixtures/**` and `packages/cli/**` — are no longer
+skipped. Their DEPLOYMENT keys (`[package.metadata.nros.entry] deploy`, any
+`[package.metadata.nros.deploy.*]`) are refused like a leaf's: a workspace
+entry's board is the bringup image that claims it (`leaf_system::for_entry`).
+What stays allowed there is `[package.metadata.nros.node]` / `component` on a
+workspace NODE package: that is the metadata pipeline's declaration of a class
+(`nros sync`), not a deployment, and the bringup's `[[component]]` rows do not
+yet carry everything it states. Those are COUNTED and reported, never silently.
+R2 has no carve-out: no package.xml anywhere may carry the tuple, because the
+reader that understood it is gone.
 
 Discovery is the git index (`scripts/lib/tracked.py`, issue 0721), with the
 inherited repository environment cleared first (issue 0986) — this runs in the
@@ -55,8 +59,8 @@ from tracked import tracked  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Workspace-shaped trees: members and entries whose deployment moves with the
-# workspace restructuring (phase-445 W4/W5), not with this wave.
+# Workspace-shaped trees: members and entries. Their deployment keys are
+# refused (phase-445 W5); their node / component declarations are counted.
 WORKSPACE_ROOTS = (
     "examples/workspaces/",
     "examples/templates/",
@@ -72,23 +76,42 @@ TUPLE = re.compile(r"<nano_ros[ \t\r\n][^>]*>")
 COMMENT = re.compile(r"<!--([^-]|-[^-])*-->")
 
 
-def manifest_problems(text):
-    """Retired deployment tables in one Cargo.toml's text, by name."""
+def _nros(text):
     try:
         doc = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
-        return [f"unparseable ({e})"]
-    nros = doc.get("package", {}).get("metadata", {}).get("nros", {})
+        return None, [f"unparseable ({e})"]
+    return doc.get("package", {}).get("metadata", {}).get("nros", {}), []
+
+
+def deployment_problems(text):
+    """Retired DEPLOYMENT keys in one Cargo.toml's text, by name — refused in
+    every manifest, leaf or workspace."""
+    nros, bad = _nros(text)
+    if nros is None:
+        return bad
     out = []
     for key in sorted(nros.get("deploy", {})):
         out.append(f"[package.metadata.nros.deploy.{key}]")
-    for key in ("node", "component"):
-        if key in nros:
-            out.append(f"[package.metadata.nros.{key}]")
     extra = sorted(set(nros.get("entry", {})) - ENTRY_KEEP)
     if extra:
         out.append("[package.metadata.nros.entry] " + ", ".join(extra))
     return out
+
+
+def declaration_problems(text):
+    """`[package.metadata.nros.{node,component}]` — retired on a single-package
+    leaf (its `system.toml` `[[component]]` states the node), the metadata
+    pipeline's declaration on a workspace node package."""
+    nros, _ = _nros(text)
+    if nros is None:
+        return []
+    return [f"[package.metadata.nros.{k}]" for k in ("node", "component") if k in nros]
+
+
+def manifest_problems(text):
+    """Every retired table a single-package LEAF must not carry, by name."""
+    return deployment_problems(text) + declaration_problems(text)
 
 
 def package_xml_problems(text):
@@ -96,14 +119,20 @@ def package_xml_problems(text):
 
 
 def scan(root, repo=None):
-    """(problems, skipped_workspace_manifests, leaves_checked, xml_checked)."""
+    """(problems, workspace_node_declarations, leaves_checked, xml_checked)."""
     root = Path(root)
-    problems, skipped, leaves, xmls = [], 0, 0, 0
+    problems, declared, leaves, xmls = [], 0, 0, 0
     for p in tracked(root / "examples", root / "packages", name="Cargo.toml", repo=repo):
         rel = p.relative_to(root).as_posix()
         if any(rel.startswith(w) for w in WORKSPACE_ROOTS):
-            if manifest_problems(p.read_text(encoding="utf8")):
-                skipped += 1
+            text = p.read_text(encoding="utf8")
+            for why in deployment_problems(text):
+                problems.append(
+                    f"{rel}: {why} — a workspace entry's board is the bringup image "
+                    f"that claims it (`[image.<id>] entry = \"<pkg>\"`)"
+                )
+            if declaration_problems(text):
+                declared += 1
             continue
         # A leaf is a package with a package.xml beside its manifest — the
         # shape `nros sync`'s single-package mode keys on. Board and driver
@@ -121,7 +150,7 @@ def scan(root, repo=None):
                 f"{rel}: {tag} — the tuple is retired; state the deployment in "
                 f"{Path(rel).parent}/system.toml (`[image.<id>] board`, `[system] rmw`)"
             )
-    return problems, skipped, leaves, xmls
+    return problems, declared, leaves, xmls
 
 
 def self_test():
@@ -155,13 +184,25 @@ def self_test():
         ws.mkdir(parents=True)
         (ws / "package.xml").write_text("<package/>\n")
         (ws / "Cargo.toml").write_text(bad)
-        problems, skipped, leaves, xmls = scan(t)
-        assert leaves == 1 and skipped == 1 and xmls == 3, (leaves, skipped, xmls)
+        node = t / "examples" / "workspaces" / "w" / "src" / "talker_pkg"
+        node.mkdir(parents=True)
+        (node / "package.xml").write_text("<package/>\n")
+        (node / "Cargo.toml").write_text(
+            '[package]\nname = "t"\n[package.metadata.nros.node]\nclass = "t::T"\n'
+        )
+        problems, declared, leaves, xmls = scan(t)
+        assert leaves == 1 and declared == 2 and xmls == 4, (leaves, declared, xmls)
         assert sum("rust/talker/Cargo.toml" in p for p in problems) == 3, problems
         assert sum("c/talker/package.xml" in p for p in problems) == 1, problems
+        # phase-445 W5 — a WORKSPACE entry's deployment keys are refused too
+        # (two: the entry `deploy` and the deploy table); its node table and the
+        # node package's are counted, not refused.
+        assert sum("w/src/entry/Cargo.toml" in p for p in problems) == 2, problems
+        assert not any("talker_pkg" in p for p in problems), problems
         # The negative control: fixed, the same tree is clean.
         (leaf / "Cargo.toml").write_text(ok_manifest)
         (cxx / "package.xml").write_text("<package><export/></package>\n")
+        (ws / "Cargo.toml").write_text(ok_manifest)
         problems, _, _, _ = scan(t)
         assert problems == [], problems
     sys.stdout.write("check-leaf-deployment-spelling self-test: OK\n")
@@ -172,7 +213,7 @@ def main():
     self_test()
     if "--self-test" in sys.argv:
         return 0
-    problems, skipped, leaves, xmls = scan(ROOT)
+    problems, declared, leaves, xmls = scan(ROOT)
     if leaves == 0 or xmls == 0:
         sys.stderr.write(
             "check-leaf-deployment-spelling: found no leaf manifest / package.xml —\n"
@@ -188,10 +229,11 @@ def main():
             sys.stderr.write("  - %s\n" % p)
         return 1
     sys.stdout.write(
-        "check-leaf-deployment-spelling: OK — %d single-package leaf manifest(s) and "
-        "%d package.xml carry no retired deployment spelling; %d workspace-shaped "
-        "manifest(s) still on it SKIPPED (phase-445 W4/W5 owns them).\n"
-        % (leaves, xmls, skipped)
+        "check-leaf-deployment-spelling: OK — %d single-package leaf manifest(s), every "
+        "workspace manifest and %d package.xml carry no retired deployment spelling; "
+        "%d workspace node package(s) declare their class in the manifest (the metadata "
+        "pipeline's `[package.metadata.nros.{node,component}]`, counted, not refused).\n"
+        % (leaves, xmls, declared)
     )
     return 0
 

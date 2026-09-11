@@ -21,17 +21,30 @@
 //! still refused. A second typed struct here would be a second schema that can
 //! drift — exactly what this crate exists to prevent.
 //!
-//! # The retiring manifest keys — ONE fallback, deletable in one commit
+//! # An ENTRY inside a workspace — the bringup's image states it
+//!
+//! A workspace entry package (a hand-written Zephyr west application, a test
+//! fixture's entry, and the entry `nros build` GENERATES under
+//! `build/<coord>/<id>_entry/`) is not its own image: the bringup's
+//! `[image.<id>]` is (RFC-0065 D6, RFC-0098 D5). [`for_entry`] finds the image
+//! that claims an entry — `entry = "<pkg>"`, else the `<id>_entry` name the
+//! builder gives a generated one ([`entry_package_name`]) — and answers from it,
+//! through the same overlay as a leaf's `system.toml`. A `system.toml` beside a
+//! workspace entry would make `nros build` read it as a second bringup, so the
+//! bringup is the only place such an entry's deployment can live.
+//!
+//! # The retired manifest keys are REFUSED
 //!
 //! Before RFC-0098 a Rust leaf spelled all of this in `Cargo.toml`:
 //! `[package.metadata.nros.entry] deploy`, `[package.metadata.nros.deploy.<b>]`,
 //! `[package.metadata.nros.node]` and `[package.metadata.nros.component]`.
-//! While the remaining leaves are converted, [`read`] still accepts those keys
-//! when no `system.toml` exists, and marks the answer [`Origin::Manifest`] so
-//! the CLI can print [`LeafSystem::deprecation`]. The whole fallback is
-//! [`from_manifest`] plus its one call in [`read`]; deleting both retires the
-//! old spelling everywhere at once. A leaf carrying BOTH spellings is refused,
-//! never merged: two sources for one fact is how they disagree.
+//! phase-445 W3/W3b read them through a deprecated fallback while the leaves
+//! were converted; W5 converted the last workspace entries and deleted it. The
+//! deployment keys are now an ERROR wherever they appear ([`read`]) — naming
+//! the file to write — because a key nothing reads is a fact that silently
+//! stopped being true. `[package.metadata.nros.node]` / `component` on a
+//! workspace NODE package are the metadata pipeline's (`nros sync`), not a
+//! deployment, and are not this reader's business.
 
 use std::path::{Path, PathBuf};
 
@@ -43,23 +56,21 @@ pub const SYSTEM_TOML: &str = "system.toml";
 pub enum Origin {
     /// `<leaf>/system.toml` — the RFC-0098 home.
     SystemToml(PathBuf),
-    /// `<leaf>/Cargo.toml`'s retiring `[package.metadata.nros.*]` keys.
-    Manifest(PathBuf),
+    /// A workspace bringup's `system.toml`, whose `[image.<id>]` claims the
+    /// entry ([`for_entry`]).
+    Bringup(PathBuf),
 }
 
-/// How the board was named, which matters to exactly one consumer: the board
-/// `cargo_config` projection has only ever followed an explicit board choice
-/// (`[image] board`, `[package.metadata.nros.entry] deploy`), never a lone
-/// `[package.metadata.nros.deploy.<key>]` table.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BoardFrom {
-    /// `[image.<id>] board` in `system.toml`.
-    Image,
-    /// `[package.metadata.nros.entry] deploy` (retiring).
-    EntryDeploy,
-    /// The key of the manifest's only `[package.metadata.nros.deploy.<key>]`
-    /// table (retiring; the Zephyr leaves' spelling).
-    DeployTable,
+/// The package name `nros build` gives the entry it generates for
+/// `[image.<id>]` — `native_robot1` → `native_robot1_entry`.
+///
+/// Lives here, not in the CLI's builder, because [`for_entry`] (and so
+/// `nros::main!`, which cannot depend on the CLI) must map a generated entry
+/// back to its image by the SAME rule the builder named it by. Two copies of
+/// this rule would be a generated entry that cannot find its own image.
+#[must_use]
+pub fn entry_package_name(image_id: &str) -> String {
+    format!("{}_entry", image_id.replace(['-', '.', '/'], "_"))
 }
 
 /// Deployment identity (RFC-0098 D5): what the image dials and what it is.
@@ -76,8 +87,8 @@ pub struct Network {
 /// One declared node (`[[component]]`, RFC-0098 D8 for `entities`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LeafComponent {
-    /// `package.xml` name of the package providing the class. `None` only in
-    /// the manifest fallback, where the table has no such key.
+    /// `package.xml` name of the package providing the class. `None` when the
+    /// row leaves it out (the leaf's own package, then).
     pub pkg: Option<String>,
     pub class: Option<String>,
     pub name: Option<String>,
@@ -97,12 +108,10 @@ pub struct LeafComponent {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeafSystem {
     pub origin: Origin,
-    /// The `[image.<id>]` this answer describes. `None` from the fallback.
+    /// The `[image.<id>]` this answer describes.
     pub image: Option<String>,
-    /// The board the image is built for. `None` only from the fallback, for a
-    /// manifest that declares a node but no deploy.
+    /// The board the image is built for, as the image names it.
     pub board: Option<String>,
-    pub board_from: Option<BoardFrom>,
     /// RMW: `[image] rmw` > `[image_defaults] rmw` > `[system] rmw`.
     pub rmw: Option<String>,
     pub network: Network,
@@ -110,33 +119,11 @@ pub struct LeafSystem {
 }
 
 impl LeafSystem {
-    /// Did this come from the retiring manifest keys?
-    pub fn is_fallback(&self) -> bool {
-        matches!(self.origin, Origin::Manifest(_))
-    }
-
     /// The file the answer came from.
     pub fn origin_path(&self) -> &Path {
         match &self.origin {
-            Origin::SystemToml(p) | Origin::Manifest(p) => p,
+            Origin::SystemToml(p) | Origin::Bringup(p) => p,
         }
-    }
-
-    /// One line telling the user which file to write, when the answer came from
-    /// the retiring keys. `None` for a `system.toml` answer.
-    pub fn deprecation(&self) -> Option<String> {
-        let Origin::Manifest(manifest) = &self.origin else {
-            return None;
-        };
-        let dir = manifest.parent().unwrap_or(Path::new("."));
-        Some(format!(
-            "warning: {}: `[package.metadata.nros.{{entry,deploy,node,component}}]` is deprecated \
-             (RFC-0098 D3/D5) — write {} (`[image.<id>] board = \"{}\"`, `[system] rmw/domain_id`, \
-             `[[component]]`) and delete those tables",
-            manifest.display(),
-            dir.join(SYSTEM_TOML).display(),
-            self.board.as_deref().unwrap_or("<board>"),
-        ))
     }
 
     /// Every component's declared entities, concatenated. `None` when no
@@ -162,20 +149,89 @@ pub fn is_package_dir(dir: &Path) -> bool {
 
 /// The deployment `dir` declares, or `None` when it declares none.
 ///
-/// * `<dir>/system.toml` beside a package manifest → read from it; a leftover
-///   retiring key in `Cargo.toml` is an ERROR (both-present refusal).
-/// * otherwise → the retiring manifest keys ([`from_manifest`]), if any.
+/// * `<dir>/system.toml` beside a package manifest → read from it.
+/// * otherwise `None` — a workspace entry's deployment is its bringup's image
+///   ([`for_entry`]).
+///
+/// Either way a retired deployment key left in `Cargo.toml` is an ERROR naming
+/// where the fact lives now: with the fallback gone nothing reads it, and a key
+/// nothing reads is a board choice that silently stopped being made.
 ///
 /// A `system.toml` in a directory with no `Cargo.toml`/`CMakeLists.txt` is a
 /// workspace BRINGUP, not a leaf, and yields `None` here: its images are
 /// chosen by the workspace builder, not by this reader.
 pub fn read(dir: &Path) -> Result<Option<LeafSystem>, String> {
     let system = dir.join(SYSTEM_TOML);
+    refuse_retired_manifest_keys(dir)?;
     if system.is_file() && is_package_dir(dir) {
-        refuse_manifest_duplicate(dir, &system)?;
         return from_system_toml(&system).map(Some);
     }
-    from_manifest(dir)
+    Ok(None)
+}
+
+/// The deployment of the ENTRY package at `entry_dir` (package name
+/// `entry_pkg`), as stated by the bringup at `bringup_dir`: the `[image.<id>]`
+/// that claims it.
+///
+/// An image claims an entry by naming it — `entry = "<pkg>"` — or, when it
+/// names none, by being the image the builder would GENERATE that entry for
+/// ([`entry_package_name`]`(id) == entry_pkg`). The directory name is accepted
+/// beside the package name for both, because `entry =` has always accepted
+/// either (`west_application_dir`).
+///
+/// `Ok(None)` when no image claims it. SEVERAL claiming it is an error, not a
+/// first match: which image's locator an entry bakes is not a coin toss.
+///
+/// A leaf `system.toml` beside the entry answers first ([`read`]) — an entry
+/// that states its own deployment is a single-package leaf, whatever encloses
+/// it.
+pub fn for_entry(
+    entry_dir: &Path,
+    entry_pkg: &str,
+    bringup_dir: &Path,
+) -> Result<Option<LeafSystem>, String> {
+    if let Some(own) = read(entry_dir)? {
+        return Ok(Some(own));
+    }
+    let path = bringup_dir.join(SYSTEM_TOML);
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let doc = parse_file(&path)?;
+    let dir_name = entry_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
+    let names = |s: &str| s == entry_pkg || (!dir_name.is_empty() && s == dir_name);
+    let images = as_table(doc.get("image")).cloned().unwrap_or_default();
+    let mut explicit = Vec::new();
+    let mut by_name = Vec::new();
+    for (id, block) in &images {
+        match str_key(block.as_table(), "entry") {
+            Some(e) if names(&e) => explicit.push(id.clone()),
+            // An image that names a DIFFERENT entry is that entry's, even when
+            // its id happens to derive this one's name.
+            Some(_) => {}
+            None if names(&entry_package_name(id)) => by_name.push(id.clone()),
+            None => {}
+        }
+    }
+    let claims = if explicit.is_empty() {
+        by_name
+    } else {
+        explicit
+    };
+    match claims.as_slice() {
+        [] => Ok(None),
+        [one] => image_system(&doc, &path, one, Origin::Bringup(path.clone())).map(Some),
+        many => Err(format!(
+            "{}: {} images claim the entry `{entry_pkg}` ({}) — an entry is ONE image's \
+             program; name it from exactly one with `entry = \"{entry_pkg}\"`",
+            path.display(),
+            many.len(),
+            many.join(", ")
+        )),
+    }
 }
 
 /// The board `dir` deploys to, from [`read`].
@@ -243,7 +299,6 @@ fn parse_file(path: &Path) -> Result<toml::Table, String> {
 fn from_system_toml(path: &Path) -> Result<LeafSystem, String> {
     let doc = parse_file(path)?;
     let system = as_table(doc.get("system"));
-    let defaults = as_table(doc.get("image_defaults"));
     let images = as_table(doc.get("image")).cloned().unwrap_or_default();
 
     let ids: Vec<&String> = images.keys().collect();
@@ -287,7 +342,22 @@ fn from_system_toml(path: &Path) -> Result<LeafSystem, String> {
             ));
         }
     };
-    let image = images.get(&id).and_then(|v| v.as_table());
+    image_system(&doc, path, &id, Origin::SystemToml(path.to_path_buf()))
+}
+
+/// `[image.<id>]` of the `system.toml` document `doc` (read from `path`),
+/// resolved: the image over `[image_defaults]` over `[system]`. Shared by a
+/// leaf's own file ([`from_system_toml`]) and a bringup's image for one of its
+/// entries ([`for_entry`]) — one overlay, whichever file states it.
+fn image_system(
+    doc: &toml::Table,
+    path: &Path,
+    id: &str,
+    origin: Origin,
+) -> Result<LeafSystem, String> {
+    let system = as_table(doc.get("system"));
+    let defaults = as_table(doc.get("image_defaults"));
+    let image = as_table(doc.get("image")).and_then(|t| as_table(t.get(id)));
     // `[image.<id>]` over `[image_defaults]` — the one overlay RFC-0065 D5.1
     // defines (`ImageBlock::with_base`), applied key by key.
     let pick = |key: &str| str_key(image, key).or_else(|| str_key(defaults, key));
@@ -339,18 +409,24 @@ fn from_system_toml(path: &Path) -> Result<LeafSystem, String> {
     }
 
     Ok(LeafSystem {
-        origin: Origin::SystemToml(path.to_path_buf()),
-        image: Some(id),
+        origin,
+        image: Some(id.to_string()),
         board: Some(board),
-        board_from: Some(BoardFrom::Image),
         rmw,
         network,
         components,
     })
 }
 
-/// The retiring tables a manifest still carries, by name.
-fn retiring_manifest_keys(nros: &toml::Table) -> Vec<String> {
+/// The retired DEPLOYMENT keys a manifest table still carries, by name.
+///
+/// `[package.metadata.nros.node]` / `component` are not among them: on a
+/// single-package leaf they retired with W3b (and `check-leaf-deployment-
+/// spelling` refuses them there), but on a workspace node package they are the
+/// metadata pipeline's declaration of a class, not a deployment, and the
+/// deployment reader has no business refusing them.
+#[must_use]
+pub fn retired_deployment_keys(nros: &toml::Table) -> Vec<String> {
     let mut out = Vec::new();
     if as_table(nros.get("entry")).is_some_and(|e| e.contains_key("deploy")) {
         out.push("[package.metadata.nros.entry] deploy".to_string());
@@ -360,105 +436,40 @@ fn retiring_manifest_keys(nros: &toml::Table) -> Vec<String> {
             out.push(format!("[package.metadata.nros.deploy.{k}]"));
         }
     }
-    for t in ["node", "component"] {
-        if nros.contains_key(t) {
-            out.push(format!("[package.metadata.nros.{t}]"));
-        }
-    }
     out
 }
 
-fn manifest_nros(dir: &Path) -> Result<Option<(PathBuf, toml::Table)>, String> {
+/// Refuse a manifest still carrying a retired deployment key, naming each one
+/// and where the fact lives now. Nothing reads those keys any more
+/// (phase-445 W5 deleted the fallback), so leaving one is worse than an error:
+/// it READS like the board choice and is not.
+fn refuse_retired_manifest_keys(dir: &Path) -> Result<(), String> {
     let manifest = dir.join("Cargo.toml");
     if !manifest.is_file() {
-        return Ok(None);
+        return Ok(());
     }
     let doc = parse_file(&manifest)?;
-    let nros = doc
+    let Some(nros) = doc
         .get("package")
         .and_then(|p| p.get("metadata"))
         .and_then(|m| m.get("nros"))
         .and_then(|n| n.as_table())
-        .cloned();
-    Ok(nros.map(|n| (manifest, n)))
-}
-
-/// Both spellings present: refuse, naming both files and each leftover key.
-fn refuse_manifest_duplicate(dir: &Path, system: &Path) -> Result<(), String> {
-    let Some((manifest, nros)) = manifest_nros(dir)? else {
+    else {
         return Ok(());
     };
-    let left = retiring_manifest_keys(&nros);
+    let left = retired_deployment_keys(nros);
     if left.is_empty() {
         return Ok(());
     }
     Err(format!(
-        "{} states this leaf's deployment, and {} still carries {} — one source per fact \
-         (RFC-0098 D5). Delete those tables from the manifest.",
-        system.display(),
+        "{} carries {} — retired (RFC-0098 D3/D5, phase-445 W5): nothing reads it. State the \
+         deployment as `[image.<id>] board = \"<board>\"` (+ `rmw`, `domain_id`, `locator`, …) \
+         in {} for a single-package example, or in the workspace bringup's `system.toml` image \
+         that builds this entry (`entry = \"<pkg>\"`), and delete the table.",
         manifest.display(),
-        left.join(", ")
+        left.join(", "),
+        dir.join(SYSTEM_TOML).display(),
     ))
-}
-
-/// DEPRECATED FALLBACK (phase-445 W3) — the retiring `Cargo.toml` keys.
-///
-/// This function and its one call in [`read`] are the whole of the old
-/// spelling's support. Delete both once no leaf under `examples/` carries
-/// `[package.metadata.nros.{entry,deploy,node,component}]`.
-pub fn from_manifest(dir: &Path) -> Result<Option<LeafSystem>, String> {
-    let Some((manifest, nros)) = manifest_nros(dir)? else {
-        return Ok(None);
-    };
-    if retiring_manifest_keys(&nros).is_empty() {
-        return Ok(None);
-    }
-    let deploys = as_table(nros.get("deploy"));
-    let (board, board_from) = match str_key(as_table(nros.get("entry")), "deploy") {
-        Some(b) => (Some(b), Some(BoardFrom::EntryDeploy)),
-        None => match deploys {
-            // Several tables and nothing says which this build is: no guess.
-            Some(t) if t.len() == 1 => (t.keys().next().cloned(), Some(BoardFrom::DeployTable)),
-            _ => (None, None),
-        },
-    };
-    let block = board
-        .as_deref()
-        .and_then(|b| as_table(deploys.and_then(|d| d.get(b))));
-    let network = Network {
-        domain_id: u32_key(block, "domain_id", &manifest)?,
-        locator: str_key(block, "locator"),
-        ip: str_key(block, "ip"),
-        gateway: str_key(block, "gateway"),
-        netmask: str_key(block, "netmask"),
-        transport: str_key(block, "transport"),
-    };
-    let node = as_table(nros.get("node"));
-    let component = as_table(nros.get("component"));
-    let mut components = Vec::new();
-    if node.is_some() || component.is_some() {
-        let decl = node.or(component);
-        let entities = match component.or(node) {
-            Some(t) => entities_key(t, &manifest)?,
-            None => None,
-        };
-        components.push(LeafComponent {
-            pkg: None,
-            class: str_key(decl, "class"),
-            name: str_key(decl, "name"),
-            entities,
-            dispatch: str_key(node, "dispatch"),
-        });
-    }
-    Ok(Some(LeafSystem {
-        origin: Origin::Manifest(manifest),
-        image: None,
-        board,
-        board_from,
-        rmw: str_key(block, "rmw"),
-        network,
-        components,
-    }))
 }
 
 #[cfg(test)]
@@ -528,11 +539,9 @@ locator = "tcp/10.0.2.2:9800"
     fn a_single_package_leaf_resolves_from_its_system_toml() {
         let d = leaf(&[("Cargo.toml", CARGO), ("system.toml", SYSTEM)]);
         let l = read(d.path()).unwrap().expect("declared");
-        assert!(!l.is_fallback());
-        assert!(l.deprecation().is_none());
+        assert!(matches!(l.origin, Origin::SystemToml(_)));
         assert_eq!(l.image.as_deref(), Some("esp32"));
         assert_eq!(l.board.as_deref(), Some("esp32-c3-baremetal"));
-        assert_eq!(l.board_from, Some(BoardFrom::Image));
         assert_eq!(l.rmw.as_deref(), Some("zenoh"));
         // The image's locator beats the system default; the domain falls
         // through to `[system]`.
@@ -565,58 +574,149 @@ locator = "tcp/10.0.2.2:9800"
     }
 
     #[test]
-    fn the_retiring_keys_still_resolve_and_say_so() {
+    fn a_retired_deployment_key_is_refused_naming_where_the_fact_lives() {
+        // The fallback that read these is gone (phase-445 W5). A manifest still
+        // carrying one must not resolve to "no deployment" and then fail far
+        // away as "declares no board" — it is refused where it is.
+        for (tables, key) in [
+            (
+                "[package.metadata.nros.entry]\ndeploy = \"freertos\"\n",
+                "[package.metadata.nros.entry] deploy",
+            ),
+            (
+                "[package.metadata.nros.deploy.zephyr]\nrmw = \"zenoh\"\n",
+                "[package.metadata.nros.deploy.zephyr]",
+            ),
+        ] {
+            let d = leaf(&[("Cargo.toml", &format!("{CARGO}\n{tables}"))]);
+            let e = read(d.path()).unwrap_err();
+            assert!(e.contains(key), "names the key: {e}");
+            assert!(e.contains("system.toml"), "names where to write: {e}");
+            assert!(!e.contains('\n'), "one line: {e}");
+        }
+    }
+
+    #[test]
+    fn node_and_component_tables_are_not_a_deployment() {
+        // A workspace NODE package declares its class for the metadata
+        // pipeline; that is not this reader's refusal to make.
         let d = leaf(&[(
             "Cargo.toml",
             &format!(
-                "{CARGO}\n[package.metadata.nros.entry]\ndeploy = \"freertos\"\n\n\
-                 [package.metadata.nros.node]\nclass = \"t::Talker\"\nname = \"talker\"\n\
-                 dispatch = \"deferred\"\n\n\
-                 [package.metadata.nros.deploy.freertos]\nrmw = \"zenoh\"\ndomain_id = 0\n\
-                 locator = \"tcp/10.0.2.2:7800\"\nip = \"10.0.2.15\"\n"
+                "{CARGO}\n[package.metadata.nros.node]\nclass = \"t::Talker\"\n\
+                 [package.metadata.nros.component]\nentities = [\"timer\"]\n"
             ),
         )]);
-        let l = read(d.path()).unwrap().expect("declared");
-        assert!(l.is_fallback());
-        assert_eq!(l.board.as_deref(), Some("freertos"));
-        assert_eq!(l.board_from, Some(BoardFrom::EntryDeploy));
-        assert_eq!(l.rmw.as_deref(), Some("zenoh"));
-        assert_eq!(l.network.locator.as_deref(), Some("tcp/10.0.2.2:7800"));
-        assert_eq!(l.network.ip.as_deref(), Some("10.0.2.15"));
-        assert_eq!(l.components[0].class.as_deref(), Some("t::Talker"));
-        assert_eq!(l.components[0].dispatch.as_deref(), Some("deferred"));
-        let w = l.deprecation().expect("a fallback warns");
-        assert!(!w.contains('\n'), "one line: {w}");
-        assert!(w.contains("system.toml"), "names the file to write: {w}");
-        assert!(w.contains("board = \"freertos\""), "{w}");
-    }
-
-    #[test]
-    fn a_lone_deploy_table_names_the_board_but_is_marked_as_such() {
-        let d = leaf(&[(
-            "Cargo.toml",
-            &format!("{CARGO}\n[package.metadata.nros.deploy.zephyr]\nrmw = \"zenoh\"\n"),
-        )]);
-        let l = read(d.path()).unwrap().unwrap();
-        assert_eq!(l.board.as_deref(), Some("zephyr"));
-        assert_eq!(l.board_from, Some(BoardFrom::DeployTable));
-    }
-
-    #[test]
-    fn component_entities_survive_the_fallback() {
-        let d = leaf(&[(
-            "Cargo.toml",
-            &format!("{CARGO}\n[package.metadata.nros.component]\nentities = [\"timer\"]\n"),
-        )]);
-        let l = read(d.path()).unwrap().unwrap();
-        assert_eq!(l.board, None);
-        assert_eq!(l.declared_entities(), Some(vec!["timer".to_string()]));
+        assert_eq!(read(d.path()).unwrap(), None);
     }
 
     #[test]
     fn a_manifest_with_no_nros_metadata_declares_nothing() {
         let d = leaf(&[("Cargo.toml", CARGO)]);
         assert_eq!(read(d.path()).unwrap(), None);
+    }
+
+    const BRINGUP: &str = r#"
+[system]
+name = "demo"
+rmw = "zenoh"
+domain_id = 0
+
+[image_defaults]
+rmw = "zenoh"
+
+[image.esp32]
+board = "esp32-c3-baremetal"
+locator = "tcp/10.0.2.2:9830"
+
+[image.zephyr]
+board = "zephyr"
+entry = "zephyr_entry"
+locator = "tcp/10.0.2.2:7430"
+
+[image.zephyr_robot1]
+board = "zephyr"
+entry = "zephyr_entry_robot1"
+domain_id = 4
+"#;
+
+    /// `<ws>/src/{demo_bringup,<entry>}` with the bringup's `system.toml`.
+    fn workspace(entry: &str, entry_manifest: &str) -> (tempdir::Dir, PathBuf, PathBuf) {
+        let d = tempdir::Dir::new();
+        let bringup = d.path().join("src/demo_bringup");
+        let e = d.path().join("src").join(entry);
+        std::fs::create_dir_all(&bringup).unwrap();
+        std::fs::create_dir_all(&e).unwrap();
+        std::fs::write(bringup.join("system.toml"), BRINGUP).unwrap();
+        std::fs::write(e.join("Cargo.toml"), entry_manifest).unwrap();
+        (d, bringup, e)
+    }
+
+    #[test]
+    fn a_generated_entry_finds_the_image_it_was_generated_for() {
+        // `nros build` names the entry `<id>_entry`; that name is the claim.
+        let (_d, bringup, e) = workspace("esp32_entry", CARGO);
+        let l = for_entry(&e, "esp32_entry", &bringup)
+            .unwrap()
+            .expect("claimed");
+        assert_eq!(l.image.as_deref(), Some("esp32"));
+        assert_eq!(l.board.as_deref(), Some("esp32-c3-baremetal"));
+        assert_eq!(l.network.locator.as_deref(), Some("tcp/10.0.2.2:9830"));
+        // `[system]` fills what the image leaves out — the leaf overlay.
+        assert_eq!(l.network.domain_id, Some(0));
+        assert!(matches!(l.origin, Origin::Bringup(_)));
+    }
+
+    #[test]
+    fn an_explicit_entry_key_claims_and_beats_the_derived_name() {
+        let (_d, bringup, e) = workspace("zephyr_entry_robot1", CARGO);
+        let l = for_entry(&e, "zephyr_entry_robot1", &bringup)
+            .unwrap()
+            .expect("claimed");
+        assert_eq!(l.image.as_deref(), Some("zephyr_robot1"));
+        assert_eq!(l.network.domain_id, Some(4));
+        // `[image.zephyr] entry = "zephyr_entry"` derives `zephyr_entry` from
+        // its id too, and names it — ONE claim, not two.
+        let (_d, bringup, e) = workspace("zephyr_entry", CARGO);
+        let l = for_entry(&e, "zephyr_entry", &bringup).unwrap().unwrap();
+        assert_eq!(l.image.as_deref(), Some("zephyr"));
+        assert_eq!(l.network.locator.as_deref(), Some("tcp/10.0.2.2:7430"));
+    }
+
+    #[test]
+    fn an_entry_no_image_claims_has_no_deployment() {
+        let (_d, bringup, e) = workspace("unrelated_entry", CARGO);
+        assert_eq!(for_entry(&e, "unrelated_entry", &bringup).unwrap(), None);
+    }
+
+    #[test]
+    fn two_images_claiming_one_entry_is_refused() {
+        let (_d, bringup, e) = workspace("zephyr_entry", CARGO);
+        let two =
+            format!("{BRINGUP}\n[image.zephyr_b]\nboard = \"zephyr\"\nentry = \"zephyr_entry\"\n");
+        std::fs::write(bringup.join("system.toml"), two).unwrap();
+        let err = for_entry(&e, "zephyr_entry", &bringup).unwrap_err();
+        assert!(err.contains("zephyr, zephyr_b"), "{err}");
+    }
+
+    #[test]
+    fn an_entry_still_on_a_retired_key_is_refused_even_when_an_image_claims_it() {
+        let (_d, bringup, e) = workspace(
+            "zephyr_entry",
+            &format!("{CARGO}\n[package.metadata.nros.entry]\ndeploy = \"zephyr\"\n"),
+        );
+        let err = for_entry(&e, "zephyr_entry", &bringup).unwrap_err();
+        assert!(
+            err.contains("[package.metadata.nros.entry] deploy"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn the_entry_name_rule_is_the_builders() {
+        assert_eq!(entry_package_name("native_robot1"), "native_robot1_entry");
+        assert_eq!(entry_package_name("esp32-qemu"), "esp32_qemu_entry");
+        assert_eq!(entry_package_name("a.b/c"), "a_b_c_entry");
     }
 
     #[test]

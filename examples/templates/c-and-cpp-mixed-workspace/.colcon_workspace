@@ -1,0 +1,7 @@
+# This directory is a workspace ROOT (pkg-index marker #2).
+#
+# There is no root CMakeLists.txt (RFC-0098 D9, phase-445 W5): a workspace is a
+# directory of packages, and `nros build` generates the cmake root and the
+# entry under `build/<coord>/` from `src/demo_bringup/system.toml`. This tracked
+# marker is what says the directory is a workspace, whether or not anything has
+# been built in it.

@@ -191,6 +191,10 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     // exist — that would answer `--packages-select` with "this workspace
     // declares no `[image.*]`", an error about the wrong thing.
     let bringups = collect_images(&found.packages)?;
+    // Every bringup directory — where a workspace ENTRY's board is stated
+    // (`leaf_system::for_entry`, phase-445 W5), and so where the entry
+    // classification below reads it.
+    let bringup_dirs: Vec<PathBuf> = bringups.iter().map(|(_, d, _)| d.clone()).collect();
 
     // ---- stage 1b — the selection verbs (RFC-0087 D7, phase-420 W7) -----
     //
@@ -216,7 +220,22 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     } else {
         args.images.clone()
     };
-    let resolved = plan::resolve(&bringups, &requested).map_err(|e| eyre::eyre!("{e}"))?;
+    // RFC-0065 D1 / RFC-0098 D9 (phase-445 W5) — package mode, decided HERE,
+    // before stage 2: a workspace with no bringup declares no image, so
+    // `plan::resolve` would refuse it ("declares no `[image.*]`") before the
+    // package-mode branch below could ever be reached. Only when nothing was
+    // asked for by name, and only for a directory of packages: a root that is
+    // itself a package is a single-package example, whose `system.toml` image
+    // is the unit (RFC-0098 D3).
+    let package_mode = args.images.is_empty()
+        && !args.all
+        && !nros_orchestration_ir::leaf_system::is_package_dir(&root)
+        && !all_packages.iter().any(|p| is_bringup_dir(&p.dir));
+    let resolved = if package_mode {
+        Vec::new()
+    } else {
+        plan::resolve(&bringups, &requested).map_err(|e| eyre::eyre!("{e}"))?
+    };
 
     // The driver is chosen by the board's PLATFORM, never by its name - a
     // Zephyr board is spelled `native_sim/native/64`, which says nothing about
@@ -247,6 +266,18 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     // `CMakeLists.txt` built as cmake and looked correct.
     crate::routing::check_declarations(&all_packages).map_err(|e| eyre::eyre!("{e}"))?;
 
+    // RFC-0065 D1 / RFC-0098 D9 (phase-445 W5) — a workspace with NO bringup
+    // builds like colcon: every package, in dependency order, each with its own
+    // driver and its own `build/<pkg>/`. There is no image to resolve (an image
+    // is declared by a bringup) — which is what `nros build` said to
+    // `examples/templates/{local-msg-package,workspace-shadowing}` until their
+    // hand-written roots, the only thing that built them, were deleted. After
+    // the dependency and declaration preflights above, which hold for either
+    // mode.
+    if package_mode {
+        return plan_packages(&root, &found, args, nano_ros_root.as_deref());
+    }
+
     // The workspace's OWN packages can carry board descriptors, so a board is
     // declared where everything else about this workspace is declared.
     let pkg_dirs: Vec<PathBuf> = found.packages.iter().map(|p| p.dir.clone()).collect();
@@ -266,7 +297,7 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
     // Counting it routed every native image through cmake, which would have
     // failed on a workspace with no C or C++ in it at all. A framework entry's
     // build file is its framework's, not evidence about the graph.
-    let framework_entries = framework_entry_dirs(&found, &catalog);
+    let framework_entries = framework_entry_dirs(&found, &catalog, &bringup_dirs);
     let ws_non_rust: Vec<&str> = found
         .packages
         .iter()
@@ -680,7 +711,12 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                     nano_ros_root: nano_ros_root.clone().unwrap_or_default(),
                     excluded: {
                         let mut e = framework_entries.clone();
-                        e.extend(entries_for_other_boards(&found, &board, &platform));
+                        e.extend(entries_for_other_boards(
+                            &found,
+                            &board,
+                            &platform,
+                            &bringup_dirs,
+                        ));
                         e
                     },
                 };
@@ -742,8 +778,15 @@ pub fn plan_builds(args: &Args) -> Result<Vec<ResolvedBuild>> {
                 // The application is resolved FIRST: its directory is where a
                 // Zephyr app keeps its own `prj-*.conf`, so the overlay search
                 // needs it (issue 0892).
-                let app = west_application_dir(&image_id, &image, descriptor, &found, &catalog)?
-                    .unwrap_or_else(|| bringup_dir.clone());
+                let app = west_application_dir(
+                    &image_id,
+                    &image,
+                    descriptor,
+                    &found,
+                    &catalog,
+                    &bringup_dirs,
+                )?
+                .unwrap_or_else(|| bringup_dir.clone());
                 let overlays =
                     crate::builder::zephyr::resolve_in(&bringup_dir, Some(&app), &board, &image)
                         .map_err(|e| eyre::eyre!("{e}"))?;
@@ -1169,6 +1212,150 @@ fn declared_capabilities(bringup_dir: &std::path::Path) -> Vec<&'static str> {
         .collect()
 }
 
+/// A Path A bringup: a `system.toml` in a directory with no build file of its
+/// own. A PACKAGE with a `system.toml` beside it is a single-package example
+/// (RFC-0098 D3), not a bringup of the workspace around it.
+fn is_bringup_dir(dir: &std::path::Path) -> bool {
+    dir.join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+        .is_file()
+        && !nros_orchestration_ir::leaf_system::is_package_dir(dir)
+}
+
+/// Package mode (phase-445 W5): one plan per package of a bringup-less
+/// workspace, in the dependency order stage 1 already computed — the colcon
+/// shape RFC-0065 D1 names, with RFC-0098 D9's "no root build file".
+///
+/// * a CMake package gets a generated root at `build/<pkg>/CMakeLists.txt`
+///   (the same emitter an image uses, `builder::cmake_root`, with this package
+///   as its only subdir and no SYSTEM) — the nano-ros setup, the workspace's
+///   interface search path and the rclcpp compat surface that a hand-written
+///   umbrella used to spell out — configured into `build/<pkg>/cmake`;
+/// * a cargo package is built by cargo FROM ITS OWN DIRECTORY, so its own
+///   `.cargo/config.toml` and `[patch]` rows apply exactly as `cd <pkg> &&
+///   cargo build` would, into `build/<pkg>/target`;
+/// * an interface package is not built on its own: its bindings are generated
+///   into the packages that use it (`nros sync`, and the Find-stub on the cmake
+///   side), which is why the hand-written roots never built it either.
+fn plan_packages(
+    root: &std::path::Path,
+    found: &crate::builder::discover::Discovered,
+    args: &Args,
+    nano_ros_root: Option<&std::path::Path>,
+) -> Result<Vec<ResolvedBuild>> {
+    let mut out = Vec::new();
+    let shown = |p: &std::path::Path| {
+        p.strip_prefix(root)
+            .map(|r| r.display().to_string())
+            .unwrap_or_else(|_| p.display().to_string())
+    };
+    for pkg in &found.packages {
+        if crate::interface_package::dir_is_interface_package(&pkg.dir) {
+            eprintln!(
+                "nros build: {} — interface package; its bindings are generated into the \
+                 packages that use it",
+                pkg.name
+            );
+            continue;
+        }
+        let routing = crate::routing::route(pkg);
+        let build_dir = root.join("build").join(&pkg.name);
+        let (driver, configure, handoff) = if routing.cmake_subdir {
+            let Some(nros_root) = nano_ros_root else {
+                eyre::bail!(
+                    "no nano-ros checkout found, so `{}`'s cmake root cannot be generated. \
+                     Pass --nano-ros-path, or set NROS_REPO_DIR.",
+                    pkg.name
+                );
+            };
+            // Every other package is excluded: this root builds ONE package
+            // (its interface dependencies resolve through the Find-stub, and
+            // its cmake dependencies are its own `find_package` calls).
+            let excluded = found
+                .packages
+                .iter()
+                .filter(|p| p.dir != pkg.dir)
+                .map(|p| p.dir.clone())
+                .collect();
+            let spec = crate::builder::cmake_root::CmakeRootSpec {
+                entries: Vec::new(),
+                workspace: root.to_path_buf(),
+                system: String::new(),
+                platform: "posix".to_string(),
+                board: None,
+                rmw: "zenoh".to_string(),
+                toolchain_file: None,
+                nano_ros_root: nros_root.to_path_buf(),
+                excluded,
+            };
+            crate::builder::cmake_root::write(found, &build_dir, &spec)
+                .map_err(|e| eyre::eyre!("`{}`: {e}", pkg.name))?;
+            let rel = shown(&build_dir);
+            let mut a = vec![
+                "-S".to_string(),
+                rel.clone(),
+                "-B".to_string(),
+                format!("{rel}/cmake"),
+            ];
+            a.extend(args.native_args.iter().cloned());
+            (
+                Driver::CMake,
+                Some(Handoff::new("cmake", a).in_dir(root)),
+                Handoff::new("cmake", vec!["--build".to_string(), format!("{rel}/cmake")])
+                    .in_dir(root),
+            )
+        } else if routing.cargo_member {
+            let target_dir = build_dir.join("target").display().to_string();
+            let mut a = vec!["build".to_string(), "--target-dir".to_string(), target_dir];
+            if args.offline {
+                a.push("--frozen".to_string());
+            }
+            a.extend(args.native_args.iter().cloned());
+            // A package with no lock of its own gets one resolved first, as a
+            // generated entry does: the PATH shim's project-wide `--locked`
+            // cannot create one, and a lock-less leaf is legitimate (its
+            // `generated/` message crates are per host, so its lock is not
+            // committed — CLAUDE.md, `check-leaf-lockfiles`).
+            let configure = (!pkg.dir.join("Cargo.lock").is_file()).then(|| {
+                let mut u = vec!["update".to_string(), "--workspace".to_string()];
+                if args.offline {
+                    u.push("--offline".to_string());
+                }
+                Handoff::new("cargo", u)
+                    .in_dir(&pkg.dir)
+                    .with_env("NROS_CARGO_FLAGS", "")
+            });
+            (
+                Driver::Cargo,
+                configure,
+                Handoff::new("cargo", a).in_dir(&pkg.dir),
+            )
+        } else {
+            continue;
+        };
+        out.push(ResolvedBuild {
+            qualified: pkg.name.clone(),
+            board: "native".to_string(),
+            platform: "posix".to_string(),
+            driver,
+            handoff: Some(handoff),
+            rmw: None,
+            entry_package: None,
+            target: None,
+            profile: None,
+            configure,
+        });
+    }
+    if out.is_empty() {
+        eyre::bail!(
+            "no buildable package under {} — a workspace with no bringup builds each \
+             package with its own build file, and none carries a Cargo.toml or \
+             CMakeLists.txt it can build",
+            root.display()
+        );
+    }
+    Ok(out)
+}
+
 /// Generate the entry package for a cargo image (W3.b), returning its
 /// directory. `None` when the launch tree cannot be resolved — reported as a
 /// warning rather than a failure, because a workspace whose entries are still
@@ -1466,7 +1653,6 @@ fn generate_entry(
 
     let mut spec = EntrySpec {
         image_id: image_id.to_string(),
-        deploy: crate::builder::entry::macro_deploy_token(&candidates),
         launch,
         args: image.args.clone(),
         panic: image.panic.clone(),
@@ -1904,25 +2090,37 @@ fn bridge_entry_deps(
     Ok(out)
 }
 
+/// The deployment of a RUST entry package: its own `system.toml`, else the
+/// bringup image that claims it (`leaf_system::for_entry`, phase-445 W5).
+/// `None` for a package that is not a Rust entry, or one no image claims.
+///
+/// This is where the Rust half of "which board is this entry for" is answered
+/// since RFC-0098 D5 retired `[package.metadata.nros.entry] deploy` — the same
+/// reader `nros::main!` and `nros sync` use, so the three cannot disagree.
+fn rust_entry_system(
+    dir: &std::path::Path,
+    bringup_dirs: &[PathBuf],
+) -> Option<nros_orchestration_ir::leaf_system::LeafSystem> {
+    use nros_orchestration_ir::leaf_system;
+    let pkg = crate::cmd::ws::entry_package_name_of(&dir.join("Cargo.toml"))?;
+    if let Ok(Some(own)) = leaf_system::read(dir) {
+        return Some(own);
+    }
+    bringup_dirs
+        .iter()
+        .find_map(|b| leaf_system::for_entry(dir, &pkg, b).ok().flatten())
+}
+
 /// Deploy tokens a package's entry declaration names, if it is an entry.
 ///
 /// Two spellings, because the two languages declare it in different files:
-/// Rust in `[package.metadata.nros.entry] deploy`, C/C++ in the
-/// `nano_ros_add_executable(… DEPLOY <token>…)` call. Both are read; a package
-/// that is not an entry yields an empty list.
-fn entry_deploy_tokens(dir: &std::path::Path) -> Vec<String> {
+/// Rust in the `system.toml` image that claims the entry ([`rust_entry_system`]),
+/// C/C++ in the `nano_ros_add_executable(… DEPLOY <token>…)` call. Both are read;
+/// a package that is not an entry yields an empty list.
+fn entry_deploy_tokens(dir: &std::path::Path, bringup_dirs: &[PathBuf]) -> Vec<String> {
     let mut out = Vec::new();
-    if let Ok(text) = std::fs::read_to_string(dir.join("Cargo.toml"))
-        && let Ok(doc) = text.parse::<toml::Value>()
-        && let Some(d) = doc
-            .get("package")
-            .and_then(|p| p.get("metadata"))
-            .and_then(|m| m.get("nros"))
-            .and_then(|n| n.get("entry"))
-            .and_then(|e| e.get("deploy"))
-            .and_then(|d| d.as_str())
-    {
-        out.push(d.to_string());
+    if let Some(board) = rust_entry_system(dir, bringup_dirs).and_then(|l| l.board) {
+        out.push(board);
     }
     if let Ok(text) = std::fs::read_to_string(dir.join("CMakeLists.txt")) {
         for line in text.lines() {
@@ -1960,10 +2158,11 @@ fn entries_for_other_boards(
     found: &crate::builder::discover::Discovered,
     board: &str,
     platform: &str,
+    bringup_dirs: &[PathBuf],
 ) -> std::collections::BTreeSet<PathBuf> {
     let mut out = std::collections::BTreeSet::new();
     for pkg in &found.packages {
-        let tokens = entry_deploy_tokens(&pkg.dir);
+        let tokens = entry_deploy_tokens(&pkg.dir, bringup_dirs);
         if tokens.is_empty() {
             continue;
         }
@@ -2190,7 +2389,9 @@ fn cmake_coordinate(platform: &str, image: &crate::orchestration::image::ImageBl
 /// Two ways a package says it serves a deploy target, and BOTH are load-bearing
 /// because the two languages declare it in different files:
 ///
-/// * Rust — `[package.metadata.nros.entry] deploy = "zephyr"` in `Cargo.toml`
+/// * Rust — the bringup image that claims the entry (`entry = "<pkg>"`, or the
+///   `<id>_entry` name) — `leaf_system::for_entry`, phase-445 W5; before that,
+///   `[package.metadata.nros.entry] deploy = "zephyr"` in `Cargo.toml`
 /// * C/C++ — `nano_ros_add_executable(... DEPLOY zephyr)` in `CMakeLists.txt`
 ///
 /// Reading only the Rust one was a silent Rust-only restriction: the C, C++,
@@ -2212,6 +2413,7 @@ fn west_application_dir(
     descriptor: &crate::orchestration::board_descriptor::BoardDescriptor,
     found: &crate::builder::discover::Discovered,
     catalog: &crate::orchestration::board_descriptor::BoardCatalog,
+    bringup_dirs: &[PathBuf],
 ) -> eyre::Result<Option<PathBuf>> {
     use crate::orchestration::board_descriptor::DeployResolution;
 
@@ -2239,6 +2441,16 @@ fn west_application_dir(
 
     let mut hits: Vec<PathBuf> = Vec::new();
     for pkg in &found.packages {
+        // A Rust entry claimed by an image says WHICH image, not just which
+        // board — so it is this image's application exactly when it is this
+        // image's entry, and never a candidate for a sibling image on the same
+        // board (the ambiguity below is a C/C++ question).
+        if let Some(l) = rust_entry_system(&pkg.dir, bringup_dirs) {
+            if l.image.as_deref() == Some(image_id) && pkg.dir.join("CMakeLists.txt").is_file() {
+                hits.push(pkg.dir.clone());
+            }
+            continue;
+        }
         let Some(deploy) = package_deploy_token(&pkg.dir) else {
             continue;
         };
@@ -2280,19 +2492,10 @@ fn west_application_dir(
 /// `DEPLOY <token>`), and the alternative — configuring the project to ask it —
 /// costs a cmake run per candidate package during a plan that is supposed to be
 /// cheap enough for `--dry-run`.
+///
+/// C/C++ only since phase-445 W5: a Rust entry states no token of its own, and
+/// its board is read through [`rust_entry_system`] by the callers.
 fn package_deploy_token(dir: &std::path::Path) -> Option<String> {
-    if let Ok(text) = std::fs::read_to_string(dir.join("Cargo.toml"))
-        && let Ok(doc) = text.parse::<toml::Value>()
-        && let Some(d) = doc
-            .get("package")
-            .and_then(|p| p.get("metadata"))
-            .and_then(|m| m.get("nros"))
-            .and_then(|n| n.get("entry"))
-            .and_then(|e| e.get("deploy"))
-            .and_then(|d| d.as_str())
-    {
-        return Some(d.to_string());
-    }
     let text = std::fs::read_to_string(dir.join("CMakeLists.txt")).ok()?;
     cmake_deploy_token(&text)
 }
@@ -2411,34 +2614,25 @@ fn zephyr_base_with(
 fn framework_entry_dirs(
     found: &crate::builder::discover::Discovered,
     catalog: &crate::orchestration::board_descriptor::BoardCatalog,
+    bringup_dirs: &[PathBuf],
 ) -> std::collections::BTreeSet<PathBuf> {
-    entry_dirs_where(found, catalog, |d| !d.needs_generated_root())
+    entry_dirs_where(found, catalog, bringup_dirs, |d| !d.needs_generated_root())
 }
 
-/// Entry package directories whose resolved driver satisfies `want`.
+/// Rust entry package directories whose resolved driver satisfies `want`.
 fn entry_dirs_where(
     found: &crate::builder::discover::Discovered,
     catalog: &crate::orchestration::board_descriptor::BoardCatalog,
+    bringup_dirs: &[PathBuf],
     want: impl Fn(Driver) -> bool,
 ) -> std::collections::BTreeSet<PathBuf> {
     use crate::orchestration::board_descriptor::DeployResolution;
     let mut out = std::collections::BTreeSet::new();
     for pkg in &found.packages {
-        let Ok(text) = std::fs::read_to_string(pkg.dir.join("Cargo.toml")) else {
+        let Some(deploy) = rust_entry_system(&pkg.dir, bringup_dirs).and_then(|l| l.board) else {
             continue;
         };
-        let Ok(doc) = text.parse::<toml::Value>() else {
-            continue;
-        };
-        let deploy = doc
-            .get("package")
-            .and_then(|p| p.get("metadata"))
-            .and_then(|m| m.get("nros"))
-            .and_then(|n| n.get("entry"))
-            .and_then(|e| e.get("deploy"))
-            .and_then(|d| d.as_str());
-        let Some(deploy) = deploy else { continue };
-        if let DeployResolution::Board(d) = catalog.resolve_deploy(deploy)
+        if let DeployResolution::Board(d) = catalog.resolve_deploy(&deploy)
             && want(plan::driver_for_board(
                 d.platform.kebab(),
                 d.entry_kind,

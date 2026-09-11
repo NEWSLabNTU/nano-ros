@@ -1,0 +1,17 @@
+# Phase 212.N.9 — what the entry deploys to (RFC-0098 D3/D5).
+#
+# Form 1 (`nros::main!()`, no args) names no bringup, so the entry states its
+# own board here — the single-package shape; forms 3/4 name `demo_bringup`,
+# whose `system.toml` declares no image, and read this file first too
+# (`leaf_system::for_entry`). This was `[package.metadata.nros.entry]
+# deploy = "native"` in the manifest until phase-445 W5 retired the key.
+# `native_main_macro_misuse.rs` rewrites the `board` line below to prove an
+# unknown board is refused at expansion time.
+
+[system]
+name = "demo_entry"
+rmw = "zenoh"
+domain_id = 0
+
+[image.native]
+board = "native"

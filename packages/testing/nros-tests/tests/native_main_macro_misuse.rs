@@ -265,12 +265,14 @@ fn custom_tasks_empty_on_owned_spin_still_errors() {
 #[test]
 fn unknown_board_emits_compile_error() {
     let (_g, root) = stage_fixture();
-    // Override Cargo.toml's `deploy = "native"` to an unknown board.
-    let cargo_toml = root.join("src/demo_entry/Cargo.toml");
-    let raw = fs::read_to_string(&cargo_toml).expect("read demo_entry Cargo.toml");
-    let bad = raw.replace("deploy = \"native\"", "deploy = \"frobnicator\"");
-    assert_ne!(raw, bad, "expected `deploy = \"native\"` line in fixture");
-    fs::write(&cargo_toml, bad).expect("write bad Cargo.toml");
+    // Override the entry's `board = "native"` to an unknown board. It lives in
+    // the `system.toml` beside the manifest since phase-445 W5 retired
+    // `[package.metadata.nros.entry] deploy`.
+    let system_toml = root.join("src/demo_entry/system.toml");
+    let raw = fs::read_to_string(&system_toml).expect("read demo_entry system.toml");
+    let bad = raw.replace("board = \"native\"", "board = \"frobnicator\"");
+    assert_ne!(raw, bad, "expected `board = \"native\"` line in fixture");
+    fs::write(&system_toml, bad).expect("write bad system.toml");
 
     fs::write(root.join("src/demo_entry/src/main.rs"), "nros::main!();\n").expect("write main.rs");
     let out = check_demo_entry(&root);

@@ -1,0 +1,7 @@
+# This directory is a workspace ROOT (pkg-index marker #2).
+#
+# There is no root CMakeLists.txt (RFC-0098 D9, phase-445 W5), and no bringup:
+# `nros build` builds every package the way colcon does — each with its own
+# driver, into its own `build/<pkg>/` — generating the cmake root a C++ package
+# needs (the nano-ros setup and the interface search path the old umbrella
+# spelled out). This tracked marker is what says the directory is a workspace.

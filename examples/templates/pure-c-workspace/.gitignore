@@ -1,3 +1,7 @@
 /generated/
 /build/
 /build-*/
+# RFC-0098 D9 — a workspace root build file is GENERATED under `build/`; one
+# here would be claimed as the workspace's and override the declarations.
+/Cargo.toml
+/CMakeLists.txt

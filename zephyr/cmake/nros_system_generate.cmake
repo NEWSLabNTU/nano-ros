@@ -54,26 +54,16 @@ endfunction()
 # is a PACKAGE (`Cargo.toml` or `CMakeLists.txt`) with a `system.toml` beside
 # it — a single-package leaf stating its own deployment (RFC-0098 D3,
 # phase-445 W3b; this replaced the package.xml `<nano_ros deploy="zephyr"/>`
-# tuple) — OR, for a workspace entry not yet converted, when
-# `<abs>/Cargo.toml` carries `[package.metadata.nros.deploy.zephyr*]`. A
-# self-pkg eats its own bringup role — workspace AND bringup dir are the pkg
-# itself.
+# tuple). A self-pkg eats its own bringup role — workspace AND bringup dir are
+# the pkg itself. The `Cargo.toml` `[package.metadata.nros.deploy.zephyr*]`
+# spelling this also accepted was retired with the manifest reader it mirrored
+# (phase-445 W5, RFC-0098 D5): the last tracked manifest carrying it moved to a
+# `system.toml` in the same commit.
 function(_nros_system_detect_self_pkg abs outvar)
     set(${outvar} FALSE PARENT_SCOPE)
     if(EXISTS "${abs}/system.toml"
        AND (EXISTS "${abs}/Cargo.toml" OR EXISTS "${abs}/CMakeLists.txt"))
         set(${outvar} TRUE PARENT_SCOPE)
-        return()
-    endif()
-    if(EXISTS "${abs}/Cargo.toml")
-        file(READ "${abs}/Cargo.toml" _toml)
-        # Match the bare table OR the per-RMW target-name variants. Each
-        # is a literal substring of the rendered Cargo.toml — no regex
-        # escape gymnastics needed.
-        if(_toml MATCHES "\\[package\\.metadata\\.nros\\.deploy\\.zephyr")
-            set(${outvar} TRUE PARENT_SCOPE)
-            return()
-        endif()
     endif()
 endfunction()
 
@@ -81,8 +71,7 @@ endfunction()
 # absolute path, a path relative to the app's source dir, or a sibling
 # dir name (walks one level up — workspace shape). Returns a dir that
 # is EITHER a Path A bringup (`system.toml` present) OR an M-F.3
-# self-pkg (a package with `system.toml` beside it, or a Cargo.toml
-# with deploy.zephyr).
+# self-pkg (a package with `system.toml` beside it).
 function(_nros_system_resolve_bringup arg outvar)
     if(IS_ABSOLUTE "${arg}" AND IS_DIRECTORY "${arg}")
         set(${outvar} "${arg}" PARENT_SCOPE)
@@ -130,9 +119,10 @@ function(nros_system_generate bringup_pkg)
             "found. Looked relative to ${CMAKE_CURRENT_SOURCE_DIR}, "
             "${CMAKE_SOURCE_DIR}, and their parents. The dir must "
             "contain system.toml (a Path A bringup, or a package leaf "
-            "stating its own deployment — RFC-0098 D3) OR a Cargo.toml "
-            "with [package.metadata.nros.deploy.zephyr*] (M-F.3 self-pkg "
-            "bringup).")
+            "stating its own deployment — RFC-0098 D3). A Cargo.toml "
+            "[package.metadata.nros.deploy.zephyr*] table is retired "
+            "(phase-445 W5): state it as `[image.<id>] board` in a "
+            "system.toml beside the package.")
     endif()
 
     if(_nros_cli STREQUAL "NROS_CLI-NOTFOUND")

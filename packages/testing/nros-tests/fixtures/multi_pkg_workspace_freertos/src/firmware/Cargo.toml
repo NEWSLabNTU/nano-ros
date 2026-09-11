@@ -27,7 +27,6 @@ name = "firmware"
 path = "src/main.rs"
 
 [package.metadata.nros.entry]
-deploy = "freertos"
 
 [dependencies]
 # Phase 212.N.3 tier-1 per-board shim — `Mps2An385::run` provides the

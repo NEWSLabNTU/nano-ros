@@ -309,37 +309,6 @@ pub fn resolve_board<'a>(catalog: &'a BoardCatalog, board: &str) -> Option<&'a B
 /// the ONLY place it comes from.
 type PickedDeploy = (String, String);
 
-/// A STANDALONE leaf's deploy, from its `Cargo.toml`.
-///
-/// RFC-0072 §5's site config has two homes, and this is the second: a copy-out
-/// example is not a workspace, has no bringup, and declares its target as
-/// `[package.metadata.nros.entry] deploy = "<board>"` with the per-deploy block
-/// beside it. The deploy KEY is the board there — those manifests carry no
-/// `board =` key at all — which is why this maps one onto the other rather than
-/// looking for a field that does not exist.
-fn deploys_from_manifest(ws: &Path) -> Result<Option<Vec<PickedDeploy>>> {
-    // phase-445 W3 — the ONE leaf reader. A leaf that states its deployment in
-    // `system.toml` is NOT answered here: `pick_deploys` falls through to
-    // `load_system_toml`, which reads the same file with its site table. Only
-    // the retiring manifest spelling (`[package.metadata.nros.entry] deploy`,
-    // else the single `[package.metadata.nros.deploy.<key>]` table — the
-    // Zephyr leaves' shape, issue 0605) is mapped onto a candidate here, and it
-    // goes when that fallback does.
-    let leaf = nros_orchestration_ir::leaf_system::read(ws).map_err(|e| eyre!(e))?;
-    let Some(leaf) = leaf.filter(|l| l.is_fallback()) else {
-        return Ok(None);
-    };
-    // Several deploy tables and nothing saying which this build is: that is a
-    // question for the caller (`--deploy`), not a guess — the reader leaves
-    // the board unset.
-    let Some(deploy_key) = leaf.board else {
-        return Ok(None);
-    };
-    // The deploy KEY is the board here, so the candidate is (key, key).
-    let board = deploy_key.clone();
-    Ok(Some(vec![(deploy_key, board)]))
-}
-
 /// The picked deploys, the site table to resolve them against, and the file
 /// that supplied both (for error text).
 type Picked = (Vec<PickedDeploy>, BTreeMap<String, toml::Value>, String);
@@ -350,13 +319,39 @@ fn pick_deploys(
     deploy: Option<&str>,
     board: Option<&str>,
 ) -> Result<Picked> {
-    // A standalone leaf first: it has a Cargo.toml and no bringup, and asking
-    // for a system.toml there would fail naming a file that is not supposed to
-    // exist. Such a leaf carries no site table — it gets the board rung only.
-    if let Some(from_manifest) = deploys_from_manifest(ws)? {
-        return Ok((from_manifest, BTreeMap::new(), ws.display().to_string()));
-    }
-    let (path, system) = load_system_toml(ws)?;
+    // A standalone leaf states its deployment in the `system.toml` beside its
+    // manifest (RFC-0098 D3) — the same file a bringup uses, so one read serves
+    // both. The retired manifest keys this used to map (phase-445 W5) are
+    // refused by the reader, naming the file to write.
+    nros_orchestration_ir::leaf_system::read(ws).map_err(|e| eyre!(e))?;
+    // A workspace ENTRY states no board of its own: the bringup image that
+    // claims it does (`leaf_system::for_entry`, phase-445 W5). This is the
+    // Zephyr lane's case — `NanoRosBoardFacts.cmake` points this verb at the
+    // west APPLICATION dir, which is the entry package, not the bringup. Its
+    // `[package.metadata.nros.entry] deploy` used to answer here.
+    let claimed = if ws
+        .join(nros_orchestration_ir::leaf_system::SYSTEM_TOML)
+        .is_file()
+    {
+        None
+    } else {
+        match crate::cmd::ws::entry_package_name_of(&ws.join("Cargo.toml")) {
+            Some(pkg) => crate::cmd::ws::workspace_entry_system(ws, &pkg)?,
+            None => None,
+        }
+    };
+    let (path, system) = match &claimed {
+        Some(leaf) => {
+            let p = leaf.origin_path().to_path_buf();
+            let raw =
+                std::fs::read_to_string(&p).map_err(|e| eyre!("reading {}: {e}", p.display()))?;
+            let sys =
+                toml::from_str::<crate::orchestration::cargo_metadata_schema::SystemToml>(&raw)
+                    .map_err(|e| eyre!("parsing {}: {e}", p.display()))?;
+            (p, sys)
+        }
+        None => load_system_toml(ws)?,
+    };
     let origin = path.display().to_string();
     let site = system.board_config.clone();
     // Candidates come from `[image.*]` AND `[deploy.*]`, because either can
@@ -379,6 +374,10 @@ fn pick_deploys(
         if let Some(b) = system.image_for(name).and_then(|i| i.board) {
             boards.insert(name.clone(), b);
         }
+    }
+    // An entry's answer is its OWN image, not every image its bringup builds.
+    if let Some(id) = claimed.as_ref().and_then(|l| l.image.as_deref()) {
+        boards.retain(|k, _| k == id);
     }
 
     let mut candidates: Vec<PickedDeploy> = boards.into_iter().collect();

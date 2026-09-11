@@ -28,14 +28,20 @@ line is emitted at configure time.
 # 1. Source ROS 2 so AMENT_PREFIX_PATH points at the upstream std_msgs.
 source /opt/ros/humble/setup.bash
 
-# 2. Configure + build.
+# 2. Build. No root build file (RFC-0098 D9) and no bringup, so `nros build`
+#    builds each package into its own `build/<pkg>/`, generating the cmake
+#    root the consumer needs (phase-445 W5).
 cd examples/templates/workspace-shadowing
-cmake -B build -S .
-cmake --build build -j
+export NROS_REPO_DIR=/path/to/nano-ros
+nros sync
+nros build
 
-# 3. Verify the workspace copy was linked (not AMENT's).
-nm build/src/consumer/consumer | grep -i shadowed_marker
-# >>> ...std_msgs::msg::Marker_<...>::shadowed_marker...
+# 3. Verify the workspace copy was linked (not AMENT's) — the two symbols
+#    `tests/workspace_shadowing.rs` asserts. A field name such as
+#    `shadowed_marker` leaves no symbol of its own, so grep for the type.
+nm -C build/consumer/cmake/pkg/consumer/consumer | grep -E 'nros_cpp_serialize_std_msgs_msg_marker|std_msgs::msg::Marker'
+# >>> ... T nros_cpp_serialize_std_msgs_msg_marker
+# >>> ... std_msgs::msg::Marker ...
 ```
 
 If `find_package(std_msgs)` had resolved to AMENT, step 2 would fail

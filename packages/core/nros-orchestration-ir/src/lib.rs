@@ -149,7 +149,14 @@ pub fn board_path_for(key: &str) -> Option<&'static str> {
         // Phase 225.P — Zephyr owns `main`; the board ZST impls `NetworkWait`
         // only (NOT `BoardEntry`). The proc-macro routes through
         // `Framework::Zephyr` and emits a `rust_main` staticlib export.
-        "zephyr" => "::nros_board_zephyr::ZephyrBoard",
+        //
+        // `native_sim/native/64` is the SAME board: the zephyr descriptor's
+        // `names = ["zephyr", "native_sim/native/64"]`. It became a key here in
+        // phase-445 W5, when a Zephyr entry's board stopped being a hand-written
+        // `deploy = "zephyr"` token and started being read from the image that
+        // builds it — and `examples/workspaces/rust` spells that image's board
+        // by this name.
+        "zephyr" | "native_sim/native/64" => "::nros_board_zephyr::ZephyrBoard",
         // phase-337 W6.a — the RTIC entry surface moved INTO
         // `nros-board-mps2-an385` (its `rtic` feature); the ZST kept its name.
         // The deploy key stays distinct because the two entry shapes are
