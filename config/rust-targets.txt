@@ -91,3 +91,20 @@ armv7a-none-eabihf              rustup
 # NuttX: Tier 3 custom targets, no prebuilt std. See RFC-0012 / issue 0583.
 armv7a-nuttx-eabihf             build-std
 riscv32imac-unknown-nuttx-elf   build-std
+
+# issue 1153 / phase-450 W3 — four triples `zephyr/cmake/nros_cargo_build.cmake`
+# can SELECT that were listed nowhere. The gate collected declarations from
+# three globs and there are four; `NROS_RUST_TARGET` is a different variable
+# name from `Rust_CARGO_TARGET`, and that was enough to be invisible. The same
+# blindness is what let `armv7r-none-eabi` ship unlisted until phase-418 needed
+# it by hand.
+#
+# Each is the no-FPU or alternate-profile sibling of a triple already above, so
+# a Zephyr board that does not set `CONFIG_FPU` (or selects Cortex-M33/M85)
+# picked a target nothing provisions. All four have a prebuilt rust-std.
+thumbv7em-none-eabi             rustup
+thumbv8m.main-none-eabi         rustup
+thumbv8m.main-none-eabihf       rustup
+# native_sim 32-bit: `CONFIG_64BIT=n` on the POSIX arch selects this, and the
+# host-triple branch beside it needs no row (it is whatever the host already is).
+i686-unknown-linux-gnu          rustup

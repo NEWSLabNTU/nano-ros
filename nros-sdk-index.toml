@@ -1996,6 +1996,29 @@ triple = "armv7r-none-eabihf"
 [rust.target.armv8r-hf]
 triple = "armv8r-none-eabihf"
 
+# issue 1153 / phase-450 W3 — the four triples `zephyr/cmake/nros_cargo_build.cmake`
+# can SELECT and that neither list carried. `check-rust-targets-covered` scanned
+# three declaration globs and there are four: that file sets `NROS_RUST_TARGET`,
+# not `Rust_CARGO_TARGET`, and a different variable name was enough to be
+# invisible. Each is the no-FPU or alternate-profile sibling of a row already
+# here, reached when a Zephyr board does not set `CONFIG_FPU` or selects
+# Cortex-M33/M85 — so an image could pick a target nothing provisions, which is
+# issue 0944's failure with a different triple.
+
+[rust.target.thumbv7em]
+triple = "thumbv7em-none-eabi"
+
+[rust.target.thumbv8m-main]
+triple = "thumbv8m.main-none-eabi"
+
+[rust.target.thumbv8m-main-hf]
+triple = "thumbv8m.main-none-eabihf"
+
+# native_sim with `CONFIG_64BIT=n` on the POSIX arch. The branch beside it sets
+# the HOST triple, which needs no row — it is whatever the host already is.
+[rust.target.i686-linux]
+triple = "i686-unknown-linux-gnu"
+
 [rust.target.riscv32imc]
 triple = "riscv32imc-unknown-none-elf"
 
