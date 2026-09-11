@@ -90,11 +90,10 @@ rmw must provide" than any reading of the headers.
 
 | | vtable | global | executor | platform | build time | serdes | runtime | none | **total** |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| same | 8 | 1 |  |  |  |  |  |  | **9** |
+| same | 12 | 1 |  |  |  |  |  |  | **13** |
 | re-shaped | 33 | 1 |  |  |  |  |  |  | **34** |
 | re-mapped | 16 |  | 4 | 1 | 3 | 3 | 1 |  | **28** |
 | not supported — *by decision* |  |  |  |  |  |  |  | 13 | **13** |
-| not implemented — *tracked* | 4 |  |  |  |  |  |  |  | **4** |
 | **total** | **61** | **2** | **4** | **1** | **3** | **3** | **1** | **13** | **88** |
 
 Read a row for what we did, a column for where it lives. Only
@@ -219,7 +218,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>const rmw_client_t *client</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -232,7 +231,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>const rmw_client_t *client</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1004,7 +1003,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>const rmw_service_t *service</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>
@@ -1017,7 +1016,7 @@ text-transform:uppercase;margin:0 0 .45rem;opacity:.95}
   <span class='ty'>const rmw_service_t *service</span><span class=pu>,</span>
   <span class='ty'>rmw_qos_profile_t *qos</span>
 <span class=pu>)</span></pre></td>
-<td class=why><div class='st s-not-implemented'>○ not-implemented · issue 1327</div></td>
+<td class=why><div class='st s-same'>● same</div></td>
 </tr>
 <tr>
 <td class=c><pre><span class=ret>rmw_ret_t</span>

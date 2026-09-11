@@ -368,6 +368,83 @@ encodes the direction, over-delivery being safe and under-delivery lossy.
   xrce would lose `LIVELINESS_AUTOMATIC` and every C default profile states it,
   so every C app on xrce would fail at create.
 
+  **CLOSED 2026-09-12 — see "W9 follow-through" below.** The slot landed, and
+  the prediction about `LIVELINESS_AUTOMATIC` was exactly right about the
+  consequence and wrong about which side had to move: the fix was to stop
+  DEMANDING a policy upstream leaves unset, not to let xrce claim one it does
+  not implement.
+
+## W9 follow-through (2026-09-12) — the slot, and each backend answering for itself
+
+Issues 1327 and 1329, landed together because they are one seam: W8 left the
+four service-side QoS read-backs without a consumer and sequenced that behind
+W9, which was changing what `create_service` / `create_client` do with a
+profile at all.
+
+**1327 — the four stop being inert, measured `inert 11 -> 7`.** The consumer is
+the client/service half of `report_qos_downgrade`, at `create_client` /
+`create_service` in `packages/rmw/cffi/src/lib.rs`, reading BOTH directions
+each. All six read-back sites now share one helper (`report_granted_qos`,
+generic over the entity type) instead of the publisher's three steps being
+hand-copied five more times; the `granted-qos-service-side` family and its
+`defer = 1327` are deleted, and the four parity-map rows go from
+`not-implemented, issue = 1327` back to a derived `same` (`same 9 -> 13`).
+
+**1329 — `nros_rmw_vtable_t::supported_qos_policies`.** The route asks the
+registered backend once at `open` and returns what it said; the union is gone.
+NULL means the backend has not said, which the runtime reads as NONE — the same
+answer the Rust trait default gives for the same question, chosen over "NULL
+means the union" (this issue with the ABI as its author) and "NULL means do not
+validate" (worse: it admits the bits nobody implements and switches the
+contract off invisibly). Loud rather than silent: `IncompatibleQos` at create
+naming a policy, plus one WARN per session naming the missing slot.
+
+### What each backend says now, and what moved to make it sayable
+
+| policy | cyclonedds | xrce | uorb |
+| --- | --- | --- | --- |
+| reliability / durability / history / depth | yes | yes | **yes, earned** |
+| deadline / lifespan | yes | **no** | no |
+| liveliness kind + lease | AUTOMATIC, MANUAL_BY_TOPIC, lease | **no** | no |
+| avoid_ros_namespace_conventions | **no** | **yes, services included** | no |
+
+Three of those needed a decision rather than a measurement:
+
+* **uORB is not "nothing", which is what the issue predicted.** A new `qos.cpp`
+  refuses KEEP_ALL and TRANSIENT_LOCAL, accepts both reliabilities (a
+  shared-memory ring loses nothing within its depth), and grants depth down to
+  the topic's `o_queue` while reporting the grant through the two read-back
+  slots it now fills. Granted-and-reported is a different thing from
+  clamped-and-silent, and it is 1327's machinery doing the reporting.
+* **xrce keeps `avoid_ros_namespace_conventions` by becoming honest about it.**
+  It reached publishers and subscriptions only, which a per-backend mask cannot
+  express; `xrce_dds_request_topic` / `xrce_dds_reply_topic` now drop the `rq/`
+  + `rr/` prefixes too.
+* **xrce loses liveliness, and W10's deferred deviation is what unblocked it.**
+  Every C and C++ default profile stated `LIVELINESS_AUTOMATIC` where upstream
+  leaves the sentinel, so `required_policies()` demanded a bit xrce cannot
+  serve. W10 recorded that the three remaining application surfaces "move
+  together with the C ABI or not at all"; they moved together here, which is
+  the deviation W10 declared and could not close.
+
+### The gate's subject moved with the shape
+
+`check-qos-mask-derivation` asked one question of the union. It now asks, per
+backend: the mux must ROUTE rather than author; each routed backend's C mask
+must EQUAL its evidenced claims in both directions; a backend that honours
+anything and fills no slot is an error; and the C `NROS_RMW_QOS_POLICY_*`
+macros must agree with `QoSPolicyMask` name for name and bit for bit — a
+backend setting one bit while the runtime reads another ACCEPTS the wrong
+profile, silently. Eleven live-tree mutation controls now, up from six.
+
+### One thing this re-opens, stated because W11 measured it
+
+W11 recorded that the parity map's `issue =` mechanism had been VACUOUS — no
+row carried one — and that W8's four rows gave it a subject. Those four rows
+are now `same`, so the live subject count is back to zero. The mechanism is not
+untested (the gate's self-test plants its own rows and the W11 mutation still
+fails there), but the next `not-implemented` row is again the first live one.
+
 ## W10 outcome (2026-09-05) — one gate, and the sources it does not yet reach
 
 Landed: the SSoT is a `qos_profiles!` fence in `nros-rmw/src/traits.rs` stating
@@ -1326,6 +1403,13 @@ Per slot, decided rather than counted:
   **issue 1327**. Their map rows move from a derived `same` to
   `not-implemented` with `issue = 1327`, because a body no caller reaches does
   not deliver the capability.
+
+  **DONE 2026-09-12, with W9's own follow-through** (issue 1327 resolved):
+  `inert 11 -> 7`, the four map rows back to a derived `same`, and the
+  `granted-qos-service-side` family deleted rather than narrowed. The
+  sequencing held — the read-back consumer and the per-backend QoS mask landed
+  in one PR, so neither was written against a path the other was moving. See
+  "W9 follow-through" below.
 * **`required_rx_bytes` — reserved, not withdrawn.** Its own header block says
   "Nothing calls this yet" and names phase-403 W3/W5 as the owner of the
   dispatch site, which is open work, and records the 2026-08-31 ruling that the
@@ -1411,4 +1495,5 @@ convention that keeps the exemption list from growing.
 * `NROS_MAX_STREAM_CHUNK` is also named in
   `packages/core/nros-rmw/src/traits.rs:2141`, which phase-428 W13 and the
   phase-426 parameters work are both touching; corrected in the header only.
-* The consumer for the four QoS read-backs is issue 1327, sequenced behind W9.
+* ~~The consumer for the four QoS read-backs is issue 1327, sequenced behind
+  W9.~~ DONE 2026-09-12 with issue 1329 — see "W9 follow-through".
