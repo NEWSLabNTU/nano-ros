@@ -23,8 +23,8 @@
 //! Run with: `cargo nextest run -p nros-tests --test executor_sizing_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_int32_sink, build_native_workspace_rust_sizing_entry,
-    require_zenohd, zenohd_unique,
+    ManagedProcess, RequireFixture, ZenohRouter, build_int32_sink,
+    build_native_workspace_rust_sizing_entry, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
 use std::{process::Command, time::Duration};
@@ -33,7 +33,7 @@ use std::{process::Command, time::Duration};
 fn spawn_sizing_entry(locator: &str, spin_ms: u32) -> ManagedProcess {
     let entry = build_native_workspace_rust_sizing_entry()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("sizing workspace entry fixture not built: {e}"));
+        .require("sizing workspace entry");
     let mut cmd = Command::new(entry);
     cmd.env("RUST_LOG", "info")
         .env("NROS_LOCATOR", locator)
@@ -89,7 +89,7 @@ fn six_timer_node_delivers_to_a_separate_process(zenohd_unique: ZenohRouter) {
 
     let listener = build_int32_sink()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
+        .require("native listener");
     let mut cmd = Command::new(listener);
     cmd.env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)

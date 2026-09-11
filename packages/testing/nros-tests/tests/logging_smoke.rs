@@ -11,6 +11,7 @@
 //! Fixtures must be prebuilt — run `just qemu build-fixtures` for the
 //! bare-metal MPS2-AN385 slice.
 
+use nros_tests::fixtures::RequireFixture;
 use std::time::Duration;
 
 use std::{
@@ -65,7 +66,7 @@ fn logging_smoke_qemu_baremetal_mps2_emits_every_severity() {
     }
 
     let binary = build_logging_smoke_mps2_baremetal()
-        .expect("logging-smoke-mps2-baremetal fixture not built — run `just qemu build-fixtures`");
+        .require("logging-smoke-mps2-baremetal — run `just qemu build-fixtures`");
 
     let mut qemu = QemuProcess::start_mps2_an385(binary).expect("failed to start QEMU");
     let output = qemu
@@ -89,9 +90,8 @@ fn logging_smoke_freertos_mps2_emits_every_severity() {
         panic!("[SKIPPED] thumbv7m-none-eabi target not installed");
     }
 
-    let binary = build_logging_smoke_freertos_mps2().expect(
-        "logging-smoke-freertos-mps2 fixture not built — run `just freertos build-fixtures`",
-    );
+    let binary = build_logging_smoke_freertos_mps2()
+        .require("logging-smoke-freertos-mps2 — run `just freertos build-fixtures`");
 
     let mut qemu = QemuProcess::start_mps2_an385_networked(binary)
         .expect("failed to start QEMU (networked slirp)");
@@ -126,7 +126,7 @@ fn logging_smoke_nuttx_qemu_arm_emits_every_severity() {
     }
 
     let binary = build_logging_smoke_nuttx_qemu_arm()
-        .expect("logging-smoke-nuttx-qemu-arm fixture not built — run `just nuttx build-fixtures`");
+        .require("logging-smoke-nuttx-qemu-arm — run `just nuttx build-fixtures`");
 
     // No networking — fixture skips `Executor::open` so no zenoh
     // session is needed. `init_hardware` still runs (5s sleep +
@@ -151,9 +151,8 @@ fn logging_smoke_threadx_riscv64_emits_every_severity() {
         panic!("[SKIPPED] qemu-system-riscv64 not available");
     }
 
-    let binary = build_logging_smoke_threadx_riscv64().expect(
-        "logging-smoke-threadx-riscv64 fixture not built — run `just threadx_riscv64 build-fixtures`",
-    );
+    let binary = build_logging_smoke_threadx_riscv64()
+        .require("logging-smoke-threadx-riscv64 — run `just threadx_riscv64 build-fixtures`");
 
     let mut qemu =
         QemuProcess::start_riscv64_virt(binary, 99).expect("failed to start QEMU (riscv64-virt)");
@@ -197,9 +196,8 @@ fn logging_smoke_threadx_linux_captures_stderr() {
         panic!("[SKIPPED] nsos-netx not found at packages/drivers/net/nsos-netx/");
     }
 
-    let binary = build_logging_smoke_threadx_linux().expect(
-        "logging-smoke-threadx-linux fixture not built - run `just threadx_linux build-fixtures`",
-    );
+    let binary = build_logging_smoke_threadx_linux()
+        .require("logging-smoke-threadx-linux - run `just threadx_linux build-fixtures`");
 
     let mut proc = ManagedProcess::spawn(binary, &[], "logging-smoke-threadx-linux")
         .expect("failed to spawn ThreadX Linux logging smoke fixture");
@@ -229,9 +227,8 @@ fn logging_smoke_esp32_qemu_emits_every_severity() {
         panic!("[SKIPPED] qemu-system-riscv32 (Espressif fork, esp32c3 machine) not available");
     }
 
-    let flash = build_logging_smoke_esp32_qemu_flash().expect(
-        "logging-smoke-esp32-qemu fixture not built — run `just esp32 build-logging-smoke`",
-    );
+    let flash = build_logging_smoke_esp32_qemu_flash()
+        .require("logging-smoke-esp32-qemu — run `just esp32 build-logging-smoke`");
 
     let mut qemu = start_esp32_qemu(flash, false).expect("failed to start ESP32-C3 QEMU");
     // The fixture drives the severities in order (trace→fatal), so wait for the
@@ -257,9 +254,8 @@ fn logging_smoke_esp32_qemu_emits_every_severity() {
 /// four severities that survive the standard logging level.
 #[test]
 fn logging_smoke_zephyr_native_sim_emits_every_severity() {
-    let binary = build_logging_smoke_zephyr_native_sim().expect(
-        "logging-smoke-zephyr-native-sim fixture not built — run `just zephyr build-fixtures`",
-    );
+    let binary = build_logging_smoke_zephyr_native_sim()
+        .require("logging-smoke-zephyr-native-sim — run `just zephyr build-fixtures`");
 
     let mut child = Command::new(binary)
         .stdout(Stdio::piped())
@@ -321,8 +317,8 @@ fn logging_smoke_zephyr_native_sim_emits_every_severity() {
 /// dispatch time, end-to-end through the real cffi PlatformSink → stderr chain.
 #[test]
 fn native_rust_logging_example_threshold_raise_filters_round_two() {
-    let binary = build_native_logging()
-        .expect("native/rust/logging fixture not built — run `just build-test-fixtures`");
+    let binary =
+        build_native_logging().require("native/rust/logging — run `just build-test-fixtures`");
 
     let mut proc = ManagedProcess::spawn(binary, &[], "native-rs-logging")
         .expect("failed to spawn native/rust/logging example");

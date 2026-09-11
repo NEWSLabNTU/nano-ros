@@ -49,7 +49,7 @@
 use nros_tests::{
     count_pattern,
     fixtures::{
-        XrceAgent, ZenohRouter, build_native_listener, build_native_service_client,
+        RequireFixture, XrceAgent, ZenohRouter, build_native_listener, build_native_service_client,
         build_native_service_server, build_native_talker, require_xrce_agent,
     },
     matrix::{Lang, Rmw, Workload},
@@ -843,7 +843,7 @@ fn test_zephyr_to_native_e2e() {
     eprintln!("zenohd locator: {locator}");
 
     // Build native listener
-    let listener_path = build_native_listener().expect("Failed to build native-rs-listener");
+    let listener_path = build_native_listener().require("native-rs-listener");
 
     // Get Zephyr talker
     let zephyr_binary = resolve_example(Lang::Rust, "talker", Rmw::Zenoh);
@@ -951,7 +951,7 @@ fn test_native_to_zephyr_e2e() {
     eprintln!("zenohd locator: {locator}");
 
     // Build native talker
-    let talker_path = build_native_talker().expect("Failed to build native-rs-talker");
+    let talker_path = build_native_talker().require("native-rs-talker");
 
     // Get Zephyr listener
     let zephyr_binary = resolve_example(Lang::Rust, "listener", Rmw::Zenoh);
@@ -1062,8 +1062,8 @@ fn test_bidirectional_native_zephyr_e2e() {
     eprintln!("zenohd locator: {locator}");
 
     // Build all binaries
-    let native_talker_path = build_native_talker().expect("Failed to build native-rs-talker");
-    let native_listener_path = build_native_listener().expect("Failed to build native-rs-listener");
+    let native_talker_path = build_native_talker().require("native-rs-talker");
+    let native_listener_path = build_native_listener().require("native-rs-listener");
     let zephyr_talker_binary = resolve_example(Lang::Rust, "talker", Rmw::Zenoh);
     let zephyr_listener_binary = resolve_example(Lang::Rust, "listener", Rmw::Zenoh);
 
@@ -1228,8 +1228,7 @@ fn test_native_server_zephyr_client() {
     eprintln!("zenohd locator: {locator}");
 
     // Build native service server
-    let server_path =
-        build_native_service_server().expect("Failed to build native-rs-service-server");
+    let server_path = build_native_service_server().require("native-rs-service-server");
 
     // Get Zephyr service client
     let zephyr_binary = resolve_example(Lang::Rust, "service-client", Rmw::Zenoh);
@@ -1354,8 +1353,7 @@ fn test_zephyr_server_native_client() {
     eprintln!("zenohd locator: {locator}");
 
     // Build native service client
-    let client_path =
-        build_native_service_client().expect("Failed to build native-rs-service-client");
+    let client_path = build_native_service_client().require("native-rs-service-client");
 
     // Get Zephyr service server
     let zephyr_binary = resolve_example(Lang::Rust, "service-server", Rmw::Zenoh);
@@ -1676,7 +1674,7 @@ fn test_zephyr_workspace_entry_native_sim_e2e() {
     // resolver, before the existence check. This is issue 1112's site one file
     // over.
     let listener_path = nros_tests::fixtures::build_int32_sink()
-        .expect("int32-sink fixture (row `int32-sink-zenoh`)")
+        .require("int32-sink (row `int32-sink-zenoh`)")
         .to_path_buf();
     use nros_tests::process::ManagedProcess;
     use std::process::Command;

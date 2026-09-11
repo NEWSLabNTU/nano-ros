@@ -23,7 +23,10 @@
 
 use nros_tests::{
     alloc::port_of,
-    fixtures::{ZenohRouter, ZephyrPlatform, ZephyrProcess, build_zephyr_workspace_rust_qos_entry},
+    fixtures::{
+        RequireFixture, ZenohRouter, ZephyrPlatform, ZephyrProcess,
+        build_zephyr_workspace_rust_qos_entry,
+    },
     matrix::{Lang, PlatformId, Workload},
     ros2::{DEFAULT_ROS_DISTRO, require_ros2, ros2_env_setup_with_locator},
     skip,
@@ -46,8 +49,8 @@ fn nros_zephyr_publisher_reaches_ros2_topic_echo() {
              (`ros-$ROS_DISTRO-rmw-zenoh-cpp`, declared in nros-sdk-index.toml)."
         );
     }
-    let entry = build_zephyr_workspace_rust_qos_entry()
-        .unwrap_or_else(|e| skip!("zephyr qos workspace entry not built (west): {e}"));
+    let entry =
+        build_zephyr_workspace_rust_qos_entry().require("zephyr qos workspace entry (west)");
 
     let router = ZenohRouter::start_on("127.0.0.1", QOS_ZEPHYR_ENTRY_PORT)
         .unwrap_or_else(|e| skip!("zenohd failed to start on {QOS_ZEPHYR_ENTRY_PORT}: {e}"));

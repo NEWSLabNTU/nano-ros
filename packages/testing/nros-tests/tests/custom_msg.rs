@@ -6,8 +6,8 @@
 //! Or: `just test-rust-custom-msg`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_custom_msg, build_native_custom_msg_no_zenoh,
-    require_zenohd, zenohd_unique,
+    ManagedProcess, RequireFixture, ZenohRouter, build_native_custom_msg,
+    build_native_custom_msg_no_zenoh, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
 use std::{process::Command, time::Duration};
@@ -19,7 +19,7 @@ use std::{process::Command, time::Duration};
 /// Test that the custom message example builds without zenoh feature
 #[rstest]
 fn test_custom_msg_builds_no_zenoh() {
-    let binary = build_native_custom_msg_no_zenoh().expect("Failed to build native-rs-custom-msg");
+    let binary = build_native_custom_msg_no_zenoh().require("native-rs-custom-msg");
     assert!(binary.exists(), "Binary should exist: {}", binary.display());
     println!("SUCCESS: Built custom_msg (no zenoh): {}", binary.display());
 }
@@ -27,8 +27,7 @@ fn test_custom_msg_builds_no_zenoh() {
 /// Test that the custom message example builds with zenoh feature
 #[rstest]
 fn test_custom_msg_builds_with_zenoh() {
-    let binary =
-        build_native_custom_msg().expect("Failed to build native-rs-custom-msg with zenoh");
+    let binary = build_native_custom_msg().require("native-rs-custom-msg with zenoh");
     assert!(binary.exists(), "Binary should exist: {}", binary.display());
     println!(
         "SUCCESS: Built custom_msg (with zenoh): {}",
@@ -43,7 +42,7 @@ fn test_custom_msg_builds_with_zenoh() {
 /// Test that serialization roundtrip works for custom messages
 #[rstest]
 fn test_custom_msg_serialization() {
-    let binary = build_native_custom_msg_no_zenoh().expect("Failed to build");
+    let binary = build_native_custom_msg_no_zenoh().require("fixture");
 
     // Run without zenoh - tests serialization only
     let cmd = Command::new(&binary);
@@ -93,7 +92,7 @@ fn test_custom_msg_pub_sub(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let binary = build_native_custom_msg().expect("Failed to build with zenoh");
+    let binary = build_native_custom_msg().require("with zenoh");
     let locator = zenohd_unique.locator();
 
     println!("Starting custom_msg with zenoh...");
@@ -160,7 +159,7 @@ fn test_custom_msg_pub_sub(zenohd_unique: ZenohRouter) {
 /// Test that custom SensorReading message has correct structure
 #[rstest]
 fn test_sensor_reading_structure() {
-    let binary = build_native_custom_msg_no_zenoh().expect("Failed to build");
+    let binary = build_native_custom_msg_no_zenoh().require("fixture");
 
     let mut proc = ManagedProcess::spawn_command(Command::new(&binary), "custom_msg")
         .expect("Failed to start");
@@ -192,7 +191,7 @@ fn test_sensor_reading_structure() {
 /// Test that custom Status message with string field works
 #[rstest]
 fn test_status_message_with_string() {
-    let binary = build_native_custom_msg_no_zenoh().expect("Failed to build");
+    let binary = build_native_custom_msg_no_zenoh().require("fixture");
 
     let mut proc = ManagedProcess::spawn_command(Command::new(&binary), "custom_msg")
         .expect("Failed to start");
@@ -222,7 +221,7 @@ fn test_status_message_with_string() {
 /// Test that example handles missing zenoh router gracefully
 #[rstest]
 fn test_custom_msg_no_router() {
-    let binary = build_native_custom_msg().expect("Failed to build with zenoh");
+    let binary = build_native_custom_msg().require("with zenoh");
 
     // Run with zenoh feature but no router - should handle gracefully
     let mut cmd = Command::new(binary);

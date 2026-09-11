@@ -16,8 +16,8 @@
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, ZenohRouter, build_native_listener, build_native_talker, require_zenohd,
-        zenohd_unique,
+        ManagedProcess, RequireFixture, ZenohRouter, build_native_listener, build_native_talker,
+        require_zenohd, zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -47,8 +47,8 @@ fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_binary = build_native_talker().expect("Failed to build talker");
-    let listener_binary = build_native_listener().expect("Failed to build listener");
+    let talker_binary = build_native_talker().require("talker");
+    let listener_binary = build_native_listener().require("listener");
     let locator = zenohd_unique.locator();
 
     // Start listener first
@@ -126,8 +126,8 @@ fn test_multiple_subscribers_single_topic(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_binary = build_native_talker().expect("Failed to build talker");
-    let listener_binary = build_native_listener().expect("Failed to build listener");
+    let talker_binary = build_native_talker().require("talker");
+    let listener_binary = build_native_listener().require("listener");
     let locator = zenohd_unique.locator();
 
     // Start 3 listeners
@@ -223,8 +223,8 @@ fn test_many_to_many(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_binary = build_native_talker().expect("Failed to build talker");
-    let listener_binary = build_native_listener().expect("Failed to build listener");
+    let talker_binary = build_native_talker().require("talker");
+    let listener_binary = build_native_listener().require("listener");
     let locator = zenohd_unique.locator();
 
     // Start 2 listeners
@@ -307,8 +307,8 @@ fn test_sustained_communication(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_binary = build_native_talker().expect("Failed to build talker");
-    let listener_binary = build_native_listener().expect("Failed to build listener");
+    let talker_binary = build_native_talker().require("talker");
+    let listener_binary = build_native_listener().require("listener");
     let locator = zenohd_unique.locator();
 
     // Start listener
@@ -389,8 +389,8 @@ fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_binary = build_native_talker().expect("Failed to build talker");
-    let listener_binary = build_native_listener().expect("Failed to build listener");
+    let talker_binary = build_native_talker().require("talker");
+    let listener_binary = build_native_listener().require("listener");
     let locator = zenohd_unique.locator();
 
     // Start listener
@@ -487,8 +487,8 @@ fn test_subscriber_scalability(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_binary = build_native_talker().expect("Failed to build talker");
-    let listener_binary = build_native_listener().expect("Failed to build listener");
+    let talker_binary = build_native_talker().require("talker");
+    let listener_binary = build_native_listener().require("listener");
     let locator = zenohd_unique.locator();
 
     // Start 5 listeners
@@ -571,8 +571,8 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_binary = build_native_talker().expect("Failed to build talker");
-    let listener_binary = build_native_listener().expect("Failed to build listener");
+    let talker_binary = build_native_talker().require("talker");
+    let listener_binary = build_native_listener().require("listener");
     let locator = zenohd_unique.locator();
 
     // Start listener
@@ -651,8 +651,8 @@ fn test_concurrent_startup(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_binary = build_native_talker().expect("Failed to build talker");
-    let listener_binary = build_native_listener().expect("Failed to build listener");
+    let talker_binary = build_native_talker().require("talker");
+    let listener_binary = build_native_listener().require("listener");
     let locator = zenohd_unique.locator();
 
     // Start 2 listeners and 2 talkers nearly simultaneously

@@ -547,6 +547,25 @@ pub enum TestError {
     /// cannot run must say so rather than report OK.
     #[error("ROS router unavailable: {0}")]
     RouterUnavailable(String),
+
+    /// issue 1129 / phase-450 W1 — the fixture for this coordinate was not
+    /// built.
+    ///
+    /// The same rule `RouterUnavailable` states one variant up, applied to the
+    /// family it matters most for: the honest verdict for a test whose fixture
+    /// was never built is SKIP, and a caller can only make that distinction if
+    /// the TYPE carries it. Until this existed the distinction was carried by
+    /// PROSE — `BuildFailed(msg)` plus `msg.contains("not prebuilt")` — so
+    /// every one of the 260 call sites re-decided it by hand, each wrote its
+    /// own wording, and `check-skip-budget` had to grep for the wordings it
+    /// knew. It knew 4 of 61.
+    ///
+    /// Display is deliberately UNCHANGED from the `BuildFailed` it replaces.
+    /// This variant exists so the decision can be made on the type; restating
+    /// the prose is a separate change with a wider blast radius, and doing
+    /// both at once would make neither reviewable.
+    #[error("Build failed: {0}")]
+    FixtureNotBuilt(String),
 }
 
 pub type TestResult<T> = Result<T, TestError>;

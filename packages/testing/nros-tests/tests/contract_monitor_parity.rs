@@ -32,8 +32,8 @@ use std::{process::Command, time::Duration};
 
 use nros_tests::{
     fixtures::{
-        ManagedProcess, ZenohRouter, build_contract_monitor_diagsink, build_contract_monitor_pub,
-        build_contract_monitor_sub, require_zenohd, zenohd_unique,
+        ManagedProcess, RequireFixture, ZenohRouter, build_contract_monitor_diagsink,
+        build_contract_monitor_pub, build_contract_monitor_sub, require_zenohd, zenohd_unique,
     },
     output::{
         CONTRACT_MONITOR_DIAG_PREFIX, CONTRACT_MONITOR_DIAGSINK_READY_MARKER, RULE_MAX_AGE_RUNTIME,
@@ -70,9 +70,8 @@ fn contract_monitor_violations_report_on_diagnostics(zenohd_unique: ZenohRouter)
         Ok(p) => p,
         Err(e) => nros_tests::skip!("contract-monitor-pub fixture not built: {e}"),
     };
-    let sub_bin = build_contract_monitor_sub().expect("contract-monitor-sub fixture");
-    let diagsink_bin =
-        build_contract_monitor_diagsink().expect("contract-monitor-diagsink fixture");
+    let sub_bin = build_contract_monitor_sub().require("contract-monitor-sub");
+    let diagsink_bin = build_contract_monitor_diagsink().require("contract-monitor-diagsink");
     let locator = zenohd_unique.locator();
 
     // Observer first, so its /diagnostics subscription is live before either
@@ -161,9 +160,8 @@ fn contract_monitor_compliant_pair_stays_silent(zenohd_unique: ZenohRouter) {
         Ok(p) => p,
         Err(e) => nros_tests::skip!("contract-monitor-pub fixture not built: {e}"),
     };
-    let sub_bin = build_contract_monitor_sub().expect("contract-monitor-sub fixture");
-    let diagsink_bin =
-        build_contract_monitor_diagsink().expect("contract-monitor-diagsink fixture");
+    let sub_bin = build_contract_monitor_sub().require("contract-monitor-sub");
+    let diagsink_bin = build_contract_monitor_diagsink().require("contract-monitor-diagsink");
     let locator = zenohd_unique.locator();
 
     let mut diagsink = spawn(

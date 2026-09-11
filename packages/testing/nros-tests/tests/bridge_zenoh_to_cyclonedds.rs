@@ -61,7 +61,7 @@ use std::{
 use nros_tests::{
     count_pattern,
     fixtures::{
-        DEFAULT_ROS_DISTRO, ManagedProcess, Rmw, Ros2DdsProcess, ZenohRouter,
+        DEFAULT_ROS_DISTRO, ManagedProcess, RequireFixture, Rmw, Ros2DdsProcess, ZenohRouter,
         build_bridge_zenoh_to_cyclonedds_fwd, build_native_c_example_rmw, require_ros2_cyclonedds,
         require_zenohd, talker_binary, zenohd_unique,
     },
@@ -77,7 +77,7 @@ const MSG_TYPE: &str = "std_msgs/msg/String";
 /// HARD FAILURE, not a skip — issue 1124; see the module note above.
 fn nano_cyclone_listener() -> PathBuf {
     build_native_c_example_rmw("listener", "c_listener", Rmw::Cyclonedds)
-        .expect("native/c/listener cyclonedds fixture (run `just cyclonedds setup`)")
+        .require("native/c/listener cyclonedds (run `just cyclonedds setup`)")
 }
 
 fn spawn_cyclone_listener(binary: &Path, domain: u8) -> ManagedProcess {
@@ -132,7 +132,7 @@ fn test_zenoh_to_cyclonedds_bridge_e2e(zenohd_unique: ZenohRouter, talker_binary
     }
 
     let bridge_bin = build_bridge_zenoh_to_cyclonedds_fwd()
-        .expect("bridge-zenoh-to-cyclonedds-fwd fixture (bins/bridge-zenoh-to-cyclonedds-fwd)")
+        .require("bridge-zenoh-to-cyclonedds-fwd (bins/bridge-zenoh-to-cyclonedds-fwd)")
         .to_path_buf();
 
     let zenoh_locator = zenohd_unique.locator();
@@ -206,7 +206,7 @@ fn test_zenoh_to_cyclonedds_bridge_to_nano_listener(
         nros_tests::skip!("zenohd not found");
     }
     let bridge_bin = build_bridge_zenoh_to_cyclonedds_fwd()
-        .expect("bridge-zenoh-to-cyclonedds-fwd fixture (bins/bridge-zenoh-to-cyclonedds-fwd)")
+        .require("bridge-zenoh-to-cyclonedds-fwd (bins/bridge-zenoh-to-cyclonedds-fwd)")
         .to_path_buf();
     let listener_bin = nano_cyclone_listener();
 
@@ -265,7 +265,7 @@ fn test_zenoh_to_cyclonedds_bridge_ros2(zenohd_unique: ZenohRouter, talker_binar
         nros_tests::skip!("ROS 2 + rmw_cyclonedds_cpp not available");
     }
     let bridge_bin = build_bridge_zenoh_to_cyclonedds_fwd()
-        .expect("bridge-zenoh-to-cyclonedds-fwd fixture (bins/bridge-zenoh-to-cyclonedds-fwd)")
+        .require("bridge-zenoh-to-cyclonedds-fwd (bins/bridge-zenoh-to-cyclonedds-fwd)")
         .to_path_buf();
 
     let zenoh_locator = zenohd_unique.locator();

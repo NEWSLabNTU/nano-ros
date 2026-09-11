@@ -33,8 +33,8 @@ use std::{process::Command, time::Duration};
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, ZenohRouter, build_int32_sink, build_native_workspace_rust_entry,
-        require_zenohd, zenohd_unique,
+        ManagedProcess, RequireFixture, ZenohRouter, build_int32_sink,
+        build_native_workspace_rust_entry, require_zenohd, zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -53,7 +53,7 @@ fn deployed_native_system_publishes_to_ros_graph(zenohd_unique: ZenohRouter) {
         Ok(p) => p.to_path_buf(),
         Err(e) => nros_tests::skip!("native_entry fixture not built: {e}"),
     };
-    let listener_bin = build_int32_sink().expect("build native listener");
+    let listener_bin = build_int32_sink().require("build native listener");
     let locator = zenohd_unique.locator();
 
     // Cross-process subscriber first, so its subscription is declared before

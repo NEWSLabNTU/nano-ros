@@ -24,13 +24,14 @@
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, Rmw, ZenohRouter, build_c_action_client, build_c_action_server,
-        build_c_listener, build_c_service_client_callback, build_c_service_server, build_c_talker,
-        build_cpp_action_client, build_cpp_action_client_callback, build_cpp_action_server,
-        build_cpp_listener, build_cpp_service_client_callback, build_cpp_service_server,
-        build_cpp_talker, build_native_c_example_rmw, build_native_cpp_example_rmw,
-        build_native_listener_rmw, build_native_service_client_callback, build_native_talker_rmw,
-        require_cmake, require_zenohd, zenohd_unique,
+        ManagedProcess, RequireFixture, Rmw, ZenohRouter, build_c_action_client,
+        build_c_action_server, build_c_listener, build_c_service_client_callback,
+        build_c_service_server, build_c_talker, build_cpp_action_client,
+        build_cpp_action_client_callback, build_cpp_action_server, build_cpp_listener,
+        build_cpp_service_client_callback, build_cpp_service_server, build_cpp_talker,
+        build_native_c_example_rmw, build_native_cpp_example_rmw, build_native_listener_rmw,
+        build_native_service_client_callback, build_native_talker_rmw, require_cmake,
+        require_zenohd, zenohd_unique,
     },
     output::{
         ACTION_EXECUTING_MARKER, ACTION_GOAL_ACCEPTED_PREFIX, ACTION_GOAL_NO_RESPONSE_PREFIX,
@@ -100,7 +101,7 @@ impl Language {
             Language::C => build_c_talker(),
             Language::Cpp => build_cpp_talker(),
         }
-        .unwrap_or_else(|e| skip_missing_fixture("native talker", e))
+        .require("native talker")
         .to_path_buf()
     }
 
@@ -109,7 +110,7 @@ impl Language {
             Language::C => build_c_listener(),
             Language::Cpp => build_cpp_listener(),
         }
-        .unwrap_or_else(|e| skip_missing_fixture("native listener", e))
+        .require("native listener")
         .to_path_buf()
     }
 
@@ -118,7 +119,7 @@ impl Language {
             Language::C => build_c_service_server(),
             Language::Cpp => build_cpp_service_server(),
         }
-        .unwrap_or_else(|e| skip_missing_fixture("native service server", e))
+        .require("native service server")
         .to_path_buf()
     }
 
@@ -127,7 +128,7 @@ impl Language {
             Language::C => build_c_action_server(),
             Language::Cpp => build_cpp_action_server(),
         }
-        .unwrap_or_else(|e| skip_missing_fixture("native action server", e))
+        .require("native action server")
         .to_path_buf()
     }
 
@@ -136,17 +137,8 @@ impl Language {
             Language::C => build_c_action_client(),
             Language::Cpp => build_cpp_action_client(),
         }
-        .unwrap_or_else(|e| skip_missing_fixture("native action client", e))
+        .require("native action client")
         .to_path_buf()
-    }
-}
-
-fn skip_missing_fixture(label: &str, err: nros_tests::TestError) -> ! {
-    match err {
-        nros_tests::TestError::BuildFailed(msg) if msg.contains("not prebuilt") => {
-            nros_tests::skip!("{label} fixture not prebuilt: {msg}");
-        }
-        other => panic!("failed to resolve {label} fixture: {other:?}"),
     }
 }
 
@@ -307,7 +299,7 @@ fn test_native_service_communication_callback(
         Language::C => build_c_service_client_callback(),
         Language::Cpp => build_cpp_service_client_callback(),
     }
-    .unwrap_or_else(|e| skip_missing_fixture("native service client (callback)", e))
+    .require("native service client (callback)")
     .to_path_buf();
 
     let mut server = spawn_native(&server_bin, lang, "service-server", &locator);
@@ -400,7 +392,7 @@ fn test_service_callback_interop_c_client_cpp_server(zenohd_unique: ZenohRouter)
     require_native_env();
     let server_bin = Language::Cpp.service_server_binary();
     let client_bin = build_c_service_client_callback()
-        .unwrap_or_else(|e| skip_missing_fixture("C service client (callback)", e))
+        .require("C service client (callback)")
         .to_path_buf();
     service_callback_interop_body(
         &zenohd_unique.locator(),
@@ -416,7 +408,7 @@ fn test_service_callback_interop_cpp_client_c_server(zenohd_unique: ZenohRouter)
     require_native_env();
     let server_bin = Language::C.service_server_binary();
     let client_bin = build_cpp_service_client_callback()
-        .unwrap_or_else(|e| skip_missing_fixture("C++ service client (callback)", e))
+        .require("C++ service client (callback)")
         .to_path_buf();
     service_callback_interop_body(
         &zenohd_unique.locator(),
@@ -442,7 +434,7 @@ fn spawn_rust_callback_client(binary: &Path, locator: &str) -> ManagedProcess {
 /// dispatched at `spin_once` receives a reply framed by the other language's RMW.
 fn rust_callback_interop_body(locator: &str, server_bin: &Path, server_lang: Language) {
     let client_bin = build_native_service_client_callback()
-        .unwrap_or_else(|e| skip_missing_fixture("Rust service client (callback)", e))
+        .require("Rust service client (callback)")
         .to_path_buf();
 
     let mut server = spawn_native(server_bin, server_lang, "service-server", locator);
@@ -587,7 +579,7 @@ fn test_cpp_action_communication_callback(zenohd_unique: ZenohRouter) {
     let locator = zenohd_unique.locator();
     let server_bin = Language::Cpp.action_server_binary();
     let client_bin = build_cpp_action_client_callback()
-        .unwrap_or_else(|e| skip_missing_fixture("native action client (callback)", e))
+        .require("native action client (callback)")
         .to_path_buf();
 
     let mut server = spawn_native(&server_bin, Language::Cpp, "action-server", &locator);
@@ -649,10 +641,10 @@ fn test_action_callback_interop_cpp_client_c_server(zenohd_unique: ZenohRouter) 
     require_native_env();
     let locator = zenohd_unique.locator();
     let server_bin = build_c_action_server()
-        .unwrap_or_else(|e| skip_missing_fixture("C action server", e))
+        .require("C action server")
         .to_path_buf();
     let client_bin = build_cpp_action_client_callback()
-        .unwrap_or_else(|e| skip_missing_fixture("C++ action client (callback)", e))
+        .require("C++ action client (callback)")
         .to_path_buf();
 
     let mut server = spawn_native(&server_bin, Language::C, "action-server", &locator);
@@ -700,10 +692,10 @@ fn test_action_callback_interop_c_client_cpp_server(zenohd_unique: ZenohRouter) 
     require_native_env();
     let locator = zenohd_unique.locator();
     let server_bin = build_cpp_action_server()
-        .unwrap_or_else(|e| skip_missing_fixture("C++ action server", e))
+        .require("C++ action server")
         .to_path_buf();
     let client_bin = build_c_action_client()
-        .unwrap_or_else(|e| skip_missing_fixture("C action client", e))
+        .require("C action client")
         .to_path_buf();
 
     let mut server = spawn_native(&server_bin, Language::Cpp, "action-server", &locator);
@@ -905,7 +897,7 @@ fn cyclone_talker_binary(lang: Language) -> PathBuf {
         Language::C => build_native_c_example_rmw("talker", "c_talker", Rmw::Cyclonedds),
         Language::Cpp => build_native_cpp_example_rmw("talker", "cpp_talker", Rmw::Cyclonedds),
     }
-    .unwrap_or_else(|e| skip_missing_fixture("native cyclonedds talker", e))
+    .require("native cyclonedds talker")
 }
 
 fn cyclone_listener_binary(lang: Language) -> PathBuf {
@@ -913,18 +905,18 @@ fn cyclone_listener_binary(lang: Language) -> PathBuf {
         Language::C => build_native_c_example_rmw("listener", "c_listener", Rmw::Cyclonedds),
         Language::Cpp => build_native_cpp_example_rmw("listener", "cpp_listener", Rmw::Cyclonedds),
     }
-    .unwrap_or_else(|e| skip_missing_fixture("native cyclonedds listener", e))
+    .require("native cyclonedds listener")
 }
 
 fn rust_cyclone_talker_binary() -> PathBuf {
     build_native_talker_rmw(Rmw::Cyclonedds)
-        .unwrap_or_else(|e| skip_missing_fixture("native rust cyclonedds talker", e))
+        .require("native rust cyclonedds talker")
         .to_path_buf()
 }
 
 fn rust_cyclone_listener_binary() -> PathBuf {
     build_native_listener_rmw(Rmw::Cyclonedds)
-        .unwrap_or_else(|e| skip_missing_fixture("native rust cyclonedds listener", e))
+        .require("native rust cyclonedds listener")
         .to_path_buf()
 }
 
@@ -1085,7 +1077,7 @@ fn test_threadx_linux_cyclonedds_talker_to_native_listener() {
         "c_talker",
         nros_tests::fixtures::Rmw::Cyclonedds,
     )
-    .unwrap_or_else(|e| panic!("resolve threadx-linux c talker (cyclonedds): {e}"));
+    .require("resolve threadx-linux c talker (cyclonedds)");
     // Native C Cyclone listener built via the standard fixture path.
     let listener_bin = cyclone_listener_binary(Language::C);
 
@@ -1143,7 +1135,7 @@ fn test_threadx_linux_cyclonedds_cpp_talker_to_native_listener() {
         "cpp_talker",
         nros_tests::fixtures::Rmw::Cyclonedds,
     )
-    .unwrap_or_else(|e| panic!("resolve threadx-linux cpp talker (cyclonedds): {e}"));
+    .require("resolve threadx-linux cpp talker (cyclonedds)");
     let listener_bin = cyclone_listener_binary(Language::Cpp);
 
     let mut listener = spawn_cyclone_binary(&listener_bin, "native-cpp-cyclonedds-listener", "107");
@@ -1196,7 +1188,7 @@ fn test_threadx_linux_cyclonedds_service() {
         "c_service_server",
         nros_tests::fixtures::Rmw::Cyclonedds,
     )
-    .unwrap_or_else(|e| panic!("resolve threadx-linux c service-server (cyclonedds): {e}"));
+    .require("resolve threadx-linux c service-server (cyclonedds)");
     let client_bin = cyclone_role_binary(Language::C, "service-client");
 
     let mut server = spawn_cyclone_binary(&server_bin, "threadx-cyclonedds-service-server", "107");
@@ -1238,7 +1230,7 @@ fn test_threadx_linux_cyclonedds_action() {
         "c_action_server",
         nros_tests::fixtures::Rmw::Cyclonedds,
     )
-    .unwrap_or_else(|e| panic!("resolve threadx-linux c action-server (cyclonedds): {e}"));
+    .require("resolve threadx-linux c action-server (cyclonedds)");
     let client_bin = cyclone_role_binary(Language::C, "action-client");
 
     let mut server = spawn_cyclone_binary(&server_bin, "threadx-cyclonedds-action-server", "107");
@@ -1349,9 +1341,7 @@ fn cyclone_role_binary(lang: Language, case: &str) -> PathBuf {
             build_native_cpp_example_rmw(case, &bin, Rmw::Cyclonedds)
         }
     }
-    .unwrap_or_else(|e| {
-        skip_missing_fixture(&format!("native {} cyclonedds {case}", lang.label()), e)
-    })
+    .require(&format!("native {} cyclonedds {case}", lang.label()))
 }
 
 /// issue #233 cell 1 — native **Rust** CycloneDDS service pair.
@@ -1379,13 +1369,13 @@ fn test_native_cyclonedds_rust_service() {
         "service-server",
         Rmw::Cyclonedds,
     )
-    .unwrap_or_else(|e| skip_missing_fixture("native rust cyclonedds service-server", e));
+    .require("native rust cyclonedds service-server");
     let client_bin = nros_tests::fixtures::build_native_rust_example_rmw(
         "service-client",
         "service-client",
         Rmw::Cyclonedds,
     )
-    .unwrap_or_else(|e| skip_missing_fixture("native rust cyclonedds service-client", e));
+    .require("native rust cyclonedds service-client");
 
     let mut server = spawn_cyclone_binary(&server_bin, "rust-cyclonedds-service-server", &domain);
     let _ = server.wait_for_output_pattern(
@@ -1438,13 +1428,13 @@ fn test_native_cyclonedds_rust_action() {
         "action-server",
         Rmw::Cyclonedds,
     )
-    .unwrap_or_else(|e| skip_missing_fixture("native rust cyclonedds action-server", e));
+    .require("native rust cyclonedds action-server");
     let client_bin = nros_tests::fixtures::build_native_rust_example_rmw(
         "action-client",
         "action-client",
         Rmw::Cyclonedds,
     )
-    .unwrap_or_else(|e| skip_missing_fixture("native rust cyclonedds action-client", e));
+    .require("native rust cyclonedds action-client");
 
     let mut server = spawn_cyclone_binary(&server_bin, "rust-cyclonedds-action-server", &domain);
     let _ = server.wait_for_output_pattern(ACTION_SERVER_READY_MARKER, Duration::from_secs(30));

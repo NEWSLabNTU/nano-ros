@@ -53,7 +53,7 @@ use nros_tests::{
     TestResult,
     alloc::port_of,
     fixtures::{
-        ManagedProcess, QemuProcess, ZenohRouter, ZephyrPlatform, ZephyrProcess,
+        ManagedProcess, QemuProcess, RequireFixture, ZenohRouter, ZephyrPlatform, ZephyrProcess,
         build_freertos_workspace_c_entry, build_freertos_workspace_cpp_entry,
         build_freertos_workspace_mixed_entry, build_int32_sink, build_native_listener,
         build_native_workspace_c_entry_robot2, build_nuttx_workspace_c_entry,
@@ -461,7 +461,7 @@ fn require_cell_env(cell: &Exec) {
 fn spawn_c_listener_observer(locator: &str, spin_ms: u32) -> ManagedProcess {
     let observer = build_native_workspace_c_entry_robot2()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("native C listener entry fixture not built: {e}"));
+        .require("native C listener entry");
     let mut cmd = Command::new(observer);
     cmd.env("NROS_LOCATOR", locator)
         .env("NROS_SESSION_MODE", "client")
@@ -485,7 +485,7 @@ fn spawn_c_listener_observer(locator: &str, spin_ms: u32) -> ManagedProcess {
 fn spawn_rust_listener_observer(locator: &str) -> ManagedProcess {
     let observer = build_native_listener()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("native Rust listener fixture not built: {e}"));
+        .require("native Rust listener");
     let mut cmd = Command::new(observer);
     cmd.env("RUST_LOG", "info").env("NROS_LOCATOR", locator);
     let mut obs = ManagedProcess::spawn_command(cmd, "native-observer")
@@ -506,7 +506,7 @@ fn spawn_rust_listener_observer(locator: &str) -> ManagedProcess {
 fn spawn_int32_sink(topic: &'static str, locator: &str) -> ManagedProcess {
     let sink = build_int32_sink()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("int32-sink fixture not built: {e}"));
+        .require("int32-sink");
     let mut cmd = Command::new(sink);
     cmd.env("RUST_LOG", "info")
         .env("NROS_LOCATOR", locator)

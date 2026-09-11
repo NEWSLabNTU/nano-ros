@@ -7,7 +7,11 @@ pub mod nuttx;
 pub mod threadx_linux;
 pub mod threadx_riscv64;
 
-use crate::{TestError, TestResult, build_dir, fixtures::staleness, project_root};
+use crate::{
+    TestError, TestResult, build_dir,
+    fixtures::{require::RequireFixture, staleness},
+    project_root,
+};
 use duct::cmd;
 use once_cell::sync::OnceCell;
 use std::{
@@ -659,7 +663,7 @@ fn require_prebuilt_binary_checks(binary_path: &Path) -> TestResult<PathBuf> {
     if let Some(reason) = crate::fixtures::lane::recorded_build_omits(binary_path) {
         crate::skip_class!(lane, "not built: {}\n  {reason}", binary_path.display());
     }
-    Err(TestError::BuildFailed(format!(
+    Err(TestError::FixtureNotBuilt(format!(
         "Test fixture binary not prebuilt: {}\n\
          Run `just build-test-fixtures` first.",
         binary_path.display()
@@ -1903,7 +1907,7 @@ fn require_prebuilt_workspace_binary(
     // `dir`, so `id` is the exact key where a path prefix would be ambiguous.
     crate::fixtures::lane::require_workspace_in_lane(fixture_id)?;
     if !binary_path.exists() {
-        return Err(TestError::BuildFailed(format!(
+        return Err(TestError::FixtureNotBuilt(format!(
             "Workspace fixture binary not prebuilt: {}\n\
              Run `just native build-workspace-fixtures` first.",
             binary_path.display()
@@ -1912,7 +1916,10 @@ fn require_prebuilt_workspace_binary(
 
     let expected = current_workspace_fixture_signature(fixture_id)?;
     let actual = fs::read_to_string(stamp_path).map_err(|e| {
-        TestError::BuildFailed(format!(
+        // The stamp is ABSENT, so this workspace fixture was never built —
+        // the not-built case, not a build failure. The MISMATCH below stays
+        // `BuildFailed`: a stale fixture must never launder into a skip.
+        TestError::FixtureNotBuilt(format!(
             "Workspace fixture stamp missing for {fixture_id}: {} ({e})\n\
              Run `just native build-workspace-fixtures` first.",
             stamp_path.display()
@@ -4851,9 +4858,7 @@ pub fn build_native_lifecycle_node() -> TestResult<&'static Path> {
 /// rstest fixture that provides the qemu-test binary path
 #[rstest::fixture]
 pub fn qemu_binary() -> PathBuf {
-    build_qemu_test()
-        .expect("Failed to build qemu-test")
-        .to_path_buf()
+    build_qemu_test().require("qemu-test").to_path_buf()
 }
 
 /// Cached path to the Phase 88.15.a `logging-smoke-mps2-baremetal`
@@ -5535,7 +5540,7 @@ pub fn build_qemu_talker_xrce() -> TestResult<&'static Path> {
 #[rstest::fixture]
 pub fn qemu_talker_xrce_binary() -> PathBuf {
     build_qemu_talker_xrce()
-        .expect("Failed to build qemu-talker-xrce")
+        .require("qemu-talker-xrce")
         .to_path_buf()
 }
 
@@ -5878,7 +5883,7 @@ mod fixture_absence_class_tests {
         let missing = std::path::Path::new("/nonexistent/nros-fixture-absence-probe");
         let got = require_prebuilt_binary_checks(missing);
         assert!(
-            matches!(&got, Err(crate::TestError::BuildFailed(m)) if m.contains("not prebuilt")),
+            matches!(&got, Err(crate::TestError::FixtureNotBuilt(_))),
             "ungated: expected a recoverable BuildFailed, got {got:?}"
         );
     }
@@ -5904,9 +5909,7 @@ mod fixture_absence_class_tests {
 pub fn xrce_large_msg_test_binary() -> PathBuf {
     match build_xrce_large_msg_test() {
         Ok(p) => p.to_path_buf(),
-        Err(crate::TestError::BuildFailed(msg)) if msg.contains("not prebuilt") => {
-            nros_tests_skip(msg)
-        }
+        Err(crate::TestError::FixtureNotBuilt(msg)) => nros_tests_skip(msg),
         Err(e) => panic!("Failed to build xrce-large-msg-test: {e:?}"),
     }
 }
@@ -5941,9 +5944,7 @@ pub fn build_zenoh_stress_test() -> TestResult<&'static Path> {
 pub fn zenoh_stress_test_binary() -> PathBuf {
     match build_zenoh_stress_test() {
         Ok(p) => p.to_path_buf(),
-        Err(crate::TestError::BuildFailed(msg)) if msg.contains("not prebuilt") => {
-            nros_tests_skip(msg)
-        }
+        Err(crate::TestError::FixtureNotBuilt(msg)) => nros_tests_skip(msg),
         Err(e) => panic!("Failed to build zenoh-stress-test: {e:?}"),
     }
 }
@@ -5991,9 +5992,7 @@ pub fn build_xrce_stress_test() -> TestResult<&'static Path> {
 pub fn xrce_stress_test_binary() -> PathBuf {
     match build_xrce_stress_test() {
         Ok(p) => p.to_path_buf(),
-        Err(crate::TestError::BuildFailed(msg)) if msg.contains("not prebuilt") => {
-            nros_tests_skip(msg)
-        }
+        Err(crate::TestError::FixtureNotBuilt(msg)) => nros_tests_skip(msg),
         Err(e) => panic!("Failed to build xrce-stress-test: {e:?}"),
     }
 }
@@ -6024,9 +6023,7 @@ pub fn build_xrce_stress_test_large_buf() -> TestResult<&'static Path> {
 pub fn xrce_stress_test_large_buf_binary() -> PathBuf {
     match build_xrce_stress_test_large_buf() {
         Ok(p) => p.to_path_buf(),
-        Err(crate::TestError::BuildFailed(msg)) if msg.contains("not prebuilt") => {
-            nros_tests_skip(msg)
-        }
+        Err(crate::TestError::FixtureNotBuilt(msg)) => nros_tests_skip(msg),
         Err(e) => panic!("Failed to build xrce-stress-test (large-buf): {e:?}"),
     }
 }

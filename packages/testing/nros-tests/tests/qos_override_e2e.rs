@@ -43,8 +43,8 @@
 
 use nros_tests::{
     fixtures::{
-        ManagedProcess, ZenohRouter, build_native_workspace_rust_qos_entry, require_zenohd,
-        zenohd_unique,
+        ManagedProcess, RequireFixture, ZenohRouter, build_native_workspace_rust_qos_entry,
+        require_zenohd, zenohd_unique,
     },
     ros2::{DEFAULT_ROS_DISTRO, require_ros2},
     skip,
@@ -128,7 +128,7 @@ fn a_ros2_peer_sees_the_overridden_publisher_profile(zenohd_unique: ZenohRouter)
 
     let entry = build_native_workspace_rust_qos_entry()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| skip!("qos workspace entry fixture not built: {e}"));
+        .require("qos workspace entry");
     let mut cmd = Command::new(entry);
     cmd.env("RUST_LOG", "info")
         .env("NROS_LOCATOR", &locator)

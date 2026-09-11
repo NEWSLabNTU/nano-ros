@@ -24,6 +24,7 @@
 //! Run with: `just test-threadx-riscv64`
 //! Or: `cargo nextest run -p nros-tests --test threadx_riscv64_qemu`
 
+use nros_tests::fixtures::RequireFixture;
 use std::time::Duration;
 
 use nros_tests::fixtures::{
@@ -125,9 +126,9 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_pubsub() {
     // test ran a five-day-old image for exactly that reason and read as a code
     // regression.
     let talker_bin = build_rv64_cmake_example_rmw("c", "talker", "c_talker", Rmw::Cyclonedds)
-        .expect("resolve rv64 C talker (cyclonedds)");
+        .require("resolve rv64 C talker (cyclonedds)");
     let listener_bin = build_rv64_cmake_example_rmw("c", "listener", "c_listener", Rmw::Cyclonedds)
-        .expect("resolve rv64 C listener (cyclonedds)");
+        .require("resolve rv64 C listener (cyclonedds)");
 
     // MACs match each node's config.toml (talker 10.0.2.40/:56,
     // listener 10.0.2.41/:57) so QEMU's device MAC equals the NetX-assigned
@@ -368,10 +369,10 @@ fn test_threadx_riscv64_cyclonedds_two_qemu_cpp_pubsub() {
     // Issue 0786 — RESOLVE, never `root.join`; see the note in the C sibling.
     // This is the test that ran the museum binary.
     let talker_bin = build_rv64_cmake_example_rmw("cpp", "talker", "cpp_talker", Rmw::Cyclonedds)
-        .expect("resolve rv64 C++ talker (cyclonedds)");
+        .require("resolve rv64 C++ talker (cyclonedds)");
     let listener_bin =
         build_rv64_cmake_example_rmw("cpp", "listener", "cpp_listener", Rmw::Cyclonedds)
-            .expect("resolve rv64 C++ listener (cyclonedds)");
+            .require("resolve rv64 C++ listener (cyclonedds)");
 
     // MACs match each C++ node's baked identity (talker 0x56, listener 0x57).
     const TALKER_MAC: &str = "52:54:00:12:34:56";

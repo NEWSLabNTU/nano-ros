@@ -49,9 +49,9 @@ use std::{process::Command, time::Duration};
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, XrceAgent, ZenohRouter, build_int32_sink_rmw, build_native_talker_header,
-        build_native_workspace_rust_bridge_xrce_entry, require_xrce_agent, require_zenohd,
-        zenohd_unique,
+        ManagedProcess, RequireFixture, XrceAgent, ZenohRouter, build_int32_sink_rmw,
+        build_native_talker_header, build_native_workspace_rust_bridge_xrce_entry,
+        require_xrce_agent, require_zenohd, zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -70,10 +70,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(zenohd_unique: ZenohRouter)
         nros_tests::skip!("XRCE-DDS Agent not found");
     }
     let bridge_bin = build_native_workspace_rust_bridge_xrce_entry()
-        .expect(
-            "bridge-xrce native_entry fixture (row `workspace-rust-native-bridge-xrce`); run \
-             `just native build-workspace-fixtures`",
-        )
+        .require("bridge-xrce native_entry (row `workspace-rust-native-bridge-xrce`); run \\ `just native build-workspace-fixtures`")
         .to_path_buf();
 
     let zenoh_locator = zenohd_unique.locator();
@@ -116,7 +113,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(zenohd_unique: ZenohRouter)
     // switch. Marker moves with the binary: the sink prints "Received:"
     // (INT32_LISTENER_LOG_PREFIX), not the example's "I heard:".
     let xrce_listener_binary = build_int32_sink_rmw(nros_tests::fixtures::Rmw::Xrce)
-        .expect("int32-sink xrce fixture (row `int32-sink-xrce`)")
+        .require("int32-sink xrce (row `int32-sink-xrce`)")
         .to_path_buf();
     let mut listener_cmd = Command::new(&xrce_listener_binary);
     listener_cmd
@@ -134,7 +131,7 @@ fn declarative_zenoh_to_xrce_bridge_to_nros_listener(zenohd_unique: ZenohRouter)
         .expect("xrce listener did not become ready");
 
     let talker_binary = build_native_talker_header()
-        .expect("talker `header` fixture (row `header-chatter-talker`)")
+        .require("talker `header` (row `header-chatter-talker`)")
         .to_path_buf();
     let mut talker_cmd = Command::new(&talker_binary);
     // Match the Int32 bridge/listener (issue #183): publish std_msgs/Int32.

@@ -24,13 +24,16 @@ use std::{process::Command, time::Duration};
 // The resolved value and the two wrong ones, each naming the rule it breaks.
 // Shared with `tests/params.rs` (the `ros2 param set` half) — they used to carry
 // their own numbers and disagreed about which one was correct (issue 0409).
-use nros_tests::output::param_talker::{ORDERING_LOST, RESOLVED, SPECIFICITY_LOST};
+use nros_tests::{
+    fixtures::RequireFixture,
+    output::param_talker::{ORDERING_LOST, RESOLVED, SPECIFICITY_LOST},
+};
 
 /// Spawn the `param_talker` workspace entry on `locator`, spinning for `spin_ms`.
 fn spawn_param_entry(locator: &str, spin_ms: u32) -> ManagedProcess {
     let entry = build_native_workspace_rust_params_entry()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("params workspace entry fixture not built: {e}"));
+        .require("params workspace entry");
     let mut cmd = Command::new(entry);
     cmd.env("RUST_LOG", "info")
         .env("NROS_LOCATOR", locator)

@@ -19,8 +19,8 @@
 //! ```
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_workspace_cpp_lifecycle_managed_entry,
-    require_zenohd, zenohd_unique,
+    ManagedProcess, RequireFixture, ZenohRouter,
+    build_native_workspace_cpp_lifecycle_managed_entry, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
 use std::{process::Command, time::Duration};
@@ -33,7 +33,7 @@ fn managed_node_wrapper_reaches_active_and_publishes(zenohd_unique: ZenohRouter)
     }
     let entry = build_native_workspace_cpp_lifecycle_managed_entry()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("managed lifecycle entry fixture not built: {e}"));
+        .require("managed lifecycle entry");
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(entry);

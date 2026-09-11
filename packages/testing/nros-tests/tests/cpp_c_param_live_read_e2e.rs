@@ -22,7 +22,7 @@
 //! Run with: `cargo nextest run -p nros-tests --test cpp_c_param_live_read_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_native_workspace_c_params_entry,
+    ManagedProcess, RequireFixture, ZenohRouter, build_native_workspace_c_params_entry,
     build_native_workspace_cpp_params_entry, build_native_workspace_mixed_params_entry,
     require_zenohd, zenohd_unique,
 };
@@ -47,7 +47,7 @@ fn c_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
     }
     let path = build_native_workspace_c_params_entry()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("ws-params-c entry fixture not built: {e}"));
+        .require("ws-params-c entry");
 
     let locator = zenohd_unique.locator();
     let mut listener = nros_tests::fixtures::spawn_int32_sink(None, &locator);
@@ -90,7 +90,7 @@ fn cpp_param_live_read_publishes_baked_initial(zenohd_unique: ZenohRouter) {
     }
     let path = build_native_workspace_cpp_params_entry()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("ws-params-cpp entry fixture not built: {e}"));
+        .require("ws-params-cpp entry");
 
     let locator = zenohd_unique.locator();
     let mut listener = nros_tests::fixtures::spawn_int32_sink(None, &locator);
@@ -136,7 +136,7 @@ fn mixed_c_cpp_param_declare_and_read_cross_languages(zenohd_unique: ZenohRouter
     }
     let path = build_native_workspace_mixed_params_entry()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("mixed-params entry fixture not built: {e}"));
+        .require("mixed-params entry");
 
     let locator = zenohd_unique.locator();
     let mut listener = nros_tests::fixtures::spawn_int32_sink(None, &locator);

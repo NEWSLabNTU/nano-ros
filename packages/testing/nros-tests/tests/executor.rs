@@ -13,8 +13,8 @@
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, ZenohRouter, build_native_listener, build_native_talker, require_zenohd,
-        zenohd_unique,
+        ManagedProcess, RequireFixture, ZenohRouter, build_native_listener, build_native_talker,
+        require_zenohd, zenohd_unique,
     },
 };
 use rstest::rstest;
@@ -35,7 +35,7 @@ fn test_timer_interval_basic(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let binary = build_native_talker().expect("Failed to build talker");
+    let binary = build_native_talker().require("talker");
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(binary);
@@ -77,7 +77,7 @@ fn test_timer_regular_publishing(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let binary = build_native_talker().expect("Failed to build talker");
+    let binary = build_native_talker().require("talker");
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(binary);
@@ -120,8 +120,8 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_binary = build_native_talker().expect("Failed to build talker");
-    let listener_binary = build_native_listener().expect("Failed to build listener");
+    let talker_binary = build_native_talker().require("talker");
+    let listener_binary = build_native_listener().require("listener");
     let locator = zenohd_unique.locator();
 
     // Start listener first
@@ -187,8 +187,8 @@ fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_binary = build_native_talker().expect("Failed to build talker");
-    let listener_binary = build_native_listener().expect("Failed to build listener");
+    let talker_binary = build_native_talker().require("talker");
+    let listener_binary = build_native_listener().require("listener");
     let locator = zenohd_unique.locator();
 
     // Start listener
@@ -271,7 +271,7 @@ fn test_spin_once_processes_work(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_binary = build_native_talker().expect("Failed to build talker");
+    let talker_binary = build_native_talker().require("talker");
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(talker_binary);
@@ -314,7 +314,7 @@ fn test_executor_multiple_timers_via_publishers(zenohd_unique: ZenohRouter) {
 
     // While we can't easily create multiple timers in one process from tests,
     // we can verify the executor handles multiple processes with timers correctly.
-    let talker_binary = build_native_talker().expect("Failed to build talker");
+    let talker_binary = build_native_talker().require("talker");
     let locator = zenohd_unique.locator();
 
     // Start two talkers (each has its own timer)
@@ -375,7 +375,7 @@ fn test_spin_result_timers_fired(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let binary = build_native_talker().expect("Failed to build");
+    let binary = build_native_talker().require("fixture");
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(binary);

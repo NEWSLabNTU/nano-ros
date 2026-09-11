@@ -29,7 +29,7 @@
 use nros_tests::{
     count_pattern,
     fixtures::{
-        ManagedProcess, ZenohRouter, build_native_custom_transport_listener,
+        ManagedProcess, RequireFixture, ZenohRouter, build_native_custom_transport_listener,
         build_native_custom_transport_talker, require_zenohd, zenohd_unique,
     },
 };
@@ -42,8 +42,8 @@ fn test_custom_transport_loopback(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_bin = build_native_custom_transport_talker().expect("build talker");
-    let listener_bin = build_native_custom_transport_listener().expect("build listener");
+    let talker_bin = build_native_custom_transport_talker().require("build talker");
+    let listener_bin = build_native_custom_transport_listener().require("build listener");
     let locator = zenohd_unique.locator();
 
     // Both binaries treat the locator as a TCP target — strip the

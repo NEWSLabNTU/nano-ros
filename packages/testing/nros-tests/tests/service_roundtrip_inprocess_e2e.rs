@@ -21,7 +21,7 @@
 //! Run with: `cargo nextest run -p nros-tests --test service_roundtrip_inprocess_e2e`
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_int32_sink,
+    ManagedProcess, RequireFixture, ZenohRouter, build_int32_sink,
     build_native_workspace_rust_service_inprocess_entry, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
@@ -31,7 +31,7 @@ use std::{process::Command, time::Duration};
 fn spawn_sum_listener(locator: &str) -> ManagedProcess {
     let listener = build_int32_sink()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("native listener fixture not built: {e}"));
+        .require("native listener");
     let mut cmd = Command::new(listener);
     cmd.env("RUST_LOG", "info")
         .env("NROS_LOCATOR", locator)
@@ -56,7 +56,7 @@ fn inprocess_service_roundtrip_publishes_server_computed_sums(zenohd_unique: Zen
     }
     let entry = build_native_workspace_rust_service_inprocess_entry()
         .map(|p| p.to_path_buf())
-        .unwrap_or_else(|e| nros_tests::skip!("in-process service entry fixture not built: {e}"));
+        .require("in-process service entry");
     let locator = zenohd_unique.locator();
 
     let mut listener = spawn_sum_listener(&locator);

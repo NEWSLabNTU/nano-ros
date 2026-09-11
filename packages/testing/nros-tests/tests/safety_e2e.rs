@@ -6,7 +6,7 @@
 //! - Backward compatibility (safety publisher → standard listener)
 
 use nros_tests::fixtures::{
-    ManagedProcess, Rmw, ZenohRouter, build_int32_sink, build_native_c_example_rmw,
+    ManagedProcess, RequireFixture, Rmw, ZenohRouter, build_int32_sink, build_native_c_example_rmw,
     build_native_cpp_example_rmw, build_native_declarative_safety_listener,
     build_native_listener_safety, build_native_talker_safety, require_zenohd, zenohd_unique,
 };
@@ -29,8 +29,8 @@ fn test_safety_e2e_talker_listener(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_path = build_native_talker_safety().expect("Failed to build safety talker");
-    let listener_path = build_native_listener_safety().expect("Failed to build safety listener");
+    let talker_path = build_native_talker_safety().require("safety talker");
+    let listener_path = build_native_listener_safety().require("safety listener");
     let locator = zenohd_unique.locator();
 
     // Start listener first (subscriber before publisher)
@@ -111,8 +111,8 @@ fn test_safety_talker_standard_listener(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_path = build_native_talker_safety().expect("Failed to build safety talker");
-    let listener_path = build_int32_sink().expect("Failed to build standard listener");
+    let talker_path = build_native_talker_safety().require("safety talker");
+    let listener_path = build_int32_sink().require("standard listener");
     let locator = zenohd_unique.locator();
 
     // Start standard listener first
@@ -184,7 +184,7 @@ fn test_declarative_safety_listener_receives_integrity(zenohd_unique: ZenohRoute
         Ok(p) => p,
         Err(e) => nros_tests::skip!("declarative-safety-listener fixture not built: {e}"),
     };
-    let talker_path = build_native_talker_safety().expect("Failed to build safety talker");
+    let talker_path = build_native_talker_safety().require("safety talker");
     let locator = zenohd_unique.locator();
 
     // Declarative subscriber first.
@@ -270,7 +270,7 @@ fn test_c_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
             Ok(p) => p,
             Err(e) => nros_tests::skip!("c safety-listener fixture not built: {e}"),
         };
-    let talker = build_native_talker_safety().expect("Failed to build safety talker");
+    let talker = build_native_talker_safety().require("safety talker");
     let locator = zenohd_unique.locator();
 
     let mut listener_cmd = Command::new(&listener);
@@ -322,7 +322,7 @@ fn test_cpp_safety_listener_validates_crc(zenohd_unique: ZenohRouter) {
             Ok(p) => p,
             Err(e) => nros_tests::skip!("cpp safety-listener fixture not built: {e}"),
         };
-    let talker = build_native_talker_safety().expect("Failed to build safety talker");
+    let talker = build_native_talker_safety().require("safety talker");
     let locator = zenohd_unique.locator();
 
     let mut listener_cmd = Command::new(&listener);

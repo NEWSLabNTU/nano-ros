@@ -14,8 +14,8 @@
 //! - MessageInfo (sequence number, GID) is correctly passed through
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, build_message_info_observer_zero_copy, build_native_talker,
-    require_zenohd, zenohd_unique,
+    ManagedProcess, RequireFixture, ZenohRouter, build_message_info_observer_zero_copy,
+    build_native_talker, require_zenohd, zenohd_unique,
 };
 use rstest::rstest;
 use std::time::Duration;
@@ -33,8 +33,8 @@ fn test_zero_copy_listener_starts(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let listener_path = build_message_info_observer_zero_copy()
-        .expect("Failed to build the zero-copy MessageInfo observer");
+    let listener_path =
+        build_message_info_observer_zero_copy().require("the zero-copy MessageInfo observer");
     let locator = zenohd_unique.locator();
 
     let mut cmd = Command::new(listener_path);
@@ -73,9 +73,9 @@ fn test_zero_copy_talker_listener(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_path = build_native_talker().expect("Failed to build talker");
-    let listener_path = build_message_info_observer_zero_copy()
-        .expect("Failed to build the zero-copy MessageInfo observer");
+    let talker_path = build_native_talker().require("talker");
+    let listener_path =
+        build_message_info_observer_zero_copy().require("the zero-copy MessageInfo observer");
     let locator = zenohd_unique.locator();
 
     // Start zero-copy listener first (subscriber before publisher)
@@ -136,9 +136,9 @@ fn test_zero_copy_message_info(zenohd_unique: ZenohRouter) {
         nros_tests::skip!("zenohd not found");
     }
 
-    let talker_path = build_native_talker().expect("Failed to build talker");
-    let listener_path = build_message_info_observer_zero_copy()
-        .expect("Failed to build the zero-copy MessageInfo observer");
+    let talker_path = build_native_talker().require("talker");
+    let listener_path =
+        build_message_info_observer_zero_copy().require("the zero-copy MessageInfo observer");
     let locator = zenohd_unique.locator();
 
     // Start zero-copy listener with RUST_LOG=trace to get MessageInfo output
