@@ -251,6 +251,15 @@ the rest and do not depend on each other.
   W7's text describes, and naming it here is the point of recording the
   measurement.
 
+> **W8, W9 and W10 MOVED to
+> [phase-456](phase-456-cpp-api-is-a-handle-over-the-rust-arena.md)
+> (2026-09-12).** RFC-0096 D9 revision 3 changed what they are: the remaining
+> work is not "move the surface onto `Owned<T>`" but "the C++ API becomes a
+> handle over the arena the Rust side already owns", and W9 cannot be last
+> because the flip is atomic with the corpus. The three items below are kept as
+> written, because the reasoning that retired them is only legible beside them.
+> phase-442 is COMPLETE at W0–W7.
+
 * **W8 [cpp] — the remaining `rclcpp::` surface moves onto the mechanisms**, and
   the nine gates and `cmake/compat/` are deleted. This is where the API becomes
   one API.
