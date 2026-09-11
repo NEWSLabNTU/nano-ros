@@ -131,6 +131,18 @@ claim-protocol:
 dist-runtime-deps:
     @python3 scripts/check-dist-runtime-deps.py
 
+# RFC-0099 D5 / phase-447 D1 — every `[tool.*].dist.<host>` row declares a
+# MEASURED floor (`scripts/sdk/measure-dist-floor.py`), or is recorded debt in
+# `.config/dist-floor-baseline.txt`, which may only SHRINK.
+#
+# ON the fast line, unlike its neighbour above: it reads the index and nothing
+# else, so it needs no store. A dist row landing without a floor is offered to
+# every host of its `<os>-<arch>`, including ones it cannot run on — the gap
+# `nros setup` now closes by comparing the host BEFORE downloading.
+[group("checks")]
+dist-floors:
+    @python3 scripts/check-dist-floors.py
+
 [private]
 package-xml-comments:
     @bash packages/testing/nros-tests/tests/package_xml_comment_stripping.sh

@@ -1641,7 +1641,13 @@ fn describe(action: &InstallAction, version: &str, host: &str) -> String {
     match action {
         InstallAction::Present => format!("present {version} (skip)"),
         InstallAction::Prebuilt { .. } => format!("prebuilt {version} (dist {host})"),
+        // phase-447 D1 — a prebuilt refused by its floor says WHY, here in the
+        // plan, so `--dry-run` shows the fallback before anything runs.
+        InstallAction::Source {
+            refused: Some(why), ..
+        } => format!("source build {version} ({why})"),
         InstallAction::Source { .. } => format!("source build {version} (no prebuilt for {host})"),
+        InstallAction::Refused { reason } => format!("REFUSED {version} ({reason}; no source)"),
         InstallAction::Unavailable => {
             format!("UNAVAILABLE {version} (no prebuilt for {host}, no source)")
         }
@@ -2887,6 +2893,39 @@ fn compose_packages(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// phase-447 D1 — the plan line says WHY a prebuilt was refused, so
+    /// `--dry-run` shows the fallback and its reason before anything runs; an
+    /// ordinary no-dist source build keeps its old wording.
+    #[test]
+    fn describe_names_a_floor_refusal() {
+        use crate::orchestration::sdk_store::SourceFetch;
+        let src = |refused: Option<&str>| InstallAction::Source {
+            fetch: SourceFetch::Git {
+                git: "g".into(),
+                git_ref: "r".into(),
+            },
+            configure: None,
+            install: None,
+            respect_toolchain: false,
+            refused: refused.map(str::to_string),
+        };
+        let line = describe(&src(Some("needs glibc >= 2.35")), "1", "linux-x86_64");
+        assert!(line.contains("needs glibc >= 2.35"), "{line}");
+        let plain = describe(&src(None), "1", "linux-x86_64");
+        assert!(plain.contains("no prebuilt for linux-x86_64"), "{plain}");
+        let refused = describe(
+            &InstallAction::Refused {
+                reason: "needs glibc >= 2.35".into(),
+            },
+            "1",
+            "linux-x86_64",
+        );
+        assert!(
+            refused.starts_with("REFUSED") && refused.contains("2.35"),
+            "{refused}"
+        );
+    }
 
     /// phase-431 W5 — a path the user TYPED is never second-guessed; only the
     /// default falls back to the copy shipped beside the binary.

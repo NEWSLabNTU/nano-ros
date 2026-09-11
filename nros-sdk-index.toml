@@ -23,6 +23,18 @@
 # pinned `url` + `sha256` verified before unpack (issue 1273 records the case
 # for it, and why maintainer-side/offline is the only shape that would keep
 # both properties).
+#
+# phase-447 D1 (RFC-0099 D5) — every `dist.<host>` row carries a MEASURED
+# `floor = { glibc = "..", glibcxx = "..", macos = ".." }` (or `none = "<why>"`),
+# the oldest host it runs on. The host key has no OS version in it, so the
+# floor is what stops a host that cannot run a dist from downloading it:
+# `nros setup` compares BEFORE the fetch and falls back to the source recipe
+# with the reason printed. Read the number off the artifact, never off the
+# runner it was built on:
+#   python3 scripts/sdk/measure-dist-floor.py <tool> --host <host>
+# `check-dist-floors` refuses a dist row without one. (Two ratchets, two
+# questions: dist-or-reason asks WHETHER a prebuilt exists; dist-floors asks
+# WHO it runs on.)
 
 # --- the repo's own build-stage source union (issue 0390) ---
 # The `[source.*]` names `just test` (links every RMW's `-sys`) and
@@ -147,9 +159,9 @@ smoke = [
 # check fails with a bare loader error.
 system = ["libselinux1", "libpcre2"]
 upstream = "nano-ros-v11.0.0-patches" # exact upstream rev/branch (SSOT for build-tool.yml)
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros6/qemu-linux-x86_64.tar.zst", sha256 = "1255611e2dd80f040cd3b473583e1d34eaa1e62db00c800662cdc194d05ae916" }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros6/qemu-linux-arm64.tar.zst", sha256 = "ce6b11bc0e1b16f81b2a31b73990b4b07e2ead273c29b80c3075b41a018ada86" }
-dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros6/qemu-macos-arm64.tar.zst", sha256 = "ac16f10b33cba19f2982381a928d58aeade02defc2cb647e23b23fcb2345046f" }
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros6/qemu-linux-x86_64.tar.zst", sha256 = "1255611e2dd80f040cd3b473583e1d34eaa1e62db00c800662cdc194d05ae916", floor = { glibc = "2.34" } }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros6/qemu-linux-arm64.tar.zst", sha256 = "ce6b11bc0e1b16f81b2a31b73990b4b07e2ead273c29b80c3075b41a018ada86", floor = { glibc = "2.34" } }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/qemu-11.0.0-nros6/qemu-macos-arm64.tar.zst", sha256 = "ac16f10b33cba19f2982381a928d58aeade02defc2cb647e23b23fcb2345046f", floor = { macos = "14.0" } }
 [tool.qemu.source]
 git = "https://github.com/NEWSLabNTU/qemu"
 ref = "nano-ros-v11.0.0-patches" # patched fork branch (no tags upstream)
@@ -198,9 +210,9 @@ smoke = [
 system = ["libcrypt1"]
 upstream = "13.2.rel1" # ARM release id (SSOT — build script no longer hand-derives)
 # Repackaged from ARM's release; no in-repo source build (binary toolchain).
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros4/arm-none-eabi-gcc-linux-x86_64.tar.zst", sha256 = "27d5e5f6f9428157df7900c91b000486184f99fbc1a35ea5c3ca219be9068197" }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros4/arm-none-eabi-gcc-linux-arm64.tar.zst", sha256 = "841e456d571e3f60244652a5ac7287f9e06a9c61f1fc93d2fbbc037b05f5a6ab" }
-dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros4/arm-none-eabi-gcc-macos-arm64.tar.zst", sha256 = "d1a2311ff7590e6370be8df34e6dea3d572df83aa95672eb484026f2fd4b6748" }
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros4/arm-none-eabi-gcc-linux-x86_64.tar.zst", sha256 = "27d5e5f6f9428157df7900c91b000486184f99fbc1a35ea5c3ca219be9068197", floor = { glibc = "2.34", glibcxx = "3.4.19" } }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros4/arm-none-eabi-gcc-linux-arm64.tar.zst", sha256 = "841e456d571e3f60244652a5ac7287f9e06a9c61f1fc93d2fbbc037b05f5a6ab", floor = { glibc = "2.34", glibcxx = "3.4.22" } }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/arm-none-eabi-gcc-13.2-nros4/arm-none-eabi-gcc-macos-arm64.tar.zst", sha256 = "d1a2311ff7590e6370be8df34e6dea3d572df83aa95672eb484026f2fd4b6748", floor = { macos = "11.0" } }
 
 [tool.zephyr-sdk]
 # The Zephyr SDK, host-keyed (issue 0610). `scripts/zephyr/setup.sh` used to
@@ -225,7 +237,7 @@ dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/
 # the shell script that already runs it.
 version = "0.16.8"
 upstream = "v0.16.8" # sdk-ng release tag (SSOT for the URLs below)
-dist.linux-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-x86_64.tar.xz", sha256 = "cb4e4012751e4526aaf1ec1e8ab9b4ded5681e2e01711b64f7a1b519ff7dbc6a" }
+dist.linux-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-x86_64.tar.xz", sha256 = "cb4e4012751e4526aaf1ec1e8ab9b4ded5681e2e01711b64f7a1b519ff7dbc6a", floor = { glibc = "2.27", glibcxx = "3.4.21" } }
 dist.linux-arm64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_linux-aarch64.tar.xz", sha256 = "83782b4cf595bb3da8a6c7c1ade01eed00ad03f8ba0c72da6680693192b3668d" }
 dist.macos-arm64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_macos-aarch64.tar.xz", sha256 = "e06138c1e50cc5b4508646640bd08c50f05f0eb3f2949e756d84d3367f581593" }
 dist.macos-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.8/zephyr-sdk-0.16.8_macos-x86_64.tar.xz", sha256 = "b96c849cc63e0f0218c196be8faba548ed473894fb7fced67311aa39fe97ac21" }
@@ -261,9 +273,9 @@ dist.macos-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releas
 # linux-x86_64 one was additionally verified against a local download.
 version = "1.0.1"
 upstream = "v1.0.1" # sdk-ng release tag (SSOT for the URLs below)
-dist.linux-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v1.0.1/zephyr-sdk-1.0.1_linux-x86_64_minimal.tar.xz", sha256 = "ca9bc0ff66fafca1dac9d592a36d953cf16d096a9d09b1c0357f021cf9f6a7eb" }
-dist.linux-arm64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v1.0.1/zephyr-sdk-1.0.1_linux-aarch64_minimal.tar.xz", sha256 = "d79c5bfc68e679488659bea289a4026e52a64f03338875c8c9c850fff13cee30" }
-dist.macos-arm64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v1.0.1/zephyr-sdk-1.0.1_macos-aarch64_minimal.tar.xz", sha256 = "867063901f39528a6175a80ebc20367bd6cb440593e7e2650eda30392f1f6b65" }
+dist.linux-x86_64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v1.0.1/zephyr-sdk-1.0.1_linux-x86_64_minimal.tar.xz", sha256 = "ca9bc0ff66fafca1dac9d592a36d953cf16d096a9d09b1c0357f021cf9f6a7eb", floor = { none = "its only binaries are the hosttools installer's Yocto sysroot, and all 109 ELF run on that sysroot's own ld.so + glibc (measured from the .sh payload); the toolchains setup.sh fetches later are not this artifact" } }
+dist.linux-arm64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v1.0.1/zephyr-sdk-1.0.1_linux-aarch64_minimal.tar.xz", sha256 = "d79c5bfc68e679488659bea289a4026e52a64f03338875c8c9c850fff13cee30", floor = { none = "its only binaries are the hosttools installer's Yocto sysroot, and all 108 ELF run on that sysroot's own ld.so + glibc (measured from the .sh payload); the toolchains setup.sh fetches later are not this artifact" } }
+dist.macos-arm64 = { url = "https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v1.0.1/zephyr-sdk-1.0.1_macos-aarch64_minimal.tar.xz", sha256 = "867063901f39528a6175a80ebc20367bd6cb440593e7e2650eda30392f1f6b65", floor = { macos = "14.0" } }
 
 [tool.riscv-none-elf-gcc]
 version = "14.2-nros1"
@@ -271,9 +283,9 @@ smoke = [
     { run = "bin/riscv-none-elf-gcc --version", expect = "riscv-none-elf-gcc" },
 ]
 upstream = "14.2.0-3" # xPack build (SSOT — was hardcoded only in the build script)
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/riscv-none-elf-gcc-14.2-nros1/riscv-none-elf-gcc-linux-x86_64.tar.zst", sha256 = "0f7a938cf5724c6c4ac48af140ede038015d63df1a6460f671d1215fff5ba622" }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/riscv-none-elf-gcc-14.2-nros1/riscv-none-elf-gcc-linux-arm64.tar.zst", sha256 = "8eba3c6e8e9dd51ae0583146209100a5e09a670649f1ed0840c26608caa32095" }
-dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/riscv-none-elf-gcc-14.2-nros1/riscv-none-elf-gcc-macos-arm64.tar.zst", sha256 = "eb9cd46e48e2196fb13d09112a655b3b926ff18a2350eb7ae79336205165b954" }
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/riscv-none-elf-gcc-14.2-nros1/riscv-none-elf-gcc-linux-x86_64.tar.zst", sha256 = "0f7a938cf5724c6c4ac48af140ede038015d63df1a6460f671d1215fff5ba622", floor = { glibc = "2.27", glibcxx = "3.4.30" } }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/riscv-none-elf-gcc-14.2-nros1/riscv-none-elf-gcc-linux-arm64.tar.zst", sha256 = "8eba3c6e8e9dd51ae0583146209100a5e09a670649f1ed0840c26608caa32095", floor = { glibc = "2.27", glibcxx = "3.4.30" } }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/riscv-none-elf-gcc-14.2-nros1/riscv-none-elf-gcc-macos-arm64.tar.zst", sha256 = "eb9cd46e48e2196fb13d09112a655b3b926ff18a2350eb7ae79336205165b954", floor = { macos = "11.0" } }
 
 # zenohd — REMOVED (phase-362 / RFC-0075).
 #
@@ -340,9 +352,9 @@ smoke = [
     { run = "bin/openocd --version", expect = "Open On-Chip Debugger" },
 ]
 upstream = "v0.12.0" # upstream tag (SSOT — build script no longer hand-derives)
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/openocd-0.12.0-nros2/openocd-linux-x86_64.tar.zst", sha256 = "0c999015212391add99f0428b2d8401383f3a65ff5cc43157f71c2eb15b5b47c" }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/openocd-0.12.0-nros2/openocd-linux-arm64.tar.zst", sha256 = "3235ef67860cc83ac6ac95f940801602683e25ecfed00c968ef01580e5115b6d" }
-dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/openocd-0.12.0-nros2/openocd-macos-arm64.tar.zst", sha256 = "33e0131e483e3a00274c2ae7df5939e368d8969df38d7c36101354d74dcaca86" }
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/openocd-0.12.0-nros2/openocd-linux-x86_64.tar.zst", sha256 = "0c999015212391add99f0428b2d8401383f3a65ff5cc43157f71c2eb15b5b47c", floor = { glibc = "2.34" } }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/openocd-0.12.0-nros2/openocd-linux-arm64.tar.zst", sha256 = "3235ef67860cc83ac6ac95f940801602683e25ecfed00c968ef01580e5115b6d", floor = { glibc = "2.34" } }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/openocd-0.12.0-nros2/openocd-macos-arm64.tar.zst", sha256 = "33e0131e483e3a00274c2ae7df5939e368d8969df38d7c36101354d74dcaca86", floor = { macos = "14.0" } }
 
 # --- the cargo tools (phase-422 W2, second half) ---
 #
@@ -368,8 +380,8 @@ upstream = "cargo-nextest-0.9.143" # = source.ref (nextest-rs/nextest release ta
 smoke = [
     { run = "bin/cargo-nextest --version", expect = "0.9.143" },
 ]
-dist.linux-x86_64 = { url = "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.143/cargo-nextest-0.9.143-x86_64-unknown-linux-gnu.tar.gz", sha256 = "66786b9abe23920d022a182d1416b1bbc8130dd4872a9553d76985a1708dcd1e", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin cargo-nextest && chmod +x {prefix}/bin/cargo-nextest" }
-dist.linux-arm64 = { url = "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.143/cargo-nextest-0.9.143-aarch64-unknown-linux-gnu.tar.gz", sha256 = "2a64b3566a92508550a7ab29c3e8db25472ca37730ecb4d22100b6aa440c2a68", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin cargo-nextest && chmod +x {prefix}/bin/cargo-nextest" }
+dist.linux-x86_64 = { url = "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.143/cargo-nextest-0.9.143-x86_64-unknown-linux-gnu.tar.gz", sha256 = "66786b9abe23920d022a182d1416b1bbc8130dd4872a9553d76985a1708dcd1e", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin cargo-nextest && chmod +x {prefix}/bin/cargo-nextest", floor = { glibc = "2.27" } }
+dist.linux-arm64 = { url = "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.143/cargo-nextest-0.9.143-aarch64-unknown-linux-gnu.tar.gz", sha256 = "2a64b3566a92508550a7ab29c3e8db25472ca37730ecb4d22100b6aa440c2a68", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin cargo-nextest && chmod +x {prefix}/bin/cargo-nextest", floor = { glibc = "2.27" } }
 [tool.cargo-nextest.source]
 git = "https://github.com/nextest-rs/nextest"
 ref = "cargo-nextest-0.9.143"
@@ -388,8 +400,8 @@ upstream = "v0.9.0" # = source.ref (taiki-e/cargo-llvm-cov release tag)
 smoke = [
     { run = "bin/cargo-llvm-cov llvm-cov --version", expect = "0.9.0" },
 ]
-dist.linux-x86_64 = { url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.0/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz", sha256 = "b068f7c98841aacb9c4f382b4a0c184ae82f49b56a32d442b429b2961c73be15", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin cargo-llvm-cov && chmod +x {prefix}/bin/cargo-llvm-cov" }
-dist.linux-arm64 = { url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.0/cargo-llvm-cov-aarch64-unknown-linux-gnu.tar.gz", sha256 = "9af53b273e50d01d8bde8785de8541f6738cc4375248cd7683aec8b5768b9d21", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin cargo-llvm-cov && chmod +x {prefix}/bin/cargo-llvm-cov" }
+dist.linux-x86_64 = { url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.0/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz", sha256 = "b068f7c98841aacb9c4f382b4a0c184ae82f49b56a32d442b429b2961c73be15", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin cargo-llvm-cov && chmod +x {prefix}/bin/cargo-llvm-cov", floor = { glibc = "2.34" } }
+dist.linux-arm64 = { url = "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v0.9.0/cargo-llvm-cov-aarch64-unknown-linux-gnu.tar.gz", sha256 = "9af53b273e50d01d8bde8785de8541f6738cc4375248cd7683aec8b5768b9d21", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin cargo-llvm-cov && chmod +x {prefix}/bin/cargo-llvm-cov", floor = { glibc = "2.34" } }
 [tool.cargo-llvm-cov.source]
 git = "https://github.com/taiki-e/cargo-llvm-cov"
 ref = "v0.9.0"
@@ -456,9 +468,9 @@ system = ["unzip"]
 smoke = [
     { run = "bin/clang-format --version", expect = "17.0.6" },
 ]
-dist.linux-x86_64 = { url = "https://files.pythonhosted.org/packages/89/df/5296c3eca534eedef32813cd38b3436c86f0eabcda2238060f73e45ef37d/clang_format-17.0.6-py2.py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", sha256 = "2a1323ca5322e0dead521223155fe2ae1ba81d50abab8e20aaac28f6a94f23b9", install = "unzip -q -o {archive} -d {prefix}/.wheel && install -Dm755 {prefix}/.wheel/clang_format/data/bin/clang-format {prefix}/bin/clang-format && rm -rf {prefix}/.wheel" }
-dist.linux-arm64 = { url = "https://files.pythonhosted.org/packages/2e/a5/78fe6b7b6947a1d90dcb451caf9c63895fa84d7fc453865a64d770aae242/clang_format-17.0.6-py2.py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", sha256 = "5cda40badfb01818ece739509d9cde678fc02660180cc1a55156782ef203704d", install = "unzip -q -o {archive} -d {prefix}/.wheel && install -Dm755 {prefix}/.wheel/clang_format/data/bin/clang-format {prefix}/bin/clang-format && rm -rf {prefix}/.wheel" }
-dist.macos-arm64 = { url = "https://files.pythonhosted.org/packages/5b/0a/d112aea9f0272e2c5558a2e9cf50229c846892dadf585f2a98fa0ba22385/clang_format-17.0.6-py2.py3-none-macosx_11_0_arm64.whl", sha256 = "195014a589fde9e2bec447ee1f2efd31f8c9f773b10aa66b510beae6997e6bc5", install = "unzip -q -o {archive} -d {prefix}/.wheel && install -Dm755 {prefix}/.wheel/clang_format/data/bin/clang-format {prefix}/bin/clang-format && rm -rf {prefix}/.wheel" }
+dist.linux-x86_64 = { url = "https://files.pythonhosted.org/packages/89/df/5296c3eca534eedef32813cd38b3436c86f0eabcda2238060f73e45ef37d/clang_format-17.0.6-py2.py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", sha256 = "2a1323ca5322e0dead521223155fe2ae1ba81d50abab8e20aaac28f6a94f23b9", install = "unzip -q -o {archive} -d {prefix}/.wheel && install -Dm755 {prefix}/.wheel/clang_format/data/bin/clang-format {prefix}/bin/clang-format && rm -rf {prefix}/.wheel", floor = { glibc = "2.16", glibcxx = "3.4.19" } }
+dist.linux-arm64 = { url = "https://files.pythonhosted.org/packages/2e/a5/78fe6b7b6947a1d90dcb451caf9c63895fa84d7fc453865a64d770aae242/clang_format-17.0.6-py2.py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", sha256 = "5cda40badfb01818ece739509d9cde678fc02660180cc1a55156782ef203704d", install = "unzip -q -o {archive} -d {prefix}/.wheel && install -Dm755 {prefix}/.wheel/clang_format/data/bin/clang-format {prefix}/bin/clang-format && rm -rf {prefix}/.wheel", floor = { glibc = "2.17", glibcxx = "3.4.19" } }
+dist.macos-arm64 = { url = "https://files.pythonhosted.org/packages/5b/0a/d112aea9f0272e2c5558a2e9cf50229c846892dadf585f2a98fa0ba22385/clang_format-17.0.6-py2.py3-none-macosx_11_0_arm64.whl", sha256 = "195014a589fde9e2bec447ee1f2efd31f8c9f773b10aa66b510beae6997e6bc5", install = "unzip -q -o {archive} -d {prefix}/.wheel && install -Dm755 {prefix}/.wheel/clang_format/data/bin/clang-format {prefix}/bin/clang-format && rm -rf {prefix}/.wheel", floor = { macos = "11.0" } }
 
 # Micro-XRCE-DDS Agent — the host daemon the XRCE-DDS RMW connects to (the
 # counterpart to zenohd for the rmw-xrce path). Source build is a CMake
@@ -467,9 +479,9 @@ dist.macos-arm64 = { url = "https://files.pythonhosted.org/packages/5b/0a/d112ae
 version = "2.4.3-nros1"
 system = ["libssl3"]
 upstream = "v2.4.3" # = source.ref (eProsima release tag)
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/xrce-agent-2.4.3-nros1/xrce-agent-linux-x86_64.tar.zst", sha256 = "61c2e7786ffdbc3ea7f19882f12fb9dd3c28756c6dafd6ec459c9fa86de9438f" }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/xrce-agent-2.4.3-nros1/xrce-agent-linux-arm64.tar.zst", sha256 = "29c6d7db3147bd9b0fac7d76ece23d90fa22907a7a556b88c3c2f9d6b8ba0344" }
-dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/xrce-agent-2.4.3-nros1/xrce-agent-macos-arm64.tar.zst", sha256 = "08133ec56db8fb5c0d80cfb5c99b5dea52e8b1af5932a5057fd153c1cb896e96" }
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/xrce-agent-2.4.3-nros1/xrce-agent-linux-x86_64.tar.zst", sha256 = "61c2e7786ffdbc3ea7f19882f12fb9dd3c28756c6dafd6ec459c9fa86de9438f", floor = { glibc = "2.34", glibcxx = "3.4.30" } }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/xrce-agent-2.4.3-nros1/xrce-agent-linux-arm64.tar.zst", sha256 = "29c6d7db3147bd9b0fac7d76ece23d90fa22907a7a556b88c3c2f9d6b8ba0344", floor = { glibc = "2.34", glibcxx = "3.4.30" } }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/xrce-agent-2.4.3-nros1/xrce-agent-macos-arm64.tar.zst", sha256 = "08133ec56db8fb5c0d80cfb5c99b5dea52e8b1af5932a5057fd153c1cb896e96", floor = { macos = "14.0" } }
 [tool.xrce-agent.source]
 git = "https://github.com/eProsima/Micro-XRCE-DDS-Agent"
 ref = "v2.4.3"
@@ -487,9 +499,9 @@ install = '''cmake --build build --parallel $(nproc) && mkdir -p {prefix}/bin {p
 version = "0.10.5-nros1"
 system = ["libssl3"]
 upstream = "12b4af2c5ac98657d42df84a5a45006ceede503b" # fork sha = submodule pointer
-dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/cyclonedds-0.10.5-nros1/cyclonedds-linux-x86_64.tar.zst", sha256 = "ed8a51eac91a884f39bfff4fe824923e5edf1f9dadb4a941c99a9f080c7217d3" }
-dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/cyclonedds-0.10.5-nros1/cyclonedds-linux-arm64.tar.zst", sha256 = "4c224398115bd45e14b37d6c8de7e94f4aed6f46da762f517654221327c51d5e" }
-dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/cyclonedds-0.10.5-nros1/cyclonedds-macos-arm64.tar.zst", sha256 = "f13c0dab71aa953c72aa5e5b4d7d8022a48de1670ccf28b103920ec06f1c3715" }
+dist.linux-x86_64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/cyclonedds-0.10.5-nros1/cyclonedds-linux-x86_64.tar.zst", sha256 = "ed8a51eac91a884f39bfff4fe824923e5edf1f9dadb4a941c99a9f080c7217d3", floor = { glibc = "2.34" } }
+dist.linux-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/cyclonedds-0.10.5-nros1/cyclonedds-linux-arm64.tar.zst", sha256 = "4c224398115bd45e14b37d6c8de7e94f4aed6f46da762f517654221327c51d5e", floor = { glibc = "2.34" } }
+dist.macos-arm64 = { url = "https://github.com/NEWSLabNTU/nano-ros-sdk/releases/download/cyclonedds-0.10.5-nros1/cyclonedds-macos-arm64.tar.zst", sha256 = "f13c0dab71aa953c72aa5e5b4d7d8022a48de1670ccf28b103920ec06f1c3715", floor = { macos = "14.0" } }
 [tool.cyclonedds.source]
 git = "https://github.com/NEWSLabNTU/cyclonedds"
 ref = "12b4af2c5ac98657d42df84a5a45006ceede503b"
@@ -553,7 +565,7 @@ install = "cmake --build build --parallel $(nproc) --target install"
 # row gains a `dist.linux-x86_64`.
 [tool.play_launch_parser]
 version = "0.1.0-nros1"
-system = ["libexpat1", "libpython310", "libz1"]
+system = ["libexpat1", "libpython3", "libz1"]
 upstream = "838ce948551f8ba263648fbb7eeb572cec9d5950" # = source.ref (play_launch pin; no upstream tags)
 [tool.play_launch_parser.source]
 git = "https://github.com/NEWSLabNTU/play_launch"
@@ -834,9 +846,9 @@ upstream = "v1.13.2" # = the ninja-build/ninja release tag
 # prefix) cannot take these: they are zips, and they hold a BARE `ninja` with no
 # `bin/` directory. That is what an upstream asset looks like when it was not
 # built to our mirror's shape, and it is why `DistArtifact.install` exists.
-dist.linux-x86_64 = { url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-linux.zip", sha256 = "5749cbc4e668273514150a80e387a957f933c6ed3f5f11e03fb30955e2bbead6", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/ninja" }
-dist.linux-arm64 = { url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-linux-aarch64.zip", sha256 = "fd2cacc8050a7f12a16a2e48f9e06fca5c14fc4c2bee2babb67b58be17a607fc", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/ninja" }
-dist.macos-arm64 = { url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-mac.zip", sha256 = "c99048673aa765960a99cf10c6ddb9f1fad506099ff0a0e137ad8960a88f321b", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/ninja" }
+dist.linux-x86_64 = { url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-linux.zip", sha256 = "5749cbc4e668273514150a80e387a957f933c6ed3f5f11e03fb30955e2bbead6", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/ninja", floor = { glibc = "2.15", glibcxx = "3.4.21" } }
+dist.linux-arm64 = { url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-linux-aarch64.zip", sha256 = "fd2cacc8050a7f12a16a2e48f9e06fca5c14fc4c2bee2babb67b58be17a607fc", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/ninja", floor = { glibc = "2.17", glibcxx = "3.4.21" } }
+dist.macos-arm64 = { url = "https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-mac.zip", sha256 = "c99048673aa765960a99cf10c6ddb9f1fad506099ff0a0e137ad8960a88f321b", install = "unzip -o {archive} -d {prefix}/bin && chmod +x {prefix}/bin/ninja", floor = { macos = "11.0" } }
 system = ["unzip"]
 # Fallback only. Verified 2026-08-31 that it does produce a 1.13.2 binary, so a
 # host off the three asset arches is not stranded.
@@ -930,10 +942,10 @@ smoke = [
     { run = "bin/mdbook --version", expect = "mdbook v0.5.4" },
 ]
 upstream = "v0.5.4" # rust-lang/mdBook release tag (SSOT for the URLs below)
-dist.linux-x86_64 = { url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-x86_64-unknown-linux-musl.tar.gz", sha256 = "5222beabd3e37dc5be0d18ff99b79058469354db5c220153a1b92db5ba12be89", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin && chmod +x {prefix}/bin/mdbook" }
-dist.linux-arm64 = { url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-aarch64-unknown-linux-musl.tar.gz", sha256 = "753e5c5c363ee8a56972344dcf91466f005a51db84a7aeffe427ae3ef83d6d44", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin && chmod +x {prefix}/bin/mdbook" }
-dist.macos-arm64 = { url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-aarch64-apple-darwin.tar.gz", sha256 = "03e8a6d8b13a2971e0b3280affd03b388373c1485e26f73407c3a76b0b1838df", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin && chmod +x {prefix}/bin/mdbook" }
-dist.macos-x86_64 = { url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-x86_64-apple-darwin.tar.gz", sha256 = "a47d7bf0d5d670cff9ee6cce95537cbeb62dc10704d9e7131ffbd13e2b59a5de", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin && chmod +x {prefix}/bin/mdbook" }
+dist.linux-x86_64 = { url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-x86_64-unknown-linux-musl.tar.gz", sha256 = "5222beabd3e37dc5be0d18ff99b79058469354db5c220153a1b92db5ba12be89", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin && chmod +x {prefix}/bin/mdbook", floor = { none = "statically linked (x86_64-unknown-linux-musl): no PT_INTERP, no DT_NEEDED" } }
+dist.linux-arm64 = { url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-aarch64-unknown-linux-musl.tar.gz", sha256 = "753e5c5c363ee8a56972344dcf91466f005a51db84a7aeffe427ae3ef83d6d44", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin && chmod +x {prefix}/bin/mdbook", floor = { none = "statically linked (aarch64-unknown-linux-musl): no PT_INTERP, no DT_NEEDED" } }
+dist.macos-arm64 = { url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-aarch64-apple-darwin.tar.gz", sha256 = "03e8a6d8b13a2971e0b3280affd03b388373c1485e26f73407c3a76b0b1838df", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin && chmod +x {prefix}/bin/mdbook", floor = { macos = "11.0" } }
+dist.macos-x86_64 = { url = "https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-x86_64-apple-darwin.tar.gz", sha256 = "a47d7bf0d5d670cff9ee6cce95537cbeb62dc10704d9e7131ffbd13e2b59a5de", install = "mkdir -p {prefix}/bin && tar -xf {archive} -C {prefix}/bin && chmod +x {prefix}/bin/mdbook", floor = { macos = "10.12" } }
 
 # Verus — unbounded deductive verification (`just verification verus`, run by
 # `just verify-verus`).
@@ -988,9 +1000,9 @@ smoke = [
 # `[tool.ninja]`. Nothing else: the bundle's external closure is base glibc only.
 system = ["unzip"]
 upstream = "release/0.2026.06.28.1847ab3" # verus-lang/verus release tag (SSOT)
-dist.linux-x86_64 = { url = "https://github.com/verus-lang/verus/releases/download/release/0.2026.06.28.1847ab3/verus-0.2026.06.28.1847ab3-x86-linux.zip", sha256 = "b12a622a2f44c31e72a459fc8b764e8d4bd2275e54995d21c405771b316a81e7", install = "rm -rf {prefix}/bin {prefix}/.unpack && unzip -q -o {archive} -d {prefix}/.unpack && mv {prefix}/.unpack/verus-x86-linux {prefix}/bin && rmdir {prefix}/.unpack && chmod +x {prefix}/bin/verus {prefix}/bin/cargo-verus {prefix}/bin/z3 {prefix}/bin/rust_verify" }
-dist.macos-arm64 = { url = "https://github.com/verus-lang/verus/releases/download/release/0.2026.06.28.1847ab3/verus-0.2026.06.28.1847ab3-arm64-macos.zip", sha256 = "225978b94c0f75edeeee76a042bc865afe0e76e87ceb97a305ea89ab21183d98", install = "rm -rf {prefix}/bin {prefix}/.unpack && unzip -q -o {archive} -d {prefix}/.unpack && mv {prefix}/.unpack/verus-arm64-macos {prefix}/bin && rmdir {prefix}/.unpack && chmod +x {prefix}/bin/verus {prefix}/bin/cargo-verus {prefix}/bin/z3 {prefix}/bin/rust_verify" }
-dist.macos-x86_64 = { url = "https://github.com/verus-lang/verus/releases/download/release/0.2026.06.28.1847ab3/verus-0.2026.06.28.1847ab3-x86-macos.zip", sha256 = "4d6b27a6e96079b56d910ec9290485467985aa9f8d68de03c5ca19a91312be75", install = "rm -rf {prefix}/bin {prefix}/.unpack && unzip -q -o {archive} -d {prefix}/.unpack && mv {prefix}/.unpack/verus-x86-macos {prefix}/bin && rmdir {prefix}/.unpack && chmod +x {prefix}/bin/verus {prefix}/bin/cargo-verus {prefix}/bin/z3 {prefix}/bin/rust_verify" }
+dist.linux-x86_64 = { url = "https://github.com/verus-lang/verus/releases/download/release/0.2026.06.28.1847ab3/verus-0.2026.06.28.1847ab3-x86-linux.zip", sha256 = "b12a622a2f44c31e72a459fc8b764e8d4bd2275e54995d21c405771b316a81e7", install = "rm -rf {prefix}/bin {prefix}/.unpack && unzip -q -o {archive} -d {prefix}/.unpack && mv {prefix}/.unpack/verus-x86-linux {prefix}/bin && rmdir {prefix}/.unpack && chmod +x {prefix}/bin/verus {prefix}/bin/cargo-verus {prefix}/bin/z3 {prefix}/bin/rust_verify", floor = { glibc = "2.34", glibcxx = "3.4.26" } }
+dist.macos-arm64 = { url = "https://github.com/verus-lang/verus/releases/download/release/0.2026.06.28.1847ab3/verus-0.2026.06.28.1847ab3-arm64-macos.zip", sha256 = "225978b94c0f75edeeee76a042bc865afe0e76e87ceb97a305ea89ab21183d98", install = "rm -rf {prefix}/bin {prefix}/.unpack && unzip -q -o {archive} -d {prefix}/.unpack && mv {prefix}/.unpack/verus-arm64-macos {prefix}/bin && rmdir {prefix}/.unpack && chmod +x {prefix}/bin/verus {prefix}/bin/cargo-verus {prefix}/bin/z3 {prefix}/bin/rust_verify", floor = { macos = "11.0" } }
+dist.macos-x86_64 = { url = "https://github.com/verus-lang/verus/releases/download/release/0.2026.06.28.1847ab3/verus-0.2026.06.28.1847ab3-x86-macos.zip", sha256 = "4d6b27a6e96079b56d910ec9290485467985aa9f8d68de03c5ca19a91312be75", install = "rm -rf {prefix}/bin {prefix}/.unpack && unzip -q -o {archive} -d {prefix}/.unpack && mv {prefix}/.unpack/verus-x86-macos {prefix}/bin && rmdir {prefix}/.unpack && chmod +x {prefix}/bin/verus {prefix}/bin/cargo-verus {prefix}/bin/z3 {prefix}/bin/rust_verify", floor = { macos = "11.0" } }
 
 # --- source packages (built with the app for the user's target) ---
 #
@@ -1166,7 +1178,7 @@ upstream = "FM-11.31"
 # with `bin/FVP_BaseR_AEMv8R` beneath it, so the default prefix-rooted unpack
 # would bury the binary one level down and every resolver would miss it.
 # Verified by listing the archive, not assumed from the name.
-dist.linux-x86_64 = { url = "https://developer.arm.com/-/cdn-downloads/permalink/FVPs-Architecture/FM-11.31/FVP_Base_AEMv8R_11.31_28_Linux_x86.tar.gz", sha256 = "627500afdb115701b412b85520e5c0e370b7f7e3f425f7ae4b1e8b14cbd4441a", install = "tar -xzf {archive} -C {prefix} --strip-components=1" }
+dist.linux-x86_64 = { url = "https://developer.arm.com/-/cdn-downloads/permalink/FVPs-Architecture/FM-11.31/FVP_Base_AEMv8R_11.31_28_Linux_x86.tar.gz", sha256 = "627500afdb115701b412b85520e5c0e370b7f7e3f425f7ae4b1e8b14cbd4441a", install = "tar -xzf {archive} -C {prefix} --strip-components=1", floor = { glibc = "2.17", glibcxx = "3.4.26" } }
 
 # --- RMW host packages (Phase 191.6.a): the RMW axis, orthogonal to the board.
 # `nros setup <board> --rmw <name>` resolves `board.packages ∪ rmw.packages`
@@ -2195,13 +2207,17 @@ check = { cmd = "nros" }
 # dist's copy behind `RUNPATH=$ORIGIN/../lib`. That is issue 0774's class, and
 # an audit inheriting the caller's environment measures the caller.
 #
-# Two of these pin a version INSIDE the soname — `libpython3.10.so.1.0` and
-# `libssl.so.3` — so they are host-distro constraints rather than ordinary
-# prerequisites: no `apt install` satisfies them on a release that ships a
-# different minor/major. Declaring them lets setup and doctor SAY so; only
-# re-cutting the dist removes them.
+# A soname that pins a version (`libssl.so.3`) is a host-distro constraint
+# rather than an ordinary prerequisite: no `apt install` satisfies it on a
+# release that ships a different major. phase-447 D2 lets a row say so per
+# release — `apt = { default = [..], noble = [..] }`, with an explicitly EMPTY
+# list meaning "not packaged on that release" — and phase-447 D1's floor probe
+# reads exactly that to refuse a prebuilt BEFORE downloading it on such a host,
+# falling back to its source recipe. Only re-cutting the dist removes the
+# constraint itself.
 #
-# apt names verified against the archive on Ubuntu 22.04 (2026-08-30).
+# apt names verified against the archive on Ubuntu 22.04 (2026-08-30); the
+# noble overrides against 24.04 (2026-09-11).
 # dnf/pacman/brew are best-effort, per this file's existing convention.
 
 [prereq.openocd]
@@ -2248,8 +2264,35 @@ pacman = ["pcre2"]
 brew = ["pcre2"]
 check = { sharedlib = "libpcre2-8.so.0" }
 
-[prereq.libpython310]
+# phase-447 D2 — was `[prereq.libpython310]`, and the minor version in the KEY
+# was the defect, not just a stale package name. Its only consumer is the
+# play_launch_parser SOURCE build (there is no dist — RFC-0099 D4's ten), and a
+# source build links whatever CPython the HOST has: 3.10 on jammy, 3.12 on
+# noble. So the requirement is "this host's libpython3", and a key naming 3.10
+# asked every non-jammy host for a package it could not have (noble has no
+# `libpython3.10`; the old dnf/pacman rows asked for non-default side installs).
+#
+# A soname-EXACT requirement (`libpython3.10.so.1.0`) is a different thing: it
+# belongs to a binary that links one minor. That key exists — it is
+# `[prereq.libpython310]`, directly below, for the `nros-launch-resolve`
+# release binary (issue 0897, PR #896). `check-dist-runtime-deps` maps sonames
+# through `check.sharedlib`, and this prefix probe matches none exactly, so a
+# dist that links one minor is steered to that key, not this one.
+#
+# `default` is `libpython3-dev`, the one name that pulls the RELEASE's own
+# minor on every Debian/Ubuntu; jammy/noble name the runtime package directly
+# (verified in the archive 2026-09-11 — noble's is the t64 rename).
+[prereq.libpython3]
 role = "infra"
+why = "this host's CPython embedding library — the play_launch_parser SOURCE build links it (pyo3 auto-initialize)"
+apt = { default = ["libpython3-dev"], jammy = ["libpython3.10"], noble = ["libpython3.12t64"] }
+dnf = ["python3-libs"]
+pacman = ["python"]
+check = { sharedlib = "libpython3." }
+
+# The soname-EXACT sibling of `[prereq.libpython3]` above: the two keys are two
+# requirements that the old single key conflated (phase-447 D2).
+#
 # Corrected for issue 1273 / RFC-0099 D4 — `play_launch_parser` has no dist (it
 # is on the dist-or-reason ratchet, `.config/dist-or-reason-baseline.txt`), so
 # that could never have been the true reason. The real one: PR #896
@@ -2258,8 +2301,17 @@ role = "infra"
 # links `libpython3.10.so.1.0` as a hard `DT_NEEDED` (pyo3's
 # `auto-initialize`) — this prereq exists for THAT binary, not for a dist that
 # does not exist.
+#
+# For a binary linked against one minor, the minor IS the requirement, so here
+# the version in the key is right. phase-447 D2 lets it say where that minor
+# is not packaged at all: noble ships 3.12 and no `libpython3.10` (verified
+# 2026-09-11), and `noble = []` is exactly the signal D1's backward half reads
+# to refuse such a binary before downloading it. No `default`: jammy is the only
+# Ubuntu LTS that packages 3.10, and a default would claim the others do.
+[prereq.libpython310]
+role = "infra"
 why = "runtime dep of the nros-launch-resolve release binary (pyo3 auto-initialize links libpython3.10.so.1.0; phase-447 A1 / PR #896)"
-apt = ["libpython3.10"]
+apt = { jammy = ["libpython3.10"], noble = [] }
 dnf = ["python3.10-libs"]
 pacman = ["python310"]
 check = { sharedlib = "libpython3.10.so.1.0" }
@@ -2275,7 +2327,10 @@ check = { sharedlib = "libselinux.so.1" }
 [prereq.libssl3]
 role = "infra"
 why = "runtime dep of the cyclonedds, xrce-agent dist(s) (issue 0926)"
-apt = ["libssl3"]
+# phase-447 D2 — noble's 64-bit time_t transition renamed the package to
+# `libssl3t64` (the soname stays `libssl.so.3`, so the probe is unchanged).
+# Verified in the archive 2026-09-11: noble has no `libssl3`.
+apt = { default = ["libssl3"], noble = ["libssl3t64"] }
 dnf = ["openssl-libs"]
 pacman = ["openssl"]
 brew = ["openssl@3"]
