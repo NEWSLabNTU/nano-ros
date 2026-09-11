@@ -973,6 +973,41 @@ def shipped_shape_gaps(recipes, variables, gating, subjects):
     return gaps, covered
 
 
+# ---- phase-445 W6 — a recipe that BUILDS an example leaf must sync it -------
+#
+# W6 (`9af7e5230`) deleted every `examples/**/.cargo/`, so the
+# `[patch.crates-io]` table that resolves `nros`, `nros-platform` and the board
+# crate is pure `nros sync` OUTPUT. A bare `cargo build` in a leaf then resolves
+# `nros = { version = "*" }` against the public registry and dies
+# `no matching package named 'nros' found` — which took the merge queue's L3 job
+# down (run 34634922404) four hours after W6 landed, in `rust-rtos-link-check`,
+# the one lane of five that had no sync.
+#
+# The rule is deliberately WEAK: a body that cds into a leaf and runs cargo must
+# also run `sync` somewhere in the SAME body. It does not try to match which
+# leaf is synced — `just/px4.just` builds through a `printf | nros_pool_run`
+# pipeline whose `cd` is inside a string and whose sync is a `$dir` loop, so
+# pairing them statically would be guesswork. "Builds a leaf, never syncs" is
+# the shape that actually broke, and it is decidable.
+LEAF_CARGO = re.compile(
+    r"cd\s+(examples/[^\s&|;]+).*?cargo\s+(?:\+\S+\s+)?(?:build|check|tree|test)")
+
+
+def leaf_builds_without_sync(recipes):
+    """{recipe: [leaf dirs it builds]} for bodies that never call `sync`."""
+    out = {}
+    for name, rec in recipes.items():
+        body = "\n".join(rec.get("body", []))
+        code = "\n".join(l for l in rec.get("body", []) if not l.strip().startswith("#"))
+        leaves = sorted({m.group(1) for m in LEAF_CARGO.finditer(code)})
+        if not leaves:
+            continue
+        if re.search(r"\bsync\b", code):
+            continue
+        out[name] = leaves
+    return out
+
+
 def main():
     if "--selftest" in sys.argv:
         return selftest(verbose=True)
@@ -1193,6 +1228,24 @@ def main():
     for _crate, msg in shape_gaps:
         errs.append(msg)
 
+    # ---- phase-445 W6 — leaf builds need their sync (see the rule above).
+    leaf_gaps = leaf_builds_without_sync(recipes_map)
+    leaf_builders = sorted(set(recipes_map) - set(leaf_gaps))
+    for name, leaves in sorted(leaf_gaps.items()):
+        errs.append(
+            f"`{name}` builds {', '.join(leaves)} with cargo and never runs "
+            f"`nros sync`.\n"
+            f"      phase-445 W6 deleted the leaf `.cargo/`, so the "
+            f"`[patch.crates-io]` table that\n"
+            f"      resolves `nros` is sync OUTPUT — without it cargo reads "
+            f"`version = \"*\"` as\n"
+            f"      crates.io and fails `no matching package named 'nros' "
+            f"found`.\n"
+            f"      Sync each leaf in the recipe body first, as `just/px4.just` "
+            f"and\n"
+            f"      `just/freertos.just` do."
+        )
+
     if errs:
         print(f"check-lane-contracts: {len(errs)} tier violation(s):\n", file=sys.stderr)
         for e in errs:
@@ -1400,6 +1453,22 @@ def selftest(verbose=False):
     advisory = {"r": {"deps": [], "body": ["    echo 'hint: just generate-bindings'"]}}
     chk("an ADVISORY mention with no failure path is not a precondition",
         required_producers(advisory, ["r"]) == {})
+
+    # phase-445 W6 — a leaf build with no sync in the same body is the shape
+    # that took the queue's L3 job down; a body that syncs is clean.
+    no_sync = {"r": {"deps": [], "body": [
+        "    ( cd examples/x/rust/talker && cargo build --target-dir t ) >/dev/null"]}}
+    chk("a leaf cargo build with no sync in the body is a finding",
+        leaf_builds_without_sync(no_sync) == {"r": ["examples/x/rust/talker"]})
+    with_sync = {"r": {"deps": [], "body": [
+        '    "$nros_cli" sync "$dir" >/dev/null',
+        "    ( cd examples/x/rust/talker && cargo build --target-dir t ) >/dev/null"]}}
+    chk("the same body that syncs is clean",
+        leaf_builds_without_sync(with_sync) == {})
+    commented = {"r": {"deps": [], "body": [
+        "    #   cd examples/x/rust/talker && cargo build --target-dir t"]}}
+    chk("a leaf build shown only in a COMMENT is not a build",
+        leaf_builds_without_sync(commented) == {})
 
     # issue 1030 — the justfile's dependency ORDER as a second declaration
     # source, and the folded `if:` that hid the step it applies to.
