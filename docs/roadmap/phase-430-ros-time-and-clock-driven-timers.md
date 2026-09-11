@@ -1,5 +1,12 @@
 # Phase 430 — ROS time: the delta after phase-425
 
+**Status (2026-09-12). W1–W8 LANDED; row 1's regression is CLOSED — issue 1321
+is fixed and archived, and property 1 is MET for the first time by
+implementation rather than by absence.** See
+["Row 1, re-verdicted (2026-09-12)"](#row-1-re-verdicted-2026-09-12--met) below.
+Nothing else in this document changed; the 2026-09-07 and 2026-09-11 tables are
+left as they were written.
+
 **Status (2026-09-11). W1–W8 LANDED; ONE row of the 2026-09-07 delta REGRESSED
 and is now issue 1321.** Phase-425 owns sim-time and shipped it; this phase was
 exactly the delta below and that delta is closed — the clock axis reaches every
@@ -8,7 +15,7 @@ parameter-semantics corrections are in, and W7 recorded the rulings. What is
 NOT closed is row 1: phase-436 W1 gave the executor a timer-derived park bound
 nine hours after this table verdicted the property "NO LONGER APPLIES", so the
 property applies again and is unmet. It is filed rather than fixed here
-([issue 1321](../issues/1321-ros-time-timer-caps-the-park-on-wall-time.md)),
+([issue 1321](../issues/archived/1321-ros-time-timer-caps-the-park-on-wall-time.md)),
 because it is an executor change and this phase is the reach delta. See
 "Re-measured (2026-09-11)" below; the 2026-09-07 table is left as it was
 written.
@@ -83,7 +90,7 @@ one is on `main`, so a row's line numbers can move without its verdict moving.
 
 | # | 2026-09-07 | 2026-09-11 | What moved, and the evidence |
 | --- | --- | --- | --- |
-| 1 | NO LONGER APPLIES | **NOT STARTED** | **REGRESSED, and it is the one bad row in this table.** The 2026-09-07 verdict rested on "the executor derives NO wait from timers at all". `d1a1c7a32` (phase-436 W1, issue 1192) merged 2026-09-10T15:47Z — nine hours after this table's own `f447547d1` at 06:23Z — and gave it one: `next_timer_deadline_us` (`executor/spin.rs:2838`) offers `period_us - elapsed_us` as a park bound and never reads `clock_source`, which `TimerHeader` carries (`executor/arena.rs:265`). For a `Ros` timer that quantity is SIMULATED microseconds and the park primitive is handed it as WALL (`spin.rs:2711`, `:7093`–`7130`). Bounded — it can only shorten a park, so nothing fires early — but property 1 is exactly this and it is unmet. Filed as **issue 1321**, not fixed here: it is an executor change, and this phase is the reach delta. |
+| 1 | NO LONGER APPLIES | **NOT STARTED** | **REGRESSED, and it is the one bad row in this table.** The 2026-09-07 verdict rested on "the executor derives NO wait from timers at all". `d1a1c7a32` (phase-436 W1, issue 1192) merged 2026-09-10T15:47Z — nine hours after this table's own `f447547d1` at 06:23Z — and gave it one: `next_timer_deadline_us` (`executor/spin.rs:2838`) offers `period_us - elapsed_us` as a park bound and never reads `clock_source`, which `TimerHeader` carries (`executor/arena.rs:265`). For a `Ros` timer that quantity is SIMULATED microseconds and the park primitive is handed it as WALL (`spin.rs:2711`, `:7093`–`7130`). Bounded — it can only shorten a park, so nothing fires early — but property 1 is exactly this and it is unmet. Filed as **issue 1321**, not fixed here: it is an executor change, and this phase is the reach delta. **Superseded 2026-09-12 — see "Row 1, re-verdicted" below; 1321 is fixed and archived.** |
 | 2 | DONE | DONE | Stands. `8cfd19315`; `ros_time_timer_follows_the_simulated_clock` (`executor/tests.rs:2628`); `6ec3764f2` for `packages/testing/nros-tests/tests/sim_time_clock_e2e.rs`. |
 | 3 | DONE | DONE | Stands. `caa546fb2` (`packages/interfaces/rosgraph-msgs`), `f176079a5`. Lines moved: `Executor::install_ros_time_source` is `executor/spin.rs:10855`, `QoSProfile::clock_default` is `nros-rmw/src/traits.rs:1178`. |
 | 4 | DONE | DONE | Stands. `5200437c5`. Lines moved: `note_reserved_parameter` `executor/spin.rs:9171`, `reconcile_ros_time_source` `:10664`. |
@@ -138,9 +145,58 @@ one is on `main`, so a row's line numbers can move without its verdict moving.
   phase-425 brought it.
 * **W8 [cost] — CLOSED by row 18**, unchanged.
 
-**What this phase does not close: issue 1321.** It is a phase-436 regression on
-this phase's property 1 rather than an item of the delta, and it is owned by the
-issue.
+**What this phase did not close: issue 1321** — written 2026-09-11. It is a
+phase-436 regression on this phase's property 1 rather than an item of the
+delta, and it was owned by the issue. **It is closed now**; the re-verdict is
+the next section, and the issue is archived.
+
+### Row 1, re-verdicted (2026-09-12) — MET
+
+| # | 2026-09-07 | 2026-09-11 | 2026-09-12 | Evidence |
+| --- | --- | --- | --- | --- |
+| 1 | NO LONGER APPLIES | NOT STARTED | **MET** | A timer bounds the executor's wall park only if its OWN clock runs in wall microseconds — `TimerClockSource::remaining_is_wall_time` (`packages/core/nros-node/src/timer.rs`), read by `next_timer_deadline_us` and by `audit_spin_quantization` (`executor/spin.rs`). [issue 1321](../issues/archived/1321-ros-time-timer-caps-the-park-on-wall-time.md), archived. |
+
+**Property 1 now reads, post-fix:** *a ROS-time timer's wake source is a
+`/clock` message, so it contributes NOTHING to the wall timeout handed to the
+platform; the timeout comes from the timers whose clock is wall time —
+`Steady` and `System` — plus the caller's budget and the session's next
+event.*
+
+Three things that matters for, and all three are decisions rather than
+restatements of the 2026-09-07 verdict:
+
+* **This is the first time the property is met by IMPLEMENTATION.** The
+  2026-09-07 verdict "NO LONGER APPLIES" rested on the executor deriving no
+  wait from timers at all — the property was satisfied because the mechanism
+  did not exist, which is why one unrelated phase could remove it nine hours
+  later without anyone noticing. It is now satisfied by a predicate that
+  names the clock, with a test that fails if the predicate is removed.
+* **The three clock sources are decided SEPARATELY, not collapsed into
+  `!= Steady`.** `System` keeps its bound: its clock IS wall time, so there
+  is no rate indirection and nothing can hold it still. It can STEP (NTP),
+  which makes the bound an estimate rather than a fact — but a bounded one,
+  because the bound only ever shortens a park and `timer_try_process` re-reads
+  the clock before dispatching, so a step costs at most one extra wake and can
+  never fire a callback early.
+* **`Ros` contributes nothing UNCONDITIONALLY**, not "unless a `/clock` source
+  happens to be attached". The conditional rule would be wrong today —
+  `ClockType::RosTime`'s documented wall fallback reads an in-image steady
+  counter nothing advances
+  ([issue 1334](../issues/1334-ros-time-fallback-reads-an-unadvanced-steady-counter.md),
+  measured while deciding this) — and a park bound that flipped with whether a
+  publisher was running would be a behaviour no declaration named. The latency
+  cost is the pre-436 bound, the caller's budget, which is what the e2e
+  fixture's 5 ms `sim-clock-listener` cadence already assumes; the park is
+  never unbounded, because `next_wake_bound_attributed_us` seeds its `min`
+  with that budget.
+
+The same sweep found a third site with the same units error and WITHOUT the
+"bounded, over-waking only" mitigation: issue 0736's budget-skip path advanced
+every timer's `elapsed_us` by the executor's wall delta, which un-pauses a ROS
+timer on a paused `/clock` — row 8's property, broken on one path. Both sites
+now go through `arena::timer_clock_step`. Negative control, pre-fix: 202 359 µs
+accumulated over five spins with `/clock` held still, i.e. two activations a
+100 ms ROS timer had not earned.
 
 ### The tests, run (2026-09-07)
 
