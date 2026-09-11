@@ -41,6 +41,14 @@ target_link_libraries(my_app
 nros_platform_link_app(my_app)
 ```
 
+That is the out-of-tree spelling, where the consumer owns the whole
+`CMakeLists.txt` and pulls nano-ros in by path. The in-tree examples use the
+ament shape instead — `find_package(nano_ros REQUIRED)` +
+`nano_ros_add_executable()` — and take the board, RMW, domain and network
+identity from a `system.toml` beside the `CMakeLists.txt` rather than from
+`set(NANO_ROS_RMW …)` or a `-D` flag. See the FreeRTOS section below for what
+that file holds.
+
 The `nano_ros_generate_interfaces()` function:
 1. Resolves `.msg`/`.srv`/`.action` files (local directory, ament index, or bundled)
 2. Generates C++ headers (`.hpp`) and Rust FFI glue (`.rs`)
@@ -49,22 +57,48 @@ The `nano_ros_generate_interfaces()` function:
 
 ### FreeRTOS (ARM Cortex-M3)
 
-Same shape as the native (host) build — set the toolchain + board + platform on the
-cmake command line and the example's `add_subdirectory(nano-ros)` does
-the rest. Phase 138's `cmake/platform/nano-ros-freertos.cmake` +
-`cmake/board/nano-ros-board-mps2-an385-freertos.cmake` compose the
-kernel + lwIP + LAN9118 driver in-tree; no install step needed.
+Same shape as the native (host) build, with one difference: **the board and the
+RMW are not on the command line.** They are in the example's `system.toml`,
+beside its `CMakeLists.txt` (RFC-0098 D3/D5) — verbatim from
+`examples/mps2-an385-freertos/cpp/talker/system.toml`:
+
+```toml
+[system]
+name      = "freertos_cpp_talker"
+rmw       = "zenoh"
+domain_id = 0
+locator   = "tcp/192.0.3.1:7447"
+
+[image.mps2-an385-freertos]
+board = "mps2-an385-freertos"
+```
+
+`find_package(nano_ros)` reads that through `nros ws leaf-system` and derives
+the platform (`freertos`) from the board, so `-DNANO_ROS_PLATFORM`,
+`-DNANO_ROS_BOARD` and `-DNROS_RMW` are retired as the way a user chooses.
+Switching board is editing `[image.*] board`. Phase 138's
+`cmake/platform/nano-ros-freertos.cmake` +
+`cmake/board/nano-ros-board-mps2-an385-freertos.cmake` still compose the kernel
++ lwIP + LAN9118 driver in-tree; no install step needed.
+
+The one thing a cross build still needs on the command line is the toolchain
+file, because CMake pins the compiler at the first configure:
 
 ```bash
 cmake -S examples/mps2-an385-freertos/cpp/talker -B build/talker \
-    -DCMAKE_TOOLCHAIN_FILE=$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake \
-    -DNROS_RMW=zenoh
+    -DCMAKE_TOOLCHAIN_FILE=$(pwd)/cmake/toolchain/arm-freertos-armcm3.cmake
 cmake --build build/talker
 ```
 
-The example's own `CMakeLists.txt` consumes nano-ros via
-`add_subdirectory(<repo>)` (Phase 144) and reaches
-`NanoRos::NanoRosCpp` + `nros_platform_link_app()` directly.
+`nros build` is what maps a board to its toolchain file, so this hand-passed
+flag goes away once a single-package C/C++ leaf can use it —
+[issue 1296](../issues/1296-nros-build-c-leaf-bringup-name-mismatch.md) is why
+it cannot today. `nros init` + `cmake --preset <board>` is the other way to
+avoid spelling the path (the presets `nros setup <board>` wrote).
+
+A single-package C/C++ leaf needs **no `nros sync`**: its message bindings are
+a CMake-time output, so a clean copy of the directory configures and builds with
+no sync at all. Workspaces and Rust leaves do need it.
 
 ### Zephyr
 
@@ -497,7 +531,9 @@ int main(void)
 
 ## See Also
 
-- [creating-examples.md](creating-examples.md) — How to create new examples
-- [message-generation.md](message-generation.md) — Message generation details
+- [Creating Examples](../../book/src/internals/creating-examples.md) — How to create new examples
+- [Message Binding Generation](../../book/src/user-guide/message-generation.md) — Message generation details
+- [RFC-0098](../design/0098-generated-leaf-build-config.md) — a leaf states its
+  board once, in `system.toml`; every build setting is generated from it
 - [docs/roadmap/phase-66-cpp-api.md](../roadmap/archived/phase-66-cpp-api.md) — Phase 66 roadmap (design decisions)
 - [docs/design/0018-cpp-api-design.md](../design/0018-cpp-api-design.md) — Full design rationale
