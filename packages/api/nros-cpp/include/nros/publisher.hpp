@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <string.h> // memcpy — `<cstring>` isn't in Zephyr's minimal libcpp
 
+#include "nros/traits.hpp"
 #include "nros/config.hpp"
 #include "nros/result.hpp"
 // RFC-0088 D5 — NROS_CPP_ASSERT_MESSAGE_FORMAT, expanded in the creator below.
@@ -409,7 +410,7 @@ inline ResultOf<Publisher<M>> create_publisher(::rclcpp::Node& node, const char*
     Publisher<M> p;
     Result r = node.create_publisher<M>(p, topic, qos);
     if (!r.ok()) return ResultOf<Publisher<M>>::error(r);
-    return ResultOf<Publisher<M>>::ok(std::move(p));
+    return ResultOf<Publisher<M>>::ok(::nros::tr::forward_rvalue(p));
 }
 
 } // namespace nros

@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 
+#include "nros/traits.hpp"
 #include "nros/bridge.h"
 #include "nros/result.hpp"
 
@@ -35,23 +36,23 @@ namespace nros {
 struct SessionSpec {
     std::string rmw;
     std::string locator;
-    std::uint32_t domain_id = 0;
+    uint32_t domain_id = 0;
     std::string node_name;
     std::string namespace_;
 
     SessionSpec(std::string rmw_, std::string locator_)
-        : rmw(std::move(rmw_)), locator(std::move(locator_)) {}
+        : rmw(::nros::tr::forward_rvalue(rmw_)), locator(::nros::tr::forward_rvalue(locator_)) {}
 
-    SessionSpec& with_domain_id(std::uint32_t id) {
+    SessionSpec& with_domain_id(uint32_t id) {
         domain_id = id;
         return *this;
     }
     SessionSpec& with_node_name(std::string name) {
-        node_name = std::move(name);
+        node_name = ::nros::tr::forward_rvalue(name);
         return *this;
     }
     SessionSpec& with_namespace(std::string ns) {
-        namespace_ = std::move(ns);
+        namespace_ = ::nros::tr::forward_rvalue(ns);
         return *this;
     }
 };
@@ -114,8 +115,8 @@ namespace bridge {
 
 /// Per-pump counters mirroring `nros_pump_stats_t`.
 struct PumpStats {
-    std::size_t forwarded = 0;
-    std::size_t dropped_echo = 0;
+    size_t forwarded = 0;
+    size_t dropped_echo = 0;
 };
 
 /// RAII pubsub bridge — forwards raw samples from a source Node
@@ -161,7 +162,7 @@ class PubSubBridge {
     /// Drain every queued sample and forward to the destination.
     /// Returns the number actually forwarded (samples dropped by the
     /// dedup window are not counted).
-    std::size_t pump() {
+    size_t pump() {
         if (handle_ == nullptr) return 0;
         return nros_pubsub_bridge_pump(handle_);
     }

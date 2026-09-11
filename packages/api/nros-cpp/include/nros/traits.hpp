@@ -129,13 +129,26 @@ template <typename T> struct decay {
                              typename remove_cv<U>::type>::type>::type;
 };
 
-/// `static_cast<T&&>`, without `<utility>`.
+/// `std::move`, without `<utility>`.
 ///
 /// Named `forward_rvalue` rather than `move` on purpose: `nros::tr::move` beside
 /// a `using namespace std` would be an overload-resolution coin flip in a ported
 /// file, and this namespace is not a `std` replacement.
 template <typename T> constexpr typename remove_reference<T>::type&& forward_rvalue(T&& v) {
     return static_cast<typename remove_reference<T>::type&&>(v);
+}
+
+/// `std::forward`, without `<utility>` — perfect forwarding, both overloads.
+///
+/// Distinct from `forward_rvalue` and not a synonym for it: forwarding
+/// preserves an lvalue argument as an lvalue, where a move would hand the
+/// callee an rvalue it is entitled to gut. Collapsing the two is the classic
+/// way a forwarding wrapper silently steals from its caller, so both exist.
+template <typename T> constexpr T&& relay(typename remove_reference<T>::type& v) {
+    return static_cast<T&&>(v);
+}
+template <typename T> constexpr T&& relay(typename remove_reference<T>::type&& v) {
+    return static_cast<T&&>(v);
 }
 
 } // namespace tr

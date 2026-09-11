@@ -17,6 +17,7 @@
 // fallback definitions in favor of the canonical types.
 #include "nros_cpp_ffi.h"
 
+#include "nros/traits.hpp"
 #include "nros/log.hpp"
 #include "nros/result.hpp"
 // Issue 0789 — the clock / time / duration surface. `node.now()` and
@@ -579,7 +580,7 @@ template <typename M, typename Cb>
 inline ::std::shared_ptr<Subscription<M>> Node::create_subscription(const ::std::string& topic,
                                                                     const ::nros::QoS& qos, Cb cb) {
     auto cell = ::std::make_shared<::rclcpp::detail::SubscriptionCallback<M>>();
-    cell->fn = ::std::move(cb);
+    cell->fn = ::nros::tr::forward_rvalue(cb);
     ::rclcpp::detail::require_created(
         ::nros::create_subscription_raw(*this, topic.c_str(), M::TYPE_NAME,
                                         &::rclcpp::detail::SubscriptionCallback<M>::trampoline,
@@ -597,7 +598,7 @@ template <typename M, typename Cb>
 inline ::std::shared_ptr<Subscription<M>> Node::create_subscription(const ::std::string& topic,
                                                                     ::size_t depth, Cb cb) {
     return this->create_subscription<M>(topic, ::nros::QoS(static_cast<uint32_t>(depth)),
-                                        ::std::move(cb));
+                                        ::nros::tr::forward_rvalue(cb));
 }
 } // namespace rclcpp
 
@@ -628,7 +629,7 @@ template <typename Rep, typename Period, typename Cb>
 inline ::std::shared_ptr<::nros::Timer>
 Node::create_wall_timer(::std::chrono::duration<Rep, Period> period, Cb cb) {
     auto t = ::std::make_shared<::rclcpp::detail::WallTimer>();
-    t->callback = ::std::move(cb);
+    t->callback = ::nros::tr::forward_rvalue(cb);
     const auto ms = ::std::chrono::duration_cast<::std::chrono::milliseconds>(period).count();
     // A null return would be silent HERE above all: a ported node stores the
     // timer handle and never dereferences it, so a dead timer would simply
@@ -832,7 +833,7 @@ inline ::std::shared_ptr<::nros::Timer>
 create_timer(NodeT&& node, ::nros::Clock* clock, ::nros::Duration period, CallbackT&& callback) {
     ::rclcpp::Node& n = detail::as_node_ref(node);
     auto t = ::std::make_shared<detail::WallTimer>();
-    t->callback = ::std::forward<CallbackT>(callback);
+    t->callback = ::nros::tr::relay<CallbackT>(callback);
     const int64_t ns = period.nanoseconds();
     const uint64_t ms = ns > 0 ? static_cast<uint64_t>(ns / 1000000) : uint64_t(0);
     // Same refusal as the seven `create_*` verbs: `rclcpp::create_timer` is a
@@ -860,9 +861,9 @@ inline ::std::shared_ptr<::nros::Timer> create_timer(NodeT&& node, ::nros::Clock
                                                      ::std::chrono::duration<Rep, Period> period,
                                                      CallbackT&& callback) {
     const auto ns = ::std::chrono::duration_cast<::std::chrono::nanoseconds>(period).count();
-    return create_timer(::std::forward<NodeT>(node), clock,
+    return create_timer(::nros::tr::relay<NodeT>(node), clock,
                         ::nros::Duration::from_nanoseconds(static_cast<int64_t>(ns)),
-                        ::std::forward<CallbackT>(callback));
+                        ::nros::tr::relay<CallbackT>(callback));
 }
 #endif // NROS_CPP_HAS_STD_CHRONO
 
